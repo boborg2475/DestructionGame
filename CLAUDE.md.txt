@@ -1,0 +1,26 @@
+# DestructionGame
+
+## What this game is
+
+DestructionGame is a first-person Unreal Engine 5 game built around destructible
+environments: the player moves through spaces and physically tears them apart,
+with the wreckage itself — collapsed cover, blown-open walls, new routes through
+a broken level — being the point rather than set dressing. Weapons and abilities
+are meant to be judged by how interestingly they break the world, so level
+geometry should be treated as consumable and moment-to-moment destruction
+feedback (impacts, debris, structural collapse) is the core loop the rest of the
+game hangs off.
+
+## Current state
+
+The repository is still close to Epic's First Person template, renamed to
+`DestructionGame`. `Source/DestructionGame/` holds the base character, player
+controller, camera manager, and game mode; `Variant_Shooter/` and
+`Variant_Horror/` are the unmodified template variants (shooter weapons,
+projectiles, pickups, StateTree-driven NPCs, and a horror flashlight/level
+setup) kept around as reference. No destruction-specific systems (Chaos
+fracture, geometry collections, destructible actor classes) have been added yet.
+
+> Note: the "What this game is" paragraph above was inferred from the project
+> name and layout, not from an existing design document — correct it if the
+> intended direction differs.
