@@ -6,29 +6,33 @@
 - **Deferring something? Add it here** before moving on, with enough context to act on it later.
 - Check this file at the start of a work session and again before calling anything done.
 
+Items are deliberately unnumbered — they get added and removed constantly, and renumbering churns the diff.
+
 Last updated: 2026-07-30
 
 ---
 
 ## Snapshot
 
-Design is well developed ([DESIGN.md](DESIGN.md)); implementation has barely started. The repo is mid-way through stripping the Epic FPS template to make room for the destruction scaffold — that strip is committed but **still incomplete**.
+Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just started. The repo is mid-way through stripping the Epic FPS template to make room for the destruction scaffold — that strip is committed but **still incomplete**.
 
-- Git: on `main`, in sync with `origin/main`. The template strip and the process/design docs are committed and pushed; working tree is clean.
-- `Source/` is clean: Variant_Shooter and Variant_Horror C++ are gone. Remaining classes are the module, `GameMode`, `PlayerController`, `CameraManager`, and the new `FlyingPawn`.
-- `GameMode` correctly wires `DefaultPawnClass` to `ADestructionGameFlyingPawn` — the flying-spectator player setup DESIGN.md §5 asks for exists in code.
-- `Content/` still holds 132 files of template leftovers (see TODO 1).
-- No destruction code exists yet: no base destructible actor, no material profile, no connection profile, no force manager.
-- No test infrastructure exists at all.
+- Git: on `main`, in sync with `origin/main`. Working tree clean.
+- `Source/` is clean of template variants. Classes: the module, `GameMode`, `PlayerController`, `CameraManager`, `FlyingPawn`, and `Core/ConnectionLoad`.
+- **Test infrastructure works.** Automation tests run headless, verified end to end on a real red → green cycle. Build and run commands are documented in [CLAUDE.md](../CLAUDE.md).
+- **First core system is in:** directional force classification (`Core/ConnectionLoad`) resolves a force into compression / tension / shear relative to a connection's interface plane. Test-driven, 8 cases, green.
+- `Content/` still holds 132 files of template leftovers.
+- Everything else in Core systems below is still unbuilt.
 
 ---
 
 ## Blocking — project is not in a runnable state
 
-**1. The startup map doesn't exist.**
-`Config/DefaultEngine.ini` sets both `EditorStartupMap` and `GameDefaultMap` to `/Game/Maps/Lvl_Sandbox`, but there is no `Content/Maps/` directory and no `Lvl_Sandbox.umap` anywhere on disk. The only map present is `Content/FirstPerson/Lvl_FirstPerson.umap`. Need to create the sandbox level (floor plane + lighting per DESIGN.md §5) or repoint the config.
+**The startup map doesn't exist.**
+`Config/DefaultEngine.ini` sets both `EditorStartupMap` and `GameDefaultMap` to `/Game/Maps/Lvl_Sandbox`, but there is no `Content/Maps/` directory and no `Lvl_Sandbox.umap` anywhere on disk. The only map present is `Content/FirstPerson/Lvl_FirstPerson.umap`. Need to create the sandbox level (floor plane + lighting per DESIGN.md §5) or repoint the config. Requires the editor — a `.umap` can't be hand-written.
 
-**2. Template deletion pass is unfinished.**
+Note: this does *not* block headless automation tests, which run fine without it.
+
+**Template deletion pass is unfinished.**
 Still on disk and still template:
 - `Content/FirstPerson/` (7 files) — includes `BP_FirstPersonCharacter`, `BP_FirstPersonGameMode`, `BP_FirstPersonPlayerController`, `Lvl_FirstPerson.umap`. **Verify before deleting:** `BP_FirstPersonCharacter` is likely reparented from the now-deleted `DestructionGameCharacter` C++ class, which will throw load errors when the editor next opens. Confirm in-editor rather than assuming.
 - `Content/__ExternalActors__/` (63 files) and `Content/__ExternalObjects__/` (1 file) — these belonged to the deleted `Lvl_Horror` and `Lvl_Shooter` levels and are almost certainly orphaned. Confirm they aren't referenced by the FirstPerson map before removing.
@@ -38,56 +42,49 @@ Still on disk and still template:
 
 ---
 
-## Test infrastructure — needed before any feature work
-
-TDD is mandatory (see [CLAUDE.md](../CLAUDE.md)), but there is currently nothing to run, which means the gate can't actually be satisfied yet. This is the real first task.
-
-**3. Create the test module.** No `Source/DestructionGame/Tests/` exists. Needs to exist, guarded by `#if WITH_DEV_AUTOMATION_TESTS`.
-
-**4. Confirm the automation test macro shape against the installed engine.** The `EAutomationTestFlags` enum spelling changed across UE 5.x — copy a current in-tree example from the UE 5.8 source rather than writing it from memory.
-
-**5. Establish and document the headless test-run command.** Needs to be verified against this engine install, then recorded in CLAUDE.md so it's a one-liner every session.
-
----
-
 ## Core systems — designed, not built
 
-Nothing below exists in code. DESIGN.md §2–3 specifies all of it.
+DESIGN.md §2–3 specifies all of it.
 
-**6. Base destructible actor** wrapping a Chaos Geometry Collection, with damage threshold and connection strength, exposing apply-damage-at-location.
+**Connection normal orientation is untested and undocumented.** *(Follow-up from the ConnectionLoad review.)*
+`ClassifyForce` depends on the caller passing an interface normal that points away from the face receiving the force. Flip the normal and compression/tension swap. Nothing tests or documents this, and each of the two pieces in a joint sees the interface normal pointing the opposite way — so the same force reads as compression for one and tension for the other. Harmless now (one caller, the test), but a real bug once connections resolve loads for both pieces. **Next test:** flipping the normal swaps compression and tension with magnitudes unchanged. Then state the convention in the header.
 
-**7. Material profile data asset** — directional strengths (compression / shear / tension), fracture pattern, density. Data, not code.
+**Shear direction is discarded.** `FConnectionLoad::Shear` is a magnitude only. Fine for isotropic materials, but DESIGN.md notes wood fails by splintering *along the grain* — grain-relative shear direction will matter once anisotropic materials arrive. Revisit then; don't add it speculatively.
 
-**8. Connection as a first-class object** with its own directional profile; connection types (mortar, nail, screw, bolt) as data profiles.
+**Base destructible actor** wrapping a Chaos Geometry Collection, with damage threshold and connection strength, exposing apply-damage-at-location. Needs a live world and a ticking solver, so expect integration-shaped tests rather than unit tests.
 
-**9. Directional force classification** — classify incoming force relative to each connection's *interface plane*, not world axes. DESIGN.md §2 flags this as the thing Chaos does not do out of the box (single strain threshold, force-type agnostic). Keep this math in world-free plain functions so it stays cheaply unit-testable.
+**Material profile data asset** — directional strengths (compression / shear / tension), fracture pattern, density. Data, not code.
 
-**10. Damage / force manager** — routes hits, explosions, radial forces to the right actors.
+**Connection as a first-class object** with its own directional profile; connection types (mortar, nail, screw, bolt) as data profiles. This is the natural next build on top of `ConnectionLoad`: the classification exists, nothing yet compares it against a threshold.
 
-**11. Piece-size floor + three modes.** Build modes 1 (indestructible) and 3 (disappear) first — they prove threshold detection simply. Mode 2 (Niagara dust) after.
+**Damage / force manager** — routes hits, explosions, radial forces to the right actors.
 
-**12. Piece creation timestamps** — stamped when a piece breaks free, inspectable live, used to recover failure sequence.
+**Piece-size floor + three modes.** Build modes 1 (indestructible) and 3 (disappear) first — they prove threshold detection simply. Mode 2 (Niagara dust) after.
 
-**13. Scenario base class + tiny default scenario.** DESIGN.md §5: the scaffold spawns a *scenario* and knows nothing about bricks. Brick wall is one scenario. Also needs the in-world overlay menu (scenario switcher + strain readouts) — the game should never be an empty void.
+**Piece creation timestamps** — stamped when a piece breaks free, inspectable live, used to recover failure sequence.
+
+**Scenario base class + tiny default scenario.** DESIGN.md §5: the scaffold spawns a *scenario* and knows nothing about bricks. Brick wall is one scenario. Also needs the in-world overlay menu (scenario switcher + strain readouts) — the game should never be an empty void.
 
 ---
 
 ## Open design threads (DESIGN.md §6 — not yet designed)
 
-**14. Force delivery systems** — explosions with radial falloff, kinetic impacts from large objects. DESIGN.md suggests this as the natural next design topic: everything so far is about *receiving* force, nothing *delivers* it.
+**Force delivery systems** — explosions with radial falloff, kinetic impacts from large objects. DESIGN.md suggests this as the natural next design topic: everything so far is about *receiving* force, nothing *delivers* it.
 
-**15. Visual break patterns** per material — wood splintering, concrete fracturing, glass shattering. Distinct from *when* things collapse.
+**Visual break patterns** per material — wood splintering, concrete fracturing, glass shattering. Distinct from *when* things collapse.
 
-**16. Secondary debris collisions** — debris carrying momentum into other pieces and knocking more loose.
+**Secondary debris collisions** — debris carrying momentum into other pieces and knocking more loose.
 
-**17. Performance at full-building scale** — individually-massed pieces plus live debris gets heavy fast. Flagged as a known risk, no plan yet.
+**Performance at full-building scale** — individually-massed pieces plus live debris gets heavy fast. Flagged as a known risk, no plan yet.
 
-**18. Pull real material strength numbers (MPa).** Pick one well-characterized baseline (concrete or steel), calibrate it to feel right, express every other material as a ratio of it. Needed before the material × force matrix has real expected values.
+**Pull real material strength numbers (MPa).** Pick one well-characterized baseline (concrete or steel), calibrate it to feel right, express every other material as a ratio of it. Needed before the material × force matrix has real expected values.
 
 ---
 
 ## Housekeeping
 
-**19. `README.md` is a stub** — one line, just the title.
+**`README.md` is a stub** — one line, just the title.
 
-**20. `.claude/settings.local.json` has accumulated a dozen auto-generated single-use PowerShell permission entries** from earlier exploration. They're noise and won't match future commands. Worth pruning to a few useful patterns. (Not in git — covered by a global gitignore.)
+**`.claude/settings.local.json` has accumulated a dozen auto-generated single-use PowerShell permission entries** from earlier exploration. They're noise and won't match future commands. Worth pruning to a few useful patterns. (Not in git — covered by a global gitignore.)
+
+**The three local skills aren't invocable as `/test-expert` etc. yet.** They were created mid-session; Claude Code loads skills at startup, so they need a restart to register. Their instructions are being followed manually in the meantime.

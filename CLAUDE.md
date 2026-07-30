@@ -27,6 +27,34 @@ All development on this project is test-driven. No exceptions, and the rule is n
 
 Test design specifics — gravity off for unit force isolation, gravity on for integration, assert on mechanism vs. outcome, and why displacement is never a valid break assertion — are in [DESIGN.md §4](claude_plans/DESIGN.md).
 
+### Running the tests
+
+Tests live in `Source/DestructionGame/Tests/`, inside the game module and guarded by `#if WITH_DEV_AUTOMATION_TESTS`. No separate test module — UBT compiles everything under the module directory, so a new test is just a new file.
+
+**Close the Unreal editor first** — it locks `UnrealEditor-DestructionGame.dll` and the build will fail at link.
+
+Build:
+
+```bash
+"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" DestructionGameEditor Win64 Development -Project="C:\Users\bobby\Documents\Unreal Projects\DestructionGame\DestructionGame.uproject" -WaitMutex
+```
+
+Run all project tests headless:
+
+```bash
+"C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "C:\Users\bobby\Documents\Unreal Projects\DestructionGame\DestructionGame.uproject" -ExecCmds="Automation RunTests DestructionGame" -TestExit="Automation Test Queue Empty" -unattended -nopause -nosplash -nullrhi -NoSound -log
+```
+
+Narrow the run by lengthening the path after `RunTests` (e.g. `DestructionGame.Core.ConnectionLoad`).
+
+**Results do not go to stdout.** The command's own output is only SDK validation noise, and it exits 0 even when tests fail — so never judge a run by its exit code. Read `Saved/Logs/DestructionGame.log` and grep for `LogAutomationController`:
+
+```bash
+grep -E "Test Completed|LogAutomationController: Error" "Saved/Logs/DestructionGame.log"
+```
+
+Writing the automation macro: the `EAutomationTestFlags` spelling changed across UE 5.x. In 5.8 the context masks are free constants, not enum members — `EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter`. See `Tests/ConnectionLoadTest.cpp` for a working example.
+
 ## Specialized agents
 
 Development goes through three local skills in `.claude/skills/`, in this order. Invoke them by name (`/test-expert`, `/dev-expert`, `/review-expert`) rather than working the task directly.
