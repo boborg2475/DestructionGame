@@ -28,7 +28,8 @@ From DESIGN.md, failure is defined by what the test is trying to prove:
 
 - **Unit tests: gravity off, objects floating.** The only force present is the one under test, so the response is a clean reaction to a single input. Test compression, shear, and tension in isolation.
 - **Integration tests: gravity on, everything connected.** If a grounded test fails while its floating counterpart passed, the bug is in *interaction*, not the force math.
-- Real-world metric scale, millimeter base unit. Bricks use true dimensions.
+- Real-world scale at Unreal's default **1 uu = 1 cm**. Objects use true dimensions.
+- **Mass (kg) and density (g/cm³) need no conversion; force and impulse do — 1 N = 100 uu.** Strengths are stored in SI (MPa). Getting this wrong makes expected values wrong by exactly 100×, which tuned thresholds will happily hide. Full table in [DESIGN.md §3](../../../claude_plans/DESIGN.md).
 - Prefer **one reusable parameterized test** taking (material, force type, later connection type) over one test per material. Adding a material should mean adding numbers, not code.
 - Expected values trace back to published material strengths (MPa), expressed as ratios of one calibrated baseline material.
 

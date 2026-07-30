@@ -32,11 +32,30 @@ namespace DestructionForce
 	 * downward gravity is compression on a horizontal joint and shear on a vertical
 	 * one — which joint it is depends entirely on InterfaceNormal.
 	 *
-	 * @param Force            The applied force vector, in world space.
-	 * @param InterfaceNormal  Normal of the plane where the two pieces meet. Need not
-	 *                         be unit length; it is normalised internally. A force
-	 *                         component along +Normal pulls the faces apart (tension),
-	 *                         against it pushes them together (compression).
+	 * ORIENTATION CONVENTION — callers must get this right.
+	 *
+	 * A connection owns ONE interface normal, fixed when the connection is made and
+	 * pointing from one piece toward the other. Pass the force acting on the piece
+	 * the normal points TOWARD. Under that pairing the sign is unambiguous: a force
+	 * component along +Normal pulls the faces apart (tension), against it pushes them
+	 * together (compression).
+	 *
+	 * A joint is in compression or tension as a fact about the joint, not about which
+	 * piece you are looking from. Describing it from the other piece means flipping
+	 * the normal AND taking the equal-and-opposite reaction force; do both and the
+	 * classification is identical, which is the invariant that makes per-piece
+	 * bookkeeping safe.
+	 *
+	 * Flipping the normal WITHOUT negating the force silently swaps compression and
+	 * tension. That is a misuse, not a second opinion, and it is the likeliest way to
+	 * get structures failing in tension where they should be crushing. Both properties
+	 * are pinned down by ConnectionLoad.NormalOrientation.
+	 *
+	 * @param Force            The applied force vector, in world space. Unreal force
+	 *                         units, where 1 N = 100 uu — see DESIGN.md §3.
+	 * @param InterfaceNormal  Normal of the plane where the two pieces meet, pointing
+	 *                         toward the piece Force acts on. Need not be unit length;
+	 *                         it is normalised internally.
 	 * @return The force split into its three load types.
 	 */
 	FConnectionLoad ClassifyForce(const FVector& Force, const FVector& InterfaceNormal);

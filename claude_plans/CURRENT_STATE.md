@@ -20,7 +20,9 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 - **`Content/Maps/Lvl_Sandbox`** — floor, directional light, sky light, sky atmosphere, height fog, PlayerStart. Not World Partition, deliberately: WP writes one file per actor and the sandbox spawns its scenarios from code. Floor is currently the engine template mesh; swapping to `LevelPrototyping/SM_Plane` would give a grid material with visible scale reference.
 - `Source/` is clean of template variants. Classes: the module, `GameMode`, `PlayerController`, `CameraManager`, `FlyingPawn`, and `Core/ConnectionLoad`.
 - **Test infrastructure works.** Automation tests run headless, verified end to end on a real red → green cycle. Build and run commands are documented in [CLAUDE.md](../CLAUDE.md).
-- **First core system is in:** directional force classification (`Core/ConnectionLoad`) resolves a force into compression / tension / shear relative to a connection's interface plane. Test-driven, 8 cases, green.
+- **Two core systems are in**, both test-driven and green (4 tests, 0 errors):
+  - `Core/ConnectionLoad` — resolves a force into compression / tension / shear relative to a connection's interface plane, with the normal-orientation convention pinned down by the Newton's-third-law invariant.
+  - `Core/ConnectionStrength` — compares a load against directional strengths in MPa and returns a utilisation ratio (>1 = the joint gives). Carries `ForceUnitsPerMPaSqCm`, the single SI↔Unreal conversion boundary.
 - **`Content/` is clean.** Template strip finished: 22 files remain, all of them in use — the 6 Enhanced Input assets the pawn and controller hard-reference by path, and the `LevelPrototyping` primitives and grid materials (`SM_Plane`, `SM_Cube`, `SM_Ramp`, …) that the sandbox level and brick scenarios will be built from.
 - Everything else in Core systems below is still unbuilt.
 
@@ -40,8 +42,12 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 
 DESIGN.md §2–3 specifies all of it.
 
-**Connection normal orientation is untested and undocumented.** *(Follow-up from the ConnectionLoad review.)*
-`ClassifyForce` depends on the caller passing an interface normal that points away from the face receiving the force. Flip the normal and compression/tension swap. Nothing tests or documents this, and each of the two pieces in a joint sees the interface normal pointing the opposite way — so the same force reads as compression for one and tension for the other. Harmless now (one caller, the test), but a real bug once connections resolve loads for both pieces. **Next test:** flipping the normal swaps compression and tension with magnitudes unchanged. Then state the convention in the header.
+**Load axes are treated as independent, and real joints couple them.** *(From the ConnectionStrength review — decide before writing the collapse test.)*
+`ComputeUtilisation` takes the worst of the three axes, so compression contributes nothing to shear capacity. Reality runs the other way: friction under compressive load is exactly why a mortar joint resists sliding, and an unloaded joint shears far more easily than a loaded one (Mohr–Coulomb). Consequence for DESIGN.md's collapse test — the vertical joints low in a wall carry heavy compression from the courses above, this model shears them at the same load as an unloaded joint, so **the wall topples earlier than reality and the "stands at 4 removed, falls at 5" calibration comes out wrong.** The tempting fix is inflating shear strength, which then makes unloaded joints too strong. DESIGN.md does not address axis coupling; it needs a decision, because it changes the values the collapse test asserts.
+
+**Degenerate inputs to `ComputeUtilisation` yield NaN, and it fails open.** Zero interface area or zero strength with zero load gives 0/0. `NaN > 1.0` is **false**, so a joint with an uninitialised area reads as *fine* rather than failed. Deliberately not guarded — no test covers it and untested branches violate the gate. Next small cycle: test then guard, mirroring how `ClassifyForce` handles its degenerate normal.
+
+**`FConnectionStrength` is a plain C++ struct, not a data asset.** DESIGN.md §2 calls for a data asset and for materials to be "data, not code", but today adding a material means editing C++ and recompiling — no `USTRUCT`, no `UPROPERTY`, nothing tunable in the editor. Correctly deferred rather than speculatively built, but this is the gap between the current shape and the stated design.
 
 **Shear direction is discarded.** `FConnectionLoad::Shear` is a magnitude only. Fine for isotropic materials, but DESIGN.md notes wood fails by splintering *along the grain* — grain-relative shear direction will matter once anisotropic materials arrive. Revisit then; don't add it speculatively.
 
@@ -49,7 +55,7 @@ DESIGN.md §2–3 specifies all of it.
 
 **Material profile data asset** — directional strengths (compression / shear / tension), fracture pattern, density. Data, not code.
 
-**Connection as a first-class object** with its own directional profile; connection types (mortar, nail, screw, bolt) as data profiles. This is the natural next build on top of `ConnectionLoad`: the classification exists, nothing yet compares it against a threshold.
+**Connection as a first-class object** with its own directional profile; connection types (mortar, nail, screw, bolt) as data profiles. The strength side now exists — `Core/ConnectionStrength` compares a classified load against directional strengths and returns a utilisation ratio. What is still missing is the connection *object*: something that owns an interface normal, an interface area and a strength profile, knows which two pieces it joins, and can be asked whether it has given.
 
 **Damage / force manager** — routes hits, explosions, radial forces to the right actors.
 

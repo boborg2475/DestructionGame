@@ -33,7 +33,7 @@ Read [claude_plans/DESIGN.md](../../../claude_plans/DESIGN.md) and check against
 - Directional strength (compression/shear/tension) classified **relative to the connection interface**, not world axes. World-direction shortcuts are a real and easy bug here.
 - Materials and connection types stay **data**. A new material requiring new code or a new branch is a design regression — flag it loudly.
 - Piece-size floor respected, with the three modes selectable.
-- Real-world metric scale, millimeter base unit.
+- Real-world scale at Unreal's default **1 uu = 1 cm**. Mass (kg) and density (g/cm³) convert directly; **force and impulse do not — 1 N = 100 uu**. Strengths are stored in SI (MPa) and converted at one named boundary. A missing or duplicated conversion makes values wrong by exactly 100×, which tuned thresholds hide well. Table in [DESIGN.md §3](../../../claude_plans/DESIGN.md).
 
 **4. Correctness and UE-specific pitfalls**
 - Does the force math actually do what the test name claims, or does the test pass for the wrong reason?
