@@ -7,18 +7,16 @@
 #include "DestructionGamePlayerController.generated.h"
 
 class UInputMappingContext;
-class UUserWidget;
 
 /**
- *  Simple first person Player Controller
- *  Manages the input mapping context.
- *  Overrides the Player Camera Manager class.
+ *  Player Controller for the destruction sandbox.
+ *  Applies the input mapping contexts and overrides the Player Camera Manager class.
  */
-UCLASS(abstract, config="Game")
+UCLASS(config="Game")
 class DESTRUCTIONGAME_API ADestructionGamePlayerController : public APlayerController
 {
 	GENERATED_BODY()
-	
+
 public:
 
 	/** Constructor */
@@ -26,32 +24,10 @@ public:
 
 protected:
 
-	/** Input Mapping Contexts */
+	/** Input Mapping Contexts applied on possession */
 	UPROPERTY(EditAnywhere, Category="Input|Input Mappings")
-	TArray<UInputMappingContext*> DefaultMappingContexts;
-
-	/** Input Mapping Contexts */
-	UPROPERTY(EditAnywhere, Category="Input|Input Mappings")
-	TArray<UInputMappingContext*> MobileExcludedMappingContexts;
-
-	/** Mobile controls widget to spawn */
-	UPROPERTY(EditAnywhere, Category="Input|Touch Controls")
-	TSubclassOf<UUserWidget> MobileControlsWidgetClass;
-
-	/** Pointer to the mobile controls widget */
-	UPROPERTY()
-	TObjectPtr<UUserWidget> MobileControlsWidget;
-
-	/** If true, the player will use UMG touch controls even if not playing on mobile platforms */
-	UPROPERTY(EditAnywhere, Config, Category = "Input|Touch Controls")
-	bool bForceTouchControls = false;
-
-	/** Gameplay initialization */
-	virtual void BeginPlay() override;
+	TArray<TObjectPtr<UInputMappingContext>> DefaultMappingContexts;
 
 	/** Input mapping context setup */
 	virtual void SetupInputComponent() override;
-
-	/** Returns true if the player should use UMG touch controls */
-	bool ShouldUseTouchControls() const;
 };

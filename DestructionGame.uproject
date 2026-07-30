@@ -10,7 +10,6 @@
 			"LoadingPhase": "Default",
 			"AdditionalDependencies": [
 				"Engine",
-				"AIModule",
 				"UMG"
 			]
 		}
@@ -24,11 +23,31 @@
 			]
 		},
 		{
-			"Name": "StateTree",
+			"Name": "ChaosSolverPlugin",
 			"Enabled": true
 		},
 		{
-			"Name": "GameplayStateTree",
+			"Name": "GeometryCollectionPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "PlanarCut",
+			"Enabled": true
+		},
+		{
+			"Name": "Fracture",
+			"Enabled": true
+		},
+		{
+			"Name": "ChaosEditor",
+			"Enabled": true
+		},
+		{
+			"Name": "Niagara",
+			"Enabled": true
+		},
+		{
+			"Name": "ChaosNiagara",
 			"Enabled": true
 		}
 	]

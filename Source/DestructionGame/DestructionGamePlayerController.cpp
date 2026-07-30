@@ -5,40 +5,21 @@
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "InputMappingContext.h"
+#include "UObject/ConstructorHelpers.h"
 #include "DestructionGameCameraManager.h"
-#include "Blueprint/UserWidget.h"
-#include "DestructionGame.h"
-#include "Widgets/Input/SVirtualJoystick.h"
 
 ADestructionGamePlayerController::ADestructionGamePlayerController()
 {
 	// set the player camera manager class
 	PlayerCameraManagerClass = ADestructionGameCameraManager::StaticClass();
-}
 
-void ADestructionGamePlayerController::BeginPlay()
-{
-	Super::BeginPlay();
+	// wire up the mapping contexts here rather than in a Blueprint, so the sandbox
+	// runs from C++ defaults alone
+	static ConstructorHelpers::FObjectFinder<UInputMappingContext> DefaultContext(TEXT("/Game/Input/IMC_Default.IMC_Default"));
+	static ConstructorHelpers::FObjectFinder<UInputMappingContext> MouseLookContext(TEXT("/Game/Input/IMC_MouseLook.IMC_MouseLook"));
 
-	
-	// only spawn touch controls on local player controllers
-	if (IsLocalPlayerController() && ShouldUseTouchControls())
-	{
-		// spawn the mobile controls widget
-		MobileControlsWidget = CreateWidget<UUserWidget>(this, MobileControlsWidgetClass);
-
-		if (MobileControlsWidget)
-		{
-			// add the controls to the player screen
-			MobileControlsWidget->AddToPlayerScreen(0);
-
-		} else {
-
-			UE_LOG(LogDestructionGame, Error, TEXT("Could not spawn mobile controls widget."));
-
-		}
-
-	}
+	DefaultMappingContexts.Add(DefaultContext.Object);
+	DefaultMappingContexts.Add(MouseLookContext.Object);
 }
 
 void ADestructionGamePlayerController::SetupInputComponent()
@@ -48,29 +29,12 @@ void ADestructionGamePlayerController::SetupInputComponent()
 	// only add IMCs for local player controllers
 	if (IsLocalPlayerController())
 	{
-		// Add Input Mapping Context
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
 		{
 			for (UInputMappingContext* CurrentContext : DefaultMappingContexts)
 			{
 				Subsystem->AddMappingContext(CurrentContext, 0);
 			}
-
-			// only add these IMCs if we're not using mobile touch input
-			if (!ShouldUseTouchControls())
-			{
-				for (UInputMappingContext* CurrentContext : MobileExcludedMappingContexts)
-				{
-					Subsystem->AddMappingContext(CurrentContext, 0);
-				}
-			}
 		}
 	}
-	
-}
-
-bool ADestructionGamePlayerController::ShouldUseTouchControls() const
-{
-	// are we on a mobile platform? Should we force touch?
-	return SVirtualJoystick::ShouldDisplayTouchInterface() || bForceTouchControls;
 }

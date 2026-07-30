@@ -14,31 +14,23 @@ public class DestructionGame : ModuleRules
 			"Engine",
 			"InputCore",
 			"EnhancedInput",
-			"AIModule",
-			"StateTreeModule",
-			"GameplayStateTreeModule",
 			"UMG",
-			"Slate"
+
+			// physics and destruction
+			"PhysicsCore",
+			"Chaos",
+			"ChaosCore",
+			"GeometryCollectionEngine",
+			"FieldSystemEngine",
+
+			// debris / dust effects
+			"Niagara"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 
 		PublicIncludePaths.AddRange(new string[] {
-			"DestructionGame",
-			"DestructionGame/Variant_Horror",
-			"DestructionGame/Variant_Horror/UI",
-			"DestructionGame/Variant_Shooter",
-			"DestructionGame/Variant_Shooter/AI",
-			"DestructionGame/Variant_Shooter/UI",
-			"DestructionGame/Variant_Shooter/Weapons"
+			"DestructionGame"
 		});
-
-		// Uncomment if you are using Slate UI
-		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
-
-		// Uncomment if you are using online features
-		// PrivateDependencyModuleNames.Add("OnlineSubsystem");
-
-		// To include OnlineSubsystemSteam, add it to the plugins section in your uproject file with the Enabled attribute set to true
 	}
 }

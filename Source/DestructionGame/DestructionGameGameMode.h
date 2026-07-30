@@ -7,16 +7,14 @@
 #include "DestructionGameGameMode.generated.h"
 
 /**
- *  Simple GameMode for a first person game
+ *  GameMode for the destruction sandbox.
+ *  Spawns the free-flying observer pawn; carries no win/lose rules.
  */
-UCLASS(abstract)
-class ADestructionGameGameMode : public AGameModeBase
+UCLASS()
+class DESTRUCTIONGAME_API ADestructionGameGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
 
 public:
 	ADestructionGameGameMode();
 };
-
-
-
