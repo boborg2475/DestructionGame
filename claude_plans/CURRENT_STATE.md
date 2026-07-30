@@ -14,7 +14,7 @@ Last updated: 2026-07-30
 
 Design is well developed ([DESIGN.md](DESIGN.md)); implementation has barely started. The repo is mid-way through stripping the Epic FPS template to make room for the destruction scaffold — that strip is committed but **still incomplete**.
 
-- Git: on `main`, 3 commits, **2 ahead of `origin/main` (not pushed)**. The template strip and the process/design docs are committed; working tree is clean.
+- Git: on `main`, in sync with `origin/main`. The template strip and the process/design docs are committed and pushed; working tree is clean.
 - `Source/` is clean: Variant_Shooter and Variant_Horror C++ are gone. Remaining classes are the module, `GameMode`, `PlayerController`, `CameraManager`, and the new `FlyingPawn`.
 - `GameMode` correctly wires `DefaultPawnClass` to `ADestructionGameFlyingPawn` — the flying-spectator player setup DESIGN.md §5 asks for exists in code.
 - `Content/` still holds 132 files of template leftovers (see TODO 1).
@@ -91,5 +91,3 @@ Nothing below exists in code. DESIGN.md §2–3 specifies all of it.
 **19. `README.md` is a stub** — one line, just the title.
 
 **20. `.claude/settings.local.json` has accumulated a dozen auto-generated single-use PowerShell permission entries** from earlier exploration. They're noise and won't match future commands. Worth pruning to a few useful patterns. (Not in git — covered by a global gitignore.)
-
-**21. Two local commits are unpushed.** Push to `origin/main` when ready.
