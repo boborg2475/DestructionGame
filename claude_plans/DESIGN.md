@@ -64,11 +64,31 @@ Force is classified by its direction **relative to each connection's interface**
 - **Kinetic impacts**: large objects striking the structure.
 - Secondary collisions: debris carries momentum into other pieces and can knock more loose.
 
-### Real-world scale
-- Tests and objects use **real-world metric scale**, with the **millimeter** as the base unit; bricks match their true dimensions.
+### Real-world scale and units
+
+Objects are built at **true real-world dimensions** — a brick measures what a brick measures.
+
+**World scale is Unreal's default: 1 uu = 1 cm.** Decided 2026-07-30. Unreal's physics is a cm / kg / second system throughout, and fighting that default costs more than it returns.
+
+Most of the physics already speaks real-world values, verified against the UE 5.8 source:
+
+| Quantity | Unreal unit | Conversion |
+|---|---|---|
+| Mass | kilograms (`SetMassOverrideInKg`) | none — use published values directly |
+| Density | g/cm³ (`UPhysicalMaterial::Density`) | none — concrete 2.4, steel 7.85, oak ~0.75 |
+| Gravity | `-980.0` (= 9.8 m/s²) | none |
+| Length | centimetres | mm ÷ 10 |
+| **Force** | kg·cm/s² | **1 N = 100 uu of force** |
+| **Impulse** | kg·cm/s | **1 N·s = 100 uu of impulse** |
+
+Force is the only real trap. Because length is centimetres rather than metres, a newton is 100 Unreal force units. Left implicit, everything ends up wrong by exactly 100× — which is easy to paper over with fudged thresholds and hard to spot afterwards.
+
+**Convention:** material and connection strengths are stored in **real SI units (MPa)** in their data assets, so they stay checkable against published tables. Conversion to Unreal force units happens at **one named, tested boundary** where loads meet strengths — never scattered through call sites.
+
+> **Chaos strain is not a physical quantity.** The strain thresholds on a geometry collection's connections are solver-tuning numbers, not newtons. There will need to be an explicit calibration mapping from "this joint carries X newtons" to "this Chaos connection has strain threshold Y". That seam is where physical realism quietly leaks if nobody is watching it.
 
 ### Minimum size floor (piece identity) + three tunable modes
-Pieces do **not** subdivide infinitely. There's a **tunable minimum volume** (start ~thumbnail size, roughly 15–20 mm across) below which a piece cannot break further. This also solves *piece identity*: each piece has a finite, traceable life — born at a timestamp and never subdividing past the floor.
+Pieces do **not** subdivide infinitely. There's a **tunable minimum volume** (start ~thumbnail size, roughly 15–20 mm across — that's only 1.5–2 uu at 1 uu = 1 cm, so expect small numbers here) below which a piece cannot break further. This also solves *piece identity*: each piece has a finite, traceable life — born at a timestamp and never subdividing past the floor.
 
 When a piece would break below the floor, one of three **selectable modes** applies:
 

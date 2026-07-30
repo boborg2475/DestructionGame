@@ -26,17 +26,13 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 
 ---
 
-## Decisions needed
-
-**World scale is unresolved.** DESIGN.md §3 specifies real-world metric scale with the **millimetre** as base unit, but Unreal's default is 1 uu = 1 cm. Nothing has forced the issue yet because nothing is placed at real dimensions. The first brick does force it. Settle this before building scenario geometry — rescaling scenarios and re-tuning every material threshold afterwards is far more expensive than choosing now.
-
----
-
 ## Conventions and gotchas
 
 **Don't hard-reference content from C++ without checking it exists.** `FlyingPawn` and `PlayerController` both resolve Input assets by path in their constructors via `ConstructorHelpers::FObjectFinder`. That pattern makes content deletion silently dangerous — it fails at construction, not at compile time. Worth a helper or a startup assert if this spreads.
 
 **Automation runs exit 0 even when tests fail**, and results never reach stdout. Always read `Saved/Logs/DestructionGame.log`. See [CLAUDE.md](../CLAUDE.md).
+
+**1 newton = 100 Unreal force units.** World scale is 1 uu = 1 cm, so force and impulse need a ×100 conversion while mass (kg) and density (g/cm³) need none. Strengths are stored in SI and converted at one named boundary. Full table in [DESIGN.md §3](DESIGN.md).
 
 ---
 
