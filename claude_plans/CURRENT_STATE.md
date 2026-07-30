@@ -20,25 +20,21 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 - `Source/` is clean of template variants. Classes: the module, `GameMode`, `PlayerController`, `CameraManager`, `FlyingPawn`, and `Core/ConnectionLoad`.
 - **Test infrastructure works.** Automation tests run headless, verified end to end on a real red → green cycle. Build and run commands are documented in [CLAUDE.md](../CLAUDE.md).
 - **First core system is in:** directional force classification (`Core/ConnectionLoad`) resolves a force into compression / tension / shear relative to a connection's interface plane. Test-driven, 8 cases, green.
-- `Content/` still holds 132 files of template leftovers.
+- **`Content/` is clean.** Template strip finished: 22 files remain, all of them in use — the 6 Enhanced Input assets the pawn and controller hard-reference by path, and the `LevelPrototyping` primitives and grid materials (`SM_Plane`, `SM_Cube`, `SM_Ramp`, …) that the sandbox level and brick scenarios will be built from.
 - Everything else in Core systems below is still unbuilt.
 
 ---
 
-## Blocking — project is not in a runnable state
+## Blocking — the project has no level
 
-**The startup map doesn't exist.**
-`Config/DefaultEngine.ini` sets both `EditorStartupMap` and `GameDefaultMap` to `/Game/Maps/Lvl_Sandbox`, but there is no `Content/Maps/` directory and no `Lvl_Sandbox.umap` anywhere on disk. The only map present is `Content/FirstPerson/Lvl_FirstPerson.umap`. Need to create the sandbox level (floor plane + lighting per DESIGN.md §5) or repoint the config. Requires the editor — a `.umap` can't be hand-written.
+**The startup map doesn't exist, and there are now zero maps in the project.**
+`Config/DefaultEngine.ini` sets both `EditorStartupMap` and `GameDefaultMap` to `/Game/Maps/Lvl_Sandbox`, but there is no `Content/Maps/` directory and no `.umap` anywhere. Create the sandbox level — floor plane + lighting per DESIGN.md §5. `Content/LevelPrototyping/Meshes/SM_Plane` and the prototype grid materials are there for exactly this.
 
-Note: this does *not* block headless automation tests, which run fine without it.
+Requires the editor; a `.umap` can't be hand-written.
 
-**Template deletion pass is unfinished.**
-Still on disk and still template:
-- `Content/FirstPerson/` (7 files) — includes `BP_FirstPersonCharacter`, `BP_FirstPersonGameMode`, `BP_FirstPersonPlayerController`, `Lvl_FirstPerson.umap`. **Verify before deleting:** `BP_FirstPersonCharacter` is likely reparented from the now-deleted `DestructionGameCharacter` C++ class, which will throw load errors when the editor next opens. Confirm in-editor rather than assuming.
-- `Content/__ExternalActors__/` (63 files) and `Content/__ExternalObjects__/` (1 file) — these belonged to the deleted `Lvl_Horror` and `Lvl_Shooter` levels and are almost certainly orphaned. Confirm they aren't referenced by the FirstPerson map before removing.
-- `Content/Characters/` (36 files) — mannequin leftovers. Decide whether any is worth keeping as a scale reference; DESIGN.md uses real-world metric scale, so a human-scale reference has some value.
-- `Content/Input/` (9 files) — check what the FlyingPawn actually consumes before deleting.
-- `Content/Collections/` and `Content/Developers/` — empty directories, safe to remove.
+Note: this does *not* block headless automation tests. The editor logs `Warning: Can't find file '.../Lvl_Sandbox.umap'`, carries on, and tests run and pass normally. Verified.
+
+**Do not hard-reference content from C++ without checking it exists.** `FlyingPawn` and `PlayerController` both resolve Input assets by path in their constructors via `ConstructorHelpers::FObjectFinder`. That pattern makes content deletion silently dangerous — it fails at construction, not at compile time. Worth a helper or a startup assert if this spreads.
 
 ---
 
