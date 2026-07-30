@@ -14,9 +14,10 @@ Last updated: 2026-07-30
 
 ## Snapshot
 
-Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just started. The repo is mid-way through stripping the Epic FPS template to make room for the destruction scaffold — that strip is committed but **still incomplete**.
+Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just started. The FPS template is fully stripped and **the project runs**: `Lvl_Sandbox` loads, the flying pawn is the default pawn, and the automation suite is green.
 
-- Git: on `main`, in sync with `origin/main`. Working tree clean.
+- Git: on `main`. Working tree clean.
+- **`Content/Maps/Lvl_Sandbox`** — floor, directional light, sky light, sky atmosphere, height fog, PlayerStart. Not World Partition, deliberately: WP writes one file per actor and the sandbox spawns its scenarios from code. Floor is currently the engine template mesh; swapping to `LevelPrototyping/SM_Plane` would give a grid material with visible scale reference.
 - `Source/` is clean of template variants. Classes: the module, `GameMode`, `PlayerController`, `CameraManager`, `FlyingPawn`, and `Core/ConnectionLoad`.
 - **Test infrastructure works.** Automation tests run headless, verified end to end on a real red → green cycle. Build and run commands are documented in [CLAUDE.md](../CLAUDE.md).
 - **First core system is in:** directional force classification (`Core/ConnectionLoad`) resolves a force into compression / tension / shear relative to a connection's interface plane. Test-driven, 8 cases, green.
@@ -25,16 +26,17 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 
 ---
 
-## Blocking — the project has no level
+## Decisions needed
 
-**The startup map doesn't exist, and there are now zero maps in the project.**
-`Config/DefaultEngine.ini` sets both `EditorStartupMap` and `GameDefaultMap` to `/Game/Maps/Lvl_Sandbox`, but there is no `Content/Maps/` directory and no `.umap` anywhere. Create the sandbox level — floor plane + lighting per DESIGN.md §5. `Content/LevelPrototyping/Meshes/SM_Plane` and the prototype grid materials are there for exactly this.
+**World scale is unresolved.** DESIGN.md §3 specifies real-world metric scale with the **millimetre** as base unit, but Unreal's default is 1 uu = 1 cm. Nothing has forced the issue yet because nothing is placed at real dimensions. The first brick does force it. Settle this before building scenario geometry — rescaling scenarios and re-tuning every material threshold afterwards is far more expensive than choosing now.
 
-Requires the editor; a `.umap` can't be hand-written.
+---
 
-Note: this does *not* block headless automation tests. The editor logs `Warning: Can't find file '.../Lvl_Sandbox.umap'`, carries on, and tests run and pass normally. Verified.
+## Conventions and gotchas
 
-**Do not hard-reference content from C++ without checking it exists.** `FlyingPawn` and `PlayerController` both resolve Input assets by path in their constructors via `ConstructorHelpers::FObjectFinder`. That pattern makes content deletion silently dangerous — it fails at construction, not at compile time. Worth a helper or a startup assert if this spreads.
+**Don't hard-reference content from C++ without checking it exists.** `FlyingPawn` and `PlayerController` both resolve Input assets by path in their constructors via `ConstructorHelpers::FObjectFinder`. That pattern makes content deletion silently dangerous — it fails at construction, not at compile time. Worth a helper or a startup assert if this spreads.
+
+**Automation runs exit 0 even when tests fail**, and results never reach stdout. Always read `Saved/Logs/DestructionGame.log`. See [CLAUDE.md](../CLAUDE.md).
 
 ---
 
@@ -78,6 +80,8 @@ DESIGN.md §2–3 specifies all of it.
 ---
 
 ## Housekeeping
+
+**Two rename redirectors sit in `Content/Maps/`** — `NewMap.umap` and `Lvl1_Sandbox.umap`, left over from renaming the level into place. Nothing references either. Clear them the Unreal way: Content Browser → right-click the `Maps` folder → **Fix Up Redirectors in Folder**. Deliberately left untracked rather than committed.
 
 **`README.md` is a stub** — one line, just the title.
 
