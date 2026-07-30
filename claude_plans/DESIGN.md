@@ -59,6 +59,28 @@ Force is classified by its direction **relative to each connection's interface**
 - Pieces are held by connections; each connection bears a limited load.
 - Remove a piece and its load **redistributes** to its neighbors. If they can carry it, the structure stands. Keep removing pieces and eventually a connection overloads, snaps, and the failure **cascades** — collapse under the structure's own weight (Chaos strain-based damage).
 
+### Shear capacity depends on load (Mohr-Coulomb)
+
+Decided 2026-07-30. A joint's resistance to sliding is **not a fixed number**:
+
+```
+shear capacity = cohesion + μ × compressive stress
+```
+
+Cohesion is the bond itself; the second term is friction, and it grows with how hard the joint is being squeezed. Only **compression** contributes — a joint being pulled open gets no friction benefit. Compression and tension keep their own independent limits; only shear became load-dependent.
+
+Why it earns its place:
+
+- **It is why masonry stands.** A dry-stone wall has no bond at all — cohesion is zero and it holds purely on friction from its own weight. Without coupling it cannot be modelled.
+- **It makes damage progressive.** Cohesion is a bond: once cracked it is gone, and friction is the only thing left. Real damaged masonry keeps carrying load this way, which is why partly collapsed buildings stand rather than unzipping.
+- **It compounds collapse.** Load redistribution alone already cascades; this adds a second mechanism where removing support *lowers the capacity* of the joints above, not just raises their load.
+
+Honest scope: for a low mortared wall the friction term is only a few percent of capacity — bond dominates. It becomes first-order in tall structures (~50% at 10 m), in dry-stone, and in any joint whose bond has already broken.
+
+**μ = 0 reduces the model exactly to independent axes**, which is the right answer for mechanical fasteners — a bolt does not care how hard the pieces are pressed together. That is what keeps connection types data rather than separate code paths.
+
+> **Known gap:** the capacity is currently unbounded, so very high compression yields a shear capacity above the material's own shear strength. Real failure envelopes are truncated and the codes cap it. See CURRENT_STATE.md.
+
 ### Force delivery (designed in principle, not yet detailed)
 - **Explosions**: radial falloff — a blast on a corner hits that point hardest and weakens as it spreads. (Chaos fields do this.)
 - **Kinetic impacts**: large objects striking the structure.
