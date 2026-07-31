@@ -79,7 +79,9 @@ Honest scope: for a low mortared wall the friction term is only a few percent of
 
 **μ = 0 reduces the model exactly to independent axes**, which is the right answer for mechanical fasteners — a bolt does not care how hard the pieces are pressed together. That is what keeps connection types data rather than separate code paths.
 
-> **Known gap:** the capacity is currently unbounded, so very high compression yields a shear capacity above the material's own shear strength. Real failure envelopes are truncated and the codes cap it. See CURRENT_STATE.md.
+**The envelope is truncated.** Friction cannot help forever — past a point the material gives rather than the faces sliding — so capacity is clamped to a per-profile ceiling. Eurocode 6 puts that near 0.065 of the unit's compressive strength, around 1.3–2.0 MPa for clay brick.
+
+Without the cap, capacity climbs with depth and joints at the base of a tall structure become effectively uncuttable, which is backwards twice over: unphysical, and wrong for a demolition game where the base is exactly where cutting should work. The ceiling defaults to unbounded rather than zero, so an unset cap behaves as plain Mohr-Coulomb instead of producing an accidentally rigid joint.
 
 ### Force delivery (designed in principle, not yet detailed)
 - **Explosions**: radial falloff — a blast on a corner hits that point hardest and weakens as it spreads. (Chaos fields do this.)

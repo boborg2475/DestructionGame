@@ -74,8 +74,14 @@ namespace DestructionForce
 		// Only compression contributes — a joint being pulled open gains nothing,
 		// and FConnectionLoad guarantees Compression is zero whenever there is
 		// tension, so that falls out without a branch.
-		const double ShearCapacityMPa =
-			Strength.ShearCohesionMPa + Strength.FrictionCoefficient * CompressiveStress;
+		//
+		// Truncated at the material's own ceiling, because friction cannot help
+		// forever: past a point the material gives rather than the faces sliding.
+		// Left unbounded, capacity would climb with depth and joints at the base
+		// of a tall structure would become effectively uncuttable.
+		const double ShearCapacityMPa = FMath::Min(
+			Strength.ShearCohesionMPa + Strength.FrictionCoefficient * CompressiveStress,
+			Strength.MaxShearStrengthMPa);
 
 		// A joint gives on whichever axis runs out first, so the worst governs.
 		// Each is measured against its own capacity — that separation is what makes

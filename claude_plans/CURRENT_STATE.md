@@ -20,7 +20,7 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 - **`Content/Maps/Lvl_Sandbox`** — floor, directional light, sky light, sky atmosphere, height fog, PlayerStart. Not World Partition, deliberately: WP writes one file per actor and the sandbox spawns its scenarios from code. Floor is currently the engine template mesh; swapping to `LevelPrototyping/SM_Plane` would give a grid material with visible scale reference.
 - `Source/` is clean of template variants. Classes: the module, `GameMode`, `PlayerController`, `CameraManager`, `FlyingPawn`, and `Core/ConnectionLoad` + `Core/ConnectionStrength`.
 - **Test infrastructure works.** Automation tests run headless, verified end to end on a real red → green cycle. Build and run commands are documented in [CLAUDE.md](../CLAUDE.md).
-- **Two core systems are in**, both test-driven and green (6 tests, 0 errors):
+- **Two core systems are in**, both test-driven and green (7 tests, 0 errors):
   - `Core/ConnectionLoad` — resolves a force into compression / tension / shear relative to a connection's interface plane, with the normal-orientation convention pinned down by the Newton's-third-law invariant.
   - `Core/ConnectionStrength` — compares a load against directional strengths in MPa and returns a utilisation ratio (>1 = the joint gives). Shear capacity follows Mohr-Coulomb, growing with compression, so a wall sheds shear resistance as the load above it is removed. Carries `ForceUnitsPerMPaSqCm`, the single SI↔Unreal conversion boundary.
 - **`Content/` is clean.** Template strip finished: 22 files remain, all of them in use — the 6 Enhanced Input assets the pawn and controller hard-reference by path, and the `LevelPrototyping` primitives and grid materials (`SM_Plane`, `SM_Cube`, `SM_Ramp`, …) that the sandbox level and brick scenarios will be built from.
@@ -36,6 +36,8 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 
 **1 newton = 100 Unreal force units.** World scale is 1 uu = 1 cm, so force and impulse need a ×100 conversion while mass (kg) and density (g/cm³) need none. Strengths are stored in SI and converted at one named boundary. Full table in [DESIGN.md §3](DESIGN.md).
 
+**The NaN guards and the shear cap are coupled — don't remove one.** `FMath::Min` is `(A <= B) ? A : B`, so `Min(NaN, cap)` returns the **cap**: a NaN shear capacity silently becomes a plausible number. The result still fails closed only because the compression axis is separately guarded by `IsFinite` and returns `Max()`, which then dominates. Drop that guard and the cap will launder NaN into a believable value. Untested edge: a cap set *below* cohesion silently gives a joint less strength than its stated cohesion.
+
 **Degenerate inputs fail closed, and `FMath::Max` is why it matters.** `Max` is `(A >= B) ? A : B`, so every comparison against NaN is false and `Max3` *silently discards* a NaN — returning whichever other axis was lowest. A NaN load therefore produced a confident utilisation of **0.0**, meaning "unstressed, perfectly fine", which nothing downstream could detect. `ComputeUtilisation` now returns `TNumericLimits<double>::Max()` for a non-positive interface area or any non-finite stress. Guards are written `!(x > 0.0)` rather than `x <= 0.0` so a NaN is caught by the same branch instead of slipping past it. Locked down by `ConnectionStrength.DegenerateInputs`.
 
 ---
@@ -43,9 +45,6 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 ## Core systems — designed, not built
 
 DESIGN.md §2–3 specifies all of it.
-
-**Shear capacity is unbounded.** *(From the friction-coupling review — next cycle.)*
-`cohesion + μ × compressive stress` grows without limit, but real Mohr-Coulomb envelopes are truncated and the masonry codes cap the resulting shear strength. Concrete consequence: a joint under 25 MPa of compression gets a shear capacity of `0.2 + 0.6 × 25 = 15.2 MPa`, far above the material's own shear strength, so **joints at the base of a tall building become nearly unbreakable in shear** — backwards both physically and for gameplay, since the base is exactly where demolition should work. It bites hardest at the tall-structure scale that motivated adding coupling at all. **Next test:** capacity stops rising once it reaches the material's shear limit.
 
 **`FConnectionStrength` is a plain C++ struct, not a data asset.** DESIGN.md §2 calls for a data asset and for materials to be "data, not code", but today adding a material means editing C++ and recompiling — no `USTRUCT`, no `UPROPERTY`, nothing tunable in the editor. Correctly deferred rather than speculatively built, but this is the gap between the current shape and the stated design.
 

@@ -45,6 +45,25 @@ struct FConnectionStrength
 	 * That is what keeps connection types data rather than separate code paths.
 	 */
 	double FrictionCoefficient = 0.0;
+
+	/**
+	 * Ceiling on shear capacity however hard the joint is squeezed, MPa.
+	 *
+	 * Friction cannot help forever. Real Mohr-Coulomb envelopes are truncated,
+	 * because past a point the material itself gives rather than the joint
+	 * sliding, and the masonry codes cap the figure accordingly — Eurocode 6
+	 * limits it to roughly 0.065 of the unit's compressive strength, which lands
+	 * near 1.3-2.0 MPa for clay brick.
+	 *
+	 * Without a cap, joints deep inside a tall structure become effectively
+	 * unbreakable in shear, which is backwards: the base of a building is exactly
+	 * where cutting it should work.
+	 *
+	 * Defaults to unbounded so profiles that have no meaningful ceiling are
+	 * unaffected, rather than making zero mean "no cap" and inviting an
+	 * accidentally rigid joint.
+	 */
+	double MaxShearStrengthMPa = TNumericLimits<double>::Max();
 };
 
 namespace DestructionForce

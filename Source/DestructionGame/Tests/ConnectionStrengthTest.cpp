@@ -50,11 +50,22 @@ namespace
 	constexpr double MortarCohesionMPa = 0.2;
 	constexpr double MortarFriction = 0.6;
 
+	/**
+	 * Ceiling on what friction can buy. Eurocode 6 caps the figure at roughly
+	 * 0.065 of the unit's compressive strength, landing near 1.4 MPa for clay
+	 * brick. Reached at 2 MPa of compression: 0.2 + 0.6 x 2.0 = 1.4.
+	 *
+	 * Chosen well above the compressions used in FrictionCoupling, so every
+	 * expectation there is unaffected by capping.
+	 */
+	constexpr double MortarMaxShearMPa = 1.4;
+
 	const FConnectionStrength Mortar{
 		/*Compressive*/ 10.0,
 		MortarCohesionMPa,
 		/*Tensile*/ 0.1,
-		MortarFriction
+		MortarFriction,
+		MortarMaxShearMPa
 	};
 
 	/**
@@ -68,11 +79,15 @@ namespace
 	constexpr double DryStoneCohesionMPa = 0.0;
 	constexpr double DryStoneFriction = 0.7;
 
+	/** Stone gives before the joint slides once squeezed this hard. */
+	constexpr double DryStoneMaxShearMPa = 10.0;
+
 	const FConnectionStrength DryStone{
 		/*Compressive*/ 30.0,
 		DryStoneCohesionMPa,
 		/*Tensile*/ 0.0,
-		DryStoneFriction
+		DryStoneFriction,
+		DryStoneMaxShearMPa
 	};
 
 	/** One square centimetre keeps the arithmetic legible. */
@@ -368,6 +383,97 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 	TestTrue(
 		FString::Printf(TEXT("unloaded dry stone should give under any shear, got %f"), UnloadedDryStone),
 		UnloadedDryStone > 1.0);
+
+	return true;
+}
+
+/**
+ * Friction stops helping past the material's own limit.
+ *
+ * Mohr-Coulomb envelopes are truncated in reality: squeeze a joint hard enough
+ * and the material gives rather than the faces sliding. Left uncapped, capacity
+ * climbs forever with depth, so joints at the base of a tall building become
+ * effectively unbreakable in shear — backwards physically, and backwards for a
+ * demolition game, where the base is exactly where cutting should work.
+ *
+ * Mortar caps at 1.4 MPa, reached at 2 MPa of compression. Everything below
+ * uses more compression than that, so the cap is what is actually under test.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FConnectionStrengthShearCapTest,
+	"DestructionGame.Core.ConnectionStrength.ShearCap",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
+{
+	constexpr double Tolerance = 1e-9;
+
+	// 4 MPa of compression would buy 0.2 + 0.6 x 4.0 = 2.6 MPa uncapped. Capped,
+	// capacity is 1.4, so a shear stress of exactly 1.4 sits at the limit rather
+	// than at a comfortable 0.54.
+	{
+		FConnectionLoad Load;
+		Load.Compression = ForceForMPa(4.0);
+		Load.Shear = ForceForMPa(MortarMaxShearMPa);
+
+		const double Utilisation =
+			DestructionForce::ComputeUtilisation(Load, Mortar, UnitAreaSqCm);
+
+		TestTrue(
+			FString::Printf(TEXT("at the cap the joint is exactly at its limit, expected 1.0, got %f"),
+				Utilisation),
+			FMath::IsNearlyEqual(Utilisation, 1.0, Tolerance));
+	}
+
+	// Past the cap, extra compression buys nothing. Two different depths in a
+	// wall must shear identically — that is what stops the base of a tall
+	// structure becoming stronger without limit.
+	//
+	// Both compressions are past the 2 MPa where the cap bites, but kept well
+	// below mortar's own 10 MPa crushing limit on purpose: push the compression
+	// much higher and the compression axis overtakes shear and governs the
+	// result, so the assertion would be measuring crushing rather than the cap.
+	{
+		FConnectionLoad Shallower;
+		Shallower.Compression = ForceForMPa(3.0);
+		Shallower.Shear = ForceForMPa(1.0);
+
+		FConnectionLoad Deeper;
+		Deeper.Compression = ForceForMPa(4.0);
+		Deeper.Shear = ForceForMPa(1.0);
+
+		const double ShallowerUtilisation =
+			DestructionForce::ComputeUtilisation(Shallower, Mortar, UnitAreaSqCm);
+		const double DeeperUtilisation =
+			DestructionForce::ComputeUtilisation(Deeper, Mortar, UnitAreaSqCm);
+
+		TestTrue(
+			FString::Printf(TEXT("doubling compression past the cap must not change shear utilisation: %f vs %f"),
+				ShallowerUtilisation, DeeperUtilisation),
+			FMath::IsNearlyEqual(ShallowerUtilisation, DeeperUtilisation, Tolerance));
+
+		// And it must be the capped value, not merely equal to each other — two
+		// identically wrong numbers would satisfy the assertion above on its own.
+		TestTrue(
+			FString::Printf(TEXT("capped shear utilisation should be 1.0/1.4, expected %f, got %f"),
+				1.0 / MortarMaxShearMPa, ShallowerUtilisation),
+			FMath::IsNearlyEqual(ShallowerUtilisation, 1.0 / MortarMaxShearMPa, Tolerance));
+	}
+
+	// Below the cap nothing changes: friction still applies in full. Guards
+	// against a fix that clamps everywhere rather than only at the ceiling.
+	{
+		FConnectionLoad Load;
+		Load.Compression = ForceForMPa(1.0);
+		Load.Shear = ForceForMPa(0.8);
+
+		const double Utilisation =
+			DestructionForce::ComputeUtilisation(Load, Mortar, UnitAreaSqCm);
+
+		TestTrue(
+			FString::Printf(TEXT("below the cap friction is untouched, expected 1.0, got %f"), Utilisation),
+			FMath::IsNearlyEqual(Utilisation, 1.0, Tolerance));
+	}
 
 	return true;
 }
