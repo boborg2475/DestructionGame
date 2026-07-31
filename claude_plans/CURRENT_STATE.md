@@ -42,6 +42,24 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 
 ---
 
+## MVP: a wall you can watch break
+
+The agreed next milestone. **Two bricks and one joint first** — visible, breakable, exercising the whole pipeline end to end — then scale to a wall, so later problems are wall logic rather than plumbing.
+
+Architecture settled by spike (DESIGN.md §3): pieces are **kinematic while intact**, we compute connection loads ourselves, and a piece switches to dynamic when the connection holding it gives. **No Geometry Collections** — those are for pieces fracturing into smaller pieces, which the MVP does not need. That drops the heaviest dependency.
+
+Ordered so the world-free work, which is most of it, comes first:
+
+1. **Connection object** — owns two pieces, interface normal, area, strength profile; reports utilisation and whether it has given. Ties `ClassifyForce` and `ComputeUtilisation` together. *No world; existing harness.*
+2. **Structure and load solver** — owns pieces and connections, accumulates weight down the structure, redistributes when a connection breaks, cascades. **The real work, and genuinely new design** — DESIGN.md says load "redistributes" but never says how. *No world; existing harness.*
+3. **World-based test harness** — a world that ticks. Prefer `AFunctionalTest` so tests are watchable in-editor and still run headless. *Spike the headless path first.*
+4. **Brick actor** — true dimensions, mass from density, kinematic → dynamic on release.
+5. **Scenario system** — base class plus `BrickWallScenario` spawning courses in running bond (DESIGN.md §5), loaded by the GameMode so pressing Play shows something.
+6. **Visualisation** — connections drawn coloured by utilisation, on-screen piece and broken-joint counts, max strain. Small, but it is what makes this watchable rather than merely passing.
+7. **Integration tests** — collapse (assert the outcome: it fell) and redistribution (strain rises on neighbours, nothing moves).
+
+---
+
 ## Core systems — designed, not built
 
 DESIGN.md §2–3 specifies all of it.

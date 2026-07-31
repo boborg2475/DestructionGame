@@ -86,6 +86,29 @@ Force is classified by its direction **relative to each connection's interface**
 - Pieces are held by connections; each connection bears a limited load.
 - Remove a piece and its load **redistributes** to its neighbors. If they can carry it, the structure stands. Keep removing pieces and eventually a connection overloads, snaps, and the failure **cascades** — collapse under the structure's own weight (Chaos strain-based damage).
 
+### How a standing structure holds itself up
+
+Decided 2026-07-31, by measurement rather than argument.
+
+**Pieces in an intact structure do not simulate.** They are kinematic, and we compute the load each connection carries ourselves. When a connection gives, the pieces it freed switch to dynamic and Chaos takes over the falling, the collisions and the debris.
+
+The alternative — letting Chaos hold the structure together with physics constraints and reading each constraint's force — was built as a two-brick spike and measured against this one. It lost on both counts:
+
+| | Kinematic | Chaos constraint |
+|---|---|---|
+| Drift while nominally still | **0.000000 cm** | 0.62–0.70 cm, oscillating |
+| Reported joint force | n/a | 16,873–24,147 uu, ±20% |
+| *Expected* joint force | — | 2,670 uu |
+| Lateral force under a purely vertical load | n/a | 3,400–6,300 uu |
+
+Two things follow. The constraint force is roughly **8× too large, unstable, and carries a large spurious sideways component** — and since our whole model turns on splitting a force by direction, a bogus lateral term corrupts precisely the quantity we care about. And a "locked" constraint **sags 6–7 mm and never settles**, which makes the redistribution test in §4 unwritable: that test reads strain while requiring that *nothing moves*, and calls any drifting brick a hard fail. Kinematic pieces drift exactly zero.
+
+The cost is that we own the load maths instead of asking Chaos for it. That is a fair price: it is plain arithmetic over a graph, needs no world, and is therefore fast and deterministic to test — the same property that makes the force classification cheap to trust.
+
+Releasing a piece to dynamic was measured too: it settles within 0.018 cm and stays put. That transition is the mechanism collapse is built on.
+
+> Also established by the spike: physics simulates normally under `-nullrhi`, so integration tests can run headless; and `SM_Cube` is authored at 100 uu, so brick scale is simply dimension ÷ 100.
+
 ### Shear capacity depends on load (Mohr-Coulomb)
 
 Decided 2026-07-30. A joint's resistance to sliding is **not a fixed number**:
