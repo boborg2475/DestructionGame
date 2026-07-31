@@ -2,11 +2,22 @@
 
 #include "Misc/AutomationTest.h"
 #include "Core/Structure.h"
+#include "Core/Profiles/ConnectionProfiles.h"
+#include "Core/Profiles/MaterialProfiles.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-namespace
+/**
+ * NAMED NAMESPACE, not anonymous. Two anonymous namespaces are the SAME namespace
+ * once a unity build puts two test files in one blob, and this file used to declare
+ * a Mortar, an Unbreakable and a MakeNaN that three other files also declared. UBT's
+ * adaptive unity had kept them apart by luck rather than by design. See
+ * CURRENT_STATE.md, and StructureFuzzTest.cpp for the same treatment.
+ */
+namespace StructureTestSupport
 {
+	using namespace DestructionProfiles;
+
 	/**
 	 * Unreal's default gravity, 980 cm/s2, spelled out here rather than imported
 	 * so the test fails if production gets it wrong instead of agreeing with it.
@@ -28,6 +39,13 @@ namespace
 	/**
 	 * A standard clay brick: 215 x 102.5 x 65 mm at ~1.9 g/cm3 is 1432 cm3 and
 	 * 2.72 kg. Real dimensions at real density, per DESIGN.md §3.
+	 *
+	 * STILL HAND-SET, DELIBERATELY, and no longer unchecked: ClayBrick in the
+	 * material library now owns the density, and Profiles.MaterialInvariants derives
+	 * this mass from it and fails if the two drift apart. Deriving it HERE would only
+	 * move the hand-setting, since FStructurePiece still takes a bare mass — making a
+	 * piece take a material instead is the phase 3 change flagged in
+	 * CURRENT_STATE.md, and that is where this literal goes away for real.
 	 */
 	constexpr double BrickMassKg = 2.72;
 
@@ -93,31 +111,23 @@ namespace
 	}
 
 	/**
-	 * DELIBERATELY UNBREAKABLE strengths for the load-path tests.
+	 * DELIBERATELY UNBREAKABLE strengths for the load-path tests, now the shared
+	 * DestructionProfiles::Unbreakable rather than a private copy.
 	 *
 	 * Phase 2a computes what each joint carries; deciding whether that is too much
 	 * is a separate step. Making every joint absurdly strong means no plausible
 	 * implementation could break one mid-solve, so these cases measure routing and
 	 * accumulation and nothing else.
+	 *
+	 * It is classified TestFixture in the library, which is what stops it reaching a
+	 * scenario: the well-formedness sweep in Profiles.ConnectionInvariants demands
+	 * every OTHER profile give under absurd load, so an unbreakable joint that
+	 * escaped into shippable data would fail a test rather than quietly produce a
+	 * wall the player cannot demolish.
+	 *
+	 * Real mortar, where a joint is meant to be genuinely overloaded, is
+	 * DestructionProfiles::GeneralPurposeMortar and is used directly.
 	 */
-	const FConnectionStrength Unbreakable{
-		/*Compressive*/ 1.0e9,
-		/*ShearCohesion*/ 1.0e9,
-		/*Tensile*/ 1.0e9,
-		/*FrictionCoefficient*/ 0.0
-	};
-
-	/**
-	 * Real mortar, used only where a joint is meant to be genuinely overloaded.
-	 * Same figures as ConnectionStrengthTest.
-	 */
-	const FConnectionStrength Mortar{
-		/*Compressive*/ 10.0,
-		/*ShearCohesion*/ 0.2,
-		/*Tensile*/ 0.1,
-		/*FrictionCoefficient*/ 0.6,
-		/*MaxShear*/ 1.4
-	};
 
 	/**
 	 * Force, in Unreal units, that loads the given area to the given stress.
@@ -579,6 +589,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 {
+	using namespace StructureTestSupport;
+
 	// FSolveCase and CheckSolveCase, shared with the stranding tests. These cases used
 	// to carry a structurally identical local type and a near-identical loop; folding
 	// them buys the GROUND-REACTION CONSERVATION cross-check for free, which is a real
@@ -1008,6 +1020,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FStructureSupportTierThresholdTest::RunTest(const FString& Parameters)
 {
+	using namespace StructureTestSupport;
+
 	struct FThresholdCase
 	{
 		const TCHAR* Description;
@@ -1138,6 +1152,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 {
+	using namespace StructureTestSupport;
+
 	/** Which axis the component normal to the interface ends up on. */
 	enum class ENormalAxis : uint8
 	{
@@ -1368,7 +1384,7 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 		FConnection Beneath;
 		Beneath.InterfaceNormal = NormalTiltedFromVertical(DegreesFromVertical);
 		Beneath.InterfaceAreaSqCm = JointAreaSqCm;
-		Beneath.Strength = Mortar;
+		Beneath.Strength = GeneralPurposeMortar;
 
 		FConnection Hanging = Beneath;
 
@@ -1378,8 +1394,10 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 		// Mohr-Coulomb: only compression buys friction, so the hanging joint's shear
 		// capacity is bare cohesion.
 		const double ExpectedBeneath =
-			ShearStressMPa / (Mortar.ShearCohesionMPa + Mortar.FrictionCoefficient * NormalStressMPa);
-		const double ExpectedAbove = NormalStressMPa / Mortar.TensileStrengthMPa;
+			ShearStressMPa
+			/ (GeneralPurposeMortar.ShearCohesionMPa
+				+ GeneralPurposeMortar.FrictionCoefficient * NormalStressMPa);
+		const double ExpectedAbove = NormalStressMPa / GeneralPurposeMortar.TensileStrengthMPa;
 
 		TestTrue(
 			FString::Printf(
@@ -1429,6 +1447,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 {
+	using namespace StructureTestSupport;
+
 	const double NaNValue = MakeNaN();
 	const double InfinityValue = MakeInfinity();
 
@@ -1628,16 +1648,25 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FStructureSolveIsNonDestructiveTest::RunTest(const FString& Parameters)
 {
+	using namespace StructureTestSupport;
+
 	// 20 tonnes on each of two 100 cm2 joints: 1.96e7 uu through each.
 	constexpr double AbsurdMassKg = 20000.0;
 	const double ExpectedPerJointUU = WeightOf(AbsurdMassKg);
 
 	// Mortar's compressive limit is 10 MPa over 100 cm2 = 1e7 uu, so the bed joint
-	// is at 1.96 and would give. The head joint sees the same force as shear
-	// against a capacity of at most 1.4 MPa = 1.4e6 uu, so it is fourteen times
+	// is at 1.96 and would give. The head joint sees the same force as shear against
+	// a capacity of at most its ceiling, 1.3 MPa = 1.3e6 uu, so it is fifteen times
 	// over. Both axes are past their limit; neither joint may latch anyway.
-	const double CompressiveCapacityUU = ForceForMPa(10.0, JointAreaSqCm);
-	const double MaxShearCapacityUU = ForceForMPa(1.4, JointAreaSqCm);
+	//
+	// BOTH CAPACITIES COME FROM THE PROFILE rather than being restated, so retuning
+	// mortar cannot leave this test comparing the load against a limit the joint no
+	// longer has. The masses above are absurd by two orders of magnitude, so no
+	// plausible retune makes them stop being an overload.
+	const double CompressiveCapacityUU =
+		ForceForMPa(GeneralPurposeMortar.CompressiveStrengthMPa, JointAreaSqCm);
+	const double MaxShearCapacityUU =
+		ForceForMPa(GeneralPurposeMortar.MaxShearStrengthMPa, JointAreaSqCm);
 
 	// TWO SEPARATE OVERLOADED PIECES, one per joint, which the two-tier rule of
 	// DESIGN.md §3 is what forces. Hanging both joints off a single piece — the
@@ -1666,7 +1695,7 @@ bool FStructureSolveIsNonDestructiveTest::RunTest(const FString& Parameters)
 	};
 
 	FStructure Structure;
-	BuildStructure(Structure, Spec, Mortar);
+	BuildStructure(Structure, Spec, GeneralPurposeMortar);
 
 	Structure.SolveLoads();
 
@@ -1771,6 +1800,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 {
+	using namespace StructureTestSupport;
+
 	struct FNamedSpec
 	{
 		const TCHAR* Description;
@@ -2214,6 +2245,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FStructureSupportCycleTest::RunTest(const FString& Parameters)
 {
+	using namespace StructureTestSupport;
+
 	struct FCycleCase
 	{
 		const TCHAR* Description;
@@ -2454,6 +2487,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FStructureStrandingIsLocalTest::RunTest(const FString& Parameters)
 {
+	using namespace StructureTestSupport;
+
 	const TArray<FSolveCase> Cases = {
 		// THE REPRO, minimal.
 		//
@@ -2631,6 +2666,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FStructureStrandingPropagatesUpwardTest::RunTest(const FString& Parameters)
 {
+	using namespace StructureTestSupport;
+
 	const TArray<FSolveCase> Cases = {
 		// Nothing beneath the knot: G is grounded, so the whole course above it goes.
 		// B rests on Y, Y is in the knot, and B has no other support — so B falls, and

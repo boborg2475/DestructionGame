@@ -2,53 +2,41 @@
 
 #include "Misc/AutomationTest.h"
 #include "Core/Connection.h"
+#include "Core/Profiles/ConnectionProfiles.h"
+#include "Core/Profiles/MaterialProfiles.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-namespace
+/**
+ * NAMED NAMESPACE, not anonymous — an anonymous namespace is shared with every
+ * other anonymous namespace once a unity build merges two test files, and this one
+ * used to declare a Mortar and a MakeNaN of its own. See CURRENT_STATE.md.
+ *
+ * The strength profiles are gone from this file entirely: they now come from
+ * Core/Profiles, so retuning mortar retunes it here too rather than leaving a stale
+ * private copy that still passes.
+ */
+namespace ConnectionTestSupport
 {
-	/**
-	 * Structural concrete, the calibration baseline DESIGN.md §4 asks for, and the
-	 * same figures ConnectionStrengthTest uses. Every other material is eventually
-	 * a ratio of these rather than an independently invented number.
-	 */
-	constexpr double ConcreteCompressiveMPa = 30.0;
-	constexpr double ConcreteShearMPa = 6.0;
-	constexpr double ConcreteTensileMPa = 3.0;
+	using namespace DestructionProfiles;
 
 	/**
-	 * DELIBERATELY UNCOUPLED: friction coefficient is zero.
+	 * Structural concrete, the calibration baseline DESIGN.md §4 asks for, read
+	 * from the shared material library. Every other material is a ratio of it.
 	 *
-	 * With mu = 0 the Mohr-Coulomb shear capacity collapses to plain cohesion, so
-	 * the three axes stay strictly independent and every expected number below can
-	 * be traced to exactly one strength. Coupling is already covered by
+	 * DELIBERATELY UNCOUPLED: the material's friction coefficient is zero, so the
+	 * Mohr-Coulomb shear capacity collapses to plain cohesion, the three axes stay
+	 * strictly independent, and every expected number below can be traced to exactly
+	 * one strength. Coupling is already covered by
 	 * ConnectionStrength.FrictionCoupling; these tests are about the connection
 	 * object composing the pipeline, not about re-testing the strength maths.
+	 *
+	 * A REFERENCE rather than a copy of the fields, because the profile lives in
+	 * another translation unit: binding a reference to a static object is constant
+	 * initialisation and therefore order-independent, where copying its fields at
+	 * namespace scope would be a dynamic initialiser reading across TUs.
 	 */
-	const FConnectionStrength ConcreteUncoupled{
-		ConcreteCompressiveMPa,
-		ConcreteShearMPa,
-		ConcreteTensileMPa,
-		/*FrictionCoefficient*/ 0.0
-	};
-
-	/** Mortar with real bond and real friction — used only in the property sweep. */
-	const FConnectionStrength Mortar{
-		/*Compressive*/ 10.0,
-		/*ShearCohesion*/ 0.2,
-		/*Tensile*/ 0.1,
-		/*FrictionCoefficient*/ 0.6,
-		/*MaxShear*/ 1.4
-	};
-
-	/** Dry stone: no bond at all, so two of its three strengths are genuine zeroes. */
-	const FConnectionStrength DryStone{
-		/*Compressive*/ 30.0,
-		/*ShearCohesion*/ 0.0,
-		/*Tensile*/ 0.0,
-		/*FrictionCoefficient*/ 0.7,
-		/*MaxShear*/ 10.0
-	};
+	const FConnectionStrength& ConcreteUncoupled = StructuralConcrete.Strength;
 
 	/** A 10 cm x 10 cm interface. Round, so the arithmetic stays checkable by eye. */
 	constexpr double JointAreaSqCm = 100.0;
@@ -125,6 +113,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FConnectionUtilisationTest::RunTest(const FString& Parameters)
 {
+	using namespace ConnectionTestSupport;
+
+	// Read out of the shared profile at test time, not during static initialisation.
+	const double ConcreteCompressiveMPa = ConcreteUncoupled.CompressiveStrengthMPa;
+	const double ConcreteShearMPa = ConcreteUncoupled.ShearCohesionMPa;
+	const double ConcreteTensileMPa = ConcreteUncoupled.TensileStrengthMPa;
+
 	struct FUtilisationCase
 	{
 		const TCHAR* Description;
@@ -257,6 +252,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FConnectionLatchingTest::RunTest(const FString& Parameters)
 {
+	using namespace ConnectionTestSupport;
+
+	const double ConcreteCompressiveMPa = ConcreteUncoupled.CompressiveStrengthMPa;
+	const double ConcreteShearMPa = ConcreteUncoupled.ShearCohesionMPa;
+
 	constexpr double Tolerance = 1e-9;
 
 	const FVector HalfLoad(0.0, 0.0, -ForceForMPa(ConcreteCompressiveMPa / 2.0, JointAreaSqCm));
@@ -415,6 +415,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FConnectionDegenerateInputTest::RunTest(const FString& Parameters)
 {
+	using namespace ConnectionTestSupport;
+
 	struct FNamedNormal { const TCHAR* Description; FVector Normal; bool bIsUsable; };
 	struct FNamedArea { const TCHAR* Description; double AreaSqCm; bool bIsUsable; };
 	struct FNamedForce { const TCHAR* Description; FVector Force; bool bIsWellFormed; };
@@ -460,7 +462,7 @@ bool FConnectionDegenerateInputTest::RunTest(const FString& Parameters)
 	// reaches the degenerate paths without anything being misconfigured.
 	const TArray<FNamedProfile> Profiles = {
 		{ TEXT("concrete (uncoupled)"), ConcreteUncoupled },
-		{ TEXT("mortar"), Mortar },
+		{ TEXT("mortar"), GeneralPurposeMortar },
 		{ TEXT("dry stone, zero cohesion and zero tensile strength"), DryStone },
 	};
 

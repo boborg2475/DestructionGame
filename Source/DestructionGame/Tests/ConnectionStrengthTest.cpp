@@ -2,93 +2,51 @@
 
 #include "Misc/AutomationTest.h"
 #include "Core/ConnectionStrength.h"
+#include "Core/Profiles/ConnectionProfiles.h"
+#include "Core/Profiles/MaterialProfiles.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-namespace
+/**
+ * NAMED NAMESPACE, not anonymous. An anonymous namespace here is the same
+ * namespace as an anonymous one in any other test file the moment a unity build
+ * merges the two translation units, which is a redefinition error waiting for
+ * UBT's adaptive unity to stop keeping them apart. See CURRENT_STATE.md.
+ *
+ * WHY THE PROFILES ARE READ THROUGH A REFERENCE rather than copied into scalar
+ * constants at namespace scope: the profiles live in another translation unit,
+ * and copying their fields here would be a dynamic initialiser reading across
+ * TUs. Binding a reference to an object with static storage duration is constant
+ * initialisation, so it is safe whatever the order; the field reads then happen
+ * inside RunTest, long after everything is initialised.
+ */
+namespace ConnectionStrengthTestSupport
 {
-	/**
-	 * Structural concrete, the calibration baseline DESIGN.md asks for: real
-	 * published figures, with every other material eventually expressed as a
-	 * ratio of these rather than as independently invented numbers.
-	 *
-	 * Compression dominates by design — concrete is roughly five times stronger
-	 * in shear resistance terms and ten times in tension. That spread is the
-	 * whole point of the directional model.
-	 */
-	constexpr double ConcreteCompressiveMPa = 30.0;
-	constexpr double ConcreteShearMPa = 6.0;
-	constexpr double ConcreteTensileMPa = 3.0;
+	using namespace DestructionProfiles;
 
 	/**
-	 * DELIBERATELY UNCOUPLED: friction coefficient is zero.
+	 * Structural concrete, the calibration baseline DESIGN.md asks for. NOW THE
+	 * SHARED PROFILE rather than a private copy of the figures: retuning concrete
+	 * in Core/Profiles retunes it here, which is exactly what three divergent
+	 * private copies could not do.
 	 *
-	 * Not an oversight and not a placeholder. With mu = 0 the Mohr-Coulomb shear
-	 * capacity collapses to plain cohesion, so this profile exercises the three
-	 * axes as strictly independent. Every expectation in the Utilisation and
-	 * DirectionalAsymmetry tests below is therefore a regression guard proving
-	 * that adding friction coupling did not disturb the uncoupled case — which is
-	 * also the correct model for mechanical fasteners like bolts and screws.
+	 * Compression dominates by design — concrete is roughly five times stronger in
+	 * shear resistance terms and ten times in tension. That spread is the whole
+	 * point of the directional model.
+	 *
+	 * DELIBERATELY UNCOUPLED: the material profile's friction coefficient is zero,
+	 * and that is a property of the data rather than of this fixture. A material is
+	 * not a sliding interface, so with mu = 0 the Mohr-Coulomb shear capacity
+	 * collapses to plain cohesion and the three axes stay strictly independent.
+	 * Every expectation in the Utilisation and DirectionalAsymmetry tests below is
+	 * therefore a regression guard proving that adding friction coupling did not
+	 * disturb the uncoupled case — which is also the correct model for mechanical
+	 * fasteners like bolts and screws.
 	 *
 	 * Coupled behaviour is covered separately in the FrictionCoupling test, using
-	 * the mortar and dry stone profiles.
+	 * the mortar and dry stone connection profiles.
 	 */
-	const FConnectionStrength ConcreteUncoupled{
-		ConcreteCompressiveMPa,
-		ConcreteShearMPa,
-		ConcreteTensileMPa,
-		/*FrictionCoefficient*/ 0.0
-	};
-
-	/**
-	 * General-purpose mortar: real bond, real friction.
-	 *
-	 * Cohesion around 0.2 MPa is typical initial shear strength for masonry
-	 * mortar; mu of 0.6 is in the range physical testing gives, above the more
-	 * conservative figure the design codes use.
-	 */
-	constexpr double MortarCohesionMPa = 0.2;
-	constexpr double MortarFriction = 0.6;
-
-	/**
-	 * Ceiling on what friction can buy. Eurocode 6 caps the figure at roughly
-	 * 0.065 of the unit's compressive strength, landing near 1.4 MPa for clay
-	 * brick. Reached at 2 MPa of compression: 0.2 + 0.6 x 2.0 = 1.4.
-	 *
-	 * Chosen well above the compressions used in FrictionCoupling, so every
-	 * expectation there is unaffected by capping.
-	 */
-	constexpr double MortarMaxShearMPa = 1.4;
-
-	const FConnectionStrength Mortar{
-		/*Compressive*/ 10.0,
-		MortarCohesionMPa,
-		/*Tensile*/ 0.1,
-		MortarFriction,
-		MortarMaxShearMPa
-	};
-
-	/**
-	 * Dry stone: no mortar, therefore NO cohesion at all.
-	 *
-	 * The pure case for coupling. Every bit of its resistance to sliding comes
-	 * from friction under its own weight, so it is unbuildable in a model where
-	 * compression does not feed shear capacity — which is precisely what makes it
-	 * the sharpest test of the behaviour.
-	 */
-	constexpr double DryStoneCohesionMPa = 0.0;
-	constexpr double DryStoneFriction = 0.7;
-
-	/** Stone gives before the joint slides once squeezed this hard. */
-	constexpr double DryStoneMaxShearMPa = 10.0;
-
-	const FConnectionStrength DryStone{
-		/*Compressive*/ 30.0,
-		DryStoneCohesionMPa,
-		/*Tensile*/ 0.0,
-		DryStoneFriction,
-		DryStoneMaxShearMPa
-	};
+	const FConnectionStrength& ConcreteUncoupled = StructuralConcrete.Strength;
 
 	/** One square centimetre keeps the arithmetic legible. */
 	constexpr double UnitAreaSqCm = 1.0;
@@ -140,6 +98,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FConnectionStrengthUtilisationTest::RunTest(const FString& Parameters)
 {
+	using namespace ConnectionStrengthTestSupport;
+
+	// Read out of the shared profile here rather than at namespace scope, so the
+	// reads happen at test time rather than during cross-TU static initialisation.
+	const double ConcreteCompressiveMPa = ConcreteUncoupled.CompressiveStrengthMPa;
+	const double ConcreteShearMPa = ConcreteUncoupled.ShearCohesionMPa;
+	const double ConcreteTensileMPa = ConcreteUncoupled.TensileStrengthMPa;
+
 	struct FUtilisationCase
 	{
 		const TCHAR* Description;
@@ -182,7 +148,9 @@ bool FConnectionStrengthUtilisationTest::RunTest(const FString& Parameters)
 		// Here compression is comfortable at 0.5 but shear is already at its limit.
 		{
 			TEXT("the most utilised axis governs a combined load"),
-			[]{
+			// Captures by reference because the strengths are now read out of the
+			// shared profile into locals rather than declared at namespace scope.
+			[&]{
 				FConnectionLoad L;
 				L.Compression = ForceForMPa(ConcreteCompressiveMPa / 2.0);
 				L.Shear = ForceForMPa(ConcreteShearMPa);
@@ -230,6 +198,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FConnectionStrengthDirectionalAsymmetryTest::RunTest(const FString& Parameters)
 {
+	using namespace ConnectionStrengthTestSupport;
+
+	const double ConcreteCompressiveMPa = ConcreteUncoupled.CompressiveStrengthMPa;
+	const double ConcreteShearMPa = ConcreteUncoupled.ShearCohesionMPa;
+
 	// One force magnitude, applied two different ways against the same joint.
 	const double Force = ForceForMPa(ConcreteShearMPa);
 
@@ -284,6 +257,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 {
+	using namespace ConnectionStrengthTestSupport;
+
+	const double MortarCohesionMPa = GeneralPurposeMortar.ShearCohesionMPa;
+
 	struct FCouplingCase
 	{
 		const TCHAR* Description;
@@ -296,7 +273,7 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 		// Baseline: with nothing pressing on it, a mortar joint has only its bond.
 		{
 			TEXT("an uncompressed mortar joint gives at its bare cohesion"),
-			Mortar,
+			GeneralPurposeMortar,
 			ShearOf(ForceForMPa(MortarCohesionMPa)),
 			1.0
 		},
@@ -306,7 +283,7 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 		// that would be four times over the bare limit now sits exactly at it.
 		{
 			TEXT("compression raises mortar shear capacity by mu times the normal stress"),
-			Mortar,
+			GeneralPurposeMortar,
 			[]{
 				FConnectionLoad L;
 				L.Compression = ForceForMPa(1.0);
@@ -321,8 +298,8 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 		// would wrongly report this as holding.
 		{
 			TEXT("tension buys no friction benefit"),
-			Mortar,
-			[]{
+			GeneralPurposeMortar,
+			[&]{
 				FConnectionLoad L;
 				L.Tension = ForceForMPa(0.05);
 				L.Shear = ForceForMPa(MortarCohesionMPa);
@@ -396,8 +373,17 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
  * effectively unbreakable in shear — backwards physically, and backwards for a
  * demolition game, where the base is exactly where cutting should work.
  *
- * Mortar caps at 1.4 MPa, reached at 2 MPa of compression. Everything below
- * uses more compression than that, so the cap is what is actually under test.
+ * Mortar's ceiling is EN 1996-1-1's 0.065 x the unit's compressive strength, which
+ * for the 20 MPa clay brick in the material library is 1.3 MPa. Bare cohesion is
+ * 0.2 and mu is 0.6, so the cap bites from (1.3 - 0.2) / 0.6 = 1.83 MPa of
+ * compression upward, and everything below uses more compression than that — so the
+ * cap really is what is under test.
+ *
+ * THE CEILING ITSELF IS READ FROM THE PROFILE rather than restated here, so a
+ * retune moves the expectation with it. The compressions stay literals because they
+ * are test INPUTS rather than copies of production data — but they are only doing
+ * their job while they sit between where the cap bites and where the compression
+ * axis takes over, which the arithmetic above and below pins down.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthShearCapTest,
@@ -406,18 +392,22 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 {
+	using namespace ConnectionStrengthTestSupport;
+
+	const double MortarMaxShearMPa = GeneralPurposeMortar.MaxShearStrengthMPa;
+
 	constexpr double Tolerance = 1e-9;
 
 	// 4 MPa of compression would buy 0.2 + 0.6 x 4.0 = 2.6 MPa uncapped. Capped,
-	// capacity is 1.4, so a shear stress of exactly 1.4 sits at the limit rather
-	// than at a comfortable 0.54.
+	// capacity is 1.3, so a shear stress of exactly 1.3 sits at the limit rather
+	// than at a comfortable 0.5.
 	{
 		FConnectionLoad Load;
 		Load.Compression = ForceForMPa(4.0);
 		Load.Shear = ForceForMPa(MortarMaxShearMPa);
 
 		const double Utilisation =
-			DestructionForce::ComputeUtilisation(Load, Mortar, UnitAreaSqCm);
+			DestructionForce::ComputeUtilisation(Load, GeneralPurposeMortar, UnitAreaSqCm);
 
 		TestTrue(
 			FString::Printf(TEXT("at the cap the joint is exactly at its limit, expected 1.0, got %f"),
@@ -429,10 +419,12 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 	// wall must shear identically — that is what stops the base of a tall
 	// structure becoming stronger without limit.
 	//
-	// Both compressions are past the 2 MPa where the cap bites, but kept well
+	// Both compressions are past the 1.83 MPa where the cap bites, but kept well
 	// below mortar's own 10 MPa crushing limit on purpose: push the compression
 	// much higher and the compression axis overtakes shear and governs the
-	// result, so the assertion would be measuring crushing rather than the cap.
+	// result, so the assertion would be measuring crushing rather than the cap. At
+	// 4 MPa the compression axis is at 0.4 against shear's 0.77, so shear governs
+	// with room to spare.
 	{
 		FConnectionLoad Shallower;
 		Shallower.Compression = ForceForMPa(3.0);
@@ -443,9 +435,9 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 		Deeper.Shear = ForceForMPa(1.0);
 
 		const double ShallowerUtilisation =
-			DestructionForce::ComputeUtilisation(Shallower, Mortar, UnitAreaSqCm);
+			DestructionForce::ComputeUtilisation(Shallower, GeneralPurposeMortar, UnitAreaSqCm);
 		const double DeeperUtilisation =
-			DestructionForce::ComputeUtilisation(Deeper, Mortar, UnitAreaSqCm);
+			DestructionForce::ComputeUtilisation(Deeper, GeneralPurposeMortar, UnitAreaSqCm);
 
 		TestTrue(
 			FString::Printf(TEXT("doubling compression past the cap must not change shear utilisation: %f vs %f"),
@@ -455,8 +447,8 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 		// And it must be the capped value, not merely equal to each other — two
 		// identically wrong numbers would satisfy the assertion above on its own.
 		TestTrue(
-			FString::Printf(TEXT("capped shear utilisation should be 1.0/1.4, expected %f, got %f"),
-				1.0 / MortarMaxShearMPa, ShallowerUtilisation),
+			FString::Printf(TEXT("capped shear utilisation should be 1.0/%f, expected %f, got %f"),
+				MortarMaxShearMPa, 1.0 / MortarMaxShearMPa, ShallowerUtilisation),
 			FMath::IsNearlyEqual(ShallowerUtilisation, 1.0 / MortarMaxShearMPa, Tolerance));
 	}
 
@@ -468,7 +460,7 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 		Load.Shear = ForceForMPa(0.8);
 
 		const double Utilisation =
-			DestructionForce::ComputeUtilisation(Load, Mortar, UnitAreaSqCm);
+			DestructionForce::ComputeUtilisation(Load, GeneralPurposeMortar, UnitAreaSqCm);
 
 		TestTrue(
 			FString::Printf(TEXT("below the cap friction is untouched, expected 1.0, got %f"), Utilisation),
@@ -500,6 +492,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
 {
+	using namespace ConnectionStrengthTestSupport;
+
 	struct FNamedLoad { const TCHAR* Description; FConnectionLoad Load; };
 	struct FNamedProfile { const TCHAR* Description; FConnectionStrength Strength; };
 	struct FNamedArea { const TCHAR* Description; double AreaSqCm; bool bIsValidJoint; };
@@ -547,7 +541,7 @@ bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
 	// misconfigured.
 	const TArray<FNamedProfile> Profiles = {
 		{ TEXT("concrete (uncoupled)"), ConcreteUncoupled },
-		{ TEXT("mortar"), Mortar },
+		{ TEXT("mortar"), GeneralPurposeMortar },
 		{ TEXT("dry stone, zero cohesion and zero tensile strength"), DryStone },
 	};
 

@@ -183,6 +183,21 @@ Honest scope: for a low mortared wall the friction term is only a few percent of
 
 **μ = 0 reduces the model exactly to independent axes**, which is the right answer for mechanical fasteners — a bolt does not care how hard the pieces are pressed together. That is what keeps connection types data rather than separate code paths.
 
+### A fastener's strength is smeared over the interface
+
+Decided 2026-07-31, and it is a modelling approximation rather than a detail.
+
+Everything in this design compares a **stress** against a strength, because that is what makes a joint's area matter. But a fastener's published capacity is a **force per fastener** — EN 1995-1-1 gives a nail so many newtons in withdrawal, a bolt so many kilonewtons in shear — and a joint has no idea how many nails are in it.
+
+So the nail, screw and bolt profiles hold their code-derived capacities **divided by a reference density of one fastener per 100 cm² of interface**. That number is an assumption the data cannot currently express, and every figure in those three profiles scales with it.
+
+Two consequences worth stating plainly:
+
+- **A `Nail` profile does not mean "a nail".** It means "a nailed joint at the reference fastener density". Doubling the nails in a real joint should double its capacity, and today it does not — the profile is the only knob.
+- **When fastener count becomes a property of a joint, these are re-derived, not re-tuned.** The kN figures and the formulae they come from are recorded in the source comments precisely so that recalculation is possible rather than archaeological.
+
+The masonry profiles have no equivalent problem: mortar genuinely is a continuous bond across the whole face, so its MPa figures are physical as they stand.
+
 **The envelope is truncated.** Friction cannot help forever — past a point the material gives rather than the faces sliding — so capacity is clamped to a per-profile ceiling. Eurocode 6 puts that near 0.065 of the unit's compressive strength, around 1.3–2.0 MPa for clay brick.
 
 Without the cap, capacity climbs with depth and joints at the base of a tall structure become effectively uncuttable, which is backwards twice over: unphysical, and wrong for a demolition game where the base is exactly where cutting should work. The ceiling defaults to unbounded rather than zero, so an unset cap behaves as plain Mohr-Coulomb instead of producing an accidentally rigid joint.
@@ -273,7 +288,11 @@ Failure is defined by **what the test is trying to prove**, not one universal ru
 - One **reusable, parameterized** test, written once, taking a **material + force type** (and later **+ connection type**) as inputs and checking the outcome against an expected value.
 - Forms a grid: materials down one side, forces across the top; each cell is an expected behavior. This grid doubles as documentation of how the material system should behave.
 - **Core force types:** compression, shear, tension. (Bending = tension on one side + compression on the other; torsion = twisting — both are combinations, noted for later.)
-- **Grounded in real-world data:** expected values come from published material strengths (compressive / shear / tensile strength, in megapascals). Pick **one reference material** as the baseline (concrete or steel are well-characterized), calibrate it to feel right in-game, then express every other material as a **proportional ratio** of that baseline so the whole matrix stays grounded in reality. (Pulling actual numbers is an implementation-time task.)
+- **Grounded in real-world data:** expected values come from published material strengths (compressive / shear / tensile strength, in megapascals). Pick **one reference material** as the baseline (concrete or steel are well-characterized), calibrate it to feel right in-game, then express every other material as a **proportional ratio** of that baseline so the whole matrix stays grounded in reality.
+
+  **The baseline is structural concrete C30/37**, chosen 2026-07-31 and now built. The numbers live in **`Core/Profiles/`** — `MaterialProfiles` (density, directional strengths, an unused bond factor) and `ConnectionProfiles` (mortar, lime mortar, dry stone, nail, screw, bolt, plus a test-only unbreakable fixture). **Every value carries a citation comment** naming the code or table it came from: EN 1992-1-1 for concrete, EN 1996-1-1 and BS EN 998-2 / BS EN 459-1 for the masonry joints, EN 1995-1-1 and EN 338 for the fasteners.
+
+  Two properties are structural rather than incidental. Each profile row carries a **class** (bonded / frictional / mechanical fastener / test fixture), which is what lets the physical invariants be checked *per kind of joint* — "compression dominates" is true of a mortared joint and false of a bolt — and what makes an unbreakable fixture machine-recognisable so it cannot quietly ship. And **adding a profile is adding a row**: no new class, no new branch, with the well-formedness sweep picking it up automatically.
 - **Testing behaviors, not materials:** don't write a test per material. Add a second material (e.g. **wood**) **once**, only to prove the directional code genuinely reads the material profile — run the same shear scenario on wood and confirm it survives where brick failed. If that passes, the system is proven data-driven and any future material is just numbers, no new code or tests. The same principle extends to connection types (join two pieces with a specific connection, apply force, confirm the connection fails at its own threshold before either material does).
 
 ---
