@@ -84,8 +84,6 @@ DESIGN.md §2–3 specifies all of it.
 
 **Two rename redirectors sit in `Content/Maps/`** — `NewMap.umap` and `Lvl1_Sandbox.umap`, left over from renaming the level into place. Nothing references either. Clear them the Unreal way: Content Browser → right-click the `Maps` folder → **Fix Up Redirectors in Folder**. Deliberately left untracked rather than committed.
 
-**`README.md` is a stub** — one line, just the title.
-
 **`.claude/settings.local.json` has accumulated a dozen auto-generated single-use PowerShell permission entries** from earlier exploration. They're noise and won't match future commands. Worth pruning to a few useful patterns. (Not in git — covered by a global gitignore.)
 
 **The three local skills aren't invocable as `/test-expert` etc. yet.** They were created mid-session; Claude Code loads skills at startup, so they need a restart to register. Their instructions are being followed manually in the meantime.

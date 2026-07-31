@@ -26,6 +26,33 @@ Three cooperating pieces sit at the center of the design:
 
 3. **Damage / force manager** — handles incoming hits, explosions, and radial forces, then tells the right actors how hard they were hit.
 
+### How a force becomes a broken joint
+
+The directional layer is a pipeline of small, world-free steps. Each stage is plain arithmetic on plain structs — no actor, no world, no ticking solver — which is what keeps it cheap to test and cheap to reason about:
+
+```
+world-space force + interface normal
+        │
+        │  ClassifyForce()                  Core/ConnectionLoad
+        ▼
+FConnectionLoad { Compression, Tension, Shear }
+        │
+        │  ComputeUtilisation()             Core/ConnectionStrength
+        │  + FConnectionStrength (MPa)
+        │  + interface area
+        ▼
+utilisation ratio   (0 = unloaded, 1 = at the limit, >1 = the joint gives)
+```
+
+Two properties of that shape are deliberate:
+
+- **A ratio, not a boolean.** The same number drives the break decision *and* the on-screen strain readouts, so what the player sees is the quantity the simulation actually used.
+- **Stress, not force.** Strengths are in megapascals, so the comparison needs an interface area. The same force through half the area is twice as punishing; a force-only model would let thin joints survive loads that should part them.
+
+Everything above sits *in front of* Chaos. Chaos still owns the rigid bodies, the contacts and the debris — this layer decides when a connection has had enough.
+
+> For what is built versus still planned, [CURRENT_STATE.md](CURRENT_STATE.md) is authoritative. This document describes the intended design and does not track progress.
+
 ### Materials are directional
 Materials do **not** have a single strength value. They respond differently depending on the **direction/type** of force:
 
