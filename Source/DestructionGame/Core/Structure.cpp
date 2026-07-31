@@ -228,6 +228,12 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 		return INDEX_NONE;
 	}
 
+	// The break-pass stamp is grown here, with the connection it belongs to, so the
+	// two arrays are parallel by construction rather than by a solve remembering to
+	// resize one of them. A joint that has never broken is INDEX_NONE from the moment
+	// it exists, which is also the answer for a handle that names no joint at all.
+	ConnectionBreakPass.Add(INDEX_NONE);
+
 	return Connections.Add(Connection);
 }
 
@@ -276,6 +282,26 @@ void FStructure::SolveLoads()
 
 		for (int32 Index = 0; Index < Connections.Num(); ++Index)
 		{
+			// A JOINT THAT HAS GIVEN IS OUT OF THE STRUCTURE AND CONDUCTS NOTHING, and
+			// dropping it here — before the tier is even decided — is what makes that
+			// true everywhere at once: it leaves the support lists, and with them the
+			// reachability walk, the load paths, the accumulation order and the split.
+			//
+			// IT HAS TO LEAVE THE TIER DECISION, not merely the load path. A bed joint
+			// wins the tier outright over any number of head joints, so a broken bed
+			// joint that still won would leave the piece with an EMPTY support list —
+			// reporting it as falling with its intact head joint carrying zero, which is
+			// self-consistent, plausible-looking and wrong. The piece is meant to fall
+			// back onto the head joint and load it in shear.
+			//
+			// Its force stays at the zero every pass starts from, which is the zero
+			// redistribution is built on: the share it used to carry is now divided
+			// among the supports that are left.
+			if (Connections[Index].HasGiven())
+			{
+				continue;
+			}
+
 			switch (RoleOf(Connections[Index], PieceIndex))
 			{
 			case EJointRole::BedBeneath:
@@ -578,6 +604,96 @@ void FStructure::SolveLoads()
 	// joint carries and must leave every connection exactly as intact as it found
 	// it: FConnection::ApplyForce latches, so calling it would break joints as a
 	// side effect of asking what they carry and make a solve unrepeatable.
+}
+
+int32 FStructure::SolveAndBreak()
+{
+	// EVERY JOINT OVER CAPACITY GIVES IN THE SAME PASS (DESIGN.md §3). Each pass is a
+	// complete solve followed by one sweep that breaks everything the solve found over
+	// its own capacity, and the pass number is stamped on each joint that gives.
+	//
+	// Ordering WITHIN a pass is arbitrary and nothing may depend on it — two joints
+	// that give together are simultaneous and the array order they are visited in is an
+	// implementation detail. Ordering BETWEEN passes is real: it is caused, each break
+	// following from the load the previous one shed, and it is the sequence a collapse
+	// is played back in.
+	//
+	// The alternative, breaking only the worst joint each pass, reaches the same settled
+	// state and costs a solve per joint to do it — and worse, it invents a sequence
+	// where there is none, reporting three independently overloaded joints as failing
+	// one after another.
+	int32 BreakingPasses = 0;
+
+	for (;;)
+	{
+		SolveLoads();
+
+		const int32 Pass = BreakingPasses + 1;
+		bool bBrokeThisPass = false;
+
+		for (int32 Index = 0; Index < Connections.Num(); ++Index)
+		{
+			// BY REFERENCE, and this is the one line where that matters. FConnection is
+			// copyable and its "has given" latch is a member of the object, so
+			//
+			//     for (FConnection C : Connections)
+			//
+			// — one missing ampersand — would latch every overloaded joint on a
+			// TEMPORARY, leave the real connections intact, and report a structure that
+			// breaks nothing under any load whatsoever.
+			FConnection& Connection = Connections[Index];
+
+			// A joint that has already given is skipped rather than re-evaluated, and
+			// THIS SKIP IS WHAT MAKES THE LOOP TERMINATE AT ALL. ApplyForce answers a
+			// given joint with zero without latching a second time, so calling it looks
+			// harmless — but HasGiven below asks about the JOINT, not about that call,
+			// and it is still true. Every joint broken in an earlier pass would
+			// re-report itself as breaking now: the stamp would be rewritten to the
+			// current pass, bBrokeThisPass would be set every time, and a structure that
+			// settled long ago would cascade for ever. Confirmed by mutation — deleting
+			// these four lines hangs the suite rather than merely failing it.
+			//
+			// The stamp is history; the latch is only the present. Only the transition
+			// from intact to given belongs to a pass.
+			if (Connection.HasGiven())
+			{
+				continue;
+			}
+
+			Connection.ApplyForce(ConnectionForces[Index]);
+
+			if (Connection.HasGiven())
+			{
+				ConnectionBreakPass[Index] = Pass;
+				bBrokeThisPass = true;
+			}
+		}
+
+		// A pass that breaks nothing is the last one, and it is not counted: the loads
+		// it computed are the settled state, over exactly the joints that survived.
+		//
+		// TERMINATION. Joints never heal, so every counted pass permanently removes at
+		// least one connection from the structure and there can be no more of them than
+		// there are connections. (Not to be confused with SolveLoads' own internal
+		// fixpoint, which is a smaller thing nested inside each of these passes.)
+		if (!bBrokeThisPass)
+		{
+			break;
+		}
+
+		++BreakingPasses;
+	}
+
+	return BreakingPasses;
+}
+
+int32 FStructure::GetBreakPass(int32 ConnectionIndex) const
+{
+	// An unknown connection is not a joint that broke, so it fails closed to the same
+	// answer as one that never gave.
+	return ConnectionBreakPass.IsValidIndex(ConnectionIndex)
+		? ConnectionBreakPass[ConnectionIndex]
+		: INDEX_NONE;
 }
 
 FVector FStructure::GetConnectionForce(int32 ConnectionIndex) const

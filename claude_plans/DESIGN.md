@@ -163,6 +163,29 @@ The lesson generalises: **classification was direction-aware from the start, but
 
 > **Known limitation.** Tiering on "substantially vertical" bakes in gravity as the only load direction. Once explosions and kinetic impacts arrive (§6), routing has to generalise to the direction of the applied load rather than assuming down.
 
+### How a structure comes apart
+
+Decided 2026-07-31. This design has said from the start that load "redistributes" and that failure "cascades"; this is the rule that makes those words mean something.
+
+**Break every joint over capacity in the same pass, stamp each with the pass number that broke it, then re-solve and repeat until a pass breaks nothing.**
+
+A pass is a complete solve followed by one sweep. The sweep evaluates every intact joint against the load the solve gave it and breaks all of them that are over their own capacity — not the worst one, all of them. Re-solving then moves their share onto whatever supports are left, which may put a neighbour over capacity and cause the next pass. A pass that breaks nothing is the last one and is not counted; the structure has settled, and nothing standing is above its capacity.
+
+**A joint that has given leaves the support relation entirely.** It is not merely unloaded — it drops out of the two-tier decision, out of the reachability walk, and out of the load paths, exactly as if it had never been built. That is what redistribution *is*: the share moves onto the neighbours rather than evaporating.
+
+The tier is the part that is easy to get half right, and getting it half right produces a plausible-looking wrong answer. A broken joint that stops carrying load but still *wins* the bearing tier leaves the piece above it with an empty support list, so the piece is reported falling and its perfectly good head joint reports zero — self-consistent, and a wall that collapses where it should have leaned. The piece is meant to fall back onto its head joints and load them in shear.
+
+**The pass number is the record of the order.** `FConnection`'s latch says only *whether* a joint gave; the stamp says *when*, and it is never rewritten, because joints never heal. It is what §5's visualisation and the piece-creation timestamps play back — the difference between watching a building come down and being handed a pile of rubble.
+
+Two alternatives were considered and rejected:
+
+- **Strict worst-joint-first** — break only the single most overloaded joint, then re-solve. It reaches the *same settled state* at the cost of one full solve per broken joint, and in exchange it invents a sequence where there is none: three independently overloaded joints on three unconnected piers become passes 1, 2 and 3 despite nothing connecting them and their utilisations being equal to the last bit. A false ordering is worse than no ordering, because the visualisation will show it.
+- **Unordered all-at-once** — break everything over capacity and re-solve, keeping no pass number. Cheapest, same final state, and it throws away the one thing that makes a collapse watchable. Losing the sequence loses the collapse.
+
+**Termination is structural rather than a bound to be tuned.** Joints never heal, so every counted pass permanently removes at least one connection, and there can be no more passes than there are connections. That is a different and much larger bound than the fixpoint *inside* a single solve, which exists because stranding changes who reaches the ground and which runs nested inside each of these passes.
+
+> Solving stays non-destructive. `SolveLoads` computes what a structure carries and breaks nothing however overloaded it is, so anything — a strain readout, a what-if — can ask a structure what it is carrying without damaging it. Breaking is only ever the deliberate step.
+
 ### Shear capacity depends on load (Mohr-Coulomb)
 
 Decided 2026-07-30. A joint's resistance to sliding is **not a fixed number**:

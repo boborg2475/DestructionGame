@@ -50,6 +50,12 @@ struct FStructurePiece
  * joints. A bed joint above a piece bears nothing — that is something resting on
  * it, not something holding it up.
  *
+ * A JOINT THAT HAS GIVEN IS NOT IN THE SUPPORT RELATION AT ALL. It leaves the tier
+ * decision as well as the load path, so a piece whose only bed joint has gone falls
+ * back to its head joints rather than being left with no supports and reported
+ * falling. That is what redistribution IS: the share moves onto the neighbours
+ * instead of evaporating.
+ *
  * Everything else is then computed over that SUPPORT relation rather than over raw
  * connectivity, which is the whole point: routing by graph distance to the ground
  * let a short sideways path exclude a bed joint entirely, so a brick spanning a gap
@@ -77,9 +83,10 @@ struct FStructurePiece
  * x 100 = 2670); applying a factor of 100 a second time is the standard way to be
  * wrong by exactly 100x here.
  *
- * SCOPE. This computes loads. It does not break anything: solving must leave
- * every connection exactly as intact as it found it, so a solve can be re-run,
- * and so breaking stays a separate, deliberate step.
+ * SCOPE. SolveLoads computes loads and does not break anything: solving must leave
+ * every connection exactly as intact as it found it, so a solve can be re-run.
+ * Breaking is a separate, deliberate step — SolveAndBreak — and keeping the two
+ * apart is what lets anything ask what a structure carries without damaging it.
  *
  * A plain struct with no UObject and no world, because the whole point of owning
  * the load maths ourselves (DESIGN.md §3) is that it stays plain arithmetic over
@@ -120,10 +127,36 @@ struct FStructure
 	/**
 	 * Recompute what every connection carries and which pieces reach the ground.
 	 *
+	 * Joints that have already given are skipped entirely: they are out of the
+	 * structure, so they neither bear load nor conduct support to anything.
+	 *
 	 * Non-destructive: no connection may give as a result of solving, however
 	 * overloaded it is.
 	 */
 	void SolveLoads();
+
+	/**
+	 * Solve, break every joint that is over capacity, re-solve so their load moves onto
+	 * the neighbours, and repeat until nothing more gives.
+	 *
+	 * EVERY JOINT OVER CAPACITY GIVES IN THE SAME PASS, and each is stamped with the
+	 * pass number that broke it. Ordering WITHIN a pass is arbitrary and nothing may
+	 * depend on it; ordering BETWEEN passes is real, and is the sequence a collapse is
+	 * played back in.
+	 *
+	 * Terminates because joints never heal: a pass that breaks nothing is the last one,
+	 * so there can be no more passes than there are connections.
+	 *
+	 * @return the number of passes that broke at least one joint; zero for a structure
+	 *         that stands as built.
+	 */
+	int32 SolveAndBreak();
+
+	/**
+	 * Which breaking pass gave this joint, counted from 1, or INDEX_NONE if it is still
+	 * intact — including for an out-of-range handle, which is not a joint that broke.
+	 */
+	int32 GetBreakPass(int32 ConnectionIndex) const;
 
 	/**
 	 * The force this connection carries, in Unreal force units, after SolveLoads.
@@ -189,4 +222,15 @@ private:
 
 	/** What each connection carries, in Unreal force units. */
 	TArray<FVector> ConnectionForces;
+
+	/**
+	 * Which breaking pass gave each connection, counted from 1, or INDEX_NONE.
+	 *
+	 * Grown by AddConnection rather than sized by a solve, and NEVER cleared: joints
+	 * never heal, so a stamp once written is history and re-running a cascade must not
+	 * rewrite it. It is the only record of the ORDER a collapse happened in, which is
+	 * what phase 5's visualisation plays back — the latch on FConnection says only
+	 * whether a joint gave, never when.
+	 */
+	TArray<int32> ConnectionBreakPass;
 };
