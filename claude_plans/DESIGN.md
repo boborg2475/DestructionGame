@@ -118,6 +118,51 @@ Releasing a piece to dynamic was measured too: it settles within 0.018 cm and st
 
 > Also established by the spike: physics simulates normally under `-nullrhi`, so integration tests can run headless; and `SM_Cube` is authored at 100 uu, so brick scale is simply dimension ÷ 100.
 
+### How load reaches the ground
+
+Decided 2026-07-31. DESIGN.md had long said load "redistributes" without ever saying how; this is how.
+
+Pieces carry a mass and a flag for whether they are **grounded**. Load flows downward: a piece transmits its own weight plus everything it receives from above, into the connections that support it. A grounded piece absorbs what reaches it — that is the earth. Where several connections support a piece the load **splits weighted by interface area**, so equal areas split evenly.
+
+**A piece is unsupported when it genuinely has no load path to the ground.** That is what "it fell" means, and it is a statement about the structure rather than about the solver. A brick resting squarely on the earth is standing up no matter what is happening above it, and a piece whose load merely cannot be *computed* is not thereby falling.
+
+There is exactly one deliberate exception, below: pieces caught in a knot the ordering genuinely cannot resolve are reported falling, because the alternative is inventing a division rule this design does not have. It is conservative and it is confined to the knot itself.
+
+Three things follow, and they are separate:
+
+- **Supports that are themselves falling take none of the load.** They are excluded from the split entirely, not merely credited and ignored, so the whole load goes to the supports that actually reach earth. Otherwise the joint that *is* carrying the piece under-reports by the share that evaporated — and a joint at 1.9× utilisation reading 0.95× is a joint that never breaks.
+- **Load that cannot be routed is reported as falling, and only for the pieces actually caught in it.** Mutually supporting pieces with no resolvable order cannot have their load divided without a rule this design does not yet have, so they are conservatively treated as unsupported. Pieces *beneath* such a knot keep their support and carry everything except the unroutable contribution. Letting un-orderability cascade downward strands foundations and is simply wrong.
+- **Stranding travels upward, never downward.** A piece resting only on a knot has no load path to the ground either, so it falls with it. This is the other half of the rule above and follows from the same definition, but both halves need saying: the failure that reached review was the downward direction, and the upward direction is what makes the collapse propagate correctly.
+
+> A cycle is therefore **reported, not solved**. A course spanning a wide gap currently reads as falling rather than arching. §4's shear test will eventually want a real rule for dividing load round a loop.
+
+Because Unreal's gravity is 980 cm/s² and mass is in kilograms, `weight_in_force_units = mass_kg × 980` directly — the 1 N = 100 uu conversion is already inside that number and must not be applied again.
+
+**Support is two-tiered: a piece rests on what bears it, and only hangs from its neighbours if nothing does.**
+
+A connection's interface normal already says which kind of joint it is. A substantially vertical normal is a **bed joint**, which can bear weight in compression; a substantially horizontal one is a **head joint**, which can only carry weight in shear. So a piece's supports are its bed joints below it — and *only* if it has none does it fall back to its head joints.
+
+**The line is at 45°** — a joint counts as bearing when its normal is closer to vertical than horizontal. That is the one angle needing no justification beyond symmetry, and anything else would be a tuning knob pretending to be physics.
+
+Two consequences of the tiering are easy to state wrongly, so state them precisely:
+
+- **A bed joint *above* a piece is not a support.** You do not rest on the thing over your head. It is excluded from the bearing tier entirely rather than bearing in tension.
+- **A head joint is not purely a shear joint.** The head tier spans everything from 45° to 90° off vertical, and the tier is deliberately blind to which side the joint sits on. So a piece hanging from a steeply inclined face above it takes a genuine **tensile** component — at 46° off vertical, most of the load. That is not a modelling error; a brick hanging off an inclined face really is being pulled off it. Because mortar's tensile limit is roughly a hundredth of its compressive one, tension becomes the governing axis and such a joint gives far sooner than a bearing joint carrying the same load would.
+
+  That is a statement about which axis decides, not about any particular load. A single brick on a 100 cm² joint reaches about 0.017 utilisation and breaks nothing at all — the tensile axis governing means it fails first, not that it fails immediately.
+
+The 45° line therefore looks like a cliff and is not one. Just below it a joint above a piece bears nothing and the piece falls; just above it the joint becomes a support that immediately fails in tension, and the piece falls. Same answer, different route.
+
+**Accumulation runs in dependency order, not by distance to the ground.** Distance is not a valid ordering here: a piece spanning a gap and the piece resting on top of it are the same distance from the earth, yet one loads the other. The order has to come from the support relation itself — process a piece only once everything resting on it has been processed.
+
+This tiering is not decoration, and the first attempt without it was wrong in the exact case the game is about. Routing purely by graph distance to the ground let a short sideways path exclude a bed joint entirely: a brick spanning a gap ended up at the same distance as the brick resting on top of it, so the joint between them carried **zero** and the keystone bore none of the wall above. The utilisation on its head joints was 0.010 and stayed there however many courses you piled on. It also made the answer depend on bond pattern — running bond routed 0% onto the spanning brick, stack bond 33% — with no physical reason for either.
+
+The consequence matters for §4's shear test: *"pull bricks from below so a section spans a gap like a keystone; gravity shears it against the vertical joints."* That only fires if the keystone genuinely receives the weight above it, which needs the bed joint onto it to win over a lateral path.
+
+The lesson generalises: **classification was direction-aware from the start, but routing was blind, and routing decides where the load ends up.** Anything added here that reasons about connections without consulting their orientation should be treated as suspect.
+
+> **Known limitation.** Tiering on "substantially vertical" bakes in gravity as the only load direction. Once explosions and kinetic impacts arrive (§6), routing has to generalise to the direction of the applied load rather than assuming down.
+
 ### Shear capacity depends on load (Mohr-Coulomb)
 
 Decided 2026-07-30. A joint's resistance to sliding is **not a fixed number**:
