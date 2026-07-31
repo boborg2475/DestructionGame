@@ -63,14 +63,21 @@ Writing the automation macro: the `EAutomationTestFlags` spelling changed across
 
 ## Specialized agents
 
-Development goes through three local skills in `.claude/skills/`, in this order. Invoke them by name (`/test-expert`, `/dev-expert`, `/review-expert`) rather than working the task directly.
+Development goes through three subagents, in this order. Never work the task directly.
 
-| Skill | Owns | Entry condition |
+| Agent | Owns | Entry condition |
 |---|---|---|
-| [test-expert](.claude/skills/test-expert/SKILL.md) | Test design, assertion choice, confirming red | Start of every behavior, feature, or bug fix |
-| [dev-expert](.claude/skills/dev-expert/SKILL.md) | Implementation and refactoring | A failing test exists and has been run |
-| [review-expert](.claude/skills/review-expert/SKILL.md) | Test quality, TDD compliance, design alignment | Tests are green |
+| [test-expert](.claude/agents/test-expert.md) | Test design, assertion choice, confirming red | Start of every behavior, feature, or bug fix |
+| [dev-expert](.claude/agents/dev-expert.md) | Implementation and refactoring | A failing test exists and has been run |
+| [review-expert](.claude/agents/review-expert.md) | Test quality, TDD compliance, design alignment | Tests are green |
 
-`dev-expert` enforces the TDD gate: it verifies a failing test exists by running it, and if one doesn't, it refuses to write code and hands back to `test-expert` first. `review-expert` verifies independently rather than trusting the handoff, and is expected to send work back.
+They are **subagents, not inline instructions** — each starts with a cold context and reads `CLAUDE.md`, `DESIGN.md` and `CURRENT_STATE.md` itself. That isolation is the point rather than an overhead:
 
-Work isn't done until review has passed.
+- `dev-expert` enforces the TDD gate by **running the test itself**. A gate you enforce on yourself in the same breath as writing the test isn't much of a gate; one enforced by a context that never saw the test being written is.
+- `review-expert` has **no write access at all**. It cannot quietly fix what it should be surfacing.
+
+Invoke them via the Agent tool with `subagent_type`, or through the matching `/test-expert`, `/dev-expert`, `/review-expert` skills, which are thin dispatchers onto the same agents. **The agent definitions in `.claude/agents/` are the single source of truth** — edit behaviour there, never in the skill wrappers.
+
+Pass a subagent anything that exists only in the conversation: the exact red output, values you have already worked out, constraints that must hold. Don't paste the project docs; it reads those.
+
+Expect `dev-expert` to refuse when a test isn't genuinely red, and expect `review-expert` to send work back. Both are the system working. Act on blocking findings, log deferred ones in `CURRENT_STATE.md`, and don't call anything done until review has passed.

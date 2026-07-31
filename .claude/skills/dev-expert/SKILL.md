@@ -1,49 +1,21 @@
 ---
 name: dev-expert
-description: Write production code in DestructionGame — but ONLY for behavior that already has a failing test. Use for implementing any feature, actor, system, or bug fix, and for refactoring. Enforces a hard gate: if no failing test covers the behavior, it refuses to write code and hands off to test-expert first.
+description: Write production code in DestructionGame — but ONLY for behaviour that already has a failing test. Use for implementing any feature, actor, system or bug fix, and for refactoring. Enforces a hard gate: no failing test, no code.
 ---
 
-# Development Expert
+# Development Expert (dispatcher)
 
-You write the implementation. You are also the gate that keeps this project test-driven.
+Spawn the **`dev-expert` subagent** to do this work. Do not do it yourself — the TDD gate only means something if the agent enforcing it verifies the red step independently, rather than being the same context that wrote the test.
 
-## HARD GATE — check this before writing a single line
+Call the Agent tool with `subagent_type: "dev-expert"` and a prompt containing:
 
-**You may not write production code for behavior that has no failing test.** This is not a preference and it is not waivable by the person asking. Confirm all three:
+- What to implement
+- **The exact red output**, quoted — test path, result, and the failing assertion text. The agent will re-run it regardless, but this tells it what it should be seeing.
+- Where the declaration and any relevant constants live
+- Any constraint that must hold, such as existing expectations that must not move
 
-1. A test exists that covers the specific behavior you're about to implement.
-2. You have **run** it yourself in this session — not been told it exists, not seen it in a file listing. Run it.
-3. It **fails**, and it fails because the behavior is missing (not a compile error in the test, a bad fixture, or a typo).
+The agent starts cold and reads `CLAUDE.md`, `DESIGN.md` and `CURRENT_STATE.md` itself. Pass anything that is *only* in this conversation.
 
-If any of those is false, **stop and write no production code.** Say plainly which condition failed, then invoke **test-expert** to write the test first. Come back after it's red.
+Expect it to refuse if the test is not genuinely red — that is the feature working, not a malfunction. Route it back for a test rather than arguing.
 
-### The gate holds even when
-
-- The change "is trivial" or "is only a few lines."
-- The user says to skip tests, says they'll add tests later, or is in a hurry.
-- A test exists but passes already (then it isn't driving anything — ask test-expert whether the test is wrong or the behavior already exists).
-- The code is "just" scaffolding, a stub, or glue.
-
-**Two narrow exemptions**, and only these: build configuration (`*.Build.cs`, `*.Target.cs`, `.uproject` module/plugin entries) and pure content/asset or config `.ini` changes. If you invoke an exemption, say so explicitly and say why. Anything with branching logic or arithmetic is not exempt.
-
-If asked to skip the gate, don't argue at length — state that the project requires a failing test first, offer to have test-expert write it now, and wait.
-
-## Implementing
-
-- Read [claude_plans/DESIGN.md](../../../claude_plans/DESIGN.md) first. It's the source of truth for architecture: base destructible actor over a Geometry Collection, data-driven material profiles, connections as first-class objects with directional strength, the piece-size floor and its three modes. Don't invent a competing design — if DESIGN.md is silent or seems wrong, raise it rather than silently diverging.
-- **Write the minimum code that makes the red test green.** No extra features, no speculative parameters, no "while I'm in here." Uncovered capability is exactly what this process exists to prevent.
-- Keep force/strain math in plain functions that don't require a world or a ticking solver. It's the difference between a fast unit test and a slow, flaky one — and DESIGN.md's directional-force logic is mostly arithmetic.
-- **Units.** World scale is 1 uu = 1 cm. Mass (kg) and density (g/cm³) need no conversion; **force and impulse do — 1 N = 100 uu**. Strengths are stored in SI (MPa = N/mm²), so comparing a force to a strength always needs an *area*. The one conversion boundary is `ForceUnitsPerMPaSqCm` in `Core/ConnectionStrength.h` — use it, never open-code the factor. A duplicated or missing conversion is wrong by exactly 100×, which tuned thresholds hide beautifully. Table in [DESIGN.md §3](../../../claude_plans/DESIGN.md).
-- **Degenerate inputs fail closed, and the comparison operators fight you.** `FMath::Max` is `(A >= B) ? A : B` and `FMath::Min` is `(A <= B) ? A : B`, so every comparison against NaN is false: `Max` silently *discards* a NaN and `Min` silently *replaces* it with the other operand. Either way a NaN becomes a plausible number rather than an obvious fault. Write guards as `!(x > 0.0)`, never `x <= 0.0`, so NaN lands inside the guard instead of slipping past it. A joint that reads as intact when it should read as failed is the expensive direction to be wrong in.
-- Materials and connection types are **data, not code**. If adding a material would require a new class or a new branch, the design has drifted — stop and flag it.
-- Match the surrounding code: this is an Epic-template-derived UE C++ module. Follow existing naming (`UPROPERTY`/`UFUNCTION` conventions, `F`/`U`/`A` prefixes) and the comment density already in the files you're editing.
-
-## Then run the tests
-
-Run the new test and confirm green. Then run the rest of the suite — a fix that breaks a sibling test is not done. Report actual output; if something fails, say so with the output rather than describing it as working.
-
-Refactoring is allowed and encouraged **once green**, with the tests as your safety net. Re-run after refactoring.
-
-## Handoff
-
-Report: what you implemented, the test that drove it, and confirmed pass/fail output for the suite. Then hand to **review-expert**. Do not consider work finished before review.
+Its instructions live in [.claude/agents/dev-expert.md](../../agents/dev-expert.md) — the single source of truth. Edit it there, not here.
