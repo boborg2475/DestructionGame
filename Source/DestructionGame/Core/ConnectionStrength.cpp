@@ -31,6 +31,17 @@ namespace DestructionForce
 		 */
 		double AxisUtilisation(double Stress, double CapacityMPa)
 		{
+			// Garbage in still has to fail closed. A NaN stress is worse than it
+			// looks: FMath::Max is (A >= B) ? A : B, and every comparison against
+			// NaN is false, so Max3 quietly discards it and returns whichever
+			// other axis happened to be lowest. The joint then reports a confident
+			// zero utilisation for an input nobody can interpret, which nothing
+			// downstream could detect. An infinite stress is genuinely failed.
+			if (!FMath::IsFinite(Stress))
+			{
+				return TNumericLimits<double>::Max();
+			}
+
 			if (CapacityMPa > 0.0)
 			{
 				return Stress / CapacityMPa;
@@ -45,6 +56,16 @@ namespace DestructionForce
 		const FConnectionStrength& Strength,
 		double InterfaceAreaSqCm)
 	{
+		// Fail closed on a joint that has no interface to carry anything across.
+		// Dividing by a zero area produces NaN, and NaN compares false against
+		// everything — including the > 1 test for failure — so the joint would
+		// report itself intact. Written as !(> 0) rather than <= 0 so that a NaN
+		// area is caught by the same branch instead of slipping past it.
+		if (!(InterfaceAreaSqCm > 0.0))
+		{
+			return TNumericLimits<double>::Max();
+		}
+
 		const double CompressiveStress = StressMPa(Load.Compression, InterfaceAreaSqCm);
 		const double TensileStress = StressMPa(Load.Tension, InterfaceAreaSqCm);
 		const double ShearStress = StressMPa(Load.Shear, InterfaceAreaSqCm);

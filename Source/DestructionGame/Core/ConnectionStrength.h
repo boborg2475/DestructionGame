@@ -80,7 +80,19 @@ namespace DestructionForce
 	 * @param Load             Force already resolved into compression, tension and
 	 *                         shear by ClassifyForce. Unreal force units.
 	 * @param Strength         The connection's directional strengths, in MPa.
+	 * DEGENERATE INPUT — fails closed, deliberately.
+	 *
+	 * An interface area of zero or less is not a joint at all, so the result reads
+	 * as failed rather than intact. The alternative is worse than it looks: dividing
+	 * by a zero area yields NaN, NaN compares false against everything including
+	 * `> 1.0`, and the joint would silently report itself as fine. Uninitialised
+	 * areas would then hide until a structure mysteriously refused to collapse.
+	 * Breaking loudly and immediately is the cheaper failure.
+	 *
+	 * The return value is guaranteed never NaN and always finite, for any input.
+	 *
 	 * @param InterfaceAreaSqCm  Area of the face the two pieces meet across, cm2.
+	 *                           Zero or negative is treated as a failed joint.
 	 * @return 0 when unloaded, 1 exactly at the limit, above 1 when the joint gives.
 	 */
 	double ComputeUtilisation(

@@ -90,6 +90,22 @@ namespace
 		return MPa * 100.0 * 100.0 * UnitAreaSqCm;
 	}
 
+	/**
+	 * Built at runtime through volatile locals so the optimiser cannot fold them
+	 * into constants, which would let the very values under test disappear.
+	 */
+	double MakeNaN()
+	{
+		volatile double Zero = 0.0;
+		return Zero / Zero;
+	}
+
+	double MakeInfinity()
+	{
+		volatile double Zero = 0.0;
+		return 1.0 / Zero;
+	}
+
 	FConnectionLoad CompressionOf(double Force) { FConnectionLoad L; L.Compression = Force; return L; }
 	FConnectionLoad TensionOf(double Force) { FConnectionLoad L; L.Tension = Force; return L; }
 	FConnectionLoad ShearOf(double Force) { FConnectionLoad L; L.Shear = Force; return L; }
@@ -352,6 +368,127 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 	TestTrue(
 		FString::Printf(TEXT("unloaded dry stone should give under any shear, got %f"), UnloadedDryStone),
 		UnloadedDryStone > 1.0);
+
+	return true;
+}
+
+/**
+ * Degenerate inputs must never produce NaN, never produce infinity, and never
+ * let a broken joint pass for an intact one.
+ *
+ * This is a property test, not an example test: it sweeps every combination of
+ * interface area, load shape and material profile and asserts invariants that
+ * must hold across all of them, rather than checking particular numbers. The
+ * numbers are covered by Utilisation and FrictionCoupling above.
+ *
+ * The invariant that matters is the direction of failure. NaN compares false
+ * against everything, so `Utilisation > 1.0` on a NaN reports the joint as
+ * INTACT — and a structure quietly refusing to collapse is far harder to
+ * diagnose than one that falls apart the instant something is uninitialised.
+ * These assertions exist to keep that failure mode from coming back.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FConnectionStrengthDegenerateInputTest,
+	"DestructionGame.Core.ConnectionStrength.DegenerateInputs",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
+{
+	struct FNamedLoad { const TCHAR* Description; FConnectionLoad Load; };
+	struct FNamedProfile { const TCHAR* Description; FConnectionStrength Strength; };
+	struct FNamedArea { const TCHAR* Description; double AreaSqCm; bool bIsValidJoint; };
+
+	const TArray<FNamedLoad> Loads = {
+		{ TEXT("unloaded"), FConnectionLoad() },
+		{ TEXT("compression only"), CompressionOf(ForceForMPa(1.0)) },
+		{ TEXT("shear only"), ShearOf(ForceForMPa(1.0)) },
+		{ TEXT("tension only"), TensionOf(ForceForMPa(0.05)) },
+		{
+			TEXT("compression and shear together"),
+			[]{
+				FConnectionLoad L;
+				L.Compression = ForceForMPa(1.0);
+				L.Shear = ForceForMPa(0.5);
+				return L;
+			}()
+		},
+
+		// Garbage arriving from upstream. Chaos can produce a NaN velocity in a
+		// pathological contact, which would reach here as a NaN force. Left
+		// unguarded that poisons the result and the joint reports itself INTACT
+		// during a physics blowup — the one moment it should certainly be giving.
+		// An infinite load is the same story with a different value.
+		{
+			TEXT("a NaN load from upstream"),
+			[]{
+				FConnectionLoad L;
+				L.Compression = MakeNaN();
+				return L;
+			}()
+		},
+		{
+			TEXT("an infinite load from upstream"),
+			[]{
+				FConnectionLoad L;
+				L.Shear = MakeInfinity();
+				return L;
+			}()
+		},
+	};
+
+	// Dry stone is the important one here: real zeroes in two of its three
+	// strengths, so it reaches the degenerate paths without anything being
+	// misconfigured.
+	const TArray<FNamedProfile> Profiles = {
+		{ TEXT("concrete (uncoupled)"), ConcreteUncoupled },
+		{ TEXT("mortar"), Mortar },
+		{ TEXT("dry stone, zero cohesion and zero tensile strength"), DryStone },
+	};
+
+	const TArray<FNamedArea> Areas = {
+		{ TEXT("zero area"), 0.0, false },
+		{ TEXT("negative area"), -UnitAreaSqCm, false },
+		{ TEXT("valid area"), UnitAreaSqCm, true },
+	};
+
+	for (const FNamedArea& Area : Areas)
+	{
+		for (const FNamedProfile& Profile : Profiles)
+		{
+			for (const FNamedLoad& Load : Loads)
+			{
+				const double Utilisation =
+					DestructionForce::ComputeUtilisation(Load.Load, Profile.Strength, Area.AreaSqCm);
+
+				const FString Context = FString::Printf(TEXT("%s / %s / %s"),
+					Area.Description, Profile.Description, Load.Description);
+
+				TestFalse(
+					FString::Printf(TEXT("%s: utilisation must never be NaN, got %f"), *Context, Utilisation),
+					FMath::IsNaN(Utilisation));
+
+				TestTrue(
+					FString::Printf(TEXT("%s: utilisation must be finite, got %f"), *Context, Utilisation),
+					FMath::IsFinite(Utilisation));
+
+				const bool bLoadIsWellFormed =
+					FMath::IsFinite(Load.Load.Compression)
+					&& FMath::IsFinite(Load.Load.Tension)
+					&& FMath::IsFinite(Load.Load.Shear);
+
+				if (!Area.bIsValidJoint || !bLoadIsWellFormed)
+				{
+					// Fail closed. A joint with no interface, or one handed a load
+					// nobody can make sense of, must not report itself intact —
+					// that is the single answer that must never come back.
+					TestTrue(
+						FString::Printf(TEXT("%s: a degenerate joint must read as failed, got %f"),
+							*Context, Utilisation),
+						Utilisation > 1.0);
+				}
+			}
+		}
+	}
 
 	return true;
 }
