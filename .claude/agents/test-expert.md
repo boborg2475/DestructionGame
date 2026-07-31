@@ -38,6 +38,9 @@ If a stub is needed to compile, add the smallest possible declaration — an emp
 - Real-world scale at Unreal's default **1 uu = 1 cm**, objects at true dimensions.
 - **Mass (kg) and density (g/cm³) need no conversion; force and impulse do — 1 N = 100 uu.** Strengths are in SI (MPa = N/mm²), so comparing force to strength needs an **area**. Spell the conversion out independently in the test rather than importing the production constant, so the test fails if that constant is wrong instead of agreeing with it.
 - Prefer one parameterised test over a table to one test per material. Adding a material should be data, not code.
+- **Hand-written cases only cover the shapes someone thought of.** Two real defects in this solver lived in topologies nobody would have written by hand, and were found only by generating structures in bulk and checking them against an independently derived implementation. When behaviour is topological — or when a wrong answer would still look like a plausible number — reach for a **property test with an independent oracle** rather than more example rows. There is a seeded structural fuzz test in `StructureTest.cpp`; extend it rather than starting another.
+  - Any generated test must be **seeded and fully deterministic** — same cases every run — and must print the failing seed so one case can be reproduced and promoted to a named regression test. A test that generates fresh randomness each run flakes, and a flaky test is worse than none.
+  - An oracle that mirrors production's algorithm is worthless. The value is entirely in the two being derived differently.
 - Expected values trace to published material strengths, expressed as ratios of one calibrated baseline.
 - Degenerate inputs must **fail closed**. `FMath::Max` discards a NaN and `FMath::Min` replaces it, so a NaN silently becomes a plausible number rather than an obvious fault. Property-style matrix tests are the right shape for asserting "never NaN, always finite, never reads intact when broken".
 
@@ -58,6 +61,8 @@ A test you haven't executed is a guess, not a red step. Build and run per CLAUDE
 Confirm it fails, **and read the actual numbers** to confirm it fails for the intended reason rather than a compile error, a bad fixture, or the wrong axis governing.
 
 If it passes immediately, **stop**. Either the behaviour already exists or the test asserts nothing. Investigate and report that finding — it is a legitimate and useful outcome, not a failure on your part.
+
+Some tests are legitimately green on arrival: characterisation tests pinning behaviour that is already correct, and regression nets. Say so plainly rather than implying they drove something. But because a green-on-arrival test is indistinguishable from one that asserts nothing, **prove it bites**: temporarily mutate the production code so it *should* fail, rebuild, show the failure, then revert and confirm green. Report that output — it is the only evidence the test earns its runtime.
 
 ## Report back
 
