@@ -31,23 +31,32 @@ Three cooperating pieces sit at the center of the design:
 The directional layer is a pipeline of small, world-free steps. Each stage is plain arithmetic on plain structs — no actor, no world, no ticking solver — which is what keeps it cheap to test and cheap to reason about:
 
 ```
-world-space force + interface normal
+world-space force
         │
-        │  ClassifyForce()                  Core/ConnectionLoad
-        ▼
-FConnectionLoad { Compression, Tension, Shear }
+        │  FConnection::ApplyForce()        Core/Connection
+        │  owns: interface normal, interface area, strength profile
         │
-        │  ComputeUtilisation()             Core/ConnectionStrength
-        │  + FConnectionStrength (MPa)
-        │  + interface area
+        │     ├─ ClassifyForce()            Core/ConnectionLoad
+        │     │      ▼
+        │     │  FConnectionLoad { Compression, Tension, Shear }
+        │     │
+        │     └─ ComputeUtilisation()       Core/ConnectionStrength
         ▼
 utilisation ratio   (0 = unloaded, 1 = at the limit, >1 = the joint gives)
 ```
+
+`FConnection` is the entry point: a caller supplies only a force, because the joint already knows its own orientation, area and material. The two stages beneath it stay separately testable, but nothing outside should be calling them directly — see the caller obligation below.
 
 Two properties of that shape are deliberate:
 
 - **A ratio, not a boolean.** The same number drives the break decision *and* the on-screen strain readouts, so what the player sees is the quantity the simulation actually used.
 - **Stress, not force.** Strengths are in megapascals, so the comparison needs an interface area. The same force through half the area is twice as punishing; a force-only model would let thin joints survive loads that should part them.
+
+**Giving is irreversible, and a given joint carries exactly nothing.** Once a connection's utilisation passes 1 it has given, and it stays given however the load changes afterwards. Mortar does not re-bond. A joint that healed itself when the load dropped would make collapse non-monotonic — a wall could shed a joint, redistribute, recover it, and stand back up mid-fall. The zero is equally load-bearing: redistribution works by pushing load onto neighbours, which is only correct if the broken joint is genuinely out of the structure.
+
+One asymmetry is deliberate: the *breaking* call reports the ratio that broke it, above 1, and only subsequent calls return zero. That distinguishes "gave, at this strain" from "gave silently", and it is the number a strain readout should show at the moment of failure.
+
+**Caller obligation.** A degenerate interface normal — zero length, or NaN — makes `ClassifyForce` return a zero load. That is right in isolation, but downstream a zero load is indistinguishable from "unloaded and perfectly healthy", so composing the two stages naively produces a joint with no interface plane reporting itself as fine. `FConnection` closes this by substituting a zero interface area, routing the case through the area guard that already fails closed. **Anything that calls `ClassifyForce` and `ComputeUtilisation` directly rather than going through `FConnection` re-opens the hole and must make the same check.**
 
 Everything above sits *in front of* Chaos. Chaos still owns the rigid bodies, the contacts and the debris — this layer decides when a connection has had enough.
 
