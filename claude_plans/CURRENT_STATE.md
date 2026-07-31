@@ -36,6 +36,10 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 
 **Automation runs exit 0 even when tests fail**, and results never reach stdout. Always read `Saved/Logs/DestructionGame.log`. See [CLAUDE.md](../CLAUDE.md).
 
+**An invariant asserted over fixtures that all share a hidden property is not an invariant.** "A gravity load path never pulls a joint open" was green across the whole suite — because every interface normal in every fixture was axis-aligned. Tilt one and 337 of 6,000 fuzzed structures produce tension. The same shape caught the stranding bug: ground-reaction conservation could not see it, because over-stranding removes a piece's weight from *both* sides of the equation. When an invariant has never failed, check whether it *can*.
+
+**Reviews cost 7–19 minutes and have earned it, but scale the depth to the risk.** Every round on the load solver found a real defect, and the two that mattered most were found by transcribing the solver and fuzzing it against an independent oracle rather than by reading. That is worth it for topological code with silent failure modes. It is not worth it for a table of material constants. Don't ask a review to re-verify findings already closed in an earlier round — that was 20–30% of the cost and proved nothing new.
+
 **1 newton = 100 Unreal force units.** World scale is 1 uu = 1 cm, so force and impulse need a ×100 conversion while mass (kg) and density (g/cm³) need none. Strengths are stored in SI and converted at one named boundary. Full table in [DESIGN.md §3](DESIGN.md).
 
 **The NaN guards and the shear cap are coupled — don't remove one.** `FMath::Min` is `(A <= B) ? A : B`, so `Min(NaN, cap)` returns the **cap**: a NaN shear capacity silently becomes a plausible number. The result still fails closed only because the compression axis is separately guarded by `IsFinite` and returns `Max()`, which then dominates. Drop that guard and the cap will launder NaN into a believable value. Untested edge: a cap set *below* cohesion silently gives a joint less strength than its stated cohesion.
@@ -55,6 +59,17 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 The agreed next milestone. **Two bricks and one joint first** — visible, breakable, exercising the whole pipeline end to end — then scale to a wall, so later problems are wall logic rather than plumbing.
 
 Architecture settled by spike (DESIGN.md §3): pieces are **kinematic while intact**, we compute connection loads ourselves, and a piece switches to dynamic when the connection holding it gives. **No Geometry Collections** — those are for pieces fracturing into smaller pieces, which the MVP does not need. That drops the heaviest dependency.
+
+**Agreed and not yet started: the profile library.** Decided 2026-07-31. Connection and material profiles currently exist only as constants declared inline in test files, duplicated across `ConnectionStrengthTest.cpp`, `ConnectionTest.cpp` and `StructureTest.cpp` — retune mortar in one and the others silently keep the old value while everything stays green. Pull them into `Core/Profiles/` as shared, real-world-calibrated data.
+
+- **Connection profiles**: `GeneralPurposeMortar`, `LimeMortar`, `DryStone`, `Nail`, `Screw`, `Bolt`, plus `Unbreakable` clearly marked a test fixture so it can never reach a scenario. Mechanical fasteners take μ = 0, which reduces them to independent axes — the same formula, no branch.
+- **Material profiles** are new: **density** (needed by phase 3's brick actor to derive mass rather than hand-setting 2.72 kg everywhere), the material's own directional strengths (the "brick crushes" failure mode), and a **bond factor** field declared but unused.
+- This also closes DESIGN.md §6's "pull real material strength numbers (MPa)" thread and settles the calibration baseline it asks for.
+- Once materials own density, `FStructurePiece` should take a material rather than a bare mass — a small phase-3 change, flagged now.
+
+**Deferred with it: connection-to-material pairing.** A joint's real strength depends on the pair, not just the connection — a nail holds far better in oak than in pine, and mortar bonds to porous brick but not to a sealed face. The answer is **not** an N×M×N table but weakest-link: a joint fails when *either* the connection gives, *or* the bond to a face peels, *or* the material itself fails, so effective strength is the minimum of those, with bond approximated as `connection_strength × material_bond_factor`. DESIGN.md §2 already gestures at this ("the mortar gives before the brick; the nail goes before the timber") without stating it as the rule. **Build it when a second material exists to prove it** — that is DESIGN.md §4's "add wood once, only to prove the code genuinely reads the profile". Written earlier, no test could tell it from a constant.
+
+---
 
 Ordered so the world-free work, which is most of it, comes first:
 
