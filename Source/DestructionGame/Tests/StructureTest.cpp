@@ -25,9 +25,9 @@ namespace StructureTestSupport
 	 * THE UNIT TRAP, stated once. Mass is already in kilograms and length is
 	 * already in centimetres, so MassKg * 980 IS a force in Unreal units — the
 	 * 1 N = 100 uu conversion is baked into the 980 rather than applied on top of
-	 * it. Cross-check: 2.72 kg x 9.81 = 26.7 N, x 100 uu/N = 2670, and
-	 * 2.72 x 980 = 2666. Those agree. Multiplying by 100 a second time here would
-	 * be wrong by exactly 100x, which tuned thresholds hide beautifully.
+	 * it. Cross-check: 2.7216 kg x 9.81 = 26.7 N, x 100 uu/N = 2670, and
+	 * 2.7216 x 980 = 2667.2. Those agree. Multiplying by 100 a second time here
+	 * would be wrong by exactly 100x, which tuned thresholds hide beautifully.
 	 */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
@@ -37,20 +37,46 @@ namespace StructureTestSupport
 	}
 
 	/**
-	 * A standard clay brick: 215 x 102.5 x 65 mm at ~1.9 g/cm3 is 1432 cm3 and
-	 * 2.72 kg. Real dimensions at real density, per DESIGN.md §3.
+	 * A standard UK metric brick, 215 x 102.5 x 65 mm, so 1432.44 cm3.
 	 *
-	 * STILL HAND-SET, DELIBERATELY, and no longer unchecked: ClayBrick in the
-	 * material library now owns the density, and Profiles.MaterialInvariants derives
-	 * this mass from it and fails if the two drift apart. Deriving it HERE would only
-	 * move the hand-setting, since FStructurePiece still takes a bare mass — making a
-	 * piece take a material instead is the phase 3 change flagged in
-	 * CURRENT_STATE.md, and that is where this literal goes away for real.
+	 * Dimensions live in the test rather than in the material library because they
+	 * are the brick ACTOR's business (phase 3); a material only owns density.
 	 */
-	constexpr double BrickMassKg = 2.72;
+	constexpr double BrickVolumeCubicCm = 21.5 * 10.25 * 6.5;
 
-	/** 2666 uu. The number the whole load model is checked against. */
-	constexpr double BrickWeightUU = WeightOf(BrickMassKg);
+	/**
+	 * A standard clay brick, DERIVED FROM THE PROFILE rather than hand-set:
+	 * 1432.44 cm3 at 1.9 g/cm3 is 2.7216 kg. Real dimensions at real density, per
+	 * DESIGN.md §3.
+	 *
+	 * THIS DELIBERATELY BREAKS THE FILE'S OWN RULE that production values are
+	 * respelled rather than imported, and the exception is narrow enough to state
+	 * exactly. Importing a value normally makes a test agree with a wrong value
+	 * instead of failing on it — which is why GravityCmPerSecondSquared and
+	 * ForceForMPa below are still spelled out independently. It is safe HERE because
+	 * Profiles.MaterialInvariants already anchors density x volume against what a
+	 * real brick weighs in the hand, so there is exactly ONE external anchor and this
+	 * is downstream of it. A hand-set literal is a SECOND place to be wrong, and it
+	 * was: the 2.72 that used to sit here had drifted 1.6 g from the density the
+	 * library states, so every load expectation in this file was 1.6 uu light.
+	 *
+	 * Every expectation here is written as a multiple of BrickWeightUU, so they all
+	 * follow the derivation and none of them needed retuning.
+	 *
+	 * SAFE AT NAMESPACE SCOPE, and the reason is worth keeping: ClayBrick is an
+	 * aggregate of literals, so it is CONSTANT-initialised and ready before any
+	 * dynamic initialisation in any translation unit. Make it a computed ratio of
+	 * StructuralConcrete and it becomes dynamically initialised, static
+	 * initialisation order across translation units is unspecified, and this could
+	 * silently read ZERO — at which point every force expectation in the file becomes
+	 * zero as well and the whole thing passes while asserting nothing. LoadPath opens
+	 * with a guard against exactly that; it is not a second claim about what a brick
+	 * weighs, only that the derivation ran at all.
+	 */
+	const double BrickMassKg = ClayBrick.DensityGramsPerCubicCm * BrickVolumeCubicCm / 1000.0;
+
+	/** 2667.2 uu. The number the whole load model is checked against. */
+	const double BrickWeightUU = WeightOf(BrickMassKg);
 
 	/** A 10 cm x 10 cm interface, kept round so the area split stays checkable by eye. */
 	constexpr double JointAreaSqCm = 100.0;
@@ -596,6 +622,18 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 	using namespace StructureTestSupport;
 
 	/*
+	 * THE DERIVATION RAN. BrickMassKg is computed at namespace scope from ClayBrick,
+	 * which is safe only while ClayBrick is constant-initialised — see its comment. If
+	 * that ever stops being true this reads zero, and a zero brick makes every force
+	 * expectation in the file zero as well, so the suite would go green while asserting
+	 * nothing. Not a second anchor on what a brick weighs; Profiles.MaterialInvariants
+	 * owns that and this makes no claim about the value.
+	 */
+	TestTrue(
+		FString::Printf(TEXT("the brick mass must derive to something positive, got %f kg"), BrickMassKg),
+		BrickMassKg > 0.0);
+
+	/*
 	 * FSolveCase and CheckSolveCase, shared with the stranding tests. These cases used
 	 * to carry a structurally identical local type and a near-identical loop; folding
 	 * them buys the GROUND-REACTION CONSERVATION cross-check for free, which is a real
@@ -616,7 +654,7 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 
 		/*
 		 * One brick on one grounded brick: the joint carries exactly one brick.
-		 * 2.72 kg x 980 = 2666 uu, DESIGN.md §3's worked figure.
+		 * 2.7216 kg x 980 = 2667.2 uu, DESIGN.md §3's worked figure.
 		 */
 		{
 			TEXT("a piece resting on a grounded piece loads the joint with its own weight"),
@@ -1395,23 +1433,23 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 	 * measured against a DIFFERENT STRENGTH depending on which side of it the face
 	 * sits, and for mortar those strengths are two orders of magnitude apart.
 	 *
-	 * One 2.72 kg brick on 100 cm2 of mortar through a face at 50 degrees. All three
+	 * One 2.7216 kg brick on 100 cm2 of mortar through a face at 50 degrees. All three
 	 * axes worked out, because ComputeUtilisation returns the WORST and a test aimed at
 	 * tension that is silently governed by shear proves nothing:
 	 *
-	 *   normal component  W cos50 = 1713.41 uu -> 0.00171341 MPa
-	 *   shear component   W sin50 = 2041.97 uu -> 0.00204197 MPa
+	 *   normal component  W cos50 = 1714.44 uu -> 0.00171444 MPa
+	 *   shear component   W sin50 = 2043.20 uu -> 0.00204320 MPa
 	 *
 	 *   FACE BENEATH (compression)
-	 *     compression 0.00171341 / 10.0      = 0.000171   <- not it
-	 *     shear       0.00204197 / (0.2 + 0.6 x 0.00171341 = 0.201028)
-	 *                                        = 0.010158   <- GOVERNS
+	 *     compression 0.00171444 / 10.0      = 0.000171   <- not it
+	 *     shear       0.00204320 / (0.2 + 0.6 x 0.00171444 = 0.201029)
+	 *                                        = 0.010164   <- GOVERNS
 	 *     tension     0 / 0.1                = 0
 	 *
 	 *   FACE ABOVE (tension)
 	 *     compression 0                      = 0
-	 *     shear       0.00204197 / 0.2       = 0.010210   <- not it, and only just
-	 *     tension     0.00171341 / 0.1       = 0.017134   <- GOVERNS
+	 *     shear       0.00204320 / 0.2       = 0.010216   <- not it, and only just
+	 *     tension     0.00171444 / 0.1       = 0.017144   <- GOVERNS
 	 *
 	 * The shear figures are within 0.5% of each other, so a test asserting only "the
 	 * hanging joint is worse off" could pass on the shear axis alone. Each utilisation
@@ -2769,7 +2807,7 @@ bool FStructureStrandingIsLocalTest::RunTest(const FString& Parameters)
  *      =====
  *
  *   ITERATING     supported = [T,F,F,F]   forces = [0, 0, 0]
- *   SINGLE-PASS   supported = [T,F,F,T]   forces = [0, 0, -2665.6]
+ *   SINGLE-PASS   supported = [T,F,F,T]   forces = [0, 0, -2667.2]
  *
  * The single-pass answer is self-contradictory in exactly the way the whole stranding
  * rule exists to prevent: it calls B held up while writing B's weight onto a joint
@@ -2779,7 +2817,7 @@ bool FStructureStrandingIsLocalTest::RunTest(const FString& Parameters)
  *
  * BOTH CASES NOW DISCRIMINATE THE LOOP, and both pass against the solver as built.
  * The numbers above are case 1's: delete the fixpoint and it reports B supported with
- * -2665.6 on the Y-B joint whose far end it simultaneously calls falling. Case 2 adds
+ * -2667.2 on the Y-B joint whose far end it simultaneously calls falling. Case 2 adds
  * the second claim — Z, which is beneath the knot rather than in it, must KEEP its
  * support and its weight on the pier joint while B loses both — so it fails a
  * single-pass solver and an over-eager stranding rule in opposite directions.

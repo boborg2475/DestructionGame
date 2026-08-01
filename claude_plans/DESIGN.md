@@ -20,7 +20,9 @@ This document collects the design decisions ("checkpoints") made during planning
 
 Three cooperating pieces sit at the center of the design:
 
-1. **Base destructible actor** — a C++ actor that wraps a Chaos **Geometry Collection** component and holds the shared logic for taking damage, applying impulses, and deciding when something breaks. Every wall, floor, and column inherits from it. Key properties: a **damage threshold** (how much force before it breaks) and a **connection strength** (how stubbornly pieces cling together — this is what makes a structure topple believably instead of crumbling in place). It exposes a function like *apply damage at a location* that takes a hit point and a force and lets Chaos decide which chunks come loose.
+1. **Base destructible actor** — a C++ actor holding the shared logic for taking damage, applying impulses, and reporting hits to the structural layer. Every wall, floor, and column inherits from it. Key properties: a **damage threshold** (how much force before it breaks) and a **connection strength** (how stubbornly pieces cling together — this is what makes a structure topple believably instead of crumbling in place). It exposes a function like *apply damage at a location* that takes a hit point and a force.
+
+   **Superseded in one respect *(2026-08-01)*:** this originally wrapped a Chaos **Geometry Collection** component and let Chaos decide which chunks come loose. It does not. A spike settled that pieces are **kinematic while intact**, that we compute the loads and decide the breaks ourselves in SI units, and that Chaos takes over only once a piece is released and is falling. The reason is directional strength — see "Geometry collections: complementary, not an alternative" in §3. Geometry collections remain the right tool for a *single piece fracturing into fragments*, which is a later, additive concern.
 
 2. **Material profile system** — each destructible carries a **data asset** describing its material (wood, concrete, stone, glass, etc.). This drives fracture pattern, damage thresholds, and break behavior. Materials are **data, not code**.
 
@@ -93,7 +95,7 @@ Force is classified by its direction **relative to each connection's interface**
 ### Structural integrity under gravity
 - Each piece has real **mass** based on its size and material density (a brick weighs like a brick).
 - Pieces are held by connections; each connection bears a limited load.
-- Remove a piece and its load **redistributes** to its neighbors. If they can carry it, the structure stands. Keep removing pieces and eventually a connection overloads, snaps, and the failure **cascades** — collapse under the structure's own weight (Chaos strain-based damage).
+- Remove a piece and its load **redistributes** to its neighbors. If they can carry it, the structure stands. Keep removing pieces and eventually a connection overloads, snaps, and the failure **cascades** — collapse under the structure's own weight. **We compute this ourselves** — see "How a structure comes apart" below. Chaos is not consulted about whether a joint gives; it takes over once a piece is released and is falling.
 
 ### How a standing structure holds itself up
 
@@ -177,6 +179,8 @@ The tier is the part that is easy to get half right, and getting it half right p
 
 **The pass number is the record of the order.** `FConnection`'s latch says only *whether* a joint gave; the stamp says *when*, and it is never rewritten, because joints never heal. It is what §5's visualisation and the piece-creation timestamps play back — the difference between watching a building come down and being handed a pile of rubble.
 
+**Pass numbers belong to the structure, not to the cascade that wrote them.** A structure's collapse is one sequence however many times it is cascaded, so a later cascade continues the numbering from the highest number already stamped rather than starting again at 1. This only becomes observable once **removal** is in the loop — a second cascade on a settled structure breaks nothing, so before removal existed no two cascades could both stamp — and removal is the player's move, so it is the normal case rather than a corner of it. Numbering that restarted would put the joint that failed first and the joint that failed after a player pulled a brick out on the *same* number, and consumers read a shared number as "these gave simultaneously": the collapse would replay in the wrong order with nothing reading as inconsistent anywhere. **How many passes a given cascade ran is a separate question** — useful to whoever asked for it, to know whether their removal did anything — and the two must not be conflated.
+
 Two alternatives were considered and rejected:
 
 - **Strict worst-joint-first** — break only the single most overloaded joint, then re-solve. It reaches the *same settled state* at the cost of one full solve per broken joint, and in exchange it invents a sequence where there is none: three independently overloaded joints on three unconnected piers become passes 1, 2 and 3 despite nothing connecting them and their utilisations being equal to the last bit. A false ordering is worse than no ordering, because the visualisation will show it.
@@ -185,6 +189,26 @@ Two alternatives were considered and rejected:
 **Termination is structural rather than a bound to be tuned.** Joints never heal, so every counted pass permanently removes at least one connection, and there can be no more passes than there are connections. That is a different and much larger bound than the fixpoint *inside* a single solve, which exists because stranding changes who reaches the ground and which runs nested inside each of these passes.
 
 > Solving stays non-destructive. `SolveLoads` computes what a structure carries and breaks nothing however overloaded it is, so anything — a strain readout, a what-if — can ask a structure what it is carrying without damaging it. Breaking is only ever the deliberate step.
+
+### Removing a piece takes it out of the graph
+
+Decided 2026-08-01. Removal is the player's move: the MVP brings a wall down by **pulling pieces out of it** and by **loading it from above**, both of which the existing model already supports, while arbitrary-direction force is deferred because the support routing is gravity-specific. That decision and its reasoning live in [CURRENT_STATE.md](CURRENT_STATE.md) under the force-delivery entry. What removal means *to the load model* belongs here, beside how load reaches the ground, rather than in the code that happens to implement it.
+
+**A removed piece is not in the structure at all.** Every joint that held it goes with it, so it supports nothing and nothing supports it. If it was **grounded it stops being ground**: it is no longer resting on the earth, and it no longer conducts the earth to anything above it. That last clause is the one that has to be said out loud, because a grounded piece is a root of the reachability walk on its own account rather than through any joint, so removal expressed purely as "take away its joints" leaves it reporting itself held up by an earth it is not touching.
+
+**Removal is not failure, and the two must stay distinguishable forever.** A joint that went with a removed piece never snapped — it was deleted — so it carries no pass number and never appears in the collapse sequence §5's visualisation plays back. Whether a joint is still in the structure and which pass broke it are different questions, and the pair answers all three states with no sentinel value:
+
+| | still in the structure | broke in pass |
+|---|---|---|
+| intact | yes | — |
+| went with a removed piece | no | — |
+| failed under load in pass N | no | N ≥ 1 |
+
+A sentinel for the middle row was considered and rejected: it would cost every consumer of the sequence a special case, in exchange for a distinction the pair already draws.
+
+**What follows is an ordinary cascade.** Removal itself breaks nothing. It changes the graph, the next solve re-routes what the removed piece was carrying onto whatever is left, and if that puts a joint over capacity the rule above takes over unchanged. So "pull a brick and the wall comes down" needs no separate mechanism — it is redistribution and cascade, on a graph with a hole in it.
+
+> **Handles are stable across removal, and that is a model-level promise rather than an implementation detail.** A piece handle means the same piece for the lifetime of the structure; removal leaves a hole rather than closing the gap. Anything that renumbered pieces would silently re-point the joints above the hole, and the break stamps — the only record of the order a collapse happened in — cannot be recomputed from anything, so they would be wrong permanently and consistently.
 
 ### Shear capacity depends on load (Mohr-Coulomb)
 
@@ -251,7 +275,20 @@ Force is the only real trap. Because length is centimetres rather than metres, a
 
 **Convention:** material and connection strengths are stored in **real SI units (MPa)** in their data assets, so they stay checkable against published tables. Conversion to Unreal force units happens at **one named, tested boundary** where loads meet strengths — never scattered through call sites.
 
-> **Chaos strain is not a physical quantity.** The strain thresholds on a geometry collection's connections are solver-tuning numbers, not newtons. There will need to be an explicit calibration mapping from "this joint carries X newtons" to "this Chaos connection has strain threshold Y". That seam is where physical realism quietly leaks if nobody is watching it.
+> **Chaos strain is not a physical quantity**, which is part of why we do not use it for the structural decision. The strain thresholds on a geometry collection's connections are solver-tuning numbers, not newtons, and they are **scalar** — one value per bond, with no notion of which direction the load came from. Our whole premise is that direction decides: the same force is harmless in compression and fatal in tension, roughly a hundred to one for mortar. A calibration from "this joint carries X newtons" to "this Chaos connection has strain threshold Y" would be the seam where physical realism quietly leaks, and we avoid needing it by deciding breakage ourselves in SI units.
+
+### Geometry collections: complementary, not an alternative *(settled 2026-08-01)*
+
+The question comes up naturally — Chaos already has a connection graph with breakable bonds, so why not use it? Because **it answers a different question**, and the two layers compose rather than compete.
+
+- **This system decides which piece gives way, and when.** Whole pieces with real mass, joints whose strength depends on the direction of the load, and a graph built at runtime from what is actually touching what — which changes as things break, and which a player-built structure has no authored asset for.
+- **A geometry collection decides what a single piece looks like as it dies** — the splintering, fracturing and shattering of §6's visual break patterns. Its graph is baked into the asset at authoring time from fragment proximity, and it breaks on scalar strain.
+
+Adopting geometry collections for the *structural* decision would trade direction-dependent strength for a single threshold, which is the one thing this project exists to do differently. Adopting them *later, per piece*, is additive and costs nothing now: `FStructure::RemovePiece` is already the seam — the structural layer says "this piece is gone", and what replaces it visually is a separate concern.
+
+**Note what this does not solve.** Force delivery is often assumed to be the blocker here; it is not. Chaos field systems can apply radial force and strain, and ordinary actors take radial impulses without any of that. The blocker for sideways loads is that **our support routing is gravity-specific** — a piece's supports are the bed joints *beneath* it, and a blast from the side makes "beneath" meaningless. That is our limitation to generalise, and no geometry collection fixes it.
+
+**Still open:** fragments that fall and come to rest cannot support anything, because joints are only ever destroyed, never created. Same gap as rubble bearing load.
 
 ### Minimum size floor (piece identity) + three tunable modes
 Pieces do **not** subdivide infinitely. There's a **tunable minimum volume** (start ~thumbnail size, roughly 15–20 mm across — that's only 1.5–2 uu at 1 uu = 1 cm, so expect small numbers here) below which a piece cannot break further. This also solves *piece identity*: each piece has a finite, traceable life — born at a timestamp and never subdividing past the floor.

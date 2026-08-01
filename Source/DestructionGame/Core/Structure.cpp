@@ -191,6 +191,13 @@ int32 FStructure::AddPiece(double MassKg, bool bIsGrounded)
 	Piece.MassKg = MassKg;
 	Piece.bIsGrounded = bIsGrounded;
 
+	/*
+	 * A piece that has been added to a structure is in it. The flag defaults to FALSE
+	 * so that the placeholder GetPiece hands back for an unknown handle reads as dead,
+	 * which means this is the one place that has to turn it on.
+	 */
+	Piece.bIsInTheStructure = true;
+
 	return Pieces.Add(Piece);
 }
 
@@ -247,9 +254,99 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 	return Connections.Add(Connection);
 }
 
+bool FStructure::RemovePiece(int32 PieceIndex)
+{
+	/*
+	 * A handle that names no piece, and one whose piece has already gone, both remove
+	 * nothing and say so. The second is not merely tidy: removal severs joints, and a
+	 * second call that went through would sever a joint the cascade had already
+	 * stamped, or decrement a live count that had already dropped.
+	 */
+	if (IsPieceRemoved(PieceIndex))
+	{
+		return false;
+	}
+
+	/*
+	 * TOMBSTONE, never compaction. The slot stays exactly where it is and no piece
+	 * ever moves down into it, because every handle in the connection array is an
+	 * index into this one — see the note on bIsInTheStructure for why a free list is
+	 * not the tidy-up it looks like.
+	 */
+	Pieces[PieceIndex].bIsInTheStructure = false;
+
+	/*
+	 * A joint holding a piece that is not there any more is not a joint, so it leaves
+	 * the structure with it — and severing is the whole of removal's effect on the
+	 * load model. SolveLoads already drops a given joint at the top of the tier
+	 * decision, so this one line takes the piece out of the tier, the reachability
+	 * walk, the load paths, the accumulation order and the split at once, through the
+	 * path the cascade has always used rather than through a second one beside it.
+	 *
+	 * BY REFERENCE. FConnection is copyable and the latch is a member, so
+	 *
+	 *     for (FConnection Connection : Connections)
+	 *
+	 * — one missing ampersand — would sever a temporary and leave the real joints
+	 * holding a piece that no longer exists.
+	 *
+	 * NOTHING IS STAMPED. ConnectionBreakPass is the record of what FAILED UNDER LOAD
+	 * and the sequence phase 5 plays back; a joint that went with its piece never
+	 * snapped and must not appear in that sequence at all. HasGiven answers whether it
+	 * is still in the structure, which is the other question, and the pair encodes all
+	 * three states with no sentinel — see GetBreakPass.
+	 */
+	for (FConnection& Connection : Connections)
+	{
+		if (Connection.PieceA == PieceIndex || Connection.PieceB == PieceIndex)
+		{
+			Connection.Sever();
+		}
+	}
+
+	/*
+	 * The forces the last solve computed are left as they are, and removal is
+	 * deliberately immediate rather than re-solving here: what a structure carries is
+	 * SolveLoads' answer to give, so a caller takes out however many pieces it means
+	 * to and then asks. Every joint severed above is guaranteed a zero by the next
+	 * solve, which starts from zero and never reaches a given joint.
+	 */
+	return true;
+}
+
+bool FStructure::IsPieceRemoved(int32 PieceIndex) const
+{
+	/*
+	 * An unknown handle reads as removed, which is the fail-closed direction and the
+	 * same answer the accessors either side of it give: a caller filtering with
+	 * `if (IsPieceRemoved(H)) continue;` then skips a handle that names nothing rather
+	 * than walking on into it as though it were a live piece.
+	 */
+	return !Pieces.IsValidIndex(PieceIndex) || !Pieces[PieceIndex].bIsInTheStructure;
+}
+
 int32 FStructure::NumPieces() const
 {
 	return Pieces.Num();
+}
+
+int32 FStructure::NumLivePieces() const
+{
+	/*
+	 * Counted rather than cached, so it cannot drift out of step with the tombstones it
+	 * is a count of. NumPieces is the handle RANGE and this is the other question; the
+	 * two diverging is the whole point of leaving the hole.
+	 */
+	int32 LivePieces = 0;
+	for (const FStructurePiece& Piece : Pieces)
+	{
+		if (Piece.bIsInTheStructure)
+		{
+			++LivePieces;
+		}
+	}
+
+	return LivePieces;
 }
 
 int32 FStructure::NumConnections() const
@@ -413,11 +510,17 @@ void FStructure::SolveLoads()
 		 * A stranded piece conducts nothing: the walk neither marks it nor continues
 		 * through it, which is what lets a later pass see that whatever rested on it
 		 * has lost its only path to the earth.
+		 *
+		 * A REMOVED PIECE IS NOT A ROOT, and this is the one line of removal that is not
+		 * free. Severing its joints takes it out of every edge in the relation, but a
+		 * GROUNDED piece seeds this walk on its own account rather than through any joint
+		 * — so without the second conjunct a removed grounded piece reports itself held up
+		 * by an earth it is no longer resting on.
 		 */
 		TArray<int32> SupportedFrontier;
 		for (const FStructurePiece& Piece : Pieces)
 		{
-			if (Piece.bIsGrounded)
+			if (Piece.bIsGrounded && Piece.bIsInTheStructure)
 			{
 				PieceSupported[Piece.Index] = true;
 				SupportedFrontier.Add(Piece.Index);
@@ -668,11 +771,37 @@ int32 FStructure::SolveAndBreak()
 	 */
 	int32 BreakingPasses = 0;
 
+	/*
+	 * PASS NUMBERS ARE GLOBAL TO THE STRUCTURE, so this call continues from the highest
+	 * stamp already written rather than starting again at 1. Stamps are the record of the
+	 * ORDER a collapse happened in (DESIGN.md §3), and every consumer reads a shared number
+	 * as "these gave simultaneously" — so a joint that gave after a player pulled a brick
+	 * out has to carry a strictly larger number than everything that gave before it.
+	 *
+	 * This was unreachable until removal existed: a second cascade on a settled structure
+	 * breaks nothing, so no two calls could both stamp. RemovePiece is the one operation
+	 * that changes the graph between calls, and it is the MVP's own interaction.
+	 *
+	 * THE RETURN VALUE IS A DIFFERENT QUESTION AND STAYS PER-CALL. BreakingPasses below
+	 * counts only the passes THIS call ran, which is what a caller polls to find out
+	 * whether its removal did anything; only the stamps accumulate. Conflating the two —
+	 * returning the high-water mark, or adding the previous count onto every stamp — is
+	 * the obvious wrong fix and Structure.BreakPassesContinueAcrossCalls catches it.
+	 *
+	 * INDEX_NONE is -1 and every real stamp is at least 1, so an unstamped joint cannot
+	 * raise the mark and a structure that has never broken starts, correctly, at 1.
+	 */
+	int32 PassesAlreadyStamped = 0;
+	for (const int32 Stamp : ConnectionBreakPass)
+	{
+		PassesAlreadyStamped = FMath::Max(PassesAlreadyStamped, Stamp);
+	}
+
 	for (;;)
 	{
 		SolveLoads();
 
-		const int32 Pass = BreakingPasses + 1;
+		const int32 Pass = PassesAlreadyStamped + BreakingPasses + 1;
 		bool bBrokeThisPass = false;
 
 		for (int32 Index = 0; Index < Connections.Num(); ++Index)

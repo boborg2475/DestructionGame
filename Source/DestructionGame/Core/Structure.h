@@ -9,9 +9,9 @@
  * A piece of a structure: plain data, deliberately.
  *
  * No actor, no component, no transform. A piece is a mass that either rests on
- * the earth or does not, and an identity that connections can refer to. Whoever
- * owns the world resolves the handle back to something visible; the solver never
- * needs to.
+ * the earth or does not, an identity that connections can refer to, and — once it
+ * has been removed — a hole where all three used to be. Whoever owns the world
+ * resolves the handle back to something visible; the solver never needs to.
  */
 struct FStructurePiece
 {
@@ -28,6 +28,29 @@ struct FStructurePiece
 	 * absorbed by the ground rather than passed on to another connection.
 	 */
 	bool bIsGrounded = false;
+
+	/**
+	 * Whether this slot still holds a piece, which is what makes a handle stable.
+	 *
+	 * A removed piece is TOMBSTONED: the slot stays, the handle stays valid forever,
+	 * and nothing ever moves down to fill the gap. Handles are array indices and three
+	 * arrays hang off them, so compacting would re-point every connection above the
+	 * hole at the wrong piece — silently, since ConnectionBreakPass cannot be rebuilt
+	 * from anything and would be wrong for good.
+	 *
+	 * DO NOT PUT A FREE LIST ON TOP OF THIS. Reusing a slot without a generation
+	 * counter brings the same bug back in a worse form: a stale handle then names a
+	 * DIFFERENT LIVE piece, which nothing can detect, where a dangling index can at
+	 * least be range-checked. If slots ever have to be reused — persistent worlds,
+	 * accumulating debris, anything where the piece count is not bounded per scenario
+	 * — that needs generational handles (index plus a counter bumped on reuse), not a
+	 * free list. Scenarios are bounded today, so the leak is irrelevant.
+	 *
+	 * FALSE BY DEFAULT so that the placeholder GetPiece hands back for an unknown
+	 * handle reads as dead, matching every other accessor's fail-closed answer. A
+	 * piece that has not been added to a structure is not in one.
+	 */
+	bool bIsInTheStructure = false;
 };
 
 /**
@@ -55,6 +78,14 @@ struct FStructurePiece
  * back to its head joints rather than being left with no supports and reported
  * falling. That is what redistribution IS: the share moves onto the neighbours
  * instead of evaporating.
+ *
+ * A REMOVED PIECE IS NOT IN THE GRAPH AT ALL, and that is the same statement one
+ * level up. Every joint that held it goes with it, so it supports nothing and
+ * nothing supports it; and if it was grounded it has stopped resting on the earth,
+ * so it conducts the ground to nothing either. Removal is the player's move — pull
+ * a brick and what it was carrying has to go somewhere — and it differs from a
+ * joint failing in one respect that is recorded rather than incidental: nothing was
+ * overloaded, so nothing enters the collapse sequence. See GetBreakPass.
  *
  * Everything else is then computed over that SUPPORT relation rather than over raw
  * connectivity, which is the whole point: routing by graph distance to the ground
@@ -117,7 +148,31 @@ struct FStructure
 	 */
 	int32 AddConnection(const FConnection& Connection);
 
+	/**
+	 * Take a piece out of the structure, leaving its handle valid forever.
+	 *
+	 * @return true if a live piece was removed; false for a handle that names no piece
+	 *         and for one that has already gone.
+	 */
+	bool RemovePiece(int32 PieceIndex);
+
+	/** Whether this handle names a piece that has been removed. */
+	bool IsPieceRemoved(int32 PieceIndex) const;
+
+	/**
+	 * The valid handle RANGE, which never shrinks — NOT the number of pieces still in
+	 * the structure.
+	 *
+	 * Callers iterate 0..NumPieces() and resolve each handle, so this has to keep
+	 * meaning the array extent: made to return a live count it would silently skip real
+	 * pieces in every such loop. Ask IsPieceRemoved whether a slot still holds anything,
+	 * and NumLivePieces for a count.
+	 */
 	int32 NumPieces() const;
+
+	/** How many pieces have not been removed. For counts, never for iteration. */
+	int32 NumLivePieces() const;
+
 	int32 NumConnections() const;
 
 	/** Out-of-range handles return a default-constructed placeholder. */
@@ -147,14 +202,36 @@ struct FStructure
 	 * Terminates because joints never heal: a pass that breaks nothing is the last one,
 	 * so there can be no more passes than there are connections.
 	 *
-	 * @return the number of passes that broke at least one joint; zero for a structure
-	 *         that stands as built.
+	 * PASS NUMBERS ARE GLOBAL TO THE STRUCTURE, NOT TO THE CALL. A second cascade
+	 * continues from the highest stamp already written, so a joint that gives after a
+	 * piece has been removed carries a strictly larger number than everything that gave
+	 * before it. Nothing earlier is ever rewritten. The stamps are the sequence a
+	 * collapse is played back in, and consumers read a shared number as "these gave
+	 * simultaneously" — which is only true if numbering does not restart.
+	 *
+	 * @return the number of passes THIS CALL broke at least one joint in; zero for a
+	 *         structure that stands as built. Per-call, unlike the stamps: it is what a
+	 *         caller polls to find out whether its removal did anything, so it can be
+	 *         smaller than the pass numbers that call wrote.
 	 */
 	int32 SolveAndBreak();
 
 	/**
-	 * Which breaking pass gave this joint, counted from 1, or INDEX_NONE if it is still
-	 * intact — including for an out-of-range handle, which is not a joint that broke.
+	 * Which breaking pass gave this joint, counted from 1, or INDEX_NONE if no pass did
+	 * — including for an out-of-range handle, which is not a joint that broke.
+	 *
+	 * INDEX_NONE DOES NOT MEAN "STILL INTACT", and reading it that way is a trap this
+	 * contract used to set. It means "did not fail under load in a cascade pass", which
+	 * is also true of a joint that went because a piece it held was REMOVED: that joint
+	 * never snapped, it was deleted, and phase 5 replays these stamps as the sequence of
+	 * a collapse, so it must not appear in that sequence at all. Whether a joint is still
+	 * in the structure is a different question, and HasGiven is the accessor for it.
+	 *
+	 * The two together are a complete, unambiguous encoding, and there is no sentinel:
+	 *
+	 *     intact              HasGiven false, INDEX_NONE
+	 *     went with a piece   HasGiven true,  INDEX_NONE
+	 *     broke in pass N     HasGiven true,  N >= 1
 	 */
 	int32 GetBreakPass(int32 ConnectionIndex) const;
 
@@ -201,6 +278,24 @@ struct FStructure
 	 * contribution; a piece whose only support is in one loses its own.
 	 *
 	 * False for an out-of-range handle: an unknown piece is not being held up.
+	 *
+	 * THIS IS THE LAST SOLVE'S ANSWER, AND REMOVAL DOES NOT REWRITE IT. GetPiece,
+	 * IsPieceRemoved and GetBreakPass all answer about a removed piece immediately; this
+	 * one reads solver output, which only SolveLoads writes, so removal is not visible
+	 * here until something has re-solved:
+	 *
+	 *     never solved      false, for every handle — there is no answer yet
+	 *     removed           the LAST SOLVE'S answer, unchanged, until the next solve
+	 *     after that solve  false, and a removed GROUNDED piece is no longer earth
+	 *
+	 * The middle row is stale rather than wrong, and it is deliberate. Clearing the one
+	 * entry on removal would leave a HALF-STALE array — that piece current, every
+	 * neighbour still describing a structure that no longer exists — which is a worse
+	 * thing to hand a caller than a uniformly stale array with a documented scope. The
+	 * gameplay shape that reaches it is the MVP's own: remove a piece on player
+	 * interaction, then ask about its neighbours to decide what to release to dynamics.
+	 * Re-solve first. Structure.RemovedPieceSupportNeedsASolve pins all three rows, so
+	 * reconsidering this turns that test red rather than letting the two drift again.
 	 */
 	bool IsPieceSupported(int32 PieceIndex) const;
 

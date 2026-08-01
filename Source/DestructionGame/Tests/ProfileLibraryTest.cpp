@@ -118,7 +118,15 @@ namespace ProfileLibraryTestSupport
 	 */
 	constexpr double BrickVolumeCubicCm = 21.5 * 10.25 * 6.5;
 
-	/** The mass the existing structure tests hand-set for one brick, in kg. */
+	/**
+	 * WHAT A BRICK WEIGHS IN THE HAND, in kg — and the only external anchor for it
+	 * anywhere in the suite.
+	 *
+	 * The structure tests now DERIVE their brick mass from ClayBrick's density rather
+	 * than hand-setting it, precisely so this is the single place the number can be
+	 * wrong. Do not add a second literal elsewhere: two copies is how the old hand-set
+	 * 2.72 drifted 1.6 g from the 2.7216 the library actually states.
+	 */
 	constexpr double HandSetBrickMassKg = 2.72;
 }
 
@@ -490,8 +498,12 @@ bool FProfileLibraryMaterialInvariantsTest::RunTest(const FString& Parameters)
 
 	/*
 	 * A brick has to weigh what a brick weighs. 215 x 102.5 x 65 mm at the clay
-	 * brick's own density must reproduce the 2.72 kg the structure tests hand-set
-	 * — which is precisely the hand-setting the density field exists to replace.
+	 * brick's own density must reproduce the 2.72 kg a brick weighs in the hand.
+	 *
+	 * THIS IS THE ANCHOR THE WHOLE SUITE HANGS OFF. The structure tests derive their
+	 * brick mass from the same density rather than hand-setting it, so this row is the
+	 * one place the figure is checked against the outside world. The 3% band is what
+	 * makes it a physical claim rather than a restatement of the arithmetic.
 	 */
 	const double DerivedBrickMassKg = ClayBrick.DensityGramsPerCubicCm * BrickVolumeCubicCm / 1000.0;
 

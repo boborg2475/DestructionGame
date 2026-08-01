@@ -65,6 +65,11 @@ double FConnection::ApplyForce(const FVector& Force)
 	return Utilisation;
 }
 
+void FConnection::Sever()
+{
+	bHasGiven = true;
+}
+
 bool FConnection::HasGiven() const
 {
 	return bHasGiven;

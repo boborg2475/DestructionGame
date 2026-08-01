@@ -51,6 +51,19 @@ struct FConnection
 	 */
 	double ApplyForce(const FVector& Force);
 
+	/**
+	 * Take this joint out of the structure without it having failed.
+	 *
+	 * A joint whose piece was REMOVED did not snap — it was deleted — but it is just
+	 * as absent, so it must answer HasGiven the same way: out of the tier decision,
+	 * out of the load paths, carrying nothing. Nothing here records a reason, because
+	 * the joint is not where that belongs; whoever severed it knows why, and
+	 * FStructure keeps the record by leaving the break-pass stamp alone.
+	 *
+	 * Idempotent, and monotonic like the latch it sets: joints never heal.
+	 */
+	void Sever();
+
 	/** Whether this joint has given. Never returns to false. */
 	bool HasGiven() const;
 
