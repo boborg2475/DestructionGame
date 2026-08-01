@@ -1,0 +1,14 @@
+Functional-test maps live here, and only here.
+
+Any map containing an AFunctionalTest (or a subclass) must be in this folder.
+Config/DefaultGame.ini excludes this folder from the cook via
++DirectoriesToNeverCook=(Path="/Game/Maps/FunctionalTests"), because
+AFunctionalTest's class lives in Epic's FunctionalTesting module, which is not
+precompiled for Shipping — a cooked .umap referencing it carries a dangling
+class pointer.
+
+This file exists only so the folder is tracked by git before the first test map
+lands. Delete it once there is a real .umap here. The engine ignores it: the
+asset registry and the cooker only look at .uasset / .umap.
+
+See CLAUDE.md, "Functional-test actors live only in never-cooked maps".

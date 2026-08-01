@@ -61,6 +61,21 @@ grep -E "Test Completed|LogAutomationController: Error" "Saved/Logs/DestructionG
 
 Writing the automation macro: the `EAutomationTestFlags` spelling changed across UE 5.x. In 5.8 the context masks are free constants, not enum members — `EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter`. See `Tests/ConnectionLoadTest.cpp` for a working example.
 
+### Functional-test actors live only in never-cooked maps
+
+`AFunctionalTest` and every subclass may be placed **only** in maps under **`Content/Maps/FunctionalTests/`**. A gameplay map — `Content/Maps/Lvl_Sandbox` today — must never contain one.
+
+A functional test is an actor serialized into the `.umap`, and its class lives in Epic's `FunctionalTesting` module, which Epic does not precompile for Shipping. A cooked gameplay map holding that reference carries a **dangling class pointer** into the build. `Config/DefaultGame.ini` keeps the folder out of the cook (`+DirectoriesToNeverCook`); the placement rule is what makes that one line sufficient, so the two only work together.
+
+`FunctionalTesting` is deliberately **not** a dependency in `DestructionGame.Build.cs` — nothing needs it yet. When the first functional test does, add it **gated**, never bare:
+
+```csharp
+if (Target.Configuration != UnrealTargetConfiguration.Shipping)
+{
+    PrivateDependencyModuleNames.Add("FunctionalTesting");
+}
+```
+
 ## Specialized agents
 
 Development goes through three subagents, in this order. Never work the task directly.
