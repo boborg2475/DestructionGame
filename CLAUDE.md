@@ -10,6 +10,31 @@ World scale is Unreal's default **1 uu = 1 cm**. Mass (kg) and density (g/cm³) 
 
 The one conversion boundary is `ForceUnitsPerMPaSqCm` in `Core/ConnectionStrength.h`. Use it; never open-code the factor. A missing or duplicated conversion is out by exactly 100×, which tuned thresholds conceal well. Full table in [DESIGN.md §3](claude_plans/DESIGN.md).
 
+## Comment style — blocks use `/* */`, not stacked `//`
+
+**Two or more consecutive whole-line comments are written as a single `/* ... */` block**, never as a stack of `//` lines:
+
+```cpp
+/*
+ * Normalize returns false for a zero-length AND for a NaN normal — every
+ * comparison against NaN is false, so its length test rejects both.
+ */
+```
+
+A **single** comment line on its own stays `//`, and so does a **trailing** comment after code (`int X = 1; // note`). A blank line between comment lines is a paragraph break: it makes two blocks, not one.
+
+This **deliberately diverges from Epic's coding standard**, which prefers `//` for everything but doc comments. It is house style, not drift — most explanation in this codebase runs to paragraphs about *why* a threshold is where it is, and a paragraph reads better as prose than as a column of slashes. Don't "fix" it back.
+
+It also **overrides "match the surrounding code"** for comment delimiters specifically — naming, formatting and the comment *density* of the file you are editing still follow the surrounding code, but the delimiters follow this rule.
+
+`Scripts/Convert-CommentBlocks.ps1` enforces it. `-Check` reports without writing (exit 1 if there is work, 2 if it refused a file); no flag converts. It lexes strings and existing block comments rather than pattern-matching lines, and refuses any file it cannot transform safely rather than guessing. Its own tests are `Scripts/Convert-CommentBlocks.Tests.ps1` — run them before trusting it:
+
+```bash
+powershell -NoProfile -File Scripts/Convert-CommentBlocks.Tests.ps1
+```
+
+Scope is `Source/**/*.h` and `Source/**/*.cpp`. `*.Build.cs` and `*.Target.cs` are C#, and out of scope.
+
 ## Current state and the running TODO list
 
 [claude_plans/CURRENT_STATE.md](claude_plans/CURRENT_STATE.md) is a **living** record of where the project stands and everything outstanding. It is not a changelog — it only ever describes the present and the not-yet-done.

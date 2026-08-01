@@ -13,8 +13,10 @@ ADestructionGamePlayerController::ADestructionGamePlayerController()
 	// set the player camera manager class
 	PlayerCameraManagerClass = ADestructionGameCameraManager::StaticClass();
 
-	// wire up the mapping contexts here rather than in a Blueprint, so the sandbox
-	// runs from C++ defaults alone
+	/*
+	 * wire up the mapping contexts here rather than in a Blueprint, so the sandbox
+	 * runs from C++ defaults alone
+	 */
 	static ConstructorHelpers::FObjectFinder<UInputMappingContext> DefaultContext(TEXT("/Game/Input/IMC_Default.IMC_Default"));
 	static ConstructorHelpers::FObjectFinder<UInputMappingContext> MouseLookContext(TEXT("/Game/Input/IMC_MouseLook.IMC_MouseLook"));
 

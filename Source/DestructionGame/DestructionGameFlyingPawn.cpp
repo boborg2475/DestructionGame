@@ -12,8 +12,10 @@
 
 ADestructionGameFlyingPawn::ADestructionGameFlyingPawn()
 {
-	// fly straight through geometry; the observer should be able to sit inside a
-	// collapsing structure without shoving it around
+	/*
+	 * fly straight through geometry; the observer should be able to sit inside a
+	 * collapsing structure without shoving it around
+	 */
 	GetCollisionComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	// ADefaultPawn ships with legacy axis bindings; we bind Enhanced Input instead

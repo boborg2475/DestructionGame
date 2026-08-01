@@ -224,10 +224,12 @@ namespace StructureFuzzSupport
 				Joint.Normal = FuzzNormals[Random.NextBelow(UE_ARRAY_COUNT(FuzzNormals))];
 				Joint.AreaSqCm = Areas[Random.NextBelow(UE_ARRAY_COUNT(Areas))];
 
-				// WHICH END IS NAMED FIRST is varied deliberately. The stored force is
-				// the force on PieceB, so declaration order flips its sign and must not
-				// flip anything else; a wall builder walking its courses downward
-				// produces the "wrong" order naturally.
+				/*
+				 * WHICH END IS NAMED FIRST is varied deliberately. The stored force is
+				 * the force on PieceB, so declaration order flips its sign and must not
+				 * flip anything else; a wall builder walking its courses downward
+				 * produces the "wrong" order naturally.
+				 */
 				const bool bDeclareLowerFirst = Random.NextChanceInThousand(500);
 				Joint.PieceA = bDeclareLowerFirst ? A : B;
 				Joint.PieceB = bDeclareLowerFirst ? B : A;
@@ -256,9 +258,11 @@ namespace StructureFuzzSupport
 		{
 			const FFuzzJoint& Joint = Case.Joints[Index];
 
-			// Printed only when the generator gave the joint a profile. The load fuzz
-			// makes every joint unbreakable from a literal and has nothing to say here;
-			// the cascade fuzz's whole sequence turns on which profile went where.
+			/*
+			 * Printed only when the generator gave the joint a profile. The load fuzz
+			 * makes every joint unbreakable from a literal and has nothing to say here;
+			 * the cascade fuzz's whole sequence turns on which profile went where.
+			 */
 			const FString Profile = Joint.ProfileName != nullptr
 				? FString::Printf(TEXT(" %s"), Joint.ProfileName)
 				: FString();
@@ -341,14 +345,18 @@ namespace StructureFuzzSupport
 				}
 				else if (NormalZTowardPiece > 0.0)
 				{
-					// A bed joint BENEATH bears the piece; one ABOVE is something
-					// resting on it and holds nothing up, so it is dropped entirely.
+					/*
+					 * A bed joint BENEATH bears the piece; one ABOVE is something
+					 * resting on it and holds nothing up, so it is dropped entirely.
+					 */
 					Supports[PieceIndex].Add(Index);
 				}
 			}
 
-			// The fallback, and only the fallback: one bed joint beneath wins outright
-			// over any number of head joints.
+			/*
+			 * The fallback, and only the fallback: one bed joint beneath wins outright
+			 * over any number of head joints.
+			 */
 			if (Supports[PieceIndex].Num() == 0)
 			{
 				Supports[PieceIndex] = MoveTemp(HeadJoints);
@@ -456,11 +464,13 @@ namespace StructureFuzzSupport
 				}
 			}
 
-			// Adjacency of "pushes its load into", over supported ungrounded pieces
-			// only. A grounded piece is a SINK — the earth absorbs what arrives and
-			// passes nothing on — so leaving it out is what stops two bricks side by
-			// side on the ground, each naming the other through their head joint, from
-			// reading as a loop.
+			/*
+			 * Adjacency of "pushes its load into", over supported ungrounded pieces
+			 * only. A grounded piece is a SINK — the earth absorbs what arrives and
+			 * passes nothing on — so leaving it out is what stops two bricks side by
+			 * side on the ground, each naming the other through their head joint, from
+			 * reading as a loop.
+			 */
 			TArray<bool> Reaches;
 			Reaches.Init(false, PieceCount * PieceCount);
 
@@ -516,8 +526,10 @@ namespace StructureFuzzSupport
 			}
 		}
 
-		// The load path of each piece: its supports that themselves reach the ground.
-		// A share handed to something falling never arrives, so it is not a share.
+		/*
+		 * The load path of each piece: its supports that themselves reach the ground.
+		 * A share handed to something falling never arrives, so it is not a share.
+		 */
 		TArray<TArray<int32>> LoadPaths;
 		LoadPaths.SetNum(PieceCount);
 
@@ -532,8 +544,10 @@ namespace StructureFuzzSupport
 			}
 		}
 
-		// Jacobi relaxation to a fixed point. Bounded by one pass per level of the
-		// relation plus one to observe that it settled; PieceCount + 2 is generous.
+		/*
+		 * Jacobi relaxation to a fixed point. Bounded by one pass per level of the
+		 * relation plus one to observe that it settled; PieceCount + 2 is generous.
+		 */
 		TArray<double> Received;
 		Received.Init(0.0, PieceCount);
 
@@ -609,10 +623,12 @@ namespace StructureFuzzSupport
 				const FFuzzJoint& Joint = Case.Joints[JointIndex];
 				const double ShareUU = TotalUU * (Joint.AreaSqCm / TotalAreaSqCm);
 
-				// The force belonging to a joint is the force acting on PieceB, so it
-				// points down when the loaded piece is named second and up when the same
-				// joint was declared the other way round. Get this backwards and a
-				// plainly compressed joint reads as tension.
+				/*
+				 * The force belonging to a joint is the force acting on PieceB, so it
+				 * points down when the loaded piece is named second and up when the same
+				 * joint was declared the other way round. Get this backwards and a
+				 * plainly compressed joint reads as tension.
+				 */
 				Result.JointForceZ[JointIndex] = Joint.PieceB == Index ? -ShareUU : ShareUU;
 
 				if (ClaimedBy[JointIndex] != INDEX_NONE)
@@ -626,18 +642,20 @@ namespace StructureFuzzSupport
 		return Result;
 	}
 
-	// ------------------------------------------------------------------------------
-	// THE CASCADE FUZZ: a SECOND generator, whose joints can actually give.
-	//
-	// GenerateCase above deliberately cannot cascade — the structures it builds are
-	// wired with an unbreakable literal, because that fuzz is about where load GOES and
-	// a joint that could give would make it about something else. That is exactly why it
-	// cannot exercise SolveAndBreak: no joint in twelve thousand structures can fail.
-	//
-	// So this is an ADDITION rather than a replacement. Both generators run, over the
-	// same normals and the same topology rules; what differs is the masses, the areas
-	// and — the whole point — the strengths.
-	// ------------------------------------------------------------------------------
+	/*
+	 * ------------------------------------------------------------------------------
+	 * THE CASCADE FUZZ: a SECOND generator, whose joints can actually give.
+	 *
+	 * GenerateCase above deliberately cannot cascade — the structures it builds are
+	 * wired with an unbreakable literal, because that fuzz is about where load GOES and
+	 * a joint that could give would make it about something else. That is exactly why it
+	 * cannot exercise SolveAndBreak: no joint in twelve thousand structures can fail.
+	 *
+	 * So this is an ADDITION rather than a replacement. Both generators run, over the
+	 * same normals and the same topology rules; what differs is the masses, the areas
+	 * and — the whole point — the strengths.
+	 * ------------------------------------------------------------------------------
+	 */
 
 	/**
 	 * THE SEED FOR THE CASCADE FUZZ, and it is deliberately nowhere near BaseSeed.
@@ -744,11 +762,13 @@ namespace StructureFuzzSupport
 
 		static const double Areas[] = { 4.0, 25.0, 100.0, 400.0, 1600.0 };
 
-		// THE LABELS ARE NOMINAL, AT 100 cm2, AND ARE NOT ROW INVARIANTS. Areas is drawn
-		// independently of Masses, so the stress a row actually delivers is anywhere from
-		// 25x the figure named (a 4 cm2 sole support) to a sixteenth of it (1600 cm2), and
-		// further from it again once the weight is split across several supports. Each
-		// comment says what the row was CHOSEN against, not what any particular joint sees.
+		/*
+		 * THE LABELS ARE NOMINAL, AT 100 cm2, AND ARE NOT ROW INVARIANTS. Areas is drawn
+		 * independently of Masses, so the stress a row actually delivers is anywhere from
+		 * 25x the figure named (a 4 cm2 sole support) to a sixteenth of it (1600 cm2), and
+		 * further from it again once the weight is split across several supports. Each
+		 * comment says what the row was CHOSEN against, not what any particular joint sees.
+		 */
 		static const double Masses[] = {
 			0.0,                          // legal, and where "supported" and "carries something" come apart
 			MassForStress(0.03, 100.0),   // under every BONDED tensile limit; dry stone's is 0.0 and nothing is under that
@@ -790,9 +810,11 @@ namespace StructureFuzzSupport
 				Joint.ProfileName = Profile.Name;
 				Joint.Strength = *Profile.Strength;
 
-				// WHICH END IS NAMED FIRST is varied deliberately, as in GenerateCase:
-				// the stored force is the force on PieceB, so declaration order flips its
-				// sign and must not flip anything else.
+				/*
+				 * WHICH END IS NAMED FIRST is varied deliberately, as in GenerateCase:
+				 * the stored force is the force on PieceB, so declaration order flips its
+				 * sign and must not flip anything else.
+				 */
 				const bool bDeclareLowerFirst = Random.NextChanceInThousand(500);
 				Joint.PieceA = bDeclareLowerFirst ? A : B;
 				Joint.PieceB = bDeclareLowerFirst ? B : A;
@@ -858,20 +880,22 @@ namespace StructureFuzzSupport
 
 		for (int32 Index = 0; Index < Case.Joints.Num(); ++Index)
 		{
-			// BOTH ACCESSORS, deliberately, and each is load-bearing for a different
-			// reason.
-			//
-			// HasGiven is read through GetConnection, which hands back a reference to the
-			// connection the STRUCTURE owns. FConnection is copyable and its latch is
-			// per-copy, so a cascade that happened only to temporaries would read as a
-			// structure where nothing broke — and this reduced graph would then be the
-			// whole graph, at every pass.
-			//
-			// The stamp then says WHEN, which is what makes this per-pass rather than only
-			// settled. A joint that gave but carries no stamp (INDEX_NONE, which compares
-			// below every pass number) is treated as having gone before everything: it is
-			// out of the graph whichever pass is asked about, which keeps the settled call
-			// exactly what it was before this function grew a pass argument.
+			/*
+			 * BOTH ACCESSORS, deliberately, and each is load-bearing for a different
+			 * reason.
+			 *
+			 * HasGiven is read through GetConnection, which hands back a reference to the
+			 * connection the STRUCTURE owns. FConnection is copyable and its latch is
+			 * per-copy, so a cascade that happened only to temporaries would read as a
+			 * structure where nothing broke — and this reduced graph would then be the
+			 * whole graph, at every pass.
+			 *
+			 * The stamp then says WHEN, which is what makes this per-pass rather than only
+			 * settled. A joint that gave but carries no stamp (INDEX_NONE, which compares
+			 * below every pass number) is treated as having gone before everything: it is
+			 * out of the graph whichever pass is asked about, which keeps the settled call
+			 * exactly what it was before this function grew a pass argument.
+			 */
 			if (Structure.GetConnection(Index).HasGiven() && Structure.GetBreakPass(Index) < Pass)
 			{
 				continue;
@@ -914,8 +938,10 @@ namespace StructureFuzzSupport
 			Connection.InterfaceNormal = Case.Joints[Index].Normal;
 			Connection.InterfaceAreaSqCm = Case.Joints[Index].AreaSqCm;
 
-			// THE ONE LINE THAT MAKES THIS A CASCADE FUZZ: a real profile, drawn per
-			// joint, so joints genuinely give and give in an order.
+			/*
+			 * THE ONE LINE THAT MAKES THIS A CASCADE FUZZ: a real profile, drawn per
+			 * joint, so joints genuinely give and give in an order.
+			 */
 			Connection.Strength = Case.Joints[Index].Strength;
 
 			bBuiltCleanly &= OutStructure.AddConnection(Connection) == Index;
@@ -1051,9 +1077,11 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 		TotalPieces += PieceCount;
 		TotalJoints += JointCount;
 
-		// Formatted only when something has gone wrong. Twelve thousand cases times fifty
-		// assertions is six hundred thousand FString::Printf calls if the message is
-		// built eagerly, which is most of the runtime of a test that finds nothing.
+		/*
+		 * Formatted only when something has gone wrong. Twelve thousand cases times fifty
+		 * assertions is six hundred thousand FString::Printf calls if the message is
+		 * built eagerly, which is most of the runtime of a test that finds nothing.
+		 */
 		auto Report = [this, &FailureCount, &ReportedCount, Seed, &Case](const FString& What)
 		{
 			++FailureCount;
@@ -1080,10 +1108,12 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 			Connection.InterfaceNormal = Case.Joints[Index].Normal;
 			Connection.InterfaceAreaSqCm = Case.Joints[Index].AreaSqCm;
 
-			// Absurdly strong on every axis. The generator is free to build a joint
-			// carrying twenty tonnes, and this test is about where load GOES; a joint
-			// that could give would make it about something else. Solving is
-			// non-destructive anyway, and that is asserted below rather than assumed.
+			/*
+			 * Absurdly strong on every axis. The generator is free to build a joint
+			 * carrying twenty tonnes, and this test is about where load GOES; a joint
+			 * that could give would make it about something else. Solving is
+			 * non-destructive anyway, and that is asserted below rather than assumed.
+			 */
 			Connection.Strength = FConnectionStrength{ 1.0e9, 1.0e9, 1.0e9, 0.0 };
 
 			bBuiltCleanly &= Structure.AddConnection(Connection) == Index;
@@ -1091,9 +1121,11 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 
 		if (!bBuiltCleanly || Structure.NumPieces() != PieceCount || Structure.NumConnections() != JointCount)
 		{
-			// The generator only emits inputs AddPiece and AddConnection must accept, so
-			// this is a broken fixture rather than a finding — and reporting it as a
-			// solver failure would send somebody chasing a bug that is in this file.
+			/*
+			 * The generator only emits inputs AddPiece and AddConnection must accept, so
+			 * this is a broken fixture rather than a finding — and reporting it as a
+			 * solver failure would send somebody chasing a bug that is in this file.
+			 */
 			Report(FString::Printf(
 				TEXT("FIXTURE: the generated structure was rejected at the door, %d/%d pieces and %d/%d joints"),
 				Structure.NumPieces(), PieceCount, Structure.NumConnections(), JointCount));
@@ -1105,9 +1137,11 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 		const FOracleResult Oracle = SolveWithOracle(Case);
 		const TArray<TArray<int32>> Supports = BuildSupports(Case);
 
-		// The oracle's own sanity. A relaxation that never settles, or a joint two
-		// pieces both push through, means the oracle failed to strand a cycle — its
-		// answers below would then be meaningless rather than merely different.
+		/*
+		 * The oracle's own sanity. A relaxation that never settles, or a joint two
+		 * pieces both push through, means the oracle failed to strand a cycle — its
+		 * answers below would then be meaningless rather than merely different.
+		 */
 		if (!Oracle.bForcesConverged || Oracle.bJointClaimedTwice)
 		{
 			Report(FString::Printf(
@@ -1115,10 +1149,12 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 				Oracle.bForcesConverged ? 1 : 0, Oracle.bJointClaimedTwice ? 1 : 0));
 		}
 
-		// Scale for the tolerances: the heaviest thing this structure could possibly be
-		// holding up. Areas span seven orders of magnitude, so a share can be a
-		// ten-millionth of the total and an absolute tolerance alone would be either
-		// useless or meaningless.
+		/*
+		 * Scale for the tolerances: the heaviest thing this structure could possibly be
+		 * holding up. Areas span seven orders of magnitude, so a share can be a
+		 * ten-millionth of the total and an absolute tolerance alone would be either
+		 * useless or meaningless.
+		 */
 		double TotalWeightUU = 0.0;
 		for (const FFuzzPiece& Piece : Case.Pieces)
 		{
@@ -1164,10 +1200,12 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
-			// STRANDING NEVER TRAVELS DOWNWARD. A piece that rests on the earth stands
-			// up whatever is happening above it — unless it is itself caught in a knot,
-			// which it can be through some OTHER support, so the oracle's cycle set is
-			// the exclusion rather than a blanket one.
+			/*
+			 * STRANDING NEVER TRAVELS DOWNWARD. A piece that rests on the earth stands
+			 * up whatever is happening above it — unless it is itself caught in a knot,
+			 * which it can be through some OTHER support, so the oracle's cycle set is
+			 * the exclusion rather than a blanket one.
+			 */
 			if (!Oracle.bStrandedInCycle[Index] && !bProductionSupported)
 			{
 				for (const int32 JointIndex : Supports[Index])
@@ -1191,11 +1229,13 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 			const double OwnWeightUU = Case.Pieces[Index].MassKg * GravityCmPerSecondSquared;
 			ReportedSupportedWeightUU += OwnWeightUU;
 
-			// SUPPORTED MEANS ITS LOAD WENT SOMEWHERE. Summed over every joint TOUCHING
-			// the piece rather than over its supports, so it needs no transcription of
-			// the tier rule to stay in step with: whichever subset turns out to be the
-			// supports, the total over all of them is a lower bound. A piece the
-			// accumulation never ordered has zero here and its own weight expected.
+			/*
+			 * SUPPORTED MEANS ITS LOAD WENT SOMEWHERE. Summed over every joint TOUCHING
+			 * the piece rather than over its supports, so it needs no transcription of
+			 * the tier rule to stay in step with: whichever subset turns out to be the
+			 * supports, the total over all of them is a lower bound. A piece the
+			 * accumulation never ordered has zero here and its own weight expected.
+			 */
 			double TouchingUU = 0.0;
 			for (int32 JointIndex = 0; JointIndex < JointCount; ++JointIndex)
 			{
@@ -1225,10 +1265,12 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 					Index, Force.X, Force.Y, Force.Z));
 			}
 
-			// Gravity does not change direction because a joint happens to be tilted.
-			// It is FConnection that resolves this vector against the interface normal;
-			// a solver that pushed the load along the normal itself would produce
-			// plausible magnitudes and entirely the wrong direction.
+			/*
+			 * Gravity does not change direction because a joint happens to be tilted.
+			 * It is FConnection that resolves this vector against the interface normal;
+			 * a solver that pushed the load along the normal itself would produce
+			 * plausible magnitudes and entirely the wrong direction.
+			 */
 			if (!FMath::IsNearlyZero(Force.X, 1.0e-9) || !FMath::IsNearlyZero(Force.Y, 1.0e-9))
 			{
 				Report(FString::Printf(TEXT("NOT VERTICAL: joint %d carries (%f, %f, %f)"),
@@ -1256,9 +1298,11 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		// GROUND-REACTION CONSERVATION, against the solver's OWN claim about what it is
-		// holding up. Everything held up has to arrive somewhere and the only somewhere
-		// is the earth.
+		/*
+		 * GROUND-REACTION CONSERVATION, against the solver's OWN claim about what it is
+		 * holding up. Everything held up has to arrive somewhere and the only somewhere
+		 * is the earth.
+		 */
 		if (!FMath::IsNearlyEqual(GroundReactionUU, ReportedSupportedWeightUU, Tolerance))
 		{
 			Report(FString::Printf(
@@ -1266,17 +1310,19 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 				ReportedSupportedWeightUU, GroundReactionUU));
 		}
 
-		// REPEATABILITY. Solving is documented as non-destructive, which is worth
-		// nothing unless a second solve gives the identical answer — phase 2b re-solves
-		// after every break, and a solver whose output drifted with the number of calls
-		// would make the cascade depend on how often it was asked.
-		//
-		// Measured against THE FIRST SOLVE, not against the oracle. Comparing the second
-		// solve to the oracle instead looks equivalent — the first solve is already
-		// asserted to match the oracle — and is not: it merely repeats the earlier
-		// assertion, and it reports a piece as "changed on the second solve" when
-		// nothing changed at all. That was written here, and a mutation caught it, which
-		// is a fair summary of why a green test has to be shown to bite.
+		/*
+		 * REPEATABILITY. Solving is documented as non-destructive, which is worth
+		 * nothing unless a second solve gives the identical answer — phase 2b re-solves
+		 * after every break, and a solver whose output drifted with the number of calls
+		 * would make the cascade depend on how often it was asked.
+		 *
+		 * Measured against THE FIRST SOLVE, not against the oracle. Comparing the second
+		 * solve to the oracle instead looks equivalent — the first solve is already
+		 * asserted to match the oracle — and is not: it merely repeats the earlier
+		 * assertion, and it reports a piece as "changed on the second solve" when
+		 * nothing changed at all. That was written here, and a mutation caught it, which
+		 * is a fair summary of why a green test has to be shown to bite.
+		 */
 		TArray<FVector> FirstForces;
 		FirstForces.Reserve(JointCount);
 		for (int32 Index = 0; Index < JointCount; ++Index)
@@ -1293,9 +1339,11 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 
 		Structure.SolveLoads();
 
-		// Bit for bit, not nearly-equal. Re-solving repeats the identical arithmetic on
-		// the identical inputs, so any difference at all is a solver carrying state
-		// between solves rather than rounding.
+		/*
+		 * Bit for bit, not nearly-equal. Re-solving repeats the identical arithmetic on
+		 * the identical inputs, so any difference at all is a solver carrying state
+		 * between solves rather than rounding.
+		 */
 		for (int32 Index = 0; Index < JointCount; ++Index)
 		{
 			if (Structure.GetConnectionForce(Index) != FirstForces[Index])
@@ -1330,8 +1378,10 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 		TEXT("%d seeded structures in %.0f ms: %d pieces, %d joints, %d pieces on an unroutable cycle, %d reported falling"),
 		CaseCount, ElapsedMilliseconds, TotalPieces, TotalJoints, StrandedPieces, FallingPieces));
 
-	// A generator that produced nothing would satisfy every property above in silence.
-	// These are floors, not expectations: they exist to prove the fuzz ran.
+	/*
+	 * A generator that produced nothing would satisfy every property above in silence.
+	 * These are floors, not expectations: they exist to prove the fuzz ran.
+	 */
 	TestTrue(
 		FString::Printf(TEXT("the fuzz should have built thousands of joints, got %d"), TotalJoints),
 		TotalJoints > 4 * CaseCount);
@@ -1454,9 +1504,11 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 	int32 FailureCount = 0;
 	int32 ReportedCount = 0;
 
-	// THE BREAK-RATE DISTRIBUTION. A generator where everything breaks is as useless as
-	// one where nothing does, and neither shows up as a failing property — so it is
-	// measured, reported, and floored below.
+	/*
+	 * THE BREAK-RATE DISTRIBUTION. A generator where everything breaks is as useless as
+	 * one where nothing does, and neither shows up as a failing property — so it is
+	 * measured, reported, and floored below.
+	 */
 	int32 TotalPieces = 0;
 	int32 TotalJoints = 0;
 	int32 BrokenJoints = 0;
@@ -1468,11 +1520,13 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 	int32 CasesWithTwoOrMorePasses = 0;
 	int32 CasesEntirelyBroken = 0;
 
-	// How many breaks each half of the over-eager-break sweep actually reached — pass 1
-	// against the as-built solve, later passes against the graph each was solved on.
-	// Reported and floored, because a property that examines nothing passes in silence,
-	// and their sum is floored against the total because "every break is guarded" is a
-	// claim that should fail rather than quietly become 88% again.
+	/*
+	 * How many breaks each half of the over-eager-break sweep actually reached — pass 1
+	 * against the as-built solve, later passes against the graph each was solved on.
+	 * Reported and floored, because a property that examines nothing passes in silence,
+	 * and their sum is floored against the total because "every break is guarded" is a
+	 * claim that should fail rather than quietly become 88% again.
+	 */
 	int32 FirstPassBreaks = 0;
 	int32 LaterPassBreaks = 0;
 
@@ -1487,9 +1541,11 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 		TotalPieces += PieceCount;
 		TotalJoints += JointCount;
 
-		// Formatted only when something has gone wrong; building the message eagerly for
-		// every assertion in every case is most of the runtime of a test that finds
-		// nothing.
+		/*
+		 * Formatted only when something has gone wrong; building the message eagerly for
+		 * every assertion in every case is most of the runtime of a test that finds
+		 * nothing.
+		 */
 		auto Report = [this, &FailureCount, &ReportedCount, Seed, &Case](const FString& What)
 		{
 			++FailureCount;
@@ -1502,21 +1558,25 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 
 		FStructure Structure;
 
-		// A SECOND, IDENTICAL STRUCTURE, LEFT STANDING. It is never cascaded and never
-		// touched again after the single solve below, so it holds the loads the intact
-		// structure carried — which is exactly what the pass-1 sweep judged its breaks
-		// against. Built from the same generated case through the same builder, so
-		// "identical" is structural rather than a promise.
+		/*
+		 * A SECOND, IDENTICAL STRUCTURE, LEFT STANDING. It is never cascaded and never
+		 * touched again after the single solve below, so it holds the loads the intact
+		 * structure carried — which is exactly what the pass-1 sweep judged its breaks
+		 * against. Built from the same generated case through the same builder, so
+		 * "identical" is structural rather than a promise.
+		 */
 		FStructure AsBuilt;
 
 		if (!BuildCascadeStructure(Case, Structure) || !BuildCascadeStructure(Case, AsBuilt))
 		{
-			// The generator only emits inputs AddPiece and AddConnection must accept, so
-			// this is a broken fixture rather than a finding.
-			//
-			// BOTH STRUCTURES' COUNTS, because || short-circuits: if Structure built and
-			// AsBuilt did not, reporting only Structure's would read as a self-contradiction
-			// — "rejected at the door, 5/5 pieces and 7/7 joints".
+			/*
+			 * The generator only emits inputs AddPiece and AddConnection must accept, so
+			 * this is a broken fixture rather than a finding.
+			 *
+			 * BOTH STRUCTURES' COUNTS, because || short-circuits: if Structure built and
+			 * AsBuilt did not, reporting only Structure's would read as a self-contradiction
+			 * — "rejected at the door, 5/5 pieces and 7/7 joints".
+			 */
 			Report(FString::Printf(
 				TEXT("FIXTURE: the generated structure was rejected at the door, %d/%d pieces and %d/%d joints ")
 				TEXT("(the as-built reference built %d pieces and %d joints)"),
@@ -1525,8 +1585,10 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		// Non-destructive by contract and asserted so in Structure.Fuzz, so this leaves
-		// AsBuilt intact and every joint of it unlatched.
+		/*
+		 * Non-destructive by contract and asserted so in Structure.Fuzz, so this leaves
+		 * AsBuilt intact and every joint of it unlatched.
+		 */
 		AsBuilt.SolveLoads();
 
 		const int32 Passes = Structure.SolveAndBreak();
@@ -1545,10 +1607,12 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 			++CasesWithTwoOrMorePasses;
 		}
 
-		// TERMINATION, as a bound rather than as a hope. Joints never heal, so every
-		// counted pass permanently removes at least one connection and there can be no
-		// more passes than there are joints. (NOT SolveLoads' own internal fixpoint,
-		// which is a much smaller thing nested inside each of these passes.)
+		/*
+		 * TERMINATION, as a bound rather than as a hope. Joints never heal, so every
+		 * counted pass permanently removes at least one connection and there can be no
+		 * more passes than there are joints. (NOT SolveLoads' own internal fixpoint,
+		 * which is a much smaller thing nested inside each of these passes.)
+		 */
 		if (!(Passes >= 0 && Passes <= JointCount))
 		{
 			Report(FString::Printf(
@@ -1556,8 +1620,10 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 				Passes, JointCount));
 		}
 
-		// Scale for the tolerances: the heaviest thing this structure could possibly be
-		// holding up.
+		/*
+		 * Scale for the tolerances: the heaviest thing this structure could possibly be
+		 * holding up.
+		 */
 		double TotalWeightUU = 0.0;
 		for (const FFuzzPiece& Piece : Case.Pieces)
 		{
@@ -1574,17 +1640,21 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 
 		for (int32 Index = 0; Index < JointCount; ++Index)
 		{
-			// GetConnection hands back a reference to the connection the STRUCTURE owns,
-			// so this is the real latch and not a copy of it. FConnection is copyable and
-			// the latch is per-copy: a cascade that happened only to temporaries would
-			// read here as a structure where nothing ever broke.
+			/*
+			 * GetConnection hands back a reference to the connection the STRUCTURE owns,
+			 * so this is the real latch and not a copy of it. FConnection is copyable and
+			 * the latch is per-copy: a cascade that happened only to temporaries would
+			 * read here as a structure where nothing ever broke.
+			 */
 			const FConnection& Connection = Structure.GetConnection(Index);
 			const FVector Force = Structure.GetConnectionForce(Index);
 			const int32 BreakPass = Structure.GetBreakPass(Index);
 
-			// THE LATCH AND THE STAMP ARE ONE ANSWER. HasGiven records only WHETHER a
-			// joint gave and the stamp only WHEN; a joint with one and not the other is
-			// two accessors on the same object telling different stories.
+			/*
+			 * THE LATCH AND THE STAMP ARE ONE ANSWER. HasGiven records only WHETHER a
+			 * joint gave and the stamp only WHEN; a joint with one and not the other is
+			 * two accessors on the same object telling different stories.
+			 */
 			if (Connection.HasGiven() != (BreakPass != INDEX_NONE))
 			{
 				Report(FString::Printf(
@@ -1608,27 +1678,29 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 					bPassBrokeSomething[BreakPass] = true;
 				}
 
-				// NOTHING BREAKS IN PASS 1 THAT WAS NOT OVER CAPACITY AS BUILT — half of
-				// the only assertion in either fuzz that can see an OVER-EAGER break. The
-				// other half, for passes 2 and later, is after this loop, where the graph
-				// each pass was solved on is rebuilt from the stamps.
-				//
-				// Everything else here is judged on the graph minus the joints that gave,
-				// so it takes production's break set as its premise and cannot disagree
-				// with it: mutate the break comparison to give at a TENTH of capacity and
-				// support, load, conservation and no-survivor-over-capacity all stay green
-				// on the wreckage, because each is only ever asked about what is left.
-				//
-				// Pass 1 is done here rather than by that rebuild because its graph is one
-				// nothing has to reconstruct: the loads are the loads of the INTACT
-				// structure, so AsBuilt reproduces them exactly — same graph, same
-				// deterministic solve, nothing broken yet — and every joint stamped 1 must
-				// have been over its own capacity there.
-				//
-				// Strictly greater than 1, matching ApplyForce: exactly 1.0 is fully
-				// loaded and still holding, and five joints in this fuzz land there
-				// exactly. Written !(x > 1.0) so a NaN utilisation reports rather than
-				// reading as a break that was justified.
+				/*
+				 * NOTHING BREAKS IN PASS 1 THAT WAS NOT OVER CAPACITY AS BUILT — half of
+				 * the only assertion in either fuzz that can see an OVER-EAGER break. The
+				 * other half, for passes 2 and later, is after this loop, where the graph
+				 * each pass was solved on is rebuilt from the stamps.
+				 *
+				 * Everything else here is judged on the graph minus the joints that gave,
+				 * so it takes production's break set as its premise and cannot disagree
+				 * with it: mutate the break comparison to give at a TENTH of capacity and
+				 * support, load, conservation and no-survivor-over-capacity all stay green
+				 * on the wreckage, because each is only ever asked about what is left.
+				 *
+				 * Pass 1 is done here rather than by that rebuild because its graph is one
+				 * nothing has to reconstruct: the loads are the loads of the INTACT
+				 * structure, so AsBuilt reproduces them exactly — same graph, same
+				 * deterministic solve, nothing broken yet — and every joint stamped 1 must
+				 * have been over its own capacity there.
+				 *
+				 * Strictly greater than 1, matching ApplyForce: exactly 1.0 is fully
+				 * loaded and still holding, and five joints in this fuzz land there
+				 * exactly. Written !(x > 1.0) so a NaN utilisation reports rather than
+				 * reading as a break that was justified.
+				 */
 				if (BreakPass == 1)
 				{
 					++FirstPassBreaks;
@@ -1659,25 +1731,29 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 					Index, Force.X, Force.Y, Force.Z));
 			}
 
-			// Gravity does not change direction because a joint is tilted, and it does not
-			// acquire one because a neighbouring joint gave.
+			/*
+			 * Gravity does not change direction because a joint is tilted, and it does not
+			 * acquire one because a neighbouring joint gave.
+			 */
 			if (!FMath::IsNearlyZero(Force.X, 1.0e-9) || !FMath::IsNearlyZero(Force.Y, 1.0e-9))
 			{
 				Report(FString::Printf(TEXT("NOT VERTICAL: joint %d carries (%f, %f, %f)"),
 					Index, Force.X, Force.Y, Force.Z));
 			}
 
-			// A BROKEN JOINT IS OUT OF THE STRUCTURE AND CARRIES NOTHING. Not a
-			// displacement claim and not a proxy for one — DESIGN.md §4 is emphatic that
-			// two pieces can sever and stay resting exactly in place. This is the
-			// mechanism: the share it used to hold has to be somewhere else now, and a
-			// broken joint still reporting one is a wall standing on a joint it has shed.
-			//
-			// EXACTLY ZERO, not nearly zero. Every solve clears the force array to zero
-			// and then ASSIGNS a share only along the load paths, which a given joint is
-			// filtered out of, so a broken joint's force is never arithmetic on a small
-			// number — it is the untouched initial value. Nearly-zero with this case's
-			// tolerance would let up to 0.2 uu through for no reason.
+			/*
+			 * A BROKEN JOINT IS OUT OF THE STRUCTURE AND CARRIES NOTHING. Not a
+			 * displacement claim and not a proxy for one — DESIGN.md §4 is emphatic that
+			 * two pieces can sever and stay resting exactly in place. This is the
+			 * mechanism: the share it used to hold has to be somewhere else now, and a
+			 * broken joint still reporting one is a wall standing on a joint it has shed.
+			 *
+			 * EXACTLY ZERO, not nearly zero. Every solve clears the force array to zero
+			 * and then ASSIGNS a share only along the load paths, which a given joint is
+			 * filtered out of, so a broken joint's force is never arithmetic on a small
+			 * number — it is the untouched initial value. Nearly-zero with this case's
+			 * tolerance would let up to 0.2 uu through for no reason.
+			 */
 			if (Connection.HasGiven() && Force.Z != 0.0)
 			{
 				Report(FString::Printf(
@@ -1685,18 +1761,22 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 					Index, BreakPass, Force.Z));
 			}
 
-			// NOTHING STANDING IS OVER ITS CAPACITY — the definition of "settled", and the
-			// property that catches a cascade which stopped a pass early.
-			//
-			// Measured through UtilisationUnder, which mirrors ApplyForce's normalisation
-			// exactly and carries the standing instruction to keep doing so.
+			/*
+			 * NOTHING STANDING IS OVER ITS CAPACITY — the definition of "settled", and the
+			 * property that catches a cascade which stopped a pass early.
+			 *
+			 * Measured through UtilisationUnder, which mirrors ApplyForce's normalisation
+			 * exactly and carries the standing instruction to keep doing so.
+			 */
 			if (!Connection.HasGiven())
 			{
 				FConnectionLoad Load;
 				const double Utilisation = UtilisationUnder(Connection, Force, Load);
 
-				// Written !(x <= 1) rather than x > 1 so a NaN fails here instead of
-				// slipping through as a joint that is comfortably fine.
+				/*
+				 * Written !(x <= 1) rather than x > 1 so a NaN fails here instead of
+				 * slipping through as a joint that is comfortably fine.
+				 */
 				if (!(Utilisation <= 1.0))
 				{
 					Report(FString::Printf(
@@ -1719,9 +1799,11 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 			++CasesEntirelyBroken;
 		}
 
-		// EVERY COUNTED PASS BROKE SOMETHING. A pass that broke nothing is the last one
-		// and is not counted, so a gap in the numbering means the loop carried on past
-		// the point where it had settled.
+		/*
+		 * EVERY COUNTED PASS BROKE SOMETHING. A pass that broke nothing is the last one
+		 * and is not counted, so a gap in the numbering means the loop carried on past
+		 * the point where it had settled.
+		 */
 		for (int32 Pass = 1; Pass <= Passes; ++Pass)
 		{
 			if (!bPassBrokeSomething.IsValidIndex(Pass) || !bPassBrokeSomething[Pass])
@@ -1732,27 +1814,29 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		// NOTHING BREAKS IN PASS 2 OR LATER THAT WAS NOT OVER CAPACITY IN THE GRAPH THAT
-		// PASS WAS ACTUALLY SOLVED ON — the other half of the over-eager break question,
-		// and the half that used to be recorded as unreachable from outside a production
-		// seam. It is reachable, and ConnectionBreakPass is why.
-		//
-		// The graph production solved at the start of pass N is the built graph minus
-		// every joint stamped below N, which the stamps alone determine. Rebuilding it and
-		// solving it once reproduces pass N's loads bit for bit — see SurvivingGraphOf for
-		// why that is a property of Structure.cpp rather than a coincidence — so the same
-		// question the pass-1 sweep asks of AsBuilt can be asked of every later pass.
-		//
-		// This is not a new oracle and not a new assumption. The very same lemma, "a
-		// broken joint leaves the structure exactly as if it had never been built", is
-		// what the LOAD property below already leans on eight thousand times when it
-		// compares production's settled forces against the oracle run on the graph with
-		// the broken joints removed. Here it is applied at an intermediate pass instead of
-		// at the end.
-		//
-		// Same helper, same comparison and the same label as the pass-1 sweep: strictly
-		// greater than 1 to match ApplyForce, written !(x > 1.0) so a NaN utilisation
-		// reports rather than reading as a break that was justified.
+		/*
+		 * NOTHING BREAKS IN PASS 2 OR LATER THAT WAS NOT OVER CAPACITY IN THE GRAPH THAT
+		 * PASS WAS ACTUALLY SOLVED ON — the other half of the over-eager break question,
+		 * and the half that used to be recorded as unreachable from outside a production
+		 * seam. It is reachable, and ConnectionBreakPass is why.
+		 *
+		 * The graph production solved at the start of pass N is the built graph minus
+		 * every joint stamped below N, which the stamps alone determine. Rebuilding it and
+		 * solving it once reproduces pass N's loads bit for bit — see SurvivingGraphOf for
+		 * why that is a property of Structure.cpp rather than a coincidence — so the same
+		 * question the pass-1 sweep asks of AsBuilt can be asked of every later pass.
+		 *
+		 * This is not a new oracle and not a new assumption. The very same lemma, "a
+		 * broken joint leaves the structure exactly as if it had never been built", is
+		 * what the LOAD property below already leans on eight thousand times when it
+		 * compares production's settled forces against the oracle run on the graph with
+		 * the broken joints removed. Here it is applied at an intermediate pass instead of
+		 * at the end.
+		 *
+		 * Same helper, same comparison and the same label as the pass-1 sweep: strictly
+		 * greater than 1 to match ApplyForce, written !(x > 1.0) so a NaN utilisation
+		 * reports rather than reading as a break that was justified.
+		 */
 		for (int32 Pass = 2; Pass <= Passes; ++Pass)
 		{
 			TArray<int32> AtPassJointIndex;
@@ -1769,8 +1853,10 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
-			// One solve, no break sweep, so nothing latches and these are the loads the
-			// pass-N sweep was handed.
+			/*
+			 * One solve, no break sweep, so nothing latches and these are the loads the
+			 * pass-N sweep was handed.
+			 */
 			AtPass.SolveLoads();
 
 			for (int32 Index = 0; Index < AtPassJointIndex.Num(); ++Index)
@@ -1800,19 +1886,23 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		// THE SETTLED GRAPH IS THE GRAPH MINUS THE JOINTS THAT GAVE, and the oracle is
-		// asked about exactly that. Its answer is derived by a different algorithm all
-		// the way down, so agreement is evidence rather than a transcription agreeing
-		// with itself.
+		/*
+		 * THE SETTLED GRAPH IS THE GRAPH MINUS THE JOINTS THAT GAVE, and the oracle is
+		 * asked about exactly that. Its answer is derived by a different algorithm all
+		 * the way down, so agreement is evidence rather than a transcription agreeing
+		 * with itself.
+		 */
 		TArray<int32> OriginalJointIndex;
 		const FFuzzCase Settled = SurvivingGraphOf(Case, Structure, SettledPass, OriginalJointIndex);
 
 		const FOracleResult Oracle = SolveWithOracle(Settled);
 		const TArray<TArray<int32>> Supports = BuildSupports(Settled);
 
-		// The oracle's own sanity. A relaxation that never settles, or a joint two pieces
-		// both push through, means the oracle failed to strand a cycle — its answers
-		// below would then be meaningless rather than merely different.
+		/*
+		 * The oracle's own sanity. A relaxation that never settles, or a joint two pieces
+		 * both push through, means the oracle failed to strand a cycle — its answers
+		 * below would then be meaningless rather than merely different.
+		 */
 		if (!Oracle.bForcesConverged || Oracle.bJointClaimedTwice)
 		{
 			Report(FString::Printf(
@@ -1826,10 +1916,12 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 		{
 			const bool bProductionSupported = Structure.IsPieceSupported(Index);
 
-			// SUPPORTEDNESS, PIECE BY PIECE, AGAINST AN INDEPENDENT ANSWER. This is the
-			// property conservation cannot have: over-stranding removes a piece's weight
-			// from BOTH sides of the conservation equation, so the sum still balances
-			// while the answer is wrong.
+			/*
+			 * SUPPORTEDNESS, PIECE BY PIECE, AGAINST AN INDEPENDENT ANSWER. This is the
+			 * property conservation cannot have: over-stranding removes a piece's weight
+			 * from BOTH sides of the conservation equation, so the sum still balances
+			 * while the answer is wrong.
+			 */
 			if (bProductionSupported != Oracle.bSupported[Index])
 			{
 				Report(FString::Printf(
@@ -1855,10 +1947,12 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
-			// STRANDING NEVER TRAVELS DOWNWARD, and a break must not make it start. A
-			// piece resting on the earth stands up whatever is happening above it —
-			// unless it is itself caught in a knot, which a break can CREATE by promoting
-			// head joints into the tier a broken bed joint has vacated.
+			/*
+			 * STRANDING NEVER TRAVELS DOWNWARD, and a break must not make it start. A
+			 * piece resting on the earth stands up whatever is happening above it —
+			 * unless it is itself caught in a knot, which a break can CREATE by promoting
+			 * head joints into the tier a broken bed joint has vacated.
+			 */
 			if (!Oracle.bStrandedInCycle[Index] && !bProductionSupported)
 			{
 				for (const int32 JointIndex : Supports[Index])
@@ -1882,14 +1976,16 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 			const double OwnWeightUU = Case.Pieces[Index].MassKg * GravityCmPerSecondSquared;
 			ReportedSupportedWeightUU += OwnWeightUU;
 
-			// SUPPORTED MEANS ITS LOAD WENT SOMEWHERE, and after a cascade that is the
-			// property with the most to catch: a broken joint that stops carrying load but
-			// still WINS the bearing tier leaves the piece above it with an empty support
-			// list, and the piece is then reported held up with every joint touching it
-			// reading zero. Summed over every joint TOUCHING the piece rather than over
-			// its supports, so it needs no transcription of the tier rule to stay in step
-			// with — whichever subset turns out to be the supports, the total over all of
-			// them is a lower bound.
+			/*
+			 * SUPPORTED MEANS ITS LOAD WENT SOMEWHERE, and after a cascade that is the
+			 * property with the most to catch: a broken joint that stops carrying load but
+			 * still WINS the bearing tier leaves the piece above it with an empty support
+			 * list, and the piece is then reported held up with every joint touching it
+			 * reading zero. Summed over every joint TOUCHING the piece rather than over
+			 * its supports, so it needs no transcription of the tier rule to stay in step
+			 * with — whichever subset turns out to be the supports, the total over all of
+			 * them is a lower bound.
+			 */
 			double TouchingUU = 0.0;
 			for (int32 JointIndex = 0; JointIndex < JointCount; ++JointIndex)
 			{
@@ -1908,10 +2004,12 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		// THE SURVIVING JOINTS CARRY WHAT THE ORACLE SAYS THE REDUCED GRAPH CARRIES.
-		// The broken ones are covered by "a broken joint carries nothing" above and are
-		// simply absent here, which is the point: DESIGN.md §3 says a joint that has
-		// given leaves the structure as if it had never been built.
+		/*
+		 * THE SURVIVING JOINTS CARRY WHAT THE ORACLE SAYS THE REDUCED GRAPH CARRIES.
+		 * The broken ones are covered by "a broken joint carries nothing" above and are
+		 * simply absent here, which is the point: DESIGN.md §3 says a joint that has
+		 * given leaves the structure as if it had never been built.
+		 */
 		for (int32 Index = 0; Index < Settled.Joints.Num(); ++Index)
 		{
 			const double ProductionZ = Structure.GetConnectionForce(OriginalJointIndex[Index]).Z;
@@ -1927,10 +2025,12 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		// GROUND-REACTION CONSERVATION, against the solver's OWN final claim about what
-		// it is holding up. Everything still held up has to arrive somewhere and the only
-		// somewhere is the earth. It is kept even though it cannot see over-stranding,
-		// because it is the only thing that can see a share counted TWICE.
+		/*
+		 * GROUND-REACTION CONSERVATION, against the solver's OWN final claim about what
+		 * it is holding up. Everything still held up has to arrive somewhere and the only
+		 * somewhere is the earth. It is kept even though it cannot see over-stranding,
+		 * because it is the only thing that can see a share counted TWICE.
+		 */
 		if (!FMath::IsNearlyEqual(GroundReactionUU, ReportedSupportedWeightUU, Tolerance))
 		{
 			Report(FString::Printf(
@@ -1938,9 +2038,11 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 				ReportedSupportedWeightUU, GroundReactionUU));
 		}
 
-		// IT HAS SETTLED, which is a claim about the SECOND call and not only about the
-		// first. Nothing more gives, nothing un-gives, no stamp is rewritten and no load
-		// moves.
+		/*
+		 * IT HAS SETTLED, which is a claim about the SECOND call and not only about the
+		 * first. Nothing more gives, nothing un-gives, no stamp is rewritten and no load
+		 * moves.
+		 */
 		TArray<FVector> SettledForces;
 		TArray<int32> SettledPasses;
 		SettledForces.Reserve(JointCount);
@@ -1969,9 +2071,11 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 
 		for (int32 Index = 0; Index < JointCount; ++Index)
 		{
-			// Bit for bit, not nearly-equal: the second run repeats the identical
-			// arithmetic on identical inputs, so any difference at all is state carried
-			// between runs rather than rounding.
+			/*
+			 * Bit for bit, not nearly-equal: the second run repeats the identical
+			 * arithmetic on identical inputs, so any difference at all is state carried
+			 * between runs rather than rounding.
+			 */
 			if (Structure.GetConnectionForce(Index) != SettledForces[Index])
 			{
 				Report(FString::Printf(
@@ -2023,10 +2127,12 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 		CasesStandingAsBuilt, CasesWithOnePass, CasesWithTwoOrMorePasses, MaxPasses,
 		CasesEntirelyBroken, FallingPieces));
 
-	// THE GENERATOR ITSELF IS ON TRIAL HERE, and none of the properties above can put it
-	// there: a generator where nothing ever breaks satisfies every one of them in
-	// silence, and so does one where everything does. These are floors rather than
-	// expectations — they exist to prove the fuzz generated the thing it is named for.
+	/*
+	 * THE GENERATOR ITSELF IS ON TRIAL HERE, and none of the properties above can put it
+	 * there: a generator where nothing ever breaks satisfies every one of them in
+	 * silence, and so does one where everything does. These are floors rather than
+	 * expectations — they exist to prove the fuzz generated the thing it is named for.
+	 */
 	TestTrue(
 		FString::Printf(TEXT("the cascade fuzz should have built thousands of joints, got %d"), TotalJoints),
 		TotalJoints > 4 * CascadeCaseCount);
@@ -2048,9 +2154,11 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 		FString::Printf(TEXT("the cascade fuzz should have produced falling pieces, got %d"), FallingPieces),
 		FallingPieces > 0);
 
-	// THE FLOORS UNDER THE PROPERTY THAT WATCHES THE BREAK DECISION. It examines joints
-	// by their stamp, so a change that stopped producing them — or a build that stopped
-	// stamping — would leave it examining nothing and passing in silence.
+	/*
+	 * THE FLOORS UNDER THE PROPERTY THAT WATCHES THE BREAK DECISION. It examines joints
+	 * by their stamp, so a change that stopped producing them — or a build that stopped
+	 * stamping — would leave it examining nothing and passing in silence.
+	 */
 	TestTrue(
 		FString::Printf(TEXT("the cascade fuzz should have broken joints in pass 1 to check as built, got %d"),
 			FirstPassBreaks),
@@ -2062,21 +2170,25 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 			LaterPassBreaks),
 		LaterPassBreaks > 0);
 
-	// AND EVERY BREAK IS GUARDED, not most of them. Pass 1 is judged against the as-built
-	// solve and every later pass against the graph rebuilt from the stamps below it, which
-	// between them account for every stamp in [1, Passes] — so a joint that is guarded by
-	// neither is a joint stamped outside the passes that ran, and this is where the "88%"
-	// this fuzz used to guard fails rather than quietly returning.
+	/*
+	 * AND EVERY BREAK IS GUARDED, not most of them. Pass 1 is judged against the as-built
+	 * solve and every later pass against the graph rebuilt from the stamps below it, which
+	 * between them account for every stamp in [1, Passes] — so a joint that is guarded by
+	 * neither is a joint stamped outside the passes that ran, and this is where the "88%"
+	 * this fuzz used to guard fails rather than quietly returning.
+	 */
 	TestTrue(
 		FString::Printf(TEXT("every break should have been checked against the graph it was decided on, ")
 			TEXT("got %d of %d"),
 			FirstPassBreaks + LaterPassBreaks, BrokenJoints),
 		FirstPassBreaks + LaterPassBreaks == BrokenJoints);
 
-	// AND THIS IS THE ONE THAT MAKES IT A CASCADE FUZZ RATHER THAN A BREAK FUZZ. A second
-	// pass exists only because the first pass's breaks moved load onto a neighbour and
-	// put it over capacity — redistribution actually happening, rather than a set of
-	// independently overloaded joints all giving at once.
+	/*
+	 * AND THIS IS THE ONE THAT MAKES IT A CASCADE FUZZ RATHER THAN A BREAK FUZZ. A second
+	 * pass exists only because the first pass's breaks moved load onto a neighbour and
+	 * put it over capacity — redistribution actually happening, rather than a set of
+	 * independently overloaded joints all giving at once.
+	 */
 	TestTrue(
 		FString::Printf(TEXT("the cascade fuzz should have produced multi-pass cascades, got %d"),
 			CasesWithTwoOrMorePasses),

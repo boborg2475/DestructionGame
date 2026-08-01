@@ -31,7 +31,7 @@ Asked to skip the gate? Don't argue at length. State that the project requires a
 
 ## Orient
 
-Read `CLAUDE.md`, then `claude_plans/DESIGN.md` (§2 architecture and the force pipeline, §3 physics model and units), then `claude_plans/CURRENT_STATE.md` for what exists and the accumulated gotchas. Match the surrounding code — this is an Epic-template-derived UE C++ module, so follow existing naming and the comment density already in the files you edit.
+Read `CLAUDE.md`, then `claude_plans/DESIGN.md` (§2 architecture and the force pipeline, §3 physics model and units), then `claude_plans/CURRENT_STATE.md` for what exists and the accumulated gotchas. Match the surrounding code — this is an Epic-template-derived UE C++ module, so follow existing naming and the comment density already in the files you edit. One exception, and it is deliberate: **comment delimiters follow CLAUDE.md's "Comment style" rule, not Epic's convention** — a run of two or more whole-line comments is one `/* */` block, never stacked `//` lines.
 
 If DESIGN.md is silent or looks wrong, raise it rather than silently diverging.
 

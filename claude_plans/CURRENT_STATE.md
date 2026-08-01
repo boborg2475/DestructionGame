@@ -8,7 +8,7 @@
 
 Items are deliberately unnumbered — they get added and removed constantly, and renumbering churns the diff.
 
-Last updated: 2026-08-01 (functional-test maps are now cook-gated — see Conventions and gotchas)
+Last updated: 2026-08-01 (comment blocks converted to `/* */`; one file refused — see Conventions and gotchas)
 
 ---
 
@@ -36,6 +36,18 @@ Design is well developed ([DESIGN.md](DESIGN.md)); implementation has just start
 ---
 
 ## Conventions and gotchas
+
+**`StructureCascadeTest.cpp` is the one file the comment-block converter refuses, and the reason is a live compiler footgun.** The rule and the tool are in [CLAUDE.md](../CLAUDE.md) ("Comment style"); every other source file was converted. Line 707 is an ASCII diagram inside a `//` comment:
+
+```cpp
+	//        [ P ]           one piece, two pads
+	//        /   \
+	//   lime      cement     100 cm2 each, 200 cm2 in total
+```
+
+The `\` at end of line is a **real C++ line continuation** — the compiler splices the next physical line into the same `//` comment (this is what `-Wcomment` / MSVC C4010 warn about). It is harmless here only because the spliced line happens to be another comment line. **Put a code line after a backslash-terminated `//` comment and it silently vanishes into the comment.** The converter's lexer does not model splicing, so it refuses the whole file rather than guess — the correct outcome, and the refusal is the warning.
+
+To let the file convert: end that diagram line with something other than `\` (e.g. `//        /   \.`), then re-run `Scripts/Convert-CommentBlocks.ps1`. Not done here because it would alter comment text, which the conversion pass deliberately would not do. **Left for a human to decide** — it is a drawing, and whether the extra character spoils it is a judgement call.
 
 **Don't hard-reference content from C++ without checking it exists.** `FlyingPawn` and `PlayerController` both resolve Input assets by path in their constructors via `ConstructorHelpers::FObjectFinder`. That pattern makes content deletion silently dangerous — it fails at construction, not at compile time. Worth a helper or a startup assert if this spreads.
 

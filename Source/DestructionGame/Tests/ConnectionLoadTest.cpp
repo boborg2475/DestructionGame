@@ -42,8 +42,10 @@ namespace
 bool FConnectionLoadClassificationTest::RunTest(const FString& Parameters)
 {
 	const TArray<FClassificationCase> Cases = {
-		// The two cases DESIGN.md calls out explicitly. Same downward gravity,
-		// opposite classification, decided purely by the joint's orientation.
+		/*
+		 * The two cases DESIGN.md calls out explicitly. Same downward gravity,
+		 * opposite classification, decided purely by the joint's orientation.
+		 */
 		{
 			TEXT("gravity on a horizontal joint is pure compression"),
 			FVector(0.0, 0.0, -F), FVector(0.0, 0.0, 1.0),
@@ -71,8 +73,10 @@ bool FConnectionLoadClassificationTest::RunTest(const FString& Parameters)
 			/*Compression*/ 0.0, /*Tension*/ FDiagonal, /*Shear*/ FDiagonal
 		},
 
-		// A non-unit normal must be normalised, not used raw. Skipping this
-		// scales every load by the normal's length and silently inflates strain.
+		/*
+		 * A non-unit normal must be normalised, not used raw. Skipping this
+		 * scales every load by the normal's length and silently inflates strain.
+		 */
 		{
 			TEXT("a non-unit normal is normalised before use"),
 			FVector(0.0, 0.0, -F), FVector(0.0, 0.0, 5.0),
@@ -114,8 +118,10 @@ bool FConnectionLoadClassificationTest::RunTest(const FString& Parameters)
 				Case.Description, Case.ExpectedShear, Load.Shear),
 			FMath::IsNearlyEqual(Load.Shear, Case.ExpectedShear, Tolerance));
 
-		// Compression and tension are opposite signs of one axis; both being
-		// live at once means the sign convention has broken down.
+		/*
+		 * Compression and tension are opposite signs of one axis; both being
+		 * live at once means the sign convention has broken down.
+		 */
 		TestFalse(
 			FString::Printf(TEXT("%s: compression and tension are both non-zero"), Case.Description),
 			Load.Compression > Tolerance && Load.Tension > Tolerance);
@@ -180,12 +186,14 @@ bool FConnectionLoadNormalOrientationTest::RunTest(const FString& Parameters)
 				Case.Description, Near.Shear, Far.Shear),
 			FMath::IsNearlyEqual(Far.Shear, Near.Shear, Tolerance));
 
-		// Newton's third law. Describing the joint from the other piece means
-		// flipping the normal AND taking the equal-and-opposite reaction force.
-		// Do both and the joint must classify identically — a joint is in
-		// compression or tension as a fact about itself, not about which side
-		// you happen to be standing on. This is the invariant callers rely on;
-		// flipping the normal alone (above) is a misuse, not a second opinion.
+		/*
+		 * Newton's third law. Describing the joint from the other piece means
+		 * flipping the normal AND taking the equal-and-opposite reaction force.
+		 * Do both and the joint must classify identically — a joint is in
+		 * compression or tension as a fact about itself, not about which side
+		 * you happen to be standing on. This is the invariant callers rely on;
+		 * flipping the normal alone (above) is a misuse, not a second opinion.
+		 */
 		const FConnectionLoad Reaction = DestructionForce::ClassifyForce(-Case.Force, -Case.InterfaceNormal);
 
 		TestTrue(

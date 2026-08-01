@@ -100,8 +100,10 @@ bool FConnectionStrengthUtilisationTest::RunTest(const FString& Parameters)
 {
 	using namespace ConnectionStrengthTestSupport;
 
-	// Read out of the shared profile here rather than at namespace scope, so the
-	// reads happen at test time rather than during cross-TU static initialisation.
+	/*
+	 * Read out of the shared profile here rather than at namespace scope, so the
+	 * reads happen at test time rather than during cross-TU static initialisation.
+	 */
 	const double ConcreteCompressiveMPa = ConcreteUncoupled.CompressiveStrengthMPa;
 	const double ConcreteShearMPa = ConcreteUncoupled.ShearCohesionMPa;
 	const double ConcreteTensileMPa = ConcreteUncoupled.TensileStrengthMPa;
@@ -144,12 +146,16 @@ bool FConnectionStrengthUtilisationTest::RunTest(const FString& Parameters)
 			CompressionOf(ForceForMPa(ConcreteCompressiveMPa * 2.0)), UnitAreaSqCm, 2.0
 		},
 
-		// A joint fails on whichever axis gives first, so the worst governs.
-		// Here compression is comfortable at 0.5 but shear is already at its limit.
+		/*
+		 * A joint fails on whichever axis gives first, so the worst governs.
+		 * Here compression is comfortable at 0.5 but shear is already at its limit.
+		 */
 		{
 			TEXT("the most utilised axis governs a combined load"),
-			// Captures by reference because the strengths are now read out of the
-			// shared profile into locals rather than declared at namespace scope.
+			/*
+			 * Captures by reference because the strengths are now read out of the
+			 * shared profile into locals rather than declared at namespace scope.
+			 */
 			[&]{
 				FConnectionLoad L;
 				L.Compression = ForceForMPa(ConcreteCompressiveMPa / 2.0);
@@ -159,9 +165,11 @@ bool FConnectionStrengthUtilisationTest::RunTest(const FString& Parameters)
 			UnitAreaSqCm, 1.0
 		},
 
-		// Strength is stress-based, not force-based: the same force through half
-		// the area is twice the stress. A force-only model would miss this, and
-		// thin joints would wrongly survive.
+		/*
+		 * Strength is stress-based, not force-based: the same force through half
+		 * the area is twice the stress. A force-only model would miss this, and
+		 * thin joints would wrongly survive.
+		 */
 		{
 			TEXT("halving the interface area doubles the utilisation"),
 			CompressionOf(ForceForMPa(ConcreteCompressiveMPa)), UnitAreaSqCm / 2.0, 2.0
@@ -278,9 +286,11 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 			1.0
 		},
 
-		// The core behaviour. 1 MPa of compression buys 0.6 MPa of extra shear
-		// capacity, taking the joint from 0.2 to 0.8 — so a shear stress of 0.8
-		// that would be four times over the bare limit now sits exactly at it.
+		/*
+		 * The core behaviour. 1 MPa of compression buys 0.6 MPa of extra shear
+		 * capacity, taking the joint from 0.2 to 0.8 — so a shear stress of 0.8
+		 * that would be four times over the bare limit now sits exactly at it.
+		 */
 		{
 			TEXT("compression raises mortar shear capacity by mu times the normal stress"),
 			GeneralPurposeMortar,
@@ -293,9 +303,11 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 			1.0
 		},
 
-		// Only compression helps. A joint being pulled open gains nothing, so an
-		// implementation using the magnitude of normal stress — tension included —
-		// would wrongly report this as holding.
+		/*
+		 * Only compression helps. A joint being pulled open gains nothing, so an
+		 * implementation using the magnitude of normal stress — tension included —
+		 * would wrongly report this as holding.
+		 */
 		{
 			TEXT("tension buys no friction benefit"),
 			GeneralPurposeMortar,
@@ -308,8 +320,10 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 			1.0
 		},
 
-		// Dry stone is the pure case: zero cohesion, so capacity is entirely
-		// friction. 1 MPa of compression yields 0.7 MPa of capacity.
+		/*
+		 * Dry stone is the pure case: zero cohesion, so capacity is entirely
+		 * friction. 1 MPa of compression yields 0.7 MPa of capacity.
+		 */
 		{
 			TEXT("dry stone holds only because it is compressed"),
 			DryStone,
@@ -322,9 +336,11 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 			0.5 / 0.7
 		},
 
-		// Twice the compression, twice the capacity, half the utilisation. This is
-		// the mechanism behind progressive collapse: strip the load above a joint
-		// and its resistance to sliding falls away with it.
+		/*
+		 * Twice the compression, twice the capacity, half the utilisation. This is
+		 * the mechanism behind progressive collapse: strip the load above a joint
+		 * and its resistance to sliding falls away with it.
+		 */
 		{
 			TEXT("doubling the compression halves the dry stone utilisation"),
 			DryStone,
@@ -351,9 +367,11 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 			FMath::IsNearlyEqual(Utilisation, Case.ExpectedUtilisation, Tolerance));
 	}
 
-	// With no bond and nothing pressing on it, a dry stone joint has no shear
-	// capacity whatsoever — any sliding load at all parts it. Asserted as "gives"
-	// rather than a number because the ratio is unbounded here.
+	/*
+	 * With no bond and nothing pressing on it, a dry stone joint has no shear
+	 * capacity whatsoever — any sliding load at all parts it. Asserted as "gives"
+	 * rather than a number because the ratio is unbounded here.
+	 */
 	const double UnloadedDryStone =
 		DestructionForce::ComputeUtilisation(ShearOf(ForceForMPa(0.01)), DryStone, UnitAreaSqCm);
 
@@ -398,9 +416,11 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 
 	constexpr double Tolerance = 1e-9;
 
-	// 4 MPa of compression would buy 0.2 + 0.6 x 4.0 = 2.6 MPa uncapped. Capped,
-	// capacity is 1.3, so a shear stress of exactly 1.3 sits at the limit rather
-	// than at a comfortable 0.5.
+	/*
+	 * 4 MPa of compression would buy 0.2 + 0.6 x 4.0 = 2.6 MPa uncapped. Capped,
+	 * capacity is 1.3, so a shear stress of exactly 1.3 sits at the limit rather
+	 * than at a comfortable 0.5.
+	 */
 	{
 		FConnectionLoad Load;
 		Load.Compression = ForceForMPa(4.0);
@@ -415,16 +435,18 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 			FMath::IsNearlyEqual(Utilisation, 1.0, Tolerance));
 	}
 
-	// Past the cap, extra compression buys nothing. Two different depths in a
-	// wall must shear identically — that is what stops the base of a tall
-	// structure becoming stronger without limit.
-	//
-	// Both compressions are past the 1.83 MPa where the cap bites, but kept well
-	// below mortar's own 10 MPa crushing limit on purpose: push the compression
-	// much higher and the compression axis overtakes shear and governs the
-	// result, so the assertion would be measuring crushing rather than the cap. At
-	// 4 MPa the compression axis is at 0.4 against shear's 0.77, so shear governs
-	// with room to spare.
+	/*
+	 * Past the cap, extra compression buys nothing. Two different depths in a
+	 * wall must shear identically — that is what stops the base of a tall
+	 * structure becoming stronger without limit.
+	 *
+	 * Both compressions are past the 1.83 MPa where the cap bites, but kept well
+	 * below mortar's own 10 MPa crushing limit on purpose: push the compression
+	 * much higher and the compression axis overtakes shear and governs the
+	 * result, so the assertion would be measuring crushing rather than the cap. At
+	 * 4 MPa the compression axis is at 0.4 against shear's 0.77, so shear governs
+	 * with room to spare.
+	 */
 	{
 		FConnectionLoad Shallower;
 		Shallower.Compression = ForceForMPa(3.0);
@@ -444,16 +466,20 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 				ShallowerUtilisation, DeeperUtilisation),
 			FMath::IsNearlyEqual(ShallowerUtilisation, DeeperUtilisation, Tolerance));
 
-		// And it must be the capped value, not merely equal to each other — two
-		// identically wrong numbers would satisfy the assertion above on its own.
+		/*
+		 * And it must be the capped value, not merely equal to each other — two
+		 * identically wrong numbers would satisfy the assertion above on its own.
+		 */
 		TestTrue(
 			FString::Printf(TEXT("capped shear utilisation should be 1.0/%f, expected %f, got %f"),
 				MortarMaxShearMPa, 1.0 / MortarMaxShearMPa, ShallowerUtilisation),
 			FMath::IsNearlyEqual(ShallowerUtilisation, 1.0 / MortarMaxShearMPa, Tolerance));
 	}
 
-	// Below the cap nothing changes: friction still applies in full. Guards
-	// against a fix that clamps everywhere rather than only at the ceiling.
+	/*
+	 * Below the cap nothing changes: friction still applies in full. Guards
+	 * against a fix that clamps everywhere rather than only at the ceiling.
+	 */
 	{
 		FConnectionLoad Load;
 		Load.Compression = ForceForMPa(1.0);
@@ -513,11 +539,13 @@ bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
 			}()
 		},
 
-		// Garbage arriving from upstream. Chaos can produce a NaN velocity in a
-		// pathological contact, which would reach here as a NaN force. Left
-		// unguarded that poisons the result and the joint reports itself INTACT
-		// during a physics blowup — the one moment it should certainly be giving.
-		// An infinite load is the same story with a different value.
+		/*
+		 * Garbage arriving from upstream. Chaos can produce a NaN velocity in a
+		 * pathological contact, which would reach here as a NaN force. Left
+		 * unguarded that poisons the result and the joint reports itself INTACT
+		 * during a physics blowup — the one moment it should certainly be giving.
+		 * An infinite load is the same story with a different value.
+		 */
 		{
 			TEXT("a NaN load from upstream"),
 			[]{
@@ -536,9 +564,11 @@ bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
 		},
 	};
 
-	// Dry stone is the important one here: real zeroes in two of its three
-	// strengths, so it reaches the degenerate paths without anything being
-	// misconfigured.
+	/*
+	 * Dry stone is the important one here: real zeroes in two of its three
+	 * strengths, so it reaches the degenerate paths without anything being
+	 * misconfigured.
+	 */
 	const TArray<FNamedProfile> Profiles = {
 		{ TEXT("concrete (uncoupled)"), ConcreteUncoupled },
 		{ TEXT("mortar"), GeneralPurposeMortar },
@@ -578,9 +608,11 @@ bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
 
 				if (!Area.bIsValidJoint || !bLoadIsWellFormed)
 				{
-					// Fail closed. A joint with no interface, or one handed a load
-					// nobody can make sense of, must not report itself intact —
-					// that is the single answer that must never come back.
+					/*
+					 * Fail closed. A joint with no interface, or one handed a load
+					 * nobody can make sense of, must not report itself intact —
+					 * that is the single answer that must never come back.
+					 */
 					TestTrue(
 						FString::Printf(TEXT("%s: a degenerate joint must read as failed, got %f"),
 							*Context, Utilisation),

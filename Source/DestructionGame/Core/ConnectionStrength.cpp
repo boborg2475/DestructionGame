@@ -31,12 +31,14 @@ namespace DestructionForce
 		 */
 		double AxisUtilisation(double Stress, double CapacityMPa)
 		{
-			// Garbage in still has to fail closed. A NaN stress is worse than it
-			// looks: FMath::Max is (A >= B) ? A : B, and every comparison against
-			// NaN is false, so Max3 quietly discards it and returns whichever
-			// other axis happened to be lowest. The joint then reports a confident
-			// zero utilisation for an input nobody can interpret, which nothing
-			// downstream could detect. An infinite stress is genuinely failed.
+			/*
+			 * Garbage in still has to fail closed. A NaN stress is worse than it
+			 * looks: FMath::Max is (A >= B) ? A : B, and every comparison against
+			 * NaN is false, so Max3 quietly discards it and returns whichever
+			 * other axis happened to be lowest. The joint then reports a confident
+			 * zero utilisation for an input nobody can interpret, which nothing
+			 * downstream could detect. An infinite stress is genuinely failed.
+			 */
 			if (!FMath::IsFinite(Stress))
 			{
 				return TNumericLimits<double>::Max();
@@ -56,11 +58,13 @@ namespace DestructionForce
 		const FConnectionStrength& Strength,
 		double InterfaceAreaSqCm)
 	{
-		// Fail closed on a joint that has no interface to carry anything across.
-		// Dividing by a zero area produces NaN, and NaN compares false against
-		// everything — including the > 1 test for failure — so the joint would
-		// report itself intact. Written as !(> 0) rather than <= 0 so that a NaN
-		// area is caught by the same branch instead of slipping past it.
+		/*
+		 * Fail closed on a joint that has no interface to carry anything across.
+		 * Dividing by a zero area produces NaN, and NaN compares false against
+		 * everything — including the > 1 test for failure — so the joint would
+		 * report itself intact. Written as !(> 0) rather than <= 0 so that a NaN
+		 * area is caught by the same branch instead of slipping past it.
+		 */
 		if (!(InterfaceAreaSqCm > 0.0))
 		{
 			return TNumericLimits<double>::Max();
@@ -70,23 +74,27 @@ namespace DestructionForce
 		const double TensileStress = StressMPa(Load.Tension, InterfaceAreaSqCm);
 		const double ShearStress = StressMPa(Load.Shear, InterfaceAreaSqCm);
 
-		// Mohr-Coulomb: the bond, plus whatever friction the squeeze is worth.
-		// Only compression contributes — a joint being pulled open gains nothing,
-		// and FConnectionLoad guarantees Compression is zero whenever there is
-		// tension, so that falls out without a branch.
-		//
-		// Truncated at the material's own ceiling, because friction cannot help
-		// forever: past a point the material gives rather than the faces sliding.
-		// Left unbounded, capacity would climb with depth and joints at the base
-		// of a tall structure would become effectively uncuttable.
+		/*
+		 * Mohr-Coulomb: the bond, plus whatever friction the squeeze is worth.
+		 * Only compression contributes — a joint being pulled open gains nothing,
+		 * and FConnectionLoad guarantees Compression is zero whenever there is
+		 * tension, so that falls out without a branch.
+		 *
+		 * Truncated at the material's own ceiling, because friction cannot help
+		 * forever: past a point the material gives rather than the faces sliding.
+		 * Left unbounded, capacity would climb with depth and joints at the base
+		 * of a tall structure would become effectively uncuttable.
+		 */
 		const double ShearCapacityMPa = FMath::Min(
 			Strength.ShearCohesionMPa + Strength.FrictionCoefficient * CompressiveStress,
 			Strength.MaxShearStrengthMPa);
 
-		// A joint gives on whichever axis runs out first, so the worst governs.
-		// Each is measured against its own capacity — that separation is what makes
-		// stone crush-resistant but brittle in shear, and it is the whole reason
-		// this sits in front of Chaos's single strain threshold.
+		/*
+		 * A joint gives on whichever axis runs out first, so the worst governs.
+		 * Each is measured against its own capacity — that separation is what makes
+		 * stone crush-resistant but brittle in shear, and it is the whole reason
+		 * this sits in front of Chaos's single strain threshold.
+		 */
 		return FMath::Max3(
 			AxisUtilisation(CompressiveStress, Strength.CompressiveStrengthMPa),
 			AxisUtilisation(ShearStress, ShearCapacityMPa),

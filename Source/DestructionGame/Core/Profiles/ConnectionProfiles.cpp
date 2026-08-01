@@ -211,8 +211,10 @@ namespace DestructionProfiles
 		/*ShearCohesion*/ 0.083,
 		/*Tensile*/ 0.049,
 		/*FrictionCoefficient*/ 0.0
-		// MaxShear is left at its unbounded default here and on the two below: with
-		// mu = 0 the capacity never grows with load, so there is nothing to truncate.
+		/*
+		 * MaxShear is left at its unbounded default here and on the two below: with
+		 * mu = 0 the capacity never grows with load, so there is nothing to truncate.
+		 */
 	};
 
 	/**
