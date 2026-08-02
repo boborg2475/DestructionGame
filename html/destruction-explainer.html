@@ -2834,6 +2834,21 @@ const CASES = [
     return buildWall({ profile:profS.value, end:endS.value, courses:4, bricks:4,
       roofKg:(+loadR.value)*1000, removed:[...removed] });
   }
+
+  /* How much roof this mortar takes before the ground course crushes — found by
+     bisection on the real cascade rather than quoted, and memoised because the
+     search is 24 solves. null when it survives the slider's whole range. */
+  const crushCache = {};
+  function crushTonnes(profile, end){
+    const key = profile + "|" + end;
+    if (key in crushCache) return crushCache[key];
+    const breaks = t => recordCascade(() =>
+      buildWall({ profile, end, courses:4, bricks:4, roofKg:t*1000 })).frames.length > 1;
+    let lo = 0, hi = +loadR.max;
+    if (!breaks(hi)) return (crushCache[key] = null);
+    for (let k = 0; k < 22; k++){ const m = (lo+hi)/2; if (breaks(m)) hi = m; else lo = m; }
+    return (crushCache[key] = hi);
+  }
   function rebuild(){
     stop();
     loadV.textContent = (+loadR.value).toFixed(1) + " t";
@@ -2899,7 +2914,12 @@ const CASES = [
           "limitation, not physics, and being able to tell is the point."
         : removed.size === 0 && brokeN === 0
         ? "Intact and barely working. Click bricks to pull them out — three from the bottom course is " +
-          "usually enough to make a knot — or wind the roof load up until a joint actually crushes."
+          "usually enough to make a knot — or wind the roof load up: " + (() => {
+            const t = crushTonnes(profS.value, endS.value);
+            return t === null
+              ? profS.value + " survives the whole slider. Compression is not how a small wall fails."
+              : profS.value + " crushes its ground course at " + t.toFixed(2) + " tonnes.";
+          })()
         : "Every head joint that has woken up is carrying its load in pure shear at zero compression, " +
           "so Mohr-Coulomb gives it cohesion alone — no friction help at all.") +
       '</p>';
