@@ -52,6 +52,22 @@ struct FConnection
 	double ApplyForce(const FVector& Force);
 
 	/**
+	 * What this force WOULD do to this joint. Never latches, never mutates.
+	 *
+	 * The read-only half of ApplyForce, and the one a strain readout asks every
+	 * frame: a display that had to call ApplyForce to find out how loaded a joint
+	 * is would take the wall apart by drawing it.
+	 *
+	 * PURE ARITHMETIC — it does not consult the latch. A joint that has already
+	 * given still answers what the force would have done to it, which is exactly
+	 * what a fresh joint of the same geometry and profile would report. Latching
+	 * therefore stays known in exactly one place, ApplyForce, and a caller that
+	 * cares whether the joint is still in the structure asks HasGiven, which it
+	 * wants to do anyway.
+	 */
+	double UtilisationUnder(const FVector& Force) const;
+
+	/**
 	 * Take this joint out of the structure without it having failed.
 	 *
 	 * A joint whose piece was REMOVED did not snap — it was deleted — but it is just

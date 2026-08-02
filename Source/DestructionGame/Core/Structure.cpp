@@ -894,6 +894,22 @@ FVector FStructure::GetConnectionForce(int32 ConnectionIndex) const
 		: FVector::ZeroVector;
 }
 
+double FStructure::GetConnectionUtilisation(int32 ConnectionIndex) const
+{
+	/*
+	 * Delegated whole, never re-derived. FConnection::UtilisationUnder is the one
+	 * evaluator the break decision itself is made on, so composing it over the
+	 * routed force keeps this accessor from becoming a third hand-copy of that
+	 * arithmetic — and it inherits the degenerate-normal obligation for free.
+	 *
+	 * The fail-closed answer for an unknown handle needs no branch of its own:
+	 * GetConnection returns a default-constructed placeholder whose interface area
+	 * is zero, and ComputeUtilisation's area guard already answers that with
+	 * TNumericLimits<double>::Max() rather than with a healthy-looking zero.
+	 */
+	return GetConnection(ConnectionIndex).UtilisationUnder(GetConnectionForce(ConnectionIndex));
+}
+
 bool FStructure::IsPieceSupported(int32 PieceIndex) const
 {
 	// An unknown piece is not being held up.

@@ -305,6 +305,32 @@ struct FStructure
 	FVector GetConnectionForce(int32 ConnectionIndex) const;
 
 	/**
+	 * How close this connection is to failing under the load the last solve gave it.
+	 *
+	 * The strain readout's question, and it must be answerable without damaging
+	 * anything: FConnection::UtilisationUnder is the non-mutating evaluator, and this
+	 * is that evaluator applied to GetConnectionForce. Nothing here re-derives the
+	 * break decision — a third hand-copy of it in production is exactly what this
+	 * accessor exists to prevent.
+	 *
+	 * ZERO FOR A JOINT THAT HAS GIVEN, and the reason matters: a given joint carries
+	 * no force, so there is genuinely nothing on it. The latch is NOT what produces
+	 * that zero, and a caller must not read a low ratio as "intact" — HasGiven is the
+	 * authoritative state, and GetBreakPass says which pass wrote it.
+	 *
+	 * FAILS CLOSED FOR A HANDLE THAT NAMES NO JOINT, returning
+	 * TNumericLimits<double>::Max() rather than zero. Zero would read as "unloaded and
+	 * perfectly healthy", which is the one answer that must never come back for
+	 * something that is not a joint — the same reason ComputeUtilisation answers a
+	 * zero interface area that way, and the same hole DESIGN.md §2's caller obligation
+	 * describes for a degenerate normal.
+	 *
+	 * Zero before anything has been solved, because no load has been routed yet. Same
+	 * scope as GetConnectionForce, which it reads.
+	 */
+	double GetConnectionUtilisation(int32 ConnectionIndex) const;
+
+	/**
 	 * Whether this piece has a path to a grounded piece through SUPPORTS, after
 	 * SolveLoads. Grounded pieces are supported by definition.
 	 *

@@ -3592,4 +3592,320 @@ bool FStructurePieceSupportDegenerateInputTest::RunTest(const FString& Parameter
 	return true;
 }
 
+/**
+ * A solved structure can be asked how loaded each of its joints is, without that
+ * question damaging anything.
+ *
+ * THE COMPANION TO Connection.UtilisationQuery, one level up. FConnection owns the
+ * non-mutating evaluator; this is that evaluator applied to the force the last solve
+ * routed through each joint, which is the pair of numbers phase 5's visualisation
+ * needs — a colour per connection, every frame, on a structure that must still be
+ * standing afterwards.
+ *
+ * WHAT IT IS FOR, AND WHAT IT MUST NOT BE. The number is already obtainable by
+ * composing ClassifyForce and ComputeUtilisation over GetConnectionForce, so this
+ * accessor exists to stop a renderer becoming a THIRD hand-copy of the break
+ * decision in production. Two obligations ride on that (both in DESIGN.md §2 and
+ * CURRENT_STATE.md): a degenerate interface normal must not read as a healthy joint,
+ * and any transcription must track ApplyForce to the last bit. Both are discharged
+ * by delegating rather than by re-deriving, which is why the identity
+ *
+ *     GetConnectionUtilisation(I) == GetConnection(I).UtilisationUnder(GetConnectionForce(I))
+ *
+ * is asserted BITWISE for every joint, alongside expectations derived independently
+ * from stress and strength. The identity alone would be satisfied by two consistent
+ * wrong answers; the derived numbers alone would not notice a private copy of the
+ * pipeline drifting an ulp away from the one the cascade uses.
+ *
+ * GRAVITY IS THE ONLY LOAD and there is still no world: FStructure is plain
+ * arithmetic over a graph, so this is a unit test on the mechanism (a ratio), not an
+ * integration test on an outcome.
+ *
+ * WHICH AXIS GOVERNS, WORKED THROUGH, because ComputeUtilisation returns the WORST
+ * of three and a case aimed at one axis silently measures another otherwise:
+ *
+ *   - The two bed joints take a purely vertical load through a normal that is
+ *     exactly +Z, so shear and tension are exactly zero and compression is the only
+ *     non-zero axis.
+ *   - The head joint takes the same vertical load through a normal that is exactly
+ *     +X, so compression and tension are exactly zero. Its shear capacity is
+ *     Mohr-Coulomb, cohesion + mu x compressive stress, and the compressive stress is
+ *     zero — so the capacity is mortar's bare 0.2 MPa cohesion, well under its 1.3 MPa
+ *     ceiling, and the friction term contributes nothing.
+ *
+ * The head joint and the upper bed joint carry the SAME force — one brick each — and
+ * their expectations differ by exactly a hundred: fifty from mortar resisting
+ * crushing fifty times better than sliding (10 MPa against 0.2), and two from the bed
+ * joint spreading that force over twice the area. Both factors are deliberate, so a
+ * utilisation that ignored either the profile axis or the interface area would land
+ * on a visibly wrong number rather than on a plausible one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FStructureConnectionUtilisationTest,
+	"DestructionGame.Core.Structure.ConnectionUtilisation",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
+{
+	using namespace StructureTestSupport;
+
+	/** The bit pattern of a double, for the assertions that compare EXACTLY. */
+	const auto Bits = [](double Value)
+	{
+		uint64 Raw = 0;
+		FMemory::Memcpy(&Raw, &Value, sizeof(Raw));
+		return FString::Printf(TEXT("%.17g [%016llx]"), Value, Raw);
+	};
+
+	const double MortarCompressiveMPa = GeneralPurposeMortar.CompressiveStrengthMPa;
+	const double MortarCohesionMPa = GeneralPurposeMortar.ShearCohesionMPa;
+
+	/*
+	 * Relative, with an absolute floor for the rows whose expectation is an exact
+	 * zero. Every non-zero expectation here is around 1e-4, so the floor sits far
+	 * enough below them that a joint dropped out of the load path — which reports
+	 * exactly zero — can still be told from one that is merely lightly loaded.
+	 */
+	const auto IsClose = [](double Actual, double Expected)
+	{
+		return FMath::IsNearlyEqual(Actual, Expected, FMath::Max(1.0e-15, FMath::Abs(Expected) * 1.0e-9));
+	};
+
+	/*
+	 * A STANDING STRUCTURE, three joints, three different answers.
+	 *
+	 *        [2]                  piece 2 rests on 1 through a 200 cm2 bed joint
+	 *         |
+	 *        [1]---[3]            piece 3 has no bed joint at all, so it hangs off
+	 *         |                   piece 1's 100 cm2 HEAD joint and loads it in shear
+	 *        [0] grounded         piece 1 rests on 0 through a 100 cm2 bed joint
+	 *
+	 * Three distinct utilisations, spanning two governing axes and a factor of a
+	 * hundred, so an accessor returning one number for every joint — or the same
+	 * number for every joint of one kind — cannot pass.
+	 */
+	{
+		const FStructureSpec Spec = {
+			{ { BrickMassKg, true }, { BrickMassKg }, { BrickMassKg }, { BrickMassKg } },
+			{
+				{ 0, 1, BedJointNormal, JointAreaSqCm },
+				{ 1, 2, BedJointNormal, JointAreaSqCm * 2.0 },
+				{ 1, 3, HeadJointNormal, JointAreaSqCm },
+			}
+		};
+
+		FStructure Structure;
+		BuildStructure(Structure, Spec, GeneralPurposeMortar);
+
+		/*
+		 * BEFORE ANY SOLVE there is no routed load, so every joint reports zero —
+		 * the same scope GetConnectionForce documents, and the same answer, since
+		 * this is that force evaluated. Pinned so it cannot drift into something
+		 * else silently.
+		 */
+		for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
+		{
+			const double Unsolved = Structure.GetConnectionUtilisation(Index);
+
+			TestTrue(
+				FString::Printf(TEXT("before a solve joint %d carries no load, so it reads 0, got %s"),
+					Index, *Bits(Unsolved)),
+				Unsolved == 0.0);
+		}
+
+		Structure.SolveLoads();
+
+		struct FExpectedUtilisation
+		{
+			const TCHAR* Description;
+			double ForceZUU;
+			double Utilisation;
+		};
+
+		/*
+		 * Derived from stress against strength, with the unit conversion spelled out
+		 * by MPaForForce rather than imported from production, so a wrong
+		 * ForceUnitsPerMPaSqCm fails here instead of being agreed with.
+		 *
+		 * At 2667.168 uu a brick over 100 cm2 is 2.667168e-3 MPa.
+		 */
+		const TArray<FExpectedUtilisation> Expected = {
+			{
+				TEXT("the bottom bed joint carries three bricks in compression"),
+				-3.0 * BrickWeightUU,
+				MPaForForce(3.0 * BrickWeightUU, JointAreaSqCm) / MortarCompressiveMPa
+			},
+			{
+				TEXT("the upper bed joint carries one brick over twice the area"),
+				-BrickWeightUU,
+				MPaForForce(BrickWeightUU, JointAreaSqCm * 2.0) / MortarCompressiveMPa
+			},
+			{
+				TEXT("the head joint carries one brick in SHEAR, against bare cohesion"),
+				-BrickWeightUU,
+				MPaForForce(BrickWeightUU, JointAreaSqCm) / MortarCohesionMPa
+			},
+		};
+
+		TestEqual(TEXT("fixture precondition: three joints were built"),
+			Structure.NumConnections(), Expected.Num());
+
+		for (int32 Index = 0; Index < Expected.Num(); ++Index)
+		{
+			const FConnection& Connection = Structure.GetConnection(Index);
+			const FVector Force = Structure.GetConnectionForce(Index);
+
+			// Precondition: the solve routed what this case assumes it routed.
+			TestTrue(
+				FString::Printf(TEXT("%s: joint %d should carry Z = %f, got %f"),
+					Expected[Index].Description, Index, Expected[Index].ForceZUU, Force.Z),
+				FMath::IsNearlyEqual(Force.Z, Expected[Index].ForceZUU, 1.0e-6));
+
+			const double Utilisation = Structure.GetConnectionUtilisation(Index);
+
+			TestTrue(
+				FString::Printf(TEXT("%s: joint %d should be at utilisation %.12e, got %s"),
+					Expected[Index].Description, Index, Expected[Index].Utilisation, *Bits(Utilisation)),
+				IsClose(Utilisation, Expected[Index].Utilisation));
+
+			/*
+			 * THE SEAM. Bitwise, because the whole reason this accessor exists is
+			 * that it must not be a second evaluation of the same arithmetic.
+			 */
+			TestTrue(
+				FString::Printf(
+					TEXT("%s: joint %d must be exactly UtilisationUnder(GetConnectionForce), %s vs %s"),
+					Expected[Index].Description, Index,
+					*Bits(Utilisation), *Bits(Connection.UtilisationUnder(Force))),
+				Utilisation == Connection.UtilisationUnder(Force));
+
+			// Asking must not have broken anything: solving is non-destructive and so is reading.
+			TestFalse(
+				FString::Printf(TEXT("%s: joint %d must still be intact after being asked"),
+					Expected[Index].Description, Index),
+				Connection.HasGiven());
+		}
+	}
+
+	/*
+	 * A BROKEN JOINT reads zero, and the zero comes from the LOAD, not from the latch.
+	 *
+	 * That distinction is the whole of the given-joint decision one level down:
+	 * UtilisationUnder is pure arithmetic and knows nothing about latching, so the
+	 * zero here is genuinely "no force is going through this joint any more" — which
+	 * is what redistribution means. A renderer must therefore consult HasGiven and
+	 * GetBreakPass to draw a broken joint as broken; a low ratio never means intact.
+	 */
+	{
+		/*
+		 * 20 tonnes on a 100 cm2 mortar bed joint: 1.96e7 uu is 19.6 MPa against
+		 * mortar's 10 MPa, so utilisation 1.96 and the joint gives in pass 1. Pure
+		 * compression again — shear and tension are exactly zero on this normal.
+		 */
+		constexpr double CrushingMassKg = 20000.0;
+
+		const FStructureSpec Spec = {
+			{ { BrickMassKg, true }, { CrushingMassKg } },
+			{ { 0, 1, BedJointNormal, JointAreaSqCm } }
+		};
+
+		FStructure Structure;
+		BuildStructure(Structure, Spec, GeneralPurposeMortar);
+
+		const FVector BreakingForce(0.0, 0.0, -WeightOf(CrushingMassKg));
+		const double BreakingUtilisation =
+			MPaForForce(WeightOf(CrushingMassKg), JointAreaSqCm) / MortarCompressiveMPa;
+
+		Structure.SolveLoads();
+
+		const double BeforeBreaking = Structure.GetConnectionUtilisation(0);
+
+		TestTrue(
+			FString::Printf(TEXT("fixture precondition: the joint is over capacity at %.12e, got %s"),
+				BreakingUtilisation, *Bits(BeforeBreaking)),
+			IsClose(BeforeBreaking, BreakingUtilisation) && BreakingUtilisation > 1.0);
+
+		/*
+		 * SOLVING AND READING BREAK NOTHING. If asking for the utilisation had
+		 * latched, this cascade would find the joint already given and report zero
+		 * passes — which is the fail-open direction, a wall that never falls.
+		 */
+		TestFalse(TEXT("reading a utilisation must not break the joint"),
+			Structure.GetConnection(0).HasGiven());
+
+		TestEqual(TEXT("the cascade must break the joint in one pass"), Structure.SolveAndBreak(), 1);
+
+		TestTrue(TEXT("fixture precondition: the joint has given"), Structure.GetConnection(0).HasGiven());
+		TestEqual(TEXT("fixture precondition: it was stamped pass 1"), Structure.GetBreakPass(0), 1);
+
+		const FVector AfterBreaking = Structure.GetConnectionForce(0);
+
+		TestTrue(
+			FString::Printf(TEXT("a broken joint carries no force, got (%f, %f, %f)"),
+				AfterBreaking.X, AfterBreaking.Y, AfterBreaking.Z),
+			AfterBreaking.IsZero());
+
+		const double Broken = Structure.GetConnectionUtilisation(0);
+
+		TestTrue(
+			FString::Printf(TEXT("a broken joint is at zero utilisation because it carries nothing, got %s"),
+				*Bits(Broken)),
+			Broken == 0.0);
+
+		/*
+		 * And the discriminator between the two possible readings of that zero: the
+		 * joint itself still answers what the crushing load WOULD do to it. If the
+		 * latch were suppressing the arithmetic this would be zero as well, and the
+		 * two designs would be indistinguishable from outside.
+		 */
+		const double WhatWouldHaveBrokenIt = Structure.GetConnection(0).UtilisationUnder(BreakingForce);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("a given joint still answers what the load WOULD do, expected %.12e, got %s"),
+				BreakingUtilisation, *Bits(WhatWouldHaveBrokenIt)),
+			IsClose(WhatWouldHaveBrokenIt, BreakingUtilisation));
+	}
+
+	/*
+	 * A HANDLE THAT NAMES NO JOINT FAILS CLOSED.
+	 *
+	 * TNumericLimits<double>::Max(), not zero. Zero is "unloaded and perfectly
+	 * healthy", which is precisely the answer that must never come back for something
+	 * that is not a joint — the same hole DESIGN.md §2 describes for a degenerate
+	 * interface normal, and the same answer ComputeUtilisation gives for a
+	 * non-positive interface area. A renderer handed a stale handle paints it as
+	 * failing rather than as the healthiest joint on screen.
+	 *
+	 * It also falls out of the composition rather than needing a branch of its own:
+	 * GetConnection hands back a default-constructed placeholder for an unknown
+	 * handle, whose interface area is zero, which routes straight through the guard
+	 * that already fails closed.
+	 */
+	{
+		const FStructureSpec Spec = {
+			{ { BrickMassKg, true }, { BrickMassKg } },
+			{ { 0, 1, BedJointNormal, JointAreaSqCm } }
+		};
+
+		FStructure Structure;
+		BuildStructure(Structure, Spec, GeneralPurposeMortar);
+		Structure.SolveLoads();
+
+		const TArray<int32> BadHandles = { INDEX_NONE, -7, Structure.NumConnections(), 999999 };
+
+		for (const int32 Handle : BadHandles)
+		{
+			const double Utilisation = Structure.GetConnectionUtilisation(Handle);
+
+			TestTrue(
+				FString::Printf(TEXT("handle %d names no joint and must read as failed, got %s"),
+					Handle, *Bits(Utilisation)),
+				Utilisation == TNumericLimits<double>::Max());
+		}
+	}
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
