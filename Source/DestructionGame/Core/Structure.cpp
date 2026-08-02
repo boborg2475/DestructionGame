@@ -948,3 +948,19 @@ EPieceSupport FStructure::GetPieceSupport(int32 PieceIndex) const
 		? EPieceSupport::Stranded
 		: EPieceSupport::Falling;
 }
+
+bool FStructure::HasSupportAnswer(int32 PieceIndex) const
+{
+	/*
+	 * THE ARRAY'S OWN EXTENT IS THE ANSWER, which is why there is no "have we solved yet"
+	 * flag anywhere near this. SolveLoads sizes PieceSupported to the piece count and
+	 * nothing else writes it, so a flag beside it would be a second copy of something the
+	 * array already carries — and a flag would answer the wrong question anyway: it says
+	 * whether a solve HAPPENED, not whether it reached THIS handle, so a piece added since
+	 * would sail past it.
+	 *
+	 * The same range check IsPieceSupported makes on the way to its own answer, asked here
+	 * for its own sake rather than duplicated.
+	 */
+	return PieceSupported.IsValidIndex(PieceIndex);
+}

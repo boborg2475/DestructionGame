@@ -403,6 +403,32 @@ struct FStructure
 	 */
 	EPieceSupport GetPieceSupport(int32 PieceIndex) const;
 
+	/**
+	 * Whether the last solve actually computed a support state for this handle.
+	 *
+	 * THE ONE THING GetPieceSupport CANNOT SAY. Falling means both "nothing is holding
+	 * this up" and "nobody has asked yet", deliberately: Falling sits at enumerator zero
+	 * so an absent answer cannot claim the structure is resting on the earth. What that
+	 * costs is the ability to tell the two apart, and this is where it is bought back —
+	 * PieceSupported is sized by SolveLoads and by nothing else, so its extent IS the set
+	 * of handles the last solve answered for.
+	 *
+	 * False before any solve, false for a handle added since the last one, and false for a
+	 * handle that names no piece. TRUE for a removed piece inside that extent: the last
+	 * solve did answer for it, and IsPieceSupported's contract already records that the
+	 * answer is stale until something re-solves. Whether a piece is still there is
+	 * IsPieceRemoved's question, and keeping the two apart is what makes this one purely
+	 * about the extent.
+	 *
+	 * WHO NEEDS IT: anything that turns "not held up" into an IRREVERSIBLE action rather
+	 * than into a readout, because the polarity inverts at that seam. As an answer, Falling
+	 * by default is the cautious one; as a command it says "release the whole structure,
+	 * foundation included", which is the fail-OPEN direction and is not undone by a later
+	 * solve. A readout may take GetPieceSupport at face value; a command must ask this
+	 * first. Same shape as DESIGN.md §2's caller obligation for a degenerate normal.
+	 */
+	bool HasSupportAnswer(int32 PieceIndex) const;
+
 private:
 	TArray<FStructurePiece> Pieces;
 	TArray<FConnection> Connections;

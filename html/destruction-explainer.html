@@ -54,7 +54,8 @@ h3{font-size:1.02rem;margin:2em 0 .5em;color:var(--ink)}
 p{margin:0 0 1em}
 a{color:var(--accent)}
 code,.mono{font-family:var(--mono);font-size:.87em}
-code{background:var(--panel2);padding:.1em .35em;border-radius:4px;border:1px solid var(--line)}
+code{background:var(--panel2);padding:.1em .35em;border-radius:4px;border:1px solid var(--line);
+  overflow-wrap:anywhere}
 strong{font-weight:650}
 hr{border:0;border-top:1px solid var(--line);margin:3em 0}
 
@@ -128,6 +129,10 @@ tbody tr.clickable:hover{background:var(--panel2)}
 .chain .row .lbl{color:var(--ink2);font-family:var(--sans);font-size:.83rem;min-width:0}
 .chain .row .v{white-space:nowrap}
 .chain .row.hi{background:var(--accent-soft)}
+/* long signatures: stack and wrap rather than forcing the page sideways */
+.chain.stack .row{grid-template-columns:minmax(0,1fr)}
+.chain.stack .row .v{white-space:normal;overflow-wrap:anywhere}
+.chain.stack .row .lbl{margin-bottom:2px}
 .chain .row.bad{background:var(--bad-soft)}
 .chain .arrow{color:var(--ink3);text-align:center;font-size:.8rem;line-height:1}
 
@@ -163,6 +168,24 @@ svg{display:block;max-width:100%;height:auto;touch-action:none}
 .cell.wrong{border-color:var(--bad);background:var(--bad-soft)}
 .cell.healed{border-color:var(--ok);background:var(--ok-soft)}
 
+.cell.sev{border-color:var(--ink3);background:var(--panel2);opacity:.85}
+.cell.stamp{border-color:var(--accent);background:var(--accent-soft)}
+
+.pill{display:inline-block;font-family:var(--mono);font-size:.74rem;padding:2px 9px;border-radius:999px;
+  border:1px solid currentColor;white-space:nowrap}
+.pill.grounded{color:#8a8580}
+.pill.supported{color:#2f8f6f}
+.pill.falling{color:#c0392b}
+.pill.stranded{color:#8e6bb5}
+
+.col{background:var(--panel2);border-radius:10px;padding:12px;min-width:0}
+.col h4{margin:0 0 10px;font-size:.86rem;font-weight:650}
+.col.bad h4{color:var(--bad)}
+.col.ok h4{color:var(--ok)}
+.col .arr{background:var(--panel)}
+.col .cell{background:var(--panel2)}
+td.wrapcell,th.wrapcell{white-space:normal}
+
 .verdict{display:flex;gap:9px;align-items:flex-start;padding:10px 12px;border-radius:9px;
   font-size:.88rem;margin-top:10px}
 .verdict.ok{background:var(--ok-soft);color:var(--ink)}
@@ -182,7 +205,7 @@ footer ul{padding-left:1.2em}
 <header class="top">
   <p class="kicker">DestructionGame · phase 2b · read from the source</p>
   <h1>What the physics engine actually does</h1>
-  <p class="lede">Seven steps, each with something to poke. Every number on this page is computed
+  <p class="lede">Ten steps, each with something to poke. Every number on this page is computed
   by a JavaScript transcription of the C++ in <code>Source/DestructionGame/Core</code> — the same
   formulas, the same constants, the same 45° line. Nothing is illustrative.</p>
 </header>
@@ -194,8 +217,11 @@ footer ul{padding-left:1.2em}
     <li><a href="#s3"><span class="n">3</span>Directional strength</a></li>
     <li><a href="#s4"><span class="n">4</span>The profile library</a></li>
     <li><a href="#s5"><span class="n">5</span>The graph</a></li>
-    <li><a href="#s6"><span class="n">6</span>Cascade</a></li>
-    <li><a href="#s7"><span class="n">7</span>The known gap</a></li>
+    <li><a href="#s6"><span class="n">6</span>Where the graph comes from</a></li>
+    <li><a href="#s7"><span class="n">7</span>Cascade &amp; pulling a brick</a></li>
+    <li><a href="#s8"><span class="n">8</span>Why a piece has no support</a></li>
+    <li><a href="#s9"><span class="n">9</span>Asking without breaking</a></li>
+    <li><a href="#s10"><span class="n">10</span>Handles that survive removal</a></li>
   </ol>
 </nav>
 
@@ -576,9 +602,158 @@ footer ul{padding-left:1.2em}
 
 <!-- ===================== 6 ===================== -->
 <section class="step" id="s6">
-  <div class="stephead"><span class="stepnum">06</span><h2>Cascade — the part just built</h2></div>
+  <div class="stephead"><span class="stepnum">06</span><h2>Where the graph comes from</h2></div>
+  <p class="sub">Everything above <em>consumes</em> which-bricks-touch-which. <code>Core/Layout</code> is
+  the code that produces it — and one line in it decides whether the whole wall is right or wrong by
+  a factor of 41.5.</p>
+
+  <p>Every fixture up to this point hand-wrote its own normals and areas. A scenario places bricks;
+  something has to decide which pairs touch, how big the shared face is, and which way the interface
+  faces. That is two functions, split so that only one half would ever be replaced:</p>
+
+  <ul>
+    <li><strong><code>MakeInterface</code></strong> takes two boxes and two handles and either emits
+      one joint or refuses. Areas, normals, orientation and validation live there and nowhere else.</li>
+    <li><strong><code>RunningBond</code></strong> supplies the <em>pairs</em>. Being generative it
+      emits the neighbours it knows it laid rather than searching for them — so there is no proximity
+      tolerance in pair discovery at all — and hands each candidate to <code>MakeInterface</code>,
+      which refuses the ones that turn out to be diagonals.</li>
+  </ul>
+
+  <p>The inclusion runs one way: <code>Layout.h</code> includes <code>Structure.h</code> and never the
+  reverse. <code>FStructure</code> stays position-free — a piece is a mass and an identity — which is
+  exactly why the solver needs no world and the whole suite runs in about a second. Geometry lives
+  <em>above</em> the solver and hands down handles.</p>
+
+  <h3>A running-bond wall has exactly two joint areas</h3>
+
+  <p>A brick plus a mortar joint is one cell along the wall and one course up. Running bond offsets
+  alternate courses by half a cell, so <strong>a brick spans two bricks below it</strong> — and
+  therefore has <em>two</em> bed joints, not one big one:</p>
+
+  <div class="panel">
+    <p class="panel-t">The geometry, closed</p>
+    <div class="scroll"><table id="geom-table"><tbody></tbody></table></div>
+    <p class="tiny" style="margin:12px 0 0">Every dimension here is an integer quarter of a
+    centimetre and therefore exact in binary floating point, which is why
+    <span class="src">Tests/LayoutTest.cpp</span> compares these with no tolerance at all.</p>
+  </div>
+
+  <p>The missing strip is the cross-check that the geometry closes: the full bed face less two bed
+  joints is <strong>10.25 cm²</strong>, which is exactly one centimetre of mortar across the brick's
+  10.25 cm depth — the head-joint gap below. That is asserted, not commented.</p>
+
+  <h3>The normal is the axis of separation, and this is the whole reason the factory exists</h3>
+
+  <p>A joint's facing direction is the <strong>axis the two boxes are separated on</strong>, signed by
+  which handle is <code>PieceB</code>. It is <em>never</em> the direction between the two brick
+  centres — and a running-bond wall is precisely the shape where those two answers differ.</p>
+
+  <p>A spanning brick sits half a cell along and one course up, so the centre-to-centre direction is
+  diagonal: <code>(11.25, 0, 7.5)</code>, whose normalised <strong>|Z| is 0.5547</strong> — below
+  <code>cos 45° = 0.70711</code>. Every bed joint in the wall would classify as a <strong>head</strong>
+  joint. Gravity would resolve as shear against mortar's 0.2 MPa cohesion instead of compression
+  against its 10 MPa. Nothing crashes. Nothing moves. The wall just stands there being wrong.</p>
+
+  <div class="panel">
+    <p class="panel-t">Flip the rule · two grounded bricks, one spanning them</p>
+    <div class="chips" id="nr-rules"></div>
+    <div class="figwrap"><svg id="nr-svg" viewBox="0 0 620 260" role="img"
+      aria-label="Spanning brick with interface normals under two rules"></svg></div>
+    <div class="scroll" style="margin-top:14px">
+      <table id="nr-table">
+        <thead><tr>
+          <th>Joint</th><th>Normal</th><th class="num">|Z|</th><th>Tier, at the upper brick</th>
+          <th class="num">force uu</th><th class="num">compression</th><th class="num">shear</th>
+          <th class="num">utilisation</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="nr-verdict"></div>
+  </div>
+
+  <p>Note what does <em>not</em> change: the load. Both rules route the same 1333.5993125 uu into each
+  bed joint, because the split is by area and the areas are identical. Only the
+  <strong>classification</strong> moves — and with it, which capacity the stress is measured against.
+  Displacement could never see this; the classification can. That is the whole argument for asserting
+  on mechanism rather than on outcome.</p>
+
+  <div class="note"><b>A head joint cannot tell the two rules apart.</b> For two bricks side by side in
+  one course the centre direction <em>is</em> the separation axis, so both rules give exactly
+  <code>+X</code>. Only the bed joint discriminates, which is why the anti-centroid assertion in the
+  test is written against a spanning brick specifically.</div>
+
+  <div class="note warn"><b>The failure that matters is not a flipped normal.</b> A
+  <em>consistently</em> flipped joint reports identical loads — <code>RoleOf</code> turns the normal
+  toward whichever piece it is asked about, and the accumulation signs the force by which end is
+  loaded. What cannot be recovered from is a normal <em>inconsistent with its A/B pairing</em>. So
+  <code>MakeInterface</code> writes the pair and the normal in the same breath, which makes the
+  inconsistent state inexpressible rather than merely unlikely.</div>
+
+  <h3>Two ends, two brick sizes, the same joints</h3>
+
+  <p>Both wall ends are built, and the difference between them is not the geometry of any joint:</p>
+
+  <div class="panel">
+    <p class="panel-t">Lay a wall · every figure below is emitted by the transcribed producer</p>
+    <div class="ctrls">
+      <div class="ctrl">
+        <label for="lw-end">End treatment</label>
+        <select id="lw-end">
+          <option value="Ragged">Ragged — full bricks only</option>
+          <option value="Flush">Flush — half bats at alternating ends</option>
+        </select>
+      </div>
+      <div class="ctrl">
+        <label for="lw-courses">Courses high</label>
+        <input type="range" id="lw-courses" min="1" max="6" step="1" value="4">
+        <span class="val" id="lw-courses-v"></span>
+      </div>
+      <div class="ctrl">
+        <label for="lw-bricks">Full bricks per even course</label>
+        <input type="range" id="lw-bricks" min="2" max="6" step="1" value="4">
+        <span class="val" id="lw-bricks-v"></span>
+      </div>
+    </div>
+    <div class="figwrap"><svg id="lw-svg" viewBox="0 0 620 250" role="img"
+      aria-label="Running-bond wall as laid, both end treatments"></svg></div>
+    <div class="readout" id="lw-out" style="margin-top:14px"></div>
+    <div class="scroll" style="margin-top:12px">
+      <table id="lw-census">
+        <thead><tr><th>Distinct joint area</th><th class="num">cm²</th><th class="num">count</th><th>what it is</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="tiny" style="margin:10px 0 0">A ragged wall's odd courses are one brick short and step
+    in; a flush wall fills that half cell at each end with a half bat, so it is one piece
+    <em>longer</em> per odd course. Flip the selector and watch the joint-area census not move.</p>
+  </div>
+
+  <div class="note"><b>Why the flush end earns its place.</b> A producer that only ever emits identical
+  pieces is not being tested very hard. The half bat is the second piece size —
+  <strong>1.297521875 kg</strong> against a full brick's 2.72163125 — and its mass is derived from
+  <em>the box that was just laid</em> rather than from the spec, so a half bat cannot end up weighing a
+  full brick. (An earlier draft circulated 1.29777 kg for it. That figure does not reproduce:
+  10.25 × 10.25 × 6.5 = 682.90625 cm³ at 1.9 g/cm³ is 1297.521875 g.)</div>
+
+  <div class="note"><b>Refusal fails closed, and the corner is the sharp case.</b> Two boxes form a
+  joint when they are separated on <em>exactly one</em> axis by the joint thickness and overlap
+  positively on the other two. Separated on two they meet at an edge; on three, at a point. Both are
+  refused by one line — and a "be clearer about what we reject" rewrite that spelled it as "reject 0 or
+  2" would let the corner through with an area of <code>(−1.0) × (−1.0) = +1.0 cm²</code>. Two
+  negatives multiply into a healthy-looking positive, the normal reads <code>+Z</code>, and the graph
+  gains a phantom bed joint between two bricks touching at a point — which under the two-tier rule is a
+  real support. On refusal the out connection is zeroed, so a caller who ignored the return value gets
+  a joint that reads as <em>failed</em> rather than one that reads as fine.</div>
+</section>
+
+<!-- ===================== 7 ===================== -->
+<section class="step" id="s7">
+  <div class="stephead"><span class="stepnum">07</span><h2>Cascade — and pulling a brick out</h2></div>
   <p class="sub">Solve. Break everything over capacity. Stamp it with the pass number. Re-solve so
-  the load moves. Repeat until a pass breaks nothing.</p>
+  the load moves. Repeat until a pass breaks nothing. Then let the player take a brick out and do it
+  again.</p>
 
   <p>That is the whole rule. Two things about it were deliberate choices:</p>
 
@@ -630,15 +805,60 @@ footer ul{padding-left:1.2em}
     <div id="c-out" style="margin-top:14px"></div>
   </div>
 
+  <h3>Pulling a brick out — the MVP interaction</h3>
+
+  <p><code>FStructure::RemovePiece</code> is the player's move, and it is expressed almost entirely
+  through the machinery already described. It marks the slot dead and <strong>severs</strong> every
+  joint touching the piece — and because <code>SolveLoads</code> already drops a given joint at the
+  very top of the tier decision, that one line takes the piece out of the tier, the reachability
+  walk, the load paths, the accumulation order and the split at once. Removal reuses the path the
+  cascade has always used rather than adding a second one beside it.</p>
+
+  <p>One line of it is not free. A <strong>grounded</strong> piece seeds the reachability walk on its
+  own account rather than through any joint, so the walk also has to ask whether the piece is still
+  in the structure. Without that, a removed grounded piece reports itself held up by an earth it is
+  no longer resting on.</p>
+
+  <p><strong>Removal is not failure</strong>, and the record says so. A joint that went with its
+  brick is severed but never <em>stamped</em>: it never snapped, it was deleted, so it must not appear
+  in the sequence a collapse is replayed from. That gives three states out of two accessors, with no
+  sentinel anywhere:</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>State</th><th><code>HasGiven</code></th><th><code>GetBreakPass</code></th><th>What it means</th></tr></thead>
+      <tbody>
+        <tr><td><strong>intact</strong></td><td>false</td><td><code>INDEX_NONE</code></td><td>still in the structure, still carrying</td></tr>
+        <tr><td><strong>went with a piece</strong></td><td>true</td><td><code>INDEX_NONE</code></td><td>severed by a removal — out of the graph, absent from the replay</td></tr>
+        <tr><td><strong>broke in pass N</strong></td><td>true</td><td>N&nbsp;&ge;&nbsp;1</td><td>failed under load, in that pass, in that order</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p style="margin-top:1em"><strong>And pass numbers are global to the structure, not to the call.</strong>
+  A second cascade continues from the highest stamp already written, so a joint that gives after a
+  brick is pulled out carries a strictly larger number than everything that gave before it. Consumers
+  read a shared number as "these gave simultaneously", which is only true if the numbering does not
+  restart. This was unreachable until removal existed — a second cascade on a settled structure breaks
+  nothing — so per-call numbering survived undetected until there was a way to change the graph
+  between calls.</p>
+
   <div class="panel">
-    <p class="panel-t">…and on the wall. Knock bricks out and watch it re-route</p>
-    <p style="font-size:.9rem;color:var(--ink2)">Click a brick to knock it out. Nothing in the
-    codebase removes a piece, so "knocking it out" here means severing every joint on it — which is
-    exactly what section 7 is about.</p>
+    <p class="panel-t">…and on the wall. Pull bricks out and watch it re-route</p>
+    <p style="font-size:.9rem;color:var(--ink2)">Click a brick to remove it. Its joints leave the
+    structure severed-but-unstamped, its handle stays valid forever, and the next solve re-routes what
+    it was carrying onto the neighbours — or fails to, and the wall comes down.</p>
     <div class="ctrls">
       <div class="ctrl">
         <label for="w-prof">Mortar</label>
         <select id="w-prof"></select>
+      </div>
+      <div class="ctrl">
+        <label for="w-end">End treatment</label>
+        <select id="w-end">
+          <option value="Ragged">Ragged</option>
+          <option value="Flush">Flush</option>
+        </select>
       </div>
       <div class="ctrl">
         <label for="w-load">Roof load on the top course (tonnes)</label>
@@ -657,45 +877,213 @@ footer ul{padding-left:1.2em}
     <div class="legend">
       <span><i class="sw" style="background:var(--panel2)"></i>standing</span>
       <span><i class="sw" style="background:#c0392b"></i>no path to ground — falling</span>
-      <span><i class="sw" style="background:#8e6bb5"></i>stranded in a knot</span>
-      <span><i class="sw" style="background:#3a3733"></i>knocked out</span>
+      <span><i class="sw" style="background:#8e6bb5"></i>stranded in a knot (section 8)</span>
+      <span><i class="sw" style="background:#3a3733"></i>removed — tombstoned</span>
+      <span><i class="sw" style="background:transparent;border-style:dashed"></i>joint severed with a piece</span>
     </div>
     <div id="w-out" style="margin-top:14px"></div>
   </div>
 
-  <div class="note"><b>Why the wall needs tonnes on it before anything breaks.</b> A four-course
-  brick wall weighs about 33 kg and its bed joints total ~880 cm². That is 0.004 MPa against cement
-  mortar's 10 MPa — a utilisation of roughly 0.0004. Brick really is that strong in compression, and
+  <div class="note"><b>Why the wall needs tonnes on it before anything breaks.</b> The wall above
+  carries <span id="w-facts">…</span> against cement mortar's 10 MPa. Brick really is that strong in compression, and
   the model says so. The interesting failure on a small wall is not crushing, it is
   <strong>losing the path to the ground</strong>. That is what "it fell" means here.</div>
 
-  <div class="note gap"><b>A cycle is reported, not solved.</b> Knock out enough of the bottom course
+  <div class="note gap"><b>A cycle is reported, not solved.</b> Pull enough out of the bottom course
   and two neighbouring bricks each end up falling back onto the head joint <em>between</em> them —
   each is now the other's support. There is no rule in this design for dividing load round a loop, so
   the pieces caught in the knot are conservatively reported as unsupported. A course spanning a wide
   gap therefore reads as falling rather than arching. That is the conservative answer, not the
-  interesting one, and someone will have to design the arching rule.</div>
+  interesting one, and someone will have to design the arching rule. Section 8 is about being able to
+  <em>tell</em>, which turns out to matter more than fixing it.</div>
 </section>
 
-<!-- ===================== 7 ===================== -->
-<section class="step" id="s7">
-  <div class="stephead"><span class="stepnum">07</span><h2>The known gap — indices as handles</h2></div>
-  <p class="sub">Cheap to fix now. Expensive later. And when it bites, every internal consistency
-  check still passes.</p>
+<!-- ===================== 8 ===================== -->
+<section class="step" id="s8">
+  <div class="stephead"><span class="stepnum">08</span><h2>Why a piece has no support</h2></div>
+  <p class="sub">Four states, not a boolean. And the payoff is subtle enough to be worth a beat:
+  one of the four is a statement about the <em>solver</em>, not about the structure.</p>
+
+  <p><code>IsPieceSupported</code> answers <em>whether</em>, never <em>why</em> — and two completely
+  different things produce the same <code>false</code>:</p>
+
+  <ul>
+    <li><strong>Real physics.</strong> Nothing is holding the piece up. Its supports are gone, or they
+      are falling themselves.</li>
+    <li><strong>A solver limitation.</strong> The piece is in an unroutable knot. Two bricks that both
+      lose their bed joints fall back onto each other's head joints — each is now the other's support,
+      a circle — and there is no rule here for dividing load round a loop. The solver plays safe and
+      calls them falling.</li>
+  </ul>
+
+  <p>So <code>GetPieceSupport</code> reports one of four:</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>State</th><th>Means</th><th>Is it physics?</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill grounded">Grounded</span></td><td>resting on the earth; load terminates here</td><td>yes</td></tr>
+        <tr><td><span class="pill supported">Supported</span></td><td>reaches the earth through supports, and the solver could route its load there</td><td>yes</td></tr>
+        <tr><td><span class="pill falling">Falling</span></td><td>nothing is holding it up, and the solver is not the reason</td><td>yes</td></tr>
+        <tr><td><span class="pill stranded">Stranded</span></td><td><strong>in</strong> an unroutable knot — ultimately one of its own supports</td><td><strong>no — a documented limitation</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p style="margin-top:1.2em"><strong>Why this earns an accessor.</strong> The headline collapse test
+  is "pull bricks until it topples, and confirm it falls at the predicted number" — and that assertion
+  is <em>identical</em> in both cases. It would pass. It would stay green through a retune of every
+  strength in the library. And it would be calibrated against the number of removals that happens to
+  make a <em>cycle</em>, rather than against the number that overloads a joint. Three bricks out of the
+  bottom course of a five-brick wall is enough to produce one, which is roughly what a player does. The
+  test needs a precondition it could not previously express: <em>no piece was Stranded when it went</em>.</p>
+
+  <div class="panel">
+    <p class="panel-t">Nine shapes · the fixtures from <span class="src">Structure.PieceSupportReason</span></p>
+    <div class="chips" id="ps-cases"></div>
+    <p id="ps-desc" style="font-size:.92rem;color:var(--ink2)"></p>
+    <div class="figwrap"><svg id="ps-svg" viewBox="0 0 620 250" role="img"
+      aria-label="Support-reason fixtures"></svg></div>
+    <div class="legend">
+      <span><i class="sw" style="background:#8a8580"></i>Grounded</span>
+      <span><i class="sw" style="background:#2f8f6f"></i>Supported</span>
+      <span><i class="sw" style="background:#c0392b"></i>Falling</span>
+      <span><i class="sw" style="background:#8e6bb5"></i>Stranded</span>
+    </div>
+    <div id="ps-out" style="margin-top:14px"></div>
+  </div>
+
+  <p>Two rows in that table carry more than their share:</p>
+
+  <ul>
+    <li><strong>Stranded is only for pieces <em>in</em> the knot.</strong> A brick resting on one comes
+      out <span class="pill falling">Falling</span>: it is not itself unroutable, it has simply lost the
+      thing that was carrying it, and that is ordinary physics. The line is drawn by asking whether a
+      piece's own load comes back round to it — never by asking whether the accumulation order failed to
+      reach it. Those are not the same set: the ordering runs <em>top-down</em>, so a piece is unordered
+      whenever a knot sits anywhere <strong>above</strong> it, which would strand the foundation under a
+      knot and then everything resting on that foundation.</li>
+    <li><strong>"Contains a cycle" is not "is stranded".</strong> A cycle running through a grounded
+      piece resolves fine, because the earth absorbs what arrives and passes nothing on. A reason derived
+      from cycle detection rather than from the solve would get that row wrong.</li>
+  </ul>
+
+  <div class="note"><b>It is a refinement, not a second computation.</b>
+  <code>GetPieceSupport</code> <em>calls</em> <code>IsPieceSupported</code>, so
+  <code>IsPieceSupported(H) == (state is Grounded or Supported)</code> holds by construction rather
+  than by agreement. Two accessors reading one solve and telling different stories is the exact defect
+  the stranding rule was written to close; reintroducing it one level up would be worse, because this
+  one claims to <em>explain</em>.</div>
+
+  <div class="note"><b><code>Falling</code> is the zero enumerator on purpose.</b> A
+  default-constructed or zero-filled entry then reads "nothing is holding this up", which is the
+  direction every other accessor fails in. <code>Grounded</code> at zero would make an uninitialised
+  array claim the whole structure was resting on the earth.</div>
+
+  <div class="note gap"><b>And there is deliberately no fifth state for "removed".</b>
+  <code>IsPieceRemoved</code> answers that immediately; this one reads solver output, which only a
+  solve writes. A <code>Removed</code> value here would contradict a stale <code>Supported</code> from
+  <code>IsPieceSupported</code> in exactly the window between a removal and the next solve — so the
+  rule is: <em>re-solve first</em>. A removed piece reads the last solve's answer until something
+  re-solves, then <code>Falling</code>.</div>
+</section>
+
+<!-- ===================== 9 ===================== -->
+<section class="step" id="s9">
+  <div class="stephead"><span class="stepnum">09</span><h2>Asking a joint its load without breaking it</h2></div>
+  <p class="sub">Short, and it exists because of one absurdity: until recently, drawing the wall
+  would have taken it apart.</p>
+
+  <p>The only evaluator there was, <code>FConnection::ApplyForce</code>, <strong>latches</strong> —
+  that is the point of it. So the only way to ask a joint how loaded it was, was the same call that
+  decides whether it snaps. A strain readout drawing joints coloured by utilisation every frame would
+  have demolished the structure by rendering it.</p>
+
+  <p>There is now <code>UtilisationUnder</code>: the read-only half. And
+  <code>ApplyForce</code> is <em>defined as that query plus the latch</em> rather than written beside
+  it:</p>
+
+  <div class="chain stack" style="margin:18px 0">
+    <div class="row"><span class="lbl">the read-only query</span><span class="v">UtilisationUnder(F) → double</span></div>
+    <div class="arrow">↑ the same arithmetic, once</div>
+    <div class="row hi"><span class="lbl">the break decision</span><span class="v">ApplyForce(F) = UtilisationUnder(F), then latch if !(u &le; 1.0)</span></div>
+    <div class="arrow">↑ composed, never re-derived</div>
+    <div class="row"><span class="lbl">the structure's accessor</span><span class="v">GetConnectionUtilisation(i) = GetConnection(i).UtilisationUnder(GetConnectionForce(i))</span></div>
+  </div>
+
+  <p><strong>The single-copy discipline is the whole design, not tidiness.</strong> Two independently
+  written versions of this arithmetic agree to a billionth forever and still differ in the last bit —
+  and one bit of drift is enough to matter, because joints sitting at utilisation <em>exactly</em> 1.0
+  are common in the fixtures: five of them settle at exactly 1.0 and one at 1&nbsp;&minus;&nbsp;1 ulp.
+  One ulp of drift is five spurious failures in the fuzz.</p>
+
+  <p>Three properties fall out of the composition with no branch of their own:</p>
+
+  <ul>
+    <li><strong>It does not consult the latch.</strong> A joint that has already given still answers
+      what the force <em>would</em> have done to it — identically to a fresh joint of the same shape.
+      Latching stays known in exactly one place, and a caller that cares about the state asks
+      <code>HasGiven</code>, which it wanted to do anyway.</li>
+    <li><strong>A given joint reads zero because it carries no <em>force</em></strong>, not because
+      anything suppressed the number. Do not read a low ratio as "intact".</li>
+    <li><strong>An unknown handle fails closed to <code>double</code>'s maximum</strong>, not to zero.
+      <code>GetConnection</code> hands back a placeholder whose interface area is zero, and the
+      existing area guard answers that with <code>Max()</code>. Zero would read as "unloaded and
+      perfectly healthy", which is the one answer that must never come back for something that is not
+      a joint.</li>
+  </ul>
+
+  <div class="panel">
+    <p class="panel-t">Ask any joint on the page's own cascade fixtures</p>
+    <div class="ctrls">
+      <div class="ctrl">
+        <label for="ru-force">Force on the joint (uu, downward)</label>
+        <input type="range" id="ru-force" min="0" max="4000000" step="10000" value="600000">
+        <span class="val" id="ru-force-v"></span>
+      </div>
+      <div class="ctrl">
+        <label for="ru-prof">Profile</label>
+        <select id="ru-prof"></select>
+      </div>
+      <div class="ctrl">
+        <label for="ru-area">Interface area (cm²)</label>
+        <input type="number" id="ru-area" value="100" min="0.01" step="10">
+      </div>
+    </div>
+    <div class="btnrow" style="margin-bottom:12px">
+      <button id="ru-reset">&#8635; Fresh joint</button>
+      <button id="ru-query">Query &#183; UtilisationUnder</button>
+      <button id="ru-apply" class="primary">Apply &#183; ApplyForce</button>
+    </div>
+    <div class="readout" id="ru-out"></div>
+    <div id="ru-log" class="arrays" style="margin-top:14px"></div>
+  </div>
+
+  <div class="note warn"><b>The obvious "improvement" is a trap, and it has been measured.</b> Making
+  <code>UtilisationUnder</code> mirror the latch — return 0 for a joint that has given — fails exactly
+  four assertions and nothing else: the three rows that check a given joint still answers the
+  arithmetic, and the one that checks it matches a fresh joint of the same shape. Those four rows exist
+  precisely to catch that edit.</div>
+
+  <div class="note gap"><b>A known blind spot, stated rather than glossed.</b> The identity
+  <code>GetConnectionUtilisation(i) == GetConnection(i).UtilisationUnder(GetConnectionForce(i))</code>
+  guards against <em>drift</em>, not against duplication as such: a faithful re-implementation gives
+  identical bits and the assertion cannot see it. Replacing the delegation with an open-coded copy —
+  even one that drops the normalise step — currently passes, because every interface normal in that
+  fixture is already unit length. Bump the result by one ulp and eleven assertions fire, which is the
+  margin the identity actually defends. Closing it needs a fixture joint with a non-unit normal, and
+  that is a test change owing its own failing test first.</div>
+</section>
+
+<!-- ===================== 10 ===================== -->
+<section class="step" id="s10">
+  <div class="stephead"><span class="stepnum">10</span><h2>Handles that survive removal</h2></div>
+  <p class="sub">This section used to describe a hazard. It now describes the fix — and the two things
+  about it that are still load-bearing, because the obvious tidy-up would undo both.</p>
 
   <p>Pieces live in a flat array. A connection refers to them by <strong>array position</strong> —
-  <code>PieceA</code> and <code>PieceB</code> are plain <code>int32</code> indices. Nothing in the
-  codebase removes a piece today, so this is currently safe.</p>
-
-  <p>Three planned features imply removal: debris that settles and despawns, the piece-size floor's
-  "disappear" mode, and any culling of settled rubble. Remove a piece from the middle of the array
-  and compact it, and every index above that point shifts down by one — so
-  <strong>every connection above that point silently re-points at the wrong piece</strong>. No crash.
-  No assertion. Just a structure that holds itself up wrong.</p>
-
-  <h3>Phase 2b sharpened this, and here is the sharp part</h3>
-
-  <p>There are now <strong>three arrays kept parallel by index</strong>:</p>
+  <code>PieceA</code> and <code>PieceB</code> are plain <code>int32</code> indices. And there are now
+  <strong>three arrays kept parallel by that index</strong>:</p>
 
   <div class="scroll">
     <table>
@@ -712,42 +1100,70 @@ footer ul{padding-left:1.2em}
   the right call: a pass stamp <em>cannot</em> be recomputed from anything. Joints never heal, so a
   stamp once written is history, and re-running a cascade must not rewrite it.</p>
 
-  <p>Which produces the asymmetry that matters. A re-indexing bug would <strong>surface in
-  <code>ConnectionForces</code></strong> — the next solve overwrites it, so it heals into something
-  self-consistent. And it would be <strong>permanent and invisible in
-  <code>ConnectionBreakPass</code></strong>, because there is nothing to recompute it from.</p>
+  <p>Which is exactly what made compaction dangerous. Remove a piece from the middle of the array and
+  compact it, and every index above that point shifts down by one — so every connection above it
+  silently re-points at the wrong piece. No crash, no assertion. And the two output arrays fail
+  <em>differently</em>: <code>ConnectionForces</code> would <strong>heal</strong>, because the next
+  solve rebuilds it from scratch into something perfectly self-consistent with the wrong graph, while
+  <code>ConnectionBreakPass</code> would be <strong>wrong for good</strong>. The collapse replay would
+  show the wrong joints failing in the wrong order while <code>GetBreakPass</code> and
+  <code>HasGiven</code> agreed perfectly with each other — they live at the same index, so they stay in
+  lockstep no matter how badly that index lies.</p>
 
-  <p>The consequence: the collapse replay shows the <em>wrong joints failing in the wrong order</em>,
-  while <code>GetBreakPass</code> and <code>HasGiven</code> still agree perfectly with each other.
-  Both live at the same array index, so they stay in lockstep no matter how badly that index lies.
-  Every internal consistency check passes.</p>
+  <h3>What <code>RemovePiece</code> actually does</h3>
+
+  <p>It <strong>tombstones</strong> the slot. The piece is marked dead, the slot stays exactly where it
+  is, nothing ever moves down into it, and <strong>no handle ever changes meaning</strong>. Two counts
+  come out of that, and they are different questions on purpose:</p>
+
+  <ul>
+    <li><code>NumPieces()</code> is the valid <strong>handle range</strong>, and never shrinks. Callers
+      iterate <code>0..NumPieces()</code> and resolve each handle, so made to return a live count it
+      would silently skip real pieces in every such loop.</li>
+    <li><code>NumLivePieces()</code> is how much is left, counted rather than cached so it cannot drift
+      out of step with the tombstones it counts. <strong>The two diverging is the whole point.</strong></li>
+  </ul>
 
   <div class="panel">
-    <p class="panel-t">Watch it happen</p>
-    <p style="font-size:.9rem;color:var(--ink2)">A heavy block on three pads, plus two chunks of
-    settled debris that nothing is joined to. Cascade it first — the lime pad gives, its share moves
-    to the two cement pads, the block stands. Then despawn the debris.</p>
-    <div class="figwrap"><svg id="ix-svg" viewBox="0 0 620 260" role="img"
-      aria-label="Pieces, connections and the index shift"></svg></div>
+    <p class="panel-t">Before and after · the same removal, both ways</p>
+    <p style="font-size:.9rem;color:var(--ink2)">A heavy block on three pads, a shim resting on a
+    fourth pad off to one side, and a chunk of settled debris joined to nothing. Cascade it first — the
+    lime pad gives, its share moves to the two cement pads, the block stands. Then take out pad&nbsp;S,
+    the one the shim is resting on, and compare what a compacting removal would have done with what
+    tombstoning does.</p>
+    <div class="figwrap"><svg id="ix-svg" viewBox="0 0 620 250" role="img"
+      aria-label="Pieces, connections, and removal by compaction versus by tombstone"></svg></div>
     <div class="btnrow" style="margin-top:14px">
       <button id="ix-reset">&#8635; Reset</button>
       <button id="ix-solve" class="primary">1 &#183; Cascade &amp; settle</button>
-      <button id="ix-remove" disabled>2 &#183; Despawn debris (piece 1)</button>
+      <button id="ix-remove" disabled>2 &#183; Remove pad S (piece 1)</button>
       <button id="ix-resolve" disabled>3 &#183; Solve again</button>
     </div>
-    <div class="arrays" id="ix-arrays" style="margin-top:16px"></div>
+    <div class="two" id="ix-cols" style="margin-top:18px"></div>
     <div id="ix-verdict"></div>
   </div>
 
-  <div class="note gap"><b>The fix, while it is still cheap.</b> Either <strong>tombstone</strong>
-  the removed slot and keep a free list — the array never compacts, so no index ever moves — or move
-  to <strong>generational handles</strong>, where a handle carries a generation counter and a stale
-  one is detectably stale rather than quietly valid. Both are small changes today. Both become a
-  rewrite of every call site once removal exists and content depends on the current shape.</div>
+  <h3>Two things that are still true, and still load-bearing</h3>
 
-  <div class="note"><b>One smaller footgun in the same family.</b> Connections are stored undirected,
-  but the force <em>sign</em> depends on which end is <code>PieceA</code>. Anything that ever
-  rebuilds, sorts or deduplicates the connection array has to preserve that orientation, or
+  <div class="note warn"><b>There is no free list, and adding one would be a regression.</b> Reusing a
+  dead slot without a generation counter brings the bug back in a <em>worse</em> form: a stale handle
+  then names a <strong>different live piece</strong>, which nothing can detect, where a dangling index
+  can at least be range-checked. The tombstone leaks slots deliberately. Scenarios are bounded — a wall
+  is tens to hundreds of pieces, rebuilt fresh each run — so the leak is irrelevant. If slots ever
+  genuinely have to be reused (persistent worlds, accumulating debris), that needs
+  <strong>generational handles</strong> — index plus a counter bumped on reuse — not a free list.</div>
+
+  <div class="note"><b>Removal is not failure, and the stamp array is where that is recorded.</b> A
+  joint that went with its brick is severed but never stamped. It is just as absent as one that snapped
+  — out of the tier, out of the load paths, carrying nothing — but it must not appear in the sequence a
+  collapse is played back from, or the replay shows joints "breaking" that were only deleted. The
+  three states in section 7's table are what encode that, and the test asserts the property in both
+  directions: a joint that has gone unstamped is <em>exactly</em> a joint touching a removed piece. So a
+  removal cannot hide as a break, and a break cannot hide as a removal.</div>
+
+  <div class="note"><b>One smaller footgun in the same family, still open.</b> Connections are stored
+  undirected, but the force <em>sign</em> depends on which end is <code>PieceA</code>. Anything that
+  ever rebuilds, sorts or deduplicates the connection array has to preserve that orientation, or
   compression silently becomes tension — and mortar gives at one percent of its real capacity.</div>
 </section>
 
@@ -758,9 +1174,15 @@ footer ul{padding-left:1.2em}
   <p class="sub">Because it is not in the code yet, or because it could not be sourced from it.</p>
   <ul>
     <li><strong>Anything with a world in it.</strong> Everything above is world-free: no actors, no
-      positions, no ticking solver, nothing moves. The brick actor, the scenario system, the in-world
-      visualisation and the integration tests are all still ahead. The wall drawn here has positions
-      only because a picture needs them; the solver does not know they exist.</li>
+      ticking solver, nothing moves. <code>Core/Layout</code> owns geometry but only as boxes, and
+      <code>FStructure</code> itself still has no positions at all — the wall drawn on this page has
+      them because a picture needs them, and the solver does not know they exist. The brick actor, the
+      scenario system, the in-world visualisation and the integration tests are all still ahead.</li>
+    <li><strong>The actor seam.</strong> <code>Core/StructureBinding</code> exists and is the first
+      code in the project that knows an actor is a thing — one structure plus an index-parallel array
+      of {weak actor, box, released latch}, with release defined as "not held up" and deliberately
+      blind to Stranded versus Falling. It is still a plain struct with no world, and it is not covered
+      here because nothing above it is built yet.</li>
     <li><strong>Fracture patterns.</strong> Wood splintering, concrete fracturing, glass shattering —
       designed in principle, not built. This layer decides <em>when</em> a joint gives, not what the
       pieces look like afterwards.</li>
@@ -783,20 +1205,26 @@ footer ul{padding-left:1.2em}
   <span class="src">Core/ConnectionStrength.{h,cpp}</span>,
   <span class="src">Core/Connection.{h,cpp}</span>,
   <span class="src">Core/Structure.{h,cpp}</span>,
+  <span class="src">Core/Layout.{h,cpp}</span>,
   <span class="src">Core/Profiles/ConnectionProfiles.cpp</span>,
   <span class="src">Core/Profiles/MaterialProfiles.cpp</span>,
+  <span class="src">Tests/LayoutTest.cpp</span>,
+  <span class="src">Tests/StructureTest.cpp</span>,
+  <span class="src">Tests/StructureRemovalTest.cpp</span>,
   <span class="src">Tests/StructureCascadeTest.cpp</span>,
   <span class="src">claude_plans/DESIGN.md</span>,
   <span class="src">claude_plans/CURRENT_STATE.md</span>.</p>
 </section>
 
 <footer>
-  <p>The solver on this page is a JavaScript transcription of <code>FStructure::SolveLoads</code> and
-  <code>FStructure::SolveAndBreak</code>: same two-tier support rule, same 45° cosine
-  (0.70710678118654752440), same area-weighted split, same falling-support filter, same
-  strand-on-your-own-support fixpoint, same break sweep. Utilisation and force classification are
-  line-for-line ports. If a number here ever disagrees with the C++, the C++ is right and this page
-  is wrong.</p>
+  <p>The solver on this page is a JavaScript transcription of <code>FStructure::SolveLoads</code>,
+  <code>FStructure::SolveAndBreak</code> and <code>FStructure::RemovePiece</code>: same two-tier
+  support rule, same 45° cosine (0.70710678118654752440), same area-weighted split, same
+  falling-support filter, same strand-on-your-own-support fixpoint, same break sweep, same tombstone,
+  same global pass numbering. The walls are laid by a transcription of
+  <code>DestructionLayout::MakeInterface</code> and <code>RunningBond</code>, so their joint areas and
+  normals are produced rather than quoted. Utilisation and force classification are line-for-line
+  ports. If a number here ever disagrees with the C++, the C++ is right and this page is wrong.</p>
 </footer>
 
 </div>
@@ -877,6 +1305,23 @@ function shearCapacityAt(s, compStress){ return Math.min(s.coh + s.mu * compStre
 /* compressive stress at which the cap bites; Infinity when mu is 0 */
 function capKnee(s){ return s.mu > 0 && isFinite(s.cap) ? (s.cap - s.coh) / s.mu : Infinity; }
 
+/* ---- Core/Connection.cpp : UtilisationUnder ----
+   The READ-ONLY half, and the only copy of the arithmetic the break decision is
+   made on. It does NOT consult the latch: a joint that has given still answers what
+   the force would have done to it, identically to a fresh joint of the same shape.
+   A normal that will not normalise substitutes a ZERO AREA rather than opening a
+   second escape hatch, so it routes through ComputeUtilisation's existing guard. */
+const ZERO = { x:0, y:0, z:0 };
+/* GetConnection's placeholder: zero area, so an unknown handle fails closed to
+   double's max rather than to a healthy-looking zero. */
+const PLACEHOLDER_CONN = { a:NONE, b:NONE, n:{x:0,y:0,z:1}, area:0,
+  strength:{ comp:0, coh:0, ten:0, mu:0, cap:0 } };
+function utilisationUnder(c, F){
+  const n = normalize(c.n);
+  const effArea = n ? c.area : 0;
+  return computeUtilisation(classifyForce(F, n || c.n), c.strength, effArea);
+}
+
 /* ---- Core/Structure.cpp ---- */
 function otherEnd(c, p){ return c.a === p ? c.b : (c.b === p ? c.a : NONE); }
 
@@ -910,7 +1355,8 @@ class Structure {
 
   addPiece(mass, grounded, label){
     if (!(mass >= 0) || !isFinite(mass)) return NONE;
-    this.pieces.push({ index:this.pieces.length, mass, grounded:!!grounded, label:label||"" });
+    /* bIsInTheStructure: a piece that has been added to a structure is in it. */
+    this.pieces.push({ index:this.pieces.length, mass, grounded:!!grounded, live:true, label:label||"" });
     return this.pieces.length - 1;
   }
   addConnection(c){
@@ -923,21 +1369,47 @@ class Structure {
     return this.conns.length - 1;
   }
 
-  /* FConnection::ApplyForce — latches */
+  /* ---- FStructure::RemovePiece — TOMBSTONE, never compaction ---- */
+  isPieceRemoved(i){
+    /* An unknown handle reads as removed: the fail-closed direction. */
+    return !(i >= 0 && i < this.pieces.length) || !this.pieces[i].live;
+  }
+  /* NumPieces is the valid HANDLE RANGE and never shrinks. */
+  numPieces(){ return this.pieces.length; }
+  /* NumLivePieces is the other question, counted rather than cached. */
+  numLivePieces(){ return this.pieces.reduce((a,p) => a + (p.live ? 1 : 0), 0); }
+
+  removePiece(i){
+    if (this.isPieceRemoved(i)) return false;
+    /* The slot stays exactly where it is. No piece ever moves down into it. */
+    this.pieces[i].live = false;
+    /* Every joint holding it goes with it — SEVERED, and deliberately NOT stamped.
+       SolveLoads already drops a given joint before the tier decision, so this one
+       line takes the piece out of the tier, the walk, the load paths and the split. */
+    this.conns.forEach(c => { if (c.a === i || c.b === i) c.given = true; });
+    return true;
+  }
+
+  /* FConnection::ApplyForce — the query, plus the latch. Never a second copy. */
   applyForce(i, F){
     const c = this.conns[i];
     if (c.given) return 0;
-    const n = normalize(c.n);
-    const effArea = n ? c.area : 0;
-    const u = computeUtilisation(classifyForce(F, n || c.n), c.strength, effArea);
+    const u = utilisationUnder(c, F);
     if (!(u <= 1.0)) c.given = true;
     return u;
   }
 
+  /* FStructure::GetConnectionUtilisation — delegated whole, never re-derived. */
   utilisationOf(i){
-    const c = this.conns[i];
-    const F = this.forces[i] || {x:0,y:0,z:0};
-    return computeUtilisation(classifyForce(F, c.n), c.strength, c.area);
+    return utilisationUnder(this.conns[i] || PLACEHOLDER_CONN, this.forces[i] || ZERO);
+  }
+
+  /* FStructure::GetPieceSupport — a refinement of IsPieceSupported, not a
+     second computation, so the two cannot disagree. */
+  pieceSupport(i){
+    if (this.supported[i] === true)
+      return this.pieces[i].grounded ? "Grounded" : "Supported";
+    return this.stranded[i] === true ? "Stranded" : "Falling";
   }
 
   solveLoads(){
@@ -969,8 +1441,12 @@ class Structure {
       this.supported = new Array(NP).fill(false);
 
       /* Step two: who reaches the ground, over SUPPORT not connectivity */
+      /* A REMOVED PIECE IS NOT A ROOT. Severing takes it out of every edge, but a
+         grounded piece seeds this walk on its own account rather than through any
+         joint — so without the second conjunct a removed grounded piece reports
+         itself held up by an earth it is no longer resting on. */
       const frontier = [];
-      for (const pc of this.pieces) if (pc.grounded){ this.supported[pc.index] = true; frontier.push(pc.index); }
+      for (const pc of this.pieces) if (pc.grounded && pc.live){ this.supported[pc.index] = true; frontier.push(pc.index); }
       for (let h = 0; h < frontier.length; h++)
         for (const l of loaders[frontier[h]])
           if (!this.supported[l] && !stranded[l]){ this.supported[l] = true; frontier.push(l); }
@@ -1024,6 +1500,13 @@ class Structure {
     this.stranded = stranded;
   }
 
+  /* PASS NUMBERS ARE GLOBAL TO THE STRUCTURE. A second cascade continues from the
+     highest stamp already written, so a joint that gives after a piece has been
+     removed carries a strictly larger number than everything that gave before it. */
+  passesAlreadyStamped(){
+    return this.breakPass.reduce((a,s) => Math.max(a, s), 0);
+  }
+
   /* One pass of SolveAndBreak. Returns the indices that gave, or [] when settled. */
   stepOnce(passNumber){
     this.solveLoads();
@@ -1036,9 +1519,11 @@ class Structure {
     return broke;
   }
 
+  /* Returns the passes THIS CALL broke in — the separate, per-call question. */
   solveAndBreak(){
+    const already = this.passesAlreadyStamped();
     let passes = 0;
-    for (;;){ const b = this.stepOnce(passes + 1); if (!b.length) break; passes++; }
+    for (;;){ const b = this.stepOnce(already + passes + 1); if (!b.length) break; passes++; }
     return passes;
   }
 }
@@ -1047,17 +1532,21 @@ class Structure {
    breaks, plus which joints are about to give. */
 function recordCascade(build){
   const st = build();
+  const already = st.passesAlreadyStamped();
   const frames = [];
   for (;;){
-    const pass = frames.length + 1;
+    const pass = already + frames.length + 1;
     st.solveLoads();
     const f = {
       pass,
       forces: st.forces.map(v => v.z),
       util: st.conns.map((c,i) => c.given ? 0 : st.utilisationOf(i)),
       given: st.conns.map(c => c.given),
+      /* severed with a piece, rather than broken under load: given, never stamped */
+      severed: st.conns.map((c,i) => c.given && st.breakPass[i] === NONE),
       supported: st.supported.slice(),
       stranded: st.stranded.slice(),
+      state: st.pieces.map((p,i) => st.pieceSupport(i)),
       breaking: []
     };
     const broke = [];
@@ -1072,6 +1561,9 @@ function recordCascade(build){
   }
   return { frames, final: st };
 }
+
+/* ---- state colours, matching the four EPieceSupport enumerators ---- */
+const STATE_COL = { Grounded:"#8a8580", Supported:"#2f8f6f", Falling:"#c0392b", Stranded:"#8e6bb5" };
 
 /* ---------------- formatting helpers ---------------- */
 const fmt = (x, d=2) => {
@@ -1573,99 +2065,226 @@ const MohrChart = (function(){
 "use strict";
 /* ===================== 5 · THE GRAPH ===================== */
 
-/* A four-course wall in running bond, built from real brick dimensions.
-   215 x 102.5 x 65 mm; every bed joint is a half-brick overlap, 110.19 cm2;
-   every head joint is 102.5 x 65 mm = 66.625 cm2. */
-const BRICK_D = 10.25, BRICK_H = 6.5, BRICK_RHO = 1.9;
-const FULL_SPANS = [[0,21.5],[21.5,43],[43,64.5],[64.5,86]];
-const OFF_SPANS  = [[0,10.75],[10.75,32.25],[32.25,53.75],[53.75,75.25],[75.25,86]];
-const WALL_LAYOUT = [FULL_SPANS, OFF_SPANS, FULL_SPANS, OFF_SPANS];
-const WALL_W = 86;
+/* =====================================================================
+   PORT OF Source/DestructionGame/Core/Layout.cpp — the connection-graph
+   PRODUCER. Everything above consumes areas and normals; this makes them.
+   ===================================================================== */
 
-function buildWall(profileName, roofKg, knockedOut){
+/* A picometre. Deliberately not a tuning knob: the producer is GENERATIVE, so this
+   is not the radius of a proximity search — it only absorbs rounding in the
+   coordinating grid's own arithmetic. */
+const CONTACT_TOL = 1.0e-9;
+const AXES = ["x","y","z"];
+
+/* The UK metric brick and its coordinating grid. 215 x 102.5 x 65 mm laid with a
+   10 mm joint gives a 225 x 112.5 x 75 mm cell; running bond offsets alternate
+   courses by half a cell along the wall. Every figure here is an integer quarter
+   of a centimetre and therefore exact in binary floating point. */
+const BRICK_L = 21.5, BRICK_D = 10.25, BRICK_H = 6.5, MORTAR = 1.0, BRICK_RHO = 1.9;
+const BRICK_PITCH  = BRICK_L + MORTAR;      // 22.5
+const COURSE_PITCH = BRICK_H + MORTAR;      // 7.5
+const BOND_OFFSET  = BRICK_PITCH / 2;       // 11.25
+const HALF_BAT_L   = (BRICK_L - MORTAR) / 2;// 10.25 — a brick less a joint, halved
+
+/* Derived, never quoted. */
+const BED_OVERLAP    = BRICK_L - BOND_OFFSET;         // 10.25
+const BED_AREA       = BED_OVERLAP * BRICK_D;         // 105.0625
+const HEAD_AREA      = BRICK_D * BRICK_H;             // 66.625
+const FULL_BED_FACE  = BRICK_L * BRICK_D;             // 220.375
+/* Density FIRST, matching LayBrick's own multiplication order, so the last bit
+   agrees with the C++ rather than merely rounding to the same printed figure. */
+const BRICK_MASS_KG  = BRICK_RHO * BRICK_L * BRICK_D * BRICK_H / 1000;   // 2.72163125
+const HALF_BAT_MASS  = BRICK_RHO * HALF_BAT_L * BRICK_D * BRICK_H / 1000;// 1.297521875
+
+const box = (cx, cz, lx, ly, lz) =>
+  ({ c:{x:cx, y:0, z:cz}, e:{x:lx/2, y:ly/2, z:lz/2} });
+
+/* Whether a box describes a volume at all. Written !(x > 0) so a NaN lands INSIDE
+   the guard, and IsFinite on the extent too, because +inf > 0 is TRUE and an
+   infinite extent would be ACCEPTED with an infinite interface area. */
+function isUsableBox(b){
+  return AXES.every(k => isFinite(b.c[k]) && isFinite(b.e[k]) && b.e[k] > 0);
+}
+
+/**
+ * MakeInterface: build the one joint between two boxes, or refuse.
+ * Returns the connection, or null. A refusal is a zero area — fail closed.
+ */
+function makeInterface(ha, ba, hb, bb, thickness, strength){
+  if (ha < 0 || hb < 0 || ha === hb) return null;
+  if (!(thickness >= 0)) return null;              // !(x >= 0) catches NaN
+  if (!isUsableBox(ba) || !isUsableBox(bb)) return null;
+
+  /* THE FACE TEST. Count the axes that do NOT overlap — not the ones that are
+     separated — so a zero-thickness joint (dry stone) is still a real joint. Two
+     such axes is an edge, three is a corner, and either emitted as a joint is a
+     spurious diagonal whose normal is a coin flip between the bed and head tiers. */
+  const ov = {};
+  let sep = null, sepCount = 0;
+  for (const k of AXES){
+    const dist = Math.abs(bb.c[k] - ba.c[k]);
+    ov[k] = (ba.e[k] + bb.e[k]) - dist;
+    if (!(ov[k] > CONTACT_TOL)){ sep = k; sepCount++; }
+  }
+  if (sepCount !== 1) return null;
+  if (!(Math.abs(-ov[sep] - thickness) <= CONTACT_TOL)) return null;
+
+  let area = 1;
+  for (const k of AXES) if (k !== sep) area *= ov[k];
+
+  /* THE NORMAL IS THE AXIS OF SEPARATION, signed by which handle is B, and the
+     sign is read on THAT AXIS ALONE. Taking it from the whole centre difference is
+     exactly how the centroid normal gets in. */
+  const n = { x:0, y:0, z:0 };
+  n[sep] = bb.c[sep] > ba.c[sep] ? 1 : -1;
+
+  return { a:ha, b:hb, n, area, strength, sep };
+}
+
+/** The defect this page toggles: CentroidB - CentroidA, normalised. */
+function centroidNormal(ba, bb){
+  const d = { x:bb.c.x-ba.c.x, y:bb.c.y-ba.c.y, z:bb.c.z-ba.c.z };
+  return normalize(d) || { x:0, y:0, z:1 };
+}
+
+/**
+ * RunningBond: lay a wall, bottom course grounded. Rejects a spec that could not
+ * describe a wall. A course one brick wide is not a bond.
+ */
+function runningBond(spec){
+  const courses = Math.max(1, spec.courses|0), per = Math.max(2, spec.bricks|0);
+  const flush = spec.end === "Flush";
+  const S = P[spec.profile];
   const st = new Structure();
-  const geo = [];
-  const courses = [];
-  const topWidth = WALL_LAYOUT[WALL_LAYOUT.length-1]
-    .reduce((a,[x0,x1]) => a + (x1-x0), 0);
-  WALL_LAYOUT.forEach((spans, c) => {
+  const boxes = [], rows = [];
+
+  const leftEnd  = -BRICK_L / 2;
+  const rightEnd = (per - 1) * BRICK_PITCH + BRICK_L / 2;
+
+  /* Mass is derived from the box just laid, never from the spec, so a half bat
+     cannot end up weighing a full brick. */
+  const lay = (cx, cz, len, grounded) => {
+    const b = box(cx, cz, len, BRICK_D, BRICK_H);
+    const mass = BRICK_RHO * (b.e.x*2) * (b.e.y*2) * (b.e.z*2) / 1000;
+    const h = st.addPiece(mass, grounded);
+    boxes[h] = b;
+    return h;
+  };
+
+  for (let course = 0; course < courses; course++){
+    const cz = BRICK_H / 2 + course * COURSE_PITCH;
+    const grounded = course === 0;
     const row = [];
-    spans.forEach(([x0,x1]) => {
-      let mass = (x1-x0) * BRICK_D * BRICK_H * BRICK_RHO / 1000;
-      if (c === WALL_LAYOUT.length - 1 && roofKg > 0) mass += roofKg * (x1-x0) / topWidth;
-      const idx = st.addPiece(mass, c === 0);
-      const g = { idx, x0, x1, c, w:x1-x0 };
-      row.push(g); geo[idx] = g;
-    });
-    courses.push(row);
-  });
-  const S = P[profileName];
-  for (let c = 1; c < courses.length; c++){
-    for (const p of courses[c]){
-      for (const q of courses[c-1]){
-        const ov = Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0);
-        if (ov > 1e-6) st.addConnection({ a:q.idx, b:p.idx, n:{x:0,y:0,z:1},
-          area: ov * BRICK_D, strength:S, kind:"bed" });
-      }
+    if (course % 2 === 0){
+      for (let k = 0; k < per; k++) row.push(lay(k * BRICK_PITCH, cz, BRICK_L, grounded));
+    } else {
+      /* An odd course is offset half a cell; the ends differ only in what fills the
+         half cell that leaves — nothing (ragged) or a half bat (flush). */
+      if (flush) row.push(lay(leftEnd + HALF_BAT_L/2, cz, HALF_BAT_L, grounded));
+      for (let k = 0; k < per - 1; k++) row.push(lay(BOND_OFFSET + k * BRICK_PITCH, cz, BRICK_L, grounded));
+      if (flush) row.push(lay(rightEnd - HALF_BAT_L/2, cz, HALF_BAT_L, grounded));
     }
+    rows.push(row);
   }
-  for (const row of courses){
-    for (let i = 0; i + 1 < row.length; i++)
-      st.addConnection({ a:row[i].idx, b:row[i+1].idx, n:{x:1,y:0,z:0},
-        area: BRICK_D * BRICK_H, strength:S, kind:"head" });
+
+  /* The pairs the wall LAID: neighbours along a course, and everything in the
+     course below. MakeInterface refuses the ones that turn out to be diagonals,
+     which is the one place that decision belongs. */
+  const offer = (ha, hb) => {
+    let c = makeInterface(ha, boxes[ha], hb, boxes[hb], MORTAR, S);
+    if (!c) return;
+    if (spec.normalRule === "centroid") c = Object.assign({}, c, { n: centroidNormal(boxes[ha], boxes[hb]) });
+    st.addConnection(c);
+  };
+  for (let course = 0; course < rows.length; course++){
+    const row = rows[course];
+    for (let i = 0; i + 1 < row.length; i++) offer(row[i], row[i+1]);
+    if (course === 0) continue;
+    for (const below of rows[course-1]) for (const above of row) offer(below, above);
   }
-  /* "knocking a brick out" = severing every joint on it. Nothing removes a piece. */
-  if (knockedOut && knockedOut.size){
-    st.conns.forEach((c,i) => { if (knockedOut.has(c.a) || knockedOut.has(c.b)) c.given = true; });
-  }
-  st.geo = geo; st.courses = courses;
+
+  st.boxes = boxes;
+  st.rows = rows;
+  st.geo = boxes.map(b => ({ x0:b.c.x-b.e.x, x1:b.c.x+b.e.x, z0:b.c.z-b.e.z, z1:b.c.z+b.e.z }));
   return st;
 }
 
-const WALL_SC = 480/WALL_W, WALL_OX = 72, WALL_OY = 252;
-function pieceRect(g){
-  return { x: WALL_OX + g.x0*WALL_SC, y: WALL_OY - (g.c+1)*BRICK_H*WALL_SC,
-           w: g.w*WALL_SC, h: BRICK_H*WALL_SC };
+/**
+ * The wall this page draws. Everything except the roof load comes straight out of
+ * the producer; the roof is the page's own addition, spread over the top course by
+ * length, because RunningBond has no notion of one.
+ */
+function buildWall(opts){
+  const o = Object.assign({ profile:"GeneralPurposeMortar", roofKg:0, end:"Ragged",
+    courses:4, bricks:4, removed:null, normalRule:"axis" }, opts || {});
+  const st = runningBond(o);
+  if (o.roofKg > 0 && st.rows.length){
+    const top = st.rows[st.rows.length - 1];
+    const width = top.reduce((a,h) => a + (st.geo[h].x1 - st.geo[h].x0), 0);
+    for (const h of top)
+      st.pieces[h].mass += o.roofKg * (st.geo[h].x1 - st.geo[h].x0) / width;
+  }
+  if (o.removed) for (const h of o.removed) st.removePiece(h);
+  return st;
+}
+
+/* ---- drawing: one transform per wall, derived from the boxes it emitted ---- */
+function wallView(st, w, h, padX, padY){
+  if (padY == null) padY = padX;
+  const g = st.geo;
+  const minX = Math.min(...g.map(b => b.x0)), maxX = Math.max(...g.map(b => b.x1));
+  const maxZ = Math.max(...g.map(b => b.z1));
+  const sc = Math.min((w - padX*2) / (maxX - minX), (h - 26 - padY) / maxZ);
+  return { minX, sc, ox: padX + ((w - padX*2) - (maxX-minX)*sc)/2, oy: h - 26,
+           width:(maxX-minX)*sc };
+}
+function pieceRect(st, i){
+  const g = st.geo[i], V = st.view;
+  return { x: V.ox + (g.x0 - V.minX)*V.sc, y: V.oy - g.z1*V.sc,
+           w: (g.x1-g.x0)*V.sc, h: (g.z1-g.z0)*V.sc };
 }
 function drawWallBase(svg, st, opts){
   clear(svg);
-  const o = opts || {};
+  const o = opts || {}, V = st.view;
   st.pieces.forEach((pc, i) => {
-    const g = st.geo[i], r = pieceRect(g);
+    const r = pieceRect(st, i);
     const fill = (o.pieceFill && o.pieceFill(i)) || (pc.grounded ? "var(--panel2)" : "var(--panel)");
-    const rect = el("rect", { x:r.x+1, y:r.y+1, width:r.w-2, height:r.h-2, rx:2,
+    const rect = el("rect", { x:r.x+1, y:r.y+1, width:Math.max(2,r.w-2), height:Math.max(2,r.h-2), rx:2,
       fill, stroke:(o.pieceStroke && o.pieceStroke(i)) || "var(--line2)",
       "stroke-width":(o.pieceWidth && o.pieceWidth(i)) || 1.4, cursor:o.cursor || "default" });
     rect.dataset.piece = i;
     svg.appendChild(rect);
   });
-  svg.appendChild(el("line",{ x1:WALL_OX-14, y1:WALL_OY, x2:WALL_OX+WALL_W*WALL_SC+14, y2:WALL_OY,
+  svg.appendChild(el("line",{ x1:V.ox-14, y1:V.oy, x2:V.ox+V.width+14, y2:V.oy,
     stroke:"var(--ink2)", "stroke-width":"3" }));
-  for (let x = WALL_OX-10; x < WALL_OX+WALL_W*WALL_SC+14; x += 11)
-    svg.appendChild(el("line",{ x1:x, y1:WALL_OY, x2:x-7, y2:WALL_OY+8,
+  for (let x = V.ox-10; x < V.ox+V.width+14; x += 11)
+    svg.appendChild(el("line",{ x1:x, y1:V.oy, x2:x-7, y2:V.oy+8,
       stroke:"var(--ink3)", "stroke-width":"1.2" }));
-  svg.appendChild(el("text",{ x:WALL_OX-16, y:WALL_OY+22, fill:"var(--ink3)","font-size":"11",
+  svg.appendChild(el("text",{ x:V.ox-16, y:V.oy+22, fill:"var(--ink3)","font-size":"11",
     "font-family":"var(--mono)" }, "grounded course"));
 }
+/* The interface itself, drawn where the two boxes actually meet. */
 function connSegment(st, i){
-  const c = st.conns[i], ga = st.geo[c.a], gb = st.geo[c.b];
-  if (c.kind === "bed"){
-    const x0 = Math.max(ga.x0, gb.x0), x1 = Math.min(ga.x1, gb.x1);
-    const y = WALL_OY - Math.max(ga.c, gb.c) * BRICK_H * WALL_SC;
-    return [WALL_OX + x0*WALL_SC + 2, y, WALL_OX + x1*WALL_SC - 2, y];
+  const c = st.conns[i], A = st.geo[c.a], B = st.geo[c.b], V = st.view;
+  const sx = x => V.ox + (x - V.minX) * V.sc, sy = z => V.oy - z * V.sc;
+  if (c.sep === "z"){
+    const x0 = Math.max(A.x0, B.x0), x1 = Math.min(A.x1, B.x1);
+    const z = (Math.min(A.z1, B.z1) + Math.max(A.z0, B.z0)) / 2;
+    return [sx(x0)+2, sy(z), sx(x1)-2, sy(z)];
   }
-  const x = WALL_OX + ga.x1 * WALL_SC;
-  const yTop = WALL_OY - (ga.c+1)*BRICK_H*WALL_SC + 3;
-  const yBot = WALL_OY - ga.c*BRICK_H*WALL_SC - 3;
-  return [x, yTop, x, yBot];
+  const z0 = Math.max(A.z0, B.z0), z1 = Math.min(A.z1, B.z1);
+  const x = (Math.min(A.x1, B.x1) + Math.max(A.x0, B.x0)) / 2;
+  return [sx(x), sy(z1)+3, sx(x), sy(z0)-3];
 }
 
 (function(){
   const svg = document.getElementById("wall5-svg");
   const out = document.getElementById("wall5-out");
-  const st = buildWall("GeneralPurposeMortar", 0, null);
+  const st = buildWall({ courses:4, bricks:4 });
+  st.view = wallView(st, 620, 300, 60);
   st.solveLoads();
   let hover = -1;
+  const isBed = c => c.sep === "z";
 
   function pathFrom(p){
     const conns = new Set(), pieces = new Set([p]);
@@ -1699,18 +2318,18 @@ function connSegment(st, i){
     });
     st.conns.forEach((c,i) => {
       const [x1,y1,x2,y2] = connSegment(st, i);
-      const on = hi.conns.has(i);
+      const on = hi.conns.has(i), bed = isBed(c);
       svg.appendChild(el("line",{ x1,y1,x2,y2,
-        stroke: on ? "var(--accent)" : (c.kind === "bed" ? "var(--ink3)" : "var(--line2)"),
-        "stroke-width": on ? 5 : (c.kind === "bed" ? 2.4 : 2),
+        stroke: on ? "var(--accent)" : (bed ? "var(--ink3)" : "var(--line2)"),
+        "stroke-width": on ? 5 : (bed ? 2.4 : 2),
         "stroke-linecap":"round",
-        "stroke-dasharray": c.kind === "head" && !on ? "3 3" : "",
+        "stroke-dasharray": !bed && !on ? "3 3" : "",
         opacity: on ? 1 : .8 }));
     });
     svg.appendChild(el("text",{ x:14, y:20, fill:"var(--ink3)","font-size":"11",
       "font-family":"var(--mono)" }, st.pieces.length + " pieces · " + st.conns.length +
-      " connections (" + st.conns.filter(c=>c.kind==="bed").length + " bed, " +
-      st.conns.filter(c=>c.kind==="head").length + " head)"));
+      " connections (" + st.conns.filter(isBed).length + " bed, " +
+      st.conns.filter(c=>!isBed(c)).length + " head)"));
     if (hover < 0)
       svg.appendChild(el("text",{ x:14, y:288, fill:"var(--ink3)","font-size":"12" },
         "hover or tap a brick to trace its load path"));
@@ -1719,9 +2338,12 @@ function connSegment(st, i){
 
   function report(hi){
     if (hover < 0){
-      out.innerHTML = '<p class="tiny" style="margin:0">Every brick weighs 2.72 kg (a half brick 1.36). ' +
-        'Bed joints are 110.19 cm², head joints 66.625 cm². Total wall weight above the ground course: ' +
-        fmt(st.pieces.filter(p=>!p.grounded).reduce((a,p)=>a+p.mass,0),2) + ' kg.</p>';
+      const areas = [...new Set(st.conns.map(c => c.area.toFixed(6)))].map(Number).sort((a,b)=>a-b);
+      out.innerHTML = '<p class="tiny" style="margin:0">Every brick weighs ' + BRICK_MASS_KG +
+        ' kg — 21.5 × 10.25 × 6.5 cm at 1.9 g/cm³. This wall has exactly ' + areas.length +
+        ' distinct joint areas, ' + areas.map(a => a + ' cm²').join(' and ') +
+        ', which is section 6. Total weight above the ground course: ' +
+        fmt(st.pieces.filter(p=>!p.grounded).reduce((a,p)=>a+p.mass,0),4) + ' kg.</p>';
       return;
     }
     const p = st.pieces[hover];
@@ -1735,7 +2357,7 @@ function connSegment(st, i){
       const f = st.forces[i];
       const load = classifyForce(f, c.n);
       const u = st.utilisationOf(i);
-      rows += "<tr><td>c" + i + " · " + c.kind + "</td>" +
+      rows += "<tr><td>c" + i + " · " + (isBed(c) ? "bed" : "head") + "</td>" +
         '<td class="num">' + fmt(c.area,2) + "</td>" +
         '<td class="num">' + fmt(Math.abs(f.z),1) + "</td>" +
         '<td class="num">' + (load.compression > 0 ? "compression" : load.shear > 0 ? "shear" : "—") + "</td>" +
@@ -1829,9 +2451,207 @@ function connSegment(st, i){
 
 <script>
 "use strict";
+/* ============== 6 · WHERE THE GRAPH COMES FROM (Core/Layout) ============== */
+
+/* ---- the geometry table: every row derived, none quoted ---- */
+(function(){
+  const tb = document.querySelector("#geom-table tbody");
+  const rows = [
+    ["Full brick", BRICK_L + " × " + BRICK_D + " × " + BRICK_H + " cm", "UK metric, 215 × 102.5 × 65 mm"],
+    ["Mortar joint", MORTAR + " cm", "gives the 22.5 × 11.25 × 7.5 coordinating cell"],
+    ["Bond offset", BOND_OFFSET + " cm", "half a cell along the wall — this is what makes a brick span two"],
+    ["Bed-joint overlap", BRICK_L + " − " + BOND_OFFSET + " = " + BED_OVERLAP + " cm", "along the wall"],
+    ["<b>Bed joint</b>", "<b>" + BED_OVERLAP + " × " + BRICK_D + " = " + BED_AREA + " cm²</b>",
+      "and a spanning brick has <b>two</b> of them, not one of " + FULL_BED_FACE],
+    ["<b>Head joint</b>", "<b>" + BRICK_D + " × " + BRICK_H + " = " + HEAD_AREA + " cm²</b>", "the end face, between neighbours in a course"],
+    ["Full bed face", BRICK_L + " × " + BRICK_D + " = " + FULL_BED_FACE + " cm²", "what a stack-bond joint would be"],
+    ["<b>The closure</b>", "<b>" + FULL_BED_FACE + " − 2 × " + BED_AREA + " = " + (FULL_BED_FACE - 2*BED_AREA) + " cm²</b>",
+      "= " + MORTAR + " × " + BRICK_D + ", exactly the head-joint gap below"],
+    ["Half bat", "(" + BRICK_L + " − " + MORTAR + ") / 2 = " + HALF_BAT_L + " cm", "what fills a flush end's half cell"],
+    ["Masses", BRICK_MASS_KG + " kg / " + HALF_BAT_MASS + " kg", "full brick and half bat, at 1.9 g/cm³"],
+  ];
+  rows.forEach(([a,b,c]) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<td>" + a + "</td><td class='num'>" + b + "</td><td class='wrapcell' style='color:var(--ink3)'>" + c + "</td>";
+    tb.appendChild(tr);
+  });
+})();
+
+/* ---- the normal rule: axis of separation vs centroid direction ---- */
+(function(){
+  const svg = document.getElementById("nr-svg");
+  const chips = document.getElementById("nr-rules");
+  const tb = document.querySelector("#nr-table tbody");
+  const verdict = document.getElementById("nr-verdict");
+  let rule = "axis";
+
+  /* Two grounded bricks and one spanning them — which is exactly what RunningBond
+     lays for 2 courses of 2, and exactly Tests/Layout.SpanningBrick. */
+  const build = r => {
+    const st = runningBond({ courses:2, bricks:2, end:"Ragged",
+      profile:"GeneralPurposeMortar", normalRule:r });
+    st.view = wallView(st, 620, 260, 34, 62);
+    st.solveLoads();
+    return st;
+  };
+  const RULES = [
+    { k:"axis", l:"axis of separation — what the code does" },
+    { k:"centroid", l:"centroid direction — the defect" },
+  ];
+  RULES.forEach(r => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.textContent = r.l;
+    b.onclick = () => { rule = r.k; draw(); };
+    chips.appendChild(b);
+  });
+
+  function worst(st){
+    let w = 0;
+    st.conns.forEach((c,i) => { const u = st.utilisationOf(i); if (u > w && u < HUGE) w = u; });
+    return w;
+  }
+
+  function draw(){
+    const st = build(rule);
+    [...chips.children].forEach((b,i) => b.setAttribute("aria-pressed", RULES[i].k === rule));
+
+    drawWallBase(svg, st, {
+      pieceFill: i => st.pieces[i].grounded ? "var(--panel2)" : "var(--panel)"
+    });
+    const V = st.view;
+    const defs = el("defs");
+    [["nr-bed","#2f8f6f"],["nr-head","#c99a2e"]].forEach(([id,col]) => {
+      const m = el("marker",{id,viewBox:"0 0 10 10",refX:"9",refY:"5",markerWidth:"6",
+        markerHeight:"6",orient:"auto-start-reverse"});
+      m.appendChild(el("path",{d:"M 0 0 L 10 5 L 0 10 z",fill:col}));
+      defs.appendChild(m);
+    });
+    svg.appendChild(defs);
+
+    tb.innerHTML = "";
+    st.conns.forEach((c,i) => {
+      const [x1,y1,x2,y2] = connSegment(st, i);
+      const mx = (x1+x2)/2, my = (y1+y2)/2;
+      const n = normalize(c.n);
+      const role = roleOf(c, c.b);
+      const bed = role === "BedBeneath";
+      const col = bed ? "#2f8f6f" : "#c99a2e";
+      svg.appendChild(el("line",{ x1,y1,x2,y2, stroke:col, "stroke-width":3.4, "stroke-linecap":"round" }));
+      svg.appendChild(el("line",{ x1:mx, y1:my, x2:mx + n.x*46, y2:my - n.z*46, stroke:col,
+        "stroke-width":2.4, "marker-end": bed ? "url(#nr-bed)" : "url(#nr-head)" }));
+
+      const F = st.forces[i] || ZERO;
+      const load = classifyForce(F, c.n);
+      const u = st.utilisationOf(i);
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>c" + i + "</td>" +
+        "<td class='num'>(" + n.x.toFixed(4) + ", " + n.z.toFixed(4) + ")</td>" +
+        "<td class='num'>" + Math.abs(n.z).toFixed(4) + "</td>" +
+        "<td style='color:" + col + "'>" + (bed ? "bed joint beneath" : role === "BedAbove" ? "bed joint above" : "head joint") + "</td>" +
+        "<td class='num'>" + fmt(F.z, 4) + "</td>" +
+        "<td class='num'>" + fmt(load.compression, 4) + "</td>" +
+        "<td class='num'>" + fmt(load.shear, 4) + "</td>" +
+        "<td class='num'>" + fmtU(u) + "</td>";
+      tb.appendChild(tr);
+    });
+
+    svg.appendChild(el("text",{ x:14, y:20, fill:"var(--ink3)","font-size":"11",
+      "font-family":"var(--mono)" },
+      "cos 45° = 0.70711 · the normal is drawn as the joint reports it, pointing at PieceB"));
+
+    const uAxis = worst(build("axis")), uCent = worst(build("centroid"));
+    const ratio = uAxis > 0 ? uCent / uAxis : 0;
+    const bad = rule === "centroid";
+    verdict.innerHTML = '<div class="verdict ' + (bad ? "bad" : "ok") + '"><span class="icon">' +
+      (bad ? "!" : "✓") + '</span><span></span></div>';
+    verdict.querySelector("span:last-child").textContent = bad
+      ? ("Every bed joint in this wall now reads |Z| = 0.5547, which is below cos 45°, so both of them " +
+         "classify as HEAD joints. The same 1333.5993125 uu resolves as " +
+         "shear against 0.2 MPa of cohesion instead of compression against 10 MPa. Worst utilisation " +
+         fmtU(uCent) + " against the correct " + fmtU(uAxis) + " — a factor of " + ratio.toFixed(1) +
+         ". Nothing crashed and nothing moved.")
+      : ("Both bed joints report |Z| = 1.0000 exactly, so both bear in pure compression at " +
+         fmtU(uAxis) + " of mortar's 10 MPa. Switch to the centroid rule and the same load reads " +
+         fmtU(uCent) + " — " + ratio.toFixed(1) + "× worse, on an entirely wrong support graph.");
+  }
+  draw();
+})();
+
+/* ---- lay a wall, both end treatments ---- */
+(function(){
+  const svg = document.getElementById("lw-svg");
+  const endS = document.getElementById("lw-end");
+  const cR = document.getElementById("lw-courses"), cV = document.getElementById("lw-courses-v");
+  const bR = document.getElementById("lw-bricks"), bV = document.getElementById("lw-bricks-v");
+  const out = document.getElementById("lw-out");
+  const census = document.querySelector("#lw-census tbody");
+
+  function draw(){
+    const courses = +cR.value, bricks = +bR.value;
+    cV.textContent = courses + (courses === 1 ? " course" : " courses");
+    bV.textContent = bricks + " bricks";
+    const st = runningBond({ courses, bricks, end:endS.value, profile:"GeneralPurposeMortar" });
+    st.view = wallView(st, 620, 250, 46);
+    st.solveLoads();
+
+    drawWallBase(svg, st, {
+      pieceFill: i => st.pieces[i].grounded ? "var(--panel2)"
+        : (st.geo[i].x1 - st.geo[i].x0) < BRICK_L - 1e-9 ? "var(--accent-soft)" : "var(--panel)"
+    });
+    st.conns.forEach((c,i) => {
+      const [x1,y1,x2,y2] = connSegment(st, i);
+      svg.appendChild(el("line",{ x1,y1,x2,y2,
+        stroke: c.sep === "z" ? "var(--ink3)" : "var(--line2)",
+        "stroke-width": c.sep === "z" ? 2.4 : 2, "stroke-linecap":"round",
+        "stroke-dasharray": c.sep === "z" ? "" : "3 3" }));
+    });
+    svg.appendChild(el("text",{ x:14, y:20, fill:"var(--ink3)","font-size":"11",
+      "font-family":"var(--mono)" }, "half bats shaded · every joint below was emitted by MakeInterface"));
+
+    const sizes = [...new Set(st.pieces.map(p => p.mass.toFixed(9)))].map(Number).sort((a,b)=>b-a);
+    const totalMass = st.pieces.reduce((a,p) => a + p.mass, 0);
+    out.innerHTML =
+      '<div class="stat"><div class="k">pieces</div><div class="v">' + st.numPieces() + '</div></div>' +
+      '<div class="stat"><div class="k">joints</div><div class="v">' + st.conns.length + '</div></div>' +
+      '<div class="stat"><div class="k">piece sizes</div><div class="v">' + sizes.length + '</div></div>' +
+      '<div class="stat"><div class="k">masses (kg)</div><div class="v">' + sizes.join(" / ") + '</div></div>' +
+      '<div class="stat"><div class="k">total mass</div><div class="v">' + fmt(totalMass,4) + ' kg</div></div>' +
+      '<div class="stat"><div class="k">all supported?</div><div class="v">' +
+        (st.pieces.every((p,i) => st.supported[i]) ? "yes" : "NO") + '</div></div>';
+
+    const tally = new Map();
+    st.conns.forEach(c => {
+      const k = c.area.toFixed(6) + "|" + c.sep;
+      tally.set(k, (tally.get(k) || 0) + 1);
+    });
+    census.innerHTML = "";
+    [...tally.entries()].sort((a,b) => parseFloat(b[0]) - parseFloat(a[0])).forEach(([k, n]) => {
+      const [areaStr, sep] = k.split("|");
+      const area = Number(areaStr);
+      const what = sep === "z"
+        ? (Math.abs(area - BED_AREA) < 1e-9 ? "bed joint — a brick spanning one below it"
+           : "bed joint, " + area + " cm²")
+        : (Math.abs(area - HEAD_AREA) < 1e-9 ? "head joint — two neighbours in a course"
+           : "head joint, " + area + " cm²");
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + (sep === "z" ? "bed" : "head") + "</td><td class='num'>" + area +
+        "</td><td class='num'>" + n + "</td><td class='wrapcell' style='color:var(--ink3)'>" + what + "</td>";
+      census.appendChild(tr);
+    });
+  }
+  [endS, cR, bR].forEach(x => x.addEventListener("input", draw));
+  draw();
+})();
+</script>
+
+<script>
+"use strict";
 /* ===================== 6 · CASCADE ===================== */
 const massForStress = (mpa, area) => mpa * 100 * 100 * area / GRAVITY;
-const BRICK_KG = 2.72;
+/* Derived from ClayBrick's density over a standard unit, never hand-set — the
+   pads below are grounded, so it is a real number rather than a load-bearing one. */
+const BRICK_KG = BRICK_MASS_KG;
 const BED_N = {x:0,y:0,z:1}, HEAD_N = {x:1,y:0,z:0};
 
 /* The fixtures below are the cases in Tests/StructureCascadeTest.cpp, unchanged. */
@@ -2001,36 +2821,49 @@ const CASES = [
 (function(){
   const svg = document.getElementById("wall6-svg");
   const profS = document.getElementById("w-prof");
+  const endS = document.getElementById("w-end");
   const loadR = document.getElementById("w-load");
   const loadV = document.getElementById("w-load-v");
   const out = document.getElementById("w-out");
+  const facts = document.getElementById("w-facts");
   const passLbl = document.getElementById("w-pass");
   fillSelect(profS, REAL_PROFILES, "GeneralPurposeMortar");
-  let knocked = new Set(), rec = null, k = 0, timer = null;
+  let removed = new Set(), rec = null, k = 0, timer = null;
 
+  function make(){
+    return buildWall({ profile:profS.value, end:endS.value, courses:4, bricks:4,
+      roofKg:(+loadR.value)*1000, removed:[...removed] });
+  }
   function rebuild(){
     stop();
-    const kg = (+loadR.value) * 1000;
     loadV.textContent = (+loadR.value).toFixed(1) + " t";
-    rec = recordCascade(() => buildWall(profS.value, kg, knocked));
+    rec = recordCascade(make);
+    rec.final.view = wallView(rec.final, 620, 300, 60);
     k = 0; render();
   }
   function render(){
     const st = rec.final, f = rec.frames[k];
+    const dead = i => st.isPieceRemoved(i);
     drawWallBase(svg, st, {
       cursor:"pointer",
-      pieceFill: i => knocked.has(i) ? "#3a3733"
+      pieceFill: i => dead(i) ? "#3a3733"
         : st.pieces[i].grounded ? "var(--panel2)"
-        : f.stranded[i] ? "color-mix(in srgb,#8e6bb5 30%,transparent)"
-        : !f.supported[i] ? "var(--bad-soft)" : "var(--panel)",
-      pieceStroke: i => knocked.has(i) ? "#3a3733"
-        : f.stranded[i] ? "#8e6bb5" : (!f.supported[i] && !st.pieces[i].grounded) ? "var(--bad)" : "var(--line2)",
-      pieceWidth: i => (!f.supported[i] && !st.pieces[i].grounded) ? 2 : 1.2
+        : f.state[i] === "Stranded" ? "color-mix(in srgb,#8e6bb5 30%,transparent)"
+        : f.state[i] === "Falling" ? "var(--bad-soft)" : "var(--panel)",
+      pieceStroke: i => dead(i) ? "#3a3733"
+        : f.state[i] === "Grounded" ? "var(--line2)" : STATE_COL[f.state[i]],
+      pieceWidth: i => (!dead(i) && f.state[i] !== "Supported" && f.state[i] !== "Grounded") ? 2 : 1.2
     });
     st.conns.forEach((c,i) => {
-      if (knocked.has(c.a) || knocked.has(c.b)) return;
       const [x1,y1,x2,y2] = connSegment(st, i);
-      const breaking = f.breaking.includes(i), given = f.given[i];
+      const breaking = f.breaking.includes(i), given = f.given[i], sev = f.severed[i];
+      if (sev && (dead(c.a) || dead(c.b))) {
+        /* severed WITH a piece: still drawn, faintly, because it is a joint that
+           left the structure without ever failing — and was never stamped. */
+        svg.appendChild(el("line",{ x1,y1,x2,y2, stroke:"var(--ink3)", "stroke-width":1.4,
+          "stroke-dasharray":"2 5", opacity:.5, "stroke-linecap":"round" }));
+        return;
+      }
       svg.appendChild(el("line",{ x1,y1,x2,y2,
         stroke: breaking ? "#c0392b" : given ? "var(--line2)" : utilColour(f.util[i], false),
         "stroke-width": breaking ? 6 : given ? 1.5 : 3.2,
@@ -2042,27 +2875,49 @@ const CASES = [
       : "pass " + f.pass + " of " + (rec.frames.length-1);
     document.getElementById("w-next").disabled = k >= rec.frames.length-1;
 
-    const fallen = st.pieces.filter((p,i) => !p.grounded && !f.supported[i] && !knocked.has(i)).length;
-    const strandedN = f.stranded.filter(Boolean).length;
-    const standing = st.pieces.filter((p,i) => !p.grounded && f.supported[i]).length;
+    const count = s => f.state.filter((v,i) => !dead(i) && v === s).length;
+    const brokeN = f.given.filter((g,i) => g && !f.severed[i]).length;
+    const sevN = f.severed.filter(Boolean).length;
     let peak = 0, peakI = -1;
     f.util.forEach((u,i) => { if (!f.given[i] && u > peak && isFinite(u) && u < HUGE){ peak = u; peakI = i; } });
     out.innerHTML =
       '<div class="readout">' +
-      '<div class="stat"><div class="k">standing</div><div class="v">' + standing + '</div></div>' +
-      '<div class="stat"><div class="k">no path to ground</div><div class="v">' + fallen + '</div></div>' +
-      '<div class="stat"><div class="k">stranded in a knot</div><div class="v">' + strandedN + '</div></div>' +
-      '<div class="stat"><div class="k">joints given</div><div class="v">' +
-        f.given.filter(Boolean).length + ' / ' + st.conns.length + '</div></div>' +
+      '<div class="stat"><div class="k">supported</div><div class="v">' + count("Supported") + '</div></div>' +
+      '<div class="stat"><div class="k">falling</div><div class="v">' + count("Falling") + '</div></div>' +
+      '<div class="stat"><div class="k">stranded in a knot</div><div class="v">' + count("Stranded") + '</div></div>' +
+      '<div class="stat"><div class="k">broke under load</div><div class="v">' + brokeN + ' / ' + st.conns.length + '</div></div>' +
+      '<div class="stat"><div class="k">severed with a piece</div><div class="v">' + sevN + '</div></div>' +
       '<div class="stat"><div class="k">worst survivor</div><div class="v">' +
         (peakI >= 0 ? fmtU(peak) : "—") + '</div></div>' +
-      '<div class="stat"><div class="k">knocked out</div><div class="v">' + knocked.size + '</div></div>' +
+      '<div class="stat"><div class="k">handles / live</div><div class="v">' +
+        st.numPieces() + ' / ' + st.numLivePieces() + '</div></div>' +
       '</div>' +
       '<p class="tiny" style="margin:10px 0 0">' +
-      (knocked.size === 0 && fallen === 0 && f.given.filter(Boolean).length === 0
-        ? "Intact and barely working. Click bricks in the bottom courses to knock them out, or wind the roof load up — lime mortar gives first, at roughly 18 tonnes."
-        : "Every head joint that has woken up is carrying its load in pure shear at zero compression, so Mohr-Coulomb gives it cohesion alone — no friction help at all.") +
+      (count("Stranded") > 0
+        ? "There is a knot in there: " + count("Stranded") + " piece(s) are each ultimately their own " +
+          "support, so the solver conservatively reports them as not held up. That is section 8 — a " +
+          "limitation, not physics, and being able to tell is the point."
+        : removed.size === 0 && brokeN === 0
+        ? "Intact and barely working. Click bricks to pull them out — three from the bottom course is " +
+          "usually enough to make a knot — or wind the roof load up until a joint actually crushes."
+        : "Every head joint that has woken up is carrying its load in pure shear at zero compression, " +
+          "so Mohr-Coulomb gives it cohesion alone — no friction help at all.") +
       '</p>';
+
+  }
+
+  /* The note under the panel, derived rather than quoted — and always from the
+     PRISTINE wall, so it keeps describing the intact case however many bricks the
+     reader has since pulled out. */
+  if (facts){
+    const w0 = buildWall({ courses:4, bricks:4 });
+    const above = w0.pieces.reduce((a,p) => a + (p.grounded ? 0 : p.mass), 0);
+    const area = w0.conns.reduce((a,c) =>
+      a + ((c.sep === "z" && (w0.pieces[c.a].grounded || w0.pieces[c.b].grounded)) ? c.area : 0), 0);
+    const stress = (above * GRAVITY) / (area * FORCE_UNITS_PER_MPA_SQCM);
+    facts.textContent = fmt(above, 4) + " kg above the ground course over " + fmt(area, 4) +
+      " cm² of bed joint — " + stress.toExponential(2) + " MPa, a utilisation of " +
+      (stress / P.GeneralPurposeMortar.comp).toExponential(2) + ",";
   }
   function stop(){ if (timer){ clearInterval(timer); timer = null;
     document.getElementById("w-play").textContent = "▶ Play"; } }
@@ -2070,127 +2925,327 @@ const CASES = [
     const p = e.target.dataset && e.target.dataset.piece;
     if (p == null) return;
     const i = +p;
-    if (knocked.has(i)) knocked.delete(i); else knocked.add(i);
+    if (removed.has(i)) removed.delete(i); else removed.add(i);
     rebuild();
   });
   document.getElementById("w-next").onclick = () => { if (k < rec.frames.length-1){ k++; render(); } };
-  document.getElementById("w-reset").onclick = () => { knocked = new Set(); rebuild(); };
+  document.getElementById("w-reset").onclick = () => { removed = new Set(); rebuild(); };
   document.getElementById("w-play").onclick = () => {
     if (timer) return stop();
     if (k >= rec.frames.length-1) k = 0;
     document.getElementById("w-play").textContent = "❚❚ Pause";
     timer = setInterval(() => { if (k >= rec.frames.length-1) return stop(); k++; render(); }, 900);
   };
-  [profS, loadR].forEach(x => x.addEventListener("input", rebuild));
+  [profS, endS, loadR].forEach(x => x.addEventListener("input", rebuild));
   rebuild();
 })();
 </script>
 
 <script>
 "use strict";
-/* ===================== 7 · INDICES AS HANDLES ===================== */
+/* ================= 8 · WHY A PIECE HAS NO SUPPORT ================= */
+(function(){
+  const svg = document.getElementById("ps-svg");
+  const chips = document.getElementById("ps-cases");
+  const desc = document.getElementById("ps-desc");
+  const out = document.getElementById("ps-out");
+  const A = 100, S = P.Unbreakable;
+  const bed = (a,b) => ({a,b,n:BED_N,area:A,strength:S});
+  const head = (a,b) => ({a,b,n:HEAD_N,area:A,strength:S});
+
+  /* The nine shapes of Tests/StructureTest.cpp · Structure.PieceSupportReason.
+     `pos` is [column, course] and exists only because a picture needs it. */
+  const CASES = [
+    { name:"held sideways",
+      desc:"The first control. Piece 1 has no bed joint and falls back to its one head joint, whose far end is the earth. Nothing here is in a knot, so the fallback must read as ordinary support — a reason column that called every head-jointed piece stranded would pass every other row in this table.",
+      names:["G","B"], mass:[1,1], ground:[1,0], pos:[[0,0],[1,0]],
+      conns:[head(0,1)] },
+
+    { name:"two-brick gap",
+      desc:"The minimum repro, and the case the whole accessor exists for. X's supports are {G, Y}, Y's are {X} — so each is ultimately its own support and both are IN the knot. IsPieceSupported reports them falling and cannot say the reason is the solver rather than the structure.",
+      names:["G","X","Y"], mass:[1,1,1], ground:[1,0,0], pos:[[0,0],[1,0],[2,0]],
+      conns:[head(0,1), head(1,2)] },
+
+    { name:"three-brick gap",
+      desc:"The same stall at a longer stride, so the reason cannot be a special case for adjacent pairs: all three pieces of a three-cycle are in it.",
+      names:["G","X","Y","Z"], mass:[1,1,1,1], ground:[1,0,0,0], pos:[[0,0],[1,0],[2,0],[3,0]],
+      conns:[head(0,1), head(1,2), head(2,3)] },
+
+    { name:"cycle through the ground",
+      desc:"The second control. The support relation genuinely contains a cycle — pieces 0 and 2 name each other — but piece 0 is grounded and never enters the ordering, so everything resolves. \"Contains a cycle\" is not \"is stranded\", and a reason derived from cycle detection rather than from the solve would call pieces 0 and 2 stranded here.",
+      names:["G","1","2"], mass:[1,1,1], ground:[1,0,0], pos:[[0,0],[0,1],[1,1]],
+      conns:[bed(0,1), head(1,2), {a:0,b:2,n:HEAD_N,area:A,strength:S}] },
+
+    { name:"beneath a knot",
+      desc:"Z is BENEATH the knot rather than in it, and keeps both its support and its reason: the knot above it is X and Y and nothing else. Stranding on un-orderability instead would walk down to the first grounded piece and report Z stranded too.",
+      names:["pier","Z","X","Y"], mass:[1,1,1,1], ground:[1,0,0,0], pos:[[0,0],[0,1],[1,1],[2,1]],
+      conns:[bed(0,1), head(1,2), head(2,3)] },
+
+    { name:"standing part beside a knot",
+      desc:"The same knot with a brick resting on the piece beneath it. B is held up by Z, which reaches the earth, so B is plainly Supported while X and Y are stranded two joints away — the reason has to be per piece, not per structure.",
+      names:["pier","Z","X","Y","B"], mass:[1,1,1,1,1], ground:[1,0,0,0,0],
+      pos:[[0,0],[0,1],[1,1],[2,1],[0,2]],
+      conns:[bed(0,1), head(1,2), head(2,3), bed(1,4)] },
+
+    { name:"two courses beneath",
+      desc:"Two courses beneath the knot, so a reason that walked down from the knot to the first grounded piece would report both of them stranded. They are two joints apart and both standing. These are the rows that name the fault as over-stranding DOWNWARD.",
+      names:["pier","Zlow","Zhigh","X","Y"], mass:[1,1,1,1,1], ground:[1,0,0,0,0],
+      pos:[[0,0],[0,1],[0,2],[1,2],[2,2]],
+      conns:[bed(0,1), bed(1,2), head(2,3), head(3,4)] },
+
+    { name:"resting on a knot",
+      desc:"Stranded versus Falling, which is the distinction IsPieceSupported cannot make. X and Y are in the knot. B is NOT — its load walks down through Y, X and G to the earth without ever coming back round to B. It has simply lost the only thing holding it up, which is physics.",
+      names:["G","X","Y","B"], mass:[1,1,1,1], ground:[1,0,0,0],
+      pos:[[0,0],[1,0],[2,0],[2,1]],
+      conns:[head(0,1), head(1,2), bed(2,3)] },
+
+    { name:"all four at once",
+      desc:"The row that stops any two of the four being conflated. The pier is Grounded, Z beneath the knot is Supported, X and Y are Stranded, and B on top of the knot is Falling — one structure, four answers.",
+      names:["pier","Z","X","Y","B"], mass:[1,1,1,1,1], ground:[1,0,0,0,0],
+      pos:[[0,0],[0,1],[1,1],[2,1],[2,2]],
+      conns:[bed(0,1), head(1,2), head(2,3), bed(3,4)] },
+  ];
+
+  let ci = 8;
+  CASES.forEach((c,i) => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.textContent = c.name;
+    b.onclick = () => { ci = i; draw(); };
+    chips.appendChild(b);
+  });
+
+  function build(c){
+    const st = new Structure();
+    c.mass.forEach((m,i) => st.addPiece(m * BRICK_MASS_KG, !!c.ground[i]));
+    c.conns.forEach(j => st.addConnection(j));
+    st.solveLoads();
+    return st;
+  }
+
+  function draw(){
+    const c = CASES[ci], st = build(c);
+    [...chips.children].forEach((b,i) => b.setAttribute("aria-pressed", i === ci));
+    desc.textContent = c.desc;
+
+    const cols = Math.max(...c.pos.map(p => p[0])) + 1;
+    const rowsN = Math.max(...c.pos.map(p => p[1])) + 1;
+    const GAP = 30;
+    const BW = Math.min(112, (560 - (cols-1)*GAP) / cols), BH = 44;
+    const totalW = cols*BW + (cols-1)*GAP;
+    const ox = (620 - totalW)/2, oy = 206;
+    const px = p => ox + p[0]*(BW+GAP), py = p => oy - p[1]*(BH+22);
+
+    clear(svg);
+    svg.appendChild(el("line",{x1:24,y1:oy+BH+10,x2:596,y2:oy+BH+10,stroke:"var(--ink2)","stroke-width":"3"}));
+    for (let x = 30; x < 598; x += 12)
+      svg.appendChild(el("line",{x1:x,y1:oy+BH+10,x2:x-7,y2:oy+BH+18,stroke:"var(--ink3)","stroke-width":"1.1"}));
+
+    st.conns.forEach((j) => {
+      const A2 = c.pos[j.a], B2 = c.pos[j.b];
+      const ax = px(A2)+BW/2, ay = py(A2)+BH/2, bx = px(B2)+BW/2, by = py(B2)+BH/2;
+      const isBed = Math.abs(normalize(j.n).z) > BED_JOINT_COSINE;
+      svg.appendChild(el("line",{x1:ax,y1:ay,x2:bx,y2:by,
+        stroke: isBed ? "var(--ink3)" : "var(--line2)", "stroke-width": isBed ? 3 : 2.4,
+        "stroke-dasharray": isBed ? "" : "4 4", "stroke-linecap":"round"}));
+    });
+
+    st.pieces.forEach((p,i) => {
+      const state = st.pieceSupport(i), col = STATE_COL[state];
+      const x = px(c.pos[i]), y = py(c.pos[i]);
+      svg.appendChild(el("rect",{x, y, width:BW, height:BH, rx:6,
+        fill:"color-mix(in srgb," + col + " 16%, var(--panel))", stroke:col, "stroke-width":"2"}));
+      svg.appendChild(el("text",{x:x+BW/2, y:y+19, "text-anchor":"middle", fill:"var(--ink)",
+        "font-size":"12","font-weight":"600"}, c.names[i]));
+      svg.appendChild(el("text",{x:x+BW/2, y:y+34, "text-anchor":"middle", fill:col,
+        "font-size":"10.5","font-family":"var(--mono)"}, state));
+    });
+    svg.appendChild(el("text",{x:14,y:18,fill:"var(--ink3)","font-size":"11",
+      "font-family":"var(--mono)"}, "solid = bed joint · dashed = head joint"));
+
+    const tally = {};
+    st.pieces.forEach((p,i) => { const s = st.pieceSupport(i); tally[s] = (tally[s]||0)+1; });
+    let rows = "";
+    st.pieces.forEach((p,i) => {
+      const s = st.pieceSupport(i);
+      rows += "<tr><td>" + i + " · " + c.names[i] + "</td>" +
+        "<td><span class='pill " + s.toLowerCase() + "'>" + s + "</span></td>" +
+        "<td class='num'>" + (st.supported[i] ? "true" : "false") + "</td>" +
+        "<td class='wrapcell' style='color:var(--ink3)'>" +
+        (s === "Stranded" ? "in the knot — the solver could not route round a loop. Not physics."
+         : s === "Falling" ? "nothing is holding it up, and the solver is not the reason"
+         : s === "Grounded" ? "resting on the earth; load terminates here"
+         : "reaches the earth through supports, and the load was routed there") +
+        "</td></tr>";
+    });
+    out.innerHTML =
+      '<div class="scroll"><table><thead><tr><th>piece</th><th>GetPieceSupport</th>' +
+      '<th class="num">IsPieceSupported</th><th>why</th></tr></thead><tbody>' + rows +
+      '</tbody></table></div>' +
+      '<p class="tiny" style="margin:10px 0 0">Invariant, checked here on every row rather than ' +
+      'asserted in prose: <code>IsPieceSupported(H)</code> is true exactly when the state is ' +
+      'Grounded or Supported — ' +
+      (st.pieces.every((p,i) => st.supported[i] === (["Grounded","Supported"].includes(st.pieceSupport(i))))
+        ? "holds." : "DOES NOT HOLD.") + '</p>';
+  }
+  draw();
+})();
+
+/* ============ 9 · ASKING A JOINT WITHOUT BREAKING IT ============ */
+(function(){
+  const forceR = document.getElementById("ru-force"), forceV = document.getElementById("ru-force-v");
+  const profS = document.getElementById("ru-prof");
+  const areaI = document.getElementById("ru-area");
+  const out = document.getElementById("ru-out");
+  const log = document.getElementById("ru-log");
+  fillSelect(profS, REAL_PROFILES, "LimeMortar");
+  let joint = null, entries = [];
+
+  function fresh(){
+    joint = { a:0, b:1, n:BED_N, area:Math.max(0.01, parseFloat(areaI.value)||100),
+      strength:P[profS.value], given:false };
+    entries = [];
+    draw();
+  }
+  const F = () => ({ x:0, y:0, z:-Math.max(0, +forceR.value) });
+
+  function draw(){
+    joint.area = Math.max(0.01, parseFloat(areaI.value) || 100);
+    joint.strength = P[profS.value];
+    forceV.textContent = fmt(+forceR.value, 0) + " uu";
+    const f = F();
+    const u = utilisationUnder(joint, f);                 // the read-only query
+    const unknown = utilisationUnder(PLACEHOLDER_CONN, f); // fails closed
+    const stress = Math.abs(f.z) / (joint.area * FORCE_UNITS_PER_MPA_SQCM);
+    out.innerHTML =
+      '<div class="stat"><div class="k">compressive stress</div><div class="v">' + fmt(stress,4) + ' MPa</div></div>' +
+      '<div class="stat"><div class="k">UtilisationUnder</div><div class="v" style="color:' +
+        utilColour(u,false) + '">' + fmtU(u) + '</div></div>' +
+      '<div class="stat ' + (joint.given ? "t" : "c") + '"><div class="k">HasGiven</div><div class="v">' +
+        (joint.given ? "true" : "false") + '</div></div>' +
+      '<div class="stat"><div class="k">ApplyForce would</div><div class="v">' +
+        (joint.given ? "return 0" : !(u <= 1.0) ? "LATCH" : "return " + fmtU(u)) + '</div></div>' +
+      '<div class="stat"><div class="k">unknown handle</div><div class="v">' + fmtU(unknown) + '</div></div>';
+
+    log.innerHTML = entries.length
+      ? '<div class="arr"><h4>call log — the joint\'s state after each</h4><div class="cells">' +
+        entries.map((e,i) => '<div class="cell ' + e.cls + '"><span class="i">' + e.k + '</span>' +
+          e.v + '</div>').join("") + '</div></div>'
+      : '<p class="tiny" style="margin:0">Query it as often as you like — nothing changes. Then apply ' +
+        'a force over capacity, and watch every later call answer a joint that has given.</p>';
+  }
+
+  document.getElementById("ru-query").onclick = () => {
+    const u = utilisationUnder(joint, F());
+    entries.push({ k:"query", v:fmtU(u), cls:"" });
+    draw();
+  };
+  document.getElementById("ru-apply").onclick = () => {
+    /* FConnection::ApplyForce, exactly: answer a given joint with zero without
+       latching a second time; otherwise the query, then latch if !(u <= 1.0). */
+    let r;
+    if (joint.given) r = 0;
+    else {
+      r = utilisationUnder(joint, F());
+      if (!(r <= 1.0)) joint.given = true;
+    }
+    entries.push({ k:"apply", v:fmtU(r), cls: joint.given ? "wrong" : "healed" });
+    draw();
+  };
+  document.getElementById("ru-reset").onclick = fresh;
+  [forceR, profS, areaI].forEach(x => x.addEventListener("input", draw));
+  fresh();
+})();
+
+/* ============ 10 · HANDLES THAT SURVIVE REMOVAL ============ */
 (function(){
   const svg = document.getElementById("ix-svg");
-  const arrays = document.getElementById("ix-arrays");
+  const cols = document.getElementById("ix-cols");
   const verdict = document.getElementById("ix-verdict");
   const bSolve = document.getElementById("ix-solve");
   const bRemove = document.getElementById("ix-remove");
   const bResolve = document.getElementById("ix-resolve");
   const bReset = document.getElementById("ix-reset");
 
-  const NAMES = ["block", "debris", "pad A", "pad B", "pad C", "debris"];
-  let st, phase = 0, removed = false;
+  /* THE HOLE IS IN THE MIDDLE, which is the only place that proves anything —
+     removing the last piece is indistinguishable from compacting it away. And
+     nothing at the top of the array carries a joint, so the compaction below
+     produces silent MIS-POINTING rather than a tidy out-of-range crash. */
+  const NAMES = ["block", "pad S", "shim", "pad A", "pad B", "pad C", "debris"];
+  const GONE = 1;
+  const LABEL = ["shim on pad S", "lime", "cement", "cement"];
+  let st, ghostNames = null, phase = 0;
 
   function build(){
     const s = new Structure();
-    s.addPiece(massForStress(3,300), false);   // 0 block
-    s.addPiece(0.9, false);                    // 1 debris — settled rubble, no joints
-    s.addPiece(BRICK_KG, true);                // 2 pad A
-    s.addPiece(BRICK_KG, true);                // 3 pad B
-    s.addPiece(BRICK_KG, true);                // 4 pad C
-    s.addPiece(0.6, false);                    // 5 debris — no joints either
-    s.addConnection({a:2,b:0,n:BED_N,area:100,strength:P.LimeMortar,label:"lime"});
-    s.addConnection({a:3,b:0,n:BED_N,area:100,strength:P.GeneralPurposeMortar,label:"cement"});
-    s.addConnection({a:4,b:0,n:BED_N,area:100,strength:P.GeneralPurposeMortar,label:"cement"});
-    s.names = NAMES.slice();
+    s.addPiece(massForStress(3,300), false);   // 0 block, 9e6 uu over three pads
+    s.addPiece(BRICK_KG, true);                // 1 pad S — the one that gets removed
+    s.addPiece(massForStress(0.5,100), false); // 2 shim, resting on pad S
+    s.addPiece(BRICK_KG, true);                // 3 pad A
+    s.addPiece(BRICK_KG, true);                // 4 pad B
+    s.addPiece(BRICK_KG, true);                // 5 pad C
+    s.addPiece(0.9, false);                    // 6 debris, joined to nothing
+    s.addConnection({a:1,b:2,n:BED_N,area:100,strength:P.GeneralPurposeMortar});
+    s.addConnection({a:3,b:0,n:BED_N,area:100,strength:P.LimeMortar});
+    s.addConnection({a:4,b:0,n:BED_N,area:100,strength:P.GeneralPurposeMortar});
+    s.addConnection({a:5,b:0,n:BED_N,area:100,strength:P.GeneralPurposeMortar});
     return s;
   }
 
   function reset(){
-    st = build(); st.solveLoads(); phase = 0; removed = false;
+    st = build(); st.solveLoads(); phase = 0; ghostNames = null;
     bSolve.disabled = false; bRemove.disabled = true; bResolve.disabled = true;
     render();
   }
 
-  /* Remove piece 1 and compact the piece array — WITHOUT touching any connection.
-     This is exactly what a naive despawn would do. */
-  function removePiece(){
-    const gone = 1;
-    st.pieces.splice(gone, 1);
-    st.pieces.forEach((p,i) => p.index = i);
-    st.names.splice(gone, 1);
-    st.supported.splice(gone, 1);
-    removed = true; phase = 2;
-    bRemove.disabled = true; bResolve.disabled = false;
-    render();
-  }
+  const SLOT_W = 76, SLOT_G = 7, ROW_Y = 150, ROW_H = 46;
+  const slotX = i => 20 + i * (SLOT_W + SLOT_G);
 
-  const SLOT_W = 88, SLOT_G = 10, ROW_Y = 168, ROW_H = 50;
-  const slotX = i => 22 + i * (SLOT_W + SLOT_G);
+  function jointState(i){
+    if (!st.conns[i].given) return "intact";
+    return st.breakPass[i] === NONE ? "severed" : "broke";
+  }
 
   function render(){
     clear(svg);
-    const n = st.pieces.length;
-
-    /* connection arcs, drawn to whatever index they currently name */
     st.conns.forEach((c,i) => {
-      const valid = c.a < n && c.b < n;
       const ax = slotX(c.a) + SLOT_W/2, bx = slotX(c.b) + SLOT_W/2;
-      /* the joint still names the same INDEX; whether that index still means the
-         same PIECE is the whole question */
-      const mis = removed && st.names[c.a] !== NAMES[[2,3,4][i]];
-      const col = !valid ? "var(--bad)" : mis ? "var(--bad)" : c.given ? "var(--line2)" : "var(--ok)";
-      const top = 118 - i*30;
-      if (valid){
-        svg.appendChild(el("path",{ d:"M "+ax+" "+ROW_Y+" C "+ax+" "+top+" "+bx+" "+top+" "+bx+" "+ROW_Y,
-          fill:"none", stroke:col, "stroke-width": c.given ? 2 : 3.2,
-          "stroke-dasharray": c.given ? "5 5" : "" }));
-        svg.appendChild(el("circle",{cx:ax,cy:ROW_Y,r:"4",fill:col}));
-        svg.appendChild(el("circle",{cx:bx,cy:ROW_Y,r:"4",fill:col}));
-        const mx = (ax+bx)/2;
-        svg.appendChild(el("rect",{x:mx-30,y:top-11,width:60,height:20,rx:4,
-          fill:"var(--panel)",stroke:col,"stroke-width":"1.2"}));
-        svg.appendChild(el("text",{x:mx,y:top+3,"text-anchor":"middle",fill:col,
-          "font-size":"11","font-family":"var(--mono)"}, "c"+i+" "+c.label));
-      }
+      const s = jointState(i);
+      const col = s === "broke" ? "var(--bad)" : s === "severed" ? "var(--ink3)" : "var(--ok)";
+      const top = 108 - i*24;
+      svg.appendChild(el("path",{ d:"M "+ax+" "+ROW_Y+" C "+ax+" "+top+" "+bx+" "+top+" "+bx+" "+ROW_Y,
+        fill:"none", stroke:col, "stroke-width": s === "intact" ? 3 : 1.8,
+        "stroke-dasharray": s === "broke" ? "6 5" : s === "severed" ? "2 5" : "" }));
+      svg.appendChild(el("circle",{cx:ax,cy:ROW_Y,r:"3.5",fill:col}));
+      svg.appendChild(el("circle",{cx:bx,cy:ROW_Y,r:"3.5",fill:col}));
+      const mx = (ax+bx)/2;
+      svg.appendChild(el("rect",{x:mx-40,y:top-10,width:80,height:19,rx:4,
+        fill:"var(--panel)",stroke:col,"stroke-width":"1.2"}));
+      svg.appendChild(el("text",{x:mx,y:top+4,"text-anchor":"middle",fill:col,
+        "font-size":"10","font-family":"var(--mono)"}, "c"+i+" "+LABEL[i]));
     });
 
-    /* the piece array */
     st.pieces.forEach((p,i) => {
-      const orig = st.names[i];
-      const moved = removed && i >= 1;
+      const dead = st.isPieceRemoved(i);
       svg.appendChild(el("rect",{ x:slotX(i), y:ROW_Y, width:SLOT_W, height:ROW_H, rx:6,
-        fill: p.grounded ? "var(--panel2)" : "var(--panel)",
-        stroke: moved ? "var(--warn)" : "var(--line2)", "stroke-width": moved ? 2 : 1.4 }));
-      svg.appendChild(el("text",{x:slotX(i)+SLOT_W/2,y:ROW_Y+20,"text-anchor":"middle",
-        fill:"var(--ink)","font-size":"12","font-weight":"600"}, orig));
-      svg.appendChild(el("text",{x:slotX(i)+SLOT_W/2,y:ROW_Y+36,"text-anchor":"middle",
-        fill:"var(--ink3)","font-size":"10.5","font-family":"var(--mono)"},
-        p.grounded ? "grounded" : fmt(p.mass,1)+" kg"));
-      svg.appendChild(el("text",{x:slotX(i)+SLOT_W/2,y:ROW_Y+ROW_H+17,"text-anchor":"middle",
-        fill: moved ? "var(--warn)" : "var(--ink3)","font-size":"12","font-family":"var(--mono)",
-        "font-weight": moved ? "700" : "400"}, "["+i+"]" + (moved ? " ← was ["+(i+1)+"]" : "")));
+        fill: dead ? "var(--panel2)" : p.grounded ? "var(--panel2)" : "var(--panel)",
+        stroke: dead ? "var(--ink3)" : "var(--line2)", "stroke-width": dead ? 2 : 1.4,
+        "stroke-dasharray": dead ? "4 3" : "" }));
+      svg.appendChild(el("text",{x:slotX(i)+SLOT_W/2,y:ROW_Y+19,"text-anchor":"middle",
+        fill: dead ? "var(--ink3)" : "var(--ink)","font-size":"11.5","font-weight":"600",
+        "text-decoration": dead ? "line-through" : ""}, NAMES[i]));
+      svg.appendChild(el("text",{x:slotX(i)+SLOT_W/2,y:ROW_Y+34,"text-anchor":"middle",
+        fill:"var(--ink3)","font-size":"10","font-family":"var(--mono)"},
+        dead ? "tombstoned" : p.grounded ? "grounded" : fmt(p.mass,1)+" kg"));
+      svg.appendChild(el("text",{x:slotX(i)+SLOT_W/2,y:ROW_Y+ROW_H+16,"text-anchor":"middle",
+        fill:"var(--ink3)","font-size":"11.5","font-family":"var(--mono)"}, "["+i+"]"));
     });
-    if (removed){
-      svg.appendChild(el("text",{x:22,y:246,fill:"var(--warn)","font-size":"11.5",
-        "font-family":"var(--mono)"},
-        "piece 1 despawned · every index above it shifted down by one · no connection was told"));
-    } else {
-      svg.appendChild(el("text",{x:22,y:246,fill:"var(--ink3)","font-size":"11.5",
-        "font-family":"var(--mono)"},
-        "PieceA / PieceB are int32 positions in this array. Nothing else identifies a piece."));
-    }
-    renderArrays();
+
+    svg.appendChild(el("text",{x:20,y:ROW_Y+ROW_H+38,fill:"var(--ink3)","font-size":"11",
+      "font-family":"var(--mono)"}, phase >= 2
+        ? "handles " + st.numPieces() + " · live " + st.numLivePieces() +
+          " · slot " + GONE + " tombstoned, and no index moved"
+        : "PieceA / PieceB are int32 positions in this array. Nothing else identifies a piece."));
+    renderCols();
   }
 
   function cellsHTML(title, items){
@@ -2198,43 +3253,69 @@ const CASES = [
       items.map((it,i) => '<div class="cell ' + (it.cls||"") + '"><span class="i">[' + i + ']</span>' +
         it.v + '</div>').join("") + '</div></div>';
   }
-  function renderArrays(){
-    const n = st.pieces.length;
-    const conn = st.conns.map((c,i) => {
-      const mis = removed && st.names[c.a] !== NAMES[[2,3,4][i]];
-      return { v: c.a + " → " + c.b, cls: mis ? "wrong" : "" };
-    });
-    const forces = st.conns.map((c,i) => ({
-      v: fmt(st.forces[i] ? st.forces[i].z : 0, 0),
-      cls: phase >= 3 ? "healed" : ""
-    }));
-    const passes = st.conns.map((c,i) => ({
-      v: st.breakPass[i] === NONE ? "—" : "pass " + st.breakPass[i],
-      cls: removed && st.breakPass[i] !== NONE ? "wrong" : ""
-    }));
-    arrays.innerHTML =
-      cellsHTML("Connections — PieceA → PieceB" + (removed ? "  (unchanged, and now lying)" : ""), conn) +
-      cellsHTML("ConnectionForces (uu) — rebuilt from scratch by every solve", forces) +
-      cellsHTML("ConnectionBreakPass — grown once by AddConnection, NEVER rebuilt", passes);
+  function realArrays(){
+    return cellsHTML("Connections — PieceA → PieceB",
+        st.conns.map(c => ({ v: c.a + " → " + c.b, cls:"" }))) +
+      cellsHTML("ConnectionForces (uu) — rebuilt by every solve",
+        st.conns.map((c,i) => ({ v: fmt(st.forces[i] ? st.forces[i].z : 0, 0), cls:"" }))) +
+      cellsHTML("ConnectionBreakPass — grown once, NEVER rebuilt",
+        st.conns.map((c,i) => {
+          const s = jointState(i);
+          return { v: st.breakPass[i] === NONE ? (s === "severed" ? "— severed" : "—") : "pass " + st.breakPass[i],
+                   cls: s === "broke" ? "stamp" : s === "severed" ? "sev" : "" };
+        }));
+  }
+  function ghostArrays(){
+    /* The compaction that was never written: splice the piece out and leave every
+       connection naming the index it always named. Nothing crashes. */
+    const g = NAMES.filter((n,i) => i !== GONE);
+    return cellsHTML("Connections — unchanged, and now lying",
+        st.conns.map((c,i) => ({ v: c.a + " → " + c.b + "  (" + g[c.a] + " → " + g[c.b] + ")",
+          cls: (g[c.a] !== NAMES[c.a] || g[c.b] !== NAMES[c.b]) ? "wrong" : "" }))) +
+      cellsHTML("ConnectionForces — would HEAL into the wrong graph",
+        st.conns.map(() => ({ v:"rebuilt", cls:"healed" }))) +
+      cellsHTML("ConnectionBreakPass — wrong for good",
+        st.conns.map((c,i) => ({
+          v: st.breakPass[i] === NONE ? "—" : "pass " + st.breakPass[i],
+          cls: st.breakPass[i] !== NONE ? "wrong" : "" })));
+  }
+
+  function renderCols(){
+    if (phase < 2){
+      cols.className = "arrays";
+      cols.innerHTML = realArrays();
+    } else {
+      cols.className = "two";
+      cols.innerHTML =
+        '<div class="col bad"><h4>If RemovePiece had compacted</h4>' + ghostArrays() + '</div>' +
+        '<div class="col ok"><h4>What RemovePiece does — tombstone</h4>' + realArrays() + '</div>';
+    }
 
     let msg = "", cls = "ok", icon = "→";
     if (phase === 0){
-      msg = "As built. Three joints, three pads. Nothing has been solved yet, so both output arrays are empty of meaning.";
+      msg = "As built. A block on three pads, a shim on a fourth, and a chunk of debris joined to " +
+        "nothing. Nothing has been solved yet, so both output arrays are empty of meaning.";
     } else if (phase === 1){
-      msg = "Cascaded. The lime joint hit 1.5× and gave in pass 1; its share moved onto the two cement joints, which now carry 4.5e6 uu each at utilisation 0.45. The block stands. c0 is stamped pass 1.";
+      msg = "Cascaded. Each pad carried 3 MPa; the lime joint is rated 2, so it hit " +
+        fmtU(3/2) + " and gave in pass 1. Its share moved onto the two cement joints, which now carry " +
+        fmt(Math.abs(st.forces[2].z),0) + " uu each at utilisation " + fmtU(st.utilisationOf(2)) +
+        ". The block stands. c1 is stamped pass 1.";
     } else if (phase === 2){
-      cls = "bad"; icon = "!";
-      msg = "Piece 1 is gone and the array compacted. Nothing crashed. But c0 now names index 2 — which is pad B, not pad A. c1 names pad C. c2 names a loose chunk of debris that is not attached to anything. The whole structure re-pointed, silently.";
+      cls = "ok"; icon = "✓";
+      msg = "Pad S removed. On the left is what a compacting removal would have produced: c0 still " +
+        "names indices 1 and 2, which are now the shim and pad A — and the pass-1 stamp on c1 now " +
+        "describes the joint at pad B, which never broke. On the right, nothing moved. Slot " + GONE +
+        " is a tombstone, " + st.numPieces() + " handles still resolve, " + st.numLivePieces() +
+        " of them to a live piece, and c0 is severed with no stamp at all: it did not fail, it was " +
+        "deleted.";
     } else {
-      cls = "bad"; icon = "!";
-      const agree = st.conns.every((c,i) => c.given === (st.breakPass[i] !== NONE));
-      msg = "Solved again. ConnectionForces HEALED — it was rebuilt from scratch, so it is now perfectly " +
-        "self-consistent with the wrong graph: c1 carries the whole 9e6 uu at 0.90 utilisation, c2 carries " +
-        "zero because the debris it now names is not holding anything up. Plausible numbers, wrong structure. " +
-        "ConnectionBreakPass did NOT heal, because a pass stamp cannot be recomputed from anything — so the " +
-        "replay will show pass 1 breaking the joint at pad B, which never broke, while pad A (the joint that " +
-        "actually gave) now has no joints at all. And GetBreakPass agrees with HasGiven on every index: " +
-        (agree ? "the consistency check passes." : "mismatch.") + " Every internal check is green.";
+      cls = "ok"; icon = "✓";
+      const shim = st.pieceSupport(2), block = st.pieceSupport(0);
+      msg = "Solved again. The shim is now " + shim + " — it lost the only thing carrying it, which " +
+        "is ordinary physics, not the solver giving up. The block is still " + block + " on its two " +
+        "cement joints at " + fmtU(st.utilisationOf(2)) + ". c1 still reads pass 1 and still names " +
+        "pieces 3 and 0: history was not rewritten, and no handle changed meaning. A second cascade " +
+        "would number its first pass " + (st.passesAlreadyStamped() + 1) + ", not 1.";
     }
     verdict.innerHTML = '<div class="verdict ' + cls + '"><span class="icon">' + icon +
       '</span><span></span></div>';
@@ -2246,7 +3327,11 @@ const CASES = [
     bSolve.disabled = true; bRemove.disabled = false;
     render();
   };
-  bRemove.onclick = removePiece;
+  bRemove.onclick = () => {
+    st.removePiece(GONE); phase = 2;
+    bRemove.disabled = true; bResolve.disabled = false;
+    render();
+  };
   bResolve.onclick = () => { st.solveLoads(); phase = 3; bResolve.disabled = true; render(); };
   bReset.onclick = reset;
   reset();
