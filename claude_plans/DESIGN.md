@@ -88,6 +88,22 @@ Force is classified by its direction **relative to each connection's interface**
 
 > Example: remove the brick beneath another, and gravity (pointing straight down) becomes a **shear** load on the *vertical* joint to the neighbor. The same downward gravity is *compression* on a horizontal joint and *shear* on a vertical one. "Sideways" is the wrong mental model — orientation relative to each joint is what matters.
 
+### Geometry lives above the solver, and produces the graph *(settled 2026-08-02)*
+
+Everything above **consumes** interface areas and normals. Something has to **produce** them: a scenario places bricks, and the areas, the normals and the pairs have to come from that placement. That producer is `Core/Layout`, and three things about it are design decisions rather than implementation.
+
+**The dependency runs one way only.** The producer knows about the solver; the solver never knows about the producer. `FStructure` stays position-free — a piece is a mass and an identity — which is exactly why the load maths needs no world and runs deterministically in milliseconds. Geometry sits above it and hands down handles.
+
+**The interface normal is the axis of separation, oriented by which handle is `PieceB`.** It is *never* the direction between the two pieces' centroids, and the sign is read on the separation axis alone. This is the one rule the producer exists to get right, because getting it wrong is silent: a running-bond bed joint's centroid direction has `|Z| = 0.5547`, which is **below cos 45°**, so a centroid normal makes every bed joint in a wall classify as a **head** joint. The head tier is sign-blind, so each brick then treats the joints *above* it as supports as well, and gravity resolves as **shear against mortar's cohesion** instead of compression against its compressive strength — an entirely wrong support graph, and nothing breaks, moves or crashes. Displacement could never detect it; only the classification can.
+
+Worked through on the spanning-brick case (1333.5993125 uu over 105.0625 cm², general-purpose mortar): the centroid normal splits the load into 739.7478 uu compression and 1109.6217 uu shear, giving a worst utilisation of **5.269638e-3 against the correct 1.269339e-4** — a factor of **41.5**. An earlier draft of this paragraph said 79×; that figure does not reproduce and was arrived at by comparing shear utilisation to compression utilisation *under the wrong normal*, which is not this comparison.
+
+The failure mode that matters is not a *flipped* normal. `RoleOf` turns the normal toward whichever piece it is asked about and the accumulation signs the force by which end is loaded, so a **consistently** flipped joint reports identical loads. The bug is a normal **inconsistent with its A/B pairing** — which is why the pair and the normal are emitted as one atomic value, by one function, rather than assembled at a call site.
+
+**Deciding *whether* two pieces touch and deciding *which pairs to consider* are separate jobs**, and only the second is bond-specific. A running-bond producer is generative: it knows what it laid, so it offers its own neighbours rather than searching for them. A future contact-finding producer replaces exactly that half and inherits the areas, normals, orientation and validation unchanged.
+
+A refused pair **fails closed**, by zeroing the interface area rather than leaving the joint untouched — the same trick `FConnection` uses for a degenerate normal, routing the case through the area guard that already exists so a caller who ignores the return value gets a joint that reads as *failed* rather than one that reads as fine.
+
 ---
 
 ## 3. Physics Model
