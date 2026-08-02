@@ -469,8 +469,13 @@ void FStructure::SolveLoads()
 	 * loop needs a rule we do not have.
 	 *
 	 * This set only ever grows, which is what makes the fixpoint below terminate.
+	 *
+	 * KEPT RATHER THAN DISCARDED, as a member beside PieceSupported: it is the reason
+	 * behind the answer that array holds, and GetPieceSupport hands it out. Rebuilt from
+	 * scratch here, exactly like the rest of the solver's output, so a knot that has
+	 * since been dissolved — by a break or by a removal — does not survive the next
+	 * solve as a stale claim about a structure that no longer has one.
 	 */
-	TArray<bool> PieceStranded;
 	PieceStranded.Init(false, Pieces.Num());
 
 	/*
@@ -893,4 +898,37 @@ bool FStructure::IsPieceSupported(int32 PieceIndex) const
 {
 	// An unknown piece is not being held up.
 	return PieceSupported.IsValidIndex(PieceIndex) && PieceSupported[PieceIndex];
+}
+
+EPieceSupport FStructure::GetPieceSupport(int32 PieceIndex) const
+{
+	/*
+	 * DERIVED FROM IsPieceSupported RATHER THAN COMPUTED BESIDE IT. The two are one
+	 * answer at two resolutions, so asking the coarser one here is what makes
+	 *
+	 *     IsPieceSupported(H) == (GetPieceSupport(H) is Grounded or Supported)
+	 *
+	 * true by construction instead of by agreement — including for an unknown handle,
+	 * where the range check inside it is the only one either accessor needs, and before
+	 * any solve, where the arrays are empty and every handle is unknown.
+	 *
+	 * Only the reason for NOT being held up needs the second array, and the order is
+	 * deliberate: a piece is never both stranded and supported, but reading support
+	 * first means that if it ever became possible the answer would still agree with the
+	 * boolean rather than contradicting it.
+	 */
+	if (IsPieceSupported(PieceIndex))
+	{
+		return GetPiece(PieceIndex).bIsGrounded ? EPieceSupport::Grounded : EPieceSupport::Supported;
+	}
+
+	/*
+	 * STRANDED IS A CLAIM ABOUT THE SOLVER, so it is only ever made about a piece the
+	 * last solve actually found in a knot. Everything else falls through to Falling: a
+	 * piece resting only on a knot, a piece with nothing beneath it at all, a removed
+	 * piece once something has re-solved, and a handle that names no piece.
+	 */
+	return PieceStranded.IsValidIndex(PieceIndex) && PieceStranded[PieceIndex]
+		? EPieceSupport::Stranded
+		: EPieceSupport::Falling;
 }

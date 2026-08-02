@@ -54,6 +54,54 @@ struct FStructurePiece
 };
 
 /**
+ * WHY a piece is or is not being held up, as opposed to merely whether it is.
+ *
+ * IsPieceSupported is the composite answer and stays exactly as it is; this is the
+ * reason behind it. Two completely different things produce "this piece is falling",
+ * and nothing outside the solver can currently tell them apart:
+ *
+ *   - real physics — nothing is holding it up, its supports are gone or falling;
+ *   - a solver limitation — the piece is in an unroutable knot, which is reported
+ *     conservatively rather than solved (DESIGN.md §3, and see IsPieceSupported).
+ *
+ * That distinction is what lets a collapse test claim a wall fell from LOAD rather
+ * than from the solver giving up on a loop: assert no piece was Stranded when it went.
+ *
+ * FALLING IS FIRST SO THAT ZERO IS THE FAIL-CLOSED ANSWER. A default-constructed or
+ * zero-filled entry then reads "nothing is holding this up", which is the same
+ * direction every other accessor on FStructure fails in. Grounded at zero would make
+ * an uninitialised array claim the whole structure was resting on the earth.
+ */
+enum class EPieceSupport : uint8
+{
+	/**
+	 * Nothing is holding this piece up, and the solver is not the reason.
+	 *
+	 * Also the answer for a handle that names no piece, for a piece that has been
+	 * removed, for a structure that has not been solved yet, and for a piece resting
+	 * ONLY on a knot — that piece is not itself in the knot, it has simply lost the
+	 * one thing that was carrying it, which is ordinary physics.
+	 */
+	Falling,
+
+	/** Resting on the earth. Ground terminates the flow of load; nothing carries this. */
+	Grounded,
+
+	/** Reaches the earth through supports, and the solver could route its load there. */
+	Supported,
+
+	/**
+	 * IN an unroutable knot: this piece is ultimately one of its own supports.
+	 *
+	 * NOT physics, and that is the whole point of telling it apart from Falling. The
+	 * piece reaches the ground through the support relation, but dividing load round a
+	 * loop needs a rule that does not exist yet, so it is reported unsupported —
+	 * conservatively, deliberately, and now visibly.
+	 */
+	Stranded,
+};
+
+/**
  * The graph that owns pieces and connections, and works out what each connection
  * carries.
  *
@@ -299,6 +347,36 @@ struct FStructure
 	 */
 	bool IsPieceSupported(int32 PieceIndex) const;
 
+	/**
+	 * WHY this piece is or is not being held up, after SolveLoads.
+	 *
+	 * IsPieceSupported is the composite answer and is unchanged; this refines it, and
+	 * the two must never disagree:
+	 *
+	 *     IsPieceSupported(H)  ==  (GetPieceSupport(H) is Grounded or Supported)
+	 *
+	 * for every handle, at every moment, including before a solve and in the window
+	 * between a removal and the next one. Two accessors reading one solve and telling
+	 * different stories is the exact defect the stranding rule was written to close;
+	 * reintroducing it one level up would be worse, because this one claims to explain.
+	 *
+	 * STRANDED IS ONLY FOR PIECES IN THE KNOT. A piece resting on one is Falling: it is
+	 * not itself unroutable, it has simply lost the support that was carrying it, and
+	 * that is ordinary physics rather than a solver limitation.
+	 *
+	 * SAME SCOPE AS IsPieceSupported, because it is the same solver output — see that
+	 * contract for the three rows. A removed piece reads the last solve's answer until
+	 * something re-solves and Falling after it, and there is deliberately no fifth
+	 * enumerator for "removed": IsPieceRemoved answers that immediately and this one
+	 * cannot, so a Removed value here would contradict a stale Supported from
+	 * IsPieceSupported in exactly the window Structure.RemovedPieceSupportNeedsASolve
+	 * pins.
+	 *
+	 * Falling for an out-of-range handle: nothing is holding up a piece that does not
+	 * exist, and Stranded would be a positive claim about a knot that is not there.
+	 */
+	EPieceSupport GetPieceSupport(int32 PieceIndex) const;
+
 private:
 	TArray<FStructurePiece> Pieces;
 	TArray<FConnection> Connections;
@@ -314,6 +392,21 @@ private:
 
 	/** Whether each piece reaches the earth through supports. */
 	TArray<bool> PieceSupported;
+
+	/**
+	 * Whether each piece is IN an unroutable knot — not merely resting on one.
+	 *
+	 * The fixpoint in SolveLoads has always computed this, because it is what decides
+	 * who conducts support on the next pass; it is kept rather than discarded so that
+	 * GetPieceSupport can say WHY a piece is not held up. Both accessors read these two
+	 * arrays and neither recomputes anything, which is what stops the reason drifting
+	 * away from the answer it explains.
+	 *
+	 * A piece is never both stranded and supported: the reachability walk neither marks
+	 * a stranded piece nor crosses one, and the pass that strands is the pass after
+	 * which nothing is supported through it.
+	 */
+	TArray<bool> PieceStranded;
 
 	/** What each connection carries, in Unreal force units. */
 	TArray<FVector> ConnectionForces;

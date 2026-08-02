@@ -585,6 +585,63 @@ namespace StructureTestSupport
 			FMath::IsNearlyEqual(GroundReactionUU, ExpectedGroundReactionUU,
 				FMath::Max(Tolerance, 1.0e-9 * ExpectedGroundReactionUU)));
 	}
+
+	/**
+	 * A support state as text, so a failure names the answer instead of a number.
+	 *
+	 * The default arm is deliberately not a fifth name: it is what fires if the enum
+	 * grows a value nobody wired in here, and "an unknown state" in a failure message
+	 * is a better outcome than a plausible-looking label.
+	 */
+	const TCHAR* NameOfSupport(EPieceSupport State)
+	{
+		switch (State)
+		{
+		case EPieceSupport::Falling:   return TEXT("Falling");
+		case EPieceSupport::Grounded:  return TEXT("Grounded");
+		case EPieceSupport::Supported: return TEXT("Supported");
+		case EPieceSupport::Stranded:  return TEXT("Stranded");
+		default:                       return TEXT("an unknown state");
+		}
+	}
+
+	/**
+	 * The one invariant that ties the new accessor to the old one, checked on every
+	 * piece of every case rather than on the interesting ones.
+	 *
+	 * IsPieceSupported is the composite answer and 38 tests read it; GetPieceSupport
+	 * explains it. If the two are ever computed apart they will drift, and the drift
+	 * would be silent — both would keep returning plausible answers about the same
+	 * structure. This is what makes them one answer rather than two.
+	 *
+	 * It also pins the SHAPE of the enum, which nothing else does: exactly two of the
+	 * four states mean "held up", so a fifth state added later has to be classified
+	 * here on purpose rather than quietly landing on whichever side the switch fell
+	 * through to.
+	 */
+	void CheckSupportAgreesWithReason(
+		FAutomationTestBase& Test,
+		const TCHAR* Description,
+		const FStructure& Structure,
+		int32 PieceIndex)
+	{
+		const EPieceSupport State = Structure.GetPieceSupport(PieceIndex);
+
+		const bool bHeldUp = State == EPieceSupport::Grounded || State == EPieceSupport::Supported;
+
+		Test.TestTrue(
+			FString::Printf(
+				TEXT("%s: piece %d reads %s but IsPieceSupported says %d — the two must tell one story"),
+				Description, PieceIndex, NameOfSupport(State),
+				Structure.IsPieceSupported(PieceIndex) ? 1 : 0),
+			bHeldUp == Structure.IsPieceSupported(PieceIndex));
+
+		Test.TestTrue(
+			FString::Printf(TEXT("%s: piece %d reads %s, which is not one of the four states"),
+				Description, PieceIndex, NameOfSupport(State)),
+			State == EPieceSupport::Falling || State == EPieceSupport::Grounded
+				|| State == EPieceSupport::Supported || State == EPieceSupport::Stranded);
+	}
 }
 
 /**
@@ -2913,6 +2970,623 @@ bool FStructureStrandingPropagatesUpwardTest::RunTest(const FString& Parameters)
 	for (const FSolveCase& Case : Cases)
 	{
 		CheckSolveCase(*this, Case);
+	}
+
+	return true;
+}
+
+/**
+ * WHY a piece has no support, and not merely whether it has none.
+ *
+ * IsPieceSupported answers "whether", never "why", and two completely different things
+ * produce the same false:
+ *
+ *   - REAL PHYSICS. Nothing is holding the piece up. Its supports are gone, or they are
+ *     falling themselves.
+ *   - A SOLVER LIMITATION. The piece is in an unroutable knot — two bricks that have both
+ *     lost their bed joints fall back onto each other's head joints, so each is the
+ *     other's support, and there is no rule here for dividing load round a loop. The
+ *     solver plays safe and calls them falling. Documented, deliberate, conservative
+ *     (DESIGN.md §3) — and not physics.
+ *
+ * WHY THAT MATTERS ENOUGH TO ADD AN ACCESSOR FOR IT. DESIGN.md §4's headline collapse
+ * test is "pull bricks until it topples, confirm it falls at the predicted number", and
+ * THAT ASSERTION IS IDENTICAL IN BOTH CASES. It would pass, stay green through a retune
+ * of every strength in the library, and be calibrated against the number of removals that
+ * happens to make a cycle rather than against the number that overloads a joint. Three
+ * bricks out of the bottom course of a five-brick wall is enough to produce one, which is
+ * roughly what a player does. The collapse test needs a precondition it cannot currently
+ * express — no piece was STRANDED when it fell — and this is that seam.
+ *
+ * STRANDED IS ONLY FOR PIECES IN THE KNOT, and the distinction is the reason the two
+ * upward-propagation rows are in this table. A piece resting only on a knot comes out
+ * FALLING: it is not itself unroutable, it has simply lost the one thing carrying it, and
+ * that is ordinary physics. Production already computes exactly this set — the fixpoint
+ * strands on "does my load come back round to me", never on un-orderability — so the
+ * distinction falls out rather than being invented here.
+ *
+ * THE TOPOLOGIES ARE NOT NEW. Every case mirrors a fixture that already exists in this
+ * file, and its expectation row must agree piece for piece with what that test says about
+ * IsPieceSupported — CheckSupportAgreesWithReason asserts that agreement directly rather
+ * than by transcription. What is new is only the reason column.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FStructurePieceSupportReasonTest,
+	"DestructionGame.Core.Structure.PieceSupportReason",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
+{
+	using namespace StructureTestSupport;
+
+	struct FSupportReasonCase
+	{
+		const TCHAR* Description;
+		FStructureSpec Spec;
+
+		/** Why each piece is or is not held up, in piece-array order. */
+		TArray<EPieceSupport> ExpectedSupport;
+	};
+
+	const TArray<FSupportReasonCase> Cases = {
+		/*
+		 * SupportCycle's first control. Piece 1 has no bed joint and falls back to its one
+		 * head joint, whose far end is the earth. Nothing here is in a knot, so the
+		 * fallback must read as ordinary support — a reason column that called every
+		 * head-jointed piece stranded would pass every other row in this table.
+		 */
+		{
+			TEXT("a brick held sideways by a grounded neighbour is SUPPORTED, not stranded"),
+			{
+				{ { BrickMassKg, true }, { BrickMassKg, false } },
+				{ { 0, 1, HeadJointNormal, JointAreaSqCm } }
+			},
+			{ EPieceSupport::Grounded, EPieceSupport::Supported }
+		},
+
+		/*
+		 * SupportCycle's minimum repro, and the case this whole accessor exists for:
+		 *
+		 *   G  —  X  —  Y      pieces 0, 1, 2
+		 *   ==                 earth, under G only
+		 *
+		 * X's supports are {G, Y}, Y's are {X}, so each is ultimately its own support and
+		 * both are IN the knot. IsPieceSupported reports them falling and cannot say that
+		 * the reason is the solver rather than the structure.
+		 */
+		{
+			TEXT("both bricks over a two-brick gap are STRANDED — they are in the knot"),
+			{
+				{ { BrickMassKg, true }, { BrickMassKg, false }, { BrickMassKg, false } },
+				{
+					{ 0, 1, HeadJointNormal, JointAreaSqCm },
+					{ 1, 2, HeadJointNormal, JointAreaSqCm }
+				}
+			},
+			{ EPieceSupport::Grounded, EPieceSupport::Stranded, EPieceSupport::Stranded }
+		},
+
+		/*
+		 * The same stall at a longer stride, so the reason cannot be a special case for
+		 * adjacent pairs: all three pieces of a three-cycle are in it.
+		 */
+		{
+			TEXT("all three bricks over a three-brick gap are STRANDED"),
+			{
+				{
+					{ BrickMassKg, true }, { BrickMassKg, false },
+					{ BrickMassKg, false }, { BrickMassKg, false }
+				},
+				{
+					{ 0, 1, HeadJointNormal, JointAreaSqCm },
+					{ 1, 2, HeadJointNormal, JointAreaSqCm },
+					{ 2, 3, HeadJointNormal, JointAreaSqCm }
+				}
+			},
+			{
+				EPieceSupport::Grounded, EPieceSupport::Stranded,
+				EPieceSupport::Stranded, EPieceSupport::Stranded
+			}
+		},
+
+		/*
+		 * SupportCycle's second control: the support relation genuinely contains a cycle,
+		 * pieces 0 and 2 naming each other, but piece 0 is grounded and never enters the
+		 * ordering, so everything resolves. "Contains a cycle" is not "is stranded", and a
+		 * reason derived from cycle detection alone rather than from the solve would call
+		 * pieces 0 and 2 stranded here.
+		 */
+		{
+			TEXT("a cycle through a grounded piece resolves, so nothing in it is stranded"),
+			{
+				{ { BrickMassKg, true }, { BrickMassKg, false }, { BrickMassKg, false } },
+				{
+					{ 0, 1, BedJointNormal, JointAreaSqCm },
+					{ 1, 2, HeadJointNormal, JointAreaSqCm },
+					{ 0, 2, HeadJointNormal, JointAreaSqCm }
+				}
+			},
+			{ EPieceSupport::Grounded, EPieceSupport::Supported, EPieceSupport::Supported }
+		},
+
+		/*
+		 * StrandingIsLocal's repro. Z is BENEATH the knot rather than in it, and keeps both
+		 * its support and its reason: the knot above it is X and Y and nothing else.
+		 *
+		 *         Z  —  X  —  Y      pieces 1, 2, 3
+		 *         |
+		 *      [ pier ]              piece 0
+		 *      =======
+		 */
+		{
+			TEXT("a piece bed-jointed to the ground beneath a knot is SUPPORTED; only the knot is stranded"),
+			{
+				{
+					{ BrickMassKg, true },  // 0: pier, on the earth
+					{ BrickMassKg, false }, // 1: Z, resting squarely on the pier
+					{ BrickMassKg, false }, // 2: X, in the knot
+					{ BrickMassKg, false }  // 3: Y, in the knot
+				},
+				{
+					{ 0, 1, BedJointNormal, JointAreaSqCm },
+					{ 1, 2, HeadJointNormal, JointAreaSqCm },
+					{ 2, 3, HeadJointNormal, JointAreaSqCm }
+				}
+			},
+			{
+				EPieceSupport::Grounded, EPieceSupport::Supported,
+				EPieceSupport::Stranded, EPieceSupport::Stranded
+			}
+		},
+
+		/*
+		 * The same knot with a brick resting on the piece BENEATH it. B is held up by Z,
+		 * which reaches the earth, so B is plainly Supported while X and Y are stranded two
+		 * joints away — the reason must be per piece, not per structure.
+		 */
+		{
+			TEXT("a brick on the standing part is SUPPORTED while the knot beside it is stranded"),
+			{
+				{
+					{ BrickMassKg, true },  // 0: pier
+					{ BrickMassKg, false }, // 1: Z
+					{ BrickMassKg, false }, // 2: X, in the knot
+					{ BrickMassKg, false }, // 3: Y, in the knot
+					{ BrickMassKg, false }  // 4: B, resting on Z
+				},
+				{
+					{ 0, 1, BedJointNormal, JointAreaSqCm },
+					{ 1, 2, HeadJointNormal, JointAreaSqCm },
+					{ 2, 3, HeadJointNormal, JointAreaSqCm },
+					{ 1, 4, BedJointNormal, JointAreaSqCm }
+				}
+			},
+			{
+				EPieceSupport::Grounded, EPieceSupport::Supported, EPieceSupport::Stranded,
+				EPieceSupport::Stranded, EPieceSupport::Supported
+			}
+		},
+
+		/*
+		 * Two courses beneath the knot, so a reason that walked down from the knot to the
+		 * first grounded piece — which is what stranding on un-orderability does — would
+		 * report Zlow and Zhigh stranded here. They are two joints apart and both standing.
+		 */
+		{
+			TEXT("two courses beneath a knot are both SUPPORTED"),
+			{
+				{
+					{ BrickMassKg, true },  // 0: pier
+					{ BrickMassKg, false }, // 1: Zlow
+					{ BrickMassKg, false }, // 2: Zhigh
+					{ BrickMassKg, false }, // 3: X, in the knot
+					{ BrickMassKg, false }  // 4: Y, in the knot
+				},
+				{
+					{ 0, 1, BedJointNormal, JointAreaSqCm },
+					{ 1, 2, BedJointNormal, JointAreaSqCm },
+					{ 2, 3, HeadJointNormal, JointAreaSqCm },
+					{ 3, 4, HeadJointNormal, JointAreaSqCm }
+				}
+			},
+			{
+				EPieceSupport::Grounded, EPieceSupport::Supported, EPieceSupport::Supported,
+				EPieceSupport::Stranded, EPieceSupport::Stranded
+			}
+		},
+
+		/*
+		 * STRANDED VERSUS FALLING, which is the distinction IsPieceSupported cannot make and
+		 * the one that costs nothing extra to expose. StrandingPropagatesUpward's first case:
+		 *
+		 *                       B          piece 3, resting on Y through a bed joint
+		 *                       |
+		 *      [ G ]  —  X  —   Y          pieces 0, 1, 2
+		 *      =====
+		 *
+		 * X and Y are in the knot. B is NOT — its load walks down through Y, X and G to the
+		 * earth without ever coming back round to B — it has simply lost the only thing
+		 * holding it up, which is physics. IsPieceSupported says false for all three; only
+		 * this accessor can say that two of them are the solver's answer and one is the
+		 * structure's.
+		 */
+		{
+			TEXT("a brick resting only on a knot is FALLING, not stranded — it is not in the knot"),
+			{
+				{
+					{ BrickMassKg, true },  // 0: G, on the earth
+					{ BrickMassKg, false }, // 1: X, in the knot
+					{ BrickMassKg, false }, // 2: Y, in the knot
+					{ BrickMassKg, false }  // 3: B, resting on Y
+				},
+				{
+					{ 0, 1, HeadJointNormal, JointAreaSqCm },
+					{ 1, 2, HeadJointNormal, JointAreaSqCm },
+					{ 2, 3, BedJointNormal, JointAreaSqCm }
+				}
+			},
+			{
+				EPieceSupport::Grounded, EPieceSupport::Stranded,
+				EPieceSupport::Stranded, EPieceSupport::Falling
+			}
+		},
+
+		/*
+		 * All four states in one structure, which is the row that stops any two of them
+		 * being conflated. The pier is Grounded, Z beneath the knot is Supported, X and Y
+		 * are Stranded, and B on top of the knot is Falling.
+		 */
+		{
+			TEXT("one structure showing all four states at once"),
+			{
+				{
+					{ BrickMassKg, true },  // 0: pier
+					{ BrickMassKg, false }, // 1: Z, bed-jointed to the pier
+					{ BrickMassKg, false }, // 2: X, in the knot
+					{ BrickMassKg, false }, // 3: Y, in the knot
+					{ BrickMassKg, false }  // 4: B, resting on Y
+				},
+				{
+					{ 0, 1, BedJointNormal, JointAreaSqCm },
+					{ 1, 2, HeadJointNormal, JointAreaSqCm },
+					{ 2, 3, HeadJointNormal, JointAreaSqCm },
+					{ 3, 4, BedJointNormal, JointAreaSqCm }
+				}
+			},
+			{
+				EPieceSupport::Grounded, EPieceSupport::Supported, EPieceSupport::Stranded,
+				EPieceSupport::Stranded, EPieceSupport::Falling
+			}
+		},
+	};
+
+	/*
+	 * A floor on the table itself, so a case list that lost its only Falling row — or was
+	 * trimmed to the shapes that happen to pass — fails rather than passing in silence.
+	 * Cheap, and it is the same reason the fuzzes floor their generators.
+	 */
+	TMap<EPieceSupport, int32> StatesExpected;
+
+	for (const FSupportReasonCase& Case : Cases)
+	{
+		FStructure Structure;
+		BuildStructure(Structure, Case.Spec, Unbreakable);
+
+		TestTrue(
+			FString::Printf(TEXT("%s: expected %d pieces, got %d"),
+				Case.Description, Case.Spec.Pieces.Num(), Structure.NumPieces()),
+			Structure.NumPieces() == Case.Spec.Pieces.Num());
+
+		TestTrue(
+			FString::Printf(TEXT("%s: expected %d connections, got %d"),
+				Case.Description, Case.Spec.Connections.Num(), Structure.NumConnections()),
+			Structure.NumConnections() == Case.Spec.Connections.Num());
+
+		TestTrue(
+			FString::Printf(TEXT("%s: expected a row for each of %d pieces, got %d rows"),
+				Case.Description, Structure.NumPieces(), Case.ExpectedSupport.Num()),
+			Case.ExpectedSupport.Num() == Structure.NumPieces());
+
+		Structure.SolveLoads();
+
+		for (int32 Index = 0; Index < Case.ExpectedSupport.Num(); ++Index)
+		{
+			++StatesExpected.FindOrAdd(Case.ExpectedSupport[Index]);
+
+			TestTrue(
+				FString::Printf(TEXT("%s: piece %d should be %s, got %s"),
+					Case.Description, Index,
+					NameOfSupport(Case.ExpectedSupport[Index]),
+					NameOfSupport(Structure.GetPieceSupport(Index))),
+				Structure.GetPieceSupport(Index) == Case.ExpectedSupport[Index]);
+
+			CheckSupportAgreesWithReason(*this, Case.Description, Structure, Index);
+		}
+
+		/*
+		 * A GROUNDED PIECE IS NEVER MERELY SUPPORTED, and the converse: nothing that is not
+		 * resting on the earth may read Grounded. Asserted against the spec rather than
+		 * against the expectation column, so a row that got the two the wrong way round is
+		 * caught by the fixture instead of agreeing with itself.
+		 */
+		for (int32 Index = 0; Index < Case.Spec.Pieces.Num(); ++Index)
+		{
+			TestTrue(
+				FString::Printf(TEXT("%s: piece %d is grounded %d but reads %s"),
+					Case.Description, Index,
+					Case.Spec.Pieces[Index].bIsGrounded ? 1 : 0,
+					NameOfSupport(Structure.GetPieceSupport(Index))),
+				(Structure.GetPieceSupport(Index) == EPieceSupport::Grounded)
+					== Case.Spec.Pieces[Index].bIsGrounded);
+		}
+	}
+
+	const TArray<EPieceSupport> AllStates = {
+		EPieceSupport::Falling, EPieceSupport::Grounded,
+		EPieceSupport::Supported, EPieceSupport::Stranded
+	};
+
+	for (const EPieceSupport State : AllStates)
+	{
+		const int32* Count = StatesExpected.Find(State);
+
+		TestTrue(
+			FString::Printf(TEXT("the table must expect %s somewhere, and expects it %d times"),
+				NameOfSupport(State), Count != nullptr ? *Count : 0),
+			Count != nullptr && *Count > 0);
+	}
+
+	return true;
+}
+
+/**
+ * THE REASON HAS THE SAME SCOPE AS THE ANSWER IT EXPLAINS, and fails closed everywhere
+ * else.
+ *
+ * GetPieceSupport reads solver output, exactly as IsPieceSupported does, so it inherits
+ * that contract rather than inventing a second one. Structure.RemovedPieceSupportNeedsASolve
+ * pins the three rows for the boolean; these are the same three rows for the reason, and
+ * they must not disagree with it for one instant:
+ *
+ *     never solved      Falling, for every handle — there is no answer yet
+ *     removed           the LAST SOLVE'S answer, unchanged, until the next solve
+ *     after that solve  Falling, and a removed GROUNDED piece is no longer earth
+ *
+ * NO FIFTH ENUMERATOR FOR "REMOVED", and this is the decision the middle row forces. A
+ * removed piece is not grounded, supported, falling or stranded — it is not a piece — so a
+ * Removed state looks obviously right. It cannot be had: IsPieceRemoved answers
+ * immediately and this accessor cannot, so a Removed value would have to be produced
+ * before the re-solve, at which point it contradicts a stale Supported coming out of
+ * IsPieceSupported about the same piece in the same instant. That is precisely the
+ * two-accessors-one-solve defect the stranding rule exists to close, and reintroducing it
+ * on the accessor whose job is to EXPLAIN the other would be worse than leaving it. A
+ * removed piece therefore folds into Falling — nothing is holding it up, which is true —
+ * and IsPieceRemoved stays the accessor for whether it is a piece at all.
+ *
+ * AN OUT-OF-RANGE HANDLE IS FALLING for the same reason IsPieceSupported answers false and
+ * IsPieceRemoved answers true: it is the fail-closed direction, and the accessors either
+ * side of it already point that way. Stranded would be worse than useless — it is a
+ * positive claim that the solver hit a knot, about a structure that does not exist.
+ *
+ * A MATRIX RATHER THAN A CASE PER SHAPE, because the property is that NONE of these
+ * produce a plausible-looking wrong answer. The failure mode this guards is not a crash:
+ * it is an accessor that reads Supported or Grounded for something that is not there,
+ * which downstream is indistinguishable from a piece that is genuinely fine.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FStructurePieceSupportDegenerateInputTest,
+	"DestructionGame.Core.Structure.PieceSupportDegenerateInputs",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FStructurePieceSupportDegenerateInputTest::RunTest(const FString& Parameters)
+{
+	using namespace StructureTestSupport;
+
+	/** A grounded pad with a brick resting on it: the smallest structure that holds. */
+	const FStructureSpec PadAndBrick = {
+		{ { BrickMassKg, true }, { BrickMassKg, false } },
+		{ { 0, 1, BedJointNormal, JointAreaSqCm } }
+	};
+
+	/*
+	 * BEFORE ANY SOLVE THERE IS NO ANSWER, and Falling is the fail-closed one. The state
+	 * array is sized by a solve rather than by AddPiece, so an early caller takes the same
+	 * range check an unknown handle does — and is told nothing is held up, rather than being
+	 * handed a zero-initialised default that reads as resting on the earth.
+	 */
+	{
+		FStructure Structure;
+		BuildStructure(Structure, PadAndBrick, Unbreakable);
+
+		for (int32 Index = 0; Index < Structure.NumPieces(); ++Index)
+		{
+			TestTrue(
+				FString::Printf(TEXT("before any solve piece %d has no reason yet and reads %s"),
+					Index, NameOfSupport(Structure.GetPieceSupport(Index))),
+				Structure.GetPieceSupport(Index) == EPieceSupport::Falling);
+
+			CheckSupportAgreesWithReason(*this, TEXT("before any solve"), Structure, Index);
+		}
+	}
+
+	/*
+	 * OUT-OF-RANGE HANDLES, against a solved structure that is standing — so an accessor
+	 * that ran off the end of a populated array would have real Grounded and Supported
+	 * entries lying next to it to pick up.
+	 */
+	{
+		struct FBadHandleCase
+		{
+			const TCHAR* Description;
+			int32 Handle;
+		};
+
+		const TArray<FBadHandleCase> BadHandles = {
+			{ TEXT("INDEX_NONE"), INDEX_NONE },
+			{ TEXT("a negative handle"), -7 },
+			{ TEXT("one past the last piece"), 2 },
+			{ TEXT("far past the last piece"), 4096 },
+		};
+
+		FStructure Structure;
+		BuildStructure(Structure, PadAndBrick, Unbreakable);
+		Structure.SolveLoads();
+
+		TestTrue(TEXT("the fixture must actually be standing, or the bad handles prove nothing"),
+			Structure.GetPieceSupport(0) == EPieceSupport::Grounded
+				&& Structure.GetPieceSupport(1) == EPieceSupport::Supported);
+
+		for (const FBadHandleCase& Case : BadHandles)
+		{
+			TestTrue(
+				FString::Printf(TEXT("%s names no piece, so nothing is holding it up, got %s"),
+					Case.Description, NameOfSupport(Structure.GetPieceSupport(Case.Handle))),
+				Structure.GetPieceSupport(Case.Handle) == EPieceSupport::Falling);
+
+			CheckSupportAgreesWithReason(*this, Case.Description, Structure, Case.Handle);
+		}
+	}
+
+	/*
+	 * REMOVING THE BRICK. The reason for the piece that has gone does not move until
+	 * something re-solves — and then it is Falling, for the same reason an unknown handle is:
+	 * it is not a piece any more, so nothing is holding it up.
+	 */
+	{
+		FStructure Structure;
+		BuildStructure(Structure, PadAndBrick, Unbreakable);
+		Structure.SolveLoads();
+
+		TestTrue(
+			FString::Printf(TEXT("the brick starts out Supported, got %s"),
+				NameOfSupport(Structure.GetPieceSupport(1))),
+			Structure.GetPieceSupport(1) == EPieceSupport::Supported);
+
+		TestTrue(TEXT("removing the brick should report that it removed a live piece"),
+			Structure.RemovePiece(1));
+
+		/*
+		 * THE STALE ROW, and the one that decides against a fifth enumerator. The piece is
+		 * provably gone — IsPieceRemoved says so immediately — and the reason still reads the
+		 * last solve's Supported, in lockstep with IsPieceSupported still reading true.
+		 */
+		TestTrue(TEXT("the brick reads as removed IMMEDIATELY — that accessor needs no solve"),
+			Structure.IsPieceRemoved(1));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("between a removal and the next solve the reason is the LAST SOLVE'S and still reads %s"),
+				NameOfSupport(Structure.GetPieceSupport(1))),
+			Structure.GetPieceSupport(1) == EPieceSupport::Supported);
+
+		CheckSupportAgreesWithReason(*this, TEXT("a removed brick before the re-solve"), Structure, 1);
+
+		Structure.SolveLoads();
+
+		TestTrue(
+			FString::Printf(TEXT("after the next solve the removed brick is Falling, got %s"),
+				NameOfSupport(Structure.GetPieceSupport(1))),
+			Structure.GetPieceSupport(1) == EPieceSupport::Falling);
+
+		TestTrue(
+			FString::Printf(TEXT("and the pad it stood on is still resting on the earth, got %s"),
+				NameOfSupport(Structure.GetPieceSupport(0))),
+			Structure.GetPieceSupport(0) == EPieceSupport::Grounded);
+
+		CheckSupportAgreesWithReason(*this, TEXT("a removed brick after the re-solve"), Structure, 1);
+		CheckSupportAgreesWithReason(*this, TEXT("the pad under a removed brick"), Structure, 0);
+	}
+
+	/*
+	 * REMOVING THE GROUND, which is the removal with the furthest reach: a grounded piece
+	 * seeds the reachability walk on its own account rather than through any joint, so a
+	 * removed one that still read Grounded would be claiming an earth it is not touching —
+	 * and unlike a bare false, that reason states the claim out loud.
+	 */
+	{
+		FStructure Structure;
+		BuildStructure(Structure, PadAndBrick, Unbreakable);
+		Structure.SolveLoads();
+
+		TestTrue(TEXT("removing the pad should report that it removed a live piece"),
+			Structure.RemovePiece(0));
+
+		TestTrue(
+			FString::Printf(TEXT("the removed pad still reads %s and the brick %s, because nothing has re-solved"),
+				NameOfSupport(Structure.GetPieceSupport(0)),
+				NameOfSupport(Structure.GetPieceSupport(1))),
+			Structure.GetPieceSupport(0) == EPieceSupport::Grounded
+				&& Structure.GetPieceSupport(1) == EPieceSupport::Supported);
+
+		Structure.SolveLoads();
+
+		TestTrue(
+			FString::Printf(TEXT("a removed GROUNDED piece is no longer earth and must read Falling, got %s"),
+				NameOfSupport(Structure.GetPieceSupport(0))),
+			Structure.GetPieceSupport(0) == EPieceSupport::Falling);
+
+		TestTrue(
+			FString::Printf(TEXT("and the brick has lost the only thing holding it up, got %s"),
+				NameOfSupport(Structure.GetPieceSupport(1))),
+			Structure.GetPieceSupport(1) == EPieceSupport::Falling);
+
+		for (int32 Index = 0; Index < Structure.NumPieces(); ++Index)
+		{
+			CheckSupportAgreesWithReason(*this, TEXT("after the ground was removed"), Structure, Index);
+		}
+	}
+
+	/*
+	 * A REMOVED PIECE INSIDE A KNOT IS FALLING, NOT STRANDED, which is the one place the two
+	 * decisions above meet. Pull X out of a two-brick knot and Y is left head-jointed to
+	 * nothing but a piece that is gone: the knot is dissolved, so neither is stranded any
+	 * more, and calling the removed piece stranded would put a solver limitation in the
+	 * report of a structure that no longer has one.
+	 */
+	{
+		const FStructureSpec Knot = {
+			{ { BrickMassKg, true }, { BrickMassKg, false }, { BrickMassKg, false } },
+			{
+				{ 0, 1, HeadJointNormal, JointAreaSqCm },
+				{ 1, 2, HeadJointNormal, JointAreaSqCm }
+			}
+		};
+
+		FStructure Structure;
+		BuildStructure(Structure, Knot, Unbreakable);
+		Structure.SolveLoads();
+
+		TestTrue(
+			FString::Printf(TEXT("the knot must be there to start with, got %s and %s"),
+				NameOfSupport(Structure.GetPieceSupport(1)),
+				NameOfSupport(Structure.GetPieceSupport(2))),
+			Structure.GetPieceSupport(1) == EPieceSupport::Stranded
+				&& Structure.GetPieceSupport(2) == EPieceSupport::Stranded);
+
+		TestTrue(TEXT("removing X should report that it removed a live piece"),
+			Structure.RemovePiece(1));
+
+		Structure.SolveLoads();
+
+		TestTrue(
+			FString::Printf(TEXT("the removed piece is Falling rather than stranded, got %s"),
+				NameOfSupport(Structure.GetPieceSupport(1))),
+			Structure.GetPieceSupport(1) == EPieceSupport::Falling);
+
+		TestTrue(
+			FString::Printf(TEXT("Y is joined to nothing that exists, so it is Falling too, got %s"),
+				NameOfSupport(Structure.GetPieceSupport(2))),
+			Structure.GetPieceSupport(2) == EPieceSupport::Falling);
+
+		TestTrue(
+			FString::Printf(TEXT("and the earth is unmoved, got %s"),
+				NameOfSupport(Structure.GetPieceSupport(0))),
+			Structure.GetPieceSupport(0) == EPieceSupport::Grounded);
+
+		for (int32 Index = 0; Index < Structure.NumPieces(); ++Index)
+		{
+			CheckSupportAgreesWithReason(*this, TEXT("a knot with a piece pulled out of it"), Structure, Index);
+		}
 	}
 
 	return true;
