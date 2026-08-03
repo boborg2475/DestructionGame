@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/ArrayView.h"
 #include "Core/Layout.h"
 #include "Core/Structure.h"
 #include "UObject/WeakObjectPtr.h"
@@ -221,3 +222,23 @@ private:
 	/** One binding per piece handle. Index-parallel to the structure's pieces, always. */
 	TArray<FPieceBinding> Pieces;
 };
+
+/**
+ * Put a built layout into a binding: the only route there is from FBrickLayout to
+ * FStructureBinding.
+ *
+ * The binding owns its FStructure privately and hands out no mutable reference, which is
+ * exactly what makes the desync inexpressible — and which also means a wall that has
+ * already been laid cannot get in without a function like this one. The alternative
+ * available today is a hand-written loop re-adding every piece and every connection at
+ * the call site, which is the two-arrays-in-lockstep code the type exists to outlaw.
+ *
+ * Actors is index-parallel to the layout's pieces: Actors[i] stands for piece handle i.
+ *
+ * @return true if the whole layout was adopted. See Tests/StructureBindingTest.cpp,
+ *         DestructionGame.Core.StructureBinding.AdoptLayout, for what it refuses.
+ */
+bool AdoptLayout(
+	const DestructionLayout::FBrickLayout& Layout,
+	TArrayView<UObject* const> Actors,
+	FStructureBinding& Out);

@@ -1164,4 +1164,411 @@ bool FStructureBindingPieceRefFailsClosedTest::RunTest(const FString& Parameters
 	return true;
 }
 
+/**
+ * A BUILT WALL CAN ENTER A BINDING, AND THE TWO ARRAYS COME OUT PARALLEL.
+ *
+ * THERE IS NO OTHER ROUTE, WHICH IS BOTH THE PROBLEM AND THE POINT. RunningBond produces
+ * a finished FStructure and a Boxes array parallel to it; FStructureBinding owns its
+ * FStructure privately and hands out no mutable reference, deliberately, because that is
+ * the desync hole. So the only thing a caller can do today is write its own loop re-adding
+ * every piece and every connection — which is exactly the two-arrays-in-lockstep code the
+ * type exists to make inexpressible, moved out to the call site where nothing checks it.
+ * AdoptLayout is that loop written once.
+ *
+ * IT IS A REPLAY, AND IT IS CORRECT ONLY BECAUSE A LAYOUT IS APPEND-ONLY. RunningBond adds
+ * pieces and connections and never removes one, so handle i of the layout is handle i of
+ * the binding by construction — index-by-index copying is sound. The moment a producer
+ * removes a piece, or reuses a slot, that stops being true.
+ *
+ * THE ASSERTIONS ARE THE PARALLELISM ITSELF, per handle: mass, grounded, box and actor,
+ * not merely a matching count. Two test-side mutations prove they bite, and both are free:
+ * reverse the Actors array before adopting, and the actor identity check fails on every
+ * piece; feed Layout.Boxes[i + 1] instead of Layout.Boxes[i], and the box check fails.
+ * Counts alone survive both.
+ *
+ * AND IT REFUSES A LAYOUT WHOSE OWN ARRAYS ARE ALREADY OUT OF STEP. RunningBond can
+ * produce one: an infinite brick dimension passes the !(x > 0.0) spec guard, LayBrick
+ * computes an infinite mass, FStructure::AddPiece refuses it, and the box is appended
+ * anyway — so Boxes ends up one longer than the piece array. Copying such a layout
+ * index-by-index PROPAGATES that desync into the binding, and the binding-level guard
+ * already queued (FStructureBinding::AddPiece ignoring what FStructure::AddPiece returns)
+ * would not close the composed case, because the mass it would be handed is a real one
+ * belonging to the wrong piece — or a zero, which AddPiece accepts. A type whose whole
+ * contract is that its two arrays cannot desync must not be the thing that launders a
+ * known-desynced input into that shape. So the check is at the door, and a refusal writes
+ * nothing.
+ *
+ * World-free: stand-in UObjects in the transient package, no world and no actors.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FStructureBindingAdoptLayoutTest,
+	"DestructionGame.Core.StructureBinding.AdoptLayout",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
+{
+	using namespace StructureBindingTestSupport;
+	using namespace DestructionLayout;
+
+	/*
+	 * A FLUSH WALL, WHICH IS THE MIXED-SIZE CASE. Three courses of three gives 3 + 4 + 3 =
+	 * 10 pieces, half of the middle course being half bats — so the per-piece mass check
+	 * has two different masses to tell apart. A ragged wall would be ten copies of one
+	 * number, and a replay that handed every piece the same mass would pass.
+	 */
+	FRunningBondSpec Spec;
+	Spec.BrickSizeCm = FVector(21.5, 10.25, 6.5);
+	Spec.JointThicknessCm = 1.0;
+	Spec.DensityGramsPerCubicCm = ClayBrick.DensityGramsPerCubicCm;
+	Spec.CoursesHigh = 3;
+	Spec.BricksPerCourse = 3;
+	Spec.End = EWallEnd::Flush;
+	Spec.Strength = GeneralPurposeMortar;
+
+	FBrickLayout Layout;
+
+	TestTrue(TEXT("fixture: RunningBond should lay the wall"), RunningBond(Spec, Layout));
+
+	/*
+	 * FLOOR THE FIXTURE. A one-piece jointless layout would satisfy every assertion below
+	 * while proving nothing about parallelism, and an empty one would satisfy them
+	 * vacuously.
+	 */
+	TestEqual(
+		FString::Printf(TEXT("fixture: a flush 3 x 3 wall should be 10 pieces, got %d"),
+			Layout.Structure.NumPieces()),
+		Layout.Structure.NumPieces(), 10);
+
+	TestEqual(
+		FString::Printf(TEXT("fixture: the layout must carry one box per piece, got %d boxes"),
+			Layout.Boxes.Num()),
+		Layout.Boxes.Num(), Layout.Structure.NumPieces());
+
+	TestTrue(
+		FString::Printf(TEXT("fixture: the wall should have joints to replay, got %d"),
+			Layout.Structure.NumConnections()),
+		Layout.Structure.NumConnections() >= 8);
+
+	{
+		TArray<double> MassesSeen;
+		int32 GroundedPieces = 0;
+
+		for (int32 Piece = 0; Piece < Layout.Structure.NumPieces(); ++Piece)
+		{
+			MassesSeen.AddUnique(Layout.Structure.GetPiece(Piece).MassKg);
+
+			if (Layout.Structure.GetPiece(Piece).bIsGrounded)
+			{
+				++GroundedPieces;
+			}
+		}
+
+		/*
+		 * BOTH COLUMNS HAVE TO VARY OR THEIR ASSERTIONS ARE FREE. Two piece sizes, and
+		 * only the bottom course on the earth — otherwise a replay that hard-coded either
+		 * field would go unnoticed.
+		 */
+		TestEqual(
+			FString::Printf(TEXT("fixture: the flush wall should hold two distinct masses, got %d"),
+				MassesSeen.Num()),
+			MassesSeen.Num(), 2);
+
+		TestEqual(
+			FString::Printf(TEXT("fixture: only the bottom course of 3 should be grounded, got %d"),
+				GroundedPieces),
+			GroundedPieces, 3);
+	}
+
+	TArray<UObject*> StandIns;
+	for (int32 Piece = 0; Piece < Layout.Structure.NumPieces(); ++Piece)
+	{
+		StandIns.Add(MakeStandIn());
+	}
+
+	FStructureBinding Binding;
+	Binding.StructureId = 7;
+
+	const bool bAdopted = AdoptLayout(Layout, StandIns, Binding);
+
+	TestTrue(TEXT("AdoptLayout should adopt a well-formed layout"), bAdopted);
+
+	/* The identity is the caller's, not the layout's: adoption must leave it alone. */
+	TestEqual(
+		FString::Printf(TEXT("adoption must not change the binding's structure id, got %d"),
+			Binding.StructureId),
+		Binding.StructureId, 7);
+
+	CheckArraysAreParallel(*this, Binding, Layout.Structure.NumPieces(), TEXT("after adoption"));
+
+	TestEqual(
+		FString::Printf(
+			TEXT("the binding should carry all %d of the layout's joints, got %d"),
+			Layout.Structure.NumConnections(), Binding.GetStructure().NumConnections()),
+		Binding.GetStructure().NumConnections(), Layout.Structure.NumConnections());
+
+	/*
+	 * PER HANDLE, ALL FOUR COLUMNS. This is where a shifted array shows up: the counts
+	 * above are identical under a reversed actor list and under an off-by-one box index,
+	 * and both of those are silent in every other way — the wall stands, the loads are
+	 * right, and the player shoots one brick and a different one falls.
+	 */
+	for (int32 Piece = 0; Piece < Layout.Structure.NumPieces(); ++Piece)
+	{
+		const FStructurePiece& Original = Layout.Structure.GetPiece(Piece);
+		const FStructurePiece& Adopted = Binding.GetStructure().GetPiece(Piece);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("piece %d should weigh what the layout laid, %.17g kg, got %.17g"),
+				Piece, Original.MassKg, Adopted.MassKg),
+			Adopted.MassKg == Original.MassKg);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("piece %d should%s be grounded, as the layout laid it"),
+				Piece, Original.bIsGrounded ? TEXT("") : TEXT(" NOT")),
+			Adopted.bIsGrounded == Original.bIsGrounded);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("piece %d should carry the layout's own box, centre (%g, %g, %g) extent")
+				TEXT(" (%g, %g, %g); got centre (%g, %g, %g) extent (%g, %g, %g)"),
+				Piece,
+				Layout.Boxes[Piece].CentreCm.X, Layout.Boxes[Piece].CentreCm.Y,
+				Layout.Boxes[Piece].CentreCm.Z,
+				Layout.Boxes[Piece].ExtentCm.X, Layout.Boxes[Piece].ExtentCm.Y,
+				Layout.Boxes[Piece].ExtentCm.Z,
+				Binding.GetBinding(Piece).Box.CentreCm.X, Binding.GetBinding(Piece).Box.CentreCm.Y,
+				Binding.GetBinding(Piece).Box.CentreCm.Z,
+				Binding.GetBinding(Piece).Box.ExtentCm.X, Binding.GetBinding(Piece).Box.ExtentCm.Y,
+				Binding.GetBinding(Piece).Box.ExtentCm.Z),
+			BoxesMatch(Binding.GetBinding(Piece).Box, Layout.Boxes[Piece]));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("piece %d should be bound to its own stand-in %s, got %s"),
+				Piece, *GetNameSafe(StandIns[Piece]), *GetNameSafe(Binding.GetActor(Piece))),
+			Binding.GetActor(Piece) == StandIns[Piece]);
+
+		TestTrue(
+			FString::Printf(TEXT("an adopted piece %d is in the graph, not a tombstone"), Piece),
+			!Binding.IsPieceRemoved(Piece));
+
+		TestTrue(
+			FString::Printf(TEXT("an adopted piece %d has not been handed to physics"), Piece),
+			!Binding.IsReleased(Piece));
+	}
+
+	/* Every joint, whole: handles, normal, area and profile, all exact. */
+	for (int32 Joint = 0; Joint < Layout.Structure.NumConnections(); ++Joint)
+	{
+		const FConnection& Original = Layout.Structure.GetConnection(Joint);
+		const FConnection& Adopted = Binding.GetStructure().GetConnection(Joint);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("joint %d should join the same pieces, %d-%d, got %d-%d"),
+				Joint, Original.PieceA, Original.PieceB, Adopted.PieceA, Adopted.PieceB),
+			Adopted.PieceA == Original.PieceA && Adopted.PieceB == Original.PieceB);
+
+		/*
+		 * THE NORMAL IS COMPARED EXACTLY, and a flipped one would not be caught by the
+		 * loads: RoleOf turns the normal toward whichever piece it is asked about, so a
+		 * consistently flipped joint reports identical numbers. The pairing and the normal
+		 * travel together or the replay can quietly transpose them.
+		 */
+		TestTrue(
+			FString::Printf(
+				TEXT("joint %d normal should be exactly (%g, %g, %g), got (%g, %g, %g)"),
+				Joint,
+				Original.InterfaceNormal.X, Original.InterfaceNormal.Y, Original.InterfaceNormal.Z,
+				Adopted.InterfaceNormal.X, Adopted.InterfaceNormal.Y, Adopted.InterfaceNormal.Z),
+			Adopted.InterfaceNormal == Original.InterfaceNormal);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("joint %d area should be exactly %.17g cm2, got %.17g"),
+				Joint, Original.InterfaceAreaSqCm, Adopted.InterfaceAreaSqCm),
+			Adopted.InterfaceAreaSqCm == Original.InterfaceAreaSqCm);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("joint %d should keep its strength profile, %.17g / %.17g / %.17g MPa"),
+				Joint, Original.Strength.CompressiveStrengthMPa,
+				Original.Strength.ShearCohesionMPa, Original.Strength.TensileStrengthMPa),
+			Adopted.Strength.CompressiveStrengthMPa == Original.Strength.CompressiveStrengthMPa
+				&& Adopted.Strength.ShearCohesionMPa == Original.Strength.ShearCohesionMPa
+				&& Adopted.Strength.TensileStrengthMPa == Original.Strength.TensileStrengthMPa
+				&& Adopted.Strength.FrictionCoefficient == Original.Strength.FrictionCoefficient
+				&& Adopted.Strength.MaxShearStrengthMPa == Original.Strength.MaxShearStrengthMPa);
+	}
+
+	/*
+	 * AND THE ADOPTED GRAPH SOLVES TO THE SAME ANSWER, which is the outcome-shaped check
+	 * on top of the column-by-column ones. Solving is deterministic and the arithmetic is
+	 * identical, so agreement is bit-for-bit; a replay that got the graph subtly wrong —
+	 * a joint's ends transposed, a piece grounded that should not be — produces plausible
+	 * numbers that differ here and nowhere else.
+	 */
+	Layout.Structure.SolveLoads();
+	Binding.SolveLoads();
+
+	for (int32 Piece = 0; Piece < Layout.Structure.NumPieces(); ++Piece)
+	{
+		TestTrue(
+			FString::Printf(
+				TEXT("solved piece %d should read %s as it does in the layout, got %s"),
+				Piece,
+				NameOfSupport(Layout.Structure.GetPieceSupport(Piece)),
+				NameOfSupport(Binding.GetStructure().GetPieceSupport(Piece))),
+			Binding.GetStructure().GetPieceSupport(Piece)
+				== Layout.Structure.GetPieceSupport(Piece));
+
+		/* The wall stands, so a support mismatch is a real difference and not both falling. */
+		TestTrue(
+			FString::Printf(TEXT("fixture: the adopted wall should stand — piece %d must be held up"), Piece),
+			Binding.GetStructure().IsPieceSupported(Piece));
+	}
+
+	for (int32 Joint = 0; Joint < Layout.Structure.NumConnections(); ++Joint)
+	{
+		const FVector Expected = Layout.Structure.GetConnectionForce(Joint);
+		const FVector Actual = Binding.GetStructure().GetConnectionForce(Joint);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("solved joint %d should carry (%.10g, %.10g, %.10g) as it does in the layout,")
+				TEXT(" got (%.10g, %.10g, %.10g)"),
+				Joint, Expected.X, Expected.Y, Expected.Z, Actual.X, Actual.Y, Actual.Z),
+			Actual == Expected);
+	}
+
+	ReleaseStandIns(StandIns);
+
+	/*
+	 * WHAT ADOPTION REFUSES, and every refusal must write NOTHING — a half-adopted binding
+	 * is worse than none, because the pieces it did take would look like a real wall.
+	 */
+	{
+		auto CheckRefused =
+			[this](const TCHAR* Description, const FBrickLayout& Refused, TArrayView<UObject* const> Actors)
+		{
+			FStructureBinding Fresh;
+			Fresh.StructureId = 11;
+
+			const bool bTaken = AdoptLayout(Refused, Actors, Fresh);
+
+			TestFalse(
+				FString::Printf(TEXT("%s: AdoptLayout should refuse it"), Description),
+				bTaken);
+
+			TestEqual(
+				FString::Printf(TEXT("%s: a refused adoption must leave no bindings behind, got %d"),
+					Description, Fresh.NumPieces()),
+				Fresh.NumPieces(), 0);
+
+			TestEqual(
+				FString::Printf(TEXT("%s: a refused adoption must leave no pieces behind, got %d"),
+					Description, Fresh.GetStructure().NumPieces()),
+				Fresh.GetStructure().NumPieces(), 0);
+
+			TestEqual(
+				FString::Printf(TEXT("%s: a refused adoption must leave no joints behind, got %d"),
+					Description, Fresh.GetStructure().NumConnections()),
+				Fresh.GetStructure().NumConnections(), 0);
+		};
+
+		TArray<UObject*> Spares;
+		for (int32 Index = 0; Index < 12; ++Index)
+		{
+			Spares.Add(MakeStandIn());
+		}
+
+		/*
+		 * THE DESYNC RUNNING BOND CAN ALREADY PRODUCE, reproduced by hand rather than by
+		 * feeding an infinite brick dimension: that route ALSO drives JoinIfTouching into
+		 * Layout.Boxes[INDEX_NONE], which aborts the whole automation run rather than
+		 * failing a test. The state it reaches is what matters here, so the state is what
+		 * is built.
+		 */
+		{
+			FBrickLayout Extra;
+			TestTrue(TEXT("fixture: the desync wall should be laid"), RunningBond(Spec, Extra));
+
+			/*
+			 * COPIED OUT FIRST. TArray::Add asserts on an argument that aliases the array's
+			 * own storage, so Add(Boxes[0]) aborts the whole automation run rather than
+			 * failing anything.
+			 */
+			const FPieceBox Duplicate = Extra.Boxes[0];
+			Extra.Boxes.Add(Duplicate);
+
+			CheckRefused(
+				TEXT("a layout with one more box than pieces"),
+				Extra,
+				TArrayView<UObject* const>(Spares.GetData(), Extra.Boxes.Num()));
+		}
+
+		/* The same desync the other way round: a piece nothing has a box for. */
+		{
+			FBrickLayout Extra;
+			TestTrue(TEXT("fixture: the second desync wall should be laid"), RunningBond(Spec, Extra));
+
+			TestTrue(
+				TEXT("fixture: the extra piece should be accepted by the structure"),
+				Extra.Structure.AddPiece(2.72163125, /*bIsGrounded*/ false) != INDEX_NONE);
+
+			CheckRefused(
+				TEXT("a layout with one more piece than boxes"),
+				Extra,
+				TArrayView<UObject* const>(Spares.GetData(), Extra.Structure.NumPieces()));
+		}
+
+		/*
+		 * THE ACTOR LIST IS THE THIRD PARALLEL ARRAY, and it comes from a different place
+		 * again — whoever spawned the bricks. Too few and some handle binds to nothing;
+		 * too many and there are actors in the world no piece will ever name, which is the
+		 * direction that looks fine.
+		 */
+		{
+			FBrickLayout Good;
+			TestTrue(TEXT("fixture: the short-actor wall should be laid"), RunningBond(Spec, Good));
+
+			CheckRefused(
+				TEXT("fewer actors than pieces"),
+				Good,
+				TArrayView<UObject* const>(Spares.GetData(), Good.Structure.NumPieces() - 1));
+
+			CheckRefused(
+				TEXT("more actors than pieces"),
+				Good,
+				TArrayView<UObject* const>(Spares.GetData(), Good.Structure.NumPieces() + 1));
+
+			CheckRefused(
+				TEXT("no actors at all"),
+				Good,
+				TArrayView<UObject* const>());
+		}
+
+		/*
+		 * AN EMPTY LAYOUT IS NOT A WALL. RunningBond refuses every spec that would produce
+		 * one, so accepting it here would make AdoptLayout the more permissive of the two —
+		 * and a caller that got true back would have a binding it can never see anything
+		 * from and no way to tell that from success.
+		 */
+		{
+			FBrickLayout Nothing;
+
+			CheckRefused(
+				TEXT("an empty layout"),
+				Nothing,
+				TArrayView<UObject* const>());
+		}
+
+		ReleaseStandIns(Spares);
+	}
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

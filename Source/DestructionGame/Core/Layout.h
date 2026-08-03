@@ -44,6 +44,19 @@ namespace DestructionLayout
 	};
 
 	/**
+	 * What one piece of the given box weighs, in kilograms.
+	 *
+	 * THE ONE DERIVATION OF MASS FROM GEOMETRY. Density is g/cm3 and dimensions are cm,
+	 * so the volume in cm3 divided by 1000 is kilograms; no force conversion belongs
+	 * here, since DESIGN.md §3's 1 N = 100 uu is a property of forces and mass goes into
+	 * Unreal unconverted.
+	 *
+	 * Degenerate boxes and densities fail closed. See Tests/LayoutTest.cpp,
+	 * DestructionGame.Core.Layout.PieceMass, for what "closed" means for a mass.
+	 */
+	double PieceMassKg(const FPieceBox& Box, double DensityGramsPerCubicCm);
+
+	/**
 	 * Build the one joint between two boxes, or refuse.
 	 *
 	 * THE INTERFACE NORMAL IS THE AXIS OF SEPARATION, ORIENTED BY WHICH HANDLE IS B.

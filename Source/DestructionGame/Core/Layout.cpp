@@ -2,6 +2,8 @@
 
 #include "Core/Layout.h"
 
+#include <limits>
+
 namespace DestructionLayout
 {
 	namespace
@@ -61,9 +63,9 @@ namespace DestructionLayout
 		 * from the box that was just built rather than from the spec, so a half bat
 		 * cannot end up weighing a full brick.
 		 *
-		 * Density is g/cm3 and dimensions are cm, so the volume in cm3 divided by 1000 is
-		 * kilograms. No force conversion belongs here: DESIGN.md §3's 1 N = 100 uu is a
-		 * property of forces, not of masses, and mass goes into Unreal unconverted.
+		 * The derivation itself is PieceMassKg's and not this function's, because the
+		 * brick actor needs the same number for the same piece and a second derivation is
+		 * a second place for it to drift.
 		 */
 		int32 LayBrick(
 			FBrickLayout& Layout,
@@ -77,11 +79,8 @@ namespace DestructionLayout
 			Box.CentreCm = FVector(CentreXCm, 0.0, CentreZCm);
 			Box.ExtentCm = FVector(LengthCm, Spec.BrickSizeCm.Y, Spec.BrickSizeCm.Z) * 0.5;
 
-			const FVector SizeCm = Box.ExtentCm * 2.0;
-			const double MassKg =
-				Spec.DensityGramsPerCubicCm * SizeCm.X * SizeCm.Y * SizeCm.Z / 1000.0;
-
-			const int32 Handle = Layout.Structure.AddPiece(MassKg, bIsGrounded);
+			const int32 Handle =
+				Layout.Structure.AddPiece(PieceMassKg(Box, Spec.DensityGramsPerCubicCm), bIsGrounded);
 			Layout.Boxes.Add(Box);
 
 			return Handle;
@@ -116,6 +115,54 @@ namespace DestructionLayout
 				Layout.Structure.AddConnection(Connection);
 			}
 		}
+	}
+
+	double PieceMassKg(const FPieceBox& Box, double DensityGramsPerCubicCm)
+	{
+		/*
+		 * FAIL CLOSED IS NaN HERE, AND ZERO WOULD BE FAIL-OPEN. FStructure::AddPiece
+		 * deliberately ACCEPTS a mass of zero — a massless piece is meaningful — so a zero
+		 * returned for a degenerate box is laundered into a real piece that weighs nothing,
+		 * sits in the graph, routes load and never breaks anything. NaN is refused by the
+		 * guard AddPiece already has, !(MassKg >= 0.0) || !IsFinite, and so needs no second
+		 * check written anywhere.
+		 *
+		 * IsUsableBox is the SAME notion of a usable box MakeInterface refuses on, rather
+		 * than a narrower one written here: there is one definition of a box this producer
+		 * can do anything with, and a mass function with its own weaker opinion would be a
+		 * second. It is also what catches the box that is inside out — two negative extents
+		 * whose signs CANCEL in the product and would otherwise hand back a perfectly
+		 * plausible 2.72163125 kg.
+		 *
+		 * The density guard is written !(x > 0.0) so a NaN lands inside it, and checked for
+		 * finiteness separately because +inf > 0.0 is TRUE. An infinite density would in
+		 * fact overflow to an infinite mass and be refused at the door anyway, but refused
+		 * BY ACCIDENT is one comparison away from accepted, and RunningBond already rejects
+		 * all four degenerate densities in its own spec — a mass function that accepted any
+		 * of them would be the more permissive of the two.
+		 */
+		if (!IsUsableBox(Box)
+			|| !(DensityGramsPerCubicCm > 0.0)
+			|| !FMath::IsFinite(DensityGramsPerCubicCm))
+		{
+			return std::numeric_limits<double>::quiet_NaN();
+		}
+
+		/*
+		 * DENSITY FIRST, AND THE ORDER IS PART OF THE CONTRACT. Density is g/cm3 and
+		 * dimensions are cm, so the volume in cm3 divided by 1000 is kilograms — but only
+		 * one association of that product is exact for a standard brick. 1.9 x 21.5 x 10.25
+		 * x 6.5 / 1000 lands exactly on 2.72163125; (21.5 x 10.25 x 6.5) x 1.9 / 1000 lands
+		 * one ulp low at 2.7216312499999997, which would move every full brick in every
+		 * wall in the suite. Layout.PieceMass asserts the exact decimal with ==, so the
+		 * order is the assertion.
+		 *
+		 * No force conversion belongs here: DESIGN.md §3's 1 N = 100 uu is a property of
+		 * forces, not of masses, and mass goes into Unreal unconverted.
+		 */
+		const FVector SizeCm = Box.ExtentCm * 2.0;
+
+		return DensityGramsPerCubicCm * SizeCm.X * SizeCm.Y * SizeCm.Z / 1000.0;
 	}
 
 	bool MakeInterface(

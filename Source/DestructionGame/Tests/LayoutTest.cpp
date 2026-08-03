@@ -836,6 +836,452 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 }
 
 /**
+ * WHAT A PIECE WEIGHS, DERIVED ONCE.
+ *
+ * LayBrick already turns the box it just emitted plus a density into a mass, and the
+ * brick actor needs the same number for the same piece. A second derivation is a second
+ * place for it to drift, which this project has already paid for twice — the half-bat
+ * mass that circulated as 1.29777 kg and does not reproduce, and the break decision that
+ * needed GetConnectionUtilisation written specifically to stop a third hand-copy. So the
+ * arithmetic moves out into PieceMassKg and LayBrick becomes a caller.
+ *
+ * EXACT EQUALITY, AND THE MULTIPLICATION ORDER IS PART OF THE SPECIFICATION. Every
+ * expectation below is a decimal worked out by hand from published dimensions and
+ * densities, compared with ==, not with a tolerance. That is affordable because these
+ * quantities really are exact in binary — but only in one order. Density first,
+ * 1.9 x 21.5 x 10.25 x 6.5 / 1000, lands exactly on 2.72163125; volume first,
+ * (21.5 x 10.25 x 6.5) x 1.9 / 1000, lands one ulp low at 2.7216312499999997. LayBrick
+ * multiplies density first today, so PieceMassKg must too or the refactor moves every
+ * full brick in every wall by an ulp. The full-brick row below is the only one in the
+ * table that can tell the two orders apart, and there is a precondition asserting it
+ * still can.
+ *
+ * FAIL CLOSED FOR A MASS IS NOT ZERO, and that is the sharp decision here.
+ * FStructure::AddPiece deliberately ACCEPTS a mass of zero — "a massless piece is
+ * meaningful" — so returning zero for a degenerate box would launder it into a real
+ * piece that weighs nothing, sits in the graph, routes load and never breaks anything.
+ * That is fail-OPEN at the only consumer there is. The refusal therefore has to be a
+ * value the door already turns away: AddPiece guards !(MassKg >= 0.0) || !IsFinite, so a
+ * NaN is refused by a check that is already written, needs no second guard, and is
+ * caught by the !(x >= 0.0) idiom used throughout this codebase precisely because every
+ * comparison against NaN is false. The rows below assert the PROPERTY — the door refuses
+ * it, and it is not a plausible mass — rather than the spelling.
+ *
+ * World-free: arithmetic over a box and a scalar. No structure, no world, no actors.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FLayoutPieceMassTest,
+	"DestructionGame.Core.Layout.PieceMass",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FLayoutPieceMassTest::RunTest(const FString& Parameters)
+{
+	using namespace LayoutTestSupport;
+
+	/*
+	 * THE TWO DENSITIES THE EXPECTATIONS ARE BUILT ON, pinned before anything reads them.
+	 * Every mass below is a decimal derived by hand from one of these two numbers, so a
+	 * retune of either would make the whole table describe a different material while
+	 * still failing for what looks like an arithmetic reason.
+	 */
+	TestTrue(
+		FString::Printf(
+			TEXT("fixture precondition: the expectations are derived from clay at 1.9 g/cm3, profile says %.17g"),
+			ClayBrick.DensityGramsPerCubicCm),
+		ClayBrick.DensityGramsPerCubicCm == 1.9);
+
+	TestTrue(
+		FString::Printf(
+			TEXT("fixture precondition: the expectations are derived from concrete at 2.4 g/cm3, profile says %.17g"),
+			StructuralConcrete.DensityGramsPerCubicCm),
+		StructuralConcrete.DensityGramsPerCubicCm == 2.4);
+
+	/*
+	 * THE ORDER REALLY IS OBSERVABLE, stated as arithmetic on the test's own literals
+	 * before any expectation depends on it. If a future brick format made the two orders
+	 * agree, the full-brick row would silently stop pinning the order and this says so
+	 * rather than the suite quietly losing that coverage.
+	 */
+	{
+		const double DensityFirst = 1.9 * 21.5 * 10.25 * 6.5 / 1000.0;
+		const double VolumeFirst = (21.5 * 10.25 * 6.5) * 1.9 / 1000.0;
+
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture precondition: density-first must be exactly 2.72163125, got %.17g"),
+				DensityFirst),
+			DensityFirst == 2.72163125);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture precondition: volume-first must differ, so the brick row can tell the two")
+				TEXT(" orders apart — got %.17g against %.17g"),
+				VolumeFirst, DensityFirst),
+			VolumeFirst != DensityFirst);
+	}
+
+	struct FMassCase
+	{
+		const TCHAR* Description = nullptr;
+
+		/** FULL size, cm, because materials and bricks are quoted full size. */
+		FVector FullSizeCm = FVector::ZeroVector;
+
+		double DensityGramsPerCubicCm = 0.0;
+
+		bool bExpectedUsable = false;
+
+		/** Hand-derived, and compared EXACTLY. Only read when the case is usable. */
+		double ExpectedMassKg = 0.0;
+
+		/**
+		 * Deliberately off the origin and deliberately asymmetric: a mass that depended
+		 * on where the box sits would read wrong on every accepted row.
+		 */
+		FVector CentreCm = FVector(37.5, -12.25, 8.75);
+	};
+
+	const TArray<FMassCase> Cases = {
+		/*
+		 * THE ROW THE REFACTOR TURNS ON. 215 x 102.5 x 65 mm is 1432.4375 cm3, and at
+		 * 1.9 g/cm3 that is 2721.63125 g. It is also the only row here whose two
+		 * multiplication orders disagree, so it is the row that pins density-first.
+		 */
+		{
+			TEXT("a UK metric brick in clay"),
+			FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm),
+			ClayBrick.DensityGramsPerCubicCm,
+			true, 2.72163125
+		},
+
+		/*
+		 * THE HALF BAT, and the reason mass comes from the box rather than the spec: it
+		 * is 682.90625 cm3, so it must weigh 1.297521875 kg and not a full brick's
+		 * 2.72163125. Note this is NOT half of a full brick — the half bat is what is
+		 * left when a mortar joint is taken out of a brick and the remainder halved, so
+		 * it is 10.25 cm rather than 10.75.
+		 */
+		{
+			TEXT("a half bat in clay"),
+			FVector(HalfBatLengthCm, BrickDepthCm, BrickHeightCm),
+			ClayBrick.DensityGramsPerCubicCm,
+			true, 1.297521875
+		},
+
+		/*
+		 * A CUBIC METRE OF CONCRETE AT 2400 kg, which is the figure anybody can check
+		 * against a table without doing any arithmetic at all, and the one that catches a
+		 * factor of 1000 in either direction. 100 x 100 x 100 cm is 1e6 cm3.
+		 */
+		{
+			TEXT("a cubic metre of structural concrete"),
+			FVector(100.0, 100.0, 100.0),
+			StructuralConcrete.DensityGramsPerCubicCm,
+			true, 2400.0
+		},
+
+		/* A 3 x 3 m floor slab 200 mm thick: 1.8e6 cm3, 4320 kg. */
+		{
+			TEXT("a 3 x 3 m concrete slab, 200 mm thick"),
+			FVector(300.0, 300.0, 20.0),
+			StructuralConcrete.DensityGramsPerCubicCm,
+			true, 4320.0
+		},
+
+		/*
+		 * ONE CUBIC CENTIMETRE, which is where the g-to-kg conversion is visible on its
+		 * own: 1.9 grams is 0.0019 kg, and a function that forgot the /1000 would report
+		 * a 1 cm cube weighing nearly two kilos.
+		 */
+		{
+			TEXT("one cubic centimetre of clay is 1.9 grams"),
+			FVector(1.0, 1.0, 1.0),
+			ClayBrick.DensityGramsPerCubicCm,
+			true, 0.0019
+		},
+
+		/*
+		 * THREE DIFFERENT DIMENSIONS INCLUDING A SUB-CENTIMETRE ONE, so a function that
+		 * cubed one axis or halved the wrong one lands nowhere near. 12.5 x 0.5 x 40 is
+		 * 250 cm3, at 2.4 that is 0.6 kg.
+		 */
+		{
+			TEXT("a thin concrete plate, no two axes alike"),
+			FVector(12.5, 0.5, 40.0),
+			StructuralConcrete.DensityGramsPerCubicCm,
+			true, 0.6
+		},
+
+		/*
+		 * DEGENERATE BOXES. Each must come back as something FStructure::AddPiece
+		 * refuses, which zero is NOT — see the note on this test.
+		 */
+		{
+			TEXT("a box with no thickness is not a piece"),
+			FVector(BrickLengthCm, BrickDepthCm, 0.0),
+			ClayBrick.DensityGramsPerCubicCm,
+			false
+		},
+		{
+			TEXT("a zero-sized box is not a piece"),
+			FVector::ZeroVector,
+			ClayBrick.DensityGramsPerCubicCm,
+			false
+		},
+		{
+			TEXT("a negative dimension is not a piece"),
+			FVector(-BrickLengthCm, BrickDepthCm, BrickHeightCm),
+			ClayBrick.DensityGramsPerCubicCm,
+			false
+		},
+		{
+			/*
+			 * TWO NEGATIVE AXES IS THE ONE THAT FAILS OPEN. The signs cancel in the
+			 * product, so a guard that only checked the sign of the RESULT would hand
+			 * back a perfectly plausible 2.72163125 kg for a box that is inside out.
+			 */
+			TEXT("two negative dimensions multiply into a plausible mass and are still not a piece"),
+			FVector(-BrickLengthCm, -BrickDepthCm, BrickHeightCm),
+			ClayBrick.DensityGramsPerCubicCm,
+			false
+		},
+		{
+			TEXT("a NaN dimension is not a piece"),
+			FVector(BrickLengthCm, MakeNaN(), BrickHeightCm),
+			ClayBrick.DensityGramsPerCubicCm,
+			false
+		},
+		{
+			TEXT("an infinite dimension is not a piece"),
+			FVector(MakeInfinity(), BrickDepthCm, BrickHeightCm),
+			ClayBrick.DensityGramsPerCubicCm,
+			false
+		},
+		{
+			/*
+			 * FINITE, AND STILL NOT A PIECE. DBL_MAX passes any IsFinite check on the
+			 * extent and only overflows once it is multiplied out, so this row is refused
+			 * by a different route from the +inf row above — the same distinction
+			 * IsUsableBox draws, recorded in CURRENT_STATE.md as a live hole in
+			 * MakeInterface. Either route satisfies the assertions below; what must not
+			 * happen is a finite plausible answer.
+			 */
+			TEXT("a DBL_MAX dimension is finite and still not a piece"),
+			FVector(TNumericLimits<double>::Max(), BrickDepthCm, BrickHeightCm),
+			ClayBrick.DensityGramsPerCubicCm,
+			false
+		},
+		{
+			/*
+			 * A BOX NOBODY CAN PLACE IS NOT A PIECE EITHER, even though the mass does not
+			 * depend on the centre. There is one notion of a usable box in this producer,
+			 * IsUsableBox, and MakeInterface already refuses this box; a mass function
+			 * with a narrower opinion would be a second, weaker definition of the same
+			 * thing.
+			 */
+			TEXT("a box at a NaN position is not a piece"),
+			FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm),
+			ClayBrick.DensityGramsPerCubicCm,
+			false, 0.0,
+			FVector(MakeNaN(), 0.0, 0.0)
+		},
+
+		/*
+		 * DEGENERATE DENSITIES. RunningBond already refuses all four in its spec, so a
+		 * mass function that accepted them would be the more permissive of the two.
+		 */
+		{
+			TEXT("a weightless material is not a material"),
+			FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm),
+			0.0,
+			false
+		},
+		{
+			TEXT("a negative density is not a material"),
+			FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm),
+			-1.9,
+			false
+		},
+		{
+			TEXT("a NaN density is not a material"),
+			FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm),
+			MakeNaN(),
+			false
+		},
+		{
+			TEXT("an infinite density is not a material"),
+			FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm),
+			MakeInfinity(),
+			false
+		},
+	};
+
+	for (const FMassCase& Case : Cases)
+	{
+		const FPieceBox Box = BoxOfSize(Case.CentreCm, Case.FullSizeCm);
+
+		const double MassKg = PieceMassKg(Box, Case.DensityGramsPerCubicCm);
+
+		/*
+		 * THE COMPOSED PROPERTY, asserted on every row in both directions: whatever comes
+		 * back must be usable at the one door it is going to be handed to. A usable box
+		 * has to produce a mass the structure accepts, and a degenerate one has to produce
+		 * a mass the structure turns away — which is what makes "fail closed" mean
+		 * something here rather than being a claim about a particular value.
+		 */
+		FStructure Door;
+		const int32 Handle = Door.AddPiece(MassKg, /*bIsGrounded*/ false);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("%s: FStructure::AddPiece should %s a mass of %.17g"),
+				Case.Description,
+				Case.bExpectedUsable ? TEXT("accept") : TEXT("REFUSE"),
+				MassKg),
+			(Handle != INDEX_NONE) == Case.bExpectedUsable);
+
+		if (!Case.bExpectedUsable)
+		{
+			/*
+			 * AND NOT ZERO, WHICH IS THE TRAP. Zero passes AddPiece's guard by design, so
+			 * if this ever reads 0 the assertion above has already failed — but stating it
+			 * separately is what tells the next reader that zero was considered and
+			 * rejected as the fail-closed value rather than merely not chosen.
+			 */
+			TestTrue(
+				FString::Printf(
+					TEXT("%s: a degenerate box must not come back as a plausible mass, got %.17g")
+					TEXT(" (zero is NOT fail-closed: AddPiece accepts a massless piece)"),
+					Case.Description, MassKg),
+				!(MassKg >= 0.0) || !FMath::IsFinite(MassKg));
+
+			continue;
+		}
+
+		/*
+		 * EXACT. Not IsNearlyEqual: every dimension and density in this table is exact in
+		 * binary and the expectations are hand-derived decimals that land exactly on the
+		 * density-first product. A tolerance here would accept the volume-first order,
+		 * which is the one thing this assertion is for.
+		 */
+		TestTrue(
+			FString::Printf(
+				TEXT("%s: %g x %g x %g cm at %g g/cm3 should weigh EXACTLY %.17g kg, got %.17g"),
+				Case.Description,
+				Case.FullSizeCm.X, Case.FullSizeCm.Y, Case.FullSizeCm.Z,
+				Case.DensityGramsPerCubicCm,
+				Case.ExpectedMassKg, MassKg),
+			MassKg == Case.ExpectedMassKg);
+	}
+
+	/*
+	 * THE BRICK'S WEIGHT, so the number the rest of the suite quotes is anchored to the
+	 * mass rather than only to itself. 2.72163125 kg x 980 cm/s2 is 2667.198625 uu, and
+	 * it is exact — the 1 N = 100 uu conversion is baked into the 980 and applying it
+	 * again is the standard way to be wrong by exactly 100x.
+	 */
+	{
+		const double BrickFromTheBox = PieceMassKg(
+			BoxOfSize(FVector::ZeroVector, FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm)),
+			ClayBrick.DensityGramsPerCubicCm);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("a clay brick should weigh exactly 2667.198625 uu, got %.17g"),
+				WeightOf(BrickFromTheBox)),
+			WeightOf(BrickFromTheBox) == 2667.198625);
+	}
+
+	/*
+	 * THE REFACTOR'S SAFETY NET, WRITTEN BEFORE THE REFACTOR. LayBrick derives the same
+	 * number today, and the point of moving it out is that nothing about any wall may
+	 * change — so this asserts BIT-FOR-BIT agreement against the masses RunningBond is
+	 * already producing, on both end treatments, which is where the two piece sizes are.
+	 *
+	 * It is deliberately an agrees-with-production assertion, because agreement is the
+	 * required behaviour rather than a convenience: an ulp of disagreement here is an ulp
+	 * of movement in every full brick in every wall in the suite.
+	 */
+	{
+		const TArray<EWallEnd> Ends = { EWallEnd::Ragged, EWallEnd::Flush };
+
+		int32 PiecesCompared = 0;
+		int32 DistinctMasses = 0;
+		TArray<double> MassesSeen;
+
+		for (const EWallEnd End : Ends)
+		{
+			FRunningBondSpec Spec;
+			Spec.BrickSizeCm = FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm);
+			Spec.JointThicknessCm = MortarCm;
+			Spec.DensityGramsPerCubicCm = ClayBrick.DensityGramsPerCubicCm;
+			Spec.CoursesHigh = 3;
+			Spec.BricksPerCourse = 3;
+			Spec.End = End;
+			Spec.Strength = GeneralPurposeMortar;
+
+			FBrickLayout Layout;
+
+			const bool bLaid = RunningBond(Spec, Layout);
+
+			TestTrue(
+				FString::Printf(TEXT("the %s cross-check wall should be laid"),
+					End == EWallEnd::Ragged ? TEXT("ragged") : TEXT("flush")),
+				bLaid);
+
+			if (!bLaid || Layout.Boxes.Num() != Layout.Structure.NumPieces())
+			{
+				continue;
+			}
+
+			for (int32 Piece = 0; Piece < Layout.Boxes.Num(); ++Piece)
+			{
+				const double FromLayBrick = Layout.Structure.GetPiece(Piece).MassKg;
+				const double FromTheFunction =
+					PieceMassKg(Layout.Boxes[Piece], Spec.DensityGramsPerCubicCm);
+
+				TestTrue(
+					FString::Printf(
+						TEXT("%s wall piece %d: PieceMassKg must reproduce LayBrick BIT FOR BIT, got")
+						TEXT(" %.17g against %.17g"),
+						End == EWallEnd::Ragged ? TEXT("ragged") : TEXT("flush"),
+						Piece, FromTheFunction, FromLayBrick),
+					FromTheFunction == FromLayBrick);
+
+				++PiecesCompared;
+
+				if (!MassesSeen.Contains(FromLayBrick))
+				{
+					MassesSeen.Add(FromLayBrick);
+					++DistinctMasses;
+				}
+			}
+		}
+
+		/*
+		 * FLOOR THE CROSS-CHECK, so a producer that laid nothing leaves this block
+		 * comparing an empty array and passing in silence. Two walls of 3 courses x 3
+		 * bricks: ragged is 3 + 2 + 3 = 8 pieces, flush is 3 + 4 + 3 = 10.
+		 */
+		TestEqual(
+			FString::Printf(TEXT("the cross-check should span 18 pieces, compared %d"), PiecesCompared),
+			PiecesCompared, 18);
+
+		/*
+		 * AND BOTH PIECE SIZES MUST APPEAR, or the cross-check is 18 copies of the same
+		 * comparison and a half bat weighing a full brick would sail through it.
+		 */
+		TestEqual(
+			FString::Printf(
+				TEXT("the cross-check should see two distinct masses, a full brick and a half bat, saw %d"),
+				DistinctMasses),
+			DistinctMasses, 2);
+	}
+
+	return true;
+}
+
+/**
  * THREE BOXES, ONE SPANNING BRICK: the smallest arrangement in which the produced
  * graph carries a load, and the smallest one where a centroid normal is catastrophic.
  *

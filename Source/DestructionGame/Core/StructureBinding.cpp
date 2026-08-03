@@ -225,3 +225,68 @@ int32 FStructureBinding::ApplyResults()
 
 	return ReleasedCount;
 }
+
+bool AdoptLayout(
+	const DestructionLayout::FBrickLayout& Layout,
+	TArrayView<UObject* const> Actors,
+	FStructureBinding& Out)
+{
+	const int32 PieceCount = Layout.Structure.NumPieces();
+
+	/*
+	 * REFUSED OUTRIGHT IF THE INPUT IS ALREADY OUT OF STEP, and nothing is written.
+	 *
+	 * RunningBond can genuinely produce such a layout: an infinite brick dimension passes
+	 * its !(x > 0.0) spec guard, PieceMassKg answers with something FStructure::AddPiece
+	 * refuses, and the box is appended regardless — so Boxes ends up one longer than the
+	 * piece array. Copying that index-by-index PROPAGATES the desync into the one type
+	 * whose entire contract is that its two arrays cannot desync, and the AddPiece-return
+	 * guard already queued on FStructureBinding would NOT close it: the mass handed over
+	 * is a real one belonging to the wrong piece, or a zero, both of which the door
+	 * accepts. A type that makes a bad state inexpressible must not be the thing that
+	 * launders a known-bad input into that shape, so the check is at the door.
+	 *
+	 * The actor list is the third parallel array and comes from a different place again —
+	 * whoever spawned the bricks. Too few and a handle binds to nothing; too many and
+	 * there are actors in the world no piece will ever name, which is the direction that
+	 * looks fine.
+	 *
+	 * An empty layout is refused as well. RunningBond rejects every spec that would
+	 * produce one, so accepting it here would make this the more permissive of the two,
+	 * and a caller handed true would have a binding it can never see anything from and no
+	 * way to tell that from success.
+	 */
+	if (PieceCount < 1 || Layout.Boxes.Num() != PieceCount || Actors.Num() != PieceCount)
+	{
+		return false;
+	}
+
+	/*
+	 * A REPLAY, AND IT IS CORRECT ONLY BECAUSE A LAYOUT IS APPEND-ONLY. RunningBond adds
+	 * pieces and connections and never removes one, so no slot is tombstoned, no handle is
+	 * a hole, and handle i of the layout is handle i of the binding by construction — which
+	 * is what makes copying by index sound and what makes NumPieces a live count here as
+	 * well as a range. The moment a producer removes a piece or reuses a slot, that stops
+	 * being true and this has to replay the holes too, or every connection above the first
+	 * one names the wrong pieces.
+	 */
+	for (int32 PieceIndex = 0; PieceIndex < PieceCount; ++PieceIndex)
+	{
+		const FStructurePiece& Piece = Layout.Structure.GetPiece(PieceIndex);
+
+		Out.AddPiece(
+			Piece.MassKg, Piece.bIsGrounded, Actors[PieceIndex], Layout.Boxes[PieceIndex]);
+	}
+
+	/*
+	 * Joints go over whole, pairing and normal together: a normal inconsistent with its
+	 * A/B pairing is the one thing the produced graph cannot survive, and reading the
+	 * connection back out as one value is what makes transposing them impossible here.
+	 */
+	for (int32 JointIndex = 0; JointIndex < Layout.Structure.NumConnections(); ++JointIndex)
+	{
+		Out.AddConnection(Layout.Structure.GetConnection(JointIndex));
+	}
+
+	return true;
+}
