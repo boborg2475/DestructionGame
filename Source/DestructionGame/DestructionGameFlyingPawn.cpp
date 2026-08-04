@@ -9,6 +9,7 @@
 #include "InputActionValue.h"
 #include "UObject/ConstructorHelpers.h"
 #include "DestructionGame.h"
+#include "RequiredContent.h"
 
 ADestructionGameFlyingPawn::ADestructionGameFlyingPawn()
 {
@@ -30,11 +31,15 @@ ADestructionGameFlyingPawn::ADestructionGameFlyingPawn()
 		Movement->MaxSpeed = FlySpeed;
 	}
 
-	// bind the template's existing input assets so the pawn works with no Blueprint
-	static ConstructorHelpers::FObjectFinder<UInputAction> MoveActionAsset(TEXT("/Game/Input/Actions/IA_Move.IA_Move"));
-	static ConstructorHelpers::FObjectFinder<UInputAction> LookActionAsset(TEXT("/Game/Input/Actions/IA_Look.IA_Look"));
-	static ConstructorHelpers::FObjectFinder<UInputAction> MouseLookActionAsset(TEXT("/Game/Input/Actions/IA_MouseLook.IA_MouseLook"));
-	static ConstructorHelpers::FObjectFinder<UInputAction> AscendActionAsset(TEXT("/Game/Input/Actions/IA_Jump.IA_Jump"));
+	/*
+	 * bind the template's existing input assets so the pawn works with no Blueprint, by the
+	 * paths RequiredContent.h names — one spelling of each, so this constructor and the
+	 * required-content table cannot become two lists that disagree
+	 */
+	static ConstructorHelpers::FObjectFinder<UInputAction> MoveActionAsset(DestructionContent::MoveActionPath);
+	static ConstructorHelpers::FObjectFinder<UInputAction> LookActionAsset(DestructionContent::LookActionPath);
+	static ConstructorHelpers::FObjectFinder<UInputAction> MouseLookActionAsset(DestructionContent::MouseLookActionPath);
+	static ConstructorHelpers::FObjectFinder<UInputAction> AscendActionAsset(DestructionContent::AscendActionPath);
 
 	MoveAction = MoveActionAsset.Object;
 	LookAction = LookActionAsset.Object;

@@ -2,7 +2,9 @@
 
 #include "World/DestructionStructureSubsystem.h"
 
+#include "CollisionQueryParams.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/HitResult.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "World/BrickActor.h"
@@ -210,6 +212,100 @@ int32 UDestructionStructureSubsystem::SolveAndPush(int32 StructureId)
 	}
 
 	return ReleasedCount;
+}
+
+FPieceHit UDestructionStructureSubsystem::TracePiece(const FVector& StartCm, const FVector& EndCm)
+{
+	FPieceHit Hit;
+
+	FHitResult TraceResult;
+
+	/*
+	 * ECC_Visibility because that is the channel the player's own click will use. A channel
+	 * invented for this would be a second answer to "can you see it", and the first thing to
+	 * go wrong with two answers is a brick you can see and cannot click.
+	 */
+	const bool bHitSomething = GetWorld()->LineTraceSingleByChannel(
+		TraceResult,
+		StartCm,
+		EndCm,
+		ECC_Visibility,
+		FCollisionQueryParams(SCENE_QUERY_STAT(PieceTrace), true));
+
+	if (!bHitSomething)
+	{
+		return Hit;
+	}
+
+	/*
+	 * THE FLOOR, THE SKY AND EVERYTHING ELSE IN THE WORLD LEAVE HERE. Only a brick carries a
+	 * ref, and only a brick can name a piece.
+	 */
+	const ABrickActor* Brick = Cast<ABrickActor>(TraceResult.GetActor());
+
+	if (Brick == nullptr)
+	{
+		return Hit;
+	}
+
+	/*
+	 * THE REF THE BRICK CARRIES IS AN ACTOR'S CLAIM, NOT AN ANSWER, so it is resolved against
+	 * the structure it names before any of it is handed back. A brick whose structure this
+	 * subsystem no longer holds, or whose piece has since been removed, is a brick standing in
+	 * the world for something that is not there — and the whole hit fails closed, rather than
+	 * a ref coming back beside a handle of INDEX_NONE for a caller to remember to check.
+	 */
+	const FStructureBinding* Binding = Find(Brick->GetPieceRef().StructureId);
+
+	if (Binding == nullptr)
+	{
+		return Hit;
+	}
+
+	const int32 PieceHandle = Binding->ResolvePiece(Brick->GetPieceRef());
+
+	if (PieceHandle == INDEX_NONE)
+	{
+		return Hit;
+	}
+
+	Hit.Ref = Brick->GetPieceRef();
+	Hit.PieceHandle = PieceHandle;
+
+	return Hit;
+}
+
+bool UDestructionStructureSubsystem::CommitPieceAction(const FPieceRef& Ref, const FPieceAction& Action)
+{
+	/*
+	 * AN ID THAT NAMES NOTHING COMMITS NOTHING, checked here rather than by sweeping every
+	 * binding — the same shape as SolveAndPush, and it is what a click on the floor arrives
+	 * as: a wholly default ref.
+	 */
+	FStructureBinding* Binding = Find(Ref.StructureId);
+
+	if (Binding == nullptr)
+	{
+		return false;
+	}
+
+	const FPieceActionResult Result = RunPieceAction(*Binding, Ref, Action);
+
+	/*
+	 * AND THIS IS WHERE ActorToDestroy IS FINALLY CONSUMED. RunPieceAction is world-free and
+	 * hands the orphan back rather than destroying it, so until something does this a deleted
+	 * brick's mesh stays standing in the hole it was deleted from — not merely untidy, but a
+	 * collider nothing in the model knows about.
+	 *
+	 * A commit that did nothing hands back nothing, so there is no second check here for
+	 * whether it ran; the result already answers that in the only way that matters.
+	 */
+	if (AActor* Orphan = Cast<AActor>(Result.ActorToDestroy))
+	{
+		Orphan->Destroy();
+	}
+
+	return Result.bRan;
 }
 
 FStructureBinding* UDestructionStructureSubsystem::Find(int32 StructureId)

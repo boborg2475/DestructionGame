@@ -7,6 +7,7 @@
 #include "InputMappingContext.h"
 #include "UObject/ConstructorHelpers.h"
 #include "DestructionGameCameraManager.h"
+#include "RequiredContent.h"
 
 ADestructionGamePlayerController::ADestructionGamePlayerController()
 {
@@ -15,10 +16,11 @@ ADestructionGamePlayerController::ADestructionGamePlayerController()
 
 	/*
 	 * wire up the mapping contexts here rather than in a Blueprint, so the sandbox
-	 * runs from C++ defaults alone
+	 * runs from C++ defaults alone — by the paths RequiredContent.h names, so this
+	 * constructor and the required-content table cannot become two lists that disagree
 	 */
-	static ConstructorHelpers::FObjectFinder<UInputMappingContext> DefaultContext(TEXT("/Game/Input/IMC_Default.IMC_Default"));
-	static ConstructorHelpers::FObjectFinder<UInputMappingContext> MouseLookContext(TEXT("/Game/Input/IMC_MouseLook.IMC_MouseLook"));
+	static ConstructorHelpers::FObjectFinder<UInputMappingContext> DefaultContext(DestructionContent::DefaultMappingContextPath);
+	static ConstructorHelpers::FObjectFinder<UInputMappingContext> MouseLookContext(DestructionContent::MouseLookMappingContextPath);
 
 	DefaultMappingContexts.Add(DefaultContext.Object);
 	DefaultMappingContexts.Add(MouseLookContext.Object);

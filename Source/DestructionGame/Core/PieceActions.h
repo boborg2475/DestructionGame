@@ -53,6 +53,24 @@ struct FPieceAction
 TArrayView<const FPieceAction> AllPieceActions();
 
 /**
+ * Which actions a menu should offer for the piece a ref names.
+ *
+ * THE MENU IS BUILT FROM THE TABLE, FILTERED BY CanRun, and there is deliberately no
+ * branch here naming a particular action — that is what makes adding the tenth action a
+ * row rather than an edit to the presenter as well.
+ *
+ * IT TAKES THE REF, NOT A HANDLE, for the same reason RunPieceAction does: the ref is the
+ * durable identity a clicked brick carries, and resolving it here means a stale, foreign
+ * or removed ref produces an EMPTY menu rather than a menu built against somebody else's
+ * brick. A click that hit the floor, or nothing, arrives as a default ref and must get
+ * nothing back.
+ *
+ * THE POINTERS NAME ROWS OF AllPieceActions(), never copies, so what the presenter shows
+ * and what the caller commits are the same object.
+ */
+TArray<const FPieceAction*> PieceActionsFor(const FStructureBinding& Binding, const FPieceRef& Ref);
+
+/**
  * What running an action produced.
  *
  * THE ACTOR COMES BACK RATHER THAN BEING DESTROYED HERE, which is what keeps the commit
@@ -72,6 +90,12 @@ struct FPieceActionResult
  * call to Action.Run at the menu's call site. The ref is the durable identity; a piece
  * handle is a momentary answer, and between the click and the commit the piece can have
  * gone by another route entirely. A stale ref must do nothing at all.
+ *
+ * AND THE ROW'S CanRun IS CONSULTED, so the commit door is never wider than the menu.
+ * The re-resolve refuses a removed piece and CanRun refuses a released one; the two do
+ * not overlap, and a commit path that asked only the first would let a keybind, an RPC or
+ * a replay act on a brick the menu would not have offered. Widening what an action accepts
+ * is a change to that action's CanRun, which both doors read.
  *
  * THE ACTOR IS CAPTURED BEFORE THE ACTION RUNS. FStructureBinding::GetActor answers null
  * for a removed piece, so an implementation that looks afterwards can never find the

@@ -207,6 +207,61 @@ namespace PieceActionsTestSupport
 	}
 
 	const FPieceAction TripwireAction{ TEXT("<tripwire>"), &TripwireCanRun, &TripwireRun };
+
+	/**
+	 * THE SAME TRIPWIRE WITH ITS CanRun SAYING NO, and it is the only thing that can see
+	 * whether the commit path consults CanRun at all.
+	 *
+	 * Against the shipped Delete row the two guards overlap almost everywhere: a ref that
+	 * ResolvePiece refuses is usually a piece CanRun would refuse too, so a commit path that
+	 * consults neither, one, or both looks identical. This row separates them — the ref is
+	 * live and resolves perfectly, and the ONLY reason to refuse is CanRun. The counter is
+	 * what says the refusal happened before Run rather than after it.
+	 */
+	int32 RefusedTripwireRunCount = 0;
+
+	bool RefusedTripwireCanRun(const FStructureBinding&, int32)
+	{
+		return false;
+	}
+
+	bool RefusedTripwireRun(FPieceActionContext&)
+	{
+		++RefusedTripwireRunCount;
+		return true;
+	}
+
+	const FPieceAction RefusedTripwireAction{
+		TEXT("<tripwire that cannot run>"), &RefusedTripwireCanRun, &RefusedTripwireRun };
+
+	/** Whether a menu returned a pointer to a particular row of the shipped table. */
+	bool MenuOffers(const TArray<const FPieceAction*>& Menu, const FPieceAction* Action)
+	{
+		return Menu.Contains(Action);
+	}
+
+	/** The labels a menu came back with, so a failure reads without a debugger. */
+	FString DescribeMenu(const TArray<const FPieceAction*>& Menu)
+	{
+		if (Menu.Num() == 0)
+		{
+			return TEXT("<empty>");
+		}
+
+		FString Line;
+
+		for (int32 Index = 0; Index < Menu.Num(); ++Index)
+		{
+			Line += FString::Printf(
+				TEXT("%s%s"),
+				Index == 0 ? TEXT("") : TEXT(", "),
+				Menu[Index] != nullptr && Menu[Index]->Label != nullptr
+					? Menu[Index]->Label
+					: TEXT("<null row>"));
+		}
+
+		return Line;
+	}
 }
 
 /**
@@ -629,6 +684,397 @@ bool FPieceActionsCanRunFiltersTheMenuTest::RunTest(const FString& Parameters)
 				Case.bExpected ? TEXT("true") : TEXT("false"),
 				bCanRun ? TEXT("true") : TEXT("false")),
 			bCanRun == Case.bExpected);
+	}
+
+	ReleasePieceActionStandIns(StandIns);
+
+	return true;
+}
+
+/**
+ * THE MENU FOR A CLICKED BRICK IS THE ACTION TABLE FILTERED BY CanRun, AND A CLICK THAT
+ * RESOLVED TO NOTHING GETS NO MENU AT ALL.
+ *
+ * THE INPUT IS A REF, NOT A HANDLE, AND THAT IS THE REQUIREMENT RATHER THAN A CONVENIENCE.
+ * What a click produces is the {StructureId, PieceIndex} the brick actor carries; a handle
+ * is what resolving that ref against THIS binding answers. A menu built from a ref that
+ * names another structure, or a piece that has since been removed, would be a menu offering
+ * to delete somebody else's brick — so an unresolvable ref must produce an EMPTY menu, and
+ * "the trace hit the floor" arrives here as a default ref and gets exactly that.
+ *
+ * THE PROPERTY IS ASSERTED AS A SET, NOT AS A LIST OF LABELS. What the menu offers is
+ * "every row whose CanRun says yes, and no others" — expressed over AllPieceActions() so a
+ * second action is a row and not an edit to this test. One explicit row names Delete, so the
+ * sweep cannot be satisfied by an empty table agreeing with an empty menu.
+ *
+ * AND THE POINTERS NAME ROWS OF THE SHIPPED TABLE. A menu of copies would compare unequal to
+ * everything, and the caller's next step is to pass one of these straight to RunPieceAction —
+ * so identity, not equality, is what has to hold. Asserted as pointer identity against
+ * AllPieceActions(), which a copied row cannot satisfy.
+ *
+ * NEEDS A TICKING WORLD: no. This is the whole reason the menu question is asked of a
+ * binding rather than of a world — it is arithmetic on a graph, and the world-needing half
+ * of a click is only the trace.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPieceActionsMenuOffersWhatCanRunTest,
+	"DestructionGame.Core.PieceActions.MenuOffersWhatCanRun",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPieceActionsMenuOffersWhatCanRunTest::RunTest(const FString& Parameters)
+{
+	using namespace PieceActionsTestSupport;
+
+	const FPieceAction* Delete = FindPieceAction(TEXT("Delete"));
+
+	if (!RequireAction(*this, Delete, TEXT("Delete")))
+	{
+		return true;
+	}
+
+	/*
+	 *   [ 2 ] floater, connected to nothing: Falling, so a push RELEASES it
+	 *
+	 *   [ 1 ]     [ 3 ]        both resting on the pad
+	 *      \       /
+	 *      [  pad 0  ]
+	 *      ==========
+	 *
+	 * Piece 1 is then REMOVED, so one binding holds a removed piece, a released piece and two
+	 * ordinary live ones at once — the same shape CanRunFiltersTheMenu uses, because the menu
+	 * has to answer for all four states and this is the smallest fixture that has them.
+	 */
+	const TArray<FPieceActionPieceSpec> PieceSpecs = {
+		{ PieceActionBrickMassKg, true },  // 0: pad
+		{ PieceActionBrickMassKg, false }, // 1: brick on the pad, REMOVED below
+		{ PieceActionBrickMassKg, false }, // 2: floater, RELEASED below
+		{ PieceActionBrickMassKg, false }  // 3: brick on the pad, live throughout
+	};
+
+	const TArray<FPieceActionJointSpec> JointSpecs = {
+		{ 0, 1, PieceActionBedJointNormal },
+		{ 0, 3, PieceActionBedJointNormal }
+	};
+
+	FStructureBinding Binding;
+	TArray<UObject*> StandIns;
+	BuildPieceActionBinding(Binding, PieceSpecs, JointSpecs, StandIns);
+
+	Binding.SolveLoads();
+
+	TestTrue(
+		FString::Printf(TEXT("fixture: the floater should solve as Falling, got %s"),
+			NameOfPieceSupport(Binding.GetStructure().GetPieceSupport(2))),
+		Binding.GetStructure().GetPieceSupport(2) == EPieceSupport::Falling);
+
+	/*
+	 * THE PUSH IS ITS OWN STATEMENT, and that is not a style point: folding it into the
+	 * Printf of the assertion it sets up makes the two argument evaluations UNSEQUENCED, and
+	 * MSVC evaluates the condition first — so the fixture read the flag before the call that
+	 * sets it and failed for a reason that had nothing to do with the code under test. (It
+	 * really did: this was written that way first.)
+	 */
+	const int32 ReleasedCount = Binding.ApplyResults();
+
+	TestTrue(
+		FString::Printf(TEXT("fixture: the push should release exactly the floater, got %d released"),
+			ReleasedCount),
+		ReleasedCount == 1 && Binding.IsReleased(2));
+
+	TestTrue(TEXT("fixture: a released piece is still in the graph, so its row is not the removal row"),
+		!Binding.IsPieceRemoved(2));
+
+	TestTrue(TEXT("fixture: the brick on the pad should remove cleanly"), Binding.RemovePiece(1));
+
+	struct FMenuCase
+	{
+		const TCHAR* Description;
+		FPieceRef Ref;
+		bool bExpectDelete;
+	};
+
+	const TArray<FMenuCase> Cases = {
+		/* The offering rows, without which an implementation returning nothing passes. */
+		{ TEXT("a live grounded brick"), { ThisStructure, 0 }, true },
+		{ TEXT("a live brick resting on the pad"), { ThisStructure, 3 }, true },
+
+		{ TEXT("a REMOVED piece is not there to act on"), { ThisStructure, 1 }, false },
+		{ TEXT("a RELEASED piece is already tumbling"), { ThisStructure, 2 }, false },
+
+		/*
+		 * AND EVERY WAY A CLICK CAN RESOLVE TO NOTHING. A default ref is what a trace that
+		 * hit the floor, or hit nothing at all, produces — so it is the fail-closed case the
+		 * click chain actually depends on rather than a synthetic one.
+		 */
+		{ TEXT("a click that hit the floor, or nothing: a wholly default ref"), { }, false },
+		{ TEXT("a brick belonging to a DIFFERENT structure"), { SomeOtherStructure, 0 }, false },
+		{ TEXT("a ref with no structure id"), { INDEX_NONE, 0 }, false },
+		{ TEXT("a ref with no piece index"), { ThisStructure, INDEX_NONE }, false },
+		{ TEXT("a negative index"), { ThisStructure, -1 }, false },
+		{ TEXT("one past the end"), { ThisStructure, 4 }, false },
+		{ TEXT("a wildly out-of-range index"), { ThisStructure, MAX_int32 }, false },
+		{ TEXT("MIN_int32, which must not be negated into range"), { ThisStructure, MIN_int32 }, false },
+	};
+
+	const TArrayView<const FPieceAction> Table = AllPieceActions();
+
+	for (const FMenuCase& Case : Cases)
+	{
+		const TArray<const FPieceAction*> Menu = PieceActionsFor(Binding, Case.Ref);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the menu for {%d, %d} should%s offer Delete; it offered [%s]"),
+				Case.Description, Case.Ref.StructureId, Case.Ref.PieceIndex,
+				Case.bExpectDelete ? TEXT("") : TEXT(" not"), *DescribeMenu(Menu)),
+			MenuOffers(Menu, Delete) == Case.bExpectDelete);
+
+		/*
+		 * THE GENERAL PROPERTY, WRITTEN OVER THE TABLE RATHER THAN OVER Delete. The handle is
+		 * re-derived here from the ref, because that is what the menu itself has to do, and a
+		 * ref that resolves to nothing must leave the menu empty whatever the table says.
+		 */
+		const int32 Handle = Binding.ResolvePiece(Case.Ref);
+
+		int32 ExpectedRows = 0;
+
+		for (const FPieceAction& Action : Table)
+		{
+			if (Handle != INDEX_NONE && Action.CanRun != nullptr && Action.CanRun(Binding, Handle))
+			{
+				++ExpectedRows;
+			}
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the menu for {%d, %d} should hold exactly the %d row(s) whose CanRun says yes; it held %d [%s]"),
+				Case.Description, Case.Ref.StructureId, Case.Ref.PieceIndex,
+				ExpectedRows, Menu.Num(), *DescribeMenu(Menu)),
+			Menu.Num() == ExpectedRows);
+
+		for (const FPieceAction* Offered : Menu)
+		{
+			TestTrue(
+				*FString::Printf(TEXT("%s: the menu must not offer a null row"), Case.Description),
+				Offered != nullptr);
+
+			if (Offered == nullptr)
+			{
+				continue;
+			}
+
+			/*
+			 * IDENTITY AGAINST THE SHIPPED TABLE, NOT A COPY OF IT. The caller's next move is
+			 * to hand this straight to RunPieceAction, and a presenter comparing what it
+			 * showed against what was chosen compares pointers.
+			 */
+			const bool bIsATableRow = Offered >= Table.GetData() && Offered < Table.GetData() + Table.Num();
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: the menu must name a row of AllPieceActions() rather than a copy of one ('%s')"),
+					Case.Description,
+					Offered->Label != nullptr ? Offered->Label : TEXT("<null label>")),
+				bIsATableRow);
+
+			if (bIsATableRow)
+			{
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s: the menu offered '%s', whose CanRun says no"),
+						Case.Description,
+						Offered->Label != nullptr ? Offered->Label : TEXT("<null label>")),
+					Offered->CanRun != nullptr && Handle != INDEX_NONE && Offered->CanRun(Binding, Handle));
+			}
+		}
+	}
+
+	ReleasePieceActionStandIns(StandIns);
+
+	return true;
+}
+
+/**
+ * THE COMMIT PATH CONSULTS CanRun, AND REFUSES BEFORE IT RUNS ANYTHING.
+ *
+ * THE DECISION THIS PINS, STATED SO IT IS DELIBERATE. RunPieceAction re-resolves the ref,
+ * which refuses a REMOVED piece; CanRun additionally refuses a RELEASED one. Those two
+ * guards do not overlap, so the commit path has been strictly MORE PERMISSIVE than the menu:
+ * an action could be committed against a brick already tumbling through the air, by a route
+ * the menu would never have offered. That is closed here, and the reasoning matters more than
+ * the outcome: CanRun is the row's own statement of when it is meaningful, so running Run
+ * outside it runs a row outside its stated domain. If deleting falling debris is wanted, the
+ * answer is to widen Delete's CanRun — one statement of the rule, in one place, that the menu
+ * and the commit path then agree on — rather than to leave the commit door wider than the
+ * menu and depend on nobody using it. The window this closes is real and ordinary: the
+ * cascade that releases a brick between the click that opens the menu and the click that
+ * chooses an entry.
+ *
+ * THE REFUSING TRIPWIRE IS THE ONLY THING THAT CAN SEE IT. Against Delete the two guards
+ * agree on almost every ref, so a commit path consulting neither, one or both looks the same.
+ * The refusing tripwire's ref resolves perfectly and its CanRun is the sole reason to refuse,
+ * and its counter is what distinguishes "refused before running" from "ran, then reported
+ * false" — different bugs, and the second leaves whatever the action did behind it.
+ *
+ * THE RELEASED-BRICK ROW IS THE SAME CLAIM AGAINST THE SHIPPED ROW, which is what says the
+ * guard reaches real actions and not just a test fixture.
+ *
+ * NEEDS A TICKING WORLD: no.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPieceActionsCommitRespectsCanRunTest,
+	"DestructionGame.Core.PieceActions.CommitRespectsCanRun",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPieceActionsCommitRespectsCanRunTest::RunTest(const FString& Parameters)
+{
+	using namespace PieceActionsTestSupport;
+
+	const FPieceAction* Delete = FindPieceAction(TEXT("Delete"));
+
+	if (!RequireAction(*this, Delete, TEXT("Delete")))
+	{
+		return true;
+	}
+
+	/*
+	 *   [ 2 ] floater, connected to nothing: Falling, so a push RELEASES it
+	 *
+	 *   [ 1 ]                  resting on the pad, live throughout
+	 *      \
+	 *      [  pad 0  ]
+	 *      ==========
+	 */
+	const TArray<FPieceActionPieceSpec> PieceSpecs = {
+		{ PieceActionBrickMassKg, true },  // 0: pad
+		{ PieceActionBrickMassKg, false }, // 1: brick on the pad
+		{ PieceActionBrickMassKg, false }  // 2: floater, RELEASED below
+	};
+
+	const TArray<FPieceActionJointSpec> JointSpecs = {
+		{ 0, 1, PieceActionBedJointNormal }
+	};
+
+	FStructureBinding Binding;
+	TArray<UObject*> StandIns;
+	BuildPieceActionBinding(Binding, PieceSpecs, JointSpecs, StandIns);
+
+	Binding.SolveLoads();
+	Binding.ApplyResults();
+
+	TestTrue(TEXT("fixture: the floater should have been released"), Binding.IsReleased(2));
+
+	/*
+	 * AND IT IS NOT REMOVED. This is what makes the row discriminating: the re-resolve alone
+	 * accepts it happily, because a released piece is very much still in the graph.
+	 */
+	TestTrue(TEXT("fixture: the released floater is still in the graph, so the re-resolve accepts it"),
+		!Binding.IsPieceRemoved(2));
+
+	TestTrue(
+		FString::Printf(TEXT("fixture: the released floater's ref must still resolve to handle 2, got %d"),
+			Binding.ResolvePiece({ ThisStructure, 2 })),
+		Binding.ResolvePiece({ ThisStructure, 2 }) == 2);
+
+	TestTrue(TEXT("fixture: Delete's own CanRun already says no to a released brick"),
+		!Delete->CanRun(Binding, 2));
+
+	TripwireRunCount = 0;
+	RefusedTripwireRunCount = 0;
+
+	/*
+	 * THE SHARP ROW: the ref resolves, and CanRun is the only reason to refuse. A commit path
+	 * that never asks runs this action against a live piece and the counter says so.
+	 */
+	{
+		const FPieceActionResult Refused =
+			RunPieceAction(Binding, { ThisStructure, 1 }, RefusedTripwireAction);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("committing an action whose CanRun says no must report that it did nothing, bRan reports %d"),
+				Refused.bRan ? 1 : 0),
+			!Refused.bRan);
+
+		TestTrue(
+			FString::Printf(TEXT("a refused action must hand back no actor, got %s"),
+				*GetNameSafe(Refused.ActorToDestroy)),
+			Refused.ActorToDestroy == nullptr);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("an action whose CanRun says no must never be ENTERED, but Run has been entered %d time(s)"),
+				RefusedTripwireRunCount),
+			RefusedTripwireRunCount == 0);
+	}
+
+	/* The same claim against the shipped row, so the guard is not a fixture-only affair. */
+	{
+		const FPieceActionResult Refused = RunPieceAction(Binding, { ThisStructure, 2 }, *Delete);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("deleting a RELEASED brick must report that it did nothing, bRan reports %d"),
+				Refused.bRan ? 1 : 0),
+			!Refused.bRan);
+
+		TestTrue(
+			FString::Printf(TEXT("a refused delete must hand back no actor, got %s"),
+				*GetNameSafe(Refused.ActorToDestroy)),
+			Refused.ActorToDestroy == nullptr);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("a refused delete must leave the released brick in the graph, IsPieceRemoved reports %d"),
+				Binding.IsPieceRemoved(2) ? 1 : 0),
+			!Binding.IsPieceRemoved(2));
+
+		TestTrue(
+			FString::Printf(TEXT("a refused delete must leave the released brick holding its own actor, got %s"),
+				*GetNameSafe(Binding.GetActor(2))),
+			Binding.GetActor(2) == StandIns[2]);
+
+		TestTrue(
+			FString::Printf(TEXT("a refused delete must leave all 3 pieces live, got %d"),
+				Binding.GetStructure().NumLivePieces()),
+			Binding.GetStructure().NumLivePieces() == 3);
+	}
+
+	/*
+	 * THE POSITIVE CONTROLS. Without them a commit path that refuses everything passes both
+	 * rows above, which would hide every action from every brick forever.
+	 */
+	{
+		const FPieceActionResult Ran = RunPieceAction(Binding, { ThisStructure, 1 }, TripwireAction);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("control: an action whose CanRun says yes must run against a live piece, bRan reports %d"),
+				Ran.bRan ? 1 : 0),
+			Ran.bRan);
+
+		TestTrue(
+			FString::Printf(TEXT("control: the accepting tripwire's Run should have been entered exactly once, got %d"),
+				TripwireRunCount),
+			TripwireRunCount == 1);
+	}
+
+	{
+		const FPieceActionResult Ran = RunPieceAction(Binding, { ThisStructure, 1 }, *Delete);
+
+		TestTrue(
+			FString::Printf(TEXT("control: deleting a live, unreleased brick must still run, bRan reports %d"),
+				Ran.bRan ? 1 : 0),
+			Ran.bRan);
+
+		TestTrue(
+			FString::Printf(TEXT("control: deleting a live brick should hand back its own actor (%s), got %s"),
+				*GetNameSafe(StandIns[1]), *GetNameSafe(Ran.ActorToDestroy)),
+			Ran.ActorToDestroy == StandIns[1]);
+
+		TestTrue(TEXT("control: the deleted piece must actually be gone from the graph"),
+			Binding.IsPieceRemoved(1));
 	}
 
 	ReleasePieceActionStandIns(StandIns);

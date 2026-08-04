@@ -56,6 +56,44 @@ TArrayView<const FPieceAction> AllPieceActions()
 	return TArrayView<const FPieceAction>(PieceActionRows);
 }
 
+TArray<const FPieceAction*> PieceActionsFor(const FStructureBinding& Binding, const FPieceRef& Ref)
+{
+	TArray<const FPieceAction*> Menu;
+
+	/*
+	 * THE REF IS RESOLVED HERE, AND AN UNRESOLVABLE ONE GETS AN EMPTY MENU. What a click
+	 * produces is the {StructureId, PieceIndex} the brick carries; a handle is what
+	 * resolving that against THIS binding answers. A click that hit the floor, or nothing
+	 * at all, arrives as a default ref — so building a menu without resolving would offer
+	 * to delete piece zero of whatever structure happened to be asked.
+	 */
+	const int32 PieceHandle = Binding.ResolvePiece(Ref);
+
+	if (PieceHandle == INDEX_NONE)
+	{
+		return Menu;
+	}
+
+	/*
+	 * POINTERS INTO THE SHIPPED TABLE, NEVER COPIES. The caller's next move is to hand one
+	 * of these straight to RunPieceAction, and a presenter comparing what it showed against
+	 * what was chosen compares pointers — a menu of copies is unequal to everything.
+	 *
+	 * And there is deliberately no branch here naming a particular action: the filter is
+	 * the row's own CanRun, which is what makes adding the tenth action a row rather than
+	 * an edit to the presenter as well.
+	 */
+	for (const FPieceAction& Action : AllPieceActions())
+	{
+		if (Action.CanRun(Binding, PieceHandle))
+		{
+			Menu.Add(&Action);
+		}
+	}
+
+	return Menu;
+}
+
 FPieceActionResult RunPieceAction(
 	FStructureBinding& Binding,
 	const FPieceRef& Ref,
@@ -78,6 +116,27 @@ FPieceActionResult RunPieceAction(
 	const int32 PieceHandle = Binding.ResolvePiece(Ref);
 
 	if (PieceHandle == INDEX_NONE)
+	{
+		return Result;
+	}
+
+	/*
+	 * AND THE ROW'S OWN CanRun IS CONSULTED, WHICH IS A SECOND GUARD RATHER THAN THE SAME
+	 * ONE TWICE. The re-resolve above refuses a REMOVED piece; CanRun additionally refuses
+	 * a RELEASED one, so without this the commit door is strictly wider than the menu and
+	 * an action can be committed against a brick already tumbling through the air — by a
+	 * route the menu would never have offered. The window is ordinary: a cascade releasing
+	 * a piece between the click that opens the menu and the click that chooses an entry.
+	 *
+	 * CanRun is the row's own statement of when it is meaningful, so running Run outside it
+	 * runs the row outside its stated domain. If deleting falling debris is ever wanted,
+	 * the answer is to widen Delete's CanRun — one statement of the rule, in one place,
+	 * that both doors then agree on — not to leave this one open.
+	 *
+	 * Refused BEFORE anything runs, for the same reason as the re-resolve: running first
+	 * and answering false afterwards leaves whatever the action did behind it.
+	 */
+	if (!Action.CanRun(Binding, PieceHandle))
 	{
 		return Result;
 	}

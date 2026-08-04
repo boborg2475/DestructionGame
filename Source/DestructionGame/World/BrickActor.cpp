@@ -4,22 +4,8 @@
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "RequiredContent.h"
 #include "UObject/ConstructorHelpers.h"
-
-/*
- * The brick's mesh, resolved once onto the CDO.
- *
- * SM_Cube is a placeholder and is treated as one: nothing here assumes it is 100 uu on a
- * side or that its pivot is anywhere in particular. Whoever spawns a brick reads the
- * mesh's own bounds and sizes and places the actor from them, so a real brick mesh
- * dropped in here changes nothing but the asset path. See CURRENT_STATE.md on hard
- * content references from C++ — this one fails at CDO construction rather than at
- * compile time if the asset is ever deleted.
- */
-namespace
-{
-	const TCHAR* const BrickPlaceholderMeshPath = TEXT("/Game/LevelPrototyping/Meshes/SM_Cube.SM_Cube");
-}
 
 ABrickActor::ABrickActor()
 {
@@ -37,7 +23,19 @@ ABrickActor::ABrickActor()
 	 */
 	Mesh->SetMobility(EComponentMobility::Movable);
 
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> BrickMeshAsset(BrickPlaceholderMeshPath);
+	/*
+	 * The brick's mesh, resolved once onto the CDO, by the path RequiredContent.h names.
+	 *
+	 * SM_Cube is a placeholder and is treated as one: nothing here assumes it is 100 uu on a
+	 * side or that its pivot is anywhere in particular. Whoever spawns a brick reads the
+	 * mesh's own bounds and sizes and places the actor from them, so a real brick mesh
+	 * dropped in here changes nothing but the asset path. See CURRENT_STATE.md on hard
+	 * content references from C++ — this one fails at CDO construction rather than at
+	 * compile time if the asset is ever deleted, which is what the required-content table
+	 * and its sweep exist to turn into a red test.
+	 */
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> BrickMeshAsset(
+		DestructionContent::BrickPlaceholderMeshPath);
 
 	Mesh->SetStaticMesh(BrickMeshAsset.Object);
 }
