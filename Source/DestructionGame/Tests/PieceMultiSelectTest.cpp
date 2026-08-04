@@ -537,6 +537,100 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 			{ MultiSelectRef(StructureId, 3) });
 	}
 
+	/*
+	 * ELEVEN: DELETING THE BRICK THE CURSOR IS ON LEAVES NOTHING POINTING AT A DEAD ACTOR.
+	 *
+	 * THIS ONE IS A NET RATHER THAN A DRIVER, AND IT IS GREEN ON ARRIVAL. Brick 3 is both hovered
+	 * and selected when it goes — the ray that picked it is the ray that is pointing at it — so
+	 * after the commit HoveredPiece names a piece that has been tombstoned and an actor that has
+	 * been destroyed. Nothing observable should be able to tell: RefreshPieceHighlight resolves
+	 * the ref before it reaches for an actor, so a ref naming a piece that has gone refreshes
+	 * nothing rather than dereferencing a destroyed one. It is pinned here because the highlight
+	 * is about to grow a MATERIAL as well as a flag, and a material set on a destroyed component
+	 * is the shape of bug that costs an afternoon.
+	 *
+	 * A HALF BAT IN THE TOP COURSE, so the delete orphans nothing and every other brick's state
+	 * is unambiguous — this is about the hover pointer, not about a cascade.
+	 */
+	{
+		const bool bCommitted = Controller->ChoosePieceMenuRow(0);
+
+		TestTrue(
+			TEXT("choosing the only row of brick 3's menu should commit the delete"),
+			bCommitted);
+
+		TestFalse(
+			TEXT("deleting brick 3 should have destroyed its actor"),
+			IsValid(Bricks[3]));
+
+		for (int32 Piece = 0; Piece < Bricks.Num(); ++Piece)
+		{
+			if (Piece == 3)
+			{
+				continue;
+			}
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("deleting the hovered brick 3 must leave brick %d alone at None, it reads %s (all bricks: %s)"),
+					Piece,
+					IsValid(Bricks[Piece])
+						? MultiSelectHighlightName(Bricks[Piece]->GetHighlight())
+						: TEXT("<gone>"),
+					*DescribeMultiSelectHighlights(Bricks)),
+				IsValid(Bricks[Piece]) && Bricks[Piece]->GetHighlight() == EBrickHighlight::None);
+		}
+
+		CheckMultiSelectMenu(*this, *Controller, TEXT("after deleting brick 3"), TArray<FPieceRef>());
+	}
+
+	/*
+	 * TWELVE: AND THE CURSOR STILL WORKS AFTERWARDS. The hovered ref is left naming a piece that
+	 * has gone, so the next mouse move has to let go of a ref that resolves to nothing and take
+	 * hold of a live one — which is the step that would go wrong if letting go reached for the
+	 * actor instead of resolving first.
+	 */
+	{
+		const FPieceRef OverTheHole = Controller->HoverAlongRay(
+			MultiSelectRayStart(Reference.Boxes[3]), MultiSelectRayEnd(Reference.Boxes[3]));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("hovering where brick 3 was should answer a default ref, it answered {%d,%d}"),
+				OverTheHole.StructureId, OverTheHole.PieceIndex),
+			MultiSelectSameRef(OverTheHole, FPieceRef()));
+
+		const FPieceRef Hovered = Controller->HoverAlongRay(
+			MultiSelectRayStart(Reference.Boxes[0]), MultiSelectRayEnd(Reference.Boxes[0]));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("hovering brick 0 after the delete should answer {%d,0}, it answered {%d,%d}"),
+				StructureId, Hovered.StructureId, Hovered.PieceIndex),
+			MultiSelectSameRef(Hovered, MultiSelectRef(StructureId, 0)));
+
+		for (int32 Piece = 0; Piece < Bricks.Num(); ++Piece)
+		{
+			if (Piece == 3)
+			{
+				continue;
+			}
+
+			const EBrickHighlight Wanted =
+				Piece == 0 ? EBrickHighlight::Hovered : EBrickHighlight::None;
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("after the delete, brick %d should read %s, it reads %s (all bricks: %s)"),
+					Piece, MultiSelectHighlightName(Wanted),
+					IsValid(Bricks[Piece])
+						? MultiSelectHighlightName(Bricks[Piece]->GetHighlight())
+						: TEXT("<gone>"),
+					*DescribeMultiSelectHighlights(Bricks)),
+				IsValid(Bricks[Piece]) && Bricks[Piece]->GetHighlight() == Wanted);
+		}
+	}
+
 	TestWorld.End();
 
 	return true;

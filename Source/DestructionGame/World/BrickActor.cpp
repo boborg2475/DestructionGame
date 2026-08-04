@@ -4,6 +4,7 @@
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "RequiredContent.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -38,6 +39,21 @@ ABrickActor::ABrickActor()
 		DestructionContent::BrickPlaceholderMeshPath);
 
 	Mesh->SetStaticMesh(BrickMeshAsset.Object);
+
+	/*
+	 * The two highlight overlays, by the same one spelling of their paths. They are separate
+	 * assets on purpose: three states that are not three distinguishable looks make the enum
+	 * decoration, and a brick that drew as chosen the moment the cursor crossed it takes away
+	 * the one thing a player must be able to check before pressing Delete.
+	 */
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> HoverMaterialAsset(
+		DestructionContent::BrickHoverMaterialPath);
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> SelectedMaterialAsset(
+		DestructionContent::BrickSelectedMaterialPath);
+
+	HoverMaterial = HoverMaterialAsset.Object;
+	SelectedMaterial = SelectedMaterialAsset.Object;
 }
 
 UStaticMeshComponent* ABrickActor::GetMesh() const
@@ -70,13 +86,37 @@ void ABrickActor::Release()
 void ABrickActor::SetHighlighted(EBrickHighlight NewHighlight)
 {
 	/*
-	 * STORING THE STATE IS ALL THIS DOES, AND THAT IS DELIBERATE. What a brick LOOKS like
-	 * is the same untestable inch as the menu widget — a code-built world has no renderer
-	 * to ask — so every decision about WHICH state a brick is in lives out in the
-	 * controller where it can be asserted, and whatever eventually reads this flag and
-	 * swaps a material must add no decision of its own.
+	 * THE STATE IS STORED AND THE OVERLAY IS SET FROM IT, AND THERE IS NO DECISION HERE
+	 * BEYOND THAT MAPPING. Which state a brick should be in is the controller's, decided in
+	 * one place and asserted there; this end only has to draw whatever it is told, so it
+	 * consults nothing — not the state it was in before, not the selection, not a cursor.
+	 * That is what keeps it idempotent and order-free rather than merely documented as such.
 	 */
 	Highlight = NewHighlight;
+
+	UMaterialInterface* Overlay = nullptr;
+
+	switch (NewHighlight)
+	{
+	case EBrickHighlight::Hovered:
+		Overlay = HoverMaterial;
+		break;
+
+	case EBrickHighlight::Selected:
+		Overlay = SelectedMaterial;
+		break;
+
+	default:
+		break;
+	}
+
+	/*
+	 * AN OVERLAY, NEVER SLOT 0. Highlighting is additive: the brick keeps its own material
+	 * underneath, so None is a single null rather than a restore of something remembered.
+	 * UStaticMeshComponent does not override GetDefaultOverlayMaterial, so null here really
+	 * does mean "wearing nothing" rather than falling back to some asset's own default.
+	 */
+	Mesh->SetOverlayMaterial(Overlay);
 }
 
 EBrickHighlight ABrickActor::GetHighlight() const

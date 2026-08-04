@@ -126,6 +126,18 @@ protected:
 	TObjectPtr<UInputAction> InspectPieceAction;
 
 	/**
+	 * The input that keeps the highlight following the cursor.
+	 *
+	 * A SECOND ACTION RATHER THAN IA_MouseLook, THOUGH BOTH READ Mouse2D. IA_MouseLook lives
+	 * in IMC_MouseLook, which SetPieceMenuControls takes away for as long as a menu is up — so
+	 * hover hung off it would stop updating at exactly the moment the cursor appears and the
+	 * player starts moving it over bricks to pick more. It therefore has to share the axis with
+	 * free-look, and RequiredContent.h records why the asset must not CONSUME it.
+	 */
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> HoverPieceAction;
+
+	/**
 	 * The always-on free-look context, named separately because the menu turns it off.
 	 *
 	 * IT IS ALSO IN DefaultMappingContexts, AND IT IS THE SAME POINTER — this is a name for
@@ -153,6 +165,19 @@ private:
 	 * untested surface.
 	 */
 	void OnInspectPiece();
+
+	/**
+	 * IA_HoverPiece's handler: turn the cursor into a world ray and call out what it points at.
+	 *
+	 * THE SAME DEPROJECTION-PLUS-ONE-CALL SHAPE AS OnInspectPiece, AND FOR THE SAME REASON —
+	 * DeprojectMousePositionToWorld needs a viewport, so this is untestable by construction and
+	 * everything that can be wrong in a way a player would notice lives behind HoverAlongRay.
+	 *
+	 * IT RUNS ON EVERY FRAME THE MOUSE MOVES, which is one line trace per moved frame against
+	 * whatever wall is up. That is the price of a highlight that is never stale, and it is the
+	 * reason the binding is on Triggered rather than Started; see SetupInputComponent.
+	 */
+	void OnHoverPiece();
 
 	/**
 	 * Hand the controls to the menu, or give them back.

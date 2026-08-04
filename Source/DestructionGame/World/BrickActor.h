@@ -7,6 +7,7 @@
 #include "GameFramework/Actor.h"
 #include "BrickActor.generated.h"
 
+class UMaterialInterface;
 class UStaticMeshComponent;
 
 /**
@@ -21,10 +22,11 @@ class UStaticMeshComponent;
  * None IS THE ZERO ENUMERATOR, deliberately, so a zero-initialised brick is a plain one
  * rather than one claiming to be selected — the same reason EPieceSupport::Falling is zero.
  *
- * THE STATE IS TESTED AND THE MATERIAL IS NOT. What a brick LOOKS like is the same untestable
- * inch as the menu widget, so the untested half is kept to exactly "read this flag, set a
- * material" and every decision about WHICH state a brick is in lives out here where it can be
- * asserted.
+ * WHICH MATERIAL A STATE ASKS FOR IS TESTED; WHAT IT LOOKS LIKE IS NOT. Asking a renderer
+ * whether a brick looks different needs a renderer, and a code-built world has none — but
+ * which asset the brick handed the component needs nothing but the component, so the untested
+ * inch is exactly "does the shader look nice" and no wider. Every decision about WHICH state a
+ * brick is in still lives out in the controller where it can be asserted.
  */
 enum class EBrickHighlight : uint8
 {
@@ -65,6 +67,10 @@ public:
 	 *
 	 * IDEMPOTENT AND ORDER-FREE: the argument is the state the brick should now be in, not a
 	 * nudge, so nothing has to remember what it set last or unwind it in the right order.
+	 *
+	 * THE OVERLAY IS ADDITIVE, WHICH IS WHY IT IS AN OVERLAY. Swapping slot 0 would mean
+	 * remembering the brick's own material and putting it back, i.e. a second record of its
+	 * appearance and one more thing to leave behind; clearing an overlay is a single null.
 	 */
 	void SetHighlighted(EBrickHighlight Highlight);
 
@@ -81,6 +87,21 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UStaticMeshComponent> Mesh;
+
+	/**
+	 * What each called-out state wears, resolved once onto the CDO by the paths
+	 * RequiredContent.h names.
+	 *
+	 * TWO NAMED PROPERTIES RATHER THAN ONE ARRAY INDEXED BY THE ENUM, because None wears
+	 * nothing: an array would carry a null in its first slot, and the required-content sweep
+	 * that reads these back cannot tell a deliberate null from a reference that stopped
+	 * resolving. Adding a fourth state is adding a property beside these.
+	 */
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> HoverMaterial;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> SelectedMaterial;
 
 	FPieceRef PieceRef;
 

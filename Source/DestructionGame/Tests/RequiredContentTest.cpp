@@ -8,6 +8,7 @@
 #include "Engine/StaticMesh.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
+#include "Materials/MaterialInterface.h"
 #include "RequiredContent.h"
 #include "UObject/UnrealType.h"
 #include "World/BrickActor.h"
@@ -113,6 +114,19 @@ namespace RequiredContentTestSupport
 	constexpr int32 ControllerMappingContextFloor = 2;
 
 	/**
+	 * AND THE BRICK'S HIGHLIGHT MATERIALS, which is a FOURTH sweep for the same reason the
+	 * controller's input actions needed a third: the sweeps are per class AND per asset type,
+	 * so the first UMaterialInterface to land anywhere in the module is swept by none of the
+	 * existing three.
+	 *
+	 * It is the reference whose absence is the quietest of the lot. Deleting the material does
+	 * not break a spawn, a solve or a click — the game runs exactly as it does now, and the only
+	 * symptom is that picking six bricks looks identical to picking none. Two, because three
+	 * highlight states need two materials and None needs nothing.
+	 */
+	constexpr int32 BrickHighlightMaterialFloor = 2;
+
+	/**
 	 * AND THE CONTROLLER'S OWN INPUT ACTIONS, which is a THIRD sweep rather than a wider one.
 	 *
 	 * The two sweeps above are per class AND per asset type, so a UInputAction declared on the
@@ -122,18 +136,18 @@ namespace RequiredContentTestSupport
 	 * contexts, it outlives any pawn, and it is what has the cursor and the deprojection), so
 	 * the first reference to land in it is exactly the one nothing was watching.
 	 *
-	 * One, because one is what the piece menu needs. A floor rather than an equality for the
-	 * same reason as the others.
+	 * TWO, because the controller now carries the hover input as well as the inspect one. A
+	 * floor rather than an equality for the same reason as the others.
 	 */
-	constexpr int32 ControllerInputActionFloor = 1;
+	constexpr int32 ControllerInputActionFloor = 2;
 
 	/**
-	 * The five input actions, two mapping contexts and one placeholder brick mesh the module
-	 * resolves by path today. A FLOOR rather than an equality: adding a hard reference is
-	 * meant to be adding a row, and a test asserting an exact count would have to be edited
-	 * alongside every one of them.
+	 * The six input actions, two mapping contexts, one placeholder brick mesh and two highlight
+	 * materials the module resolves by path today. A FLOOR rather than an equality: adding a
+	 * hard reference is meant to be adding a row, and a test asserting an exact count would have
+	 * to be edited alongside every one of them.
 	 */
-	constexpr int32 RequiredContentPathFloor = 8;
+	constexpr int32 RequiredContentPathFloor = 11;
 }
 
 /**
@@ -280,6 +294,22 @@ bool FRequiredContentResolvesTest::RunTest(const FString& Parameters)
 			TEXT("the player controller should declare at least %d UInputAction reference for the piece menu's input; found %d"),
 			ControllerInputActionFloor, ControllerActionsFound),
 		ControllerActionsFound >= ControllerInputActionFloor);
+
+	const int32 BrickMaterialStart = References.Num();
+
+	CollectDeclaredAssetReferences(
+		ABrickActor::StaticClass(),
+		GetDefault<ABrickActor>(),
+		UMaterialInterface::StaticClass(),
+		References);
+
+	const int32 BrickMaterialsFound = References.Num() - BrickMaterialStart;
+
+	TestTrue(
+		FString::Printf(
+			TEXT("the brick should declare at least %d UMaterialInterface references for its highlight states; found %d"),
+			BrickHighlightMaterialFloor, BrickMaterialsFound),
+		BrickMaterialsFound >= BrickHighlightMaterialFloor);
 
 	/*
 	 * AND THE BRICK MESH, WHICH IS NOT A UPROPERTY OF THE SAME SHAPE. It is set onto the

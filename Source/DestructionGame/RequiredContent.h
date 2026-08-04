@@ -44,6 +44,33 @@ namespace DestructionContent
 	inline constexpr const TCHAR* InspectPieceActionPath =
 		TEXT("/Game/Input/Actions/IA_InspectPiece.IA_InspectPiece");
 
+	/**
+	 * The input action that keeps the highlight following the cursor, bound on the CONTROLLER
+	 * beside IA_InspectPiece.
+	 *
+	 * A SECOND ACTION RATHER THAN IA_MouseLook, EVEN THOUGH BOTH READ THE SAME Mouse2D AXIS.
+	 * IA_MouseLook lives in IMC_MouseLook, and SetPieceMenuControls REMOVES that context for as
+	 * long as a menu is up — so hover hung off it would stop updating at exactly the moment the
+	 * cursor appears and the player starts moving it over bricks. IMC_Default is never removed,
+	 * which is the whole reason IA_InspectPiece lives there, and it is why this does too.
+	 */
+	inline constexpr const TCHAR* HoverPieceActionPath =
+		TEXT("/Game/Input/Actions/IA_HoverPiece.IA_HoverPiece");
+
+	/**
+	 * What a called-out brick wears, one asset per state that is not None.
+	 *
+	 * TWO ASSETS RATHER THAN ONE, because the three highlight states have to be three
+	 * DISTINGUISHABLE looks or the enum is decoration: the one thing a player must be able to
+	 * check before pressing Delete is which bricks are going, and a hovered brick that draws
+	 * like a selected one takes that away. They are overlays, so a brick keeps its own material
+	 * underneath and nothing has to remember what it replaced.
+	 */
+	inline constexpr const TCHAR* BrickHoverMaterialPath =
+		TEXT("/Game/Materials/M_BrickHover.M_BrickHover");
+	inline constexpr const TCHAR* BrickSelectedMaterialPath =
+		TEXT("/Game/Materials/M_BrickSelected.M_BrickSelected");
+
 	/* The two mapping contexts ADestructionGamePlayerController adds for a local player. */
 	inline constexpr const TCHAR* DefaultMappingContextPath = TEXT("/Game/Input/IMC_Default.IMC_Default");
 	inline constexpr const TCHAR* MouseLookMappingContextPath = TEXT("/Game/Input/IMC_MouseLook.IMC_MouseLook");

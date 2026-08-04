@@ -18,9 +18,12 @@ namespace
 		DestructionContent::MouseLookActionPath,
 		DestructionContent::AscendActionPath,
 		DestructionContent::InspectPieceActionPath,
+		DestructionContent::HoverPieceActionPath,
 		DestructionContent::DefaultMappingContextPath,
 		DestructionContent::MouseLookMappingContextPath,
-		DestructionContent::BrickPlaceholderMeshPath
+		DestructionContent::BrickPlaceholderMeshPath,
+		DestructionContent::BrickHoverMaterialPath,
+		DestructionContent::BrickSelectedMaterialPath
 	};
 }
 

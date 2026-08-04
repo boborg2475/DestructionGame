@@ -74,14 +74,18 @@ namespace
 static constexpr int32 PieceMenuMappingContextPriority = 0;
 
 /*
- * How far the inspect ray reaches, in cm (1 uu = 1 cm), i.e. 100 m.
+ * How far a ray cast from the cursor reaches, in cm (1 uu = 1 cm), i.e. 100 m.
  *
- * IT LIVES IN THE HANDLER'S HALF, WHICH IS THE UNTESTED ONE, so it is a reach rather than a
+ * ONE REACH FOR BOTH HANDLERS, because they are the same ray: what a click would hit and what
+ * the cursor is pointing at must be the same brick, and two constants is two ways for them to
+ * stop being.
+ *
+ * IT LIVES IN THE HANDLERS' HALF, WHICH IS THE UNTESTED ONE, so it is a reach rather than a
  * tuned threshold: the game mode's wall is about 6.6 m across and 3 m tall, and a flying
  * observer is expected to be tens of metres off it. Nothing downstream depends on the value —
  * the trace either hits a brick or it does not, and a miss dismisses.
  */
-static constexpr double PieceMenuInspectReachCm = 10000.0;
+static constexpr double PieceMenuCursorReachCm = 10000.0;
 
 ADestructionGamePlayerController::ADestructionGamePlayerController()
 {
@@ -109,6 +113,11 @@ ADestructionGamePlayerController::ADestructionGamePlayerController()
 	static ConstructorHelpers::FObjectFinder<UInputAction> InspectPieceActionAsset(DestructionContent::InspectPieceActionPath);
 
 	InspectPieceAction = InspectPieceActionAsset.Object;
+
+	/* and the one that keeps the highlight under the cursor, mapped in IMC_Default beside it */
+	static ConstructorHelpers::FObjectFinder<UInputAction> HoverPieceActionAsset(DestructionContent::HoverPieceActionPath);
+
+	HoverPieceAction = HoverPieceActionAsset.Object;
 }
 
 TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
@@ -512,6 +521,29 @@ void ADestructionGamePlayerController::SetupInputComponent()
 				this,
 				&ADestructionGamePlayerController::OnInspectPiece);
 		}
+
+		/*
+		 * HOVER BINDS ON Triggered, WHICH IS THE OPPOSITE OF THE LINE ABOVE AND IS THE POINT.
+		 * Inspecting is a one-shot press; hovering is a continuous axis, and with no explicit
+		 * trigger asset Enhanced Input actuates an axis action on every frame its value is
+		 * non-zero — i.e. on exactly the frames the mouse moved, which are exactly the frames
+		 * on which what is under the cursor can have changed. Started fires on the first frame
+		 * of a gesture and not again until the mouse stops and restarts, so the highlight would
+		 * update once per drag and be stale for the rest of it; Completed fires when the mouse
+		 * STOPS, so the brick called out would always be the previous one. A still mouse costs
+		 * no traces at all, because an unactuated axis fires nothing.
+		 *
+		 * AND EXACTLY ONCE, for the same reason as above: a second binding traces and
+		 * re-highlights twice on every moved frame for an answer that was already correct.
+		 */
+		if (HoverPieceAction != nullptr)
+		{
+			EnhancedInputComponent->BindAction(
+				HoverPieceAction,
+				ETriggerEvent::Triggered,
+				this,
+				&ADestructionGamePlayerController::OnHoverPiece);
+		}
 	}
 }
 
@@ -529,5 +561,23 @@ void ADestructionGamePlayerController::OnInspectPiece()
 		return;
 	}
 
-	InspectAlongRay(StartCm, StartCm + Direction * PieceMenuInspectReachCm);
+	InspectAlongRay(StartCm, StartCm + Direction * PieceMenuCursorReachCm);
+}
+
+void ADestructionGamePlayerController::OnHoverPiece()
+{
+	FVector StartCm;
+	FVector Direction;
+
+	/*
+	 * Same untestable inch as OnInspectPiece, and the same failure closed: no viewport means no
+	 * ray, and the out parameters are left untouched, so this returns rather than tracing along
+	 * whatever happened to be on the stack.
+	 */
+	if (!DeprojectMousePositionToWorld(StartCm, Direction))
+	{
+		return;
+	}
+
+	HoverAlongRay(StartCm, StartCm + Direction * PieceMenuCursorReachCm);
 }
