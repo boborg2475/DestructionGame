@@ -54,7 +54,7 @@ namespace PieceInspectTestSupport
 	}
 
 	/** What came back, so a failure reads without a debugger. */
-	FString DescribeInspectRows(const TArray<FPieceMenuRow>& Rows)
+	FString DescribeInspectRows(TArrayView<const FPieceMenuRow> Rows)
 	{
 		if (Rows.Num() == 0)
 		{
@@ -103,6 +103,26 @@ namespace PieceInspectTestSupport
  * that opens a menu on a hit and simply returns on a miss leaves the previous brick's menu on
  * screen naming a brick the player is no longer pointing at — and then a click on Delete
  * removes it. Nothing about that looks like a bug until a wall loses a brick nobody chose.
+ *
+ * AND THE MISS ROWS ARE NOW ASSERTED AGAINST THE PRESENTER, NOT ONLY AGAINST THE RETURN VALUE,
+ * which is what makes them able to fail at all. CURRENT_STATE.md records that the two miss
+ * rows below were structurally redundant: three independent guards each produce an empty list
+ * for a miss, so no single mutation of the wire could make one return rows. What they were
+ * written to guard against is a STATEFUL presenter — and the moment something remembers the
+ * last menu, "open on a hit, return on a miss" becomes writable and is the obvious shape to
+ * write. So a miss must now leave the presenter EMPTY as well as return nothing, and the
+ * per-brick loop asserts the presenter is showing that brick's rows so that there is genuinely
+ * a menu up for the miss to fail to dismiss.
+ *
+ * THE PRESENTING BELONGS TO InspectAlongRay RATHER THAN TO THE INPUT HANDLER, and that is the
+ * placement this test pins. The handler is the one part of the chain no test can reach, so it
+ * must stay a deprojection plus one call; putting "and then show it" in the handler would move
+ * the dismiss-on-miss decision — the exact thing above — into the untestable half.
+ *
+ * THIS CONTROLLER HAS NO ULocalPlayer, DELIBERATELY. It is spawned bare, so there is no
+ * Enhanced Input subsystem to remove a look context from and no cursor to show. Presenting
+ * must therefore work rather than merely not crash without one;
+ * DestructionGame.World.Menu.PieceMenuPresenterState owns the half that needs a local player.
  *
  * NEEDS A TICKING WORLD: it needs a WORLD — actors to spawn into, a physics scene for the
  * trace, a controller to spawn — but it deliberately never ticks one. Nothing here is about
@@ -252,6 +272,37 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 					Piece, Index, Piece, Rows[Index].Ref.PieceIndex),
 				Rows[Index].Ref.PieceIndex, Piece);
 		}
+
+		/*
+		 * AND THE ROWS ARE ACTUALLY PRESENTED, not merely returned. Handing them back is what
+		 * makes this testable; putting them on screen is what makes it a menu.
+		 */
+		const TArrayView<const FPieceMenuRow> Shown = Controller->GetShownPieceMenuRows();
+
+		TestTrue(
+			*FString::Printf(TEXT("inspecting piece %d should leave its menu on screen, it shows [%s]"),
+				Piece, *DescribeInspectRows(Shown)),
+			Controller->IsPieceMenuShown());
+
+		TestEqual(
+			FString::Printf(
+				TEXT("inspecting piece %d should present the %d row(s) it returned, it presents %d [%s]"),
+				Piece, Rows.Num(), Shown.Num(), *DescribeInspectRows(Shown)),
+			Shown.Num(), Rows.Num());
+
+		if (Shown.Num() == Rows.Num())
+		{
+			for (int32 Index = 0; Index < Shown.Num(); ++Index)
+			{
+				TestTrue(
+					*FString::Printf(
+						TEXT("inspecting piece %d: presented row %d should be the row it returned, it names {%d,%d}"),
+						Piece, Index, Shown[Index].Ref.StructureId, Shown[Index].Ref.PieceIndex),
+					Shown[Index].Action == Rows[Index].Action
+						&& Shown[Index].Ref.StructureId == Rows[Index].Ref.StructureId
+						&& Shown[Index].Ref.PieceIndex == Rows[Index].Ref.PieceIndex);
+			}
+		}
 	}
 
 	/*
@@ -279,12 +330,37 @@ bool FPieceInspectOpensTheMenuTest::RunTest(const FString& Parameters)
 
 	for (const FMissCase& Miss : Misses)
 	{
+		/*
+		 * A MENU IS UP GOING INTO EVERY MISS, and that is what gives the two rows below
+		 * something to fail at. The loop above left one on screen; re-showing here makes the
+		 * precondition explicit rather than depending on the order of the file, and it is
+		 * asserted, because a miss that dismisses nothing is not evidence of anything.
+		 */
+		Controller->InspectAlongRay(
+			FVector(Reference.Boxes[0].CentreCm.X, Reference.Boxes[0].CentreCm.Y - InspectReachCm, Reference.Boxes[0].CentreCm.Z),
+			FVector(Reference.Boxes[0].CentreCm.X, Reference.Boxes[0].CentreCm.Y + InspectReachCm, Reference.Boxes[0].CentreCm.Z));
+
+		TestTrue(
+			*FString::Printf(TEXT("fixture: a menu should be on screen before %s"), Miss.Description),
+			Controller->IsPieceMenuShown());
+
 		const TArray<FPieceMenuRow> Rows = Controller->InspectAlongRay(Miss.Start, Miss.End);
 
 		TestEqual(
 			FString::Printf(TEXT("%s must dismiss the menu, it offered [%s]"),
 				Miss.Description, *DescribeInspectRows(Rows)),
 			Rows.Num(), 0);
+
+		/*
+		 * THE ROW THAT CAN ACTUALLY FAIL. Returning nothing is guarded three times over
+		 * already; leaving the last brick's menu on screen is not guarded at all until
+		 * something remembers it, which is what the widget half now does.
+		 */
+		TestTrue(
+			*FString::Printf(TEXT("%s must take the previous brick's menu down, it still shows [%s]"),
+				Miss.Description, *DescribeInspectRows(Controller->GetShownPieceMenuRows())),
+			!Controller->IsPieceMenuShown()
+				&& Controller->GetShownPieceMenuRows().Num() == 0);
 	}
 
 	/*

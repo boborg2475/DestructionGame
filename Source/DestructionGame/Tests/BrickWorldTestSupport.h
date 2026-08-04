@@ -9,11 +9,17 @@
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Core/StructureBinding.h"
+#include "DestructionGamePlayerController.h"
+#include "EnhancedInputSubsystems.h"
+#include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/WorldSettings.h"
+#include "GenericPlatform/GenericPlatformMisc.h"
 #include "Misc/AutomationTest.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Templates/SubclassOf.h"
@@ -375,6 +381,78 @@ namespace BrickWorldTestSupport
 			Subsystem = nullptr;
 		}
 	};
+
+	/**
+	 * A player controller with a REAL ULocalPlayer behind it, which is what makes the engine
+	 * run SetupInputComponent — and therefore the only way to see what the controller bound.
+	 *
+	 * WHY NOT JUST CALL SetupInputComponent. It is protected, and reaching it by a test-side
+	 * subclass would need a UCLASS, which UHT only processes in headers. APlayerController::
+	 * SetPlayer is the production route: it marks the controller local and calls
+	 * InitInputSystem, which spawns the UEnhancedInputComponent named by DefaultInput.ini and
+	 * then calls SetupInputComponent. Driving the real path is also what keeps this fixture
+	 * honest — a binding that only appears when a test pokes it is not a binding.
+	 *
+	 * WHY NOT UGameInstance::CreateLocalPlayer. It contains `ensure(IsDedicatedServerInstance())`
+	 * on the no-viewport path, and a fired ensure is counted by the automation framework as a
+	 * failure of whatever test is running. AddLocalPlayer is the half below that ensure and is
+	 * viewport-safe: ULocalPlayer::PlayerAdded takes a null UGameViewportClient and still
+	 * initialises the subsystem collection, which is where the Enhanced Input local player
+	 * subsystem comes from.
+	 *
+	 * A CONTROLLER WITHOUT ONE IS A DIFFERENT AND ALSO VALID FIXTURE — Tests/PieceInspectTest.cpp
+	 * spawns a bare one deliberately, so anything that needs a local player must fail closed
+	 * rather than crash.
+	 */
+	inline ADestructionGamePlayerController* SpawnControllerWithLocalPlayer(
+		FAutomationTestBase& Test,
+		UWorld* World)
+	{
+		if (World == nullptr || GEngine == nullptr || GEngine->LocalPlayerClass == nullptr)
+		{
+			Test.AddError(TEXT("fixture: no world, or the engine names no ULocalPlayer class"));
+			return nullptr;
+		}
+
+		UGameInstance* const GameInstance = World->GetGameInstance();
+
+		if (GameInstance == nullptr)
+		{
+			Test.AddError(TEXT("fixture: the test world has no UGameInstance to add a local player to"));
+			return nullptr;
+		}
+
+		ADestructionGamePlayerController* const Controller =
+			World->SpawnActor<ADestructionGamePlayerController>();
+
+		if (Controller == nullptr)
+		{
+			Test.AddError(TEXT("fixture: the game's player controller failed to spawn"));
+			return nullptr;
+		}
+
+		ULocalPlayer* const LocalPlayer =
+			NewObject<ULocalPlayer>(GEngine, GEngine->LocalPlayerClass);
+
+		GameInstance->AddLocalPlayer(
+			LocalPlayer, FGenericPlatformMisc::GetPlatformUserForUserIndex(0));
+
+		Controller->SetPlayer(LocalPlayer);
+
+		Test.TestTrue(
+			TEXT("fixture: SetPlayer should have marked the controller a local player controller"),
+			Controller->IsLocalPlayerController());
+
+		return Controller;
+	}
+
+	/** The Enhanced Input subsystem for a controller's local player, or null. */
+	inline UEnhancedInputLocalPlayerSubsystem* InputSubsystemOf(APlayerController* Controller)
+	{
+		return Controller != nullptr
+			? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(Controller->GetLocalPlayer())
+			: nullptr;
+	}
 
 	/** The actor for a piece handle, or null with the reason reported. */
 	inline ABrickActor* BrickAt(FAutomationTestBase& Test, FStructureBinding& Binding, int32 Piece)
