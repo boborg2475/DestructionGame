@@ -2,6 +2,23 @@
 
 #include "Core/Structure.h"
 
+/*
+ * EVERY NAME IN HERE CARRIES A Solver PREFIX, AND THAT IS NOT DECORATION.
+ *
+ * An anonymous namespace is private to a TRANSLATION UNIT rather than to a file, and a
+ * unity build merges many files into one — at which point every anonymous namespace in
+ * the blob is the SAME namespace, and two file-local names that collide are a hard
+ * compile error between files that never refer to each other. Several test files
+ * legitimately transcribe these same constants (the tier cosine has to agree with RoleOf
+ * bit for bit, so it is spelled twice on purpose), and a `using namespace` for their own
+ * support namespace then makes the bare name ambiguous against this one. That is exactly
+ * what happened when this directory gained its third new file, and it is luck-dependent
+ * on how UBT partitioned the blob that day.
+ *
+ * So production file-local names are spelled for what they belong to, per CURRENT_STATE.md.
+ * Grep still finds both halves of the standing lockstep instruction below, because the
+ * distinctive part of each name is unchanged.
+ */
 namespace
 {
 	/**
@@ -12,7 +29,7 @@ namespace
 	 * baked into the 980 rather than applied on top of it. Multiplying by 100 a
 	 * second time here is the standard way to be wrong by exactly 100x.
 	 */
-	constexpr double GravityCmPerSecondSquared = 980.0;
+	constexpr double SolverGravityCmPerSecondSquared = 980.0;
 
 	/**
 	 * Where the line between a bed joint and a head joint sits: cos(45 degrees).
@@ -26,7 +43,7 @@ namespace
 	 * connection profile, and it belongs with the generalisation to non-gravity load
 	 * directions that DESIGN.md §3 already flags as outstanding.
 	 */
-	constexpr double BedJointCosine = 0.70710678118654752440;
+	constexpr double SolverBedJointCosine = 0.70710678118654752440;
 
 	/** The piece at the far end of a connection, or INDEX_NONE if it is not on it. */
 	int32 OtherEndOf(const FConnection& Connection, int32 PieceIndex)
@@ -45,7 +62,7 @@ namespace
 	}
 
 	/** What a connection is TO ONE OF ITS PIECES — the relation is directed. */
-	enum class EJointRole : uint8
+	enum class ESolverJointRole : uint8
 	{
 		/** Not a joint on this piece at all. */
 		None,
@@ -77,12 +94,12 @@ namespace
 	 * than in the comparison because a NaN falling through would land in Head, and
 	 * Head is a support tier.
 	 */
-	EJointRole RoleOf(const FConnection& Connection, int32 PieceIndex)
+	ESolverJointRole RoleOf(const FConnection& Connection, int32 PieceIndex)
 	{
 		FVector UnitNormal = Connection.InterfaceNormal;
 		if (!UnitNormal.Normalize())
 		{
-			return EJointRole::None;
+			return ESolverJointRole::None;
 		}
 
 		double NormalZTowardPiece = 0.0;
@@ -96,15 +113,15 @@ namespace
 		}
 		else
 		{
-			return EJointRole::None;
+			return ESolverJointRole::None;
 		}
 
-		if (!(FMath::Abs(NormalZTowardPiece) > BedJointCosine))
+		if (!(FMath::Abs(NormalZTowardPiece) > SolverBedJointCosine))
 		{
-			return EJointRole::Head;
+			return ESolverJointRole::Head;
 		}
 
-		return NormalZTowardPiece > 0.0 ? EJointRole::BedBeneath : EJointRole::BedAbove;
+		return NormalZTowardPiece > 0.0 ? ESolverJointRole::BedBeneath : ESolverJointRole::BedAbove;
 	}
 
 	/**
@@ -415,11 +432,11 @@ void FStructure::SolveLoads()
 
 			switch (RoleOf(Connections[Index], PieceIndex))
 			{
-			case EJointRole::BedBeneath:
+			case ESolverJointRole::BedBeneath:
 				SupportConnections[PieceIndex].Add(Index);
 				break;
 
-			case EJointRole::Head:
+			case ESolverJointRole::Head:
 				HeadConnections.Add(Index);
 				break;
 
@@ -628,7 +645,7 @@ void FStructure::SolveLoads()
 			const int32 Current = Ready[Order];
 
 			const double TotalUU =
-				ReceivedFromAboveUU[Current] + Pieces[Current].MassKg * GravityCmPerSecondSquared;
+				ReceivedFromAboveUU[Current] + Pieces[Current].MassKg * SolverGravityCmPerSecondSquared;
 
 			double TotalAreaSqCm = 0.0;
 			for (const int32 Index : LoadPaths[Current])

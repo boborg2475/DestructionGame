@@ -806,8 +806,8 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		FString::Printf(
 			TEXT("fixture precondition: the centroid direction of a running-bond bed joint must NOT")
 			TEXT(" read as vertical, |Z| = %.10g against cos45 = %.10g"),
-			FMath::Abs(CentroidDirection.Z), BedJointCosine),
-		FMath::Abs(CentroidDirection.Z) < BedJointCosine);
+			FMath::Abs(CentroidDirection.Z), LayoutTestSupport::BedJointCosine),
+		FMath::Abs(CentroidDirection.Z) < LayoutTestSupport::BedJointCosine);
 
 	FConnection BedJoint;
 	const bool bBedAccepted =
@@ -822,8 +822,8 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 				TEXT("the produced bed normal must classify as a BED joint: |Z| = %.10g must exceed")
 				TEXT(" cos45 = %.10g. A centroid normal gives 0.5547 and every bed joint in the wall")
 				TEXT(" becomes a head joint"),
-				FMath::Abs(BedJoint.InterfaceNormal.Z), BedJointCosine),
-			FMath::Abs(BedJoint.InterfaceNormal.Z) > BedJointCosine);
+				FMath::Abs(BedJoint.InterfaceNormal.Z), LayoutTestSupport::BedJointCosine),
+			FMath::Abs(BedJoint.InterfaceNormal.Z) > LayoutTestSupport::BedJointCosine);
 
 		TestFalse(
 			FString::Printf(
@@ -1883,8 +1883,8 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 					{
 						switch (RoleFor(Structure.GetConnection(Index), Piece))
 						{
-						case EJointRole::BedBeneath: ++BedBeneath; break;
-						case EJointRole::Head:       ++HeadJoints; break;
+						case LayoutTestSupport::EJointRole::BedBeneath: ++BedBeneath; break;
+						case LayoutTestSupport::EJointRole::Head:       ++HeadJoints; break;
 						default: break;
 						}
 					}
@@ -1975,7 +1975,7 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 						DestructionForce::ClassifyForce(Force, Connection.InterfaceNormal);
 
 					const bool bBedJoint =
-						FMath::Abs(Connection.InterfaceNormal.Z) > BedJointCosine;
+						FMath::Abs(Connection.InterfaceNormal.Z) > LayoutTestSupport::BedJointCosine;
 
 					if (bBedJoint)
 					{

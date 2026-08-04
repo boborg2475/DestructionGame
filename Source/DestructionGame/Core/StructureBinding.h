@@ -82,8 +82,8 @@ struct FPieceBinding
  * structure's lifetime, turn a piece handle into the brick the player is looking at,
  * and push each solve's answer back onto those bricks. That is this, and it is
  * deliberately still a PLAIN STRUCT with no world and no UObject of its own, so it is
- * unit-testable exactly like FStructure. A UWorldSubsystem will own one of these and
- * do the actor-facing work; that is the next slice, not this one.
+ * unit-testable exactly like FStructure. UDestructionStructureSubsystem is the
+ * UWorldSubsystem that owns one of these and does the actor-facing work.
  *
  * THE TWO ARRAYS CANNOT DESYNC, BECAUSE THE DESYNC IS INEXPRESSIBLE. The structure is
  * private and GetStructure hands back a CONST reference even from a mutable binding,

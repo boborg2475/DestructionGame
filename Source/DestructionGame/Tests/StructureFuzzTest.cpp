@@ -1158,7 +1158,7 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 		double TotalWeightUU = 0.0;
 		for (const FFuzzPiece& Piece : Case.Pieces)
 		{
-			TotalWeightUU += Piece.MassKg * GravityCmPerSecondSquared;
+			TotalWeightUU += Piece.MassKg * StructureFuzzSupport::GravityCmPerSecondSquared;
 		}
 
 		const double Tolerance = FMath::Max(1.0e-6, 1.0e-9 * TotalWeightUU);
@@ -1226,7 +1226,7 @@ bool FStructureFuzzTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
-			const double OwnWeightUU = Case.Pieces[Index].MassKg * GravityCmPerSecondSquared;
+			const double OwnWeightUU = Case.Pieces[Index].MassKg * StructureFuzzSupport::GravityCmPerSecondSquared;
 			ReportedSupportedWeightUU += OwnWeightUU;
 
 			/*
@@ -1627,7 +1627,7 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 		double TotalWeightUU = 0.0;
 		for (const FFuzzPiece& Piece : Case.Pieces)
 		{
-			TotalWeightUU += Piece.MassKg * GravityCmPerSecondSquared;
+			TotalWeightUU += Piece.MassKg * StructureFuzzSupport::GravityCmPerSecondSquared;
 		}
 
 		const double Tolerance = FMath::Max(1.0e-6, 1.0e-9 * TotalWeightUU);
@@ -1973,7 +1973,7 @@ bool FStructureCascadeFuzzTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
-			const double OwnWeightUU = Case.Pieces[Index].MassKg * GravityCmPerSecondSquared;
+			const double OwnWeightUU = Case.Pieces[Index].MassKg * StructureFuzzSupport::GravityCmPerSecondSquared;
 			ReportedSupportedWeightUU += OwnWeightUU;
 
 			/*

@@ -134,7 +134,13 @@ The cost is that we own the load maths instead of asking Chaos for it. That is a
 
 Releasing a piece to dynamic was measured too: it settles within 0.018 cm and stays put. That transition is the mechanism collapse is built on.
 
-> Also established by the spike: physics simulates normally under `-nullrhi`, so integration tests can run headless; and `SM_Cube` is authored at 100 uu, so brick scale is simply dimension ÷ 100.
+> Also established by the spike: physics simulates normally under `-nullrhi`, so integration tests can run headless.
+
+**Read a mesh's scale AND its pivot off its own bounds. Never hard-code either.** *(Corrected 2026-08-04 — an earlier version of this note said `SM_Cube` is authored at 100 uu "so brick scale is simply dimension ÷ 100", which invited exactly the two constants that produce a plausible-looking wrong wall.)*
+
+The 100 uu figure is true of the current placeholder and of nothing else, so `/ 100.0` is silently wrong the day a real brick mesh lands — and a wrong scale gives a wall that looks entirely reasonable. Worse, and only found by measuring: **`SM_Cube`'s pivot is at a corner**, min (0,0,0) max (100,100,100), not at its centre. Placing an actor at a piece's box centre therefore puts the brick a half-size out on **all three axes** — 10.75 × 5.125 × 3.25 cm for a full brick — while `GetActorLocation()` agrees with the layout perfectly. The wall sits visibly off its own grid and every position readout says it is fine.
+
+Both come off `GetBoundingBox()`: scale is `BoxSize / LocalBounds.GetSize()`, and the origin is `Box.CentreCm - Scale * LocalBounds.GetCenter()`. This is also why a spawned-brick test must assert on `GetComponentsBoundingBox()` rather than `GetActorLocation()` — bounds-versus-box is pivot-agnostic *and* catches a 100× scale error in the same comparison.
 
 ### How load reaches the ground
 
