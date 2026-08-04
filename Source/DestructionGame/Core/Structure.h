@@ -223,6 +223,21 @@ struct FStructure
 
 	int32 NumConnections() const;
 
+	/**
+	 * How many times this structure has been solved, ever.
+	 *
+	 * THE ONLY OBSERVABLE A COST CLAIM CAN BE MADE AGAINST. Solving is deterministic and
+	 * non-destructive, so solving twice is invisible in every other reading of the graph —
+	 * which means "the batched commit solves ONCE rather than once per piece" is unfalsifiable
+	 * without a counter, and an unfalsifiable claim in a comment is not a claim. A full solve
+	 * is tens of milliseconds at scenario scale, so the difference between one and ten is the
+	 * difference between a click and a stutter.
+	 *
+	 * IT COUNTS SOLVES, NOT CHANGES. SolveAndBreak runs several, and it is meant to; nothing
+	 * here is a budget or a limit, and no production code branches on it.
+	 */
+	int32 NumSolves() const;
+
 	/** Out-of-range handles return a default-constructed placeholder. */
 	const FStructurePiece& GetPiece(int32 PieceIndex) const;
 	const FConnection& GetConnection(int32 ConnectionIndex) const;
@@ -473,4 +488,13 @@ private:
 	 * whether a joint gave, never when.
 	 */
 	TArray<int32> ConnectionBreakPass;
+
+	/**
+	 * How many times SolveLoads has been entered, ever. See NumSolves.
+	 *
+	 * NOT SOLVER OUTPUT, so it sits below the arrays rather than among them: every one of
+	 * those is rebuilt by a solve, and this is the only field a solve accumulates. Nothing
+	 * clears it and nothing branches on it.
+	 */
+	int32 SolveCount = 0;
 };

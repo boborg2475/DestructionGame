@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Core/PieceMenu.h"
+#include "Core/PieceSelection.h"
 #include "GameFramework/PlayerController.h"
 #include "Input/Reply.h"
 #include "DestructionGamePlayerController.generated.h"
@@ -11,6 +12,9 @@
 class SWidget;
 class UInputAction;
 class UInputMappingContext;
+
+/* Declared with its underlying type in World/BrickActor.h, which only the .cpp needs. */
+enum class EBrickHighlight : uint8;
 
 /**
  *  Player Controller for the destruction sandbox.
@@ -42,6 +46,31 @@ public:
 	 *         pointing at.
 	 */
 	TArray<FPieceMenuRow> InspectAlongRay(const FVector& StartCm, const FVector& EndCm);
+
+	/**
+	 * Call out whatever this ray hits, so the player can see what they would hit.
+	 *
+	 * SEPARATE FROM InspectAlongRay BECAUSE HOVERING IS NOT CLICKING. This changes nothing but
+	 * which brick is called out: no selection is touched, no menu opens and none closes. The
+	 * same seam is drawn at the same place for the same reason — the cursor-to-ray half needs a
+	 * viewport and this half needs only a world.
+	 *
+	 * A SELECTED BRICK STAYS SELECTED WHEN IT IS HOVERED. The two states are distinct on
+	 * purpose, and the stronger one wins: a brick the menu is about must not start reading as
+	 * merely-pointed-at because the cursor drifted over it.
+	 *
+	 * @return the piece now hovered, or a default ref when the ray hit nothing.
+	 */
+	FPieceRef HoverAlongRay(const FVector& StartCm, const FVector& EndCm);
+
+	/**
+	 * The bricks the player has picked, which is what the menu is about.
+	 *
+	 * THE COUNT A MENU REPORTS IS Num() ON THIS, and the rows carry the same refs, because the
+	 * menu is a projection of this set rebuilt whenever it changes rather than a second record
+	 * of it. A MENU IS UP EXACTLY WHEN THIS IS NON-EMPTY.
+	 */
+	const FPieceSelection& GetPieceSelection() const;
 
 	/**
 	 * Put these rows on screen as the piece menu, replacing whatever was up.
@@ -158,8 +187,47 @@ private:
 	/** A button's click: choose the row it stands for. Nothing else belongs here. */
 	FReply OnPieceMenuRowClicked(int32 RowIndex);
 
+	/**
+	 * What state this brick should now be called out in, and putting it there.
+	 *
+	 * ONE FUNCTION DECIDES, AND EVERY ROUTE ASKS IT, which is what makes "the stronger state
+	 * wins" true everywhere rather than at the call sites somebody remembered: a selected
+	 * brick under the cursor reads Selected, so it cannot flicker back to merely-pointed-at
+	 * the moment the player looks at it. Both halves are read back off the selection and the
+	 * hovered ref rather than remembered per brick, so there is no third record to drift.
+	 *
+	 * A ref naming no brick refreshes nothing, which is what makes the pieces a commit has
+	 * just destroyed harmless to pass in.
+	 */
+	EBrickHighlight HighlightForPiece(const FPieceRef& Ref) const;
+	void RefreshPieceHighlight(const FPieceRef& Ref);
+
+	/** Point at this piece, or at nothing, letting whatever was pointed at before go. */
+	void SetHoveredPiece(const FPieceRef& Ref);
+
+	/**
+	 * Pick nothing, and stop calling out everything that was picked.
+	 *
+	 * THE REFS ARE COPIED OUT FIRST, because Clear empties the very array they live in — the
+	 * same trap ChoosePieceMenuRow copies its row for. A cleared set that left bricks lit
+	 * tells the player they still have a selection.
+	 */
+	void ClearPieceSelection();
+
 	/** The rows on screen right now. Empty means no menu. */
 	TArray<FPieceMenuRow> ShownPieceMenuRows;
+
+	/** The bricks picked so far. Empty means no menu, because the menu is built from it. */
+	FPieceSelection PieceSelection;
+
+	/**
+	 * The one brick under the cursor, or a default ref for none.
+	 *
+	 * ONE REF RATHER THAN A SET, because there is one cursor. It is not a second record of
+	 * anything: which bricks are PICKED is the selection's, and this is only what is being
+	 * pointed at — the two are combined by HighlightForPiece and nowhere else.
+	 */
+	FPieceRef HoveredPiece;
 
 	/** The widget those rows are drawn as, valid only while a menu is up. */
 	TSharedPtr<SWidget> PieceMenuWidget;

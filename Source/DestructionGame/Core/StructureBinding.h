@@ -29,6 +29,20 @@ struct FPieceRef
 
 	/** Position in that structure's piece array. */
 	int32 PieceIndex = INDEX_NONE;
+
+	/**
+	 * BY VALUE, BECAUSE A REF IS TWO INTEGERS AND NOTHING ELSE.
+	 *
+	 * The same piece is named by many different FPieceRef objects — one copied onto the
+	 * brick at spawn, one that came back out of a trace, one carried on a menu row — so
+	 * anything asking "is this the piece I already have" must compare what they say
+	 * rather than where they live. Written once here so the selection, the presenter and
+	 * anything after them cannot each grow their own slightly different version.
+	 */
+	bool operator==(const FPieceRef& Other) const
+	{
+		return StructureId == Other.StructureId && PieceIndex == Other.PieceIndex;
+	}
 };
 
 /**

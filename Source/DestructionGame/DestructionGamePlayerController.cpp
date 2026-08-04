@@ -17,7 +17,50 @@
 #include "Core/PieceActions.h"
 #include "DestructionGameCameraManager.h"
 #include "RequiredContent.h"
+#include "World/BrickActor.h"
 #include "World/DestructionStructureSubsystem.h"
+
+/*
+ * File-local names carry a PieceMenu prefix. An anonymous namespace is private to a
+ * TRANSLATION UNIT rather than to a file, and a unity build merges many files into one —
+ * so two file-local names that collide are a hard compile error between files that never
+ * refer to each other. See CURRENT_STATE.md.
+ */
+namespace
+{
+	/** The subsystem holding this world's walls, or null. There is no world in a bare CDO. */
+	UDestructionStructureSubsystem* PieceMenuSubsystemOf(const AActor& Actor)
+	{
+		UWorld* const World = Actor.GetWorld();
+
+		return World != nullptr ? World->GetSubsystem<UDestructionStructureSubsystem>() : nullptr;
+	}
+
+	/**
+	 * The brick standing for this ref, or null.
+	 *
+	 * THE REF IS RESOLVED RATHER THAN INDEXED, so a ref naming a piece that has gone — which
+	 * is what every ref becomes the moment a commit runs — answers null instead of reaching
+	 * a tombstoned slot. GetActor already answers null for INDEX_NONE, for a removed piece
+	 * and for an actor destroyed by any route, so the cast is the only check left.
+	 */
+	ABrickActor* PieceMenuBrickForRef(UDestructionStructureSubsystem* Subsystem, const FPieceRef& Ref)
+	{
+		if (Subsystem == nullptr)
+		{
+			return nullptr;
+		}
+
+		const FStructureBinding* const Binding = Subsystem->Find(Ref.StructureId);
+
+		if (Binding == nullptr)
+		{
+			return nullptr;
+		}
+
+		return Cast<ABrickActor>(Binding->GetActor(Binding->ResolvePiece(Ref)));
+	}
+}
 
 /*
  * THE PRIORITY THE CONTEXTS ARE APPLIED AT, NAMED BECAUSE IT IS NOW USED TWICE. The menu
@@ -74,24 +117,56 @@ TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
 {
 	TArray<FPieceMenuRow> Rows;
 
-	UWorld* const World = GetWorld();
-
-	UDestructionStructureSubsystem* const Subsystem =
-		World != nullptr ? World->GetSubsystem<UDestructionStructureSubsystem>() : nullptr;
+	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
 
 	/*
 	 * THE WHOLE CHAIN IS ALREADY WRITTEN AND NONE OF IT IS REPEATED HERE. TracePiece fails
 	 * closed on every step from the trace to the re-resolve, so a miss arrives as a default
-	 * ref; PieceActionsFor resolves that ref again against the binding and answers an empty
+	 * ref; PieceActionsFor resolves every ref again against the binding and answers an empty
 	 * menu for one that names nothing. This is the wire between them, not a third opinion.
 	 */
 	if (Subsystem != nullptr)
 	{
 		const FPieceHit Hit = Subsystem->TracePiece(StartCm, EndCm);
 
-		if (const FStructureBinding* const Binding = Subsystem->Find(Hit.Ref.StructureId))
+		/*
+		 * A CLICK HAPPENS AT THE CURSOR, so this ray is also the answer to what is under it.
+		 * Saying so here rather than waiting for the next mouse-move is what stops a brick
+		 * staying lit after it has been clicked away from, or a cleared selection leaving
+		 * the last brick pointed at still called out.
+		 */
+		SetHoveredPiece(Hit.Ref);
+
+		/*
+		 * CLICKING A BRICK TOGGLES IT, AND CLICKING PAST EVERYTHING CLEARS THE LOT. The
+		 * selection is the durable state and the menu is a projection of it rebuilt below,
+		 * which is why there is no branch here that shows or dismisses anything: an empty
+		 * selection builds no rows, and an empty row list is already how a menu comes down.
+		 */
+		if (Hit.PieceHandle != INDEX_NONE)
 		{
-			Rows = BuildPieceMenuRows(PieceActionsFor(*Binding, Hit.Ref), Hit.Ref);
+			PieceSelection.Toggle(Hit.Ref);
+
+			RefreshPieceHighlight(Hit.Ref);
+		}
+		else
+		{
+			ClearPieceSelection();
+		}
+
+		/*
+		 * ONE MENU FOR THE WHOLE SELECTION, AGAINST THE STRUCTURE ITS REFS NAME. A selection
+		 * is built by clicking one wall, so the first ref names it and PieceActionsFor
+		 * refuses the rest piece by piece if it ever does not.
+		 */
+		const TArrayView<const FPieceRef> Selected = PieceSelection.Refs();
+
+		if (Selected.Num() > 0)
+		{
+			if (const FStructureBinding* const Binding = Subsystem->Find(Selected[0].StructureId))
+			{
+				Rows = BuildPieceMenuRows(PieceActionsFor(*Binding, Selected), Selected);
+			}
 		}
 	}
 
@@ -106,6 +181,88 @@ TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
 	ShowPieceMenu(Rows);
 
 	return Rows;
+}
+
+FPieceRef ADestructionGamePlayerController::HoverAlongRay(
+	const FVector& StartCm,
+	const FVector& EndCm)
+{
+	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
+
+	/*
+	 * POINTING AT A BRICK IS NOT CHOOSING IT, so nothing here touches the selection, opens
+	 * a menu or closes one — the only thing that changes is which brick is called out. No
+	 * world and no subsystem is the same answer as a ray that hit nothing: a default ref,
+	 * which lets go of whatever was called out before.
+	 */
+	const FPieceHit Hit = Subsystem != nullptr ? Subsystem->TracePiece(StartCm, EndCm) : FPieceHit();
+
+	SetHoveredPiece(Hit.Ref);
+
+	return Hit.Ref;
+}
+
+const FPieceSelection& ADestructionGamePlayerController::GetPieceSelection() const
+{
+	return PieceSelection;
+}
+
+EBrickHighlight ADestructionGamePlayerController::HighlightForPiece(const FPieceRef& Ref) const
+{
+	/*
+	 * THE STRONGER STATE WINS WHERE THEY COINCIDE, and this order is the whole of that rule.
+	 * A selected brick under the cursor stays Selected: a hover that overwrote it would make
+	 * a chosen brick read as unchosen exactly when the player is looking at it, which is
+	 * indistinguishable from having lost the selection.
+	 */
+	if (PieceSelection.Contains(Ref))
+	{
+		return EBrickHighlight::Selected;
+	}
+
+	if (HoveredPiece == Ref)
+	{
+		return EBrickHighlight::Hovered;
+	}
+
+	return EBrickHighlight::None;
+}
+
+void ADestructionGamePlayerController::RefreshPieceHighlight(const FPieceRef& Ref)
+{
+	if (ABrickActor* const Brick = PieceMenuBrickForRef(PieceMenuSubsystemOf(*this), Ref))
+	{
+		Brick->SetHighlighted(HighlightForPiece(Ref));
+	}
+}
+
+void ADestructionGamePlayerController::SetHoveredPiece(const FPieceRef& Ref)
+{
+	/*
+	 * THE BRICK BEING LEFT IS REFRESHED AS WELL AS THE ONE BEING POINTED AT, and it is
+	 * refreshed rather than simply cleared — it may be selected, in which case it stays
+	 * called out. Without the first of the two, every brick the cursor has ever crossed
+	 * stays lit and the wall ends up entirely highlighted.
+	 */
+	const FPieceRef Previous = HoveredPiece;
+
+	HoveredPiece = Ref;
+
+	RefreshPieceHighlight(Previous);
+	RefreshPieceHighlight(Ref);
+}
+
+void ADestructionGamePlayerController::ClearPieceSelection()
+{
+	/* Copied out first: Clear empties the very array these live in. */
+	const TArray<FPieceRef> WasSelected(PieceSelection.Refs());
+
+	PieceSelection.Clear();
+
+	for (const FPieceRef& Ref : WasSelected)
+	{
+		RefreshPieceHighlight(Ref);
+	}
 }
 
 bool ADestructionGamePlayerController::ShowPieceMenu(TArrayView<const FPieceMenuRow> Rows)
@@ -191,31 +348,42 @@ bool ADestructionGamePlayerController::ChoosePieceMenuRow(int32 RowIndex)
 	 * tidy: DismissPieceMenu Reset()s the very array the rows live in, so a reference into
 	 * ShownPieceMenuRows would be reading destroyed elements by the time it was committed.
 	 * Both halves come from the ROW rather than from anything this controller remembered
-	 * separately — Core/PieceMenu.h says why the row carries its own ref, and a presenter
-	 * that committed the chosen row's action against a remembered ref would delete the wrong
-	 * brick with everything else looking perfect.
+	 * separately — Core/PieceMenu.h says why the row carries its own targets, and a
+	 * presenter that committed the chosen row's action against a remembered selection would
+	 * act on the wrong bricks with everything else looking perfect.
 	 */
-	const FPieceRef Ref = ShownPieceMenuRows[RowIndex].Ref;
+	const TArray<FPieceRef> Refs = ShownPieceMenuRows[RowIndex].Refs;
 	const FPieceAction* const Action = ShownPieceMenuRows[RowIndex].Action;
 
 	/*
 	 * IT COMES DOWN FIRST, BY THE ONE ROUTE OUT OF "A MENU IS UP" — so the cursor and
 	 * free-look are given back by the same restore every other route takes, and the commit
-	 * below runs with nothing on screen naming the brick it is about to remove.
+	 * below runs with nothing on screen naming the bricks it is about to remove.
 	 */
 	DismissPieceMenu();
 
-	UWorld* const World = GetWorld();
+	/*
+	 * AND THE PICK GOES WITH IT, BEFORE THE COMMIT RATHER THAN AFTER. These bricks have just
+	 * been acted on, so leaving them selected would carry them into the next click's menu —
+	 * where they no longer resolve, and the intersection then offers nothing at all. Before,
+	 * because the commit is what destroys them, and a brick has to still exist to be told it
+	 * is no longer called out.
+	 */
+	ClearPieceSelection();
 
-	UDestructionStructureSubsystem* const Subsystem =
-		World != nullptr ? World->GetSubsystem<UDestructionStructureSubsystem>() : nullptr;
+	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
 
 	if (Subsystem == nullptr)
 	{
 		return false;
 	}
 
-	return Subsystem->CommitPieceAction(Ref, *Action);
+	/*
+	 * ONE COMMIT FOR THE WHOLE SELECTION, WHICH IS WHAT MAKES IT ONE SOLVE. Looping the
+	 * single-piece commit here would reach the same wall at N times the price — and would
+	 * push N times, each against an answer that had seen only part of the batch.
+	 */
+	return Subsystem->CommitPieceActionForAll(Refs, *Action) > 0;
 }
 
 void ADestructionGamePlayerController::BuildPieceMenuWidget()

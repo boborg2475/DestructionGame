@@ -371,6 +371,11 @@ int32 FStructure::NumConnections() const
 	return Connections.Num();
 }
 
+int32 FStructure::NumSolves() const
+{
+	return SolveCount;
+}
+
 const FStructurePiece& FStructure::GetPiece(int32 PieceIndex) const
 {
 	static const FStructurePiece Placeholder;
@@ -385,6 +390,14 @@ const FConnection& FStructure::GetConnection(int32 ConnectionIndex) const
 
 void FStructure::SolveLoads()
 {
+	/*
+	 * COUNTED AT THE DOOR, ONCE PER CALL, AND NOTHING HERE READS IT BACK. The fixpoint
+	 * below iterates, and those iterations are one solve rather than several: what a
+	 * caller is charged for is the call. SolveAndBreak makes several calls and is meant
+	 * to, so this is a count and never a budget.
+	 */
+	++SolveCount;
+
 	/*
 	 * Step one: which connections hold each piece up?
 	 *

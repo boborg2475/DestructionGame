@@ -88,6 +88,30 @@ public:
 	 */
 	bool CommitPieceAction(const FPieceRef& Ref, const FPieceAction& Action);
 
+	/**
+	 * Commit an action against a whole selection: run them all, solve once, push once.
+	 *
+	 * THE BATCHING IS THE REQUIREMENT. RunPieceActions runs every action and then solves
+	 * exactly one time; this destroys every orphan it hands back and then pushes that single
+	 * answer onto the world. Looping CommitPieceAction instead would solve and push once per
+	 * brick — the same final state at N times the cost, which at scenario scale is the
+	 * difference between a click and a stutter.
+	 *
+	 * THE PUSH FOLLOWS THE SOLVE THAT SAW EVERY REMOVAL, and that ordering is load-bearing
+	 * rather than tidy: FStructureBinding::ApplyResults refuses to release a piece the last
+	 * solve has no answer for, so pushing against an answer computed before the last action
+	 * ran leaves the pieces that action orphaned hanging in the air — the exact failure a
+	 * player found in ten seconds, reintroduced by a batch.
+	 *
+	 * EVERY REF MUST NAME THE SAME STRUCTURE, which is what a selection built by clicking one
+	 * wall is; refs naming a structure this subsystem does not hold contribute nothing and are
+	 * refused piece by piece, exactly as the single-piece commit refuses them.
+	 *
+	 * @return how many pieces the action actually ran against. Zero for an empty selection and
+	 *         for a selection none of whose refs resolve.
+	 */
+	int32 CommitPieceActionForAll(TArrayView<const FPieceRef> Refs, const FPieceAction& Action);
+
 private:
 
 	TMap<int32, TUniquePtr<FStructureBinding>> Structures;

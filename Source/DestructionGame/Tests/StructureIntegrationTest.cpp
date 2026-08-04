@@ -192,70 +192,93 @@ namespace StructureIntegrationTestSupport
 	}
 
 	/**
-	 * WHAT A PLAYER DOES, IN ONE CALL: point at a brick, and choose Delete off the menu that
-	 * comes up.
+	 * WHAT A PLAYER DOES, IN ONE CALL: point at each brick they want, and choose Delete off the
+	 * menu that is up once they have picked them all.
 	 *
 	 * THIS IS THE ONLY ROUTE ANY TEST IN THIS FILE TAKES TO CHANGE A WALL, and that is the point
 	 * of the helper rather than a convenience: it is impossible to write a test in this file that
-	 * accidentally reaches past the presenter into RemovePiece or SolveAndPush, because there is
-	 * nothing here that does. The two inches in front of it that a headless run cannot reach are
-	 * the deprojection that turns a cursor into this ray, and the button that supplies this index.
+	 * accidentally reaches past the presenter into RemovePiece, SolveAndPush or the batched commit
+	 * itself, because there is nothing here that does. The two inches in front of it that a
+	 * headless run cannot reach are the deprojection that turns a cursor into these rays, and the
+	 * button that supplies the index.
+	 *
+	 * A LIST OF PIECES RATHER THAN ONE, BECAUSE ONE IS THE ONE-ELEMENT CASE. A single-brick
+	 * delete is a selection of one taken through exactly the calls a six-brick delete takes, so
+	 * the three tests that predate multi-select keep entering through the same door — and a
+	 * second helper for "the multi one" would be a second door with its own way of being wrong.
 	 *
 	 * THE ROW IS FOUND BY ACTION POINTER, NOT ASSUMED TO BE ROW 0. PieceActionsFor hands back
 	 * pointers into the shipped table precisely so a presenter can compare identities, and the
 	 * day the table grows a second row this keeps choosing Delete instead of whatever sorted
-	 * first.
+	 * first. It is looked up again after EVERY click, because the menu is rebuilt each time.
 	 */
 	bool InspectAndChooseDelete(
 		FAutomationTestBase& Test,
 		ADestructionGamePlayerController& Controller,
 		const FPieceAction& Delete,
 		int32 StructureId,
-		const FPieceBox& Box,
-		int32 ExpectedPiece)
+		const TArray<FPieceBox>& Boxes,
+		const TArray<int32>& Pieces)
 	{
-		const TArray<FPieceMenuRow> Rows = Controller.InspectAlongRay(
-			FVector(Box.CentreCm.X, Box.CentreCm.Y - IntegrationReachCm, Box.CentreCm.Z),
-			FVector(Box.CentreCm.X, Box.CentreCm.Y + IntegrationReachCm, Box.CentreCm.Z));
-
 		int32 DeleteRow = INDEX_NONE;
 
-		for (int32 Index = 0; Index < Rows.Num(); ++Index)
+		for (const int32 ExpectedPiece : Pieces)
 		{
-			if (Rows[Index].Action == &Delete)
+			const FPieceBox& Box = Boxes[ExpectedPiece];
+
+			const TArray<FPieceMenuRow> Rows = Controller.InspectAlongRay(
+				FVector(Box.CentreCm.X, Box.CentreCm.Y - IntegrationReachCm, Box.CentreCm.Z),
+				FVector(Box.CentreCm.X, Box.CentreCm.Y + IntegrationReachCm, Box.CentreCm.Z));
+
+			DeleteRow = INDEX_NONE;
+
+			for (int32 Index = 0; Index < Rows.Num(); ++Index)
 			{
-				DeleteRow = Index;
-				break;
+				if (Rows[Index].Action == &Delete)
+				{
+					DeleteRow = Index;
+					break;
+				}
 			}
+
+			if (DeleteRow == INDEX_NONE)
+			{
+				Test.AddError(FString::Printf(
+					TEXT("inspecting piece %d at (%g, %g, %g) offered no Delete row, it offered [%s]"),
+					ExpectedPiece, Box.CentreCm.X, Box.CentreCm.Y, Box.CentreCm.Z,
+					*DescribeIntegrationRows(Rows)));
+
+				return false;
+			}
+
+			/*
+			 * THE ROW MUST NAME THE BRICK THAT WAS JUST POINTED AT. A chain wired to the wrong
+			 * brick puts up a perfect menu and deletes somebody else, and every count in the wall
+			 * still agrees. FPieceMenuRow::Ref is the last piece picked, so this holds for the
+			 * first click and for the sixth.
+			 */
+			Test.TestTrue(
+				*FString::Printf(
+					TEXT("the Delete row offered after picking piece %d should name {%d,%d}, it names {%d,%d}"),
+					ExpectedPiece, StructureId, ExpectedPiece,
+					Rows[DeleteRow].Ref.StructureId, Rows[DeleteRow].Ref.PieceIndex),
+				Rows[DeleteRow].Ref.StructureId == StructureId
+					&& Rows[DeleteRow].Ref.PieceIndex == ExpectedPiece);
 		}
 
 		if (DeleteRow == INDEX_NONE)
 		{
-			Test.AddError(FString::Printf(
-				TEXT("inspecting piece %d at (%g, %g, %g) offered no Delete row, it offered [%s]"),
-				ExpectedPiece, Box.CentreCm.X, Box.CentreCm.Y, Box.CentreCm.Z,
-				*DescribeIntegrationRows(Rows)));
+			Test.AddError(TEXT("InspectAndChooseDelete was asked to pick no bricks at all"));
 
 			return false;
 		}
 
-		/*
-		 * THE ROW MUST NAME THE BRICK THAT WAS POINTED AT. A chain wired to the wrong brick puts
-		 * up a perfect menu and deletes somebody else, and every count in the wall still agrees.
-		 */
-		Test.TestTrue(
-			*FString::Printf(
-				TEXT("the Delete row offered for piece %d should name {%d,%d}, it names {%d,%d}"),
-				ExpectedPiece, StructureId, ExpectedPiece,
-				Rows[DeleteRow].Ref.StructureId, Rows[DeleteRow].Ref.PieceIndex),
-			Rows[DeleteRow].Ref.StructureId == StructureId
-				&& Rows[DeleteRow].Ref.PieceIndex == ExpectedPiece);
-
+		/* ONE CHOICE FOR THE WHOLE SELECTION — one click of one button, however many are picked. */
 		const bool bChose = Controller.ChoosePieceMenuRow(DeleteRow);
 
 		Test.TestTrue(
-			*FString::Printf(TEXT("choosing Delete on piece %d should report that it committed"),
-				ExpectedPiece),
+			*FString::Printf(TEXT("choosing Delete on %d picked brick(s) should report that it committed"),
+				Pieces.Num()),
 			bChose);
 
 		return bChose;
@@ -304,6 +327,29 @@ namespace StructureIntegrationTestSupport
 	constexpr int32 WideWallRightNeighbour = 7;
 	constexpr int32 WideWallLeftCarrier = 10;
 	constexpr int32 WideWallRightCarrier = 11;
+
+	/**
+	 * TWO BRICKS THE WIDE WALL CAN SPARE AT THE SAME TIME, deleted in ONE batch.
+	 *
+	 * 6 is a course-1 brick and 12 is a course-2 brick, and they are chosen so that nothing loses
+	 * its last path to the ground when BOTH go — which is a stronger requirement than either
+	 * being survivable alone, and is what makes this the control for a BATCH rather than for a
+	 * removal. Reading the bond off the diagram above: 10 rests on 5 and 6 so it keeps 5; 11 rests
+	 * on 6 and 7 so it keeps 7; 16 rests on 11 and 12 so it keeps 11; 17 rests on 12 and 13 so it
+	 * keeps 13. Nothing else touches either of them.
+	 */
+	const TArray<int32> WideWallSurvivableBatch = { 6, 12 };
+
+	/**
+	 * THE WHOLE GROUNDED COURSE, DELETED IN ONE BATCH — five bricks, one click of one button.
+	 *
+	 * FIVE AT ONCE RATHER THAN A CLEVER SUBSET, deliberately: the outcome then needs no
+	 * hand-reading of the bond at all. Only course 0 is grounded, so with all five gone NOTHING
+	 * that is left has any path to the earth and the entire remainder of the wall must come down.
+	 * A fixture whose expected outcome is "everything" cannot be quietly wrong about which pieces
+	 * it named.
+	 */
+	const TArray<int32> WideWallGroundCourse = { 0, 1, 2, 3, 4 };
 
 	/**
 	 * Slack on a joint force of a few thousand Unreal force units, not signal.
@@ -478,7 +524,7 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 	ABrickActor* const WaistBrick = Bricks[WaistPiece];
 
 	if (!InspectAndChooseDelete(
-			*this, *Controller, *Delete, StructureId, Reference.Boxes[WaistPiece], WaistPiece))
+			*this, *Controller, *Delete, StructureId, Reference.Boxes, { WaistPiece }))
 	{
 		TestWorld.End();
 		return true;
@@ -726,7 +772,7 @@ bool FStructureIntegrationCollapseTest::RunTest(const FString& Parameters)
 	ABrickActor* const FirstBrick = Bricks[FirstPulled];
 
 	if (!InspectAndChooseDelete(
-			*this, *Controller, *Delete, StructureId, Reference.Boxes[FirstPulled], FirstPulled))
+			*this, *Controller, *Delete, StructureId, Reference.Boxes, { FirstPulled }))
 	{
 		TestWorld.End();
 		return true;
@@ -771,7 +817,7 @@ bool FStructureIntegrationCollapseTest::RunTest(const FString& Parameters)
 	ABrickActor* const LastBrick = Bricks[LastStraw];
 
 	if (!InspectAndChooseDelete(
-			*this, *Controller, *Delete, StructureId, Reference.Boxes[LastStraw], LastStraw))
+			*this, *Controller, *Delete, StructureId, Reference.Boxes, { LastStraw }))
 	{
 		TestWorld.End();
 		return true;
@@ -1052,7 +1098,7 @@ bool FStructureIntegrationRedistributionTest::RunTest(const FString& Parameters)
 
 	if (!InspectAndChooseDelete(
 			*this, *Controller, *Delete, StructureId,
-			Reference.Boxes[WideWallRemovedPiece], WideWallRemovedPiece))
+			Reference.Boxes, { WideWallRemovedPiece }))
 	{
 		TestWorld.End();
 		return true;
@@ -1122,6 +1168,349 @@ bool FStructureIntegrationRedistributionTest::RunTest(const FString& Parameters)
 		TestTrue(
 			*FString::Printf(TEXT("brick %d must still be kinematic in a wall that is still standing"), Piece),
 			Bricks[Piece]->GetMesh() != nullptr && !Bricks[Piece]->GetMesh()->IsSimulatingPhysics());
+	}
+
+	TestWorld.End();
+
+	return true;
+}
+
+/**
+ * FOUR: THE BATCH. PICKING SEVERAL BRICKS AND CHOOSING DELETE ONCE TAKES ALL OF THEM OUT, DROPS
+ * EVERYTHING THEY WERE HOLDING UP, MOVES NOTHING WHEN THE WALL CAN SPARE THEM — AND COSTS ONE
+ * SOLVE RATHER THAN ONE PER BRICK.
+ *
+ * WHY THIS IS IN THE INTEGRATION SET AND NOT BESIDE THE ARITHMETIC. What can be wrong here is a
+ * CALL THAT NOBODY MAKES: Core.PieceActions.BatchRunsEveryPieceAndSolvesOnce already pins that
+ * the batch runs every action and solves once, at the end — and that is a claim about a graph.
+ * What no world-free test can reach is whether the answer that one solve produced is then PUSHED
+ * onto the world, for every piece the batch orphaned rather than for the ones a mid-way solve
+ * happened to know about. FStructureBinding::ApplyResults refuses to release any piece the LAST
+ * solve has no answer for, so a batch that solved at the wrong moment does not crash, does not
+ * fail a count, and leaves bricks hanging in the air exactly as the defect a player found in ten
+ * seconds did. Only a real wall, entered through the player's own calls and then watched under
+ * gravity, can tell that from a correct one.
+ *
+ * BOTH DIRECTIONS, IN ONE WORLD, IN THIS ORDER, AND NEITHER IS DECORATION. The first batch is one
+ * the wall SURVIVES: two bricks that between them orphan nothing, so a full second of gravity
+ * must move nothing at all — which is what stops "release everything the binding knows about"
+ * being a passing implementation of the second half. The second batch is the whole grounded
+ * course, after which nothing that is left touches the earth, so every remaining brick must
+ * physically fall. Running them against the same wall is also what makes the first batch's
+ * removals count: the second batch is solved on a wall with two holes already in it.
+ *
+ * THE ONE-SOLVE CLAIM IS ASSERTED HERE TOO, AND IT IS THE ONLY MECHANISM ROW IN IT. This set
+ * asserts outcomes, but a cost cannot be an outcome: solving is deterministic, so five solves and
+ * one produce identical bricks in identical places. FStructure::NumSolves is the seam, read
+ * either side of the player's own click, and without it "the commit is batched" is a comment
+ * rather than a requirement — which matters because the batched path is measurably the reason to
+ * have multi-select at all: a full solve is tens of milliseconds at scenario scale, so five
+ * deletes done one at a time is a visible stutter for an answer one pass already had.
+ *
+ * WHAT IS DELIBERATELY NOT ASSERTED. That the push happens exactly ONCE: a second push is
+ * idempotent by construction (ApplyResults releases each piece once and ABrickActor::Release
+ * returns early on an already-simulating body), so it is unobservable from outside, and an
+ * assertion that cannot fail is worse than none. And no claim is made here about a joint GIVING —
+ * a mortared wall this size sits at roughly 0.005 of capacity, so this collapse is loss of
+ * support, exactly as the collapse test above.
+ *
+ * NEEDS A TICKING WORLD: YES. Half a second watching a wall not move and a second watching it
+ * come down, both on a fixed step, never a settle poll.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FStructureIntegrationBatchedDeleteTest,
+	"DestructionGame.Integration.DeletingASelectionDropsWhatItOrphaned",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace DestructionLayout;
+	using namespace StructureIntegrationTestSupport;
+
+	const FPieceAction* const Delete = FindIntegrationAction(TEXT("Delete"));
+
+	if (Delete == nullptr)
+	{
+		AddError(TEXT("fixture: the action table must contain a row labelled 'Delete'"));
+		return true;
+	}
+
+	const FRunningBondSpec Spec = WideWallSpec();
+
+	FBrickLayout Reference;
+
+	TestTrue(TEXT("fixture: RunningBond should lay the reference wall"), RunningBond(Spec, Reference));
+
+	if (Reference.Boxes.Num() != WideWallPieceCount)
+	{
+		AddError(FString::Printf(TEXT("fixture: a ragged 4 x 5 wall should be %d pieces, got %d"),
+			WideWallPieceCount, Reference.Boxes.Num()));
+
+		return true;
+	}
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	const int32 StructureId = TestWorld.Subsystem->BuildRunningBond(Spec);
+	FStructureBinding* const Binding = TestWorld.Subsystem->Find(StructureId);
+
+	TestNotNull(
+		*FString::Printf(TEXT("fixture: BuildRunningBond returned %d and Find should hand back its binding"),
+			StructureId),
+		Binding);
+
+	if (Binding == nullptr || Binding->NumPieces() != WideWallPieceCount)
+	{
+		TestWorld.End();
+		return true;
+	}
+
+	TArray<ABrickActor*> Bricks;
+	TArray<FVector> LaidAt;
+
+	for (int32 Piece = 0; Piece < Binding->NumPieces(); ++Piece)
+	{
+		ABrickActor* Brick = BrickAt(*this, *Binding, Piece);
+
+		if (Brick == nullptr)
+		{
+			TestWorld.End();
+			return true;
+		}
+
+		Bricks.Add(Brick);
+		LaidAt.Add(Brick->GetActorLocation());
+	}
+
+	TestEqual(
+		TEXT("fixture: the wall as built should stand, so starting it up releases nothing"),
+		TestWorld.Subsystem->SolveAndPush(StructureId), 0);
+
+	ReportIntegrationState(*this, *Binding, Bricks, TEXT("as built"));
+
+	ADestructionGamePlayerController* const Controller =
+		SpawnControllerWithLocalPlayer(*this, TestWorld.World);
+
+	if (Controller == nullptr)
+	{
+		TestWorld.End();
+		return true;
+	}
+
+	/*
+	 * ONE: A BATCH THE WALL SURVIVES. Two bricks picked, one Delete chosen, and a second of real
+	 * gravity in which nothing may move a millimetre.
+	 */
+	const int32 SolvesBeforeFirstBatch = Binding->GetStructure().NumSolves();
+
+	TArray<ABrickActor*> FirstBatchActors;
+
+	for (const int32 Piece : WideWallSurvivableBatch)
+	{
+		FirstBatchActors.Add(Bricks[Piece]);
+	}
+
+	if (!InspectAndChooseDelete(
+			*this, *Controller, *Delete, StructureId, Reference.Boxes, WideWallSurvivableBatch))
+	{
+		TestWorld.End();
+		return true;
+	}
+
+	const int32 SolvesSpentOnFirstBatch =
+		Binding->GetStructure().NumSolves() - SolvesBeforeFirstBatch;
+
+	AddInfo(FString::Printf(
+		TEXT("deleting %d bricks in one batch spent %d solve(s)"),
+		WideWallSurvivableBatch.Num(), SolvesSpentOnFirstBatch));
+
+	/*
+	 * THE COST CLAIM, AND IT IS WHY THE BATCH EXISTS. One click of one button against a selection
+	 * of N must re-solve the wall once, not N times — a per-piece commit reaches the same wall at
+	 * N times the price, and nothing else about the wall can tell you which happened.
+	 */
+	TestEqual(
+		FString::Printf(
+			TEXT("deleting %d bricks in ONE batch must cost exactly one solve, not one per brick; it cost %d"),
+			WideWallSurvivableBatch.Num(), SolvesSpentOnFirstBatch),
+		SolvesSpentOnFirstBatch, 1);
+
+	/* EVERY PICKED BRICK WENT, not just the last one picked. */
+	for (int32 Index = 0; Index < WideWallSurvivableBatch.Num(); ++Index)
+	{
+		const int32 Piece = WideWallSurvivableBatch[Index];
+
+		TestTrue(
+			FString::Printf(TEXT("brick %d was picked, so its actor must have left the world; it is %s"),
+				Piece, IsValid(FirstBatchActors[Index]) ? TEXT("still valid") : TEXT("gone")),
+			!IsValid(FirstBatchActors[Index]));
+
+		TestTrue(
+			FString::Printf(TEXT("piece %d was picked, so it must be gone from the graph"), Piece),
+			Binding->IsPieceRemoved(Piece));
+
+		Bricks[Piece] = nullptr;
+	}
+
+	TestEqual(
+		FString::Printf(TEXT("the batch must remove exactly %d pieces, so %d should be live, got %d"),
+			WideWallSurvivableBatch.Num(),
+			WideWallPieceCount - WideWallSurvivableBatch.Num(),
+			Binding->GetStructure().NumLivePieces()),
+		Binding->GetStructure().NumLivePieces(),
+		WideWallPieceCount - WideWallSurvivableBatch.Num());
+
+	TestWorld.TickSeconds(FallSeconds);
+
+	ReportIntegrationState(*this, *Binding, Bricks, TEXT("a second after the survivable batch"));
+
+	for (int32 Piece = 0; Piece < WideWallPieceCount; ++Piece)
+	{
+		if (Bricks[Piece] == nullptr)
+		{
+			continue;
+		}
+
+		const double MovedCm = FVector::Dist(Bricks[Piece]->GetActorLocation(), LaidAt[Piece]);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("the wall survives this batch, so brick %d must not move at all, it drifted %.6f cm"),
+				Piece, MovedCm),
+			MovedCm < DriftToleranceCm);
+
+		TestTrue(
+			*FString::Printf(TEXT("brick %d must still be kinematic while the wall stands"), Piece),
+			Bricks[Piece]->GetMesh() != nullptr && !Bricks[Piece]->GetMesh()->IsSimulatingPhysics());
+	}
+
+	/*
+	 * TWO: AND A BATCH THE WALL CANNOT SURVIVE. The whole grounded course, picked one brick at a
+	 * time and deleted with one choice — after which nothing left in the wall touches the earth.
+	 */
+	const int32 SolvesBeforeSecondBatch = Binding->GetStructure().NumSolves();
+
+	TArray<ABrickActor*> SecondBatchActors;
+
+	for (const int32 Piece : WideWallGroundCourse)
+	{
+		SecondBatchActors.Add(Bricks[Piece]);
+	}
+
+	if (!InspectAndChooseDelete(
+			*this, *Controller, *Delete, StructureId, Reference.Boxes, WideWallGroundCourse))
+	{
+		TestWorld.End();
+		return true;
+	}
+
+	const int32 SolvesSpentOnSecondBatch =
+		Binding->GetStructure().NumSolves() - SolvesBeforeSecondBatch;
+
+	AddInfo(FString::Printf(
+		TEXT("deleting the %d-brick grounded course in one batch spent %d solve(s)"),
+		WideWallGroundCourse.Num(), SolvesSpentOnSecondBatch));
+
+	TestEqual(
+		FString::Printf(
+			TEXT("deleting the whole %d-brick course in ONE batch must still cost exactly one solve; it cost %d"),
+			WideWallGroundCourse.Num(), SolvesSpentOnSecondBatch),
+		SolvesSpentOnSecondBatch, 1);
+
+	for (int32 Index = 0; Index < WideWallGroundCourse.Num(); ++Index)
+	{
+		const int32 Piece = WideWallGroundCourse[Index];
+
+		TestTrue(
+			FString::Printf(TEXT("brick %d was picked, so its actor must have left the world; it is %s"),
+				Piece, IsValid(SecondBatchActors[Index]) ? TEXT("still valid") : TEXT("gone")),
+			!IsValid(SecondBatchActors[Index]));
+
+		Bricks[Piece] = nullptr;
+	}
+
+	ReportIntegrationState(*this, *Binding, Bricks, TEXT("straight after the grounded course went"));
+
+	/*
+	 * THE WIRE, BEFORE THE OUTCOME. The model knowing a brick has lost the ground is not the same
+	 * as the world having been told, and these are the two records that say which of the two
+	 * happened: IsReleased is the binding's record that the last solve's answer was APPLIED, and
+	 * IsSimulatingPhysics is the body's own record that physics was told. A push that ran behind
+	 * a mistimed solve fails exactly here, with every count in the wall still agreeing.
+	 *
+	 * The support row asks only whether the piece is HELD UP. Whether a mutually head-jointed pair
+	 * with no ground reads Falling or Stranded is a question about the solver rather than about
+	 * batching, and Integration.PullingSupportBringsTheWallDown is where it is pinned.
+	 */
+	for (int32 Piece = 0; Piece < WideWallPieceCount; ++Piece)
+	{
+		if (Bricks[Piece] == nullptr)
+		{
+			continue;
+		}
+
+		const EPieceSupport Support = Binding->GetStructure().GetPieceSupport(Piece);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("with every grounded brick gone, piece %d cannot be held up, the solver says %s"),
+				Piece, IntegrationSupportName(Support)),
+			Support != EPieceSupport::Grounded && Support != EPieceSupport::Supported);
+
+		TestTrue(
+			*FString::Printf(TEXT("piece %d should have been released by the batch, IsReleased reports %s"),
+				Piece, Binding->IsReleased(Piece) ? TEXT("true") : TEXT("false")),
+			Binding->IsReleased(Piece));
+
+		const bool bSimulating =
+			Bricks[Piece]->GetMesh() != nullptr && Bricks[Piece]->GetMesh()->IsSimulatingPhysics();
+
+		TestTrue(
+			*FString::Printf(TEXT("brick %d should have been handed to physics by the batch, it is %s"),
+				Piece, bSimulating ? TEXT("simulating") : TEXT("kinematic")),
+			bSimulating);
+	}
+
+	/* AND THE OUTCOME: it actually comes down. */
+	TestWorld.TickSeconds(FallSeconds);
+
+	ReportIntegrationState(*this, *Binding, Bricks, TEXT("one second after the grounded course went"));
+
+	for (int32 Piece = 0; Piece < WideWallPieceCount; ++Piece)
+	{
+		if (Bricks[Piece] == nullptr)
+		{
+			continue;
+		}
+
+		const FVector NowAt = Bricks[Piece]->GetActorLocation();
+		const double FellCm = LaidAt[Piece].Z - NowAt.Z;
+
+		AddInfo(FString::Printf(
+			TEXT("brick %d fell %.3f cm in the second after the batch, from Z %.3f to Z %.3f"),
+			Piece, FellCm, LaidAt[Piece].Z, NowAt.Z));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("the wall must come down: brick %d should have fallen more than %.1f cm, it dropped %.3f cm"),
+				Piece, FallenAtLeastCm, FellCm),
+			FellCm > FallenAtLeastCm);
+
+		/*
+		 * AND IT LANDED. The grounded course is gone, so the rubble comes to rest on the floor
+		 * rather than continuing forever; a brick below that has fallen THROUGH the world, which
+		 * the row above cannot tell from a collapse.
+		 */
+		TestTrue(
+			*FString::Printf(TEXT("brick %d should have landed on the floor at Z %g, it is at Z %.3f"),
+				Piece, FloorTopZCm, NowAt.Z),
+			NowAt.Z > FloorTopZCm);
 	}
 
 	TestWorld.End();

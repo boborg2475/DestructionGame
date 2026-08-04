@@ -240,6 +240,28 @@ namespace PieceActionsTestSupport
 		return Menu.Contains(Action);
 	}
 
+	/** A selection, so a failure reads without a debugger. */
+	FString DescribePieceActionRefs(TArrayView<const FPieceRef> Refs)
+	{
+		if (Refs.Num() == 0)
+		{
+			return TEXT("<empty>");
+		}
+
+		FString Line;
+
+		for (int32 Index = 0; Index < Refs.Num(); ++Index)
+		{
+			Line += FString::Printf(
+				TEXT("%s{%d,%d}"),
+				Index == 0 ? TEXT("") : TEXT(", "),
+				Refs[Index].StructureId,
+				Refs[Index].PieceIndex);
+		}
+
+		return Line;
+	}
+
 	/** The labels a menu came back with, so a failure reads without a debugger. */
 	FString DescribeMenu(const TArray<const FPieceAction*>& Menu)
 	{
@@ -1270,6 +1292,576 @@ bool FPieceActionsCommitRefFailsClosedTest::RunTest(const FString& Parameters)
 
 		TestTrue(TEXT("control: the deleted piece must actually be gone from the graph"),
 			Binding.IsPieceRemoved(1));
+	}
+
+	ReleasePieceActionStandIns(StandIns);
+
+	return true;
+}
+
+/**
+ * THE MENU FOR A SELECTION IS THE INTERSECTION: AN ACTION IS OFFERED ONLY IF EVERY SELECTED
+ * PIECE'S CanRun SAYS YES.
+ *
+ * THE WRONG ANSWER IS PLAUSIBLE AND THAT IS WHY THIS EXISTS. "Offered if ANY selected piece can
+ * run it" is the union, it is a one-word difference in the implementation, and it produces a
+ * menu that looks perfectly reasonable — the button is there, it says Delete, and choosing it
+ * deletes some of the bricks and silently declines the rest. A player who selected six bricks
+ * and got four holes has no way to tell that from a bug in the commit path. The intersection
+ * makes the offer honest: if the button is there, it applies to everything the count claims.
+ *
+ * THE ROW THAT SEPARATES THEM IS {live, RELEASED}. Delete's CanRun says yes to a live brick and
+ * no to a released one, so intersection offers nothing and union offers Delete — the only
+ * discriminating shape available on a one-row table, and it is a real one: a cascade can
+ * release a selected brick between two clicks. Every other multi-piece row would pass under
+ * either reading.
+ *
+ * AN EMPTY SELECTION OFFERS NOTHING, AND THAT IS NOT VACUOUS TRUTH. An intersection over an
+ * empty set is mathematically everything, so a naive "no piece said no" implementation offers
+ * the whole table for a selection of nothing — a menu with a Delete button and no target.
+ *
+ * THE PROPERTY IS WRITTEN OVER AllPieceActions(), so a second action is a row in the table and
+ * not an edit here, and the pointers are asserted to name rows of the shipped table rather than
+ * copies — the caller's next move is to hand one straight to RunPieceActions.
+ *
+ * NEEDS A TICKING WORLD: no. Arithmetic on a graph, like the single-piece menu it generalises.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPieceActionsMenuIntersectsTheSelectionTest,
+	"DestructionGame.Core.PieceActions.MenuOffersWhatEveryPieceCanRun",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPieceActionsMenuIntersectsTheSelectionTest::RunTest(const FString& Parameters)
+{
+	using namespace PieceActionsTestSupport;
+
+	const FPieceAction* Delete = FindPieceAction(TEXT("Delete"));
+
+	if (!RequireAction(*this, Delete, TEXT("Delete")))
+	{
+		return true;
+	}
+
+	/*
+	 *   [ 2 ] floater, connected to nothing: Falling, so a push RELEASES it
+	 *
+	 *   [ 1 ]     [ 3 ]        both resting on the pad
+	 *      \       /
+	 *      [  pad 0  ]
+	 *      ==========
+	 *
+	 * Piece 1 is then REMOVED, so one binding holds a removed piece, a released piece and two
+	 * ordinary live ones — the same fixture the single-piece menu test uses, deliberately, so
+	 * the two tests differ only in how many refs go in.
+	 */
+	const TArray<FPieceActionPieceSpec> PieceSpecs = {
+		{ PieceActionBrickMassKg, true },  // 0: pad
+		{ PieceActionBrickMassKg, false }, // 1: brick on the pad, REMOVED below
+		{ PieceActionBrickMassKg, false }, // 2: floater, RELEASED below
+		{ PieceActionBrickMassKg, false }  // 3: brick on the pad, live throughout
+	};
+
+	const TArray<FPieceActionJointSpec> JointSpecs = {
+		{ 0, 1, PieceActionBedJointNormal },
+		{ 0, 3, PieceActionBedJointNormal }
+	};
+
+	FStructureBinding Binding;
+	TArray<UObject*> StandIns;
+	BuildPieceActionBinding(Binding, PieceSpecs, JointSpecs, StandIns);
+
+	Binding.SolveLoads();
+
+	const int32 ReleasedCount = Binding.ApplyResults();
+
+	TestTrue(
+		FString::Printf(TEXT("fixture: the push should release exactly the floater, got %d released"),
+			ReleasedCount),
+		ReleasedCount == 1 && Binding.IsReleased(2));
+
+	TestTrue(TEXT("fixture: the released floater is still in the graph, so it is not the removal row"),
+		!Binding.IsPieceRemoved(2));
+
+	TestTrue(TEXT("fixture: the brick on the pad should remove cleanly"), Binding.RemovePiece(1));
+
+	struct FSelectionMenuCase
+	{
+		const TCHAR* Description;
+		TArray<FPieceRef> Refs;
+		bool bExpectDelete;
+	};
+
+	const TArray<FSelectionMenuCase> Cases = {
+		/*
+		 * THE OFFERING ROWS COME FIRST. Without them an implementation that offers nothing for
+		 * every selection passes the whole table, which hides every action from every menu.
+		 */
+		{
+			TEXT("one live brick — the single-piece flow, as the one-element case"),
+			{ { ThisStructure, 0 } }, true
+		},
+		{
+			TEXT("two live bricks"),
+			{ { ThisStructure, 0 }, { ThisStructure, 3 } }, true
+		},
+		{
+			TEXT("the same two the other way round"),
+			{ { ThisStructure, 3 }, { ThisStructure, 0 } }, true
+		},
+		{
+			/*
+			 * THE ROW THE UNION FAILS AND THE INTERSECTION PASSES. Piece 2 is live in the graph
+			 * and already tumbling, so Delete's own CanRun says no to it while saying yes to
+			 * piece 0 — the whole menu must go.
+			 */
+			TEXT("a live brick and a RELEASED one: the intersection offers nothing"),
+			{ { ThisStructure, 0 }, { ThisStructure, 2 } }, false
+		},
+		{
+			TEXT("a RELEASED brick and a live one, the other way round"),
+			{ { ThisStructure, 2 }, { ThisStructure, 0 } }, false
+		},
+		{
+			TEXT("two live bricks and a REMOVED one"),
+			{ { ThisStructure, 0 }, { ThisStructure, 3 }, { ThisStructure, 1 } }, false
+		},
+		{
+			/*
+			 * AN EMPTY SELECTION IS NOT "NOBODY OBJECTED". The empty intersection is vacuously
+			 * everything, and a menu offering Delete against no bricks is a button with nothing
+			 * behind it.
+			 */
+			TEXT("no selection at all"),
+			TArray<FPieceRef>(), false
+		},
+		{
+			TEXT("a live brick plus a click that hit the floor"),
+			{ { ThisStructure, 0 }, { } }, false
+		},
+		{
+			TEXT("a live brick plus somebody else's structure"),
+			{ { ThisStructure, 0 }, { SomeOtherStructure, 0 } }, false
+		},
+		{
+			TEXT("a live brick plus an index one past the end"),
+			{ { ThisStructure, 0 }, { ThisStructure, 4 } }, false
+		},
+		{
+			TEXT("a live brick plus MIN_int32, which must not be negated into range"),
+			{ { ThisStructure, 0 }, { ThisStructure, MIN_int32 } }, false
+		},
+		{
+			TEXT("nothing but unresolvable refs"),
+			{ { }, { SomeOtherStructure, 0 } }, false
+		},
+	};
+
+	const TArrayView<const FPieceAction> Table = AllPieceActions();
+
+	for (const FSelectionMenuCase& Case : Cases)
+	{
+		const TArray<const FPieceAction*> Menu = PieceActionsFor(Binding, Case.Refs);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the menu for [%s] should%s offer Delete; it offered [%s]"),
+				Case.Description, *DescribePieceActionRefs(Case.Refs),
+				Case.bExpectDelete ? TEXT("") : TEXT(" not"), *DescribeMenu(Menu)),
+			MenuOffers(Menu, Delete) == Case.bExpectDelete);
+
+		/*
+		 * THE GENERAL PROPERTY, DERIVED HERE RATHER THAN READ BACK. An action is expected iff
+		 * the selection is non-empty, every ref resolves, and every resolved handle's CanRun
+		 * says yes. Written over the table so a second action needs no edit to this test.
+		 */
+		bool bEveryRefResolves = Case.Refs.Num() > 0;
+
+		for (const FPieceRef& Ref : Case.Refs)
+		{
+			bEveryRefResolves = bEveryRefResolves && Binding.ResolvePiece(Ref) != INDEX_NONE;
+		}
+
+		int32 ExpectedRows = 0;
+
+		for (const FPieceAction& Action : Table)
+		{
+			bool bEveryPieceAllows = bEveryRefResolves && Action.CanRun != nullptr;
+
+			for (const FPieceRef& Ref : Case.Refs)
+			{
+				bEveryPieceAllows = bEveryPieceAllows
+					&& Action.CanRun(Binding, Binding.ResolvePiece(Ref));
+			}
+
+			ExpectedRows += bEveryPieceAllows ? 1 : 0;
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the menu for [%s] should hold exactly the %d row(s) EVERY piece allows; it held %d [%s]"),
+				Case.Description, *DescribePieceActionRefs(Case.Refs),
+				ExpectedRows, Menu.Num(), *DescribeMenu(Menu)),
+			Menu.Num() == ExpectedRows);
+
+		for (const FPieceAction* Offered : Menu)
+		{
+			TestTrue(
+				*FString::Printf(TEXT("%s: the menu must not offer a null row"), Case.Description),
+				Offered != nullptr);
+
+			if (Offered == nullptr)
+			{
+				continue;
+			}
+
+			/* Identity against the shipped table, never a copy: the caller commits this pointer. */
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: the menu must name a row of AllPieceActions() rather than a copy of one ('%s')"),
+					Case.Description,
+					Offered->Label != nullptr ? Offered->Label : TEXT("<null label>")),
+				Offered >= Table.GetData() && Offered < Table.GetData() + Table.Num());
+
+			for (const FPieceRef& Ref : Case.Refs)
+			{
+				const int32 Handle = Binding.ResolvePiece(Ref);
+
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s: the menu offered '%s', which piece {%d,%d} (handle %d) does not allow"),
+						Case.Description,
+						Offered->Label != nullptr ? Offered->Label : TEXT("<null label>"),
+						Ref.StructureId, Ref.PieceIndex, Handle),
+					Offered->CanRun != nullptr && Handle != INDEX_NONE
+						&& Offered->CanRun(Binding, Handle));
+			}
+		}
+	}
+
+	ReleasePieceActionStandIns(StandIns);
+
+	return true;
+}
+
+/**
+ * COMMITTING AN ACTION ACROSS A SELECTION RUNS IT AGAINST EVERY PIECE, HANDS BACK EVERY ORPHAN,
+ * AND SOLVES EXACTLY ONCE — AFTER THE LAST ONE HAS RUN.
+ *
+ * THE ONE SOLVE IS THE WHOLE POINT OF THE SLICE, AND IT NEEDS A REAL ASSERTION RATHER THAN A
+ * COMMENT. Solving is deterministic and non-destructive, so a path that solved five times to
+ * reach the state one solve describes is invisible in every other reading of the graph — the
+ * pieces are removed, the supports are right, the orphans come back, and it costs five times
+ * what it should. FStructure::NumSolves exists so that claim can fail. At scenario scale a
+ * solve is tens of milliseconds, so ten deletes done one at a time is a third of a second of
+ * stutter for an answer one pass already had.
+ *
+ * AND THE COST CLAIM IS MADE AS A CONTRAST, NOT AS AN ABSOLUTE. N single commits are asserted
+ * to cost N solves, and one batched commit of N to cost 1 — so the numbers mean something even
+ * if the solve counter itself were miscounted, because the same counter reads both.
+ *
+ * THE ORDERING IS ASSERTED SEPARATELY FROM THE COUNT, and the fixture is built so that they are
+ * different failures. Piece 2 spans TWO grounded pads, 1 and 4, and the roof 3 rests on it, so
+ * removing either pad alone leaves everything Supported and removing both leaves 2 and 3 with
+ * no path to the ground at all. A batch that solved once but did it in the middle — after the
+ * first removal, say — passes the count and reports the roof Supported by a wall that is no
+ * longer there. That is exactly the shape of the failure a player found in ten seconds, and
+ * FStructureBinding::ApplyResults keying off the LAST solve is why it matters: a push behind a
+ * mistimed solve refuses to release the very pieces the batch orphaned.
+ *
+ * A REF THAT RESOLVES TO NOTHING SKIPS THAT PIECE AND NOTHING ELSE. A selection is built by
+ * clicking, and a brick can go between the click and the commit; one stale entry must not cost
+ * the other five their delete. Which is the opposite polarity to the MENU, deliberately — an
+ * offer with a hole in it is a lie about what the button will do, whereas a commit with a hole
+ * in it has already been authorised for the pieces that are still there.
+ *
+ * NEEDS A TICKING WORLD: no. Every actor here is a transient-package stand-in, because the
+ * batch is world-free by design: it hands the orphans back rather than destroying them.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPieceActionsBatchSolvesOnceTest,
+	"DestructionGame.Core.PieceActions.BatchRunsEveryPieceAndSolvesOnce",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPieceActionsBatchSolvesOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace PieceActionsTestSupport;
+
+	const FPieceAction* Delete = FindPieceAction(TEXT("Delete"));
+
+	if (!RequireAction(*this, Delete, TEXT("Delete")))
+	{
+		return true;
+	}
+
+	/*
+	 *                 [ 3 ]  roof, resting on the spanner and nothing else
+	 *                 [ 2 ]  spanner, resting on BOTH pads
+	 *              [ 1 ]  [ 4 ]   two grounded pads — BOTH are deleted, in one batch
+	 *              =====  =====
+	 *
+	 *   [ 0 ]  an unrelated grounded pad, which must come through untouched
+	 *   =====
+	 *
+	 * TWO SUPPORTS IS WHAT MAKES THE ORDERING FALSIFIABLE. Take one pad away and the spanner is
+	 * still Supported; take both and it has nothing. So a solve that ran anywhere but after the
+	 * last removal reports Supported, while a solve that ran after both reports Falling — and
+	 * the solve COUNT is identical either way.
+	 */
+	const TArray<FPieceActionPieceSpec> PieceSpecs = {
+		{ PieceActionBrickMassKg, true },  // 0: bystander pad
+		{ PieceActionBrickMassKg, true },  // 1: pad A, DELETED in the batch
+		{ PieceActionBrickMassKg, false }, // 2: spanner
+		{ PieceActionBrickMassKg, false }, // 3: roof
+		{ PieceActionBrickMassKg, true }   // 4: pad B, DELETED in the batch
+	};
+
+	const TArray<FPieceActionJointSpec> JointSpecs = {
+		{ 1, 2, PieceActionBedJointNormal },
+		{ 4, 2, PieceActionBedJointNormal },
+		{ 2, 3, PieceActionBedJointNormal }
+	};
+
+	FStructureBinding Binding;
+	TArray<UObject*> StandIns;
+	BuildPieceActionBinding(Binding, PieceSpecs, JointSpecs, StandIns);
+
+	Binding.SolveLoads();
+
+	/* THE POSITIVE CONTROLS FOR THE RE-SOLVE: both must read held up NOW. */
+	for (const int32 Piece : { 2, 3 })
+	{
+		TestTrue(
+			*FString::Printf(TEXT("fixture: piece %d should solve as Supported before the pads go, got %s"),
+				Piece, NameOfPieceSupport(Binding.GetStructure().GetPieceSupport(Piece))),
+			Binding.GetStructure().GetPieceSupport(Piece) == EPieceSupport::Supported);
+	}
+
+	/*
+	 * ONE: N SINGLE COMMITS COST N SOLVES. This is the cost the batch exists to avoid, measured
+	 * with the same counter on the same kind of graph so that the contrast below is a like-for
+	 * -like comparison rather than two different measurements.
+	 */
+	{
+		FStructureBinding Twin;
+		TArray<UObject*> TwinStandIns;
+		BuildPieceActionBinding(Twin, PieceSpecs, JointSpecs, TwinStandIns);
+
+		Twin.SolveLoads();
+
+		const int32 SolvesBefore = Twin.GetStructure().NumSolves();
+
+		RunPieceAction(Twin, { ThisStructure, 1 }, *Delete);
+		RunPieceAction(Twin, { ThisStructure, 4 }, *Delete);
+
+		const int32 SolvesSpent = Twin.GetStructure().NumSolves() - SolvesBefore;
+
+		TestEqual(
+			FString::Printf(
+				TEXT("baseline: two SEPARATE commits should cost two solves (that is the cost the batch removes), they cost %d"),
+				SolvesSpent),
+			SolvesSpent, 2);
+
+		ReleasePieceActionStandIns(TwinStandIns);
+	}
+
+	/*
+	 * TWO: ONE BATCHED COMMIT OF THE SAME TWO PIECES COSTS ONE SOLVE, AND IT RUNS LAST.
+	 */
+	const TArray<FPieceRef> Selection = { { ThisStructure, 1 }, { ThisStructure, 4 } };
+
+	const int32 SolvesBefore = Binding.GetStructure().NumSolves();
+
+	const FPieceBatchActionResult Result = RunPieceActions(Binding, Selection, *Delete);
+
+	const int32 SolvesSpent = Binding.GetStructure().NumSolves() - SolvesBefore;
+
+	AddInfo(FString::Printf(
+		TEXT("the batch for [%s] ran %d action(s), handed back %d orphan(s) and spent %d solve(s)"),
+		*DescribePieceActionRefs(Selection), Result.RanCount,
+		Result.ActorsToDestroy.Num(), SolvesSpent));
+
+	TestEqual(
+		FString::Printf(TEXT("the batch should have run against both selected pieces, it ran %d"),
+			Result.RanCount),
+		Result.RanCount, 2);
+
+	TestEqual(
+		FString::Printf(
+			TEXT("committing %d pieces at once must cost exactly ONE solve, not one per piece; it cost %d"),
+			Selection.Num(), SolvesSpent),
+		SolvesSpent, 1);
+
+	/*
+	 * ONE ORPHAN PER PIECE THAT RAN, IN ORDER. Captured before each action ran, because
+	 * GetActor answers null the moment a piece is removed — a batch that looks afterwards hands
+	 * back nothing and every deleted brick's mesh stays standing in the hole it came out of.
+	 */
+	TestEqual(
+		FString::Printf(TEXT("the batch should hand back one orphan per piece that ran, it handed back %d"),
+			Result.ActorsToDestroy.Num()),
+		Result.ActorsToDestroy.Num(), 2);
+
+	if (Result.ActorsToDestroy.Num() == 2)
+	{
+		TestTrue(
+			FString::Printf(TEXT("orphan 0 should be piece 1's own actor (%s), got %s"),
+				*GetNameSafe(StandIns[1]), *GetNameSafe(Result.ActorsToDestroy[0])),
+			Result.ActorsToDestroy[0] == StandIns[1]);
+
+		TestTrue(
+			FString::Printf(TEXT("orphan 1 should be piece 4's own actor (%s), got %s"),
+				*GetNameSafe(StandIns[4]), *GetNameSafe(Result.ActorsToDestroy[1])),
+			Result.ActorsToDestroy[1] == StandIns[4]);
+	}
+
+	for (const int32 Deleted : { 1, 4 })
+	{
+		TestTrue(
+			FString::Printf(TEXT("piece %d must be gone from the graph, IsPieceRemoved reports %d"),
+				Deleted, Binding.IsPieceRemoved(Deleted) ? 1 : 0),
+			Binding.IsPieceRemoved(Deleted));
+	}
+
+	TestEqual(
+		FString::Printf(TEXT("two pieces should have left the structure, so 3 should be live, got %d"),
+			Binding.GetStructure().NumLivePieces()),
+		Binding.GetStructure().NumLivePieces(), 3);
+
+	/*
+	 * THE ORDERING ASSERTION. Nothing between the batch and this line called SolveLoads. A solve
+	 * that ran before the last removal reports the spanner Supported by the pad it still had at
+	 * the time — one solve, correctly counted, and an answer describing a wall that is gone.
+	 */
+	for (const int32 Piece : { 2, 3 })
+	{
+		TestTrue(
+			*FString::Printf(
+				TEXT("the batch's ONE solve must come after the LAST removal: piece %d has no path to the ground and should read Falling, got %s"),
+				Piece, NameOfPieceSupport(Binding.GetStructure().GetPieceSupport(Piece))),
+			Binding.GetStructure().GetPieceSupport(Piece) == EPieceSupport::Falling);
+	}
+
+	TestTrue(
+		FString::Printf(TEXT("the bystander pad must still read Grounded after the batch, got %s"),
+			NameOfPieceSupport(Binding.GetStructure().GetPieceSupport(0))),
+		Binding.GetStructure().GetPieceSupport(0) == EPieceSupport::Grounded);
+
+	TestTrue(
+		FString::Printf(TEXT("the bystander must still hold its own actor, got %s"),
+			*GetNameSafe(Binding.GetActor(0))),
+		Binding.GetActor(0) == StandIns[0]);
+
+	/*
+	 * THREE: A SELECTION WITH STALE ENTRIES RUNS THE REST AND STILL SOLVES EXACTLY ONCE.
+	 */
+	TripwireRunCount = 0;
+
+	{
+		const TArray<FPieceRef> Mixed = {
+			{ ThisStructure, 1 },          // already deleted by the batch above
+			{ SomeOtherStructure, 0 },     // somebody else's wall
+			{ },                           // a click that hit the floor
+			{ ThisStructure, MAX_int32 },  // names nothing
+			{ ThisStructure, 3 }           // live, and the only one that should run
+		};
+
+		const int32 Before = Binding.GetStructure().NumSolves();
+
+		const FPieceBatchActionResult Partial = RunPieceActions(Binding, Mixed, *Delete);
+
+		const int32 Spent = Binding.GetStructure().NumSolves() - Before;
+
+		TestEqual(
+			FString::Printf(
+				TEXT("a selection of five with one live entry should run once, it ran %d [%s]"),
+				Partial.RanCount, *DescribePieceActionRefs(Mixed)),
+			Partial.RanCount, 1);
+
+		TestEqual(
+			FString::Printf(TEXT("and hand back exactly one orphan, it handed back %d"),
+				Partial.ActorsToDestroy.Num()),
+			Partial.ActorsToDestroy.Num(), 1);
+
+		if (Partial.ActorsToDestroy.Num() == 1)
+		{
+			TestTrue(
+				FString::Printf(TEXT("the orphan should be piece 3's own actor (%s), got %s"),
+					*GetNameSafe(StandIns[3]), *GetNameSafe(Partial.ActorsToDestroy[0])),
+				Partial.ActorsToDestroy[0] == StandIns[3]);
+		}
+
+		TestEqual(
+			FString::Printf(TEXT("a partly stale selection must still cost exactly one solve, it cost %d"),
+				Spent),
+			Spent, 1);
+
+		TestTrue(
+			FString::Printf(TEXT("piece 3 should have gone, IsPieceRemoved reports %d"),
+				Binding.IsPieceRemoved(3) ? 1 : 0),
+			Binding.IsPieceRemoved(3));
+	}
+
+	/*
+	 * FOUR: A SELECTION THAT RESOLVES TO NOTHING RUNS NOTHING — AND IT IS THE COUNTER, NOT THE
+	 * ABSENCE, THAT SAYS SO. "Refused before running" and "ran, then reported nothing" are
+	 * different bugs that look identical from outside.
+	 */
+	{
+		const TArray<FPieceRef> AllStale = {
+			{ SomeOtherStructure, 0 },
+			{ },
+			{ ThisStructure, MIN_int32 }
+		};
+
+		const int32 Before = Binding.GetStructure().NumSolves();
+
+		const FPieceBatchActionResult Nothing = RunPieceActions(Binding, AllStale, TripwireAction);
+
+		const int32 Spent = Binding.GetStructure().NumSolves() - Before;
+
+		TestEqual(
+			FString::Printf(TEXT("a wholly stale selection must run nothing, it ran %d"), Nothing.RanCount),
+			Nothing.RanCount, 0);
+
+		TestEqual(
+			FString::Printf(TEXT("a wholly stale selection must hand back no orphans, it handed back %d"),
+				Nothing.ActorsToDestroy.Num()),
+			Nothing.ActorsToDestroy.Num(), 0);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("a wholly stale selection must not ENTER any action's Run, it was entered %d time(s)"),
+				TripwireRunCount),
+			TripwireRunCount, 0);
+
+		/*
+		 * AND IT STILL SOLVES ONCE, WHICH IS A RULE WITH NO EXCEPTIONS RATHER THAN AN OVERSIGHT.
+		 * The single-piece path already solves unconditionally, because solving is
+		 * non-destructive and re-runnable — so a run that changed nothing costs a solve rather
+		 * than a branch, and no caller can end up on the wrong side of a condition.
+		 */
+		TestEqual(
+			FString::Printf(TEXT("every batched commit costs exactly one solve, even one that ran nothing; it cost %d"),
+				Spent),
+			Spent, 1);
+	}
+
+	/* FIVE: AND AN EMPTY SELECTION IS THE SAME RULE. */
+	{
+		const int32 Before = Binding.GetStructure().NumSolves();
+
+		const FPieceBatchActionResult Empty =
+			RunPieceActions(Binding, TArrayView<const FPieceRef>(), *Delete);
+
+		const int32 Spent = Binding.GetStructure().NumSolves() - Before;
+
+		TestEqual(
+			FString::Printf(TEXT("an empty selection must run nothing, it ran %d"), Empty.RanCount),
+			Empty.RanCount, 0);
+
+		TestEqual(
+			FString::Printf(TEXT("an empty selection must cost exactly one solve, it cost %d"), Spent),
+			Spent, 1);
 	}
 
 	ReleasePieceActionStandIns(StandIns);

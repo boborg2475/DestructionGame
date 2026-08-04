@@ -71,6 +71,29 @@ TArrayView<const FPieceAction> AllPieceActions();
 TArray<const FPieceAction*> PieceActionsFor(const FStructureBinding& Binding, const FPieceRef& Ref);
 
 /**
+ * Which actions a menu should offer for a whole SELECTION of pieces.
+ *
+ * THE INTERSECTION, NOT THE UNION, and that is the whole requirement rather than a
+ * preference. An action is offered only if every selected piece's CanRun says yes, because
+ * choosing it runs it against all of them — "offered if any" is the plausible wrong answer
+ * and it puts a Delete button on a menu that then deletes bricks nobody could have chosen
+ * individually, silently doing less (or more) than the button said.
+ *
+ * ONE PIECE IS THE ONE-ELEMENT CASE, so the single-ref overload above is this function with a
+ * list of one and never a second policy. An EMPTY selection offers nothing: there is no
+ * piece for a row to be meaningful about, and an empty intersection over an empty set is
+ * vacuously everything, which is the fail-OPEN direction.
+ *
+ * A SINGLE UNRESOLVABLE REF EMPTIES THE WHOLE MENU rather than being skipped. The refs come
+ * from bricks that may have gone between the click that selected them and the click that
+ * opens the menu, and an action offered for a set it cannot fully name is an action that will
+ * do something other than what it says.
+ */
+TArray<const FPieceAction*> PieceActionsFor(
+	const FStructureBinding& Binding,
+	TArrayView<const FPieceRef> Refs);
+
+/**
  * What running an action produced.
  *
  * THE ACTOR COMES BACK RATHER THAN BEING DESTROYED HERE, which is what keeps the commit
@@ -108,4 +131,52 @@ struct FPieceActionResult
 FPieceActionResult RunPieceAction(
 	FStructureBinding& Binding,
 	const FPieceRef& Ref,
+	const FPieceAction& Action);
+
+/**
+ * What running an action across a whole selection produced.
+ *
+ * ONE ORPHAN PER PIECE THAT RAN, in the order they ran, so the caller destroys exactly what
+ * the batch took out of the graph and nothing else. Same contract as the single result's
+ * ActorToDestroy, and the same reason it is handed back rather than destroyed here.
+ */
+struct FPieceBatchActionResult
+{
+	/** How many of the selected pieces the action actually ran against. */
+	int32 RanCount = 0;
+
+	TArray<UObject*> ActorsToDestroy;
+};
+
+/**
+ * Commit one action against every piece of a selection, then solve ONCE.
+ *
+ * AN ACTION STAYS SINGLE-PIECE AND THIS IS WHAT LOOPS. No row understands sets, because the
+ * moment one does, adding an action stops being adding a row — which is the only property the
+ * table exists for. FPieceActionContext is shaped to grow by FIELD if something genuinely
+ * needs the whole set later.
+ *
+ * THE SOLVE IS THE POINT, AND IT LIVES HERE BECAUSE THERE IS NOWHERE ELSE IT CAN. Each solve
+ * costs a full pass over the graph — tens of milliseconds at scenario scale — so a batch that
+ * called RunPieceAction per piece would solve N times to reach a state one solve describes,
+ * and deleting ten bricks would cost ten times what deleting one does. Running everything
+ * first and solving after is what makes multi-select FASTER per brick rather than slower.
+ *
+ * EXACTLY ONE SOLVE PER CALL, UNCONDITIONALLY — including a call where nothing ran. That is
+ * the same rule the single-piece path already follows (solving is non-destructive and
+ * re-runnable, so a run that changed nothing costs a solve rather than a branch), and a rule
+ * with no exceptions is one no caller can be on the wrong side of.
+ *
+ * AND THE SOLVE MUST SEE EVERY REMOVAL, WHICH IS AN ORDERING OBLIGATION RATHER THAN A COUNT.
+ * FStructureBinding::ApplyResults refuses to release a piece the last solve has no answer for,
+ * so whoever pushes after this must be pushing an answer computed after the LAST action ran.
+ * A solve placed anywhere but the end is one solve and still wrong.
+ *
+ * RunPieceAction IS THE ONE-ELEMENT CASE OF THIS. There is deliberately no public
+ * "run without solving": a caller who forgot the solve and then pushed would release pieces
+ * against a stale answer, and releasing is irreversible.
+ */
+FPieceBatchActionResult RunPieceActions(
+	FStructureBinding& Binding,
+	TArrayView<const FPieceRef> Refs,
 	const FPieceAction& Action);

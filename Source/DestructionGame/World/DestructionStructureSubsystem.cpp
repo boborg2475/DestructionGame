@@ -341,6 +341,59 @@ bool UDestructionStructureSubsystem::CommitPieceAction(const FPieceRef& Ref, con
 	return Result.bRan;
 }
 
+int32 UDestructionStructureSubsystem::CommitPieceActionForAll(
+	TArrayView<const FPieceRef> Refs,
+	const FPieceAction& Action)
+{
+	/*
+	 * A SELECTION IS BUILT BY CLICKING ONE WALL, so the structure is the one its refs name
+	 * and the first of them is as good as any. An empty selection and an id that names
+	 * nothing commit nothing, the same shape as the single-piece commit and as SolveAndPush;
+	 * refs naming anything else are then refused piece by piece by the re-resolve inside
+	 * RunPieceActions, which needs no help from here.
+	 */
+	FStructureBinding* Binding = Refs.Num() > 0 ? Find(Refs[0].StructureId) : nullptr;
+
+	if (Binding == nullptr)
+	{
+		return 0;
+	}
+
+	const FPieceBatchActionResult Result = RunPieceActions(*Binding, Refs, Action);
+
+	/*
+	 * AND THIS IS WHERE THE ORPHANS ARE FINALLY CONSUMED — one per piece that ran, because
+	 * RunPieceActions is world-free and hands them back rather than destroying them. Until
+	 * something does this, every deleted brick's mesh stays standing in the hole it was
+	 * deleted from: not merely untidy, but a collider nothing in the model knows about.
+	 */
+	for (UObject* const Orphan : Result.ActorsToDestroy)
+	{
+		if (AActor* Actor = Cast<AActor>(Orphan))
+		{
+			Actor->Destroy();
+		}
+	}
+
+	/*
+	 * ONE PUSH, BEHIND THE ONE SOLVE, AND THAT ORDERING IS THE WHOLE POINT OF BATCHING HERE
+	 * RATHER THAN LOOPING CommitPieceAction. RunPieceActions solves exactly once and does it
+	 * after the LAST action ran, so this is pushing an answer that saw every removal;
+	 * FStructureBinding::ApplyResults refuses to release a piece the last solve has no
+	 * answer for, so a push behind a mistimed solve leaves the pieces the batch orphaned
+	 * hanging in the air — the exact defect a player found in ten seconds, reintroduced by
+	 * a batch.
+	 *
+	 * THE PUSH HALF ONLY, NOT SolveAndPush, for the reason the single-piece commit gives:
+	 * the answer is already in hand, and a second full solve doubles the cost of a click
+	 * for nothing. Unconditional, because a batch that ran nothing re-solved to the same
+	 * answer and ApplyResults then finds nothing new to release.
+	 */
+	PushSolvedResultsToWorld(*Binding);
+
+	return Result.RanCount;
+}
+
 FStructureBinding* UDestructionStructureSubsystem::Find(int32 StructureId)
 {
 	const TUniquePtr<FStructureBinding>* Found = Structures.Find(StructureId);

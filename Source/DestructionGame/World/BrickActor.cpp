@@ -67,6 +67,23 @@ void ABrickActor::Release()
 	Mesh->SetSimulatePhysics(true);
 }
 
+void ABrickActor::SetHighlighted(EBrickHighlight NewHighlight)
+{
+	/*
+	 * STORING THE STATE IS ALL THIS DOES, AND THAT IS DELIBERATE. What a brick LOOKS like
+	 * is the same untestable inch as the menu widget — a code-built world has no renderer
+	 * to ask — so every decision about WHICH state a brick is in lives out in the
+	 * controller where it can be asserted, and whatever eventually reads this flag and
+	 * swaps a material must add no decision of its own.
+	 */
+	Highlight = NewHighlight;
+}
+
+EBrickHighlight ABrickActor::GetHighlight() const
+{
+	return Highlight;
+}
+
 const FPieceRef& ABrickActor::GetPieceRef() const
 {
 	return PieceRef;
