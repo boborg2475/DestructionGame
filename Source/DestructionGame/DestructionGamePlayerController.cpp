@@ -4,12 +4,16 @@
 #include "DestructionGamePlayerController.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "InputTriggers.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/SBoxPanel.h"
 #include "Core/PieceActions.h"
 #include "DestructionGameCameraManager.h"
 #include "RequiredContent.h"
@@ -111,10 +115,11 @@ bool ADestructionGamePlayerController::ShowPieceMenu(TArrayView<const FPieceMenu
 	 * IMPLEMENTATION DETAIL. There is exactly one route out of "a menu is up", so replacing a
 	 * menu, showing an empty one and closing one outright all take it — which is what makes the
 	 * controls come back on every one of them without three copies of the restore. It is also
-	 * what will keep the widget half honest when it lands: a second add with no matching remove
-	 * leaks the previous menu on screen forever, and no headless assertion can see that, but
-	 * the model-level version of the same bug — holding two menus' rows — is asserted, and the
-	 * two are only the same code path while show is written this way.
+	 * what keeps the widget half honest, which is why the build below sits here and the removal
+	 * sits beside the Reset in DismissPieceMenu: a second add with no matching remove leaks the
+	 * previous menu on screen forever and no headless assertion can see that, but the
+	 * model-level version of the same bug — holding two menus' rows — is asserted, and the two
+	 * are only the same code path while show is written this way.
 	 *
 	 * Rows must not alias ShownPieceMenuRows: the dismiss below empties it. No caller does that
 	 * today and nothing guards it; see CURRENT_STATE.md.
@@ -127,6 +132,8 @@ bool ADestructionGamePlayerController::ShowPieceMenu(TArrayView<const FPieceMenu
 	}
 
 	ShownPieceMenuRows.Append(Rows.GetData(), Rows.Num());
+
+	BuildPieceMenuWidget();
 
 	SetPieceMenuControls(true);
 
@@ -141,6 +148,8 @@ bool ADestructionGamePlayerController::DismissPieceMenu()
 	}
 
 	ShownPieceMenuRows.Reset();
+
+	RemovePieceMenuWidget();
 
 	SetPieceMenuControls(false);
 
@@ -160,6 +169,119 @@ bool ADestructionGamePlayerController::IsPieceMenuShown() const
 TArrayView<const FPieceMenuRow> ADestructionGamePlayerController::GetShownPieceMenuRows() const
 {
 	return ShownPieceMenuRows;
+}
+
+bool ADestructionGamePlayerController::ChoosePieceMenuRow(int32 RowIndex)
+{
+	/*
+	 * AN INDEX THAT NAMES NO ROW COMMITS NOTHING, AND IT IS REFUSED RATHER THAN CLAMPED. A
+	 * FMath::Clamp here would turn every out-of-range choice into a commit of row 0 — the
+	 * first entry of a menu run against a brick nobody clicked — which is the obvious wrong
+	 * fix and is exactly what the refusal rows of World.Choose count entries into Run to
+	 * catch. IsValidIndex is also what makes "choose row 0 when no menu is up" the same
+	 * refusal, since an empty array has no valid index at all.
+	 */
+	if (!ShownPieceMenuRows.IsValidIndex(RowIndex))
+	{
+		return false;
+	}
+
+	/*
+	 * THE CHOSEN ROW IS COPIED OUT BEFORE THE DISMISS, and that is load-bearing rather than
+	 * tidy: DismissPieceMenu Reset()s the very array the rows live in, so a reference into
+	 * ShownPieceMenuRows would be reading destroyed elements by the time it was committed.
+	 * Both halves come from the ROW rather than from anything this controller remembered
+	 * separately — Core/PieceMenu.h says why the row carries its own ref, and a presenter
+	 * that committed the chosen row's action against a remembered ref would delete the wrong
+	 * brick with everything else looking perfect.
+	 */
+	const FPieceRef Ref = ShownPieceMenuRows[RowIndex].Ref;
+	const FPieceAction* const Action = ShownPieceMenuRows[RowIndex].Action;
+
+	/*
+	 * IT COMES DOWN FIRST, BY THE ONE ROUTE OUT OF "A MENU IS UP" — so the cursor and
+	 * free-look are given back by the same restore every other route takes, and the commit
+	 * below runs with nothing on screen naming the brick it is about to remove.
+	 */
+	DismissPieceMenu();
+
+	UWorld* const World = GetWorld();
+
+	UDestructionStructureSubsystem* const Subsystem =
+		World != nullptr ? World->GetSubsystem<UDestructionStructureSubsystem>() : nullptr;
+
+	if (Subsystem == nullptr)
+	{
+		return false;
+	}
+
+	return Subsystem->CommitPieceAction(Ref, *Action);
+}
+
+void ADestructionGamePlayerController::BuildPieceMenuWidget()
+{
+	UWorld* const World = GetWorld();
+
+	UGameViewportClient* const Viewport = World != nullptr ? World->GetGameViewport() : nullptr;
+
+	/*
+	 * NO VIEWPORT MEANS NO WIDGET, AND THAT IS THE ORDINARY CASE IN A TEST rather than an
+	 * error: a world built in code has no UGameViewportClient at all, so the presented rows —
+	 * which are the record, not this — stand alone and everything asserted about a menu still
+	 * holds with nothing drawn.
+	 */
+	if (Viewport == nullptr)
+	{
+		return;
+	}
+
+	TSharedRef<SVerticalBox> Buttons = SNew(SVerticalBox);
+
+	for (int32 RowIndex = 0; RowIndex < ShownPieceMenuRows.Num(); ++RowIndex)
+	{
+		Buttons->AddSlot()
+			.AutoHeight()
+			[
+				SNew(SButton)
+				.Text(FText::FromString(ShownPieceMenuRows[RowIndex].Label))
+				.OnClicked(FOnClicked::CreateUObject(
+					this, &ADestructionGamePlayerController::OnPieceMenuRowClicked, RowIndex))
+			];
+	}
+
+	PieceMenuWidget =
+		SNew(SBox)
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		[
+			Buttons
+		];
+
+	Viewport->AddViewportWidgetContent(PieceMenuWidget.ToSharedRef());
+}
+
+void ADestructionGamePlayerController::RemovePieceMenuWidget()
+{
+	if (!PieceMenuWidget.IsValid())
+	{
+		return;
+	}
+
+	UWorld* const World = GetWorld();
+
+	if (UGameViewportClient* const Viewport = World != nullptr ? World->GetGameViewport() : nullptr)
+	{
+		Viewport->RemoveViewportWidgetContent(PieceMenuWidget.ToSharedRef());
+	}
+
+	PieceMenuWidget.Reset();
+}
+
+FReply ADestructionGamePlayerController::OnPieceMenuRowClicked(int32 RowIndex)
+{
+	ChoosePieceMenuRow(RowIndex);
+
+	return FReply::Handled();
 }
 
 void ADestructionGamePlayerController::SetPieceMenuControls(bool bMenuIsUp)

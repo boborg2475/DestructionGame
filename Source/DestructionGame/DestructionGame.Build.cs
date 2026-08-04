@@ -14,7 +14,11 @@ public class DestructionGame : ModuleRules
 			"Engine",
 			"InputCore",
 			"EnhancedInput",
+
+			// the piece menu is Slate in C++, not a WidgetBlueprint
 			"UMG",
+			"Slate",
+			"SlateCore",
 
 			// physics and destruction
 			"PhysicsCore",

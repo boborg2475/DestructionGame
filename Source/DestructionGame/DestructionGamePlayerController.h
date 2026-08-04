@@ -5,8 +5,10 @@
 #include "CoreMinimal.h"
 #include "Core/PieceMenu.h"
 #include "GameFramework/PlayerController.h"
+#include "Input/Reply.h"
 #include "DestructionGamePlayerController.generated.h"
 
+class SWidget;
 class UInputAction;
 class UInputMappingContext;
 
@@ -67,6 +69,16 @@ public:
 	/** The rows currently presented, empty when no menu is up. */
 	TArrayView<const FPieceMenuRow> GetShownPieceMenuRows() const;
 
+	/**
+	 * Choose a presented row: commit it and take the menu down.
+	 *
+	 * AN INDEX INTO THE PRESENTED ROWS IS THE WHOLE INPUT, which is what keeps the widget
+	 * half to a single call. A button knows which entry it is and nothing else.
+	 *
+	 * @return whether the chosen row's action actually committed.
+	 */
+	bool ChoosePieceMenuRow(int32 RowIndex);
+
 protected:
 
 	/** Input Mapping Contexts applied on possession */
@@ -123,6 +135,32 @@ private:
 	 */
 	void SetPieceMenuControls(bool bMenuIsUp);
 
+	/**
+	 * Put one button per presented row on screen, and take them off again.
+	 *
+	 * THIS IS THE ONE INCH OF THE LOOP NO TEST CAN REACH, and it is deliberately kept to
+	 * exactly that: a code-built test world has no UGameViewportClient at all, so
+	 * AddViewportWidgetContent has nothing to add to and no headless assertion can see a
+	 * button, a click, or a leak. Everything a menu could get wrong — which rows, which ref,
+	 * which action, the dismissal, the controls restore, an index naming no row — is already
+	 * decided by ChoosePieceMenuRow and the presenter, both of which are covered. So there is
+	 * no logic here to be wrong: a button per row, its label off the row, and a click that
+	 * calls ChoosePieceMenuRow with its own index and nothing else.
+	 *
+	 * The build sits beside the Append in ShowPieceMenu and the removal beside the Reset in
+	 * DismissPieceMenu, so it inherits the dismiss-then-build discipline that already makes
+	 * the controls restore correct — which is what keeps a second add with no matching remove,
+	 * the one leak that would go unseen, on the same code path as the asserted one.
+	 */
+	void BuildPieceMenuWidget();
+	void RemovePieceMenuWidget();
+
+	/** A button's click: choose the row it stands for. Nothing else belongs here. */
+	FReply OnPieceMenuRowClicked(int32 RowIndex);
+
 	/** The rows on screen right now. Empty means no menu. */
 	TArray<FPieceMenuRow> ShownPieceMenuRows;
+
+	/** The widget those rows are drawn as, valid only while a menu is up. */
+	TSharedPtr<SWidget> PieceMenuWidget;
 };
