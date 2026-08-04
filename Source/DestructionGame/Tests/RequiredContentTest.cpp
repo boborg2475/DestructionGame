@@ -113,12 +113,27 @@ namespace RequiredContentTestSupport
 	constexpr int32 ControllerMappingContextFloor = 2;
 
 	/**
-	 * The four input actions, two mapping contexts and one placeholder brick mesh the module
+	 * AND THE CONTROLLER'S OWN INPUT ACTIONS, which is a THIRD sweep rather than a wider one.
+	 *
+	 * The two sweeps above are per class AND per asset type, so a UInputAction declared on the
+	 * player controller is swept by neither: the pawn sweep reads the pawn, and the controller
+	 * sweep reads only its UInputMappingContext properties. That gap is not hypothetical — the
+	 * piece menu's input action is bound on the CONTROLLER, deliberately (it owns the mapping
+	 * contexts, it outlives any pawn, and it is what has the cursor and the deprojection), so
+	 * the first reference to land in it is exactly the one nothing was watching.
+	 *
+	 * One, because one is what the piece menu needs. A floor rather than an equality for the
+	 * same reason as the others.
+	 */
+	constexpr int32 ControllerInputActionFloor = 1;
+
+	/**
+	 * The five input actions, two mapping contexts and one placeholder brick mesh the module
 	 * resolves by path today. A FLOOR rather than an equality: adding a hard reference is
 	 * meant to be adding a row, and a test asserting an exact count would have to be edited
 	 * alongside every one of them.
 	 */
-	constexpr int32 RequiredContentPathFloor = 7;
+	constexpr int32 RequiredContentPathFloor = 8;
 }
 
 /**
@@ -249,6 +264,22 @@ bool FRequiredContentResolvesTest::RunTest(const FString& Parameters)
 			TEXT("the player controller should hold at least %d input mapping contexts for this sweep to mean anything; found %d"),
 			ControllerMappingContextFloor, ControllerFound),
 		ControllerFound >= ControllerMappingContextFloor);
+
+	const int32 ControllerActionStart = References.Num();
+
+	CollectDeclaredAssetReferences(
+		ADestructionGamePlayerController::StaticClass(),
+		GetDefault<ADestructionGamePlayerController>(),
+		UInputAction::StaticClass(),
+		References);
+
+	const int32 ControllerActionsFound = References.Num() - ControllerActionStart;
+
+	TestTrue(
+		FString::Printf(
+			TEXT("the player controller should declare at least %d UInputAction reference for the piece menu's input; found %d"),
+			ControllerInputActionFloor, ControllerActionsFound),
+		ControllerActionsFound >= ControllerInputActionFloor);
 
 	/*
 	 * AND THE BRICK MESH, WHICH IS NOT A UPROPERTY OF THE SAME SHAPE. It is set onto the

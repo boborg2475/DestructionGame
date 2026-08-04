@@ -12,8 +12,11 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
+#include "GameFramework/GameModeBase.h"
+#include "GameFramework/WorldSettings.h"
 #include "Misc/AutomationTest.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "Templates/SubclassOf.h"
 #include "Tests/AutomationCommon.h"
 #include "World/BrickActor.h"
 #include "World/DestructionStructureSubsystem.h"
@@ -81,6 +84,28 @@ namespace BrickWorldTestSupport
 	 * than falling forever.
 	 */
 	constexpr double FloorTopZCm = -50.0;
+
+	/**
+	 * HOW MUCH GROUND EVERY WALL IN THIS SUITE NEEDS UNDER IT, as a half-extent in cm.
+	 *
+	 * This exists because the floor was WRONG and nothing noticed. SpawnFloor used to place
+	 * SM_Cube at (0, 0, ...) and scale it by 40, which reads as a 40 m slab straddling the
+	 * origin — except that SM_Cube's pivot is a CORNER (0,0,0)..(100,100,100), so the slab
+	 * actually spanned X 0..4000 and Y 0..4000. A RunningBond wall spans Y -5.125..+5.125,
+	 * so HALF of every wall in every World.* test had no floor beneath it, and the leftmost
+	 * brick of every wall (X from -10.75) hung off the edge as well. It affected nothing
+	 * only by luck — released orphans landed on the kinematic bricks below them — and two
+	 * test files worked around it rather than fixing it.
+	 *
+	 * The numbers are what the walls actually need. Along X, a 30-brick course reaches from
+	 * -BrickSizeCm.X / 2 = -10.75 to 29 x 22.5 + 10.75 = 663.25, so 700 covers the widest
+	 * wall this suite lays with room to spare. Along Y a wall is one brick deep, 10.25 cm
+	 * centred on zero, so 50 is nearly ten times what is needed. Both are half-extents, and
+	 * both are far inside the 2000 the slab now reaches, so this is a floor on the coverage
+	 * rather than a fit to it.
+	 */
+	constexpr double FloorMustCoverHalfXCm = 700.0;
+	constexpr double FloorMustCoverHalfYCm = 50.0;
 
 	/**
 	 * A FLUSH wall, which is the mixed-size case: 2 courses of 3 gives 3 + 4 = 7 pieces,
@@ -169,7 +194,25 @@ namespace BrickWorldTestSupport
 		UDestructionStructureSubsystem* Subsystem = nullptr;
 		UStaticMesh* Cube = nullptr;
 
-		bool Begin(FAutomationTestBase& Test)
+		/**
+		 * Build the world, begin play, put a floor under it and find the subsystem.
+		 *
+		 * THE GAME MODE IS NAMED RATHER THAN INHERITED, and the default is Epic's plain one.
+		 * FTestWorldWrapper::BeginPlayInTestWorld calls UWorld::SetGameMode, which resolves
+		 * WorldSettings->DefaultGameMode first and only then falls back to the project's
+		 * GlobalDefaultGameMode — and that ini setting is ADestructionGameGameMode, so every
+		 * world test in this suite has silently been running the real game mode. Once the
+		 * game mode builds a scenario on begin-play, that would mean every World.* test
+		 * spawning a 1,220-brick wall it never asked for.
+		 *
+		 * So a test that is not about the game mode gets AGameModeBase and no scenario, and
+		 * a test that IS about it passes ADestructionGameGameMode::StaticClass() explicitly
+		 * — which also makes that test say what it is exercising rather than depending on an
+		 * ini file three directories away.
+		 */
+		bool Begin(
+			FAutomationTestBase& Test,
+			TSubclassOf<AGameModeBase> GameModeClass = AGameModeBase::StaticClass())
 		{
 			Cube = LoadObject<UStaticMesh>(nullptr, CubeMeshPath);
 
@@ -211,6 +254,16 @@ namespace BrickWorldTestSupport
 
 			World = Wrapper.GetTestWorld();
 
+			if (AWorldSettings* Settings = World->GetWorldSettings())
+			{
+				Settings->DefaultGameMode = GameModeClass;
+			}
+			else
+			{
+				Test.AddError(TEXT("fixture: the test world has no WorldSettings to name a game mode on"));
+				return false;
+			}
+
 			if (!Wrapper.BeginPlayInTestWorld())
 			{
 				Wrapper.ForwardErrorMessages(&Test);
@@ -240,15 +293,30 @@ namespace BrickWorldTestSupport
 		 * Movable-but-not-simulating, i.e. kinematic, which is what every intact brick is
 		 * too — and it sidesteps the "illegal call to SetStaticMesh on a static component"
 		 * check that setting a mesh on an already-registered Static component trips.
+		 *
+		 * THE PLACEMENT IS THE SAME ARITHMETIC PRODUCTION ALREADY USES, and it had to
+		 * become so: the earlier version put the actor's ORIGIN at (0, 0, ...), which for a
+		 * corner-pivoted mesh puts the slab's whole 40 m footprint into the +X +Y quadrant.
+		 * Subtracting the scaled local bounds centre puts the slab's BOUNDS where they were
+		 * meant to be, whatever the pivot happens to be — the same fix, and the same reason,
+		 * as BrickSpawnTransform in World/DestructionStructureSubsystem.cpp.
+		 *
+		 * The Z was right by accident before and is right on purpose now: the target centre
+		 * is half the slab's own thickness below the top face, so the top face lands on
+		 * FloorTopZCm either way.
 		 */
 		void SpawnFloor(FAutomationTestBase& Test)
 		{
 			const FVector ScaleCm(40.0, 40.0, 1.0);
-			const double TopOffsetCm = Cube->GetBoundingBox().Max.Z * ScaleCm.Z;
+
+			const FBox LocalBounds = Cube->GetBoundingBox();
+			const FVector SlabSizeCm = LocalBounds.GetSize() * ScaleCm;
+
+			const FVector TargetCentreCm(0.0, 0.0, FloorTopZCm - SlabSizeCm.Z * 0.5);
 
 			const FTransform Transform(
 				FRotator::ZeroRotator,
-				FVector(0.0, 0.0, FloorTopZCm - TopOffsetCm),
+				TargetCentreCm - ScaleCm * LocalBounds.GetCenter(),
 				ScaleCm);
 
 			AStaticMeshActor* Floor = World->SpawnActorDeferred<AStaticMeshActor>(
@@ -263,6 +331,31 @@ namespace BrickWorldTestSupport
 			Floor->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
 			Floor->GetStaticMeshComponent()->SetStaticMesh(Cube);
 			Floor->FinishSpawning(Transform);
+
+			/*
+			 * AND IT IS CHECKED, ON BOUNDS, because the defect this replaces was invisible
+			 * for exactly as long as nobody looked at where the slab actually was. Bounds
+			 * rather than location is the same choice Tests/BrickActorTest.cpp makes and for
+			 * the same reason: it is pivot-agnostic and catches a scale error in the same
+			 * comparison.
+			 */
+			const FBox FloorBoundsCm = Floor->GetComponentsBoundingBox();
+
+			const bool bCoversTheWalls =
+				FloorBoundsCm.Min.X <= -FloorMustCoverHalfXCm
+				&& FloorBoundsCm.Max.X >= FloorMustCoverHalfXCm
+				&& FloorBoundsCm.Min.Y <= -FloorMustCoverHalfYCm
+				&& FloorBoundsCm.Max.Y >= FloorMustCoverHalfYCm
+				&& FMath::IsNearlyEqual(FloorBoundsCm.Max.Z, FloorTopZCm, BoundsToleranceCm);
+
+			Test.TestTrue(
+				*FString::Printf(
+					TEXT("fixture: the floor must span at least X +/-%g, Y +/-%g with its top at Z %g; it spans X %g..%g, Y %g..%g, top Z %g"),
+					FloorMustCoverHalfXCm, FloorMustCoverHalfYCm, FloorTopZCm,
+					FloorBoundsCm.Min.X, FloorBoundsCm.Max.X,
+					FloorBoundsCm.Min.Y, FloorBoundsCm.Max.Y,
+					FloorBoundsCm.Max.Z),
+				bCoversTheWalls);
 		}
 
 		void TickSeconds(double Seconds)

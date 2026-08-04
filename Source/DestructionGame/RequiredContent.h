@@ -34,6 +34,16 @@ namespace DestructionContent
 	inline constexpr const TCHAR* MouseLookActionPath = TEXT("/Game/Input/Actions/IA_MouseLook.IA_MouseLook");
 	inline constexpr const TCHAR* AscendActionPath = TEXT("/Game/Input/Actions/IA_Jump.IA_Jump");
 
+	/**
+	 * The input action that opens the piece context menu, bound on the PLAYER CONTROLLER.
+	 *
+	 * ON THE CONTROLLER RATHER THAN THE PAWN, deliberately: the controller already owns the
+	 * mapping contexts, it outlives any pawn, and it is what carries the cursor and the
+	 * deprojection this action needs. A pawn-side binding would go away with the pawn.
+	 */
+	inline constexpr const TCHAR* InspectPieceActionPath =
+		TEXT("/Game/Input/Actions/IA_InspectPiece.IA_InspectPiece");
+
 	/* The two mapping contexts ADestructionGamePlayerController adds for a local player. */
 	inline constexpr const TCHAR* DefaultMappingContextPath = TEXT("/Game/Input/IMC_Default.IMC_Default");
 	inline constexpr const TCHAR* MouseLookMappingContextPath = TEXT("/Game/Input/IMC_MouseLook.IMC_MouseLook");

@@ -17,6 +17,7 @@ namespace
 		DestructionContent::LookActionPath,
 		DestructionContent::MouseLookActionPath,
 		DestructionContent::AscendActionPath,
+		DestructionContent::InspectPieceActionPath,
 		DestructionContent::DefaultMappingContextPath,
 		DestructionContent::MouseLookMappingContextPath,
 		DestructionContent::BrickPlaceholderMeshPath
