@@ -134,6 +134,55 @@ namespace BrickWorldTestSupport
 	constexpr int32 WallPieceCount = 7;
 
 	/**
+	 * A WALL WITH A WAIST, which is the only shape in which deleting ONE brick genuinely
+	 * orphans anything — and the reason it lives here is that four test files now need one.
+	 *
+	 * A running-bond wall is redundant on purpose: a full brick spans two below it, so pulling
+	 * one support out leaves the other one carrying; and DESIGN.md §3's tier rule lets a piece
+	 * with no bed joint left beneath it fall back onto its HEAD joints, so in a wide wall the
+	 * orphan merely hangs off its neighbour. Both are right physics, and both make a wall in
+	 * which deleting a brick correctly moves nothing at all — the RIGHT answer, and a useless
+	 * fixture for anything about bricks coming down or about a re-solve being visible from
+	 * outside.
+	 *
+	 * Two bricks per course is the narrowest bond RunningBond will lay, and ragged means the
+	 * odd course is one brick short, so every odd course is a single brick that everything
+	 * above it reaches the ground through. Three courses give
+	 *
+	 *      course 2         [ 3 ][ 4 ]      head joint 3-4 between them
+	 *      course 1            [ 2 ]        THE WAIST
+	 *      course 0         [ 0 ][ 1 ]      grounded
+	 *
+	 * and four put one more piece, resting on 3 and 4, on top of that:
+	 *
+	 *      course 3            [ 5 ]
+	 *      course 2         [ 3 ][ 4 ]
+	 *      course 1            [ 2 ]        THE WAIST
+	 *      course 0         [ 0 ][ 1 ]      grounded
+	 *
+	 * RAGGED RATHER THAN FLUSH, because a flush end adds half bats whose only job is to be a
+	 * second piece size — that is Tests/BrickActorTest.cpp's concern, and here it would add
+	 * pieces and head joints without changing anything under test. WallSpec above is the flush
+	 * one, and the two are deliberately different fixtures rather than one with a flag.
+	 *
+	 * PARAMETERISED ON HEIGHT ONLY, because height is the only thing the four callers disagree
+	 * about: a test that ticks physics wants the piece above the pair, and one that does not
+	 * would only pay spawn time for it.
+	 */
+	inline FRunningBondSpec NarrowWaistWallSpec(int32 CoursesHigh)
+	{
+		FRunningBondSpec Spec;
+		Spec.BrickSizeCm = FVector(21.5, 10.25, 6.5);
+		Spec.JointThicknessCm = 1.0;
+		Spec.DensityGramsPerCubicCm = ClayBrick.DensityGramsPerCubicCm;
+		Spec.CoursesHigh = CoursesHigh;
+		Spec.BricksPerCourse = 2;
+		Spec.End = EWallEnd::Ragged;
+		Spec.Strength = GeneralPurposeMortar;
+		return Spec;
+	}
+
+	/**
 	 * MASS FROM GEOMETRY, DERIVED HERE RATHER THAN IMPORTED.
 	 *
 	 * Density is g/cm3 and dimensions are cm, so cm3 x g/cm3 is grams and grams / 1000 is

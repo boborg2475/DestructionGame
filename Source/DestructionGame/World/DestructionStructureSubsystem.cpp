@@ -94,6 +94,50 @@ namespace
 
 		return Brick;
 	}
+
+	/**
+	 * Hand every piece the last solve stopped holding up to physics.
+	 *
+	 * THE CALLER MUST ALREADY HAVE SOLVED, AND THE NAME SAYS SO. FStructureBinding::ApplyResults
+	 * refuses to release any piece the last solve has no answer for, because
+	 * EPieceSupport::Falling is also what an ABSENT answer reads as — so a wall nobody has solved
+	 * would otherwise drop entire, foundation included, with the one-way latch making it
+	 * permanent. Both callers discharge that obligation before they arrive: SolveAndPush solves on
+	 * the line above, and RunPieceAction ends with a solve of its own.
+	 *
+	 * THE WALK IS OVER EVERY RELEASED PIECE, NOT OVER THIS CALL'S. ApplyResults answers how many
+	 * it released, not which, and IsReleased is the record — so bricks released by an earlier push
+	 * are revisited here. That is correct rather than merely tolerable because ABrickActor::Release
+	 * is idempotent: the body's own simulating state is the record it derives from, so a second
+	 * call on a falling brick returns early instead of recreating the body and leaving it hanging
+	 * still in mid-air.
+	 *
+	 * @return how many pieces THIS call released.
+	 */
+	int32 PushSolvedResultsToWorld(FStructureBinding& Binding)
+	{
+		const int32 ReleasedCount = Binding.ApplyResults();
+
+		for (int32 PieceIndex = 0; PieceIndex < Binding.NumPieces(); ++PieceIndex)
+		{
+			if (!Binding.IsReleased(PieceIndex))
+			{
+				continue;
+			}
+
+			/*
+			 * GetActor already answers null for a removed piece and for an actor destroyed by
+			 * any route at all, so the Cast is the only check needed and there is no second
+			 * lifetime test here to disagree with the binding's.
+			 */
+			if (ABrickActor* Brick = Cast<ABrickActor>(Binding.GetActor(PieceIndex)))
+			{
+				Brick->Release();
+			}
+		}
+
+		return ReleasedCount;
+	}
 }
 
 int32 UDestructionStructureSubsystem::BuildRunningBond(const DestructionLayout::FRunningBondSpec& Spec)
@@ -183,35 +227,7 @@ int32 UDestructionStructureSubsystem::SolveAndPush(int32 StructureId)
 	 */
 	Binding->SolveLoads();
 
-	const int32 ReleasedCount = Binding->ApplyResults();
-
-	/*
-	 * THE WALK IS OVER EVERY RELEASED PIECE, NOT OVER THIS CALL'S. ApplyResults answers
-	 * how many it released, not which, and IsReleased is the record — so bricks released
-	 * by an earlier push are revisited here. That is correct rather than merely tolerable
-	 * because ABrickActor::Release is idempotent: the body's own simulating state is the
-	 * record it derives from, so a second call on a falling brick returns early instead of
-	 * recreating the body and leaving it hanging still in mid-air.
-	 */
-	for (int32 PieceIndex = 0; PieceIndex < Binding->NumPieces(); ++PieceIndex)
-	{
-		if (!Binding->IsReleased(PieceIndex))
-		{
-			continue;
-		}
-
-		/*
-		 * GetActor already answers null for a removed piece and for an actor destroyed by
-		 * any route at all, so the Cast is the only check needed and there is no second
-		 * lifetime test here to disagree with the binding's.
-		 */
-		if (ABrickActor* Brick = Cast<ABrickActor>(Binding->GetActor(PieceIndex)))
-		{
-			Brick->Release();
-		}
-	}
-
-	return ReleasedCount;
+	return PushSolvedResultsToWorld(*Binding);
 }
 
 FPieceHit UDestructionStructureSubsystem::TracePiece(const FVector& StartCm, const FVector& EndCm)
@@ -304,6 +320,23 @@ bool UDestructionStructureSubsystem::CommitPieceAction(const FPieceRef& Ref, con
 	{
 		Orphan->Destroy();
 	}
+
+	/*
+	 * AND THE ANSWER IS PUSHED ONTO THE WORLD, which is the line whose absence a player found
+	 * in ten seconds. RunPieceAction re-solves, so the graph knew perfectly well that the
+	 * bricks above a deleted one had lost the ground — and nothing ever told them. They hung
+	 * in the air, kinematic, held up by a piece that was no longer there.
+	 *
+	 * THE PUSH HALF ONLY, NOT SolveAndPush. RunPieceAction ends with a solve of its own, so
+	 * solving again here would be a second complete solve per click for an answer already in
+	 * hand — idempotent rather than wrong, but 30 ms of it at scenario scale, which doubles
+	 * the cost of a click for nothing.
+	 *
+	 * Unconditional past this point, for the same reason the destroy above needs no second
+	 * check on bRan: a commit that ran nothing re-solved nothing, so ApplyResults finds
+	 * nothing new to release and answers zero.
+	 */
+	PushSolvedResultsToWorld(*Binding);
 
 	return Result.bRan;
 }

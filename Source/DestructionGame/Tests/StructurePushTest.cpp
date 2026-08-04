@@ -19,42 +19,20 @@ namespace StructurePushTestSupport
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/**
-	 * A DELIBERATELY NARROW WALL, and the narrowness is the whole fixture.
-	 *
-	 * A running-bond wall is redundant on purpose: a brick normally spans two below it, so
-	 * pulling one support out leaves the other one carrying, and the piece above correctly
-	 * does not move. Worse, DESIGN.md §3's tier rule lets a piece with no bed joint left
-	 * beneath it fall back onto its HEAD joints — so in a wide wall the orphaned brick just
-	 * hangs off its neighbour and the wall still stands. Both are right physics and both
-	 * make a useless fixture for a test about pieces coming down.
-	 *
-	 * Two bricks per course is the narrowest bond RunningBond will lay, and it gives a wall
-	 * with a WAIST: every odd course is a single brick, and everything above it reaches the
-	 * ground only through that one brick. Four courses put two pieces above the waist that
-	 * have each other as their only head joint, and one more piece above those.
+	/*
+	 * THE WALL THIS FILE USES IS BrickWorldTestSupport::NarrowWaistWallSpec(4), and the
+	 * narrowness is the whole fixture — everything above course 0 reaches the ground only
+	 * through the single brick of course 1. Four courses, so there are two pieces above the
+	 * waist with each other as their only head joint and one more piece above those:
 	 *
 	 *      course 3            [ 5 ]              rests on 3 and 4
 	 *      course 2         [ 3 ][ 4 ]            head joint 3-4 between them
 	 *      course 1            [ 2 ]              THE WAIST - removed by the test
 	 *      course 0         [ 0 ][ 1 ]            grounded
 	 *
-	 * Ragged rather than flush, because a flush end adds half bats whose only job is to be a
-	 * second piece size — that is Tests/BrickActorTest.cpp's concern, and here it would add
-	 * two more pieces and two more head joints without changing anything under test.
+	 * Why a waist is the only shape that can see any of this, and why the wall is ragged and
+	 * two bricks per course, is written where the spec now lives.
 	 */
-	FRunningBondSpec NarrowWallSpec()
-	{
-		FRunningBondSpec Spec;
-		Spec.BrickSizeCm = FVector(21.5, 10.25, 6.5);
-		Spec.JointThicknessCm = 1.0;
-		Spec.DensityGramsPerCubicCm = ClayBrick.DensityGramsPerCubicCm;
-		Spec.CoursesHigh = 4;
-		Spec.BricksPerCourse = 2;
-		Spec.End = EWallEnd::Ragged;
-		Spec.Strength = GeneralPurposeMortar;
-		return Spec;
-	}
 
 	/**
 	 * FIXTURE PRECONDITIONS, asserted rather than assumed.
@@ -208,7 +186,7 @@ bool FStructurePushStandingWallReleasesNothingTest::RunTest(const FString& Param
 		TEXT("SolveAndPush on a subsystem holding no structures at all must release nothing"),
 		TestWorld.Subsystem->SolveAndPush(0), 0);
 
-	const int32 StructureId = TestWorld.Subsystem->BuildRunningBond(NarrowWallSpec());
+	const int32 StructureId = TestWorld.Subsystem->BuildRunningBond(NarrowWaistWallSpec(4));
 	FStructureBinding* Binding = TestWorld.Subsystem->Find(StructureId);
 
 	TestNotNull(
@@ -385,7 +363,7 @@ bool FStructurePushOrphanedPiecesFallTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	const int32 StructureId = TestWorld.Subsystem->BuildRunningBond(NarrowWallSpec());
+	const int32 StructureId = TestWorld.Subsystem->BuildRunningBond(NarrowWaistWallSpec(4));
 	FStructureBinding* Binding = TestWorld.Subsystem->Find(StructureId);
 
 	TestNotNull(

@@ -238,39 +238,19 @@ namespace PieceMenuChoiceTestSupport
 	constexpr int32 ChoiceDeletedPiece = 3;
 	constexpr int32 ChoiceBystanderPiece = 4;
 
-	/**
-	 * THE SMALLEST WALL WITH A WAIST, for the end-to-end test's re-solve assertion.
-	 *
-	 * This deliberately mirrors the shape Tests/PieceClickTest.cpp lays, and for the same
-	 * reason: the only thing that can SEE a re-solve from outside is a piece whose support
-	 * answer changes, and in the shared flush 2 x 3 wall nothing's answer changes when one
-	 * brick goes — a full brick spans two below it and keeps the other, and a half bat with no
-	 * bed joint falls back on its neighbour's head joint. Both are right physics and both make
-	 * the re-solve invisible.
-	 *
-	 * Two bricks per course is the narrowest bond RunningBond will lay, and ragged means the
-	 * odd course is one short, so three courses give
+	/*
+	 * THE WALL THIS TEST USES IS BrickWorldTestSupport::NarrowWaistWallSpec(3), the smallest
+	 * one with a waist, and the waist is what makes the re-solve visible at all: the only thing
+	 * that can SEE a re-solve from outside is a piece whose support answer changes, and in the
+	 * shared flush 2 x 3 wall nothing's answer changes when one brick goes.
 	 *
 	 *      course 2         [ 3 ][ 4 ]      head joint between them
 	 *      course 1            [ 2 ]        THE WAIST — inspected and chosen
 	 *      course 0         [ 0 ][ 1 ]      grounded
 	 *
-	 * It is a second copy of that fixture rather than a shared one because promoting it to
-	 * Tests/BrickWorldTestSupport.h would mean editing a passing test to consume it; if a
-	 * third file ever needs a waist, promote it then and delete both copies.
+	 * This file used to carry its own copy of that spec, with a note saying to promote it the
+	 * day a third file needed a waist. Four now do, so it lives in the shared harness.
 	 */
-	FRunningBondSpec ChoiceWaistWallSpec()
-	{
-		FRunningBondSpec Spec;
-		Spec.BrickSizeCm = FVector(21.5, 10.25, 6.5);
-		Spec.JointThicknessCm = 1.0;
-		Spec.DensityGramsPerCubicCm = ClayBrick.DensityGramsPerCubicCm;
-		Spec.CoursesHigh = 3;
-		Spec.BricksPerCourse = 2;
-		Spec.End = EWallEnd::Ragged;
-		Spec.Strength = GeneralPurposeMortar;
-		return Spec;
-	}
 
 	constexpr int32 ChoiceWaistWallPieceCount = 5;
 
@@ -727,7 +707,7 @@ bool FPieceMenuChoiceDeletesTheBrickTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	const FRunningBondSpec Spec = ChoiceWaistWallSpec();
+	const FRunningBondSpec Spec = NarrowWaistWallSpec(3);
 
 	/*
 	 * THE REFERENCE LAYOUT IS LAID SEPARATELY, so the point inspected at comes from the

@@ -20,9 +20,9 @@ namespace PieceClickTestSupport
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/**
-	 * THE SMALLEST WALL WITH A WAIST, and the waist is the whole reason for a fixture of its
-	 * own rather than BrickWorldTestSupport::WallSpec.
+	/*
+	 * THE WALL THIS FILE USES IS BrickWorldTestSupport::NarrowWaistWallSpec(3), and the waist
+	 * is the whole reason it is not BrickWorldTestSupport::WallSpec.
 	 *
 	 * The claim this test has to make about committing is that the wall was RE-SOLVED behind
 	 * the deletion, and the only thing that can see a re-solve from outside is a piece whose
@@ -31,30 +31,15 @@ namespace PieceClickTestSupport
 	 * bed joint left falls back on the head joint to its neighbour. Both are right physics and
 	 * both make the re-solve invisible.
 	 *
-	 * Two bricks per course is the narrowest bond RunningBond will lay, and ragged means the
-	 * odd course is one brick short — so three courses give
-	 *
 	 *      course 2         [ 3 ][ 4 ]      head joint 3-4 between them
 	 *      course 1            [ 2 ]        THE WAIST — clicked and deleted
 	 *      course 0         [ 0 ][ 1 ]      grounded
 	 *
-	 * and everything above course 0 reaches the ground only through piece 2. Deleting it
-	 * leaves 3 and 4 with each other's head joint and nothing else, so both read Falling.
-	 * Three courses rather than the four Tests/StructurePushTest.cpp uses, because nothing
-	 * here ticks physics and a fifth and sixth piece would only cost spawn time.
+	 * Everything above course 0 reaches the ground only through piece 2, and deleting it leaves
+	 * 3 and 4 with each other's head joint and nothing else, so both read Falling. Three courses
+	 * rather than the four Tests/StructurePushTest.cpp asks for, because nothing here ticks
+	 * physics and a fifth and sixth piece would only cost spawn time.
 	 */
-	FRunningBondSpec ClickWallSpec()
-	{
-		FRunningBondSpec Spec;
-		Spec.BrickSizeCm = FVector(21.5, 10.25, 6.5);
-		Spec.JointThicknessCm = 1.0;
-		Spec.DensityGramsPerCubicCm = ClayBrick.DensityGramsPerCubicCm;
-		Spec.CoursesHigh = 3;
-		Spec.BricksPerCourse = 2;
-		Spec.End = EWallEnd::Ragged;
-		Spec.Strength = GeneralPurposeMortar;
-		return Spec;
-	}
 
 	/**
 	 * FIXTURE PRECONDITIONS, asserted rather than assumed. 2 + 1 + 2 pieces, and the joints
@@ -202,7 +187,7 @@ bool FPieceClickResolvesAndCommitsTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	const FRunningBondSpec Spec = ClickWallSpec();
+	const FRunningBondSpec Spec = NarrowWaistWallSpec(3);
 
 	/*
 	 * THE REFERENCE LAYOUT IS LAID SEPARATELY, so the points traced at come from the producer
