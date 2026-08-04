@@ -36,6 +36,15 @@ public:
 	/** The binding for a structure id, or null. */
 	FStructureBinding* Find(int32 StructureId);
 
+	/**
+	 * Solve one structure and push the answer onto the world: every piece the solver is
+	 * no longer holding up is handed to physics.
+	 *
+	 * @return how many pieces THIS CALL released. Zero for a settled structure, and zero
+	 *         for a structure id that names nothing.
+	 */
+	int32 SolveAndPush(int32 StructureId);
+
 private:
 
 	TMap<int32, TUniquePtr<FStructureBinding>> Structures;

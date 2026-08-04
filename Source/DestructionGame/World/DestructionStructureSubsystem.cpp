@@ -161,6 +161,57 @@ int32 UDestructionStructureSubsystem::BuildRunningBond(const DestructionLayout::
 	return StructureId;
 }
 
+int32 UDestructionStructureSubsystem::SolveAndPush(int32 StructureId)
+{
+	FStructureBinding* Binding = Find(StructureId);
+
+	/* An id that names nothing releases nothing, here and in every binding we own. */
+	if (Binding == nullptr)
+	{
+		return 0;
+	}
+
+	/*
+	 * THE SOLVE COMES FIRST, AND THAT ORDER IS THE GUARD RATHER THAN A STYLE.
+	 * FStructureBinding::ApplyResults refuses to release any piece the last solve has no
+	 * answer for, because EPieceSupport::Falling is also what an ABSENT answer reads as —
+	 * so a freshly built wall with nothing solved would otherwise drop entire, foundation
+	 * included, with the one-way latch making it permanent. Solving is what discharges
+	 * that obligation, so the push may never be run without it.
+	 */
+	Binding->SolveLoads();
+
+	const int32 ReleasedCount = Binding->ApplyResults();
+
+	/*
+	 * THE WALK IS OVER EVERY RELEASED PIECE, NOT OVER THIS CALL'S. ApplyResults answers
+	 * how many it released, not which, and IsReleased is the record — so bricks released
+	 * by an earlier push are revisited here. That is correct rather than merely tolerable
+	 * because ABrickActor::Release is idempotent: the body's own simulating state is the
+	 * record it derives from, so a second call on a falling brick returns early instead of
+	 * recreating the body and leaving it hanging still in mid-air.
+	 */
+	for (int32 PieceIndex = 0; PieceIndex < Binding->NumPieces(); ++PieceIndex)
+	{
+		if (!Binding->IsReleased(PieceIndex))
+		{
+			continue;
+		}
+
+		/*
+		 * GetActor already answers null for a removed piece and for an actor destroyed by
+		 * any route at all, so the Cast is the only check needed and there is no second
+		 * lifetime test here to disagree with the binding's.
+		 */
+		if (ABrickActor* Brick = Cast<ABrickActor>(Binding->GetActor(PieceIndex)))
+		{
+			Brick->Release();
+		}
+	}
+
+	return ReleasedCount;
+}
+
 FStructureBinding* UDestructionStructureSubsystem::Find(int32 StructureId)
 {
 	const TUniquePtr<FStructureBinding>* Found = Structures.Find(StructureId);
