@@ -271,6 +271,14 @@ The masonry profiles have no equivalent problem: mortar genuinely is a continuou
 
 Without the cap, capacity climbs with depth and joints at the base of a tall structure become effectively uncuttable, which is backwards twice over: unphysical, and wrong for a demolition game where the base is exactly where cutting should work. The ceiling defaults to unbounded rather than zero, so an unset cap behaves as plain Mohr-Coulomb instead of producing an accidentally rigid joint.
 
+### Known limitation: stress is averaged over a joint, so there are no moments *(recorded 2026-08-04)*
+
+A joint's utilisation is computed from a force over an **area** — one average stress across the whole interface. Real joints do not fail that way. A brick overhanging its support pivots on the outer edge of its bearing: compression spikes at that edge while the inner edge is pulled *open*. The opened edge governs, because mortar holds roughly **10 MPa in compression and about 0.1 MPa in tension** — a hundred to one.
+
+So the model reports a bed joint under a modest, uniform, comfortably-safe compression while the real joint peels apart from the back. It is the same signature as every other defect this subsystem has produced: **a plausible number, and a piece that is not really being held.** This is why real masonry limits how far a course may corbel out, and it is the same mechanism that makes arches and vaults work — thrust kept inside the joint so no part of it opens.
+
+Closing it needs edge stresses rather than an average, which needs a section modulus, which needs joints to have extent and pieces to have position — see §6's spatial layer. **Until then, expect cantilevers to stand that should not.**
+
 ### Force delivery (designed in principle, not yet detailed)
 - **Explosions**: radial falloff — a blast on a corner hits that point hardest and weakens as it spreads. (Chaos fields do this.)
 - **Kinetic impacts**: large objects striking the structure.
@@ -411,3 +419,19 @@ Named during planning but not yet designed — good places to resume:
 2. **Visual break patterns** — the *look* of breaking per material: wood splintering, concrete fracturing, glass shattering (distinct from *when* things collapse).
 3. **Secondary debris collisions** — pieces carrying momentum into other pieces and knocking more loose.
 4. **Performance at full-building scale** — a whole building of individually-massed pieces with live debris can get heavy fast.
+
+### The spatial layer: threads 1 and 3 and the moment limitation are one dependency *(found 2026-08-04)*
+
+Do not plan 1 and 3 as separate slices. Together with the eccentric-load limitation in §3 they are **three faces of one missing thing: the solver has no positions.**
+
+`FStructure` knows pieces, masses, joints, normals and areas — and deliberately nothing about *where* anything is. That is a good decision and the reason the solver is world-free, fast and testable at twelve thousand fuzzed cases per run. But it means there is no lever arm to compute a moment from, no impact point for a collision to arrive at, and no way to ask which joints are near a blast. Each thread needs the same addition:
+
+| Thread | What it needs from the spatial layer |
+|---|---|
+| Moments (§3 limitation) | Load position relative to the joint centroid; the joint's extent and axis (a section modulus), not just its area |
+| Force delivery (1) | A point and direction in space to apply from, and the support relation generalised beyond "beneath" |
+| Debris damage (3) | An impact point and impulse crossing from Chaos back into the graph |
+
+**Design it once, for all three.** Building it for any one of them alone produces half a spatial layer that the other two then re-litigate or duplicate. The sequencing consequence is that this is a **design slice before it is a code slice**, and it is the one that changes how the game looks more than anything else outstanding — cantilevers that currently stand because shear is barely stressed are the visible symptom.
+
+Note the knock-on recorded in CURRENT_STATE: today gravity through an axis-aligned bed joint never produces tension, and several tests and comments are scoped around that. Once moments exist, gravity produces tension routinely and that scoping becomes wrong rather than merely narrow.
