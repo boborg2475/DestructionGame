@@ -5,10 +5,48 @@
 - **Finishing something? Remove it from this file** as part of that work. A completed item left here is worse than no list.
 - **Deferring something? Add it here** before moving on, with enough context to act on it later.
 - Check this file at the start of a work session and again before calling anything done.
+- **"What to do next" below is an INDEX, not a home.** It points at entries; the entries hold the reasoning. Adding or finishing work means touching **both** — a pointer that outlives what it points at is worse than no pointer, because it is read first.
 
 Items are deliberately unnumbered — they get added and removed constantly, and renumbering churns the diff.
 
 Last updated: 2026-08-04 (**the mesh can now draw the highlight overlay, and the cause was Nanite** — `SM_Cube` had it on, a Nanite mesh is given a scene proxy that has no concept of `OverlayMaterial`, and the renderer dropped a correct overlay with no warning while every highlight test stayed green. Content fix, no C++ changed, held by `Content.BrickMeshCanDrawTheHighlightOverlay`. **Confirmed by eye in a running game** — a player hovered and picked bricks and saw both overlays, so the last inch of the highlight chain is closed rather than merely argued. Note what the *suite* proves is still only the precondition: every run is `-nullrhi`, and no test in this project has ever rendered a pixel. **The outstanding work is now written down properly**: the per-brick joint-force breakout, the spatial layer as one slice with three hats — moments, arbitrary-direction force, debris damage — and the stale explainer. Previously *(2026-08-04)*: **multi-select, highlighting and the batched delete**. Clicking now *toggles* a brick into an `FPieceSelection` the controller owns, the menu is a projection of that set offering the **intersection** of what every picked piece allows, `FPieceMenuRow` carries the whole selection, and choosing a row runs the action against all of it and re-solves **exactly once, after the last removal**. `FStructure::NumSolves` is the seam that makes the one-solve claim falsifiable. **AND HIGHLIGHTING IS NOW WIRED AT BOTH ENDS** — `IA_HoverPiece` reaches `HoverAlongRay` on every frame the mouse moves, and a called-out brick wears an overlay material for its state, so a player can finally see what they are pointing at and what they have picked — and the mesh it is drawn on can finally carry it, because `SM_Cube` had Nanite on and a Nanite mesh silently never draws an overlay. **84 tests, all green.**)
+
+---
+
+## What to do next — a ranked index, not a home
+
+**This is a pointer list.** Every row lives somewhere below in full; nothing here is the only copy of anything, and nothing here should grow reasoning of its own. **Finishing something means deleting it from the entry AND from this table** — a row here outliving its entry is the drift that makes the whole file untrustworthy, which is exactly what the rules at the top exist to prevent. Ordered by what unblocks what, which is the same principle the MVP list uses.
+
+### Decide before building
+
+| # | Item | Lives in | Why it is first |
+|---|---|---|---|
+| 0 | **What a selection MEANS when a cascade releases a picked brick** | The piece menu presenter | It is a **product decision, not a bug fix**, both readings are written out, and it is *latent only because nothing calls `SolveAndBreak` in a world yet*. Item 1 makes it reachable. Decide it **before** that lands, not after a player finds it. |
+
+### Then build, in this order
+
+| # | Item | Lives in | Why here |
+|---|---|---|---|
+| 1 | **The cascade on the world wire** — `SolveAndPush` solves but never breaks | The world binding | **The game currently does less than the design says.** A wall comes down only by *removal*; a joint loaded past its own capacity never gives in a running game. Also unblocks the strength-driven integration test that is deliberately missing, and makes item 0 real. |
+| 2 | **The per-brick joint-force breakout** | The piece menu presenter (and it is **the first slice of MVP item 4, Visualisation** — not a separate piece of work) | Asked for explicitly, small, and every number it needs is already tested. It is the first time the solver's answer is visible to a **player** rather than to an assertion, and it settles how a utilisation is worded and coloured on **one** brick — much cheaper than getting that wrong across 3,520 joints. |
+| 3 | **Scenario system** — base class plus `BrickWallScenario` | MVP list, item 3 | Stops the game mode hardcoding a wall. Structural, and everything watchable sits on it. |
+| 4 | **Update `html/destruction-explainer.html`** | Housekeeping | Asked for; stale since `ef16fb5`. Cheap, and it decays further with every item above. |
+
+### The big one, and it is a design pass before it is code
+
+| # | Item | Lives in | Note |
+|---|---|---|---|
+| 5 | **The spatial layer** — moments, arbitrary-direction force, debris damage | Open design threads, and **DESIGN.md §6** for the design-level treatment | **Asked for explicitly** (the moment work). It is one slice with three hats, and it is a design slice *against a deliberate decision* — `FStructure` has no positions on purpose, which is why the solver is world-free and the fuzzes run 12,000 cases. Being read-only design, it can run **alongside** anything above rather than blocking on it. It changes what the numbers in item 2 mean, so item 2 should not wait for it. |
+
+### Independent — any time, in any order
+
+| Item | Lives in |
+|---|---|
+| **Promote the integration-test entry rule into `CLAUDE.md`?** — open call, **owner: the user** | Housekeeping |
+| **`World.Scenario.GameModeBuildsTheWallOnBeginPlay` asserts the model, not the outcome** — the fourth integration test | The piece menu presenter |
+| **The real-RHI `ShouldCreateNaniteProxy` check, and the uncovered shader-compilation gap** | The piece menu presenter, under "no test has ever rendered a pixel" |
+| **`Convert-CommentBlocks.ps1 -Check` exits 2** on `StructureCascadeTest.cpp:707` | Housekeeping |
+| **Prune `.claude/settings.local.json`** | Housekeeping |
 
 ---
 
