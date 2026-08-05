@@ -4,6 +4,8 @@ A realistic physics-destruction game built in Unreal Engine 5.8 on Chaos, writte
 
 Full design decisions and the testing strategy live in [claude_plans/DESIGN.md](claude_plans/DESIGN.md) — read that before implementing anything substantial.
 
+**New to this codebase, to C++, or to Unreal?** [claude_plans/CODE_TOUR.md](claude_plans/CODE_TOUR.md) is a reading order for a human: what to read in what order, the C++ and Unreal concepts each file needs, and how to verify the code by breaking it and watching which tests fire.
+
 ## Units — the easiest way to be wrong by 100×
 
 World scale is Unreal's default **1 uu = 1 cm**. Mass (kg) and density (g/cm³) take published real-world values unconverted, but **1 N = 100 Unreal force units**. Strengths are stored in SI megapascals, so comparing a force against a strength always needs an **area**.
