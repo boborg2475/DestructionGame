@@ -148,6 +148,12 @@ struct FInspectorJointRow
 	/** The same utilisation the break decision used, as a percentage. 100 % is the limit. */
 	double UtilisationPercent = 0.0;
 
+	/** How many times its load this joint could take, in words. See the tests for the states. */
+	FString MarginText;
+
+	/** The headroom bar's fill, 0 to 1. Log-scaled over three decades of margin. */
+	double HeadroomFraction = 0.0;
+
 	/** Whether this joint is still in the structure. A given joint carries nothing. */
 	bool bHasGiven = false;
 
@@ -165,6 +171,15 @@ struct FInspectorJointRow
 	 * rather than a branch up there.
 	 */
 	FString Text;
+};
+
+/** One tick of the headroom bar's scale: what it reads, and where along the bar it sits. */
+struct FHeadroomScaleTick
+{
+	FString Label;
+
+	/** Position along the bar, 0 at the empty end and 1 at the full end. */
+	double Fraction = 0.0;
 };
 
 /** One selected brick's entry in the list. Identity only: the joints belong to the inspected one. */
@@ -266,6 +281,12 @@ struct FPieceMenuInspector
 	 * Empty when no brick is inspected, like SupportText — there is nothing to summarise.
 	 */
 	FString JointsText;
+
+	/** What the headroom bar means, in words. Empty when no bar is drawn. */
+	FString HeadroomCaption;
+
+	/** The bar's decade ticks, low to high. Empty when no bar is drawn. */
+	TArray<FHeadroomScaleTick> HeadroomScale;
 };
 
 /**
