@@ -141,8 +141,9 @@ namespace HighlightMaterialPaintTestSupport
 	};
 
 	const FHighlightMaterialRow HighlightMaterials[] = {
-		{ TEXT("Hovered"),  DestructionContent::BrickHoverMaterialPath },
-		{ TEXT("Selected"), DestructionContent::BrickSelectedMaterialPath }
+		{ TEXT("Hovered"),   DestructionContent::BrickHoverMaterialPath },
+		{ TEXT("Selected"),  DestructionContent::BrickSelectedMaterialPath },
+		{ TEXT("Inspected"), DestructionContent::BrickInspectedMaterialPath }
 	};
 
 	/** What one material input folded down to, plus where the value came from for a message. */
@@ -441,8 +442,8 @@ namespace HighlightMaterialPaintTestSupport
 }
 
 /**
- * THE TWO HIGHLIGHT MATERIALS ACTUALLY PAINT SOMETHING, PAINT TWO DIFFERENT THINGS, AND EACH
- * PAINTS SOMETHING DIFFERENT FROM A BARE BRICK.
+ * THE HIGHLIGHT MATERIALS ACTUALLY PAINT SOMETHING, EACH PAIR PAINTS TWO DIFFERENT THINGS, AND
+ * EACH PAINTS SOMETHING DIFFERENT FROM A BARE BRICK.
  *
  * GREEN ON ARRIVAL, AND IT SAYS SO RATHER THAN IMPLYING IT DROVE ANYTHING. Both assets are
  * correct: two expression nodes each, amber (1, 0.55, 0.05) at 0.35 and cyan (0.05, 0.8, 1.0) at
@@ -494,7 +495,10 @@ namespace HighlightMaterialPaintTestSupport
  * arithmetic for the intended pair and for the copy-paste fix is worked through beside the
  * constant.
  *
- * PARAMETERISED OVER THE TWO MATERIALS, so a third highlight state is a row rather than a test.
+ * PARAMETERISED OVER THE MATERIALS, so a further highlight state is a row rather than a test —
+ * and Inspected arrived as exactly that row. The pair comparison is PAIRWISE over the rows rather
+ * than one hardcoded comparison, because "each differs from the one before it" is satisfied by a
+ * third overlay that draws exactly like the first.
  *
  * THE PATHS COME FROM DestructionContent, never a re-typed literal — a test that hardcodes the
  * path stops testing the asset the game actually loads the moment the constant moves.
@@ -674,25 +678,37 @@ bool FHighlightMaterialPaintTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND THE TWO LOOKS DIFFER. Held back until both materials have been read so the failure
-	 * names both composites at once; guarded rather than assumed, because a row that could not
-	 * be read has already failed above and a second failure about a colour it never had would
-	 * point at the wrong thing.
+	 * AND EVERY PAIR OF LOOKS DIFFERS, PAIRWISE RATHER THAN IN A CHAIN. Held back until all the
+	 * materials have been read so a failure names both composites at once; guarded rather than
+	 * assumed, because a row that could not be read has already failed above and a second failure
+	 * about a colour it never had would point at the wrong thing.
+	 *
+	 * PAIRWISE IS THE WHOLE POINT WITH MORE THAN TWO ROWS. "Each differs from the one before it"
+	 * is satisfied by a third highlight that draws exactly like the FIRST, which is the shape the
+	 * copy-paste fix takes as soon as there is something older than the previous asset to copy.
 	 */
-	if (bUsable[0] && bUsable[1])
+	for (int32 Left = 0; Left < RowCount; ++Left)
 	{
-		TestTrue(
-			*FString::Printf(
-				TEXT("Hovered and Selected must LOOK different on the same brick, not merely be different assets: over a %s brick they draw %s and %s, differing by %.4f in the widest channel where %.2f is needed"),
-				*DescribeColour(StandInBrickColour),
-				*DescribeColour(Composite[0]), *DescribeColour(Composite[1]),
-				LargestChannelDifference(Composite[0], Composite[1]), MinDistinguishableChannel),
-			LargestChannelDifference(Composite[0], Composite[1]) >= MinDistinguishableChannel);
-	}
-	else
-	{
-		AddError(TEXT(
-			"both highlight materials must be readable before their looks can be compared — see the failures above"));
+		for (int32 Right = Left + 1; Right < RowCount; ++Right)
+		{
+			if (!bUsable[Left] || !bUsable[Right])
+			{
+				AddError(FString::Printf(
+					TEXT("%s and %s must both be readable before their looks can be compared — see the failures above"),
+					HighlightMaterials[Left].State, HighlightMaterials[Right].State));
+
+				continue;
+			}
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s and %s must LOOK different on the same brick, not merely be different assets: over a %s brick they draw %s and %s, differing by %.4f in the widest channel where %.2f is needed"),
+					HighlightMaterials[Left].State, HighlightMaterials[Right].State,
+					*DescribeColour(StandInBrickColour),
+					*DescribeColour(Composite[Left]), *DescribeColour(Composite[Right]),
+					LargestChannelDifference(Composite[Left], Composite[Right]), MinDistinguishableChannel),
+				LargestChannelDifference(Composite[Left], Composite[Right]) >= MinDistinguishableChannel);
+		}
 	}
 
 	return true;

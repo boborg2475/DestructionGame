@@ -178,6 +178,22 @@ struct FInspectorPieceEntry
 
 	/** Whether this is the entry whose joints are broken out below. At most one ever is. */
 	bool bIsInspected = false;
+
+	/**
+	 * Whether this entry still names a piece that is in the graph.
+	 *
+	 * IT IS DECIDED HERE BECAUSE A WIDGET MUST NOT RESOLVE A REF ITSELF. Without it a brick a
+	 * cascade removed, a ref naming another structure and a perfectly live brick all present
+	 * identically, so anything wanting to grey the dead one out would have to reach past the
+	 * model into the binding — logic straight back out at the one surface this type exists to
+	 * keep it off.
+	 *
+	 * IT IS FPieceInspection::bIsPiece, NOT "can the menu act on it". A RELEASED brick is a
+	 * live piece and reads true here even though Delete's CanRun refuses it; what the menu may
+	 * do is PieceActionsFor's intersection and is already answered by the rows going empty, and
+	 * a second copy of that policy is exactly what the action table exists not to have.
+	 */
+	bool bIsLivePiece = false;
 };
 
 /**
@@ -237,6 +253,19 @@ struct FPieceMenuInspector
 
 	/** The inspected brick's joints, in ascending connection order. Empty when none is. */
 	TArray<FInspectorJointRow> Joints;
+
+	/**
+	 * The joint list summed up in a sentence — including when there are none.
+	 *
+	 * AN EMPTY LIST GETS A SENTENCE, exactly as CountText's "No bricks selected" does, and for
+	 * the same reason: a widget that had to say "no joints" by branching on Joints.Num() == 0
+	 * would be holding a decision in the one place no test can reach. An isolated grounded pad
+	 * is a real brick with nothing joined to it, and that is a fact about the brick rather than
+	 * an absence of data.
+	 *
+	 * Empty when no brick is inspected, like SupportText — there is nothing to summarise.
+	 */
+	FString JointsText;
 };
 
 /**

@@ -41,8 +41,8 @@ ABrickActor::ABrickActor()
 	Mesh->SetStaticMesh(BrickMeshAsset.Object);
 
 	/*
-	 * The two highlight overlays, by the same one spelling of their paths. They are separate
-	 * assets on purpose: three states that are not three distinguishable looks make the enum
+	 * The three highlight overlays, by the same one spelling of their paths. They are separate
+	 * assets on purpose: four states that are not four distinguishable looks make the enum
 	 * decoration, and a brick that drew as chosen the moment the cursor crossed it takes away
 	 * the one thing a player must be able to check before pressing Delete.
 	 */
@@ -52,8 +52,12 @@ ABrickActor::ABrickActor()
 	static ConstructorHelpers::FObjectFinder<UMaterialInterface> SelectedMaterialAsset(
 		DestructionContent::BrickSelectedMaterialPath);
 
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> InspectedMaterialAsset(
+		DestructionContent::BrickInspectedMaterialPath);
+
 	HoverMaterial = HoverMaterialAsset.Object;
 	SelectedMaterial = SelectedMaterialAsset.Object;
+	InspectedMaterial = InspectedMaterialAsset.Object;
 }
 
 UStaticMeshComponent* ABrickActor::GetMesh() const
@@ -106,6 +110,18 @@ void ABrickActor::SetHighlighted(EBrickHighlight NewHighlight)
 		Overlay = SelectedMaterial;
 		break;
 
+	case EBrickHighlight::Inspected:
+		Overlay = InspectedMaterial;
+		break;
+
+	/*
+	 * None, AND ANY STATE THAT ARRIVES HERE WITHOUT A CASE, WEARS NOTHING — WHICH IS THE
+	 * RIGHT ANSWER FOR None AND THE WRONG-LOOKING ONE FOR EVERYTHING ELSE. A new enumerator
+	 * added without a case draws PLAIN, and for a state stronger than Selected that is
+	 * exactly backwards: the brick the player is reading would be the only one in the wall
+	 * not lit. World.Brick.HighlightWearsAMaterial sweeps every state for that reason, so
+	 * the omission fails as "wears no overlay at all" rather than being swallowed here.
+	 */
 	default:
 		break;
 	}

@@ -61,9 +61,10 @@ namespace PieceMultiSelectTestSupport
 	{
 		switch (Highlight)
 		{
-		case EBrickHighlight::Hovered:  return TEXT("Hovered");
-		case EBrickHighlight::Selected: return TEXT("Selected");
-		default:                        return TEXT("None");
+		case EBrickHighlight::Hovered:   return TEXT("Hovered");
+		case EBrickHighlight::Selected:  return TEXT("Selected");
+		case EBrickHighlight::Inspected: return TEXT("Inspected");
+		default:                         return TEXT("None");
 		}
 	}
 
@@ -106,15 +107,27 @@ namespace PieceMultiSelectTestSupport
 		return Line;
 	}
 
-	/** Every brick's highlight at once, so a trail left behind reads as one message. */
+	/**
+	 * Every brick's highlight at once, so a trail left behind reads as one message.
+	 *
+	 * SkipPieces IS FOR BRICKS THAT HAVE BEEN DELETED, and they are NAMED rather than
+	 * skipped by being invalid — a brick that vanished without being deleted is exactly the
+	 * failure this file is about, so "gone" must fail everywhere it was not asked for.
+	 */
 	void CheckMultiSelectHighlights(
 		FAutomationTestBase& Test,
 		const TArray<ABrickActor*>& Bricks,
 		const TCHAR* Where,
-		const TArray<EBrickHighlight>& Expected)
+		const TArray<EBrickHighlight>& Expected,
+		const TArray<int32>& SkipPieces = TArray<int32>())
 	{
 		for (int32 Piece = 0; Piece < Bricks.Num() && Piece < Expected.Num(); ++Piece)
 		{
+			if (SkipPieces.Contains(Piece))
+			{
+				continue;
+			}
+
 			Test.TestTrue(
 				*FString::Printf(
 					TEXT("%s: brick %d should read %s, it reads %s (all bricks: %s)"),
@@ -255,9 +268,20 @@ namespace PieceMultiSelectTestSupport
  * points at a brick it looks chosen — and the one thing they must be able to check before
  * pressing Delete is which bricks are actually going.
  *
- * THE STRONGER STATE WINS WHEN THEY COINCIDE. A selected brick under the cursor stays Selected;
- * a hover that overwrote it would make a chosen brick flicker back to unchosen as the mouse
- * passed over it, which reads as the selection having been lost.
+ * THE STRONGER STATE WINS WHEN THEY COINCIDE, AND THE ORDER IS Inspected > Selected > Hovered.
+ * A selected brick under the cursor stays Selected; a hover that overwrote it would make a chosen
+ * brick flicker back to unchosen as the mouse passed over it, which reads as the selection having
+ * been lost. And ONE selected brick can be singled out above the rest as the one the joint
+ * readout is describing — a fourth state rather than a reuse of Selected, because a breakout of
+ * one brick's forces drawn beside five bricks that look identical to it is ambiguous about which
+ * brick it is the breakout OF.
+ *
+ * THE TRANSITIONS ARE COVERED, NOT JUST THE STATES, which is what steps thirteen onwards are.
+ * Every bug in this area is a state left BEHIND: a brick left Inspected when the readout moved on
+ * means two bricks claim one breakout, and a brick dropped to None instead of back to Selected
+ * means running the cursor down the list silently empties the selection on screen while the
+ * commit still deletes every one of them. SetHoveredPiece already has exactly this bug class
+ * recorded against it.
  *
  * A LONG SEQUENCE IN ONE WORLD, NOT A TEST PER CLAIM. A world costs tens of milliseconds and
  * this needs one configuration, so the file groups by world rather than by assertion — and the
@@ -629,6 +653,289 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 					*DescribeMultiSelectHighlights(Bricks)),
 				IsValid(Bricks[Piece]) && Bricks[Piece]->GetHighlight() == Wanted);
 		}
+	}
+
+	/*
+	 * THIRTEEN: A FRESH PICK OF THREE, WITH NOTHING SINGLED OUT YET. Brick 3 is gone from here
+	 * on, so every check below names it as skipped rather than letting "gone" pass silently.
+	 */
+	const TArray<int32> Deleted3 = { 3 };
+
+	{
+		for (int32 Piece = 0; Piece <= 2; ++Piece)
+		{
+			Controller->InspectAlongRay(
+				MultiSelectRayStart(Reference.Boxes[Piece]), MultiSelectRayEnd(Reference.Boxes[Piece]));
+		}
+
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Selected;
+		Expected[1] = EBrickHighlight::Selected;
+		Expected[2] = EBrickHighlight::Selected;
+
+		CheckMultiSelectHighlights(*this, Bricks, TEXT("picking bricks 0, 1 and 2"), Expected, Deleted3);
+
+		CheckMultiSelectMenu(
+			*this, *Controller, TEXT("picking bricks 0, 1 and 2"),
+			{ MultiSelectRef(StructureId, 0), MultiSelectRef(StructureId, 1),
+			  MultiSelectRef(StructureId, 2) });
+	}
+
+	/*
+	 * FOURTEEN: INSPECTING ONE OF THEM SINGLES IT OUT, AND LEAVES THE REST OF THE SELECTION
+	 * LIT AS IT WAS.
+	 *
+	 * THIS IS THE WHOLE POINT OF THE FOURTH STATE. The joint breakout on screen describes ONE
+	 * brick, and the player picked six; if that brick draws the same as the other five, the
+	 * numbers beside it are ambiguous about which brick they are the numbers OF. So Inspected
+	 * must beat Selected — and the other two must stay Selected rather than dimming, because a
+	 * selection that appears to shrink when you read one of its members is the same lie the
+	 * hover-overwrites-selected bug told.
+	 *
+	 * AND IT PICKS NOTHING AND OPENS NOTHING. Reading a brick is not choosing it, exactly as
+	 * pointing at one is not: the selection and the presented rows must come through untouched,
+	 * or hovering down a list of six entries would rewrite the very list being hovered.
+	 */
+	{
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 1));
+
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Selected;
+		Expected[1] = EBrickHighlight::Inspected;
+		Expected[2] = EBrickHighlight::Selected;
+
+		CheckMultiSelectHighlights(*this, Bricks, TEXT("inspecting brick 1 of three"), Expected, Deleted3);
+
+		CheckMultiSelectMenu(
+			*this, *Controller, TEXT("inspecting brick 1 of three"),
+			{ MultiSelectRef(StructureId, 0), MultiSelectRef(StructureId, 1),
+			  MultiSelectRef(StructureId, 2) });
+	}
+
+	/*
+	 * FIFTEEN: INSPECTED BEATS HOVER TOO, AND A HOVER ELSEWHERE DOES NOT DISTURB IT.
+	 *
+	 * The precedence is a total order — Inspected > Selected > Hovered — so the brick being
+	 * read stays the brick being read while the cursor wanders, which is exactly what the
+	 * cursor is doing when it moves off a menu entry and across the wall behind it.
+	 */
+	{
+		Controller->HoverAlongRay(
+			MultiSelectRayStart(Reference.Boxes[1]), MultiSelectRayEnd(Reference.Boxes[1]));
+
+		TArray<EBrickHighlight> OnTheInspected = MultiSelectNoHighlights();
+		OnTheInspected[0] = EBrickHighlight::Selected;
+		OnTheInspected[1] = EBrickHighlight::Inspected;
+		OnTheInspected[2] = EBrickHighlight::Selected;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("hovering the inspected brick 1"), OnTheInspected, Deleted3);
+
+		Controller->HoverAlongRay(
+			MultiSelectRayStart(Reference.Boxes[4]), MultiSelectRayEnd(Reference.Boxes[4]));
+
+		TArray<EBrickHighlight> Elsewhere = MultiSelectNoHighlights();
+		Elsewhere[0] = EBrickHighlight::Selected;
+		Elsewhere[1] = EBrickHighlight::Inspected;
+		Elsewhere[2] = EBrickHighlight::Selected;
+		Elsewhere[4] = EBrickHighlight::Hovered;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("hovering brick 4 while brick 1 is inspected"), Elsewhere, Deleted3);
+	}
+
+	/*
+	 * SIXTEEN: INSPECTING A DIFFERENT BRICK HANDS THE PREVIOUS ONE BACK TO Selected — NOT TO
+	 * None.
+	 *
+	 * THE BRICK BEING LEFT HAS TO BE REFRESHED AS WELL AS THE ONE BEING TAKEN UP, and this is
+	 * the same bug class SetHoveredPiece already has recorded against it: without the first of
+	 * the two, every brick the cursor crossed stays lit and the wall ends up entirely
+	 * highlighted. Here the failure is sharper in both directions — a brick left Inspected
+	 * means two bricks claim the one breakout, and a brick dropped to None means running the
+	 * cursor down the list silently empties the selection on screen while the commit still
+	 * deletes all three.
+	 */
+	{
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 2));
+
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Selected;
+		Expected[1] = EBrickHighlight::Selected;
+		Expected[2] = EBrickHighlight::Inspected;
+		Expected[4] = EBrickHighlight::Hovered;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("inspecting brick 2 after brick 1"), Expected, Deleted3);
+	}
+
+	/*
+	 * SEVENTEEN: AND INSPECTING NOTHING GIVES THE BRICK BACK TO THE SELECTION. This is the
+	 * cursor leaving the list entirely, and it is the route that has to leave all three bricks
+	 * looking exactly as they did before anything was read.
+	 */
+	{
+		Controller->SetInspectedPiece(FPieceRef());
+
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Selected;
+		Expected[1] = EBrickHighlight::Selected;
+		Expected[2] = EBrickHighlight::Selected;
+		Expected[4] = EBrickHighlight::Hovered;
+
+		CheckMultiSelectHighlights(*this, Bricks, TEXT("inspecting nothing"), Expected, Deleted3);
+	}
+
+	/*
+	 * EIGHTEEN: A BRICK THAT IS NOT SELECTED CANNOT BE THE ONE BEING READ.
+	 *
+	 * SAME RULE AS BuildPieceMenuInspector'S, AND IT HAS TO BE THE SAME RULE OR THE TWO HALVES
+	 * OF THE READOUT DISAGREE: the model refuses to single out an anchor outside the set it
+	 * anchors, so a controller that lit one anyway would put the strongest highlight in the
+	 * scene on a brick the panel says nothing about. It is also what makes the two steps below
+	 * fall out of ONE rule rather than three clean-up sites somebody has to remember.
+	 *
+	 * Brick 4 is hovered, so this asks for the state it already has for another reason — which
+	 * is the sharp version: what must not happen is the hover being PROMOTED.
+	 */
+	{
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 4));
+
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Selected;
+		Expected[1] = EBrickHighlight::Selected;
+		Expected[2] = EBrickHighlight::Selected;
+		Expected[4] = EBrickHighlight::Hovered;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("inspecting a brick that was never picked"), Expected, Deleted3);
+	}
+
+	/*
+	 * NINETEEN: DESELECTING THE BRICK BEING READ TAKES THE READOUT OFF IT.
+	 *
+	 * A brick that has just left the selection is a brick the panel no longer lists, so it
+	 * cannot go on wearing the strongest highlight in the scene. What it reads INSTEAD is
+	 * deliberately not pinned, for the reason step EIGHT gives: the ray that deselected it is
+	 * also a ray pointing at it, so None and Hovered are both defensible. What must hold is
+	 * that it is neither Inspected nor Selected while the other two are still Selected.
+	 */
+	{
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 1));
+
+		TArray<EBrickHighlight> WhileInspected = MultiSelectNoHighlights();
+		WhileInspected[0] = EBrickHighlight::Selected;
+		WhileInspected[1] = EBrickHighlight::Inspected;
+		WhileInspected[2] = EBrickHighlight::Selected;
+
+		/* Brick 4 is still where the cursor was left in step fifteen, and nothing has moved it. */
+		WhileInspected[4] = EBrickHighlight::Hovered;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("inspecting brick 1 again before deselecting it"),
+			WhileInspected, Deleted3);
+
+		Controller->InspectAlongRay(
+			MultiSelectRayStart(Reference.Boxes[1]), MultiSelectRayEnd(Reference.Boxes[1]));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("deselecting the INSPECTED brick 1 must leave it neither Inspected nor Selected, it reads %s (all bricks: %s)"),
+				MultiSelectHighlightName(Bricks[1]->GetHighlight()),
+				*DescribeMultiSelectHighlights(Bricks)),
+			Bricks[1]->GetHighlight() != EBrickHighlight::Inspected
+				&& Bricks[1]->GetHighlight() != EBrickHighlight::Selected);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("deselecting the inspected brick 1 must leave brick 0 Selected, it reads %s (all bricks: %s)"),
+				MultiSelectHighlightName(Bricks[0]->GetHighlight()),
+				*DescribeMultiSelectHighlights(Bricks)),
+			Bricks[0]->GetHighlight() == EBrickHighlight::Selected);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("deselecting the inspected brick 1 must leave brick 2 Selected, it reads %s (all bricks: %s)"),
+				MultiSelectHighlightName(Bricks[2]->GetHighlight()),
+				*DescribeMultiSelectHighlights(Bricks)),
+			Bricks[2]->GetHighlight() == EBrickHighlight::Selected);
+
+		CheckMultiSelectMenu(
+			*this, *Controller, TEXT("deselecting the inspected brick 1"),
+			{ MultiSelectRef(StructureId, 0), MultiSelectRef(StructureId, 2) });
+	}
+
+	/*
+	 * TWENTY: AND CLEARING THE SELECTION LETS THE INSPECTED BRICK GO WITH IT. A cleared set
+	 * that left one brick still wearing the readout's own highlight tells the player they are
+	 * still reading a brick that is no longer in a list that no longer exists.
+	 */
+	{
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 2));
+
+		Controller->InspectAlongRay(
+			MultiSelectEmptyAirCm, MultiSelectEmptyAirCm + FVector(0.0, 0.0, -100.0));
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("clearing the selection while a brick is inspected"),
+			MultiSelectNoHighlights(), Deleted3);
+
+		CheckMultiSelectMenu(
+			*this, *Controller, TEXT("clearing the selection while a brick is inspected"),
+			TArray<FPieceRef>());
+	}
+
+	/*
+	 * TWENTY-ONE: AND DELETING THE BRICK BEING READ LEAVES NOTHING POINTING AT A DEAD ACTOR.
+	 *
+	 * The counterpart of step ELEVEN for the third ref. Brick 5 is selected, inspected and
+	 * hovered when it goes, so after the commit all three of the controller's refs name a
+	 * tombstoned piece and a destroyed actor — and the next click has to let go of them and
+	 * take hold of a live brick. A full brick of the TOP course, so the delete orphans nothing
+	 * and every other brick's state stays unambiguous.
+	 */
+	const TArray<int32> Deleted3And5 = { 3, 5 };
+
+	{
+		Controller->InspectAlongRay(
+			MultiSelectRayStart(Reference.Boxes[5]), MultiSelectRayEnd(Reference.Boxes[5]));
+
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 5));
+
+		TArray<EBrickHighlight> WhileInspected = MultiSelectNoHighlights();
+		WhileInspected[5] = EBrickHighlight::Inspected;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("inspecting the one brick picked"), WhileInspected, Deleted3);
+
+		TestTrue(
+			TEXT("choosing the only row of brick 5's menu should commit the delete"),
+			Controller->ChoosePieceMenuRow(0));
+
+		TestFalse(
+			TEXT("deleting brick 5 should have destroyed its actor"),
+			IsValid(Bricks[5]));
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("after deleting the inspected brick 5"),
+			MultiSelectNoHighlights(), Deleted3And5);
+
+		CheckMultiSelectMenu(
+			*this, *Controller, TEXT("after deleting the inspected brick 5"), TArray<FPieceRef>());
+
+		/*
+		 * AND THE NEXT CLICK STILL WORKS, on a brick that is not the dead one: a stale
+		 * inspected ref must neither crash the refresh nor promote the next brick picked.
+		 */
+		Controller->InspectAlongRay(
+			MultiSelectRayStart(Reference.Boxes[6]), MultiSelectRayEnd(Reference.Boxes[6]));
+
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[6] = EBrickHighlight::Selected;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("picking brick 6 after the inspected brick was deleted"),
+			Expected, Deleted3And5);
 	}
 
 	TestWorld.End();

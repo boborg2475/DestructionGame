@@ -121,10 +121,10 @@ namespace RequiredContentTestSupport
 	 *
 	 * It is the reference whose absence is the quietest of the lot. Deleting the material does
 	 * not break a spawn, a solve or a click — the game runs exactly as it does now, and the only
-	 * symptom is that picking six bricks looks identical to picking none. Two, because three
-	 * highlight states need two materials and None needs nothing.
+	 * symptom is that picking six bricks looks identical to picking none. Three, because four
+	 * highlight states need three materials and None needs nothing.
 	 */
-	constexpr int32 BrickHighlightMaterialFloor = 2;
+	constexpr int32 BrickHighlightMaterialFloor = 3;
 
 	/**
 	 * AND THE CONTROLLER'S OWN INPUT ACTIONS, which is a THIRD sweep rather than a wider one.
@@ -142,12 +142,12 @@ namespace RequiredContentTestSupport
 	constexpr int32 ControllerInputActionFloor = 2;
 
 	/**
-	 * The six input actions, two mapping contexts, one placeholder brick mesh and two highlight
+	 * The six input actions, two mapping contexts, one placeholder brick mesh and three highlight
 	 * materials the module resolves by path today. A FLOOR rather than an equality: adding a
 	 * hard reference is meant to be adding a row, and a test asserting an exact count would have
 	 * to be edited alongside every one of them.
 	 */
-	constexpr int32 RequiredContentPathFloor = 11;
+	constexpr int32 RequiredContentPathFloor = 12;
 }
 
 /**

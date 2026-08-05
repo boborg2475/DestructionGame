@@ -60,16 +60,23 @@ namespace DestructionContent
 	/**
 	 * What a called-out brick wears, one asset per state that is not None.
 	 *
-	 * TWO ASSETS RATHER THAN ONE, because the three highlight states have to be three
+	 * THREE ASSETS RATHER THAN ONE, because the four highlight states have to be four
 	 * DISTINGUISHABLE looks or the enum is decoration: the one thing a player must be able to
 	 * check before pressing Delete is which bricks are going, and a hovered brick that draws
 	 * like a selected one takes that away. They are overlays, so a brick keeps its own material
 	 * underneath and nothing has to remember what it replaced.
+	 *
+	 * AND THE INSPECTED ONE IS THE STRONGEST OF THE THREE, deliberately. It marks the single
+	 * brick whose joint forces are on screen, so it has to be tellable apart from the other
+	 * bricks the player also picked — a breakout drawn beside five bricks that look identical
+	 * to its subject is ambiguous about which brick it is the breakout OF.
 	 */
 	inline constexpr const TCHAR* BrickHoverMaterialPath =
 		TEXT("/Game/Materials/M_BrickHover.M_BrickHover");
 	inline constexpr const TCHAR* BrickSelectedMaterialPath =
 		TEXT("/Game/Materials/M_BrickSelected.M_BrickSelected");
+	inline constexpr const TCHAR* BrickInspectedMaterialPath =
+		TEXT("/Game/Materials/M_BrickInspected.M_BrickInspected");
 
 	/* The two mapping contexts ADestructionGamePlayerController adds for a local player. */
 	inline constexpr const TCHAR* DefaultMappingContextPath = TEXT("/Game/Input/IMC_Default.IMC_Default");

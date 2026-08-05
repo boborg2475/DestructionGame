@@ -64,6 +64,31 @@ namespace
 
 		return FString(TEXT("falling"));
 	}
+
+	/**
+	 * How many joints a brick has, in words — INCLUDING WHEN IT HAS NONE.
+	 *
+	 * AN EMPTY LIST GETS A SENTENCE, exactly as CountText's "No bricks selected" does, and
+	 * for the same reason: a widget left to notice Joints.Num() == 0 for itself would hold
+	 * a decision in the one place no test can reach. An isolated grounded pad is a real
+	 * brick with nothing joined to it, and that is a fact about the brick rather than an
+	 * absence of data. Singular and plural are decided here too — "1 joints" is the same
+	 * branch wearing a smaller coat.
+	 */
+	FString PresenterWordForJointCount(int32 JointCount)
+	{
+		if (JointCount == 0)
+		{
+			return FString(TEXT("No joints"));
+		}
+
+		if (JointCount == 1)
+		{
+			return FString(TEXT("1 joint"));
+		}
+
+		return FString::Printf(TEXT("%d joints"), JointCount);
+	}
 }
 
 TArray<FPieceMenuRow> BuildPieceMenuRows(
@@ -221,6 +246,17 @@ FPieceMenuInspector BuildPieceMenuInspector(
 		FInspectorPieceEntry& Entry = Inspector.Pieces.AddDefaulted_GetRef();
 		Entry.Ref = Ref;
 		Entry.Label = FString::Printf(TEXT("brick %d:%d"), Ref.StructureId, Ref.PieceIndex);
+
+		/*
+		 * AND WHETHER IT STILL NAMES A BRICK IS InspectPiece'S QUESTION, ASKED OF EVERY
+		 * ENTRY RATHER THAN ONLY OF THE SINGLED-OUT ONE. It is deliberately not a
+		 * ResolvePiece call spelled out here: that would be a second, quieter copy of the
+		 * rule the breakout below already asks, and the two would eventually disagree about
+		 * which bricks exist. A RELEASED brick reads LIVE — it is still a piece in the graph
+		 * with a support state and a joint list, and what the MENU may do about it is
+		 * PieceActionsFor's intersection, already said by the rows going empty.
+		 */
+		Entry.bIsLivePiece = InspectPiece(Binding, Ref).bIsPiece;
 	}
 
 	/*
@@ -256,6 +292,15 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	Inspector.Pieces[InspectedEntry].bIsInspected = true;
 	Inspector.InspectedRef = InspectedRef;
 	Inspector.SupportText = PresenterWordForSupport(Inspection);
+
+	/*
+	 * THE JOINT LIST IS SUMMED UP BEFORE IT IS BROKEN OUT, AND IT IS A FACT ABOUT THE GRAPH
+	 * RATHER THAN ABOUT THE SOLVE. A brick nobody has solved for still has exactly the joints
+	 * it was built with, so this sentence must not go quiet with the support word — and a
+	 * brick with none still gets one, because "no joints" is the truth about an isolated pad
+	 * and a widget left to notice an empty array would be holding the branch.
+	 */
+	Inspector.JointsText = PresenterWordForJointCount(Inspection.Joints.Num());
 
 	/*
 	 * THE BREAKOUT IS InspectPiece'S ANSWER CONVERTED AND WORDED, ROW FOR ROW, IN ITS

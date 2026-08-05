@@ -9,6 +9,7 @@
 #include "Input/Reply.h"
 #include "DestructionGamePlayerController.generated.h"
 
+class SBox;
 class SWidget;
 class UInputAction;
 class UInputMappingContext;
@@ -71,6 +72,17 @@ public:
 	 * of it. A MENU IS UP EXACTLY WHEN THIS IS NON-EMPTY.
 	 */
 	const FPieceSelection& GetPieceSelection() const;
+
+	/**
+	 * Single out ONE of the selected bricks as the one the joint readout describes.
+	 *
+	 * A THIRD THING FROM HOVERED AND SELECTED. Hovering an entry in the menu singles that
+	 * brick out without disturbing the rest of the selection, so this touches neither the
+	 * selection nor the presented rows — only which brick is called out how.
+	 *
+	 * A DEFAULT REF SINGLES OUT NOTHING, which is how the cursor leaving the list is said.
+	 */
+	void SetInspectedPiece(const FPieceRef& Ref);
 
 	/**
 	 * Put these rows on screen as the piece menu, replacing whatever was up.
@@ -201,6 +213,13 @@ private:
 	 * no logic here to be wrong: a button per row, its label off the row, and a click that
 	 * calls ChoosePieceMenuRow with its own index and nothing else.
 	 *
+	 * IT DRAWS THE READOUT TOO, AND EVERY STRING IN IT IS ALREADY DECIDED. CountText, each
+	 * entry's Label, the inspected brick's SupportText and JointsText, and one finished line
+	 * per joint all come off FPieceMenuInspector, which Core/PieceMenu.h explains is worded
+	 * there precisely so that nothing here has to choose a unit, a precision, a singular or a
+	 * plural. A branch appearing in this function is the drift to watch for; if the readout
+	 * ever needs one, the missing string belongs in the model.
+	 *
 	 * The build sits beside the Append in ShowPieceMenu and the removal beside the Reset in
 	 * DismissPieceMenu, so it inherits the dismiss-then-build discipline that already makes
 	 * the controls restore correct — which is what keeps a second add with no matching remove,
@@ -209,8 +228,40 @@ private:
 	void BuildPieceMenuWidget();
 	void RemovePieceMenuWidget();
 
+	/**
+	 * Redraw the joint readout for whichever brick is now singled out.
+	 *
+	 * ONLY THE READOUT, AND THAT IS A CORRECTNESS DECISION RATHER THAN AN ECONOMY. The entry
+	 * buttons are what the cursor is sitting on when this runs — hovering one is what changed
+	 * the inspected brick — so rebuilding the whole panel would destroy the very button being
+	 * hovered, and Slate would then fire OnHovered on its replacement next frame, and again on
+	 * the one after that. Swapping the contents of a box that holds nothing interactive leaves
+	 * the buttons alone and cannot feed itself.
+	 */
+	void RefreshPieceMenuInspectorWidget();
+
+	/**
+	 * The readout model for the current selection and inspected brick, or an empty one.
+	 *
+	 * THE GUARDS HERE ARE THE SAME PLUMBING InspectAlongRay HAS, AND FOR THE SAME REASON: a
+	 * binding has to be found before the model can be asked, and no world, no subsystem and no
+	 * such structure all mean the same thing — nothing to read out. It lives on the controller
+	 * rather than in the widget so that the widget itself resolves nothing.
+	 */
+	FPieceMenuInspector PieceMenuInspectorForSelection() const;
+
 	/** A button's click: choose the row it stands for. Nothing else belongs here. */
 	FReply OnPieceMenuRowClicked(int32 RowIndex);
+
+	/**
+	 * An entry row's hover: single that brick out, and let it go again.
+	 *
+	 * THE CURSOR ON AN ENTRY IS THE WHOLE INPUT. A player reading a joint breakout has to be
+	 * able to say which brick it is about without disturbing what they have picked, and moving
+	 * the mouse down the list is the cheapest way to say it. Both are one call each.
+	 */
+	void OnPieceMenuEntryHovered(FPieceRef Ref);
+	void OnPieceMenuEntryUnhovered();
 
 	/**
 	 * What state this brick should now be called out in, and putting it there.
@@ -254,6 +305,24 @@ private:
 	 */
 	FPieceRef HoveredPiece;
 
+	/**
+	 * The one selected brick being read in detail, or a default ref for none.
+	 *
+	 * A THIRD REF RATHER THAN A FLAG ON THE SELECTION, for the reason HoveredPiece is one:
+	 * there is one readout, the selection is the durable state, and the two are combined by
+	 * HighlightForPiece and nowhere else.
+	 */
+	FPieceRef InspectedPiece;
+
 	/** The widget those rows are drawn as, valid only while a menu is up. */
 	TSharedPtr<SWidget> PieceMenuWidget;
+
+	/**
+	 * The one part of that widget the readout is swapped in and out of.
+	 *
+	 * A HANDLE INTO THE PANEL RATHER THAN A SECOND VIEWPORT WIDGET, so there is still exactly
+	 * one add and one remove and the leak the dismiss-then-build discipline guards against
+	 * stays a single pair. It is valid exactly while PieceMenuWidget is.
+	 */
+	TSharedPtr<SBox> PieceMenuInspectorBox;
 };

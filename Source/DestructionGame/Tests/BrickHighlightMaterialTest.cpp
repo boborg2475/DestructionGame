@@ -24,9 +24,10 @@ namespace BrickHighlightMaterialTestSupport
 	{
 		switch (Highlight)
 		{
-		case EBrickHighlight::Hovered:  return TEXT("Hovered");
-		case EBrickHighlight::Selected: return TEXT("Selected");
-		default:                        return TEXT("None");
+		case EBrickHighlight::Hovered:   return TEXT("Hovered");
+		case EBrickHighlight::Selected:  return TEXT("Selected");
+		case EBrickHighlight::Inspected: return TEXT("Inspected");
+		default:                         return TEXT("None");
 		}
 	}
 
@@ -35,11 +36,15 @@ namespace BrickHighlightMaterialTestSupport
 	{
 		switch (Highlight)
 		{
-		case EBrickHighlight::Hovered:  return 1;
-		case EBrickHighlight::Selected: return 2;
-		default:                        return 0;
+		case EBrickHighlight::Hovered:   return 1;
+		case EBrickHighlight::Selected:  return 2;
+		case EBrickHighlight::Inspected: return 3;
+		default:                         return 0;
 		}
 	}
+
+	/** How many states there are, which is how wide the expectation table has to be. */
+	constexpr int32 BrickHighlightStateCount = 4;
 
 	/**
 	 * Whether a material IS a given asset, or is an instance of it however deep.
@@ -90,27 +95,39 @@ namespace BrickHighlightMaterialTestSupport
 	}
 
 	/**
-	 * THE TRANSITION SCRIPT, AND IT COVERS ALL NINE ORDERED PAIRS OF STATES.
+	 * THE TRANSITION SCRIPT, AND IT COVERS ALL SIXTEEN ORDERED PAIRS OF STATES.
 	 *
-	 * A brick starts at None, so the twelve calls below walk N->H, H->H, H->S, S->S, S->N, N->N,
-	 * N->H, H->N, N->S, S->H, H->S, S->N — every from/to pair including all three self
-	 * transitions. A SCRIPT RATHER THAN THREE INDEPENDENT CHECKS because every bug in this area
-	 * is a state left behind by the previous step: an overlay that is set on the way in and
-	 * never cleared on the way out leaves the whole wall lit, and three one-shot assertions
-	 * would each pass on their own.
+	 * A brick starts at None, so the sixteen calls below walk N->N, N->H, H->H, H->S, S->S,
+	 * S->I, I->I, I->S, S->H, H->I, I->H, H->N, N->S, S->N, N->I, I->N — every from/to pair
+	 * including all four self transitions, which is an Eulerian circuit of the four states.
+	 * A SCRIPT RATHER THAN FOUR INDEPENDENT CHECKS because every bug in this area is a state
+	 * left behind by the previous step: an overlay that is set on the way in and never cleared
+	 * on the way out leaves the whole wall lit, and four one-shot assertions would each pass on
+	 * their own.
+	 *
+	 * IT WAS EXTENDED FROM NINE PAIRS TO SIXTEEN WHEN Inspected LANDED, AND THAT WIDENING IS
+	 * THE POINT RATHER THAN BOOKKEEPING. SetHighlighted's switch has a `default:` arm, so a
+	 * state nobody added a case for sets a NULL overlay and the brick draws PLAIN — visually
+	 * weaker than merely selected, which is the exact opposite of what the strongest state
+	 * means. A sweep that named only the three states it knew about would have gone on passing
+	 * while the one brick whose forces are on screen was the only one in the wall not lit.
 	 */
 	const EBrickHighlight BrickHighlightScript[] = {
-		EBrickHighlight::Hovered,
-		EBrickHighlight::Hovered,
-		EBrickHighlight::Selected,
-		EBrickHighlight::Selected,
-		EBrickHighlight::None,
 		EBrickHighlight::None,
 		EBrickHighlight::Hovered,
-		EBrickHighlight::None,
-		EBrickHighlight::Selected,
 		EBrickHighlight::Hovered,
 		EBrickHighlight::Selected,
+		EBrickHighlight::Selected,
+		EBrickHighlight::Inspected,
+		EBrickHighlight::Inspected,
+		EBrickHighlight::Selected,
+		EBrickHighlight::Hovered,
+		EBrickHighlight::Inspected,
+		EBrickHighlight::Hovered,
+		EBrickHighlight::None,
+		EBrickHighlight::Selected,
+		EBrickHighlight::None,
+		EBrickHighlight::Inspected,
 		EBrickHighlight::None
 	};
 }
@@ -135,9 +152,15 @@ namespace BrickHighlightMaterialTestSupport
  * brick's own appearance and one more thing to leave behind; an overlay is additive and clearing
  * it is a single null.
  *
- * THREE STATES MUST BE THREE DISTINGUISHABLE ANSWERS. None is nothing at all, and Hovered and
- * Selected are two different materials — if they were the same asset the enum would be
- * decoration, and a brick would read as chosen the moment the cursor crossed it.
+ * FOUR STATES MUST BE FOUR DISTINGUISHABLE ANSWERS. None is nothing at all, and Hovered,
+ * Selected and Inspected are three different materials — if any two were the same asset the
+ * enumerator that shared it would be decoration, and a brick would read as chosen the moment the
+ * cursor crossed it, or the joint numbers on screen would belong to any of the lit bricks.
+ *
+ * AND THE `default:` ARM IS WHY THE SWEEP HAS TO NAME EVERY STATE RATHER THAN THE ONES SOMEBODY
+ * REMEMBERED. SetHighlighted maps a state to an overlay with a switch that has a default arm, so
+ * a state with no case of its own sets a NULL overlay and the brick draws PLAIN — which for the
+ * STRONGEST state is exactly backwards, and is invisible to a sweep that stops at three.
  *
  * DERIVED FROM A NAMED ASSET, NOT MERELY NON-NULL. A brick that highlighted itself with a
  * transient material nobody shipped would satisfy "something is set" and would silently stop
@@ -168,6 +191,9 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 	UMaterialInterface* const SelectedMaterial = LoadObject<UMaterialInterface>(
 		nullptr, DestructionContent::BrickSelectedMaterialPath);
 
+	UMaterialInterface* const InspectedMaterial = LoadObject<UMaterialInterface>(
+		nullptr, DestructionContent::BrickInspectedMaterialPath);
+
 	TestNotNull(
 		*FString::Printf(TEXT("a hovered brick needs a material at '%s'; it does not resolve"),
 			DestructionContent::BrickHoverMaterialPath),
@@ -178,11 +204,35 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 			DestructionContent::BrickSelectedMaterialPath),
 		SelectedMaterial);
 
+	TestNotNull(
+		*FString::Printf(TEXT("an inspected brick needs a material at '%s'; it does not resolve"),
+			DestructionContent::BrickInspectedMaterialPath),
+		InspectedMaterial);
+
+	/*
+	 * THE THREE MUST BE THREE DIFFERENT ASSETS, PAIRWISE. Two of them collapsing onto one look
+	 * makes the enumerator that shares it decoration, and which pair collapses decides which
+	 * lie the player is told: hover onto selected says a brick is chosen the moment the cursor
+	 * crosses it, and inspected onto selected says the joint numbers on screen belong to any of
+	 * the bricks that are lit.
+	 */
 	TestTrue(
 		*FString::Printf(
-			TEXT("the two highlight materials must be different assets or the two states draw the same; both are '%s'"),
+			TEXT("Hovered and Selected must be different assets or the two states draw the same; both are '%s'"),
 			HoverMaterial != nullptr ? *HoverMaterial->GetPathName() : TEXT("<none>")),
 		HoverMaterial != SelectedMaterial);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("Selected and Inspected must be different assets or the two states draw the same; both are '%s'"),
+			SelectedMaterial != nullptr ? *SelectedMaterial->GetPathName() : TEXT("<none>")),
+		SelectedMaterial != InspectedMaterial);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("Hovered and Inspected must be different assets or the two states draw the same; both are '%s'"),
+			HoverMaterial != nullptr ? *HoverMaterial->GetPathName() : TEXT("<none>")),
+		HoverMaterial != InspectedMaterial);
 
 	FBrickTestWorld TestWorld;
 
@@ -229,8 +279,8 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 	 * that only cleared when coming from one particular state, passes a per-state check and
 	 * fails this one.
 	 */
-	UMaterialInterface* Expected[3] = { nullptr, nullptr, nullptr };
-	bool bSeen[3] = { true, false, false };
+	UMaterialInterface* Expected[BrickHighlightStateCount] = {};
+	bool bSeen[BrickHighlightStateCount] = { true, false, false, false };
 
 	EBrickHighlight From = EBrickHighlight::None;
 
@@ -291,25 +341,63 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 		TEXT("a SELECTED brick must wear an overlay — this is the one a player checks before pressing Delete"),
 		Expected[BrickHighlightSlot(EBrickHighlight::Selected)]);
 
+	/*
+	 * AND THE INSPECTED ONE, WHICH IS THE ROW THE `default:` ARM SWALLOWS. A state SetHighlighted
+	 * has no case for takes the default and sets a NULL overlay, so the strongest state in the
+	 * scene draws PLAIN — weaker than merely selected, which is precisely backwards. It fails
+	 * here as "wears no overlay at all" rather than as a wrong asset.
+	 */
+	TestNotNull(
+		TEXT("an INSPECTED brick must wear an overlay — it is the brick whose forces are on screen, and it must be tellable apart from the rest of the selection"),
+		Expected[BrickHighlightSlot(EBrickHighlight::Inspected)]);
+
+	/*
+	 * AND THE THREE OVERLAYS ARE THREE DIFFERENT ANSWERS, PAIRWISE. Different ASSETS is asserted
+	 * at the top of this test; this is the separate claim that the brick actually reached for a
+	 * different one per state, which is what a switch with a shared arm gets wrong.
+	 */
+	const int32 HoverSlot = BrickHighlightSlot(EBrickHighlight::Hovered);
+	const int32 SelectedSlot = BrickHighlightSlot(EBrickHighlight::Selected);
+	const int32 InspectedSlot = BrickHighlightSlot(EBrickHighlight::Inspected);
+
 	TestTrue(
 		*FString::Printf(
 			TEXT("Hovered and Selected must not draw the same thing; both wear '%s'"),
-			Expected[1] != nullptr ? *Expected[1]->GetPathName() : TEXT("<none>")),
-		Expected[1] != Expected[2]);
+			Expected[HoverSlot] != nullptr ? *Expected[HoverSlot]->GetPathName() : TEXT("<none>")),
+		Expected[HoverSlot] != Expected[SelectedSlot]);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("Selected and Inspected must not draw the same thing; both wear '%s'"),
+			Expected[SelectedSlot] != nullptr ? *Expected[SelectedSlot]->GetPathName() : TEXT("<none>")),
+		Expected[SelectedSlot] != Expected[InspectedSlot]);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("Hovered and Inspected must not draw the same thing; both wear '%s'"),
+			Expected[HoverSlot] != nullptr ? *Expected[HoverSlot]->GetPathName() : TEXT("<none>")),
+		Expected[HoverSlot] != Expected[InspectedSlot]);
 
 	TestTrue(
 		*FString::Printf(
 			TEXT("a hovered brick must wear '%s' (or an instance of it); it wears '%s'"),
 			DestructionContent::BrickHoverMaterialPath,
-			Expected[1] != nullptr ? *Expected[1]->GetPathName() : TEXT("<none>")),
-		BrickHighlightDerivesFrom(Expected[1], HoverMaterial));
+			Expected[HoverSlot] != nullptr ? *Expected[HoverSlot]->GetPathName() : TEXT("<none>")),
+		BrickHighlightDerivesFrom(Expected[HoverSlot], HoverMaterial));
 
 	TestTrue(
 		*FString::Printf(
 			TEXT("a selected brick must wear '%s' (or an instance of it); it wears '%s'"),
 			DestructionContent::BrickSelectedMaterialPath,
-			Expected[2] != nullptr ? *Expected[2]->GetPathName() : TEXT("<none>")),
-		BrickHighlightDerivesFrom(Expected[2], SelectedMaterial));
+			Expected[SelectedSlot] != nullptr ? *Expected[SelectedSlot]->GetPathName() : TEXT("<none>")),
+		BrickHighlightDerivesFrom(Expected[SelectedSlot], SelectedMaterial));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("an inspected brick must wear '%s' (or an instance of it); it wears '%s'"),
+			DestructionContent::BrickInspectedMaterialPath,
+			Expected[InspectedSlot] != nullptr ? *Expected[InspectedSlot]->GetPathName() : TEXT("<none>")),
+		BrickHighlightDerivesFrom(Expected[InspectedSlot], InspectedMaterial));
 
 	TestTrue(
 		*FString::Printf(

@@ -245,17 +245,18 @@ namespace PieceInspectorTestSupport
 			const FInspectorPieceEntry& Entry = Inspector.Pieces[Index];
 
 			Line += FString::Printf(
-				TEXT("%s'%s'{%d,%d}%s"),
+				TEXT("%s'%s'{%d,%d}%s%s"),
 				Index == 0 ? TEXT("") : TEXT(" "),
 				*Entry.Label, Entry.Ref.StructureId, Entry.Ref.PieceIndex,
+				Entry.bIsLivePiece ? TEXT("") : TEXT("[dead]"),
 				Entry.bIsInspected ? TEXT("<==") : TEXT(""));
 		}
 
 		Line += FString::Printf(
-			TEXT(" inspected:%s{%d,%d} support:'%s' joints:"),
+			TEXT(" inspected:%s{%d,%d} support:'%s' jointstext:'%s' joints:"),
 			Inspector.bHasInspectedPiece ? TEXT("yes") : TEXT("no"),
 			Inspector.InspectedRef.StructureId, Inspector.InspectedRef.PieceIndex,
-			*Inspector.SupportText);
+			*Inspector.SupportText, *Inspector.JointsText);
 
 		if (Inspector.Joints.Num() == 0)
 		{
@@ -298,6 +299,16 @@ namespace PieceInspectorTestSupport
 		 */
 		TArray<FString> ExpectedLabels;
 
+		/**
+		 * Whether each of those entries still names a piece in the graph, in the same order.
+		 *
+		 * WRITTEN OUT PER ROW FROM THE DIAGRAM rather than derived from the binding here — a
+		 * check derived the same way the production code derives it agrees with it whatever it
+		 * does. Pieces 0, 1, 2 and 4-7 are live, piece 3 was pulled out, structure 9 does not
+		 * exist, and a ref missing a half names nothing anywhere.
+		 */
+		TArray<bool> ExpectedLive;
+
 		const TCHAR* ExpectedCountText = nullptr;
 
 		/** Index into ExpectedEntries of the singled-out brick, or INDEX_NONE for none. */
@@ -308,6 +319,12 @@ namespace PieceInspectorTestSupport
 
 		/** Empty when nothing is being inspected. */
 		const TCHAR* ExpectedSupportText = TEXT("");
+
+		/**
+		 * The joint list as a sentence. Empty when nothing is being inspected, and the whole
+		 * point of the field is that an inspected brick with NO joints still gets one.
+		 */
+		const TCHAR* ExpectedJointsText = TEXT("");
 	};
 
 	/**
@@ -332,9 +349,27 @@ namespace PieceInspectorTestSupport
 
 		int32 InspectedEntries = 0;
 
-		for (const FInspectorPieceEntry& Entry : Inspector.Pieces)
+		for (int32 Index = 0; Index < Inspector.Pieces.Num(); ++Index)
 		{
+			const FInspectorPieceEntry& Entry = Inspector.Pieces[Index];
+
 			InspectedEntries += Entry.bIsInspected ? 1 : 0;
+
+			/*
+			 * AND THE SINGLED-OUT ENTRY IS ALWAYS A LIVE ONE. bHasInspectedPiece is
+			 * FPieceInspection::bIsPiece and bIsLivePiece must be the same question asked of
+			 * the same ref, so an entry that read inspected while reading dead would be the
+			 * model contradicting itself in the two fields a widget draws side by side —
+			 * a greyed-out row with a joint breakout under it.
+			 */
+			if (Entry.bIsInspected)
+			{
+				Test.TestTrue(
+					*FString::Printf(
+						TEXT("%s: entry %d is singled out, so it must also read as a live piece %s"),
+						Where, Index, *DescribeInspector(Inspector)),
+					Entry.bIsLivePiece);
+			}
 		}
 
 		Test.TestEqual(
@@ -364,6 +399,28 @@ namespace PieceInspectorTestSupport
 				*FString::Printf(TEXT("%s: nothing inspected must name no brick, it names {%d,%d}"),
 					Where, Inspector.InspectedRef.StructureId, Inspector.InspectedRef.PieceIndex),
 				Inspector.InspectedRef == FPieceRef());
+
+			Test.TestEqual(
+				FString::Printf(
+					TEXT("%s: nothing inspected must say nothing about joints, it says '%s'"),
+					Where, *Inspector.JointsText),
+				Inspector.JointsText, FString());
+		}
+
+		/*
+		 * AND A BRICK THAT IS INSPECTED ALWAYS GETS A SENTENCE ABOUT ITS JOINTS, INCLUDING
+		 * WHEN IT HAS NONE. That is the whole reason the field exists: "no joints" is a fact
+		 * about the brick, and a widget left to notice an empty array for itself would be
+		 * holding a branch in the one place nothing can test. CountText's "No bricks selected"
+		 * is the same rule one level up.
+		 */
+		if (Inspector.bHasInspectedPiece)
+		{
+			Test.TestFalse(
+				*FString::Printf(
+					TEXT("%s: a brick is singled out, so its %d joint(s) must be summed up in words; the line is empty %s"),
+					Where, Inspector.Joints.Num(), *DescribeInspector(Inspector)),
+				Inspector.JointsText.IsEmpty());
 		}
 
 		/*
@@ -418,6 +475,18 @@ namespace PieceInspectorTestSupport
  * piece a cascade removed and a malformed ref all still count, because the player picked
  * that many bricks and the highlights on screen are drawn off the same set — a count that
  * quietly disagreed with them would be the presenter contradicting itself.
+ *
+ * EVERY ENTRY ALSO SAYS WHETHER IT STILL NAMES A BRICK. Without that, a removed brick, a ref
+ * naming another structure and a live brick present identically, so a widget wanting to grey
+ * the dead one out would have to resolve the ref against the binding itself — model logic in
+ * the one place the recorded widget exception says there may be none. It is the same question
+ * FPieceInspection::bIsPiece answers, asked once per entry rather than only for the singled-out
+ * one, and a RELEASED brick reads LIVE: what the menu may do about it is PieceActionsFor's
+ * intersection and is already said by the rows going empty.
+ *
+ * AND AN INSPECTED BRICK WITH NO JOINTS GETS ITS OWN SENTENCE, for the reason "No bricks
+ * selected" is a sentence rather than "0 bricks selected": an empty list is a fact about the
+ * brick, and a widget left to notice Joints.Num() == 0 for itself is a branch nothing can test.
  *
  * AND EVERY ENTRY'S LABEL IS ASSERTED, BECAUSE IT IS THE ONE STRING IN THE MODEL THAT ONLY
  * EVER APPEARED IN FAILURE MESSAGES. DescribeInspector prints it, which is what made it look
@@ -509,9 +578,11 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			Nothing,
 			TArray<FPieceRef>(),
 			TArray<FString>(),
+			TArray<bool>(),
 			TEXT("No bricks selected"),
 			INDEX_NONE,
 			0,
+			TEXT(""),
 			TEXT("")
 		},
 		{
@@ -521,10 +592,12 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			MakeRef(InspectorStructure, SubjectPiece),
 			{ MakeRef(InspectorStructure, SubjectPiece) },
 			{ TEXT("brick 4:1") },
+			{ true },
 			TEXT("1 brick selected"),
 			0,
 			3,
-			TEXT("supported")
+			TEXT("supported"),
+			TEXT("3 joints")
 		},
 		{
 			/*
@@ -541,10 +614,12 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			  MakeRef(InspectorStructure, PadPiece),
 			  MakeRef(InspectorStructure, SubjectPiece) },
 			{ TEXT("brick 4:2"), TEXT("brick 4:0"), TEXT("brick 4:1") },
+			{ true, true, true },
 			TEXT("3 bricks selected"),
 			1,
 			1,
-			TEXT("grounded")
+			TEXT("grounded"),
+			TEXT("1 joint")
 		},
 		{
 			/* Picked but not pointed at: a list with no breakout under it. */
@@ -557,9 +632,11 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			  MakeRef(InspectorStructure, PadPiece),
 			  MakeRef(InspectorStructure, SubjectPiece) },
 			{ TEXT("brick 4:2"), TEXT("brick 4:0"), TEXT("brick 4:1") },
+			{ true, true, true },
 			TEXT("3 bricks selected"),
 			INDEX_NONE,
 			0,
+			TEXT(""),
 			TEXT("")
 		},
 		{
@@ -574,9 +651,11 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			MakeRef(InspectorStructure, SubjectPiece),
 			{ MakeRef(InspectorStructure, RiderPiece), MakeRef(InspectorStructure, PadPiece) },
 			{ TEXT("brick 4:2"), TEXT("brick 4:0") },
+			{ true, true },
 			TEXT("2 bricks selected"),
 			INDEX_NONE,
 			0,
+			TEXT(""),
 			TEXT("")
 		},
 		{
@@ -593,9 +672,11 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			MakeRef(InspectorStructure, SparePiece),
 			{ MakeRef(InspectorStructure, SubjectPiece), MakeRef(InspectorStructure, SparePiece) },
 			{ TEXT("brick 4:1"), TEXT("brick 4:3") },
+			{ true, false },
 			TEXT("2 bricks selected"),
 			INDEX_NONE,
 			0,
+			TEXT(""),
 			TEXT("")
 		},
 		{
@@ -614,9 +695,11 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			{ MakeRef(InspectorStructure, SubjectPiece),
 			  MakeRef(InspectorOtherStructure, SubjectPiece) },
 			{ TEXT("brick 4:1"), TEXT("brick 9:1") },
+			{ true, false },
 			TEXT("2 bricks selected"),
 			INDEX_NONE,
 			0,
+			TEXT(""),
 			TEXT("")
 		},
 		{
@@ -640,9 +723,11 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			MakeRef(InspectorStructure, INDEX_NONE),
 			{ MakeRef(InspectorStructure, SubjectPiece), MakeRef(InspectorStructure, INDEX_NONE) },
 			{ TEXT("brick 4:1"), TEXT("brick 4:-1") },
+			{ true, false },
 			TEXT("2 bricks selected"),
 			INDEX_NONE,
 			0,
+			TEXT(""),
 			TEXT("")
 		},
 		{
@@ -656,26 +741,46 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			MakeRef(InspectorStructure, SubjectPiece),
 			{ MakeRef(InspectorStructure, SubjectPiece), MakeRef(InspectorStructure, FloaterPiece) },
 			{ TEXT("brick 4:1"), TEXT("brick 4:4") },
+			/*
+			 * AND BOTH ENTRIES ARE LIVE, INCLUDING THE RELEASED ONE. This is the row that
+			 * pins what bIsLivePiece MEANS: the floater has been handed to physics and Delete
+			 * refuses it, which is why the menu above came back empty — but it is still a
+			 * piece in the graph with a support state and a joint list, so a readout that
+			 * greyed it out would be reporting it as gone. "What the menu may do" is
+			 * PieceActionsFor's intersection and is answered by the rows, not here.
+			 */
+			{ true, true },
 			TEXT("2 bricks selected"),
 			0,
 			3,
-			TEXT("supported")
+			TEXT("supported"),
+			TEXT("3 joints")
 		},
 		{
 			/*
 			 * AND A BRICK WITH NO JOINTS IS STILL A BRICK. The floater is a live piece that
 			 * nothing is joined to, so an empty breakout is the truth about it — which is
 			 * exactly why "is one inspected" is a field and not Joints.Num() > 0.
+			 *
+			 * IT IS ALSO THE ONE ROW THAT NEEDS THE EMPTY SENTENCE, and the reason the
+			 * sentence has to be in the model at all. Everything else here is a brick with
+			 * joints, so a widget could print one line per row and look complete; on this
+			 * brick it would print nothing whatsoever under a heading and a support word,
+			 * which reads as a readout that failed rather than as a brick standing alone.
+			 * The only way to say "no joints" without a branch up there is for the model to
+			 * hand over the words, exactly as CountText does for an empty selection.
 			 */
 			TEXT("a released brick with no joints at all"),
 			{ MakeRef(InspectorStructure, FloaterPiece) },
 			MakeRef(InspectorStructure, FloaterPiece),
 			{ MakeRef(InspectorStructure, FloaterPiece) },
 			{ TEXT("brick 4:4") },
+			{ true },
 			TEXT("1 brick selected"),
 			0,
 			0,
-			TEXT("falling")
+			TEXT("falling"),
+			TEXT("No joints")
 		},
 		{
 			/*
@@ -689,9 +794,11 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			Nothing,
 			{ MakeRef(InspectorStructure, PadPiece), MakeRef(InspectorStructure, PadPiece) },
 			{ TEXT("brick 4:0"), TEXT("brick 4:0") },
+			{ true, true },
 			TEXT("2 bricks selected"),
 			INDEX_NONE,
 			0,
+			TEXT(""),
 			TEXT("")
 		},
 		{
@@ -716,10 +823,12 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			MakeRef(InspectorStructure, PadPiece),
 			{ MakeRef(InspectorStructure, PadPiece), MakeRef(InspectorStructure, PadPiece) },
 			{ TEXT("brick 4:0"), TEXT("brick 4:0") },
+			{ true, true },
 			TEXT("2 bricks selected"),
 			0,
 			1,
-			TEXT("grounded")
+			TEXT("grounded"),
+			TEXT("1 joint")
 		},
 		{
 			/*
@@ -743,10 +852,12 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			MakeRef(InspectorStructure, KnotXPiece),
 			{ MakeRef(InspectorStructure, KnotXPiece) },
 			{ TEXT("brick 4:6") },
+			{ true },
 			TEXT("1 brick selected"),
 			0,
 			2,
-			TEXT("stranded")
+			TEXT("stranded"),
+			TEXT("2 joints")
 		},
 	};
 
@@ -788,6 +899,11 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			FString::Printf(TEXT("%s: the table row must name one label per expected entry"),
 				Case.Description),
 			Case.ExpectedLabels.Num(), Case.ExpectedEntries.Num());
+
+		TestEqual(
+			FString::Printf(TEXT("%s: the table row must name one liveness per expected entry"),
+				Case.Description),
+			Case.ExpectedLive.Num(), Case.ExpectedEntries.Num());
 
 		if (Inspector.Pieces.Num() == Case.ExpectedEntries.Num())
 		{
@@ -835,6 +951,36 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 						*DescribeInspector(Inspector)),
 					Entry.Ref == Case.ExpectedEntries[Index]);
 
+				/*
+				 * WHETHER THE ENTRY STILL NAMES A BRICK YOU CAN ACT ON, DECIDED HERE RATHER
+				 * THAN BY WHOEVER DRAWS IT.
+				 *
+				 * Without this field a brick a cascade removed, a ref naming another wall and
+				 * a perfectly live brick present identically — same label shape, same ref,
+				 * same nothing — so a widget that wanted to grey the dead one out would have
+				 * to resolve the ref against the binding itself. That is model logic in the
+				 * one place the recorded widget exception says there may be none, at exactly
+				 * the surface CURRENT_STATE.md's rank-0 product decision has to become legible
+				 * on: a selection that outlived the bricks in it.
+				 *
+				 * NOTE WHERE THE EXPECTATIONS COME FROM: the fixture diagram, written out per
+				 * row, NOT read back off the binding. Deriving them here the way the presenter
+				 * derives them would agree with it however wrong it was.
+				 */
+				if (Case.ExpectedLive.IsValidIndex(Index))
+				{
+					TestTrue(
+						*FString::Printf(
+							TEXT("%s: entry %d {%d,%d} should read as %s, it reads as %s %s"),
+							Case.Description, Index,
+							Case.ExpectedEntries[Index].StructureId,
+							Case.ExpectedEntries[Index].PieceIndex,
+							Case.ExpectedLive[Index] ? TEXT("a live piece") : TEXT("naming nothing"),
+							Entry.bIsLivePiece ? TEXT("a live piece") : TEXT("naming nothing"),
+							*DescribeInspector(Inspector)),
+						Entry.bIsLivePiece == Case.ExpectedLive[Index]);
+				}
+
 				TestTrue(
 					*FString::Printf(
 						TEXT("%s: entry %d should%s be the one singled out, it %s %s"),
@@ -875,6 +1021,19 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			FString::Printf(TEXT("%s: support should read '%s', it reads '%s'"),
 				Case.Description, Case.ExpectedSupportText, *Inspector.SupportText),
 			Inspector.SupportText, FString(Case.ExpectedSupportText));
+
+		/*
+		 * AND THE JOINT LIST GETS A SENTENCE, WHICH IS THE SAME RULE AS CountText ONE LEVEL
+		 * DOWN: singular and plural are decided here, and an EMPTY list is its own wording
+		 * rather than an absence. "No joints" against "0 joints" is the same choice as
+		 * "No bricks selected" against "0 bricks selected", and both are branches — so both
+		 * belong where a test can read them rather than in the widget.
+		 */
+		TestEqual(
+			FString::Printf(TEXT("%s: the joint list should read '%s', it reads '%s' %s"),
+				Case.Description, Case.ExpectedJointsText, *Inspector.JointsText,
+				*DescribeInspector(Inspector)),
+			Inspector.JointsText, FString(Case.ExpectedJointsText));
 	}
 
 	/*
@@ -914,6 +1073,23 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 				TEXT("a wall nobody has solved: its 3 joints still exist, %d were broken out %s"),
 				Inspector.Joints.Num(), *DescribeInspector(Inspector)),
 			Inspector.Joints.Num(), 3);
+
+		/*
+		 * AND THE JOINT COUNT IS A FACT ABOUT THE GRAPH, NOT ABOUT THE SOLVE. Nobody has
+		 * asked what the wall is carrying, but the joints are there and there are three of
+		 * them — so this sentence must not go quiet with the support word.
+		 */
+		TestEqual(
+			FString::Printf(
+				TEXT("a wall nobody has solved: its joint list should still read '3 joints', it reads '%s'"),
+				*Inspector.JointsText),
+			Inspector.JointsText, FString(TEXT("3 joints")));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("a wall nobody has solved: its selected brick is still a live piece %s"),
+				*DescribeInspector(Inspector)),
+			Inspector.Pieces.Num() == 1 && Inspector.Pieces[0].bIsLivePiece);
 	}
 
 	return true;

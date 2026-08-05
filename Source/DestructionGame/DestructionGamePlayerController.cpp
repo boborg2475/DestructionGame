@@ -14,6 +14,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Text/STextBlock.h"
 #include "Core/PieceActions.h"
 #include "DestructionGameCameraManager.h"
 #include "RequiredContent.h"
@@ -86,6 +87,20 @@ static constexpr int32 PieceMenuMappingContextPriority = 0;
  * the trace either hits a brick or it does not, and a miss dismisses.
  */
 static constexpr double PieceMenuCursorReachCm = 10000.0;
+
+/*
+ * WHAT AN ENTRY ROW IS DRAWN IN, ACCORDING TO THE ONE BOOL THE MODEL ALREADY DECIDED.
+ *
+ * FInspectorPieceEntry::bIsLivePiece exists so that a brick a cascade removed and a perfectly
+ * live one do not present identically — and it exists ON THE MODEL so that nothing here has to
+ * resolve a ref to find out. Reading it into a colour is the whole use of it: no filtering, no
+ * dropping the entry, and no second opinion about what the menu may then do about it, which is
+ * PieceActionsFor's intersection and is already said by the action rows going empty.
+ *
+ * These are file-scope names in a unity build, hence the prefix; see the note above.
+ */
+static const FLinearColor PieceMenuLivePieceColour(1.0f, 1.0f, 1.0f, 1.0f);
+static const FLinearColor PieceMenuDeadPieceColour(0.5f, 0.5f, 0.5f, 0.6f);
 
 ADestructionGamePlayerController::ADestructionGamePlayerController()
 {
@@ -219,11 +234,27 @@ const FPieceSelection& ADestructionGamePlayerController::GetPieceSelection() con
 EBrickHighlight ADestructionGamePlayerController::HighlightForPiece(const FPieceRef& Ref) const
 {
 	/*
-	 * THE STRONGER STATE WINS WHERE THEY COINCIDE, and this order is the whole of that rule.
-	 * A selected brick under the cursor stays Selected: a hover that overwrote it would make
-	 * a chosen brick read as unchosen exactly when the player is looking at it, which is
-	 * indistinguishable from having lost the selection.
+	 * THE STRONGER STATE WINS WHERE THEY COINCIDE, AND THE ORDER IS Inspected > Selected >
+	 * Hovered. A selected brick under the cursor stays Selected: a hover that overwrote it
+	 * would make a chosen brick read as unchosen exactly when the player is looking at it,
+	 * which is indistinguishable from having lost the selection. And the one brick whose
+	 * joint forces are on screen beats the rest of the selection, because a breakout of one
+	 * brick's numbers drawn beside five bricks that look identical to it is ambiguous about
+	 * which brick it is the breakout OF.
+	 *
+	 * A BRICK THAT IS NOT SELECTED CANNOT BE THE ONE BEING READ, which is why this asks the
+	 * selection as well as the ref. It is the same rule BuildPieceMenuInspector applies — an
+	 * anchor outside the set it anchors is a readout of somebody else's brick — and it has to
+	 * be the same rule, or the panel and the wall disagree about which brick the numbers are
+	 * about. It also means a stale inspected ref needs no clearing anywhere: a brick that
+	 * leaves the selection stops being read by falling out of this test, rather than by a
+	 * clean-up somebody has to remember at three call sites.
 	 */
+	if (InspectedPiece == Ref && PieceSelection.Contains(Ref))
+	{
+		return EBrickHighlight::Inspected;
+	}
+
 	if (PieceSelection.Contains(Ref))
 	{
 		return EBrickHighlight::Selected;
@@ -272,6 +303,36 @@ void ADestructionGamePlayerController::ClearPieceSelection()
 	{
 		RefreshPieceHighlight(Ref);
 	}
+}
+
+void ADestructionGamePlayerController::SetInspectedPiece(const FPieceRef& Ref)
+{
+	/*
+	 * THE BRICK BEING LEFT IS REFRESHED AS WELL AS THE ONE BEING TAKEN UP, AND IT IS
+	 * REFRESHED RATHER THAN CLEARED — it is almost always still selected, so it goes back to
+	 * Selected rather than to None. This is exactly the bug class already recorded against
+	 * SetHoveredPiece, and here it is sharper in both directions: a brick left Inspected means
+	 * two bricks claim the one breakout, and a brick dropped to None means running the cursor
+	 * down the menu silently empties the selection on screen while the commit still deletes
+	 * every one of them.
+	 *
+	 * NOTHING ELSE MOVES. Reading a brick is not choosing it, exactly as pointing at one is
+	 * not: the selection and the presented rows come through untouched, or hovering down a
+	 * list of six entries would rewrite the very list being hovered.
+	 */
+	const FPieceRef Previous = InspectedPiece;
+
+	InspectedPiece = Ref;
+
+	RefreshPieceHighlight(Previous);
+	RefreshPieceHighlight(Ref);
+
+	/*
+	 * AND THE READOUT FOLLOWS THE BRICK IT DESCRIBES. The panel breaks out ONE brick's joints,
+	 * so which brick that is changing is the whole of what a player asked for by running the
+	 * cursor down the list.
+	 */
+	RefreshPieceMenuInspectorWidget();
 }
 
 bool ADestructionGamePlayerController::ShowPieceMenu(TArrayView<const FPieceMenuRow> Rows)
@@ -412,11 +473,57 @@ void ADestructionGamePlayerController::BuildPieceMenuWidget()
 		return;
 	}
 
-	TSharedRef<SVerticalBox> Buttons = SNew(SVerticalBox);
+	/*
+	 * THE READOUT IS ASKED FOR ONCE AND EVERY STRING IN IT IS TAKEN AS GIVEN. Nothing below
+	 * counts, formats, pluralises, filters or resolves anything — Core/PieceMenu.h says at
+	 * length why each of those decisions is already made in the model, and the short version
+	 * is that this function is the one place no test can reach.
+	 */
+	const FPieceMenuInspector Inspector = PieceMenuInspectorForSelection();
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+
+	Panel->AddSlot()
+		.AutoHeight()
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(Inspector.CountText))
+		];
+
+	/*
+	 * ONE ROW PER SELECTED BRICK, AND HOVERING ONE IS WHAT SINGLES IT OUT. A button is used
+	 * for the hover events rather than for a click: an entry names a brick, and naming one is
+	 * not choosing to do anything to it, so it carries no OnClicked at all.
+	 */
+	for (const FInspectorPieceEntry& Entry : Inspector.Pieces)
+	{
+		Panel->AddSlot()
+			.AutoHeight()
+			[
+				SNew(SButton)
+				.OnHovered(FSimpleDelegate::CreateUObject(
+					this, &ADestructionGamePlayerController::OnPieceMenuEntryHovered, Entry.Ref))
+				.OnUnhovered(FSimpleDelegate::CreateUObject(
+					this, &ADestructionGamePlayerController::OnPieceMenuEntryUnhovered))
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Entry.Label))
+					.ColorAndOpacity(Entry.bIsLivePiece
+						? PieceMenuLivePieceColour : PieceMenuDeadPieceColour)
+				]
+			];
+	}
+
+	/* The joint breakout, which is the one part that gets replaced on its own. */
+	Panel->AddSlot()
+		.AutoHeight()
+		[
+			SAssignNew(PieceMenuInspectorBox, SBox)
+		];
 
 	for (int32 RowIndex = 0; RowIndex < ShownPieceMenuRows.Num(); ++RowIndex)
 	{
-		Buttons->AddSlot()
+		Panel->AddSlot()
 			.AutoHeight()
 			[
 				SNew(SButton)
@@ -431,10 +538,12 @@ void ADestructionGamePlayerController::BuildPieceMenuWidget()
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Center)
 		[
-			Buttons
+			Panel
 		];
 
 	Viewport->AddViewportWidgetContent(PieceMenuWidget.ToSharedRef());
+
+	RefreshPieceMenuInspectorWidget();
 }
 
 void ADestructionGamePlayerController::RemovePieceMenuWidget()
@@ -451,7 +560,77 @@ void ADestructionGamePlayerController::RemovePieceMenuWidget()
 		Viewport->RemoveViewportWidgetContent(PieceMenuWidget.ToSharedRef());
 	}
 
+	/* The box lives inside the panel, so it goes with it and never outlives it. */
+	PieceMenuInspectorBox.Reset();
+
 	PieceMenuWidget.Reset();
+}
+
+void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
+{
+	if (!PieceMenuInspectorBox.IsValid())
+	{
+		return;
+	}
+
+	const FPieceMenuInspector Inspector = PieceMenuInspectorForSelection();
+
+	TSharedRef<SVerticalBox> Readout = SNew(SVerticalBox);
+
+	Readout->AddSlot()
+		.AutoHeight()
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(Inspector.SupportText))
+		];
+
+	/*
+	 * THE JOINT LIST GETS ITS SENTENCE WHETHER OR NOT THERE ARE ANY JOINTS, which is why there
+	 * is no emptiness check here: an isolated grounded pad reads "No joints", and the model is
+	 * what says so. A widget noticing Joints.Num() == 0 for itself would be the branch this
+	 * whole arrangement exists to keep out.
+	 */
+	Readout->AddSlot()
+		.AutoHeight()
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(Inspector.JointsText))
+		];
+
+	for (const FInspectorJointRow& Joint : Inspector.Joints)
+	{
+		Readout->AddSlot()
+			.AutoHeight()
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Joint.Text))
+			];
+	}
+
+	PieceMenuInspectorBox->SetContent(Readout);
+}
+
+FPieceMenuInspector ADestructionGamePlayerController::PieceMenuInspectorForSelection() const
+{
+	/*
+	 * ONE READOUT FOR THE WHOLE SELECTION, AGAINST THE STRUCTURE ITS REFS NAME — the same
+	 * plumbing InspectAlongRay does for the rows, and for the same reason: a selection is built
+	 * by clicking one wall, so the first ref names it, and BuildPieceMenuInspector answers for
+	 * every ref that turns out not to belong to it.
+	 */
+	const TArrayView<const FPieceRef> Selected = PieceSelection.Refs();
+
+	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
+
+	if (Subsystem != nullptr && Selected.Num() > 0)
+	{
+		if (const FStructureBinding* const Binding = Subsystem->Find(Selected[0].StructureId))
+		{
+			return BuildPieceMenuInspector(*Binding, Selected, InspectedPiece);
+		}
+	}
+
+	return FPieceMenuInspector();
 }
 
 FReply ADestructionGamePlayerController::OnPieceMenuRowClicked(int32 RowIndex)
@@ -459,6 +638,17 @@ FReply ADestructionGamePlayerController::OnPieceMenuRowClicked(int32 RowIndex)
 	ChoosePieceMenuRow(RowIndex);
 
 	return FReply::Handled();
+}
+
+void ADestructionGamePlayerController::OnPieceMenuEntryHovered(FPieceRef Ref)
+{
+	SetInspectedPiece(Ref);
+}
+
+void ADestructionGamePlayerController::OnPieceMenuEntryUnhovered()
+{
+	/* A default ref singles out nothing, which is how the cursor leaving the list is said. */
+	SetInspectedPiece(FPieceRef());
 }
 
 void ADestructionGamePlayerController::SetPieceMenuControls(bool bMenuIsUp)
