@@ -99,10 +99,10 @@ namespace LayoutTestSupport
 	 * THE BED / HEAD THRESHOLD, spelled as the same literal production uses.
 	 *
 	 * Copied verbatim from StructureTest.cpp for the reason recorded there: this is a
-	 * transcription of RoleOf's tier decision, not a second opinion about it, and
-	 * written 1.0 / FMath::Sqrt(2.0) it would land an ulp away from the constexpr
-	 * constant in Structure.cpp. If the production constant changes, change this to
-	 * match; do not re-derive it.
+	 * transcription of FStructure::GetJointRole's tier decision, not a second opinion
+	 * about it, and written 1.0 / FMath::Sqrt(2.0) it would land an ulp away from the
+	 * constexpr constant in Structure.cpp. If the production constant changes, change
+	 * this to match; do not re-derive it.
 	 */
 	constexpr double BedJointCosine = 0.70710678118654752440;
 
@@ -166,7 +166,7 @@ namespace LayoutTestSupport
 	}
 
 	/**
-	 * The tier a joint has FOR ONE PIECE, transcribed from Structure.cpp's RoleOf.
+	 * The tier a joint has FOR ONE PIECE, transcribed from FStructure::GetJointRole.
 	 *
 	 * A connection is described by a normal pointing toward PieceB, so to ask what it
 	 * means for THIS piece the normal is first turned to point at this piece. Pointing

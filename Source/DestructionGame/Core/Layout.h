@@ -83,10 +83,11 @@ namespace DestructionLayout
 	 * the comparison this sentence makes.)
 	 *
 	 * The failure mode that matters is not a flipped normal but a normal
-	 * INCONSISTENT WITH ITS A/B PAIRING. RoleOf turns the normal toward the piece it
-	 * is asked about and the accumulation signs the force by which end is loaded, so
-	 * a consistently flipped joint reports identical loads. Emitting the pair and the
-	 * normal as one atomic value is what makes the inconsistent state inexpressible.
+	 * INCONSISTENT WITH ITS A/B PAIRING. FStructure::GetJointRole turns the normal
+	 * toward the piece it is asked about and the accumulation signs the force by which
+	 * end is loaded, so a consistently flipped joint reports identical loads. Emitting
+	 * the pair and the normal as one atomic value is what makes the inconsistent state
+	 * inexpressible.
 	 *
 	 * Two boxes form a joint when they are separated on EXACTLY ONE axis, by the
 	 * joint thickness, and overlap positively on the other two. The interface area is

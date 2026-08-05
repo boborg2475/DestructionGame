@@ -9,11 +9,11 @@
  * unity build merges many files into one — at which point every anonymous namespace in
  * the blob is the SAME namespace, and two file-local names that collide are a hard
  * compile error between files that never refer to each other. Several test files
- * legitimately transcribe these same constants (the tier cosine has to agree with RoleOf
- * bit for bit, so it is spelled twice on purpose), and a `using namespace` for their own
- * support namespace then makes the bare name ambiguous against this one. That is exactly
- * what happened when this directory gained its third new file, and it is luck-dependent
- * on how UBT partitioned the blob that day.
+ * legitimately transcribe these same constants (the tier cosine has to agree with
+ * GetJointRole bit for bit, so it is spelled twice on purpose), and a `using namespace`
+ * for their own support namespace then makes the bare name ambiguous against this one.
+ * That is exactly what happened when this directory gained its third new file, and it is
+ * luck-dependent on how UBT partitioned the blob that day.
  *
  * So production file-local names are spelled for what they belong to, per CURRENT_STATE.md.
  * Grep still finds both halves of the standing lockstep instruction below, because the
@@ -59,69 +59,6 @@ namespace
 		}
 
 		return INDEX_NONE;
-	}
-
-	/** What a connection is TO ONE OF ITS PIECES — the relation is directed. */
-	enum class ESolverJointRole : uint8
-	{
-		/** Not a joint on this piece at all. */
-		None,
-
-		/** Substantially vertical normal, other piece BELOW: this bears the weight. */
-		BedBeneath,
-
-		/** Substantially vertical normal, other piece ABOVE: it rests on this one. */
-		BedAbove,
-
-		/** Substantially horizontal normal: can only carry weight in shear. */
-		Head,
-	};
-
-	/**
-	 * Which of those a connection is, looked at from PieceIndex.
-	 *
-	 * A connection is described by a normal pointing toward PieceB, so the first
-	 * thing to do is turn it to point at the piece being asked about. Pointing
-	 * substantially UP at this piece, the interface is beneath it and bears it.
-	 * Pointing substantially DOWN, the bed joint is above — something resting on
-	 * this piece, or something this piece is glued underneath — and neither holds it
-	 * up. That direction is the whole correction: routing that only asked whether
-	 * two pieces were joined let a load path run upward through a joint.
-	 *
-	 * A normal that will not normalise is answered None rather than being given a
-	 * tier. Normalize returns false for a zero-length AND for a NaN normal, so the
-	 * comparison below is never reached with a NaN in it — the guard is here rather
-	 * than in the comparison because a NaN falling through would land in Head, and
-	 * Head is a support tier.
-	 */
-	ESolverJointRole RoleOf(const FConnection& Connection, int32 PieceIndex)
-	{
-		FVector UnitNormal = Connection.InterfaceNormal;
-		if (!UnitNormal.Normalize())
-		{
-			return ESolverJointRole::None;
-		}
-
-		double NormalZTowardPiece = 0.0;
-		if (Connection.PieceB == PieceIndex)
-		{
-			NormalZTowardPiece = UnitNormal.Z;
-		}
-		else if (Connection.PieceA == PieceIndex)
-		{
-			NormalZTowardPiece = -UnitNormal.Z;
-		}
-		else
-		{
-			return ESolverJointRole::None;
-		}
-
-		if (!(FMath::Abs(NormalZTowardPiece) > SolverBedJointCosine))
-		{
-			return ESolverJointRole::Head;
-		}
-
-		return NormalZTowardPiece > 0.0 ? ESolverJointRole::BedBeneath : ESolverJointRole::BedAbove;
 	}
 
 	/**
@@ -443,13 +380,13 @@ void FStructure::SolveLoads()
 				continue;
 			}
 
-			switch (RoleOf(Connections[Index], PieceIndex))
+			switch (GetJointRole(Index, PieceIndex))
 			{
-			case ESolverJointRole::BedBeneath:
+			case EJointRole::BedBeneath:
 				SupportConnections[PieceIndex].Add(Index);
 				break;
 
-			case ESolverJointRole::Head:
+			case EJointRole::Head:
 				HeadConnections.Add(Index);
 				break;
 
@@ -910,6 +847,80 @@ int32 FStructure::GetBreakPass(int32 ConnectionIndex) const
 	return ConnectionBreakPass.IsValidIndex(ConnectionIndex)
 		? ConnectionBreakPass[ConnectionIndex]
 		: INDEX_NONE;
+}
+
+EJointRole FStructure::GetJointRole(int32 ConnectionIndex, int32 PieceIndex) const
+{
+	/*
+	 * THIS IS THE DECISION SolveLoads ITSELF ROUTES BY — it calls this rather than
+	 * carrying its own copy — which is what makes a readout of a tier and the tier the
+	 * load actually took the same answer rather than two that agree until they do not.
+	 *
+	 * A connection is described by a normal pointing toward PieceB, so the first thing
+	 * to do is turn it to point at the piece being asked about. Pointing substantially
+	 * UP at this piece, the interface is beneath it and bears it. Pointing substantially
+	 * DOWN, the bed joint is above — something resting on this piece, or something this
+	 * piece is glued underneath — and neither holds it up. That direction is the whole
+	 * correction: routing that only asked whether two pieces were joined let a load path
+	 * run upward through a joint.
+	 *
+	 * A normal that will not normalise is answered None rather than being given a tier.
+	 * Normalize returns false for a zero-length AND for a NaN normal, so the comparison
+	 * below is never reached with a NaN in it — the guard is here rather than in the
+	 * comparison because a NaN falling through would land in Head, and Head is a support
+	 * tier.
+	 *
+	 * AN UNKNOWN CONNECTION NEEDS A GUARD OF ITS OWN, AND THE ARGUMENT THAT IT DID NOT
+	 * WAS THE BUG. It used to read "GetConnection hands back a placeholder whose zero
+	 * normal will not normalise", which is the reasoning GetConnectionUtilisation is
+	 * entitled to and this is not, because the two consume DIFFERENT FIELDS of the same
+	 * placeholder. Utilisation consumes the AREA, and a default FConnection's area is
+	 * zero, which ComputeUtilisation's own area guard already fails closed on. This
+	 * consumes the NORMAL, and a default FConnection's normal is FVector::ZAxisVector —
+	 * (0,0,1), which normalises perfectly. Carried across, the placeholder's PieceB of
+	 * INDEX_NONE then matched an unidentified PieceIndex and the tier came back
+	 * BedBeneath: the strongest support tier there is, reported for a joint that does
+	 * not exist, on a piece that does not exist.
+	 *
+	 * WITH THE HANDLE KNOWN GOOD THE PIECE CHECK BELOW NEEDS NOTHING OF ITS OWN.
+	 * AddConnection refuses a joint whose ends are not both valid piece handles, so a
+	 * STORED connection never names INDEX_NONE at either end and an unidentified piece
+	 * cannot find one to match. That is a door guard that exists and is tested, which
+	 * is precisely what the placeholder-normal claim was not.
+	 */
+	if (!Connections.IsValidIndex(ConnectionIndex))
+	{
+		return EJointRole::None;
+	}
+
+	const FConnection& Connection = Connections[ConnectionIndex];
+
+	FVector UnitNormal = Connection.InterfaceNormal;
+	if (!UnitNormal.Normalize())
+	{
+		return EJointRole::None;
+	}
+
+	double NormalZTowardPiece = 0.0;
+	if (Connection.PieceB == PieceIndex)
+	{
+		NormalZTowardPiece = UnitNormal.Z;
+	}
+	else if (Connection.PieceA == PieceIndex)
+	{
+		NormalZTowardPiece = -UnitNormal.Z;
+	}
+	else
+	{
+		return EJointRole::None;
+	}
+
+	if (!(FMath::Abs(NormalZTowardPiece) > SolverBedJointCosine))
+	{
+		return EJointRole::Head;
+	}
+
+	return NormalZTowardPiece > 0.0 ? EJointRole::BedBeneath : EJointRole::BedAbove;
 }
 
 FVector FStructure::GetConnectionForce(int32 ConnectionIndex) const

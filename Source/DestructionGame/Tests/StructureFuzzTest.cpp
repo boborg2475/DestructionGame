@@ -294,9 +294,10 @@ namespace StructureFuzzSupport
 	 * The two-tier support rule of DESIGN.md §3, as joint indices per piece.
 	 *
 	 * HONEST ABOUT WHAT THIS IS WORTH, in the same terms as SpecSupportsOf in
-	 * StructureTest.cpp: it is a transcription of RoleOf, threshold literal included,
-	 * so it is NOT a second opinion about whether the tier rule is right. If the rule
-	 * itself were wrong this would be wrong identically and agree enthusiastically.
+	 * StructureTest.cpp: it is a transcription of FStructure::GetJointRole, threshold
+	 * literal included, so it is NOT a second opinion about whether the tier rule is
+	 * right. If the rule itself were wrong this would be wrong identically and agree
+	 * enthusiastically.
 	 * SupportTierThreshold is what pins the rule; this only shares its input with the
 	 * oracle below, exactly as the reviewer's scratch harness did.
 	 *

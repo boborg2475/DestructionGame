@@ -120,12 +120,13 @@ namespace StructureTestSupport
 	 *
 	 * SPELLED AS THE SAME LITERAL PRODUCTION USES, bit for bit, and that is not
 	 * laziness. SpecSupportsOf below is the ORACLE for the DegenerateInputs matrix,
-	 * and its comment claims to be a line-for-line transcription of RoleOf, threshold
-	 * constant included. Written 1.0 / FMath::Sqrt(2.0) it lands an ulp away from the
-	 * constexpr constant in Structure.cpp — a difference no axis-aligned normal can
-	 * detect and the first tilted one added to that matrix eventually will, and a
-	 * divergence in the oracle reads as a production bug. If the production constant
-	 * ever changes, change this one to match; do not re-derive it.
+	 * and its comment claims to be a line-for-line transcription of
+	 * FStructure::GetJointRole, threshold constant included. Written
+	 * 1.0 / FMath::Sqrt(2.0) it lands an ulp away from the constexpr constant in
+	 * Structure.cpp — a difference no axis-aligned normal can detect and the first
+	 * tilted one added to that matrix eventually will, and a divergence in the oracle
+	 * reads as a production bug. If the production constant ever changes, change this
+	 * one to match; do not re-derive it.
 	 */
 	constexpr double BedJointCosine = 0.70710678118654752440;
 
@@ -351,11 +352,11 @@ namespace StructureTestSupport
 	 *
 	 * HONEST ABOUT WHAT THIS IS WORTH. It re-derives the tier rule from the spec
 	 * rather than calling into Core/Structure, but it is a line-for-line transcription
-	 * of RoleOf, threshold constant included, so it is NOT a second opinion about
-	 * whether the tier rule is right. It catches transcription slips — a sign flipped,
-	 * a case dropped, the fallback applied when there IS a bed joint — and nothing
-	 * conceptual: if the two-tier rule itself were wrong, this would be wrong in
-	 * exactly the same way and agree enthusiastically.
+	 * of FStructure::GetJointRole, threshold constant included, so it is NOT a second
+	 * opinion about whether the tier rule is right. It catches transcription slips — a
+	 * sign flipped, a case dropped, the fallback applied when there IS a bed joint —
+	 * and nothing conceptual: if the two-tier rule itself were wrong, this would be
+	 * wrong in exactly the same way and agree enthusiastically.
 	 *
 	 * SpecReachesGround, built on top of it, is a different matter and earns the
 	 * stronger claim ONLY FOR STRUCTURES THAT STRAND NOTHING: it walks upward from one
@@ -602,6 +603,25 @@ namespace StructureTestSupport
 		case EPieceSupport::Supported: return TEXT("Supported");
 		case EPieceSupport::Stranded:  return TEXT("Stranded");
 		default:                       return TEXT("an unknown state");
+		}
+	}
+
+	/**
+	 * A joint role as text, same reasoning as NameOfSupport: a failure that says
+	 * "BedBeneath" names the wrong answer, where a raw 1 does not.
+	 *
+	 * The default arm is not a fifth name for the same reason — an enum that grows a
+	 * value nobody wired in here should read as unknown rather than as a plausible tier.
+	 */
+	const TCHAR* NameOfJointRole(EJointRole Role)
+	{
+		switch (Role)
+		{
+		case EJointRole::None:       return TEXT("None");
+		case EJointRole::BedBeneath: return TEXT("BedBeneath");
+		case EJointRole::BedAbove:   return TEXT("BedAbove");
+		case EJointRole::Head:       return TEXT("Head");
+		default:                     return TEXT("an unknown role");
 		}
 	}
 
@@ -1259,10 +1279,11 @@ bool FStructureSupportTierThresholdTest::RunTest(const FString& Parameters)
  * Both are the same tilt and the same brick, so both carry the same magnitude. What
  * differs is the axis, and that is the whole finding:
  *
- *   RoleOf is SIGN-BLIND ABOVE 45 DEGREES. It asks |NormalZTowardPiece| > cos45 and
- *   only then looks at the sign, so a joint tilted past 45 sitting ABOVE a piece is
- *   classified Head — and a head joint is a fallback support. The piece therefore hangs
- *   from the face over it and the stored force resolves as TENSION.
+ *   FStructure::GetJointRole is SIGN-BLIND ABOVE 45 DEGREES. It asks
+ *   |NormalZTowardPiece| > cos45 and only then looks at the sign, so a joint tilted
+ *   past 45 sitting ABOVE a piece is classified Head — and a head joint is a fallback
+ *   support. The piece therefore hangs from the face over it and the stored force
+ *   resolves as TENSION.
  *
  * DESIGN.md §3 says exactly this and accepts it: "a brick hanging off an inclined face
  * really is being pulled off it", and a joint under 45 above the piece is BedAbove,
@@ -3903,6 +3924,144 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 					Handle, *Bits(Utilisation)),
 				Utilisation == TNumericLimits<double>::Max());
 		}
+	}
+
+	return true;
+}
+
+/**
+ * A pair that does not name a real joint on a real piece has no tier, and reads None.
+ *
+ * THE CONTRACT IS Structure.h's, WORD FOR WORD, AND IT IS THE ORACLE HERE: "None for a
+ * handle naming no connection, for a piece that is not on this connection, and for a
+ * normal that will not normalise." Three clauses, and this matrix walks the pairs that trip
+ * the FIRST TWO — separately, and never both at once.
+ *
+ * THE THIRD CLAUSE IS UNREACHABLE THROUGH THIS DOOR, AND SAYING SO IS THE POINT. AddConnection
+ * validates the normal at the door and REFUSES a connection whose normal will not normalise,
+ * so no stored connection has one and no argument to GetJointRole can produce one. The rows
+ * here that pass a bad handle return at the first guard without ever reading a normal, and the
+ * rows that pass a real joint read a well-formed one. The clause is a guard on the arithmetic
+ * itself rather than a case this matrix can build, and it stays in the contract because
+ * GetJointRole is public and the guard is what stops a normal that arrived by some future
+ * route being answered as a tier. Nor does any row trip two clauses at once: INDEX_NONE
+ * against INDEX_NONE looks like it should, but the unknown-handle guard is first and returns
+ * before the piece is ever compared, so it trips exactly one — which is precisely what makes
+ * it the sharp row, since an implementation that reached for a placeholder connection would
+ * find one whose own PieceB is also INDEX_NONE and let the two unidentified things agree.
+ *
+ * WHY THIS IS A TEST AT ALL, since no caller in the codebase can reach it today.
+ * SolveLoads iterates real indices and InspectPiece early-returns on a removed handle,
+ * so the degenerate pair is unreachable from production right now. It is reachable from
+ * the shape the presenter is being written in: FJointInspection default-constructs
+ * ConnectionIndex = INDEX_NONE and FPieceRef default-constructs PieceIndex = INDEX_NONE,
+ * so GetJointRole(Row.ConnectionIndex, Ref.PieceIndex) against a default row and an
+ * unresolved ref is a call somebody will write without noticing.
+ *
+ * AND FAILING OPEN HERE FAILS OPEN TO THE STRONGEST ANSWER THERE IS. The four roles are
+ * not equally wrong to guess: BedBeneath is the top support tier, and DESIGN.md §3 makes
+ * a single bed joint beneath win the tier outright over any number of head joints. So a
+ * degenerate pair answered BedBeneath does not merely read oddly — it reports a brick
+ * held up, by a joint that does not exist, on a piece that does not exist, and that is
+ * the one answer a readout must never draw as reassuring.
+ *
+ * THE LAST TWO ROWS ARE LOAD-BEARING AND ARE HERE TO FAIL. Returning None unconditionally
+ * satisfies every other row in the table, so without a real joint asked about from both
+ * of its own ends — BedAbove from below, BedBeneath from above, the flip that proves the
+ * normal is being turned toward the piece rather than read raw — the cheapest wrong fix
+ * would pass. They are green on arrival and say so.
+ *
+ * PURE GEOMETRY, SO THERE IS DELIBERATELY NO SOLVE. GetJointRole reads a normal and two
+ * handles; nothing here needs a load, a world or a tick, and adding a SolveLoads would
+ * only hide a role that had quietly started depending on solver state.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FStructureJointRoleDegenerateInputTest,
+	"DestructionGame.Core.Structure.JointRoleDegenerateInputs",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FStructureJointRoleDegenerateInputTest::RunTest(const FString& Parameters)
+{
+	using namespace StructureTestSupport;
+
+	/*
+	 * A grounded pad with a brick on it, joined by one bed joint at index 0: the smallest
+	 * structure that has a real joint to be wrong about. It matters that the joint is real
+	 * and well-formed — a matrix run against an empty structure could not tell "answered
+	 * None because the pair is degenerate" from "answered None because there is nothing
+	 * here", and the last two rows would have nothing to assert.
+	 */
+	const FStructureSpec PadAndBrick = {
+		{ { BrickMassKg, true }, { BrickMassKg, false } },
+		{ { 0, 1, BedJointNormal, JointAreaSqCm } }
+	};
+
+	FStructure Structure;
+	BuildStructure(Structure, PadAndBrick, Unbreakable);
+
+	TestTrue(TEXT("the fixture must have exactly the two pieces and the one joint it claims"),
+		Structure.NumPieces() == 2 && Structure.NumConnections() == 1);
+
+	struct FRoleCase
+	{
+		const TCHAR* Description;
+		int32 ConnectionIndex;
+		int32 PieceIndex;
+		EJointRole Expected;
+	};
+
+	const TArray<FRoleCase> Cases = {
+		/*
+		 * THE PAIR THE PRESENTER WILL ACTUALLY PRODUCE, and the sharpest row in the table:
+		 * a default FJointInspection's connection index against a default FPieceRef's piece
+		 * index. Both halves are INDEX_NONE, so an implementation that reaches for a
+		 * placeholder connection finds one whose own PieceB is also INDEX_NONE — the two
+		 * unidentified things find each other, which is the fail-open direction (the same
+		 * hazard FStructureBinding::ResolvePiece is guarded against by name).
+		 */
+		{ TEXT("INDEX_NONE against INDEX_NONE"), INDEX_NONE, INDEX_NONE, EJointRole::None },
+
+		/*
+		 * The same trap reached by the other two shapes of unknown handle, so a guard
+		 * written only against INDEX_NONE does not close the matrix. Past the end and
+		 * negative-but-not-INDEX_NONE are different failures of the same check.
+		 */
+		{ TEXT("a handle past the last joint, against INDEX_NONE"), 99, INDEX_NONE, EJointRole::None },
+		{ TEXT("a negative handle, against INDEX_NONE"), -5, INDEX_NONE, EJointRole::None },
+
+		/*
+		 * An unknown joint asked about a piece that genuinely exists. Nothing joins piece 0
+		 * to a joint that is not there, so clause one of the contract stands alone here.
+		 */
+		{ TEXT("a handle past the last joint, against a real piece"), 99, 0, EJointRole::None },
+		{ TEXT("INDEX_NONE, against a real piece"), INDEX_NONE, 0, EJointRole::None },
+
+		/*
+		 * Clause two, on its own: a real, well-formed joint asked about a piece it does not
+		 * touch — one that is not a piece at all, and one that is the unidentified handle.
+		 */
+		{ TEXT("a real joint, against a piece that is not on it"), 0, 99, EJointRole::None },
+		{ TEXT("a real joint, against INDEX_NONE"), 0, INDEX_NONE, EJointRole::None },
+
+		/*
+		 * THE TWO ROWS THAT STOP THE LAZY FIX. The same joint from both ends: the normal
+		 * points at the brick, so it is the bed beneath the brick and the bed above the pad.
+		 * Answering None unconditionally passes every row above and fails both of these.
+		 */
+		{ TEXT("the real joint, from the pad it sits on"), 0, 0, EJointRole::BedAbove },
+		{ TEXT("the real joint, from the brick it holds up"), 0, 1, EJointRole::BedBeneath },
+	};
+
+	for (const FRoleCase& Case : Cases)
+	{
+		const EJointRole Role = Structure.GetJointRole(Case.ConnectionIndex, Case.PieceIndex);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("%s: GetJointRole(%d, %d) should be %s, got %s"),
+				Case.Description, Case.ConnectionIndex, Case.PieceIndex,
+				NameOfJointRole(Case.Expected), NameOfJointRole(Role)),
+			Role == Case.Expected);
 	}
 
 	return true;

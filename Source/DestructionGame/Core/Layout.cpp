@@ -264,9 +264,9 @@ namespace DestructionLayout
 		 *
 		 * Writing the pair and the normal in the same breath is what makes a normal
 		 * inconsistent with its pairing inexpressible. A consistently flipped joint is
-		 * harmless — RoleOf turns the normal toward whichever piece it is asked about, and
-		 * the accumulation signs the force by which end is loaded — so the pairing is the
-		 * only thing that can go wrong here undetected.
+		 * harmless — FStructure::GetJointRole turns the normal toward whichever piece it
+		 * is asked about, and the accumulation signs the force by which end is loaded —
+		 * so the pairing is the only thing that can go wrong here undetected.
 		 */
 		FVector InterfaceNormal = FVector::ZeroVector;
 		InterfaceNormal[SeparationAxis] =

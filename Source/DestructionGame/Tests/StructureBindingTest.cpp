@@ -1373,9 +1373,9 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 
 		/*
 		 * THE NORMAL IS COMPARED EXACTLY, and a flipped one would not be caught by the
-		 * loads: RoleOf turns the normal toward whichever piece it is asked about, so a
-		 * consistently flipped joint reports identical numbers. The pairing and the normal
-		 * travel together or the replay can quietly transpose them.
+		 * loads: FStructure::GetJointRole turns the normal toward whichever piece it is
+		 * asked about, so a consistently flipped joint reports identical numbers. The
+		 * pairing and the normal travel together or the replay can quietly transpose them.
 		 */
 		TestTrue(
 			FString::Printf(

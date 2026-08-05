@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Containers/ArrayView.h"
 #include "Core/PieceActions.h"
+#include "Core/PieceInspection.h"
 #include "Core/StructureBinding.h"
 
 /**
@@ -99,3 +100,164 @@ TArray<FPieceMenuRow> BuildPieceMenuRows(
 TArray<FPieceMenuRow> BuildPieceMenuRows(
 	TArrayView<const FPieceAction* const> Actions,
 	TArrayView<const FPieceRef> Refs);
+
+namespace DestructionPresenter
+{
+	/**
+	 * How many Unreal force units make one newton — the OTHER conversion boundary.
+	 *
+	 * NOT DestructionForce::ForceUnitsPerMPaSqCm, WHICH IS 10,000: that one is this factor
+	 * times cm2-to-mm2, because a strength in MPa needs an area as well as a unit change.
+	 * This is the bare unit change, it exists only so a human reads newtons instead of raw
+	 * uu, and it is named ONCE here — beside the formatting that is the only thing entitled
+	 * to use it — rather than in Core's model layer, where a divide by 100 would be a second
+	 * open-coded conversion in a struct whose fields are checked against the solver's own.
+	 */
+	constexpr double ForceUnitsPerNewton = 100.0;
+}
+
+/**
+ * One joint of the inspected brick, in the units and words a human reads.
+ *
+ * IT IS FJointInspection CONVERTED AND WORDED, NEVER RECOMPUTED. Every field below either
+ * comes straight off InspectPiece's row or is that row's number in a human unit; nothing
+ * here consults FConnection, a strength profile or a normal. The discipline is the one
+ * Core/PieceInspection.h states and it does not weaken by being one layer further out —
+ * a readout that re-derived a utilisation would be a third copy of the break decision.
+ */
+struct FInspectorJointRow
+{
+	/** The connection this row is, so a failure can be taken back to the graph. */
+	int32 ConnectionIndex = INDEX_NONE;
+
+	/** The piece at the far end. Keeps naming a piece that has been removed. */
+	int32 OtherPieceIndex = INDEX_NONE;
+
+	/** What this joint is to the inspected brick. FStructure's own decision, passed through. */
+	EJointRole Role = EJointRole::None;
+
+	/**
+	 * What this joint carries, in NEWTONS.
+	 *
+	 * THIS IS WHERE THE UNIT CHANGE HAPPENS AND THE ONLY PLACE IT MAY. FJointInspection
+	 * keeps raw uu on purpose so it can be held against the solver's own accessor with
+	 * exact ==; a player reads newtons, and 1 N = 100 uu.
+	 */
+	double ForceN = 0.0;
+
+	/** The same utilisation the break decision used, as a percentage. 100 % is the limit. */
+	double UtilisationPercent = 0.0;
+
+	/** Whether this joint is still in the structure. A given joint carries nothing. */
+	bool bHasGiven = false;
+
+	/** Which cascade pass gave it, or INDEX_NONE. Only meaningful beside bHasGiven. */
+	int32 BreakPass = INDEX_NONE;
+
+	/**
+	 * The whole line the widget prints, and the widget prints NOTHING ELSE.
+	 *
+	 * THE FORMATTING IS HERE BECAUSE THE WIDGET MAY NOT HAVE IT. The menu widget was landed
+	 * under a recorded exception to the TDD gate on the condition that it contains no logic,
+	 * and choosing a unit, a precision, a word for a tier, or a different line for a joint
+	 * that has given is all logic. A joint that has given must not read like an intact
+	 * unloaded one — both are 0 N at 0 % — so the two states are different sentences here
+	 * rather than a branch up there.
+	 */
+	FString Text;
+};
+
+/** One selected brick's entry in the list. Identity only: the joints belong to the inspected one. */
+struct FInspectorPieceEntry
+{
+	/** The piece this entry stands for, exactly as the selection holds it. */
+	FPieceRef Ref;
+
+	/** What the entry reads. Decided here so the widget does not compose it. */
+	FString Label;
+
+	/** Whether this is the entry whose joints are broken out below. At most one ever is. */
+	bool bIsInspected = false;
+};
+
+/**
+ * The DEBUGGER half of the presented piece menu: what is selected, and one brick's joints.
+ *
+ * A SIBLING OF FPieceMenuRow RATHER THAN MORE FIELDS ON IT, and the distinction is not
+ * cosmetic. A row is a COMMAND waiting to be chosen — that is why it carries Refs and
+ * derives Ref from them — and an inspector is a READOUT. They have different lifetimes and
+ * different fail-closed polarities: a menu with a hole in its target list must offer
+ * nothing, while a readout with a hole in it must still tell the truth about the hole.
+ *
+ * THE DECIDING CASE IS A SELECTION THE MENU CANNOT ACT ON. When a cascade releases a picked
+ * brick the intersection empties and BuildPieceMenuRows builds no rows at all — so an
+ * inspector living on a row would vanish at exactly the moment the player most needs to see
+ * why. Built beside the rows it survives, which is also the surface CURRENT_STATE.md's open
+ * product decision about that state would become legible on.
+ */
+struct FPieceMenuInspector
+{
+	/**
+	 * How many bricks are selected.
+	 *
+	 * IT IS THE SELECTION'S OWN COUNT AND IT NEVER LIES. A ref that resolves to nothing, one
+	 * naming another structure, one whose piece a cascade took — all of them still count,
+	 * because the player picked that many bricks and a count that quietly shrank would be
+	 * the presenter disagreeing with the highlights still on screen.
+	 */
+	int32 SelectedCount = 0;
+
+	/** That count as a sentence, singular and plural decided here rather than in the widget. */
+	FString CountText;
+
+	/** One entry per selected brick, in selection order. Never reordered, never deduplicated. */
+	TArray<FInspectorPieceEntry> Pieces;
+
+	/**
+	 * Whether one brick is currently singled out AND is a live piece worth breaking out.
+	 *
+	 * A FIELD RATHER THAN Joints.Num() > 0, for the reason FPieceInspection::bIsPiece is a
+	 * field: an isolated grounded pad is a real brick with no joints at all, and a ref naming
+	 * a piece that has gone is not a brick. Drawing those the same way is the defect.
+	 */
+	bool bHasInspectedPiece = false;
+
+	/** Which brick that is. Default when none — see bHasInspectedPiece. */
+	FPieceRef InspectedRef;
+
+	/**
+	 * Why the inspected brick is or is not being held up, in words.
+	 *
+	 * "NOBODY HAS SOLVED YET" IS ITS OWN SENTENCE. EPieceSupport::Falling is both that and a
+	 * real collapse, deliberately, because zero has to be the enumerator that promises least
+	 * — so a readout that took it at face value would draw a freshly built wall as a column
+	 * of falling bricks. Empty when no brick is inspected.
+	 */
+	FString SupportText;
+
+	/** The inspected brick's joints, in ascending connection order. Empty when none is. */
+	TArray<FInspectorJointRow> Joints;
+};
+
+/**
+ * Build the debugger for a selection, singling out one brick of it.
+ *
+ * WORLD-FREE, LIKE EVERYTHING ELSE THE PRESENTER DECIDES. A binding is a plain struct, so
+ * every string, number and ordering decision a player will read is reachable from a headless
+ * test — which is the condition the untested widget was landed under.
+ *
+ * THE INSPECTED BRICK MUST BE A MEMBER OF THE SELECTION AND MUST BE A LIVE PIECE. Anything
+ * else — a brick the player deselected, one a cascade removed, a ref naming another
+ * structure, a ref missing either half — singles out nothing and breaks out nothing, rather
+ * than showing somebody else's joints. Core/PieceMenu.h already says why an anchor outside
+ * the set it anchors is worse than no anchor.
+ *
+ * THE JOINT BREAKOUT COMES FROM InspectPiece AND IS NOT RECOMPUTED. That includes the
+ * adjacency: a joint that has GIVEN is still one of the brick's joints and is exactly the
+ * one a player who just pulled a brick is looking for, so walking the solver's support
+ * lists instead would silently drop it.
+ */
+FPieceMenuInspector BuildPieceMenuInspector(
+	const FStructureBinding& Binding,
+	TArrayView<const FPieceRef> Selected,
+	const FPieceRef& InspectedRef);

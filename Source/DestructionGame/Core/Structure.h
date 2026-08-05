@@ -102,6 +102,34 @@ enum class EPieceSupport : uint8
 };
 
 /**
+ * What a connection is TO ONE OF ITS PIECES — the two-tier classification, and the
+ * relation is DIRECTED.
+ *
+ * The same joint is a bed joint beneath the piece above it and a bed joint above the
+ * piece below it, so a role only means anything once you say whose. DESIGN.md §3's
+ * tiering is the whole of it: a substantially vertical interface normal bears in
+ * compression, a substantially horizontal one can only carry in shear, and the line
+ * sits at 45 degrees.
+ *
+ * NONE IS THE ZERO ENUMERATOR, so a zero-filled entry claims no tier at all rather
+ * than claiming the strongest one — the same direction EPieceSupport::Falling fails in.
+ */
+enum class EJointRole : uint8
+{
+	/** Not a joint on this piece at all, or a normal that describes no plane. */
+	None,
+
+	/** Substantially vertical normal, other piece BELOW: this joint bears the weight. */
+	BedBeneath,
+
+	/** Substantially vertical normal, other piece ABOVE: something rests on this piece. */
+	BedAbove,
+
+	/** Substantially horizontal normal: it can only carry weight in shear. */
+	Head,
+};
+
+/**
  * The graph that owns pieces and connections, and works out what each connection
  * carries.
  *
@@ -297,6 +325,25 @@ struct FStructure
 	 *     broke in pass N     HasGiven true,  N >= 1
 	 */
 	int32 GetBreakPass(int32 ConnectionIndex) const;
+
+	/**
+	 * What this connection is to this piece: the solver's own two-tier decision, exposed.
+	 *
+	 * THE SAME DECISION SolveLoads ROUTES BY, NOT A SECOND ONE. It is the single most
+	 * load-bearing classification in the solver — a joint in the wrong tier gives a wall
+	 * that stands there being wrong — so a readout that re-derived it would be a copy that
+	 * can disagree with the routing it claims to explain. Same reason
+	 * GetConnectionUtilisation is one line delegating to FConnection::UtilisationUnder.
+	 *
+	 * PURE GEOMETRY, AND IT NEEDS NO SOLVE. It reads the joint's normal and which end the
+	 * piece is, so it answers before anything has been solved and it keeps answering for a
+	 * joint that has GIVEN — a given joint leaves the support relation, but what it used to
+	 * be is exactly what a debugger is looking at.
+	 *
+	 * None for a handle naming no connection, for a piece that is not on this connection,
+	 * and for a normal that will not normalise.
+	 */
+	EJointRole GetJointRole(int32 ConnectionIndex, int32 PieceIndex) const;
 
 	/**
 	 * The force this connection carries, in Unreal force units, after SolveLoads.
