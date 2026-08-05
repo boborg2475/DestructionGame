@@ -120,6 +120,37 @@ public:
 	 */
 	bool ChoosePieceMenuRow(int32 RowIndex);
 
+	/**
+	 * Build the whole panel the viewport is handed, and hand it back instead of drawing it.
+	 *
+	 * PUBLIC, AND THAT IS THE POINT RATHER THAN AN ACCIDENT. Everything the panel's LAYOUT can
+	 * get wrong — a row that moves out from under a stationary cursor when the readout beside
+	 * it changes size — is decided here and needs no viewport, no renderer and no RHI to
+	 * measure: a widget tree can be prepassed and arranged in a headless test. Keeping the
+	 * build private and reachable only through AddViewportWidgetContent is what made that
+	 * whole surface unreachable.
+	 *
+	 * IT ASSIGNS PieceMenuInspectorBox, so the readout can be swapped afterwards by
+	 * SetInspectedPiece without rebuilding the panel — which is the behaviour under test.
+	 */
+	TSharedRef<SWidget> BuildPieceMenuPanel();
+
+	/**
+	 * The readout model for the current selection and inspected brick, or an empty one.
+	 *
+	 * THE GUARDS HERE ARE THE SAME PLUMBING InspectAlongRay HAS, AND FOR THE SAME REASON: a
+	 * binding has to be found before the model can be asked, and no world, no subsystem and no
+	 * such structure all mean the same thing — nothing to read out. It lives on the controller
+	 * rather than in the widget so that the widget itself resolves nothing.
+	 *
+	 * PUBLIC BECAUSE IT IS A WIRE BETWEEN TWO CORRECT HALVES AND NOTHING ELSE REACHES IT. Every
+	 * headless world is built in code and so has no UGameViewportClient, which means the only
+	 * two callers — BuildPieceMenuPanel and RefreshPieceMenuInspectorWidget — used to return
+	 * early before ever getting here. CURRENT_STATE.md's integration entry rule names exactly
+	 * this shape: a call nobody makes cannot be reached by testing the halves.
+	 */
+	FPieceMenuInspector PieceMenuInspectorForSelection() const;
+
 protected:
 
 	/** Input Mapping Contexts applied on possession */
@@ -239,16 +270,6 @@ private:
 	 * the buttons alone and cannot feed itself.
 	 */
 	void RefreshPieceMenuInspectorWidget();
-
-	/**
-	 * The readout model for the current selection and inspected brick, or an empty one.
-	 *
-	 * THE GUARDS HERE ARE THE SAME PLUMBING InspectAlongRay HAS, AND FOR THE SAME REASON: a
-	 * binding has to be found before the model can be asked, and no world, no subsystem and no
-	 * such structure all mean the same thing — nothing to read out. It lives on the controller
-	 * rather than in the widget so that the widget itself resolves nothing.
-	 */
-	FPieceMenuInspector PieceMenuInspectorForSelection() const;
 
 	/** A button's click: choose the row it stands for. Nothing else belongs here. */
 	FReply OnPieceMenuRowClicked(int32 RowIndex);

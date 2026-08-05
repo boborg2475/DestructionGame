@@ -246,9 +246,13 @@ EBrickHighlight ADestructionGamePlayerController::HighlightForPiece(const FPiece
 	 * selection as well as the ref. It is the same rule BuildPieceMenuInspector applies — an
 	 * anchor outside the set it anchors is a readout of somebody else's brick — and it has to
 	 * be the same rule, or the panel and the wall disagree about which brick the numbers are
-	 * about. It also means a stale inspected ref needs no clearing anywhere: a brick that
-	 * leaves the selection stops being read by falling out of this test, rather than by a
-	 * clean-up somebody has to remember at three call sites.
+	 * about.
+	 *
+	 * IT IS NOT A SUBSTITUTE FOR CLEARING THE REF, AND THAT DISTINCTION COST A ROUND. The
+	 * conjunct makes a stale InspectedPiece inert only for as long as the brick is out of the
+	 * selection; the ref itself survives, so picking that brick again springs the readout back
+	 * open on it for no reason the player can see. DismissPieceMenu is where it is actually
+	 * let go of, because the panel is the only thing that can ever single a brick out.
 	 */
 	if (InspectedPiece == Ref && PieceSelection.Contains(Ref))
 	{
@@ -378,6 +382,23 @@ bool ADestructionGamePlayerController::DismissPieceMenu()
 
 	RemovePieceMenuWidget();
 
+	/*
+	 * AND NOTHING IS BEING READ OUT ANY MORE, WHICH IS A CLEAR RATHER THAN A DISABLE. The only
+	 * thing that ever singles a brick out is the cursor resting on an entry row of this panel,
+	 * and Slate delivers no OnMouseLeave to a widget that has left the tree — so a panel taken
+	 * down under the cursor left InspectedPiece set. HighlightForPiece made that ref merely
+	 * INERT, by also asking whether the brick is still in the selection, and inert is not
+	 * cleared: deselecting the brick and picking it again brought the readout straight back on
+	 * it, joint breakout and all, with the player's cursor nowhere near the menu.
+	 *
+	 * It goes through SetInspectedPiece rather than assigning the field, because the brick being
+	 * let go of has to be told: it is almost always still selected, so it drops back to Selected
+	 * rather than being left wearing the readout's own colour. And it sits AFTER
+	 * RemovePieceMenuWidget so the readout refresh it triggers finds no box and does nothing —
+	 * there is no panel left to draw into by this point.
+	 */
+	SetInspectedPiece(FPieceRef());
+
 	SetPieceMenuControls(false);
 
 	return true;
@@ -473,6 +494,13 @@ void ADestructionGamePlayerController::BuildPieceMenuWidget()
 		return;
 	}
 
+	PieceMenuWidget = BuildPieceMenuPanel();
+
+	Viewport->AddViewportWidgetContent(PieceMenuWidget.ToSharedRef());
+}
+
+TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
+{
 	/*
 	 * THE READOUT IS ASKED FOR ONCE AND EVERY STRING IN IT IS TAKEN AS GIVEN. Nothing below
 	 * counts, formats, pluralises, filters or resolves anything — Core/PieceMenu.h says at
@@ -514,13 +542,6 @@ void ADestructionGamePlayerController::BuildPieceMenuWidget()
 			];
 	}
 
-	/* The joint breakout, which is the one part that gets replaced on its own. */
-	Panel->AddSlot()
-		.AutoHeight()
-		[
-			SAssignNew(PieceMenuInspectorBox, SBox)
-		];
-
 	for (int32 RowIndex = 0; RowIndex < ShownPieceMenuRows.Num(); ++RowIndex)
 	{
 		Panel->AddSlot()
@@ -533,17 +554,55 @@ void ADestructionGamePlayerController::BuildPieceMenuWidget()
 			];
 	}
 
-	PieceMenuWidget =
+	/*
+	 * THE JOINT BREAKOUT IS THE ONE PART THAT GETS REPLACED ON ITS OWN, AND IT IS LAST FOR
+	 * EXACTLY THAT REASON. It is the only slot in this panel whose height changes after the
+	 * panel is built, so everything a player can put a cursor on — the entry rows and the action
+	 * rows both — sits ABOVE it, and an AutoHeight box growing at the bottom of a top-anchored
+	 * stack moves nothing before it. With the readout in the middle the action rows slid 60 px
+	 * measured; see the alignment comment below for why "they cannot oscillate" was not enough.
+	 */
+	Panel->AddSlot()
+		.AutoHeight()
+		[
+			SAssignNew(PieceMenuInspectorBox, SBox)
+		];
+
+	/*
+	 * TOP-ALIGNED, AND THAT IS THE FIX FOR A TWO-FRAME OSCILLATION RATHER THAN A TASTE IN
+	 * LAYOUT. A vertically CENTRED box grows about its centre, so singling a brick out — which
+	 * adds three to six joint lines to the readout below the entries — moved every entry row UP
+	 * by half the growth: 30 px measured, against a default SButton row 22 px tall. The cursor
+	 * has not moved, so it is now on a different row; Slate then synthesises a cursor move on
+	 * every non-sleeping tick precisely because the UI can change while the mouse does not, the
+	 * readout empties, the panel re-centres, and the row comes back under the cursor for the
+	 * next tick to do it again. Anchoring the top makes the readout grow DOWNWARD, so every row
+	 * above it — which is every entry row — stays exactly where the player is pointing.
+	 *
+	 * TOP-ANCHORING IS ONLY HALF OF IT, AND THE OTHER HALF IS THAT THE READOUT IS THE LAST SLOT.
+	 * Anchoring the top holds still every row ABOVE the box that grows; it says nothing about the
+	 * rows below one. The action rows used to be below it and moved 60 px, which was argued to be
+	 * harmless because hovering an action row changes nothing about the readout, so it cannot feed
+	 * back and cannot strobe. True, and not enough: walking the cursor down off the last entry row
+	 * toward Delete collapses the readout on the next tick and slides Delete UP toward a cursor
+	 * already on its way down, so a click landing in that frame commits a deletion nobody aimed at.
+	 * Releasing a brick is irreversible here, and the standing rule that the commit door is never
+	 * wider than the menu door is the same hazard stated as a guard rather than as geometry.
+	 *
+	 * HAlign_Center is left alone, because the panel widens about its centre and widening only ever
+	 * makes a row cover MORE of where the cursor was — the narrow span stays inside the wide one.
+	 */
+	TSharedRef<SWidget> Framed =
 		SNew(SBox)
 		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Center)
+		.VAlign(VAlign_Top)
 		[
 			Panel
 		];
 
-	Viewport->AddViewportWidgetContent(PieceMenuWidget.ToSharedRef());
-
 	RefreshPieceMenuInspectorWidget();
+
+	return Framed;
 }
 
 void ADestructionGamePlayerController::RemovePieceMenuWidget()
@@ -622,15 +681,24 @@ FPieceMenuInspector ADestructionGamePlayerController::PieceMenuInspectorForSelec
 
 	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
 
-	if (Subsystem != nullptr && Selected.Num() > 0)
-	{
-		if (const FStructureBinding* const Binding = Subsystem->Find(Selected[0].StructureId))
-		{
-			return BuildPieceMenuInspector(*Binding, Selected, InspectedPiece);
-		}
-	}
+	const FStructureBinding* const Binding = (Subsystem != nullptr && Selected.Num() > 0)
+		? Subsystem->Find(Selected[0].StructureId)
+		: nullptr;
 
-	return FPieceMenuInspector();
+	/*
+	 * NO BINDING IS AN EMPTY BINDING RATHER THAN AN EARLY RETURN, AND THAT IS WHAT KEEPS THE
+	 * MODEL THE ONLY AUTHOR OF THE READOUT. A default-constructed FPieceMenuInspector is not the
+	 * same object BuildPieceMenuInspector answers for the same inputs: nothing picked has its own
+	 * sentence, "No bricks selected", decided in the model precisely so that no widget has to
+	 * choose one — and a returned default carries an empty CountText instead, which draws as a
+	 * blank line where a sentence belongs. Handing over an empty structure says the same thing by
+	 * the one route that words it, and it makes SelectedCount answer the selection's own size on
+	 * the fail-closed paths too, which is the promise Core/PieceMenu.h makes for it.
+	 */
+	const FStructureBinding NoStructure;
+
+	return BuildPieceMenuInspector(
+		Binding != nullptr ? *Binding : NoStructure, Selected, InspectedPiece);
 }
 
 FReply ADestructionGamePlayerController::OnPieceMenuRowClicked(int32 RowIndex)

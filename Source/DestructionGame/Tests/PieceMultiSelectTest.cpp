@@ -150,6 +150,75 @@ namespace PieceMultiSelectTestSupport
 	}
 
 	/**
+	 * How many joints touch a piece, counted straight off the graph.
+	 *
+	 * AN INDEPENDENT ORACLE FOR THE READOUT'S SENTENCE, and it is derived the other way round
+	 * on purpose: the presenter asks InspectPiece for a list and counts it, this sweeps every
+	 * connection in the structure and tests both ends. A joint that has been SEVERED by a
+	 * removal is still one of the brick's joints and is exactly the row a player who just
+	 * pulled a brick is looking for, so nothing here filters on HasGiven.
+	 */
+	int32 MultiSelectJointsTouching(const FStructure& Structure, int32 Handle)
+	{
+		int32 Count = 0;
+
+		for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
+		{
+			const FConnection& Connection = Structure.GetConnection(Index);
+
+			if (Connection.PieceA == Handle || Connection.PieceB == Handle)
+			{
+				++Count;
+			}
+		}
+
+		return Count;
+	}
+
+	/**
+	 * That count as the sentence a player reads, spelled out here rather than imported.
+	 *
+	 * SINGULAR AND PLURAL ARE A BRANCH, and a test that called the production function would
+	 * agree with it however wrong it was. "1 joints" is the same defect wearing a smaller coat.
+	 */
+	FString MultiSelectJointsSentence(int32 JointCount)
+	{
+		if (JointCount == 0)
+		{
+			return TEXT("No joints");
+		}
+
+		if (JointCount == 1)
+		{
+			return TEXT("1 joint");
+		}
+
+		return FString::Printf(TEXT("%d joints"), JointCount);
+	}
+
+	FString DescribeMultiSelectInspector(const FPieceMenuInspector& Inspector)
+	{
+		FString Line = FString::Printf(
+			TEXT("count %d '%s', inspected %s {%d,%d}, support '%s', joints '%s' x%d, entries ["),
+			Inspector.SelectedCount, *Inspector.CountText,
+			Inspector.bHasInspectedPiece ? TEXT("yes") : TEXT("no"),
+			Inspector.InspectedRef.StructureId, Inspector.InspectedRef.PieceIndex,
+			*Inspector.SupportText, *Inspector.JointsText, Inspector.Joints.Num());
+
+		for (int32 Index = 0; Index < Inspector.Pieces.Num(); ++Index)
+		{
+			Line += FString::Printf(
+				TEXT("%s'%s'%s%s"),
+				Index == 0 ? TEXT("") : TEXT(", "),
+				*Inspector.Pieces[Index].Label,
+				Inspector.Pieces[Index].bIsInspected ? TEXT(" (inspected)") : TEXT(""),
+				Inspector.Pieces[Index].bIsLivePiece ? TEXT("") : TEXT(" (dead)"));
+		}
+
+		return Line + TEXT("]");
+	}
+
+	/**
 	 * THE SELECTION AND THE MENU ARE ONE FACT, ASSERTED TOGETHER.
 	 *
 	 * A menu is up exactly when the selection is non-empty, its rows commit against exactly the
@@ -936,6 +1005,213 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 		CheckMultiSelectHighlights(
 			*this, Bricks, TEXT("picking brick 6 after the inspected brick was deleted"),
 			Expected, Deleted3And5);
+	}
+
+	/*
+	 * TWENTY-TWO ONWARDS: THE READOUT MODEL THE PANEL IS DRAWN FROM, ASKED FOR THROUGH THE
+	 * CONTROLLER RATHER THAN THROUGH BuildPieceMenuInspector.
+	 *
+	 * WHY THIS IS HERE AT ALL. PieceMenuInspectorForSelection had ZERO executed lines. Every
+	 * headless world is built in code and so has no UGameViewportClient, so BuildPieceMenuWidget
+	 * returned early, RefreshPieceMenuInspectorWidget returned early because its box was never
+	 * valid, and its only two callers therefore never reached it. Tests/PieceInspectorTest.cpp
+	 * covers BuildPieceMenuInspector thoroughly and Tests/PieceSelectionTest.cpp covers the
+	 * selection; what nothing covered is the WIRE between them — which selection is handed over,
+	 * which structure it is read against, and whether the singled-out brick is passed at all.
+	 * That is precisely the shape CURRENT_STATE.md's integration entry rule names as unreachable
+	 * by testing the halves: a call nobody makes.
+	 *
+	 * THE MUTATION THAT SURVIVED EVERYTHING. Passing FPieceRef() instead of InspectedPiece
+	 * leaves the readout permanently blank for every brick hovered — the headline behaviour of
+	 * the whole slice deleted — while the brick still lights magenta correctly, because
+	 * HighlightForPiece reads InspectedPiece down a completely separate path. Step TWENTY-THREE
+	 * is the one that kills it.
+	 *
+	 * SAME WORLD, SAME WALL, NO NEW FIXTURE. Bricks 3 and 5 are gone from here on, which is a
+	 * feature rather than a leftover: brick 1 keeps the severed joints they left behind, so the
+	 * joint sentence is asserted against a graph that has actually been through a removal.
+	 */
+	{
+		/*
+		 * TWENTY-TWO: NOTHING PICKED READS AS NOTHING PICKED, and it says so in words. This is
+		 * the fail-closed route — Selected.Num() == 0 never reaches the binding at all — so a
+		 * default-constructed inspector is the whole expectation.
+		 */
+		Controller->InspectAlongRay(
+			MultiSelectEmptyAirCm, MultiSelectEmptyAirCm + FVector(0.0, 0.0, -100.0));
+
+		const FPieceMenuInspector Empty = Controller->PieceMenuInspectorForSelection();
+
+		TestEqual(
+			FString::Printf(TEXT("with nothing picked the readout should say so, it says '%s' [%s]"),
+				*Empty.CountText, *DescribeMultiSelectInspector(Empty)),
+			Empty.CountText, FString(TEXT("No bricks selected")));
+
+		TestEqual(
+			FString::Printf(TEXT("with nothing picked the readout should list no entries, it lists %d [%s]"),
+				Empty.Pieces.Num(), *DescribeMultiSelectInspector(Empty)),
+			Empty.Pieces.Num(), 0);
+
+		TestFalse(
+			*FString::Printf(TEXT("with nothing picked no brick can be singled out [%s]"),
+				*DescribeMultiSelectInspector(Empty)),
+			Empty.bHasInspectedPiece);
+	}
+
+	{
+		/*
+		 * TWENTY-THREE: TWO BRICKS PICKED, ONE SINGLED OUT, AND THE READOUT IS ABOUT THAT ONE.
+		 *
+		 * THE JOINT SENTENCE IS THE LOAD-BEARING ASSERTION. A blank readout and a correct one
+		 * are the same panel to every other test in this suite, so the count of joints is what
+		 * separates "the controller handed the inspected ref over" from "it handed over a
+		 * default and the model politely answered nothing". The expected count is swept off the
+		 * graph rather than taken from the model, and the sentence is spelled here rather than
+		 * imported, so agreement is evidence.
+		 */
+		Controller->InspectAlongRay(
+			MultiSelectRayStart(Reference.Boxes[0]), MultiSelectRayEnd(Reference.Boxes[0]));
+
+		Controller->InspectAlongRay(
+			MultiSelectRayStart(Reference.Boxes[1]), MultiSelectRayEnd(Reference.Boxes[1]));
+
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 1));
+
+		const FPieceMenuInspector Two = Controller->PieceMenuInspectorForSelection();
+
+		TestEqual(
+			FString::Printf(TEXT("two bricks picked should list two entries, it lists %d [%s]"),
+				Two.Pieces.Num(), *DescribeMultiSelectInspector(Two)),
+			Two.Pieces.Num(), 2);
+
+		TestTrue(
+			*FString::Printf(TEXT("singling brick 1 out should be reported as such [%s]"),
+				*DescribeMultiSelectInspector(Two)),
+			Two.bHasInspectedPiece);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("the readout should be about brick {%d,1}, it names {%d,%d} [%s]"),
+				StructureId, Two.InspectedRef.StructureId, Two.InspectedRef.PieceIndex,
+				*DescribeMultiSelectInspector(Two)),
+			MultiSelectSameRef(Two.InspectedRef, MultiSelectRef(StructureId, 1)));
+
+		const int32 JointsOnBrick1 = MultiSelectJointsTouching(
+			Binding->GetStructure(), Binding->ResolvePiece(MultiSelectRef(StructureId, 1)));
+
+		/*
+		 * A FIXTURE FLOOR ON THE ORACLE ITSELF. If the sweep found no joints, "No joints" would
+		 * be the expectation and a blank readout would satisfy it — the mutation would live.
+		 */
+		TestTrue(
+			FString::Printf(TEXT("fixture: brick 1 should still have joints to read out, the graph has %d"),
+				JointsOnBrick1),
+			JointsOnBrick1 > 0);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("the readout should break out brick 1's %d joint(s), it says '%s' [%s]"),
+				JointsOnBrick1, *Two.JointsText, *DescribeMultiSelectInspector(Two)),
+			Two.JointsText, MultiSelectJointsSentence(JointsOnBrick1));
+
+		TestEqual(
+			FString::Printf(
+				TEXT("and it should carry that many joint rows, it carries %d [%s]"),
+				Two.Joints.Num(), *DescribeMultiSelectInspector(Two)),
+			Two.Joints.Num(), JointsOnBrick1);
+
+		if (Two.Pieces.Num() == 2)
+		{
+			TestFalse(
+				*FString::Printf(TEXT("entry 0 (brick 0) is not the one being read [%s]"),
+					*DescribeMultiSelectInspector(Two)),
+				Two.Pieces[0].bIsInspected);
+
+			TestTrue(
+				*FString::Printf(TEXT("entry 1 (brick 1) is the one being read [%s]"),
+					*DescribeMultiSelectInspector(Two)),
+				Two.Pieces[1].bIsInspected);
+		}
+	}
+
+	{
+		/*
+		 * TWENTY-FOUR: A BRICK THAT IS NOT PICKED CANNOT BE THE ONE BEING READ, and the count
+		 * does not shrink because of it.
+		 *
+		 * SAME RULE THE HIGHLIGHT APPLIES, PINNED ON THE OTHER HALF. Step EIGHTEEN already says
+		 * the wall will not light an unpicked brick; this says the panel will not read one out.
+		 * They have to be the same rule or the strongest highlight in the scene sits on a brick
+		 * the panel says nothing about — or worse, the other way round.
+		 */
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 2));
+
+		const FPieceMenuInspector Outside = Controller->PieceMenuInspectorForSelection();
+
+		TestFalse(
+			*FString::Printf(TEXT("a brick that was never picked cannot be singled out [%s]"),
+				*DescribeMultiSelectInspector(Outside)),
+			Outside.bHasInspectedPiece);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("and the two picked bricks are still listed, it lists %d [%s]"),
+				Outside.Pieces.Num(), *DescribeMultiSelectInspector(Outside)),
+			Outside.Pieces.Num(), 2);
+
+		TestEqual(
+			FString::Printf(TEXT("with nothing singled out there is no joint sentence, it says '%s' [%s]"),
+				*Outside.JointsText, *DescribeMultiSelectInspector(Outside)),
+			Outside.JointsText, FString());
+	}
+
+	{
+		/*
+		 * TWENTY-FIVE: A BRICK RE-PICKED AFTER BEING DESELECTED WHILE IT WAS THE ONE BEING READ
+		 * COMES BACK MERELY Selected.
+		 *
+		 * INspectedPiece IS NEVER CLEARED, ONLY MADE INERT by HighlightForPiece's membership
+		 * conjunct — so a ref survives the brick leaving the selection and springs back to life
+		 * the moment it rejoins. The player's cursor is nowhere near the menu at that point: the
+		 * only thing that ever singles a brick out is hovering an entry row, and Slate delivers
+		 * no OnMouseLeave to a widget that has left the tree, so a panel destroyed under the
+		 * cursor leaves the ref set. The brick then lights up in the readout's own colour with a
+		 * joint breakout open beside it, for no reason the player can see or undo.
+		 *
+		 * Both halves are asserted, because they are the two ends of the same stale ref: the
+		 * WALL must read Selected, and the PANEL must not be reading anything out.
+		 */
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 0));
+
+		TArray<EBrickHighlight> WhileInspected = MultiSelectNoHighlights();
+		WhileInspected[0] = EBrickHighlight::Inspected;
+		WhileInspected[1] = EBrickHighlight::Selected;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("inspecting brick 0 of the pair"), WhileInspected, Deleted3And5);
+
+		/* Out of the selection... */
+		Controller->InspectAlongRay(
+			MultiSelectRayStart(Reference.Boxes[0]), MultiSelectRayEnd(Reference.Boxes[0]));
+
+		/* ...and straight back into it, which is two ordinary clicks and nothing else. */
+		Controller->InspectAlongRay(
+			MultiSelectRayStart(Reference.Boxes[0]), MultiSelectRayEnd(Reference.Boxes[0]));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("re-picking brick 0 must leave it merely Selected, it reads %s (all bricks: %s)"),
+				MultiSelectHighlightName(Bricks[0]->GetHighlight()),
+				*DescribeMultiSelectHighlights(Bricks)),
+			Bricks[0]->GetHighlight() == EBrickHighlight::Selected);
+
+		const FPieceMenuInspector Rejoined = Controller->PieceMenuInspectorForSelection();
+
+		TestFalse(
+			*FString::Printf(
+				TEXT("and the readout must not have re-opened on it by itself [%s]"),
+				*DescribeMultiSelectInspector(Rejoined)),
+			Rejoined.bHasInspectedPiece);
 	}
 
 	TestWorld.End();
