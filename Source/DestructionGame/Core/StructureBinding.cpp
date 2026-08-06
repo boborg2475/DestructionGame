@@ -174,6 +174,18 @@ void FStructureBinding::SolveLoads()
 	Structure.SolveLoads();
 }
 
+int32 FStructureBinding::SolveAndBreak()
+{
+	/*
+	 * Straight through, and the forward is the point: this layer has nothing to add to the
+	 * cascade, and the graph is private, so without a door here there is no route to it from
+	 * anything that owns a world. The binding is untouched — a joint giving changes what the
+	 * structure carries, not which actor stands for which piece — and ApplyResults is still
+	 * the separate, explicit push that turns the settled answer into work on the world.
+	 */
+	return Structure.SolveAndBreak();
+}
+
 int32 FStructureBinding::ApplyResults()
 {
 	int32 ReleasedCount = 0;

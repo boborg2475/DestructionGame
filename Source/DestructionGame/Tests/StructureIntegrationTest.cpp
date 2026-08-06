@@ -6,6 +6,7 @@
 #include "Core/PieceMenu.h"
 #include "DestructionGamePlayerController.h"
 #include "Tests/BrickWorldTestSupport.h"
+#include "Tests/StaircaseWallTestSupport.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -110,26 +111,13 @@ namespace StructureIntegrationTestSupport
 	/**
 	 * The joint between two named pieces, or INDEX_NONE.
 	 *
-	 * BY PIECE PAIR RATHER THAN BY INDEX, because a joint index is an artefact of the order the
-	 * producer happened to emit pairs in, and a test that hard-coded one would silently start
-	 * watching a different joint the day that order changed. Both orientations are accepted:
-	 * which piece is A and which is B is the producer's business, and DESIGN.md §3 is explicit
-	 * that a consistently oriented joint reports identical loads either way.
+	 * ONE IMPLEMENTATION, IN Tests/StaircaseWallTestSupport.h, because the world-free staircase
+	 * test needs the same lookup and this file's header drags in a world it does not want. The
+	 * reasoning for finding joints by PIECE PAIR rather than by index is written there.
 	 */
 	int32 FindIntegrationJoint(const FStructure& Structure, int32 FirstPiece, int32 SecondPiece)
 	{
-		for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
-		{
-			const FConnection& Joint = Structure.GetConnection(Index);
-
-			if ((Joint.PieceA == FirstPiece && Joint.PieceB == SecondPiece)
-				|| (Joint.PieceA == SecondPiece && Joint.PieceB == FirstPiece))
-			{
-				return Index;
-			}
-		}
-
-		return INDEX_NONE;
+		return StaircaseWallTestSupport::JointBetweenPieces(Structure, FirstPiece, SecondPiece);
 	}
 
 	/**
@@ -359,6 +347,14 @@ namespace StructureIntegrationTestSupport
 	 * a reassociation cannot fail it and tight enough that a wrong SHARE cannot pass it.
 	 */
 	constexpr double JointForceToleranceUnrealUnits = 0.01;
+
+	/*
+	 * THE STAIRCASE WALL — the fixture for the fourth test, and it is a PHOTOGRAPH rather than a
+	 * shape somebody invented to break. Its geometry and its arithmetic live in
+	 * Tests/StaircaseWallTestSupport.h, because the world-free twin of that test and the visual
+	 * harness that photographs the same cut both need them and three copies of a void definition
+	 * is three fixtures that drift.
+	 */
 }
 
 /**
@@ -1511,6 +1507,436 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
 			*FString::Printf(TEXT("brick %d should have landed on the floor at Z %g, it is at Z %.3f"),
 				Piece, FloorTopZCm, NowAt.Z),
 			NowAt.Z > FloorTopZCm);
+	}
+
+	TestWorld.End();
+
+	return true;
+}
+
+/**
+ * FOUR: THE STAIRCASE. CUTTING A STEPPED DIAGONAL VOID THROUGH A WALL LEAVES THE BRICKWORK ABOVE IT
+ * CANTILEVERED OVER NOTHING, AND THAT OVERHANG MUST COME DOWN.
+ *
+ * THIS IS A PHOTOGRAPH, NOT A SHAPE INVENTED TO BREAK. A player cut a staircase-shaped hole through
+ * the game's own wall — a stepped diagonal several bricks wide and a dozen courses tall — and the
+ * brickwork above and beside it stood there, hanging metres out over open air, while a couple of
+ * loose bricks rolled off the top. That is the failure this fixture is, and it is the first one in
+ * the suite that is not loss of SUPPORT: every brick in that overhang still has a bed joint under
+ * it, so the topology is intact and the existing three tests would all pass on it. What is wrong is
+ * that the joints holding it are loaded past what mortar can carry, and nothing brings them down.
+ *
+ * THE ARITHMETIC — why a corbel levers its one bed joint open, what each step of the ladder
+ * carries, and where the 45,825 uu of capacity comes from — is worked through in
+ * Tests/StaircaseWallTestSupport.h, beside the geometry it belongs to, because three tests now cut
+ * this same void and they must all be reading one derivation.
+ *
+ * THE OUTCOME IS DISPLACEMENT, AND HERE THAT IS NOT A PROXY. DESIGN.md §4 bans displacement as a
+ * BREAK assertion, because two pieces can sever and rest exactly where they were — and that ban
+ * stands. Nothing below reads a movement as evidence that a joint gave. The claim being made is
+ * the player's own and is about position: an overhang hanging over nothing must not still be there
+ * a second later. That the corbel was CONDEMNED is asserted separately, as the fixture precondition
+ * that makes the claim falsifiable — without it, "the overhang fell" could be true of a wall that
+ * was never overloaded at all.
+ *
+ * AND THAT PRECONDITION IS NOW READ OFF THE BREAK STAMPS RATHER THAN OFF THE UTILISATION, because
+ * the cascade runs inside the commit and a given joint carries exactly nothing (DESIGN.md §3). The
+ * five rungs the arithmetic condemns must be stamped with pass 1 and the other six must not; the
+ * ladder's MAGNITUDES are pinned world-free in
+ * DestructionGame.Core.Structure.AStaircaseVoidCondemnsTheCorbel, which reads the same eleven
+ * joints off SolveLoads, which breaks nothing. The long comment at that assertion says why.
+ *
+ * AND THE PRECONDITION THAT MAKES IT HONEST, EXACTLY AS THE COLLAPSE TEST ABOVE: NO SURVIVING PIECE
+ * MAY BE Stranded. A staircase void is precisely the shape that produces unroutable knots — cut two
+ * bricks in a row out from under a course and the pair above fall back on each other's head joints,
+ * each naming the other as its support — and a wall that came down because the solver declined to
+ * divide load round a loop is a model limitation wearing a collapse's clothes. The corbel is built
+ * from single bed joints for that reason: every step of it is statically determinate.
+ *
+ * A FLUSH WALL, AND THAT IS LOAD-BEARING. A ragged wall's alternate courses step in, so the end
+ * brick of every even course already rests on one brick instead of two — the same 5.625 cm
+ * eccentricity, at the wall's own end, with nobody having done anything to it. A 13-course ragged
+ * wall reads 0.36 of capacity as built. StaircaseWallSpec says the rest.
+ *
+ * NEEDS A TICKING WORLD: YES, and this one could not be anywhere else. That the corbel joint is at
+ * 2.24 is arithmetic on a graph and belongs in the fast suite — and now lives there; that a wall in
+ * a real scene, cut by a real click, then falls over is the composition, and the composition is what
+ * no world-free test can reach.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FStructureIntegrationStaircaseVoidTest,
+	"DestructionGame.Integration.AStaircaseVoidBringsTheOverhangDown",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace DestructionLayout;
+	using namespace StaircaseWallTestSupport;
+	using namespace StructureIntegrationTestSupport;
+
+	const FPieceAction* const Delete = FindIntegrationAction(TEXT("Delete"));
+
+	if (Delete == nullptr)
+	{
+		AddError(TEXT("fixture: the action table must contain a row labelled 'Delete'"));
+		return true;
+	}
+
+	const FRunningBondSpec Spec = StaircaseWallSpec();
+
+	FBrickLayout Reference;
+
+	TestTrue(TEXT("fixture: RunningBond should lay the reference wall"), RunningBond(Spec, Reference));
+
+	if (Reference.Boxes.Num() != StaircaseWallPieceCount)
+	{
+		AddError(FString::Printf(TEXT("fixture: a flush 13 x 10 wall should be %d pieces, got %d"),
+			StaircaseWallPieceCount, Reference.Boxes.Num()));
+
+		return true;
+	}
+
+	/*
+	 * THE STAIRCASE, READ OFF THE LAID WALL RATHER THAN LISTED. Course c keeps everything from
+	 * (12 - c) x 11.25 cm rightward, so the surviving left edge steps out half a brick pitch per
+	 * course and the void underneath it is the stepped diagonal in the picture:
+	 *
+	 *     course 12  [][][][][][][][][][]              whole, and already corbelled
+	 *     course 11    ..[][][][][][][][][]
+	 *     course 10  ....[][][][][][][][][]
+	 *      ...
+	 *     course  2  ..........[][][][][][]
+	 *     course  1    ..........[][][][][]
+	 *     course  0  [][][][][][][][][][]              grounded, whole
+	 *
+	 * 36 bricks, taken out in ONE batch: one selection, one click of one button, which is both the
+	 * player's own move and the only route any test in this file takes to change a wall.
+	 */
+	const TArray<int32> VoidPieces = StaircaseVoidPieces(Reference.Boxes);
+
+	if (VoidPieces.Num() != StaircaseVoidPieceCount)
+	{
+		AddError(FString::Printf(TEXT("fixture: the staircase should cut %d bricks, it names %d"),
+			StaircaseVoidPieceCount, VoidPieces.Num()));
+
+		return true;
+	}
+
+	/* The eleven corbelled bricks, and the eleven bed joints that are the only thing holding them. */
+	TArray<int32> CorbelPieces;
+	TArray<int32> CorbelSupports;
+
+	for (int32 Course = StaircaseLowestCorbelCourse; Course <= StaircaseHighestCorbelCourse; ++Course)
+	{
+		const int32 Corbel = StaircaseCorbelPiece(Reference.Boxes, Course);
+		const int32 Support = StaircaseCorbelSupportPiece(Reference.Boxes, Course);
+
+		if (Corbel == INDEX_NONE || Support == INDEX_NONE)
+		{
+			AddError(FString::Printf(
+				TEXT("fixture: course %d should have a brick at X %.2f resting on one at X %.2f"),
+				Course, StaircaseVoidEdgeXCm(Course),
+				StaircaseVoidEdgeXCm(Course) + StaircaseHalfStepCm));
+
+			return true;
+		}
+
+		CorbelPieces.Add(Corbel);
+		CorbelSupports.Add(Support);
+	}
+
+	/* Three bricks up the far end of the wall, which the staircase never reaches. */
+	TArray<int32> FarSidePieces;
+
+	for (const int32 Course : { 0, 6, 12 })
+	{
+		const int32 Piece =
+			StaircasePieceAt(Reference.Boxes, StaircaseFarSideXCm, StaircaseCourseZCm(Course));
+
+		if (Piece == INDEX_NONE)
+		{
+			AddError(FString::Printf(TEXT("fixture: course %d should have a brick at X %.2f"),
+				Course, StaircaseFarSideXCm));
+
+			return true;
+		}
+
+		FarSidePieces.Add(Piece);
+	}
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	const int32 StructureId = TestWorld.Subsystem->BuildRunningBond(Spec);
+	FStructureBinding* const Binding = TestWorld.Subsystem->Find(StructureId);
+
+	TestNotNull(
+		*FString::Printf(TEXT("fixture: BuildRunningBond returned %d and Find should hand back its binding"),
+			StructureId),
+		Binding);
+
+	if (Binding == nullptr || Binding->NumPieces() != StaircaseWallPieceCount)
+	{
+		TestWorld.End();
+		return true;
+	}
+
+	TArray<ABrickActor*> Bricks;
+	TArray<FVector> LaidAt;
+
+	for (int32 Piece = 0; Piece < Binding->NumPieces(); ++Piece)
+	{
+		ABrickActor* Brick = BrickAt(*this, *Binding, Piece);
+
+		if (Brick == nullptr)
+		{
+			TestWorld.End();
+			return true;
+		}
+
+		Bricks.Add(Brick);
+		LaidAt.Add(Brick->GetActorLocation());
+	}
+
+	/*
+	 * THE ONE FIXTURE CHECK WITHOUT WHICH THIS TEST MEASURES NOTHING. A piece nobody placed and a
+	 * joint that never measured its own face both answer a centred load — correctly, and bit for
+	 * bit as they did before moments existed — so a wall laid without geometry reads perfectly
+	 * healthy while every corbel in it is levering its joint open. HasCompleteGeometry is the only
+	 * thing that can tell "the load is centred" from "nobody said where it acts".
+	 */
+	TestTrue(
+		TEXT("fixture: the laid wall must know where its pieces and its joints are, or every moment below is silently zero"),
+		Binding->GetStructure().HasCompleteGeometry());
+
+	TestEqual(
+		TEXT("fixture: the wall as built should stand, so starting it up releases nothing"),
+		TestWorld.Subsystem->SolveAndPush(StructureId), 0);
+
+	/*
+	 * AND NOTHING IS OVERLOADED BEFORE THE CUT. This is the positive control for the whole test: a
+	 * wall that arrived with a joint past capacity would come down for a reason the staircase had
+	 * nothing to do with, and the flush end is what buys this — see StaircaseWallSpec.
+	 */
+	double WorstAsBuilt = 0.0;
+	int32 WorstAsBuiltJoint = INDEX_NONE;
+
+	for (int32 Joint = 0; Joint < Binding->GetStructure().NumConnections(); ++Joint)
+	{
+		const double Utilisation = Binding->GetStructure().GetConnectionUtilisation(Joint);
+
+		if (Utilisation > WorstAsBuilt)
+		{
+			WorstAsBuilt = Utilisation;
+			WorstAsBuiltJoint = Joint;
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("as built, the worst of %d joints is %d at %.6f of capacity"),
+		Binding->GetStructure().NumConnections(), WorstAsBuiltJoint, WorstAsBuilt));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the wall as built must have nothing over capacity, joint %d reads %.6f"),
+			WorstAsBuiltJoint, WorstAsBuilt),
+		WorstAsBuilt < 1.0);
+
+	ADestructionGamePlayerController* const Controller =
+		SpawnControllerWithLocalPlayer(*this, TestWorld.World);
+
+	if (Controller == nullptr)
+	{
+		TestWorld.End();
+		return true;
+	}
+
+	/* THE PLAYER'S MOVE, AND THE ONLY THING BELOW THAT TOUCHES THE WALL AT ALL. */
+	if (!InspectAndChooseDelete(
+			*this, *Controller, *Delete, StructureId, Reference.Boxes, VoidPieces))
+	{
+		TestWorld.End();
+		return true;
+	}
+
+	for (const int32 Piece : VoidPieces)
+	{
+		TestTrue(
+			*FString::Printf(TEXT("cut brick %d's actor must have left the world, it is %s"),
+				Piece, IsValid(Bricks[Piece]) ? TEXT("still valid") : TEXT("gone")),
+			!IsValid(Bricks[Piece]));
+
+		Bricks[Piece] = nullptr;
+	}
+
+	/*
+	 * THE LADDER, READ OFF THE BREAK STAMPS RATHER THAN OFF THE UTILISATION — AND THE REASON IS
+	 * THE CONTRACT RATHER THAN A WORKAROUND.
+	 *
+	 * This precondition used to read GetConnectionUtilisation on each corbel joint and require the
+	 * bottom rung to be past 1.0. It cannot any more, and nothing production does is wrong: the
+	 * cascade now runs INSIDE the commit, so by the time the click has returned those joints have
+	 * already given, and DESIGN.md §3 is explicit that a given joint carries exactly nothing and
+	 * that only the BREAKING call reports the ratio that broke it. The ladder therefore reads zero
+	 * all the way up, and it would read zero for a wall that was never loaded at all. Any wire
+	 * that makes the overhang fall breaks these joints before a test can look at them, so the
+	 * question has to be asked of a quantity that survives the breaking.
+	 *
+	 * GetBreakPass IS THAT QUANTITY, AND IT IS A STRONGER CLAIM THAN THE ONE IT REPLACES. It says
+	 * WHICH joints gave and IN WHAT ORDER, and it distinguishes all three states with no sentinel:
+	 * a joint that went with a removed piece carries no pass number at all, so a corbel joint
+	 * stamped with a pass is a joint that FAILED UNDER LOAD rather than one that was deleted.
+	 *
+	 * PASS 1 IS THE FIRST SWEEP AFTER THE CUT, so what it breaks is exactly what the first solve
+	 * found over capacity — which is exactly the ladder StaircaseWallTestSupport works out by
+	 * hand. The wall as built is asserted above to have nothing over capacity and to release
+	 * nothing, so no pass can have been stamped before this one and the numbering starts at 1.
+	 *
+	 * BOTH DIRECTIONS ARE ASSERTED. That the five condemned rungs gave in pass 1 says the load
+	 * model condemned the corbel; that the other six did NOT gives the count its teeth, because a
+	 * model reading 30% high would put course 7's 0.786 over the line and break six.
+	 *
+	 * THE MAGNITUDE — 2.24084777 at the bottom rung and the whole eleven-rung ladder — is asserted
+	 * in DestructionGame.Core.Structure.AStaircaseVoidCondemnsTheCorbel, which cuts the same void
+	 * into the same wall with no world at all and reads the ladder off SolveLoads, which breaks
+	 * nothing. That is where the arithmetic belongs: this test's own header has always said that
+	 * "the corbel joint is at 2.24" is arithmetic on a graph and belongs in the fast suite.
+	 */
+	int32 CorbelJointsBrokenInFirstPass = 0;
+
+	for (int32 Step = 0; Step < CorbelPieces.Num(); ++Step)
+	{
+		const int32 Course = StaircaseLowestCorbelCourse + Step;
+
+		const int32 Joint = FindIntegrationJoint(
+			Binding->GetStructure(), CorbelPieces[Step], CorbelSupports[Step]);
+
+		if (Joint == INDEX_NONE)
+		{
+			AddError(FString::Printf(
+				TEXT("fixture: course %d's corbel (piece %d) should still be jointed to piece %d"),
+				Course, CorbelPieces[Step], CorbelSupports[Step]));
+
+			continue;
+		}
+
+		const int32 BreakPass = Binding->GetStructure().GetBreakPass(Joint);
+		const bool bCondemned = StaircaseCorbelIsCondemned(Course);
+
+		AddInfo(FString::Printf(
+			TEXT("corbel course %2d: piece %3d on piece %3d, joint %3d %s, broke in pass %d (the arithmetic puts it at %.5f of capacity)"),
+			Course, CorbelPieces[Step], CorbelSupports[Step], Joint,
+			Binding->GetStructure().GetConnection(Joint).HasGiven() ? TEXT("has given") : TEXT("is intact"),
+			BreakPass, StaircasePredictedCorbelUtilisation(Course)));
+
+		if (BreakPass == 1)
+		{
+			++CorbelJointsBrokenInFirstPass;
+		}
+
+		if (bCondemned)
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("the load model must condemn course %d's corbel: the arithmetic puts it at %.5f of capacity, so the first sweep after the cut must break it — it broke in pass %d"),
+					Course, StaircasePredictedCorbelUtilisation(Course), BreakPass),
+				BreakPass == 1);
+		}
+		else
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("course %d's corbel is under capacity at %.5f, so the first sweep must NOT have broken it — it broke in pass %d"),
+					Course, StaircasePredictedCorbelUtilisation(Course), BreakPass),
+				BreakPass != 1);
+		}
+	}
+
+	/*
+	 * AND THE COUNT, WHICH IS THE HALF THE PER-RUNG ROWS CANNOT MAKE. Five of eleven is the
+	 * fixture's own claim, and a ladder that crossed 1.0 somewhere else entirely would still
+	 * satisfy every row above if the rungs it broke happened to be the ones it predicted.
+	 */
+	AddInfo(FString::Printf(
+		TEXT("the staircase's first sweep broke %d of %d corbel joints (the arithmetic predicts %d, worst rung %.5f)"),
+		CorbelJointsBrokenInFirstPass, CorbelPieces.Num(),
+		StaircasePredictedCorbelJointsOverCapacity, StaircasePredictedWorstCorbelUtilisation));
+
+	TestEqual(
+		*FString::Printf(
+			TEXT("the first sweep after the cut must break exactly the %d corbel joints the arithmetic condemns"),
+			StaircasePredictedCorbelJointsOverCapacity),
+		CorbelJointsBrokenInFirstPass, StaircasePredictedCorbelJointsOverCapacity);
+
+	/*
+	 * AND NO SURVIVOR IS Stranded. A staircase void is exactly the shape that makes unroutable
+	 * knots, and a wall that comes down because the solver declined to divide load round a loop is
+	 * a model limitation wearing a collapse's clothes.
+	 */
+	for (int32 Piece = 0; Piece < StaircaseWallPieceCount; ++Piece)
+	{
+		if (Bricks[Piece] == nullptr)
+		{
+			continue;
+		}
+
+		const EPieceSupport Support = Binding->GetStructure().GetPieceSupport(Piece);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("piece %d must not be Stranded: that would make this a solver limitation rather than a collapse"),
+				Piece),
+			Support != EPieceSupport::Stranded);
+	}
+
+	/* THE OUTCOME: the overhang is over open air, and a second later it must not still be there. */
+	TestWorld.TickSeconds(FallSeconds);
+
+	for (int32 Step = 0; Step < CorbelPieces.Num(); ++Step)
+	{
+		const int32 Piece = CorbelPieces[Step];
+		const FVector NowAt = Bricks[Piece]->GetActorLocation();
+		const double FellCm = LaidAt[Piece].Z - NowAt.Z;
+
+		AddInfo(FString::Printf(
+			TEXT("corbel course %2d (piece %3d) fell %.3f cm in one second, from Z %.3f to Z %.3f"),
+			StaircaseLowestCorbelCourse + Step, Piece, FellCm, LaidAt[Piece].Z, NowAt.Z));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("the overhang must come down: corbelled brick %d should have fallen more than %.1f cm, it dropped %.3f cm"),
+				Piece, FallenAtLeastCm, FellCm),
+			FellCm > FallenAtLeastCm);
+
+		/* And it landed on the rubble rather than through the world. */
+		TestTrue(
+			*FString::Printf(TEXT("corbelled brick %d should have come to rest above the floor at Z %g, it is at Z %.3f"),
+				Piece, FloorTopZCm, NowAt.Z),
+			NowAt.Z > FloorTopZCm);
+	}
+
+	/*
+	 * THE OTHER HALF, AND IT IS NOT DECORATION. Without it, an implementation that released the
+	 * whole wall — or a world that dropped through its floor — passes every row above.
+	 */
+	for (const int32 Piece : FarSidePieces)
+	{
+		const double MovedCm = FVector::Dist(Bricks[Piece]->GetActorLocation(), LaidAt[Piece]);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("the far end of the wall is untouched by the staircase, so brick %d must not move, it drifted %.6f cm"),
+				Piece, MovedCm),
+			MovedCm < DriftToleranceCm);
+
+		TestTrue(
+			*FString::Printf(TEXT("brick %d is still held up and must still be kinematic"), Piece),
+			Bricks[Piece]->GetMesh() != nullptr && !Bricks[Piece]->GetMesh()->IsSimulatingPhysics());
 	}
 
 	TestWorld.End();

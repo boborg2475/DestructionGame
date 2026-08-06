@@ -135,9 +135,13 @@ struct FPieceActionResult
  * for a removed piece, so an implementation that looks afterwards can never find the
  * orphan it was supposed to hand back.
  *
- * AND THE RE-SOLVE BELONGS HERE, NOT TO ANY ROW. A per-row obligation to remember to
- * re-solve is exactly the "editing a switch" smell the table exists to avoid — and
- * forgetting it means the brick vanishes and the wall stands there.
+ * AND SETTLING THE WALL BELONGS HERE, NOT TO ANY ROW. A per-row obligation to remember it
+ * is exactly the "editing a switch" smell the table exists to avoid — and forgetting it
+ * means the brick vanishes and the wall stands there.
+ *
+ * SETTLING IS A CASCADE, NOT A SOLVE, AND IT IS THE SAME ONE RunPieceActions RUNS. See
+ * there for why breaking belongs to the commit path at all; the two doors must not differ,
+ * because a wall may not behave differently for a player who picked one brick.
  */
 FPieceActionResult RunPieceAction(
 	FStructureBinding& Binding,
@@ -160,32 +164,46 @@ struct FPieceBatchActionResult
 };
 
 /**
- * Commit one action against every piece of a selection, then solve ONCE.
+ * Commit one action against every piece of a selection, then let the wall settle ONCE.
  *
  * AN ACTION STAYS SINGLE-PIECE AND THIS IS WHAT LOOPS. No row understands sets, because the
  * moment one does, adding an action stops being adding a row — which is the only property the
  * table exists for. FPieceActionContext is shaped to grow by FIELD if something genuinely
  * needs the whole set later.
  *
- * THE SOLVE IS THE POINT, AND IT LIVES HERE BECAUSE THERE IS NOWHERE ELSE IT CAN. Each solve
+ * SETTLING IS THE POINT, AND IT LIVES HERE BECAUSE THERE IS NOWHERE ELSE IT CAN. Each solve
  * costs a full pass over the graph — tens of milliseconds at scenario scale — so a batch that
- * called RunPieceAction per piece would solve N times to reach a state one solve describes,
+ * called RunPieceAction per piece would settle N times to reach a state one settle describes,
  * and deleting ten bricks would cost ten times what deleting one does. Running everything
- * first and solving after is what makes multi-select FASTER per brick rather than slower.
+ * first and settling after is what makes multi-select FASTER per brick rather than slower.
  *
- * EXACTLY ONE SOLVE PER CALL, UNCONDITIONALLY — including a call where nothing ran. That is
- * the same rule the single-piece path already follows (solving is non-destructive and
- * re-runnable, so a run that changed nothing costs a solve rather than a branch), and a rule
- * with no exceptions is one no caller can be on the wrong side of.
+ * AND SETTLING MEANS FStructureBinding::SolveAndBreak, NOT SolveLoads. Removal is not the only
+ * way a wall comes down. The load the removed pieces were carrying moves onto whatever is
+ * left, and DESIGN.md §3 says plainly that what follows a removal is an ordinary cascade — so
+ * a commit that only solved would compute that a surviving joint is at 2.24 of what mortar
+ * holds and then ask none of them to give. That is the wall a player cut a staircase through
+ * and watched stand: every brick in the overhang still had a bed joint under it, so the
+ * topology was intact, and the topology is all a solve can act on.
  *
- * AND THE SOLVE MUST SEE EVERY REMOVAL, WHICH IS AN ORDERING OBLIGATION RATHER THAN A COUNT.
+ * EXACTLY ONE SETTLE PER CALL, UNCONDITIONALLY — including a call where nothing ran. A cascade
+ * over a settled structure is one solve that breaks nothing, so the no-op case costs exactly
+ * what the plain solve here used to cost. Same rule as the single-piece path, and a rule with
+ * no exceptions is one no caller can be on the wrong side of.
+ *
+ * AND IT MUST SEE EVERY REMOVAL, WHICH IS AN ORDERING OBLIGATION RATHER THAN A COUNT.
  * FStructureBinding::ApplyResults refuses to release a piece the last solve has no answer for,
  * so whoever pushes after this must be pushing an answer computed after the LAST action ran.
- * A solve placed anywhere but the end is one solve and still wrong.
+ * FStructure::SolveAndBreak ends on a complete solve that broke nothing, so the answer it
+ * leaves is the settled one; a settle placed anywhere but the end is still one settle and
+ * still wrong.
+ *
+ * ONE CASCADE PER PLAYER ACTION, AND THAT BINDS CALLERS TOO. Breaking is irreversible and
+ * stamps the pass numbers a collapse is replayed in, so a caller that cascaded again on its
+ * way to the world would stamp twice for one click.
  *
  * RunPieceAction IS THE ONE-ELEMENT CASE OF THIS. There is deliberately no public
- * "run without solving": a caller who forgot the solve and then pushed would release pieces
- * against a stale answer, and releasing is irreversible.
+ * "run without settling": a caller who forgot it and then pushed would release pieces against
+ * a stale answer, and releasing is irreversible.
  */
 FPieceBatchActionResult RunPieceActions(
 	FStructureBinding& Binding,

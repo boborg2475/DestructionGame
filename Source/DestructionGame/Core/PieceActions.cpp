@@ -268,19 +268,38 @@ FPieceBatchActionResult RunPieceActions(
 	}
 
 	/*
-	 * THE SOLVE IS THE LAST STATEMENT, AND BOTH HALVES OF THAT ARE LOAD-BEARING.
+	 * SETTLING THE WALL IS THE LAST STATEMENT, AND ALL THREE HALVES OF THAT ARE LOAD-BEARING.
 	 *
-	 * EXACTLY ONE, so a batch of ten costs what a batch of one costs rather than ten times
-	 * it — and UNCONDITIONALLY, including a call that ran nothing, because solving is
-	 * non-destructive and re-runnable, so a no-op costs a solve rather than a branch. A
-	 * rule with no exceptions is one no caller can be on the wrong side of.
+	 * IT CASCADES RATHER THAN MERELY SOLVING, WHICH IS THE WIRE THE GAME WENT WITHOUT.
+	 * Removing a piece is not the only way a wall comes down: the load the removed pieces
+	 * were carrying moves onto whatever is left, and DESIGN.md §3 is explicit that what
+	 * follows a removal is an ordinary cascade. A solve alone computes that the surviving
+	 * joints are past what mortar can hold and then asks none of them to give — so a
+	 * staircase cut through a wall leaves eleven corbelled bricks hanging over open air, five
+	 * of their bed joints reading up to 2.24 of capacity, and the wall stands there. Nothing
+	 * outside a test could reach FStructure::SolveAndBreak at all until FStructureBinding
+	 * grew a door onto it.
 	 *
-	 * AND LAST, so the answer whoever pushes next is pushing saw EVERY removal.
-	 * FStructureBinding::ApplyResults refuses to release a piece the last solve has no
-	 * answer for, so a solve placed anywhere but here is still one solve and still leaves
-	 * the pieces the batch orphaned hanging in the air.
+	 * EXACTLY ONE SETTLE, so a batch of ten costs what a batch of one costs rather than ten
+	 * times it — and UNCONDITIONALLY, including a call that ran nothing. A cascade over a
+	 * settled structure is one solve that breaks nothing, which is what SolveLoads cost here
+	 * before, so the no-op case is unchanged in price as well as in effect. A rule with no
+	 * exceptions is one no caller can be on the wrong side of.
+	 *
+	 * AND LAST, so the answer whoever pushes next is pushing saw EVERY removal AND every
+	 * joint that gave because of them. FStructureBinding::ApplyResults refuses to release a
+	 * piece the last solve has no answer for, and FStructure::SolveAndBreak ends on a
+	 * complete solve that broke nothing — so the settled answer is exactly what a push
+	 * needs, and a settle placed anywhere but here leaves the pieces the batch orphaned
+	 * hanging in the air.
+	 *
+	 * ONCE PER PLAYER ACTION, WHICH IS A CONSTRAINT ON CALLERS AS WELL. Breaking is
+	 * irreversible and stamps pass numbers that phase 5 replays as the order a collapse
+	 * happened in, so a caller that cascaded again on the way to the world would stamp a
+	 * second time for one click. The subsystem pushes behind this rather than re-solving,
+	 * which is why it may not use SolveAndPush.
 	 */
-	Binding.SolveLoads();
+	Binding.SolveAndBreak();
 
 	return Result;
 }
@@ -293,16 +312,22 @@ FPieceActionResult RunPieceAction(
 	const FPieceActionResult Result = RunOnePieceActionWithoutSolving(Binding, Ref, Action);
 
 	/*
-	 * AND THE RE-SOLVE BELONGS HERE RATHER THAN TO ANY ROW. A per-row obligation to
-	 * remember it is exactly the switch this table exists not to have, relocated; and
-	 * forgetting it is the failure where the brick vanishes and the wall stands there,
-	 * every piece above it still reporting itself held up by something that has gone.
+	 * AND THE SETTLE BELONGS HERE RATHER THAN TO ANY ROW. A per-row obligation to remember
+	 * it is exactly the switch this table exists not to have, relocated; and forgetting it
+	 * is the failure where the brick vanishes and the wall stands there, every piece above
+	 * it still reporting itself held up by something that has gone.
 	 *
-	 * Unconditional because solving is non-destructive and re-runnable, so a run that
-	 * changed nothing costs a solve rather than a branch — the same rule RunPieceActions
-	 * follows, which is what makes this its one-element case rather than a second path.
+	 * THE SAME CASCADE THE BATCH RUNS, AND NOT A SOLVE, which is the one thing that must not
+	 * differ between the two doors. A single-brick delete that only solved while a two-brick
+	 * delete cascaded would make the physics depend on how many bricks the player happened
+	 * to pick — the same class of defect as the commit door once being wider than the menu,
+	 * and no test would name it because both doors reach the same wall by different rules.
+	 *
+	 * Unconditional, because a cascade over a settled structure is one solve that breaks
+	 * nothing — so a run that changed nothing costs that rather than a branch. RunPieceActions
+	 * carries the reasoning in full; this is its one-element case, not a second path.
 	 */
-	Binding.SolveLoads();
+	Binding.SolveAndBreak();
 
 	return Result;
 }

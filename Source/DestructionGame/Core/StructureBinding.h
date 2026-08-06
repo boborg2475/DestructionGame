@@ -200,6 +200,32 @@ struct FStructureBinding
 	void SolveLoads();
 
 	/**
+	 * Solve, break every joint over its own capacity, and re-solve until nothing more
+	 * gives — leaving the graph settled and ready to be pushed.
+	 *
+	 * FORWARDED, AND THE FORWARD IS THE ONLY REASON THIS EXISTS. GetStructure hands back a
+	 * const reference even from a mutable binding, so there is no route to
+	 * FStructure::SolveAndBreak from outside this type — which is what kept the cascade off
+	 * the world wire entirely: the graph could condemn a joint at 2.24 of capacity and
+	 * nothing in World/ could ask it to give.
+	 *
+	 * IT DISCHARGES ApplyResults' ORDERING OBLIGATION BY CONSTRUCTION, and that is worth
+	 * saying because it is not obvious from the name. The last thing FStructure::SolveAndBreak
+	 * does is a complete solve that broke nothing — that pass is how it knows to stop — so the
+	 * answer left behind is over exactly the joints and pieces that survived. A push behind
+	 * this is pushing a settled answer, not a mid-cascade one.
+	 *
+	 * DESTRUCTIVE, UNLIKE SolveLoads, AND THAT IS THE WHOLE DIFFERENCE. Joints never heal and
+	 * the pass stamps are never rewritten, so this is not something a strain readout or a
+	 * what-if may call: it is the deliberate step, and SolveLoads remains the re-runnable one.
+	 *
+	 * @return how many passes THIS CALL broke at least one joint in; zero for a structure
+	 *         that settles as it stands. Per-call, unlike the stamps — see
+	 *         FStructure::SolveAndBreak.
+	 */
+	int32 SolveAndBreak();
+
+	/**
 	 * Push the last solve's answer onto the bindings: release every piece the solver
 	 * is no longer holding up.
 	 *

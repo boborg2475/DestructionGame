@@ -103,7 +103,8 @@ namespace
 	 * EPieceSupport::Falling is also what an ABSENT answer reads as — so a wall nobody has solved
 	 * would otherwise drop entire, foundation included, with the one-way latch making it
 	 * permanent. Both callers discharge that obligation before they arrive: SolveAndPush solves on
-	 * the line above, and RunPieceAction ends with a solve of its own.
+	 * the line above, and RunPieceAction ends by settling the wall — a cascade whose last act is a
+	 * complete solve that broke nothing, which is exactly the settled answer this wants.
 	 *
 	 * THE WALK IS OVER EVERY RELEASED PIECE, NOT OVER THIS CALL'S. ApplyResults answers how many
 	 * it released, not which, and IsReleased is the record — so bricks released by an earlier push
@@ -327,13 +328,15 @@ bool UDestructionStructureSubsystem::CommitPieceAction(const FPieceRef& Ref, con
 	 * bricks above a deleted one had lost the ground — and nothing ever told them. They hung
 	 * in the air, kinematic, held up by a piece that was no longer there.
 	 *
-	 * THE PUSH HALF ONLY, NOT SolveAndPush. RunPieceAction ends with a solve of its own, so
-	 * solving again here would be a second complete solve per click for an answer already in
-	 * hand — idempotent rather than wrong, but 30 ms of it at scenario scale, which doubles
-	 * the cost of a click for nothing.
+	 * THE PUSH HALF ONLY, NOT SolveAndPush, AND THAT IS NOW A CORRECTNESS RULE AS WELL AS A COST
+	 * ONE. RunPieceAction ends by settling the wall, so solving again here would be a second
+	 * complete solve per click for an answer already in hand — 30 ms of it at scenario scale,
+	 * which doubles the cost of a click for nothing. Cascading again would be worse than
+	 * wasteful: breaking is irreversible and stamps the pass numbers a collapse is replayed in,
+	 * so one click would stamp twice and the replay would show two collapses.
 	 *
 	 * Unconditional past this point, for the same reason the destroy above needs no second
-	 * check on bRan: a commit that ran nothing re-solved nothing, so ApplyResults finds
+	 * check on bRan: a commit that ran nothing settled an unchanged wall, so ApplyResults finds
 	 * nothing new to release and answers zero.
 	 */
 	PushSolvedResultsToWorld(*Binding);
@@ -376,18 +379,19 @@ int32 UDestructionStructureSubsystem::CommitPieceActionForAll(
 	}
 
 	/*
-	 * ONE PUSH, BEHIND THE ONE SOLVE, AND THAT ORDERING IS THE WHOLE POINT OF BATCHING HERE
-	 * RATHER THAN LOOPING CommitPieceAction. RunPieceActions solves exactly once and does it
-	 * after the LAST action ran, so this is pushing an answer that saw every removal;
-	 * FStructureBinding::ApplyResults refuses to release a piece the last solve has no
-	 * answer for, so a push behind a mistimed solve leaves the pieces the batch orphaned
-	 * hanging in the air — the exact defect a player found in ten seconds, reintroduced by
-	 * a batch.
+	 * ONE PUSH, BEHIND THE ONE SETTLE, AND THAT ORDERING IS THE WHOLE POINT OF BATCHING HERE
+	 * RATHER THAN LOOPING CommitPieceAction. RunPieceActions settles exactly once and does it
+	 * after the LAST action ran, so this is pushing an answer that saw every removal AND every
+	 * joint that gave because of them; FStructureBinding::ApplyResults refuses to release a
+	 * piece the last solve has no answer for, so a push behind a mistimed settle leaves the
+	 * pieces the batch orphaned hanging in the air — the exact defect a player found in ten
+	 * seconds, reintroduced by a batch.
 	 *
-	 * THE PUSH HALF ONLY, NOT SolveAndPush, for the reason the single-piece commit gives:
-	 * the answer is already in hand, and a second full solve doubles the cost of a click
-	 * for nothing. Unconditional, because a batch that ran nothing re-solved to the same
-	 * answer and ApplyResults then finds nothing new to release.
+	 * THE PUSH HALF ONLY, NOT SolveAndPush, for the reason the single-piece commit gives: the
+	 * answer is already in hand, a second full solve doubles the cost of a click for nothing,
+	 * and a second CASCADE would stamp a second collapse for one click. Unconditional, because
+	 * a batch that ran nothing settled an unchanged wall and ApplyResults then finds nothing
+	 * new to release.
 	 */
 	PushSolvedResultsToWorld(*Binding);
 
