@@ -421,6 +421,25 @@ bool FPieceActionsDeleteTest::RunTest(const FString& Parameters)
 	}
 
 	/*
+	 * AND THE ROW SAYS OUT LOUD THAT IT DESTROYS SOMETHING.
+	 *
+	 * THE REST OF THIS TEST PROVES IT IS IRREVERSIBLE; THIS IS THE ROW ADMITTING IT. Delete
+	 * releases a brick to physics and takes it out of the graph, and nothing in this project puts
+	 * it back — which is why the commit door is never wider than the menu door. A panel has to be
+	 * able to draw that button differently from a harmless one, and the only place that fact can
+	 * live without a widget deciding it by comparing a caption against the word "Delete" is here,
+	 * on the row, as data.
+	 *
+	 * IT IS NOT A SWEEP OVER THE TABLE, because "every row is destructive" is false the moment a
+	 * second action lands and "some row is" says nothing about which. The flag defaults to false
+	 * so that adding an action is still adding a row; THIS action is the one that has to carry
+	 * it, and it is named here for the same reason its behaviour is.
+	 */
+	TestTrue(
+		TEXT("Delete removes a brick and nothing puts it back, so its row must declare itself destructive"),
+		Delete->bIsDestructive);
+
+	/*
 	 *      [ roof 2 ]
 	 *          |          bed joint
 	 *    [ column 1 ]     <- DELETED, and it is a MIDDLE handle on purpose:

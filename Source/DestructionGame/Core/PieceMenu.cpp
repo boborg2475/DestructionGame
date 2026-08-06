@@ -38,17 +38,56 @@ namespace
 	}
 
 	/**
+	 * WHAT THE PANEL CALLS ITSELF, IN EVERY STATE THERE IS.
+	 *
+	 * A CONSTANT STRING IS STILL A STRING THE WIDGET MAY NOT SPELL, for the reason every other
+	 * word on this struct lives here: choosing it is a decision, and a decision taken in Slate
+	 * is taken where nothing can read it. The branch count happens to be zero today; the day it
+	 * gains one — a word that changes with the mode, a count folded into it — the decision is
+	 * already on the testable side of the seam rather than needing to be moved there.
+	 */
+	const TCHAR* const PresenterPanelHeader = TEXT("Selection");
+
+	/**
+	 * WHAT THE READOUT REGION SAYS WHEN THERE IS NO BRICK TO BREAK OUT.
+	 *
+	 * A FIXED PANEL RESERVES THE READOUT'S SPACE WHETHER OR NOT IT HAS ONE, so the alternative
+	 * is a hole in the middle of the panel that reads as a readout that failed rather than as
+	 * one waiting to be asked. It is the same rule "No bricks selected" and "No joints" already
+	 * follow: an absence is a fact to be stated.
+	 */
+	const TCHAR* const PresenterInspectedHint = TEXT("Hover a brick in the list to see its joints");
+
+	/**
 	 * Why a brick is or is not being held up, in words.
 	 *
-	 * "NOBODY HAS SOLVED YET" IS ASKED FIRST AND IS ITS OWN SENTENCE, and that ordering
-	 * is the whole point of the function. EPieceSupport::Falling is both a real collapse
-	 * and an absent answer — deliberately, because enumerator zero has to promise least
-	 * — so a readout that went straight to the enumerator would draw a freshly built,
-	 * never-solved wall as a column of falling bricks: a catastrophe reported that has
-	 * not happened.
+	 * "THIS REF NAMES NO BRICK" IS ASKED FIRST AND "NOBODY HAS SOLVED YET" SECOND, AND BOTH
+	 * ORDERINGS ARE THE WHOLE POINT OF THE FUNCTION.
+	 *
+	 * A brick a removal took, a ref naming another wall and a ref missing a half all come
+	 * back bIsPiece false with a default support answer — and the sentence that falls out
+	 * of the guard below for one of those is "not solved yet", which promises the brick is
+	 * there and that a solve is all it is waiting for. On a freshly built wall it is also
+	 * indistinguishable from every live row on the panel. So a ref that names nothing says
+	 * exactly that, and says it before anything is read off the enumerators.
+	 *
+	 * EPieceSupport::Falling is then both a real collapse and an absent answer —
+	 * deliberately, because enumerator zero has to promise least — so a readout that went
+	 * straight to the enumerator would draw a freshly built, never-solved wall as a column
+	 * of falling bricks: a catastrophe reported that has not happened.
+	 *
+	 * ONE FUNCTION FOR THE ENTRY ROW AND FOR THE READOUT UNDER IT, WHICH IS WHY THE FIRST
+	 * GUARD LIVES HERE RATHER THAN AT THE ONE CALL SITE THAT CAN REACH IT. Two inches apart
+	 * on one panel, one brick may not read "supported" in the list and something else over
+	 * its joints, and two derivations of one question are how that happens.
 	 */
 	FString PresenterWordForSupport(const FPieceInspection& Inspection)
 	{
+		if (!Inspection.bIsPiece)
+		{
+			return FString(TEXT("not in this wall"));
+		}
+
 		if (!Inspection.bHasSupportAnswer)
 		{
 			return FString(TEXT("not solved yet"));
@@ -88,6 +127,21 @@ namespace
 		}
 
 		return FString::Printf(TEXT("%d joints"), JointCount);
+	}
+
+	/**
+	 * How many bricks a row will act on, as a noun phrase — "1 brick", "11 bricks".
+	 *
+	 * SINGULAR AND PLURAL ARE DECIDED HERE FOR THE REASON CountText'S ARE: "1 bricks" is a
+	 * branch, and a branch in Slate is untested by construction. There is no wording for
+	 * nothing at all, and that is not an omission — a row that exists always carries at
+	 * least one ref, because a menu with no target is a button with nothing behind it.
+	 */
+	FString PresenterWordForTargetCount(int32 BrickCount)
+	{
+		return BrickCount == 1
+			? FString(TEXT("1 brick"))
+			: FString::Printf(TEXT("%d bricks"), BrickCount);
 	}
 
 	/**
@@ -411,6 +465,84 @@ namespace
 	}
 
 	/**
+	 * WHERE A BAR STOPS BEING COMFORTABLE, AND WHERE IT BECOMES CRITICAL — as utilisations,
+	 * because that is the number already on the row.
+	 *
+	 * Ten per cent of capacity is 10x margin and fifty per cent is 2x. They are stated in per
+	 * cent rather than in multiples so the guards below compare against UtilisationPercent
+	 * directly: a reciprocal taken first would divide by zero for the unloaded joint that is
+	 * the most comfortable one there is, and would then need a guard of its own to say so.
+	 */
+	constexpr double PresenterCautionAtPercent = 10.0;
+	constexpr double PresenterCriticalAtPercent = 50.0;
+
+	/**
+	 * Which band a joint's bar is drawn in.
+	 *
+	 * A BUCKET RATHER THAN A COLOUR. Which side of 10x a joint sits on is a decision about
+	 * what this game calls dangerous, and a widget comparing a fraction against two constants
+	 * would be holding that decision where nothing can read it. The hue stays the widget's.
+	 *
+	 * AT AN EDGE THE JOINT TAKES THE WORSE BAND, WHICH IS WHY THE GUARDS RUN WORST FIRST AND
+	 * ARE WRITTEN NEGATED. It is the same shape as PresenterMarginText's "no margin left" at
+	 * exactly 1.0: over-promising is the expensive direction on a panel whose whole job is to
+	 * say what is about to fall down. And every comparison against a NaN is false, so a
+	 * degenerate utilisation falls into the FIRST guard and is drawn as critical rather than
+	 * as a joint three orders of magnitude from failing.
+	 *
+	 * A JOINT THAT HAS GIVEN IS CRITICAL WHATEVER ITS NUMBER SAYS. It carries nothing, so the
+	 * arithmetic alone files a hole in the wall under "the most comfortable state there is" —
+	 * which is exactly the defect bHasGiven exists to prevent, one field further out.
+	 */
+	EJointMarginBand PresenterMarginBand(double UtilisationPercent, bool bHasGiven)
+	{
+		if (bHasGiven)
+		{
+			return EJointMarginBand::Critical;
+		}
+
+		if (!(UtilisationPercent < PresenterCriticalAtPercent))
+		{
+			return EJointMarginBand::Critical;
+		}
+
+		if (!(UtilisationPercent < PresenterCautionAtPercent))
+		{
+			return EJointMarginBand::Caution;
+		}
+
+		return EJointMarginBand::Comfortable;
+	}
+
+	/**
+	 * HOW MANY JOINT ROWS CAN CARRY A COLOUR AT ALL.
+	 *
+	 * SIX, AND IT IS THE WALL'S NUMBER RATHER THAN A ROUND ONE: a brick inside a running bond
+	 * is spanned by two above, rests on two below and has a head joint either side. A palette
+	 * that ran out before then would leave the ordinary case half-coloured.
+	 */
+	constexpr int32 PresenterColourSlots = 6;
+
+	/**
+	 * Which colour slot a joint row takes, or nothing once the palette has run out.
+	 *
+	 * PER SLOT, NOT PER BRICK. Keyed on the far-end brick is what a reader assumes, and it
+	 * cannot be built: a wall is over a thousand bricks and a palette is a handful of legible
+	 * hues, so it must collide — and two rows in one colour is a lie about the single thing a
+	 * swatch says. Keyed on the ROW it never collides, at the price that one brick is the
+	 * first colour in one readout and the second in another.
+	 *
+	 * AND PAST THE END, NOTHING RATHER THAN A WRAP. Wrapping is the tidy answer and it
+	 * reintroduces the collision this was chosen to avoid, on the brick with the most joints —
+	 * which is the brick being read hardest. An absent swatch is an absence; a repeated one is
+	 * a wrong answer.
+	 */
+	int32 PresenterColourSlotFor(int32 RowIndex)
+	{
+		return RowIndex < PresenterColourSlots ? RowIndex : INDEX_NONE;
+	}
+
+	/**
 	 * The bar's decade ticks, low to high.
 	 *
 	 * A LOG AXIS WITH NO TICKS IS UNREADABLE BY CONSTRUCTION — the same visible fill means
@@ -520,6 +652,21 @@ TArray<FPieceMenuRow> BuildPieceMenuRows(
 		Row.Refs.Append(Refs.GetData(), Refs.Num());
 
 		/*
+		 * AND WHETHER CHOOSING IT DESTROYS SOMETHING IS THE ACTION'S OWN FLAG, COPIED LIKE
+		 * Label IS AND NEVER RE-DECIDED. A widget styling a button by reading its caption
+		 * would be a policy written in string literals where no test can reach it, and it
+		 * would stop styling the day the caption is retuned.
+		 */
+		Row.bIsDestructive = Action->bIsDestructive;
+
+		/*
+		 * AND WHAT IT WILL ACT ON, IN WORDS, DERIVED FROM THE SET IT COMMITS AGAINST. Taken
+		 * from Refs rather than from the selection the caller happens to remember, so a
+		 * button cannot promise to act on a different number of bricks than it will.
+		 */
+		Row.TargetText = PresenterWordForTargetCount(Row.Refs.Num());
+
+		/*
 		 * THE ANCHOR IS DERIVED FROM THE SET, NEVER STORED BESIDE IT — the same shape as
 		 * Label, which is a copy of the action's own text. A field naming a piece that is
 		 * not in the selection would be worse than no field, because it is what a per-brick
@@ -537,6 +684,14 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	const FPieceRef& InspectedRef)
 {
 	FPieceMenuInspector Inspector;
+
+	/*
+	 * THE HEADING IS SET BEFORE ANY OF THE FAIL-CLOSED ROUTES BELOW CAN TAKE, because it is the
+	 * one line that may not go quiet. A fixed panel is on screen while the selection is empty,
+	 * while a ref names another wall and while nothing has been solved, and a bare count over a
+	 * blank box reads as a readout that broke rather than as one with nothing to say.
+	 */
+	Inspector.HeaderText = FString(PresenterPanelHeader);
 
 	/*
 	 * THE COUNT IS THE SELECTION'S OWN AND IT NEVER SHRINKS TO WHAT RESOLVES. A ref
@@ -629,7 +784,21 @@ FPieceMenuInspector BuildPieceMenuInspector(
 		 * with a support state and a joint list, and what the MENU may do about it is
 		 * PieceActionsFor's intersection, already said by the rows going empty.
 		 */
-		Entry.bIsLivePiece = InspectPiece(Binding, Ref).bIsPiece;
+		const FPieceInspection EntryInspection = InspectPiece(Binding, Ref);
+
+		Entry.bIsLivePiece = EntryInspection.bIsPiece;
+
+		/*
+		 * AND WHY THAT BRICK IS OR IS NOT STANDING UP, ON EVERY ROW RATHER THAN ONLY ON THE
+		 * ONE SINGLED OUT — OFF THE SAME INSPECTION, WHICH IS THE POINT OF TAKING IT AS A
+		 * LOCAL.
+		 *
+		 * Eleven picked bricks are eleven identical rows without it, and finding the falling
+		 * one means hovering each in turn while the model has the answer for all of them
+		 * already. A second InspectPiece call for the word would be a second scan of the
+		 * whole connection array per row for a question this one has answered.
+		 */
+		Entry.SupportText = PresenterWordForSupport(EntryInspection);
 	}
 
 	/*
@@ -657,6 +826,20 @@ FPieceMenuInspector BuildPieceMenuInspector(
 
 	Inspector.bHasInspectedPiece = Inspection.bIsPiece;
 
+	/*
+	 * AND THE HINT BELONGS TO EXACTLY ONE OF THE THREE STATES A PANEL CAN BE IN, WHICH IS WHY
+	 * IT IS DECIDED HERE RATHER THAN BY A WIDGET NOTICING AN EMPTY BREAKOUT.
+	 *
+	 * Bricks picked and none pointed at is the state that needs it. A brick pointed at must NOT
+	 * carry it — a hint standing beside a live breakout is the stale-field defect this whole
+	 * struct is shaped against — and neither must an empty selection, where a player would be
+	 * sent to hunt a list with nothing in it and CountText already speaks for the state.
+	 */
+	if (Inspector.SelectedCount > 0 && !Inspector.bHasInspectedPiece)
+	{
+		Inspector.InspectedHintText = FString(PresenterInspectedHint);
+	}
+
 	if (!Inspector.bHasInspectedPiece)
 	{
 		return Inspector;
@@ -664,6 +847,16 @@ FPieceMenuInspector BuildPieceMenuInspector(
 
 	Inspector.Pieces[InspectedEntry].bIsInspected = true;
 	Inspector.InspectedRef = InspectedRef;
+
+	/*
+	 * AND THE READOUT NAMES ITS OWN SUBJECT, IN THE ENTRY LIST'S OWN WORDS RATHER THAN BY A
+	 * SECOND DERIVATION OF THE SAME QUESTION. Two inches apart on one panel, one brick may not
+	 * be "course 2 · #1" in the list and something else over its joints — and the list scrolls,
+	 * so the entry a breakout belongs to can be out of sight entirely while the breakout stays.
+	 * Copied off the marked entry, so the two halves of the panel cannot drift apart.
+	 */
+	Inspector.InspectedLabel = Inspector.Pieces[InspectedEntry].Label;
+
 	Inspector.SupportText = PresenterWordForSupport(Inspection);
 
 	/*
@@ -686,9 +879,18 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	 */
 	Inspector.Joints.Reserve(Inspection.Joints.Num());
 
-	for (const FJointInspection& Joint : Inspection.Joints)
+	for (int32 JointIndex = 0; JointIndex < Inspection.Joints.Num(); ++JointIndex)
 	{
+		const FJointInspection& Joint = Inspection.Joints[JointIndex];
+
 		FInspectorJointRow& Row = Inspector.Joints.AddDefaulted_GetRef();
+
+		/*
+		 * THE SWATCH IS THE ROW'S OWN NUMBER, WHICH IS WHY IT IS TAKEN FROM THE LOOP RATHER
+		 * THAN FROM ANYTHING ABOUT THE JOINT. A colour keyed on the connection or on the brick
+		 * at the far end runs out at the first wall; keyed on the row it never can.
+		 */
+		Row.ColourSlot = PresenterColourSlotFor(JointIndex);
 
 		Row.ConnectionIndex = Joint.ConnectionIndex;
 		Row.OtherPieceIndex = Joint.OtherPieceIndex;
@@ -715,6 +917,7 @@ FPieceMenuInspector BuildPieceMenuInspector(
 		 */
 		Row.MarginText = PresenterMarginText(Row.UtilisationPercent, Row.bHasGiven);
 		Row.HeadroomFraction = PresenterHeadroomFraction(Row.UtilisationPercent, Row.bHasGiven);
+		Row.MarginBand = PresenterMarginBand(Row.UtilisationPercent, Row.bHasGiven);
 
 		/*
 		 * AND THE FAR END IS NAMED WHERE IT IS, OUT OF THE TABLE THE ENTRY LIST WAS NAMED

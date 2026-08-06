@@ -47,6 +47,17 @@ namespace PieceMenuTestSupport
 	const FPieceAction MenuSecondRow{
 		TEXT("Second"), &PieceMenuTripwireCanRun, &PieceMenuTripwireRun };
 
+	/**
+	 * A ROW THAT DECLARES ITSELF DESTRUCTIVE, WHICH IS THE ONLY WAY THE PASSTHROUGH IS VISIBLE.
+	 *
+	 * Every shipped action could be marked one way and a presenter that dropped the flag would
+	 * still agree with the table on every row — a false that never became a true is
+	 * indistinguishable from a false that was carried across. So the fixture supplies both
+	 * polarities, and the sweep below compares each row against the action it came from.
+	 */
+	const FPieceAction MenuDestructiveRow{
+		TEXT("Wreck"), &PieceMenuTripwireCanRun, &PieceMenuTripwireRun, /*bIsDestructive*/ true };
+
 	/** A row with no label at all — malformed, and must be skipped rather than shown blank. */
 	const FPieceAction MenuUnlabelledRow{ nullptr, &PieceMenuTripwireCanRun, &PieceMenuTripwireRun };
 
@@ -204,6 +215,18 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 			{ &MenuTripwire }
 		},
 		{
+			/*
+			 * A DESTRUCTIVE ROW BESIDE AN ORDINARY ONE, WHICH IS THE PAIR THE FLAG NEEDS. One
+			 * row of either polarity in one menu is what tells "carried across" apart from
+			 * "defaulted", and it is the shape the shipped table will have the moment a second
+			 * action lands beside Delete.
+			 */
+			TEXT("a destructive row and an ordinary one in one menu"),
+			{ &MenuTripwire, &MenuDestructiveRow },
+			LiveRef,
+			{ &MenuTripwire, &MenuDestructiveRow }
+		},
+		{
 			TEXT("a null row on its own"),
 			{ nullptr },
 			LiveRef,
@@ -306,6 +329,64 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 				FString::Printf(TEXT("%s: row %d should commit against piece %d, got %d"),
 					Case.Description, Index, Case.Ref.PieceIndex, Row.Ref.PieceIndex),
 				Row.Ref.PieceIndex, Case.Ref.PieceIndex);
+
+			/*
+			 * AND WHETHER CHOOSING IT DESTROYS SOMETHING, CARRIED ACROSS FROM THE ACTION AND
+			 * NEVER RE-DECIDED HERE.
+			 *
+			 * A DESTRUCTIVE BUTTON HAS TO LOOK LIKE ONE, and the only way a widget can know
+			 * which button that is without a decision of its own is a flag on the row. The
+			 * alternative anybody would actually write is `Label == TEXT("Delete")` in Slate:
+			 * a policy in a string literal, in the one place no test can read it, which stops
+			 * working the day the caption is retuned and does not start working when a second
+			 * irreversible action is added. Held against the action's OWN flag rather than
+			 * against a value written in this table, which is what makes it a passthrough
+			 * claim rather than a second copy of the data.
+			 */
+			TestEqual(
+				FString::Printf(
+					TEXT("%s: row %d ('%s') should read as %s, it reads as %s"),
+					Case.Description, Index, *Row.Label,
+					Expected->bIsDestructive ? TEXT("destructive") : TEXT("harmless"),
+					Row.bIsDestructive ? TEXT("destructive") : TEXT("harmless")),
+				Row.bIsDestructive, Expected->bIsDestructive);
+
+			/*
+			 * AND WHAT IT WILL ACT ON, IN WORDS. A row committed against one brick says "1 brick"
+			 * — singular and plural decided here for the reason CountText's are, and derived from
+			 * Refs so a button cannot promise to act on a different number of bricks than it
+			 * will. The plural is exercised below, on a selection.
+			 */
+			TestEqual(
+				FString::Printf(TEXT("%s: row %d should say what it acts on, it says '%s'"),
+					Case.Description, Index, *Row.TargetText),
+				Row.TargetText, FString(TEXT("1 brick")));
+		}
+	}
+
+	/*
+	 * AND THE PLURAL, WHICH ONLY THE SELECTION OVERLOAD CAN REACH. Three picked bricks make one
+	 * row that commits against three, and "3 bricks" is what the button has to be able to say —
+	 * a widget counting Refs and choosing a suffix is the same untestable branch as "1 bricks".
+	 */
+	{
+		const TArray<FPieceRef> ThreeBricks = { MakeRef(7, 3), MakeRef(7, 4), MakeRef(7, 5) };
+
+		const TArray<FPieceMenuRow> Rows = BuildPieceMenuRows(Shipped, ThreeBricks);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("fixture: three bricks should still build one row per shipped action (%d), got %d [%s]"),
+				Shipped.Num(), Rows.Num(), *DescribeRows(Rows)),
+			Rows.Num(), Shipped.Num());
+
+		for (int32 Index = 0; Index < Rows.Num(); ++Index)
+		{
+			TestEqual(
+				FString::Printf(
+					TEXT("a row committing against 3 bricks should say '3 bricks', row %d says '%s'"),
+					Index, *Rows[Index].TargetText),
+				Rows[Index].TargetText, FString(TEXT("3 bricks")));
 		}
 	}
 

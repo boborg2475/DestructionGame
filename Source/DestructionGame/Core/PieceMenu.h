@@ -57,6 +57,27 @@ struct FPieceMenuRow
 	 * anchor outside the set it anchors is a readout of somebody else's brick.
 	 */
 	FPieceRef Ref;
+
+	/**
+	 * Whether choosing this row destroys something.
+	 *
+	 * THE ACTION'S OWN FLAG, COPIED LIKE Label IS, AND NEVER A COMPARISON AGAINST THE WORD
+	 * "Delete". A widget that styled a button by reading its caption would be a policy written
+	 * in string literals in the one place no test can reach, and it would silently stop styling
+	 * the day the caption is retuned or a second destructive action lands. Whether an action is
+	 * irreversible is data about the action, so it lives on the table's row.
+	 */
+	bool bIsDestructive = false;
+
+	/**
+	 * What this row will act on, as a noun phrase — "1 brick", "11 bricks".
+	 *
+	 * SINGULAR AND PLURAL ARE DECIDED HERE, exactly as they are for CountText, and for the same
+	 * reason: "1 bricks" is a branch, and a branch in Slate is untested by construction. It is
+	 * derived from Refs, which is the set the row actually commits against, so a button that
+	 * says three bricks cannot delete four.
+	 */
+	FString TargetText;
 };
 
 /**
@@ -117,6 +138,30 @@ namespace DestructionPresenter
 }
 
 /**
+ * How much room a joint has left, in the three bands a bar is drawn in.
+ *
+ * A BUCKET RATHER THAN A COLOUR, AND A BUCKET RATHER THAN A NUMBER THE WIDGET THRESHOLDS.
+ * Which side of 10x margin a joint sits on is a DECISION, and a widget comparing
+ * UtilisationPercent against two constants would be holding that decision in the one place
+ * no test can reach — the same argument every string on this struct is here for. What the
+ * widget still owns is the palette: which green, which amber, which red.
+ *
+ * CRITICAL IS ENUMERATOR ZERO, for the reason EPieceSupport::Falling is: zero has to be the
+ * value that promises least, so a default-constructed row cannot claim a joint is healthy.
+ */
+enum class EJointMarginBand : uint8
+{
+	/** At or past its limit, or gone. Nothing left. */
+	Critical,
+
+	/** Getting close: worth reading before deleting anything under it. */
+	Caution,
+
+	/** Orders of magnitude from failing, which is where a settled wall lives. */
+	Comfortable,
+};
+
+/**
  * One joint of the inspected brick, in the units and words a human reads.
  *
  * IT IS FJointInspection CONVERTED AND WORDED, NEVER RECOMPUTED. Every field below either
@@ -153,6 +198,23 @@ struct FInspectorJointRow
 
 	/** The headroom bar's fill, 0 to 1. Log-scaled over three decades of margin. */
 	double HeadroomFraction = 0.0;
+
+	/** Which band that fill is in, so the bar's colour is decided here. See the tests. */
+	EJointMarginBand MarginBand = EJointMarginBand::Critical;
+
+	/**
+	 * Which colour slot this ROW is, or INDEX_NONE when the palette has run out.
+	 *
+	 * PER SLOT, NOT PER BRICK: the first joint row is always the first colour, whichever brick
+	 * is on the end of it. A wall has 1,220 bricks and a palette has a handful of hues, so a
+	 * colour keyed on the far end runs out immediately; keyed on the row it never can, at the
+	 * price that one brick changes colour when a different brick is inspected.
+	 *
+	 * INDEX_NONE PAST THE END RATHER THAN WRAPPING. Two rows sharing a colour is a lie about
+	 * which brick is which — the one thing the swatch exists to say — and no swatch at all is
+	 * merely an absence.
+	 */
+	int32 ColourSlot = INDEX_NONE;
 
 	/** Whether this joint is still in the structure. A given joint carries nothing. */
 	bool bHasGiven = false;
@@ -209,6 +271,22 @@ struct FInspectorPieceEntry
 	 * a second copy of that policy is exactly what the action table exists not to have.
 	 */
 	bool bIsLivePiece = false;
+
+	/**
+	 * Why this brick is or is not being held up, in words — on EVERY row, not just the one
+	 * whose joints are broken out.
+	 *
+	 * ELEVEN SELECTED BRICKS ARE ELEVEN IDENTICAL ROWS WITHOUT IT, and finding the falling one
+	 * means hovering each in turn. It is the same word FPieceMenuInspector::SupportText carries
+	 * for the singled-out brick and it is asked the same way — see the tests, which hold the two
+	 * against each other so the row and the readout under it cannot disagree.
+	 *
+	 * NEVER EMPTY, INCLUDING FOR A REF THAT NAMES NOTHING. A blank column beside a full one
+	 * reads as a readout that failed, which is the rule "No bricks selected" and "No joints"
+	 * already follow — and the fail-closed word for a ref naming nothing is emphatically not
+	 * "not solved yet", which claims the brick exists.
+	 */
+	FString SupportText;
 };
 
 /**
@@ -228,6 +306,21 @@ struct FInspectorPieceEntry
  */
 struct FPieceMenuInspector
 {
+	/**
+	 * What the panel calls itself, and it says so WHATEVER STATE THE PANEL IS IN.
+	 *
+	 * A CONSTANT STRING IS STILL A STRING THE WIDGET MAY NOT SPELL. Every other word on this
+	 * struct is here because choosing it is a decision no test can reach in Slate; a header
+	 * is the same rule with the branch count at zero, and the day it gains one — a word that
+	 * changes with the mode, a count folded into it — the decision is already on the testable
+	 * side of the seam rather than needing to be moved there.
+	 *
+	 * IT NEVER GOES EMPTY, INCLUDING WITH NOTHING SELECTED. A fixed panel is on screen while
+	 * the selection is empty, and a panel with no heading over an empty list reads as a readout
+	 * that failed rather than as one with nothing to say.
+	 */
+	FString HeaderText;
+
 	/**
 	 * How many bricks are selected.
 	 *
@@ -255,6 +348,39 @@ struct FPieceMenuInspector
 
 	/** Which brick that is. Default when none — see bHasInspectedPiece. */
 	FPieceRef InspectedRef;
+
+	/**
+	 * WHICH BRICK THE READOUT UNDER IT IS ABOUT, in the words the entry list uses.
+	 *
+	 * THE READOUT MUST NAME ITS OWN SUBJECT. A support word and six joint lines with no brick
+	 * named above them are numbers about whichever brick the player last happened to point at,
+	 * and a panel where the list can scroll makes that worse rather than better: the entry the
+	 * breakout belongs to can be scrolled out of sight entirely while the breakout stays.
+	 *
+	 * IT IS THE ENTRY'S OWN Label RATHER THAN A SECOND DERIVATION, and it has to be — two
+	 * inches apart on one panel, one brick must not be "course 2 · #1" above and anything else
+	 * below. A widget that hunted the list for bIsInspected and read the label off it would be
+	 * doing that search in the one place no test can reach.
+	 *
+	 * EMPTY EXACTLY WHEN NO BRICK IS SINGLED OUT, like SupportText and JointsText.
+	 */
+	FString InspectedLabel;
+
+	/**
+	 * What the readout region says when there is no brick to break out, and NOTHING WHEN
+	 * THERE IS.
+	 *
+	 * A FIXED PANEL RESERVES THE READOUT'S SPACE WHETHER OR NOT IT HAS ONE, which is the whole
+	 * reason this exists: the alternative is a hole in the middle of the panel that looks like
+	 * a readout that failed. It is the same rule "No bricks selected" and "No joints" already
+	 * follow — an absence is a fact to be stated, and a widget left to notice the absence for
+	 * itself is holding the branch where nothing can read it.
+	 *
+	 * AND IT IS EMPTY WITH NOTHING SELECTED AT ALL, which is the third state rather than a
+	 * second copy of the second. Told to hover a brick when the list is empty, a player would
+	 * hunt a list that has nothing in it; CountText is what speaks for that state.
+	 */
+	FString InspectedHintText;
 
 	/**
 	 * Why the inspected brick is or is not being held up, in words.

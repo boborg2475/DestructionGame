@@ -244,12 +244,16 @@ private:
 	 * no logic here to be wrong: a button per row, its label off the row, and a click that
 	 * calls ChoosePieceMenuRow with its own index and nothing else.
 	 *
-	 * IT DRAWS THE READOUT TOO, AND EVERY STRING IN IT IS ALREADY DECIDED. CountText, each
-	 * entry's Label, the inspected brick's SupportText and JointsText, and one finished line
-	 * per joint all come off FPieceMenuInspector, which Core/PieceMenu.h explains is worded
-	 * there precisely so that nothing here has to choose a unit, a precision, a singular or a
-	 * plural. A branch appearing in this function is the drift to watch for; if the readout
-	 * ever needs one, the missing string belongs in the model.
+	 * IT DRAWS THE READOUT TOO, AND EVERY STRING IN IT IS ALREADY DECIDED. HeaderText, CountText,
+	 * each entry's Label, the inspected brick's InspectedLabel, SupportText and JointsText, one
+	 * finished line per joint, the headroom caption and its decade ticks — and the hint that
+	 * stands in for the whole breakout when no brick is singled out — all come off
+	 * FPieceMenuInspector, which Core/PieceMenu.h explains is worded there precisely so that
+	 * nothing here has to choose a unit, a precision, a singular or a plural. Even the emptiness
+	 * is the model's: InspectedLabel and InspectedHintText are empty in exactly the states the
+	 * other is not, so drawing both unconditionally draws whichever exists. A branch appearing in
+	 * this function is the drift to watch for; if the readout ever needs one, the missing string
+	 * belongs in the model.
 	 *
 	 * The build sits beside the Append in ShowPieceMenu and the removal beside the Reset in
 	 * DismissPieceMenu, so it inherits the dismiss-then-build discipline that already makes

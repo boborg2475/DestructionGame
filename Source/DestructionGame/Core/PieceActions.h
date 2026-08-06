@@ -44,6 +44,17 @@ struct FPieceAction
 	const TCHAR* Label = nullptr;
 	bool (*CanRun)(const FStructureBinding&, int32 PieceHandle) = nullptr;
 	bool (*Run)(FPieceActionContext&) = nullptr;
+
+	/**
+	 * Whether running this row destroys something a player cannot get back.
+	 *
+	 * DATA ON THE ROW, WHICH IS THE ONLY PLACE IT CAN BE. A presenter or a widget deciding it
+	 * by comparing the label against "Delete" is the switch statement this table exists not to
+	 * have, written in string literals and hidden where no test can read it. It defaults to
+	 * FALSE so that adding a row is still adding a row — a new action is harmless until it says
+	 * otherwise, and saying otherwise is one field.
+	 */
+	bool bIsDestructive = false;
 };
 
 /**

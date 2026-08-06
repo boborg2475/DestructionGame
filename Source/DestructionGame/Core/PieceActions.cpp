@@ -46,8 +46,15 @@ namespace
 		return Context.Binding.RemovePiece(Context.PieceHandle);
 	}
 
+	/*
+	 * Delete IS DESTRUCTIVE, AND THE ROW IS WHERE THAT IS SAID. It hands a brick to physics and
+	 * takes it out of the graph, and nothing in this project puts one back — so a panel has to be
+	 * able to draw its button differently from a harmless one. The only alternative anybody would
+	 * write is a presenter or a widget comparing the caption against the word "Delete", which is a
+	 * policy in a string literal in the one place no test can read it.
+	 */
 	const FPieceAction PieceActionRows[] = {
-		{ TEXT("Delete"), &PieceActionDeleteCanRun, &PieceActionDeleteRun }
+		{ TEXT("Delete"), &PieceActionDeleteCanRun, &PieceActionDeleteRun, /*bIsDestructive*/ true }
 	};
 
 	/**

@@ -281,11 +281,79 @@ namespace PieceInspectorTestSupport
 		return TEXT("<not a role>");
 	}
 
+	const TCHAR* NameOfBand(EJointMarginBand Band)
+	{
+		switch (Band)
+		{
+		case EJointMarginBand::Critical:    return TEXT("Critical");
+		case EJointMarginBand::Caution:     return TEXT("Caution");
+		case EJointMarginBand::Comfortable: return TEXT("Comfortable");
+		}
+
+		return TEXT("<not a band>");
+	}
+
+	/**
+	 * HOW SEVERE A BAND IS, ORDERED HERE RATHER THAN BY THE ENUMERATOR'S OWN VALUE.
+	 *
+	 * The numeric order of the enumerators is production's choice — zero has to be the one that
+	 * promises least, which is a fail-closed argument and not a scale — so a sweep that compared
+	 * the enumerators directly would be asserting against whatever order somebody happened to
+	 * declare. This is the order a PLAYER reads: more load can never mean a calmer colour.
+	 */
+	int32 SeverityOfBand(EJointMarginBand Band)
+	{
+		switch (Band)
+		{
+		case EJointMarginBand::Comfortable: return 0;
+		case EJointMarginBand::Caution:     return 1;
+		case EJointMarginBand::Critical:    return 2;
+		}
+
+		return 3;
+	}
+
+	/**
+	 * WHAT AN ENTRY'S SUPPORT COLUMN READS WHEN THE REF NAMES NO BRICK AT ALL, SPELLED OUT HERE
+	 * RATHER THAN IMPORTED FROM THE MODEL.
+	 *
+	 * A brick a removal took, a ref naming another wall and a ref missing a half all come back
+	 * bIsPiece false, and the truthful union of the three is that the ref names nothing in the
+	 * structure this panel is reading.
+	 *
+	 * THE OBVIOUS IMPLEMENTATION PRODUCES "not solved yet" AND THAT IS THE FAIL-OPEN ANSWER.
+	 * PresenterWordForSupport asked of a default FPieceInspection sees bHasSupportAnswer false
+	 * and says so — a sentence which promises the brick is there and that nobody has run a solve
+	 * yet, beside a brick that is not there. It is also indistinguishable, on a freshly built
+	 * wall, from every live row on the panel.
+	 */
+	const TCHAR* const InspectorNoBrickSupportWord = TEXT("not in this wall");
+
+	/**
+	 * THE ONE WORD THE PANEL CALLS ITSELF, SPELLED HERE RATHER THAN READ OFF THE MODEL.
+	 *
+	 * A header that is a constant in production is a constant a test may not import, for the
+	 * reason every other expectation in this file is written out: a check that took the word
+	 * from the thing it is checking agrees with it whatever it says, including nothing at all.
+	 */
+	const TCHAR* const InspectorHeaderWord = TEXT("Selection");
+
+	/**
+	 * AND THE LINE THAT STANDS IN FOR A READOUT THERE IS NOT ONE, also spelled out.
+	 *
+	 * It is a sentence rather than a blank because a fixed-size panel reserves the readout's
+	 * space whether or not it has one, and an empty reserved region reads as a readout that
+	 * failed. Which STATE it belongs to is the assertion — bricks listed, none singled out —
+	 * and that is swept below rather than written per row.
+	 */
+	const TCHAR* const InspectorHintLine = TEXT("Hover a brick in the list to see its joints");
+
 	/** What came back, so a failure reads without a debugger. */
 	FString DescribeInspector(const FPieceMenuInspector& Inspector)
 	{
 		FString Line = FString::Printf(
-			TEXT("{count:%d '%s' entries:"), Inspector.SelectedCount, *Inspector.CountText);
+			TEXT("{header:'%s' count:%d '%s' entries:"),
+			*Inspector.HeaderText, Inspector.SelectedCount, *Inspector.CountText);
 
 		if (Inspector.Pieces.Num() == 0)
 		{
@@ -297,17 +365,18 @@ namespace PieceInspectorTestSupport
 			const FInspectorPieceEntry& Entry = Inspector.Pieces[Index];
 
 			Line += FString::Printf(
-				TEXT("%s'%s'{%d,%d}%s%s"),
+				TEXT("%s'%s'(%s){%d,%d}%s%s"),
 				Index == 0 ? TEXT("") : TEXT(" "),
-				*Entry.Label, Entry.Ref.StructureId, Entry.Ref.PieceIndex,
+				*Entry.Label, *Entry.SupportText, Entry.Ref.StructureId, Entry.Ref.PieceIndex,
 				Entry.bIsLivePiece ? TEXT("") : TEXT("[dead]"),
 				Entry.bIsInspected ? TEXT("<==") : TEXT(""));
 		}
 
 		Line += FString::Printf(
-			TEXT(" inspected:%s{%d,%d} support:'%s' jointstext:'%s' joints:"),
+			TEXT(" inspected:%s{%d,%d} '%s' hint:'%s' support:'%s' jointstext:'%s' joints:"),
 			Inspector.bHasInspectedPiece ? TEXT("yes") : TEXT("no"),
 			Inspector.InspectedRef.StructureId, Inspector.InspectedRef.PieceIndex,
+			*Inspector.InspectedLabel, *Inspector.InspectedHintText,
 			*Inspector.SupportText, *Inspector.JointsText);
 
 		if (Inspector.Joints.Num() == 0)
@@ -320,12 +389,13 @@ namespace PieceInspectorTestSupport
 			const FInspectorJointRow& Joint = Inspector.Joints[Index];
 
 			Line += FString::Printf(
-				TEXT("%s[c%d->p%d %s %.6f N %.9f %% %s pass=%d margin:'%s' bar=%.9f '%s']"),
+				TEXT("%s[c%d->p%d %s %.6f N %.9f %% %s pass=%d margin:'%s' bar=%.9f %s slot=%d '%s']"),
 				Index == 0 ? TEXT("") : TEXT(" "),
 				Joint.ConnectionIndex, Joint.OtherPieceIndex, NameOfRole(Joint.Role),
 				Joint.ForceN, Joint.UtilisationPercent,
 				Joint.bHasGiven ? TEXT("GIVEN") : TEXT("intact"),
-				Joint.BreakPass, *Joint.MarginText, Joint.HeadroomFraction, *Joint.Text);
+				Joint.BreakPass, *Joint.MarginText, Joint.HeadroomFraction,
+				NameOfBand(Joint.MarginBand), Joint.ColourSlot, *Joint.Text);
 		}
 
 		Line += FString::Printf(TEXT(" caption:'%s' scale:"), *Inspector.HeadroomCaption);
@@ -388,6 +458,18 @@ namespace PieceInspectorTestSupport
 		 * point of the field is that an inspected brick with NO joints still gets one.
 		 */
 		const TCHAR* ExpectedJointsText = TEXT("");
+
+		/**
+		 * What each ENTRY's own support column reads, in the same order as ExpectedEntries.
+		 *
+		 * ONE PER ROW, WHICH IS THE WHOLE POINT OF THE FIELD. Eleven picked bricks are eleven
+		 * identical strings today, so finding the one that is falling means hovering each of
+		 * them in turn — the panel holds the answer for exactly one brick at a time while the
+		 * model has it for all of them. Written out from the fixture diagram rather than read
+		 * back off the binding, for the reason ExpectedLive is: a check derived the way the
+		 * presenter derives it agrees with the presenter however wrong it is.
+		 */
+		TArray<const TCHAR*> ExpectedEntrySupport;
 	};
 
 	/**
@@ -410,11 +492,42 @@ namespace PieceInspectorTestSupport
 				*DescribeInspector(Inspector)),
 			Inspector.Pieces.Num(), Inspector.SelectedCount);
 
+		/*
+		 * AND THE PANEL SAYS WHAT IT IS, IN EVERY STATE THERE IS. It is the only line that
+		 * cannot go quiet: a fixed panel is on screen while the selection is empty, and a
+		 * heading that disappeared with the last brick would leave a bare count over a blank
+		 * box. Swept rather than tabled because it is the same word in every row — a row-by-row
+		 * expectation would be thirteen copies of one fact.
+		 */
+		Test.TestEqual(
+			FString::Printf(
+				TEXT("%s: the panel must always name itself '%s', it says '%s'"),
+				Where, InspectorHeaderWord, *Inspector.HeaderText),
+			Inspector.HeaderText, FString(InspectorHeaderWord));
+
 		int32 InspectedEntries = 0;
+
+		/** Which entry the model marked, so the readout's own heading can be held against it. */
+		int32 MarkedEntry = INDEX_NONE;
+
+		/**
+		 * How many rows said NOTHING about whether their brick is standing up.
+		 *
+		 * COUNTED AND ASSERTED ONCE RATHER THAN ROW BY ROW, because a field nothing fills is
+		 * empty on every row at once and forty copies of one failure is a log nobody reads.
+		 */
+		int32 SilentEntries = 0;
 
 		for (int32 Index = 0; Index < Inspector.Pieces.Num(); ++Index)
 		{
 			const FInspectorPieceEntry& Entry = Inspector.Pieces[Index];
+
+			SilentEntries += Entry.SupportText.IsEmpty() ? 1 : 0;
+
+			if (Entry.bIsInspected && MarkedEntry == INDEX_NONE)
+			{
+				MarkedEntry = Index;
+			}
 
 			InspectedEntries += Entry.bIsInspected ? 1 : 0;
 
@@ -440,6 +553,40 @@ namespace PieceInspectorTestSupport
 				TEXT("%s: at most ONE entry may read as inspected, %d do %s"),
 				Where, InspectedEntries, *DescribeInspector(Inspector)),
 			InspectedEntries, Inspector.bHasInspectedPiece ? 1 : 0);
+
+		/*
+		 * AND EVERY ROW SAYS WHETHER ITS BRICK IS STANDING UP — IN EVERY STATE, INCLUDING FOR A
+		 * REF THAT NAMES NOTHING AND ON A WALL NOBODY HAS SOLVED.
+		 *
+		 * A COLUMN THAT IS BLANK ON SOME ROWS AND FULL ON OTHERS IS THE ABSENCE THIS WHOLE STRUCT
+		 * IS SHAPED AGAINST, one field further out: "No bricks selected" is a sentence rather than
+		 * a blank for exactly this reason, and a widget left to notice an empty string and draw
+		 * something else would be holding the branch where nothing can read it. WHICH word each
+		 * state gets is the tables' job; that there is always one is swept here.
+		 */
+		Test.TestEqual(
+			FString::Printf(
+				TEXT("%s: every entry must say how its brick is held up, %d of %d say nothing %s"),
+				Where, SilentEntries, Inspector.Pieces.Num(), *DescribeInspector(Inspector)),
+			SilentEntries, 0);
+
+		/*
+		 * AND THE ROW AND THE READOUT UNDER IT MAY NOT DISAGREE. Two inches apart on one panel,
+		 * one brick must not read "supported" in the list and "stranded" over its joints — which
+		 * is the same argument that already ties InspectedLabel to the marked entry's Label, and
+		 * it is exactly the drift two independent derivations of one question produce. Held
+		 * against the model's own other field rather than against a string written here, on top
+		 * of the tables that pin what that word actually is.
+		 */
+		if (Inspector.bHasInspectedPiece && Inspector.Pieces.IsValidIndex(MarkedEntry))
+		{
+			Test.TestEqual(
+				FString::Printf(
+					TEXT("%s: entry %d is the brick the readout is about, so its support word must match; the row says '%s' and the readout says '%s' %s"),
+					Where, MarkedEntry, *Inspector.Pieces[MarkedEntry].SupportText,
+					*Inspector.SupportText, *DescribeInspector(Inspector)),
+				Inspector.Pieces[MarkedEntry].SupportText, Inspector.SupportText);
+		}
 
 		/*
 		 * NOTHING INSPECTED MEANS NOTHING DRAWN ABOUT ONE. A breakout left over from the
@@ -468,6 +615,17 @@ namespace PieceInspectorTestSupport
 					TEXT("%s: nothing inspected must say nothing about joints, it says '%s'"),
 					Where, *Inspector.JointsText),
 				Inspector.JointsText, FString());
+
+			/*
+			 * AND IT MUST NOT HEAD THE READOUT WITH A BRICK EITHER. A brick named over an
+			 * empty breakout is the stale-field defect in the one field a player reads FIRST
+			 * — the name of the brick the numbers under it are about.
+			 */
+			Test.TestEqual(
+				FString::Printf(
+					TEXT("%s: nothing inspected must name no brick over the readout, it names '%s'"),
+					Where, *Inspector.InspectedLabel),
+				Inspector.InspectedLabel, FString());
 
 			/*
 			 * AND NO SCALE, FOR THE REASON THERE IS NO SUPPORT WORD. The headroom caption
@@ -501,7 +659,60 @@ namespace PieceInspectorTestSupport
 					TEXT("%s: a brick is singled out, so its %d joint(s) must be summed up in words; the line is empty %s"),
 					Where, Inspector.Joints.Num(), *DescribeInspector(Inspector)),
 				Inspector.JointsText.IsEmpty());
+
+			/*
+			 * AND THE BREAKOUT NAMES THE BRICK IT IS ABOUT, IN THE LIST'S OWN WORDS.
+			 *
+			 * HELD AGAINST THE MARKED ENTRY'S LABEL RATHER THAN AGAINST A STRING WRITTEN OUT
+			 * HERE, and that is not circular: the tables below pin every entry label character
+			 * for character against a hand-worked diagram, so this pins the two halves of one
+			 * panel to each other on top of that. Two inches apart, one brick may not be
+			 * "course 2 · #1" in the list and something else over the joints — which is the same
+			 * argument CheckFarEndsReadAsPositions makes for the far ends, one field up.
+			 *
+			 * The list scrolling is what turns this from tidy into necessary: the entry a
+			 * breakout belongs to can be scrolled out of sight while the breakout stays.
+			 */
+			if (Inspector.Pieces.IsValidIndex(MarkedEntry))
+			{
+				Test.TestEqual(
+					FString::Printf(
+						TEXT("%s: the readout must head itself with the brick it is about; entry %d reads '%s' and the readout says '%s' %s"),
+						Where, MarkedEntry, *Inspector.Pieces[MarkedEntry].Label,
+						*Inspector.InspectedLabel, *DescribeInspector(Inspector)),
+					Inspector.InspectedLabel, Inspector.Pieces[MarkedEntry].Label);
+			}
+
+			Test.TestFalse(
+				*FString::Printf(
+					TEXT("%s: a brick is singled out, so the readout must name it; the line is empty %s"),
+					Where, *DescribeInspector(Inspector)),
+				Inspector.InspectedLabel.IsEmpty());
 		}
+
+		/*
+		 * AND THE READOUT REGION SAYS SOMETHING IN EXACTLY ONE OF THE THREE STATES A PANEL CAN
+		 * BE IN, WHICH IS WHY THIS IS ONE ASSERTION RATHER THAN A GUARD PER STATE.
+		 *
+		 * Bricks picked and none pointed at is the state a fixed panel has to fill: the space
+		 * is reserved whether or not there is a breakout to put in it, and a blank region under
+		 * a full list reads as a readout that failed rather than as one waiting. A brick pointed
+		 * at must NOT carry it — a hint standing over a live breakout is the stale-field defect
+		 * this whole struct is shaped against — and neither must an empty selection, where the
+		 * player would be told to hover a list with nothing in it and CountText already speaks.
+		 */
+		const bool bShouldOfferTheHint =
+			Inspector.SelectedCount > 0 && !Inspector.bHasInspectedPiece;
+
+		Test.TestEqual(
+			FString::Printf(
+				TEXT("%s: %d brick(s) picked and %s singled out, so the readout region should read '%s'; it reads '%s'"),
+				Where, Inspector.SelectedCount,
+				Inspector.bHasInspectedPiece ? TEXT("one") : TEXT("none"),
+				bShouldOfferTheHint ? InspectorHintLine : TEXT(""),
+				*Inspector.InspectedHintText),
+			Inspector.InspectedHintText,
+			bShouldOfferTheHint ? FString(InspectorHintLine) : FString());
 
 		/*
 		 * AND EVERY NUMBER A HUMAN WILL READ IS FINITE. GetConnectionUtilisation fails closed
@@ -509,9 +720,49 @@ namespace PieceInspectorTestSupport
 		 * 100 is an infinity, and FMath::Max discards a NaN rather than propagating it — so
 		 * "it looked like a number" is exactly how a degenerate answer reaches a screen.
 		 */
+		/**
+		 * How many rows took a colour slot that is not their own row number, and how many took
+		 * one after a row that had already run out. Counted rather than asserted per row, for
+		 * the reason the silent entries are: one broken rule breaks every row at once.
+		 */
+		int32 MisplacedSlots = 0;
+		int32 SlotsAfterTheEnd = 0;
+		bool bSlotsHaveRunOut = false;
+
 		for (int32 Index = 0; Index < Inspector.Joints.Num(); ++Index)
 		{
 			const FInspectorJointRow& Joint = Inspector.Joints[Index];
+
+			/*
+			 * THE SWATCH IS THE ROW'S NUMBER, IN A FIXED ORDER, UNTIL THE PALETTE RUNS OUT AND
+			 * THEN IT IS NOTHING AT ALL.
+			 *
+			 * ROW i TAKES SLOT i is what makes the colours stable while a player scans: the first
+			 * joint row is the first colour on every brick they point at. The alternative — a
+			 * colour keyed on the brick at the far end — is what a reader assumes is happening,
+			 * and it is unimplementable at this scale: a wall is 1,220 bricks and a palette is a
+			 * handful of hues, so it must collide, and two rows in one colour is a lie about the
+			 * one thing the swatch is for.
+			 *
+			 * AND PAST THE END IT IS INDEX_NONE, NEVER A WRAP. Wrapping is the tidy-looking answer
+			 * and it reintroduces the collision it was chosen to avoid, on the brick with the most
+			 * joints — the one being read hardest. No swatch is an absence; a repeated swatch is a
+			 * wrong answer. Once out, out: a palette that resumed further down the list would put
+			 * the same colour twice on one readout with rows in between.
+			 */
+			if (Joint.ColourSlot != Index && Joint.ColourSlot != INDEX_NONE)
+			{
+				++MisplacedSlots;
+			}
+
+			if (Joint.ColourSlot == INDEX_NONE)
+			{
+				bSlotsHaveRunOut = true;
+			}
+			else if (bSlotsHaveRunOut)
+			{
+				++SlotsAfterTheEnd;
+			}
 
 			Test.TestTrue(
 				*FString::Printf(TEXT("%s: joint row %d must show a finite force, it shows %f"),
@@ -570,8 +821,33 @@ namespace PieceInspectorTestSupport
 						TEXT("%s: joint row %d has given, so its bar must be empty; it reads %f"),
 						Where, Index, Joint.HeadroomFraction),
 					Joint.HeadroomFraction, 0.0);
+
+				/*
+				 * AND IT IS COLOURED LIKE THE HOLE IT IS. A given joint is 0 N at 0 %, which is
+				 * the arithmetic of a joint with nothing on it — the most comfortable state there
+				 * is — so a band computed from the number alone paints a hole in the wall the same
+				 * colour as a healthy bed joint on a pad. That is bHasGiven's whole reason for
+				 * existing, reappearing one field further out.
+				 */
+				Test.TestTrue(
+					*FString::Printf(
+						TEXT("%s: joint row %d has given, so its bar must be in the most severe band, it is %s %s"),
+						Where, Index, NameOfBand(Joint.MarginBand), *DescribeInspector(Inspector)),
+					Joint.MarginBand == EJointMarginBand::Critical);
 			}
 		}
+
+		Test.TestEqual(
+			FString::Printf(
+				TEXT("%s: every joint row's colour slot must be its own row number or nothing at all, %d of %d are neither %s"),
+				Where, MisplacedSlots, Inspector.Joints.Num(), *DescribeInspector(Inspector)),
+			MisplacedSlots, 0);
+
+		Test.TestEqual(
+			FString::Printf(
+				TEXT("%s: once the palette has run out it must stay out, %d row(s) took a colour after one that did not %s"),
+				Where, SlotsAfterTheEnd, *DescribeInspector(Inspector)),
+			SlotsAfterTheEnd, 0);
 
 		/*
 		 * THE SCALE IS DRAWN EXACTLY WHEN THERE IS A BAR TO LABEL — the user's own
@@ -841,7 +1117,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			INDEX_NONE,
 			0,
 			TEXT(""),
-			TEXT("")
+			TEXT(""),
+			TArray<const TCHAR*>()
 		},
 		{
 			/* One brick, singled out: the ordinary case, and the singular of the count. */
@@ -855,7 +1132,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			0,
 			3,
 			TEXT("supported"),
-			TEXT("3 joints")
+			TEXT("3 joints"),
+			{ TEXT("supported") }
 		},
 		{
 			/*
@@ -877,7 +1155,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			1,
 			1,
 			TEXT("grounded"),
-			TEXT("1 joint")
+			TEXT("1 joint"),
+			{ TEXT("supported"), TEXT("grounded"), TEXT("supported") }
 		},
 		{
 			/* Picked but not pointed at: a list with no breakout under it. */
@@ -895,7 +1174,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			INDEX_NONE,
 			0,
 			TEXT(""),
-			TEXT("")
+			TEXT(""),
+			{ TEXT("supported"), TEXT("grounded"), TEXT("supported") }
 		},
 		{
 			/*
@@ -914,7 +1194,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			INDEX_NONE,
 			0,
 			TEXT(""),
-			TEXT("")
+			TEXT(""),
+			{ TEXT("supported"), TEXT("grounded") }
 		},
 		{
 			/*
@@ -935,7 +1216,15 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			INDEX_NONE,
 			0,
 			TEXT(""),
-			TEXT("")
+			TEXT(""),
+			/*
+			 * AND THE BRICK THAT IS GONE SAYS SO RATHER THAN QUOTING THE LAST SOLVE. FStructure
+			 * legitimately keeps a removed piece's support answer until something re-solves —
+			 * this one would still read "supported" — and drawing that beside a hole in the wall
+			 * is a confident answer about nothing. InspectPiece is what fails closed on it, and
+			 * this column is where that has to survive being turned into a word.
+			 */
+			{ TEXT("supported"), InspectorNoBrickSupportWord }
 		},
 		{
 			/*
@@ -958,7 +1247,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			INDEX_NONE,
 			0,
 			TEXT(""),
-			TEXT("")
+			TEXT(""),
+			{ TEXT("supported"), InspectorNoBrickSupportWord }
 		},
 		{
 			/*
@@ -986,7 +1276,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			INDEX_NONE,
 			0,
 			TEXT(""),
-			TEXT("")
+			TEXT(""),
+			{ TEXT("supported"), InspectorNoBrickSupportWord }
 		},
 		{
 			/*
@@ -1012,7 +1303,15 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			0,
 			3,
 			TEXT("supported"),
-			TEXT("3 joints")
+			TEXT("3 joints"),
+			/*
+			 * AND THE RELEASED BRICK READS "falling" WHILE READING LIVE, which is the pair of
+			 * fields saying two different true things about one brick: it is still a piece in the
+			 * graph (so the list must not grey it out) and nothing is holding it up (so the list
+			 * must say so). This is also the row where the support column earns its place — the
+			 * menu is EMPTY here, so the panel's only explanation of why is this word.
+			 */
+			{ TEXT("supported"), TEXT("falling") }
 		},
 		{
 			/*
@@ -1038,7 +1337,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			0,
 			0,
 			TEXT("falling"),
-			TEXT("No joints")
+			TEXT("No joints"),
+			{ TEXT("falling") }
 		},
 		{
 			/*
@@ -1057,7 +1357,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			INDEX_NONE,
 			0,
 			TEXT(""),
-			TEXT("")
+			TEXT(""),
+			{ TEXT("grounded"), TEXT("grounded") }
 		},
 		{
 			/*
@@ -1086,7 +1387,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			0,
 			1,
 			TEXT("grounded"),
-			TEXT("1 joint")
+			TEXT("1 joint"),
+			{ TEXT("grounded"), TEXT("grounded") }
 		},
 		{
 			/*
@@ -1115,7 +1417,14 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			0,
 			2,
 			TEXT("stranded"),
-			TEXT("2 joints")
+			TEXT("2 joints"),
+			/*
+			 * AND THE ROW SAYS "stranded" TOO, WHICH IS THE WORD THE LIST CANNOT AFFORD TO LOSE.
+			 * A stranded brick is one the solver could not route rather than one that is falling,
+			 * and in a list of eleven picked bricks it is the only thing that would tell a player
+			 * the numbers under the others may be worth doubting.
+			 */
+			{ TEXT("stranded") }
 		},
 	};
 
@@ -1170,6 +1479,11 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			FString::Printf(TEXT("%s: the table row must name one liveness per expected entry"),
 				Case.Description),
 			Case.ExpectedLive.Num(), Case.ExpectedEntries.Num());
+
+		TestEqual(
+			FString::Printf(TEXT("%s: the table row must name one support word per expected entry"),
+				Case.Description),
+			Case.ExpectedEntrySupport.Num(), Case.ExpectedEntries.Num());
 
 		if (Inspector.Pieces.Num() == Case.ExpectedEntries.Num())
 		{
@@ -1251,6 +1565,37 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 							Entry.bIsLivePiece ? TEXT("a live piece") : TEXT("naming nothing"),
 							*DescribeInspector(Inspector)),
 						Entry.bIsLivePiece == Case.ExpectedLive[Index]);
+				}
+
+				/*
+				 * AND WHY THAT BRICK IS OR IS NOT STANDING UP, ON ITS OWN ROW.
+				 *
+				 * THE PANEL SHOWS ELEVEN IDENTICAL STRINGS WITHOUT IT. Every fact the list
+				 * currently carries — the position, the liveness — is about IDENTITY, so a
+				 * selection of eleven bricks says nothing whatsoever about what the wall is
+				 * doing until the player hovers each row in turn and reads the breakout. The
+				 * model has the answer for all of them already: BuildPieceMenuInspector calls
+				 * InspectPiece once per entry to decide bIsLivePiece, and the support state
+				 * comes back on the very same struct.
+				 *
+				 * READ BACK, NOT RE-DERIVED, WHICH IS WHY THE WORDS ARE THE READOUT'S OWN.
+				 * "grounded", "supported", "stranded", "falling" and "not solved yet" are what
+				 * PresenterWordForSupport already says for the singled-out brick, and a second
+				 * vocabulary for the same five states would be two panels in one.
+				 *
+				 * EXPECTED VALUES COME FROM THE FIXTURE DIAGRAM, per row, never from the graph.
+				 */
+				if (Case.ExpectedEntrySupport.IsValidIndex(Index))
+				{
+					TestEqual(
+						FString::Printf(
+							TEXT("%s: entry %d {%d,%d} should read '%s', it reads '%s' %s"),
+							Case.Description, Index,
+							Case.ExpectedEntries[Index].StructureId,
+							Case.ExpectedEntries[Index].PieceIndex,
+							Case.ExpectedEntrySupport[Index], *Entry.SupportText,
+							*DescribeInspector(Inspector)),
+						Entry.SupportText, FString(Case.ExpectedEntrySupport[Index]));
 				}
 
 				TestTrue(
@@ -1369,6 +1714,22 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 				TEXT("a wall nobody has solved: its selected brick is still a live piece %s"),
 				*DescribeInspector(Inspector)),
 			Inspector.Pieces.Num() == 1 && Inspector.Pieces[0].bIsLivePiece);
+
+		/*
+		 * AND THE ENTRY'S OWN COLUMN SAYS THE SAME THING THE READOUT DOES, WHICH IS THE STATE
+		 * THE COLUMN IS MOST LIKELY TO GET WRONG. "not solved yet" is the sentence that exists
+		 * because EPieceSupport::Falling is both a real collapse and an absent answer, and a
+		 * per-row column that took the enumerator at face value would draw a freshly built wall
+		 * as a list of falling bricks — which is the same catastrophe-that-has-not-happened one
+		 * field out, and far louder in a list of forty rows than in one readout.
+		 */
+		TestEqual(
+			FString::Printf(
+				TEXT("a wall nobody has solved: its entry must NOT read 'falling', it reads '%s' %s"),
+				Inspector.Pieces.Num() == 1 ? *Inspector.Pieces[0].SupportText : TEXT("<no entry>"),
+				*DescribeInspector(Inspector)),
+			Inspector.Pieces.Num() == 1 ? Inspector.Pieces[0].SupportText : FString(),
+			FString(TEXT("not solved yet")));
 	}
 
 	return true;
@@ -2254,6 +2615,18 @@ namespace PieceHeadroomTestSupport
 
 		/** The whole line. */
 		const TCHAR* ExpectedLine = nullptr;
+
+		/**
+		 * WHICH BAND THE BAR IS DRAWN IN — comfortable above 10x margin, cautious below it,
+		 * critical at or below 2x and for a joint that has gone.
+		 *
+		 * A COLUMN HERE RATHER THAN A TABLE OF ITS OWN, because the band is a transform of the
+		 * utilisation two columns to the left and this ladder is where those numbers already
+		 * live. What this ladder CANNOT say is where the amber/red edge is — it holds nothing
+		 * between 1x and 10x — so the two edge rows either side of 2x are a fixture of their own
+		 * in Presenter.PieceMenuJointMarginBand.
+		 */
+		EJointMarginBand ExpectedBand = EJointMarginBand::Critical;
 	};
 }
 
@@ -2408,7 +2781,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		{
 			TEXT("a thousandth of capacity: the top decade, and the bar is full"),
 			0, 49.0, 0.1, TEXT("1000× margin"), 1.0,
-			TEXT("#0  course 2 · #1  bed above  49.0 N  0.100 %  1000× margin")
+			TEXT("#0  course 2 · #1  bed above  49.0 N  0.100 %  1000× margin"),
+			EJointMarginBand::Comfortable
 		},
 		{
 			/*
@@ -2418,12 +2792,14 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("a hundredth of capacity: two decades of bar, and a whole-number margin"),
 			1, 490.0, 1.0, TEXT("100× margin"), 2.0 / 3.0,
-			TEXT("#1  course 2 · #2  bed above  490.0 N  1.000 %  100× margin")
+			TEXT("#1  course 2 · #2  bed above  490.0 N  1.000 %  100× margin"),
+			EJointMarginBand::Comfortable
 		},
 		{
 			TEXT("a tenth of capacity: one decade of bar, and a margin worth a decimal"),
 			2, 4900.0, 10.0, TEXT("10.0× margin"), 1.0 / 3.0,
-			TEXT("#2  course 2 · #3  bed above  4.9 kN  10.000 %  10.0× margin")
+			TEXT("#2  course 2 · #3  bed above  4.9 kN  10.000 %  10.0× margin"),
+			EJointMarginBand::Caution
 		},
 		{
 			/*
@@ -2434,7 +2810,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("exactly at the limit: the bar is empty and there is no margin to quote"),
 			3, 49000.0, 100.0, TEXT("no margin left"), 0.0,
-			TEXT("#3  course 2 · #4  bed above  49.0 kN  100.000 %  no margin left")
+			TEXT("#3  course 2 · #4  bed above  49.0 kN  100.000 %  no margin left"),
+			EJointMarginBand::Critical
 		},
 		{
 			/*
@@ -2445,7 +2822,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("four decades of margin: the bar pegs full and the number does not"),
 			4, 4.9, 0.01, TEXT("10000× margin"), 1.0,
-			TEXT("#4  course 2 · #5  bed above  4.9 N  0.010 %  10000× margin")
+			TEXT("#4  course 2 · #5  bed above  4.9 N  0.010 %  10000× margin"),
+			EJointMarginBand::Comfortable
 		},
 		{
 			/*
@@ -2455,7 +2833,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("just under a hundred times: still a decimal"),
 			5, 499.8, 1.02, TEXT("98.0× margin"), 0.66379994274602749,
-			TEXT("#5  course 2 · #6  bed above  499.8 N  1.020 %  98.0× margin")
+			TEXT("#5  course 2 · #6  bed above  499.8 N  1.020 %  98.0× margin"),
+			EJointMarginBand::Comfortable
 		},
 		{
 			/*
@@ -2468,12 +2847,14 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("past the limit: still no margin, never a fraction of one"),
 			6, 98000.0, 200.0, TEXT("no margin left"), 0.0,
-			TEXT("#6  course 2 · #7  bed above  98.0 kN  200.000 %  no margin left")
+			TEXT("#6  course 2 · #7  bed above  98.0 kN  200.000 %  no margin left"),
+			EJointMarginBand::Critical
 		},
 		{
 			TEXT("twelve and a half times, between two decades"),
 			7, 3920.0, 8.0, TEXT("12.5× margin"), 0.36563667100268549,
-			TEXT("#7  course 2 · #8  bed above  3.9 kN  8.000 %  12.5× margin")
+			TEXT("#7  course 2 · #8  bed above  3.9 kN  8.000 %  12.5× margin"),
+			EJointMarginBand::Comfortable
 		},
 		{
 			/*
@@ -2485,13 +2866,15 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("exactly one thousand newtons reads in kilonewtons"),
 			8, 1000.0, 2.0408163265306123, TEXT("49.0× margin"), 0.56339869334283788,
-			TEXT("#8  course 2 · #9  bed above  1.0 kN  2.041 %  49.0× margin")
+			TEXT("#8  course 2 · #9  bed above  1.0 kN  2.041 %  49.0× margin"),
+			EJointMarginBand::Comfortable
 		},
 		{
 			/* And one tenth of a newton under it, which does not. */
 			TEXT("a tenth of a newton below the switch still reads in newtons"),
 			9, 999.9, 2.0406122448979592, TEXT("49.0× margin"), 0.5634131705494404,
-			TEXT("#9  course 2 · #10  bed above  999.9 N  2.041 %  49.0× margin")
+			TEXT("#9  course 2 · #10  bed above  999.9 N  2.041 %  49.0× margin"),
+			EJointMarginBand::Comfortable
 		},
 		{
 			/*
@@ -2508,7 +2891,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("an intact joint carrying nothing has no margin figure and a full bar"),
 			10, 0.0, 0.0, TEXT("no load"), 1.0,
-			TEXT("#10  course 1 · #1  head  0.0 N  0.000 %  no load")
+			TEXT("#10  course 1 · #1  head  0.0 N  0.000 %  no load"),
+			EJointMarginBand::Comfortable
 		},
 		{
 			/*
@@ -2528,7 +2912,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("a joint that has given reads apart from an intact joint with nothing on it"),
 			11, 0.0, 0.0, TEXT("gone"), 0.0,
-			TEXT("#11  course 2 · #11  bed above  broken (went with a removed piece)")
+			TEXT("#11  course 2 · #11  bed above  broken (went with a removed piece)"),
+			EJointMarginBand::Critical
 		},
 		{
 			/*
@@ -2559,7 +2944,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("a far end nobody can place falls back to the ref-shaped label"),
 			12, 49.0, 0.1, TEXT("1000× margin"), 1.0,
-			TEXT("#12  brick 21:13  bed above  49.0 N  0.100 %  1000× margin")
+			TEXT("#12  brick 21:13  bed above  49.0 N  0.100 %  1000× margin"),
+			EJointMarginBand::Comfortable
 		},
 	};
 
@@ -2617,6 +3003,18 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			FString::Printf(TEXT("%s: the line should read '%s', it reads '%s'"),
 				Case.Description, Case.ExpectedLine, *Row.Text),
 			Row.Text, FString(Case.ExpectedLine));
+
+		/*
+		 * AND THE BAND THE BAR IS DRAWN IN. Every bar on the panel is the same green today, so
+		 * the joint at 200 % of capacity and the joint at a ten-thousandth of it are the same
+		 * colour and differ only in a length nobody has a reference for. Which side of an edge a
+		 * joint falls on is a decision, so it is the model's; the hue it maps to is the widget's.
+		 */
+		TestTrue(
+			*FString::Printf(TEXT("%s: should be in the %s band, it is %s %s"),
+				Case.Description, NameOfBand(Case.ExpectedBand), NameOfBand(Row.MarginBand),
+				*DescribeInspector(Inspector)),
+			Row.MarginBand == Case.ExpectedBand);
 	}
 
 	/*
@@ -2711,6 +3109,417 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 					Inspector.Joints[Right].HeadroomFraction),
 				Inspector.Joints[Left].HeadroomFraction
 					>= Inspector.Joints[Right].HeadroomFraction);
+		}
+	}
+
+	/*
+	 * AND THE BAND IS MONOTONE IN THE LOAD, SWEPT OVER EVERY PAIR OF INTACT RUNGS RATHER THAN
+	 * CHECKED AT THE BOUNDARIES.
+	 *
+	 * The same argument the headroom sweep above makes, and it catches the same class of defect:
+	 * a comparison written the wrong way round, or a band chain whose guards are in the wrong
+	 * order, produces a colouring that is correct at the ends of the ladder and backwards in the
+	 * middle — which no individual expected value can see. More load can never mean a calmer
+	 * colour. Compared through SeverityOfBand rather than through the enumerators' own values,
+	 * because their numeric order is a fail-closed decision rather than a scale.
+	 */
+	for (int32 Left = 0; Left < Inspector.Joints.Num(); ++Left)
+	{
+		if (Inspector.Joints[Left].bHasGiven)
+		{
+			continue;
+		}
+
+		for (int32 Right = 0; Right < Inspector.Joints.Num(); ++Right)
+		{
+			if (Inspector.Joints[Right].bHasGiven
+				|| Inspector.Joints[Left].UtilisationPercent
+					>= Inspector.Joints[Right].UtilisationPercent)
+			{
+				continue;
+			}
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("joint %d is at %.6f %% and joint %d at %.6f %%, so the lighter one cannot be in a WORSE band: %s against %s"),
+					Left, Inspector.Joints[Left].UtilisationPercent,
+					Right, Inspector.Joints[Right].UtilisationPercent,
+					NameOfBand(Inspector.Joints[Left].MarginBand),
+					NameOfBand(Inspector.Joints[Right].MarginBand)),
+				SeverityOfBand(Inspector.Joints[Left].MarginBand)
+					<= SeverityOfBand(Inspector.Joints[Right].MarginBand));
+		}
+	}
+
+	return true;
+}
+
+/** Named again, and named apart again — see the note on PieceInspectorTestSupport. */
+namespace PieceBandBoundaryTestSupport
+{
+	using namespace PieceInspectorTestSupport;
+
+	constexpr int32 BandStructure = 33;
+
+	/**
+	 * THE SAME 49 cm2 OF GENERAL PURPOSE MORTAR THE HEADROOM LADDER USES, so the one line of
+	 * arithmetic carries over unchanged: a brick of M kilograms on this joint loads it to
+	 * exactly M / 5000 of capacity, and its margin is 5000 / M.
+	 *
+	 * A SECOND, SHORTER LADDER RATHER THAN FOUR MORE RUNGS ON THE FIRST, and the reason is
+	 * arithmetic rather than taste: every expected LINE in the headroom table names its far end
+	 * by position — "course 2 · #11" — and its joint by connection index, so inserting rungs
+	 * renumbers rows that are pinned character for character. A boundary fixture that forced a
+	 * rewrite of thirteen unrelated expectations would be a change nobody could review.
+	 */
+	constexpr double BandJointAreaSqCm = 49.0;
+	constexpr double BandMassPerFullLoadKg = 5000.0;
+
+	/**
+	 * THE FOUR MASSES THE BOUNDARIES NEED, AND THE MAIN LADDER CANNOT SUPPLY.
+	 *
+	 * The load ladder holds 10x margin (exactly the green/amber edge) and 12.5x, and then nothing
+	 * at all between 1x and 10x — so the amber/red edge at 2x is unpinned everywhere in the suite,
+	 * and an implementation that split amber from red at 3x, or at 5x, would pass every existing
+	 * row. These four are the two rungs either side of each edge:
+	 *
+	 *     499 kg   9.98 %   10.02x margin   the last comfortable joint
+	 *     500 kg  10.00 %   10.00x margin   EXACTLY the green/amber edge
+	 *    2499 kg  49.98 %    2.0008x        the last cautious joint
+	 *    2500 kg  50.00 %    2.00x          EXACTLY the amber/red edge
+	 */
+	const TArray<double> BandMassesKg = { 499.0, 500.0, 2499.0, 2500.0 };
+
+	/** A grounded pad with those four bricks sat on it, each on its own bed joint. */
+	void BuildBandLadder(FStructureBinding& Out)
+	{
+		Out.StructureId = BandStructure;
+
+		Out.AddPiece(1.0, /*bIsGrounded*/ true, nullptr, InspectorBoxAt(0.0, InspectorCourseZ(0)));
+
+		for (int32 Rung = 0; Rung < BandMassesKg.Num(); ++Rung)
+		{
+			Out.AddPiece(
+				BandMassesKg[Rung], false, nullptr,
+				InspectorBoxAt(Rung * InspectorBrickPitchCm, InspectorCourseZ(1)));
+		}
+
+		for (int32 Rung = 0; Rung < BandMassesKg.Num(); ++Rung)
+		{
+			FConnection Connection;
+			Connection.PieceA = 0;
+			Connection.PieceB = Rung + 1;
+			Connection.InterfaceNormal = InspectorBedNormal;
+			Connection.InterfaceAreaSqCm = BandJointAreaSqCm;
+			Connection.Strength = GeneralPurposeMortar;
+			Out.AddConnection(Connection);
+		}
+
+		Out.SolveLoads();
+	}
+}
+
+/**
+ * A JOINT'S BAR IS COLOURED BY HOW MUCH ROOM IT HAS LEFT, AND WHICH SIDE OF EACH EDGE IT FALLS
+ * ON IS DECIDED HERE RATHER THAN BY A WIDGET COMPARING NUMBERS.
+ *
+ * WHY THIS IS A MODEL FIELD AND NOT A SLATE TERNARY. Every bar on the panel is the same green
+ * today, which makes the one joint that is nearly gone look exactly like the five that are three
+ * orders of magnitude from failing — the bar's own fill says it, but a fill is a length and a
+ * length has to be compared against its neighbours to mean anything. A colour does not. Choosing
+ * WHERE the colour changes is a decision about what the game considers dangerous, and a widget
+ * holding `Fraction > 0.5f ? Green : Red` is that decision written where no test can read it,
+ * beside a constant nobody would ever revisit.
+ *
+ * THE EDGES ARE 10x AND 2x MARGIN, AND THE BOUNDARY ROWS ARE WHY THIS TEST EXISTS AT ALL. Any
+ * two implementations agree about a joint at 1000x and a joint at 200 %; they differ at exactly
+ * ten times and exactly twice, and those are the rows a hand-picked example never contains.
+ *
+ * AT AN EDGE THE JOINT TAKES THE WORSE BAND, UNIFORMLY, AND THAT IS THE FAIL-CLOSED DIRECTION.
+ * A joint at exactly 10x is amber and a joint at exactly 2x is red — never the other way — for
+ * the same reason PresenterMarginText says "no margin left" at exactly 1.0 rather than
+ * "1.0x margin": over-promising is the expensive direction on a panel whose whole job is to say
+ * what is about to fall down. Written as a chain of guards on the UTILISATION already on the row
+ * (comfortable below 10 %, cautious below 50 %, critical otherwise), which puts a NaN in the
+ * critical band by the same mechanism the margin text and the bar fill already use — every
+ * comparison against a NaN is false, so it falls out of the bottom of the chain.
+ *
+ * AND IT IS A TRANSFORM OF UtilisationPercent, NEVER A THIRD TRIP TO THE GRAPH. The percentage
+ * on the row is the number PieceMenuJointReadout holds against InspectPiece with exact equality;
+ * a band derived from the connection again would be a fourth copy of the break decision, and this
+ * project has paid twice for the second.
+ *
+ * NEEDS A TICKING WORLD: no, and not even a world.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPieceMenuJointMarginBandTest,
+	"DestructionGame.Presenter.PieceMenuJointMarginBand",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPieceMenuJointMarginBandTest::RunTest(const FString& Parameters)
+{
+	using namespace PieceBandBoundaryTestSupport;
+
+	FStructureBinding Binding;
+	BuildBandLadder(Binding);
+
+	struct FBandCase
+	{
+		const TCHAR* Description = nullptr;
+		int32 ConnectionIndex = INDEX_NONE;
+
+		/** M / 5000 as a percentage, hand-derived and asked of the graph as a precondition. */
+		double ExpectedUtilisationPercent = 0.0;
+
+		EJointMarginBand ExpectedBand = EJointMarginBand::Critical;
+	};
+
+	const TArray<FBandCase> Cases = {
+		{
+			TEXT("just over ten times its load: still comfortable"),
+			0, 9.98, EJointMarginBand::Comfortable
+		},
+		{
+			/*
+			 * EXACTLY TEN TIMES, which is the row the whole "worse band at the edge" rule turns
+			 * on. `Margin >= 10 ? green : amber` is the coin-flip alternative and it differs from
+			 * the rule on exactly this joint and nowhere else in the suite.
+			 */
+			TEXT("exactly ten times its load: the edge, and the edge is cautious"),
+			1, 10.0, EJointMarginBand::Caution
+		},
+		{
+			TEXT("just over twice its load: still cautious"),
+			2, 49.98, EJointMarginBand::Caution
+		},
+		{
+			/*
+			 * AND EXACTLY TWICE, the other edge, worked the same way. A joint that could take
+			 * exactly one more of itself is not a joint to describe as having room.
+			 */
+			TEXT("exactly twice its load: the edge, and the edge is critical"),
+			3, 50.0, EJointMarginBand::Critical
+		},
+	};
+
+	const FPieceRef PadRef = MakeRef(BandStructure, 0);
+	const TArray<FPieceRef> JustThePad = { PadRef };
+
+	const FPieceMenuInspector Inspector = BuildPieceMenuInspector(Binding, JustThePad, PadRef);
+
+	CheckInspectorInvariants(*this, Inspector, TEXT("the band ladder"));
+
+	TestEqual(
+		FString::Printf(
+			TEXT("the pad should break out one row per rung (%d), it broke out %d %s"),
+			Cases.Num(), Inspector.Joints.Num(), *DescribeInspector(Inspector)),
+		Inspector.Joints.Num(), Cases.Num());
+
+	if (Inspector.Joints.Num() != Cases.Num())
+	{
+		return true;
+	}
+
+	for (const FBandCase& Case : Cases)
+	{
+		const FInspectorJointRow& Row = Inspector.Joints[Case.ConnectionIndex];
+
+		/*
+		 * FIXTURE PRECONDITION, HAND-DERIVED: the rung is carrying what this file thinks it is.
+		 * Green on arrival and driving nothing — but without it a fixture that stopped loading
+		 * its joints would quietly retarget every band expectation onto some other number.
+		 */
+		TestEqual(
+			FString::Printf(TEXT("%s: should sit at %.6f %% of capacity, it sits at %.6f"),
+				Case.Description, Case.ExpectedUtilisationPercent, Row.UtilisationPercent),
+			Row.UtilisationPercent, Case.ExpectedUtilisationPercent, 1e-12);
+
+		TestTrue(
+			*FString::Printf(TEXT("%s: should be in the %s band, it is %s %s"),
+				Case.Description, NameOfBand(Case.ExpectedBand), NameOfBand(Row.MarginBand),
+				*DescribeInspector(Inspector)),
+			Row.MarginBand == Case.ExpectedBand);
+	}
+
+	return true;
+}
+
+/**
+ * EVERY JOINT ROW CARRIES THE COLOUR SLOT OF ITS OWN POSITION IN THE LIST — ROW 0 IS ALWAYS THE
+ * FIRST COLOUR — AND THE PALETTE RUNS OUT RATHER THAN REPEATING.
+ *
+ * WHAT THE SWATCH IS FOR. A joint row names the brick at the far end in words ("course 2 · #4"),
+ * and in a wall of 1,220 identical bricks a word is not enough to find one by: the design ties
+ * each row to its brick by COLOUR, so the row and the brick light up together. This slice is the
+ * model deciding WHICH slot each row is; lighting the brick is the world half and is not here.
+ *
+ * PER SLOT, NOT PER BRICK, AND THE COST IS ACCEPTED RATHER THAN HIDDEN. Keying the colour on the
+ * far-end brick is what a reader assumes is happening and it cannot be built: a palette is a
+ * handful of legible hues and a wall is over a thousand bricks, so it must collide, and two rows
+ * in one colour is a lie about the single thing the swatch says. Keyed on the ROW it never
+ * collides and it is stable while a player scans down a readout — at the price that one brick is
+ * the first colour in one readout and the second in another. THAT COST IS ASSERTED HERE, on the
+ * one joint that appears in two readouts, so nobody can mistake it for a defect later.
+ *
+ * AND PAST THE END OF THE PALETTE, NOTHING. Wrapping is the tidy answer and it reintroduces
+ * exactly the collision per-slot was chosen to avoid, on the brick with the most joints — which
+ * is the brick being looked at hardest. An absent swatch is an absence; a repeated swatch is a
+ * wrong answer. The load ladder is what reaches that end: thirteen joints on one pad, which no
+ * wall a player builds will produce and no hand-written fixture would otherwise contain.
+ *
+ * THE STRUCTURAL PROPERTIES — row i takes slot i, and once out the palette stays out — are swept
+ * over EVERY readout in this file by CheckInspectorInvariants rather than checked here, because
+ * they must hold of the knot, the unsolved wall and the position fixtures too.
+ *
+ * NEEDS A TICKING WORLD: no, and not even a world.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPieceMenuJointColourSlotTest,
+	"DestructionGame.Presenter.PieceMenuJointColourSlots",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPieceMenuJointColourSlotTest::RunTest(const FString& Parameters)
+{
+	using namespace PieceHeadroomTestSupport;
+
+	FStructureBinding Worked;
+	BuildWorkedFixture(Worked, /*bSettle*/ true);
+
+	const FPieceRef SubjectRef = MakeRef(InspectorStructure, SubjectPiece);
+	const FPieceRef RiderRef = MakeRef(InspectorStructure, RiderPiece);
+
+	const TArray<FPieceRef> JustTheSubject = { SubjectRef };
+	const TArray<FPieceRef> JustTheRider = { RiderRef };
+
+	const FPieceMenuInspector Subject =
+		BuildPieceMenuInspector(Worked, JustTheSubject, SubjectRef);
+
+	const FPieceMenuInspector Rider =
+		BuildPieceMenuInspector(Worked, JustTheRider, RiderRef);
+
+	CheckInspectorInvariants(*this, Subject, TEXT("the subject's swatches"));
+	CheckInspectorInvariants(*this, Rider, TEXT("the rider's swatches"));
+
+	TestEqual(
+		FString::Printf(
+			TEXT("fixture: the subject should break out its 3 joints, it broke out %d %s"),
+			Subject.Joints.Num(), *DescribeInspector(Subject)),
+		Subject.Joints.Num(), 3);
+
+	TestEqual(
+		FString::Printf(
+			TEXT("fixture: the rider should break out its 1 joint, it broke out %d %s"),
+			Rider.Joints.Num(), *DescribeInspector(Rider)),
+		Rider.Joints.Num(), 1);
+
+	if (Subject.Joints.Num() != 3 || Rider.Joints.Num() != 1)
+	{
+		return true;
+	}
+
+	/*
+	 * AN ORDINARY BRICK'S JOINTS ALL GET A COLOUR, IN LIST ORDER. Three rows, three slots, first
+	 * to last — including the SEVERED one, which is the row a player who just pulled a brick is
+	 * looking for and would be the cheapest one to quietly drop.
+	 */
+	for (int32 Index = 0; Index < Subject.Joints.Num(); ++Index)
+	{
+		TestEqual(
+			FString::Printf(
+				TEXT("the subject's joint row %d should take colour slot %d, it took %d %s"),
+				Index, Index, Subject.Joints[Index].ColourSlot, *DescribeInspector(Subject)),
+			Subject.Joints[Index].ColourSlot, Index);
+	}
+
+	/*
+	 * THE SAME JOINT, IN TWO READOUTS, IN TWO DIFFERENT SLOTS — WHICH IS THE WHOLE PER-SLOT
+	 * DECISION STATED AS A FACT RATHER THAN AS A COMMENT.
+	 *
+	 * Connection 1 joins the subject and the rider. It is the SECOND row of the subject's
+	 * breakout and the FIRST of the rider's, so per-slot means slot 1 there and slot 0 here. Any
+	 * implementation that keyed the colour on the connection, on the far-end handle, or on
+	 * anything else about the brick would give it the same slot twice and fail exactly one of
+	 * these two assertions — which is the only way to tell the two designs apart at all, since
+	 * every other row in this file inspects one brick at a time.
+	 */
+	TestEqual(
+		FString::Printf(
+			TEXT("connection %d is the subject's second joint row, so it takes slot 1; it took %d %s"),
+			Subject.Joints[1].ConnectionIndex, Subject.Joints[1].ColourSlot,
+			*DescribeInspector(Subject)),
+		Subject.Joints[1].ColourSlot, 1);
+
+	TestEqual(
+		FString::Printf(
+			TEXT("the SAME connection %d is the rider's first joint row, so it takes slot 0; it took %d %s"),
+			Rider.Joints[0].ConnectionIndex, Rider.Joints[0].ColourSlot,
+			*DescribeInspector(Rider)),
+		Rider.Joints[0].ColourSlot, 0);
+
+	TestEqual(
+		FString::Printf(
+			TEXT("fixture: both readouts must be describing ONE joint for that to mean anything: %d against %d"),
+			Subject.Joints[1].ConnectionIndex, Rider.Joints[0].ConnectionIndex),
+		Rider.Joints[0].ConnectionIndex, Subject.Joints[1].ConnectionIndex);
+
+	/*
+	 * AND THE LADDER, WHICH IS THE ONLY FIXTURE WITH MORE JOINTS ON ONE PIECE THAN A PALETTE IS
+	 * LIKELY TO HOLD. Thirteen rows off one pad.
+	 */
+	FStructureBinding Ladder;
+	BuildLoadLadder(Ladder);
+
+	const FPieceRef PadRef = MakeRef(HeadroomStructure, LadderPadPiece);
+	const TArray<FPieceRef> JustThePad = { PadRef };
+
+	const FPieceMenuInspector Long = BuildPieceMenuInspector(Ladder, JustThePad, PadRef);
+
+	CheckInspectorInvariants(*this, Long, TEXT("the load ladder's swatches"));
+
+	TestTrue(
+		FString::Printf(
+			TEXT("fixture: the ladder should break out more rows than a palette holds, it broke out %d"),
+			Long.Joints.Num()),
+		Long.Joints.Num() >= 13);
+
+	/*
+	 * SIX ROWS IS THE FLOOR, AND IT IS THE WALL'S NUMBER RATHER THAN A ROUND ONE. A brick inside
+	 * a running bond is spanned by two above, rests on two below and has a head joint either side
+	 * — six, which is exactly what the panel showed on the capture this work came from. A palette
+	 * that ran out before then would leave the ordinary case half-coloured.
+	 */
+	const int32 ColouredRows = Long.Joints.IndexOfByPredicate(
+		[](const FInspectorJointRow& Row) { return Row.ColourSlot == INDEX_NONE; });
+
+	TestTrue(
+		FString::Printf(
+			TEXT("the palette must reach at least the 6 joints an ordinary brick has, it ran out after %d row(s) %s"),
+			ColouredRows == INDEX_NONE ? Long.Joints.Num() : ColouredRows,
+			*DescribeInspector(Long)),
+		ColouredRows == INDEX_NONE || ColouredRows >= 6);
+
+	/*
+	 * AND NO TWO ROWS OF ONE READOUT SHARE A COLOUR, WHICH IS THE PROPERTY WRAPPING BREAKS.
+	 *
+	 * It is implied by "row i takes slot i" on a list this length, and it is asserted anyway
+	 * because it is the claim itself: the swatch exists to tell one row's brick from another's,
+	 * and a modulo that made rows 0 and 6 the same colour would be a readout that quietly points
+	 * at two bricks with one hue on the brick with the most joints.
+	 */
+	for (int32 Left = 0; Left < Long.Joints.Num(); ++Left)
+	{
+		if (Long.Joints[Left].ColourSlot == INDEX_NONE)
+		{
+			continue;
+		}
+
+		for (int32 Right = Left + 1; Right < Long.Joints.Num(); ++Right)
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("joint rows %d and %d are different joints and must not share colour slot %d %s"),
+					Left, Right, Long.Joints[Left].ColourSlot, *DescribeInspector(Long)),
+				Long.Joints[Left].ColourSlot != Long.Joints[Right].ColourSlot);
 		}
 	}
 

@@ -10,10 +10,16 @@
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "InputTriggers.h"
+#include "Styling/CoreStyle.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SConstraintCanvas.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Core/PieceActions.h"
 #include "DestructionGameCameraManager.h"
@@ -101,6 +107,351 @@ static constexpr double PieceMenuCursorReachCm = 10000.0;
  */
 static const FLinearColor PieceMenuLivePieceColour(1.0f, 1.0f, 1.0f, 1.0f);
 static const FLinearColor PieceMenuDeadPieceColour(0.5f, 0.5f, 0.5f, 0.6f);
+
+/*
+ * THE PANEL'S SIZE, FIXED IN BOTH AXES, AND IT IS THE MECHANISM RATHER THAN A TASTE IN LAYOUT.
+ *
+ * A PANEL THAT CANNOT CHANGE SIZE CANNOT MOVE ANYTHING, which is the single property every
+ * stillness claim about this menu now rests on: whatever the readout is showing and however many
+ * bricks are picked, every row is where it was, so a click aimed at one commits that one. It
+ * replaces two earlier partial fixes — a top anchor, and putting the readout in the last slot —
+ * each of which held only one direction still. World.Menu.PanelDoesNotGrowWithTheSelection and
+ * World.Menu.InspectingAnEntryDoesNotMoveTheClickableRows both assert it directly.
+ *
+ * THE NUMBERS ARE A FIT RATHER THAN A TUNING. 560 px of width holds the longest line the model
+ * composes — a joint row is a bar plus about 360 px of text at this font — with room for a
+ * course number in the hundreds; 560 px of height is about half a 1080 viewport, so the whole
+ * panel is on screen with the list, the readout and the action rows all reserved. Nothing
+ * asserts either figure, because a test that pinned "the list is 190 px tall" would break on
+ * every visual pass and would still not say the thing that matters.
+ */
+static constexpr float PieceMenuPanelWidthPx = 560.0f;
+static constexpr float PieceMenuPanelHeightPx = 560.0f;
+
+/** How far the panel sits off the right edge of the viewport. */
+static constexpr float PieceMenuPanelMarginPx = 24.0f;
+
+/** The gap between the panel's background and anything drawn on it. */
+static constexpr float PieceMenuPanelPaddingPx = 10.0f;
+
+/**
+ * HOW TALL THE BRICK LIST MAY GET, WHICH IS WHAT MAKES A LONG SELECTION SURVIVABLE.
+ *
+ * About eight rows. Past that the list scrolls INSIDE this height rather than growing, so forty
+ * picked bricks push nothing off the bottom of the screen and move neither the readout nor the
+ * row that deletes them.
+ *
+ * A CAP RATHER THAN A HEIGHT, AND THE DIFFERENCE IS WHAT A SHORT SELECTION LOOKS LIKE. Stated as a
+ * fixed height this reserved all eight rows for three bricks, stranding about 140 px of empty
+ * panel between the last brick and the readout — a fifth of the panel, reading as a menu that had
+ * failed to finish drawing. Capping does the same job for the long selection, because the hazard
+ * there is the list growing PAST this figure, and lets a short one take only the room it needs.
+ */
+static constexpr float PieceMenuBrickListMaxHeightPx = 190.0f;
+
+/*
+ * THE HEADROOM BAR'S TRACK: ONE SIZE FOR EVERY JOINT, SO THE BARS READ AS A COLUMN — AND THE
+ * WIDTH IS SET BY THE SCALE UNDER IT RATHER THAN BY THE BAR.
+ *
+ * The decade labels are placed along this same width, each straddling its own fraction of it, so
+ * the four of them have to fit side by side with air between them: "1×", "10×", "100×" and
+ * "1000×" measure 70 px between them at the scale's font, and the two crowded ones at the top end
+ * left a third of a pixel between them on the 96 px track this replaces — "100×1000×" rendered as
+ * one string on the axis whose entire job is to say which decade a fill means.
+ *
+ * 140 px LEAVES 15 px BETWEEN THE TIGHTEST PAIR, against the 4 px World.Menu.HeadroomTicksStay-
+ * InsideTheBarTheyLabel asks for, and it is bounded from the other side: every pixel here pushes
+ * the joint sentence beside it further right, and World.Menu.TheReadoutFitsInsideThePanel measured
+ * 112 px of room beside the longest of those. This spends 44 of them, and the swatch column below
+ * spends 16 more.
+ */
+static constexpr float PieceMenuHeadroomBarWidthPx = 140.0f;
+static constexpr float PieceMenuHeadroomBarHeightPx = 8.0f;
+
+/*
+ * THE SWATCH THAT TIES A JOINT ROW TO THE BRICK ON THE FAR END OF IT.
+ *
+ * A joint row already names its neighbour in words — "course 2 · #4" — and in a wall of 1,220
+ * identical bricks a word is not enough to find one by. FInspectorJointRow::ColourSlot is the
+ * model's answer to WHICH colour each row takes; this is the size of the block it is painted in,
+ * and the gap between it and the bar. The scale row below the bars carries the same total as a
+ * left padding, so the ticks stay under the fills they label rather than under the swatches.
+ */
+static constexpr float PieceMenuJointSwatchWidthPx = 10.0f;
+static constexpr float PieceMenuJointSwatchHeightPx = 10.0f;
+static constexpr float PieceMenuJointSwatchGapPx = 6.0f;
+
+/*
+ * HOW WIDE THE COLUMN OF SUPPORT WORDS ON THE BRICK ROWS IS.
+ *
+ * Wide enough for the longest of them — "not in this wall" — with room to spare, so the words line
+ * up in a column instead of ragging off the ends of labels of different lengths. It is deliberately
+ * generous: the entry rows are swept by World.Menu.TheReadoutFitsInsideThePanel along with
+ * everything else the model supplies, and a column that just fitted would make an entry row the
+ * tightest line on the panel and quietly retarget that test's reported budget away from the joint
+ * sentences it exists to measure.
+ */
+static constexpr float PieceMenuEntrySupportWidthPx = 150.0f;
+
+/** The row the bar's decade ticks are placed along, directly under that column. */
+static constexpr float PieceMenuHeadroomScaleHeightPx = 14.0f;
+
+/** The rule that separates the destructive row from everything describing what it destroys. */
+static constexpr float PieceMenuRuleHeightPx = 1.0f;
+
+/*
+ * WHAT THE PANEL IS DRAWN IN, AND THE BACKGROUND IS THE ONE THAT IS NOT DECORATION.
+ *
+ * Every line below the brick rows used to be a bare STextBlock over whatever the camera was
+ * pointing at — legible against a wall, invisible against the sky, and no headless test can see
+ * the difference because nothing here paints a pixel. A near-opaque dark fill behind the whole
+ * panel is what makes the readout readable at all; the rest of these are contrast against it.
+ */
+static const FLinearColor PieceMenuPanelBackgroundColour(0.014f, 0.016f, 0.022f, 0.94f);
+static const FLinearColor PieceMenuHeaderColour(1.0f, 1.0f, 1.0f, 1.0f);
+static const FLinearColor PieceMenuCountColour(0.62f, 0.68f, 0.78f, 1.0f);
+static const FLinearColor PieceMenuReadoutColour(0.82f, 0.86f, 0.92f, 1.0f);
+static const FLinearColor PieceMenuHintColour(0.55f, 0.60f, 0.68f, 1.0f);
+static const FLinearColor PieceMenuRuleColour(1.0f, 1.0f, 1.0f, 0.16f);
+static const FLinearColor PieceMenuHeadroomTrackColour(0.0f, 0.0f, 0.0f, 0.55f);
+
+/*
+ * WHAT EACH BAND OF BAR IS FILLED IN, AND THE BAND ITSELF IS THE MODEL'S DECISION RATHER THAN
+ * THIS FILE'S.
+ *
+ * EJointMarginBand says WHERE the colour changes — which side of 10x and of 2x margin a joint
+ * falls on — because that is a decision about what this game calls dangerous and it belongs
+ * where a test can read it. What is left here is the hue, which is exactly the half nothing
+ * headless can judge. Every bar was this one green until now, so the joint at 200 % of capacity
+ * and the joint at a ten-thousandth of it differed only by a length with nothing to compare it
+ * against.
+ */
+static const FLinearColor PieceMenuHeadroomComfortableColour(0.18f, 0.76f, 0.55f, 1.0f);
+static const FLinearColor PieceMenuHeadroomCautionColour(0.95f, 0.66f, 0.13f, 1.0f);
+static const FLinearColor PieceMenuHeadroomCriticalColour(0.95f, 0.24f, 0.20f, 1.0f);
+
+/*
+ * THE NEIGHBOUR PALETTE, AND IT IS THE SAME SIX COLOURS THE BRICKS THEMSELVES WILL WEAR.
+ *
+ * Content/Materials/M_BrickNeighbour0..5 are emissive constants of exactly these values, so a row
+ * marked with the second colour here and the brick lit with the second material out there are
+ * the same colour by construction rather than by two people picking amber twice. Nothing paints
+ * a brick with them yet — that is the next slice — and the swatch is what makes this half of the
+ * pairing visible on its own.
+ *
+ * SIX, WHICH IS THE MODEL'S NUMBER: a brick inside a running bond has six joints. A row past the
+ * end carries INDEX_NONE and gets the transparent entry below, so the swatch is ABSENT rather
+ * than repeated — a repeated swatch is a wrong answer about which brick is which, and an absent
+ * one is merely an absence.
+ */
+static const FLinearColor PieceMenuNeighbourColours[] = {
+	FLinearColor(1.00f, 0.62f, 0.10f, 1.0f),
+	FLinearColor(0.15f, 0.25f, 1.00f, 1.0f),
+	FLinearColor(0.55f, 0.82f, 0.10f, 1.0f),
+	FLinearColor(1.00f, 0.00f, 0.12f, 1.0f),
+	FLinearColor(0.72f, 0.55f, 1.00f, 1.0f),
+	FLinearColor(0.00f, 0.55f, 0.45f, 1.0f)
+};
+
+/** What a row past the end of the palette is painted in: nothing at all. */
+static const FLinearColor PieceMenuNoSwatchColour(0.0f, 0.0f, 0.0f, 0.0f);
+
+/*
+ * AND WHAT A ROW THAT DESTROYS SOMETHING IS DRAWN IN, TAKEN FROM FPieceMenuRow::bIsDestructive.
+ *
+ * The flag is the ACTION'S OWN, carried across by the presenter, so this is a colour keyed on
+ * data rather than a widget comparing a caption against the word "Delete" — which is the policy
+ * in a string literal that FPieceAction::bIsDestructive exists to make unnecessary.
+ */
+static const FLinearColor PieceMenuDestructiveRowColour(0.72f, 0.16f, 0.14f, 1.0f);
+static const FLinearColor PieceMenuOrdinaryRowColour(1.0f, 1.0f, 1.0f, 1.0f);
+
+/*
+ * A SECOND FILE-LOCAL NAMESPACE, BELOW THE CONSTANTS IT READS RATHER THAN BESIDE THE ONE AT THE
+ * TOP OF THE FILE. Everything in here draws the panel and every one of them needs a size or a
+ * colour declared above, so the split is declaration order rather than a second grouping. The
+ * PieceMenu prefix is the same unity-build rule the note above states.
+ */
+namespace
+{
+	/*
+	 * THE STYLE COMES FROM FCoreStyle RATHER THAN FAppStyle, AND THAT IS DELIBERATE. FAppStyle
+	 * resolves to whichever style the running application registered — the editor's, in an editor
+	 * binary, and the core one in a cooked game — so a panel styled through it looks different in
+	 * the two places this menu is looked at. FCoreStyle is the same in both and needs no content
+	 * asset, which is what keeps the background off RequiredContent's table.
+	 */
+	const FSlateBrush* PieceMenuFillBrush()
+	{
+		return FCoreStyle::Get().GetBrush("WhiteBrush");
+	}
+
+	FSlateFontInfo PieceMenuHeaderFont()
+	{
+		return FCoreStyle::GetDefaultFontStyle("Bold", 13);
+	}
+
+	FSlateFontInfo PieceMenuBodyFont()
+	{
+		return FCoreStyle::GetDefaultFontStyle("Regular", 9);
+	}
+
+	FSlateFontInfo PieceMenuSmallFont()
+	{
+		return FCoreStyle::GetDefaultFontStyle("Regular", 7);
+	}
+
+	/**
+	 * What a bar in this band is filled in — A LOOKUP, WHICH IS ALL A WIDGET MAY DO WITH IT.
+	 *
+	 * The band arrived decided: Presenter.PieceMenuJointMarginBand pins which side of each edge
+	 * every joint falls on, including the two boundary rows a hand-picked example never contains.
+	 * Nothing here compares a number against anything, so there is no second copy of that rule to
+	 * drift — and the arm past the end of the enumeration answers with the most severe colour,
+	 * because a bar that is wrong about its own band must not look calm.
+	 */
+	FLinearColor PieceMenuBandColour(EJointMarginBand Band)
+	{
+		switch (Band)
+		{
+		case EJointMarginBand::Comfortable: return PieceMenuHeadroomComfortableColour;
+		case EJointMarginBand::Caution:     return PieceMenuHeadroomCautionColour;
+		case EJointMarginBand::Critical:    return PieceMenuHeadroomCriticalColour;
+		}
+
+		return PieceMenuHeadroomCriticalColour;
+	}
+
+	/**
+	 * What a joint row's swatch is painted in — the same shape of lookup, on the same terms.
+	 *
+	 * WHICH slot a row takes is the model's answer and is swept over every readout in the suite;
+	 * a slot outside the palette is INDEX_NONE by that answer's own rule, and the bounds check
+	 * here is the lookup's rather than a policy of its own. It fails to the transparent entry, so
+	 * an unknown slot draws no swatch instead of borrowing somebody else's colour.
+	 */
+	FLinearColor PieceMenuSwatchColour(int32 ColourSlot)
+	{
+		const TArrayView<const FLinearColor> Palette(PieceMenuNeighbourColours);
+
+		return Palette.IsValidIndex(ColourSlot) ? Palette[ColourSlot] : PieceMenuNoSwatchColour;
+	}
+
+	/**
+	 * THE BLOCK OF COLOUR THAT TIES A JOINT ROW TO ITS NEIGHBOURING BRICK.
+	 *
+	 * IT IS DRAWN EVEN WHEN IT IS INVISIBLE, which is why the transparent colour goes through the
+	 * same widget rather than through a slot that is not added. The bars have to line up in a
+	 * column for the decade scale under them to mean anything, and a row that skipped its swatch
+	 * would slide its bar 16 px left of every other one.
+	 */
+	TSharedRef<SWidget> PieceMenuJointSwatch(int32 ColourSlot)
+	{
+		return SNew(SBox)
+			.WidthOverride(PieceMenuJointSwatchWidthPx)
+			.HeightOverride(PieceMenuJointSwatchHeightPx)
+			[
+				SNew(SImage)
+				.Image(PieceMenuFillBrush())
+				.ColorAndOpacity(PieceMenuSwatchColour(ColourSlot))
+			];
+	}
+
+	/**
+	 * ONE JOINT'S HEADROOM BAR, FILLED TO THE FRACTION THE MODEL WORKED OUT.
+	 *
+	 * THE FILL IS A LAID-OUT CHILD RATHER THAN A PAINTED RECTANGLE, WHICH IS THE WHOLE REASON
+	 * THIS IS NOT AN SProgressBar. A bar is the one thing on this panel that can be wrong while
+	 * every word beside it is right — a constant fill under a correct caption looks entirely
+	 * plausible — and SProgressBar keeps its Percent in a private slate attribute with no getter,
+	 * so nothing could ever read back what it drew. An anchored child's ARRANGED WIDTH is
+	 * `HeadroomFraction` times the track's, exactly, and ArrangeChildren hands that to a headless
+	 * test with no renderer and no accessor at all.
+	 *
+	 * THE MODEL'S NUMBER GOES STRAIGHT INTO THE ANCHOR. There is no arithmetic here and no clamp:
+	 * FInspectorJointRow::HeadroomFraction is already a fraction, already log-scaled over three
+	 * decades, and already swept for finiteness by Presenter.PieceMenuJointHeadroom.
+	 *
+	 * AND THE COLOUR COMES FROM THE BAND RATHER THAN FROM THE FRACTION, which is the same rule one
+	 * field over: how full the bar is and how alarmed to be about it are two answers, and only the
+	 * first is a length. Thresholding the fraction here would be the second answer written where
+	 * nothing can read it.
+	 */
+	TSharedRef<SWidget> PieceMenuHeadroomBar(double HeadroomFraction, EJointMarginBand Band)
+	{
+		return SNew(SBox)
+			.WidthOverride(PieceMenuHeadroomBarWidthPx)
+			.HeightOverride(PieceMenuHeadroomBarHeightPx)
+			[
+				SNew(SBorder)
+				.BorderImage(PieceMenuFillBrush())
+				.BorderBackgroundColor(PieceMenuHeadroomTrackColour)
+				.Padding(0.0f)
+				[
+					SNew(SConstraintCanvas)
+					+ SConstraintCanvas::Slot()
+					.Anchors(FAnchors(0.0f, 0.0f, static_cast<float>(HeadroomFraction), 1.0f))
+					.Offset(FMargin(0.0f))
+					.Alignment(FVector2D::ZeroVector)
+					[
+						SNew(SImage)
+						.Image(PieceMenuFillBrush())
+						.ColorAndOpacity(PieceMenuBandColour(Band))
+					]
+				]
+			];
+	}
+
+	/**
+	 * THE BAR'S DECADE TICKS, EACH STANDING WHERE THE MODEL PUT IT.
+	 *
+	 * A LOG AXIS WITH NO DECADES ON IT IS UNREADABLE BY CONSTRUCTION — the same visible fill means
+	 * 1000x on one panel and 3x on another. FHeadroomScaleTick carries a Fraction as well as a
+	 * label precisely so this can place each one by the same curve the fill is drawn by, rather
+	 * than spreading four labels evenly and quietly promising a linear scale.
+	 *
+	 * THE ANCHOR IS THE SAME ARITHMETIC THE FILL IS DRAWN BY, AND THAT IS THE POINT OF PLACING THE
+	 * TICKS ON A CANVAS AT ALL. PieceMenuHeadroomBar anchors its fill to Fraction of a track this
+	 * wide; a tick anchors its label to Fraction of a canvas the same width, so the joint whose
+	 * margin IS 10x has its fill end under the 10x label because both came out of one expression,
+	 * not because two constants happen to agree.
+	 *
+	 * ALIGNMENT IS THE FRACTION RATHER THAN A HALF, WHICH IS WHAT KEEPS THE END LABELS ON THE BAR.
+	 * SConstraintCanvas reads Alignment as the pivot INSIDE the child, so an alignment of 0.5 puts
+	 * the label's middle on the anchor — and for the ticks at 0.0 and 1.0 that centres them on the
+	 * track's two EDGES, with half of each hanging off and clipped away by the scroll box. Setting
+	 * the pivot to the tick's own Fraction pins the label's left edge at the low end, its right
+	 * edge at the high end and its middle in the middle: the label always straddles the point it
+	 * names, and it lies wholly within the track for any label no wider than the track, because its
+	 * left edge lands at Fraction * (TrackWidth - LabelWidth).
+	 */
+	TSharedRef<SWidget> PieceMenuHeadroomScale(const TArray<FHeadroomScaleTick>& Scale)
+	{
+		TSharedRef<SConstraintCanvas> Ticks = SNew(SConstraintCanvas);
+
+		for (const FHeadroomScaleTick& Tick : Scale)
+		{
+			Ticks->AddSlot()
+				.Anchors(FAnchors(static_cast<float>(Tick.Fraction), 0.0f))
+				.Offset(FMargin(0.0f))
+				.Alignment(FVector2D(Tick.Fraction, 0.0))
+				.AutoSize(true)
+				[
+					SNew(STextBlock)
+					.Font(PieceMenuSmallFont())
+					.ColorAndOpacity(PieceMenuHintColour)
+					.Text(FText::FromString(Tick.Label))
+				];
+		}
+
+		return SNew(SBox)
+			.WidthOverride(PieceMenuHeadroomBarWidthPx)
+			.HeightOverride(PieceMenuHeadroomScaleHeightPx)
+			[
+				Ticks
+			];
+	}
+}
 
 ADestructionGamePlayerController::ADestructionGamePlayerController()
 {
@@ -511,93 +862,234 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
+	/*
+	 * THE HEADING AND THE COUNT SHARE A ROW, because they are one sentence about one thing and a
+	 * count wrapped onto its own line spends a row of a fixed panel on nothing. Both strings are
+	 * the model's; which of them is bold is the only thing decided here.
+	 */
 	Panel->AddSlot()
 		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
 		[
-			SNew(STextBlock)
-			.Text(FText::FromString(Inspector.CountText))
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, 10.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Font(PieceMenuHeaderFont())
+				.ColorAndOpacity(PieceMenuHeaderColour)
+				.Text(FText::FromString(Inspector.HeaderText))
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Font(PieceMenuBodyFont())
+				.ColorAndOpacity(PieceMenuCountColour)
+				.Text(FText::FromString(Inspector.CountText))
+			]
 		];
 
 	/*
 	 * ONE ROW PER SELECTED BRICK, AND HOVERING ONE IS WHAT SINGLES IT OUT. A button is used
 	 * for the hover events rather than for a click: an entry names a brick, and naming one is
 	 * not choosing to do anything to it, so it carries no OnClicked at all.
+	 *
+	 * AND EVERY ROW SAYS WHY ITS BRICK IS STANDING UP, IN THE MODEL'S OWN WORD. Eleven picked
+	 * bricks were eleven identical strings until now, so finding the falling one meant hovering
+	 * each of them in turn while FInspectorPieceEntry::SupportText held the answer for all of
+	 * them at once.
+	 *
+	 * THE WORD SITS BESIDE THE BUTTON RATHER THAN INSIDE IT, WHICH IS NOT COSMETIC. Four layout
+	 * tests find an entry row by the text under its button and match it against the model's
+	 * Label, so a second text block in there would rename every row to "course 2 · #1supported"
+	 * and take those assertions with it. The button still fills the row, so the whole width of it
+	 * is hover target.
 	 */
+	TSharedRef<SScrollBox> BrickList = SNew(SScrollBox);
+
 	for (const FInspectorPieceEntry& Entry : Inspector.Pieces)
 	{
-		Panel->AddSlot()
-			.AutoHeight()
+		BrickList->AddSlot()
 			[
-				SNew(SButton)
-				.OnHovered(FSimpleDelegate::CreateUObject(
-					this, &ADestructionGamePlayerController::OnPieceMenuEntryHovered, Entry.Ref))
-				.OnUnhovered(FSimpleDelegate::CreateUObject(
-					this, &ADestructionGamePlayerController::OnPieceMenuEntryUnhovered))
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
 				[
-					SNew(STextBlock)
-					.Text(FText::FromString(Entry.Label))
-					.ColorAndOpacity(Entry.bIsLivePiece
-						? PieceMenuLivePieceColour : PieceMenuDeadPieceColour)
+					SNew(SButton)
+					.OnHovered(FSimpleDelegate::CreateUObject(
+						this, &ADestructionGamePlayerController::OnPieceMenuEntryHovered, Entry.Ref))
+					.OnUnhovered(FSimpleDelegate::CreateUObject(
+						this, &ADestructionGamePlayerController::OnPieceMenuEntryUnhovered))
+					[
+						SNew(STextBlock)
+						.Font(PieceMenuBodyFont())
+						.Text(FText::FromString(Entry.Label))
+						.ColorAndOpacity(Entry.bIsLivePiece
+							? PieceMenuLivePieceColour : PieceMenuDeadPieceColour)
+					]
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				[
+					SNew(SBox)
+					.WidthOverride(PieceMenuEntrySupportWidthPx)
+					.HAlign(HAlign_Left)
+					.Padding(FMargin(10.0f, 0.0f, 0.0f, 0.0f))
+					[
+						SNew(STextBlock)
+						.Font(PieceMenuBodyFont())
+						.ColorAndOpacity(PieceMenuReadoutColour)
+						.Text(FText::FromString(Entry.SupportText))
+					]
 				]
 			];
 	}
 
-	for (int32 RowIndex = 0; RowIndex < ShownPieceMenuRows.Num(); ++RowIndex)
-	{
-		Panel->AddSlot()
-			.AutoHeight()
-			[
-				SNew(SButton)
-				.Text(FText::FromString(ShownPieceMenuRows[RowIndex].Label))
-				.OnClicked(FOnClicked::CreateUObject(
-					this, &ADestructionGamePlayerController::OnPieceMenuRowClicked, RowIndex))
-			];
-	}
-
 	/*
-	 * THE JOINT BREAKOUT IS THE ONE PART THAT GETS REPLACED ON ITS OWN, AND IT IS LAST FOR
-	 * EXACTLY THAT REASON. It is the only slot in this panel whose height changes after the
-	 * panel is built, so everything a player can put a cursor on — the entry rows and the action
-	 * rows both — sits ABOVE it, and an AutoHeight box growing at the bottom of a top-anchored
-	 * stack moves nothing before it. With the readout in the middle the action rows slid 60 px
-	 * measured; see the alignment comment below for why "they cannot oscillate" was not enough.
+	 * AND THE LIST IS CAPPED IN HEIGHT WITH THE SCROLLING INSIDE IT. Forty picked bricks is an
+	 * ordinary selection in this game, and a list that grew with it would run the action rows off
+	 * the bottom of the screen — measured at y 1005 in a 1080 viewport, i.e. unreachable. A
+	 * scroll box in a box that will not exceed a stated height cannot do that whatever it holds.
+	 *
+	 * THE CAP DOES NOT GIVE UP THE PANEL'S FIXED SIZE, WHICH IS THE PROPERTY EVERY STILLNESS CLAIM
+	 * RESTS ON. The readout below is a fill slot, so it absorbs exactly what a short list leaves,
+	 * and the panel's own height is overridden outright — three bricks and forty-five measure the
+	 * same 560 px and lay the action rows from the same bottom edge.
 	 */
 	Panel->AddSlot()
 		.AutoHeight()
+		[
+			SNew(SBox)
+			.MaxDesiredHeight(PieceMenuBrickListMaxHeightPx)
+			[
+				BrickList
+			]
+		];
+
+	/*
+	 * THE JOINT BREAKOUT GETS THE SPACE THAT IS LEFT, AND IT GETS THE SAME SPACE WHATEVER IS IN
+	 * IT. A fill slot's height comes from the panel's own size minus the auto-height rows above
+	 * and below it, so the readout's CONTENT cannot move anything: not the entry rows over it,
+	 * not the action rows under it, and not the panel. That is what retired both halves of the
+	 * old geometry workaround — the readout no longer has to be the last slot, and the top anchor
+	 * is no longer load-bearing.
+	 *
+	 * IT IS STILL A BOX WHOSE CONTENT IS SWAPPED RATHER THAN A PANEL REBUILT, AND THAT PART DOES
+	 * NOT RELAX. Rebuilding on hover destroys the very button the cursor is on, so Slate fires
+	 * OnHovered on its replacement next frame and again on the one after that.
+	 */
+	Panel->AddSlot()
+		.FillHeight(1.0f)
+		.Padding(0.0f, 8.0f, 0.0f, 8.0f)
 		[
 			SAssignNew(PieceMenuInspectorBox, SBox)
 		];
 
 	/*
-	 * TOP-ALIGNED, AND THAT IS THE FIX FOR A TWO-FRAME OSCILLATION RATHER THAN A TASTE IN
-	 * LAYOUT. A vertically CENTRED box grows about its centre, so singling a brick out — which
-	 * adds three to six joint lines to the readout below the entries — moved every entry row UP
-	 * by half the growth: 30 px measured, against a default SButton row 22 px tall. The cursor
-	 * has not moved, so it is now on a different row; Slate then synthesises a cursor move on
-	 * every non-sleeping tick precisely because the UI can change while the mouse does not, the
-	 * readout empties, the panel re-centres, and the row comes back under the cursor for the
-	 * next tick to do it again. Anchoring the top makes the readout grow DOWNWARD, so every row
-	 * above it — which is every entry row — stays exactly where the player is pointing.
+	 * AND THE DESTRUCTIVE ROW IS LAST, BEHIND A RULE. Releasing a brick is irreversible here, and
+	 * the standing rule is that the commit door is never wider than the menu door; a button
+	 * reached by reading PAST everything that describes what it will destroy is that rule stated
+	 * as geometry, and nothing a player might click on the way to reading the panel is below it.
+	 */
+	Panel->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, 8.0f)
+		[
+			SNew(SBox)
+			.HeightOverride(PieceMenuRuleHeightPx)
+			[
+				SNew(SImage)
+				.Image(PieceMenuFillBrush())
+				.ColorAndOpacity(PieceMenuRuleColour)
+			]
+		];
+
+	/*
+	 * AND A ROW THAT DESTROYS SOMETHING LOOKS LIKE ONE, AND SAYS HOW MUCH OF IT.
 	 *
-	 * TOP-ANCHORING IS ONLY HALF OF IT, AND THE OTHER HALF IS THAT THE READOUT IS THE LAST SLOT.
-	 * Anchoring the top holds still every row ABOVE the box that grows; it says nothing about the
-	 * rows below one. The action rows used to be below it and moved 60 px, which was argued to be
-	 * harmless because hovering an action row changes nothing about the readout, so it cannot feed
-	 * back and cannot strobe. True, and not enough: walking the cursor down off the last entry row
-	 * toward Delete collapses the readout on the next tick and slides Delete UP toward a cursor
-	 * already on its way down, so a click landing in that frame commits a deletion nobody aimed at.
-	 * Releasing a brick is irreversible here, and the standing rule that the commit door is never
-	 * wider than the menu door is the same hazard stated as a guard rather than as geometry.
+	 * BOTH FACTS ARE THE MODEL'S. bIsDestructive is the ACTION'S own flag carried across by the
+	 * presenter, so the colour below is keyed on data rather than on a caption compared against
+	 * the word "Delete"; TargetText is derived from the very refs the row commits against, so a
+	 * button cannot promise to act on a different number of bricks than it will.
 	 *
-	 * HAlign_Center is left alone, because the panel widens about its centre and widening only ever
-	 * makes a row cover MORE of where the cursor was — the narrow span stays inside the wide one.
+	 * THE COUNT IS OVERLAID ON THE BUTTON RATHER THAN SET AS PART OF IT, AND BOTH HALVES OF THAT
+	 * ARE LOAD-BEARING. Four layout tests find an action row by the text under its button and
+	 * match it against the model's Label, so a second text block INSIDE it renames the row they
+	 * are looking for to "Delete3 bricks" — and a second SLOT beside it narrows the button, which
+	 * is the span World.Menu.TheReadoutFitsInsideThePanel measures the whole panel's content
+	 * column by. An overlay leaves the button full width and the caption alone, and the count is
+	 * HitTestInvisible so a click on it still lands on the button underneath rather than dying
+	 * quietly two pixels from the thing the player aimed at.
+	 */
+	for (int32 RowIndex = 0; RowIndex < ShownPieceMenuRows.Num(); ++RowIndex)
+	{
+		const FPieceMenuRow& Row = ShownPieceMenuRows[RowIndex];
+
+		Panel->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 2.0f, 0.0f, 0.0f)
+			[
+				SNew(SOverlay)
+				+ SOverlay::Slot()
+				[
+					SNew(SButton)
+					.ButtonColorAndOpacity(Row.bIsDestructive
+						? PieceMenuDestructiveRowColour : PieceMenuOrdinaryRowColour)
+					.Text(FText::FromString(Row.Label))
+					.OnClicked(FOnClicked::CreateUObject(
+						this, &ADestructionGamePlayerController::OnPieceMenuRowClicked, RowIndex))
+				]
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Right)
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, 12.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Visibility(EVisibility::HitTestInvisible)
+					.Font(PieceMenuBodyFont())
+					.ColorAndOpacity(PieceMenuCountColour)
+					.Text(FText::FromString(Row.TargetText))
+				]
+			];
+	}
+
+	/*
+	 * A FIXED SIZE ON A REAL BACKGROUND, ANCHORED TO THE RIGHT EDGE.
+	 *
+	 * THE SIZE IS THE MECHANISM AND THE BACKGROUND IS THE DEFECT NO TEST COULD SEE. A panel that
+	 * cannot change size cannot move a row out from under a cursor, whatever it is anchored to
+	 * and whatever order its slots are in — which is strictly stronger than the top anchor and
+	 * the last-slot readout it replaces, and it is asserted directly rather than argued. And
+	 * every line under the brick rows used to be a bare text block over the sky: legible against
+	 * a wall, invisible against anything bright, and unreachable by a headless suite that paints
+	 * no pixels. A near-opaque fill behind the whole panel is what makes the readout readable.
+	 *
+	 * THE RIGHT EDGE RATHER THAN THE MIDDLE, because the panel is now big enough to hang over the
+	 * wall a player is pointing at, and the wall is the thing they are trying to look at.
 	 */
 	TSharedRef<SWidget> Framed =
 		SNew(SBox)
-		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Top)
+		.HAlign(HAlign_Right)
+		.VAlign(VAlign_Center)
+		.Padding(FMargin(0.0f, 0.0f, PieceMenuPanelMarginPx, 0.0f))
 		[
-			Panel
+			SNew(SBox)
+			.WidthOverride(PieceMenuPanelWidthPx)
+			.HeightOverride(PieceMenuPanelHeightPx)
+			[
+				SNew(SBorder)
+				.BorderImage(PieceMenuFillBrush())
+				.BorderBackgroundColor(PieceMenuPanelBackgroundColour)
+				.Padding(PieceMenuPanelPaddingPx)
+				[
+					Panel
+				]
+			]
 		];
 
 	RefreshPieceMenuInspectorWidget();
@@ -636,37 +1128,155 @@ void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
 
 	TSharedRef<SVerticalBox> Readout = SNew(SVerticalBox);
 
-	Readout->AddSlot()
-		.AutoHeight()
-		[
-			SNew(STextBlock)
-			.Text(FText::FromString(Inspector.SupportText))
-		];
-
 	/*
-	 * THE JOINT LIST GETS ITS SENTENCE WHETHER OR NOT THERE ARE ANY JOINTS, which is why there
-	 * is no emptiness check here: an isolated grounded pad reads "No joints", and the model is
-	 * what says so. A widget noticing Joints.Num() == 0 for itself would be the branch this
-	 * whole arrangement exists to keep out.
+	 * THE READOUT NAMES THE BRICK IT IS ABOUT, OR SAYS WHY IT HAS NOTHING TO SAY — AND THE TWO
+	 * SHARE A ROW BECAUSE THE MODEL GUARANTEES AT MOST ONE OF THEM IS THERE.
+	 *
+	 * InspectedLabel is empty exactly when no brick is singled out and InspectedHintText is
+	 * empty exactly when one is, so laying them side by side draws whichever exists with no
+	 * branch anywhere near Slate. That is the point rather than a trick: a fixed panel reserves
+	 * this space in every state, and an empty reserved region reads as a readout that failed.
 	 */
 	Readout->AddSlot()
 		.AutoHeight()
 		[
-			SNew(STextBlock)
-			.Text(FText::FromString(Inspector.JointsText))
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Font(PieceMenuHeaderFont())
+				.ColorAndOpacity(PieceMenuHeaderColour)
+				.Text(FText::FromString(Inspector.InspectedLabel))
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Font(PieceMenuBodyFont())
+				.ColorAndOpacity(PieceMenuHintColour)
+				.Text(FText::FromString(Inspector.InspectedHintText))
+			]
 		];
 
+	/*
+	 * THE SUPPORT WORD AND THE JOINT LIST'S SENTENCE, WHICH IS THERE WHETHER OR NOT THERE ARE
+	 * ANY JOINTS. That is why there is no emptiness check here: an isolated grounded pad reads
+	 * "No joints", and the model is what says so. A widget noticing Joints.Num() == 0 for itself
+	 * would be the branch this whole arrangement exists to keep out.
+	 */
+	Readout->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 2.0f, 0.0f, 6.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, 12.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Font(PieceMenuBodyFont())
+				.ColorAndOpacity(PieceMenuReadoutColour)
+				.Text(FText::FromString(Inspector.SupportText))
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Font(PieceMenuBodyFont())
+				.ColorAndOpacity(PieceMenuCountColour)
+				.Text(FText::FromString(Inspector.JointsText))
+			]
+		];
+
+	/*
+	 * ONE ROW PER JOINT: ITS SWATCH, ITS BAR, THEN ITS LINE. The bar goes before the words so the
+	 * bars form a column the decade scale below can be read against — a log axis with the ticks
+	 * nowhere near the fills is the same as no ticks at all — and the swatch goes before the bar
+	 * so the colours form a column of their own down the left edge of the readout, which is where
+	 * an eye scanning for one neighbour will look.
+	 */
 	for (const FInspectorJointRow& Joint : Inspector.Joints)
 	{
 		Readout->AddSlot()
 			.AutoHeight()
+			.Padding(0.0f, 1.0f, 0.0f, 1.0f)
 			[
-				SNew(STextBlock)
-				.Text(FText::FromString(Joint.Text))
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, PieceMenuJointSwatchGapPx, 0.0f)
+				[
+					PieceMenuJointSwatch(Joint.ColourSlot)
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, 10.0f, 0.0f)
+				[
+					PieceMenuHeadroomBar(Joint.HeadroomFraction, Joint.MarginBand)
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Font(PieceMenuBodyFont())
+					.ColorAndOpacity(PieceMenuReadoutColour)
+					.Text(FText::FromString(Joint.Text))
+				]
 			];
 	}
 
-	PieceMenuInspectorBox->SetContent(Readout);
+	/*
+	 * THE SCALE THE BARS ABOVE ARE READ AGAINST, AND THE LEFT ALIGNMENT IS LOAD-BEARING.
+	 *
+	 * WidthOverride states a DESIRED width, not an arranged one. A vertical box's slot fills by
+	 * default, so the scale's box was being stretched to the readout's full width while the bars
+	 * above kept their auto-width 96 px — and a canvas five times as wide as the bars does not
+	 * merely clip its end labels, it annotates nothing: the 10x tick stood where no fill could ever
+	 * reach, so every bar read as far emptier than it was. Aligning the slot left hands the box the
+	 * width it asked for, which is the bar's, so the tick strip and the column of bars are one span.
+	 *
+	 * AND THE LEFT PADDING IS THE SWATCH COLUMN, FOR THE SAME REASON. The bars start one swatch and
+	 * one gap in from the readout's edge, so a scale flush with that edge would stand one swatch to
+	 * the left of everything it labels — the same "annotates nothing" defect the alignment above
+	 * closed, wearing a smaller coat.
+	 */
+	Readout->AddSlot()
+		.AutoHeight()
+		.HAlign(HAlign_Left)
+		.Padding(PieceMenuJointSwatchWidthPx + PieceMenuJointSwatchGapPx, 6.0f, 0.0f, 0.0f)
+		[
+			PieceMenuHeadroomScale(Inspector.HeadroomScale)
+		];
+
+	Readout->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 2.0f, 0.0f, 0.0f)
+		[
+			SNew(STextBlock)
+			.Font(PieceMenuSmallFont())
+			.ColorAndOpacity(PieceMenuHintColour)
+			.Text(FText::FromString(Inspector.HeadroomCaption))
+		];
+
+	/*
+	 * AND THE WHOLE READOUT SCROLLS INSIDE THE SPACE IT WAS GIVEN. A brick with more joints than
+	 * fit would otherwise run its last lines out past the rule and under the row that deletes it
+	 * — which is the same hazard the brick list's cap closes, one region down.
+	 */
+	PieceMenuInspectorBox->SetContent(
+		SNew(SScrollBox)
+		+ SScrollBox::Slot()
+		[
+			Readout
+		]);
 }
 
 FPieceMenuInspector ADestructionGamePlayerController::PieceMenuInspectorForSelection() const
