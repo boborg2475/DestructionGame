@@ -97,11 +97,24 @@ namespace PieceActionsTestSupport
 		FVector Normal = FVector::ZAxisVector;
 	};
 
+	/**
+	 * Build a binding whose joints are made of something in particular.
+	 *
+	 * THE STRENGTH IS A PARAMETER BECAUSE THIS FILE'S DEFAULT HID A DEFECT FOR A WHOLE
+	 * SLICE. Every other fixture here uses Unbreakable, which is right for them — they
+	 * assert on handles, actors, removal flags and support states, never on a load — but
+	 * it also makes SolveLoads and SolveAndBreak PROVABLY INDISTINGUISHABLE inside this
+	 * file: a joint that cannot give behaves identically under both. The single-piece
+	 * commit door was written to cascade and could be reverted to a plain solve with the
+	 * whole suite still green. A fixture out of real mortar is the only thing that can
+	 * tell the two apart, so the strength is a parameter rather than a constant.
+	 */
 	void BuildPieceActionBinding(
 		FStructureBinding& Out,
 		const TArray<FPieceActionPieceSpec>& PieceSpecs,
 		const TArray<FPieceActionJointSpec>& JointSpecs,
-		TArray<UObject*>& OutStandIns)
+		TArray<UObject*>& OutStandIns,
+		const FConnectionStrength& Strength)
 	{
 		Out.StructureId = ThisStructure;
 
@@ -123,9 +136,19 @@ namespace PieceActionsTestSupport
 			Connection.PieceB = Joint.PieceB;
 			Connection.InterfaceNormal = Joint.Normal;
 			Connection.InterfaceAreaSqCm = PieceActionJointAreaSqCm;
-			Connection.Strength = Unbreakable;
+			Connection.Strength = Strength;
 			Out.AddConnection(Connection);
 		}
+	}
+
+	/** The one-argument-shorter form every fixture in this file that predates the above uses. */
+	void BuildPieceActionBinding(
+		FStructureBinding& Out,
+		const TArray<FPieceActionPieceSpec>& PieceSpecs,
+		const TArray<FPieceActionJointSpec>& JointSpecs,
+		TArray<UObject*>& OutStandIns)
+	{
+		BuildPieceActionBinding(Out, PieceSpecs, JointSpecs, OutStandIns, Unbreakable);
 	}
 
 	const TCHAR* NameOfPieceSupport(EPieceSupport State)
@@ -1881,6 +1904,258 @@ bool FPieceActionsBatchSolvesOnceTest::RunTest(const FString& Parameters)
 		TestEqual(
 			FString::Printf(TEXT("an empty selection must cost exactly one solve, it cost %d"), Spent),
 			Spent, 1);
+	}
+
+	ReleasePieceActionStandIns(StandIns);
+
+	return true;
+}
+
+/**
+ * DELETING ONE BRICK SETTLES THE WALL EXACTLY AS DELETING TWO DOES — the same cascade,
+ * through the door a player reaches by right-clicking a single brick.
+ *
+ * THE GAP THIS CLOSES, STATED PLAINLY. RunPieceAction and RunPieceActions both end in
+ * FStructureBinding::SolveAndBreak, and the singular one could be reverted to SolveLoads
+ * with the entire suite still green. Every other fixture in this file builds its joints
+ * out of the Unbreakable test profile, which is right for what those tests assert and
+ * makes the two calls PROVABLY INDISTINGUISHABLE here: a joint that cannot give behaves
+ * identically whether it was asked to or not. The only covering test enters through
+ * ChoosePieceMenuRow and CommitPieceActionForAll — the BATCH door — so the single-piece
+ * door had no test of its own at all. Live, that is: right-click one brick out from under
+ * a corbel, the joint above computes 2.24 of what mortar holds, nothing asks it to give,
+ * and the overhang stands.
+ *
+ * BOTH DOORS, ON TWO IDENTICAL WALLS, AND THE ASSERTION IS THAT THEY AGREE. A test that
+ * only checked the singular door would say it cascades; it would not say the two doors run
+ * the SAME physics, which is the property that actually matters — a wall may not behave
+ * differently for a player who happened to pick one brick rather than two. So the fixture
+ * is built twice and the break stamps are compared handle for handle.
+ *
+ * THE FIXTURE IS THE SIMPLEST THING THAT CAN CROSS CAPACITY, and every number in it is
+ * spelled out here rather than imported:
+ *
+ *        [2]  15,000 kg slab            resting on two 100 cm2 bed joints
+ *       /   \
+ *     [0]   [1]  grounded pads          piece 0 is the one the player deletes
+ *
+ *   weight       = 15000 kg x 980 cm/s2            = 1.47e7 uu
+ *   as built     = 1.47e7 / 2 / 100 cm2 / 10000    = 7.35 MPa   -> 0.735 of mortar's 10
+ *   one pad gone = 1.47e7     / 100 cm2 / 10000    = 14.7 MPa   -> 1.47, and it gives
+ *
+ * where 10,000 uu per MPa.cm2 is written out from 1 N = 100 uu and 1 cm2 = 100 mm2 rather
+ * than read off DestructionForce::ForceUnitsPerMPaSqCm, so a wrong constant in production
+ * fails here instead of being agreed with.
+ *
+ * WHICH AXIS GOVERNS, WORKED THROUGH, because ComputeUtilisation returns the WORST of the
+ * three and a case aimed at compression silently measures something else otherwise. Both
+ * joints have an interface normal of exactly +Z and the load is exactly vertical, so the
+ * shear and tensile components are exactly zero and compression against mortar's 10 MPa is
+ * the only axis carrying anything. Mohr-Coulomb never enters: there is no shear for the
+ * friction term to add capacity to.
+ *
+ * AND NO MOMENT, DELIBERATELY. The pieces are placed — FStructureBinding::AddPiece takes
+ * each box's centre down as a centre of mass — but the joints carry no rectangle, so
+ * FStructure treats them as faces whose lever arm nobody measured and the bending term
+ * vanishes exactly. This test is about a DOOR, not about eccentricity, and a fixture that
+ * dragged bending in would make the number it asserts depend on two things at once.
+ *
+ * GRAVITY IS THE ONLY LOAD AND THERE IS NO WORLD. FStructureBinding is plain arithmetic
+ * over a graph, so this is a unit test on the mechanism — a break stamp — exactly as
+ * DESIGN.md §4 asks. The stamp rather than a utilisation, because a joint that has given
+ * carries nothing and reads zero, which is also what a joint that was never loaded reads.
+ *
+ * NEEDS A TICKING WORLD: no.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPieceActionsSingleDeleteCascadesTest,
+	"DestructionGame.Core.PieceActions.OneBrickDeleteSettlesTheWallLikeABatch",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPieceActionsSingleDeleteCascadesTest::RunTest(const FString& Parameters)
+{
+	using namespace PieceActionsTestSupport;
+
+	const FPieceAction* const Delete = FindPieceAction(TEXT("Delete"));
+
+	if (!RequireAction(*this, Delete, TEXT("Delete")))
+	{
+		return true;
+	}
+
+	/** 15 tonnes: comfortably held by two pads and comfortably over capacity on one. */
+	constexpr double SlabMassKg = 15000.0;
+
+	/** 1 N = 100 uu and 1 cm2 = 100 mm2, so 1 MPa over 1 cm2 is 10,000 uu. Never imported. */
+	constexpr double ForceUnitsPerMPaSqCm = 100.0 * 100.0;
+
+	constexpr double SlabWeightUu = SlabMassKg * 980.0;
+
+	const double MortarCompressiveMPa = GeneralPurposeMortar.CompressiveStrengthMPa;
+
+	const double AsBuiltUtilisation =
+		SlabWeightUu / 2.0 / PieceActionJointAreaSqCm / ForceUnitsPerMPaSqCm / MortarCompressiveMPa;
+
+	const double OnOnePadUtilisation =
+		SlabWeightUu / PieceActionJointAreaSqCm / ForceUnitsPerMPaSqCm / MortarCompressiveMPa;
+
+	constexpr int32 LeftPad = 0;
+	constexpr int32 RightPad = 1;
+	constexpr int32 Slab = 2;
+
+	/** The joint the delete condemns: the pad that is left carrying the whole slab. */
+	constexpr int32 SurvivingJoint = 1;
+
+	/** The joint that went WITH the deleted pad, and which therefore never broke. */
+	constexpr int32 DeletedJoint = 0;
+
+	const TArray<FPieceActionPieceSpec> Pieces = {
+		{ PieceActionBrickMassKg, /*bIsGrounded*/ true },
+		{ PieceActionBrickMassKg, /*bIsGrounded*/ true },
+		{ SlabMassKg },
+	};
+
+	const TArray<FPieceActionJointSpec> Joints = {
+		{ LeftPad, Slab, PieceActionBedJointNormal },
+		{ RightPad, Slab, PieceActionBedJointNormal },
+	};
+
+	TArray<UObject*> StandIns;
+
+	/*
+	 * TWO IDENTICAL WALLS. One is deleted from through the single-piece door and one
+	 * through the batch door with a selection of one; the whole point is the comparison,
+	 * so they must differ in nothing but the call.
+	 */
+	FStructureBinding ThroughOneDoor;
+	FStructureBinding ThroughTheBatchDoor;
+
+	BuildPieceActionBinding(ThroughOneDoor, Pieces, Joints, StandIns, GeneralPurposeMortar);
+	BuildPieceActionBinding(ThroughTheBatchDoor, Pieces, Joints, StandIns, GeneralPurposeMortar);
+
+	/*
+	 * FIXTURE PRECONDITION: THE WALL STANDS AS BUILT. Without this the cascade below could
+	 * be breaking a joint that was already over capacity before the player touched
+	 * anything, and the test would say nothing about the delete at all.
+	 */
+	ThroughOneDoor.SolveLoads();
+
+	for (int32 Joint = 0; Joint < ThroughOneDoor.GetStructure().NumConnections(); ++Joint)
+	{
+		const double Utilisation = ThroughOneDoor.GetStructure().GetConnectionUtilisation(Joint);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture: as built, joint %d should carry %.9g of capacity — half the slab over 100 cm2 against mortar's %g MPa — it reads %.9g"),
+				Joint, AsBuiltUtilisation, MortarCompressiveMPa, Utilisation),
+			FMath::IsNearlyEqual(Utilisation, AsBuiltUtilisation, AsBuiltUtilisation * 1.0e-9));
+	}
+
+	TestTrue(
+		FString::Printf(TEXT("fixture: as built the slab is held, at %.9g of capacity"), AsBuiltUtilisation),
+		AsBuiltUtilisation < 1.0);
+
+	TestTrue(
+		FString::Printf(TEXT("fixture: on one pad the slab is over capacity, at %.9g"), OnOnePadUtilisation),
+		OnOnePadUtilisation > 1.0);
+
+	FPieceRef Ref;
+	Ref.StructureId = ThisStructure;
+	Ref.PieceIndex = LeftPad;
+
+	/* THE PLAYER'S MOVE: one brick, one right-click, one Delete. */
+	const FPieceActionResult Result = RunPieceAction(ThroughOneDoor, Ref, *Delete);
+
+	TestTrue(TEXT("fixture: deleting the left pad should have run"), Result.bRan);
+
+	TestTrue(
+		FString::Printf(TEXT("fixture: the left pad should be out of the graph")),
+		ThroughOneDoor.IsPieceRemoved(LeftPad));
+
+	const int32 SingleDoorPass = ThroughOneDoor.GetStructure().GetBreakPass(SurvivingJoint);
+
+	AddInfo(FString::Printf(
+		TEXT("after one right-click delete: joint %d has %s and its break pass is %d"),
+		SurvivingJoint,
+		ThroughOneDoor.GetStructure().GetConnection(SurvivingJoint).HasGiven()
+			? TEXT("given") : TEXT("NOT given"),
+		SingleDoorPass));
+
+	/*
+	 * THE ASSERTION, AND IT IS THE BREAK STAMP RATHER THAN A UTILISATION. A joint that has
+	 * given carries exactly nothing, so its utilisation reads zero — which is also what a
+	 * joint nobody ever loaded reads, and what this joint would read if the door merely
+	 * solved and the whole structure had come down for some other reason. GetBreakPass
+	 * survives the breaking and distinguishes all three states with no sentinel: a joint
+	 * that went with a REMOVED piece carries no pass number at all, so a stamp here is a
+	 * joint that failed under load rather than one that was deleted.
+	 */
+	TestEqual(
+		FString::Printf(
+			TEXT("the single-piece delete must settle the wall: joint %d is at %.9g of capacity once the left pad has gone, so the first sweep after the delete must break it — its break pass is %d"),
+			SurvivingJoint, OnOnePadUtilisation, SingleDoorPass),
+		SingleDoorPass, 1);
+
+	TestTrue(
+		FString::Printf(TEXT("joint %d must have given, not merely been condemned"), SurvivingJoint),
+		ThroughOneDoor.GetStructure().GetConnection(SurvivingJoint).HasGiven());
+
+	/*
+	 * AND THE JOINT THAT WENT WITH THE DELETED PAD IS NOT PART OF THE COLLAPSE SEQUENCE.
+	 * It never snapped, it was deleted, so it carries no pass number — the middle row of
+	 * FStructure::GetBreakPass's three-state encoding, and the half a sentinel would lose.
+	 */
+	TestTrue(
+		FString::Printf(TEXT("the deleted pad's own joint %d must be out of the structure"), DeletedJoint),
+		ThroughOneDoor.GetStructure().GetConnection(DeletedJoint).HasGiven());
+
+	TestEqual(
+		FString::Printf(
+			TEXT("joint %d went with a removed piece rather than failing, so it must carry no pass number"),
+			DeletedJoint),
+		ThroughOneDoor.GetStructure().GetBreakPass(DeletedJoint), (int32)INDEX_NONE);
+
+	/* AND THE OUTCOME AT THE GRAPH: nothing is holding the slab up any more. */
+	TestFalse(
+		TEXT("with its last bed joint given, the slab must have no path to the ground"),
+		ThroughOneDoor.GetStructure().IsPieceSupported(Slab));
+
+	TestTrue(
+		TEXT("the surviving pad is resting on the earth and must be unmoved by any of this"),
+		ThroughOneDoor.GetStructure().IsPieceSupported(RightPad));
+
+	/*
+	 * THE SAME DELETE THROUGH THE BATCH DOOR, ON THE SAME WALL. Stamp for stamp: the two
+	 * doors must not be able to disagree about what a wall does.
+	 */
+	const FPieceRef BatchRefs[] = { Ref };
+
+	const FPieceBatchActionResult BatchResult =
+		RunPieceActions(ThroughTheBatchDoor, BatchRefs, *Delete);
+
+	TestEqual(TEXT("fixture: the batch door should have run against exactly one piece"),
+		BatchResult.RanCount, 1);
+
+	for (int32 Joint = 0; Joint < ThroughTheBatchDoor.GetStructure().NumConnections(); ++Joint)
+	{
+		const int32 OneDoor = ThroughOneDoor.GetStructure().GetBreakPass(Joint);
+		const int32 BatchDoor = ThroughTheBatchDoor.GetStructure().GetBreakPass(Joint);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("joint %d must give in the same pass whichever door the player came through: one brick says %d, a batch of one says %d"),
+				Joint, OneDoor, BatchDoor),
+			OneDoor, BatchDoor);
+	}
+
+	for (int32 Piece = 0; Piece < ThroughTheBatchDoor.NumPieces(); ++Piece)
+	{
+		TestEqual(
+			FString::Printf(
+				TEXT("piece %d must end up in the same state whichever door the player came through"),
+				Piece),
+			ThroughOneDoor.GetStructure().IsPieceSupported(Piece),
+			ThroughTheBatchDoor.GetStructure().IsPieceSupported(Piece));
 	}
 
 	ReleasePieceActionStandIns(StandIns);

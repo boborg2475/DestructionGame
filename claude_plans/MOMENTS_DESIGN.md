@@ -1,6 +1,6 @@
 # Moments and the spatial layer — design
 
-**Status: designed, not built.** Read [DESIGN.md §3](DESIGN.md) (the averaged-stress limitation) and [§6](DESIGN.md) (the spatial layer) first; this is the worked design that sits under them.
+**Status: slices 1, 2, 3 and 3b are BUILT and green; the cascade is on the world wire. Slice 4 is part-landed (`GetConnectionMoment` exists; the readout line does not). Slices 5 and 6 remain.** Numbers below marked superseded were corrected against the emitted joint centroid — see the note at case (b). Read [DESIGN.md §3](DESIGN.md) (the averaged-stress limitation) and [§6](DESIGN.md) (the spatial layer) first; this is the worked design that sits under them.
 
 ---
 
@@ -101,9 +101,9 @@ Brick 21.5 × 10.25 × 6.5 at 1.9 g/cm³ = 2.72163125 kg → **W = 2667.198625 u
 
 | | today | with moments |
 |---|---|---|
-| one hanging brick | shear 0.02002 | **tension 0.39725** |
-| two in a chain | 0.0400 | **1.626 — it breaks** |
-| bricks to failure | **≈ 50** | **2** |
+| one hanging brick | shear 0.02002 | **tension 0.4157273077** |
+| two in a chain | 0.0400 | **0.8315 — it HOLDS** (1.626 needs slice 5) |
+| bricks to failure | **≈ 50** | **3** (2 once slice 5 lands) |
 
 The recorded "roughly fifty" reproduces exactly: `1/0.02002 = 49.95`.
 

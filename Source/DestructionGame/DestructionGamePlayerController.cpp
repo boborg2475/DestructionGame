@@ -257,27 +257,23 @@ static constexpr float PieceMenuSupportDotSizePx = 8.0f;
 static constexpr float PieceMenuSupportDotGapPx = 6.0f;
 
 /*
- * THE NEIGHBOUR PALETTE, AND IT IS THE SAME SIX COLOURS THE BRICKS THEMSELVES WILL WEAR.
+ * THE NEIGHBOUR PALETTE IS NOT HERE ANY MORE, AND ITS ABSENCE IS THE POINT.
  *
- * Content/Materials/M_BrickNeighbour0..5 are emissive constants of exactly these values, so a row
- * marked with the second colour here and the brick lit with the second material out there are
- * the same colour by construction rather than by two people picking amber twice. Nothing paints
- * a brick with them yet — that is the next slice — and the swatch is what makes this half of the
- * pairing visible on its own.
+ * It used to be a file-static array of six colours in this file, with a comment claiming they were
+ * "exactly" the emissives of Content/Materials/M_BrickNeighbour0..5 — a second copy of six numbers
+ * whose only tie to the first was that sentence. A palette repick changed three of the assets and
+ * left the sentence, so the swatch column drew amber, chartreuse and teal beside bricks lit green,
+ * clay and sage, with the whole suite green.
+ *
+ * DestructionContent::BrickNeighbourSwatchColours now sits beside the material paths it must agree
+ * with, one row per slot, and Content.NeighbourSwatchesMatchTheirMaterials holds the two together.
+ * There is deliberately no colour literal left in this file for a swatch to drift back to.
  *
  * SIX, WHICH IS THE MODEL'S NUMBER: a brick inside a running bond has six joints. A row past the
  * end carries INDEX_NONE and gets the transparent entry below, so the swatch is ABSENT rather
  * than repeated — a repeated swatch is a wrong answer about which brick is which, and an absent
  * one is merely an absence.
  */
-static const FLinearColor PieceMenuNeighbourColours[] = {
-	FLinearColor(1.00f, 0.62f, 0.10f, 1.0f),
-	FLinearColor(0.15f, 0.25f, 1.00f, 1.0f),
-	FLinearColor(0.55f, 0.82f, 0.10f, 1.0f),
-	FLinearColor(1.00f, 0.00f, 0.12f, 1.0f),
-	FLinearColor(0.72f, 0.55f, 1.00f, 1.0f),
-	FLinearColor(0.00f, 0.55f, 0.45f, 1.0f)
-};
 
 /** What a row past the end of the palette is painted in: nothing at all. */
 static const FLinearColor PieceMenuNoSwatchColour(0.0f, 0.0f, 0.0f, 0.0f);
@@ -404,7 +400,7 @@ namespace
 	 */
 	FLinearColor PieceMenuSwatchColour(int32 ColourSlot)
 	{
-		const TArrayView<const FLinearColor> Palette(PieceMenuNeighbourColours);
+		const TArrayView<const FLinearColor> Palette(DestructionContent::BrickNeighbourSwatchColours);
 
 		return Palette.IsValidIndex(ColourSlot) ? Palette[ColourSlot] : PieceMenuNoSwatchColour;
 	}

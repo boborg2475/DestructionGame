@@ -102,7 +102,7 @@ namespace
 	 * refuses to release any piece the last solve has no answer for, because
 	 * EPieceSupport::Falling is also what an ABSENT answer reads as — so a wall nobody has solved
 	 * would otherwise drop entire, foundation included, with the one-way latch making it
-	 * permanent. Both callers discharge that obligation before they arrive: SolveAndPush solves on
+	 * permanent. Both callers discharge that obligation before they arrive: SolveAndPush settles on
 	 * the line above, and RunPieceAction ends by settling the wall — a cascade whose last act is a
 	 * complete solve that broke nothing, which is exactly the settled answer this wants.
 	 *
@@ -225,8 +225,29 @@ int32 UDestructionStructureSubsystem::SolveAndPush(int32 StructureId)
 	 * so a freshly built wall with nothing solved would otherwise drop entire, foundation
 	 * included, with the one-way latch making it permanent. Solving is what discharges
 	 * that obligation, so the push may never be run without it.
+	 *
+	 * AND IT SETTLES RATHER THAN MERELY SOLVING, WHICH IS THE ONE SEAM THAT HAD BEEN LEFT
+	 * OUT OF DESIGN.md §3'S OWN RULE. SolveLoads is documented as non-destructive and
+	 * breaks nothing however far a joint is over capacity, while both commit doors run
+	 * SolveAndBreak — so a wall that could not hold itself up the moment it was laid stood
+	 * there indefinitely and then shed on the first click ANYWHERE in it, and a player was
+	 * told they had done something they had not: a 40-course ragged wall reads 1.248 as
+	 * built, and deleting one brick thirty courses away from anything overloaded took the
+	 * collapse with it. A wall that cannot hold itself up should not stand waiting for a
+	 * click.
+	 *
+	 * THE PRICE IS PAID BY WALLS THAT WERE NEVER STANDING, and it is large where it lands:
+	 * a ragged end brick is a corbel carrying a real 5.625 cm eccentricity, so a tall
+	 * ragged wall sheds a staircase from both ends on spawn — 325 of 380 pieces at ten
+	 * wide. A wall UNDER capacity is untouched bit for bit, because the last thing
+	 * SolveAndBreak does is a complete solve that broke nothing: the game mode's own flush
+	 * scenario wall reads 0.00495 and settles in zero passes, so this costs it one solve
+	 * and nothing else.
+	 *
+	 * SETTLING IS THE ONLY THING THAT CHANGES; the answer this then pushes is a settled
+	 * one rather than a mid-cascade one, which is exactly what ApplyResults wants.
 	 */
-	Binding->SolveLoads();
+	Binding->SolveAndBreak();
 
 	return PushSolvedResultsToWorld(*Binding);
 }

@@ -1236,6 +1236,24 @@ FVector FStructure::GetConnectionForce(int32 ConnectionIndex) const
 		: FVector::ZeroVector;
 }
 
+FVector FStructure::GetConnectionMoment(int32 ConnectionIndex) const
+{
+	/*
+	 * Zero for an out-of-range handle, and zero for a connection no solve has reached —
+	 * the same scope and the same shape as GetConnectionForce, because it is the same
+	 * solver output rebuilt by the same solve.
+	 *
+	 * A MOMENT IS A LOAD, NOT A VERDICT, so the fail-closed answer here is the opposite
+	 * polarity to GetConnectionUtilisation's Max(): zero says nothing is levering this,
+	 * which is the conservative reading for something that is not a joint, and it is the
+	 * utilisation that has to come back reading as failed. An invented enormous moment
+	 * would make a NaN of everything finite downstream of it.
+	 */
+	return ConnectionMoments.IsValidIndex(ConnectionIndex)
+		? ConnectionMoments[ConnectionIndex]
+		: FVector::ZeroVector;
+}
+
 double FStructure::GetConnectionUtilisation(int32 ConnectionIndex) const
 {
 	/*
@@ -1255,15 +1273,18 @@ double FStructure::GetConnectionUtilisation(int32 ConnectionIndex) const
 	 * not this accessor's, which is what keeps this one line from becoming a second
 	 * copy of the arithmetic the break decision is made on.
 	 *
+	 * AND BOTH HALVES COME OFF THE ACCESSORS RATHER THAN OFF THE ARRAYS, which is what
+	 * makes the identity Structure.h states — this answer equals UtilisationUnder of
+	 * GetConnectionForce and GetConnectionMoment — true by construction instead of by two
+	 * range checks agreeing. Reading ConnectionMoments directly here would be the second
+	 * copy the whole seam exists to rule out, and the moment parameter is DEFAULTED, so
+	 * the drift would be silent at every call site that omitted it.
+	 *
 	 * Zero for a handle no solve has reached, exactly as the force is, and zero is a
 	 * load path with no eccentricity rather than a tolerance.
 	 */
-	const FVector MomentUuCm = ConnectionMoments.IsValidIndex(ConnectionIndex)
-		? ConnectionMoments[ConnectionIndex]
-		: FVector::ZeroVector;
-
 	return GetConnection(ConnectionIndex)
-		.UtilisationUnder(GetConnectionForce(ConnectionIndex), MomentUuCm);
+		.UtilisationUnder(GetConnectionForce(ConnectionIndex), GetConnectionMoment(ConnectionIndex));
 }
 
 bool FStructure::IsPieceSupported(int32 PieceIndex) const

@@ -3992,12 +3992,21 @@ bool FStructurePieceSupportDegenerateInputTest::RunTest(const FString& Parameter
  * and any transcription must track ApplyForce to the last bit. Both are discharged
  * by delegating rather than by re-deriving, which is why the identity
  *
- *     GetConnectionUtilisation(I) == GetConnection(I).UtilisationUnder(GetConnectionForce(I))
+ *     GetConnectionUtilisation(I)
+ *         == GetConnection(I).UtilisationUnder(GetConnectionForce(I), GetConnectionMoment(I))
  *
  * is asserted BITWISE for every joint, alongside expectations derived independently
  * from stress and strength. The identity alone would be satisfied by two consistent
  * wrong answers; the derived numbers alone would not notice a private copy of the
  * pipeline drifting an ulp away from the one the cascade uses.
+ *
+ * BOTH ARGUMENTS, AND THE SECOND ONE IS WHY THERE IS AN ECCENTRIC FIXTURE AT THE END.
+ * UtilisationUnder's moment parameter is DEFAULTED, so an identity written with the
+ * force alone quietly supplies zero — and on a geometry-free fixture the accessor's own
+ * moment is zero too, so the assertion holds by coincidence rather than by agreement.
+ * Deleting the moment from the accessor entirely would have left this test green. The
+ * last block gives one joint a real rectangle and a load path that misses its centroid,
+ * where the two answers differ by exactly twenty, so the identity has something to say.
  *
  * GRAVITY IS THE ONLY LOAD and there is still no world: FStructure is plain
  * arithmetic over a graph, so this is a unit test on the mechanism (a ratio), not an
@@ -4153,13 +4162,29 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 			/*
 			 * THE SEAM. Bitwise, because the whole reason this accessor exists is
 			 * that it must not be a second evaluation of the same arithmetic.
+			 *
+			 * AND THE MOMENT IS PASSED EXPLICITLY, WHICH IS THE WHOLE OF WHY
+			 * GetConnectionMoment EXISTS. UtilisationUnder's moment parameter is
+			 * DEFAULTED, so an assertion written without it supplies zero — and on a
+			 * geometry-free fixture like this one the accessor's own moment is zero
+			 * too, so the identity held trivially and would have gone on holding
+			 * however far the two had drifted. It is stated in full here and bitten
+			 * on below, where a joint carries a real one.
 			 */
+			const FVector Moment = Structure.GetConnectionMoment(Index);
+
 			TestTrue(
 				FString::Printf(
-					TEXT("%s: joint %d must be exactly UtilisationUnder(GetConnectionForce), %s vs %s"),
+					TEXT("%s: joint %d is geometry-free and must carry no moment, got (%f, %f, %f)"),
+					Expected[Index].Description, Index, Moment.X, Moment.Y, Moment.Z),
+				Moment.IsZero());
+
+			TestTrue(
+				FString::Printf(
+					TEXT("%s: joint %d must be exactly UtilisationUnder(GetConnectionForce, GetConnectionMoment), %s vs %s"),
 					Expected[Index].Description, Index,
-					*Bits(Utilisation), *Bits(Connection.UtilisationUnder(Force))),
-				Utilisation == Connection.UtilisationUnder(Force));
+					*Bits(Utilisation), *Bits(Connection.UtilisationUnder(Force, Moment))),
+				Utilisation == Connection.UtilisationUnder(Force, Moment));
 
 			// Asking must not have broken anything: solving is non-destructive and so is reading.
 			TestFalse(
@@ -4250,6 +4275,191 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 	}
 
 	/*
+	 * A JOINT UNDER A MOMENT, WHICH IS THE ONLY FIXTURE THAT CAN MAKE THE SEAM ABOVE
+	 * MEAN ANYTHING.
+	 *
+	 * WHY THIS BLOCK EXISTS. GetConnectionUtilisation composes
+	 * UtilisationUnder(Force, Moment), and the moment parameter is DEFAULTED. Every
+	 * fixture above is geometry-free, so its moment is zero and the identity holds
+	 * whether or not the moment is supplied — which means the assertion whose stated
+	 * job is that this accessor must not drift from the evaluator would stay green if
+	 * the moment were deleted from Structure.cpp altogether. A joint that carries a
+	 * real one is the only thing that can tell those apart, and this is it.
+	 *
+	 *     [1]  a brick, its weight acting 2 cm along +X of the joint's own centroid
+	 *      |
+	 *     [0]  grounded pad, one 10 x 10 cm bed joint between them
+	 *
+	 * EXACTLY ONE SUPPORT, BECAUSE THAT IS THE ONLY CASE THE STATICS IS DETERMINATE IN.
+	 * A piece on several supports keeps the area split and carries no moment at all —
+	 * MOMENTS_DESIGN.md's N >= 2 rule — so a two-support fixture would report zero and
+	 * prove nothing.
+	 *
+	 * THE ARITHMETIC, spelled out from brick dimensions and published strengths:
+	 *
+	 *   W       = 1.9 g/cm3 x 21.5 x 10.25 x 6.5 cm / 1000 x 980 cm/s2 = 2667.198625 uu
+	 *   M       = (p - c) x F, so |M| = 2 cm x W                       = 5334.39725 uu.cm
+	 *   W_sec   = (4/3) x 5 x 5^2                                      = 166.666... cm3
+	 *   sigma_b = |M| / W_sec                                          = 32.0063835 uu/cm2
+	 *   sigma_n = W / 100 cm2, in COMPRESSION so it closes the joint    = 26.67198625 uu/cm2
+	 *   opened edge   = sigma_b - sigma_n = 5.33439725 uu/cm2 = 5.33439725e-4 MPa
+	 *   squeezed edge = sigma_b + sigma_n = 58.678369  uu/cm2 = 5.8678369e-3 MPa
+	 *
+	 * where 10,000 uu per MPa.cm2 comes from MPaForForce, which spells 1 N = 100 uu and
+	 * 1 cm2 = 100 mm2 out for itself rather than reading production's constant.
+	 *
+	 * WHICH AXIS GOVERNS, WORKED THROUGH FOR ALL THREE, because ComputeUtilisation
+	 * returns the WORST of them and a case aimed at bending silently measures something
+	 * else otherwise:
+	 *
+	 *   tension     5.33439725e-4 / 0.10 MPa = 5.33439725e-3   <- governs
+	 *   compression 5.8678369e-3  / 10.0 MPa = 5.8678369e-4
+	 *   shear       exactly zero: the load is vertical and the normal is exactly +Z
+	 *
+	 * So the moment moves this joint from 2.6671986250e-4 to 5.33439725e-3 — a factor of
+	 * exactly 20, and a factor no rounding can account for. That gap is what makes the
+	 * seam assertion bite: an accessor evaluated without the moment lands on the first
+	 * number while the break decision is made on the second.
+	 */
+	{
+		/** Half of a 10 x 10 cm face, so 4 x 5 x 5 = 100 cm2 exactly matches the area. */
+		constexpr double JointHalfCm = 5.0;
+
+		/** How far the brick's weight acts from the centroid of the face carrying it. */
+		constexpr double EccentricityCm = 2.0;
+
+		/** (4/3) x h_u x h_v^2 for that face — beam theory, not a code figure. */
+		constexpr double SectionModulusCm3 =
+			(4.0 / 3.0) * JointHalfCm * JointHalfCm * JointHalfCm;
+
+		const FVector JointCentreCm(0.0, 0.0, 0.0);
+		const FVector BrickCentreOfMassCm(EccentricityCm, 0.0, 10.0);
+
+		FStructure Structure;
+
+		const int32 Pad = Structure.AddPiece(BrickMassKg, true, FVector(0.0, 0.0, -10.0));
+		const int32 Brick = Structure.AddPiece(BrickMassKg, false, BrickCentreOfMassCm);
+
+		FConnectionSpec JointSpec;
+		JointSpec.PieceA = Pad;
+		JointSpec.PieceB = Brick;
+		JointSpec.Normal = BedJointNormal;
+		JointSpec.AreaSqCm = JointAreaSqCm;
+		JointSpec.CentreCm = JointCentreCm;
+		JointSpec.HalfExtentCm = BedJointHalfExtentCm;
+
+		const int32 Joint = Structure.AddConnection(MakeConnection(JointSpec, GeneralPurposeMortar));
+
+		TestTrue(
+			FString::Printf(TEXT("fixture: the eccentric joint should have been accepted, got handle %d"), Joint),
+			Joint != INDEX_NONE);
+
+		TestTrue(
+			TEXT("fixture: every piece and every joint here knows where it is, so the geometry is complete"),
+			Structure.HasCompleteGeometry());
+
+		Structure.SolveLoads();
+
+		const FVector Force = Structure.GetConnectionForce(Joint);
+
+		/*
+		 * PRECONDITION: the solve routed one brick straight down through this joint.
+		 * PieceB is the loaded brick, so per ConnectionLoad.h the stored force is the
+		 * force acting on it — downward.
+		 */
+		TestTrue(
+			FString::Printf(TEXT("fixture: the joint should carry one brick downward, got (%f, %f, %f)"),
+				Force.X, Force.Y, Force.Z),
+			FMath::IsNearlyEqual(Force.Z, -BrickWeightUU, 1.0e-6)
+				&& FMath::IsNearlyEqual(Force.X, 0.0, 1.0e-9)
+				&& FMath::IsNearlyEqual(Force.Y, 0.0, 1.0e-9));
+
+		/*
+		 * (p - c) x F, DERIVED HERE RATHER THAN READ BACK. p - c is (2, 0, 10) and F is
+		 * (0, 0, -W), so the cross product is (0, 2W, 0): a moment about the world Y
+		 * axis, which bends the face across X. The component about the joint's own
+		 * normal would be torsion and is dropped by the evaluator; there is none here.
+		 */
+		const FVector ExpectedMoment =
+			FVector::CrossProduct(BrickCentreOfMassCm - JointCentreCm, Force);
+
+		const FVector Moment = Structure.GetConnectionMoment(Joint);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("the joint must report the moment its load path puts on it, (p-c) x F = (%.9g, %.9g, %.9g), got (%.9g, %.9g, %.9g)"),
+				ExpectedMoment.X, ExpectedMoment.Y, ExpectedMoment.Z,
+				Moment.X, Moment.Y, Moment.Z),
+			Moment.Equals(ExpectedMoment, FMath::Abs(EccentricityCm * BrickWeightUU) * 1.0e-9));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture: the expected moment must not itself be zero, or this block asserts nothing; it is (%.9g, %.9g, %.9g)"),
+				ExpectedMoment.X, ExpectedMoment.Y, ExpectedMoment.Z),
+			!ExpectedMoment.IsNearlyZero());
+
+		/* The opened edge, against mortar's flexural bond strength. Tension governs. */
+		const double BendingMPa =
+			MPaForForce(BrickWeightUU * EccentricityCm / SectionModulusCm3, 1.0);
+		const double NormalMPa = MPaForForce(BrickWeightUU, JointAreaSqCm);
+
+		const double ExpectedTension = (BendingMPa - NormalMPa) / GeneralPurposeMortar.TensileStrengthMPa;
+		const double ExpectedCompression =
+			(BendingMPa + NormalMPa) / GeneralPurposeMortar.CompressiveStrengthMPa;
+
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture: the OPENED edge must be the governing axis, tension %.12e against compression %.12e"),
+				ExpectedTension, ExpectedCompression),
+			ExpectedTension > ExpectedCompression);
+
+		const double Utilisation = Structure.GetConnectionUtilisation(Joint);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("an eccentrically loaded joint should read %.12e, got %s"),
+				ExpectedTension, *Bits(Utilisation)),
+			IsClose(Utilisation, ExpectedTension));
+
+		/*
+		 * THE SEAM, STATED IN FULL. Bitwise against the evaluator handed BOTH halves of
+		 * what the solve routed, which is the identity Structure.h claims and the one
+		 * this test exists to hold.
+		 */
+		TestTrue(
+			FString::Printf(
+				TEXT("joint %d must be exactly UtilisationUnder(GetConnectionForce, GetConnectionMoment), %s vs %s"),
+				Joint, *Bits(Utilisation),
+				*Bits(Structure.GetConnection(Joint).UtilisationUnder(Force, Moment))),
+			Utilisation == Structure.GetConnection(Joint).UtilisationUnder(Force, Moment));
+
+		/*
+		 * AND THE HALF THAT PROVES THE SEAM IS NOT VACUOUS. Evaluated on the force
+		 * alone — the moment left to its default — the same joint reads a twentieth of
+		 * the number the break decision is made on. If these two were equal, the
+		 * assertion above would be satisfied by an accessor that ignored the moment
+		 * entirely, which is exactly the drift it claims to rule out.
+		 */
+		const double WithoutTheMoment = Structure.GetConnection(Joint).UtilisationUnder(Force);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("the moment must be load-bearing: with it the joint reads %s, without it %s, and those must differ"),
+				*Bits(Utilisation), *Bits(WithoutTheMoment)),
+			Utilisation != WithoutTheMoment);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("and by the factor the arithmetic predicts: %.12e against a moment-free %.12e"),
+				Utilisation, WithoutTheMoment),
+			IsClose(WithoutTheMoment, NormalMPa / GeneralPurposeMortar.CompressiveStrengthMPa));
+
+		/* Asking must not have broken it: reading stays non-destructive here too. */
+		TestFalse(TEXT("reading an eccentric joint's moment must not break it"),
+			Structure.GetConnection(Joint).HasGiven());
+	}
+
+	/*
 	 * A HANDLE THAT NAMES NO JOINT FAILS CLOSED.
 	 *
 	 * TNumericLimits<double>::Max(), not zero. Zero is "unloaded and perfectly
@@ -4284,6 +4494,21 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 				FString::Printf(TEXT("handle %d names no joint and must read as failed, got %s"),
 					Handle, *Bits(Utilisation)),
 				Utilisation == TNumericLimits<double>::Max());
+
+			/*
+			 * AND THE MOMENT FAILS CLOSED THE OTHER WAY ROUND, WHICH IS NOT AN
+			 * INCONSISTENCY. A moment is a load, not a verdict: zero says "nothing is
+			 * levering this", which is the conservative answer for something that is not
+			 * a joint, and it is the utilisation above that has to read as failed. A
+			 * Max() moment would be an enormous invented load, and every finite thing
+			 * downstream of it would be a NaN.
+			 */
+			const FVector Moment = Structure.GetConnectionMoment(Handle);
+
+			TestTrue(
+				FString::Printf(TEXT("handle %d names no joint and must carry no moment, got (%f, %f, %f)"),
+					Handle, Moment.X, Moment.Y, Moment.Z),
+				Moment.IsZero());
 		}
 	}
 

@@ -231,6 +231,15 @@ namespace BrickWorldTestSupport
 	 * inside one course. The actual drop here is about 50 cm (the clear air above the
 	 * floor), or the free-fall 490 cm if it were to miss the floor entirely, so the
 	 * assertion is nowhere near its margin either way.
+	 *
+	 * AND IT ONLY MEANS ANYTHING WHERE THERE IS CLEAR AIR TO FALL THROUGH. Both derivations
+	 * above assume the released brick has nothing beneath it — 50 cm of it over the floor, or
+	 * the 8.5 cm the narrow-waist wall leaves when its waist is pulled. A released brick that
+	 * is still resting on standing wall is a perfectly correct outcome and moves a millimetre,
+	 * so applying this to one is a claim about geometry that is simply false: the foot of a
+	 * staircase collapse keeps 10.25 of its 21.5 cm on the course below and measures 1.310 cm.
+	 * A collapse whose released set has no clear air under it needs a different measure —
+	 * Tests/StructurePushTest.cpp's settle test works one through.
 	 */
 	constexpr double FallenAtLeastCm = 5.0;
 

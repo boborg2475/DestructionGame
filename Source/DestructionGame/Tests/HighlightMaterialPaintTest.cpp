@@ -85,19 +85,28 @@ namespace HighlightMaterialPaintTestSupport
 	 *             emissive are one look. Any positive threshold catches it, so it is no longer
 	 *             the case this constant is calibrated against.
 	 *
-	 *   THE SHIPPED PALETTE FAILS THIS TWICE, and both failures are real rather than a threshold
-	 *             artefact. Hovered (1.00, 0.55, 0.05) against Neighbour0 (1.00, 0.62, 0.10)
-	 *             separates by 0.0700 on green at BOTH backgrounds — about 9 display levels. They
-	 *             are two ambers, and everything that used to distinguish them was the opacity
-	 *             ladder. Selected (0.05, 0.80, 1.00) against Neighbour5 (0.00, 0.55, 0.45)
-	 *             separates by 0.3700 over the stand-in but only 0.2460 over the lit brick, where
-	 *             cyan's blue clamps from 1.304 to 1.0 and its green from 1.020 to 1.0 — the wash
-	 *             toward white, and the one failure the second background exists to find.
+	 *   THE SHIPPED PALETTE FAILED THIS TWICE AND NO LONGER DOES, AND WHAT MOVED WAS THE PALETTE.
+	 *             Neither threshold was touched, which is the order this file insists on: if a
+	 *             palette cannot satisfy an honest additive model, the palette is what changes.
+	 *             The two failures were Hovered (1.00, 0.55, 0.05) against a Neighbour0 that was
+	 *             then a second amber at (1.00, 0.62, 0.10), separating by 0.0700 on green at both
+	 *             backgrounds — about 9 display levels, with everything that used to distinguish
+	 *             them being the opacity ladder; and Selected (0.05, 0.80, 1.00) against a
+	 *             Neighbour5 that was then a teal at (0.00, 0.55, 0.45), separating by 0.3700 over
+	 *             the stand-in but only 0.2460 over the lit brick as cyan's blue clamped from
+	 *             1.304 to 1.0 and its green from 1.020 to 1.0. The repick answered both: slot 0
+	 *             is now a green (0.00, 0.80, 0.00), slot 2 a clay (0.45, 0.10, 0.00) and slot 5
+	 *             a sage (0.20, 0.45, 0.05), and all thirty-six pairs clear 0.25 at both
+	 *             backgrounds.
 	 *
-	 *   AND TWO PAIRS PASS BY 1.02x, which is close enough to be worth writing down rather than
-	 *             discovering later: Hovered/Neighbour2 and Neighbour0/Neighbour2 both sit at
-	 *             0.2550 on red over the lit brick. A brighter background than the one modelled
-	 *             here takes them under.
+	 *   THE TIGHTEST PAIR TODAY PASSES BY 1.32x, which is close enough to be worth writing down
+	 *             rather than discovering later: Neighbour0 against Neighbour5 sits at 0.3300 on
+	 *             green over the lit brick, where the green channel is the wash again — 0.80 plus
+	 *             the brick's 0.220 clamps to 1.0, which is what costs the pair the 0.0200 it has
+	 *             over the stand-in. Nothing else in the table comes under 1.40x. Swept over
+	 *             uniform grey backgrounds this is the worst pair at every brightness from 0.18
+	 *             up and the FIRST to go under, at a grey just past 0.30; it is therefore the pair
+	 *             a measured sunlit brick would be expected to break.
 	 *
 	 * THIS CONSTANT IS ABOUT THE PAIR AND NOTHING ELSE. Two overlays can differ from each other
 	 * by half a channel and both be invisible on a brick — MinChannelChangeOverBareBrick below is
@@ -165,14 +174,24 @@ namespace HighlightMaterialPaintTestSupport
 	 * any single background would do — RIGHT UP TO THE CLAMP. Once a channel of E + B reaches
 	 * white the subtraction stops being an identity, and a brighter background pushes more
 	 * channels into the ceiling: hues do not merely shift, they WASH TOWARD WHITE and toward each
-	 * other. Selected against Neighbour5 separates by 0.3700 over the stand-in and by 0.2460 over
-	 * the lit brick, which is the difference between passing and failing. Modelling one background
-	 * is what let this palette read as fine while washing out on screen.
+	 * other. On the palette this row was added for, Selected against Neighbour5 separated by 0.3700
+	 * over the stand-in and by 0.2460 over the lit brick, which was the difference between passing
+	 * and failing — modelling one background is what let that palette read as fine while washing out
+	 * on screen.
+	 *
+	 * THAT PAIR HAS SINCE BEEN REPICKED, AND THE SECOND ROW STILL CHANGES AN ANSWER RATHER THAN
+	 * MERELY A NUMBER — but by less, and saying so is the honest thing to do. Today's tightest pair,
+	 * Neighbour0 against Neighbour5, separates by 0.3500 over the stand-in and by 0.3300 over the lit
+	 * brick, because Neighbour0's green plus the brick's 0.220 clamps to white. That is 1.40x against
+	 * 1.32x: both pass, so the second background currently changes no verdict in the suite. It is the
+	 * shape of the failure rather than a live catch, which is the same standing this file gives
+	 * MinChannelChangeOverBareBrick.
 	 *
 	 * WHAT IS MISSING IS A THIRD, SUNLIT ROW, and it is missing because nobody has measured one —
 	 * inventing a number here would be exactly the kind of agreeable arithmetic this file exists
-	 * to prevent. The prediction it would test is written beside MinDistinguishableChannel: the two
-	 * pairs currently passing at 1.02x go under first.
+	 * to prevent. The prediction it would test is written beside MinDistinguishableChannel:
+	 * Neighbour0 against Neighbour5 goes under first, and over uniform grey it does so just past
+	 * 0.30.
 	 */
 	struct FBackgroundRow
 	{
@@ -563,9 +582,13 @@ namespace HighlightMaterialPaintTestSupport
  * B + E from B + E*O, because it was taken on ONE material at opacity 0.95, whose green emissive
  * is 0 (so the opacity factor multiplies nothing) and whose red is clipped. At 0.95 the two models
  * differ by 5% of the emissive, which is inside the residual. THE DISCRIMINATING MEASUREMENT IS
- * M_BrickHover, the only asset at 0.35: patch it beside M_BrickNeighbour0, which is very nearly
- * the same amber at 0.95. Equal brightness means opacity is inert; a visibly dimmer hover means it
- * scales. Until that is taken, dropping opacity is the CONSERVATIVE reading for the pair claim —
+ * M_BrickHover, the only asset at 0.35, and the convenient form of it has lapsed: it used to be
+ * "patch it beside M_BrickNeighbour0, which is very nearly the same amber at 0.95", and the repick
+ * made that slot a green — two hues cannot be compared for brightness by eye. What remains, and
+ * holds the hue exactly fixed rather than nearly, is M_BrickHover against ITSELF with its opacity
+ * set to 0.95 and nothing else touched. Equal brightness means opacity is inert; a visibly dimmer
+ * 0.35 means it scales. Until that is taken, dropping opacity is the CONSERVATIVE reading for the
+ * pair claim —
  * a pair "distinguished" only by brightness of one hue is precisely the copy-paste fix the pair
  * constant exists to catch — and the OPTIMISTIC one for the bare-brick claim, which is argued
  * beside MinChannelChangeOverBareBrick and is nearly vacuous under either reading.
@@ -578,10 +601,12 @@ namespace HighlightMaterialPaintTestSupport
  * silently clamped away, because a clamp would turn "this palette cannot be drawn" into "this
  * palette is fine".
  *
- * NO LONGER GREEN ON ARRIVAL, AND THE FAILURES ARE THE POINT. Under the corrected model the
- * shipped palette fails two of its thirty-six pairs. Neither threshold was moved to produce that
- * and neither may be moved to remove it: if the palette cannot satisfy an honest additive model,
- * the palette is what changes. The numbers are beside MinDistinguishableChannel.
+ * IT ARRIVED RED AND THE PALETTE IS WHAT MOVED, WHICH IS THE ORDER THAT MATTERS. Under the
+ * corrected model the shipped palette failed two of its thirty-six pairs; neither threshold was
+ * moved to produce that and neither was moved to remove it — slots 0, 2 and 5 were repicked
+ * instead, and every pair now clears at both backgrounds. The rule stands for the next palette: if
+ * one cannot satisfy an honest additive model, the palette is what changes. The old failures, the
+ * repick and today's tightest pair are all beside MinDistinguishableChannel.
  *
  * ALL NINE ASSETS ARE OTHERWISE CORRECT: two expression nodes each, a Constant3Vector emissive and
  * a Constant opacity, unlit and translucent. An earlier version of this comment asserted as
@@ -624,10 +649,10 @@ namespace HighlightMaterialPaintTestSupport
  * argument for keeping it despite catching nothing today is beside MinChannelChangeOverBareBrick.
  *
  * AND THE TWO ARE TELLABLE APART ON THE SAME BRICK. This is the property the player depends on and
- * the one this file now FAILS on: the shipped palette contains two ambers whose only distinction
- * was an opacity that does not reach the screen. Composited over each modelled background, two
- * looks must differ by a quarter of a channel; the arithmetic, the two failures and the two
- * 1.02x passes are worked through beside the constant.
+ * the one this file caught the palette out on: it held two ambers whose only distinction was an
+ * opacity that does not reach the screen. Composited over each modelled background, two looks must
+ * differ by a quarter of a channel; the arithmetic, the two failures that repick answered and the
+ * 1.32x pair that is now the tightest are worked through beside the constant.
  *
  * PARAMETERISED OVER THE MATERIALS AND OVER THE BACKGROUNDS, so a further highlight state is a row
  * rather than a test — and Inspected arrived as exactly that row — and a measured sunlit brick is

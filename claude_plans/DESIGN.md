@@ -277,7 +277,7 @@ A joint's utilisation is computed from a force over an **area** — one average 
 
 So the model reports a bed joint under a modest, uniform, comfortably-safe compression while the real joint peels apart from the back. It is the same signature as every other defect this subsystem has produced: **a plausible number, and a piece that is not really being held.** This is why real masonry limits how far a course may corbel out, and it is the same mechanism that makes arches and vaults work — thrust kept inside the joint so no part of it opens.
 
-Closing it needs edge stresses rather than an average, which needs a section modulus, which needs joints to have extent and pieces to have position — see §6's spatial layer. **Until then, expect cantilevers to stand that should not.**
+Closing it needs edge stresses rather than an average, which needs a section modulus, which needs joints to have extent and pieces to have position — see §6's spatial layer. **CLOSED for a piece on exactly one support** *(2026-08-06)* — see [MOMENTS_DESIGN.md](MOMENTS_DESIGN.md). A brick on one head joint reads 0.4157 in tension where it read 0.020 in shear, and the cascade now runs on the world wire, so cantilevers that should peel do peel. Still open for a piece on several supports, where the area split keeps the moment at zero.
 
 ### Force delivery (designed in principle, not yet detailed)
 - **Explosions**: radial falloff — a blast on a corner hits that point hardest and weakens as it spreads. (Chaos fields do this.)

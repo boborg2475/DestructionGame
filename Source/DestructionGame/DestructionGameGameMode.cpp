@@ -76,8 +76,11 @@ void ADestructionGameGameMode::BeginPlay()
 	 * AND THE WALL IS LEFT SOLVED, WHICH IS A SEPARATE ACT FROM BUILDING IT. A structure
 	 * nobody has solved has no support answer for any piece, and EPieceSupport::Falling is
 	 * what an ABSENT answer reads as — so an unsolved wall is indistinguishable from one in
-	 * free fall to everything that asks. SolveAndPush is the wire that both solves and makes
-	 * the world agree with the answer, and it releases nothing from a wall that is standing.
+	 * free fall to everything that asks. SolveAndPush is the wire that both settles the wall
+	 * and makes the world agree with the answer, and it releases nothing from a wall that is
+	 * standing — the scenario wall's worst joint is 0.00495 of capacity, so settling it breaks
+	 * nothing and costs one solve. A wall laid so that it cannot hold itself up comes down
+	 * here, on the frame it was built, rather than waiting for a click to blame.
 	 *
 	 * An id of INDEX_NONE names no structure, and SolveAndPush already answers that with
 	 * zero, so a refused build needs no branch of its own here.

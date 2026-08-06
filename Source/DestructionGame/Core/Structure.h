@@ -449,6 +449,37 @@ struct FStructure
 	FVector GetConnectionForce(int32 ConnectionIndex) const;
 
 	/**
+	 * The bending moment this connection carries about its own centroid, uu.cm, after
+	 * SolveLoads.
+	 *
+	 * THE OTHER HALF OF WHAT GetConnectionUtilisation IS COMPUTED FROM, and it exists
+	 * because without it that accessor cannot state its own contract. The identity a strain
+	 * readout rests on is
+	 *
+	 *     GetConnectionUtilisation(I)
+	 *         == GetConnection(I).UtilisationUnder(GetConnectionForce(I), GetConnectionMoment(I))
+	 *
+	 * and the moment parameter is DEFAULTED, so an assertion written without this accessor
+	 * silently supplies zero and holds however far the two have drifted. A readout that showed
+	 * a joint at 0.397 beside a force of 2667 uu with no arithmetic connecting them is this
+	 * subsystem's recurring signature; the number that closes the gap has to be gettable.
+	 *
+	 * SEPARATE FROM THE FORCE, NEVER ENCODED IN IT. A moment folded into GetConnectionForce as
+	 * extra length or as a tilt would make the one vector a readout uses to explain the load
+	 * stop describing it.
+	 *
+	 * ZERO IS "NO ECCENTRICITY", AND IT IS NOT A TOLERANCE. It is what a centred load, a piece
+	 * nobody placed and a joint whose rectangle nobody measured all produce, exactly — which is
+	 * what lets every geometry-free fixture in the project go on reading what it always read.
+	 * HasCompleteGeometry is what tells those apart; this accessor does not try to.
+	 *
+	 * Zero for an out-of-range handle and zero before anything has been solved, the same scope
+	 * GetConnectionForce documents, because it is the same solver output rebuilt by the same
+	 * solve.
+	 */
+	FVector GetConnectionMoment(int32 ConnectionIndex) const;
+
+	/**
 	 * How close this connection is to failing under the load the last solve gave it.
 	 *
 	 * The strain readout's question, and it must be answerable without damaging

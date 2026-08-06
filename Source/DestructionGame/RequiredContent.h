@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Containers/ArrayView.h"
+#include "Math/Color.h"
 
 /**
  * Every content path this module hard-references from C++.
@@ -98,6 +99,45 @@ namespace DestructionContent
 		TEXT("/Game/Materials/M_BrickNeighbour3.M_BrickNeighbour3"),
 		TEXT("/Game/Materials/M_BrickNeighbour4.M_BrickNeighbour4"),
 		TEXT("/Game/Materials/M_BrickNeighbour5.M_BrickNeighbour5")
+	};
+
+	/**
+	 * AND WHAT THE PANEL PAINTS SLOT i'S SWATCH IN — BESIDE THE PATH RATHER THAN INSIDE THE WIDGET.
+	 *
+	 * THESE ARE THE EMISSIVE CONSTANTS OF THE SIX MATERIALS DIRECTLY ABOVE, INDEX FOR INDEX, and
+	 * that agreement is the entire feature: a joint row draws this colour, the brick on the far end
+	 * of that joint wears the material on the same row, and the player finds one from the other. A
+	 * swatch that disagrees with its material is not a cosmetic fault — it points the player at the
+	 * wrong brick in a wall of 1,220 identical ones, which is worse than drawing no swatch at all.
+	 *
+	 * BESIDE THE PATHS BECAUSE THE TWO ARRAYS ARE ONE ROW PER SLOT. They lived in
+	 * DestructionGamePlayerController.cpp as a file-static palette whose comment claimed to be
+	 * "exactly" these emissives, and a palette repick changed three of the assets without it —
+	 * amber, chartreuse and teal against a green, a clay and a sage, drawn side by side, with the
+	 * whole suite green because nothing held them together. Adjacency is not a proof, but it is what
+	 * makes a seventh slot arriving with a path and no colour visible to the person adding it.
+	 *
+	 * THIS DUPLICATION CANNOT BE DELETED FROM C++ ALONE, AND SAYING SO IS THE HONEST THING TO DO.
+	 * The shader needs the colour in the asset and the swatch needs it at runtime; a Constant3Vector
+	 * is editor-only data, so nothing can read it in a cooked build. The design that would make the
+	 * drift UNSAYABLE is re-authoring each emissive as a named VectorParameter, at which point the
+	 * swatch reads GetVectorParameterValue and this array goes away entirely. Until then the
+	 * agreement is asserted rather than structural — Content.NeighbourSwatchesMatchTheirMaterials.
+	 *
+	 * EQUALITY HERE IS NOT EQUALITY ON SCREEN, and nobody may "fix" one of these to match a
+	 * screenshot. The swatch is a Slate fill drawn at full strength over the panel's near-black
+	 * background; the brick is an ADDITIVE overlay composited over a lit surface, so the same linear
+	 * triple lands at a different display value on the brick than it does in the panel. The two are
+	 * meant to be the same DECISION, not the same pixel, and matching them by eye would put a third
+	 * number in the system rather than removing one.
+	 */
+	inline constexpr FLinearColor BrickNeighbourSwatchColours[] = {
+		FLinearColor(0.00f, 0.80f, 0.00f, 1.0f),
+		FLinearColor(0.15f, 0.25f, 1.00f, 1.0f),
+		FLinearColor(0.45f, 0.10f, 0.00f, 1.0f),
+		FLinearColor(1.00f, 0.00f, 0.12f, 1.0f),
+		FLinearColor(0.72f, 0.55f, 1.00f, 1.0f),
+		FLinearColor(0.20f, 0.45f, 0.05f, 1.0f)
 	};
 
 	/* The two mapping contexts ADestructionGamePlayerController adds for a local player. */

@@ -54,8 +54,17 @@ public:
 	FStructureBinding* Find(int32 StructureId);
 
 	/**
-	 * Solve one structure and push the answer onto the world: every piece the solver is
+	 * Settle one structure and push the answer onto the world: every piece the solver is
 	 * no longer holding up is handed to physics.
+	 *
+	 * SETTLE, NOT MERELY SOLVE. Every joint over its own capacity gives, the share moves
+	 * onto whatever is left, and it repeats until a pass breaks nothing — DESIGN.md §3's
+	 * rule, applied here because a wall that cannot hold itself up must not stand waiting
+	 * for a click and then come down attributed to whichever brick was clicked. A structure
+	 * under capacity is untouched: settling it is one solve and zero breaking passes.
+	 *
+	 * SO THIS IS DESTRUCTIVE AND IS NOT A READOUT. Joints never heal and the pass stamps
+	 * are the record a collapse is replayed from, so nothing asking what-if may call it.
 	 *
 	 * @return how many pieces THIS CALL released. Zero for a settled structure, and zero
 	 *         for a structure id that names nothing.
