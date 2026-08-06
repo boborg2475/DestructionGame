@@ -13,7 +13,28 @@ int32 FStructureBinding::AddPiece(
 	UObject* Actor,
 	const DestructionLayout::FPieceBox& Box)
 {
-	const int32 Handle = Structure.AddPiece(MassKg, bIsGrounded);
+	/*
+	 * THE BOX'S CENTRE IS THE PIECE'S CENTRE OF MASS, AND IT GOES DOWN WITH THE MASS. A
+	 * brick is a homogeneous rectangular solid whose mass came from this same box, so the
+	 * two are one fact and Layout::RunningBond already derives them together for the
+	 * structures it lays itself. Keeping the box up here and forwarding only the mass loses
+	 * the centre between the two layers, and losing it is INVISIBLE: an unplaced piece loads
+	 * its joints exactly as a centred one does, so a wall that came through the binding —
+	 * which is every wall the game builds — reports the same forces, the same support
+	 * answers and the same piece count while every corbel in it is answered as though its
+	 * weight acted through the middle of its support.
+	 *
+	 * A CENTRE THAT IS NOT ONE IS NOT HANDED DOWN. Box.CentreCm is whatever the caller had,
+	 * and a piece nobody could place carries a non-finite one; storing that would launder a
+	 * NaN into the lever arm the moment anything subtracts a joint centroid from it, which
+	 * is a plausible-looking load rather than an obvious fault. The two-argument door leaves
+	 * the piece honestly unplaced instead, and FStructure::HasCompleteGeometry is what makes
+	 * that askable rather than silent. ContainsNaN is !IsFinite on each component, so an
+	 * infinity lands inside the guard alongside a NaN.
+	 */
+	const int32 Handle = Box.CentreCm.ContainsNaN()
+		? Structure.AddPiece(MassKg, bIsGrounded)
+		: Structure.AddPiece(MassKg, bIsGrounded, Box.CentreCm);
 
 	FPieceBinding Binding;
 	Binding.Actor = Actor;

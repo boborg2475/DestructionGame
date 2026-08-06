@@ -79,8 +79,21 @@ namespace DestructionLayout
 			Box.CentreCm = FVector(CentreXCm, 0.0, CentreZCm);
 			Box.ExtentCm = FVector(LengthCm, Spec.BrickSizeCm.Y, Spec.BrickSizeCm.Z) * 0.5;
 
-			const int32 Handle =
-				Layout.Structure.AddPiece(PieceMassKg(Box, Spec.DensityGramsPerCubicCm), bIsGrounded);
+			/*
+			 * THE BOX'S CENTRE IS THE CENTRE OF MASS, because a brick is a homogeneous
+			 * rectangular solid and its mass was derived from that same box a line above.
+			 * Deriving the two from one value is what stops a piece weighing one brick and
+			 * levering its joint from where a different one sits.
+			 *
+			 * WITHOUT THIS THE WALL HAS NO ECCENTRICITY AT ALL, and the difference is
+			 * invisible: an unplaced piece loads its joints exactly as a centred one does,
+			 * so a producer that forgot to place its bricks would lay a wall that reads
+			 * perfectly healthy while every corbel in it is answered as though its weight
+			 * acted through the middle of its support. FStructure::HasCompleteGeometry is
+			 * what makes that state askable rather than silent.
+			 */
+			const int32 Handle = Layout.Structure.AddPiece(
+				PieceMassKg(Box, Spec.DensityGramsPerCubicCm), bIsGrounded, Box.CentreCm);
 			Layout.Boxes.Add(Box);
 
 			return Handle;

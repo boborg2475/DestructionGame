@@ -137,6 +137,11 @@ struct FStructureBinding
 	 * Add a piece and its binding together, returning the one handle that names both.
 	 *
 	 * One call because two calls is one call away from a desync.
+	 *
+	 * THE BOX IS BOTH HALVES OF WHERE THE PIECE IS: the binding keeps it, and its centre
+	 * goes down to the solver as the piece's centre of mass, so a piece cannot be laid in
+	 * one place and load its joints from another. A box whose centre is not finite places
+	 * nothing, and the piece is added unplaced rather than with a centre nobody can use.
 	 */
 	int32 AddPiece(
 		double MassKg,

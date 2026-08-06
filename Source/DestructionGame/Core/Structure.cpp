@@ -176,6 +176,33 @@ int32 FStructure::AddPiece(double MassKg, bool bIsGrounded)
 	return Pieces.Add(Piece);
 }
 
+int32 FStructure::AddPiece(double MassKg, bool bIsGrounded, const FVector& CentreOfMassCm)
+{
+	/*
+	 * THE SAME DOOR, WITH ONE MORE FACT THROUGH IT — so the two-argument form is CALLED
+	 * rather than have its guards restated here. Restated, they would be two rules that
+	 * agree until somebody tightens one, and a mass this overload accepted while the
+	 * other refused it would be a piece in the graph that no other route could produce.
+	 */
+	const int32 Handle = AddPiece(MassKg, bIsGrounded);
+
+	if (Handle == INDEX_NONE)
+	{
+		return INDEX_NONE;
+	}
+
+	/*
+	 * Supplying a centre buys the piece the ability to load a joint eccentrically and
+	 * nothing else. The flag is what keeps "at the origin" and "nobody said" apart: a
+	 * defaulted zero on a wall laid off the origin would be a lever arm of metres,
+	 * invented out of a field nobody wrote.
+	 */
+	Pieces[Handle].CentreOfMassCm = CentreOfMassCm;
+	Pieces[Handle].bHasCentreOfMass = true;
+
+	return Handle;
+}
+
 int32 FStructure::AddConnection(const FConnection& Connection)
 {
 	/*
@@ -459,6 +486,49 @@ int32 FStructure::NumSolves() const
 	return SolveCount;
 }
 
+bool FStructure::HasCompleteGeometry() const
+{
+	/*
+	 * A CONJUNCTION OVER WHAT IS STILL IN THE STRUCTURE. A moment needs a point for the
+	 * load to act at and a rectangle for the joint to resist it with, so either half
+	 * missing anywhere means some joint here is answering a centred load because it has
+	 * to rather than because the load is centred.
+	 *
+	 * A removed piece and a joint that has given are out of the graph entirely — they
+	 * carry nothing and route nothing — so a tombstone left by a piece nobody placed must
+	 * not condemn a structure whose live half is fully described. A predicate walking the
+	 * raw arrays would say false for ever the first time a player pulled a brick.
+	 *
+	 * An empty structure therefore reads TRUE, which is the empty conjunction rather than
+	 * a special case, and it is what keeps this composable: adding a fully described piece
+	 * to a complete structure leaves it complete.
+	 */
+	for (const FStructurePiece& Piece : Pieces)
+	{
+		if (Piece.bIsInTheStructure && !Piece.bHasCentreOfMass)
+		{
+			return false;
+		}
+	}
+
+	/*
+	 * ZERO EXTENTS ARE THE ABSENCE OF A RECTANGLE, and that is the same reading
+	 * AddConnection uses to decide whether there is one to validate at all. A face with
+	 * no extent on any axis is not a degenerate joint — the area alone answers a centred
+	 * load exactly — it is a joint whose bending capacity nobody measured, which is
+	 * precisely what this predicate exists to make visible.
+	 */
+	for (const FConnection& Connection : Connections)
+	{
+		if (!Connection.HasGiven() && Connection.InterfaceHalfExtentCm.IsZero())
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
 const FStructurePiece& FStructure::GetPiece(int32 PieceIndex) const
 {
 	static const FStructurePiece Placeholder;
@@ -611,6 +681,7 @@ void FStructure::SolveLoads()
 		 * stranding — gives the same answer rather than accumulating onto the last one.
 		 */
 		ConnectionForces.Init(FVector::ZeroVector, Connections.Num());
+		ConnectionMoments.Init(FVector::ZeroVector, Connections.Num());
 		PieceSupported.Init(false, Pieces.Num());
 
 		/*
@@ -760,6 +831,33 @@ void FStructure::SolveLoads()
 			 */
 			const bool bCanSplit = TotalAreaSqCm > 0.0;
 
+			/*
+			 * A PIECE ON EXACTLY ONE SUPPORT IS STATICALLY DETERMINATE, AND ON SEVERAL IT
+			 * IS NOT. That is the whole of the moment rule, and the obvious alternative —
+			 * every supporting joint carrying its own share crossed with its own lever arm
+			 * — is not an approximation of it but a different and wrong answer. On an
+			 * ordinary running-bond brick with two symmetric bed patches the moments cancel
+			 * across the PAIR and not on either one, so each joint would read sigma_b =
+			 * 4.18e-3 against sigma_n = 1.269e-3 and every bed joint in a standing wall
+			 * would report about 0.029 IN TENSION. A wall half-peeled everywhere, from a
+			 * rule that looks like ordinary statics.
+			 *
+			 * On one support the reaction has nowhere to move to and the moment is exact.
+			 * On several, the reactions rearrange until moment equilibrium is satisfied and
+			 * this design has no rule for dividing that, so the area split stands and the
+			 * moment stays zero — exact wherever the centre of mass sits at the
+			 * area-weighted centroid of the supports, which every symmetric running bond
+			 * does, and unconservative otherwise. Recorded as such in MOMENTS_DESIGN.md
+			 * rather than hidden.
+			 *
+			 * A PIECE NOBODY PLACED CARRIES NO MOMENT AT ALL, which is not a tolerance:
+			 * with no eccentricity the bending term vanishes and every joint reads bit for
+			 * bit what it read before moments existed. That exactness is the only reason
+			 * every geometry-free fixture in the project still works.
+			 */
+			const bool bLoadPathIsDeterminate =
+				LoadPaths[Current].Num() == 1 && Pieces[Current].bHasCentreOfMass;
+
 			for (const int32 Index : LoadPaths[Current])
 			{
 				const FConnection& Connection = Connections[Index];
@@ -800,6 +898,55 @@ void FStructure::SolveLoads()
 					 * neither end is even supported by the time the solve settles.
 					 */
 					ConnectionForces[Index] = FVector(0.0, 0.0, SignedZUU);
+
+					/*
+					 * (p - c) x F, ABOUT THE JOINT'S OWN CENTROID, AND CROSSED WITH THE
+					 * FORCE JUST STORED. That force already carries the sign of whichever
+					 * end is being held up, so a joint that names the loaded piece first
+					 * flips BOTH the lever arm and the force and the moment comes out the
+					 * same size — which is exactly the invariance the classification
+					 * already has, and the reason nothing physical may depend on
+					 * declaration order.
+					 *
+					 * THE MOMENT RIDES ALONGSIDE THE FORCE AND DOES NOT CHANGE IT. The
+					 * split is still area-weighted and gravity still points straight down;
+					 * a longer or tilted force vector would encode the moment in the one
+					 * number a readout uses to explain the load, which is how a plausible
+					 * quantity stops describing what is happening.
+					 *
+					 * IT IS THIS PIECE'S OWN WEIGHT PLUS WHAT IT RECEIVED, ACTING AT ITS
+					 * OWN CENTRE — the load arriving from above is treated as though it
+					 * arrived there. That is exact for a piece carrying only itself and an
+					 * approximation for one carrying a wall; MOMENTS_DESIGN.md slice 5 is
+					 * where the accumulation starts carrying a moment along the load path
+					 * so that what came from above keeps its own lever arm.
+					 */
+					/*
+					 * AND THE JOINT HAS TO KNOW WHERE IT IS, WHICH IS THE OTHER HALF OF THE
+					 * CONJUNCTION HasCompleteGeometry ASKS. A joint carrying no rectangle
+					 * carries no centroid either, and its zero is "nobody said" rather than a
+					 * face at the world origin — so subtracting it from a placed piece
+					 * measures the lever arm from the origin to the brick, which on a wall
+					 * laid anywhere else is metres of eccentricity invented out of a field
+					 * nobody wrote. It then meets a section modulus of zero, and
+					 * ComputeUtilisation answers a moment against no section with Max: every
+					 * joint of a half-described structure reads as failed, from geometry that
+					 * was never supplied.
+					 *
+					 * Zero extents are read as the absence of a rectangle here in exactly the
+					 * words HasCompleteGeometry uses, so there is one definition of what an
+					 * unmeasured face is. A joint with no bending capacity measured is
+					 * HEALTHY, not degenerate — the area alone answers a centred load exactly
+					 * — so it keeps reading bit for bit what it read before moments existed.
+					 */
+					const bool bJointKnowsItsFace = !Connection.InterfaceHalfExtentCm.IsZero();
+
+					if (bLoadPathIsDeterminate && bJointKnowsItsFace)
+					{
+						ConnectionMoments[Index] = FVector::CrossProduct(
+							Pieces[Current].CentreOfMassCm - Connection.InterfaceCentreCm,
+							ConnectionForces[Index]);
+					}
 
 					ReceivedFromAboveUU[Support] += ShareUU;
 				}
@@ -955,7 +1102,15 @@ int32 FStructure::SolveAndBreak()
 				continue;
 			}
 
-			Connection.ApplyForce(ConnectionForces[Index]);
+			/*
+			 * THE MOMENT GOES IN BESIDE THE FORCE, exactly as GetConnectionUtilisation
+			 * hands the same pair to the same evaluator. The two are one question asked
+			 * twice — what is this joint carrying — and a sweep that broke joints on the
+			 * force alone would answer it differently from the readout the moment a load
+			 * path missed a centroid: a joint drawn at 1.25 of capacity, holding for ever.
+			 * Both arrays are rebuilt by the solve above and are indexed alike.
+			 */
+			Connection.ApplyForce(ConnectionForces[Index], ConnectionMoments[Index]);
 
 			if (Connection.HasGiven())
 			{
@@ -1093,8 +1248,22 @@ double FStructure::GetConnectionUtilisation(int32 ConnectionIndex) const
 	 * GetConnection returns a default-constructed placeholder whose interface area
 	 * is zero, and ComputeUtilisation's area guard already answers that with
 	 * TNumericLimits<double>::Max() rather than with a healthy-looking zero.
+	 *
+	 * THE MOMENT GOES IN BESIDE THE FORCE RATHER THAN BEING FOLDED INTO IT. Both are
+	 * solver output, both are rebuilt by every solve, and both describe the same end
+	 * of the same joint; how they resolve onto the face is FConnection's business and
+	 * not this accessor's, which is what keeps this one line from becoming a second
+	 * copy of the arithmetic the break decision is made on.
+	 *
+	 * Zero for a handle no solve has reached, exactly as the force is, and zero is a
+	 * load path with no eccentricity rather than a tolerance.
 	 */
-	return GetConnection(ConnectionIndex).UtilisationUnder(GetConnectionForce(ConnectionIndex));
+	const FVector MomentUuCm = ConnectionMoments.IsValidIndex(ConnectionIndex)
+		? ConnectionMoments[ConnectionIndex]
+		: FVector::ZeroVector;
+
+	return GetConnection(ConnectionIndex)
+		.UtilisationUnder(GetConnectionForce(ConnectionIndex), MomentUuCm);
 }
 
 bool FStructure::IsPieceSupported(int32 PieceIndex) const

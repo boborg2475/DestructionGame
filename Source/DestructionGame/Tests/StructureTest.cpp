@@ -319,6 +319,19 @@ namespace StructureTestSupport
 	 * a bed joint together and slide a head joint — so a non-zero tension means the
 	 * force was stored against the wrong end of the joint.
 	 *
+	 * AXIS-ALIGNMENT IS NO LONGER WHAT MAKES THAT WORTH ASSERTING, THOUGH, AND THE
+	 * REASON HAS MOVED WITHOUT THE ASSERTION MOVING. This reads FConnectionLoad's
+	 * RESULTANT tension, which is a force and is still exactly zero — but a joint is now
+	 * also pulled open at one EDGE by an eccentric load path, and that tension never
+	 * reaches this struct at all: the moment is carried alongside and the split happens
+	 * downstream in ComputeUtilisation. What guarantees no edge is opening in any spec
+	 * routed through here is that NONE OF THEM CARRIES GEOMETRY — no piece has a centre
+	 * of mass, so every lever arm is unmeasurable and every moment is zero. A brick
+	 * hanging off one head joint reads zero here and 0.4157 of its tensile capacity,
+	 * which is Structure.HangingBrickPeelsRatherThanShears. A correct assertion resting
+	 * on a reason that has quietly stopped being the reason is worse than a wrong one,
+	 * because nobody re-derives it.
+	 *
 	 * IT DOES NOT GENERALISE TO A TILTED NORMAL, and nobody should read it as a claim
 	 * that it does. The head tier is deliberately sign-blind, so a joint more than 45
 	 * degrees off vertical sitting ABOVE a piece is still that piece's fallback
@@ -1287,6 +1300,15 @@ bool FStructureSupportTierThresholdTest::RunTest(const FString& Parameters)
  * two comments in this file that read as properties of the MODEL ("tension is always
  * zero", "a gravity load path never pulls a joint open") are in fact properties of the
  * FIXTURES. Both are now scoped; this is what they are scoped against.
+ *
+ * AND A TILTED NORMAL IS NO LONGER THE ONLY WAY A GRAVITY LOAD PATH PULLS A JOINT OPEN.
+ * An ECCENTRIC one does it on a perfectly square joint: a brick held by a single head
+ * joint has a mean normal stress of exactly zero while the fibre at the top of that joint
+ * is levered open to 0.4157 of mortar's tensile capacity. That tension is a STRESS and
+ * not a resultant, so it does not appear in FConnectionLoad and nothing in this file can
+ * see it — every spec here is geometry-free, which is what keeps these answers unchanged.
+ * The eccentric case lives in Structure.HangingBrickPeelsRatherThanShears; this test
+ * remains the only coverage of the TILTED one, and its behaviour is untouched.
  *
  * THE SHAPE. One brick, one anchor on the earth, one inclined joint between them, and
  * the only thing that varies is the tilt and WHICH SIDE OF THE PIECE THE FACE IS ON:

@@ -22,6 +22,27 @@ struct FStructurePiece
 	double MassKg = 0.0;
 
 	/**
+	 * Where this piece's weight acts, cm. The ONE position a piece carries.
+	 *
+	 * Not a transform and not a bounding box: the only thing the solver can do with a
+	 * position is measure how far the load path misses a joint's centroid by, and a
+	 * point is the whole of what that needs.
+	 *
+	 * Zero is not "at the origin", it is "nobody said" — see bHasCentreOfMass.
+	 */
+	FVector CentreOfMassCm = FVector::ZeroVector;
+
+	/**
+	 * Whether anyone supplied that centre of mass.
+	 *
+	 * FALSE BY DEFAULT, so a piece nobody placed carries no eccentricity rather than
+	 * claiming to sit at the world origin — which for a wall laid off the origin would
+	 * be a lever arm of metres, invented out of a defaulted field. A piece with no
+	 * centre of mass loads its joints exactly as it did before moments existed.
+	 */
+	bool bHasCentreOfMass = false;
+
+	/**
 	 * Whether this piece rests on the earth.
 	 *
 	 * A grounded piece TERMINATES the flow of load: whatever reaches it is
@@ -210,6 +231,20 @@ struct FStructure
 	int32 AddPiece(double MassKg, bool bIsGrounded = false);
 
 	/**
+	 * Add a piece that knows where its weight acts, and return its handle.
+	 *
+	 * THE SAME DOOR, WITH ONE MORE FACT THROUGH IT. Every rejection the two-argument
+	 * form makes it makes too; supplying a centre of mass buys a piece the ability to
+	 * load a joint eccentrically and nothing else.
+	 *
+	 * A centre that is not finite is refused outright rather than stored and ignored: a
+	 * NaN there launders into a NaN lever arm the moment anything subtracts a joint
+	 * centroid from it, and the same argument AddConnection already makes for a joint's
+	 * own centre applies unchanged one level up.
+	 */
+	int32 AddPiece(double MassKg, bool bIsGrounded, const FVector& CentreOfMassCm);
+
+	/**
 	 * Add a connection and return its handle, or INDEX_NONE if it is not a joint.
 	 *
 	 * The structure owns the graph and is the only place that can tell a valid
@@ -284,6 +319,34 @@ struct FStructure
 	 * here is a budget or a limit, and no production code branches on it.
 	 */
 	int32 NumSolves() const;
+
+	/**
+	 * Whether every piece and every joint still in this structure knows where it is.
+	 *
+	 * "NOBODY SUPPLIED POSITIONS, SO THERE ARE NO MOMENTS" HAS TO BE ASKABLE, and this is
+	 * the only thing that can ask it. A load path with no eccentricity and a load path
+	 * nobody measured produce the identical answer — that exactness is what lets every
+	 * geometry-free fixture in the project go on working — so the two are otherwise
+	 * indistinguishable from outside, and a readout that showed a moment of zero could not
+	 * say which of them it was looking at. Same trick as HasSupportAnswer, one level up.
+	 *
+	 * A CONJUNCTION OF THE TWO HALVES, and neither half is a judgement call. A moment needs
+	 * a point for the load to act at and a rectangle for the joint to resist it with; either
+	 * one missing anywhere means some joint in this structure is answering a centred load
+	 * because it has to, not because the load is centred.
+	 *
+	 * OVER WHAT IS STILL IN THE STRUCTURE, not over the arrays. A removed piece and a joint
+	 * that has given are out of the graph entirely — they carry nothing and route nothing —
+	 * so a tombstone left behind by a piece nobody ever placed must not condemn a structure
+	 * whose live half is fully described.
+	 *
+	 * TRUE FOR AN EMPTY STRUCTURE, deliberately: an empty conjunction is true, and that is
+	 * what keeps this composable — adding a fully-described piece to a complete structure
+	 * leaves it complete, and there is no first-piece special case. The state that would
+	 * actually mislead someone is a structure with pieces and no positions, and that reads
+	 * false.
+	 */
+	bool HasCompleteGeometry() const;
 
 	/** Out-of-range handles return a default-constructed placeholder. */
 	const FStructurePiece& GetPiece(int32 PieceIndex) const;
@@ -543,6 +606,24 @@ private:
 
 	/** What each connection carries, in Unreal force units. */
 	TArray<FVector> ConnectionForces;
+
+	/**
+	 * The bending moment each connection carries about its own centroid, uu.cm.
+	 *
+	 * BESIDE ConnectionForces AND WITH ITS LIFETIME, not folded into it and not a third
+	 * kind of state. Both are rebuilt from scratch by every solve and are self-healing
+	 * for the same reason: a joint whose moment survived a re-solve would describe a
+	 * structure that no longer exists, exactly as a stale force would.
+	 *
+	 * SEPARATE RATHER THAN ENCODED, deliberately. A moment folded into the force vector
+	 * — as extra length, or as a tilt — would make GetConnectionForce report a number
+	 * that no longer describes the load, which is this subsystem's recurring signature.
+	 *
+	 * NON-ZERO ONLY WHERE THE STATICS IS DETERMINATE: a piece whose load reaches the
+	 * ground through exactly one joint, and which somebody actually placed. See
+	 * SolveLoads for why the per-joint rule that looks obvious is wrong.
+	 */
+	TArray<FVector> ConnectionMoments;
 
 	/**
 	 * Which breaking pass gave each connection, counted from 1, or INDEX_NONE.
