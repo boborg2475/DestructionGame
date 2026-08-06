@@ -24,7 +24,20 @@ namespace
 		DestructionContent::BrickPlaceholderMeshPath,
 		DestructionContent::BrickHoverMaterialPath,
 		DestructionContent::BrickSelectedMaterialPath,
-		DestructionContent::BrickInspectedMaterialPath
+		DestructionContent::BrickInspectedMaterialPath,
+
+		/*
+		 * ONE ROW PER COLOUR SLOT, SPELLED OUT RATHER THAN SPLICED IN FROM THE ARRAY. This table is
+		 * a LIST OF PATHS, and a loop appending six of them would make it a list that cannot be
+		 * read at a glance — which is the one thing the table is for. The paths themselves are
+		 * still named once, in RequiredContent.h, so there is nothing here to disagree with.
+		 */
+		DestructionContent::BrickNeighbourMaterialPaths[0],
+		DestructionContent::BrickNeighbourMaterialPaths[1],
+		DestructionContent::BrickNeighbourMaterialPaths[2],
+		DestructionContent::BrickNeighbourMaterialPaths[3],
+		DestructionContent::BrickNeighbourMaterialPaths[4],
+		DestructionContent::BrickNeighbourMaterialPaths[5]
 	};
 }
 

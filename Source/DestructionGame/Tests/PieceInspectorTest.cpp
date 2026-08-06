@@ -294,6 +294,80 @@ namespace PieceInspectorTestSupport
 	}
 
 	/**
+	 * WHAT AN ENTRY'S SUPPORT COLUMN READS WHEN THE REF NAMES NO BRICK AT ALL, SPELLED OUT HERE
+	 * RATHER THAN IMPORTED FROM THE MODEL.
+	 *
+	 * A brick a removal took, a ref naming another wall and a ref missing a half all come back
+	 * bIsPiece false, and the truthful union of the three is that the ref names nothing in the
+	 * structure this panel is reading.
+	 *
+	 * THE OBVIOUS IMPLEMENTATION PRODUCES "not solved yet" AND THAT IS THE FAIL-OPEN ANSWER.
+	 * PresenterWordForSupport asked of a default FPieceInspection sees bHasSupportAnswer false
+	 * and says so — a sentence which promises the brick is there and that nobody has run a solve
+	 * yet, beside a brick that is not there. It is also indistinguishable, on a freshly built
+	 * wall, from every live row on the panel.
+	 */
+	const TCHAR* const InspectorNoBrickSupportWord = TEXT("not in this wall");
+
+	const TCHAR* NameOfSupportBand(EPieceSupportBand Band)
+	{
+		switch (Band)
+		{
+		case EPieceSupportBand::NotAPiece: return TEXT("NotAPiece");
+		case EPieceSupportBand::NotSolved: return TEXT("NotSolved");
+		case EPieceSupportBand::Falling:   return TEXT("Falling");
+		case EPieceSupportBand::Stranded:  return TEXT("Stranded");
+		case EPieceSupportBand::Supported: return TEXT("Supported");
+		case EPieceSupportBand::Grounded:  return TEXT("Grounded");
+		}
+
+		return TEXT("<not a support band>");
+	}
+
+	/** Every bucket there is, so a sweep over them cannot quietly stop at the ones in use. */
+	const EPieceSupportBand AllSupportBands[] = {
+		EPieceSupportBand::NotAPiece,
+		EPieceSupportBand::NotSolved,
+		EPieceSupportBand::Falling,
+		EPieceSupportBand::Stranded,
+		EPieceSupportBand::Supported,
+		EPieceSupportBand::Grounded
+	};
+
+	/**
+	 * WHAT EACH BUCKET MUST READ AS, SPELLED OUT HERE RATHER THAN ASKED OF THE MODEL.
+	 *
+	 * THIS IS THE PAIRING, AND THE PAIRING IS THE WHOLE CLAIM. The word is what a player reads and
+	 * the bucket is what a dot beside it is coloured from, and the one thing that must never happen
+	 * is a row saying "grounded" next to the colour this game uses for "falling". Two derivations
+	 * of one question is exactly how that happens, so the two are held together everywhere rather
+	 * than each being checked against its own column.
+	 *
+	 * WRITTEN OUT INDEPENDENTLY, so a model that derived the bucket from the word by comparing
+	 * strings — the very policy the bucket exists to abolish — is not thereby endorsed: the words
+	 * are pinned per row against a hand-worked diagram by the table in PieceMenuInspector, so this
+	 * pins the bucket against those, not against production's own idea of either.
+	 *
+	 * IT IS INJECTIVE, AND THE NEW TEST ASSERTS THAT RATHER THAN ASSUMING IT. If two buckets ever
+	 * shared a word, this sweep would stop distinguishing them and the per-row expectations would
+	 * be the only thing left holding them apart.
+	 */
+	FString InspectorWordForBand(EPieceSupportBand Band)
+	{
+		switch (Band)
+		{
+		case EPieceSupportBand::NotAPiece: return FString(InspectorNoBrickSupportWord);
+		case EPieceSupportBand::NotSolved: return FString(TEXT("not solved yet"));
+		case EPieceSupportBand::Falling:   return FString(TEXT("falling"));
+		case EPieceSupportBand::Stranded:  return FString(TEXT("stranded"));
+		case EPieceSupportBand::Supported: return FString(TEXT("supported"));
+		case EPieceSupportBand::Grounded:  return FString(TEXT("grounded"));
+		}
+
+		return FString(TEXT("<no word for this band>"));
+	}
+
+	/**
 	 * HOW SEVERE A BAND IS, ORDERED HERE RATHER THAN BY THE ENUMERATOR'S OWN VALUE.
 	 *
 	 * The numeric order of the enumerators is production's choice — zero has to be the one that
@@ -312,22 +386,6 @@ namespace PieceInspectorTestSupport
 
 		return 3;
 	}
-
-	/**
-	 * WHAT AN ENTRY'S SUPPORT COLUMN READS WHEN THE REF NAMES NO BRICK AT ALL, SPELLED OUT HERE
-	 * RATHER THAN IMPORTED FROM THE MODEL.
-	 *
-	 * A brick a removal took, a ref naming another wall and a ref missing a half all come back
-	 * bIsPiece false, and the truthful union of the three is that the ref names nothing in the
-	 * structure this panel is reading.
-	 *
-	 * THE OBVIOUS IMPLEMENTATION PRODUCES "not solved yet" AND THAT IS THE FAIL-OPEN ANSWER.
-	 * PresenterWordForSupport asked of a default FPieceInspection sees bHasSupportAnswer false
-	 * and says so — a sentence which promises the brick is there and that nobody has run a solve
-	 * yet, beside a brick that is not there. It is also indistinguishable, on a freshly built
-	 * wall, from every live row on the panel.
-	 */
-	const TCHAR* const InspectorNoBrickSupportWord = TEXT("not in this wall");
 
 	/**
 	 * THE ONE WORD THE PANEL CALLS ITSELF, SPELLED HERE RATHER THAN READ OFF THE MODEL.
@@ -365,19 +423,21 @@ namespace PieceInspectorTestSupport
 			const FInspectorPieceEntry& Entry = Inspector.Pieces[Index];
 
 			Line += FString::Printf(
-				TEXT("%s'%s'(%s){%d,%d}%s%s"),
+				TEXT("%s'%s'(%s/%s){%d,%d}%s%s"),
 				Index == 0 ? TEXT("") : TEXT(" "),
-				*Entry.Label, *Entry.SupportText, Entry.Ref.StructureId, Entry.Ref.PieceIndex,
+				*Entry.Label, *Entry.SupportText, NameOfSupportBand(Entry.SupportBand),
+				Entry.Ref.StructureId, Entry.Ref.PieceIndex,
 				Entry.bIsLivePiece ? TEXT("") : TEXT("[dead]"),
 				Entry.bIsInspected ? TEXT("<==") : TEXT(""));
 		}
 
 		Line += FString::Printf(
-			TEXT(" inspected:%s{%d,%d} '%s' hint:'%s' support:'%s' jointstext:'%s' joints:"),
+			TEXT(" inspected:%s{%d,%d} '%s' hint:'%s' support:'%s'/%s jointstext:'%s' joints:"),
 			Inspector.bHasInspectedPiece ? TEXT("yes") : TEXT("no"),
 			Inspector.InspectedRef.StructureId, Inspector.InspectedRef.PieceIndex,
 			*Inspector.InspectedLabel, *Inspector.InspectedHintText,
-			*Inspector.SupportText, *Inspector.JointsText);
+			*Inspector.SupportText, NameOfSupportBand(Inspector.SupportBand),
+			*Inspector.JointsText);
 
 		if (Inspector.Joints.Num() == 0)
 		{
@@ -518,11 +578,40 @@ namespace PieceInspectorTestSupport
 		 */
 		int32 SilentEntries = 0;
 
+		/**
+		 * How many rows' DOT disagreed with their own WORD, and the first one that did.
+		 *
+		 * The bucket exists so a widget can colour a dot without comparing SupportText against
+		 * string literals — a policy in the one place no test can reach, in the one file this
+		 * project has a written no-logic exception for. The moment the two can disagree there are
+		 * two answers to "is this brick standing up", and it is the quietest failure there is: a
+		 * perfectly ordinary word beside the wrong colour.
+		 *
+		 * COUNTED AND ASSERTED ONCE, for the reason the silent entries are: a derivation that is
+		 * wrong is wrong on every row of every case at once, and a hundred copies of one failure
+		 * is a log nobody reads. The first offender is carried so the message still names one.
+		 */
+		int32 MismatchedBands = 0;
+		FString FirstBandMismatch;
+
 		for (int32 Index = 0; Index < Inspector.Pieces.Num(); ++Index)
 		{
 			const FInspectorPieceEntry& Entry = Inspector.Pieces[Index];
 
 			SilentEntries += Entry.SupportText.IsEmpty() ? 1 : 0;
+
+			if (Entry.SupportText != InspectorWordForBand(Entry.SupportBand))
+			{
+				++MismatchedBands;
+
+				if (FirstBandMismatch.IsEmpty())
+				{
+					FirstBandMismatch = FString::Printf(
+						TEXT("entry %d is bucketed %s, which must read '%s'; it reads '%s'"),
+						Index, NameOfSupportBand(Entry.SupportBand),
+						*InspectorWordForBand(Entry.SupportBand), *Entry.SupportText);
+				}
+			}
 
 			if (Entry.bIsInspected && MarkedEntry == INDEX_NONE)
 			{
@@ -571,6 +660,20 @@ namespace PieceInspectorTestSupport
 			SilentEntries, 0);
 
 		/*
+		 * AND EVERY ROW'S DOT AND EVERY ROW'S WORD ARE ONE FACT. WHICH bucket each state gets is
+		 * the tables' job; that the two halves of one row cannot contradict each other is swept
+		 * here, over every readout this file builds — the knot, the unsolved wall, the position
+		 * fixtures and the ladders included.
+		 */
+		Test.TestEqual(
+			FString::Printf(
+				TEXT("%s: every entry's bucket must match its own word, %d of %d do not — %s %s"),
+				Where, MismatchedBands, Inspector.Pieces.Num(),
+				FirstBandMismatch.IsEmpty() ? TEXT("none") : *FirstBandMismatch,
+				*DescribeInspector(Inspector)),
+			MismatchedBands, 0);
+
+		/*
 		 * AND THE ROW AND THE READOUT UNDER IT MAY NOT DISAGREE. Two inches apart on one panel,
 		 * one brick must not read "supported" in the list and "stranded" over its joints — which
 		 * is the same argument that already ties InspectedLabel to the marked entry's Label, and
@@ -586,6 +689,32 @@ namespace PieceInspectorTestSupport
 					Where, MarkedEntry, *Inspector.Pieces[MarkedEntry].SupportText,
 					*Inspector.SupportText, *DescribeInspector(Inspector)),
 				Inspector.Pieces[MarkedEntry].SupportText, Inspector.SupportText);
+
+			/*
+			 * AND THE SAME FOR THE BUCKET, WHICH IS THE ASSERTION THE WHOLE COLOURED-DOT SLICE
+			 * TURNS ON. The row and the readout are two inches apart on one panel and are drawn
+			 * from two different fields; a green dot on the row above an amber one over the joints
+			 * is the panel contradicting itself about one brick, and it is the direct analogue of
+			 * the InspectedLabel check three rows down.
+			 *
+			 * HELD AGAINST THE MODEL'S OTHER FIELD RATHER THAN AGAINST A VALUE WRITTEN HERE, on
+			 * top of the tables that pin what the bucket actually is — the same shape as the word
+			 * check immediately above.
+			 */
+			Test.TestTrue(
+				*FString::Printf(
+					TEXT("%s: entry %d is the brick the readout is about, so its bucket must match; the row is %s and the readout is %s %s"),
+					Where, MarkedEntry, NameOfSupportBand(Inspector.Pieces[MarkedEntry].SupportBand),
+					NameOfSupportBand(Inspector.SupportBand), *DescribeInspector(Inspector)),
+				Inspector.Pieces[MarkedEntry].SupportBand == Inspector.SupportBand);
+
+			Test.TestEqual(
+				FString::Printf(
+					TEXT("%s: the readout is bucketed %s, which must read '%s'; it reads '%s' %s"),
+					Where, NameOfSupportBand(Inspector.SupportBand),
+					*InspectorWordForBand(Inspector.SupportBand), *Inspector.SupportText,
+					*DescribeInspector(Inspector)),
+				Inspector.SupportText, InspectorWordForBand(Inspector.SupportBand));
 		}
 
 		/*
@@ -604,6 +733,20 @@ namespace PieceInspectorTestSupport
 				FString::Printf(TEXT("%s: nothing inspected must say nothing about support, it says '%s'"),
 					Where, *Inspector.SupportText),
 				Inspector.SupportText, FString());
+
+			/*
+			 * AND THE BUCKET GOES WITH IT, TO THE ONE VALUE THAT CLAIMS NOTHING. An empty word
+			 * beside a bucket that still says "grounded" is a dot drawn in the colour of a brick
+			 * the readout is no longer about — the stale-field defect in the field a widget reads
+			 * without reading any text at all. NotAPiece is the zero enumerator precisely so this
+			 * is also what a default-constructed readout answers.
+			 */
+			Test.TestTrue(
+				*FString::Printf(
+					TEXT("%s: nothing inspected must bucket as %s, it buckets as %s %s"),
+					Where, NameOfSupportBand(EPieceSupportBand::NotAPiece),
+					NameOfSupportBand(Inspector.SupportBand), *DescribeInspector(Inspector)),
+				Inspector.SupportBand == EPieceSupportBand::NotAPiece);
 
 			Test.TestTrue(
 				*FString::Printf(TEXT("%s: nothing inspected must name no brick, it names {%d,%d}"),
@@ -3521,6 +3664,295 @@ bool FPieceMenuJointColourSlotTest::RunTest(const FString& Parameters)
 					Left, Right, Long.Joints[Left].ColourSlot, *DescribeInspector(Long)),
 				Long.Joints[Left].ColourSlot != Long.Joints[Right].ColourSlot);
 		}
+	}
+
+	return true;
+}
+
+/**
+ * EVERY BRICK ROW CARRIES ITS SUPPORT STATE AS A BUCKET AS WELL AS A WORD, SO A COLOURED DOT IS
+ * THE MODEL'S DECISION AND ONLY THE HUE IS THE WIDGET'S.
+ *
+ * WHAT IS BROKEN TODAY, AND WHY IT IS A MODEL PROBLEM RATHER THAN A DRAWING ONE. FInspectorPieceEntry
+ * carries SupportText and nothing else about support, so a widget asked for a dot per row has
+ * exactly one way to choose its colour: compare that string against literals. That is a policy
+ * written in the one place this project has a recorded exception saying there may be no logic at
+ * all, and it fails silently in both directions — it stops colouring the day the wording is retuned
+ * (and the wording is deliberately pinned in the model, which is an invitation to retune it), and
+ * it colours the wrong dot the day a sixth word is added.
+ *
+ * THE SPLIT IS THE ONE EJointMarginBand ALREADY MADE, and it is made here for the same reason:
+ * which side of a line a value falls on is a DECISION, and the palette is taste. The bucket is the
+ * decision; which green, which amber, which grey stays out in the widget where nothing headless can
+ * judge it anyway.
+ *
+ * SIX BUCKETS, NOT FOUR AND NOT FIVE, AND THE TWO EXTRA ONES ARE THE ARGUMENT. Grounded, supported,
+ * stranded and falling are the four physical states. "not in this wall" is a fifth, and it is a
+ * BUCKET rather than an absence because the alternative is either a second bool for "has a bucket"
+ * — a field free to disagree with the one beside it, which is the defect this whole struct is
+ * shaped against — or reusing Falling, which is exactly the fail-open conflation PresenterWordForSupport
+ * exists to undo. And "not solved yet" is a sixth, because collapsing it into the fifth is a
+ * ONE-WAY door: a widget handed two enumerators can paint them one colour with a lookup, and a
+ * widget handed one can never tell them apart again.
+ *
+ * THE CROSS-CHECK IS WHERE THE VALUE IS, AND IT IS SWEPT RATHER THAN TABLED. CheckInspectorInvariants
+ * now holds every row's bucket against that row's own word, and the MARKED row's bucket against the
+ * readout's — the same pair of claims SupportText already carries. A panel that said "grounded" in
+ * the list and drew the falling colour two inches below it would be the drift this project keeps
+ * paying for, in the one field a player reads without reading any text.
+ *
+ * THE TABLE BELOW IS WHAT DRIVES IT RED. The sweep alone is satisfied by a model that never fills
+ * the field at all — every row would bucket NotAPiece and every word would have to be "not in this
+ * wall", which is false of five of them, so in practice the sweep bites too — but the per-case
+ * expectations are what say WHICH bucket each of the six states is, hand-written from the fixture
+ * diagram rather than read back off the binding.
+ *
+ * NEEDS A TICKING WORLD: no, and not even a world.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPieceMenuSupportBandTest,
+	"DestructionGame.Presenter.PieceMenuSupportBand",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPieceMenuSupportBandTest::RunTest(const FString& Parameters)
+{
+	using namespace PieceInspectorTestSupport;
+
+	/*
+	 * TABLE INTEGRITY FIRST, AND IT IS NOT BOOKKEEPING. The whole sweep in CheckInspectorInvariants
+	 * is "the bucket determines the word"; if two buckets shared a word it would stop separating
+	 * them and would go on passing over a model that had merged the two.
+	 */
+	for (int32 Left = 0; Left < UE_ARRAY_COUNT(AllSupportBands); ++Left)
+	{
+		TestFalse(
+			*FString::Printf(TEXT("table: bucket %s must have a word of its own, it has none"),
+				NameOfSupportBand(AllSupportBands[Left])),
+			InspectorWordForBand(AllSupportBands[Left]).IsEmpty());
+
+		for (int32 Right = Left + 1; Right < UE_ARRAY_COUNT(AllSupportBands); ++Right)
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("table: buckets %s and %s must read differently or the sweep cannot tell them apart; both read '%s'"),
+					NameOfSupportBand(AllSupportBands[Left]),
+					NameOfSupportBand(AllSupportBands[Right]),
+					*InspectorWordForBand(AllSupportBands[Left])),
+				InspectorWordForBand(AllSupportBands[Left])
+					!= InspectorWordForBand(AllSupportBands[Right]));
+		}
+	}
+
+	FStructureBinding Binding;
+	BuildWorkedFixture(Binding, /*bSettle*/ true);
+
+	/*
+	 * FIXTURE PRECONDITIONS, ASKED OF THE SOLVER. Four of the six buckets are only reachable if
+	 * the graph really is in the four states the diagram claims, and a fixture that stopped
+	 * producing one of them would quietly retarget its row onto whatever state came instead.
+	 */
+	TestTrue(
+		TEXT("fixture: the pad should be Grounded"),
+		Binding.GetStructure().GetPieceSupport(PadPiece) == EPieceSupport::Grounded);
+
+	TestTrue(
+		TEXT("fixture: the subject should be Supported"),
+		Binding.GetStructure().GetPieceSupport(SubjectPiece) == EPieceSupport::Supported);
+
+	TestTrue(
+		TEXT("fixture: the floater should be Falling — nothing is joined to it at all"),
+		Binding.GetStructure().GetPieceSupport(FloaterPiece) == EPieceSupport::Falling);
+
+	TestTrue(
+		TEXT("fixture: knot X should be Stranded — the solver could not route it"),
+		Binding.GetStructure().GetPieceSupport(KnotXPiece) == EPieceSupport::Stranded);
+
+	TestTrue(
+		TEXT("fixture: the spare should be out of the graph, so its ref names no brick"),
+		Binding.IsPieceRemoved(SparePiece));
+
+	/** One row of the bucket table. */
+	struct FBandCase
+	{
+		const TCHAR* Description = nullptr;
+
+		TArray<FPieceRef> Selected;
+		FPieceRef Inspected;
+
+		/** One bucket per selected ref, in the same order. Hand-written from the diagram. */
+		TArray<EPieceSupportBand> ExpectedEntryBands;
+
+		/** What the readout under the list buckets as. NotAPiece when nothing is singled out. */
+		EPieceSupportBand ExpectedReadoutBand = EPieceSupportBand::NotAPiece;
+	};
+
+	const FPieceRef Nothing;
+
+	const FPieceRef Pad = MakeRef(InspectorStructure, PadPiece);
+	const FPieceRef Subject = MakeRef(InspectorStructure, SubjectPiece);
+	const FPieceRef Floater = MakeRef(InspectorStructure, FloaterPiece);
+	const FPieceRef KnotX = MakeRef(InspectorStructure, KnotXPiece);
+	const FPieceRef Removed = MakeRef(InspectorStructure, SparePiece);
+	const FPieceRef Foreign = MakeRef(InspectorOtherStructure, SubjectPiece);
+	const FPieceRef Malformed = MakeRef(InspectorStructure, INDEX_NONE);
+
+	const TArray<FBandCase> Cases = {
+		{
+			/*
+			 * EVERY BUCKET THE SOLVED WALL CAN PRODUCE, IN ONE LIST, WITH NOTHING SINGLED OUT.
+			 *
+			 * THIS IS THE ROW THE COLUMN EXISTS FOR. Seven picked bricks are seven identical rows
+			 * without it, so the one that is falling and the one the solver gave up on can only be
+			 * found by hovering each in turn — and the three refs that name nothing at all present
+			 * exactly like the four that do.
+			 */
+			TEXT("seven bricks in every state there is, none singled out"),
+			{ Pad, Subject, Floater, KnotX, Removed, Foreign, Malformed },
+			Nothing,
+			{ EPieceSupportBand::Grounded, EPieceSupportBand::Supported,
+			  EPieceSupportBand::Falling, EPieceSupportBand::Stranded,
+			  EPieceSupportBand::NotAPiece, EPieceSupportBand::NotAPiece,
+			  EPieceSupportBand::NotAPiece },
+			EPieceSupportBand::NotAPiece
+		},
+		{
+			/* The same list with the supported brick singled out: the readout takes its bucket. */
+			TEXT("the same seven, singling out the supported one"),
+			{ Pad, Subject, Floater, KnotX, Removed, Foreign, Malformed },
+			Subject,
+			{ EPieceSupportBand::Grounded, EPieceSupportBand::Supported,
+			  EPieceSupportBand::Falling, EPieceSupportBand::Stranded,
+			  EPieceSupportBand::NotAPiece, EPieceSupportBand::NotAPiece,
+			  EPieceSupportBand::NotAPiece },
+			EPieceSupportBand::Supported
+		},
+		{
+			TEXT("the grounded pad, singled out"),
+			{ Pad }, Pad,
+			{ EPieceSupportBand::Grounded },
+			EPieceSupportBand::Grounded
+		},
+		{
+			/*
+			 * A RELEASED BRICK IS A LIVE PIECE THAT NOTHING IS HOLDING UP, and this is the row where
+			 * the dot earns its place: the menu for this selection is EMPTY, so the only thing on
+			 * the panel explaining why is this row's word and this row's colour.
+			 */
+			TEXT("the released floater, singled out"),
+			{ Floater }, Floater,
+			{ EPieceSupportBand::Falling },
+			EPieceSupportBand::Falling
+		},
+		{
+			/*
+			 * AND THE ONE BUCKET THAT IS NOT A PHYSICAL CLAIM AT ALL. Stranded means the solver
+			 * could not route this brick, so the numbers beside it are worth doubting — and in a
+			 * list of eleven rows it is the only thing that would say so. Painting it as grounded
+			 * is the same fail-open direction Integration.PullingSupportBringsTheWallDown polices.
+			 */
+			TEXT("a brick the solver stranded in a knot, singled out"),
+			{ KnotX }, KnotX,
+			{ EPieceSupportBand::Stranded },
+			EPieceSupportBand::Stranded
+		},
+		{
+			/*
+			 * AND A REF THAT NAMES NOTHING NEVER BECOMES THE READOUT'S SUBJECT, so the readout
+			 * buckets as the value that claims nothing while the ROW still says what it is.
+			 */
+			TEXT("a removed brick beside a live one, the removed one pointed at"),
+			{ Subject, Removed }, Removed,
+			{ EPieceSupportBand::Supported, EPieceSupportBand::NotAPiece },
+			EPieceSupportBand::NotAPiece
+		},
+	};
+
+	for (const FBandCase& Case : Cases)
+	{
+		const FPieceMenuInspector Inspector =
+			BuildPieceMenuInspector(Binding, Case.Selected, Case.Inspected);
+
+		CheckInspectorInvariants(*this, Inspector, Case.Description);
+
+		TestEqual(
+			FString::Printf(TEXT("%s: the table row must name one bucket per selected ref"),
+				Case.Description),
+			Case.ExpectedEntryBands.Num(), Case.Selected.Num());
+
+		TestEqual(
+			FString::Printf(TEXT("%s: should list %d entr(y/ies), it lists %d %s"),
+				Case.Description, Case.Selected.Num(), Inspector.Pieces.Num(),
+				*DescribeInspector(Inspector)),
+			Inspector.Pieces.Num(), Case.Selected.Num());
+
+		if (Inspector.Pieces.Num() == Case.ExpectedEntryBands.Num())
+		{
+			for (int32 Index = 0; Index < Case.ExpectedEntryBands.Num(); ++Index)
+			{
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s: entry %d {%d,%d} should bucket as %s, it buckets as %s %s"),
+						Case.Description, Index,
+						Case.Selected[Index].StructureId, Case.Selected[Index].PieceIndex,
+						NameOfSupportBand(Case.ExpectedEntryBands[Index]),
+						NameOfSupportBand(Inspector.Pieces[Index].SupportBand),
+						*DescribeInspector(Inspector)),
+					Inspector.Pieces[Index].SupportBand == Case.ExpectedEntryBands[Index]);
+			}
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the readout should bucket as %s, it buckets as %s %s"),
+				Case.Description,
+				NameOfSupportBand(Case.ExpectedReadoutBand),
+				NameOfSupportBand(Inspector.SupportBand),
+				*DescribeInspector(Inspector)),
+			Inspector.SupportBand == Case.ExpectedReadoutBand);
+	}
+
+	/*
+	 * AND THE SIXTH BUCKET, ON ITS OWN FIXTURE, BECAUSE IT IS THE ONE A SOLVED WALL CANNOT REACH.
+	 *
+	 * "Nobody has solved yet" is its own bucket for exactly the reason it is its own sentence:
+	 * EPieceSupport::Falling is both a real collapse and an absent answer, so a bucket taken
+	 * straight off the enumerator would paint a freshly built wall in the colour of a wall coming
+	 * down. That is a catastrophe drawn that has not happened, and in a column of forty dots it is
+	 * far louder than in one line of text.
+	 */
+	{
+		FStructureBinding Unsolved;
+		BuildWorkedFixture(Unsolved, /*bSettle*/ false);
+
+		TestFalse(
+			TEXT("fixture: nobody has solved this wall, so its subject must have no support answer"),
+			Unsolved.GetStructure().HasSupportAnswer(SubjectPiece));
+
+		const TArray<FPieceRef> JustTheSubject = { Subject };
+
+		const FPieceMenuInspector Inspector =
+			BuildPieceMenuInspector(Unsolved, JustTheSubject, Subject);
+
+		CheckInspectorInvariants(*this, Inspector, TEXT("a wall nobody has solved"));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("a wall nobody has solved: its entry must bucket as %s and NOT as %s, it buckets as %s %s"),
+				NameOfSupportBand(EPieceSupportBand::NotSolved),
+				NameOfSupportBand(EPieceSupportBand::Falling),
+				Inspector.Pieces.Num() == 1
+					? NameOfSupportBand(Inspector.Pieces[0].SupportBand) : TEXT("<no entry>"),
+				*DescribeInspector(Inspector)),
+			Inspector.Pieces.Num() == 1
+				&& Inspector.Pieces[0].SupportBand == EPieceSupportBand::NotSolved);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("a wall nobody has solved: the readout must bucket as %s, it buckets as %s %s"),
+				NameOfSupportBand(EPieceSupportBand::NotSolved),
+				NameOfSupportBand(Inspector.SupportBand),
+				*DescribeInspector(Inspector)),
+			Inspector.SupportBand == EPieceSupportBand::NotSolved);
 	}
 
 	return true;

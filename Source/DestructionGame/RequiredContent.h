@@ -78,6 +78,28 @@ namespace DestructionContent
 	inline constexpr const TCHAR* BrickInspectedMaterialPath =
 		TEXT("/Game/Materials/M_BrickInspected.M_BrickInspected");
 
+	/**
+	 * ONE MATERIAL PER COLOUR SLOT OF THE JOINT READOUT, so a row of numbers and a brick in the
+	 * world are the same colour.
+	 *
+	 * SIX, WHICH IS THE MODEL'S NUMBER RATHER THAN A ROUND ONE: a brick inside a running bond has
+	 * six joints, and FInspectorJointRow::ColourSlot hands out slot i to row i until it runs out.
+	 * The emissive constants are the same six the panel paints its swatches in, so the pairing is
+	 * by construction rather than by somebody picking amber twice.
+	 *
+	 * AN ARRAY RATHER THAN SIX NAMED CONSTANTS, and it is the one place that shape is right: these
+	 * are indexed BY A SLOT NUMBER the model computed, so a name per slot would need a switch at
+	 * every call site to turn the number back into the name.
+	 */
+	inline constexpr const TCHAR* BrickNeighbourMaterialPaths[] = {
+		TEXT("/Game/Materials/M_BrickNeighbour0.M_BrickNeighbour0"),
+		TEXT("/Game/Materials/M_BrickNeighbour1.M_BrickNeighbour1"),
+		TEXT("/Game/Materials/M_BrickNeighbour2.M_BrickNeighbour2"),
+		TEXT("/Game/Materials/M_BrickNeighbour3.M_BrickNeighbour3"),
+		TEXT("/Game/Materials/M_BrickNeighbour4.M_BrickNeighbour4"),
+		TEXT("/Game/Materials/M_BrickNeighbour5.M_BrickNeighbour5")
+	};
+
 	/* The two mapping contexts ADestructionGamePlayerController adds for a local player. */
 	inline constexpr const TCHAR* DefaultMappingContextPath = TEXT("/Game/Input/IMC_Default.IMC_Default");
 	inline constexpr const TCHAR* MouseLookMappingContextPath = TEXT("/Game/Input/IMC_MouseLook.IMC_MouseLook");

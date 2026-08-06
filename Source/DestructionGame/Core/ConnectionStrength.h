@@ -66,6 +66,43 @@ struct FConnectionStrength
 	double MaxShearStrengthMPa = TNumericLimits<double>::Max();
 };
 
+/**
+ * The geometry of the face two pieces meet across: how much of it there is, and
+ * how far the outermost fibre sits from its centroid on each in-plane axis.
+ *
+ * The area alone answers a centred load; a moment also needs to know how much
+ * leverage the section has against it, which is what a section modulus is.
+ *
+ * IMPLICITLY CONSTRUCTIBLE FROM A BARE AREA on purpose. A caller with no
+ * geometry gets zero moduli, which is exactly right: with no moment there is no
+ * bending term to divide, and with a moment a zero modulus fails closed.
+ */
+struct FJointSection
+{
+	/** Area of the face the two pieces meet across, cm2. */
+	double AreaSqCm = 0.0;
+
+	/** Section modulus about the first in-plane axis, cm3. */
+	double SectionModulusUCm3 = 0.0;
+
+	/** Section modulus about the second in-plane axis, cm3. */
+	double SectionModulusVCm3 = 0.0;
+
+	FJointSection() = default;
+
+	FJointSection(double InAreaSqCm)
+		: AreaSqCm(InAreaSqCm)
+	{
+	}
+
+	FJointSection(double InAreaSqCm, double InSectionModulusUCm3, double InSectionModulusVCm3)
+		: AreaSqCm(InAreaSqCm)
+		, SectionModulusUCm3(InSectionModulusUCm3)
+		, SectionModulusVCm3(InSectionModulusVCm3)
+	{
+	}
+};
+
 namespace DestructionForce
 {
 	/**
@@ -96,6 +133,26 @@ namespace DestructionForce
 	 * This is what makes a wall shed shear capacity as the load above it is removed,
 	 * rather than each joint holding a fixed strength until its own limit is hit.
 	 *
+	 * A load path that misses the joint's centroid also bends it, and the normal
+	 * axes are then measured AT THE OUTERMOST FIBRE rather than averaged:
+	 *
+	 *     sigma_n = (Tension - Compression) / A       signed, positive in tension
+	 *     sigma_b = |M_u|/W_u + |M_v|/W_v             worst corner, so biaxial adds
+	 *     peak tension     = max(0, sigma_n + sigma_b)
+	 *     peak compression = max(0, sigma_b - sigma_n)
+	 *
+	 * The average is the wrong number as soon as the load path is eccentric, and it
+	 * is wrong in the direction that leaves things standing — a brick hanging off a
+	 * single head joint has a mean normal stress of exactly zero while the fibre at
+	 * the top of that joint is being levered open. Shear is untouched, and its
+	 * friction term keeps using the MEAN compressive stress; see the .cpp for why.
+	 *
+	 * Zero eccentricity is not a special case being tolerated, it is e = 0: the
+	 * bending term vanishes and the answer is bit for bit what it was before moments
+	 * existed, the same way a zero friction coefficient reduces Mohr-Coulomb exactly
+	 * rather than approximately. That is what lets a caller with no geometry at all
+	 * go on passing a bare area.
+	 *
 	 * @param Load             Force already resolved into compression, tension and
 	 *                         shear by ClassifyForce. Unreal force units.
 	 * @param Strength         The connection's directional strengths, in MPa.
@@ -108,14 +165,20 @@ namespace DestructionForce
 	 * areas would then hide until a structure mysteriously refused to collapse.
 	 * Breaking loudly and immediately is the cheaper failure.
 	 *
+	 * A non-zero moment against a zero or negative section modulus fails closed the
+	 * same way, for the same reason. NO moment against a zero modulus does not: a
+	 * piece leans one way only, so a joint with no extent on its second axis and no
+	 * moment about it either is perfectly healthy, not degenerate.
+	 *
 	 * The return value is guaranteed never NaN and always finite, for any input.
 	 *
-	 * @param InterfaceAreaSqCm  Area of the face the two pieces meet across, cm2.
-	 *                           Zero or negative is treated as a failed joint.
+	 * @param Section          Geometry of the face the two pieces meet across. A
+	 *                         zero or negative area is treated as a failed joint, as
+	 *                         is a zero or negative modulus about a bent axis.
 	 * @return 0 when unloaded, 1 exactly at the limit, above 1 when the joint gives.
 	 */
 	double ComputeUtilisation(
 		const FConnectionLoad& Load,
 		const FConnectionStrength& Strength,
-		double InterfaceAreaSqCm);
+		const FJointSection& Section);
 }

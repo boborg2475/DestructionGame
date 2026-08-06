@@ -61,11 +61,60 @@ namespace PieceMultiSelectTestSupport
 	{
 		switch (Highlight)
 		{
-		case EBrickHighlight::Hovered:   return TEXT("Hovered");
-		case EBrickHighlight::Selected:  return TEXT("Selected");
-		case EBrickHighlight::Inspected: return TEXT("Inspected");
-		default:                         return TEXT("None");
+		case EBrickHighlight::Hovered:    return TEXT("Hovered");
+		case EBrickHighlight::Selected:   return TEXT("Selected");
+		case EBrickHighlight::Inspected:  return TEXT("Inspected");
+		case EBrickHighlight::Neighbour0: return TEXT("Neighbour0");
+		case EBrickHighlight::Neighbour1: return TEXT("Neighbour1");
+		case EBrickHighlight::Neighbour2: return TEXT("Neighbour2");
+		case EBrickHighlight::Neighbour3: return TEXT("Neighbour3");
+		case EBrickHighlight::Neighbour4: return TEXT("Neighbour4");
+		case EBrickHighlight::Neighbour5: return TEXT("Neighbour5");
+		default:                          return TEXT("None");
 		}
+	}
+
+	/**
+	 * How many colour slots the readout has to hand out, transcribed rather than imported.
+	 *
+	 * SIX IS THE MODEL'S NUMBER — a brick inside a running bond has six joints — and it is spelled
+	 * here so a palette that quietly shrank to four fails rather than agreeing with itself.
+	 */
+	constexpr int32 MultiSelectNeighbourSlotCount = 6;
+
+	/**
+	 * The state a brick is in when it is the far end of joint row N.
+	 *
+	 * A SWITCH RATHER THAN ARITHMETIC ON THE ENUMERATOR. `Neighbour0 + Slot` would bake this
+	 * file's assumption about the enum's LAYOUT into every assertion, and the layout is not
+	 * something EBrickHighlight promises — None being zero is the only ordering it commits to.
+	 */
+	EBrickHighlight MultiSelectNeighbourState(int32 Slot)
+	{
+		switch (Slot)
+		{
+		case 0: return EBrickHighlight::Neighbour0;
+		case 1: return EBrickHighlight::Neighbour1;
+		case 2: return EBrickHighlight::Neighbour2;
+		case 3: return EBrickHighlight::Neighbour3;
+		case 4: return EBrickHighlight::Neighbour4;
+		case 5: return EBrickHighlight::Neighbour5;
+		}
+
+		return EBrickHighlight::None;
+	}
+
+	bool MultiSelectIsNeighbourState(EBrickHighlight Highlight)
+	{
+		for (int32 Slot = 0; Slot < MultiSelectNeighbourSlotCount; ++Slot)
+		{
+			if (MultiSelectNeighbourState(Slot) == Highlight)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	FString DescribeMultiSelectRefs(TArrayView<const FPieceRef> Refs)
@@ -218,6 +267,140 @@ namespace PieceMultiSelectTestSupport
 		return Line + TEXT("]");
 	}
 
+	/** The readout's joint rows, so a neighbour failure names the panel it disagreed with. */
+	FString DescribeMultiSelectJointRows(const FPieceMenuInspector& Inspector)
+	{
+		if (Inspector.Joints.Num() == 0)
+		{
+			return TEXT("<no joint rows>");
+		}
+
+		FString Line;
+
+		for (int32 Index = 0; Index < Inspector.Joints.Num(); ++Index)
+		{
+			const FInspectorJointRow& Row = Inspector.Joints[Index];
+
+			Line += FString::Printf(
+				TEXT("%srow %d: conn %d -> piece %d, slot %d"),
+				Index == 0 ? TEXT("") : TEXT("; "),
+				Index, Row.ConnectionIndex, Row.OtherPieceIndex, Row.ColourSlot);
+		}
+
+		return Line;
+	}
+
+	/**
+	 * EVERY BRICK A JOINT ROW NAMES WEARS THAT ROW'S OWN COLOUR SLOT — ASKED OF THE MODEL, NEVER
+	 * WORKED OUT AGAIN HERE.
+	 *
+	 * THIS IS THE SEAM, AND FINDING IT IS THE POINT OF THE WHOLE HELPER. FInspectorJointRow::ColourSlot
+	 * has already decided that joint row i takes slot i, and DestructionGame.Presenter.PieceMenuJointColourSlots
+	 * pins that decision exhaustively — including that the SAME joint takes a different slot in two
+	 * different readouts. So the only thing left to get wrong out here is the world deriving a
+	 * SECOND answer to which brick is which colour, which is the drift this project keeps paying
+	 * for. Reading the slot back off the panel's own rows and demanding the brick match is what
+	 * makes a second derivation fail rather than merely differ.
+	 *
+	 * A PICKED BRICK IS SKIPPED RATHER THAN EXCUSED. Precedence is a separate claim with its own
+	 * step below, and folding it in here would let a sweep that checked nothing at all pass — which
+	 * is what the floor on the count is for.
+	 *
+	 * A BRICK THAT HAS BEEN DELETED IS SKIPPED TOO, and that is not a convenience: a joint that
+	 * went with a removed piece is STILL one of the inspected brick's joints and still takes a
+	 * colour slot, so the readout legitimately names a brick that is not in the world any more. The
+	 * world half has to resolve the ref before reaching for an actor, exactly as
+	 * RefreshPieceHighlight already does.
+	 */
+	void CheckMultiSelectNeighbourSlots(
+		FAutomationTestBase& Test,
+		const TArray<ABrickActor*>& Bricks,
+		const ADestructionGamePlayerController& Controller,
+		const FPieceMenuInspector& Inspector,
+		const TCHAR* Where)
+	{
+		const FPieceSelection& Selection = Controller.GetPieceSelection();
+
+		int32 Checked = 0;
+
+		for (int32 Index = 0; Index < Inspector.Joints.Num(); ++Index)
+		{
+			const FInspectorJointRow& Row = Inspector.Joints[Index];
+
+			if (Row.ColourSlot == INDEX_NONE
+				|| !Bricks.IsValidIndex(Row.OtherPieceIndex)
+				|| !IsValid(Bricks[Row.OtherPieceIndex]))
+			{
+				continue;
+			}
+
+			const FPieceRef FarEnd =
+				MultiSelectRef(Inspector.InspectedRef.StructureId, Row.OtherPieceIndex);
+
+			if (Selection.Contains(FarEnd))
+			{
+				continue;
+			}
+
+			++Checked;
+
+			const EBrickHighlight Wanted = MultiSelectNeighbourState(Row.ColourSlot);
+
+			Test.TestTrue(
+				*FString::Printf(
+					TEXT("%s: joint row %d names brick %d in colour slot %d, so that brick must read %s; it reads %s (all bricks: %s) (panel: %s)"),
+					Where, Index, Row.OtherPieceIndex, Row.ColourSlot,
+					MultiSelectHighlightName(Wanted),
+					MultiSelectHighlightName(Bricks[Row.OtherPieceIndex]->GetHighlight()),
+					*DescribeMultiSelectHighlights(Bricks),
+					*DescribeMultiSelectJointRows(Inspector)),
+				Bricks[Row.OtherPieceIndex]->GetHighlight() == Wanted);
+		}
+
+		/*
+		 * A FLOOR ON THE SWEEP ITSELF. Every skip above is legitimate and every one of them is
+		 * also how this helper becomes vacuous — a readout with no joints, a palette that ran out,
+		 * a fixture where every neighbour happens to be picked. Without this, a panel that stopped
+		 * breaking out any joints at all would make the neighbour claim pass by checking nothing.
+		 */
+		Test.TestTrue(
+			*FString::Printf(
+				TEXT("%s: at least one joint row must name a live unpicked brick for this to mean anything; %d did (panel: %s)"),
+				Where, Checked, *DescribeMultiSelectJointRows(Inspector)),
+			Checked > 0);
+	}
+
+	/**
+	 * NO BRICK IN THE WALL IS WEARING A NEIGHBOUR COLOUR.
+	 *
+	 * THE OTHER HALF OF EVERY NEIGHBOUR CLAIM, and the half that catches the bug this file was
+	 * written for: a state left BEHIND. The neighbour set changes whenever the readout moves to a
+	 * different brick, so a refresh that told only the NEW neighbours would leave the old ones lit
+	 * — and a wall where the colours accumulate as the cursor runs down the list is a readout
+	 * pointing at every brick at once.
+	 */
+	void CheckMultiSelectNoNeighboursLit(
+		FAutomationTestBase& Test,
+		const TArray<ABrickActor*>& Bricks,
+		const TCHAR* Where,
+		const TArray<int32>& SkipPieces = TArray<int32>())
+	{
+		for (int32 Piece = 0; Piece < Bricks.Num(); ++Piece)
+		{
+			if (SkipPieces.Contains(Piece) || !IsValid(Bricks[Piece]))
+			{
+				continue;
+			}
+
+			Test.TestFalse(
+				*FString::Printf(
+					TEXT("%s: brick %d must not be wearing a neighbour colour, it reads %s (all bricks: %s)"),
+					Where, Piece, MultiSelectHighlightName(Bricks[Piece]->GetHighlight()),
+					*DescribeMultiSelectHighlights(Bricks)),
+				MultiSelectIsNeighbourState(Bricks[Piece]->GetHighlight()));
+		}
+	}
+
 	/**
 	 * THE SELECTION AND THE MENU ARE ONE FACT, ASSERTED TOGETHER.
 	 *
@@ -344,6 +527,18 @@ namespace PieceMultiSelectTestSupport
  * readout is describing — a fourth state rather than a reuse of Selected, because a breakout of
  * one brick's forces drawn beside five bricks that look identical to it is ambiguous about which
  * brick it is the breakout OF.
+ *
+ * AND SIX MORE STATES SAY "THIS IS THE BRICK ON THE FAR END OF JOINT ROW N", which is steps
+ * twenty-six onwards. The panel already draws a coloured swatch per joint row; until the matching
+ * brick wears the matching colour that swatch is a decoration, because in a wall of 1,220 identical
+ * bricks the row's words are not enough to find one by. WHICH slot each row is belongs to the model
+ * and is pinned there; what is pinned HERE is that the world reads that answer back instead of
+ * working out a second one, and that the set is rebuilt rather than accumulated.
+ *
+ * THE FULL ORDER IS Inspected > Selected > Neighbour > Hovered. The middle pair is a judgement:
+ * a picked brick that is also a neighbour keeps its selection colour, because the one thing a
+ * player must be able to check before pressing Delete is which bricks are going, and losing a hue
+ * is recoverable where deleting a brick is not.
  *
  * THE TRANSITIONS ARE COVERED, NOT JUST THE STATES, which is what steps thirteen onwards are.
  * Every bug in this area is a state left BEHIND: a brick left Inspected when the readout moved on
@@ -764,6 +959,13 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 	 * AND IT PICKS NOTHING AND OPENS NOTHING. Reading a brick is not choosing it, exactly as
 	 * pointing at one is not: the selection and the presented rows must come through untouched,
 	 * or hovering down a list of six entries would rewrite the very list being hovered.
+	 *
+	 * SINGLING A BRICK OUT ALSO LIGHTS ITS NEIGHBOURS, WHICH IS WHY BRICKS 4 AND 5 APPEAR HERE.
+	 * Brick 1's joints run to 0, 2, 4 and 5 in ascending connection order, so those are colour
+	 * slots 0 to 3; 0 and 2 are picked and Selected outranks a hue, and 4 and 5 are not, so they
+	 * take slots 2 and 3. Steps TWENTY-SIX onwards are where that rule is argued and swept — it
+	 * is spelled out on every step from here on because it is not optional: the readout cannot be
+	 * open on a brick and its neighbours be dark.
 	 */
 	{
 		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 1));
@@ -772,6 +974,8 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 		Expected[0] = EBrickHighlight::Selected;
 		Expected[1] = EBrickHighlight::Inspected;
 		Expected[2] = EBrickHighlight::Selected;
+		Expected[4] = MultiSelectNeighbourState(2);
+		Expected[5] = MultiSelectNeighbourState(3);
 
 		CheckMultiSelectHighlights(*this, Bricks, TEXT("inspecting brick 1 of three"), Expected, Deleted3);
 
@@ -784,9 +988,21 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 	/*
 	 * FIFTEEN: INSPECTED BEATS HOVER TOO, AND A HOVER ELSEWHERE DOES NOT DISTURB IT.
 	 *
-	 * The precedence is a total order — Inspected > Selected > Hovered — so the brick being
-	 * read stays the brick being read while the cursor wanders, which is exactly what the
+	 * The precedence is a total order — Inspected > Selected > Neighbour > Hovered — so the brick
+	 * being read stays the brick being read while the cursor wanders, which is exactly what the
 	 * cursor is doing when it moves off a menu entry and across the wall behind it.
+	 *
+	 * AND THE CURSOR HERE LANDS ON A NEIGHBOUR, SO THE SECOND HALF IS THE BOTTOM OF THAT ORDER
+	 * RATHER THAN A PLAIN HOVER. Brick 4 is on the far end of brick 1's joint row 2, and it keeps
+	 * that colour under the cursor. The argument is step TWENTY-EIGHT's and is not repeated here,
+	 * but the short of it is that InspectedPiece is set by ONE thing — the cursor resting on a
+	 * menu entry row — so while any brick is singled out the cursor is on the PANEL and whatever
+	 * the last ray into the world hit is stale by construction.
+	 *
+	 * THE HOVER IS MASKED, NOT LOST, AND STEP SIXTEEN IS WHAT PROVES IT. Nothing moves the cursor
+	 * between here and there; the readout moves to brick 2, brick 4 stops being anybody's
+	 * neighbour, and it comes straight back up as Hovered. A precedence that CLEARED the weaker
+	 * state instead of outranking it would pass this step and fail that one.
 	 */
 	{
 		Controller->HoverAlongRay(
@@ -796,6 +1012,8 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 		OnTheInspected[0] = EBrickHighlight::Selected;
 		OnTheInspected[1] = EBrickHighlight::Inspected;
 		OnTheInspected[2] = EBrickHighlight::Selected;
+		OnTheInspected[4] = MultiSelectNeighbourState(2);
+		OnTheInspected[5] = MultiSelectNeighbourState(3);
 
 		CheckMultiSelectHighlights(
 			*this, Bricks, TEXT("hovering the inspected brick 1"), OnTheInspected, Deleted3);
@@ -807,7 +1025,8 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 		Elsewhere[0] = EBrickHighlight::Selected;
 		Elsewhere[1] = EBrickHighlight::Inspected;
 		Elsewhere[2] = EBrickHighlight::Selected;
-		Elsewhere[4] = EBrickHighlight::Hovered;
+		Elsewhere[4] = MultiSelectNeighbourState(2);
+		Elsewhere[5] = MultiSelectNeighbourState(3);
 
 		CheckMultiSelectHighlights(
 			*this, Bricks, TEXT("hovering brick 4 while brick 1 is inspected"), Elsewhere, Deleted3);
@@ -832,7 +1051,17 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 		Expected[0] = EBrickHighlight::Selected;
 		Expected[1] = EBrickHighlight::Selected;
 		Expected[2] = EBrickHighlight::Inspected;
+
+		/*
+		 * BRICK 4 COMES BACK UP AS Hovered, WHICH IS THE OTHER HALF OF STEP FIFTEEN. The cursor
+		 * has not moved; brick 4 simply stops being a neighbour, because brick 2's joints run to
+		 * 1, 5 and 6 rather than to it. So the hover was outranked while the colour was on it and
+		 * is still there underneath — a refresh that CLEARED the weaker state rather than
+		 * outranking it would leave brick 4 dark here.
+		 */
 		Expected[4] = EBrickHighlight::Hovered;
+		Expected[5] = MultiSelectNeighbourState(1);
+		Expected[6] = MultiSelectNeighbourState(2);
 
 		CheckMultiSelectHighlights(
 			*this, Bricks, TEXT("inspecting brick 2 after brick 1"), Expected, Deleted3);
@@ -897,8 +1126,13 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 		WhileInspected[1] = EBrickHighlight::Inspected;
 		WhileInspected[2] = EBrickHighlight::Selected;
 
-		/* Brick 4 is still where the cursor was left in step fifteen, and nothing has moved it. */
-		WhileInspected[4] = EBrickHighlight::Hovered;
+		/*
+		 * Brick 4 is still where the cursor was left in step fifteen and nothing has moved it —
+		 * but the readout is back on brick 1, so brick 4 is a neighbour again and outranks its
+		 * own hover again, exactly as it did there. Brick 5 comes with it, as slot 3.
+		 */
+		WhileInspected[4] = MultiSelectNeighbourState(2);
+		WhileInspected[5] = MultiSelectNeighbourState(3);
 
 		CheckMultiSelectHighlights(
 			*this, Bricks, TEXT("inspecting brick 1 again before deselecting it"),
@@ -973,6 +1207,17 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 
 		TArray<EBrickHighlight> WhileInspected = MultiSelectNoHighlights();
 		WhileInspected[5] = EBrickHighlight::Inspected;
+
+		/*
+		 * FOUR NEIGHBOURS AND NOT ONE OF THEM PICKED, which is the only step where the whole
+		 * palette is on the wall at once. Brick 5's joints are the head joints to 4 and 6 and the
+		 * bed joints down to 1 and 2, in that connection order, so the slots run 0, 1, 2, 3 and
+		 * the selection — brick 5 alone — outranks none of them.
+		 */
+		WhileInspected[4] = MultiSelectNeighbourState(0);
+		WhileInspected[6] = MultiSelectNeighbourState(1);
+		WhileInspected[1] = MultiSelectNeighbourState(2);
+		WhileInspected[2] = MultiSelectNeighbourState(3);
 
 		CheckMultiSelectHighlights(
 			*this, Bricks, TEXT("inspecting the one brick picked"), WhileInspected, Deleted3);
@@ -1185,7 +1430,15 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 
 		TArray<EBrickHighlight> WhileInspected = MultiSelectNoHighlights();
 		WhileInspected[0] = EBrickHighlight::Inspected;
+
+		/*
+		 * Brick 1 is BOTH picked and brick 0's colour slot 0, and Selected wins — the same call
+		 * step TWENTY-EIGHT spells out, landing here first. Brick 4 is slot 2 and is picked by
+		 * nobody, so it takes the hue; slot 1 is the joint to the deleted brick 3, which is a row
+		 * on the panel with no brick in the world to wear it.
+		 */
 		WhileInspected[1] = EBrickHighlight::Selected;
+		WhileInspected[4] = MultiSelectNeighbourState(2);
 
 		CheckMultiSelectHighlights(
 			*this, Bricks, TEXT("inspecting brick 0 of the pair"), WhileInspected, Deleted3And5);
@@ -1212,6 +1465,247 @@ bool FPieceMultiSelectTogglesAndHighlightsTest::RunTest(const FString& Parameter
 				TEXT("and the readout must not have re-opened on it by itself [%s]"),
 				*DescribeMultiSelectInspector(Rejoined)),
 			Rejoined.bHasInspectedPiece);
+	}
+
+	/*
+	 * TWENTY-SIX ONWARDS: THE JOINT READOUT'S COLOURS REACH THE ACTUAL BRICKS.
+	 *
+	 * WHAT IS MISSING TODAY, AND WHY HALF A FEATURE IS WORSE THAN NONE HERE. A joint row already
+	 * draws a coloured swatch and names its far end in words — "course 2 · #4" — and the swatch is
+	 * the half of the pairing that exists. Nothing in the world wears the matching colour, so the
+	 * swatch is a decoration: in a wall of 1,220 identical bricks the word is not enough to find a
+	 * brick by, which is the entire reason the design asked for the colour.
+	 *
+	 * SAME WORLD, SAME WALL, NO NEW FIXTURE — and the state left behind by the twenty-five steps
+	 * above is a feature rather than a leftover. Bricks 3 and 5 are gone, so brick 1's joints to
+	 * them SURVIVE AS SEVERED ROWS that still take colour slots: the readout legitimately names
+	 * bricks that are not in the world, which is exactly the case a naive "light the brick for every
+	 * row" would dereference a destroyed actor on.
+	 *
+	 * THE SLOT IS THE PANEL'S, NOT A SECOND ANSWER. CheckMultiSelectNeighbourSlots reads
+	 * FInspectorJointRow::ColourSlot straight off the readout the controller itself builds and
+	 * demands the brick match it. The slot rule is pinned exhaustively at model level by
+	 * DestructionGame.Presenter.PieceMenuJointColourSlots, so this is a known-good answer being read
+	 * back rather than a circular one — what it forbids is the world working the answer out again.
+	 *
+	 * PRECEDENCE: Inspected > Selected > Neighbour > Hovered, AND THE MIDDLE PAIR IS A JUDGEMENT
+	 * RATHER THAN A DEDUCTION. A neighbour that is also PICKED keeps its selection colour. The
+	 * argument the other way is real — the neighbour hue is what ties a row of numbers to a brick,
+	 * so a picked neighbour breaks that tie — and it loses to the rule this project has already
+	 * stated three times: the one thing a player must be able to check before pressing Delete is
+	 * which bricks are going, and a brick that silently stops looking picked while the cursor runs
+	 * down a list is that check being taken away at the worst possible moment. Deleting is
+	 * irreversible; losing a hue is not. The tie is not lost either, only weakened: the row still
+	 * names the brick in words and the entry list still shows it as picked. Neighbour beats Hovered
+	 * for the opposite reason — while the readout is open the cursor is on the PANEL, so whatever
+	 * the last ray hit is stale, and a stale answer must not overwrite a live one.
+	 */
+
+	/*
+	 * TWENTY-SIX: WITH NOTHING SINGLED OUT, NO BRICK WEARS A NEIGHBOUR COLOUR.
+	 *
+	 * The baseline, and the state every step below has to return to. Selection is bricks 1 and 0
+	 * and the cursor is still on brick 0, exactly as step TWENTY-FIVE left them.
+	 */
+	{
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Selected;
+		Expected[1] = EBrickHighlight::Selected;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("nothing singled out"), Expected, Deleted3And5);
+
+		CheckMultiSelectNoNeighboursLit(
+			*this, Bricks, TEXT("nothing singled out"), Deleted3And5);
+	}
+
+	/*
+	 * TWENTY-SEVEN: SINGLING A BRICK OUT LIGHTS ITS NEIGHBOURS IN THE PANEL'S OWN COLOUR SLOTS.
+	 *
+	 * THE HEADLINE. Brick 1 sits in the middle of the wall, so its joints reach brick 0 (picked),
+	 * brick 2 (not picked), brick 4 (not picked) and brick 5 (deleted) — one of every case the
+	 * world half has to handle, in one readout.
+	 */
+	{
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 1));
+
+		const FPieceMenuInspector Inspector = Controller->PieceMenuInspectorForSelection();
+
+		/*
+		 * FIXTURE PRECONDITIONS, HAND-DERIVED FROM THE BOND RATHER THAN READ BACK. RunningBond lays
+		 * course 0 as bricks 0, 1, 2 and course 1 as half bat 3, full bricks 4 and 5, half bat 6, and
+		 * joins neighbours along a course and everything a piece lands on. Brick 1 therefore has
+		 * head joints to 0 and 2 and bed joints to 4 and 5 — four rows, in ascending connection
+		 * order, which is slots 0 through 3. If this wall ever stops being that wall, the
+		 * expectations below retarget silently, so it says so here instead.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("fixture: brick 1 should be singled out with 4 joint rows, the panel says %s with %d (panel: %s)"),
+				Inspector.bHasInspectedPiece ? TEXT("yes") : TEXT("no"), Inspector.Joints.Num(),
+				*DescribeMultiSelectJointRows(Inspector)),
+			Inspector.bHasInspectedPiece && Inspector.Joints.Num() == 4);
+
+		/*
+		 * AND AT LEAST ONE OF THOSE ROWS NAMES A BRICK THAT IS GONE, which is what makes the
+		 * "resolve the ref before reaching for an actor" claim non-vacuous rather than a comment.
+		 */
+		const bool bNamesADeadBrick = Inspector.Joints.ContainsByPredicate(
+			[&Bricks](const FInspectorJointRow& Row)
+			{
+				return !Bricks.IsValidIndex(Row.OtherPieceIndex) || !IsValid(Bricks[Row.OtherPieceIndex]);
+			});
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("fixture: at least one of brick 1's joint rows must name a brick that has been deleted (panel: %s)"),
+				*DescribeMultiSelectJointRows(Inspector)),
+			bNamesADeadBrick);
+
+		CheckMultiSelectNeighbourSlots(
+			*this, Bricks, *Controller, Inspector, TEXT("singling out brick 1"));
+
+		/*
+		 * AND THE WHOLE WALL AT ONCE, hand-written from the bond above, so a colour that landed on
+		 * the RIGHT brick and also on three others fails here rather than passing the sweep.
+		 */
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Selected;
+		Expected[1] = EBrickHighlight::Inspected;
+		Expected[2] = MultiSelectNeighbourState(1);
+		Expected[4] = MultiSelectNeighbourState(2);
+		Expected[6] = EBrickHighlight::None;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("singling out brick 1"), Expected, Deleted3And5);
+	}
+
+	/*
+	 * TWENTY-EIGHT: A NEIGHBOUR THE CURSOR IS ON KEEPS ITS NEIGHBOUR COLOUR.
+	 *
+	 * Neighbour > Hovered. While a readout is open the cursor is on the PANEL, so HoveredPiece is
+	 * whatever the last ray into the world happened to hit and is stale by construction — a stale
+	 * answer overwriting a live one would make the brick a row points at go amber the moment the
+	 * player last looked at it.
+	 */
+	{
+		Controller->HoverAlongRay(
+			MultiSelectRayStart(Reference.Boxes[2]), MultiSelectRayEnd(Reference.Boxes[2]));
+
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Selected;
+		Expected[1] = EBrickHighlight::Inspected;
+		Expected[2] = MultiSelectNeighbourState(1);
+		Expected[4] = MultiSelectNeighbourState(2);
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("hovering a neighbour of the inspected brick"), Expected, Deleted3And5);
+
+		/*
+		 * AND THE PICKED NEIGHBOUR IS STILL PICKED, WHICH IS THE PRECEDENCE CALL SPELLED OUT.
+		 * Brick 0 is a neighbour of brick 1 in colour slot 0, is in the selection, and was the last
+		 * brick the cursor was on before this step — all three at once, and Selected wins.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("brick 0 is a picked brick AND a neighbour of the inspected brick; picked must win, it reads %s (all bricks: %s)"),
+				MultiSelectHighlightName(Bricks[0]->GetHighlight()),
+				*DescribeMultiSelectHighlights(Bricks)),
+			Bricks[0]->GetHighlight() == EBrickHighlight::Selected);
+	}
+
+	/*
+	 * TWENTY-NINE: MOVING THE READOUT TO ANOTHER BRICK MOVES THE COLOURS, AND LEAVES NO TRAIL.
+	 *
+	 * THE BUG THIS WHOLE FILE IS ABOUT, one field further out. The neighbour set changes wholesale
+	 * when the readout does, so a refresh that told only the NEW neighbours leaves the old ones lit
+	 * — and running the cursor down a list of six entries would light the entire wall. Brick 2
+	 * stops being a neighbour here and has to fall back to Hovered, which is where the cursor still
+	 * is: not to None, and emphatically not to the colour it was.
+	 */
+	{
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 0));
+
+		const FPieceMenuInspector Inspector = Controller->PieceMenuInspectorForSelection();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("fixture: brick 0 should be singled out with 3 joint rows, the panel says %s with %d (panel: %s)"),
+				Inspector.bHasInspectedPiece ? TEXT("yes") : TEXT("no"), Inspector.Joints.Num(),
+				*DescribeMultiSelectJointRows(Inspector)),
+			Inspector.bHasInspectedPiece && Inspector.Joints.Num() == 3);
+
+		CheckMultiSelectNeighbourSlots(
+			*this, Bricks, *Controller, Inspector, TEXT("moving the readout to brick 0"));
+
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Inspected;
+		Expected[1] = EBrickHighlight::Selected;
+		Expected[2] = EBrickHighlight::Hovered;
+		Expected[4] = MultiSelectNeighbourState(2);
+		Expected[6] = EBrickHighlight::None;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("moving the readout to brick 0"), Expected, Deleted3And5);
+	}
+
+	/*
+	 * THIRTY: AND A BRICK THAT STOPS BEING A NEIGHBOUR OF ANYTHING GOES DARK.
+	 *
+	 * Brick 4 is a neighbour of both bricks 0 and 1, so the two steps above never made it let go.
+	 * Brick 2 does not touch it at all, so singling brick 2 out is the step that says the set is
+	 * REBUILT rather than added to — and brick 6, which nothing has lit so far, has to come up.
+	 */
+	{
+		/* Picking brick 2 dismisses the menu, which clears the singled-out brick; say it again. */
+		Controller->InspectAlongRay(
+			MultiSelectRayStart(Reference.Boxes[2]), MultiSelectRayEnd(Reference.Boxes[2]));
+
+		Controller->SetInspectedPiece(MultiSelectRef(StructureId, 2));
+
+		const FPieceMenuInspector Inspector = Controller->PieceMenuInspectorForSelection();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("fixture: brick 2 should be singled out with 3 joint rows, the panel says %s with %d (panel: %s)"),
+				Inspector.bHasInspectedPiece ? TEXT("yes") : TEXT("no"), Inspector.Joints.Num(),
+				*DescribeMultiSelectJointRows(Inspector)),
+			Inspector.bHasInspectedPiece && Inspector.Joints.Num() == 3);
+
+		CheckMultiSelectNeighbourSlots(
+			*this, Bricks, *Controller, Inspector, TEXT("moving the readout to brick 2"));
+
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Selected;
+		Expected[1] = EBrickHighlight::Selected;
+		Expected[2] = EBrickHighlight::Inspected;
+		Expected[4] = EBrickHighlight::None;
+		Expected[6] = MultiSelectNeighbourState(2);
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("moving the readout to brick 2"), Expected, Deleted3And5);
+	}
+
+	/*
+	 * THIRTY-ONE: AND SINGLING OUT NOTHING PUTS EVERY NEIGHBOUR BACK.
+	 *
+	 * The cursor leaving the list entirely, which is the route that has to leave the wall looking
+	 * exactly as it did before anything was read. A neighbour colour surviving this is a readout
+	 * that has been taken down still pointing at bricks.
+	 */
+	{
+		Controller->SetInspectedPiece(FPieceRef());
+
+		TArray<EBrickHighlight> Expected = MultiSelectNoHighlights();
+		Expected[0] = EBrickHighlight::Selected;
+		Expected[1] = EBrickHighlight::Selected;
+		Expected[2] = EBrickHighlight::Selected;
+
+		CheckMultiSelectHighlights(
+			*this, Bricks, TEXT("singling out nothing again"), Expected, Deleted3And5);
+
+		CheckMultiSelectNoNeighboursLit(
+			*this, Bricks, TEXT("singling out nothing again"), Deleted3And5);
 	}
 
 	TestWorld.End();

@@ -303,6 +303,52 @@ private:
 	EBrickHighlight HighlightForPiece(const FPieceRef& Ref) const;
 	void RefreshPieceHighlight(const FPieceRef& Ref);
 
+	/**
+	 * Which of the readout's colour slots this brick is the far end of, as the state that wears it.
+	 *
+	 * THE PANEL'S OWN ANSWER, READ BACK RATHER THAN WORKED OUT AGAIN. FInspectorJointRow::ColourSlot
+	 * has already decided that joint row i takes slot i, and a second derivation out here — walking
+	 * the graph's connections, or numbering the neighbours in some other order — is the drift this
+	 * project keeps paying for: two answers to "which brick is the blue one", drawn two inches apart.
+	 *
+	 * None WHEN IT IS NOT ONE, which is what lets HighlightForPiece fall through to Hovered. That
+	 * covers a brick with no joint row at all, a row past the end of the palette (ColourSlot is
+	 * INDEX_NONE by the model's own rule) and every state where nothing is singled out.
+	 */
+	EBrickHighlight NeighbourHighlightForPiece(const FPieceRef& Ref) const;
+
+	/**
+	 * Every brick the readout is currently pointing at, in its rows' order.
+	 *
+	 * WHAT THE SET WAS AND WHAT IT BECOMES ARE BOTH NEEDED, WHICH IS WHY THIS IS A LIST RATHER THAN
+	 * A TEST. The neighbours change wholesale when the readout moves to a different brick, so
+	 * telling only the NEW ones leaves the old ones lit — and running the cursor down a list of six
+	 * entries would end with the whole wall coloured. It is asked before the change and again after,
+	 * and both answers are refreshed.
+	 *
+	 * IT INCLUDES BRICKS THAT ARE GONE. A joint that went with a removed piece is still one of the
+	 * inspected brick's rows and still takes a slot, so the ref is handed to RefreshPieceHighlight,
+	 * which is where "this ref names no actor" is already answered.
+	 */
+	TArray<FPieceRef> NeighbourPieces() const;
+
+	/**
+	 * Put every brick the readout points at into the colour it should now be in — INCLUDING THE
+	 * ONES IT HAS STOPPED POINTING AT, which is the half that has to be passed in.
+	 *
+	 * THE SET CHANGES WHOLESALE AND ITS OLD MEMBERS ARE THE ONES NOTHING ELSE WILL TELL. Every
+	 * other refresh in this class is keyed on a ref something already has in hand — the brick
+	 * clicked, the brick left, the bricks that were picked — but a brick stops being a neighbour
+	 * without being touched at all, so the caller has to have asked NeighbourPieces() BEFORE it
+	 * changed anything. A refresh that told only the new members would leave the old ones lit, and
+	 * a cursor run down a list of six entries would end with the whole wall coloured.
+	 *
+	 * THE READOUT MOVES FOR TWO REASONS AND BOTH CALL THIS. Which brick is singled out is the
+	 * obvious one; the other is the SELECTION changing underneath it, because a brick that leaves
+	 * the selection stops being singled out and takes every neighbour colour with it.
+	 */
+	void RefreshNeighbourHighlights(TArrayView<const FPieceRef> WereNeighbours);
+
 	/** Point at this piece, or at nothing, letting whatever was pointed at before go. */
 	void SetHoveredPiece(const FPieceRef& Ref);
 

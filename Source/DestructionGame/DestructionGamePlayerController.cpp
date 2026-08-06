@@ -231,6 +231,32 @@ static const FLinearColor PieceMenuHeadroomCautionColour(0.95f, 0.66f, 0.13f, 1.
 static const FLinearColor PieceMenuHeadroomCriticalColour(0.95f, 0.24f, 0.20f, 1.0f);
 
 /*
+ * AND WHAT EACH SUPPORT BUCKET'S DOT IS DRAWN IN, ON THE SAME TERMS AS THE BAR ABOVE.
+ *
+ * EPieceSupportBand says WHICH bucket a brick is in — the model's decision, swept against the
+ * word beside it — and this is the hue, which is the half nothing headless can judge. Forty
+ * picked bricks are forty lines of small text without it, and the one that is falling reads
+ * exactly like the thirty-nine that are not until somebody reads every word.
+ *
+ * THE ALARM COLOURS ARE THE BAR'S OWN, DELIBERATELY. A falling brick takes the same red a joint
+ * past its limit does and a stranded one the same amber as a joint running out of room, because
+ * one panel wants one vocabulary: a colour that means "look at this" in the top half and
+ * something else in the bottom half is two vocabularies to learn. The other three are outside
+ * that vocabulary on purpose — resting, held, and the two that are not claims about a brick at
+ * all — so nothing calm can be mistaken for an alarm.
+ */
+static const FLinearColor PieceMenuSupportNotAPieceColour(0.36f, 0.37f, 0.40f, 1.0f);
+static const FLinearColor PieceMenuSupportNotSolvedColour(0.45f, 0.55f, 0.78f, 1.0f);
+static const FLinearColor PieceMenuSupportFallingColour(0.95f, 0.24f, 0.20f, 1.0f);
+static const FLinearColor PieceMenuSupportStrandedColour(0.95f, 0.66f, 0.13f, 1.0f);
+static const FLinearColor PieceMenuSupportSupportedColour(0.18f, 0.76f, 0.55f, 1.0f);
+static const FLinearColor PieceMenuSupportGroundedColour(0.22f, 0.56f, 0.86f, 1.0f);
+
+/** How big the dot on a brick row is, and how far the word beside it stands off. */
+static constexpr float PieceMenuSupportDotSizePx = 8.0f;
+static constexpr float PieceMenuSupportDotGapPx = 6.0f;
+
+/*
  * THE NEIGHBOUR PALETTE, AND IT IS THE SAME SIX COLOURS THE BRICKS THEMSELVES WILL WEAR.
  *
  * Content/Materials/M_BrickNeighbour0..5 are emissive constants of exactly these values, so a row
@@ -320,6 +346,52 @@ namespace
 		}
 
 		return PieceMenuHeadroomCriticalColour;
+	}
+
+	/**
+	 * What a brick row's support dot is painted in — THE SAME SHAPE OF LOOKUP, ON THE SAME TERMS.
+	 *
+	 * The bucket arrived decided: Presenter.PieceMenuSupportBand pins which bucket every state of
+	 * every brick falls in, and CheckInspectorInvariants holds each row's bucket against that row's
+	 * own word over every readout the suite builds. Nothing here compares a string, a support
+	 * enumerator or a live-piece flag against anything, so there is no second copy of that rule to
+	 * drift — and the arm past the end of the enumeration answers with the grey that claims nothing,
+	 * because a dot that is wrong about its own bucket must not assert a physical state.
+	 */
+	FLinearColor PieceMenuSupportColour(EPieceSupportBand Band)
+	{
+		switch (Band)
+		{
+		case EPieceSupportBand::NotAPiece: return PieceMenuSupportNotAPieceColour;
+		case EPieceSupportBand::NotSolved: return PieceMenuSupportNotSolvedColour;
+		case EPieceSupportBand::Falling:   return PieceMenuSupportFallingColour;
+		case EPieceSupportBand::Stranded:  return PieceMenuSupportStrandedColour;
+		case EPieceSupportBand::Supported: return PieceMenuSupportSupportedColour;
+		case EPieceSupportBand::Grounded:  return PieceMenuSupportGroundedColour;
+		}
+
+		return PieceMenuSupportNotAPieceColour;
+	}
+
+	/**
+	 * THE DOT THAT SAYS WHETHER A PICKED BRICK IS STANDING UP, WITHOUT ITS ROW BEING READ.
+	 *
+	 * IT SITS INSIDE THE SUPPORT COLUMN RATHER THAN AT THE HEAD OF THE ROW, which is a layout
+	 * decision with a measured reason: the column is a fixed-width box, so a dot placed inside it
+	 * takes its space out of that box's own slack and moves nothing else on the row — while a dot
+	 * ahead of the entry button would push every label and every word right by its width, out of
+	 * the budget World.Menu.TheReadoutFitsInsideThePanel measures.
+	 */
+	TSharedRef<SWidget> PieceMenuSupportDot(EPieceSupportBand Band)
+	{
+		return SNew(SBox)
+			.WidthOverride(PieceMenuSupportDotSizePx)
+			.HeightOverride(PieceMenuSupportDotSizePx)
+			[
+				SNew(SImage)
+				.Image(PieceMenuFillBrush())
+				.ColorAndOpacity(PieceMenuSupportColour(Band))
+			];
 	}
 
 	/**
@@ -492,6 +564,14 @@ TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
 {
 	TArray<FPieceMenuRow> Rows;
 
+	/*
+	 * WHICH BRICKS THE READOUT IS POINTING AT, BEFORE A CLICK MOVES ANYTHING. Toggling a brick
+	 * out of the selection can stop another brick being singled out — so the readout empties and
+	 * every colour it handed out has to come back, and none of those bricks is otherwise touched
+	 * by anything below.
+	 */
+	const TArray<FPieceRef> WereNeighbours = NeighbourPieces();
+
 	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
 
 	/*
@@ -555,6 +635,9 @@ TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
 	 */
 	ShowPieceMenu(Rows);
 
+	/* AFTER the menu has been shown, so the state this leaves the wall in is the final one. */
+	RefreshNeighbourHighlights(WereNeighbours);
+
 	return Rows;
 }
 
@@ -615,12 +698,101 @@ EBrickHighlight ADestructionGamePlayerController::HighlightForPiece(const FPiece
 		return EBrickHighlight::Selected;
 	}
 
+	/*
+	 * THEN THE READOUT'S OWN COLOURS, WHICH SIT BETWEEN THE SELECTION AND THE CURSOR — AND BOTH
+	 * SIDES OF THAT ARE JUDGEMENTS RATHER THAN DEDUCTIONS.
+	 *
+	 * SELECTED BEATS NEIGHBOUR. A picked brick that is also on the far end of a joint row keeps
+	 * its selection colour, and the argument the other way is real: the neighbour hue is the only
+	 * thing tying a row of numbers to a brick in a wall of identical bricks, so a picked neighbour
+	 * weakens that tie. It loses to the rule this project has already stated three times — the one
+	 * thing a player must be able to check before pressing Delete is which bricks are going, and a
+	 * brick that quietly stops looking picked while the cursor runs down a list is that check being
+	 * taken away at the worst possible moment. Deleting is irreversible; losing a hue is not, and
+	 * the row still names the brick in words either way.
+	 *
+	 * NEIGHBOUR BEATS HOVERED, FOR THE OPPOSITE REASON. While the readout is open the cursor is on
+	 * the PANEL, so HoveredPiece is whatever the last ray into the world happened to hit and is
+	 * STALE BY CONSTRUCTION. A stale answer overwriting a live one would turn the brick a row is
+	 * pointing at back to the hover colour the moment the player last looked at it.
+	 */
+	const EBrickHighlight Neighbour = NeighbourHighlightForPiece(Ref);
+
+	if (Neighbour != EBrickHighlight::None)
+	{
+		return Neighbour;
+	}
+
 	if (HoveredPiece == Ref)
 	{
 		return EBrickHighlight::Hovered;
 	}
 
 	return EBrickHighlight::None;
+}
+
+EBrickHighlight ADestructionGamePlayerController::NeighbourHighlightForPiece(
+	const FPieceRef& Ref) const
+{
+	const FPieceMenuInspector Inspector = PieceMenuInspectorForSelection();
+
+	/*
+	 * THE ROWS BELONG TO THE INSPECTED BRICK, SO THE FAR END BELONGS TO ITS STRUCTURE. Comparing
+	 * the piece index alone would light brick 4 of every wall on screen the moment brick 4 of this
+	 * one became a neighbour, which is the same fail-open shape FStructureBinding::ResolvePiece
+	 * refuses a foreign ref for.
+	 */
+	if (Ref.StructureId != Inspector.InspectedRef.StructureId)
+	{
+		return EBrickHighlight::None;
+	}
+
+	for (const FInspectorJointRow& Row : Inspector.Joints)
+	{
+		if (Row.OtherPieceIndex == Ref.PieceIndex)
+		{
+			return BrickHighlightForNeighbourSlot(Row.ColourSlot);
+		}
+	}
+
+	return EBrickHighlight::None;
+}
+
+void ADestructionGamePlayerController::RefreshNeighbourHighlights(
+	TArrayView<const FPieceRef> WereNeighbours)
+{
+	/*
+	 * THE OLD SET FIRST AND THE NEW SET SECOND, WHICH MATTERS FOR THE BRICKS IN BOTH. A brick
+	 * that is a neighbour before and after may have changed SLOT, and refreshing it twice is
+	 * harmless only because SetHighlighted is idempotent and HighlightForPiece is asked afresh
+	 * each time — the same property SetHoveredPiece's pair of refreshes already leans on.
+	 */
+	for (const FPieceRef& WasNeighbour : WereNeighbours)
+	{
+		RefreshPieceHighlight(WasNeighbour);
+	}
+
+	for (const FPieceRef& Neighbour : NeighbourPieces())
+	{
+		RefreshPieceHighlight(Neighbour);
+	}
+}
+
+TArray<FPieceRef> ADestructionGamePlayerController::NeighbourPieces() const
+{
+	const FPieceMenuInspector Inspector = PieceMenuInspectorForSelection();
+
+	TArray<FPieceRef> Neighbours;
+	Neighbours.Reserve(Inspector.Joints.Num());
+
+	for (const FInspectorJointRow& Row : Inspector.Joints)
+	{
+		FPieceRef& Neighbour = Neighbours.AddDefaulted_GetRef();
+		Neighbour.StructureId = Inspector.InspectedRef.StructureId;
+		Neighbour.PieceIndex = Row.OtherPieceIndex;
+	}
+
+	return Neighbours;
 }
 
 void ADestructionGamePlayerController::RefreshPieceHighlight(const FPieceRef& Ref)
@@ -652,12 +824,22 @@ void ADestructionGamePlayerController::ClearPieceSelection()
 	/* Copied out first: Clear empties the very array these live in. */
 	const TArray<FPieceRef> WasSelected(PieceSelection.Refs());
 
+	/*
+	 * AND THE READOUT'S OWN BRICKS, WHICH ARE NOT IN THAT LIST. A brick that leaves the selection
+	 * stops being singled out, so the whole neighbour set goes with it — and those bricks are
+	 * precisely the ones that were never picked, so the loop below would not reach them. Asked
+	 * before the clear, because afterwards there is no readout left to ask.
+	 */
+	const TArray<FPieceRef> WereNeighbours = NeighbourPieces();
+
 	PieceSelection.Clear();
 
 	for (const FPieceRef& Ref : WasSelected)
 	{
 		RefreshPieceHighlight(Ref);
 	}
+
+	RefreshNeighbourHighlights(WereNeighbours);
 }
 
 void ADestructionGamePlayerController::SetInspectedPiece(const FPieceRef& Ref)
@@ -677,10 +859,21 @@ void ADestructionGamePlayerController::SetInspectedPiece(const FPieceRef& Ref)
 	 */
 	const FPieceRef Previous = InspectedPiece;
 
+	/*
+	 * AND THE BRICKS THE READOUT WAS POINTING AT ARE COLLECTED BEFORE THE REF MOVES, BECAUSE
+	 * AFTERWARDS THERE IS NOTHING LEFT TO ASK. The neighbour set changes wholesale when the
+	 * readout does, so a refresh that told only the NEW neighbours would leave the old ones lit
+	 * and running the cursor down a list of six entries would colour the whole wall — the same
+	 * left-behind-state bug this function's own Previous ref exists to close, one field out.
+	 */
+	const TArray<FPieceRef> WereNeighbours = NeighbourPieces();
+
 	InspectedPiece = Ref;
 
 	RefreshPieceHighlight(Previous);
 	RefreshPieceHighlight(Ref);
+
+	RefreshNeighbourHighlights(WereNeighbours);
 
 	/*
 	 * AND THE READOUT FOLLOWS THE BRICK IT DESCRIBES. The panel breaks out ONE brick's joints,
@@ -941,10 +1134,23 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 					.HAlign(HAlign_Left)
 					.Padding(FMargin(10.0f, 0.0f, 0.0f, 0.0f))
 					[
-						SNew(STextBlock)
-						.Font(PieceMenuBodyFont())
-						.ColorAndOpacity(PieceMenuReadoutColour)
-						.Text(FText::FromString(Entry.SupportText))
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, PieceMenuSupportDotGapPx, 0.0f)
+						[
+							PieceMenuSupportDot(Entry.SupportBand)
+						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						[
+							SNew(STextBlock)
+							.Font(PieceMenuBodyFont())
+							.ColorAndOpacity(PieceMenuReadoutColour)
+							.Text(FText::FromString(Entry.SupportText))
+						]
 					]
 				]
 			];

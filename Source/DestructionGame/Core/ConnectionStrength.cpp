@@ -19,6 +19,24 @@ namespace DestructionForce
 		}
 
 		/**
+		 * Stress at the outermost fibre from a bending moment, in MPa.
+		 *
+		 * Sibling of StressMPa, and deliberately the same shape, because THERE IS NO
+		 * NEW CONVERSION BOUNDARY HERE — which is worth saying plainly, since
+		 * "moments" sounds like it should introduce one. Length is cm, so a moment is
+		 * uu.cm and M/W with W in cm3 is uu/cm2: the identical quantity a force over
+		 * an area already is, divided by the identical named constant.
+		 *
+		 * Only the magnitude of the moment reaches the stress. The sign says which
+		 * edge of the joint is being levered open, and the worst corner is the worst
+		 * corner whichever way the piece leans.
+		 */
+		double BendingStressMPa(double MomentUuCm, double SectionModulusCm3)
+		{
+			return FMath::Abs(MomentUuCm) / (SectionModulusCm3 * ForceUnitsPerMPaSqCm);
+		}
+
+		/**
 		 * How hard one axis is working: its stress over the capacity resisting it.
 		 *
 		 * An axis with no capacity is handled explicitly rather than left to divide
@@ -56,8 +74,10 @@ namespace DestructionForce
 	double ComputeUtilisation(
 		const FConnectionLoad& Load,
 		const FConnectionStrength& Strength,
-		double InterfaceAreaSqCm)
+		const FJointSection& Section)
 	{
+		const double InterfaceAreaSqCm = Section.AreaSqCm;
+
 		/*
 		 * Fail closed on a joint that has no interface to carry anything across.
 		 * Dividing by a zero area produces NaN, and NaN compares false against
@@ -70,8 +90,68 @@ namespace DestructionForce
 			return TNumericLimits<double>::Max();
 		}
 
-		const double CompressiveStress = StressMPa(Load.Compression, InterfaceAreaSqCm);
-		const double TensileStress = StressMPa(Load.Tension, InterfaceAreaSqCm);
+		/*
+		 * BRANCH ON THE MOMENT, NEVER ON THE MODULUS FIRST. A piece leans one way
+		 * only, so a perfectly healthy joint routinely carries no moment about its
+		 * second axis and has no extent there to resist one with either — 0/0, on the
+		 * ordinary path, for a joint that is entirely fine. Testing the moment first
+		 * makes that contribute nothing, while a joint genuinely being bent about an
+		 * axis it has no section on fails closed. Reversing the two tests would turn
+		 * every single-axis lean into a failed joint.
+		 *
+		 * Spelled as != 0.0 rather than as a magnitude test on purpose: it is true of
+		 * a NaN or infinite moment as well as a real one, so garbage lands inside the
+		 * guard instead of being waved through as "no bending".
+		 */
+		const bool bBendsAboutU = Load.BendingMomentUUuCm != 0.0;
+		const bool bBendsAboutV = Load.BendingMomentVUuCm != 0.0;
+
+		/*
+		 * A moment with nothing to resist it is the area guard's failure mode again,
+		 * one axis further in, so it fails closed the same way and with the same
+		 * sentinel. Written as !(> 0) rather than <= 0 so a NaN modulus is caught by
+		 * the branch instead of slipping past it.
+		 */
+		if ((bBendsAboutU && !(Section.SectionModulusUCm3 > 0.0))
+			|| (bBendsAboutV && !(Section.SectionModulusVCm3 > 0.0)))
+		{
+			return TNumericLimits<double>::Max();
+		}
+
+		/*
+		 * Biaxial bending is the WORST CORNER, so the two axes ADD rather than the
+		 * larger governing: the fibre in the corner of the joint feels both leans at
+		 * once. With no eccentricity both terms are zero and everything below
+		 * collapses to the averaged stresses bit for bit — which is what lets every
+		 * caller that has no geometry go on supplying none.
+		 */
+		const double BendingStress =
+			(bBendsAboutU ? BendingStressMPa(Load.BendingMomentUUuCm, Section.SectionModulusUCm3) : 0.0)
+			+ (bBendsAboutV ? BendingStressMPa(Load.BendingMomentVUuCm, Section.SectionModulusVCm3) : 0.0);
+
+		/*
+		 * The averaged normal stress, signed, positive in tension. FConnectionLoad
+		 * guarantees at most one of Compression and Tension is non-zero, so this is
+		 * simply whichever one is loaded with its sign attached.
+		 */
+		const double NormalStress = StressMPa(Load.Tension - Load.Compression, InterfaceAreaSqCm);
+
+		/*
+		 * The joint pivots about its centroid, so one edge opens by exactly as much
+		 * as the other closes. Clamped at zero rather than taken as a magnitude,
+		 * because a face that stays entirely in compression is carrying no tension at
+		 * all rather than a negative amount of it.
+		 *
+		 * ZERO IS THE FIRST ARGUMENT DELIBERATELY. Every comparison against NaN is
+		 * false, so FMath::Max falls through to its SECOND argument — meaning
+		 * Max(0.0, NaN) hands the NaN on to be caught downstream, while Max(NaN, 0.0)
+		 * would silently discard it and leave a joint that was handed garbage
+		 * reporting a confident zero.
+		 */
+		const double PeakTensileStress = FMath::Max(0.0, NormalStress + BendingStress);
+		const double PeakCompressiveStress = FMath::Max(0.0, BendingStress - NormalStress);
+
+		const double MeanCompressiveStress = StressMPa(Load.Compression, InterfaceAreaSqCm);
 		const double ShearStress = StressMPa(Load.Shear, InterfaceAreaSqCm);
 
 		/*
@@ -80,13 +160,21 @@ namespace DestructionForce
 		 * and FConnectionLoad guarantees Compression is zero whenever there is
 		 * tension, so that falls out without a branch.
 		 *
+		 * FRICTION IS BOUGHT BY THE MEAN COMPRESSIVE STRESS, NOT THE PEAK, and that
+		 * is a considered choice rather than an oversight. Using the peak could only
+		 * ever make a bent joint look STRONGER in shear than an unbent one, which is
+		 * the wrong direction to be wrong in; EN 1996-1-1 §3.6.2 defines
+		 * f_vk = f_vk0 + 0.4*sigma_d with sigma_d an average; and the honest
+		 * refinement — averaging over the part of the face still in contact — is a
+		 * real improvement that deserves its own change rather than riding along.
+		 *
 		 * Truncated at the material's own ceiling, because friction cannot help
 		 * forever: past a point the material gives rather than the faces sliding.
 		 * Left unbounded, capacity would climb with depth and joints at the base
 		 * of a tall structure would become effectively uncuttable.
 		 */
 		const double ShearCapacityMPa = FMath::Min(
-			Strength.ShearCohesionMPa + Strength.FrictionCoefficient * CompressiveStress,
+			Strength.ShearCohesionMPa + Strength.FrictionCoefficient * MeanCompressiveStress,
 			Strength.MaxShearStrengthMPa);
 
 		/*
@@ -94,10 +182,14 @@ namespace DestructionForce
 		 * Each is measured against its own capacity — that separation is what makes
 		 * stone crush-resistant but brittle in shear, and it is the whole reason
 		 * this sits in front of Chaos's single strain threshold.
+		 *
+		 * The normal axes are measured at the outermost fibre rather than averaged,
+		 * because the average is the wrong number the moment the load path misses the
+		 * centroid, and it is wrong in the direction that leaves things standing.
 		 */
 		return FMath::Max3(
-			AxisUtilisation(CompressiveStress, Strength.CompressiveStrengthMPa),
+			AxisUtilisation(PeakCompressiveStress, Strength.CompressiveStrengthMPa),
 			AxisUtilisation(ShearStress, ShearCapacityMPa),
-			AxisUtilisation(TensileStress, Strength.TensileStrengthMPa));
+			AxisUtilisation(PeakTensileStress, Strength.TensileStrengthMPa));
 	}
 }

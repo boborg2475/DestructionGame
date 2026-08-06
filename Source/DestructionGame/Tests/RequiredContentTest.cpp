@@ -121,10 +121,15 @@ namespace RequiredContentTestSupport
 	 *
 	 * It is the reference whose absence is the quietest of the lot. Deleting the material does
 	 * not break a spawn, a solve or a click — the game runs exactly as it does now, and the only
-	 * symptom is that picking six bricks looks identical to picking none. Three, because four
-	 * highlight states need three materials and None needs nothing.
+	 * symptom is that picking six bricks looks identical to picking none.
+	 *
+	 * NINE, BECAUSE THE SIX NEIGHBOUR COLOURS ARE SIX MORE STATES A BRICK CAN BE IN. Ten highlight
+	 * states need nine materials and None needs nothing: hover, selected, inspected, and one per
+	 * colour slot of the joint readout, so that a row of numbers and the brick it names are the
+	 * same colour. A brick that resolved eight of the nine leaves exactly one joint row pointing
+	 * at a brick that never lights, which is the quietest failure in the quietest reference here.
 	 */
-	constexpr int32 BrickHighlightMaterialFloor = 3;
+	constexpr int32 BrickHighlightMaterialFloor = 9;
 
 	/**
 	 * AND THE CONTROLLER'S OWN INPUT ACTIONS, which is a THIRD sweep rather than a wider one.
@@ -142,12 +147,16 @@ namespace RequiredContentTestSupport
 	constexpr int32 ControllerInputActionFloor = 2;
 
 	/**
-	 * The six input actions, two mapping contexts, one placeholder brick mesh and three highlight
+	 * The six input actions, two mapping contexts, one placeholder brick mesh and NINE highlight
 	 * materials the module resolves by path today. A FLOOR rather than an equality: adding a
 	 * hard reference is meant to be adding a row, and a test asserting an exact count would have
 	 * to be edited alongside every one of them.
+	 *
+	 * The six neighbour materials are what took this from 12 to 18, and they are the case the
+	 * cross-check below is for: they are resolved onto the brick's CDO, so a table that did not
+	 * list them would leave six live hard references nothing sweeps.
 	 */
-	constexpr int32 RequiredContentPathFloor = 12;
+	constexpr int32 RequiredContentPathFloor = 18;
 }
 
 /**

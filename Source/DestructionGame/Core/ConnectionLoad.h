@@ -10,6 +10,12 @@
  *
  * At most one of Compression and Tension is non-zero: they are opposite
  * signs of the same axis. All values are magnitudes and are never negative.
+ *
+ * That invariant is about the RESULTANT, and it stays true. It stopped being
+ * true of the resulting STRESS once moments arrived — a bent joint is opening at
+ * one edge while it closes at the other, so both peak stresses can be non-zero at
+ * once. The split happens downstream, in ComputeUtilisation, from these fields
+ * plus the section geometry; nothing here needs to represent it.
  */
 struct FConnectionLoad
 {
@@ -21,6 +27,24 @@ struct FConnectionLoad
 
 	/** Force sliding the two faces past each other, parallel to the interface. */
 	double Shear = 0.0;
+
+	/**
+	 * Bending moment about the two in-plane axes of the interface, uu.cm.
+	 *
+	 * SIGNED, unlike the three forces above, because the sign says which edge of
+	 * the joint is being opened. Only the magnitude reaches the stress, since the
+	 * worst corner is the worst corner whichever way the piece leans.
+	 *
+	 * NO NEW CONVERSION BOUNDARY. Length is cm, so a moment is uu.cm and M/W with
+	 * W in cm3 is uu/cm2 — the same quantity a force over an area already is, and
+	 * it divides by the same ForceUnitsPerMPaSqCm.
+	 *
+	 * Zero is not a special case, it is a load path with no eccentricity: the
+	 * bending term vanishes and the joint reads exactly what it reads today. That
+	 * is what lets a fixture carry no geometry at all.
+	 */
+	double BendingMomentUUuCm = 0.0;
+	double BendingMomentVUuCm = 0.0;
 };
 
 namespace DestructionForce

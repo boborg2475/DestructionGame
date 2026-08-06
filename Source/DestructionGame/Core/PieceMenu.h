@@ -244,6 +244,53 @@ struct FHeadroomScaleTick
 	double Fraction = 0.0;
 };
 
+/**
+ * Why a brick is or is not being held up, as a BUCKET a dot can be coloured from.
+ *
+ * THE SAME SPLIT EJointMarginBand ALREADY USES: the model decides which bucket, the widget owns
+ * the hue. A widget that picked a colour by comparing SupportText against the word "grounded"
+ * would be holding that policy in the one place no test can reach, and it would silently stop
+ * colouring the day the wording is retuned — which is precisely what the wording being pinned in
+ * the model invites somebody to do.
+ *
+ * IT IS NOT EPieceSupport, AND MUST NOT BE. The solver's enumerator conflates a real collapse
+ * with an absent answer on purpose — zero has to promise least — and the whole job of the
+ * presenter is to undo that conflation before a human reads it. Handing the solver's enum
+ * straight out would draw a freshly built wall as a column of falling bricks.
+ *
+ * ONE ENUMERATOR PER WORD PresenterWordForSupport CAN SAY, INCLUDING THE TWO THAT ARE NOT
+ * PHYSICAL STATES. Collapsing "not in this wall" and "not solved yet" into one grey bucket is
+ * defensible and it is NOT RECOVERABLE: a widget handed two enumerators may paint them the same
+ * colour with a lookup, and a widget handed one can never tell them apart again. Separating is
+ * the direction that keeps the choice where a test can read it.
+ *
+ * NotAPiece IS ENUMERATOR ZERO, for the reason EPieceSupport::Falling is: zero must be the value
+ * that promises least, and every other value here claims something about a brick — that it is on
+ * the earth, that it is held, that it is coming down. It is also the value PresenterWordForSupport
+ * already answers for a default FPieceInspection, so a default-constructed entry's bucket and its
+ * word agree rather than contradicting each other.
+ */
+enum class EPieceSupportBand : uint8
+{
+	/** This ref names no brick in this wall — removed, foreign, or missing a half. */
+	NotAPiece,
+
+	/** A real brick, but nobody has solved yet, so there is no answer to report. */
+	NotSolved,
+
+	/** Nothing is holding it up. */
+	Falling,
+
+	/** The solver could not route it: a knot, and the numbers beside it are not a physical claim. */
+	Stranded,
+
+	/** Held up by something that reaches the earth. */
+	Supported,
+
+	/** Resting on the earth itself. */
+	Grounded,
+};
+
 /** One selected brick's entry in the list. Identity only: the joints belong to the inspected one. */
 struct FInspectorPieceEntry
 {
@@ -287,6 +334,20 @@ struct FInspectorPieceEntry
 	 * "not solved yet", which claims the brick exists.
 	 */
 	FString SupportText;
+
+	/**
+	 * The same answer as a bucket, so the row's dot can be coloured without reading the word.
+	 *
+	 * A BUCKET BESIDE THE WORD, EXACTLY AS EJointMarginBand SITS BESIDE MarginText. Without it a
+	 * widget wanting a coloured dot per row has one way to get one — comparing SupportText against
+	 * string literals — and that is a policy written in the one place no test can reach, in the
+	 * one file this project has an explicit no-logic exception for.
+	 *
+	 * IT MAY NEVER DISAGREE WITH SupportText, and the tests hold the two together in both
+	 * directions: same word means same bucket, same bucket means same word. Two derivations of one
+	 * question is how a row ends up saying "grounded" beside a red dot.
+	 */
+	EPieceSupportBand SupportBand = EPieceSupportBand::NotAPiece;
 };
 
 /**
@@ -391,6 +452,19 @@ struct FPieceMenuInspector
 	 * of falling bricks. Empty when no brick is inspected.
 	 */
 	FString SupportText;
+
+	/**
+	 * The same answer as a bucket, so the readout's own dot is coloured from the same fact the
+	 * marked ENTRY's dot is.
+	 *
+	 * IT MUST AGREE WITH THE MARKED ENTRY'S BAND, which is the cross-check SupportText already
+	 * carries and the reason this field exists rather than the widget reusing the entry's. The two
+	 * are two inches apart on one panel: a green dot on the row and an amber one over the joints
+	 * is the panel disagreeing with itself about one brick.
+	 *
+	 * NotAPiece WHEN NO BRICK IS SINGLED OUT, which is the bucket form of SupportText going empty.
+	 */
+	EPieceSupportBand SupportBand = EPieceSupportBand::NotAPiece;
 
 	/** The inspected brick's joints, in ascending connection order. Empty when none is. */
 	TArray<FInspectorJointRow> Joints;

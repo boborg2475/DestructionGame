@@ -140,10 +140,27 @@ namespace HighlightMaterialPaintTestSupport
 		const TCHAR* Path;
 	};
 
+	/*
+	 * ALL NINE, AND THE SIX NEIGHBOURS ARE HERE FOR THE PAIRWISE CLAIM RATHER THAN FOR THEIR OWN.
+	 *
+	 * Each of them individually only has to paint something and to differ from a bare brick, which
+	 * is the same claim the first three make. What is new with six is that they must differ from
+	 * EACH OTHER: the neighbour colours exist so a player can tell joint row 2's brick from joint
+	 * row 4's, and two rows that draw the same hue are a lie about the one thing the swatch says.
+	 * Because the loop below is pairwise over the whole table, adding them checks all 36 pairs —
+	 * including each neighbour against hover, selected and inspected, which is the collision a
+	 * palette chosen in isolation walks straight into.
+	 */
 	const FHighlightMaterialRow HighlightMaterials[] = {
-		{ TEXT("Hovered"),   DestructionContent::BrickHoverMaterialPath },
-		{ TEXT("Selected"),  DestructionContent::BrickSelectedMaterialPath },
-		{ TEXT("Inspected"), DestructionContent::BrickInspectedMaterialPath }
+		{ TEXT("Hovered"),    DestructionContent::BrickHoverMaterialPath },
+		{ TEXT("Selected"),   DestructionContent::BrickSelectedMaterialPath },
+		{ TEXT("Inspected"),  DestructionContent::BrickInspectedMaterialPath },
+		{ TEXT("Neighbour0"), DestructionContent::BrickNeighbourMaterialPaths[0] },
+		{ TEXT("Neighbour1"), DestructionContent::BrickNeighbourMaterialPaths[1] },
+		{ TEXT("Neighbour2"), DestructionContent::BrickNeighbourMaterialPaths[2] },
+		{ TEXT("Neighbour3"), DestructionContent::BrickNeighbourMaterialPaths[3] },
+		{ TEXT("Neighbour4"), DestructionContent::BrickNeighbourMaterialPaths[4] },
+		{ TEXT("Neighbour5"), DestructionContent::BrickNeighbourMaterialPaths[5] }
 	};
 
 	/** What one material input folded down to, plus where the value came from for a message. */

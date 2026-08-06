@@ -8,6 +8,21 @@
 #include "RequiredContent.h"
 #include "UObject/ConstructorHelpers.h"
 
+EBrickHighlight BrickHighlightForNeighbourSlot(int32 ColourSlot)
+{
+	switch (ColourSlot)
+	{
+	case 0: return EBrickHighlight::Neighbour0;
+	case 1: return EBrickHighlight::Neighbour1;
+	case 2: return EBrickHighlight::Neighbour2;
+	case 3: return EBrickHighlight::Neighbour3;
+	case 4: return EBrickHighlight::Neighbour4;
+	case 5: return EBrickHighlight::Neighbour5;
+	}
+
+	return EBrickHighlight::None;
+}
+
 ABrickActor::ABrickActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -58,6 +73,42 @@ ABrickActor::ABrickActor()
 	HoverMaterial = HoverMaterialAsset.Object;
 	SelectedMaterial = SelectedMaterialAsset.Object;
 	InspectedMaterial = InspectedMaterialAsset.Object;
+
+	/*
+	 * AND ONE OVERLAY PER COLOUR SLOT OF THE JOINT READOUT, SO A ROW OF NUMBERS AND A BRICK IN THE
+	 * WORLD ARE THE SAME COLOUR.
+	 *
+	 * SIX FINDERS RATHER THAN A LOOP, AND THAT IS THE ENGINE'S RULE RATHER THAN A PREFERENCE. An
+	 * FObjectFinder must be static — it resolves once for the CDO and is asserted to run inside a
+	 * constructor — so a static declared inside a loop would resolve the first path six times and
+	 * hand every slot the same material. The paths are named once, in RequiredContent.h, and each
+	 * asset is added at the index its own path came from; two slots that ended up sharing an asset
+	 * fail pairwise in World.Brick.HighlightWearsAMaterial rather than merely looking odd.
+	 */
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Neighbour0MaterialAsset(
+		DestructionContent::BrickNeighbourMaterialPaths[0]);
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Neighbour1MaterialAsset(
+		DestructionContent::BrickNeighbourMaterialPaths[1]);
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Neighbour2MaterialAsset(
+		DestructionContent::BrickNeighbourMaterialPaths[2]);
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Neighbour3MaterialAsset(
+		DestructionContent::BrickNeighbourMaterialPaths[3]);
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Neighbour4MaterialAsset(
+		DestructionContent::BrickNeighbourMaterialPaths[4]);
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Neighbour5MaterialAsset(
+		DestructionContent::BrickNeighbourMaterialPaths[5]);
+
+	NeighbourMaterials.Add(Neighbour0MaterialAsset.Object);
+	NeighbourMaterials.Add(Neighbour1MaterialAsset.Object);
+	NeighbourMaterials.Add(Neighbour2MaterialAsset.Object);
+	NeighbourMaterials.Add(Neighbour3MaterialAsset.Object);
+	NeighbourMaterials.Add(Neighbour4MaterialAsset.Object);
+	NeighbourMaterials.Add(Neighbour5MaterialAsset.Object);
 }
 
 UStaticMeshComponent* ABrickActor::GetMesh() const
@@ -115,14 +166,29 @@ void ABrickActor::SetHighlighted(EBrickHighlight NewHighlight)
 		break;
 
 	/*
-	 * None, AND ANY STATE THAT ARRIVES HERE WITHOUT A CASE, WEARS NOTHING — WHICH IS THE
-	 * RIGHT ANSWER FOR None AND THE WRONG-LOOKING ONE FOR EVERYTHING ELSE. A new enumerator
-	 * added without a case draws PLAIN, and for a state stronger than Selected that is
-	 * exactly backwards: the brick the player is reading would be the only one in the wall
-	 * not lit. World.Brick.HighlightWearsAMaterial sweeps every state for that reason, so
-	 * the omission fails as "wears no overlay at all" rather than being swallowed here.
+	 * THE SIX NEIGHBOUR STATES ARE ANSWERED BY ASKING THE ONE SLOT MAPPING RATHER THAN BY SIX
+	 * MORE ARMS. Six near-identical cases is exactly where a copy-paste hands two slots one
+	 * material, and the mapping already exists for the controller to turn a colour slot into a
+	 * state — so this walks it in the one direction it does not already run, which leaves one
+	 * table rather than a table and its hand-written inverse.
+	 *
+	 * None, AND ANY STATE THAT REACHES THE END OF THIS, WEARS NOTHING — WHICH IS THE RIGHT
+	 * ANSWER FOR None AND THE WRONG-LOOKING ONE FOR EVERYTHING ELSE. A new enumerator added
+	 * without a case draws PLAIN, and for a state stronger than Selected that is exactly
+	 * backwards: the brick the player is reading would be the only one in the wall not lit.
+	 * World.Brick.HighlightWearsAMaterial sweeps every state for that reason, so the omission
+	 * fails as "wears no overlay at all" rather than being swallowed here.
 	 */
 	default:
+		for (int32 Slot = 0; Slot < NeighbourMaterials.Num(); ++Slot)
+		{
+			if (BrickHighlightForNeighbourSlot(Slot) == NewHighlight)
+			{
+				Overlay = NeighbourMaterials[Slot];
+				break;
+			}
+		}
+
 		break;
 	}
 

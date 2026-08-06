@@ -59,15 +59,15 @@ namespace
 	const TCHAR* const PresenterInspectedHint = TEXT("Hover a brick in the list to see its joints");
 
 	/**
-	 * Why a brick is or is not being held up, in words.
+	 * Why a brick is or is not being held up, as the BUCKET everything else about it is read off.
 	 *
 	 * "THIS REF NAMES NO BRICK" IS ASKED FIRST AND "NOBODY HAS SOLVED YET" SECOND, AND BOTH
 	 * ORDERINGS ARE THE WHOLE POINT OF THE FUNCTION.
 	 *
 	 * A brick a removal took, a ref naming another wall and a ref missing a half all come
-	 * back bIsPiece false with a default support answer — and the sentence that falls out
-	 * of the guard below for one of those is "not solved yet", which promises the brick is
-	 * there and that a solve is all it is waiting for. On a freshly built wall it is also
+	 * back bIsPiece false with a default support answer — and the bucket that falls out of
+	 * the guard below for one of those is NotSolved, which promises the brick is there and
+	 * that a solve is all it is waiting for. On a freshly built wall it is also
 	 * indistinguishable from every live row on the panel. So a ref that names nothing says
 	 * exactly that, and says it before anything is read off the enumerators.
 	 *
@@ -81,24 +81,53 @@ namespace
 	 * on one panel, one brick may not read "supported" in the list and something else over
 	 * its joints, and two derivations of one question are how that happens.
 	 */
-	FString PresenterWordForSupport(const FPieceInspection& Inspection)
+	EPieceSupportBand PresenterSupportBand(const FPieceInspection& Inspection)
 	{
 		if (!Inspection.bIsPiece)
 		{
-			return FString(TEXT("not in this wall"));
+			return EPieceSupportBand::NotAPiece;
 		}
 
 		if (!Inspection.bHasSupportAnswer)
 		{
-			return FString(TEXT("not solved yet"));
+			return EPieceSupportBand::NotSolved;
 		}
 
 		switch (Inspection.Support)
 		{
-		case EPieceSupport::Grounded:  return FString(TEXT("grounded"));
-		case EPieceSupport::Supported: return FString(TEXT("supported"));
-		case EPieceSupport::Stranded:  return FString(TEXT("stranded"));
-		case EPieceSupport::Falling:   return FString(TEXT("falling"));
+		case EPieceSupport::Grounded:  return EPieceSupportBand::Grounded;
+		case EPieceSupport::Supported: return EPieceSupportBand::Supported;
+		case EPieceSupport::Stranded:  return EPieceSupportBand::Stranded;
+		case EPieceSupport::Falling:   return EPieceSupportBand::Falling;
+		}
+
+		return EPieceSupportBand::Falling;
+	}
+
+	/**
+	 * That bucket in the words a player reads — AND THE BUCKET IS THE ONLY THING IT ASKS.
+	 *
+	 * THE WORD IS DERIVED FROM THE BUCKET RATHER THAN BESIDE IT, WHICH IS WHAT MAKES THE TWO
+	 * UNABLE TO DISAGREE. The dot on a row and the word beside it answer one question, and a
+	 * model that decided each from the inspection separately would be two derivations of that
+	 * question sitting a few pixels apart — a row reading "grounded" next to the colour this
+	 * game uses for a brick that is coming down. Core/PieceMenu.h says at length why the bucket
+	 * exists at all; this is the half that keeps it honest.
+	 *
+	 * ONE SENTENCE PER BUCKET, INCLUDING THE TWO THAT ARE NOT PHYSICAL STATES. Two buckets
+	 * sharing a sentence would make them indistinguishable to a reader while still being two
+	 * colours, which is the worst of both.
+	 */
+	FString PresenterWordForSupportBand(EPieceSupportBand Band)
+	{
+		switch (Band)
+		{
+		case EPieceSupportBand::NotAPiece: return FString(TEXT("not in this wall"));
+		case EPieceSupportBand::NotSolved: return FString(TEXT("not solved yet"));
+		case EPieceSupportBand::Grounded:  return FString(TEXT("grounded"));
+		case EPieceSupportBand::Supported: return FString(TEXT("supported"));
+		case EPieceSupportBand::Stranded:  return FString(TEXT("stranded"));
+		case EPieceSupportBand::Falling:   return FString(TEXT("falling"));
 		}
 
 		return FString(TEXT("falling"));
@@ -797,8 +826,13 @@ FPieceMenuInspector BuildPieceMenuInspector(
 		 * one means hovering each in turn while the model has the answer for all of them
 		 * already. A second InspectPiece call for the word would be a second scan of the
 		 * whole connection array per row for a question this one has answered.
+		 *
+		 * AND THE DOT BESIDE THE WORD IS THE SAME ANSWER RATHER THAN A SECOND ONE. The bucket is
+		 * asked once and the word is read off the bucket, so a row cannot say "grounded" in text
+		 * and draw the colour of a brick that is falling.
 		 */
-		Entry.SupportText = PresenterWordForSupport(EntryInspection);
+		Entry.SupportBand = PresenterSupportBand(EntryInspection);
+		Entry.SupportText = PresenterWordForSupportBand(Entry.SupportBand);
 	}
 
 	/*
@@ -857,7 +891,14 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	 */
 	Inspector.InspectedLabel = Inspector.Pieces[InspectedEntry].Label;
 
-	Inspector.SupportText = PresenterWordForSupport(Inspection);
+	/*
+	 * AND THE READOUT'S OWN DOT AND WORD, OFF ONE BUCKET FOR THE REASON EVERY ENTRY ROW'S ARE.
+	 * This is reached only past the bHasInspectedPiece return above, so a panel with nothing
+	 * singled out keeps the field's default — NotAPiece, the one value claiming nothing — beside
+	 * the empty word, rather than a colour left over from the brick the cursor has left.
+	 */
+	Inspector.SupportBand = PresenterSupportBand(Inspection);
+	Inspector.SupportText = PresenterWordForSupportBand(Inspector.SupportBand);
 
 	/*
 	 * THE JOINT LIST IS SUMMED UP BEFORE IT IS BROKEN OUT, AND IT IS A FACT ABOUT THE GRAPH
