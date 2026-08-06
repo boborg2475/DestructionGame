@@ -221,6 +221,25 @@ struct FStructure
 	 * Area in particular has to fail closed at construction rather than at solve
 	 * time: the load split divides by the total supporting area, and a zero or
 	 * NaN area leaves no sensible answer to divide by.
+	 *
+	 * AND THE JOINT'S OWN RECTANGLE, when one is supplied at all. A rectangle that does
+	 * not describe the face its area describes is a plausible number with the wrong lever
+	 * arm, which is the same class of fault as a normal inconsistent with its A/B pairing
+	 * — Layout.h makes that one inexpressible by emitting the two together, and this door
+	 * is the other half of it. Rejected: a rectangle whose 4 x h_u x h_v disagrees with
+	 * the area, one with an extent on the normal's own axis (a box, not a face), a
+	 * negative or non-finite half-extent, a non-finite centre, and any rectangle at all on
+	 * a normal that is not axis-aligned, since the in-plane frame is "the two world axes
+	 * that are not the separation axis" and a tilted normal names no such pair.
+	 *
+	 * ZERO EXTENTS ARE NOT A DEGENERATE JOINT, and none of that applies to them. They mean
+	 * no bending capacity was ever measured, which is healthy — the area alone answers a
+	 * centred load exactly — so a joint supplying no rectangle is exactly as valid as it
+	 * ever was, on a tilted normal included.
+	 *
+	 * VALIDATES, NEVER NORMALISES. An accepted rectangle is stored bit for bit as given;
+	 * quietly zeroing one that could not be verified would turn a refusal into a joint
+	 * that reads as healthy.
 	 */
 	int32 AddConnection(const FConnection& Connection);
 

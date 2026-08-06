@@ -38,6 +38,27 @@ struct FConnection
 	/** Area of the face the two pieces meet across, cm2. */
 	double InterfaceAreaSqCm = 0.0;
 
+	/**
+	 * Where the face sits in the world, cm. On the normal's own axis this is the
+	 * plane of the joint itself.
+	 *
+	 * Zero for a joint whose producer supplied no geometry, which is not a position
+	 * at the origin — it is "nobody said". See InterfaceHalfExtentCm.
+	 */
+	FVector InterfaceCentreCm = FVector::ZeroVector;
+
+	/**
+	 * Half the face's extent on each axis, cm, and therefore ZERO ON THE NORMAL'S
+	 * OWN AXIS: the face is a rectangle, not a box.
+	 *
+	 * Zero on all three means no geometry was supplied, which is a joint with no
+	 * bending capacity known rather than a degenerate one — the area alone still
+	 * answers a centred load exactly. FStructure::AddConnection is what keeps the
+	 * two states apart: supplied geometry must agree with the area it claims to
+	 * describe, so a plausible area with the wrong lever arm is inexpressible.
+	 */
+	FVector InterfaceHalfExtentCm = FVector::ZeroVector;
+
 	/** Directional strengths of the joint itself — mortar, nail, bolt. */
 	FConnectionStrength Strength;
 

@@ -95,6 +95,18 @@ namespace StructureTestSupport
 	/** A bed joint pointing DOWN: the same horizontal interface declared upper piece first. */
 	const FVector InvertedBedJointNormal(0.0, 0.0, -1.0);
 
+	/*
+	 * RECTANGLES THAT AGREE WITH JointAreaSqCm, one per axis a normal can lie on.
+	 *
+	 * The face is 10 x 10 cm, so both halves are 5 and 4 x 5 x 5 = 100 exactly. The
+	 * ZERO IS ON THE NORMAL'S OWN AXIS in each — a face is a rectangle, and the in-plane
+	 * frame is defined as the two world axes that are not the separation axis, so an
+	 * extent on the third one describes a solid rather than an interface.
+	 */
+	const FVector BedJointHalfExtentCm(5.0, 5.0, 0.0);
+	const FVector HeadJointHalfExtentCm(0.0, 5.0, 5.0);
+	const FVector DepthwiseHalfExtentCm(5.0, 0.0, 5.0);
+
 	/**
 	 * THE BED / HEAD THRESHOLD, chosen here rather than inherited from production.
 	 *
@@ -196,6 +208,18 @@ namespace StructureTestSupport
 		int32 PieceB = INDEX_NONE;
 		FVector Normal = FVector::ZAxisVector;
 		double AreaSqCm = JointAreaSqCm;
+
+		/**
+		 * The joint's own rectangle, and ZERO BY DEFAULT ON PURPOSE.
+		 *
+		 * Every spec in this file leaves them alone, and every one must keep behaving
+		 * exactly as it did: zero extents are not a degenerate joint, they are "nobody
+		 * measured a lever arm here", and with no moment the area alone answers a centred
+		 * load bit for bit. That is what lets a whole suite of geometry-free fixtures go
+		 * on being valid rather than becoming a migration.
+		 */
+		FVector CentreCm = FVector::ZeroVector;
+		FVector HalfExtentCm = FVector::ZeroVector;
 	};
 
 	/** A whole structure as data, so topologies are a table rather than code. */
@@ -244,6 +268,8 @@ namespace StructureTestSupport
 		Connection.PieceB = Spec.PieceB;
 		Connection.InterfaceNormal = Spec.Normal;
 		Connection.InterfaceAreaSqCm = Spec.AreaSqCm;
+		Connection.InterfaceCentreCm = Spec.CentreCm;
+		Connection.InterfaceHalfExtentCm = Spec.HalfExtentCm;
 		Connection.Strength = Strength;
 		return Connection;
 	}
@@ -1619,6 +1645,22 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
  *
  * Rejection means the connection is NOT added. Storing it and hoping the solver
  * skips it would leave a joint in the array that no rule applies to.
+ *
+ * IT NOW ALSO OWNS THE JOINT'S OWN RECTANGLE, and for the same reason: the structure
+ * is the one place that can say a joint's geometry disagrees with its area. A
+ * rectangle that does not describe the face its area describes is a plausible number
+ * with the wrong lever arm — the same class of fault as a normal inconsistent with
+ * its A/B pairing, which Layout.h makes inexpressible by emitting the two together.
+ * This door is the other half of that: the producer never builds an inconsistent one,
+ * and nothing else can hand one in either.
+ *
+ * ZERO EXTENTS ARE NOT A DEGENERATE JOINT. They mean no bending capacity was ever
+ * measured, which is a healthy state — with no moment the area alone answers a
+ * centred load bit for bit — so the consistency rule applies only when a rectangle
+ * was actually supplied. Every other test in this project relies on that, and so does
+ * every tilted fixture: a tilted normal may not carry a rectangle, but it is a
+ * perfectly good geometry-free joint, which is what keeps
+ * Structure.TiltedJointClassification and SupportTierThreshold buildable.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureGraphValidationTest,
@@ -1783,6 +1825,260 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				TEXT("a non-unit interface normal"),
 				{ 0, 1, FVector(0.0, 0.0, 5.0), JointAreaSqCm }, true
 			},
+
+			/*
+			 * THE JOINT'S OWN RECTANGLE, AND THE STATE THIS DOOR EXISTS TO MAKE
+			 * INEXPRESSIBLE.
+			 *
+			 * An extent that disagrees with its area is the same class of fault as a
+			 * normal that disagrees with its A/B pairing, which Layout.h already argues at
+			 * length: a plausible number attached to the wrong geometry, where nothing
+			 * crashes and the wall stands there being wrong. The area governs the load
+			 * SPLIT and the rectangle governs the LEVER ARM, and mortar's tensile strength
+			 * is a hundredth of its compressive one — so a lever arm that is quietly out by
+			 * a factor moves the governing axis, not just the number on it.
+			 *
+			 * The area is 100 cm2 throughout, so a consistent rectangle is 4 x 5 x 5.
+			 */
+			{
+				TEXT("a bed joint whose rectangle agrees with its area"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, BedJointHalfExtentCm },
+				true
+			},
+
+			/*
+			 * NO RECTANGLE AT ALL IS NOT A BROKEN ONE, and this row is the whole reason the
+			 * rest of the suite does not have to change. Zero extents mean no bending
+			 * capacity was measured, which is a perfectly healthy joint: with no moment the
+			 * area alone answers a centred load exactly, the same way FrictionCoefficient
+			 * = 0 reduces Mohr-Coulomb exactly rather than approximately. So the
+			 * consistency rule must be conditional on a rectangle having been SUPPLIED —
+			 * checked unconditionally it rejects 4 x 0 x 0 against 100 and takes every
+			 * geometry-free fixture in the project with it.
+			 */
+			{
+				TEXT("no rectangle at all is a joint with no bending capacity known, not a broken one"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, FVector::ZeroVector },
+				true
+			},
+
+			{
+				TEXT("a rectangle 10 percent smaller than the area it claims"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, FVector(5.0, 4.5, 0.0) },
+				false
+			},
+			{
+				TEXT("a rectangle twice the area it claims"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, FVector(5.0, 10.0, 0.0) },
+				false
+			},
+
+			/*
+			 * PARTIALLY FILLED IN — the shape of a value somebody assembled by hand and
+			 * stopped halfway. One extent left at zero collapses the rectangle to a line,
+			 * and 4 x 5 x 0 = 0 against 100 is a disagreement like any other. It matters
+			 * because "is a rectangle supplied" cannot be answered per-axis: the predicate
+			 * has to be "any component non-zero", or this row reads as no geometry at all
+			 * and sails through.
+			 */
+			{
+				TEXT("a rectangle with one extent left at zero is a line, not a face"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, FVector(5.0, 0.0, 0.0) },
+				false
+			},
+
+			/*
+			 * THE ONE THAT FAILS OPEN. Two negative halves multiply into a perfectly
+			 * plausible 4 x -5 x -5 = 100, so a guard that only compared the PRODUCT
+			 * against the area would accept a rectangle that is inside out — the identical
+			 * trap PieceMassKg already carries a row for, one level up. A section modulus
+			 * built from it would be negative and every stress downstream would flip sign.
+			 */
+			{
+				TEXT("two negative half-extents multiply into a plausible area and are still not a face"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, FVector(-5.0, -5.0, 0.0) },
+				false
+			},
+
+			/*
+			 * AREA-CONSISTENT AND STILL NOT A FACE. 4 x 5 x 5 is exactly 100, so the
+			 * consistency rule alone accepts this — but the extent on Z is on the NORMAL's
+			 * own axis, which makes it a box rather than an interface. The in-plane frame
+			 * the section modulus is built on is "the two world axes that are not the
+			 * separation axis"; a third extent is not merely unused, it means whoever wrote
+			 * it had a different idea of which axes those are.
+			 */
+			{
+				TEXT("an extent on the normal's own axis is a box, not a face"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, FVector(5.0, 5.0, 3.25) },
+				false
+			},
+
+			/*
+			 * THE TOLERANCE, BRACKETED FROM BOTH SIDES RATHER THAN PINNED.
+			 *
+			 * The two derivations of one face can legitimately disagree in the last few
+			 * bits — an area computed as o_u x o_v against one recovered as 4 x (o_u/2) x
+			 * (o_v/2) rounds identically only because those are powers of two, and a
+			 * producer that arrived at either by a different association would not. So the
+			 * rule cannot be exact equality. Equally it cannot be slack: the whole point is
+			 * to catch a rectangle that describes a different face.
+			 *
+			 * A relative 1e-12 is re-derivation noise and must be accepted; a relative 1e-6
+			 * is not reachable by rounding a handful of multiplies and must be refused.
+			 * That leaves six orders of magnitude of freedom on purpose — any threshold in
+			 * the band separates noise from a real disagreement, and pinning one exactly
+			 * would be pinning an arbitrary choice.
+			 */
+			{
+				TEXT("a rectangle off by a relative 1e-12 is two derivations of one face"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm,
+					FVector::ZeroVector, FVector(5.0, 5.0 * (1.0 - 1.0e-12), 0.0) },
+				true
+			},
+			{
+				TEXT("a rectangle off by a relative 1e-6 is a different face"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm,
+					FVector::ZeroVector, FVector(5.0, 5.0 * (1.0 - 1.0e-6), 0.0) },
+				false
+			},
+
+			/*
+			 * DEGENERATE GEOMETRY FAILS CLOSED, same as a degenerate area. A NaN half-extent
+			 * would divide into a NaN section modulus, and NaN compares false against
+			 * everything including "> 1.0", so the joint would report itself fine forever.
+			 * The centre is checked too: it is about to be subtracted from a piece's centre
+			 * of mass to get a lever arm, and a NaN there launders into a NaN moment.
+			 */
+			{
+				TEXT("a NaN half-extent"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm,
+					FVector::ZeroVector, FVector(5.0, NaNValue, 0.0) },
+				false
+			},
+			{
+				TEXT("an infinite half-extent"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm,
+					FVector::ZeroVector, FVector(5.0, InfinityValue, 0.0) },
+				false
+			},
+			{
+				TEXT("a NaN interface centre"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm,
+					FVector(NaNValue, 0.0, 0.0), BedJointHalfExtentCm },
+				false
+			},
+			{
+				TEXT("an infinite interface centre"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm,
+					FVector(0.0, 0.0, InfinityValue), BedJointHalfExtentCm },
+				false
+			},
+
+			/*
+			 * A CENTROID IS A WORLD POSITION AND HAS NO SENSIBLE BOUND. A wall laid off the
+			 * origin puts every joint somewhere far from zero, and the running-bond
+			 * producer's first bed joint already lands at (5.625, 0, 7.0). Only finiteness
+			 * is a rule.
+			 */
+			{
+				TEXT("a joint a long way from the origin is still a joint"),
+				{ 0, 1, BedJointNormal, JointAreaSqCm,
+					FVector(5.625, -4000.0, 7.0), BedJointHalfExtentCm },
+				true
+			},
+
+			/*
+			 * THE OTHER TWO AXES A NORMAL CAN LIE ON, and the reason they are here rather
+			 * than being taken as read: the in-plane pair is "the two world axes that are
+			 * not the separation axis", so a guard that hard-coded X and Y as in-plane
+			 * would pass every bed-joint row above and refuse both of these.
+			 */
+			{
+				TEXT("a rectangle on a head joint's normal"),
+				{ 0, 1, HeadJointNormal, JointAreaSqCm,
+					FVector::ZeroVector, HeadJointHalfExtentCm },
+				true
+			},
+			{
+				TEXT("a rectangle on a normal along Y"),
+				{ 0, 1, FVector(0.0, 1.0, 0.0), JointAreaSqCm,
+					FVector::ZeroVector, DepthwiseHalfExtentCm },
+				true
+			},
+			{
+				TEXT("a rectangle on a bed joint declared upper piece first"),
+				{ 0, 1, InvertedBedJointNormal, JointAreaSqCm,
+					FVector::ZeroVector, BedJointHalfExtentCm },
+				true
+			},
+			{
+				TEXT("a rectangle on a non-unit normal, which describes the same plane"),
+				{ 0, 1, FVector(0.0, 0.0, 5.0), JointAreaSqCm,
+					FVector::ZeroVector, BedJointHalfExtentCm },
+				true
+			},
+
+			/*
+			 * A TILTED NORMAL MAY NOT CARRY A RECTANGLE, and this is the rule that keeps
+			 * the in-plane frame meaningful. "The two world axes that are not the
+			 * separation axis" only names a frame when there IS a separation axis; on a
+			 * normal 40 degrees off vertical there are two candidates and the choice
+			 * between them is a coin flip that would silently pick a section modulus.
+			 *
+			 * MakeInterface only ever emits exactly-axis-aligned normals — it sets one
+			 * component to +/-1 and leaves the other two untouched at zero — so nothing the
+			 * producer builds is refused by this. The 1e-6 row is what makes the line
+			 * BRIGHT rather than fuzzy: a normal that is a millionth off an axis was not
+			 * produced by rounding an exact axis vector, it was produced by somebody
+			 * meaning something else.
+			 */
+			{
+				TEXT("a rectangle on a normal tilted 40 degrees"),
+				{ 0, 1, NormalTiltedFromVertical(40.0), JointAreaSqCm,
+					FVector::ZeroVector, BedJointHalfExtentCm },
+				false
+			},
+			{
+				TEXT("a rectangle on a normal tilted 1 degree"),
+				{ 0, 1, NormalTiltedFromVertical(1.0), JointAreaSqCm,
+					FVector::ZeroVector, BedJointHalfExtentCm },
+				false
+			},
+			{
+				TEXT("a rectangle on a normal a millionth off an axis"),
+				{ 0, 1, FVector(1.0e-6, 0.0, 1.0), JointAreaSqCm,
+					FVector::ZeroVector, BedJointHalfExtentCm },
+				false
+			},
+
+			/*
+			 * AND EVERY TILTED FIXTURE IN THE PROJECT KEEPS WORKING, which is the half of
+			 * that rule that must not be skipped. Structure.TiltedJointClassification
+			 * builds joints at 40, 46, 50, 60 and 90 degrees and characterises behaviour
+			 * DESIGN.md §3 explicitly accepts; a guard written as "a tilted normal is
+			 * refused" rather than "a tilted normal may not carry a rectangle" would delete
+			 * that entire test's fixture and take SupportTierThreshold with it.
+			 *
+			 * Note the 90-degree row is not incidental: cos(90 degrees) in floating point
+			 * is 6.1e-17 rather than 0, so that normal is NOT axis-aligned by any exact
+			 * test, and it must still be a perfectly good geometry-free joint.
+			 */
+			{
+				TEXT("a tilted normal with no rectangle is still a joint, at 40 degrees"),
+				{ 0, 1, NormalTiltedFromVertical(40.0), JointAreaSqCm },
+				true
+			},
+			{
+				TEXT("a tilted normal with no rectangle is still a joint, at 50 degrees"),
+				{ 0, 1, NormalTiltedFromVertical(50.0), JointAreaSqCm },
+				true
+			},
+			{
+				TEXT("a normal a hair off vertical with no rectangle is still a joint, at 90 degrees"),
+				{ 0, 1, NormalTiltedFromVertical(90.0), JointAreaSqCm },
+				true
+			},
 		};
 
 		for (const FConnectionCase& Case : ConnectionCases)
@@ -1804,6 +2100,49 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				FString::Printf(TEXT("%s: expected %d connections, got %d"),
 					Case.Description, ExpectedCount, Structure.NumConnections()),
 				Structure.NumConnections() == ExpectedCount);
+
+			/*
+			 * Scoped to rows that were SUPPOSED to be accepted, not merely to rows that
+			 * were. A row expected to be refused and wrongly let through has already said
+			 * so twice above; running an equality check on the degenerate value it carries
+			 * only adds a third message reporting that a NaN is not equal to itself.
+			 */
+			if (Handle == INDEX_NONE || !Case.bIsAccepted)
+			{
+				continue;
+			}
+
+			/*
+			 * AN ACCEPTED JOINT KEEPS THE RECTANGLE IT WAS GIVEN, bit for bit. The door
+			 * validates and does not normalise: a guard that helpfully zeroed a rectangle
+			 * it could not verify, or clamped one it thought was slightly off, would turn
+			 * every refusal above into a silent acceptance of a joint with no bending
+			 * capacity — which reads as healthy. Refuse or store; there is no third thing
+			 * to do with it.
+			 */
+			const FConnection& Stored = Structure.GetConnection(Handle);
+
+			TestTrue(
+				FString::Printf(
+					TEXT("%s: the stored interface centre should be (%.10g, %.10g, %.10g), got")
+					TEXT(" (%.10g, %.10g, %.10g)"),
+					Case.Description,
+					Case.Spec.CentreCm.X, Case.Spec.CentreCm.Y, Case.Spec.CentreCm.Z,
+					Stored.InterfaceCentreCm.X,
+					Stored.InterfaceCentreCm.Y,
+					Stored.InterfaceCentreCm.Z),
+				Stored.InterfaceCentreCm == Case.Spec.CentreCm);
+
+			TestTrue(
+				FString::Printf(
+					TEXT("%s: the stored half-extent should be (%.10g, %.10g, %.10g), got")
+					TEXT(" (%.10g, %.10g, %.10g)"),
+					Case.Description,
+					Case.Spec.HalfExtentCm.X, Case.Spec.HalfExtentCm.Y, Case.Spec.HalfExtentCm.Z,
+					Stored.InterfaceHalfExtentCm.X,
+					Stored.InterfaceHalfExtentCm.Y,
+					Stored.InterfaceHalfExtentCm.Z),
+				Stored.InterfaceHalfExtentCm == Case.Spec.HalfExtentCm);
 		}
 	}
 

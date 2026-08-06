@@ -180,8 +180,16 @@ namespace DestructionLayout
 		 * reads as fine, which routes a caller who ignored the return value through
 		 * ComputeUtilisation's existing area guard instead of handing it a healthy-looking
 		 * connection. It is the one thing a refusal must actively do.
+		 *
+		 * THE RECTANGLE IS ZEROED FOR THE OPPOSITE REASON, which is why it is a second
+		 * statement rather than the same one. A zero area reads as FAILED; zero extents
+		 * read as HEALTHY — "no bending capacity was ever measured" — so a refusal that
+		 * left them alone would hand back a joint claiming a lever arm on a face that does
+		 * not exist. Both halves have to be cleared, and neither substitutes for the other.
 		 */
 		OutConnection.InterfaceAreaSqCm = 0.0;
+		OutConnection.InterfaceCentreCm = FVector::ZeroVector;
+		OutConnection.InterfaceHalfExtentCm = FVector::ZeroVector;
 
 		/*
 		 * FStructure::AddConnection rejects these too, but a joint whose pairing is
@@ -272,10 +280,63 @@ namespace DestructionLayout
 		InterfaceNormal[SeparationAxis] =
 			BoxB.CentreCm[SeparationAxis] > BoxA.CentreCm[SeparationAxis] ? 1.0 : -1.0;
 
+		/*
+		 * THE FACE'S OWN RECTANGLE, EMITTED WITH THE AREA IT IS THE SHAPE OF. The area is
+		 * already the product of the two in-plane overlaps, so the half-extents are those
+		 * same overlaps halved and 4 x h_u x h_v reproduces the area EXACTLY — halving and
+		 * quadrupling are exact in binary, so both round to one double. Deriving them from
+		 * the box bounds instead would be a second, differently-rounded route to the same
+		 * face, and a rectangle that disagrees with its own area is precisely the state
+		 * emitting the two together exists to make inexpressible.
+		 *
+		 * EXACTLY ZERO ON THE SEPARATION AXIS, written as a branch rather than fallen into.
+		 * A face is a rectangle, not a box, and the in-plane frame the section modulus is
+		 * built on is defined as "the two world axes that are NOT the separation axis" —
+		 * which only names a frame if the third has no extent at all.
+		 *
+		 * THE CENTRE IS THE MID-PLANE OF THE MORTAR ON THAT AXIS, NOT EITHER BRICK'S FACE,
+		 * and that is a decision. A 1 cm bed has TWO contact planes, so "the contact plane"
+		 * is ambiguous for every mortared joint in a wall and unambiguous only for a
+		 * dry-stacked one. Taking either brick's face would make the emitted geometry
+		 * depend on WHICH HANDLE IS A, and this function's whole argument is that swapping
+		 * the handles swaps the normal AND NOTHING ELSE — a lever arm that moved half a
+		 * joint according to declaration order is a silent asymmetry in a quantity that
+		 * multiplies a force. The mid-plane also degenerates continuously: at zero
+		 * thickness the two faces coincide and it lands on them.
+		 *
+		 * It falls out of the same interval arithmetic as the in-plane centres, which is
+		 * why there is one formula and not two. On an in-plane axis the boxes overlap, so
+		 * [Low, High] is the shared span and its midpoint is the centre of the face. On the
+		 * separation axis the intersection is EMPTY — Low is the near face of the further
+		 * box and High the near face of the nearer one, the joint thickness apart — and the
+		 * midpoint of that empty interval is exactly the mid-plane of the mortar.
+		 *
+		 * Max and Min are safe here only because IsUsableBox has already refused every
+		 * non-finite bound above; both discard a NaN operand rather than propagating it.
+		 */
+		FVector InterfaceCentreCm = FVector::ZeroVector;
+		FVector InterfaceHalfExtentCm = FVector::ZeroVector;
+
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			const double LowCm = FMath::Max(
+				BoxA.CentreCm[Axis] - BoxA.ExtentCm[Axis],
+				BoxB.CentreCm[Axis] - BoxB.ExtentCm[Axis]);
+			const double HighCm = FMath::Min(
+				BoxA.CentreCm[Axis] + BoxA.ExtentCm[Axis],
+				BoxB.CentreCm[Axis] + BoxB.ExtentCm[Axis]);
+
+			InterfaceCentreCm[Axis] = (LowCm + HighCm) * 0.5;
+			InterfaceHalfExtentCm[Axis] =
+				Axis == SeparationAxis ? 0.0 : OverlapCm[Axis] * 0.5;
+		}
+
 		OutConnection.PieceA = HandleA;
 		OutConnection.PieceB = HandleB;
 		OutConnection.InterfaceNormal = InterfaceNormal;
 		OutConnection.InterfaceAreaSqCm = AreaSqCm;
+		OutConnection.InterfaceCentreCm = InterfaceCentreCm;
+		OutConnection.InterfaceHalfExtentCm = InterfaceHalfExtentCm;
 		OutConnection.Strength = Strength;
 
 		return true;

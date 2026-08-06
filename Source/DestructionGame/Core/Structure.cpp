@@ -45,6 +45,27 @@ namespace
 	 */
 	constexpr double SolverBedJointCosine = 0.70710678118654752440;
 
+	/**
+	 * How far a joint's rectangle may disagree with its own area, as a FRACTION of it.
+	 *
+	 * RELATIVE, because the quantity is an area: a joint may be a square centimetre or a
+	 * square metre, and an absolute slack that is noise on one is a different face on the
+	 * other.
+	 *
+	 * THE VALUE IS BRACKETED RATHER THAN PINNED, and anywhere in the band would do. Two
+	 * derivations of one face can legitimately disagree in the last few bits — an area
+	 * computed as o_u x o_v against one recovered as 4 x (o_u/2) x (o_v/2) rounds
+	 * identically only because those factors are powers of two, and a producer that
+	 * reached either by a different association would not — so exact equality is too
+	 * strict. Equally the rule has to catch a rectangle describing a DIFFERENT face,
+	 * which is the whole point of having it, so it cannot be slack. A relative 1e-12 is
+	 * re-derivation noise and is accepted; a relative 1e-6 is not reachable by rounding a
+	 * handful of multiplies and is refused. This sits in the middle of those six orders
+	 * of magnitude, and Structure.GraphValidation asserts the two ends rather than this
+	 * number, so moving it within the band breaks nothing.
+	 */
+	constexpr double SolverRectangleAreaToleranceRatio = 1.0e-9;
+
 	/** The piece at the far end of a connection, or INDEX_NONE if it is not on it. */
 	int32 OtherEndOf(const FConnection& Connection, int32 PieceIndex)
 	{
@@ -195,6 +216,131 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 	if (!UnitNormal.Normalize())
 	{
 		return INDEX_NONE;
+	}
+
+	/*
+	 * THE JOINT'S OWN GEOMETRY, AND EVERYTHING BELOW IS CONDITIONAL ON A RECTANGLE HAVING
+	 * BEEN SUPPLIED AT ALL.
+	 *
+	 * Zero extents are not a degenerate joint, they are "no bending capacity was ever
+	 * measured" — a perfectly healthy state, since with no moment the area alone answers
+	 * a centred load bit for bit, the same way a zero friction coefficient reduces
+	 * Mohr-Coulomb exactly rather than approximately. Checked unconditionally, the
+	 * consistency rule below rejects 4 x 0 x 0 against a real area and takes every
+	 * geometry-free fixture in the project with it, tilted ones included.
+	 *
+	 * ANY component non-zero, not all three: a rectangle with one extent left at zero is
+	 * the shape of a value somebody assembled by hand and stopped halfway, and it has to
+	 * reach the consistency rule as the line it is rather than read as no geometry.
+	 */
+	if (!Connection.InterfaceHalfExtentCm.IsZero())
+	{
+		/*
+		 * A CENTRE IS A WORLD POSITION AND HAS NO SENSIBLE BOUND, so finiteness is the only
+		 * rule there is for one. A wall laid off the origin puts every joint a long way
+		 * from zero, and the running-bond producer's first bed joint already lands at
+		 * (5.625, 0, 7.0). A NaN there launders into a NaN lever arm the moment anything
+		 * subtracts it from a piece's centre of mass.
+		 */
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			if (!FMath::IsFinite(Connection.InterfaceCentreCm[Axis]))
+			{
+				return INDEX_NONE;
+			}
+		}
+
+		/*
+		 * A RECTANGLE MAY ONLY BE SUPPLIED ON AN AXIS-ALIGNED NORMAL. The in-plane frame
+		 * is "the two world axes that are not the separation axis", which only names a
+		 * frame when there IS a separation axis; on a normal 40 degrees off vertical there
+		 * are two candidates and the choice between them silently picks a section modulus.
+		 *
+		 * MakeInterface sets exactly one component to +/-1 and leaves the other two
+		 * untouched at zero, so nothing the producer builds is refused here — and a normal
+		 * a millionth off an axis was not produced by rounding an exact axis vector, it
+		 * was produced by somebody meaning something else. The RAW normal is read rather
+		 * than the normalised one, so a non-unit (0, 0, 5) is still the same plane.
+		 *
+		 * A tilted normal carrying NO rectangle is untouched by this and stays a perfectly
+		 * good geometry-free joint, which is what keeps every tilted fixture buildable.
+		 */
+		int32 SeparationAxis = INDEX_NONE;
+		int32 AxisCount = 0;
+
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			if (Connection.InterfaceNormal[Axis] != 0.0)
+			{
+				SeparationAxis = Axis;
+				++AxisCount;
+			}
+		}
+
+		if (AxisCount != 1)
+		{
+			return INDEX_NONE;
+		}
+
+		/*
+		 * EVERY HALF-EXTENT IS NON-NEGATIVE AND FINITE, AND THAT IS NOT IMPLIED BY THE
+		 * AREA CHECK BELOW. Two negative halves multiply into a perfectly plausible
+		 * 4 x -5 x -5 = 100, so a guard that only compared the product would accept a
+		 * rectangle that is inside out and hand the section modulus a negative lever arm
+		 * that flips the sign of every stress downstream — the identical trap PieceMassKg
+		 * carries a row for one level up. Written !(x >= 0.0) so a NaN lands inside the
+		 * guard rather than slipping past it, and IsFinite separately because +inf >= 0.0
+		 * is TRUE.
+		 *
+		 * ZERO ON THE SEPARATION AXIS, EXACTLY, and this is area-blind on purpose: an
+		 * extent there can agree with the area perfectly and still describe a box rather
+		 * than an interface, which means whoever wrote it had a different idea of which
+		 * axes are in-plane.
+		 */
+		double RectangleAreaSqCm = 4.0;
+
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			const double HalfExtentCm = Connection.InterfaceHalfExtentCm[Axis];
+
+			if (!(HalfExtentCm >= 0.0) || !FMath::IsFinite(HalfExtentCm))
+			{
+				return INDEX_NONE;
+			}
+
+			if (Axis == SeparationAxis)
+			{
+				if (HalfExtentCm != 0.0)
+				{
+					return INDEX_NONE;
+				}
+
+				continue;
+			}
+
+			RectangleAreaSqCm *= HalfExtentCm;
+		}
+
+		/*
+		 * AND THE TWO MUST BE THE SAME FACE. An extent that disagrees with its area is the
+		 * same class of fault as a normal that disagrees with its A/B pairing — a plausible
+		 * number attached to the wrong geometry — except that the area governs the load
+		 * SPLIT while the rectangle governs the LEVER ARM, and mortar's tensile strength is
+		 * a hundredth of its compressive one, so a lever arm quietly out by a factor moves
+		 * the governing axis rather than merely the number on it.
+		 *
+		 * Written !(diff <= tol) rather than diff > tol so a NaN difference lands inside
+		 * the guard. The area is already positive and finite by the time this runs, so the
+		 * relative bound is a bound.
+		 */
+		const double DisagreementSqCm =
+			FMath::Abs(RectangleAreaSqCm - Connection.InterfaceAreaSqCm);
+
+		if (!(DisagreementSqCm
+				<= SolverRectangleAreaToleranceRatio * Connection.InterfaceAreaSqCm))
+		{
+			return INDEX_NONE;
+		}
 	}
 
 	/*

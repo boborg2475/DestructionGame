@@ -74,6 +74,88 @@ namespace LayoutTestSupport
 	constexpr double FullBedFaceAreaSqCm = BrickLengthCm * BrickDepthCm;
 
 	/*
+	 * THE JOINT IS A RECTANGLE, AND THE HALF-EXTENTS ARE HALF OF THE TWO OVERLAPS THE
+	 * AREA IS ALREADY THE PRODUCT OF.
+	 *
+	 * These are written as halves of the same overlaps the areas above are built from,
+	 * not as fresh literals, because the whole point of emitting them is that the
+	 * rectangle and the area describe ONE face. 4 x h_u x h_v must reproduce the area
+	 * exactly, and the loop below asserts that on the PRODUCED values rather than only
+	 * on these.
+	 *
+	 * A bed joint is 10.25 x 10.25 cm, so both halves are 5.125; a head joint is
+	 * 10.25 x 6.5, so 5.125 and 3.25. Every one is an integer eighth of a centimetre
+	 * and therefore exact in binary.
+	 */
+	constexpr double BedJointHalfAlongWallCm = BedJointOverlapCm / 2.0;
+	constexpr double HalfBrickDepthCm = BrickDepthCm / 2.0;
+	constexpr double HalfBrickHeightCm = BrickHeightCm / 2.0;
+	constexpr double HalfBrickLengthCm = BrickLengthCm / 2.0;
+
+	/*
+	 * THE PLANE OF THE JOINT IS THE MID-PLANE OF THE MORTAR, NOT EITHER BRICK'S FACE,
+	 * AND THAT IS A DECISION RATHER THAN AN ACCIDENT.
+	 *
+	 * A 1 cm mortar bed has TWO faces, so "the contact plane" is ambiguous for every
+	 * joint in this wall and unambiguous only for the dry-stacked one. Taking either
+	 * brick's face would make the emitted geometry depend on WHICH HANDLE IS A — and
+	 * Layout.h's whole argument for emitting the pair and the normal as one atomic value
+	 * is that a joint's description must not be able to disagree with its own pairing.
+	 * Swapping the handles has to swap the normal AND NOTHING ELSE, which the mid-plane
+	 * satisfies and a face does not; the reversed rows below assert exactly that, bit for
+	 * bit. The mid-plane also degenerates continuously: at zero thickness the two faces
+	 * coincide and it lands on them.
+	 *
+	 * Between courses 0 and 1 that is the top of the lower brick plus half a joint,
+	 * 6.5 + 0.5 = 7.0 cm. Between two bricks in one course it is 10.75 + 0.5 = 11.25 cm,
+	 * which coincides with the bond offset and is derived here rather than reusing it.
+	 */
+	constexpr double BedJointPlaneZCm = BrickHeightCm + MortarCm / 2.0;
+	constexpr double HeadJointPlaneXCm = HalfBrickLengthCm + MortarCm / 2.0;
+
+	/**
+	 * 4 x h_u x h_v: the area the emitted rectangle claims, read back independently.
+	 *
+	 * The in-plane axes are taken from the NORMAL rather than from whichever components
+	 * happen to be non-zero, because "the two world axes that are not the separation
+	 * axis" is the definition the section modulus will be built on and a rectangle with
+	 * an accidental zero on an in-plane axis must come out as zero area rather than
+	 * being quietly skipped.
+	 *
+	 * Bit-identity with the area is affordable and is asserted with ==. Production
+	 * multiplies the two overlaps, this multiplies their halves back up by four, and
+	 * scaling by a power of two is exact in binary — so the two round identically and a
+	 * disagreement is a real disagreement.
+	 */
+	double RectangleAreaOf(const FVector& HalfExtentCm, const FVector& InterfaceNormal)
+	{
+		int32 SeparationAxis = INDEX_NONE;
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			if (InterfaceNormal[Axis] != 0.0)
+			{
+				SeparationAxis = Axis;
+			}
+		}
+
+		if (SeparationAxis == INDEX_NONE)
+		{
+			return 0.0;
+		}
+
+		double AreaSqCm = 4.0;
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			if (Axis != SeparationAxis)
+			{
+				AreaSqCm *= HalfExtentCm[Axis];
+			}
+		}
+
+		return AreaSqCm;
+	}
+
+	/*
 	 * Masses DERIVED FROM THE PROFILE, following StructureTest.cpp: importing density
 	 * is safe because Profiles.MaterialInvariants is the single external anchor for it
 	 * and everything here is downstream of that anchor, whereas a hand-set literal
@@ -243,6 +325,21 @@ namespace LayoutTestSupport
 		int32 SeparationAxis = INDEX_NONE;
 
 		double AreaSqCm = 0.0;
+
+		/**
+		 * The face's own rectangle, derived from the BOX BOUNDS rather than from centre
+		 * differences, so it is a second derivation and not a restatement.
+		 *
+		 * Production works in centres, half-extents and overlaps; this intersects the two
+		 * closed intervals [min, max] on each axis and takes the midpoint and half-width
+		 * of what is left. On the separation axis the intersection is EMPTY — the
+		 * intervals are the joint thickness apart, so its "half-width" comes out negative
+		 * — and the midpoint of that empty interval is still exactly the mid-plane of the
+		 * mortar, which is the plane of the joint. The half-extent there is zero, because
+		 * a face has no thickness.
+		 */
+		FVector CentreCm = FVector::ZeroVector;
+		FVector HalfExtentCm = FVector::ZeroVector;
 	};
 
 	TArray<FContact> ContactsOf(const TArray<FPieceBox>& Boxes, double JointThicknessCm)
@@ -311,7 +408,23 @@ namespace LayoutTestSupport
 					continue;
 				}
 
-				Contacts.Add({ I, J, SeparationAxis, Area });
+				FVector CentreCm = FVector::ZeroVector;
+				FVector HalfExtentCm = FVector::ZeroVector;
+
+				for (int32 Axis = 0; Axis < 3; ++Axis)
+				{
+					const double Low = FMath::Max(
+						Boxes[I].CentreCm[Axis] - Boxes[I].ExtentCm[Axis],
+						Boxes[J].CentreCm[Axis] - Boxes[J].ExtentCm[Axis]);
+					const double High = FMath::Min(
+						Boxes[I].CentreCm[Axis] + Boxes[I].ExtentCm[Axis],
+						Boxes[J].CentreCm[Axis] + Boxes[J].ExtentCm[Axis]);
+
+					CentreCm[Axis] = (Low + High) * 0.5;
+					HalfExtentCm[Axis] = Axis == SeparationAxis ? 0.0 : (High - Low) * 0.5;
+				}
+
+				Contacts.Add({ I, J, SeparationAxis, Area, CentreCm, HalfExtentCm });
 			}
 		}
 
@@ -378,6 +491,18 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		/** Exact, and only read when the case is expected to be accepted. */
 		FVector ExpectedNormal = FVector::ZeroVector;
 		double ExpectedAreaSqCm = 0.0;
+
+		/**
+		 * THE FACE'S OWN RECTANGLE, hand-derived per row, and the whole point of this
+		 * slice. Only read when the case is expected to be accepted.
+		 *
+		 * The centre is the midpoint of the overlap on each in-plane axis and the
+		 * MID-PLANE OF THE JOINT on the separation axis; the half-extent is half of each
+		 * in-plane overlap and exactly zero on the separation axis, because a face is a
+		 * rectangle and not a box.
+		 */
+		FVector ExpectedCentreCm = FVector::ZeroVector;
+		FVector ExpectedHalfExtentCm = FVector::ZeroVector;
 	};
 
 	const FPieceBox LowerLeft = FullBrickAt(0.0, 0);
@@ -394,7 +519,21 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		{
 			TEXT("a running-bond bed joint has an axis-of-separation normal, not a centroid one"),
 			0, LowerLeft, 1, Spanning, MortarCm,
-			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm
+			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm,
+			/*
+			 * THE RECTANGLE THE WHOLE MOMENT MODEL HANGS OFF. The lower brick spans
+			 * X [-10.75, 10.75] and the spanning brick X [0.5, 22.0], so the face is
+			 * X [0.5, 10.75] — 10.25 cm wide, centred on 5.625. Full depth in Y, and on Z
+			 * the mid-plane of the mortar at 7.0. Zero half-extent on Z: a face is a
+			 * rectangle.
+			 *
+			 * 5.625 is not an arbitrary coordinate. The spanning brick's own centre is at
+			 * 11.25, so this joint sits 5.625 cm to one side of it — which is exactly the
+			 * eccentricity a brick sees when it loses its OTHER bed support, and the
+			 * assertion after the loop pins that the two joints straddle it symmetrically.
+			 */
+			FVector(BondOffsetCm / 2.0, 0.0, BedJointPlaneZCm),
+			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
 		},
 
 		/*
@@ -407,13 +546,28 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		{
 			TEXT("swapping the handles swaps the normal, and nothing else"),
 			0, Spanning, 1, LowerLeft, MortarCm,
-			true, FVector(0.0, 0.0, -1.0), BedJointAreaSqCm
+			true, FVector(0.0, 0.0, -1.0), BedJointAreaSqCm,
+			/*
+			 * IDENTICAL GEOMETRY, and "and nothing else" is now a claim with teeth. Naming
+			 * the upper brick first must not move the joint: the face is the same face,
+			 * and a centroid that slid to whichever brick was A would be a lever arm that
+			 * depended on declaration order. Asserted bit for bit against the row above.
+			 */
+			FVector(BondOffsetCm / 2.0, 0.0, BedJointPlaneZCm),
+			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
 		},
 
 		{
 			TEXT("the other bed joint of the same spanning brick"),
 			0, LowerRight, 1, Spanning, MortarCm,
-			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm
+			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm,
+			/*
+			 * The mirror of the first row. The right brick spans X [11.75, 33.25], so the
+			 * face is X [11.75, 22.0], centred on 16.875 — 5.625 cm the OTHER side of the
+			 * spanning brick's centre at 11.25.
+			 */
+			FVector(BrickPitchCm - BondOffsetCm / 2.0, 0.0, BedJointPlaneZCm),
+			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
 		},
 
 		/*
@@ -425,12 +579,27 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		{
 			TEXT("a head joint between two bricks in one course"),
 			0, LowerLeft, 1, LowerRight, MortarCm,
-			true, FVector(1.0, 0.0, 0.0), HeadJointAreaSqCm
+			true, FVector(1.0, 0.0, 0.0), HeadJointAreaSqCm,
+			/*
+			 * THE HEAD JOINT'S RECTANGLE, DERIVED INDEPENDENTLY OF THE BED JOINT'S and it
+			 * is a different shape: 10.25 deep by 6.5 tall, so the halves are 5.125 and
+			 * 3.25 rather than 5.125 twice. A producer that emitted half the brick's
+			 * footprint for every joint would match the bed rows and miss here.
+			 *
+			 * The face is the mid-plane of the mortar between the two bricks, X = 11.25,
+			 * and it spans the bricks' whole depth and whole height because they sit in
+			 * the same course at the same Y.
+			 */
+			FVector(HeadJointPlaneXCm, 0.0, HalfBrickHeightCm),
+			FVector(0.0, HalfBrickDepthCm, HalfBrickHeightCm)
 		},
 		{
 			TEXT("the same head joint declared the other way round"),
 			0, LowerRight, 1, LowerLeft, MortarCm,
-			true, FVector(-1.0, 0.0, 0.0), HeadJointAreaSqCm
+			true, FVector(-1.0, 0.0, 0.0), HeadJointAreaSqCm,
+			// Same face, same rectangle; only the normal turns round.
+			FVector(HeadJointPlaneXCm, 0.0, HalfBrickHeightCm),
+			FVector(0.0, HalfBrickDepthCm, HalfBrickHeightCm)
 		},
 
 		/*
@@ -442,7 +611,16 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		{
 			TEXT("a brick directly above another shares its whole bed face"),
 			0, LowerLeft, 1, FullBrickAt(0.0, 1), MortarCm,
-			true, FVector(0.0, 0.0, 1.0), FullBedFaceAreaSqCm
+			true, FVector(0.0, 0.0, 1.0), FullBedFaceAreaSqCm,
+			/*
+			 * THE HALF-EXTENT VARIES WITH THE BOND AND THE AREA IS NOT ENOUGH TO SAY SO.
+			 * Stack bond shares the whole 21.5 cm face, so the half-extent along the wall
+			 * is 10.75 rather than the running bond's 5.125 — a section modulus twice as
+			 * large about the same axis, which is the difference between a corbel that
+			 * stands and one that peels. Centred on the brick, since neither is offset.
+			 */
+			FVector(0.0, 0.0, BedJointPlaneZCm),
+			FVector(HalfBrickLengthCm, HalfBrickDepthCm, 0.0)
 		},
 
 		/*
@@ -461,7 +639,22 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 					BrickHeightCm * 0.5 + CoursePitchCm),
 				FVector(HalfBatLengthCm, BrickDepthCm, BrickHeightCm)),
 			MortarCm,
-			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm
+			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm,
+			/*
+			 * THE MIXED-SIZE ROW, AND THE ONE THAT CANNOT BE SATISFIED BY A SHORTCUT. For
+			 * two boxes of EQUAL size the overlap's midpoint is just the midpoint of their
+			 * centres, and every other accepted row here is a pair of equal boxes on the
+			 * axis that matters — so a producer that averaged the two centres would pass
+			 * all of them. Here it does not: the half bat sits at -5.625 and the brick
+			 * below at 0, whose midpoint is -2.8125, while the face really is the half
+			 * bat's own footprint X [-10.75, -0.5], centred on -5.625.
+			 *
+			 * The area is the same 105.0625 as a running-bond bed joint, so the area alone
+			 * cannot tell this face from that one either. The rectangle can: same size,
+			 * different place.
+			 */
+			FVector(-BrickLengthCm * 0.5 + HalfBatLengthCm * 0.5, 0.0, BedJointPlaneZCm),
+			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
 		},
 
 		/*
@@ -476,7 +669,17 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 				FVector(BondOffsetCm, 0.0, BrickHeightCm * 1.5),
 				FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm)),
 			0.0,
-			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm
+			true, FVector(0.0, 0.0, 1.0), BedJointAreaSqCm,
+			/*
+			 * DRY STACKED, AND THE ROW THAT SAYS THE MID-PLANE IS NOT A FUDGE. With no
+			 * mortar the two faces coincide at Z = 6.5, so mid-plane and contact face are
+			 * the same number and there is nothing to choose between them. Every mortared
+			 * row above sits half a joint away from either brick's face; this one pins
+			 * that the rule degenerates onto the faces rather than being offset by a
+			 * constant.
+			 */
+			FVector(BondOffsetCm / 2.0, 0.0, BrickHeightCm),
+			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
 		},
 
 		/*
@@ -721,6 +924,16 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 		Produced.InterfaceAreaSqCm = 999.0;
 		Produced.InterfaceNormal = FVector(0.0, 1.0, 0.0);
 
+		/*
+		 * AND A BOGUS RECTANGLE, for the same reason one step further on. Zero extents
+		 * mean "no bending capacity known", which is a perfectly healthy state, so a
+		 * refusal that left these alone would hand back a joint claiming a section
+		 * modulus it never measured — a plausible lever arm on a face that does not
+		 * exist. A refusal must zero the geometry as well as the area.
+		 */
+		Produced.InterfaceCentreCm = FVector(111.0, 222.0, 333.0);
+		Produced.InterfaceHalfExtentCm = FVector(7.0, 8.0, 9.0);
+
 		const bool bAccepted = MakeInterface(
 			Case.HandleA, Case.BoxA,
 			Case.HandleB, Case.BoxB,
@@ -744,6 +957,20 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 					TEXT("%s: a refused joint must fail closed with a zero interface area, got %.6f"),
 					Case.Description, Produced.InterfaceAreaSqCm),
 				Produced.InterfaceAreaSqCm == 0.0);
+
+			TestTrue(
+				FString::Printf(
+					TEXT("%s: a refused joint must fail closed with NO rectangle either, got centre")
+					TEXT(" (%.4f, %.4f, %.4f) half-extent (%.4f, %.4f, %.4f)"),
+					Case.Description,
+					Produced.InterfaceCentreCm.X,
+					Produced.InterfaceCentreCm.Y,
+					Produced.InterfaceCentreCm.Z,
+					Produced.InterfaceHalfExtentCm.X,
+					Produced.InterfaceHalfExtentCm.Y,
+					Produced.InterfaceHalfExtentCm.Z),
+				Produced.InterfaceCentreCm.IsZero() && Produced.InterfaceHalfExtentCm.IsZero());
+
 			continue;
 		}
 
@@ -788,6 +1015,84 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 				Produced.Strength.CompressiveStrengthMPa,
 				GeneralPurposeMortar.CompressiveStrengthMPa),
 			Produced.Strength.CompressiveStrengthMPa == GeneralPurposeMortar.CompressiveStrengthMPa);
+
+		/*
+		 * THE RECTANGLE, to the same 1e-12 the area gets. A centroid is a subtraction of
+		 * world positions rather than a unit axis vector, so it is not compared with ==
+		 * the way the normal is — but every coordinate here is an integer eighth of a
+		 * centimetre, so 1e-12 on a quantity of order 20 cm is a hundred million times
+		 * looser than the arithmetic and a hundred billion times tighter than the
+		 * smallest disagreement that could matter (half a mortar joint, 0.5 cm).
+		 */
+		TestTrue(
+			FString::Printf(
+				TEXT("%s: interface centre should be (%.6f, %.6f, %.6f), got (%.10g, %.10g, %.10g)"),
+				Case.Description,
+				Case.ExpectedCentreCm.X, Case.ExpectedCentreCm.Y, Case.ExpectedCentreCm.Z,
+				Produced.InterfaceCentreCm.X,
+				Produced.InterfaceCentreCm.Y,
+				Produced.InterfaceCentreCm.Z),
+			Produced.InterfaceCentreCm.Equals(Case.ExpectedCentreCm, 1.0e-12));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("%s: interface half-extent should be (%.6f, %.6f, %.6f), got (%.10g, %.10g, %.10g)"),
+				Case.Description,
+				Case.ExpectedHalfExtentCm.X,
+				Case.ExpectedHalfExtentCm.Y,
+				Case.ExpectedHalfExtentCm.Z,
+				Produced.InterfaceHalfExtentCm.X,
+				Produced.InterfaceHalfExtentCm.Y,
+				Produced.InterfaceHalfExtentCm.Z),
+			Produced.InterfaceHalfExtentCm.Equals(Case.ExpectedHalfExtentCm, 1.0e-12));
+
+		/*
+		 * ZERO ON THE NORMAL'S OWN AXIS, EXACTLY, and stated separately from the vector
+		 * above because it is a different claim. The vector says which rectangle; this
+		 * says the face is a rectangle at all. A near-zero thickness would give a joint a
+		 * section modulus about an axis it has no extent on, and the in-plane frame the
+		 * whole moment model uses is defined as "the two world axes that are NOT the
+		 * separation axis" — which only means anything if the third is exactly nothing.
+		 */
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			if (Produced.InterfaceNormal[Axis] == 0.0)
+			{
+				continue;
+			}
+
+			TestTrue(
+				FString::Printf(
+					TEXT("%s: the half-extent on the separation axis %d must be EXACTLY zero — a face")
+					TEXT(" is a rectangle, not a box — got %.17g"),
+					Case.Description, Axis, Produced.InterfaceHalfExtentCm[Axis]),
+				Produced.InterfaceHalfExtentCm[Axis] == 0.0);
+		}
+
+		/*
+		 * THE INVARIANT THAT MAKES THE PAIR ATOMIC, asserted on the PRODUCED values and
+		 * asserted EXACTLY.
+		 *
+		 * The area this joint reports and the rectangle it reports must be the same face.
+		 * An extent that disagrees with its area is the identical failure mode to a normal
+		 * that disagrees with its pairing — a plausible number attached to the wrong
+		 * geometry — and it is the invariant FStructure::AddConnection is about to enforce
+		 * at the door. Asserting it here as well is deliberate: the door can only refuse,
+		 * and this is the only place that can say the producer never builds one.
+		 *
+		 * Exact, not tolerant. Production multiplies the two overlaps; this multiplies
+		 * their halves back up by four, and scaling by a power of two is exact in binary,
+		 * so both round once to the same double.
+		 */
+		const double RectangleAreaSqCm =
+			RectangleAreaOf(Produced.InterfaceHalfExtentCm, Produced.InterfaceNormal);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("%s: 4 x h_u x h_v must reproduce the interface area EXACTLY, got %.17g")
+				TEXT(" against %.17g"),
+				Case.Description, RectangleAreaSqCm, Produced.InterfaceAreaSqCm),
+			RectangleAreaSqCm == Produced.InterfaceAreaSqCm);
 	}
 
 	/*
@@ -830,6 +1135,104 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 				TEXT("the produced bed normal must not be the centroid direction (%.10g, %.10g, %.10g)"),
 				CentroidDirection.X, CentroidDirection.Y, CentroidDirection.Z),
 			BedJoint.InterfaceNormal.Equals(CentroidDirection, 1.0e-6));
+	}
+
+	/*
+	 * SWAPPING THE HANDLES SWAPS THE NORMAL AND MOVES NOTHING ELSE, asserted BIT FOR BIT
+	 * rather than to a tolerance, because it is a symmetry rather than a computation.
+	 *
+	 * The table above already pins both orderings against the same hand-derived
+	 * rectangle, which would catch the two disagreeing by more than 1e-12. This catches
+	 * them disagreeing at ALL — and it is the assertion that forbids the one alternative
+	 * definition of "the contact plane" that reads perfectly reasonable: putting the
+	 * centroid on PieceA's face. That is a real plane, it is where the mortar meets a
+	 * brick, and it would make every joint's lever arm depend on which brick the producer
+	 * happened to name first. Half a mortar joint of silent asymmetry, in a quantity that
+	 * multiplies a force.
+	 */
+	{
+		FConnection Forward;
+		FConnection Reversed;
+
+		const bool bForward =
+			MakeInterface(0, LowerLeft, 1, Spanning, MortarCm, GeneralPurposeMortar, Forward);
+		const bool bReversed =
+			MakeInterface(0, Spanning, 1, LowerLeft, MortarCm, GeneralPurposeMortar, Reversed);
+
+		TestTrue(TEXT("both orderings of the bed joint must be produced"), bForward && bReversed);
+
+		if (bForward && bReversed)
+		{
+			TestTrue(
+				FString::Printf(
+					TEXT("the two orderings must place the joint at the same point: (%.17g, %.17g,")
+					TEXT(" %.17g) against (%.17g, %.17g, %.17g)"),
+					Forward.InterfaceCentreCm.X,
+					Forward.InterfaceCentreCm.Y,
+					Forward.InterfaceCentreCm.Z,
+					Reversed.InterfaceCentreCm.X,
+					Reversed.InterfaceCentreCm.Y,
+					Reversed.InterfaceCentreCm.Z),
+				Forward.InterfaceCentreCm == Reversed.InterfaceCentreCm);
+
+			TestTrue(
+				TEXT("the two orderings must give the joint the same rectangle"),
+				Forward.InterfaceHalfExtentCm == Reversed.InterfaceHalfExtentCm);
+
+			TestTrue(
+				TEXT("the two orderings must differ in the normal, and only in the normal"),
+				Forward.InterfaceNormal == -Reversed.InterfaceNormal);
+		}
+	}
+
+	/*
+	 * THE ECCENTRICITY A REAL BRICK ACTUALLY SEES, cross-checked from the emitted
+	 * centroids alone. This is what the rectangle is FOR, and it is worth stating as
+	 * arithmetic on produced values rather than leaving a reader to subtract two rows.
+	 *
+	 * A running-bond brick rests on two bed patches, one either side of its own centre.
+	 * The two centroids must straddle it SYMMETRICALLY — 5.625 cm each way — because that
+	 * symmetry is exactly what makes an intact wall's eccentricity zero rather than
+	 * merely small. If it were 5.624 and 5.626 every bed joint in a standing wall would
+	 * carry a small spurious moment, which is a plausible number and an invisible fault.
+	 *
+	 * And 5.625 is itself the number a brick sees when it LOSES one of the two: that is
+	 * the corbelled case, roughly a 200x change in the governing stress, so this one
+	 * coordinate is the difference between a wall that stands and a course that peels.
+	 */
+	{
+		FConnection LeftPatch;
+		FConnection RightPatch;
+
+		const bool bLeft =
+			MakeInterface(0, LowerLeft, 1, Spanning, MortarCm, GeneralPurposeMortar, LeftPatch);
+		const bool bRight =
+			MakeInterface(0, LowerRight, 1, Spanning, MortarCm, GeneralPurposeMortar, RightPatch);
+
+		TestTrue(TEXT("both bed patches under the spanning brick must be produced"), bLeft && bRight);
+
+		if (bLeft && bRight)
+		{
+			const double LeftOffsetCm = LeftPatch.InterfaceCentreCm.X - Spanning.CentreCm.X;
+			const double RightOffsetCm = RightPatch.InterfaceCentreCm.X - Spanning.CentreCm.X;
+
+			TestTrue(
+				FString::Printf(
+					TEXT("the spanning brick's two bed patches must sit %.6f cm either side of it,")
+					TEXT(" got %.10g and %.10g"),
+					BondOffsetCm / 2.0, LeftOffsetCm, RightOffsetCm),
+				FMath::IsNearlyEqual(LeftOffsetCm, -BondOffsetCm / 2.0, 1.0e-12)
+					&& FMath::IsNearlyEqual(RightOffsetCm, BondOffsetCm / 2.0, 1.0e-12));
+
+			TestTrue(
+				FString::Printf(
+					TEXT("an intact running bond must be eccentricity-free EXACTLY: the two patch")
+					TEXT(" centroids must average to the brick's own centre, got %.17g against %.17g"),
+					(LeftPatch.InterfaceCentreCm.X + RightPatch.InterfaceCentreCm.X) * 0.5,
+					Spanning.CentreCm.X),
+				(LeftPatch.InterfaceCentreCm.X + RightPatch.InterfaceCentreCm.X) * 0.5
+					== Spanning.CentreCm.X);
+		}
 	}
 
 	return true;
@@ -1840,6 +2243,69 @@ bool FLayoutRunningBondTest::RunTest(const FString& Parameters)
 							Connection.InterfaceNormal.Y,
 							Connection.InterfaceNormal.Z),
 						Connection.InterfaceNormal == ExpectedNormal);
+
+					/*
+					 * THE RECTANGLE, AGAINST THE ORACLE'S OWN. The scan derives it by
+					 * intersecting the two boxes' [min, max] intervals; production works in
+					 * centres and overlaps. Same face, two different routes to it — which
+					 * is the only reason checking 1150 of them is worth more than checking
+					 * the eight in the table above.
+					 *
+					 * 1e-9, matching the area comparison beside it, because the walls in
+					 * this sweep run to several metres and the sum-then-halve in the oracle
+					 * is not the same association as production's. A real disagreement here
+					 * is half a mortar joint, 0.5 cm, eight orders of magnitude away.
+					 */
+					TestTrue(
+						FString::Printf(
+							TEXT("%s: joint %d (%d-%d) centre should be (%.6f, %.6f, %.6f), got")
+							TEXT(" (%.10g, %.10g, %.10g)"),
+							*Wall, Index, Connection.PieceA, Connection.PieceB,
+							Contact.CentreCm.X, Contact.CentreCm.Y, Contact.CentreCm.Z,
+							Connection.InterfaceCentreCm.X,
+							Connection.InterfaceCentreCm.Y,
+							Connection.InterfaceCentreCm.Z),
+						Connection.InterfaceCentreCm.Equals(Contact.CentreCm, 1.0e-9));
+
+					TestTrue(
+						FString::Printf(
+							TEXT("%s: joint %d (%d-%d) half-extent should be (%.6f, %.6f, %.6f), got")
+							TEXT(" (%.10g, %.10g, %.10g)"),
+							*Wall, Index, Connection.PieceA, Connection.PieceB,
+							Contact.HalfExtentCm.X, Contact.HalfExtentCm.Y, Contact.HalfExtentCm.Z,
+							Connection.InterfaceHalfExtentCm.X,
+							Connection.InterfaceHalfExtentCm.Y,
+							Connection.InterfaceHalfExtentCm.Z),
+						Connection.InterfaceHalfExtentCm.Equals(Contact.HalfExtentCm, 1.0e-9));
+
+					TestTrue(
+						FString::Printf(
+							TEXT("%s: joint %d (%d-%d) must have EXACTLY no thickness on its own")
+							TEXT(" separation axis %d, got %.17g"),
+							*Wall, Index, Connection.PieceA, Connection.PieceB,
+							Contact.SeparationAxis,
+							Connection.InterfaceHalfExtentCm[Contact.SeparationAxis]),
+						Connection.InterfaceHalfExtentCm[Contact.SeparationAxis] == 0.0);
+
+					/*
+					 * AND THE RECTANGLE AND THE AREA MUST BE THE SAME FACE, on all 1150.
+					 * This is the invariant FStructure::AddConnection refuses at the door,
+					 * so note the interlock above: if any joint in this wall violated it,
+					 * AddConnection would have dropped that joint and the contact-count
+					 * assertion would already have fired. The two assertions fail for
+					 * completely different reasons and both are worth having — a dropped
+					 * joint says the count is wrong, this says which face is wrong.
+					 */
+					TestTrue(
+						FString::Printf(
+							TEXT("%s: joint %d (%d-%d) 4 x h_u x h_v must reproduce its area EXACTLY,")
+							TEXT(" got %.17g against %.17g"),
+							*Wall, Index, Connection.PieceA, Connection.PieceB,
+							RectangleAreaOf(
+								Connection.InterfaceHalfExtentCm, Connection.InterfaceNormal),
+							Connection.InterfaceAreaSqCm),
+						RectangleAreaOf(Connection.InterfaceHalfExtentCm, Connection.InterfaceNormal)
+							== Connection.InterfaceAreaSqCm);
 
 					const double ExpectedArea = Contact.SeparationAxis == 2
 						? BedJointAreaSqCm
