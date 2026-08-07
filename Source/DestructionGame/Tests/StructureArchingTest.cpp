@@ -983,14 +983,26 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 	 *
 	 * The corbel's eccentric side is the side the cut REMOVED the neighbour from, so there is
 	 * no head joint there at all and the arch must be refused. Apply the cap without checking
-	 * which side the abutment is on and this number collapses from 22.93 to about 0.005, the
-	 * photographed failure stands up, and the whole reason this subsystem's test suite exists
-	 * evaporates. The staircase's own test would fail too — the suite contains its own guard —
-	 * and re-asserting it here is what makes that guard say the word "arch" when it fires.
+	 * which side the abutment is on and this number collapses to about 0.0195, and the direction
+	 * check — which is the whole of what slice 1 had to get right — stops being tested anywhere.
+	 * Re-asserting it here is what makes the staircase's own guard say the word "arch" when it
+	 * fires.
+	 *
+	 * THE NUMBER IT ANCHORS MOVED AT SLICE 5, FROM 22.92952589 TO 0.3690314727, AND THE ANCHOR
+	 * STILL BITES. Composite vertical action re-sections the corbel's moment against the eleven
+	 * courses of masonry standing over it, so the rung reads 0.369 rather than 22.93 — by the
+	 * user's ruling, and re-derived in StaircaseWallTestSupport.h. That is still a factor of
+	 * NINETEEN clear of the 0.0195 an ungated arch would produce, so this row goes on separating
+	 * the two mechanisms; what it can no longer do is separate them by the RUNG COUNT, since
+	 * composite action and an ungated arch both leave nought of eleven over capacity. The count
+	 * is kept because it is free and because it fails loudly if the ladder ever climbs again,
+	 * but the number below is the part with teeth.
 	 *
 	 * The tolerance is the staircase test's own 1e-5 relative, for the reason recorded there:
-	 * the hand ladder's load cone reaches past the end of a 10-brick-wide wall, which is worth
-	 * 1.0e-7 on the bottom rung.
+	 * the hand ladder's load cone reaches past the end of a 10-brick-wide wall. Under the
+	 * composite section that deficit no longer reaches the utilisation at all — the governing
+	 * reading is pure bending, with no compression term for it to be shared unevenly with — so
+	 * the tolerance is now slack by orders of magnitude rather than by four.
 	 */
 	{
 		FBrickLayout Staircase;
@@ -1043,13 +1055,16 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 			TestTrue(
 				FString::Printf(
 					TEXT("ANCHOR 2: the corbel's eccentric side has NO neighbour, so it must NOT ")
-					TEXT("arch — it must still read %.8f, it reads %s"),
+					TEXT("arch — it must read the composite section's %.8f and not an arched ")
+					TEXT("0.0195, it reads %s"),
 					StaircasePredictedWorstCorbelUtilisation, *Bits(Worst)),
 				FMath::Abs(Worst - StaircasePredictedWorstCorbelUtilisation)
 					<= 1.0e-5 * StaircasePredictedWorstCorbelUtilisation);
 
 			TestEqual(
-				TEXT("ANCHOR 2: and eight of its eleven rungs must still be over capacity"),
+				FString::Printf(
+					TEXT("ANCHOR 2: and exactly %d of its eleven rungs must be over capacity"),
+					StaircasePredictedCorbelJointsOverCapacity),
 				OverCapacity, StaircasePredictedCorbelJointsOverCapacity);
 		}
 		else

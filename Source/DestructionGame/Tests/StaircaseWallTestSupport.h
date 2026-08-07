@@ -63,13 +63,15 @@ namespace StaircaseWallTestSupport
 	 * the brickwork above it reaching several bricks out over nothing. Thirteen is the smallest
 	 * height that carries the whole staircase AND leaves an intact course on top of it.
 	 */
+	constexpr int32 StaircaseCoursesHigh = 13;
+
 	inline FRunningBondSpec StaircaseWallSpec()
 	{
 		FRunningBondSpec Spec;
 		Spec.BrickSizeCm = FVector(21.5, 10.25, 6.5);
 		Spec.JointThicknessCm = 1.0;
 		Spec.DensityGramsPerCubicCm = ClayBrick.DensityGramsPerCubicCm;
-		Spec.CoursesHigh = 13;
+		Spec.CoursesHigh = StaircaseCoursesHigh;
 		Spec.BricksPerCourse = 10;
 		Spec.End = EWallEnd::Flush;
 		Spec.Strength = GeneralPurposeMortar;
@@ -261,7 +263,36 @@ namespace StaircaseWallTestSupport
 	 *
 	 * where 10000 uu per MPa.cm2 is spelled out rather than imported. Against general-purpose
 	 * mortar's f_xk1 = 0.10 MPa (EN 1996-1-1 §3.6.3 Table 3.2, and already the number in the
-	 * profile) the bottom step of the staircase reaches 22.9 times capacity.
+	 * profile) the bottom step of the staircase would reach 22.9 times capacity ON THAT PATCH
+	 * ALONE.
+	 *
+	 * AND THE PATCH ALONE IS NOT WHAT RESISTS IT — WHICH IS THE USER'S RULING OF 2026-08-06 AND
+	 * IS WHY EVERY NUMBER BELOW MOVED.
+	 *
+	 * A stack of courses over a lost support does not resist its overturning moment as a
+	 * sequence of independent bed patches. The wall acts as a DEEP BEAM and the plane taking the
+	 * moment is a VERTICAL section through the bonded masonry standing over the joint, `t*D^2/6`
+	 * for a wall t thick and D deep. Eleven courses stand over the bottom step of this staircase
+	 * — 82.5 cm — so that section is 10.25 x 82.5^2 / 6 = 11,627.34 cm3 against the patch's
+	 * 179.48, a factor of 64.8, and the rung reads 0.369 instead of 22.93. ARCHING_DESIGN.md
+	 * slice 5.
+	 *
+	 * THE JOINT GIVES AT THE LESSER OF THE TWO, because composite action is an ALTERNATIVE way
+	 * of carrying the moment rather than an extra one. That `min` is what keeps the model nested
+	 * rather than replaced, and it is load-bearing at the TOP of the ladder: one course of depth
+	 * is 96.09 cm3, SHALLOWER than the bed patch, so course 12 keeps its own 0.058203838 to the
+	 * last bit. It is also why `StructureBinding.AdoptedWallLoadsItsWaistEccentrically` and
+	 * `StructurePushTest`'s ragged end do not move — both are the top course of their wall.
+	 *
+	 * NO AXIAL TERM IS SUBTRACTED FROM THE COMPOSITE READING. The plane resisting a deep-beam
+	 * moment is vertical; the weight standing over the joint is shear on it rather than load
+	 * across it, so there is no compression there to close it. Subtracting the patch's own N/A
+	 * from a stress on a different plane reads this corbel as EXACTLY ZERO.
+	 *
+	 * AND A COMPOSITE OF ONE IS NOT A COMPOSITE. The top step of a corbel has nothing resting on
+	 * it, so there is no stack to act together and its own bed patch is the only section there
+	 * is. The arithmetic would have said the same — one course is shallower than the patch — but
+	 * the two agreeing is a coincidence of this brick's proportions rather than a rule.
 	 */
 
 	/** 1.9 g/cm3 x 21.5 x 10.25 x 6.5 cm / 1000 = 2.72163125 kg, x 980 cm/s2. */
@@ -373,13 +404,50 @@ namespace StaircaseWallTestSupport
 	}
 
 	/**
-	 * What the tension at the opened edge of that step's bed joint comes to, as a fraction of
-	 * mortar's flexural bond strength.
+	 * How many courses of bonded masonry stand over one step's bed joint.
+	 *
+	 * The joint sits under the brick of course c, so what is above it is courses c through the
+	 * top: 13 - c of them. For the BOTTOM step that is ELEVEN courses, 82.5 cm; for the top step
+	 * it is one, which is the step's own brick and nothing else.
+	 */
+	constexpr int32 StaircaseCoursesOverCorbelJoint(int32 Course)
+	{
+		return StaircaseCoursesHigh - Course;
+	}
+
+	/**
+	 * The DEEP BEAM's section, cm3: t x D^2 / 6, with t the wall's thickness and D the depth of
+	 * masonry standing over the joint. Zero where there is no stack to act together.
+	 *
+	 * ZERO FOR THE TOP STEP, AND THAT IS THE MECHANISM RATHER THAN A GUARD. One course is one
+	 * brick with nothing resting on it, which is not a composite of anything, so there is no
+	 * second section and the bed patch is the only one there is.
+	 */
+	inline double StaircaseCorbelCompositeModulusCm3(int32 Course)
+	{
+		const int32 Courses = StaircaseCoursesOverCorbelJoint(Course);
+
+		if (Courses < 2)
+		{
+			return 0.0;
+		}
+
+		const double DepthCm = Courses * StaircaseCoursePitchCm;
+
+		return 10.25 * DepthCm * DepthCm / 6.0;
+	}
+
+	/**
+	 * What the tension at the opened edge of that step's joint comes to, as a fraction of
+	 * mortar's flexural bond strength: the LESSER of the bed patch's own reading and the deep
+	 * beam's.
 	 *
 	 * WHICH AXIS GOVERNS IS NOT ASSUMED — see StaircasePredictedCorbelCompressionUtilisation.
 	 * ComputeUtilisation returns the WORST of the three axes, so a fixture aimed at bending would
 	 * silently measure compression the moment compression happened to be higher, and every test
-	 * using these numbers asserts the comparison before it claims anything.
+	 * using these numbers asserts the comparison before it claims anything. It is a closer thing
+	 * than it was: relieving the opened edge from 22.93 to 0.369 leaves it only 1.5x clear of the
+	 * squeezed one, where it used to be 92x.
 	 */
 	inline double StaircasePredictedCorbelUtilisation(int32 Course)
 	{
@@ -389,10 +457,32 @@ namespace StaircaseWallTestSupport
 		const double NormalMPa = StaircasePredictedCorbelForceUu(Course)
 			/ (StaircaseCorbelBedAreaSqCm * StaircaseForceUnitsPerMPaSqCm);
 
-		return FMath::Max(0.0, BendingMPa - NormalMPa) / StaircaseMortarTensileMPa;
+		const double PatchMPa = FMath::Max(0.0, BendingMPa - NormalMPa);
+
+		const double CompositeModulusCm3 = StaircaseCorbelCompositeModulusCm3(Course);
+
+		if (!(CompositeModulusCm3 > 0.0))
+		{
+			return PatchMPa / StaircaseMortarTensileMPa;
+		}
+
+		const double CompositeMPa = StaircasePredictedCorbelMomentUuCm(Course)
+			/ (CompositeModulusCm3 * StaircaseForceUnitsPerMPaSqCm);
+
+		return FMath::Min(PatchMPa, CompositeMPa) / StaircaseMortarTensileMPa;
 	}
 
-	/** The other edge of the same joint, squeezed rather than opened, against 10 MPa. */
+	/**
+	 * The other edge of the same joint, squeezed rather than opened, against 10 MPa.
+	 *
+	 * BOTH EDGES MOVE TOGETHER. Where the deep beam is what resists the moment the bed patch is
+	 * not bending at all, so what is left is two planes with one stress each — the bed plane
+	 * under a uniform N/A and the vertical plane under +-M/W_c — and the worst squeezed fibre is
+	 * the larger of them rather than their sum. Leaving this edge at the patch's own
+	 * M/W_v + N/A would put the bottom of THIS ladder at 0.249 against a relieved tension of
+	 * 0.369, which is close enough that a slightly deeper corbel would fail in an axis nobody
+	 * was measuring.
+	 */
 	inline double StaircasePredictedCorbelCompressionUtilisation(int32 Course)
 	{
 		const double BendingMPa = StaircasePredictedCorbelMomentUuCm(Course)
@@ -401,23 +491,48 @@ namespace StaircaseWallTestSupport
 		const double NormalMPa = StaircasePredictedCorbelForceUu(Course)
 			/ (StaircaseCorbelBedAreaSqCm * StaircaseForceUnitsPerMPaSqCm);
 
-		return (BendingMPa + NormalMPa) / StaircaseMortarCompressiveMPa;
+		const double CompositeModulusCm3 = StaircaseCorbelCompositeModulusCm3(Course);
+
+		if (!(CompositeModulusCm3 > 0.0))
+		{
+			return (BendingMPa + NormalMPa) / StaircaseMortarCompressiveMPa;
+		}
+
+		const double CompositeMPa = StaircasePredictedCorbelMomentUuCm(Course)
+			/ (CompositeModulusCm3 * StaircaseForceUnitsPerMPaSqCm);
+
+		if (!(CompositeMPa < FMath::Max(0.0, BendingMPa - NormalMPa)))
+		{
+			return (BendingMPa + NormalMPa) / StaircaseMortarCompressiveMPa;
+		}
+
+		return FMath::Max(CompositeMPa, NormalMPa) / StaircaseMortarCompressiveMPa;
 	}
 
 	/**
-	 * How many steps of the corbel the arithmetic puts OVER capacity, and it is 8 of 11.
+	 * How many steps of the corbel the arithmetic puts OVER capacity, and it is NONE OF THE
+	 * ELEVEN.
 	 *
-	 * The ladder crosses 1.0 between its eighth and ninth rungs — 1.494 and 0.722 — so a single
-	 * joint over the line could be a fixture on a knife edge and eleven rungs marching 0.058,
-	 * 0.271, 0.722, 1.494, 2.672, 4.338, 6.577, 9.472, 13.107, 17.565, 22.930 cannot.
+	 * IT WAS EIGHT, AND THE CHANGE IS THE WHOLE POINT OF SLICE 5. Read against each step's own
+	 * bed patch the ladder marched 0.058, 0.271, 0.722, 1.494, 2.672, 4.338, 6.577, 9.472,
+	 * 13.107, 17.565, 22.930 and crossed 1.0 between its eighth and ninth rungs. Read against
+	 * the masonry actually standing over each step it marches 0.058, 0.156, 0.173, 0.195, 0.219,
+	 * 0.243, 0.268, 0.293, 0.318, 0.343, 0.369 — monotonic in the same direction, a factor of 62
+	 * lower at the bottom, and nowhere near the line.
+	 *
+	 * THE LADDER STILL HAS TEETH. It is not flat: the bottom step reads six times the top one,
+	 * so a model that had simply deleted the moment would not produce it either.
 	 */
-	constexpr int32 StaircasePredictedCorbelJointsOverCapacity = 8;
+	constexpr int32 StaircasePredictedCorbelJointsOverCapacity = 0;
 
 	/**
-	 * The bottom rung, computed above: 1608.75 brick-weight-centimetres of bending against 38.5
-	 * brick weights of compression, on a 105.0625 cm2 patch with a 179.4817708 cm3 section.
+	 * The bottom rung: 1608.75 brick-weight-centimetres of bending against the 11,627.34 cm3 of
+	 * vertical section that eleven courses of masonry make, and NOT against the patch's 179.48.
+	 *
+	 * 22.92952589 is what the same moment reads on the bed patch alone, and it is kept in the
+	 * comment because it is the number the photographed failure was condemned by.
 	 */
-	constexpr double StaircasePredictedWorstCorbelUtilisation = 22.92952589;
+	constexpr double StaircasePredictedWorstCorbelUtilisation = 0.3690314727;
 
 	/** Whether the arithmetic condemns this step of the corbel outright. */
 	inline bool StaircaseCorbelIsCondemned(int32 Course)

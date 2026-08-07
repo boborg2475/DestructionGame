@@ -4273,21 +4273,31 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 			 * too, so the identity held trivially and would have gone on holding
 			 * however far the two had drifted. It is stated in full here and bitten
 			 * on below, where a joint carries a real one.
+			 *
+			 * AND SO IS THE COMPOSITE DEPTH, FOR THE SAME REASON AND WITH THE OPPOSITE
+			 * POLARITY. It is a RELIEF rather than a load, so an accessor that dropped
+			 * it would read too PESSIMISTIC where one that drops the moment reads too
+			 * optimistic — and both are the readout disagreeing with the cascade about
+			 * the same joint. Zero on a geometry-free fixture, so this row is trivial
+			 * here too; what it is is a complete statement of the seam.
 			 */
 			const FVector Moment = Structure.GetConnectionMoment(Index);
+			const double CompositeDepthCm = Structure.GetConnectionCompositeDepthCm(Index);
 
 			TestTrue(
 				FString::Printf(
-					TEXT("%s: joint %d is geometry-free and must carry no moment, got (%f, %f, %f)"),
-					Expected[Index].Description, Index, Moment.X, Moment.Y, Moment.Z),
-				Moment.IsZero());
+					TEXT("%s: joint %d is geometry-free and must carry no moment and no composite depth, got (%f, %f, %f) and %f"),
+					Expected[Index].Description, Index, Moment.X, Moment.Y, Moment.Z,
+					CompositeDepthCm),
+				Moment.IsZero() && CompositeDepthCm == 0.0);
 
 			TestTrue(
 				FString::Printf(
-					TEXT("%s: joint %d must be exactly UtilisationUnder(GetConnectionForce, GetConnectionMoment), %s vs %s"),
+					TEXT("%s: joint %d must be exactly UtilisationUnder(GetConnectionForce, GetConnectionMoment, GetConnectionCompositeDepthCm), %s vs %s"),
 					Expected[Index].Description, Index,
-					*Bits(Utilisation), *Bits(Connection.UtilisationUnder(Force, Moment))),
-				Utilisation == Connection.UtilisationUnder(Force, Moment));
+					*Bits(Utilisation),
+					*Bits(Connection.UtilisationUnder(Force, Moment, CompositeDepthCm))),
+				Utilisation == Connection.UtilisationUnder(Force, Moment, CompositeDepthCm));
 
 			// Asking must not have broken anything: solving is non-destructive and so is reading.
 			TestFalse(
@@ -4525,16 +4535,31 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 			IsClose(Utilisation, ExpectedTension));
 
 		/*
-		 * THE SEAM, STATED IN FULL. Bitwise against the evaluator handed BOTH halves of
-		 * what the solve routed, which is the identity Structure.h claims and the one
-		 * this test exists to hold.
+		 * THE SEAM, STATED IN FULL. Bitwise against the evaluator handed ALL THREE parts of
+		 * what the solve routed, which is the identity Structure.h claims and the one this
+		 * test exists to hold.
+		 *
+		 * THIS JOINT HAS NO COMPOSITE DEPTH AND THAT IS A FACT ABOUT THE FIXTURE, asserted
+		 * rather than assumed: nothing rests on the brick, so it is one unit rather than a
+		 * stack, and a lone unit is not a composite of anything. It is also what keeps the
+		 * factor of twenty below intact — a deep beam over this joint would relieve the very
+		 * moment the row exists to show is being carried.
 		 */
+		const double CompositeDepthCm = Structure.GetConnectionCompositeDepthCm(Joint);
+
 		TestTrue(
 			FString::Printf(
-				TEXT("joint %d must be exactly UtilisationUnder(GetConnectionForce, GetConnectionMoment), %s vs %s"),
+				TEXT("fixture: nothing rests on the eccentric brick, so its joint must carry no composite depth; it carries %g"),
+				CompositeDepthCm),
+			CompositeDepthCm == 0.0);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("joint %d must be exactly UtilisationUnder(GetConnectionForce, GetConnectionMoment, GetConnectionCompositeDepthCm), %s vs %s"),
 				Joint, *Bits(Utilisation),
-				*Bits(Structure.GetConnection(Joint).UtilisationUnder(Force, Moment))),
-			Utilisation == Structure.GetConnection(Joint).UtilisationUnder(Force, Moment));
+				*Bits(Structure.GetConnection(Joint).UtilisationUnder(Force, Moment, CompositeDepthCm))),
+			Utilisation
+				== Structure.GetConnection(Joint).UtilisationUnder(Force, Moment, CompositeDepthCm));
 
 		/*
 		 * AND THE HALF THAT PROVES THE SEAM IS NOT VACUOUS. Evaluated on the force

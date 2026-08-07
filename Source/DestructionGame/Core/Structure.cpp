@@ -817,6 +817,7 @@ void FStructure::SolveLoads()
 		 */
 		ConnectionForces.Init(FVector::ZeroVector, Connections.Num());
 		ConnectionMoments.Init(FVector::ZeroVector, Connections.Num());
+		ConnectionCompositeDepthCm.Init(0.0, Connections.Num());
 		PieceSupported.Init(false, Pieces.Num());
 
 		/*
@@ -1175,6 +1176,60 @@ void FStructure::SolveLoads()
 									PieceReseatedOnAnArch))
 							{
 								MomentAboutJointUuCm *= ArchingRelief;
+							}
+
+							/*
+							 * AND WHAT RESISTS WHAT IS LEFT IS NOT ONE BED PATCH. A stack of
+							 * courses over a lost support acts as a DEEP BEAM: the plane taking
+							 * the overturning moment is a vertical section through the bonded
+							 * masonry standing over this joint, t*D^2/6, against the patch's own
+							 * 179.48 cm3 — eleven courses is a factor of sixty-five, and it is
+							 * what decides whether a brick deleted at a free end takes the wall
+							 * with it. ARCHING_DESIGN.md slice 5, and the user's own ruling.
+							 *
+							 * THE DEPTH IS MEASURED AND THE MOMENT IS NOT TOUCHED. Composite
+							 * action changes the SECTION the moment is read against, never what
+							 * the wall hands down — so the ladder below this joint carries
+							 * exactly what it carried before, and only the joint's own
+							 * utilisation moves. Scaling the moment instead would relieve every
+							 * joint under this one as well, by a factor nobody derived.
+							 *
+							 * A BED JOINT AND A REAL MOMENT, WHICH IS BOTH THE GATE AND THE
+							 * BUDGET. A head joint is not a bed plane and has no masonry
+							 * standing over it in this sense — MOMENTS_DESIGN case (b) is
+							 * exactly that shape and must not move — and a joint carrying no
+							 * moment has nothing for a second section to resist, so the walk is
+							 * skipped and the answer is identical either way. Between them, an
+							 * intact wall pays for none of this: every seat has e = 0 exactly,
+							 * so no joint in it reaches this line at all.
+							 *
+							 * AND THERE HAS TO BE A STACK. A piece with nothing resting on it is
+							 * ONE UNIT, and one unit is not a composite of anything — "a stack of
+							 * courses over a lost support" is the mechanism, so the definition of
+							 * it is the gate rather than a refinement of it. The topmost rung of
+							 * every corbel in the suite is exactly that case and it reads its own
+							 * bed patch, which is also what the arithmetic would have given: one
+							 * course of depth is a SHALLOWER section than the patch, so the
+							 * relief was never going to fire there anyway. What the gate actually
+							 * buys is refusing it for a lone overhanging brick that happens to be
+							 * taller than its own seat is deep, where the formula alone would
+							 * offer help no deep beam is there to supply.
+							 *
+							 * NOTHING CAPS THE DEPTH BUT THE WALL ITSELF. The walk stops where
+							 * the masonry stops and at any joint that has GIVEN, so a raking cut,
+							 * a missing course and a broken bond each shorten it; there is no
+							 * depth past which more masonry would change this answer, so it is
+							 * asked for as much as there is. That is a bound and not an absence
+							 * of one — resistance grows as D^2 while a corbel's own moment grows
+							 * as D^3, so a tall enough overhang still comes down, and a
+							 * forty-five course one does.
+							 */
+							if (!MomentAboutJointUuCm.IsZero()
+								&& PieceRestingOn(Current, PieceJoints) != INDEX_NONE)
+							{
+								ConnectionCompositeDepthCm[Index] = MasonryDepthAboveCm(
+									Current, Index, PieceJoints,
+									TNumericLimits<double>::Max());
 							}
 						}
 
@@ -1684,7 +1739,7 @@ void FStructure::ApplyArchingThrust(
 				 * end up credited with the good end's depth; this way the NaN reaches the guard
 				 * below and the arch is left unthrust instead.
 				 */
-				const double AtThisEndCm = CoverAboveSpringingCm(
+				const double AtThisEndCm = MasonryDepthAboveCm(
 					Abutment, SpringingJointIndex, PieceJoints, AngleCappedDepthCm);
 
 				if (!(AtThisEndCm >= CoverCm))
@@ -1797,13 +1852,53 @@ void FStructure::ApplyArchingThrust(
 	}
 }
 
-double FStructure::CoverAboveSpringingCm(
-	int32 Abutment,
-	int32 SpringingJointIndex,
-	const TArray<TArray<int32>>& PieceJoints,
-	double AngleCappedDepthCm) const
+int32 FStructure::PieceRestingOn(
+	int32 Piece, const TArray<TArray<int32>>& PieceJoints) const
 {
-	const int32 Seat = OtherEndOf(Connections[SpringingJointIndex], Abutment);
+	/*
+	 * WHAT STANDS ON THIS PIECE IS WHATEVER THE GRAPH SAYS RESTS ON IT — BedAbove is that
+	 * relation exactly — so this costs a walk over the six or so joints a brick has and needs
+	 * no broadphase, no octree and no world. A joint that has GIVEN conducts nothing and holds
+	 * nothing up, so it is not a course of masonry either; GetJointRole keeps answering for a
+	 * severed joint, deliberately, so it has to be asked.
+	 *
+	 * THE FIRST BY ASCENDING JOINT INDEX, WHICH IS A CHAIN AND NOT A TRAVERSAL. Running bond
+	 * puts two pieces over each brick and in a wall of uniform height both columns reach the
+	 * same place; a stepped or gabled wall would have its answer decided by which one this
+	 * took, and nothing tests that yet.
+	 *
+	 * TWO CALLERS, AND THE SECOND IS WHY IT IS A FUNCTION. MasonryDepthAboveCm takes this step
+	 * once per course, and SolveLoads asks it ONCE to find out whether there is a stack over a
+	 * joint at all — a piece with nothing on it is one unit rather than a composite of several,
+	 * and one unit is not a deep beam. Two transcriptions of "what rests on this" would agree
+	 * until the day a severed joint was handled in one of them.
+	 */
+	for (const int32 Index : PieceJoints[Piece])
+	{
+		if (Connections[Index].HasGiven()
+			|| GetJointRole(Index, Piece) != EJointRole::BedAbove)
+		{
+			continue;
+		}
+
+		const int32 Other = OtherEndOf(Connections[Index], Piece);
+
+		if (Other != INDEX_NONE && Pieces[Other].bIsInTheStructure)
+		{
+			return Other;
+		}
+	}
+
+	return INDEX_NONE;
+}
+
+double FStructure::MasonryDepthAboveCm(
+	int32 Piece,
+	int32 SeatJointIndex,
+	const TArray<TArray<int32>>& PieceJoints,
+	double EnoughDepthCm) const
+{
+	const int32 Seat = OtherEndOf(Connections[SeatJointIndex], Piece);
 
 	if (Seat == INDEX_NONE)
 	{
@@ -1811,18 +1906,20 @@ double FStructure::CoverAboveSpringingCm(
 	}
 
 	/*
-	 * THE SPANNING COURSE COUNTS, AND IT IS THE FIRST RING OF THE ARCH RATHER THAN SOMETHING
-	 * RESTING ON ONE — so the shallowest cover a wall can offer is one course and never zero,
-	 * and an opening cut in the top course of a wall still has a ring to arch in.
+	 * THE COURSE THE JOINT IS UNDER COUNTS, AND IT IS THE FIRST OF THEM RATHER THAN SOMETHING
+	 * RESTING ON ONE — so the shallowest depth a wall can offer is one course and never zero.
+	 * For the arch that is the spanning course, the first ring, so an opening cut in the top
+	 * course of a wall still has a ring to arch in; for the composite section it is the
+	 * corbelled brick itself, which is the only masonry over its own seat.
 	 *
-	 * ITS DEPTH IS A COURSE PITCH AND NOT A BRICK HEIGHT. What the arch works through is the
+	 * ITS DEPTH IS A COURSE PITCH AND NOT A BRICK HEIGHT. What the wall works through is the
 	 * masonry from one bed plane to the next, mortar included, which is exactly the rise from
-	 * the seat below the springing to the springing itself. Taking the unit's own height instead
-	 * drops the joints and reads about 13% shallow on standard brickwork, which is a plausible
-	 * enough number to survive a review and is wrong on every row.
+	 * the piece below the joint to the piece standing on it. Taking the unit's own height
+	 * instead drops the joints and reads about 13% shallow on standard brickwork, which is a
+	 * plausible enough number to survive a review and is wrong on every row.
 	 */
 	const double FirstCourseRiseCm =
-		Pieces[Abutment].CentreOfMassCm.Z - Pieces[Seat].CentreOfMassCm.Z;
+		Pieces[Piece].CentreOfMassCm.Z - Pieces[Seat].CentreOfMassCm.Z;
 
 	if (!(FirstCourseRiseCm > 0.0))
 	{
@@ -1830,9 +1927,11 @@ double FStructure::CoverAboveSpringingCm(
 	}
 
 	/*
-	 * AND THE WALK IS BOUNDED TWICE OVER. Past 0.866*L of cover the angle governs and no further
-	 * course can change the answer, which is the bound ARCHING_DESIGN asks for: at most
-	 * ceil(0.866*L / course pitch) steps. The piece count is the second bound and is pure
+	 * AND THE WALK IS BOUNDED TWICE OVER. Past EnoughDepthCm no further course can change the
+	 * caller's answer — 0.866*L for the arch, where the angle takes over, which is the bound
+	 * ARCHING_DESIGN asks for and is at most ceil(0.866*L / course pitch) steps. The composite
+	 * section has no such depth and passes the largest double there is, so for it the wall
+	 * running out is what stops the walk. The piece count is the second bound and is pure
 	 * defence — a graph whose normals claim A is above B and B above A would otherwise walk for
 	 * ever, and a structure with complete geometry is the only thing that reaches here.
 	 *
@@ -1840,44 +1939,16 @@ double FStructure::CoverAboveSpringingCm(
 	 * an integer conversion nobody defined.
 	 */
 	const double MaxCourses = FMath::Min(
-		FMath::CeilToDouble(AngleCappedDepthCm / FirstCourseRiseCm),
+		FMath::CeilToDouble(EnoughDepthCm / FirstCourseRiseCm),
 		static_cast<double>(Pieces.Num()));
 
 	double CoverCm = FirstCourseRiseCm;
-	int32 Current = Abutment;
+	int32 Current = Piece;
 
-	for (int32 Course = 1; CoverCm < AngleCappedDepthCm && Course < MaxCourses; ++Course)
+	for (int32 Course = 1; CoverCm < EnoughDepthCm && Course < MaxCourses; ++Course)
 	{
-		/*
-		 * ONE STEP UP, OVER A BED JOINT AND NEVER THROUGH SPACE. What stands over this piece is
-		 * whatever the graph says rests on it — BedAbove is that relation exactly — so the cover
-		 * costs a step per course and needs no broadphase and no world. A joint that has given
-		 * conducts nothing and holds nothing up, so it is not a course of cover either;
-		 * GetJointRole keeps answering for a severed joint, deliberately, so it has to be asked.
-		 *
-		 * THE FIRST BY ASCENDING JOINT INDEX, WHICH IS A CHAIN AND NOT A TRAVERSAL. Running bond
-		 * puts two pieces over each brick and in a wall of uniform height both columns reach the
-		 * same place; a stepped or gabled wall would have its cover decided by which one this
-		 * took, and nothing tests that yet.
-		 */
-		int32 Above = INDEX_NONE;
-
-		for (const int32 Index : PieceJoints[Current])
-		{
-			if (Connections[Index].HasGiven()
-				|| GetJointRole(Index, Current) != EJointRole::BedAbove)
-			{
-				continue;
-			}
-
-			const int32 Other = OtherEndOf(Connections[Index], Current);
-
-			if (Other != INDEX_NONE && Pieces[Other].bIsInTheStructure)
-			{
-				Above = Other;
-				break;
-			}
-		}
+		// One step up, over a bed joint and never through space. See PieceRestingOn.
+		const int32 Above = PieceRestingOn(Current, PieceJoints);
 
 		if (Above == INDEX_NONE)
 		{
@@ -2111,8 +2182,15 @@ int32 FStructure::SolveAndBreak()
 			 * force alone would answer it differently from the readout the moment a load
 			 * path missed a centroid: a joint drawn at 1.25 of capacity, holding for ever.
 			 * Both arrays are rebuilt by the solve above and are indexed alike.
+			 *
+			 * AND SO DOES THE COMPOSITE DEPTH, WHICH IS THE SAME SEAM POINTING THE OTHER
+			 * WAY. It is a relief rather than a load, so a sweep that omitted it would
+			 * break joints the readout draws as comfortable — a corbel shown at 0.37 and
+			 * snapped at 22.9. Three arrays now, one solve, one evaluator.
 			 */
-			Connection.ApplyForce(ConnectionForces[Index], ConnectionMoments[Index]);
+			Connection.ApplyForce(
+				ConnectionForces[Index], ConnectionMoments[Index],
+				ConnectionCompositeDepthCm[Index]);
 
 			if (Connection.HasGiven())
 			{
@@ -2256,6 +2334,23 @@ FVector FStructure::GetConnectionMoment(int32 ConnectionIndex) const
 		: FVector::ZeroVector;
 }
 
+double FStructure::GetConnectionCompositeDepthCm(int32 ConnectionIndex) const
+{
+	/*
+	 * Zero for an out-of-range handle and zero for a connection no solve has reached — the same
+	 * scope and the same shape as the two accessors above, because it is the same solver output
+	 * rebuilt by the same solve.
+	 *
+	 * A DEPTH IS A RELIEF, NOT A LOAD, so the fail-closed answer here is zero for the OPPOSITE
+	 * reason GetConnectionMoment's is: no masonry credited means the joint reads its own bed
+	 * patch and reports as heavily loaded, and it is the utilisation that must come back reading
+	 * as failed for something that is not a joint. An invented depth would quietly relieve one.
+	 */
+	return ConnectionCompositeDepthCm.IsValidIndex(ConnectionIndex)
+		? ConnectionCompositeDepthCm[ConnectionIndex]
+		: 0.0;
+}
+
 double FStructure::GetConnectionUtilisation(int32 ConnectionIndex) const
 {
 	/*
@@ -2275,18 +2370,27 @@ double FStructure::GetConnectionUtilisation(int32 ConnectionIndex) const
 	 * not this accessor's, which is what keeps this one line from becoming a second
 	 * copy of the arithmetic the break decision is made on.
 	 *
-	 * AND BOTH HALVES COME OFF THE ACCESSORS RATHER THAN OFF THE ARRAYS, which is what
+	 * AND ALL THREE PARTS COME OFF THE ACCESSORS RATHER THAN OFF THE ARRAYS, which is what
 	 * makes the identity Structure.h states — this answer equals UtilisationUnder of
-	 * GetConnectionForce and GetConnectionMoment — true by construction instead of by two
-	 * range checks agreeing. Reading ConnectionMoments directly here would be the second
-	 * copy the whole seam exists to rule out, and the moment parameter is DEFAULTED, so
-	 * the drift would be silent at every call site that omitted it.
+	 * GetConnectionForce, GetConnectionMoment and GetConnectionCompositeDepthCm — true by
+	 * construction instead of by three range checks agreeing. Reading the arrays directly
+	 * here would be the second copy the whole seam exists to rule out, and BOTH trailing
+	 * parameters are DEFAULTED, so the drift would be silent at every call site that
+	 * omitted one.
+	 *
+	 * THE DEPTH IS THE THIRD PART AND IT MOVES THE ANSWER IN THE OTHER DIRECTION, which is
+	 * worth saying because the seam is easiest to break where it is least expected: dropping
+	 * the moment makes a readout too optimistic, dropping the depth makes it too pessimistic,
+	 * and both are the readout disagreeing with the cascade about the same joint.
 	 *
 	 * Zero for a handle no solve has reached, exactly as the force is, and zero is a
 	 * load path with no eccentricity rather than a tolerance.
 	 */
 	return GetConnection(ConnectionIndex)
-		.UtilisationUnder(GetConnectionForce(ConnectionIndex), GetConnectionMoment(ConnectionIndex));
+		.UtilisationUnder(
+			GetConnectionForce(ConnectionIndex),
+			GetConnectionMoment(ConnectionIndex),
+			GetConnectionCompositeDepthCm(ConnectionIndex));
 }
 
 bool FStructure::IsPieceSupported(int32 PieceIndex) const

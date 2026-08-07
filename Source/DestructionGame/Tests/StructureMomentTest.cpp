@@ -2072,12 +2072,56 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 			const double ShearStressMPa =
 				bHeadJoint ? ExpectedForceUu / (AreaSqCm * ForceUnitsPerMPaPerSqCm) : 0.0;
 
+			/*
+			 * AND THE DEEP BEAM STANDING OVER A BED JOINT, WHICH IS WHY JOINT 1 OF THE
+			 * THREE-BRICK CORBEL MOVED FROM 0.2420600000 TO 0.1491896467 AT SLICE 5.
+			 *
+			 * A stack of courses over a joint does not resist the overturning moment as one bed
+			 * patch: the section taking it is a VERTICAL one through the bonded masonry standing
+			 * above, t*D^2/6, and the joint gives at whichever of the two opens it less.
+			 * ARCHING_DESIGN.md slice 5, and the user's ruling of 2026-08-06.
+			 *
+			 * THE CHAIN IS WHERE THAT IS EASIEST TO COUNT. Joint k is under brick k, so the
+			 * masonry over it is bricks k upward and D is that many course pitches. A HEAD joint
+			 * has no bed plane and no masonry standing on it in this sense — which is the whole
+			 * reason MOMENTS_DESIGN case (b) and the 0.8314546153846154 chain above did not move
+			 * — and the TOP brick of any chain has nothing resting on it, so it is one unit
+			 * rather than a composite of several and keeps its own patch.
+			 *
+			 * BOTH EDGES MOVE TOGETHER. Where the deep beam takes the moment the bed patch is not
+			 * bending at all, so what is left is the bed plane under a uniform N/A and the
+			 * vertical plane under +-M/W_c, and the worst squeezed fibre is the larger of the two
+			 * rather than their sum.
+			 */
+			const int32 CoursesOfMasonryAbove =
+				bHeadJoint ? 0 : Chain.BrickCentreXCm.Num() - Joint;
+
+			const double CompositeDepthCm =
+				CoursesOfMasonryAbove * (BrickHeightCm + MortarJointCm);
+
+			const double CompositeModulusCm3 = CoursesOfMasonryAbove >= 2
+				? BrickWidthCm * CompositeDepthCm * CompositeDepthCm / 6.0
+				: 0.0;
+
+			double PeakTensionMPa = FMath::Max(0.0, NormalStressMPa + BendingStressMPa);
+			double PeakCompressionMPa = FMath::Max(0.0, BendingStressMPa - NormalStressMPa);
+
+			if (CompositeModulusCm3 > 0.0)
+			{
+				const double CompositeStressMPa = FMath::Abs(ExpectedMomentUuCm)
+					/ (CompositeModulusCm3 * ForceUnitsPerMPaPerSqCm);
+
+				if (NormalStressMPa <= 0.0 && CompositeStressMPa < PeakTensionMPa)
+				{
+					PeakTensionMPa = CompositeStressMPa;
+					PeakCompressionMPa = FMath::Max(CompositeStressMPa, -NormalStressMPa);
+				}
+			}
+
 			const double TensionUtilisation =
-				FMath::Max(0.0, NormalStressMPa + BendingStressMPa)
-					/ GeneralPurposeMortar.TensileStrengthMPa;
+				PeakTensionMPa / GeneralPurposeMortar.TensileStrengthMPa;
 			const double CompressionUtilisation =
-				FMath::Max(0.0, BendingStressMPa - NormalStressMPa)
-					/ GeneralPurposeMortar.CompressiveStrengthMPa;
+				PeakCompressionMPa / GeneralPurposeMortar.CompressiveStrengthMPa;
 			const double ShearUtilisation = ShearStressMPa
 				/ (GeneralPurposeMortar.ShearCohesionMPa
 					+ GeneralPurposeMortar.FrictionCoefficient * FMath::Max(0.0, -NormalStressMPa));

@@ -465,12 +465,14 @@ struct FStructure
 	 * The bending moment this connection carries about its own centroid, uu.cm, after
 	 * SolveLoads.
 	 *
-	 * THE OTHER HALF OF WHAT GetConnectionUtilisation IS COMPUTED FROM, and it exists
+	 * ONE OF THE THREE THINGS GetConnectionUtilisation IS COMPUTED FROM, and it exists
 	 * because without it that accessor cannot state its own contract. The identity a strain
 	 * readout rests on is
 	 *
 	 *     GetConnectionUtilisation(I)
-	 *         == GetConnection(I).UtilisationUnder(GetConnectionForce(I), GetConnectionMoment(I))
+	 *         == GetConnection(I).UtilisationUnder(
+	 *                GetConnectionForce(I), GetConnectionMoment(I),
+	 *                GetConnectionCompositeDepthCm(I))
 	 *
 	 * and the moment parameter is DEFAULTED, so an assertion written without this accessor
 	 * silently supplies zero and holds however far the two have drifted. A readout that showed
@@ -491,6 +493,42 @@ struct FStructure
 	 * solve.
 	 */
 	FVector GetConnectionMoment(int32 ConnectionIndex) const;
+
+	/**
+	 * How deep the bonded masonry standing over this connection is, cm, after SolveLoads.
+	 *
+	 * THE THIRD THING GetConnectionUtilisation IS COMPUTED FROM, and it is here for exactly the
+	 * reason GetConnectionMoment is: without it that accessor cannot state its own contract.
+	 * The identity a strain readout rests on is
+	 *
+	 *     GetConnectionUtilisation(I)
+	 *         == GetConnection(I).UtilisationUnder(
+	 *                GetConnectionForce(I), GetConnectionMoment(I),
+	 *                GetConnectionCompositeDepthCm(I))
+	 *
+	 * and both trailing parameters are DEFAULTED, so an assertion written without this accessor
+	 * silently supplies zero and holds however far the two have drifted.
+	 *
+	 * A LENGTH, NOT A SECTION, AND THAT IS THE SEAM. What the solver knows is how much wall is
+	 * standing on the plane; which of the joint's in-plane extents that depth pairs with is the
+	 * joint's own business. Handing out a modulus would put the pairing on this side of the
+	 * seam, where it becomes a second copy of the one thing that is silent when swapped.
+	 *
+	 * NON-ZERO ONLY WHERE A JOINT IS ACTUALLY BENT: a BED joint beneath a placed piece whose
+	 * load reaches the ground through it alone, carrying a moment that is not exactly zero.
+	 * Everywhere else this is zero and the joint reads its own bed patch, bit for bit as it did
+	 * before composite action existed — which is what keeps every geometry-free fixture, both
+	 * fuzzes included, reading exactly what it always read.
+	 *
+	 * ZERO IS "NO MASONRY WAS MEASURED", and it is the fail-closed value rather than a
+	 * tolerance: the relief is withheld and the joint reads as more heavily loaded, which is
+	 * the safe direction for a quantity whose whole job is to make a joint read LESS.
+	 *
+	 * Zero for an out-of-range handle and zero before anything has been solved, the same scope
+	 * GetConnectionForce documents, because it is the same solver output rebuilt by the same
+	 * solve.
+	 */
+	double GetConnectionCompositeDepthCm(int32 ConnectionIndex) const;
 
 	/**
 	 * How close this connection is to failing under the load the last solve gave it.
@@ -741,7 +779,7 @@ private:
 	 * standing over the opening and the angle's `0.866*L`, so `H` grows as `1/cover` while `V`
 	 * falls with it: thin the brickwork over a hole and the thrust ratio `3L/(4 d_e)` blows up,
 	 * which is why a wide opening near the top of a wall cannot arch at all. One cover per
-	 * arch, the thinnest of the two ends — see CoverAboveSpringingCm.
+	 * arch, the thinnest of the two ends — see MasonryDepthAboveCm.
 	 *
 	 * @param PieceJoints Every joint touching each piece, in ascending index order.
 	 * @param Arches      What ReseatSpannedGroups found. Empty is the ordinary case and costs
@@ -752,48 +790,73 @@ private:
 		const TArray<FSpannedArch>& Arches);
 
 	/**
-	 * How much masonry stands over one end of an opening, cm, by a BOUNDED UPWARD WALK.
+	 * The live piece resting on this one through an intact bed joint, or INDEX_NONE.
 	 *
-	 * THE ARCHING DEPTH IS CAPPED BY THE COVER, and the cover has to be measured rather than
-	 * assumed: ARCHING_DESIGN.md's `d_e = min(cover, 0.866*L)` is the difference between a
-	 * ten-cell hole under one course of brickwork reading 0.058 of its springing's capacity and
-	 * reading 1.51 of it. Credit an opening with as much depth as its own span allows and ten
-	 * bricks hang in mid-air.
+	 * ONE STEP OF THE UPWARD WALK, AND ALSO THE QUESTION "IS THERE A STACK HERE AT ALL". Two
+	 * callers need it and neither may have its own copy: MasonryDepthAboveCm takes this step
+	 * once per course, and SolveLoads asks it once before crediting a joint with any composite
+	 * section at all. A piece with nothing standing on it is ONE UNIT, and one unit is not a
+	 * composite of anything — see the composite gate in SolveLoads for why that distinction is
+	 * the definition of the mechanism rather than a refinement of it.
 	 *
-	 * COUNTED IN COURSES, FROM THE SPANNING COURSE UP, AND THE SPANNING COURSE IS THE FIRST OF
-	 * THEM — it is the first ring of the arch, not something resting on one — so the shallowest
-	 * cover a wall can offer is one course pitch and never zero. The rise of that first course
-	 * is measured at the springing joint itself, from the seat below it to the abutment
-	 * standing on it, and every course after it contributes the rise to the piece above.
+	 * A joint that has GIVEN holds nothing up and is not a course of masonry either, and a
+	 * removed piece is not standing anywhere. Both are excluded here, which is what makes the
+	 * depth shorten as a wall comes apart.
+	 */
+	int32 PieceRestingOn(int32 Piece, const TArray<TArray<int32>>& PieceJoints) const;
+
+	/**
+	 * How much bonded masonry stands over one bed joint, cm, by a BOUNDED UPWARD WALK.
 	 *
-	 * A WALK OVER BED JOINTS AND NEVER A SPATIAL QUERY. What is over the opening is what the
+	 * ONE MEASUREMENT, TWO CALLERS, AND THEY WANT IT FOR DIFFERENT REASONS — which is exactly
+	 * why there is one of it. ApplyArchingThrust wants the COVER over a springing, because
+	 * ARCHING_DESIGN.md's `d_e = min(cover, 0.866*L)` is the difference between a ten-cell hole
+	 * under one course of brickwork reading 0.058 of its springing's capacity and reading 1.51
+	 * of it. SolveLoads wants the COMPOSITE DEPTH over a seat, because a stack of courses over
+	 * a lost support resists its overturning moment as a deep beam of section `t*D^2/6` rather
+	 * than as one bed patch, and `D` squared is the whole of that slice. Both are the same
+	 * question — how much wall is standing on this plane — and two copies of the walk would
+	 * agree until the day one of them was fixed.
+	 *
+	 * COUNTED IN COURSES, AND THE COURSE THE JOINT IS UNDER IS THE FIRST OF THEM. For the arch
+	 * it is the spanning course, the first ring rather than something resting on one; for the
+	 * composite section it is the corbelled brick itself. Either way the shallowest answer a
+	 * wall can give is one course pitch and never zero. That first rise is measured at the
+	 * joint itself, from the piece below it to the piece standing on it, and every course after
+	 * it contributes the rise to the piece above.
+	 *
+	 * A WALK OVER BED JOINTS AND NEVER A SPATIAL QUERY. What is over the plane is what the
 	 * connection graph says is over it: the joints already index the neighbourhood, so this
-	 * costs a step per course and needs no broadphase, no octree and no world.
+	 * costs a step per course and needs no broadphase, no octree and no world. A joint that has
+	 * GIVEN conducts nothing and is not a course of anything either, so the walk stops at a
+	 * break — which is what bounds the composite depth to masonry that is actually bonded.
 	 *
-	 * AND IT IS BOUNDED BY THE ANGLE. Past `0.866*L` of cover the angle governs and the exact
-	 * depth stops mattering, so the walk stops there — at most `ceil(0.866*L / course pitch)`
-	 * steps, and never more courses than the structure has pieces.
+	 * AND IT IS BOUNDED TWICE. `EnoughDepthCm` is the depth past which the caller's own answer
+	 * cannot change — `0.866*L` for the arch, where the angle takes over, and nothing at all
+	 * for the composite section, which passes the largest double there is and stops when the
+	 * wall does. The piece count is the second bound and is pure defence against a graph whose
+	 * normals claim A is above B and B above A.
 	 *
 	 * A CHAIN AND NOT A TRAVERSAL. Running bond puts two pieces above each brick, and this
 	 * follows the first of them by ascending joint index rather than exploring both. For a wall
 	 * of uniform height the two columns reach the same place, which is the case this measures;
-	 * a stepped or gabled wall would have its cover decided by which column the walk happened
+	 * a stepped or gabled wall would have its depth decided by which column the walk happened
 	 * to take, and nothing tests that yet.
 	 *
-	 * ZERO WHERE THERE IS NOTHING TO MEASURE — a seat joint naming no second piece, or a course
-	 * with no measurable rise. The caller's guard then leaves the arch unthrust rather than
-	 * dividing by it.
+	 * ZERO WHERE THERE IS NOTHING TO MEASURE — a joint naming no second piece, or a course with
+	 * no measurable rise. Both callers guard on that rather than dividing by it, and for the
+	 * composite section zero is already the no-relief answer.
 	 *
-	 * @param Abutment             The seated piece at one end of the opening.
-	 * @param SpringingJointIndex  Its bed joint, which is the plane the cover stands on.
-	 * @param PieceJoints          Every joint touching each piece, in ascending index order.
-	 * @param AngleCappedDepthCm   `0.866*L`, past which more cover changes no answer.
+	 * @param Piece         The piece standing on the joint.
+	 * @param SeatJointIndex Its bed joint, which is the plane the masonry stands on.
+	 * @param PieceJoints   Every joint touching each piece, in ascending index order.
+	 * @param EnoughDepthCm The depth past which more masonry cannot change the caller's answer.
 	 */
-	double CoverAboveSpringingCm(
-		int32 Abutment,
-		int32 SpringingJointIndex,
+	double MasonryDepthAboveCm(
+		int32 Piece,
+		int32 SeatJointIndex,
 		const TArray<TArray<int32>>& PieceJoints,
-		double AngleCappedDepthCm) const;
+		double EnoughDepthCm) const;
 
 	/**
 	 * Is there something on the overhanging side for this piece to arch against?
@@ -895,6 +958,24 @@ private:
 	 * SolveLoads for why the per-joint rule that looks obvious is wrong.
 	 */
 	TArray<FVector> ConnectionMoments;
+
+	/**
+	 * How deep the bonded masonry standing over each connection is, cm.
+	 *
+	 * THE THIRD PARALLEL ARRAY, with the lifetime of the other two and for the same reason:
+	 * a depth that survived a re-solve would describe a wall that has since been cut, exactly
+	 * as a stale force or a stale moment would. Rebuilt from scratch by every solve.
+	 *
+	 * BESIDE THE JOINTS RATHER THAN ON THEM, deliberately, because it is an ANSWER and not an
+	 * interface. A joint stays a face and a strength; how much wall happens to be standing over
+	 * it is a fact about the graph at one instant, and storing it on FConnection would put a
+	 * quantity into the joint that could be read out of GetConnection before any solve had
+	 * produced it.
+	 *
+	 * NON-ZERO ONLY WHERE ConnectionMoments IS, and on bed joints alone. See
+	 * GetConnectionCompositeDepthCm.
+	 */
+	TArray<double> ConnectionCompositeDepthCm;
 
 	/**
 	 * Which breaking pass gave each connection, counted from 1, or INDEX_NONE.

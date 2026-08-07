@@ -148,8 +148,78 @@ namespace DestructionForce
 		 * would silently discard it and leave a joint that was handed garbage
 		 * reporting a confident zero.
 		 */
-		const double PeakTensileStress = FMath::Max(0.0, NormalStress + BendingStress);
-		const double PeakCompressiveStress = FMath::Max(0.0, BendingStress - NormalStress);
+		double PeakTensileStress = FMath::Max(0.0, NormalStress + BendingStress);
+		double PeakCompressiveStress = FMath::Max(0.0, BendingStress - NormalStress);
+
+		/*
+		 * AND THE DEEP BEAM STANDING OVER THE JOINT CARRIES THE SAME MOMENT ON A VERTICAL
+		 * SECTION, so the joint gives at the LESSER of the two demands. Composite action is an
+		 * alternative path rather than an extra one; see the header for why the composite
+		 * reading carries no axial term and why one course of masonry therefore helps nothing.
+		 *
+		 * EVERY AXIS THE JOINT IS BENT ABOUT MUST HAVE A COMPOSITE SECTION, or there is none:
+		 * summing a relieved axis with an unrelieved one would understate the corner by
+		 * whichever term was silently left out. Written as positive tests so a NaN or a
+		 * negative modulus lands OUTSIDE the relief and the joint keeps its patch reading.
+		 */
+		const bool bHasCompositeSection = (bBendsAboutU || bBendsAboutV)
+			&& (!bBendsAboutU || Section.CompositeSectionModulusUCm3 > 0.0)
+			&& (!bBendsAboutV || Section.CompositeSectionModulusVCm3 > 0.0);
+
+		if (bHasCompositeSection)
+		{
+			const double CompositeBendingStress =
+				(bBendsAboutU
+					? BendingStressMPa(Load.BendingMomentUUuCm, Section.CompositeSectionModulusUCm3)
+					: 0.0)
+				+ (bBendsAboutV
+					? BendingStressMPa(Load.BendingMomentVUuCm, Section.CompositeSectionModulusVCm3)
+					: 0.0);
+
+			/*
+			 * THE COMPARISONS ARE BOTH WRITTEN SO THAT A NaN LEAVES THE JOINT UNRELIEVED, and
+			 * here that means the plain spellings rather than the negated ones this codebase
+			 * usually reaches for. Relief is the PERMISSIVE branch, so the guard has to be
+			 * FALSE on garbage: a NaN composite stress fails `<` and a NaN normal stress fails
+			 * `<=`, and either way the patch reading stands. FMath::Min would do the opposite —
+			 * it is `(A <= B) ? A : B`, so a NaN second argument is silently discarded and a
+			 * NaN first one silently replaces a perfectly good answer. It also means both
+			 * values below are known finite by the time the branch is entered, which is what
+			 * entitles the Max inside it to be an ordinary Max.
+			 *
+			 * NET TENSION REFUSES THE RELIEF OUTRIGHT. sigma_n at or below zero is a bed plane
+			 * in compression or carrying nothing, which is the only state a deep beam over it
+			 * can speak for; a joint being pulled apart has a demand of its own that no masonry
+			 * standing on it answers. Unreachable from gravity on a bed joint today — that is
+			 * compression by construction — and guarded anyway, because it is the one way this
+			 * could read a failed joint as intact.
+			 */
+			if (NormalStress <= 0.0 && CompositeBendingStress < PeakTensileStress)
+			{
+				/*
+				 * BOTH EDGES MOVE TOGETHER, AND THEY HAVE TO. If the deep beam is what resists
+				 * the moment then the bed patch is NOT bending — it carries the axial force and
+				 * nothing else — so leaving its squeezed edge at sigma_b + |sigma_n| would read
+				 * a joint against a section the same line has just said is not the one working.
+				 * That is not a refinement: a forty-five course corbel relieved on one edge only
+				 * reads 13.69 in COMPRESSION against the 1.25 in tension it is supposed to fail
+				 * at, so the whole slice would be masked by the axis it does not touch.
+				 *
+				 * WHAT IS LEFT IS TWO PLANES, EACH WITH ONE STRESS ON IT: the bed plane under a
+				 * uniform |sigma_n|, and the vertical plane under +-sigma_c. The worst squeezed
+				 * fibre anywhere in that state is the larger of them, which is what is written —
+				 * NOT their sum, because they are different planes and no fibre feels both.
+				 *
+				 * IT CAN ONLY EVER LOWER THE READING, which is what keeps every "worst joint in
+				 * the wall" anchor in place. Composite governs only where sigma_c < sigma_b, so
+				 * max(sigma_c, |sigma_n|) is at most max(sigma_b, |sigma_n|) and therefore at
+				 * most the sigma_b + |sigma_n| it replaces.
+				 */
+				PeakTensileStress = CompositeBendingStress;
+				PeakCompressiveStress =
+					FMath::Max(CompositeBendingStress, -NormalStress);
+			}
+		}
 
 		const double MeanCompressiveStress = StressMPa(Load.Compression, InterfaceAreaSqCm);
 		const double ShearStress = StressMPa(Load.Shear, InterfaceAreaSqCm);

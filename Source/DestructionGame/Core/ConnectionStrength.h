@@ -88,6 +88,34 @@ struct FJointSection
 	/** Section modulus about the second in-plane axis, cm3. */
 	double SectionModulusVCm3 = 0.0;
 
+	/**
+	 * The section a DEEP BEAM of bonded masonry standing over this joint resists the same
+	 * moment with, about the first in-plane axis, cm3. Zero means none was measured.
+	 *
+	 * COMPOSITE VERTICAL ACTION, AND IT IS A SECOND LIMIT STATE RATHER THAN A BIGGER
+	 * SECTION. A stack of courses over a lost support does not resist its overturning
+	 * moment as a sequence of independent bed patches: the wall acts as a deep beam and
+	 * the plane resisting the moment is a VERTICAL one through the masonry, `t*D^2/6` for
+	 * a wall t thick and D deep. Eleven courses over a corbelled brick is 11,627 cm3
+	 * against the bed patch's 179.48 — a factor of 65, and it is what decides whether a
+	 * brick deleted at a free end takes the wall with it. ARCHING_DESIGN.md slice 5.
+	 *
+	 * THE TWO SECTIONS ARE THE SAME FORMULA, WHICH IS WHY THIS IS ONE MODEL AND NOT TWO.
+	 * A rectangle's modulus is `width * depth^2 / 6` either way; the bed patch is that at
+	 * the depth of the patch itself, and this is it at the depth of the masonry standing
+	 * over the joint. So the two are nested and a wall with only one course over a joint
+	 * gets no help, by arithmetic rather than by a special case.
+	 *
+	 * ZERO IS "NOBODY MEASURED ONE", NOT A DEGENERATE SECTION, and it is the fail-closed
+	 * value: with no composite section the joint reads its own patch exactly as it did
+	 * before this existed. Every geometry-free caller keeps supplying a bare area and
+	 * keeps reading bit for bit what it always read.
+	 */
+	double CompositeSectionModulusUCm3 = 0.0;
+
+	/** The same deep-beam section about the second in-plane axis, cm3. */
+	double CompositeSectionModulusVCm3 = 0.0;
+
 	FJointSection() = default;
 
 	FJointSection(double InAreaSqCm)
@@ -141,6 +169,47 @@ namespace DestructionForce
 	 *     peak tension     = max(0, sigma_n + sigma_b)
 	 *     peak compression = max(0, sigma_b - sigma_n)
 	 *
+	 * AND WHERE A DEEP BEAM OF MASONRY STANDS OVER THE JOINT, THAT IS A SECOND WAY OF
+	 * CARRYING THE SAME MOMENT, so the joint is read against whichever of the two opens
+	 * it less:
+	 *
+	 *     sigma_c = |M_u|/W_cu + |M_v|/W_cv           the same moment, vertical section
+	 *
+	 *     while  sigma_c < max(0, sigma_n + sigma_b)  and the joint is not in tension:
+	 *         peak tension     = sigma_c
+	 *         peak compression = max(sigma_c, -sigma_n)
+	 *
+	 * AN ALTERNATIVE PATH AND NOT AN EXTRA ONE — the structure finds the stiffer of the
+	 * two, so this may only ever help, and it is what makes the two sections nested
+	 * rather than a second model bolted on: one course of masonry over a joint is a
+	 * SHALLOWER section than the bed patch, so the composite reading is worse there and
+	 * is discarded, and the joint keeps its own value verbatim rather than having it
+	 * recomputed through another expression that agrees only to the last bit.
+	 *
+	 * BOTH EDGES MOVE TOGETHER OR NEITHER DOES. If the deep beam is what resists the
+	 * moment then the bed patch is not bending at all, so what remains is TWO PLANES with
+	 * one stress each: the bed plane under a uniform sigma_n, and the vertical plane
+	 * under +-sigma_c. Relieving the opened edge while leaving the squeezed one at
+	 * sigma_b + |sigma_n| reads a joint against a section that is no longer working —
+	 * and it hides the whole mechanism, because a deep enough corbel then fails in
+	 * COMPRESSION at a number the tension axis was supposed to decide.
+	 *
+	 * NO AXIAL TERM IS SUBTRACTED FROM sigma_c, and that is the model rather than an
+	 * omission. The plane resisting a deep-beam moment is VERTICAL; the weight standing
+	 * over the joint is shear on that plane rather than load across it, so there is no
+	 * compression there to close it. Subtracting the bed patch's own sigma_n from a
+	 * stress on a different plane reads a raking corbel as EXACTLY ZERO and stops bending
+	 * governing anywhere at all.
+	 *
+	 * WHICH IS WHY THE RELIEF IS REFUSED WHILE THE JOINT IS IN NET TENSION. Pulling a bed
+	 * joint apart is a demand on the bed plane that no amount of masonry standing over it
+	 * answers, so composite action must not be allowed to delete it — the one direction
+	 * this could fail open, and it is guarded rather than argued about.
+	 *
+	 * SHEAR IS UNTOUCHED, on both counts. The force sliding the bed plane is the same
+	 * whichever section takes the moment, and the friction that resists it is bought by
+	 * the MEAN compressive stress, which no bending term ever entered.
+	 *
 	 * The average is the wrong number as soon as the load path is eccentric, and it
 	 * is wrong in the direction that leaves things standing — a brick hanging off a
 	 * single head joint has a mean normal stress of exactly zero while the fibre at
@@ -169,6 +238,12 @@ namespace DestructionForce
 	 * same way, for the same reason. NO moment against a zero modulus does not: a
 	 * piece leans one way only, so a joint with no extent on its second axis and no
 	 * moment about it either is perfectly healthy, not degenerate.
+	 *
+	 * A COMPOSITE MODULUS IS THE OTHER POLARITY, and deliberately so: it is a RELIEF
+	 * rather than a capacity, so the fail-closed answer is to withhold it. A composite
+	 * section that is missing, zero, negative or not finite on any axis the joint is
+	 * actually bent about leaves the joint reading its own patch — heavily loaded, which
+	 * is the expensive-to-be-wrong direction the guard has to land on.
 	 *
 	 * The return value is guaranteed never NaN and always finite, for any input.
 	 *

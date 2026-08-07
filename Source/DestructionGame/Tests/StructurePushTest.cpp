@@ -120,9 +120,16 @@ namespace StructurePushTestSupport
 	 * ragged end joint is pinned at its own 5.625 cm forever while the compression under
 	 * it grows course by course. Bending therefore stays put and the compression that
 	 * closes the joint only ever increases, so the ratio PEAKS NEAR THE TOP OF THE WALL
-	 * AND FALLS BELOW IT: a mortared ragged wall reads 0.0455104479 at its worst joint at
+	 * AND FALLS BELOW IT: a mortared ragged wall reads 0.0390321745 at its worst joint at
 	 * any height that finishes on an odd course, and 0.0582038382 at one finishing on an
 	 * even course. NO MORTARED RAGGED WALL OF ANY HEIGHT IS OVER CAPACITY AS BUILT.
+	 *
+	 * THE TWO FIGURES ARE READ AGAINST DIFFERENT SECTIONS SINCE SLICE 5, WHICH IS WHY THE
+	 * SMALLER ONE IS THE ODD-COURSE WALL. A wall finishing on an ODD course has one brick
+	 * standing on its top corbel, so that joint has a stack of two over it and the deep beam
+	 * takes the moment: 0.0390321745. A wall finishing on an EVEN course has its worst joint
+	 * under the topmost brick itself, with nothing resting on it — one unit is not a composite
+	 * of anything — so it keeps the bed patch's own 0.0582038382 unchanged.
 	 *
 	 * SO THE WALL THAT CANNOT HOLD ITSELF UP IS THE ONE WITH NOTHING IN THE JOINT. Laid
 	 * DRY — DestructionProfiles::DryStone, whose cohesion and tensile strength are exact
@@ -289,13 +296,42 @@ namespace StructurePushTestSupport
 		/ ForceUnitsPerMPaSqCmHere;
 
 	/**
-	 * The SAME wall in mortar, at the same joint: 0.00455104 MPa against 0.10 MPa.
+	 * AND WHAT ACTUALLY RESISTS THAT MOMENT IS NOT THE BED PATCH — TWO COURSES STAND OVER IT.
+	 *
+	 * The top corbel is the end brick of the highest EVEN course and the odd top course's end
+	 * brick rests on it, so the masonry over its joint is a stack of two: 15 cm deep, and the
+	 * section taking the moment is the VERTICAL plane through it rather than the bed patch.
+	 * ARCHING_DESIGN.md slice 5, adopted by the user's ruling of 2026-08-06.
+	 *
+	 * t x D^2 / 6 = 10.25 x 15^2 / 6 = 384.375 cm3 against the patch's 179.4817708 — a factor
+	 * of 2.14, which is all two courses buy, and it is what took this wall's worst joint from
+	 * 0.0455104479 to 0.0390321745. Deeper stacks buy far more, because the section grows as
+	 * D squared: eleven courses is a factor of 64.8.
+	 *
+	 * NOTHING ABOUT THE OUTCOME MOVED. Both readings are two orders of magnitude under
+	 * capacity, so a mortared ragged wall still stands as built at any height, and the DRY
+	 * wall is still condemned at the same joint — dry stone's f_xk1 is an exact zero, so any
+	 * tension whatever has already gone, at any section modulus.
+	 */
+	constexpr double TopCorbelCompositeDepthCm = 2.0 * (6.5 + 1.0);
+
+	constexpr double TopCorbelCompositeModulusCm3 =
+		10.25 * TopCorbelCompositeDepthCm * TopCorbelCompositeDepthCm / 6.0;
+
+	constexpr double TopCorbelCompositeStressMPa =
+		FullBrickWeightUu * TopCorbelMomentBrickWeightCm
+		/ (TopCorbelCompositeModulusCm3 * ForceUnitsPerMPaSqCmHere);
+
+	/**
+	 * The SAME wall in mortar, at the same joint: 0.00390322 MPa against 0.10 MPa.
 	 *
 	 * PINNED AS A NUMBER RATHER THAN AS "under 1", so a load model that drifted is visible
 	 * here rather than silently keeping the test green from the safe side of the line. It
 	 * is the figure the ragged wall reads at ANY height finishing on an odd course.
+	 *
+	 * IT WAS 0.0455104479 THROUGH SLICE 4 — the same moment on the bed patch alone.
 	 */
-	constexpr double MortarRaggedWorstAsBuilt = 0.0455104479;
+	constexpr double MortarRaggedWorstAsBuilt = 0.0390321745;
 
 	/** The scenario wall's worst joint — MOMENTS_DESIGN.md's regression anchor, and exact. */
 	constexpr double ScenarioWorstAsBuilt = 0.00495042219;
@@ -1202,16 +1238,32 @@ bool FStructurePushOverCapacityWallSettlesOnBuildTest::RunTest(const FString& Pa
 		int32 MortaredWorstJoint = INDEX_NONE;
 		const double MortaredWorst = WorstJointOf(Mortared.Structure, MortaredWorstJoint);
 
+		/*
+		 * THE COMPOSITE READING IS WHAT THE JOINT IS ARBITRATED AGAINST, AND THE PATCH'S OWN IS
+		 * PRINTED BESIDE IT. Two courses stand over this joint, so the section resisting its
+		 * moment is the 384.375 cm3 vertical one rather than the patch's 179.48; the joint gives
+		 * at the LESSER of the two demands, and printing both is what makes a failure say which
+		 * section moved rather than only that the number did.
+		 */
 		AddInfo(FString::Printf(
-			TEXT("the same ragged wall MORTARED reads %.9g at joint %d, against %.9g of hand-computed tension over f_xk1"),
-			MortaredWorst, MortaredWorstJoint, TopCorbelTensileStressMPa / MortarTensileMPa));
+			TEXT("the same ragged wall MORTARED reads %.9g at joint %d, against %.9g of hand-computed composite tension over f_xk1 (the bed patch alone would say %.9g)"),
+			MortaredWorst, MortaredWorstJoint,
+			TopCorbelCompositeStressMPa / MortarTensileMPa,
+			TopCorbelTensileStressMPa / MortarTensileMPa));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("FIXTURE: the deep beam must be the LESSER demand, or this joint is not measuring it — composite %.9g against the patch's %.9g"),
+				TopCorbelCompositeStressMPa / MortarTensileMPa,
+				TopCorbelTensileStressMPa / MortarTensileMPa),
+			TopCorbelCompositeStressMPa < TopCorbelTensileStressMPa);
 
 		TestTrue(
 			FString::Printf(
 				TEXT("the hand arithmetic must come to the pinned %.9g, it comes to %.9g"),
-				MortarRaggedWorstAsBuilt, TopCorbelTensileStressMPa / MortarTensileMPa),
+				MortarRaggedWorstAsBuilt, TopCorbelCompositeStressMPa / MortarTensileMPa),
 			FMath::IsNearlyEqual(
-				TopCorbelTensileStressMPa / MortarTensileMPa, MortarRaggedWorstAsBuilt, 1.0e-9));
+				TopCorbelCompositeStressMPa / MortarTensileMPa, MortarRaggedWorstAsBuilt, 1.0e-9));
 
 		TestTrue(
 			FString::Printf(

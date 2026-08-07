@@ -49,7 +49,7 @@
   .mono { font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace; }
 
   header.masthead {
-    border-top:3px solid var(--ink); padding-top:20px; margin-bottom:44px;
+    border-top:3px solid var(--ink); padding-top:20px; margin-bottom:40px;
     display:grid; gap:18px;
   }
   .eyebrow {
@@ -60,15 +60,25 @@
   h1 {
     font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
     font-size:clamp(26px,4vw,38px); font-weight:700; letter-spacing:-0.02em;
-    line-height:1.14; text-wrap:balance; margin:0; max-width:22ch;
+    line-height:1.14; text-wrap:balance; margin:0; max-width:24ch;
   }
   .standfirst { max-width:66ch; color:var(--ink-soft); margin:0; }
   .standfirst strong { color:var(--ink); font-weight:600; }
 
-  section.block { margin-top:52px; }
-  .block-head {
-    border-bottom:1px solid var(--rule); padding-bottom:10px; margin-bottom:22px;
+  .correction {
+    border-left:3px solid var(--local); background:var(--local-bg);
+    padding:14px 18px; display:grid; gap:8px;
   }
+  .correction h2 {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:12px; letter-spacing:0.12em; text-transform:uppercase;
+    margin:0; color:var(--local);
+  }
+  .correction p { margin:0; font-size:14px; color:var(--ink-soft); }
+  .correction strong { color:var(--ink); font-weight:600; }
+
+  section.block { margin-top:48px; }
+  .block-head { border-bottom:1px solid var(--rule); padding-bottom:10px; margin-bottom:22px; }
   .block-head h2 {
     font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
     font-size:15px; letter-spacing:0.06em; text-transform:uppercase;
@@ -76,10 +86,7 @@
   }
   .block-head p { margin:0; color:var(--ink-soft); font-size:13.5px; max-width:64ch; }
 
-  .fig {
-    background:var(--panel); border:1px solid var(--rule); padding:20px;
-    display:grid; gap:16px;
-  }
+  .fig { background:var(--panel); border:1px solid var(--rule); padding:20px; display:grid; gap:16px; }
   .fig svg { display:block; width:100%; height:auto; }
   .fig p { margin:0; color:var(--ink-soft); font-size:14px; max-width:70ch; }
   .fig p strong { color:var(--ink); font-weight:600; }
@@ -87,10 +94,7 @@
   .two { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
   @media (max-width:760px){ .two { grid-template-columns:1fr; } .wrap{padding:32px 16px 64px;} }
 
-  table {
-    width:100%; border-collapse:collapse; font-size:13.5px;
-    font-variant-numeric:tabular-nums;
-  }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; font-variant-numeric:tabular-nums; }
   caption {
     text-align:left; font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
     font-size:11px; letter-spacing:0.1em; text-transform:uppercase;
@@ -105,14 +109,12 @@
   }
   tr.falls td { background:var(--collapse-bg); }
   tr.stands td { background:var(--stands-bg); }
-  tr.edge td { background:var(--local-bg); font-weight:600; }
   .verdict {
     font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
     font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
   }
   tr.falls .verdict { color:var(--collapse); }
   tr.stands .verdict { color:var(--stands); }
-  tr.edge .verdict { color:var(--local); }
   .tablewrap { overflow-x:auto; }
 
   .cands { display:grid; gap:14px; }
@@ -124,14 +126,16 @@
   .cand p { margin:0; font-size:13.5px; color:var(--ink-soft); }
   .cand p strong { color:var(--ink); font-weight:600; }
   .cand.pick { border-left-color:var(--stands); }
+  .cand.bad { border-left-color:var(--collapse); }
   .cand .tag {
     font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
-    font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
-    color:var(--stands); margin-left:8px;
+    font-size:10px; letter-spacing:0.1em; text-transform:uppercase; margin-left:8px;
   }
+  .cand.pick .tag { color:var(--stands); }
+  .cand.bad .tag { color:var(--collapse); }
 
   .closing {
-    margin-top:56px; border-top:3px solid var(--ink); padding-top:22px;
+    margin-top:52px; border-top:3px solid var(--ink); padding-top:22px;
     display:grid; gap:14px; max-width:72ch;
   }
   .closing h2 {
@@ -144,19 +148,30 @@
 
 <div class="wrap">
   <header class="masthead">
-    <p class="eyebrow">Slice 5 &middot; the one number that decides everything</p>
-    <h1>Composite depth, and why it must be capped</h1>
+    <p class="eyebrow">Slice 5 &middot; revised against the fixture</p>
+    <h1>Composite depth, and where the limit actually bites</h1>
     <p class="standfirst">
       <strong>Composite depth is how far up the wall acts as a single block instead of a stack of separate bricks.</strong>
-      It matters more than any other quantity in the model, because resistance grows with the <em>square</em> of it —
-      and if nothing bounds it, every wall becomes indestructible.
+      Resistance grows with the <em>square</em> of it — but a corbel&rsquo;s overturning moment grows with the
+      <em>cube</em>, and that race is the whole story.
     </p>
+    <div class="correction">
+      <h2>This page has been corrected</h2>
+      <p>
+        The first version said deeper is safer and the answer flips between six and eight courses.
+        <strong>Both were wrong.</strong> They came from the design document&rsquo;s own table, which held one
+        wall&rsquo;s moment fixed while shrinking the depth beneath it — a pair no real wall presents. Building the
+        fixture and measuring showed the opposite: <strong>deeper raking corbels are more critical, not less</strong>,
+        and the crossover is around <strong>36 courses</strong>. What the depth rule actually rescues is a different
+        case entirely. Every number below is measured.
+      </p>
+    </div>
   </header>
 
   <section class="block">
     <div class="block-head">
       <h2>1 &middot; What &ldquo;composite&rdquo; means</h2>
-      <p>The same overhanging masonry, resisting the same overturning moment, two different ways.</p>
+      <p>The same overhanging masonry, resisting the same overturning moment, two different ways. This part was right.</p>
     </div>
     <div class="two">
       <div class="fig">
@@ -164,9 +179,9 @@
           <g id="indep"></g>
         </svg>
         <p>
-          <strong>Today — a ladder of separate cantilevers.</strong> Each course resists on its own bed joint, and
-          that joint is only <strong>10.25 cm</strong> deep. Tiny section, so the bottom rung reads
-          <strong class="mono">22.93&times;</strong> capacity and the wall comes down.
+          <strong>Today — a ladder of separate cantilevers.</strong> Each course resists on its own bed joint, only
+          <strong>10.25 cm</strong> deep, giving <strong class="mono">179.48 cm&sup3;</strong>. The staircase&rsquo;s
+          bottom rung reads <strong class="mono">22.93&times;</strong> capacity and the wall comes down.
         </p>
       </div>
       <div class="fig">
@@ -174,9 +189,10 @@
           <g id="comp"></g>
         </svg>
         <p>
-          <strong>Composite — one deep beam.</strong> The courses are bonded, so they resist <em>together</em> and the
-          section is the full height <span class="mono">D</span> of bonded masonry. At 11 courses that is
-          <strong>82.5 cm</strong> instead of 10.25, and the same wedge reads <strong class="mono">0.369</strong> and stands.
+          <strong>Composite — one deep beam.</strong> Bonded courses resist <em>together</em>, so the section is the
+          full height <span class="mono">D</span>: <span class="mono">W = t&middot;D&sup2;/6</span>. Eleven courses
+          give <strong class="mono">11,627 cm&sup3;</strong> and the same wedge reads
+          <strong class="mono">0.369</strong>.
         </p>
       </div>
     </div>
@@ -184,81 +200,87 @@
 
   <section class="block">
     <div class="block-head">
-      <h2>2 &middot; Resistance grows with the square of depth</h2>
-      <p>Section modulus is <span class="mono">W = t &middot; D&sup2; / 6</span>. Double the depth, quadruple the resistance — which is why this one choice decides the outcome.</p>
+      <h2>2 &middot; The race: section grows as D&sup2;, moment grows as D&sup3;</h2>
+      <p>Add a course to a raking corbel and you add both resistance and load — but not at the same rate.</p>
     </div>
     <div class="fig">
-      <svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Utilisation falls as the inverse square of composite depth, crossing capacity at about 50 centimetres">
+      <svg viewBox="0 0 700 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Utilisation rises almost linearly with the number of corbel steps, crossing capacity near thirty-six courses">
         <g id="chart"></g>
       </svg>
+      <p>
+        A deeper corbel is a deeper block — but it also carries more courses, each further out, so the moment climbs
+        as roughly <span class="mono">k&sup3;</span> against a section of <span class="mono">k&sup2;</span>.
+        <strong>Utilisation therefore rises very nearly linearly with the number of steps</strong>, and a raking
+        corbel is <em>not</em> rescued by having more wall above it.
+      </p>
       <div class="tablewrap">
         <table>
-          <caption>The staircase wedge, at increasing composite depth</caption>
+          <caption>A k-step raking corbel, measured on the fixture</caption>
           <thead>
-            <tr><th>Composite depth</th><th>Courses</th><th>W (cm&sup3;)</th><th>Utilisation</th><th>Result</th></tr>
+            <tr><th>Steps</th><th>Composite depth</th><th>W (cm&sup3;)</th><th>Utilisation</th><th>Result</th></tr>
           </thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
       <p>
-        <strong>The answer flips between six and eight courses.</strong> That is the whole point: the depth limit is not
-        a detail to tune afterwards — it <em>is</em> the model. Pick it too small and nothing changes from today; pick
-        it too large and nothing can ever be destroyed.
+        <strong>Eleven steps is the staircase from your screenshot</strong>, at 0.369. Forty-five steps reads
+        <strong class="mono">1.250</strong> and comes down. <strong>Something still breaks</strong> — which is the
+        constraint slice 5 had to satisfy, and it does so without any depth bound at all.
       </p>
     </div>
   </section>
 
   <section class="block">
     <div class="block-head">
-      <h2>3 &middot; The failure at the far end</h2>
-      <p>What happens if the depth is left unbounded.</p>
+      <h2>3 &middot; So what does the depth limit protect?</h2>
+      <p>Not the corbel. A different case, and this one is rescued unconditionally.</p>
     </div>
     <div class="fig">
-      <svg viewBox="0 0 700 175" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="With unbounded depth the whole wall acts as one rigid block and no local damage can ever break it">
-        <g id="mono"></g>
+      <svg viewBox="0 0 700 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A brick with half a seat reads an amount that falls as the square of the courses above it and never reaches capacity">
+        <g id="halfseat"></g>
       </svg>
       <p>
-        Let <span class="mono">D</span> run to the full wall and a 30-course wall gets
-        <strong class="mono">86,484 cm&sup3;</strong> — <strong>480&times;</strong> a single bed patch — putting the
-        wedge at <strong class="mono">0.0496</strong>. <strong>The wall becomes a monolith</strong>: one rigid block that
-        can only fail by toppling entire, no matter how much you cut out of it. That is a worse game than the one we
-        have now, and it is the exact risk your ruling introduced — which is why slice 5 ships with a red test proving
-        some wall <em>still</em> comes down because the depth ran out.
+        A brick left with <strong>half a seat</strong> — your free-end deletion, and the jamb reveal beside an
+        opening — reads <span class="mono">0.1561287 &middot; n / m&sup2;</span>, where <span class="mono">n</span>
+        is the load it carries and <span class="mono">m</span> the courses standing over it. Both grow together, so
+        the ratio <em>falls</em>, and <strong>it never reaches 1.0 for any wall this game can build.</strong> The
+        7&times;30 free end reads <strong class="mono">0.01588</strong>.
+      </p>
+      <p>
+        <strong>That is the unconditional rescue, and it is where an unbounded depth would actually hurt.</strong>
+        Not by making corbels indestructible — they aren&rsquo;t — but by letting a half seat claim the support of
+        masonry that isn&rsquo;t really bonded to it. The bound has to bite <em>there</em>, on how far up the block
+        is genuinely continuous, rather than on how tall a corbel may be.
       </p>
     </div>
   </section>
 
   <section class="block">
     <div class="block-head">
-      <h2>4 &middot; What could physically set the limit</h2>
-      <p>Three candidates. The third is the one I would build, and the reason is that it needs no new data.</p>
+      <h2>4 &middot; The trap in the obvious implementation</h2>
+      <p>Three ways to read the composite section. Only one is usable, and the tempting one-line edit is the dangerous one.</p>
     </div>
     <div class="cands">
-      <div class="cand">
-        <h3>Span-to-depth ratio</h3>
-        <p>
-          Classic deep-beam theory: past roughly <strong>D &asymp; the span</strong>, stress stops distributing further
-          up and extra height contributes nothing. Simple and standard — but it needs the span, and a raking cut has
-          no clean span to measure.
-        </p>
-      </div>
-      <div class="cand">
-        <h3>Bond continuity</h3>
-        <p>
-          The composite block stops where the bonding stops — at the top of the wall, at a movement joint, or at a
-          <strong>pre-formed failure surface</strong>. A staircase cut is exactly that: a continuous path already
-          running through bed and head joints. Physically the most honest, and the hardest to compute.
-        </p>
-      </div>
       <div class="cand pick">
-        <h3>Shear transfer through the bed joints<span class="tag">preferred</span></h3>
+        <h3>Pure bending on the composite section<span class="tag">correct</span></h3>
         <p>
-          Courses only act together if the joints between them can carry the horizontal shear composite action
-          demands. That is <strong>the same Mohr-Coulomb capacity the model already computes</strong> — cohesion plus
-          friction, truncated at the cap. Walk up from the cut, accumulate the shear demand, and stop at the course
-          where the joint can no longer carry it. <strong>Self-limiting, no new material data, no tunable constant</strong>,
-          and it makes dry stone behave correctly for free: zero cohesion means almost no composite depth, which is
-          exactly right — you cannot corbel a dry-stone wall.
+          Reproduces <strong>0.369</strong> for the staircase <em>and</em> the half-seat identity above. Floored by a
+          <span class="mono">min</span> against today&rsquo;s patch reading, because one course of depth gives
+          <span class="mono">96.09 cm&sup3;</span> — <em>smaller</em> than the bed patch. That floor is what keeps the
+          top-course anchors at exactly their current values.
+        </p>
+      </div>
+      <div class="cand">
+        <h3>Composite modulus and composite area</h3>
+        <p>Gives <strong>0.2476</strong> for the staircase. Doesn&rsquo;t reproduce the identity. Wrong.</p>
+      </div>
+      <div class="cand bad">
+        <h3>Change only the section modulus<span class="tag">indestructible</span></h3>
+        <p>
+          The minimal diff: swap the modulus, leave the axial term on the patch. It reads <strong>exactly zero</strong>
+          for the staircase, and compression outgrows bending on <em>every</em> fixture including the 45-step corbel —
+          so bending stops governing anywhere and <strong>nothing can ever be destroyed</strong>. The indestructible
+          failure wearing a one-line-change costume.
         </p>
       </div>
     </div>
@@ -267,14 +289,15 @@
   <div class="closing">
     <h2>Where this leaves slice 5</h2>
     <p>
-      The mechanism is settled and the two target numbers are known — <strong>0.0082</strong> for your free-end
-      deletion and <strong>0.369</strong> for the staircase, both standing. What is <em>not</em> settled is the depth
-      rule, and it cannot be guessed, because it is the difference between a fix and an indestructible wall.
+      The mechanism is settled and the numbers are measured rather than assumed. The staircase goes from
+      <strong>22.93 to 0.369</strong> and stands; your free-end deletion reads <strong>0.01588</strong> and stands;
+      a 45-step raking corbel reads <strong>1.250</strong> and still comes down.
     </p>
     <p>
-      Both those figures are idealisations that no test has confirmed. They are the target, <strong>not the
-      assertion</strong> — the expected values get derived from whatever section the implementation actually produces,
-      and if that disagrees with 0.369 I will tell you the number moved rather than adjust the section until it fits.
+      <strong>The design has now been wrong five times and the tests caught every one.</strong> That is the process
+      working rather than a worry — but it is also why nothing here is asserted against a published literal any more.
+      Every expectation is derived from the section the fixture actually presents, with the design&rsquo;s figures
+      kept only as loose cross-checks that fail <em>in the test</em> rather than being quietly adjusted.
     </p>
   </div>
 </div>
@@ -283,14 +306,14 @@
 (function () {
   var T = 10.25, COURSE = 7.5;
   function W(D) { return T * D * D / 6; }
-  var K = 0.369 * W(82.5);              // utilisation x modulus is constant for a fixed moment
-  function util(D) { return K / W(D); }
+
+  /* Measured on the fixture: a k-step raking corbel, bottom rung. */
+  var STEPS = [[3,0.173],[5,0.219],[7,0.268],[9,0.318],[11,0.369],[30,0.860],[45,1.250]];
 
   /* ---- Figure 1a: independent cantilevers ---- */
   var a = [], bw = 30, bh = 13;
   for (var c = 0; c < 6; c++) {
-    var y = 150 - c * (bh + 2);
-    var n = 3 + c;
+    var y = 150 - c * (bh + 2), n = 3 + c;
     for (var i = 0; i < n; i++) {
       var x = 40 + i * (bw + 2) + (c % 2) * 15;
       a.push('<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + bh + '" fill="var(--brick)" stroke="var(--brick-edge)" stroke-width="0.7"/>');
@@ -306,8 +329,7 @@
   /* ---- Figure 1b: one composite block ---- */
   var b = [];
   for (var c2 = 0; c2 < 6; c2++) {
-    var y2 = 150 - c2 * (bh + 2);
-    var n2 = 3 + c2;
+    var y2 = 150 - c2 * (bh + 2), n2 = 3 + c2;
     for (var i2 = 0; i2 < n2; i2++) {
       var x2 = 40 + i2 * (bw + 2) + (c2 % 2) * 15;
       b.push('<rect x="' + x2 + '" y="' + y2 + '" width="' + bw + '" height="' + bh + '" fill="var(--brick)" stroke="var(--brick-edge)" stroke-width="0.7" opacity="0.55"/>');
@@ -323,71 +345,69 @@
   b.push('<line x1="20" y1="165" x2="320" y2="165" stroke="var(--ground)" stroke-width="1.5"/>');
   document.getElementById('comp').innerHTML = b.join('');
 
-  /* ---- Figure 2: utilisation against depth ---- */
-  var ch = [], X0 = 58, X1 = 660, Y0 = 30, Y1 = 210, DMIN = 15, DMAX = 120, UMAX = 3.2;
-  function px(D) { return X0 + (D - DMIN) / (DMAX - DMIN) * (X1 - X0); }
+  /* ---- Figure 2: utilisation against step count ---- */
+  var ch = [], X0 = 58, X1 = 660, Y0 = 26, Y1 = 200, KMAX = 48, UMAX = 1.45;
+  function px(k) { return X0 + k / KMAX * (X1 - X0); }
   function py(u) { return Y1 - Math.min(u, UMAX) / UMAX * (Y1 - Y0); }
 
-  ch.push('<rect x="' + X0 + '" y="' + Y0 + '" width="' + (X1 - X0) + '" height="' + (py(1) - Y0) + '" fill="var(--collapse-bg)" opacity="0.55"/>');
-  ch.push('<rect x="' + X0 + '" y="' + py(1) + '" width="' + (X1 - X0) + '" height="' + (Y1 - py(1)) + '" fill="var(--stands-bg)" opacity="0.55"/>');
+  ch.push('<rect x="' + X0 + '" y="' + Y0 + '" width="' + (X1 - X0) + '" height="' + (py(1) - Y0) + '" fill="var(--collapse-bg)" opacity="0.5"/>');
+  ch.push('<rect x="' + X0 + '" y="' + py(1) + '" width="' + (X1 - X0) + '" height="' + (Y1 - py(1)) + '" fill="var(--stands-bg)" opacity="0.5"/>');
 
-  for (var u = 0; u <= 3; u++) {
+  for (var u = 0; u <= 1.4; u += 0.2) {
     ch.push('<line x1="' + X0 + '" y1="' + py(u) + '" x2="' + X1 + '" y2="' + py(u) + '" stroke="var(--rule)" stroke-width="0.7"/>');
     ch.push('<text x="' + (X0 - 8) + '" y="' + (py(u) + 4) + '" text-anchor="end" font-size="10" fill="var(--ink-faint)" font-family="ui-monospace,monospace">' + u.toFixed(1) + '</text>');
   }
   ch.push('<line x1="' + X0 + '" y1="' + py(1) + '" x2="' + X1 + '" y2="' + py(1) + '" stroke="var(--ink)" stroke-width="1.4" stroke-dasharray="5 3"/>');
-  ch.push('<text x="' + (X1 - 4) + '" y="' + (py(1) - 7) + '" text-anchor="end" font-size="10.5" fill="var(--ink)" font-family="ui-monospace,monospace">capacity &#8212; above this it breaks</text>');
+  ch.push('<text x="' + (X0 + 8) + '" y="' + (py(1) - 7) + '" font-size="10.5" fill="var(--ink)" font-family="ui-monospace,monospace">capacity &#8212; above this it breaks</text>');
 
-  var path = [];
-  for (var D = DMIN; D <= DMAX; D += 1) path.push((path.length ? 'L' : 'M') + px(D).toFixed(1) + ' ' + py(util(D)).toFixed(1));
-  ch.push('<path d="' + path.join(' ') + '" fill="none" stroke="var(--accent)" stroke-width="2.4"/>');
+  var pathPts = [];
+  for (var s = 0; s < STEPS.length; s++) pathPts.push((s ? 'L' : 'M') + px(STEPS[s][0]).toFixed(1) + ' ' + py(STEPS[s][1]).toFixed(1));
+  ch.push('<path d="' + pathPts.join(' ') + '" fill="none" stroke="var(--accent)" stroke-width="2.4"/>');
 
-  var marks = [[30, '4 courses'], [45, '6'], [60, '8'], [82.5, '11 courses'], [120, '16']];
-  for (var m = 0; m < marks.length; m++) {
-    var D2 = marks[m][0];
-    ch.push('<line x1="' + px(D2) + '" y1="' + Y1 + '" x2="' + px(D2) + '" y2="' + (Y1 + 5) + '" stroke="var(--ink-faint)" stroke-width="1"/>');
-    ch.push('<text x="' + px(D2) + '" y="' + (Y1 + 18) + '" text-anchor="middle" font-size="10" fill="var(--ink-faint)" font-family="ui-monospace,monospace">' + marks[m][1] + '</text>');
-    ch.push('<circle cx="' + px(D2) + '" cy="' + py(util(D2)) + '" r="3.2" fill="var(--accent)"/>');
+  for (var s2 = 0; s2 < STEPS.length; s2++) {
+    var k = STEPS[s2][0], uu = STEPS[s2][1];
+    ch.push('<circle cx="' + px(k) + '" cy="' + py(uu) + '" r="3.6" fill="var(--accent)"/>');
+    ch.push('<line x1="' + px(k) + '" y1="' + Y1 + '" x2="' + px(k) + '" y2="' + (Y1 + 5) + '" stroke="var(--ink-faint)" stroke-width="1"/>');
+    ch.push('<text x="' + px(k) + '" y="' + (Y1 + 18) + '" text-anchor="middle" font-size="10" fill="var(--ink-faint)" font-family="ui-monospace,monospace">' + k + '</text>');
   }
-  var Dc = Math.sqrt(K * 6 / T);
-  ch.push('<line x1="' + px(Dc) + '" y1="' + py(1) + '" x2="' + px(Dc) + '" y2="' + Y1 + '" stroke="var(--local)" stroke-width="1.6" stroke-dasharray="3 2"/>');
-  ch.push('<circle cx="' + px(Dc) + '" cy="' + py(1) + '" r="4.5" fill="none" stroke="var(--local)" stroke-width="2"/>');
-  ch.push('<text x="' + (px(Dc) + 8) + '" y="' + (py(1) + 26) + '" font-size="11" fill="var(--local)" font-family="ui-monospace,monospace">flips at ' + Dc.toFixed(1) + ' cm &#8212; under 7 courses</text>');
+  ch.push('<text x="' + px(11) + '" y="' + (py(0.369) - 12) + '" text-anchor="middle" font-size="10.5" fill="var(--accent)" font-family="ui-monospace,monospace">the staircase</text>');
+
+  ch.push('<line x1="' + px(36) + '" y1="' + py(1) + '" x2="' + px(36) + '" y2="' + Y1 + '" stroke="var(--local)" stroke-width="1.6" stroke-dasharray="3 2"/>');
+  ch.push('<circle cx="' + px(36) + '" cy="' + py(1) + '" r="4.5" fill="none" stroke="var(--local)" stroke-width="2"/>');
+  ch.push('<text x="' + (px(36) + 8) + '" y="' + (py(1) + 22) + '" font-size="11" fill="var(--local)" font-family="ui-monospace,monospace">crosses near 36 steps</text>');
   ch.push('<line x1="' + X0 + '" y1="' + Y1 + '" x2="' + X1 + '" y2="' + Y1 + '" stroke="var(--ink-faint)" stroke-width="1.2"/>');
-  ch.push('<text x="' + X0 + '" y="' + (Y1 + 36) + '" font-size="10.5" fill="var(--ink-faint)" font-family="ui-monospace,monospace">composite depth D</text>');
+  ch.push('<text x="' + X0 + '" y="' + (Y1 + 36) + '" font-size="10.5" fill="var(--ink-faint)" font-family="ui-monospace,monospace">corbel steps k &#8212; deeper is WORSE, not safer</text>');
   document.getElementById('chart').innerHTML = ch.join('');
 
   /* ---- Table ---- */
-  var ROWS = [[15,2],[30,4],[45,6],[52.5,7],[60,8],[82.5,11],[150,20],[225,30]];
   var html = '';
-  for (var r = 0; r < ROWS.length; r++) {
-    var D3 = ROWS[r][0], u3 = util(D3);
-    var cls = u3 > 1.05 ? 'falls' : (u3 < 0.95 ? 'stands' : 'edge');
-    var word = u3 > 1.05 ? 'Falls' : (u3 < 0.95 ? 'Stands' : 'Borderline');
-    html += '<tr class="' + cls + '"><td class="mono">' + D3.toFixed(1) + ' cm</td><td class="mono">' + ROWS[r][1] +
-            '</td><td class="mono">' + Math.round(W(D3)).toLocaleString('en-US') + '</td><td class="mono">' + u3.toFixed(4) +
-            '</td><td class="verdict">' + word + '</td></tr>';
+  for (var r = 0; r < STEPS.length; r++) {
+    var k2 = STEPS[r][0], D = k2 * COURSE, u2 = STEPS[r][1];
+    var cls = u2 > 1.0 ? 'falls' : 'stands';
+    html += '<tr class="' + cls + '"><td class="mono">' + k2 + '</td><td class="mono">' + D.toFixed(1) + ' cm</td><td class="mono">' +
+            Math.round(W(D)).toLocaleString('en-US') + '</td><td class="mono">' + u2.toFixed(3) +
+            '</td><td class="verdict">' + (u2 > 1.0 ? 'Falls' : 'Stands') + '</td></tr>';
   }
   document.getElementById('rows').innerHTML = html;
 
-  /* ---- Figure 3: the monolith ---- */
-  var mo = [];
-  for (var c3 = 0; c3 < 11; c3++) {
-    var y3 = 130 - c3 * 11;
-    for (var x3 = 60; x3 < 620; x3 += 32) {
-      var ox3 = (c3 % 2 === 0) ? x3 : x3 + 16;
-      var cut = c3 < 2 && ox3 > 250 && ox3 < 400;
-      if (cut) {
-        mo.push('<rect x="' + ox3 + '" y="' + y3 + '" width="30" height="9" fill="none" stroke="var(--brick-gone)" stroke-width="0.8" stroke-dasharray="2 1.6"/>');
-      } else {
-        mo.push('<rect x="' + ox3 + '" y="' + y3 + '" width="30" height="9" fill="var(--brick)" stroke="var(--brick-edge)" stroke-width="0.5" opacity="0.5"/>');
-      }
-    }
+  /* ---- Figure 3: the half seat ---- */
+  var hs = [], HX0 = 70, HX1 = 640, HY0 = 26, HY1 = 128;
+  function hx(m) { return HX0 + (m - 2) / 38 * (HX1 - HX0); }
+  function hy(v) { return HY1 - Math.min(v, 0.25) / 0.25 * (HY1 - HY0); }
+  hs.push('<rect x="' + HX0 + '" y="' + HY0 + '" width="' + (HX1 - HX0) + '" height="' + (HY1 - HY0) + '" fill="var(--stands-bg)" opacity="0.45"/>');
+  var hp = [];
+  for (var m = 2; m <= 40; m++) hp.push((hp.length ? 'L' : 'M') + hx(m).toFixed(1) + ' ' + hy(0.1561287 * m / (m * m)).toFixed(1));
+  hs.push('<path d="' + hp.join(' ') + '" fill="none" stroke="var(--stands)" stroke-width="2.4"/>');
+  hs.push('<circle cx="' + hx(29) + '" cy="' + hy(0.01588) + '" r="4" fill="var(--stands)"/>');
+  hs.push('<text x="' + (hx(29) + 10) + '" y="' + (hy(0.01588) - 6) + '" font-size="11" fill="var(--stands)" font-family="ui-monospace,monospace">your free-end deletion &#183; 0.01588</text>');
+  for (var v = 0; v <= 0.25; v += 0.05) {
+    hs.push('<line x1="' + HX0 + '" y1="' + hy(v) + '" x2="' + HX1 + '" y2="' + hy(v) + '" stroke="var(--rule)" stroke-width="0.6"/>');
+    hs.push('<text x="' + (HX0 - 8) + '" y="' + (hy(v) + 4) + '" text-anchor="end" font-size="10" fill="var(--ink-faint)" font-family="ui-monospace,monospace">' + v.toFixed(2) + '</text>');
   }
-  mo.push('<rect x="56" y="26" width="580" height="113" fill="var(--band)" stroke="var(--collapse)" stroke-width="2.4"/>');
-  mo.push('<text x="346" y="18" text-anchor="middle" font-size="12" fill="var(--collapse)" font-family="ui-monospace,monospace">one rigid block &#8212; nothing local can break it</text>');
-  mo.push('<line x1="40" y1="145" x2="660" y2="145" stroke="var(--ground)" stroke-width="1.6"/>');
-  mo.push('<text x="40" y="163" font-size="11" fill="var(--ink-faint)" font-family="ui-monospace,monospace">D = 225 cm &#183; W = 86,484 cm&#179; &#183; utilisation 0.0496</text>');
-  document.getElementById('mono').innerHTML = mo.join('');
+  hs.push('<text x="' + (HX1 - 4) + '" y="' + (HY0 + 14) + '" text-anchor="end" font-size="11" fill="var(--ink-faint)" font-family="ui-monospace,monospace">capacity is 1.00 &#8212; forty times off the top of this chart</text>');
+  hs.push('<line x1="' + HX0 + '" y1="' + HY1 + '" x2="' + HX1 + '" y2="' + HY1 + '" stroke="var(--ink-faint)" stroke-width="1.2"/>');
+  hs.push('<text x="' + HX0 + '" y="' + (HY1 + 22) + '" font-size="10.5" fill="var(--ink-faint)" font-family="ui-monospace,monospace">courses standing over the half seat</text>');
+  hs.push('<text x="' + (HX1 - 4) + '" y="' + (HY1 + 22) + '" text-anchor="end" font-size="10.5" fill="var(--ink-faint)" font-family="ui-monospace,monospace">40</text>');
+  document.getElementById('halfseat').innerHTML = hs.join('');
 })();
 </script>

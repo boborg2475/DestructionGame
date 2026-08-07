@@ -1516,35 +1516,48 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
 
 /**
  * FOUR: THE STAIRCASE. CUTTING A STEPPED DIAGONAL VOID THROUGH A WALL LEAVES THE BRICKWORK ABOVE IT
- * CANTILEVERED OVER NOTHING, AND THAT OVERHANG MUST COME DOWN.
+ * CORBELLED OUT OVER NOTHING, AND IT MUST STAND THERE.
  *
- * THIS IS A PHOTOGRAPH, NOT A SHAPE INVENTED TO BREAK. A player cut a staircase-shaped hole through
- * the game's own wall — a stepped diagonal several bricks wide and a dozen courses tall — and the
- * brickwork above and beside it stood there, hanging metres out over open air, while a couple of
- * loose bricks rolled off the top. That is the failure this fixture is, and it is the first one in
- * the suite that is not loss of SUPPORT: every brick in that overhang still has a bed joint under
- * it, so the topology is intact and the existing three tests would all pass on it. What is wrong is
- * that the joints holding it are loaded past what mortar can carry, and nothing brings them down.
+ * THIS TEST USED TO ASSERT THE OPPOSITE, AND THE INVERSION IS THE USER'S RULING OF 2026-08-06
+ * RATHER THAN A CAPITULATION. It was named AStaircaseVoidBringsTheOverhangDown and it required all
+ * eleven corbelled bricks to fall. The player was then shown what the same model does to a brick
+ * deleted at the END of a wall — the failure walks up the wall in a stepping triangle and takes its
+ * upper half — and ruled that this must not happen. The two are LOCALLY INDISTINGUISHABLE: a
+ * half-seated brick overhanging outward with nothing to abut against is the same picture either
+ * way, so any rule local enough to save the free end also saves this corbel. Composite vertical
+ * action is that rule, and the ruling adopts it knowing exactly what it costs here.
  *
- * THE ARITHMETIC — why a corbel levers its one bed joint open, what each step of the ladder
- * carries, and where the 45,825 uu of capacity comes from — is worked through in
- * Tests/StaircaseWallTestSupport.h, beside the geometry it belongs to, because three tests now cut
- * this same void and they must all be reading one derivation.
+ * THE MECHANISM, so that "it stands" is a claim and not an absence of one. A stack of courses over
+ * a raking cut does not resist its overturning moment as a sequence of independent bed patches: the
+ * wall acts as a DEEP BEAM, and the plane taking the moment is a vertical section through the
+ * bonded masonry standing over the joint — 11,627 cm3 through eleven courses against one patch's
+ * 179.48. The bottom rung reads 0.369 of capacity rather than 22.93, and nothing in the ladder
+ * reaches 1.0. Tests/StaircaseWallTestSupport.h works both readings out beside the geometry they
+ * belong to, because three tests cut this same void and they must all read one derivation.
  *
- * THE OUTCOME IS DISPLACEMENT, AND HERE THAT IS NOT A PROXY. DESIGN.md §4 bans displacement as a
- * BREAK assertion, because two pieces can sever and rest exactly where they were — and that ban
- * stands. Nothing below reads a movement as evidence that a joint gave. The claim being made is
- * the player's own and is about position: an overhang hanging over nothing must not still be there
- * a second later. That the corbel was CONDEMNED is asserted separately, as the fixture precondition
- * that makes the claim falsifiable — without it, "the overhang fell" could be true of a wall that
- * was never overloaded at all.
+ * THE RULING IS INTERNALLY CONSISTENT, WHICH IS EVIDENCE RATHER THAN PREFERENCE. The same user
+ * independently agreed acceptance case 20 — this same staircase void — as LOCAL LOSS: the loose
+ * teeth left with no bed patch at all drop, and the mass stands. Composite action produces exactly
+ * that, and on THIS wall there are no such teeth, so nothing at all comes down.
  *
- * AND THAT PRECONDITION IS NOW READ OFF THE BREAK STAMPS RATHER THAN OFF THE UTILISATION, because
- * the cascade runs inside the commit and a given joint carries exactly nothing (DESIGN.md §3). The
- * five rungs the arithmetic condemns must be stamped with pass 1 and the other six must not; the
- * ladder's MAGNITUDES are pinned world-free in
+ * NON-DISPLACEMENT IS A LEGITIMATE ASSERTION WHERE DISPLACEMENT WOULD NOT BE. DESIGN.md §4 bans
+ * displacement as evidence that a joint BROKE, because two pieces can sever and rest exactly where
+ * they were. The converse is safe and is what is asserted here: a brick that has not moved has not
+ * been released, whatever its joints did. The half that displacement cannot answer — that no joint
+ * gave — is asserted separately off the break stamps.
+ *
+ * AND THAT IS READ OFF THE BREAK STAMPS RATHER THAN OFF THE UTILISATION, because the cascade runs
+ * inside the commit and a given joint carries exactly nothing (DESIGN.md §3). Every one of the
+ * eleven rungs must be unstamped; the ladder's MAGNITUDES are pinned world-free in
  * DestructionGame.Core.Structure.AStaircaseVoidCondemnsTheCorbel, which reads the same eleven
  * joints off SolveLoads, which breaks nothing. The long comment at that assertion says why.
+ *
+ * WHAT WOULD MAKE THIS TEST VACUOUS, AND WHAT STOPS IT. "Nothing fell" is also true of a wall that
+ * was never in the load path, of a wall nobody cut, and of a subsystem that has stopped running at
+ * all. So the cut is asserted to have removed its 36 bricks and their actors; the corbel joints are
+ * asserted to exist and to be intact; and the world-free sibling asserts that those joints carry
+ * the full eleven-rung ladder, 38.5 brick weights and 1608.75 brick-weight-centimetres at the
+ * bottom. The mass is being carried, and it is being carried by the joints this test names.
  *
  * AND THE PRECONDITION THAT MAKES IT HONEST, EXACTLY AS THE COLLAPSE TEST ABOVE: NO SURVIVING PIECE
  * MAY BE Stranded. A staircase void is precisely the shape that produces unroutable knots — cut two
@@ -1560,13 +1573,13 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
  * StaircaseWallSpec says the rest.
  *
  * NEEDS A TICKING WORLD: YES, and this one could not be anywhere else. That the corbel joint is at
- * 22.93 is arithmetic on a graph and belongs in the fast suite — and now lives there; that a wall in
- * a real scene, cut by a real click, then falls over is the composition, and the composition is what
- * no world-free test can reach.
+ * 0.369 is arithmetic on a graph and belongs in the fast suite — and lives there; that a wall in a
+ * real scene, cut by a real click, is then still standing a second later is the composition, and
+ * the composition is what no world-free test can reach.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureIntegrationStaircaseVoidTest,
-	"DestructionGame.Integration.AStaircaseVoidBringsTheOverhangDown",
+	"DestructionGame.Integration.AStaircaseVoidLeavesTheOverhangStanding",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
@@ -1795,18 +1808,22 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 	 *
 	 * PASS 1 IS THE FIRST SWEEP AFTER THE CUT, so what it breaks is exactly what the first solve
 	 * found over capacity — which is exactly the ladder StaircaseWallTestSupport works out by
-	 * hand. The wall as built is asserted above to have nothing over capacity and to release
-	 * nothing, so no pass can have been stamped before this one and the numbering starts at 1.
+	 * hand, and under composite action that ladder condemns NOTHING. The wall as built is asserted
+	 * above to have nothing over capacity and to release nothing, so no pass can have been stamped
+	 * before this one and the numbering starts at 1.
 	 *
-	 * BOTH DIRECTIONS ARE ASSERTED. That the eight condemned rungs gave in pass 1 says the load
-	 * model condemned the corbel; that the other three did NOT gives the count its teeth, because a
-	 * model reading 40% high would put course 10's 0.722 over the line and break nine.
+	 * THE LOOP IS WRITTEN AGAINST StaircaseCorbelIsCondemned RATHER THAN AGAINST "none of them",
+	 * DELIBERATELY, AND IT IS NOT DEAD CODE. It reads the same oracle the world-free sibling reads,
+	 * so the day that oracle condemns a rung again — a deeper wall, a shallower depth rule, a
+	 * strength change — this test starts requiring that rung to break instead of quietly continuing
+	 * to require that nothing does. A hard-coded zero would make the two files disagree in silence,
+	 * which is the exact failure the shared header exists to prevent.
 	 *
-	 * THE MAGNITUDE — 22.92952589 at the bottom rung and the whole eleven-rung ladder — is asserted
-	 * in DestructionGame.Core.Structure.AStaircaseVoidCondemnsTheCorbel, which cuts the same void
-	 * into the same wall with no world at all and reads the ladder off SolveLoads, which breaks
-	 * nothing. That is where the arithmetic belongs: this test's own header has always said that
-	 * "the corbel joint is at 22.93" is arithmetic on a graph and belongs in the fast suite.
+	 * THE MAGNITUDE — 0.369 at the bottom rung and the whole eleven-rung ladder — is asserted in
+	 * DestructionGame.Core.Structure.AStaircaseVoidCondemnsTheCorbel, which cuts the same void into
+	 * the same wall with no world at all and reads the ladder off SolveLoads, which breaks nothing.
+	 * That is where the arithmetic belongs, and it is what stops "nothing broke" here from being
+	 * true of a wall carrying nothing.
 	 */
 	int32 CorbelJointsBrokenInFirstPass = 0;
 
@@ -1859,12 +1876,12 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND THE COUNT, WHICH IS THE HALF THE PER-RUNG ROWS CANNOT MAKE. Eight of eleven is the
+	 * AND THE COUNT, WHICH IS THE HALF THE PER-RUNG ROWS CANNOT MAKE. None of eleven is the
 	 * fixture's own claim, and a ladder that crossed 1.0 somewhere else entirely would still
 	 * satisfy every row above if the rungs it broke happened to be the ones it predicted.
 	 */
 	AddInfo(FString::Printf(
-		TEXT("the staircase's first sweep broke %d of %d corbel joints (the arithmetic predicts %d, worst rung %.5f)"),
+		TEXT("the staircase's first sweep broke %d of %d corbel joints (the arithmetic predicts %d, worst rung %.8f)"),
 		CorbelJointsBrokenInFirstPass, CorbelPieces.Num(),
 		StaircasePredictedCorbelJointsOverCapacity, StaircasePredictedWorstCorbelUtilisation));
 
@@ -1895,35 +1912,51 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 			Support != EPieceSupport::Stranded);
 	}
 
-	/* THE OUTCOME: the overhang is over open air, and a second later it must not still be there. */
+	/*
+	 * THE OUTCOME: the overhang is over open air, and a second later it must still be there.
+	 *
+	 * A SECOND OF REAL TIME IS THE POINT. The wall is ticked exactly as long as the version of this
+	 * test that required the overhang to FALL ticked it, and that duration was chosen to be several
+	 * times longer than the drop it was measuring — so a brick that has been released has ample
+	 * time to leave, and one that has not moved in that second was never released. Asserting
+	 * non-displacement is safe in the direction asserting displacement is not: DESIGN.md §4 bans
+	 * reading a movement as evidence a joint BROKE, because two pieces can sever and stay put; the
+	 * converse does not have that hole.
+	 */
 	TestWorld.TickSeconds(FallSeconds);
 
 	for (int32 Step = 0; Step < CorbelPieces.Num(); ++Step)
 	{
 		const int32 Piece = CorbelPieces[Step];
 		const FVector NowAt = Bricks[Piece]->GetActorLocation();
-		const double FellCm = LaidAt[Piece].Z - NowAt.Z;
+		const double MovedCm = FVector::Dist(NowAt, LaidAt[Piece]);
 
 		AddInfo(FString::Printf(
-			TEXT("corbel course %2d (piece %3d) fell %.3f cm in one second, from Z %.3f to Z %.3f"),
-			StaircaseLowestCorbelCourse + Step, Piece, FellCm, LaidAt[Piece].Z, NowAt.Z));
+			TEXT("corbel course %2d (piece %3d) moved %.6f cm in one second and is at Z %.3f"),
+			StaircaseLowestCorbelCourse + Step, Piece, MovedCm, NowAt.Z));
 
 		TestTrue(
 			*FString::Printf(
-				TEXT("the overhang must come down: corbelled brick %d should have fallen more than %.1f cm, it dropped %.3f cm"),
-				Piece, FallenAtLeastCm, FellCm),
-			FellCm > FallenAtLeastCm);
+				TEXT("THE RULING: the overhang must STAND — corbelled brick %d should not have moved, it drifted %.6f cm"),
+				Piece, MovedCm),
+			MovedCm < DriftToleranceCm);
 
-		/* And it landed on the rubble rather than through the world. */
+		/*
+		 * AND IT IS STILL BEING HELD UP RATHER THAN MERELY RESTING WHERE IT LANDED. A released
+		 * brick that happened to jam against its neighbours would satisfy the row above; a
+		 * kinematic mesh is one the subsystem never let go of.
+		 */
 		TestTrue(
-			*FString::Printf(TEXT("corbelled brick %d should have come to rest above the floor at Z %g, it is at Z %.3f"),
-				Piece, FloorTopZCm, NowAt.Z),
-			NowAt.Z > FloorTopZCm);
+			*FString::Printf(TEXT("corbelled brick %d is still held up and must still be kinematic"), Piece),
+			Bricks[Piece]->GetMesh() != nullptr && !Bricks[Piece]->GetMesh()->IsSimulatingPhysics());
 	}
 
 	/*
-	 * THE OTHER HALF, AND IT IS NOT DECORATION. Without it, an implementation that released the
-	 * whole wall — or a world that dropped through its floor — passes every row above.
+	 * THE FAR END, AND IT IS NOT DECORATION EVEN NOW. It was the guard against an implementation
+	 * that released the WHOLE wall while the corbel rows only asked about the overhang; with those
+	 * rows inverted it is the guard against the opposite failure — a subsystem that has stopped
+	 * releasing anything at all would pass both halves, and only the cut's own 36 deleted actors
+	 * and the eleven intact-joint rows above say that anything happened.
 	 */
 	for (const int32 Piece : FarSidePieces)
 	{

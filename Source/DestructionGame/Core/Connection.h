@@ -77,9 +77,18 @@ struct FConnection
 	 * centroid, at which point a joint can be drawn at 1.25 of capacity and hold
 	 * forever. That is the direction where nothing falls, which is the expensive one.
 	 *
-	 * @param MomentUuCm Bending moment about this joint's centroid, uu.cm.
+	 * THE COMPOSITE DEPTH IS DEFAULTED THE SAME WAY AND FOR THE OPPOSITE REASON. It is
+	 * a RELIEF, so a break decision made without it is made on a strictly HARSHER load
+	 * than the readout shows — a joint drawn at 0.37 that the cascade snaps at 22.9.
+	 * Same seam, same drift, pointing the other way.
+	 *
+	 * @param MomentUuCm       Bending moment about this joint's centroid, uu.cm.
+	 * @param CompositeDepthCm How deep the bonded masonry standing over this joint is.
 	 */
-	double ApplyForce(const FVector& Force, const FVector& MomentUuCm = FVector::ZeroVector);
+	double ApplyForce(
+		const FVector& Force,
+		const FVector& MomentUuCm = FVector::ZeroVector,
+		double CompositeDepthCm = 0.0);
 
 	/**
 	 * What this force WOULD do to this joint. Never latches, never mutates.
@@ -116,10 +125,31 @@ struct FConnection
 	 * moments existed — the same way a zero friction coefficient reduces
 	 * Mohr-Coulomb exactly rather than approximately.
 	 *
-	 * @param MomentUuCm Bending moment about this joint's centroid, uu.cm.
+	 * THE COMPOSITE DEPTH IS A LENGTH AND THE JOINT PAIRS IT WITH ITS OWN RECTANGLE,
+	 * for the same reason the moment arrives as a world-space vector: a stack of
+	 * courses over a lost support resists the overturning moment as a DEEP BEAM on a
+	 * vertical section, `t*D^2/6`, and the joint gives at whichever of that and its own
+	 * bed patch reads less. How much masonry is standing there is a fact about the
+	 * GRAPH and only a caller can know it; which of the joint's two in-plane extents is
+	 * the `t` for a given moment is a fact about the interface and only the interface
+	 * knows it. Handing in a modulus would move that pairing outside, where it becomes
+	 * a second copy of the one thing here that is silent when swapped. See
+	 * ComputeUtilisation for why the relief is a `min` and carries no axial term, and
+	 * ARCHING_DESIGN.md slice 5 for the mechanism.
+	 *
+	 * DEFAULTED TO ZERO, WHICH IS "NO MASONRY WAS MEASURED" AND NOT A DEPTH OF NONE. A
+	 * joint with no composite section reads its own patch bit for bit as it did before
+	 * this existed, which is what lets every geometry-free caller go on supplying
+	 * nothing — the same exactness the moment's own default rests on.
+	 *
+	 * @param MomentUuCm       Bending moment about this joint's centroid, uu.cm.
+	 * @param CompositeDepthCm Vertical depth of bonded masonry standing over this joint,
+	 *                         cm. Zero, negative and non-finite all mean no relief.
 	 */
 	double UtilisationUnder(
-		const FVector& Force, const FVector& MomentUuCm = FVector::ZeroVector) const;
+		const FVector& Force,
+		const FVector& MomentUuCm = FVector::ZeroVector,
+		double CompositeDepthCm = 0.0) const;
 
 	/**
 	 * How much of a moment this joint may keep before its thrust line leaves the kern:

@@ -31,6 +31,28 @@ namespace
 	}
 
 	/**
+	 * Elastic section modulus of the DEEP BEAM standing over the joint, cm3, about the
+	 * in-plane axis it is measured ALONG.
+	 *
+	 * THE SAME RECTANGLE FORMULA AT A DIFFERENT DEPTH, and that is the whole of composite
+	 * vertical action. `W = width * depth^2 / 6`: the sibling above is that at the depth of
+	 * the joint's own face, `2*HalfAcross`, and this is it at the depth of the masonry
+	 * standing over the joint. So the two models are nested exactly and a joint with one
+	 * course above it gets a SHALLOWER section than its own patch — no help, by arithmetic
+	 * and not by a special case. ARCHING_DESIGN.md slice 5.
+	 *
+	 * THE WIDTH IS THE SAME HALF-EXTENT EITHER WAY, and that is what pairs a composite
+	 * modulus with the right moment. A vertical plane resisting a moment about axis U is
+	 * as wide as the wall is ALONG U — the identical extent the patch's own W_u reads
+	 * first — so the two moduli differ in the depth and in nothing else, and the pairing
+	 * cannot drift between them.
+	 */
+	double JointCompositeModulusCm3(double HalfAlongCm, double DepthCm)
+	{
+		return (2.0 * HalfAlongCm) * DepthCm * DepthCm / 6.0;
+	}
+
+	/**
 	 * The world axis this joint separates on, or INDEX_NONE if its normal names none.
 	 *
 	 * THE IN-PLANE FRAME IS "the two world axes that are not the separation axis", which
@@ -101,7 +123,8 @@ namespace
 	}
 }
 
-double FConnection::ApplyForce(const FVector& Force, const FVector& MomentUuCm)
+double FConnection::ApplyForce(
+	const FVector& Force, const FVector& MomentUuCm, double CompositeDepthCm)
 {
 	/*
 	 * A joint that has given is out of the structure and carries nothing, so it
@@ -126,8 +149,14 @@ double FConnection::ApplyForce(const FVector& Force, const FVector& MomentUuCm)
 	 * a joint is being asked to carry is the caller's to say, and how it resolves
 	 * onto the face is the joint's. Dropping it here would leave the decision made
 	 * on a strictly smaller load than the one every readout is showing.
+	 *
+	 * AND THE DEPTH TRAVELS WITH THEM, for the mirror-image reason. It is a relief
+	 * rather than a load, so omitting it makes the break decision STRICTER than the
+	 * readout — a joint drawn at 0.37 of capacity that the cascade then snaps at 22.9,
+	 * which is the same drift the moment parameter's own note describes, pointing the
+	 * other way.
 	 */
-	const double Utilisation = UtilisationUnder(Force, MomentUuCm);
+	const double Utilisation = UtilisationUnder(Force, MomentUuCm, CompositeDepthCm);
 
 	/*
 	 * Above 1 the joint gives; exactly 1 is fully loaded but still holding. The
@@ -150,7 +179,8 @@ double FConnection::ApplyForce(const FVector& Force, const FVector& MomentUuCm)
 	return Utilisation;
 }
 
-double FConnection::UtilisationUnder(const FVector& Force, const FVector& MomentUuCm) const
+double FConnection::UtilisationUnder(
+	const FVector& Force, const FVector& MomentUuCm, double CompositeDepthCm) const
 {
 	/*
 	 * The latch is deliberately not consulted. This is pure arithmetic on the
@@ -222,6 +252,26 @@ double FConnection::UtilisationUnder(const FVector& Force, const FVector& Moment
 
 		Section.SectionModulusUCm3 = Frame.ModulusUCm3;
 		Section.SectionModulusVCm3 = Frame.ModulusVCm3;
+
+		/*
+		 * AND THE MASONRY STANDING OVER THE JOINT IS A SECOND SECTION FOR THE SAME MOMENT.
+		 * How much of it there is comes from the caller — it is a fact about the graph, and
+		 * one joint cannot see it — but which extent goes with which axis is this object's
+		 * business, exactly as it is for the patch's own two moduli, so the depth arrives as
+		 * a bare LENGTH and is paired here. Handing in a modulus instead would put the
+		 * pairing outside, where it becomes a second copy of the thing that is easy to swap.
+		 *
+		 * ONLY A REAL DEPTH BUYS ANYTHING. Zero is the ordinary case — nobody measured one —
+		 * and a negative or non-finite depth is refused by the same positive test, which
+		 * leaves the section at zero and ComputeUtilisation withholding the relief.
+		 */
+		if (CompositeDepthCm > 0.0 && FMath::IsFinite(CompositeDepthCm))
+		{
+			Section.CompositeSectionModulusUCm3 = JointCompositeModulusCm3(
+				InterfaceHalfExtentCm[Frame.AxisU], CompositeDepthCm);
+			Section.CompositeSectionModulusVCm3 = JointCompositeModulusCm3(
+				InterfaceHalfExtentCm[Frame.AxisV], CompositeDepthCm);
+		}
 	}
 
 	return DestructionForce::ComputeUtilisation(Load, Strength, Section);
