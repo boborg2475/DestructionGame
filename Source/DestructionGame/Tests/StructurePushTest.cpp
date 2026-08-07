@@ -94,40 +94,51 @@ namespace StructurePushTestSupport
 
 	/*
 	 * ================================================================================
-	 * THE WALL THAT CANNOT HOLD ITSELF UP, AND THE ONE THAT CAN.
+	 * THE WALL THAT CANNOT HOLD ITSELF UP, AND THE THREE THAT CAN.
 	 * ================================================================================
 	 *
-	 * Two walls the same producer lays from the same brick and the same mortar, differing
-	 * only in how they finish at their ends. Everything below is derived here rather than
-	 * imported, and the numbers are measurements of the SOLVER, which is unchanged by any
-	 * of this — the question is only whether the world wire asks it to settle.
-	 */
-
-	/**
-	 * A wall of the kind the game mode lays, with RAGGED ends: full bricks only, so
-	 * alternate courses are a brick short and step in.
+	 * Four walls the same producer lays from the same brick on the same grid, differing
+	 * only in how they finish at their ends and in what is in the joint. Everything below
+	 * is derived here rather than imported, and the numbers are measurements of the
+	 * SOLVER, which is unchanged by any of this — the question is only whether the world
+	 * wire asks it to settle.
 	 *
-	 * WHY A RAGGED END CORBELS AND A FLUSH ONE DOES NOT, WHICH IS THE WHOLE FIXTURE.
+	 * WHY A RAGGED END CORBELS AND A FLUSH ONE DOES NOT, WHICH IS HALF THE FIXTURE.
 	 * Running bond offsets alternate courses by half a cell, 11.25 cm. Where a course
 	 * steps in, the end brick of the course ABOVE it overhangs into thin air and keeps
 	 * exactly ONE bed joint — the 10.25 cm strip it still shares with the brick below —
 	 * whose centroid sits 5.625 cm to the inside of the brick's own centre of mass. That
-	 * 5.625 cm is a genuine eccentricity, it is the SAME on every course, and it is the
-	 * identical lever arm the staircase corbel has (StaircaseWallTestSupport works it
-	 * through). A flush end fills that half cell with a half bat, the end brick gets two
-	 * supports, its centre of mass lands on the area-weighted centroid of them, and the
-	 * eccentricity is exactly zero.
+	 * 5.625 cm is a genuine eccentricity, and it is the identical lever arm the staircase
+	 * corbel has (StaircaseWallTestSupport works that one through). A flush end fills the
+	 * half cell with a half bat, the end brick gets two supports, its centre of mass lands
+	 * on the area-weighted centroid of them, and the eccentricity is exactly zero.
 	 *
-	 * SO THIS IS NOT A CONTRIVED WALL. It is the OTHER value of the one enum field the
-	 * scenario spec sets, and a player who builds a ragged wall tall enough is entitled to
-	 * watch it fall.
+	 * AND WHY RAGGED ALONE IS NO LONGER ENOUGH, WHICH IS THE OTHER HALF AND IS CORRECT
+	 * STATICS RATHER THAN A WEAKENING. A plain toothed end is the ZIG-ZAG case: the joint
+	 * the course above arrives through has the SAME centroid as the joint the end brick
+	 * leaves by, so the load handed down carries no lever arm across it, and the arm on a
+	 * ragged end joint is pinned at its own 5.625 cm forever while the compression under
+	 * it grows course by course. Bending therefore stays put and the compression that
+	 * closes the joint only ever increases, so the ratio PEAKS NEAR THE TOP OF THE WALL
+	 * AND FALLS BELOW IT: a mortared ragged wall reads 0.0455104479 at its worst joint at
+	 * any height that finishes on an odd course, and 0.0582038382 at one finishing on an
+	 * even course. NO MORTARED RAGGED WALL OF ANY HEIGHT IS OVER CAPACITY AS BUILT.
 	 *
-	 * TEN BRICKS PER COURSE RATHER THAN THIRTY, and the reason is arithmetic rather than
-	 * cost: the corbel is a LOCAL phenomenon at each end, so the worst joint of a 40-course
-	 * ragged wall reads 1.24833683 at ten wide and 1.24807195 at thirty. Ten wide keeps the
-	 * world test to 380 actors and lets it tick.
+	 * SO THE WALL THAT CANNOT HOLD ITSELF UP IS THE ONE WITH NOTHING IN THE JOINT. Laid
+	 * DRY — DestructionProfiles::DryStone, whose cohesion and tensile strength are exact
+	 * zeroes rather than small numbers, because there is no bond there at all — a corbel
+	 * whose bed joint is in net tension anywhere on its face has no capacity to resist it
+	 * and gives immediately. That is not a contrived wall either: dry-stone walling is a
+	 * real technique, DryStone is a shipped profile with published figures, and a player
+	 * who stacks bricks dry with toothed ends is entitled to watch the ends come off.
 	 */
-	inline FRunningBondSpec RaggedWallSpec(int32 CoursesHigh, int32 BricksPerCourse)
+
+	/** The one producer call every wall below is a set of arguments to. */
+	inline FRunningBondSpec WallSpecOf(
+		int32 CoursesHigh,
+		int32 BricksPerCourse,
+		EWallEnd End,
+		const FConnectionStrength& Strength)
 	{
 		FRunningBondSpec Spec;
 		Spec.BrickSizeCm = FVector(21.5, 10.25, 6.5);
@@ -135,43 +146,167 @@ namespace StructurePushTestSupport
 		Spec.DensityGramsPerCubicCm = ClayBrick.DensityGramsPerCubicCm;
 		Spec.CoursesHigh = CoursesHigh;
 		Spec.BricksPerCourse = BricksPerCourse;
-		Spec.End = EWallEnd::Ragged;
-		Spec.Strength = GeneralPurposeMortar;
+		Spec.End = End;
+		Spec.Strength = Strength;
 		return Spec;
 	}
-
-	/** The game mode's own scenario wall: 40 courses of 30, FLUSH. */
-	inline FRunningBondSpec ScenarioWallSpec()
-	{
-		FRunningBondSpec Spec = RaggedWallSpec(40, 30);
-		Spec.End = EWallEnd::Flush;
-		return Spec;
-	}
-
-	constexpr int32 OverCapacityWallCourses = 40;
-	constexpr int32 OverCapacityWallBricksPerCourse = 10;
-
-	/** 20 even courses of 10 plus 20 odd courses of 9. */
-	constexpr int32 OverCapacityWallPieceCount = 20 * 10 + 20 * 9;
 
 	/**
-	 * What the ragged wall's worst joint reads AS BUILT, before anything is asked to give.
+	 * TWENTY-FOUR COURSES OF SIX, AND BOTH NUMBERS ARE MEASURED RATHER THAN LIKED.
 	 *
-	 * Over 1, which is the whole point: this is a wall that is not holding itself up. The
-	 * figure is pinned rather than merely compared against 1 so that a load model which
-	 * drifted would be visible here rather than silently keeping the test green from the
-	 * other side of the line.
+	 * SIX WIDE because the corbel is a LOCAL phenomenon at each end — the worst joint of a
+	 * ragged wall reads the same 0.0455104479 at six bricks wide, at ten and at thirty —
+	 * so width buys nothing but actors. What width DOES decide is the size of the triangle
+	 * that survives the settle (see ShouldSurviveSettling): the collapse front retreats one
+	 * brick position every two courses from each end, so the two fronts meet at course
+	 * BricksPerCourse and the survivors are a triangle 6 + 5 + 4 + 3 + 2 + 1 = 21 pieces
+	 * tall, whose apex tops out at Z 44 WHATEVER THE WALL'S HEIGHT.
+	 *
+	 * TWENTY-FOUR HIGH BECAUSE A SHORTER ONE DOES NOT ACTUALLY COME DOWN, and that was
+	 * measured rather than reasoned about. The staircase leaves both ends of courses 2 to
+	 * 5 propped on the two complete bottom courses, so a short wall's released set simply
+	 * SITS DOWN on its own foot: at 16 courses the released centre of mass falls 72.8 to
+	 * 66.5 cm and stops — 6 cm, with only 22 of 67 bricks moving a whole course — which is
+	 * a correct outcome and a useless one to assert on. At 24 the released mass is five
+	 * times the triangle it lands on, the pile cannot stand in a wall one brick thick, and
+	 * the centre of mass goes 103.0 to 1.9 in three seconds with 70 of 111 bricks past a
+	 * course. THE FIXTURE HAD TO BE BIG ENOUGH TO FALL OVER, and the failure mode of
+	 * guessing here is a green test about a wall that shrugged.
+	 *
+	 * 132 ACTORS, against the 380 the fixture this replaces needed, and the test ticks
+	 * every one of them for four simulated seconds.
 	 */
-	constexpr double OverCapacityWorstAsBuilt = 1.24833683;
+	constexpr int32 OverCapacityWallCourses = 24;
+	constexpr int32 OverCapacityWallBricksPerCourse = 6;
 
-	/** The corbel crosses capacity somewhere near course 32, so 13 courses of this wall stand. */
-	constexpr int32 CoursesThatStillStand = 13;
-	constexpr double StandingWorstAsBuilt = 0.398900914;
+	/** 12 even courses of 6 plus 12 odd courses of 5. */
+	constexpr int32 OverCapacityWallPieceCount = 12 * 6 + 12 * 5;
+
+	/** The wall that cannot hold itself up: toothed ends, and nothing in the joint. */
+	inline FRunningBondSpec DryRaggedWallSpec(int32 CoursesHigh, int32 BricksPerCourse)
+	{
+		return WallSpecOf(CoursesHigh, BricksPerCourse, EWallEnd::Ragged, DryStone);
+	}
+
+	/** The game mode's own scenario wall: 40 courses of 30, FLUSH, mortared. */
+	inline FRunningBondSpec ScenarioWallSpec()
+	{
+		return WallSpecOf(40, 30, EWallEnd::Flush, GeneralPurposeMortar);
+	}
+
+	/*
+	 * ================================================================================
+	 * WHAT THE TOP CORBEL CARRIES, WORKED THROUGH HERE AND NOT READ OFF THE SOLVER.
+	 * ================================================================================
+	 *
+	 * A full brick is 21.5 x 10.25 x 6.5 cm of clay at 1.9 g/cm3, so
+	 * W = 2.72163125 kg x 980 cm/s2 = 2667.198625 Unreal force units — and DESIGN.md §3's
+	 * 1 N = 100 uu is already inside that product and must not be applied again.
+	 *
+	 * THE TOP CORBEL IS THE END BRICK OF THE HIGHEST EVEN COURSE, and everything about it
+	 * is countable off the bond rather than recursive:
+	 *
+	 *   - it keeps ONE bed joint, the 10.25 x 10.25 cm strip it still shares with the
+	 *     single brick below, so A = 105.0625 cm2 and its own weight acts 5.625 cm from
+	 *     that strip's centroid;
+	 *   - the ONE brick above it — the end brick of the odd top course — sits on TWO equal
+	 *     supports, so half its weight comes down here, and it arrives through a patch
+	 *     with the SAME centroid, which is the zig-zag: force, no arm.
+	 *
+	 * So F = 1.5 W and M = 5.625 W exactly, with no series to sum. Bending about the
+	 * joint's Y axis is resisted by W_v = (4/3) x 5.125 x 5.125^2 = 179.4817708 cm3, and
+	 * beam theory on an uncracked rectangle puts the fibre stress at |M|/W_v -+ N/A:
+	 *
+	 *     tension     = 5.625 W / 179.4817708 - 1.5 W / 105.0625  = +0.00455104 MPa
+	 *     compression = 5.625 W / 179.4817708 + 1.5 W / 105.0625  = +0.01216708 MPa
+	 *
+	 * both after dividing by the 10000 uu per MPa.cm2 spelled out below rather than
+	 * imported.
+	 *
+	 * WHICH AXIS GOVERNS IS ASSERTED, NEVER ASSUMED, because ComputeUtilisation returns
+	 * the WORST of three and a fixture aimed at tension that silently measured compression
+	 * would be a green test about nothing. Against DryStone's 0.0 MPa tensile and 30 MPa
+	 * compressive the two ratios are "infinite" and 0.000406; against general purpose
+	 * mortar's 0.10 and 10.0 they are 0.0455104479 and 0.00121671. Tension governs by
+	 * three orders of magnitude either way, and the shear axis carries nothing at all —
+	 * gravity is normal to a bed joint.
+	 *
+	 * AND WHY ONLY THE TOP TWO CORBELS OF EACH END ARE OVER CAPACITY, WHICH IS THE FIXTURE
+	 * PRECONDITION WITH THE MOST TEETH IN IT. The arm is the same 5.625 cm on every rung
+	 * while the force grows downward, so the joint stops opening once the compression
+	 * closes it: net tension survives only while F < M x A / W_v = 5.625 x 105.0625 /
+	 * 179.4817708 = 3.29270 brick weights. Reading the ladder down from the top, the
+	 * corbels carry 1.5, 2.75, 3.9375, 5.09375, 6.230469, 7.354492 and 8.470215 W — so
+	 * exactly TWO rungs per end fall under 3.2927 and exactly four joints in the wall are
+	 * over capacity as built. Everything below them comes down in the CASCADE, as the
+	 * wall above them is shed and their own compression goes with it.
+	 */
+
+	/** 1.9 g/cm3 x 21.5 x 10.25 x 6.5 cm / 1000 = 2.72163125 kg, x 980 cm/s2. */
+	constexpr double FullBrickWeightUu = 1.9 * 21.5 * 10.25 * 6.5 / 1000.0 * 980.0;
+
+	/** The half-brick bed patch a corbel keeps: 10.25 along the wall by 10.25 through it. */
+	constexpr double CorbelBedAreaSqCm = 10.25 * 10.25;
+
+	/** (4/3) x h_u x h_v^2 for that square patch, cm3. */
+	constexpr double CorbelSectionModulusCm3 =
+		(4.0 / 3.0) * (10.25 / 2.0) * (10.25 / 2.0) * (10.25 / 2.0);
+
+	/** Half of one half-step: the brick keeps half a cell, so its centre is 22.5 / 4 out. */
+	constexpr double CorbelOwnWeightArmCm = 22.5 / 4.0;
+
+	/**
+	 * Unreal force units per MPa per cm2, SPELLED OUT RATHER THAN IMPORTED.
+	 *
+	 * DESIGN.md §3's whole units section exists because a missing or duplicated conversion
+	 * is out by exactly 100x and tuned thresholds conceal it well. Production has one named
+	 * boundary for this; a test that read it would agree with a wrong one.
+	 */
+	constexpr double ForceUnitsPerMPaSqCmHere = 10000.0;
+
+	/** EN 1996-1-1 Table 3.2's f_xk1 for general purpose mortar, asserted against the profile. */
+	constexpr double MortarTensileMPa = 0.10;
+
+	/** Dry stone has no bond at all, so this is an EXACT zero rather than a small number. */
+	constexpr double DryStoneTensileMPa = 0.0;
+
+	/** Force and moment on the top corbel's one bed joint, in brick weights. */
+	constexpr double TopCorbelForceBrickWeights = 1.5;
+	constexpr double TopCorbelMomentBrickWeightCm = CorbelOwnWeightArmCm;
+
+	/** Where the corbel stops opening: F x W_v / (M x A), in brick weights. */
+	constexpr double CorbelClosesAboveBrickWeights =
+		CorbelOwnWeightArmCm * CorbelBedAreaSqCm / CorbelSectionModulusCm3;
+
+	/** Two rungs per end are under that figure, so four joints in the wall are over capacity. */
+	constexpr int32 OverCapacityJointsAsBuilt = 4;
+
+	/** The peak fibre stresses on that joint, MPa, from the block above. */
+	constexpr double TopCorbelTensileStressMPa =
+		FullBrickWeightUu
+		* (TopCorbelMomentBrickWeightCm / CorbelSectionModulusCm3
+			- TopCorbelForceBrickWeights / CorbelBedAreaSqCm)
+		/ ForceUnitsPerMPaSqCmHere;
+
+	/**
+	 * The SAME wall in mortar, at the same joint: 0.00455104 MPa against 0.10 MPa.
+	 *
+	 * PINNED AS A NUMBER RATHER THAN AS "under 1", so a load model that drifted is visible
+	 * here rather than silently keeping the test green from the safe side of the line. It
+	 * is the figure the ragged wall reads at ANY height finishing on an odd course.
+	 */
+	constexpr double MortarRaggedWorstAsBuilt = 0.0455104479;
 
 	/** The scenario wall's worst joint — MOMENTS_DESIGN.md's regression anchor, and exact. */
 	constexpr double ScenarioWorstAsBuilt = 0.00495042219;
 
 	constexpr int32 ScenarioWallPieceCount = 1220;
+
+	/** A dry FLUSH wall of the same size has no corbel anywhere, and reads this. */
+	constexpr double DryFlushWorstAsBuilt = 0.000971218165;
+
+	/** 12 even courses of 6 full bricks, 12 odd courses of 5 full bricks and 2 half bats. */
+	constexpr int32 DryFlushWallPieceCount = 12 * 6 + 12 * 7;
 
 	/* The coordinating grid: a brick plus a joint, and half of it is the bond offset. */
 	constexpr double CoursePitchCm = 6.5 + 1.0;
@@ -208,8 +343,16 @@ namespace StructurePushTestSupport
 	 * Courses 0 and 1 lose nothing: course 0 is grounded, and course 1's end brick still
 	 * rests squarely on two bricks of it. The two fronts meet when floor(c / 2) x 2 reaches
 	 * the number of bricks in the course, and everything above that has nothing left under it
-	 * at all — at ten wide that is course 10, so 55 of 380 pieces survive, in a triangle
-	 * 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 courses tall.
+	 * at all — at six wide that is course 6, so 21 of 132 pieces survive, in a triangle
+	 * 6, 5, 4, 3, 2, 1 courses tall, and it tops out at Z 44 however tall the wall was.
+	 *
+	 * WHY THE TRIANGLE IS WHERE THE FRONT STOPS, AND IT IS GEOMETRY RATHER THAN A THRESHOLD.
+	 * Every brick it leaves standing has TWO supports again: a surviving brick at position
+	 * floor(c / 2) of course c sits at X = 11.25c, and the two survivors nearest it in course
+	 * c - 1 sit at X = 11.25c -+ 11.25, so it keeps a 10.25 cm strip on each and its centre of
+	 * mass lands exactly on the area-weighted centroid of the pair. Zero eccentricity, no
+	 * moment, no tension — which is why the front halts there for a DRY wall with no tensile
+	 * capacity at all, and not merely for one whose corbels happened to stay under a limit.
 	 *
 	 * THIS IS THE CONSEQUENCE OF SETTLING AT BUILD TIME, WRITTEN DOWN RATHER THAN DISCOVERED.
 	 * It is a lot of wall, and it is correct: those bricks were never being held up, and the
@@ -230,8 +373,8 @@ namespace StructurePushTestSupport
 	 * because nothing integrates it at all. So any positive number discriminates, and the
 	 * only job of this one is to be far enough above the zero a kinematic body reports and
 	 * far enough below anything a real body does in a second of gravity. A tenth of a
-	 * millimetre is a hundredth of the mortar joint and a thousandth of a course, and the
-	 * smallest movement any of the 325 released bricks makes is reported on every run so the
+	 * millimetre is a hundredth of the nominal joint and a thousandth of a course, and the
+	 * smallest movement any of the 111 released bricks makes is reported on every run so the
 	 * margin is visible rather than assumed.
 	 *
 	 * WHY THIS IS THE PER-BRICK CLAIM AND A FALL DISTANCE IS NOT, see the outcome block.
@@ -239,20 +382,21 @@ namespace StructurePushTestSupport
 	constexpr double ReleasedMustMoveCm = 0.01;
 
 	/**
-	 * HOW LONG A 380-BRICK WALL TAKES TO FALL DOWN, MEASURED RATHER THAN GUESSED.
+	 * HOW LONG A 132-BRICK WALL TAKES TO FALL DOWN, MEASURED RATHER THAN GUESSED.
 	 *
 	 * A released brick in this collapse is NOT in free fall, which is the thing that caught
 	 * the first version of this test out. The whole wall lets go at the same instant, so
 	 * every brick is resting on another that is also falling and the stack compacts from the
-	 * bottom rather than dropping: nothing outruns what is beneath it. The released centre of
-	 * mass reads Z 146.652 after one second, 24.156 after two, -10.147 after three, and then
-	 * -10.171, -10.172, -10.173, -10.172, -10.172 for seconds four through eight — the pile
-	 * at rest, to a hundredth of a centimetre, for five straight seconds.
+	 * bottom rather than dropping: nothing outruns what is beneath it, and the pile then has
+	 * to topple sideways out of a wall one brick thick before it can go anywhere. The
+	 * released centre of mass reads Z 92.434 after one second, 75.480 after two, 1.966 after
+	 * three, and then 1.879, 1.881, 1.881, 1.881, 1.881 for seconds four through eight — the
+	 * pile at rest, to a thousandth of a centimetre, for five straight seconds.
 	 *
-	 * SO ONE SECOND WAS A COLLAPSE A FIFTH OF THE WAY THROUGH. Three is where it finishes,
-	 * and the test then ticks ONE MORE and asserts the difference is nothing, so this number
-	 * is a claim the run checks rather than a duration somebody liked. It costs about a third
-	 * of a second of wall clock per simulated second at this scale.
+	 * SO ONE SECOND WAS A COLLAPSE A TENTH OF THE WAY THROUGH, and two was barely a quarter.
+	 * Three is where it finishes, and the test then ticks ONE MORE and asserts the difference
+	 * is nothing, so this number is a claim the run checks rather than a duration somebody
+	 * liked.
 	 *
 	 * A FIXED COUNT OF SECONDS, NEVER A "HAS IT SETTLED" POLL — the reason is written on
 	 * BrickWorldTestSupport::PhysicsStepSeconds, and a poll would turn this failure into a
@@ -263,10 +407,10 @@ namespace StructurePushTestSupport
 	/**
 	 * How still "the collapse has finished" is, in cm of centre of mass over the last second.
 	 *
-	 * The rubble moves 0.024 cm between three seconds and four, having travelled 180 cm to
-	 * get there; the seconds after that move a thousandth. 1 cm is forty times the former and
-	 * a hundred and eightieth of the latter, so it is a floor under "at rest" rather than a
-	 * fit to it — and it is still less than the mortar joint one brick could settle into.
+	 * The rubble moves 0.087 cm between three seconds and four, having travelled 101 cm to
+	 * get there; the seconds after that move two thousandths. 1 cm is eleven times the
+	 * former and five hundred times the latter, so it is a floor under "at rest" rather than
+	 * a fit to it — and it is still less than the nominal joint one brick could settle into.
 	 */
 	constexpr double RubbleAtRestCm = 1.0;
 
@@ -810,15 +954,23 @@ bool FStructurePushOrphanedPiecesFallTest::RunTest(const FString& Parameters)
  * A WALL THAT CANNOT HOLD ITSELF UP COMES DOWN WHEN IT IS BUILT, NOT WHEN SOMEBODY
  * HAPPENS TO CLICK.
  *
- * WHAT IS WRONG TODAY. UDestructionStructureSubsystem::SolveAndPush calls
- * FStructureBinding::SolveLoads, which is documented as NON-DESTRUCTIVE and breaks nothing
- * however overloaded a joint is. The commit doors — RunPieceAction and RunPieceActions —
- * call SolveAndBreak. So a structure that is over capacity the moment it is laid stands
- * there indefinitely, and then sheds the moment the player right-clicks ANY brick anywhere
- * in it: a 40-course ragged wall reads 1.248 as built, and deleting one brick twenty-five
- * bricks and thirty courses away from anything overloaded takes 470 joints out in 27
- * passes. The collapse is real; the attribution is a lie, and the player is told they did
- * something they did not do.
+ * WHAT WAS WRONG, AND WHAT THIS GUARDS NOW THAT IT IS NOT.
+ * UDestructionStructureSubsystem::SolveAndPush used to call FStructureBinding::SolveLoads,
+ * which is documented as NON-DESTRUCTIVE and breaks nothing however overloaded a joint is,
+ * while the commit doors — RunPieceAction and RunPieceActions — called SolveAndBreak. So a
+ * structure that was over capacity the moment it was laid stood there indefinitely, and
+ * then shed the moment the player right-clicked ANY brick anywhere in it: this fixture's
+ * wall has four joints past capacity before anybody touches it, and deleting one brick at
+ * the far end of the far course takes 124 joints out in 23 passes. The collapse was real;
+ * the attribution was a lie, and the player was told they had done something they had not.
+ *
+ * SO THIS TEST IS A REGRESSION NET RATHER THAN A DRIVER, AND IT IS SAID PLAINLY. The line
+ * it exists for is the SolveAndBreak in SolveAndPush, and that line is already there. PROOF
+ * THAT IT BITES, run rather than asserted: reverting that one call to SolveLoads leaves the
+ * wall standing with 0 pieces released against 111 expected, 0 joints carrying a break pass,
+ * every one of the 111 released bricks reading EXACTLY 0.000000 cm of movement, and the
+ * released centre of mass sitting where it was laid at Z 103.047 against a triangle whose
+ * top is Z 44. It is the fixture that had to be replaced, not the claim.
  *
  * THE DECISION IS TO SETTLE AT BUILD TIME. A wall that cannot hold itself up should not
  * stand waiting for a click. That is DESIGN.md §3's own rule — a joint over capacity gives,
@@ -828,19 +980,27 @@ bool FStructurePushOrphanedPiecesFallTest::RunTest(const FString& Parameters)
  * BuildRunningBond, which would have the producer REFUSE geometry that is merely weak; a
  * weak wall is a real thing a player should be allowed to build and watch fall.
  *
- * THE CONSEQUENCE, STATED RATHER THAN DISCOVERED, AND IT IS LARGE. A tall ragged wall now
- * collapses from its own ends on spawn, and the collapse front is a staircase retreating
- * half a brick per course — so at ten bricks wide the two fronts meet at course 10 and 325
- * of 380 pieces come down, leaving a triangle. See ShouldSurviveSettling for the derivation.
+ * THE WALL IS BUILT OVER CAPACITY BY ONE CALL TO THE PRODUCER, AND THAT IS DELIBERATE
+ * RATHER THAN CONVENIENT. Nothing below removes a piece, cuts a void or resolves a menu
+ * row: BuildRunningBond lays it, SolveAndPush is asked once, and the claim is that ONE
+ * call settles it. A fixture that had to be carved into shape first would leave "built"
+ * and "clicked" arguable, which is the whole distinction under test.
+ *
+ * THE CONSEQUENCE, STATED RATHER THAN DISCOVERED, AND IT IS LARGE. A dry-laid ragged wall
+ * now collapses from its own ends on spawn, and the collapse front is a staircase retreating
+ * half a brick per course — so at six bricks wide the two fronts meet at course 6 and 111
+ * of 132 pieces come down, leaving a triangle. See ShouldSurviveSettling for the derivation.
  * That is correct: those bricks were never being held up. The ONLY thing making them look
  * held up was a wire that declined to ask.
  *
- * AND THE SCENARIO WALL MUST BE COMPLETELY UNAFFECTED, WHICH IS THE OTHER HALF AND NOT
- * DECORATION. Without it, "settle at build time" is satisfied by an implementation that
- * knocks down every wall in the game. The wall ADestructionGameGameMode actually lays is
- * FLUSH, its end bricks have two supports each, their centres of mass sit exactly on the
- * area-weighted centroid of those supports, and its worst joint is 0.00495042219 — two
- * hundred times under capacity. Settling it must break nothing at all.
+ * AND THREE WALLS MUST BE COMPLETELY UNAFFECTED, WHICH IS THE OTHER HALF AND NOT DECORATION.
+ * Without them, "settle at build time" is satisfied by an implementation that knocks down
+ * every wall in the game — and each of the three subtracts a different candidate
+ * explanation. The SAME ragged wall MORTARED reads 0.0455104479, so it is not the toothed
+ * end on its own. The same DRY wall finished FLUSH reads 0.000633860176, so it is not the
+ * missing bond on its own. And the wall ADestructionGameGameMode actually lays — flush,
+ * mortared, 40 courses of 30 — reads 0.00495042219, so nothing in the game's own scenario
+ * moves. All three must settle in zero breaking passes.
  *
  * WHY BOTH HALVES OF THE OUTCOME ARE ASSERTED. DESIGN.md §4 is explicit that an integration
  * test measures the structure actually moving: a break stamp is a step, and a released flag
@@ -855,6 +1015,13 @@ bool FStructurePushOrphanedPiecesFallTest::RunTest(const FString& Parameters)
  * AND NOTHING IS Stranded. A ragged wall is exactly the shape that could make an unroutable
  * knot, and a wall that came down because the solver declined to divide load round a loop
  * would be a model limitation wearing a collapse's clothes.
+ *
+ * AND WHICH AXIS GOVERNS IS ASSERTED RATHER THAN ASSUMED. GetConnectionUtilisation returns
+ * the worst of compression, shear and tension, so a fixture aimed at a corbel levering its
+ * joint OPEN would read exactly the same if compression happened to be the governing axis
+ * — and would then be measuring nothing anybody wrote down. The worked arithmetic is on
+ * TopCorbelTensileStressMPa, and the block below checks the force and the moment the joint
+ * actually carries against it before claiming anything about capacity.
  *
  * NEEDS A TICKING WORLD: yes, and it is the point — this is about the wire between the
  * solver and the world, and the solver's own answer is unchanged by any of it.
@@ -891,7 +1058,7 @@ bool FStructurePushOverCapacityWallSettlesOnBuildTest::RunTest(const FString& Pa
 
 	/*
 	 * ================================================================================
-	 * FIRST, THE TWO WALLS AS ARITHMETIC, WITH NO WORLD IN THE WAY.
+	 * FIRST, THE FOUR WALLS AS ARITHMETIC, WITH NO WORLD IN THE WAY.
 	 * ================================================================================
 	 *
 	 * Core/Layout and FStructure are world-free, so what each wall carries costs
@@ -900,56 +1067,271 @@ bool FStructurePushOverCapacityWallSettlesOnBuildTest::RunTest(const FString& Pa
 	 * the same before and after this change, and this block is where that is pinned.
 	 */
 	{
-		FBrickLayout Ragged;
+		FBrickLayout Dry;
 
-		TestTrue(TEXT("fixture: the producer should lay a 40-course ragged wall"),
-			RunningBond(RaggedWallSpec(OverCapacityWallCourses, OverCapacityWallBricksPerCourse), Ragged));
+		TestTrue(TEXT("fixture: the producer should lay the dry ragged wall"),
+			RunningBond(
+				DryRaggedWallSpec(OverCapacityWallCourses, OverCapacityWallBricksPerCourse), Dry));
 
-		Ragged.Structure.SolveLoads();
+		TestEqual(
+			FString::Printf(TEXT("fixture: the dry ragged wall should be %d pieces"),
+				OverCapacityWallPieceCount),
+			Dry.Structure.NumPieces(), OverCapacityWallPieceCount);
 
-		int32 WorstJoint = INDEX_NONE;
-		const double Worst = WorstJointOf(Ragged.Structure, WorstJoint);
+		/*
+		 * THE PROFILE IS ASSERTED, NEVER TRUSTED. The whole fixture is "there is no bond in
+		 * this joint", so a DryStone row that quietly grew a tensile strength would leave
+		 * every claim below measuring something else. The figures are written here rather
+		 * than read across, exactly as the conversion constant is.
+		 */
+		TestEqual(
+			FString::Printf(TEXT("fixture: DryStone's tensile strength must be an exact zero, it is %g MPa"),
+				DryStone.TensileStrengthMPa),
+			DryStone.TensileStrengthMPa, DryStoneTensileMPa);
+
+		TestEqual(
+			FString::Printf(TEXT("fixture: GeneralPurposeMortar's f_xk1 must be %g MPa, it is %g"),
+				MortarTensileMPa, GeneralPurposeMortar.TensileStrengthMPa),
+			GeneralPurposeMortar.TensileStrengthMPa, MortarTensileMPa);
+
+		Dry.Structure.SolveLoads();
+
+		/*
+		 * THE JOINT THE WHOLE FIXTURE RESTS ON, FOUND BY GEOMETRY RATHER THAN BY INDEX: the
+		 * end brick of the highest EVEN course, and the one brick still under it half a step
+		 * to its right. A joint handle is an artefact of the order the producer emits pairs
+		 * in, and a fixture that hard-coded one would silently start watching a different
+		 * joint the day that order changed.
+		 */
+		const int32 TopCorbelCourse =
+			OverCapacityWallCourses % 2 == 0 ? OverCapacityWallCourses - 2 : OverCapacityWallCourses - 1;
+
+		int32 TopCorbel = INDEX_NONE;
+		int32 TopCorbelSupport = INDEX_NONE;
+
+		for (int32 Piece = 0; Piece < Dry.Boxes.Num(); ++Piece)
+		{
+			const double CentreXCm = Dry.Boxes[Piece].CentreCm.X;
+			const double CentreZCm = Dry.Boxes[Piece].CentreCm.Z;
+
+			if (FMath::IsNearlyEqual(CentreZCm, 6.5 * 0.5 + TopCorbelCourse * CoursePitchCm, 0.01)
+				&& FMath::IsNearlyEqual(CentreXCm, 0.0, 0.01))
+			{
+				TopCorbel = Piece;
+			}
+
+			if (FMath::IsNearlyEqual(CentreZCm, 6.5 * 0.5 + (TopCorbelCourse - 1) * CoursePitchCm, 0.01)
+				&& FMath::IsNearlyEqual(CentreXCm, BrickPitchCm * 0.5, 0.01))
+			{
+				TopCorbelSupport = Piece;
+			}
+		}
+
+		int32 TopCorbelJoint = INDEX_NONE;
+
+		for (int32 Joint = 0; Joint < Dry.Structure.NumConnections(); ++Joint)
+		{
+			const FConnection& Candidate = Dry.Structure.GetConnection(Joint);
+
+			if ((Candidate.PieceA == TopCorbel && Candidate.PieceB == TopCorbelSupport)
+				|| (Candidate.PieceA == TopCorbelSupport && Candidate.PieceB == TopCorbel))
+			{
+				TopCorbelJoint = Joint;
+			}
+		}
+
+		if (TopCorbelJoint == INDEX_NONE)
+		{
+			AddError(FString::Printf(
+				TEXT("fixture: course %d should have an end brick at X 0 resting on one at X %g; the pieces resolved to %d and %d"),
+				TopCorbelCourse, BrickPitchCm * 0.5, TopCorbel, TopCorbelSupport));
+
+			return true;
+		}
+
+		/*
+		 * WHAT THAT JOINT CARRIES, AGAINST THE HAND ARITHMETIC AND NOT AGAINST ITSELF. The
+		 * force is 1.5 brick weights because the corbel's own weight plus half of the one
+		 * brick above it is all that reaches it; the moment is 5.625 brick-weight-centimetres
+		 * because the corbel's own weight is the ONLY load with a lever arm — the half share
+		 * from above arrives through a patch with the same centroid, which is the zig-zag.
+		 *
+		 * BOTH ARE ASSERTED BEFORE ANY CLAIM ABOUT CAPACITY, because a joint carrying a
+		 * plausible force with the wrong moment reads as a plausible utilisation, and that is
+		 * exactly the failure this project keeps finding.
+		 */
+		const double CorbelForceUu = Dry.Structure.GetConnectionForce(TopCorbelJoint).Size();
+		const double CorbelMomentUuCm = Dry.Structure.GetConnectionMoment(TopCorbelJoint).Size();
 
 		AddInfo(FString::Printf(
-			TEXT("the ragged %d x %d wall's worst joint as built is joint %d at %.9g of capacity"),
-			OverCapacityWallCourses, OverCapacityWallBricksPerCourse, WorstJoint, Worst));
+			TEXT("the top corbel (course %d, piece %d on piece %d, joint %d) carries %.6f uu (%.6f W) and %.6f uu.cm (%.6f W.cm)"),
+			TopCorbelCourse, TopCorbel, TopCorbelSupport, TopCorbelJoint,
+			CorbelForceUu, CorbelForceUu / FullBrickWeightUu,
+			CorbelMomentUuCm, CorbelMomentUuCm / FullBrickWeightUu));
 
 		TestTrue(
 			FString::Printf(
-				TEXT("fixture: a 40-course ragged wall is over capacity as built at %.9g, it reads %.9g"),
-				OverCapacityWorstAsBuilt, Worst),
-			FMath::IsNearlyEqual(Worst, OverCapacityWorstAsBuilt, OverCapacityWorstAsBuilt * 1.0e-6));
+				TEXT("the top corbel joint must carry %.6f brick weights, %.6f uu; it carries %.6f uu"),
+				TopCorbelForceBrickWeights, TopCorbelForceBrickWeights * FullBrickWeightUu, CorbelForceUu),
+			FMath::IsNearlyEqual(CorbelForceUu, TopCorbelForceBrickWeights * FullBrickWeightUu, 1.0e-6));
 
 		TestTrue(
-			FString::Printf(TEXT("fixture: and that is over 1, which is what makes this wall the fixture")),
-			Worst > 1.0);
+			FString::Printf(
+				TEXT("and %.6f brick-weight-centimetres of moment, %.6f uu.cm; it carries %.6f uu.cm"),
+				TopCorbelMomentBrickWeightCm, TopCorbelMomentBrickWeightCm * FullBrickWeightUu,
+				CorbelMomentUuCm),
+			FMath::IsNearlyEqual(
+				CorbelMomentUuCm, TopCorbelMomentBrickWeightCm * FullBrickWeightUu, 1.0e-6));
+
+		/*
+		 * AND THE AXIS THAT GOVERNS IS TENSION, WHICH IS ASSERTED RATHER THAN ASSUMED. The
+		 * same joint in MORTAR reads the tension ratio exactly — 0.00455104 MPa over f_xk1's
+		 * 0.10 — so a run in which compression or shear had taken over would show up here as a
+		 * number that no longer matched the hand arithmetic instead of as a silent pass.
+		 */
+		FBrickLayout Mortared;
+
+		TestTrue(TEXT("fixture: the producer should lay the same wall mortared"),
+			RunningBond(
+				WallSpecOf(OverCapacityWallCourses, OverCapacityWallBricksPerCourse,
+					EWallEnd::Ragged, GeneralPurposeMortar),
+				Mortared));
+
+		Mortared.Structure.SolveLoads();
+
+		int32 MortaredWorstJoint = INDEX_NONE;
+		const double MortaredWorst = WorstJointOf(Mortared.Structure, MortaredWorstJoint);
+
+		AddInfo(FString::Printf(
+			TEXT("the same ragged wall MORTARED reads %.9g at joint %d, against %.9g of hand-computed tension over f_xk1"),
+			MortaredWorst, MortaredWorstJoint, TopCorbelTensileStressMPa / MortarTensileMPa));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("the hand arithmetic must come to the pinned %.9g, it comes to %.9g"),
+				MortarRaggedWorstAsBuilt, TopCorbelTensileStressMPa / MortarTensileMPa),
+			FMath::IsNearlyEqual(
+				TopCorbelTensileStressMPa / MortarTensileMPa, MortarRaggedWorstAsBuilt, 1.0e-9));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("the mortared wall's worst joint must be the top corbel's tension, %.9g; it reads %.9g"),
+				MortarRaggedWorstAsBuilt, MortaredWorst),
+			FMath::IsNearlyEqual(MortaredWorst, MortarRaggedWorstAsBuilt, 1.0e-9));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("and it must be the SAME joint the dry wall is condemned at, joint %d; the mortared worst is joint %d"),
+				TopCorbelJoint, MortaredWorstJoint),
+			MortaredWorstJoint == TopCorbelJoint);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("so a mortared ragged wall stands as built at %.9g, and raggedness alone is not what condemns this one"),
+				MortaredWorst),
+			MortaredWorst < 1.0);
+
+		TestEqual(
+			TEXT("and settling the mortared wall must break nothing at all"),
+			Mortared.Structure.SolveAndBreak(), 0);
+
+		/*
+		 * NOW THE DRY WALL: the identical geometry with nothing in the joint, and the SAME
+		 * tension against a capacity of exactly zero.
+		 *
+		 * HOW MANY JOINTS, NOT MERELY THAT ONE IS. The arm is 5.625 cm on every rung of the
+		 * corbel while the force grows downward, so a joint stays open only while it carries
+		 * under 3.29270 brick weights — and the ladder reads 1.5, 2.75, 3.9375, ... so exactly
+		 * two rungs per end qualify. A load model reading high or low would move that count
+		 * long before it moved anything a "worst joint is over 1" row could see.
+		 */
+		int32 OverCapacity = 0;
+		double WorstUnderCapacity = 0.0;
+
+		for (int32 Joint = 0; Joint < Dry.Structure.NumConnections(); ++Joint)
+		{
+			const double Utilisation = Dry.Structure.GetConnectionUtilisation(Joint);
+
+			if (Utilisation > 1.0)
+			{
+				++OverCapacity;
+
+				const double ForceBrickWeights =
+					Dry.Structure.GetConnectionForce(Joint).Size() / FullBrickWeightUu;
+
+				TestTrue(
+					FString::Printf(
+						TEXT("every over-capacity joint must be a corbel still carrying under %.5f brick weights; joint %d carries %.6f"),
+						CorbelClosesAboveBrickWeights, Joint, ForceBrickWeights),
+					ForceBrickWeights < CorbelClosesAboveBrickWeights);
+			}
+			else
+			{
+				WorstUnderCapacity = FMath::Max(WorstUnderCapacity, Utilisation);
+			}
+		}
+
+		AddInfo(FString::Printf(
+			TEXT("the dry ragged wall has %d of %d joints over capacity as built; the worst of the rest reads %.9g"),
+			OverCapacity, Dry.Structure.NumConnections(), WorstUnderCapacity));
+
+		TestEqual(
+			FString::Printf(
+				TEXT("fixture: exactly %d joints — two corbels at each end — must be over capacity as built, %d are"),
+				OverCapacityJointsAsBuilt, OverCapacity),
+			OverCapacity, OverCapacityJointsAsBuilt);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture: and the top corbel joint %d must be one of them; it reads %.9g"),
+				TopCorbelJoint, Dry.Structure.GetConnectionUtilisation(TopCorbelJoint)),
+			Dry.Structure.GetConnectionUtilisation(TopCorbelJoint) > 1.0);
+
+		/*
+		 * AND THE REST OF THE WALL IS NOWHERE NEAR ANYTHING. Three orders of magnitude under
+		 * capacity says this is not a weak wall that would fall over whatever you did to it:
+		 * its ENDS are unbuildable and the rest of it is fine, which is what makes the
+		 * surviving triangle below a prediction rather than an accident.
+		 */
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture: every other joint in the dry wall must be far under capacity; the worst reads %.9g"),
+				WorstUnderCapacity),
+			WorstUnderCapacity < 0.01);
 	}
 
 	/*
-	 * AND A SHORT RAGGED WALL IS NOT OVER CAPACITY, which is what stops "ragged" being read
-	 * as "doomed". The corbel eccentricity is the same 5.625 cm on every course; what grows
-	 * with height is the force on it, so a wall crosses the line at a height rather than at
-	 * a bond pattern. Thirteen courses reads 0.399 and must settle to nothing — this is the
-	 * row that keeps every existing ragged fixture in this suite meaningful.
+	 * AND A DRY FLUSH WALL OF THE SAME SIZE IS NOT OVER CAPACITY, which is what stops "no
+	 * mortar" being read as "doomed". A half bat fills the half cell at each end, the end
+	 * brick gets two supports, its centre of mass lands on the area-weighted centroid of them
+	 * and the eccentricity is exactly zero — so there is no tension anywhere for a joint with
+	 * no tensile capacity to fail at. This is the row that isolates the CORBEL as the cause.
 	 */
 	{
-		FBrickLayout Short;
+		FBrickLayout DryFlush;
 
-		TestTrue(TEXT("fixture: the producer should lay a short ragged wall"),
-			RunningBond(RaggedWallSpec(CoursesThatStillStand, OverCapacityWallBricksPerCourse), Short));
+		TestTrue(TEXT("fixture: the producer should lay a dry FLUSH wall"),
+			RunningBond(
+				WallSpecOf(OverCapacityWallCourses, OverCapacityWallBricksPerCourse,
+					EWallEnd::Flush, DryStone),
+				DryFlush));
 
-		Short.Structure.SolveLoads();
+		TestEqual(
+			FString::Printf(TEXT("fixture: the dry flush wall should be %d pieces"), DryFlushWallPieceCount),
+			DryFlush.Structure.NumPieces(), DryFlushWallPieceCount);
+
+		DryFlush.Structure.SolveLoads();
 
 		int32 WorstJoint = INDEX_NONE;
-		const double Worst = WorstJointOf(Short.Structure, WorstJoint);
+		const double Worst = WorstJointOf(DryFlush.Structure, WorstJoint);
 
 		TestTrue(
 			FString::Printf(
-				TEXT("a %d-course ragged wall stands: its worst joint should read %.9g, it reads %.9g"),
-				CoursesThatStillStand, StandingWorstAsBuilt, Worst),
-			FMath::IsNearlyEqual(Worst, StandingWorstAsBuilt, StandingWorstAsBuilt * 1.0e-6));
+				TEXT("a dry wall with flush ends stands: its worst joint should read %.9g, it reads %.9g"),
+				DryFlushWorstAsBuilt, Worst),
+			FMath::IsNearlyEqual(Worst, DryFlushWorstAsBuilt, DryFlushWorstAsBuilt * 1.0e-6));
 
-		const int32 Passes = Short.Structure.SolveAndBreak();
+		const int32 Passes = DryFlush.Structure.SolveAndBreak();
 
 		TestEqual(
 			FString::Printf(
@@ -1011,7 +1393,7 @@ bool FStructurePushOverCapacityWallSettlesOnBuildTest::RunTest(const FString& Pa
 
 	/*
 	 * ================================================================================
-	 * NOW THE WIRE: BUILD THE RAGGED WALL IN A WORLD AND SOLVE-AND-PUSH IT ONCE.
+	 * NOW THE WIRE: BUILD THE DRY RAGGED WALL IN A WORLD AND SOLVE-AND-PUSH IT ONCE.
 	 * ================================================================================
 	 */
 	FBrickTestWorld TestWorld;
@@ -1022,7 +1404,7 @@ bool FStructurePushOverCapacityWallSettlesOnBuildTest::RunTest(const FString& Pa
 	}
 
 	const int32 StructureId = TestWorld.Subsystem->BuildRunningBond(
-		RaggedWallSpec(OverCapacityWallCourses, OverCapacityWallBricksPerCourse));
+		DryRaggedWallSpec(OverCapacityWallCourses, OverCapacityWallBricksPerCourse));
 
 	FStructureBinding* Binding = TestWorld.Subsystem->Find(StructureId);
 
@@ -1157,20 +1539,20 @@ bool FStructurePushOverCapacityWallSettlesOnBuildTest::RunTest(const FString& Pa
 		HighestPass > 1);
 
 	/*
-	 * WHICH BRICKS, NOT HOW MANY. A count is satisfied by releasing any 325 of them, and
+	 * WHICH BRICKS, NOT HOW MANY. A count is satisfied by releasing any 111 of them, and
 	 * the defect that matters — a wall that came apart in the wrong place — leaves every
 	 * count agreeing.
 	 *
-	 * COUNTED IN FULL AND REPORTED IN PART. Three hundred and twenty-five pieces can each
-	 * be wrong in three ways, and a failure that writes a thousand lines is a failure
-	 * nobody reads. The first few are what a maintainer works from; the totals are the
-	 * assertions, so nothing is hidden by the cap.
+	 * COUNTED IN FULL AND REPORTED IN PART. A hundred and eleven pieces can each be wrong in
+	 * three ways, and a failure that writes three hundred lines is a failure nobody reads. The first
+	 * few are what a maintainer works from; the totals are the assertions, so nothing is
+	 * hidden by the cap.
 	 *
 	 * THE CAP WAS 12 AND IT COST A DIAGNOSIS. A run in which 46 bricks failed one row printed
 	 * 12 of them, and the other 34 had to be reconstructed by arithmetic before anyone could
-	 * see that the failing set was every released brick of courses 2-9 plus part of course 10
-	 * — which was the whole answer. 48 is four courses' worth of a ten-wide wall, so a
-	 * failure that follows the collapse front shows its shape directly.
+	 * see that the failing set followed the collapse front — which was the whole answer. 48
+	 * is four courses' worth of a wall this wide many times over, so a failure that follows
+	 * the front shows its shape directly.
 	 */
 	constexpr int32 MaxReportedPieces = 48;
 
@@ -1265,31 +1647,32 @@ bool FStructurePushOverCapacityWallSettlesOnBuildTest::RunTest(const FString& Pa
 	 * the lowest released brick — course 2, position 0, spanning X -10.75..10.75 — still has
 	 * 10.25 of its 21.5 cm resting on the course 1 brick at X 0.5..22.0, which is STILL
 	 * STANDING. Its underside is at Z 15.0 and that brick's top at Z 14.0, so it drops its 1
-	 * cm mortar gap and then tips about the support edge with its centre of mass 0.5 cm
-	 * outboard: 1.310 cm measured, 1 cm of settle plus 0.31 cm of tip, and the arithmetic and
-	 * the measurement agree exactly. Ticking for longer changes nothing — the wall is holding
-	 * it. That is a correct outcome of this collapse, and 46 of the 325 are in it.
+	 * cm gap and then tips about the support edge with its centre of mass 0.5 cm outboard —
+	 * about a centimetre in total, and ticking for longer changes nothing, because the wall
+	 * is holding it. That is a correct outcome of this collapse, and every course from 2 to 5
+	 * has two of them.
 	 *
 	 * AND THE TWO CLASSES CANNOT BE TOLD APART FROM THE BOND, WHICH IS WHY THE OUTCOME CLAIM
 	 * IS AN AGGREGATE. Both candidate oracles were worked out and both are wrong: "has a
-	 * surviving brick directly beneath it" names 18 bricks, two per course for courses 2-10,
-	 * and misses 28 of the 46; its transitive closure — resting on anything that is itself
-	 * resting on something standing — names all 325, because every column of this wall
-	 * eventually reaches the two complete bottom courses. The real boundary is where the
-	 * rubble pile stops jamming and starts falling clear, which is a fact about a pile
-	 * mid-collapse rather than about the bond, and an oracle fitted to it would be a number
-	 * copied off one run. So the released set is asserted BRICK BY BRICK on the mechanism
-	 * reaching the world, and AS A WHOLE on the collapse.
+	 * surviving brick directly beneath it" names only the two bricks per course that overhang
+	 * the front, and misses everything the pile jams against; its transitive closure — resting
+	 * on anything that is itself resting on something standing — names all 111, because every
+	 * column of this wall eventually reaches the two complete bottom courses. The real
+	 * boundary is where the rubble pile stops jamming and starts falling clear, which is a
+	 * fact about a pile mid-collapse rather than about the bond, and an oracle fitted to it
+	 * would be a number copied off one run. So the released set is asserted BRICK BY BRICK on
+	 * the mechanism reaching the world, and AS A WHOLE on the collapse.
 	 *
 	 * THE AGGREGATE IS THE CENTRE OF MASS, AND ITS LANDMARK IS THE WALL THAT SURVIVED. The
-	 * released set's centre of mass starts at Z 170.212 — asserted below, not assumed — and
-	 * the highest thing still standing is the top face of the single course 9 brick at the
-	 * apex of the triangle, Z 74, which is READ OFF the survivors rather than written down.
+	 * released set's centre of mass starts at Z 103.047 — asserted below, not assumed — and
+	 * the highest thing still standing is the top face of the single course 5 brick at the
+	 * apex of the triangle, Z 44, which is READ OFF the survivors rather than written down.
 	 * For the released mass to end up UNDER that it has to come down the better part of a
 	 * metre on average, which no settle (1 cm), no tip (a few cm) and no shedding of a
 	 * handful of bricks can produce, and which reads exactly zero if nothing is released at
 	 * all. That is DESIGN.md §4's "a measure of the whole structure actually moving/falling"
-	 * taken literally: THE RUBBLE ENDS UP LOWER THAN THE WALL IT FELL OFF.
+	 * taken literally: THE RUBBLE ENDS UP LOWER THAN THE WALL IT FELL OFF. It ends at Z 1.9,
+	 * so the margin on the landmark is 42 cm rather than a fitted centimetre.
 	 *
 	 * AND ABOVE THE FLOOR, which is the other side of the same claim and not decoration. A
 	 * centre of mass that dropped because bricks tunnelled out through the world would
@@ -1300,7 +1683,8 @@ bool FStructurePushOverCapacityWallSettlesOnBuildTest::RunTest(const FString& Pa
 	 * heavy outliers can carry. Requiring a MAJORITY of the released bricks to have fallen
 	 * more than a whole course says the collapse is wide as well as deep, and a course pitch
 	 * is the same landmark BrickWorldTestSupport::FallenAtLeastCm is derived from — seven and
-	 * a half times what a brick settling into its own mortar joint can move.
+	 * a half times what a brick settling into its own joint can move. 70 of the 111 clear it,
+	 * and the 41 that do not are the propped foot the paragraph above describes.
 	 */
 	TestWorld.TickSeconds(CollapseSeconds);
 

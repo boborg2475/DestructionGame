@@ -45,13 +45,19 @@ namespace StaircaseWallTestSupport
 	 * FLUSH RATHER THAN RAGGED, and it is not a style choice. A ragged wall's alternate courses
 	 * step in, so the end brick of every even course rests on ONE brick below it instead of two —
 	 * which is a single-support piece, which under DESIGN.md's determinate rule carries a real
-	 * moment, at the same 5.625 cm eccentricity the staircase's own corbel has. A 13-course ragged
-	 * wall reads 0.36 of capacity at its own ends before anything has been done to it, and a
-	 * fixture whose baseline is a third of the way to failure cannot say the staircase caused
-	 * anything. A flush end fills that half cell with a half bat, so the end brick has two
-	 * supports, its centre of mass sits at the area-weighted centroid of them, and the
-	 * eccentricity is exactly zero. ADestructionGameGameMode lays a flush wall for its scenario,
-	 * so this is also the wall the player was actually looking at.
+	 * moment, at the same 5.625 cm eccentricity the staircase's own corbel has. A flush end fills
+	 * that half cell with a half bat, so the end brick has two supports, its centre of mass sits at
+	 * the area-weighted centroid of them, and the eccentricity is exactly zero.
+	 * ADestructionGameGameMode lays a flush wall for its scenario, so this is also the wall the
+	 * player was actually looking at.
+	 *
+	 * A RAGGED BASELINE IS SMALL RATHER THAN LARGE, AND IT IS STILL THE WRONG BASELINE. A plain
+	 * toothed end is the ZIG-ZAG shape: the joint the course above arrives through has the same
+	 * centroid as the joint the end brick leaves by, so the load it hands down carries no lever arm
+	 * across, and the end joint is left with its OWN weight's 5.625 cm and nothing else while the
+	 * compression under it grows course by course. A 13-course ragged wall therefore reads 0.058 at
+	 * its ends and falls from there. It is a baseline that MOVES with the height of the wall, which
+	 * is exactly what a fixture measuring the staircase must not have.
 	 *
 	 * THIRTEEN COURSES OF TEN, because the picture is of a void ten to fifteen courses tall with
 	 * the brickwork above it reaching several bricks out over nothing. Thirteen is the smallest
@@ -225,24 +231,37 @@ namespace StaircaseWallTestSupport
 	 * 11.25 cm — half a brick pitch. A brick whose left-hand neighbour below has been cut away
 	 * keeps exactly ONE bed joint, and that joint is the 10.25 cm strip the two still share: its
 	 * centroid sits 5.625 cm to the RIGHT of the brick's own centre of mass. That 5.625 cm is the
-	 * whole of the eccentricity, and it is the SAME on every step of the staircase — a brick two
-	 * steps out is not levered twice as hard, because it sits on a brick that is itself
-	 * overhanging and its own lever arm is still just its own offset. What grows down the
-	 * staircase is not the arm but the FORCE on it.
+	 * arm the brick's OWN weight acts on.
+	 *
+	 * AND THE ARM ACCUMULATES DOWN THE STAIRCASE, WHICH IS THE WHOLE OF WHY THE LADDER IS STEEP.
+	 * The corbelled brick one course UP is half a step further out, so the patch its load arrives
+	 * through sits 11.25 cm to the LEFT of the patch this brick leaves by — and a moment carried
+	 * across that gap picks up the transfer term of ordinary statics. So each step of the corbel
+	 * takes, about its own patch:
+	 *
+	 *     its own weight                          1 x 5.625 brick-weight-centimetres
+	 *     the corbel above, re-referenced         M_above + 11.25 x F_above
+	 *     everything else resting on it           NOTHING AT ALL
+	 *
+	 * THE THIRD LINE IS THE ONE WORTH CHECKING. What else rests on a corbelled brick is the next
+	 * brick along the course above, and that brick sits on TWO supports — statically indeterminate,
+	 * so the model gives its joints no moment (MOMENTS_DESIGN.md) — while the patch it hands its
+	 * share down through is the SAME 10.25 cm strip this brick leaves by, so re-referencing it adds
+	 * a lever arm of exactly zero. It contributes force and nothing else.
 	 *
 	 * A full brick is 21.5 x 10.25 x 6.5 cm of clay at 1.9 g/cm3, so
 	 * W = 2.72163125 kg x 980 cm/s2 = 2667.198625 Unreal force units — and DESIGN.md §3's
 	 * 1 N = 100 uu is already inside that product and must not be applied again. A bed joint of a
 	 * corbelled brick is 10.25 x 10.25 = 105.0625 cm2, and bending about the joint's Y axis is
 	 * resisted by W_v = (4/3) x 5.125 x 5.125^2 = 179.4817708 cm3. Beam theory on an uncracked
-	 * rectangle puts the fibre stress at |M|/W_v -+ N/A, so for a force F the tension at the
-	 * opened edge is
+	 * rectangle puts the fibre stress at |M|/W_v -+ N/A, so for a moment M in brick-weight-
+	 * centimetres and a force F in brick weights the tension at the opened edge is
 	 *
-	 *     F x (5.625 / 179.4817708 - 1 / 105.0625) / 10000  MPa
+	 *     2667.198625 x (M / 179.4817708 - F / 105.0625) / 10000  MPa
 	 *
 	 * where 10000 uu per MPa.cm2 is spelled out rather than imported. Against general-purpose
 	 * mortar's f_xk1 = 0.10 MPa (EN 1996-1-1 §3.6.3 Table 3.2, and already the number in the
-	 * profile) a corbelled brick reaches capacity at F = 45,825.13 uu — 17.181 brick weights.
+	 * profile) the bottom step of the staircase reaches 22.9 times capacity.
 	 */
 
 	/** 1.9 g/cm3 x 21.5 x 10.25 x 6.5 cm / 1000 = 2.72163125 kg, x 980 cm/s2. */
@@ -255,12 +274,16 @@ namespace StaircaseWallTestSupport
 	constexpr double StaircaseCorbelBedHalfCm = 10.25 / 2.0;
 
 	/**
-	 * How far the corbelled brick's weight acts from the centroid of the patch that carries it.
+	 * How far the corbelled brick's OWN weight acts from the centroid of the patch that carries it.
 	 *
 	 * Half of one half-step: the brick spans a full cell and keeps half of it, so its centre is
 	 * a quarter of a brick pitch clear of the patch's centre. 22.5 / 4 = 5.625 cm.
+	 *
+	 * ITS OWN WEIGHT ONLY, and that is the whole reason the moment ladder below exists as a
+	 * separate walk: the load a step receives from the corbel above it arrives on a DIFFERENT
+	 * patch, a further half-step out, and carries its own arm across.
 	 */
-	constexpr double StaircaseCorbelEccentricityCm = StaircaseHalfStepCm / 2.0;
+	constexpr double StaircaseCorbelOwnWeightArmCm = StaircaseHalfStepCm / 2.0;
 
 	/** (4/3) x h_u x h_v^2 for the square patch, cm3. */
 	constexpr double StaircaseCorbelSectionModulusCm3 =
@@ -307,6 +330,49 @@ namespace StaircaseWallTestSupport
 	}
 
 	/**
+	 * WHAT BENDS EACH STEP OF THE CORBEL, IN BRICK-WEIGHT-CENTIMETRES, WALKED DOWN BY HAND.
+	 *
+	 * Straight off the three lines of the block comment above, from the top of the staircase
+	 * downward: the top step carries only itself at 5.625, and every step below it adds its own
+	 * 5.625 to the step above's moment carried across the 11.25 cm the corbel has stepped out.
+	 *
+	 *     M_12 = 5.625
+	 *     M_k  = 5.625 + 11.25 x F_(k+1) + M_(k+1)
+	 *
+	 * which unrolls to 5.625, 22.5, 56.25, 112.5, 196.875, 315, 472.5, 675, 928.125, 1237.5,
+	 * 1608.75. Written out rather than evaluated from that recursion for the same reason the
+	 * forces are: the eleven numbers are the hand walk, and the recursion is a summary of it.
+	 *
+	 * THE ARM IS NOT CONSTANT AND THE FORCE IS NOT THE WHOLE STORY. Between the top step and the
+	 * bottom one the force grows 38.5-fold and the moment grows 286-fold, because the arm the
+	 * accumulated load acts on grows with it — which is why the ladder's top three rungs hold and
+	 * the eight below them do not.
+	 *
+	 * INDEXED BY COURSE - StaircaseLowestCorbelCourse, so entry 0 is the BOTTOM of the corbel.
+	 */
+	constexpr double StaircaseCorbelMomentBrickWeightCm[StaircaseCorbelStepCount] =
+	{
+		1608.75, 1237.5, 928.125, 675.0, 472.5, 315.0, 196.875, 112.5, 56.25, 22.5, 5.625
+	};
+
+	/*
+	 * The base case of that walk, tied to the arm it is made of. The top step of the corbel carries
+	 * one brick weight and nothing else, so its moment IS the own-weight arm — and a hand walk whose
+	 * first rung disagreed with the arm it was written from would be a ladder built on nothing.
+	 */
+	static_assert(
+		StaircaseCorbelMomentBrickWeightCm[StaircaseCorbelStepCount - 1]
+			== StaircaseCorbelOwnWeightArmCm,
+		"the top step of the corbel carries only its own weight, so its moment is that one arm");
+
+	/** The moment on one step of the corbel, in Unreal force units times centimetres. */
+	inline double StaircasePredictedCorbelMomentUuCm(int32 Course)
+	{
+		return StaircaseCorbelMomentBrickWeightCm[Course - StaircaseLowestCorbelCourse]
+			* StaircaseFullBrickWeightUu;
+	}
+
+	/**
 	 * What the tension at the opened edge of that step's bed joint comes to, as a fraction of
 	 * mortar's flexural bond strength.
 	 *
@@ -317,13 +383,11 @@ namespace StaircaseWallTestSupport
 	 */
 	inline double StaircasePredictedCorbelUtilisation(int32 Course)
 	{
-		const double ForceUu = StaircasePredictedCorbelForceUu(Course);
-
-		const double BendingMPa = ForceUu * StaircaseCorbelEccentricityCm
+		const double BendingMPa = StaircasePredictedCorbelMomentUuCm(Course)
 			/ (StaircaseCorbelSectionModulusCm3 * StaircaseForceUnitsPerMPaSqCm);
 
-		const double NormalMPa =
-			ForceUu / (StaircaseCorbelBedAreaSqCm * StaircaseForceUnitsPerMPaSqCm);
+		const double NormalMPa = StaircasePredictedCorbelForceUu(Course)
+			/ (StaircaseCorbelBedAreaSqCm * StaircaseForceUnitsPerMPaSqCm);
 
 		return FMath::Max(0.0, BendingMPa - NormalMPa) / StaircaseMortarTensileMPa;
 	}
@@ -331,28 +395,29 @@ namespace StaircaseWallTestSupport
 	/** The other edge of the same joint, squeezed rather than opened, against 10 MPa. */
 	inline double StaircasePredictedCorbelCompressionUtilisation(int32 Course)
 	{
-		const double ForceUu = StaircasePredictedCorbelForceUu(Course);
-
-		const double BendingMPa = ForceUu * StaircaseCorbelEccentricityCm
+		const double BendingMPa = StaircasePredictedCorbelMomentUuCm(Course)
 			/ (StaircaseCorbelSectionModulusCm3 * StaircaseForceUnitsPerMPaSqCm);
 
-		const double NormalMPa =
-			ForceUu / (StaircaseCorbelBedAreaSqCm * StaircaseForceUnitsPerMPaSqCm);
+		const double NormalMPa = StaircasePredictedCorbelForceUu(Course)
+			/ (StaircaseCorbelBedAreaSqCm * StaircaseForceUnitsPerMPaSqCm);
 
 		return (BendingMPa + NormalMPa) / StaircaseMortarCompressiveMPa;
 	}
 
 	/**
-	 * How many steps of the corbel the arithmetic puts OVER capacity, and it is 5 of 11.
+	 * How many steps of the corbel the arithmetic puts OVER capacity, and it is 8 of 11.
 	 *
-	 * The ladder crosses 1.0 between its fifth and sixth rungs — 1.019 and 0.786 — so a single
+	 * The ladder crosses 1.0 between its eighth and ninth rungs — 1.494 and 0.722 — so a single
 	 * joint over the line could be a fixture on a knife edge and eleven rungs marching 0.058,
-	 * 0.146, 0.262, 0.407, 0.582, 0.786, 1.019, 1.280, 1.572, 1.892, 2.241 cannot.
+	 * 0.271, 0.722, 1.494, 2.672, 4.338, 6.577, 9.472, 13.107, 17.565, 22.930 cannot.
 	 */
-	constexpr int32 StaircasePredictedCorbelJointsOverCapacity = 5;
+	constexpr int32 StaircasePredictedCorbelJointsOverCapacity = 8;
 
-	/** The bottom rung, computed above: 38.5 brick weights at 5.625 cm on a 105.0625 cm2 patch. */
-	constexpr double StaircasePredictedWorstCorbelUtilisation = 2.24084777;
+	/**
+	 * The bottom rung, computed above: 1608.75 brick-weight-centimetres of bending against 38.5
+	 * brick weights of compression, on a 105.0625 cm2 patch with a 179.4817708 cm3 section.
+	 */
+	constexpr double StaircasePredictedWorstCorbelUtilisation = 22.92952589;
 
 	/** Whether the arithmetic condemns this step of the corbel outright. */
 	inline bool StaircaseCorbelIsCondemned(int32 Course)

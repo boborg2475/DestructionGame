@@ -10,7 +10,7 @@
 
 /**
  * THE STAIRCASE'S ARITHMETIC, WITH NO WORLD AND NOTHING BROKEN: CUTTING THE VOID PUTS THE BOTTOM
- * OF THE CORBEL AT 2.24 OF CAPACITY AND FIVE OF ITS ELEVEN STEPS PAST THE LINE.
+ * OF THE CORBEL AT 22.9 OF CAPACITY AND EIGHT OF ITS ELEVEN STEPS PAST THE LINE.
  *
  * WHY THIS EXISTS AS A SEPARATE TEST, AND IT IS NOT A DUPLICATE OF THE INTEGRATION ONE. The
  * integration test cuts the same void through a real wall in a real world and watches the bricks
@@ -28,16 +28,18 @@
  * live; the integration test keeps the half that only a world can answer, which is that those five
  * joints then actually gave, in the first sweep, and that the bricks then actually fell.
  *
- * THE ORACLE IS HAND ARITHMETIC, NOT A SECOND SOLVER. StaircaseWallTestSupport works the ladder out
- * from the picture — each corbelled brick takes its own weight, all of the corbelled brick above it,
- * and half of the next brick along — and turns each load into a stress with beam theory on the
- * 10.25 x 10.25 patch it hangs off. Nothing in that derivation walks the graph, so agreeing with it
- * is evidence rather than tautology.
+ * THE ORACLE IS HAND ARITHMETIC, NOT A SECOND SOLVER. StaircaseWallTestSupport works TWO ladders
+ * out from the picture — the FORCE, where each corbelled brick takes its own weight, all of the
+ * corbelled brick above it and half of the next brick along; and the MOMENT, where each step adds
+ * its own 5.625 cm arm to the step above's moment carried across the 11.25 cm the corbel has
+ * stepped out — and turns the pair into a stress with beam theory on the 10.25 x 10.25 patch it
+ * hangs off. Nothing in either derivation walks the graph, so agreeing with them is evidence
+ * rather than tautology.
  *
  * WHICH AXIS GOVERNS IS ASSERTED BEFORE ANYTHING IS CLAIMED. ComputeUtilisation returns the WORST
  * of compression, shear and tension, so a fixture aimed at bending silently measures compression
- * the moment compression is higher. Here the same load reads 2.241 in tension and 0.042 in
- * compression — a factor of 53 — and shear is exactly zero, because gravity is normal to a bed
+ * the moment compression is higher. Here the same load reads 22.93 in tension and 0.249 in
+ * compression — a factor of 92 — and shear is exactly zero, because gravity is normal to a bed
  * joint. The comparison is spelled out rather than assumed, so a change that made compression
  * govern fails HERE instead of quietly measuring the wrong thing.
  *
@@ -178,25 +180,30 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 	/*
 	 * A RELATIVE TOLERANCE, AND THE ONE THING IT HAS TO ADMIT IS MEASURED RATHER THAN GUESSED.
 	 *
-	 * The ladder spans a factor of 38, so a fixed absolute slack would be meaningless at one end
-	 * and vacuous at the other. Ten of the eleven rungs come back agreeing with the hand arithmetic
-	 * to every digit printed. The eleventh — the bottom step, the one that integrates the most wall
-	 * — comes back 2.4e-6 LOW, and that is a real effect rather than rounding: the hand ladder
-	 * assumes the load cone above each step lies entirely inside the wall, and the cone above the
-	 * BOTTOM step of a 10-brick-wide wall reaches X = 225 cm at course 12, where the wall stops at
-	 * 213.75. The few brickless centimetres are load the idealisation counts and the wall does not
-	 * have, worth 9.1e-5 of a brick weight out of 38.5.
+	 * The ladder spans a factor of 38 in force and 286 in moment, so a fixed absolute slack would be
+	 * meaningless at one end and vacuous at the other. Ten of the eleven force rungs come back
+	 * agreeing with the hand arithmetic to every digit printed. The eleventh — the bottom step, the
+	 * one that integrates the most wall — comes back 2.4e-6 LOW, and that is a real effect rather
+	 * than rounding: the hand ladder assumes the load cone above each step lies entirely inside the
+	 * wall, and the cone above the BOTTOM step of a 10-brick-wide wall reaches X = 225 cm at course
+	 * 12, where the wall stops at 213.75. The few brickless centimetres are load the idealisation
+	 * counts and the wall does not have, worth 9.1e-5 of a brick weight out of 38.5.
 	 *
 	 * IT WAS CONFIRMED BY WIDENING THE WALL, NOT ARGUED FOR. Run identically at 26 bricks per
-	 * course — wide enough that the cone clears the end — the bottom rung reads 102687.1471 uu and
-	 * 2.24084777 of capacity, which is the hand figure to the last digit. The fixture stays 10 wide
-	 * because the integration test spawns an actor per piece and its whole geometry is written
-	 * around that wall; the idealisation is recorded here instead.
+	 * course — wide enough that the cone clears the end — the bottom rung reads 102687.1471 uu,
+	 * which is the hand figure to the last digit. The fixture stays 10 wide because the integration
+	 * test spawns an actor per piece and its whole geometry is written around that wall; the
+	 * idealisation is recorded here instead.
 	 *
-	 * SO 1e-5, WHICH IS FOUR TIMES THE MEASURED DEVIATION AND FIVE ORDERS OF MAGNITUDE TIGHTER THAN
-	 * ANY MODELLING ERROR. A wrong lever arm, a wrong section modulus or a missing 100x would all
-	 * be percent-scale or larger; nothing this test is looking for can hide under a hundred-
-	 * thousandth.
+	 * THE SAME DEFICIT REACHES THE UTILISATION AS 1.0e-7, MEASURED: the bottom rung reads
+	 * 22.92952820 against the hand ladder's 22.92952589. It lands SMALLER than the force's own 2.4e-6
+	 * and on the other side, which is what a deficit shared unevenly between a bending term and the
+	 * compression subtracted from it does; it is the same missing brickwork either way.
+	 *
+	 * SO 1e-5, WHICH IS FOUR TIMES THE WORST MEASURED DEVIATION AND FIVE ORDERS OF MAGNITUDE
+	 * TIGHTER THAN ANY MODELLING ERROR. A wrong lever arm, a wrong section modulus or a missing
+	 * 100x would all be percent-scale or larger; nothing this test is looking for can hide under a
+	 * hundred-thousandth.
 	 */
 	constexpr double RelativeTolerance = 1.0e-5;
 
@@ -267,10 +274,10 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * FIVE JOINTS ARE OVER CAPACITY, NOT ONE. The ladder crosses 1.0 between its fifth and sixth
+	 * EIGHT JOINTS ARE OVER CAPACITY, NOT ONE. The ladder crosses 1.0 between its eighth and ninth
 	 * rungs, and that is the whole reason the eleven rungs are printed: a single joint over the line
-	 * could be a fixture on a knife edge, and a ladder marching 0.058, 0.146, 0.262, 0.407, 0.582,
-	 * 0.786, 1.019, 1.280, 1.572, 1.892, 2.241 cannot.
+	 * could be a fixture on a knife edge, and a ladder marching 0.058, 0.271, 0.722, 1.494, 2.672,
+	 * 4.338, 6.577, 9.472, 13.107, 17.565, 22.930 cannot.
 	 */
 	AddInfo(FString::Printf(
 		TEXT("the staircase leaves %d of %d corbel joints over capacity, worst %.8f (the arithmetic predicts %d and %.8f)"),

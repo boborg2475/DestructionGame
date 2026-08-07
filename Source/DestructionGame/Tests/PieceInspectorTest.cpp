@@ -449,10 +449,10 @@ namespace PieceInspectorTestSupport
 			const FInspectorJointRow& Joint = Inspector.Joints[Index];
 
 			Line += FString::Printf(
-				TEXT("%s[c%d->p%d %s %.6f N %.9f %% %s pass=%d margin:'%s' bar=%.9f %s slot=%d '%s']"),
+				TEXT("%s[c%d->p%d %s %.6f N %.6f N.cm %.9f %% %s pass=%d margin:'%s' bar=%.9f %s slot=%d '%s']"),
 				Index == 0 ? TEXT("") : TEXT(" "),
 				Joint.ConnectionIndex, Joint.OtherPieceIndex, NameOfRole(Joint.Role),
-				Joint.ForceN, Joint.UtilisationPercent,
+				Joint.ForceN, Joint.MomentNCm, Joint.UtilisationPercent,
 				Joint.bHasGiven ? TEXT("GIVEN") : TEXT("intact"),
 				Joint.BreakPass, *Joint.MarginText, Joint.HeadroomFraction,
 				NameOfBand(Joint.MarginBand), Joint.ColourSlot, *Joint.Text);
@@ -2055,6 +2055,22 @@ bool FPieceMenuJointReadoutTest::RunTest(const FString& Parameters)
 				Index, ExpectedForceN, Model.ForceUu.Size(), Row.ForceN),
 			Row.ForceN == ExpectedForceN);
 
+		/*
+		 * AND THE MOMENT, ON THE SAME TERMS AND THROUGH THE SAME CONSTANT. A moment is uu.cm
+		 * and length is already centimetres, so this is the identical unit change ForceN
+		 * makes rather than a second boundary — MOMENTS_DESIGN.md says so loudly because
+		 * "moments" sounds like it should introduce one. The magnitude, for the reason ForceN
+		 * takes a magnitude: which way a joint is being levered open is not a thing a line of
+		 * text says, and the worst corner is the worst corner either way.
+		 */
+		const double ExpectedMomentNCm = Model.MomentUuCm.Size() / InspectorForceUnitsPerNewton;
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("row %d should read %.9f N·cm — %.6f uu.cm at 100 uu per newton — it reads %.9f"),
+				Index, ExpectedMomentNCm, Model.MomentUuCm.Size(), Row.MomentNCm),
+			Row.MomentNCm == ExpectedMomentNCm);
+
 		const double ExpectedPercent = Model.Utilisation * 100.0;
 
 		TestTrue(
@@ -2652,6 +2668,47 @@ namespace PieceHeadroomTestSupport
 	constexpr double LadderUnplaceableMassKg = 5.0;
 
 	/**
+	 * HANDLE 14: THE RUNG WHOSE LOAD DOES NOT COME DOWN THE MIDDLE OF ITS JOINT.
+	 *
+	 * EVERY OTHER RUNG IS GEOMETRY-FREE AND THEREFORE UNBENT, which is exactly why this one
+	 * has to exist. A line that printed the force and the percentage and nothing else agrees
+	 * with all twelve of them forever, and it is precisely on a bent joint that the two stop
+	 * explaining each other: this rung carries 78.4 N — less than rung 2's 490 N, a sixth of
+	 * rung 3's — and sits at 49 % of capacity where rung 2 sits at 1 %. Nothing a reader can
+	 * do with the two numbers printed beside each other gets from one to the other.
+	 *
+	 * THE ARITHMETIC, DERIVED HERE RATHER THAN READ BACK.
+	 *
+	 *   force        8 kg x 980 = 7,840 uu, which is 78.4 N
+	 *   lever arm    the brick's centre of mass sits 4 cm along X from the joint's centroid
+	 *   moment       r x F, and a vertical force crossed with a lever arm along X lands
+	 *                wholly on Y: 4 x 7,840 = 31,360 uu.cm, which is 313.6 N.cm
+	 *   section      6 cm along X by 8 cm along Y: area 48 cm2, and the modulus resisting a
+	 *                lean along X is the textbook b.d2/6 = 8 x 36 / 6 = 48 cm3 — deliberately
+	 *                NOT production's (4/3).h_along.h_across2, so the two agreeing is evidence
+	 *   stresses     mean  7,840 / (48 x 10,000) = 0.0163333 MPa, compressive
+	 *                edge 31,360 / (48 x 10,000) = 0.0653333 MPa
+	 *   peak tension 0.049 MPa against mortar's 0.1, so 0.49 of capacity
+	 *
+	 * WHICH AXIS GOVERNS IS NOT LEFT TO CHANCE, and here it is a DIFFERENT axis from every
+	 * other rung on the ladder. Peak compression is the SUM of the two stresses, 0.0816667
+	 * against 10 MPa — 0.0082 of capacity — and shear is exactly zero because the load is
+	 * exactly antiparallel to an exactly vertical normal. TENSION governs, by sixty times.
+	 */
+	constexpr int32 LadderEccentricPiece = 14;
+	constexpr double LadderEccentricMassKg = 8.0;
+	constexpr double LadderEccentricLeverArmCm = 4.0;
+	constexpr double LadderEccentricHalfXCm = 3.0;
+	constexpr double LadderEccentricHalfYCm = 4.0;
+	constexpr double LadderEccentricAreaSqCm =
+		4.0 * LadderEccentricHalfXCm * LadderEccentricHalfYCm;
+
+	/** b.d2/6, with the depth taken along the lean. */
+	constexpr double LadderEccentricModulusCm3 =
+		(2.0 * LadderEccentricHalfYCm)
+			* (2.0 * LadderEccentricHalfXCm) * (2.0 * LadderEccentricHalfXCm) / 6.0;
+
+	/**
 	 * Every rung's mass, in handle order from handle 1. The four decades come first.
 	 *
 	 * Handles 9 and 10 are the KILONEWTON BOUNDARY PAIR and are the only two masses here
@@ -2684,7 +2741,32 @@ namespace PieceHeadroomTestSupport
 		Out.AddConnection(Connection);
 	}
 
-	void BuildLoadLadder(FStructureBinding& Out)
+	/**
+	 * The one rung that knows the shape of its own face, and therefore the one that bends.
+	 *
+	 * A SEPARATE HELPER RATHER THAN AN ARGUMENT ON THE ONE ABOVE, because a rectangle and an
+	 * area have to agree — AddConnection refuses them otherwise — and the twelve joints above
+	 * are 49 cm2 with no rectangle at all. Giving them one would put a lever arm on every rung
+	 * of a ladder whose entire point is that each dial moves independently.
+	 *
+	 * @return the connection index, or INDEX_NONE if the door refused it.
+	 */
+	int32 AddEccentricLadderJoint(FStructureBinding& Out, int32 PieceB, double JointCentreXCm)
+	{
+		FConnection Connection;
+		Connection.PieceA = LadderPadPiece;
+		Connection.PieceB = PieceB;
+		Connection.InterfaceNormal = InspectorBedNormal;
+		Connection.InterfaceAreaSqCm = LadderEccentricAreaSqCm;
+		Connection.InterfaceCentreCm = FVector(JointCentreXCm, 0.0, InspectorCourseZ(0) + 3.25);
+		Connection.InterfaceHalfExtentCm =
+			FVector(LadderEccentricHalfXCm, LadderEccentricHalfYCm, 0.0);
+		Connection.Strength = GeneralPurposeMortar;
+		return Out.AddConnection(Connection);
+	}
+
+	/** @return the connection index of the eccentric rung, or INDEX_NONE if it was refused. */
+	int32 BuildLoadLadder(FStructureBinding& Out)
 	{
 		Out.StructureId = HeadroomStructure;
 
@@ -2721,6 +2803,20 @@ namespace PieceHeadroomTestSupport
 			Out.AddPiece(LadderUnplaceableMassKg, false, nullptr, Nowhere);
 		}
 
+		/*
+		 * AND THE RUNG THAT LEANS. Its box centre is what the binding hands the solver as a
+		 * centre of mass, so the four centimetres between it and the joint's centroid below
+		 * are the whole lever arm — there is nothing else in the fixture that could produce
+		 * one, and no other rung has a centroid to measure against at all.
+		 *
+		 * Placed a full pitch past the pulled brick so its POSITION is the twelfth of course
+		 * two: the unplaceable rung between them takes no position, which is what makes
+		 * "course 2 · #12" a real count of placeable bricks rather than a handle in a hat.
+		 */
+		Out.AddPiece(
+			LadderEccentricMassKg, false, nullptr,
+			InspectorBoxAt(InspectorBrickPitchCm * 13.0, InspectorCourseZ(1)));
+
 		for (int32 Rung = 0; Rung < LadderMassesKg.Num(); ++Rung)
 		{
 			AddLadderJoint(Out, Rung + 1, InspectorBedNormal);
@@ -2732,8 +2828,15 @@ namespace PieceHeadroomTestSupport
 		/* Appended LAST, so every connection index the table below names stays where it was. */
 		AddLadderJoint(Out, LadderUnplaceablePiece, InspectorBedNormal);
 
+		const int32 EccentricJoint = AddEccentricLadderJoint(
+			Out,
+			LadderEccentricPiece,
+			InspectorBrickPitchCm * 13.0 - LadderEccentricLeverArmCm);
+
 		Out.RemovePiece(LadderRemovedPiece);
 		Out.SolveLoads();
+
+		return EccentricJoint;
 	}
 
 	/** One rung of the ladder, as it should read. */
@@ -2770,6 +2873,20 @@ namespace PieceHeadroomTestSupport
 		 * in Presenter.PieceMenuJointMarginBand.
 		 */
 		EJointMarginBand ExpectedBand = EJointMarginBand::Critical;
+
+		/**
+		 * WHAT THE JOINT IS BEING BENT BY, IN NEWTON-CENTIMETRES — AND ZERO ON TWELVE OF THE
+		 * THIRTEEN ROWS, WHICH IS THE HALF OF THIS COLUMN THAT ACTUALLY BITES.
+		 *
+		 * A settled wall bends nowhere: a brick on two symmetric bed patches has its centre of
+		 * mass at the area-weighted centroid of its supports, so the eccentricity is zero
+		 * EXACTLY rather than nearly. Most joints a player ever looks at therefore have nothing
+		 * to say here, and a line that carried a bending clause anyway would make the common
+		 * case worse to read for the sake of the rare one. So the twelve zeroes below are an
+		 * assertion that the sentence does NOT grow, held by their ExpectedLine being the line
+		 * this panel already printed, word for word.
+		 */
+		double ExpectedMomentNCm = 0.0;
 	};
 }
 
@@ -2831,6 +2948,17 @@ namespace PieceHeadroomTestSupport
  * conversion boundary here: newtons are already DestructionPresenter::ForceUnitsPerNewton's
  * job, and a kilonewton is a thousand newtons by definition of the prefix.
  *
+ * AND A JOINT BEING LEVERED OPEN SAYS SO, WHILE THE TWELVE THAT ARE NOT SAY NOTHING EXTRA.
+ * The last rung carries 78.4 N and sits at 49 % of capacity — a sixth of rung 2's load at
+ * fifty times its utilisation — and no arithmetic a reader can do on the two numbers printed
+ * beside each other closes that gap, because the term joining them is a 313.6 N·cm bend the
+ * line never mentions. That is the defect MOMENTS_DESIGN.md names as part of the moment work
+ * rather than as a follow-up. The other twelve rows are the other half of the claim: a
+ * settled wall bends nowhere — a brick on two symmetric patches has its centre of mass at the
+ * area-weighted centroid of its supports, so its eccentricity is zero EXACTLY — and a line
+ * that carried a bending clause anyway would make the common case worse to read for the sake
+ * of the rare one. Their pinned sentences are the ones this panel already printed.
+ *
  * NEEDS A TICKING WORLD: no, and not even a world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -2843,7 +2971,19 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 	using namespace PieceHeadroomTestSupport;
 
 	FStructureBinding Binding;
-	BuildLoadLadder(Binding);
+	const int32 EccentricJoint = BuildLoadLadder(Binding);
+
+	/*
+	 * FIXTURE PRECONDITION, AND THIS ONE IS A DOOR RATHER THAN A NUMBER. AddConnection refuses
+	 * a rectangle that disagrees with its area and one on a normal that names no separation
+	 * axis, answering INDEX_NONE — at which point the ladder is one rung short, every index
+	 * the table names past it is wrong, and the failures say nothing about the readout.
+	 */
+	TestEqual(
+		FString::Printf(
+			TEXT("fixture: the eccentric rung's joint must be accepted and land last; AddConnection returned %d"),
+			EccentricJoint),
+		EccentricJoint, 13);
 
 	/*
 	 * FIXTURE PRECONDITIONS, HAND-DERIVED AND ASKED OF THE GRAPH. Every reading below is
@@ -2893,6 +3033,70 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 	TestFalse(
 		TEXT("fixture: the unplaceable brick is still in the graph, so its joint is intact"),
 		Binding.GetStructure().GetConnection(LadderMassesKg.Num() + 2).HasGiven());
+
+	/*
+	 * AND THE BENT RUNG, ASKED OF THE GRAPH DIRECTLY AND DERIVED IN THIS FILE. These are green
+	 * on arrival — GetConnectionMoment already exists and already answers — and they drive
+	 * nothing. What they buy is that the presented row below is being held against a joint that
+	 * genuinely bends: a ladder whose eccentricity quietly went to zero would otherwise agree
+	 * with a presenter that never fetched a moment at all, and the whole row would pass.
+	 */
+	{
+		const double EccentricForceUu =
+			LadderEccentricMassKg * InspectorGravityCmPerSecondSquared;
+
+		const double EccentricMomentUuCm = LadderEccentricLeverArmCm * EccentricForceUu;
+
+		const double MeanStressMPa =
+			EccentricForceUu / (LadderEccentricAreaSqCm * InspectorForceUnitsPerMPaSqCm);
+
+		const double EdgeStressMPa =
+			EccentricMomentUuCm / (LadderEccentricModulusCm3 * InspectorForceUnitsPerMPaSqCm);
+
+		const double PeelUtilisation =
+			(EdgeStressMPa - MeanStressMPa) / GeneralPurposeMortar.TensileStrengthMPa;
+
+		TestEqual(
+			FString::Printf(
+				TEXT("fixture: the eccentric rung (%.1f kg) should load its joint to %.6f uu"),
+				LadderEccentricMassKg, EccentricForceUu),
+			Binding.GetStructure().GetConnectionForce(EccentricJoint).Size(), EccentricForceUu);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("fixture: the eccentric rung should bend its joint by %.6f uu.cm"),
+				EccentricMomentUuCm),
+			Binding.GetStructure().GetConnectionMoment(EccentricJoint).Size(),
+			EccentricMomentUuCm,
+			1e-9);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("fixture: the eccentric rung should sit at %.12f of capacity, in TENSION"),
+				PeelUtilisation),
+			Binding.GetStructure().GetConnectionUtilisation(EccentricJoint),
+			PeelUtilisation,
+			1e-15);
+
+		/*
+		 * AND IT IS TENSION THAT GOVERNS RATHER THAN COMPRESSION, WHICH IS NOT FREE AND IS THE
+		 * ONE THING THAT WOULD MAKE THIS ROW MEASURE SOMETHING ELSE. ComputeUtilisation returns
+		 * the WORST of three axes: peak compression here is the SUM of the two stresses over
+		 * mortar's 10 MPa, and peak tension is their DIFFERENCE over its 0.1 MPa. Shear is
+		 * exactly zero — the load is exactly antiparallel to an exactly vertical normal — so
+		 * this comparison is the whole of the remaining question, and a retuned profile that
+		 * flipped it would leave every number above unchanged while the row stopped being about
+		 * a joint being peeled open.
+		 */
+		const double PeakCompressionUtilisation =
+			(EdgeStressMPa + MeanStressMPa) / GeneralPurposeMortar.CompressiveStrengthMPa;
+
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture: the eccentric rung must be governed by TENSION (%.12f) rather than compression (%.12f)"),
+				PeelUtilisation, PeakCompressionUtilisation),
+			PeelUtilisation > PeakCompressionUtilisation);
+	}
 
 	const FPieceRef PadRef = MakeRef(HeadroomStructure, LadderPadPiece);
 	const TArray<FPieceRef> JustThePad = { PadRef };
@@ -3090,6 +3294,51 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			TEXT("#12  brick 21:13  bed above  49.0 N  0.100 %  1000× margin"),
 			EJointMarginBand::Comfortable
 		},
+		{
+			/*
+			 * AND THE ONE JOINT ON THE LADDER THAT IS BEING LEVERED OPEN, WHICH IS THE ROW THE
+			 * OTHER TWELVE CANNOT WRITE.
+			 *
+			 * PUT THE NUMBERS SIDE BY SIDE AND THE PROBLEM IS THE WHOLE POINT. This joint
+			 * carries 78.4 N — a sixth of what rung 2 carries, a sixtieth of rung 3 — and it
+			 * sits at 49 % of capacity where rung 2 sits at 1 %. Force and percentage are both
+			 * true, both printed, and there is no arithmetic between them: the missing term is
+			 * a 313.6 N·cm bend that nothing on the line mentions. That is this subsystem's
+			 * recurring signature — a plausible number that does not describe what is
+			 * happening — and MOMENTS_DESIGN.md names closing it as part of the moment work
+			 * rather than as a follow-up, for exactly this reason.
+			 *
+			 * WHY THE MOMENT AND NOT THE ECCENTRICITY. M / F is a lever arm in centimetres and
+			 * "4.0 cm off centre" is arguably friendlier than "313.6 N·cm". It is rejected on
+			 * three grounds, and the third is decisive. It is DERIVED — a quotient of two
+			 * numbers, computed in the presenter, which is precisely the second-copy shape
+			 * Core/PieceInspection.h's whole discipline is written against. It divides by a
+			 * force, and the force on a bent joint is free to be small. And MOMENTS_DESIGN.md
+			 * slice 5 makes a joint RECEIVE moment along the load path from the wall above it,
+			 * at which point M / F stops being that joint's lever arm and becomes a length in
+			 * centimetres that describes nothing — a wrong answer wearing the units of a right
+			 * one, which is the failure mode this line exists to remove rather than relocate.
+			 * The moment is also the quantity ComputeUtilisation actually consumes, so printing
+			 * it means the line names both inputs to the percentage beside it.
+			 *
+			 * AND N·cm RATHER THAN N·m, pinned once beside the formatting exactly as the
+			 * kilonewton switch is. Centimetres are this game's length unit everywhere else —
+			 * the brick is 21.5 cm, the kern of a bed patch is ±1.708 cm — and the interesting
+			 * range collapses in metres: 313.6 N·cm is 3.136 N·m, where one step of the last
+			 * printed digit is a whole 10 N·cm. There is NO new conversion boundary either way:
+			 * a moment is uu.cm, length is already centimetres, so this is
+			 * DestructionPresenter::ForceUnitsPerNewton applied once and nothing else.
+			 *
+			 * THE CLAUSE TRAILS ITS NUMBER, matching every other clause on the line — "78.4 N",
+			 * "49.000 %", "2.0× margin" are all <number> <word> — and it appears ONLY on a
+			 * joint that has one. Twelve rows above assert the absence.
+			 */
+			TEXT("a joint levered open by an off-centre load says what is bending it"),
+			13, 78.4, 49.0, TEXT("2.0× margin"), 0.1032679733238288,
+			TEXT("#13  course 2 · #12  bed above  78.4 N  49.000 %  2.0× margin  313.6 N·cm bending"),
+			EJointMarginBand::Caution,
+			313.6
+		},
 	};
 
 	TestEqual(
@@ -3101,6 +3350,38 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 	if (Inspector.Joints.Num() != Cases.Num())
 	{
 		return true;
+	}
+
+	/*
+	 * AND THE MOMENT ON EVERY ROW IS THE MODEL'S OWN NUMBER, EXACTLY, HELD ON THE ONE FIXTURE
+	 * IN THIS FILE THAT HAS SOMETHING TO BE WRONG ABOUT.
+	 *
+	 * Presenter.PieceMenuJointReadout is where the whole row is swept against InspectPiece with
+	 * exact equality, and it will go on passing this particular field whatever anybody does to
+	 * it: its fixture supplies no joint geometry, so every moment there is zero on both sides
+	 * and 0 == 0 forever. The ladder bends on exactly one rung, so the same claim is worth
+	 * something here — a presenter that recomputed the moment from a lever arm rather than
+	 * reading it back would agree to about fifteen places and differ in the last bit, which is
+	 * precisely the drift a tolerance lets through.
+	 */
+	{
+		const FPieceInspection PadModel = InspectPiece(Binding, PadRef);
+
+		for (int32 Index = 0;
+			Index < PadModel.Joints.Num() && Index < Inspector.Joints.Num();
+			++Index)
+		{
+			const double ExpectedMomentNCm =
+				PadModel.Joints[Index].MomentUuCm.Size() / InspectorForceUnitsPerNewton;
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("row %d should read %.9f N·cm — the model's own %.6f uu.cm at 100 uu per newton — it reads %.9f"),
+					Index, ExpectedMomentNCm,
+					PadModel.Joints[Index].MomentUuCm.Size(),
+					Inspector.Joints[Index].MomentNCm),
+				Inspector.Joints[Index].MomentNCm == ExpectedMomentNCm);
+		}
 	}
 
 	for (const FHeadroomCase& Case : Cases)
@@ -3116,6 +3397,11 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			FString::Printf(TEXT("%s: should carry %.6f N, it carries %.6f"),
 				Case.Description, Case.ExpectedForceN, Row.ForceN),
 			Row.ForceN, Case.ExpectedForceN, 1e-9);
+
+		TestEqual(
+			FString::Printf(TEXT("%s: should be bent by %.6f N·cm, it reads %.6f"),
+				Case.Description, Case.ExpectedMomentNCm, Row.MomentNCm),
+			Row.MomentNCm, Case.ExpectedMomentNCm, 1e-9);
 
 		TestEqual(
 			FString::Printf(TEXT("%s: should sit at %.12f %%, it sits at %.12f"),
@@ -3607,7 +3893,7 @@ bool FPieceMenuJointColourSlotTest::RunTest(const FString& Parameters)
 
 	/*
 	 * AND THE LADDER, WHICH IS THE ONLY FIXTURE WITH MORE JOINTS ON ONE PIECE THAN A PALETTE IS
-	 * LIKELY TO HOLD. Thirteen rows off one pad.
+	 * LIKELY TO HOLD. Fourteen rows off one pad.
 	 */
 	FStructureBinding Ladder;
 	BuildLoadLadder(Ladder);

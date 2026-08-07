@@ -53,6 +53,28 @@ struct FJointInspection
 	 */
 	FVector ForceUu = FVector::ZeroVector;
 
+	/**
+	 * The bending moment this joint carries about its own centroid, in uu.cm, exactly as
+	 * GetConnectionMoment gives it.
+	 *
+	 * WITHOUT IT THE ROW CANNOT EXPLAIN THE NUMBER BESIDE IT. Utilisation is computed from the
+	 * force AND the moment, so a breakout carrying only the force shows a joint at 2.24x
+	 * capacity next to 2667 uu with no arithmetic a reader can do between them — this
+	 * subsystem's recurring signature, a plausible number that does not describe what is
+	 * happening.
+	 *
+	 * RAW uu.cm FOR THE REASON ForceUu IS RAW uu: the field is held against the accessor it
+	 * came from with exact ==, which is only checkable while the two are in the same units,
+	 * and turning it into something a human reads is the presenter's decision rather than
+	 * Core's arithmetic.
+	 *
+	 * ZERO IS "NO ECCENTRICITY" AND IS NOT A TOLERANCE — see FStructure::GetConnectionMoment.
+	 * A centred load, a piece nobody placed and a joint whose rectangle nobody measured all
+	 * produce it exactly, which is what lets every geometry-free fixture read what it always
+	 * read.
+	 */
+	FVector MomentUuCm = FVector::ZeroVector;
+
 	/** How close to failing under that force. 0 unloaded, 1 at the limit, above 1 gives. */
 	double Utilisation = 0.0;
 

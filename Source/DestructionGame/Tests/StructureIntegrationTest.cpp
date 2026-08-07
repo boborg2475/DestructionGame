@@ -1556,10 +1556,11 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
  * A FLUSH WALL, AND THAT IS LOAD-BEARING. A ragged wall's alternate courses step in, so the end
  * brick of every even course already rests on one brick instead of two — the same 5.625 cm
  * eccentricity, at the wall's own end, with nobody having done anything to it. A 13-course ragged
- * wall reads 0.36 of capacity as built. StaircaseWallSpec says the rest.
+ * wall reads 0.058 of capacity as built, and a taller one reads something else again.
+ * StaircaseWallSpec says the rest.
  *
  * NEEDS A TICKING WORLD: YES, and this one could not be anywhere else. That the corbel joint is at
- * 2.24 is arithmetic on a graph and belongs in the fast suite — and now lives there; that a wall in
+ * 22.93 is arithmetic on a graph and belongs in the fast suite — and now lives there; that a wall in
  * a real scene, cut by a real click, then falls over is the composition, and the composition is what
  * no world-free test can reach.
  */
@@ -1797,15 +1798,15 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 	 * hand. The wall as built is asserted above to have nothing over capacity and to release
 	 * nothing, so no pass can have been stamped before this one and the numbering starts at 1.
 	 *
-	 * BOTH DIRECTIONS ARE ASSERTED. That the five condemned rungs gave in pass 1 says the load
-	 * model condemned the corbel; that the other six did NOT gives the count its teeth, because a
-	 * model reading 30% high would put course 7's 0.786 over the line and break six.
+	 * BOTH DIRECTIONS ARE ASSERTED. That the eight condemned rungs gave in pass 1 says the load
+	 * model condemned the corbel; that the other three did NOT gives the count its teeth, because a
+	 * model reading 40% high would put course 10's 0.722 over the line and break nine.
 	 *
-	 * THE MAGNITUDE — 2.24084777 at the bottom rung and the whole eleven-rung ladder — is asserted
+	 * THE MAGNITUDE — 22.92952589 at the bottom rung and the whole eleven-rung ladder — is asserted
 	 * in DestructionGame.Core.Structure.AStaircaseVoidCondemnsTheCorbel, which cuts the same void
 	 * into the same wall with no world at all and reads the ladder off SolveLoads, which breaks
 	 * nothing. That is where the arithmetic belongs: this test's own header has always said that
-	 * "the corbel joint is at 2.24" is arithmetic on a graph and belongs in the fast suite.
+	 * "the corbel joint is at 22.93" is arithmetic on a graph and belongs in the fast suite.
 	 */
 	int32 CorbelJointsBrokenInFirstPass = 0;
 
@@ -1858,7 +1859,7 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND THE COUNT, WHICH IS THE HALF THE PER-RUNG ROWS CANNOT MAKE. Five of eleven is the
+	 * AND THE COUNT, WHICH IS THE HALF THE PER-RUNG ROWS CANNOT MAKE. Eight of eleven is the
 	 * fixture's own claim, and a ladder that crossed 1.0 somewhere else entirely would still
 	 * satisfy every row above if the rungs it broke happened to be the ones it predicted.
 	 */

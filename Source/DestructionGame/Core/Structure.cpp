@@ -179,6 +179,32 @@ int32 FStructure::AddPiece(double MassKg, bool bIsGrounded)
 int32 FStructure::AddPiece(double MassKg, bool bIsGrounded, const FVector& CentreOfMassCm)
 {
 	/*
+	 * A CENTRE THAT IS NOT FINITE IS REFUSED OUTRIGHT, and it is refused BEFORE the
+	 * two-argument door is opened, because that door ADDS. Checked afterwards, a piece
+	 * nobody accepted would already have taken a slot, and the tombstone it left would
+	 * make "refused" indistinguishable from "added and then removed".
+	 *
+	 * It is the worse of the two nonsense inputs this overload can be handed. A mass that
+	 * is not finite makes an obviously broken load; a centre that is not finite becomes a
+	 * lever arm the moment SolveLoads subtracts a joint centroid from it, that arm goes
+	 * through the cross product that builds the moment, and the moment reaches
+	 * ComputeUtilisation — where every comparison against a NaN is false, so the joint
+	 * reads as INTACT. A wall laid with one unplaceable brick would stand, confidently.
+	 * Storing the centre and clearing the flag would not do either: the piece would then
+	 * read as "nobody said where it is", which is a healthy state.
+	 *
+	 * ContainsNaN is !FMath::IsFinite on each component in turn, so an infinity lands
+	 * inside the guard alongside a NaN, and a broken Y is caught as surely as a broken X
+	 * — which matters, because Y is the axis every bed joint in a running-bond wall bends
+	 * about. StructureBinding's own check spells the same rule at the layer above; this
+	 * one is the door, and that one is now belt and braces.
+	 */
+	if (CentreOfMassCm.ContainsNaN())
+	{
+		return INDEX_NONE;
+	}
+
+	/*
 	 * THE SAME DOOR, WITH ONE MORE FACT THROUGH IT — so the two-argument form is CALLED
 	 * rather than have its guards restated here. Restated, they would be two rules that
 	 * agree until somebody tightens one, and a mass this overload accepted while the
@@ -807,6 +833,26 @@ void FStructure::SolveLoads()
 		TArray<double> ReceivedFromAboveUU;
 		ReceivedFromAboveUU.Init(0.0, Pieces.Num());
 
+		/*
+		 * WHAT ARRIVED FROM ABOVE IS A FORCE AND A MOMENT, AND A MOMENT IS ONLY A NUMBER
+		 * ABOUT A POINT. This one is about the RECEIVING PIECE'S OWN CENTRE OF MASS, which
+		 * is a bookkeeping choice and not a physical one: transfer is transitive, so
+		 * re-referencing joint to centre to joint gives bit for bit what re-referencing
+		 * joint straight to joint gives, and a per-piece accumulator needs one point per
+		 * piece rather than one per joint.
+		 *
+		 * NOT THE WORLD ORIGIN, deliberately: that is arithmetically valid and numerically
+		 * awful, since every entry would be the moment of the whole wall about a point a
+		 * wall-length away and each joint's own answer would come back as the difference of
+		 * two huge numbers.
+		 *
+		 * ZERO FOR A PIECE NOBODY PLACED, and nothing is ever added to one — with no centre
+		 * there is no point to be about, and the joints of such a piece already answer a
+		 * centred load exactly as they did before moments existed.
+		 */
+		TArray<FVector> ReceivedMomentUuCm;
+		ReceivedMomentUuCm.Init(FVector::ZeroVector, Pieces.Num());
+
 		for (int32 Order = 0; Order < Ready.Num(); ++Order)
 		{
 			const int32 Current = Ready[Order];
@@ -900,27 +946,14 @@ void FStructure::SolveLoads()
 					ConnectionForces[Index] = FVector(0.0, 0.0, SignedZUU);
 
 					/*
-					 * (p - c) x F, ABOUT THE JOINT'S OWN CENTROID, AND CROSSED WITH THE
-					 * FORCE JUST STORED. That force already carries the sign of whichever
-					 * end is being held up, so a joint that names the loaded piece first
-					 * flips BOTH the lever arm and the force and the moment comes out the
-					 * same size — which is exactly the invariance the classification
-					 * already has, and the reason nothing physical may depend on
-					 * declaration order.
-					 *
-					 * THE MOMENT RIDES ALONGSIDE THE FORCE AND DOES NOT CHANGE IT. The
-					 * split is still area-weighted and gravity still points straight down;
-					 * a longer or tilted force vector would encode the moment in the one
-					 * number a readout uses to explain the load, which is how a plausible
-					 * quantity stops describing what is happening.
-					 *
-					 * IT IS THIS PIECE'S OWN WEIGHT PLUS WHAT IT RECEIVED, ACTING AT ITS
-					 * OWN CENTRE — the load arriving from above is treated as though it
-					 * arrived there. That is exact for a piece carrying only itself and an
-					 * approximation for one carrying a wall; MOMENTS_DESIGN.md slice 5 is
-					 * where the accumulation starts carrying a moment along the load path
-					 * so that what came from above keeps its own lever arm.
+					 * THE SAME SHARE AS A PHYSICAL FORCE — straight down, whichever end of
+					 * the joint the producer named first. Every moment below is built from
+					 * this rather than from the stored vector, so the accumulation reasons
+					 * about one direction for gravity and the declaration-order sign is
+					 * applied once, where the answer is stored.
 					 */
+					const FVector ShareWeightUu(0.0, 0.0, -ShareUU);
+
 					/*
 					 * AND THE JOINT HAS TO KNOW WHERE IT IS, WHICH IS THE OTHER HALF OF THE
 					 * CONJUNCTION HasCompleteGeometry ASKS. A joint carrying no rectangle
@@ -941,11 +974,63 @@ void FStructure::SolveLoads()
 					 */
 					const bool bJointKnowsItsFace = !Connection.InterfaceHalfExtentCm.IsZero();
 
+					/*
+					 * WHAT THIS JOINT CARRIES, ABOUT ITS OWN CENTROID: everything that
+					 * arrived from above, carried down and re-referenced, plus this piece's
+					 * own weight about the same point. Written physically, with the
+					 * declaration-order sign put back on at the store below — that force
+					 * already carries it, so crossing with the stored vector would flip BOTH
+					 * the lever arm and the force and come out the same size, which is the
+					 * invariance the classification already has.
+					 *
+					 * (c_from - c_to) x F IS ORDINARY VARIGNON, and it is what makes a moment
+					 * mean anything as it travels: the received load kept its own lever arm
+					 * instead of being treated as though it had been placed neatly on this
+					 * piece's middle. That older rule was exact for a piece carrying only
+					 * itself and silently wrong for a corbel carrying a wall, and it vanished
+					 * entirely wherever a chain stacked squarely — which is why nothing that
+					 * stacks squarely moves now.
+					 *
+					 * THE MOMENT RIDES ALONGSIDE THE FORCE AND DOES NOT CHANGE IT. The split
+					 * is still area-weighted and gravity still points straight down; a longer
+					 * or tilted force vector would encode the moment in the one number a
+					 * readout uses to explain the load, which is how a plausible quantity
+					 * stops describing what is happening.
+					 */
+					FVector MomentAboutJointUuCm = FVector::ZeroVector;
+
 					if (bLoadPathIsDeterminate && bJointKnowsItsFace)
 					{
-						ConnectionMoments[Index] = FVector::CrossProduct(
-							Pieces[Current].CentreOfMassCm - Connection.InterfaceCentreCm,
-							ConnectionForces[Index]);
+						MomentAboutJointUuCm = ReceivedMomentUuCm[Current]
+							+ FVector::CrossProduct(
+								Pieces[Current].CentreOfMassCm - Connection.InterfaceCentreCm,
+								ShareWeightUu);
+
+						ConnectionMoments[Index] = Connection.PieceB == Current
+							? MomentAboutJointUuCm
+							: -MomentAboutJointUuCm;
+					}
+
+					/*
+					 * AND IT IS HANDED ON AS THE PAIR IT IS: a force through this joint, and
+					 * exactly the moment stored on this joint, re-referenced to the receiving
+					 * piece's own centre. WHAT TRAVELS IS WHAT THE JOINT READS — there is no
+					 * second, private quantity — so a joint whose statics is indeterminate
+					 * transmits a moment of zero ABOUT ITSELF rather than nothing at all, and
+					 * the load below it still knows it came through that patch and not
+					 * through the middle of the piece it landed on.
+					 *
+					 * BOTH ENDS HAVE TO BE PLACED. The joint supplies the point the moment is
+					 * currently about and the support supplies the point it is being moved to;
+					 * with either missing there is nothing to measure the transfer against,
+					 * and inventing one would put the world origin into a lever arm.
+					 */
+					if (bJointKnowsItsFace && Pieces[Support].bHasCentreOfMass)
+					{
+						ReceivedMomentUuCm[Support] += MomentAboutJointUuCm
+							+ FVector::CrossProduct(
+								Connection.InterfaceCentreCm - Pieces[Support].CentreOfMassCm,
+								ShareWeightUu);
 					}
 
 					ReceivedFromAboveUU[Support] += ShareUU;

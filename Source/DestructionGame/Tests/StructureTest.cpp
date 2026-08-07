@@ -1668,6 +1668,13 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
  * Rejection means the connection is NOT added. Storing it and hoping the solver
  * skips it would leave a joint in the array that no rule applies to.
  *
+ * IT OWNS THE PIECE'S OWN CENTRE OF MASS TOO, and that door had a contract with no test
+ * behind it: Structure.h promises that "a centre that is not finite is refused outright
+ * rather than stored and ignored", which is the same argument AddConnection already makes
+ * for a joint's centre, one level up. Since moments landed, a NaN centre launders through
+ * two cross products into a NaN moment, and a NaN reads as INTACT at the break decision —
+ * so the wall stands rather than failing, which is the wrong direction to be wrong in.
+ *
  * IT NOW ALSO OWNS THE JOINT'S OWN RECTANGLE, and for the same reason: the structure
  * is the one place that can say a joint's geometry disagrees with its area. A
  * rectangle that does not describe the face its area describes is a plausible number
@@ -1733,6 +1740,102 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				FString::Printf(TEXT("%s: expected %d pieces, got %d"),
 					Case.Description, ExpectedCount, Structure.NumPieces()),
 				Structure.NumPieces() == ExpectedCount);
+		}
+
+		/*
+		 * AND THE SAME DOOR WITH A CENTRE OF MASS THROUGH IT, which is a SECOND thing that
+		 * can be nonsense and which no row above covers — the two-argument overload has no
+		 * centre to be wrong.
+		 *
+		 * A NaN CENTRE IS WORSE THAN A NaN MASS, AND THAT IS WHY IT BELONGS AT THE DOOR. A
+		 * mass that is not finite makes an obviously broken load; a centre that is not finite
+		 * makes a lever arm the moment anything subtracts a joint centroid from it, that arm
+		 * goes through the cross product that builds the moment, the moment reaches
+		 * ComputeUtilisation — and every comparison against a NaN is false, so the break
+		 * decision reads the joint as INTACT. A wall laid with one unplaceable brick therefore
+		 * stands, confidently, rather than failing. Failing open is the wrong direction to be
+		 * wrong in, and Structure.h says so at this overload: "A centre that is not finite is
+		 * refused outright rather than stored and ignored".
+		 *
+		 * ONE AXIS AT A TIME AS WELL AS ALL THREE, because a guard written as a length test,
+		 * or as a check on X alone, passes for a vector whose Y is the broken one — and Y is
+		 * the axis every bed joint in this project bends about.
+		 *
+		 * AN ACCEPTED CENTRE IS ALSO REQUIRED TO SURVIVE INTACT, so a door that refused
+		 * everything cannot pass, and neither can one that "fixes" a bad centre by zeroing it:
+		 * a zeroed centre is a perfectly well-formed point at the world origin, which on a
+		 * wall laid off the origin is a lever arm of metres invented out of a refusal.
+		 */
+		struct FCentreCase
+		{
+			const TCHAR* Description;
+			FVector CentreCm;
+			bool bIsAccepted;
+		};
+
+		const TArray<FCentreCase> CentreCases = {
+			{ TEXT("a brick that knows where it was laid"), FVector(11.25, 0.0, 3.25), true },
+			{ TEXT("a piece whose centre is the world origin"), FVector::ZeroVector, true },
+			{ TEXT("a centre a long way from the origin"), FVector(-4000.0, 250.0, 9000.0), true },
+			{ TEXT("a centre whose X is NaN"), FVector(NaNValue, 0.0, 3.25), false },
+			{ TEXT("a centre whose Y is NaN"), FVector(11.25, NaNValue, 3.25), false },
+			{ TEXT("a centre whose Z is NaN"), FVector(11.25, 0.0, NaNValue), false },
+			{ TEXT("a wholly NaN centre"), FVector(NaNValue, NaNValue, NaNValue), false },
+			{ TEXT("a centre whose X is infinite"), FVector(InfinityValue, 0.0, 3.25), false },
+			{ TEXT("a centre whose Y is infinite"), FVector(11.25, InfinityValue, 3.25), false },
+			{ TEXT("a centre whose Z is minus infinite"), FVector(11.25, 0.0, -InfinityValue), false },
+		};
+
+		for (const FCentreCase& Case : CentreCases)
+		{
+			FStructure Structure;
+
+			const int32 Handle = Structure.AddPiece(BrickMassKg, false, Case.CentreCm);
+
+			const int32 ExpectedHandle = Case.bIsAccepted ? 0 : INDEX_NONE;
+			const int32 ExpectedCount = Case.bIsAccepted ? 1 : 0;
+
+			TestTrue(
+				FString::Printf(TEXT("%s: expected handle %d, got %d"),
+					Case.Description, ExpectedHandle, Handle),
+				Handle == ExpectedHandle);
+
+			TestTrue(
+				FString::Printf(TEXT("%s: expected %d pieces in the structure, got %d"),
+					Case.Description, ExpectedCount, Structure.NumPieces()),
+				Structure.NumPieces() == ExpectedCount);
+
+			if (Case.bIsAccepted)
+			{
+				TestTrue(
+					FString::Printf(
+						TEXT("%s: should be stored bit for bit as given, (%g, %g, %g); it reads (%g, %g, %g)"),
+						Case.Description,
+						Case.CentreCm.X, Case.CentreCm.Y, Case.CentreCm.Z,
+						Structure.GetPiece(0).CentreOfMassCm.X,
+						Structure.GetPiece(0).CentreOfMassCm.Y,
+						Structure.GetPiece(0).CentreOfMassCm.Z),
+					Structure.GetPiece(0).CentreOfMassCm == Case.CentreCm);
+
+				TestTrue(
+					FString::Printf(TEXT("%s: and should be flagged as knowing where it is"),
+						Case.Description),
+					Structure.GetPiece(0).bHasCentreOfMass);
+			}
+			else
+			{
+				/*
+				 * REFUSED OUTRIGHT, NOT STORED AND IGNORED. A piece that got in with the flag
+				 * merely cleared would read as "nobody said where it is", which is a HEALTHY
+				 * state answering a centred load exactly — so the refusal has to be visible as
+				 * an absent PIECE rather than as an absent field.
+				 */
+				TestTrue(
+					FString::Printf(
+						TEXT("%s: nothing may have been stored, the structure holds %d live pieces"),
+						Case.Description, Structure.NumLivePieces()),
+					Structure.NumLivePieces() == 0);
+			}
 		}
 	}
 

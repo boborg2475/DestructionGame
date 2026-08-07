@@ -417,6 +417,238 @@ namespace PieceMenuPanelLayoutTestSupport
 		}
 	};
 
+	/** Which connection joins these two pieces, or INDEX_NONE if none does. */
+	int32 FindJointBetween(const FStructure& Structure, int32 HandleA, int32 HandleB)
+	{
+		for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
+		{
+			const FConnection& Connection = Structure.GetConnection(Index);
+
+			if ((Connection.PieceA == HandleA && Connection.PieceB == HandleB)
+				|| (Connection.PieceA == HandleB && Connection.PieceB == HandleA))
+			{
+				return Index;
+			}
+		}
+
+		return INDEX_NONE;
+	}
+
+	/** How much of two boxes' spans overlap along one axis, and where the middle of that is. */
+	double PanelOverlapCentreCm(const FPieceBox& A, const FPieceBox& B, int32 Axis)
+	{
+		const double LowCm = FMath::Max(
+			A.CentreCm[Axis] - A.ExtentCm[Axis], B.CentreCm[Axis] - B.ExtentCm[Axis]);
+
+		const double HighCm = FMath::Min(
+			A.CentreCm[Axis] + A.ExtentCm[Axis], B.CentreCm[Axis] + B.ExtentCm[Axis]);
+
+		return (LowCm + HighCm) * 0.5;
+	}
+
+	/**
+	 * THE SAME PANEL, OVER A WALL THAT ACTUALLY BENDS SOMEWHERE — AND A SIBLING OF FPanelFixture
+	 * RATHER THAN A WIDENING OF IT.
+	 *
+	 * WHY THE SHARED ONE COULD NEVER SHOW THIS. FPanelFixture is a FLUSH running bond, and every
+	 * joint in one is either a brick on two symmetric bed patches — statically indeterminate, so
+	 * FStructure's moment rule leaves it at exactly zero — or a half bat sitting squarely on the
+	 * one brick below it, whose patch centre lands exactly under its centre of mass. Neither can
+	 * produce an eccentricity, so no line the fit sweep measures there ever carries the bending
+	 * clause, and the sweep would report a bigger budget and pass identically at 560 px or 680 px.
+	 * It cannot observe the panel's width either way.
+	 *
+	 * WHY A SIBLING AND NOT A WIDER SHARED FIXTURE. Five tests measure FPanelFixture — the two
+	 * stillness claims, the no-growth cap, the Delete-is-last ordering and the tick containment —
+	 * and every one of them is a number taken on that flush wall. Putting a bending joint into the
+	 * shared fixture changes the readout's content, and so its width and its height, in all five
+	 * at once: they would all move for a reason that has nothing to do with what any of them
+	 * asserts. The cost of the sibling is one more world and one more panel build, inside one test.
+	 *
+	 * THE SHAPE IS THE PRODUCER'S OWN, NOT A HAND-WRITTEN JOINT. NarrowWaistWallSpec is a RAGGED
+	 * running bond, so the courses above the waist step back OUT over it:
+	 *
+	 *      course 4            [ 5 ]
+	 *      course 3         [ 3 ][ 4 ]      EACH ON ONE PATCH, AND OFF-CENTRE
+	 *      course 2            [ 2 ]        THE WAIST — the brick singled out
+	 *      course 1         [ 0 ][ 1 ]      grounded
+	 *
+	 * Brick 3 spans x -10.75..10.75 and the waist below it spans 0.5..22.0, so their bed patch
+	 * runs 0.5..10.75 and is centred at x 5.625 — HALF THE BOND OFFSET from brick 3's own centre
+	 * of mass at x 0. One support and a real lever arm is exactly the determinate case the moment
+	 * rule answers, so that joint carries a bend and the line describing it grows the clause.
+	 * Brick 4 is its mirror. The waist's two joints to the ground are unbent, so this fixture
+	 * prints both kinds of line rather than only the interesting one.
+	 *
+	 * THE LEVER ARM IS ASSERTED FROM THE LAID BOXES rather than taken on trust, and the moment is
+	 * then asked of the graph. A producer retuned so that the bond offset vanished would leave a
+	 * wall that still stands, still draws, and quietly stops having anything to say about bending
+	 * — at which point this fixture would be a second copy of the flush one and the sweep would go
+	 * green over a panel that still cannot fit its own sentences.
+	 */
+	struct FBendingPanelFixture
+	{
+		FBrickTestWorld TestWorld;
+		FBrickLayout Reference;
+		FStructureBinding* Binding = nullptr;
+		ADestructionGamePlayerController* Controller = nullptr;
+
+		FPieceRef InspectedRef;
+		int32 InspectedJoints = 0;
+
+		bool bWorldBegun = false;
+
+		/** Course 2's single brick: the one every corbel above it leans on. */
+		static constexpr int32 WaistPiece = 2;
+
+		/** Course 3's left-hand brick, which sits on the waist and hangs half off it. */
+		static constexpr int32 CorbelPiece = 3;
+
+		static constexpr int32 BendingWallPieceCount = 6;
+
+		/**
+		 * Half the coordinating grid's brick pitch, which is what a running bond offsets by.
+		 *
+		 * 21.5 cm of brick plus a 1 cm joint is a 22.5 cm cell, a bond offsets alternate courses
+		 * by half of one, and the patch a stepped-out brick lands on is the half of its bed that
+		 * overhangs — so its centre sits a quarter cell, 5.625 cm, from the brick's own middle.
+		 * Spelled out here from the spec's own dimensions so that a wall laid to a different
+		 * brick still states its own arm rather than inheriting this one.
+		 */
+		double ExpectedLeverArmCm = 0.0;
+
+		bool Begin(FAutomationTestBase& Test)
+		{
+			const FRunningBondSpec Spec = NarrowWaistWallSpec(4);
+
+			ExpectedLeverArmCm = (Spec.BrickSizeCm.X + Spec.JointThicknessCm) * 0.25;
+
+			Test.TestTrue(
+				TEXT("fixture: RunningBond should lay the reference waist wall"),
+				RunningBond(Spec, Reference));
+
+			if (Reference.Boxes.Num() != BendingWallPieceCount)
+			{
+				Test.AddError(FString::Printf(
+					TEXT("fixture: the waist wall should be %d pieces, got %d"),
+					BendingWallPieceCount, Reference.Boxes.Num()));
+
+				return false;
+			}
+
+			/*
+			 * THE ECCENTRICITY, MEASURED OFF THE LAID BOXES AND NOT OFF THE SOLVER. This is the
+			 * whole reason the wall bends: the corbel's bed patch is the overlap between it and
+			 * the waist, and that overlap's middle is a quarter cell from the corbel's centre of
+			 * mass. Asked of the geometry rather than of GetConnectionMoment so it says which of
+			 * the two is wrong when they disagree.
+			 */
+			const double PatchCentreXCm = PanelOverlapCentreCm(
+				Reference.Boxes[WaistPiece], Reference.Boxes[CorbelPiece], /*Axis*/ 0);
+
+			const double LeverArmCm =
+				FMath::Abs(PatchCentreXCm - Reference.Boxes[CorbelPiece].CentreCm.X);
+
+			Test.TestEqual(
+				FString::Printf(
+					TEXT("fixture: the corbel's bed patch must be off-centre by %.4f cm for anything to bend, it is %.4f cm"),
+					ExpectedLeverArmCm, LeverArmCm),
+				LeverArmCm, ExpectedLeverArmCm, 1e-9);
+
+			if (!TestWorld.Begin(Test))
+			{
+				return false;
+			}
+
+			bWorldBegun = true;
+
+			const int32 StructureId = TestWorld.Subsystem->BuildRunningBond(Spec);
+			Binding = TestWorld.Subsystem->Find(StructureId);
+
+			Test.TestNotNull(
+				*FString::Printf(
+					TEXT("fixture: BuildRunningBond returned %d and Find should hand back its binding"),
+					StructureId),
+				Binding);
+
+			if (Binding == nullptr || Binding->NumPieces() != BendingWallPieceCount)
+			{
+				return false;
+			}
+
+			Binding->SolveLoads();
+
+			Controller = TestWorld.World->SpawnActor<ADestructionGamePlayerController>();
+
+			Test.TestNotNull(
+				TEXT("fixture: the test world should spawn the game's player controller"), Controller);
+
+			if (Controller == nullptr)
+			{
+				return false;
+			}
+
+			/* Three bricks picked, as the flush fixture picks three: the pair and the waist. */
+			for (int32 Piece = 0; Piece <= WaistPiece; ++Piece)
+			{
+				Controller->InspectAlongRay(
+					PanelRayStart(Reference.Boxes[Piece]), PanelRayEnd(Reference.Boxes[Piece]));
+			}
+
+			Test.TestEqual(
+				FString::Printf(
+					TEXT("fixture: three clicks should have picked three bricks, the selection holds %d"),
+					Controller->GetPieceSelection().Num()),
+				Controller->GetPieceSelection().Num(), 3);
+
+			InspectedRef = PanelRef(StructureId, WaistPiece);
+
+			const int32 InspectedHandle = Binding->ResolvePiece(InspectedRef);
+
+			InspectedJoints = JointsTouchingPiece(Binding->GetStructure(), InspectedHandle);
+
+			Test.TestTrue(
+				FString::Printf(
+					TEXT("fixture: the brick singled out must have at least 3 joints for the readout to grow by, it has %d"),
+					InspectedJoints),
+				InspectedJoints >= 3);
+
+			/*
+			 * AND THE JOINT THE WHOLE FIXTURE EXISTS FOR IS CARRYING A BEND. The lever arm above
+			 * says the geometry is eccentric; this says the solver answered it, which is the only
+			 * state in which a line of the readout grows a clause at all.
+			 */
+			const int32 BendingJoint =
+				FindJointBetween(Binding->GetStructure(), InspectedHandle, CorbelPiece);
+
+			if (BendingJoint == INDEX_NONE)
+			{
+				Test.AddError(TEXT("fixture: the waist and the corbel above it must share a joint"));
+				return false;
+			}
+
+			const double MomentUuCm =
+				Binding->GetStructure().GetConnectionMoment(BendingJoint).Size();
+
+			Test.TestTrue(
+				FString::Printf(
+					TEXT("fixture: joint #%d must be carrying a bend for a readout line to describe one, it carries %.6f uu.cm"),
+					BendingJoint, MomentUuCm),
+				MomentUuCm > 0.0);
+
+			return InspectedJoints >= 3 && MomentUuCm > 0.0;
+		}
+
+		void End()
+		{
+			if (bWorldBegun)
+			{
+				TestWorld.End();
+				bWorldBegun = false;
+			}
+		}
+	};
+
 	/**
 	 * A WALL WITH MORE BRICKS IN IT THAN A LIST CAN SENSIBLY SHOW, which is the fixture the cap
 	 * needs and the shared 7-brick WallSpec cannot be.
@@ -774,6 +1006,182 @@ namespace PieceMenuPanelLayoutTestSupport
 	 * that has to be readable is the glyphs, and glyphs do not scale with the bar.
 	 */
 	constexpr double PanelTickLabelGapPx = 4.0;
+
+	/**
+	 * SWEEP EVERY LINE THIS SELECTION'S READOUT SUPPLIES AND HOLD IT INSIDE THE PANEL'S COLUMN.
+	 *
+	 * A FUNCTION RATHER THAN A RunTest BODY BECAUSE THE CLAIM NOW HAS TWO WALLS TO MAKE IT ABOUT,
+	 * and it is one claim. A flush running bond bends nowhere, so its readout never grows the
+	 * bending clause and the sweep over it cannot see the panel's width at all; a wall with a
+	 * corbel on it prints the longest line this panel can produce. Two copies of this body would
+	 * be two chances for one of them to drift into measuring something else.
+	 *
+	 * @param WallDescription names which wall a failure came off, since both run in one test.
+	 */
+	void SweepReadoutFitsInsideThePanel(
+		FAutomationTestBase& Test,
+		ADestructionGamePlayerController* Controller,
+		const FPieceRef& InspectedRef,
+		const TCHAR* WallDescription)
+	{
+		const TSharedRef<SWidget> Panel = Controller->BuildPieceMenuPanel();
+		const FGeometry Root = PanelRootGeometry();
+
+		/* The readout is only full — and only as wide as it gets — with a brick singled out. */
+		Controller->SetInspectedPiece(InspectedRef);
+
+		const FPieceMenuInspector Inspector = Controller->PieceMenuInspectorForSelection();
+		const FPanelLayoutState State = MeasurePanel(Panel, Root);
+
+		const TArrayView<const FPieceMenuRow> Rows = Controller->GetShownPieceMenuRows();
+
+		Test.TestTrue(
+			FString::Printf(
+				TEXT("fixture (%s): the selection should offer at least one action row to measure the panel by, the presenter shows %d"),
+				WallDescription, Rows.Num()),
+			Rows.Num() >= 1);
+
+		Test.TestTrue(
+			FString::Printf(
+				TEXT("fixture (%s): the singled-out brick should break out joints for the readout to be wide, it broke out %d"),
+				WallDescription, Inspector.Joints.Num()),
+			Inspector.Joints.Num() >= 3);
+
+		if (Rows.Num() == 0 || Inspector.Joints.Num() < 3)
+		{
+			return;
+		}
+
+		const FPanelButton* const ActionRow = FindPanelButton(State.Buttons, Rows.Last().Label);
+
+		if (ActionRow == nullptr)
+		{
+			Test.AddError(FString::Printf(
+				TEXT("the panel must draw the action row '%s' for its content width to be measurable; it drew %s"),
+				*Rows.Last().Label, *DescribePanelButtons(State.Buttons)));
+
+			return;
+		}
+
+		const double ContentLeftPx = ActionRow->TopLeftPx.X;
+		const double ContentRightPx = ContentLeftPx + ActionRow->SizePx.X;
+
+		/*
+		 * FIXTURE: THE COLUMN IS A REAL ONE. A zero-width action row would make every containment
+		 * claim below impossible for a reason that has nothing to do with the readout, and a row
+		 * wider than the viewport would make them free.
+		 */
+		Test.TestTrue(
+			*FString::Printf(
+				TEXT("fixture (%s): the action row should span a real width, it spans x %.2f..%.2f in a %.0f px viewport"),
+				WallDescription, ContentLeftPx, ContentRightPx, PanelViewportWidthPx),
+			ActionRow->SizePx.X > 0.0 && ActionRow->SizePx.X < PanelViewportWidthPx);
+
+		if (!(ActionRow->SizePx.X > 0.0))
+		{
+			return;
+		}
+
+		/*
+		 * EVERY LINE THE MODEL SUPPLIED FOR THIS STATE, taken from the model rather than read back
+		 * off the panel: a line the panel failed to draw is then a missing widget rather than an
+		 * assertion that quietly skipped itself.
+		 */
+		TArray<FString> ReadoutLines;
+		ReadoutLines.Add(Inspector.InspectedLabel);
+		ReadoutLines.Add(Inspector.SupportText);
+		ReadoutLines.Add(Inspector.JointsText);
+
+		for (const FInspectorJointRow& Joint : Inspector.Joints)
+		{
+			ReadoutLines.Add(Joint.Text);
+		}
+
+		ReadoutLines.Add(Inspector.HeadroomCaption);
+
+		for (const FHeadroomScaleTick& Tick : Inspector.HeadroomScale)
+		{
+			ReadoutLines.Add(Tick.Label);
+		}
+
+		double TightestSlackPx = TNumericLimits<double>::Max();
+		FString TightestLine;
+
+		for (const FString& Line : ReadoutLines)
+		{
+			if (Line.IsEmpty())
+			{
+				Test.AddError(TEXT("the model must supply every readout line for the panel to have anything to place"));
+				continue;
+			}
+
+			/*
+			 * EVERY WIDGET THAT READS THIS, not the first one found: the brick a readout is about is
+			 * drawn twice by construction — once as its entry row and once as the readout's own
+			 * heading — and both of them have to fit.
+			 */
+			const TArray<int32> Drawn = FindPanelWidgetsByText(State.Widgets, Line);
+
+			if (Drawn.Num() == 0)
+			{
+				Test.AddError(FString::Printf(
+					TEXT("readout line '%s' should be drawn; the panel drew %s"),
+					*Line, *DescribePanelTexts(State.Texts)));
+
+				continue;
+			}
+
+			for (const int32 Index : Drawn)
+			{
+				const FPanelWidget& Text = State.Widgets[Index];
+
+				const double LineLeftPx = Text.TopLeftPx.X;
+
+				/*
+				 * WHERE THE GLYPHS END, WHICH IS NOT WHERE THE SLOT ENDS. A text block in a filling
+				 * slot is arranged at the whole column's width however short its text is, so its
+				 * arranged rectangle says nothing at all about whether the words fit; the width it
+				 * ASKED for does.
+				 */
+				const double LineRightPx = LineLeftPx + Text.DesiredSizePx.X;
+				const double SlackPx = ContentRightPx - LineRightPx;
+
+				if (SlackPx < TightestSlackPx)
+				{
+					TightestSlackPx = SlackPx;
+					TightestLine = Line;
+				}
+
+				/*
+				 * THE ASSERTION, BOTH EDGES. Past the right edge is the sentence running off the
+				 * panel's own background and being cut; past the left is the same thing lying down,
+				 * and it is what a bar wide enough to push its sentence out would produce if the row
+				 * ever centred itself instead of overflowing.
+				 */
+				Test.TestTrue(
+					*FString::Printf(
+						TEXT("readout line '%s' must fit inside the panel (%s): it needs x %.2f..%.2f against a content column of %.2f..%.2f, overrunning by %.2f px"),
+						*Line, WallDescription, LineLeftPx, LineRightPx, ContentLeftPx, ContentRightPx,
+						LineRightPx - ContentRightPx),
+					LineLeftPx >= ContentLeftPx - PanelSpanContainmentSlackPx
+						&& LineRightPx <= ContentRightPx + PanelSpanContainmentSlackPx);
+			}
+		}
+
+		/*
+		 * AND THE NUMBER THE NEXT CHANGE NEEDS. This is how many pixels of the panel's width are
+		 * spare beside the longest thing the readout prints, which is the budget a wider headroom bar
+		 * has to come out of — reported rather than asserted, because how it is SPENT is a layout
+		 * decision and this test has no business pinning one. When it is negative it is the other
+		 * number the next change needs: how many pixels wider the panel has to be before the
+		 * sentence it already prints fits inside it.
+		 */
+		Test.AddInfo(FString::Printf(
+			TEXT("%s: the readout's tightest line is '%s', %s %.2f px inside a %.2f px content column"),
+			WallDescription, *TightestLine,
+			TightestSlackPx < 0.0 ? TEXT("OVERRUNNING BY") : TEXT("with spare of"),
+			FMath::Abs(TightestSlackPx), ContentRightPx - ContentLeftPx));
+	}
 }
 
 /**
@@ -2066,9 +2474,20 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
  * on the wall, the course numbers and the units a force happens to print in — 999.9 N and 1.0 kN
  * are different widths for a tenth of a newton — so naming one would be pinning today's fixture.
  *
+ * AND IT SWEEPS TWO WALLS, BECAUSE ONE OF THEM CANNOT SEE THE PANEL'S WIDTH AT ALL. The flush
+ * running bond every other test in this file measures bends NOWHERE: each of its bricks sits
+ * either on two symmetric bed patches, which the moment rule leaves at exactly zero because the
+ * statics is indeterminate, or squarely on the one brick below it. So no line of its readout ever
+ * carries the bending clause, and the sweep over it reports a comfortable budget and would go on
+ * reporting one at 560 px or at 680 px. The waist wall's corbels each land on ONE patch, half a
+ * bond offset off their own centre of mass — the determinate case, where the moment is exact —
+ * and the line describing such a joint is the longest thing this panel can print. Both walls run
+ * through the same sweep so the claim stays one claim.
+ *
  * AND THE SLACK IS LOGGED, WHICH IS HALF THE POINT OF THE TEST. The narrowest gap between a line
  * and the panel's edge is exactly how many pixels a wider bar may take, and it appears in the
- * run's output whether the test passes or fails.
+ * run's output whether the test passes or fails — as an OVERRUN when it is negative, which is the
+ * number a panel too narrow for its own sentence has to be widened by.
  *
  * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI, like every test in this file.
  */
@@ -2083,173 +2502,42 @@ bool FPieceMenuPanelFitsItsReadoutTest::RunTest(const FString& Parameters)
 	using namespace DestructionLayout;
 	using namespace PieceMenuPanelLayoutTestSupport;
 
-	FPanelFixture Fixture;
-
-	if (!Fixture.Begin(*this))
-	{
-		Fixture.End();
-		return true;
-	}
-
-	ADestructionGamePlayerController* const Controller = Fixture.Controller;
-
-	const TSharedRef<SWidget> Panel = Controller->BuildPieceMenuPanel();
-	const FGeometry Root = PanelRootGeometry();
-
-	/* The readout is only full — and only as wide as it gets — with a brick singled out. */
-	Controller->SetInspectedPiece(Fixture.InspectedRef);
-
-	const FPieceMenuInspector Inspector = Controller->PieceMenuInspectorForSelection();
-	const FPanelLayoutState State = MeasurePanel(Panel, Root);
-
-	const TArrayView<const FPieceMenuRow> Rows = Controller->GetShownPieceMenuRows();
-
-	TestTrue(
-		FString::Printf(
-			TEXT("fixture: the selection should offer at least one action row to measure the panel by, the presenter shows %d"),
-			Rows.Num()),
-		Rows.Num() >= 1);
-
-	TestTrue(
-		FString::Printf(
-			TEXT("fixture: the singled-out brick should break out joints for the readout to be wide, it broke out %d"),
-			Inspector.Joints.Num()),
-		Inspector.Joints.Num() >= 3);
-
-	if (Rows.Num() == 0 || Inspector.Joints.Num() < 3)
-	{
-		Fixture.End();
-		return true;
-	}
-
-	const FPanelButton* const ActionRow = FindPanelButton(State.Buttons, Rows.Last().Label);
-
-	if (ActionRow == nullptr)
-	{
-		AddError(FString::Printf(
-			TEXT("the panel must draw the action row '%s' for its content width to be measurable; it drew %s"),
-			*Rows.Last().Label, *DescribePanelButtons(State.Buttons)));
-
-		Fixture.End();
-		return true;
-	}
-
-	const double ContentLeftPx = ActionRow->TopLeftPx.X;
-	const double ContentRightPx = ContentLeftPx + ActionRow->SizePx.X;
-
 	/*
-	 * FIXTURE: THE COLUMN IS A REAL ONE. A zero-width action row would make every containment
-	 * claim below impossible for a reason that has nothing to do with the readout, and a row
-	 * wider than the viewport would make them free.
+	 * THE FLUSH WALL FIRST, WHICH IS THE PANEL AS FIVE OTHER TESTS IN THIS FILE MEASURE IT. It
+	 * bends nowhere, so what it establishes is the budget the ORDINARY readout leaves — and it is
+	 * kept rather than replaced precisely because it is the common case a player looks at.
 	 */
-	TestTrue(
-		*FString::Printf(
-			TEXT("fixture: the action row should span a real width, it spans x %.2f..%.2f in a %.0f px viewport"),
-			ContentLeftPx, ContentRightPx, PanelViewportWidthPx),
-		ActionRow->SizePx.X > 0.0 && ActionRow->SizePx.X < PanelViewportWidthPx);
-
-	if (!(ActionRow->SizePx.X > 0.0))
 	{
+		FPanelFixture Fixture;
+
+		if (Fixture.Begin(*this))
+		{
+			SweepReadoutFitsInsideThePanel(
+				*this, Fixture.Controller, Fixture.InspectedRef,
+				TEXT("a flush running bond, where nothing bends"));
+		}
+
 		Fixture.End();
-		return true;
 	}
 
 	/*
-	 * EVERY LINE THE MODEL SUPPLIED FOR THIS STATE, taken from the model rather than read back
-	 * off the panel: a line the panel failed to draw is then a missing widget rather than an
-	 * assertion that quietly skipped itself.
+	 * AND THEN THE WALL WITH A CORBEL ON IT, WHICH IS THE ONE THAT CAN SEE THE PANEL'S WIDTH. A
+	 * brick on a single off-centre patch is statically determinate, so its joint carries a real
+	 * moment and its line grows the bending clause — the longest sentence this readout produces,
+	 * and the only one against which "560 px" is a claim rather than an unexamined number.
 	 */
-	TArray<FString> ReadoutLines;
-	ReadoutLines.Add(Inspector.InspectedLabel);
-	ReadoutLines.Add(Inspector.SupportText);
-	ReadoutLines.Add(Inspector.JointsText);
-
-	for (const FInspectorJointRow& Joint : Inspector.Joints)
 	{
-		ReadoutLines.Add(Joint.Text);
-	}
+		FBendingPanelFixture Fixture;
 
-	ReadoutLines.Add(Inspector.HeadroomCaption);
-
-	for (const FHeadroomScaleTick& Tick : Inspector.HeadroomScale)
-	{
-		ReadoutLines.Add(Tick.Label);
-	}
-
-	double TightestSlackPx = TNumericLimits<double>::Max();
-	FString TightestLine;
-
-	for (const FString& Line : ReadoutLines)
-	{
-		if (Line.IsEmpty())
+		if (Fixture.Begin(*this))
 		{
-			AddError(TEXT("the model must supply every readout line for the panel to have anything to place"));
-			continue;
+			SweepReadoutFitsInsideThePanel(
+				*this, Fixture.Controller, Fixture.InspectedRef,
+				TEXT("a ragged wall with a corbel, where one joint is levered open"));
 		}
 
-		/*
-		 * EVERY WIDGET THAT READS THIS, not the first one found: the brick a readout is about is
-		 * drawn twice by construction — once as its entry row and once as the readout's own
-		 * heading — and both of them have to fit.
-		 */
-		const TArray<int32> Drawn = FindPanelWidgetsByText(State.Widgets, Line);
-
-		if (Drawn.Num() == 0)
-		{
-			AddError(FString::Printf(
-				TEXT("readout line '%s' should be drawn; the panel drew %s"),
-				*Line, *DescribePanelTexts(State.Texts)));
-
-			continue;
-		}
-
-		for (const int32 Index : Drawn)
-		{
-			const FPanelWidget& Text = State.Widgets[Index];
-
-			const double LineLeftPx = Text.TopLeftPx.X;
-
-			/*
-			 * WHERE THE GLYPHS END, WHICH IS NOT WHERE THE SLOT ENDS. A text block in a filling
-			 * slot is arranged at the whole column's width however short its text is, so its
-			 * arranged rectangle says nothing at all about whether the words fit; the width it
-			 * ASKED for does.
-			 */
-			const double LineRightPx = LineLeftPx + Text.DesiredSizePx.X;
-			const double SlackPx = ContentRightPx - LineRightPx;
-
-			if (SlackPx < TightestSlackPx)
-			{
-				TightestSlackPx = SlackPx;
-				TightestLine = Line;
-			}
-
-			/*
-			 * THE ASSERTION, BOTH EDGES. Past the right edge is the sentence running off the
-			 * panel's own background and being cut; past the left is the same thing lying down,
-			 * and it is what a bar wide enough to push its sentence out would produce if the row
-			 * ever centred itself instead of overflowing.
-			 */
-			TestTrue(
-				*FString::Printf(
-					TEXT("readout line '%s' must fit inside the panel: it needs x %.2f..%.2f against a content column of %.2f..%.2f"),
-					*Line, LineLeftPx, LineRightPx, ContentLeftPx, ContentRightPx),
-				LineLeftPx >= ContentLeftPx - PanelSpanContainmentSlackPx
-					&& LineRightPx <= ContentRightPx + PanelSpanContainmentSlackPx);
-		}
+		Fixture.End();
 	}
-
-	/*
-	 * AND THE NUMBER THE NEXT CHANGE NEEDS. This is how many pixels of the panel's width are
-	 * spare beside the longest thing the readout prints, which is the budget a wider headroom bar
-	 * has to come out of — reported rather than asserted, because how it is SPENT is a layout
-	 * decision and this test has no business pinning one.
-	 */
-	AddInfo(FString::Printf(
-		TEXT("the readout's tightest line is '%s', with %.2f px to spare inside a %.2f px content column"),
-		*TightestLine, TightestSlackPx, ContentRightPx - ContentLeftPx));
-
-	Fixture.End();
 
 	return true;
 }

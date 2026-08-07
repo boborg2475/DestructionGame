@@ -118,14 +118,26 @@ static const FLinearColor PieceMenuDeadPieceColour(0.5f, 0.5f, 0.5f, 0.6f);
  * each of which held only one direction still. World.Menu.PanelDoesNotGrowWithTheSelection and
  * World.Menu.InspectingAnEntryDoesNotMoveTheClickableRows both assert it directly.
  *
- * THE NUMBERS ARE A FIT RATHER THAN A TUNING. 560 px of width holds the longest line the model
- * composes — a joint row is a bar plus about 360 px of text at this font — with room for a
- * course number in the hundreds; 560 px of height is about half a 1080 viewport, so the whole
- * panel is on screen with the list, the readout and the action rows all reserved. Nothing
- * asserts either figure, because a test that pinned "the list is 190 px tall" would break on
- * every visual pass and would still not say the thing that matters.
+ * THE WIDTH IS A MEASUREMENT RATHER THAN A FIT, AND IT IS THE ONE FIGURE HERE THAT IS ASSERTED.
+ * 560 px held the longest line the model composed when it was chosen, and then the joint sentence
+ * grew a bending clause: "#4  course 3 · #1  bed above  40.0 N  4.551 %  22.0× margin  150.0 N·cm
+ * bending" asks for 432 px of glyphs, and it does not start at the column's left edge — the bar
+ * and its swatch take 166 px first — so it ran 58 px off the end of a 540 px content column and
+ * was cut. A joint line is laid out at its natural width in a box that will not shrink it, so
+ * there is no wrapping to absorb that. World.Menu.TheReadoutFitsInsideThePanel measures the
+ * overrun on a ragged wall whose corbel sits on one off-centre patch — the only wall shape that
+ * bends at all, and so the only one from which this number is visible — which puts the floor at
+ * 617.5 px. 640 px clears it by 22 px, about four characters at this font, which is the room the
+ * original figure claimed for a course number in the hundreds and the game's own 1,220-brick wall
+ * still wants. The panel is right-anchored at PieceMenuPanelMarginPx, so widening it takes room
+ * from the empty middle of the screen rather than moving it off the edge.
+ *
+ * THE HEIGHT IS STILL A FIT. 560 px is about half a 1080 viewport, so the whole panel is on
+ * screen with the list, the readout and the action rows all reserved. Nothing asserts it, because
+ * a test that pinned "the list is 190 px tall" would break on every visual pass and would still
+ * not say the thing that matters.
  */
-static constexpr float PieceMenuPanelWidthPx = 560.0f;
+static constexpr float PieceMenuPanelWidthPx = 640.0f;
 static constexpr float PieceMenuPanelHeightPx = 560.0f;
 
 /** How far the panel sits off the right edge of the viewport. */
@@ -161,9 +173,14 @@ static constexpr float PieceMenuBrickListMaxHeightPx = 190.0f;
  *
  * 140 px LEAVES 15 px BETWEEN THE TIGHTEST PAIR, against the 4 px World.Menu.HeadroomTicksStay-
  * InsideTheBarTheyLabel asks for, and it is bounded from the other side: every pixel here pushes
- * the joint sentence beside it further right, and World.Menu.TheReadoutFitsInsideThePanel measured
- * 112 px of room beside the longest of those. This spends 44 of them, and the swatch column below
- * spends 16 more.
+ * the joint sentence beside it further right, and the bar and the swatch column below together
+ * take 166 px off the front of every one of those.
+ *
+ * WHAT IS LEFT TO SPEND IS 22 px, not the 112 this once read. That earlier figure was taken on a
+ * flush wall, which bends nowhere and so never prints the bending clause; World.Menu.TheReadout-
+ * FitsInsideThePanel now sweeps a wall with a corbel in it too, and the longest sentence that one
+ * produces clears the column by 22 px at the panel's present width. A wider bar has to come out
+ * of that, or out of PieceMenuPanelWidthPx alongside it.
  */
 static constexpr float PieceMenuHeadroomBarWidthPx = 140.0f;
 static constexpr float PieceMenuHeadroomBarHeightPx = 8.0f;

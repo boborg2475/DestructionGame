@@ -28,9 +28,9 @@ FPieceInspection InspectPiece(const FStructure& Structure, int32 PieceIndex)
 	/*
 	 * A SCAN IN CONNECTION ORDER, AND EVERY FIELD ON A ROW IS AN ACCESSOR CALL. Nothing
 	 * here decides anything the solver has already decided — the tier is GetJointRole, the
-	 * force is GetConnectionForce, the ratio is GetConnectionUtilisation, the state is the
-	 * connection's own latch and stamp — because a second derivation agrees to nine decimal
-	 * places forever and still differs in the last bit.
+	 * force is GetConnectionForce, the bend is GetConnectionMoment, the ratio is
+	 * GetConnectionUtilisation, the state is the connection's own latch and stamp — because a
+	 * second derivation agrees to nine decimal places forever and still differs in the last bit.
 	 *
 	 * The filter is raw connectivity rather than the solver's support lists, deliberately:
 	 * those drop a joint that has GIVEN before the tier is even decided, and the joint a
@@ -51,6 +51,7 @@ FPieceInspection InspectPiece(const FStructure& Structure, int32 PieceIndex)
 			Connection.PieceA == PieceIndex ? Connection.PieceB : Connection.PieceA;
 		Joint.Role = Structure.GetJointRole(Index, PieceIndex);
 		Joint.ForceUu = Structure.GetConnectionForce(Index);
+		Joint.MomentUuCm = Structure.GetConnectionMoment(Index);
 		Joint.Utilisation = Structure.GetConnectionUtilisation(Index);
 		Joint.bHasGiven = Connection.HasGiven();
 		Joint.BreakPass = Structure.GetBreakPass(Index);

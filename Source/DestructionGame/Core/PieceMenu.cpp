@@ -376,6 +376,36 @@ namespace
 			: FString::Printf(TEXT("%.1f N"), ForceN);
 	}
 
+	/**
+	 * What is levering this joint open, as a clause to hang off the end of its line — and
+	 * NOTHING AT ALL on a joint nothing is levering.
+	 *
+	 * THE ABSENCE IS THE HALF THAT BITES. A settled wall bends nowhere: a brick on two
+	 * symmetric bed patches has its centre of mass at the area-weighted centroid of its
+	 * supports, so the eccentricity is zero EXACTLY rather than nearly. Almost every joint a
+	 * player ever looks at therefore has nothing to say here, and a clause appended anyway
+	 * would make the common case worse to read for the sake of the rare one.
+	 *
+	 * SO THE TEST IS AGAINST EXACT ZERO, WHICH IS A STATEMENT RATHER THAN A TOLERANCE — see
+	 * FStructure::GetConnectionMoment. A centred load, a piece nobody placed and a joint whose
+	 * rectangle nobody measured all produce it exactly. And the polarity is the one that keeps
+	 * a fault visible: a moment that is not a number is not equal to zero, so it prints its
+	 * clause rather than going quiet, which is the same direction the force and the per cent
+	 * beside it already take.
+	 *
+	 * N·cm, AND NO NEW CONVERSION BOUNDARY. The number arrives already converted by
+	 * DestructionPresenter::ForceUnitsPerNewton, applied once where ForceN is; a moment is
+	 * uu.cm and this game's length unit is the centimetre, so the centimetre rides through
+	 * untouched. Metres would collapse the interesting range — 313.6 N·cm is 3.136 N·m, where
+	 * one step of the last printed digit is a whole 10 N·cm.
+	 */
+	FString PresenterBendingText(double MomentNCm)
+	{
+		return MomentNCm == 0.0
+			? FString()
+			: FString::Printf(TEXT("  %.1f N·cm bending"), MomentNCm);
+	}
+
 	/** What a joint's utilisation reads when it is carrying exactly all it can. */
 	constexpr double PresenterFullLoadPercent = 100.0;
 
@@ -948,6 +978,17 @@ FPieceMenuInspector BuildPieceMenuInspector(
 		 * a decimal reading of the model's own number gives.
 		 */
 		Row.ForceN = Joint.ForceUu.Size() / DestructionPresenter::ForceUnitsPerNewton;
+
+		/*
+		 * AND THE BEND THROUGH THE SAME CONSTANT, WHICH IS NOT A SECOND BOUNDARY. A moment is
+		 * uu.cm and length is already centimetres, so turning it into newton-centimetres is the
+		 * identical unit change the line above makes — "moments" merely sounds like it should
+		 * introduce one. The MAGNITUDE, for the reason ForceN takes one: which way a joint is
+		 * being levered open is not a thing a line of text says, and the worst corner is the
+		 * worst corner either way.
+		 */
+		Row.MomentNCm = Joint.MomentUuCm.Size() / DestructionPresenter::ForceUnitsPerNewton;
+
 		Row.UtilisationPercent = Joint.Utilisation * 100.0;
 
 		/*
@@ -996,6 +1037,13 @@ FPieceMenuInspector BuildPieceMenuInspector(
 		 * carries nothing, so it reads 0 N at 0 % — identical to an intact joint with
 		 * nothing on it, and one of those is a hole in the wall. Deciding that here is
 		 * what keeps the widget free of the branch.
+		 *
+		 * AND THE BENDING CLAUSE TRAILS ITS NUMBER LIKE EVERY OTHER CLAUSE ON THE LINE —
+		 * "78.4 N", "49.000 %", "2.0× margin" are all <number> <word> — and it is EMPTY on
+		 * the joints that are not being levered open, which is almost all of them. Without it
+		 * a bent joint prints a force and a percentage with no arithmetic between them: 78.4 N
+		 * at 49 % of capacity beside 490.0 N at 1 %, and the term that reconciles them named
+		 * nowhere on the line.
 		 */
 		Row.Text = Row.bHasGiven
 			? FString::Printf(
@@ -1003,10 +1051,11 @@ FPieceMenuInspector BuildPieceMenuInspector(
 				Row.ConnectionIndex, *OtherPieceText,
 				PresenterWordForJointRole(Row.Role))
 			: FString::Printf(
-				TEXT("#%d  %s  %s  %s  %.3f %%  %s"),
+				TEXT("#%d  %s  %s  %s  %.3f %%  %s%s"),
 				Row.ConnectionIndex, *OtherPieceText,
 				PresenterWordForJointRole(Row.Role),
-				*PresenterForceText(Row.ForceN), Row.UtilisationPercent, *Row.MarginText);
+				*PresenterForceText(Row.ForceN), Row.UtilisationPercent, *Row.MarginText,
+				*PresenterBendingText(Row.MomentNCm));
 	}
 
 	/*

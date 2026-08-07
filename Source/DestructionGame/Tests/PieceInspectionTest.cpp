@@ -226,12 +226,13 @@ namespace PieceInspectionTestSupport
 		{
 			const FJointInspection& Joint = Inspection.Joints[Index];
 			Line += FString::Printf(
-				TEXT("%s[c%d->p%d %s Fz=%.6f u=%.9f %s pass=%d]"),
+				TEXT("%s[c%d->p%d %s Fz=%.6f My=%.6f u=%.9f %s pass=%d]"),
 				Index == 0 ? TEXT("") : TEXT(" "),
 				Joint.ConnectionIndex,
 				Joint.OtherPieceIndex,
 				NameOfRole(Joint.Role),
 				Joint.ForceUu.Z,
+				Joint.MomentUuCm.Y,
 				Joint.Utilisation,
 				Joint.bHasGiven ? TEXT("GIVEN") : TEXT("intact"),
 				Joint.BreakPass);
@@ -250,6 +251,23 @@ namespace PieceInspectionTestSupport
 		double Utilisation = 0.0;
 		bool bHasGiven = false;
 		int32 BreakPass = INDEX_NONE;
+
+		/**
+		 * The bending moment about Y, uu.cm — ZERO ON EVERY ROW OF THE WORKED FIXTURE, AND
+		 * THAT IS AN ASSERTION RATHER THAN AN OMITTED COLUMN.
+		 *
+		 * Nothing in this fixture supplies a joint rectangle, so no joint in it has a lever
+		 * arm to measure anything against and every one of them must read exactly zero. That
+		 * exactness is the property MOMENTS_DESIGN.md's whole slicing rests on — a
+		 * geometry-free structure reads bit for bit what it read before moments existed — so
+		 * a readout that started inventing a moment out of a piece's centre and a joint
+		 * centroid nobody wrote would show up here rather than in a wall.
+		 *
+		 * Y because every load in this project is vertical and every joint rectangle is
+		 * axis-aligned, so r x F about a joint on the X-Z plane lands wholly on Y. The
+		 * eccentric fixture at the foot of the test is where a non-zero one is derived.
+		 */
+		double MomentYUuCm = 0.0;
 	};
 
 	struct FExpectedPiece
@@ -300,6 +318,24 @@ namespace PieceInspectionTestSupport
 				FMath::IsFinite(Joint.ForceUu.X)
 					&& FMath::IsFinite(Joint.ForceUu.Y)
 					&& FMath::IsFinite(Joint.ForceUu.Z));
+
+			/*
+			 * AND THE MOMENT, WHICH HAS NO Max() ESCAPE OF ITS OWN. A moment is a solver
+			 * output rather than a verdict, so unlike the utilisation below there is no
+			 * sentinel it is entitled to come back as — every component is a real number or
+			 * the row is not describing anything. A NaN here is the worse half of the pair:
+			 * ComputeUtilisation branches on `moment != 0.0`, which is TRUE of a NaN, so it
+			 * would be carried into the stress rather than waved through, and the row would
+			 * print a utilisation of Max beside a moment nothing can read.
+			 */
+			Test.TestTrue(
+				FString::Printf(
+					TEXT("%s: connection %d must report a finite moment, it reports (%f, %f, %f)"),
+					Description, Joint.ConnectionIndex,
+					Joint.MomentUuCm.X, Joint.MomentUuCm.Y, Joint.MomentUuCm.Z),
+				FMath::IsFinite(Joint.MomentUuCm.X)
+					&& FMath::IsFinite(Joint.MomentUuCm.Y)
+					&& FMath::IsFinite(Joint.MomentUuCm.Z));
 
 			/*
 			 * NOT NaN, and finite-or-exactly-Max. TNumericLimits<double>::Max() is the
@@ -366,6 +402,28 @@ namespace PieceInspectionTestSupport
 					Description, Index,
 					Structure.GetConnectionForce(Index).Z, Joint.ForceUu.Z),
 				Joint.ForceUu == Structure.GetConnectionForce(Index));
+
+			/*
+			 * AND THE MOMENT, ON THE SAME TERMS AND FOR A SHARPER REASON THAN THE REST.
+			 *
+			 * FConnection::UtilisationUnder takes the moment as a DEFAULTED parameter, so a
+			 * breakout that simply never fetched one would go on agreeing with an assertion
+			 * written without this line — and would agree forever, quietly supplying zero for
+			 * the one number that explains why a joint on a light brick reads near its limit.
+			 * Exact rather than nearly-equal for the reason every other field here is: a
+			 * re-derivation from a centre of mass and a centroid agrees to fifteen places and
+			 * differs in the last bit, and this project has already paid for that twice.
+			 */
+			Test.TestTrue(
+				FString::Printf(
+					TEXT("%s: connection %d's moment must be GetConnectionMoment EXACTLY; ")
+					TEXT("the graph says (%.17g, %.17g, %.17g) and the breakout says (%.17g, %.17g, %.17g)"),
+					Description, Index,
+					Structure.GetConnectionMoment(Index).X,
+					Structure.GetConnectionMoment(Index).Y,
+					Structure.GetConnectionMoment(Index).Z,
+					Joint.MomentUuCm.X, Joint.MomentUuCm.Y, Joint.MomentUuCm.Z),
+				Joint.MomentUuCm == Structure.GetConnectionMoment(Index));
 
 			Test.TestTrue(
 				FString::Printf(
@@ -458,9 +516,18 @@ namespace PieceInspectionTestSupport
 /**
  * A PIECE'S PER-JOINT BREAKOUT IS EVERY JOINT TOUCHING IT — INCLUDING THE ONES THAT HAVE
  * GONE — EACH CARRYING THE NEIGHBOUR IT REACHES, WHAT IT IS TO THIS PIECE, WHAT IT IS
- * CARRYING, HOW CLOSE THAT IS TO FAILING, AND WHETHER IT HAS GIVEN; PLUS THE PIECE'S OWN
- * SUPPORT STATE. AND EVERY ONE OF THOSE NUMBERS IS THE SOLVER'S OWN ANSWER READ BACK,
- * NEVER A SECOND DERIVATION OF IT.
+ * CARRYING AND WHAT IT IS BEING BENT BY, HOW CLOSE THOSE TWO TOGETHER ARE TO FAILING, AND
+ * WHETHER IT HAS GIVEN; PLUS THE PIECE'S OWN SUPPORT STATE. AND EVERY ONE OF THOSE NUMBERS
+ * IS THE SOLVER'S OWN ANSWER READ BACK, NEVER A SECOND DERIVATION OF IT.
+ *
+ * THE MOMENT IS ON THE ROW BECAUSE WITHOUT IT THE ROW CANNOT EXPLAIN ITSELF. Utilisation is
+ * computed from a force AND a bending moment, so a breakout carrying only the force shows a
+ * joint near its limit beside a load that could not possibly put it there — and the reader
+ * has no arithmetic available that closes the gap. FConnection::UtilisationUnder takes the
+ * moment as a DEFAULTED parameter, which is what makes the omission silent: an assertion
+ * written without it supplies zero and goes on agreeing however far the two have drifted.
+ * The eccentric fixture at the foot of this test is the only one here that bends at all, and
+ * it exists so the exact-equality sweep has something to be wrong about.
  *
  * WHY THE DATA IS TESTED BEFORE ANYTHING DRAWS IT. The piece menu widget was landed under an
  * explicit recorded exception to the TDD gate, on the condition that it holds no logic at all
@@ -802,6 +869,22 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 				FMath::IsNearlyEqual(Actual.ForceUu.X, 0.0, 1.0e-9)
 					&& FMath::IsNearlyEqual(Actual.ForceUu.Y, 0.0, 1.0e-9));
 
+			/*
+			 * AND NO JOINT OF A GEOMETRY-FREE FIXTURE BENDS, IN ANY DIRECTION. Held on all
+			 * three components rather than on Y alone: a moment invented from a piece centre
+			 * against a joint centroid nobody wrote would come out along whichever axis the
+			 * fixture happens to string its boxes out on, and asserting one component would
+			 * leave two ways for it to appear unnoticed.
+			 */
+			TestTrue(
+				FString::Printf(
+					TEXT("%s: row %d should carry no moment at all; got (%.6f, %.6f, %.6f)"),
+					Case.Description, Row,
+					Actual.MomentUuCm.X, Actual.MomentUuCm.Y, Actual.MomentUuCm.Z),
+				FMath::IsNearlyEqual(Actual.MomentUuCm.X, 0.0, 1.0e-9)
+					&& FMath::IsNearlyEqual(Actual.MomentUuCm.Y, Expected.MomentYUuCm, 1.0e-9)
+					&& FMath::IsNearlyEqual(Actual.MomentUuCm.Z, 0.0, 1.0e-9));
+
 			TestTrue(
 				FString::Printf(TEXT("%s: row %d should read %.12f utilisation; got %.12f"),
 					Case.Description, Row, Expected.Utilisation, Actual.Utilisation),
@@ -875,6 +958,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 				&& ByRef.Joints[Row].OtherPieceIndex == ByHandle.Joints[Row].OtherPieceIndex
 				&& ByRef.Joints[Row].Role == ByHandle.Joints[Row].Role
 				&& ByRef.Joints[Row].ForceUu == ByHandle.Joints[Row].ForceUu
+				&& ByRef.Joints[Row].MomentUuCm == ByHandle.Joints[Row].MomentUuCm
 				&& ByRef.Joints[Row].Utilisation == ByHandle.Joints[Row].Utilisation
 				&& ByRef.Joints[Row].bHasGiven == ByHandle.Joints[Row].bHasGiven
 				&& ByRef.Joints[Row].BreakPass == ByHandle.Joints[Row].BreakPass;
@@ -972,6 +1056,201 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 	TestEqual(
 		FString::Printf(TEXT("connection %d must be the one that broke"), OverloadedJoint),
 		Cascaded.GetBreakPass(OverloadedJoint), 1);
+
+	/*
+	 * AND THE STATE EVERY FIXTURE ABOVE IS BLIND TO: A JOINT THE LOAD DOES NOT COME DOWN THE
+	 * MIDDLE OF.
+	 *
+	 * ITS OWN STRUCTURE RATHER THAN A SIXTH SPOKE ON THE WORKED ONE, for the reason the
+	 * cascade above has one: the worked fixture's subject hangs off exactly one bed joint
+	 * once the pad is pulled, so giving it a rectangle and a centre of mass would make its
+	 * load path determinate and move every hand-derived number in the table. This is one
+	 * brick, one joint, one lever arm.
+	 *
+	 * WHY IT HAS TO EXIST AT ALL. Nothing else in this file supplies geometry, so every row
+	 * above reads a moment of zero — and a breakout that never asked the solver for one would
+	 * satisfy all of them, including the exact-equality sweep, forever. FConnection::-
+	 * UtilisationUnder takes the moment as a DEFAULTED argument, so the missing half is
+	 * silent by construction rather than loud.
+	 *
+	 * THE ARITHMETIC, DERIVED HERE AND NOT READ BACK.
+	 *
+	 *   force        8 kg x 980 = 7,840 uu straight down
+	 *   lever arm    the brick's centre of mass sits 4 cm along X from the joint's centroid
+	 *   moment       r x F, and a vertical force crossed with a lever arm on X lands wholly
+	 *                on Y: 4 x 7,840 = 31,360 uu.cm
+	 *   section      the rectangle is 6 cm along X by 8 cm along Y, so the area is 48 cm2 and
+	 *                the modulus resisting a lean along X is b.d2/6 = 8 x 36 / 6 = 48 cm3.
+	 *                That is the TEXTBOOK form and deliberately not production's
+	 *                (4/3).h_along.h_across2, so the two agreeing is evidence.
+	 *   stresses     mean  7,840 / (48 x 10,000)  = 0.0163333 MPa, compressive
+	 *                edge 31,360 / (48 x 10,000)  = 0.0653333 MPa
+	 *   peak tension 0.0653333 - 0.0163333 = 0.049 MPa against mortar's f_xk1 of 0.1
+	 *
+	 * WHICH AXIS GOVERNS, WORKED THROUGH BECAUSE IT IS NOT FREE. Peak compression is the SUM,
+	 * 0.0816667 MPa against 10 MPa, which is 0.0082 of capacity; shear is exactly zero,
+	 * because the load is exactly antiparallel to an exactly vertical normal. Tension at 0.49
+	 * therefore governs by sixty times, and it could not be reached at all without the moment
+	 * — a centred 7,840 uu on this face reads 0.0016 in compression and nothing anywhere else.
+	 * That gap is the whole reason a readout showing only the force cannot explain itself.
+	 */
+	constexpr double EccentricMassKg = 8.0;
+	constexpr double EccentricLeverArmCm = 4.0;
+	constexpr double EccentricHalfXCm = 3.0;
+	constexpr double EccentricHalfYCm = 4.0;
+
+	const double EccentricAreaSqCm = 4.0 * EccentricHalfXCm * EccentricHalfYCm;
+
+	/** b.d2/6 with the depth along the lean, which is X. Textbook, not production's spelling. */
+	const double EccentricModulusCm3 =
+		(2.0 * EccentricHalfYCm) * FMath::Square(2.0 * EccentricHalfXCm) / 6.0;
+
+	const double EccentricForceUu = EccentricMassKg * InspectionGravityCmPerSecondSquared;
+	const double EccentricMomentYUuCm = EccentricLeverArmCm * EccentricForceUu;
+
+	const double EccentricMeanStressMPa =
+		EccentricForceUu / (EccentricAreaSqCm * InspectionForceUnitsPerMPaSqCm);
+
+	const double EccentricEdgeStressMPa =
+		EccentricMomentYUuCm / (EccentricModulusCm3 * InspectionForceUnitsPerMPaSqCm);
+
+	const double EccentricUtilisation =
+		(EccentricEdgeStressMPa - EccentricMeanStressMPa) / GeneralPurposeMortar.TensileStrengthMPa;
+
+	FStructure Eccentric;
+
+	const int32 EccentricPad =
+		Eccentric.AddPiece(50.0, /*bIsGrounded*/ true, FVector(0.0, 0.0, 0.0));
+
+	/* Four centimetres along X from the joint below it, and nowhere else. */
+	const int32 Overhang = Eccentric.AddPiece(
+		EccentricMassKg, /*bIsGrounded*/ false,
+		FVector(EccentricLeverArmCm, 0.0, 10.0));
+
+	FConnection EccentricBed;
+	EccentricBed.PieceA = EccentricPad;
+	EccentricBed.PieceB = Overhang;
+	EccentricBed.InterfaceNormal = InspectionBedNormal;
+	EccentricBed.InterfaceAreaSqCm = EccentricAreaSqCm;
+	EccentricBed.InterfaceCentreCm = FVector(0.0, 0.0, 5.0);
+	EccentricBed.InterfaceHalfExtentCm =
+		FVector(EccentricHalfXCm, EccentricHalfYCm, 0.0);
+	EccentricBed.Strength = GeneralPurposeMortar;
+
+	const int32 EccentricJoint = Eccentric.AddConnection(EccentricBed);
+
+	/*
+	 * FIXTURE PRECONDITION, AND THIS ONE IS A DOOR RATHER THAN A NUMBER. AddConnection refuses
+	 * a rectangle that disagrees with its area and one on a normal that names no separation
+	 * axis, answering INDEX_NONE — at which point there is no joint at all and every assertion
+	 * below fails for a reason with nothing to do with the readout.
+	 */
+	TestTrue(
+		FString::Printf(
+			TEXT("fixture: the eccentric bed joint must be accepted — %.1f cm2 against a %.1f x %.1f half-rectangle; AddConnection returned %d"),
+			EccentricAreaSqCm, EccentricHalfXCm, EccentricHalfYCm, EccentricJoint),
+		EccentricJoint != INDEX_NONE);
+
+	if (EccentricJoint == INDEX_NONE)
+	{
+		return true;
+	}
+
+	Eccentric.SolveLoads();
+
+	/*
+	 * THE GRAPH'S OWN NUMBERS, ASKED DIRECTLY AND HAND-DERIVED ABOVE. Green on arrival —
+	 * GetConnectionMoment already exists and already answers — and they drive nothing. They
+	 * are what makes the breakout assertions below trustworthy: against a fixture that
+	 * stopped bending, a readout carrying no moment would agree with the solver perfectly and
+	 * the whole block would pass while asserting nothing at all.
+	 */
+	TestTrue(
+		FString::Printf(
+			TEXT("fixture: the eccentric joint should carry %.6f uu straight down; the graph says (%.6f, %.6f, %.6f)"),
+			-EccentricForceUu,
+			Eccentric.GetConnectionForce(EccentricJoint).X,
+			Eccentric.GetConnectionForce(EccentricJoint).Y,
+			Eccentric.GetConnectionForce(EccentricJoint).Z),
+		FMath::IsNearlyEqual(Eccentric.GetConnectionForce(EccentricJoint).Z, -EccentricForceUu, 1.0e-9)
+			&& FMath::IsNearlyEqual(Eccentric.GetConnectionForce(EccentricJoint).X, 0.0, 1.0e-9)
+			&& FMath::IsNearlyEqual(Eccentric.GetConnectionForce(EccentricJoint).Y, 0.0, 1.0e-9));
+
+	TestTrue(
+		FString::Printf(
+			TEXT("fixture: the eccentric joint should bend by %.6f uu.cm about Y; the graph says (%.6f, %.6f, %.6f)"),
+			EccentricMomentYUuCm,
+			Eccentric.GetConnectionMoment(EccentricJoint).X,
+			Eccentric.GetConnectionMoment(EccentricJoint).Y,
+			Eccentric.GetConnectionMoment(EccentricJoint).Z),
+		FMath::IsNearlyEqual(Eccentric.GetConnectionMoment(EccentricJoint).Y, EccentricMomentYUuCm, 1.0e-9)
+			&& FMath::IsNearlyEqual(Eccentric.GetConnectionMoment(EccentricJoint).X, 0.0, 1.0e-9)
+			&& FMath::IsNearlyEqual(Eccentric.GetConnectionMoment(EccentricJoint).Z, 0.0, 1.0e-9));
+
+	TestTrue(
+		FString::Printf(
+			TEXT("fixture: the eccentric joint should sit at %.12f of capacity in TENSION; the graph says %.12f"),
+			EccentricUtilisation, Eccentric.GetConnectionUtilisation(EccentricJoint)),
+		FMath::IsNearlyEqual(
+			Eccentric.GetConnectionUtilisation(EccentricJoint), EccentricUtilisation, 1.0e-12));
+
+	/*
+	 * AND THE READOUT CARRIES IT. Both ends of the joint are asked, because a moment is a
+	 * property of the JOINT rather than of the piece being inspected — the brick that leans
+	 * and the pad it leans on are looking at one bent joint, and a breakout that answered
+	 * differently depending on which side it was entered from would be re-deriving rather
+	 * than reading back.
+	 */
+	const FPieceInspection LeaningBrick = InspectPiece(Eccentric, Overhang);
+	const FPieceInspection PadBeneathIt = InspectPiece(Eccentric, EccentricPad);
+
+	CheckEveryNumberIsUsable(*this, TEXT("the brick leaning off its joint"), LeaningBrick);
+	CheckInspectionAgreesWithTheGraph(
+		*this, TEXT("the brick leaning off its joint"), Eccentric, LeaningBrick);
+
+	CheckEveryNumberIsUsable(*this, TEXT("the pad the leaning brick stands on"), PadBeneathIt);
+	CheckInspectionAgreesWithTheGraph(
+		*this, TEXT("the pad the leaning brick stands on"), Eccentric, PadBeneathIt);
+
+	TestEqual(
+		FString::Printf(TEXT("the leaning brick should break out its one joint; got %s"),
+			*DescribeInspection(LeaningBrick)),
+		LeaningBrick.Joints.Num(), 1);
+
+	TestEqual(
+		FString::Printf(TEXT("the pad should break out the same one joint; got %s"),
+			*DescribeInspection(PadBeneathIt)),
+		PadBeneathIt.Joints.Num(), 1);
+
+	if (LeaningBrick.Joints.Num() == 1 && PadBeneathIt.Joints.Num() == 1)
+	{
+		TestTrue(
+			FString::Printf(
+				TEXT("the leaning brick's row should carry a moment of (0, %.6f, 0) uu.cm; got %s"),
+				EccentricMomentYUuCm, *DescribeInspection(LeaningBrick)),
+			FMath::IsNearlyEqual(LeaningBrick.Joints[0].MomentUuCm.Y, EccentricMomentYUuCm, 1.0e-9)
+				&& FMath::IsNearlyEqual(LeaningBrick.Joints[0].MomentUuCm.X, 0.0, 1.0e-9)
+				&& FMath::IsNearlyEqual(LeaningBrick.Joints[0].MomentUuCm.Z, 0.0, 1.0e-9));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("the pad's row should carry the SAME moment as the brick's — one joint, one bend; got %s and %s"),
+				*DescribeInspection(PadBeneathIt), *DescribeInspection(LeaningBrick)),
+			PadBeneathIt.Joints[0].MomentUuCm == LeaningBrick.Joints[0].MomentUuCm);
+
+		/*
+		 * AND THE FORCE IS UNCHANGED BY THE BEND, which is the separation MOMENTS_DESIGN.md
+		 * insists on: a moment folded into the force vector as extra length or as a tilt
+		 * would make the one number a readout uses to explain the load stop describing it.
+		 */
+		TestTrue(
+			FString::Printf(
+				TEXT("the leaning brick's row should still carry a plain vertical %.6f uu; got %s"),
+				-EccentricForceUu, *DescribeInspection(LeaningBrick)),
+			FMath::IsNearlyEqual(LeaningBrick.Joints[0].ForceUu.Z, -EccentricForceUu, 1.0e-9)
+				&& FMath::IsNearlyEqual(LeaningBrick.Joints[0].ForceUu.X, 0.0, 1.0e-9)
+				&& FMath::IsNearlyEqual(LeaningBrick.Joints[0].ForceUu.Y, 0.0, 1.0e-9));
+	}
 
 	return true;
 }

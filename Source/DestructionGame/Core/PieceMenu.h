@@ -190,6 +190,24 @@ struct FInspectorJointRow
 	 */
 	double ForceN = 0.0;
 
+	/**
+	 * The bending moment this joint carries about its own centroid, in NEWTON-CENTIMETRES.
+	 *
+	 * THE OTHER HALF OF WHAT THE PERCENTAGE BESIDE IT WAS COMPUTED FROM. A row showing only
+	 * ForceN cannot explain its own utilisation the moment a load stops acting through the
+	 * middle of a joint, and a number nobody can get to from the ones printed next to it is
+	 * exactly the failure this panel keeps closing.
+	 *
+	 * NO NEW CONVERSION BOUNDARY, which is worth saying because "moments" sounds like one. A
+	 * moment is uu.cm and length is already centimetres, so this is the SAME unit change
+	 * ForceN makes — DestructionPresenter::ForceUnitsPerNewton, applied once — and the
+	 * centimetre rides through untouched.
+	 *
+	 * ZERO ON EVERY JOINT OF EVERY STRUCTURE THE GAME BUILDS TODAY except the eccentric ones,
+	 * which is why the sentence in Text mentions it only when there is one to mention.
+	 */
+	double MomentNCm = 0.0;
+
 	/** The same utilisation the break decision used, as a percentage. 100 % is the limit. */
 	double UtilisationPercent = 0.0;
 
