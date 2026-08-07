@@ -181,7 +181,7 @@ What differs is the *section resisting it*:
 | one bed patch (today's ladder) | 179.48 cm³ | 22.93 × f_xk1 | falls |
 | composite vertical section, 82.5 cm deep | 11,627 cm³ | **0.369** × f_xk1 | stands |
 
-A factor of **62**, and it flips the outcome. ~~**So arching does not fix 22.93, and neither should a deep-beam slice** — adopting composite vertical action would make the photographed failure stand, which is the one thing this subsystem's whole test suite exists to prevent.~~ **REVERSED 2026-08-06 BY THE USER'S RULING, AND BUILT AT SLICE 5.** Composite vertical action *is* adopted, it *does* make the photographed failure stand, and that is now the intended outcome — the ruling was made on the free end, and the free end and the raking corbel are locally indistinguishable. The paragraph is kept because the argument it makes is the one whoever reads this next will make again, and because it names the risk correctly: the thing that stops it becoming "nothing can ever be destroyed" is that the moment grows as *k³* while the section grows only as *k²*, so a corbel taller than about thirty-six courses still comes down. The deep-beam effect over an *opening*, where the courses are continuous across the span, is not a separate mechanism at all: it **is** arching, and slices 1–3 are it.
+A factor of **62**, and it flips the outcome. ~~**So arching does not fix 22.93, and neither should a deep-beam slice** — adopting composite vertical action would make the photographed failure stand, which is the one thing this subsystem's whole test suite exists to prevent.~~ **REVERSED 2026-08-06 BY THE USER'S RULING, AND BUILT AT SLICE 5.** Composite vertical action *is* adopted, it *does* make the photographed failure stand, and that is now the intended outcome — the ruling was made on the free end, and the free end and the raking corbel are locally indistinguishable. The paragraph is kept because the argument it makes is the one whoever reads this next will make again, and because it names the risk correctly: the thing that was supposed to stop it becoming "nothing can ever be destroyed" is that the moment grows as *k³* while the section grows only as *k²*, so a corbel taller than about thirty-six courses still comes down. **That defence does not survive a wall taller than its cut — see the warning under the depth table below, found in review on 2026-08-07 — so the risk this paragraph names is currently LIVE rather than answered.** The deep-beam effect over an *opening*, where the courses are continuous across the span, is not a separate mechanism at all: it **is** arching, and slices 1–3 are it.
 
 ---
 
@@ -232,7 +232,19 @@ The mechanism is that a stack of courses over a lost support does not resist as 
 |---|---|---|---|---|---|---|---|---|---|
 | reads | 0.173 | 0.219 | 0.268 | 0.318 | **0.369** | 0.860 | 0.990 | 1.042 | **1.250** |
 
-**The crossover is at about thirty-six courses, not under seven.** The moment grows roughly as *k³* while the section grows only as *k²*, which is why a tall enough corbel still comes down and a short one never does. That is the whole of the "something must still come down" constraint, and it needs no tunable bound to produce it.
+**The crossover is at about thirty-six courses, not under seven.** The moment grows roughly as *k³* while the section grows only as *k²*, which is why a tall enough corbel still comes down and a short one never does.
+
+> ### ⚠ THAT ARGUMENT IS ONLY TRUE WHEN THE WALL AND THE CORBEL ARE THE SAME HEIGHT, AND IT WAS STATED GENERALLY. *(Found in review, 2026-08-07.)*
+>
+> `k³/k²` assumes `D = k · pitch` — the depth credited to the joint comes from the corbel's own steps. **Every corbel fixture in the suite happens to satisfy that**: all four rows of `FCorbelCase` are `CoursesHigh = Steps + 2`, so no test in the project has a corbel shorter than its wall.
+>
+> In a wall *taller* than the cut, `D` is set by the **wall** and `k` by the **cut**. The reading goes as **`k³/m²`**, the two exponents stop cancelling, and **the thirty-six-course crossover does not exist.** Proved by mutation: crediting 1.5× the composite depth — arithmetically identical to the same corbel in a wall 1.5× taller — makes the 45-step corbel **stand**, 0 of 45 rungs over capacity, 0 cascade passes.
+>
+> **This is the wall the game renders.** The staircase void is 11 corbelled steps under 40 courses: 39 courses of credited depth against the 13-course fixture's 11, a section about 12.6× larger, so the joint the suite pins at 0.36903147 reads of order 0.03 in the wall the player is looking at. That is why the rendered "after" frame shows *zero* movement rather than the loose toothed bricks case 20 expects.
+>
+> **So the composite depth is effectively unbounded in play, and "the exponent is the bound" is not a defence.** dev-expert's refusal to build a depth bound was correct TDD — nothing distinguished bounded from unbounded — but the missing fixture is two rows in a table that already exists, and it is the fixture that makes the difference observable. Add the rows first, then rule.
+
+That is the whole of the "something must still come down" constraint as it currently stands, and the paragraph above is why it needs re-testing rather than trusting.
 
 ---
 

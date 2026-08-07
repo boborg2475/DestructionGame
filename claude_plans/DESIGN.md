@@ -158,7 +158,9 @@ Three things follow, and they are separate:
 - **Load that cannot be routed is reported as falling, and only for the pieces actually caught in it.** Mutually supporting pieces with no resolvable order cannot have their load divided without a rule this design does not yet have, so they are conservatively treated as unsupported. Pieces *beneath* such a knot keep their support and carry everything except the unroutable contribution. Letting un-orderability cascade downward strands foundations and is simply wrong.
 - **Stranding travels upward, never downward.** A piece resting only on a knot has no load path to the ground either, so it falls with it. This is the other half of the rule above and follows from the same definition, but both halves need saying: the failure that reached review was the downward direction, and the upward direction is what makes the collapse propagate correctly.
 
-> A cycle is therefore **reported, not solved**. A course spanning a wide gap currently reads as falling rather than arching. §4's shear test will eventually want a real rule for dividing load round a loop.
+> A cycle is therefore **reported, not solved**, and §4's shear test will eventually want a real rule for dividing load round a loop.
+>
+> **The arching case is CLOSED, and it was closed by avoiding the loop rather than by supplying one** *(2026-08-06, [ARCHING_DESIGN.md](ARCHING_DESIGN.md) slice 2)*. A course spanning a wide gap used to read as falling; it now spans. The naive fix — letting a seatless piece be *supported* by its neighbour through the head joint — is precisely the two-node cycle described above, so it would have turned "the wall bridges the hole" into "the wall is unroutable and falls", which is a worse answer reached through correct-looking physics. Instead a **group** of seatless pieces re-seats onto abutments *outside* the group, which is acyclic by construction. **The loop-division rule is still absent**; nothing here supplies it.
 
 Because Unreal's gravity is 980 cm/s² and mass is in kilograms, `weight_in_force_units = mass_kg × 980` directly — the 1 N = 100 uu conversion is already inside that number and must not be applied again.
 
@@ -278,6 +280,22 @@ A joint's utilisation is computed from a force over an **area** — one average 
 So the model reports a bed joint under a modest, uniform, comfortably-safe compression while the real joint peels apart from the back. It is the same signature as every other defect this subsystem has produced: **a plausible number, and a piece that is not really being held.** This is why real masonry limits how far a course may corbel out, and it is the same mechanism that makes arches and vaults work — thrust kept inside the joint so no part of it opens.
 
 Closing it needs edge stresses rather than an average, which needs a section modulus, which needs joints to have extent and pieces to have position — see §6's spatial layer. **CLOSED for a piece on exactly one support** *(2026-08-06)* — see [MOMENTS_DESIGN.md](MOMENTS_DESIGN.md). A brick on one head joint reads 0.4157 in tension where it read 0.020 in shear, and the cascade now runs on the world wire, so cantilevers that should peel do peel. Still open for a piece on several supports, where the area split keeps the moment at zero.
+
+### Arching: the load path, not the joint *(recorded 2026-08-07, [ARCHING_DESIGN.md](ARCHING_DESIGN.md))*
+
+Moments made cantilevers peel correctly, and that immediately exposed the larger error: **the model only ever routed load downward**, so a brick that lost a seat was asked to *hang*, which is the one thing masonry cannot do. Deleting one brick made the failure walk across a wall at 33.69° — the bond pattern, one half-cell per course. The strengths were never the problem; the published 0.10 MPa flexural and 0.20 MPa cohesion are unchanged and must stay so.
+
+Five slices, all on top of the moment work, and **none of them added a material property or a per-material branch** — the only new constant is `SolverArchingDepthPerSpan = 0.866` with its BS 5977-1 citation:
+
+- **The moment cap.** A half-seated joint with an intact head joint on its *eccentric* side, to a neighbour that reaches the ground independently, has its moment capped so the thrust line sits on the kern edge. Peak tension goes to exactly zero and peak compression to exactly `2|σ_n|`.
+- **Spanning.** Seatless pieces form a group and re-seat onto abutments outside it. This is what closes §3's arching gap above.
+- **The thrust.** An arch pushes sideways; the springing carries it in shear on its own bed joint. `ΣH = 0` is structural — one stored direction, two signs.
+- **The cover cap.** Arching depth is `min(cover, 0.866·L)`, so an opening near the top of a wall cannot arch under nothing.
+- **Composite vertical action.** A corbelled joint resists with `t·D²/6` over the bonded depth rather than one bed patch, floored by a `min` against the patch.
+
+**Two decisions here were the user's, not the model's**, and both are recorded because no arithmetic settles them: a brick deleted at a free end must not bring a wall down *(2026-08-06)*, and a bonded corbel stands however far it steps *(2026-08-07)*. The second knowingly gives up the ability to express a corbel failing by projecting too far — that failure is **global overturning of the corbelled mass about the wall face**, a stability check this model has never had, because it only ever checks joints.
+
+**And the composite depth is UNBOUNDED, which is a live hole rather than a settled choice** *(found in review, 2026-08-07)*. Every corbel fixture happens to have its wall stop where its corbel stops, so nothing distinguishes a bounded depth from an unbounded one. In a wall taller than the cut — which is the wall the game actually renders — the reading goes as `k³/m²` rather than `k³/k²`, and the "it crosses over near 36 courses" argument in ARCHING_DESIGN does not hold. See CURRENT_STATE.md.
 
 ### Force delivery (designed in principle, not yet detailed)
 - **Explosions**: radial falloff — a blast on a corner hits that point hardest and weakens as it spreads. (Chaos fields do this.)

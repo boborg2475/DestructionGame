@@ -25,14 +25,20 @@
  * that answers both halves of a pair the same way has no such term at all, and the second test in
  * this file says exactly that in one line per pair.
  *
- * FOUR OF THE FIVE ARE OUTCOME PAIRS; 13 vs 14 IS NOT, SINCE THE 2026-08-07 RULING. Both corbels
- * now stand, so an outcome pair between them can no longer separate anything and it has been
- * removed from FWallAcceptanceMatchedPairsTest rather than left there as a row that reads the
- * right answer off two identical verdicts. WHAT THE PAIR STILL ISOLATES IS THE READING, and it is
- * asserted by name in Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome below:
- * doubling the step per course takes the worst joint in the wall from 0.070 to 0.195, a factor of
- * 2.8, so the projection term is still being measured — just against a quantity a verdict cannot
- * carry. Deleting the pair outright would have lost that.
+ * THREE OF THE FIVE ARE OUTCOME PAIRS; 13 vs 14 AND 15 vs 16 ARE NOT, SINCE THE 2026-08-07
+ * REVISIONS. Both corbels stand and both headers stand, so an outcome pair between either two can
+ * no longer separate anything, and both have been removed from FWallAcceptanceMatchedPairsTest
+ * rather than left there as rows that read the right answer off two identical verdicts. WHAT THE
+ * PAIRS STILL ISOLATE IS THE READING, and each is asserted by name in a test of its own below:
+ *
+ *   13 vs 14  Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome — doubling the step
+ *             per course takes the worst joint from 0.070 to 0.195, a factor of 2.8.
+ *   15 vs 16  Acceptance.Wall.SuperimposedLoadIsReadInTheJointNotInTheOutcome — the SAME joint of
+ *             the SAME geometry reads 0.0018 with six courses on the header's tail and 0.0582 with
+ *             nothing on it, a factor of 32.
+ *
+ * In both, the term is still being measured — just against a quantity a verdict cannot carry.
+ * Deleting either pair outright would have lost that.
  *
  * THREE VERDICTS, THREE ASSERTION SHAPES, per DESIGN.md §4's outcome-not-mechanism rule:
  *
@@ -701,16 +707,30 @@ namespace WallAcceptanceTestSupport
 	const FWallRegion FourCellOpening[] = { { 1, 3, 3.75, 7.25 } };
 
 	/**
-	 * Case 8's one course of cover, and the only thing that may drop: the whole four bricks.
+	 * Case 8's one course of cover, and the only thing that may drop: the two MIDDLE bricks.
 	 *
-	 * THE CATALOGUE SAYS THE COURSE DROPS, NOT PART OF IT — "a single course cannot arch, it is a
-	 * beam in flexure over four bricks" — so all four are named. Recorded because the model today
-	 * drops only the two MIDDLE ones: the bricks at cells 4 and 7 each keep one bed patch on the
-	 * jamb and hold at about 0.27, while the two at cells 5 and 6 have no patch at all. Which of
-	 * the two readings is right is a question about whether a half-seated brick over a doorway is
-	 * really carried, and it is exactly what this row exists to force.
+	 * WORKED OFF THE GEOMETRY RATHER THAN OFF THE DRAWING, the same way case 20's teeth are. The
+	 * opening cuts cells 4.5, 5.5 and 6.5 out of odd course 3, and an even-course brick at cell k
+	 * sits on the odd course below at cells k - 0.5 and k + 0.5, so of the four bricks of course 4
+	 * standing over the hole
+	 *
+	 *     cell 4   over cut 4.5 and INTACT 3.5   one bed patch — a corbel
+	 *     cell 5   over cut 4.5 and cut 5.5      NO bed patch at all
+	 *     cell 6   over cut 5.5 and cut 6.5      NO bed patch at all
+	 *     cell 7   over cut 6.5 and INTACT 7.5   one bed patch — a corbel
+	 *
+	 * NAMING ALL FOUR WAS DRIFT AND IT IS CORRECTED HERE. This row was written against the
+	 * catalogue's first draft — "a single course cannot arch, it is a beam in flexure over four
+	 * bricks" — and WALL_CASES.html has since been corrected on exactly the reading case 20 was
+	 * corrected on: the two over the jambs keep one patch each and hold at about 0.27, and ONE
+	 * PATCH IS A CORBEL RATHER THAN A TOOTH. The agreed catalogue names two, so this names two.
+	 *
+	 * THE ROW IS STILL RED AFTER THE CORRECTION, and red for the reason it was always meant to be:
+	 * the model drops NOTHING here. Slice 2 took it from 2 dropped to 0 by re-seating the seatless
+	 * pair through the head joints of the bricks either side, and a single spanning course flexing
+	 * over four bricks is a claim about those head joints that no slice yet makes.
 	 */
-	const FWallRegion Case8Falls[] = { { 4, 4, 3.75, 7.25 } };
+	const FWallRegion Case8Falls[] = { { 4, 4, 4.75, 6.25 } };
 
 	/** Case 9: ten cells of opening in a fourteen-cell wall, two cells of jamb either side. */
 	const FWallRegion Case9Cuts[] = { { 1, 3, 1.75, 11.25 } };
@@ -865,31 +885,40 @@ namespace WallAcceptanceTestSupport
 			CompositeTensionMPa(MomentBrickWeightCm, Steps)) / MortarFlexuralBondMPa;
 	}
 
-	/**
-	 * Case 16: the projecting header itself, at cell 11.5 of the top course, and nothing else.
+	/* ================================================================================
+	 * CASE 16, RE-DERIVED: A BONDED HEADER WITH NOTHING ON IT STANDS AT 0.058204.
+	 * ================================================================================
 	 *
-	 * THIS ROW MAY BE THE ONE THAT IS WRONG, AND THE ARITHMETIC SAYS SO RATHER THAN A HUNCH.
-	 * The header keeps a 105.0625 cm2 bed patch and its weight acts 5.625 cm outboard of that
-	 * patch's centroid, so on a 179.4817708 cm3 section it reads
+	 * THE VERDICT ON THIS ROW WAS LOCAL LOSS UNTIL 2026-08-07 AND IT WAS REVISED IN THE CATALOGUE
+	 * WITHOUT THIS FILE FOLLOWING. That is the drift the catalogue exists to prevent, and it is
+	 * corrected here by re-deriving the number rather than by flipping the word.
 	 *
-	 *     2667.198625 x 5.625 / 179.4817708 = 0.0083591 MPa   bending, opening the inner edge
+	 * The header projects half a cell (11.25 cm) past the face, so of its 21.5 cm it keeps
+	 * 21.5 - 11.25 = 10.25 cm of bearing on the brick below, and its centre of mass sits half the
+	 * unseated length — 5.625 cm — outboard of that patch's centroid. On a 10.25 x 10.25 cm patch,
+	 * whose section modulus about the bending axis is 10.25 x 10.25^2 / 6 = 179.4817708 cm3:
+	 *
+	 *     2667.198625 x 5.625 / 179.4817708 = 0.0083591 MPa   bending, opening the outer edge
 	 *     2667.198625 / 105.0625            = 0.0025387 MPa   its own weight, closing it
 	 *     tension 0.0058204 / 0.1 (f_xk1)   = 0.058204        of flexural bond capacity
 	 *
-	 * — which is a brick standing at six percent of what holds it, not a brick falling off. The
-	 * catalogue's "local loss" is an OVERTURNING reading (the resultant is 5.625 cm out on a patch
-	 * only 5.125 cm wide, so it lies outside the bearing), and this project's model is an uncracked
-	 * bonded section, where cured mortar carries exactly that. Both readings are defensible and
-	 * they disagree; the expectation the user agreed is encoded, and the disagreement is recorded
-	 * here so nobody implements a change to satisfy it before it has been re-ruled.
+	 * — a brick standing at six percent of what holds it, not a brick falling off. The abandoned
+	 * "local loss" was a RIGID-BODY OVERTURNING reading (the resultant is 5.625 cm out on a patch
+	 * only 5.125 cm wide, so it does lie outside the bearing) and it is the same error case 14 was
+	 * corrected for on the same day: this project models an UNCRACKED BONDED SECTION, where cured
+	 * mortar carries exactly that. The overturning claim is written down here because it is worth
+	 * knowing which reading was abandoned, not because it is still live.
 	 *
-	 * WHAT THIS ROW HAS ALREADY PROVED, whichever way that goes: the pair 15/16 differ ONLY in
-	 * what sits on the header's tail, and the model reads 0.00184 for case 15 against 0.05820 for
-	 * case 16 — a factor of 32 from superimposed load alone, with case 15's tension driven to zero
-	 * and compression left governing. The term this pair was written to test EXISTS and works. What
-	 * is in dispute is only where its threshold sits.
+	 * SO THERE IS NO FALL REGION TO NAME, and the row carries no MustFall and no MustStand.
+	 *
+	 * AND THE PAIR HAD TO MOVE WITH IT. 15 and 16 differ ONLY in what sits on the header's tail,
+	 * and both now stand — so as an OUTCOME pair they discriminate nothing, exactly as 13 and 14
+	 * stopped doing. WHAT STILL SEPARATES THEM IS THE READING ON ONE JOINT: the model reads
+	 * 0.00184 for case 15 against 0.05820 for case 16, a factor of 32 from superimposed load alone,
+	 * with case 15's tension driven to zero and compression left governing. That is asserted in
+	 * Acceptance.Wall.SuperimposedLoadIsReadInTheJointNotInTheOutcome below, and the row has been
+	 * removed from FWallAcceptanceMatchedPairsTest rather than left there unsatisfiable.
 	 */
-	const FWallRegion Case16Falls[] = { { 9, 9, 11.40, 11.60 } };
 
 	/* --- E: bond pattern and head-joint shear. --------------------------------------- */
 
@@ -1072,15 +1101,22 @@ namespace WallAcceptanceTestSupport
 		{
 			FWallCase& Case = Add(15, TEXT("Header out half a brick, six courses on top"),
 				EVerdict::Stands, 10, StandardCells, {}, {}, {},
-				TEXT("superimposed load, against case 16"));
+				TEXT("superimposed load against case 16 — IN THE READING, not the outcome"));
 
 			Case.ProjectingCourse = 3;
 		}
 
+		/*
+		 * STANDS, ON THE CATALOGUE'S 2026-08-07 REVISION AND ON THE ARITHMETIC ABOVE. Drafted as a
+		 * local loss taking the projecting header; the header's own bed joint reads 0.058203838 of
+		 * f_xk1, which is a sixth of what holds it. No fall region and no survivor region, because
+		 * there is nothing to name — see the block above section E for the whole derivation and for
+		 * what the abandoned overturning reading claimed instead.
+		 */
 		{
 			FWallCase& Case = Add(16, TEXT("The same header at the top, nothing on it"),
-				EVerdict::LocalLoss, 10, StandardCells, {}, Case16Falls, {},
-				TEXT("superimposed load, against case 15"));
+				EVerdict::Stands, 10, StandardCells, {}, {}, {},
+				TEXT("superimposed load against case 15 — IN THE READING, not the outcome"));
 
 			Case.ProjectingCourse = 9;
 		}
@@ -1148,15 +1184,16 @@ namespace WallAcceptanceTestSupport
  * falling half of a pair passing while every standing half fails, which is what a model that can
  * only ever say "falls" looks like.
  *
- * SIX ROWS ARE GREEN ON ARRIVAL AND EACH IS SAID TO BE, so nobody mistakes them for work this
+ * SEVERAL ROWS ARE GREEN ON ARRIVAL AND EACH IS SAID TO BE, so nobody mistakes them for work this
  * suite drove. 1 and 17 are intact walls and are regression anchors. 18 is a stack-bond column
  * that really does sit at a few percent — its verdict passes and the property that made the case
  * interesting does NOT, which is why that property has a test of its own below. 12 passes because
- * everything falls and it names no survivors, recorded beside it. And 13 and 14 both stand, which
- * is a CORRECTION rather than an achievement: 14 was drafted as a collapse and the user ruled on
- * 2026-08-07 that a bonded corbel resists with its full depth. Both halves now answering "stands"
- * means the pair no longer separates on outcome at all, so what it isolates has moved into
- * Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome and out of the pair test.
+ * everything falls and it names no survivors, recorded beside it. And 13, 14 and 16 all stand,
+ * which is a CORRECTION rather than an achievement: 14 was drafted as a collapse and 16 as a local
+ * loss, and both were revised in the catalogue on 2026-08-07 on the same reading — a bonded
+ * section resists what a rigid block could not. Both of those pairs therefore stopped separating
+ * on outcome, so what each isolates has moved out of the pair test and into a test of its own,
+ * named in the block above.
  *
  * NEEDS A TICKING WORLD: NO. See the file header.
  */
@@ -1335,7 +1372,7 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE FIVE MATCHED PAIRS, EACH AS ONE CLAIM ABOUT ONE VARIABLE.
+ * THE MATCHED PAIRS THAT STILL SEPARATE ON OUTCOME, EACH AS ONE CLAIM ABOUT ONE VARIABLE.
  *
  * WHY THIS IS A SEPARATE TEST FROM THE CATALOGUE. The catalogue asks each row whether it got the
  * right answer; this asks whether the solver HAS THE TERM AT ALL, and the two can disagree in the
@@ -1368,18 +1405,24 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 	};
 
 	/*
-	 * FIVE PAIRS, AND IN EVERY ONE OF THEM EXACTLY ONE HALF STANDS. That is what makes the claim
+	 * FOUR PAIRS, AND IN EVERY ONE OF THEM EXACTLY ONE HALF STANDS. That is what makes the claim
 	 * below writable as one line: the halves differ in outcome, so a solver that answers them the
 	 * same way has no term between them, whichever way round it answers.
 	 *
-	 * CORBEL STEP (13 vs 14) IS DELIBERATELY ABSENT AND THIS IS THE ONLY PLACE TO SAY SO. It was
-	 * a row here until 2026-08-07, when the user ruled that case 14's collapse verdict was wrong
-	 * and a bonded corbel stands. Both halves now stand, so the shape this test asserts — one half
-	 * loses nothing, the other loses something — is UNSATISFIABLE for that pair by construction
-	 * and a row asserting it would be red forever for a reason nobody could fix. It has not been
-	 * dropped, it has MOVED: Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome makes
-	 * the same claim about the same variable against the quantity that still separates the two,
-	 * which is the joint reading. Leaving a dead row here would have been quieter and worse.
+	 * TWO OF THE CATALOGUE'S FIVE PAIRS ARE DELIBERATELY ABSENT AND THIS IS THE ONLY PLACE TO SAY
+	 * SO. Both were rows here until 2026-08-07, when case 14's collapse verdict and case 16's
+	 * local-loss verdict were each revised to "stands" — a bonded corbel resists with its full
+	 * depth, and a bonded header with nothing on it reads a sixth of f_xk1. Both halves of both
+	 * pairs now stand, so the shape this test asserts — one half loses nothing, the other loses
+	 * something — is UNSATISFIABLE for either by construction, and a row asserting it would be red
+	 * forever for a reason nobody could fix. Neither has been dropped; both have MOVED:
+	 *
+	 *     13 vs 14   Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome
+	 *     15 vs 16   Acceptance.Wall.SuperimposedLoadIsReadInTheJointNotInTheOutcome
+	 *
+	 * Each makes the same claim about the same variable against the quantity that still separates
+	 * its two halves, which is the joint reading. Leaving dead rows here would have been quieter
+	 * and worse.
 	 */
 	const FMatchedPair Pairs[] =
 	{
@@ -1387,7 +1430,6 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 		{ TEXT("SPAN            - four bricks of opening against ten, at the same cover"), 7, 9 },
 		{ TEXT("ABUTMENT        - a jamb either side against a cut through to the end"),   7, 10 },
 		{ TEXT("PIER WIDTH      - three cells of bearing against one"),                    11, 12 },
-		{ TEXT("SUPERIMPOSED LOAD - six courses on the header's tail against none"),       15, 16 },
 	};
 
 	const TArray<FWallCase> Cases = AllWallCases();
@@ -1625,6 +1667,277 @@ bool FWallAcceptanceCorbelProjectionTest::RunTest(const FString& Parameters)
 			QuarterResult.Worst, HalfResult.Worst,
 			QuarterResult.Worst > 0.0 ? HalfResult.Worst / QuarterResult.Worst : 0.0),
 		QuarterResult.Worst > 0.0 && HalfResult.Worst >= 2.0 * QuarterResult.Worst);
+
+	return true;
+}
+
+/**
+ * CASES 15 AND 16, THE PART A VERDICT CANNOT SAY: PUTTING SIX COURSES ON A HEADER'S TAIL DIVIDES
+ * WHAT ITS OWN BED JOINT READS BY THIRTY, AND BOTH HEADERS STAND ANYWAY.
+ *
+ * WHY THIS TEST EXISTS AT ALL. 15 and 16 were an OUTCOME pair — one stands, one drops its header —
+ * until the catalogue was revised on 2026-08-07 and case 16 became "stands" too: an uncracked
+ * bonded bed joint carries a half-cell projection at 0.0582 of f_xk1, and the local-loss verdict it
+ * replaced was a rigid-body overturning reading that ignored the bond. That is the same correction
+ * case 14 got on the same day, and it has the same consequence — a pair whose two halves answer
+ * identically discriminates NOTHING. The honest options were to delete the pair or to move it onto
+ * a quantity that still separates the two. This is that move, and it is the stronger reading: an
+ * outcome pair could only ever have said "these differ", while this says BY HOW MUCH AND WHY.
+ *
+ * THE TWO WALLS ARE THE SAME WALL WITH THE HEADER AT A DIFFERENT HEIGHT — ten courses, twelve
+ * cells, one course pushed half a cell out and closed with a full brick instead of a half bat. In
+ * case 15 that course is course 3, so six courses stand on the header's tail; in case 16 it is
+ * course 9, the top, so nothing does. THE GEOMETRY OF THE HEADER'S OWN BED JOINT IS IDENTICAL in
+ * the two, which is what makes this a one-variable comparison: same 10.25 x 10.25 cm bearing patch,
+ * same 5.625 cm arm, same brick. Only the superimposed load differs.
+ *
+ * THE EXPECTED VALUE IS DERIVED FROM THE FIXTURE, NOT READ BACK OFF THE SOLVER. The seat length is
+ * what is left of a 21.5 cm brick when half a 22.5 cm cell hangs over air; the arm is half of what
+ * hangs over; the section is that patch's own t.L^2/6; the weight is the published density times
+ * the published dimensions times Unreal's gravity; and the capacity is EN 1996-1-1's f_xk1. None of
+ * them is imported from production, so a wrong constant there makes this DISAGREE.
+ *
+ * AND IT IS CROSS-CHECKED AGAINST TWO FIGURES THIS FILE DID NOT PRODUCE, which is what stops it
+ * agreeing with itself: WALL_CASES.html's own quoted 0.058204 for this case, held at 1e-6 so the
+ * catalogue's six figures are enough and a real error is not; and the waist anchor
+ * 0.058203838191552663 that `Core.Structure.AdoptedWallLoadsItsWaistEccentrically` pins to
+ * seventeen digits on a completely different fixture — one brick, half seated, by cut rather than
+ * by laying. A re-derivation that drifted fails HERE rather than being tuned into agreement.
+ *
+ * THE THING BEING MEASURED MUST BE THE THING GOVERNING, WHICH IS ASSERTED SEPARATELY. `Worst` is
+ * the worst joint ANYWHERE in the wall, and a ten-course wall's base compression could in principle
+ * carry it — case 17's intact stack-bond wall of the same height reads 0.00109 at its foot — so the
+ * number would then be right for the wrong joint. Case 16's worst joint is therefore asserted to BE
+ * the header's own bed joint, by (course, cell), before its magnitude is read.
+ *
+ * CASE 15's GOVERNING JOINT IS DELIBERATELY *NOT* PINNED, and that is not laziness. What is claimed
+ * of case 15 is an UPPER bound — the worst joint anywhere in that wall is at most a tenth of case
+ * 16's — and an upper bound over every joint says something strictly stronger about the header's
+ * own joint than pinning where the maximum happens to sit. It also stays true if a later slice
+ * drives the header's tension further down and the maximum migrates to the foot of the wall, which
+ * pinning the identity would turn into a spurious failure. (It reads 0.00184 at c2/11-c3/11.5
+ * today, which is the header's bed joint, and the failure message prints where it actually is.)
+ *
+ * GREEN ON ARRIVAL, AND SAID SO PLAINLY. This pins behaviour the model already produces; it drove
+ * nothing. What it is for is that the case 16 revision deleted an assertion, and an assertion
+ * deleted without one put back in its place is a hole in the net.
+ *
+ * NEEDS A TICKING WORLD: NO. See the file header.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FWallAcceptanceSuperimposedLoadTest,
+	"DestructionGame.Acceptance.Wall.SuperimposedLoadIsReadInTheJointNotInTheOutcome",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
+{
+	using namespace WallAcceptanceTestSupport;
+
+	/*
+	 * SLACK AGAINST A RE-ASSOCIATION OF A HANDFUL OF DOUBLES AND NOTHING ELSE. The quantity is
+	 * 0.058, so this is seven orders of magnitude below it and eight below the factor of thirty the
+	 * row is meant to be able to see.
+	 */
+	constexpr double UtilisationTolerance = 1.0e-9;
+
+	/* --- the derivation, worked forward from the grid ---------------------------------------- */
+
+	/*
+	 * WHAT THE HEADER KEEPS AND WHAT HANGS OVER. CourseGeometry pushes the projecting course's
+	 * right face out by HALF A CELL and closes it with a FULL brick rather than the half bat a
+	 * flush odd course closes with, so of the brick's 21.5 cm exactly 11.25 cm is over air and
+	 * 10.25 cm is still bearing on the course below. (That it lands on the same 10.25 cm as the
+	 * wall's depth is a coincidence of this brick's proportions, not a relation — it is written as
+	 * a length along the wall because that is what it is.)
+	 */
+	constexpr double HeaderSeatLengthCm = BrickLengthCm - HalfCellCm;
+
+	/* The mass sits at the middle of the brick, so it is half the unseated part outboard. */
+	constexpr double HeaderArmCm = (BrickLengthCm - HeaderSeatLengthCm) * 0.5;
+
+	constexpr double HeaderSeatAreaSqCm = HeaderSeatLengthCm * BrickDepthCm;
+
+	/* W = t.L^2/6 about the axis the header bends about: through the wall, along its length. */
+	constexpr double HeaderSeatModulusCm3 =
+		BrickDepthCm * HeaderSeatLengthCm * HeaderSeatLengthCm / 6.0;
+
+	const double BendingMPa = FullBrickWeightUu * HeaderArmCm
+		/ (HeaderSeatModulusCm3 * ForceUnitsPerMPaSqCmHere);
+
+	const double OwnWeightMPa = FullBrickWeightUu
+		/ (HeaderSeatAreaSqCm * ForceUnitsPerMPaSqCmHere);
+
+	/* Its own weight CLOSES the joint the bending opens, so the two subtract. */
+	const double ExpectedUnloaded =
+		FMath::Max(0.0, BendingMPa - OwnWeightMPa) / MortarFlexuralBondMPa;
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("CROSS-CHECK: WALL_CASES.html quotes 0.058204 for case 16, the derivation gives ")
+			TEXT("%.8g"),
+			ExpectedUnloaded),
+		FMath::IsNearlyEqual(ExpectedUnloaded, 0.058204, 1.0e-6));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("CROSS-CHECK: the same arithmetic on a CUT half-seated brick is the waist anchor ")
+			TEXT("0.058203838191552663, the derivation gives %.17g"),
+			ExpectedUnloaded),
+		FMath::IsNearlyEqual(ExpectedUnloaded, 0.058203838191552663, UtilisationTolerance));
+
+	/* --- the two walls ---------------------------------------------------------------------- */
+
+	const TArray<FWallCase> Cases = AllWallCases();
+
+	auto RunNumbered = [this, &Cases](int32 Number, FWall& OutWall, FWallResult& OutResult) -> bool
+	{
+		for (const FWallCase& Case : Cases)
+		{
+			if (Case.Number != Number)
+			{
+				continue;
+			}
+
+			RunWallCase(*this, Case, OutWall, OutResult);
+			ReportWallCase(*this, Case, OutWall, OutResult);
+
+			return OutResult.bLaid;
+		}
+
+		AddError(FString::Printf(TEXT("FIXTURE: the catalogue has no case %d"), Number));
+
+		return false;
+	};
+
+	FWall LoadedWall;
+	FWallResult LoadedResult;
+
+	FWall BareWall;
+	FWallResult BareResult;
+
+	if (!RunNumbered(15, LoadedWall, LoadedResult) || !RunNumbered(16, BareWall, BareResult))
+	{
+		return true;
+	}
+
+	/* --- neither header comes down, which is the revision ------------------------------------ */
+
+	TestEqual(
+		*FString::Printf(
+			TEXT("THE CATALOGUE: a header with six courses on its tail stands, %d piece(s) came ")
+			TEXT("down %s"),
+			LoadedResult.Fallen.Num(), *DescribePieces(LoadedWall, LoadedResult.Fallen)),
+		LoadedResult.Fallen.Num(), 0);
+
+	TestEqual(
+		*FString::Printf(
+			TEXT("THE CATALOGUE: a header with NOTHING on its tail stands too — that is the ")
+			TEXT("2026-08-07 revision to case 16 — and %d piece(s) came down %s"),
+			BareResult.Fallen.Num(), *DescribePieces(BareWall, BareResult.Fallen)),
+		BareResult.Fallen.Num(), 0);
+
+	/* --- and the reading is the header's own bed joint ---------------------------------------- */
+
+	/*
+	 * WHERE THE HEADER AND ITS SEAT ARE, IN CELLS, WALKED OFF THE BRICKLAYER RATHER THAN COUNTED
+	 * OFF THE LOG. The projecting course's rightmost brick is a full brick whose right face is half
+	 * a cell past the flush face; the course below it is flush and closes with a full brick too,
+	 * since it is even. Both centres are half a brick in from their own right faces.
+	 */
+	const double HeaderCentreCm =
+		FlushRightFaceCm(StandardCells) + HalfCellCm - BrickLengthCm * 0.5;
+
+	const double SeatCentreCm = FlushRightFaceCm(StandardCells) - BrickLengthCm * 0.5;
+
+	const double HeaderCell = HeaderCentreCm / CellPitchCm;
+	const double SeatCell = SeatCentreCm / CellPitchCm;
+
+	/* Case 16 pushes course 9 out, so its seat is the end brick of course 8. */
+	constexpr int32 BareHeaderCourse = 9;
+
+	const bool bWorstIsTheHeaderSeat =
+		BareResult.WorstPieceA != INDEX_NONE
+		&& BareWall.CourseOf[BareResult.WorstPieceA] == BareHeaderCourse - 1
+		&& BareWall.CourseOf[BareResult.WorstPieceB] == BareHeaderCourse
+		&& FMath::IsNearlyEqual(BareWall.CellOf[BareResult.WorstPieceA], SeatCell, 1.0e-9)
+		&& FMath::IsNearlyEqual(BareWall.CellOf[BareResult.WorstPieceB], HeaderCell, 1.0e-9);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("THE GOVERNING JOINT must be the header's own bed joint, c%d/%g carrying c%d/%g, ")
+			TEXT("or the magnitude below is right about the wrong joint; it is %s"),
+			BareHeaderCourse - 1, SeatCell, BareHeaderCourse, HeaderCell,
+			BareResult.WorstPieceA == INDEX_NONE
+				? TEXT("no joint at all")
+				: *FString::Printf(
+					TEXT("c%d/%g-c%d/%g"),
+					BareWall.CourseOf[BareResult.WorstPieceA], BareWall.CellOf[BareResult.WorstPieceA],
+					BareWall.CourseOf[BareResult.WorstPieceB], BareWall.CellOf[BareResult.WorstPieceB])),
+		bWorstIsTheHeaderSeat);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("A HEADER WITH NOTHING ON IT reads its bed joint at %.17g of f_xk1 — 0.0083591 MPa ")
+			TEXT("of bending less 0.0025387 MPa of its own weight closing the joint — and the wall ")
+			TEXT("reads %.17g"),
+			ExpectedUnloaded, BareResult.Worst),
+		FMath::IsNearlyEqual(BareResult.Worst, ExpectedUnloaded, UtilisationTolerance));
+
+	/*
+	 * AND THE OUTCOME FOLLOWS FROM THE NUMBER RATHER THAN THE OTHER WAY ROUND. 0.058 is a sixth of
+	 * capacity; the verdict in the catalogue is "stands" BECAUSE of this, not beside it.
+	 */
+	TestTrue(
+		*FString::Printf(
+			TEXT("and that is why the verdict is STANDS: the worst joint in the wall is %.6g of ")
+			TEXT("capacity and must be under 1"),
+			BareResult.Worst),
+		BareResult.Worst < 1.0);
+
+	/* --- the pair's own claim: superimposed load is still measured ---------------------------- */
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("SUPERIMPOSED LOAD: six courses standing on the header's tail must read EASIER on ")
+			TEXT("the joint — loaded reads %.8g (worst at %s) and bare reads %.8g, a factor of ")
+			TEXT("%.4g. A model with no superimposed-load term reads them the same, and one that ")
+			TEXT("counted the extra load without its compression reads the loaded wall HIGHER."),
+			LoadedResult.Worst,
+			LoadedResult.WorstPieceA == INDEX_NONE
+				? TEXT("no joint at all")
+				: *FString::Printf(
+					TEXT("c%d/%g-c%d/%g"),
+					LoadedWall.CourseOf[LoadedResult.WorstPieceA],
+					LoadedWall.CellOf[LoadedResult.WorstPieceA],
+					LoadedWall.CourseOf[LoadedResult.WorstPieceB],
+					LoadedWall.CellOf[LoadedResult.WorstPieceB]),
+			BareResult.Worst,
+			LoadedResult.Worst > 0.0 ? BareResult.Worst / LoadedResult.Worst : 0.0),
+		BareResult.Worst > LoadedResult.Worst);
+
+	/*
+	 * TEN TIMES, NOT MERELY MORE. A strict inequality alone is satisfiable by a last-bit
+	 * difference, which is not a superimposed-load term working; the measured separation is a
+	 * factor of 32, with the loaded joint's tension driven to exactly zero and compression left
+	 * governing. Ten is the floor and the measurement is three times clear of it — and it is
+	 * headroom in BOTH directions, because the ceiling is the ten-course wall's own base
+	 * compression at 0.00109, which caps the achievable factor at about 53.
+	 *
+	 * NOTE WHAT THIS IS A BOUND ON. `Worst` for case 15 is the worst joint ANYWHERE in that wall,
+	 * so bounding it above bounds the header's own joint above by the same number, whichever joint
+	 * happens to be carrying the maximum. That is the direction that makes the claim safe against a
+	 * later slice relieving the header further.
+	 */
+	constexpr double MinimumSeparation = 10.0;
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("SUPERIMPOSED LOAD: and by a real margin, not the last bit — %.8g against %.8g is ")
+			TEXT("a factor of %.4g and must be at least %g"),
+			LoadedResult.Worst, BareResult.Worst,
+			LoadedResult.Worst > 0.0 ? BareResult.Worst / LoadedResult.Worst : 0.0,
+			MinimumSeparation),
+		LoadedResult.Worst > 0.0 && BareResult.Worst >= MinimumSeparation * LoadedResult.Worst);
 
 	return true;
 }
