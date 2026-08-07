@@ -605,6 +605,45 @@ struct FStructure
 	bool HasSupportAnswer(int32 PieceIndex) const;
 
 private:
+	/**
+	 * Is there something on the overhanging side for this piece to arch against?
+	 *
+	 * THE FOURTH GATE OF THE ARCHING RULE, and the one that decides whether a piece which
+	 * has lost a seat bridges the hole or cantilevers over it. It asks for an INTACT HEAD
+	 * JOINT ON THE ECCENTRIC SIDE — the side the centre of mass sits, measured in the plane
+	 * of the seat from the seat's own centroid — to a neighbour that reaches the ground and
+	 * is NOT resting on the piece asking. FConnection::ArchingMomentScale owns the other
+	 * half, the part one joint can answer alone.
+	 *
+	 * THE DIRECTION IS THE WHOLE OF IT. Both of this subsystem's eccentric fixtures have a
+	 * live, intact, supported neighbour — on the SEATED side. The staircase corbel's
+	 * eccentric side is precisely where the cut removed the neighbour, and the waisted
+	 * wall's two top bricks overhang OUTWARD so their shared head joint is on the seated
+	 * side of each. Asking only "is there an intact head joint" arches both, which halves
+	 * every overhang in the game and stands the photographed failure back up.
+	 *
+	 * AND THE NEIGHBOUR MUST NOT BE HANGING FROM US. Two unseated bricks propping each other
+	 * over open air look locally identical to a real arch — each is Supported, each has an
+	 * intact head joint to the other — so granting one would let a wall hang from nothing.
+	 * The separating fact is one step away and this asks for it directly: the piece must not
+	 * appear among the neighbour's own supports. Deliberately NOT a reachability query;
+	 * SolveLoads runs once per cascade pass, and the cheap form is exact for this case
+	 * because a longer loop is what LoadReturnsToPiece already strands.
+	 *
+	 * @param PieceIndex         The loaded piece, which must be placed.
+	 * @param BedJoint           Its one seat, which must know its own rectangle: the kern,
+	 *                           the centroid and the plane the eccentricity is measured in
+	 *                           all come off it.
+	 * @param PieceJoints        Every joint touching each piece, in ascending index order.
+	 * @param SupportConnections What holds each piece up, before the reaching-the-ground
+	 *                           filter — the relation "counts among its own supports" means.
+	 */
+	bool HasArchingAbutment(
+		int32 PieceIndex,
+		const FConnection& BedJoint,
+		const TArray<TArray<int32>>& PieceJoints,
+		const TArray<TArray<int32>>& SupportConnections) const;
+
 	TArray<FStructurePiece> Pieces;
 	TArray<FConnection> Connections;
 

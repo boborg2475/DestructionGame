@@ -578,6 +578,60 @@ void FStructure::SolveLoads()
 	++SolveCount;
 
 	/*
+	 * WHICH JOINTS TOUCH WHICH PIECE, BUILT ONCE BY WALKING THE CONNECTIONS.
+	 *
+	 * The tier decision below wants a piece's own joints and nothing else, and it used to
+	 * find them by asking every connection in the structure about every piece — pieces x
+	 * connections calls to GetJointRole, of which all but the two naming the piece answer
+	 * None. The scenario wall is 1,220 pieces against ~3,500 joints, so that is 4.3 million
+	 * calls per solve, and a cascade runs a solve per pass: a bottom-course delete measured
+	 * 31 passes and about a second and a quarter of visible lag. One walk over the joints
+	 * costs what a single piece used to, and the tier loop then reads the six or so a brick
+	 * actually has.
+	 *
+	 * ASCENDING CONNECTION INDEX IS PART OF THE CONTRACT AND NOT AN INCIDENTAL. Appending
+	 * in index order to both endpoints leaves each list ordered exactly as the old
+	 * connection-major sweep left it, so the support lists, the split and every
+	 * floating-point sum built on them reproduce bit for bit. Sorting, filling out of
+	 * order, or a hash container whose iteration order differs would each reorder an
+	 * accumulation whose last bit decides breaks — the cascade fuzz has five joints
+	 * settling at exactly 1.0 and one at a single ulp below it.
+	 *
+	 * RESERVING IS NOT ON THAT LIST. What breaks the contract is the ORDER things are
+	 * appended in, not when the storage is sized, so a count-then-fill layout — one pass
+	 * to count each piece's joints, a prefix sum, then a second ascending pass with a
+	 * per-piece cursor — fills strictly ascending and preserves this exactly, while
+	 * removing the roughly 3,600 small allocations a scenario-scale solve makes here.
+	 * That is available whenever the allocation churn is worth measuring.
+	 *
+	 * AND THE BOUNDS CHECK IS HERE BECAUSE THIS SIDE WRITES. AddConnection refuses a joint
+	 * whose ends are not both valid piece handles, which is what entitles GetJointRole to
+	 * read a stored connection with no check of its own; an index chosen to select an
+	 * element to append to has no such licence, because there the failure is a memory
+	 * overwrite rather than a wrong tier. It is a bounds check on a write, not a defence
+	 * of the whole path — step three still indexes Loaders by OtherEndOf with no check,
+	 * so a stored connection naming an out-of-range piece would reach that instead. Both
+	 * are unreachable through the public doors; this one is simply where a write is.
+	 */
+	TArray<TArray<int32>> PieceJoints;
+	PieceJoints.SetNum(Pieces.Num());
+
+	for (int32 Index = 0; Index < Connections.Num(); ++Index)
+	{
+		const FConnection& Connection = Connections[Index];
+
+		if (PieceJoints.IsValidIndex(Connection.PieceA))
+		{
+			PieceJoints[Connection.PieceA].Add(Index);
+		}
+
+		if (PieceJoints.IsValidIndex(Connection.PieceB))
+		{
+			PieceJoints[Connection.PieceB].Add(Index);
+		}
+	}
+
+	/*
 	 * Step one: which connections hold each piece up?
 	 *
 	 * Two-tiered, per DESIGN.md §3: a piece rests on the bed joints BENEATH it, and
@@ -598,7 +652,7 @@ void FStructure::SolveLoads()
 	{
 		TArray<int32> HeadConnections;
 
-		for (int32 Index = 0; Index < Connections.Num(); ++Index)
+		for (const int32 Index : PieceJoints[PieceIndex])
 		{
 			/*
 			 * A JOINT THAT HAS GIVEN IS OUT OF THE STRUCTURE AND CONDUCTS NOTHING, and
@@ -1006,6 +1060,50 @@ void FStructure::SolveLoads()
 								Pieces[Current].CentreOfMassCm - Connection.InterfaceCentreCm,
 								ShareWeightUu);
 
+						/*
+						 * AND A SEAT WITH SOMETHING TO PUSH AGAINST ARCHES RATHER THAN
+						 * CANTILEVERING. Delete one brick from a running-bond wall and the
+						 * brick above keeps exactly one seat, overhangs it by 5.625 cm, and
+						 * reads 1.63 of capacity in tension — so it goes, leaving two more
+						 * half-seated bricks in the course above and a failure that walks
+						 * across the wall at 33.69 degrees, one step per course. What is
+						 * missing from that picture is the intact head joint into the hole:
+						 * the two bricks either side lean on each other, the thrust line
+						 * runs through the opening instead of peeling the seat open, and the
+						 * same joint reads 0.0142 on the COMPRESSION axis. ARCHING_DESIGN.md.
+						 *
+						 * THE FOUR GATES ARE SPLIT ACROSS TWO OBJECTS BECAUSE THEY ARE TWO
+						 * KINDS OF FACT. That the load is compressive and outside the kern is
+						 * arithmetic on one face and belongs to the joint; that this is a bed
+						 * joint beneath a placed piece with an abutment on the overhanging
+						 * side is a statement about the graph and belongs here.
+						 *
+						 * THE ORDER IS THE CHEAP TEST FIRST. The tier and the joint's own two
+						 * gates cost a normalise and a handful of multiplies; only a joint
+						 * that would actually be relieved pays for the walk over the piece's
+						 * neighbours. In an intact wall every seat has e = 0 exactly, so the
+						 * moment is zero, the relief is exactly 1, and nothing below the
+						 * first condition is ever reached.
+						 *
+						 * THE FORCE HANDED OVER IS THE STORED ONE, declaration-order sign and
+						 * all, because "compressive" is a fact about the joint and only the
+						 * force oriented the way ClassifyForce demands can state it. The
+						 * moment goes in physically oriented, which costs nothing: only the
+						 * magnitude of each in-plane component is read.
+						 */
+						if (GetJointRole(Index, Current) == EJointRole::BedBeneath)
+						{
+							const double ArchingRelief = Connection.ArchingMomentScale(
+								ConnectionForces[Index], MomentAboutJointUuCm);
+
+							if (ArchingRelief < 1.0
+								&& HasArchingAbutment(
+									Current, Connection, PieceJoints, SupportConnections))
+							{
+								MomentAboutJointUuCm *= ArchingRelief;
+							}
+						}
+
 						ConnectionMoments[Index] = Connection.PieceB == Current
 							? MomentAboutJointUuCm
 							: -MomentAboutJointUuCm;
@@ -1099,6 +1197,108 @@ void FStructure::SolveLoads()
 	 * it: FConnection::ApplyForce latches, so calling it would break joints as a
 	 * side effect of asking what they carry and make a solve unrepeatable.
 	 */
+}
+
+bool FStructure::HasArchingAbutment(
+	int32 PieceIndex,
+	const FConnection& BedJoint,
+	const TArray<TArray<int32>>& PieceJoints,
+	const TArray<TArray<int32>>& SupportConnections) const
+{
+	/*
+	 * THE SEAT'S OWN PLANE IS WHAT THE SIDES ARE MEASURED IN, so a normal that will not
+	 * normalise has no sides and cannot abut anything. Nothing that reaches here can fail
+	 * this — the caller has already had a tier and a moment out of the same joint — and it
+	 * is here so that the projections below are never fed a direction nobody chose.
+	 */
+	FVector UnitNormal = BedJoint.InterfaceNormal;
+
+	if (!UnitNormal.Normalize())
+	{
+		return false;
+	}
+
+	/*
+	 * WHICH WAY THE PIECE OVERHANGS: where its centre of mass sits relative to the centroid
+	 * of the patch it has left, flattened into that patch's plane. On a bed joint the plane
+	 * is horizontal and this is the 5.625 cm a half-seated running-bond brick leans by; the
+	 * projection is what keeps the two courses' worth of height between the two points out
+	 * of a comparison that is only ever about sideways.
+	 */
+	const FVector EccentricCm = FVector::VectorPlaneProject(
+		Pieces[PieceIndex].CentreOfMassCm - BedJoint.InterfaceCentreCm, UnitNormal);
+
+	for (const int32 Index : PieceJoints[PieceIndex])
+	{
+		const FConnection& Head = Connections[Index];
+
+		/*
+		 * A joint that has given conducts nothing, so it cannot deliver a thrust either —
+		 * the same rule the tier decision applies, and for the same reason. GetJointRole
+		 * still answers for a severed joint, deliberately, so this has to be asked here.
+		 */
+		if (Head.HasGiven() || GetJointRole(Index, PieceIndex) != EJointRole::Head)
+		{
+			continue;
+		}
+
+		/*
+		 * AND THE HEAD JOINT HAS TO KNOW WHERE IT IS. Its centroid is what says which side
+		 * it is on, and an unmeasured face carries a zero that means "nobody said" rather
+		 * than a plane through the world origin — which on a wall laid anywhere else would
+		 * answer the side question with the direction of the origin.
+		 */
+		if (Head.InterfaceHalfExtentCm.IsZero())
+		{
+			continue;
+		}
+
+		const FVector TowardAbutmentCm = FVector::VectorPlaneProject(
+			Head.InterfaceCentreCm - Pieces[PieceIndex].CentreOfMassCm, UnitNormal);
+
+		/*
+		 * ON THE ECCENTRIC SIDE, and a joint square on to the overhang is not on either
+		 * side. Written as a positive test so that an exact zero — and a NaN — falls out
+		 * here rather than being counted as an abutment.
+		 */
+		if (!(FVector::DotProduct(EccentricCm, TowardAbutmentCm) > 0.0))
+		{
+			continue;
+		}
+
+		const int32 Abutment = OtherEndOf(Head, PieceIndex);
+
+		/*
+		 * IT HAS TO REACH THE GROUND ON ITS OWN ACCOUNT, and both halves of that are needed.
+		 * PieceSupported is the walk from the earth, so it covers Grounded and Supported
+		 * together and excludes anything falling or stranded; the second test is trap 3, and
+		 * it is what tells a real arch apart from two bricks propping each other over open
+		 * air. Both of those are Supported and both have an intact head joint to the other,
+		 * so only the support relation separates them.
+		 */
+		if (!PieceSupported.IsValidIndex(Abutment) || !PieceSupported[Abutment])
+		{
+			continue;
+		}
+
+		bool bAbutmentLeansOnUs = false;
+
+		for (const int32 Support : SupportConnections[Abutment])
+		{
+			if (OtherEndOf(Connections[Support], Abutment) == PieceIndex)
+			{
+				bAbutmentLeansOnUs = true;
+				break;
+			}
+		}
+
+		if (!bAbutmentLeansOnUs)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 int32 FStructure::SolveAndBreak()

@@ -122,6 +122,48 @@ struct FConnection
 		const FVector& Force, const FVector& MomentUuCm = FVector::ZeroVector) const;
 
 	/**
+	 * How much of a moment this joint may keep before its thrust line leaves the kern:
+	 * k = min(1, |sigma_n| / sigma_b), and exactly 1 whenever there is nothing to relieve.
+	 *
+	 * THIS IS ARCHING, AND IT IS ONLY HALF OF THE RULE. A brick that has lost one of its
+	 * two seats but still abuts a neighbour reaching the ground on its own account does not
+	 * cantilever over the hole, it arches across it: the abutment supplies a horizontal
+	 * thrust, and the thrust line then sits at the kern edge rather than peeling the seat
+	 * open. Scaled by k the joint reads peak tension of exactly ZERO and peak compression of
+	 * exactly 2|sigma_n| — which is what an arch IS, and is twice what deleting the moment
+	 * outright would read. See ARCHING_DESIGN.md.
+	 *
+	 * WHAT THIS CALL DECIDES IS ONLY WHAT ONE JOINT CAN SEE: that the normal force is
+	 * COMPRESSIVE (no compression, no thrust line) and that the resultant is OUTSIDE THE
+	 * KERN. Whether the joint is a springing at all — a bed joint beneath a placed piece,
+	 * with an intact head joint on the eccentric side to a neighbour that is not leaning
+	 * back on it — is a fact about the graph, and FStructure::SolveLoads is what asks it. A
+	 * caller that applies this without those is capping head joints and corbels too, which
+	 * deletes MOMENTS_DESIGN case (b) outright and stands the photographed failure back up.
+	 *
+	 * INERT RATHER THAN MERELY SMALL WHERE IT DOES NOT APPLY: it returns 1.0 exactly, so
+	 * multiplying by it is the identity and a structure with no arch in it is bit-identical.
+	 *
+	 * NO CONVERSION BOUNDARY IS CROSSED, because the answer is a RATIO of two stresses. Both
+	 * are uu/cm2 and both would divide by the same ForceUnitsPerMPaSqCm, so the megapascals
+	 * cancel; introducing the constant here would be a second place it lives for no gain.
+	 *
+	 * DEGENERATE INPUT FAILS CLOSED, which here means NO RELIEF. A joint that cannot say
+	 * where its own kern is, or whose stresses are not finite, keeps its whole moment and
+	 * reads as heavily loaded — a joint reading intact when it should read as failed is the
+	 * expensive direction, and it is the one an over-eager cap arrives at.
+	 *
+	 * @param Force      The force this joint carries, oriented as ClassifyForce requires:
+	 *                   the force acting on the piece the normal points toward. The pair is
+	 *                   what makes "compressive" mean the joint rather than a viewpoint.
+	 * @param MomentUuCm Bending moment about this joint's centroid, uu.cm. Only the
+	 *                   magnitude of each in-plane component is read, so describing the
+	 *                   same joint from its other end gives the same answer.
+	 * @return k in (0, 1] — 1 exactly when no relief is available or none is warranted.
+	 */
+	double ArchingMomentScale(const FVector& Force, const FVector& MomentUuCm) const;
+
+	/**
 	 * Take this joint out of the structure without it having failed.
 	 *
 	 * A joint whose piece was REMOVED did not snap — it was deleted — but it is just

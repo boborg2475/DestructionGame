@@ -61,6 +61,44 @@ namespace
 
 		return AxisCount == 1 ? SeparationAxis : INDEX_NONE;
 	}
+
+	/**
+	 * The two in-plane axes of a joint, and the section modulus each of them is resisted by.
+	 *
+	 * WRITTEN ONCE BECAUSE THE PAIRING IS WHAT IS EASY TO GET WRONG. A moment about axis U
+	 * is resisted by the DEPTH on axis V, so the moduli read the extents in opposite orders;
+	 * the two moduli of a brick's end face are 72.2 and 179.5 cm3, so a swap is a factor of
+	 * 2.5 on a joint that goes on reading perfectly plausible. Two callers need this — the
+	 * stress evaluation and the arching cap that has to agree with it — and two transcriptions
+	 * of it would agree until the day one of them did not.
+	 *
+	 * The caller must have a separation axis already: a normal that names none has no
+	 * in-plane frame to choose, and choosing one anyway is the guess this deliberately
+	 * cannot make.
+	 */
+	struct FJointBendingFrame
+	{
+		int32 AxisU = INDEX_NONE;
+		int32 AxisV = INDEX_NONE;
+
+		double ModulusUCm3 = 0.0;
+		double ModulusVCm3 = 0.0;
+	};
+
+	FJointBendingFrame JointBendingFrame(int32 SeparationAxis, const FVector& InterfaceHalfExtentCm)
+	{
+		FJointBendingFrame Frame;
+
+		Frame.AxisU = SeparationAxis == 0 ? 1 : 0;
+		Frame.AxisV = SeparationAxis == 2 ? 1 : 2;
+
+		Frame.ModulusUCm3 = JointSectionModulusCm3(
+			InterfaceHalfExtentCm[Frame.AxisU], InterfaceHalfExtentCm[Frame.AxisV]);
+		Frame.ModulusVCm3 = JointSectionModulusCm3(
+			InterfaceHalfExtentCm[Frame.AxisV], InterfaceHalfExtentCm[Frame.AxisU]);
+
+		return Frame;
+	}
 }
 
 double FConnection::ApplyForce(const FVector& Force, const FVector& MomentUuCm)
@@ -177,19 +215,113 @@ double FConnection::UtilisationUnder(const FVector& Force, const FVector& Moment
 	}
 	else
 	{
-		const int32 AxisU = SeparationAxis == 0 ? 1 : 0;
-		const int32 AxisV = SeparationAxis == 2 ? 1 : 2;
+		const FJointBendingFrame Frame = JointBendingFrame(SeparationAxis, InterfaceHalfExtentCm);
 
-		Load.BendingMomentUUuCm = MomentUuCm[AxisU];
-		Load.BendingMomentVUuCm = MomentUuCm[AxisV];
+		Load.BendingMomentUUuCm = MomentUuCm[Frame.AxisU];
+		Load.BendingMomentVUuCm = MomentUuCm[Frame.AxisV];
 
-		Section.SectionModulusUCm3 = JointSectionModulusCm3(
-			InterfaceHalfExtentCm[AxisU], InterfaceHalfExtentCm[AxisV]);
-		Section.SectionModulusVCm3 = JointSectionModulusCm3(
-			InterfaceHalfExtentCm[AxisV], InterfaceHalfExtentCm[AxisU]);
+		Section.SectionModulusUCm3 = Frame.ModulusUCm3;
+		Section.SectionModulusVCm3 = Frame.ModulusVCm3;
 	}
 
 	return DestructionForce::ComputeUtilisation(Load, Strength, Section);
+}
+
+double FConnection::ArchingMomentScale(const FVector& Force, const FVector& MomentUuCm) const
+{
+	/*
+	 * EVERY EXIT BELOW IS 1.0, WHICH IS THE IDENTITY AND NOT A DEFAULT. The relief is a
+	 * multiplier on a moment, so "this joint cannot arch" and "this joint has nothing to
+	 * relieve" are the same answer, and a structure that contains no arch multiplies every
+	 * moment it has by exactly one and is bit-identical to one compiled before this existed.
+	 */
+	constexpr double NoRelief = 1.0;
+
+	/*
+	 * A normal that will not normalise describes no interface plane, and an area that is
+	 * not positive describes no face — neither has a kern for a thrust line to sit on.
+	 * UtilisationUnder answers both by reading as failed, which is the same direction this
+	 * takes: no relief, so whatever the joint is carrying it carries in full.
+	 *
+	 * Written !(x > 0.0) rather than x <= 0.0 so a NaN area lands inside the guard.
+	 */
+	FVector UnitNormal = InterfaceNormal;
+
+	if (!UnitNormal.Normalize() || !(InterfaceAreaSqCm > 0.0))
+	{
+		return NoRelief;
+	}
+
+	/*
+	 * THE SECOND GATE: THE NORMAL FORCE IS COMPRESSIVE. An arch is a thrust line, and a
+	 * joint being pulled apart — or carrying nothing at all — has none for the abutment to
+	 * push against. It is also what keeps the arithmetic below out of 0/0: a massless piece
+	 * has sigma_n and sigma_b both exactly zero, and min(1, 0/0) is a NaN that would reach
+	 * ComputeUtilisation as a bending moment and come back reading as a FAILED joint.
+	 */
+	const FConnectionLoad Load = DestructionForce::ClassifyForce(Force, UnitNormal);
+
+	if (!(Load.Compression > 0.0))
+	{
+		return NoRelief;
+	}
+
+	/*
+	 * The frame and the two moduli are resolved exactly as UtilisationUnder resolves them,
+	 * through the same two helpers, because k has to be the cap on the stress THAT call
+	 * will go on to compute. A normal naming no separation axis has no in-plane frame to
+	 * choose, and a modulus that is not positive is the case ComputeUtilisation already
+	 * fails closed on; neither may be relieved out of existence here.
+	 */
+	const int32 SeparationAxis = JointSeparationAxis(InterfaceNormal);
+
+	if (SeparationAxis == INDEX_NONE)
+	{
+		return NoRelief;
+	}
+
+	const FJointBendingFrame Frame = JointBendingFrame(SeparationAxis, InterfaceHalfExtentCm);
+
+	if (!(Frame.ModulusUCm3 > 0.0) || !(Frame.ModulusVCm3 > 0.0))
+	{
+		return NoRelief;
+	}
+
+	/*
+	 * Both in uu/cm2, and the two in-plane axes ADD because the worst corner is worst on
+	 * both at once — the same sigma_b ComputeUtilisation forms, spelled the same way.
+	 */
+	const double BendingStress = FMath::Abs(MomentUuCm[Frame.AxisU]) / Frame.ModulusUCm3
+		+ FMath::Abs(MomentUuCm[Frame.AxisV]) / Frame.ModulusVCm3;
+
+	const double NormalStress = Load.Compression / InterfaceAreaSqCm;
+
+	if (!FMath::IsFinite(BendingStress) || !FMath::IsFinite(NormalStress))
+	{
+		return NoRelief;
+	}
+
+	/*
+	 * THE THIRD GATE: THE RESULTANT IS OUTSIDE THE KERN — and this comparison IS that
+	 * statement rather than an approximation of it. For one axis, e > W/A rearranges term
+	 * for term into M/W > N/A, which is what is written; across both it is the rhombic core
+	 * of a rectangle, |M_u|/W_u + |M_v|/W_v > |N|/A. On the 10.25 cm deep bed patch of a
+	 * half-seated brick that boundary sits at 1.7083 cm and the load arrives 5.625 cm out.
+	 *
+	 * INSIDE THE KERN NO PART OF THE FACE IS OPENING, so there is nothing to relieve, and
+	 * the ratio below would be GREATER than one — this guard is where min(1, ...) is
+	 * actually enforced. Dropping it and scaling unconditionally does not merely fail to
+	 * help, it multiplies the bending stress of an ordinary slightly-off-centre joint by
+	 * nearly seven.
+	 *
+	 * Written !(a > b), so a NaN that survived the finiteness checks still lands here.
+	 */
+	if (!(BendingStress > NormalStress))
+	{
+		return NoRelief;
+	}
+
+	return NormalStress / BendingStress;
 }
 
 void FConnection::Sever()
