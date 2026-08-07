@@ -104,7 +104,7 @@ namespace StructureCompositeDepthTestSupport
 	/*
 	 * ================================================================================
 	 * THE RAKING CORBEL, GENERALISED IN HEIGHT — the staircase void with its 13 courses
-	 * turned into a parameter.
+	 * turned into a parameter, AND THE CUT'S HEIGHT SEPARATED FROM THE WALL'S.
 	 * ================================================================================
 	 *
 	 * StaircaseWallTestSupport pins ONE wall, 13 courses of 10, and hand-counts the eleven
@@ -112,50 +112,54 @@ namespace StructureCompositeDepthTestSupport
 	 * compositely, so it needs the same cut at several depths — which means the same geometry
 	 * with the height as an argument and the ladder as a closed form.
 	 *
-	 * THE CLOSED FORMS ARE CHECKED AGAINST THE HAND COUNT, NOT SUBSTITUTED FOR IT. The test
-	 * asserts that this recursion reproduces StaircaseWallTestSupport's eleven hand-written
-	 * forces and eleven hand-written moments EXACTLY at 13 courses before it uses it anywhere
-	 * else. Two independently written derivations agreeing on twenty-two numbers is evidence;
-	 * one derivation used twice is not.
+	 * THE CUT IS SIZED BY `CorbelSteps` AND THE WALL BY `CoursesHigh`, AND UNTIL 2026-08-07
+	 * THEY WERE THE SAME NUMBER. Every row of this file's table was `CoursesHigh = Steps + 2`,
+	 * so no fixture in the project had a corbel SHORTER than its wall — and the composite
+	 * depth is measured by walking up the masonry, which means the wall's own height was
+	 * feeding the answer with nothing able to see it. StaircaseWallTestSupport already made
+	 * this separation for the void ("the course range and the edge are ABSOLUTE, not relative
+	 * to the wall's height, which is what lets the SAME void be cut into a taller wall"); this
+	 * is the same statement for the generalised cut, and the four original rows are recovered
+	 * bit for bit by passing `CorbelSteps = CoursesHigh - 2`.
 	 *
-	 * THE COURSE COUNT MUST BE ODD, and it is a fact about running bond rather than a
+	 * THE STEP COUNT MUST BE ODD, and it is a fact about running bond rather than a
 	 * restriction anybody chose. The void's edge steps half a cell per course, so the corbelled
-	 * brick of course c sits at (Courses - 1 - c) * 11.25; that lands on an EVEN course's grid
-	 * (multiples of 22.5) exactly when Courses - 1 - c is even, i.e. when Courses is odd. An
-	 * even-course wall would name a brick that is not there.
+	 * brick of course c sits at (CorbelSteps + 1 - c) * 11.25; that lands on an EVEN course's
+	 * grid (multiples of 22.5) exactly when CorbelSteps + 1 - c is even, i.e. when CorbelSteps
+	 * is odd. A cut of even height would name a brick that is not there. THE WALL'S OWN HEIGHT
+	 * IS NOW FREE — 40 courses over an 11-step cut is the game's own scenario wall, and it was
+	 * unreachable while the two were one number.
 	 */
 
-	/** The staircase edge for a wall of this height: everything left of it, in this course, is cut. */
-	constexpr double RakingVoidEdgeXCm(int32 CoursesHigh, int32 Course)
+	/** The staircase edge for a cut of this height: everything left of it, in this course, is cut. */
+	constexpr double RakingVoidEdgeXCm(int32 CorbelSteps, int32 Course)
 	{
-		return (CoursesHigh - 1 - Course) * HalfStepCm;
+		return (CorbelSteps + 1 - Course) * HalfStepCm;
 	}
 
-	/** The lowest and highest courses the void cuts. Course 0 and the top course stay whole. */
+	/** The lowest and highest courses the void cuts. Course 0 and everything above stay whole. */
 	constexpr int32 LowestVoidCourse = 1;
 
-	constexpr int32 HighestVoidCourse(int32 CoursesHigh)
+	constexpr int32 HighestVoidCourse(int32 CorbelSteps)
 	{
-		return CoursesHigh - 2;
+		return CorbelSteps;
 	}
 
 	/**
-	 * The corbelled courses: 2 up to the topmost course, so there are CoursesHigh - 2 of them.
+	 * The corbelled courses: 2 up to one course above the top of the cut, so there are
+	 * CorbelSteps of them.
 	 *
 	 * Course 1's leftmost survivor still rests on two bricks of the grounded course, so it is
-	 * not corbelled; the top course is untouched by the void and is corbelled anyway, because
-	 * the course beneath it now starts half a step to its right.
+	 * not corbelled; the course above the cut is untouched by the void and is corbelled anyway,
+	 * because the course beneath it now starts half a step to its right. In a wall TALLER than
+	 * the cut, everything above that course is ordinary full-width masonry standing on it —
+	 * which is exactly the masonry whose contribution this file exists to measure.
 	 */
 	constexpr int32 LowestCorbelCourse = 2;
 
-	constexpr int32 HighestCorbelCourse(int32 CoursesHigh)
+	constexpr int32 HighestCorbelCourse(int32 CorbelSteps)
 	{
-		return CoursesHigh - 1;
-	}
-
-	constexpr int32 CorbelStepCount(int32 CoursesHigh)
-	{
-		return CoursesHigh - 2;
+		return CorbelSteps + 1;
 	}
 
 	/** Centre height of a course, cm: half a brick up, then one course pitch per course. */
@@ -216,6 +220,11 @@ namespace StructureCompositeDepthTestSupport
 	 * the bed joints can transfer, by bond continuity, by span-to-depth — reads LESS, so every
 	 * "must stand" row below is an upper bound on the depth a correct rule may find and every
 	 * "must come down" row is one-sided and survives any bound at all.
+	 *
+	 * AND IT IS ONLY ASSERTED WHERE THE WALL STOPS AT THE TOP OF THE CORBEL. In a wall taller
+	 * than its cut this expression is a statement about masonry that is not part of the corbel
+	 * at all, which is the thing PART 1B is about; there it is printed as the reading the
+	 * unbounded rule gives and nothing is derived from it.
 	 */
 	constexpr int32 CoursesOverCorbelJoint(int32 CoursesHigh, int32 Course)
 	{
@@ -342,8 +351,8 @@ namespace StructureCompositeDepthTestSupport
 		return FMath::RoundToInt32((Box.CentreCm.Z - BrickHeightCm / 2.0) / CoursePitchCm);
 	}
 
-	/** Every piece the raking void takes out of a wall of this height, in handle order. */
-	inline TArray<int32> RakingVoidPieces(TArrayView<const FPieceBox> Boxes, int32 CoursesHigh)
+	/** Every piece a raking void of this many steps takes out, in handle order. */
+	inline TArray<int32> RakingVoidPieces(TArrayView<const FPieceBox> Boxes, int32 CorbelSteps)
 	{
 		TArray<int32> Cut;
 
@@ -351,12 +360,12 @@ namespace StructureCompositeDepthTestSupport
 		{
 			const int32 Course = CourseOf(Boxes[Piece]);
 
-			if (Course < LowestVoidCourse || Course > HighestVoidCourse(CoursesHigh))
+			if (Course < LowestVoidCourse || Course > HighestVoidCourse(CorbelSteps))
 			{
 				continue;
 			}
 
-			if (Boxes[Piece].CentreCm.X < RakingVoidEdgeXCm(CoursesHigh, Course) - 0.001)
+			if (Boxes[Piece].CentreCm.X < RakingVoidEdgeXCm(CorbelSteps, Course) - 0.001)
 			{
 				Cut.Add(Piece);
 			}
@@ -442,6 +451,17 @@ namespace ArchSupport = StructureArchingTestSupport;
  * span-to-depth ratio) can only credit LESS depth than the masonry actually standing there, and
  * less depth reads HIGHER. So the falling row survives whichever bound slice 5 lands, and the
  * standing rows are the upper bound on how little depth a correct rule may find.
+ *
+ * AND THE k^3/k^2 ARGUMENT ABOVE IS TRUE ONLY OF A WALL THE SAME HEIGHT AS ITS CUT, WHICH EVERY
+ * ROW OF THAT TABLE WAS AND NO ROW SAID. *(Found in review 2026-08-07; it is finding B1 and PART
+ * 1B below is the fixture for it.)* `k^3/k^2` assumes the depth credited to the bottom rung comes
+ * from the corbel's OWN steps. It does not: the depth is whatever the upward walk finds, so in a
+ * wall taller than the cut the moment is set by `k` and the section by the wall's `m`, the
+ * reading goes as `k^3/m^2`, the two exponents stop cancelling and the thirty-six-course
+ * crossover does not exist. The wall the game renders is exactly that case — eleven corbelled
+ * steps under forty courses — so the joint the suite pins at 0.36903147272727271 on a
+ * thirteen-course wall is a different number entirely on the wall the player is looking at.
+ * PART 1B lays both and compares them.
  *
  * ARCHING_DESIGN's OWN DEPTH TABLE — 4 courses 2.79, 6 courses 1.24, 7 courses 0.911, the
  * crossover at 50.1 cm — IS A HYPOTHETICAL AND NOT A FIXTURE FAMILY, and it is worth saying so
@@ -581,16 +601,47 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 
 	/*
 	 * ===================================================================================
-	 * PART 1 — THE RAKING CORBEL AT THREE DEPTHS, PLUS THE SAME CUT LAID DRY.
+	 * PART 1 — THE RAKING CORBEL AT THREE DEPTHS, THE SAME CUT LAID DRY, AND TWO CUTS
+	 * LAID UNDER MORE WALL THAN THEY NEED.
 	 * ===================================================================================
 	 */
+
+	/**
+	 * WHAT THE CASCADE MUST DO TO THE MASS OVER THE VOID — and one row deliberately declines
+	 * to say.
+	 *
+	 * `Unasserted` is not a gap. Whether an eleven-step corbel under a forty-course wall stands
+	 * is a consequence of WHICH bound on the composite depth gets chosen, and that is an open
+	 * design question this file must not close by asserting an outcome: crediting the corbel's
+	 * own eleven courses makes it a different verdict from crediting the wall's thirty-nine.
+	 * The row exists to make the two DISTINGUISHABLE and to pin the property in PART 1B; the
+	 * verdict is printed with its arithmetic and left to whoever rules.
+	 */
+	enum class EVoidOutcome
+	{
+		MustStand,
+		MustComeDown,
+		Unasserted,
+	};
 
 	/** One raking void, and everything about it this file has an opinion on. */
 	struct FCorbelCase
 	{
 		const TCHAR* Description;
 
-		/** ODD, always: see RakingVoidEdgeXCm. The corbel is CoursesHigh - 2 steps tall. */
+		/**
+		 * ODD, always: see RakingVoidEdgeXCm. This is the number of corbelled steps and it
+		 * sizes the CUT — the ladder, the arms, the whole overturning moment.
+		 */
+		int32 CorbelSteps;
+
+		/**
+		 * And this sizes the WALL, which needs at least CorbelSteps + 2 courses to hold the
+		 * cut and may have any number more. Where it has more, the extra courses are ordinary
+		 * full-width masonry standing ON the corbel: they add load to every rung and they add
+		 * depth to the walk that measures the composite section, and separating those two is
+		 * the whole of PART 1B.
+		 */
 		int32 CoursesHigh;
 
 		/**
@@ -604,8 +655,8 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 
 		const FConnectionStrength* Strength;
 
-		/** Whether the mass over the void must still reach the ground once the cascade has run. */
-		bool bMustStand;
+		/** What must become of the mass over the void once the cascade has run. */
+		EVoidOutcome Outcome;
 
 		/** ARCHING_DESIGN's own figure for the bottom rung, or 0 where it published none. */
 		double DesignUtilisation;
@@ -618,7 +669,8 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		 * and four of its five rungs are over capacity; under a 37.5 cm section it is 0.21858
 		 * and none are.
 		 */
-		{ TEXT("a FIVE-step raking corbel"), 7, 7, &GeneralPurposeMortar, true, 0.0 },
+		{ TEXT("a FIVE-step raking corbel"), 5, 7, 7, &GeneralPurposeMortar,
+			EVoidOutcome::MustStand, 0.0 },
 
 		/*
 		 * ELEVEN STEPS — THE PHOTOGRAPHED FAILURE, and the identical fixture
@@ -630,7 +682,8 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		 * TEN BRICKS PER COURSE RATHER THAN TWELVE, deliberately: it must be the same wall the
 		 * two changing tests lay, cone deficit and all, or its number is about a different wall.
 		 */
-		{ TEXT("ELEVEN steps: THE STAIRCASE VOID"), 13, 10, &GeneralPurposeMortar, true, 0.369 },
+		{ TEXT("ELEVEN steps: THE STAIRCASE VOID"), 11, 13, 10, &GeneralPurposeMortar,
+			EVoidOutcome::MustStand, 0.369 },
 
 		/*
 		 * FORTY-FIVE STEPS — THE DEPTH RUNS OUT, and this is the row the whole slice is gated
@@ -644,7 +697,8 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		 * than the masonry standing there and therefore reads higher, so this row holds
 		 * whichever of the three candidate bounds slice 5 picks.
 		 */
-		{ TEXT("FORTY-FIVE steps: the depth runs out"), 47, 47, &GeneralPurposeMortar, false, 0.0 },
+		{ TEXT("FORTY-FIVE steps: the depth runs out"), 45, 47, 47, &GeneralPurposeMortar,
+			EVoidOutcome::MustComeDown, 0.0 },
 
 		/*
 		 * AND THE SAME STAIRCASE LAID DRY. You cannot corbel a dry-stone wall — there is no
@@ -659,26 +713,132 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		 * a dry-stone overhang up. It is a guard, not a driver, and it earns its place only
 		 * because it is the same fixture with one field changed.
 		 */
-		{ TEXT("ELEVEN steps, laid DRY"), 13, 10, &DryStone, false, 0.0 },
+		{ TEXT("ELEVEN steps, laid DRY"), 11, 13, 10, &DryStone,
+			EVoidOutcome::MustComeDown, 0.0 },
+
+		/*
+		 * ===============================================================================
+		 * AND THE SAME TWO CUTS AGAIN UNDER MORE WALL. These two rows are the fixture the
+		 * project did not have, and without them nothing could see the composite depth.
+		 * ===============================================================================
+		 *
+		 * FORTY-FIVE STEPS UNDER SIXTY-SEVEN COURSES. Identical cut to the row above — same
+		 * ladder, same arms, same 91,209 brick-weight-cm of overturning from the corbel's own
+		 * mass — with twenty further courses of ordinary full-width masonry standing on top of
+		 * it.
+		 *
+		 * GREEN ON ARRIVAL, AND IT IS THE MEASUREMENT THAT SAYS SO RATHER THAN A JUDGEMENT.
+		 * The review proposed this row as red, on the grounds that a wall 1.5x taller is
+		 * "arithmetically identical" to crediting 1.5x the composite depth — a mutation which
+		 * does stand this corbel up. IT IS NOT IDENTICAL, and the difference is the whole
+		 * finding: the extra courses are masonry STANDING ON the corbel, so they add load as
+		 * well as depth. Measured here, 47 courses to 67 multiplies the bottom rung's moment by
+		 * 2.2754 and its section by 2.0864, so the reading goes UP — 1.2501861088888881 to
+		 * 1.3634027672024234 — and the corbel still comes down. The mutation moved one of those
+		 * two and a taller wall moves both.
+		 *
+		 * WHICH IS WHY IT IS THE SHORT CUT UNDER THE TALL WALL THAT BITES, and the row below is
+		 * the one that does. A corbel's own moment grows as k^3 and the wall's section as m^2,
+		 * so what decides is the RATIO m/k: at 67/45 the added load very nearly keeps up, and
+		 * at 40/11 it is beaten by a factor of two. Extrapolating this row's own numbers, a
+		 * 45-step corbel needs something like a hundred and sixty courses — twelve metres of
+		 * wall — before the depth rescues it, and that is not a fixture anybody should build.
+		 *
+		 * KEPT AS A GUARD RATHER THAN DROPPED, AND IT BITES. The 47-course row is the design's
+		 * "something must still come down" constraint and this row is that same corbel with
+		 * twenty courses of extra load piled on it and nothing whatever removed; a depth rule
+		 * that rescued it would be rescuing a cantilever by putting a building on it. Under the
+		 * review's own 1.5x-depth mutation this row reads 0.606 and stands, so it fails there
+		 * and the row is not asserting nothing.
+		 */
+		{ TEXT("FORTY-FIVE steps under SIXTY-SEVEN courses"), 45, 67, 47, &GeneralPurposeMortar,
+			EVoidOutcome::MustComeDown, 0.0 },
+
+		/*
+		 * ELEVEN STEPS UNDER FORTY COURSES — THE WALL THE GAME ACTUALLY RENDERS, and the
+		 * headless twin the screenshot fixture never had.
+		 *
+		 * `ADestructionGameGameMode` lays 30 bricks by 40 courses and the visual harness cuts
+		 * StaircaseWallTestSupport's void into it — courses 1 to 11, edge (12 - c) * 11.25 —
+		 * which is character for character this row's cut. So the joint the suite pins at
+		 * 0.36903147272727271 on a 13-course wall is the SAME joint the player is looking at,
+		 * standing under 39 courses instead of 11. Nothing headless covered that wall, and
+		 * TEST_CHANGES.md section 4 names the gap independently: `Visual.StaircaseScreenshot`
+		 * carries NonNullRHI, so it is invisible to the documented test command, and it rotted
+		 * for five slices behind that flag.
+		 *
+		 * OUTCOME DELIBERATELY UNASSERTED — see EVoidOutcome. Whether this corbel stands is
+		 * downstream of which bound gets chosen, and the arithmetic runs close: crediting the
+		 * corbel's own eleven courses against a ladder the wall above has made several times
+		 * heavier is a different verdict from crediting all thirty-nine. What IS asserted is
+		 * the property in PART 1B, which is true under every candidate.
+		 */
+		{ TEXT("ELEVEN steps under FORTY courses: THE SCENARIO WALL"), 11, 40, 30,
+			&GeneralPurposeMortar, EVoidOutcome::Unasserted, 0.0 },
 	};
+
+	/**
+	 * THE BOTTOM RUNG OF EVERY CASE, KEPT SO THAT TWO CASES CAN BE COMPARED WITH EACH OTHER.
+	 *
+	 * PART 1B's claim is a claim about a PAIR of fixtures rather than about either of them, so
+	 * it cannot be made inside the loop that reads one. Everything here is measured off the
+	 * solver except the depth, which is what the fixture presents.
+	 */
+	struct FBottomRung
+	{
+		const TCHAR* Description;
+		int32 CorbelSteps;
+		int32 CoursesHigh;
+		int32 BricksPerCourse;
+		const FConnectionStrength* Strength;
+
+		double ForceBrickWeights;
+		double MomentBrickWeightCm;
+		double Utilisation;
+
+		/** What the walk finds if nothing bounds it: every course of the wall over this joint. */
+		double UnboundedDepthCm;
+	};
+
+	TArray<FBottomRung> BottomRungs;
 
 	for (const FCorbelCase& Case : Cases)
 	{
-		const int32 Steps = CorbelStepCount(Case.CoursesHigh);
+		const int32 Steps = Case.CorbelSteps;
+
+		/*
+		 * WHETHER THE WALL STOPS AT THE TOP OF THE CORBEL, AND IT DECIDES WHAT MAY BE ASSERTED
+		 * RUNG BY RUNG.
+		 *
+		 * Where it does, the corbel's own courses are all the masonry there is, the hand ladder
+		 * is the whole load and CoursesOverCorbelJoint is a statement about the corbel. Where
+		 * the wall carries on above, both of those stop being true at once — there is extra
+		 * load AND extra depth — so the rows below become one-sided and the two-sided claim
+		 * moves to PART 1B, where it belongs, as a comparison between the pair.
+		 */
+		const bool bWallStopsAtTheCorbel = Case.CoursesHigh == Case.CorbelSteps + 2;
 
 		TestTrue(
 			FString::Printf(
-				TEXT("%s: FIXTURE: the course count must be ODD or the raking edge names bricks ")
+				TEXT("%s: FIXTURE: the STEP count must be ODD or the raking edge names bricks ")
 				TEXT("that are not there; it is %d"),
-				Case.Description, Case.CoursesHigh),
-			Case.CoursesHigh % 2 == 1);
+				Case.Description, Case.CorbelSteps),
+			Case.CorbelSteps % 2 == 1);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("%s: FIXTURE: a %d-step cut needs at least %d courses to stand in, the wall ")
+				TEXT("has %d"),
+				Case.Description, Case.CorbelSteps, Case.CorbelSteps + 2, Case.CoursesHigh),
+			Case.CoursesHigh >= Case.CorbelSteps + 2);
 
 		AddInfo(FString::Printf(
 			TEXT("%s: %d x %d flush wall, raking void through courses %d..%d, %d corbelled steps, ")
-			TEXT("%g cm of masonry over the bottom one"),
+			TEXT("%g cm of masonry over the bottom one (%g cm of it is the corbel's own)"),
 			Case.Description, Case.BricksPerCourse, Case.CoursesHigh, LowestVoidCourse,
-			HighestVoidCourse(Case.CoursesHigh), Steps,
-			CoursesOverCorbelJoint(Case.CoursesHigh, LowestCorbelCourse) * CoursePitchCm));
+			HighestVoidCourse(Case.CorbelSteps), Steps,
+			CoursesOverCorbelJoint(Case.CoursesHigh, LowestCorbelCourse) * CoursePitchCm,
+			Case.CorbelSteps * CoursePitchCm));
 
 		FBrickLayout Laid;
 
@@ -722,7 +882,7 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 				Case.Description, *Bits(WorstAsBuilt)),
 			WorstAsBuilt < 1.0);
 
-		const TArray<int32> VoidPieces = RakingVoidPieces(Laid.Boxes, Case.CoursesHigh);
+		const TArray<int32> VoidPieces = RakingVoidPieces(Laid.Boxes, Case.CorbelSteps);
 
 		bool bCutLaid = true;
 
@@ -761,10 +921,10 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		bool bLadderRead = true;
 
 		for (int32 Course = LowestCorbelCourse;
-			Course <= HighestCorbelCourse(Case.CoursesHigh);
+			Course <= HighestCorbelCourse(Case.CorbelSteps);
 			++Course)
 		{
-			const int32 StepsBelowTop = HighestCorbelCourse(Case.CoursesHigh) - Course;
+			const int32 StepsBelowTop = HighestCorbelCourse(Case.CorbelSteps) - Course;
 
 			const double HandForceBrickWeights = LadderForceBrickWeights(StepsBelowTop);
 			const double HandMomentBrickWeightCm = LadderMomentBrickWeightCm(StepsBelowTop);
@@ -782,12 +942,12 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 
 			const int32 Corbel = StaircasePieceAt(
 				Laid.Boxes,
-				RakingVoidEdgeXCm(Case.CoursesHigh, Course),
+				RakingVoidEdgeXCm(Case.CorbelSteps, Course),
 				CourseZCm(Course));
 
 			const int32 Support = StaircasePieceAt(
 				Laid.Boxes,
-				RakingVoidEdgeXCm(Case.CoursesHigh, Course) + HalfStepCm,
+				RakingVoidEdgeXCm(Case.CorbelSteps, Course) + HalfStepCm,
 				CourseZCm(Course - 1));
 
 			const int32 Joint = Corbel != INDEX_NONE && Support != INDEX_NONE
@@ -799,8 +959,8 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 				AddError(FString::Printf(
 					TEXT("%s: FIXTURE: course %d should have a brick at x %g jointed to one at ")
 					TEXT("x %g; they are pieces %d and %d"),
-					Case.Description, Course, RakingVoidEdgeXCm(Case.CoursesHigh, Course),
-					RakingVoidEdgeXCm(Case.CoursesHigh, Course) + HalfStepCm, Corbel, Support));
+					Case.Description, Course, RakingVoidEdgeXCm(Case.CorbelSteps, Course),
+					RakingVoidEdgeXCm(Case.CorbelSteps, Course) + HalfStepCm, Corbel, Support));
 
 				bLadderRead = false;
 				break;
@@ -814,7 +974,7 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 				BottomRungJoint = Joint;
 			}
 
-			if (Course == HighestCorbelCourse(Case.CoursesHigh))
+			if (Course == HighestCorbelCourse(Case.CorbelSteps))
 			{
 				CorbelPieces[1] = Corbel;
 			}
@@ -859,25 +1019,43 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 
 			const bool bWorthPrinting =
 				Steps <= 11 || Course == LowestCorbelCourse
-				|| Course == HighestCorbelCourse(Case.CoursesHigh);
+				|| Course == HighestCorbelCourse(Case.CorbelSteps);
 
 			if (bWorthPrinting)
 			{
+				/*
+				 * THE THREE READINGS PRINTED BESIDE THE MEASUREMENT ARE BUILT FROM THE MOMENT
+				 * THIS JOINT ACTUALLY CARRIES, NOT FROM THE HAND LADDER'S.
+				 *
+				 * They coincide where the wall stops at the top of the corbel, and that is the
+				 * only place they may be quietly conflated: in a taller wall the hand ladder is
+				 * the corbel's own mass and misses everything the courses above add — on the
+				 * scenario wall by a factor of seven — so a line printed from it would read
+				 * 0.031 beside a joint reading 0.223 and look like a defect in the solver
+				 * rather than a defect in the print. The hand ladder is still printed, as the
+				 * ladder, next to what the joint carries.
+				 */
 				AddInfo(FString::Printf(
 					TEXT("%s, course %2d: joint %d carries %s brick weights (hand ladder %s) and ")
 					TEXT("%s brick-weight-cm (hand ladder %s) over %d courses = %g cm of depth. ")
-					TEXT("It reads %s; the patch alone says %s, the composite section says %s, ")
-					TEXT("and the lesser of the two is %s"),
+					TEXT("It reads %s; on the moment it carries the patch alone says %s, the ")
+					TEXT("composite section at that depth says %s, and the corbel's OWN %d ")
+					TEXT("courses would say %s"),
 					Case.Description, Course, Joint, *Bits(MeasuredForceBrickWeights),
 					*Bits(HandForceBrickWeights), *Bits(MeasuredMomentBrickWeightCm),
 					*Bits(HandMomentBrickWeightCm), CoursesOfDepth,
 					CoursesOfDepth * CoursePitchCm, *Bits(Utilisation),
-					*Bits(PatchTensionMPa(HandMomentBrickWeightCm, HandForceBrickWeights)
+					*Bits(PatchTensionMPa(MeasuredMomentBrickWeightCm, MeasuredForceBrickWeights)
 						/ MortarTensileMPa),
 					*Bits(CompositeTensionMPa(
-						HandMomentBrickWeightCm, CoursesOfDepth * CoursePitchCm, BrickWidthCm)
+						MeasuredMomentBrickWeightCm, CoursesOfDepth * CoursePitchCm, BrickWidthCm)
 						/ MortarTensileMPa),
-					*Bits(Expected)));
+					FMath::Min(CoursesOfDepth, Case.CorbelSteps),
+					*Bits(CompositeTensionMPa(
+						MeasuredMomentBrickWeightCm,
+						FMath::Min(CoursesOfDepth, Case.CorbelSteps) * CoursePitchCm,
+						BrickWidthCm)
+						/ MortarTensileMPa)));
 			}
 
 			/*
@@ -888,24 +1066,39 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			 * centroid arm against the ladder's average arm — only agrees to 1.3%, so an
 			 * implementation that computed the wedge as one composite body rather than as a
 			 * ladder is inside this and is not what this row is about.
+			 *
+			 * AND IT IS TWO-SIDED ONLY WHERE THE WALL STOPS AT THE TOP OF THE CORBEL. The hand
+			 * ladder counts the corbel's own bricks and the half-neighbours feeding them, so it
+			 * is the WHOLE load exactly when there is nothing above the corbel to add to it.
+			 * Where the wall carries on, every one of those courses bears down through the same
+			 * rungs and the ladder can only grow — so the claim there is `at least`, which is a
+			 * statement about statics rather than about the depth rule, and it is the premise
+			 * PART 1B's one-sided argument stands on.
 			 */
-			TestTrue(
-				FString::Printf(
-					TEXT("%s, course %d: the load path is UNCHANGED — the joint must still carry ")
-					TEXT("the hand ladder's %s brick weights, it carries %s"),
-					Case.Description, Course, *Bits(HandForceBrickWeights),
-					*Bits(MeasuredForceBrickWeights)),
-				FMath::Abs(MeasuredForceBrickWeights - HandForceBrickWeights)
-					<= 0.02 * HandForceBrickWeights);
+			const double ForceFloor = HandForceBrickWeights * (1.0 - 0.02);
+			const double MomentFloor = HandMomentBrickWeightCm * (1.0 - 0.02);
 
 			TestTrue(
 				FString::Printf(
-					TEXT("%s, course %d: and the hand ladder's %s brick-weight-cm of moment, it ")
-					TEXT("carries %s"),
-					Case.Description, Course, *Bits(HandMomentBrickWeightCm),
-					*Bits(MeasuredMomentBrickWeightCm)),
-				FMath::Abs(MeasuredMomentBrickWeightCm - HandMomentBrickWeightCm)
-					<= 0.02 * HandMomentBrickWeightCm);
+					TEXT("%s, course %d: the load path is UNCHANGED — the joint must still carry ")
+					TEXT("%s the hand ladder's %s brick weights, it carries %s"),
+					Case.Description, Course, bWallStopsAtTheCorbel ? TEXT("") : TEXT("at least"),
+					*Bits(HandForceBrickWeights), *Bits(MeasuredForceBrickWeights)),
+				bWallStopsAtTheCorbel
+					? FMath::Abs(MeasuredForceBrickWeights - HandForceBrickWeights)
+						<= 0.02 * HandForceBrickWeights
+					: MeasuredForceBrickWeights >= ForceFloor);
+
+			TestTrue(
+				FString::Printf(
+					TEXT("%s, course %d: and %s the hand ladder's %s brick-weight-cm of moment, ")
+					TEXT("it carries %s"),
+					Case.Description, Course, bWallStopsAtTheCorbel ? TEXT("") : TEXT("at least"),
+					*Bits(HandMomentBrickWeightCm), *Bits(MeasuredMomentBrickWeightCm)),
+				bWallStopsAtTheCorbel
+					? FMath::Abs(MeasuredMomentBrickWeightCm - HandMomentBrickWeightCm)
+						<= 0.02 * HandMomentBrickWeightCm
+					: MeasuredMomentBrickWeightCm >= MomentFloor);
 
 			/*
 			 * AND THEN THE SECTION, WHICH IS THE SLICE. `min(patch reading, M / (t D^2 / 6))`,
@@ -914,6 +1107,14 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			 * A DRY ROW IS ASSERTED AS AN ORDERING RATHER THAN AS A NUMBER, because f_xk1 = 0
 			 * makes the answer TNumericLimits<double>::Max() and a relative tolerance on that
 			 * says nothing.
+			 *
+			 * AND NOT AT ALL WHERE THE WALL CARRIES ON ABOVE THE CORBEL, because both halves of
+			 * `Expected` are wrong there for reasons that have nothing to do with each other:
+			 * the moment is the hand ladder's rather than the heavier one the wall above
+			 * produces, and the depth is `CoursesHigh - Course`, which is the UNBOUNDED reading
+			 * and is precisely the thing under suspicion. Asserting it would pin the defect in
+			 * place. The reading is printed above with both candidate sections beside it, and
+			 * the claim those rows make is in PART 1B.
 			 */
 			if (Expected >= TNumericLimits<double>::Max())
 			{
@@ -924,7 +1125,7 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 						Case.Description, Course, *Bits(Utilisation)),
 					Utilisation > 1.0);
 			}
-			else
+			else if (bWallStopsAtTheCorbel)
 			{
 				TestTrue(
 					FString::Printf(
@@ -936,6 +1137,14 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 						*Bits(PatchModulusCm3), *Bits(Expected), *Bits(Utilisation)),
 					FMath::Abs(Utilisation - Expected) <= 0.02 * FMath::Max(Expected, 1.0e-12));
 			}
+
+			if (Course == LowestCorbelCourse)
+			{
+				BottomRungs.Add({
+					Case.Description, Case.CorbelSteps, Case.CoursesHigh, Case.BricksPerCourse,
+					Case.Strength, MeasuredForceBrickWeights, MeasuredMomentBrickWeightCm,
+					Utilisation, CoursesOfDepth * CoursePitchCm });
+			}
 		}
 
 		if (!bLadderRead)
@@ -944,14 +1153,20 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		}
 
 		AddInfo(FString::Printf(
-			TEXT("%s: %d of %d rungs read over capacity; the composite section predicts %d"),
-			Case.Description, RungsOverCapacity, Steps, PredictedRungsOverCapacity));
+			TEXT("%s: %d of %d rungs read over capacity; the composite section over the corbel's ")
+			TEXT("OWN %d courses predicts %d"),
+			Case.Description, RungsOverCapacity, Steps, Case.CorbelSteps,
+			PredictedRungsOverCapacity));
 
-		TestEqual(
-			FString::Printf(
-				TEXT("%s: exactly the rungs the composite section condemns must be over capacity"),
-				Case.Description),
-			RungsOverCapacity, PredictedRungsOverCapacity);
+		if (bWallStopsAtTheCorbel)
+		{
+			TestEqual(
+				FString::Printf(
+					TEXT("%s: exactly the rungs the composite section condemns must be over ")
+					TEXT("capacity"),
+					Case.Description),
+				RungsOverCapacity, PredictedRungsOverCapacity);
+		}
 
 		/*
 		 * AND THE DESIGN'S OWN FIGURE, WHERE IT PUBLISHED ONE — a factor of two either way,
@@ -992,7 +1207,30 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			Case.Description, BreakingPasses, Unrouted,
 			Laid.Structure.NumPieces() - VoidPieces.Num()));
 
-		if (Case.bMustStand)
+		if (Case.Outcome == EVoidOutcome::Unasserted)
+		{
+			/*
+			 * PRINTED AND NOT ASSERTED — see EVoidOutcome. This is the only row in the file whose
+			 * verdict is downstream of a design decision nobody has made yet, so it says what
+			 * happened and claims nothing about what should have.
+			 */
+			int32 CorbelsLost = 0;
+
+			for (const int32 Piece : AllCorbelPieces)
+			{
+				if (!Laid.Structure.IsPieceSupported(Piece))
+				{
+					++CorbelsLost;
+				}
+			}
+
+			AddInfo(FString::Printf(
+				TEXT("%s: OUTCOME NOT ASSERTED — %d of the %d corbelled bricks lost their path to ")
+				TEXT("the ground. Which way this row should read follows from the depth bound and ")
+				TEXT("is a ruling, not a threshold."),
+				Case.Description, CorbelsLost, AllCorbelPieces.Num()));
+		}
+		else if (Case.Outcome == EVoidOutcome::MustStand)
 		{
 			/*
 			 * THE RULING, AS AN OUTCOME. Every corbelled brick must still reach the ground. That
@@ -1051,6 +1289,180 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 				BottomRungJoint != INDEX_NONE
 					&& Laid.Structure.GetBreakPass(BottomRungJoint) != INDEX_NONE);
 		}
+	}
+
+	/*
+	 * ===================================================================================
+	 * PART 1B — THE SAME CORBEL UNDER MORE WALL. THE PROPERTY, AND THE DEFECT IT NAMES.
+	 * ===================================================================================
+	 *
+	 * THE COMPOSITE DEPTH IS MEASURED BY WALKING UP THE MASONRY UNTIL IT RUNS OUT, so the
+	 * section credited to a corbel's bottom rung is set by THE WALL'S height and the moment
+	 * bending it by THE CUT'S. While every fixture in the project had `CoursesHigh = Steps + 2`
+	 * those were one number, `k^3` of moment met `k^2` of section, and the resulting crossover
+	 * near thirty-six courses was the whole of the "something must still come down" defence.
+	 * Decouple them and the reading goes as `k^3/m^2`, the exponents stop cancelling and the
+	 * crossover moves as far up as you care to build. That is what the pairs below measure.
+	 *
+	 * THE PROPERTY, AND IT IS ASSERTED ONE-SIDED BECAUSE THE TWO-SIDED FORM IS FALSE FOR A
+	 * REASON THAT HAS NOTHING TO DO WITH THE DEPTH. The review stated it as "the two
+	 * utilisations must not diverge, because the hand ladder is unchanged between them". The
+	 * hand ladder is NOT unchanged, and the fixture says so out loud: courses added above a
+	 * corbel are full-width masonry STANDING ON IT, they bear down through every rung, and the
+	 * moment ratios printed below are what that comes to. So the honest claim is the one that
+	 * survives measuring:
+	 *
+	 *     ADDING MASONRY ON TOP OF A CORBEL MUST NOT MAKE THE CORBEL SAFER.
+	 *
+	 * More load, more overturning; whatever section the model credits, the reading may not
+	 * FALL. That is one-sided, it needs no bound to have been chosen, and it is exactly what
+	 * the defect violates — today the section grows as the square of a depth the corbel had no
+	 * part in, so the reading collapses by the ratios printed below.
+	 *
+	 * WHAT THIS DISTINGUISHES, AND WHAT IT DOES NOT. It refuses the rule the code has now (all
+	 * the masonry there is). It is satisfied by a rule that credits the corbel's own courses
+	 * and by any rule that credits less — bond continuity, span-to-depth, a shear-transfer
+	 * budget — because every one of those is a fact about the cut rather than about the wall.
+	 * It is NOT a test of which of those is right, and it deliberately cannot be: the depth
+	 * each would credit for the corbel's OWN courses is printed beside the measurement so the
+	 * choice can be made with the numbers in hand. THE ONE CANDIDATE IT COULD ARGUE WITH is a
+	 * shear-transfer budget that grows with the weight standing above — more clamping, more
+	 * depth — since that could in principle credit MORE section in the taller wall. If that
+	 * rule is ever chosen and this row goes red on it, the row is the argument that the rule is
+	 * wrong rather than the other way round: a cantilever does not get stronger by having a
+	 * building put on it.
+	 */
+	{
+		int32 PairsCompared = 0;
+
+		for (const FBottomRung& Short : BottomRungs)
+		{
+			for (const FBottomRung& Tall : BottomRungs)
+			{
+				if (Short.CorbelSteps != Tall.CorbelSteps
+					|| Short.Strength != Tall.Strength
+					|| Short.CoursesHigh >= Tall.CoursesHigh)
+				{
+					continue;
+				}
+
+				++PairsCompared;
+
+				/*
+				 * WHAT THE COMPETING DEPTH RULES WOULD SAY ABOUT THE TALLER WALL'S OWN BOTTOM
+				 * RUNG, printed side by side and derived from the moment the solver actually
+				 * publishes there rather than from the hand ladder — which, being the shorter
+				 * wall's, understates it.
+				 */
+				const double UnboundedMPa = CompositeTensionMPa(
+					Tall.MomentBrickWeightCm, Tall.UnboundedDepthCm, BrickWidthCm);
+
+				const double CorbelOwnDepthCm = Tall.CorbelSteps * CoursePitchCm;
+
+				const double CorbelLimitedMPa = CompositeTensionMPa(
+					Tall.MomentBrickWeightCm, CorbelOwnDepthCm, BrickWidthCm);
+
+				const double PatchMPa = PatchTensionMPa(
+					Tall.MomentBrickWeightCm, Tall.ForceBrickWeights);
+
+				AddInfo(FString::Printf(
+					TEXT("SAME CUT, MORE WALL: %d steps under %d courses against the same %d steps ")
+					TEXT("under %d. The bottom rung carries %s brick weights against %s (x%s) and ")
+					TEXT("%s brick-weight-cm against %s (x%s) — MORE, because the extra courses ")
+					TEXT("stand on it. The walk credits %g cm of depth against %g (x%s), a section ")
+					TEXT("x%s larger. It reads %s against %s (x%s)."),
+					Tall.CorbelSteps, Tall.CoursesHigh, Short.CorbelSteps, Short.CoursesHigh,
+					*Bits(Tall.ForceBrickWeights), *Bits(Short.ForceBrickWeights),
+					*Bits(Tall.ForceBrickWeights / Short.ForceBrickWeights),
+					*Bits(Tall.MomentBrickWeightCm), *Bits(Short.MomentBrickWeightCm),
+					*Bits(Tall.MomentBrickWeightCm / Short.MomentBrickWeightCm),
+					Tall.UnboundedDepthCm, Short.UnboundedDepthCm,
+					*Bits(Tall.UnboundedDepthCm / Short.UnboundedDepthCm),
+					*Bits((Tall.UnboundedDepthCm * Tall.UnboundedDepthCm)
+						/ (Short.UnboundedDepthCm * Short.UnboundedDepthCm)),
+					*Bits(Tall.Utilisation), *Bits(Short.Utilisation),
+					*Bits(Tall.Utilisation / Short.Utilisation)));
+
+				AddInfo(FString::Printf(
+					TEXT("SAME CUT, MORE WALL: on the %d x %d wall's own moment the candidate ")
+					TEXT("rules read — all the masonry there is (%g cm): %s; the corbel's own %d ")
+					TEXT("courses (%g cm): %s; the bed patch alone: %s. The corbel-limited figure ")
+					TEXT("is what a span-to-depth or bond-continuity bound would sit at or below, ")
+					TEXT("and this fixture cannot tell those two apart."),
+					Tall.BricksPerCourse, Tall.CoursesHigh,
+					Tall.UnboundedDepthCm, *Bits(UnboundedMPa / MortarTensileMPa),
+					Tall.CorbelSteps, CorbelOwnDepthCm,
+					*Bits(CorbelLimitedMPa / MortarTensileMPa),
+					*Bits(PatchMPa / MortarTensileMPa)));
+
+				/*
+				 * HOW MUCH THIS PAIR ACTUALLY DECIDES, PRINTED SO NOBODY OVERCLAIMS IT. The
+				 * property is satisfied by any depth rule crediting no more than
+				 *
+				 *     D_short * sqrt(M_tall / M_short)
+				 *
+				 * to the taller wall, since the section goes as D^2 and the reading may only
+				 * be held level. That is a CEILING and not the answer: it does not force the
+				 * depth down to the corbel's own courses, and it cannot distinguish a
+				 * span-to-depth rule from a bond-continuity one from a shear budget that
+				 * happens to land under it. What it does refuse is the walk the code takes now.
+				 */
+				const double DeepestPermittedCm = Short.UnboundedDepthCm
+					* FMath::Sqrt(Tall.MomentBrickWeightCm / Short.MomentBrickWeightCm);
+
+				AddInfo(FString::Printf(
+					TEXT("SAME CUT, MORE WALL: this pair permits AT MOST %s cm of section on the ")
+					TEXT("taller wall (%s courses) and the walk credits %g (%g courses); the ")
+					TEXT("corbel's own depth is %g. Every rule at or under the ceiling passes and ")
+					TEXT("this fixture ranks none of them."),
+					*Bits(DeepestPermittedCm), *Bits(DeepestPermittedCm / CoursePitchCm),
+					Tall.UnboundedDepthCm, Tall.UnboundedDepthCm / CoursePitchCm,
+					CorbelOwnDepthCm));
+
+				/*
+				 * THE PREMISE FIRST, BECAUSE THE ONE-SIDED CLAIM RESTS ENTIRELY ON IT. If the
+				 * taller wall did NOT load the corbel harder, "must not read lower" would be an
+				 * assertion about nothing. Strictly greater: twenty-odd courses of masonry
+				 * standing on a cantilever is not a rounding difference.
+				 */
+				TestTrue(
+					FString::Printf(
+						TEXT("FIXTURE: %d steps under %d courses must bend its bottom rung HARDER ")
+						TEXT("than the same cut under %d — %s brick-weight-cm against %s"),
+						Tall.CorbelSteps, Tall.CoursesHigh, Short.CoursesHigh,
+						*Bits(Tall.MomentBrickWeightCm), *Bits(Short.MomentBrickWeightCm)),
+					Tall.MomentBrickWeightCm > Short.MomentBrickWeightCm);
+
+				/*
+				 * AND THE PROPERTY. No tolerance, because the claim is an ORDERING rather than a
+				 * value and a slack one would be satisfied by the defect it exists to catch.
+				 */
+				TestTrue(
+					FString::Printf(
+						TEXT("MASONRY ABOVE A CORBEL MUST NOT MAKE IT SAFER — the same %d-step cut ")
+						TEXT("under %d courses bends its bottom rung x%s harder than under %d, so ")
+						TEXT("that joint may not read LESS; it reads %s against %s, x%s"),
+						Tall.CorbelSteps, Tall.CoursesHigh,
+						*Bits(Tall.MomentBrickWeightCm / Short.MomentBrickWeightCm),
+						Short.CoursesHigh, *Bits(Tall.Utilisation), *Bits(Short.Utilisation),
+						*Bits(Tall.Utilisation / Short.Utilisation)),
+					Tall.Utilisation >= Short.Utilisation);
+			}
+		}
+
+		/*
+		 * AND THE TABLE MUST STILL CONTAIN PAIRS TO COMPARE. Every claim above is conditional on
+		 * two rows sharing a step count and a mortar, so deleting one of a pair would take the
+		 * property with it in silence — which is how the depth came to be unbounded and unseen in
+		 * the first place.
+		 */
+		TestTrue(
+			FString::Printf(
+				TEXT("FIXTURE: the table must hold at least two cuts each laid in a wall of its ")
+				TEXT("own height AND in a taller one, or this property asserts nothing; it made ")
+				TEXT("%d comparison(s)"),
+				PairsCompared),
+			PairsCompared >= 2);
 	}
 
 	/*

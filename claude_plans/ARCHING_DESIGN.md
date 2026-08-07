@@ -238,9 +238,20 @@ The mechanism is that a stack of courses over a lost support does not resist as 
 >
 > `k³/k²` assumes `D = k · pitch` — the depth credited to the joint comes from the corbel's own steps. **Every corbel fixture in the suite happens to satisfy that**: all four rows of `FCorbelCase` are `CoursesHigh = Steps + 2`, so no test in the project has a corbel shorter than its wall.
 >
-> In a wall *taller* than the cut, `D` is set by the **wall** and `k` by the **cut**. The reading goes as **`k³/m²`**, the two exponents stop cancelling, and **the thirty-six-course crossover does not exist.** Proved by mutation: crediting 1.5× the composite depth — arithmetically identical to the same corbel in a wall 1.5× taller — makes the 45-step corbel **stand**, 0 of 45 rungs over capacity, 0 cascade passes.
+> In a wall *taller* than the cut, `D` is set by the **wall** and `k` by the **cut**, so the two exponents stop cancelling and the thirty-six-course crossover does not survive as stated.
 >
-> **This is the wall the game renders.** The staircase void is 11 corbelled steps under 40 courses: 39 courses of credited depth against the 13-course fixture's 11, a section about 12.6× larger, so the joint the suite pins at 0.36903147 reads of order 0.03 in the wall the player is looking at. That is why the rendered "after" frame shows *zero* movement rather than the loose toothed bricks case 20 expects.
+> **MEASURED 2026-08-07, and it corrects the two numbers this block first carried.** A 1.5× depth *mutation* moves one term; a wall 1.5× *taller* moves both, because the extra courses stand on the corbel and bear down through every rung.
+>
+> - **45 steps under 67 courses is GREEN, not red.** 47→67 courses multiplies that rung's moment by 2.2754 and its section by 2.0864, so the reading goes **up** — `1.2501861088888881 → 1.3634027672024234` — and the corbel still comes down. Extrapolating, a 45-step corbel needs about **160 courses, twelve metres of wall**, before depth rescues it.
+> - **The scenario joint reads `0.22300137936935951`, not "of order 0.03".** The 0.0309 figure was the 13-course fixture's moment evaluated at 285 cm of depth; the real joint carries **5.199× the force and 7.212× the moment**.
+>
+> **Severity is set by the ratio `m/k`, not by `m`** — a short cut under a tall wall. At 67/45 the added load nearly keeps up; at 40/11 it loses by a factor of two.
+>
+> **The defect is real and the property that catches it is ONE-SIDED.** "Same ladder, so same reading" is too strong and the fixture disproves it. What survives is: **adding masonry on top of a corbel must not make the corbel safer.** The scenario wall reads `0.22300` against the matched wall's `0.36903` — ×0.604, more load for less utilisation. Asserted with no tolerance, preceded by a row proving the taller wall really does bend the rung harder.
+>
+> **AND NO OBVIOUS BOUND SATISFIES BOTH ENDS.** PART 2 of the same test pins the free end — *the user's own ruling* — at the unbounded depth: that half seat needs `W ≥ 1283.5 cm³`, i.e. **`D ≥ 27.4 cm ≈ 3.7 courses**, or it goes over capacity and the ruling breaks. So "the cut's own height" is unavailable, since a single deleted brick is a one-course cut and would read 6.05. And a span-to-depth bound sized to save the free end gives the scenario corbel `D ≤ 302 cm`, above the 285 it already takes, changing nothing.
+>
+> **The window is `27.4 cm ≤ D ≤ 221.55 cm`** — the ceiling being `D_short·√(M_tall/M_short)`, above which more wall makes the corbel safer. The fixture **refuses today's rule** and **ranks none of the alternatives**; on the scenario rung they give 0.2230 (today, 285 cm), 2.6613 (the corbel's own 82.5 cm, comes down) and 167.32 (bed patch alone). Choosing inside that window is a ruling, and the scenario row's outcome is deliberately left `Unasserted` so the test cannot pre-empt it.
 >
 > **So the composite depth is effectively unbounded in play, and "the exponent is the bound" is not a defence.** dev-expert's refusal to build a depth bound was correct TDD — nothing distinguished bounded from unbounded — but the missing fixture is two rows in a table that already exists, and it is the fixture that makes the difference observable. Add the rows first, then rule.
 
