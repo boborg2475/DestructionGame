@@ -24,8 +24,30 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE STAIRCASE, PHOTOGRAPHED: ONE FRAME WITH THE VOID CUT AND THE OVERHANG STILL STANDING, AND
- * ONE AFTER IT HAS COME DOWN.
+ * THE STAIRCASE, PHOTOGRAPHED: ONE FRAME WITH THE VOID CUT, AND ONE FIVE SIMULATED SECONDS LATER
+ * WITH THE OVERHANG STILL EXACTLY WHERE IT WAS.
+ *
+ * =========================================================================================
+ * THIS TEST ROTTED, AND THE REASON IT COULD IS A HOLE IN THE SAFETY NET RATHER THAN A TYPO
+ * =========================================================================================
+ *
+ * IT SPENT FIVE ARCHING SLICES ASSERTING THE BUG. Until 2026-08-07 the two commands below required
+ * the overhang to FALL — the top of the corbel to drop more than 5 cm, and all eleven corbelled
+ * bricks to have been released to physics. Arching slice 5 inverted that behaviour on the user's
+ * ruling, its world-free sibling was renamed to Integration.AStaircaseVoidLeavesTheOverhangStanding
+ * in the same commit, and THIS FILE WAS NOT TOUCHED. It was last edited at 69ba662, before slice 1.
+ * When it was finally run it produced twelve errors, every one of them complaining that the wall
+ * had not collapsed.
+ *
+ * IT ROTTED BECAUSE `EAutomationTestFlags::NonNullRHI` KEEPS IT OUT OF THE SUITE EVERYBODY RUNS.
+ * CLAUDE.md's documented command passes -nullrhi, the filter excludes this test, and the run
+ * reports "130 tests, 127 passed" without ever mentioning that a 131st exists. THAT IS TRUE OF ANY
+ * TEST CARRYING THIS FLAG, NOT JUST THIS ONE: a NonNullRHI test is invisible to the project's
+ * standard verification and will silently encode whatever the world looked like on the day it was
+ * written until somebody deliberately runs it. There is no automation that will tell you. The run
+ * command is at the bottom of this comment; CURRENT_STATE.md carries the same warning under the
+ * heading it will actually be read from, and a proposal for making it visible rather than merely
+ * documented.
  *
  * WHY A SECOND VISUAL TEST RATHER THAN A THIRD SHOT IN THE MENU ONE. That harness photographs a
  * PANEL and needs a menu up; this photographs a COLLAPSE and needs the menu gone, the void cut and
@@ -43,24 +65,50 @@
  * the void is defined in ABSOLUTE courses and X, so it is the same hole in the same place — with
  * 28 courses of brickwork hanging over it instead of one.
  *
+ * WHAT THE PAIR OF FRAMES NOW SHOWS, AND WHY TWO IDENTICAL PICTURES ARE THE RESULT. A stack of
+ * courses over a raking cut does not resist its overturning moment as a sequence of independent
+ * bed patches: the wall acts as a DEEP BEAM and the plane taking the moment is a vertical section
+ * through the bonded masonry standing over the joint. The staircase's bottom rung reads 0.369 of
+ * capacity rather than 22.93, nothing in the ladder reaches 1.0, and NOT ONE BRICK MOVES. A reader
+ * glancing at the two images alone would see nothing happen; that is the result, and the numbers
+ * this test prints beside them are what says so.
+ *
+ * NON-DISPLACEMENT IS A LEGITIMATE ASSERTION WHERE DISPLACEMENT WOULD NOT BE. DESIGN.md §4 bans
+ * reading a movement as evidence that a joint BROKE, because two pieces can sever and rest exactly
+ * where they were. The converse has no such hole: a brick that has not moved has not been released.
+ * Both halves are asserted anyway — nothing moved AND nothing was released — because a released
+ * brick that happened to jam against its neighbours would satisfy the first alone.
+ *
+ * AND THE GUARD THAT STOPS "NOTHING MOVED" FROM BEING VACUOUS. With the corbel rows inverted, the
+ * far-side control is no longer the interesting half: a world in which nothing whatever happened —
+ * time frozen, physics never resumed, the subsystem stopped — would satisfy every displacement row
+ * in this file. So the elapsed WORLD TIME between the two frames is measured and asserted, and the
+ * cut is separately asserted to have removed 36 actors. Time passed, the hole is real, and the
+ * wall is still up.
+ *
  * "BEFORE" IS HONEST, AND HERE IS EXACTLY WHAT IT MEANS. The cascade now runs INSIDE the commit,
- * so the instant the 36 bricks are cut the overhang is already condemned, already broken and
- * already handed to physics — there is no state in which the void exists and the joints do not.
+ * so the instant the 36 bricks are cut, whatever the solver condemns is already broken and already
+ * handed to physics — there is no state in which the void exists and the joints do not.
  * What the before-frame therefore shows is the first drawn frame after the commit returned: the
  * hole is there, the overhang is over open air, and NOTHING HAS MOVED YET. To make that true
  * rather than nearly true, the world's time dilation is pinned at its floor (0.0001) for the
- * frames between the cut and the write, so the bricks fall a few nanometres rather than a few
- * centimetres; the dilation is restored before the fall. And it is not a caption, it is an
- * assertion: FStaircaseScreenshotVerifyBeforeCommand measures how far the corbelled bricks
- * actually moved by then and fails if any of them moved as much as a millimetre. A picture
- * captioned "before" that a future change quietly turned into a picture of a falling wall would
- * turn this test red rather than lying in a report.
+ * frames between the cut and the write, so anything that WAS released falls a few nanometres
+ * rather than a few centimetres; the dilation is restored afterwards. And it is not a caption, it
+ * is an assertion: FStaircaseScreenshotVerifyBeforeCommand measures how far the corbelled bricks
+ * actually moved by then and fails if any of them moved as much as a millimetre.
+ *
+ * THAT FREEZE IS STILL WORTH KEEPING NOW THAT NOTHING FALLS, and it is worth saying why rather
+ * than leaving it as something nobody dares delete. It is the ONLY thing separating "the wall did
+ * not move because it is standing" from "the wall did not move because it had not started falling
+ * yet". Removing it would make the before-frame's stillness assertion true for a collapsing wall,
+ * which is exactly the regression this file failed to catch for five slices.
  *
  * WHAT IT ASSERTS BEYOND THE FILES. A harness that only takes a picture is green whatever is in
  * the picture, so: the wall is the one the game mode built, the 36 named bricks are the staircase,
- * every one of their actors left the world, no menu is up when either shot is queued, the bottom
- * of the corbel had not moved when the first was taken and HAD fallen when the second was, and a
- * brick five metres down the wall never moved at all. It deliberately asserts NOTHING about what
+ * every one of their actors left the world, no menu is up when either shot is queued, the corbel
+ * had not moved when the first frame was taken and STILL had not when the second was, none of the
+ * eleven was ever released to physics, several simulated seconds genuinely passed in between, and
+ * a brick five metres down the wall never moved either. It deliberately asserts NOTHING about what
  * the images look like — judging that is a human's job, which is the entire point.
  *
  * IT NEEDS A TICKING WORLD *AND* A REAL RHI, hence EAutomationTestFlags::NonNullRHI: without it
@@ -160,11 +208,32 @@ namespace StaircaseScreenshotSupport
 	 */
 	constexpr double BeforeStillnessToleranceCm = 0.1;
 
-	/** How far a released brick must have fallen to count as having fallen. */
-	constexpr double FallenAtLeastCm = 5.0;
-
-	/** And how far a brick nothing touched is allowed to drift. */
+	/**
+	 * And how far a brick that is being held up is allowed to drift, over the whole five seconds.
+	 *
+	 * A MILLIMETRE OVER FIVE SECONDS, NOT PER FRAME, AND THE MARGIN IS ENORMOUS ON THE THING BEING
+	 * DISTINGUISHED. A brick that has been released and falls freely for five seconds covers 122
+	 * metres; the smallest interesting failure — one that is released and immediately jams on its
+	 * neighbours — still shows up as centimetres. There is nothing between 0.1 cm and a real
+	 * collapse for this tolerance to be wrong about.
+	 */
 	constexpr double DriftToleranceCm = 0.1;
+
+	/**
+	 * HOW MUCH SIMULATED TIME MUST HAVE PASSED BETWEEN THE TWO FRAMES, AND WHY IT IS ASSERTED.
+	 *
+	 * Every physical claim this file makes after the cut is now a NON-movement, and a world that
+	 * stopped ticking — dilation left pinned, physics never resumed, the whole subsystem dead —
+	 * satisfies all of them. Elapsed world time is what says the five seconds were real.
+	 *
+	 * HALF A SECOND IS A FLOOR, NOT AN EXPECTATION. FallFrames is 300, which is five seconds at 60
+	 * Hz and MORE simulated time if the frame rate drops; it can only be less if the offscreen
+	 * renderer runs faster than realtime, which it may. Half a second is still three times the 0.32
+	 * s a released brick needs to fall the 50 cm that would be unmistakable in the photograph, so
+	 * the assertion is well clear of the thing it is protecting while staying clear of the machine
+	 * the test happens to run on.
+	 */
+	constexpr double MinimumElapsedSeconds = 0.5;
 
 	/**
 	 * THE TIMINGS. Latent commands rather than a longer -ExecCmds, because every -ExecCmds string
@@ -173,8 +242,11 @@ namespace StaircaseScreenshotSupport
 	 * SettleFrames covers TSR's temporal history and auto-exposure; SlateFrames is the layout pass
 	 * a rebuilt viewport needs; WriteFrames is because ProcessScreenShots writes at END OF DRAW, so
 	 * moving on in the same frame as the request loses the file. FallFrames is the only new one:
-	 * the wall has to actually come down between the two shots, and 300 frames is five seconds at
-	 * 60 Hz and proportionally more simulated time if the frame rate drops under the debris.
+	 * the wall has to be given every chance to come down between the two shots, and 300 frames is
+	 * five seconds at 60 Hz. IT IS DELIBERATELY UNCHANGED FROM WHEN THIS TEST REQUIRED A COLLAPSE:
+	 * that duration was chosen to be several times longer than the fall it was measuring, so a
+	 * brick that has been released has ample time to leave and one that has not moved in it was
+	 * never released.
 	 */
 	constexpr int32 SettleFrames = 120;
 	constexpr int32 SlateFrames = 3;
@@ -209,6 +281,12 @@ namespace StaircaseScreenshotSupport
 
 		int32 FarSidePiece = INDEX_NONE;
 		FVector FarSideLaidAtCm = FVector::ZeroVector;
+
+		/**
+		 * World time the instant the freeze was lifted, so the fall can be timed rather than
+		 * assumed. Negative until the before-frame has been judged, which is when the clock starts.
+		 */
+		double UnfrozenAtSeconds = -1.0;
 
 		void Reset()
 		{
@@ -577,11 +655,15 @@ bool FStaircaseScreenshotCutCommand::Update()
 }
 
 /**
- * The before-frame was a picture of a standing overhang, and the fall may now begin.
+ * The before-frame was a picture of a standing overhang, and the world may now run at full speed.
  *
  * THE STILLNESS IS MEASURED, NOT ASSERTED IN PROSE. A frame of ordinary falling is 0.14 cm at
  * 60 Hz and 4.9 cm at 10 Hz, so a millimetre of tolerance cannot be met by a wall that was
  * genuinely moving when the shutter opened.
+ *
+ * AND THIS IS WHERE THE CLOCK STARTS. Everything the after-frame asserts is a non-movement, so the
+ * elapsed world time between here and there is the only evidence that the five seconds happened at
+ * all; it is recorded at the same instant the dilation goes back to 1.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FStaircaseScreenshotVerifyBeforeCommand, FAutomationTestBase*, Test);
@@ -628,18 +710,40 @@ bool FStaircaseScreenshotVerifyBeforeCommand::Update()
 	if (Settings != nullptr)
 	{
 		Settings->SetTimeDilation(1.0f);
-		Test->AddInfo(TEXT("time dilation restored to 1; the overhang may now come down"));
+
+		Record.UnfrozenAtSeconds = World != nullptr ? World->GetTimeSeconds() : -1.0;
+
+		Test->AddInfo(FString::Printf(
+			TEXT("time dilation restored to 1 at world time %.3f s; the overhang may now come down ")
+			TEXT("if anything is going to make it"),
+			Record.UnfrozenAtSeconds));
 	}
 
 	return true;
 }
 
 /**
- * The overhang came down, and this is the picture of it.
+ * The overhang did not come down, and this is the picture of it.
  *
- * BOTH HALVES, AND NEITHER IS DECORATION. "The corbel fell" alone passes in a world that dropped
- * through its floor; "the far end did not move" alone passes in a world where nothing moved at
- * all. Both are read off the same simulated seconds, and only then is the shutter opened.
+ * THIS COMMAND USED TO REQUIRE THE OPPOSITE AND IT IS WHERE THE ROT LIVED. Twelve assertions —
+ * "the top of the corbel must fall more than 5 cm" and eleven of "corbel course N must have been
+ * released to physics, not left standing" — every one of them a statement of the bug that arching
+ * slice 5 fixed on 2026-08-06. Inverted 2026-08-07. See the file header for why nothing caught it.
+ *
+ * THREE CLAIMS, AND NONE OF THEM IS DECORATION.
+ *
+ *   - THE ELEVEN CORBEL STEPS ARE STILL WHERE THEY WERE LAID, which is the outcome the ruling
+ *     bought. It is measured for each and printed for each, so a partial failure names the course.
+ *
+ *   - AND NOT ONE OF THEM WAS EVER RELEASED. A brick that was let go and happened to jam against
+ *     its neighbours satisfies the row above; IsReleased is the subsystem's own answer and cannot
+ *     be satisfied that way. This is the half that makes "it stood" a claim about the solver
+ *     rather than about where debris settled.
+ *
+ *   - AND THE SECONDS WERE REAL. Every physical row here is now a NON-movement, so a frozen world
+ *     would pass all of them. The elapsed world time since the dilation was lifted is what says
+ *     otherwise, and the far-side control — once the guard against releasing the whole wall — is
+ *     now the guard against a world in which the cut never reached the wall at all.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FStaircaseScreenshotShootAfterCommand, FAutomationTestBase*, Test);
@@ -659,51 +763,65 @@ bool FStaircaseScreenshotShootAfterCommand::Update()
 		return true;
 	}
 
+	/*
+	 * THE SECONDS FIRST, BECAUSE EVERY ROW AFTER IT DEPENDS ON THEM HAVING HAPPENED. A wall that
+	 * did not move because the clock was stopped is not a wall that stood.
+	 */
+	const double NowSeconds = World != nullptr ? World->GetTimeSeconds() : -1.0;
+
+	const double ElapsedSeconds = Record.UnfrozenAtSeconds >= 0.0 && NowSeconds >= 0.0
+		? NowSeconds - Record.UnfrozenAtSeconds
+		: -1.0;
+
+	Test->AddInfo(FString::Printf(
+		TEXT("%.3f s of world time passed between the two frames, over %d frames"),
+		ElapsedSeconds, FallFrames + SettleFrames));
+
+	Test->TestTrue(
+		*FString::Printf(
+			TEXT("the wall must have been given real time to fall in, or 'it did not move' means nothing: %.3f s elapsed and at least %g was required"),
+			ElapsedSeconds, MinimumElapsedSeconds),
+		ElapsedSeconds >= MinimumElapsedSeconds);
+
+	/*
+	 * AND THEN THE OUTCOME, STEP BY STEP. Printed for every course whether it passed or not, so the
+	 * log reads as the table it is: eleven corbelled bricks, eleven zeroes.
+	 */
+	double WorstMovedCm = 0.0;
+
 	for (int32 Step = 0; Step < Record.CorbelPieces.Num(); ++Step)
 	{
 		const int32 Piece = Record.CorbelPieces[Step];
 		const FVector NowAtCm = ActorLocationOf(*Binding, Piece);
-		const double FellCm = Record.CorbelLaidAtCm[Step].Z - NowAtCm.Z;
+		const double MovedCm = FVector::Dist(NowAtCm, Record.CorbelLaidAtCm[Step]);
+
+		WorstMovedCm = FMath::Max(WorstMovedCm, MovedCm);
 
 		Test->AddInfo(FString::Printf(
-			TEXT("corbel course %2d (piece %4d) fell %.3f cm, from Z %.3f to Z %.3f"),
-			StaircaseLowestCorbelCourse + Step, Piece, FellCm,
-			Record.CorbelLaidAtCm[Step].Z, NowAtCm.Z));
-	}
+			TEXT("corbel course %2d (piece %4d) moved %.6f cm and is at Z %.3f, laid at Z %.3f"),
+			StaircaseLowestCorbelCourse + Step, Piece, MovedCm,
+			NowAtCm.Z, Record.CorbelLaidAtCm[Step].Z));
 
-	/*
-	 * THE TOP STEP IS THE ONE ASSERTED ON, AND THE BOTTOM ONE DELIBERATELY IS NOT — WHICH WAS
-	 * MEASURED RATHER THAN REASONED. The bottom step of the corbel starts 15 cm off the ground and
-	 * lands in the rubble of everything that came down on top of it, so how far it travels is a
-	 * property of the debris pile: two runs of this test put it at 9.027 cm and at 2.314 cm. That
-	 * is not a wobbly assertion to tighten, it is the wrong brick to ask. The TOP step began 90 cm
-	 * up with nothing whatever beneath it — it is the "hanging metres out over open air" in the
-	 * photograph — and it has fallen 83 and 91 cm on those same two runs, which is an enormous
-	 * margin on a claim about the same collapse.
-	 *
-	 * AND EVERY STEP MUST HAVE BEEN HANDED TO PHYSICS, which is the part that does not depend on
-	 * where anything landed. A corbelled brick still held kinematic is a brick the solver thinks is
-	 * standing, and a picture of one is a picture of the bug this whole fixture was written for.
-	 */
-	const int32 TopStep = Record.CorbelPieces.Num() - 1;
-
-	const double TopFellCm =
-		Record.CorbelLaidAtCm[TopStep].Z - ActorLocationOf(*Binding, Record.CorbelPieces[TopStep]).Z;
-
-	Test->TestTrue(
-		*FString::Printf(
-			TEXT("the overhang must have come down before the after-frame is taken: the top of the corbel fell %.3f cm and must fall more than %g"),
-			TopFellCm, FallenAtLeastCm),
-		TopFellCm > FallenAtLeastCm);
-
-	for (int32 Step = 0; Step < Record.CorbelPieces.Num(); ++Step)
-	{
 		Test->TestTrue(
 			*FString::Printf(
-				TEXT("corbel course %d (piece %d) must have been released to physics, not left standing"),
+				TEXT("THE RULING: the overhang must STAND — corbel course %d (piece %d) must not have moved, it drifted %.6f cm and may drift %g"),
+				StaircaseLowestCorbelCourse + Step, Piece, MovedCm, DriftToleranceCm),
+			MovedCm < DriftToleranceCm);
+
+		/*
+		 * AND IT IS BEING HELD UP RATHER THAN MERELY RESTING WHERE IT LANDED. A released brick that
+		 * jammed against its neighbours satisfies the row above; this one it cannot.
+		 */
+		Test->TestFalse(
+			*FString::Printf(
+				TEXT("corbel course %d (piece %d) is still being carried and must NOT have been released to physics"),
 				StaircaseLowestCorbelCourse + Step, Record.CorbelPieces[Step]),
 			Binding->IsReleased(Record.CorbelPieces[Step]));
 	}
+
+	Test->AddInfo(FString::Printf(
+		TEXT("the worst-moved of the %d corbelled bricks travelled %.6f cm in %.3f s"),
+		Record.CorbelPieces.Num(), WorstMovedCm, ElapsedSeconds));
 
 	const double FarSideMovedCm = FVector::Dist(
 		ActorLocationOf(*Binding, Record.FarSidePiece), Record.FarSideLaidAtCm);
@@ -904,10 +1022,12 @@ bool FStaircaseScreenshotTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE SEQUENCE: settle the intact wall, cut and shoot in one frame, let it fall, settle again,
-	 * shoot again. Each shot gets its own shader drain and its own settle, taken AFTER the view it
-	 * is a picture of has been set up — see Tests/PieceMenuScreenshotTest.cpp for why one drain at
-	 * the top is not enough.
+	 * THE SEQUENCE: settle the intact wall, cut and shoot in one frame, give it every chance to
+	 * fall, settle again, shoot again. Each shot gets its own shader drain and its own settle,
+	 * taken AFTER the view it is a picture of has been set up — see
+	 * Tests/PieceMenuScreenshotTest.cpp for why one drain at the top is not enough. The two waits
+	 * between the frames are 420 frames together, and the elapsed WORLD time they buy is measured
+	 * in FStaircaseScreenshotShootAfterCommand rather than assumed from the frame count.
 	 *
 	 * THERE IS DELIBERATELY NO SETTLE BETWEEN THE CUT AND THE FIRST SHOT. Every frame spent there
 	 * is a frame of the overhang falling, which is the one thing the before-frame must not contain;

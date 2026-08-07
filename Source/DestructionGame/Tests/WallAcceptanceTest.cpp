@@ -25,6 +25,15 @@
  * that answers both halves of a pair the same way has no such term at all, and the second test in
  * this file says exactly that in one line per pair.
  *
+ * FOUR OF THE FIVE ARE OUTCOME PAIRS; 13 vs 14 IS NOT, SINCE THE 2026-08-07 RULING. Both corbels
+ * now stand, so an outcome pair between them can no longer separate anything and it has been
+ * removed from FWallAcceptanceMatchedPairsTest rather than left there as a row that reads the
+ * right answer off two identical verdicts. WHAT THE PAIR STILL ISOLATES IS THE READING, and it is
+ * asserted by name in Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome below:
+ * doubling the step per course takes the worst joint in the wall from 0.070 to 0.195, a factor of
+ * 2.8, so the projection term is still being measured — just against a quantity a verdict cannot
+ * carry. Deleting the pair outright would have lost that.
+ *
  * THREE VERDICTS, THREE ASSERTION SHAPES, per DESIGN.md §4's outcome-not-mechanism rule:
  *
  *   STANDS      nothing left the structure AND no joint anywhere gave. Both halves, because
@@ -132,6 +141,9 @@ namespace WallAcceptanceTestSupport
 
 	/** EN 1996-1-1 Table 3.4's f_vk0 for general purpose mortar, asserted against the profile. */
 	constexpr double MortarShearCohesionMPa = 0.2;
+
+	/** EN 1996-1-1 Table 3.2's f_xk1 for general purpose mortar, asserted against the profile. */
+	constexpr double MortarFlexuralBondMPa = 0.1;
 
 	/** A head joint: the end face of a brick, 10.25 cm through the wall by 6.5 cm high. */
 	constexpr double HeadJointAreaSqCm = BrickDepthCm * BrickHeightCm;
@@ -733,25 +745,125 @@ namespace WallAcceptanceTestSupport
 	constexpr double QuarterBrickStepCm = HalfCellCm * 0.5;
 	constexpr double HalfBrickStepCm = HalfCellCm;
 
-	/*
-	 * Case 14's four projecting bricks, named one course at a time.
+	/* ================================================================================
+	 * CASE 14, RE-DERIVED: A BONDED FOUR-STEP CORBEL STANDS AT 0.19516 AND NOTHING COMES DOWN.
+	 * ================================================================================
 	 *
-	 * A course that steps out half a cell puts its end brick directly over the end brick of the
-	 * course below, so the end brick keeps ONE bed patch of 10.25 cm and hangs 11.25 cm past it —
-	 * the corbel this project already photographs elsewhere. Their cell indices are 7.5, 8.0, 8.5
-	 * and 9.0; the SECOND piece of a higher corbel course lands on some of those same cells, which
-	 * is why these are four one-course regions rather than one four-course one.
+	 * THE VERDICT ON THIS ROW WAS COLLAPSE UNTIL 2026-08-07 AND THE USER RULED IT WRONG. The
+	 * catalogue's reasoning was a RIGID-BODY OVERTURNING reading — "the resultant walks outside the
+	 * bed below" — and that reading is geometrically true here and stated below because it is worth
+	 * knowing which claim was abandoned. What overrules it is that this project models an UNCRACKED
+	 * BONDED SECTION, and the same user had already ruled, on 2026-08-06, that a brick deleted at a
+	 * free end must not bring a wall down. Any rule local enough to honour that also honours this
+	 * corbel: `Core.Structure.ACorbelResistsWithItsWholeDepth` asserts a FIVE-step raking corbel
+	 * standing at 0.219, and a five-step corbel and a four-step one are the same fixture with a
+	 * different provenance — one cut that way, one laid that way. A threshold sited between them
+	 * would be a number tuned to make two contradictory statements both come out true.
+	 *
+	 * WHAT THE FIXTURE ACTUALLY PRESENTS, WALKED OFF THE BRICKLAYER ABOVE RATHER THAN ASSUMED.
+	 * CourseGeometry pushes each course from 6 upward one more half cell (11.25 cm) out and closes
+	 * it with a FULL brick, so the end brick of course c spans
+	 *
+	 *     course 6   158.00 .. 179.50      course 8   180.50 .. 202.00
+	 *     course 7   169.25 .. 190.75      course 9   191.75 .. 213.25
+	 *
+	 * and the end brick of the flush course 5 below is the odd course's HALF BAT at 158.00..168.25.
+	 * Every one of the four therefore overlaps exactly ONE piece below it, over exactly 10.25 cm —
+	 * the same square half seat the raking staircase corbel presents — with its centre of mass
+	 * 5.625 cm outboard of that patch's centroid. THAT is what makes this the staircase's fixture:
+	 * four steps of it instead of eleven. (It is also the overturning claim: the mass acts 5.625 cm
+	 * out on a patch only 5.125 cm wide, so the resultant IS outside the bearing. Bond carries it.)
+	 *
+	 * THE LADDER, AND IT IS THE STAIRCASE LADDER BECAUSE IT IS THE STAIRCASE TOPOLOGY. Each step
+	 * takes its own weight, ALL of the step above (which has nowhere else to go) and half of the
+	 * next brick along, whose own share grows the same way; the moment carries across the 11.25 cm
+	 * the corbel has stepped out. Written for s steps below the top and asserted, not imported.
+	 *
+	 * AND THE SECTION IS THE DEPTH OF BONDED MASONRY STANDING OVER THE JOINT, W = t*D^2/6, taken at
+	 * the LESSER of that and the bed patch's own 179.4817708 cm3 — the top step has one course over
+	 * it, D = 7.5 cm, W = 96.09 cm3, SHALLOWER than the patch, so the patch governs there and the
+	 * step keeps the 0.058203838191552663 that `AdoptedWallLoadsItsWaistEccentrically` pins:
+	 *
+	 *     course   s   F (weights)   M (weight.cm)   courses over   reads
+	 *        9     0        1             5.625            1        0.058203838   (patch governs)
+	 *        8     1        2.5          22.5              2        0.156128700
+	 *        7     2        4.5          56.25             3        0.173476333
+	 *        6     3        7           112.5              4        0.195160875   <- the worst
+	 *
+	 * 0.195 OF f_xk1 IS A CORBEL STANDING AT A FIFTH OF WHAT HOLDS IT, so the verdict follows the
+	 * number rather than the other way round: STANDS, with no fall region and no survivor region to
+	 * name, because nothing comes down. The arithmetic is asserted in its own test below rather
+	 * than left as a comment, since a verdict of "stands" is satisfied by 0.195 and by 0.0001 alike
+	 * and only one of them is this fixture.
+	 *
+	 * CROSS-CHECKED AGAINST TWO FIGURES THIS FILE DID NOT PRODUCE. The same four lines of
+	 * arithmetic give 0.21858 for a five-step corbel and 0.36903147272727271 for the eleven-step
+	 * staircase — ARCHING_DESIGN.md's published 0.219 and the anchor
+	 * `Core.Structure.AStaircaseVoidCondemnsTheCorbel` pins to seventeen digits. Both are asserted
+	 * below as loose cross-checks, so a derivation that drifted fails HERE rather than agreeing
+	 * with itself.
 	 */
-	const FWallRegion Case14Falls[] =
-	{
-		{ 6, 6, 7.40, 7.60 },
-		{ 7, 7, 7.90, 8.10 },
-		{ 8, 8, 8.40, 8.60 },
-		{ 9, 9, 8.90, 9.10 },
-	};
 
-	/** Everything below the corbel. The wall behind a corbel that peels is not part of it. */
-	const FWallRegion Case14Stands[] = { { 0, CorbelFirstCourse - 1, -2.0, 8.0 } };
+	/** What one step of a raking corbel carries, in brick weights, s steps below the top. */
+	constexpr double CorbelLadderForceBrickWeights(int32 StepsBelowTop)
+	{
+		return 1.0 + StepsBelowTop + StepsBelowTop * (StepsBelowTop + 1) / 4.0;
+	}
+
+	/** What bends it, in brick-weight-centimetres: its own 5.625 cm arm plus everything above. */
+	constexpr double CorbelLadderMomentBrickWeightCm(int32 StepsBelowTop)
+	{
+		const double S = StepsBelowTop;
+
+		const double SumOfForces = S + S * (S - 1.0) / 2.0 + (S - 1.0) * S * (S + 1.0) / 12.0;
+
+		return (HalfCellCm * 0.5) * (S + 1.0) + HalfCellCm * SumOfForces;
+	}
+
+	/** The square half seat a corbelled end brick keeps, and its own section modulus, cm2 and cm3. */
+	constexpr double HalfSeatAreaSqCm = BrickDepthCm * BrickDepthCm;
+
+	constexpr double HalfSeatModulusCm3 =
+		(4.0 / 3.0) * (BrickDepthCm * 0.5) * (BrickDepthCm * 0.5) * (BrickDepthCm * 0.5);
+
+	/** Bending on that patch less the compression closing it; never negative. */
+	double HalfSeatTensionMPa(double MomentBrickWeightCm, double ForceBrickWeights)
+	{
+		const double BendingMPa = MomentBrickWeightCm * FullBrickWeightUu
+			/ (HalfSeatModulusCm3 * ForceUnitsPerMPaSqCmHere);
+
+		const double NormalMPa = ForceBrickWeights * FullBrickWeightUu
+			/ (HalfSeatAreaSqCm * ForceUnitsPerMPaSqCmHere);
+
+		return FMath::Max(0.0, BendingMPa - NormalMPa);
+	}
+
+	/** Pure bending on the deep-beam section: W = t * D^2 / 6 through the masonry standing over it. */
+	double CompositeTensionMPa(double MomentBrickWeightCm, int32 CoursesOfDepth)
+	{
+		const double DepthCm = CoursesOfDepth * CoursePitchCm;
+
+		const double ModulusCm3 = BrickDepthCm * DepthCm * DepthCm / 6.0;
+
+		return MomentBrickWeightCm * FullBrickWeightUu / (ModulusCm3 * ForceUnitsPerMPaSqCmHere);
+	}
+
+	/**
+	 * What the bottom rung of a k-step bonded corbel reads, as a fraction of f_xk1.
+	 *
+	 * The bottom rung is k - 1 steps below the top and has k courses of masonry over its bed joint,
+	 * so k is the only argument. The `min` is what keeps the model nested: composite action is an
+	 * ALTERNATIVE way of carrying the moment rather than an extra one, so it may only ever help.
+	 */
+	double CorbelBottomRungUtilisation(int32 Steps)
+	{
+		const double MomentBrickWeightCm = CorbelLadderMomentBrickWeightCm(Steps - 1);
+		const double ForceBrickWeights = CorbelLadderForceBrickWeights(Steps - 1);
+
+		return FMath::Min(
+			HalfSeatTensionMPa(MomentBrickWeightCm, ForceBrickWeights),
+			CompositeTensionMPa(MomentBrickWeightCm, Steps)) / MortarFlexuralBondMPa;
+	}
 
 	/**
 	 * Case 16: the projecting header itself, at cell 11.5 of the top course, and nothing else.
@@ -934,16 +1046,24 @@ namespace WallAcceptanceTestSupport
 
 		{
 			FWallCase& Case = Add(13, TEXT("Corbel, quarter brick per course"), EVerdict::Stands,
-				10, CorbelCells, {}, {}, {}, TEXT("corbel projection, against case 14"));
+				10, CorbelCells, {}, {}, {},
+				TEXT("corbel projection against case 14 — IN THE READING, not the outcome"));
 
 			Case.CorbelFromCourse = CorbelFirstCourse;
 			Case.CorbelStepCm = QuarterBrickStepCm;
 		}
 
+		/*
+		 * STANDS, ON THE USER'S RULING OF 2026-08-07 AND ON THE ARITHMETIC ABOVE. Drafted as a
+		 * collapse taking the four projecting bricks; the bottom rung reads 0.195160875 of f_xk1
+		 * and nothing in the ladder is near 1.0. No fall region and no survivor region, because
+		 * there is nothing to name — see the block above section D for the whole derivation and
+		 * for what the abandoned overturning reading claimed instead.
+		 */
 		{
-			FWallCase& Case = Add(14, TEXT("Corbel, half brick per course"), EVerdict::Collapse,
-				10, CorbelCells, {}, Case14Falls, Case14Stands,
-				TEXT("corbel projection, against case 13"));
+			FWallCase& Case = Add(14, TEXT("Corbel, half brick per course"), EVerdict::Stands,
+				10, CorbelCells, {}, {}, {},
+				TEXT("corbel projection against case 13 — IN THE READING, not the outcome"));
 
 			Case.CorbelFromCourse = CorbelFirstCourse;
 			Case.CorbelStepCm = HalfBrickStepCm;
@@ -1032,10 +1152,11 @@ namespace WallAcceptanceTestSupport
  * suite drove. 1 and 17 are intact walls and are regression anchors. 18 is a stack-bond column
  * that really does sit at a few percent — its verdict passes and the property that made the case
  * interesting does NOT, which is why that property has a test of its own below. 12 passes because
- * everything falls and it names no survivors, recorded beside it. And 13 and 14 pass TOGETHER,
- * which is the one matched pair the solver already answers: a quarter-brick corbel step leaves the
- * end brick on two bed patches and reads 0.081, a half-brick step leaves it on one and takes the
- * four projecting bricks while the wall behind them stands. The moment work bought that pair.
+ * everything falls and it names no survivors, recorded beside it. And 13 and 14 both stand, which
+ * is a CORRECTION rather than an achievement: 14 was drafted as a collapse and the user ruled on
+ * 2026-08-07 that a bonded corbel resists with its full depth. Both halves now answering "stands"
+ * means the pair no longer separates on outcome at all, so what it isolates has moved into
+ * Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome and out of the pair test.
  *
  * NEEDS A TICKING WORLD: NO. See the file header.
  */
@@ -1059,7 +1180,7 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 		GeneralPurposeMortar.ShearCohesionMPa, MortarShearCohesionMPa);
 
 	TestEqual(TEXT("FIXTURE: general purpose mortar's flexural bond is Table 3.2's f_xk1"),
-		GeneralPurposeMortar.TensileStrengthMPa, 0.1);
+		GeneralPurposeMortar.TensileStrengthMPa, MortarFlexuralBondMPa);
 
 	TestEqual(TEXT("FIXTURE: the fixture's brick density is ClayBrick's published one"),
 		ClayBrick.DensityGramsPerCubicCm, ClayBrickDensityGramsPerCubicCm);
@@ -1250,6 +1371,15 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 	 * FIVE PAIRS, AND IN EVERY ONE OF THEM EXACTLY ONE HALF STANDS. That is what makes the claim
 	 * below writable as one line: the halves differ in outcome, so a solver that answers them the
 	 * same way has no term between them, whichever way round it answers.
+	 *
+	 * CORBEL STEP (13 vs 14) IS DELIBERATELY ABSENT AND THIS IS THE ONLY PLACE TO SAY SO. It was
+	 * a row here until 2026-08-07, when the user ruled that case 14's collapse verdict was wrong
+	 * and a bonded corbel stands. Both halves now stand, so the shape this test asserts — one half
+	 * loses nothing, the other loses something — is UNSATISFIABLE for that pair by construction
+	 * and a row asserting it would be red forever for a reason nobody could fix. It has not been
+	 * dropped, it has MOVED: Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome makes
+	 * the same claim about the same variable against the quantity that still separates the two,
+	 * which is the joint reading. Leaving a dead row here would have been quieter and worse.
 	 */
 	const FMatchedPair Pairs[] =
 	{
@@ -1257,7 +1387,6 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 		{ TEXT("SPAN            - four bricks of opening against ten, at the same cover"), 7, 9 },
 		{ TEXT("ABUTMENT        - a jamb either side against a cut through to the end"),   7, 10 },
 		{ TEXT("PIER WIDTH      - three cells of bearing against one"),                    11, 12 },
-		{ TEXT("CORBEL STEP     - a quarter brick per course against a half"),             13, 14 },
 		{ TEXT("SUPERIMPOSED LOAD - six courses on the header's tail against none"),       15, 16 },
 	};
 
@@ -1308,6 +1437,194 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 				Pair.StandingCase, StandingFell, Pair.LosingCase, LosingFell),
 			StandingFell == 0 && LosingFell > 0);
 	}
+
+	return true;
+}
+
+/**
+ * CASES 13 AND 14, THE PART A VERDICT CANNOT SAY: DOUBLING THE CORBEL STEP DOUBLES THE JOINT
+ * READING, AND BOTH CORBELS STAND ANYWAY.
+ *
+ * WHY THIS TEST EXISTS AT ALL. 13 and 14 were an OUTCOME pair — one stands, one collapses — until
+ * the user ruled on 2026-08-07 that a bonded corbel resists with its full depth and case 14's
+ * collapse verdict was wrong. Both halves now stand. A pair whose two halves answer identically
+ * discriminates NOTHING, and the honest options were to delete it or to move it onto a quantity
+ * that still separates the two. This is that move, and it is the stronger of the two readings: an
+ * outcome pair could only ever say "these differ", while this says BY HOW MUCH AND WHY.
+ *
+ * THE EXPECTED VALUE IS DERIVED FROM THE FIXTURE, NOT READ BACK OFF THE SOLVER. Case 14's four
+ * corbelled courses each keep one 10.25 x 10.25 bed patch with their mass 5.625 cm outboard of it,
+ * so the load ladder, the moment ladder and the deep-beam section are all written above from the
+ * grid, the published density and the published f_xk1 — none of them imported from production.
+ * The whole point of the row is that a wrong constant makes this DISAGREE.
+ *
+ * AND THE DERIVATION IS CROSS-CHECKED AGAINST TWO FIGURES THIS FILE DID NOT PRODUCE, which is what
+ * stops it agreeing with itself. The same four lines give 0.21858 at five steps — ARCHING_DESIGN's
+ * published 0.219 — and 0.36903147272727271 at eleven, which is the staircase anchor
+ * `Core.Structure.AStaircaseVoidCondemnsTheCorbel` pins to seventeen digits. Those are held at 2%
+ * and at 1e-9 respectively, IN THE TEST, so a re-derivation that drifted fails here rather than
+ * being quietly tuned into agreement.
+ *
+ * THE THING BEING MEASURED MUST BE THE THING GOVERNING, WHICH IS ASSERTED SEPARATELY. `Worst` is
+ * the worst joint ANYWHERE in the wall, and a ten-course wall's base compression or a head joint
+ * could in principle carry it; then the number would be right for the wrong joint. So the worst
+ * joint is asserted to be the bed joint under the LOWEST corbelled course — course 5's half bat at
+ * cell 7.25 carrying course 6's projecting brick at cell 7.5 — before its magnitude is read.
+ *
+ * GREEN ON ARRIVAL, AND SAID SO PLAINLY. This pins behaviour arching slice 5 already produces; it
+ * drove nothing. What it is for is that the ruling above deleted an assertion, and an assertion
+ * deleted without one put back in its place is a hole in the net.
+ *
+ * NEEDS A TICKING WORLD: NO. See the file header.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FWallAcceptanceCorbelProjectionTest,
+	"DestructionGame.Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FWallAcceptanceCorbelProjectionTest::RunTest(const FString& Parameters)
+{
+	using namespace WallAcceptanceTestSupport;
+
+	/*
+	 * SLACK AGAINST A RE-ASSOCIATION OF A HANDFUL OF DOUBLES AND NOTHING ELSE. One course of depth
+	 * either way moves the four-step reading from 0.1735 to 0.2186, so this is seven orders of
+	 * magnitude below the smallest difference the row is meant to be able to see.
+	 */
+	constexpr double UtilisationTolerance = 1.0e-9;
+
+	/* --- the derivation, cross-checked against two figures produced elsewhere ---------------- */
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("CROSS-CHECK: five steps should reproduce ARCHING_DESIGN's published 0.219, the ")
+			TEXT("closed form gives %.8g"),
+			CorbelBottomRungUtilisation(5)),
+		FMath::IsNearlyEqual(CorbelBottomRungUtilisation(5), 0.219, 0.02 * 0.219));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("CROSS-CHECK: eleven steps should reproduce the staircase anchor 0.36903147272727271, ")
+			TEXT("the closed form gives %.17g"),
+			CorbelBottomRungUtilisation(11)),
+		FMath::IsNearlyEqual(
+			CorbelBottomRungUtilisation(11), 0.36903147272727271, UtilisationTolerance));
+
+	/* --- the two walls -------------------------------------------------------------------- */
+
+	const TArray<FWallCase> Cases = AllWallCases();
+
+	auto RunNumbered = [this, &Cases](int32 Number, FWall& OutWall, FWallResult& OutResult) -> bool
+	{
+		for (const FWallCase& Case : Cases)
+		{
+			if (Case.Number != Number)
+			{
+				continue;
+			}
+
+			RunWallCase(*this, Case, OutWall, OutResult);
+			ReportWallCase(*this, Case, OutWall, OutResult);
+
+			return OutResult.bLaid;
+		}
+
+		AddError(FString::Printf(TEXT("FIXTURE: the catalogue has no case %d"), Number));
+
+		return false;
+	};
+
+	FWall QuarterWall;
+	FWallResult QuarterResult;
+
+	FWall HalfWall;
+	FWallResult HalfResult;
+
+	if (!RunNumbered(13, QuarterWall, QuarterResult) || !RunNumbered(14, HalfWall, HalfResult))
+	{
+		return true;
+	}
+
+	/* --- neither corbel comes down, which is the ruling ------------------------------------- */
+
+	TestEqual(
+		*FString::Printf(
+			TEXT("THE RULING: a quarter-brick corbel stands, %d piece(s) came down %s"),
+			QuarterResult.Fallen.Num(), *DescribePieces(QuarterWall, QuarterResult.Fallen)),
+		QuarterResult.Fallen.Num(), 0);
+
+	TestEqual(
+		*FString::Printf(
+			TEXT("THE RULING: a HALF-brick corbel stands too — that is the 2026-08-07 correction to ")
+			TEXT("case 14 — and %d piece(s) came down %s"),
+			HalfResult.Fallen.Num(), *DescribePieces(HalfWall, HalfResult.Fallen)),
+		HalfResult.Fallen.Num(), 0);
+
+	/* --- and the reading is the four-step ladder on the four courses standing over it -------- */
+
+	const bool bWorstIsTheBottomRung =
+		HalfResult.WorstPieceA != INDEX_NONE
+		&& HalfWall.CourseOf[HalfResult.WorstPieceA] == CorbelFirstCourse - 1
+		&& HalfWall.CourseOf[HalfResult.WorstPieceB] == CorbelFirstCourse
+		&& FMath::IsNearlyEqual(HalfWall.CellOf[HalfResult.WorstPieceB], 7.5, 1.0e-9);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("THE GOVERNING JOINT must be the bed joint under the lowest corbelled course, c%d/7.25 ")
+			TEXT("carrying c%d/7.5, or the magnitude below is right about the wrong joint; it is %s"),
+			CorbelFirstCourse - 1, CorbelFirstCourse,
+			HalfResult.WorstPieceA == INDEX_NONE
+				? TEXT("no joint at all")
+				: *FString::Printf(
+					TEXT("c%d/%g-c%d/%g"),
+					HalfWall.CourseOf[HalfResult.WorstPieceA], HalfWall.CellOf[HalfResult.WorstPieceA],
+					HalfWall.CourseOf[HalfResult.WorstPieceB], HalfWall.CellOf[HalfResult.WorstPieceB])),
+		bWorstIsTheBottomRung);
+
+	const double ExpectedHalf = CorbelBottomRungUtilisation(4);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("A FOUR-STEP HALF-BRICK CORBEL reads its bottom rung at %.17g of f_xk1 — 112.5 ")
+			TEXT("brick-weight-cm over the 1537.5 cm3 of four courses acting together — and the wall ")
+			TEXT("reads %.17g"),
+			ExpectedHalf, HalfResult.Worst),
+		FMath::IsNearlyEqual(HalfResult.Worst, ExpectedHalf, UtilisationTolerance));
+
+	/*
+	 * AND THE OUTCOME FOLLOWS FROM THE NUMBER RATHER THAN THE OTHER WAY ROUND. 0.195 is a fifth of
+	 * capacity; the verdict in the catalogue is "stands" BECAUSE of this, not beside it.
+	 */
+	TestTrue(
+		*FString::Printf(
+			TEXT("and that is why the verdict is STANDS: the worst joint in the wall is %.6g of ")
+			TEXT("capacity and must be under 1"),
+			HalfResult.Worst),
+		HalfResult.Worst < 1.0);
+
+	/* --- the pair's own claim: projection is still measured --------------------------------- */
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("CORBEL STEP: doubling the projection per course must read HARDER on the joint — a ")
+			TEXT("quarter brick reads %.8g and a half brick reads %.8g, a factor of %.4g. A model ")
+			TEXT("with no projection term reads them the same."),
+			QuarterResult.Worst, HalfResult.Worst,
+			QuarterResult.Worst > 0.0 ? HalfResult.Worst / QuarterResult.Worst : 0.0),
+		HalfResult.Worst > QuarterResult.Worst);
+
+	/*
+	 * TWICE, NOT MERELY MORE. A strict inequality alone is satisfiable by a last-bit difference,
+	 * which is not a projection term working; the step doubles, the arm doubles with it, and the
+	 * measured separation is a factor of 2.8. Two is the floor and it is a long way under that.
+	 */
+	TestTrue(
+		*FString::Printf(
+			TEXT("CORBEL STEP: and by a real margin, not the last bit — %.8g against %.8g is a ")
+			TEXT("factor of %.4g and must be at least 2"),
+			QuarterResult.Worst, HalfResult.Worst,
+			QuarterResult.Worst > 0.0 ? HalfResult.Worst / QuarterResult.Worst : 0.0),
+		QuarterResult.Worst > 0.0 && HalfResult.Worst >= 2.0 * QuarterResult.Worst);
 
 	return true;
 }
