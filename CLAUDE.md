@@ -48,6 +48,21 @@ Two rules, both mandatory:
 
 Read it at the start of a session, and update it at the end of one. It's the first place to look for what to do next.
 
+## A commit is a checkpoint, not a finish line
+
+**Committing or pushing is never the end of a task. If any part of the requested work is still outstanding, keep going after the commit without being asked and without reporting back as though you were done.**
+
+This exists because the failure is so easy to miss from the inside: a commit produces a satisfying, complete-looking summary — files changed, tests green, message written — and that summary reads like a finished job even when three of the five things asked for are untouched. Stopping there hands back work that *looks* delivered, which is worse than obviously stopping early, because it takes the reader's word for it.
+
+So the rule is mechanical rather than a matter of judgement:
+
+- **Commit freely and often.** Frequent commits are good — they are how a long task stays recoverable, and this rule must never become a reason to batch everything into one enormous commit at the end.
+- **After every commit, re-read the task list.** [claude_plans/CURRENT_STATE.md](claude_plans/CURRENT_STATE.md) and the session's own todo list are both authoritative. If either has an open item inside the requested scope, resume immediately.
+- **Only stop when the whole ask is done, or when you are genuinely blocked.** Blocked means a decision only the user can make, or a failure you cannot get past — not "this next part is large".
+- **When you do stop with work outstanding, say exactly what is left and why**, in the same message. Never let a green test run or a clean commit stand in for that statement.
+
+The same applies to a subagent handing back: `dev-expert` reporting green is one slice finished, not the task finished. Check what remains before reporting up.
+
 ## Development process: TDD is mandatory
 
 All development on this project is test-driven. No exceptions, and the rule is not waivable per-task.

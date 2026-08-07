@@ -64,10 +64,29 @@ Check `claude_plans/CURRENT_STATE.md`:
 - If the project's state changed materially, the Snapshot must reflect it.
 - Check `DESIGN.md` too: a decision made in code but never recorded there, or a "known gap" note the work has since closed, is the same failure in the document people trust most.
 
+## 6. Show the wall — visual validation is not optional
+
+**If the change can alter what a structure does, the review is not complete without a rendered before/after, and their absence is a blocking finding.** Green tests prove the numbers the suite asks about. They do not prove the wall looks like a wall, and this project has repeatedly shipped a correct layer joined wrongly to the next one — a defect class that is invisible to assertions and obvious in a picture.
+
+This applies to anything touching load routing, joint classification, strengths, moments, the break cascade or the profiles. It does **not** apply to pure refactors verified bit-identical, to presenter or menu layout work, or to documentation — say which case you judged it to be and why.
+
+The harness already exists; do not build a new one. `Tests/StaircaseScreenshotTest.cpp` renders against the game mode's 30×40 scenario wall. Two things it will silently fail without: the command is **`Shot showui`** (`HighResShot` renders through an `FDummyViewport` with no Slate), and the test must carry `EAutomationTestFlags::NonNullRHI` or the `-nullrhi` suite passes it without rendering anything. A screenshot test that "passed" but wrote no file is the failure mode to check for — **stat the image and report its byte size**, do not infer success from a green line in the log.
+
+Then actually **look at the images** and judge them against real masonry, because that is the standard the user has set:
+
+- Does the collapse have a **cause you can point at**, or did geometry far from the change move?
+- Is the **extent** proportional? Removing a brick from a real wall is a local event. A real wall arches over a small opening and stands.
+- Is the **failure surface** one masonry actually produces? A stepped diagonal is real — it is the bond pattern — but so is the wall *not* failing at all, and a stepped front that runs the full width is a cascade that never found a load path, not a collapse.
+- Does anything survive that should not — floating pieces, unsupported spans, bricks resting on nothing?
+
+Report what you saw in words, and **give the absolute path and byte size of every image** so it can be surfaced to the user. Never describe a render you did not open. If you could not produce one, say so plainly and treat it as blocking rather than reasoning about what it would probably have shown.
+
 ## Reporting
 
 Most severe first. For each: file and line, what is wrong, and a **concrete failure scenario** — the inputs or state producing the wrong result.
 
 "This is fragile" is not a finding. "A joint whose area is still zero returns NaN, and NaN > 1.0 is false, so it reads as intact and the wall never falls" is.
 
-Separate **blocking** (missing coverage, wrong assertion kind, design divergence, real defect, stale docs) from **non-blocking** (naming, structure, nits). End with a clear verdict: what blocks, and what needs to happen next.
+Separate **blocking** (missing coverage, wrong assertion kind, design divergence, real defect, stale docs, missing visual validation) from **non-blocking** (naming, structure, nits). End with a clear verdict: what blocks, and what needs to happen next.
+
+End every report with an **IMAGES** section listing the absolute path and byte size of each render you produced, or the single line `IMAGES: none — <reason>`. This section is read verbatim and the files are shown to the user, so it is never omitted and never filled in from memory.

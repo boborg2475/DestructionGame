@@ -1,0 +1,560 @@
+<title>Wall Calibration Cases</title>
+<style>
+  :root {
+    --paper: #E9ECF0;
+    --panel: #F6F7F9;
+    --ink: #16202B;
+    --ink-soft: #55606E;
+    --ink-faint: #8B95A2;
+    --rule: #C9CFD8;
+    --accent: #2E4A6E;
+    --stands: #2C6B50;
+    --stands-bg: #D7E5DD;
+    --local: #8A6116;
+    --local-bg: #F0E4CB;
+    --collapse: #A03A22;
+    --collapse-bg: #F2DCD5;
+    --brick: #D3D8DE;
+    --brick-edge: #A5ADB8;
+    --brick-gone: #B4BCC6;
+    --ground: #6C7684;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #111821;
+      --panel: #18212C;
+      --ink: #E2E7ED;
+      --ink-soft: #9BA6B3;
+      --ink-faint: #6C7885;
+      --rule: #2C3745;
+      --accent: #82A8D6;
+      --stands: #64AB86;
+      --stands-bg: #1B3129;
+      --local: #D2A44E;
+      --local-bg: #33291433;
+      --collapse: #E07B60;
+      --collapse-bg: #3A211A;
+      --brick: #29323D;
+      --brick-edge: #424D5A;
+      --brick-gone: #39434F;
+      --ground: #59646F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #111821;
+    --panel: #18212C;
+    --ink: #E2E7ED;
+    --ink-soft: #9BA6B3;
+    --ink-faint: #6C7885;
+    --rule: #2C3745;
+    --accent: #82A8D6;
+    --stands: #64AB86;
+    --stands-bg: #1B3129;
+    --local: #D2A44E;
+    --local-bg: #332914;
+    --collapse: #E07B60;
+    --collapse-bg: #3A211A;
+    --brick: #29323D;
+    --brick-edge: #424D5A;
+    --brick-gone: #39434F;
+    --ground: #59646F;
+  }
+  :root[data-theme="light"] {
+    --paper: #E9ECF0;
+    --panel: #F6F7F9;
+    --ink: #16202B;
+    --ink-soft: #55606E;
+    --ink-faint: #8B95A2;
+    --rule: #C9CFD8;
+    --accent: #2E4A6E;
+    --stands: #2C6B50;
+    --stands-bg: #D7E5DD;
+    --local: #8A6116;
+    --local-bg: #F0E4CB;
+    --collapse: #A03A22;
+    --collapse-bg: #F2DCD5;
+    --brick: #D3D8DE;
+    --brick-edge: #A5ADB8;
+    --brick-gone: #B4BCC6;
+    --ground: #6C7684;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .mono {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+
+  header.masthead {
+    border-top: 3px solid var(--ink);
+    padding-top: 20px;
+    margin-bottom: 44px;
+    display: grid;
+    gap: 18px;
+  }
+
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: clamp(26px, 4vw, 40px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.12;
+    text-wrap: balance;
+    margin: 0;
+    max-width: 20ch;
+  }
+
+  .standfirst {
+    max-width: 66ch;
+    color: var(--ink-soft);
+    margin: 0;
+  }
+
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 26px;
+    padding: 16px 18px;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    align-items: center;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+
+  .swatch { width: 22px; height: 12px; flex: none; border: 1px solid var(--brick-edge); background: var(--brick); }
+  .swatch.gone { background: none; border: 1px dashed var(--ink-faint); }
+  .swatch.falls { background: var(--collapse-bg); border-color: var(--collapse); }
+
+  section.group {
+    margin-top: 52px;
+  }
+
+  .group-head {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 10px;
+    margin-bottom: 22px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 16px;
+  }
+
+  .group-head h2 {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: 15px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .group-head p { margin: 0; color: var(--ink-soft); font-size: 13.5px; max-width: 62ch; }
+
+  .cases {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 20px;
+  }
+
+  article.case {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: 0;
+  }
+
+  .case-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 10px;
+  }
+
+  .case-id {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 3px;
+  }
+
+  .case-title {
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1.3;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .verdict {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    white-space: nowrap;
+    flex: none;
+    border: 1px solid currentColor;
+    font-weight: 700;
+  }
+  .verdict.stands { color: var(--stands); background: var(--stands-bg); }
+  .verdict.local { color: var(--local); background: var(--local-bg); }
+  .verdict.collapse { color: var(--collapse); background: var(--collapse-bg); }
+
+  .diagram {
+    padding: 8px 16px 14px;
+    overflow-x: auto;
+  }
+  .diagram svg { display: block; }
+
+  .case-body {
+    padding: 0 16px 14px;
+    display: grid;
+    gap: 9px;
+  }
+
+  .case-body p { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+  .case-body p strong { color: var(--ink); font-weight: 600; }
+
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 16px 14px;
+  }
+
+  .tag {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    border: 1px solid var(--rule);
+    padding: 3px 7px;
+  }
+  .tag.pair { color: var(--accent); border-color: var(--accent); }
+  .tag.now { color: var(--collapse); border-color: var(--collapse); }
+
+  .closing {
+    margin-top: 60px;
+    border-top: 3px solid var(--ink);
+    padding-top: 22px;
+    display: grid;
+    gap: 14px;
+    max-width: 72ch;
+  }
+  .closing h2 {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+    font-size: 15px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+  .closing p { margin: 0; color: var(--ink-soft); }
+  .closing strong { color: var(--ink); font-weight: 600; }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 32px 16px 64px; }
+    .cases { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Structural calibration set &middot; 20 cases</p>
+    <h1>What the wall should do</h1>
+    <p class="standfirst">
+      Twenty configurations with an expected outcome for each, drawn from how real masonry behaves rather than
+      from what the solver currently computes. <strong>Five are matched pairs that differ by exactly one variable</strong> —
+      cover depth, span, abutment, corbel projection, superimposed load, bond pattern — so a disagreement between
+      the two halves of a pair points at one specific term in the force calculation. Review these, correct any you
+      think are wrong, and the agreed set becomes the integration suite.
+    </p>
+    <div class="legend">
+      <span class="legend-item"><span class="swatch"></span> Brick in place</span>
+      <span class="legend-item"><span class="swatch gone"></span> Removed by the player</span>
+      <span class="legend-item"><span class="swatch falls"></span> Expected to fall</span>
+      <span class="legend-item mono" style="margin-left:auto; font-size:11px; letter-spacing:0.08em;">RUNNING BOND UNLESS NOTED</span>
+    </div>
+  </header>
+
+  <div id="catalogue"></div>
+
+  <div class="closing">
+    <h2>What happens to these next</h2>
+    <p>
+      Each agreed case becomes an integration test — gravity on, everything connected, asserting on
+      <strong>outcome</strong> rather than mechanism, because for a wall a single severed joint is not collapse.
+      The three verdicts map to three different assertions: <em>stands</em> means the piece count above the cut is
+      unchanged and nothing left the structure; <em>local loss</em> means a bounded, named set of pieces fell and
+      the rest did not; <em>collapse</em> means the structure genuinely came down.
+    </p>
+    <p>
+      The pairs are the valuable part. A solver that gets both halves of a pair right has the term between them
+      modelled; one that gets both halves the same way has no such term at all. Right now the model has no
+      lateral compression path, so I expect it to fail the standing half of every pair while passing the falling
+      half — which is the signature of a model that can only ever say "falls".
+    </p>
+    <p>
+      <strong>Case 18 was drafted as a collapse and revised to stands</strong>, because the arithmetic contradicted
+      the intuition. It is the case where the real-world answer turns on workmanship rather than statics —
+      EN 1996-1-1 permits head joints to be treated as unfilled, and in practice they often are, so a wall built
+      badly loses the column while a wall built properly does not. The model has a filled joint with a published
+      cohesion, so it should say stands. If a bond-discriminating pair is wanted later, the version that works is a
+      <em>wide</em> stack-bond removal: a hanging column <em>n</em> bricks across still has only two head joints
+      holding it, so utilisation grows with <em>n</em> while running bond simply arches.
+    </p>
+    <p>
+      <strong>Case 20 is the one I am least certain of</strong> and would most like your judgement on. Everything
+      else here I would defend; that one sits close enough to the real limit that it is a genuine question rather
+      than a known answer.
+    </p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var QU = 6.5;    // px per quarter-brick of length
+  var CH = 10;     // px per course
+  var M = 1.2;     // mortar gap
+
+  function courseBricks(spec, c) {
+    var b = spec.span ? spec.span(c) : [0, spec.width];
+    var s = b[0], e = b[1], out = [], x;
+    if (spec.bond === 'stack') {
+      for (x = s; x + 4 <= e + 0.001; x += 4) out.push({ x: x, w: 4 });
+      if (e - x >= 1.9) out.push({ x: x, w: e - x });
+      return out;
+    }
+    if (c % 2 === 0) {
+      for (x = s; x + 4 <= e + 0.001; x += 4) out.push({ x: x, w: 4 });
+      if (e - x >= 1.9) out.push({ x: x, w: e - x });
+    } else {
+      out.push({ x: s, w: 2 });
+      for (x = s + 2; x + 4 <= e + 0.001; x += 4) out.push({ x: x, w: 4 });
+      if (e - x >= 1.9) out.push({ x: x, w: e - x });
+    }
+    return out;
+  }
+
+  function hits(rects, c, mid) {
+    for (var i = 0; i < (rects || []).length; i++) {
+      var r = rects[i];
+      if (c >= r[0] && c <= r[1] && mid > r[2] && mid < r[3]) return true;
+    }
+    return false;
+  }
+
+  function draw(spec) {
+    var pad = 6;
+    var maxX = spec.width;
+    for (var c = 0; c < spec.courses; c++) {
+      var b = spec.span ? spec.span(c) : [0, spec.width];
+      if (b[1] > maxX) maxX = b[1];
+    }
+    var w = maxX * QU + pad * 2;
+    var h = spec.courses * CH + pad + 12;
+    var svg = ['<svg viewBox="0 0 ' + w.toFixed(1) + ' ' + h.toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + h.toFixed(1) + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + spec.alt + '">'];
+
+    for (var c2 = 0; c2 < spec.courses; c2++) {
+      var list = courseBricks(spec, c2);
+      if (spec.extra) {
+        for (var k = 0; k < spec.extra.length; k++) {
+          if (spec.extra[k].c === c2) list.push({ x: spec.extra[k].x, w: spec.extra[k].w });
+        }
+      }
+      for (var i = 0; i < list.length; i++) {
+        var br = list[i];
+        var mid = br.x + br.w / 2;
+        var px = pad + br.x * QU;
+        var py = pad + (spec.courses - 1 - c2) * CH;
+        var pw = br.w * QU - M;
+        var ph = CH - M;
+        if (hits(spec.cuts, c2, mid)) {
+          svg.push('<rect x="' + px.toFixed(1) + '" y="' + py.toFixed(1) + '" width="' + pw.toFixed(1) + '" height="' + ph.toFixed(1) + '" fill="none" stroke="var(--brick-gone)" stroke-width="1" stroke-dasharray="2.5 2" />');
+        } else if (hits(spec.falls, c2, mid)) {
+          svg.push('<rect x="' + px.toFixed(1) + '" y="' + py.toFixed(1) + '" width="' + pw.toFixed(1) + '" height="' + ph.toFixed(1) + '" fill="var(--collapse-bg)" stroke="var(--collapse)" stroke-width="0.9" />');
+        } else {
+          svg.push('<rect x="' + px.toFixed(1) + '" y="' + py.toFixed(1) + '" width="' + pw.toFixed(1) + '" height="' + ph.toFixed(1) + '" fill="var(--brick)" stroke="var(--brick-edge)" stroke-width="0.7" />');
+        }
+      }
+    }
+
+    var gy = pad + spec.courses * CH + 1.5;
+    svg.push('<line x1="' + (pad - 3) + '" y1="' + gy.toFixed(1) + '" x2="' + (w - pad + 3).toFixed(1) + '" y2="' + gy.toFixed(1) + '" stroke="var(--ground)" stroke-width="1.6" />');
+    for (var g = pad - 2; g < w - pad + 4; g += 6) {
+      svg.push('<line x1="' + g.toFixed(1) + '" y1="' + gy.toFixed(1) + '" x2="' + (g - 4).toFixed(1) + '" y2="' + (gy + 4.5).toFixed(1) + '" stroke="var(--ground)" stroke-width="0.7" opacity="0.65" />');
+    }
+
+    svg.push('</svg>');
+    return svg.join('');
+  }
+
+  var W = 48, TALL = 12;
+
+  var GROUPS = [
+    {
+      name: 'A — One brick out',
+      blurb: 'The cases that fire on every deletion. In running bond a brick rests on two below; take one away and it rests on one. Nothing here should do more than settle.',
+      cases: [
+        { n: 1, t: 'Intact wall', v: 'stands', tags: ['baseline'],
+          why: 'The regression anchor. Worst joint reads <strong>0.00495</strong> and this number must not move for any change we make.',
+          s: { courses: 10, width: W, alt: 'An intact ten-course running bond wall' } },
+        { n: 2, t: 'One brick out, mid-wall', v: 'stands', tags: ['pair: bond &rarr; 18'],
+          why: 'The course above spans the gap on its two neighbours, and the load sheds sideways in compression. A real wall does not notice this.',
+          s: { courses: 10, width: W, cuts: [[5, 5, 20, 24]], alt: 'Ten-course wall with one brick removed from the middle' } },
+        { n: 3, t: 'One brick out at the free end', v: 'stands', tags: ['reported', 'now: cascades'],
+          why: 'The half brick above loses one of its two bed joints. It is eccentrically loaded but the course above it bridges, so the disturbance stops within a course or two.',
+          s: { courses: 10, width: W, cuts: [[5, 5, 44, 48]], alt: 'Ten-course wall with one brick removed at the right hand end' } },
+        { n: 4, t: 'One brick out of the bottom course', v: 'stands', tags: ['arching'],
+          why: 'Everything above arches over a one-brick gap. Depth of cover is the whole wall, so the thrust line has all the room it needs.',
+          s: { courses: 10, width: W, cuts: [[0, 0, 20, 24]], alt: 'Ten-course wall with one brick removed from the bottom course' } },
+        { n: 5, t: 'Alternate bricks out of one course', v: 'stands', tags: ['arching'],
+          why: 'A toothed course. Each one-brick gap arches between the bricks left either side of it, and the courses above never learn about it.',
+          s: { courses: 10, width: W, cuts: [[4, 4, 5, 7], [4, 4, 13, 15], [4, 4, 21, 23], [4, 4, 29, 31], [4, 4, 37, 39]], alt: 'Wall with alternate bricks removed from one course' } }
+      ]
+    },
+    {
+      name: 'B — Openings and depth of cover',
+      blurb: 'Arching needs height above the hole for the thrust line to fit inside the masonry. Load above roughly a 45–60&deg; triangle never reaches the span at all.',
+      cases: [
+        { n: 6, t: 'Two-brick opening, deep cover', v: 'stands', tags: ['arching'],
+          why: 'Eight courses above a two-brick hole. The triangle of loading closes well below the top of the wall, so almost nothing is actually being carried across.',
+          s: { courses: TALL, width: W, cuts: [[1, 3, 20, 28]], alt: 'Twelve-course wall with a two brick wide opening near the base' } },
+        { n: 7, t: 'Four-brick opening, eight courses over', v: 'stands', tags: ['pair: cover &rarr; 8'],
+          why: 'A doorway with a wall on top of it. The arch forms inside the masonry and lands on the jambs either side. This is ordinary construction.',
+          s: { courses: TALL, width: W, cuts: [[1, 3, 16, 32]], alt: 'Twelve-course wall with a four brick wide opening and eight courses above' } },
+        { n: 8, t: 'Four-brick opening, one course over', v: 'local', tags: ['pair: cover &rarr; 7'],
+          why: 'Same hole, no cover. A single course cannot arch — it is a beam in flexure over four bricks, and mortar has <strong>0.1 MPa</strong> to offer. <strong>That course drops; the wall stands.</strong>',
+          s: { courses: 5, width: W, cuts: [[1, 3, 16, 32]], falls: [[4, 4, 16, 32]], alt: 'Five-course wall with a four brick opening and only one course above it' } },
+        { n: 9, t: 'Ten-brick opening, eight courses over', v: 'collapse', tags: ['pair: span &rarr; 7'],
+          why: 'Same cover, span too wide. The thrust line needed to cross ten bricks leaves the section, and there is no lintel to carry it in bending instead.',
+          s: { courses: TALL, width: 56, cuts: [[1, 3, 8, 48]], falls: [[4, 11, 6, 50]], alt: 'Twelve-course wall with a ten brick wide opening' } },
+        { n: 10, t: 'Opening at a free end — no abutment', v: 'collapse', tags: ['pair: abutment &rarr; 7'],
+          why: 'An arch pushes sideways and something must push back. Cut to the end of the wall and the right-hand jamb is gone, so there is nothing to receive the thrust.',
+          s: { courses: TALL, width: W, cuts: [[1, 3, 32, 48]], falls: [[4, 11, 30, 48]], alt: 'Twelve-course wall with an opening running to the free right hand end' } }
+      ]
+    },
+    {
+      name: 'C — Spanning between supports',
+      blurb: 'The same arch, asked to land on supports of different width. Tests whether the abutment itself is checked, not just the span.',
+      cases: [
+        { n: 11, t: 'Wall on two piers, six-brick clear span', v: 'stands', tags: ['pair: pier &rarr; 12'],
+          why: 'Three-brick piers either side. Walls span between piers all the time; the piers are wide enough to take the thrust without overstressing.',
+          s: { courses: TALL, width: W, cuts: [[0, 3, 12, 36]], alt: 'Wall carried on two wide piers over a six brick clear span' } },
+        { n: 12, t: 'The same span on one-brick piers', v: 'collapse', tags: ['pair: pier &rarr; 11'],
+          why: 'Same arch, same thrust, a quarter of the bearing area. The pier is the thing that fails here — not the span — and the model should say so.',
+          s: { courses: TALL, width: W, cuts: [[0, 3, 4, 44]], falls: [[0, 11, 0, 48]], alt: 'Wall carried on two narrow one brick piers over a wide span' } }
+      ]
+    },
+    {
+      name: 'D — Corbelling',
+      blurb: 'Direct calibration of the moment. Real practice limits projection to about a quarter of the unit per course; double that and it goes over.',
+      cases: [
+        { n: 13, t: 'Corbel, quarter brick per course', v: 'stands', tags: ['pair: projection &rarr; 14'],
+          why: 'Four courses stepping out a quarter each. Every course still has most of its bed bearing on the one below, and the wall behind holds the tails down.',
+          s: { courses: 10, width: 36, span: function (c) { return [0, c <= 5 ? 32 : 32 + (c - 5)]; }, alt: 'Wall corbelling out a quarter brick per course over four courses' } },
+        { n: 14, t: 'Corbel, half brick per course', v: 'collapse', tags: ['pair: projection &rarr; 13'],
+          why: 'Double the step, and the resultant walks outside the bed below. This is past what corbelling can do, and it should peel off from the top down.',
+          s: { courses: 10, width: 42, span: function (c) { return [0, c <= 5 ? 32 : 32 + (c - 5) * 2]; }, falls: [[6, 9, 32, 42]], alt: 'Wall corbelling out a half brick per course over four courses' } },
+        { n: 15, t: 'Header out half a brick, six courses on top', v: 'stands', tags: ['pair: load &rarr; 16'],
+          why: 'The overhanging brick is held by the weight sitting on its tail. Compression across that bed joint suppresses the bending tension — this case is the direct test of whether that term is right.',
+          s: { courses: 10, width: W, extra: [{ c: 3, x: 48, w: 2 }], alt: 'Wall with a single header projecting half a brick, six courses above it' } },
+        { n: 16, t: 'The same header at the top, nothing on it', v: 'local', tags: ['pair: load &rarr; 15'],
+          why: 'Identical geometry, no superimposed load, so nothing holds the tail down. <strong>That one brick drops and nothing else moves.</strong>',
+          s: { courses: 10, width: W, extra: [{ c: 9, x: 48, w: 2 }], falls: [[9, 9, 48, 50]], alt: 'Wall with a single header projecting half a brick at the very top with nothing above' } }
+      ]
+    },
+    {
+      name: 'E — Bond pattern and head-joint shear',
+      blurb: 'Both of these stand, and that is the finding. Case 18 was drafted as a collapse and the arithmetic overturned it — a hanging stack-bond column sits at 2% of capacity forever. What the pair now isolates is whether head-joint shear is counted at all.',
+      cases: [
+        { n: 17, t: 'Stack bond, intact', v: 'stands', tags: ['stack bond'],
+          why: 'Weaker than running bond and rarely used structurally, but an intact stack bond wall stands perfectly well under its own weight.',
+          s: { courses: 10, width: W, bond: 'stack', alt: 'An intact stack bond wall with aligned vertical joints' } },
+        { n: 18, t: 'Stack bond, one brick out', v: 'stands', tags: ['pair: bond &rarr; 2', 'revised', 'expect 0.0200'],
+          why: 'No brick bridges the gap, so the column above hangs entirely on its head joints — and the arithmetic says that is fine. Each brick weighs <strong>26.69 N</strong> and is bonded to a neighbour on both sides over 2 &times; 66.625 cm&sup2;, giving <strong>0.0200 of shear capacity</strong> against mortar&rsquo;s 0.1 MPa cohesion. <strong>That ratio is height-independent</strong> — every added course brings one brick of weight and two more head joints, which cancel exactly — so this column never fails in shear at any height.',
+          s: { courses: 10, width: W, bond: 'stack', cuts: [[5, 5, 20, 24]], alt: 'Stack bond wall with one brick removed from the middle' } }
+      ]
+    },
+    {
+      name: 'F — Losing the base',
+      blurb: 'Where collapse is the correct answer. A model that never says "falls" is as broken as one that always does.',
+      cases: [
+        { n: 19, t: 'Bottom course out under half the wall', v: 'collapse', tags: ['genuine collapse'],
+          why: 'Six bricks of support removed in one line. Nothing can arch that far at that cover, and the left half has no path to the ground.',
+          s: { courses: 10, width: W, cuts: [[0, 0, 0, 24]], falls: [[1, 9, 0, 24]], alt: 'Wall with the bottom course removed under the left half' } },
+        { n: 20, t: 'Staircase void', v: 'local', tags: ['pair: judgement', 'now: total collapse'],
+          why: 'The stepped cut from your screenshot. My read is that the mass arches over the widest part and <strong>only the loose toothed bricks at the cut edge drop</strong> — but this is close enough to the real limit that I would rather you called it than I did.',
+          s: { courses: TALL, width: 56, cuts: [[1, 1, 4, 28], [2, 2, 4, 24], [3, 3, 4, 20], [4, 4, 4, 16], [5, 5, 4, 12], [6, 6, 4, 8]], falls: [[2, 7, 4, 10]], alt: 'Twelve-course wall with a stepped staircase shaped void cut into its lower left' } }
+      ]
+    }
+  ];
+
+  var VERDICT_TEXT = { stands: 'Stands', local: 'Local loss', collapse: 'Collapse' };
+  var out = [];
+
+  for (var g = 0; g < GROUPS.length; g++) {
+    var grp = GROUPS[g];
+    out.push('<section class="group"><div class="group-head"><h2>' + grp.name + '</h2><p>' + grp.blurb + '</p></div><div class="cases">');
+    for (var i = 0; i < grp.cases.length; i++) {
+      var cs = grp.cases[i];
+      var tags = '';
+      for (var t = 0; t < cs.tags.length; t++) {
+        var cls = cs.tags[t].indexOf('pair') === 0 ? 'tag pair' : (cs.tags[t].indexOf('now') === 0 ? 'tag now' : 'tag');
+        tags += '<span class="' + cls + '">' + cs.tags[t] + '</span>';
+      }
+      out.push(
+        '<article class="case">' +
+          '<div class="case-top"><div>' +
+            '<span class="case-id">CASE ' + (cs.n < 10 ? '0' : '') + cs.n + '</span>' +
+            '<h3 class="case-title">' + cs.t + '</h3>' +
+          '</div><span class="verdict ' + cs.v + '">' + VERDICT_TEXT[cs.v] + '</span></div>' +
+          '<div class="diagram">' + draw(cs.s) + '</div>' +
+          '<div class="case-body"><p>' + cs.why + '</p></div>' +
+          '<div class="tags">' + tags + '</div>' +
+        '</article>'
+      );
+    }
+    out.push('</div></section>');
+  }
+
+  document.getElementById('catalogue').innerHTML = out.join('');
+})();
+</script>
