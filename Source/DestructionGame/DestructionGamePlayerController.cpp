@@ -109,39 +109,33 @@ static const FLinearColor PieceMenuLivePieceColour(1.0f, 1.0f, 1.0f, 1.0f);
 static const FLinearColor PieceMenuDeadPieceColour(0.5f, 0.5f, 0.5f, 0.6f);
 
 /*
- * THE PANEL'S SIZE, FIXED IN BOTH AXES, AND IT IS THE MECHANISM RATHER THAN A TASTE IN LAYOUT.
+ * THE PANEL'S SIZE IS NOT HERE ANY MORE, AND ITS ABSENCE IS THE POINT.
  *
- * A PANEL THAT CANNOT CHANGE SIZE CANNOT MOVE ANYTHING, which is the single property every
- * stillness claim about this menu now rests on: whatever the readout is showing and however many
- * bricks are picked, every row is where it was, so a click aimed at one commits that one. It
- * replaces two earlier partial fixes — a top anchor, and putting the readout in the last slot —
- * each of which held only one direction still. World.Menu.PanelDoesNotGrowWithTheSelection and
- * World.Menu.InspectingAnEntryDoesNotMoveTheClickableRows both assert it directly.
+ * A PANEL THAT CANNOT CHANGE SIZE CANNOT MOVE ANYTHING, which is still the single property every
+ * stillness claim about this menu rests on: whatever the readout is showing and however many bricks
+ * are picked, every row is where it was, so a click aimed at one commits that one. What changed is
+ * that the size is now a function of the DETAIL MODE — EPieceMenuDetail::Compact drops the joint
+ * table and the headroom scale, and a mode that drew the lines it has left into the same rectangle
+ * gave the player back no screen at all, which was their complaint.
  *
- * THE WIDTH IS A MEASUREMENT RATHER THAN A FIT, AND IT IS THE ONE FIGURE HERE THAT IS ASSERTED.
- * 560 px held the longest line the model composed when it was chosen, and then the joint sentence
- * grew a bending clause: "#4  course 3 · #1  bed above  40.0 N  4.551 %  22.0× margin  150.0 N·cm
- * bending" asks for 432 px of glyphs, and it does not start at the column's left edge — the bar
- * and its swatch take 166 px first — so it ran 58 px off the end of a 540 px content column and
- * was cut. A joint line is laid out at its natural width in a box that will not shrink it, so
- * there is no wrapping to absorb that. World.Menu.TheReadoutFitsInsideThePanel measures the
- * overrun on a ragged wall whose corbel sits on one off-centre patch — the only wall shape that
- * bends at all, and so the only one from which this number is visible — which puts the floor at
- * 617.5 px. 640 px clears it by 22 px, about four characters at this font, which is the room the
- * original figure claimed for a course number in the hundreds and the game's own 1,220-brick wall
- * still wants. The panel is right-anchored at PieceMenuPanelMarginPx, so widening it takes room
- * from the empty middle of the screen rather than moving it off the edge.
- *
- * THE HEIGHT IS STILL A FIT. 560 px is about half a 1080 viewport, so the whole panel is on
- * screen with the list, the readout and the action rows all reserved. Nothing asserts it, because
- * a test that pinned "the list is 190 px tall" would break on every visual pass and would still
- * not say the thing that matters.
+ * PieceMenuPanelSizePx IS WHERE IT LIVES, IN Core, BESIDE THE DERIVATION OF BOTH FIGURES.
+ * Presenter.PieceMenuPanelSize holds the orderings and the area budget, and
+ * World.Menu.TheReadoutFitsInsideThePanel arranges this very panel in both modes and holds the
+ * rectangle it lands in against what that function said. Two constants here would be a second copy
+ * of the answer with no test between them.
  */
-static constexpr float PieceMenuPanelWidthPx = 640.0f;
-static constexpr float PieceMenuPanelHeightPx = 560.0f;
 
-/** How far the panel sits off the right edge of the viewport. */
-static constexpr float PieceMenuPanelMarginPx = 24.0f;
+/**
+ * HOW FAR IN FROM THE VIEWPORT'S RIGHT EDGE THE PANEL OPENS.
+ *
+ * THE OLD FIGURE, COMING BACK AS AN ARGUMENT. The panel used to be an SBox at HAlign_Right /
+ * VAlign_Center with a 24 px margin, argued on the record as keeping the readout off the wall the
+ * player is pointing at; making it draggable replaced the alignment with an offset and the home
+ * defaulted to the origin. PieceMenuHomeOffset takes this as a parameter rather than spelling it,
+ * which is what lets Presenter.PanelHomeOffset sweep no margin, this one, one wider than the screen
+ * and a negative one — a value passed in is a value a test can vary.
+ */
+static constexpr double PieceMenuPanelHomeMarginPx = 24.0;
 
 /** The gap between the panel's background and anything drawn on it. */
 static constexpr float PieceMenuPanelPaddingPx = 10.0f;
@@ -180,7 +174,7 @@ static constexpr float PieceMenuBrickListMaxHeightPx = 190.0f;
  * flush wall, which bends nowhere and so never prints the bending clause; World.Menu.TheReadout-
  * FitsInsideThePanel now sweeps a wall with a corbel in it too, and the longest sentence that one
  * produces clears the column by 22 px at the panel's present width. A wider bar has to come out
- * of that, or out of PieceMenuPanelWidthPx alongside it.
+ * of that, or out of PieceMenuPanelSizePx's full width alongside it.
  */
 static constexpr float PieceMenuHeadroomBarWidthPx = 140.0f;
 static constexpr float PieceMenuHeadroomBarHeightPx = 8.0f;
@@ -231,6 +225,17 @@ static const FLinearColor PieceMenuReadoutColour(0.82f, 0.86f, 0.92f, 1.0f);
 static const FLinearColor PieceMenuHintColour(0.55f, 0.60f, 0.68f, 1.0f);
 static const FLinearColor PieceMenuRuleColour(1.0f, 1.0f, 1.0f, 0.16f);
 static const FLinearColor PieceMenuHeadroomTrackColour(0.0f, 0.0f, 0.0f, 0.55f);
+
+/*
+ * WHAT THE TITLE STRIP IS TINTED, WHICH IS THE ONLY THING SAYING THE PANEL CAN BE MOVED.
+ *
+ * A lift off the panel's own background rather than a colour of its own: it has to read as part of
+ * the panel and as a separate strip at the same time, which is what a title bar is. The other half
+ * of the affordance is the grab cursor, and between them there is no word — a word would be a word
+ * chosen in the one place no test can read it, and FPieceMenuInspector is where the panel's words
+ * are decided.
+ */
+static const FLinearColor PieceMenuGrabStripColour(0.16f, 0.18f, 0.24f, 0.75f);
 
 /*
  * WHAT EACH BAND OF BAR IS FILLED IN, AND THE BAND ITSELF IS THE MODEL'S DECISION RATHER THAN
@@ -1051,9 +1056,69 @@ void ADestructionGamePlayerController::BuildPieceMenuWidget()
 		return;
 	}
 
+	/*
+	 * THE PANEL TAKES ITS HOME THE FIRST TIME IT IS SHOWN, AND NEVER AGAIN.
+	 *
+	 * ONCE, BECAUSE THE MENU IS REBUILT ON EVERY CLICK. PieceMenuPanelOffsetPx is controller state
+	 * precisely so a corner the player chose survives the panel being torn down and put back; a home
+	 * taken on every build would overwrite it, and the panel would snap back across the screen the
+	 * next time they picked a brick — which is the complaint this whole seam answers, arrived at
+	 * from the other direction.
+	 *
+	 * WHERE it opens is Core's decision and not this function's, for the reason ClampPanelOffset is:
+	 * it is arithmetic on two sizes and a margin, the failure is a panel that opens somewhere
+	 * unusable, and a widget cannot be asked whether it got it right. Presenter.PanelHomeOffset holds
+	 * it, including the rows where the answer is the origin — and it composes with the clamp rather
+	 * than restating it, so nothing here has to clamp what it hands back.
+	 */
+	if (!bPieceMenuPanelHasOpened)
+	{
+		PieceMenuPanelOffsetPx = PieceMenuHomeOffset(
+			PieceMenuPanelSizePx(PieceMenuPanelDetail),
+			PieceMenuViewportSizeAtOpenPx(*Viewport),
+			PieceMenuPanelHomeMarginPx);
+
+		bPieceMenuPanelHasOpened = true;
+	}
+
 	PieceMenuWidget = BuildPieceMenuPanel();
 
 	Viewport->AddViewportWidgetContent(PieceMenuWidget.ToSharedRef());
+}
+
+FVector2D ADestructionGamePlayerController::PieceMenuViewportSizeAtOpenPx(
+	const UGameViewportClient& Viewport) const
+{
+	/*
+	 * THE SCREEN, IN THE UNITS THE PANEL'S OFFSET IS STATED IN, BEFORE THERE IS A PANEL TO ASK.
+	 *
+	 * PieceMenuViewportSizePx READS THE PANEL'S OWN LAID-OUT ROOT AND IS THE RIGHT ANSWER, and it is
+	 * not available yet: a widget built this frame has no cached geometry, so a home worked out from
+	 * it would be the origin for the whole of the first menu — which is exactly the corner nobody
+	 * chose that this is here to stop. The viewport client knows its size before anything is laid
+	 * out.
+	 *
+	 * IN SCREEN PIXELS, WHICH IS THE WRONG UNIT BY EXACTLY THE DPI SCALE. The constraint canvas is
+	 * viewport content and so lays out under Slate's scaler; a home measured in screen pixels and
+	 * applied in scaled ones would open the panel past the right edge by that factor, and the clamp
+	 * would then quietly pull it back — a fault that is invisible rather than absent, and the same
+	 * one PieceMenuViewportSizePx's own comment names. Dividing by the scale is the whole conversion.
+	 *
+	 * A SCALE THAT IS NOT A POSITIVE NUMBER FAILS TO NO SCREEN AT ALL, AND THE GUARD IS WRITTEN
+	 * `!(X > 0)` SO A NaN LANDS INSIDE IT. A viewport of no size puts the home at the origin, which
+	 * is the corner that is on screen at every size and every scale.
+	 */
+	const double ScaleFactor = Viewport.GetDPIScale();
+
+	if (!(ScaleFactor > 0.0))
+	{
+		return FVector2D::ZeroVector;
+	}
+
+	FVector2D ScreenSizePx = FVector2D::ZeroVector;
+	Viewport.GetViewportSize(ScreenSizePx);
+
+	return ScreenSizePx / ScaleFactor;
 }
 
 TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
@@ -1063,8 +1128,14 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 	 * counts, formats, pluralises, filters or resolves anything — Core/PieceMenu.h says at
 	 * length why each of those decisions is already made in the model, and the short version
 	 * is that this function is the one place no test can reach.
+	 *
+	 * AND THE DETAIL IS THE PANEL'S OWN RATHER THAN THE ACCESSOR'S DEFAULT, which is the one
+	 * argument on this line and the one place the compact request is allowed to reach. The joint
+	 * table is also the index NeighbourHighlightForPiece colours the wall from, so a compact
+	 * answer handed to the shared accessor would darken every neighbour highlight along with the
+	 * table — see PieceMenuInspectorForSelection.
 	 */
-	const FPieceMenuInspector Inspector = PieceMenuInspectorForSelection();
+	const FPieceMenuInspector Inspector = PieceMenuInspectorForSelection(PieceMenuPanelDetail);
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
@@ -1072,30 +1143,56 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 	 * THE HEADING AND THE COUNT SHARE A ROW, because they are one sentence about one thing and a
 	 * count wrapped onto its own line spends a row of a fixed panel on nothing. Both strings are
 	 * the model's; which of them is bold is the only thing decided here.
+	 *
+	 * AND THAT ROW IS THE HANDLE THE PANEL IS MOVED BY. A title bar is where every desktop already
+	 * puts one, it is the widest thing on the panel that holds nothing clickable, and it is the one
+	 * strip that is there in every state — a grab affordance that vanished when nothing was
+	 * selected would strand a panel with nothing in it.
+	 *
+	 * THE BORDER TAKES NO PADDING OF ITS OWN, WHICH IS LOAD-BEARING RATHER THAN TIDY. Six layout
+	 * tests measure where the rows below this one land; a border that inset its content would push
+	 * every one of them down by however much it took, so the strip is a background and four event
+	 * bindings and changes no geometry at all. The grab cursor is what says it can be dragged,
+	 * because a word saying so would be a word chosen in the one place no test can read it.
 	 */
 	Panel->AddSlot()
 		.AutoHeight()
 		.Padding(0.0f, 0.0f, 0.0f, 6.0f)
 		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, 10.0f, 0.0f)
+			SAssignNew(PieceMenuGrabStrip, SBorder)
+			.BorderImage(PieceMenuFillBrush())
+			.BorderBackgroundColor(PieceMenuGrabStripColour)
+			.Padding(FMargin(0.0f))
+			.Cursor(EMouseCursor::GrabHand)
+			.OnMouseButtonDown(FPointerEventHandler::CreateUObject(
+				this, &ADestructionGamePlayerController::OnPieceMenuPanelGrabbed))
+			.OnMouseMove(FPointerEventHandler::CreateUObject(
+				this, &ADestructionGamePlayerController::OnPieceMenuPanelDragged))
+			.OnMouseButtonUp(FPointerEventHandler::CreateUObject(
+				this, &ADestructionGamePlayerController::OnPieceMenuPanelReleased))
+			.OnMouseDoubleClick(FPointerEventHandler::CreateUObject(
+				this, &ADestructionGamePlayerController::OnPieceMenuPanelDetailToggled))
 			[
-				SNew(STextBlock)
-				.Font(PieceMenuHeaderFont())
-				.ColorAndOpacity(PieceMenuHeaderColour)
-				.Text(FText::FromString(Inspector.HeaderText))
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Font(PieceMenuBodyFont())
-				.ColorAndOpacity(PieceMenuCountColour)
-				.Text(FText::FromString(Inspector.CountText))
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, 10.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Font(PieceMenuHeaderFont())
+					.ColorAndOpacity(PieceMenuHeaderColour)
+					.Text(FText::FromString(Inspector.HeaderText))
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Font(PieceMenuBodyFont())
+					.ColorAndOpacity(PieceMenuCountColour)
+					.Text(FText::FromString(Inspector.CountText))
+				]
 			]
 		];
 
@@ -1278,7 +1375,7 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 	}
 
 	/*
-	 * A FIXED SIZE ON A REAL BACKGROUND, ANCHORED TO THE RIGHT EDGE.
+	 * A FIXED SIZE ON A REAL BACKGROUND, PLACED WHEREVER THE PLAYER LAST PUT IT.
 	 *
 	 * THE SIZE IS THE MECHANISM AND THE BACKGROUND IS THE DEFECT NO TEST COULD SEE. A panel that
 	 * cannot change size cannot move a row out from under a cursor, whatever it is anchored to
@@ -1288,18 +1385,38 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 	 * a wall, invisible against anything bright, and unreachable by a headless suite that paints
 	 * no pixels. A near-opaque fill behind the whole panel is what makes the readout readable.
 	 *
-	 * THE RIGHT EDGE RATHER THAN THE MIDDLE, because the panel is now big enough to hang over the
-	 * wall a player is pointing at, and the wall is the thing they are trying to look at.
+	 * A POSITION RATHER THAN AN ALIGNMENT, WHICH IS WHAT THE PLAYER ASKED FOR. This used to be an
+	 * SBox pinned to the right edge and centred down it — a placement nobody could argue with, and
+	 * being unable to argue with it is the complaint. A constraint canvas takes the corner as a
+	 * value, so the same tree draws wherever PieceMenuPanelOffsetPx says, and a drag is then a new
+	 * value rather than a new layout.
+	 *
+	 * ANCHORED AND ALIGNED TO THE TOP-LEFT SO THE OFFSET MEANS WHAT ClampPanelOffset SAYS IT MEANS.
+	 * The clamp reasons about the panel's top-left corner in viewport pixels and about nothing
+	 * else; an anchor anywhere but the origin would make the stored number a distance from
+	 * somewhere the clamp has never heard of, which is the correct-layer-joined-wrongly defect this
+	 * codebase keeps paying for. AutoSize takes the size from the child, so the panel's dimensions
+	 * are stated once, on the box that overrides them, instead of again in the slot's margin.
+	 *
+	 * AND THE SIZE IS THE PRESENTER'S ANSWER FOR THIS MODE, NOT A CONSTANT BESIDE THIS SLATE. The
+	 * override is a DESIRED size and a filling slot would hand its child whatever width it liked
+	 * regardless, so the join is measured rather than argued: World.Menu.TheReadoutFitsInsideThe-
+	 * Panel arranges this tree in both modes and reads the rectangle back.
 	 */
+	const FVector2D PanelSizePx = PieceMenuPanelSizePx(PieceMenuPanelDetail);
+
 	TSharedRef<SWidget> Framed =
-		SNew(SBox)
-		.HAlign(HAlign_Right)
-		.VAlign(VAlign_Center)
-		.Padding(FMargin(0.0f, 0.0f, PieceMenuPanelMarginPx, 0.0f))
+		SNew(SConstraintCanvas)
+		+ SConstraintCanvas::Slot()
+		.Anchors(FAnchors(0.0f, 0.0f))
+		.Alignment(FVector2D(0.0f, 0.0f))
+		.AutoSize(true)
+		.Offset(TAttribute<FMargin>::Create(TAttribute<FMargin>::FGetter::CreateUObject(
+			this, &ADestructionGamePlayerController::PieceMenuPanelSlotOffset)))
 		[
 			SNew(SBox)
-			.WidthOverride(PieceMenuPanelWidthPx)
-			.HeightOverride(PieceMenuPanelHeightPx)
+			.WidthOverride(static_cast<float>(PanelSizePx.X))
+			.HeightOverride(static_cast<float>(PanelSizePx.Y))
 			[
 				SNew(SBorder)
 				.BorderImage(PieceMenuFillBrush())
@@ -1316,6 +1433,139 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 	return Framed;
 }
 
+FMargin ADestructionGamePlayerController::PieceMenuPanelSlotOffset() const
+{
+	/*
+	 * THE CORNER, AND NOTHING ELSE. The slot is AutoSize, so the last two components of the margin
+	 * are the size the canvas ignores in favour of the child's own — stating the panel's dimensions
+	 * here as well would be the second copy that eventually disagrees with the first.
+	 */
+	return FMargin(PieceMenuPanelOffsetPx.X, PieceMenuPanelOffsetPx.Y, 0.0f, 0.0f);
+}
+
+FVector2D ADestructionGamePlayerController::PieceMenuViewportSizePx() const
+{
+	/*
+	 * THE ROOT OF THE PANEL IS THE VIEWPORT, so its own local size is the screen in the units the
+	 * offset above is stated in — see the header for why UGameViewportClient::GetViewportSize is
+	 * the wrong answer by exactly the DPI scale. Zero with no panel up clamps every offset to the
+	 * origin, which is the fail-closed corner rather than a case needing its own handling.
+	 */
+	return PieceMenuWidget.IsValid()
+		? FVector2D(PieceMenuWidget->GetTickSpaceGeometry().GetLocalSize())
+		: FVector2D::ZeroVector;
+}
+
+FReply ADestructionGamePlayerController::OnPieceMenuPanelGrabbed(
+	const FGeometry& Geometry,
+	const FPointerEvent& Event)
+{
+	/*
+	 * WHERE BOTH THINGS WERE WHEN THE PRESS LANDED, AND THE CAPTURE THAT KEEPS THEM COMING. Slate
+	 * stops sending moves the moment the pointer leaves a widget, so without the capture a drag
+	 * faster than the strip is wide drops the panel wherever the cursor crossed the edge.
+	 */
+	/*
+	 * THE CORNER IS RE-CLAMPED AS IT IS PICKED UP, WHICH IS WHAT SURVIVES A VIEWPORT RESIZE. A
+	 * corner that was inside a 1920 px screen is outside a 1280 px one, and nothing tells this
+	 * class the window changed — so the stored value is held against the screen as it is NOW
+	 * before a drag is measured from it. Clamping is idempotent, which is what makes doing this on
+	 * every press free: an offset already in range comes back untouched.
+	 */
+	PieceMenuPanelOffsetPx = ClampPanelOffset(
+		PieceMenuPanelOffsetPx,
+		PieceMenuPanelSizePx(PieceMenuPanelDetail),
+		PieceMenuViewportSizePx());
+
+	PieceMenuPanelGrabbedFromPx = PieceMenuPanelOffsetPx;
+	PieceMenuCursorGrabbedAtPx = FVector2D(Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition()));
+	bPieceMenuPanelIsHeld = true;
+
+	return PieceMenuGrabStrip.IsValid()
+		? FReply::Handled().CaptureMouse(PieceMenuGrabStrip.ToSharedRef())
+		: FReply::Handled();
+}
+
+FReply ADestructionGamePlayerController::OnPieceMenuPanelDragged(
+	const FGeometry& Geometry,
+	const FPointerEvent& Event)
+{
+	/*
+	 * A MOVE THAT IS NOT A DRAG IS SOMEBODY'S CURSOR CROSSING THE STRIP. Slate sends moves whether
+	 * or not a button is down, and a panel that followed the pointer without being picked up would
+	 * be unusable rather than draggable.
+	 */
+	if (!bPieceMenuPanelIsHeld)
+	{
+		return FReply::Unhandled();
+	}
+
+	/*
+	 * THE DRAG IS MEASURED FROM THE PRESS RATHER THAN FROM THE LAST FRAME, so the corner tracks the
+	 * cursor exactly instead of accumulating a rounding per move — and so that dragging into a
+	 * corner and back out returns to where it started rather than to wherever the clamp pinned it
+	 * on the way through. AbsoluteToLocal on both ends puts the delta in the canvas's own units
+	 * whatever the DPI scale; the translation cancels in the subtraction.
+	 */
+	const FVector2D DraggedToPx = PieceMenuPanelGrabbedFromPx
+		+ FVector2D(Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition()))
+		- PieceMenuCursorGrabbedAtPx;
+
+	/*
+	 * AND WHERE THAT IS ALLOWED TO LEAVE THE PANEL IS Core'S DECISION, NOT THIS FUNCTION'S. It is
+	 * the half that can strand the panel — a corner off the top of the screen leaves nothing to
+	 * grab — and it is arithmetic on six doubles, so Presenter.PanelOffsetClamp holds it.
+	 */
+	PieceMenuPanelOffsetPx = ClampPanelOffset(
+		DraggedToPx,
+		PieceMenuPanelSizePx(PieceMenuPanelDetail),
+		PieceMenuViewportSizePx());
+
+	return FReply::Handled();
+}
+
+FReply ADestructionGamePlayerController::OnPieceMenuPanelReleased(
+	const FGeometry& Geometry,
+	const FPointerEvent& Event)
+{
+	bPieceMenuPanelIsHeld = false;
+
+	return FReply::Handled().ReleaseMouseCapture();
+}
+
+FReply ADestructionGamePlayerController::OnPieceMenuPanelDetailToggled(
+	const FGeometry& Geometry,
+	const FPointerEvent& Event)
+{
+	/*
+	 * THE PANEL'S MODE ONLY, WHICH IS THE WHOLE CARE HERE. NeighbourHighlightForPiece and
+	 * NeighbourPieces read the joint table to colour bricks in the wall, and they ask
+	 * PieceMenuInspectorForSelection for themselves with no argument — so rolling the readout up
+	 * cannot take the neighbour colours with it. See the header.
+	 *
+	 * THE WHOLE PANEL IS REBUILT RATHER THAN THE READOUT SWAPPED, because a mode change moves the
+	 * action rows: the readout is a fill slot, so what is in it decides nothing, but the mode is
+	 * read while the heading, the brick list and every row is composed. It is safe to rebuild here
+	 * for the reason RefreshPieceMenuInspectorWidget is not — the cursor is on the title strip, not
+	 * on an entry button, so nothing being destroyed can fire a hover at its own replacement.
+	 */
+	PieceMenuPanelDetail = PieceMenuPanelDetail == EPieceMenuDetail::Compact
+		? EPieceMenuDetail::Full
+		: EPieceMenuDetail::Compact;
+
+	/*
+	 * AND THE DRAG IS OVER, WHICH THE DOUBLE-CLICK'S OWN PRESS TURNED ON. Slate sends a press
+	 * before a double-click, so the strip is holding a grab that will never see a release once the
+	 * widget under the cursor is torn down and replaced.
+	 */
+	bPieceMenuPanelIsHeld = false;
+
+	RemovePieceMenuWidget();
+	BuildPieceMenuWidget();
+
+	return FReply::Handled().ReleaseMouseCapture();
+}
+
 void ADestructionGamePlayerController::RemovePieceMenuWidget()
 {
 	if (!PieceMenuWidget.IsValid())
@@ -1330,8 +1580,14 @@ void ADestructionGamePlayerController::RemovePieceMenuWidget()
 		Viewport->RemoveViewportWidgetContent(PieceMenuWidget.ToSharedRef());
 	}
 
-	/* The box lives inside the panel, so it goes with it and never outlives it. */
+	/*
+	 * BOTH HANDLES LIVE INSIDE THE PANEL, SO THEY GO WITH IT AND NEVER OUTLIVE IT. The grab strip
+	 * is released beside the readout box for the same reason it was taken beside it: it is a
+	 * pointer into the tree rather than a second viewport widget, and a stale one would keep a torn
+	 * down panel alive to be captured to.
+	 */
 	PieceMenuInspectorBox.Reset();
+	PieceMenuGrabStrip.Reset();
 
 	PieceMenuWidget.Reset();
 }
@@ -1343,7 +1599,8 @@ void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
 		return;
 	}
 
-	const FPieceMenuInspector Inspector = PieceMenuInspectorForSelection();
+	/* The panel's own detail, for the reason BuildPieceMenuPanel states beside the same argument. */
+	const FPieceMenuInspector Inspector = PieceMenuInspectorForSelection(PieceMenuPanelDetail);
 
 	TSharedRef<SVerticalBox> Readout = SNew(SVerticalBox);
 
@@ -1498,7 +1755,8 @@ void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
 		]);
 }
 
-FPieceMenuInspector ADestructionGamePlayerController::PieceMenuInspectorForSelection() const
+FPieceMenuInspector ADestructionGamePlayerController::PieceMenuInspectorForSelection(
+	EPieceMenuDetail Detail) const
 {
 	/*
 	 * ONE READOUT FOR THE WHOLE SELECTION, AGAINST THE STRUCTURE ITS REFS NAME — the same
@@ -1527,7 +1785,13 @@ FPieceMenuInspector ADestructionGamePlayerController::PieceMenuInspectorForSelec
 	const FStructureBinding NoStructure;
 
 	return BuildPieceMenuInspector(
-		Binding != nullptr ? *Binding : NoStructure, Selected, InspectedPiece);
+		Binding != nullptr ? *Binding : NoStructure, Selected, InspectedPiece, Detail);
+}
+
+void ADestructionGamePlayerController::SetPieceMenuDetail(EPieceMenuDetail Detail)
+{
+	/* A FIELD, AND NOTHING ELSE. See the header: this is a seam, not a behaviour. */
+	PieceMenuPanelDetail = Detail;
 }
 
 FReply ADestructionGamePlayerController::OnPieceMenuRowClicked(int32 RowIndex)

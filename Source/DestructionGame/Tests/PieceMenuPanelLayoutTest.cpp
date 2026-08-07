@@ -878,6 +878,26 @@ namespace PieceMenuPanelLayoutTestSupport
 		return Ancestor;
 	}
 
+	/**
+	 * THE PANEL'S OWN RECTANGLE ON SCREEN: the constraint canvas's one child, arranged.
+	 *
+	 * NOT THE CANVAS AND NOT GetDesiredSize(). The canvas is arranged at the whole root geometry —
+	 * it is the viewport — so its rectangle says nothing about the panel; and its DESIRED size is
+	 * the child's plus the drag offset baked in (SConstraintCanvas::ComputeDesiredSize adds
+	 * |Offset.Left| for a slot docked at anchor 0), so it moves when the player drags and again if
+	 * the panel ever opens anywhere but the origin. The child's arranged rectangle is the panel
+	 * itself, corner and size, independent of both.
+	 *
+	 * FOUND BY PARENTAGE RATHER THAN BY INDEX so it survives a wrapper being added around the box
+	 * that overrides the size — what it depends on is that the canvas places one panel, which is
+	 * what a canvas placing the piece menu means.
+	 */
+	const FPanelWidget* PanelRectangle(const TArray<FPanelWidget>& Widgets)
+	{
+		return Widgets.FindByPredicate(
+			[](const FPanelWidget& Widget) { return Widget.ParentIndex == 0; });
+	}
+
 	FString DescribePanelWidget(const FPanelWidget& Widget)
 	{
 		return FString::Printf(
@@ -1008,48 +1028,107 @@ namespace PieceMenuPanelLayoutTestSupport
 	constexpr double PanelTickLabelGapPx = 4.0;
 
 	/**
+	 * WHAT ONE SWEEP MEASURED, so the two DETAIL MODES can be held against each other afterwards.
+	 *
+	 * THE PANEL'S OWN RECTANGLE IS HERE BECAUSE THE PLAYER'S COMPLAINT IS ABOUT IT AND NOT ABOUT
+	 * THE COLUMN INSIDE IT. "It takes up so much of the screen" is a claim about how much viewport
+	 * the panel covers; whether its sentences fit is the separate claim the line sweep makes. Both
+	 * come off one arrangement, and neither is worth much without the other — a panel that shrank
+	 * and clipped its own text is a worse answer than one that never shrank.
+	 */
+	struct FPanelFitMeasurement
+	{
+		bool bMeasured = false;
+
+		/** The panel as arranged: where its corner is, and how much screen it covers. */
+		FVector2D PanelTopLeftPx = FVector2D::ZeroVector;
+		FVector2D PanelSizePx = FVector2D::ZeroVector;
+
+		/** The column everything inside it has to fit in, measured off the action row. */
+		double ContentLeftPx = 0.0;
+		double ContentRightPx = 0.0;
+
+		/** How much room the tightest line had left, and which line that was. */
+		double TightestSlackPx = 0.0;
+		FString TightestLine;
+	};
+
+	/**
 	 * SWEEP EVERY LINE THIS SELECTION'S READOUT SUPPLIES AND HOLD IT INSIDE THE PANEL'S COLUMN.
 	 *
-	 * A FUNCTION RATHER THAN A RunTest BODY BECAUSE THE CLAIM NOW HAS TWO WALLS TO MAKE IT ABOUT,
-	 * and it is one claim. A flush running bond bends nowhere, so its readout never grows the
-	 * bending clause and the sweep over it cannot see the panel's width at all; a wall with a
-	 * corbel on it prints the longest line this panel can produce. Two copies of this body would
-	 * be two chances for one of them to drift into measuring something else.
+	 * A FUNCTION RATHER THAN A RunTest BODY BECAUSE THE CLAIM NOW HAS TWO WALLS AND TWO DETAIL
+	 * MODES TO MAKE IT ABOUT, and it is one claim. A flush running bond bends nowhere, so its
+	 * readout never grows the bending clause and the sweep over it cannot see the panel's width at
+	 * all; a wall with a corbel on it prints the longest line this panel can produce. Four copies of
+	 * this body would be four chances for one of them to drift into measuring something else.
+	 *
+	 * THE MODE CHANGES WHICH LINES EXIST AND THEREFORE WHICH LINE IS LONGEST, WHICH IS THE WHOLE
+	 * REASON COMPACT NEEDS ITS OWN SWEEP RATHER THAN INHERITING FULL'S ANSWER. The full panel's
+	 * width was derived from the longest JOINT line — 617.5 px on the ragged wall — and compact
+	 * drops exactly those, so its width has to be derived from the longest line it still shows. That
+	 * is an ENTRY ROW: a support dot, a brick's position label, and the fixed column the support
+	 * word is set in. Entry rows are therefore swept in both modes, which they were not before —
+	 * without them a compact panel could be narrowed to the width of "3 bricks selected" and every
+	 * assertion here would still pass while the brick list ran off the edge.
 	 *
 	 * @param WallDescription names which wall a failure came off, since both run in one test.
+	 * @param Detail which mode to build and measure. The controller is left in it.
 	 */
-	void SweepReadoutFitsInsideThePanel(
+	FPanelFitMeasurement SweepReadoutFitsInsideThePanel(
 		FAutomationTestBase& Test,
 		ADestructionGamePlayerController* Controller,
 		const FPieceRef& InspectedRef,
-		const TCHAR* WallDescription)
+		const TCHAR* WallDescription,
+		EPieceMenuDetail Detail)
 	{
+		const bool bIsCompact = Detail == EPieceMenuDetail::Compact;
+		const TCHAR* const DetailName = bIsCompact ? TEXT("compact") : TEXT("full");
+
+		FPanelFitMeasurement Measured;
+
+		/* THE MODE IS SET BEFORE THE BUILD, because the build is what reads it. */
+		Controller->SetPieceMenuDetail(Detail);
+
 		const TSharedRef<SWidget> Panel = Controller->BuildPieceMenuPanel();
 		const FGeometry Root = PanelRootGeometry();
 
 		/* The readout is only full — and only as wide as it gets — with a brick singled out. */
 		Controller->SetInspectedPiece(InspectedRef);
 
-		const FPieceMenuInspector Inspector = Controller->PieceMenuInspectorForSelection();
+		const FPieceMenuInspector Inspector = Controller->PieceMenuInspectorForSelection(Detail);
 		const FPanelLayoutState State = MeasurePanel(Panel, Root);
 
 		const TArrayView<const FPieceMenuRow> Rows = Controller->GetShownPieceMenuRows();
 
 		Test.TestTrue(
 			FString::Printf(
-				TEXT("fixture (%s): the selection should offer at least one action row to measure the panel by, the presenter shows %d"),
-				WallDescription, Rows.Num()),
+				TEXT("fixture (%s, %s): the selection should offer at least one action row to measure the panel by, the presenter shows %d"),
+				WallDescription, DetailName, Rows.Num()),
 			Rows.Num() >= 1);
+
+		/*
+		 * FIXTURE: THE FULL READOUT HAS A TABLE, AND THE COMPACT ONE HAS DROPPED IT. Asked of the
+		 * same controller in the same state, so a compact sweep over a brick that never had joints
+		 * says so instead of quietly reporting that compact drops nothing.
+		 */
+		const int32 FullJointCount =
+			Controller->PieceMenuInspectorForSelection(EPieceMenuDetail::Full).Joints.Num();
 
 		Test.TestTrue(
 			FString::Printf(
-				TEXT("fixture (%s): the singled-out brick should break out joints for the readout to be wide, it broke out %d"),
-				WallDescription, Inspector.Joints.Num()),
-			Inspector.Joints.Num() >= 3);
+				TEXT("fixture (%s, %s): the singled-out brick should break out joints in FULL detail for the width to be about anything, it broke out %d"),
+				WallDescription, DetailName, FullJointCount),
+			FullJointCount >= 3);
 
-		if (Rows.Num() == 0 || Inspector.Joints.Num() < 3)
+		Test.TestEqual(
+			FString::Printf(
+				TEXT("fixture (%s, %s): this mode should break out %d joint row(s), it broke out %d"),
+				WallDescription, DetailName, bIsCompact ? 0 : FullJointCount, Inspector.Joints.Num()),
+			Inspector.Joints.Num(), bIsCompact ? 0 : FullJointCount);
+
+		if (Rows.Num() == 0 || FullJointCount < 3)
 		{
-			return;
+			return Measured;
 		}
 
 		const FPanelButton* const ActionRow = FindPanelButton(State.Buttons, Rows.Last().Label);
@@ -1060,7 +1139,7 @@ namespace PieceMenuPanelLayoutTestSupport
 				TEXT("the panel must draw the action row '%s' for its content width to be measurable; it drew %s"),
 				*Rows.Last().Label, *DescribePanelButtons(State.Buttons)));
 
-			return;
+			return Measured;
 		}
 
 		const double ContentLeftPx = ActionRow->TopLeftPx.X;
@@ -1073,14 +1152,57 @@ namespace PieceMenuPanelLayoutTestSupport
 		 */
 		Test.TestTrue(
 			*FString::Printf(
-				TEXT("fixture (%s): the action row should span a real width, it spans x %.2f..%.2f in a %.0f px viewport"),
-				WallDescription, ContentLeftPx, ContentRightPx, PanelViewportWidthPx),
+				TEXT("fixture (%s, %s): the action row should span a real width, it spans x %.2f..%.2f in a %.0f px viewport"),
+				WallDescription, DetailName, ContentLeftPx, ContentRightPx, PanelViewportWidthPx),
 			ActionRow->SizePx.X > 0.0 && ActionRow->SizePx.X < PanelViewportWidthPx);
 
 		if (!(ActionRow->SizePx.X > 0.0))
 		{
-			return;
+			return Measured;
 		}
+
+		/*
+		 * THE PANEL'S OWN RECTANGLE, AND THE CLAIM THAT IT IS THE PRESENTER'S ANSWER.
+		 *
+		 * THIS IS THE JOIN, AND IT IS THE ONE THIS PROJECT HAS ALREADY GOT WRONG. PieceMenuPanelSizePx
+		 * decides how much screen a mode may take; an SBox override only states a DESIRED size, and a
+		 * slot that fills hands its child whatever width it likes regardless — a 540 px canvas once
+		 * sat over 96 px bars on exactly that. Reading the ARRANGED rectangle back and holding it
+		 * against what the presenter said is what makes "the widget honours the model" a measurement
+		 * rather than a reading of the source.
+		 */
+		const FPanelWidget* const PanelRect = PanelRectangle(State.Widgets);
+
+		if (PanelRect == nullptr)
+		{
+			Test.AddError(FString::Printf(
+				TEXT("fixture (%s, %s): the canvas should place exactly one panel for its rectangle to be measurable"),
+				WallDescription, DetailName));
+
+			return Measured;
+		}
+
+		Test.AddInfo(FString::Printf(
+			TEXT("%s, %s detail: the panel is arranged %s"),
+			WallDescription, DetailName, *DescribePanelWidget(*PanelRect)));
+
+		const FVector2D SaidSizePx = PieceMenuPanelSizePx(Detail);
+
+		Test.TestTrue(
+			*FString::Printf(
+				TEXT("the %s panel must be drawn at the size the presenter gives for that mode (%s, %.2f x %.2f px): it is arranged %.2f x %.2f px, out by %.2f x %.2f px (%s)"),
+				DetailName, DetailName, SaidSizePx.X, SaidSizePx.Y,
+				PanelRect->SizePx.X, PanelRect->SizePx.Y,
+				PanelRect->SizePx.X - SaidSizePx.X, PanelRect->SizePx.Y - SaidSizePx.Y,
+				WallDescription),
+			FMath::IsNearlyEqual(PanelRect->SizePx.X, SaidSizePx.X, PanelSpanContainmentSlackPx)
+				&& FMath::IsNearlyEqual(PanelRect->SizePx.Y, SaidSizePx.Y, PanelSpanContainmentSlackPx));
+
+		Measured.bMeasured = true;
+		Measured.PanelTopLeftPx = PanelRect->TopLeftPx;
+		Measured.PanelSizePx = PanelRect->SizePx;
+		Measured.ContentLeftPx = ContentLeftPx;
+		Measured.ContentRightPx = ContentRightPx;
 
 		/*
 		 * EVERY LINE THE MODEL SUPPLIED FOR THIS STATE, taken from the model rather than read back
@@ -1088,20 +1210,49 @@ namespace PieceMenuPanelLayoutTestSupport
 		 * assertion that quietly skipped itself.
 		 */
 		TArray<FString> ReadoutLines;
-		ReadoutLines.Add(Inspector.InspectedLabel);
-		ReadoutLines.Add(Inspector.SupportText);
-		ReadoutLines.Add(Inspector.JointsText);
+		ReadoutLines.AddUnique(Inspector.InspectedLabel);
+		ReadoutLines.AddUnique(Inspector.SupportText);
+		ReadoutLines.AddUnique(Inspector.JointsText);
+
+		/*
+		 * AND THE BRICK LIST, WHICH IS WHAT SETS A COMPACT PANEL'S WIDTH.
+		 *
+		 * An entry row is a dot, a position label and the support word set in a fixed column beside
+		 * it, and with the joint table gone it is the widest thing left on the panel. Swept in BOTH
+		 * modes rather than only in compact, because a claim that changes shape with the mode is two
+		 * claims — and because the entry rows were already believed to be swept here: the comment on
+		 * PieceMenuEntrySupportWidthPx in the controller says so, and until now it was not true.
+		 *
+		 * AddUnique THROUGHOUT, because the inspected brick's label is drawn twice by construction —
+		 * once as its own entry row and once as the readout's heading — and two bricks can share a
+		 * support word. FindPanelWidgetsByText already holds every widget that reads a line, so a
+		 * duplicate entry here would only assert the same widgets twice and print them twice.
+		 */
+		for (const FInspectorPieceEntry& Entry : Inspector.Pieces)
+		{
+			ReadoutLines.AddUnique(Entry.Label);
+			ReadoutLines.AddUnique(Entry.SupportText);
+		}
 
 		for (const FInspectorJointRow& Joint : Inspector.Joints)
 		{
-			ReadoutLines.Add(Joint.Text);
+			ReadoutLines.AddUnique(Joint.Text);
 		}
 
-		ReadoutLines.Add(Inspector.HeadroomCaption);
-
-		for (const FHeadroomScaleTick& Tick : Inspector.HeadroomScale)
+		/*
+		 * THE BAR'S CAPTION AND ITS TICKS ARE ASKED FOR EXACTLY WHEN THERE IS A BAR. The model
+		 * promises both are empty when no bar is drawn, which is precisely the compact state — and
+		 * the loop below reports an empty line as a fault in the model, correctly, so asking for
+		 * them unconditionally would turn the model keeping its own promise into an error.
+		 */
+		if (Inspector.Joints.Num() > 0)
 		{
-			ReadoutLines.Add(Tick.Label);
+			ReadoutLines.AddUnique(Inspector.HeadroomCaption);
+
+			for (const FHeadroomScaleTick& Tick : Inspector.HeadroomScale)
+			{
+				ReadoutLines.AddUnique(Tick.Label);
+			}
 		}
 
 		double TightestSlackPx = TNumericLimits<double>::Max();
@@ -1160,9 +1311,9 @@ namespace PieceMenuPanelLayoutTestSupport
 				 */
 				Test.TestTrue(
 					*FString::Printf(
-						TEXT("readout line '%s' must fit inside the panel (%s): it needs x %.2f..%.2f against a content column of %.2f..%.2f, overrunning by %.2f px"),
-						*Line, WallDescription, LineLeftPx, LineRightPx, ContentLeftPx, ContentRightPx,
-						LineRightPx - ContentRightPx),
+						TEXT("readout line '%s' must fit inside the %s panel (%s): it needs x %.2f..%.2f against a content column of %.2f..%.2f, overrunning by %.2f px"),
+						*Line, DetailName, WallDescription, LineLeftPx, LineRightPx,
+						ContentLeftPx, ContentRightPx, LineRightPx - ContentRightPx),
 					LineLeftPx >= ContentLeftPx - PanelSpanContainmentSlackPx
 						&& LineRightPx <= ContentRightPx + PanelSpanContainmentSlackPx);
 			}
@@ -1175,12 +1326,175 @@ namespace PieceMenuPanelLayoutTestSupport
 		 * decision and this test has no business pinning one. When it is negative it is the other
 		 * number the next change needs: how many pixels wider the panel has to be before the
 		 * sentence it already prints fits inside it.
+		 *
+		 * IN COMPACT IT IS THE OTHER HALF OF THE SIZE DERIVATION. The full panel's width came from
+		 * this number on the ragged wall; the compact panel's has to come from this number in this
+		 * mode, and a compact width chosen without reading it is a panel that clips its own brick
+		 * list — which is a worse answer than the one the player is complaining about.
 		 */
 		Test.AddInfo(FString::Printf(
-			TEXT("%s: the readout's tightest line is '%s', %s %.2f px inside a %.2f px content column"),
-			WallDescription, *TightestLine,
+			TEXT("%s, %s detail: the readout's tightest line is '%s', %s %.2f px inside a %.2f px content column"),
+			WallDescription, DetailName, *TightestLine,
 			TightestSlackPx < 0.0 ? TEXT("OVERRUNNING BY") : TEXT("with spare of"),
 			FMath::Abs(TightestSlackPx), ContentRightPx - ContentLeftPx));
+
+		/*
+		 * AND NO TWO LINES SHARING A ROW MAY PRINT ON TOP OF EACH OTHER, WHICH IS THE CLIPPING MODE
+		 * THE CONTAINMENT SWEEP ABOVE CANNOT SEE — AND IS THE ONE A NARROWER PANEL ACTUALLY HITS.
+		 *
+		 * A brick row is a position label at the left and a support word set in a FIXED 150 px column
+		 * anchored to the right. Narrow the panel and the column's left edge walks TOWARDS the label
+		 * while both stay comfortably inside the panel, so every span claim above goes on passing —
+		 * the support word's spare is a constant 71 px however narrow the panel gets, because it is
+		 * measured against a right edge the word is pinned to. What breaks first is "course 12 · #3"
+		 * running into "not in this wall", and two sentences rendered over one another is a worse
+		 * outcome than a sentence that is merely cut off, because it looks like neither.
+		 *
+		 * SAME ROW IS DECIDED BY VERTICAL CENTRE, not by walking the tree, for the reason the button
+		 * finder reads captions rather than slot indices: which widget holds a row together is a
+		 * structural claim the layout is allowed to change, and two texts within 8 px of each other's
+		 * centres are on one line at any font this panel uses.
+		 *
+		 * GLYPH SPANS RATHER THAN ARRANGED ONES, for the reason the containment claim uses them: a
+		 * text block in a filling slot is arranged at the whole column's width whatever it says, so
+		 * every pair of lines in a column would "overlap" and the claim would be about nothing.
+		 */
+		double TightestGapPx = TNumericLimits<double>::Max();
+		FString TightestPair;
+
+		for (int32 Left = 0; Left < State.Widgets.Num(); ++Left)
+		{
+			const FPanelWidget& A = State.Widgets[Left];
+
+			if (A.Text.IsEmpty() || !(A.DesiredSizePx.X > 0.0) || !(A.SizePx.Y > 0.0))
+			{
+				continue;
+			}
+
+			for (int32 Right = Left + 1; Right < State.Widgets.Num(); ++Right)
+			{
+				const FPanelWidget& B = State.Widgets[Right];
+
+				if (B.Text.IsEmpty() || !(B.DesiredSizePx.X > 0.0) || !(B.SizePx.Y > 0.0))
+				{
+					continue;
+				}
+
+				const double ACentreYPx = A.TopLeftPx.Y + A.SizePx.Y * 0.5;
+				const double BCentreYPx = B.TopLeftPx.Y + B.SizePx.Y * 0.5;
+
+				if (FMath::Abs(ACentreYPx - BCentreYPx) > PanelSameLineSlackPx)
+				{
+					continue;
+				}
+
+				/* Whichever is to the left; the pair is unordered and the gap is not. */
+				const FPanelWidget& First = A.TopLeftPx.X <= B.TopLeftPx.X ? A : B;
+				const FPanelWidget& Second = A.TopLeftPx.X <= B.TopLeftPx.X ? B : A;
+
+				const double GapPx =
+					Second.TopLeftPx.X - (First.TopLeftPx.X + First.DesiredSizePx.X);
+
+				if (GapPx < TightestGapPx)
+				{
+					TightestGapPx = GapPx;
+					TightestPair = FString::Printf(
+						TEXT("'%s' then '%s'"), *First.Text, *Second.Text);
+				}
+
+				Test.TestTrue(
+					*FString::Printf(
+						TEXT("two lines sharing a row in the %s panel must not print over each other (%s): '%s' needs x %.2f..%.2f and '%s' begins at x %.2f, overlapping by %.2f px"),
+						DetailName, WallDescription,
+						*First.Text, First.TopLeftPx.X, First.TopLeftPx.X + First.DesiredSizePx.X,
+						*Second.Text, Second.TopLeftPx.X, -GapPx),
+					GapPx >= -PanelSpanContainmentSlackPx);
+			}
+		}
+
+		/*
+		 * AND THE OTHER NUMBER THE COMPACT WIDTH HAS TO BE DERIVED FROM. The containment budget above
+		 * is the room beside the longest line; this is the room between two lines that share a row,
+		 * and in compact it is the one that runs out first. Whichever of the two is smaller is how
+		 * many pixels narrower the panel may be made.
+		 */
+		if (TightestGapPx < TNumericLimits<double>::Max())
+		{
+			Test.AddInfo(FString::Printf(
+				TEXT("%s, %s detail: the tightest pair sharing a row is %s, %s %.2f px apart"),
+				WallDescription, DetailName, *TightestPair,
+				TightestGapPx < 0.0 ? TEXT("OVERLAPPING BY") : TEXT("with"),
+				FMath::Abs(TightestGapPx)));
+		}
+
+		Measured.TightestSlackPx = TightestSlackPx;
+		Measured.TightestLine = TightestLine;
+
+		return Measured;
+	}
+
+	/**
+	 * AND THE COMPACT PANEL ACTUALLY GAVE SCREEN BACK, WHICH IS THE PLAYER'S OWN WORDS MEASURED.
+	 *
+	 * TWO ARRANGEMENTS OF THE SAME PANEL OVER THE SAME WALL WITH THE SAME BRICKS PICKED, differing
+	 * only in the mode — so every difference between them is the mode's doing. The claim is per
+	 * axis and it is STRICT: narrower alone leaves a full-height ribbon down the side of the
+	 * viewport and shorter alone leaves a full-width band across it, and either is a mode that
+	 * dropped the joint table and kept the room the table was taking.
+	 *
+	 * THE HEIGHT IS THE HALF THAT NEEDED MEASURING RATHER THAN ARGUING. The readout sits in a
+	 * FillHeight slot, so it takes whatever the panel has left over: a compact readout with a third
+	 * fewer lines has a shorter DESIRED size and changes the arranged panel by exactly nothing. The
+	 * only thing that shrinks the panel is the override the panel is built with, and the only way to
+	 * see whether it did is to arrange it and read the rectangle back.
+	 */
+	void CheckCompactPanelGivesScreenBack(
+		FAutomationTestBase& Test,
+		const FPanelFitMeasurement& Full,
+		const FPanelFitMeasurement& Compact,
+		const TCHAR* WallDescription)
+	{
+		if (!Full.bMeasured || !Compact.bMeasured)
+		{
+			Test.AddError(FString::Printf(
+				TEXT("fixture (%s): both detail modes must have been measured to be compared"),
+				WallDescription));
+
+			return;
+		}
+
+		Test.TestTrue(
+			*FString::Printf(
+				TEXT("the compact panel must cover less of the screen ACROSS (%s): it is arranged %.2f px wide against the full panel's %.2f px, giving back %.2f px"),
+				WallDescription, Compact.PanelSizePx.X, Full.PanelSizePx.X,
+				Full.PanelSizePx.X - Compact.PanelSizePx.X),
+			Compact.PanelSizePx.X < Full.PanelSizePx.X);
+
+		Test.TestTrue(
+			*FString::Printf(
+				TEXT("the compact panel must cover less of the screen DOWN (%s): it is arranged %.2f px tall against the full panel's %.2f px, giving back %.2f px"),
+				WallDescription, Compact.PanelSizePx.Y, Full.PanelSizePx.Y,
+				Full.PanelSizePx.Y - Compact.PanelSizePx.Y),
+			Compact.PanelSizePx.Y < Full.PanelSizePx.Y);
+
+		/*
+		 * AND THE COLUMN INSIDE IT SHRANK WITH IT, BY THE SAME AMOUNT. A panel that narrowed while
+		 * its content column did not is a panel whose sentences now hang off its own background —
+		 * the chrome is the same in both modes, so the two differences are one number seen twice,
+		 * and if they disagree the readout is not inside the rectangle that shrank.
+		 */
+		const double FullColumnPx = Full.ContentRightPx - Full.ContentLeftPx;
+		const double CompactColumnPx = Compact.ContentRightPx - Compact.ContentLeftPx;
+
+		Test.TestTrue(
+			*FString::Printf(
+				TEXT("the compact panel's content column must shrink with the panel (%s): the panel gave back %.2f px and the column gave back %.2f px"),
+				WallDescription,
+				Full.PanelSizePx.X - Compact.PanelSizePx.X, FullColumnPx - CompactColumnPx),
+			FMath::IsNearlyEqual(
+				FullColumnPx - CompactColumnPx,
+				Full.PanelSizePx.X - Compact.PanelSizePx.X,
+				PanelSpanContainmentSlackPx));
 	}
 }
 
@@ -2489,6 +2803,17 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
  * run's output whether the test passes or fails — as an OVERRUN when it is negative, which is the
  * number a panel too narrow for its own sentence has to be widened by.
  *
+ * AND IT NOW SWEEPS BOTH DETAIL MODES, WHICH IS WHERE THE PLAYER'S SECOND COMPLAINT IS MEASURED.
+ * EPieceMenuDetail::Compact drops the joint table and the headroom scale, and the panel it draws
+ * them into is overridden to the same 640 x 560 px whatever the mode — so a compact panel is a
+ * full-sized panel with fewer words in it and the player gets back no screen at all. The two
+ * halves are held together deliberately: the compact panel must cover STRICTLY less viewport on
+ * both axes, AND every line it still shows must fit inside it, because a compact panel that clips
+ * its own brick list is a worse answer than one that is merely too big. Which line is longest
+ * changes with the mode — the full width was derived from the longest JOINT line at 617.5 px, and
+ * compact drops exactly those, leaving an ENTRY ROW as the widest thing on the panel — which is
+ * why entry rows are now swept too, and why the compact budget is logged the same way.
+ *
  * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI, like every test in this file.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -2512,9 +2837,15 @@ bool FPieceMenuPanelFitsItsReadoutTest::RunTest(const FString& Parameters)
 
 		if (Fixture.Begin(*this))
 		{
-			SweepReadoutFitsInsideThePanel(
-				*this, Fixture.Controller, Fixture.InspectedRef,
-				TEXT("a flush running bond, where nothing bends"));
+			const TCHAR* const Wall = TEXT("a flush running bond, where nothing bends");
+
+			const FPanelFitMeasurement Full = SweepReadoutFitsInsideThePanel(
+				*this, Fixture.Controller, Fixture.InspectedRef, Wall, EPieceMenuDetail::Full);
+
+			const FPanelFitMeasurement Compact = SweepReadoutFitsInsideThePanel(
+				*this, Fixture.Controller, Fixture.InspectedRef, Wall, EPieceMenuDetail::Compact);
+
+			CheckCompactPanelGivesScreenBack(*this, Full, Compact, Wall);
 		}
 
 		Fixture.End();
@@ -2531,9 +2862,16 @@ bool FPieceMenuPanelFitsItsReadoutTest::RunTest(const FString& Parameters)
 
 		if (Fixture.Begin(*this))
 		{
-			SweepReadoutFitsInsideThePanel(
-				*this, Fixture.Controller, Fixture.InspectedRef,
-				TEXT("a ragged wall with a corbel, where one joint is levered open"));
+			const TCHAR* const Wall =
+				TEXT("a ragged wall with a corbel, where one joint is levered open");
+
+			const FPanelFitMeasurement Full = SweepReadoutFitsInsideThePanel(
+				*this, Fixture.Controller, Fixture.InspectedRef, Wall, EPieceMenuDetail::Full);
+
+			const FPanelFitMeasurement Compact = SweepReadoutFitsInsideThePanel(
+				*this, Fixture.Controller, Fixture.InspectedRef, Wall, EPieceMenuDetail::Compact);
+
+			CheckCompactPanelGivesScreenBack(*this, Full, Compact, Wall);
 		}
 
 		Fixture.End();

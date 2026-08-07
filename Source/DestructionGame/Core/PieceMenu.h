@@ -508,6 +508,38 @@ struct FPieceMenuInspector
 };
 
 /**
+ * HOW MUCH OF THE READOUT THE PANEL IS ASKED FOR.
+ *
+ * A MODE ON THE MODEL RATHER THAN A COLLAPSED SLOT IN THE WIDGET, which is the same argument
+ * every string on FPieceMenuInspector is here for. "Which parts of the readout are shown" is a
+ * decision, and a widget that hid its own joint box would be holding that decision in the one
+ * place no test can reach — and would go on paying for the joint rows it then threw away.
+ *
+ * Full IS ENUMERATOR ZERO, and the reasoning is the opposite way round from EPieceSupport's
+ * rather than a departure from it. There, zero must be the value that CLAIMS least, because
+ * every other enumerator asserts something about a brick. Here every enumerator is a request
+ * for a readout, and the failure mode is a default-constructed request quietly SUPPRESSING
+ * numbers somebody asked for — a panel that stops explaining itself and blames nothing. So
+ * zero is the mode that withholds nothing.
+ */
+enum class EPieceMenuDetail : uint8
+{
+	/** Everything: the per-joint table and the headroom scale that gives its bars meaning. */
+	Full,
+
+	/**
+	 * The selection and why each brick is standing, without the per-joint table.
+	 *
+	 * WHAT IT DROPS IS WHAT MAKES THE PANEL BIG. A joint row is the widest line the readout
+	 * composes and there is one per joint, so the table sets both the panel's width and most of
+	 * its height; the entry rows and their support words are a fixed handful of short lines. So
+	 * this is the cut that buys back a third of the screen, and it is exactly the cut that costs
+	 * a player nothing while they are picking bricks rather than reading numbers.
+	 */
+	Compact,
+};
+
+/**
  * Build the debugger for a selection, singling out one brick of it.
  *
  * WORLD-FREE, LIKE EVERYTHING ELSE THE PRESENTER DECIDES. A binding is a plain struct, so
@@ -528,4 +560,107 @@ struct FPieceMenuInspector
 FPieceMenuInspector BuildPieceMenuInspector(
 	const FStructureBinding& Binding,
 	TArrayView<const FPieceRef> Selected,
-	const FPieceRef& InspectedRef);
+	const FPieceRef& InspectedRef,
+	EPieceMenuDetail Detail = EPieceMenuDetail::Full);
+
+/**
+ * HOW BIG THE PANEL IS, IN VIEWPORT PIXELS, FOR THE DETAIL IT IS BEING DRAWN AT.
+ *
+ * A FUNCTION OF THE MODE, IN THE PRESENTER, RATHER THAN TWO FILE-STATIC FLOATS IN THE WIDGET —
+ * AND THAT IS THE WHOLE OF THE PLAYER'S SECOND COMPLAINT. EPieceMenuDetail::Compact already drops
+ * the joint table and the headroom scale, but the panel it draws them into is the same rectangle,
+ * and the readout sits in a slot that FILLS it — so a compact panel prints fewer lines into
+ * exactly as much screen and the player gets nothing back. "How much room does this mode need" is
+ * a decision, and a decision spelled as a constant beside the Slate that consumes it is a decision
+ * in the one place no test can reach.
+ *
+ * COMPACT IS STRICTLY SMALLER IN BOTH AXES, AND BOTH HALVES OF THAT MATTER SEPARATELY. Narrower
+ * alone leaves a tall ribbon down the screen; shorter alone leaves a band across it. It is also
+ * why the answer is a size rather than a width: the height is the axis the fill slot hides, and
+ * stating it here is what makes the widget's job "honour this number" instead of "shrink somehow".
+ *
+ * NEITHER FIGURE IS PICKED. The full width is a measured floor plus a stated clearance — 617.5 px
+ * is the longest line the readout can compose, measured by World.Menu.TheReadoutFitsInsideThePanel
+ * on the ragged corbel wall, and 640 px clears it. The compact width is derived the same way from
+ * the longest line COMPACT still shows, which is an entry row rather than a joint row, and the same
+ * test sweeps it. A compact panel that clipped its own text would be a worse answer than one that
+ * is merely too big, so the two claims are held together rather than traded off.
+ *
+ * IT FAILS CLOSED TO THE SIZE THAT HIDES NOTHING. An enumerator this does not know is a request
+ * nobody wrote, and answering it with the compact size would suppress numbers somebody asked for —
+ * the failure EPieceMenuDetail's own comment names as the reason Full is enumerator zero. The
+ * answer is therefore always finite and always positive: a panel of no size draws no heading, and
+ * a heading is the one part of it that has to stay grabbable.
+ */
+FVector2D PieceMenuPanelSizePx(EPieceMenuDetail Detail);
+
+/**
+ * WHERE THE PANEL OPENS: the top-left corner it takes when the menu is first shown.
+ *
+ * A PURE FUNCTION OF THE TWO SIZES RATHER THAN AN ALIGNMENT ON A BOX, AND THAT IS A REGRESSION
+ * BEING PAID FOR RATHER THAN A PREFERENCE. The panel used to be an SBox at HAlign_Right and
+ * VAlign_Center with a 24 px margin, argued on the record as keeping the readout off the wall the
+ * player is pointing at. Making it draggable replaced the alignment with an offset, and every
+ * corner except the origin is a function of the viewport's size — which is not known until
+ * something has been laid out — so the home became the origin by default. Arithmetic run before
+ * its inputs exist is arithmetic that cannot live in the widget; asked as a question about two
+ * sizes, it can live here where a test can read it.
+ *
+ * THE HOME IS RIGHT-OF-CENTRE AND VERTICALLY CENTRED: the panel's right edge stands MarginPx in
+ * from the viewport's right edge, and its height is centred down the screen. The margin is
+ * horizontal only, because "centred" already answers the vertical question and a margin applied to
+ * a centred axis is a margin that does nothing.
+ *
+ * IT COMES BACK ALREADY ON SCREEN, WHICH IS WHY IT IS NOT MERELY A SUBTRACTION. A viewport
+ * narrower than the panel, or a margin wider than the room left over, makes the subtraction
+ * NEGATIVE — the panel's own heading off the top-left of the screen, which is the one corner that
+ * has to stay grabbable and is exactly the fault ClampPanelOffset exists to refuse. So this
+ * composes with that clamp rather than duplicating its reasoning: clamping the answer again
+ * changes nothing.
+ *
+ * AND IT FAILS CLOSED TO THE ORIGIN ON ANYTHING DEGENERATE — a non-finite component in either
+ * size, a non-finite margin, a negative size, or a NEGATIVE MARGIN. A negative margin is not a
+ * smaller margin: it is a distance that pushes the panel off the edge it was measured from, and it
+ * arrives from the same arithmetic a negative viewport does. FMath::Max discards a NaN and
+ * FMath::Min replaces it, so an unguarded version of this hands back a perfectly plausible corner
+ * for a screen whose edges are not known.
+ */
+FVector2D PieceMenuHomeOffset(
+	FVector2D PanelSizePx,
+	FVector2D ViewportSizePx,
+	double MarginPx);
+
+/**
+ * Where the piece menu panel's top-left corner may actually go, given where it was dragged to.
+ *
+ * IN THE PRESENTER RATHER THAN IN THE SLATE THAT ANCHORS THE PANEL, for the reason every other
+ * decision on this header sits here: an SConstraintCanvas offset is arithmetic, and arithmetic in
+ * a widget is untested by construction. The recurring defect in this codebase is a correct layer
+ * with an untested join, and "the player dragged the panel off the edge of the screen and can
+ * never get it back" is precisely that join.
+ *
+ * THE OFFSET IS THE PANEL'S TOP-LEFT CORNER IN VIEWPORT PIXELS, so the whole panel is inside the
+ * viewport exactly when the offset is inside [0, Viewport - Panel] on both axes. THE TWO AXES ARE
+ * INDEPENDENT: a drag past the right edge must not also reset the vertical position, because a
+ * player dragging along one edge would otherwise see the panel jump on the other.
+ *
+ * A PANEL BIGGER THAN THE VIEWPORT ON AN AXIS PINS TO ZERO ON THAT AXIS, AND THIS IS THE CASE THE
+ * WHOLE FUNCTION EXISTS TO GET RIGHT. The permitted range is Viewport - Panel, which goes NEGATIVE
+ * there, and an inverted range does not fail loudly — it produces a plausible-looking negative
+ * offset that puts the panel's own heading off the top-left of the screen, which is the one corner
+ * that has to stay grabbable. Whether it does depends entirely on how the two bounds are nested:
+ * Max(Min(X, Range), 0) pins to zero and Min(Max(X, 0), Range) hands back the negative bound, and
+ * those read identically at a glance. UE's own FMath::Clamp happens to be the first of the two —
+ * which is luck rather than a guarantee, and exactly why the case is pinned by a test instead of
+ * left to whichever spelling somebody reaches for.
+ *
+ * AND IT FAILS CLOSED TO THE ORIGIN ON ANYTHING DEGENERATE — a non-finite component anywhere in
+ * any of the three arguments, or a negative size. A NaN passes straight through FMath::Max and is
+ * replaced by FMath::Min, so it becomes a plausible offset rather than an obvious fault; and a
+ * viewport whose size is not a number is a screen whose edges are not known, at which point half
+ * an answer is worse than the default position. Zero is a corner that is always on screen.
+ */
+FVector2D ClampPanelOffset(
+	FVector2D DesiredOffsetPx,
+	FVector2D PanelSizePx,
+	FVector2D ViewportSizePx);

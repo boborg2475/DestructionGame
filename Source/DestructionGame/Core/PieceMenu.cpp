@@ -610,6 +610,125 @@ namespace
 	 * hand-written fractions: a caption promising a scale the arithmetic does not follow is
 	 * a plausible-looking picture over a wrong number.
 	 */
+	/**
+	 * Whether both halves of a pixel measurement are numbers at all.
+	 *
+	 * WRITTEN SO A NaN ANSWERS false RATHER THAN SLIPPING THROUGH. FMath::IsFinite already rejects
+	 * both a NaN and an infinity, which is the pair that has to be caught before any comparison
+	 * runs: every comparison against a NaN is false, so FMath::Max DISCARDS one and FMath::Min
+	 * REPLACES it — either way a fault becomes a plausible offset a hundred pixels in, and nothing
+	 * on screen says the screen's own size was never known.
+	 */
+	bool PresenterPanelPixelsAreFinite(const FVector2D& ValuePx)
+	{
+		return FMath::IsFinite(ValuePx.X) && FMath::IsFinite(ValuePx.Y);
+	}
+
+	/**
+	 * Whether a size is a size — AND A NEGATIVE ONE IS NOT A SMALL PANEL.
+	 *
+	 * The permitted range is Viewport - Panel, so a negative subtrahend WIDENS it: a viewport of
+	 * -1080 px would let the corner be dragged further out than any real screen allows, which is
+	 * the fail-OPEN direction reached by arithmetic that reads perfectly reasonably on its own line.
+	 *
+	 * STATED AS `>= 0.0` RATHER THAN AS `!(< 0.0)`, WHICH IS THE SAME RULE THE NEGATED GUARDS
+	 * ELSEWHERE IN THIS FILE FOLLOW AND NOT AN EXCEPTION TO IT. Both spellings exist to put a NaN
+	 * on the FAULT side; this one answers a question whose false is the fault, so the comparison is
+	 * the one a NaN fails. `!(X < 0.0)` would call a NaN a usable size.
+	 *
+	 * ZERO IS USABLE. A viewport of no size at all and a panel exactly as big as its screen both
+	 * leave a range of zero, which pins the corner to the origin — a real answer rather than a
+	 * degenerate one.
+	 */
+	bool PresenterPanelSizeIsUsable(const FVector2D& SizePx)
+	{
+		return SizePx.X >= 0.0 && SizePx.Y >= 0.0;
+	}
+
+	/**
+	 * Whether a margin is a distance the panel can be stood off an edge by.
+	 *
+	 * A NEGATIVE MARGIN IS NOT A SMALLER MARGIN, WHICH IS THE WHOLE OF WHY THIS IS SEPARATE FROM
+	 * "is it finite". It is a distance that pushes the panel PAST the edge it was measured from —
+	 * a 640 px panel on a 1920 px screen at -24 px opens at 1304, twenty-four pixels of it hanging
+	 * off the right — and ClampPanelOffset would then quietly pull it back to 1280, so the fault
+	 * would be INVISIBLE rather than absent. It arrives from exactly the arithmetic a negative
+	 * viewport does, and it is refused for the same reason.
+	 *
+	 * ZERO IS USABLE: the panel's right edge flush against the viewport's is a real placement, and
+	 * it is the boundary the clamp already calls inside its own range.
+	 *
+	 * STATED AS `>= 0.0` RATHER THAN AS `!(< 0.0)`, exactly as PresenterPanelSizeIsUsable is and
+	 * for the same reason: this answers a question whose false is the fault, so the comparison has
+	 * to be the one a NaN fails.
+	 */
+	bool PresenterPanelMarginIsUsable(double MarginPx)
+	{
+		return MarginPx >= 0.0;
+	}
+
+	/**
+	 * One axis of the panel's corner, pinned inside the room that axis has.
+	 *
+	 * THE NESTING IS THE WHOLE FUNCTION, AND IT IS Max(Min(...)) BECAUSE THE OTHER ORDER HANDS BACK
+	 * A NEGATIVE OFFSET. A panel wider than its screen makes LargestPx negative, and an inverted
+	 * range does not fail loudly: Min(Max(X, 0), Largest) returns Largest — the panel's own heading
+	 * off the left edge of the screen, the one corner that has to stay grabbable — while this order
+	 * returns 0. The two read identically at a glance, which is why the case is pinned by
+	 * Presenter.PanelOffsetClamp rather than left to whichever spelling somebody reaches for.
+	 *
+	 * SPELLED OUT RATHER THAN DEFERRED TO FMath::Clamp, WHICH HAPPENS TO BE THIS ORDER TODAY. That
+	 * is luck rather than a promise, and it is a promise this function needs.
+	 */
+	double PresenterPanelAxisPinned(double DesiredPx, double LargestPx)
+	{
+		return FMath::Max(FMath::Min(DesiredPx, LargestPx), 0.0);
+	}
+
+	/*
+	 * HOW MUCH SCREEN THE FULL PANEL TAKES, AND NEITHER FIGURE IS PICKED.
+	 *
+	 * THE WIDTH IS A MEASURED FLOOR PLUS A STATED CLEARANCE. 617.5 px is the longest line this
+	 * readout can compose — "#4  course 3 · #1  bed above  40.0 N  4.551 %  22.0× margin  150.0
+	 * N·cm bending", laid out on the ragged corbel wall, which is the only wall shape that bends at
+	 * all and so the only one from which this number is visible. World.Menu.TheReadoutFitsInside-
+	 * ThePanel measures it. 640 px clears it by 22 px, about four characters at the readout's font,
+	 * which is the room a course number in the hundreds still wants in the game's own 1,220-brick
+	 * wall.
+	 *
+	 * THE HEIGHT IS A FIT RATHER THAN A MEASUREMENT: 560 px is about half a 1080 viewport, so the
+	 * brick list, the readout and the action rows are all on screen at once.
+	 *
+	 * PINNED TO THE PIXEL BY Presenter.PieceMenuPanelSize, as characterisation rather than as a
+	 * claim it can check: a Full arm that quietly drifted would take the measured floor with it,
+	 * and the wall that can see that floor is expensive to build.
+	 */
+	constexpr double PresenterFullPanelWidthPx = 640.0;
+	constexpr double PresenterFullPanelHeightPx = 560.0;
+
+	/*
+	 * AND HOW MUCH THE COMPACT PANEL TAKES, WHICH IS 0.7 OF EACH AXIS — HALF THE AREA.
+	 *
+	 * THE PLAYER'S COMPLAINT, VERBATIM: "it takes up so much of the screen." Compact already drops
+	 * the joint table and the headroom scale, so the sentences that set the full width are gone;
+	 * what remains is the brick list, whose widest row is a position label and a support word set in
+	 * a fixed 150 px column anchored to the panel's right edge.
+	 *
+	 * THE BINDING CONSTRAINT IS NOT LINE CONTAINMENT — IT IS TWO LINES ON ONE ROW PRINTING OVER EACH
+	 * OTHER, and that is the measurement this figure comes from. The support word's own slack is a
+	 * constant 71 px however narrow the panel gets, because it is measured against a right edge the
+	 * word is pinned to; what runs out is the gap between "course 12 · #3" and the column walking
+	 * left towards it. Swept in World.Menu.TheReadoutFitsInsideThePanel, that gap closes at about
+	 * 231 px of panel and is still 74 px clear at 380 px. 448 px is comfortably outside it.
+	 *
+	 * THE HEIGHT FOLLOWS THE SAME FRACTION so the panel keeps its proportions rather than becoming a
+	 * band across the screen — EPieceMenuDetail::Compact has to be strictly smaller on BOTH axes,
+	 * and 0.7 x 0.7 leaves 49 % of the area, inside the two thirds the mode's own description of
+	 * itself promises.
+	 */
+	constexpr double PresenterCompactPanelWidthPx = 448.0;
+	constexpr double PresenterCompactPanelHeightPx = 392.0;
+
 	TArray<FHeadroomScaleTick> PresenterHeadroomScale()
 	{
 		TArray<FHeadroomScaleTick> Scale;
@@ -740,7 +859,8 @@ TArray<FPieceMenuRow> BuildPieceMenuRows(
 FPieceMenuInspector BuildPieceMenuInspector(
 	const FStructureBinding& Binding,
 	TArrayView<const FPieceRef> Selected,
-	const FPieceRef& InspectedRef)
+	const FPieceRef& InspectedRef,
+	EPieceMenuDetail Detail)
 {
 	FPieceMenuInspector Inspector;
 
@@ -940,6 +1060,32 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	Inspector.JointsText = PresenterWordForJointCount(Inspection.Joints.Num());
 
 	/*
+	 * AND A COMPACT READOUT STOPS HERE, WHICH IS EVERYTHING BELOW AND NOTHING ABOVE IT.
+	 *
+	 * WHAT IS LEFT UNDER THIS LINE IS EXACTLY THE PER-JOINT TABLE AND THE SCALE THAT GIVES ITS BARS
+	 * A MEANING, so the cut is a placement rather than a filter — there is no second list to keep in
+	 * step with the first, and no field that could be trimmed here and left standing there.
+	 *
+	 * IT IS AFTER JointsText DELIBERATELY. "3 joints" is a sentence about the BRICK rather than a
+	 * row of the table, it is the one line that says the table exists to be opened, and it is
+	 * counted off InspectPiece's list rather than off Inspector.Joints — so a compact readout says
+	 * the brick has three neighbours while showing none of them. Counting the trimmed list instead
+	 * would report a brick with three neighbours as having none, which reads as a fact rather than
+	 * as an absence.
+	 *
+	 * AND RETURNING BEFORE THE LOOP IS WHAT MAKES IT A SAVING. A mode that built every row and then
+	 * hid it would pay the whole price of the table for a panel that never draws it, which is the
+	 * argument for the mode being on the model at all rather than a collapsed slot in the widget.
+	 *
+	 * THE CAPTION AND THE TICKS NEED NO GUARD OF THEIR OWN: both are set only inside the "there is a
+	 * bar to label" block below, so a table that was never built cannot be labelled.
+	 */
+	if (Detail == EPieceMenuDetail::Compact)
+	{
+		return Inspector;
+	}
+
+	/*
 	 * THE BREAKOUT IS InspectPiece'S ANSWER CONVERTED AND WORDED, ROW FOR ROW, IN ITS
 	 * ORDER. Nothing here consults FConnection, a normal or a strength profile: the tier,
 	 * the force, the ratio and the two break fields are read straight off the model,
@@ -1077,4 +1223,116 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	}
 
 	return Inspector;
+}
+
+FVector2D PieceMenuPanelSizePx(EPieceMenuDetail Detail)
+{
+	/*
+	 * COMPACT IS THE ONLY ARM THAT WITHHOLDS ANYTHING, AND EVERY OTHER ANSWER IS Full — INCLUDING
+	 * AN ENUMERATOR NOBODY DECLARED.
+	 *
+	 * EPieceMenuDetail is a uint8 and a cast is all it takes to produce one, so which arm an
+	 * unknown value falls into is a decision rather than an impossibility. Answering it with the
+	 * compact size would SUPPRESS numbers somebody asked for, which is the failure the enum's own
+	 * comment names as the reason Full is enumerator zero; answering it with the full size only
+	 * spends screen. So Full is the fall-through rather than a case, and the switch is left
+	 * exhaustive so that a mode added later is a compiler warning here instead of a silent Full.
+	 */
+	switch (Detail)
+	{
+	case EPieceMenuDetail::Compact:
+		return FVector2D(PresenterCompactPanelWidthPx, PresenterCompactPanelHeightPx);
+
+	case EPieceMenuDetail::Full:
+		break;
+	}
+
+	return FVector2D(PresenterFullPanelWidthPx, PresenterFullPanelHeightPx);
+}
+
+FVector2D PieceMenuHomeOffset(
+	FVector2D PanelSizePx,
+	FVector2D ViewportSizePx,
+	double MarginPx)
+{
+	/*
+	 * ANYTHING THAT IS NOT A NUMBER FAILS THE WHOLE VECTOR TO THE ORIGIN, RATHER THAN ONLY THE AXIS
+	 * IT ARRIVED ON — the same rule ClampPanelOffset states, and stated the same way because it is
+	 * the same fault: a screen whose edges are not known is one where half an answer looks
+	 * deliberate. FMath::Max DISCARDS a NaN and FMath::Min REPLACES it, so an unguarded version of
+	 * the subtraction below hands back a perfectly plausible corner.
+	 */
+	if (!PresenterPanelPixelsAreFinite(PanelSizePx)
+		|| !PresenterPanelPixelsAreFinite(ViewportSizePx)
+		|| !FMath::IsFinite(MarginPx))
+	{
+		return FVector2D::ZeroVector;
+	}
+
+	/*
+	 * AND A NEGATIVE SIZE IS NOT A SMALL PANEL, NOR A NEGATIVE MARGIN A SMALL MARGIN. Both WIDEN
+	 * the room the subtraction thinks it has — the fail-OPEN direction, reached by arithmetic that
+	 * reads perfectly reasonably on the line it is written.
+	 */
+	if (!PresenterPanelSizeIsUsable(PanelSizePx)
+		|| !PresenterPanelSizeIsUsable(ViewportSizePx)
+		|| !PresenterPanelMarginIsUsable(MarginPx))
+	{
+		return FVector2D::ZeroVector;
+	}
+
+	/*
+	 * THE HOME ITSELF: the panel's right edge stands MarginPx in from the viewport's, and its
+	 * height is centred down the screen. The margin is horizontal only, because "centred" already
+	 * answers the vertical question and a margin applied to a centred axis does nothing.
+	 *
+	 * PINNED AT ZERO ON EACH AXIS INDEPENDENTLY, WHICH IS WHY THIS IS NOT MERELY A SUBTRACTION. A
+	 * viewport narrower than the panel, or a margin wider than the room left over, makes the
+	 * subtraction NEGATIVE — the panel's own heading off the top-left of the screen, which is the
+	 * one corner that has to stay grabbable. Per axis rather than per vector because a panel too
+	 * wide for its screen is still centred down it.
+	 *
+	 * IT NEEDS NO UPPER PIN AND SO COMPOSES WITH ClampPanelOffset RATHER THAN RESTATING IT: the
+	 * margin is non-negative, so the X answer is never past Viewport - Panel, and half of a
+	 * non-negative gap is never past the whole of it. Clamping this again changes nothing, which is
+	 * what stops the panel jumping the first time it is picked up.
+	 */
+	return FVector2D(
+		FMath::Max(ViewportSizePx.X - PanelSizePx.X - MarginPx, 0.0),
+		FMath::Max((ViewportSizePx.Y - PanelSizePx.Y) * 0.5, 0.0));
+}
+
+FVector2D ClampPanelOffset(
+	FVector2D DesiredOffsetPx,
+	FVector2D PanelSizePx,
+	FVector2D ViewportSizePx)
+{
+	/*
+	 * ANYTHING THAT IS NOT A NUMBER FAILS THE WHOLE VECTOR TO THE ORIGIN, RATHER THAN ONLY THE AXIS
+	 * IT ARRIVED ON.
+	 *
+	 * A viewport whose height is not a number is a screen whose edges are not known, and half an
+	 * answer against a screen of unknown size is worse than the default position — it looks
+	 * deliberate. Zero is a corner that is always on screen and is always grabbable, which is the
+	 * only property the fallback has to have.
+	 */
+	if (!PresenterPanelPixelsAreFinite(DesiredOffsetPx)
+		|| !PresenterPanelPixelsAreFinite(PanelSizePx)
+		|| !PresenterPanelPixelsAreFinite(ViewportSizePx))
+	{
+		return FVector2D::ZeroVector;
+	}
+
+	if (!PresenterPanelSizeIsUsable(PanelSizePx) || !PresenterPanelSizeIsUsable(ViewportSizePx))
+	{
+		return FVector2D::ZeroVector;
+	}
+
+	/*
+	 * AND THE TWO AXES ARE PINNED INDEPENDENTLY. A drag past the right edge must not also reset the
+	 * vertical position, or a player dragging along one edge would see the panel jump on the other.
+	 */
+	return FVector2D(
+		PresenterPanelAxisPinned(DesiredOffsetPx.X, ViewportSizePx.X - PanelSizePx.X),
+		PresenterPanelAxisPinned(DesiredOffsetPx.Y, ViewportSizePx.Y - PanelSizePx.Y));
 }

@@ -20,7 +20,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	"DestructionGame.Core.ConnectionLoad.Classification",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-namespace
+/**
+ * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
+ * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges many
+ * files into one. See CURRENT_STATE.md; the `using namespace` lives inside each RunTest for the
+ * same reason.
+ *
+ * THIS FILE IS WHERE THAT RULE WAS PAID FOR. `F` sat at anonymous-namespace scope here, which put
+ * it in front of every OTHER file the unity blob happened to merge in — and Chaos/Utilities.h
+ * declares locals called `F` inside its own functions, so the day the blobs repacked, four
+ * shadowing errors appeared in ENGINE code with this file named as the culprit and the whole module
+ * stopped building. Nothing about the test changed; only which files it was compiled beside.
+ */
+namespace ConnectionLoadTestSupport
 {
 	struct FClassificationCase
 	{
@@ -41,6 +53,8 @@ namespace
 
 bool FConnectionLoadClassificationTest::RunTest(const FString& Parameters)
 {
+	using namespace ConnectionLoadTestSupport;
+
 	const TArray<FClassificationCase> Cases = {
 		/*
 		 * The two cases DESIGN.md calls out explicitly. Same downward gravity,
@@ -149,6 +163,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FConnectionLoadNormalOrientationTest::RunTest(const FString& Parameters)
 {
+	using namespace ConnectionLoadTestSupport;
+
 	struct FOrientationCase
 	{
 		const TCHAR* Description;

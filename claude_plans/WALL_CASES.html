@@ -461,8 +461,8 @@
           why: 'A doorway with a wall on top of it. The arch forms inside the masonry and lands on the jambs either side. This is ordinary construction.',
           s: { courses: TALL, width: W, cuts: [[1, 3, 16, 32]], alt: 'Twelve-course wall with a four brick wide opening and eight courses above' } },
         { n: 8, t: 'Four-brick opening, one course over', v: 'local', tags: ['pair: cover &rarr; 7'],
-          why: 'Same hole, no cover. A single course cannot arch — it is a beam in flexure over four bricks, and mortar has <strong>0.1 MPa</strong> to offer. <strong>That course drops; the wall stands.</strong>',
-          s: { courses: 5, width: W, cuts: [[1, 3, 16, 32]], falls: [[4, 4, 16, 32]], alt: 'Five-course wall with a four brick opening and only one course above it' } },
+          why: 'Same hole, no cover. A single course cannot arch — it is a beam in flexure over four bricks, and mortar has <strong>0.1 MPa</strong> to offer. <strong>The two bricks with no bed patch at all drop; the wall stands.</strong> <em>Corrected: drafted as all four falling. The two over the jambs keep one bed patch each and hold at 0.27 — a corbel, not a tooth.</em>',
+          s: { courses: 5, width: W, cuts: [[1, 3, 16, 32]], falls: [[4, 4, 20, 28]], alt: 'Five-course wall with a four brick opening and only one course above it' } },
         { n: 9, t: 'Ten-brick opening, eight courses over', v: 'collapse', tags: ['pair: span &rarr; 7'],
           why: 'Same cover, span too wide. The thrust line needed to cross ten bricks leaves the section, and there is no lintel to carry it in bending instead.',
           s: { courses: TALL, width: 56, cuts: [[1, 3, 8, 48]], falls: [[4, 11, 6, 50]], alt: 'Twelve-course wall with a ten brick wide opening' } },
@@ -496,9 +496,9 @@
         { n: 15, t: 'Header out half a brick, six courses on top', v: 'stands', tags: ['pair: load &rarr; 16'],
           why: 'The overhanging brick is held by the weight sitting on its tail. Compression across that bed joint suppresses the bending tension — this case is the direct test of whether that term is right.',
           s: { courses: 10, width: W, extra: [{ c: 3, x: 48, w: 2 }], alt: 'Wall with a single header projecting half a brick, six courses above it' } },
-        { n: 16, t: 'The same header at the top, nothing on it', v: 'local', tags: ['pair: load &rarr; 15'],
-          why: 'Identical geometry, no superimposed load, so nothing holds the tail down. <strong>That one brick drops and nothing else moves.</strong>',
-          s: { courses: 10, width: W, extra: [{ c: 9, x: 48, w: 2 }], falls: [[9, 9, 48, 50]], alt: 'Wall with a single header projecting half a brick at the very top with nothing above' } }
+        { n: 16, t: 'The same header at the top, nothing on it', v: 'stands', tags: ['pair: load &rarr; 15', 'revised'],
+          why: 'Identical geometry, nothing holding the tail down — and it <em>still</em> holds, at <strong>0.058204</strong> of f<sub>xk1</sub>, because an uncracked bonded bed joint carries it. <em>Corrected: drafted as local loss, which was a rigid-body overturning reading that ignored the bond.</em> <strong>The pair has already made its point</strong> — 0.00184 against 0.05820 on identical geometry is the superimposed-load term working, a factor of 32. Only the threshold was wrong, not the mechanism.',
+          s: { courses: 10, width: W, extra: [{ c: 9, x: 48, w: 2 }], alt: 'Wall with a single header projecting half a brick at the very top with nothing above' } }
       ]
     },
     {
@@ -508,8 +508,8 @@
         { n: 17, t: 'Stack bond, intact', v: 'stands', tags: ['stack bond'],
           why: 'Weaker than running bond and rarely used structurally, but an intact stack bond wall stands perfectly well under its own weight.',
           s: { courses: 10, width: W, bond: 'stack', alt: 'An intact stack bond wall with aligned vertical joints' } },
-        { n: 18, t: 'Stack bond, one brick out', v: 'stands', tags: ['pair: bond &rarr; 2', 'revised', 'expect 0.0200'],
-          why: 'No brick bridges the gap, so the column above hangs entirely on its head joints — and the arithmetic says that is fine. Each brick weighs <strong>26.69 N</strong> and is bonded to a neighbour on both sides over 2 &times; 66.625 cm&sup2;, giving <strong>0.0200 of shear capacity</strong> against mortar&rsquo;s 0.1 MPa cohesion. <strong>That ratio is height-independent</strong> — every added course brings one brick of weight and two more head joints, which cancel exactly — so this column never fails in shear at any height.',
+        { n: 18, t: 'Stack bond, one brick out', v: 'stands', tags: ['pair: bond &rarr; 2', 'revised twice', 'expect 0.01000825'],
+          why: 'No brick bridges the gap, so the column above hangs entirely on its head joints — and the arithmetic says that is fine. Each brick weighs <strong>26.69 N</strong> over 2 &times; 66.625 cm&sup2;, which is <strong>0.01000825</strong> against general-purpose mortar&rsquo;s <strong>0.2 MPa cohesion</strong>. <strong>Height-independent</strong>, because every course sheds its own weight sideways into its own two head joints rather than passing it down. <em>Corrected: an earlier draft said 0.0200, having divided by 0.1 MPa — that is f<sub>xk1</sub>, the tensile figure. A head joint in shear is measured against f<sub>vk0</sub>.</em>',
           s: { courses: 10, width: W, bond: 'stack', cuts: [[5, 5, 20, 24]], alt: 'Stack bond wall with one brick removed from the middle' } }
       ]
     },
@@ -520,9 +520,9 @@
         { n: 19, t: 'Bottom course out under half the wall', v: 'collapse', tags: ['genuine collapse'],
           why: 'Six bricks of support removed in one line. Nothing can arch that far at that cover, and the left half has no path to the ground.',
           s: { courses: 10, width: W, cuts: [[0, 0, 0, 24]], falls: [[1, 9, 0, 24]], alt: 'Wall with the bottom course removed under the left half' } },
-        { n: 20, t: 'Staircase void', v: 'local', tags: ['pair: judgement', 'now: total collapse'],
-          why: 'The stepped cut from your screenshot. My read is that the mass arches over the widest part and <strong>only the loose toothed bricks at the cut edge drop</strong> — but this is close enough to the real limit that I would rather you called it than I did.',
-          s: { courses: TALL, width: 56, cuts: [[1, 1, 4, 28], [2, 2, 4, 24], [3, 3, 4, 20], [4, 4, 4, 16], [5, 5, 4, 12], [6, 6, 4, 8]], falls: [[2, 7, 4, 10]], alt: 'Twelve-course wall with a stepped staircase shaped void cut into its lower left' } }
+        { n: 20, t: 'Staircase void', v: 'local', tags: ['ruled', 'now: total collapse'],
+          why: 'The stepped cut from your screenshot. The mass arches over the widest part and <strong>only the bricks left with no bed patch at all drop</strong> — exactly two of them, in course 3 and course 5. <em>Corrected: the first draft shaded a whole wedge, which was wrong. Everything else along the cut face keeps one patch, and one patch is a corbel, not a tooth.</em>',
+          s: { courses: TALL, width: 56, cuts: [[1, 1, 4, 28], [2, 2, 4, 24], [3, 3, 4, 20], [4, 4, 4, 16], [5, 5, 4, 12], [6, 6, 4, 8]], falls: [[3, 3, 17, 19], [5, 5, 9, 11]], alt: 'Twelve-course wall with a stepped staircase shaped void cut into its lower left' } }
       ]
     }
   ];

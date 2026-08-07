@@ -7,12 +7,22 @@
 #include "Core/PieceSelection.h"
 #include "GameFramework/PlayerController.h"
 #include "Input/Reply.h"
+#include "Layout/Margin.h"
 #include "DestructionGamePlayerController.generated.h"
 
 class SBox;
 class SWidget;
+class UGameViewportClient;
 class UInputAction;
 class UInputMappingContext;
+
+/*
+ * The drag handlers take both of these by const reference, so a declaration is all this header
+ * needs — and pulling Slate's geometry and event headers in for two parameter types would put them
+ * in front of every test that includes this controller.
+ */
+struct FGeometry;
+struct FPointerEvent;
 
 /* Declared with its underlying type in World/BrickActor.h, which only the .cpp needs. */
 enum class EBrickHighlight : uint8;
@@ -148,8 +158,30 @@ public:
 	 * two callers — BuildPieceMenuPanel and RefreshPieceMenuInspectorWidget — used to return
 	 * early before ever getting here. CURRENT_STATE.md's integration entry rule names exactly
 	 * this shape: a call nobody makes cannot be reached by testing the halves.
+	 *
+	 * THE DETAIL IS ASKED FOR BY THE CALLER AND DEFAULTS TO Full, WHICH IS THE WHOLE CARE ON THIS
+	 * SIGNATURE. This accessor is not only the panel's: NeighbourHighlightForPiece walks
+	 * Inspector.Joints and colours a brick in the wall from each row's ColourSlot, and
+	 * NeighbourPieces turns the same rows into refs — so the joint table is an INDEX THE BRICK
+	 * HIGHLIGHTS ARE KEYED ON as well as a readout. A compact answer handed to those would put
+	 * every neighbour colour in the wall out at once, and nothing on screen would say why. So the
+	 * two panel builders pass PieceMenuPanelDetail and everything else takes the default, and the
+	 * default is the mode that withholds nothing — a caller that forgets suppresses nothing.
 	 */
-	FPieceMenuInspector PieceMenuInspectorForSelection() const;
+	FPieceMenuInspector PieceMenuInspectorForSelection(
+		EPieceMenuDetail Detail = EPieceMenuDetail::Full) const;
+
+	/**
+	 * Which detail the next BuildPieceMenuPanel draws at. A field's value, and nothing else.
+	 *
+	 * PUBLIC FOR THE SAME REASON BuildPieceMenuPanel IS. The mode is toggled today by a double
+	 * click on the title strip, and OnPieceMenuPanelDetailToggled takes an FPointerEvent and tears
+	 * the whole widget down through the viewport — so the only route into compact runs through the
+	 * one layer a headless run has none of. The panel a compact mode produces is exactly what
+	 * World.Menu.TheReadoutFitsInsideThePanel has to measure, so the state it is built from needs a
+	 * seam a test can set. It decides nothing: no rebuild, no clamp, no redraw.
+	 */
+	void SetPieceMenuDetail(EPieceMenuDetail Detail);
 
 protected:
 
@@ -279,6 +311,85 @@ private:
 	FReply OnPieceMenuRowClicked(int32 RowIndex);
 
 	/**
+	 * THE PANEL'S TITLE STRIP, DRAGGED: press, move, release.
+	 *
+	 * EVERY DECISION THESE THREE COULD MAKE IS ClampPanelOffset'S, WHICH IS WHY THEY ARE THIS
+	 * SHORT. Where a drag is allowed to leave the panel is the half that can strand it — an offset
+	 * that puts the title strip off the top of the screen leaves the player with nothing to grab
+	 * and no way back short of restarting — and it is arithmetic on six doubles, so it lives in
+	 * Core where Presenter.PanelOffsetClamp can hold it. What is left here is a cursor position
+	 * and a subtraction.
+	 *
+	 * THE CURSOR IS TAKEN THROUGH THE STRIP'S OWN GEOMETRY RATHER THAN IN SCREEN PIXELS. A
+	 * viewport widget is laid out under Slate's DPI scaler, so a screen-space delta moves the
+	 * panel by the DPI scale rather than by the distance the cursor travelled — and the offset the
+	 * canvas is given is in the scaled space, not the screen's. AbsoluteToLocal on both ends puts
+	 * the delta in the space the offset is stated in, whatever the scale, and the translation
+	 * cancels in the subtraction.
+	 *
+	 * THE PRESS TAKES MOUSE CAPTURE, so a drag survives the cursor outrunning a 640 px strip.
+	 * Without it Slate stops sending moves the instant the pointer leaves the widget, and a quick
+	 * drag drops the panel wherever the cursor happened to cross the edge.
+	 */
+	FReply OnPieceMenuPanelGrabbed(const FGeometry& Geometry, const FPointerEvent& Event);
+	FReply OnPieceMenuPanelDragged(const FGeometry& Geometry, const FPointerEvent& Event);
+	FReply OnPieceMenuPanelReleased(const FGeometry& Geometry, const FPointerEvent& Event);
+
+	/**
+	 * The same strip, double-clicked: swap the panel between its two detail modes.
+	 *
+	 * A GESTURE RATHER THAN A CAPTIONED BUTTON, AND THE REASON IS THE NO-LOGIC RULE THIS WIDGET
+	 * WAS LANDED UNDER. A button needs a caption, a caption is a word, and choosing a word is a
+	 * decision that belongs on FPieceMenuInspector where a test can read it — there is no such
+	 * field today and inventing one here would put the decision in the one place nothing can
+	 * reach. Double-clicking a title bar to roll a panel up is also the gesture every desktop
+	 * already uses for exactly this. CURRENT_STATE.md carries the follow-up: a captioned toggle
+	 * needs a model field, and a model field needs a red test.
+	 */
+	FReply OnPieceMenuPanelDetailToggled(const FGeometry& Geometry, const FPointerEvent& Event);
+
+	/**
+	 * Where the panel's top-left corner is, as the constraint canvas wants it.
+	 *
+	 * AN ATTRIBUTE RATHER THAN A VALUE BAKED INTO THE SLOT, so a drag moves the panel without
+	 * rebuilding it — the same reason the readout is a box whose content is swapped rather than a
+	 * panel torn down and put back. It marshals PieceMenuPanelOffsetPx into an FMargin and does
+	 * nothing else; the size is the child's own, which is what AutoSize on the slot is for.
+	 */
+	FMargin PieceMenuPanelSlotOffset() const;
+
+	/**
+	 * The viewport, in the units the offset above is stated in.
+	 *
+	 * READ OFF THE PANEL'S OWN ROOT RATHER THAN FROM UGameViewportClient::GetViewportSize, and the
+	 * difference is the DPI scale. GetViewportSize answers in screen pixels; the constraint canvas
+	 * lays out in Slate's scaled space, and a clamp fed one and applied to the other lets the panel
+	 * off the edge of the screen by exactly the scale factor — which is the one outcome
+	 * ClampPanelOffset exists to prevent. The root canvas IS the viewport, so its own local size is
+	 * the answer in its own units.
+	 *
+	 * ZERO WHEN THERE IS NO PANEL, which clamps every offset to the origin. That is the fail-closed
+	 * corner rather than a special case, and it is unreachable from the drag handlers — the strip
+	 * being dragged lives inside the widget being asked about.
+	 */
+	FVector2D PieceMenuViewportSizePx() const;
+
+	/**
+	 * The same screen, asked of the viewport client because there is no panel to ask yet.
+	 *
+	 * A SECOND ROUTE TO ONE ANSWER, AND THE SPLIT IS WHEN RATHER THAN WHAT. The function above reads
+	 * the panel's own laid-out root, which is exact and needs no conversion — and is zero for a
+	 * widget built this frame, so the HOME cannot come from it. This one asks the client, whose
+	 * answer is in screen pixels and so is out by exactly the DPI scale the canvas lays out under,
+	 * and divides it back. Both are the viewport in the units PieceMenuPanelOffsetPx is stated in.
+	 *
+	 * ZERO WHEN THE SCALE IS NOT A POSITIVE NUMBER, which puts the home at the origin — the corner
+	 * that is on screen at every viewport size and every scale, and the one both PieceMenuHomeOffset
+	 * and ClampPanelOffset already fail closed to.
+	 */
+	FVector2D PieceMenuViewportSizeAtOpenPx(const UGameViewportClient& Viewport) const;
+
+	/**
 	 * An entry row's hover: single that brick out, and let it go again.
 	 *
 	 * THE CURSOR ON AN ENTRY IS THE WHOLE INPUT. A player reading a joint breakout has to be
@@ -396,4 +507,66 @@ private:
 	 * stays a single pair. It is valid exactly while PieceMenuWidget is.
 	 */
 	TSharedPtr<SBox> PieceMenuInspectorBox;
+
+	/**
+	 * The strip the player grabs to move the panel, held only so a press can capture to it.
+	 *
+	 * FReply::CaptureMouse WANTS THE WIDGET, AND A UObject HANDLER HAS NO SharedThis. It is a
+	 * handle into the panel exactly as PieceMenuInspectorBox is, valid for exactly as long, and
+	 * released beside it.
+	 */
+	TSharedPtr<SWidget> PieceMenuGrabStrip;
+
+	/**
+	 * WHERE THE PANEL'S TOP-LEFT CORNER SITS, IN THE CANVAS'S OWN PIXELS.
+	 *
+	 * THE PANEL'S POSITION IS STATE NOW, WHICH IS THE WHOLE OF WHAT MAKES IT DRAGGABLE. It was an
+	 * alignment before — right edge, vertically centred — which is a placement no player can
+	 * argue with, and the complaint this answers is exactly that they could not.
+	 *
+	 * IT STARTS AT THE ORIGIN AND IS MOVED TO ITS HOME THE FIRST TIME A MENU IS SHOWN. The origin
+	 * is the one corner that is on screen at every viewport size and every DPI scale, which is why
+	 * both PieceMenuHomeOffset and ClampPanelOffset fail closed to it — so it is the value this
+	 * holds until there is a screen to measure a home against, rather than a placement anybody chose.
+	 *
+	 * IT IS ALWAYS THE OUTPUT OF ClampPanelOffset OR OF PieceMenuHomeOffset, AND NEVER A RAW DRAG.
+	 * That is what the idempotence sweep in Presenter.PanelOffsetClamp is for, and why
+	 * Presenter.PanelHomeOffset clamps every home it produces and insists nothing moves: this value
+	 * is stored, fed back in on the next drag and clamped again on every rebuild, so a home the
+	 * clamp would move is a panel that jumps the first time it is picked up.
+	 */
+	FVector2D PieceMenuPanelOffsetPx = FVector2D::ZeroVector;
+
+	/**
+	 * Whether the panel has ever been placed, so its home is taken once rather than on every build.
+	 *
+	 * THE MENU IS TORN DOWN AND REBUILT ON EVERY CLICK, and the corner above is controller state
+	 * precisely so that a placement the player chose survives that. A home re-taken on each build
+	 * would overwrite it and snap the panel back across the screen the next time they picked a
+	 * brick — which is the complaint the drag affordance exists to answer, arrived at backwards.
+	 */
+	bool bPieceMenuPanelHasOpened = false;
+
+	/**
+	 * Where the panel was and where the cursor was when this drag began, and whether one is on.
+	 *
+	 * THE ANCHOR IS THE CORNER AT THE PRESS RATHER THAN THE LAST FRAME'S, so the panel follows the
+	 * cursor exactly instead of accumulating a frame of rounding per move — and so that dragging
+	 * into a corner and back out again returns to where it started rather than to wherever the
+	 * clamp pinned it on the way. The flag is what tells a move that is a drag from a move that is
+	 * the cursor merely crossing the strip.
+	 */
+	FVector2D PieceMenuPanelGrabbedFromPx = FVector2D::ZeroVector;
+	FVector2D PieceMenuCursorGrabbedAtPx = FVector2D::ZeroVector;
+	bool bPieceMenuPanelIsHeld = false;
+
+	/**
+	 * How much of the readout THE PANEL is asked for. Nothing else ever asks for less.
+	 *
+	 * ON THE CONTROLLER RATHER THAN INSIDE THE WIDGET, because the panel is rebuilt from scratch
+	 * every time a menu opens and a mode held in the widget tree would be forgotten on every
+	 * click. It is deliberately NOT read by NeighbourHighlightForPiece or NeighbourPieces — see
+	 * PieceMenuInspectorForSelection, where the reason is set out at length.
+	 */
+	EPieceMenuDetail PieceMenuPanelDetail = EPieceMenuDetail::Full;
 };
