@@ -44,7 +44,13 @@ FVector CentreOfMassCm; bool bHasCentreOfMass = false;
    - *Fixtures need no coordinates* — **preserved, and this is the crux.** Set the moment to zero and `σ = N/A ± M/W` collapses to `N/A`, today's answer bit for bit. A geometry-free fixture is not a special case, it is `e = 0` — the same shape as `FrictionCoefficient = 0` reducing Mohr-Coulomb exactly. **So the existing tests and both fuzz generators need no geometry**, which is the only reason a small first slice is possible.
    - *Routing cannot reason geometrically* — **genuinely lost, and this is the real price.** Someone can now write "supports are the joints whose centroid is below the piece" and it will read as reasonable, which is the class of defect where nothing crashes and the wall stands there being wrong.
 
-**Mitigation, to be written on the function: `GetJointRole` may never read geometry.** It reads the normal and the A/B pairing, nothing else. **Positions are an input to the magnitude of a load, never to the routing of it.**
+**Mitigation, to be written on the function: `GetJointRole` may never read geometry.** It reads the normal and the A/B pairing, nothing else.
+
+**REVISED 2026-08-06 by [ARCHING_DESIGN.md](ARCHING_DESIGN.md) slice 2, and this is the wording that now stands.** The original second sentence was *"positions are an input to the magnitude of a load, never to the routing of it"*, and arching breaks it deliberately: deciding that four bricks over a hole are an arch rather than a chain of hangers **is** a routing decision, and it cannot be made without knowing where the hole is. The replacement:
+
+> `GetJointRole` still may never read geometry — **the tier of one joint stays a fact about one normal and one pairing.** What may read geometry is a *group* rule sitting above the tier, which is gated on `HasCompleteGeometry()` and is a **no-op without it**. A geometry-free structure routes exactly as it does today, bit for bit.
+
+That gate is not politeness. Both fuzz generators emit no geometry (see "the payoff of degenerate-at-zero" below), and they are the only property tests over routing this project has. If a group rule can fire without geometry, 20,000 fuzzed cases start disagreeing with an oracle that knows nothing about arches, and the single most valuable regression asset in the repo goes dark — quietly. `FStructure::ReseatSpannedGroups` is the one function the revision licenses; `Core.Structure.AHoleWiderThanOneBrickIsSpanned` carries the row that proves the gate bites.
 
 **Add `FStructure::HasCompleteGeometry()`** — same trick as `HasSupportAnswer`. "Nobody supplied positions, so there are no moments" must be *askable*, not silently identical to "the load happens to be centred".
 

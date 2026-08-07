@@ -435,6 +435,19 @@ struct FStructure
 	 * resolves it against the joint's own normal, which is why the same vector is
 	 * compression on a bed joint and shear on a head joint.
 	 *
+	 * EXCEPT AT THE SPRINGING OF AN ARCH, AND THAT IS THE ONE EXCEPTION. An opening
+	 * spanned by the group rule pushes SIDEWAYS as well as down, equally and oppositely
+	 * at its two ends, and that thrust is delivered into the abutment's own bed joint —
+	 * so a springing's force is (H, 0, -V) rather than (0, 0, -V). It is still one
+	 * force through one joint and it still resolves the same way: a horizontal component
+	 * on a bed joint is shear by ClassifyForce's own definition, which is why the arch
+	 * needs no new axis and no new strength. ARCHING_DESIGN.md.
+	 *
+	 * A PLAYER LOOKING AT A NON-VERTICAL FORCE ON A SPRINGING IS SEEING THE ARCH, and it
+	 * needs saying in the readout: the joint is being pushed sideways by the masonry
+	 * bridging the hole beside it, and the number that decides whether it holds is
+	 * Mohr-Coulomb friction bought by the weight standing on the same patch.
+	 *
 	 * ITS SIGN DEPENDS ON WHICH END IS BEING HELD UP. Per ConnectionLoad.h the force
 	 * belonging to a connection is the force acting on PieceB, so a joint that names
 	 * the loaded piece second carries it downward and one that names it first
@@ -606,6 +619,183 @@ struct FStructure
 
 private:
 	/**
+	 * ONE SPANNED OPENING, AS THE GROUP PASS LEAVES IT: the seated pieces at its two ends.
+	 *
+	 * An arch is the only thing in this solver that is a fact about a RUN of pieces rather
+	 * than about any one of them, and the thrust is the reason that has to be written down.
+	 * H is one number for the whole opening, applied equally and oppositely at the two
+	 * abutments — so the pass that computes it needs both ends at once, and a per-joint rule
+	 * could not state it. That is ARCHING_DESIGN's trap 2: applying +H at one springing and
+	 * forgetting the other gives the structure a net horizontal force out of nowhere while
+	 * every joint still reads perfectly plausibly.
+	 *
+	 * THE TWO ENDS ARE AN ORDER, NOT A DIRECTION IN THE WORLD. Which end is 0 falls out of
+	 * whichever abutment the group walk happened to meet first, and nothing may depend on it:
+	 * the model has no reason to prefer one side of a hole, and inventing one would be a
+	 * convention a later slice has to unpick.
+	 */
+	struct FSpannedArch
+	{
+		/**
+		 * The seated pieces the group pushes against, split by which end of the opening they
+		 * stand at. Both are non-empty — a group with nothing on one side does not span, and
+		 * an arch with nothing to push against at one end is a cantilever.
+		 */
+		TArray<int32> Abutments[2];
+
+		/**
+		 * Unit direction toward end 0, which is the way the arch pushes end 0's abutments and
+		 * is the exact negative of the way it pushes end 1's.
+		 *
+		 * ONE VECTOR RATHER THAN TWO, so that the two thrusts sum to exactly zero rather than
+		 * to a rounding of it. +H*D and -H*D cancel bit for bit on every component; two
+		 * separately normalised directions would not.
+		 */
+		FVector TowardEndZero = FVector::ZeroVector;
+
+		/**
+		 * L: how far apart the two ends of the opening stand, cm.
+		 *
+		 * MEASURED BETWEEN THE ABUTMENTS' OWN CENTRES, one mean per end, which is the clear
+		 * opening to the centimetre for a running-bond wall: each springing keeps half a cell
+		 * of bearing, so its centre sits half a cell outboard of the masonry that was taken
+		 * out and the two half cells make up exactly the one that was not. Seat centroid to
+		 * seat centroid is half a cell wider and reads 5% high on a ten-cell hole.
+		 *
+		 * RECORDED HERE BECAUSE THIS IS WHERE IT IS KNOWN. The thrust pass has the abutments
+		 * but not the group they stand either side of, and the span is a fact about the
+		 * opening rather than about either end of it — one number per arch, which is what
+		 * keeps the two thrusts equal and opposite.
+		 */
+		double SpanCm = 0.0;
+	};
+
+	/**
+	 * Re-seat the pieces a hole has left with NO seat at all onto the group they belong to.
+	 *
+	 * THE GROUP RULE, AND IT IS THE ONE THING IN THE SOLVER THAT READS GEOMETRY TO DECIDE A
+	 * ROUTE. A hole one brick wide leaves two half-seated bricks that each keep their own seat,
+	 * and HasArchingAbutment answers those alone. A hole WIDER than one brick leaves the bricks
+	 * in the middle of it with no seat whatever: under the two-tier rule they fall back to their
+	 * head joints, become each other's support, and the solver strands the pair as a two-node
+	 * knot — so a wall that should span its opening loses its middle and everything above it.
+	 *
+	 * What those bricks are actually doing is spanning, and a span is a statement about a RUN of
+	 * pieces rather than about any one of them: contiguous unseated pieces form a GROUP through
+	 * their intact head joints, and the group carries only if something seated stands on BOTH
+	 * SIDES of it. Each member is then re-seated toward its nearer abutment, which is acyclic by
+	 * construction because every edge runs from a longer path to a shorter one.
+	 *
+	 * MOMENTS_DESIGN's discipline line is REVISED, not broken, and ARCHING_DESIGN carries the
+	 * replacement: GetJointRole still may never read geometry — the tier of one joint stays a
+	 * fact about one normal and one pairing — and what reads geometry is this GROUP rule sitting
+	 * above the tier. It is gated on HasCompleteGeometry() and is a NO-OP without it, so a
+	 * geometry-free structure routes exactly as it did, bit for bit. That gate is not politeness:
+	 * both fuzz generators emit structures with no positions at all, 20,000 cases between them,
+	 * and they are the only property tests over routing this project has.
+	 *
+	 * THE ABUTMENTS ARE THE GROUP'S OWN "INCOMPLETE SEAT" NEIGHBOURS. ARCHING_DESIGN counts them
+	 * as members and asks for a live seat on both sides of the group's centre; the boundary is
+	 * drawn one piece tighter here — the group is the unseated run and the seated neighbours it
+	 * pushes against are its abutments — which is the same rule with the same seats deciding it,
+	 * and it keeps every piece that merely lost one of two seats out of a group entirely.
+	 *
+	 * @param PieceJoints          Every joint touching each piece, in ascending index order.
+	 * @param PieceHasNoSeat       Which live, ungrounded pieces have no intact bed joint beneath.
+	 * @param SupportConnections   What holds each piece up. Rewritten in place for the members of
+	 *                             an abutted group, and left exactly as found everywhere else.
+	 * @param PieceReseatedOnAnArch Set for each piece this rewrote, and false everywhere else.
+	 * @param Arches               One entry per group that actually spans, naming the seated
+	 *                             pieces at its two ends. Emptied first, so a structure with no
+	 *                             geometry and a structure with no hole both come back with none.
+	 */
+	void ReseatSpannedGroups(
+		const TArray<TArray<int32>>& PieceJoints,
+		const TArray<bool>& PieceHasNoSeat,
+		TArray<TArray<int32>>& SupportConnections,
+		TArray<bool>& PieceReseatedOnAnArch,
+		TArray<FSpannedArch>& Arches) const;
+
+	/**
+	 * Push each spanned opening's two abutments apart by the thrust the arch develops.
+	 *
+	 * AN ARCH PUSHES SIDEWAYS, AND SOMETHING HAS TO RESIST IT. ARCHING_DESIGN.md:
+	 *
+	 *     d_e = min( cover above the span , 0.866 * L )      arching depth
+	 *     r   = d_e / 3                                      thrust line rise, kern-limited
+	 *     W   = the load the solver already accumulated      NOT a triangle
+	 *     H   = W * L / (8r)      V = W / 2                  per abutment
+	 *
+	 * WHAT RESISTS IT IS ALREADY IN THE MODEL, which is the whole point: the thrust arrives
+	 * horizontally at a bed joint, ClassifyForce calls a horizontal force on a bed joint shear,
+	 * and shear capacity is already `c + mu*sigma_n` truncated at the profile's ceiling. No new
+	 * axis, no new strength, no new profile data — dry stone's zero cohesion then refuses to
+	 * arch at any span with no per-material branch anywhere.
+	 *
+	 * RUN AFTER THE ACCUMULATION AND NEVER INSIDE IT. W is what the solver has already routed
+	 * to the abutments' seats, so this reads finished forces; and adding a shear component
+	 * changes no split, no support list and no moment, which is why every vertical answer in
+	 * the structure is bit-identical to one computed without it.
+	 *
+	 * AND THE COVER IS WHAT USUALLY DECIDES. `d_e` is the SMALLER of the masonry actually
+	 * standing over the opening and the angle's `0.866*L`, so `H` grows as `1/cover` while `V`
+	 * falls with it: thin the brickwork over a hole and the thrust ratio `3L/(4 d_e)` blows up,
+	 * which is why a wide opening near the top of a wall cannot arch at all. One cover per
+	 * arch, the thinnest of the two ends — see CoverAboveSpringingCm.
+	 *
+	 * @param PieceJoints Every joint touching each piece, in ascending index order.
+	 * @param Arches      What ReseatSpannedGroups found. Empty is the ordinary case and costs
+	 *                    nothing.
+	 */
+	void ApplyArchingThrust(
+		const TArray<TArray<int32>>& PieceJoints,
+		const TArray<FSpannedArch>& Arches);
+
+	/**
+	 * How much masonry stands over one end of an opening, cm, by a BOUNDED UPWARD WALK.
+	 *
+	 * THE ARCHING DEPTH IS CAPPED BY THE COVER, and the cover has to be measured rather than
+	 * assumed: ARCHING_DESIGN.md's `d_e = min(cover, 0.866*L)` is the difference between a
+	 * ten-cell hole under one course of brickwork reading 0.058 of its springing's capacity and
+	 * reading 1.51 of it. Credit an opening with as much depth as its own span allows and ten
+	 * bricks hang in mid-air.
+	 *
+	 * COUNTED IN COURSES, FROM THE SPANNING COURSE UP, AND THE SPANNING COURSE IS THE FIRST OF
+	 * THEM — it is the first ring of the arch, not something resting on one — so the shallowest
+	 * cover a wall can offer is one course pitch and never zero. The rise of that first course
+	 * is measured at the springing joint itself, from the seat below it to the abutment
+	 * standing on it, and every course after it contributes the rise to the piece above.
+	 *
+	 * A WALK OVER BED JOINTS AND NEVER A SPATIAL QUERY. What is over the opening is what the
+	 * connection graph says is over it: the joints already index the neighbourhood, so this
+	 * costs a step per course and needs no broadphase, no octree and no world.
+	 *
+	 * AND IT IS BOUNDED BY THE ANGLE. Past `0.866*L` of cover the angle governs and the exact
+	 * depth stops mattering, so the walk stops there — at most `ceil(0.866*L / course pitch)`
+	 * steps, and never more courses than the structure has pieces.
+	 *
+	 * A CHAIN AND NOT A TRAVERSAL. Running bond puts two pieces above each brick, and this
+	 * follows the first of them by ascending joint index rather than exploring both. For a wall
+	 * of uniform height the two columns reach the same place, which is the case this measures;
+	 * a stepped or gabled wall would have its cover decided by which column the walk happened
+	 * to take, and nothing tests that yet.
+	 *
+	 * ZERO WHERE THERE IS NOTHING TO MEASURE — a seat joint naming no second piece, or a course
+	 * with no measurable rise. The caller's guard then leaves the arch unthrust rather than
+	 * dividing by it.
+	 *
+	 * @param Abutment             The seated piece at one end of the opening.
+	 * @param SpringingJointIndex  Its bed joint, which is the plane the cover stands on.
+	 * @param PieceJoints          Every joint touching each piece, in ascending index order.
+	 * @param AngleCappedDepthCm   `0.866*L`, past which more cover changes no answer.
+	 */
+	double CoverAboveSpringingCm(
+		int32 Abutment,
+		int32 SpringingJointIndex,
+		const TArray<TArray<int32>>& PieceJoints,
+		double AngleCappedDepthCm) const;
+
+	/**
 	 * Is there something on the overhanging side for this piece to arch against?
 	 *
 	 * THE FOURTH GATE OF THE ARCHING RULE, and the one that decides whether a piece which
@@ -630,19 +820,30 @@ private:
 	 * SolveLoads runs once per cascade pass, and the cheap form is exact for this case
 	 * because a longer loop is what LoadReturnsToPiece already strands.
 	 *
-	 * @param PieceIndex         The loaded piece, which must be placed.
-	 * @param BedJoint           Its one seat, which must know its own rectangle: the kern,
-	 *                           the centroid and the plane the eccentricity is measured in
-	 *                           all come off it.
-	 * @param PieceJoints        Every joint touching each piece, in ascending index order.
-	 * @param SupportConnections What holds each piece up, before the reaching-the-ground
-	 *                           filter — the relation "counts among its own supports" means.
+	 * AND A GROUP THAT SPANS SUPERSEDES THAT REFUSAL WITHOUT WEAKENING IT. Widen the hole past
+	 * one brick and the neighbour on the eccentric side is an unseated piece re-seated onto the
+	 * group — so it does lean on this one, and the one-step test refuses correctly, since two
+	 * bricks propping each other is precisely what it is looking at. What makes it an arch
+	 * instead is the FAR abutment: ReseatSpannedGroups only re-seats a group with something
+	 * seated on both sides of it, so a neighbour carrying that mark has a reaction beyond it and
+	 * the thrust has somewhere to go. Without the mark nothing here changes at all.
+	 *
+	 * @param PieceIndex            The loaded piece, which must be placed.
+	 * @param BedJoint              Its one seat, which must know its own rectangle: the kern, the
+	 *                              centroid and the plane the eccentricity is measured in all
+	 *                              come off it.
+	 * @param PieceJoints           Every joint touching each piece, in ascending index order.
+	 * @param SupportConnections    What holds each piece up, before the reaching-the-ground
+	 *                              filter — the relation "counts among its own supports" means.
+	 * @param PieceReseatedOnAnArch Which pieces ReseatSpannedGroups re-seated, and therefore lean
+	 *                              on their abutments only because a further one is carrying.
 	 */
 	bool HasArchingAbutment(
 		int32 PieceIndex,
 		const FConnection& BedJoint,
 		const TArray<TArray<int32>>& PieceJoints,
-		const TArray<TArray<int32>>& SupportConnections) const;
+		const TArray<TArray<int32>>& SupportConnections,
+		const TArray<bool>& PieceReseatedOnAnArch) const;
 
 	TArray<FStructurePiece> Pieces;
 	TArray<FConnection> Connections;

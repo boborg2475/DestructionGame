@@ -46,6 +46,25 @@ namespace
 	constexpr double SolverBedJointCosine = 0.70710678118654752440;
 
 	/**
+	 * How deep an arch may be, as a fraction of the span it crosses: sqrt(3)/2, to three digits.
+	 *
+	 * BS 5977-1 specifies the equilateral TRIANGLE OF LOADING over an opening — 60 degree base
+	 * angles, so a height of sqrt(3)/2 of the span — as the masonry that arches around rather
+	 * than reaching the span. ARCHING_DESIGN.md adopts that angle ONLY as a cap on the arching
+	 * depth and deliberately does not use it to reduce the load, which is the strictly harsher
+	 * reading and is what keeps a dispersion angle out of the data.
+	 *
+	 * IT IS A MODELLING CONSTANT WITH A PUBLISHED SOURCE, NOT A MATERIAL PROPERTY, so it belongs
+	 * here beside SolverBedJointCosine as one number in one place. A `bDevelopsArchAction` flag
+	 * or a per-profile dispersion angle is the regression DESIGN.md §2 names by name: everything
+	 * else the arch needs is already derivable from the strengths the profiles carry.
+	 *
+	 * SPELLED 0.866 RATHER THAN sqrt(3)/2 because that is the published figure and the two
+	 * differ by 3e-5 relative — far inside anything this model can distinguish.
+	 */
+	constexpr double SolverArchingDepthPerSpan = 0.866;
+
+	/**
 	 * How far a joint's rectangle may disagree with its own area, as a FRACTION of it.
 	 *
 	 * RELATIVE, because the quantity is an area: a joint may be a square centimetre or a
@@ -648,6 +667,20 @@ void FStructure::SolveLoads()
 	TArray<TArray<int32>> SupportConnections;
 	SupportConnections.SetNum(Pieces.Num());
 
+	/*
+	 * AND WHICH OF THEM HAVE NO SEAT AT ALL, recorded here because this is the loop that
+	 * knows. It is the fallback firing, and nothing downstream can tell that apart from a
+	 * piece with one seat by looking at the finished list: both come back non-empty. A hole
+	 * one brick wide leaves nobody in this set; a wider one leaves the bricks in the middle of
+	 * it, which is what ReseatSpannedGroups is for.
+	 *
+	 * GROUNDED PIECES ARE NOT IN IT, and neither is a tombstone. The earth needs no seat, so a
+	 * grounded piece is a perfectly good abutment for a group to push against rather than a
+	 * member of one.
+	 */
+	TArray<bool> PieceHasNoSeat;
+	PieceHasNoSeat.Init(false, Pieces.Num());
+
 	for (int32 PieceIndex = 0; PieceIndex < Pieces.Num(); ++PieceIndex)
 	{
 		TArray<int32> HeadConnections;
@@ -698,9 +731,31 @@ void FStructure::SolveLoads()
 		 */
 		if (SupportConnections[PieceIndex].Num() == 0)
 		{
+			PieceHasNoSeat[PieceIndex] =
+				Pieces[PieceIndex].bIsInTheStructure && !Pieces[PieceIndex].bIsGrounded;
+
 			SupportConnections[PieceIndex] = MoveTemp(HeadConnections);
 		}
 	}
+
+	/*
+	 * Step one and a half: a run of pieces with no seat between them SPANS the hole rather
+	 * than hanging sideways off its edges.
+	 *
+	 * THE ONLY PLACE IN THE SOLVER THAT READS GEOMETRY TO DECIDE A ROUTE, and it sits ABOVE
+	 * the tier rather than inside it — GetJointRole is untouched, and the tier of one joint is
+	 * still a fact about one normal and one pairing. See ReseatSpannedGroups for the revision
+	 * to MOMENTS_DESIGN's discipline line, and for why the whole pass is a no-op on a
+	 * structure nobody placed.
+	 *
+	 * BEFORE Loaders, BEFORE the fixpoint, and it is the last thing to touch SupportConnections
+	 * — every step from here down reads that one list, which is what stops any of them
+	 * forgetting the re-seat the way the old solver forgot to filter falling supports.
+	 */
+	TArray<bool> PieceReseatedOnAnArch;
+	TArray<FSpannedArch> Arches;
+	ReseatSpannedGroups(
+		PieceJoints, PieceHasNoSeat, SupportConnections, PieceReseatedOnAnArch, Arches);
 
 	/*
 	 * The same relation read the other way: who rests on each piece. Both of the
@@ -954,9 +1009,20 @@ void FStructure::SolveLoads()
 			 * with no eccentricity the bending term vanishes and every joint reads bit for
 			 * bit what it read before moments existed. That exactness is the only reason
 			 * every geometry-free fixture in the project still works.
+			 *
+			 * AND A PIECE RE-SEATED ONTO AN ARCH IS INDETERMINATE HOWEVER MANY EDGES IT HAS
+			 * LEFT, which is the same rule rather than an exception to it. ReseatSpannedGroups
+			 * only routes a group that something seated stands on BOTH sides of, so the reaction
+			 * to an unseated brick's weight is shared between two abutments; the one head joint
+			 * left in its load path is the bookkeeping route for the vertical share, not a claim
+			 * that the brick hangs off that joint alone. Treated as determinate it would carry
+			 * its whole column across the 11.25 cm to that joint's centroid — MOMENTS_DESIGN
+			 * case (b) multiplied by twenty-eight brick weights, about 11.6 of capacity — and
+			 * the head joint would snap, so the arch would fail for a NEW reason having just
+			 * been granted.
 			 */
-			const bool bLoadPathIsDeterminate =
-				LoadPaths[Current].Num() == 1 && Pieces[Current].bHasCentreOfMass;
+			const bool bLoadPathIsDeterminate = LoadPaths[Current].Num() == 1
+				&& Pieces[Current].bHasCentreOfMass && !PieceReseatedOnAnArch[Current];
 
 			for (const int32 Index : LoadPaths[Current])
 			{
@@ -976,6 +1042,13 @@ void FStructure::SolveLoads()
 					 * joint's own normal. Orienting the force along the interface normal
 					 * here would give the right magnitudes and entirely the wrong
 					 * direction.
+					 *
+					 * AND IT IS NO LONGER THE WHOLE OF WHAT A SPRINGING CARRIES.
+					 * ApplyArchingThrust runs once this accumulation has settled and adds a
+					 * HORIZONTAL component at the two abutments of every spanned opening —
+					 * gravity is still what this loop routes, and the arch is a second,
+					 * sideways load the same joint has to take in shear. Every joint no arch
+					 * touches keeps exactly the vector built here, bit for bit.
 					 *
 					 * THE SIGN IS NOT FREE. ConnectionLoad.h's convention is that the force
 					 * belonging to a connection is the force acting on PieceB, the piece
@@ -1098,7 +1171,8 @@ void FStructure::SolveLoads()
 
 							if (ArchingRelief < 1.0
 								&& HasArchingAbutment(
-									Current, Connection, PieceJoints, SupportConnections))
+									Current, Connection, PieceJoints, SupportConnections,
+									PieceReseatedOnAnArch))
 							{
 								MomentAboutJointUuCm *= ArchingRelief;
 							}
@@ -1192,6 +1266,17 @@ void FStructure::SolveLoads()
 	}
 
 	/*
+	 * Step six: AN ARCH PUSHES SIDEWAYS, and the springing has to carry that too.
+	 *
+	 * OUTSIDE THE FIXPOINT BECAUSE IT READS ITS ANSWER. The thrust is a fraction of the load
+	 * the abutments' own seats have already been given, so it can only be computed once the
+	 * accumulation has settled — and it feeds nothing back, since a horizontal force changes no
+	 * support list, no split, no accumulation order and no moment. That is what lets the whole
+	 * vertical answer of the structure stay bit-identical to one computed before arches existed.
+	 */
+	ApplyArchingThrust(PieceJoints, Arches);
+
+	/*
 	 * Nothing is evaluated against a strength here. Solving computes what each
 	 * joint carries and must leave every connection exactly as intact as it found
 	 * it: FConnection::ApplyForce latches, so calling it would break joints as a
@@ -1199,11 +1284,634 @@ void FStructure::SolveLoads()
 	 */
 }
 
+void FStructure::ReseatSpannedGroups(
+	const TArray<TArray<int32>>& PieceJoints,
+	const TArray<bool>& PieceHasNoSeat,
+	TArray<TArray<int32>>& SupportConnections,
+	TArray<bool>& PieceReseatedOnAnArch,
+	TArray<FSpannedArch>& Arches) const
+{
+	/*
+	 * SIZED BEFORE THE GATE, so every caller downstream may index it without asking whether
+	 * this pass ran. An all-false array is exactly what "no group formed" means, and it is the
+	 * same answer a structure nobody placed gets.
+	 */
+	PieceReseatedOnAnArch.Init(false, Pieces.Num());
+	Arches.Reset();
+
+	/*
+	 * THE GEOMETRY GATE, AND IT IS LOAD-BEARING RATHER THAN DEFENSIVE. Deciding that a run of
+	 * bricks over a hole is an arch rather than a chain of hangers is a ROUTING decision, and it
+	 * cannot be made without knowing where the hole is — which is why ARCHING_DESIGN revises
+	 * MOMENTS_DESIGN's discipline line here rather than quietly bending it. What the revision
+	 * buys is this one line: with no positions there is no group, so the whole pass is a no-op
+	 * and a geometry-free structure routes bit for bit as it always did.
+	 *
+	 * BOTH FUZZ GENERATORS EMIT NO GEOMETRY — 20,000 cases between them, and the only property
+	 * tests over routing this project has. An arch that could fire without positions would set
+	 * every one of them against an oracle that has never heard of one, and they would go dark
+	 * quietly rather than failing.
+	 */
+	if (!HasCompleteGeometry())
+	{
+		return;
+	}
+
+	TArray<bool> Grouped;
+	Grouped.Init(false, Pieces.Num());
+
+	/*
+	 * Reused across every group rather than allocated per group: hops from the nearest abutment,
+	 * INDEX_NONE for a piece this pass has not reached. Only entries belonging to the group
+	 * being worked are ever read, and each group writes its own before reading them.
+	 */
+	TArray<int32> HopsFromAbutment;
+	HopsFromAbutment.Init(INDEX_NONE, Pieces.Num());
+
+	/*
+	 * WHAT "CONTIGUOUS" MEANS, WRITTEN ONCE AND ASKED FOUR TIMES: the piece across an INTACT
+	 * HEAD JOINT from this one, or INDEX_NONE where this joint is not one.
+	 *
+	 * Head joints and nothing else. A bed joint to a seatless piece is the tier that has
+	 * already failed to hold anybody up, and following one would fuse the courses above and
+	 * below a hole into a single group spanning nothing. A joint that has given conducts
+	 * nothing at all, so it cannot make two pieces one group either — GetJointRole keeps
+	 * answering for a severed joint, deliberately, so that has to be asked here.
+	 */
+	const auto AcrossHeadJoint = [this](int32 PieceIndex, int32 Index) -> int32
+	{
+		return Connections[Index].HasGiven() || GetJointRole(Index, PieceIndex) != EJointRole::Head
+			? INDEX_NONE
+			: OtherEndOf(Connections[Index], PieceIndex);
+	};
+
+	for (int32 Seed = 0; Seed < Pieces.Num(); ++Seed)
+	{
+		if (!PieceHasNoSeat[Seed] || Grouped[Seed])
+		{
+			continue;
+		}
+
+		/* THE GROUP: the connected run of seatless pieces this one belongs to. */
+		TArray<int32> Group;
+		Group.Add(Seed);
+		Grouped[Seed] = true;
+
+		for (int32 Head = 0; Head < Group.Num(); ++Head)
+		{
+			for (const int32 Index : PieceJoints[Group[Head]])
+			{
+				const int32 Neighbour = AcrossHeadJoint(Group[Head], Index);
+
+				if (Neighbour != INDEX_NONE && PieceHasNoSeat[Neighbour] && !Grouped[Neighbour])
+				{
+					Grouped[Neighbour] = true;
+					Group.Add(Neighbour);
+				}
+			}
+		}
+
+		/* Where the group sits, which is the point its abutments are counted either side of. */
+		FVector GroupCentreCm = FVector::ZeroVector;
+		for (const int32 Member : Group)
+		{
+			GroupCentreCm += Pieces[Member].CentreOfMassCm;
+		}
+
+		GroupCentreCm /= static_cast<double>(Group.Num());
+
+		/*
+		 * THE ABUTMENTS: the seated pieces the group pushes against, one head joint away. A
+		 * member touching one is a hop from the ground and seeds the walk inward.
+		 *
+		 * EACH ABUTMENT ONCE, however many members touch it. The direction test below is
+		 * unmoved by a duplicate — two copies of one vector can only agree with each other —
+		 * but the thrust divides itself among the abutments at each end, and an abutment
+		 * counted twice would take twice its share of it.
+		 */
+		TArray<int32> Abutments;
+		TArray<FVector> TowardAbutmentCm;
+		TArray<int32> Frontier;
+
+		for (const int32 Member : Group)
+		{
+			for (const int32 Index : PieceJoints[Member])
+			{
+				const int32 Abutment = AcrossHeadJoint(Member, Index);
+
+				if (Abutment == INDEX_NONE || PieceHasNoSeat[Abutment]
+					|| !Pieces[Abutment].bIsInTheStructure)
+				{
+					continue;
+				}
+
+				if (Abutments.Find(Abutment) == INDEX_NONE)
+				{
+					Abutments.Add(Abutment);
+					TowardAbutmentCm.Add(Pieces[Abutment].CentreOfMassCm - GroupCentreCm);
+				}
+
+				if (HopsFromAbutment[Member] == INDEX_NONE)
+				{
+					HopsFromAbutment[Member] = 1;
+					Frontier.Add(Member);
+				}
+			}
+		}
+
+		/*
+		 * AND THE GROUP ONLY SPANS IF SOMETHING SEATED STANDS ON BOTH SIDES OF IT. One abutment
+		 * is a cantilever however many bricks long it is, and granting it would hang a wall's
+		 * whole free end off a joint that has nothing to thrust into — which is the permissive
+		 * failure ARCHING_DESIGN names, and the reason a wall's free vertical end has to keep
+		 * today's answer.
+		 *
+		 * OPPOSITE SIDES IS A NEGATIVE DOT PRODUCT ABOUT THE GROUP'S OWN CENTRE, which needs no
+		 * axis to be nominated and so says the same thing for a wall laid along X, along Y or
+		 * at forty degrees to both. Written as a positive test, so a NaN anywhere in either
+		 * direction leaves the group unabutted rather than spanning: a hole that quietly stops
+		 * being a hole is the expensive way to be wrong here.
+		 */
+		bool bAbutsOnBothSides = false;
+
+		for (int32 First = 0; First < TowardAbutmentCm.Num() && !bAbutsOnBothSides; ++First)
+		{
+			for (int32 Second = First + 1; Second < TowardAbutmentCm.Num(); ++Second)
+			{
+				if (FVector::DotProduct(TowardAbutmentCm[First], TowardAbutmentCm[Second]) < 0.0)
+				{
+					bAbutsOnBothSides = true;
+					break;
+				}
+			}
+		}
+
+		if (!bAbutsOnBothSides)
+		{
+			continue;
+		}
+
+		/* How far each member is from the nearest abutment, in head joints. */
+		for (int32 Head = 0; Head < Frontier.Num(); ++Head)
+		{
+			for (const int32 Index : PieceJoints[Frontier[Head]])
+			{
+				const int32 Neighbour = AcrossHeadJoint(Frontier[Head], Index);
+
+				if (Neighbour != INDEX_NONE && PieceHasNoSeat[Neighbour]
+					&& HopsFromAbutment[Neighbour] == INDEX_NONE)
+				{
+					HopsFromAbutment[Neighbour] = HopsFromAbutment[Frontier[Head]] + 1;
+					Frontier.Add(Neighbour);
+				}
+			}
+		}
+
+		/*
+		 * THE RE-SEAT, AND IT IS ACYCLIC BY CONSTRUCTION. A member keeps only the head joints
+		 * that take it strictly CLOSER to an abutment, so every remaining edge runs from a
+		 * longer path to a shorter one and no walk can return to where it started. That is what
+		 * separates this from the naive arch ARCHING_DESIGN's trap 1 describes: making the
+		 * neighbour a support outright puts two bricks over a hole in a two-node cycle,
+		 * LoadReturnsToPiece strands the pair, and the wall comes down for a NEW reason.
+		 *
+		 * ASCENDING JOINT INDEX SURVIVES, because PieceJoints is ascending and this filters it
+		 * in place rather than sorting anything. The whole accumulation downstream is a
+		 * floating-point sum whose last bit decides breaks, and its order is the order of these
+		 * lists.
+		 */
+		for (const int32 Member : Group)
+		{
+			if (HopsFromAbutment[Member] == INDEX_NONE)
+			{
+				continue;
+			}
+
+			TArray<int32> TowardTheAbutments;
+
+			for (const int32 Index : PieceJoints[Member])
+			{
+				const int32 Neighbour = AcrossHeadJoint(Member, Index);
+
+				if (Neighbour == INDEX_NONE)
+				{
+					continue;
+				}
+
+				/* An abutment is where the walk started, so it is a hop from nowhere: zero. */
+				const int32 NeighbourHops = PieceHasNoSeat[Neighbour]
+					? HopsFromAbutment[Neighbour]
+					: 0;
+
+				if (NeighbourHops == HopsFromAbutment[Member] - 1)
+				{
+					TowardTheAbutments.Add(Index);
+				}
+			}
+
+			if (TowardTheAbutments.Num() > 0)
+			{
+				SupportConnections[Member] = MoveTemp(TowardTheAbutments);
+				PieceReseatedOnAnArch[Member] = true;
+			}
+		}
+
+		/*
+		 * AND THE OPENING IS RECORDED AS AN ARCH, WITH ITS TWO ENDS TOLD APART. What the thrust
+		 * pass needs and this loop is the only place that knows is which abutments face each
+		 * other across the hole: H is one number for the whole span, pushed out at both ends at
+		 * once, and a pass that could not tell the ends apart would have nothing to make equal
+		 * and opposite.
+		 *
+		 * THE FIRST ABUTMENT'S OWN DIRECTION IS THE AXIS, which nominates no world axis and so
+		 * says the same thing for a wall laid along X, along Y or at forty degrees to both. The
+		 * sides then fall out as the sign of a projection onto it, and an abutment square on to
+		 * that axis is on NEITHER side and is dropped — written as two positive tests so a NaN
+		 * leaves it out rather than assigning it to whichever branch happens to be the else.
+		 *
+		 * A DIRECTION THAT WILL NOT NORMALISE MEANS AN ABUTMENT SITTING EXACTLY ON THE GROUP'S
+		 * OWN CENTRE, which describes no span, so there is no arch here to thrust — the re-seat
+		 * above stands either way, which is slice 2's answer and is unaffected.
+		 */
+		FSpannedArch Arch;
+		Arch.TowardEndZero = TowardAbutmentCm[0];
+
+		if (!Arch.TowardEndZero.Normalize())
+		{
+			continue;
+		}
+
+		FVector EndCentreCm[2] = { FVector::ZeroVector, FVector::ZeroVector };
+
+		for (int32 Which = 0; Which < Abutments.Num(); ++Which)
+		{
+			const double AlongAxisCm =
+				FVector::DotProduct(TowardAbutmentCm[Which], Arch.TowardEndZero);
+
+			if (AlongAxisCm > 0.0)
+			{
+				Arch.Abutments[0].Add(Abutments[Which]);
+				EndCentreCm[0] += Pieces[Abutments[Which]].CentreOfMassCm;
+			}
+			else if (AlongAxisCm < 0.0)
+			{
+				Arch.Abutments[1].Add(Abutments[Which]);
+				EndCentreCm[1] += Pieces[Abutments[Which]].CentreOfMassCm;
+			}
+		}
+
+		/*
+		 * BOTH ENDS OR NEITHER. bAbutsOnBothSides above already found a pair of abutments in
+		 * opposition, so this cannot be false — it is asked because the thrust pass may not be
+		 * the thing that discovers a one-ended arch, which is trap 2 wearing the clothes of a
+		 * refactor.
+		 */
+		if (Arch.Abutments[0].Num() > 0 && Arch.Abutments[1].Num() > 0)
+		{
+			/*
+			 * AND L IS HOW FAR THE TWO ENDS STAND APART, one mean abutment centre per end.
+			 * Slice 3 never needed it because `d_e = 0.866*L` cancelled the span out of the
+			 * thrust ratio entirely; capping `d_e` by the cover puts it back, and the abutments'
+			 * own positions give it with no new query — for a running-bond wall each springing
+			 * keeps half a cell of bearing, so the two centres are the clear opening apart to
+			 * the centimetre.
+			 */
+			EndCentreCm[0] /= static_cast<double>(Arch.Abutments[0].Num());
+			EndCentreCm[1] /= static_cast<double>(Arch.Abutments[1].Num());
+
+			Arch.SpanCm = (EndCentreCm[0] - EndCentreCm[1]).Size();
+
+			Arches.Add(MoveTemp(Arch));
+		}
+	}
+}
+
+void FStructure::ApplyArchingThrust(
+	const TArray<TArray<int32>>& PieceJoints,
+	const TArray<FSpannedArch>& Arches)
+{
+	for (const FSpannedArch& Arch : Arches)
+	{
+		/*
+		 * THE SEATS THE ARCH DELIVERS ITSELF THROUGH, and what they are already carrying. The
+		 * thrust arrives at the abutment and leaves through the same patch its weight does,
+		 * which is why the springing plane is the critical one: the demand is constant with
+		 * depth while the friction that resists it grows with the weight above.
+		 *
+		 * THE SIGN OF EACH SEAT IS RECORDED HERE RATHER THAN RE-DERIVED BELOW. ConnectionLoad's
+		 * convention is that a joint's force is the force acting on PieceB, so a joint naming
+		 * the abutment second stores the push as given and one naming it first stores the
+		 * equal-and-opposite reaction. Get it backwards and the two ends of an arch pull
+		 * together instead of pushing apart, which is a perfectly plausible-looking wall.
+		 */
+		TArray<int32> Seats[2];
+		TArray<double> SeatSign[2];
+		double SeatAreaSqCm[2] = { 0.0, 0.0 };
+
+		/*
+		 * HOW DEEP THE ARCH MAY BE IF ONLY THE ANGLE HAD A SAY, and it is also how far up the
+		 * cover walk below has to bother looking: past this much masonry the angle governs and
+		 * the exact cover changes no answer.
+		 */
+		const double AngleCappedDepthCm = SolverArchingDepthPerSpan * Arch.SpanCm;
+
+		/*
+		 * THE THINNEST COVER EITHER END STANDS UNDER, and ONE NUMBER FOR THE WHOLE ARCH.
+		 *
+		 * A cover measured per abutment and applied per abutment is trap 2 wearing a new hat:
+		 * the two ends of one opening would disagree about d_e, push each other by different
+		 * amounts, and hand the structure a net horizontal force out of nowhere while every
+		 * joint still read plausibly. Reducing the two measurements to one before anything is
+		 * pushed makes the equal-and-opposite property structural rather than lucky.
+		 *
+		 * THE THINNEST RATHER THAN THE MEAN, because thin cover is the direction that fails —
+		 * an arch is only as good as its shallower haunch, and taking the deeper one would be
+		 * the permissive reading of exactly the defect this slice exists to fix.
+		 */
+		double CoverCm = TNumericLimits<double>::Max();
+
+		/*
+		 * W IS THE WHOLE LOAD THE ARCH PUTS ON ITS ABUTMENTS, springings' own columns included,
+		 * and ARCHING_DESIGN is explicit that it is not a triangle. Taking the re-seated group's
+		 * load alone would leave out the two bricks the thrust is actually delivered through and
+		 * under-report the thrust by roughly a cell's worth.
+		 */
+		double TotalVerticalUu = 0.0;
+
+		for (int32 End = 0; End < 2; ++End)
+		{
+			for (const int32 Abutment : Arch.Abutments[End])
+			{
+				/* Whichever of this abutment's seats came first: the plane its cover stands on. */
+				int32 SpringingJointIndex = INDEX_NONE;
+
+				for (const int32 Index : PieceJoints[Abutment])
+				{
+					const FConnection& Connection = Connections[Index];
+
+					/*
+					 * A joint that has given conducts nothing, so it takes no thrust either —
+					 * the same rule the tier decision applies. GetJointRole keeps answering for
+					 * a severed joint, deliberately, so it has to be asked here.
+					 */
+					if (Connection.HasGiven()
+						|| GetJointRole(Index, Abutment) != EJointRole::BedBeneath)
+					{
+						continue;
+					}
+
+					if (SpringingJointIndex == INDEX_NONE)
+					{
+						SpringingJointIndex = Index;
+					}
+
+					Seats[End].Add(Index);
+					SeatSign[End].Add(Connection.PieceB == Abutment ? 1.0 : -1.0);
+					SeatAreaSqCm[End] += Connection.InterfaceAreaSqCm;
+
+					TotalVerticalUu += FMath::Abs(ConnectionForces[Index].Z);
+				}
+
+				if (SpringingJointIndex == INDEX_NONE)
+				{
+					continue;
+				}
+
+				/*
+				 * WRITTEN AS `NOT AT LEAST AS DEEP` RATHER THAN AS A `Min`, so that a cover which
+				 * came back NaN is taken rather than discarded. Every comparison against a NaN is
+				 * false, so FMath::Min would quietly keep the running answer and the arch would
+				 * end up credited with the good end's depth; this way the NaN reaches the guard
+				 * below and the arch is left unthrust instead.
+				 */
+				const double AtThisEndCm = CoverAboveSpringingCm(
+					Abutment, SpringingJointIndex, PieceJoints, AngleCappedDepthCm);
+
+				if (!(AtThisEndCm >= CoverCm))
+				{
+					CoverCm = AtThisEndCm;
+				}
+			}
+		}
+
+		/*
+		 * BOTH ENDS HAVE TO BE ABLE TO TAKE IT, OR NEITHER IS PUSHED. An end whose abutments
+		 * are grounded — resting on the earth rather than on a bed joint — has no seat here to
+		 * deliver into, and thrusting only the other end would give the structure a net
+		 * horizontal force out of nowhere while every joint still read plausibly. That is
+		 * ARCHING_DESIGN's trap 2 and it is the one thing no per-joint check could catch.
+		 *
+		 * Every guard is written as a positive test, so a NaN area or a NaN load leaves the
+		 * arch unthrust rather than laundering into a plausible-looking sideways force.
+		 */
+		if (Seats[0].Num() == 0 || Seats[1].Num() == 0)
+		{
+			continue;
+		}
+
+		if (!(TotalVerticalUu > 0.0) || !FMath::IsFinite(TotalVerticalUu)
+			|| !(SeatAreaSqCm[0] > 0.0) || !(SeatAreaSqCm[1] > 0.0))
+		{
+			continue;
+		}
+
+		/*
+		 * A SPAN AND A COVER THAT MEAN NOTHING LEAVE THE ARCH UNTHRUST, which is the same answer
+		 * a degenerate area or a degenerate load already gets a few lines up. Both guards are
+		 * positive tests, so a NaN lands inside them; and neither is reachable from a wall
+		 * anyone laid, since an abutted group has two abutments a real distance apart and the
+		 * spanning course is itself a course of cover.
+		 */
+		if (!(Arch.SpanCm > 0.0) || !FMath::IsFinite(Arch.SpanCm)
+			|| !(CoverCm > 0.0) || !FMath::IsFinite(CoverCm))
+		{
+			continue;
+		}
+
+		/*
+		 * THE ARCHING DEPTH, AND IT IS A `min` RATHER THAN A REPLACEMENT. BS 5977-1's angle says
+		 * how deep an arch may be; the masonry actually standing over the opening says how deep
+		 * it can be. Whichever is smaller is what there is to work with, so a deeply buried
+		 * opening is governed by the angle and reads the same however much more wall is piled on
+		 * it, while a shallow one is governed by what little it has.
+		 *
+		 * HELD AS d_e/L RATHER THAN AS d_e, AND THAT IS ARITHMETIC AND NOT TIDINESS. The thrust
+		 * only ever depends on the ratio — H = 3*W*L/(8*d_e) is 3*W/(8*(d_e/L)) — and where the
+		 * ANGLE governs, d_e/L is the constant itself, so that expression is character for
+		 * character the one slice 3 shipped and every answer slice 3 pinned is bit-identical.
+		 * Dividing 0.866*L back out of L instead loses the cancellation: IEEE multiplication is
+		 * not exact, so L/(0.866*L) is 0.866 only to within a rounding, and the dry-stone
+		 * springing moves in its last three digits for no reason anybody chose.
+		 *
+		 * WRITTEN OUT RATHER THAN AS FMath::Min BECAUSE THE COMPARISON WORKS AGAINST US. Min is
+		 * `(A <= B) ? A : B`, and every comparison against a NaN is false, so a NaN cover would
+		 * be silently REPLACED by the angle's answer — the permissive direction, and the exact
+		 * defect this slice exists to remove. The guard above has already refused a NaN, and
+		 * this is written so it would not matter if it had not.
+		 */
+		const double DepthPerSpan = CoverCm < AngleCappedDepthCm
+			? CoverCm / Arch.SpanCm
+			: SolverArchingDepthPerSpan;
+
+		if (!(DepthPerSpan > 0.0))
+		{
+			continue;
+		}
+
+		/*
+		 * H = W*L/(8r) WITH r = d_e/3, SO H = 3*W/(8*(d_e/L)). The kern-limited rise is a fixed
+		 * fraction of the DEPTH rather than of the span, which is what makes the cover matter at
+		 * all: H climbs as 1/d_e while V does not move, so the thrust ratio H/V = 3L/(4*d_e)
+		 * blows up as the masonry over an opening thins. Where the angle governs — a narrow hole
+		 * under deep cover — d_e/L is 0.866, the span drops out of the ratio again and it settles
+		 * at the constant 3/(4*0.866) = 0.866 slice 3 measured everywhere.
+		 *
+		 * ONE NUMBER FOR THE WHOLE ARCH, pushed out at both ends at once, which is what makes
+		 * trap 2 exact rather than nearly exact.
+		 */
+		const double ThrustUu = 3.0 * TotalVerticalUu / (8.0 * DepthPerSpan);
+
+		for (int32 End = 0; End < 2; ++End)
+		{
+			/*
+			 * ONE DIRECTION, TWO SIGNS, so the two ends sum to exactly zero rather than to a
+			 * rounding of it: +H*D and -H*D cancel bit for bit on every component.
+			 */
+			const FVector EndThrustUu = (End == 0 ? ThrustUu : -ThrustUu) * Arch.TowardEndZero;
+
+			for (int32 Which = 0; Which < Seats[End].Num(); ++Which)
+			{
+				const int32 Index = Seats[End][Which];
+
+				/*
+				 * Divided among an end's seats by interface area, which is the same rule the
+				 * load split already uses — and with one seat, which is what a half-seated
+				 * springing has, it is the whole of it exactly.
+				 */
+				const double AreaShare =
+					Connections[Index].InterfaceAreaSqCm / SeatAreaSqCm[End];
+
+				ConnectionForces[Index] += SeatSign[End][Which] * AreaShare * EndThrustUu;
+			}
+		}
+	}
+}
+
+double FStructure::CoverAboveSpringingCm(
+	int32 Abutment,
+	int32 SpringingJointIndex,
+	const TArray<TArray<int32>>& PieceJoints,
+	double AngleCappedDepthCm) const
+{
+	const int32 Seat = OtherEndOf(Connections[SpringingJointIndex], Abutment);
+
+	if (Seat == INDEX_NONE)
+	{
+		return 0.0;
+	}
+
+	/*
+	 * THE SPANNING COURSE COUNTS, AND IT IS THE FIRST RING OF THE ARCH RATHER THAN SOMETHING
+	 * RESTING ON ONE — so the shallowest cover a wall can offer is one course and never zero,
+	 * and an opening cut in the top course of a wall still has a ring to arch in.
+	 *
+	 * ITS DEPTH IS A COURSE PITCH AND NOT A BRICK HEIGHT. What the arch works through is the
+	 * masonry from one bed plane to the next, mortar included, which is exactly the rise from
+	 * the seat below the springing to the springing itself. Taking the unit's own height instead
+	 * drops the joints and reads about 13% shallow on standard brickwork, which is a plausible
+	 * enough number to survive a review and is wrong on every row.
+	 */
+	const double FirstCourseRiseCm =
+		Pieces[Abutment].CentreOfMassCm.Z - Pieces[Seat].CentreOfMassCm.Z;
+
+	if (!(FirstCourseRiseCm > 0.0))
+	{
+		return 0.0;
+	}
+
+	/*
+	 * AND THE WALK IS BOUNDED TWICE OVER. Past 0.866*L of cover the angle governs and no further
+	 * course can change the answer, which is the bound ARCHING_DESIGN asks for: at most
+	 * ceil(0.866*L / course pitch) steps. The piece count is the second bound and is pure
+	 * defence — a graph whose normals claim A is above B and B above A would otherwise walk for
+	 * ever, and a structure with complete geometry is the only thing that reaches here.
+	 *
+	 * COMPARED AS A DOUBLE, so a vanishing course pitch produces an enormous bound rather than
+	 * an integer conversion nobody defined.
+	 */
+	const double MaxCourses = FMath::Min(
+		FMath::CeilToDouble(AngleCappedDepthCm / FirstCourseRiseCm),
+		static_cast<double>(Pieces.Num()));
+
+	double CoverCm = FirstCourseRiseCm;
+	int32 Current = Abutment;
+
+	for (int32 Course = 1; CoverCm < AngleCappedDepthCm && Course < MaxCourses; ++Course)
+	{
+		/*
+		 * ONE STEP UP, OVER A BED JOINT AND NEVER THROUGH SPACE. What stands over this piece is
+		 * whatever the graph says rests on it — BedAbove is that relation exactly — so the cover
+		 * costs a step per course and needs no broadphase and no world. A joint that has given
+		 * conducts nothing and holds nothing up, so it is not a course of cover either;
+		 * GetJointRole keeps answering for a severed joint, deliberately, so it has to be asked.
+		 *
+		 * THE FIRST BY ASCENDING JOINT INDEX, WHICH IS A CHAIN AND NOT A TRAVERSAL. Running bond
+		 * puts two pieces over each brick and in a wall of uniform height both columns reach the
+		 * same place; a stepped or gabled wall would have its cover decided by which one this
+		 * took, and nothing tests that yet.
+		 */
+		int32 Above = INDEX_NONE;
+
+		for (const int32 Index : PieceJoints[Current])
+		{
+			if (Connections[Index].HasGiven()
+				|| GetJointRole(Index, Current) != EJointRole::BedAbove)
+			{
+				continue;
+			}
+
+			const int32 Other = OtherEndOf(Connections[Index], Current);
+
+			if (Other != INDEX_NONE && Pieces[Other].bIsInTheStructure)
+			{
+				Above = Other;
+				break;
+			}
+		}
+
+		if (Above == INDEX_NONE)
+		{
+			break;
+		}
+
+		/*
+		 * MEASURED RISE BY RISE RATHER THAN COUNTED AND MULTIPLIED, so that courses of unequal
+		 * depth add up to what they are instead of to a multiple of the first one. A step that
+		 * does not rise is not a course, and stopping on it is the fail-closed direction: less
+		 * cover is more thrust, and a joint that reads as intact when it should read as failed
+		 * is the expensive way to be wrong here.
+		 */
+		const double RiseCm =
+			Pieces[Above].CentreOfMassCm.Z - Pieces[Current].CentreOfMassCm.Z;
+
+		if (!(RiseCm > 0.0))
+		{
+			break;
+		}
+
+		CoverCm += RiseCm;
+		Current = Above;
+	}
+
+	return CoverCm;
+}
+
 bool FStructure::HasArchingAbutment(
 	int32 PieceIndex,
 	const FConnection& BedJoint,
 	const TArray<TArray<int32>>& PieceJoints,
-	const TArray<TArray<int32>>& SupportConnections) const
+	const TArray<TArray<int32>>& SupportConnections,
+	const TArray<bool>& PieceReseatedOnAnArch) const
 {
 	/*
 	 * THE SEAT'S OWN PLANE IS WHAT THE SIDES ARE MEASURED IN, so a normal that will not
@@ -1292,7 +2000,16 @@ bool FStructure::HasArchingAbutment(
 			}
 		}
 
-		if (!bAbutmentLeansOnUs)
+		/*
+		 * AND A NEIGHBOUR RE-SEATED ONTO A SPANNING GROUP LEANS ON US ONLY BECAUSE SOMETHING
+		 * BEYOND IT IS CARRYING. That mark is written by ReseatSpannedGroups and by nothing
+		 * else, and it is written only for a group with a seated abutment on BOTH sides — so
+		 * where it is set the thrust line runs on through the group to a reaction rather than
+		 * stopping in mid-air, which is the one fact that separates a spanned opening from the
+		 * two bricks propping each other that the test above exists to refuse. Without it this
+		 * reads exactly as it did before groups existed.
+		 */
+		if (!bAbutmentLeansOnUs || PieceReseatedOnAnArch[Abutment])
 		{
 			return true;
 		}
