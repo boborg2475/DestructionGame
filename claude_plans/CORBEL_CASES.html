@@ -1,0 +1,363 @@
+<title>Four Corbels: Above, Opposite, and Overturning</title>
+<style>
+  :root {
+    --paper:#E9ECF0; --panel:#F6F7F9; --ink:#16202B; --ink-soft:#55606E;
+    --ink-faint:#8B95A2; --rule:#C9CFD8; --accent:#2E4A6E;
+    --stands:#2C6B50; --stands-bg:#D7E5DD;
+    --local:#8A6116; --local-bg:#F0E4CB;
+    --collapse:#A03A22; --collapse-bg:#F2DCD5;
+    --brick:#D3D8DE; --brick-edge:#A5ADB8;
+    --counter:#C3D4E4; --counter-edge:#7C9BB8;
+    --ground:#6C7684;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#111821; --panel:#18212C; --ink:#E2E7ED; --ink-soft:#9BA6B3;
+      --ink-faint:#6C7885; --rule:#2C3745; --accent:#82A8D6;
+      --stands:#64AB86; --stands-bg:#1B3129;
+      --local:#D2A44E; --local-bg:#332914;
+      --collapse:#E07B60; --collapse-bg:#3A211A;
+      --brick:#29323D; --brick-edge:#424D5A;
+      --counter:#22303E; --counter-edge:#4A6A88;
+      --ground:#59646F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#111821; --panel:#18212C; --ink:#E2E7ED; --ink-soft:#9BA6B3;
+    --ink-faint:#6C7885; --rule:#2C3745; --accent:#82A8D6;
+    --stands:#64AB86; --stands-bg:#1B3129;
+    --local:#D2A44E; --local-bg:#332914;
+    --collapse:#E07B60; --collapse-bg:#3A211A;
+    --brick:#29323D; --brick-edge:#424D5A;
+    --counter:#22303E; --counter-edge:#4A6A88;
+    --ground:#59646F;
+  }
+  :root[data-theme="light"] {
+    --paper:#E9ECF0; --panel:#F6F7F9; --ink:#16202B; --ink-soft:#55606E;
+    --ink-faint:#8B95A2; --rule:#C9CFD8; --accent:#2E4A6E;
+    --stands:#2C6B50; --stands-bg:#D7E5DD;
+    --local:#8A6116; --local-bg:#F0E4CB;
+    --collapse:#A03A22; --collapse-bg:#F2DCD5;
+    --brick:#D3D8DE; --brick-edge:#A5ADB8;
+    --counter:#C3D4E4; --counter-edge:#7C9BB8;
+    --ground:#6C7684;
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.6;
+  }
+  .wrap { max-width:1080px; margin:0 auto; padding:48px 24px 96px; }
+  .mono { font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace; }
+
+  header.masthead {
+    border-top:3px solid var(--ink); padding-top:20px; margin-bottom:36px;
+    display:grid; gap:18px;
+  }
+  .eyebrow {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:11px; letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--accent); margin:0;
+  }
+  h1 {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:clamp(26px,4vw,38px); font-weight:700; letter-spacing:-0.02em;
+    line-height:1.14; text-wrap:balance; margin:0; max-width:24ch;
+  }
+  .standfirst { max-width:68ch; color:var(--ink-soft); margin:0; }
+  .standfirst strong { color:var(--ink); font-weight:600; }
+
+  .note {
+    border-left:3px solid var(--accent); background:var(--panel);
+    padding:14px 18px; display:grid; gap:8px;
+  }
+  .note h2 {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:12px; letter-spacing:0.12em; text-transform:uppercase;
+    margin:0; color:var(--accent);
+  }
+  .note p { margin:0; font-size:14px; color:var(--ink-soft); }
+  .note strong { color:var(--ink); font-weight:600; }
+
+  .cases { display:grid; gap:22px; margin-top:36px; }
+  .case { background:var(--panel); border:1px solid var(--rule); display:grid; }
+  .case-head {
+    padding:15px 18px 12px; display:flex; flex-wrap:wrap;
+    justify-content:space-between; align-items:flex-start; gap:12px;
+    border-bottom:1px solid var(--rule);
+  }
+  .case-id {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:11px; letter-spacing:0.14em; color:var(--ink-faint);
+    display:block; margin-bottom:3px;
+  }
+  .case-title { font-size:17px; font-weight:650; margin:0; }
+  .case-sub { font-size:13.5px; color:var(--ink-soft); margin:6px 0 0; max-width:76ch; }
+  .verdicts { display:flex; gap:8px; flex:none; flex-wrap:wrap; }
+  .verdict {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+    padding:4px 8px; border:1px solid currentColor; font-weight:700; white-space:nowrap;
+  }
+  .verdict.stands { color:var(--stands); background:var(--stands-bg); }
+  .verdict.falls { color:var(--collapse); background:var(--collapse-bg); }
+  .verdict.disagree { color:var(--local); background:var(--local-bg); }
+
+  .case-body { padding:16px 18px 18px; display:grid; gap:14px; }
+  .fig { overflow-x:auto; }
+  .fig svg { display:block; }
+
+  .sums { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
+  .sum { border:1px solid var(--rule); padding:9px 11px; }
+  .sum dt {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--ink-faint); margin:0 0 3px;
+  }
+  .sum dd {
+    margin:0; font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:15px; font-variant-numeric:tabular-nums;
+  }
+  .sum dd.bad { color:var(--collapse); }
+  .sum dd.good { color:var(--stands); }
+  .sum dd.unknown { color:var(--ink-faint); font-size:13px; }
+
+  .why { margin:0; font-size:14px; color:var(--ink-soft); }
+  .why strong { color:var(--ink); font-weight:600; }
+
+  .closing {
+    margin-top:52px; border-top:3px solid var(--ink); padding-top:22px;
+    display:grid; gap:14px; max-width:72ch;
+  }
+  .closing h2 {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:15px; letter-spacing:0.06em; text-transform:uppercase; margin:0;
+  }
+  .closing p { margin:0; color:var(--ink-soft); }
+  .closing strong { color:var(--ink); font-weight:600; }
+
+  @media (max-width:640px){ .wrap{padding:32px 16px 64px;} }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">Four structures &middot; for review before anything is built</p>
+    <h1>Above, opposite, and what actually holds a corbel up</h1>
+    <p class="standfirst">
+      Four stepped walls off a grounded column, varying one thing at a time. They exist to test the mechanism you
+      described — <em>&ldquo;a larger overhang requires more bricks on top of and opposite of the overhang&rdquo;</em> —
+      and one of them shows that <strong>&ldquo;on top&rdquo; and &ldquo;opposite&rdquo; are not the same mechanism, and
+      can point in opposite directions.</strong>
+    </p>
+    <div class="note">
+      <h2>The base is immovable, and that simplifies everything</h2>
+      <p>
+        Because the base cannot translate, <strong>none of these can topple as a rigid body</strong> — a corbel
+        rotating about its bearing edge <em>is</em> the bed joint at that level opening in tension across its back.
+        Overturning and joint failure are the same event here. <strong>So there is no second mechanism to build:
+        our model already computes that joint</strong>, and what it may get wrong is the section it credits to it.
+      </p>
+      <p>
+        The moments shown are about that root joint&rsquo;s outer edge — what pulls it open against what holds it
+        shut, in brick&#8209;weight&#8209;centimetres. A brick is 21.5 &times; 10.25 &times; 6.5 cm at
+        1.9 g/cm&sup3;, so <span class="mono">26.69 N</span>; each step out is <span class="mono">11.25 cm</span>,
+        half a cell. <strong>Blue bricks are the immovable base; grey is everything the root joint has to hold.</strong>
+      </p>
+    </div>
+  </header>
+
+  <div class="cases" id="cases"></div>
+
+  <div class="closing">
+    <h2>What these four are actually asking</h2>
+    <p>
+      <strong>A against B is the real question</strong>, and it is the one your correction sharpened. A is a stair of
+      single bricks with nothing to act with; B is the same profile filled in, which is the shape your screenshot
+      actually had. If filling makes the difference, composite action is doing something real. If A and B read the
+      same, the model is crediting depth that is not there — and A is the proof, because A has almost no masonry
+      above the root and should not be rescued by any honest rule.
+    </p>
+    <p>
+      <strong>C is the one the depth bound has to get right.</strong> Reach ten steps instead of four and the moment
+      about the root climbs with the square of the reach while the base is unchanged. If C still stands, there is no
+      limit on what bonding can rescue — the concern that started this thread.
+    </p>
+    <p>
+      <strong>D tests whether &ldquo;opposite&rdquo; needs any new code at all.</strong> Masonry behind the root puts
+      weight on the back of the joint, and closing a joint under compression is already what the axial term does —
+      it is what separated cases 15 and 16 by a factor of 32. If C fails and D stands, the counterweight is being
+      read correctly and nothing new is required. If D also fails, weight behind the joint is not reaching it.
+    </p>
+    <p>
+      <strong>Only case A&rsquo;s reading is measured</strong> — it maps onto the corbel you already ruled on. The
+      other three are marked unmeasured rather than quoted, because this design has been wrong seven times and a
+      test caught every one. If the structures look right to you I will run them and report what they actually say.
+    </p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var HALF = 10.75, STEP = 11.25, PIVOT = 10.75, COURSE = 7.5;
+
+  /* Each case is a list of bricks {c: course, x: centre in cm, kind}. */
+  function column(courses, x, kind) {
+    var out = [];
+    for (var c = 0; c < courses; c++) out.push({ c: c, x: x, kind: kind || 'base' });
+    return out;
+  }
+  function corbel(fromCourse, steps, startX) {
+    var out = [];
+    for (var s = 1; s <= steps; s++) out.push({ c: fromCourse + s - 1, x: startX + s * STEP, kind: 'arm' });
+    return out;
+  }
+
+  /* A solid stepped block: every course filled from the base's left edge out to its own step. */
+  function filled(fromCourse, steps, baseCells, startCellX) {
+    var out = [], c, s, cells, i;
+    for (s = 1; s <= steps; s++) {
+      c = fromCourse + s - 1;
+      cells = baseCells + Math.floor(s / 2);
+      for (i = 0; i < cells; i++) {
+        out.push({ c: c, x: startCellX + i * 22.5 + (s % 2 ? STEP : 0), kind: 'arm' });
+      }
+    }
+    return out;
+  }
+  function base(courses, cells, startCellX) {
+    var out = [], c, i;
+    for (c = 0; c < courses; c++) {
+      for (i = 0; i < cells; i++) out.push({ c: c, x: startCellX + i * 22.5 + (c % 2 ? STEP : 0), kind: 'fixed' });
+    }
+    return out;
+  }
+
+  var CASES = [
+    {
+      id: 'A', title: 'The bare arm — a stair of single bricks',
+      sub: 'An immovable two-cell base, then four courses each one brick wide, stepping out half a cell at a time. Nothing fills the space above the base.',
+      bricks: base(3, 2, 0).concat(corbel(3, 4, 22.5)),
+      joint: 'reads 0.195, stands',
+      jointNote: 'measured — this is the corbel you ruled on',
+      why: 'Each brick bears on 10.25 cm of the one below and carries everything outboard of it. With the base immovable this cannot topple as a body — <strong>it can only fail by the bed joint at the root opening</strong>. Worth checking: the arm’s centre of mass sits about <strong>22.5 cm outboard of the root bearing’s centroid</strong>, which is outside the 5.125 cm bearing itself, so there is no compression zone anywhere on that joint. It has no equilibrium at all, yet the model returns a finite 0.195 and calls it safe.'
+    },
+    {
+      id: 'B', title: 'The same profile, filled in',
+      sub: 'The correction: the stepped region above the base is solid masonry, not a diagonal line of single bricks. This is the staircase-void shape from your screenshot.',
+      bricks: base(3, 2, 0).concat(filled(3, 4, 2, 0)),
+      joint: 'lower — real depth to act with',
+      jointNote: 'unmeasured',
+      why: 'Now there is masonry above the base for the root joint to act with, which is what composite action needs — and it is a genuinely different structure from A, not a variation on it. <strong>This is the case that tests whether filling helps for the right reason.</strong> More of the load also lands over the base rather than beyond it, so both the section and the eccentricity improve.'
+    },
+    {
+      id: 'C', title: 'Filled, but reaching too far',
+      sub: 'Case B with ten steps instead of four. Same base, same fill rule, much longer reach.',
+      bricks: base(3, 2, 0).concat(filled(3, 10, 2, 0)),
+      joint: 'must exceed 1.0',
+      jointNote: 'unmeasured — this is the case the depth rule has to get right',
+      why: 'The overhanging mass grows faster than anything holding it: the moment about the root climbs with the square of the reach while the base is unchanged. <strong>This is the row that decides whether a depth bound is doing its job</strong> — if it still stands, the model has no limit on what bonding can rescue.'
+    },
+    {
+      id: 'D', title: 'The same reach, with masonry opposite',
+      sub: 'Case C with the base extended three cells the other way — the counterweight, and the second half of what you described.',
+      bricks: base(3, 5, -67.5).concat(filled(3, 10, 5, -67.5)),
+      joint: 'should fall back under 1.0',
+      jointNote: 'unmeasured',
+      why: 'Masonry behind the root puts weight on the back of the joint, which is what closes it. In the model that is the axial compression term — the same one that separated cases 15 and 16 by a factor of 32. <strong>If C fails and D stands, the counterweight is being read correctly and needs no new mechanism</strong>; if D also fails, weight behind the joint is not reaching it and something is missing.'
+    }
+  ];
+
+  /*
+   * The base is IMMOVABLE, so nothing here topples as a body — the only way this fails is
+   * the bed joint at the root opening. These moments are about that joint's outer edge:
+   * what pulls it open against what holds it shut.
+   */
+  function stats(bricks) {
+    var over = 0, rest = 0, sumX = 0, n = 0, outboard = 0, i, arm, edge = PIVOT;
+    for (i = 0; i < bricks.length; i++) {
+      if (bricks[i].kind === 'fixed' && bricks[i].x + HALF > edge) edge = bricks[i].x + HALF;
+    }
+    for (i = 0; i < bricks.length; i++) {
+      arm = bricks[i].x - edge;
+      if (arm > 0) { over += arm; outboard++; } else { rest += -arm; }
+      sumX += bricks[i].x; n++;
+    }
+    return { over: over, rest: rest, ratio: over / rest, com: sumX / n, n: n, outboard: outboard, edge: edge };
+  }
+
+  function draw(bricks) {
+    var minX = 1e9, maxX = -1e9, maxC = 0, i;
+    for (i = 0; i < bricks.length; i++) {
+      if (bricks[i].x - HALF < minX) minX = bricks[i].x - HALF;
+      if (bricks[i].x + HALF > maxX) maxX = bricks[i].x + HALF;
+      if (bricks[i].c > maxC) maxC = bricks[i].c;
+    }
+    var s = 1.55, pad = 28;
+    var W = (maxX - minX) * s + pad * 2;
+    var H = (maxC + 1) * COURSE * s + pad + 34;
+    function px(x) { return pad + (x - minX) * s; }
+    function py(c) { return pad + (maxC - c) * COURSE * s; }
+
+    var o = ['<svg viewBox="0 0 ' + W.toFixed(1) + ' ' + H.toFixed(1) + '" width="' + W.toFixed(1) + '" height="' + H.toFixed(1) + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="stepped corbel structure on an immovable base">'];
+    var st = stats(bricks);
+
+    for (i = 0; i < bricks.length; i++) {
+      var b = bricks[i];
+      var fill = b.kind === 'fixed' ? 'var(--counter)' : 'var(--brick)';
+      var edge = b.kind === 'fixed' ? 'var(--counter-edge)' : 'var(--brick-edge)';
+      o.push('<rect x="' + px(b.x - HALF).toFixed(1) + '" y="' + py(b.c).toFixed(1) +
+             '" width="' + (2 * HALF * s - 1.2).toFixed(1) + '" height="' + (COURSE * s - 1.2).toFixed(1) +
+             '" fill="' + fill + '" stroke="' + edge + '" stroke-width="0.8"/>');
+    }
+
+    var gy = pad + (maxC + 1) * COURSE * s + 1;
+    o.push('<line x1="' + (pad - 6) + '" y1="' + gy.toFixed(1) + '" x2="' + (W - pad + 6).toFixed(1) + '" y2="' + gy.toFixed(1) + '" stroke="var(--ground)" stroke-width="1.8"/>');
+
+    /* the immovable base, hatched below the ground line */
+    for (var g = pad - 8; g < W - pad + 10; g += 7) {
+      o.push('<line x1="' + g.toFixed(1) + '" y1="' + gy.toFixed(1) + '" x2="' + (g - 6).toFixed(1) + '" y2="' + (gy + 7).toFixed(1) + '" stroke="var(--ground)" stroke-width="0.8" opacity="0.7"/>');
+    }
+    o.push('<text x="' + (pad - 6) + '" y="' + (gy + 22).toFixed(1) + '" font-size="10" fill="var(--ground)" font-family="ui-monospace,monospace">immovable</text>');
+
+    /* the root joint — the only place this can fail */
+    o.push('<line x1="' + px(st.edge).toFixed(1) + '" y1="' + (pad - 20) + '" x2="' + px(st.edge).toFixed(1) + '" y2="' + gy.toFixed(1) + '" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/>');
+    o.push('<text x="' + (px(st.edge) + 6).toFixed(1) + '" y="' + (pad - 22) + '" font-size="10" fill="var(--accent)" font-family="ui-monospace,monospace">root joint opens here &#8594;</text>');
+
+    /* centre of gravity of everything the root joint has to hold */
+    var comColour = st.com > st.edge ? 'var(--collapse)' : 'var(--stands)';
+    o.push('<circle cx="' + px(st.com).toFixed(1) + '" cy="' + (pad - 8) + '" r="4.5" fill="' + comColour + '"/>');
+    o.push('<line x1="' + px(st.com).toFixed(1) + '" y1="' + (pad - 8) + '" x2="' + px(st.com).toFixed(1) + '" y2="' + gy.toFixed(1) + '" stroke="' + comColour + '" stroke-width="1.2" stroke-dasharray="2 3" opacity="0.8"/>');
+
+    o.push('</svg>');
+    return o.join('');
+  }
+
+  var html = '';
+  for (var k = 0; k < CASES.length; k++) {
+    var cs = CASES[k], st = stats(cs.bricks);
+    html +=
+      '<article class="case">' +
+        '<div class="case-head"><div>' +
+          '<span class="case-id">CASE ' + cs.id + '</span>' +
+          '<h3 class="case-title">' + cs.title + '</h3>' +
+          '<p class="case-sub">' + cs.sub + '</p>' +
+        '</div><div class="verdicts">' +
+          '<span class="verdict disagree">' + cs.joint + '</span>' +
+        '</div></div>' +
+        '<div class="case-body">' +
+          '<div class="fig">' + draw(cs.bricks) + '</div>' +
+          '<div class="sums">' +
+            '<div class="sum"><dt>Bricks in the structure</dt><dd>' + st.n + '</dd></div>' +
+            '<div class="sum"><dt>Beyond the base edge</dt><dd>' + st.outboard + '</dd></div>' +
+            '<div class="sum"><dt>Moment about the root</dt><dd class="' + (st.over > st.rest ? 'bad' : 'good') + '">' + st.over.toFixed(1) + ' vs ' + st.rest.toFixed(1) + '</dd></div>' +
+            '<div class="sum"><dt>Model’s joint reading</dt><dd class="unknown">' + cs.jointNote + '</dd></div>' +
+          '</div>' +
+          '<p class="why">' + cs.why + '</p>' +
+        '</div>' +
+      '</article>';
+  }
+  document.getElementById('cases').innerHTML = html;
+})();
+</script>
