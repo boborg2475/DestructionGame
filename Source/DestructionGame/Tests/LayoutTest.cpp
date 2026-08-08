@@ -509,6 +509,124 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 	const FPieceBox LowerRight = FullBrickAt(BrickPitchCm, 0);
 	const FPieceBox Spanning = FullBrickAt(BondOffsetCm, 1);
 
+	/*
+	 * A PIER BEARING WHOLLY INSIDE THE BEAM IT CARRIES: the padstone, the bearing plate,
+	 * the lintel on a wide pier — and the one shape a wall of same-sized bricks can never
+	 * make, which is why nothing above reaches it.
+	 *
+	 * A 40 cm pier under a 220 cm beam, both 10 cm through the wall, separated on Z by one
+	 * mortar joint. The pier's whole top face lands on the beam, so the shared bearing IS
+	 * the pier's face: 40 x 10 = 400 cm2, a rectangle 40 cm long centred on the pier.
+	 *
+	 * Two placements, and the pair is the point. The INBOARD pier stands 20 cm in from the
+	 * beam's end, so the beam's span [0, 220] strictly CONTAINS the pier's [160, 200]. The
+	 * FLUSH pier is the same pier slid out until its outer face meets the beam's end,
+	 * [180, 220], which is exactly where containment begins — |centre difference| = 90 cm
+	 * equals |extent difference| = 110 - 20. Same pier, same beam, same bearing either way:
+	 * 400 cm2. Sliding a pier along under a beam it is entirely beneath cannot change how
+	 * much of it bears, and the flush row is what says the fix for the inboard one moves
+	 * nothing that already works.
+	 *
+	 * Every number here is an integer centimetre and so exact in binary, like the brick
+	 * dimensions above; the concrete-ish sizes are the fixture's own and are not published
+	 * values, because nothing in this file loads them.
+	 */
+	constexpr double BeamLengthCm = 220.0;
+	constexpr double BeamHeightCm = 30.0;
+	constexpr double PierLengthCm = 40.0;
+	constexpr double PierHeightCm = 20.0;
+
+	/** Through the wall, shared by both — so Y overlaps fully and cannot govern the area. */
+	constexpr double BearingDepthCm = 10.0;
+
+	/** How far the inboard pier's outer face stands in from the beam's end. */
+	constexpr double PierInsetCm = 20.0;
+
+	constexpr double BeamCentreXCm = BeamLengthCm / 2.0;
+	constexpr double InboardPierCentreXCm = BeamLengthCm - PierInsetCm - PierLengthCm / 2.0;
+	constexpr double FlushPierCentreXCm = BeamLengthCm - PierLengthCm / 2.0;
+
+	/*
+	 * The pier stands on the ground and the beam sits one mortar joint above its top face,
+	 * so the plane of the joint is the mid-plane of that mortar — the same rule every brick
+	 * row above is pinned against, restated on a fixture that shares none of its dimensions.
+	 */
+	constexpr double BeamCentreZCm = PierHeightCm + MortarCm + BeamHeightCm / 2.0;
+	constexpr double BearingPlaneZCm = PierHeightCm + MortarCm / 2.0;
+
+	/** The pier is wholly under the beam, so the shared face is the PIER'S own top face. */
+	constexpr double BearingAreaSqCm = PierLengthCm * BearingDepthCm;
+
+	const FPieceBox Beam = BoxOfSize(
+		FVector(BeamCentreXCm, 0.0, BeamCentreZCm),
+		FVector(BeamLengthCm, BearingDepthCm, BeamHeightCm));
+
+	const FPieceBox InboardPier = BoxOfSize(
+		FVector(InboardPierCentreXCm, 0.0, PierHeightCm / 2.0),
+		FVector(PierLengthCm, BearingDepthCm, PierHeightCm));
+
+	const FPieceBox FlushPier = BoxOfSize(
+		FVector(FlushPierCentreXCm, 0.0, PierHeightCm / 2.0),
+		FVector(PierLengthCm, BearingDepthCm, PierHeightCm));
+
+	/*
+	 * FIXTURE PRECONDITIONS FOR THE BEARING ROWS: pure arithmetic on the test's own boxes,
+	 * asserting only that this geometry can tell the two ways of measuring an overlap apart.
+	 *
+	 * An axis overlap taken as reach minus distance, extentA + extentB - |centre
+	 * difference|, equals the true interval intersection min(highs) - max(lows) only while
+	 * |centre difference| >= |extent difference|. Below that it over-reports by exactly the
+	 * shortfall. The inboard pier is strictly inside that boundary and the flush pier sits
+	 * exactly on it, so the two rows straddle the switchover from either side.
+	 *
+	 * THE HALF BAT ABOVE CANNOT DO THIS JOB, which is why these rows exist rather than a
+	 * tighter tolerance on that one. A 10.25 cm half bat on a 21.5 cm brick has
+	 * |d| = 5.625 = |eA - eB| to the last bit — the closest the whole suite comes, and it
+	 * lands precisely where the two arithmetics agree.
+	 */
+	const double InboardCentreGapCm = FMath::Abs(InboardPierCentreXCm - BeamCentreXCm);
+	const double FlushCentreGapCm = FMath::Abs(FlushPierCentreXCm - BeamCentreXCm);
+	const double BearingExtentDifferenceCm = (BeamLengthCm - PierLengthCm) / 2.0;
+
+	TestTrue(
+		FString::Printf(
+			TEXT("fixture precondition: the inboard pier must bear WHOLLY inside the beam, so |d| =")
+			TEXT(" %.6f must be strictly less than |eA - eB| = %.6f"),
+			InboardCentreGapCm, BearingExtentDifferenceCm),
+		InboardCentreGapCm < BearingExtentDifferenceCm);
+
+	TestTrue(
+		FString::Printf(
+			TEXT("fixture precondition: the flush pier must sit EXACTLY on the switchover, |d| =")
+			TEXT(" %.17g against |eA - eB| = %.17g"),
+			FlushCentreGapCm, BearingExtentDifferenceCm),
+		FlushCentreGapCm == BearingExtentDifferenceCm);
+
+	/*
+	 * The two arithmetics, both spelled out, and asserted to DISAGREE by exactly the
+	 * shortfall. Reach minus distance gives 110 + 20 - 70 = 60 cm of face where only the
+	 * pier's own 40 cm bears — 20 cm too much, which is 10 cm hanging off each end.
+	 */
+	const double InboardReachMinusDistanceCm =
+		BeamLengthCm / 2.0 + PierLengthCm / 2.0 - InboardCentreGapCm;
+
+	TestEqual(
+		TEXT("fixture precondition: reach minus distance over-reports the inboard bearing by the")
+		TEXT(" shortfall, |eA - eB| - |d|"),
+		InboardReachMinusDistanceCm - PierLengthCm,
+		BearingExtentDifferenceCm - InboardCentreGapCm);
+
+	TestTrue(
+		FString::Printf(
+			TEXT("fixture precondition: this geometry must tell the two apart — reach minus distance")
+			TEXT(" gives %.6f cm where the true intersection gives %.6f cm"),
+			InboardReachMinusDistanceCm, PierLengthCm),
+		InboardReachMinusDistanceCm > PierLengthCm);
+
+	TestEqual(
+		TEXT("fixture precondition: the true shared bearing is the pier's own 400 cm2 face"),
+		BearingAreaSqCm, 400.0);
+
 	const TArray<FInterfaceCase> Cases = {
 		/*
 		 * THE CASE THE WHOLE FACTORY EXISTS FOR. A brick offset half a cell along the
@@ -655,6 +773,80 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 			 */
 			FVector(-BrickLengthCm * 0.5 + HalfBatLengthCm * 0.5, 0.0, BedJointPlaneZCm),
 			FVector(BedJointHalfAlongWallCm, HalfBrickDepthCm, 0.0)
+		},
+
+		/*
+		 * A PIER BEARING WHOLLY INSIDE THE BEAM ABOVE IT, and the row the half bat above
+		 * cannot stand in for.
+		 *
+		 * The half bat overhangs the brick below it by nothing and reaches its far end
+		 * exactly, so |d| = |eA - eB| to the last bit: it is the boundary case, and reach
+		 * minus distance is right there. Move a small piece any distance INBOARD of that and
+		 * the larger span CONTAINS the smaller, at which point the true shared face is the
+		 * smaller piece's own footprint and reach minus distance over-reports it.
+		 *
+		 * Here the beam spans X [0, 220] and the pier X [160, 200]. The pier's whole top
+		 * face bears, so the joint is 40 cm long and 400 cm2. Reach minus distance gives
+		 * 110 + 20 - 70 = 60 cm and 600 cm2, on a rectangle spanning X [150, 210] — ten
+		 * centimetres of bearing face hanging in mid air at each end.
+		 *
+		 * WHY IT SURVIVES EVERY OTHER CHECK IN THIS FILE, AND WHY BOTH HALVES ARE PINNED
+		 * HERE. The centroid comes out RIGHT either way: it is built from the interval
+		 * intersection rather than from the overlap, so it lands on 180 whichever arithmetic
+		 * produced the width. And 4 x h_u x h_v == area still holds, because the rectangle
+		 * and the area are wrong TOGETHER — the half-extent is half the same over-reported
+		 * overlap the area is the product of. So asserting the area alone under-specifies
+		 * the fix, and asserting the invariant catches nothing at all. The area, the
+		 * rectangle AND the centroid all have to be named: two must move, one must not.
+		 *
+		 * NOT A HYPOTHETICAL SHAPE. A padstone, a bearing plate, a lintel on a wide pier and
+		 * a beam on a padstone are all a small piece bearing wholly inside a large one, and
+		 * BeamAcceptanceTest.cpp sidesteps this today by deliberately running its piers PAST
+		 * the beam's end so that no pair in it is ever contained.
+		 */
+		{
+			TEXT("a pier bearing wholly inside the beam above it shares only the pier's own face"),
+			0, InboardPier, 1, Beam, MortarCm,
+			true, FVector(0.0, 0.0, 1.0), BearingAreaSqCm,
+			FVector(InboardPierCentreXCm, 0.0, BearingPlaneZCm),
+			FVector(PierLengthCm / 2.0, BearingDepthCm / 2.0, 0.0)
+		},
+
+		/*
+		 * THE SAME CONTAINED PAIR DECLARED BEAM FIRST, and it is not a duplicate of the
+		 * swapped rows above: those swap two boxes of the same size, where any rule is
+		 * symmetric by construction. Containment is the one arrangement where the two boxes
+		 * play different parts, so a fix that reached for "the smaller extent" or branched on
+		 * which box was A could get the contained row green and this one wrong — a bearing
+		 * whose size depended on declaration order, in a quantity that divides a force.
+		 */
+		{
+			TEXT("the same contained bearing declared beam first"),
+			0, Beam, 1, InboardPier, MortarCm,
+			true, FVector(0.0, 0.0, -1.0), BearingAreaSqCm,
+			FVector(InboardPierCentreXCm, 0.0, BearingPlaneZCm),
+			FVector(PierLengthCm / 2.0, BearingDepthCm / 2.0, 0.0)
+		},
+
+		/*
+		 * THE SAME PIER SLID OUT TO THE BEAM'S END: EXACTLY ON THE SWITCHOVER, and this row
+		 * is correct TODAY and must stay correct.
+		 *
+		 * At X [180, 220] the pier's outer face meets the beam's, so |d| = 90 = |eA - eB|
+		 * and the two arithmetics agree bit for bit — the same knife edge the half bat sits
+		 * on, restated in the coordinates where the defect lives. It pins the boundary from
+		 * the outside so a fix for the row above provably moves nothing that already works,
+		 * and it is the row that would catch an over-correction that started clamping one
+		 * step too early.
+		 *
+		 * Same 400 cm2 as the contained row, because it is the same pier under the same beam.
+		 */
+		{
+			TEXT("a pier flush with the beam's end sits exactly on the switchover and is unchanged"),
+			0, FlushPier, 1, Beam, MortarCm,
+			true, FVector(0.0, 0.0, 1.0), BearingAreaSqCm,
+			FVector(FlushPierCentreXCm, 0.0, BearingPlaneZCm),
+			FVector(PierLengthCm / 2.0, BearingDepthCm / 2.0, 0.0)
 		},
 
 		/*
@@ -1047,6 +1239,55 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 			Produced.InterfaceHalfExtentCm.Equals(Case.ExpectedHalfExtentCm, 1.0e-12));
 
 		/*
+		 * THE FACE CANNOT POKE OUTSIDE EITHER PIECE, asserted as a PROPERTY of every accepted
+		 * row rather than as another hand-derived number, and derived from the box BOUNDS
+		 * rather than from any overlap.
+		 *
+		 * A shared face is an intersection, so the rectangle must lie inside both boxes on
+		 * both in-plane axes. That is a different claim from the expected extents above and
+		 * strictly stronger than the invariant below it: 4 x h_u x h_v == area cannot see an
+		 * over-reported face at all, because the rectangle and the area are then wrong
+		 * together and agree with each other perfectly. This is the check that says the two
+		 * of them describe a face the pieces actually have.
+		 *
+		 * IN-PLANE AXES ONLY, and that exclusion is load-bearing rather than a convenience.
+		 * On the separation axis the centre is the MID-PLANE OF THE MORTAR, which lies
+		 * between the two boxes and therefore outside both of them by design — the one
+		 * coordinate of the emitted geometry that is deliberately in neither piece.
+		 *
+		 * 1e-12 on quantities of order 100 cm, for the same reason the rectangle above gets
+		 * it: every bound here is an integer eighth of a centimetre, so this is astronomically
+		 * looser than the arithmetic and astronomically tighter than half a mortar joint.
+		 */
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			if (Produced.InterfaceNormal[Axis] != 0.0)
+			{
+				continue;
+			}
+
+			const double FaceLowCm =
+				Produced.InterfaceCentreCm[Axis] - Produced.InterfaceHalfExtentCm[Axis];
+			const double FaceHighCm =
+				Produced.InterfaceCentreCm[Axis] + Produced.InterfaceHalfExtentCm[Axis];
+
+			const double SharedLowCm = FMath::Max(
+				Case.BoxA.CentreCm[Axis] - Case.BoxA.ExtentCm[Axis],
+				Case.BoxB.CentreCm[Axis] - Case.BoxB.ExtentCm[Axis]);
+			const double SharedHighCm = FMath::Min(
+				Case.BoxA.CentreCm[Axis] + Case.BoxA.ExtentCm[Axis],
+				Case.BoxB.CentreCm[Axis] + Case.BoxB.ExtentCm[Axis]);
+
+			TestTrue(
+				FString::Printf(
+					TEXT("%s: on in-plane axis %d the emitted face [%.10g, %.10g] must lie inside")
+					TEXT(" BOTH pieces, whose shared span is [%.10g, %.10g] — a bearing face cannot")
+					TEXT(" hang off the end of the piece bearing on it"),
+					Case.Description, Axis, FaceLowCm, FaceHighCm, SharedLowCm, SharedHighCm),
+				FaceLowCm >= SharedLowCm - 1.0e-12 && FaceHighCm <= SharedHighCm + 1.0e-12);
+		}
+
+		/*
 		 * ZERO ON THE NORMAL'S OWN AXIS, EXACTLY, and stated separately from the vector
 		 * above because it is a different claim. The vector says which rectangle; this
 		 * says the face is a rectangle at all. A near-zero thickness would give a joint a
@@ -1232,6 +1473,65 @@ bool FLayoutInterfaceTest::RunTest(const FString& Parameters)
 					Spanning.CentreCm.X),
 				(LeftPatch.InterfaceCentreCm.X + RightPatch.InterfaceCentreCm.X) * 0.5
 					== Spanning.CentreCm.X);
+		}
+	}
+
+	/*
+	 * SLIDING A PIER ALONG UNDER A BEAM IT IS ENTIRELY BENEATH CANNOT CHANGE HOW MUCH OF IT
+	 * BEARS, asserted between two PRODUCED joints rather than against either hand-derived
+	 * expectation above.
+	 *
+	 * This is the physical statement the two bearing rows encode, and it is worth making on
+	 * its own because it needs no expected value at all: the same pier, the same beam, moved
+	 * 20 cm along, must give the same area and the same rectangle SIZE, and its face must
+	 * simply travel with it. Anybody who disbelieved the hand-worked 400 cm2 still has to
+	 * explain why the flush pier bears 400 and the inboard one 600.
+	 *
+	 * Bit for bit, because it is a translation rather than a computation: both faces are the
+	 * pier's own footprint, and every coordinate involved is an integer centimetre.
+	 */
+	{
+		FConnection InboardBearing;
+		FConnection FlushBearing;
+
+		const bool bInboard =
+			MakeInterface(0, InboardPier, 1, Beam, MortarCm, GeneralPurposeMortar, InboardBearing);
+		const bool bFlush =
+			MakeInterface(0, FlushPier, 1, Beam, MortarCm, GeneralPurposeMortar, FlushBearing);
+
+		TestTrue(TEXT("both bearings of the pier under the beam must be produced"), bInboard && bFlush);
+
+		if (bInboard && bFlush)
+		{
+			TestTrue(
+				FString::Printf(
+					TEXT("the same pier under the same beam must bear over the same area wherever it")
+					TEXT(" stands, got %.17g cm2 inboard against %.17g cm2 flush"),
+					InboardBearing.InterfaceAreaSqCm, FlushBearing.InterfaceAreaSqCm),
+				InboardBearing.InterfaceAreaSqCm == FlushBearing.InterfaceAreaSqCm);
+
+			TestTrue(
+				FString::Printf(
+					TEXT("and over the same shape, got half-extents (%.10g, %.10g, %.10g) against")
+					TEXT(" (%.10g, %.10g, %.10g)"),
+					InboardBearing.InterfaceHalfExtentCm.X,
+					InboardBearing.InterfaceHalfExtentCm.Y,
+					InboardBearing.InterfaceHalfExtentCm.Z,
+					FlushBearing.InterfaceHalfExtentCm.X,
+					FlushBearing.InterfaceHalfExtentCm.Y,
+					FlushBearing.InterfaceHalfExtentCm.Z),
+				InboardBearing.InterfaceHalfExtentCm == FlushBearing.InterfaceHalfExtentCm);
+
+			TestTrue(
+				FString::Printf(
+					TEXT("and the face must travel with the pier: the two centroids must be %.6f cm")
+					TEXT(" apart, got %.10g"),
+					PierInsetCm,
+					FlushBearing.InterfaceCentreCm.X - InboardBearing.InterfaceCentreCm.X),
+				FMath::IsNearlyEqual(
+					FlushBearing.InterfaceCentreCm.X - InboardBearing.InterfaceCentreCm.X,
+					PierInsetCm,
+					1.0e-12));
 		}
 	}
 

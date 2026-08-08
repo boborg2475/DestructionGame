@@ -230,6 +230,32 @@ namespace DestructionLayout
 		 * axis and overlap positively on the other two; the shared face is then the
 		 * product of those two overlaps.
 		 *
+		 * AN OVERLAP IS THE INTERSECTION OF THE TWO SPANS, min(highs) - max(lows), AND NOT
+		 * reach minus distance. The two are the same number whenever the centres are at
+		 * least |eA - eB| apart — order the near faces that way and (cA + eA) - (cB - eB)
+		 * IS eA + eB - d — which covers every pair of equal boxes and, because both
+		 * extents are positive, every axis a pair is SEPARATED on. So the separation axis
+		 * and the joint thickness measured across it read identically either way.
+		 *
+		 * They part company the moment one span wholly CONTAINS the other. Reach minus
+		 * distance goes on growing as the smaller piece slides inboard, so a 40 cm pier
+		 * standing 20 cm in from the end of the 220 cm beam it carries is reported bearing
+		 * over 60 cm — ten centimetres of bearing face hanging in mid air at each end, on
+		 * an area that divides a force. The intersection reports the pier's own 40 cm
+		 * wherever it stands under the beam, which is the only answer a bearing can have.
+		 * A padstone, a bearing plate and a lintel on a wide pier are all this shape; a
+		 * wall of same-sized bricks never is, which is why it stood so long.
+		 *
+		 * THE BOUNDS ARE COMPUTED ONCE HERE AND THE RECTANGLE BELOW READS THE SAME ONES.
+		 * The face's centre was always the midpoint of this intersection, so deriving the
+		 * width from anything else was the one place the emitted rectangle could disagree
+		 * with the emitted centre about which face it described.
+		 *
+		 * Max and Min are safe only because IsUsableBox has already refused every
+		 * non-finite bound above; both DISCARD a NaN operand rather than propagating it,
+		 * which in a test whose job is to fail closed would turn a NaN into a plausible
+		 * overlap. Nothing may be inserted between that guard and this loop.
+		 *
 		 * Counting the axes that do NOT overlap, rather than the axes that are separated,
 		 * is what lets a zero-thickness joint be a real joint — dry stone has faces
 		 * touching with no gap at all, and an axis whose gap is exactly zero has to fall
@@ -237,16 +263,22 @@ namespace DestructionLayout
 		 * is an edge, three is a corner, and either emitted as a joint would be a spurious
 		 * diagonal whose normal is a coin flip between the bed tier and the head tier.
 		 */
+		double LowCm[3];
+		double HighCm[3];
 		double OverlapCm[3];
 		int32 SeparationAxis = INDEX_NONE;
 		int32 SeparationCount = 0;
 
 		for (int32 Axis = 0; Axis < 3; ++Axis)
 		{
-			const double DistanceCm = FMath::Abs(BoxB.CentreCm[Axis] - BoxA.CentreCm[Axis]);
-			const double ReachCm = BoxA.ExtentCm[Axis] + BoxB.ExtentCm[Axis];
+			LowCm[Axis] = FMath::Max(
+				BoxA.CentreCm[Axis] - BoxA.ExtentCm[Axis],
+				BoxB.CentreCm[Axis] - BoxB.ExtentCm[Axis]);
+			HighCm[Axis] = FMath::Min(
+				BoxA.CentreCm[Axis] + BoxA.ExtentCm[Axis],
+				BoxB.CentreCm[Axis] + BoxB.ExtentCm[Axis]);
 
-			OverlapCm[Axis] = ReachCm - DistanceCm;
+			OverlapCm[Axis] = HighCm[Axis] - LowCm[Axis];
 
 			if (!(OverlapCm[Axis] > ContactToleranceCm))
 			{
@@ -317,29 +349,20 @@ namespace DestructionLayout
 		 * multiplies a force. The mid-plane also degenerates continuously: at zero
 		 * thickness the two faces coincide and it lands on them.
 		 *
-		 * It falls out of the same interval arithmetic as the in-plane centres, which is
-		 * why there is one formula and not two. On an in-plane axis the boxes overlap, so
-		 * [Low, High] is the shared span and its midpoint is the centre of the face. On the
-		 * separation axis the intersection is EMPTY — Low is the near face of the further
-		 * box and High the near face of the nearer one, the joint thickness apart — and the
-		 * midpoint of that empty interval is exactly the mid-plane of the mortar.
-		 *
-		 * Max and Min are safe here only because IsUsableBox has already refused every
-		 * non-finite bound above; both discard a NaN operand rather than propagating it.
+		 * It is the midpoint of the SAME interval the overlaps above are the widths of,
+		 * which is why there is one bound and not two. On an in-plane axis [Low, High] is
+		 * the shared span, so its midpoint is the centre of the face and its width is the
+		 * face. On the separation axis the intersection is EMPTY — Low is the near face of
+		 * the further box and High the near face of the nearer one, the joint thickness
+		 * apart — and the midpoint of that empty interval is exactly the mid-plane of the
+		 * mortar.
 		 */
 		FVector InterfaceCentreCm = FVector::ZeroVector;
 		FVector InterfaceHalfExtentCm = FVector::ZeroVector;
 
 		for (int32 Axis = 0; Axis < 3; ++Axis)
 		{
-			const double LowCm = FMath::Max(
-				BoxA.CentreCm[Axis] - BoxA.ExtentCm[Axis],
-				BoxB.CentreCm[Axis] - BoxB.ExtentCm[Axis]);
-			const double HighCm = FMath::Min(
-				BoxA.CentreCm[Axis] + BoxA.ExtentCm[Axis],
-				BoxB.CentreCm[Axis] + BoxB.ExtentCm[Axis]);
-
-			InterfaceCentreCm[Axis] = (LowCm + HighCm) * 0.5;
+			InterfaceCentreCm[Axis] = (LowCm[Axis] + HighCm[Axis]) * 0.5;
 			InterfaceHalfExtentCm[Axis] =
 				Axis == SeparationAxis ? 0.0 : OverlapCm[Axis] * 0.5;
 		}

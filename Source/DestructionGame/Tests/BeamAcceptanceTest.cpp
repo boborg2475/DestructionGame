@@ -104,19 +104,15 @@ namespace BeamAcceptanceTestSupport
 	/** How much of the beam actually lands on a pier, along the beam. */
 	constexpr double BearingLengthCm = 40.0;
 
-	/**
-	 * The piers, which run PAST the beam's end on the outside.
-	 *
-	 * NOT A DETAIL. Layout::MakeInterface takes an axis overlap as `extentA + extentB - distance`,
-	 * which is the true interval overlap only while `|centre difference| >= |extent difference|` —
-	 * that is, only while neither box's span CONTAINS the other's. Slide this 60 cm pier wholly
-	 * inside the half-beam's own 220 cm, to x in [150, 210], and the shared bearing is 60 cm while
-	 * MakeInterface emits `110 + 30 - 70 = 70`: a plausible area on a rectangle that pokes five
-	 * centimetres outside the pier at each end, with the centroid still right so nothing looks
-	 * wrong. So the pier is made to stick out PAST the beam end, which keeps every pair here
-	 * partially overlapping, and CheckFixture below re-computes every emitted area properly and
-	 * compares. Recorded in CURRENT_STATE.md as a producer defect this file sidesteps rather than
-	 * one it fixes.
+	/*
+	 * The piers run PAST the beam's end on the outside — a shape chosen to sidestep a
+	 * MakeInterface defect that has since been FIXED (2026-08-08): it used to compute an axis
+	 * overlap as `extentA + extentB - distance`, which over-reported whenever one box's span
+	 * wholly CONTAINED the other's; it now takes the true interval intersection, and
+	 * Layout.Interface's contained-pier rows pin exactly the case this fixture used to avoid.
+	 * The oversailing piers are kept because the readings below are anchored to this geometry —
+	 * moving them inboard would be the suite's only contained bearing exercised through a real
+	 * solve, which is worth doing as its own slice with re-derived numbers, not as a drive-by.
 	 */
 	constexpr double PierLengthCm = 60.0;
 	constexpr double PierHeightCm = 40.0;
@@ -459,14 +455,18 @@ namespace BeamAcceptanceTestSupport
 		return INDEX_NONE;
 	}
 
-	/**
+	/*
 	 * The true area two boxes share, computed the way an interval intersection actually works.
 	 *
-	 * THE POINT IS THAT IT IS NOT MakeInterface'S ARITHMETIC. `min(high) - max(low)` per axis is
-	 * correct whether or not one span contains the other; production's `extentA + extentB -
-	 * distance` is correct only while neither does. Every joint the fixture emits is checked
-	 * against this, so a dimension edited into a containment reads as a FIXTURE failure here
-	 * rather than as a silently oversized bearing.
+	 * WHAT THIS GUARDS CHANGED ON 2026-08-08. When it was written, production computed
+	 * `extentA + extentB - distance`, which is wrong under containment, so this check was a
+	 * tripwire: a dimension edited into a containment read as a FIXTURE failure instead of a
+	 * silently oversized bearing. MakeInterface now uses this same interval intersection, so the
+	 * two agree on every topology and the tripwire is gone — what remains is a plain consistency
+	 * check that the fixture's own bookkeeping matches what the producer emitted. An independent
+	 * re-derivation of production's arithmetic now needs a DIFFERENT expression for the same set:
+	 * `min(2·extentA, 2·extentB, extentA + extentB - |centre difference|)` per axis, which is the
+	 * oracle Layout.InterfaceFuzz is specified to use (see CURRENT_STATE.md, Layout producer).
 	 */
 	double SharedFaceAreaSqCm(const FPieceBox& A, const FPieceBox& B, int32 SeparationAxis)
 	{
