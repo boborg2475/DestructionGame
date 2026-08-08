@@ -428,11 +428,9 @@ namespace DestructionScenarios
 
 		{ TEXT("wall-11"), TEXT("Lvl_Wall11"), TEXT("Wall on two piers, six-brick clear span"),
 			TEXT("The bottom four courses go from between two piers, leaving a six-brick clear span "
-				"on three cells of bearing at each end. Expected: LOCAL LOSS — the span is 1.2 m of "
-				"half-brick wall with no lintel, and the 45 degree arching triangle raised on it has "
-				"its apex level with the top of the wall, so there is nothing above it to arch "
-				"through. The panel over the opening goes; the piers and what stands on them do "
-				"not. THE MODEL CURRENTLY DISAGREES: it keeps every brick of the panel up."),
+				"on three cells of bearing at each end. Expected: STANDS — the 60 cm of bonded "
+				"masonry over the opening spans it as a deep beam, and the 66.5 cm piers take the "
+				"thrust easily. Real walls bridge a gap this size routinely."),
 			ScenariosWallCoveredCourses, ScenariosWallStandardCells,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall11Cuts },

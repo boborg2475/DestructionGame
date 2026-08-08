@@ -746,20 +746,25 @@ namespace WallAcceptanceTestSupport
 
 	/* --- C: spanning between supports. --------------------------------------------- */
 
-	const FWallRegion Case11Cuts[] = { { 0, 3, 2.75, 8.25 } };
-
 	/* ================================================================================
-	 * CASE 11, RE-DERIVED: THERE IS NO ROOM FOR AN ARCH OVER THIS SPAN, SO THE PANEL GOES.
+	 * CASE 11, RULED TWICE ON 2026-08-08: A PUBLISHED DESIGN GATE SAID LOCAL LOSS, THE PHYSICS SAYS
+	 * STANDS, AND THE PHYSICS IS THE KEEPER.
 	 * ================================================================================
 	 *
-	 * THE VERDICT ON THIS ROW WAS STANDS UNTIL 2026-08-08 AND THE USER RULED IT WRONG, on the
-	 * published arching gate the BS 5977 family states and claude_plans/PROJECT_REVIEW.md §3 checked
-	 * all twenty rows against: arching over an opening needs an overlapping bond AND at least 300 mm
-	 * of masonry standing above the APEX of a 45 degree isosceles triangle raised on the clear span.
-	 * This fixture fails that gate by its whole height, not by a margin.
+	 * THE ROW WAS DRAFTED "STANDS", RULED "LOCAL LOSS", AND THEN RE-RULED "STANDS" THE SAME DAY, and
+	 * both rulings are recorded because which one is right is the whole content of this row.
 	 *
-	 * WALKED OFF THE BRICKLAYER ABOVE RATHER THAN OFF THE DRAWING, in centimetres, because the whole
-	 * ruling is an arithmetic one:
+	 * THE FIRST RULING RESTED ON THE BS 5977 ARCHING GATE — an opening arches if it has an
+	 * overlapping bond AND at least 300 mm of masonry above the APEX of a 45 degree isosceles
+	 * triangle raised on the clear span — and claude_plans/PROJECT_REVIEW.md §3 checked all twenty
+	 * rows against it. This fixture fails it by its whole height. THE SECOND RULING IS THAT A
+	 * PUBLISHED DESIGN THRESHOLD IS NOT A COLLAPSE PREDICTOR AND MUST NOT BE TREATED AS ONE: the
+	 * 300 mm rule is a never-even-crack serviceability line carrying design safety factors, and the
+	 * question this catalogue asks is what a real wall DOES, which has to be answered by working the
+	 * physics rather than by quoting a code. Worked honestly, the wall holds — see below.
+	 *
+	 * THE GEOMETRY IS KEPT BECAUSE IT IS THE INPUT TO BOTH READINGS, WALKED OFF THE BRICKLAYER ABOVE
+	 * RATHER THAN OFF THE DRAWING, in centimetres:
 	 *
 	 *     the cut  { 0, 3, 2.75, 8.25 } takes cells 3..8 out of the even courses 0 and 2 and cells
 	 *              3.5..7.5 out of the odd courses 1 and 3 — six bricks and five bricks a course,
@@ -771,40 +776,40 @@ namespace WallAcceptanceTestSupport
 	 *              wall's top is 89.00 cm, so there is 60.00 cm of masonry above the opening
 	 *     apex     half the span above the head: 56.75 cm at the narrowest reveal, 68.00 at the
 	 *              widest, i.e. 85.75 cm to 97.00 cm above the ground
+	 *     piers    three cells of bearing each — 66.5 cm of solid masonry carrying eight courses
 	 *
-	 * SO THERE IS BETWEEN 32 mm AND NOTHING AT ALL ABOVE THE APEX, against 300 mm required — and at
-	 * the wide reveal the apex is 8 cm ABOVE THE TOP OF THE WALL, which is to say the triangle does
-	 * not fit inside the masonry at any point. This is not case 7's marginal shortfall (150-205 mm
-	 * against 300, which is where practice reaches for a lintel and where the row still says
-	 * "stands"); it is a half-brick wall asked to span 1.2 m on nothing but bond, and there is no
-	 * lintel in the fixture. Real practice does not permit it, and what a real wall does is shed the
-	 * panel over the opening while the piers and the masonry directly over the piers stand.
+	 * So there is between 32 mm and nothing at all above that apex, against the 300 mm the gate
+	 * wants, and at the wide reveal the apex stands 8 cm clear above the top of the wall. THAT IS
+	 * WHAT THE FIRST RULING READ, AND IT IS TRUE AS FAR AS IT GOES: no thrust line fits above the
+	 * triangle, so this panel is not held up by an ARCH.
 	 *
-	 * HENCE LOCAL LOSS AND NOT COLLAPSE. The piers are three cells of bearing — 66.5 cm of solid
-	 * masonry each — carrying eight courses; nothing about them is overloaded, and a verdict of
-	 * collapse would be claiming a pier failure this fixture gives no reason to expect. That is case
-	 * 12's claim, on one-cell piers, and the two rows have to keep saying different things.
+	 * IT IS HELD UP BY BEING A DEEP BEAM, WHICH IS THE READING THE GATE NEVER ASKS ABOUT. The 60 cm
+	 * of bonded masonry standing over the opening spans 136 cm at worst, so span/depth is 2.3 —
+	 * squarely deep-beam territory — and the load it carries is its own weight, the same 44 bricks
+	 * the discarded fall region named:
 	 *
-	 * THE NAMED SET IS THE VERTICAL PROJECTION OF THE OPENING THROUGH THE EIGHT COURSES OF COVER —
-	 * the same cell window as the cut, { 4, 11, 2.75, 8.25 }, which is 24 bricks from the four even
-	 * courses and 20 from the four odd ones, 44 of the 128 left standing. It is written as the cut's
-	 * own window on purpose: with no arch to carry it, what a panel sheds is what it cannot reach a
-	 * pier from, and the cut window IS the run of cells with no masonry beneath them.
+	 *     W   44 x 2.72163125 kg = 119.75 kg, x 980 = 1.1735e5 Unreal force units
+	 *     M   W L / 8 = 1.1735e5 x 136 / 8 = 1.995e6 uu.cm at midspan
+	 *     Z   t D^2 / 6 = 10.25 x 60^2 / 6 = 6150 cm3
+	 *     f   M / Z = 324 uu/cm2, i.e. 0.0324 MPa — call it 0.03 to 0.04 depending on which reveal
+	 *         governs and on how much surcharge beyond the span window is counted in
 	 *
-	 * AND THE BOUNDARY OF THAT SET IS THE UNCERTAIN PART, RECORDED HERE THE WAY CASE 20'S IS. Two
-	 * bricks per course sit ON the boundary rather than inside it: course 4's cells 3 and 8 each keep
-	 * one 10.25 cm bed patch on the odd-course jamb below (which is why the model's worst joint in
-	 * this wall today is c3/8.5-c4/8 at 0.362), and the file's own reading for cases 8 and 20 is that
-	 * ONE PATCH IS A CORBEL RATHER THAN A TOOTH. Applied here that reading would keep those two up
-	 * and step the survivors inward course by course, naming perhaps 30 bricks instead of 44.
-	 * PROJECT_REVIEW.md §3 doubts that precision claim for case 8 on exactly the ground that decides
-	 * it here — a bricklayer expects the whole unsupported panel to go — and a corbel hanging off a
-	 * jamb with no arch over it is not a load path, it is the first thing to drop. So the panel is
-	 * named whole. WHAT IS NOT UNCERTAIN, and what this row is really asserting, is that the loss is
-	 * BOUNDED: the masonry over the piers keeps the ground, which is what separates this from case
-	 * 12. If evidence ever moves the edge, it moves by two columns of bricks and not by a verdict.
+	 * AGAINST WHAT. PROJECT_REVIEW.md §1 records the user's decision to move the profiles to MEAN
+	 * bond strength, 0.4 to 0.8 MPa, where 0.03-0.04 is FIVE TO TEN PER CENT of capacity. Even
+	 * against the conservative characteristic 0.10 MPa the profiles carry today it is under a third,
+	 * and the model's own reading agrees: its worst joint in this wall is c3/8.5-c4/8 at 0.362193 of
+	 * f_xk1 — the toothed corner of the reveal, not the midspan — which is the same "comfortable"
+	 * answer from a completely different route. Real half-brick walls bridge 1.2 m of missing
+	 * masonry routinely; a rule that forbids it is a rule about cracking, not about falling.
+	 *
+	 * HENCE STANDS, WITH NO FALL REGION AND NO SURVIVOR REGION, because nothing comes down. The
+	 * DISCRIMINATOR THIS ROW CARRIES IS UNCHANGED: paired against case 12 it isolates PIER WIDTH,
+	 * three cells of bearing against one, and case 12's one-cell piers still fail — on the thrust
+	 * overturning the pier (PROJECT_REVIEW.md §2 item 6), which is a pier check and not a span check.
+	 * The genuine "no room to arch" discriminator in this set remains CASE 8, one course of cover
+	 * over a four-cell hole, which stays red and stays local loss.
 	 */
-	const FWallRegion Case11Falls[] = { { 4, 11, 2.75, 8.25 } };
+	const FWallRegion Case11Cuts[] = { { 0, 3, 2.75, 8.25 } };
 
 	/**
 	 * Case 12 names no survivors, and it is the weakest row in the set because of it.
@@ -1125,16 +1130,17 @@ namespace WallAcceptanceTestSupport
 		/* C — spanning between supports. */
 
 		/*
-		 * LOCAL LOSS, ON THE USER'S RULING OF 2026-08-08 AND ON THE ARCHING GATE ABOVE. Drafted as
-		 * "stands" because walls span between piers all the time; they do it over an opening with
-		 * enough masonry above it for the thrust line to fit, and this one has between 32 mm and
-		 * nothing above the apex of its own 45 degree triangle, with no lintel. The panel over the
-		 * clear span goes and the piers keep what stands on them — see the block beside Case11Falls
-		 * in section C for the whole derivation, for the 44 bricks the region names, and for which
-		 * two columns of it are the uncertain edge.
+		 * STANDS — RULED DOWN TO LOCAL LOSS ON 2026-08-08 AND RE-RULED BACK THE SAME DAY, and the
+		 * second ruling is the keeper. The local-loss reading was BS 5977's 300-mm-above-the-apex
+		 * arching gate, which this fixture fails by its whole height; the user then ruled that a
+		 * published DESIGN threshold is not a collapse predictor, and the honest physics puts the
+		 * 60 cm of bonded masonry over the span at span/depth 2.3 — a deep beam carrying its own
+		 * ~120 kg at roughly 0.03-0.04 MPa, five to ten per cent of mean bond strength and under a
+		 * third of even the conservative characteristic 0.10. See the block above Case11Cuts in
+		 * section C for both rulings and the whole derivation.
 		 */
-		Add(11, TEXT("Wall on two piers, six-brick clear span"), EVerdict::LocalLoss,
-			CoveredCourses, StandardCells, Case11Cuts, Case11Falls, {},
+		Add(11, TEXT("Wall on two piers, six-brick clear span"), EVerdict::Stands,
+			CoveredCourses, StandardCells, Case11Cuts, {}, {},
 			TEXT("pier width, against case 12"));
 
 		Add(12, TEXT("The same span on one-brick piers"), EVerdict::Collapse,
@@ -1289,7 +1295,7 @@ namespace WallAcceptanceTestSupport
 	/**
 	 * AND THE TOKEN A CAPTION MUST CARRY WHEN THE MODEL DOES NOT AGREE WITH ITS OWN CLAIM.
 	 *
-	 * Seven rows are red today. A caption that named only the expected verdict on one of those would
+	 * Six rows are red today. A caption that named only the expected verdict on one of those would
 	 * be worse than silence — so the honest ones say both, and the ones the model agrees with must
 	 * NOT say it, which is what stops the admission outliving the disagreement.
 	 */
@@ -1301,8 +1307,8 @@ namespace WallAcceptanceTestSupport
 	 * DELIBERATELY THE SAME THREE SHAPES `Acceptance.Wall.Catalogue` ASSERTS ONE AT A TIME, and it
 	 * is a second reading of them rather than a shared one because the catalogue's assertions are
 	 * SEPARATE on purpose — each prints its own diagnosis — and folding them into one predicate
-	 * would change seven known-red failure messages. The cost is a copy, and the copy is held against
-	 * the catalogue by the known-red tripwire in the caption test: it must name exactly the seven
+	 * would change six known-red failure messages. The cost is a copy, and the copy is held against
+	 * the catalogue by the known-red tripwire in the caption test: it must name exactly the six
 	 * rows that are red, so a predicate that drifted from the catalogue fails there rather than
 	 * quietly captioning a level wrongly.
 	 */
@@ -1775,7 +1781,7 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 	{
 		const TCHAR* Variable;
 
-		/** The half that loses less. In three of the four it loses nothing; case 11 does not. */
+		/** The half that loses less — and whether it may lose ANYTHING is read off its verdict. */
 		int32 LesserCase;
 
 		int32 GreaterCase;
@@ -1787,17 +1793,25 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 	 * between them answers them the same way and fails that, whichever way round it answers.
 	 *
 	 * IT USED TO BE THE STRONGER "the lesser half loses NOTHING", AND THAT CLAIM IS STILL MADE
-	 * WHEREVER THE CATALOGUE STILL SUPPORTS IT — the row is read out of `EVerdict` rather than
-	 * listed here, so it strengthens or relaxes with the catalogue instead of drifting from it. Case
-	 * 11 is why it had to move: on 2026-08-08 the user ruled its verdict wrong, and a wall on piers
-	 * with no room for an arch now sheds the panel over its span. Left as written, this row would
-	 * have demanded case 11 lose nothing while the catalogue demanded it lose 44 bricks — a row that
-	 * could only pass for as long as the model was WRONG, and that went red the day it was fixed.
+	 * WHEREVER THE CATALOGUE SUPPORTS IT — the row is read out of `EVerdict` rather than listed
+	 * here, so it strengthens or relaxes with the catalogue instead of drifting from it. All four
+	 * lesser halves stand today, so all four make the strong claim; what changed is that this test
+	 * no longer holds a second, private copy of a verdict the catalogue owns.
 	 *
-	 * WHAT PIER WIDTH STILL SEPARATES, WHICH IS WHY THE ROW WAS KEPT RATHER THAN MOVED OUT the way
-	 * 13 vs 14 and 15 vs 16 were: three cells of bearing lose the panel and keep the masonry over the
-	 * piers, one cell of bearing loses everything above the springing. The two halves still differ in
-	 * OUTCOME, so the pair still belongs here; only the shape of "differ" needed widening.
+	 * CASE 11 IS WHY IT WAS GENERALISED, AND IT IS WORTH KEEPING THE GENERALISATION EVEN THOUGH THE
+	 * RULING THAT FORCED IT WAS REVERSED. On 2026-08-08 case 11 was ruled from "stands" down to a
+	 * local loss of 44 bricks, which made the old wording — "the standing half loses NOTHING" —
+	 * unsatisfiable: it would have demanded zero loss while the catalogue demanded 44, so the row
+	 * could only pass for as long as the model was WRONG. Later the same day the ruling was reversed
+	 * and case 11 stands again (see the block above Case11Cuts). The wording stays widened because
+	 * the failure it removed was structural rather than particular to case 11: any future row whose
+	 * lesser half becomes a bounded loss would reintroduce it, and reading the strong claim off
+	 * `EVerdict` means a verdict correction relaxes or tightens this test in the SAME EDIT instead
+	 * of leaving a stale duplicate behind.
+	 *
+	 * WHAT PIER WIDTH SEPARATES: three cells of bearing carry the span and lose nothing, one cell of
+	 * bearing loses everything above the springing — the pier overturns under the thrust rather than
+	 * the span failing. The two halves differ in OUTCOME, so the pair belongs here.
 	 *
 	 * TWO OF THE CATALOGUE'S FIVE PAIRS ARE DELIBERATELY ABSENT AND THIS IS THE ONLY PLACE TO SAY
 	 * SO. Both were rows here until 2026-08-07, when case 14's collapse verdict and case 16's
@@ -1842,8 +1856,9 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 			/*
 			 * READ OFF THE CATALOGUE ROW, NEVER LISTED HERE. Whether the lesser half of a pair may
 			 * lose anything at all is the catalogue's statement and not this test's, so a row whose
-			 * verdict is corrected — as case 11's was on 2026-08-08 — relaxes the claim here in the
-			 * same edit instead of leaving a second copy of the old verdict behind to contradict it.
+			 * verdict is corrected — as case 11's was TWICE on 2026-08-08, down and back — relaxes
+			 * or tightens the claim here in the same edit instead of leaving a second copy of a
+			 * superseded verdict behind to contradict it.
 			 */
 			bOutMustLoseNothing = Case.Verdict == EVerdict::Stands;
 
@@ -2973,11 +2988,11 @@ bool FWallAcceptanceLevelsTest::RunTest(const FString& Parameters)
  * WHY A CAPTION NEEDS A TEST AT ALL
  * =====================================================================================
  *
- * Seven of these twenty rows are red today — 8, 9, 10, 11, 12, 19 and 20 — and a level captioned
- * "the course over the doorway drops and the wall stands" while the model drops nothing is a LIE
- * TOLD TO SOMEBODY STANDING IN FRONT OF THE COUNTER-EXAMPLE. That is worse than silence: the
- * player can see the wall, and the caption is the only thing telling them whether what they are
- * looking at is the answer or the bug.
+ * Six of these twenty rows are red today — 8, 9, 10, 12, 19 and 20 — and a level captioned "the
+ * course over the doorway drops and the wall stands" while the model drops nothing is a LIE TOLD TO
+ * SOMEBODY STANDING IN FRONT OF THE COUNTER-EXAMPLE. That is worse than silence: the player can
+ * see the wall, and the caption is the only thing telling them whether what they are looking at is
+ * the answer or the bug.
  *
  * So a caption may say what is expected, and it may say that the model disagrees, and it may say
  * only what the level does — but it may not claim a verdict the solver does not currently produce
@@ -3004,7 +3019,7 @@ bool FWallAcceptanceLevelsTest::RunTest(const FString& Parameters)
  * `ModelAgreesWithVerdict` is a second reading of the three verdict shapes `Acceptance.Wall.
  * Catalogue` asserts one at a time, so it could drift from the catalogue and caption a level
  * wrongly while every catalogue row still failed exactly as before. Requiring it to name precisely
- * the seven rows CURRENT_STATE records as red is what makes that drift visible.
+ * the six rows CURRENT_STATE records as red is what makes that drift visible.
  *
  * NEEDS A TICKING WORLD: NO. It solves the same twenty walls the catalogue solves.
  */
@@ -3019,7 +3034,7 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	using namespace DestructionScenarios;
 
 	/**
-	 * THE SEVEN ROWS THE MODEL GETS WRONG TODAY, as CURRENT_STATE.md records them.
+	 * THE SIX ROWS THE MODEL GETS WRONG TODAY, as CURRENT_STATE.md records them.
 	 *
 	 * This is NOT what decides which caption must admit a disagreement — that is computed per row
 	 * below. It is a check on the predicate that computes it: a second reading of the verdict rules
@@ -3027,13 +3042,15 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	 * failure stayed word for word identical, which is the one failure this file could not
 	 * otherwise see.
 	 *
-	 * IT WAS SIX UNTIL 2026-08-08, when the user ruled case 11's "stands" wrong: a wall on piers
-	 * with no room above the apex of its own arching triangle sheds the panel over the span, and the
-	 * model keeps every brick of it up. The set grew because an EXPECTATION was corrected rather than
-	 * because anything regressed, which is the distinction the tripwire's message asks a reader to
-	 * make.
+	 * IT BRIEFLY READ SEVEN ON 2026-08-08 AND CASE 11 HAS SINCE COME BACK OUT OF IT, both times
+	 * because an EXPECTATION moved rather than because anything regressed — ruled down on BS 5977's
+	 * arching gate, then re-ruled up when the user directed that a published design threshold is not
+	 * a collapse predictor and the physics was worked honestly. Worth leaving on the record here:
+	 * this set moving is nearly always a verdict being corrected, and PROJECT_REVIEW.md §3 item 5
+	 * asks for the tripwire message below to distinguish "the set GREW" from "the set changed shape"
+	 * for exactly that reason.
 	 */
-	const int32 KnownDisagreements[] = { 8, 9, 10, 11, 12, 19, 20 };
+	const int32 KnownDisagreements[] = { 8, 9, 10, 12, 19, 20 };
 
 	const TArray<FWallCase> Cases = AllWallCases();
 
@@ -3055,7 +3072,7 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 		 * The tripwire at the bottom is a check on the predicate rather than on the captions, and a
 		 * predicate that was only exercised once the levels existed would be unproven at exactly the
 		 * moment somebody was relying on it to caption twenty of them. Run this way it reproduces
-		 * the seven known reds on the day it is written.
+		 * the six known reds on the day it is written.
 		 */
 		FWall Wall;
 		FWallResult Result;
@@ -3160,7 +3177,7 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("TRIPWIRE: the rows this test reads as wrong must be exactly the seven ")
+			TEXT("TRIPWIRE: the rows this test reads as wrong must be exactly the six ")
 			TEXT("Acceptance.Wall.Catalogue fails on — it read {%s}, the known reds are {%s}. If a ")
 			TEXT("slice fixed one, its caption must stop admitting a disagreement and this list must ")
 			TEXT("shrink with it; if they differ any other way, this test's reading of a verdict has ")

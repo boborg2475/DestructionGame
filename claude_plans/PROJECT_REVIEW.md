@@ -69,6 +69,13 @@ ideally *after* the equilibrium oracle (item 4 below) exists, so re-anchoring is
 twenty hand-derivations. Option (b) is the realistic one. Either way, record the choice in
 DESIGN.md §3 and mark each profile row `characteristic` or `mean`.
 
+> **DECIDED 2026-08-08: the user chose (b), mean values, for realism.** The re-anchor runs as its
+> own slice after the LP oracle: every strength row re-derived from mean test data with citations,
+> every pinned anchor recomputed in one verified pass, and any acceptance verdict that moves gets
+> re-evaluated on physics rather than on code thresholds (see the case-11 note in §3). Where a
+> verdict-discriminating case stops discriminating under mean strength, a replacement case that
+> shows the same mechanism at realistic strength gets added rather than the coverage silently lost.
+
 ---
 
 ## 2. The physics model — what to keep, what is wrong, where to go
@@ -182,9 +189,17 @@ Flagged:
 - **Case 8** — *class sound (local loss), named set doubted*. The 2-brick set is a precision claim
   derived from the project's own arithmetic; a bricklayer would expect the whole unsupported course
   to go. Needs physical evidence, not more derivation.
-- **Case 11** (wall on 3-cell piers, 6-cell span) — *doubted*. ~0 mm above the apex; a half-brick
-  wall spanning 1.2–1.4 m with no lintel is not something practice permits. Likely LOCAL LOSS of
-  the panel over the span, not STANDS. Needs a ruling.
+- **Case 11** (wall on 3-cell piers, 6-cell span) — *RESOLVED 2026-08-08, twice, and the second
+  ruling is the keeper: it STANDS.* First ruled local-loss on BS 5977's 300-mm-above-apex gate;
+  the user then directed that published design rules not be treated as gospel, and the genuine
+  physics agrees with them: the ~120 kg panel carried by the 60-cm-deep bonded wall above
+  (span/depth ≈ 2.3, deep-beam territory) puts ~0.04 MPa of bending on the worst joint — 5–10% of
+  mean bond strength, under half of even the conservative 0.10 — and the 66-cm piers take the
+  thrust easily. The 300-mm rule is never-even-crack design conservatism, not a collapse
+  predictor; real walls bridge spans like this routinely. The local-loss ruling **has been
+  reverted**; the improved matched-pair claim and the geometry derivation from that pass are kept
+  (`Acceptance.Wall.Catalogue` is back to six red rows and case 11 is green). The genuine
+  "no room to arch" discriminator remains case 8 (one course of cover), which stays red.
 - **Case 12** — *verdict sound, pair broken*. As encoded it varies span (6→10 cells) **and** pier
   width (3→1) at once — contradicting the file's own one-variable-per-pair rule — and it
   near-duplicates case 9. **Rewrite as a 6-cell span on 1-cell piers with a survivor region**, so
@@ -245,9 +260,15 @@ prioritised:
 | 8 | **Progressive removal to a predicted count** (12×12 wall, free-end bottom bricks out one at a time; derive N) | Stands at N−1, falls at N | DESIGN.md §4's headline integration test exists only on a 6-piece toy |
 | 9 | **Removal order independence** ({A,B} settled state == {B,A}, bit for bit; pass sequence differs) | Must hold | Not covered; cheap; Core-level |
 
-A wood acceptance case is *not yet* worth writing: the unit's own strength never enters the solve
-(only the connection's does), so a "wood wall" today varies nothing but density. The meaningful wood
-test arrives with member failure (physics step 6).
+~~A wood acceptance case is *not yet* worth writing~~ **SUPERSEDED 2026-08-08 — the user ruled, and
+a framing exists that makes it worth writing today.** A simply-supported beam laid as collinear
+segments whose glue-line connections carry the *member material's* own published strengths (C24
+timber, S275 steel) makes member failure expressible as the midspan glue line parting in bending —
+no new production API. Three rows: heavy load on wood (beam parts at midspan — deliberately RED,
+because the model zeroes the moment on any two-seat piece), light load on wood (stands), the steel
+twin under the heavy load (stands — the member-level data-drivenness proof). The pair is the
+acceptance anchor for the multi-support moment gap (C3) and, later, true member failure (C7).
+`Tests/BeamAcceptanceTest.cpp`, written 2026-08-08.
 
 ---
 
@@ -266,14 +287,21 @@ test arrives with member failure (physics step 6).
 
 ---
 
-## 5. Decisions that need the user (none block the work above)
+## 5. Decisions that needed the user — ALL RESOLVED 2026-08-08
 
-1. **Strength basis**: characteristic design values (current) vs mean/expected values
-   (recommended for realism). One decision, one re-anchoring pass, ideally after the LP oracle.
-2. **Case 11's verdict** (wall on 3-cell piers): STANDS as encoded, or LOCAL LOSS per the
-   published arching gate.
-3. **Case 12's rewrite** (6-cell span on 1-cell piers, survivor region) — approval to change an
-   agreed catalogue row.
-4. **The two deleted files** — intentional or accidental.
-5. **Whether the leaning-stack case + interim overturning guard proceed ahead of the LP oracle**
-   (recommended: yes; it is the red test the corbel ruling's known cost has been waiting for).
+1. **Strength basis** → **mean values, for realism.** Re-anchor as one slice after the LP oracle;
+   see the DECIDED note in §1.
+2. **Case 11's verdict** → ruled local-loss on the published gate, then **re-ruled STANDS** when
+   the user directed that published design rules not be gospel and the physics was worked
+   honestly; see §3. The revert has landed.
+3. **Case 12's rewrite** → approved; queued in CURRENT_STATE.md (item 2 of the review queue).
+4. **The two deleted files** → intentional; references cleaned up, deletions committed.
+5. **Leaning stack + interim overturning guard before the LP oracle** → yes. The guard is
+   *interim* because it is a bolt-on special case (gravity-only, hand-picked assembly, its own
+   pivot rule — a second referee beside the joint checks); the LP equilibrium solve subsumes it,
+   since a body past its balance point simply has no equilibrium solution and falls out naturally
+   for any load direction. The guard is built to be deleted when step 4 of the evolution path
+   lands.
+
+Also ruled the same day: **the wood/steel beam acceptance pair exists now** (see §3), as
+deliberate reds anchoring evolution steps 5–6.
