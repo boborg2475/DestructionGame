@@ -5,6 +5,7 @@
 #include "Core/Corbel.h"
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
+#include "Core/WallCases.h"
 #include "Kismet/GameplayStatics.h"
 
 /*
@@ -224,6 +225,308 @@ namespace DestructionScenarios
 		return Spec;
 	}
 
+	/*
+	 * --- the twenty acceptance walls ---------------------------------------------------------
+	 *
+	 * THE CONFIGURATIONS THE USER DREW AND REVIEWED, as levels a human can stand in front of. Each
+	 * is one row of claude_plans/WALL_CASES.html, and each is measured headlessly by
+	 * `DestructionGame.Acceptance.Wall.Catalogue` against the SAME geometry laid by the same
+	 * producer — so a level and its acceptance row are two views of one wall rather than two walls
+	 * that look alike.
+	 *
+	 * WHAT IS HERE IS GEOMETRY AND CUTS AND NOTHING ELSE. The expected VERDICT of each case, the
+	 * bricks that must fall and the bricks that must stand are claims about what the solver ought to
+	 * conclude; they are acceptance-test property and they stay in the acceptance file. What a level
+	 * needs is a wall, a cut, and a sentence for the player.
+	 */
+	constexpr double ScenariosWallCellPitchCm = ScenariosBrickLengthCm + ScenariosMortarJointCm;
+	constexpr double ScenariosWallHalfCellCm = ScenariosWallCellPitchCm * 0.5;
+
+	/*
+	 * THIRTY COURSES FOR THE ONE-BRICK CASES, NOT THE TEN THE DRAWING SHOWS. The half-seated joint
+	 * over a single missing brick reads a fraction of capacity per brick weight it carries, so a
+	 * ten-course wall says "stands" whatever the model does and the level would show nothing. Thirty
+	 * courses puts the joint firmly past the line, which is what makes watching it worth doing.
+	 */
+	constexpr int32 ScenariosWallTallCourses = 30;
+	constexpr int32 ScenariosWallStandardCells = 12;
+	constexpr int32 ScenariosWallCoveredCourses = 12;
+
+	constexpr int32 ScenariosWallCorbelCells = 8;
+	constexpr int32 ScenariosWallCorbelFirstCourse = 6;
+	constexpr double ScenariosWallQuarterBrickStepCm = ScenariosWallHalfCellCm * 0.5;
+	constexpr double ScenariosWallHalfBrickStepCm = ScenariosWallHalfCellCm;
+
+	/* --- A: one brick out. ------------------------------------------------------------------ */
+
+	const DestructionWallCases::FWallRegion ScenariosWall02Cuts[] = { { 1, 1, 5.25, 5.75 } };
+	const DestructionWallCases::FWallRegion ScenariosWall03Cuts[] = { { 1, 1, 11.00, 11.50 } };
+	const DestructionWallCases::FWallRegion ScenariosWall04Cuts[] = { { 0, 0, 4.75, 5.25 } };
+
+	const DestructionWallCases::FWallRegion ScenariosWall05Cuts[] =
+	{
+		{ 1, 1, 1.25, 1.75 },
+		{ 1, 1, 3.25, 3.75 },
+		{ 1, 1, 5.25, 5.75 },
+		{ 1, 1, 7.25, 7.75 },
+		{ 1, 1, 9.25, 9.75 },
+	};
+
+	/* --- B: openings and depth of cover. ----------------------------------------------------- */
+
+	const DestructionWallCases::FWallRegion ScenariosWallTwoCellOpening[] = { { 1, 3, 4.75, 6.25 } };
+	const DestructionWallCases::FWallRegion ScenariosWallFourCellOpening[] = { { 1, 3, 3.75, 7.25 } };
+
+	/** Ten cells of opening in a fourteen-cell wall, two cells of jamb either side. */
+	const DestructionWallCases::FWallRegion ScenariosWall09Cuts[] = { { 1, 3, 1.75, 11.25 } };
+
+	/** The same four cells of cover as case 7, cut through to the free right end. */
+	const DestructionWallCases::FWallRegion ScenariosWall10Cuts[] = { { 1, 3, 7.75, 11.50 } };
+
+	/* --- C: spanning between supports. ------------------------------------------------------- */
+
+	const DestructionWallCases::FWallRegion ScenariosWall11Cuts[] = { { 0, 3, 2.75, 8.25 } };
+	const DestructionWallCases::FWallRegion ScenariosWall12Cuts[] = { { 0, 3, 0.75, 10.75 } };
+
+	/* --- E and F: the bond, the lost base, and the staircase void. ---------------------------- */
+
+	const DestructionWallCases::FWallRegion ScenariosWall18Cuts[] = { { 5, 5, 4.75, 5.25 } };
+	const DestructionWallCases::FWallRegion ScenariosWall19Cuts[] = { { 0, 0, -0.50, 5.25 } };
+
+	/**
+	 * THE RAKING CUT, one region per course, reading up.
+	 *
+	 * Each course above the last is cut one cell less far to the right, so the surviving masonry to
+	 * the RIGHT of the void steps left over the hole as it rises — that is the overhang a player
+	 * sees, and it is what leaves two bricks along the cut face with no bed under them at all.
+	 */
+	const DestructionWallCases::FWallRegion ScenariosWall20Cuts[] =
+	{
+		{ 1, 1, 0.5, 6.5 },
+		{ 2, 2, 0.5, 5.5 },
+		{ 3, 3, 0.5, 4.5 },
+		{ 4, 4, 0.5, 3.5 },
+		{ 5, 5, 0.5, 2.5 },
+		{ 6, 6, 0.5, 1.5 },
+	};
+
+	/** One acceptance wall as a level: everything that differs between the twenty. */
+	struct FScenariosWallRow
+	{
+		const TCHAR* Name;
+		const TCHAR* MapName;
+		const TCHAR* Title;
+		const TCHAR* Expectation;
+
+		int32 Courses;
+		int32 Cells;
+
+		DestructionWallCases::EWallBond Bond = DestructionWallCases::EWallBond::Running;
+
+		int32 CorbelFromCourse = INDEX_NONE;
+		double CorbelStepCm = 0.0;
+		int32 ProjectingCourse = INDEX_NONE;
+
+		TArrayView<const DestructionWallCases::FWallRegion> Cuts;
+	};
+
+	/**
+	 * THE TWENTY, AND EIGHTEEN OF THEM CUT.
+	 *
+	 * A CAPTION CARRIES ONE MACHINE-CHECKED TOKEN AND THE REST IS PROSE. `Expected: STANDS`,
+	 * `Expected: LOCAL LOSS` or `Expected: COLLAPSE` — exactly one, matching what the acceptance row
+	 * asserts — and `THE MODEL CURRENTLY DISAGREES` on the rows where the solver does not currently
+	 * produce that verdict. `Acceptance.Wall.EveryLevelsCaptionTellsTheTruth` RUNS each case and
+	 * requires the admission exactly where the model gets it wrong, so a slice that fixes one of
+	 * these turns red until its caption stops claiming a disagreement that no longer exists.
+	 *
+	 * A level captioned with an outcome the solver does not produce is a lie told to somebody
+	 * standing in front of the counter-example, and an admission left behind after the model was
+	 * fixed is the same lie the other way round.
+	 */
+	const FScenariosWallRow ScenariosWallRows[] =
+	{
+		{ TEXT("wall-01"), TEXT("Lvl_Wall01"), TEXT("Intact wall"),
+			TEXT("Nothing is cut. Thirty courses of flush running bond, twelve bricks across. "
+				"Expected: STANDS — this is the baseline every other wall in the set is a deletion "
+				"from."),
+			ScenariosWallTallCourses, ScenariosWallStandardCells },
+
+		{ TEXT("wall-02"), TEXT("Lvl_Wall02"), TEXT("One brick out, mid-wall"),
+			TEXT("One brick goes from the second course, in the middle of the wall, with twenty-eight "
+				"courses standing over it. Expected: STANDS — a real wall does not notice a single "
+				"brick; the two above the hole carry across it."),
+			ScenariosWallTallCourses, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall02Cuts },
+
+		{ TEXT("wall-03"), TEXT("Lvl_Wall03"), TEXT("One brick out at the free end"),
+			TEXT("The same deletion at the free right-hand end, where there is nothing beyond the "
+				"hole to arch against and the masonry over it has to cantilever. Expected: STANDS — "
+				"this is the case a player reported, and the wall coming down is the bug."),
+			ScenariosWallTallCourses, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall03Cuts },
+
+		{ TEXT("wall-04"), TEXT("Lvl_Wall04"), TEXT("One brick out of the bottom course"),
+			TEXT("One brick goes from the grounded course, so the wall loses a cell of its footing "
+				"rather than a cell of itself. Expected: STANDS — it bridges the gap instead of "
+				"sitting down into it."),
+			ScenariosWallTallCourses, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall04Cuts },
+
+		{ TEXT("wall-05"), TEXT("Lvl_Wall05"), TEXT("Alternate bricks out of one course"),
+			TEXT("Five bricks go from the second course, every other one, leaving a brick of bearing "
+				"between each pair of holes. Expected: STANDS — five short spans are not one long "
+				"one."),
+			ScenariosWallTallCourses, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall05Cuts },
+
+		{ TEXT("wall-06"), TEXT("Lvl_Wall06"), TEXT("Two-brick opening, deep cover"),
+			TEXT("A two-brick opening with eight courses of masonry over it. Expected: STANDS — a "
+				"short span under deep cover is the easiest arch there is."),
+			ScenariosWallCoveredCourses, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWallTwoCellOpening },
+
+		{ TEXT("wall-07"), TEXT("Lvl_Wall07"), TEXT("Four-brick opening, eight courses over"),
+			TEXT("A four-brick opening, still with eight courses over it. Expected: STANDS. This is "
+				"the wall cases 8, 9 and 10 are each compared against, one variable at a time — "
+				"depth of cover, span, and whether there is an abutment."),
+			ScenariosWallCoveredCourses, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWallFourCellOpening },
+
+		{ TEXT("wall-08"), TEXT("Lvl_Wall08"), TEXT("Four-brick opening, one course over"),
+			TEXT("The same four-brick opening with ONE course over it. A single course cannot arch; "
+				"it spans as a beam and the two bricks in the middle of it have no bed left at all. "
+				"Expected: LOCAL LOSS — those two drop and the rest of the wall is fine. THE MODEL "
+				"CURRENTLY DISAGREES: it drops nothing."),
+			5, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWallFourCellOpening },
+
+		{ TEXT("wall-09"), TEXT("Lvl_Wall09"), TEXT("Ten-brick opening, eight courses over"),
+			TEXT("Ten bricks of opening under the same eight courses of cover as case 7 — two and a "
+				"half times the span, everything else identical. Expected: COLLAPSE — the masonry "
+				"over the hole comes down and the jambs either side of it do not. THE MODEL "
+				"CURRENTLY DISAGREES: it holds the lot up."),
+			ScenariosWallCoveredCourses, 14,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall09Cuts },
+
+		{ TEXT("wall-10"), TEXT("Lvl_Wall10"), TEXT("Opening at a free end, no abutment"),
+			TEXT("Case 7's four cells of cover, cut through to the free end so one side of the "
+				"opening has nothing beyond it. Expected: COLLAPSE — an arch needs something to "
+				"thrust against, and here there is masonry on one side only. THE MODEL CURRENTLY "
+				"DISAGREES: part of the overhang stays up."),
+			ScenariosWallCoveredCourses, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall10Cuts },
+
+		{ TEXT("wall-11"), TEXT("Lvl_Wall11"), TEXT("Wall on two piers, six-brick clear span"),
+			TEXT("The bottom four courses go from between two piers, leaving a six-brick clear span "
+				"on three cells of bearing at each end. Expected: STANDS."),
+			ScenariosWallCoveredCourses, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall11Cuts },
+
+		{ TEXT("wall-12"), TEXT("Lvl_Wall12"), TEXT("The same span on one-brick piers"),
+			TEXT("The same clear span, but the piers are cut back to ONE cell each. Expected: "
+				"COLLAPSE — a single brick of bearing cannot take the thrust the span puts on it. "
+				"THE MODEL CURRENTLY DISAGREES: a column of masonry over each pier stays standing."),
+			ScenariosWallCoveredCourses, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall12Cuts },
+
+		{ TEXT("wall-13"), TEXT("Lvl_Wall13"), TEXT("Corbel, quarter brick per course"),
+			TEXT("Nothing is cut: this wall is CORBELLED as laid, its top four courses each stepping "
+				"a quarter of a brick further out than the one below. Expected: STANDS — the joint "
+				"at the bottom of the corbel reads about seven percent of what would tear it open."),
+			10, ScenariosWallCorbelCells,
+			DestructionWallCases::EWallBond::Running,
+			ScenariosWallCorbelFirstCourse, ScenariosWallQuarterBrickStepCm, INDEX_NONE },
+
+		{ TEXT("wall-14"), TEXT("Lvl_Wall14"), TEXT("Corbel, half brick per course"),
+			TEXT("The same corbel stepping HALF a brick per course — twice the projection of case 13 "
+				"and nothing else changed. Nothing is cut. Expected: STANDS, at about a fifth of "
+				"what holds it: doubling the step nearly triples the reading, and that difference is "
+				"the whole point of the pair."),
+			10, ScenariosWallCorbelCells,
+			DestructionWallCases::EWallBond::Running,
+			ScenariosWallCorbelFirstCourse, ScenariosWallHalfBrickStepCm, INDEX_NONE },
+
+		{ TEXT("wall-15"), TEXT("Lvl_Wall15"), TEXT("Header out half a brick, six courses on top"),
+			TEXT("Nothing is cut: one brick of the fourth course is laid HALF A BRICK past the face "
+				"of the wall, with six courses standing on its tail. Expected: STANDS — the load "
+				"above closes the joint the overhang is trying to open."),
+			10, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, 3 },
+
+		{ TEXT("wall-16"), TEXT("Lvl_Wall16"), TEXT("The same header at the top, nothing on it"),
+			TEXT("The same projecting header, this time in the TOP course with nothing above it. "
+				"Nothing is cut. Expected: STANDS — cured mortar carries a brick half over air at "
+				"about six percent of its bond strength, thirty-two times the reading case 15 takes "
+				"with the wall standing on it."),
+			10, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, 9 },
+
+		{ TEXT("wall-17"), TEXT("Lvl_Wall17"), TEXT("Stack bond, intact"),
+			TEXT("Nothing is cut. STACK BOND: every course identical, so every head joint lines up "
+				"through the full height of the wall and no brick spans two below it. Expected: "
+				"STANDS."),
+			10, ScenariosWallStandardCells, DestructionWallCases::EWallBond::Stack },
+
+		{ TEXT("wall-18"), TEXT("Lvl_Wall18"), TEXT("Stack bond, one brick out"),
+			TEXT("One brick goes from the middle of a stack-bonded wall, so the column of bricks "
+				"over the hole has no bond to hand its weight sideways through and hangs on its two "
+				"head joints instead. Expected: STANDS."),
+			10, ScenariosWallStandardCells, DestructionWallCases::EWallBond::Stack,
+			INDEX_NONE, 0.0, INDEX_NONE, ScenariosWall18Cuts },
+
+		{ TEXT("wall-19"), TEXT("Lvl_Wall19"), TEXT("Bottom course out under half the wall"),
+			TEXT("Six bricks of the grounded course go, taking the footing out from under the "
+				"left-hand half of the wall. Expected: COLLAPSE — what has no path to the earth "
+				"comes down, and the half that still has its footing does not. THE MODEL CURRENTLY "
+				"DISAGREES: it leaves a wedge of the unsupported masonry standing."),
+			10, ScenariosWallStandardCells,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall19Cuts },
+
+		{ TEXT("wall-20"), TEXT("Lvl_Wall20"), TEXT("Staircase void"),
+			TEXT("A raking void cut up through the wall, each course reaching one cell less far "
+				"right than the one below, so the masonry beside it steps out over the hole as it "
+				"rises. Expected: LOCAL LOSS — the two bricks left with no bed under them at all "
+				"drop, and the overhang stands. THE MODEL CURRENTLY DISAGREES: it takes the "
+				"half-seated bricks down with them."),
+			ScenariosWallCoveredCourses, 14,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall20Cuts },
+	};
+
+	/** What one acceptance wall asks production to lay. */
+	static DestructionWallCases::FWallSpec ScenariosWallCaseSpecOf(const FScenariosWallRow& Row)
+	{
+		DestructionWallCases::FWallSpec Spec;
+
+		Spec.BrickSizeCm =
+			FVector(ScenariosBrickLengthCm, ScenariosBrickWidthCm, ScenariosBrickHeightCm);
+
+		Spec.JointThicknessCm = ScenariosMortarJointCm;
+		Spec.DensityGramsPerCubicCm = DestructionProfiles::ClayBrick.DensityGramsPerCubicCm;
+		Spec.CoursesHigh = Row.Courses;
+		Spec.Cells = Row.Cells;
+		Spec.Bond = Row.Bond;
+		Spec.CorbelFromCourse = Row.CorbelFromCourse;
+		Spec.CorbelStepCm = Row.CorbelStepCm;
+		Spec.ProjectingCourse = Row.ProjectingCourse;
+		Spec.Strength = DestructionProfiles::GeneralPurposeMortar;
+
+		return Spec;
+	}
+
 	/** Every row, built once. */
 	static TArray<FScenario> ScenariosBuildCatalogue()
 	{
@@ -296,6 +599,59 @@ namespace DestructionScenarios
 			{
 				return DestructionCorbel::Build(Spec, OutLayout);
 			};
+		}
+
+		/*
+		 * AND THE TWENTY ACCEPTANCE WALLS. Each carries the call that lays it for the same reason a
+		 * corbel does — none of these is a running-bond rectangle the `Wall` spec could describe,
+		 * and two of them are not running bond at all.
+		 *
+		 * THE CUT IS NAMED IN (course, cell) AND RESOLVED TO CENTRES HERE, ONCE. A scenario's cut is
+		 * a list of brick centres, which is the right vocabulary for a level — a centre names one
+		 * brick and cannot quietly name a different one when the wall changes — but it is a hopeless
+		 * one to WRITE a doorway in. So the wall is laid, its regions are resolved against the same
+		 * (course, cell) grid the acceptance file measures in, and the centres of exactly those
+		 * bricks go on the row.
+		 */
+		for (const FScenariosWallRow& Wall : ScenariosWallRows)
+		{
+			FScenario& Row = Rows.AddDefaulted_GetRef();
+
+			Row.Name = FName(Wall.Name);
+			Row.MapName = Wall.MapName;
+			Row.Title = Wall.Title;
+			Row.Expectation = Wall.Expectation;
+
+			const DestructionWallCases::FWallSpec Spec = ScenariosWallCaseSpecOf(Wall);
+
+			Row.LayStructure = [Spec](DestructionLayout::FBrickLayout& OutLayout)
+			{
+				DestructionWallCases::FWallLayout Laid;
+
+				if (!DestructionWallCases::Build(Spec, Laid))
+				{
+					return false;
+				}
+
+				OutLayout = MoveTemp(Laid.Layout);
+
+				return true;
+			};
+
+			DestructionWallCases::FWallLayout Laid;
+
+			if (!DestructionWallCases::Build(Spec, Laid))
+			{
+				continue;
+			}
+
+			TArray<int32> CutPieces;
+			DestructionWallCases::PiecesInRegions(Laid, Wall.Cuts, CutPieces);
+
+			for (const int32 Piece : CutPieces)
+			{
+				Row.CutCentresCm.Add(Laid.Layout.Boxes[Piece].CentreCm);
+			}
 		}
 
 		return Rows;

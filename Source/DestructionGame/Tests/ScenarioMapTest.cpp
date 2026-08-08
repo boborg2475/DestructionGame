@@ -181,15 +181,21 @@ bool FScenarioMapsExistTest::RunTest(const FString& Parameters)
 	/*
 	 * A FLOOR ON THE SWEEP, so a catalogue that emptied — or a lookup that started answering
 	 * nothing — fails here rather than turning this into a loop over no rows that passes in
-	 * silence. Nine is what slices A to C left; a floor rather than an equality because adding a
-	 * scenario is meant to be adding a row.
+	 * silence. A floor rather than an equality because adding a scenario is meant to be adding a
+	 * row.
+	 *
+	 * TWENTY-NINE: the nine slices A to C left, plus THE TWENTY ACCEPTANCE WALLS the user drew and
+	 * reviewed. Those twenty are the whole reason the acceptance set exists, and a wall that is
+	 * only a fixture is a wall nobody can stand in front of — so the floor is raised WITH them
+	 * rather than after them, and a catalogue that never grew the rows fails here rather than
+	 * sweeping the nine it already had and passing.
 	 */
-	constexpr int32 ScenarioMapRowFloor = 9;
+	constexpr int32 ScenarioMapRowFloor = 29;
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("fixture: the catalogue must carry at least the %d rows slices A to C left, or ")
-			TEXT("this sweeps nothing; it carries %d"),
+			TEXT("fixture: the catalogue must carry at least the %d rows the scenario slices and the ")
+			TEXT("twenty acceptance walls leave, or this sweeps nothing; it carries %d"),
 			ScenarioMapRowFloor, Rows.Num()),
 		Rows.Num() >= ScenarioMapRowFloor);
 

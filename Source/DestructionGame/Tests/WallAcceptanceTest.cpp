@@ -6,6 +6,8 @@
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Core/Structure.h"
+#include "Core/WallCases.h"
+#include "World/DestructionScenarios.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -1168,6 +1170,309 @@ namespace WallAcceptanceTestSupport
 
 		return Named;
 	}
+
+	/* ================================================================================
+	 * THE TWENTY AS PLAYABLE LEVELS — what a scenario row for one of these cases must be.
+	 * ================================================================================
+	 *
+	 * These twenty configurations are the ones the user drew and reviewed, and until now the only
+	 * thing that could lay them was the fixture bricklayer above — which lives in a test file, so
+	 * no level could ever reach it. The three tests at the bottom of this file are the acceptance
+	 * criteria for moving the GEOMETRY into production and leaving the VERDICTS here.
+	 *
+	 * THE VERDICTS DO NOT MOVE, and that is not a detail of the sequencing. `EVerdict`, `MustFall`,
+	 * `MustStand` and `Isolates` are claims about what the solver ought to conclude; they are
+	 * acceptance-test property. A level needs the geometry and the cuts and nothing else, and
+	 * moving an expected outcome into production would be putting an assertion there.
+	 */
+
+	/**
+	 * WHAT A CASE'S LEVEL IS CALLED, AND WHY IT IS THE NUMBER RATHER THAN THE TITLE.
+	 *
+	 * A scenario name is typed on a URL and a map name becomes a filename on disk, so both want to
+	 * be short, stable and free of punctuation; a case title is prose with commas and hyphens in it
+	 * and is carried VERBATIM in the row's own `Title` instead. Two digits so `wall-2` cannot sort
+	 * or read as `wall-20`.
+	 */
+	FString LevelNameForCase(int32 Number)
+	{
+		return FString::Printf(TEXT("wall-%02d"), Number);
+	}
+
+	FString LevelMapNameForCase(int32 Number)
+	{
+		return FString::Printf(TEXT("Lvl_Wall%02d"), Number);
+	}
+
+	/**
+	 * THE ONE MACHINE-CHECKABLE CLAIM A LEVEL'S CAPTION MAKES.
+	 *
+	 * A caption is prose and has to stay prose — it is the only thing telling a player what they
+	 * are looking at. What cannot be prose is the VERDICT it claims, because a level captioned with
+	 * an outcome the solver does not produce is a lie told to somebody standing in front of the
+	 * counter-example. So the caption carries exactly one token naming its verdict, spelled the way
+	 * this file spells verdicts, and the rest of the sentence is the writer's.
+	 */
+	FString VerdictClaimFor(EVerdict Verdict)
+	{
+		return FString::Printf(TEXT("Expected: %s"), VerdictName(Verdict));
+	}
+
+	/**
+	 * AND THE TOKEN A CAPTION MUST CARRY WHEN THE MODEL DOES NOT AGREE WITH ITS OWN CLAIM.
+	 *
+	 * Six rows are red today. A caption that named only the expected verdict on one of those would
+	 * be worse than silence — so the honest ones say both, and the ones the model agrees with must
+	 * NOT say it, which is what stops the admission outliving the disagreement.
+	 */
+	const TCHAR* const ModelDisagreesMarker = TEXT("THE MODEL CURRENTLY DISAGREES");
+
+	/**
+	 * Whether the model produced the verdict this row claims.
+	 *
+	 * DELIBERATELY THE SAME THREE SHAPES `Acceptance.Wall.Catalogue` ASSERTS ONE AT A TIME, and it
+	 * is a second reading of them rather than a shared one because the catalogue's assertions are
+	 * SEPARATE on purpose — each prints its own diagnosis — and folding them into one predicate
+	 * would change six known-red failure messages. The cost is a copy, and the copy is held against
+	 * the catalogue by the known-red tripwire in the caption test: it must name exactly the six
+	 * rows that are red, so a predicate that drifted from the catalogue fails there rather than
+	 * quietly captioning a level wrongly.
+	 */
+	bool ModelAgreesWithVerdict(const FWallCase& Case, const FWall& Wall, const FWallResult& Result)
+	{
+		switch (Case.Verdict)
+		{
+		case EVerdict::Stands:
+			return Result.Fallen.Num() == 0
+				&& Result.CutPasses == 0
+				&& Wall.Structure.NumLivePieces() == Result.PiecesLaid - Result.PiecesCut;
+
+		case EVerdict::LocalLoss:
+		{
+			const TArray<int32> Named = PiecesInRegions(Wall, Case.MustFall);
+
+			if (Named.Num() == 0 || Named.Num() != Result.Fallen.Num())
+			{
+				return false;
+			}
+
+			for (const int32 Piece : Named)
+			{
+				if (!Result.Fallen.Contains(Piece))
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+
+		default:
+		{
+			const TArray<int32> MustFall = PiecesInRegions(Wall, Case.MustFall);
+			const TArray<int32> MustStand = PiecesInRegions(Wall, Case.MustStand);
+
+			if (MustFall.Num() == 0)
+			{
+				return false;
+			}
+
+			for (const int32 Piece : MustFall)
+			{
+				if (!Result.Fallen.Contains(Piece))
+				{
+					return false;
+				}
+			}
+
+			for (const int32 Piece : MustStand)
+			{
+				if (Result.Fallen.Contains(Piece))
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+		}
+	}
+
+	/** The production spec that must lay this case's wall, transcribed field for field. */
+	DestructionWallCases::FWallSpec ProductionSpecOf(const FWallCase& Case)
+	{
+		DestructionWallCases::FWallSpec Spec;
+
+		Spec.BrickSizeCm = FVector(BrickLengthCm, BrickDepthCm, BrickHeightCm);
+		Spec.JointThicknessCm = JointCm;
+		Spec.DensityGramsPerCubicCm = ClayBrickDensityGramsPerCubicCm;
+		Spec.CoursesHigh = Case.Courses;
+		Spec.Cells = Case.Cells;
+
+		Spec.Bond = Case.Bond == EBond::Stack
+			? DestructionWallCases::EWallBond::Stack
+			: DestructionWallCases::EWallBond::Running;
+
+		Spec.CorbelFromCourse = Case.CorbelFromCourse;
+		Spec.CorbelStepCm = Case.CorbelStepCm;
+		Spec.ProjectingCourse = Case.ProjectingCourse;
+		Spec.Strength = GeneralPurposeMortar;
+
+		return Spec;
+	}
+
+	/** The same rectangles, in production's own vocabulary. */
+	TArray<DestructionWallCases::FWallRegion> ProductionRegionsOf(
+		TArrayView<const FWallRegion> Regions)
+	{
+		TArray<DestructionWallCases::FWallRegion> Out;
+		Out.Reserve(Regions.Num());
+
+		for (const FWallRegion& Region : Regions)
+		{
+			DestructionWallCases::FWallRegion Theirs;
+
+			Theirs.CourseLo = Region.CourseLo;
+			Theirs.CourseHi = Region.CourseHi;
+			Theirs.CellLo = Region.CellLo;
+			Theirs.CellHi = Region.CellHi;
+
+			Out.Add(Theirs);
+		}
+
+		return Out;
+	}
+
+	inline FString Bits(double Value)
+	{
+		return FString::Printf(TEXT("%.17g"), Value);
+	}
+
+	inline FString VectorBits(const FVector& Value)
+	{
+		return FString::Printf(TEXT("(%.17g, %.17g, %.17g)"), Value.X, Value.Y, Value.Z);
+	}
+
+	/**
+	 * Compare a laid layout against the fixture's wall, BRICK FOR BRICK AND IN HANDLE ORDER.
+	 *
+	 * HANDLE ORDER IS PART OF THE CLAIM AND IT IS THE HALF THAT LOOKS FINE WHEN IT IS WRONG. A
+	 * builder that lays the same bricks in a different sequence renumbers every joint and every
+	 * break stamp while every geometric check still passes — and every reading in this file, in
+	 * `Core.Structure` and in the design documents is a statement about a particular joint index.
+	 *
+	 * THE FIRST DISAGREEMENT IS REPORTED, NOT ALL OF THEM. A wall is up to 375 pieces and 1,000
+	 * joints; a producer that moved every brick would otherwise print thousands of failures and
+	 * bury everything else in the run.
+	 *
+	 * @return true if they are the same wall.
+	 */
+	bool LayoutMatchesFixture(
+		FAutomationTestBase& Test,
+		const FString& Where,
+		const DestructionLayout::FBrickLayout& Laid,
+		const FWall& Fixture)
+	{
+		bool bSameWall = true;
+
+		bSameWall &= Test.TestTrue(
+			*FString::Printf(
+				TEXT("%s: production laid %d pieces and %d joints; the fixture lays %d and %d"),
+				*Where, Laid.Structure.NumPieces(), Laid.Structure.NumConnections(),
+				Fixture.Structure.NumPieces(), Fixture.Structure.NumConnections()),
+			Laid.Structure.NumPieces() == Fixture.Structure.NumPieces()
+				&& Laid.Structure.NumConnections() == Fixture.Structure.NumConnections()
+				&& Laid.Boxes.Num() == Fixture.Boxes.Num());
+
+		int32 FirstWrongPiece = INDEX_NONE;
+		FString WhyPieceWrong;
+
+		const int32 CommonPieces = FMath::Min(Laid.Boxes.Num(), Fixture.Boxes.Num());
+
+		for (int32 Piece = 0; Piece < CommonPieces; ++Piece)
+		{
+			const DestructionLayout::FPieceBox& Mine = Laid.Boxes[Piece];
+			const DestructionLayout::FPieceBox& Theirs = Fixture.Boxes[Piece];
+
+			const bool bSame = Mine.CentreCm == Theirs.CentreCm
+				&& Mine.ExtentCm == Theirs.ExtentCm
+				&& Laid.Structure.GetPiece(Piece).MassKg
+					== Fixture.Structure.GetPiece(Piece).MassKg
+				&& Laid.Structure.GetPiece(Piece).bIsGrounded
+					== Fixture.Structure.GetPiece(Piece).bIsGrounded;
+
+			if (!bSame)
+			{
+				FirstWrongPiece = Piece;
+
+				WhyPieceWrong = FString::Printf(
+					TEXT("production has it at %s, half-extent %s, %s kg, %s; the fixture has it at ")
+					TEXT("%s, half-extent %s, %s kg, %s"),
+					*VectorBits(Mine.CentreCm), *VectorBits(Mine.ExtentCm),
+					*Bits(Laid.Structure.GetPiece(Piece).MassKg),
+					Laid.Structure.GetPiece(Piece).bIsGrounded ? TEXT("grounded") : TEXT("free"),
+					*VectorBits(Theirs.CentreCm), *VectorBits(Theirs.ExtentCm),
+					*Bits(Fixture.Structure.GetPiece(Piece).MassKg),
+					Fixture.Structure.GetPiece(Piece).bIsGrounded ? TEXT("grounded") : TEXT("free"));
+
+				break;
+			}
+		}
+
+		bSameWall &= Test.TestTrue(
+			*FString::Printf(
+				TEXT("%s: every brick must be BIT-IDENTICAL to the fixture's and carry the same ")
+				TEXT("handle — piece %d is the first that is not: %s"),
+				*Where, FirstWrongPiece,
+				FirstWrongPiece == INDEX_NONE ? TEXT("none is") : *WhyPieceWrong),
+			FirstWrongPiece == INDEX_NONE);
+
+		int32 FirstWrongJoint = INDEX_NONE;
+		FString WhyJointWrong;
+
+		const int32 CommonJoints =
+			FMath::Min(Laid.Structure.NumConnections(), Fixture.Structure.NumConnections());
+
+		for (int32 Joint = 0; Joint < CommonJoints; ++Joint)
+		{
+			const FConnection& Mine = Laid.Structure.GetConnection(Joint);
+			const FConnection& Theirs = Fixture.Structure.GetConnection(Joint);
+
+			const bool bSame = Mine.PieceA == Theirs.PieceA
+				&& Mine.PieceB == Theirs.PieceB
+				&& Mine.InterfaceNormal == Theirs.InterfaceNormal
+				&& Mine.InterfaceAreaSqCm == Theirs.InterfaceAreaSqCm
+				&& Mine.InterfaceCentreCm == Theirs.InterfaceCentreCm
+				&& Mine.InterfaceHalfExtentCm == Theirs.InterfaceHalfExtentCm;
+
+			if (!bSame)
+			{
+				FirstWrongJoint = Joint;
+
+				WhyJointWrong = FString::Printf(
+					TEXT("production joins %d-%d, normal %s, %s cm2, centred %s, half-extent %s; the ")
+					TEXT("fixture joins %d-%d, normal %s, %s cm2, centred %s, half-extent %s"),
+					Mine.PieceA, Mine.PieceB, *VectorBits(Mine.InterfaceNormal),
+					*Bits(Mine.InterfaceAreaSqCm), *VectorBits(Mine.InterfaceCentreCm),
+					*VectorBits(Mine.InterfaceHalfExtentCm),
+					Theirs.PieceA, Theirs.PieceB, *VectorBits(Theirs.InterfaceNormal),
+					*Bits(Theirs.InterfaceAreaSqCm), *VectorBits(Theirs.InterfaceCentreCm),
+					*VectorBits(Theirs.InterfaceHalfExtentCm));
+
+				break;
+			}
+		}
+
+		bSameWall &= Test.TestTrue(
+			*FString::Printf(
+				TEXT("%s: the connection set must be the fixture's, IN ORDER — joint %d is the first ")
+				TEXT("that is not: %s"),
+				*Where, FirstWrongJoint,
+				FirstWrongJoint == INDEX_NONE ? TEXT("none is") : *WhyJointWrong),
+			FirstWrongJoint == INDEX_NONE);
+
+		return bSameWall;
+	}
 }
 
 /**
@@ -2194,6 +2499,554 @@ bool FWallAcceptanceFixtureAgreesWithProducerTest::RunTest(const FString& Parame
 			TEXT("first is %s"),
 			Unmatched, FirstUnmatched.IsEmpty() ? TEXT("none") : *FirstUnmatched),
 		Unmatched, 0);
+
+	return true;
+}
+
+/**
+ * THE PRODUCTION BRICKLAYER LAYS EXACTLY THE TWENTY WALLS THIS FILE HAS BEEN MEASURING.
+ *
+ * =====================================================================================
+ * WHY THIS TEST EXISTS AT ALL
+ * =====================================================================================
+ *
+ * The bricklayer above is TEST-ONLY, so no level can reach it — which is why the twenty walls the
+ * user drew and reviewed cannot be catalogue rows until the geometry is production. Moving it is
+ * the cheap part. The expensive part is that every reading in this file is a statement about a
+ * particular arrangement of particular bricks, worked to seventeen digits: 0.195160875 at a
+ * four-step corbel's bottom rung, 0.058203838191552663 at a bare header's bed joint, 0.01000825 of
+ * head-joint shear, and six known-red rows whose failure messages name bricks by (course, cell). A
+ * producer that differs from the fixture by one ulp anywhere is not "a fixture that moved", it is
+ * a dozen tests changing their answers at once for no visible reason — and four of them are
+ * ALREADY RED, so a changed message there would hide a regression inside a known failure.
+ *
+ * =====================================================================================
+ * WHAT IS COMPARED, AND WHY HANDLE ORDER IS IN THE LIST
+ * =====================================================================================
+ *
+ * The piece count, every box centre and extent, every mass, every grounded flag, and the whole
+ * connection set IN ORDER — pairing, normal, area, centre and half-extent. Exact `==` throughout,
+ * because "bit-identical" is the claim and a tolerance lets exactly the drift this exists to
+ * refuse through.
+ *
+ * A builder that laid the same bricks in a different sequence would renumber every joint and every
+ * break stamp while every geometric check still passed. That is the failure that looks like
+ * nothing, so it is asserted rather than assumed.
+ *
+ * AND THE GRID AND THE REGIONS MOVE WITH IT. `FWallRegion` is the vocabulary every cut and every
+ * named outcome in this file is written in, and resolving one needs each piece's (course, cell) —
+ * so production must hand those back and must name the same bricks the fixture names, or twenty
+ * levels cut the wrong bricks while laying the right wall.
+ *
+ * =====================================================================================
+ * IT GOES QUIET AFTER THE MOVE, DELIBERATELY
+ * =====================================================================================
+ *
+ * Once the fixture is a call to production this compares a thing with itself, exactly as
+ * `Core.Corbel.MatchesTheFixtureBitForBit` does. The value is spent at the moment of the move.
+ * What remains standing afterwards is `Acceptance.Wall.TheFixtureLaysTheWallTheProducerLays` —
+ * which becomes the claim that this producer lays the wall `Layout::RunningBond` lays on the shape
+ * both can lay, and is the reason this file cannot become a second definition of what a wall is.
+ *
+ * NEEDS A TICKING WORLD: NO. Boxes and doubles; no solve at all.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FWallAcceptanceProducerMatchesFixtureTest,
+	"DestructionGame.Acceptance.Wall.TheProducerLaysTheWallTheFixtureLays",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FWallAcceptanceProducerMatchesFixtureTest::RunTest(const FString& Parameters)
+{
+	using namespace WallAcceptanceTestSupport;
+
+	/**
+	 * A CELL INDEX IS AN INDEX, NOT A READING, so it is held to a tolerance rather than to a bit.
+	 *
+	 * Every region bound in this file is at least an eighth of a cell — 0.125 — clear of any brick
+	 * centre, so this is eight orders of magnitude below anything that could change which region a
+	 * piece falls in. The course number is an integer and is held exactly.
+	 */
+	constexpr double CellTolerance = 1.0e-9;
+
+	const TArray<FWallCase> Cases = AllWallCases();
+
+	TestEqual(TEXT("FIXTURE: the catalogue is twenty cases"), Cases.Num(), 20);
+
+	for (const FWallCase& Case : Cases)
+	{
+		const FString Where = FString::Printf(TEXT("case %d (%s)"), Case.Number, Case.Title);
+
+		FWall Fixture;
+		LayWall(Case, Fixture);
+
+		if (Fixture.NumPieces() == 0)
+		{
+			AddError(FString::Printf(TEXT("%s: FIXTURE laid no bricks at all"), *Where));
+
+			continue;
+		}
+
+		DestructionWallCases::FWallLayout Laid;
+
+		if (!DestructionWallCases::Build(ProductionSpecOf(Case), Laid))
+		{
+			AddError(FString::Printf(
+				TEXT("%s: production must lay this wall before it can be compared to the fixture ")
+				TEXT("every reading in this file was taken on"),
+				*Where));
+
+			continue;
+		}
+
+		/* --- the same wall, brick for brick, joint for joint, handle for handle ------------- */
+
+		LayoutMatchesFixture(*this, Where, Laid.Layout, Fixture);
+
+		/* --- and the same grid under it ----------------------------------------------------- */
+
+		int32 FirstWrongGrid = INDEX_NONE;
+		FString WhyGridWrong;
+
+		const int32 CommonGrid = FMath::Min(
+			FMath::Min(Laid.CourseOf.Num(), Laid.CellOf.Num()), Fixture.NumPieces());
+
+		for (int32 Piece = 0; Piece < CommonGrid; ++Piece)
+		{
+			if (Laid.CourseOf[Piece] == Fixture.CourseOf[Piece]
+				&& FMath::IsNearlyEqual(Laid.CellOf[Piece], Fixture.CellOf[Piece], CellTolerance))
+			{
+				continue;
+			}
+
+			FirstWrongGrid = Piece;
+
+			WhyGridWrong = FString::Printf(
+				TEXT("production puts it at c%d/%s, the fixture at c%d/%s"),
+				Laid.CourseOf[Piece], *Bits(Laid.CellOf[Piece]),
+				Fixture.CourseOf[Piece], *Bits(Fixture.CellOf[Piece]));
+
+			break;
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: production must hand back one (course, cell) per piece — %d courses and ")
+				TEXT("%d cells for %d pieces"),
+				*Where, Laid.CourseOf.Num(), Laid.CellOf.Num(), Laid.Layout.Boxes.Num()),
+			Laid.CourseOf.Num() == Laid.Layout.Boxes.Num()
+				&& Laid.CellOf.Num() == Laid.Layout.Boxes.Num());
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: every piece must sit on the same (course, cell) the fixture puts it on, or ")
+				TEXT("every region in this file names different bricks — piece %d is the first that ")
+				TEXT("does not: %s"),
+				*Where, FirstWrongGrid,
+				FirstWrongGrid == INDEX_NONE ? TEXT("none is") : *WhyGridWrong),
+			FirstWrongGrid == INDEX_NONE);
+
+		/* --- and the regions resolve to the same bricks -------------------------------------- */
+
+		struct FRegionCheck
+		{
+			const TCHAR* What;
+			TArrayView<const FWallRegion> Regions;
+		};
+
+		const FRegionCheck RegionChecks[] =
+		{
+			{ TEXT("cut"), Case.Cuts },
+			{ TEXT("must-fall"), Case.MustFall },
+			{ TEXT("must-stand"), Case.MustStand },
+		};
+
+		for (const FRegionCheck& Check : RegionChecks)
+		{
+			if (Check.Regions.Num() == 0)
+			{
+				continue;
+			}
+
+			const TArray<int32> Expected = PiecesInRegions(Fixture, Check.Regions);
+
+			const TArray<DestructionWallCases::FWallRegion> Theirs =
+				ProductionRegionsOf(Check.Regions);
+
+			TArray<int32> Named;
+			DestructionWallCases::PiecesInRegions(Laid, Theirs, Named);
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: the %s regions must name exactly the bricks the fixture names, in ")
+					TEXT("handle order — the fixture names %d %s, production names %d %s"),
+					*Where, Check.What,
+					Expected.Num(), *DescribePieces(Fixture, Expected),
+					Named.Num(), *DescribePieces(Fixture, Named)),
+				Named == Expected);
+		}
+	}
+
+	return true;
+}
+
+/**
+ * EVERY ONE OF THE TWENTY IS A LEVEL A HUMAN CAN JOIN, LAYING THE SAME WALL AND CUTTING THE SAME
+ * BRICKS THE ACCEPTANCE ROW MEASURES.
+ *
+ * =====================================================================================
+ * WHY THE CHECK LIVES HERE RATHER THAN BESIDE THE CATALOGUE
+ * =====================================================================================
+ *
+ * The verdicts stay in this file, so the only place that knows what case 8 IS, is this file. A
+ * test living in `Tests/DestructionScenariosTest.cpp` could assert that a row called `wall-08`
+ * exists and builds; it could not assert that the wall it builds is the wall case 8's expected
+ * outcome was measured against, which is the only claim worth making. The include direction is
+ * still test-includes-production: this reads `World/DestructionScenarios.h`, and nothing in
+ * production reads anything here.
+ *
+ * =====================================================================================
+ * WHAT IS ASSERTED, AND WHY THE CUT IS THE HALF THAT MATTERS
+ * =====================================================================================
+ *
+ * Each case must have a row; the row must carry the case's title VERBATIM, so a level and a
+ * catalogue entry cannot describe different things; the wall it builds must be the fixture's wall
+ * brick for brick AND in handle order; and the bricks it resolves to cut must be exactly the
+ * bricks the case's cut regions name.
+ *
+ * MOST OF THESE ROWS CUT, AND THAT IS THE POINT OF THE LEVEL. The wall stands, the player looks at
+ * it for the row's own hold, and then the bricks go and they watch what the wall does about it. A
+ * level that laid the right wall and cut a brick two cells over would show a plausible collapse
+ * that has nothing to do with the case it is named after — which is exactly the failure the whole
+ * acceptance set exists to make visible, relocated to where nobody is looking for it. Cases 1 and
+ * 17 are intact walls and must cut nothing, and that is asserted from the case's own empty cut
+ * list rather than from a list of numbers here.
+ *
+ * THE SET IS COMPARED SORTED, BECAUSE THE ORDER OF A CUT IS THE ROW'S OWN BUSINESS: every cut
+ * brick goes in one batch and one solve, so nothing downstream can see the sequence. WHICH bricks
+ * is the whole claim.
+ *
+ * NEEDS A TICKING WORLD: NO. The catalogue and the producer are both world-free; what a level does
+ * with them is `World.Scenarios.*`'s business and is already covered.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FWallAcceptanceLevelsTest,
+	"DestructionGame.Acceptance.Wall.EveryCaseIsAPlayableLevel",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FWallAcceptanceLevelsTest::RunTest(const FString& Parameters)
+{
+	using namespace WallAcceptanceTestSupport;
+	using namespace DestructionScenarios;
+
+	const TArray<FWallCase> Cases = AllWallCases();
+
+	TestEqual(TEXT("FIXTURE: the catalogue is twenty cases"), Cases.Num(), 20);
+
+	for (const FWallCase& Case : Cases)
+	{
+		const FString LevelName = LevelNameForCase(Case.Number);
+		const FString MapName = LevelMapNameForCase(Case.Number);
+
+		const FString Where =
+			FString::Printf(TEXT("case %d (%s) as '%s'"), Case.Number, Case.Title, *LevelName);
+
+		/* --- ONE: there is a row, and it is this case ---------------------------------------- */
+
+		const int32 Index = IndexOfName(FName(*LevelName));
+
+		if (!TestTrue(
+				*FString::Printf(
+					TEXT("%s: the twenty walls the user drew are the whole reason the acceptance set ")
+					TEXT("exists, and until one is a catalogue row it is a fixture nobody can stand ")
+					TEXT("in front of. There is no row named '%s'."),
+					*Where, *LevelName),
+				Catalogue().IsValidIndex(Index)))
+		{
+			continue;
+		}
+
+		const FScenario& Row = Catalogue()[Index];
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: must be joinable from its own map, '%s'"), *Where, *MapName),
+			FString(Row.MapName), MapName);
+
+		/*
+		 * THE TITLE IS THE CASE'S, VERBATIM. The catalogue in WALL_CASES.html, the acceptance row
+		 * and the banner a player reads have to be three views of one case rather than three
+		 * descriptions that agree today.
+		 */
+		TestEqual(
+			*FString::Printf(TEXT("%s: must carry the case's own title"), *Where),
+			FString(Row.Title), FString(Case.Title));
+
+		/* --- TWO: it lays the wall the case was measured on ---------------------------------- */
+
+		FWall Fixture;
+		LayWall(Case, Fixture);
+
+		if (Fixture.NumPieces() == 0)
+		{
+			AddError(FString::Printf(TEXT("%s: FIXTURE laid no bricks at all"), *Where));
+
+			continue;
+		}
+
+		DestructionLayout::FBrickLayout Built;
+		TArray<int32> BuiltCut;
+
+		if (!Build(Row, Built, BuiltCut))
+		{
+			AddError(FString::Printf(
+				TEXT("%s: the row must build — a catalogue row that cannot be laid is a level that ")
+				TEXT("cannot be joined"),
+				*Where));
+
+			continue;
+		}
+
+		LayoutMatchesFixture(*this, Where, Built, Fixture);
+
+		/* --- THREE: and it cuts the bricks the case cuts, and only those ---------------------- */
+
+		const TArray<int32> Expected = CutPieces(Case, Fixture);
+
+		TArray<int32> Actual = BuiltCut;
+		Actual.Sort();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the level must cut exactly the bricks the case cuts — the case cuts %d %s, ")
+				TEXT("the level cuts %d %s. A level that lays the right wall and cuts the wrong brick ")
+				TEXT("shows a plausible collapse that has nothing to do with the case it is named ")
+				TEXT("after."),
+				*Where,
+				Expected.Num(), *DescribePieces(Fixture, Expected),
+				Actual.Num(), *DescribePieces(Fixture, Actual)),
+			Actual == Expected);
+
+		/*
+		 * AND THE INTACT ROWS CUT NOTHING, DERIVED FROM THE CASE RATHER THAN LISTED. Cases 1 and 17
+		 * are whole walls; a row that quietly took a brick out of one would turn a regression anchor
+		 * into a different case.
+		 */
+		if (Case.Cuts.Num() == 0)
+		{
+			TestEqual(
+				*FString::Printf(
+					TEXT("%s: this case cuts nothing, so its level must cut nothing"), *Where),
+				Row.CutCentresCm.Num(), 0);
+		}
+		else
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: this case cuts %d brick(s), so its level must name at least one cut ")
+					TEXT("centre; it names %d"),
+					*Where, Expected.Num(), Row.CutCentresCm.Num()),
+				Row.CutCentresCm.Num() > 0);
+		}
+	}
+
+	return true;
+}
+
+/**
+ * NO LEVEL PUTS A VERDICT ON SCREEN THAT THE SOLVER DOES NOT PRODUCE.
+ *
+ * =====================================================================================
+ * WHY A CAPTION NEEDS A TEST AT ALL
+ * =====================================================================================
+ *
+ * Six of these twenty rows are red today — 8, 9, 10, 12, 19 and 20 — and a level captioned "the
+ * course over the doorway drops and the wall stands" while the model drops nothing is a LIE TOLD TO
+ * SOMEBODY STANDING IN FRONT OF THE COUNTER-EXAMPLE. That is worse than silence: the player can
+ * see the wall, and the caption is the only thing telling them whether what they are looking at is
+ * the answer or the bug.
+ *
+ * So a caption may say what is expected, and it may say that the model disagrees, and it may say
+ * only what the level does — but it may not claim a verdict the solver does not currently produce
+ * without admitting it.
+ *
+ * =====================================================================================
+ * THE CONVENTION, AND WHY IT IS A TOKEN RATHER THAN PROSE MATCHING
+ * =====================================================================================
+ *
+ * A caption is prose and has to stay prose. What is pinned is one token in it: `Expected: STANDS`,
+ * `Expected: LOCAL LOSS` or `Expected: COLLAPSE`, spelled the way `VerdictName` spells it, exactly
+ * one of the three, and matching the verdict the acceptance row asserts. Everything else in the
+ * sentence is the writer's. Matching whole sentences would have made the caption unwritable;
+ * matching nothing would have let it drift the day a verdict changed — which has already happened
+ * twice in this project, when cases 8 and 16 were corrected in WALL_CASES.html and left stale in
+ * this file for a day.
+ *
+ * AND WHICH ROWS MUST ADMIT A DISAGREEMENT IS COMPUTED, NEVER LISTED. The row is RUN, its verdict
+ * is evaluated, and the marker is required exactly when the model got it wrong — so a slice that
+ * fixes case 8 turns this red until the caption stops claiming a disagreement that no longer
+ * exists. A hardcoded list of six numbers would have rotted silently in the other direction.
+ *
+ * THE KNOWN-RED SET IS A TRIPWIRE ON THIS TEST'S OWN PREDICATE, not a second copy of the rule.
+ * `ModelAgreesWithVerdict` is a second reading of the three verdict shapes `Acceptance.Wall.
+ * Catalogue` asserts one at a time, so it could drift from the catalogue and caption a level
+ * wrongly while every catalogue row still failed exactly as before. Requiring it to name precisely
+ * the six rows CURRENT_STATE records as red is what makes that drift visible.
+ *
+ * NEEDS A TICKING WORLD: NO. It solves the same twenty walls the catalogue solves.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FWallAcceptanceCaptionTest,
+	"DestructionGame.Acceptance.Wall.EveryLevelsCaptionTellsTheTruth",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
+{
+	using namespace WallAcceptanceTestSupport;
+	using namespace DestructionScenarios;
+
+	/**
+	 * THE SIX ROWS THE MODEL GETS WRONG TODAY, as CURRENT_STATE.md records them.
+	 *
+	 * This is NOT what decides which caption must admit a disagreement — that is computed per row
+	 * below. It is a check on the predicate that computes it: a second reading of the verdict rules
+	 * that drifted from the catalogue's would caption a level wrongly while every catalogue
+	 * failure stayed word for word identical, which is the one failure this file could not
+	 * otherwise see.
+	 */
+	const int32 KnownDisagreements[] = { 8, 9, 10, 12, 19, 20 };
+
+	const TArray<FWallCase> Cases = AllWallCases();
+
+	TestEqual(TEXT("FIXTURE: the catalogue is twenty cases"), Cases.Num(), 20);
+
+	TArray<int32> Disagreed;
+
+	for (const FWallCase& Case : Cases)
+	{
+		const FString LevelName = LevelNameForCase(Case.Number);
+
+		const FString Where =
+			FString::Printf(TEXT("case %d (%s) as '%s'"), Case.Number, Case.Title, *LevelName);
+
+		/*
+		 * WHAT THE MODEL ACTUALLY DOES WITH THIS WALL, READ BEFORE THE ROW IS LOOKED UP AND
+		 * DELIBERATELY NOT SKIPPED WHEN THERE IS NO ROW YET.
+		 *
+		 * The tripwire at the bottom is a check on the predicate rather than on the captions, and a
+		 * predicate that was only exercised once the levels existed would be unproven at exactly the
+		 * moment somebody was relying on it to caption twenty of them. Run this way it reproduces
+		 * the six known reds on the day it is written.
+		 */
+		FWall Wall;
+		FWallResult Result;
+
+		RunWallCase(*this, Case, Wall, Result);
+
+		if (!Result.bLaid)
+		{
+			continue;
+		}
+
+		const bool bAgrees = ModelAgreesWithVerdict(Case, Wall, Result);
+
+		if (!bAgrees)
+		{
+			Disagreed.Add(Case.Number);
+		}
+
+		const int32 Index = IndexOfName(FName(*LevelName));
+
+		if (!Catalogue().IsValidIndex(Index))
+		{
+			AddError(FString::Printf(
+				TEXT("%s: there is no row to caption. A level with nothing saying what should happen ")
+				TEXT("leaves a human unable to tell a correct wall from a broken one."),
+				*Where));
+
+			continue;
+		}
+
+		const FString Caption = FString(Catalogue()[Index].Expectation);
+
+		/* --- ONE: it claims its own verdict, and only its own -------------------------------- */
+
+		const EVerdict Verdicts[] = { EVerdict::Stands, EVerdict::LocalLoss, EVerdict::Collapse };
+
+		FString Claimed;
+		int32 ClaimCount = 0;
+
+		for (const EVerdict Verdict : Verdicts)
+		{
+			if (Caption.Contains(VerdictClaimFor(Verdict), ESearchCase::CaseSensitive))
+			{
+				++ClaimCount;
+				Claimed = VerdictName(Verdict);
+			}
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: its caption must claim exactly one verdict, written '%s'; it claims %d ")
+				TEXT("(%s). The caption reads: \"%s\""),
+				*Where, *VerdictClaimFor(Case.Verdict), ClaimCount,
+				ClaimCount == 0 ? TEXT("none") : *Claimed, *Caption),
+			ClaimCount == 1
+				&& Caption.Contains(VerdictClaimFor(Case.Verdict), ESearchCase::CaseSensitive));
+
+		/* --- TWO: and it admits a disagreement exactly when there is one --------------------- */
+
+		const bool bAdmits = Caption.Contains(ModelDisagreesMarker, ESearchCase::CaseSensitive);
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: the model %s this row's verdict of %s, so its caption %s say '%s'. A level ")
+				TEXT("captioned with an outcome the solver does not produce is a lie told to somebody ")
+				TEXT("standing in front of the counter-example; an admission left behind after the ")
+				TEXT("model was fixed is the same lie the other way round. %d piece(s) came down %s. ")
+				TEXT("The caption reads: \"%s\""),
+				*Where,
+				bAgrees ? TEXT("AGREES with") : TEXT("DISAGREES with"),
+				VerdictName(Case.Verdict),
+				bAgrees ? TEXT("must NOT") : TEXT("MUST"),
+				ModelDisagreesMarker,
+				Result.Fallen.Num(), *DescribePieces(Wall, Result.Fallen), *Caption),
+			bAdmits, !bAgrees);
+	}
+
+	/* --- and the predicate above is the catalogue's, checked against the known reds ---------- */
+
+	TArray<int32> Known;
+	Known.Append(KnownDisagreements, UE_ARRAY_COUNT(KnownDisagreements));
+
+	auto NumberList = [](TArrayView<const int32> Numbers)
+	{
+		FString Text;
+
+		for (const int32 Number : Numbers)
+		{
+			if (!Text.IsEmpty())
+			{
+				Text += TEXT(", ");
+			}
+
+			Text += FString::FromInt(Number);
+		}
+
+		return Text.IsEmpty() ? FString(TEXT("none")) : Text;
+	};
+
+	const FString DisagreedText = NumberList(Disagreed);
+	const FString KnownText = NumberList(Known);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("TRIPWIRE: the rows this test reads as wrong must be exactly the six ")
+			TEXT("Acceptance.Wall.Catalogue fails on — it read {%s}, the known reds are {%s}. If a ")
+			TEXT("slice fixed one, its caption must stop admitting a disagreement and this list must ")
+			TEXT("shrink with it; if they differ any other way, this test's reading of a verdict has ")
+			TEXT("drifted from the catalogue's and a level is being captioned by the wrong rule."),
+			*DisagreedText, *KnownText),
+		Disagreed == Known);
 
 	return true;
 }
