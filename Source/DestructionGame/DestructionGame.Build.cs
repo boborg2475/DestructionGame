@@ -31,7 +31,10 @@ public class DestructionGame : ModuleRules
 			"Niagara"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		PrivateDependencyModuleNames.AddRange(new string[] {
+			// Content tests read package headers through the asset registry, loading nothing
+			"AssetRegistry"
+		});
 
 		PublicIncludePaths.AddRange(new string[] {
 			"DestructionGame"

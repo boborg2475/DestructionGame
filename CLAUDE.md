@@ -6,7 +6,9 @@ Full design decisions and the testing strategy live in [claude_plans/DESIGN.md](
 
 **New to this codebase, to C++, or to Unreal?** [claude_plans/CODE_TOUR.md](claude_plans/CODE_TOUR.md) is a reading order for a human: what to read in what order, the C++ and Unreal concepts each file needs, and how to verify the code by breaking it and watching which tests fire.
 
-**Want to look at a structure rather than read about one?** [claude_plans/LEVELS.md](claude_plans/LEVELS.md) lists the twenty-nine playable levels — one per fixture the suite measures — and how to join them. Every scenario map is a byte copy of `Lvl_Sandbox.umap`; the map's *name* selects the row, so adding a level is a catalogue row plus a file copy and never an editor session.
+**Want to look at a structure rather than read about one?** [claude_plans/LEVELS.md](claude_plans/LEVELS.md) lists the twenty-nine playable levels — one per fixture the suite measures — and how to join them. No scenario map holds any placed content: the map's *name* selects a catalogue row and the game mode builds everything.
+
+**Adding a level means DUPLICATING a map, never copying the file.** A map's `PrimaryAssetId` is `Map:<the inner UWorld object's name>`, and copying `Lvl_Sandbox.umap` to a new filename leaves that object still called `Lvl_Sandbox` — so every copy claims the same id and **the editor refuses to open any of them**. The `-game` loader never consults the asset manager and loads them happily, which is how twenty-eight broken maps passed a headless check. `Content.ScenarioMapsAreDistinctAssets` is the test that catches it now; `Scripts/New-ScenarioMap.ps1` is the way to make one.
 
 ## Units — the easiest way to be wrong by 100×
 

@@ -2,7 +2,11 @@
 
 #include "Misc/AutomationTest.h"
 
+#include "AssetRegistry/AssetData.h"
+#include "AssetRegistry/IAssetRegistry.h"
+#include "Engine/World.h"
 #include "Misc/PackageName.h"
+#include "UObject/PrimaryAssetId.h"
 #include "World/DestructionScenarios.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -163,6 +167,73 @@ namespace ScenarioMapTestSupport
 		}
 
 		return Location;
+	}
+
+	/**
+	 * THE ROOT OF THE CONTENT TREE THE SCENARIO MAPS LIVE UNDER, scanned as one directory.
+	 *
+	 * `/Game/Maps` covers `Lvl_Sandbox` at its top and every scenario in `Scenarios/` beneath it,
+	 * and `ScanPathsSynchronous` is recursive — so one path rather than the two folders above,
+	 * which are about where a row's `.umap` may be FOUND rather than about what to scan.
+	 */
+	const TCHAR* const ScenarioMapScanRoot = TEXT("/Game/Maps");
+
+	/**
+	 * A FLOOR ON WHAT THE REGISTRY CAME BACK WITH, and the single most important line here.
+	 *
+	 * An asset registry that has not scanned `/Game/Maps` answers every query with an empty array,
+	 * and every per-row assertion below is written as "the world in this package must be named
+	 * X" — which a package with NO worlds in it never contradicts. A test that read an unscanned
+	 * registry would therefore go green by finding nothing at all, which is the worst possible
+	 * outcome for a test whose whole job is to notice that content is wrong.
+	 *
+	 * TWENTY-NINE: the twenty-eight scenario maps plus `Lvl_Sandbox`, which is the same count the
+	 * catalogue floor above asserts and for the same reason.
+	 */
+	constexpr int32 ScenarioMapWorldAssetFloor = 29;
+
+	/** What the registry knows about one row's map, without any of it having been loaded. */
+	struct FScenarioMapAsset
+	{
+		bool bResolved = false;
+
+		/** The long package name that exists, e.g. `/Game/Maps/Scenarios/Lvl_Wall01`. */
+		FString PackageName;
+
+		/** The package's own short name — what the UWorld inside it must be called. */
+		FString ExpectedWorldName;
+
+		/** What the UWorld inside it is ACTUALLY called. */
+		FString ActualWorldName;
+
+		FPrimaryAssetId PrimaryAssetId;
+	};
+
+	/** Every UWorld the registry reports in one package, filtered by class rather than by count. */
+	inline void ScenarioMapWorldsInPackage(
+		const IAssetRegistry& Registry, const FString& PackageName, TArray<FAssetData>& Out)
+	{
+		Out.Reset();
+
+		TArray<FAssetData> InPackage;
+
+		/*
+		 * ON DISK RATHER THAN FROM MEMORY. The claim is about the FILE — a package that was copied
+		 * rather than duplicated carries the original's object name inside it — so an in-memory
+		 * UWorld that happened to be loaded under a different name would answer the wrong question.
+		 */
+		Registry.GetAssetsByPackageName(
+			FName(*PackageName), InPackage, /*bIncludeOnlyOnDiskAssets*/ true);
+
+		const FTopLevelAssetPath WorldClassPath = UWorld::StaticClass()->GetClassPathName();
+
+		for (const FAssetData& Asset : InPackage)
+		{
+			if (Asset.AssetClassPath == WorldClassPath)
+			{
+				Out.Add(Asset);
+			}
+		}
 	}
 }
 
@@ -344,6 +415,245 @@ bool FScenarioMapsExistTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(
 		TEXT("%d of %d catalogue rows have a .umap on disk; %d do not"),
 		Rows.Num() - Missing, Rows.Num(), Missing));
+
+	return true;
+}
+
+/**
+ * AND EACH OF THOSE MAPS IS ITS OWN ASSET — A DISTINCT WORLD WITH A DISTINCT PrimaryAssetId.
+ *
+ * =====================================================================================
+ * THE DEFECT, AND WHY THE TEST ABOVE COULD NOT SEE IT
+ * =====================================================================================
+ *
+ * Every scenario map was made by BYTE-COPYING `Lvl_Sandbox.umap` to a new filename. A `.umap` is
+ * a package, and the thing a level actually IS lives inside it as a `UWorld` object with a name
+ * of its own — a name that a file copy does not touch. So twenty-eight files called
+ * `Lvl_Wall01`, `Lvl_CorbelE35` and so on each contained a world still called `Lvl_Sandbox`.
+ *
+ * `UWorld::GetPrimaryAssetId` answers `Map:<package name>`, and that string is BAKED INTO THE
+ * PACKAGE AS A TAG WHEN IT IS SAVED. A copy therefore carries the ORIGINAL's tag, so all
+ * twenty-nine maps claimed `Map:/Game/Maps/Lvl_Sandbox`. The asset manager refuses the
+ * collision — "Two different primary assets can not have the same type and name" — and the maps
+ * cannot be opened in the editor.
+ *
+ * `Content.ScenarioMapsExist` asserts a `.umap` is on disk for every row and that the map's name
+ * selects that row back. BOTH ARE TRUE OF A BYTE COPY. It asks about the FILE, and the whole of
+ * this defect lives in the difference between the file and the asset inside it. `-game` loading
+ * missed it for a related reason: a cooked-style load never consults the asset manager at all.
+ *
+ * =====================================================================================
+ * TWO CLAIMS, AND THE SECOND IS NOT IMPLIED BY THE FIRST
+ * =====================================================================================
+ *
+ * THE WORLD IS NAMED AFTER ITS OWN PACKAGE. `/Game/Maps/Scenarios/Lvl_Wall01` must contain
+ * `Lvl_Wall01`, not `Lvl_Sandbox`. This is the direct statement of the defect, and it is the
+ * property the fix — duplicating through the editor rather than copying the file — restores.
+ *
+ * AND NO TWO ROWS CLAIM THE SAME PrimaryAssetId. The failure the user hit is a COLLISION, so
+ * the collision is what gets asserted rather than only the naming rule that happens to imply it
+ * today. The id is read as a saved tag, not recomputed from the name: a package saved under one
+ * name and renamed afterwards can carry a stale tag while its world reads correctly, and that
+ * would pass the first claim and still collide.
+ *
+ * READ THROUGH THE ASSET REGISTRY, WHICH LOADS NOTHING. `FAssetData` carries the package name,
+ * the object name and the saved tags straight from each package's header, so twenty-nine worlds
+ * are inspected without a single one being loaded — and it runs headless under `-nullrhi`
+ * alongside the solver tests. The paths are RESCANNED first: a cached registry from before the
+ * content was touched would otherwise be answering about a different set of files.
+ *
+ * NEEDS A TICKING WORLD: no, and deliberately not — nor a loaded world. A rescan and a set of
+ * header reads.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FScenarioMapsAreDistinctAssetsTest,
+	"DestructionGame.Content.ScenarioMapsAreDistinctAssets",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FScenarioMapsAreDistinctAssetsTest::RunTest(const FString& Parameters)
+{
+	using namespace ScenarioMapTestSupport;
+	using namespace DestructionScenarios;
+
+	IAssetRegistry* const Registry = IAssetRegistry::Get();
+
+	if (Registry == nullptr)
+	{
+		AddError(TEXT(
+			"fixture: there is no asset registry, so nothing here can be asked about content at "
+			"all. This test cannot report on the maps either way."));
+
+		return false;
+	}
+
+	/*
+	 * FORCED, so the answer is about the files as they are NOW. The registry is normally served
+	 * from `Intermediate/CachedAssetRegistry`, which is exactly as old as the last time anything
+	 * scanned — and content regenerated outside the editor is precisely the case where the cache
+	 * and the disk disagree. A stale cache would let a fixed map read broken, or a broken one read
+	 * fixed, and both are worse than a slow test.
+	 */
+	Registry->ScanPathsSynchronous({FString(ScenarioMapScanRoot)}, /*bForceRescan*/ true);
+	Registry->WaitForCompletion();
+
+	/* --- ZERO: the registry actually has the maps, or nothing below means anything ---------- */
+
+	TArray<FAssetData> UnderMaps;
+	Registry->GetAssetsByPath(
+		FName(ScenarioMapScanRoot), UnderMaps, /*bRecursive*/ true, /*bIncludeOnlyOnDiskAssets*/ true);
+
+	const FTopLevelAssetPath WorldClassPath = UWorld::StaticClass()->GetClassPathName();
+
+	int32 WorldsFound = 0;
+
+	for (const FAssetData& Asset : UnderMaps)
+	{
+		if (Asset.AssetClassPath == WorldClassPath)
+		{
+			++WorldsFound;
+		}
+	}
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("fixture: the registry must report at least %d UWorld assets under '%s' for this ")
+			TEXT("test to be looking at anything; it reports %d out of %d assets of every kind. An ")
+			TEXT("unscanned registry answers every query below with nothing, and 'no world here' ")
+			TEXT("never contradicts 'the world here is named X'."),
+			ScenarioMapWorldAssetFloor, ScenarioMapScanRoot, WorldsFound, UnderMaps.Num()),
+		WorldsFound >= ScenarioMapWorldAssetFloor);
+
+	const TArray<FScenario>& Rows = Catalogue();
+
+	TArray<FScenarioMapAsset> Found;
+	Found.Reserve(Rows.Num());
+
+	for (int32 Index = 0; Index < Rows.Num(); ++Index)
+	{
+		const FScenario& Row = Rows[Index];
+
+		const FString Label = FString::Printf(TEXT("row %d ('%s')"), Index, *Row.Name.ToString());
+
+		FScenarioMapAsset Asset;
+
+		if (Row.MapName == nullptr || FCString::Strlen(Row.MapName) == 0)
+		{
+			AddError(FString::Printf(
+				TEXT("%s names no map at all, so there is no package to look inside"), *Label));
+
+			Found.Add(Asset);
+			continue;
+		}
+
+		const FScenarioMapLocation Location = ScenarioMapFindPackage(Row.MapName);
+
+		if (!Location.bFound)
+		{
+			AddError(FString::Printf(
+				TEXT("%s names the map '%s' and no such package exists, so there is nothing to ")
+				TEXT("inspect. Content.ScenarioMapsExist owns that claim; looked in: %s"),
+				*Label, Row.MapName, *Location.Tried));
+
+			Found.Add(Asset);
+			continue;
+		}
+
+		Asset.PackageName = Location.PackageName;
+		Asset.ExpectedWorldName = FPackageName::GetShortName(Location.PackageName);
+
+		TArray<FAssetData> Worlds;
+		ScenarioMapWorldsInPackage(*Registry, Location.PackageName, Worlds);
+
+		/* --- ONE: the package holds exactly one world ------------------------------------- */
+
+		if (Worlds.Num() != 1)
+		{
+			AddError(FString::Printf(
+				TEXT("%s: '%s' holds %d UWorld assets, not one. A map package with no world in it ")
+				TEXT("is not a level, and one with two has no single asset to open."),
+				*Label, *Location.PackageName, Worlds.Num()));
+
+			Found.Add(Asset);
+			continue;
+		}
+
+		Asset.bResolved = true;
+		Asset.ActualWorldName = Worlds[0].AssetName.ToString();
+		Asset.PrimaryAssetId = Worlds[0].GetPrimaryAssetId();
+
+		Found.Add(Asset);
+
+		AddInfo(FString::Printf(
+			TEXT("%s -> package '%s', world '%s', %s"),
+			*Label, *Asset.PackageName, *Asset.ActualWorldName,
+			*Asset.PrimaryAssetId.ToString()));
+
+		/* --- TWO: and that world is named after its own package --------------------------- */
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the package '%s' must contain a world called '%s', and it contains one ")
+				TEXT("called '%s'. A map made by COPYING THE FILE keeps the original's world name, ")
+				TEXT("and the world's name is what its PrimaryAssetId is built from — so a copy is ")
+				TEXT("a level the editor refuses to open. Duplicate the asset instead of the file."),
+				*Label, *Asset.PackageName, *Asset.ExpectedWorldName, *Asset.ActualWorldName),
+			Asset.ActualWorldName.Equals(Asset.ExpectedWorldName, ESearchCase::CaseSensitive));
+
+		/* --- THREE: and it has an id at all ----------------------------------------------- */
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: '%s' reports no PrimaryAssetId at all. An id read as nothing compares ")
+				TEXT("equal to every other nothing, so the uniqueness check below cannot speak for ")
+				TEXT("this row either way."),
+				*Label, *Asset.PackageName),
+			Asset.PrimaryAssetId.IsValid());
+	}
+
+	/* --- FOUR: and no two rows claim the same PrimaryAssetId ----------------------------- */
+
+	/*
+	 * ONE FAILURE PER COLLIDING ROW, NAMING THE ROW IT COLLIDES WITH, rather than a comparison of
+	 * every pair. Twenty-eight maps sharing one id is 378 colliding PAIRS, and a wall of those
+	 * says nothing a reader can act on; the first row to claim an id keeps it and every later
+	 * claimant is one named failure. That is also the shape the fix is checked against — a single
+	 * map regenerated wrongly is one row named, not a shower.
+	 */
+	TMap<FString, int32> ClaimedBy;
+
+	for (int32 Index = 0; Index < Found.Num(); ++Index)
+	{
+		const FScenarioMapAsset& Asset = Found[Index];
+
+		if (!Asset.bResolved || !Asset.PrimaryAssetId.IsValid())
+		{
+			continue;
+		}
+
+		const FString Id = Asset.PrimaryAssetId.ToString();
+
+		if (const int32* const Earlier = ClaimedBy.Find(Id))
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("row %d ('%s'), package '%s', claims the PrimaryAssetId '%s' — which row ")
+					TEXT("%d ('%s'), package '%s', already claims. Two different primary assets ")
+					TEXT("cannot have the same type and name: the asset manager drops one of them ")
+					TEXT("and neither map opens reliably."),
+					Index, *ScenarioMapRowName(Index), *Asset.PackageName, *Id,
+					*Earlier, *ScenarioMapRowName(*Earlier), *Found[*Earlier].PackageName),
+				false);
+
+			continue;
+		}
+
+		ClaimedBy.Add(Id, Index);
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("%d of %d catalogue rows resolved to a single world asset; %d distinct PrimaryAssetIds"),
+		Found.FilterByPredicate([](const FScenarioMapAsset& A) { return A.bResolved; }).Num(),
+		Rows.Num(), ClaimedBy.Num()));
 
 	return true;
 }

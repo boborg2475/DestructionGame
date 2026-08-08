@@ -4,14 +4,36 @@ Twenty-nine playable maps, one per fixture the headless suite measures. You join
 already framed in front of you, a caption names it and says what to watch for, and four seconds
 later it does whatever it was always going to do.
 
-Nothing in any of these maps is authored. Every `.umap` under `Content/Maps/Scenarios/` is a **byte
-copy** of `Content/Maps/Lvl_Sandbox.umap` — identical SHA-256, no actors placed, no edits — and the
-map's *name* is the only thing that distinguishes it. `ADestructionGameGameMode::BeginPlay` reads
-that name, finds the matching catalogue row, lays the structure, spawns the bricks, puts the player
-where the whole thing is in frame, and arms the hold.
+Nothing in any of these maps is authored. Every `.umap` under `Content/Maps/Scenarios/` is a
+**duplicate** of `Content/Maps/Lvl_Sandbox.umap` with no actors placed and no edits — the map's
+*name* is the only thing that distinguishes it. `ADestructionGameGameMode::BeginPlay` reads that
+name, finds the matching catalogue row, lays the structure, spawns the bricks, puts the player where
+the whole thing is in frame, and arms the hold.
 
-That is why adding a level is a row in `World/DestructionScenarios.cpp` plus a file copy, and never
-an editor session.
+### Duplicate the asset. Never copy the file.
+
+This distinction cost twenty-eight unopenable levels, so it is worth stating plainly.
+
+A map's `PrimaryAssetId` is `Map:<the inner UWorld object's name>` — **not** its filename. Copying
+`Lvl_Sandbox.umap` to `Lvl_Wall01.umap` renames the file and leaves the world object inside it still
+called `Lvl_Sandbox`, so every copy claims `Map:/Game/Maps/Lvl_Sandbox`. The asset manager keeps one
+and drops the rest, and the editor refuses to open them:
+
+```
+LogAssetManager: Warning: Found duplicate PrimaryAssetID Map:/Game/Maps/Lvl_Sandbox,
+path /Game/Maps/Lvl_Sandbox.Lvl_Sandbox conflicts with existing path
+/Game/Maps/Scenarios/Lvl_CorbelABare4.Lvl_Sandbox.
+Two different primary assets can not have the same type and name.
+```
+
+**The `-game` loader never consults the asset manager**, so it opens a byte copy without complaint —
+`Bringing World /Game/Maps/Scenarios/Lvl_Wall01.Lvl_Sandbox up for play`, note the trailing name. A
+headless load is therefore no evidence that a map can be opened, which is exactly how this got as
+far as the user.
+
+`DestructionGame.Content.ScenarioMapsAreDistinctAssets` is the standing net: it reads the asset
+registry and requires every catalogue map to contain a world named after its own package, and every
+`PrimaryAssetId` to be unique.
 
 ## How to join one
 
@@ -132,11 +154,16 @@ reaches it, so a counterweight buys nothing and load funnels onto whatever colum
 1. A row in `DestructionScenarios::Catalogue()` in `World/DestructionScenarios.cpp` — name, map
    name, title, expectation, the wall spec or a `LayStructure` builder, the brick centres it cuts,
    and how long it holds.
-2. A byte copy of `Content/Maps/Lvl_Sandbox.umap` into `Content/Maps/Scenarios/`, named to match.
+2. A **duplicate** of `Content/Maps/Lvl_Sandbox.umap` into `Content/Maps/Scenarios/`, named to
+   match — either **right-click → Duplicate** in the content browser, or:
 
-`Content.ScenarioMapsExist` fails if you do the first without the second, and it derives the path
-from the row rather than from a list, so it catches the omission rather than needing to be told
-about it.
+```bash
+powershell -NoProfile -File Scripts/New-ScenarioMap.ps1 -MapName Lvl_MyNewLevel
+```
+
+Two tests fail if you do the first without the second. `Content.ScenarioMapsExist` derives the path
+from the row rather than from a list, so it catches a missing map rather than needing to be told
+about it; `Content.ScenarioMapsAreDistinctAssets` catches the one made by copying the file.
 
 ## Seeing them all without joining them
 
