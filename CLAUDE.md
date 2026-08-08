@@ -56,7 +56,8 @@ This exists because the failure is so easy to miss from the inside: a commit pro
 
 So the rule is mechanical rather than a matter of judgement:
 
-- **Commit freely and often.** Frequent commits are good — they are how a long task stays recoverable, and this rule must never become a reason to batch everything into one enormous commit at the end.
+- **Do not commit until the tests are done and verified.** A commit is a claim that what it contains works, and a green suite you have *run yourself* is the only thing that backs the claim. Deliberately-red tests from an in-flight slice are the one exception, and a commit carrying one must say so in its message and say why. Never commit around a failure you have not explained.
+- **Within that, commit at every verified point rather than batching.** Once a slice is green, commit it — long tasks stay recoverable that way, and this rule must not become an excuse for one enormous commit at the end. The gate is *verified*, not *finished*.
 - **After every commit, re-read the task list.** [claude_plans/CURRENT_STATE.md](claude_plans/CURRENT_STATE.md) and the session's own todo list are both authoritative. If either has an open item inside the requested scope, resume immediately.
 - **Only stop when the whole ask is done, or when you are genuinely blocked.** Blocked means a decision only the user can make, or a failure you cannot get past — not "this next part is large".
 - **When you do stop with work outstanding, say exactly what is left and why**, in the same message. Never let a green test run or a clean commit stand in for that statement.

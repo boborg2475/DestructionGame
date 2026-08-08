@@ -1,0 +1,425 @@
+<title>Two Decisions: Free-End Corbels and the Staircase Face</title>
+<style>
+  :root {
+    --paper:#E9ECF0; --panel:#F6F7F9; --ink:#16202B; --ink-soft:#55606E;
+    --ink-faint:#8B95A2; --rule:#C9CFD8; --accent:#2E4A6E;
+    --stands:#2C6B50; --stands-bg:#D7E5DD;
+    --local:#8A6116; --local-bg:#F0E4CB;
+    --collapse:#A03A22; --collapse-bg:#F2DCD5;
+    --brick:#D3D8DE; --brick-edge:#A5ADB8; --brick-gone:#B4BCC6;
+    --ground:#6C7684;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#111821; --panel:#18212C; --ink:#E2E7ED; --ink-soft:#9BA6B3;
+      --ink-faint:#6C7885; --rule:#2C3745; --accent:#82A8D6;
+      --stands:#64AB86; --stands-bg:#1B3129;
+      --local:#D2A44E; --local-bg:#332914;
+      --collapse:#E07B60; --collapse-bg:#3A211A;
+      --brick:#29323D; --brick-edge:#424D5A; --brick-gone:#39434F;
+      --ground:#59646F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#111821; --panel:#18212C; --ink:#E2E7ED; --ink-soft:#9BA6B3;
+    --ink-faint:#6C7885; --rule:#2C3745; --accent:#82A8D6;
+    --stands:#64AB86; --stands-bg:#1B3129;
+    --local:#D2A44E; --local-bg:#332914;
+    --collapse:#E07B60; --collapse-bg:#3A211A;
+    --brick:#29323D; --brick-edge:#424D5A; --brick-gone:#39434F;
+    --ground:#59646F;
+  }
+  :root[data-theme="light"] {
+    --paper:#E9ECF0; --panel:#F6F7F9; --ink:#16202B; --ink-soft:#55606E;
+    --ink-faint:#8B95A2; --rule:#C9CFD8; --accent:#2E4A6E;
+    --stands:#2C6B50; --stands-bg:#D7E5DD;
+    --local:#8A6116; --local-bg:#F0E4CB;
+    --collapse:#A03A22; --collapse-bg:#F2DCD5;
+    --brick:#D3D8DE; --brick-edge:#A5ADB8; --brick-gone:#B4BCC6;
+    --ground:#6C7684;
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.6;
+  }
+  .wrap { max-width:1080px; margin:0 auto; padding:44px 24px 96px; }
+  .mono { font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace; }
+
+  header.masthead { border-top:3px solid var(--ink); padding-top:20px; margin-bottom:20px; display:grid; gap:16px; }
+  .eyebrow {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:11px; letter-spacing:0.18em; text-transform:uppercase; color:var(--accent); margin:0;
+  }
+  h1 {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:clamp(25px,4vw,36px); font-weight:700; letter-spacing:-0.02em;
+    line-height:1.14; text-wrap:balance; margin:0; max-width:24ch;
+  }
+  .standfirst { max-width:68ch; color:var(--ink-soft); margin:0; }
+  .standfirst strong { color:var(--ink); font-weight:600; }
+
+  section.dec { margin-top:46px; }
+  .dec-head { border-bottom:2px solid var(--ink); padding-bottom:12px; margin-bottom:20px; }
+  .dec-num {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:var(--accent);
+    display:block; margin-bottom:5px;
+  }
+  .dec-head h2 { font-size:23px; font-weight:700; margin:0; letter-spacing:-0.01em; }
+  .dec-head p { margin:8px 0 0; color:var(--ink-soft); font-size:14.5px; max-width:70ch; }
+
+  .fig { background:var(--panel); border:1px solid var(--rule); padding:18px; margin-bottom:18px; overflow-x:auto; }
+  .fig svg { display:block; }
+  .fig figcaption { margin-top:12px; font-size:13.5px; color:var(--ink-soft); max-width:74ch; }
+  .fig figcaption strong { color:var(--ink); font-weight:600; }
+
+  table { width:100%; border-collapse:collapse; font-size:13.5px; font-variant-numeric:tabular-nums; margin:16px 0; }
+  caption {
+    text-align:left; font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-faint); padding-bottom:8px;
+  }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--rule); vertical-align:top; }
+  thead th {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-faint); font-weight:600;
+  }
+  tr.ok td { background:var(--stands-bg); }
+  tr.bad td { background:var(--collapse-bg); }
+  .tablewrap { overflow-x:auto; }
+  .yes { color:var(--stands); font-weight:700; }
+  .no { color:var(--collapse); font-weight:700; }
+
+  .opts { display:grid; gap:14px; margin-top:20px; }
+  .opt { background:var(--panel); border:1px solid var(--rule); border-left:3px solid var(--ink-faint); padding:15px 17px; }
+  .opt.pick { border-left-color:var(--stands); }
+  .opt.avoid { border-left-color:var(--collapse); }
+  .opt h3 { margin:0 0 6px; font-size:16px; font-weight:650; }
+  .opt h3 .flag {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:10px; letter-spacing:0.1em; text-transform:uppercase; margin-left:9px; font-weight:700;
+  }
+  .opt.pick h3 .flag { color:var(--stands); }
+  .opt.avoid h3 .flag { color:var(--collapse); }
+  .opt p { margin:0 0 7px; font-size:14px; color:var(--ink-soft); }
+  .opt p:last-child { margin-bottom:0; }
+  .opt p strong { color:var(--ink); font-weight:600; }
+  .cost {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:11.5px; letter-spacing:0.04em; color:var(--ink-faint); display:block; margin-top:9px;
+  }
+
+  .closing {
+    margin-top:50px; border-top:3px solid var(--ink); padding-top:20px;
+    display:grid; gap:13px; max-width:72ch;
+  }
+  .closing h2 {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:14px; letter-spacing:0.06em; text-transform:uppercase; margin:0;
+  }
+  .closing p { margin:0; color:var(--ink-soft); }
+  .closing strong { color:var(--ink); font-weight:600; }
+
+  @media (max-width:640px){ .wrap{padding:30px 16px 60px;} }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">Two rulings &middot; both block a green suite</p>
+    <h1>What holds a corbel up, and how far a cut peels back</h1>
+    <p class="standfirst">
+      Four acceptance rows are red and they reduce to these two questions. <strong>Neither is a bug to fix —
+      both are choices about what the game should say</strong>, and each has a cost I can put a number on.
+      Everything below is measured, not estimated.
+    </p>
+    <div style="border-left:3px solid var(--collapse);background:var(--collapse-bg);padding:14px 18px;display:grid;gap:9px">
+      <h2 style="font-family:ui-monospace,monospace;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;margin:0;color:var(--collapse)">Corrected — I gave two wrong answers before this page was checked</h2>
+      <p style="margin:0;font-size:14px;color:var(--ink-soft)">
+        I suggested that <strong style="color:var(--ink)">case 10 fails because its section is over-credited</strong>,
+        and that <strong style="color:var(--ink)">case 20's teeth should hold</strong>. Checked against the printed
+        fixture output, both are wrong.
+      </p>
+      <p style="margin:0;font-size:14px;color:var(--ink-soft)">
+        The <span class="mono">0.293 / 60 cm</span> I quoted belongs to the <em>staircase's</em> course-5 rung, not
+        case 10 — whose worst joint reads <span class="mono">0.299975</span>. And case 10's survivor is a
+        <strong style="color:var(--ink)">filled wedge</strong>, not a staircase of single bricks: every course runs
+        continuously back to the wall's face, so a section-plane rule moves it <strong style="color:var(--ink)">not
+        one digit</strong>. Decision 1 stands exactly as written below.
+      </p>
+      <p style="margin:0;font-size:14px;color:var(--ink-soft)">
+        And case 20's teeth are not one-brick chains — they carry <strong style="color:var(--ink)">29 and 12.5 brick
+        weights</strong>, sitting at the bottom of a load funnel. At <span class="mono">0.41573</span> per brick
+        weight that is <strong style="color:var(--ink)">12× and 5× over capacity</strong>. They must break, and
+        <strong style="color:var(--ink)">nine fall is the right answer</strong> — the recommendation below is
+        unchanged, but for the opposite reason to the one I gave you verbally.
+      </p>
+    </div>
+  </header>
+
+  <section class="dec">
+    <div class="dec-head">
+      <span class="dec-num">Decision 1 &middot; cases 10, 19 and 12</span>
+      <h2>A wall standing on ninety centimetres of nothing</h2>
+      <p>
+        Three rows fail the same way. After the cut, what survives is a half-brick-per-course corbel front
+        projecting into thin air off a free end — and the model is perfectly happy with it.
+      </p>
+    </div>
+
+    <div class="fig">
+      <svg viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A stepped corbel front projecting 90 cm off a wall end into open air, standing at 29 percent of capacity">
+        <g id="case10"></g>
+      </svg>
+      <figcaption>
+        <strong>Case 10 after the cascade.</strong> Sixteen bricks step out 11.25 cm per course, reaching
+        <strong>90 cm</strong> from a wall <strong>10.25 cm thick</strong> — 8.8&times; its own thickness — with
+        nothing beneath and nothing beyond. The root joint reads <strong class="mono">0.293</strong>. Zero joints
+        broke: the pieces that fell lost their <em>graph</em> path to the ground, not their strength.
+      </figcaption>
+    </div>
+
+    <p style="max-width:74ch;color:var(--ink-soft);margin:0 0 6px">
+      <strong style="color:var(--ink)">No joint check can catch this.</strong> The corbel ladder does not cross
+      capacity until about 36 steps, so any threshold set low enough to condemn these three also condemns the
+      corbels you have already ruled must stand. That is not a tuning problem — it is a missing <em>kind</em> of
+      check. This model has only ever asked questions about joints, never about whole assemblies.
+    </p>
+
+    <div class="tablewrap">
+      <table>
+        <caption>The discriminator, tested against every row it has to get right</caption>
+        <thead>
+          <tr><th>Row</th><th>Overhang</th><th>Restoring mass beyond the pivot, with its own path to the ground?</th><th>Correct verdict</th></tr>
+        </thead>
+        <tbody>
+          <tr class="ok"><td>13, 14 — laid corbels</td><td>22.5 / 45 cm</td><td><span class="yes">Yes</span> — the whole wall behind holds the tails</td><td>stands</td></tr>
+          <tr class="ok"><td>3 — your free-end deletion</td><td>11.25 cm</td><td><span class="yes">Yes</span> — wall behind</td><td>stands</td></tr>
+          <tr class="ok"><td>20 — the staircase void</td><td>~67 cm wedge</td><td><span class="yes">Yes</span> — an intact column runs to the base</td><td>stands</td></tr>
+          <tr class="bad"><td><strong>10</strong></td><td>90 cm</td><td><span class="no">No</span> — free end</td><td>falls</td></tr>
+          <tr class="bad"><td><strong>19</strong></td><td>70 cm</td><td><span class="no">No</span> — wall end</td><td>falls</td></tr>
+          <tr class="bad"><td><strong>12</strong></td><td>79 cm</td><td><span class="no">No</span> — its pier went down</td><td>falls</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="max-width:74ch;color:var(--ink-soft);margin:0">
+      A simpler rule does not work: <em>&ldquo;projection &le; wall thickness&rdquo;</em> would condemn case 13 at
+      2.2&times;, which everyone agrees stands. <strong style="color:var(--ink)">The pivot form is the only shape
+      that gets all six right.</strong>
+    </p>
+
+    <div class="opts">
+      <div class="opt pick">
+        <h3>Build the overturning check<span class="flag">recommended</span></h3>
+        <p>
+          A new class of check — whole-assembly stability about a pivot — and it would be the first thing in this
+          model that is not a question about a single joint. The rule is the table above: gather the assembly,
+          find the pivot, and ask whether restoring mass beyond it reaches the ground independently.
+        </p>
+        <p>
+          <strong>It also recovers something you knowingly gave up.</strong> When you ruled on case 14, the cost
+          recorded was that the model could no longer express a corbel failing by projecting too far. This is that
+          capability, arriving by the correct mechanism rather than by a threshold.
+        </p>
+        <span class="cost">fixes 3 red rows &middot; new mechanism &middot; needs its own design pass and fixture family &middot; 13 and 14 are already two rows of it</span>
+      </div>
+      <div class="opt">
+        <h3>Accept it &mdash; restate the three rows</h3>
+        <p>
+          Rule that a bonded corbel may project indefinitely off a free end, and rewrite cases 10, 19 and 12 to
+          match what the model does. <strong>Zero work</strong>, and it is defensible: mortar bond really is what
+          holds a corbel, not the bottom brick's own bearing.
+        </p>
+        <p>
+          The cost is what a player sees. A wall standing on 90 cm of nothing, at 29% of capacity, is the same
+          shape of wrongness as the cascade that started this session — just inverted.
+        </p>
+        <span class="cost">no work &middot; 3 rows restated &middot; the capability stays gone</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="dec">
+    <div class="dec-head">
+      <span class="dec-num">Decision 2 &middot; case 20</span>
+      <h2>The staircase face peels, and it cannot stop at two</h2>
+      <p>
+        You ruled that exactly two loose teeth drop and the mass stands. Tracing what removing those two does to
+        the course above shows that set is not reachable by any consistent rule.
+      </p>
+    </div>
+
+    <div class="fig">
+      <svg viewBox="0 0 720 290" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The staircase void: two bricks with no bed patch drop, then the course above loses its patch and drops, unzipping to a stable diagonal at nine pieces">
+        <g id="case20"></g>
+      </svg>
+      <figcaption>
+        <strong>The unzip.</strong> Two survivors have no bed patch at all — <span class="mono">c3/4.5</span> and
+        <span class="mono">c5/2.5</span>, ringed. Remove them and <span class="mono">c4/4</span>, which was resting
+        on one of them, has no bed patch either. Remove that and the next one goes. The face peels back one brick
+        at a time until it reaches a stable half-cell diagonal: <strong>nine pieces</strong>, and then it stops.
+      </figcaption>
+    </div>
+
+    <p style="max-width:74ch;color:var(--ink-soft);margin:0">
+      <strong style="color:var(--ink)">The two teeth are not distinguishable from the seven above them.</strong>
+      <span class="mono">c3/4.5</span> has an intact head joint to a half-seated neighbour that reaches the ground
+      — which is exactly the relationship <span class="mono">c4/4</span> has to <em>its</em> neighbour. Any rule
+      that saves the seven saves the two; any rule that drops the two drops the seven.
+    </p>
+
+    <div class="opts">
+      <div class="opt pick">
+        <h3>Nine fall &mdash; restate the row<span class="flag">recommended</span></h3>
+        <p>
+          Accept what the model already does. <strong>It needs no code at all</strong>, and it is what a real void
+          does: a raking cut peels back to a stable angle rather than leaving a clean toothed face hanging.
+        </p>
+        <span class="cost">no work &middot; catalogue row rewritten to the unzipped diagonal &middot; row goes green</span>
+      </div>
+      <div class="opt">
+        <h3>Nothing falls</h3>
+        <p>
+          Let a seatless brick hang from a single intact head joint to a seated neighbour. Physically defensible —
+          mortar bond genuinely does hold one brick — but it means a raking cut leaves a perfectly clean face with
+          nothing shedding, which may read as wrong in motion.
+        </p>
+        <p>
+          <strong>It would also change case 8</strong>, and in a way that still works: the two middle bricks stop
+          being seatless, and the flexural check drops them instead.
+        </p>
+        <span class="cost">new work &mdash; a one-sided re-seat, distinct from case 8's moment slice</span>
+      </div>
+      <div class="opt avoid">
+        <h3>Two fall &mdash; keep the ruling as written<span class="flag">not advised</span></h3>
+        <p>
+          Only reachable by freezing the cascade after a single pass, which contradicts how every other row in the
+          catalogue works and is not what a cascade is. Listed for completeness.
+        </p>
+        <span class="cost">contradicts the cascade &middot; recorded, not recommended</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="closing">
+    <h2>Where this leaves the suite</h2>
+    <p>
+      <strong>138 tests, 4 failures.</strong> Decision 2 clears one row for free. Decision 1 clears three, but only
+      by building something.
+    </p>
+    <p>
+      <strong>And the fourth red may be the one that matters most.</strong> Chasing the two corrections above led
+      back to it: the counterweight buying nothing, case B (filled) reading <em>worse</em> than case A (bare), and
+      a single tooth in case 20 carrying twenty-nine brick weights are <strong>one defect wearing three faces</strong>
+      — load routes only downward, so it funnels onto whatever corbelled column sits beneath it while masonry
+      beside or behind the failure contributes nothing at all.
+    </p>
+    <p>
+      That is the same gap as the free-end cascade and the jamb reveal, it already has a failing test
+      (<span class="mono">CorbelStepsBeforeTensionWins</span>, written down as an expected failure before it was
+      run), and it plausibly moves cases 10, 12, 19 and 20 <em>together</em> — which is what both of my corrected
+      claims were trying to do the hard way. <strong>If one thing gets built next, I would argue for that rather
+      than either decision on this page.</strong>
+    </p>
+    <p>
+      <strong>Nothing here is urgent and nothing is committed.</strong> Both rows can also be left red with the
+      reasoning recorded, which is honest as long as the catalogue says so — a test softened until it passes is
+      worse than one that is openly red.
+    </p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var HALF = 10.75, STEP = 11.25, COURSE = 7.5;
+
+  function rect(x, y, w, h, fill, stroke, dash) {
+    return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + w.toFixed(1) +
+           '" height="' + h.toFixed(1) + '" fill="' + fill + '" stroke="' + stroke +
+           '" stroke-width="0.7"' + (dash ? ' stroke-dasharray="2.5 2"' : '') + '/>';
+  }
+
+  /* ---- Case 10: the free-end corbel front ---- */
+  var s = 1.05, pad = 30, o = [], c, i;
+  function px(x) { return pad + (x + 30) * s; }
+  function py(cc) { return pad + (11 - cc) * COURSE * s; }
+
+  /* intact wall body, cells 0..5 */
+  for (c = 0; c < 12; c++) {
+    for (i = 0; i < 6; i++) {
+      var x = i * 22.5 + (c % 2 ? STEP : 0);
+      if (x > 118) continue;
+      o.push(rect(px(x - HALF), py(c), 2 * HALF * s - 1, COURSE * s - 1, 'var(--brick)', 'var(--brick-edge)'));
+    }
+  }
+  /* the cut */
+  for (c = 0; c < 4; c++) {
+    for (i = 5; i < 10; i++) {
+      var xc = i * 22.5 + (c % 2 ? STEP : 0);
+      o.push(rect(px(xc - HALF), py(c), 2 * HALF * s - 1, COURSE * s - 1, 'none', 'var(--brick-gone)', true));
+    }
+  }
+  /* the corbel front stepping out */
+  for (c = 4; c < 12; c++) {
+    var reach = 118 + (c - 4) * STEP;
+    o.push(rect(px(reach - HALF), py(c), 2 * HALF * s - 1, COURSE * s - 1, 'var(--collapse-bg)', 'var(--collapse)'));
+  }
+  var gy = pad + 12 * COURSE * s + 2;
+  o.push('<line x1="' + (pad - 4) + '" y1="' + gy.toFixed(1) + '" x2="700" y2="' + gy.toFixed(1) + '" stroke="var(--ground)" stroke-width="1.7"/>');
+  for (var g = pad - 6; g < 700; g += 7)
+    o.push('<line x1="' + g + '" y1="' + gy.toFixed(1) + '" x2="' + (g - 5) + '" y2="' + (gy + 6).toFixed(1) + '" stroke="var(--ground)" stroke-width="0.7" opacity="0.6"/>');
+
+  var tipX = px(118 + 7 * STEP + HALF), rootX = px(118 - HALF);
+  o.push('<line x1="' + rootX.toFixed(1) + '" y1="' + (pad - 14) + '" x2="' + tipX.toFixed(1) + '" y2="' + (pad - 14) + '" stroke="var(--collapse)" stroke-width="1.4"/>');
+  o.push('<text x="' + ((rootX + tipX) / 2).toFixed(1) + '" y="' + (pad - 19) + '" text-anchor="middle" font-size="11" fill="var(--collapse)" font-family="ui-monospace,monospace">90 cm of overhang &#183; nothing under it</text>');
+  o.push('<text x="' + (px(120)).toFixed(1) + '" y="' + (py(11) + 32).toFixed(1) + '" font-size="11" fill="var(--collapse)" font-family="ui-monospace,monospace">root joint reads 0.293 &#183; nothing breaks</text>');
+  document.getElementById('case10').innerHTML = o.join('');
+
+  /* ---- Case 20: the unzip ---- */
+  var q = [], S = 1.0, PD = 30;
+  function qx(x) { return PD + x * S; }
+  function qy(cc) { return PD + (12 - cc) * COURSE * S; }
+
+  /* the wall */
+  for (c = 0; c < 13; c++) {
+    for (i = 0; i < 13; i++) {
+      var xx = i * 22.5 + (c % 2 ? STEP : 0);
+      if (xx > 290) continue;
+      /* staircase cut: course c removes cells left of the rake */
+      var cutTo = c >= 1 && c <= 6 ? (7 - c) * 22.5 : -1;
+      var isCut = c >= 1 && c <= 6 && xx < cutTo;
+      /* the two ruled teeth */
+      var isTooth = (c === 3 && Math.abs(xx - 101.25) < 6) || (c === 5 && Math.abs(xx - 56.25) < 6);
+      /* the seven the unzip takes */
+      var isUnzip = (c === 4 && Math.abs(xx - 90) < 6) || (c === 5 && Math.abs(xx - 78.75) < 6) ||
+                    (c === 6 && Math.abs(xx - 67.5) < 6) || (c === 6 && Math.abs(xx - 45) < 6) ||
+                    (c === 7 && Math.abs(xx - 56.25) < 6) || (c === 7 && Math.abs(xx - 33.75) < 6) ||
+                    (c === 8 && Math.abs(xx - 45) < 6);
+      if (isCut) {
+        q.push(rect(qx(xx - HALF), qy(c), 2 * HALF * S - 1, COURSE * S - 1, 'none', 'var(--brick-gone)', true));
+      } else if (isTooth) {
+        q.push(rect(qx(xx - HALF), qy(c), 2 * HALF * S - 1, COURSE * S - 1, 'var(--collapse-bg)', 'var(--collapse)'));
+        q.push('<circle cx="' + qx(xx).toFixed(1) + '" cy="' + (qy(c) + COURSE * S / 2).toFixed(1) + '" r="7" fill="none" stroke="var(--collapse)" stroke-width="1.6"/>');
+      } else if (isUnzip) {
+        q.push(rect(qx(xx - HALF), qy(c), 2 * HALF * S - 1, COURSE * S - 1, 'var(--local-bg)', 'var(--local)'));
+      } else {
+        q.push(rect(qx(xx - HALF), qy(c), 2 * HALF * S - 1, COURSE * S - 1, 'var(--brick)', 'var(--brick-edge)'));
+      }
+    }
+  }
+  var qgy = PD + 13 * COURSE * S + 2;
+  q.push('<line x1="' + (PD - 4) + '" y1="' + qgy.toFixed(1) + '" x2="640" y2="' + qgy.toFixed(1) + '" stroke="var(--ground)" stroke-width="1.7"/>');
+  for (var g2 = PD - 6; g2 < 640; g2 += 7)
+    q.push('<line x1="' + g2 + '" y1="' + qgy.toFixed(1) + '" x2="' + (g2 - 5) + '" y2="' + (qgy + 6).toFixed(1) + '" stroke="var(--ground)" stroke-width="0.7" opacity="0.6"/>');
+
+  q.push('<rect x="380" y="30" width="14" height="11" fill="var(--collapse-bg)" stroke="var(--collapse)"/>');
+  q.push('<text x="400" y="39" font-size="11.5" fill="var(--ink-soft)" font-family="system-ui">the two you ruled &mdash; no bed patch at all</text>');
+  q.push('<rect x="380" y="50" width="14" height="11" fill="var(--local-bg)" stroke="var(--local)"/>');
+  q.push('<text x="400" y="59" font-size="11.5" fill="var(--ink-soft)" font-family="system-ui">the seven the unzip takes with them</text>');
+  q.push('<rect x="380" y="70" width="14" height="11" fill="none" stroke="var(--brick-gone)" stroke-dasharray="2.5 2"/>');
+  q.push('<text x="400" y="79" font-size="11.5" fill="var(--ink-soft)" font-family="system-ui">the staircase cut</text>');
+  document.getElementById('case20').innerHTML = q.join('');
+})();
+</script>

@@ -358,10 +358,19 @@ bool FProfileLibraryConnectionInvariantsTest::RunTest(const FString& Parameters)
 
 		if (Row.Class == EConnectionProfileClass::TestFixture)
 		{
-			TestTrue(
-				*FString::Printf(TEXT("%s: a test fixture is meant to be unbreakable, but %g MPa broke it (utilisation %g)"),
-					*Where, AbsurdStressMPa, Utilisation),
-				Utilisation <= 1.0);
+			/*
+			 * A FIXTURE IS EXEMPT FROM THE MUST-BREAK RULE. IT IS NOT REQUIRED TO SURVIVE, AND
+			 * IT USED TO BE — corrected 2026-08-07 when the second fixture row landed.
+			 *
+			 * The invariant this branch is here to protect is one-directional: nothing SHIPPABLE
+			 * may be accidentally indestructible. `Unbreakable` is the row that must never give
+			 * and it is asserted below BY NAME, which is where that claim belongs, because it is
+			 * a fact about one row rather than about the class. Keying it off the class instead
+			 * forbade the other useful kind of fixture — a perfectly breakable joint carrying a
+			 * combination no real material has — and `CohesionlessBond` is exactly that: zero
+			 * cohesion with a real tensile bond, which no material can have and which is the only
+			 * way to tell a bounded composite depth from `DryStone`'s blanket condemnation.
+			 */
 		}
 		else
 		{
@@ -376,6 +385,21 @@ bool FProfileLibraryConnectionInvariantsTest::RunTest(const FString& Parameters)
 				Utilisation > 1.0);
 		}
 	}
+
+	/*
+	 * AND `Unbreakable` IS THE ONE ROW THAT MUST SURVIVE THAT LOAD, ASSERTED BY NAME.
+	 *
+	 * It is what the whole `TestFixture` class was invented for — a joint no plausible
+	 * implementation can break mid-solve, so that a routing test measures routing. The claim
+	 * belongs to the row rather than to the class: a second fixture may legitimately be
+	 * breakable, and it is (`CohesionlessBond`), so a sweep keyed on the class would either
+	 * forbid that row or say nothing about this one.
+	 */
+	TestTrue(
+		FString::Printf(
+			TEXT("Unbreakable must survive %g MPa on every axis, it reads %g"),
+			AbsurdStressMPa, WorstUtilisationAtStress(Unbreakable, AbsurdStressMPa)),
+		WorstUtilisationAtStress(Unbreakable, AbsurdStressMPa) <= 1.0);
 
 	/*
 	 * The gameplay hook DESIGN.md §2 promises: "the same wood frame built with

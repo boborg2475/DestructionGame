@@ -50,6 +50,18 @@ public:
 	 */
 	int32 BuildRunningBond(const DestructionLayout::FRunningBondSpec& Spec);
 
+	/**
+	 * Spawn one ABrickActor per piece of ANY laid layout, and adopt the lot.
+	 *
+	 * THE GENERAL SEAM BuildRunningBond IS ONE CASE OF. The corbel family, the staircase and
+	 * every acceptance wall are laid by producers that are not RunningBond, so a subsystem whose
+	 * only door takes a running-bond SPEC cannot stand any of them up — which is why
+	 * Tests/CorbelScreenshotTest.cpp hand-rolls a spawn loop of its own.
+	 *
+	 * @return the new structure's id, or INDEX_NONE if nothing was built. A refusal spends no id.
+	 */
+	int32 BuildLayout(const DestructionLayout::FBrickLayout& Layout);
+
 	/** The binding for a structure id, or null. */
 	FStructureBinding* Find(int32 StructureId);
 

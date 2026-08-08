@@ -8,6 +8,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Input/Reply.h"
 #include "Layout/Margin.h"
+#include "World/ScenarioLabel.h"
 #include "DestructionGamePlayerController.generated.h"
 
 class SBox;
@@ -228,6 +229,10 @@ protected:
 	/** Input mapping context setup */
 	virtual void SetupInputComponent() override;
 
+	/** Puts the scenario banner on screen, and takes it off again with the world. */
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 private:
 
 	/**
@@ -309,6 +314,38 @@ private:
 
 	/** A button's click: choose the row it stands for. Nothing else belongs here. */
 	FReply OnPieceMenuRowClicked(int32 RowIndex);
+
+	/**
+	 * Put the scenario banner on screen, and take it off again.
+	 *
+	 * THE SECOND INCH OF THE GAME NO TEST CAN REACH, and it is kept to exactly that. Every word
+	 * and every number in it is already decided by DestructionScenarios::BuildScenarioLabel, which
+	 * World.Scenarios.Label sweeps 162 ways, and the game mode's GetScenarioLabel is what
+	 * World.Scenario.GameModeLabelsTheScenarioItBuilt ticks a real world against. What is left
+	 * here is three text blocks reading three strings, so there is no logic to be wrong: a branch
+	 * appearing in this pair is the drift to watch for, and a missing string belongs on
+	 * FScenarioLabel.
+	 *
+	 * A code-built test world has no UGameViewportClient at all, so this draws nothing headless —
+	 * which is the ordinary case rather than an error, exactly as it is for the piece menu.
+	 */
+	void BuildScenarioLabelWidget();
+	void RemoveScenarioLabelWidget();
+
+	/**
+	 * What the banner reads, right now, asked again on every paint.
+	 *
+	 * BOUND AS ATTRIBUTES RATHER THAN BAKED IN AT BUILD TIME, because half the label is a clock:
+	 * the countdown to an armed cut changes every frame, and a banner built once would show the
+	 * whole delay for as long as the level ran. The game mode is the only thing that knows which
+	 * row it RECORDED and how much of the delay is left, and a level with no game mode of this
+	 * class reads as an empty line rather than as a crash.
+	 */
+	DestructionScenarios::FScenarioLabel ScenarioLabelNow() const;
+
+	FText ScenarioLabelTitleText() const;
+	FText ScenarioLabelExpectationText() const;
+	FText ScenarioLabelCutText() const;
 
 	/**
 	 * THE PANEL'S TITLE STRIP, DRAGGED: press, move, release.
@@ -498,6 +535,16 @@ private:
 
 	/** The widget those rows are drawn as, valid only while a menu is up. */
 	TSharedPtr<SWidget> PieceMenuWidget;
+
+	/**
+	 * The banner naming the scenario, valid for as long as this controller is playing.
+	 *
+	 * A SECOND VIEWPORT WIDGET WITH ITS OWN ADD AND ITS OWN REMOVE, held so the remove has
+	 * something to hand back. It is not the menu's: the menu comes and goes with every click and
+	 * the banner is up the whole time, so sharing one handle would take the banner down with the
+	 * first dismissal.
+	 */
+	TSharedPtr<SWidget> ScenarioLabelWidget;
 
 	/**
 	 * The one part of that widget the readout is swapped in and out of.

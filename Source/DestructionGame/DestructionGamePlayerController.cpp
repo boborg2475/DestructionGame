@@ -23,6 +23,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Core/PieceActions.h"
 #include "DestructionGameCameraManager.h"
+#include "DestructionGameGameMode.h"
 #include "RequiredContent.h"
 #include "World/BrickActor.h"
 #include "World/DestructionStructureSubsystem.h"
@@ -209,6 +210,18 @@ static constexpr float PieceMenuHeadroomScaleHeightPx = 14.0f;
 
 /** The rule that separates the destructive row from everything describing what it destroys. */
 static constexpr float PieceMenuRuleHeightPx = 1.0f;
+
+/*
+ * HOW WIDE THE SCENARIO BANNER IS, AND HOW FAR OFF THE TOP OF THE SCREEN IT SITS.
+ *
+ * A stated width rather than a fit to the text, because the expectation lines run to two full
+ * sentences and a banner sized to its content would stretch to the width of the viewport and put a
+ * two-hundred-character line across the top of the wall. Wrapped inside a fixed width, the same
+ * text is three or four readable lines. Centred at the top is the one region the piece-menu panel
+ * never opens into — it homes against the right edge — so the two readouts cannot overlap.
+ */
+static constexpr float ScenarioBannerWidthPx = 760.0f;
+static constexpr float ScenarioBannerTopMarginPx = 24.0f;
 
 /*
  * WHAT THE PANEL IS DRAWN IN, AND THE BACKGROUND IS THE ONE THAT IS NOT DECORATION.
@@ -1931,4 +1944,137 @@ void ADestructionGamePlayerController::OnHoverPiece()
 	}
 
 	HoverAlongRay(StartCm, StartCm + Direction * PieceMenuCursorReachCm);
+}
+
+void ADestructionGamePlayerController::BeginPlay()
+{
+	Super::BeginPlay();
+
+	BuildScenarioLabelWidget();
+}
+
+void ADestructionGamePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	RemoveScenarioLabelWidget();
+
+	Super::EndPlay(EndPlayReason);
+}
+
+void ADestructionGamePlayerController::BuildScenarioLabelWidget()
+{
+	UWorld* const World = GetWorld();
+
+	UGameViewportClient* const Viewport = World != nullptr ? World->GetGameViewport() : nullptr;
+
+	/* No viewport means no banner, which is the ordinary case in a test rather than an error. */
+	if (Viewport == nullptr)
+	{
+		return;
+	}
+
+	/*
+	 * EVERY STRING IS AN ATTRIBUTE AND NOT A VALUE, so the countdown runs. Slate asks an attribute
+	 * again on every paint, which is what turns "4.0 s" into a clock without anything here holding
+	 * a timer, a tick or a copy of the label.
+	 *
+	 * BOUND THROUGH MakeAttributeUObject RATHER THAN A LAMBDA CAPTURING `this`. The banner is handed to
+	 * the viewport, which holds a shared reference to it; a UObject delegate is not invoked once
+	 * its object has gone, so a controller destroyed before its remove ran cannot be read through
+	 * a widget the viewport is still painting.
+	 */
+	ScenarioLabelWidget = SNew(SBox)
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Top)
+		.Padding(FMargin(0.0f, ScenarioBannerTopMarginPx, 0.0f, 0.0f))
+		[
+			SNew(SBox)
+			.WidthOverride(ScenarioBannerWidthPx)
+			[
+				SNew(SBorder)
+				.BorderImage(PieceMenuFillBrush())
+				.BorderBackgroundColor(PieceMenuPanelBackgroundColour)
+				.Padding(FMargin(14.0f, 10.0f))
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
+						SNew(STextBlock)
+						.Font(PieceMenuHeaderFont())
+						.ColorAndOpacity(PieceMenuHeaderColour)
+						.AutoWrapText(true)
+						.Text(MakeAttributeUObject(
+							this, &ADestructionGamePlayerController::ScenarioLabelTitleText))
+					]
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(0.0f, 6.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock)
+						.Font(PieceMenuBodyFont())
+						.ColorAndOpacity(PieceMenuReadoutColour)
+						.AutoWrapText(true)
+						.Text(MakeAttributeUObject(
+							this, &ADestructionGamePlayerController::ScenarioLabelExpectationText))
+					]
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(0.0f, 6.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock)
+						.Font(PieceMenuBodyFont())
+						.ColorAndOpacity(PieceMenuCountColour)
+						.AutoWrapText(true)
+						.Text(MakeAttributeUObject(
+							this, &ADestructionGamePlayerController::ScenarioLabelCutText))
+					]
+				]
+			]
+		];
+
+	Viewport->AddViewportWidgetContent(ScenarioLabelWidget.ToSharedRef());
+}
+
+void ADestructionGamePlayerController::RemoveScenarioLabelWidget()
+{
+	if (!ScenarioLabelWidget.IsValid())
+	{
+		return;
+	}
+
+	UWorld* const World = GetWorld();
+
+	if (UGameViewportClient* const Viewport = World != nullptr ? World->GetGameViewport() : nullptr)
+	{
+		Viewport->RemoveViewportWidgetContent(ScenarioLabelWidget.ToSharedRef());
+	}
+
+	ScenarioLabelWidget.Reset();
+}
+
+DestructionScenarios::FScenarioLabel ADestructionGamePlayerController::ScenarioLabelNow() const
+{
+	UWorld* const World = GetWorld();
+
+	const ADestructionGameGameMode* const GameMode =
+		World != nullptr ? World->GetAuthGameMode<ADestructionGameGameMode>() : nullptr;
+
+	return GameMode != nullptr
+		? GameMode->GetScenarioLabel()
+		: DestructionScenarios::FScenarioLabel();
+}
+
+FText ADestructionGamePlayerController::ScenarioLabelTitleText() const
+{
+	return FText::FromString(ScenarioLabelNow().TitleText);
+}
+
+FText ADestructionGamePlayerController::ScenarioLabelExpectationText() const
+{
+	return FText::FromString(ScenarioLabelNow().ExpectationText);
+}
+
+FText ADestructionGamePlayerController::ScenarioLabelCutText() const
+{
+	return FText::FromString(ScenarioLabelNow().CutText);
 }

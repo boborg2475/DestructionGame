@@ -1,0 +1,398 @@
+<title>Tests E–J: Where the Counterweight Runs Out</title>
+<style>
+  :root {
+    --paper:#E9ECF0; --panel:#F6F7F9; --ink:#16202B; --ink-soft:#55606E;
+    --ink-faint:#8B95A2; --rule:#C9CFD8; --accent:#2E4A6E;
+    --stands:#2C6B50; --stands-bg:#D7E5DD;
+    --local:#8A6116; --local-bg:#F0E4CB;
+    --collapse:#A03A22; --collapse-bg:#F2DCD5;
+    --brick:#D3D8DE; --brick-edge:#A5ADB8;
+    --counter:#C3D4E4; --counter-edge:#7C9BB8;
+    --ground:#6C7684;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#111821; --panel:#18212C; --ink:#E2E7ED; --ink-soft:#9BA6B3;
+      --ink-faint:#6C7885; --rule:#2C3745; --accent:#82A8D6;
+      --stands:#64AB86; --stands-bg:#1B3129;
+      --local:#D2A44E; --local-bg:#332914;
+      --collapse:#E07B60; --collapse-bg:#3A211A;
+      --brick:#29323D; --brick-edge:#424D5A;
+      --counter:#22303E; --counter-edge:#4A6A88;
+      --ground:#59646F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#111821; --panel:#18212C; --ink:#E2E7ED; --ink-soft:#9BA6B3;
+    --ink-faint:#6C7885; --rule:#2C3745; --accent:#82A8D6;
+    --stands:#64AB86; --stands-bg:#1B3129;
+    --local:#D2A44E; --local-bg:#332914;
+    --collapse:#E07B60; --collapse-bg:#3A211A;
+    --brick:#29323D; --brick-edge:#424D5A;
+    --counter:#22303E; --counter-edge:#4A6A88;
+    --ground:#59646F;
+  }
+  :root[data-theme="light"] {
+    --paper:#E9ECF0; --panel:#F6F7F9; --ink:#16202B; --ink-soft:#55606E;
+    --ink-faint:#8B95A2; --rule:#C9CFD8; --accent:#2E4A6E;
+    --stands:#2C6B50; --stands-bg:#D7E5DD;
+    --local:#8A6116; --local-bg:#F0E4CB;
+    --collapse:#A03A22; --collapse-bg:#F2DCD5;
+    --brick:#D3D8DE; --brick-edge:#A5ADB8;
+    --counter:#C3D4E4; --counter-edge:#7C9BB8;
+    --ground:#6C7684;
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.6;
+  }
+  .wrap { max-width:1080px; margin:0 auto; padding:48px 24px 96px; }
+  .mono { font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace; }
+
+  header.masthead { border-top:3px solid var(--ink); padding-top:20px; margin-bottom:34px; display:grid; gap:18px; }
+  .eyebrow {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:11px; letter-spacing:0.18em; text-transform:uppercase; color:var(--accent); margin:0;
+  }
+  h1 {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:clamp(26px,4vw,38px); font-weight:700; letter-spacing:-0.02em;
+    line-height:1.14; text-wrap:balance; margin:0; max-width:24ch;
+  }
+  .standfirst { max-width:68ch; color:var(--ink-soft); margin:0; }
+  .standfirst strong { color:var(--ink); font-weight:600; }
+
+  .alarm {
+    border-left:3px solid var(--collapse); background:var(--collapse-bg);
+    padding:14px 18px; display:grid; gap:8px;
+  }
+  .alarm h2 {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:12px; letter-spacing:0.12em; text-transform:uppercase; margin:0; color:var(--collapse);
+  }
+  .alarm p { margin:0; font-size:14px; color:var(--ink-soft); }
+  .alarm strong { color:var(--ink); font-weight:600; }
+
+  section.grp { margin-top:44px; }
+  .grp-head { border-bottom:1px solid var(--rule); padding-bottom:10px; margin-bottom:20px; }
+  .grp-head h2 {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:15px; letter-spacing:0.06em; text-transform:uppercase; font-weight:700; margin:0 0 6px;
+  }
+  .grp-head p { margin:0; color:var(--ink-soft); font-size:13.5px; max-width:66ch; }
+
+  .cases { display:grid; gap:18px; }
+  .case { background:var(--panel); border:1px solid var(--rule); }
+  .case-head {
+    padding:15px 18px 12px; border-bottom:1px solid var(--rule);
+    display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; align-items:flex-start;
+  }
+  .case-id {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:11px; letter-spacing:0.14em; color:var(--ink-faint); display:block; margin-bottom:3px;
+  }
+  .case-title { font-size:17px; font-weight:650; margin:0; }
+  .case-sub { font-size:13.5px; color:var(--ink-soft); margin:6px 0 0; max-width:78ch; }
+  .tag {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+    padding:4px 8px; border:1px solid currentColor; font-weight:700; white-space:nowrap; flex:none;
+  }
+  .tag.must-fall { color:var(--collapse); background:var(--collapse-bg); }
+  .tag.must-stand { color:var(--stands); background:var(--stands-bg); }
+  .tag.sweep { color:var(--accent); }
+  .tag.property { color:var(--local); background:var(--local-bg); }
+
+  .case-body { padding:16px 18px 18px; display:grid; gap:13px; }
+  .case-body p { margin:0; font-size:14px; color:var(--ink-soft); }
+  .case-body p strong { color:var(--ink); font-weight:600; }
+  .fig { overflow-x:auto; }
+  .fig svg { display:block; }
+
+  .asserts { display:grid; gap:7px; border-left:2px solid var(--rule); padding-left:14px; }
+  .asserts div { font-size:13.5px; color:var(--ink-soft); }
+  .asserts b {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-faint);
+    display:block;
+  }
+
+  .closing {
+    margin-top:52px; border-top:3px solid var(--ink); padding-top:22px;
+    display:grid; gap:14px; max-width:72ch;
+  }
+  .closing h2 {
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+    font-size:15px; letter-spacing:0.06em; text-transform:uppercase; margin:0;
+  }
+  .closing p { margin:0; color:var(--ink-soft); }
+  .closing strong { color:var(--ink); font-weight:600; }
+
+  @media (max-width:640px){ .wrap{padding:32px 16px 64px;} }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">Proposed tests E&ndash;J &middot; for approval before anything is written</p>
+    <h1>Where the counterweight runs out</h1>
+    <p class="standfirst">
+      E and F as you asked, plus four more the work so far says are missing. <strong>E turned out to be sharper
+      than a step count</strong> — working out what to expect exposed a prediction that would be a real defect,
+      and it is cheap to check.
+    </p>
+    <div class="alarm">
+      <h2>The prediction E exists to test</h2>
+      <p>
+        <strong>I think our model reads C and D identically — that the counterweight does nothing at all.</strong>
+        The masonry behind the corbel carries its own weight down its own columns to the ground; none of it passes
+        through the corbel&rsquo;s root joint. So the axial compression at that joint is unchanged, the section is
+        unchanged, and the reading should be unchanged.
+      </p>
+      <p>
+        If that is right, <strong>the crossover step count for D is the same as for C</strong>, and &ldquo;more
+        bricks opposite&rdquo; buys nothing in the current model. That would be the third face of the same
+        downward-only routing defect — after the free end and the jamb reveal. E finds out in one run.
+      </p>
+    </div>
+  </header>
+
+  <section class="grp">
+    <div class="grp-head">
+      <h2>The two you asked for</h2>
+      <p>Both built on case D&rsquo;s geometry: a filled stepped corbel off an immovable base, with three cells of masonry opposite.</p>
+    </div>
+    <div class="cases" id="asked"></div>
+  </section>
+
+  <section class="grp">
+    <div class="grp-head">
+      <h2>Four more the work says are missing</h2>
+      <p>You asked for scale, materials and material types to work. Nothing currently tests any of the three, and the design makes specific claims about all of them.</p>
+    </div>
+    <div class="cases" id="extra"></div>
+  </section>
+
+  <div class="closing">
+    <h2>Why these six</h2>
+    <p>
+      <strong>E and F pin the ends of the same curve.</strong> E finds where it crosses; F guarantees it does cross,
+      so no future change can quietly make an absurd overhang stand. Together they turn &ldquo;something must still
+      break&rdquo; from an argument into two assertions.
+    </p>
+    <p>
+      <strong>G, H and I are the three things you asked for that nothing checks.</strong> The design claims the rule
+      is covariant under scale, that dry stone gets almost no composite depth, and that a different bond changes the
+      answer automatically because the lever arm is measured rather than assumed. All three are stated as theorems
+      and none has a fixture. H needs a new profile row — data, not code — because dry stone&rsquo;s tensile strength
+      is an exact zero, which condemns it at any section and so hides whether the depth rule did anything.
+    </p>
+    <p>
+      <strong>J is the number that decides &lambda;</strong>, and the design says so in as many words: the window
+      looked wider than it is because no fixture presents a free-end deletion in a wall much taller than the cut —
+      which is the wall the game renders. Without J the constant gets picked against fixtures that cannot see the
+      case it matters for.
+    </p>
+    <p>
+      Say go and I will write them as red tests, or tell me which to drop. <strong>None of the expected numbers
+      here are measured</strong> — they are worked forward from the identities in the design, and the design has
+      been wrong seven times, so the tests will derive their own and report where they disagree.
+    </p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var HALF = 10.75, STEP = 11.25, COURSE = 7.5;
+
+  function base(courses, cells, startCellX) {
+    var out = [], c, i;
+    for (c = 0; c < courses; c++)
+      for (i = 0; i < cells; i++) out.push({ c: c, x: startCellX + i * 22.5 + (c % 2 ? STEP : 0), kind: 'fixed' });
+    return out;
+  }
+  function filled(fromCourse, steps, baseCells, startCellX) {
+    var out = [], c, s, cells, i;
+    for (s = 1; s <= steps; s++) {
+      c = fromCourse + s - 1;
+      cells = baseCells + Math.floor(s / 2);
+      for (i = 0; i < cells; i++) out.push({ c: c, x: startCellX + i * 22.5 + (s % 2 ? STEP : 0), kind: 'arm' });
+    }
+    return out;
+  }
+
+  function draw(bricks, scale) {
+    var minX = 1e9, maxX = -1e9, maxC = 0, i;
+    for (i = 0; i < bricks.length; i++) {
+      if (bricks[i].x - HALF < minX) minX = bricks[i].x - HALF;
+      if (bricks[i].x + HALF > maxX) maxX = bricks[i].x + HALF;
+      if (bricks[i].c > maxC) maxC = bricks[i].c;
+    }
+    var s = scale || 1.1, pad = 22;
+    var W = (maxX - minX) * s + pad * 2, H = (maxC + 1) * COURSE * s + pad + 24;
+    function px(x) { return pad + (x - minX) * s; }
+    function py(c) { return pad + (maxC - c) * COURSE * s; }
+    var o = ['<svg viewBox="0 0 ' + W.toFixed(1) + ' ' + H.toFixed(1) + '" width="' + W.toFixed(1) + '" height="' + H.toFixed(1) + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="stepped corbel on an immovable base">'];
+    for (i = 0; i < bricks.length; i++) {
+      var b = bricks[i];
+      o.push('<rect x="' + px(b.x - HALF).toFixed(1) + '" y="' + py(b.c).toFixed(1) +
+             '" width="' + Math.max(1, 2 * HALF * s - 1).toFixed(1) + '" height="' + (COURSE * s - 1).toFixed(1) +
+             '" fill="' + (b.kind === 'fixed' ? 'var(--counter)' : 'var(--brick)') +
+             '" stroke="' + (b.kind === 'fixed' ? 'var(--counter-edge)' : 'var(--brick-edge)') + '" stroke-width="0.6"/>');
+    }
+    var gy = pad + (maxC + 1) * COURSE * s + 1;
+    o.push('<line x1="' + (pad - 6) + '" y1="' + gy.toFixed(1) + '" x2="' + (W - pad + 6).toFixed(1) + '" y2="' + gy.toFixed(1) + '" stroke="var(--ground)" stroke-width="1.6"/>');
+    for (var g = pad - 8; g < W - pad + 10; g += 7)
+      o.push('<line x1="' + g.toFixed(1) + '" y1="' + gy.toFixed(1) + '" x2="' + (g - 5).toFixed(1) + '" y2="' + (gy + 6).toFixed(1) + '" stroke="var(--ground)" stroke-width="0.7" opacity="0.65"/>');
+    o.push('</svg>');
+    return o.join('');
+  }
+
+  /* Measured k-step raking corbel readings, fitted: util ~ 0.02591 k + 0.084 */
+  function util(k) { return 0.02591 * k + 0.084; }
+
+  function sweepChart() {
+    var X0 = 54, X1 = 660, Y0 = 24, Y1 = 176, KMAX = 100, UMAX = 2.9, o = [];
+    function px(k) { return X0 + k / KMAX * (X1 - X0); }
+    function py(u) { return Y1 - Math.min(u, UMAX) / UMAX * (Y1 - Y0); }
+    o.push('<rect x="' + X0 + '" y="' + Y0 + '" width="' + (X1 - X0) + '" height="' + (py(1) - Y0) + '" fill="var(--collapse-bg)" opacity="0.5"/>');
+    o.push('<rect x="' + X0 + '" y="' + py(1) + '" width="' + (X1 - X0) + '" height="' + (Y1 - py(1)) + '" fill="var(--stands-bg)" opacity="0.5"/>');
+    for (var u = 0; u <= 2.5; u += 0.5) {
+      o.push('<line x1="' + X0 + '" y1="' + py(u) + '" x2="' + X1 + '" y2="' + py(u) + '" stroke="var(--rule)" stroke-width="0.6"/>');
+      o.push('<text x="' + (X0 - 8) + '" y="' + (py(u) + 4) + '" text-anchor="end" font-size="10" fill="var(--ink-faint)" font-family="ui-monospace,monospace">' + u.toFixed(1) + '</text>');
+    }
+    o.push('<line x1="' + X0 + '" y1="' + py(1) + '" x2="' + X1 + '" y2="' + py(1) + '" stroke="var(--ink)" stroke-width="1.4" stroke-dasharray="5 3"/>');
+    var p = [];
+    for (var k = 2; k <= KMAX; k += 1) p.push((p.length ? 'L' : 'M') + px(k).toFixed(1) + ' ' + py(util(k)).toFixed(1));
+    o.push('<path d="' + p.join(' ') + '" fill="none" stroke="var(--accent)" stroke-width="2.4"/>');
+    var kc = (1 - 0.084) / 0.02591;
+    o.push('<line x1="' + px(kc).toFixed(1) + '" y1="' + py(1) + '" x2="' + px(kc).toFixed(1) + '" y2="' + Y1 + '" stroke="var(--local)" stroke-width="1.6" stroke-dasharray="3 2"/>');
+    o.push('<circle cx="' + px(kc).toFixed(1) + '" cy="' + py(1) + '" r="4.5" fill="none" stroke="var(--local)" stroke-width="2"/>');
+    o.push('<text x="' + (px(kc) + 8).toFixed(1) + '" y="' + (py(1) + 22) + '" font-size="11" fill="var(--local)" font-family="ui-monospace,monospace">E: predicted crossover near ' + kc.toFixed(0) + ' steps</text>');
+    o.push('<circle cx="' + px(10).toFixed(1) + '" cy="' + py(util(10)).toFixed(1) + '" r="3.6" fill="var(--stands)"/>');
+    o.push('<text x="' + px(10).toFixed(1) + '" y="' + (py(util(10)) - 9).toFixed(1) + '" text-anchor="middle" font-size="10" fill="var(--stands)" font-family="ui-monospace,monospace">C = 10</text>');
+    o.push('<circle cx="' + px(100).toFixed(1) + '" cy="' + py(util(100)).toFixed(1) + '" r="4.2" fill="var(--collapse)"/>');
+    o.push('<text x="' + (px(100) - 6).toFixed(1) + '" y="' + (py(util(100)) - 9).toFixed(1) + '" text-anchor="end" font-size="10" fill="var(--collapse)" font-family="ui-monospace,monospace">F = 100 &#183; ' + util(100).toFixed(2) + '</text>');
+    o.push('<line x1="' + X0 + '" y1="' + Y1 + '" x2="' + X1 + '" y2="' + Y1 + '" stroke="var(--ink-faint)" stroke-width="1.2"/>');
+    for (var t = 0; t <= 100; t += 20) {
+      o.push('<line x1="' + px(t).toFixed(1) + '" y1="' + Y1 + '" x2="' + px(t).toFixed(1) + '" y2="' + (Y1 + 5) + '" stroke="var(--ink-faint)" stroke-width="1"/>');
+      o.push('<text x="' + px(t).toFixed(1) + '" y="' + (Y1 + 18) + '" text-anchor="middle" font-size="10" fill="var(--ink-faint)" font-family="ui-monospace,monospace">' + t + '</text>');
+    }
+    o.push('<text x="' + X0 + '" y="' + (Y1 + 34) + '" font-size="10.5" fill="var(--ink-faint)" font-family="ui-monospace,monospace">corbel steps</text>');
+    return '<svg viewBox="0 0 700 220" width="700" height="220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="utilisation against corbel steps, crossing capacity near thirty-five">' + o.join('') + '</svg>';
+  }
+
+  function card(cs) {
+    var a = '';
+    for (var i = 0; i < cs.asserts.length; i++)
+      a += '<div><b>' + cs.asserts[i][0] + '</b>' + cs.asserts[i][1] + '</div>';
+    return '<article class="case">' +
+      '<div class="case-head"><div>' +
+        '<span class="case-id">TEST ' + cs.id + '</span>' +
+        '<h3 class="case-title">' + cs.title + '</h3>' +
+        '<p class="case-sub">' + cs.sub + '</p>' +
+      '</div><span class="tag ' + cs.tagCls + '">' + cs.tag + '</span></div>' +
+      '<div class="case-body">' +
+        (cs.fig ? '<div class="fig">' + cs.fig + '</div>' : '') +
+        '<p>' + cs.why + '</p>' +
+        '<div class="asserts">' + a + '</div>' +
+      '</div></article>';
+  }
+
+  var D10 = base(3, 5, -67.5).concat(filled(3, 10, 5, -67.5));
+
+  var ASKED = [
+    {
+      id: 'E', title: 'How many steps before tension wins',
+      sub: 'Case D&rsquo;s geometry, swept over step count until the root joint goes over capacity. Not one structure — a family, reported as a crossover.',
+      tag: 'sweep', tagCls: 'sweep',
+      fig: sweepChart(),
+      why: 'Reach grows the moment faster than depth grows the section, so the reading climbs almost linearly and must cross 1.0 somewhere. <strong>The predicted crossover is near 35 steps</strong>, extrapolated from measured 3-, 5-, 11-, 30- and 45-step corbels — an estimate, not a measurement, which is exactly why it is worth running. <strong>The real prize is comparing it against case C&rsquo;s crossover: if the two are the same, the counterweight is doing nothing.</strong>',
+      asserts: [
+        ['finds', 'The smallest step count at which the root joint exceeds 1.0, by bisection rather than a fixed table, so the answer is not an artefact of which counts were tried.'],
+        ['asserts', 'A crossover EXISTS below 100 steps — otherwise nothing here has a limit.'],
+        ['asserts', 'The crossover for D is strictly LATER than for C. <strong>This is the row I expect to fail</strong>, and its failure is the finding.'],
+        ['asserts', 'Monotonic: adding a step never lowers the reading. Guards against a non-monotonic depth rule sneaking in later.']
+      ]
+    },
+    {
+      id: 'F', title: 'One hundred steps must come down',
+      sub: 'The same base and counterweight, reaching 100 steps — 11.25 metres of overhang from a 1.1 metre base.',
+      tag: 'must fall', tagCls: 'must-fall',
+      fig: null,
+      why: 'The guarantee. <strong>Predicted reading about 2.7, comfortably over</strong> — and the point is not the number but that no future change can quietly make this stand. Every depth rule proposed so far has been checked against a case that must fail; this is the one that is absurd enough that failing it is unarguable.',
+      asserts: [
+        ['asserts', 'The root joint exceeds 1.0 — and by a margin, not marginally, so a small future change cannot flip it.'],
+        ['asserts', 'The structure actually comes down: pieces at the far end lose their path to the ground.'],
+        ['asserts', 'It fails in TENSION on a bed joint, naming the axis, so it cannot pass by failing in compression or shear for an unrelated reason.'],
+        ['cost', 'About 5,000 pieces. Worth checking the suite still runs headless in reasonable time; if not, 60 steps makes the same point.']
+      ]
+    }
+  ];
+
+  var EXTRA = [
+    {
+      id: 'G', title: 'The same structure at half and double size',
+      sub: 'Case C, rebuilt with every dimension scaled — brick, joint, and the whole wall.',
+      tag: 'property', tagCls: 'property',
+      fig: null,
+      why: 'You asked that this work at any scale. The design claims the bound is covariant — the lever arm and the credited depth are both lengths, so both scale with the structure — and that <strong>stress therefore grows linearly with size</strong>, which is Galileo&rsquo;s square-cube law and is correct rather than a defect. Nothing tests it, and a rule that only works at 21.5 × 10.25 × 6.5 cm is a tuned constant in disguise.',
+      asserts: [
+        ['asserts', 'The credited depth scales exactly with the structure — a length behaving like a length.'],
+        ['asserts', 'The reading grows LINEARLY with scale, so a wall twice the size is twice as stressed. Assert the ratio, not the value.'],
+        ['guards', 'No brick dimension appears anywhere in the rule — checked by the scaled fixture giving the predicted ratio rather than by reading the code.']
+      ]
+    },
+    {
+      id: 'H', title: 'The same structure in three materials',
+      sub: 'Case C in general-purpose mortar, in lime mortar, and in a new test-only frictional profile.',
+      tag: 'property', tagCls: 'property',
+      fig: null,
+      why: 'The design says dry stone should get almost no composite depth — you cannot corbel a dry-stone wall — and that this falls out of cohesion and friction with no per-material branch. <strong>But dry stone&rsquo;s tensile strength is an exact zero</strong>, so it is condemned at any section and the test cannot tell whether the depth rule did anything. That needs a <strong>new profile row: zero cohesion, non-zero tensile</strong> — data, not code, exactly as the existing test-only <span class="mono">Unbreakable</span> profile already precedents.',
+      asserts: [
+        ['asserts', 'Mortar stands, lime is weaker, the frictional profile gets essentially no composite depth and comes down.'],
+        ['asserts', 'The ordering follows the profile numbers, so adding a material stays adding numbers rather than code.'],
+        ['guards', 'The mortared fixtures are untouched by whatever the frictional case needs — or the gate is silently doing something else.']
+      ]
+    },
+    {
+      id: 'I', title: 'Quarter, half and two-thirds brick steps',
+      sub: 'The same corbel at three different step sizes, same material, same scale.',
+      tag: 'property', tagCls: 'property',
+      fig: null,
+      why: 'The design&rsquo;s claim that most directly matches what you described: a bigger step means a longer lever arm, which means less credited depth, which means a higher reading — <strong>and it should happen automatically, because the arm is measured rather than assumed</strong>. This is the only property in the whole design that is genuinely emergent, so it is the one worth pinning hardest.',
+      asserts: [
+        ['asserts', 'Reading increases strictly with step size at equal step count.'],
+        ['asserts', 'And by a real margin, not the last bit — a model with no projection term reads all three the same.'],
+        ['asserts', 'A quarter-brick corbel survives more steps than a half-brick one, which is real corbelling practice and the closest thing here to a published check.']
+      ]
+    },
+    {
+      id: 'J', title: 'One brick deleted from a wall much taller than the cut',
+      sub: 'Your original reported case, in a 40-course wall rather than the 30-course fixture that currently covers it.',
+      tag: 'must stand', tagCls: 'must-stand',
+      fig: null,
+      why: '<strong>The design says in as many words that this is the number that decides the constant</strong>, and that no fixture presents it — which is why the safe window looked wider than it is. The reading grows with wall height, so a deletion that is comfortable at 29 courses is predicted around 0.68 at 39 and over the line somewhere past 45. <strong>Picking the constant without this row means picking it against fixtures that cannot see the case it matters for.</strong>',
+      asserts: [
+        ['asserts', 'It still stands — this is your ruling, and it must survive the bound that gets added.'],
+        ['asserts', 'The reading is reported at several wall heights so the trend is visible rather than inferred.'],
+        ['flags', 'If it does NOT stand at the height the game actually builds, the constant is infeasible and that comes back to you before anything ships.']
+      ]
+    }
+  ];
+
+  var h = '';
+  for (var i = 0; i < ASKED.length; i++) h += card(ASKED[i]);
+  document.getElementById('asked').innerHTML = h;
+  h = '';
+  for (i = 0; i < EXTRA.length; i++) h += card(EXTRA[i]);
+  document.getElementById('extra').innerHTML = h;
+
+  /* Case D's shape, for reference under E. */
+  var refFig = draw(D10, 0.85);
+  document.querySelector('#asked .case-body .fig').insertAdjacentHTML('afterend',
+    '<p style="margin:0;font-size:13px;color:var(--ink-faint)">The structure being swept — case D at ten steps, shown for reference. E rebuilds it at each count.</p><div class="fig">' + refFig + '</div>');
+})();
+</script>

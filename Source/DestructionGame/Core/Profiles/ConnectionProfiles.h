@@ -59,6 +59,14 @@ namespace DestructionProfiles
 	extern const FConnectionStrength Unbreakable;
 
 	/**
+	 * TEST FIXTURE ONLY — no cohesion at all, but a real tensile bond. Never ship it.
+	 *
+	 * Not a material. It exists because `DryStone` cannot answer the question the
+	 * composite-depth work needs answered; see ConnectionProfiles.cpp.
+	 */
+	extern const FConnectionStrength CohesionlessBond;
+
+	/**
 	 * Every connection profile, so a sweep can check the whole library rather
 	 * than whichever entries a test remembered to name.
 	 */

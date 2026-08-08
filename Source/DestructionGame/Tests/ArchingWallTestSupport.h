@@ -257,21 +257,64 @@ namespace StructureArchingTestSupport
 	 * is exactly zero — which is the only baseline against which "one deletion did this" means
 	 * anything. ADestructionGameGameMode lays a flush wall for its scenario.
 	 */
-	inline FRunningBondSpec ArchWallSpec()
+	/**
+	 * THE SAME WALL AT ANY HEIGHT, AND THE HEIGHT IS THE ONLY THING THAT MOVES.
+	 *
+	 * `ArchWallSpec` is this at thirty courses and delegates to it rather than repeating the
+	 * six fields, for the reason this header exists at all. The parameter was added for
+	 * COMPOSITE_DEPTH_DESIGN.md's slice 2 row — the same free-end deletion in a wall MUCH
+	 * TALLER than the cut, which the design says outright is "the number that decides lambda"
+	 * and which no fixture in this project presented. A free-end joint's credited section is
+	 * measured by walking UP, so the wall's own height feeds the answer; thirty courses could
+	 * never show that, and the safe window for lambda looked wider than it is because of it.
+	 *
+	 * SEVEN BRICKS PER COURSE AT EVERY HEIGHT, deliberately. The claim is about depth, and
+	 * widening the wall alongside it would move two things at once.
+	 */
+	inline FRunningBondSpec ArchWallSpecOfHeight(int32 CoursesHigh)
 	{
 		FRunningBondSpec Spec;
 		Spec.BrickSizeCm = FVector(BrickLengthCm, BrickWidthCm, BrickHeightCm);
 		Spec.JointThicknessCm = MortarJointCm;
 		Spec.DensityGramsPerCubicCm = ClayBrick.DensityGramsPerCubicCm;
-		Spec.CoursesHigh = 30;
+		Spec.CoursesHigh = CoursesHigh;
 		Spec.BricksPerCourse = 7;
 		Spec.End = EWallEnd::Flush;
 		Spec.Strength = GeneralPurposeMortar;
 		return Spec;
 	}
 
+	inline FRunningBondSpec ArchWallSpec()
+	{
+		return ArchWallSpecOfHeight(30);
+	}
+
 	/** 15 even courses of 7 full bricks, 15 odd courses of 6 full bricks and 2 half bats. */
 	constexpr int32 ArchWallPieceCount = 15 * 7 + 15 * 8;
+
+	/**
+	 * WHAT THE FREE-END SEAT READS ON THE THIRTY-COURSE WALL — AND IT LIVES HERE BECAUSE TWO
+	 * FILES MEASURE IT AND MUST NOT BE ALLOWED TO DISAGREE.
+	 *
+	 * Delete the outermost full brick of course 0 and the full brick above it keeps exactly one
+	 * seat, overhanging it 5.625 cm toward the free end. `Core.Structure.ACorbelResistsWithItsWholeDepth`
+	 * PART 2 reads that joint on `ArchWallSpec()`, and `Core.Structure.AFreeEndDeletionInATallWall`
+	 * reads the SAME joint on `ArchWallSpecOfHeight(30)`, which is the same call — so the two
+	 * are one measurement made twice, and if they ever print different numbers something has
+	 * quietly stopped being the same fixture. Both assert against this, EXACTLY.
+	 *
+	 * IT IS AN AGREEMENT ANCHOR AND NOT A DERIVATION, AND THE DIFFERENCE MATTERS. Neither file
+	 * derives anything from it: PART 2 derives the reading from the identity
+	 * `util = K*F^2/M` and the free-end ladder derives it from the section the walk credited.
+	 * This literal only says the two agree. IT MOVES WITH lambda, which
+	 * COMPOSITE_DEPTH_DESIGN.md is explicit is a RULING and formally provisional until slice 3
+	 * — so when lambda is ruled on, this number changes in one place, both identities keep
+	 * holding on their own terms, and that is the intended division of labour.
+	 *
+	 * 0.130114883 * 43.2749^2 / 486.2129 at lambda = 3.464, where 43.2749 brick weights and
+	 * 486.2129 brick-weight-cm are what the joint carries under twenty-nine courses of column.
+	 */
+	constexpr double FreeEndThirtyCourseUtilisation = 0.50114032912317807;
 
 	/** Centre height of a course, cm: half a brick up, then one course pitch per course. */
 	constexpr double ArchWallCourseZCm(int32 Course)

@@ -859,6 +859,55 @@ private:
 		double EnoughDepthCm) const;
 
 	/**
+	 * How deep the CORBELLING BODY standing on one bed joint is, cm — the FLOOR under the
+	 * composite depth, and the one part of it no lever arm may trim away.
+	 *
+	 * THE CORBELLING COURSES ARE WHAT GENERATE THE MOMENT, so they cannot be refused the section
+	 * they generate it with. They are bonded into one cantilevering body and need no shear
+	 * transfer to be engaged: whatever the arm's tip does, the courses under it come with it.
+	 * Masonry ABOVE the cut is a different thing entirely — it is not being bent by the corbel's
+	 * moment and has to be dragged into the section by shear over a distance, which is exactly
+	 * what `lambda*e` bounds. So the two are bounded differently and only the second one is:
+	 *
+	 *     D  =  min( masonry above , max( THIS , lambda*|M|/|F| ) )
+	 *
+	 * AND THE FLOOR CAN NEVER CREDIT A SINGLE COURSE OF THE WALL ABOVE THE CUT, BECAUSE THE FLOOR
+	 * IS THE CUT. The walk stops at the first course that is not corbelling, which is by
+	 * definition the first course of the wall standing over the body — an exact structural
+	 * guarantee rather than a bound that happens to hold on the fixtures.
+	 *
+	 * CORBELLING IS "SEATED ON EXACTLY ONE COURSE", WHICH IS A FACT ABOUT THE GRAPH AND NOTHING
+	 * ELSE. A brick laid in bond straddles two below it; a brick stepped out over a raking cut,
+	 * or the outer face of a corbel, has one seat and hangs off it. That is the whole predicate,
+	 * and it needs no geometry beyond the roles the graph already carries.
+	 *
+	 * ⚠ IT IS TRUE OF EVERY PIECE IN A STACK-BOND COLUMN OR A ONE-BRICK-WIDE WALL, where each
+	 * unit sits squarely on exactly one below. There the walk runs to the top and the floor
+	 * becomes the whole wall, which is the very defect `lambda*e` was added to remove. The
+	 * direction test that would refuse it — the piece's centre of mass must also lie OUTBOARD of
+	 * its seat, on the side the root joint is already eccentric to, which is exactly what
+	 * HasArchingAbutment asks — is deliberately NOT built, because no fixture in this project can
+	 * tell the two apart: a stack-bond wall has zero eccentricity at every seat, so no joint in
+	 * one ever carries a moment, and this is never reached. Building it would be capability no
+	 * test covers. See CURRENT_STATE.md for the fixture that would be needed first.
+	 *
+	 * WHICH PIECE THE WALK STEPS TO IS DECIDED BY THE PREDICATE, NOT BY PieceRestingOn. That
+	 * chain takes the first bed joint above by ascending index, which on a filled corbel is the
+	 * two-centimetre lap onto the course INBOARD rather than the eighteen-centimetre seat under
+	 * the stepping front — measured, on the very fixture that drove this. Following it would end
+	 * the body at its second course on every corbel in the suite. So this walks the corbelling
+	 * chain: the first piece resting here that is itself corbelling.
+	 *
+	 * @param Piece          The piece standing on the joint — always the body's first course.
+	 * @param SeatJointIndex Its bed joint, which is the plane the body stands on.
+	 * @param PieceJoints    Every joint touching each piece, in ascending index order.
+	 */
+	double CorbellingBodyDepthCm(
+		int32 Piece,
+		int32 SeatJointIndex,
+		const TArray<TArray<int32>>& PieceJoints) const;
+
+	/**
 	 * Is there something on the overhanging side for this piece to arch against?
 	 *
 	 * THE FOURTH GATE OF THE ARCHING RULE, and the one that decides whether a piece which

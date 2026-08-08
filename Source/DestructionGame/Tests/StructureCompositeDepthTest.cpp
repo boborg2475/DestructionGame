@@ -1489,10 +1489,72 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 	 *
 	 *     util = 5.625 * n * W_brick / (96.09375 m^2 * 10000 * f_xk1)  =  0.1561287 * n / m^2
 	 *
-	 * against today's 0.058203838 * n. The composite reading is the lesser from m = 2 upward,
-	 * falls as 1/m^2, and never reaches 1.0 for any wall this game builds — WHICH IS THE RULING,
-	 * and also exactly why the depth has to be bounded by something, since on its own this
-	 * mechanism makes every free end and every jamb unbreakable in bending.
+	 * against today's 0.058203838 * n. Left unbounded that reading is the lesser from m = 2
+	 * upward, falls as 1/m^2, and never reaches 1.0 for any wall this game builds — which is
+	 * exactly why the depth has to be bounded by SOMETHING, since on its own this mechanism
+	 * makes every free end and every jamb unbreakable in bending. The unbounded row is printed
+	 * below and nothing is derived from it.
+	 *
+	 * =========================================================================================
+	 * AND WHAT IT ACTUALLY READS IS THE ARM'S OWN IDENTITY, NOT THAT ONE. RE-DERIVED FOR
+	 * COMPOSITE_DEPTH_DESIGN.md SLICE 2, AND THE MOVE IS THE WHOLE POINT OF THE DEPTH BOUND.
+	 * =========================================================================================
+	 *
+	 * The credited depth is `min(masonry above, max(the corbelling body's own depth, lambda*e))`
+	 * with `e = |M|/|F|`, and on this fixture the ARM is what binds: the wall has 217.5 cm of
+	 * masonry standing over the joint and the joint's own statical arm permits 38.92 of it.
+	 * The credited depth fell from the whole wall to about five courses, and the reading went
+	 * 0.0158818 -> 0.5011403 with it.
+	 *
+	 * THAT IS CORRECT PHYSICS AND NOT A WEAKENING. A half seat's arm settles at 11.25 cm
+	 * however tall the column gets — its own weight acts at 5.625 and everything from above at
+	 * 11.25, so `e = (5.625 + 11.25(n-1))/n -> 11.25` — so `lambda*e` settles at about 39 cm
+	 * and the section STOPS GROWING while the load keeps coming. The reading is therefore
+	 * LINEAR in the wall's height rather than falling as 1/m^2, and the ruling survives by
+	 * 1.97x rather than by 62x. `Core.Structure.AFreeEndDeletionInATallWall` measures the whole
+	 * ladder — 0.3283 / 0.5011 / 0.6740 / 0.8469 / 1.0198 at 20 / 30 / 40 / 50 / 60 courses —
+	 * and this fixture's wall is its 30-course row.
+	 *
+	 * WHERE `lambda*e` GOVERNS THE READING COLLAPSES TO ONE IDENTITY, and it is asserted in
+	 * that form rather than as the literal 0.5011403 for the same reason PART 2's moment walk
+	 * has always been asserted as a walk: AN IDENTITY SURVIVES A CHANGE OF lambda AND A LITERAL
+	 * DOES NOT, and lambda is formally provisional until slice 3 rules on it. Substituting
+	 * `D = lambda*M/F` into `sigma = M*W/(t*D^2/6 * 10^4)`,
+	 *
+	 *     util  =  K * F^2 / M         K = [6*W_brick/(t * 10^4 * f_xk1)] / lambda^2
+	 *                                    = 1.561287 / lambda^2  =  0.130114883 at lambda = 3.464
+	 *
+	 * with F in brick weights and M in brick-weight-centimetres. Note it goes as F SQUARED over
+	 * M and not as M over anything: a deeper arm buys section faster than it costs moment, which
+	 * is why the same joint under a taller wall reads higher rather than lower.
+	 *
+	 * THREE ROWS, AND EACH ONE IS LOAD-BEARING RATHER THAN A RESTATEMENT OF THE LAST.
+	 *
+	 *   - THE ARM GOVERNS. The credited depth must BE `lambda*e`, and must sit strictly between
+	 *     the one course under the joint and the 217.5 cm over it. Without this the identity is
+	 *     a claim about a case that is not occurring, and it would go silently green the day
+	 *     the wall or the floor started binding instead.
+	 *
+	 *   - THE IDENTITY, EXACTLY. `util == K*F^2/M` on the solver's own force and moment, to a
+	 *     relative 1e-12. It reproduces bit for bit, because it IS the arithmetic production
+	 *     performs, in a form derived independently of the order production performs it in;
+	 *     what it pins is that the section is `t*(lambda*e)^2/6` with NO axial relief, which is
+	 *     reading (a) of three, and that lambda is 3.464. It does not check the moment, and
+	 *     says so — the two rows either side of it are what check that.
+	 *
+	 *   - AND THE SAME IDENTITY ON THE HAND MOMENT, at 2%, WHICH IS THE NON-CIRCULAR ONE.
+	 *     `K * n^2 / (5.625 + 11.25(n-1))` takes ONLY the force from the solver — a force is not
+	 *     what this slice changes — and comes to 0.5063502, which is COMPOSITE_DEPTH_DESIGN's
+	 *     own published 0.5064 for this row. The two differ by the 1.04% the solver's moment
+	 *     exceeds the two-arm walk by, which is the half bat hanging off the head joint
+	 *     contributing on an arm of its own; the residual is measured and printed rather than
+	 *     absorbed, and 2% is twice it and slack for nothing else.
+	 *
+	 * AND ONE MORE, ACROSS FILES: the number this joint reads must be the number
+	 * `AFreeEndDeletionInATallWall` reads at thirty courses, TO THE LAST DIGIT. Two files
+	 * measuring one joint and disagreeing is worth catching on its own, and the shared literal
+	 * is `ArchingWallTestSupport::FreeEndThirtyCourseUtilisation`, which is documented there as
+	 * an agreement anchor and not as a derivation.
 	 */
 	{
 		/** 0.1561287: 5.625 cm of arm on one brick weight over a one-course-deep section. */
@@ -1501,13 +1563,36 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			/ MortarTensileMPa;
 
 		AddInfo(FString::Printf(
-			TEXT("FREE END: a half seat reads %s * n / m^2 under composite action against ")
-			TEXT("%s * n today. ARCHING_DESIGN's published 0.0082 is the n = m = 19 row of it, ")
-			TEXT("%s; no fixture in this project presents that row, so it is printed and not ")
-			TEXT("asserted."),
+			TEXT("FREE END: over the WHOLE wall a half seat would read %s * n / m^2, against ")
+			TEXT("%s * n on its own bed patch. ARCHING_DESIGN's published 0.0082 is the ")
+			TEXT("n = m = 19 row of that, %s; no fixture presents it and the depth is not ")
+			TEXT("unbounded any more, so both are printed and nothing is derived from them."),
 			*Bits(HalfSeatCoefficient),
 			*Bits(PatchTensionMPa(HalfSeatEccentricityCm, 1.0) / MortarTensileMPa),
 			*Bits(HalfSeatCoefficient * 19.0 / (19.0 * 19.0))));
+
+		/**
+		 * lambda, SPELLED OUT HERE RATHER THAN IMPORTED FROM THE SOLVER.
+		 *
+		 * 3.464 is 2*sqrt(3), and COMPOSITE_DEPTH_DESIGN.md is explicit that it is a RULING
+		 * inside a window rather than a derivation — its floor is this very fixture's ruling
+		 * and its ceiling is PART 1B's one-sided property, and slice 3 exists so somebody
+		 * chooses knowingly. A test that read the solver's own constant would agree with a
+		 * wrong one, and this file is one of the two that decide whether it is wrong.
+		 */
+		constexpr double CompositeDepthPerArm = 3.464;
+
+		/**
+		 * K = [6*W/(t * 10^4 * f_xk1)] / lambda^2, THE WHOLE IDENTITY IN ONE COEFFICIENT.
+		 *
+		 * The bracket is 1.561287 exactly and is the section arithmetic; dividing by lambda^2
+		 * is the depth rule. Kept as two factors rather than one number so that a change to
+		 * lambda moves it and a change to the brick or the mortar moves it, separately and
+		 * visibly.
+		 */
+		const double ArmIdentityCoefficient =
+			6.0 * BrickWeightUu / (BrickWidthCm * ForceUnitsPerMPaPerSqCm * MortarTensileMPa)
+			/ (CompositeDepthPerArm * CompositeDepthPerArm);
 
 		FBrickLayout Laid;
 
@@ -1617,43 +1702,133 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 				FMath::Abs(MeasuredMomentBrickWeightCm - HandMomentBrickWeightCm)
 					<= 0.02 * HandMomentBrickWeightCm);
 
+			/*
+			 * WHAT THE WALL OFFERS, WHAT THE ARM PERMITS, AND WHAT THE JOINT WAS ACTUALLY
+			 * CREDITED. The wall has 29 courses over this joint; the arm permits about five of
+			 * them. Both are stated so a reading that moved says WHICH of the three terms of
+			 * `min(above, max(body, lambda*e))` moved.
+			 */
 			const int32 CoursesOfDepth = ArchSupport::ArchWallSpec().CoursesHigh - 1;
 
-			const double Expected = CorbelUtilisation(
-				HandMomentBrickWeightCm, ColumnBrickWeights, CoursesOfDepth,
-				BrickWidthCm, MortarTensileMPa);
+			const double MasonryStandingOverItCm = CoursesOfDepth * CoursePitchCm;
+
+			const FVector SeatForceUu = Laid.Structure.GetConnectionForce(Seat);
+			const FVector SeatMomentUuCm = Laid.Structure.GetConnectionMoment(Seat);
+
+			const double EffectiveArmCm =
+				SeatForceUu.Size() > 0.0 ? SeatMomentUuCm.Size() / SeatForceUu.Size() : 0.0;
+
+			const double PermittedDepthCm = CompositeDepthPerArm * EffectiveArmCm;
+
+			const double CreditedDepthCm = Laid.Structure.GetConnectionCompositeDepthCm(Seat);
 
 			const double Utilisation = Laid.Structure.GetConnectionUtilisation(Seat);
 
 			AddInfo(FString::Printf(
 				TEXT("FREE END: the half seat carries %s brick weights and %s brick-weight-cm ")
-				TEXT("under %d courses of masonry; the patch alone says %s, the composite ")
-				TEXT("section says %s, and it reads %s"),
-				*Bits(ColumnBrickWeights), *Bits(HandMomentBrickWeightCm), CoursesOfDepth,
-				*Bits(PatchTensionMPa(HandMomentBrickWeightCm, ColumnBrickWeights)
-					/ MortarTensileMPa),
+				TEXT("(the two-arm walk says %s), so e = %s cm and lambda*e = %s. The wall offers ")
+				TEXT("%s cm and the joint was credited %s. Unbounded it would have read %s; on ")
+				TEXT("its own bed patch, %s. It reads %s."),
+				*Bits(ColumnBrickWeights), *Bits(MeasuredMomentBrickWeightCm),
+				*Bits(HandMomentBrickWeightCm), *Bits(EffectiveArmCm), *Bits(PermittedDepthCm),
+				*Bits(MasonryStandingOverItCm), *Bits(CreditedDepthCm),
 				*Bits(CompositeTensionMPa(
-					HandMomentBrickWeightCm, CoursesOfDepth * CoursePitchCm, BrickWidthCm)
+					HandMomentBrickWeightCm, MasonryStandingOverItCm, BrickWidthCm)
+					/ MortarTensileMPa),
+				*Bits(PatchTensionMPa(HandMomentBrickWeightCm, ColumnBrickWeights)
 					/ MortarTensileMPa),
 				*Bits(Utilisation)));
 
 			/*
-			 * FIVE PER CENT HERE RATHER THAN TWO, AND THE EXTRA THREE ARE THE RESIDUAL ABOVE.
-			 * The expectation is built from the two-arm walk, which the solver's own moment
-			 * exceeds by 1.04% on this fixture, so a correct implementation reading its own
-			 * moment against the composite section lands 1% off this number by construction.
-			 * Five per cent is slack for that and for nothing else: the claim being made is a
-			 * factor of 380.
+			 * ROW ONE: THE ARM GOVERNS, AND IT HAS TO BE ESTABLISHED BEFORE THE IDENTITY IS
+			 * WORTH ANYTHING. `util = K*F^2/M` is what the reading collapses to only where
+			 * `lambda*e` is the binding term; if the wall or the corbelling body were binding
+			 * instead, the identity would be a claim about a case that is not occurring and
+			 * would go green while measuring something else entirely. STRICTLY between the two,
+			 * so neither bound is merely equal to it by luck.
 			 */
 			TestTrue(
 				FString::Printf(
-					TEXT("FREE END: %d courses of bonded masonry stand over this joint, so its ")
-					TEXT("section is t*D^2/6 = %s cm3 rather than the patch's %s, and it must ")
-					TEXT("read %s; it reads %s"),
-					CoursesOfDepth,
-					*Bits(CompositeModulusCm3(BrickWidthCm, CoursesOfDepth * CoursePitchCm)),
-					*Bits(PatchModulusCm3), *Bits(Expected), *Bits(Utilisation)),
-				FMath::Abs(Utilisation - Expected) <= 0.05 * FMath::Max(Expected, 1.0e-12));
+					TEXT("FREE END: THE ARM MUST GOVERN — e = |M|/|F| = %s cm permits ")
+					TEXT("lambda*e = %s cm, and that must be what the joint was credited; it was ")
+					TEXT("credited %s"),
+					*Bits(EffectiveArmCm), *Bits(PermittedDepthCm), *Bits(CreditedDepthCm)),
+				FMath::IsNearlyEqual(CreditedDepthCm, PermittedDepthCm, 1.0e-9));
+
+			TestTrue(
+				FString::Printf(
+					TEXT("FREE END: and it must be STRICTLY under the %s cm of masonry standing ")
+					TEXT("over the joint and STRICTLY over the one course of corbelling body ")
+					TEXT("beneath it (%s cm), or one of those is the term that bound it; it is %s"),
+					*Bits(MasonryStandingOverItCm), *Bits(CoursePitchCm),
+					*Bits(CreditedDepthCm)),
+				CreditedDepthCm > CoursePitchCm && CreditedDepthCm < MasonryStandingOverItCm);
+
+			/*
+			 * ROW TWO: THE IDENTITY, EXACTLY. Substituting D = lambda*M/F into the section
+			 * arithmetic gives util = K*F^2/M with no D left in it, and it reproduces the
+			 * reading bit for bit — so 1e-12 relative is slack for a different order of
+			 * operations and for nothing else. WHAT IT PINS is the section: t*(lambda*e)^2/6,
+			 * reading (a), no axial relief, and lambda = 3.464. WHAT IT DOES NOT PIN is the
+			 * moment, since M appears on both sides; the two-arm walk above and row three
+			 * below are what check that, and they take only the force from the solver.
+			 */
+			const double IdentityOnSolverLoads = SeatMomentUuCm.Size() > 0.0
+				? ArmIdentityCoefficient * (SeatForceUu.Size() / BrickWeightUu)
+					* (SeatForceUu.Size() / BrickWeightUu)
+					/ (SeatMomentUuCm.Size() / BrickWeightUu)
+				: 0.0;
+
+			TestTrue(
+				FString::Printf(
+					TEXT("FREE END: WHERE THE ARM GOVERNS THE READING IS K*F^2/M — K = %s ")
+					TEXT("(1.561287 / lambda^2 at lambda = %g), F = %s brick weights and ")
+					TEXT("M = %s brick-weight-cm, so it must read %s; it reads %s"),
+					*Bits(ArmIdentityCoefficient), CompositeDepthPerArm,
+					*Bits(SeatForceUu.Size() / BrickWeightUu),
+					*Bits(SeatMomentUuCm.Size() / BrickWeightUu),
+					*Bits(IdentityOnSolverLoads), *Bits(Utilisation)),
+				FMath::Abs(Utilisation - IdentityOnSolverLoads)
+					<= 1.0e-12 * FMath::Max(IdentityOnSolverLoads, 1.0e-12));
+
+			/*
+			 * ROW THREE: THE SAME IDENTITY WITH THE MOMENT DERIVED RATHER THAN READ BACK, which
+			 * is the one that is not circular. Only the force comes from the solver, and a force
+			 * is not what this slice changes. It comes to 0.5063502 against the reading's
+			 * 0.5011403 — 1.04% apart, which is exactly the residual the two-arm walk leaves and
+			 * which is printed above — and 0.5063502 is COMPOSITE_DEPTH_DESIGN.md's own
+			 * published figure for this row, to four digits. That figure is being used as a
+			 * cross-check here and it FAILS IN THE TEST rather than being tuned away.
+			 */
+			const double IdentityOnTheHandWalk = ArmIdentityCoefficient
+				* ColumnBrickWeights * ColumnBrickWeights / HandMomentBrickWeightCm;
+
+			TestTrue(
+				FString::Printf(
+					TEXT("FREE END: on the HAND moment the same identity says %s (the design ")
+					TEXT("publishes ~0.5064 for this row) and it reads %s, %s%% out — which must ")
+					TEXT("be the %s%% the solver's moment exceeds the two-arm walk by, and 2%% is ")
+					TEXT("twice that and slack for nothing else"),
+					*Bits(IdentityOnTheHandWalk), *Bits(Utilisation),
+					*Bits(100.0 * (Utilisation / IdentityOnTheHandWalk - 1.0)),
+					*Bits(100.0 * (MeasuredMomentBrickWeightCm / HandMomentBrickWeightCm - 1.0))),
+				FMath::Abs(Utilisation - IdentityOnTheHandWalk)
+					<= 0.02 * FMath::Max(IdentityOnTheHandWalk, 1.0e-12));
+
+			/*
+			 * AND THE CROSS-FILE ROW. `Core.Structure.AFreeEndDeletionInATallWall` cuts the same
+			 * brick out of the same 7 x 30 wall and reads the same seat, so the two files are
+			 * one measurement made twice. Held to the LAST DIGIT, against the literal both of
+			 * them share — two files measuring one joint and disagreeing is worth catching on
+			 * its own, and it is the only thing this literal is for.
+			 */
+			TestTrue(
+				FString::Printf(
+					TEXT("FREE END: this is the same joint AFreeEndDeletionInATallWall reads at ")
+					TEXT("thirty courses, so the two files must agree to the last digit — the ")
+					TEXT("shared anchor is %s and this file reads %s"),
+					*Bits(ArchSupport::FreeEndThirtyCourseUtilisation), *Bits(Utilisation)),
+				Utilisation == ArchSupport::FreeEndThirtyCourseUtilisation);
 		}
 
 		/*

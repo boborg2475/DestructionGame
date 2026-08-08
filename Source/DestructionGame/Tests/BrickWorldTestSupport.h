@@ -12,6 +12,7 @@
 #include "DestructionGamePlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/Engine.h"
+#include "Engine/EngineBaseTypes.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/StaticMesh.h"
@@ -22,6 +23,7 @@
 #include "GenericPlatform/GenericPlatformMisc.h"
 #include "Misc/AutomationTest.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "Templates/Function.h"
 #include "Templates/SubclassOf.h"
 #include "Tests/AutomationCommon.h"
 #include "World/BrickActor.h"
@@ -250,10 +252,97 @@ namespace BrickWorldTestSupport
 	 */
 	constexpr float PhysicsStepSeconds = 1.0f / 60.0f;
 
+	/**
+	 * FTestWorldWrapper WITH A URL, AND WITH THE ONE GAP THE ENGINE'S OWN LOADMAP HAS.
+	 *
+	 * TWO THINGS THE BASE WRAPPER CANNOT DO, AND BOTH ARE THINGS A REAL GAME DOES.
+	 *
+	 * IT BEGINS PLAY UNDER A DEFAULT `FURL`, so the options string every game mode is handed is
+	 * empty. `UWorld::InitializeActorsForPlay` builds `Options` out of `InURL.Op` and passes it
+	 * to `AGameModeBase::InitGame`, which stores it as `OptionsString` — so a level that selects
+	 * on `?Scenario=` is unreachable without a URL to put the option on. BeginPlayURL is that
+	 * URL, and a default-constructed one is bit-for-bit what the base class already uses, so
+	 * every existing caller is unaffected.
+	 *
+	 * IT SPAWNS NO PLAY ACTOR. `UEngine::LoadMap` runs InitializeActorsForPlay, THEN spawns each
+	 * local player's controller and pawn, and only THEN calls `UWorld::BeginPlay` — so a real
+	 * game mode's begin-play runs with a possessed pawn already in the world. The base wrapper
+	 * goes straight from one to the other, so a game mode that puts the player in front of what
+	 * it built would have nobody to put anywhere, and the test would be asserting on the
+	 * harness's ordering rather than on the game mode. BeforeBeginPlay is that gap.
+	 *
+	 * THE BODY IS THE BASE CLASS'S, TRANSCRIBED, and it is transcribed rather than called
+	 * because the two additions are both INSIDE it — there is no ordering of calls to the
+	 * public API that puts a URL in front of SetGameMode or an actor between
+	 * InitializeActorsForPlay and BeginPlay.
+	 */
+	struct FBrickTestWorldWrapper : public FTestWorldWrapper
+	{
+		/** The URL begin-play runs under. Default-constructed is exactly the engine's own. */
+		FURL BeginPlayURL;
+
+		/** Run where UEngine::LoadMap spawns the play actor: after actors init, before begin-play. */
+		TFunction<void(UWorld&)> BeforeBeginPlay;
+
+		virtual bool BeginPlayInTestWorld() override
+		{
+			UWorld* const World = GetTestWorld();
+
+			if (World == nullptr)
+			{
+				ReportFailure(TEXT("TestWorld does not exist in BeginPlayInTestWorld!"));
+				return false;
+			}
+
+			if (World->HasBegunPlay())
+			{
+				ReportFailure(TEXT("TestWorld has already begun play in BeginPlayInTestWorld!"));
+				return false;
+			}
+
+			CachedFrameCounter = GFrameCounter;
+
+			if (World->GetGameInstance() != nullptr)
+			{
+				/* Required to actually forward actor BeginPlay — the base class's own note. */
+				World->SetGameMode(BeginPlayURL);
+
+				if (World->GetAuthGameMode() == nullptr)
+				{
+					ReportFailure(TEXT("BeginPlayInTestWorld failed to create GameMode"));
+					return false;
+				}
+
+				if (World->GetWorldSettings() == nullptr)
+				{
+					ReportFailure(TEXT("BeginPlayInTestWorld failed to create WorldSettings"));
+					return false;
+				}
+			}
+
+			World->InitializeActorsForPlay(BeginPlayURL);
+
+			if (BeforeBeginPlay)
+			{
+				BeforeBeginPlay(*World);
+			}
+
+			World->BeginPlay();
+
+			if (World->GetGameInstance() != nullptr && World->GetGameState() == nullptr)
+			{
+				ReportFailure(TEXT("BeginPlayInTestWorld failed to create GameState"));
+				return false;
+			}
+
+			return true;
+		}
+	};
+
 	/** A world that ticks, a floor, and the subsystem under test. */
 	struct FBrickTestWorld
 	{
-		FTestWorldWrapper Wrapper;
+		FBrickTestWorldWrapper Wrapper;
 		UWorld* World = nullptr;
 		UDestructionStructureSubsystem* Subsystem = nullptr;
 		UStaticMesh* Cube = nullptr;

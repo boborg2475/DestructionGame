@@ -65,6 +65,38 @@ namespace
 	constexpr double SolverArchingDepthPerSpan = 0.866;
 
 	/**
+	 * How deep a deep beam may be, as a multiple of the effective arm of the joint under it.
+	 *
+	 * PROVISIONAL, AND IT IS A RULING RATHER THAN A DERIVATION. COMPOSITE_DEPTH_DESIGN.md slice 3
+	 * exists to settle this number and has not been made; until it is, every reading that depends
+	 * on it is provisional too. What is NOT provisional is the FORM — a bound proportional to the
+	 * joint's own e = |M|/|F| is the only one worked through that satisfies both ends at once, and
+	 * a shear-transfer budget provably cannot bound the depth at all because it is a FLOOR (tau_max
+	 * goes as 1/D, so a deeper section is easier to sustain, not harder).
+	 *
+	 * WHERE 3.464 COMES FROM, STATED AS THE POST-HOC RATIONALISATION IT IS. It is 2*sqrt(3), which
+	 * is four times SolverArchingDepthPerSpan — BS 5977-1's equilateral triangle read over the
+	 * mirror span 2e a cantilever is half of, then doubled again. That reuse is why this value was
+	 * preferred over its neighbours; it is NOT why the value is what it is. The published guidance
+	 * points the other way: EN 1992-1-1 5.3.1(3) calls a member a deep beam when its span is under
+	 * three times its depth, which as a validity limit gives about 0.67 — and 0.67 fails the free
+	 * end by a factor of four. THE FREE-END RULING IS WHAT ACTUALLY SETS THIS NUMBER. The user
+	 * ruled that a brick deleted at the end of a wall must not bring the wall down, that needs at
+	 * least 2.465, the one-sided corbel property needs at most 3.822, and 3.464 is the only value
+	 * in that window with margin on both sides.
+	 *
+	 * (COMPOSITE_DEPTH_DESIGN.md writes this as "2 x 0.866". That is 1.732 and reproduces none of
+	 * that document's own figures — its table, its K = 1.56129/lambda^2 = 0.130117 identity and
+	 * its 0.4493 and 0.5064 predictions are all 3.464. The value is 3.464; the arithmetic in the
+	 * prose is a slip between lambda and the lambda/2 its matched-corbel lemma also uses.)
+	 *
+	 * SPELLED AS A LITERAL RATHER THAN AS 4 * SolverArchingDepthPerSpan, even though the two are
+	 * bit-identical, because the arching angle does not GOVERN this. Deriving it in code would
+	 * mean a future correction to a lintel-loading angle silently re-ruled the free end.
+	 */
+	constexpr double SolverCompositeDepthPerArm = 3.464;
+
+	/**
 	 * How far a joint's rectangle may disagree with its own area, as a FRACTION of it.
 	 *
 	 * RELATIVE, because the quantity is an area: a joint may be a square centimetre or a
@@ -1215,21 +1247,99 @@ void FStructure::SolveLoads()
 							 * taller than its own seat is deep, where the formula alone would
 							 * offer help no deep beam is there to supply.
 							 *
-							 * NOTHING CAPS THE DEPTH BUT THE WALL ITSELF. The walk stops where
-							 * the masonry stops and at any joint that has GIVEN, so a raking cut,
-							 * a missing course and a broken bond each shorten it; there is no
-							 * depth past which more masonry would change this answer, so it is
-							 * asked for as much as there is. That is a bound and not an absence
-							 * of one — resistance grows as D^2 while a corbel's own moment grows
-							 * as D^3, so a tall enough overhang still comes down, and a
-							 * forty-five course one does.
+							 * AND THE WALL IS NOT THE ONLY THING THAT CAPS THE DEPTH. The walk
+							 * stops where the masonry stops and at any joint that has GIVEN, so a
+							 * raking cut, a missing course and a broken bond each shorten it — but
+							 * asking it for everything there is says a corbel is helped by masonry
+							 * it has no part in. The moment bending a cut's bottom rung is set by
+							 * the CUT and the depth by the WALL, so the two stop cancelling the
+							 * moment the wall is taller: the same eleven-step cut read 0.223 under
+							 * forty courses against 0.369 under thirteen, MORE load for LESS
+							 * utilisation. COMPOSITE_DEPTH_DESIGN.md.
+							 *
+							 * SO THE SECOND CAP IS THE JOINT'S OWN EFFECTIVE LEVER ARM, e = |M|/|F|,
+							 * which is a length the solver has already accumulated — no new field,
+							 * no profile column and no per-material branch. A deep beam over a hole
+							 * reaches about as far up as the load it is carrying reaches out, and
+							 * for a k-step corbel e comes to about half the corbel's own depth, so
+							 * lambda*e is roughly 1.73 times that depth and the cap does NOT fire
+							 * where a wall stops at the top of its corbel. It fires on the wall the
+							 * game renders, which is the case no fixture had.
+							 *
+							 * AND THE DIVISION IS GUARDED, IN THE DIRECTION THAT CREDITS LESS. A
+							 * force at or near zero makes the arm enormous or non-finite, and an
+							 * infinite permitted depth is exactly the whole wall this is here to
+							 * refuse. Tested positively, so a NaN arm — which every comparison
+							 * rejects — lands outside the relief and the joint keeps its own bed
+							 * patch. A joint reading as intact when it should read as failed is the
+							 * expensive way to be wrong.
+							 *
+							 * BUT THE ARM MAY ONLY TRIM THE MASONRY ABOVE THE CUT, NEVER THE
+							 * CORBELLING BODY ITSELF — SO THE BODY'S OWN DEPTH IS A FLOOR UNDER
+							 * IT. The corbelling courses are what GENERATE the moment: they are
+							 * bonded into one cantilevering body and need no shear transfer to be
+							 * engaged, so they resist with their full depth unconditionally.
+							 * Masonry above the cut is a different thing — it is not being bent by
+							 * the corbel's moment and has to be dragged into the section by shear
+							 * over a distance, which is what `lambda*e` bounds. Applying the arm
+							 * to the whole depth taxed the corbel for its own height and made a
+							 * SHALLOWER corbel read HIGHER than a deeper one, because the section
+							 * shrank with the step faster than the moment grew with it.
+							 *
+							 * AND THE FLOOR CAN NEVER CREDIT A SINGLE COURSE OF THE WALL ABOVE THE
+							 * CUT, BECAUSE THE FLOOR IS THE CUT. CorbellingBodyDepthCm stops at
+							 * the first course that is not corbelling, which is the first course
+							 * of the wall standing over the body — an exact structural guarantee,
+							 * not a bound that happens to hold here.
+							 *
+							 * MAX, WRITTEN AS `GREATER THAN` SO THE FLOOR IS WHAT A NaN LOSES.
+							 * FMath::Max is `(A >= B) ? A : B`, which DISCARDS a NaN first
+							 * argument and would silently substitute a plausible number for a
+							 * fault; spelled out, a body depth that is not a number falls through
+							 * to `lambda*e` and the joint reads what slice 1 gave it, which is the
+							 * higher of the two readings.
+							 *
+							 * THE ARM IS A LIMIT ON THE WALK AND A CAP ON ITS ANSWER, AND IT HAS
+							 * TO BE BOTH. MasonryDepthAboveCm stops once it has ENOUGH, so it
+							 * returns the first whole number of courses that REACHES the limit and
+							 * overshoots it by up to one — on the scenario corbel 202.5 cm against
+							 * a permitted 200.77, a section 1.7% larger than the rule allows, in
+							 * the permissive direction and invisible to a one-sided property.
+							 * Slice 4 takes the same pair of steps with the arching angle, and for
+							 * the same reason.
+							 *
+							 * WRITTEN AS `LESS THAN` RATHER THAN AS FMath::Min, which is slice 4's
+							 * spelling as well: Min is `(A <= B) ? A : B`, so it discards a NaN
+							 * first argument and silently keeps the cap. The walk cannot return a
+							 * NaN — its own rise tests are `!(x > 0.0)`, so geometry it cannot read
+							 * leaves it at zero — and zero takes this branch and withholds the
+							 * relief, which is the direction to be wrong in.
 							 */
 							if (!MomentAboutJointUuCm.IsZero()
 								&& PieceRestingOn(Current, PieceJoints) != INDEX_NONE)
 							{
-								ConnectionCompositeDepthCm[Index] = MasonryDepthAboveCm(
-									Current, Index, PieceJoints,
-									TNumericLimits<double>::Max());
+								const double PermittedDepthCm = SolverCompositeDepthPerArm
+									* MomentAboutJointUuCm.Size()
+									/ ConnectionForces[Index].Size();
+
+								if (PermittedDepthCm > 0.0 && FMath::IsFinite(PermittedDepthCm))
+								{
+									const double BodyDepthCm =
+										CorbellingBodyDepthCm(Current, Index, PieceJoints);
+
+									const double CreditableDepthCm =
+										BodyDepthCm > PermittedDepthCm
+											? BodyDepthCm
+											: PermittedDepthCm;
+
+									const double StandingOverItCm = MasonryDepthAboveCm(
+										Current, Index, PieceJoints, CreditableDepthCm);
+
+									ConnectionCompositeDepthCm[Index] =
+										StandingOverItCm < CreditableDepthCm
+											? StandingOverItCm
+											: CreditableDepthCm;
+								}
 							}
 						}
 
@@ -1928,12 +2038,13 @@ double FStructure::MasonryDepthAboveCm(
 
 	/*
 	 * AND THE WALK IS BOUNDED TWICE OVER. Past EnoughDepthCm no further course can change the
-	 * caller's answer — 0.866*L for the arch, where the angle takes over, which is the bound
-	 * ARCHING_DESIGN asks for and is at most ceil(0.866*L / course pitch) steps. The composite
-	 * section has no such depth and passes the largest double there is, so for it the wall
-	 * running out is what stops the walk. The piece count is the second bound and is pure
-	 * defence — a graph whose normals claim A is above B and B above A would otherwise walk for
-	 * ever, and a structure with complete geometry is the only thing that reaches here.
+	 * caller's answer — 0.866*L for the arch, where the angle takes over, and lambda*|M|/|F| for
+	 * the composite section, where the deep beam stops reaching. Both are at most
+	 * ceil(EnoughDepthCm / course pitch) steps, so neither caller walks a whole wall it will not
+	 * use: about five courses for a free end and about twenty-seven for the scenario corbel. The
+	 * piece count is the second bound and is pure defence — a graph whose normals claim A is
+	 * above B and B above A would otherwise walk for ever, and a structure with complete geometry
+	 * is the only thing that reaches here.
 	 *
 	 * COMPARED AS A DOUBLE, so a vanishing course pitch produces an enormous bound rather than
 	 * an integer conversion nobody defined.
@@ -1975,6 +2086,118 @@ double FStructure::MasonryDepthAboveCm(
 	}
 
 	return CoverCm;
+}
+
+double FStructure::CorbellingBodyDepthCm(
+	int32 Piece,
+	int32 SeatJointIndex,
+	const TArray<TArray<int32>>& PieceJoints) const
+{
+	const int32 Seat = OtherEndOf(Connections[SeatJointIndex], Piece);
+
+	if (Seat == INDEX_NONE)
+	{
+		return 0.0;
+	}
+
+	/*
+	 * THE BODY'S FIRST COURSE IS THE PIECE STANDING ON THE JOINT, AND IT IS NOT ASKED WHETHER IT
+	 * IS CORBELLING. It is the course whose overhang generated the moment being read, so it is
+	 * the cut by construction; the walk above it is what has to be justified. Measured as a
+	 * course pitch from the seat rather than as a unit height, for the reason MasonryDepthAboveCm
+	 * gives — the wall works through the mortar as well as through the brick.
+	 */
+	const double FirstCourseRiseCm =
+		Pieces[Piece].CentreOfMassCm.Z - Pieces[Seat].CentreOfMassCm.Z;
+
+	if (!(FirstCourseRiseCm > 0.0))
+	{
+		return 0.0;
+	}
+
+	/*
+	 * SEATED ON EXACTLY ONE COURSE. Counted over the piece's own joints, excluding anything that
+	 * has GIVEN and anything resting on a piece that has left the structure — the same two
+	 * exclusions PieceRestingOn makes, and for the same reason: neither is masonry the body can
+	 * be bonded into.
+	 */
+	auto IsCorbelling = [this, &PieceJoints](int32 Candidate)
+	{
+		int32 Seats = 0;
+
+		for (const int32 Index : PieceJoints[Candidate])
+		{
+			if (Connections[Index].HasGiven()
+				|| GetJointRole(Index, Candidate) != EJointRole::BedBeneath)
+			{
+				continue;
+			}
+
+			const int32 Below = OtherEndOf(Connections[Index], Candidate);
+
+			if (Below != INDEX_NONE && Pieces[Below].bIsInTheStructure)
+			{
+				++Seats;
+			}
+		}
+
+		return Seats == 1;
+	};
+
+	double DepthCm = FirstCourseRiseCm;
+	int32 Current = Piece;
+
+	/*
+	 * THE PIECE COUNT IS THE BOUND, AND IT IS PURE DEFENCE. Every step rises by a positive amount
+	 * and no piece can be visited twice on a strictly rising chain, so a graph whose normals are
+	 * consistent stops of its own accord; this is here so that one whose normals are not cannot
+	 * walk for ever.
+	 */
+	for (int32 Course = 1; Course < Pieces.Num(); ++Course)
+	{
+		int32 Above = INDEX_NONE;
+
+		for (const int32 Index : PieceJoints[Current])
+		{
+			if (Connections[Index].HasGiven()
+				|| GetJointRole(Index, Current) != EJointRole::BedAbove)
+			{
+				continue;
+			}
+
+			const int32 Other = OtherEndOf(Connections[Index], Current);
+
+			if (Other != INDEX_NONE && Pieces[Other].bIsInTheStructure && IsCorbelling(Other))
+			{
+				Above = Other;
+				break;
+			}
+		}
+
+		if (Above == INDEX_NONE)
+		{
+			break;
+		}
+
+		/*
+		 * MEASURED RISE BY RISE, AND A STEP THAT DOES NOT RISE IS NOT A COURSE. Written
+		 * !(x > 0.0) so that geometry nobody measured leaves the body at the depth it has
+		 * already earned rather than adding a NaN to it — a shallower body credits less
+		 * section, which is the direction to be wrong in.
+		 */
+		const double RiseCm =
+			Pieces[Above].CentreOfMassCm.Z - Pieces[Current].CentreOfMassCm.Z;
+
+		if (!(RiseCm > 0.0))
+		{
+			break;
+		}
+
+		DepthCm += RiseCm;
+		Current = Above;
+	}
+
+	return DepthCm;
 }
 
 bool FStructure::HasArchingAbutment(

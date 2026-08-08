@@ -280,6 +280,44 @@ namespace DestructionProfiles
 		/*MaxShear*/ 1.0e12
 	};
 
+	/**
+	 * TEST FIXTURE ONLY — ZERO COHESION AND A REAL TENSILE BOND, WHICH NO MATERIAL HAS.
+	 * NOT A MATERIAL, and it carries no citation because there is nothing to cite.
+	 *
+	 * IT EXISTS BECAUSE `DryStone` CANNOT ANSWER THE QUESTION. Composite vertical action is
+	 * meant to need shear transfer between courses, so a joint with no bond should get
+	 * little or none of it — and `COMPOSITE_DEPTH_DESIGN.md` slice 5 works that gate out of
+	 * cohesion and friction with no per-material branch. But `DryStone.TensileStrengthMPa`
+	 * is an EXACT zero, so a dry-laid corbel is condemned at ANY section modulus and no
+	 * fixture laid in it can tell a bounded composite depth from an unbounded one, or from
+	 * the gate's total absence. This row is `DryStone` with the one field changed that
+	 * blinds it: zero cohesion, so the frictional behaviour is real, and a tensile bond, so
+	 * the reading is a number rather than an immediate condemnation.
+	 *
+	 * TENSILE 0.08 MPa, DELIBERATELY NOT 0.10. Matching general purpose mortar would make
+	 * the two rows read identically and a test asserting "the ordering follows the profile
+	 * numbers" would pass on a model that ignored the profile entirely. Sitting strictly
+	 * between lime's 0.05 and cement's 0.10 puts it in the MIDDLE of the ordering, which is
+	 * the position an ordering claim is hardest to satisfy by accident.
+	 *
+	 * CLASSIFIED TestFixture RATHER THAN Frictional, and the class is what carries that.
+	 * `Profiles.ConnectionInvariants` requires a Frictional row to have EXACTLY zero tensile
+	 * strength — which is the correct physics for real dry stone and is precisely the
+	 * property this row has to break — so claiming that class would be claiming to be a
+	 * material it is not. Being a fixture is machine-recognisable, which is the whole reason
+	 * the class exists.
+	 *
+	 * THE OTHER FIGURES ARE DryStone'S, unchanged, so the two rows differ in one number and
+	 * a comparison between them measures that number rather than four of them at once.
+	 */
+	const FConnectionStrength CohesionlessBond{
+		/*Compressive*/ 30.0,
+		/*ShearCohesion*/ 0.0,
+		/*Tensile*/ 0.08,
+		/*FrictionCoefficient*/ 0.7,
+		/*MaxShear*/ 6.0
+	};
+
 	namespace
 	{
 		/**
@@ -312,6 +350,7 @@ namespace DestructionProfiles
 			{ TEXT("Screw"),                EConnectionProfileClass::MechanicalFastener, Screw },
 			{ TEXT("Bolt"),                 EConnectionProfileClass::MechanicalFastener, Bolt },
 			{ TEXT("Unbreakable"),          EConnectionProfileClass::TestFixture,        Unbreakable },
+			{ TEXT("CohesionlessBond"),     EConnectionProfileClass::TestFixture,        CohesionlessBond },
 		};
 	}
 

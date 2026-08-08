@@ -157,6 +157,11 @@ int32 UDestructionStructureSubsystem::BuildRunningBond(const DestructionLayout::
 		return INDEX_NONE;
 	}
 
+	return BuildLayout(Layout);
+}
+
+int32 UDestructionStructureSubsystem::BuildLayout(const DestructionLayout::FBrickLayout& Layout)
+{
 	const int32 StructureId = NextStructureId;
 	const int32 PieceCount = Layout.Structure.NumPieces();
 

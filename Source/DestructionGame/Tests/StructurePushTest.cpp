@@ -120,16 +120,19 @@ namespace StructurePushTestSupport
 	 * ragged end joint is pinned at its own 5.625 cm forever while the compression under
 	 * it grows course by course. Bending therefore stays put and the compression that
 	 * closes the joint only ever increases, so the ratio PEAKS NEAR THE TOP OF THE WALL
-	 * AND FALLS BELOW IT: a mortared ragged wall reads 0.0390321745 at its worst joint at
+	 * AND FALLS BELOW IT: a mortared ragged wall reads 0.0455104479 at its worst joint at
 	 * any height that finishes on an odd course, and 0.0582038382 at one finishing on an
 	 * even course. NO MORTARED RAGGED WALL OF ANY HEIGHT IS OVER CAPACITY AS BUILT.
 	 *
-	 * THE TWO FIGURES ARE READ AGAINST DIFFERENT SECTIONS SINCE SLICE 5, WHICH IS WHY THE
-	 * SMALLER ONE IS THE ODD-COURSE WALL. A wall finishing on an ODD course has one brick
-	 * standing on its top corbel, so that joint has a stack of two over it and the deep beam
-	 * takes the moment: 0.0390321745. A wall finishing on an EVEN course has its worst joint
-	 * under the topmost brick itself, with nothing resting on it — one unit is not a composite
-	 * of anything — so it keeps the bed patch's own 0.0582038382 unchanged.
+	 * THE TWO FIGURES ARE STILL READ AGAINST DIFFERENT LOADS, WHICH IS WHY THE SMALLER ONE
+	 * IS THE ODD-COURSE WALL, BUT BOTH ARE NOW THE BED PATCH'S OWN. A wall finishing on an
+	 * ODD course has one brick standing on its top corbel, so that joint carries 1.5 brick
+	 * weights of closing compression against the same 5.625 brick-weight-cm of bending, and
+	 * reads 0.0455104479. A wall finishing on an EVEN course has its worst joint under the
+	 * topmost brick itself, with nothing resting on it at all, so it carries 1.0 and reads
+	 * 0.0582038382. Neither gets any composite relief, and the odd-course one is where the
+	 * whole of COMPOSITE_DEPTH_DESIGN.md's depth rule shows up in this file — see the block
+	 * on TopCorbelCompositeDepthCm, which is a good deal more interesting than it looks.
 	 *
 	 * SO THE WALL THAT CANNOT HOLD ITSELF UP IS THE ONE WITH NOTHING IN THE JOINT. Laid
 	 * DRY — DestructionProfiles::DryStone, whose cohesion and tensile strength are exact
@@ -295,25 +298,112 @@ namespace StructurePushTestSupport
 			- TopCorbelForceBrickWeights / CorbelBedAreaSqCm)
 		/ ForceUnitsPerMPaSqCmHere;
 
-	/**
-	 * AND WHAT ACTUALLY RESISTS THAT MOMENT IS NOT THE BED PATCH — TWO COURSES STAND OVER IT.
+	/*
+	 * ================================================================================
+	 * HOW DEEP A SECTION THIS JOINT IS ALLOWED, AND WHY THE ANSWER IS "NOT DEEP ENOUGH
+	 * TO HELP" — THE COUNTER-EXAMPLE THAT KILLED THE HALF-SEAT LEMMA.
+	 * ================================================================================
 	 *
-	 * The top corbel is the end brick of the highest EVEN course and the odd top course's end
-	 * brick rests on it, so the masonry over its joint is a stack of two: 15 cm deep, and the
-	 * section taking the moment is the VERTICAL plane through it rather than the bed patch.
-	 * ARCHING_DESIGN.md slice 5, adopted by the user's ruling of 2026-08-06.
+	 * Two courses DO stand over this joint: the top corbel is the end brick of the highest
+	 * EVEN course and the odd top course's end brick rests on it, so there is 15 cm of bonded
+	 * masonry there and t*D^2/6 would be 384.375 cm3 against the patch's 179.4817708. That is
+	 * the section this file credited through slice 4 of COMPOSITE_DEPTH_DESIGN.md, and it read
+	 * 0.039032175.
 	 *
-	 * t x D^2 / 6 = 10.25 x 15^2 / 6 = 384.375 cm3 against the patch's 179.4817708 — a factor
-	 * of 2.14, which is all two courses buy, and it is what took this wall's worst joint from
-	 * 0.0455104479 to 0.0390321745. Deeper stacks buy far more, because the section grows as
-	 * D squared: eleven courses is a factor of 64.8.
+	 * BUT THE MASONRY STANDING OVER A JOINT IS ONLY THE FIRST OF THREE TERMS. Slice 1 bounds
+	 * the credited depth by the joint's own statical lever arm, because masonry above a cut is
+	 * not being bent by the cut's moment and has to be dragged into the section by shear over
+	 * a distance; and the corbelling body's own depth is a FLOOR under that, because the
+	 * courses that GENERATE the moment are one cantilevering body and need no shear transfer
+	 * to be engaged. The rule is
 	 *
-	 * NOTHING ABOUT THE OUTCOME MOVED. Both readings are two orders of magnitude under
-	 * capacity, so a mortared ragged wall still stands as built at any height, and the DRY
-	 * wall is still condemned at the same joint — dry stone's f_xk1 is an exact zero, so any
-	 * tension whatever has already gone, at any section modulus.
+	 *     D  =  min( masonry above , max( the corbelling body's own depth , lambda*|M|/|F| ) )
+	 *
+	 * THE DESIGN PREDICTED THIS JOINT WAS UNTOUCHABLE, AND IT WAS WRONG, AND THE ARITHMETIC
+	 * IS RIGHT HERE IN THE FIXTURE. Its "half-seat lemma" argued that any half seat carries
+	 * its load at the half-seat eccentricity, so e >= 5.625 cm and lambda*e >= 19.49 cm, which
+	 * is 2.6 courses — hence no joint with two or fewer courses over it could ever be trimmed.
+	 * This joint refutes it: it carries 1.5 brick weights and 5.625 brick-weight-cm, so
+	 *
+	 *     e  =  |M| / |F|  =  5.625 / 1.5  =  3.75 cm,   NOT 5.625
+	 *
+	 * because THE EXTRA HALF BRICK ARRIVES CENTRED. The brick above the corbel hands its half
+	 * share down through a patch with the SAME centroid — the zig-zag this file has always
+	 * been about — so F grows from 1.0 to 1.5 and M does not grow at all. An increment with no
+	 * arm DILUTES the arm, and the lemma assumed every increment arrives with one.
+	 *
+	 * SO THE ARM GOVERNS: lambda*e = 3.464 x 3.75 = 12.99 cm, against a corbelling body one
+	 * course deep (7.5 cm — the brick above the corbel sits squarely on TWO supports, so the
+	 * corbelling chain stops at the corbel itself) and 15 cm of masonry above. The floor does
+	 * not reach it and the wall does not cap it, and 12.99 cm is what the joint is read over.
+	 *
+	 * AND THE NUMBER GOING UP IS THE RELIEF BEING DECLINED, NOT A REGRESSION. THIS IS THE
+	 * PART THAT READS LIKE A DEFECT AND IS NOT. A 12.99 cm section is 288.2643375 cm3 — still
+	 * DEEPER than the bed patch's 179.4817708 — but the composite reading carries NO AXIAL
+	 * RELIEF, because the plane resisting a deep-beam moment is vertical and the wedge's
+	 * weight is shear on it rather than load across it. So the two readings are
+	 *
+	 *     composite  =  5.625 W / 288.2643375                =  0.0052045953 MPa
+	 *     patch      =  5.625 W / 179.4817708 - 1.5 W / 105.0625  =  0.0045510448 MPa
+	 *
+	 * and the composite one is WORSE. ComputeUtilisation takes the LESSER of the two demands —
+	 * composite action is an alternative way of carrying the moment and may only ever help —
+	 * so it refuses the relief and the joint keeps the bed patch's own 0.0455104479. The wall
+	 * therefore reads HIGHER than it did at slice 4's 0.039032175, and that is the rule being
+	 * applied faithfully rather than a load model that drifted.
+	 *
+	 * HOW MUCH DEPTH IT WOULD HAVE TAKEN, DERIVED BELOW RATHER THAN ASSERTED AS A FEELING.
+	 * The composite section only undercuts the patch past
+	 *
+	 *     D_cross  =  sqrt( 6 M W / (t x 10^4 x sigma_patch) )  =  13.891434 cm  =  1.852 courses
+	 *
+	 * and lambda*e falls 6.5% short of it. Two courses (15 cm) clears it, which is exactly why
+	 * the unbounded rule fired here and the bounded one does not.
+	 *
+	 * NOTHING ABOUT THE OUTCOME MOVED, THROUGH ANY OF IT. Every reading in sight is two orders
+	 * of magnitude under capacity, so a mortared ragged wall still stands as built at any
+	 * height, and the DRY wall is still condemned at the same joint — dry stone's f_xk1 is an
+	 * exact zero, so any tension whatever has already gone, at any section modulus.
 	 */
-	constexpr double TopCorbelCompositeDepthCm = 2.0 * (6.5 + 1.0);
+
+	/**
+	 * lambda, THE COMPOSITE DEPTH PER UNIT OF EFFECTIVE ARM, SPELLED OUT RATHER THAN IMPORTED.
+	 *
+	 * 3.464 is 2*sqrt(3), and COMPOSITE_DEPTH_DESIGN.md is explicit that it is a RULING inside
+	 * a window and not a derivation — slice 3 exists so somebody makes it knowingly. A test
+	 * that reached for the solver's own constant would agree with a wrong one, and this one has
+	 * to fail if it moves, because whether this joint gets composite relief at all turns on it.
+	 */
+	constexpr double CompositeDepthPerArm = 3.464;
+
+	/** e = |M|/|F| = 3.75 cm. The half-seat lemma said this could not be under 5.625. */
+	constexpr double TopCorbelArmCm =
+		TopCorbelMomentBrickWeightCm / TopCorbelForceBrickWeights;
+
+	/** What the arm permits: 12.99 cm. */
+	constexpr double TopCorbelPermittedDepthCm = CompositeDepthPerArm * TopCorbelArmCm;
+
+	/**
+	 * The corbelling body under it is ONE course, and that is PROVEN by the reading rather
+	 * than assumed here: a body is a whole number of course pitches, so a credited depth of
+	 * 12.99 cm rules out two courses (15 cm would have floored it there) and one course is
+	 * all that is left. Asserted below in exactly those terms.
+	 */
+	constexpr double TopCorbelBodyDepthCm = 6.5 + 1.0;
+
+	/** And the masonry standing over it: the corbel and the one brick on it, 15 cm. */
+	constexpr double TopCorbelMasonryAboveCm = 2.0 * (6.5 + 1.0);
+
+	/* max(body, lambda*e), then min with the masonry above — the rule, written out. */
+	constexpr double TopCorbelCreditableDepthCm =
+		TopCorbelBodyDepthCm > TopCorbelPermittedDepthCm
+			? TopCorbelBodyDepthCm
+			: TopCorbelPermittedDepthCm;
+
+	constexpr double TopCorbelCompositeDepthCm =
+		TopCorbelMasonryAboveCm < TopCorbelCreditableDepthCm
+			? TopCorbelMasonryAboveCm
+			: TopCorbelCreditableDepthCm;
 
 	constexpr double TopCorbelCompositeModulusCm3 =
 		10.25 * TopCorbelCompositeDepthCm * TopCorbelCompositeDepthCm / 6.0;
@@ -323,15 +413,33 @@ namespace StructurePushTestSupport
 		/ (TopCorbelCompositeModulusCm3 * ForceUnitsPerMPaSqCmHere);
 
 	/**
-	 * The SAME wall in mortar, at the same joint: 0.00390322 MPa against 0.10 MPa.
+	 * WHAT THE UNBOUNDED RULE GAVE — the two-course section, kept only to be printed.
+	 *
+	 * 10.25 x 15^2 / 6 = 384.375 cm3 and 15003.0 / (384.375 x 10^4) / 0.10 = 0.039032175, the
+	 * figure this file pinned through slice 4. Nothing is derived from it; it is here so that
+	 * a reader who remembers the old number can see where it came from and that it did not
+	 * drift, it stopped being reachable.
+	 */
+	constexpr double TwoCourseCompositeStressMPa =
+		FullBrickWeightUu * TopCorbelMomentBrickWeightCm
+		/ ((10.25 * TopCorbelMasonryAboveCm * TopCorbelMasonryAboveCm / 6.0)
+			* ForceUnitsPerMPaSqCmHere);
+
+	/**
+	 * The SAME wall in mortar, at the same joint: 0.00455104 MPa against 0.10 MPa.
 	 *
 	 * PINNED AS A NUMBER RATHER THAN AS "under 1", so a load model that drifted is visible
 	 * here rather than silently keeping the test green from the safe side of the line. It
 	 * is the figure the ragged wall reads at ANY height finishing on an odd course.
 	 *
-	 * IT WAS 0.0455104479 THROUGH SLICE 4 — the same moment on the bed patch alone.
+	 * IT IS THE BED PATCH'S OWN READING, and it is the same figure this file pinned through
+	 * slice 4 for the same reason it pins it now — the joint has never been able to use a
+	 * section that helped it. Slice 5 of ARCHING_DESIGN briefly credited it 15 cm and
+	 * 0.039032175; slice 1 of COMPOSITE_DEPTH_DESIGN took that back, by bounding the depth at
+	 * lambda*e = 12.99 cm, where the composite demand is WORSE than the patch's and is
+	 * declined. See the block above — this number going UP is the point, not a defect.
 	 */
-	constexpr double MortarRaggedWorstAsBuilt = 0.0390321745;
+	constexpr double MortarRaggedWorstAsBuilt = 0.0455104479;
 
 	/** The scenario wall's worst joint — MOMENTS_DESIGN.md's regression anchor, and exact. */
 	constexpr double ScenarioWorstAsBuilt = 0.00495042219;
@@ -1220,6 +1328,31 @@ bool FStructurePushOverCapacityWallSettlesOnBuildTest::RunTest(const FString& Pa
 				CorbelMomentUuCm, TopCorbelMomentBrickWeightCm * FullBrickWeightUu, 1.0e-6));
 
 		/*
+		 * AND THE EFFECTIVE ARM THOSE TWO MAKE IS 3.75 cm AND NOT 5.625, WHICH IS THE WHOLE
+		 * REASON THIS JOINT MOVED. It is asserted as its own row rather than left implicit in
+		 * the two above, because it is the quantity COMPOSITE_DEPTH_DESIGN.md's half-seat
+		 * lemma made a false claim about — "any half seat has e >= 5.625 cm, so no joint with
+		 * two or fewer courses over it can be touched" — and this joint is the counter-example
+		 * that killed it. The extra half brick arrives CENTRED, through a patch with the same
+		 * centroid, so it grows |F| without growing |M| and DILUTES the arm. Any future "this
+		 * shallow joint cannot be capped" claim has to be measured rather than argued, and
+		 * this row is where that is written down.
+		 */
+		const double CorbelArmCm = CorbelForceUu > 0.0 ? CorbelMomentUuCm / CorbelForceUu : 0.0;
+
+		TestTrue(
+			FString::Printf(
+				TEXT("the arm this joint carries its load at is |M|/|F| = %.9g cm, NOT the %.9g cm the half-seat lemma assumed; it reads %.9g"),
+				TopCorbelArmCm, CorbelOwnWeightArmCm, CorbelArmCm),
+			FMath::IsNearlyEqual(CorbelArmCm, TopCorbelArmCm, 1.0e-9));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("FIXTURE: and it must be STRICTLY SHORTER than the half-seat eccentricity, or this is not the counter-example it is documented as — %.9g against %.9g"),
+				CorbelArmCm, CorbelOwnWeightArmCm),
+			CorbelArmCm < CorbelOwnWeightArmCm);
+
+		/*
 		 * AND THE AXIS THAT GOVERNS IS TENSION, WHICH IS ASSERTED RATHER THAN ASSUMED. The
 		 * same joint in MORTAR reads the tension ratio exactly — 0.00455104 MPa over f_xk1's
 		 * 0.10 — so a run in which compression or shear had taken over would show up here as a
@@ -1239,31 +1372,78 @@ bool FStructurePushOverCapacityWallSettlesOnBuildTest::RunTest(const FString& Pa
 		const double MortaredWorst = WorstJointOf(Mortared.Structure, MortaredWorstJoint);
 
 		/*
-		 * THE COMPOSITE READING IS WHAT THE JOINT IS ARBITRATED AGAINST, AND THE PATCH'S OWN IS
-		 * PRINTED BESIDE IT. Two courses stand over this joint, so the section resisting its
-		 * moment is the 384.375 cm3 vertical one rather than the patch's 179.48; the joint gives
-		 * at the LESSER of the two demands, and printing both is what makes a failure say which
-		 * section moved rather than only that the number did.
+		 * WHAT SECTION THE JOINT WAS ALLOWED, AND IT IS THE ARM THAT DECIDES IT.
+		 *
+		 * The rule is D = min(masonry above, max(corbelling body, lambda*e)) and all three
+		 * terms are worked out on this fixture rather than read back: 15 cm over it, one
+		 * course of body under it, and lambda*e = 12.99 cm in the middle. The credited depth
+		 * is asserted against lambda*e EXACTLY, and being strictly between 7.5 and 15 is what
+		 * proves both of the other two terms are slack — a corbelling body is a whole number
+		 * of course pitches, so 12.99 rules out a two-course body as firmly as it rules out
+		 * the wall's own 15.
 		 */
-		AddInfo(FString::Printf(
-			TEXT("the same ragged wall MORTARED reads %.9g at joint %d, against %.9g of hand-computed composite tension over f_xk1 (the bed patch alone would say %.9g)"),
-			MortaredWorst, MortaredWorstJoint,
-			TopCorbelCompositeStressMPa / MortarTensileMPa,
-			TopCorbelTensileStressMPa / MortarTensileMPa));
+		const double CreditedDepthCm = MortaredWorstJoint != INDEX_NONE
+			? Mortared.Structure.GetConnectionCompositeDepthCm(MortaredWorstJoint)
+			: 0.0;
 
 		TestTrue(
 			FString::Printf(
-				TEXT("FIXTURE: the deep beam must be the LESSER demand, or this joint is not measuring it — composite %.9g against the patch's %.9g"),
-				TopCorbelCompositeStressMPa / MortarTensileMPa,
+				TEXT("THE ARM MUST GOVERN THE SECTION: lambda*e = %.9g x %.9g = %.9g cm must be the credited depth; the joint was credited %.9g"),
+				CompositeDepthPerArm, TopCorbelArmCm, TopCorbelPermittedDepthCm,
+				CreditedDepthCm),
+			FMath::IsNearlyEqual(CreditedDepthCm, TopCorbelPermittedDepthCm, 1.0e-9));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("and it must sit STRICTLY between the %.9g cm of corbelling body under it and the %.9g cm of masonry over it, which is what says neither of those bound it; it is %.9g"),
+				TopCorbelBodyDepthCm, TopCorbelMasonryAboveCm, CreditedDepthCm),
+			CreditedDepthCm > TopCorbelBodyDepthCm && CreditedDepthCm < TopCorbelMasonryAboveCm);
+
+		/*
+		 * AND THE RELIEF IS DECLINED, WHICH IS THE ROW THAT READS LIKE A REGRESSION AND IS NOT.
+		 *
+		 * A 12.99 cm section is 288.264 cm3, DEEPER than the bed patch's 179.482 — but the
+		 * composite reading carries no axial relief and the patch reading does, so the deeper
+		 * section is the WORSE demand. ComputeUtilisation takes the lesser (composite action
+		 * is an alternative way of carrying the moment, never an extra one), refuses it, and
+		 * the joint keeps the patch's own number. The sense of this comparison is INVERTED
+		 * from what this file asserted through slice 4, deliberately, and the crossover depth
+		 * below is what makes it a statement about the arm rather than about a coincidence.
+		 */
+		const double CrossoverDepthCm = FMath::Sqrt(
+			6.0 * TopCorbelMomentBrickWeightCm * FullBrickWeightUu
+			/ (10.25 * ForceUnitsPerMPaSqCmHere * TopCorbelTensileStressMPa));
+
+		AddInfo(FString::Printf(
+			TEXT("the same ragged wall MORTARED reads %.9g at joint %d; over its credited %.9g cm the composite demand is %.9g and the bed patch's own is %.9g, so the deeper section is the WORSE one and the relief is refused (two whole courses, %.9g cm, would have given %.9g — the figure this file pinned through slice 4)"),
+			MortaredWorst, MortaredWorstJoint, CreditedDepthCm,
+			TopCorbelCompositeStressMPa / MortarTensileMPa,
+			TopCorbelTensileStressMPa / MortarTensileMPa,
+			TopCorbelMasonryAboveCm,
+			TwoCourseCompositeStressMPa / MortarTensileMPa));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("THE RELIEF MUST BE DECLINED: over %.9g cm the composite demand %.9g EXCEEDS the patch's %.9g, so the joint may not be read against the deep beam"),
+				CreditedDepthCm, TopCorbelCompositeStressMPa / MortarTensileMPa,
 				TopCorbelTensileStressMPa / MortarTensileMPa),
-			TopCorbelCompositeStressMPa < TopCorbelTensileStressMPa);
+			TopCorbelCompositeStressMPa > TopCorbelTensileStressMPa);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("and it is the ARM that costs it the relief, not the wall: the composite section only undercuts the patch past %.9g cm (%.9g courses) and lambda*e reaches %.9g, %.6g%% short — while the %.9g cm actually standing there clears it"),
+				CrossoverDepthCm, CrossoverDepthCm / CoursePitchCm, TopCorbelPermittedDepthCm,
+				100.0 * (1.0 - TopCorbelPermittedDepthCm / CrossoverDepthCm),
+				TopCorbelMasonryAboveCm),
+			TopCorbelPermittedDepthCm < CrossoverDepthCm
+				&& CrossoverDepthCm < TopCorbelMasonryAboveCm);
 
 		TestTrue(
 			FString::Printf(
 				TEXT("the hand arithmetic must come to the pinned %.9g, it comes to %.9g"),
-				MortarRaggedWorstAsBuilt, TopCorbelCompositeStressMPa / MortarTensileMPa),
+				MortarRaggedWorstAsBuilt, TopCorbelTensileStressMPa / MortarTensileMPa),
 			FMath::IsNearlyEqual(
-				TopCorbelCompositeStressMPa / MortarTensileMPa, MortarRaggedWorstAsBuilt, 1.0e-9));
+				TopCorbelTensileStressMPa / MortarTensileMPa, MortarRaggedWorstAsBuilt, 1.0e-9));
 
 		TestTrue(
 			FString::Printf(
