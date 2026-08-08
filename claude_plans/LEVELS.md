@@ -133,21 +133,28 @@ the verdict the acceptance test asserts.
 | `Lvl_Wall19` | `wall-19` | Bottom course out under half the wall |
 | `Lvl_Wall20` | `wall-20` | Staircase void |
 
-### Six of these levels contradict the model, and say so
+### Seven of these levels contradict the model, and say so
 
-Cases **8, 9, 10, 12, 19 and 20** are the rows currently failing `Acceptance.Wall.Catalogue`. Their
-captions carry the words **THE MODEL CURRENTLY DISAGREES** alongside the expected verdict, because a
-level captioned with a verdict the solver does not produce would be a lie told to somebody standing
-in front of the counter-example.
+Cases **8, 9, 10, 11, 12, 19 and 20** are the rows currently failing `Acceptance.Wall.Catalogue`.
+Their captions carry the words **THE MODEL CURRENTLY DISAGREES** alongside the expected verdict,
+because a level captioned with a verdict the solver does not produce would be a lie told to somebody
+standing in front of the counter-example.
 
 That marker is not a hand-maintained list. `Acceptance.Wall.EveryLevelsCaptionTellsTheTruth`
 *computes* which rows the model gets wrong by running each case, and requires the marker on exactly
 those. When the underlying defect is fixed, that test goes red until the captions stop claiming a
 disagreement that no longer exists.
 
-All six trace to one finding: **load routes only downward**. Masonry beside or behind a joint never
-reaches it, so a counterweight buys nothing and load funnels onto whatever column sits underneath.
-`Core.Structure.CorbelStepsBeforeTensionWins` is the standing red for it.
+**Case 11 joined the seven on 2026-08-08 because its expectation was corrected, not because anything
+regressed.** It was captioned `Expected: STANDS` and the model agreed; the user ruled the verdict
+wrong on the published arching gate — a 1.2 m clear span of half-brick wall with no lintel and no
+masonry above the apex of its 45-degree triangle sheds the panel over the opening — so it now reads
+`Expected: LOCAL LOSS` and the model keeps the panel up.
+
+Six of the seven trace to one finding: **load routes only downward**. Masonry beside or behind a
+joint never reaches it, so a counterweight buys nothing and load funnels onto whatever column sits
+underneath. `Core.Structure.CorbelStepsBeforeTensionWins` is the standing red for it. Case 11 is the
+seventh and is a different gap: nothing in the model asks whether there is *room* for an arch.
 
 ## Adding a level
 

@@ -18,13 +18,15 @@ Characteristic shear strength "is limited to not greater than `0.065·f_b`". `Ma
 
 ---
 
-## COULD NOT CONFIRM — and it is the most load-bearing number we have
+## ~~COULD NOT CONFIRM~~ CONFIRMED — with a finding larger than the doubt *(resolved 2026-08-08)*
 
 ### Flexural strength `f_xk1 = 0.10 N/mm²`
 
-**Not verified.** The full Table 3.2 is behind the standard and the PDFs found were unparseable. One source referenced a UK National Annex table giving **`f_xk1 = 0.167 N/mm²`** for a case it did not fully qualify — which, if it applied to our unit and mortar, would make every tension reading in the project **1.67× too pessimistic**.
+**Verified as the EN 1996-1-1 recommended value** for clay units in general-purpose mortar, plane of failure parallel to the bed joints, at *both* mortar classes (fm < 5 and ≥ 5 N/mm²) — confirmed against a reproduction of the Eurocode table ([RoyMech, Principles of Masonry Design](https://www.roymech.co.uk/Related/Construction/Masonry_design.html)).
 
-`f_xk1` divides the peak tension in every joint we compute. It is the single number most worth confirming from the standard itself. **Do not change it on the strength of one unqualified search result** — but do not treat 0.10 as verified either.
+**The 0.167 figure never applied.** It traces to a [Structville worked example](https://structville.com/design-of-masonry-walls-en-1996) reading UK NA Table NA.6 for **aggregate concrete blocks**, not clay brick.
+
+**But the UK National Annex replaces 0.10 with far larger values for clay.** [Table NA.6](https://dn710306.ca.archive.org/0/items/bs.na.en.1996.1.1.2005/bs.na.en.1996.1.1.2005.html), built on decades of BS 5628 test data, gives clay in M4/M6 general-purpose mortar `f_xk1` of **0.5 / 0.4 / 0.3** for water absorption <7% / 7–12% / >12% (with `f_xk2` 1.5 / 1.1 / 0.9). And every code figure is a characteristic 5%-fractile *design* value; mean tested bond strength runs roughly 2× characteristic again. So against real walls the project's tension readings are **3–8× pessimistic** — the systematic question this opens (characteristic vs mean strength as the game's basis) is worked in PROJECT_REVIEW.md §1 and is a pending user decision.
 
 ---
 
@@ -104,7 +106,7 @@ So **λ = 3.464 is defensible as slightly stricter than the mirror-span deep-bea
 
 ## What to do about it
 
-1. **Confirm `f_xk1` from EN 1996-1-1 Table 3.2 directly.** It divides every tension reading in the project and it is currently unverified.
+1. ~~**Confirm `f_xk1` from EN 1996-1-1 Table 3.2 directly.**~~ **Done 2026-08-08** — see the resolved section above; what it leaves is the characteristic-vs-mean decision in PROJECT_REVIEW.md §1.
 2. **Re-justify λ as the mirror-span deep-beam bound**, not as `2 × SolverArchingDepthPerSpan`. Same number, honest derivation.
 3. **Record that slice 4 diverges from BS 5977** — continuous where practice is a threshold, and 60° where practice advises 45°.
 4. **Put the corbelling limits in front of the user.** The case-14 ruling stands unless they change it, but they ruled without knowing that half-brick-per-course is 3.46× the per-course limit and that the staircase is 12× the total. The counter-argument — that a raking cut through a bonded wall is not the free-standing ledge the code addresses — is real and should be made explicitly rather than left implied.

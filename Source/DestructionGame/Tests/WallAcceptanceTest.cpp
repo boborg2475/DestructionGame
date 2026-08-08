@@ -748,6 +748,64 @@ namespace WallAcceptanceTestSupport
 
 	const FWallRegion Case11Cuts[] = { { 0, 3, 2.75, 8.25 } };
 
+	/* ================================================================================
+	 * CASE 11, RE-DERIVED: THERE IS NO ROOM FOR AN ARCH OVER THIS SPAN, SO THE PANEL GOES.
+	 * ================================================================================
+	 *
+	 * THE VERDICT ON THIS ROW WAS STANDS UNTIL 2026-08-08 AND THE USER RULED IT WRONG, on the
+	 * published arching gate the BS 5977 family states and claude_plans/PROJECT_REVIEW.md §3 checked
+	 * all twenty rows against: arching over an opening needs an overlapping bond AND at least 300 mm
+	 * of masonry standing above the APEX of a 45 degree isosceles triangle raised on the clear span.
+	 * This fixture fails that gate by its whole height, not by a margin.
+	 *
+	 * WALKED OFF THE BRICKLAYER ABOVE RATHER THAN OFF THE DRAWING, in centimetres, because the whole
+	 * ruling is an arithmetic one:
+	 *
+	 *     the cut  { 0, 3, 2.75, 8.25 } takes cells 3..8 out of the even courses 0 and 2 and cells
+	 *              3.5..7.5 out of the odd courses 1 and 3 — six bricks and five bricks a course,
+	 *              22 of the 150 laid
+	 *     jambs    the reveal is TOOTHED, so it is two faces and not one: the even courses stop at
+	 *              55.75 cm and resume at 191.75, the odd courses stop at 67.00 and resume at 180.50
+	 *     span     113.50 cm at its narrowest and 136.00 cm at its widest — a 1.2-1.4 m opening
+	 *     head     the top of course 3 is 29.00 cm up; eight courses of cover stand over it and the
+	 *              wall's top is 89.00 cm, so there is 60.00 cm of masonry above the opening
+	 *     apex     half the span above the head: 56.75 cm at the narrowest reveal, 68.00 at the
+	 *              widest, i.e. 85.75 cm to 97.00 cm above the ground
+	 *
+	 * SO THERE IS BETWEEN 32 mm AND NOTHING AT ALL ABOVE THE APEX, against 300 mm required — and at
+	 * the wide reveal the apex is 8 cm ABOVE THE TOP OF THE WALL, which is to say the triangle does
+	 * not fit inside the masonry at any point. This is not case 7's marginal shortfall (150-205 mm
+	 * against 300, which is where practice reaches for a lintel and where the row still says
+	 * "stands"); it is a half-brick wall asked to span 1.2 m on nothing but bond, and there is no
+	 * lintel in the fixture. Real practice does not permit it, and what a real wall does is shed the
+	 * panel over the opening while the piers and the masonry directly over the piers stand.
+	 *
+	 * HENCE LOCAL LOSS AND NOT COLLAPSE. The piers are three cells of bearing — 66.5 cm of solid
+	 * masonry each — carrying eight courses; nothing about them is overloaded, and a verdict of
+	 * collapse would be claiming a pier failure this fixture gives no reason to expect. That is case
+	 * 12's claim, on one-cell piers, and the two rows have to keep saying different things.
+	 *
+	 * THE NAMED SET IS THE VERTICAL PROJECTION OF THE OPENING THROUGH THE EIGHT COURSES OF COVER —
+	 * the same cell window as the cut, { 4, 11, 2.75, 8.25 }, which is 24 bricks from the four even
+	 * courses and 20 from the four odd ones, 44 of the 128 left standing. It is written as the cut's
+	 * own window on purpose: with no arch to carry it, what a panel sheds is what it cannot reach a
+	 * pier from, and the cut window IS the run of cells with no masonry beneath them.
+	 *
+	 * AND THE BOUNDARY OF THAT SET IS THE UNCERTAIN PART, RECORDED HERE THE WAY CASE 20'S IS. Two
+	 * bricks per course sit ON the boundary rather than inside it: course 4's cells 3 and 8 each keep
+	 * one 10.25 cm bed patch on the odd-course jamb below (which is why the model's worst joint in
+	 * this wall today is c3/8.5-c4/8 at 0.362), and the file's own reading for cases 8 and 20 is that
+	 * ONE PATCH IS A CORBEL RATHER THAN A TOOTH. Applied here that reading would keep those two up
+	 * and step the survivors inward course by course, naming perhaps 30 bricks instead of 44.
+	 * PROJECT_REVIEW.md §3 doubts that precision claim for case 8 on exactly the ground that decides
+	 * it here — a bricklayer expects the whole unsupported panel to go — and a corbel hanging off a
+	 * jamb with no arch over it is not a load path, it is the first thing to drop. So the panel is
+	 * named whole. WHAT IS NOT UNCERTAIN, and what this row is really asserting, is that the loss is
+	 * BOUNDED: the masonry over the piers keeps the ground, which is what separates this from case
+	 * 12. If evidence ever moves the edge, it moves by two columns of bricks and not by a verdict.
+	 */
+	const FWallRegion Case11Falls[] = { { 4, 11, 2.75, 8.25 } };
+
 	/**
 	 * Case 12 names no survivors, and it is the weakest row in the set because of it.
 	 *
@@ -1066,8 +1124,18 @@ namespace WallAcceptanceTestSupport
 
 		/* C — spanning between supports. */
 
-		Add(11, TEXT("Wall on two piers, six-brick clear span"), EVerdict::Stands,
-			CoveredCourses, StandardCells, Case11Cuts, {}, {}, TEXT("pier width, against case 12"));
+		/*
+		 * LOCAL LOSS, ON THE USER'S RULING OF 2026-08-08 AND ON THE ARCHING GATE ABOVE. Drafted as
+		 * "stands" because walls span between piers all the time; they do it over an opening with
+		 * enough masonry above it for the thrust line to fit, and this one has between 32 mm and
+		 * nothing above the apex of its own 45 degree triangle, with no lintel. The panel over the
+		 * clear span goes and the piers keep what stands on them — see the block beside Case11Falls
+		 * in section C for the whole derivation, for the 44 bricks the region names, and for which
+		 * two columns of it are the uncertain edge.
+		 */
+		Add(11, TEXT("Wall on two piers, six-brick clear span"), EVerdict::LocalLoss,
+			CoveredCourses, StandardCells, Case11Cuts, Case11Falls, {},
+			TEXT("pier width, against case 12"));
 
 		Add(12, TEXT("The same span on one-brick piers"), EVerdict::Collapse,
 			CoveredCourses, StandardCells, Case12Cuts, Case12Falls, {},
@@ -1221,7 +1289,7 @@ namespace WallAcceptanceTestSupport
 	/**
 	 * AND THE TOKEN A CAPTION MUST CARRY WHEN THE MODEL DOES NOT AGREE WITH ITS OWN CLAIM.
 	 *
-	 * Six rows are red today. A caption that named only the expected verdict on one of those would
+	 * Seven rows are red today. A caption that named only the expected verdict on one of those would
 	 * be worse than silence — so the honest ones say both, and the ones the model agrees with must
 	 * NOT say it, which is what stops the admission outliving the disagreement.
 	 */
@@ -1233,8 +1301,8 @@ namespace WallAcceptanceTestSupport
 	 * DELIBERATELY THE SAME THREE SHAPES `Acceptance.Wall.Catalogue` ASSERTS ONE AT A TIME, and it
 	 * is a second reading of them rather than a shared one because the catalogue's assertions are
 	 * SEPARATE on purpose — each prints its own diagnosis — and folding them into one predicate
-	 * would change six known-red failure messages. The cost is a copy, and the copy is held against
-	 * the catalogue by the known-red tripwire in the caption test: it must name exactly the six
+	 * would change seven known-red failure messages. The cost is a copy, and the copy is held against
+	 * the catalogue by the known-red tripwire in the caption test: it must name exactly the seven
 	 * rows that are red, so a predicate that drifted from the catalogue fails there rather than
 	 * quietly captioning a level wrongly.
 	 */
@@ -1686,10 +1754,11 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
  * "cover: both halves of 7 and 8 answered the same way". The pairing is the diagnostic and it
  * deserves to fail by name.
  *
- * THE CLAIM IS DELIBERATELY WEAKER THAN THE CATALOGUE'S. It asserts only that the standing half
- * loses NOTHING while the falling half loses SOMETHING — so it can still pass when the exact
- * fallen set is wrong, and it fails only when the variable is genuinely not modelled. That is what
- * makes it readable as a diagnosis rather than as a second copy of the same assertions.
+ * THE CLAIM IS DELIBERATELY WEAKER THAN THE CATALOGUE'S. It asserts only that one half of the pair
+ * loses STRICTLY MORE than the other, plus — wherever the catalogue's own verdict for the lesser
+ * half is "stands" — that the lesser half loses NOTHING. So it can still pass when the exact fallen
+ * set is wrong, and it fails only when the variable is genuinely not modelled. That is what makes
+ * it readable as a diagnosis rather than as a second copy of the same assertions.
  *
  * NEEDS A TICKING WORLD: NO.
  */
@@ -1705,22 +1774,38 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 	struct FMatchedPair
 	{
 		const TCHAR* Variable;
-		int32 StandingCase;
-		int32 LosingCase;
+
+		/** The half that loses less. In three of the four it loses nothing; case 11 does not. */
+		int32 LesserCase;
+
+		int32 GreaterCase;
 	};
 
 	/*
-	 * FOUR PAIRS, AND IN EVERY ONE OF THEM EXACTLY ONE HALF STANDS. That is what makes the claim
-	 * below writable as one line: the halves differ in outcome, so a solver that answers them the
-	 * same way has no term between them, whichever way round it answers.
+	 * FOUR PAIRS, AND THE CLAIM IS THAT THE TWO HALVES ANSWER DIFFERENTLY IN THE SAME DIRECTION
+	 * EVERY TIME: the greater half loses strictly more than the lesser one. A solver with no term
+	 * between them answers them the same way and fails that, whichever way round it answers.
+	 *
+	 * IT USED TO BE THE STRONGER "the lesser half loses NOTHING", AND THAT CLAIM IS STILL MADE
+	 * WHEREVER THE CATALOGUE STILL SUPPORTS IT — the row is read out of `EVerdict` rather than
+	 * listed here, so it strengthens or relaxes with the catalogue instead of drifting from it. Case
+	 * 11 is why it had to move: on 2026-08-08 the user ruled its verdict wrong, and a wall on piers
+	 * with no room for an arch now sheds the panel over its span. Left as written, this row would
+	 * have demanded case 11 lose nothing while the catalogue demanded it lose 44 bricks — a row that
+	 * could only pass for as long as the model was WRONG, and that went red the day it was fixed.
+	 *
+	 * WHAT PIER WIDTH STILL SEPARATES, WHICH IS WHY THE ROW WAS KEPT RATHER THAN MOVED OUT the way
+	 * 13 vs 14 and 15 vs 16 were: three cells of bearing lose the panel and keep the masonry over the
+	 * piers, one cell of bearing loses everything above the springing. The two halves still differ in
+	 * OUTCOME, so the pair still belongs here; only the shape of "differ" needed widening.
 	 *
 	 * TWO OF THE CATALOGUE'S FIVE PAIRS ARE DELIBERATELY ABSENT AND THIS IS THE ONLY PLACE TO SAY
 	 * SO. Both were rows here until 2026-08-07, when case 14's collapse verdict and case 16's
 	 * local-loss verdict were each revised to "stands" — a bonded corbel resists with its full
 	 * depth, and a bonded header with nothing on it reads a sixth of f_xk1. Both halves of both
-	 * pairs now stand, so the shape this test asserts — one half loses nothing, the other loses
-	 * something — is UNSATISFIABLE for either by construction, and a row asserting it would be red
-	 * forever for a reason nobody could fix. Neither has been dropped; both have MOVED:
+	 * pairs now stand, so the shape this test asserts — one half loses strictly more than the other
+	 * — is UNSATISFIABLE for either even after the widening above, and a row asserting it would be
+	 * red forever for a reason nobody could fix. Neither has been dropped; both have MOVED:
 	 *
 	 *     13 vs 14   Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome
 	 *     15 vs 16   Acceptance.Wall.SuperimposedLoadIsReadInTheJointNotInTheOutcome
@@ -1739,7 +1824,7 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 
 	const TArray<FWallCase> Cases = AllWallCases();
 
-	auto FellCount = [this, &Cases](int32 Number, bool& bOutRan) -> int32
+	auto FellCount = [this, &Cases](int32 Number, bool& bOutRan, bool& bOutMustLoseNothing) -> int32
 	{
 		for (const FWallCase& Case : Cases)
 		{
@@ -1754,35 +1839,48 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 			RunWallCase(*this, Case, Wall, Result);
 			bOutRan = Result.bLaid;
 
+			/*
+			 * READ OFF THE CATALOGUE ROW, NEVER LISTED HERE. Whether the lesser half of a pair may
+			 * lose anything at all is the catalogue's statement and not this test's, so a row whose
+			 * verdict is corrected — as case 11's was on 2026-08-08 — relaxes the claim here in the
+			 * same edit instead of leaving a second copy of the old verdict behind to contradict it.
+			 */
+			bOutMustLoseNothing = Case.Verdict == EVerdict::Stands;
+
 			return Result.Fallen.Num();
 		}
 
 		AddError(FString::Printf(TEXT("FIXTURE: the catalogue has no case %d"), Number));
 		bOutRan = false;
+		bOutMustLoseNothing = false;
 
 		return 0;
 	};
 
 	for (const FMatchedPair& Pair : Pairs)
 	{
-		bool bStandingRan = false;
-		bool bLosingRan = false;
+		bool bLesserRan = false;
+		bool bGreaterRan = false;
+		bool bLesserMustLoseNothing = false;
+		bool bGreaterMustLoseNothing = false;
 
-		const int32 StandingFell = FellCount(Pair.StandingCase, bStandingRan);
-		const int32 LosingFell = FellCount(Pair.LosingCase, bLosingRan);
+		const int32 LesserFell = FellCount(Pair.LesserCase, bLesserRan, bLesserMustLoseNothing);
+		const int32 GreaterFell = FellCount(Pair.GreaterCase, bGreaterRan, bGreaterMustLoseNothing);
 
-		if (!bStandingRan || !bLosingRan)
+		if (!bLesserRan || !bGreaterRan)
 		{
 			continue;
 		}
 
 		TestTrue(
 			*FString::Printf(
-				TEXT("%s: case %d must stand and case %d must not, so the two halves have to ")
-				TEXT("differ; case %d dropped %d piece(s) and case %d dropped %d"),
-				Pair.Variable, Pair.StandingCase, Pair.LosingCase,
-				Pair.StandingCase, StandingFell, Pair.LosingCase, LosingFell),
-			StandingFell == 0 && LosingFell > 0);
+				TEXT("%s: case %d must lose %s and case %d must lose strictly more, so the two ")
+				TEXT("halves have to differ; case %d dropped %d piece(s) and case %d dropped %d"),
+				Pair.Variable,
+				Pair.LesserCase, bLesserMustLoseNothing ? TEXT("NOTHING") : TEXT("a bounded set"),
+				Pair.GreaterCase,
+				Pair.LesserCase, LesserFell, Pair.GreaterCase, GreaterFell),
+			GreaterFell > LesserFell && (!bLesserMustLoseNothing || LesserFell == 0));
 	}
 
 	return true;
@@ -2875,11 +2973,11 @@ bool FWallAcceptanceLevelsTest::RunTest(const FString& Parameters)
  * WHY A CAPTION NEEDS A TEST AT ALL
  * =====================================================================================
  *
- * Six of these twenty rows are red today — 8, 9, 10, 12, 19 and 20 — and a level captioned "the
- * course over the doorway drops and the wall stands" while the model drops nothing is a LIE TOLD TO
- * SOMEBODY STANDING IN FRONT OF THE COUNTER-EXAMPLE. That is worse than silence: the player can
- * see the wall, and the caption is the only thing telling them whether what they are looking at is
- * the answer or the bug.
+ * Seven of these twenty rows are red today — 8, 9, 10, 11, 12, 19 and 20 — and a level captioned
+ * "the course over the doorway drops and the wall stands" while the model drops nothing is a LIE
+ * TOLD TO SOMEBODY STANDING IN FRONT OF THE COUNTER-EXAMPLE. That is worse than silence: the
+ * player can see the wall, and the caption is the only thing telling them whether what they are
+ * looking at is the answer or the bug.
  *
  * So a caption may say what is expected, and it may say that the model disagrees, and it may say
  * only what the level does — but it may not claim a verdict the solver does not currently produce
@@ -2906,7 +3004,7 @@ bool FWallAcceptanceLevelsTest::RunTest(const FString& Parameters)
  * `ModelAgreesWithVerdict` is a second reading of the three verdict shapes `Acceptance.Wall.
  * Catalogue` asserts one at a time, so it could drift from the catalogue and caption a level
  * wrongly while every catalogue row still failed exactly as before. Requiring it to name precisely
- * the six rows CURRENT_STATE records as red is what makes that drift visible.
+ * the seven rows CURRENT_STATE records as red is what makes that drift visible.
  *
  * NEEDS A TICKING WORLD: NO. It solves the same twenty walls the catalogue solves.
  */
@@ -2921,15 +3019,21 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	using namespace DestructionScenarios;
 
 	/**
-	 * THE SIX ROWS THE MODEL GETS WRONG TODAY, as CURRENT_STATE.md records them.
+	 * THE SEVEN ROWS THE MODEL GETS WRONG TODAY, as CURRENT_STATE.md records them.
 	 *
 	 * This is NOT what decides which caption must admit a disagreement — that is computed per row
 	 * below. It is a check on the predicate that computes it: a second reading of the verdict rules
 	 * that drifted from the catalogue's would caption a level wrongly while every catalogue
 	 * failure stayed word for word identical, which is the one failure this file could not
 	 * otherwise see.
+	 *
+	 * IT WAS SIX UNTIL 2026-08-08, when the user ruled case 11's "stands" wrong: a wall on piers
+	 * with no room above the apex of its own arching triangle sheds the panel over the span, and the
+	 * model keeps every brick of it up. The set grew because an EXPECTATION was corrected rather than
+	 * because anything regressed, which is the distinction the tripwire's message asks a reader to
+	 * make.
 	 */
-	const int32 KnownDisagreements[] = { 8, 9, 10, 12, 19, 20 };
+	const int32 KnownDisagreements[] = { 8, 9, 10, 11, 12, 19, 20 };
 
 	const TArray<FWallCase> Cases = AllWallCases();
 
@@ -2951,7 +3055,7 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 		 * The tripwire at the bottom is a check on the predicate rather than on the captions, and a
 		 * predicate that was only exercised once the levels existed would be unproven at exactly the
 		 * moment somebody was relying on it to caption twenty of them. Run this way it reproduces
-		 * the six known reds on the day it is written.
+		 * the seven known reds on the day it is written.
 		 */
 		FWall Wall;
 		FWallResult Result;
@@ -3056,7 +3160,7 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("TRIPWIRE: the rows this test reads as wrong must be exactly the six ")
+			TEXT("TRIPWIRE: the rows this test reads as wrong must be exactly the seven ")
 			TEXT("Acceptance.Wall.Catalogue fails on — it read {%s}, the known reds are {%s}. If a ")
 			TEXT("slice fixed one, its caption must stop admitting a disagreement and this list must ")
 			TEXT("shrink with it; if they differ any other way, this test's reading of a verdict has ")
