@@ -27,6 +27,17 @@
  * WORLD-FREE, like Core/Layout: boxes and doubles, no UWorld and no UObject.
  *
  * ONE DIRECTION OF INCLUSION. Nothing from Tests/ may be included here; a test may include this.
+ *
+ * THE ACCEPTANCE FIXTURE'S BRICKLAYER WAS COPIED, NOT MOVED, AND COMMIT 1c763c5 SAYS "MOVES". That
+ * commit message is wrong and cannot be rewritten, so the correction lives here. `LayWall` in
+ * Tests/WallAcceptanceTest.cpp still lays its own bricks and calls nothing in this namespace; the
+ * commit is 853 insertions and ZERO deletions in that file. Two consequences are worth knowing.
+ * First, it is why not one reading in the acceptance file moved across the commit — nothing it
+ * measures went through here. Second, `Acceptance.Wall.TheProducerLaysTheWallTheFixtureLays` is
+ * therefore STILL LIVE rather than tautological: it holds this producer against a genuinely
+ * independent bricklayer, including handle order, and it is the only test that does. Do not delete
+ * it, and do not "finish the move" by making the fixture call this — that would spend the one
+ * comparison keeping the two honest.
  */
 namespace DestructionWallCases
 {

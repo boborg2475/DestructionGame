@@ -51,11 +51,17 @@ namespace DestructionForce
 		{
 			/*
 			 * Garbage in still has to fail closed. A NaN stress is worse than it
-			 * looks: FMath::Max is (A >= B) ? A : B, and every comparison against
-			 * NaN is false, so Max3 quietly discards it and returns whichever
-			 * other axis happened to be lowest. The joint then reports a confident
-			 * zero utilisation for an input nobody can interpret, which nothing
-			 * downstream could detect. An infinite stress is genuinely failed.
+			 * looks: FMath::Max is `(B < A) ? A : B` (GenericPlatformMath.h) and
+			 * every comparison against NaN is false, so Max DISCARDS a NaN in its
+			 * FIRST argument and RETURNS one in its second. Max3 is
+			 * Max(Max(A, B), C), so a NaN reaching the Max3 below is laundered
+			 * whichever axis it lands on: a NaN compression is dropped and the
+			 * answer becomes the larger of the other two, a NaN shear swallows the
+			 * compression reading and the answer becomes the tension one, and a NaN
+			 * tension comes straight back out — where it still reads as intact,
+			 * because NaN > 1 is false. Every route ends in a confident number for
+			 * an input nobody can interpret, which nothing downstream could detect.
+			 * An infinite stress is genuinely failed.
 			 */
 			if (!FMath::IsFinite(Stress))
 			{
@@ -182,8 +188,9 @@ namespace DestructionForce
 			 * usually reaches for. Relief is the PERMISSIVE branch, so the guard has to be
 			 * FALSE on garbage: a NaN composite stress fails `<` and a NaN normal stress fails
 			 * `<=`, and either way the patch reading stands. FMath::Min would do the opposite —
-			 * it is `(A <= B) ? A : B`, so a NaN second argument is silently discarded and a
-			 * NaN first one silently replaces a perfectly good answer. It also means both
+			 * it is `(A < B) ? A : B` (GenericPlatformMath.h), so a NaN FIRST argument is
+			 * silently discarded and a NaN SECOND one silently replaces a perfectly good
+			 * answer. It also means both
 			 * values below are known finite by the time the branch is entered, which is what
 			 * entitles the Max inside it to be an ordinary Max.
 			 *

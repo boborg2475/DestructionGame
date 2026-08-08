@@ -914,9 +914,11 @@ namespace DestructionScenarios
 
 		/*
 		 * THE FLOOR IS THE SECOND ARGUMENT, AND THAT ORDER IS THE FAIL-CLOSED ONE. FMath::Max is
-		 * (A >= B) ? A : B, so it DISCARDS a NaN in B and RETURNS one in A — with the floor
-		 * first, a bounding box that produced a NaN standoff would hand back a NaN camera
-		 * position instead of the floor. Written this way round the floor is what survives.
+		 * `(B < A) ? A : B` (GenericPlatformMath.h), and every comparison against a NaN is false,
+		 * so it DISCARDS a NaN in A and RETURNS one in B. The NaN candidate here is the box's own
+		 * standoff, so it belongs in A: with the floor first instead, a bounding box that produced
+		 * a NaN standoff would hand back a NaN camera position. Written this way round the floor is
+		 * what survives.
 		 *
 		 * An EMPTY box has zero extents and an INVERTED one has negative extents, and both land
 		 * on the floor by the same comparison. A negative standoff would put the camera behind

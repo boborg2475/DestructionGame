@@ -6,6 +6,8 @@ Full design decisions and the testing strategy live in [claude_plans/DESIGN.md](
 
 **New to this codebase, to C++, or to Unreal?** [claude_plans/CODE_TOUR.md](claude_plans/CODE_TOUR.md) is a reading order for a human: what to read in what order, the C++ and Unreal concepts each file needs, and how to verify the code by breaking it and watching which tests fire.
 
+**Want to look at a structure rather than read about one?** [claude_plans/LEVELS.md](claude_plans/LEVELS.md) lists the twenty-nine playable levels — one per fixture the suite measures — and how to join them. Every scenario map is a byte copy of `Lvl_Sandbox.umap`; the map's *name* selects the row, so adding a level is a catalogue row plus a file copy and never an editor session.
+
 ## Units — the easiest way to be wrong by 100×
 
 World scale is Unreal's default **1 uu = 1 cm**. Mass (kg) and density (g/cm³) take published real-world values unconverted, but **1 N = 100 Unreal force units**. Strengths are stored in SI megapascals, so comparing a force against a strength always needs an **area**.

@@ -2511,14 +2511,15 @@ bool FWallAcceptanceFixtureAgreesWithProducerTest::RunTest(const FString& Parame
  * =====================================================================================
  *
  * The bricklayer above is TEST-ONLY, so no level can reach it — which is why the twenty walls the
- * user drew and reviewed cannot be catalogue rows until the geometry is production. Moving it is
- * the cheap part. The expensive part is that every reading in this file is a statement about a
- * particular arrangement of particular bricks, worked to seventeen digits: 0.195160875 at a
- * four-step corbel's bottom rung, 0.058203838191552663 at a bare header's bed joint, 0.01000825 of
- * head-joint shear, and six known-red rows whose failure messages name bricks by (course, cell). A
- * producer that differs from the fixture by one ulp anywhere is not "a fixture that moved", it is
- * a dozen tests changing their answers at once for no visible reason — and four of them are
- * ALREADY RED, so a changed message there would hide a regression inside a known failure.
+ * user drew and reviewed could not be catalogue rows until the same geometry existed in production.
+ * Writing that producer was the cheap part. The expensive part is that every reading in this file is
+ * a statement about a particular arrangement of particular bricks, worked to seventeen digits:
+ * 0.195160875 at a four-step corbel's bottom rung, 0.058203838191552663 at a bare header's bed
+ * joint, 0.01000825 of head-joint shear, and six known-red rows whose failure messages name bricks
+ * by (course, cell). A producer that differs from the fixture by one ulp anywhere is not "a fixture
+ * that moved", it is a dozen tests changing their answers at once for no visible reason — and four
+ * of them are ALREADY RED, so a changed message there would hide a regression inside a known
+ * failure.
  *
  * =====================================================================================
  * WHAT IS COMPARED, AND WHY HANDLE ORDER IS IN THE LIST
@@ -2539,14 +2540,29 @@ bool FWallAcceptanceFixtureAgreesWithProducerTest::RunTest(const FString& Parame
  * levels cut the wrong bricks while laying the right wall.
  *
  * =====================================================================================
- * IT GOES QUIET AFTER THE MOVE, DELIBERATELY
+ * IT IS STILL LIVE: THE BRICKLAYER WAS COPIED, NOT MOVED
  * =====================================================================================
  *
- * Once the fixture is a call to production this compares a thing with itself, exactly as
- * `Core.Corbel.MatchesTheFixtureBitForBit` does. The value is spent at the moment of the move.
- * What remains standing afterwards is `Acceptance.Wall.TheFixtureLaysTheWallTheProducerLays` —
- * which becomes the claim that this producer lays the wall `Layout::RunningBond` lays on the shape
- * both can lay, and is the reason this file cannot become a second definition of what a wall is.
+ * This block used to say the test went quiet the moment the producer landed, on the reasoning that
+ * the fixture would by then be a call to production and the comparison would be a thing against
+ * itself — the state the corbel builder's own fixture comparison reached, which was deleted for
+ * exactly that reason and replaced by `Core.Corbel.LaysTheJointsTheGridImplies`.
+ *
+ * THAT NEVER HAPPENED HERE, AND THE NOTE WAS WRONG. `LayWall` above still lays its own bricks and
+ * calls nothing in `DestructionWallCases`; the commit that landed the producer is 853 insertions
+ * and ZERO deletions in this file. The bricklayer was COPIED into production rather than moved out
+ * of the test, which is precisely why not one reading here moved across it.
+ *
+ * So this compares TWO INDEPENDENT BRICKLAYERS and it is the only test that does. Deleting it as
+ * spent would leave one statement about `Core/WallCases`' handle order where there are currently
+ * two — after which a change to the joint-discovery loop renumbers every joint index and every
+ * break stamp while every geometric check still passes, which is the failure named above as the one
+ * that looks like nothing.
+ *
+ * `Acceptance.Wall.TheFixtureLaysTheWallTheProducerLays` stands BESIDE it rather than in place of
+ * it: that one is the claim that this producer lays the wall `Layout::RunningBond` lays on the
+ * shape both can lay, and is the reason this file cannot become a second definition of what a wall
+ * is.
  *
  * NEEDS A TICKING WORLD: NO. Boxes and doubles; no solve at all.
  */

@@ -1293,7 +1293,8 @@ void FStructure::SolveLoads()
 							 * not a bound that happens to hold here.
 							 *
 							 * MAX, WRITTEN AS `GREATER THAN` SO THE FLOOR IS WHAT A NaN LOSES.
-							 * FMath::Max is `(A >= B) ? A : B`, which DISCARDS a NaN first
+							 * FMath::Max is `(B < A) ? A : B` (GenericPlatformMath.h) and every
+							 * comparison against a NaN is false, so it DISCARDS a NaN first
 							 * argument and would silently substitute a plausible number for a
 							 * fault; spelled out, a body depth that is not a number falls through
 							 * to `lambda*e` and the joint reads what slice 1 gave it, which is the
@@ -1309,7 +1310,8 @@ void FStructure::SolveLoads()
 							 * the same reason.
 							 *
 							 * WRITTEN AS `LESS THAN` RATHER THAN AS FMath::Min, which is slice 4's
-							 * spelling as well: Min is `(A <= B) ? A : B`, so it discards a NaN
+							 * spelling as well: Min is `(A < B) ? A : B` (GenericPlatformMath.h),
+							 * so it discards a NaN
 							 * first argument and silently keeps the cap. The walk cannot return a
 							 * NaN — its own rise tests are `!(x > 0.0)`, so geometry it cannot read
 							 * leaves it at zero — and zero takes this branch and withholds the
@@ -1909,7 +1911,8 @@ void FStructure::ApplyArchingThrust(
 		 * springing moves in its last three digits for no reason anybody chose.
 		 *
 		 * WRITTEN OUT RATHER THAN AS FMath::Min BECAUSE THE COMPARISON WORKS AGAINST US. Min is
-		 * `(A <= B) ? A : B`, and every comparison against a NaN is false, so a NaN cover would
+		 * `(A < B) ? A : B` (GenericPlatformMath.h), and every comparison against a NaN is false,
+		 * so a NaN cover in the first argument would
 		 * be silently REPLACED by the angle's answer — the permissive direction, and the exact
 		 * defect this slice exists to remove. The guard above has already refused a NaN, and
 		 * this is written so it would not matter if it had not.

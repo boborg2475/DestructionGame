@@ -12,49 +12,63 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE CORBEL BUILDER IN PRODUCTION LAYS EXACTLY THE STRUCTURE THE FIXTURE HAS BEEN MEASURED ON.
+ * THE CORBEL BUILDER IN PRODUCTION LAYS EXACTLY THE STRUCTURE EVERY CORBEL READING WAS TAKEN ON.
  *
  * =====================================================================================
- * WHY THIS TEST EXISTS AT ALL
+ * WHY THIS FILE EXISTS AT ALL
  * =====================================================================================
  *
- * `Tests/CorbelCaseTestSupport.h` builds the corbel family and is TEST-ONLY, so no level can
- * reach it — which is why the seven corbel scenarios cannot be catalogue rows until the builder
- * is production. Moving it is the cheap part. The expensive part is that
  * `Core.Structure.CorbelStepsBeforeTensionWins`, `AHundredStepCorbelMustComeDown`,
  * `ACorbelReadsLinearlyInScale`, `ACorbelOrdersByItsProfileNumbers` and
- * `ACorbelReadsItsOwnStepSize` all read that fixture and their expected values are worked to
- * fifteen digits. A move that shifted one brick by an ulp would change every one of them, and
- * would look like a solver regression rather than like a fixture edit.
+ * `ACorbelReadsItsOwnStepSize` all reach `DestructionCorbel::Build` through
+ * `Tests/CorbelCaseTestSupport.h`, and their expected values are worked to fifteen digits. A
+ * builder that shifted one brick by an ulp — or that offered `MakeInterface` one PAIR of bricks
+ * fewer — would move every one of those readings at once, and it would look like a solver
+ * regression rather than like a producer edit.
  *
- * So this pins the move: same piece count, same boxes, same masses, same grounded flags, same
- * connection set, same root-joint utilisation. The fixture header's own rule — "a second copy of
- * a corbel definition is two fixtures that drift" — is the whole reason the header must end up
- * INCLUDING this builder rather than keeping its copy.
- *
- * =====================================================================================
- * TWO HALVES, AND ONLY ONE OF THEM SURVIVES THE MOVE
- * =====================================================================================
- *
- * PART ONE derives every box INDEPENDENTLY, from the coordinating grid, and never looks at the
- * fixture at all. It keeps biting forever, including after `CorbelCaseTestSupport.h` has been
- * reduced to a `#include` of production — at which point PART TWO is comparing a thing with
- * itself and proves nothing. That is a known and accepted property of the sequencing rather than
- * an oversight: part two is the RED STEP that gates the move, part one is the standing net.
- *
- * PART TWO is the bit-for-bit comparison against the fixture as it stands today. It is the
- * assertion that matters at the moment of the move and the reason to run this test before
- * touching the header.
+ * So this file pins the producer itself: same piece count, same boxes, same masses, same grounded
+ * flags, same connection set in order, and the same number at the root.
  *
  * =====================================================================================
- * THE BARE ARM HAS NO FIXTURE TO COMPARE AGAINST, AND THAT IS WHY IT IS HERE
+ * TWO TESTS, AND THE SECOND IS NOT A RESTATEMENT OF THE FIRST
  * =====================================================================================
  *
- * Case A — a stepped arm of SINGLE bricks — is deliberately absent from
- * `CorbelCaseTestSupport.h` and lives only inside `Tests/CorbelScreenshotTest.cpp`, in a `.cpp`
- * no other test can include. It is a scenario row, so production has to be able to lay it, and
- * part one is the only thing that can say whether it laid it right. `bFilled` is what separates
- * the two: one brick per stepped course instead of every cell inboard of it.
+ * `LaysTheFamilyOnItsGrid` derives every BRICK from the coordinating grid — where it goes, how big
+ * it is, what it weighs, whether it stands on the earth — and holds production against that.
+ *
+ * `LaysTheJointsTheGridImplies` derives every JOINT from those same derived bricks, by a rule
+ * production does not use. EVERY PAIR of bricks in the structure is offered to `MakeInterface`,
+ * and whatever it accepts is a joint; production offers only pairs within a course and between
+ * ADJACENT courses, which its own comment calls a cost bound rather than a second rule. The two
+ * therefore agree exactly if and only if that claim holds, and a loop that quietly stops offering
+ * one course's bed joints is a disagreement rather than a cheaper way to the same answer.
+ *
+ * A CORBEL WHOSE BRICKS ARE ALL IN THE RIGHT PLACE CAN STILL BE JOINED WRONGLY, and the joints
+ * are what carry the load: piece geometry is untouched by such a change, so the grid test stays
+ * green, `HasCompleteGeometry` stays green, the root is still a bed joint, and every reading in
+ * the suite moves. That is the failure this second test exists for.
+ *
+ * =====================================================================================
+ * AND ONE ABSOLUTE NUMBER PER CASE, BECAUSE THE REST OF THE SUITE'S CORBEL CLAIMS ARE ORDINAL
+ * =====================================================================================
+ *
+ * The corbel expectations elsewhere are RELATIONS — a crossover at 36 steps, a strictly increasing
+ * ladder, one profile ordering above another. A joint set that changed but kept its SHAPE could
+ * move every absolute reading in the family while every ordinal claim still held. So each row
+ * carries the utilisation its root joint reads, pinned exactly. Case A's 0.15612870000000001 is
+ * the one `COMPOSITE_DEPTH_DESIGN.md` works out by hand — bearing 10.25 cm, `F = 4`, `M = 90`,
+ * `e = 22.5`, composite over four courses — and the rest are the readings the levels catalogue and
+ * the scenario reports publish. They are ANCHORS, not derivations, and they say so.
+ *
+ * =====================================================================================
+ * THE BARE ARM IS COVERED HERE AND NOWHERE ELSE
+ * =====================================================================================
+ *
+ * Case A — a stepped arm of SINGLE bricks — is a scenario row whose only other appearance is
+ * inside `Tests/CorbelScreenshotTest.cpp`, in a `.cpp` no other test can include. `bFilled` is
+ * the whole of the difference: one brick per stepped course instead of every cell inboard of it,
+ * which is a different load path rather than a thinner version of the same one. Both tests below
+ * run it.
  *
  * NEEDS A TICKING WORLD: NO. Boxes, doubles and one arithmetic solve.
  */
@@ -211,6 +225,65 @@ namespace CorbelBuilderTestSupport
 	}
 
 	/**
+	 * EVERY JOINT THOSE BRICKS IMPLY, FOUND BY A RULE PRODUCTION DOES NOT USE.
+	 *
+	 * THE RULE IS "ANY TWO BRICKS THAT SHARE A FACE ARE JOINED", spelled as every unordered pair
+	 * in the structure offered to `MakeInterface`. `Core/Corbel.cpp` instead offers only pairs
+	 * within one course and between ADJACENT courses, and its comment is explicit that this is a
+	 * COST BOUND and not a second rule — bricks two courses or two cells apart are separated by
+	 * more than the joint thickness and `MakeInterface` would refuse them anyway. That claim is
+	 * exactly what this derivation puts under test: if it is true the two sets are identical, and
+	 * if the loop ever stops offering a course's beds the sets differ by those beds.
+	 *
+	 * `MakeInterface` ITSELF IS SHARED ON PURPOSE, and it is the one thing here that is not
+	 * independent. Areas, normals, centres and rectangles are that function's answers, asserted in
+	 * `Core.Layout.*` against hand-worked faces; what is derived here is WHICH PAIRS are joined and
+	 * IN WHAT ORDER, which is the corbel producer's own decision and the thing nothing else pins.
+	 *
+	 * THE ORDER IS PART OF THE CLAIM, for the reason the brick order is. Handles ascend
+	 * course-major and then by X — `CorbelBuilderExpectedBricks` derives that and
+	 * `LaysTheFamilyOnItsGrid` asserts it — so ascending A then ascending B is the same sequence
+	 * production's course-by-course walk emits, reached without knowing what a course is. A joint
+	 * HANDLE is what a break stamp and every cascade reading are expressed in, so a set that is
+	 * right but renumbered is not the same structure.
+	 */
+	inline TArray<FConnection> CorbelBuilderExpectedJoints(
+		const DestructionCorbel::FCorbelSpec& Spec, const TArray<FCorbelBuilderBrick>& Bricks)
+	{
+		TArray<FPieceBox> Boxes;
+		Boxes.Reserve(Bricks.Num());
+
+		for (const FCorbelBuilderBrick& Brick : Bricks)
+		{
+			FPieceBox Box;
+			Box.CentreCm = Brick.CentreCm;
+			Box.ExtentCm = Brick.HalfExtentCm;
+
+			Boxes.Add(Box);
+		}
+
+		const double JointCm = CorbelBuilderMortarCm * Spec.Scale;
+
+		TArray<FConnection> Joints;
+
+		for (int32 PieceA = 0; PieceA < Boxes.Num(); ++PieceA)
+		{
+			for (int32 PieceB = PieceA + 1; PieceB < Boxes.Num(); ++PieceB)
+			{
+				FConnection Joint;
+
+				if (MakeInterface(
+						PieceA, Boxes[PieceA], PieceB, Boxes[PieceB], JointCm, Spec.Strength, Joint))
+				{
+					Joints.Add(Joint);
+				}
+			}
+		}
+
+		return Joints;
+	}
+
+	/**
 	 * THE PIECE COUNT IN CLOSED FORM, so a row's literal below is checkable rather than recorded.
 	 *
 	 * The base is `BaseCourses x BaseCells`. A bare arm adds one brick per step. A FILLED arm at
@@ -299,7 +372,7 @@ namespace CorbelBuilderTestSupport
 		return CorbelBuilderJointBetween(Layout.Structure, OutSeatPiece, OutArmPiece);
 	}
 
-	/** One row of the family, and the piece count its own arithmetic predicts. */
+	/** One row of the family: the piece count its own arithmetic predicts, and what its root reads. */
 	struct FCorbelBuilderRow
 	{
 		const TCHAR* Label;
@@ -308,6 +381,18 @@ namespace CorbelBuilderTestSupport
 		int32 Steps;
 		bool bFilled;
 		int32 ExpectedPieces;
+
+		/**
+		 * THE ROOT JOINT'S UTILISATION AFTER A SOLVE — AN ANCHOR, NOT A DERIVATION.
+		 *
+		 * Every other corbel claim in the suite is ORDINAL: a crossover at 36 steps, a ladder that
+		 * increases, one profile above another. A joint set that changed while keeping the family's
+		 * SHAPE would move all of these absolute numbers and satisfy every ordinal claim on the way
+		 * down. So each is written out to seventeen digits and compared exactly. `LEVELS.md` and
+		 * the scenario reports publish the same figures to five, and case A's is the one
+		 * `COMPOSITE_DEPTH_DESIGN.md` derives by hand.
+		 */
+		double ExpectedRootUtilisation;
 	};
 
 	/**
@@ -316,28 +401,29 @@ namespace CorbelBuilderTestSupport
 	 * A to D are the structures the user reviewed; E35 and E36 straddle the crossover
 	 * `Core.Structure.CorbelStepsBeforeTensionWins` locates at 36 steps. F (a hundred steps,
 	 * 3,015 bricks) is deliberately ABSENT: it is the largest structure in the suite,
-	 * `AHundredStepCorbelMustComeDown` already lays and cascades it, and nothing this file
-	 * asserts would be truer for having built it a second time.
+	 * `AHundredStepCorbelMustComeDown` already lays and cascades it, and the joint derivation below
+	 * is quadratic in the piece count — nine million candidate pairs for one row that would tell
+	 * this file nothing E36's five hundred bricks do not.
 	 */
 	const FCorbelBuilderRow CorbelBuilderRows[] =
 	{
 		{ TEXT("A: bare stepped arm, four single bricks"),
-			2, 0.0, 4, false, 10 },
+			2, 0.0, 4, false, 10, 0.15612870000000001 },
 
 		{ TEXT("B: the same four-step profile filled solid"),
-			2, 0.0, 4, true, 18 },
+			2, 0.0, 4, true, 18, 0.19516087500000001 },
 
 		{ TEXT("C: filled, ten steps, on the bare two-cell base"),
-			2, 0.0, 10, true, 51 },
+			2, 0.0, 10, true, 51, 0.34481267346093736 },
 
 		{ TEXT("D: case C plus three cells of masonry opposite"),
-			5, CorbelBuilderCounterweightOriginCm, 10, true, 90 },
+			5, CorbelBuilderCounterweightOriginCm, 10, true, 90, 0.34348314000000008 },
 
 		{ TEXT("E35: the last corbel the model says stands"),
-			5, CorbelBuilderCounterweightOriginCm, 35, true, 496 },
+			5, CorbelBuilderCounterweightOriginCm, 35, true, 496, 0.99046165225599581 },
 
 		{ TEXT("E36: the first whose root joint reads over 1.0"),
-			5, CorbelBuilderCounterweightOriginCm, 36, true, 519 },
+			5, CorbelBuilderCounterweightOriginCm, 36, true, 519, 1.0164705641576046 },
 	};
 
 	/** The production spec for a row. */
@@ -375,10 +461,16 @@ namespace CorbelBuilderTestSupport
 }
 
 /**
- * PART ONE: every brick of every case, where the coordinating grid says it goes.
+ * EVERY BRICK OF EVERY CASE, WHERE THE COORDINATING GRID SAYS IT GOES.
  *
- * Independent of the fixture entirely, which is what makes it the half that keeps biting once
- * `CorbelCaseTestSupport.h` has been reduced to an include of production.
+ * THE CLAIM IS INDEPENDENT OF THE FIXTURE; THE TEST IS NOT ENTIRELY. What is asserted about
+ * production is asserted against `CorbelBuilderExpectedBricks`, a second reading of
+ * `claude_plans/CORBEL_CASES.html` written in this file and owing nothing to
+ * `CorbelCaseTestSupport.h`. But the FIXTURE-PRECONDITION block below arbitrates that derivation
+ * against the fixture before using it, and the fixture is now a call to production — so the
+ * precondition compares two runs of one builder and can no longer fail. It is retained as the
+ * statement of what the derivation is answerable to, and it carries no weight: delete it and every
+ * assertion in this test says exactly what it says today.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCorbelBuilderLaysTheGridTest,
@@ -416,9 +508,12 @@ bool FCorbelBuilderLaysTheGridTest::RunTest(const FString& Parameters)
 		 * disagreement is reported as a fixture fault in this file rather than as a defect in the
 		 * builder.
 		 *
-		 * IT IS GREEN BEFORE THE BUILDER EXISTS, WHICH IS THE POINT: it is the thing that says
-		 * the red below is red for the right reason. The bare arm has no fixture and is skipped;
-		 * only its fill differs, and one brick per course needs no arbitration.
+		 * AND IT NO LONGER ARBITRATES ANYTHING, because `CorbelCaseTestSupport::CorbelBuild` is now
+		 * a call to `DestructionCorbel::Build` plus indexing. It was the thing that said the red
+		 * below was red for the right reason while the builder was being moved into production; it
+		 * is kept as the written statement of what this file's derivation is answerable to. The
+		 * bare arm has no fixture and is skipped; only its fill differs, and one brick per course
+		 * needs no arbitration.
 		 */
 		if (Row.bFilled)
 		{
@@ -627,46 +722,57 @@ bool FCorbelBuilderLaysTheGridTest::RunTest(const FString& Parameters)
 }
 
 /**
- * PART TWO: BIT FOR BIT AGAINST THE FIXTURE EVERY EXISTING CORBEL READING WAS TAKEN ON.
+ * EVERY JOINT THE GRID IMPLIES, IN ORDER, AND THE NUMBER THE ROOT ONE THEN READS.
  *
- * THIS IS THE ASSERTION THAT GATES THE MOVE. `Core.Structure.*` and the E-to-J family read
- * `CorbelCaseTestSupport::CorbelBuild` and their expected values are worked to fifteen digits —
- * 2.68132 for the hundred-step arm, a crossover at exactly 36 steps, a ladder of five step sizes
- * whose ORDER is the claim. Every one of those is a statement about a particular arrangement of
- * particular bricks, so a production builder that differs from the fixture by one ulp anywhere is
- * not "a fixture that moved", it is five tests changing their answers at once for no visible
- * reason.
+ * =====================================================================================
+ * WHAT IS ASSERTED, AND WHY THE BRICK TEST ABOVE CANNOT SUBSTITUTE FOR IT
+ * =====================================================================================
  *
- * WHAT IS COMPARED: the piece count, every box centre and extent, every mass, every grounded
- * flag, the whole connection set in ORDER — pairing, normal, area, centre and half-extent — and
- * the root joint's utilisation after a solve. Exact `==` throughout, because "bit-identical" is
- * the claim and a tolerance would let exactly the drift this exists to refuse through.
+ * The bricks and the joints are two separate decisions the producer makes, and only the second
+ * one carries load. Offer `MakeInterface` one course's bed joints fewer and not a single brick
+ * moves: `LaysTheFamilyOnItsGrid` stays green, `HasCompleteGeometry` stays green, the root is
+ * still a `BedBeneath` joint, and every utilisation in the corbel family changes. The suite's
+ * other corbel claims are ordinal — a crossover at 36 steps, a ladder that increases — so a shift
+ * that keeps the family's shape hides inside them.
  *
- * THE BARE ARM IS ABSENT because the fixture header deliberately does not build one; part one is
- * what covers case A.
+ * SO THE CONNECTION SET IS COMPARED ELEMENT FOR ELEMENT, IN ORDER: pairing, normal, area, centre,
+ * half-extent, exact `==`, plus the count. Exact rather than tolerant because the claim is that
+ * production emits THIS set of joints and not one near it, and a tolerance admits precisely the
+ * drift this exists to refuse.
  *
- * AND IT GOES QUIET AFTER THE MOVE. Once `CorbelCaseTestSupport.h` includes production instead of
- * carrying its own copy, this compares a thing with itself. That is the intended end state — the
- * value is spent at the moment of the move — and part one is what remains.
+ * THE ORACLE IS DERIVED THE OTHER WAY ROUND. `CorbelBuilderExpectedJoints` offers EVERY pair of
+ * this file's own derived bricks to `MakeInterface` and keeps what it accepts — "two bricks that
+ * share a face are joined" — where production walks courses and offers only pairs within one and
+ * between adjacent ones. An oracle that repeated production's walk would be worth nothing; this
+ * one is a different statement that happens to have the same answer, and `Core/Corbel.cpp` says in
+ * as many words that its restriction is a cost bound rather than a rule. That sentence is the
+ * thing under test.
  *
- * NEEDS A TICKING WORLD: NO.
+ * =====================================================================================
+ * AND ONE ABSOLUTE READING PER CASE
+ * =====================================================================================
+ *
+ * `Row.ExpectedRootUtilisation` is an ANCHOR and is documented as one — a number somebody wrote
+ * down, from `LEVELS.md` and the scenario reports, that a joint-set change would move even if it
+ * preserved every ordinal claim in the suite. Case A's is the one `COMPOSITE_DEPTH_DESIGN.md`
+ * derives by hand and is the only one with a provenance outside a previous run.
+ *
+ * THE BARE ARM RUNS HERE TOO. Case A is one brick per stepped course — a different load path, a
+ * different joint set, and nothing else in the suite asserts either.
+ *
+ * NEEDS A TICKING WORLD: NO. Boxes, doubles and one arithmetic solve.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCorbelBuilderMatchesTheFixtureTest,
-	"DestructionGame.Core.Corbel.MatchesTheFixtureBitForBit",
+	FCorbelBuilderLaysTheJointsTest,
+	"DestructionGame.Core.Corbel.LaysTheJointsTheGridImplies",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FCorbelBuilderMatchesTheFixtureTest::RunTest(const FString& Parameters)
+bool FCorbelBuilderLaysTheJointsTest::RunTest(const FString& Parameters)
 {
 	using namespace CorbelBuilderTestSupport;
 
 	for (const FCorbelBuilderRow& Row : CorbelBuilderRows)
 	{
-		if (!Row.bFilled)
-		{
-			continue;
-		}
-
 		const DestructionCorbel::FCorbelSpec Spec = CorbelBuilderSpecOf(Row);
 
 		FBrickLayout Laid;
@@ -674,114 +780,60 @@ bool FCorbelBuilderMatchesTheFixtureTest::RunTest(const FString& Parameters)
 		if (!DestructionCorbel::Build(Spec, Laid))
 		{
 			AddError(FString::Printf(
-				TEXT("CASE %s: production must lay this corbel before it can be compared to the ")
-				TEXT("fixture every existing reading was taken on"),
-				Row.Label));
+				TEXT("CASE %s: a %d-step corbel on a %d-cell base must lay before anything can be ")
+				TEXT("asked about its joints"),
+				Row.Label, Row.Steps, Row.BaseCells));
 
 			continue;
 		}
 
-		CorbelCaseTestSupport::FCorbelStructure Fixture;
-
-		if (!CorbelCaseTestSupport::CorbelBuild(CorbelBuilderFixtureSpecOf(Row), Fixture))
-		{
-			AddError(FString::Printf(
-				TEXT("FIXTURE: CASE %s must build through CorbelCaseTestSupport too, or there is ")
-				TEXT("nothing to compare against"),
-				Row.Label));
-
-			continue;
-		}
+		const TArray<FConnection> Expected =
+			CorbelBuilderExpectedJoints(Spec, CorbelBuilderExpectedBricks(Spec));
 
 		TestTrue(
 			*FString::Printf(
-				TEXT("CASE %s: production laid %d pieces and %d joints; the fixture lays %d and %d"),
-				Row.Label, Laid.Structure.NumPieces(), Laid.Structure.NumConnections(),
-				Fixture.Structure.NumPieces(), Fixture.Structure.NumConnections()),
-			Laid.Structure.NumPieces() == Fixture.Structure.NumPieces()
-				&& Laid.Structure.NumConnections() == Fixture.Structure.NumConnections());
+				TEXT("CASE %s: every pair of these %d bricks that shares a face is a joint, which is ")
+				TEXT("%d of them; production laid %d"),
+				Row.Label, Row.ExpectedPieces, Expected.Num(), Laid.Structure.NumConnections()),
+			Laid.Structure.NumConnections() == Expected.Num());
 
-		/* --- every piece, first disagreement only ------------------------------------------- */
-
-		int32 FirstWrongPiece = INDEX_NONE;
-		FString WhyPieceWrong;
-
-		const int32 CommonPieces = FMath::Min(Laid.Boxes.Num(), Fixture.Boxes.Num());
-
-		for (int32 Piece = 0; Piece < CommonPieces; ++Piece)
-		{
-			const FPieceBox& Mine = Laid.Boxes[Piece];
-			const FPieceBox& Theirs = Fixture.Boxes[Piece];
-
-			const bool bSame = Mine.CentreCm == Theirs.CentreCm
-				&& Mine.ExtentCm == Theirs.ExtentCm
-				&& Laid.Structure.GetPiece(Piece).MassKg == Fixture.Structure.GetPiece(Piece).MassKg
-				&& Laid.Structure.GetPiece(Piece).bIsGrounded
-					== Fixture.Structure.GetPiece(Piece).bIsGrounded;
-
-			if (!bSame)
-			{
-				FirstWrongPiece = Piece;
-
-				WhyPieceWrong = FString::Printf(
-					TEXT("production has it at %s, half-extent %s, %s kg, %s; the fixture has it at ")
-					TEXT("%s, half-extent %s, %s kg, %s"),
-					*CorbelBuilderVectorBits(Mine.CentreCm),
-					*CorbelBuilderVectorBits(Mine.ExtentCm),
-					*CorbelBuilderBits(Laid.Structure.GetPiece(Piece).MassKg),
-					Laid.Structure.GetPiece(Piece).bIsGrounded ? TEXT("grounded") : TEXT("free"),
-					*CorbelBuilderVectorBits(Theirs.CentreCm),
-					*CorbelBuilderVectorBits(Theirs.ExtentCm),
-					*CorbelBuilderBits(Fixture.Structure.GetPiece(Piece).MassKg),
-					Fixture.Structure.GetPiece(Piece).bIsGrounded ? TEXT("grounded") : TEXT("free"));
-
-				break;
-			}
-		}
-
-		TestTrue(
-			*FString::Printf(
-				TEXT("CASE %s: every piece must be BIT-IDENTICAL to the fixture's — piece %d is the ")
-				TEXT("first that is not: %s"),
-				Row.Label, FirstWrongPiece,
-				FirstWrongPiece == INDEX_NONE ? TEXT("none is") : *WhyPieceWrong),
-			FirstWrongPiece == INDEX_NONE);
-
-		/* --- and every joint, in order ------------------------------------------------------ */
-
+		/*
+		 * THE FIRST DISAGREEMENT, NOT ALL OF THEM. A corbel that stopped bedding one course would
+		 * otherwise print a thousand failures and bury every other row in this file.
+		 */
 		int32 FirstWrongJoint = INDEX_NONE;
-		FString WhyJointWrong;
+		FString WhyWrong;
 
-		const int32 CommonJoints =
-			FMath::Min(Laid.Structure.NumConnections(), Fixture.Structure.NumConnections());
+		const int32 Common = FMath::Min(Laid.Structure.NumConnections(), Expected.Num());
 
-		for (int32 Joint = 0; Joint < CommonJoints; ++Joint)
+		for (int32 Joint = 0; Joint < Common; ++Joint)
 		{
-			const FConnection& Mine = Laid.Structure.GetConnection(Joint);
-			const FConnection& Theirs = Fixture.Structure.GetConnection(Joint);
+			const FConnection& LaidJoint = Laid.Structure.GetConnection(Joint);
+			const FConnection& Want = Expected[Joint];
 
-			const bool bSame = Mine.PieceA == Theirs.PieceA
-				&& Mine.PieceB == Theirs.PieceB
-				&& Mine.InterfaceNormal == Theirs.InterfaceNormal
-				&& Mine.InterfaceAreaSqCm == Theirs.InterfaceAreaSqCm
-				&& Mine.InterfaceCentreCm == Theirs.InterfaceCentreCm
-				&& Mine.InterfaceHalfExtentCm == Theirs.InterfaceHalfExtentCm;
+			const bool bSame = LaidJoint.PieceA == Want.PieceA
+				&& LaidJoint.PieceB == Want.PieceB
+				&& LaidJoint.InterfaceNormal == Want.InterfaceNormal
+				&& LaidJoint.InterfaceAreaSqCm == Want.InterfaceAreaSqCm
+				&& LaidJoint.InterfaceCentreCm == Want.InterfaceCentreCm
+				&& LaidJoint.InterfaceHalfExtentCm == Want.InterfaceHalfExtentCm;
 
 			if (!bSame)
 			{
 				FirstWrongJoint = Joint;
 
-				WhyJointWrong = FString::Printf(
+				WhyWrong = FString::Printf(
 					TEXT("production joins %d-%d, normal %s, %s cm2, centred %s, half-extent %s; the ")
-					TEXT("fixture joins %d-%d, normal %s, %s cm2, centred %s, half-extent %s"),
-					Mine.PieceA, Mine.PieceB, *CorbelBuilderVectorBits(Mine.InterfaceNormal),
-					*CorbelBuilderBits(Mine.InterfaceAreaSqCm),
-					*CorbelBuilderVectorBits(Mine.InterfaceCentreCm),
-					*CorbelBuilderVectorBits(Mine.InterfaceHalfExtentCm),
-					Theirs.PieceA, Theirs.PieceB, *CorbelBuilderVectorBits(Theirs.InterfaceNormal),
-					*CorbelBuilderBits(Theirs.InterfaceAreaSqCm),
-					*CorbelBuilderVectorBits(Theirs.InterfaceCentreCm),
-					*CorbelBuilderVectorBits(Theirs.InterfaceHalfExtentCm));
+					TEXT("grid joins %d-%d, normal %s, %s cm2, centred %s, half-extent %s"),
+					LaidJoint.PieceA, LaidJoint.PieceB,
+					*CorbelBuilderVectorBits(LaidJoint.InterfaceNormal),
+					*CorbelBuilderBits(LaidJoint.InterfaceAreaSqCm),
+					*CorbelBuilderVectorBits(LaidJoint.InterfaceCentreCm),
+					*CorbelBuilderVectorBits(LaidJoint.InterfaceHalfExtentCm),
+					Want.PieceA, Want.PieceB, *CorbelBuilderVectorBits(Want.InterfaceNormal),
+					*CorbelBuilderBits(Want.InterfaceAreaSqCm),
+					*CorbelBuilderVectorBits(Want.InterfaceCentreCm),
+					*CorbelBuilderVectorBits(Want.InterfaceHalfExtentCm));
 
 				break;
 			}
@@ -789,43 +841,42 @@ bool FCorbelBuilderMatchesTheFixtureTest::RunTest(const FString& Parameters)
 
 		TestTrue(
 			*FString::Printf(
-				TEXT("CASE %s: the connection set must be the fixture's, IN ORDER — joint %d is the ")
-				TEXT("first that is not: %s"),
+				TEXT("CASE %s: the connection set must be the one the coordinating grid implies, IN ")
+				TEXT("ORDER — joint %d is the first that is not: %s"),
 				Row.Label, FirstWrongJoint,
-				FirstWrongJoint == INDEX_NONE ? TEXT("none is") : *WhyJointWrong),
+				FirstWrongJoint == INDEX_NONE ? TEXT("none is") : *WhyWrong),
 			FirstWrongJoint == INDEX_NONE);
 
-		/* --- and the one number every corbel test in the suite is about ---------------------- */
+		/* --- and what those joints then read where the corbel can actually fail -------------- */
 
 		int32 SeatPiece = INDEX_NONE;
 		int32 ArmPiece = INDEX_NONE;
 
 		const int32 RootJoint = CorbelBuilderRootJoint(Spec, Laid, SeatPiece, ArmPiece);
 
-		if (RootJoint == INDEX_NONE || Fixture.RootJoint == INDEX_NONE)
+		if (RootJoint == INDEX_NONE)
 		{
 			AddError(FString::Printf(
-				TEXT("CASE %s: both structures must present a root joint to compare — production ")
-				TEXT("gave %d, the fixture gave %d"),
-				Row.Label, RootJoint, Fixture.RootJoint));
+				TEXT("CASE %s: there must be a bed joint under the arm's lowest outermost brick ")
+				TEXT("(piece %d, on piece %d) for a reading to be taken at"),
+				Row.Label, ArmPiece, SeatPiece));
 
 			continue;
 		}
 
 		Laid.Structure.SolveLoads();
-		Fixture.Structure.SolveLoads();
 
-		const double Mine = Laid.Structure.GetConnectionUtilisation(RootJoint);
-		const double Theirs = Fixture.Structure.GetConnectionUtilisation(Fixture.RootJoint);
+		const double Reading = Laid.Structure.GetConnectionUtilisation(RootJoint);
 
 		TestTrue(
 			*FString::Printf(
-				TEXT("CASE %s: THE ROOT JOINT MUST READ THE SAME NUMBER — production reads %s at ")
-				TEXT("joint %d, the fixture reads %s at joint %d. Every corbel expectation in this ")
-				TEXT("suite is a statement about that number."),
-				Row.Label, *CorbelBuilderBits(Mine), RootJoint, *CorbelBuilderBits(Theirs),
-				Fixture.RootJoint),
-			Mine == Theirs);
+				TEXT("CASE %s: the root joint (%d, between pieces %d and %d) must read %s and reads ")
+				TEXT("%s. This is an ANCHOR: every other corbel claim in the suite is ordinal, so a ")
+				TEXT("joint set that changed while keeping the family's shape would satisfy all of ")
+				TEXT("them and move this."),
+				Row.Label, RootJoint, SeatPiece, ArmPiece,
+				*CorbelBuilderBits(Row.ExpectedRootUtilisation), *CorbelBuilderBits(Reading)),
+			Reading == Row.ExpectedRootUtilisation);
 	}
 
 	return true;
