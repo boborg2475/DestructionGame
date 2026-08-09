@@ -93,5 +93,7 @@ Run against otherwise-unmutated production; expected signatures below. **(b) han
 | (r) | game mode builds but skips `SolveAndPush` | 10 failures — an unsolved wall and free fall are the same answer |
 | — | commit door: `Ref.PieceIndex` instead of `ResolvePiece` | 43 failures in `CommitRefFailsClosed`; menu door variant: 6 in `MenuOffersWhatCanRun` — the two structure-id rows are the only watch on resolve-not-trust |
 | — | `CommitPieceAction`: no-op the `Orphan->Destroy()` | exactly 1 assertion — nothing else can see an orphaned collider |
+| — | one-cell thrust gate, withhold everywhere (`HasArchingAbutment` returns false) | `AOneCellArchMustEarnItsThrust` lime row fails at ~1.29 (10 joints, 5 passes) — the anti-over-withhold half |
+| — | one-cell thrust gate, grant everywhere (restore the pre-gate `HasArchingAbutment`) | same test, dry-stone row: springings read 0.00473 instead of over-capacity, both bricks Supported instead of Falling — failing lines `StructureOneCellThrustTest.cpp:600/683/703` |
 
 Degenerate-fixture note: a row meaning to hit the harness bounds bug must name the **ungrounded** piece first (`{1, INDEX_NONE}`) — `||` short-circuits on a grounded piece 0 and the second handle is never evaluated.

@@ -946,10 +946,34 @@ private:
 	 * seated on both sides of it, so a neighbour carrying that mark has a reaction beyond it and
 	 * the thrust has somewhere to go. Without the mark nothing here changes at all.
 	 *
+	 * AND AN ABUTMENT THE SEAT CANNOT PUSH AGAINST IS NOT AN ABUTMENT. The cap moves the thrust
+	 * line from the overhang to the kern edge, which DELETES a couple of `(1 - k)*|M|` from what
+	 * the joint carries, and nothing on the half-seated brick's free body can supply it except a
+	 * horizontal pair: a push through the head joint above, and its equal and opposite reaction
+	 * as SHEAR in this seat's own bed plane. So the seat has to be able to carry `dM / z`, with z
+	 * the head joint's own height above the bed plane — against `c + mu*sigma_n`, the same
+	 * Mohr-Coulomb envelope ComputeUtilisation measures every other sliding demand against, and
+	 * on the seat's own squeeze. Where it cannot, the relief is WITHHELD and the joint reads what
+	 * it was actually carrying. DESIGN.md §7 gap 4; the ratio is a fact about the bond geometry
+	 * alone — `(e - h/6)/z`, the load having cancelled — so a mortared springing affords it three
+	 * times over at every wall height while dry stone cannot afford it at any.
+	 *
+	 * A SPANNED GROUP IS CHECKED BY BEING PUSHED INSTEAD, so this gate leaves it alone. Where
+	 * ReseatSpannedGroups formed an arch, ApplyArchingThrust puts the real horizontal force on
+	 * both springings once accumulation settles and the ordinary shear axis then measures it; a
+	 * second, withholding check on the same joint would judge the same thrust twice and by two
+	 * different rules. It is the ONE-CELL hole that has no thrust pass of its own — which is why
+	 * the mark that separates the two cases is the same one the paragraph above turns on.
+	 *
 	 * @param PieceIndex            The loaded piece, which must be placed.
 	 * @param BedJoint              Its one seat, which must know its own rectangle: the kern, the
 	 *                              centroid and the plane the eccentricity is measured in all
 	 *                              come off it.
+	 * @param SeatForceUu           What that seat carries, oriented as the joint stores it: the
+	 *                              squeeze the sliding capacity is bought with.
+	 * @param DeletedCoupleUuCm     The couple the cap would delete, `(1 - k)*|M|`, which is what
+	 *                              the thrust has to supply. A magnitude, so the caller's frame
+	 *                              never enters.
 	 * @param PieceJoints           Every joint touching each piece, in ascending index order.
 	 * @param SupportConnections    What holds each piece up, before the reaching-the-ground
 	 *                              filter — the relation "counts among its own supports" means.
@@ -959,6 +983,8 @@ private:
 	bool HasArchingAbutment(
 		int32 PieceIndex,
 		const FConnection& BedJoint,
+		const FVector& SeatForceUu,
+		double DeletedCoupleUuCm,
 		const TArray<TArray<int32>>& PieceJoints,
 		const TArray<TArray<int32>>& SupportConnections,
 		const TArray<bool>& PieceReseatedOnAnArch) const;

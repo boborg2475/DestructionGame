@@ -1232,12 +1232,39 @@ void FStructure::SolveLoads()
 							const double ArchingRelief = Connection.ArchingMomentScale(
 								ConnectionForces[Index], MomentAboutJointUuCm);
 
-							if (ArchingRelief < 1.0
-								&& HasArchingAbutment(
-									Current, Connection, PieceJoints, SupportConnections,
-									PieceReseatedOnAnArch))
+							if (ArchingRelief < 1.0)
 							{
-								MomentAboutJointUuCm *= ArchingRelief;
+								/*
+								 * AND THE COUPLE THE CAP WOULD DELETE IS WHAT SOMETHING ELSE HAS
+								 * TO SUPPLY, so it is handed over with the gates rather than
+								 * left implicit. Capping the moment vector by k removes (1 - k)
+								 * of it, and an arch is only an arch if the thrust that replaces
+								 * it can actually be delivered — HasArchingAbutment measures
+								 * that against the seat's own sliding capacity and refuses to be
+								 * an abutment where it cannot. DESIGN.md §7 gap 4.
+								 *
+								 * THE WHOLE VECTOR'S MAGNITUDE, WHICH IS THE CONSERVATIVE
+								 * READING. A horizontal pair supplies the in-plane part; a
+								 * component about the seat's own normal would be torsion, which
+								 * DESIGN.md §5.3 does not model and which gravity on an
+								 * axis-aligned rectangle never produces. Where the two spellings
+								 * differ this one asks for MORE thrust, so the difference can
+								 * only ever withhold a relief, never grant one.
+								 *
+								 * INSIDE THE RELIEF TEST, which keeps the paragraph above honest:
+								 * an intact wall's seats are relieved by exactly 1 and never pay
+								 * for the square root.
+								 */
+								const double DeletedCoupleUuCm =
+									(1.0 - ArchingRelief) * MomentAboutJointUuCm.Size();
+
+								if (HasArchingAbutment(
+										Current, Connection, ConnectionForces[Index],
+										DeletedCoupleUuCm, PieceJoints, SupportConnections,
+										PieceReseatedOnAnArch))
+								{
+									MomentAboutJointUuCm *= ArchingRelief;
+								}
 							}
 
 							/*
@@ -2236,6 +2263,8 @@ double FStructure::CorbellingBodyDepthCm(
 bool FStructure::HasArchingAbutment(
 	int32 PieceIndex,
 	const FConnection& BedJoint,
+	const FVector& SeatForceUu,
+	double DeletedCoupleUuCm,
 	const TArray<TArray<int32>>& PieceJoints,
 	const TArray<TArray<int32>>& SupportConnections,
 	const TArray<bool>& PieceReseatedOnAnArch) const
@@ -2262,6 +2291,41 @@ bool FStructure::HasArchingAbutment(
 	 */
 	const FVector EccentricCm = FVector::VectorPlaneProject(
 		Pieces[PieceIndex].CentreOfMassCm - BedJoint.InterfaceCentreCm, UnitNormal);
+
+	/*
+	 * HOW HARD THIS SEAT MAY BE PUSHED SIDEWAYS, MPa, AND IT IS BOUGHT WITH THE SEAT'S OWN
+	 * SQUEEZE. The couple the cap deletes leaves through this patch as shear, so what limits it
+	 * is the Mohr-Coulomb envelope ComputeUtilisation already measures every other sliding
+	 * demand against — the bond, plus whatever friction the mean compressive stress is worth.
+	 * Read off the force rather than off the profile's name: a joint with no cohesion earns
+	 * exactly what its friction earns, which is what makes dry stone unable to flat-arch without
+	 * one line anywhere saying so.
+	 *
+	 * ONE CONVERSION, THE NAMED ONE. The force is uu and the strengths are MPa, so the area
+	 * carries the 10000 exactly once and the comparison below is stress against stress.
+	 */
+	const FConnectionLoad SeatLoad = DestructionForce::ClassifyForce(SeatForceUu, UnitNormal);
+
+	const double SeatCompressionMPa = SeatLoad.Compression
+		/ (BedJoint.InterfaceAreaSqCm * DestructionForce::ForceUnitsPerMPaSqCm);
+
+	const double CohesionAndFrictionMPa = BedJoint.Strength.ShearCohesionMPa
+		+ BedJoint.Strength.FrictionCoefficient * SeatCompressionMPa;
+
+	/*
+	 * THE TRUNCATION IS WRITTEN OUT RATHER THAN AS FMath::Min, AND THE ORDER OF THE COMPARISON
+	 * IS THE WHOLE REASON. Min is `(A <= B) ? A : B` (GenericPlatformMath.h) and every comparison
+	 * against a NaN is false, so a NaN capacity handed to it as the first argument would be
+	 * silently REPLACED by the profile's ceiling — which for an unset ceiling is
+	 * TNumericLimits<double>::Max(), an arch afforded by arithmetic nobody can read. Asking
+	 * whether the CEILING is the smaller one keeps a NaN, and a NaN capacity refuses the relief
+	 * at the guard below. Unreachable today, since the caller has already had a finite normal
+	 * stress out of this same joint; spelled so that it would not matter if it had not.
+	 */
+	const double SlidingCapacityMPa =
+		BedJoint.Strength.MaxShearStrengthMPa < CohesionAndFrictionMPa
+			? BedJoint.Strength.MaxShearStrengthMPa
+			: CohesionAndFrictionMPa;
 
 	for (const int32 Index : PieceJoints[PieceIndex])
 	{
@@ -2336,10 +2400,62 @@ bool FStructure::HasArchingAbutment(
 		 * two bricks propping each other that the test above exists to refuse. Without it this
 		 * reads exactly as it did before groups existed.
 		 */
-		if (!bAbutmentLeansOnUs || PieceReseatedOnAnArch[Abutment])
+		if (bAbutmentLeansOnUs && !PieceReseatedOnAnArch[Abutment])
+		{
+			continue;
+		}
+
+		/*
+		 * A SPANNED GROUP IS CHECKED BY BEING PUSHED, SO IT IS NOT CHECKED HERE. Where that mark
+		 * is set, ApplyArchingThrust puts the real horizontal force on both springings once the
+		 * accumulation settles, and the joint's own shear axis measures it like any other demand.
+		 * Judging the same thrust a second time — and by a different rule, since that pass reads
+		 * H off the span and the cover while this reads it off the deleted couple — would answer
+		 * one question twice. The ONE-CELL hole is the case with no thrust pass of its own.
+		 */
+		if (PieceReseatedOnAnArch[Abutment])
 		{
 			return true;
 		}
+
+		/*
+		 * SO THE RELIEF HAS TO BE EARNED, AND WHAT EARNS IT IS THE SEAT'S OWN SLIDING CAPACITY.
+		 *
+		 * Moving the thrust line in to the kern edge deletes a couple of `(1 - k)*|M|` from what
+		 * this joint carries, and on the free body of a half-seated brick nothing can supply it
+		 * except a horizontal pair — a push out through this head joint, and its equal and
+		 * opposite reaction as shear in the bed plane below. The arm between the two is MEASURED
+		 * rather than assumed: the head joint's own centroid above the seat's own centroid, taken
+		 * along the seat's normal so a tilted joint is measured in its own frame instead of in Z.
+		 * For a standard brick and a 1 cm joint that is 3.75 cm, which puts the demand at
+		 * `(e - h/6)/z = 1.0444` of the reaction — a fact about the bond geometry alone, with the
+		 * load cancelled out of it, exactly as the spanned case's `3L/(4*d_e)` is.
+		 *
+		 * WITHHELD RATHER THAN APPLIED, AND THAT IS A CHOICE. Pushing the thrust in as a real
+		 * shear force is the other honest answer and belongs with a re-anchoring pass: it moves
+		 * every one-cell arch in the project by twenty-odd times on an axis that was reading
+		 * zero. Withholding leaves an earned arch bit-identical to what it read before this
+		 * existed, and leaves an unearned one reading what it is actually carrying — which for a
+		 * cohesionless joint outside its kern is a tension it has no strength for at all.
+		 *
+		 * `!(demand <= capacity)` AND NOT `demand > capacity`. Every comparison against a NaN is
+		 * false, so the negated form lands a degenerate arm, a degenerate area or a capacity that
+		 * came back unreadable INSIDE the refusal and the relief is withheld. A joint reading as
+		 * intact when it should read as failed is the expensive direction to be wrong in, and an
+		 * arch granted on arithmetic nobody can interpret is precisely that.
+		 */
+		const double ThrustArmCm = FMath::Abs(
+			FVector::DotProduct(Head.InterfaceCentreCm - BedJoint.InterfaceCentreCm, UnitNormal));
+
+		const double ThrustDemandMPa = DeletedCoupleUuCm
+			/ (ThrustArmCm * BedJoint.InterfaceAreaSqCm * DestructionForce::ForceUnitsPerMPaSqCm);
+
+		if (!(ThrustDemandMPa <= SlidingCapacityMPa))
+		{
+			continue;
+		}
+
+		return true;
 	}
 
 	return false;
