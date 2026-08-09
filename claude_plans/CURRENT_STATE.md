@@ -9,7 +9,7 @@
 
 **This file assumes you already know the design.** [DESIGN.md](DESIGN.md) is the authority on the model, the constants, the anchors and the evolution path; [TRAPS.md](TRAPS.md) holds the live footguns; [LEVELS.md](LEVELS.md) indexes the twenty-nine playable levels. Settled reasoning lives there and in git — not here.
 
-Last updated: **2026-08-08** (plans-folder consolidation; suite state as of the case-11 revert).
+Last updated: **2026-08-09** (review-queue item 1 — the cheap acceptance-suite fixes — built, reviewed and removed).
 
 ## Where the suite stands
 
@@ -17,7 +17,7 @@ Last updated: **2026-08-08** (plans-folder consolidation; suite state as of the 
 
 | Red | What it anchors |
 |---|---|
-| `Acceptance.Wall.Catalogue` — 6 rows: 8, 9, 10, 12, 19, 20 | The model's known-wrong verdicts (downward-only routing / missing stability check — DESIGN §7). The six levels' captions carry the computed `THE MODEL CURRENTLY DISAGREES` marker. |
+| `Acceptance.Wall.Catalogue` — 6 rows: 8, 9, 10, 12, 19, 20 | The model's known-wrong verdicts (downward-only routing / missing stability check — DESIGN §7). The six levels' captions carry the computed `THE MODEL CURRENTLY DISAGREES` marker. Each red row also pins today's behaviour (`DropsToday`/`StrandsToday` in `WallAcceptanceTest.cpp`), so a regression *inside* a known failure fails loudly instead of hiding behind the expected red. |
 | `Acceptance.Wall.MatchedPairs` — 7 vs 8, 7 vs 9 | Cover-depth and span discrimination over the openings |
 | `Acceptance.Wall.StackBondColumnShearIsHeightIndependent` | The model routes a hanging column's whole load to its foot (height-linear, n/2 × 0.0200165); same defect family as the spanned-group head-joint limit. Never changes a verdict below ~106 courses; needs the "load sheds as it rises" design pass before code (see below). |
 | `Core.Structure.CorbelStepsBeforeTensionWins` | A **finding**, not a wrong expectation: the counterweight buys a corbel nothing (C and D cross at 36 steps identically) because masonry behind a joint never reaches it. Goes green at evolution step 5 (tension support). |
@@ -33,7 +33,7 @@ Last updated: **2026-08-08** (plans-folder consolidation; suite state as of the 
 
 1. **The cascade on the world wire.** `SolveAndPush` solves but never breaks; `FStructureBinding::SolveAndBreak` was deliberately **removed, not stubbed** (a stub returning 0 is silent fail-open) and must be re-added with a red test pinning what the binding owes on top of the forward: release what the cascade strands, and return the per-call pass count. The game currently does less than the design says — a joint loaded past capacity never gives in a running game. Also unblocks the deliberately-missing strength-driven integration test (needs a fixture that can actually overload a joint — a mortared wall sits at 0.005 of capacity under gravity). When built, the presenter's "broken (went with a removed piece)" wording becomes a lie — write its failing test in the same slice.
 2. **The 2026-08-08 review queue**, in its approved order — next section.
-3. **Rule on acceptance case 12's residual** (kept 24 named bricks up after composite depth; the rewrite in queue item 2 reframes it as the pier-overturning case, which is DESIGN §7 gaps 1 and 6).
+3. **Rule on acceptance case 12's residual** (kept 24 named bricks up after composite depth; the rewrite in queue item 1 reframes it as the pier-overturning case, which is DESIGN §7 gaps 1 and 6).
 4. **The per-brick joint-force breakout: a human presses Play.** Built end to end and green; the suite proves the model and nothing about the panel (every run is `-nullrhi`, and this project has twice shipped a green suite over something invisible). The check list when someone does: panel legibility (engine-default text, no scroll — a large selection runs off screen), magenta-vs-cyan strength at playing distance, hover routing on the opening frame, whether an entry click is swallowed, the odd reading order (Delete above the readout — accepted for the no-moving-buttons safety property, wants human eyes).
 5. **Scenario system — the switching half.** Restart-current, a tiny lightweight default so the game opens fast (today's default is the 30 × 40 wall, ~190 ms of begin-play), and in-game scenario change (the in-world menu of DESIGN §9). Rows are data; a scenario needing a class is the drift to stop.
 
@@ -41,12 +41,11 @@ Last updated: **2026-08-08** (plans-folder consolidation; suite state as of the 
 
 In sequence (rationale in DESIGN §7):
 
-1. **Cheap acceptance-suite fixes**: assert `IntactPasses == 0` on the six no-cut rows; delete the two tautological `Result.Worst < 1.0` assertions; add `Stranded == 0` as a per-row precondition (the staircase test's pattern); add a characterisation anchor per red catalogue row (e.g. "case 20 drops 69 today") so a regression inside a known failure is visible; split the `KnownDisagreements` tripwire message ("set grew" = regression vs "set changed shape" = corrected expectation — case 11's double ruling is why the distinction matters); caching one solve per case would roughly halve the suite's acceptance cost (the twenty walls are laid ~60× per run).
-2. **Rewrite case 12** as a 6-cell span on 1-cell piers with a survivor region (isolates pier width; stops near-duplicating case 9). The `Case12Cuts` comment claiming case 12 "passes today" is stale — it does not; replace it with the rewrite.
-3. **Leaning-stack acceptance case + interim overturning guard**: a column offset 2 cm/course at 5/10/15/20 courses — stands while the resultant is inside the base. The red test for the missing stability check, and possibly the answer to the open composite-depth courses-crossing-the-plane question. Guard is disposable by design (deleted at evolution step 4).
-4. **Close the fail-open one-cell arching gate** (apply or capacity-check the thrust the moment cap assumes).
-5. **Rigid-block LP as a test oracle only** — the pivotal investment; converts λ, composite depth and the red rows from rulings into measurements.
-6. **Promote equilibrium to cascade authority** → tension support → member failure → arbitrary force (DESIGN §7 path).
+1. **Rewrite case 12** as a 6-cell span on 1-cell piers with a survivor region (isolates pier width; stops near-duplicating case 9). The `Case12Cuts` comment claiming case 12 "passes today" is stale — it does not; replace it with the rewrite.
+2. **Leaning-stack acceptance case + interim overturning guard**: a column offset 2 cm/course at 5/10/15/20 courses — stands while the resultant is inside the base. The red test for the missing stability check, and possibly the answer to the open composite-depth courses-crossing-the-plane question. Guard is disposable by design (deleted at evolution step 4).
+3. **Close the fail-open one-cell arching gate** (apply or capacity-check the thrust the moment cap assumes).
+4. **Rigid-block LP as a test oracle only** — the pivotal investment; converts λ, composite depth and the red rows from rulings into measurements.
+5. **Promote equilibrium to cascade authority** → tension support → member failure → arbitrary force (DESIGN §7 path).
 
 Also queued from the same session: **a deliberately-red hanging acceptance test** (a piece screwed to the underside of a grounded slab — reads Falling today, should stand while EN 1995 withdrawal capacity holds; a second over-capacity row must fall). Makes the currently-dead fastener withdrawal data load-bearing; anchors step 5.
 
@@ -56,7 +55,7 @@ Also queued from the same session: **a deliberately-red hanging acceptance test*
 
 | P | Case | Why |
 |---|---|---|
-| 1 | Leaning/offset stack | queue item 3 — the minimal fixture demanding a stability check |
+| 1 | Leaning/offset stack | queue item 2 — the minimal fixture demanding a stability check |
 | 2 | Compression-vs-shear capacity ratio (one joint, two directions, ~50×) | DESIGN §4 calls it key validation; nothing anywhere does it. Belongs beside `ConnectionStrengthTest` |
 | 3 | L-corner / return (brick out at a corner vs a free end; assert the *relation*) | the solver has never seen two orthogonal joint families |
 | 4 | Lintel over case 7's opening (with/without) | the pair case 7 needs (it fails the published arching gate and is the standing half of three pairs); the model's first spanning member |
@@ -79,7 +78,7 @@ None of these block the list above. Each needs its own red test first; most are 
 - **`AddConnection` happily joins a removed piece** (a tombstone is a valid index) and such a joint is never severed — fail-open, reachable the day anything adds bracing to a damaged wall. One `GraphValidation` row + a guard reusing `IsPieceRemoved`.
 - **A pre-latched `FConnection` can be added through the front door** (`ApplyForce` then `AddConnection`): given, unstamped, invisible to the solver, counted by `NumConnections`. Matters for save/load; reject or accept-and-stamp, red test first.
 - **`CheckCascadeCase` has a spec-vs-structure index desync one level up** — a fixture row `AddPiece` rejects would shift every per-piece assertion onto the wrong piece. Needs a decision on what such a row asserts.
-- **Cycle-division rule absent** (a true voussoir arch still strands; DESIGN §5.1). Deliberately later; make the *reason* observable meanwhile.
+- **Cycle-division rule absent** (a true voussoir arch still strands; DESIGN §5.1). Deliberately later; make the *reason* observable meanwhile. Now observable per acceptance row: cases 10, 12 and 19 strand 3/11/6 **live** pieces — part of those three collapse verdicts is unroutability, not masonry — pinned by `FWallCase::StrandsToday` in `WallAcceptanceTest.cpp` (the other seventeen rows claim zero). Those pins go to zero when this rule lands.
 - **Neither fuzz covers piece removal — the reason to wait has expired.** Extend `Structure.CascadeFuzz`: remove 0–2 seeded pieces before cascading, floor the removing-case count, assert (a joint touching a removed piece has given and carries no stamp) and the converse, plus stamps strictly increasing across a cascade–remove–cascade sequence. Oracle drops the node outright (including grounded-ness) where production severs — the divergence is the value.
 - **`CascadeFuzz` doesn't check a joint broke in the *earliest* deserved pass** — sweep every joint in the pass-N graph and require over-capacity ⇒ stamped exactly N. Its own mutation needed.
 - **`CascadeFuzz` mostly probes the obliterated regime** (median break 9.9× capacity; only ~20% below 2×). Biasing the mass table toward the marginal band is the cheapest improvement; it moves every reported distribution figure, so do it deliberately.
@@ -162,6 +161,7 @@ None of these block the list above. Each needs its own red test first; most are 
 - **CLAUDE.md needs two edits the moment the first functional test lands** (the `+`-joined filter; "a new test is just a new file" scoped to arithmetic tests). Not yet due — no functional test exists.
 - **Promote the integration-test entry rule into CLAUDE.md?** Open call, **owner: the user** (it earned its place by catching a real bug; the case against is CLAUDE.md staying short). Likewise **the visual-run command as Run B** in CLAUDE.md's testing section, owner: the user.
 - **Prune `.claude/settings.local.json`** — a dozen stale single-use permission entries.
+- **`SolveKeyOf` in `WallAcceptanceTest.cpp` prints `-0.0` and `0.0` as distinct cache keys** for identical geometry — one redundant solve at worst, never a wrong answer. Normalise the zero if the key is next touched.
 - **The load fuzz's inline unbreakable strength literal** (`Tests/StructureFuzzTest.cpp`, grep `1.0e9`) — one-line swap to `DestructionProfiles::Unbreakable`; input change, do it deliberately.
 - **Unqualifying the 11 redundant `LayoutTestSupport::`/`StructureFuzzSupport::` qualifications** left from the collision workaround — harmless; belongs to whoever next owns those files.
 - **Watch for the transient** `joint #4 must be carrying a bend … it carries 0.000000` (fired once 2026-08-06 during overlapping builds, never reproduced) — a moment going to exactly zero in a corbel fixture is what a mis-firing arching cap looks like; if it recurs, treat as signal.

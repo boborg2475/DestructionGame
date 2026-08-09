@@ -243,6 +243,42 @@ namespace WallAcceptanceTestSupport
 
 		/** What must keep it. Read only for a collapse; a local loss gets exactness instead. */
 		TArrayView<const FWallRegion> MustStand;
+
+		/**
+		 * HOW MANY PIECES THE MODEL DROPS HERE TODAY — a CHARACTERISATION OF A WRONG ANSWER, set on
+		 * the six known-red rows and INDEX_NONE everywhere else.
+		 *
+		 * IT IS NOT AN EXPECTATION AND IT ENDORSES NOTHING. `MustFall` and `MustStand` above are
+		 * what a real wall does; this is what the solver does instead, measured off a run and
+		 * written down. It exists because a row that is ALREADY RED absorbs a regression silently:
+		 * case 20 is supposed to drop two bricks, drops nine, and would go on failing in exactly
+		 * the same words if a change made it drop ninety. Pinning the count makes the known failure
+		 * a fixed point rather than a hole in the net.
+		 *
+		 * WHEN THE ROW IS FIXED, THIS ANCHOR MUST BE DELETED IN THE SAME EDIT — it will fail, and
+		 * that failure is the reminder. Never "update" it to a new wrong number without saying in
+		 * the change why the model's answer moved.
+		 */
+		int32 DropsToday = INDEX_NONE;
+
+		/**
+		 * HOW MANY LIVE PIECES THE SOLVER CANNOT ROUTE HERE TODAY. Zero is the claim; anything else
+		 * is a CHARACTERISED DEFECT, written down on the row that has it.
+		 *
+		 * DESIGN.md §4 requires a collapse test to assert that nothing is `Stranded` at the moment
+		 * it goes, so that a solver limitation cannot wear a collapse's clothes — and this file had
+		 * never asserted it. Writing it down for the first time on 2026-08-09 found that THREE of
+		 * the six already-red rows do strand: cases 10, 12 and 19 route part of what they drop
+		 * nowhere at all, so part of those three verdicts is the solver declining to divide load
+		 * round a loop rather than masonry failing. That is a finding about the SOLVER and it is
+		 * recorded here rather than hidden by relaxing the assertion off those rows: seventeen of
+		 * the twenty make the plain zero claim, and the three exceptions cannot grow by one piece
+		 * without failing.
+		 *
+		 * WHAT WOULD RETIRE IT: the loop-division rule DESIGN.md §5.1 records as still absent. When
+		 * it lands, these three go to zero and the exceptions are deleted.
+		 */
+		int32 StrandsToday = 0;
 	};
 
 	/* ================================================================================
@@ -500,6 +536,32 @@ namespace WallAcceptanceTestSupport
 		return Fallen;
 	}
 
+	/**
+	 * How many live pieces the solver could not route at all. A PRECONDITION, NEVER A VERDICT.
+	 *
+	 * Stranded means the solver declined to divide load round a loop, so it counts as fallen in
+	 * FallenPieces above for the reason stated there — the piece is not being carried. But a row
+	 * whose verdict was decided by that is a row about the SOLVER'S LIMIT rather than about the
+	 * wall, and reading it as physics is how a solver limitation comes to wear a collapse's
+	 * clothes (DESIGN.md §4). So it is counted separately, printed on every row, and asserted to
+	 * be zero before any verdict is read.
+	 */
+	int32 StrandedCount(const FWall& Wall)
+	{
+		int32 Stranded = 0;
+
+		for (int32 Piece = 0; Piece < Wall.Structure.NumPieces(); ++Piece)
+		{
+			if (!Wall.Structure.IsPieceRemoved(Piece)
+				&& Wall.Structure.GetPieceSupport(Piece) == EPieceSupport::Stranded)
+			{
+				++Stranded;
+			}
+		}
+
+		return Stranded;
+	}
+
 	/** The worst utilisation over the joints still in the structure, and which pair carries it. */
 	double WorstUtilisation(const FWall& Wall, int32& OutPieceA, int32& OutPieceB)
 	{
@@ -573,22 +635,46 @@ namespace WallAcceptanceTestSupport
 		/** Whether the intact wall stood — only meaningful for a case that cuts something. */
 		bool bIntactStood = false;
 
+		/** How many pieces the wall had already dropped BEFORE the player cut anything. */
+		int32 IntactFallen = 0;
+
+		/**
+		 * Read AS BUILT, before anything is removed or broken, because the question is weaker
+		 * afterwards: HasCompleteGeometry is a conjunction over what is still in the structure, so
+		 * a removed piece with no centre of mass and a joint that has given both stop counting.
+		 * Asking after the cut would let exactly the fixture defect this exists to catch through.
+		 */
+		bool bCompleteGeometryAsBuilt = false;
+
 		TArray<int32> Fallen;
+
+		/** Of those, how many the solver could not route rather than could not hold up. */
+		int32 Stranded = 0;
+
 		double Worst = 0.0;
 		int32 WorstPieceA = INDEX_NONE;
 		int32 WorstPieceB = INDEX_NONE;
 	};
 
 	/**
-	 * Lay it, check it stands, cut it, let the cascade run, and report what came down.
+	 * Lay it, cut it, let the cascade run, and record what came down. NO ASSERTIONS AT ALL.
 	 *
-	 * THE INTACT WALL IS CHECKED FIRST AND IT IS NOT DECORATION. A case whose wall was already
+	 * THE INTACT WALL IS SOLVED FIRST AND THAT IS NOT DECORATION. A case whose wall was already
 	 * falling apart before the player touched it measures nothing, and every "stands" row would
-	 * fail for a reason that has nothing to do with the case. It is skipped only for the rows that
-	 * cut NOTHING — the corbels, the header and the intact walls — where the as-built state IS the
-	 * case under test.
+	 * fail for a reason that has nothing to do with the case. What is done with that reading is
+	 * CheckWallFixture's business: a cutting row must have stood before the cut, and a row that
+	 * cuts NOTHING — the corbels, the header and the intact walls — is a case whose as-built state
+	 * IS the thing under test, so the catalogue reads it as a verdict rather than as a precondition.
+	 *
+	 * PURE, SO THAT IT CAN BE CACHED. Six tests in this file ask for the same twenty walls, and the
+	 * walls were being laid and cascaded roughly sixty times a run to answer them. What may be
+	 * shared between two tests is a wall's ANSWER, which is a function of the case and of nothing
+	 * else; what may NEVER be shared is the assertions about it, because a fixture failure that
+	 * fired only for whichever test happened to ask first would be a failure that moves when tests
+	 * are reordered. Hence the split: this half is cached, and the checking half below is re-run,
+	 * against the cached answer, exactly as often as it was before.
 	 */
-	void RunWallCase(FAutomationTestBase& Test, const FWallCase& Case, FWall& OutWall, FWallResult& OutResult)
+	void SolveWallCase(const FWallCase& Case, FWall& OutWall, FWallResult& OutResult)
 	{
 		LayWall(Case, OutWall);
 
@@ -596,42 +682,23 @@ namespace WallAcceptanceTestSupport
 
 		if (OutResult.PiecesLaid == 0)
 		{
-			Test.AddError(FString::Printf(
-				TEXT("case %d (%s): FIXTURE laid no bricks at all"), Case.Number, Case.Title));
-
 			return;
 		}
 
-		Test.TestTrue(
-			*FString::Printf(
-				TEXT("case %d (%s): FIXTURE every brick and every joint must know where it is, or ")
-				TEXT("there are no moments and every corbel reads as centred"),
-				Case.Number, Case.Title),
-			OutWall.Structure.HasCompleteGeometry());
+		OutResult.bCompleteGeometryAsBuilt = OutWall.Structure.HasCompleteGeometry();
 
 		OutResult.IntactPasses = OutWall.Structure.SolveAndBreak();
-		OutResult.bIntactStood = OutResult.IntactPasses == 0 && FallenPieces(OutWall).Num() == 0;
+		OutResult.IntactFallen = FallenPieces(OutWall).Num();
+		OutResult.bIntactStood = OutResult.IntactPasses == 0 && OutResult.IntactFallen == 0;
 
 		if (Case.Cuts.Num() > 0)
 		{
-			Test.TestTrue(
-				*FString::Printf(
-					TEXT("case %d (%s): FIXTURE the wall must stand before the player cuts it; it ")
-					TEXT("broke joints in %d pass(es) and dropped %d piece(s) as built"),
-					Case.Number, Case.Title,
-					OutResult.IntactPasses, FallenPieces(OutWall).Num()),
-				OutResult.bIntactStood);
-
 			const TArray<int32> Cut = CutPieces(Case, OutWall);
 
 			OutResult.PiecesCut = Cut.Num();
 
 			if (Cut.Num() == 0)
 			{
-				Test.AddError(FString::Printf(
-					TEXT("case %d (%s): FIXTURE the cut regions named no brick at all"),
-					Case.Number, Case.Title));
-
 				return;
 			}
 
@@ -644,8 +711,160 @@ namespace WallAcceptanceTestSupport
 		}
 
 		OutResult.Fallen = FallenPieces(OutWall);
+		OutResult.Stranded = StrandedCount(OutWall);
 		OutResult.Worst = WorstUtilisation(OutWall, OutResult.WorstPieceA, OutResult.WorstPieceB);
 		OutResult.bLaid = true;
+	}
+
+	/**
+	 * Everything a row must satisfy before its verdict means anything, asserted once per CALLER.
+	 *
+	 * A wall the fixture laid without geometry, or one that fell down before the player touched it,
+	 * produces a verdict that is about the fixture rather than about the physics — and a red for
+	 * that reason sends whoever reads it chasing a bug that is not there.
+	 */
+	void CheckWallFixture(
+		FAutomationTestBase& Test,
+		const FWallCase& Case,
+		const FWall& Wall,
+		const FWallResult& Result)
+	{
+		if (Result.PiecesLaid == 0)
+		{
+			Test.AddError(FString::Printf(
+				TEXT("case %d (%s): FIXTURE laid no bricks at all"), Case.Number, Case.Title));
+
+			return;
+		}
+
+		Test.TestTrue(
+			*FString::Printf(
+				TEXT("case %d (%s): FIXTURE every brick and every joint must know where it is, or ")
+				TEXT("there are no moments and every corbel reads as centred"),
+				Case.Number, Case.Title),
+			Result.bCompleteGeometryAsBuilt);
+
+		if (Case.Cuts.Num() > 0)
+		{
+			Test.TestTrue(
+				*FString::Printf(
+					TEXT("case %d (%s): FIXTURE the wall must stand before the player cuts it; it ")
+					TEXT("broke joints in %d pass(es) and dropped %d piece(s) as built"),
+					Case.Number, Case.Title,
+					Result.IntactPasses, Result.IntactFallen),
+				Result.bIntactStood);
+
+			if (Result.PiecesCut == 0)
+			{
+				Test.AddError(FString::Printf(
+					TEXT("case %d (%s): FIXTURE the cut regions named no brick at all"),
+					Case.Number, Case.Title));
+
+				return;
+			}
+		}
+
+		/*
+		 * AND NOTHING MAY BE Stranded, WHICH IS THE PRECONDITION THAT MAKES A VERDICT HONEST.
+		 *
+		 * The same claim `Core.Structure.AStaircaseVoidCondemnsTheCorbel` and the collapse rows of
+		 * `Tests/StructureIntegrationTest.cpp` make, and `Acceptance.Beam.Catalogue` makes row by
+		 * row: a Stranded piece is one the solver DECLINED to route round a loop, not one the wall
+		 * failed to hold up. `FallenPieces` folds the two together on purpose — a piece nothing is
+		 * carrying comes down either way — so without this the two are indistinguishable inside a
+		 * verdict, and a row could name exactly the right bricks for entirely the wrong reason.
+		 *
+		 * WRITTEN AGAINST THE ROW'S OWN FIGURE RATHER THAN AGAINST A BARE ZERO, because three rows
+		 * are not zero: see FWallCase::StrandsToday for what that means and why it is recorded on
+		 * the rows instead of being relaxed away. Seventeen of the twenty make the plain claim.
+		 */
+		Test.TestEqual(
+			*FString::Printf(
+				TEXT("case %d (%s): FIXTURE %s — a verdict decided by the solver declining to divide ")
+				TEXT("load round a loop is a statement about the solver rather than about the wall, ")
+				TEXT("and %d of the %d piece(s) that came down here got there that way"),
+				Case.Number, Case.Title,
+				Case.StrandsToday == 0
+					? TEXT("no live piece may be Stranded")
+					: *FString::Printf(
+						TEXT("this row is CHARACTERISED as stranding %d live piece(s) — a known ")
+						TEXT("solver limitation, not an expectation"),
+						Case.StrandsToday),
+				Result.Stranded, Result.Fallen.Num()),
+			Result.Stranded, Case.StrandsToday);
+	}
+
+	/** One wall and what it did — the unit the cache hands out and every caller reads. */
+	struct FSolvedWall
+	{
+		FWall Wall;
+		FWallResult Result;
+	};
+
+	/**
+	 * EVERYTHING THE SOLVE READS OFF A CASE, AND NOTHING ELSE — which is what makes it a key.
+	 *
+	 * `LayWall` reads the course count, the cell count and (through `CourseGeometry`) the bond, the
+	 * corbel and the projecting course; `CutPieces` reads the cut regions. It reads no other field,
+	 * so two cases agreeing on these are the same wall cut the same way and CANNOT differ in their
+	 * answer. The number is deliberately NOT part of the key: the height ladder in
+	 * `StackBondColumnShearIsHeightIndependent` builds its own case 18 at ten courses, which is the
+	 * catalogue's case 18 brick for brick, and its sixteen-course sibling differs here in the first
+	 * field. Verdicts, titles and the named fall regions are NOT part of it either, because the
+	 * solver never sees them — they are what the assertions compare the answer against.
+	 */
+	FString SolveKeyOf(const FWallCase& Case)
+	{
+		FString Key = FString::Printf(
+			TEXT("%d|%d|%d|%d|%.17g|%d"),
+			Case.Courses, Case.Cells, static_cast<int32>(Case.Bond),
+			Case.CorbelFromCourse, Case.CorbelStepCm, Case.ProjectingCourse);
+
+		for (const FWallRegion& Region : Case.Cuts)
+		{
+			Key += FString::Printf(
+				TEXT("|%d,%d,%.17g,%.17g"),
+				Region.CourseLo, Region.CourseHi, Region.CellLo, Region.CellHi);
+		}
+
+		return Key;
+	}
+
+	/**
+	 * The answer for this wall, laid and cascaded ONCE however many tests ask for it.
+	 *
+	 * HELD BY POINTER RATHER THAN BY VALUE because a TMap moves its values when it grows, and every
+	 * caller here holds a reference across the rest of its own test. It outlives the run rather than
+	 * the test, which costs twenty-one walls of memory and is safe for the same reason the cache is
+	 * sound at all: the answer is a pure function of the key, so a second run in the same process
+	 * recomputes nothing and reads exactly what the first one would have computed.
+	 */
+	const FSolvedWall& SolvedWallCase(const FWallCase& Case)
+	{
+		static TMap<FString, TUniquePtr<FSolvedWall>> Cache;
+
+		const FString Key = SolveKeyOf(Case);
+
+		if (TUniquePtr<FSolvedWall>* Found = Cache.Find(Key))
+		{
+			return *Found->Get();
+		}
+
+		TUniquePtr<FSolvedWall> Solved = MakeUnique<FSolvedWall>();
+
+		SolveWallCase(Case, Solved->Wall, Solved->Result);
+
+		return *Cache.Add(Key, MoveTemp(Solved)).Get();
+	}
+
+	/** The cached answer, with this caller's own copy of the fixture preconditions run over it. */
+	const FSolvedWall& RunWallCase(FAutomationTestBase& Test, const FWallCase& Case)
+	{
+		const FSolvedWall& Solved = SolvedWallCase(Case);
+
+		CheckWallFixture(Test, Case, Solved.Wall, Solved.Result);
+
+		return Solved;
 	}
 
 	/** One line per case, whether it passed or not, so the whole set reads off the log. */
@@ -656,11 +875,11 @@ namespace WallAcceptanceTestSupport
 		const FWallResult& Result)
 	{
 		Test.AddInfo(FString::Printf(
-			TEXT("case %02d %-44s expected %-10s | laid %d, cut %d, passes %d(+%d), fell %d %s, ")
-			TEXT("worst %.6g%s"),
+			TEXT("case %02d %-44s expected %-10s | laid %d, cut %d, passes %d(+%d), fell %d (%d ")
+			TEXT("stranded) %s, worst %.6g%s"),
 			Case.Number, Case.Title, VerdictName(Case.Verdict),
 			Result.PiecesLaid, Result.PiecesCut, Result.IntactPasses, Result.CutPasses,
-			Result.Fallen.Num(), *DescribePieces(Wall, Result.Fallen),
+			Result.Fallen.Num(), Result.Stranded, *DescribePieces(Wall, Result.Fallen),
 			Result.Worst,
 			Result.WorstPieceA == INDEX_NONE
 				? TEXT("")
@@ -1117,15 +1336,37 @@ namespace WallAcceptanceTestSupport
 			CoveredCourses, StandardCells, FourCellOpening, {}, {},
 			TEXT("cover vs 8, span vs 9, abutment vs 10"));
 
+		/*
+		 * THE SIX KNOWN REDS EACH CARRY A CHARACTERISATION OF TODAY'S WRONG ANSWER, measured off a
+		 * run on 2026-08-09 and not guessed. See FWallCase::DropsToday: these numbers say what the
+		 * model DOES, never what it should do, and each is deleted by whichever slice fixes its row.
+		 *
+		 * 8 and 9 drop NOTHING where a course should drop and a wall should come down; the other
+		 * four drop the wrong amount. Two of the four drop too FEW (10 and 19 stop the spreading
+		 * front short of the named region) and two drop too MANY (12 takes 76 where it should take
+		 * everything but names no survivors, 20 takes nine teeth where the user ruled two).
+		 */
 		Add(8, TEXT("Four-brick opening, one course over"), EVerdict::LocalLoss,
-			5, StandardCells, FourCellOpening, Case8Falls, {}, TEXT("depth of cover, against case 7"));
+			5, StandardCells, FourCellOpening, Case8Falls, {}, TEXT("depth of cover, against case 7"))
+			.DropsToday = 0;
 
 		Add(9, TEXT("Ten-brick opening, eight courses over"), EVerdict::Collapse,
-			CoveredCourses, 14, Case9Cuts, Case9Falls, Case9Stands, TEXT("span, against case 7"));
+			CoveredCourses, 14, Case9Cuts, Case9Falls, Case9Stands, TEXT("span, against case 7"))
+			.DropsToday = 0;
 
-		Add(10, TEXT("Opening at a free end, no abutment"), EVerdict::Collapse,
-			CoveredCourses, StandardCells, Case10Cuts, Case10Falls, Case10Stands,
-			TEXT("abutment, against case 7"));
+		/*
+		 * AND THREE OF THE SIX ALSO STRAND, WHICH IS A SEPARATE AND SHARPER FINDING — see
+		 * FWallCase::StrandsToday. Of the twelve pieces case 10 drops, three are pieces the solver
+		 * could not route rather than pieces the wall could not hold.
+		 */
+		{
+			FWallCase& Case = Add(10, TEXT("Opening at a free end, no abutment"), EVerdict::Collapse,
+				CoveredCourses, StandardCells, Case10Cuts, Case10Falls, Case10Stands,
+				TEXT("abutment, against case 7"));
+
+			Case.DropsToday = 12;
+			Case.StrandsToday = 3;
+		}
 
 		/* C — spanning between supports. */
 
@@ -1143,9 +1384,14 @@ namespace WallAcceptanceTestSupport
 			CoveredCourses, StandardCells, Case11Cuts, {}, {},
 			TEXT("pier width, against case 12"));
 
-		Add(12, TEXT("The same span on one-brick piers"), EVerdict::Collapse,
-			CoveredCourses, StandardCells, Case12Cuts, Case12Falls, {},
-			TEXT("pier width, against case 11"));
+		{
+			FWallCase& Case = Add(12, TEXT("The same span on one-brick piers"), EVerdict::Collapse,
+				CoveredCourses, StandardCells, Case12Cuts, Case12Falls, {},
+				TEXT("pier width, against case 11"));
+
+			Case.DropsToday = 76;
+			Case.StrandsToday = 11;
+		}
 
 		/* D — corbelling, and the header that is held down by what sits on it. */
 
@@ -1215,11 +1461,18 @@ namespace WallAcceptanceTestSupport
 
 		/* F — losing the base, and the staircase void. */
 
-		Add(19, TEXT("Bottom course out under half the wall"), EVerdict::Collapse,
-			10, StandardCells, Case19Cuts, Case19Falls, Case19Stands, nullptr);
+		{
+			FWallCase& Case = Add(19, TEXT("Bottom course out under half the wall"),
+				EVerdict::Collapse, 10, StandardCells, Case19Cuts, Case19Falls, Case19Stands,
+				nullptr);
+
+			Case.DropsToday = 34;
+			Case.StrandsToday = 6;
+		}
 
 		Add(20, TEXT("Staircase void"), EVerdict::LocalLoss,
-			CoveredCourses, 14, Case20Cuts, Case20Falls, {}, nullptr);
+			CoveredCourses, 14, Case20Cuts, Case20Falls, {}, nullptr)
+			.DropsToday = 9;
 
 		return Cases;
 	}
@@ -1607,10 +1860,10 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 
 	for (const FWallCase& Case : Cases)
 	{
-		FWall Wall;
-		FWallResult Result;
+		const FSolvedWall& Solved = RunWallCase(*this, Case);
 
-		RunWallCase(*this, Case, Wall, Result);
+		const FWall& Wall = Solved.Wall;
+		const FWallResult& Result = Solved.Result;
 
 		ReportWallCase(*this, Case, Wall, Result);
 
@@ -1653,6 +1906,33 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 					TEXT("laid %d, cut %d, live %d"),
 					*Where, Result.PiecesLaid, Result.PiecesCut, Wall.Structure.NumLivePieces()),
 				Wall.Structure.NumLivePieces(), Result.PiecesLaid - Result.PiecesCut);
+
+			/*
+			 * AND ON A ROW THAT CUTS NOTHING, THE INTACT SOLVE IS THE ONLY SOLVE THERE IS.
+			 *
+			 * `CutPasses` above is STRUCTURALLY ZERO on the six no-cut rows — 1, 13, 14, 15, 16 and
+			 * 17 — because the whole block that sets it is inside `if (Case.Cuts.Num() > 0)`, so
+			 * the "no joint over the cut gave" half of a STANDS verdict was asserting nothing at
+			 * all on exactly the rows whose as-built state IS the case under test. A corbel that
+			 * peeled every joint it stands on while nothing lost its footing would have read as a
+			 * clean pass.
+			 *
+			 * The cutting rows already make this claim, harder, in `CheckWallFixture`: an intact
+			 * wall that broke joints or dropped pieces before the player touched it fails the
+			 * precondition there. So this is the same claim on the rows that precondition skips,
+			 * and it is written here rather than there because on a no-cut row it is a VERDICT and
+			 * not a fixture check.
+			 */
+			if (Case.Cuts.Num() == 0)
+			{
+				TestEqual(
+					*FString::Printf(
+						TEXT("%s: STANDS means no joint gave as the wall was BUILT either — this row ")
+						TEXT("cuts nothing, so the intact cascade is the whole case and it ran %d ")
+						TEXT("breaking pass(es)"),
+						*Where, Result.IntactPasses),
+					Result.IntactPasses, 0);
+			}
 
 			break;
 		}
@@ -1744,6 +2024,33 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 
 			break;
 		}
+		}
+
+		/*
+		 * AND THE SIX KNOWN REDS ARE PINNED TO THE WRONG ANSWER THEY GIVE TODAY.
+		 *
+		 * THIS ASSERTS NOTHING ABOUT PHYSICS AND ENDORSES NOTHING. The row above has already
+		 * failed; what this adds is that the failure has a FIXED SIZE. A red row is otherwise a
+		 * hole in the net — case 20 fails in identical words whether it drops nine bricks or
+		 * ninety, so a change that made the model twice as wrong would land inside a known failure
+		 * and never be seen. Measured on 2026-08-09, one number per red row, never guessed.
+		 *
+		 * A ROW THAT GETS FIXED FAILS HERE, AND THAT IS THE POINT: the slice that fixes it deletes
+		 * the row's `DropsToday` in the same edit, exactly as it must delete the level caption's
+		 * disagreement marker and the entry in the caption test's known-red list.
+		 */
+		if (Case.DropsToday != INDEX_NONE)
+		{
+			TestEqual(
+				*FString::Printf(
+					TEXT("%s: CHARACTERISATION of a KNOWN RED — the model drops %d piece(s) here ")
+					TEXT("today against the %s the catalogue asks for, and that count is pinned so a ")
+					TEXT("regression inside a known failure is visible. It dropped %d: %s. If a slice ")
+					TEXT("just fixed this row, delete its DropsToday; if nothing here was meant to ")
+					TEXT("change, the model's answer has moved and something else moved it."),
+					*Where, Case.DropsToday, VerdictName(Case.Verdict),
+					Result.Fallen.Num(), *DescribePieces(Wall, Result.Fallen)),
+				Result.Fallen.Num(), Case.DropsToday);
 		}
 	}
 
@@ -1847,11 +2154,9 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
-			FWall Wall;
-			FWallResult Result;
+			const FSolvedWall& Solved = RunWallCase(*this, Case);
 
-			RunWallCase(*this, Case, Wall, Result);
-			bOutRan = Result.bLaid;
+			bOutRan = Solved.Result.bLaid;
 
 			/*
 			 * READ OFF THE CATALOGUE ROW, NEVER LISTED HERE. Whether the lesser half of a pair may
@@ -1862,7 +2167,7 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 			 */
 			bOutMustLoseNothing = Case.Verdict == EVerdict::Stands;
 
-			return Result.Fallen.Num();
+			return Solved.Result.Fallen.Num();
 		}
 
 		AddError(FString::Printf(TEXT("FIXTURE: the catalogue has no case %d"), Number));
@@ -1974,7 +2279,7 @@ bool FWallAcceptanceCorbelProjectionTest::RunTest(const FString& Parameters)
 
 	const TArray<FWallCase> Cases = AllWallCases();
 
-	auto RunNumbered = [this, &Cases](int32 Number, FWall& OutWall, FWallResult& OutResult) -> bool
+	auto RunNumbered = [this, &Cases](int32 Number) -> const FSolvedWall*
 	{
 		for (const FWallCase& Case : Cases)
 		{
@@ -1983,27 +2288,31 @@ bool FWallAcceptanceCorbelProjectionTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
-			RunWallCase(*this, Case, OutWall, OutResult);
-			ReportWallCase(*this, Case, OutWall, OutResult);
+			const FSolvedWall& Solved = RunWallCase(*this, Case);
+			ReportWallCase(*this, Case, Solved.Wall, Solved.Result);
 
-			return OutResult.bLaid;
+			return Solved.Result.bLaid ? &Solved : nullptr;
 		}
 
 		AddError(FString::Printf(TEXT("FIXTURE: the catalogue has no case %d"), Number));
 
-		return false;
+		return nullptr;
 	};
 
-	FWall QuarterWall;
-	FWallResult QuarterResult;
+	/* Short-circuited deliberately: a case 13 that could not be laid says nothing about case 14. */
+	const FSolvedWall* const Quarter = RunNumbered(13);
+	const FSolvedWall* const Half = Quarter == nullptr ? nullptr : RunNumbered(14);
 
-	FWall HalfWall;
-	FWallResult HalfResult;
-
-	if (!RunNumbered(13, QuarterWall, QuarterResult) || !RunNumbered(14, HalfWall, HalfResult))
+	if (Half == nullptr)
 	{
 		return true;
 	}
+
+	const FWall& QuarterWall = Quarter->Wall;
+	const FWallResult& QuarterResult = Quarter->Result;
+
+	const FWall& HalfWall = Half->Wall;
+	const FWallResult& HalfResult = Half->Result;
 
 	/* --- neither corbel comes down, which is the ruling ------------------------------------- */
 
@@ -2054,13 +2363,19 @@ bool FWallAcceptanceCorbelProjectionTest::RunTest(const FString& Parameters)
 	/*
 	 * AND THE OUTCOME FOLLOWS FROM THE NUMBER RATHER THAN THE OTHER WAY ROUND. 0.195 is a fifth of
 	 * capacity; the verdict in the catalogue is "stands" BECAUSE of this, not beside it.
+	 *
+	 * THE `Worst < 1.0` ROW THAT USED TO SAY SO WAS DELETED ON 2026-08-09 AS A TAUTOLOGY, and it is
+	 * worth writing down why so nobody puts it back thinking the claim went with it. `Worst` is
+	 * `WorstUtilisation`, which SKIPS every joint that has given and reads the rest through
+	 * `GetConnectionUtilisation`; `RunWallCase` gets it from `SolveAndBreak`, whose last pass is by
+	 * definition one that broke nothing — that pass evaluated every surviving joint through
+	 * `FConnection::ApplyForce`, on the same three solver arrays this accessor reads, and none of
+	 * them latched. Giving is spelled `!(u <= 1.0)`, so EVERY joint the maximum can be taken over
+	 * is already known to be at most 1.0 and the assertion could only ever have failed on a joint
+	 * sitting at exactly 1.0 — which the exact-value assertion above, pinning 0.195160875 to 1e-9,
+	 * would have failed on first and far more loudly. What makes the verdict follow from the number
+	 * is that assertion, not a bound the cascade already guarantees.
 	 */
-	TestTrue(
-		*FString::Printf(
-			TEXT("and that is why the verdict is STANDS: the worst joint in the wall is %.6g of ")
-			TEXT("capacity and must be under 1"),
-			HalfResult.Worst),
-		HalfResult.Worst < 1.0);
 
 	/* --- the pair's own claim: projection is still measured --------------------------------- */
 
@@ -2207,7 +2522,7 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
 
 	const TArray<FWallCase> Cases = AllWallCases();
 
-	auto RunNumbered = [this, &Cases](int32 Number, FWall& OutWall, FWallResult& OutResult) -> bool
+	auto RunNumbered = [this, &Cases](int32 Number) -> const FSolvedWall*
 	{
 		for (const FWallCase& Case : Cases)
 		{
@@ -2216,27 +2531,31 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
-			RunWallCase(*this, Case, OutWall, OutResult);
-			ReportWallCase(*this, Case, OutWall, OutResult);
+			const FSolvedWall& Solved = RunWallCase(*this, Case);
+			ReportWallCase(*this, Case, Solved.Wall, Solved.Result);
 
-			return OutResult.bLaid;
+			return Solved.Result.bLaid ? &Solved : nullptr;
 		}
 
 		AddError(FString::Printf(TEXT("FIXTURE: the catalogue has no case %d"), Number));
 
-		return false;
+		return nullptr;
 	};
 
-	FWall LoadedWall;
-	FWallResult LoadedResult;
+	/* Short-circuited deliberately: a case 15 that could not be laid says nothing about case 16. */
+	const FSolvedWall* const Loaded = RunNumbered(15);
+	const FSolvedWall* const Bare = Loaded == nullptr ? nullptr : RunNumbered(16);
 
-	FWall BareWall;
-	FWallResult BareResult;
-
-	if (!RunNumbered(15, LoadedWall, LoadedResult) || !RunNumbered(16, BareWall, BareResult))
+	if (Bare == nullptr)
 	{
 		return true;
 	}
+
+	const FWall& LoadedWall = Loaded->Wall;
+	const FWallResult& LoadedResult = Loaded->Result;
+
+	const FWall& BareWall = Bare->Wall;
+	const FWallResult& BareResult = Bare->Result;
 
 	/* --- neither header comes down, which is the revision ------------------------------------ */
 
@@ -2304,13 +2623,14 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
 	/*
 	 * AND THE OUTCOME FOLLOWS FROM THE NUMBER RATHER THAN THE OTHER WAY ROUND. 0.058 is a sixth of
 	 * capacity; the verdict in the catalogue is "stands" BECAUSE of this, not beside it.
+	 *
+	 * THE `Worst < 1.0` ROW THAT USED TO SAY SO WAS DELETED ON 2026-08-09 AS A TAUTOLOGY, for the
+	 * reason written out in full beside case 14's copy of it in
+	 * Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome: `SolveAndBreak` returns only
+	 * when a pass breaks nothing, so every joint `WorstUtilisation` is allowed to look at has
+	 * already been evaluated at most 1.0 by the break sweep itself. What makes the verdict follow
+	 * from the number is the exact-value assertion above, which pins 0.058203838191552663 to 1e-9.
 	 */
-	TestTrue(
-		*FString::Printf(
-			TEXT("and that is why the verdict is STANDS: the worst joint in the wall is %.6g of ")
-			TEXT("capacity and must be under 1"),
-			BareResult.Worst),
-		BareResult.Worst < 1.0);
 
 	/* --- the pair's own claim: superimposed load is still measured ---------------------------- */
 
@@ -2437,10 +2757,11 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 		Case.Bond = EBond::Stack;
 		Case.Cuts = Case18Cuts;
 
-		FWall Wall;
-		FWallResult Result;
+		const FSolvedWall& Solved = RunWallCase(*this, Case);
 
-		RunWallCase(*this, Case, Wall, Result);
+		const FWall& Wall = Solved.Wall;
+		const FWallResult& Result = Solved.Result;
+
 		ReportWallCase(*this, Case, Wall, Result);
 
 		if (!Result.bLaid)
@@ -3046,9 +3367,9 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	 * because an EXPECTATION moved rather than because anything regressed — ruled down on BS 5977's
 	 * arching gate, then re-ruled up when the user directed that a published design threshold is not
 	 * a collapse predictor and the physics was worked honestly. Worth leaving on the record here:
-	 * this set moving is nearly always a verdict being corrected, and PROJECT_REVIEW.md §3 item 5
-	 * asks for the tripwire message below to distinguish "the set GREW" from "the set changed shape"
-	 * for exactly that reason.
+	 * this set moving is nearly always a verdict being corrected, which is why the tripwire at the
+	 * bottom of this test is TWO assertions rather than one — "the set grew" and "the set changed
+	 * shape" are opposite pieces of news and used to fail in identical words.
 	 */
 	const int32 KnownDisagreements[] = { 8, 9, 10, 12, 19, 20 };
 
@@ -3074,10 +3395,10 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 		 * moment somebody was relying on it to caption twenty of them. Run this way it reproduces
 		 * the six known reds on the day it is written.
 		 */
-		FWall Wall;
-		FWallResult Result;
+		const FSolvedWall& Solved = RunWallCase(*this, Case);
 
-		RunWallCase(*this, Case, Wall, Result);
+		const FWall& Wall = Solved.Wall;
+		const FWallResult& Result = Solved.Result;
 
 		if (!Result.bLaid)
 		{
@@ -3175,15 +3496,69 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	const FString DisagreedText = NumberList(Disagreed);
 	const FString KnownText = NumberList(Known);
 
+	/*
+	 * TWO FAILURES, NOT ONE, BECAUSE THE TWO WAYS THIS SET CAN MOVE MEAN OPPOSITE THINGS.
+	 *
+	 * The single `Disagreed == Known` row this replaces said only "these differ", and the two
+	 * things it was reading are not the same event at all:
+	 *
+	 *   GREW    a row the model used to get RIGHT now reads wrong. Nothing about the expectations
+	 *           moved, so either the solver regressed or a verdict was just re-ruled and this list
+	 *           has not caught up. Read it as a REGRESSION until the diff proves otherwise.
+	 *   SHRANK  a row on the known-red list now reads right. A slice fixed it — or an expectation
+	 *           was corrected to what the model already did — and the paperwork is owed: this list,
+	 *           the caption's disagreement marker, and the row's `DropsToday` anchor in
+	 *           Acceptance.Wall.Catalogue all have to come off together.
+	 *
+	 * CASE 11 IS WHY THIS DISTINCTION IS WORTH A SECOND ASSERTION. It was ruled down to a local
+	 * loss on 2026-08-08 and back to "stands" the same day; both edits moved this set while the
+	 * solver did not change by one line, and a message reading "these differ" made the good news
+	 * and the bad news look identical.
+	 *
+	 * TOGETHER THEY ARE STILL EXACTLY SET EQUALITY — every number appears at most once on either
+	 * side, so mutual containment is the same claim the one row made, split by direction.
+	 */
+	TArray<int32> Grew;
+
+	for (const int32 Number : Disagreed)
+	{
+		if (!Known.Contains(Number))
+		{
+			Grew.Add(Number);
+		}
+	}
+
+	TArray<int32> Shrank;
+
+	for (const int32 Number : Known)
+	{
+		if (!Disagreed.Contains(Number))
+		{
+			Shrank.Add(Number);
+		}
+	}
+
 	TestTrue(
 		*FString::Printf(
-			TEXT("TRIPWIRE: the rows this test reads as wrong must be exactly the six ")
-			TEXT("Acceptance.Wall.Catalogue fails on — it read {%s}, the known reds are {%s}. If a ")
-			TEXT("slice fixed one, its caption must stop admitting a disagreement and this list must ")
-			TEXT("shrink with it; if they differ any other way, this test's reading of a verdict has ")
-			TEXT("drifted from the catalogue's and a level is being captioned by the wrong rule."),
-			*DisagreedText, *KnownText),
-		Disagreed == Known);
+			TEXT("TRIPWIRE — THE SET GREW: case(s) {%s} read WRONG here and are not on the known-red ")
+			TEXT("list. Nothing on that list was expected to grow on its own, so this is a ")
+			TEXT("REGRESSION until proved otherwise: the model now disagrees somewhere it used to ")
+			TEXT("agree, or this test's reading of a verdict has drifted from Acceptance.Wall.")
+			TEXT("Catalogue's and a level is being captioned by the wrong rule. (It read {%s}, the ")
+			TEXT("known reds are {%s}.) A verdict that was deliberately re-ruled lands here too — if ")
+			TEXT("that is what happened, the same change must add the row to the list."),
+			*NumberList(Grew), *DisagreedText, *KnownText),
+		Grew.Num() == 0);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("TRIPWIRE — THE SET CHANGED SHAPE: case(s) {%s} are on the known-red list and the ")
+			TEXT("model now AGREES with them. That is a row being FIXED or an expectation being ")
+			TEXT("corrected, not a regression — and it is unfinished paperwork: the same change owes ")
+			TEXT("this list, the level caption's '%s' marker, and the row's DropsToday anchor in ")
+			TEXT("Acceptance.Wall.Catalogue. (It read {%s}, the known reds are {%s}.)"),
+			*NumberList(Shrank), ModelDisagreesMarker, *DisagreedText, *KnownText),
+		Shrank.Num() == 0);
 
 	return true;
 }
