@@ -286,7 +286,7 @@ namespace DestructionScenarios
 	/* --- C: spanning between supports. ------------------------------------------------------- */
 
 	const DestructionWallCases::FWallRegion ScenariosWall11Cuts[] = { { 0, 3, 2.75, 8.25 } };
-	const DestructionWallCases::FWallRegion ScenariosWall12Cuts[] = { { 0, 3, 0.75, 10.75 } };
+	const DestructionWallCases::FWallRegion ScenariosWall12Cuts[] = { { 0, 3, 0.75, 6.25 } };
 
 	/* --- E and F: the bond, the lost base, and the staircase void. ---------------------------- */
 
@@ -435,10 +435,13 @@ namespace DestructionScenarios
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall11Cuts },
 
-		{ TEXT("wall-12"), TEXT("Lvl_Wall12"), TEXT("The same span on one-brick piers"),
-			TEXT("The same clear span, but the piers are cut back to ONE cell each. Expected: "
-				"COLLAPSE — a single brick of bearing cannot take the thrust the span puts on it. "
-				"THE MODEL CURRENTLY DISAGREES: a column of masonry over each pier stays standing."),
+		{ TEXT("wall-12"), TEXT("Lvl_Wall12"), TEXT("The same span on a one-brick pier"),
+			TEXT("Case 11's own six-brick clear span, but the LEFT pier is cut back to ONE cell — a "
+				"bonded column four courses to the springing — while the right side keeps its five. "
+				"Expected: STANDS — the panel's own weight puts a modest ~400 N of thrust on the "
+				"narrow pier, and the bonded pier resists four to eight times that. A garden-wall "
+				"opening on a single 215 mm jamb under 60 cm of bonded brickwork is common "
+				"construction, and it stands."),
 			ScenariosWallCoveredCourses, ScenariosWallStandardCells,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall12Cuts },

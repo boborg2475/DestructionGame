@@ -123,7 +123,7 @@ the verdict the acceptance test asserts.
 | `Lvl_Wall09` | `wall-09` | Ten-brick opening, eight courses over |
 | `Lvl_Wall10` | `wall-10` | Opening at a free end, no abutment |
 | `Lvl_Wall11` | `wall-11` | Wall on two piers, six-brick clear span |
-| `Lvl_Wall12` | `wall-12` | The same span on one-brick piers |
+| `Lvl_Wall12` | `wall-12` | The same span on a one-brick pier |
 | `Lvl_Wall13` | `wall-13` | Corbel, quarter brick per course |
 | `Lvl_Wall14` | `wall-14` | Corbel, half brick per course |
 | `Lvl_Wall15` | `wall-15` | Header out half a brick, six courses on top |
@@ -133,9 +133,9 @@ the verdict the acceptance test asserts.
 | `Lvl_Wall19` | `wall-19` | Bottom course out under half the wall |
 | `Lvl_Wall20` | `wall-20` | Staircase void |
 
-### Six of these levels contradict the model, and say so
+### Five of these levels contradict the model, and say so
 
-Cases **8, 9, 10, 12, 19 and 20** are the rows currently failing `Acceptance.Wall.Catalogue`. Their
+Cases **8, 9, 10, 19 and 20** are the rows currently failing `Acceptance.Wall.Catalogue`. Their
 captions carry the words **THE MODEL CURRENTLY DISAGREES** alongside the expected verdict, because a
 level captioned with a verdict the solver does not produce would be a lie told to somebody standing
 in front of the counter-example.
@@ -145,14 +145,18 @@ That marker is not a hand-maintained list. `Acceptance.Wall.EveryLevelsCaptionTe
 those. When the underlying defect is fixed, that test goes red until the captions stop claiming a
 disagreement that no longer exists.
 
-**Case 11 was briefly a seventh on 2026-08-08 and came back out the same day**, both times because
+**Case 12 came off this list on 2026-08-09** — not by a solver fix but by its rewrite: the new case
+(case 11's span on a single one-cell pier) was ruled STANDS from worked pier arithmetic, and the
+model agrees, so there is no disagreement left to mark (DESIGN §8 records the ruling).
+
+**Case 11 was briefly on the list on 2026-08-08 and came back out the same day**, both times because
 an expectation moved rather than because anything regressed: ruled down to `Expected: LOCAL LOSS` on
 BS 5977's 300-mm-above-the-apex arching gate, then ruled back to `Expected: STANDS` when the user
 directed that published design rules are not gospel and the physics was worked honestly — the 60 cm
 of bonded masonry over the span acts as a deep beam at span/depth ≈ 2.3, carrying its ~120 kg panel
 at roughly 0.03–0.04 MPa, well under bond strength, and the piers take the thrust easily.
 
-All six trace to one finding: **load routes only downward**. Masonry beside or behind a joint never
+All five trace to one finding: **load routes only downward**. Masonry beside or behind a joint never
 reaches it, so a counterweight buys nothing and load funnels onto whatever column sits underneath.
 `Core.Structure.CorbelStepsBeforeTensionWins` is the standing red for it.
 
