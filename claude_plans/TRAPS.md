@@ -95,5 +95,12 @@ Run against otherwise-unmutated production; expected signatures below. **(b) han
 | — | `CommitPieceAction`: no-op the `Orphan->Destroy()` | exactly 1 assertion — nothing else can see an orphaned collider |
 | — | one-cell thrust gate, withhold everywhere (`HasArchingAbutment` returns false) | `AOneCellArchMustEarnItsThrust` lime row fails at ~1.29 (10 joints, 5 passes) — the anti-over-withhold half |
 | — | one-cell thrust gate, grant everywhere (restore the pre-gate `HasArchingAbutment`) | same test, dry-stone row: springings read 0.00473 instead of over-capacity, both bricks Supported instead of Falling — failing lines `StructureOneCellThrustTest.cpp:600/683/703` |
+| (M1) | LP oracle: delete the moment-balance rows | 24 failures — every tipping/moment row wrongly stands, both oracle tests |
+| (M2) | LP oracle: delete the friction rows | exactly 3 — the two sliding rows (dry reads 4957.4 instead of 0.7) |
+| (M3) | LP oracle: unlimited tension | 6 — all four mortared stacks (~3.3× high), one-cell mortar, bridge closed form; dry rows stay green *correctly* (associative friction at c = 0 already implies no-tension) |
+| (M4) | LP oracle: conversion open-coded as 100 | 18 — every strength-governed λ* exactly 100× low; mortared 5/8-course verdicts flip (recorded count reconstructed ~15 by review; direction certain) |
+| (M5) | LP oracle: delete the λ-cap row | exactly 1 — the unbreakable row (phase-2 unbounded → fail closed) |
+| (M6) | LP oracle: gut input validation | 63 — 21 poison rows × 3 assertions; catalogue untouched |
+| (M7) | LP oracle: bridge ignores the latch | exactly 1 — the after-removal jamming row ("joint 1 is live but names a piece that is not") |
 
 Degenerate-fixture note: a row meaning to hit the harness bounds bug must name the **ungrounded** piece first (`{1, INDEX_NONE}`) — `||` short-circuits on a grounded piece 0 and the second handle is never evaluated.

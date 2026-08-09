@@ -9,11 +9,11 @@
 
 **This file assumes you already know the design.** [DESIGN.md](DESIGN.md) is the authority on the model, the constants, the anchors and the evolution path; [TRAPS.md](TRAPS.md) holds the live footguns; [LEVELS.md](LEVELS.md) indexes the twenty-nine playable levels. Settled reasoning lives there and in git — not here.
 
-Last updated: **2026-08-09** (review-queue item 3 complete — the fail-open one-cell arching gate closed by capacity-check-and-withhold; DESIGN §5.4/§6/§7 updated with it).
+Last updated: **2026-08-09** (review-queue item 4, slice 1: the rigid-block LP oracle core landed — formulation, deterministic simplex, 19-row hand-worked validation, FStructure bridge; the fixture sweep is slice 2 and still open).
 
 ## Where the suite stands
 
-**164 tests, 157 green, 7 deliberate reds.** Do not "fix" a deliberate red by weakening its assertion. The reds and what each anchors:
+**167 tests, 160 green, 7 deliberate reds.** Do not "fix" a deliberate red by weakening its assertion. The reds and what each anchors:
 
 | Red | What it anchors |
 |---|---|
@@ -44,7 +44,7 @@ Item 2 (leaning-stack acceptance case + interim overturning guard) landed 2026-0
 
 Item 3 (close the fail-open one-cell arching gate) landed 2026-08-09, driven by `Core.Structure.AOneCellArchMustEarnItsThrust`. **Capacity-check and withhold, not apply**: the couple the cap deletes, `(1 − k)·|M|`, has to be delivered as `dM/z` through the head joint gate four already requires, and `FStructure::HasArchingAbutment` now refuses to be an abutment where the springing's own `c + μ·σ_n` cannot carry it. Applying the thrust instead was measured and rejected for this slice — it moves the bit-pinned one-cell anchor by ~21× and belongs with the post-LP re-anchor. Every earned row came out byte-identical (0.0141885 / 0.0141946 unmoved), spanned groups are untouched by construction (`PieceReseatedOnAnArch` is the branch), and DESIGN §5.4's fine print, §6's anchor table and §7's gap 4 / step 1 all record it.
 
-1. **Rigid-block LP as a test oracle only** — the pivotal investment; converts λ, composite depth and the red rows from rulings into measurements.
+1. **Rigid-block LP as a test oracle — slice 2, the fixture sweep** (slice 1, the core, landed 2026-08-09: `Tests/RigidBlockOracle.h/.cpp` — lower-bound 2D formulation, two contacts per joint, finite-tension rigid-plastic cut-off reducing to Heyman at f_t = 0, deterministic dense simplex with fail-closed post-solve verification, `BuildRigidBlockProblem`/`SolveRigidBlock`/`OutcomeOf` bridge, 19-row hand-worked validation matched to 1e-6, mutations M1–M7 in TRAPS' registry). Slice 2: run every wall/corbel/beam/leaning-stack fixture and anchor through the bridge, diff verdicts against production, and measure λ = 3.464, composite depth and the five red catalogue rows. **A finding the sweep must classify, not fix**: the oracle reads the one-cell *dry* half-seat **with** abutment as standing (edge-contact jamming — certificate hand-verified in review) where production's gate refuses relief at 1.4921; limit theorem vs uncracked-section convention, neither wrong, both named in the oracle header. Cost note: dense tableau — a 210-brick wall is ~100× the 40-course stack's tableau; the sweep needs either a sparse rewrite or per-region problems before full scenarios.
 2. **Promote equilibrium to cascade authority** → tension support → member failure → arbitrary force (DESIGN §7 path). Deleting `BreakOverturnedBodies` and its constant is part of this step.
 
 Also queued from the same session: **a deliberately-red hanging acceptance test** (a piece screwed to the underside of a grounded slab — reads Falling today, should stand while EN 1995 withdrawal capacity holds; a second over-capacity row must fall). Makes the currently-dead fastener withdrawal data load-bearing; anchors step 5.
@@ -97,6 +97,13 @@ None of these block the list above. Each needs its own red test first; most are 
 - **`UtilisationTolerance`'s 1e-12 absolute floor** must stay below the smallest non-zero expectation (`Unbreakable`'s 1.96e-11) or that row can't fail.
 - **An unsupported island reads zero on its internal joints** — "carries nothing" is ambiguous between given / grounded-both-sides / falling; a strain readout will someday need more than the force.
 - **`StructureCascadeTest.cpp` hard-sets `BrickMassKg = 2.72`** — used only for grounded pads; two-line tidy when the file is next open.
+
+### Rigid-block LP oracle (`Tests/RigidBlockOracle.*`)
+
+- **Phase-2 basic-artificial residue can under-report λ** — a redundant row (two identical joints between the same blocks) can leave an artificial basic at zero through phase 2; post-solve verification guarantees soundness (never an inadmissible Stands) but not optimality, so λ could silently read low and flip Stands→Falls near 1.0 in the sweep. **Specified test**: duplicate one joint of the mortared 8-course stack (identical geometry, half area each, or exact duplicate) and assert λ* unchanged/sensibly related — pins the redundant-row path the validation catalogue never exercises.
+- **Fixture preconditions don't pin the profile shear ceilings** (dry stone 6.0, mortar 1.3 `MaxShearStrengthMPa`) — both feed real LP rows, neither binds in any validation row (verified in review), and a retune lowering either could make a ceiling govern a hand answer mysteriously. Two one-line `TestEqual`s.
+- **Cheap missing validation row**: a *point contact* under an *eccentric* load must read λ* = 0 (no moment capacity) — the catalogue covers point-contact-centred and finite-contact-eccentric, not the combination.
+- **M4's recorded signature (18 failures) was reconstructed to ~15 by review inspection, not re-run** — same order, direction certain (every strength row exactly 100× low); re-running M4 is a one-line mutation of `OracleForceUnitsPerMPaSqCm` if certainty is wanted.
 
 ### Layout producer
 
