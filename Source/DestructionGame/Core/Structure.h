@@ -375,6 +375,12 @@ struct FStructure
 	 * Terminates because joints never heal: a pass that breaks nothing is the last one,
 	 * so there can be no more passes than there are connections.
 	 *
+	 * A PASS BREAKS ON TWO GROUNDS, NOT ONE. Beside the per-joint capacity sweep, the
+	 * interim overturning guard (BreakOverturnedBodies — DESIGN.md §7 step 2, disposable)
+	 * gives the bearing of any bonded body that has walked past its own bearing edge, in
+	 * the same pass and with the same stamp. Its scope is deliberately narrow; see its
+	 * own contract.
+	 *
 	 * PASS NUMBERS ARE GLOBAL TO THE STRUCTURE, NOT TO THE CALL. A second cascade
 	 * continues from the highest stamp already written, so a joint that gives after a
 	 * piece has been removed carries a strictly larger number than everything that gave
@@ -956,6 +962,37 @@ private:
 		const TArray<TArray<int32>>& PieceJoints,
 		const TArray<TArray<int32>>& SupportConnections,
 		const TArray<bool>& PieceReseatedOnAnArch) const;
+
+	/**
+	 * THE INTERIM OVERTURNING GUARD — DESIGN.md §7 evolution step 2, AND IT IS BUILT TO BE
+	 * DELETED. A rigid-block LP (step 4) makes a body past balance simply have no equilibrium
+	 * solution; until then this is the bolt-on second referee beside the joint checks, and the
+	 * leaning-stack acceptance set is its red test. One entry point, called from SolveAndBreak
+	 * and from nothing else.
+	 *
+	 * WHAT IT CATCHES that no joint check can: ComputeUtilisation happily reports a confident
+	 * number for a joint on which NO EQUILIBRIUM SOLUTION EXISTS (DESIGN.md §5.7) — a stack
+	 * offset far enough per course reads the same comfortable utilisation at every height,
+	 * because the composite section's m^2 cancels the demand's m^2, while the real stack's
+	 * resultant has long since left the bearing.
+	 *
+	 * SCOPE IS THE WHOLE OF ITS SAFETY, so it is stated here rather than buried: it evaluates a
+	 * bed joint ONLY where that joint is the SOLE intact connection between an ungrounded bonded
+	 * body and the rest of the structure — a bridge in the graph — because that is the one shape
+	 * where "the whole body's weight passes through this bearing" is exact statics rather than an
+	 * estimate. Every running-bond wall, filled corbel, beam-on-piers and spanned opening in the
+	 * project has a second path around every bed joint, so the guard is structurally silent on
+	 * all of them; a NO-OP without complete geometry, so both fuzz generators — geometry-free,
+	 * and the only property tests over routing — are provably untouched.
+	 *
+	 * A condemned body's bearing joint gives: latched and stamped with this pass, exactly as an
+	 * over-capacity joint is, because "the body about this bearing has no equilibrium" is a
+	 * failure of that bearing under load — the collapse sequence must contain it.
+	 *
+	 * @param Pass The cascade pass any break is stamped with.
+	 * @return Whether at least one joint gave.
+	 */
+	bool BreakOverturnedBodies(int32 Pass);
 
 	TArray<FStructurePiece> Pieces;
 	TArray<FConnection> Connections;

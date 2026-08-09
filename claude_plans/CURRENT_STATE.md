@@ -9,11 +9,11 @@
 
 **This file assumes you already know the design.** [DESIGN.md](DESIGN.md) is the authority on the model, the constants, the anchors and the evolution path; [TRAPS.md](TRAPS.md) holds the live footguns; [LEVELS.md](LEVELS.md) indexes the twenty-nine playable levels. Settled reasoning lives there and in git — not here.
 
-Last updated: **2026-08-09** (review-queue item 1 — case 12 rewritten and synced to the production scenario catalogue).
+Last updated: **2026-08-09** (review-queue item 2 complete — leaning-stack acceptance set + interim overturning guard; and the stale cascade-on-the-wire entry corrected against the code).
 
 ## Where the suite stands
 
-**161 tests, 154 green, 7 deliberate reds.** Do not "fix" a deliberate red by weakening its assertion. The reds and what each anchors:
+**163 tests, 156 green, 7 deliberate reds.** Do not "fix" a deliberate red by weakening its assertion. The reds and what each anchors:
 
 | Red | What it anchors |
 |---|---|
@@ -27,23 +27,24 @@ Last updated: **2026-08-09** (review-queue item 1 — case 12 rewritten and sync
 
 ### Decide before building
 
-- **What a selection MEANS when a cascade releases a picked brick** — a product decision with both readings written out (see "piece menu presenter" below). Latent only because nothing calls `SolveAndBreak` in a world yet; the cascade-on-the-wire item makes it reachable. **Decide before that lands.**
+- **What a selection MEANS when a cascade releases a picked brick** — a product decision with both readings written out (see "piece menu presenter" below). **This is reachable today, not latent**: the 2026-08-09 guard review found the cascade already on the world wire (`FStructureBinding::SolveAndBreak` at `Core/StructureBinding.cpp:177`, called by both commit doors in `Core/PieceActions.cpp` and the spawn settle in `World/DestructionStructureSubsystem.cpp` — in-tree since 2026-08-06). Decide now.
 
 ### Then build, in this order
 
-1. **The cascade on the world wire.** `SolveAndPush` solves but never breaks; `FStructureBinding::SolveAndBreak` was deliberately **removed, not stubbed** (a stub returning 0 is silent fail-open) and must be re-added with a red test pinning what the binding owes on top of the forward: release what the cascade strands, and return the per-call pass count. The game currently does less than the design says — a joint loaded past capacity never gives in a running game. Also unblocks the deliberately-missing strength-driven integration test (needs a fixture that can actually overload a joint — a mortared wall sits at 0.005 of capacity under gravity). When built, the presenter's "broken (went with a removed piece)" wording becomes a lie — write its failing test in the same slice.
+1. **Close the cascade-wire residue.** The wire itself is **already built and in-tree** (since 2026-08-06): `FStructureBinding::SolveAndBreak` exists, both commit doors and the spawn settle call it, and `ApplyResults` releases Stranded and Falling alike — the old entry here claiming it was "removed, not stubbed" was stale, survived the consolidation, and was caught by the 2026-08-09 guard review. What its spec still owes, verified against today's tree: (a) the presenter's "broken (went with a removed piece)" wording at `Core/PieceMenu.cpp:1196` **is now a live lie** — a joint the cascade breaks under load gets the removed-piece wording; its failing test was supposed to land with the wire and never did (see piece menu presenter below); (b) confirm whether the strength-driven *world* integration test exists — the leaning stack is now a fixture that can genuinely overload a joint, which was the recorded blocker.
 2. **The 2026-08-08 review queue**, in its approved order — next section.
 3. **The per-brick joint-force breakout: a human presses Play.** Built end to end and green; the suite proves the model and nothing about the panel (every run is `-nullrhi`, and this project has twice shipped a green suite over something invisible). The check list when someone does: panel legibility (engine-default text, no scroll — a large selection runs off screen), magenta-vs-cyan strength at playing distance, hover routing on the opening frame, whether an entry click is swallowed, the odd reading order (Delete above the readout — accepted for the no-moving-buttons safety property, wants human eyes).
 4. **Scenario system — the switching half.** Restart-current, a tiny lightweight default so the game opens fast (today's default is the 30 × 40 wall, ~190 ms of begin-play), and in-game scenario change (the in-world menu of DESIGN §9). Rows are data; a scenario needing a class is the drift to stop.
 
-## The 2026-08-08 review queue — approved by the user, item 1 built
+## The 2026-08-08 review queue — approved by the user, items 1–2 built
 
 In sequence (rationale in DESIGN §7). Item 1 (rewrite case 12) landed 2026-08-09: the test rewrite and the production catalogue sync (`ScenariosWall12Cuts`, the `wall-12` title and caption in `DestructionScenarios.cpp`) are both in; `Acceptance.Wall.EveryCaseIsAPlayableLevel` and `Acceptance.Wall.EveryLevelsCaptionTellsTheTruth` are green on it, and case 12 has come off the `Acceptance.Wall.Catalogue` known-red list.
 
-1. **Leaning-stack acceptance case + interim overturning guard**: a column offset 2 cm/course at 5/10/15/20 courses — stands while the resultant is inside the base. The red test for the missing stability check, and possibly the answer to the open composite-depth courses-crossing-the-plane question. Guard is disposable by design (deleted at evolution step 4).
-2. **Close the fail-open one-cell arching gate** (apply or capacity-check the thrust the moment cap assumes).
-3. **Rigid-block LP as a test oracle only** — the pivotal investment; converts λ, composite depth and the red rows from rulings into measurements.
-4. **Promote equilibrium to cascade authority** → tension support → member failure → arbitrary force (DESIGN §7 path).
+Item 2 (leaning-stack acceptance case + interim overturning guard) landed 2026-08-09. The fixture moved from the approved 2 cm/course to a **mortared 10 cm/course lean at 5/8/30/40 courses** — the arithmetic in `Tests/LeaningStackAcceptanceTest.cpp`'s header shows the 2 cm ladder never clears the mean bond bracket at fixture heights. The guard is `FStructure::BreakOverturnedBodies` (one entry point, called only from `SolveAndBreak`, disposable, deleted at evolution step 4): it condemns the bearing of a bonded body whose one bed-joint **bridge** to the rest of the structure has the body's centroid past the bearing edge by more than a **guard-local mean-basis bond** (`SolverInterimOverturningMeanBondMPa = 0.6`, UK NA Table NA.6 × 2, documented at the constant) can restore. Scope is the whole of its safety: bridge-only (walls, filled corbels, beams and spanned holes all have a second path and are structurally untouched), supported-bodies-only (never fires inside a region the cascade already released, so the known-red wall pins cannot move), and a no-op without complete geometry (both fuzzes provably untouched).
+
+1. **Close the fail-open one-cell arching gate** (apply or capacity-check the thrust the moment cap assumes).
+2. **Rigid-block LP as a test oracle only** — the pivotal investment; converts λ, composite depth and the red rows from rulings into measurements.
+3. **Promote equilibrium to cascade authority** → tension support → member failure → arbitrary force (DESIGN §7 path). Deleting `BreakOverturnedBodies` and its constant is part of this step.
 
 Also queued from the same session: **a deliberately-red hanging acceptance test** (a piece screwed to the underside of a grounded slab — reads Falling today, should stand while EN 1995 withdrawal capacity holds; a second over-capacity row must fall). Makes the currently-dead fastener withdrawal data load-bearing; anchors step 5.
 
@@ -53,7 +54,6 @@ Also queued from the same session: **a deliberately-red hanging acceptance test*
 
 | P | Case | Why |
 |---|---|---|
-| 1 | Leaning/offset stack | queue item 1 — the minimal fixture demanding a stability check; per the 2026-08-09 case-12 ruling it is now the *only* self-weight fixture that can honestly demand the stability check (DESIGN §8) |
 | 2 | Compression-vs-shear capacity ratio (one joint, two directions, ~50×) | DESIGN §4 calls it key validation; nothing anywhere does it. Belongs beside `ConnectionStrengthTest` |
 | 3 | L-corner / return (brick out at a corner vs a free end; assert the *relation*) | the solver has never seen two orthogonal joint families |
 | 4 | Lintel over case 7's opening (with/without) | the pair case 7 needs (it fails the published arching gate and is the standing half of three pairs); the model's first spanning member |
@@ -71,6 +71,10 @@ None of these block the list above. Each needs its own red test first; most are 
 
 ### Load solver
 
+- **The interim overturning guard credits its one mortar figure to every joint it evaluates** — `SolverInterimOverturningMeanBondMPa` (0.6, mean-basis) restores a dry-stone or fastened bridge body with a bond it does not have. No fixture cascades such a body; the constant's own comment carries the instruction (per-profile mean before any such fixture, or the guard dies first at evolution step 4). Related uncovered behaviour: a **bare arm of single bricks fires the guard from a 9-brick body** (m·lever crosses 0.6's threshold at m = 9; the 4-step case A stands 5.8×) — arguably correct physics for an assembly whose own screenshot caption says it has no equilibrium at its bearing, but nothing tests either side of that line. **Specified pair from the guard review**: `FCorbelSpec{bFilled=false}` at 8 steps → `SolveAndBreak` severs nothing (ratio 0.79); at **10** steps → the root bearing gives and the arm falls (ratio 1.26); avoid 9, which sits at 1.014× — one retune from flapping. Oracle: m·w·(5.625m − 5.125) vs 0.6 × 10⁴ × 179.48, constants derived in-file.
+- **The guard's `Supported` gate and NaN polarity are untested in either direction** — the gate's protection is across passes, not within one (a body whose only ground path this same pass's sweep severed still reads Supported, so its bridge bearing can pick up a same-pass stamp; comment at the site in `Structure.cpp` states this honestly). **Specified pin from the guard review**: grounded base → deliberately over-capacity joint → platform → 12-course 10 cm/course stack; pass 1's sweep severs the weak joint; assert whether the stack's bottom bridge carries a pass-1 stamp — either answer is defensible, the value is pinning the simultaneity convention. NaN polarity (guard fires nothing on garbage arithmetic — deliberate, breaker-conservative) likewise has no test either side.
+- **Dry stone has no rocking model, and the leaning stack proved it in the wrong direction** — dry stone's tensile strength is an exact zero, so any joint outside the kern reads `Max()` and a 5-course 2 cm/course dry stack that plainly stands in reality reads as falling (standing-reads-as-falling, the opposite polarity to every other gap here). Noticed and left during the leaning-stack design (`LeaningStackAcceptanceTest.cpp` header); needs a no-tension rocking model, own red test first.
+- **The leaning-stack fixture family has no playable levels** — the wall and corbel catalogues are one level per fixture (`LEVELS.md`); the four leaning-stack rows are the first acceptance fixtures without scenario rows. A `FScenario` producer for an offset stack is a small slice when wanted.
 - **`FConnection` is copyable and the latch is per-copy** — `for (FConnection C : Connections)` latches temporaries and reports a structure that never breaks. Closed at the one site that latches; nothing prevents the next. Revisit if a second site latches.
 - **`StructureFuzzSupport::UtilisationUnder` is a deliberate hand transcription** — redirect it at production as its own change (never inside a solver refactor), re-running mutations (g)/(h) before and after ([TRAPS.md](TRAPS.md) registry).
 - **`AddConnection` happily joins a removed piece** (a tombstone is a valid index) and such a joint is never severed — fail-open, reachable the day anything adds bracing to a damaged wall. One `GraphValidation` row + a guard reusing `IsPieceRemoved`.
@@ -128,7 +132,7 @@ None of these block the list above. Each needs its own red test first; most are 
 - **Compact still lays out the empty headroom-scale rows** (~27 px) — suppressing needs a model-side "is there a bar" field (the no-logic-in-Slate rule forbids the branch).
 - **A viewport resize is only corrected on the next grab**; a resize that puts the title strip off screen leaves nothing to grab. Cheap fix if it bites: hold the last known viewport size.
 - **`Delete` still shifts sideways when the readout collapses** (bounded, safe direction — dead click at worst); **a fourth pick pushes Delete down 22 px** (follows the player's own click; watch if selection ever grows from anything else).
-- **"broken (went with a removed piece)" wording** — becomes a lie with the cascade wire (item 1 above); zero-cost interim: drop to bare "broken".
+- **"broken (went with a removed piece)" wording is a live lie** (`Core/PieceMenu.cpp:1196`) — the cascade is on the wire (ranked item 1 above), so a joint broken *under load* gets the removed-piece wording today. Needs its failing test (a cascade-broken joint presented, wording asserted wrong); zero-cost interim: drop to bare "broken".
 - **A live brick with no joints has no model-side sentence** (the floater case) — a widget would have to branch; `CountText`'s empty-case precedent says give it one.
 - **`ForceN` discards the sign** — `Role` recovers bed-above, not head-joint push-vs-pull; a destruction game whose readout can't show tension is worth settling before the shape sets.
 - **The entry list carries no liveness** (`FInspectorPieceEntry` presents removed/foreign/live identically) — decide with the widget; it is the surface where the rank-0 decision becomes legible.
