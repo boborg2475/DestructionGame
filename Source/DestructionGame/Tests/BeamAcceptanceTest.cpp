@@ -46,8 +46,19 @@
  * joint. The glue line is therefore the support of nobody, and ConnectionForces leaves it at
  * exactly zero — the beam's whole bending action is invisible. The two bearings do carry the load
  * correctly (they sum to the total weight, asserted below), and each reads a large eccentric
- * moment that FConnection::ArchingMomentScale then caps to the kern edge, so they sit in pure
- * compression at a few percent of capacity. Nothing anywhere is close to failing, at any load.
+ * moment.
+ *
+ * HOW THE BEARINGS READ CHANGED ON 2026-08-09 (the one-cell thrust gate, commit 08abcfd), and
+ * this header's original "nothing anywhere is close to failing, at any load" is no longer true.
+ * Before the gate, FConnection::ArchingMomentScale capped each bearing's eccentric moment to the
+ * kern edge and the light rows stood at ~0.31/~0.34. The gate now grants that cap only where the
+ * springing can carry the implied thrust — and these DRY bearings cannot — so the uncapped
+ * eccentric moment on a zero-tension joint reads Max(), and ALL THREE rows unzip at the bearings
+ * in one pass (3 fallen, including the light rows whose real-world verdict is STANDS). The rigid-
+ * block LP oracle stands all three (lambda* 1.76 / 19.2 / 17.4 — RigidBlockOracleSweepTest), so
+ * the falling is production's missing global equilibrium, not the fixture's physics. Whether
+ * beams-unzip-on-dry-bearings is acceptable until evolution step 4 is a flagged user ruling
+ * (CURRENT_STATE); the sweep pins production at 3-fallen per row meanwhile.
  *
  * SO THE RED IS: THE MEMBER CARRIES NOTHING. Not a stranded fixture, not a refused route, not a
  * joint failing early — a beam under three and a half times its published bending capacity whose

@@ -102,5 +102,10 @@ Run against otherwise-unmutated production; expected signatures below. **(b) han
 | (M5) | LP oracle: delete the λ-cap row | exactly 1 — the unbreakable row (phase-2 unbounded → fail closed) |
 | (M6) | LP oracle: gut input validation | 63 — 21 poison rows × 3 assertions; catalogue untouched |
 | (M7) | LP oracle: bridge ignores the latch | exactly 1 — the after-removal jamming row ("joint 1 is live but names a piece that is not") |
+| (M4′) | M4 re-run against the sweep | fast sweep 16 row assertions across 4 tests, slow sweep 7 — every strength-governed λ* exactly 100× low |
+| (S2) | `BreakOverturnedBodies` early-return (spell as `if (Pass > INT32_MIN) { return false; }` — a bare `return false;` trips C4702) | exactly the Sweep.LeaningStack test, 4 assertions incl. both production drop-count pins (29/39 → 0) |
+| (S3) | oracle verification tolerance 1e-6 → 1e-3 | **zero failures** — the envelope refusals are decisive, not marginal |
+| (S3b) | verification off (tolerance 1e30) | exactly 1 — the envelope canary: an unverified basis reports a plausible λ* 257.24 the net correctly refuses to certify |
+| (S4) | test-side: flip the one-cell disagreement classification | exactly 1 — the pinned-relation row |
 
 Degenerate-fixture note: a row meaning to hit the harness bounds bug must name the **ungrounded** piece first (`{1, INDEX_NONE}`) — `||` short-circuits on a grounded piece 0 and the second handle is never evaluated.
