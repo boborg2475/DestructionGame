@@ -445,7 +445,7 @@ namespace RigidBlockOracleTestSupport
 }
 
 /**
- * THE VALIDATION CATALOGUE: nineteen hand-worked limit-analysis answers the oracle must
+ * THE VALIDATION CATALOGUE: twenty hand-worked limit-analysis answers the oracle must
  * reproduce, each with its arithmetic in this file. See the file header for what each
  * class pins and for the recorded one-cell disagreement with production.
  */
@@ -614,7 +614,55 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		JammingAloneTensionLambda(GeneralPurposeMortar), 0.0, 0.0, 1.0e-6,
 		EOracleOutcome::Stands });
 
-	TestEqual(TEXT("FIXTURE: the catalogue is nineteen rows"), Rows.Num(), 19);
+	/* ---- The redundant-joint path. ---------------------------------------------- */
+
+	/*
+	 * THE ROW CURRENT_STATE QUEUED against the dense solver's recorded
+	 * basic-artificial residue: duplicate one joint of the mortared 8-course stack as
+	 * two half-area twins with identical geometry. Per contact point every capacity is
+	 * area-proportional, so two half-area twins at the same two contact positions have
+	 * EXACTLY the original joint's summed feasible set and lambda* must not move — but
+	 * the columns are parallel and the optimum degenerate, the shape the dense
+	 * solver's residue lived in. Added 2026-08-12 with the sparse rewrite, green on
+	 * arrival. HONESTY ABOUT ITS TEETH, measured by mutation: it fails under the
+	 * formulation mutations like every strength row (M3/M4). The residue itself is
+	 * contained by the pivot-out pass immediately after phase 1 (it clears every
+	 * zero-value basic artificial a real column can reach) together with the
+	 * post-solve verification gate, which fails closed rather than certifying a basis
+	 * it cannot check; disabling both fires the whole suite as verification refusals
+	 * (TRAPS.md) rather than a silent under-report, so this row's own value is a
+	 * regression net for future degeneracy-handling changes, not the only thing
+	 * watching the residue.
+	 *
+	 * THE PROPERTY UNDER TEST IS EQUALITY, NOT PROXIMITY: a redundant joint is the same
+	 * constraint set as its un-duplicated twin, so lambda* must be the SAME NUMBER, not
+	 * merely close to the closed form both rows also happen to satisfy. Measured (this
+	 * build): both rows report 1.241110018676219, bit-identical (diff 0) despite the
+	 * twin row taking one more pivot (8 vs 7) to reach it — the cross-row check below
+	 * asserts that exact equality directly, rather than trusting two separately-toleranced
+	 * closed-form checks to imply it.
+	 */
+	Rows.Add({ TEXT("mortared stack, bottom joint split into half-area twins"),
+		TEXT("two half-area twins of one joint are the same constraint set, so ")
+		TEXT("lambda* equals the unduplicated 8-course closed form within RelTol — the ")
+		TEXT("cross-row check below is what actually pins it equal to the un-duplicated ")
+		TEXT("row itself"),
+		[]
+		{
+			FOracleProblem Problem =
+				LeaningStackProblem(8, 10.0, DestructionProfiles::GeneralPurposeMortar);
+
+			FOracleJoint Twin = Problem.Joints[0];
+			Problem.Joints[0].AreaSqCm /= 2.0;
+			Twin.AreaSqCm /= 2.0;
+			Problem.Joints.Add(Twin);
+
+			return Problem;
+		},
+		StackTensionLambda(GeneralPurposeMortar, 8, 10.0), 0.0, 0.0, 1.0e-6,
+		EOracleOutcome::Stands });
+
+	TestEqual(TEXT("FIXTURE: the catalogue is twenty rows"), Rows.Num(), 20);
 
 	TMap<FString, double> Lambdas;
 
@@ -637,6 +685,29 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 				TEXT("point carries everything (centred %.12g vs knife %.12g)"),
 				Centred, Knife),
 			FMath::Abs(Centred - 2.0 * Knife) <= 1.0e-6 * Centred);
+	}
+
+	if (Lambdas.Contains(TEXT("mortared stack 10 cm x 8 courses"))
+		&& Lambdas.Contains(TEXT("mortared stack, bottom joint split into half-area twins")))
+	{
+		const double Original = Lambdas[TEXT("mortared stack 10 cm x 8 courses")];
+		const double Twins = Lambdas[TEXT("mortared stack, bottom joint split into half-area twins")];
+
+		/*
+		 * A redundant joint IS the same constraint set as its un-duplicated twin, so
+		 * this is equality, not proximity to a shared closed form. Measured (this
+		 * build, both directions): 1.241110018676219 for both rows, diff exactly 0
+		 * despite the twin row taking one more pivot (8 vs 7) — the degenerate,
+		 * parallel-column path the twins create still lands on the identical bit
+		 * pattern the un-duplicated joint does. Asserted as `==`, not a tolerance.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("RELATION: a redundant joint is the same constraint set as its ")
+				TEXT("un-duplicated twin — lambda* must be the SAME NUMBER, not merely ")
+				TEXT("close (8-course %.17g vs twins %.17g)"),
+				Original, Twins),
+			Original == Twins);
 	}
 
 	if (Lambdas.Contains(TEXT("mortared stack 10 cm x 5 courses"))

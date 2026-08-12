@@ -2,17 +2,31 @@
 
 #include "Tests/RigidBlockOracle.h"
 
-#include <limits>
-
 #if WITH_DEV_AUTOMATION_TESTS
 
 /*
  * THE ORACLE'S IMPLEMENTATION. The formulation and every modelling decision are
- * documented in RigidBlockOracle.h; this file is the LP assembly and a small dense
- * two-phase primal simplex. Independence rules observed here: no production arithmetic
- * is called (the only production types read are the plain data structs), the unit
- * conversion is derived locally, and every pivoting tie-break is index-based over the
- * input order so results are bit-reproducible.
+ * documented in RigidBlockOracle.h; this file is the LP assembly and a SPARSE REVISED
+ * SIMPLEX (rewritten 2026-08-12 from the original dense two-phase tableau, whose
+ * accumulated pivot error refused every fixture past ~4,000 pivots — the measured
+ * envelope in RigidBlockOracleSweepTest.cpp's header). Independence rules observed
+ * here: no production arithmetic is called (the only production types read are the
+ * plain data structs), the unit conversion is derived locally, and every pivoting
+ * tie-break is index-based over the input order so results are bit-reproducible.
+ *
+ * WHY REVISED, AND WHAT RESETS THE ERROR. A dense tableau updates O(rows x columns)
+ * numbers per pivot and every one carries one rounding forward forever — the error
+ * is cumulative and unrepairable, which is exactly what the post-solve verification
+ * kept refusing. The revised method keeps the constraint matrix UNTOUCHED in sparse
+ * column form and represents only the BASIS: an LU factorisation plus a short
+ * product-form eta file, refactorised FROM THE ORIGINAL CLEAN DATA every
+ * RefactoriseEvery pivots. Refactorisation both bounds the per-iteration cost (the
+ * eta file never grows past the cadence) and DISCARDS all accumulated rounding —
+ * after it, the only error in play is one clean factorisation and at most 64 eta
+ * applications, regardless of how many thousand pivots came before. The basic values
+ * are recomputed from the original right-hand side at every refactorisation, and one
+ * final refactorisation precedes extraction so verification judges the cleanest
+ * solve the basis admits.
  */
 namespace RigidBlockOracle
 {
@@ -31,18 +45,45 @@ namespace RigidBlockOracle
 		constexpr int32 MaxPivots = 100000;
 
 		/*
+		 * The refactorisation cadence: how many eta updates accumulate before the basis
+		 * is refactorised from the original columns and the basic values recomputed
+		 * from the original right-hand side. Smaller resets error more often and keeps
+		 * FTRAN/BTRAN shorter; larger amortises the factorisation. 64 mirrors the dense
+		 * solver's reduced-cost rebuild cadence and measured comfortably inside every
+		 * validation tolerance.
+		 */
+		constexpr int32 RefactoriseEvery = 64;
+
+		/*
+		 * An LU pivot at or below this is a singular basis, refused rather than divided
+		 * by. Absolute, because rows are equilibrated to max |coefficient| = 1 before
+		 * anything reaches the factorisation.
+		 */
+		constexpr double SingularPivotTol = 1.0e-11;
+
+		/*
 		 * A strength at or beyond this is "no cap at all" (Unbreakable's 1e12, the
 		 * MaxShear default of DBL_MAX): the row is omitted rather than written with an
-		 * astronomically large right-hand side that would wreck the tableau's scaling.
+		 * astronomically large right-hand side that would wreck the problem's scaling.
 		 */
 		constexpr double UncappedStrengthMPa = 1.0e9;
 
-		/** One structural row before slacks: coefficients over the structural columns. */
+		/** One structural row before slacks: sparse coefficients over structural columns. */
 		struct FAssemblyRow
 		{
-			TArray<double> Coeff;
+			TArray<int32> Col;
+			TArray<double> Val;
 			double Rhs = 0.0;
 			bool bEquality = true;
+
+			void Add(int32 InCol, double InVal)
+			{
+				if (InVal != 0.0)
+				{
+					Col.Add(InCol);
+					Val.Add(InVal);
+				}
+			}
 		};
 
 		bool FiniteNonNegative(double Value)
@@ -155,114 +196,712 @@ namespace RigidBlockOracle
 		}
 
 		/**
-		 * The simplex tableau: rows of [structural | slacks | artificials | RHS], the
-		 * per-row basic column, and the maintained reduced-cost row. Everything dense —
-		 * this is a validation-scale oracle, not a shipping solver.
+		 * The LP in standard form, held as an UNCHANGING sparse column matrix: rows
+		 * equilibrated to max |coefficient| = 1 and oriented to a non-negative
+		 * right-hand side, columns [structural | slacks | one artificial per row].
+		 * Nothing here is ever written after construction — the revised simplex reads
+		 * columns out of it and represents the basis separately, which is what makes
+		 * refactorisation a genuine reset to clean data.
 		 */
-		struct FTableau
+		struct FStandardForm
 		{
-			TArray<TArray<double>> Rows;
-			TArray<int32> Basis;
-			TArray<double> ReducedCost;
+			int32 NumRows = 0;
 			int32 NumCols = 0;
+			int32 NumStructCols = 0;
 			int32 ArtificialStart = 0;
+
+			/* Compressed sparse columns. Row indices ascend within each column. */
+			TArray<int32> ColStart;
+			TArray<int32> ColRow;
+			TArray<double> ColVal;
+
+			/** Oriented right-hand side, non-negative by construction. */
+			TArray<double> Rhs;
+
+			/** Per row: the slack column where feasible as a start, else the artificial. */
+			TArray<int32> InitialBasis;
 		};
 
-		void Pivot(FTableau& T, int32 PivotRow, int32 PivotCol)
+		/**
+		 * Build the standard form from the assembly rows. Same conventions as the dense
+		 * solver, kept deliberately: equilibrate over the COEFFICIENTS ONLY, never the
+		 * right-hand side (scaling by the lambda cap's 1e6 shrinks a row's real
+		 * coefficients toward the pivot tolerance and an uncapped problem then reads
+		 * "unbounded" — measured before that comment was first written); flip any row
+		 * whose scaled right-hand side is negative; start from the slack where it
+		 * survives the flip at +1, else from an artificial.
+		 */
+		void BuildStandardForm(
+			const TArray<FAssemblyRow>& AssemblyRows, int32 NumStructCols, FStandardForm& Out)
 		{
-			TArray<double>& Row = T.Rows[PivotRow];
-			const double Divisor = Row[PivotCol];
+			const int32 NumRows = AssemblyRows.Num();
 
-			for (int32 Col = 0; Col <= T.NumCols; ++Col)
+			int32 NumSlacks = 0;
+
+			for (const FAssemblyRow& Row : AssemblyRows)
 			{
-				Row[Col] /= Divisor;
+				if (!Row.bEquality)
+				{
+					++NumSlacks;
+				}
 			}
 
-			for (int32 Other = 0; Other < T.Rows.Num(); ++Other)
+			Out.NumRows = NumRows;
+			Out.NumStructCols = NumStructCols;
+			Out.ArtificialStart = NumStructCols + NumSlacks;
+			Out.NumCols = Out.ArtificialStart + NumRows;
+			Out.Rhs.SetNumZeroed(NumRows);
+			Out.InitialBasis.SetNum(NumRows);
+
+			TArray<double> RowScale;
+			TArray<bool> RowFlip;
+			TArray<int32> RowSlackCol;
+			RowScale.SetNum(NumRows);
+			RowFlip.SetNum(NumRows);
+			RowSlackCol.Init(INDEX_NONE, NumRows);
+
+			int32 NextSlack = NumStructCols;
+
+			for (int32 RowIndex = 0; RowIndex < NumRows; ++RowIndex)
 			{
-				if (Other == PivotRow)
+				const FAssemblyRow& Row = AssemblyRows[RowIndex];
+
+				double Largest = 0.0;
+
+				for (double Coefficient : Row.Val)
 				{
-					continue;
+					Largest = FMath::Max(Largest, FMath::Abs(Coefficient));
 				}
 
-				TArray<double>& OtherRow = T.Rows[Other];
-				const double Factor = OtherRow[PivotCol];
+				const double Scale = Largest > 0.0 ? 1.0 / Largest : 1.0;
+				const double ScaledRhs = Row.Rhs * Scale;
+				const bool bFlip = ScaledRhs < 0.0;
 
-				if (Factor != 0.0)
+				RowScale[RowIndex] = Scale;
+				RowFlip[RowIndex] = bFlip;
+				Out.Rhs[RowIndex] = bFlip ? -ScaledRhs : ScaledRhs;
+
+				if (!Row.bEquality)
 				{
-					for (int32 Col = 0; Col <= T.NumCols; ++Col)
+					RowSlackCol[RowIndex] = NextSlack++;
+				}
+
+				/* Basis: the slack where it is still +1 after orientation, else artificial. */
+				if (RowSlackCol[RowIndex] != INDEX_NONE && !bFlip)
+				{
+					Out.InitialBasis[RowIndex] = RowSlackCol[RowIndex];
+				}
+				else
+				{
+					Out.InitialBasis[RowIndex] = Out.ArtificialStart + RowIndex;
+				}
+			}
+
+			/* Count nonzeros per column, then fill by ascending row for determinism. */
+			TArray<int32> Count;
+			Count.SetNumZeroed(Out.NumCols);
+
+			for (int32 RowIndex = 0; RowIndex < NumRows; ++RowIndex)
+			{
+				for (int32 Col : AssemblyRows[RowIndex].Col)
+				{
+					++Count[Col];
+				}
+
+				if (RowSlackCol[RowIndex] != INDEX_NONE)
+				{
+					++Count[RowSlackCol[RowIndex]];
+				}
+
+				if (Out.InitialBasis[RowIndex] >= Out.ArtificialStart)
+				{
+					++Count[Out.InitialBasis[RowIndex]];
+				}
+			}
+
+			Out.ColStart.SetNum(Out.NumCols + 1);
+			Out.ColStart[0] = 0;
+
+			for (int32 Col = 0; Col < Out.NumCols; ++Col)
+			{
+				Out.ColStart[Col + 1] = Out.ColStart[Col] + Count[Col];
+			}
+
+			Out.ColRow.SetNum(Out.ColStart[Out.NumCols]);
+			Out.ColVal.SetNum(Out.ColStart[Out.NumCols]);
+
+			TArray<int32> Cursor = Out.ColStart;
+
+			for (int32 RowIndex = 0; RowIndex < NumRows; ++RowIndex)
+			{
+				const FAssemblyRow& Row = AssemblyRows[RowIndex];
+				const double Sign = RowFlip[RowIndex] ? -1.0 : 1.0;
+				const double Scale = RowScale[RowIndex] * Sign;
+
+				for (int32 Entry = 0; Entry < Row.Col.Num(); ++Entry)
+				{
+					const int32 Col = Row.Col[Entry];
+					const int32 At = Cursor[Col]++;
+					Out.ColRow[At] = RowIndex;
+					Out.ColVal[At] = Row.Val[Entry] * Scale;
+				}
+
+				if (RowSlackCol[RowIndex] != INDEX_NONE)
+				{
+					const int32 At = Cursor[RowSlackCol[RowIndex]]++;
+					Out.ColRow[At] = RowIndex;
+					Out.ColVal[At] = Sign;
+				}
+
+				if (Out.InitialBasis[RowIndex] >= Out.ArtificialStart)
+				{
+					const int32 At = Cursor[Out.InitialBasis[RowIndex]]++;
+					Out.ColRow[At] = RowIndex;
+					Out.ColVal[At] = 1.0;
+				}
+			}
+		}
+
+		/** One column of the L or U factor, sparse. */
+		struct FFactorColumn
+		{
+			TArray<int32> Row;
+			TArray<double> Val;
+
+			void Reset()
+			{
+				Row.Reset();
+				Val.Reset();
+			}
+		};
+
+		/**
+		 * A sparse LU factorisation of the basis with row partial pivoting: left-looking
+		 * column-at-a-time (Gilbert-Peierls shape — a depth-first reach per column over
+		 * L's pattern, then a scatter/eliminate/split on a dense workspace), pivot row
+		 * chosen by LARGEST MAGNITUDE with LOWEST ORIGINAL INDEX on exact ties, which is
+		 * what keeps the whole factorisation a pure function of the input arrays. The
+		 * reached positions are processed in ascending pivot order — a valid elimination
+		 * order because L is lower triangular in position space — rather than the
+		 * classic topological order, trading a sort for simplicity at validation scale.
+		 *
+		 * During factorisation L's row indices are ORIGINAL row numbers (the rows below
+		 * the diagonal have no position yet); a single remap after the last column turns
+		 * everything into position space, where both triangular solves are ordinary.
+		 */
+		struct FBasisFactor
+		{
+			int32 M = 0;
+			TArray<FFactorColumn> LCols;
+			TArray<FFactorColumn> UCols;
+			TArray<double> UDiag;
+
+			/** Position -> original row, and its inverse. */
+			TArray<int32> Perm;
+			TArray<int32> Pinv;
+
+			/* Workspaces, reused across columns and across refactorisations. */
+			TArray<double> Work;
+			TArray<int32> VisitStamp;
+			int32 Stamp = 0;
+			TArray<int32> DfsStack;
+			TArray<int32> Pattern;
+			TArray<int32> Positions;
+
+			void ReachFrom(int32 StartRow)
+			{
+				DfsStack.Reset();
+				DfsStack.Push(StartRow);
+
+				while (DfsStack.Num() > 0)
+				{
+					const int32 RowIndex = DfsStack.Pop();
+
+					if (VisitStamp[RowIndex] == Stamp)
 					{
-						OtherRow[Col] -= Factor * Row[Col];
+						continue;
+					}
+
+					VisitStamp[RowIndex] = Stamp;
+					Pattern.Add(RowIndex);
+
+					const int32 Pos = Pinv[RowIndex];
+
+					if (Pos != INDEX_NONE)
+					{
+						Positions.Add(Pos);
+
+						for (int32 Child : LCols[Pos].Row)
+						{
+							if (VisitStamp[Child] != Stamp)
+							{
+								DfsStack.Push(Child);
+							}
+						}
 					}
 				}
 			}
 
-			const double CostFactor = T.ReducedCost[PivotCol];
-
-			if (CostFactor != 0.0)
+			bool Factorise(const FStandardForm& Form, const TArray<int32>& Basis)
 			{
-				for (int32 Col = 0; Col <= T.NumCols; ++Col)
+				M = Form.NumRows;
+				LCols.SetNum(M);
+				UCols.SetNum(M);
+				UDiag.SetNum(M);
+				Perm.Init(INDEX_NONE, M);
+				Pinv.Init(INDEX_NONE, M);
+				Work.Init(0.0, M);
+				VisitStamp.Init(0, M);
+				Stamp = 0;
+
+				for (int32 Position = 0; Position < M; ++Position)
 				{
-					T.ReducedCost[Col] -= CostFactor * Row[Col];
+					LCols[Position].Reset();
+					UCols[Position].Reset();
 				}
-			}
 
-			T.Basis[PivotRow] = PivotCol;
-		}
-
-		/** Price the objective out for the current basis, from scratch. */
-		void RebuildReducedCosts(FTableau& T, const TArray<double>& Cost)
-		{
-			T.ReducedCost.SetNumZeroed(T.NumCols + 1);
-
-			for (int32 Col = 0; Col < T.NumCols; ++Col)
-			{
-				T.ReducedCost[Col] = Cost[Col];
-			}
-
-			for (int32 Row = 0; Row < T.Rows.Num(); ++Row)
-			{
-				const double BasicCost = Cost[T.Basis[Row]];
-
-				if (BasicCost != 0.0)
+				for (int32 Position = 0; Position < M; ++Position)
 				{
-					for (int32 Col = 0; Col <= T.NumCols; ++Col)
+					++Stamp;
+					Pattern.Reset();
+					Positions.Reset();
+
+					const int32 Col = Basis[Position];
+
+					for (int32 At = Form.ColStart[Col]; At < Form.ColStart[Col + 1]; ++At)
 					{
-						T.ReducedCost[Col] -= BasicCost * T.Rows[Row][Col];
+						ReachFrom(Form.ColRow[At]);
+					}
+
+					Positions.Sort();
+
+					for (int32 At = Form.ColStart[Col]; At < Form.ColStart[Col + 1]; ++At)
+					{
+						Work[Form.ColRow[At]] = Form.ColVal[At];
+					}
+
+					for (int32 Reached : Positions)
+					{
+						const double Value = Work[Perm[Reached]];
+
+						if (Value != 0.0)
+						{
+							const FFactorColumn& L = LCols[Reached];
+
+							for (int32 Entry = 0; Entry < L.Row.Num(); ++Entry)
+							{
+								Work[L.Row[Entry]] -= L.Val[Entry] * Value;
+							}
+						}
+					}
+
+					/* Pivot: largest magnitude among unassigned rows, lowest index tied. */
+					int32 PivotRow = INDEX_NONE;
+					double PivotAbs = 0.0;
+
+					for (int32 RowIndex : Pattern)
+					{
+						if (Pinv[RowIndex] != INDEX_NONE)
+						{
+							continue;
+						}
+
+						const double Abs = FMath::Abs(Work[RowIndex]);
+
+						if (Abs > PivotAbs
+							|| (Abs == PivotAbs && PivotRow != INDEX_NONE && RowIndex < PivotRow))
+						{
+							PivotRow = RowIndex;
+							PivotAbs = Abs;
+						}
+					}
+
+					if (PivotRow == INDEX_NONE || PivotAbs <= SingularPivotTol)
+					{
+						for (int32 RowIndex : Pattern)
+						{
+							Work[RowIndex] = 0.0;
+						}
+
+						return false;
+					}
+
+					const double Pivot = Work[PivotRow];
+
+					for (int32 Reached : Positions)
+					{
+						const double Value = Work[Perm[Reached]];
+
+						if (Value != 0.0)
+						{
+							UCols[Position].Row.Add(Reached);
+							UCols[Position].Val.Add(Value);
+						}
+					}
+
+					UDiag[Position] = Pivot;
+
+					for (int32 RowIndex : Pattern)
+					{
+						if (Pinv[RowIndex] == INDEX_NONE && RowIndex != PivotRow
+							&& Work[RowIndex] != 0.0)
+						{
+							LCols[Position].Row.Add(RowIndex);
+							LCols[Position].Val.Add(Work[RowIndex] / Pivot);
+						}
+					}
+
+					Perm[Position] = PivotRow;
+					Pinv[PivotRow] = Position;
+
+					for (int32 RowIndex : Pattern)
+					{
+						Work[RowIndex] = 0.0;
+					}
+				}
+
+				/* Everything has a position now: move L into position space. */
+				for (int32 Position = 0; Position < M; ++Position)
+				{
+					for (int32& RowIndex : LCols[Position].Row)
+					{
+						RowIndex = Pinv[RowIndex];
+					}
+				}
+
+				return true;
+			}
+
+			/** Solve B z = a: input indexed by original row, output by basis slot. */
+			void FTranFactor(const TArray<double>& OrigVec, TArray<double>& OutSlot) const
+			{
+				OutSlot.SetNumUninitialized(M);
+
+				for (int32 Position = 0; Position < M; ++Position)
+				{
+					OutSlot[Position] = OrigVec[Perm[Position]];
+				}
+
+				for (int32 Position = 0; Position < M; ++Position)
+				{
+					const double Value = OutSlot[Position];
+
+					if (Value != 0.0)
+					{
+						const FFactorColumn& L = LCols[Position];
+
+						for (int32 Entry = 0; Entry < L.Row.Num(); ++Entry)
+						{
+							OutSlot[L.Row[Entry]] -= L.Val[Entry] * Value;
+						}
+					}
+				}
+
+				for (int32 Position = M - 1; Position >= 0; --Position)
+				{
+					OutSlot[Position] /= UDiag[Position];
+
+					const double Value = OutSlot[Position];
+
+					if (Value != 0.0)
+					{
+						const FFactorColumn& U = UCols[Position];
+
+						for (int32 Entry = 0; Entry < U.Row.Num(); ++Entry)
+						{
+							OutSlot[U.Row[Entry]] -= U.Val[Entry] * Value;
+						}
 					}
 				}
 			}
-		}
+
+			/**
+			 * Solve yT B = c: input indexed by basis slot (CONSUMED as scratch), output
+			 * by original row — the shape pricing needs to dot against original columns.
+			 */
+			void BTranFactor(TArray<double>& SlotVec, TArray<double>& OutOrig) const
+			{
+				for (int32 Position = 0; Position < M; ++Position)
+				{
+					double Sum = SlotVec[Position];
+					const FFactorColumn& U = UCols[Position];
+
+					for (int32 Entry = 0; Entry < U.Row.Num(); ++Entry)
+					{
+						Sum -= U.Val[Entry] * SlotVec[U.Row[Entry]];
+					}
+
+					SlotVec[Position] = Sum / UDiag[Position];
+				}
+
+				for (int32 Position = M - 1; Position >= 0; --Position)
+				{
+					double Sum = SlotVec[Position];
+					const FFactorColumn& L = LCols[Position];
+
+					for (int32 Entry = 0; Entry < L.Row.Num(); ++Entry)
+					{
+						Sum -= L.Val[Entry] * SlotVec[L.Row[Entry]];
+					}
+
+					SlotVec[Position] = Sum;
+				}
+
+				OutOrig.Init(0.0, M);
+
+				for (int32 Position = 0; Position < M; ++Position)
+				{
+					OutOrig[Perm[Position]] = SlotVec[Position];
+				}
+			}
+		};
+
+		/**
+		 * One product-form update: the basis column at Slot was replaced by a column
+		 * whose FTRAN image was w, held as its pivot element and off-pivot nonzeros.
+		 */
+		struct FEta
+		{
+			int32 Slot = 0;
+			double Diag = 1.0;
+			TArray<int32> Idx;
+			TArray<double> Val;
+
+			void ApplyFtran(TArray<double>& SlotVec) const
+			{
+				const double Pivot = SlotVec[Slot] / Diag;
+				SlotVec[Slot] = Pivot;
+
+				if (Pivot != 0.0)
+				{
+					for (int32 Entry = 0; Entry < Idx.Num(); ++Entry)
+					{
+						SlotVec[Idx[Entry]] -= Val[Entry] * Pivot;
+					}
+				}
+			}
+
+			void ApplyBtran(TArray<double>& SlotVec) const
+			{
+				double Sum = SlotVec[Slot];
+
+				for (int32 Entry = 0; Entry < Idx.Num(); ++Entry)
+				{
+					Sum -= Val[Entry] * SlotVec[Idx[Entry]];
+				}
+
+				SlotVec[Slot] = Sum / Diag;
+			}
+		};
+
+		/** The revised simplex's working state: basis, factorisation, etas, values. */
+		struct FRevisedState
+		{
+			const FStandardForm* Form = nullptr;
+
+			TArray<int32> Basis;
+			TArray<bool> bIsBasic;
+			TArray<double> XB;
+
+			FBasisFactor Factor;
+			TArray<FEta> Etas;
+			int32 PivotsSinceRefactor = 0;
+
+			/* Scratch buffers, reused so the hot loops never allocate. */
+			TArray<double> ScratchOrig;
+			TArray<double> ScratchSlot;
+			TArray<double> YRow;
+			TArray<double> EnteringW;
+
+			bool Init(const FStandardForm& InForm)
+			{
+				Form = &InForm;
+				Basis = InForm.InitialBasis;
+				bIsBasic.Init(false, InForm.NumCols);
+
+				for (int32 Col : Basis)
+				{
+					bIsBasic[Col] = true;
+				}
+
+				return Refactorise();
+			}
+
+			/**
+			 * THE ERROR RESET: refactorise the basis from the original sparse columns
+			 * and recompute the basic values from the original right-hand side, with ONE
+			 * PASS OF ITERATIVE REFINEMENT — the residual b - B*x is formed against the
+			 * original columns and a correction solved, which knocks the solve noise of
+			 * an ill-conditioned basis (the lambda cap's 1e6 right-hand side amplifies
+			 * it) from ~1e-6 down to rounding, so the verification gate judges the basis
+			 * itself and not the solver's arithmetic. Tiny negative basic values after
+			 * that are rounding at degenerate vertices and are clamped to zero; a
+			 * genuinely infeasible basis cannot hide behind the clamp because the final
+			 * answer is verified against the original unscaled rows.
+			 */
+			bool Refactorise()
+			{
+				if (!Factor.Factorise(*Form, Basis))
+				{
+					return false;
+				}
+
+				Etas.Reset();
+				PivotsSinceRefactor = 0;
+
+				Factor.FTranFactor(Form->Rhs, XB);
+
+				/* One refinement pass: r = b - B*x, x += B^-1 r. */
+				ScratchOrig.Init(0.0, Form->NumRows);
+
+				for (int32 Slot = 0; Slot < Form->NumRows; ++Slot)
+				{
+					const int32 Col = Basis[Slot];
+					const double Value = XB[Slot];
+
+					if (Value != 0.0)
+					{
+						for (int32 At = Form->ColStart[Col]; At < Form->ColStart[Col + 1]; ++At)
+						{
+							ScratchOrig[Form->ColRow[At]] += Form->ColVal[At] * Value;
+						}
+					}
+				}
+
+				for (int32 Row = 0; Row < Form->NumRows; ++Row)
+				{
+					ScratchOrig[Row] = Form->Rhs[Row] - ScratchOrig[Row];
+				}
+
+				Factor.FTranFactor(ScratchOrig, ScratchSlot);
+
+				for (int32 Slot = 0; Slot < Form->NumRows; ++Slot)
+				{
+					XB[Slot] += ScratchSlot[Slot];
+				}
+
+				for (double& Value : XB)
+				{
+					if (Value < 0.0)
+					{
+						Value = 0.0;
+					}
+				}
+
+				return true;
+			}
+
+			/** w = B^-1 * (column Col of the original matrix), in slot space. */
+			void FtranColumn(int32 Col, TArray<double>& OutSlot)
+			{
+				ScratchOrig.Init(0.0, Form->NumRows);
+
+				for (int32 At = Form->ColStart[Col]; At < Form->ColStart[Col + 1]; ++At)
+				{
+					ScratchOrig[Form->ColRow[At]] = Form->ColVal[At];
+				}
+
+				Factor.FTranFactor(ScratchOrig, OutSlot);
+
+				for (const FEta& Eta : Etas)
+				{
+					Eta.ApplyFtran(OutSlot);
+				}
+			}
+
+			/** y (original-row space) with yT B = the slot-space vector in ScratchSlot. */
+			void BtranScratchSlot(TArray<double>& OutOrig)
+			{
+				for (int32 Index = Etas.Num() - 1; Index >= 0; --Index)
+				{
+					Etas[Index].ApplyBtran(ScratchSlot);
+				}
+
+				Factor.BTranFactor(ScratchSlot, OutOrig);
+			}
+
+			double ReducedCost(int32 Col, const TArray<double>& Cost) const
+			{
+				double Sum = Cost[Col];
+
+				for (int32 At = Form->ColStart[Col]; At < Form->ColStart[Col + 1]; ++At)
+				{
+					Sum -= ColValDot(At);
+				}
+
+				return Sum;
+			}
+
+			double ColValDot(int32 At) const
+			{
+				return Form->ColVal[At] * YRow[Form->ColRow[At]];
+			}
+
+			/** Replace the basis column at Leaving with Entering, eta-recorded. */
+			void ApplyPivot(int32 Leaving, int32 Entering, const TArray<double>& W, double Theta)
+			{
+				for (int32 Row = 0; Row < Form->NumRows; ++Row)
+				{
+					XB[Row] -= Theta * W[Row];
+
+					if (XB[Row] < 0.0)
+					{
+						XB[Row] = 0.0;
+					}
+				}
+
+				XB[Leaving] = Theta > 0.0 ? Theta : 0.0;
+
+				FEta Eta;
+				Eta.Slot = Leaving;
+				Eta.Diag = W[Leaving];
+
+				for (int32 Row = 0; Row < Form->NumRows; ++Row)
+				{
+					if (Row != Leaving && W[Row] != 0.0)
+					{
+						Eta.Idx.Add(Row);
+						Eta.Val.Add(W[Row]);
+					}
+				}
+
+				Etas.Add(MoveTemp(Eta));
+
+				bIsBasic[Basis[Leaving]] = false;
+				bIsBasic[Entering] = true;
+				Basis[Leaving] = Entering;
+				++PivotsSinceRefactor;
+			}
+		};
 
 		enum class ESimplexEnd : uint8
 		{
 			Optimal,
 			Unbounded,
 			IterationCap,
+			NumericalFailure,
 		};
 
 		/**
-		 * Minimise the priced-out objective. Every choice below is INDEX-DETERMINISTIC
-		 * — no randomness, no hashing — so the pivot path, and therefore the last bit
-		 * of lambda*, is a pure function of the input arrays.
+		 * Minimise the given objective. Every choice below is INDEX-DETERMINISTIC — no
+		 * randomness, no hashing — so the pivot path, and therefore the last bit of
+		 * lambda*, is a pure function of the input arrays.
 		 *
 		 * The entering rule is DANTZIG (most negative reduced cost, lowest index on
-		 * ties) and the ratio test breaks near-ties by the LARGEST PIVOT ELEMENT (then
-		 * lowest basic index): Bland's rule alone was measured accepting a basis 0.98%
-		 * outside the crushing envelope on the dry 8-course stack, because it happily
-		 * pivots on near-tolerance elements, and grinding a 40-course degenerate
-		 * plateau for the whole iteration budget. Bland remains as the ANTI-CYCLING
-		 * FALLBACK: after a long streak of zero-length steps the entering rule drops to
-		 * lowest-index, which restores the termination guarantee where it is needed.
-		 *
-		 * The reduced-cost row is rebuilt from scratch on a fixed cadence, because a
-		 * maintained row drifts one rounding per pivot and drift is what lets a column
-		 * that is truly at zero read as improving forever.
+		 * ties), priced EXACTLY each iteration from a fresh BTRAN rather than from a
+		 * maintained row — the maintained row's drift was the dense solver's disease.
+		 * The ratio test breaks near-ties by the LARGEST PIVOT ELEMENT (then lowest
+		 * basic index): Bland's rule alone was measured accepting a basis 0.98% outside
+		 * the crushing envelope on the dry 8-course stack, because it happily pivots on
+		 * near-tolerance elements. Bland remains as the ANTI-CYCLING FALLBACK: after a
+		 * long streak of zero-length steps the entering rule drops to lowest-index,
+		 * which restores the termination guarantee where it is needed.
 		 */
-		ESimplexEnd RunSimplex(
-			FTableau& T, const TArray<double>& Cost, int32 AllowedCols, int32& InOutIterations)
+		ESimplexEnd RunRevisedSimplex(
+			FRevisedState& S, const TArray<double>& Cost, int32 AllowedCols,
+			int32& InOutIterations)
 		{
-			int32 PivotsSinceRebuild = 0;
+			const FStandardForm& Form = *S.Form;
 			int32 DegenerateStreak = 0;
 
 			while (true)
@@ -272,20 +911,39 @@ namespace RigidBlockOracle
 					return ESimplexEnd::IterationCap;
 				}
 
-				if (PivotsSinceRebuild >= 64)
+				if (S.PivotsSinceRefactor >= RefactoriseEvery)
 				{
-					RebuildReducedCosts(T, Cost);
-					PivotsSinceRebuild = 0;
+					if (!S.Refactorise())
+					{
+						return ESimplexEnd::NumericalFailure;
+					}
 				}
 
 				const bool bBlandFallback = DegenerateStreak >= 500;
+
+				/* Price: y solves yT B = c_B, then d_j = c_j - y . A_j, exact. */
+				S.ScratchSlot.SetNumUninitialized(Form.NumRows);
+
+				for (int32 Slot = 0; Slot < Form.NumRows; ++Slot)
+				{
+					S.ScratchSlot[Slot] = Cost[S.Basis[Slot]];
+				}
+
+				S.BtranScratchSlot(S.YRow);
 
 				int32 Entering = INDEX_NONE;
 				double MostNegative = -CostTol;
 
 				for (int32 Col = 0; Col < AllowedCols; ++Col)
 				{
-					if (T.ReducedCost[Col] < MostNegative)
+					if (S.bIsBasic[Col])
+					{
+						continue;
+					}
+
+					const double Reduced = S.ReducedCost(Col, Cost);
+
+					if (Reduced < MostNegative)
 					{
 						Entering = Col;
 
@@ -294,7 +952,7 @@ namespace RigidBlockOracle
 							break;
 						}
 
-						MostNegative = T.ReducedCost[Col];
+						MostNegative = Reduced;
 					}
 				}
 
@@ -303,24 +961,28 @@ namespace RigidBlockOracle
 					return ESimplexEnd::Optimal;
 				}
 
+				S.FtranColumn(Entering, S.EnteringW);
+
 				int32 Leaving = INDEX_NONE;
 				double BestRatio = 0.0;
+				double LeavingMagnitude = 0.0;
 
-				for (int32 Row = 0; Row < T.Rows.Num(); ++Row)
+				for (int32 Row = 0; Row < Form.NumRows; ++Row)
 				{
-					const double Coefficient = T.Rows[Row][Entering];
+					const double Coefficient = S.EnteringW[Row];
 
 					if (Coefficient <= PivotTol)
 					{
 						continue;
 					}
 
-					const double Ratio = T.Rows[Row][T.NumCols] / Coefficient;
+					const double Ratio = S.XB[Row] / Coefficient;
 
 					if (Leaving == INDEX_NONE)
 					{
 						Leaving = Row;
 						BestRatio = Ratio;
+						LeavingMagnitude = Coefficient;
 						continue;
 					}
 
@@ -330,17 +992,18 @@ namespace RigidBlockOracle
 					{
 						Leaving = Row;
 						BestRatio = Ratio;
+						LeavingMagnitude = Coefficient;
 					}
 					else if (Ratio <= BestRatio + NearTie)
 					{
 						/* Same step length: prefer the numerically strongest pivot. */
-						const double Incumbent = FMath::Abs(T.Rows[Leaving][Entering]);
-
-						if (Coefficient > Incumbent
-							|| (Coefficient == Incumbent && T.Basis[Row] < T.Basis[Leaving]))
+						if (Coefficient > LeavingMagnitude
+							|| (Coefficient == LeavingMagnitude
+								&& S.Basis[Row] < S.Basis[Leaving]))
 						{
 							Leaving = Row;
 							BestRatio = FMath::Min(BestRatio, Ratio);
+							LeavingMagnitude = Coefficient;
 						}
 					}
 				}
@@ -359,9 +1022,8 @@ namespace RigidBlockOracle
 					DegenerateStreak = 0;
 				}
 
-				Pivot(T, Leaving, Entering);
+				S.ApplyPivot(Leaving, Entering, S.EnteringW, BestRatio);
 				++InOutIterations;
-				++PivotsSinceRebuild;
 			}
 		}
 	}
@@ -450,61 +1112,6 @@ namespace RigidBlockOracle
 			FAssemblyRow RowFx;
 			FAssemblyRow RowFz;
 			FAssemblyRow RowM;
-			RowFx.Coeff.SetNumZeroed(NumStructCols);
-			RowFz.Coeff.SetNumZeroed(NumStructCols);
-			RowM.Coeff.SetNumZeroed(NumStructCols);
-
-			for (int32 ContactIndex = 0; ContactIndex < Contacts.Num(); ++ContactIndex)
-			{
-				const FContact& Contact = Contacts[ContactIndex];
-				const FOracleJoint& Joint = Problem.Joints[Contact.Joint];
-
-				double SignForBlock = 0.0;
-
-				if (Joint.BlockB == BlockIndex)
-				{
-					SignForBlock = 1.0;
-				}
-				else if (Joint.BlockA == BlockIndex)
-				{
-					SignForBlock = -1.0;
-				}
-				else
-				{
-					continue;
-				}
-
-				const double TangentX = -Joint.NormalZ;
-				const double TangentZ = Joint.NormalX;
-
-				const double Rx = Contact.PosX - Block.CentroidXCm;
-				const double Rz = Contact.PosZ - Block.CentroidZCm;
-
-				/* Torque per unit force: r_x*F_z - r_z*F_x, one convention throughout. */
-				const double TorquePerNormal = Rx * Joint.NormalZ - Rz * Joint.NormalX;
-				const double TorquePerShear = Rx * TangentZ - Rz * TangentX;
-
-				const int32 Base = 1 + 4 * ContactIndex;
-
-				RowFx.Coeff[Base + 0] += SignForBlock * Joint.NormalX;
-				RowFx.Coeff[Base + 2] += SignForBlock * TangentX;
-				RowFx.Coeff[Base + 3] -= SignForBlock * TangentX;
-
-				RowFz.Coeff[Base + 0] += SignForBlock * Joint.NormalZ;
-				RowFz.Coeff[Base + 2] += SignForBlock * TangentZ;
-				RowFz.Coeff[Base + 3] -= SignForBlock * TangentZ;
-
-				RowM.Coeff[Base + 0] += SignForBlock * TorquePerNormal;
-				RowM.Coeff[Base + 2] += SignForBlock * TorquePerShear;
-				RowM.Coeff[Base + 3] -= SignForBlock * TorquePerShear;
-
-				if (Contact.bCanTension)
-				{
-					RowFx.Coeff[Base + 1] -= SignForBlock * Joint.NormalX;
-					RowFz.Coeff[Base + 1] -= SignForBlock * Joint.NormalZ;
-					RowM.Coeff[Base + 1] -= SignForBlock * TorquePerNormal;
-				}
-			}
 
 			/* Loads: live into the lambda column, dead into the right-hand side. */
 			double LiveX = 0.0, LiveZ = 0.0, LiveM = 0.0;
@@ -547,9 +1154,62 @@ namespace RigidBlockOracle
 				}
 			}
 
-			RowFx.Coeff[0] = LiveX;
-			RowFz.Coeff[0] = LiveZ;
-			RowM.Coeff[0] = LiveM;
+			RowFx.Add(0, LiveX);
+			RowFz.Add(0, LiveZ);
+			RowM.Add(0, LiveM);
+
+			for (int32 ContactIndex = 0; ContactIndex < Contacts.Num(); ++ContactIndex)
+			{
+				const FContact& Contact = Contacts[ContactIndex];
+				const FOracleJoint& Joint = Problem.Joints[Contact.Joint];
+
+				double SignForBlock = 0.0;
+
+				if (Joint.BlockB == BlockIndex)
+				{
+					SignForBlock = 1.0;
+				}
+				else if (Joint.BlockA == BlockIndex)
+				{
+					SignForBlock = -1.0;
+				}
+				else
+				{
+					continue;
+				}
+
+				const double TangentX = -Joint.NormalZ;
+				const double TangentZ = Joint.NormalX;
+
+				const double Rx = Contact.PosX - Block.CentroidXCm;
+				const double Rz = Contact.PosZ - Block.CentroidZCm;
+
+				/* Torque per unit force: r_x*F_z - r_z*F_x, one convention throughout. */
+				const double TorquePerNormal = Rx * Joint.NormalZ - Rz * Joint.NormalX;
+				const double TorquePerShear = Rx * TangentZ - Rz * TangentX;
+
+				const int32 Base = 1 + 4 * ContactIndex;
+
+				RowFx.Add(Base + 0, SignForBlock * Joint.NormalX);
+				RowFz.Add(Base + 0, SignForBlock * Joint.NormalZ);
+				RowM.Add(Base + 0, SignForBlock * TorquePerNormal);
+
+				if (Contact.bCanTension)
+				{
+					RowFx.Add(Base + 1, -SignForBlock * Joint.NormalX);
+					RowFz.Add(Base + 1, -SignForBlock * Joint.NormalZ);
+					RowM.Add(Base + 1, -SignForBlock * TorquePerNormal);
+				}
+
+				RowFx.Add(Base + 2, SignForBlock * TangentX);
+				RowFz.Add(Base + 2, SignForBlock * TangentZ);
+				RowM.Add(Base + 2, SignForBlock * TorquePerShear);
+
+				RowFx.Add(Base + 3, -SignForBlock * TangentX);
+				RowFz.Add(Base + 3, -SignForBlock * TangentZ);
+				RowM.Add(Base + 3, -SignForBlock * TorquePerShear);
+			}
+
 			RowFx.Rhs = -DeadX;
 			RowFz.Rhs = -DeadZ;
 			RowM.Rhs = -DeadM;
@@ -562,8 +1222,7 @@ namespace RigidBlockOracle
 		/* ---- The lambda cap. ---------------------------------------------------- */
 		{
 			FAssemblyRow Cap;
-			Cap.Coeff.SetNumZeroed(NumStructCols);
-			Cap.Coeff[0] = 1.0;
+			Cap.Add(0, 1.0);
 			Cap.Rhs = LambdaCap;
 			Cap.bEquality = false;
 			AssemblyRows.Add(MoveTemp(Cap));
@@ -586,8 +1245,7 @@ namespace RigidBlockOracle
 			if (Contact.bCanTension && S.TensileStrengthMPa < UncappedStrengthMPa)
 			{
 				FAssemblyRow Tension;
-				Tension.Coeff.SetNumZeroed(NumStructCols);
-				Tension.Coeff[Base + 1] = 1.0;
+				Tension.Add(Base + 1, 1.0);
 				Tension.Rhs = S.TensileStrengthMPa * Conv * AreaSqCm;
 				Tension.bEquality = false;
 				AssemblyRows.Add(MoveTemp(Tension));
@@ -601,11 +1259,15 @@ namespace RigidBlockOracle
 					const double ShearSign = Orientation == 0 ? 1.0 : -1.0;
 
 					FAssemblyRow Friction;
-					Friction.Coeff.SetNumZeroed(NumStructCols);
-					Friction.Coeff[Base + 0] = -S.FrictionCoefficient;
-					Friction.Coeff[Base + 1] = Contact.bCanTension ? S.FrictionCoefficient : 0.0;
-					Friction.Coeff[Base + 2] = ShearSign;
-					Friction.Coeff[Base + 3] = -ShearSign;
+					Friction.Add(Base + 0, -S.FrictionCoefficient);
+
+					if (Contact.bCanTension)
+					{
+						Friction.Add(Base + 1, S.FrictionCoefficient);
+					}
+
+					Friction.Add(Base + 2, ShearSign);
+					Friction.Add(Base + 3, -ShearSign);
 					Friction.Rhs = S.ShearCohesionMPa * Conv * AreaSqCm;
 					Friction.bEquality = false;
 					AssemblyRows.Add(MoveTemp(Friction));
@@ -616,9 +1278,13 @@ namespace RigidBlockOracle
 			if (S.CompressiveStrengthMPa < UncappedStrengthMPa)
 			{
 				FAssemblyRow Crush;
-				Crush.Coeff.SetNumZeroed(NumStructCols);
-				Crush.Coeff[Base + 0] = 1.0;
-				Crush.Coeff[Base + 1] = Contact.bCanTension ? -1.0 : 0.0;
+				Crush.Add(Base + 0, 1.0);
+
+				if (Contact.bCanTension)
+				{
+					Crush.Add(Base + 1, -1.0);
+				}
+
 				Crush.Rhs = S.CompressiveStrengthMPa * Conv * AreaSqCm;
 				Crush.bEquality = false;
 				AssemblyRows.Add(MoveTemp(Crush));
@@ -632,9 +1298,8 @@ namespace RigidBlockOracle
 					const double ShearSign = Orientation == 0 ? 1.0 : -1.0;
 
 					FAssemblyRow Ceiling;
-					Ceiling.Coeff.SetNumZeroed(NumStructCols);
-					Ceiling.Coeff[Base + 2] = ShearSign;
-					Ceiling.Coeff[Base + 3] = -ShearSign;
+					Ceiling.Add(Base + 2, ShearSign);
+					Ceiling.Add(Base + 3, -ShearSign);
 					Ceiling.Rhs = S.MaxShearStrengthMPa * Conv * AreaSqCm;
 					Ceiling.bEquality = false;
 					AssemblyRows.Add(MoveTemp(Ceiling));
@@ -642,167 +1307,187 @@ namespace RigidBlockOracle
 			}
 		}
 
-		/* ---- Standard form: scale rows, add slacks, orient RHS non-negative. ---- */
-		const int32 NumRows = AssemblyRows.Num();
+		/* ---- Standard form and the revised simplex's working state. ------------- */
+		FStandardForm Form;
+		BuildStandardForm(AssemblyRows, NumStructCols, Form);
 
-		int32 NumSlacks = 0;
+		FRevisedState State;
 
-		for (const FAssemblyRow& Row : AssemblyRows)
-		{
-			if (!Row.bEquality)
-			{
-				++NumSlacks;
-			}
-		}
-
-		FTableau T;
-		T.ArtificialStart = NumStructCols + NumSlacks;
-		T.NumCols = T.ArtificialStart + NumRows;
-		T.Rows.SetNum(NumRows);
-		T.Basis.SetNum(NumRows);
-
-		int32 NextSlack = NumStructCols;
-
-		for (int32 RowIndex = 0; RowIndex < NumRows; ++RowIndex)
-		{
-			const FAssemblyRow& Assembly = AssemblyRows[RowIndex];
-			TArray<double>& Row = T.Rows[RowIndex];
-			Row.SetNumZeroed(T.NumCols + 1);
-
-			/*
-			 * Row equilibration over the COEFFICIENTS ONLY, never the right-hand side:
-			 * scaling by a large RHS (the lambda cap's 1e6) shrinks the row's real
-			 * coefficients toward the pivot tolerance, and an uncapped problem then
-			 * reads "unbounded" because the one row that bounds lambda has become
-			 * numerically invisible. Measured before this comment was written.
-			 */
-			double Largest = 0.0;
-
-			for (double Coefficient : Assembly.Coeff)
-			{
-				Largest = FMath::Max(Largest, FMath::Abs(Coefficient));
-			}
-
-			const double Scale = Largest > 0.0 ? 1.0 / Largest : 1.0;
-
-			for (int32 Col = 0; Col < NumStructCols; ++Col)
-			{
-				Row[Col] = Assembly.Coeff[Col] * Scale;
-			}
-
-			Row[T.NumCols] = Assembly.Rhs * Scale;
-
-			int32 SlackCol = INDEX_NONE;
-
-			if (!Assembly.bEquality)
-			{
-				SlackCol = NextSlack++;
-				Row[SlackCol] = 1.0;
-			}
-
-			if (Row[T.NumCols] < 0.0)
-			{
-				for (int32 Col = 0; Col <= T.NumCols; ++Col)
-				{
-					Row[Col] = -Row[Col];
-				}
-			}
-
-			/* Basis: the slack where it is still +1 after orientation, else artificial. */
-			if (SlackCol != INDEX_NONE && Row[SlackCol] > 0.0)
-			{
-				T.Basis[RowIndex] = SlackCol;
-			}
-			else
-			{
-				const int32 ArtificialCol = T.ArtificialStart + RowIndex;
-				Row[ArtificialCol] = 1.0;
-				T.Basis[RowIndex] = ArtificialCol;
-			}
-		}
-
-		/* ---- Phase 1: drive the artificials to zero. ---------------------------- */
-		TArray<double> PhaseOneCost;
-		PhaseOneCost.SetNumZeroed(T.NumCols);
-
-		for (int32 Col = T.ArtificialStart; Col < T.NumCols; ++Col)
-		{
-			PhaseOneCost[Col] = 1.0;
-		}
-
-		RebuildReducedCosts(T, PhaseOneCost);
-
-		int32 Iterations = 0;
-		ESimplexEnd PhaseOneEnd = RunSimplex(T, PhaseOneCost, T.NumCols, Iterations);
-		Result.SimplexIterations = Iterations;
-
-		if (PhaseOneEnd != ESimplexEnd::Optimal)
+		if (!State.Init(Form))
 		{
 			Result.WhyNot = TEXT("phase-1 simplex failed");
 			return Result;
 		}
 
-		double Infeasibility = 0.0;
-
-		for (int32 RowIndex = 0; RowIndex < NumRows; ++RowIndex)
+		const auto BasicArtificialInfeasibility = [&Form, &State]()
 		{
-			if (T.Basis[RowIndex] >= T.ArtificialStart)
+			double Infeasibility = 0.0;
+
+			for (int32 Row = 0; Row < Form.NumRows; ++Row)
 			{
-				Infeasibility += T.Rows[RowIndex][T.NumCols];
+				if (State.Basis[Row] >= Form.ArtificialStart)
+				{
+					Infeasibility += State.XB[Row];
+				}
+			}
+
+			return Infeasibility;
+		};
+
+		const auto InfeasibilityTolerance = [&Form, &State]()
+		{
+			double LargestRhs = 0.0;
+
+			for (int32 Row = 0; Row < Form.NumRows; ++Row)
+			{
+				LargestRhs = FMath::Max(LargestRhs, FMath::Abs(State.XB[Row]));
+			}
+
+			return (1.0 + LargestRhs) * 1.0e-9 * double(Form.NumRows);
+		};
+
+		/* ---- Phase 1: drive the artificials to zero. ---------------------------- */
+		int32 Iterations = 0;
+
+		/*
+		 * A gravity-live problem starts feasible (every equality's right-hand side is
+		 * zero, so its artificial is basic AT ZERO): the phase-1 objective is already
+		 * optimal and running the simplex would only churn degenerate pivots. Dead
+		 * loads put real values on the artificials and phase 1 must genuinely run.
+		 */
+		if (BasicArtificialInfeasibility() > InfeasibilityTolerance())
+		{
+			TArray<double> PhaseOneCost;
+			PhaseOneCost.SetNumZeroed(Form.NumCols);
+
+			for (int32 Col = Form.ArtificialStart; Col < Form.NumCols; ++Col)
+			{
+				PhaseOneCost[Col] = 1.0;
+			}
+
+			const ESimplexEnd PhaseOneEnd = RunRevisedSimplex(
+				State, PhaseOneCost, Form.NumCols, Iterations);
+			Result.SimplexIterations = Iterations;
+
+			if (PhaseOneEnd != ESimplexEnd::Optimal)
+			{
+				Result.WhyNot = TEXT("phase-1 simplex failed");
+				return Result;
+			}
+
+			if (BasicArtificialInfeasibility() > InfeasibilityTolerance())
+			{
+				/*
+				 * The DEAD loads alone admit no equilibrium (lambda = 0 is in the
+				 * feasible set of every gravity-live problem, so this is only reachable
+				 * with dead loads). That is an answer, not a failure: nothing stands,
+				 * lambda* = 0.
+				 */
+				Result.bAnswered = true;
+				Result.Lambda = 0.0;
+				return Result;
 			}
 		}
 
-		double LargestRhs = 0.0;
+		Result.SimplexIterations = Iterations;
 
-		for (int32 RowIndex = 0; RowIndex < NumRows; ++RowIndex)
+		/*
+		 * Pivot lingering zero-value artificials out where a real column allows it:
+		 * row r's tableau entry for column j is (B^-1 A_j)[r] = rho . A_j with
+		 * rho = B^-T e_r, so one BTRAN prices the whole candidate scan. The entering
+		 * column is the LARGEST |alpha| (lowest index on exact ties), not the dense
+		 * solver's first-past-the-tolerance: these pivots pick the basis every later
+		 * phase-2 solve stands on, and a near-tolerance choice here was measured
+		 * leaving a basis so ill-conditioned that a refactorised solve carried ~1e-6
+		 * of noise into the verification gate on a problem whose answer was exact.
+		 */
+		for (int32 Row = 0; Row < Form.NumRows; ++Row)
 		{
-			LargestRhs = FMath::Max(LargestRhs, FMath::Abs(T.Rows[RowIndex][T.NumCols]));
-		}
-
-		if (Infeasibility > (1.0 + LargestRhs) * 1.0e-9 * double(NumRows))
-		{
-			/*
-			 * The DEAD loads alone admit no equilibrium (lambda = 0 is in the feasible
-			 * set of every gravity-live problem, so this is only reachable with dead
-			 * loads). That is an answer, not a failure: nothing stands, lambda* = 0.
-			 */
-			Result.bAnswered = true;
-			Result.Lambda = 0.0;
-			return Result;
-		}
-
-		/* Pivot lingering zero-value artificials out where a real column allows it. */
-		for (int32 RowIndex = 0; RowIndex < NumRows; ++RowIndex)
-		{
-			if (T.Basis[RowIndex] < T.ArtificialStart)
+			if (State.Basis[Row] < Form.ArtificialStart)
 			{
 				continue;
 			}
 
-			for (int32 Col = 0; Col < T.ArtificialStart; ++Col)
+			if (State.PivotsSinceRefactor >= RefactoriseEvery)
 			{
-				if (FMath::Abs(T.Rows[RowIndex][Col]) > PivotTol)
+				if (!State.Refactorise())
 				{
-					Pivot(T, RowIndex, Col);
-					break;
+					Result.WhyNot = TEXT("phase-1 simplex failed");
+					return Result;
 				}
 			}
+
+			State.ScratchSlot.Init(0.0, Form.NumRows);
+			State.ScratchSlot[Row] = 1.0;
+			State.BtranScratchSlot(State.YRow);
+
+			int32 Entering = INDEX_NONE;
+			double EnteringAbs = PivotTol;
+
+			for (int32 Col = 0; Col < Form.ArtificialStart; ++Col)
+			{
+				if (State.bIsBasic[Col])
+				{
+					continue;
+				}
+
+				double Alpha = 0.0;
+
+				for (int32 At = Form.ColStart[Col]; At < Form.ColStart[Col + 1]; ++At)
+				{
+					Alpha += Form.ColVal[At] * State.YRow[Form.ColRow[At]];
+				}
+
+				if (FMath::Abs(Alpha) > EnteringAbs)
+				{
+					Entering = Col;
+					EnteringAbs = FMath::Abs(Alpha);
+				}
+			}
+
+			if (Entering == INDEX_NONE)
+			{
+				/*
+				 * A genuinely redundant row: no real column can pivot the artificial out.
+				 * It stays basic at zero — harmless, since pricing scans every real column
+				 * exactly and complementary slackness certifies phase 2's optimum
+				 * regardless of what sits in this row, and the post-solve verification
+				 * gate fails closed if that certification is ever wrong.
+				 */
+				continue;
+			}
+
+			State.FtranColumn(Entering, State.EnteringW);
+
+			const double Theta = State.XB[Row] / State.EnteringW[Row];
+			State.ApplyPivot(Row, Entering, State.EnteringW, Theta);
 		}
 
 		/* ---- Phase 2: maximise lambda (minimise -lambda). ----------------------- */
-		TArray<double> PhaseTwoCost;
-		PhaseTwoCost.SetNumZeroed(T.NumCols);
-		PhaseTwoCost[0] = -1.0;
-
-		RebuildReducedCosts(T, PhaseTwoCost);
-
-		const ESimplexEnd PhaseTwoEnd =
-			RunSimplex(T, PhaseTwoCost, T.ArtificialStart, Iterations);
-		Result.SimplexIterations = Iterations;
-
-		if (PhaseTwoEnd != ESimplexEnd::Optimal)
 		{
-			/* With the cap row a real unbounded ray is impossible; fail closed. */
+			TArray<double> PhaseTwoCost;
+			PhaseTwoCost.SetNumZeroed(Form.NumCols);
+			PhaseTwoCost[0] = -1.0;
+
+			const ESimplexEnd PhaseTwoEnd = RunRevisedSimplex(
+				State, PhaseTwoCost, Form.ArtificialStart, Iterations);
+			Result.SimplexIterations = Iterations;
+
+			if (PhaseTwoEnd != ESimplexEnd::Optimal)
+			{
+				/* With the cap row a real unbounded ray is impossible; fail closed. */
+				Result.WhyNot = TEXT("phase-2 simplex failed");
+				return Result;
+			}
+		}
+
+		/*
+		 * One final refactorisation so the values verification judges are the cleanest
+		 * solve the final basis admits — factorised from original columns, basic values
+		 * from the original right-hand side, no eta in sight.
+		 */
+		if (!State.Refactorise())
+		{
 			Result.WhyNot = TEXT("phase-2 simplex failed");
 			return Result;
 		}
@@ -818,25 +1503,24 @@ namespace RigidBlockOracle
 		TArray<double> StructValues;
 		StructValues.SetNumZeroed(NumStructCols);
 
-		for (int32 RowIndex = 0; RowIndex < NumRows; ++RowIndex)
+		for (int32 Row = 0; Row < Form.NumRows; ++Row)
 		{
-			if (T.Basis[RowIndex] < NumStructCols)
+			if (State.Basis[Row] < NumStructCols)
 			{
-				StructValues[T.Basis[RowIndex]] =
-					FMath::Max(0.0, T.Rows[RowIndex][T.NumCols]);
+				StructValues[State.Basis[Row]] = FMath::Max(0.0, State.XB[Row]);
 			}
 		}
 
-		for (int32 RowIndex = 0; RowIndex < NumRows; ++RowIndex)
+		for (int32 RowIndex = 0; RowIndex < AssemblyRows.Num(); ++RowIndex)
 		{
 			const FAssemblyRow& Assembly = AssemblyRows[RowIndex];
 
 			double LeftHandSide = 0.0;
 			double Magnitude = FMath::Abs(Assembly.Rhs);
 
-			for (int32 Col = 0; Col < NumStructCols; ++Col)
+			for (int32 Entry = 0; Entry < Assembly.Col.Num(); ++Entry)
 			{
-				const double Term = Assembly.Coeff[Col] * StructValues[Col];
+				const double Term = Assembly.Val[Entry] * StructValues[Assembly.Col[Entry]];
 				LeftHandSide += Term;
 				Magnitude += FMath::Abs(Term);
 			}

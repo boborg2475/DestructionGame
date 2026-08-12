@@ -90,15 +90,30 @@
  * supposed to check would agree with a wrong value instead of failing against it. Same
  * convention as every acceptance test's independent derivation.
  *
- * DETERMINISM IS A CONTRACT. The solver is a dense two-phase primal simplex: Dantzig
- * entering with a largest-pivot ratio tie-break, falling back to Bland's rule for the
- * ENTERING choice only after a 500-pivot degenerate streak, over row and column orders
- * fixed by the input arrays. Every tie-break is index-based — no randomness, no time,
- * no hashing — so the same problem gives bit-identical lambda* on every run, which is
- * what lets a fixture-sweep diff be re-run and trusted. Because the fallback's LEAVING
- * choice is not Bland's, the classical no-cycling theorem does NOT apply; termination
- * is guaranteed by the fail-closed iteration cap, which reports failure rather than a
- * number. Do not remove the cap as "redundant" — it is the termination proof.
+ * DETERMINISM IS A CONTRACT. The solver is a SPARSE REVISED two-phase primal simplex
+ * (rewritten 2026-08-12; the original dense tableau accumulated one rounding per cell
+ * per pivot and its own verification refused every fixture past ~4,000 pivots): the
+ * constraint matrix is held untouched in sparse column form, the basis as an LU
+ * factorisation (left-looking, partial pivoting by magnitude with lowest-index ties)
+ * plus a product-form eta file, REFACTORISED FROM THE ORIGINAL CLEAN DATA on a fixed
+ * cadence — which both bounds the iteration cost and RESETS accumulated error, the
+ * property the dense method structurally lacked. Pricing is Dantzig (most negative
+ * exact reduced cost from a fresh BTRAN each iteration, lowest index on ties) with a
+ * largest-pivot ratio tie-break, falling back to Bland's rule for the ENTERING choice
+ * only after a 500-pivot degenerate streak, over row and column orders fixed by the
+ * input arrays. Every tie-break is index-based — no randomness, no time, no hashing —
+ * so the same problem gives bit-identical lambda* on every run, which is what lets a
+ * fixture-sweep diff be re-run and trusted. Because the fallback's LEAVING choice is
+ * not Bland's, the classical no-cycling theorem does NOT apply; termination is
+ * guaranteed by the fail-closed iteration cap, which reports failure rather than a
+ * number. Do not remove the cap as "redundant" — it is the termination proof. A
+ * redundant row can leave an artificial parked BASIC AT ZERO after phase 1; the
+ * pivot-out pass immediately after phase 1 clears every one a real column can reach,
+ * and the dense solver's recorded basic-artificial residue is contained by that pass
+ * together with the post-solve verification gate, which fails closed rather than
+ * certifying a basis it cannot check — not by any discipline inside phase 2 itself,
+ * since pricing there scans every real column exactly and complementary slackness
+ * certifies the optimum regardless of what a zero-value artificial sits on.
  *
  * FAIL CLOSED, EVERYWHERE. A problem the oracle cannot validate — NaN anywhere, a
  * non-unit normal, a nonsense index, a structure whose geometry is incomplete — returns
@@ -109,9 +124,11 @@
  *
  * SCOPE HONESTY. 2D means the X-Z plane: Y is the wythe and enters only through joint
  * areas. Every current fixture is single-wythe and laid in X-Z; a joint whose normal
- * has a Y component is refused rather than projected. Solvable size is validation
- * scale (hundreds of contacts); the dense tableau is O(rows * columns) memory and this
- * is a test oracle, not a shipping solver.
+ * has a Y component is refused rather than projected. Memory is O(nonzeros + basis
+ * fill), so every fixture the project owns — the ~375-piece 30-course walls included —
+ * is representable; the measured answering envelope per fixture lives in
+ * RigidBlockOracleSweepTest.cpp's headers, and this is still a test oracle, not a
+ * shipping solver.
  */
 namespace RigidBlockOracle
 {

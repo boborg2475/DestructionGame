@@ -96,17 +96,21 @@ Run against otherwise-unmutated production; expected signatures below. **(b) han
 | — | one-cell thrust gate, withhold everywhere (`HasArchingAbutment` returns false) | `AOneCellArchMustEarnItsThrust` lime row fails at ~1.29 (10 joints, 5 passes) — the anti-over-withhold half |
 | — | one-cell thrust gate, grant everywhere (restore the pre-gate `HasArchingAbutment` / force it true) | same test, dry-stone row: springings read 0.00473 instead of over-capacity, both bricks Supported instead of Falling — failing lines `StructureOneCellThrustTest.cpp:600/683/703`. Also `Acceptance.Beam.Catalogue` 5→8 assertion failures: all six `DropsToday`/`PassesToday` pins fire (expected 3 got 0 / expected 1 got 0), the STANDS violations flip to pass, case 1 gains "broken beam takes itself down" |
 | — | `ReseatSpannedGroups` early-return (spell `\|\| Pieces.Num() > INT32_MIN` — bare return trips C4702) | coarse (removes a routing mechanism): 36 errors across wall cases 7–12/19/20; the sharp half: case 8 drops exactly the two bricks the retired LOCAL LOSS named ({c4/5, c4/6}) — production's case-8 STANDS is spanned-group re-seating, proven |
-| (M1) | LP oracle: delete the moment-balance rows | 24 failures — every tipping/moment row wrongly stands, both oracle tests |
-| (M2) | LP oracle: delete the friction rows | exactly 3 — the two sliding rows (dry reads 4957.4 instead of 0.7) |
-| (M3) | LP oracle: unlimited tension | 6 — all four mortared stacks (~3.3× high), one-cell mortar, bridge closed form; dry rows stay green *correctly* (associative friction at c = 0 already implies no-tension) |
-| (M4) | LP oracle: conversion open-coded as 100 | 18 — every strength-governed λ* exactly 100× low; mortared 5/8-course verdicts flip (recorded count reconstructed ~15 by review; direction certain) |
-| (M5) | LP oracle: delete the λ-cap row | exactly 1 — the unbreakable row (phase-2 unbounded → fail closed) |
-| (M6) | LP oracle: gut input validation | 63 — 21 poison rows × 3 assertions; catalogue untouched |
-| (M7) | LP oracle: bridge ignores the latch | exactly 1 — the after-removal jamming row ("joint 1 is live but names a piece that is not") |
-| (M4′) | M4 re-run against the sweep | fast sweep 16 row assertions across 4 tests, slow sweep 7 — every strength-governed λ* exactly 100× low |
+| (M1) | LP oracle: delete the moment-balance rows | 37 failures across 6 tests (re-measured 2026-08-12; the fast sweeps and the twin row now watch it too) |
+| (M2) | LP oracle: delete the friction rows | 8 (re-measured 2026-08-12; beam/corbel-B windows joined the original two sliding rows) |
+| (M3) | LP oracle: unlimited tension | 13 (re-measured 2026-08-12) — mortared λ* ~3.3× high; dry rows stay green *correctly* (associative friction at c = 0 already implies no-tension) |
+| (M4) | LP oracle: conversion open-coded as 100 | fast 36 / slow sweep 8 (re-measured 2026-08-12, superseding the reconstructed ~15 doubt) — every strength-governed λ* exactly 100× low |
+| (M5) | LP oracle: delete the λ-cap row | exactly 1 — the unbreakable row (phase-2 unbounded → fail closed); unchanged under the sparse solver |
+| (M6) | LP oracle: gut input validation | 63 — 21 poison rows × 3 assertions; catalogue untouched; unchanged under the sparse solver |
+| (M7) | LP oracle: bridge ignores the latch | exactly 1 — the after-removal jamming row; unchanged under the sparse solver |
 | (S2) | `BreakOverturnedBodies` early-return (spell as `if (Pass > INT32_MIN) { return false; }` — a bare `return false;` trips C4702) | exactly the Sweep.LeaningStack test, 4 assertions incl. both production drop-count pins (29/39 → 0) |
-| (S3) | oracle verification tolerance 1e-6 → 1e-3 | **zero failures** — the envelope refusals are decisive, not marginal |
-| (S3b) | verification off (tolerance 1e30) | exactly 1 — the envelope canary: an unverified basis reports a plausible λ* 257.24 the net correctly refuses to certify |
+| (S3) | oracle verification tolerance 1e-6 → 1e-3 | **zero failures** — when the dense solver existed its envelope refusals were decisive at 1e-3 too; under the sparse solver every answer clears 1e-6 |
+| (S3b) | ~~verification off (tolerance 1e30)~~ | **RETIRED 2026-08-12** with the canary's promotion — its "exactly 1" signature (the canary catching an uncertified λ* 257.24) can no longer occur; the verification gate's bite is now proven by S6-family mutations below |
 | (S4) | test-side: flip the one-cell disagreement classification | exactly 1 — the pinned-relation row |
+| (S6) | sparse solver: delete the iterative-refinement pass at refactorisation | 2 — the two λ* = 0 fixtures refuse via "the optimal basis failed verification" |
+| (S5+S6) | pivot-out first-past-tolerance AND refinement deleted | 3 — all three λ* = 0 fixtures refuse via verification; the gate's bite-prover (S5 alone measures 0 — refinement absorbs it) |
+| (S8) | test-side: perturb one half-area twin's area ×(1+1e-9) | exactly 1 — the cross-row SAME-NUMBER equality (1.241110018676219 vs …92967741); the old 1e-6 closed-form window passes this mutation silently, which is why the cross-row check exists |
+
+**A mutation whose early `return` precedes code trips C4702 and the BUILD FAILS while the old DLL keeps running** — the run then reproduces the *previous* mutation's signature verbatim. Verify `Result: Succeeded` on every mutation build before believing its run; this has now bitten twice (the M6-stale incident, and once during the sparse rewrite).
 
 Degenerate-fixture note: a row meaning to hit the harness bounds bug must name the **ungrounded** piece first (`{1, INDEX_NONE}`) — `||` short-circuits on a grounded piece 0 and the second handle is never evaluated.

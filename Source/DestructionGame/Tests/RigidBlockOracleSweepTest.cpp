@@ -51,8 +51,9 @@
  * for it in their mechanism text; where the local/global split is the whole question the
  * row's comment works the survivor arithmetic rather than pretending lambda* can.
  *
- * COST AND THE DENSE ENVELOPE, BOTH MEASURED (the dense-tableau warning in
- * CURRENT_STATE). The tableau is O(rows x columns) doubles and one pivot touches all of
+ * COST AND THE DENSE ENVELOPE, BOTH MEASURED — HISTORY NOW; the solver described in this
+ * paragraph and the next was retired 2026-08-12 (see THE SPARSE REWRITE below). The dense
+ * tableau WAS O(rows x columns) doubles and one pivot touched all of
  * it. Measured 2026-08-09: the 40-course stack solves in 0.084 s, the beam pair and the
  * one-cell pair in microseconds, corbel B in 0.21 s — those live in the fast suite.
  * Corbel C took 6.8 s and corbel D 79.6 s (90 blocks / 200 joints ~ 20 ms per pivot x
@@ -72,13 +73,27 @@
  * (corbel D answers at 90 blocks / 200 joints / 4,092 pivots), so treat the envelope
  * as measured per-fixture, never as a block-count rule. A 74-block refusal is the
  * recorded state, not a solver regression.
- * The refusals are RECORDED MEASUREMENTS (the slow test's header carries the table),
- * one refusal stays live as a pinned canary, and the walls beyond the envelope are
- * deliberately-listed deferrals on the sparse rewrite CURRENT_STATE already names —
- * not silent skips.
+ * The refusals were RECORDED MEASUREMENTS (the slow test's header carried the table),
+ * one refusal stayed live as a pinned canary until the sparse rewrite flipped and
+ * promoted it, and the walls beyond the envelope were deliberately-listed deferrals —
+ * never silent skips. No refusal row is live today; the refusal branch below is kept
+ * for FUTURE refusal pins (a 30-course attempt would use it), not exercised by any row.
  * EXCLUDED OUTRIGHT on arithmetic alone: the 30-course walls (cases 1-5, ~375 pieces /
  * ~1,000 joints: a ~13k x 33k tableau is ~3.5 GB and hours of pivots), corbels E35/E36
  * (~400 pieces, same league) and corbel F (3,015 pieces, hundreds of GB).
+ *
+ * THE SPARSE REWRITE RETIRED THAT ENVELOPE (2026-08-12). The solver is now a sparse
+ * revised simplex with periodic clean refactorisation (RigidBlockOracle.h records the
+ * method); every fixture the dense tableau refused ANSWERS with verified residuals,
+ * the free-end 7x10 canary failed exactly as written and was promoted to a measured
+ * pin, and the paragraphs above stand as the history that motivated the rewrite. The
+ * slow test's header carries the new measured table. Three scales remain beyond the
+ * PRACTICAL envelope: the 30-course walls (cases 1-5, ~375 pieces / ~13k rows) are now
+ * REPRESENTABLE (tens of MB, no dense tableau), but wall-01 was still pivoting after
+ * ~45 minutes when its measuring run was cut off — full Dantzig pricing over ~34k
+ * columns per iteration is the measured cost driver, and partial pricing is the known
+ * lever if those five rows are ever wanted; corbels E35/E36 (~400 pieces) sit in the
+ * same league; corbel F (3,015 pieces) remains far out.
  *
  * NEEDS A TICKING WORLD: NO. Producers, graph, LP — plain arithmetic on plain structs.
  *
@@ -133,10 +148,12 @@ namespace RigidBlockSweepTestSupport
 		OracleFallsProductionStands,
 
 		/**
-		 * The oracle REFUSES the fixture — post-solve verification fails beyond the
-		 * dense envelope (file header). A pinned refusal is a canary: the day the
-		 * solver answers here (a sparse rewrite, a tolerance change), the row fails
-		 * loudly and must be promoted to a measured relation, never silently absorbed.
+		 * The oracle REFUSES the fixture — post-solve verification fails at this
+		 * scale. A pinned refusal is a canary: the day the solver answers here (a
+		 * pricing improvement, a tolerance change), the row fails loudly and must be
+		 * promoted to a measured relation, never silently absorbed. NO ROW USES THIS
+		 * TODAY — the dense-era canary flipped and was promoted 2026-08-12; the
+		 * machinery stays for future refusal pins (a 30-course attempt would use it).
 		 */
 		OracleRefusesAtThisScale,
 	};
@@ -149,7 +166,7 @@ namespace RigidBlockSweepTestSupport
 		case ERelation::AgreeFalls:                  return TEXT("AGREE (falls)");
 		case ERelation::OracleStandsProductionFalls: return TEXT("ORACLE STANDS / PRODUCTION FALLS");
 		case ERelation::OracleFallsProductionStands: return TEXT("ORACLE FALLS / PRODUCTION STANDS");
-		case ERelation::OracleRefusesAtThisScale:    return TEXT("ORACLE REFUSES (dense envelope)");
+		case ERelation::OracleRefusesAtThisScale:    return TEXT("ORACLE REFUSES (at this scale)");
 		default:                                     return TEXT("UNMEASURED");
 		}
 	}
@@ -318,15 +335,16 @@ namespace RigidBlockSweepTestSupport
 		/*
 		 * A pinned refusal asserts the refusal ITSELF: not answered, for the recorded
 		 * reason, with production's side of the diff still pinned. An ANSWER here means
-		 * the dense envelope moved — promote the row to a measured relation with a
-		 * lambda window; do not delete the failure.
+		 * the solver's envelope moved — promote the row to a measured relation with a
+		 * lambda window; do not delete the failure. Unreachable today (no refusal row
+		 * exists since the 2026-08-12 promotion); kept for future refusal pins.
 		 */
 		if (Row.Expected == ERelation::OracleRefusesAtThisScale)
 		{
 			Test.TestTrue(
 				*FString::Printf(
 					TEXT("%s: pinned as ORACLE REFUSES (mechanism: %s). It ANSWERED, ")
-					TEXT("lambda* %.9g — the dense envelope has moved; measure this row ")
+					TEXT("lambda* %.9g — the solver's envelope has moved; measure this row ")
 					TEXT("and promote the pin to a relation, never delete this failure."),
 					Row.Name, Row.Mechanism, R.Oracle.Lambda),
 				!R.Oracle.bAnswered);
@@ -968,8 +986,11 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  * ==================================================================================== */
 
 /**
- * THE WALL CATALOGUE AND THE FREE-END LADDER — sweep items (d) and (e), scoped to the
- * MEASURED DENSE ENVELOPE. Rows are laid through the SCENARIO CATALOGUE (production
+ * THE WALL CATALOGUE AND THE FREE-END LADDER — sweep items (d) and (e), scoped in the
+ * dense era to that solver's measured envelope; since the 2026-08-12 sparse rewrite
+ * every scoped-out wall except the 30-course five ANSWERS (measured table above) and
+ * awaits pinning in the classification slice. Rows are laid through the SCENARIO
+ * CATALOGUE (production
  * data end to end: the same producer, the same cuts the acceptance suite pins),
  * removed, bridged and diffed. Ordered cheap to expensive so a killed run still leaves
  * its measurements in the log (each row logs immediately — which is exactly how the
@@ -998,23 +1019,42 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  *     wall-07        140 blk / 350 jnt    8,551 pivots   570 s
  *     wall-10        138 blk / 349 jnt    5,873 pivots   316 s
  *
- * The free-end row stays LIVE below as the pinned canary — one refusal kept
- * executable so the envelope is asserted by a test rather than remembered by a
+ * The free-end row stayed LIVE below as the pinned canary — one refusal kept
+ * executable so the envelope was asserted by a test rather than remembered by a
  * comment, and chosen because it is the lambda = 3.464 measurement fixture: the day
  * the solver answers it, the canary fails and the gap-5 measurement it owes becomes
- * takeable. The other refusals are recorded here and NOT re-run — a twenty-minute
- * predictable refusal per opt-in run buys nothing a 69-second one does not.
+ * takeable. THAT DAY WAS 2026-08-12: the sparse rewrite answered it, the canary
+ * failed exactly as written (lambda* 256.820018 against the pinned refusal), and the
+ * row below is its promotion.
  *
- * NOT RUN, DEFERRED ON THE ENVELOPE (all 146-172 blocks, i.e. beyond every fixture
- * that has ever verified and at or past wall-06's 20-minute refusal): wall-11,
- * wall-12, free end 7x20, wall-20, wall-09. These carry the measurements this sweep
- * most wanted — the red rows 9/20, the case 11/12 pier-width pair, the tall half of
- * the lambda ladder — and the honest statement is that THE DENSE ORACLE CANNOT YET
- * MEASURE THEM; they are the sparse-rewrite dependency CURRENT_STATE names, to be
- * promoted into pinned rows when it lands (the canary is what makes that day loud).
+ * WHAT THE 2026-08-12 SPARSE MEASURING RUN ANSWERED, every residual verified — these
+ * are MEASUREMENTS for the next slice to classify and pin, recorded here so the run
+ * need not be repeated (production's side quoted where it dropped anything):
  *
- * The 30-course walls (cases 1-5) remain excluded on the dense-tableau arithmetic in
- * the file header at the top of this file.
+ *     wall-17          918.046031    1,608 pv    4.2 s   120 blk / 207 jnt
+ *     wall-18          649.464192      791 pv    1.3 s   119 blk / 203 jnt
+ *     wall-15          868.623736    3,745 pv   25.7 s   125 blk / 320 jnt
+ *     wall-16          868.623736    3,319 pv   23.1 s   125 blk / 320 jnt
+ *     wall-19           12.3824832   2,970 pv   16.1 s   119 blk / 308 jnt  (production: 34 fall, 6 stranded)
+ *     wall-10           35.8172298   2,640 pv   11.5 s   138 blk / 349 jnt  (production: 12 fall, 3 stranded)
+ *     wall-07          296.220581    5,293 pv   62.0 s   140 blk / 350 jnt
+ *     wall-06          622.031942    8,819 pv  126.6 s   146 blk / 372 jnt
+ *     wall-09           36.5639285   4,885 pv   50.4 s   146 blk / 350 jnt  (production stands at worstU 0.985)
+ *     wall-11          128.118261    5,102 pv   45.8 s   128 blk / 326 jnt
+ *     wall-12           89.1151243   2,877 pv   16.2 s   128 blk / 326 jnt
+ *     wall-20           82.629597    3,387 pv   27.9 s   156 blk / 384 jnt  (production: 9 fall in 1 pass)
+ *     free end 7x20    256.820018   2,701 pv   22.5 s   149 blk / 388 jnt  (production: 1 falls, worstU 1.958)
+ *
+ * Three of those beg interpretation the NEXT slice owes: the 11/12 pier pair now
+ * DISCRIMINATES (128.1 vs 89.1, 1.44x) where production reads the two 0.03% apart;
+ * the free-end lambda* is HEIGHT-INDEPENDENT to nine digits (256.820018 at both 10
+ * and 20 courses) while production crosses 1.0 between them; and the red rows 9, 19
+ * and 20 all read lambda* >= 12 — the oracle sides with STANDS against the
+ * catalogue's collapse verdicts on 9/19 and against production's drops on 19/10/20,
+ * so those classifications need the survivor arithmetic worked, not a reflex pin.
+ *
+ * The 30-course walls (cases 1-5) remain beyond the PRACTICAL envelope — now on
+ * pricing cost, not memory; the file header at the top carries the measured detail.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowWallSweepTest,
@@ -1085,21 +1125,27 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		ERelation::AgreeStands, 645.945, 645.947, 0 });
 
 	/*
-	 * THE ENVELOPE CANARY — the one refusal kept executable (test header for the full
-	 * refusal table). The mechanism note the row's own log line needs: production's
-	 * worst joint here reads 0.9235, which is the RAW HALF-SEAT directly above the
-	 * removed end brick (0.0582 per brick-weight x ~15.9 bw carried, no abutment on
-	 * the eccentric side so no arching relief); the free-end LADDER's published
-	 * 0.3283 at ten courses is the corbel-ROOT joint, a different joint in the same
-	 * wall. Both are true; quoting the ladder figure as "production's reading" for
-	 * this fixture was the 2026-08-09 draft's error.
+	 * THE PROMOTED CANARY — until 2026-08-12 this row was pinned as
+	 * OracleRefusesAtThisScale, the one dense-envelope refusal kept executable so the
+	 * envelope was asserted by a test rather than remembered by a comment. The sparse
+	 * revised-simplex rewrite answered it (lambda* 256.820018, 879 pivots, ~1 s where
+	 * the dense tableau refused after 3,993 pivots and 69 s), the canary failed
+	 * exactly as written, and per its own instruction the failure was promoted to
+	 * this measured relation rather than deleted. Production's worst joint here reads
+	 * 0.9235, which is the RAW HALF-SEAT directly above the removed end brick (0.0582
+	 * per brick-weight x ~15.9 bw carried, no abutment on the eccentric side so no
+	 * arching relief); the free-end LADDER's published 0.3283 at ten courses is the
+	 * corbel-ROOT joint, a different joint in the same wall. Both are true; quoting
+	 * the ladder figure as "production's reading" for this fixture was the 2026-08-09
+	 * draft's error.
 	 */
 	Rows.Add({ TEXT("free end, 7 cells x 10 courses"),
-		TEXT("the lambda = 3.464 measurement fixture, refused at 74 blocks / 183 ")
-		TEXT("joints after 3,993 pivots — gap 5's measurement is BLOCKED on the ")
-		TEXT("sparse rewrite, and this canary is what makes its arrival loud"),
+		TEXT("the lambda = 3.464 measurement fixture, first answered by the sparse ")
+		TEXT("rewrite: the LP prices the ten-course free end at 257x own weight while ")
+		TEXT("production's raw half-seat reads 0.9235 of capacity — the lambda-ladder ")
+		TEXT("measurement (gap 5) is now takeable, next slice"),
 		[](FStructure& Out, FString& Why) { return BuildFreeEnd(10, Out, Why); },
-		ERelation::OracleRefusesAtThisScale, -1.0, -1.0, 0 });
+		ERelation::AgreeStands, 256.819, 256.821, 0 });
 
 	Rows.Add({ TEXT("corbel D, ten steps with counterweight"),
 		TEXT("global equilibrium prices the counterweight at 22.6x (C's 2.57 -> 58.06) ")
