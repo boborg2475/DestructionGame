@@ -1037,14 +1037,29 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 
 	/* --- cheap first, everything measured 2026-08-11 --------------------------------- */
 
+	/*
+	 * THE ROW THAT SETTLED A RULING RATHER THAN RECORDING ONE. Until 2026-08-11 this row
+	 * carried a flag: the acceptance catalogue ruled wall-08 a LOCAL LOSS, production
+	 * dropped nothing, this measurement stood it at 325x, and the catalogue was the
+	 * OUTLIER OF THREE METHODS with the disagreement escalated for a user decision. The
+	 * user re-ruled case 8 STANDS on that basis (DESIGN §8, the standing instruction from
+	 * cases 11 and 12), so the flag retires and the three methods now AGREE.
+	 *
+	 * The relation enum does not move and never did: `AgreeStands` is oracle-vs-PRODUCTION
+	 * by construction (lambda* >= 1 and the cascade dropped nothing), which was already
+	 * true while the catalogue disagreed. What changed is only what the mechanism text has
+	 * to say — and it must still name the mechanism, because a pin reading "everyone
+	 * agrees" is a pin nobody can check.
+	 */
 	Rows.Add({ TEXT("wall-08 four-cell opening, one course over"),
-		TEXT("the acceptance catalogue's red row rules LOCAL LOSS (two seatless bricks ")
-		TEXT("drop); production drops nothing, and the LIMIT THEOREM SIDES WITH ")
-		TEXT("PRODUCTION: the four-cell flat course jams against its abutments through ")
-		TEXT("head-joint compression, and at 325x own weight the verdict survives every ")
-		TEXT("charitable-reading discount (/3 plastic, /6 characteristic-vs-mean). The ")
-		TEXT("catalogue ruling is the outlier here — flagged for a user re-ruling, not ")
-		TEXT("resolved by this pin"),
+		TEXT("the flat-arch row: the four-cell coverless course jams against its ")
+		TEXT("abutments through head-joint compression, so cover is not what carries it ")
+		TEXT("and at 325x own weight the verdict survives every charitable-reading ")
+		TEXT("discount (/3 plastic, /6 characteristic-vs-mean, i.e. 18.0 discounted both ")
+		TEXT("ways at once — and the characteristic-vs-mean slant runs the other way, so ")
+		TEXT("that half is budget rather than correction). THIS MEASUREMENT IS WHAT MOVED ")
+		TEXT("THE CATALOGUE: case 8 was re-ruled from LOCAL LOSS to STANDS on 2026-08-11, ")
+		TEXT("costing the set its last 'no room to arch' discriminator"),
 		Scenario(TEXT("wall-08")),
 		ERelation::AgreeStands, 324.731, 324.733, 0 });
 

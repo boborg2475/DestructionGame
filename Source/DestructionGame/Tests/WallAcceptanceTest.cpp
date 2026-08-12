@@ -27,11 +27,13 @@
  * that answers both halves of a pair the same way has no such term at all, and the second test in
  * this file says exactly that in one line per pair.
  *
- * THREE OF THE FIVE ARE OUTCOME PAIRS; 13 vs 14 AND 15 vs 16 ARE NOT, SINCE THE 2026-08-07
- * REVISIONS. Both corbels stand and both headers stand, so an outcome pair between either two can
- * no longer separate anything, and both have been removed from FWallAcceptanceMatchedPairsTest
- * rather than left there as rows that read the right answer off two identical verdicts. WHAT THE
- * PAIRS STILL ISOLATE IS THE READING, and each is asserted by name in a test of its own below:
+ * TWO OF THE FIVE ARE OUTCOME PAIRS. 13 vs 14 AND 15 vs 16 STOPPED BEING ONE AT THE 2026-08-07
+ * REVISIONS — both corbels stand and both headers stand — and 7 vs 8 STOPPED BEING ONE ON
+ * 2026-08-11, when case 8's coverless course was re-ruled to stand as well. An outcome pair whose
+ * halves answer identically separates nothing, so all three have been removed from
+ * FWallAcceptanceMatchedPairsTest rather than left there as rows that read the right answer off two
+ * identical verdicts. TWO OF THE THREE STILL ISOLATE THEIR TERM IN THE READING, each asserted by
+ * name in a test of its own below:
  *
  *   13 vs 14  Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome — doubling the step
  *             per course takes the worst joint from 0.070 to 0.195, a factor of 2.8.
@@ -41,6 +43,12 @@
  *
  * In both, the term is still being measured — just against a quantity a verdict cannot carry.
  * Deleting either pair outright would have lost that.
+ *
+ * 7 vs 8 IS THE ONE THAT HAD NOWHERE TO GO, AND THE SUITE IS POORER FOR IT: the readings run the
+ * wrong way (0.269 with eight courses of cover against 0.219 with one), because a downward-routing
+ * solver reads cover as load rather than as arch capacity. The whole reasoning is in the block
+ * above the pair table, and the recorded cost is in the CASE 8 block of section B — after that
+ * ruling NO CASE IN THIS SET REFUSES ARCHING FOR LACK OF COVER.
  *
  * THREE VERDICTS, THREE ASSERTION SHAPES, per DESIGN.md §4's outcome-not-mechanism rule:
  *
@@ -246,7 +254,7 @@ namespace WallAcceptanceTestSupport
 
 		/**
 		 * HOW MANY PIECES THE MODEL DROPS HERE TODAY — a CHARACTERISATION OF A WRONG ANSWER, set on
-		 * the five known-red rows and INDEX_NONE everywhere else.
+		 * the four known-red rows and INDEX_NONE everywhere else.
 		 *
 		 * IT IS NOT AN EXPECTATION AND IT ENDORSES NOTHING. `MustFall` and `MustStand` above are
 		 * what a real wall does; this is what the solver does instead, measured off a run and
@@ -928,31 +936,91 @@ namespace WallAcceptanceTestSupport
 	const FWallRegion TwoCellOpening[] = { { 1, 3, 4.75, 6.25 } };
 	const FWallRegion FourCellOpening[] = { { 1, 3, 3.75, 7.25 } };
 
-	/**
-	 * Case 8's one course of cover, and the only thing that may drop: the two MIDDLE bricks.
+	/* ================================================================================
+	 * CASE 8, RE-RULED 2026-08-11: THE ONE COURSE OVER THE HOLE STANDS, AND THE CATALOGUE LOSES ITS
+	 * LAST "NO ROOM TO ARCH" ROW WITH IT.
+	 * ================================================================================
 	 *
-	 * WORKED OFF THE GEOMETRY RATHER THAN OFF THE DRAWING, the same way case 20's teeth are. The
-	 * opening cuts cells 4.5, 5.5 and 6.5 out of odd course 3, and an even-course brick at cell k
-	 * sits on the odd course below at cells k - 0.5 and k + 0.5, so of the four bricks of course 4
-	 * standing over the hole
+	 * THE GEOMETRY IS UNCHANGED AND IS STILL WALKED OFF THE BRICKLAYER ABOVE, the same way case 20's
+	 * teeth are. Five courses, twelve cells, case 7's own four-cell cut through courses 1..3, so ONE
+	 * course of cover. The opening cuts cells 4.5, 5.5 and 6.5 out of odd course 3, and an
+	 * even-course brick at cell k sits on the odd course below at cells k - 0.5 and k + 0.5, so of
+	 * the four bricks of course 4 standing over the hole
 	 *
 	 *     cell 4   over cut 4.5 and INTACT 3.5   one bed patch — a corbel
 	 *     cell 5   over cut 4.5 and cut 5.5      NO bed patch at all
 	 *     cell 6   over cut 5.5 and cut 6.5      NO bed patch at all
 	 *     cell 7   over cut 6.5 and INTACT 7.5   one bed patch — a corbel
 	 *
-	 * NAMING ALL FOUR WAS DRIFT AND IT IS CORRECTED HERE. This row was written against the
-	 * catalogue's first draft — "a single course cannot arch, it is a beam in flexure over four
-	 * bricks" — and WALL_CASES.html has since been corrected on exactly the reading case 20 was
-	 * corrected on: the two over the jambs keep one patch each and hold at about 0.27, and ONE
-	 * PATCH IS A CORBEL RATHER THAN A TOOTH. The agreed catalogue names two, so this names two.
+	 * WHAT THE ROW USED TO CLAIM. LOCAL LOSS of the two seatless middle bricks — c4/5 and c4/6, the
+	 * region { 4, 4, 4.75, 6.25 } this block used to declare — on the catalogue's reading that "a
+	 * single course cannot arch: it is a beam in flexure over four bricks, and mortar has 0.1 MPa to
+	 * offer". (An earlier draft named all four and was corrected on case 20's reading: the two over
+	 * the jambs keep one patch each, and ONE PATCH IS A CORBEL RATHER THAN A TOOTH. That correction
+	 * is not what moved now.) The row was red for its whole life because THE MODEL DROPS NOTHING
+	 * HERE: slice 2 took it from 2 dropped to 0 by re-seating the seatless pair through the head
+	 * joints of the bricks either side.
 	 *
-	 * THE ROW IS STILL RED AFTER THE CORRECTION, and red for the reason it was always meant to be:
-	 * the model drops NOTHING here. Slice 2 took it from 2 dropped to 0 by re-seating the seatless
-	 * pair through the head joints of the bricks either side, and a single spanning course flexing
-	 * over four bricks is a claim about those head joints that no slice yet makes.
+	 * THE RULING, AND WHY IT IS THE CATALOGUE THAT MOVED. As of the 2026-08-11 LP-oracle sweep this
+	 * row was the outlier of THREE independently derived methods, not of one:
+	 *
+	 *     catalogue   LOCAL LOSS — two bricks drop — on flexure of a single spanning course
+	 *     production  drops nothing, breaks nothing; worst joint 0.218869 at c2/8-c3/7.5, which is
+	 *                 in the jamb and not over the hole at all
+	 *     LP oracle   STANDS at lambda* = 324.732096 (52 blocks / 101 joints, 1,289 pivots, 4.7 s
+	 *                 — RigidBlockOracleSweepTest's opt-in wall sweep, measured 2026-08-11)
+	 *
+	 * The user ruled STANDS on 2026-08-11, per the standing instruction of DESIGN §8 (cases 11 and
+	 * 12): a published gate and a prior ruling are both evidence, neither is gospel, and the physics
+	 * is what decides. Worked through:
+	 *
+	 *     the mechanism   flexure is not the only path across a four-cell hole. The limit theorem
+	 *                     needs only ONE admissible equilibrium, and the one it finds puts the flat
+	 *                     course into its abutments in HEAD-JOINT COMPRESSION — a flat arch. That
+	 *                     needs abutments, not cover, which is exactly the term the "one course of
+	 *                     cover" reading assumed away.
+	 *     the margin      lambda* = 324.73 says the fixture is nowhere near strength-governed: this
+	 *                     profile's compressive capacity is 100x its tensile one (10.0 / 0.1 MPa)
+	 *                     and four bricks of self weight is a rounding error against it.
+	 *     the charity     even discounted by BOTH of the sweep header's slants at once — /3 for
+	 *                     plastic-vs-first-crack and /6 as a characteristic-vs-mean budget — the
+	 *                     verdict reads 18.0 and still stands. The /6 is a budget rather than a
+	 *                     correction, and in the honest direction: the oracle ran at the CODED
+	 *                     characteristic 0.10 while every §8 ruling is argued at mean 0.4-0.8, so
+	 *                     reading it against the ruling basis would MULTIPLY lambda*, not divide it.
+	 *     the abutment    "the jamb spreads and the flat arch lets go" is the one reading that could
+	 *                     still condemn it, and the LP was asked: its joint rows are no-tension plus
+	 *                     Mohr-Coulomb friction, so an abutment that could not receive the thrust
+	 *                     without sliding would have shown up as a low lambda*, not a high one.
+	 *
+	 * WHAT THE MODEL'S AGREEMENT IS AND IS NOT WORTH. It reaches STANDS by re-seating the spanned
+	 * group through its head joints, which is the same jamming action in a cruder form — the right
+	 * family of mechanism, arrived at by a different route. Do NOT read it as confirmation: at this
+	 * wall's height the springing carries almost no pre-compression, and as sigma_n goes to zero the
+	 * Mohr-Coulomb cohesion term dominates and the thrust check goes toothless however large H/V
+	 * becomes (measured 2026-08-07, TestResults/2026-08-07_0230/RESULTS.md §6.2). The weight of this
+	 * verdict is carried by the LP, not by production agreeing with it.
+	 *
+	 * THE COST, RECORDED BECAUSE IT MUST STAY VISIBLE. Case 8 was THE CATALOGUE'S LAST "NO ROOM TO
+	 * ARCH" DISCRIMINATOR — DESIGN §8's case-11 entry names it as exactly that, twice, in the
+	 * sentence that let case 11 be re-ruled without losing the idea. After this ruling THERE IS NO
+	 * CASE ANYWHERE IN THE SET WHERE ARCHING IS REFUSED FOR LACK OF COVER, and no row can fail if a
+	 * future solver grants cover-free arching everywhere. Two consequences to hand on:
+	 *
+	 *     - the 7-vs-8 pair stops separating on outcome and leaves Acceptance.Wall.MatchedPairs (the
+	 *       block above the Pairs table records where the discrimination went and did not go)
+	 *     - a replacement discriminator, if the idea is wanted back, has to be a fixture where the
+	 *       ABUTMENT cannot receive the thrust — case 10's shape, not case 8's — since it is the
+	 *       abutment and not the cover that this ruling says a flat arch needs
+	 *
+	 * AND IT SUPERSEDES THE STANDING DOUBT, which is the other reason this went to the user:
+	 * CURRENT_STATE recorded that a bricklayer looking at a coverless course over 1.2 m would expect
+	 * the WHOLE COURSE to come down rather than two named bricks. That doubt was about which bricks
+	 * the LOCAL LOSS names; the ruling removes the local loss, so the doubt goes with it rather than
+	 * being answered. If physical evidence ever contradicts this row it will contradict the whole
+	 * verdict, not the naming — and it should come back through DESIGN §8 as a fourth ruling, not as
+	 * a quiet edit to the region this block just deleted.
 	 */
-	const FWallRegion Case8Falls[] = { { 4, 4, 4.75, 6.25 } };
 
 	/** Case 9: ten cells of opening in a fourteen-cell wall, two cells of jamb either side. */
 	const FWallRegion Case9Cuts[] = { { 1, 3, 1.75, 11.25 } };
@@ -1026,9 +1094,18 @@ namespace WallAcceptanceTestSupport
 	 * against case 12 this row isolates PIER WIDTH — three cells of bearing against one — and on
 	 * 2026-08-09 the same honest-physics rule reached case 12 itself: the one-cell pier ALSO holds
 	 * (the arithmetic is above Case12Cuts), so the pair separates in the MARGIN rather than the
-	 * outcome, exactly as 13/14 and 15/16 came to. The genuine "no room to arch" discriminator in
-	 * this set remains CASE 8, one course of cover over a four-cell hole, which stays red and stays
-	 * local loss.
+	 * outcome, exactly as 13/14 and 15/16 came to.
+	 *
+	 * AND THE CLAUSE THAT USED TO END THIS BLOCK IS NOW FALSE, WHICH IS WORTH SAYING RATHER THAN
+	 * DELETING. It read: "the genuine 'no room to arch' discriminator in this set remains CASE 8,
+	 * one course of cover over a four-cell hole, which stays red and stays local loss." That was the
+	 * consolation for re-ruling this row, and DESIGN §8 recorded it in the same words. On 2026-08-11
+	 * the same standing instruction reached case 8 too — the LP oracle stands the coverless course
+	 * at lambda* = 324.73 through head-joint compression into its abutments — and the user re-ruled
+	 * it STANDS. SO THE SET NOW HAS NO CASE AT ALL WHERE ARCHING IS REFUSED FOR LACK OF COVER, and
+	 * the honest reading of these three rulings together is that COVER WAS NEVER THE GATE: what a
+	 * flat or deep arch needs is an ABUTMENT that can receive the thrust, which is case 10's
+	 * variable and the one row of the family still red.
 	 */
 	const FWallRegion Case11Cuts[] = { { 0, 3, 2.75, 8.25 } };
 
@@ -1411,31 +1488,46 @@ namespace WallAcceptanceTestSupport
 		Add(6, TEXT("Two-brick opening, deep cover"), EVerdict::Stands,
 			CoveredCourses, StandardCells, TwoCellOpening, {}, {}, nullptr);
 
+		/*
+		 * The wall the other three rows of section B are each compared against. Its cover pair is
+		 * dead as of case 8's 2026-08-11 re-ruling — both halves stand now — so the Isolates line
+		 * says so rather than naming a comparison the pair test no longer makes.
+		 */
 		Add(7, TEXT("Four-brick opening, eight courses over"), EVerdict::Stands,
 			CoveredCourses, StandardCells, FourCellOpening, {}, {},
-			TEXT("cover vs 8, span vs 9, abutment vs 10"));
+			TEXT("span vs 9, abutment vs 10; cover vs 8 NO LONGER SEPARATES"));
 
 		/*
-		 * THE FIVE KNOWN REDS EACH CARRY A CHARACTERISATION OF TODAY'S WRONG ANSWER, measured off a
+		 * STANDS — RE-RULED 2026-08-11, and the catalogue is what moved. This row asked for a LOCAL
+		 * LOSS of the two seatless middle bricks on the reading that one course of cover cannot
+		 * arch; the LP oracle stands the fixture at lambda* = 324.73 through head-joint compression
+		 * into the abutments, production drops nothing, and the user ruled STANDS on the physics per
+		 * DESIGN §8's standing instruction. The whole derivation, the discount arithmetic and THE
+		 * COST — this was the set's last "no room to arch" discriminator — are in the CASE 8 block
+		 * of section B, immediately above Case9Cuts. No fall region, because nothing comes down.
+		 */
+		Add(8, TEXT("Four-brick opening, one course over"), EVerdict::Stands,
+			5, StandardCells, FourCellOpening, {}, {},
+			TEXT("depth of cover against case 7 — NO LONGER SEPARATES, on either outcome or reading"));
+
+		/*
+		 * THE FOUR KNOWN REDS EACH CARRY A CHARACTERISATION OF TODAY'S WRONG ANSWER, measured off a
 		 * run and never guessed. See FWallCase::DropsToday: these numbers say what the model DOES,
 		 * never what it should do, and each is deleted by whichever slice fixes its row.
 		 *
-		 * 8 and 9 drop NOTHING where a course should drop and a wall should come down; the other
-		 * three drop the wrong amount. 10 and 19 drop too FEW (the spreading front stops short of
-		 * the named region) and 20 drops too MANY (nine teeth where the user ruled two). Case 12
-		 * left this set on 2026-08-09, when its rewrite retired the ten-cell cut whose wrong answer
-		 * was pinned at 76 dropped and 11 stranded.
+		 * 9 drops NOTHING where a wall should come down; the other three drop the wrong amount. 10
+		 * and 19 drop too FEW (the spreading front stops short of the named region) and 20 drops too
+		 * MANY (nine teeth where the user ruled two). Two rows have left this set by an EXPECTATION
+		 * MOVING rather than by a fix: case 12 on 2026-08-09, when its rewrite retired the ten-cell
+		 * cut whose wrong answer was pinned at 76 dropped and 11 stranded, and case 8 on 2026-08-11,
+		 * whose pinned wrong answer was 0 dropped against the two the catalogue named.
 		 */
-		Add(8, TEXT("Four-brick opening, one course over"), EVerdict::LocalLoss,
-			5, StandardCells, FourCellOpening, Case8Falls, {}, TEXT("depth of cover, against case 7"))
-			.DropsToday = 0;
-
 		Add(9, TEXT("Ten-brick opening, eight courses over"), EVerdict::Collapse,
 			CoveredCourses, 14, Case9Cuts, Case9Falls, Case9Stands, TEXT("span, against case 7"))
 			.DropsToday = 0;
 
 		/*
-		 * AND TWO OF THE FIVE ALSO STRAND, WHICH IS A SEPARATE AND SHARPER FINDING — see
+		 * AND TWO OF THE FOUR ALSO STRAND, WHICH IS A SEPARATE AND SHARPER FINDING — see
 		 * FWallCase::StrandsToday. Of the twelve pieces case 10 drops, three are pieces the solver
 		 * could not route rather than pieces the wall could not hold.
 		 */
@@ -1633,7 +1725,7 @@ namespace WallAcceptanceTestSupport
 	/**
 	 * AND THE TOKEN A CAPTION MUST CARRY WHEN THE MODEL DOES NOT AGREE WITH ITS OWN CLAIM.
 	 *
-	 * Five rows are red today. A caption that named only the expected verdict on one of those would
+	 * Four rows are red today. A caption that named only the expected verdict on one of those would
 	 * be worse than silence — so the honest ones say both, and the ones the model agrees with must
 	 * NOT say it, which is what stops the admission outliving the disagreement.
 	 */
@@ -1645,8 +1737,8 @@ namespace WallAcceptanceTestSupport
 	 * DELIBERATELY THE SAME THREE SHAPES `Acceptance.Wall.Catalogue` ASSERTS ONE AT A TIME, and it
 	 * is a second reading of them rather than a shared one because the catalogue's assertions are
 	 * SEPARATE on purpose — each prints its own diagnosis — and folding them into one predicate
-	 * would change five known-red failure messages. The cost is a copy, and the copy is held against
-	 * the catalogue by the known-red tripwire in the caption test: it must name exactly the five
+	 * would change four known-red failure messages. The cost is a copy, and the copy is held against
+	 * the catalogue by the known-red tripwire in the caption test: it must name exactly the four
 	 * rows that are red, so a predicate that drifted from the catalogue fails there rather than
 	 * quietly captioning a level wrongly.
 	 */
@@ -1904,13 +1996,16 @@ namespace WallAcceptanceTestSupport
  * SEVERAL ROWS ARE GREEN ON ARRIVAL AND EACH IS SAID TO BE, so nobody mistakes them for work this
  * suite drove. 1 and 17 are intact walls and are regression anchors. 18 is a stack-bond column
  * that really does sit at a few percent — its verdict passes and the property that made the case
- * interesting does NOT, which is why that property has a test of its own below. And 12, 13, 14 and
- * 16 all stand, which is a CORRECTION rather than an achievement: 14 was drafted as a collapse and
- * 16 as a local loss, revised on 2026-08-07 on the same reading — a bonded section resists what a
- * rigid block could not — and 12 was rewritten and re-ruled on 2026-08-09 on that reading's third
- * outing (the one-cell pier holds the thrust; see the block above Case12Cuts). The pairs those
- * corrections stopped separating on outcome have each moved onto what still separates them, named
- * in the block above and beside the pair test below.
+ * interesting does NOT, which is why that property has a test of its own below. And 8, 12, 13, 14
+ * and 16 all stand, which is a CORRECTION rather than an achievement: 14 was drafted as a collapse
+ * and 16 as a local loss, revised on 2026-08-07 on the same reading — a bonded section resists what
+ * a rigid block could not — 12 was rewritten and re-ruled on 2026-08-09 on that reading's third
+ * outing (the one-cell pier holds the thrust; see the block above Case12Cuts), and 8 was re-ruled
+ * on 2026-08-11 on its fourth (the coverless course jams into its abutments; the CASE 8 block of
+ * section B, above Case9Cuts, carries the arithmetic, the cost and the ruling's own doubts).
+ * The pairs those corrections stopped separating on outcome have each moved onto what still
+ * separates them — except 7 vs 8, which had nowhere to move and is a loss rather than a relocation
+ * — and all of it is named in the block above and beside the pair test below.
  *
  * NEEDS A TICKING WORLD: NO. See the file header.
  */
@@ -2112,7 +2207,7 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * AND THE FIVE KNOWN REDS ARE PINNED TO THE WRONG ANSWER THEY GIVE TODAY.
+		 * AND THE FOUR KNOWN REDS ARE PINNED TO THE WRONG ANSWER THEY GIVE TODAY.
 		 *
 		 * THIS ASSERTS NOTHING ABOUT PHYSICS AND ENDORSES NOTHING. The row above has already
 		 * failed; what this adds is that the failure has a FIXED SIZE. A red row is otherwise a
@@ -2180,15 +2275,16 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 	};
 
 	/*
-	 * THREE PAIRS, AND THE CLAIM IS THAT THE TWO HALVES ANSWER DIFFERENTLY IN THE SAME DIRECTION
+	 * TWO PAIRS, AND THE CLAIM IS THAT THE TWO HALVES ANSWER DIFFERENTLY IN THE SAME DIRECTION
 	 * EVERY TIME: the greater half loses strictly more than the lesser one. A solver with no term
 	 * between them answers them the same way and fails that, whichever way round it answers.
 	 *
 	 * IT USED TO BE THE STRONGER "the lesser half loses NOTHING", AND THAT CLAIM IS STILL MADE
 	 * WHEREVER THE CATALOGUE SUPPORTS IT — the row is read out of `EVerdict` rather than listed
-	 * here, so it strengthens or relaxes with the catalogue instead of drifting from it. All four
-	 * lesser halves stand today, so all four make the strong claim; what changed is that this test
-	 * no longer holds a second, private copy of a verdict the catalogue owns.
+	 * here, so it strengthens or relaxes with the catalogue instead of drifting from it. Case 7 is
+	 * the lesser half of both surviving rows and it stands, so both make the strong claim; what
+	 * changed is that this test no longer holds a second, private copy of a verdict the catalogue
+	 * owns.
 	 *
 	 * CASE 11 IS WHY IT WAS GENERALISED, AND IT IS WORTH KEEPING THE GENERALISATION EVEN THOUGH THE
 	 * RULING THAT FORCED IT WAS REVERSED. On 2026-08-08 case 11 was ruled from "stands" down to a
@@ -2201,8 +2297,8 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 	 * `EVerdict` means a verdict correction relaxes or tightens this test in the SAME EDIT instead
 	 * of leaving a stale duplicate behind.
 	 *
-	 * THREE OF THE CATALOGUE'S PAIRS ARE DELIBERATELY ABSENT AND THIS IS THE ONLY PLACE TO SAY SO.
-	 * All three were rows here once, and each left when a re-ruling made both of its halves stand,
+	 * FOUR OF THE CATALOGUE'S PAIRS ARE DELIBERATELY ABSENT AND THIS IS THE ONLY PLACE TO SAY SO.
+	 * All four were rows here once, and each left when a re-ruling made both of its halves stand,
 	 * so that the shape this test asserts — one half loses strictly more than the other — became
 	 * UNSATISFIABLE and a row asserting it would be red forever for a reason nobody could fix.
 	 * 2026-08-07 took the first two (a bonded corbel resists with its full depth; a bonded header
@@ -2221,10 +2317,33 @@ bool FWallAcceptanceMatchedPairsTest::RunTest(const FString& Parameters)
 	 * documented on the two rows, and the honest future homes for the discrimination are the
 	 * leaning-stack overturning case (queue item 2) and the LP oracle (queue item 4). Leaving a
 	 * dead row here would have been quieter and worse.
+	 *
+	 * AND 2026-08-11 TOOK DEPTH OF COVER, 7 vs 8, WHICH IS THE MOST EXPENSIVE OF THE FOUR — the
+	 * ruling in the CASE 8 block of section B says why the coverless course stands, and DESIGN §8
+	 * had named case 8 as the set's LAST "no room to arch" row. Two things follow, and the second
+	 * is the one to argue with:
+	 *
+	 *     WHY THE ROW COULD NOT STAY. Both halves stand, so "the greater half loses strictly more"
+	 *     is unsatisfiable in the same way 13/14 and 15/16 became. Keeping it would be a permanent
+	 *     red asserting a claim the catalogue itself no longer makes.
+	 *
+	 *     AND WHY IT DID NOT MOVE ONTO THE READING, WHICH IS THE HONEST PART. The obvious rescue is
+	 *     13/14's — assert the joint reading instead — and it does not work here. Production reads
+	 *     case 7 at 0.269441 and case 8 at 0.218869, at the SAME joint (c2/8-c3/7.5, in the jamb),
+	 *     so the halves separate by only 1.23x AND IN THE WRONG DIRECTION: the wall with EIGHT
+	 *     courses of cover reads worse than the wall with one. That is not a cover term measured
+	 *     small, it is the absence of one — a downward-routing solver reads cover as LOAD, never as
+	 *     arch capacity, so more of it can only ever read worse. Pinning that number would pin a
+	 *     defect while calling it a discrimination, which is exactly the "reads the right answer off
+	 *     the wrong quantity" failure this block exists to refuse.
+	 *
+	 * SO THE COVER DISCRIMINATION IS GONE FROM THE SUITE ENTIRELY RATHER THAN RELOCATED, and its
+	 * future home is the LP oracle: wall-08 answers there today (lambda* = 324.732096) and wall-07
+	 * does not (refused at 140 blocks / 350 joints, the dense envelope), so the pair becomes
+	 * measurable the day the sparse rewrite lands and not before.
 	 */
 	const FMatchedPair Pairs[] =
 	{
-		{ TEXT("DEPTH OF COVER  - eight courses over a four-brick hole against one"),      7, 8 },
 		{ TEXT("SPAN            - four bricks of opening against ten, at the same cover"), 7, 9 },
 		{ TEXT("ABUTMENT        - a jamb either side against a cut through to the end"),   7, 10 },
 	};
@@ -3035,7 +3154,7 @@ bool FWallAcceptanceFixtureAgreesWithProducerTest::RunTest(const FString& Parame
  * Writing that producer was the cheap part. The expensive part is that every reading in this file is
  * a statement about a particular arrangement of particular bricks, worked to seventeen digits:
  * 0.195160875 at a four-step corbel's bottom rung, 0.058203838191552663 at a bare header's bed
- * joint, 0.01000825 of head-joint shear, and five known-red rows whose failure messages name bricks
+ * joint, 0.01000825 of head-joint shear, and four known-red rows whose failure messages name bricks
  * by (course, cell). A producer that differs from the fixture by one ulp anywhere is not "a fixture
  * that moved", it is a dozen tests changing their answers at once for no visible reason — and
  * several are ALREADY RED, so a changed message there would hide a regression inside a known
@@ -3395,7 +3514,7 @@ bool FWallAcceptanceLevelsTest::RunTest(const FString& Parameters)
  * WHY A CAPTION NEEDS A TEST AT ALL
  * =====================================================================================
  *
- * Five of these twenty rows are red today — 8, 9, 10, 19 and 20 — and a level captioned "the
+ * Four of these twenty rows are red today — 9, 10, 19 and 20 — and a level captioned "the
  * course over the doorway drops and the wall stands" while the model drops nothing is a LIE TOLD TO
  * SOMEBODY STANDING IN FRONT OF THE COUNTER-EXAMPLE. That is worse than silence: the player can
  * see the wall, and the caption is the only thing telling them whether what they are looking at is
@@ -3419,14 +3538,17 @@ bool FWallAcceptanceLevelsTest::RunTest(const FString& Parameters)
  *
  * AND WHICH ROWS MUST ADMIT A DISAGREEMENT IS COMPUTED, NEVER LISTED. The row is RUN, its verdict
  * is evaluated, and the marker is required exactly when the model got it wrong — so a slice that
- * fixes case 8 turns this red until the caption stops claiming a disagreement that no longer
- * exists. A hardcoded list of five numbers would have rotted silently in the other direction.
+ * fixes case 9 turns this red until the caption stops claiming a disagreement that no longer
+ * exists, and so does a RE-RULING that hands a row to the model, which is precisely what case 8's
+ * 2026-08-11 STANDS ruling did: production's wall-08 caption still claimed LOCAL LOSS and still
+ * carried the marker, and this test held that red until the caption moved in the same slice. A
+ * hardcoded list of four numbers would have rotted silently in the other direction.
  *
  * THE KNOWN-RED SET IS A TRIPWIRE ON THIS TEST'S OWN PREDICATE, not a second copy of the rule.
  * `ModelAgreesWithVerdict` is a second reading of the three verdict shapes `Acceptance.Wall.
  * Catalogue` asserts one at a time, so it could drift from the catalogue and caption a level
  * wrongly while every catalogue row still failed exactly as before. Requiring it to name precisely
- * the five rows the suite knows to be red is what makes that drift visible.
+ * the four rows the suite knows to be red is what makes that drift visible.
  *
  * NEEDS A TICKING WORLD: NO. It solves the same twenty walls the catalogue solves.
  */
@@ -3441,7 +3563,7 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	using namespace DestructionScenarios;
 
 	/**
-	 * THE FIVE ROWS THE MODEL GETS WRONG TODAY.
+	 * THE FOUR ROWS THE MODEL GETS WRONG TODAY.
 	 *
 	 * This is NOT what decides which caption must admit a disagreement — that is computed per row
 	 * below. It is a check on the predicate that computes it: a second reading of the verdict rules
@@ -3455,12 +3577,15 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	 * a collapse predictor and the physics was worked honestly. CASE 12 CAME OUT THE SAME WAY ON
 	 * 2026-08-09: its rewrite (see the block above Case12Cuts) replaced a geometry the model got
 	 * wrong with one it gets right, so the exit is an expectation moving again, not a solver fix.
-	 * Worth leaving on the record here: this set moving is nearly always a verdict being corrected,
-	 * which is why the tripwire at the bottom of this test is TWO assertions rather than one — "the
-	 * set grew" and "the set changed shape" are opposite pieces of news and used to fail in
-	 * identical words.
+	 * AND CASE 8 ON 2026-08-11, the third of the same shape and the one that cost the most: the
+	 * catalogue's LOCAL LOSS was the outlier of three methods once the LP oracle stood the fixture
+	 * at lambda* = 324.73, and the user re-ruled it STANDS (the CASE 8 block of section B, above
+	 * Case9Cuts, carries the arithmetic and the cost). Worth leaving on the record here: this set
+	 * moving is nearly always a verdict being corrected, which is why the tripwire at the bottom of
+	 * this test is TWO assertions rather than one — "the set grew" and "the set changed shape" are
+	 * opposite pieces of news and used to fail in identical words.
 	 */
-	const int32 KnownDisagreements[] = { 8, 9, 10, 19, 20 };
+	const int32 KnownDisagreements[] = { 9, 10, 19, 20 };
 
 	const TArray<FWallCase> Cases = AllWallCases();
 

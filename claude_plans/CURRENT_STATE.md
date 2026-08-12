@@ -9,7 +9,7 @@
 
 **This file assumes you already know the design.** [DESIGN.md](DESIGN.md) is the authority on the model, the constants, the anchors and the evolution path; [TRAPS.md](TRAPS.md) holds the live footguns; [LEVELS.md](LEVELS.md) indexes the twenty-nine playable levels. Settled reasoning lives there and in git — not here.
 
-Last updated: **2026-08-11** (review-queue item 4 complete — the LP oracle core and its fixture sweep both landed; two user rulings now pending, and the sparse solver rewrite is the measured blocker for the remaining oracle measurements).
+Last updated: **2026-08-11** (both user rulings landed — case 8 re-ruled STANDS, the beam unzip accepted-and-pinned; DESIGN §8 records both. Next: the sparse solver rewrite).
 
 ## Where the suite stands
 
@@ -17,8 +17,8 @@ Last updated: **2026-08-11** (review-queue item 4 complete — the LP oracle cor
 
 | Red | What it anchors |
 |---|---|
-| `Acceptance.Wall.Catalogue` — 5 rows: 8, 9, 10, 19, 20 | The model's known-wrong verdicts (downward-only routing / missing stability check — DESIGN §7). The five levels' captions carry the computed `THE MODEL CURRENTLY DISAGREES` marker. Each red row also pins today's behaviour (`DropsToday`/`StrandsToday` in `WallAcceptanceTest.cpp`), so a regression *inside* a known failure fails loudly instead of hiding behind the expected red. Case 12 came out of this set on 2026-08-09: rewritten to case 11's span on a one-cell pier, the honest pier arithmetic (and the model) both read STANDS, so the exit is an expectation moving, not a solver fix. |
-| `Acceptance.Wall.MatchedPairs` — 7 vs 8, 7 vs 9 | Cover-depth and span discrimination over the openings |
+| `Acceptance.Wall.Catalogue` — 4 rows: 9, 10, 19, 20 | The model's known-wrong verdicts (downward-only routing / missing stability check — DESIGN §7). The four levels' captions carry the computed `THE MODEL CURRENTLY DISAGREES` marker. Each red row also pins today's behaviour (`DropsToday`/`StrandsToday` in `WallAcceptanceTest.cpp`), so a regression *inside* a known failure fails loudly instead of hiding behind the expected red. Cases 12 (2026-08-09) and 8 (2026-08-11) both left this set by re-ruling, not solver fixes — worked arithmetic and the LP oracle sided with the model both times (DESIGN §8). |
+| `Acceptance.Wall.MatchedPairs` — 7 vs 9 | Span discrimination over the openings. 7v8 (cover depth) left with case 8's re-rule and did NOT relocate onto readings — production reads more cover as *worse* at the same joint (0.269 vs 0.219), so a reading pin would encode the defect as a discrimination; the honest cover measurement is blocked behind the sparse LP rewrite (wall-07 refuses at 140 blocks). |
 | `Acceptance.Wall.StackBondColumnShearIsHeightIndependent` | The model routes a hanging column's whole load to its foot (height-linear, n/2 × 0.0200165); same defect family as the spanned-group head-joint limit. Never changes a verdict below ~106 courses; needs the "load sheds as it rises" design pass before code (see below). |
 | `Core.Structure.CorbelStepsBeforeTensionWins` | A **finding**, not a wrong expectation: the counterweight buys a corbel nothing (C and D cross at 36 steps identically) because masonry behind a joint never reaches it. Goes green at evolution step 5 (tension support). |
 | `Acceptance.Beam.*` — 3 rows | Member failure: midspan reads \|M\| = 0 under 3.48× C24 bending capacity. Red until evolution steps 5–6; row 1's outcome half also needs global equilibrium. **The red's shape changed on 2026-08-09** (found 2026-08-11 by the oracle sweep): since the one-cell thrust gate, all three rows also FALL whole in production — the dry bearings lost the kern cap and read Max() — so the light rows' STANDS assertions now fail too. The LP oracle stands all three (λ* 1.76/19.2/17.4). See the user-ruling flag below and the beam-pins entry under Housekeeping. |
@@ -27,8 +27,6 @@ Last updated: **2026-08-11** (review-queue item 4 complete — the LP oracle cor
 
 ### Decide before building
 
-- **USER RULING WANTED — wall-08's catalogue verdict is the outlier of three methods.** The catalogue rules LOCAL LOSS (two seatless bricks drop); production drops nothing (the known red) and the limit-theorem oracle stands it at λ* = 324.7, surviving the /3 plastic and /6 characteristic discounts. Either re-rule case 8 or keep the red knowing both computations disagree with the catalogue. The sweep pins the current three-way state either way (`RigidBlockOracleSweepTest`).
-- **USER RULING WANTED — beams now unzip at their dry bearings.** The one-cell thrust gate (2026-08-09) correctly refuses the kern cap to bearings that can't carry the implied thrust, and the beam fixtures' dry bearings then read Max() and drop all three beams whole — including the light rows whose real-world verdict is STANDS (the oracle stands all three). Options: accept as a known cost until evolution step 4 (global equilibrium fixes it properly — the oracle proves the physics stands), or give the beam fixture mortared bearings (changes the fixture's dry-friction premise), or something else. Decide before the beam rows are next touched.
 - **What a selection MEANS when a cascade releases a picked brick** — a product decision with both readings written out (see "piece menu presenter" below). **This is reachable today, not latent**: the 2026-08-09 guard review found the cascade already on the world wire (`FStructureBinding::SolveAndBreak` at `Core/StructureBinding.cpp:177`, called by both commit doors in `Core/PieceActions.cpp` and the spawn settle in `World/DestructionStructureSubsystem.cpp` — in-tree since 2026-08-06). Decide now.
 
 ### Then build, in this order
@@ -54,6 +52,7 @@ Also queued from the same session: **a deliberately-red hanging acceptance test*
 | P | Case | Why |
 |---|---|---|
 | 2 | Compression-vs-shear capacity ratio (one joint, two directions, ~50×) | DESIGN §4 calls it key validation; nothing anywhere does it. Belongs beside `ConnectionStrengthTest` |
+| 2b | **Replacement cover/arching discriminator that starves the ABUTMENT** (case 10's variable), not the cover | Case 8's 2026-08-11 re-rule (DESIGN §8) removed the catalogue's last case refusing arching for lack of cover; after it, nothing in the set fails if a solver grants cover-free arching everywhere |
 | 3 | L-corner / return (brick out at a corner vs a free end; assert the *relation*) | the solver has never seen two orthogonal joint families |
 | 4 | Lintel over case 7's opening (with/without) | the pair case 7 needs (it fails the published arching gate and is the standing half of three pairs); the model's first spanning member |
 | 5 | Dry-stone acceptance rows (intact; one out) | the only configuration where Mohr-Coulomb coupling is first-order; the set has none |
@@ -62,7 +61,7 @@ Also queued from the same session: **a deliberately-red hanging acceptance test*
 | 8 | Progressive removal to a predicted count (12×12 wall; stands at N−1, falls at N) | DESIGN §4's headline integration test exists only on a 6-piece toy |
 | 9 | Removal order independence ({A,B} == {B,A} settled state, bit for bit) | cheap, Core-level, uncovered |
 
-Standing doubts on existing cases (physical evidence would settle, not more derivation): case 8's named 2-brick set (a bricklayer expects the whole course); case 17 has zero discriminating power intact (repurpose as the *wide* stack-bond removal — utilisation grows with width while running bond arches); case 18's height-independence property belongs on a cheap 3-column Core fixture, parameterised over n; case 20's true count is more than 2, fewer than the model's 9-today. Case 3's verdict is right but reached via a 2.1 m composite section, which is not the real mechanism.
+Standing doubts on existing cases (physical evidence would settle, not more derivation): case 17 has zero discriminating power intact (repurpose as the *wide* stack-bond removal — utilisation grows with width while running bond arches); case 18's height-independence property belongs on a cheap 3-column Core fixture, parameterised over n; case 20's true count is more than 2, fewer than the model's 9-today. Case 3's verdict is right but reached via a 2.1 m composite section, which is not the real mechanism.
 
 ## Deliberately left alone — known, unfixed, with pickup context
 
@@ -162,7 +161,6 @@ None of these block the list above. Each needs its own red test first; most are 
 
 ## Housekeeping
 
-- **`BeamAcceptanceTest` needs DropsToday-style pins — the missing pins are how a behaviour change hid for two days.** The 2026-08-09 arching gate flipped the two standing beam rows to falling and nobody saw it until the 2026-08-11 oracle sweep, because the beam reds pin nothing about production's current behaviour. Spec (from the sweep review): per-case `DropsToday`/`PassesToday` pinned at today's measured values (3 fallen / 1 pass, all three rows, worst joint Max() as built), asserted like `FWallCase::DropsToday`, delete-when-fixed in the message. The pre-gate log (`Saved/Logs/DestructionGame.log.reviewbak`, 2026-08-08) is the reference for what the pins would have caught. Do this before or with whatever the beam user ruling decides.
 - **`BeamAcceptanceTest` no longer needs to sidestep containment** (the MakeInterface fix landed): moving its piers inboard would be the suite's only contained bearing exercised through a real solve. Its own slice — the readings are anchored to the current geometry and must be re-derived, not nudged.
 
 - **Source comments cite the deleted design docs by name** (`ARCHING_DESIGN.md` ×80, `MOMENTS_DESIGN.md` and `COMPOSITE_DEPTH_DESIGN.md` ×28 each, `PROJECT_REVIEW.md` ×7, `REAL_WORLD_CHECK.md` ×2). Those now point at git history and at the matching DESIGN.md section. Not urgent — the reasoning they cite is preserved verbatim in git — but when a cited comment is next touched, repoint it. Find them: `grep -rE "ARCHING_DESIGN|MOMENTS_DESIGN|COMPOSITE_DEPTH_DESIGN|REAL_WORLD_CHECK|PROJECT_REVIEW" Source/`

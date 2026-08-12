@@ -400,10 +400,12 @@ namespace DestructionScenarios
 			ScenariosWallFourCellOpening },
 
 		{ TEXT("wall-08"), TEXT("Lvl_Wall08"), TEXT("Four-brick opening, one course over"),
-			TEXT("The same four-brick opening with ONE course over it. A single course cannot arch; "
-				"it spans as a beam and the two bricks in the middle of it have no bed left at all. "
-				"Expected: LOCAL LOSS — those two drop and the rest of the wall is fine. THE MODEL "
-				"CURRENTLY DISAGREES: it drops nothing."),
+			TEXT("The same four-brick opening with ONE course over it. The two middle bricks of that "
+				"course have no bed of their own, but the course does not need one: it jams into the "
+				"toothed jambs either side as a flat arch, and the two bare bricks hang on their head "
+				"joints rather than falling through them. Expected: STANDS — the limit theorem prices "
+				"the margin at roughly 325 times the course's own weight, and both the model and the "
+				"oracle stand it."),
 			5, ScenariosWallStandardCells,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWallFourCellOpening },

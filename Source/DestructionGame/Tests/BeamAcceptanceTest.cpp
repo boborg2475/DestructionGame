@@ -56,9 +56,13 @@
  * eccentric moment on a zero-tension joint reads Max(), and ALL THREE rows unzip at the bearings
  * in one pass (3 fallen, including the light rows whose real-world verdict is STANDS). The rigid-
  * block LP oracle stands all three (lambda* 1.76 / 19.2 / 17.4 — RigidBlockOracleSweepTest), so
- * the falling is production's missing global equilibrium, not the fixture's physics. Whether
- * beams-unzip-on-dry-bearings is acceptable until evolution step 4 is a flagged user ruling
- * (CURRENT_STATE); the sweep pins production at 3-fallen per row meanwhile.
+ * the falling is production's missing global equilibrium, not the fixture's physics.
+ *
+ * THE RULING IS NOW MADE (DESIGN.md §8, 2026-08-11): beams-unzip-on-dry-bearings is ACCEPTED AS
+ * A KNOWN COST until evolution step 4 promotes equilibrium to the cascade authority. What the
+ * oracle sweep pinned externally is now pinned IN THIS FILE — every `FBeamCase::DropsToday` /
+ * `PassesToday` (measured 3 fallen, 1 breaking pass, all three rows) — so a further regression
+ * inside this already-known failure cannot hide the way this one did for two days.
  *
  * SO THE RED IS: THE MEMBER CARRIES NOTHING. Not a stranded fixture, not a refused route, not a
  * joint failing early — a beam under three and a half times its published bending capacity whose
@@ -357,6 +361,41 @@ namespace BeamAcceptanceTestSupport
 		double BlockHeightCm = 0.0;
 
 		EVerdict Verdict = EVerdict::Stands;
+
+		/**
+		 * HOW MANY LIVE PIECES THE MODEL DROPS HERE TODAY — a CHARACTERISATION OF A WRONG ANSWER,
+		 * set on ALL THREE ROWS and INDEX_NONE nowhere in this file.
+		 *
+		 * IT IS NOT AN EXPECTATION AND IT ENDORSES NOTHING, exactly per FWallCase::DropsToday in
+		 * WallAcceptanceTest.cpp, which this mirrors. `Verdict` above is what a real beam does;
+		 * this is what the solver does instead, measured off a run and written down. Set on every
+		 * row rather than only the PartsAtMidspan one, because the wrong answer is not particular
+		 * to case 1: since the one-cell thrust gate (08abcfd, 2026-08-09) refused the kern cap to
+		 * this fixture's DRY bearings, the uncapped eccentric moment on a zero-tension joint reads
+		 * Max() on every bearing, and the two STANDS rows unzip exactly as case 1 does. The
+		 * rigid-block LP oracle stands all three (lambda* 1.76 / 19.2 / 17.4 —
+		 * RigidBlockOracleSweepTest), so this is production's missing global equilibrium (DESIGN.md
+		 * §7 gap 1 / evolution step 4), never the fixture's physics.
+		 *
+		 * THIS IS WHY THE PIN EXISTS AT ALL: the 2026-08-09 gate flipped every row's bearing
+		 * reading and nobody saw it until the 2026-08-11 oracle sweep, because nothing in this file
+		 * pinned what production does today. The ruling and its costs: DESIGN.md §8.
+		 *
+		 * ACCEPTED AS A KNOWN COST until evolution step 4 promotes equilibrium to the cascade
+		 * authority (the beam user ruling, DESIGN.md §8, decided 2026-08-11). WHEN THAT ROW LANDS,
+		 * DELETE DropsToday AND PassesToday IN THE SAME EDIT — they will fail, and that failure is
+		 * the reminder, never "updated" to a new wrong number without saying why the answer moved.
+		 */
+		int32 DropsToday = INDEX_NONE;
+
+		/**
+		 * HOW MANY BREAKING PASSES THE CASCADE RAN HERE TODAY — the same characterisation as
+		 * DropsToday, and read the same way. Kept separate so a change to the SHAPE of the known-
+		 * wrong answer (the same piece count reached over a different number of passes) is visible
+		 * too, rather than hiding behind an unchanged piece count. See DropsToday for what this is
+		 * not and the delete-when-fixed instruction, which covers this field as well.
+		 */
+		int32 PassesToday = INDEX_NONE;
 	};
 
 	/**
@@ -400,7 +439,8 @@ namespace BeamAcceptanceTestSupport
 		Cases.Add({
 			1, TEXT("C24 timber beam, heavy load"), TEXT("member material (vs case 3)"),
 			TEXT("C24 timber"), C24DensityGramsPerCubicCm, C24BendingMPa, C24ShearMPa,
-			/*BlockHeightCm*/ 120.0, EVerdict::PartsAtMidspan });
+			/*BlockHeightCm*/ 120.0, EVerdict::PartsAtMidspan,
+			/*DropsToday*/ 3, /*PassesToday*/ 1 });
 
 		/*
 		 * ROW 2 — THE SAME BEAM WELL INSIDE CAPACITY, differing from row 1 in the block's height
@@ -410,7 +450,8 @@ namespace BeamAcceptanceTestSupport
 		Cases.Add({
 			2, TEXT("C24 timber beam, light load"), TEXT("load magnitude (vs case 1)"),
 			TEXT("C24 timber"), C24DensityGramsPerCubicCm, C24BendingMPa, C24ShearMPa,
-			/*BlockHeightCm*/ 10.0, EVerdict::Stands });
+			/*BlockHeightCm*/ 10.0, EVerdict::Stands,
+			/*DropsToday*/ 3, /*PassesToday*/ 1 });
 
 		/*
 		 * ROW 3 — THE STEEL TWIN. Identical geometry, identical block, only the member material
@@ -422,7 +463,8 @@ namespace BeamAcceptanceTestSupport
 		Cases.Add({
 			3, TEXT("S275 steel beam, heavy load"), TEXT("member material (vs case 1)"),
 			TEXT("S275 steel"), SteelDensityGramsPerCubicCm, S275YieldMPa, S275ShearMPa,
-			/*BlockHeightCm*/ 120.0, EVerdict::Stands });
+			/*BlockHeightCm*/ 120.0, EVerdict::Stands,
+			/*DropsToday*/ 3, /*PassesToday*/ 1 });
 
 		return Cases;
 	}
@@ -867,10 +909,15 @@ namespace BeamAcceptanceTestSupport
 /**
  * THE CATALOGUE: three configurations, each with the verdict a real beam gives.
  *
- * TWO ROWS ARE GREEN ON ARRIVAL AND SAY SO. Cases 2 and 3 both stand today, and both stand
- * tomorrow, so neither drives anything on its own — what they are for is the PAIRS. Case 1 versus
- * case 2 varies only the block's height; case 1 versus case 3 varies only the member material.
- * Case 1 is the red.
+ * ALL THREE ROWS ARE RED TODAY, AND NOT FOR THE SAME REASON. Case 1 was always the red the file
+ * was written for: it must PartsAtMidspan and the mechanism half never fires (the file header's
+ * "SO THE RED IS" paragraph). Cases 2 and 3 were green on arrival until the one-cell thrust gate
+ * (08abcfd, 2026-08-09) — see the file header's "HOW THE BEARINGS READ CHANGED" paragraph — and
+ * now fail their STANDS assertion the same way case 1 fails its PartsAtMidspan one: the dry
+ * bearings unzip regardless of the member's own capacity. What the three rows are for is still the
+ * PAIRS: case 1 versus case 2 varies only the block's height; case 1 versus case 3 varies only the
+ * member material. Each row's `DropsToday`/`PassesToday` pins today's wrong answer so a further
+ * regression cannot hide inside an already-red row (see `FBeamCase::DropsToday`).
  *
  * ROW 1'S ASSERTION IS TWO-SIDED AND IT NEEDS BOTH SIDES. The mechanism half — the glue line at
  * midspan must have GIVEN — is what makes this a member-failure test rather than a collapse test:
@@ -954,6 +1001,45 @@ bool FBeamAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 				*Where, Result.LeftBearingUu, Result.RightBearingUu, TotalWeightUu),
 			Result.LeftBearingUu + Result.RightBearingUu, TotalWeightUu,
 			TotalWeightUu * 1.0e-9);
+
+		/*
+		 * ALL THREE ROWS ARE PINNED TO THE WRONG ANSWER THE MODEL GIVES TODAY, BEFORE the
+		 * verdict-specific assertions below — this must run whether the row's own catalogue verdict
+		 * is Stands or PartsAtMidspan, because since the one-cell thrust gate the wrong answer is
+		 * the SAME shape on every row (see `FBeamCase::DropsToday`).
+		 *
+		 * THIS ASSERTS NOTHING ABOUT PHYSICS AND ENDORSES NOTHING, exactly as the wall catalogue's
+		 * `DropsToday` pin does not. What it adds is that the KNOWN-WRONG failure has a FIXED SHAPE:
+		 * a row that is already red (case 1) or about to go red for the first time here (cases 2
+		 * and 3) is otherwise a hole in the net, free to drop a different count or run a different
+		 * number of passes without anybody noticing, in exactly the way the 2026-08-09 gate change
+		 * hid for two days before the 2026-08-11 oracle sweep found it.
+		 */
+		if (Case.DropsToday != INDEX_NONE)
+		{
+			TestEqual(
+				*FString::Printf(
+					TEXT("%s: CHARACTERISATION of a KNOWN RED — since the one-cell thrust gate ")
+					TEXT("(08abcfd, 2026-08-09) these DRY bearings lose the kern cap and read Max(), ")
+					TEXT("so the model drops %d piece(s) here today regardless of the catalogue's %s ")
+					TEXT("verdict. It dropped %d: %s. ACCEPTED AS A KNOWN COST until evolution step 4 ")
+					TEXT("(DESIGN.md §7's path; the beam user ruling, DESIGN.md §8, decided ")
+					TEXT("2026-08-11) — global equilibrium is what fixes the bearings honestly, not ")
+					TEXT("this fixture. If a slice just fixed this row, DELETE its DropsToday and ")
+					TEXT("PassesToday in the same edit; if nothing here was meant to change, the ")
+					TEXT("model's answer has moved and something else moved it."),
+					*Where, Case.DropsToday, VerdictName(Case.Verdict),
+					Result.Fallen.Num(), *DescribePieces(Beam, Result.Fallen)),
+				Result.Fallen.Num(), Case.DropsToday);
+
+			TestEqual(
+				*FString::Printf(
+					TEXT("%s: CHARACTERISATION of a KNOWN RED — the cascade runs %d breaking pass(es) ")
+					TEXT("here today; see DropsToday just above for the mechanism and the ")
+					TEXT("delete-when-fixed instruction, which covers this pin too."),
+					*Where, Case.PassesToday),
+				Result.Passes, Case.PassesToday);
+		}
 
 		if (Case.Verdict == EVerdict::Stands)
 		{
