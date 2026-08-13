@@ -293,6 +293,14 @@ namespace DestructionScenarios
 	const DestructionWallCases::FWallRegion ScenariosWall18Cuts[] = { { 5, 5, 4.75, 5.25 } };
 	const DestructionWallCases::FWallRegion ScenariosWall19Cuts[] = { { 0, 0, -0.50, 5.25 } };
 
+	/* --- G: openings too big for what covers them. -------------------------------------------- */
+
+	/** Cells 2..19 out of an eighteen-cell opening, two courses of cover over it. */
+	const DestructionWallCases::FWallRegion ScenariosWall21Cuts[] = { { 1, 3, 1.75, 19.25 } };
+
+	/** Case 9's own eight courses of cover, over a span grown to thirty-five cells. */
+	const DestructionWallCases::FWallRegion ScenariosWall22Cuts[] = { { 1, 3, 1.75, 36.25 } };
+
 	/**
 	 * THE RAKING CUT, one region per course, reading up.
 	 *
@@ -517,6 +525,33 @@ namespace DestructionScenarios
 			ScenariosWallCoveredCourses, 14,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall20Cuts },
+
+		{ TEXT("wall-21"), TEXT("Lvl_Wall21"), TEXT("Eighteen-brick opening, two courses over"),
+			TEXT("Two courses of brick span an opening most of four metres wide. Expected: COLLAPSE — "
+				"two courses cannot span that far: the deep-beam check reads 1.50x even the generous "
+				"mean strength ceiling, so the cover sheds onto the floor while the jambs either side "
+				"keep their footing. Watch the corners: the model takes those top two courses down "
+				"over the jambs as well, and the catalogue declines to claim that either way, because "
+				"where a two-course panel tears as it drops is not something it can rule. Production "
+				"and the hand statics agree the wall falls. The limit-theorem oracle is the one "
+				"holdout — it stands this wall at 5.5x, sixty-six times what the mortar bond could "
+				"hold, by a mechanism nobody has yet identified. Whether that is a charity of an "
+				"oracle whose ground cannot move or a real load path the solver cannot see is an open "
+				"question, and the verdict here does not wait on it."),
+			6, 22,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall21Cuts },
+
+		{ TEXT("wall-22"), TEXT("Lvl_Wall22"), TEXT("Thirty-five-brick opening, eight courses over"),
+			TEXT("The same eight courses of cover that easily carry case 9's two-metre opening are "
+				"asked to carry nearly eight metres instead. Expected: COLLAPSE — bending grows with "
+				"the square of the span, so the masonry that read 0.089 MPa there reads 1.16 MPa "
+				"here, 1.46x the mean strength ceiling; production and the hand statics both agree it "
+				"falls, and the limit-theorem oracle refuses to answer at this span rather than "
+				"disagreeing with it."),
+			ScenariosWallCoveredCourses, 39,
+			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
+			ScenariosWall22Cuts },
 	};
 
 	/** What one acceptance wall asks production to lay. */

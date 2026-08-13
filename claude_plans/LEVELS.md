@@ -1,6 +1,6 @@
 # The levels
 
-Twenty-nine playable maps, one per fixture the headless suite measures. You join, the structure is
+Thirty-one playable maps, one per fixture the headless suite measures. You join, the structure is
 already framed in front of you, a caption names it and says what to watch for, and four seconds
 later it does whatever it was always going to do.
 
@@ -105,7 +105,7 @@ Three of these are worth standing in front of deliberately:
 - **E35 against E36** is the crossover. One course of difference; E35 stands untouched and E36 sheds
   precisely its lowest step course, 36 bricks, with everything above it still up.
 
-## The twenty acceptance walls
+## The twenty-two acceptance walls
 
 The configurations you reviewed in [WALL_CASES.html](WALL_CASES.html). Each level's caption carries
 the verdict the acceptance test asserts.
@@ -132,6 +132,8 @@ the verdict the acceptance test asserts.
 | `Lvl_Wall18` | `wall-18` | Stack bond, one brick out |
 | `Lvl_Wall19` | `wall-19` | Bottom course out under half the wall |
 | `Lvl_Wall20` | `wall-20` | Staircase void |
+| `Lvl_Wall21` | `wall-21` | Eighteen-brick opening, two courses over |
+| `Lvl_Wall22` | `wall-22` | Thirty-five-brick opening, eight courses over |
 
 ### Three of these levels contradict the model, and say so — two of them in a new direction
 
@@ -192,8 +194,8 @@ about it; `Content.ScenarioMapsAreDistinctAssets` catches the one made by copyin
 
 ## Seeing them all without joining them
 
-`DestructionGame.Visual.ScenarioLevelScreenshots` opens all twenty-nine as a player opens them and
-photographs each held and run — 58 frames into `Saved/Screenshots/WindowsEditor/`. It needs a real
+`DestructionGame.Visual.ScenarioLevelScreenshots` opens all thirty-one as a player opens them and
+photographs each held and run — 62 frames into `Saved/Screenshots/WindowsEditor/`. It needs a real
 RHI, so **`-nullrhi` must be absent**:
 
 ```bash

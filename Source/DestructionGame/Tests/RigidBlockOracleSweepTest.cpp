@@ -1699,6 +1699,75 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		 */
 		ERelation::AgreeStands, 622.0204, 622.0454, 0, 0 });
 
+	/*
+	 * THE FIRST ROW IN THIS FILE WHERE THE ORACLE IS THE OUTLIER, AND THE FIRST WHOSE
+	 * ACCEPTANCE VERDICT IS `Collapse`. Every previous disagreement here has been the LP
+	 * against a production defect, and four catalogue rulings have moved TOWARD the LP.
+	 * Case 21 goes the other way: hand statics and production both condemn the wall and
+	 * the LP stands it at 5.51x. The row is pinned as a measurement OF THE DISAGREEMENT
+	 * ITSELF — not as a verdict about masonry, and NOT as a diagnosis of the LP, because
+	 * what the LP is pricing here has not been established.
+	 *
+	 * WHAT IS ESTABLISHED. 5.511 is 66x the strength of the mechanism the acceptance
+	 * verdict condemns: a 15 cm panel on characteristic flexural bond fails at
+	 * lambda = 0.10 / 1.2014 = 0.0832. So something other than the bond carries this wall
+	 * in the LP's world. WHAT it is has NOT been identified.
+	 *
+	 * THE TWO MEASURED LADDERS, both run 2026-08-13 (mean span L = 394.75 + (cells - 22)
+	 * x 22.5 cm, the opening always four cells narrower than the wall):
+	 *
+	 *   cover at 22 cells   2 crs 5.511   4 crs 7.683   6 crs 9.183   8 crs REFUSED
+	 *   span at 2 courses   18 c 10.408   22 c 5.511   27 c 3.102   32 c 1.985
+	 *                       40 c  1.143   45 c 0.863
+	 *
+	 * THE HYPOTHESIS THAT WAS PRICED, AND WHY IT IS STILL ONLY A HYPOTHESIS. A
+	 * full-wall-height arch whose thrust dives through the jambs into the grounded course
+	 * prices at 22 cells to H = W L / (8 r) = 936 x 394.75 / 240 = 1,539 N against jamb
+	 * bed joints affording (0.2 + 0.6 x 0.018) MPa over ~400 cm^2 = 8,440 N, i.e. 5.48
+	 * against the LP's 5.511. ONE RUNG. Walked along the cover ladder it was fitted on,
+	 * the same arithmetic gives 5.48 / 4.11 / 3.65 — falling by a third where the
+	 * measurement RISES by two thirds, so it is wrong in DIRECTION and out by 1.9x at the
+	 * middle rung and 2.5x at the top. Nor do the two shape observations discriminate:
+	 * lambda* rising while
+	 * sigma falls is what ANY depth-improved mechanism does (a load factor and a stress
+	 * move oppositely by construction), and lambda* x L^2 roughly constant is as much a
+	 * beam's signature as an arch's — and it is only roughly constant, drifting
+	 * 9.67e5 -> 7.18e5, TWENTY-SIX PER CENT, across the full ladder (an earlier draft
+	 * quoted 7.62e5, which is the 32-cell rung and stops two short of the end).
+	 *
+	 * SO WHAT THIS ROW MEASURES IS AN OPEN DISAGREEMENT. It MAY be a third charity beside
+	 * the two the file header names (the plastic limit, and full redistribution): the
+	 * oracle's ground is immovable, so anything able to tie itself through the foundation
+	 * gets that restraint free, and a real footing supplies it only by moving. It may
+	 * equally be a real load path the downward-routing solver cannot see. That is a USER
+	 * call, it has not been made, and CURRENT_STATE carries it along with the two ladders
+	 * that would discriminate — vary the courses BELOW the opening (an arch from the
+	 * ground gains rise, a cover-carried mechanism does not) and widen the jambs (an
+	 * abutment reaction roughly doubles, a cover-carried one barely moves). Growing this
+	 * fixture would not settle the VERDICT either way: lambda* crosses 1.0 only between
+	 * 40 and 45 cells, an 8-to-9 METRE opening under two courses of brick, and 0.863 x 6
+	 * for the characteristic-to-mean basis stands again — so the acceptance row is sized
+	 * on the mean-strength ceiling instead and the disagreement is left standing.
+	 *
+	 * LAID THROUGH `Scenario(...)` LIKE EVERY OTHER WALL ROW HERE since the wall-21 level
+	 * landed on 2026-08-13. It was briefly a hand-rolled `BuildOpeningWall` because the
+	 * scenario row did not exist yet; that builder is deleted and the window below is
+	 * unchanged across the swap, which is the acceptance sync test's brick-for-brick claim
+	 * showing up as a number.
+	 */
+	Rows.Add({ TEXT("wall-21 eighteen-cell opening, two courses over"),
+		TEXT("the COVER counter-case, and the first row here where the LP is the outlier: ")
+		TEXT("two courses (15 cm) over a 4.06 m opening is 1.2014 MPa of deep-beam bending, ")
+		TEXT("1.50x the 0.8 MPa top of the mean bracket and 12.0x characteristic f_xk1, and ")
+		TEXT("production drops the whole cover (45 pieces, 0 stranded) in THREE cascade ")
+		TEXT("passes at a worst pre-cascade reading of 3.8429 — a strength verdict, not the ")
+		TEXT("zero-pass unroutability of wall-10 and wall-19. The LP stands it at 5.51, which ")
+		TEXT("is 66x what the bond can hold, by a mechanism that has NOT been identified — ")
+		TEXT("see the block above for the ladder that refuted the first attribution and for ")
+		TEXT("the two ladders that would settle it"),
+		Scenario(TEXT("wall-21")),
+		ERelation::OracleStandsProductionFalls, 5.5109, 5.5111, 45, 0 });
+
 	TArray<FSweepReading> Readings;
 	RunRows(*this, Rows, Readings);
 
