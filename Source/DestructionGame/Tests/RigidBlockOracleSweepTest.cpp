@@ -191,6 +191,22 @@ namespace RigidBlockSweepTestSupport
 		 * machinery stays for future refusal pins (a 30-course attempt would use it).
 		 */
 		OracleRefusesAtThisScale,
+
+		/**
+		 * The oracle refuses with "PHASE-2 SIMPLEX FAILED", which is a different refusal
+		 * from the one above and needed its own enumerator rather than a widened check:
+		 * the verification gate rejects an answer it has computed, while this one never
+		 * reaches an answer at all. CURRENT_STATE recorded that the eight-course-opening
+		 * family (acceptance case 22) refuses this way and that
+		 * `OracleRefusesAtThisScale` could not pin it, because that branch asserts the
+		 * reason contains "failed verification".
+		 *
+		 * SCALE IS NOT THE EXPLANATION and this file now carries the sharpest evidence of
+		 * that: the abutment ladder's j=4 rung refuses at 107 blocks while its own j=3 rung
+		 * (95) and the rise ladder's s=4 (149) both answer. Same canary discipline as
+		 * above — the day this answers, the row fails and must be promoted, never deleted.
+		 */
+		OracleRefusesPhaseTwo,
 	};
 
 	const TCHAR* RelationName(ERelation Relation)
@@ -202,6 +218,7 @@ namespace RigidBlockSweepTestSupport
 		case ERelation::OracleStandsProductionFalls: return TEXT("ORACLE STANDS / PRODUCTION FALLS");
 		case ERelation::OracleFallsProductionStands: return TEXT("ORACLE FALLS / PRODUCTION STANDS");
 		case ERelation::OracleRefusesAtThisScale:    return TEXT("ORACLE REFUSES (at this scale)");
+		case ERelation::OracleRefusesPhaseTwo:       return TEXT("ORACLE REFUSES (phase-2 simplex failed)");
 		default:                                     return TEXT("UNMEASURED");
 		}
 	}
@@ -436,6 +453,37 @@ namespace RigidBlockSweepTestSupport
 						TEXT("was: %s"),
 						Row.Name, *R.Oracle.WhyNot),
 					R.Oracle.WhyNot.Contains(TEXT("failed verification")));
+			}
+
+			CheckProductionCounts(Test, Row, R);
+
+			return;
+		}
+
+		/*
+		 * The same canary shape for the OTHER refusal: the solver never reaches an answer
+		 * to reject. Kept a separate branch rather than a widened substring test, because
+		 * the two refusals mean opposite things about how far the solve got, and a row
+		 * pinned to one of them silently passing on the other would lose the distinction.
+		 */
+		if (Row.Expected == ERelation::OracleRefusesPhaseTwo)
+		{
+			Test.TestTrue(
+				*FString::Printf(
+					TEXT("%s: pinned as ORACLE REFUSES IN PHASE 2 (mechanism: %s). It ")
+					TEXT("ANSWERED, lambda* %.9g — the solver's numerics have moved; measure ")
+					TEXT("this row and promote the pin to a relation, never delete this ")
+					TEXT("failure."),
+					Row.Name, Row.Mechanism, R.Oracle.Lambda),
+				!R.Oracle.bAnswered);
+
+			if (!R.Oracle.bAnswered)
+			{
+				Test.TestTrue(
+					*FString::Printf(
+						TEXT("%s: the refusal must be the phase-2 simplex, and was: %s"),
+						Row.Name, *R.Oracle.WhyNot),
+					R.Oracle.WhyNot.Contains(TEXT("phase-2 simplex failed")));
 			}
 
 			CheckProductionCounts(Test, Row, R);
@@ -916,6 +964,233 @@ namespace RigidBlockSweepTestSupport
 		Out = MoveTemp(Laid.Layout.Structure);
 		return true;
 	}
+
+	/* --- The case-21 opening family, parameterised for the two mechanism ladders. ----- */
+
+	/** Cells of clear opening in the EVEN courses. Held at case 21's eighteen. */
+	constexpr int32 LadderOpeningCells = 18;
+
+	/** Courses the opening is cut through. Held at case 21's three. */
+	constexpr int32 LadderOpeningCourses = 3;
+
+	/** Courses of masonry over the opening. Held at the user's two-course minimum. */
+	constexpr int32 LadderCoverCourses = 2;
+
+	/**
+	 * ONE RUNG OF EITHER LADDER: case 21's wall with exactly one thing moved.
+	 *
+	 * `CoursesBelow` is the masonry UNDER the opening — the rise ladder's variable, and
+	 * case 21's own value is 1 (the grounded sill course alone). `JambCells` is the
+	 * masonry either side of it — the abutment ladder's variable, case 21's value 2. Span,
+	 * cover and opening height are constants above, so a rung differs from case 21 in one
+	 * dimension and no other. `CoverTailCells` is the disambiguating rung's third
+	 * variable and INDEX_NONE (or anything not smaller than the jamb) on every other rung
+	 * — see the trim block below for what it is for.
+	 *
+	 * IT IS PRODUCTION'S OWN BRICKLAYER (`DestructionWallCases::Build`) DRIVEN BY THIS
+	 * FILE'S OWN CONSTANTS, and the s=1/j=2 rung IS case 21 — the ladder test asserts that
+	 * rung and the `Scenario("wall-21")` row are THE SAME NUMBER, so the geometry
+	 * arithmetic below is checked against the shipped catalogue row rather than trusted.
+	 * That is what makes a hand-parameterised builder acceptable for a MEASUREMENT beside
+	 * a catalogue that lays every verdict row through the scenario table.
+	 *
+	 * THE CUT, in the (course, cell) vocabulary the region rule reads (a piece is in when
+	 * its course is within the inclusive range and its cell is STRICTLY between the
+	 * bounds): courses s..s+2, cells j..j+17 of the even courses. At s=1, j=2 that is
+	 * case 21's own `{ 1, 3, 1.75, 19.25 }`, transcribed nowhere and derived here.
+	 *
+	 * ONE PARITY CAVEAT, WORTH KNOWING BEFORE READING THE RISE LADDER. Running bond makes
+	 * the reveal shape depend on the parity of the opening's courses: an EVEN course loses
+	 * 18 whole bricks to this cut and an ODD one 17, so an opening starting at an odd
+	 * course (s = 1, 3) takes 17+18+17 = 52 bricks and one starting at an even course
+	 * (s = 2, 4) takes 18+17+18 = 53. The rungs therefore alternate between two toothing
+	 * patterns, one brick apart in a 52-brick cut. It is a real confound and it is small;
+	 * a ladder whose four rungs move by a factor is not being driven by it, and one whose
+	 * rungs alternate would be.
+	 */
+	bool BuildOpeningLadderWall(
+		int32 CoursesBelow, int32 JambCells, int32 CoverTailCells,
+		FStructure& Out, FString& OutWhy)
+	{
+		if (CoursesBelow < 1 || JambCells < 1)
+		{
+			OutWhy = FString::Printf(
+				TEXT("a rung needs at least one course below the opening and one cell of ")
+				TEXT("jamb; asked for %d and %d"),
+				CoursesBelow, JambCells);
+
+			return false;
+		}
+
+		DestructionWallCases::FWallSpec Spec;
+		Spec.BrickSizeCm = FVector(SweepBrickLengthCm, SweepBrickWidthCm, SweepBrickHeightCm);
+		Spec.JointThicknessCm = SweepJointCm;
+		Spec.DensityGramsPerCubicCm = SweepClayDensityGramsPerCubicCm;
+		Spec.CoursesHigh = CoursesBelow + LadderOpeningCourses + LadderCoverCourses;
+		Spec.Cells = LadderOpeningCells + 2 * JambCells;
+		Spec.Bond = DestructionWallCases::EWallBond::Running;
+		Spec.Strength = DestructionProfiles::GeneralPurposeMortar;
+
+		DestructionWallCases::FWallLayout Laid;
+
+		if (!DestructionWallCases::Build(Spec, Laid))
+		{
+			OutWhy = FString::Printf(
+				TEXT("the wall producer refused a %d-course, %d-cell ladder rung"),
+				Spec.CoursesHigh, Spec.Cells);
+
+			return false;
+		}
+
+		TArray<DestructionWallCases::FWallRegion> Cut;
+
+		Cut.Add({ CoursesBelow,
+			CoursesBelow + LadderOpeningCourses - 1,
+			double(JambCells) - 0.25,
+			double(JambCells + LadderOpeningCells - 1) + 0.25 });
+
+		/*
+		 * THE COVER TAIL, WHICH ONLY THE DISAMBIGUATING RUNG USES. Widening the jamb
+		 * widens two things at once — the bearing under the cover AND the length of cover
+		 * built in over it — so the abutment ladder on its own cannot say which of them
+		 * bought the margin. Trimming the cover back to a two-cell tail over a three-cell
+		 * jamb separates them: the reaction keeps the wider bearing, the panel loses the
+		 * longer tail.
+		 *
+		 * THE TRIM IS SYMMETRIC AND IT IS NOT EXACTLY ONE CELL. Each end loses one whole
+		 * brick from the even cover course and a whole-plus-half-bat from the odd one —
+		 * 1.0 and 1.5 cells respectively — because running bond closes its odd courses
+		 * with half bats and no cut in this vocabulary can take half of one. Both ends
+		 * lose the same thing, so the fixture stays symmetric; the claim it supports is
+		 * "the cover overhangs the jamb by about two cells instead of three", not a
+		 * millimetre-exact reproduction of case 21's tail.
+		 */
+		if (CoverTailCells > 0 && CoverTailCells < JambCells)
+		{
+			const int32 CoverLo = CoursesBelow + LadderOpeningCourses;
+			const int32 CoverHi = CoverLo + LadderCoverCourses - 1;
+			const int32 TrimCells = JambCells - CoverTailCells;
+
+			Cut.Add({ CoverLo, CoverHi, -1.0, double(TrimCells) - 0.25 });
+			Cut.Add({ CoverLo, CoverHi,
+				double(Spec.Cells - TrimCells) - 0.75, double(Spec.Cells) + 1.0 });
+		}
+
+		TArray<int32> CutPieces;
+		DestructionWallCases::PiecesInRegions(Laid, Cut, CutPieces);
+
+		/*
+		 * The parity note above says a rung's cut is 52 or 53 bricks; anything else means
+		 * the region arithmetic and the bricklayer have stopped agreeing, which would make
+		 * every rung above a measurement of a different fixture than the one named.
+		 */
+		const int32 WholeCourses = LadderOpeningCourses / 2 + 1;
+		const int32 HalfCourses = LadderOpeningCourses - WholeCourses;
+
+		const int32 EvenFirst = LadderOpeningCells * WholeCourses
+			+ (LadderOpeningCells - 1) * HalfCourses;
+		const int32 OddFirst = LadderOpeningCells * HalfCourses
+			+ (LadderOpeningCells - 1) * WholeCourses;
+
+		int32 Wanted = (CoursesBelow % 2 == 0) ? EvenFirst : OddFirst;
+
+		/*
+		 * And the trim, which the two cover courses split one even and one odd whatever
+		 * the rung's parity: TrimCells bricks off the even course and TrimCells + 1 off
+		 * the odd one (the half bat), at each of the two ends.
+		 */
+		if (CoverTailCells > 0 && CoverTailCells < JambCells)
+		{
+			Wanted += 2 * (2 * (JambCells - CoverTailCells) + 1);
+		}
+
+		if (CutPieces.Num() != Wanted)
+		{
+			OutWhy = FString::Printf(
+				TEXT("the rung's cut named %d bricks; a %s-course opening of %d cells over ")
+				TEXT("%d courses (cover tail %d) wants %d"),
+				CutPieces.Num(), (CoursesBelow % 2 == 0) ? TEXT("even") : TEXT("odd"),
+				LadderOpeningCells, LadderOpeningCourses, CoverTailCells, Wanted);
+
+			return false;
+		}
+
+		for (const int32 Piece : CutPieces)
+		{
+			if (!Laid.Layout.Structure.RemovePiece(Piece))
+			{
+				OutWhy = FString::Printf(
+					TEXT("the rung's cut piece %d could not be removed"), Piece);
+
+				return false;
+			}
+		}
+
+		Out = MoveTemp(Laid.Layout.Structure);
+		return true;
+	}
+
+	/**
+	 * A LADDER RELATION, PINNED AS A RATIO OF TWO LAMBDA*, with both competing predictions
+	 * printed beside the measurement on every run and quoted in the failure.
+	 *
+	 * WHY A RATIO AND NOT TWO WINDOWS. Two windows say where each rung sits; the ladder's
+	 * whole content is how the rungs MOVE relative to one another, and that is a claim
+	 * neither window makes. A solver change that shifted every rung by the same factor
+	 * would keep the relation and break both windows — which is exactly the split wanted,
+	 * because the relation is the physics finding and the windows are the arithmetic.
+	 */
+	void CheckLambdaLadderRatio(
+		FAutomationTestBase& Test,
+		const TCHAR* What,
+		const TCHAR* Predictions,
+		const FSweepReading& Top,
+		const FSweepReading& Bottom,
+		double RatioLo,
+		double RatioHi)
+	{
+		const double Ratio = Bottom.Oracle.Lambda != 0.0
+			? Top.Oracle.Lambda / Bottom.Oracle.Lambda
+			: TNumericLimits<double>::Max();
+
+		Test.AddInfo(FString::Printf(
+			TEXT("LADDER %s: %.17g / %.17g = %.9g (%s)"),
+			What, Top.Oracle.Lambda, Bottom.Oracle.Lambda, Ratio, Predictions));
+
+		Test.TestTrue(
+			*FString::Printf(
+				TEXT("%s: the measured ratio must lie in [%.9g, %.9g] and was %.17g / ")
+				TEXT("%.17g = %.9g. %s. This pin is the LADDER's finding rather than either ")
+				TEXT("rung's value — if it moved, a mechanism changed, and the two ")
+				TEXT("predictions beside it are what to re-read before touching the window"),
+				What, RatioLo, RatioHi, Top.Oracle.Lambda, Bottom.Oracle.Lambda, Ratio,
+				Predictions),
+			Ratio >= RatioLo && Ratio <= RatioHi);
+	}
+
+	/**
+	 * A rung must be the fixture its name claims. Block count is the cheapest total
+	 * statement of that: every rung of both ladders has a different one, so a builder that
+	 * quietly ignored its parameter would collide here rather than reporting a plausible
+	 * lambda* for a wall nobody asked for. MEASURED TO BE THE ONLY NET THAT CATCHES IT:
+	 * under the recorded rung-flip mutation (s=3 secretly built as s=1) the lambda window
+	 * AND the depth-ratio pin both PASSED — the two lambdas sit 1e-6 apart inside a 2e-5
+	 * window, and the ratio reads exactly the 1.0 the pin wants — so window, ratio and
+	 * size pins work as a set, never alone (TRAPS records the lesson).
+	 */
+	void CheckRungSize(
+		FAutomationTestBase& Test,
+		const TCHAR* What,
+		const FSweepReading& Reading,
+		int32 WantedBlocks)
+	{
+		Test.TestEqual(
+			*FString::Printf(
+				TEXT("%s: the rung must bridge to %d live blocks and bridged %d — a rung ")
+				TEXT("that is not the wall its name claims measures nothing"),
+				What, WantedBlocks, Reading.Blocks),
+			Reading.Blocks, WantedBlocks);
+	}
 }
 
 /**
@@ -1143,7 +1418,7 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  * ITS NAME DELIBERATELY DOES NOT CONTAIN "DestructionGame", so the documented full-suite
  * command — Automation RunTests DestructionGame — NEVER runs it and the ~30 s suite
  * budget is untouched. Run it deliberately, either whole or one test at a time (the
- * free-end ladder alone is ~23 s, which is what makes it the cheap place to prove a
+ * free-end ladder alone is ~12 s, which is what makes it the cheap place to prove a
  * cross-row pin bites):
  *
  *     -ExecCmds="Automation RunTests OracleSlowSweep"
@@ -1158,13 +1433,17 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  * 2026-08-12 classification slice restored the rationale by PINNING the thirteen fixtures
  * the rewrite had only measured, and the partial-pricing slice then re-timed every row.
  * MEASURED ON THIS TREE: ~490 s — WallsAndLadders 475.4 s and 478.9 s over two runs,
- * FreeEndHeightLadder 11.8 s both times — against a ~30 s budget for the ENTIRE default
+ * FreeEndHeightLadder 11.8 s both times (2026-08-13, the case-21 mechanism ladders
+ * joining as a third test: 12.2 / 20.8 / 499.6 s = 532.6 s whole-group, so the ladders
+ * cost 4% and WallsAndLadders' own figure varied 5% across machines-under-load — quote
+ * the range, not the last number) — against a ~30 s budget for the ENTIRE default
  * suite. (The pre-pricing figures were ~437 s total, 436.7 / 434.9 / 438.1 over three
  * runs, ~415 s of it WallsAndLadders and ~23 s the ladder; the ladder halved while the
  * walls grew, which is the per-fixture trade the WallsAndLadders header works out.)
  * Every run so far has returned
- * bit-identical lambda* and worst readings on all nineteen rows, which is the determinism
- * contract holding across the widest problem set it has ever been asked about. Keep this
+ * bit-identical lambda* and worst readings on every row — twenty-nine across the group's
+ * three tests as of 2026-08-13 — which is the determinism contract holding across the
+ * widest problem set it has ever been asked about. Keep this
  * number current — it is the whole argument for the group existing, and a slow group
  * nobody can justify is a slow group somebody deletes.
  * ==================================================================================== */
@@ -1909,6 +2188,370 @@ bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
 			TEXT("moved and the ladder's slope is what to re-derive"),
 			Short->WorstUtilisation, Tall->WorstUtilisation),
 		Short->WorstUtilisation < 1.0 && Tall->WorstUtilisation > 1.0);
+
+	return true;
+}
+
+/**
+ * THE CASE-21 MECHANISM LADDERS — the two discriminating experiments DESIGN §8's
+ * 2026-08-13 entry specified and left unrun, and the gate on evolution step 4.
+ *
+ * THE QUESTION THEY EXIST TO ANSWER. The LP stands acceptance case 21 — two courses of
+ * cover over a 4.06 m opening — at lambda* = 5.511, where hand statics read 1.2014 MPa of
+ * deep-beam bending (1.50x even the mean-basis ceiling) and production drops the whole
+ * cover in three cascade passes. 5.511 is SIXTY-SIX TIMES what a tension-bond flexural
+ * panel can hold (0.10 / 1.2014 = 0.0832), so the LP is pricing something else, and WHAT
+ * has not been identified. The first attribution — an arch springing from the immovable
+ * grounded course, thrust taken by the jamb bed joints — was refuted in review against its
+ * own cover ladder: it predicts lambda* FALLING by a third as cover grows 2 -> 6 courses
+ * where the measurement RISES by two thirds. These two ladders vary the two things that
+ * attribution turns on, one at a time.
+ *
+ *   THE RISE LADDER varies the courses BELOW the opening, s = 1..4, holding the span at
+ *   22 cells and the cover at two courses. An arch that springs from the grounded course
+ *   gains rise for every course of wall under the hole (r = 30.0, 37.5, 45.0, 52.5 cm on
+ *   the priced hypothesis's own arithmetic, H = W L / (8 r) against a near-flat jamb
+ *   capacity), so it predicts lambda* = 5.48 / 6.85 / 8.22 / 9.59 — rising 1.75x across
+ *   the ladder. Anything carried by the cover alone predicts FLAT: neither the panel's
+ *   demand nor its capacity knows how much masonry is under the hole.
+ *
+ *   THE ABUTMENT LADDER widens the jambs from 2 cells to 4 with everything else held —
+ *   the same 18-cell cut span, the same six courses, the same two of cover. A mechanism
+ *   that reacts into the base of the jamb doubles its bearing and its weight, so it
+ *   predicts roughly 2x; a cover-carried one predicts FLAT again.
+ *
+ * ====================================================================================
+ * WHAT THEY MEASURED, 2026-08-13, AND WHAT IT DOES AND DOES NOT SETTLE
+ * ====================================================================================
+ *
+ *     rung                       blocks  joints  lambda*              production
+ *     wall-21 (the catalogue)      83     133    5.5110095421575718   45 fall, 3 passes
+ *     rise s=1 / abutment j=2      83     133    5.5110095421575718   45 fall, 3 passes
+ *     rise s=2                    104     193    4.8119163296983674   45 fall, 3 passes
+ *     rise s=3                    128     264    5.5110085114812968   45 fall, 3 passes
+ *     rise s=4                    149     324    4.8119026252913413   45 fall, 3 passes
+ *     abutment j=3                 95     163    7.3790076229482224   49 fall, 4 passes
+ *     abutment j=4                107     193    REFUSED (phase 2)    53 fall, 5 passes
+ *     abutment j=3, tail trimmed   89     147    6.2895385246488216   43 fall, 3 passes
+ *
+ * THE RISE LADDER REFUTES THE ARCH-FROM-THE-GROUNDED-COURSE HYPOTHESIS OUTRIGHT. The four
+ * rungs are not one series: s=1 and s=3 start the opening on an ODD course and s=2 and
+ * s=4 on an EVEN one, which toothes the reveal differently, and that parity is the ONLY
+ * thing in the ladder that moves lambda* at all. Held at one parity, DEPTH DOES NOTHING:
+ *
+ *     s=3 / s=1 = 0.999999813    against 1.50 predicted (rise 45.0 cm against 30.0)
+ *     s=4 / s=2 = 0.999997152    against 1.40 predicted (rise 52.5 cm against 37.5)
+ *
+ * Two extra courses of masonry under the opening — 22.5 cm of springing depth, 1.5x the
+ * rise the withdrawn attribution was fitted at — move the answer by three parts in ten
+ * million. Production agrees to the last bit for its own reason (its worst joint is in the
+ * cover and the cover has not changed), which is pinned below so the finding is not the
+ * LP's alone. Whatever the LP is pricing, IT DOES NOT KNOW THE WALL UNDER THE OPENING IS
+ * THERE, and no mechanism whose capacity is set by the rise can survive that.
+ *
+ * THE ABUTMENT LADDER REFUTES THE OTHER HALF — a mechanism carried between the reveals.
+ * One full cell more jamb either side is worth 34%: j=3 / j=2 = 1.33895751, where flat was
+ * the cover-carried prediction and 1.50 the bearing-proportional one. It sits between the
+ * two and nearer the second. THE 2x TEST AT j=4 DOES NOT EXIST: the oracle refuses that
+ * rung in phase 2 at 107 blocks, having answered the 149-block s=4 rung, so the top of
+ * this ladder is a measurement nobody has and no 2x claim is made anywhere here.
+ *
+ * AND THE THIRD RUNG SAYS WHY THE SECOND LADDER ALONE COULD NOT HAVE IDENTIFIED ANYTHING.
+ * Widening a jamb widens the bearing under the cover and lengthens the cover built in over
+ * it, both at once; those are two mechanisms with one prediction. Trimming the cover back
+ * to a two-cell tail over the three-cell jamb gives back a little over half the gain
+ * (1.339 -> 1.141), so BOTH are live and neither is the mechanism by itself.
+ *
+ * SO THE MECHANISM IS STILL NOT IDENTIFIED, and this header does not name one. What the
+ * ladders bought is a smaller search space: any candidate must be FLAT IN THE WALL BELOW
+ * THE OPENING to seven figures and SENSITIVE TO BOTH the jamb's bearing and the cover's
+ * built-in tail. The ~13% "parity" step is NOT a third criterion: the two parities bear
+ * the cover on DIFFERENT CLEAR REVEALS (383.50 vs 406.00 cm — a full cell of span), and
+ * span-squared accounts for most of the step ((383.5/406)^2 = 0.892 vs the measured
+ * 0.873; production's own ratio sits 0.93% from span-squared), so until the separating
+ * experiment runs (CURRENT_STATE: match the spans across parities) it narrows nothing
+ * beyond the sigma ~ L^2/D scaling already recorded. And NOTHING HERE SAYS THE PATH DOES
+ * NOT REACH THE GROUND — flat-in-depth refutes pricing BY THE RISE, not every route
+ * through the jamb (see the depth block below); the deleted active-set probe measured
+ * the path reaching the grounded course through every jamb bed joint, priced by AREA.
+ *
+ * WHAT IS PINNED IS THE MEASUREMENT, NEVER THE HYPOTHESIS. Each rung carries its own
+ * lambda* window and production's drop count, and each ladder carries a RATIO pin — the
+ * relation is the finding, and a window around one rung cannot state it. The predictions
+ * are printed beside every ratio so a reader sees which one the number refutes; no
+ * assertion anywhere asserts a mechanism, because none has been identified.
+ *
+ * THE CONTROL IS THE FIRST ROW AND IT IS NOT DECORATION. `Scenario("wall-21")` and the
+ * hand-parameterised s=1/j=2 rung are asserted to be THE SAME NUMBER at the file's
+ * same-number tolerance, and they measured a relative difference of ZERO — same lambda*,
+ * same 83 blocks, same 133 joints, same 2,754 pivots. That is what licenses a local
+ * builder in a file where every verdict row is laid through the scenario catalogue: if the
+ * parameterisation drifted from the shipped fixture by one brick, the control fails and
+ * every rung above it is void.
+ *
+ * WINDOWS ARE +/-2e-5 RELATIVE, the file's pivot-path-honest basis (see the
+ * PARTIAL-PRICING RE-PIN note in WallsAndLadders); ratio windows are wider still at ~1e-4,
+ * because a ratio carries both readings' spread. Every window here is centred on ONE
+ * certified reading rather than the midpoint of two, since no second pivot path has been
+ * measured on these fixtures.
+ *
+ * COST: eight solves, ~21 s in total, the largest rung 149 blocks / 7.5 s.
+ * NEEDS A TICKING WORLD: NO.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRigidBlockSlowOpeningLaddersTest,
+	"OracleSlowSweep.RigidBlock.OpeningMechanismLadders",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockSweepTestSupport;
+
+	const auto Rung = [](int32 CoursesBelow, int32 JambCells, int32 CoverTailCells)
+	{
+		return [CoursesBelow, JambCells, CoverTailCells](FStructure& Out, FString& Why)
+		{
+			return BuildOpeningLadderWall(
+				CoursesBelow, JambCells, CoverTailCells, Out, Why);
+		};
+	};
+
+	TArray<FSweepRow> Rows;
+
+	Rows.Add({ TEXT("wall-21 through the scenario catalogue"),
+		TEXT("the equivalence control: the shipped case-21 fixture, laid the way every ")
+		TEXT("verdict row in this file is laid, so the hand-parameterised rung below can be ")
+		TEXT("held against it as the same number"),
+		[](FStructure& Out, FString& Why)
+		{
+			return BuildScenarioStructure(TEXT("wall-21"), Out, Why);
+		},
+		ERelation::OracleStandsProductionFalls, 5.5108993, 5.5111198, 45, 0 });
+
+	Rows.Add({ TEXT("rise s=1 / abutment j=2 (case 21 itself)"),
+		TEXT("both ladders' bottom rung and the equivalence control's partner — the same ")
+		TEXT("83 blocks, 133 joints and 2,754 pivots as the catalogue row above, which is ")
+		TEXT("what the same-number pin below turns into an assertion"),
+		Rung(1, 2, INDEX_NONE),
+		ERelation::OracleStandsProductionFalls, 5.5108993, 5.5111198, 45, 0 });
+
+	Rows.Add({ TEXT("rise s=2"),
+		TEXT("one more course under the opening: an arch from the ground gains 7.5 cm of ")
+		TEXT("rise, a cover-carried mechanism gains nothing. It gains nothing — what moves ")
+		TEXT("here is the REVEAL PARITY (an even-first opening), and the depth pins below ")
+		TEXT("compare s=3 against s=1 and s=4 against s=2 to keep the two apart"),
+		Rung(2, 2, INDEX_NONE),
+		ERelation::OracleStandsProductionFalls, 4.8118201, 4.8120126, 45, 0 });
+
+	Rows.Add({ TEXT("rise s=3"),
+		TEXT("two more courses under the opening, back on case 21's odd-first parity: the ")
+		TEXT("same lambda* to 1.9e-7 relative"),
+		Rung(3, 2, INDEX_NONE),
+		ERelation::OracleStandsProductionFalls, 5.5108983, 5.5111187, 45, 0 });
+
+	Rows.Add({ TEXT("rise s=4"),
+		TEXT("three more courses under the opening: the springing is 22.5 cm deeper than ")
+		TEXT("case 21's, which is 1.75x the rise the priced arch was fitted at, and lambda* ")
+		TEXT("reads its parity partner s=2 to 2.8e-6 relative"),
+		Rung(4, 2, INDEX_NONE),
+		ERelation::OracleStandsProductionFalls, 4.8118064, 4.8119989, 45, 0 });
+
+	Rows.Add({ TEXT("abutment j=3"),
+		TEXT("half again the jamb, same cut span, same wall height, same reveal parity — ")
+		TEXT("and lambda* moves 1.34x, which is the one thing either ladder found that ")
+		TEXT("does move it. Production drops 49 rather than 45 because the cover it drops ")
+		TEXT("is two cells wider, not because it fares worse"),
+		Rung(1, 3, INDEX_NONE),
+		ERelation::OracleStandsProductionFalls, 7.3788600, 7.3791552, 49, 0 });
+
+	Rows.Add({ TEXT("abutment j=4"),
+		TEXT("twice the jamb: twice the bearing and twice the weight over it, with the ")
+		TEXT("opening, the cover and the courses below all unmoved — and the oracle ")
+		TEXT("REFUSES it in phase 2 at 107 blocks, having answered the 149-block s=4 rung ")
+		TEXT("two rows up. The abutment ladder is therefore HALF MEASURED, which is why ")
+		TEXT("its pinned relation is the j=3 step and not a 2x claim at j=4"),
+		Rung(1, 4, INDEX_NONE),
+		ERelation::OracleRefusesPhaseTwo, -1.0, -1.0, 53, 0 });
+
+	Rows.Add({ TEXT("abutment j=3, cover tail trimmed to two cells"),
+		TEXT("THE DISAMBIGUATOR the abutment ladder needs: widening a jamb widens the ")
+		TEXT("bearing AND lengthens the cover built in over it, and j=3 alone cannot say ")
+		TEXT("which paid. This rung keeps the three-cell jamb and takes the extra cover ")
+		TEXT("back off, and it lands BETWEEN the two — 6.290 against 5.511 and 7.379 — so ")
+		TEXT("the answer is that both paid and neither is the mechanism on its own"),
+		Rung(1, 3, 2),
+		ERelation::OracleStandsProductionFalls, 6.2894127, 6.2896643, 43, 0 });
+
+	TArray<FSweepReading> Readings;
+	RunRows(*this, Rows, Readings);
+
+	const FSweepReading* Catalogue =
+		ReadingNamed(*this, Rows, Readings, TEXT("wall-21 through the scenario catalogue"));
+	const FSweepReading* S1 =
+		ReadingNamed(*this, Rows, Readings, TEXT("rise s=1 / abutment j=2 (case 21 itself)"));
+	const FSweepReading* S2 = ReadingNamed(*this, Rows, Readings, TEXT("rise s=2"));
+	const FSweepReading* S3 = ReadingNamed(*this, Rows, Readings, TEXT("rise s=3"));
+	const FSweepReading* S4 = ReadingNamed(*this, Rows, Readings, TEXT("rise s=4"));
+	const FSweepReading* J3 = ReadingNamed(*this, Rows, Readings, TEXT("abutment j=3"));
+	const FSweepReading* J4 = ReadingNamed(*this, Rows, Readings, TEXT("abutment j=4"));
+	const FSweepReading* J3Trimmed = ReadingNamed(
+		*this, Rows, Readings, TEXT("abutment j=3, cover tail trimmed to two cells"));
+
+	if (Catalogue == nullptr || S1 == nullptr || S2 == nullptr || S3 == nullptr
+		|| S4 == nullptr || J3 == nullptr || J4 == nullptr || J3Trimmed == nullptr)
+	{
+		return true;
+	}
+
+	CheckSameLambda(
+		*this,
+		TEXT("the ladder's bottom rung IS case 21 (hand-parameterised vs the catalogue)"),
+		*S1, *Catalogue, SameNumberRelativeTolerance);
+
+	CheckRungSize(*this, TEXT("rise s=1 / abutment j=2"), *S1, 83);
+	CheckRungSize(*this, TEXT("rise s=2"), *S2, 104);
+	CheckRungSize(*this, TEXT("rise s=3"), *S3, 128);
+	CheckRungSize(*this, TEXT("rise s=4"), *S4, 149);
+	CheckRungSize(*this, TEXT("abutment j=3"), *J3, 95);
+	CheckRungSize(*this, TEXT("abutment j=4"), *J4, 107);
+	CheckRungSize(*this, TEXT("abutment j=3, cover tail trimmed"), *J3Trimmed, 89);
+
+	/*
+	 * ================================================================================
+	 * THE RISE LADDER'S FINDING, IN THE TWO PINS THAT SEPARATE ITS TWO EFFECTS.
+	 * ================================================================================
+	 *
+	 * The four rungs do not read as one series, and the reason is the parity note in
+	 * BuildOpeningLadderWall: s=1 and s=3 start their opening on an ODD course, s=2 and
+	 * s=4 on an even one, and the reveal is toothed differently in the two cases. So the
+	 * ladder is read as two pins rather than four rungs in a line:
+	 *
+	 *   DEPTH, at fixed parity   s=3 / s=1 = 0.99999981   s=4 / s=2 = 0.99999715
+	 *   PARITY, at fixed depth   s=2 / s=1 = 0.87314607   s=4 / s=3 = 0.87314375
+	 *
+	 * WHAT THAT REFUTES, and it is the reason these ladders were specified. An arch
+	 * springing from the immovable grounded course gains rise for every course of wall
+	 * under the hole: r = 30.0 -> 52.5 cm across the ladder, H = W L / (8 r) falling in
+	 * proportion, so it predicts 1.25 and 1.75 where the depth pins measure 1.000000 to
+	 * SEVEN significant figures. Two more courses of masonry under the opening — 22.5 cm
+	 * of extra springing depth, 1.5x the rise the withdrawn attribution was fitted at —
+	 * move lambda* by less than three parts in ten million. The mechanism does not know
+	 * the wall below the opening is there.
+	 *
+	 * AND WHAT IT DOES NOT SETTLE. Flat-in-depth refutes a mechanism priced BY THE RISE.
+	 * It does not refute every path through the jamb: a horizontal reaction taken by the
+	 * jamb's bed joints is governed by their area, which is the same however many of them
+	 * are stacked in series, so that hypothesis predicts flat here too and has to be
+	 * separated by the abutment ladder below.
+	 *
+	 * The parity pins are not decoration either: they are the only movement in the whole
+	 * rise ladder, so they are what a "the rise ladder is flat" claim has to survive, and
+	 * a solver change that flattened them would be a real change in how the LP reads a
+	 * toothed reveal.
+	 */
+	CheckLambdaLadderRatio(
+		*this,
+		TEXT("THE RISE LADDER's depth, odd-parity: three courses below against one"),
+		TEXT("arch-from-the-grounded-course predicts 1.50 (r 45.0 against 30.0 cm), ")
+		TEXT("cover-carried and jamb-reaction both predict 1.00"),
+		*S3, *S1, 0.99990, 1.00010);
+
+	CheckLambdaLadderRatio(
+		*this,
+		TEXT("THE RISE LADDER's depth, even-parity: four courses below against two"),
+		TEXT("arch-from-the-grounded-course predicts 1.40 (r 52.5 against 37.5 cm), ")
+		TEXT("cover-carried and jamb-reaction both predict 1.00"),
+		*S4, *S2, 0.99990, 1.00010);
+
+	CheckLambdaLadderRatio(
+		*this,
+		TEXT("THE RISE LADDER's parity step, even-first opening against odd-first (s=2/s=1)"),
+		TEXT("the ONLY movement in the rise ladder — the two parities bear the cover on ")
+		TEXT("different clear reveals (383.50 vs 406.00 cm, a full cell of span), and ")
+		TEXT("span-squared accounts for most of it ((383.5/406)^2 = 0.892 vs this 0.873); ")
+		TEXT("cause not separated from cover-bond parity until the matched-span experiment ")
+		TEXT("in CURRENT_STATE runs"),
+		*S2, *S1, 0.87309, 0.87320);
+
+	CheckLambdaLadderRatio(
+		*this,
+		TEXT("THE RISE LADDER's parity step, repeated two courses deeper (s=4/s=3)"),
+		TEXT("the same reveal-width step, measured again at a different depth: if the ")
+		TEXT("parity step were really a depth effect in disguise, these two would differ"),
+		*S4, *S3, 0.87309, 0.87320);
+
+	/*
+	 * ================================================================================
+	 * THE ABUTMENT LADDER'S FINDING, AND THE HALF OF IT THE ORACLE REFUSED TO ANSWER.
+	 * ================================================================================
+	 *
+	 * j=3 reads 1.339 against j=2. That is NOT flat — 34% on a 50% wider jamb, where the
+	 * rise ladder moved by parts in a million — so a mechanism confined to the cover
+	 * between the reveals is refuted just as the rise-priced arch is. It is also short of
+	 * the 1.50 a bearing-proportional reaction predicts, which is what the cohesion-plus-
+	 * friction mix would do: cohesion scales with the area and friction with the weight,
+	 * and only one of those doubles cleanly.
+	 *
+	 * j=4 WOULD HAVE BEEN THE 2.00 TEST AND THE ORACLE REFUSES IT — phase-2 simplex
+	 * failure at 107 blocks, pinned above as a canary. So the ladder's top rung is a
+	 * measurement nobody has, and no 2x claim is pinned or made.
+	 *
+	 * THE TRIMMED RUNG IS WHAT MAKES THE j=3 STEP MEAN SOMETHING. Widening the jamb
+	 * widens the bearing under the cover and lengthens the cover built in over it at the
+	 * same time; those are two different mechanisms with the same prediction, and the
+	 * ladder as specified cannot separate them.
+	 */
+	CheckLambdaLadderRatio(
+		*this,
+		TEXT("THE ABUTMENT LADDER's step, three cells of jamb against two"),
+		TEXT("a jamb-width-proportional reaction predicts ~1.50, a mechanism carried ")
+		TEXT("between the reveals predicts 1.00"),
+		*J3, *S1, 1.33885, 1.33906);
+
+	CheckLambdaLadderRatio(
+		*this,
+		TEXT("THE DISAMBIGUATOR: the three-cell jamb with its cover tail trimmed back"),
+		TEXT("if the jamb's bearing bought the 1.34, this stays near 1.34; if the longer ")
+		TEXT("cover tail bought it, this falls back toward 1.00 — measured 1.141, which is ")
+		TEXT("NEITHER, so both are live and this is the pin that says so"),
+		*J3Trimmed, *S1, 1.14117, 1.14137);
+
+	/*
+	 * THE SAME MEASUREMENT SAID THE OTHER WAY ROUND, and it is worth both pins because
+	 * they fail differently: this one holds the trimmed rung against the UNTRIMMED j=3, so
+	 * it states how much of the wider jamb's gain the trim gives back — 0.852, i.e. the
+	 * 0.339 of margin j=3 bought over j=2 falls to 0.141, so a little over half of it went
+	 * with the cover tail and a little under half stayed with the bearing. ONE CAVEAT
+	 * BELONGS WITH THAT SPLIT: trimming the tail also removes the cover's weight from over
+	 * the jamb, and that weight is precompression on the very bed joints a jamb reaction
+	 * would use, so the trim understates the bearing's share by however much friction
+	 * contributes. Cohesion dominates that mix (0.2 MPa against 0.6 x ~0.018), so the
+	 * understatement is small — but it is not zero, and the split is quoted as "comparable
+	 * halves" rather than as a number for that reason.
+	 */
+	CheckLambdaLadderRatio(
+		*this,
+		TEXT("THE DISAMBIGUATOR against the untrimmed jamb (trimmed j=3 / j=3)"),
+		TEXT("all-bearing predicts 1.00 (the trim would change nothing), all-tail predicts ")
+		TEXT("0.747 (the whole gain given back)"),
+		*J3Trimmed, *J3, 0.85228, 0.85243);
+
+	/*
+	 * PRODUCTION'S OWN READING, ON THE SAME TWO SPLITS — because a ladder that only the
+	 * LP can see is a ladder about the LP. Production is INDIFFERENT TO DEPTH to the last
+	 * bit (its worst joint is in the cover, and the cover does not change) and it sees
+	 * the reveal parity exactly as the LP does. That agreement is what says the parity
+	 * step is a property of the fixture rather than of the simplex.
+	 */
+	CheckReadingRatio(
+		*this,
+		TEXT("production's worst reading does not move with depth either (s=3 / s=1)"),
+		S3->WorstUtilisation, S1->WorstUtilisation, 0.999999999, 1.000000001);
+
+	CheckReadingRatio(
+		*this,
+		TEXT("production sees the reveal parity the LP sees (s=2 / s=1)"),
+		S2->WorstUtilisation, S1->WorstUtilisation, 1.11015, 1.11027);
 
 	return true;
 }
