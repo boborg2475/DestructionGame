@@ -201,10 +201,15 @@ namespace RigidBlockSweepTestSupport
 		 * `OracleRefusesAtThisScale` could not pin it, because that branch asserts the
 		 * reason contains "failed verification".
 		 *
-		 * SCALE IS NOT THE EXPLANATION and this file now carries the sharpest evidence of
-		 * that: the abutment ladder's j=4 rung refuses at 107 blocks while its own j=3 rung
-		 * (95) and the rise ladder's s=4 (149) both answer. Same canary discipline as
-		 * above — the day this answers, the row fails and must be promoted, never deleted.
+		 * SCALE WAS NEVER THE EXPLANATION, and the canary discipline paid: the abutment
+		 * ladder's j=4 rung refused at 107 blocks while its own j=3 rung (95) and the rise
+		 * ladder's s=4 (149) answered, that row failed the day the solver was fixed, and it
+		 * was PROMOTED to a measured relation rather than absorbed (2026-08-13 — the
+		 * ratio-test relative pivot floor in RigidBlockOracle.cpp; the ladder now reads
+		 * 5.511 / 7.379 / 9.359 across j=2/3/4). NO ROW USES THIS TODAY. The machinery
+		 * stays because the eight-course-opening family (acceptance case 22) still refuses
+		 * this way at 218+ blocks for a reason that outlived the fix — recorded in
+		 * CURRENT_STATE — and a row pinning that refusal is the next user of it.
 		 */
 		OracleRefusesPhaseTwo,
 	};
@@ -2411,7 +2416,7 @@ bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
  *     rise s=3                    128     264    5.5110085114812968   45 fall, 3 passes
  *     rise s=4                    149     324    4.8119026252913413   45 fall, 3 passes
  *     abutment j=3                 95     163    7.3790076229482224   49 fall, 4 passes
- *     abutment j=4                107     193    REFUSED (phase 2)    53 fall, 5 passes
+ *     abutment j=4                107     193    9.3587305816217992   53 fall, 5 passes
  *     abutment j=3, tail trimmed   89     147    6.2895385246488216   43 fall, 3 passes
  *     matched span 17 cells s=1    80     129    6.3681142090745144   43 fall, 3 passes
  *     matched span 17 cells s=2   100     186    5.4541091235793511   43 fall, 3 passes
@@ -2441,9 +2446,15 @@ bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
  * THE ABUTMENT LADDER REFUTES THE OTHER HALF — a mechanism carried between the reveals.
  * One full cell more jamb either side is worth 34%: j=3 / j=2 = 1.33895751, where flat was
  * the cover-carried prediction and 1.50 the bearing-proportional one. It sits between the
- * two and nearer the second. THE 2x TEST AT j=4 DOES NOT EXIST: the oracle refuses that
- * rung in phase 2 at 107 blocks, having answered the 149-block s=4 rung, so the top of
- * this ladder is a measurement nobody has and no 2x claim is made anywhere here.
+ * two and nearer the second. THE 2x TEST AT j=4 NOW EXISTS AND SAYS THE SAME THING: the
+ * oracle refused that rung in phase 2 at 107 blocks — having answered the 149-block s=4
+ * rung, which is why the refusal was always a solver finding and not a scale one — and
+ * when the ratio test gained its relative pivot floor on 2026-08-13 the canary flipped
+ * and the rung answered (the no-entry seam is unreached with the floor in place, and
+ * deliberately NOT repaired — see the defect test's header). j=4 / j=2 = 1.698 against 2.00 bearing-proportional and 1.00
+ * flat: between the two, nearer the first, and DECELERATING (the first extra two cells of
+ * jamb bought 1.339, the second 1.268). The other four rungs answered bit-identically
+ * across that repair, so the ladder is one measurement throughout and not two eras of it.
  *
  * AND THE THIRD RUNG SAYS WHY THE SECOND LADDER ALONE COULD NOT HAVE IDENTIFIED ANYTHING.
  * Widening a jamb widens the bearing under the cover and lengthens the cover built in over
@@ -2483,10 +2494,14 @@ bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
  * WINDOWS ARE +/-2e-5 RELATIVE, the file's pivot-path-honest basis (see the
  * PARTIAL-PRICING RE-PIN note in WallsAndLadders); ratio windows are wider still at ~1e-4,
  * because a ratio carries both readings' spread. Every window here is centred on ONE
- * certified reading rather than the midpoint of two, since no second pivot path has been
- * measured on these fixtures.
+ * certified reading, no second pivot path having been measured on these fixtures — EXCEPT
+ * the promoted j=4 rung, which is centred on the midpoint of TWO certified readings on the
+ * re-pin basis this file already uses: 9.3587256137345118 was measured with the solver's
+ * Bland fallback stood aside during the 2026-08-13 diagnosis and 9.3587305816217992 by the
+ * repaired solver, 5.3e-7 relative apart, which is a fortieth of the window either way.
  *
- * COST: ten solves, ~23 s in total, the largest rung 149 blocks / 6.6 s.
+ * COST: ten solves, ~28 s in total, the largest rung 149 blocks / 6.8 s. It was ~23 s
+ * while the j=4 rung refused after 671 pivots; answering costs it 5,552 and 4.8 s.
  * NEEDS A TICKING WORLD: NO.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -2559,12 +2574,12 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 
 	Rows.Add({ TEXT("abutment j=4"),
 		TEXT("twice the jamb: twice the bearing and twice the weight over it, with the ")
-		TEXT("opening, the cover and the courses below all unmoved — and the oracle ")
-		TEXT("REFUSES it in phase 2 at 107 blocks, having answered the 149-block s=4 rung ")
-		TEXT("two rows up. The abutment ladder is therefore HALF MEASURED, which is why ")
-		TEXT("its pinned relation is the j=3 step and not a 2x claim at j=4"),
+		TEXT("opening, the cover and the courses below all unmoved. This rung REFUSED in ")
+		TEXT("phase 2 until 2026-08-13 and was pinned as a canary; the ratio test gained ")
+		TEXT("its relative pivot floor and the canary flipped, so the 2x test the ladder ")
+		TEXT("was built for now has its measurement"),
 		Rung(18, 1, 4, INDEX_NONE),
-		ERelation::OracleRefusesPhaseTwo, -1.0, -1.0, 53, 0 });
+		ERelation::OracleStandsProductionFalls, 9.3585409, 9.3589153, 53, 0 });
 
 	Rows.Add({ TEXT("abutment j=3, cover tail trimmed to two cells"),
 		TEXT("THE DISAMBIGUATOR the abutment ladder needs: widening a jamb widens the ")
@@ -2589,7 +2604,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 	 * A single number cannot say which of those bought the 13%.
 	 *
 	 * WHAT THE 17-CELL CUT DOES ABOUT IT. Clear reveal is (cells + 1) x 22.5 - 21.5 cm on
-	 * an even course and half a cell less on an odd one, so a SEVENTEEN-cell cut whose top
+	 * an even course and a full cell (22.5 cm) less on an odd one, so a SEVENTEEN-cell cut whose top
 	 * opening course is EVEN (s = 2) presents the cover with 383.50 cm — the very span an
 	 * EIGHTEEN-cell cut whose top opening course is ODD (s = 1) presents. Held against each
 	 * other those two rungs have the span matched and the cover parity opposite, which is
@@ -2810,9 +2825,28 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 	 * friction mix would do: cohesion scales with the area and friction with the weight,
 	 * and only one of those doubles cleanly.
 	 *
-	 * j=4 WOULD HAVE BEEN THE 2.00 TEST AND THE ORACLE REFUSES IT — phase-2 simplex
-	 * failure at 107 blocks, pinned above as a canary. So the ladder's top rung is a
-	 * measurement nobody has, and no 2x claim is pinned or made.
+	 * j=4 IS THE 2.00 TEST, AND SINCE 2026-08-13 IT EXISTS. The rung refused in phase 2 at
+	 * 107 blocks — pinned above as a canary while it did — and the refusal turned out to be
+	 * the solver rather than the fixture: the ratio test was accepting pivots ~1e-16 of
+	 * their own column's scale, and a column the ratio test could not use at all was being
+	 * read as an unbounded ray on a problem the lambda-cap row bounds. The repair is the
+	 * relative pivot floor in RigidBlockOracle.cpp — the no-entry seam is UNREACHED with
+	 * the floor in place and deliberately not repaired (a set-aside arm was written,
+	 * measured inert, and removed; the defect test's header carries the story) — and the
+	 * canary flipped, which is what the discipline is for. The
+	 * completed ladder reads 5.511 / 7.379 / 9.359 and j=4 / j=2 = 1.698 — SHORT of the
+	 * 2.00 a bearing-proportional reaction predicts and far above the 1.00 a cover-carried
+	 * mechanism predicts, the same between-the-two verdict the j=3 step already gave, now
+	 * stated over a doubled jamb rather than a half-again one. Two cells of jamb bought
+	 * 1.339 and the second two bought 1.268, so the gain is real and DECELERATING, which is
+	 * what a cohesion-plus-friction mix does: the cohesion term scales with the bed area
+	 * that widens, the friction term with a weight that only the jamb's own courses add.
+	 *
+	 * THE OTHER HALF OF THE FIX BELONGS HERE TOO, because it is the one number a reader
+	 * will want and it is NOT pinned anywhere: the four answering rungs beside the repaired
+	 * one — s=1..s=4, j=3, and the whole matched-span pair — came back BIT-IDENTICAL after
+	 * the repair. A solver change that moved every reading would have invalidated every
+	 * window in this file; this one moved exactly the readings that could not be taken.
 	 *
 	 * THE TRIMMED RUNG IS WHAT MAKES THE j=3 STEP MEAN SOMETHING. Widening the jamb
 	 * widens the bearing under the cover and lengthens the cover built in over it at the
@@ -2825,6 +2859,14 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("a jamb-width-proportional reaction predicts ~1.50, a mechanism carried ")
 		TEXT("between the reveals predicts 1.00"),
 		*J3, *S1, 1.33885, 1.33906);
+
+	CheckLambdaLadderRatio(
+		*this,
+		TEXT("THE ABUTMENT LADDER's 2x TEST: four cells of jamb against two"),
+		TEXT("a bearing-proportional reaction predicts 2.00 and a mechanism carried ")
+		TEXT("between the reveals predicts 1.00 — measured 1.698, between them and nearer ")
+		TEXT("the first, which is the j=3 step's verdict restated over a doubled jamb"),
+		*J4, *S1, 1.69805, 1.69833);
 
 	CheckLambdaLadderRatio(
 		*this,
@@ -3207,6 +3249,399 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 		TEXT("the low half of the tension lever (tension x0.5 / control)"),
 		TEXT("a bond-governed cover predicts 0.50, an unaffected one 1.00 — measured 0.952"),
 		*HalfTension, *Control, 0.95181, 0.95201);
+
+	return true;
+}
+
+/**
+ * ====================================================================================
+ * THE PHASE-2 REFUSAL IS A SOLVER DEFECT, AND THESE ARE THE TWO SMALLEST FIXTURES THAT
+ * PROVE IT: A BOUNDED, FEASIBLE PROBLEM MUST NOT COME BACK "phase-2 simplex failed".
+ * ====================================================================================
+ *
+ * WHAT IS UNDER TEST, IN ONE SENTENCE. Two opening-ladder rungs of 99 and 107 blocks —
+ * each SMALLER than answering rungs measured beside them in this very run, and each on an
+ * LP the lambda-cap row makes provably bounded — must return an answer rather than
+ * refusing, and the answer must land between the two neighbours that bracket it.
+ *
+ * WHY THIS IS A DEFECT AND NOT FAIL-CLOSED CORRECTNESS. Refusal is the safe direction and
+ * the oracle is right to take it when it cannot certify an answer; the finding here is
+ * that it CAN certify one. Both fixtures were solved to a verified optimum during the
+ * diagnosis — the post-solve verification gate at 1e-6 passed on both — the moment the
+ * solver's own anti-cycling fallback was stood down. So an admissible force system exists,
+ * the solver can find it, and what stops it is arithmetic of its own making.
+ *
+ * ------------------------------------------------------------------------------------
+ * THE DIAGNOSIS, WITH THE EVIDENCE CHAIN (measured 2026-08-13, instrumented run)
+ * ------------------------------------------------------------------------------------
+ *
+ * ONE REFUSAL STRING HIDES TWO DIFFERENT NUMERICAL FAILURES. `SolveRigidBlock` maps every
+ * non-Optimal phase-2 end onto the same "phase-2 simplex failed", and the family reaches
+ * that string by two distinct routes:
+ *
+ *   (a) SPURIOUS UNBOUNDEDNESS — the 107-block j=4 rung. Measured at pivot 671:
+ *
+ *         entering=215 partner=216 partnerbasic=1 d=-1.1200197386711438e-09
+ *         wnnz=1 wmax=1 atrow=91 wAtLargest=-1
+ *
+ *       The LP splits each shear force v into p - q and each normal into n+ - n-, and for
+ *       the shear pair the two columns are the EXACT BITWISE NEGATION of one another in
+ *       every row that touches them (the three equilibrium rows, both friction rows, both
+ *       ceiling rows). Column 216 was basic, so column 215's exact reduced cost is zero;
+ *       what entered it was 1.12e-9 of drift against an ABSOLUTE CostTol of 1e-9. Its
+ *       FTRAN is then -e_91 exactly — one nonzero, value -1 — so the ratio test finds no
+ *       positive entry and the simplex reports Unbounded on a problem the cap row bounds.
+ *
+ *   (b) A BASIS PIVOTED INTO SINGULARITY — the 99-block rung, and the case-22 family's own
+ *       218-block wall. A column nearly dependent on the basis is accepted on a ratio-test
+ *       pivot barely over PivotTol = 1e-9; the next clean refactorisation then finds an LU
+ *       pivot below SingularPivotTol = 1e-11 and `Factorise` refuses:
+ *
+ *         99-block rung  : position 2302/2845, col 3779 (a slack), pivot 1.3227514269178168e-13
+ *         218-block 12x22: position 6898/6901, col 10519 (a slack), pivot 5.8808003531153705e-13
+ *
+ * THE FIRST ATTRIBUTION WAS THE BLAND FALLBACK'S ENTERING RULE, AND MEASUREMENT REFUTED
+ * IT. The family stalls degenerately in bulk, which engages `FPartialPricer`'s Bland
+ * anti-cycling fallback (172 of 671 pivots on the j=4 rung; 297 of 836 on the 99-block
+ * rung), and that fallback takes the FIRST column priced below -CostTol in index order
+ * rather than the best — so the story wrote itself: first-past-the-post lets 1e-9 of noise
+ * win. Standing the fallback down did make both fixtures answer, which is what made the
+ * story convincing. Three measurements taken while implementing the fix say it was wrong:
+ *
+ *   - MAKING THE FALLBACK'S CANDIDACY TOLERANCE RELATIVE CHANGED NOTHING. Scaling -CostTol
+ *     by the largest term in the reduced cost's own dot product left every pivot count on
+ *     all six rungs BIT-IDENTICAL, because at the failure those terms are ~1.2e-9 and the
+ *     scaled tolerance is the absolute one.
+ *
+ *   - THE DRIFT IS INHERITED FROM THE DUAL SOLVE, NOT FROM THE COLUMN. At the refusal
+ *     ||y||inf = 6.7e6, and machine epsilon against that is 6.7e-10 — the same order as
+ *     the 1.12e-9 that entered. No candidacy rule reading that column can tell the
+ *     difference, because the noise is not in the column.
+ *
+ *   - THREE OF THE FOUR NOISE PIVOTS IN MODE (b) WERE ON THE RANKED PATH, NOT BLAND'S.
+ *     Measured on the 99-block rung: pivots of 4.7e-9 (Bland), then 6.9e-9, 6.7e-9 and
+ *     1.6e-8 with the pricer in charge, all out of columns whose FTRAN image runs to
+ *     1.7e5-3.0e7. A fix confined to the fallback could not have closed it.
+ *
+ * WHAT THE CAUSE ACTUALLY IS: THE RATIO TEST HAD NO SENSE OF SCALE. It accepted any
+ * coefficient over an ABSOLUTE PivotTol = 1e-9, and a coefficient of 4.7e-9 out of a column
+ * whose largest is 3e7 is a RELATIVE pivot of 1.6e-16 — the rounding of the solve that
+ * produced the column. Pivoting on rounding builds an ill-conditioned basis; an
+ * ill-conditioned basis is what makes ||y|| 6.7e6 and the LU pivot 1.3e-13. Both modes are
+ * that one defect at different distances downstream, which is why ONE change closes both:
+ * `RelativePivotTol` (RigidBlockOracle.cpp), a floor of 1e-11 of the entering column's own
+ * largest magnitude. Reverting that floor alone reproduces this test's original red
+ * exactly — 836 and 671 pivots, both refusals — and it is the recorded bite-prover.
+ *
+ * WHAT WAS NOT NEEDED, MEASURED RATHER THAN ASSUMED. A repair for the no-entry seam itself
+ * (refactorise, re-price, set the column aside, take the next candidate) was written and
+ * then REMOVED: with the floor in place, reverting the seam to its plain refusal leaves
+ * both fixtures answering with bit-identical lambda* and identical pivot counts, so no
+ * failing test drove it. The seam therefore still refuses a bounded problem if it is ever
+ * reached — CURRENT_STATE books that as the residual mode and as a live candidate for the
+ * case-22 family's continuing refusal.
+ *
+ * THE 218-BLOCK CASE-22 RUNG IS DELIBERATELY NOT ASSERTED HERE (143-275 s a solve), and it
+ * still refuses after this fix. Also recorded so nobody re-measures it: the fallback EARNS
+ * ITS KEEP on that rung — without it the pivot path runs past the 100,000-pivot cap (275 s,
+ * no answer) where with it the run terminates in 143 s — so nothing here argues for
+ * deleting it.
+ *
+ * WHAT THE FIX MUST NOT DO. It must not reach the answer by loosening the post-solve
+ * verification gate, and it must not remove the iteration cap, which is the termination
+ * proof (RigidBlockOracle.h says so). Nor may it scale the OPTIMALITY tolerance by ||y||:
+ * that would put it at ~6.7e-3, and a simplex stopping early reports a feasible point with
+ * a lambda* too LOW — which verification, being a check on admissibility, certifies
+ * happily. The lambda brackets below are what stops a fix that merely stops refusing: a
+ * solver that answers a wrong number fails these just as loudly as one that refuses.
+ *
+ * ------------------------------------------------------------------------------------
+ * WHY THE EXPECTED VALUES ARE BRACKETS DERIVED IN THE RUN, NOT PINNED NUMBERS
+ * ------------------------------------------------------------------------------------
+ *
+ * A fix can move the pivot path, and this file's own PARTIAL-PRICING RE-PIN note records
+ * that lambda* at 100+ blocks is reproducible only to ~1e-5 across paths — the Bland
+ * experiment measured exactly that (the j=3 rung read 7.3790076229482224 with the fallback
+ * and 7.37893585396119 without). A window pinned on a fixture NOBODY HAS SOLVED YET would
+ * therefore pin the algorithm. So each refuser was specified as bracketed by ITS OWN TWO
+ * LADDER NEIGHBOURS, measured in the same run by the same solver:
+ *
+ *     SPAN LADDER (s=3, j=3, opening 8 / 9 / 10 cells). The opening's top course is course
+ *     5, which is ODD, so the clear reveal is a full cell (22.5 cm) under the even-course
+ *     formula: 158.5 -> 181.0 -> 203.5 cm. lambda* falls with span, so the 9-cell rung must sit
+ *     between the 10-cell and the 8-cell readings. Corroboration nobody has to trust the
+ *     test for: the family's measured lambda* ~ L^-2.39 predicts 39.12 from the 10-cell
+ *     rung and 35.82 from the 8-cell one, straddling the 37.932 both certified solves
+ *     produced.
+ *
+ *     ABUTMENT LADDER (o=18, s=1, jamb 3 / 4 / 5 cells). More jamb is more bearing and
+ *     more weight over it, and the ladder reads 7.379 / ? / 11.115, so the 4-cell rung must
+ *     sit between them. The measured 9.3587 does, 1.2% above the midpoint.
+ *
+ * The neighbours carry LOOSE +/-1% sanity windows — a thousand times looser than the 1e-5
+ * the path moves by, so they cannot flap — for one reason only: without them a solver
+ * returning garbage on all four rungs could satisfy the brackets. They are a floor under
+ * the bracket, never a measurement.
+ *
+ * AND THE 99-BLOCK RUNG NOW CARRIES A REAL WINDOW AS WELL, because the reason not to pin
+ * one expired the moment it was solved TWICE by different pivot paths: 37.932472960794136
+ * with the Bland fallback stood down during the diagnosis, and 37.932472960794129 by the
+ * repaired solver — TWO ULPS apart, a tighter agreement than the j=4 rung's 5.3e-7. The
+ * window is the file's standard midpoint-of-two-certified-readings +/-2e-5, which is ~1e4
+ * times the spread the two paths actually showed, and it sits BESIDE the bracket rather
+ * than replacing it: the bracket states the physics (a wider opening cannot be stronger),
+ * the window states the number. This rung is the only fixture in the suite that carries
+ * it — o=9/s=3/j=3 appears nowhere else — which is why the pin belongs here and the j=4
+ * rung's equivalent lives in OpeningMechanismLadders instead of being duplicated.
+ *
+ * AND EVERY RUNG CARRIES A BLOCK-COUNT PIN, per TRAPS: a lambda window and a ratio both
+ * pass on a rung that quietly built its partner's wall, and only a size pin caught the
+ * recorded rung-flip. The counts also carry the finding that SCALE IS NOT THE EXPLANATION
+ * — the refusing rungs are 99 and 107 blocks while the 104- and 119-block rungs beside
+ * them answer, and wall-01's 375 pieces answer at lambda* 272.20.
+ *
+ * COST: six solves, ~28 s (it was ~15 s while two of them refused early). The j=3 and j=4
+ * rungs are also solved by OpeningMechanismLadders, ~7.3 s of deliberate duplication: a
+ * bracket has to be closed by neighbours measured in the SAME RUN by the SAME BINARY, and
+ * a number carried across from another test would be exactly the assumption this test
+ * exists to avoid making.
+ * NEEDS A TICKING WORLD: NO — the oracle is world-free arithmetic over a built FStructure,
+ * and this test never runs production's cascade at all.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRigidBlockPhaseTwoBoundedTest,
+	"OracleSlowSweep.RigidBlock.PhaseTwoMustNotRefuseABoundedProblem",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockSweepTestSupport;
+
+	struct FRung
+	{
+		const TCHAR* Name = nullptr;
+		int32 OpeningCells = 0;
+		int32 CoursesBelow = 0;
+		int32 JambCells = 0;
+
+		/** The fixture's size, pinned: only this catches a rung building another's wall. */
+		int32 WantBlocks = 0;
+		int32 WantJoints = 0;
+
+		/** A loose sanity window on an answering neighbour; both zero on a rung under test. */
+		double SanityLo = 0.0;
+		double SanityHi = 0.0;
+
+		/**
+		 * The midpoint-of-two-certified-readings window, +/-2e-5 relative, on a rung that
+		 * has been solved by two different pivot paths. Both zero where no such pair
+		 * exists — the neighbours have one certified reading each, and the j=4 rung's pair
+		 * is pinned in OpeningMechanismLadders rather than duplicated here.
+		 */
+		double CertifiedLo = 0.0;
+		double CertifiedHi = 0.0;
+	};
+
+	const FRung Rungs[] =
+	{
+		{ TEXT("span ladder, 8-cell opening (the wide-lambda neighbour)"),
+			8, 3, 3, 94, 206, 48.6984, 49.6823, 0.0, 0.0 },
+		{ TEXT("span ladder, 9-cell opening (THE 99-BLOCK REFUSER)"),
+			9, 3, 3, 99, 216, 0.0, 0.0, 37.9317143, 37.9332316 },
+		{ TEXT("span ladder, 10-cell opening (the narrow-lambda neighbour)"),
+			10, 3, 3, 104, 226, 29.2715, 29.8629, 0.0, 0.0 },
+		{ TEXT("abutment ladder, 3-cell jamb (the narrow-lambda neighbour)"),
+			18, 1, 3, 95, 163, 7.3052, 7.4528, 0.0, 0.0 },
+		{ TEXT("abutment ladder, 4-cell jamb (THE 107-BLOCK REFUSER)"),
+			18, 1, 4, 107, 193, 0.0, 0.0, 0.0, 0.0 },
+		{ TEXT("abutment ladder, 5-cell jamb (the wide-lambda neighbour)"),
+			18, 1, 5, 119, 223, 11.0039, 11.2262, 0.0, 0.0 },
+	};
+
+	constexpr int32 NumRungs = UE_ARRAY_COUNT(Rungs);
+
+	FOracleResult Results[NumRungs];
+	bool bMeasured[NumRungs] = {};
+
+	for (int32 Index = 0; Index < NumRungs; ++Index)
+	{
+		const FRung& Rung = Rungs[Index];
+
+		FStructure Structure;
+		FString BuildWhy;
+
+		if (!BuildOpeningLadderWall(
+				Rung.OpeningCells, Rung.CoursesBelow, Rung.JambCells, INDEX_NONE,
+				Structure, BuildWhy))
+		{
+			AddError(FString::Printf(
+				TEXT("%s: FIXTURE could not be laid: %s"), Rung.Name, *BuildWhy));
+
+			continue;
+		}
+
+		FOracleProblem Problem;
+		FString BridgeWhy;
+
+		/*
+		 * The bridge's own reason is READ INTO A LOCAL FIRST, never folded into the
+		 * Printf beside the call that writes it: argument evaluation is indeterminately
+		 * sequenced, so the message could be built from the empty string it had before
+		 * the call ran (TRAPS records the same trap in its TestTrue form).
+		 */
+		const bool bBridged = BuildRigidBlockProblem(Structure, Problem, BridgeWhy);
+
+		if (!TestTrue(
+				*FString::Printf(
+					TEXT("%s: the bridge must represent this fixture (it said: %s)"),
+					Rung.Name, *BridgeWhy),
+				bBridged))
+		{
+			continue;
+		}
+
+		const double Started = FPlatformTime::Seconds();
+		Results[Index] = SolveRigidBlock(Problem);
+		const double Seconds = FPlatformTime::Seconds() - Started;
+		bMeasured[Index] = true;
+
+		const FString Line = FString::Printf(
+			TEXT("PHASE2 %s: blocks=%d joints=%d answered=%d lambda=%.17g pivots=%d ")
+			TEXT("bland=%d secs=%.2f%s%s"),
+			Rung.Name, Problem.Blocks.Num(), Problem.Joints.Num(),
+			Results[Index].bAnswered ? 1 : 0, Results[Index].Lambda,
+			Results[Index].SimplexIterations, Results[Index].BlandDegenerateEntries, Seconds,
+			Results[Index].WhyNot.IsEmpty() ? TEXT("") : TEXT(" | whynot: "),
+			Results[Index].WhyNot.IsEmpty() ? TEXT("") : *Results[Index].WhyNot);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+		AddInfo(Line);
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: the rung must be %d blocks and was %d — a size pin is the only ")
+				TEXT("thing that catches a rung quietly building its neighbour's wall"),
+				Rung.Name, Rung.WantBlocks, Problem.Blocks.Num()),
+			Problem.Blocks.Num(), Rung.WantBlocks);
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: the rung must carry %d joints and carried %d"),
+				Rung.Name, Rung.WantJoints, Problem.Joints.Num()),
+			Problem.Joints.Num(), Rung.WantJoints);
+	}
+
+	/*
+	 * THE NEIGHBOURS FIRST: they are answering rows today, and their sanity windows are
+	 * what stops the brackets below being satisfiable by four pieces of garbage.
+	 */
+	for (int32 Index = 0; Index < NumRungs; ++Index)
+	{
+		const FRung& Rung = Rungs[Index];
+
+		if (!bMeasured[Index] || Rung.SanityHi <= 0.0)
+		{
+			continue;
+		}
+
+		if (!TestTrue(
+				*FString::Printf(
+					TEXT("%s: this neighbour answers today and must keep answering (it said: ")
+					TEXT("%s)"),
+					Rung.Name, *Results[Index].WhyNot),
+				Results[Index].bAnswered))
+		{
+			continue;
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: lambda* %.17g must stay inside the loose sanity window ")
+				TEXT("[%.6g, %.6g] — a deliberately slack floor under the brackets, a ")
+				TEXT("thousand times wider than the ~1e-5 a changed pivot path moves it"),
+				Rung.Name, Results[Index].Lambda, Rung.SanityLo, Rung.SanityHi),
+			Results[Index].Lambda >= Rung.SanityLo && Results[Index].Lambda <= Rung.SanityHi);
+	}
+
+	/*
+	 * THE ONE RUNG WITH TWO CERTIFIED READINGS GETS A REAL WINDOW, and it sits beside the
+	 * bracket rather than instead of it: the bracket states a physical relation the number
+	 * has to respect, this states the number. See the header for why 37.932472960794136
+	 * (fallback stood down) and 37.932472960794129 (repaired solver) — two ulps apart —
+	 * license a +/-2e-5 window where an unsolved fixture licensed none.
+	 */
+	for (int32 Index = 0; Index < NumRungs; ++Index)
+	{
+		const FRung& Rung = Rungs[Index];
+
+		if (!bMeasured[Index] || !(Rung.CertifiedHi > 0.0) || !Results[Index].bAnswered)
+		{
+			continue;
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: lambda* %.17g must lie in [%.9g, %.9g] — the midpoint of TWO ")
+				TEXT("certified readings taken by different pivot paths, +/-2e-5 relative, ")
+				TEXT("which is ~1e4 times the two ulps those paths actually differed by. A ")
+				TEXT("move inside this window is the algorithm; a move outside it is the ")
+				TEXT("physics, and the bracket beside it says which direction is even legal"),
+				Rung.Name, Results[Index].Lambda, Rung.CertifiedLo, Rung.CertifiedHi),
+			Results[Index].Lambda >= Rung.CertifiedLo
+				&& Results[Index].Lambda <= Rung.CertifiedHi);
+	}
+
+	/*
+	 * THE DEFECT ITSELF. Each refuser must answer, and must answer BETWEEN the two ladder
+	 * neighbours measured beside it — the pair are named in the message so a failure says
+	 * which reading it fell outside rather than only that it did.
+	 */
+	const auto CheckBracketed =
+		[&](int32 Under, int32 Low, int32 High, const TCHAR* Why)
+	{
+		if (!bMeasured[Under] || !bMeasured[Low] || !bMeasured[High])
+		{
+			return;
+		}
+
+		if (!TestTrue(
+				*FString::Printf(
+					TEXT("%s: the oracle MUST ANSWER this fixture — its LP is bounded by the ")
+					TEXT("lambda-cap row and an admissible optimum exists — reachable and ")
+					TEXT("verifiable, the ratio test's missing sense of scale being what ")
+					TEXT("stood between the solver and it. It refused after %d pivots (%d ")
+					TEXT("of them in the Bland fallback), saying: %s"),
+					Rungs[Under].Name, Results[Under].SimplexIterations,
+					Results[Under].BlandDegenerateEntries, *Results[Under].WhyNot),
+				Results[Under].bAnswered))
+		{
+			return;
+		}
+
+		if (!Results[Low].bAnswered || !Results[High].bAnswered)
+		{
+			return;
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: lambda* %.17g must lie strictly between its ladder neighbours ")
+				TEXT("(%.17g and %.17g) — %s. Failing THIS while the answer arrives is a ")
+				TEXT("different finding from refusing: it says the solver answered, wrongly."),
+				Rungs[Under].Name, Results[Under].Lambda, Results[Low].Lambda,
+				Results[High].Lambda, Why),
+			Results[Under].Lambda > Results[Low].Lambda
+				&& Results[Under].Lambda < Results[High].Lambda);
+	};
+
+	CheckBracketed(1, 2, 0,
+		TEXT("lambda* falls with the clear reveal (158.5 / 181.0 / 203.5 cm across these "
+			"three rungs), so a 9-cell opening cannot be stronger than an 8-cell one nor "
+			"weaker than a 10-cell one"));
+
+	CheckBracketed(4, 3, 5,
+		TEXT("more jamb is more bearing and more weight over it, and this ladder reads "
+			"7.379 at three cells and 11.115 at five"));
 
 	return true;
 }

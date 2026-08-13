@@ -37,6 +37,54 @@ namespace RigidBlockOracle
 		constexpr double CostTol = 1.0e-9;
 
 		/*
+		 * A ratio-test pivot must ALSO stand up against the entering column's own scale,
+		 * and the absolute tolerance above cannot express that. The rows are equilibrated
+		 * but B^-1 is not: the FTRAN image w = B^-1 A_j of an ordinary column was measured
+		 * on the opening-ladder family with |w| running to 3e7, and the ratio test then
+		 * accepted pivots of 4.7e-9, 6.9e-9 and 6.7e-9 out of such columns — RELATIVE
+		 * pivots of ~1e-16, which is to say it pivoted on the rounding of the solve that
+		 * produced w. Two refactorisations later the LU found the basis those pivots built
+		 * singular at 1.3e-13 and the whole solve was refused. Whatever error w carries
+		 * scales with |w|, so the floor under a believable pivot has to as well.
+		 *
+		 * 1e-11 of the column's largest magnitude sits a few orders above the noise that
+		 * reaches w through the LU and the eta file, and orders below any element carrying
+		 * information: on the measured columns it rejects 4.7e-9 out of 3e7 (a floor of
+		 * 3e-4) while admitting the 0.010, 0.026 and 0.033 pivots taken in the same
+		 * stretch. It is deliberately the same order as SingularPivotTol, which refuses
+		 * the same arithmetic one level down.
+		 *
+		 * WHAT ELSE WAS TRIED AND MEASURED, so nobody spends the instrumented build again:
+		 *
+		 *   - A RELATIVE CANDIDACY TOLERANCE IN THE BLAND BRANCH IS INERT. Scaling
+		 *     -CostTol by the largest term in the reduced cost's own dot product changed
+		 *     not one pivot on any of the six ladder rungs: at the failure the column's
+		 *     terms are ~1.2e-9, so the scaled tolerance is the absolute one.
+		 *
+		 *   - THE ~1e-9 OF DRIFT IS INHERITED FROM THE DUAL SOLVE, not from cancellation
+		 *     in that column. Measured at the refusal: ||y||inf = 6.7e6, and machine
+		 *     epsilon against that IS 6.7e-10. A reduced cost of zero cannot be computed
+		 *     to better than the duals it is priced against.
+		 *
+		 *   - SCALING THE OPTIMALITY TOLERANCE BY ||y|| WAS REJECTED, and this is the one
+		 *     worth remembering: it would put the tolerance at ~6.7e-3, and a simplex that
+		 *     stops while real improvements of 1e-3 remain reports a FEASIBLE point with a
+		 *     lambda* that is too LOW. The post-solve verification checks admissibility,
+		 *     not optimality, so it certifies such an answer happily — under-reporting is
+		 *     the one direction this oracle cannot catch, and no tolerance here may buy
+		 *     an answer at that price.
+		 *
+		 * ONE CONSEQUENCE OF THE FLOOR, stated because it is a real (bounded) cost rather
+		 * than a free win: a coefficient in (PivotTol, PivotFloor] is now skipped, so the
+		 * ratio test can choose a longer step than that row would have allowed and drive
+		 * its basic value slightly negative. ApplyPivot clamps that to zero; the magnitude
+		 * is bounded by theta * PivotFloor, and the final refactorisation recomputes every
+		 * basic value from the original right-hand side before the 1e-6 verification
+		 * judges it — in the direction verification can see, which is admissibility.
+		 */
+		constexpr double RelativePivotTol = 1.0e-11;
+
+		/*
 		 * This cap IS the termination guarantee, not defence in depth: the pivoting is
 		 * Dantzig with an entering-only Bland fallback, whose leaving rule is not
 		 * Bland's, so the classical no-cycling theorem does not apply. Hitting the cap
@@ -1187,6 +1235,12 @@ namespace RigidBlockOracle
 		 * a FULL scan — the window stands aside, because lowest-index-of-a-slice is not
 		 * Bland's rule and would not stop cycling — which restores the termination
 		 * guarantee where it is needed.
+		 *
+		 * A CANDIDATE PIVOT MUST ALSO CLEAR THE ENTERING COLUMN'S OWN SCALE
+		 * (RelativePivotTol), because an absolute tolerance says nothing about a column
+		 * whose FTRAN image runs to 1e7. That one change is what turned the two
+		 * opening-ladder refusals into certified answers; the measurements sit with the
+		 * constant.
 		 */
 		ESimplexEnd RunRevisedSimplex(
 			FRevisedState& S, const TArray<double>& Cost, int32 AllowedCols,
@@ -1242,11 +1296,35 @@ namespace RigidBlockOracle
 				double BestRatio = 0.0;
 				double LeavingMagnitude = 0.0;
 
+				/*
+				 * THE FLOOR UNDER A BELIEVABLE PIVOT, taken from the entering column
+				 * itself: an element 1e-16 of the column's own largest is the rounding of
+				 * the solve that produced the column, and pivoting on it is what was
+				 * measured driving the basis singular. FMath::Max discards a NaN rather
+				 * than propagating it, which is harmless here because the guard below is
+				 * spelled so that a NaN coefficient fails it whatever the floor reads.
+				 */
+				double LargestMagnitude = 0.0;
+
+				for (int32 Row = 0; Row < Form.NumRows; ++Row)
+				{
+					LargestMagnitude =
+						FMath::Max(LargestMagnitude, FMath::Abs(S.EnteringW[Row]));
+				}
+
+				const double PivotFloor =
+					FMath::Max(PivotTol, RelativePivotTol * LargestMagnitude);
+
 				for (int32 Row = 0; Row < Form.NumRows; ++Row)
 				{
 					const double Coefficient = S.EnteringW[Row];
 
-					if (Coefficient <= PivotTol)
+					/*
+					 * Written as a refused negation rather than `<=` so a NaN coefficient
+					 * lands INSIDE the guard: every comparison against NaN is false, so
+					 * `Coefficient <= PivotFloor` would wave it through into the ratio.
+					 */
+					if (!(Coefficient > PivotFloor))
 					{
 						continue;
 					}
@@ -1285,6 +1363,28 @@ namespace RigidBlockOracle
 
 				if (Leaving == INDEX_NONE)
 				{
+					/*
+					 * WITH THE CAP ROW A REAL UNBOUNDED RAY IS IMPOSSIBLE, so reaching here
+					 * on a bounded problem is a numerical event and refusing is fail-closed
+					 * rather than an answer. It IS reachable: measured on the 107-block
+					 * abutment rung before the pivot floor above existed, an entering column
+					 * whose exact reduced cost is ZERO — the formulation splits shear into
+					 * p - q whose columns are bitwise negations, and its partner was basic —
+					 * priced at -1.12e-9 of drift inherited from a dual vector running to
+					 * 6.7e6 (1e-16 of that IS 1e-9), FTRANned to a single -1, and the solve
+					 * was refused.
+					 *
+					 * A repair for that seam (refactorise, re-price, then set the column
+					 * aside and take the next candidate) was written, MEASURED NOT TO FIRE,
+					 * and removed: with the pivot floor in place both fixtures answer with
+					 * bit-identical lambda* and identical pivot paths whether the seam is
+					 * repaired or left to refuse. The floor stops the basis from becoming
+					 * the ill-conditioned one whose duals produce the drift, so this arm is
+					 * never reached on them. That does NOT close the mode in general —
+					 * CURRENT_STATE books it as a live candidate for the refusals that
+					 * remain — and the repair is not reinstated without a fixture that
+					 * genuinely drives it.
+					 */
 					return ESimplexEnd::Unbounded;
 				}
 

@@ -280,11 +280,13 @@ namespace RigidBlockOracle
 		 * HOW OFTEN THE ANTI-CYCLING FALLBACK ENGAGED: one count per simplex iteration
 		 * entered with the Bland rule in force, i.e. after a run of 500 zero-length steps
 		 * has made the partial pricer stand aside. Instrumentation only — nothing branches
-		 * on it — and it exists so "the fallback never fires on a healthy fixture" is
-		 * OBSERVED by a test rather than assumed from reading the code. The two PricingCost
-		 * fixtures assert it is zero; no fixture in the suite is known to drive the branch
-		 * at all, so its own behaviour is exercised by nothing and that gap is recorded in
-		 * CURRENT_STATE rather than hidden here.
+		 * on it — and it exists so "the fallback never fires on THIS fixture" is OBSERVED by
+		 * a test rather than assumed from reading the code. The two PricingCost fixtures
+		 * assert it is zero, and that is the whole of what is asserted anywhere: the
+		 * opening-ladder rungs were measured on 2026-08-13 entering the fallback 170-358
+		 * times a solve, so the branch is reached constantly while its own behaviour is
+		 * still exercised by no fixture chosen for the purpose — recorded in CURRENT_STATE
+		 * rather than hidden here.
 		 *
 		 * Deterministic like every other count. int32 is ample: MaxPivots bounds it.
 		 */

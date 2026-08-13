@@ -1379,12 +1379,13 @@ bool FRigidBlockOraclePricingCostTest::RunTest(const FString& Parameters)
 		 * fallback is dormant. Before FOracleResult::BlandDegenerateEntries existed that
 		 * was an assumption from reading the code; these two lines make it an observation.
 		 *
-		 * WHAT THIS DOES NOT DO is exercise the fallback. No fixture in the suite is known
-		 * to drive a 500-step degenerate streak, so the branch itself is covered by
-		 * nothing — logged in CURRENT_STATE rather than papered over here. A zero that has
-		 * never been anything else is a weak assertion on its own; its value is that the
-		 * day a solver change starts grinding, these rows name the reason instead of
-		 * reporting a mysteriously larger scan count.
+		 * WHAT THIS DOES NOT DO is exercise the fallback, and what it does NOT mean is that
+		 * nothing does. Measured 2026-08-13 while diagnosing the phase-2 refusals: the
+		 * opening-ladder rungs drive 500-step degenerate streaks routinely and enter the
+		 * fallback 170-358 times a solve. So these two zeroes are a statement about THESE
+		 * TWO FIXTURES — the premise their budgets rest on — and not about the suite. The
+		 * branch's own behaviour is still exercised by no fixture chosen for the purpose,
+		 * which is logged in CURRENT_STATE rather than papered over here.
 		 */
 		TestEqual(
 			TEXT("40-course stack: the Bland anti-cycling fallback must stay dormant — the ")
