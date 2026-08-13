@@ -87,7 +87,9 @@
  * method); every fixture the dense tableau refused ANSWERS with verified residuals,
  * the free-end 7x10 canary failed exactly as written and was promoted to a measured
  * pin, and the paragraphs above stand as the history that motivated the rewrite. The
- * slow test's header carries the new measured table. Three scales remain beyond the
+ * slow test's header carries the new measured table, and every fixture in it became a
+ * PINNED ROW in the same day's classification slice — nineteen rows across the two slow
+ * tests, fifteen of them acceptance wall cases. Three scales remain beyond the
  * PRACTICAL envelope: the 30-course walls (cases 1-5, ~375 pieces / ~13k rows) are now
  * REPRESENTABLE (tens of MB, no dense tableau), but wall-01 was still pivoting after
  * ~45 minutes when its measuring run was cut off — full Dantzig pricing over ~34k
@@ -121,6 +123,39 @@ namespace RigidBlockSweepTestSupport
 	/** Density-first multiplication order — the PieceMassKg contract; 2.72163125 kg. */
 	constexpr double SweepBrickMassKg = SweepClayDensityGramsPerCubicCm
 		* SweepBrickLengthCm * SweepBrickWidthCm * SweepBrickHeightCm / 1000.0;
+
+	/* ================================================================================
+	 * THE CROSS-ROW TOLERANCES — chosen from the measurement, not from taste.
+	 * ================================================================================ */
+
+	/**
+	 * How close two fixtures have to read for "the LP prices these identically" to be a
+	 * PIN rather than a remark — a window is a box around one number and cannot say two
+	 * numbers are the same one, so this is deliberately three orders tighter than any row
+	 * window in the file. MEASURED 2026-08-12: the free-end pair agrees to 2.21e-16
+	 * relative (256.82001841913814 vs ...19 — ONE ULP) and the superimposed pair to
+	 * 1.31e-16 (868.62373637245832 vs ...21, also one ulp). 1e-15 leaves four to eight
+	 * ulps of headroom, which is room for a different pivot path to the same optimum and
+	 * no room at all for a different optimum.
+	 */
+	constexpr double SameNumberRelativeTolerance = 1.0e-15;
+
+	/**
+	 * Production's wall-16 / wall-15 worst-joint ratio, measured 31.5576310306295 — and
+	 * both ends of it are the DESIGN §6 anchors (0.058203838191552663 and
+	 * 0.0018443665221594297), so this ratio is the surcharge discrimination the acceptance
+	 * suite pins, re-measured through the scenario catalogue instead of its own fixture.
+	 */
+	constexpr double SuperimposedReadingRatioLo = 31.55;
+	constexpr double SuperimposedReadingRatioHi = 31.57;
+
+	/**
+	 * Production's 20-course / 10-course free-end ratio, measured 2.11985065259119
+	 * (1.9576612517914398 over 0.92349017578125003). Height-LINEAR, and a shade over 2
+	 * because the removed brick's own course does not double with the wall.
+	 */
+	constexpr double FreeEndReadingRatioLo = 2.119;
+	constexpr double FreeEndReadingRatioHi = 2.121;
 
 	/* ================================================================================
 	 * WHAT ONE SWEPT FIXTURE PRODUCES, AND HOW A ROW IS JUDGED.
@@ -193,6 +228,16 @@ namespace RigidBlockSweepTestSupport
 
 		/** Production's drop count, pinned exactly — the DropsToday pattern. */
 		int32 ProductionFallen = INDEX_NONE;
+
+		/**
+		 * Production's STRANDED count, pinned separately from the drop count and for a
+		 * different reason: a stranded piece is one the router could not route, not one
+		 * the wall could not hold (DESIGN.md §5.1 — the cycle-division rule is absent), so
+		 * part of a production "collapse" can be a routing limitation wearing a collapse's
+		 * clothes. The acceptance suite draws the same distinction with StrandsToday; this
+		 * is the same pin on the scenario-catalogue path. INDEX_NONE leaves it unasserted.
+		 */
+		int32 ProductionStranded = INDEX_NONE;
 	};
 
 	struct FSweepReading
@@ -295,9 +340,14 @@ namespace RigidBlockSweepTestSupport
 	 */
 	void ReportRow(FAutomationTestBase& Test, const FSweepRow& Row, const FSweepReading& R)
 	{
+		/*
+		 * SEVENTEEN DIGITS, not nine, on both measured quantities: the cross-row SAME-NUMBER
+		 * pins below assert agreement far tighter than any single row's window, so the log
+		 * line has to carry enough digits to re-derive one of those tolerances by hand.
+		 */
 		const FString Line = FString::Printf(
-			TEXT("SWEEP %s: lambda=%.9g answered=%d pivots=%d secs=%.3f blocks=%d joints=%d ")
-			TEXT("| production worstU=%.9g passes=%d fallen=%d stranded=%d | expected %s%s%s"),
+			TEXT("SWEEP %s: lambda=%.17g answered=%d pivots=%d secs=%.3f blocks=%d joints=%d ")
+			TEXT("| production worstU=%.17g passes=%d fallen=%d stranded=%d | expected %s%s%s"),
 			Row.Name, R.Oracle.Lambda, R.Oracle.bAnswered ? 1 : 0, R.Oracle.SimplexIterations,
 			R.OracleSeconds, R.Blocks, R.Joints,
 			R.WorstUtilisation, R.Passes, R.Fallen, R.Stranded, RelationName(Row.Expected),
@@ -306,6 +356,35 @@ namespace RigidBlockSweepTestSupport
 
 		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
 		Test.AddInfo(Line);
+	}
+
+	/**
+	 * Production's half of the diff, pinned exactly — the DropsToday pattern, in both the
+	 * measured and the refusal branch so a refusal row watches production just as closely.
+	 */
+	void CheckProductionCounts(
+		FAutomationTestBase& Test, const FSweepRow& Row, const FSweepReading& R)
+	{
+		if (Row.ProductionFallen != INDEX_NONE)
+		{
+			Test.TestEqual(
+				*FString::Printf(
+					TEXT("%s: production's drop count is pinned at %d (the DropsToday ")
+					TEXT("pattern) and was %d"),
+					Row.Name, Row.ProductionFallen, R.Fallen),
+				R.Fallen, Row.ProductionFallen);
+		}
+
+		if (Row.ProductionStranded != INDEX_NONE)
+		{
+			Test.TestEqual(
+				*FString::Printf(
+					TEXT("%s: production STRANDED %d piece(s), pinned at %d — a stranded ")
+					TEXT("piece is a routing limitation, not a wall that could not hold, so ")
+					TEXT("this moving is a different finding from the drop count moving"),
+					Row.Name, R.Stranded, Row.ProductionStranded),
+				R.Stranded, Row.ProductionStranded);
+		}
 	}
 
 	/** Every assertion a measured row makes; an unmeasured row is a loud red. */
@@ -359,15 +438,7 @@ namespace RigidBlockSweepTestSupport
 					R.Oracle.WhyNot.Contains(TEXT("failed verification")));
 			}
 
-			if (Row.ProductionFallen != INDEX_NONE)
-			{
-				Test.TestEqual(
-					*FString::Printf(
-						TEXT("%s: production's drop count is pinned at %d (the DropsToday ")
-						TEXT("pattern) and was %d"),
-						Row.Name, Row.ProductionFallen, R.Fallen),
-					R.Fallen, Row.ProductionFallen);
-			}
+			CheckProductionCounts(Test, Row, R);
 
 			return;
 		}
@@ -385,7 +456,7 @@ namespace RigidBlockSweepTestSupport
 		{
 			Test.AddError(FString::Printf(
 				TEXT("%s: UNMEASURED — this row has no pinned relation yet. Measured: ")
-				TEXT("lambda* %.9g, production dropped %d (stranded %d, worst reading %.9g). ")
+				TEXT("lambda* %.17g, production dropped %d (stranded %d, worst reading %.17g). ")
 				TEXT("Pin the relation, the lambda window and the drop count."),
 				Row.Name, R.Oracle.Lambda, R.Fallen, R.Stranded, R.WorstUtilisation));
 
@@ -433,26 +504,121 @@ namespace RigidBlockSweepTestSupport
 				Row.Name, Row.LambdaLo, Row.LambdaHi, R.Oracle.Lambda),
 			R.Oracle.Lambda >= Row.LambdaLo && R.Oracle.Lambda <= Row.LambdaHi);
 
-		if (Row.ProductionFallen != INDEX_NONE)
+		CheckProductionCounts(Test, Row, R);
+	}
+
+	/**
+	 * Run every row, KEEPING the readings, because some findings live BETWEEN two rows and
+	 * cannot be expressed by either row's own pins: two fixtures the LP prices identically
+	 * while production separates them, or the reverse. A per-row window is a box around one
+	 * number; a cross-row pin asserts two numbers are THE SAME NUMBER, which is a strictly
+	 * stronger statement and the only one a same-sized drift on both sides cannot satisfy.
+	 */
+	void RunRows(
+		FAutomationTestBase& Test,
+		const TArray<FSweepRow>& Rows,
+		TArray<FSweepReading>& OutReadings)
+	{
+		OutReadings.Reset();
+		OutReadings.SetNum(Rows.Num());
+
+		for (int32 Index = 0; Index < Rows.Num(); ++Index)
 		{
-			Test.TestEqual(
-				*FString::Printf(
-					TEXT("%s: production's drop count is pinned at %d (the DropsToday ")
-					TEXT("pattern) and was %d"),
-					Row.Name, Row.ProductionFallen, R.Fallen),
-				R.Fallen, Row.ProductionFallen);
+			MeasureRow(Rows[Index], OutReadings[Index]);
+			ReportRow(Test, Rows[Index], OutReadings[Index]);
+			CheckRow(Test, Rows[Index], OutReadings[Index]);
 		}
 	}
 
 	void RunRows(FAutomationTestBase& Test, const TArray<FSweepRow>& Rows)
 	{
-		for (const FSweepRow& Row : Rows)
+		TArray<FSweepReading> Unread;
+		RunRows(Test, Rows, Unread);
+	}
+
+	/** A reading by ROW NAME — a cross-row pin names its rows rather than indexing them. */
+	const FSweepReading* ReadingNamed(
+		FAutomationTestBase& Test,
+		const TArray<FSweepRow>& Rows,
+		const TArray<FSweepReading>& Readings,
+		const TCHAR* Name)
+	{
+		for (int32 Index = 0; Index < Rows.Num() && Index < Readings.Num(); ++Index)
 		{
-			FSweepReading Reading;
-			MeasureRow(Row, Reading);
-			ReportRow(Test, Row, Reading);
-			CheckRow(Test, Row, Reading);
+			if (FCString::Strcmp(Rows[Index].Name, Name) == 0)
+			{
+				return &Readings[Index];
+			}
 		}
+
+		Test.AddError(FString::Printf(
+			TEXT("cross-row pin: no row named '%s' ran — a renamed row must take its ")
+			TEXT("cross-row pins with it, never lose them silently"),
+			Name));
+
+		return nullptr;
+	}
+
+	/**
+	 * THE SAME-NUMBER PIN. Two fixtures whose lambda* the LP reads IDENTICALLY, asserted at
+	 * a tolerance orders tighter than either row's own window — which is the whole point:
+	 * a 1e-6 window around each value passes happily while the two drift apart at 1e-9, and
+	 * the identity is the finding, not the magnitude.
+	 */
+	void CheckSameLambda(
+		FAutomationTestBase& Test,
+		const TCHAR* What,
+		const FSweepReading& First,
+		const FSweepReading& Second,
+		double RelativeTolerance)
+	{
+		const double Difference = FMath::Abs(First.Oracle.Lambda - Second.Oracle.Lambda);
+		const double Scale = FMath::Max(FMath::Abs(First.Oracle.Lambda), 1.0);
+		const double Relative = Difference / Scale;
+
+		Test.AddInfo(FString::Printf(
+			TEXT("SAME-NUMBER %s: %.17g vs %.17g, relative difference %.3g (tolerance %.3g)"),
+			What, First.Oracle.Lambda, Second.Oracle.Lambda, Relative, RelativeTolerance));
+
+		Test.TestTrue(
+			*FString::Printf(
+				TEXT("%s: the two lambda* must be THE SAME NUMBER to %.3g relative and read ")
+				TEXT("%.17g vs %.17g (relative difference %.3g). This is a tighter claim than ")
+				TEXT("either row's window on purpose — if one side moved, the identity is the ")
+				TEXT("finding that broke, so re-derive it rather than widening the tolerance."),
+				What, RelativeTolerance, First.Oracle.Lambda, Second.Oracle.Lambda, Relative),
+			Relative <= RelativeTolerance);
+	}
+
+	/**
+	 * The other half of a pair pin: production's readings on the same two fixtures must
+	 * STAY APART by the measured ratio. It pins the discrimination AND it is what stops a
+	 * same-number pin passing vacuously — two rows accidentally built from one fixture read
+	 * identical lambda* and identical utilisations, which this refuses.
+	 */
+	void CheckReadingRatio(
+		FAutomationTestBase& Test,
+		const TCHAR* What,
+		double Numerator,
+		double Denominator,
+		double RatioLo,
+		double RatioHi)
+	{
+		const double Ratio = Denominator != 0.0
+			? Numerator / Denominator
+			: TNumericLimits<double>::Max();
+
+		Test.AddInfo(FString::Printf(
+			TEXT("READING RATIO %s: %.17g / %.17g = %.17g"),
+			What, Numerator, Denominator, Ratio));
+
+		Test.TestTrue(
+			*FString::Printf(
+				TEXT("%s: production's two readings must stay apart by a ratio in [%.9g, ")
+				TEXT("%.9g] and read %.17g / %.17g = %.17g — this pins the discrimination ")
+				TEXT("production DOES make, and refuses a pair that quietly became one fixture"),
+				What, RatioLo, RatioHi, Numerator, Denominator, Ratio),
+			Ratio >= RatioLo && Ratio <= RatioHi);
 	}
 
 	/* ================================================================================
@@ -793,12 +959,12 @@ bool FRigidBlockSweepLeaningStackTest::RunTest(const FString& Parameters)
 	Rows.Add({ TEXT("leaning stack, 30 courses"),
 		TEXT("no equilibrium at a sixteenth of gravity; production agrees via the interim guard"),
 		[](FStructure& Out, FString& Why) { return BuildLeaningStack(30, Out, Why); },
-		ERelation::AgreeFalls, 0.062925, 0.062930, 29 });
+		ERelation::AgreeFalls, 0.062925, 0.062930, 29, 0 });
 
 	Rows.Add({ TEXT("leaning stack, 40 courses"),
 		TEXT("no equilibrium; production agrees via the interim guard"),
 		[](FStructure& Out, FString& Why) { return BuildLeaningStack(40, Out, Why); },
-		ERelation::AgreeFalls, 0.034428, 0.034431, 39 });
+		ERelation::AgreeFalls, 0.034428, 0.034431, 39, 0 });
 
 	RunRows(*this, Rows);
 
@@ -853,7 +1019,7 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
 			return BuildBeam(BeamC24DensityGramsPerCubicCm, BeamC24BendingMPa,
 				BeamC24ShearMPa, 120.0, Out, Why);
 		},
-		ERelation::OracleStandsProductionFalls, 1.76400, 1.76414, 3 });
+		ERelation::OracleStandsProductionFalls, 1.76400, 1.76414, 3, 0 });
 
 	Rows.Add({ TEXT("C24 timber beam, light load"),
 		TEXT("a sensibly loaded joist; production still drops it whole (bearing Max)"),
@@ -862,7 +1028,7 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
 			return BuildBeam(BeamC24DensityGramsPerCubicCm, BeamC24BendingMPa,
 				BeamC24ShearMPa, 10.0, Out, Why);
 		},
-		ERelation::OracleStandsProductionFalls, 19.2006, 19.2009, 3 });
+		ERelation::OracleStandsProductionFalls, 19.2006, 19.2009, 3, 0 });
 
 	Rows.Add({ TEXT("S275 steel beam, heavy load"),
 		TEXT("steel at 17.35 vs timber's 1.76: the oracle discriminates the member ")
@@ -872,7 +1038,7 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
 			return BuildBeam(BeamSteelDensityGramsPerCubicCm, BeamS275YieldMPa,
 				BeamS275YieldMPa / FMath::Sqrt(3.0), 120.0, Out, Why);
 		},
-		ERelation::OracleStandsProductionFalls, 17.3527, 17.3529, 3 });
+		ERelation::OracleStandsProductionFalls, 17.3527, 17.3529, 3, 0 });
 
 	RunRows(*this, Rows);
 
@@ -964,7 +1130,7 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
 		TEXT("edge-contact jamming (limit theorem) vs kern-and-centroid refusal at ")
 		TEXT("1.4921, which then takes the abutting neighbour down with it"),
 		[](FStructure& Out, FString& Why) { return BuildOneCellDryPair(Out, Why); },
-		ERelation::OracleStandsProductionFalls, 9592.67, 9592.69, 2 });
+		ERelation::OracleStandsProductionFalls, 9592.67, 9592.69, 2, 0 });
 
 	RunRows(*this, Rows);
 
@@ -975,26 +1141,41 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  * THE OPT-IN SLOW SWEEP.
  *
  * ITS NAME DELIBERATELY DOES NOT CONTAIN "DestructionGame", so the documented full-suite
- * command — Automation RunTests DestructionGame — NEVER runs it and the ~40 s suite
- * budget is untouched. Run it deliberately:
+ * command — Automation RunTests DestructionGame — NEVER runs it and the ~30 s suite
+ * budget is untouched. Run it deliberately, either whole or one test at a time (the
+ * free-end ladder alone is ~23 s, which is what makes it the cheap place to prove a
+ * cross-row pin bites):
  *
  *     -ExecCmds="Automation RunTests OracleSlowSweep"
  *
  * This is the documented convention for a slow path: a distinct top-level group, opt-in
  * by filter, never a silent skip. Every row still carries pinned expectations exactly
  * like the fast rows; slowness buys exclusion from the default run and nothing else.
+ *
+ * WHAT IT COSTS, AND WHY THAT FIGURE IS WRITTEN DOWN. The sparse rewrite (2026-08-12)
+ * made the six dense-era rows so cheap that this group ran in 10.5 s — at which point
+ * sitting outside the default filter was no longer earned, and the review said so. The
+ * 2026-08-12 classification slice restored the rationale by PINNING the thirteen fixtures
+ * the rewrite had only measured: the group now costs ~437 s (436.7 / 434.9 / 438.1 over
+ * three runs on 2026-08-12, of which ~415 s is WallsAndLadders and ~23 s the free-end
+ * ladder) against a ~30 s budget for the ENTIRE default suite. All three runs returned
+ * bit-identical lambda* and worst readings on all nineteen rows, which is the
+ * determinism contract holding across the widest problem set it has ever been asked
+ * about. Keep this number current — it is the whole argument for the group existing, and
+ * a slow group nobody can justify is a slow group somebody deletes.
  * ==================================================================================== */
 
 /**
- * THE WALL CATALOGUE AND THE FREE-END LADDER — sweep items (d) and (e), scoped in the
- * dense era to that solver's measured envelope; since the 2026-08-12 sparse rewrite
- * every scoped-out wall except the 30-course five ANSWERS (measured table above) and
- * awaits pinning in the classification slice. Rows are laid through the SCENARIO
- * CATALOGUE (production
- * data end to end: the same producer, the same cuts the acceptance suite pins),
- * removed, bridged and diffed. Ordered cheap to expensive so a killed run still leaves
- * its measurements in the log (each row logs immediately — which is exactly how the
- * 2026-08-11 measuring run survived being killed at row 15 of 18).
+ * THE WALL CATALOGUE — sweep item (d), scoped in the dense era to that solver's measured
+ * envelope; since the 2026-08-12 sparse rewrite every scoped-out wall except the
+ * 30-course five ANSWERS, and as of the same day's classification slice every one of them
+ * is PINNED here. Fifteen of the twenty acceptance wall cases now carry a load factor.
+ * Rows are laid through the SCENARIO CATALOGUE (production data end to end: the same
+ * producer, the same cuts the acceptance suite pins), removed, bridged and diffed.
+ * Ordered cheap to expensive so a killed run still leaves its measurements in the log
+ * (each row logs immediately — which is exactly how the 2026-08-11 measuring run survived
+ * being killed at row 15 of 18). Sweep item (e), the free-end ladder, moved to its own
+ * test below when the classification slice gave it a second height to be compared with.
  *
  * WHAT THE 2026-08-11 RUN MEASURED, ROW BY ROW. Answered, and now pinned below:
  *
@@ -1019,39 +1200,66 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  *     wall-07        140 blk / 350 jnt    8,551 pivots   570 s
  *     wall-10        138 blk / 349 jnt    5,873 pivots   316 s
  *
- * The free-end row stayed LIVE below as the pinned canary — one refusal kept
+ * The free-end row stayed LIVE in this test as the pinned canary — one refusal kept
  * executable so the envelope was asserted by a test rather than remembered by a
  * comment, and chosen because it is the lambda = 3.464 measurement fixture: the day
  * the solver answers it, the canary fails and the gap-5 measurement it owes becomes
  * takeable. THAT DAY WAS 2026-08-12: the sparse rewrite answered it, the canary
- * failed exactly as written (lambda* 256.820018 against the pinned refusal), and the
- * row below is its promotion.
+ * failed exactly as written (lambda* 256.820018 against the pinned refusal), and its
+ * promotion now lives in FreeEndHeightLadder below, beside the second height that
+ * turned one reading into the ladder measurement.
  *
- * WHAT THE 2026-08-12 SPARSE MEASURING RUN ANSWERED, every residual verified — these
- * are MEASUREMENTS for the next slice to classify and pin, recorded here so the run
- * need not be repeated (production's side quoted where it dropped anything):
+ * WHAT THE 2026-08-12 SPARSE MEASURING RUN ANSWERED — every residual verified, and as
+ * of the 2026-08-12 CLASSIFICATION SLICE every one of them is a PINNED ROW below rather
+ * than a comment. The measuring run's cost table is kept because it is the reason the
+ * rows sit in the opt-in group and because it is the only record of the pivot counts:
  *
- *     wall-17          918.046031    1,608 pv    4.2 s   120 blk / 207 jnt
  *     wall-18          649.464192      791 pv    1.3 s   119 blk / 203 jnt
- *     wall-15          868.623736    3,745 pv   25.7 s   125 blk / 320 jnt
- *     wall-16          868.623736    3,319 pv   23.1 s   125 blk / 320 jnt
- *     wall-19           12.3824832   2,970 pv   16.1 s   119 blk / 308 jnt  (production: 34 fall, 6 stranded)
+ *     wall-17          918.046031    1,608 pv    4.2 s   120 blk / 207 jnt
  *     wall-10           35.8172298   2,640 pv   11.5 s   138 blk / 349 jnt  (production: 12 fall, 3 stranded)
+ *     wall-19           12.3824832   2,970 pv   16.1 s   119 blk / 308 jnt  (production: 34 fall, 6 stranded)
+ *     wall-12           89.1151243   2,877 pv   16.2 s   128 blk / 326 jnt
+ *     wall-16          868.623736    3,319 pv   23.1 s   125 blk / 320 jnt
+ *     wall-15          868.623736    3,745 pv   25.7 s   125 blk / 320 jnt
+ *     wall-20           82.629597    3,387 pv   27.9 s   156 blk / 384 jnt  (production: 9 fall in 1 pass)
+ *     wall-11          128.118261    5,102 pv   45.8 s   128 blk / 326 jnt
+ *     wall-09           36.5639285   4,885 pv   50.4 s   146 blk / 350 jnt  (production stands at worstU 0.985)
  *     wall-07          296.220581    5,293 pv   62.0 s   140 blk / 350 jnt
  *     wall-06          622.031942    8,819 pv  126.6 s   146 blk / 372 jnt
- *     wall-09           36.5639285   4,885 pv   50.4 s   146 blk / 350 jnt  (production stands at worstU 0.985)
- *     wall-11          128.118261    5,102 pv   45.8 s   128 blk / 326 jnt
- *     wall-12           89.1151243   2,877 pv   16.2 s   128 blk / 326 jnt
- *     wall-20           82.629597    3,387 pv   27.9 s   156 blk / 384 jnt  (production: 9 fall in 1 pass)
  *     free end 7x20    256.820018   2,701 pv   22.5 s   149 blk / 388 jnt  (production: 1 falls, worstU 1.958)
  *
- * Three of those beg interpretation the NEXT slice owes: the 11/12 pier pair now
- * DISCRIMINATES (128.1 vs 89.1, 1.44x) where production reads the two 0.03% apart;
- * the free-end lambda* is HEIGHT-INDEPENDENT to nine digits (256.820018 at both 10
- * and 20 courses) while production crosses 1.0 between them; and the red rows 9, 19
- * and 20 all read lambda* >= 12 — the oracle sides with STANDS against the
- * catalogue's collapse verdicts on 9/19 and against production's drops on 19/10/20,
- * so those classifications need the survivor arithmetic worked, not a reflex pin.
+ * WHAT THE MEASUREMENTS SAID ONCE CLASSIFIED, which is the part a table cannot carry:
+ *
+ *   - THE ORACLE'S ORDERING AGREES WITH THE CATALOGUE'S VERDICTS EVEN WHERE ITS
+ *     THRESHOLD DOES NOT. The four rows the catalogue does not rule STANDS read the four
+ *     LOWEST lambda* of the fifteen wall fixtures measured — 19 at 12.38, 10 at 35.82,
+ *     9 at 36.56, 20 at 82.63 — and the next lowest is wall-12 at 89.12. A clean
+ *     separation at ~85 with nothing in between: the LP ranks the human rulings
+ *     correctly and simply puts the collapse line somewhere else. No separate assertion
+ *     pins the ordering because every row's window is tight enough that a reorder cannot
+ *     happen without a window failing first.
+ *   - FOUR ROWS NEED A USER RULING and each says so in its own mechanism text, loudly:
+ *     9, 10, 19 (catalogue COLLAPSE) and 20 (catalogue LOCAL LOSS of two NAMED bricks).
+ *     Pinned exactly as they stand, on the wall-08 precedent — the pin records the
+ *     outlier state, the ruling resolves it, and the two are separate acts.
+ *   - TWO PAIRS ARE PINNED AS CROSS-ROW IDENTITIES rather than as two windows: 15/16
+ *     (the LP reads the superimposed-load pair as the SAME NUMBER) and the free-end
+ *     height ladder in its own test below. See CheckSameLambda for why an identity is a
+ *     strictly stronger pin than two boxes.
+ *   - TWO OF THE FOUR PRODUCTION "COLLAPSES" BREAK NO JOINT AT ALL. wall-10 (12 down)
+ *     and wall-19 (34 down) both cascade in ZERO passes at worst readings of 0.300 and
+ *     0.318: every one of those pieces is UNROUTED, not overloaded. That is measurable
+ *     here and nowhere else in the suite — the acceptance rows count what came down, not
+ *     what broke — and it says the disagreement with the LP on those two rows is about a
+ *     missing mechanism (nothing routes load sideways or upward) rather than about
+ *     strength. wall-20 is the opposite and its text says so: one pass, worst reading
+ *     42.71, a joint genuinely 42x over capacity.
+ *   - THE STACK-BOND PAIR SEPARATES 36.75x IN PRODUCTION (0.040033 with a brick out
+ *     against 0.0010893 intact) and 1.41x in the LP. Deliberately NOT pinned as a ratio:
+ *     the stack-bond family is where production carries a standing deliberate red
+ *     (StackBondColumnShearIsHeightIndependent reads this routing height-linearly), and
+ *     pinning a ratio over a known-wrong reading dresses the defect as a discrimination
+ *     — the trap DESIGN §8 recorded for the 7-vs-8 cover pair.
  *
  * The 30-course walls (cases 1-5) remain beyond the PRACTICAL envelope — now on
  * pricing cost, not memory; the file header at the top carries the measured detail.
@@ -1124,29 +1332,6 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		Scenario(TEXT("wall-13")),
 		ERelation::AgreeStands, 645.945, 645.947, 0 });
 
-	/*
-	 * THE PROMOTED CANARY — until 2026-08-12 this row was pinned as
-	 * OracleRefusesAtThisScale, the one dense-envelope refusal kept executable so the
-	 * envelope was asserted by a test rather than remembered by a comment. The sparse
-	 * revised-simplex rewrite answered it (lambda* 256.820018, 879 pivots, ~1 s where
-	 * the dense tableau refused after 3,993 pivots and 69 s), the canary failed
-	 * exactly as written, and per its own instruction the failure was promoted to
-	 * this measured relation rather than deleted. Production's worst joint here reads
-	 * 0.9235, which is the RAW HALF-SEAT directly above the removed end brick (0.0582
-	 * per brick-weight x ~15.9 bw carried, no abutment on the eccentric side so no
-	 * arching relief); the free-end LADDER's published 0.3283 at ten courses is the
-	 * corbel-ROOT joint, a different joint in the same wall. Both are true; quoting
-	 * the ladder figure as "production's reading" for this fixture was the 2026-08-09
-	 * draft's error.
-	 */
-	Rows.Add({ TEXT("free end, 7 cells x 10 courses"),
-		TEXT("the lambda = 3.464 measurement fixture, first answered by the sparse ")
-		TEXT("rewrite: the LP prices the ten-course free end at 257x own weight while ")
-		TEXT("production's raw half-seat reads 0.9235 of capacity — the lambda-ladder ")
-		TEXT("measurement (gap 5) is now takeable, next slice"),
-		[](FStructure& Out, FString& Why) { return BuildFreeEnd(10, Out, Why); },
-		ERelation::AgreeStands, 256.819, 256.821, 0 });
-
 	Rows.Add({ TEXT("corbel D, ten steps with counterweight"),
 		TEXT("global equilibrium prices the counterweight at 22.6x (C's 2.57 -> 58.06) ")
 		TEXT("where production reads C and D 0.4% apart (0.34481 vs 0.34348) and the ")
@@ -1155,7 +1340,347 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		Scenario(TEXT("corbel-d-10-counterweight")),
 		ERelation::AgreeStands, 58.0597, 58.0601, 0 });
 
-	RunRows(*this, Rows);
+	/* --- the twelve the sparse rewrite unblocked, pinned 2026-08-12, cheap first ------ */
+
+	/*
+	 * THE BOND PAIR, AND CASE 17'S FIRST NUMBER OF ANY KIND. CURRENT_STATE's standing
+	 * doubt says case 17 "has zero discriminating power intact" — as an OUTCOME row that
+	 * is true and stays true (both halves stand), but the LP gives the pair a margin to
+	 * separate: 918.05 intact against 649.46 with one brick out, 1.41x. Production's own
+	 * readings on the two are printed by the sweep line and are NOT pinned as a ratio
+	 * here, because the stack-bond family is where production is deliberately red
+	 * (StackBondColumnShearIsHeightIndependent) and a ratio pin over a known-wrong
+	 * reading would dress the defect up as a discrimination — the same trap DESIGN §8
+	 * recorded for the 7-vs-8 cover pair.
+	 */
+	Rows.Add({ TEXT("wall-18 stack bond, one brick out"),
+		TEXT("stack bond has no bond to spread a loss, so the column over the hole hangs ")
+		TEXT("on head-joint tension into its neighbours: 649.46x at characteristic bond, ")
+		TEXT("1.41x less margin than the intact wall-17, which is the pair's ONLY ")
+		TEXT("discrimination now that both halves stand"),
+		Scenario(TEXT("wall-18")),
+		ERelation::AgreeStands, 649.46354, 649.46484, 0, 0 });
+
+	Rows.Add({ TEXT("wall-17 stack bond, intact"),
+		TEXT("the highest lambda* in the swept set (918.05x) and the first absolute ")
+		TEXT("number case 17 has ever carried; an intact stack-bond wall standing is not ")
+		TEXT("news, the MARGIN against wall-18 is"),
+		Scenario(TEXT("wall-17")),
+		ERelation::AgreeStands, 918.04511, 918.04695, 0, 0 });
+
+	/*
+	 * ============================ FLAGGED FOR A USER RULING ============================
+	 * Rows 10, 19, 9 and 20 are pinned EXACTLY AS THEY STAND and resolve nothing. The
+	 * wall-08 precedent (the row above, and DESIGN §8's 2026-08-11 entry) is the whole
+	 * procedure: the sweep records the three-way state, the user rules, and the pin then
+	 * moves in the slice that carries the ruling. Do NOT flip a relation here to make a
+	 * catalogue verdict look agreed with — the relation enum is oracle-vs-PRODUCTION by
+	 * construction and has never claimed to speak for the catalogue.
+	 *
+	 * RECONCILING THE HAND FIGURES WITH LAMBDA*, so nobody reads them as the same check:
+	 * the hand arithmetic in these rows is a TENSION-PLANE ELASTIC check (bending stress
+	 * on a vertical crack plane vs flexural strength) — the same kind of answer
+	 * production computes, which is why the hand figures and production's readings agree
+	 * within the routing. Lambda* is a different question: the limit theorem finds the
+	 * best ADMISSIBLE COMPRESSION PATH, which for these fixtures needs almost no tension
+	 * at all — that is why lambda* runs 14-32x above the hand figures' implied factors,
+	 * a gap the declared slants (x3 plastic, x6 strength basis) do not cover and are not
+	 * meant to. The hand checks corroborate PRODUCTION's number; lambda* answers whether
+	 * any equilibrium exists. A ruling weighs both, it does not average them.
+	 * ==================================================================================
+	 */
+
+	Rows.Add({ TEXT("wall-10 opening at a free end, no abutment"),
+		TEXT("FLAGGED FOR A RULING. Catalogue COLLAPSE; production drops 12, of which 3 ")
+		TEXT("are STRANDED (unroutable, not unheld — the absent cycle rule, DESIGN §5.1); ")
+		TEXT("the LP stands it at 35.82x. The panel over the opening is a 3.75-cell ")
+		TEXT("(84 cm) cantilever 8 courses (60 cm) deep off a single jamb: 8 x 3.75 = 30 ")
+		TEXT("brick weights = 800 N at a 42.2 cm lever is M = 337 N*m, over ")
+		TEXT("t*D^2/6 = 6150 cm^3 that is 0.055 MPa — 0.55x characteristic f_xk1 (0.10) ")
+		TEXT("and 0.14x of f_xk2 (0.40) on a STRAIGHT vertical plane, and the real crack path ")
+		TEXT("is a toothed staircase carrying bed-joint cohesion the plane cannot see. ")
+		TEXT("Same mechanism family as the 2026-08-06 free-end ruling, scaled up. AND ")
+		TEXT("PRODUCTION BREAKS NOTHING TO GET HERE: 0 cascade passes at a worst reading ")
+		TEXT("of 0.300, so all 12 are pieces the downward-only router could not route, ")
+		TEXT("not joints that gave — its verdict is an absent mechanism, not a strength ")
+		TEXT("finding, which is the sharpest reason the LP disagrees"),
+		Scenario(TEXT("wall-10")),
+		ERelation::OracleStandsProductionFalls, 35.81719, 35.81727, 12, 3 });
+
+	Rows.Add({ TEXT("wall-19 bottom course out under half the wall"),
+		TEXT("FLAGGED FOR A RULING, and the LOWEST lambda* of the fifteen walls (12.38x) ")
+		TEXT("— still above 1. Catalogue COLLAPSE; production drops 34 with 6 STRANDED. ")
+		TEXT("5.75 cells (129 cm) of base gone at the wall's END, so the 9 courses over ")
+		TEXT("it CANTILEVER rather than span: 9 x 5.75 = 52 brick weights = 1387 N at a ")
+		TEXT("64.5 cm lever is M = 895 N*m, over t*D^2/6 = 7784 cm^3 that is 0.115 MPa ")
+		TEXT("— 1.15x characteristic f_xk1 (0.10) but ")
+		TEXT("0.29x of f_xk2's 0.40, and f_xk2 is what a toothed vertical crack path ")
+		TEXT("costs in a real wall. The two strengths straddle the verdict, which is ")
+		TEXT("exactly why this needs a ruling rather than an arithmetic tweak. Production ")
+		TEXT("breaks NOTHING to drop 34 either (0 cascade passes, worst reading 0.318) — ")
+		TEXT("with the base gone a downward-only router has nowhere to send the load, so ")
+		TEXT("both red rows in this file report an absent mechanism as a collapse"),
+		Scenario(TEXT("wall-19")),
+		ERelation::OracleStandsProductionFalls, 12.382471, 12.382495, 34, 6 });
+
+	/*
+	 * THE PIER PAIR, WHOSE DISCRIMINATION DESIGN §8 EXPLICITLY HANDED TO THIS ORACLE.
+	 * The 2026-08-09 case-12 ruling recorded the cost of rewriting case 12: "the pier-width
+	 * pair (11 vs 12) now has no measurable discrimination — the solver reads them 0.03%
+	 * apart because it carries thrust as springing shear with no pier-width term; the LP
+	 * oracle owns measuring that." It now does: 128.12 on three cells of bearing against
+	 * 89.12 on one, 1.44x, and in the physically right direction.
+	 */
+	Rows.Add({ TEXT("wall-12 the same span on a one-brick pier"),
+		TEXT("the pier pair's narrow half: 89.12x, 1.44x less margin than wall-11's ")
+		TEXT("three cells of bearing, where production reads the two 0.03% apart ")
+		TEXT("(0.362067 vs 0.362193) because springing shear carries no pier-width term"),
+		Scenario(TEXT("wall-12")),
+		ERelation::AgreeStands, 89.11503, 89.11521, 0, 0 });
+
+	/*
+	 * THE SUPERIMPOSED-LOAD PAIR READS AS ONE NUMBER, AND THAT IS A STATEMENT ABOUT THE
+	 * PROBLEM SHAPE, NOT A COINCIDENCE. Gravity is the LP's single live load
+	 * (FOracleProblem::bGravityIsLive), so piling six courses on the header's tail scales
+	 * the demand it makes and the pre-compression that steadies it by the same lambda, and
+	 * a multiplier-on-own-weight measure cannot see the difference. Production does see it
+	 * — 31.6x at the header's own joint — so the pair is pinned from BOTH sides below: the
+	 * lambda* identity and production's reading ratio, the second of which is also what
+	 * stops the identity passing vacuously if the two rows ever built one fixture.
+	 * WANTED (logged for CURRENT_STATE): the honest LP-side version of this pair marks the
+	 * six courses LIVE and the rest DEAD, which the problem shape already supports and
+	 * which nothing but the sliding rows exercises.
+	 */
+	Rows.Add({ TEXT("wall-16 header at the top, nothing on it"),
+		TEXT("the superimposed-load pair's bare half; the LP prices it identically to ")
+		TEXT("wall-15 because self-weight is its only live load, pinned as a cross-row ")
+		TEXT("identity below"),
+		Scenario(TEXT("wall-16")),
+		ERelation::AgreeStands, 868.62287, 868.62461, 0, 0 });
+
+	Rows.Add({ TEXT("wall-15 header with six courses on top"),
+		TEXT("the loaded half, and the SAME NUMBER: 868.623736 either way. Production ")
+		TEXT("separates the pair 31.6x at the header's own bed joint (0.00184437 vs ")
+		TEXT("0.058203838 — the surcharge drives tension to zero and leaves compression ")
+		TEXT("governing), so the discrimination the catalogue wanted is production's ")
+		TEXT("here and the LP's only under a dead/live split it does not yet use"),
+		Scenario(TEXT("wall-15")),
+		ERelation::AgreeStands, 868.62287, 868.62461, 0, 0 });
+
+	Rows.Add({ TEXT("wall-20 staircase void"),
+		TEXT("FLAGGED FOR A RULING, and the row where the vocabularies do not meet: the ")
+		TEXT("catalogue rules a LOCAL LOSS of two NAMED teeth (course 3 cell 4.5, course ")
+		TEXT("5 cell 2.5), production drops 9, and a GLOBAL lambda* has no local ")
+		TEXT("vocabulary at all — 82.63x says every block INCLUDING both teeth has an ")
+		TEXT("admissible equilibrium. Why hanging a tooth is cheap, by hand: 0.1 MPa over ")
+		TEXT("two head joints (2 x 66.625 cm^2) plus the two bed patches above it (2 x ")
+		TEXT("105.0625 cm^2) is 3434 N against a brick's 2667 uu = 26.67 N, about 129x, ")
+		TEXT("so the teeth are not what governs 82.63 and the LP is not merely tolerating ")
+		TEXT("them. CURRENT_STATE's standing doubt (true count more than 2, fewer than 9) ")
+		TEXT("is untouched by this measurement and stays open. Unlike rows 10 and 19 this ")
+		TEXT("one IS a strength verdict in production: worst reading 42.71, one cascade ")
+		TEXT("pass, i.e. a joint 42x over capacity — the raking cut leaves teeth hanging ")
+		TEXT("where the two rows above merely leave pieces unrouted"),
+		Scenario(TEXT("wall-20")),
+		ERelation::OracleStandsProductionFalls, 82.629514, 82.629680, 9, 0 });
+
+	Rows.Add({ TEXT("wall-11 wall on two piers, six-brick clear span"),
+		TEXT("the pier pair's wide half at 128.12x; the §8 case-11 ruling worked this ")
+		TEXT("fixture by hand at 0.03-0.04 MPa of deep-beam bending against mean bond, ")
+		TEXT("and the LP's three-figure margin at CHARACTERISTIC bond is that ruling's ")
+		TEXT("first independent confirmation"),
+		Scenario(TEXT("wall-11")),
+		ERelation::AgreeStands, 128.11813, 128.11839, 0, 0 });
+
+	Rows.Add({ TEXT("wall-09 ten-brick opening, eight courses over"),
+		TEXT("FLAGGED FOR A RULING, and the least stable relation in this file: ")
+		TEXT("catalogue COLLAPSE, production STANDS at worst reading 0.985 — ONE RETUNE ")
+		TEXT("FROM FLAPPING, and the day it crosses 1.0 this row's AgreeStands becomes ")
+		TEXT("AgreeFalls with nothing about the physics having changed — while the LP ")
+		TEXT("stands it at 36.56x. By hand: a 9.5-cell (214 cm) opening under 8 courses ")
+		TEXT("(60 cm) of cover is a deep beam at span/depth 3.6 carrying 8 x 9.5 = 76 ")
+		TEXT("brick weights = 2027 N, W*L/8 = 542 N*m over t*D^2/6 = 6150 cm^3 = 0.088 ")
+		TEXT("MPa — 0.88x characteristic f_xk1 (0.10) and 0.22x of f_xk2 (0.40). That ")
+		TEXT("hand figure and production's 0.985 are the same answer to within the ")
+		TEXT("routing, which is why this row sits where it does. The catalogue's COLLAPSE ")
+		TEXT("came from the published arching ")
+		TEXT("gate (no room for a 45 deg triangle over 2.1 m), which DESIGN §8's standing ")
+		TEXT("instruction retired for cases 11 and 8"),
+		Scenario(TEXT("wall-09")),
+		ERelation::AgreeStands, 36.56389, 36.56397, 0, 0 });
+
+	/*
+	 * THE COVER PAIR'S HONEST MEASUREMENT, OWED SINCE 2026-08-11 AND UNCOMFORTABLE.
+	 * DESIGN §8's case-8 entry declined to pin 7-vs-8 on readings because production reads
+	 * case 7 WORSE than case 8 at the same joint (0.269 vs 0.219, 1.23x) and "a downward
+	 * router reads cover as load, never capacity" — pinning it would encode the defect as
+	 * a discrimination. The LP, which has global equilibrium and no router at all, reads
+	 * the SAME DIRECTION: 296.22 with eight courses of cover against 324.73 with one,
+	 * 1.10x worse. Lambda* is a multiplier on the fixture's OWN weight, so added cover
+	 * raises demand along with capacity and the net direction depends on which grows
+	 * faster — here it came out down, and the two walls also differ in size (140 vs 52
+	 * blocks), so the cross-fixture comparison is ordinal at best. What survives all of
+	 * that is the useful part: a method with NO router reproduces the direction, so the
+	 * direction alone is uninformative about the router defect. That does not make
+	 * production's 1.23x right. Whether §8's note and the retired MatchedPairs row
+	 * should move on this is a USER call, flagged.
+	 */
+	Rows.Add({ TEXT("wall-07 four-cell opening, eight courses over"),
+		TEXT("296.22x against wall-08's 324.73x: the LP prices eight courses of cover ")
+		TEXT("1.10x WORSE than one, the same direction production reads at the joint and ")
+		TEXT("for a reason that is about the measure (lambda* is a multiplier on own ")
+		TEXT("weight) rather than about the router"),
+		Scenario(TEXT("wall-07")),
+		ERelation::AgreeStands, 296.2203, 296.2209, 0, 0 });
+
+	Rows.Add({ TEXT("wall-06 two-cell opening, deep cover"),
+		TEXT("the span ladder's short end: half wall-07's span under the same cover ")
+		TEXT("prices 2.10x its margin (622.03 vs 296.22), which is the discrimination the ")
+		TEXT("outcome column never had — 06, 07 and 08 all stand and always did"),
+		Scenario(TEXT("wall-06")),
+		ERelation::AgreeStands, 622.0313, 622.0326, 0, 0 });
+
+	TArray<FSweepReading> Readings;
+	RunRows(*this, Rows, Readings);
+
+	/* --- the cross-row pins, which no single row's window can make ------------------- */
+
+	const FSweepReading* Loaded =
+		ReadingNamed(*this, Rows, Readings, TEXT("wall-15 header with six courses on top"));
+	const FSweepReading* Bare =
+		ReadingNamed(*this, Rows, Readings, TEXT("wall-16 header at the top, nothing on it"));
+
+	if (Loaded != nullptr && Bare != nullptr)
+	{
+		CheckSameLambda(
+			*this,
+			TEXT("the superimposed-load pair (wall-15 vs wall-16) under one live load"),
+			*Loaded, *Bare, SameNumberRelativeTolerance);
+
+		/*
+		 * And the production side must STAY APART. The measured ratio is pinned wide
+		 * enough to be a ratio rather than a third copy of two windows, and narrow enough
+		 * that the pair collapsing to one fixture — which would satisfy the identity above
+		 * perfectly — cannot pass.
+		 */
+		CheckReadingRatio(
+			*this,
+			TEXT("production separates the superimposed-load pair where the LP does not"),
+			Bare->WorstUtilisation, Loaded->WorstUtilisation,
+			SuperimposedReadingRatioLo, SuperimposedReadingRatioHi);
+	}
+
+	return true;
+}
+
+/**
+ * THE FREE-END HEIGHT LADDER — the first real measurement of the lambda = 3.464 ruling
+ * (DESIGN.md §7 gap 5), and the reason it is its own test rather than two more rows: the
+ * finding lives BETWEEN the two heights and neither row's window can state it.
+ *
+ * THE FIXTURE is the one StructureFreeEndHeightTest reads its ladder on — a 7-cell
+ * running-bond wall with the outermost full brick of the grounded course removed — at 10
+ * courses and at 20. The dense solver refused the 10-course wall and that refusal was
+ * this file's pinned canary until the 2026-08-12 sparse rewrite answered it (lambda*
+ * 256.820018 against the pinned refusal, exactly as the canary was written to fail); the
+ * 20-course wall was measured in the same run and is pinned here for the first time.
+ *
+ * WHAT THE PAIR MEASURES, AND THE TWO SIDES DISAGREE ABOUT HEIGHT:
+ *
+ *   - THE LP READS THE SAME NUMBER AT BOTH HEIGHTS. Doubling the wall does not move
+ *     lambda* at all, which says the mechanism that governs the LP's answer is NOT the
+ *     free-end half seat: a half seat's demand grows with the courses stacked over it
+ *     while its capacity does not, so a governing half seat would halve lambda*. Some
+ *     local feature the two walls SHARE is what binds. That is a statement about the
+ *     limit theorem's answer, not about lambda the constant — and it is pinned as an
+ *     identity so that a solver change on either height fails loudly instead of moving
+ *     both windows a little.
+ *   - PRODUCTION IS HEIGHT-LINEAR AND CROSSES 1.0 BETWEEN THE TWO. Its worst reading is
+ *     an UNRELIEVED-half-seat-shaped number — an exact multiple of the 0.058203838...
+ *     per-brick-weight anchor (15.867 bw at ten courses, 33.635 at twenty) — reading
+ *     ~0.92 then ~1.96: under capacity, then over it, and the 20-course wall
+ *     accordingly drops a piece. WHICH joint carries it has NOT been established here:
+ *     it is provably NOT the composite-relieved seat that
+ *     Core.Structure.AFreeEndDeletionInATallWall reads on this fixture (that joint
+ *     reads 0.32827956 at TWENTY courses, ~0.0116 per bw, arm-capped and height-flat —
+ *     five times lower), and 28.33 bw unrelieved would read 1.649, not 1.958, so the
+ *     worst joint also carries more than that brick's seat. A candidate is the patch
+ *     over the seatless half bat; the specified decomposition test (CURRENT_STATE, LP
+ *     oracle section) names it arithmetically rather than by prose. DESIGN §5.5
+ *     records the linearity as live behaviour; this pins BOTH the ratio and the
+ *     crossing, so the two halves of the finding cannot rot separately.
+ *
+ * The free-end LADDER's published 0.3283 (at TWENTY courses — the ladder's heights are
+ * 20/30/40/50/60) is that composite-relieved seat, a different reading from this
+ * fixture's worst; quoting it as production's worst for this fixture was the
+ * 2026-08-09 draft's error and is not repeated here.
+ *
+ * NEEDS A TICKING WORLD: NO.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRigidBlockSlowFreeEndLadderTest,
+	"OracleSlowSweep.RigidBlock.FreeEndHeightLadder",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockSweepTestSupport;
+
+	TArray<FSweepRow> Rows;
+
+	Rows.Add({ TEXT("free end, 7 cells x 10 courses"),
+		TEXT("the promoted canary: the LP prices the ten-course free end at 256.82x own ")
+		TEXT("weight while production's worst joint reads 0.92 of capacity and holds"),
+		[](FStructure& Out, FString& Why) { return BuildFreeEnd(10, Out, Why); },
+		ERelation::AgreeStands, 256.819, 256.821, 0, 0 });
+
+	Rows.Add({ TEXT("free end, 7 cells x 20 courses"),
+		TEXT("the same wall twice as tall: the LP does not move (256.82x, pinned as an ")
+		TEXT("identity below) while production's worst reading doubles past 1.0 and the ")
+		TEXT("cascade drops the brick above the hole — the whole disagreement about ")
+		TEXT("height in one pair"),
+		[](FStructure& Out, FString& Why) { return BuildFreeEnd(20, Out, Why); },
+		ERelation::OracleStandsProductionFalls, 256.819, 256.821, 1, 0 });
+
+	TArray<FSweepReading> Readings;
+	RunRows(*this, Rows, Readings);
+
+	const FSweepReading* Short =
+		ReadingNamed(*this, Rows, Readings, TEXT("free end, 7 cells x 10 courses"));
+	const FSweepReading* Tall =
+		ReadingNamed(*this, Rows, Readings, TEXT("free end, 7 cells x 20 courses"));
+
+	if (Short == nullptr || Tall == nullptr)
+	{
+		return true;
+	}
+
+	CheckSameLambda(
+		*this,
+		TEXT("the free-end ladder's height independence (7x10 vs 7x20)"),
+		*Short, *Tall, SameNumberRelativeTolerance);
+
+	/*
+	 * PRODUCTION'S SIDE, PINNED AS A RATIO AND AS A CROSSING. The ratio alone would pass
+	 * if both readings halved; the crossing alone would pass if the tall wall crept over
+	 * 1.0 by a hair. Together they say the reading is height-LINEAR and that the line
+	 * crosses capacity between these two heights, which is the half of the finding that
+	 * makes the LP's non-movement worth reporting at all.
+	 */
+	CheckReadingRatio(
+		*this,
+		TEXT("production's free-end reading is height-linear where the LP is height-flat"),
+		Tall->WorstUtilisation, Short->WorstUtilisation,
+		FreeEndReadingRatioLo, FreeEndReadingRatioHi);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("production's free-end reading must CROSS capacity between 10 and 20 ")
+			TEXT("courses: 10 courses read %.17g (must be under 1.0) and 20 courses read ")
+			TEXT("%.17g (must be over it). If both now sit on one side, the crossing has ")
+			TEXT("moved and the ladder's slope is what to re-derive"),
+			Short->WorstUtilisation, Tall->WorstUtilisation),
+		Short->WorstUtilisation < 1.0 && Tall->WorstUtilisation > 1.0);
 
 	return true;
 }

@@ -110,6 +110,10 @@ Run against otherwise-unmutated production; expected signatures below. **(b) han
 | (S6) | sparse solver: delete the iterative-refinement pass at refactorisation | 2 — the two λ* = 0 fixtures refuse via "the optimal basis failed verification" |
 | (S5+S6) | pivot-out first-past-tolerance AND refinement deleted | 3 — all three λ* = 0 fixtures refuse via verification; the gate's bite-prover (S5 alone measures 0 — refinement absorbs it) |
 | (S8) | test-side: perturb one half-area twin's area ×(1+1e-9) | exactly 1 — the cross-row SAME-NUMBER equality (1.241110018676219 vs …92967741); the old 1e-6 closed-form window passes this mutation silently, which is why the cross-row check exists |
+| (M4″) | M4 against the classified sweep (2026-08-12) | slow sweep **26** (19 λ windows + 7 relation flips: corbel C/D, wall-09/10/12/19/20 fall below 1.0 — reconstructs exactly from λ*/100); fast **37** (16 sweep + 21 oracle test; the registry's earlier 36 was one low — correction, not caused by the slice) |
+| (N1) | test-side: flip a slow row's pinned relation | exactly 1 — the pinned-relation line |
+| (N2) | test-side: perturb the free-end 7×20 fixture's density ×(1+1e-9) | exactly 1 — the SAME-NUMBER λ identity (relative 1e-9); both λ windows and the reading ratio pass silently — the S8 lesson generalised |
+| (N3) | test-side: the 7×20 row builds 10 courses (the pair quietly becomes one fixture) | 4 — relation, drop pin, reading ratio (reads 1.0), crossing; the λ identity PASSES, which is why a same-number pin always needs a stay-apart pin beside it |
 
 **A mutation whose early `return` precedes code trips C4702 and the BUILD FAILS while the old DLL keeps running** — the run then reproduces the *previous* mutation's signature verbatim. Verify `Result: Succeeded` on every mutation build before believing its run; this has now bitten twice (the M6-stale incident, and once during the sparse rewrite).
 
