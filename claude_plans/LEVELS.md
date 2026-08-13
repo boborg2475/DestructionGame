@@ -133,9 +133,14 @@ the verdict the acceptance test asserts.
 | `Lvl_Wall19` | `wall-19` | Bottom course out under half the wall |
 | `Lvl_Wall20` | `wall-20` | Staircase void |
 
-### Four of these levels contradict the model, and say so
+### Three of these levels contradict the model, and say so — two of them in a new direction
 
-Cases **9, 10, 19 and 20** are the rows currently failing `Acceptance.Wall.Catalogue`. Their
+Cases **10, 19 and 20** are the rows currently failing `Acceptance.Wall.Catalogue`. Case 20 is the
+old direction (the model drops more than the catalogue's named local loss). Cases 10 and 19 are the
+**inverse** since the 2026-08-12 rulings: the catalogue says STANDS, and the model — routing load
+only downward — wrongly collapses them, dropping the free-end panel and the underpinned wedge that
+real bonded masonry holds. Their captions carry the marker with the sentence pointing that way.
+Their
 captions carry the words **THE MODEL CURRENTLY DISAGREES** alongside the expected verdict, because a
 level captioned with a verdict the solver does not produce would be a lie told to somebody standing
 in front of the counter-example.
@@ -149,6 +154,10 @@ disagreement that no longer exists.
 (case 11's span on a single one-cell pier) was ruled STANDS from worked pier arithmetic, and the
 model agrees, so there is no disagreement left to mark (DESIGN §8 records the ruling).
 
+**Case 9 came off on 2026-08-12 the same way** — the third and last verdict resting on the retired
+arching gate: production, the hand arithmetic and the LP oracle all stand the 2.1 m deep beam, and
+the user re-ruled it STANDS (DESIGN §8; wanted-case 2b restores the lost falls-for-span red).
+
 **Case 8 came off on 2026-08-11 the same way**: the catalogue's LOCAL LOSS was the outlier of three
 methods — production drops nothing and the rigid-block LP oracle stands the coverless course at
 λ* = 324.7 as a flat arch jammed into its toothed jambs — so the user re-ruled it STANDS
@@ -161,7 +170,7 @@ directed that published design rules are not gospel and the physics was worked h
 of bonded masonry over the span acts as a deep beam at span/depth ≈ 2.3, carrying its ~120 kg panel
 at roughly 0.03–0.04 MPa, well under bond strength, and the piers take the thrust easily.
 
-All four trace to one finding: **load routes only downward**. Masonry beside or behind a joint never
+All three trace to one finding: **load routes only downward**. Masonry beside or behind a joint never
 reaches it, so a counterweight buys nothing and load funnels onto whatever column sits underneath.
 `Core.Structure.CorbelStepsBeforeTensionWins` is the standing red for it.
 

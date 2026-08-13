@@ -412,18 +412,21 @@ namespace DestructionScenarios
 
 		{ TEXT("wall-09"), TEXT("Lvl_Wall09"), TEXT("Ten-brick opening, eight courses over"),
 			TEXT("Ten bricks of opening under the same eight courses of cover as case 7 — two and a "
-				"half times the span, everything else identical. Expected: COLLAPSE — the masonry "
-				"over the hole comes down and the jambs either side of it do not. THE MODEL "
-				"CURRENTLY DISAGREES: it holds the lot up."),
+				"half times the span, everything else identical. Expected: STANDS — the 60 cm of "
+				"masonry over the hole is a deep beam spanning 2.1 metres, not a triangle looking "
+				"for somewhere to arch, and it carries its own weight in bending at a fraction of "
+				"the mortar's mean bond strength. Production, the hand arithmetic and the "
+				"limit-theorem oracle all agree it holds."),
 			ScenariosWallCoveredCourses, 14,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall09Cuts },
 
 		{ TEXT("wall-10"), TEXT("Lvl_Wall10"), TEXT("Opening at a free end, no abutment"),
 			TEXT("Case 7's four cells of cover, cut through to the free end so one side of the "
-				"opening has nothing beyond it. Expected: COLLAPSE — an arch needs something to "
-				"thrust against, and here there is masonry on one side only. THE MODEL CURRENTLY "
-				"DISAGREES: part of the overhang stays up."),
+				"opening has nothing beyond it. Expected: STANDS — the panel hanging off the jamb "
+				"cantilevers as a bonded deep beam, easily under both its characteristic and mean "
+				"bond strength. THE MODEL CURRENTLY DISAGREES: it still routes load only downward, "
+				"so it drops the unsupported panel instead of letting it cantilever."),
 			ScenariosWallCoveredCourses, ScenariosWallStandardCells,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall10Cuts },
@@ -495,9 +498,12 @@ namespace DestructionScenarios
 
 		{ TEXT("wall-19"), TEXT("Lvl_Wall19"), TEXT("Bottom course out under half the wall"),
 			TEXT("Six bricks of the grounded course go, taking the footing out from under the "
-				"left-hand half of the wall. Expected: COLLAPSE — what has no path to the earth "
-				"comes down, and the half that still has its footing does not. THE MODEL CURRENTLY "
-				"DISAGREES: it leaves a wedge of the unsupported masonry standing."),
+				"left-hand half of the wall. Expected: STANDS — the wedge of masonry left without "
+				"a footing cantilevers off the half that still has one, over more than a metre, the "
+				"way a bay of underpinning relies on the wall above bridging it; the hand check straddles "
+				"the published strength bases, the closest call in the set. THE MODEL CURRENTLY "
+				"DISAGREES: it still routes load only downward, so it drops the wedge instead of "
+				"letting it cantilever."),
 			10, ScenariosWallStandardCells,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall19Cuts },

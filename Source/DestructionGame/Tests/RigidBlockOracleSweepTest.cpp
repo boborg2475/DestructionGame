@@ -1230,18 +1230,28 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  *
  * WHAT THE MEASUREMENTS SAID ONCE CLASSIFIED, which is the part a table cannot carry:
  *
- *   - THE ORACLE'S ORDERING AGREES WITH THE CATALOGUE'S VERDICTS EVEN WHERE ITS
- *     THRESHOLD DOES NOT. The four rows the catalogue does not rule STANDS read the four
- *     LOWEST lambda* of the fifteen wall fixtures measured — 19 at 12.38, 10 at 35.82,
- *     9 at 36.56, 20 at 82.63 — and the next lowest is wall-12 at 89.12. A clean
- *     separation at ~85 with nothing in between: the LP ranks the human rulings
- *     correctly and simply puts the collapse line somewhere else. No separate assertion
- *     pins the ordering because every row's window is tight enough that a reorder cannot
- *     happen without a window failing first.
- *   - FOUR ROWS NEED A USER RULING and each says so in its own mechanism text, loudly:
- *     9, 10, 19 (catalogue COLLAPSE) and 20 (catalogue LOCAL LOSS of two NAMED bricks).
- *     Pinned exactly as they stand, on the wall-08 precedent — the pin records the
- *     outlier state, the ruling resolves it, and the two are separate acts.
+ *   - THE ORACLE'S ORDERING AGREED WITH THE CATALOGUE'S VERDICTS EVEN WHERE ITS
+ *     THRESHOLD DID NOT, AND THE 2026-08-12 RULINGS THEN FOLLOWED THE ORDERING. As
+ *     measured, the four rows the catalogue did not rule STANDS read the four LOWEST
+ *     lambda* of the fifteen wall fixtures — 19 at 12.38, 10 at 35.82, 9 at 36.56, 20 at
+ *     82.63 — and the next lowest is wall-12 at 89.12: a clean separation at ~85 with
+ *     nothing in between, so the LP ranked the human rulings correctly and simply put the
+ *     collapse line somewhere else. THREE OF THOSE FOUR HAVE SINCE BEEN RE-RULED TO
+ *     STAND, so the ordering is no longer a ranking of verdicts; what survives is that
+ *     the four fixtures the catalogue found hardest are still the four the LP prices
+ *     lowest, which is the cross-method agreement the rulings rested on. No separate
+ *     assertion pins the ordering because every row's window is tight enough that a
+ *     reorder cannot happen without a window failing first.
+ *   - THE FOUR ROWS THAT NEEDED A USER RULING WERE ALL RULED ON 2026-08-12, and each
+ *     records its own outcome in its mechanism text: 9, 10 and 19 re-ruled from COLLAPSE
+ *     to STANDS, 20 confirmed as it stood. The wall-08 precedent held throughout — the
+ *     pin records the outlier state, the ruling resolves it, and the two are separate
+ *     acts, so not one lambda* window or relation enum moved with the rulings.
+ *   - AND THE RULINGS SPLIT THE ACCEPTANCE SET IN A WAY IT HAD NOT BEEN SPLIT BEFORE.
+ *     Case 9's re-ruling handed its row to the model and it went green; cases 10 and 19
+ *     stayed red with the SIGN REVERSED — the catalogue now says they stand and
+ *     production drops 12 and 34. Those are the suite's first rows where a STANDS verdict
+ *     is the thing the model fails.
  *   - TWO PAIRS ARE PINNED AS CROSS-ROW IDENTITIES rather than as two windows: 15/16
  *     (the LP reads the superimposed-load pair as the SAME NUMBER) and the free-end
  *     height ladder in its own test below. See CheckSameLambda for why an identity is a
@@ -1252,8 +1262,11 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  *     here and nowhere else in the suite — the acceptance rows count what came down, not
  *     what broke — and it says the disagreement with the LP on those two rows is about a
  *     missing mechanism (nothing routes load sideways or upward) rather than about
- *     strength. wall-20 is the opposite and its text says so: one pass, worst reading
- *     42.71, a joint genuinely 42x over capacity.
+ *     strength. THAT ZERO IS WHAT DECIDED THE 2026-08-12 RULINGS ON BOTH: a router with
+ *     nowhere to send the load is not a third opinion about masonry, so those two
+ *     "collapses" were never evidence against the LP. wall-20 is the opposite and its
+ *     text says so: one pass, worst reading 42.71, a joint genuinely 42x over capacity —
+ *     which is exactly why its verdict was CONFIRMED rather than moved.
  *   - THE STACK-BOND PAIR SEPARATES 36.75x IN PRODUCTION (0.040033 with a brick out
  *     against 0.0010893 intact) and 1.41x in the LP. Deliberately NOT pinned as a ratio:
  *     the stack-bond family is where production carries a standing deliberate red
@@ -1369,29 +1382,44 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		ERelation::AgreeStands, 918.04511, 918.04695, 0, 0 });
 
 	/*
-	 * ============================ FLAGGED FOR A USER RULING ============================
-	 * Rows 10, 19, 9 and 20 are pinned EXACTLY AS THEY STAND and resolve nothing. The
-	 * wall-08 precedent (the row above, and DESIGN §8's 2026-08-11 entry) is the whole
-	 * procedure: the sweep records the three-way state, the user rules, and the pin then
-	 * moves in the slice that carries the ruling. Do NOT flip a relation here to make a
-	 * catalogue verdict look agreed with — the relation enum is oracle-vs-PRODUCTION by
-	 * construction and has never claimed to speak for the catalogue.
+	 * ================== THE FOUR FLAGGED ROWS, ALL RULED ON 2026-08-12 ==================
+	 * Rows 10, 19, 9 and 20 carried a FLAGGED FOR A RULING banner from the 2026-08-12
+	 * classification slice until the user ruled on them the same day. The banners retire
+	 * here; the measurements do not move, and neither does a single relation enum — every
+	 * one of these rows is oracle-vs-PRODUCTION by construction and none of them ever
+	 * spoke for the catalogue. What the rulings changed is what the mechanism texts have
+	 * to say, exactly as the wall-08 precedent above did:
 	 *
-	 * RECONCILING THE HAND FIGURES WITH LAMBDA*, so nobody reads them as the same check:
-	 * the hand arithmetic in these rows is a TENSION-PLANE ELASTIC check (bending stress
-	 * on a vertical crack plane vs flexural strength) — the same kind of answer
-	 * production computes, which is why the hand figures and production's readings agree
-	 * within the routing. Lambda* is a different question: the limit theorem finds the
-	 * best ADMISSIBLE COMPRESSION PATH, which for these fixtures needs almost no tension
-	 * at all — that is why lambda* runs 14-32x above the hand figures' implied factors,
-	 * a gap the declared slants (x3 plastic, x6 strength basis) do not cover and are not
-	 * meant to. The hand checks corroborate PRODUCTION's number; lambda* answers whether
-	 * any equilibrium exists. A ruling weighs both, it does not average them.
+	 *     wall-09   COLLAPSE -> STANDS   the measurement moved the catalogue, and the
+	 *                                    model agrees, so the acceptance row went GREEN
+	 *     wall-10   COLLAPSE -> STANDS   the measurement moved the catalogue, and the
+	 *     wall-19   COLLAPSE -> STANDS   model does NOT agree — both stay red in a NEW
+	 *                                    direction (expected to stand, 12 and 34 dropped)
+	 *     wall-20   LOCAL LOSS, KEPT     the one ruling that CONFIRMED a row rather than
+	 *                                    moving it; lambda* has no local vocabulary and
+	 *                                    the measurement could not reach the question
+	 *
+	 * RECONCILING THE HAND FIGURES WITH LAMBDA*, so nobody reads them as the same check —
+	 * and this is what the rulings weighed: the hand arithmetic in these rows is a
+	 * TENSION-PLANE ELASTIC check (bending stress on a vertical crack plane vs flexural
+	 * strength) — the same kind of answer production computes, which is why the hand
+	 * figures and production's readings agree within the routing. Lambda* is a different
+	 * question: the limit theorem finds the best ADMISSIBLE COMPRESSION PATH, which for
+	 * these fixtures needs almost no tension at all — that is why lambda* runs 14-32x
+	 * above the hand figures' implied factors, a gap the declared slants (x3 plastic, x6
+	 * strength basis) do not cover and are not meant to. The hand checks corroborate
+	 * PRODUCTION's number; lambda* answers whether any equilibrium exists. A ruling weighs
+	 * both, it does not average them — and on 9, 10 and 19 what tipped all three was that
+	 * the hand check ALSO acquitted the fixture on the strength basis the rulings are
+	 * argued on, so lambda* was confirming rather than outvoting.
 	 * ==================================================================================
 	 */
 
 	Rows.Add({ TEXT("wall-10 opening at a free end, no abutment"),
-		TEXT("FLAGGED FOR A RULING. Catalogue COLLAPSE; production drops 12, of which 3 ")
+		TEXT("THIS MEASUREMENT IS WHAT MOVED THE CATALOGUE: case 10 was re-ruled from ")
+		TEXT("COLLAPSE to STANDS on 2026-08-12, and unlike case 8 the model does NOT ")
+		TEXT("follow — the acceptance row stays red in the inverted direction, expected to ")
+		TEXT("stand and dropping 12. Production drops those 12, of which 3 ")
 		TEXT("are STRANDED (unroutable, not unheld — the absent cycle rule, DESIGN §5.1); ")
 		TEXT("the LP stands it at 35.82x. The panel over the opening is a 3.75-cell ")
 		TEXT("(84 cm) cantilever 8 courses (60 cm) deep off a single jamb: 8 x 3.75 = 30 ")
@@ -1399,27 +1427,38 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("t*D^2/6 = 6150 cm^3 that is 0.055 MPa — 0.55x characteristic f_xk1 (0.10) ")
 		TEXT("and 0.14x of f_xk2 (0.40) on a STRAIGHT vertical plane, and the real crack path ")
 		TEXT("is a toothed staircase carrying bed-joint cohesion the plane cannot see. ")
-		TEXT("Same mechanism family as the 2026-08-06 free-end ruling, scaled up. AND ")
+		TEXT("Same mechanism family as the 2026-08-06 free-end ruling, scaled up to 3.75 ")
+		TEXT("cells, which is what the ruling credited. AND ")
 		TEXT("PRODUCTION BREAKS NOTHING TO GET HERE: 0 cascade passes at a worst reading ")
 		TEXT("of 0.300, so all 12 are pieces the downward-only router could not route, ")
-		TEXT("not joints that gave — its verdict is an absent mechanism, not a strength ")
-		TEXT("finding, which is the sharpest reason the LP disagrees"),
+		TEXT("not joints that gave — its verdict is an ABSENT MECHANISM, not a strength ")
+		TEXT("finding, and that is what decided the ruling: a router with nowhere to send ")
+		TEXT("the load is not a third opinion about masonry"),
 		Scenario(TEXT("wall-10")),
 		ERelation::OracleStandsProductionFalls, 35.81719, 35.81727, 12, 3 });
 
 	Rows.Add({ TEXT("wall-19 bottom course out under half the wall"),
-		TEXT("FLAGGED FOR A RULING, and the LOWEST lambda* of the fifteen walls (12.38x) ")
-		TEXT("— still above 1. Catalogue COLLAPSE; production drops 34 with 6 STRANDED. ")
-		TEXT("5.75 cells (129 cm) of base gone at the wall's END, so the 9 courses over ")
-		TEXT("it CANTILEVER rather than span: 9 x 5.75 = 52 brick weights = 1387 N at a ")
-		TEXT("64.5 cm lever is M = 895 N*m, over t*D^2/6 = 7784 cm^3 that is 0.115 MPa ")
-		TEXT("— 1.15x characteristic f_xk1 (0.10) but ")
-		TEXT("0.29x of f_xk2's 0.40, and f_xk2 is what a toothed vertical crack path ")
-		TEXT("costs in a real wall. The two strengths straddle the verdict, which is ")
-		TEXT("exactly why this needs a ruling rather than an arithmetic tweak. Production ")
+		TEXT("THIS MEASUREMENT IS WHAT MOVED THE CATALOGUE, and it is the CLOSEST CALL of ")
+		TEXT("the four ruled on 2026-08-12: case 19 re-ruled COLLAPSE to STANDS knowingly, ")
+		TEXT("with the model still dropping 34 so the acceptance row stays red in the ")
+		TEXT("inverted direction. The LOWEST lambda* of the fifteen walls (12.38x) ")
+		TEXT("— still above 1. Production drops 34 with 6 STRANDED. ")
+		TEXT("6.0 cells (135 cm) of base gone at the wall's END — course 0 is an EVEN course ")
+		TEXT("of whole bricks, so the cut takes cells 0..5, six of them, and the run prints ")
+		TEXT("cut 6 — so the 9 courses over ")
+		TEXT("it CANTILEVER rather than span: 9 x 6 = 54 brick weights = 1440 N at a ")
+		TEXT("67.5 cm lever is M = 972 N*m, over t*D^2/6 = 7784 cm^3 that is 0.125 MPa ")
+		TEXT("— 1.25x characteristic f_xk1 (0.10) but ")
+		TEXT("0.31x of f_xk2's 0.40 and ~0.21x of the mean basis, and f_xk2 is what a ")
+		TEXT("toothed vertical crack path ")
+		TEXT("costs in a real wall. The two strengths STRADDLE the verdict, so this was a ")
+		TEXT("judgement and is recorded as one: it is an END CANTILEVER with no second ")
+		TEXT("support to redistribute to, against the practice anchor of ~1 m underpinning ")
+		TEXT("bays that a bonded wall is expected to bridge — and 135 cm is longer than ")
+		TEXT("that, which the ruling knows. Production ")
 		TEXT("breaks NOTHING to drop 34 either (0 cascade passes, worst reading 0.318) — ")
 		TEXT("with the base gone a downward-only router has nowhere to send the load, so ")
-		TEXT("both red rows in this file report an absent mechanism as a collapse"),
+		TEXT("this row and wall-10 both report an absent mechanism as a collapse"),
 		Scenario(TEXT("wall-19")),
 		ERelation::OracleStandsProductionFalls, 12.382471, 12.382495, 34, 6 });
 
@@ -1468,7 +1507,9 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		ERelation::AgreeStands, 868.62287, 868.62461, 0, 0 });
 
 	Rows.Add({ TEXT("wall-20 staircase void"),
-		TEXT("FLAGGED FOR A RULING, and the row where the vocabularies do not meet: the ")
+		TEXT("THE RULING THAT CONFIRMED A ROW RATHER THAN MOVING IT: examined on 2026-08-12 ")
+		TEXT("beside 9, 10 and 19 — which all moved — and ruled UNCHANGED, verdict, named ")
+		TEXT("teeth, pins and doubt alike. This is the row where the vocabularies do not meet: the ")
 		TEXT("catalogue rules a LOCAL LOSS of two NAMED teeth (course 3 cell 4.5, course ")
 		TEXT("5 cell 2.5), production drops 9, and a GLOBAL lambda* has no local ")
 		TEXT("vocabulary at all — 82.63x says every block INCLUDING both teeth has an ")
@@ -1477,7 +1518,8 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("105.0625 cm^2) is 3434 N against a brick's 2667 uu = 26.67 N, about 129x, ")
 		TEXT("so the teeth are not what governs 82.63 and the LP is not merely tolerating ")
 		TEXT("them. CURRENT_STATE's standing doubt (true count more than 2, fewer than 9) ")
-		TEXT("is untouched by this measurement and stays open. Unlike rows 10 and 19 this ")
+		TEXT("is untouched by this measurement, stays open, and waits on equilibrium ")
+		TEXT("promotion rather than on another ruling. Unlike rows 10 and 19 this ")
 		TEXT("one IS a strength verdict in production: worst reading 42.71, one cascade ")
 		TEXT("pass, i.e. a joint 42x over capacity — the raking cut leaves teeth hanging ")
 		TEXT("where the two rows above merely leave pieces unrouted"),
@@ -1493,19 +1535,26 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		ERelation::AgreeStands, 128.11813, 128.11839, 0, 0 });
 
 	Rows.Add({ TEXT("wall-09 ten-brick opening, eight courses over"),
-		TEXT("FLAGGED FOR A RULING, and the least stable relation in this file: ")
-		TEXT("catalogue COLLAPSE, production STANDS at worst reading 0.985 — ONE RETUNE ")
+		TEXT("THIS MEASUREMENT IS WHAT MOVED THE CATALOGUE: case 9 was re-ruled from ")
+		TEXT("COLLAPSE to STANDS on 2026-08-12 and, alone of the three moved that day, ")
+		TEXT("the MODEL AGREES — the acceptance row went green and left the known-red ")
+		TEXT("list. Still the least stable relation in this file: ")
+		TEXT("production STANDS at worst reading 0.985 — ONE RETUNE ")
 		TEXT("FROM FLAPPING, and the day it crosses 1.0 this row's AgreeStands becomes ")
-		TEXT("AgreeFalls with nothing about the physics having changed — while the LP ")
+		TEXT("AgreeFalls with nothing about the physics having changed, which is now ")
+		TEXT("watched from the production side too by Acceptance.Wall.SpanIsReadInThe")
+		TEXT("JointNotInTheOutcome — while the LP ")
 		TEXT("stands it at 36.56x. By hand: a 9.5-cell (214 cm) opening under 8 courses ")
 		TEXT("(60 cm) of cover is a deep beam at span/depth 3.6 carrying 8 x 9.5 = 76 ")
 		TEXT("brick weights = 2027 N, W*L/8 = 542 N*m over t*D^2/6 = 6150 cm^3 = 0.088 ")
-		TEXT("MPa — 0.88x characteristic f_xk1 (0.10) and 0.22x of f_xk2 (0.40). That ")
+		TEXT("MPa — 0.88x characteristic f_xk1 (0.10), 0.22x of f_xk2 (0.40) and ~0.15x ")
+		TEXT("of the mean basis. That ")
 		TEXT("hand figure and production's 0.985 are the same answer to within the ")
-		TEXT("routing, which is why this row sits where it does. The catalogue's COLLAPSE ")
-		TEXT("came from the published arching ")
-		TEXT("gate (no room for a 45 deg triangle over 2.1 m), which DESIGN §8's standing ")
-		TEXT("instruction retired for cases 11 and 8"),
+		TEXT("routing — two methods agreeing against one, which is what decided it. The ")
+		TEXT("catalogue's COLLAPSE came from the published arching ")
+		TEXT("gate (no room for a 45 deg triangle over 2.1 m), and this is the THIRD ")
+		TEXT("verdict that gate has lost after cases 11 and 8: the set now has no case ")
+		TEXT("refusing a span for want of rise"),
 		Scenario(TEXT("wall-09")),
 		ERelation::AgreeStands, 36.56389, 36.56397, 0, 0 });
 
@@ -1522,8 +1571,10 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 	 * blocks), so the cross-fixture comparison is ordinal at best. What survives all of
 	 * that is the useful part: a method with NO router reproduces the direction, so the
 	 * direction alone is uninformative about the router defect. That does not make
-	 * production's 1.23x right. Whether §8's note and the retired MatchedPairs row
-	 * should move on this is a USER call, flagged.
+	 * production's 1.23x right. Whether §8's note should move on this is a USER call, and
+	 * it is still open. The MatchedPairs row it mentions is doubly moot as of 2026-08-12:
+	 * that whole test retired when cases 9 and 10 were re-ruled and its last two pairs
+	 * lost their separation.
 	 */
 	Rows.Add({ TEXT("wall-07 four-cell opening, eight courses over"),
 		TEXT("296.22x against wall-08's 324.73x: the LP prices eight courses of cover ")
