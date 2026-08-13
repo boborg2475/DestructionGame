@@ -97,13 +97,17 @@
  * factorisation (left-looking, partial pivoting by magnitude with lowest-index ties)
  * plus a product-form eta file, REFACTORISED FROM THE ORIGINAL CLEAN DATA on a fixed
  * cadence — which both bounds the iteration cost and RESETS accumulated error, the
- * property the dense method structurally lacked. Pricing is Dantzig (most negative
- * exact reduced cost from a fresh BTRAN each iteration, lowest index on ties) with a
- * largest-pivot ratio tie-break, falling back to Bland's rule for the ENTERING choice
- * only after a 500-pivot degenerate streak, over row and column orders fixed by the
- * input arrays. Every tie-break is index-based — no randomness, no time, no hashing —
- * so the same problem gives bit-identical lambda* on every run, which is what lets a
- * fixture-sweep diff be re-run and trusted. Because the fallback's LEAVING choice is
+ * property the dense method structurally lacked. Pricing is a CANDIDATE LIST over a
+ * rotating window (a bounded slice of columns priced per refill, the best few by the
+ * static steepest-edge ratio d_j / ||A_j|| queued, every queued candidate re-priced
+ * against the current duals before it may be chosen, and a full sweep of every column
+ * required before optimality may be claimed — exact reduced costs from a fresh BTRAN
+ * throughout, the ratio ranking them and never deciding candidacy) with a largest-pivot
+ * tie-break in the ratio test, falling back to Bland's rule over a FULL scan for the
+ * ENTERING choice only after a 500-pivot degenerate streak, over row and column orders
+ * fixed by the input arrays. Every tie-break is index-based — no randomness, no time,
+ * no hashing — so the same problem gives bit-identical lambda* on every run, which is
+ * what lets a fixture-sweep diff be re-run and trusted. Because the fallback's LEAVING choice is
  * not Bland's, the classical no-cycling theorem does NOT apply; termination is
  * guaranteed by the fail-closed iteration cap, which reports failure rather than a
  * number. Do not remove the cap as "redundant" — it is the termination proof. A
@@ -112,8 +116,9 @@
  * and the dense solver's recorded basic-artificial residue is contained by that pass
  * together with the post-solve verification gate, which fails closed rather than
  * certifying a basis it cannot check — not by any discipline inside phase 2 itself,
- * since pricing there scans every real column exactly and complementary slackness
- * certifies the optimum regardless of what a zero-value artificial sits on.
+ * since pricing there prices every real column exactly against the final duals before
+ * it may stop, and complementary slackness certifies the optimum regardless of what a
+ * zero-value artificial sits on.
  *
  * FAIL CLOSED, EVERYWHERE. A problem the oracle cannot validate — NaN anywhere, a
  * non-unit normal, a nonsense index, a structure whose geometry is incomplete — returns
@@ -255,6 +260,35 @@ namespace RigidBlockOracle
 
 		/** Simplex pivots taken, for diagnostics and the determinism assertions. */
 		int32 SimplexIterations = 0;
+
+		/**
+		 * HOW MUCH PRICING WORK THE SOLVE COST: one count per column evaluated against a
+		 * dual vector — a reduced cost c_j - y.A_j in phase 1 or 2, or a tableau entry
+		 * rho.A_j in the artificial pivot-out pass. It WAS the oracle's dominant cost at
+		 * wall scale while pricing was full Dantzig (every column, every iteration:
+		 * pivots x columns), which is why it is a measured OUTPUT rather than a comment:
+		 * DestructionGame.Oracle.RigidBlock.PricingCost budgets it, and the budget is what
+		 * a pricing change has to satisfy while reproducing the same lambda*.
+		 *
+		 * Deterministic like everything else here — same problem, same count — and int64
+		 * because a 30-course wall (~34k columns, tens of thousands of pivots) overflows
+		 * int32 by orders of magnitude. Counts up to the last checkpoint on a refusal.
+		 */
+		int64 PricingColumnScans = 0;
+
+		/**
+		 * HOW OFTEN THE ANTI-CYCLING FALLBACK ENGAGED: one count per simplex iteration
+		 * entered with the Bland rule in force, i.e. after a run of 500 zero-length steps
+		 * has made the partial pricer stand aside. Instrumentation only — nothing branches
+		 * on it — and it exists so "the fallback never fires on a healthy fixture" is
+		 * OBSERVED by a test rather than assumed from reading the code. The two PricingCost
+		 * fixtures assert it is zero; no fixture in the suite is known to drive the branch
+		 * at all, so its own behaviour is exercised by nothing and that gap is recorded in
+		 * CURRENT_STATE rather than hidden here.
+		 *
+		 * Deterministic like every other count. int32 is ample: MaxPivots bounds it.
+		 */
+		int32 BlandDegenerateEntries = 0;
 
 		/** Why the oracle refused, when it did. Empty on an answered result. */
 		FString WhyNot;

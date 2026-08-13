@@ -68,6 +68,30 @@ namespace RigidBlockOracle
 		 */
 		constexpr double UncappedStrengthMPa = 1.0e9;
 
+		/*
+		 * PARTIAL PRICING: how many columns one refill window prices, and how many
+		 * candidates it keeps. Full Dantzig prices every non-basic column every
+		 * iteration, which is pivots x columns and is what left the 30-course walls
+		 * pivoting for tens of minutes; the window prices a bounded slice instead and
+		 * the queue spreads that slice's cost over the iterations that follow it.
+		 *
+		 * WHAT THE WINDOW ACTUALLY COSTS, measured rather than assumed. A refill that
+		 * finds nothing takes the NEXT window and keeps going, so what a refill really
+		 * spends is the distance from the cursor to the next attractive column, rounded
+		 * up to a window — the size buys a bigger pool for the ranking to choose from,
+		 * and pays for it in the rounding. Measured on the 8x10 wall row of
+		 * Oracle.RigidBlock.PricingCost, whose budget is the reason this exists:
+		 *
+		 *     384 -> 2,016 pivots, 538,200 scans      (chosen: budgets are 4,000/1,000,000)
+		 *     768 -> 1,836 pivots, 651,203 scans
+		 *
+		 * — a wider window really does shorten the pivot path, and really does cost more
+		 * than it saves in scans, which is why the scan-heavy end of the trade is the one
+		 * taken here. Both answers are the same lambda* to the last bit.
+		 */
+		constexpr int32 PricingWindowCols = 384;
+		constexpr int32 PricingQueueDepth = 12;
+
 		/** One structural row before slacks: sparse coefficients over structural columns. */
 		struct FAssemblyRow
 		{
@@ -215,6 +239,13 @@ namespace RigidBlockOracle
 			TArray<int32> ColRow;
 			TArray<double> ColVal;
 
+			/**
+			 * Per column, sqrt(1 + sum of its squared coefficients) — the static
+			 * steepest-edge weight the entering choice ranks by. Constant data like
+			 * everything else here: computed once from the untouched matrix.
+			 */
+			TArray<double> ColNorm;
+
 			/** Oriented right-hand side, non-negative by construction. */
 			TArray<double> Rhs;
 
@@ -359,6 +390,21 @@ namespace RigidBlockOracle
 					Out.ColRow[At] = RowIndex;
 					Out.ColVal[At] = 1.0;
 				}
+			}
+
+			/* The static pricing weights, off the finished matrix and nothing else. */
+			Out.ColNorm.SetNum(Out.NumCols);
+
+			for (int32 Col = 0; Col < Out.NumCols; ++Col)
+			{
+				double SumOfSquares = 0.0;
+
+				for (int32 At = Out.ColStart[Col]; At < Out.ColStart[Col + 1]; ++At)
+				{
+					SumOfSquares += Out.ColVal[At] * Out.ColVal[At];
+				}
+
+				Out.ColNorm[Col] = FMath::Sqrt(1.0 + SumOfSquares);
 			}
 		}
 
@@ -707,6 +753,20 @@ namespace RigidBlockOracle
 			TArray<FEta> Etas;
 			int32 PivotsSinceRefactor = 0;
 
+			/*
+			 * Instrumentation only — nothing branches on it. One count per column priced
+			 * against a dual vector, wherever that happens; FOracleResult's field carries
+			 * the reasoning about why the number is worth reporting.
+			 */
+			int64 PricingColumnScans = 0;
+
+			/*
+			 * Instrumentation only — nothing branches on it. One count per iteration
+			 * entered with the Bland fallback in force; FOracleResult's field carries the
+			 * reasoning about why an unfired branch is worth counting.
+			 */
+			int32 BlandDegenerateEntries = 0;
+
 			/* Scratch buffers, reused so the hot loops never allocate. */
 			TArray<double> ScratchOrig;
 			TArray<double> ScratchSlot;
@@ -883,19 +943,250 @@ namespace RigidBlockOracle
 		};
 
 		/**
+		 * THE ENTERING CHOICE: candidate-list partial pricing over a rotating window.
+		 *
+		 * A refill prices one window of PricingWindowCols consecutive columns — starting
+		 * where the last refill stopped and wrapping, so the window position is pure
+		 * index arithmetic over the input column order — and keeps the PricingQueueDepth
+		 * best-ranked of them. Later iterations re-price only what is queued, which is a
+		 * dozen dot products instead of the whole non-basic set.
+		 *
+		 * THE QUEUE IS A CANDIDATE LIST, NOT A DECISION. Every entry is re-priced against
+		 * the CURRENT duals before it can be chosen, and one whose reduced cost has risen
+		 * to non-negative is discarded rather than pivoted on: a stale price is exactly
+		 * how a candidate list turns into a wrong pivot. The choice among the survivors is
+		 * the BEST of them (earliest queue position on exact ties), never
+		 * first-past-the-tolerance — that shortcut was measured costing 44x the pivots,
+		 * which is the failure the pivot budget beside the scan budget exists to refuse.
+		 *
+		 * BEST MEANS THE STATIC STEEPEST-EDGE RATIO d_j / ||A_j||, NOT d_j ALONE, and that
+		 * is the difference between passing the pivot budget and missing it by half. A
+		 * reduced cost says how fast the objective falls per unit of the entering
+		 * variable; dividing by the column's norm asks how fast it falls per unit of
+		 * MOVEMENT, which is what actually shortens a pivot path (Forrest-Goldfarb; the
+		 * static form is the cheap approximation, precomputed once in FStandardForm and
+		 * never updated, so it costs one array and no per-iteration work). Measured on the
+		 * PricingCost wall row, the same 384-column window either way: ranked by the raw
+		 * reduced cost it took 6,128 pivots and 1,030,437 scans against full Dantzig's
+		 * 1,942 and 3,131,528 — cheap scans bought with a grinding path, exactly what the
+		 * pivot budget beside the scan budget refuses — and ranked by the ratio it takes
+		 * 2,016 pivots and 538,200 scans.
+		 *
+		 * The ratio is a RANKING only: candidacy stays the raw `d_j < -CostTol`, because
+		 * optimality is a statement about reduced costs and dividing by a norm must never
+		 * be able to promote a column across the tolerance.
+		 *
+		 * THE FULL SCAN IS PART OF THE ANSWER, NOT A FALLBACK FOR TIDINESS. Optimality is
+		 * the claim that NO column has a negative reduced cost, and a window has seen only
+		 * a slice; so a refill that finds nothing keeps taking windows until it has priced
+		 * every column against the current duals, and only that exhausted sweep may return
+		 * "optimal". Those scans are counted like every other.
+		 *
+		 * WITH THE BLAND FALLBACK IT STANDS ASIDE ENTIRELY. After a long degenerate streak
+		 * the entering rule becomes lowest-index-negative, which is the anti-cycling
+		 * guarantee and is a statement about ALL columns; a window could offer the lowest
+		 * index of a slice and cycle happily. So the fallback prices the full set in index
+		 * order, takes the first negative, and empties the queue — the window resumes from
+		 * wherever it was once the streak breaks.
+		 *
+		 * DETERMINISM. Cursor and window are index arithmetic, the queue is filled in scan
+		 * order and ordered by value with position breaking ties, and nothing here reads a
+		 * hash, a pointer or a clock. Same problem, same pivot path, same scan count.
+		 */
+		struct FPartialPricer
+		{
+			struct FCandidate
+			{
+				int32 Col = INDEX_NONE;
+
+				/** The RANKING value: the reduced cost over the column's static norm. */
+				double Weighted = 0.0;
+			};
+
+			/** Where the next refill starts. Advanced by exactly what it scanned. */
+			int32 Cursor = 0;
+
+			/** Best-weighted first, at most PricingQueueDepth deep. */
+			TArray<FCandidate> Queue;
+
+			/**
+			 * Offer a freshly priced column to the queue. The caller has already applied
+			 * the negativity test, which is written as `Reduced < -CostTol` so a NaN
+			 * reduced cost is never offered at all.
+			 */
+			void Offer(int32 Col, double Weighted)
+			{
+				int32 At = 0;
+
+				while (At < Queue.Num() && Queue[At].Weighted <= Weighted)
+				{
+					++At;
+				}
+
+				if (At >= PricingQueueDepth)
+				{
+					return;
+				}
+
+				Queue.Insert({ Col, Weighted }, At);
+
+				if (Queue.Num() > PricingQueueDepth)
+				{
+					Queue.Pop();
+				}
+			}
+
+			/**
+			 * The entering column, or INDEX_NONE when every column in [0, AllowedCols)
+			 * has been priced against the current duals and none of them prices negative.
+			 */
+			int32 ChooseEntering(
+				FRevisedState& S, const TArray<double>& Cost, int32 AllowedCols, bool bBland)
+			{
+				if (AllowedCols <= 0)
+				{
+					return INDEX_NONE;
+				}
+
+				if (bBland)
+				{
+					Queue.Reset();
+
+					for (int32 Col = 0; Col < AllowedCols; ++Col)
+					{
+						if (S.bIsBasic[Col])
+						{
+							continue;
+						}
+
+						const double Reduced = S.ReducedCost(Col, Cost);
+						++S.PricingColumnScans;
+
+						if (Reduced < -CostTol)
+						{
+							return Col;
+						}
+					}
+
+					return INDEX_NONE;
+				}
+
+				/* Re-price what is queued; a candidate that went stale is dropped. */
+				int32 Kept = 0;
+				int32 Best = INDEX_NONE;
+				double BestWeighted = 0.0;
+
+				for (int32 Entry = 0; Entry < Queue.Num(); ++Entry)
+				{
+					const int32 Col = Queue[Entry].Col;
+
+					if (S.bIsBasic[Col])
+					{
+						continue;
+					}
+
+					const double Reduced = S.ReducedCost(Col, Cost);
+					++S.PricingColumnScans;
+
+					if (!(Reduced < -CostTol))
+					{
+						continue;
+					}
+
+					const double Weighted = Reduced / S.Form->ColNorm[Col];
+
+					Queue[Kept].Col = Col;
+					Queue[Kept].Weighted = Weighted;
+					++Kept;
+
+					if (Best == INDEX_NONE || Weighted < BestWeighted)
+					{
+						Best = Col;
+						BestWeighted = Weighted;
+					}
+				}
+
+				Queue.SetNum(Kept, EAllowShrinking::No);
+
+				if (Best != INDEX_NONE)
+				{
+					return Best;
+				}
+
+				/* The queue is spent: refill from the window, widening until it bites. */
+				if (Cursor >= AllowedCols)
+				{
+					Cursor = 0;
+				}
+
+				int32 Scanned = 0;
+
+				while (Scanned < AllowedCols)
+				{
+					const int32 Take = FMath::Min(PricingWindowCols, AllowedCols - Scanned);
+
+					for (int32 Step = 0; Step < Take; ++Step)
+					{
+						int32 Col = Cursor + Scanned + Step;
+
+						if (Col >= AllowedCols)
+						{
+							Col -= AllowedCols;
+						}
+
+						if (S.bIsBasic[Col])
+						{
+							continue;
+						}
+
+						const double Reduced = S.ReducedCost(Col, Cost);
+						++S.PricingColumnScans;
+
+						if (Reduced < -CostTol)
+						{
+							Offer(Col, Reduced / S.Form->ColNorm[Col]);
+						}
+					}
+
+					Scanned += Take;
+
+					if (Queue.Num() > 0)
+					{
+						break;
+					}
+				}
+
+				Cursor += Scanned;
+
+				if (Cursor >= AllowedCols)
+				{
+					Cursor -= AllowedCols;
+				}
+
+				return Queue.Num() > 0 ? Queue[0].Col : INDEX_NONE;
+			}
+		};
+
+		/**
 		 * Minimise the given objective. Every choice below is INDEX-DETERMINISTIC — no
 		 * randomness, no hashing — so the pivot path, and therefore the last bit of
 		 * lambda*, is a pure function of the input arrays.
 		 *
-		 * The entering rule is DANTZIG (most negative reduced cost, lowest index on
-		 * ties), priced EXACTLY each iteration from a fresh BTRAN rather than from a
-		 * maintained row — the maintained row's drift was the dense solver's disease.
+		 * The entering rule is CANDIDATE-LIST PARTIAL PRICING (FPartialPricer above: the
+		 * best static steepest-edge ratio within a rotating window's queue, every queued
+		 * candidate re-priced against the current duals before it can be chosen, a full
+		 * sweep required before "optimal"), priced EXACTLY each iteration from a fresh
+		 * BTRAN rather than from a maintained row — the maintained row's drift was the
+		 * dense solver's disease.
+		 *
 		 * The ratio test breaks near-ties by the LARGEST PIVOT ELEMENT (then lowest
 		 * basic index): Bland's rule alone was measured accepting a basis 0.98% outside
 		 * the crushing envelope on the dry 8-course stack, because it happily pivots on
 		 * near-tolerance elements. Bland remains as the ANTI-CYCLING FALLBACK: after a
-		 * long streak of zero-length steps the entering rule drops to lowest-index,
-		 * which restores the termination guarantee where it is needed.
+		 * long streak of zero-length steps the entering rule drops to lowest-index over
+		 * a FULL scan — the window stands aside, because lowest-index-of-a-slice is not
+		 * Bland's rule and would not stop cycling — which restores the termination
+		 * guarantee where it is needed.
 		 */
 		ESimplexEnd RunRevisedSimplex(
 			FRevisedState& S, const TArray<double>& Cost, int32 AllowedCols,
@@ -903,6 +1194,7 @@ namespace RigidBlockOracle
 		{
 			const FStandardForm& Form = *S.Form;
 			int32 DegenerateStreak = 0;
+			FPartialPricer Pricer;
 
 			while (true)
 			{
@@ -921,6 +1213,11 @@ namespace RigidBlockOracle
 
 				const bool bBlandFallback = DegenerateStreak >= 500;
 
+				if (bBlandFallback)
+				{
+					++S.BlandDegenerateEntries;
+				}
+
 				/* Price: y solves yT B = c_B, then d_j = c_j - y . A_j, exact. */
 				S.ScratchSlot.SetNumUninitialized(Form.NumRows);
 
@@ -931,30 +1228,8 @@ namespace RigidBlockOracle
 
 				S.BtranScratchSlot(S.YRow);
 
-				int32 Entering = INDEX_NONE;
-				double MostNegative = -CostTol;
-
-				for (int32 Col = 0; Col < AllowedCols; ++Col)
-				{
-					if (S.bIsBasic[Col])
-					{
-						continue;
-					}
-
-					const double Reduced = S.ReducedCost(Col, Cost);
-
-					if (Reduced < MostNegative)
-					{
-						Entering = Col;
-
-						if (bBlandFallback)
-						{
-							break;
-						}
-
-						MostNegative = Reduced;
-					}
-				}
+				const int32 Entering =
+					Pricer.ChooseEntering(S, Cost, AllowedCols, bBlandFallback);
 
 				if (Entering == INDEX_NONE)
 				{
@@ -1368,6 +1643,8 @@ namespace RigidBlockOracle
 			const ESimplexEnd PhaseOneEnd = RunRevisedSimplex(
 				State, PhaseOneCost, Form.NumCols, Iterations);
 			Result.SimplexIterations = Iterations;
+			Result.PricingColumnScans = State.PricingColumnScans;
+			Result.BlandDegenerateEntries = State.BlandDegenerateEntries;
 
 			if (PhaseOneEnd != ESimplexEnd::Optimal)
 			{
@@ -1390,6 +1667,8 @@ namespace RigidBlockOracle
 		}
 
 		Result.SimplexIterations = Iterations;
+		Result.PricingColumnScans = State.PricingColumnScans;
+		Result.BlandDegenerateEntries = State.BlandDegenerateEntries;
 
 		/*
 		 * Pivot lingering zero-value artificials out where a real column allows it:
@@ -1438,6 +1717,8 @@ namespace RigidBlockOracle
 					Alpha += Form.ColVal[At] * State.YRow[Form.ColRow[At]];
 				}
 
+				++State.PricingColumnScans;
+
 				if (FMath::Abs(Alpha) > EnteringAbs)
 				{
 					Entering = Col;
@@ -1472,6 +1753,8 @@ namespace RigidBlockOracle
 			const ESimplexEnd PhaseTwoEnd = RunRevisedSimplex(
 				State, PhaseTwoCost, Form.ArtificialStart, Iterations);
 			Result.SimplexIterations = Iterations;
+			Result.PricingColumnScans = State.PricingColumnScans;
+			Result.BlandDegenerateEntries = State.BlandDegenerateEntries;
 
 			if (PhaseTwoEnd != ESimplexEnd::Optimal)
 			{

@@ -5,6 +5,7 @@
 #include "Core/Layout.h"
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Structure.h"
+#include "Core/WallCases.h"
 #include "Tests/RigidBlockOracle.h"
 
 #include <limits>
@@ -1121,6 +1122,439 @@ bool FRigidBlockOracleDegenerateTest::RunTest(const FString& Parameters)
 			*FString::Printf(TEXT("%s: Unanswerable, and Unanswerable is never Stands"),
 				Row.Name),
 			OutcomeOf(Result) == EOracleOutcome::Unanswerable);
+	}
+
+	return true;
+}
+
+/* ====================================================================================
+ * THE PRICING-COST SEAM — the support this file's third test needs.
+ *
+ * REOPENED, NOT A SECOND NAMESPACE: a unity build merges files into one translation
+ * unit, so every test helper in this project lives in a named namespace; reopening the
+ * file's own keeps the helpers beside the test that reads them without inventing a
+ * second name for the same file's support.
+ * ==================================================================================== */
+namespace RigidBlockOracleTestSupport
+{
+	/**
+	 * WALL-01, SHRUNK. Laid by production's OWN acceptance-wall producer — the same
+	 * DestructionWallCases::Build, flush running bond, mortared, bottom course grounded,
+	 * nothing cut — that the scenario catalogue lays wall-01 with at thirty courses and
+	 * twelve cells. Only the two integers differ, so the fixture the pricing budget is
+	 * measured on is the SHAPE the pricing change exists to make practical, not a
+	 * separate toy that happens to be big.
+	 */
+	bool BuildIntactWall(int32 Courses, int32 Cells, FStructure& Out, FString& OutWhy)
+	{
+		using namespace DestructionProfiles;
+
+		DestructionWallCases::FWallSpec Spec;
+		Spec.BrickSizeCm = FVector(BrickLengthCm, BrickWidthCm, BrickHeightCm);
+		Spec.JointThicknessCm = 1.0;
+		Spec.DensityGramsPerCubicCm = ClayDensityGramsPerCubicCm;
+		Spec.CoursesHigh = Courses;
+		Spec.Cells = Cells;
+		Spec.Bond = DestructionWallCases::EWallBond::Running;
+		Spec.Strength = GeneralPurposeMortar;
+
+		DestructionWallCases::FWallLayout Wall;
+
+		if (!DestructionWallCases::Build(Spec, Wall))
+		{
+			OutWhy = FString::Printf(
+				TEXT("the wall producer refused %d courses x %d cells"), Courses, Cells);
+			return false;
+		}
+
+		Out = MoveTemp(Wall.Layout.Structure);
+		return true;
+	}
+
+	/**
+	 * THE INTACT WALL'S lambda*, DERIVED BY HAND — and it is a closed form, not a bracket.
+	 *
+	 * Cut the wall horizontally just above the grounded bottom course. Head joints lie
+	 * WITHIN a course, so the only joints the cut crosses are that course's bed joints,
+	 * whose normals are vertical. Vertical equilibrium of everything above the cut reads
+	 *
+	 *     sum of bed normal forces = lambda * W_above, exactly,
+	 *
+	 * and every contact point is capped by crushing at f_c * Conv * A/2, which sums over
+	 * the plane to f_c * Conv * A_plane. So for ANY admissible force system
+	 *
+	 *     lambda* <= f_c * Conv * A_plane / W_above,
+	 *
+	 * an inequality no redistribution can escape. The bound is also ATTAINED here — an
+	 * intact wall can carry uniform bed compression, so nothing stops every contact
+	 * reaching its cap together — and the LP agrees with it to the last bits (measured
+	 * 1128.4443217039532 against 1128.44432170395), which is why the test asserts BOTH the
+	 * inequality and the equality. The inequality is the statics; the equality is the
+	 * measurement, and it doubles as the optimum-invariance pin.
+	 *
+	 * THE GEOMETRY, on the coordinating grid (21.5 cm brick, 1 cm joint, 22.5 cm cell
+	 * pitch, half-cell offset, ends closed flush with half bats):
+	 *
+	 *   - a full brick overlaps each of the two beneath it by 21.5 - 11.25 = 10.25 cm, so
+	 *     20.5 cm of bed per cell; the two half bats closing a flush course contribute
+	 *     10.25 cm each, exactly one more cell's worth. Every course boundary therefore
+	 *     carries Cells * 20.5 * BrickWidth of bed.
+	 *
+	 *   - A COURSE OF BATS DOES NOT WEIGH A COURSE OF BRICKS, and that 0.5% is the whole
+	 *     difference between this closed form and an answer 0.27% too high (paid for once
+	 *     while writing this): a half bat is (21.5 - 1)/2 = 10.25 cm, so two of them are
+	 *     20.5 cm of brick where the full brick they replace is 21.5. A flush odd course
+	 *     is 214 cm of masonry against an even course's 215.
+	 */
+	double IntactWallCrushLambda(int32 Courses, int32 Cells)
+	{
+		constexpr double MortarBedCm = 1.0;
+
+		const double HalfCellCm = (BrickLengthCm + MortarBedCm) / 2.0;
+		const double HalfBatLengthCm = (BrickLengthCm - MortarBedCm) / 2.0;
+
+		const double PlaneAreaSqCm =
+			double(Cells) * 2.0 * (BrickLengthCm - HalfCellCm) * BrickWidthCm;
+
+		const double EvenCourseLengthCm = double(Cells) * BrickLengthCm;
+		const double OddCourseLengthCm =
+			double(Cells - 1) * BrickLengthCm + 2.0 * HalfBatLengthCm;
+
+		double LengthAboveCm = 0.0;
+
+		for (int32 Course = 1; Course < Courses; ++Course)
+		{
+			LengthAboveCm += (Course % 2) == 0 ? EvenCourseLengthCm : OddCourseLengthCm;
+		}
+
+		/* Density-first, exactly as PieceMassKg orders it. */
+		const double WeightAboveUu = ClayDensityGramsPerCubicCm * LengthAboveCm
+			* BrickWidthCm * BrickHeightCm / 1000.0 * GravityHere;
+
+		return DestructionProfiles::GeneralPurposeMortar.CompressiveStrengthMPa
+			* ConvHere * PlaneAreaSqCm / WeightAboveUu;
+	}
+}
+
+/**
+ * PRICING COST IS A MEASURED PROPERTY OF THIS ORACLE, NOT AN IMPLEMENTATION DETAIL.
+ *
+ * WHY THIS TEST EXISTS. The sparse rewrite (2026-08-12) made the 30-course walls
+ * REPRESENTABLE — the constraint matrix is tens of MB rather than a 3.5 GB dense tableau
+ * — and they are still unanswerable, because DANTZIG PRICING SCANS EVERY COLUMN EVERY
+ * ITERATION. wall-01 is ~13k rows x ~34k columns; one pivot prices ~34k columns, so the
+ * pricing work is pivots x columns and wall-01 was still pivoting after ~45 minutes when
+ * its measuring run was cut off. The cost is not the factorisation, the FTRAN or the
+ * BTRAN: it is the scan. That is what this test measures and budgets.
+ *
+ * THE ASSERTION IS A SCAN COUNT, NOT A WALL CLOCK. FOracleResult::PricingColumnScans
+ * counts every column priced against a dual vector, and it is DETERMINISTIC — the same
+ * problem gives the same count on every machine, where seconds give a different number
+ * on every run and a flaky test is worse than none. Pivots are budgeted alongside it, so
+ * a pricing rule that scans less by pivoting more cannot pass by trading one cost for
+ * the other.
+ *
+ * WHAT A BUDGET MAY NOT DO IS BUY SPEED WITH A WRONG ANSWER, so every row also asserts:
+ *
+ *   - the DERIVED answer — the leaning stack's exact closed form, the wall's hard
+ *     crushing upper bound (both worked in this file, neither read off the solver);
+ *   - OPTIMUM INVARIANCE at 1e-9 relative against the measured lambda*. An LP's optimal
+ *     VALUE is unique and method-independent: a different pivot path is allowed, a
+ *     different optimum is not. This is the pin that makes a pricing change safe to
+ *     make, and it is deliberately three orders tighter than the sweep's windows;
+ *   - DETERMINISM, bit-identical across two solves, including the scan count itself.
+ *
+ * PROVEN TO BITE BY P2, AND THIS IS THE WHOLE REASON THOSE THREE BULLETS ARE HERE. Every
+ * correctness line on both rows passed the day it was written — the partial pricer was
+ * already correct — so until it was mutated, this test was indistinguishable from one
+ * that asserts nothing about the answer. Mutation P2 is the QUEUE-IS-THE-ANSWER bug a
+ * candidate list invites: make the refill take ONE window instead of widening until it
+ * bites (`while (Scanned < AllowedCols)` -> `while (Scanned == 0)` in
+ * FPartialPricer::ChooseEntering), so an empty window reports INDEX_NONE and the simplex
+ * believes it. Measured on this tree, 8 assertion failures across 4 tests:
+ *
+ *     PricingCost          40-course stack lambda 2.150669592637872e-23 against the
+ *                          closed form 0.034429736317305934 (1 pivot, not 39); wall
+ *                          lambda* 0 against the crushing bound 1128.4443217039529,
+ *                          reached in ZERO pivots
+ *     ValidationCatalogue  the mortared 30- and 40-course stacks, same collapse
+ *     Sweep.CorbelFamily   corbel B at 1.29e-25, which also FLIPS its pinned relation
+ *     Sweep.LeaningStack   both stack rows
+ *
+ * READ THE COST SIDE OF THAT RUN BEFORE TRUSTING ANY BUDGET: the wall's scans fell from
+ * 538,200 to 343,653 and its pivots from 2,016 to 0, so BOTH budgets below passed more
+ * comfortably than ever while the oracle answered lambda* = 0. A cost assertion cannot
+ * notice a solver that stops early — only the derived answers can, which is why the
+ * closed form and the crushing bound sit on the same rows as the budgets and not in
+ * some other test.
+ *
+ * WHERE THE FLOOR IS, so nobody chases an unreachable budget. The artificial pivot-out
+ * pass after phase 1 prices every non-artificial column once per basic artificial it
+ * clears, and a gravity-live problem starts with one basic artificial per equality row.
+ * Those scans are counted here too, and they are a ONE-OFF O(equality rows x columns)
+ * cost that per-iteration pricing cannot touch — about a ninth of the wall row's total,
+ * worked out in that row's own comment. The budget sits comfortably above the floor: it
+ * is aimed squarely at the per-iteration scan, and the pass is a separate question that
+ * the same measurement says is not the blocker at wall scale.
+ *
+ * SIZED FOR THE DEFAULT SUITE, DELIBERATELY. The wall row is the same producer as
+ * wall-01 at a height the ~30 s suite can afford; the 30-course original belongs to the
+ * opt-in sweep group, whose file owns its own rows. Raising the two integers is the
+ * whole difference, and the budget scales with the fixture, so this is a seam and not a
+ * one-off measurement.
+ *
+ * NEEDS A TICKING WORLD: NO. Producers, graph, LP — arithmetic on plain structs.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRigidBlockOraclePricingCostTest,
+	"DestructionGame.Oracle.RigidBlock.PricingCost",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRigidBlockOraclePricingCostTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionProfiles;
+	using namespace RigidBlockOracle;
+	using namespace RigidBlockOracleTestSupport;
+
+	/* ---- Row A: the 40-course leaning stack — invariance, no budget. ------------- */
+
+	/*
+	 * THE OPTIMUM-INVARIANCE ANCHOR, and deliberately NOT budgeted: at ~1.4k columns a
+	 * candidate-list scheme has little room to win and could honestly cost slightly
+	 * more, so a budget here would refuse a correct implementation for being small. Its
+	 * job is to prove the answer does not move — against the exact closed form AND
+	 * against the last bit of the measured value.
+	 */
+	{
+		const FOracleProblem Problem = LeaningStackProblem(40, 10.0, GeneralPurposeMortar);
+		const FOracleResult Result = SolveRigidBlock(Problem);
+
+		AddInfo(FString::Printf(
+			TEXT("40-course stack: lambda %.17g, %d pivots, %lld pricing scans"),
+			Result.Lambda, Result.SimplexIterations, Result.PricingColumnScans));
+
+		TestTrue(
+			*FString::Printf(TEXT("40-course stack: must answer (it said: %s)"), *Result.WhyNot),
+			Result.bAnswered);
+
+		/*
+		 * ONE ASSERTION DOING TWO JOBS, AND AT 1e-9 RATHER THAN THE CATALOGUE'S 1e-6. The
+		 * bottom-joint closed form is exact for a single-column chain, and full Dantzig
+		 * reproduces it to the last bit today (0.034429736317305934 against
+		 * 0.0344297363173059 recomputed here) — so the same line is the DERIVED answer and
+		 * the OPTIMUM-INVARIANCE pin a pricing change has to survive. An LP's optimal
+		 * value is unique and method-independent: a different pivot path is allowed, a
+		 * different optimum is not, and 1e-9 leaves seven orders of headroom over today's
+		 * agreement for the rounding a different basis brings.
+		 */
+		const double ClosedForm = StackTensionLambda(GeneralPurposeMortar, 40, 10.0);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("40-course stack: lambda* must be the hand closed form %.17g within ")
+				TEXT("1e-9 relative and was %.17g"),
+				ClosedForm, Result.Lambda),
+			FMath::Abs(Result.Lambda - ClosedForm) <= 1.0e-9 * ClosedForm);
+
+		const FOracleResult Again =
+			SolveRigidBlock(LeaningStackProblem(40, 10.0, GeneralPurposeMortar));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("40-course stack: DETERMINISM — two solves agree to the last bit and ")
+				TEXT("do the same work (%.17g/%d/%lld vs %.17g/%d/%lld)"),
+				Result.Lambda, Result.SimplexIterations, Result.PricingColumnScans,
+				Again.Lambda, Again.SimplexIterations, Again.PricingColumnScans),
+			Result.Lambda == Again.Lambda
+				&& Result.SimplexIterations == Again.SimplexIterations
+				&& Result.PricingColumnScans == Again.PricingColumnScans);
+
+		/*
+		 * THE FALLBACK IS ASSUMED NOT TO FIRE, SO SAY SO WHERE A TEST CAN READ IT. The
+		 * pricer stands aside entirely after 500 zero-length steps and the entering rule
+		 * drops to Bland's — a full index-order scan, which is both far more scanning per
+		 * iteration and, on the dense solver's measurement, a rule that happily pivots on
+		 * near-tolerance elements. Every budget and every pivot count on these two rows is
+		 * a measurement of the PARTIAL PRICER, and that claim is only true while the
+		 * fallback is dormant. Before FOracleResult::BlandDegenerateEntries existed that
+		 * was an assumption from reading the code; these two lines make it an observation.
+		 *
+		 * WHAT THIS DOES NOT DO is exercise the fallback. No fixture in the suite is known
+		 * to drive a 500-step degenerate streak, so the branch itself is covered by
+		 * nothing — logged in CURRENT_STATE rather than papered over here. A zero that has
+		 * never been anything else is a weak assertion on its own; its value is that the
+		 * day a solver change starts grinding, these rows name the reason instead of
+		 * reporting a mysteriously larger scan count.
+		 */
+		TestEqual(
+			TEXT("40-course stack: the Bland anti-cycling fallback must stay dormant — the ")
+			TEXT("scan and pivot figures on these rows measure the partial pricer, and only ")
+			TEXT("do so while it has not stood aside"),
+			Result.BlandDegenerateEntries, 0);
+	}
+
+	/* ---- Row B: the intact wall — the budgeted row. ------------------------------ */
+
+	{
+		constexpr int32 Courses = 8;
+		constexpr int32 Cells = 10;
+
+		FStructure Wall;
+		FString Why;
+
+		/* Its own statement first — a message reading what the condition writes is the
+		 * unsequenced-evaluation trap TRAPS.md records. */
+		const bool bLaid = BuildIntactWall(Courses, Cells, Wall, Why);
+
+		if (!TestTrue(
+				*FString::Printf(TEXT("wall: the producer must lay it (it said: %s)"), *Why),
+				bLaid))
+		{
+			return true;
+		}
+
+		/*
+		 * FIXTURE PRECONDITIONS. Four even courses of ten whole bricks and four flush odd
+		 * courses of nine whole bricks plus two half bats — 84 pieces. If the producer
+		 * ever lays a different wall, the budget below is a budget for a different
+		 * problem, and this is where that must be noticed.
+		 */
+		TestEqual(TEXT("wall FIXTURE: 4 x 10 whole-brick courses + 4 x 11-piece flush ")
+			TEXT("courses = 84 pieces"), Wall.NumPieces(), 84);
+
+		FOracleProblem Problem;
+
+		const bool bBridged = BuildRigidBlockProblem(Wall, Problem, Why);
+
+		if (!TestTrue(
+				*FString::Printf(TEXT("wall: the bridge must represent it (it said: %s)"), *Why),
+				bBridged))
+		{
+			return true;
+		}
+
+		const double Started = FPlatformTime::Seconds();
+		const FOracleResult Result = SolveRigidBlock(Problem);
+		const double Seconds = FPlatformTime::Seconds() - Started;
+
+		AddInfo(FString::Printf(
+			TEXT("wall %dx%d: %d blocks / %d joints, lambda %.17g, %d pivots, ")
+			TEXT("%lld pricing scans (%.0f per pivot), %.3f s"),
+			Courses, Cells, Problem.Blocks.Num(), Problem.Joints.Num(),
+			Result.Lambda, Result.SimplexIterations, Result.PricingColumnScans,
+			Result.SimplexIterations > 0
+				? double(Result.PricingColumnScans) / double(Result.SimplexIterations)
+				: 0.0,
+			Seconds));
+
+		TestTrue(
+			*FString::Printf(TEXT("wall: must answer (it said: %s)"), *Result.WhyNot),
+			Result.bAnswered);
+
+		/* ---- What the answer must be. ---- */
+
+		const double CrushLambda = IntactWallCrushLambda(Courses, Cells);
+
+		AddInfo(FString::Printf(
+			TEXT("wall: hand crushing closed form is %.17g"), CrushLambda));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("wall: lambda* CANNOT exceed the hand crushing bound %.17g — vertical ")
+				TEXT("equilibrium across the bottom bed plane caps it whatever the force ")
+				TEXT("system — and was %.17g"),
+				CrushLambda, Result.Lambda),
+			Result.Lambda <= CrushLambda * (1.0 + 1.0e-9));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("wall: lambda* must ATTAIN the hand crushing bound %.17g within 1e-9 ")
+				TEXT("relative (an intact wall can load every bottom contact to its cap at ")
+				TEXT("once) and was %.17g — this line is also the OPTIMUM-INVARIANCE pin: a ")
+				TEXT("pricing change may take any pivot path to this number and none to a ")
+				TEXT("different one"),
+				CrushLambda, Result.Lambda),
+			FMath::Abs(Result.Lambda - CrushLambda) <= 1.0e-9 * CrushLambda);
+
+		const FOracleResult Again = SolveRigidBlock(Problem);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("wall: DETERMINISM — two solves agree to the last bit and do the same ")
+				TEXT("work (%.17g/%d/%lld vs %.17g/%d/%lld)"),
+				Result.Lambda, Result.SimplexIterations, Result.PricingColumnScans,
+				Again.Lambda, Again.SimplexIterations, Again.PricingColumnScans),
+			Result.Lambda == Again.Lambda
+				&& Result.SimplexIterations == Again.SimplexIterations
+				&& Result.PricingColumnScans == Again.PricingColumnScans);
+
+		/* The dormancy pin, for the reasons written out on row A. */
+		TestEqual(
+			TEXT("wall: the Bland anti-cycling fallback must stay dormant — the budgets ")
+			TEXT("below are budgets for the partial pricer, and only are while it has not ")
+			TEXT("stood aside"),
+			Result.BlandDegenerateEntries, 0);
+
+		/* ---- What the answer may cost. ---- */
+
+		/*
+		 * THE BUDGETS, MEASURED RATHER THAN CHOSEN, with the arithmetic written out so
+		 * nobody has to re-derive it to know whether a number is reachable.
+		 *
+		 * FULL DANTZIG ON THIS FIXTURE, measured 2026-08-12: 84 blocks / 207 joints,
+		 * 2,707 rows and 6,849 columns, lambda* in 1,942 pivots, 3,131,528 column scans,
+		 * 4.716 s. Dividing those two straight through gives 1,612 columns per pivot, and
+		 * THAT RATIO IS NOT THE PER-ITERATION COST: it charges the one-off artificial
+		 * pivot-out pass (~343,000 scans, worked out below) to the pivot loop as though
+		 * the loop had done it. Net of the pass the phase-2 loop prices 1,435 columns per
+		 * iteration — exactly the non-basic structural set, 1,657 - 222, every iteration
+		 * — and (3,131,528 - 343,000) / 1,942 = 1,436 recovers it from the measurement.
+		 * That is the shape that leaves wall-01 (~13k x ~34k) still pivoting after 45
+		 * minutes.
+		 *
+		 * WHERE THE FLOOR IS. The artificial pivot-out pass prices every non-artificial
+		 * column once per basic artificial it clears. A gravity-live problem starts
+		 * feasible, so phase 1 never runs and all 222 equality rows arrive at that pass
+		 * with their artificial basic; the 1,657 structural columns are the non-basic ones
+		 * it scans, one fewer each time it succeeds. That is 222 * 1657 - (0 + 1 + ... +
+		 * 221) = ~343,000 scans, ~11% of today's total, and per-iteration pricing cannot
+		 * touch any of it. The budget sits nearly three times above that floor on purpose:
+		 * it is aimed at the 2.79M scans the phase-2 loop spends, not at the pass.
+		 *
+		 * 1,000,000 IS THEREFORE A 3.1x CUT OVERALL AND A 4.2x CUT ON THE PRICING LOOP,
+		 * which no tuning of a full scan can reach and which a candidate list should beat
+		 * by an order: a rotating window with a short queue prices tens of columns per
+		 * iteration, not 1,435. It is deliberately not tighter than that — a budget set at
+		 * the best imaginable implementation refuses good ones for being merely good.
+		 *
+		 * THE PIVOT BUDGET IS THE OTHER HALF OF THE SAME SENTENCE. Partial pricing buys
+		 * cheap iterations by choosing worse entering columns, so it usually takes more of
+		 * them; 4,000 is 2.06x today's 1,942, which absorbs that honestly while refusing a
+		 * rule that pays for cheap scans with a grinding pivot path. Both numbers are
+		 * deterministic — a wall-clock assertion here would flake on a busy machine and
+		 * measure the machine rather than the algorithm.
+		 */
+		constexpr int64 PricingScanBudget = 1000000;
+		constexpr int32 PivotBudget = 4000;
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("wall: PRICING COST — the solve must price at most %lld columns and ")
+				TEXT("priced %lld (%.1fx over). Scanning every column every iteration is ")
+				TEXT("what makes the 30-course walls unanswerable; the fix is a candidate ")
+				TEXT("list or reference weights, with the entering choice still fixed by ")
+				TEXT("index arithmetic"),
+				PricingScanBudget, Result.PricingColumnScans,
+				double(Result.PricingColumnScans) / double(PricingScanBudget)),
+			Result.PricingColumnScans <= PricingScanBudget);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("wall: PIVOT COST — the solve must take at most %d pivots and took %d. ")
+				TEXT("Budgeted beside the scan count so cheaper pricing cannot pay for ")
+				TEXT("itself with a grinding pivot path"),
+				PivotBudget, Result.SimplexIterations),
+			Result.SimplexIterations <= PivotBudget);
 	}
 
 	return true;
