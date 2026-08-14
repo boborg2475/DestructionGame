@@ -650,13 +650,24 @@ bool FLeaningStackCatalogueTest::RunTest(const FString& Parameters)
 	using namespace LeaningStackTestSupport;
 
 	/*
-	 * THE PROFILE FIGURES THE VERDICTS TURN ON, CHECKED RATHER THAN TAKEN ON TRUST. The coded
-	 * tensile strength is the CHARACTERISTIC 0.10 the mean bracket above is derived from
-	 * (mean = 2 x the UK NA characteristic band whose floor is 3 x this Eurocode table value);
-	 * a retune of it moves every margin in this file and must land here first, loudly.
+	 * THE PROFILE FIGURES THE VERDICTS TURN ON, CHECKED RATHER THAN TAKEN ON TRUST. Since the
+	 * 2026-08-14 mean re-anchor flip the coded tensile strength IS a mean — 0.70, from the
+	 * Newcastle campaign's batch means bracketed with the UK NA inversion — and it sits STRICTLY
+	 * INSIDE this file's independent 0.6-1.0 mean bracket, so every verdict above survives
+	 * unchanged. KEEP THE BRACKET AS THE INDEPENDENT ORACLE — do not collapse it onto the
+	 * profile; a retune of the profile moves every margin in this file and must land here
+	 * first, loudly.
 	 */
-	TestEqual(TEXT("FIXTURE: the mortar's coded characteristic bond is EN 1996-1-1's 0.10"),
-		GeneralPurposeMortar.TensileStrengthMPa, 0.1);
+	TestEqual(TEXT("FIXTURE: the mortar's coded bond is the mean-basis 0.70 (re-anchor flip 2026-08-14)"),
+		GeneralPurposeMortar.TensileStrengthMPa, 0.7);
+
+	TestTrue(
+		FString::Printf(
+			TEXT("FIXTURE: the coded mean bond %g must sit strictly inside this file's independent ")
+			TEXT("0.6-1.0 mean bracket, or the verdict table needs re-ruling"),
+			GeneralPurposeMortar.TensileStrengthMPa),
+		GeneralPurposeMortar.TensileStrengthMPa > 0.6 - 1.0e-12
+			&& GeneralPurposeMortar.TensileStrengthMPa < 1.0);
 
 	TestEqual(TEXT("FIXTURE: the mortar's coded crushing strength is M10's 10 MPa"),
 		GeneralPurposeMortar.CompressiveStrengthMPa, 10.0);

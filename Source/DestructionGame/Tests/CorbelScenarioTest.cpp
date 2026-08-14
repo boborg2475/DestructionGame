@@ -272,17 +272,14 @@ namespace CorbelScenarioTestSupport
 	}
 
 	/**
-	 * THE CROSSOVER, READ OUT OF `Core.Structure.CorbelStepsBeforeTensionWins` RATHER THAN
-	 * RE-DERIVED HERE.
+	 * THE STEP COUNTS THE E35/E36 LEVELS WERE BUILT AT — the CHARACTERISTIC-basis crossover's
+	 * straddle (0.99029 at 35, 1.01625 at 36, from `F(s) = 1 + s + s(s+1)/4` and
+	 * `M(s) = 5.625(s+1) + 11.25 x SUM F` against f_xk1 = 0.10).
 	 *
-	 * That test bisects for the SMALLEST step count whose root joint reads over 1.0 and finds 36,
-	 * having asserted the reading monotonic in step count so the bisection is well defined. Its own
-	 * header records the independent closed-form check: 0.99029 at 35 and 1.01625 at 36, from
-	 * `F(s) = 1 + s + s(s+1)/4` brick weights and `M(s) = 5.625(s+1) + 11.25 x SUM F`.
-	 *
-	 * So the two rows exist to straddle 1.0, and that is what is asserted — not a literal, which
-	 * would pin the same fact twice in two places and make one of them wrong the day the other
-	 * moved.
+	 * SINCE THE 2026-08-14 MEAN RE-ANCHOR FLIP THIS IS A CONTENT PIN, NOT A CROSSOVER: at
+	 * f_x1 = 0.70 the worst-axis crossover moves to ~124 steps (compression), so 35/36 no
+	 * longer straddle anything. The pair's replacement is owed (CURRENT_STATE); these rows
+	 * stay pinned so the shipped levels do not drift while the replacement is designed.
 	 */
 	constexpr int32 CorbelScenarioCrossoverSteps = 36;
 }
@@ -516,29 +513,32 @@ bool FCorbelScenarioCatalogueTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE STRADDLE, WHICH IS THE ONLY REASON E35 AND E36 ARE TWO ROWS.
+	 * THE STRADDLE IS DEAD — THE 2026-08-13 MEAN RE-ANCHOR KILLED IT, AND SAYING SO IS THE
+	 * HONEST FORM. On the characteristic basis E35/E36 sat either side of the 36-step tension
+	 * crossover (0.990 / 1.016); at the mean f_x1 = 0.70 both read a seventh of that (~0.142 /
+	 * ~0.145) and the worst-axis crossover moves to ~124 steps, where COMPRESSION crushes the
+	 * root (F(k)/A against the unmoved 10 MPa — see CorbelStepsBeforeTensionWins' re-derived
+	 * header). The two levels stay in the catalogue as content; what they can no longer do is
+	 * discriminate the crossover, and the REPLACEMENT PAIR IS OWED — levels either side of the
+	 * measured mean-basis crossover, specified in CURRENT_STATE, laid and MEASURED in the
+	 * green phase.
 	 *
-	 * Core.Structure.CorbelStepsBeforeTensionWins bisects for the smallest step count over
-	 * capacity and finds 36, having first asserted the reading monotonic in step count. So 35 must
-	 * be at or under 1.0 and 36 strictly over it — the last corbel the model says stands, and the
-	 * first it does not. A single row could not express that, and a pair that both stood or both
-	 * fell would be two pictures of the same thing.
+	 * What still separates the pair is the monotone step term, pinned as an ordering so the
+	 * two rows are not two pictures of the same thing.
 	 */
 	TestTrue(
 		*FString::Printf(
-			TEXT("'corbel-e35' MUST BE THE LAST CORBEL THAT STANDS — its root joint reads %s and ")
-			TEXT("must be at or under 1.0 (Core.Structure.CorbelStepsBeforeTensionWins puts the ")
-			TEXT("crossover at %d steps)"),
-			*CorbelScenarioBits(RootReadingAtSteps[0]), CorbelScenarioCrossoverSteps),
-		RootReadingAtSteps[0] > 0.0 && RootReadingAtSteps[0] <= 1.0);
+			TEXT("'corbel-e35' must still read a real, positive root utilisation — it reads %s"),
+			*CorbelScenarioBits(RootReadingAtSteps[0])),
+		RootReadingAtSteps[0] > 0.0 && RootReadingAtSteps[0] < 1.0);
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("'corbel-e36' MUST BE THE FIRST THAT DOES NOT — its root joint reads %s and must ")
-			TEXT("be strictly over 1.0, against E35's %s"),
+			TEXT("'corbel-e36' must read STRICTLY MORE than E35 (one more step of mass outboard ")
+			TEXT("of the root) and, at mean strengths, still under capacity — %s against %s"),
 			*CorbelScenarioBits(RootReadingAtSteps[1]),
 			*CorbelScenarioBits(RootReadingAtSteps[0])),
-		RootReadingAtSteps[1] > 1.0);
+		RootReadingAtSteps[1] > RootReadingAtSteps[0] && RootReadingAtSteps[1] < 1.0);
 
 	return true;
 }

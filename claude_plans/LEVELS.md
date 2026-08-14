@@ -85,25 +85,34 @@ settle.
 
 | Level | `?Scenario=` | Pieces | Root joint as laid |
 |---|---|---|---|
-| `Lvl_CorbelABare4` | `corbel-a-bare-4` | 10 | 0.15613 |
-| `Lvl_CorbelBFilled4` | `corbel-b-filled-4` | 18 | 0.19516 |
-| `Lvl_CorbelC10` | `corbel-c-10` | 51 | 0.34481 |
-| `Lvl_CorbelD10Counterweight` | `corbel-d-10-counterweight` | 90 | 0.34348 |
-| `Lvl_CorbelE35` | `corbel-e35` | 496 | 0.99046 |
-| `Lvl_CorbelE36` | `corbel-e36` | 519 | 1.01647 |
-| `Lvl_CorbelF100` | `corbel-f-100` | 3,015 | 2.68132 |
+| `Lvl_CorbelABare4` | `corbel-a-bare-4` | 10 | 0.02230 |
+| `Lvl_CorbelBFilled4` | `corbel-b-filled-4` | 18 | 0.02788 |
+| `Lvl_CorbelC10` | `corbel-c-10` | 51 | 0.04926 |
+| `Lvl_CorbelD10Counterweight` | `corbel-d-10-counterweight` | 90 | 0.04907 |
+| `Lvl_CorbelE35` | `corbel-e35` | 496 | 0.14149 |
+| `Lvl_CorbelE36` | `corbel-e36` | 519 | 0.14521 |
+| `Lvl_CorbelF100` | `corbel-f-100` | 3,015 | ~0.654 |
+
+*(Readings on the mean strength basis since the 2026-08-13 re-anchor. A–E36 are
+tension-governed and read the characteristic-era figure ÷ 7; F's governing axis FLIPPED —
+its tension fell to 0.383 while the root's compression against the unmoved 10 MPa stayed at
+~0.654, which now governs. The must-fall guarantee moved to a 150-step fixture that crushes
+its root at 1.457 — `AHundredStepCorbelMustComeDown`.)*
 
 Three of these are worth standing in front of deliberately:
 
 - **A** is four bricks stepping into open air off a two-cell base, each overhanging the one below by
-  more than half its own length. The model reads it at 0.156 of capacity and it stands. That is the
+  more than half its own length. The model reads it at 0.022 of capacity and it stands. That is the
   most questionable verdict in the whole set, and the level is the first place it is *visible*
   rather than a number in a log.
 - **C against D** is the counterweight. D is C plus three cells of masonry opposite, and it reads
-  0.34348 against C's 0.34481 — the counterweight buys essentially nothing, which is the
+  0.04907 against C's 0.04926 — the counterweight buys essentially nothing, which is the
   downward-only routing finding, standing in front of you.
-- **E35 against E36** is the crossover. One course of difference; E35 stands untouched and E36 sheds
-  precisely its lowest step course, 36 bricks, with everything above it still up.
+- **E35 against E36** *was* the crossover, and the mean re-anchor retired it: at the mean bond both
+  read ~0.14 and both stand as laid, so one course of difference no longer separates them. The
+  worst-axis crossover for this family is now ~124 steps, in **crushing** against the unmoved
+  10 MPa, and the replacement pair of levels either side of it is owed (CURRENT_STATE); the two
+  levels keep their names and their history until it lands.
 
 ## The twenty-two acceptance walls
 
@@ -135,17 +144,20 @@ the verdict the acceptance test asserts.
 | `Lvl_Wall21` | `wall-21` | Eighteen-brick opening, two courses over |
 | `Lvl_Wall22` | `wall-22` | Thirty-five-brick opening, eight courses over |
 
-### Three of these levels contradict the model, and say so — two of them in a new direction
+### Four of these levels contradict the model, and say so — three of them in the inverted direction
 
-Cases **10, 19 and 20** are the rows currently failing `Acceptance.Wall.Catalogue`. Case 20 is the
-old direction (the model drops more than the catalogue's named local loss). Cases 10 and 19 are the
-**inverse** since the 2026-08-12 rulings: the catalogue says STANDS, and the model — routing load
-only downward — wrongly collapses them, dropping the free-end panel and the underpinned wedge that
-real bonded masonry holds. Their captions carry the marker with the sentence pointing that way.
-Their
-captions carry the words **THE MODEL CURRENTLY DISAGREES** alongside the expected verdict, because a
-level captioned with a verdict the solver does not produce would be a lie told to somebody standing
-in front of the counter-example.
+Cases **10, 19, 20 and 21** are the rows currently failing `Acceptance.Wall.Catalogue`. Case 20 is
+the old direction (the model drops more than the catalogue's named local loss). Cases 10 and 19 are
+the **inverse** since the 2026-08-12 rulings: the catalogue says STANDS, and the model — routing
+load only downward — wrongly collapses them, dropping the free-end panel and the underpinned wedge
+that real bonded masonry holds. Case 21 joined the inverted set at the 2026-08-14 mean re-anchor
+flip, pointing the other way round: the ruled verdict is **COLLAPSE** (hand deep-beam statics at
+1.71× the mean bond) and the model now *stands* the wall — on a knife edge, its worst joint
+measured at **0.935423** (6.5% under the line, on an axis nobody has decomposed — the compression
+attribution was checked on cases 9 and 22 and was wrong both times; the tension the hand
+check condemns sits ~3.1× lower in its reading). All four captions carry the words **THE MODEL CURRENTLY
+DISAGREES** alongside the expected verdict, because a level captioned with a verdict the solver
+does not produce would be a lie told to somebody standing in front of the counter-example.
 
 That marker is not a hand-maintained list. `Acceptance.Wall.EveryLevelsCaptionTellsTheTruth`
 *computes* which rows the model gets wrong by running each case, and requires the marker on exactly

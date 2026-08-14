@@ -189,15 +189,19 @@ namespace DestructionScenarios
 			5, ScenariosCorbelCounterweightOriginCm, 10, true },
 
 		{ TEXT("corbel-e35"), TEXT("Lvl_CorbelE35"),
-			TEXT("Corbel E35 — the last one the model says stands"),
-			TEXT("The step BELOW the crossover: the last corbel the model says stands. Nothing is "
-				"cut, and nothing should move."),
+			TEXT("Corbel E35 — the old crossover's lower rung"),
+			TEXT("Thirty-five steps, and it stands. This pair used to straddle the model's "
+				"crossover — E36 was the first corbel condemned by its own root joint — until the "
+				"mean-strength re-anchor moved that crossover far out past a hundred steps, where "
+				"crushing takes over from the bond. Nothing is cut, and nothing should move."),
 			5, ScenariosCorbelCounterweightOriginCm, 35, true },
 
 		{ TEXT("corbel-e36"), TEXT("Lvl_CorbelE36"),
-			TEXT("Corbel E36 — the first one that does not"),
-			TEXT("The crossover itself: the first corbel whose root joint reads over 1.0. Nothing "
-				"is cut — one more course than E35 is the entire difference."),
+			TEXT("Corbel E36 — the old crossover's upper rung"),
+			TEXT("One more course than E35 is the entire difference, and at the mean strengths it "
+				"no longer decides anything: both rungs stand as laid. The step count where a "
+				"corbel of this family really gives — by crushing its root, not opening it — is "
+				"around a hundred and twenty-four."),
 			5, ScenariosCorbelCounterweightOriginCm, 36, true },
 
 		{ TEXT("corbel-f-100"), TEXT("Lvl_CorbelF100"),
@@ -528,16 +532,17 @@ namespace DestructionScenarios
 
 		{ TEXT("wall-21"), TEXT("Lvl_Wall21"), TEXT("Eighteen-brick opening, two courses over"),
 			TEXT("Two courses of brick span an opening most of four metres wide. Expected: COLLAPSE — "
-				"two courses cannot span that far: the deep-beam check reads 1.50x even the generous "
-				"mean strength ceiling, so the cover sheds onto the floor while the jambs either side "
-				"keep their footing. Watch the corners: the model takes those top two courses down "
-				"over the jambs as well, and the catalogue declines to claim that either way, because "
-				"where a two-course panel tears as it drops is not something it can rule. Production "
-				"and the hand statics agree the wall falls. The limit-theorem oracle is the one "
-				"holdout — it stands this wall at 5.5x, sixty-six times what the mortar bond could "
-				"hold, by a mechanism nobody has yet identified. Whether that is a charity of an "
-				"oracle whose ground cannot move or a real load path the solver cannot see is an open "
-				"question, and the verdict here does not wait on it."),
+				"two courses cannot span that far: the hand deep-beam check reads 1.71x the mean "
+				"bond the profiles now carry, so the cover sheds onto the floor while the jambs "
+				"either side keep their footing. THE MODEL CURRENTLY DISAGREES: since the "
+				"mean-strength re-anchor it stands the whole wall on a knife edge — its worst "
+				"joint reads 0.9354 of capacity, 6.5 percent under the line, and it is not even "
+				"the bending the hand check condemns (that tension reads 3.1x lower in the model; "
+				"which axis the 0.9354 IS has not been decomposed) — so the ruled verdict rests on "
+				"the hand statics. The limit-theorem oracle stands it too, by mobilising the jamb "
+				"bed joints' cohesion in full — rigid-plastic charity toward a brittle bond, "
+				"booked as a scope limit of the oracle rather than a load path the wall really "
+				"has."),
 			6, 22,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall21Cuts },
@@ -546,9 +551,9 @@ namespace DestructionScenarios
 			TEXT("The same eight courses of cover that easily carry case 9's two-metre opening are "
 				"asked to carry nearly eight metres instead. Expected: COLLAPSE — bending grows with "
 				"the square of the span, so the masonry that read 0.089 MPa there reads 1.16 MPa "
-				"here, 1.46x the mean strength ceiling; production and the hand statics both agree it "
-				"falls, and the limit-theorem oracle refuses to answer at this span rather than "
-				"disagreeing with it."),
+				"here, 1.66x the mean bond the profiles carry; production and the hand statics both "
+				"agree it falls, and the limit-theorem oracle refuses to answer at this span rather "
+				"than disagreeing with it."),
 			ScenariosWallCoveredCourses, 39,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall22Cuts },

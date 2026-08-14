@@ -217,9 +217,9 @@ bool FStructureSpannedHoleTest::RunTest(const FString& Parameters)
 	 * than imported: a test that read the profile would agree with a wrong profile.
 	 */
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against f_xk1 = 0.1 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.7 MPa (re-anchor 2026-08-13), the profile carries %g"),
 			GeneralPurposeMortar.TensileStrengthMPa),
-		GeneralPurposeMortar.TensileStrengthMPa == 0.1);
+		GeneralPurposeMortar.TensileStrengthMPa == 0.7);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against compressive 10 MPa, the profile carries %g"),

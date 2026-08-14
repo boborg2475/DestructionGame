@@ -405,25 +405,39 @@ namespace CorbelBuilderTestSupport
 	 * is quadratic in the piece count — nine million candidate pairs for one row that would tell
 	 * this file nothing E36's five hundred bricks do not.
 	 */
+	/*
+	 * MEAN RE-ANCHOR (2026-08-13): every root here is tension-governed, so each anchor is
+	 * the old characteristic-basis measurement divided by 7 (f_x1 0.10 -> 0.70; the stress
+	 * side is statics). The rows are pinned with exact ==, and production divides the
+	 * stress by 0.7 directly, so the red phase wrote each as `old / 7.0` and instructed the
+	 * green phase to re-pin the measured bits wherever that landed an ulp off. MEASURED AT
+	 * THE FLIP (2026-08-14): rows A, C and D each read one ulp above their division (the
+	 * literal below is the measured value; the trailing comment keeps the old expression),
+	 * while B, E35 and E36 came back bit-identical to theirs and keep the division form.
+	 * One ulp there is rounding-path, not physics. E35/E36 no longer straddle 1.0
+	 * (~0.1415 / ~0.1452 at the mean basis; the crossover moved to ~124 steps in
+	 * compression — see CorbelStepsBeforeTensionWins and the owed replacement pair in
+	 * CURRENT_STATE); their labels keep the history.
+	 */
 	const FCorbelBuilderRow CorbelBuilderRows[] =
 	{
 		{ TEXT("A: bare stepped arm, four single bricks"),
-			2, 0.0, 4, false, 10, 0.15612870000000001 },
+			2, 0.0, 4, false, 10, 0.022304100000000004 }, // measured; 0.15612870000000001 / 7.0 + 1 ulp
 
 		{ TEXT("B: the same four-step profile filled solid"),
-			2, 0.0, 4, true, 18, 0.19516087500000001 },
+			2, 0.0, 4, true, 18, 0.19516087500000001 / 7.0 },
 
 		{ TEXT("C: filled, ten steps, on the bare two-cell base"),
-			2, 0.0, 10, true, 51, 0.34481267346093736 },
+			2, 0.0, 10, true, 51, 0.049258953351562489 }, // measured; 0.34481267346093736 / 7.0 + 1 ulp
 
 		{ TEXT("D: case C plus three cells of masonry opposite"),
-			5, CorbelBuilderCounterweightOriginCm, 10, true, 90, 0.34348314000000008 },
+			5, CorbelBuilderCounterweightOriginCm, 10, true, 90, 0.049069020000000019 }, // measured; 0.34348314000000008 / 7.0 + 1 ulp
 
-		{ TEXT("E35: the last corbel the model says stands"),
-			5, CorbelBuilderCounterweightOriginCm, 35, true, 496, 0.99046165225599581 },
+		{ TEXT("E35: the characteristic-era straddle's lower rung"),
+			5, CorbelBuilderCounterweightOriginCm, 35, true, 496, 0.99046165225599581 / 7.0 },
 
-		{ TEXT("E36: the first whose root joint reads over 1.0"),
-			5, CorbelBuilderCounterweightOriginCm, 36, true, 519, 1.0164705641576046 },
+		{ TEXT("E36: the characteristic-era straddle's upper rung"),
+			5, CorbelBuilderCounterweightOriginCm, 36, true, 519, 1.0164705641576046 / 7.0 },
 	};
 
 	/** The production spec for a row. */

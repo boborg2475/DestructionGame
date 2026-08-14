@@ -33,10 +33,29 @@
  *     resting on two contacts may put its weight wherever equilibrium allows, where the
  *     real elastic path loads the middle. Both push lambda* UP relative to a brittle
  *     first-crack criterion, so "the oracle stands it" is the MOST charitable reading.
- *   - STRENGTHS ARE THE CODED CHARACTERISTIC VALUES (f_xk1 = 0.10), while the §8
- *     rulings are argued at MEAN strength (0.6-1.0). For a tension-governed fixture
- *     lambda* scales linearly with f_t, so multiply by ~6 to read a lambda* against a
- *     mean-strength ruling. Rows that turn on this say so.
+ *   - STRENGTHS WERE THE CODED CHARACTERISTIC VALUES (f_xk1 = 0.10) WHEN EVERY WINDOW
+ *     IN THIS FILE WAS PINNED, and the /6 characteristic-vs-mean discount the §8 rulings
+ *     applied on top is SPENT by the 2026-08-14 mean re-anchor flip (TRAPS.md): the discount
+ *     now lives in the profile data and must never be applied twice.
+ *
+ *     >>> MEAN RE-ANCHOR, GREEN-PHASE RE-MEASUREMENT MARKER (2026-08-13) <<<
+ *     When the profile rows flip to the mean basis, EVERY strength-governed lambda*
+ *     window in this file moves (roughly x4.5 where jamb-bed cohesion binds, x7 where
+ *     tension binds — but utilisation does NOT scale linearly across mechanisms: the
+ *     cohesion/tension ordering flips on some fixtures, so no window may be re-pinned by
+ *     scaling). Production's drop/strand pins move wherever the cascade outcome was
+ *     strength-governed (rows 10/19 are unroutability, zero passes — their counts do NOT
+ *     move; row 20, 21 and 22's do). Re-pin per this file's established discipline: two
+ *     certified readings per window (the pivot-path lesson — never tighter than ~1e-5
+ *     relative at 120+ blocks), window + ratio + block-count pins as a set (the N6
+ *     rung-flip lesson), and the case-21 probe's AgreeFalls row must be re-checked
+ *     against the 1.0 line (its 0.785 scales ~x4.5 to ~3.5 and the enumerator likely
+ *     flips to a stand — that is a re-measurement, not a regression). The DRY-STONE rows
+ *     (leaning-stack dry ladder, the 1.2372 springing identity family) must come back
+ *     BIT-IDENTICAL — dry stone's row does not move. The beam-pair rows transcribe their
+ *     own characteristic C24/S275 constants (below) while BeamAcceptanceTest moved to
+ *     means 2026-08-13: the re-transcription (24->36, 4->6, 275->290) and the re-measured
+ *     windows (member-bound rows expected ~x1.5 / x1.055) are owed in the same pass.
  *
  * PRODUCTION'S VERDICT, FOR THE DIFF, is the cascade outcome on the same structure:
  * SolveAndBreak to a standstill, then count live pieces with no path to the earth
@@ -140,14 +159,17 @@ namespace RigidBlockSweepTestSupport
 	 */
 	constexpr double SameNumberRelativeTolerance = 1.0e-15;
 
-	/**
-	 * Production's wall-16 / wall-15 worst-joint ratio, measured 31.5576310306295 — and
-	 * both ends of it are the DESIGN §6 anchors (0.058203838191552663 and
-	 * 0.0018443665221594297), so this ratio is the surcharge discrimination the acceptance
-	 * suite pins, re-measured through the scenario catalogue instead of its own fixture.
+	/*
+	 * Production's wall-16 / wall-15 worst-joint ratio, re-measured 4.5082330043756453 at
+	 * the mean re-anchor (0.0083148340273646662 over 0.0018443665221594297 — both ends are
+	 * DESIGN §6 anchors). It was 31.5576 at the characteristic data and the shrink is the
+	 * TRAPS axis lesson in one number: the bare side is tension-governed and moved /7, the
+	 * loaded side is compression-governed and did not move, so the ratio is NOT
+	 * strength-invariant. The acceptance suite's own floor moved 10 -> 3 with the same
+	 * measurement.
 	 */
-	constexpr double SuperimposedReadingRatioLo = 31.55;
-	constexpr double SuperimposedReadingRatioHi = 31.57;
+	constexpr double SuperimposedReadingRatioLo = 4.5081;
+	constexpr double SuperimposedReadingRatioHi = 4.5084;
 
 	/**
 	 * Production's 20-course / 10-course free-end ratio, measured 2.11985065259119
@@ -835,9 +857,16 @@ namespace RigidBlockSweepTestSupport
 	constexpr double BeamBlockLengthCm = 200.0;
 
 	constexpr double BeamC24DensityGramsPerCubicCm = 0.42;
-	constexpr double BeamC24BendingMPa = 24.0;
-	constexpr double BeamC24ShearMPa = 4.0;
-	constexpr double BeamS275YieldMPa = 275.0;
+
+	/*
+	 * MEAN BASIS, re-transcribed 2026-08-14 in step with BeamAcceptanceTest's 2026-08-13
+	 * move (JCSS x1.50 on EN 338's f_m,k and f_v,k; JCSS Table A static yield for S275) —
+	 * a sweep row that built the beam at the characteristic strengths would be measuring a
+	 * different fixture from the catalogue row it exists to cross-examine.
+	 */
+	constexpr double BeamC24BendingMPa = 36.0;
+	constexpr double BeamC24ShearMPa = 6.0;
+	constexpr double BeamS275YieldMPa = 290.0;
 	constexpr double BeamSteelDensityGramsPerCubicCm = 7.85;
 	constexpr double BeamConcreteDensityGramsPerCubicCm = 2.4;
 
@@ -1379,17 +1408,23 @@ namespace RigidBlockSweepTestSupport
  * composite-depth measurement of sweep item (e) on the fixture where composite depth is
  * the whole defect.
  *
- * WHAT WAS MEASURED, 2026-08-09 (the pins below): lambda* = 4.4582 / 1.2411 / 0.06293 /
- * 0.03443 at 5/8/30/40 courses — matching slice 1's hand-built ladder through the REAL
- * fixture and bridge this time — while production's cascade agrees on every verdict
- * (0 / 0 / 29 / 39 dropped, the tall rows via the interim guard) and its worst JOINT
- * reading is 0.138781067 AT EVERY HEIGHT. That last number is the composite-depth
- * measurement in one line: the credited deep beam's m^2 cancels the demand's m^2, so a
- * fixture whose true margin the LP measures moving 130x (4.458 -> 0.0344) reads
+ * WHAT WAS MEASURED, 2026-08-09 at the characteristic bond: lambda* = 4.4582 / 1.2411 /
+ * 0.06293 / 0.03443 at 5/8/30/40 courses — matching slice 1's hand-built ladder through
+ * the REAL fixture and bridge this time — while production's cascade agrees on every
+ * verdict (0 / 0 / 29 / 39 dropped, the tall rows via the interim guard) and its worst
+ * JOINT reading is height-INVARIANT (0.138781067 then). That last number is the
+ * composite-depth measurement in one line: the credited deep beam's m^2 cancels the
+ * demand's m^2, so a fixture whose true margin the LP measures moving 130x reads
  * IDENTICAL to the joint checks, and at 30 courses the joint reading overstates the
- * true margin by a factor of ~115 (1/0.1388 = 7.2 of claimed margin against a real
- * lambda* of 0.063). The verdicts only agree because BreakOverturnedBodies exists —
- * exactly what DESIGN.md §7 step 4 will replace with this LP.
+ * true margin by a factor of ~115. The verdicts only agree because
+ * BreakOverturnedBodies exists — exactly what DESIGN.md §7 step 4 will replace with
+ * this LP.
+ *
+ * RE-MEASURED AT THE MEAN RE-ANCHOR FLIP (2026-08-14): every rung is tension-governed
+ * and moved exactly x7 with the bond (31.207384811713876 / 8.6877701307335329 /
+ * 0.44049301907204624 / 0.24100815422114152), the drop counts did not move (the guard's
+ * verdicts hold at the profile-read 0.70 bond), and the windows below are re-pinned on
+ * those measurements at the file's usual relative width.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSweepLeaningStackTest,
@@ -1405,22 +1440,22 @@ bool FRigidBlockSweepLeaningStackTest::RunTest(const FString& Parameters)
 	Rows.Add({ TEXT("leaning stack, 5 courses"),
 		TEXT("bond holds the lean; guard leaves it alone"),
 		[](FStructure& Out, FString& Why) { return BuildLeaningStack(5, Out, Why); },
-		ERelation::AgreeStands, 4.4581, 4.4583, 0 });
+		ERelation::AgreeStands, 31.2072, 31.2076, 0 });
 
 	Rows.Add({ TEXT("leaning stack, 8 courses"),
 		TEXT("bond holds the lean; guard leaves it alone"),
 		[](FStructure& Out, FString& Why) { return BuildLeaningStack(8, Out, Why); },
-		ERelation::AgreeStands, 1.24105, 1.24117, 0 });
+		ERelation::AgreeStands, 8.68772, 8.68782, 0 });
 
 	Rows.Add({ TEXT("leaning stack, 30 courses"),
-		TEXT("no equilibrium at a sixteenth of gravity; production agrees via the interim guard"),
+		TEXT("no equilibrium at ~0.44 of gravity; production agrees via the interim guard"),
 		[](FStructure& Out, FString& Why) { return BuildLeaningStack(30, Out, Why); },
-		ERelation::AgreeFalls, 0.062925, 0.062930, 29, 0 });
+		ERelation::AgreeFalls, 0.440491, 0.440495, 29, 0 });
 
 	Rows.Add({ TEXT("leaning stack, 40 courses"),
 		TEXT("no equilibrium; production agrees via the interim guard"),
 		[](FStructure& Out, FString& Why) { return BuildLeaningStack(40, Out, Why); },
-		ERelation::AgreeFalls, 0.034428, 0.034431, 39, 0 });
+		ERelation::AgreeFalls, 0.241006, 0.241010, 39, 0 });
 
 	RunRows(*this, Rows);
 
@@ -1445,16 +1480,24 @@ bool FRigidBlockSweepLeaningStackTest::RunTest(const FString& Parameters)
  *     no-tension bearings read Max outside the kern, and the whole fixture unzips.
  *
  *   - THE ORACLE, WITH GLOBAL EQUILIBRIUM, STANDS ALL THREE: lambda* = 1.764 (heavy
- *     timber), 19.20 (light timber), 17.35 (heavy steel). The bearings equilibrate
- *     trivially at contact points; the material pair discriminates 9.8x (1.764 vs
- *     17.35) where production answers all three identically. The heavy-timber 1.764 is
- *     NOT a contradiction of the catalogue's PARTS AT MIDSPAN: the catalogue's 3.48x is
- *     uncracked FIRST-CRACK arithmetic, the oracle reads the plastic stress block (3x
- *     first-crack, its documented ceiling) PLUS rigid-block load redistribution (the
- *     rigid block may bear at its contact edges; 3.48/3 = 1.16 of plastic capacity,
- *     and redistribution buys the rest). For BRITTLE timber first-crack is the honest
+ *     timber), 19.20 (light timber), 17.35 (heavy steel) at the characteristic
+ *     strengths. The bearings equilibrate trivially at contact points; the material
+ *     pair discriminated 9.8x where production answers all three rows identically.
+ *     The heavy-timber reading is NOT a contradiction of the catalogue's PARTS AT
+ *     MIDSPAN: the catalogue's figure is uncracked FIRST-CRACK arithmetic, the oracle
+ *     reads the plastic stress block (3x first-crack, its documented ceiling) PLUS
+ *     rigid-block load redistribution. For BRITTLE timber first-crack is the honest
  *     criterion, so the catalogue's verdict survives the measurement — but the margin
  *     is thin, and lambda* says exactly how thin.
+ *
+ * RE-TRANSCRIBED AND RE-MEASURED AT THE MEAN RE-ANCHOR (2026-08-14): the beam is now
+ * built at BeamAcceptanceTest's mean strengths (C24 36/6, S275 290) and every lambda*
+ * moved by exactly the member factor — timber x1.5000 (2.6461037357339725 heavy,
+ * 28.801133612618997 light), steel x1.0545 (18.299323934632291) — the glue line's
+ * member-strength bound is what binds all three, cleanly. The material discrimination
+ * is 6.9x on the mean basis (18.30 vs 2.65; the strengths converged 9.8x -> 8.1x and
+ * the LP tracks it). The catalogue's first-crack figure is 2.32x mean f_m — the
+ * oracle's 2.65 stand is 3x plastic + redistribution over that same arithmetic.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSweepBeamPairTest,
@@ -1468,14 +1511,14 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
 	TArray<FSweepRow> Rows;
 
 	Rows.Add({ TEXT("C24 timber beam, heavy load"),
-		TEXT("oracle: plastic stress block + rigid-block redistribution reach 1.76; ")
+		TEXT("oracle: plastic stress block + rigid-block redistribution reach 2.65; ")
 		TEXT("production: dry bearings read Max() outside the kern and everything falls"),
 		[](FStructure& Out, FString& Why)
 		{
 			return BuildBeam(BeamC24DensityGramsPerCubicCm, BeamC24BendingMPa,
 				BeamC24ShearMPa, 120.0, Out, Why);
 		},
-		ERelation::OracleStandsProductionFalls, 1.76400, 1.76414, 3, 0 });
+		ERelation::OracleStandsProductionFalls, 2.64609, 2.64612, 3, 0 });
 
 	Rows.Add({ TEXT("C24 timber beam, light load"),
 		TEXT("a sensibly loaded joist; production still drops it whole (bearing Max)"),
@@ -1484,17 +1527,17 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
 			return BuildBeam(BeamC24DensityGramsPerCubicCm, BeamC24BendingMPa,
 				BeamC24ShearMPa, 10.0, Out, Why);
 		},
-		ERelation::OracleStandsProductionFalls, 19.2006, 19.2009, 3, 0 });
+		ERelation::OracleStandsProductionFalls, 28.8010, 28.8013, 3, 0 });
 
 	Rows.Add({ TEXT("S275 steel beam, heavy load"),
-		TEXT("steel at 17.35 vs timber's 1.76: the oracle discriminates the member ")
-		TEXT("material 9.8x; production answers all three rows identically"),
+		TEXT("steel at 18.30 vs timber's 2.65: the oracle discriminates the member ")
+		TEXT("material 6.9x; production answers all three rows identically"),
 		[](FStructure& Out, FString& Why)
 		{
 			return BuildBeam(BeamSteelDensityGramsPerCubicCm, BeamS275YieldMPa,
 				BeamS275YieldMPa / FMath::Sqrt(3.0), 120.0, Out, Why);
 		},
-		ERelation::OracleStandsProductionFalls, 17.3527, 17.3529, 3, 0 });
+		ERelation::OracleStandsProductionFalls, 18.2992, 18.2994, 3, 0 });
 
 	RunRows(*this, Rows);
 
@@ -1520,6 +1563,14 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
  *     red CorbelStepsBeforeTensionWins records they cross 1.0 at 36 steps IDENTICALLY.
  *     Downward-only routing makes the counterweight buy nothing; global equilibrium
  *     measures exactly what it buys. This is the C-vs-D finding turned into a number.
+ *
+ * RE-MEASURED AT THE MEAN RE-ANCHOR FLIP (2026-08-14), and the two rungs moved by
+ * DIFFERENT factors — the recorded proof that no window here may ever be re-pinned by
+ * scaling: A is tension-bound and moved exactly x7 with the bond
+ * (20.332907144632795), while B's jamming is bound in the Mohr-Coulomb family and
+ * moved x1.506 (333.40338835842761), between the cap's x1.538 and mu's x1.25 —
+ * filling now buys 16.4x on the mean basis, not 76x. (CorbelStepsBeforeTensionWins'
+ * crossover likewise re-derived to ~124 steps in COMPRESSION at the re-anchor.)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSweepCorbelFamilyTest,
@@ -1533,21 +1584,21 @@ bool FRigidBlockSweepCorbelFamilyTest::RunTest(const FString& Parameters)
 	TArray<FSweepRow> Rows;
 
 	Rows.Add({ TEXT("corbel A, bare arm of four"),
-		TEXT("a mortared 11.25 cm/course lean of four bricks; bond covers it 2.9x at ")
-		TEXT("characteristic strength"),
+		TEXT("a mortared 11.25 cm/course lean of four bricks; the mean bond covers it ")
+		TEXT("20.3x (2.9x at the retired characteristic strength)"),
 		[](FStructure& Out, FString& Why)
 		{
 			return BuildScenarioStructure(TEXT("corbel-a-bare-4"), Out, Why);
 		},
-		ERelation::AgreeStands, 2.90468, 2.90472, 0 });
+		ERelation::AgreeStands, 20.3328, 20.3331, 0 });
 
 	Rows.Add({ TEXT("corbel B, filled four steps"),
-		TEXT("the same reach filled solid jams as a block: 76x the bare arm's margin"),
+		TEXT("the same reach filled solid jams as a block: 16.4x the bare arm's margin"),
 		[](FStructure& Out, FString& Why)
 		{
 			return BuildScenarioStructure(TEXT("corbel-b-filled-4"), Out, Why);
 		},
-		ERelation::AgreeStands, 221.427, 221.430, 0 });
+		ERelation::AgreeStands, 333.402, 333.405, 0 });
 
 	RunRows(*this, Rows);
 
@@ -1819,36 +1870,40 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("THE CATALOGUE: case 8 was re-ruled from LOCAL LOSS to STANDS on 2026-08-11, ")
 		TEXT("costing the set its last 'no room to arch' discriminator"),
 		Scenario(TEXT("wall-08")),
-		ERelation::AgreeStands, 324.731, 324.733, 0 });
+		ERelation::AgreeStands, 481.519, 481.539, 0 });
 
 	Rows.Add({ TEXT("corbel C, ten steps"),
-		TEXT("the §8 ruling's fixture: the limit theorem agrees it stands, 2.57x at ")
-		TEXT("characteristic bond"),
+		TEXT("the §8 ruling's fixture: the limit theorem agrees it stands — 17.97x at the ")
+		TEXT("mean bond (2.57x at the retired characteristic, an exact x7: this rung is ")
+		TEXT("tension-bound)"),
 		Scenario(TEXT("corbel-c-10")),
-		ERelation::AgreeStands, 2.56723, 2.56726, 0 });
+		ERelation::AgreeStands, 17.97037, 17.97109, 0 });
 
 	Rows.Add({ TEXT("wall-14 corbel, half brick per course"),
 		TEXT("the projection pair's far half; see wall-13 for the pair's cross-method ")
-		TEXT("agreement"),
+		TEXT("history"),
 		Scenario(TEXT("wall-14")),
-		ERelation::AgreeStands, 232.548, 232.550, 0 });
+		ERelation::AgreeStands, 440.200, 440.218, 0 });
 
 	Rows.Add({ TEXT("wall-13 corbel, quarter brick per course"),
-		TEXT("the corbel projection pair, measured BOTH ways: production's joint ")
-		TEXT("readings separate 13 from 14 by 0.195160875/0.0702368 = 2.7786x, the LP's ")
-		TEXT("lambda* by 645.946/232.549 = 2.7777x — two methods derived independently ")
-		TEXT("agree on the projection term to 0.03%, the strongest cross-validation of ")
-		TEXT("the composite-depth reading the suite has"),
+		TEXT("the corbel projection pair. AT THE CHARACTERISTIC DATA the pair was the ")
+		TEXT("suite's strongest cross-validation — production 2.7786x vs LP 2.7777x, ")
+		TEXT("0.03% apart. AT THE MEAN DATA that agreement is GONE: production's ratio is ")
+		TEXT("unchanged (both readings moved /7 together) while the LP's fell to ")
+		TEXT("817.047/440.209 = 1.856 — the two rungs' binding constraints no longer move ")
+		TEXT("together, so the LP-side projection term is an open re-derivation (logged in ")
+		TEXT("CURRENT_STATE), and the windows are what this row still pins"),
 		Scenario(TEXT("wall-13")),
-		ERelation::AgreeStands, 645.945, 645.947, 0 });
+		ERelation::AgreeStands, 817.030, 817.063, 0 });
 
 	Rows.Add({ TEXT("corbel D, ten steps with counterweight"),
-		TEXT("global equilibrium prices the counterweight at 22.6x (C's 2.57 -> 58.06) ")
-		TEXT("where production reads C and D 0.4% apart (0.34481 vs 0.34348) and the ")
-		TEXT("deliberate red CorbelStepsBeforeTensionWins records them crossing 1.0 at ")
-		TEXT("36 steps identically"),
+		TEXT("global equilibrium prices the counterweight at 8.97x on the mean basis ")
+		TEXT("(C's 17.97 -> 161.14; it was 22.6x at the characteristic data) where ")
+		TEXT("production reads C and D 0.4% apart and the deliberate red ")
+		TEXT("CorbelStepsBeforeTensionWins records them crossing 1.0 at 124 steps ")
+		TEXT("identically"),
 		Scenario(TEXT("corbel-d-10-counterweight")),
-		ERelation::AgreeStands, 58.0597, 58.0601, 0 });
+		ERelation::AgreeStands, 161.1375, 161.1439, 0 });
 
 	/* --- the twelve the sparse rewrite unblocked, pinned 2026-08-12, cheap first ------ */
 
@@ -1865,11 +1920,12 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 	 */
 	Rows.Add({ TEXT("wall-18 stack bond, one brick out"),
 		TEXT("stack bond has no bond to spread a loss, so the column over the hole hangs ")
-		TEXT("on head-joint tension into its neighbours: 649.46x at characteristic bond, ")
-		TEXT("1.41x less margin than the intact wall-17, which is the pair's ONLY ")
-		TEXT("discrimination now that both halves stand"),
+		TEXT("on head-joint tension into its neighbours: 897.73x at the mean bond (649.46 ")
+		TEXT("at the characteristic — this rung moved x1.382 while the intact wall-17's ")
+		TEXT("918.05 did not move at all, so the pair's margin shrank 1.41x -> 1.023x: ")
+		TEXT("the strength-governed rung closed most of the gap on the crush-governed one)"),
 		Scenario(TEXT("wall-18")),
-		ERelation::AgreeStands, 649.46354, 649.46484, 0, 0 });
+		ERelation::AgreeStands, 897.712, 897.749, 0, 0 });
 
 	Rows.Add({ TEXT("wall-17 stack bond, intact"),
 		TEXT("the highest lambda* in the swept set (918.05x) and the first absolute ")
@@ -1978,7 +2034,7 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		 * PARTIAL-PRICING RE-PIN note above): midpoint of 35.8172298 (old path) and
 		 * 35.817113279469787 (new path), +/-2e-5 relative.
 		 */
-		ERelation::OracleStandsProductionFalls, 35.81645, 35.81789, 12, 3 });
+		ERelation::OracleStandsProductionFalls, 111.4952, 111.4997, 12, 3 });
 
 	Rows.Add({ TEXT("wall-19 bottom course out under half the wall"),
 		TEXT("THIS MEASUREMENT IS WHAT MOVED THE CATALOGUE, and it is the CLOSEST CALL of ")
@@ -2010,7 +2066,7 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		 * carries the WORST measured pivot-path spread (1.19e-5), which is the
 		 * measurement the +/-2e-5 half-width is built from.
 		 */
-		ERelation::OracleStandsProductionFalls, 12.382308, 12.382805, 34, 6 });
+		ERelation::OracleStandsProductionFalls, 47.96274, 47.96466, 34, 6 });
 
 	/*
 	 * THE PIER PAIR, WHOSE DISCRIMINATION DESIGN §8 EXPLICITLY HANDED TO THIS ORACLE.
@@ -2033,7 +2089,7 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		 * exactly why it is re-pinned rather than left to fail next time as a phantom
 		 * masonry regression.
 		 */
-		ERelation::AgreeStands, 89.113300, 89.116866, 0, 0 });
+		ERelation::AgreeStands, 206.8525, 206.8608, 0, 0 });
 
 	/*
 	 * THE SUPERIMPOSED-LOAD PAIR READS AS ONE NUMBER, AND THAT IS A STATEMENT ABOUT THE
@@ -2082,7 +2138,7 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("pass, i.e. a joint 42x over capacity — the raking cut leaves teeth hanging ")
 		TEXT("where the two rows above merely leave pieces unrouted"),
 		Scenario(TEXT("wall-20")),
-		ERelation::OracleStandsProductionFalls, 82.629514, 82.629680, 9, 0 });
+		ERelation::OracleStandsProductionFalls, 218.4185, 218.4272, 9, 0 });
 
 	Rows.Add({ TEXT("wall-11 wall on two piers, six-brick clear span"),
 		TEXT("the pier pair's wide half at 128.12x; the §8 case-11 ruling worked this ")
@@ -2090,7 +2146,7 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("and the LP's three-figure margin at CHARACTERISTIC bond is that ruling's ")
 		TEXT("first independent confirmation"),
 		Scenario(TEXT("wall-11")),
-		ERelation::AgreeStands, 128.11813, 128.11839, 0, 0 });
+		ERelation::AgreeStands, 269.3169, 269.3277, 0, 0 });
 
 	Rows.Add({ TEXT("wall-09 ten-brick opening, eight courses over"),
 		TEXT("THIS MEASUREMENT IS WHAT MOVED THE CATALOGUE: case 9 was re-ruled from ")
@@ -2122,7 +2178,7 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		 * is re-pinned so the next same-magnitude pivot-path change cannot arrive
 		 * dressed as a masonry regression on the file's least stable relation.
 		 */
-		ERelation::AgreeStands, 36.563187, 36.564651, 0, 0 });
+		ERelation::AgreeStands, 105.6457, 105.6499, 0, 0 });
 
 	/*
 	 * THE COVER PAIR'S HONEST MEASUREMENT, OWED SINCE 2026-08-11 AND UNCOMFORTABLE.
@@ -2148,7 +2204,7 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("for a reason that is about the measure (lambda* is a multiplier on own ")
 		TEXT("weight) rather than about the router"),
 		Scenario(TEXT("wall-07")),
-		ERelation::AgreeStands, 296.2203, 296.2209, 0, 0 });
+		ERelation::AgreeStands, 456.874, 456.893, 0, 0 });
 
 	Rows.Add({ TEXT("wall-06 two-cell opening, deep cover"),
 		TEXT("the span ladder's short end: half wall-07's span under the same cover ")
@@ -2161,7 +2217,7 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		 * test): midpoint of 622.031942 (old path) and 622.03383039924574 (new
 		 * path), +/-2e-5 relative.
 		 */
-		ERelation::AgreeStands, 622.0204, 622.0454, 0, 0 });
+		ERelation::AgreeStands, 634.570, 634.596, 0, 0 });
 
 	/*
 	 * THE FIRST ROW IN THIS FILE WHERE THE ORACLE IS THE OUTLIER, AND THE FIRST WHOSE
@@ -2219,18 +2275,35 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 	 * unchanged across the swap, which is the acceptance sync test's brick-for-brick claim
 	 * showing up as a number.
 	 */
+	/*
+	 * RE-MEASURED AT THE MEAN RE-ANCHOR FLIP (2026-08-14), and the row's SHAPE moved with
+	 * the approved fallout: production now STANDS the wall (worst pre-cascade reading
+	 * 0.93542327561664174 — NOT the predicted 3.8429/7 = 0.549, so the governing AXIS moved
+	 * and the reading cannot be re-derived by scaling. WHICH axis it moved to is UNVERIFIED:
+	 * the "squeezed-edge compression" first written here was the same claim that proved
+	 * wrong for case 9's jamb (Mohr-Coulomb shear, 13x over the compression reading) and for
+	 * case 22 (shear again), on joints of this same jamb-bed shape — decompose it over
+	 * `GetConnectionForce` before believing any attribution (CURRENT_STATE carries the
+	 * specified follow-up; TRAPS: an axis claim with no formula beside it is unverified) —
+	 * zero passes, zero dropped), so the relation is AgreeStands: LP and production agree
+	 * with each other and BOTH now disagree with the catalogue's ruled Collapse, which is
+	 * case 21's inverted deliberate red in `Acceptance.Wall.Catalogue`. The LP's stand
+	 * moved x3.128 to 17.2389 — NOT the x4.5 a pure jamb-cohesion pricing predicts, so the
+	 * 2026-08-13 attribution (jamb bed cohesive shear, ruled a rigid-plastic scope limit)
+	 * is incomplete at the mean data: the zeroed-cohesion probe now keeps 27.7% of lambda*
+	 * (see OpeningStrengthProbes), and the mean-basis mechanism split is an open
+	 * measurement logged in CURRENT_STATE. The prose block above records the
+	 * characteristic-era investigation as it stood; its figures are that era's.
+	 */
 	Rows.Add({ TEXT("wall-21 eighteen-cell opening, two courses over"),
-		TEXT("the COVER counter-case, and the first row here where the LP is the outlier: ")
-		TEXT("two courses (15 cm) over a 4.06 m opening is 1.2014 MPa of deep-beam bending, ")
-		TEXT("1.50x the 0.8 MPa top of the mean bracket and 12.0x characteristic f_xk1, and ")
-		TEXT("production drops the whole cover (45 pieces, 0 stranded) in THREE cascade ")
-		TEXT("passes at a worst pre-cascade reading of 3.8429 — a strength verdict, not the ")
-		TEXT("zero-pass unroutability of wall-10 and wall-19. The LP stands it at 5.51, which ")
-		TEXT("is 66x what the bond can hold, by a mechanism that has NOT been identified — ")
-		TEXT("see the block above for the ladder that refuted the first attribution and for ")
-		TEXT("the two ladders that would settle it"),
+		TEXT("the COVER counter-case: two courses (15 cm) over a 4.06 m opening is ")
+		TEXT("1.2014 MPa of deep-beam bending, 1.71x the coded mean f_x1 — the catalogue's ")
+		TEXT("ruled Collapse. Since the mean re-anchor BOTH models here stand it: the LP at ")
+		TEXT("17.24, production at a worst reading of 0.9354 with nothing dropped — so this ")
+		TEXT("row now measures the two of them agreeing against the ruled verdict, which is ")
+		TEXT("the catalogue's inverted deliberate red, not this file's"),
 		Scenario(TEXT("wall-21")),
-		ERelation::OracleStandsProductionFalls, 5.5109, 5.5111, 45, 0 });
+		ERelation::AgreeStands, 17.23854, 17.23923, 0, 0 });
 
 	TArray<FSweepReading> Readings;
 	RunRows(*this, Rows, Readings);
@@ -2307,6 +2380,27 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
  * fixture's worst; quoting it as production's worst for this fixture was the
  * 2026-08-09 draft's error and is not repeated here.
  *
+ * ====================================================================================
+ * RE-MEASURED AT THE MEAN RE-ANCHOR FLIP (2026-08-14) — BOTH HALVES OF THE FINDING
+ * ABOVE ARE NOW HISTORY, AND THE REPLACEMENTS ARE PINNED BELOW.
+ * ====================================================================================
+ *
+ *   - THE LP'S HEIGHT-IDENTITY DIED: 629.19922011175072 at ten courses against
+ *     297.99734009073632 at twenty — a ratio of 2.1114, within 0.4% of production's own
+ *     height-linear 2.1198. At the mean strengths the LP's binding constraint is
+ *     strength-governed and scales with the stacked load, so the "some local feature the
+ *     two walls share" mechanism the characteristic data exposed (256.820018 at BOTH
+ *     heights, one ulp apart) is no longer what binds. The identity is replaced by a
+ *     ratio pin; re-deriving WHICH constraint now binds belongs with the step-4
+ *     promotion design, not this file.
+ *   - PRODUCTION'S CROSSING DIED with the re-anchor's free-end loss (CURRENT_STATE):
+ *     the readings are the same per-brick-weight multiples of the /7 anchor
+ *     (0.13192716796875004 and 0.27966589311306284 — 15.867 and 33.635 bw on
+ *     0.0083148340), the RATIO is untouched, but both now sit under 1.0 and the
+ *     crossing sits past any buildable height (~412 courses). The 20-course wall no
+ *     longer drops its piece, so both rows read AgreeStands and the ladder keeps
+ *     trend + agreement only, exactly as the lost-discrimination entry records.
+ *
  * NEEDS A TICKING WORLD: NO.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -2321,18 +2415,19 @@ bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
 	TArray<FSweepRow> Rows;
 
 	Rows.Add({ TEXT("free end, 7 cells x 10 courses"),
-		TEXT("the promoted canary: the LP prices the ten-course free end at 256.82x own ")
-		TEXT("weight while production's worst joint reads 0.92 of capacity and holds"),
+		TEXT("the promoted canary: the LP prices the ten-course free end at 629.2x own ")
+		TEXT("weight at the mean strengths while production's worst joint reads 0.132 ")
+		TEXT("and holds"),
 		[](FStructure& Out, FString& Why) { return BuildFreeEnd(10, Out, Why); },
-		ERelation::AgreeStands, 256.819, 256.821, 0, 0 });
+		ERelation::AgreeStands, 629.187, 629.212, 0, 0 });
 
 	Rows.Add({ TEXT("free end, 7 cells x 20 courses"),
-		TEXT("the same wall twice as tall: the LP does not move (256.82x, pinned as an ")
-		TEXT("identity below) while production's worst reading doubles past 1.0 and the ")
-		TEXT("cascade drops the brick above the hole — the whole disagreement about ")
-		TEXT("height in one pair"),
+		TEXT("the same wall twice as tall: since the mean re-anchor BOTH sides scale ")
+		TEXT("with height (the LP 2.1114x, production 2.1199x) and both stand — the ")
+		TEXT("characteristic-era height-flat LP and the production crossing are history ")
+		TEXT("(header)"),
 		[](FStructure& Out, FString& Why) { return BuildFreeEnd(20, Out, Why); },
-		ERelation::OracleStandsProductionFalls, 256.819, 256.821, 1, 0 });
+		ERelation::AgreeStands, 297.991, 298.004, 0, 0 });
 
 	TArray<FSweepReading> Readings;
 	RunRows(*this, Rows, Readings);
@@ -2347,32 +2442,40 @@ bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	CheckSameLambda(
-		*this,
-		TEXT("the free-end ladder's height independence (7x10 vs 7x20)"),
-		*Short, *Tall, SameNumberRelativeTolerance);
-
 	/*
-	 * PRODUCTION'S SIDE, PINNED AS A RATIO AND AS A CROSSING. The ratio alone would pass
-	 * if both readings halved; the crossing alone would pass if the tall wall crept over
-	 * 1.0 by a hair. Together they say the reading is height-LINEAR and that the line
-	 * crosses capacity between these two heights, which is the half of the finding that
-	 * makes the LP's non-movement worth reporting at all.
+	 * THE LP'S HEIGHT SCALING, PINNED AS A RATIO — the replacement for the retired
+	 * height-identity (header). 629.19922011175072 / 297.99734009073632 = 2.1114255...,
+	 * within 0.4% of production's own height-linear 2.1198 and pinned separately from it,
+	 * so the two models' agreement about height stays a measured fact rather than a
+	 * coincidence nobody would notice breaking.
 	 */
 	CheckReadingRatio(
 		*this,
-		TEXT("production's free-end reading is height-linear where the LP is height-flat"),
+		TEXT("the LP's free-end lambda* now scales with height (7x10 over 7x20)"),
+		Short->Oracle.Lambda, Tall->Oracle.Lambda,
+		2.11122, 2.11163);
+
+	/*
+	 * PRODUCTION'S SIDE, PINNED AS A RATIO AND A CEILING. The characteristic-era crossing
+	 * between these heights is gone (the re-anchor moved it past ~412 courses — the
+	 * lost-discrimination entry in CURRENT_STATE); what remains assertable is that the
+	 * reading is height-LINEAR (the ratio) and that both heights stand clear of capacity,
+	 * which is what AgreeStands above already demands of the outcome.
+	 */
+	CheckReadingRatio(
+		*this,
+		TEXT("production's free-end reading is height-linear"),
 		Tall->WorstUtilisation, Short->WorstUtilisation,
 		FreeEndReadingRatioLo, FreeEndReadingRatioHi);
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("production's free-end reading must CROSS capacity between 10 and 20 ")
-			TEXT("courses: 10 courses read %.17g (must be under 1.0) and 20 courses read ")
-			TEXT("%.17g (must be over it). If both now sit on one side, the crossing has ")
-			TEXT("moved and the ladder's slope is what to re-derive"),
+			TEXT("production's free-end readings both sit under capacity on the mean basis ")
+			TEXT("— 10 courses read %.17g and 20 courses read %.17g; the characteristic-era ")
+			TEXT("crossing between these heights is retired, and either reading crossing 1.0 ")
+			TEXT("again means the ladder's slope must be re-derived"),
 			Short->WorstUtilisation, Tall->WorstUtilisation),
-		Short->WorstUtilisation < 1.0 && Tall->WorstUtilisation > 1.0);
+		Short->WorstUtilisation < 1.0 && Tall->WorstUtilisation < 1.0);
 
 	return true;
 }
@@ -2406,7 +2509,10 @@ bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
  *   predicts roughly 2x; a cover-carried one predicts FLAT again.
  *
  * ====================================================================================
- * WHAT THEY MEASURED, 2026-08-13, AND WHAT IT DOES AND DOES NOT SETTLE
+ * WHAT THEY MEASURED, 2026-08-13 — AT THE CHARACTERISTIC STRENGTHS. Historical record:
+ * the 2026-08-14 mean re-anchor moved every lambda* and killed the abutment
+ * sensitivity; the note above the rows carries the mean-basis measurements and what
+ * they change. The experiment below is preserved as it was run.
  * ====================================================================================
  *
  *     rung                       blocks  joints  lambda*              production
@@ -2526,6 +2632,27 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 
 	TArray<FSweepRow> Rows;
 
+	/*
+	 * RE-MEASURED AT THE MEAN RE-ANCHOR FLIP (2026-08-14). Two things moved everywhere at
+	 * once, so read every rung below with both in mind. (1) PRODUCTION STANDS the whole
+	 * family now — the approved case-21 fallout: every rung's drop pin is 0 and every
+	 * relation is AgreeStands (the catalogue's ruled Collapse is the inverted deliberate
+	 * red in the acceptance suite, not here). The even-parity rungs (s=2, s=4) newly break
+	 * ONE joint in one pass and still drop nothing — their worst reading is 1.0433 against
+	 * the odd rungs' 0.9354, on an axis NOBODY HAS DECOMPOSED (see the wall-21 row above:
+	 * the compression attribution has been checked twice on this joint shape elsewhere and
+	 * was wrong both times). (2) THE LADDERS'
+	 * CHARACTERISTIC-ERA FINDINGS ARE HISTORY, NOT CURRENT: at the mean data the parity
+	 * step reads 0.8875 (was 0.8731), the matched-span identity 1.00088 (was 0.98968), the
+	 * pure span step 1.1385 (span-squared predicts 1.128 — still ~0.9% over), and the
+	 * ABUTMENT SENSITIVITY COLLAPSED: j=3/j=2 = 1.0378 (was 1.339), j=4/j=2 = 1.0514 (was
+	 * 1.698). The depth-flatness held (s=3/s=1 = 1.0000066, s=4/s=2 = 1 to the last bit).
+	 * So on the mean basis the mechanism is span-dominated and nearly abutment-blind —
+	 * NOT the jamb-priced chain the characteristic data showed — which is the open
+	 * mean-basis mechanism split logged in CURRENT_STATE for the step-4 design. The pins
+	 * below hold the mean-basis measurements; the header above records the
+	 * characteristic-era experiment as it was run.
+	 */
 	Rows.Add({ TEXT("wall-21 through the scenario catalogue"),
 		TEXT("the equivalence control: the shipped case-21 fixture, laid the way every ")
 		TEXT("verdict row in this file is laid, so the hand-parameterised rung below can be ")
@@ -2534,14 +2661,14 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		{
 			return BuildScenarioStructure(TEXT("wall-21"), Out, Why);
 		},
-		ERelation::OracleStandsProductionFalls, 5.5108993, 5.5111198, 45, 0 });
+		ERelation::AgreeStands, 17.23854, 17.23923, 0, 0 });
 
 	Rows.Add({ TEXT("rise s=1 / abutment j=2 (case 21 itself)"),
 		TEXT("both ladders' bottom rung and the equivalence control's partner — the same ")
-		TEXT("83 blocks, 133 joints and 2,754 pivots as the catalogue row above, which is ")
-		TEXT("what the same-number pin below turns into an assertion"),
+		TEXT("83 blocks and 133 joints as the catalogue row above, which is what the ")
+		TEXT("same-number pin below turns into an assertion"),
 		Rung(18, 1, 2, INDEX_NONE),
-		ERelation::OracleStandsProductionFalls, 5.5108993, 5.5111198, 45, 0 });
+		ERelation::AgreeStands, 17.23854, 17.23923, 0, 0 });
 
 	Rows.Add({ TEXT("rise s=2"),
 		TEXT("one more course under the opening: an arch from the ground gains 7.5 cm of ")
@@ -2549,46 +2676,47 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("here is the REVEAL PARITY (an even-first opening), and the depth pins below ")
 		TEXT("compare s=3 against s=1 and s=4 against s=2 to keep the two apart"),
 		Rung(18, 2, 2, INDEX_NONE),
-		ERelation::OracleStandsProductionFalls, 4.8118201, 4.8120126, 45, 0 });
+		ERelation::AgreeStands, 15.29968, 15.30030, 0, 0 });
 
 	Rows.Add({ TEXT("rise s=3"),
 		TEXT("two more courses under the opening, back on case 21's odd-first parity: the ")
-		TEXT("same lambda* to 1.9e-7 relative"),
+		TEXT("same lambda* to 6.6e-6 relative at the mean data (1.9e-7 at the ")
+		TEXT("characteristic)"),
 		Rung(18, 3, 2, INDEX_NONE),
-		ERelation::OracleStandsProductionFalls, 5.5108983, 5.5111187, 45, 0 });
+		ERelation::AgreeStands, 17.23865, 17.23934, 0, 0 });
 
 	Rows.Add({ TEXT("rise s=4"),
 		TEXT("three more courses under the opening: the springing is 22.5 cm deeper than ")
 		TEXT("case 21's, which is 1.75x the rise the priced arch was fitted at, and lambda* ")
-		TEXT("reads its parity partner s=2 to 2.8e-6 relative"),
+		TEXT("reads its parity partner s=2 to the last bit at the mean data"),
 		Rung(18, 4, 2, INDEX_NONE),
-		ERelation::OracleStandsProductionFalls, 4.8118064, 4.8119989, 45, 0 });
+		ERelation::AgreeStands, 15.29968, 15.30030, 0, 0 });
 
 	Rows.Add({ TEXT("abutment j=3"),
 		TEXT("half again the jamb, same cut span, same wall height, same reveal parity — ")
-		TEXT("and lambda* moves 1.34x, which is the one thing either ladder found that ")
-		TEXT("does move it. Production drops 49 rather than 45 because the cover it drops ")
-		TEXT("is two cells wider, not because it fares worse"),
+		TEXT("1.34x at the characteristic data, and only 1.04x at the mean: the abutment ")
+		TEXT("sensitivity all but vanished at the re-anchor (the family's open mechanism ")
+		TEXT("question — see the 2026-08-14 note above)"),
 		Rung(18, 1, 3, INDEX_NONE),
-		ERelation::OracleStandsProductionFalls, 7.3788600, 7.3791552, 49, 0 });
+		ERelation::AgreeStands, 17.89086, 17.89158, 0, 0 });
 
 	Rows.Add({ TEXT("abutment j=4"),
 		TEXT("twice the jamb: twice the bearing and twice the weight over it, with the ")
 		TEXT("opening, the cover and the courses below all unmoved. This rung REFUSED in ")
 		TEXT("phase 2 until 2026-08-13 and was pinned as a canary; the ratio test gained ")
-		TEXT("its relative pivot floor and the canary flipped, so the 2x test the ladder ")
-		TEXT("was built for now has its measurement"),
+		TEXT("its relative pivot floor and the canary flipped. The 2x test's mean-basis ")
+		TEXT("answer is 1.05x — the bearing-proportional reading died with the re-anchor"),
 		Rung(18, 1, 4, INDEX_NONE),
-		ERelation::OracleStandsProductionFalls, 9.3585409, 9.3589153, 53, 0 });
+		ERelation::AgreeStands, 18.12397, 18.12469, 0, 0 });
 
 	Rows.Add({ TEXT("abutment j=3, cover tail trimmed to two cells"),
 		TEXT("THE DISAMBIGUATOR the abutment ladder needs: widening a jamb widens the ")
 		TEXT("bearing AND lengthens the cover built in over it, and j=3 alone cannot say ")
-		TEXT("which paid. This rung keeps the three-cell jamb and takes the extra cover ")
-		TEXT("back off, and it lands BETWEEN the two — 6.290 against 5.511 and 7.379 — so ")
-		TEXT("the answer is that both paid and neither is the mechanism on its own"),
+		TEXT("which paid. At the mean data it lands between its neighbours again — 17.654 ")
+		TEXT("against 17.239 and 17.891 — but the whole spread is now 3.8%, so what it ")
+		TEXT("disambiguates is proportionally small (see the 2026-08-14 note above)"),
 		Rung(18, 1, 3, 2),
-		ERelation::OracleStandsProductionFalls, 6.2894127, 6.2896643, 43, 0 });
+		ERelation::AgreeStands, 17.65379, 17.65449, 0, 0 });
 
 	/*
 	 * ================================================================================
@@ -2627,21 +2755,20 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 	Rows.Add({ TEXT("matched span: 17 cells, s=1"),
 		TEXT("the pure SPAN step at fixed odd-first parity — one cell of opening off case ")
 		TEXT("21, so the cover bears on 361.00 cm instead of 383.50 with the toothing and ")
-		TEXT("the cover's bond parity unchanged. Span-squared predicted 1.128x case 21 and ")
-		TEXT("it measured 1.156, an exponent of 2.391 rather than 2 — the 18-cell parity ")
-		TEXT("step independently gives 2.378, two-figure agreement"),
+		TEXT("the cover's bond parity unchanged. Span-squared predicts 1.128x case 21; the ")
+		TEXT("mean data measures 1.1385 (the characteristic data measured 1.156)"),
 		Rung(17, 1, 2, INDEX_NONE),
-		ERelation::OracleStandsProductionFalls, 6.3679868, 6.3682416, 43, 0 });
+		ERelation::AgreeStands, 19.62579, 19.62658, 0, 0 });
 
 	Rows.Add({ TEXT("matched span: 17 cells, s=2"),
 		TEXT("THE MATCHED-SPAN RUNG: a 17-cell cut starting on an even course bears its ")
 		TEXT("cover on the SAME 383.50 cm clear reveal as case 21's 18-cell odd-first one, ")
 		TEXT("with the cover's two courses on the opposite bond parity. The span hypothesis ")
-		TEXT("predicted 1.00 against case 21 and the cover-bond-parity hypothesis 0.873; it ")
-		TEXT("measured 0.990, so the 13% step IS the bearing span. Production says the same ")
-		TEXT("thing independently — its worst reading here is case 21's to the last bit"),
+		TEXT("predicts ~1.00 against case 21 and the cover-bond-parity hypothesis the ")
+		TEXT("parity step; the mean data measures 1.00088 (0.990 at the characteristic), ")
+		TEXT("so the step IS the bearing span on either basis"),
 		Rung(17, 2, 2, INDEX_NONE),
-		ERelation::OracleStandsProductionFalls, 5.4540000, 5.4542182, 43, 0 });
+		ERelation::AgreeStands, 17.25377, 17.25446, 0, 0 });
 
 	TArray<FSweepReading> Readings;
 	RunRows(*this, Rows, Readings);
@@ -2739,7 +2866,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("span-squared accounts for most of it ((383.5/406)^2 = 0.892 vs this 0.873). ")
 		TEXT("SETTLED 2026-08-13 by the matched-span pair below: with the spans matched the ")
 		TEXT("step falls to 0.990, so this is the reveal SPAN and not the cover's parity"),
-		*S2, *S1, 0.87309, 0.87320);
+		*S2, *S1, 0.88748, 0.88758);
 
 	/*
 	 * ================================================================================
@@ -2796,7 +2923,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("THE MATCHED-SPAN PAIR: 17 cells at s=2 against case 21, both bearing 383.50 cm"),
 		TEXT("the bearing-span hypothesis predicts 1.00 (parity buys nothing once the spans ")
 		TEXT("match), the cover-bond-parity hypothesis predicts the 0.873 step survives"),
-		*W17S2, *S1, 0.98958, 0.98978);
+		*W17S2, *S1, 1.00083, 1.00094);
 
 	CheckLambdaLadderRatio(
 		*this,
@@ -2804,14 +2931,14 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("span-squared predicts 1.128 and a ladder that had simply stopped responding ")
 		TEXT("predicts 1.00; without this rung a matched-span 1.00 could not be told from ")
 		TEXT("an insensitive one"),
-		*W17S1, *S1, 1.15541, 1.15564);
+		*W17S1, *S1, 1.13843, 1.13854);
 
 	CheckLambdaLadderRatio(
 		*this,
 		TEXT("THE RISE LADDER's parity step, repeated two courses deeper (s=4/s=3)"),
 		TEXT("the same reveal-width step, measured again at a different depth: if the ")
 		TEXT("parity step were really a depth effect in disguise, these two would differ"),
-		*S4, *S3, 0.87309, 0.87320);
+		*S4, *S3, 0.88747, 0.88757);
 
 	/*
 	 * ================================================================================
@@ -2858,7 +2985,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("THE ABUTMENT LADDER's step, three cells of jamb against two"),
 		TEXT("a jamb-width-proportional reaction predicts ~1.50, a mechanism carried ")
 		TEXT("between the reveals predicts 1.00"),
-		*J3, *S1, 1.33885, 1.33906);
+		*J3, *S1, 1.03779, 1.03789);
 
 	CheckLambdaLadderRatio(
 		*this,
@@ -2866,7 +2993,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("a bearing-proportional reaction predicts 2.00 and a mechanism carried ")
 		TEXT("between the reveals predicts 1.00 — measured 1.698, between them and nearer ")
 		TEXT("the first, which is the j=3 step's verdict restated over a doubled jamb"),
-		*J4, *S1, 1.69805, 1.69833);
+		*J4, *S1, 1.05131, 1.05141);
 
 	CheckLambdaLadderRatio(
 		*this,
@@ -2874,7 +3001,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("if the jamb's bearing bought the 1.34, this stays near 1.34; if the longer ")
 		TEXT("cover tail bought it, this falls back toward 1.00 — measured 1.141, which is ")
 		TEXT("NEITHER, so both are live and this is the pin that says so"),
-		*J3Trimmed, *S1, 1.14117, 1.14137);
+		*J3Trimmed, *S1, 1.02404, 1.02414);
 
 	/*
 	 * THE SAME MEASUREMENT SAID THE OTHER WAY ROUND, and it is worth both pins because
@@ -2894,7 +3021,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("THE DISAMBIGUATOR against the untrimmed jamb (trimmed j=3 / j=3)"),
 		TEXT("all-bearing predicts 1.00 (the trim would change nothing), all-tail predicts ")
 		TEXT("0.747 (the whole gain given back)"),
-		*J3Trimmed, *J3, 0.85228, 0.85243);
+		*J3Trimmed, *J3, 0.98670, 0.98680);
 
 	/*
 	 * PRODUCTION'S OWN READING, ON THE SAME TWO SPLITS — because a ladder that only the
@@ -2911,7 +3038,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 	CheckReadingRatio(
 		*this,
 		TEXT("production sees the reveal parity the LP sees (s=2 / s=1)"),
-		S2->WorstUtilisation, S1->WorstUtilisation, 1.11015, 1.11027);
+		S2->WorstUtilisation, S1->WorstUtilisation, 1.11531, 1.11543);
 
 	/*
 	 * ================================================================================
@@ -2979,7 +3106,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 	CheckReadingRatio(
 		*this,
 		TEXT("and separates the span step it is matched against (17@s=1 / case 21)"),
-		W17S1->WorstUtilisation, S1->WorstUtilisation, 0.89479, 0.89498);
+		W17S1->WorstUtilisation, S1->WorstUtilisation, 0.89065, 0.89076);
 
 	return true;
 }
@@ -3122,29 +3249,40 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 		TEXT("same 83 blocks, the lambda* the mechanism ladders pin, and ZERO joints ")
 		TEXT("overridden, pinned rather than implied"),
 		CaseTwentyOne,
-		ERelation::OracleStandsProductionFalls, 5.5108993, 5.5111198, 45, 0, nullptr, 0 });
+		ERelation::AgreeStands, 17.23854, 17.23923, 0, 0, nullptr, 0 });
 
+	/*
+	 * RE-MEASURED AND RE-DERIVED AT THE MEAN RE-ANCHOR FLIP (2026-08-14). The
+	 * characteristic-era finding this row closed — jamb bed cohesion is essentially the
+	 * whole capacity, its removal collapses lambda* PAST 1.0 (0.785, a factor of 7.02, the
+	 * family's one AgreeFalls) — DOES NOT SURVIVE the mean basis. Zeroing the same 36
+	 * joints now leaves lambda* at 4.768, a factor of 0.277: the modified wall STANDS,
+	 * because the strengths the probe leaves alone (bond tension 0.70 among them) now
+	 * carry it. So on the mean basis the jamb cohesion is the dominant SINGLE term (72% of
+	 * the stand) but no longer the whole capacity, the AgreeFalls arm is dead, and the
+	 * mean-basis mechanism split — consistent with the abutment ladder's collapse to
+	 * ~1.05x — is the open measurement CURRENT_STATE logs for the step-4 design. The
+	 * 2026-08-13 ruling (Collapse stands; the LP's cohesion credit booked as a
+	 * rigid-plastic scope limit) is unchanged by any of this.
+	 */
 	Rows.Add({ TEXT("probe: jamb bed joints, cohesion zeroed"),
-		TEXT("THE CLOSING EXPERIMENT. Every bed joint below the cover — which is every bed ")
-		TEXT("joint in the jamb, the bearing under the cover included — loses its cohesion ")
-		TEXT("and keeps its friction and its tension. If the jamb's shear chain binds, ")
-		TEXT("lambda* collapses toward 1 — and BOTH surviving thrust-line shapes deliver ")
-		TEXT("their thrust into these joints, so this prices the capacity, not the shape. ")
-		TEXT("IT COLLAPSED PAST 1 — 0.785, a factor of 7.02 — which is why this is the one ")
-		TEXT("case-21 row in the file whose relation is AGREE (falls): with its jamb ")
-		TEXT("cohesion gone the MODIFIED wall has no equilibrium at self-weight (hand ")
-		TEXT("statics and production judged the REAL wall — two verdicts agreeing, not ")
-		TEXT("three methods on one fixture)"),
+		TEXT("THE CLOSING EXPERIMENT, re-derived at the mean basis. Every bed joint below ")
+		TEXT("the cover loses its cohesion and keeps its friction and its tension. At the ")
+		TEXT("characteristic data that collapsed lambda* past 1.0 (0.785 — the wall fell); ")
+		TEXT("at the mean data it reads 4.768, a factor of 0.277 of the control: the ")
+		TEXT("dominant single term, no longer the whole capacity, and the modified wall ")
+		TEXT("stands"),
 		CaseTwentyOne,
-		ERelation::AgreeFalls, 0.7851011, 0.7851325, 45, 0,
+		ERelation::AgreeStands, 4.76789, 4.76808, 0, 0,
 		[](FOracleProblem& Problem) { return ZeroJambBedCohesion(1, Problem); }, 36 });
 
 	Rows.Add({ TEXT("probe: cover head-joint tension x0.5"),
 		TEXT("half the tensile bond across the cover's own head joints, nothing else ")
 		TEXT("touched — the knob a deep bending panel's capacity is linear in. Halving it ")
-		TEXT("costs 4.8%, where a panel would lose half"),
+		TEXT("costs 2.7% at the mean data (4.8% at the characteristic), where a panel ")
+		TEXT("would lose half"),
 		CaseTwentyOne,
-		ERelation::OracleStandsProductionFalls, 5.2458863, 5.2460962, 45, 0,
+		ERelation::AgreeStands, 16.76947, 16.77014, 0, 0,
 		[](FOracleProblem& Problem)
 		{
 			return ScaleCoverHeadTension(1, 0.5, Problem);
@@ -3153,9 +3291,10 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 	Rows.Add({ TEXT("probe: cover head-joint tension x2"),
 		TEXT("and twice it, so the pair spans a factor of four: a cover carrying its span ")
 		TEXT("in bond tension reads 4.00x across the two, and anything else reads 1.00. It ")
-		TEXT("reads 1.151 — the bond contributes, and it is not what holds the wall up"),
+		TEXT("reads 1.068 at the mean data (1.151 at the characteristic) — the bond ")
+		TEXT("contributes, and it is not what holds the wall up"),
 		CaseTwentyOne,
-		ERelation::OracleStandsProductionFalls, 6.0400073, 6.0402489, 45, 0,
+		ERelation::AgreeStands, 17.90343, 17.90415, 0, 0,
 		[](FOracleProblem& Problem)
 		{
 			return ScaleCoverHeadTension(1, 2.0, Problem);
@@ -3223,32 +3362,34 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 	CheckLambdaLadderRatio(
 		*this,
 		TEXT("THE CLOSING EXPERIMENT: case 21 with its jamb bed cohesion taken away"),
-		TEXT("the jamb-shear-chain hypothesis predicted a collapse toward 1 (0.18 of the ")
-		TEXT("control), anything else predicted 1.00 — measured 0.1425, i.e. PAST 1.0 in ")
-		TEXT("absolute terms, so the chain is not merely binding, it is essentially the ")
-		TEXT("whole capacity"),
-		*NoCohesion, *Control, 0.142449, 0.142478);
+		TEXT("the jamb-shear-chain hypothesis predicts a collapse toward the residue, ")
+		TEXT("anything else predicts 1.00 — the mean data measures 0.2766 (0.1425 at the ")
+		TEXT("characteristic, where it also crossed 1.0 absolute): the dominant single ")
+		TEXT("term, no longer the whole capacity"),
+		*NoCohesion, *Control, 0.27657, 0.27660);
 
 	CheckLambdaLadderRatio(
 		*this,
 		TEXT("THE COVER'S OWN BOND, over a four-fold lever (tension x2 / tension x0.5)"),
 		TEXT("a cover spanning in bond tension predicts 4.00, a cover whose tension is ")
-		TEXT("incidental predicts 1.00 — measured 1.151, so the bond contributes about a ")
-		TEXT("seventh of what carrying the span would require"),
-		*DoubleTension, *HalfTension, 1.15126, 1.15150);
+		TEXT("incidental predicts 1.00 — the mean data measures 1.068 (1.151 at the ")
+		TEXT("characteristic), so the bond contributes little of what carrying the span ")
+		TEXT("would require"),
+		*DoubleTension, *HalfTension, 1.06757, 1.06767);
 
 	/*
 	 * AND THE LOW HALF OF THAT LEVER ON ITS OWN. The four-fold ratio above would also be
 	 * satisfied by a solver that had stopped responding to strengths altogether and read
-	 * 1.151 by accident on both sides; this one says the x0.5 rung really does sit 4.8%
-	 * under the control, so the knob is connected. Its partner (x2 / control = 1.09601) is
+	 * the same number by accident on both sides; this one says the x0.5 rung really does
+	 * sit 2.7% under the control, so the knob is connected. Its partner (x2 / control) is
 	 * the quotient of these two and is deliberately not pinned a third time.
 	 */
 	CheckLambdaLadderRatio(
 		*this,
 		TEXT("the low half of the tension lever (tension x0.5 / control)"),
-		TEXT("a bond-governed cover predicts 0.50, an unaffected one 1.00 — measured 0.952"),
-		*HalfTension, *Control, 0.95181, 0.95201);
+		TEXT("a bond-governed cover predicts 0.50, an unaffected one 1.00 — the mean data ")
+		TEXT("measures 0.9728 (0.952 at the characteristic)"),
+		*HalfTension, *Control, 0.97274, 0.97284);
 
 	return true;
 }
@@ -3442,20 +3583,28 @@ bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
 		double CertifiedHi = 0.0;
 	};
 
+	/*
+	 * MEAN RE-ANCHOR RE-PINS (2026-08-14): every window re-measured at the mean-basis
+	 * profiles — the sanity windows keep their ~±1% looseness around the new readings, and
+	 * the 99er's certified window is ONE certified reading at ±2e-5 relative
+	 * (89.898933555823774; the second-path pair predates the flip and a re-pair is owed
+	 * with the next pivot-path change). The MUST-ANSWER halves and the bracket
+	 * (107er strictly below the 5-cell neighbour: 18.1243 < 18.1419) held unchanged.
+	 */
 	const FRung Rungs[] =
 	{
 		{ TEXT("span ladder, 8-cell opening (the wide-lambda neighbour)"),
-			8, 3, 3, 94, 206, 48.6984, 49.6823, 0.0, 0.0 },
+			8, 3, 3, 94, 206, 115.9, 118.2, 0.0, 0.0 },
 		{ TEXT("span ladder, 9-cell opening (THE 99-BLOCK REFUSER)"),
-			9, 3, 3, 99, 216, 0.0, 0.0, 37.9317143, 37.9332316 },
+			9, 3, 3, 99, 216, 0.0, 0.0, 89.8971, 89.9007 },
 		{ TEXT("span ladder, 10-cell opening (the narrow-lambda neighbour)"),
-			10, 3, 3, 104, 226, 29.2715, 29.8629, 0.0, 0.0 },
+			10, 3, 3, 104, 226, 68.0, 69.4, 0.0, 0.0 },
 		{ TEXT("abutment ladder, 3-cell jamb (the narrow-lambda neighbour)"),
-			18, 1, 3, 95, 163, 7.3052, 7.4528, 0.0, 0.0 },
+			18, 1, 3, 95, 163, 17.71, 18.07, 0.0, 0.0 },
 		{ TEXT("abutment ladder, 4-cell jamb (THE 107-BLOCK REFUSER)"),
 			18, 1, 4, 107, 193, 0.0, 0.0, 0.0, 0.0 },
 		{ TEXT("abutment ladder, 5-cell jamb (the wide-lambda neighbour)"),
-			18, 1, 5, 119, 223, 11.0039, 11.2262, 0.0, 0.0 },
+			18, 1, 5, 119, 223, 17.96, 18.33, 0.0, 0.0 },
 	};
 
 	constexpr int32 NumRungs = UE_ARRAY_COUNT(Rungs);

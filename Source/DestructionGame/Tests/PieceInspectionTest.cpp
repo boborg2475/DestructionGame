@@ -1085,12 +1085,14 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 	 *                (4/3).h_along.h_across2, so the two agreeing is evidence.
 	 *   stresses     mean  7,840 / (48 x 10,000)  = 0.0163333 MPa, compressive
 	 *                edge 31,360 / (48 x 10,000)  = 0.0653333 MPa
-	 *   peak tension 0.0653333 - 0.0163333 = 0.049 MPa against mortar's f_xk1 of 0.1
+	 *   peak tension 0.0653333 - 0.0163333 = 0.049 MPa against mortar's mean f_x1 of 0.7
+	 *                (re-anchor flip 2026-08-14), so 0.07 of capacity — the expectation below
+	 *                divides by the profile, so the flip moved it without an edit here
 	 *
 	 * WHICH AXIS GOVERNS, WORKED THROUGH BECAUSE IT IS NOT FREE. Peak compression is the SUM,
 	 * 0.0816667 MPa against 10 MPa, which is 0.0082 of capacity; shear is exactly zero,
-	 * because the load is exactly antiparallel to an exactly vertical normal. Tension at 0.49
-	 * therefore governs by sixty times, and it could not be reached at all without the moment
+	 * because the load is exactly antiparallel to an exactly vertical normal. Tension at 0.07
+	 * therefore governs by 8.6 times, and it could not be reached at all without the moment
 	 * — a centred 7,840 uu on this face reads 0.0016 in compression and nothing anywhere else.
 	 * That gap is the whole reason a readout showing only the force cannot explain itself.
 	 */

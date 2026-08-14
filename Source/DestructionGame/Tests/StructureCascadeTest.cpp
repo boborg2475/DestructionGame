@@ -795,9 +795,10 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		// 500 cm2 each so the split is even and each takes 1.5e6 uu, as PURE SHEAR — a
 		// vertical load on a vertical face has no component along the normal.
 		//
-		//   c2  1.5e6 over 500 cm2 = 0.30 MPa; the bolt's cohesion is 1.0 and its mu is
-		//       exactly 0, so capacity is a flat 1.0     -> 0.30, holds
-		//   c3  the same 0.30 — but this half of A goes SIDEWAYS INTO B, and B then
+		//   c2  1.5e6 over 500 cm2 = 0.30 MPa; the bolt's cohesion is 1.1 (mean basis,
+		//       re-anchor 2026-08-13) and its mu is exactly 0, so capacity is a flat
+		//       1.1                                       -> 0.2727, holds
+		//   c3  the same 0.2727 — but this half of A goes SIDEWAYS INTO B, and B then
 		//       pushes it on down its own pad
 		//   c1  now carries B's own 3e6 PLUS A's 1.5e6 = 4.5e6 over 100 cm2 = 4.5 MPa
 		//                                               -> 0.45, and it still holds
@@ -809,8 +810,8 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		// for load VALUES, but nothing before this composes sign -> classify -> break:
 		// this is the only positively-signed force in the suite that the break sweep then
 		// evaluates, and the axis guard above insists it still resolves to pure shear
-		// with zero tension. Get the sign wrong on a bed joint and mortar's 0.1 MPa
-		// tensile limit gives at one percent of the real capacity, so the composition is
+		// with zero tension. Get the sign wrong on a bed joint and mortar's 0.7 MPa
+		// tensile limit gives at a fraction of the real capacity, so the composition is
 		// worth stating once.
 		//
 		// AND c1's LOAD RISES THROUGH A TWO-HOP PATH THE BREAK ITSELF CREATED. It is
@@ -839,8 +840,8 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 			{
 				{ 0.0, EJointKind::Bed, 1, 0.0 },
 				{ -ForceForMPa(4.5, 100.0), EJointKind::Bed, INDEX_NONE, 0.45 },
-				{ -ForceForMPa(0.3, 500.0), EJointKind::Head, INDEX_NONE, 0.30 },
-				{ +ForceForMPa(0.3, 500.0), EJointKind::Head, INDEX_NONE, 0.30 }
+				{ -ForceForMPa(0.3, 500.0), EJointKind::Head, INDEX_NONE, 0.3 / 1.1 },
+				{ +ForceForMPa(0.3, 500.0), EJointKind::Head, INDEX_NONE, 0.3 / 1.1 }
 			},
 			{ true, true, true, true, true }
 		},
@@ -1010,8 +1011,9 @@ bool FStructureCascadeStopsConductingTest::RunTest(const FString& Parameters)
 		// vertical load on a vertical face has no component along the normal.
 		//
 		//   plate 3e6 uu over 500 cm2 = 0.60 MPa of shear
-		//         bolt cohesion is 1.0 MPa and mu is exactly 0, so friction adds
-		//         nothing and the capacity is 1.0 flat -> 0.60, holds with 40% spare
+		//         bolt cohesion is 1.1 MPa (mean basis, re-anchor 2026-08-13) and mu is
+		//         exactly 0, so friction adds nothing and the capacity is 1.1 flat
+		//         -> 0.5455, holds with 45% spare
 		//
 		// A broken joint still winning the tier reports P FALLING with 0 on the plate.
 		// A broken joint still conducting reports the pad carrying 3e6 and nothing
@@ -1032,7 +1034,7 @@ bool FStructureCascadeStopsConductingTest::RunTest(const FString& Parameters)
 			1,
 			{
 				{ 0.0, EJointKind::Bed, 1, 0.0 },
-				{ -ForceForMPa(3.0, 100.0), EJointKind::Head, INDEX_NONE, 0.6 }
+				{ -ForceForMPa(3.0, 100.0), EJointKind::Head, INDEX_NONE, 0.6 / 1.1 }
 			},
 			{ true, true, true }
 		},

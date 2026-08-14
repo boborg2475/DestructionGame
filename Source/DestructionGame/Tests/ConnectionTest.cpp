@@ -460,7 +460,7 @@ bool FConnectionLatchingTest::RunTest(const FString& Parameters)
 	{
 		FConnection Connection = MakeConnection(BedJointNormal, JointAreaSqCm, ConcreteUncoupled);
 
-		const TArray<double> LoadHistoryMPa = { 5.0, 15.0, 29.0, 31.0, 29.0, 15.0, 5.0, 0.0 };
+		const TArray<double> LoadHistoryMPa = { 5.0, 15.0, 37.0, 39.0, 37.0, 15.0, 5.0, 0.0 };
 
 		bool bWasGiven = false;
 		for (const double LoadMPa : LoadHistoryMPa)
@@ -485,9 +485,10 @@ bool FConnectionLatchingTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * 31 MPa against a 30 MPa limit is the only entry that crosses, so the
-		 * history must end broken. Without this the loop above would be satisfied
-		 * by a connection that never gives at all.
+		 * 39 MPa against the 38 MPa limit (the mean f_cm since the 2026-08-13
+		 * re-anchor; the characteristic-era history peaked at 31 against 30) is the
+		 * only entry that crosses, so the history must end broken. Without this the
+		 * loop above would be satisfied by a connection that never gives at all.
 		 */
 		TestTrue(TEXT("the load history peaked past the limit, so the joint must have given"),
 			Connection.HasGiven());

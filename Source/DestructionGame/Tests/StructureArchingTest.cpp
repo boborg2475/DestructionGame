@@ -24,8 +24,11 @@
  * brick beneath and the brick above has EXACTLY ONE seat. That is N = 1, statically determinate,
  * so the moment IS computed, and three things worsen at once: the area halves, the section
  * modulus falls by four as the depth halves, and e goes from exactly zero to 5.625 cm. Per brick
- * weight carried the joint reads 0.058203838 of f_xk1, so it reaches 1.0 at 17.18 brick weights —
- * and a brick in course 2 of a 30-course wall carries 28 of them.
+ * weight carried the joint reads 0.0083148340 of the mean f_x1, so it reaches 1.0 at 120.27
+ * brick weights. (On the retired characteristic basis those were 0.058203838 and 17.18, and a
+ * brick in course 2 of a 30-course wall carries 28 — which is how the original stepping-triangle
+ * defect condemned the wall. At the mean basis the un-arched cantilever no longer breaks this
+ * wall; the arch is still the correct mechanism and still the one the joint must report.)
  *
  * WHAT IS PHYSICALLY WRONG WITH THAT. A cantilever is what you get when there is nothing on the
  * overhanging side to push against. Here there IS: an intact head joint to a brick that has its
@@ -107,9 +110,9 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 	 * than imported: a test that read the profile would agree with a wrong profile.
 	 */
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against f_xk1 = 0.1 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.7 MPa, the profile carries %g"),
 			GeneralPurposeMortar.TensileStrengthMPa),
-		GeneralPurposeMortar.TensileStrengthMPa == 0.1);
+		GeneralPurposeMortar.TensileStrengthMPa == 0.7);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against compressive 10 MPa, the profile carries %g"),
@@ -117,14 +120,14 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 		GeneralPurposeMortar.CompressiveStrengthMPa == 10.0);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against cohesion 0.2 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean cohesion 0.9 MPa, the profile carries %g"),
 			GeneralPurposeMortar.ShearCohesionMPa),
-		GeneralPurposeMortar.ShearCohesionMPa == 0.2);
+		GeneralPurposeMortar.ShearCohesionMPa == 0.9);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against friction 0.6, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean friction 0.75, the profile carries %g"),
 			GeneralPurposeMortar.FrictionCoefficient),
-		GeneralPurposeMortar.FrictionCoefficient == 0.6);
+		GeneralPurposeMortar.FrictionCoefficient == 0.75);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against clay brick at 1.9 g/cm3, the profile carries %g"),
@@ -190,6 +193,12 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 	 * figure is the 40-course scenario wall's, and a 30-course wall of the same bond carries
 	 * proportionally less. Both are the same statement — every seat of an intact wall has
 	 * e = 0 exactly, so nothing anywhere in it carries a moment.
+	 *
+	 * MEAN RE-ANCHOR (2026-08-13): believed INVARIANT under the profile flip. With e = 0
+	 * everywhere the worst joint is compression-governed (0.0036748 x 10 MPa = 0.0367 MPa of
+	 * bed stress), and the compressive strength did not move. If this pin fires when the
+	 * profile flips, the governing axis was not compression and the green phase must
+	 * re-measure and re-pin it — do not weaken the ==.
 	 */
 	constexpr double IntactWallWorstUtilisation = 0.0036748258197270385;
 
@@ -265,9 +274,14 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 	/**
 	 * ARCHING_DESIGN.md's own prediction, from 28 brick weights on one 105.0625 cm2 patch.
 	 *
-	 * 2 * (28 * 2667.198625 / (105.0625 * 10000)) / 10 MPa = 0.0142166, against the 1.62971
-	 * the same 28 brick weights read as a cantilever — a ratio of 114.63, and load-independent
-	 * because both terms are linear in the load.
+	 * 2 * (28 * 2667.198625 / (105.0625 * 10000)) / 10 MPa = 0.0142166, against the 0.232816
+	 * the same 28 brick weights read as a cantilever — a ratio of 16.376, and load-independent
+	 * because both terms are linear in the load. NOT strength-independent, and worth saying
+	 * out loud (the re-anchor's derivation doc claimed otherwise and is wrong on this point):
+	 * the cantilever side divides by the tensile bond and the arched side by the compressive
+	 * strength, so the mean re-anchor moved the ratio from the characteristic-basis 114.63
+	 * to 16.376 — the arched READING is the invariant (compression-governed, and compressive
+	 * strength did not move), not the ratio.
 	 *
 	 * THE SLACK IS FOR THE WALL'S REAL LOAD DISTRIBUTION, NOT FOR THE PHYSICS. "About N - j
 	 * brick weights" is an idealisation: the wall's odd courses weigh slightly less than its
@@ -287,7 +301,7 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 	 * the derivation at the assertion. NOT against GetConnectionMoment, which by design carries
 	 * the capped value once the arch has fired and so cannot state this number at all.
 	 */
-	constexpr double PredictedCantileverUtilisation = 1.62971;
+	constexpr double PredictedCantileverUtilisation = 0.2328157;
 
 	for (const FHalfSeatedCase& Case : HalfSeated)
 	{
@@ -562,12 +576,20 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 				*Bits(Cantilever.CompressionUtilisation)),
 			Cantilever.TensionUtilisation > Cantilever.CompressionUtilisation);
 
+		/*
+		 * ON THE MEAN BASIS THE CANTILEVER NO LONGER BREAKS (0.2328 < 1.0 — at
+		 * characteristic strengths it read 1.62971 and did), so the precondition that
+		 * kept this row honest is now the RELIEF MARGIN rather than over-capacity: the
+		 * un-arched answer must dwarf the arched one, or the cap has nothing visible to
+		 * relieve and the row is measuring noise. 16.376x at the mean values; 114.63x at
+		 * the old characteristic ones — both clear 10x comfortably.
+		 */
 		TestTrue(
 			FString::Printf(
-				TEXT("%s: FIXTURE: the cantilever answer must be over capacity (%s) or nothing was ")
-				TEXT("wrong in the first place"),
-				Case.Description, *Bits(Cantilever.Worst)),
-			Cantilever.Worst > 1.0);
+				TEXT("%s: FIXTURE: the cantilever answer (%s) must dwarf the arched one (%s) or ")
+				TEXT("nothing was wrong in the first place"),
+				Case.Description, *Bits(Cantilever.Worst), *Bits(Arched)),
+			Cantilever.Worst > 10.0 * Arched);
 
 		TestTrue(
 			FString::Printf(
@@ -988,15 +1010,18 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 	 * Re-asserting it here is what makes the staircase's own guard say the word "arch" when it
 	 * fires.
 	 *
-	 * THE NUMBER IT ANCHORS MOVED AT SLICE 5, FROM 22.92952589 TO 0.3690314727, AND THE ANCHOR
-	 * STILL BITES. Composite vertical action re-sections the corbel's moment against the eleven
-	 * courses of masonry standing over it, so the rung reads 0.369 rather than 22.93 — by the
-	 * user's ruling, and re-derived in StaircaseWallTestSupport.h. That is still a factor of
-	 * NINETEEN clear of the 0.0195 an ungated arch would produce, so this row goes on separating
-	 * the two mechanisms; what it can no longer do is separate them by the RUNG COUNT, since
-	 * composite action and an ungated arch both leave nought of eleven over capacity. The count
-	 * is kept because it is free and because it fails loudly if the ladder ever climbs again,
-	 * but the number below is the part with teeth.
+	 * THE NUMBER IT ANCHORS MOVED AT SLICE 5, FROM 22.92952589 TO 0.3690314727, AND MOVED
+	 * AGAIN AT THE 2026-08-14 MEAN RE-ANCHOR FLIP TO 0.0527187818 (/7 — the composite reading is
+	 * tension against f_x1 and the stress side is statics). Composite vertical action
+	 * re-sections the corbel's moment against the eleven courses of masonry standing over it,
+	 * re-derived in StaircaseWallTestSupport.h. That is still a factor of 2.7 clear of the
+	 * ~0.0195 an ungated arch would produce (an arched reading is compression-governed and
+	 * did not move), so this row still separates the two mechanisms — by less margin than the
+	 * characteristic basis's nineteen-fold, which is worth knowing when reading a failure.
+	 * What it cannot do is separate them by the RUNG COUNT, since composite action and an
+	 * ungated arch both leave nought of eleven over capacity. The count is kept because it is
+	 * free and because it fails loudly if the ladder ever climbs again, but the number below
+	 * is the part with teeth.
 	 *
 	 * The tolerance is the staircase test's own 1e-5 relative, for the reason recorded there:
 	 * the hand ladder's load cone reaches past the end of a 10-brick-wide wall. Under the
@@ -1128,9 +1153,11 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 
 				/*
 				 * 2667.198625 * 5.625 / 179.4817708 - 2667.198625 / 105.0625, over 10000, over
-				 * f_xk1 — MOMENTS_DESIGN's case (c), and 0.058203838 is what it comes to.
+				 * the mean f_x1 of 0.70 — MOMENTS_DESIGN's case (c) re-anchored 2026-08-13, and
+				 * 0.0083148340 is what it comes to (0.058203838 / 7; the stress side is statics
+				 * and did not move).
 				 */
-				constexpr double WaistUtilisation = 0.058203838;
+				constexpr double WaistUtilisation = 0.0083148340;
 
 				TestTrue(
 					FString::Printf(
@@ -1155,12 +1182,13 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 	 *
 	 * MOMENTS_DESIGN's case (b): a brick held by one head joint, whose mean normal stress is
 	 * EXACTLY zero because gravity runs parallel to the joint. That is the one visible thing
-	 * the moment work bought — the joint reads 0.4157 in tension instead of 0.0200 in shear,
-	 * and a chain of two reads 0.8315 and still holds.
+	 * the moment work bought — the joint reads 0.0594 in tension instead of 0.0044 in shear
+	 * (mean basis; 0.4157 and 0.0200 on the retired characteristic one), and a chain of two
+	 * reads 0.1188 and still holds.
 	 *
 	 * IT IS ALSO THE SHARPEST TEST OF THE CAP'S SHAPE THERE IS. With sigma_n exactly zero,
 	 * k = min(1, 0/sigma_b) is exactly ZERO, so applying the cap to a head joint does not
-	 * merely relieve this joint, it DELETES it — straight back to the 0.0200 shear reading the
+	 * merely relieve this joint, it DELETES it — straight back to the 0.0044 shear reading the
 	 * moment work was written to replace. Nothing else in this file has a zero normal stress,
 	 * so nothing else can catch that.
 	 */
@@ -1173,8 +1201,8 @@ bool FStructureArchingTest::RunTest(const FString& Parameters)
 		};
 
 		const TArray<FChainCase> Chains = {
-			{ TEXT("ANCHOR 4: one brick on one head joint"), 1, 0.4157273077 },
-			{ TEXT("ANCHOR 4: two bricks on the same head joint"), 2, 0.8314546154 },
+			{ TEXT("ANCHOR 4: one brick on one head joint"), 1, 0.0593896154 },
+			{ TEXT("ANCHOR 4: two bricks on the same head joint"), 2, 0.1187792308 },
 		};
 
 		for (const FChainCase& Chain : Chains)

@@ -2,6 +2,8 @@
 
 #include "Core/Structure.h"
 
+#include "Core/Profiles/ConnectionProfiles.h"
+
 /*
  * EVERY NAME IN HERE CARRIES A Solver PREFIX, AND THAT IS NOT DECORATION.
  *
@@ -97,34 +99,59 @@ namespace
 	constexpr double SolverCompositeDepthPerArm = 3.464;
 
 	/**
-	 * The INTERIM OVERTURNING GUARD'S bed-joint bond strength, MPa — MEAN-basis, GUARD-LOCAL,
-	 * and superseded by the mean-strength re-anchor (DESIGN.md §3) the moment that pass runs.
+	 * The INTERIM OVERTURNING GUARD'S bed-joint bond strength, MPa — MEAN-basis, and READ
+	 * FROM THE GENERAL PURPOSE MORTAR PROFILE rather than duplicated here.
 	 *
-	 * IT IS DELIBERATELY NOT THE PROFILE'S TensileStrengthMPa, AND THE GAP IS A FACTOR OF SIX.
-	 * The coded 0.10 is EN 1996-1-1 Table 3.2's CHARACTERISTIC (5%-fractile) design value;
-	 * DESIGN.md §3 records the user's decision that VERDICTS are ruled at MEAN strength, with
-	 * the code-wide re-anchor deferred until after the LP oracle. The honest mean bracket for
-	 * clay in general-purpose mortar is 0.6-1.0 MPa: UK NA to BS EN 1996-1-1 Table NA.6 gives
-	 * characteristic f_xk1 of 0.5 / 0.4 / 0.3 by water absorption, and mean tested bond runs
-	 * about twice characteristic again. This is the FLOOR of that bracket — the conservative
-	 * end, so a body the guard lets stand stands at the weakest defensible mean bond.
+	 * IT IS THE PROFILE'S TensileStrengthMPa, 0.70, and until the 2026-08-14 mean-strength
+	 * re-anchor it could not be. Before that flip the profile carried the CHARACTERISTIC
+	 * 0.10 — a 5%-fractile design floor no honest overturning verdict could be ruled at —
+	 * so the guard held its own 0.6 literal, six times the profile's figure. Since the
+	 * re-anchor the profile's 0.70 IS a measured mean, and a second copy of a strength is
+	 * exactly the drift the profile library exists to end.
+	 *
+	 * THE SWAP LANDED BEHIND ITS OWN RED, under the project's non-waivable TDD rule: moving
+	 * 0.6 to 0.70 shifts every overturning verdict by 16.7%, and for a while nothing in the
+	 * suite could tell the two values apart — the leaning-stack bracket deliberately holds
+	 * at both ends, and the specified 8/11 interim-guard corbel pair answers identically at
+	 * both by construction. The fixture that discriminates them is
+	 * `Core.Structure.TheOverturningGuardRestoresAtTheProfilesMeanBond`
+	 * (Tests/OverturningGuardBasisTest.cpp): a nine-step bare corbel arm whose bearing
+	 * stands at 0.70 (ratio 0.869) and is severed at 0.6 (1.014), paired with a ten-step arm
+	 * that falls at either value, together bracketing this constant into
+	 * (0.60854, 0.75975) MPa. A retune that moves the profile's bond outside that bracket
+	 * fails that test rather than moving this quietly.
+	 *
+	 * NOT constexpr, AND THAT IS SAFE: `GeneralPurposeMortar` is an aggregate initialised
+	 * entirely from literals, so it is CONSTANT-initialised during static initialisation and
+	 * strongly happens-before any dynamic initialiser — including this one.
+	 *
+	 * The honest mean bracket for clay in general-purpose mortar is 0.6-1.0 MPa (UK NA to
+	 * BS EN 1996-1-1 Table NA.6 characteristic f_xk1 of 0.5 / 0.4 / 0.3 by water
+	 * absorption, mean tested bond ~2x characteristic again). 0.70 is the low-middle of it,
+	 * measured by the Gooch campaigns the profile cites, so a body the guard lets stand
+	 * stands at a defensible mean bond rather than at an optimistic one.
 	 *
 	 * MEASURED FROM BOTH SIDES rather than tuned: at the characteristic 0.10 the guard would
 	 * condemn the eight-course leaning stack (edge demand 0.24 MPa) AND corbel A, whose free
 	 * body overturns its bearing by ~18.5 N.m against the ~17.9 N.m a characteristic bond
-	 * restores — breaking the user's bonded-corbel ruling. At 0.6 corbel A stands 5.8x, the
-	 * eight-course stack 2.5x, and the thirty-course stack still overturns 7.9x. The whole
-	 * acceptance window is 18x wide (LeaningStackAcceptanceTest.cpp), so nothing about 0.6 is
-	 * delicate.
+	 * restores — breaking the user's bonded-corbel ruling. At the profile's 0.70 corbel A
+	 * stands 6.8x on ~125.65 N.m restored, the eight-course stack 2.9x, and the thirty-course
+	 * stack still overturns 6.8x — every margin the safe side of the 0.6 the guard used to
+	 * carry (5.8x / 2.5x / 7.9x on ~107.7 N.m), which is why this was consistency work rather
+	 * than a retune. The whole acceptance window is 18x wide
+	 * (LeaningStackAcceptanceTest.cpp), so nothing about the value is delicate — only the
+	 * discriminator above is deliberately close to the line, because that is its job.
 	 *
-	 * KNOWN LIMITATION, STATED RATHER THAN BRANCHED AROUND: the guard credits this one mortar
-	 * figure to every bed joint it evaluates, whatever profile the joint carries — a dry-stone
-	 * or fastened bridge body would be restored by a bond it does not have. No fixture cascades
-	 * such a body, writing the branch would be capability no test covers, and the guard dies at
-	 * evolution step 4; if such a fixture arrives first, this constant needs to become a
-	 * per-profile mean before it.
+	 * KNOWN LIMITATION, STATED RATHER THAN BRANCHED AROUND: the guard credits GENERAL PURPOSE
+	 * MORTAR's mean to every bed joint it evaluates, whatever profile that joint actually
+	 * carries — a dry-stone or fastened bridge body is still restored by a bond it does not
+	 * have. Reading the profile fixes the duplication, not the per-joint blindness. No
+	 * fixture cascades such a body, selecting the joint's own strength would be capability no
+	 * test covers, and the guard dies at evolution step 4; if such a fixture arrives first,
+	 * this must read the joint's own profile before it.
 	 */
-	constexpr double SolverInterimOverturningMeanBondMPa = 0.6;
+	const double SolverInterimOverturningMeanBondMPa =
+		DestructionProfiles::GeneralPurposeMortar.TensileStrengthMPa;
 
 	/**
 	 * How far a joint's rectangle may disagree with its own area, as a FRACTION of it.
@@ -2649,11 +2676,11 @@ bool FStructure::BreakOverturnedBodies(int32 Pass)
 		 * negative on both axes — can never fire this whatever its height.
 		 *
 		 * PAST THE EDGE the weight overturns, and what resists is the BOND: the bearing
-		 * rectangle at the guard's mean-basis strength, as the elastic section modulus about
+		 * rectangle at the profile's mean flexural bond, as the elastic section modulus about
 		 * the edge's own axis — (4/3) * h_other * h_axis^2, the same bd^2/6 every section in
 		 * this project is. Corbel A measures the pair: ~18.5 N.m of overturning against
-		 * ~107.7 N.m restored at 0.6 MPa over its 179.48 cm3 patch, standing 5.8x, while the
-		 * thirty-course leaning stack overturns its 225.93 cm3 by 7.9x.
+		 * ~125.65 N.m restored at 0.70 MPa over its 179.48 cm3 patch, standing 6.8x, while the
+		 * thirty-course leaning stack overturns its 225.93 cm3 by 6.8x.
 		 *
 		 * EVERY COMPARISON IS A POSITIVE TEST, so a NaN lever or a NaN modulus fires nothing:
 		 * the guard is a second referee that BREAKS, and inventing a break out of arithmetic

@@ -131,19 +131,24 @@ namespace StructureOneCellThrustTestSupport
  * seat carries sigma_n = 74681.56 / (105.0625 * 10000) = 0.0710835 MPa, so the push it has to
  * deliver is 1.0444444 * 0.0710835 = 0.0742428 MPa, and:
  *
- *   GENERAL PURPOSE MORTAR — c = 0.2, mu = 0.6.  Capacity 0.2 + 0.6*0.0710835 = 0.2426501 MPa,
- *     so the demand is 0.3060 of it. THE ARCH IS EARNED and this wall must go on standing. Note
- *     the margin is NOT load-independent — cohesion is a constant while the demand is linear in
- *     the load — and mortar only runs out at sigma_n = 0.45 MPa, which is 177 brick weights on one
- *     half seat, roughly a 180-course wall. Nothing in this project is within a factor of four
- *     of it.
+ *   GENERAL PURPOSE MORTAR — mean basis (re-anchor 2026-08-13), c = 0.9, mu = 0.75. Capacity
+ *     0.9 + 0.75*0.0710835 = 0.9533126 MPa, so the demand is 0.0779 of it. THE ARCH IS EARNED
+ *     and this wall must go on standing. Note the margin is NOT load-independent — cohesion is
+ *     a constant while the demand is linear in the load — and at mean cohesion mortar only runs
+ *     out somewhere past sigma_n = 3 MPa, deeper than the 2.0 cap's own bite; the cap then
+ *     governs and the demand crosses it at sigma_n = 2.0 / 1.0444444 = 1.915 MPa, still hundreds of brick weights
+ *     beyond anything this project builds.
  *
- *   LIME MORTAR — c = 0.1, mu = 0.6.  Capacity 0.1426501 MPa, so the demand is 0.5205 of it. The
- *     arch is still earned, and this row is the one that makes the pair a GATE rather than a
- *     one-way ratchet: measured, withholding the relief everywhere leaves general purpose mortar
- *     standing at 0.646 — the composite deep beam of §5.5 catching it, not the arch — while lime's
- *     weaker bond reads about 1.29 in tension and the wall comes down. So an implementation that
- *     closes gap 4 by refusing the relief wholesale fails HERE, and only here.
+ *   LIME MORTAR — mean basis, c = 0.27, mu = 0.75.  Capacity 0.3233126 MPa, so the demand is
+ *     0.2296 of it. The arch is still earned. ONE RECORDED LOSS AT THE RE-ANCHOR: on the
+ *     characteristic basis this row was the anti-over-withhold gate — withholding the relief
+ *     everywhere left cement standing (0.646, the §5.5 deep beam catching it) while lime's
+ *     weaker bond read ~1.29 in tension and came down. At mean strengths lime's un-arched
+ *     tension reads ~0.32 (1.29 x 0.05/0.20) and STANDS, so wholesale withholding no longer
+ *     fails this row's OUTCOME. The wholesale-withhold mutation now bites via
+ *     StructureArchingTest's kern-edge identity (an un-arched seat cannot sit on the kern
+ *     edge); a lime-specific arched-reading pin here is the specified replacement — see
+ *     CURRENT_STATE.
  *
  *   DRY STONE — c = 0.0, mu = 0.7.  Zero cohesion, so sigma_n cancels twice over and the reading
  *     is 1.0444444/0.7 = 1.4920635 AT EVERY LOAD AND EVERY WALL HEIGHT. THE ARCH IS NOT EARNED,
@@ -183,7 +188,7 @@ namespace StructureOneCellThrustTestSupport
  *     shear demand and withholding the relief where the springing cannot carry it are both answers
  *     to this test: under the first the unearned seat reads 1.4920635 in shear, under the second it
  *     reads its un-arched tension, which for dry stone's exact zero is Max. Both are over capacity,
- *     and both leave the two earned rows standing — the first at 0.3055 and 0.5205 in shear, the
+ *     and both leave the two earned rows standing — the first at 0.0779 and 0.2296 in shear, the
  *     second untouched at 0.0142 and 0.0709. The one thing neither may do is what happens today,
  *     which is nothing at all.
  *
@@ -215,14 +220,14 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 	 * imported: a test that read the profile would agree with a wrong profile.
 	 */
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against mortar cohesion 0.2 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean mortar cohesion 0.9 MPa (re-anchor 2026-08-13), the profile carries %g"),
 			GeneralPurposeMortar.ShearCohesionMPa),
-		GeneralPurposeMortar.ShearCohesionMPa == 0.2);
+		GeneralPurposeMortar.ShearCohesionMPa == 0.9);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against mortar friction 0.6, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean mortar friction 0.75, the profile carries %g"),
 			GeneralPurposeMortar.FrictionCoefficient),
-		GeneralPurposeMortar.FrictionCoefficient == 0.6);
+		GeneralPurposeMortar.FrictionCoefficient == 0.75);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against mortar compressive 10 MPa, the profile carries %g"),
@@ -239,13 +244,19 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 			DryStone.FrictionCoefficient),
 		DryStone.FrictionCoefficient == 0.7);
 
+	/*
+	 * Lime's mean-basis row (re-anchor 2026-08-13): tensile 0.20 is the measured NHL 2 bond-
+	 * wrench mean at 6 months (the profile's 2.0 MPa compressive IS NHL 2); cohesion 0.27 is
+	 * the campaign's mean shear/flexural ratio 1.34 x 0.20 (Gooch et al. 2023). Compressive
+	 * 2.0 is a class-floor choice and does not move.
+	 */
 	TestTrue(
 		FString::Printf(
-			TEXT("FIXTURE: derived against lime cohesion 0.1 MPa, tensile 0.05 MPa and compressive ")
+			TEXT("FIXTURE: derived against mean lime cohesion 0.27 MPa, tensile 0.20 MPa and compressive ")
 			TEXT("2.0 MPa; the profile carries %g, %g and %g"),
 			LimeMortar.ShearCohesionMPa, LimeMortar.TensileStrengthMPa,
 			LimeMortar.CompressiveStrengthMPa),
-		LimeMortar.ShearCohesionMPa == 0.1 && LimeMortar.TensileStrengthMPa == 0.05
+		LimeMortar.ShearCohesionMPa == 0.27 && LimeMortar.TensileStrengthMPa == 0.2
 			&& LimeMortar.CompressiveStrengthMPa == 2.0);
 
 	TestTrue(
@@ -266,27 +277,27 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 	const TArray<FThrustCase> Cases = {
 		/*
 		 * THE ANCHOR'S OWN WALL. A mortared springing is asked for 0.0742 MPa of sliding against
-		 * 0.2427 MPa of bond plus friction — 0.306 of capacity, a margin of 3.27 — so the relief
+		 * 0.9533 MPa of bond plus friction — 0.0779 of capacity, a margin of 12.8 — so the relief
 		 * is correctly granted and this wall must go on standing exactly as it does today. This is
 		 * the fixture `StructureArchingTest` pins at 0.0141885, re-entered here so that a gate
 		 * which closed on everything fails in the file that closed it.
 		 */
-		{ TEXT("EARNED: general purpose mortar, c = 0.2 + 0.6 sigma"), GeneralPurposeMortar,
-			true, 0.30596 },
+		{ TEXT("EARNED: general purpose mortar, c = 0.9 + 0.75 sigma"), GeneralPurposeMortar,
+			true, 0.077879 },
 
 		/*
-		 * LIME, AND IT IS THE ROW THAT MAKES THIS PAIR A GATE RATHER THAN A ONE-WAY RATCHET.
+		 * LIME. A third of the cohesion, so the push costs 0.0742 MPa against 0.3233 MPa —
+		 * 0.2296 of capacity, comfortably affordable, so the relief is still earned and this
+		 * wall must stand.
 		 *
-		 * Half the cohesion, so the push costs 0.0742 MPa against 0.1427 MPa — 0.520 of capacity,
-		 * still comfortably affordable, so the relief is still earned and this wall must stand.
-		 * What separates it from the row above is what happens if an implementation closes the gate
-		 * by withholding the relief EVERYWHERE: measured, general purpose mortar survives that at
-		 * 0.646 (the composite deep beam catches it, not the arch) while lime's weaker bond reads
-		 * about 1.29 in tension and the wall comes down. So this row is the one that fails if the
-		 * relief stops being granted where it is earned — the property the whole slice must not
-		 * break — and it was proven to bite by exactly that mutation.
+		 * ON THE CHARACTERISTIC BASIS this row was the anti-over-withhold gate: wholesale
+		 * withholding failed it at ~1.29 in tension while cement survived. At the mean basis
+		 * (re-anchor 2026-08-13) its un-arched tension is ~0.32 and it stands either way, so
+		 * the outcome no longer catches over-withholding — that bite now lives in
+		 * StructureArchingTest's kern-edge identity, and the specified replacement (an
+		 * arched-reading pin on the earned seats here) is recorded in CURRENT_STATE.
 		 */
-		{ TEXT("EARNED: lime mortar, c = 0.1 + 0.6 sigma"), LimeMortar, true, 0.52045 },
+		{ TEXT("EARNED: lime mortar, c = 0.27 + 0.75 sigma"), LimeMortar, true, 0.229632 },
 
 		/*
 		 * DRY STONE, WHERE THE PUSH IS THE ONLY THING THAT CAN FAIL. Cohesion is an exact zero, so

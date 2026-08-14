@@ -418,9 +418,13 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * The core behaviour. 1 MPa of compression buys 0.6 MPa of extra shear
-		 * capacity, taking the joint from 0.2 to 0.8 — so a shear stress of 0.8
-		 * that would be four times over the bare limit now sits exactly at it.
+		 * The core behaviour, at the MEAN-BASIS mortar row (re-anchor 2026-08-13):
+		 * 1 MPa of compression buys mu = 0.75 MPa of extra shear capacity, taking
+		 * the joint from its bare 0.90 to 1.65 — so a shear stress of 1.65 that
+		 * would be ~1.8x over the bare bond now sits exactly at the limit. 1.65
+		 * stays below the 2.0 MPa mean-basis cap (the cap bites only from
+		 * (2.0 - 0.90) / 0.75 = 1.467 MPa of compression upward), so what is
+		 * measured here really is cohesion + friction, not the ceiling.
 		 */
 		{
 			TEXT("compression raises mortar shear capacity by mu times the normal stress"),
@@ -428,7 +432,7 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
 			[]{
 				FConnectionLoad L;
 				L.Compression = ForceForMPa(1.0);
-				L.Shear = ForceForMPa(0.8);
+				L.Shear = ForceForMPa(1.65);
 				return L;
 			}(),
 			1.0
@@ -522,17 +526,23 @@ bool FConnectionStrengthFrictionCouplingTest::RunTest(const FString& Parameters)
  * effectively unbreakable in shear — backwards physically, and backwards for a
  * demolition game, where the base is exactly where cutting should work.
  *
- * Mortar's ceiling is EN 1996-1-1's 0.065 x the unit's compressive strength, which
- * for the 20 MPa clay brick in the material library is 1.3 MPa. Bare cohesion is
- * 0.2 and mu is 0.6, so the cap bites from (1.3 - 0.2) / 0.6 = 1.83 MPa of
- * compression upward, and everything below uses more compression than that — so the
- * cap really is what is under test.
+ * MEAN-BASIS VALUES (re-anchor 2026-08-13). Mortar's ceiling is 2.0 MPa = 0.1 x
+ * the 20 MPa unit — a mean-basis truncation, forced by measurement: the Newcastle
+ * campaign (Gooch, Masia, Stewart & Lam 2023, ConBuildMat 386:131578) measures a
+ * mean UNCONFINED shear bond of 1.81 MPa, above the old characteristic-basis
+ * 0.065·f_b = 1.3 cap, so that cap cannot stand beside mean cohesion. Bare
+ * cohesion is 0.90 (measured mean, same campaign: M4/M6 triplet means average
+ * 1.117, regression intercepts 0.58-1.04) and mu is 0.75 (Gooch et al. 2025,
+ * ConBuildMat 489:142348: initial friction 0.64-1.00, residual 0.60-1.11), so
+ * the cap bites from (2.0 - 0.90) / 0.75 = 1.4667 MPa of compression upward.
  *
  * THE CEILING ITSELF IS READ FROM THE PROFILE rather than restated here, so a
- * retune moves the expectation with it. The compressions stay literals because they
- * are test INPUTS rather than copies of production data — but they are only doing
- * their job while they sit between where the cap bites and where the compression
- * axis takes over, which the arithmetic above and below pins down.
+ * retune moves the expectation with it. THE COMPRESSIONS ARE NOW DERIVED FROM
+ * THE BITE POINT rather than sitting as literals (the old 3.0 / 4.0 sat 0.40 /
+ * 0.50 MPa from the new bite point — the retune hazard CURRENT_STATE flagged):
+ * both are bite + a margin, so they are past the cap by construction whatever
+ * the profile says, and a fixture precondition pins that the compression axis
+ * still does not govern at the deeper of the two.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionStrengthShearCapTest,
@@ -548,13 +558,65 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 	constexpr double Tolerance = 1e-9;
 
 	/*
-	 * 4 MPa of compression would buy 0.2 + 0.6 x 4.0 = 2.6 MPa uncapped. Capped,
-	 * capacity is 1.3, so a shear stress of exactly 1.3 sits at the limit rather
-	 * than at a comfortable 0.5.
+	 * THE CANONICAL RED OF THE MEAN-STRENGTH RE-ANCHOR (2026-08-13), together
+	 * with the pins in EdgeStressUnderAMoment below: these four fail until the
+	 * profile rows flip to the mean basis DESIGN §3 decided on 2026-08-08.
+	 *
+	 *  - cohesion 0.90 MPa: measured mean shear bond at zero normal stress,
+	 *    grade A — Gooch, Masia, Stewart & Lam 2023 (ConBuildMat 386:131578),
+	 *    M4/M6 unconfined triplet means averaging 1.117; Gooch et al. 2025
+	 *    (ConBuildMat 489:142348) regression intercepts 0.58-1.04. 0.90 is the
+	 *    centre of the regression range, just under the triplet average.
+	 *  - mu 0.75: measured initial friction 0.64-1.00 and residual 0.60-1.11
+	 *    (Normal, COV 0.14, 246 tests) — the old 0.6 sat at the low end of the
+	 *    measured means, not the centre.
+	 *  - cap 2.0 MPa = 0.1 x f_b: mean-basis truncation, forced by the measured
+	 *    unconfined mean of 1.81 MPa exceeding the characteristic-basis 1.3.
+	 *  - compressive 10.0: UNCHANGED — EN 998-2 / EN 1015-11 declare a MEAN
+	 *    compressive class, so the uplift must not be applied twice.
+	 */
+	TestTrue(
+		FString::Printf(TEXT("FIXTURE PRECONDITION (mean re-anchor): cohesion must be the measured mean 0.90 MPa, profile carries %g"),
+			GeneralPurposeMortar.ShearCohesionMPa),
+		GeneralPurposeMortar.ShearCohesionMPa == 0.9);
+
+	TestTrue(
+		FString::Printf(TEXT("FIXTURE PRECONDITION (mean re-anchor): mu must be the measured-mean centre 0.75, profile carries %g"),
+			GeneralPurposeMortar.FrictionCoefficient),
+		GeneralPurposeMortar.FrictionCoefficient == 0.75);
+
+	TestTrue(
+		FString::Printf(TEXT("FIXTURE PRECONDITION (mean re-anchor): the shear ceiling must be the mean-basis 2.0 MPa (0.1 x f_b), profile carries %g"),
+			GeneralPurposeMortar.MaxShearStrengthMPa),
+		GeneralPurposeMortar.MaxShearStrengthMPa == 2.0);
+
+	TestTrue(
+		FString::Printf(TEXT("FIXTURE PRECONDITION: compressive stays the declared-mean 10 MPa, profile carries %g"),
+			GeneralPurposeMortar.CompressiveStrengthMPa),
+		GeneralPurposeMortar.CompressiveStrengthMPa == 10.0);
+
+	/*
+	 * THE BITE POINT, DERIVED FROM THE PROFILE — the compression at which
+	 * cohesion + mu * sigma reaches the ceiling. Every compression below is this
+	 * plus a margin, so the blocks measure the cap by construction rather than
+	 * relying on literals that a retune could strand on the wrong side of it
+	 * (the flagged CURRENT_STATE hazard, now closed).
+	 */
+	const double BiteMPa =
+		(GeneralPurposeMortar.MaxShearStrengthMPa - GeneralPurposeMortar.ShearCohesionMPa)
+		/ GeneralPurposeMortar.FrictionCoefficient;
+
+	const double ShallowerCompressionMPa = BiteMPa + 1.0;
+	const double DeeperCompressionMPa = BiteMPa + 2.0;
+
+	/*
+	 * At bite + 1 the joint would have cohesion + mu more capacity uncapped;
+	 * capped, capacity is the ceiling itself, so a shear stress of exactly the
+	 * ceiling sits at the limit rather than comfortably inside it.
 	 */
 	{
 		FConnectionLoad Load;
-		Load.Compression = ForceForMPa(4.0);
+		Load.Compression = ForceForMPa(ShallowerCompressionMPa);
 		Load.Shear = ForceForMPa(MortarMaxShearMPa);
 
 		const double Utilisation =
@@ -571,20 +633,26 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 	 * wall must shear identically — that is what stops the base of a tall
 	 * structure becoming stronger without limit.
 	 *
-	 * Both compressions are past the 1.83 MPa where the cap bites, but kept well
-	 * below mortar's own 10 MPa crushing limit on purpose: push the compression
-	 * much higher and the compression axis overtakes shear and governs the
-	 * result, so the assertion would be measuring crushing rather than the cap. At
-	 * 4 MPa the compression axis is at 0.4 against shear's 0.77, so shear governs
-	 * with room to spare.
+	 * Both compressions are past the bite point by construction, but must stay
+	 * well below mortar's own crushing limit: push the compression much higher
+	 * and the compression axis overtakes shear and governs the result, so the
+	 * assertion would be measuring crushing rather than the cap. Asserted as a
+	 * precondition on the DEEPER compression rather than trusted to arithmetic
+	 * in a comment.
 	 */
+	TestTrue(
+		FString::Printf(TEXT("FIXTURE PRECONDITION: shear must govern at the deeper compression — compression axis %g must stay below shear axis %g"),
+			DeeperCompressionMPa / GeneralPurposeMortar.CompressiveStrengthMPa,
+			1.0 / MortarMaxShearMPa),
+		DeeperCompressionMPa / GeneralPurposeMortar.CompressiveStrengthMPa < 1.0 / MortarMaxShearMPa);
+
 	{
 		FConnectionLoad Shallower;
-		Shallower.Compression = ForceForMPa(3.0);
+		Shallower.Compression = ForceForMPa(ShallowerCompressionMPa);
 		Shallower.Shear = ForceForMPa(1.0);
 
 		FConnectionLoad Deeper;
-		Deeper.Compression = ForceForMPa(4.0);
+		Deeper.Compression = ForceForMPa(DeeperCompressionMPa);
 		Deeper.Shear = ForceForMPa(1.0);
 
 		const double ShallowerUtilisation =
@@ -593,7 +661,7 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 			DestructionForce::ComputeUtilisation(Deeper, GeneralPurposeMortar, UnitAreaSqCm);
 
 		TestTrue(
-			FString::Printf(TEXT("doubling compression past the cap must not change shear utilisation: %f vs %f"),
+			FString::Printf(TEXT("deepening compression past the cap must not change shear utilisation: %f vs %f"),
 				ShallowerUtilisation, DeeperUtilisation),
 			FMath::IsNearlyEqual(ShallowerUtilisation, DeeperUtilisation, Tolerance));
 
@@ -609,12 +677,23 @@ bool FConnectionStrengthShearCapTest::RunTest(const FString& Parameters)
 
 	/*
 	 * Below the cap nothing changes: friction still applies in full. Guards
-	 * against a fix that clamps everywhere rather than only at the ceiling.
+	 * against a fix that clamps everywhere rather than only at the ceiling. The
+	 * shear is DERIVED as the full uncapped capacity at 1 MPa of compression, so
+	 * this block stays on the friction side of the bite point whatever the
+	 * profile carries — the precondition asserts that rather than assuming it.
 	 */
 	{
+		const double UncappedCapacityMPa =
+			GeneralPurposeMortar.ShearCohesionMPa + GeneralPurposeMortar.FrictionCoefficient * 1.0;
+
+		TestTrue(
+			FString::Printf(TEXT("FIXTURE PRECONDITION: 1 MPa of compression must sit below the bite point — capacity %g < cap %g"),
+				UncappedCapacityMPa, MortarMaxShearMPa),
+			UncappedCapacityMPa < MortarMaxShearMPa);
+
 		FConnectionLoad Load;
 		Load.Compression = ForceForMPa(1.0);
-		Load.Shear = ForceForMPa(0.8);
+		Load.Shear = ForceForMPa(UncappedCapacityMPa);
 
 		const double Utilisation =
 			DestructionForce::ComputeUtilisation(Load, GeneralPurposeMortar, UnitAreaSqCm);
@@ -765,10 +844,12 @@ bool FConnectionStrengthDegenerateInputTest::RunTest(const FString& Parameters)
  * A brick hanging off a single head joint is the case actually visible in the
  * game: gravity runs parallel to that joint, so the mean normal stress is EXACTLY
  * zero, the only axis carrying anything is shear against mortar's cohesion, and
- * the joint reads a comfortable 0.02 — about fifty bricks from failure. What is
- * physically happening is that the brick's weight acts 10.75 cm from the joint
- * and levers the top of it open, and mortar's tensile strength is a hundredth of
- * its compressive strength, so it is twenty times closer to failing than that.
+ * the joint reads a comfortable 0.0044 — over two hundred bricks from failure.
+ * What is physically happening is that the brick's weight acts 10.75 cm from the
+ * joint and levers the top of it open, and mortar's tensile strength is a
+ * fourteenth of its compressive strength, so it is nearly thirteen times closer
+ * to failing than that. (Mean-basis figures since the 2026-08-13 re-anchor; the
+ * characteristic-basis ratios were 0.02, fifty bricks and twenty times.)
  *
  *     sigma_n = (Tension - Compression) / A        signed, positive in tension
  *     sigma_b = |M_u|/W_u + |M_v|/W_v              worst corner, biaxial
@@ -809,7 +890,7 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 	 *       sigma_n = 0                                  gravity is parallel to it
 	 *       sigma_b = 28672.38521875 / 72.1770833...      = 397.250538... uu/cm2
 	 *                                                     = 0.0397250538... MPa
-	 *       tension = 0.03972505.. / 0.1 (f_xk1)          = 0.3972505384615
+	 *       tension = 0.03972505.. / 0.7 (mean f_x1)      = 0.0567500769231
 	 *
 	 * (a) CORBELLED HALF ITS OWN LENGTH. Bearing 10.75 * 10.25 = 110.1875 cm2 and
 	 *     W = (4/3) * 5.125 * 5.375^2 = 197.4192708... cm3, load path 5.375 cm off
@@ -817,19 +898,26 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 	 *
 	 *       sigma_n = -2667.198625 / 110.1875 = -24.206 uu/cm2  (exactly)
 	 *       sigma_b =  14336.192609375 / 197.4192708... = 72.618 uu/cm2 (exactly)
-	 *       tension =  (72.618 - 24.206) / 10000 / 0.1  = 0.048412
+	 *       tension =  (72.618 - 24.206) / 10000 / 0.7  = 0.006916  (exactly)
 	 *
 	 *     It decomposes exactly, which is the check that the model is doing what it
 	 *     claims: sigma_b / |sigma_n| = 6e/t = 6 * 5.375 / 10.75 = 3 exactly, so
 	 *     the opened edge is 2x the mean, and tension is resisted by a strength
-	 *     100x smaller. 2 * 100 = the 200x this row moves by, and a brick corbelled
-	 *     half its length still stands at 4.8% — which is correct, it really does.
+	 *     14.3x smaller. 2 * 14.3 = the ~29x this row moves by, and a brick
+	 *     corbelled half its length still stands at 0.7% — which is correct.
+	 *
+	 * MEAN BASIS (re-anchor 2026-08-13): both tension figures divide by the mean
+	 * flexural bond 0.70 MPa where they used to divide by the characteristic 0.10
+	 * — a straight /7, because utilisation is linear in 1/strength per axis and
+	 * the stress side of both derivations is pure statics. The centred "today"
+	 * answers move too: the head joint's shear is bare cohesion (no compression
+	 * on a vertical joint), so it divides by 0.90 where it divided by 0.20.
 	 */
-	constexpr double HangingBrickUtilisation = 0.3972505384615;
-	constexpr double CorbelledBrickUtilisation = 0.048412;
+	constexpr double HangingBrickUtilisation = 0.0567500769231;
+	constexpr double CorbelledBrickUtilisation = 0.006916;
 
 	/* What the same two joints answer today, with the load path treated as centred. */
-	constexpr double HangingBrickShearUtilisationToday = 0.0200165;
+	constexpr double HangingBrickShearUtilisationToday = 0.0040033 / 0.9;
 	constexpr double CorbelledBrickCompressionUtilisationToday = 0.00024206;
 
 	/*
@@ -838,11 +926,11 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 	 * WHICH AXIS GOVERNS IS THE ENTIRE RISK, and here the governing axis is the
 	 * finding: ComputeUtilisation returns the WORST of the axes, so this test only
 	 * measures bending in tension while tension really is the worst. Worked
-	 * through for case (b), all three, against mortar's 10 / 0.2 / 0.1:
+	 * through for case (b), all three, against mean-basis mortar's 10 / 0.9 / 0.7:
 	 *
-	 *   tension      0.0397250538 MPa / 0.1  = 0.3972505    <- governs
-	 *   shear        0.0040033    MPa / 0.2  = 0.0200165     (19.8x smaller)
-	 *   compression  0.0397250538 MPa / 10   = 0.0039725     (100x smaller)
+	 *   tension      0.0397250538 MPa / 0.7  = 0.0567501    <- governs
+	 *   shear        0.0040033    MPa / 0.9  = 0.0044481     (12.8x smaller)
+	 *   compression  0.0397250538 MPa / 10   = 0.0039725     (14.3x smaller)
 	 *
 	 * The compression edge grows by exactly as much as the tension edge does — the
 	 * joint pivots, so one side opens as the other closes — and still never gets
@@ -870,18 +958,26 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 	 * The expectations are ratios of published strengths, so they only mean what
 	 * they say while the profile still carries the figures they were derived
 	 * against. A retune must fail loudly here rather than quietly moving every
-	 * number above. EN 1996-1-1 Table 3.2 f_xk1 = 0.10 N/mm2 is the one that
-	 * matters; the other two decide which axis governs.
+	 * number above.
+	 *
+	 * MEAN BASIS (re-anchor 2026-08-13, DESIGN §3's 2026-08-08 decision): the
+	 * tension figure is the mean flexural bond f_x1 = 0.70 MPa — the centre of
+	 * two independent routes on the Newcastle campaign (Gooch, Masia, Stewart &
+	 * Lam 2023, ConBuildMat 386:131578): (a) twelve measured M4/M6 batch means
+	 * on extruded clay averaging 0.571, and (b) UK NA Table NA.6's
+	 * characteristic 0.4 x the campaign's own mean/characteristic ratio 1.89 =
+	 * 0.76. Cohesion is the measured mean 0.90 (same campaign; see ShearCap).
+	 * The other two pins decide which axis governs.
 	 */
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE PRECONDITION: derived against f_xk1 = 0.1 MPa, profile carries %g"),
+		FString::Printf(TEXT("FIXTURE PRECONDITION: derived against mean f_x1 = 0.7 MPa, profile carries %g"),
 			GeneralPurposeMortar.TensileStrengthMPa),
-		GeneralPurposeMortar.TensileStrengthMPa == 0.1);
+		GeneralPurposeMortar.TensileStrengthMPa == 0.7);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE PRECONDITION: derived against cohesion 0.2 MPa, profile carries %g"),
+		FString::Printf(TEXT("FIXTURE PRECONDITION: derived against mean cohesion 0.9 MPa, profile carries %g"),
 			GeneralPurposeMortar.ShearCohesionMPa),
-		GeneralPurposeMortar.ShearCohesionMPa == 0.2);
+		GeneralPurposeMortar.ShearCohesionMPa == 0.9);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE PRECONDITION: derived against compressive 10 MPa, profile carries %g"),
@@ -907,9 +1003,10 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 	const TArray<FEdgeStressCase> Cases = {
 		/*
 		 * THE ROW THAT CARRIES THE WHOLE POINT. A brick held by one head joint,
-		 * with the mean normal stress exactly zero. Today this reads 0.02 in shear
-		 * and a chain of fifty would be needed to part it; the fibre at the top of
-		 * the joint is at 0.397 of f_xk1 and two bricks part it.
+		 * with the mean normal stress exactly zero. Centred, this reads 0.0044 in
+		 * shear and a chain of two hundred would be needed to part it; the fibre
+		 * at the top of the joint is at 0.0568 of the mean f_x1 and eighteen
+		 * brick weights part it.
 		 */
 		{
 			TEXT("(b) a brick hanging off one head joint peels rather than shears"),
@@ -979,7 +1076,7 @@ bool FConnectionStrengthEdgeStressTest::RunTest(const FString& Parameters)
 		 * joint, which is what forces the branch on the moment to come first.
 		 */
 		{
-			TEXT("(a) a brick corbelled half its length is 200x worse but still stands"),
+			TEXT("(a) a brick corbelled half its length is ~29x worse but still stands"),
 			WithMomentU(CompressionOf(BrickWeightUu), BedPatchMomentUuCm),
 			FJointSection(BedPatchAreaSqCm, BedPatchModulusUCm3, 0.0),
 			CorbelledBrickUtilisation

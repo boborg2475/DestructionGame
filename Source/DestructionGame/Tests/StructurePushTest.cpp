@@ -120,17 +120,19 @@ namespace StructurePushTestSupport
 	 * ragged end joint is pinned at its own 5.625 cm forever while the compression under
 	 * it grows course by course. Bending therefore stays put and the compression that
 	 * closes the joint only ever increases, so the ratio PEAKS NEAR THE TOP OF THE WALL
-	 * AND FALLS BELOW IT: a mortared ragged wall reads 0.0455104479 at its worst joint at
-	 * any height that finishes on an odd course, and 0.0582038382 at one finishing on an
-	 * even course. NO MORTARED RAGGED WALL OF ANY HEIGHT IS OVER CAPACITY AS BUILT.
+	 * AND FALLS BELOW IT: a mortared ragged wall reads 0.0065014926 at its worst joint at
+	 * any height that finishes on an odd course, and 0.0083148340 at one finishing on an
+	 * even course (mean basis since the 2026-08-13 re-anchor — /7 of the characteristic
+	 * 0.0455104479 and 0.0582038382; the stress side is statics and did not move).
+	 * NO MORTARED RAGGED WALL OF ANY HEIGHT IS OVER CAPACITY AS BUILT.
 	 *
 	 * THE TWO FIGURES ARE STILL READ AGAINST DIFFERENT LOADS, WHICH IS WHY THE SMALLER ONE
 	 * IS THE ODD-COURSE WALL, BUT BOTH ARE NOW THE BED PATCH'S OWN. A wall finishing on an
 	 * ODD course has one brick standing on its top corbel, so that joint carries 1.5 brick
 	 * weights of closing compression against the same 5.625 brick-weight-cm of bending, and
-	 * reads 0.0455104479. A wall finishing on an EVEN course has its worst joint under the
+	 * reads 0.0065014926. A wall finishing on an EVEN course has its worst joint under the
 	 * topmost brick itself, with nothing resting on it at all, so it carries 1.0 and reads
-	 * 0.0582038382. Neither gets any composite relief, and the odd-course one is where the
+	 * 0.0083148340. Neither gets any composite relief, and the odd-course one is where the
 	 * whole of COMPOSITE_DEPTH_DESIGN.md's depth rule shows up in this file — see the block
 	 * on TopCorbelCompositeDepthCm, which is a good deal more interesting than it looks.
 	 *
@@ -165,7 +167,7 @@ namespace StructurePushTestSupport
 	 * TWENTY-FOUR COURSES OF SIX, AND BOTH NUMBERS ARE MEASURED RATHER THAN LIKED.
 	 *
 	 * SIX WIDE because the corbel is a LOCAL phenomenon at each end — the worst joint of a
-	 * ragged wall reads the same 0.0455104479 at six bricks wide, at ten and at thirty —
+	 * ragged wall reads the same 0.0065014926 at six bricks wide, at ten and at thirty —
 	 * so width buys nothing but actors. What width DOES decide is the size of the triangle
 	 * that survives the settle (see ShouldSurviveSettling): the collapse front retreats one
 	 * brick position every two courses from each end, so the two fronts meet at course
@@ -237,8 +239,8 @@ namespace StructurePushTestSupport
 	 * the WORST of three and a fixture aimed at tension that silently measured compression
 	 * would be a green test about nothing. Against DryStone's 0.0 MPa tensile and 30 MPa
 	 * compressive the two ratios are "infinite" and 0.000406; against general purpose
-	 * mortar's 0.10 and 10.0 they are 0.0455104479 and 0.00121671. Tension governs by
-	 * three orders of magnitude either way, and the shear axis carries nothing at all —
+	 * mortar's mean 0.70 and 10.0 they are 0.0065014926 and 0.00121671. Tension still
+	 * governs comfortably either way, and the shear axis carries nothing at all —
 	 * gravity is normal to a bed joint.
 	 *
 	 * AND WHY ONLY THE TOP TWO CORBELS OF EACH END ARE OVER CAPACITY, WHICH IS THE FIXTURE
@@ -274,8 +276,12 @@ namespace StructurePushTestSupport
 	 */
 	constexpr double ForceUnitsPerMPaSqCmHere = 10000.0;
 
-	/** EN 1996-1-1 Table 3.2's f_xk1 for general purpose mortar, asserted against the profile. */
-	constexpr double MortarTensileMPa = 0.10;
+	/*
+	 * The MEAN flexural bond f_x1 for general-purpose mortar, asserted against the profile
+	 * (re-anchor 2026-08-13; Gooch et al. 2023 batch means bracketed with the UK NA
+	 * inversion — the retired characteristic f_xk1 was EN 1996-1-1's 0.10).
+	 */
+	constexpr double MortarTensileMPa = 0.70;
 
 	/** Dry stone has no bond at all, so this is an EXACT zero rather than a small number. */
 	constexpr double DryStoneTensileMPa = 0.0;
@@ -348,9 +354,10 @@ namespace StructurePushTestSupport
 	 *
 	 * and the composite one is WORSE. ComputeUtilisation takes the LESSER of the two demands —
 	 * composite action is an alternative way of carrying the moment and may only ever help —
-	 * so it refuses the relief and the joint keeps the bed patch's own 0.0455104479. The wall
-	 * therefore reads HIGHER than it did at slice 4's 0.039032175, and that is the rule being
-	 * applied faithfully rather than a load model that drifted.
+	 * so it refuses the relief and the joint keeps the bed patch's own reading (0.0065014926
+	 * against the mean f_x1; 0.0455104479 on the retired characteristic basis). The wall
+	 * therefore reads HIGHER than it did at slice 4, and that is the rule being applied
+	 * faithfully rather than a load model that drifted.
 	 *
 	 * HOW MUCH DEPTH IT WOULD HAVE TAKEN, DERIVED BELOW RATHER THAN ASSERTED AS A FEELING.
 	 * The composite section only undercuts the patch past
@@ -439,9 +446,16 @@ namespace StructurePushTestSupport
 	 * lambda*e = 12.99 cm, where the composite demand is WORSE than the patch's and is
 	 * declined. See the block above — this number going UP is the point, not a defect.
 	 */
-	constexpr double MortarRaggedWorstAsBuilt = 0.0455104479;
+	constexpr double MortarRaggedWorstAsBuilt = 0.0065014926;
 
-	/** The scenario wall's worst joint — MOMENTS_DESIGN.md's regression anchor, and exact. */
+	/*
+	 * The scenario wall's worst joint — MOMENTS_DESIGN.md's regression anchor, and exact.
+	 *
+	 * MEAN RE-ANCHOR INVARIANT (2026-08-13): a flush wall has e = 0 at every seat, so its
+	 * worst joint is COMPRESSION-governed (0.00495 x 10 MPa = 0.0495 MPa of bed stress) and
+	 * the compressive strength did not move. If this fires when the profile flips, the
+	 * governing axis was not compression — re-measure in the green phase, don't weaken it.
+	 */
 	constexpr double ScenarioWorstAsBuilt = 0.00495042219;
 
 	constexpr int32 ScenarioWallPieceCount = 1220;
@@ -1140,7 +1154,7 @@ bool FStructurePushOrphanedPiecesFallTest::RunTest(const FString& Parameters)
  * AND THREE WALLS MUST BE COMPLETELY UNAFFECTED, WHICH IS THE OTHER HALF AND NOT DECORATION.
  * Without them, "settle at build time" is satisfied by an implementation that knocks down
  * every wall in the game — and each of the three subtracts a different candidate
- * explanation. The SAME ragged wall MORTARED reads 0.0455104479, so it is not the toothed
+ * explanation. The SAME ragged wall MORTARED reads 0.0065014926, so it is not the toothed
  * end on its own. The same DRY wall finished FLUSH reads 0.000633860176, so it is not the
  * missing bond on its own. And the wall ADestructionGameGameMode actually lays — flush,
  * mortared, 40 courses of 30 — reads 0.00495042219, so nothing in the game's own scenario

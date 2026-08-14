@@ -2673,30 +2673,34 @@ namespace PieceHeadroomTestSupport
 	 * EVERY OTHER RUNG IS GEOMETRY-FREE AND THEREFORE UNBENT, which is exactly why this one
 	 * has to exist. A line that printed the force and the percentage and nothing else agrees
 	 * with all twelve of them forever, and it is precisely on a bent joint that the two stop
-	 * explaining each other: this rung carries 78.4 N — less than rung 2's 490 N, a sixth of
-	 * rung 3's — and sits at 49 % of capacity where rung 2 sits at 1 %. Nothing a reader can
-	 * do with the two numbers printed beside each other gets from one to the other.
+	 * explaining each other: this rung carries 548.8 N — barely more than rung 2's 490 N, a
+	 * ninth of rung 3's — and sits at 49 % of capacity where rung 2 sits at 1 %. Nothing a
+	 * reader can do with the two numbers printed beside each other gets from one to the
+	 * other.
 	 *
-	 * THE ARITHMETIC, DERIVED HERE RATHER THAN READ BACK.
+	 * THE ARITHMETIC, DERIVED HERE RATHER THAN READ BACK. (The mass moved 8 -> 56 kg at the
+	 * 2026-08-14 mean re-anchor flip, exactly x7 with f_x1 0.10 -> 0.70, so every ratio below —
+	 * the 49 %, the 2.0x margin, the Caution band, the bar fraction — is preserved
+	 * bit-identically and the row keeps measuring what it always measured.)
 	 *
-	 *   force        8 kg x 980 = 7,840 uu, which is 78.4 N
+	 *   force        56 kg x 980 = 54,880 uu, which is 548.8 N
 	 *   lever arm    the brick's centre of mass sits 4 cm along X from the joint's centroid
 	 *   moment       r x F, and a vertical force crossed with a lever arm along X lands
-	 *                wholly on Y: 4 x 7,840 = 31,360 uu.cm, which is 313.6 N.cm
+	 *                wholly on Y: 4 x 54,880 = 219,520 uu.cm, which is 2,195.2 N.cm
 	 *   section      6 cm along X by 8 cm along Y: area 48 cm2, and the modulus resisting a
 	 *                lean along X is the textbook b.d2/6 = 8 x 36 / 6 = 48 cm3 — deliberately
 	 *                NOT production's (4/3).h_along.h_across2, so the two agreeing is evidence
-	 *   stresses     mean  7,840 / (48 x 10,000) = 0.0163333 MPa, compressive
-	 *                edge 31,360 / (48 x 10,000) = 0.0653333 MPa
-	 *   peak tension 0.049 MPa against mortar's 0.1, so 0.49 of capacity
+	 *   stresses     mean  54,880 / (48 x 10,000) = 0.1143333 MPa, compressive
+	 *                edge 219,520 / (48 x 10,000) = 0.4573333 MPa
+	 *   peak tension 0.343 MPa against mortar's mean 0.7, so 0.49 of capacity
 	 *
 	 * WHICH AXIS GOVERNS IS NOT LEFT TO CHANCE, and here it is a DIFFERENT axis from every
-	 * other rung on the ladder. Peak compression is the SUM of the two stresses, 0.0816667
-	 * against 10 MPa — 0.0082 of capacity — and shear is exactly zero because the load is
-	 * exactly antiparallel to an exactly vertical normal. TENSION governs, by sixty times.
+	 * other rung on the ladder. Peak compression is the SUM of the two stresses, 0.5716667
+	 * against 10 MPa — 0.057 of capacity — and shear is exactly zero because the load is
+	 * exactly antiparallel to an exactly vertical normal. TENSION governs, by 8.6 times.
 	 */
 	constexpr int32 LadderEccentricPiece = 14;
-	constexpr double LadderEccentricMassKg = 8.0;
+	constexpr double LadderEccentricMassKg = 56.0;
 	constexpr double LadderEccentricLeverArmCm = 4.0;
 	constexpr double LadderEccentricHalfXCm = 3.0;
 	constexpr double LadderEccentricHalfYCm = 4.0;
@@ -2949,9 +2953,9 @@ namespace PieceHeadroomTestSupport
  * job, and a kilonewton is a thousand newtons by definition of the prefix.
  *
  * AND A JOINT BEING LEVERED OPEN SAYS SO, WHILE THE TWELVE THAT ARE NOT SAY NOTHING EXTRA.
- * The last rung carries 78.4 N and sits at 49 % of capacity — a sixth of rung 2's load at
- * fifty times its utilisation — and no arithmetic a reader can do on the two numbers printed
- * beside each other closes that gap, because the term joining them is a 313.6 N·cm bend the
+ * The last rung carries 548.8 N and sits at 49 % of capacity — barely more than rung 2's load
+ * at fifty times its utilisation — and no arithmetic a reader can do on the two numbers printed
+ * beside each other closes that gap, because the term joining them is a 2,195.2 N·cm bend the
  * line never mentions. That is the defect MOMENTS_DESIGN.md names as part of the moment work
  * rather than as a follow-up. The other twelve rows are the other half of the claim: a
  * settled wall bends nowhere — a brick on two symmetric patches has its centre of mass at the
@@ -3300,10 +3304,10 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 * OTHER TWELVE CANNOT WRITE.
 			 *
 			 * PUT THE NUMBERS SIDE BY SIDE AND THE PROBLEM IS THE WHOLE POINT. This joint
-			 * carries 78.4 N — a sixth of what rung 2 carries, a sixtieth of rung 3 — and it
+			 * carries 548.8 N — barely more than rung 2's 490, a ninth of rung 3 — and it
 			 * sits at 49 % of capacity where rung 2 sits at 1 %. Force and percentage are both
 			 * true, both printed, and there is no arithmetic between them: the missing term is
-			 * a 313.6 N·cm bend that nothing on the line mentions. That is this subsystem's
+			 * a 2,195.2 N·cm bend that nothing on the line mentions. That is this subsystem's
 			 * recurring signature — a plausible number that does not describe what is
 			 * happening — and MOMENTS_DESIGN.md names closing it as part of the moment work
 			 * rather than as a follow-up, for exactly this reason.
@@ -3324,20 +3328,20 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 * AND N·cm RATHER THAN N·m, pinned once beside the formatting exactly as the
 			 * kilonewton switch is. Centimetres are this game's length unit everywhere else —
 			 * the brick is 21.5 cm, the kern of a bed patch is ±1.708 cm — and the interesting
-			 * range collapses in metres: 313.6 N·cm is 3.136 N·m, where one step of the last
-			 * printed digit is a whole 10 N·cm. There is NO new conversion boundary either way:
-			 * a moment is uu.cm, length is already centimetres, so this is
+			 * range collapses in metres: a 313.6 N·cm bend is 3.136 N·m, where one step of the
+			 * last printed digit is a whole 10 N·cm. There is NO new conversion boundary either
+			 * way: a moment is uu.cm, length is already centimetres, so this is
 			 * DestructionPresenter::ForceUnitsPerNewton applied once and nothing else.
 			 *
-			 * THE CLAUSE TRAILS ITS NUMBER, matching every other clause on the line — "78.4 N",
+			 * THE CLAUSE TRAILS ITS NUMBER, matching every other clause on the line — "548.8 N",
 			 * "49.000 %", "2.0× margin" are all <number> <word> — and it appears ONLY on a
 			 * joint that has one. Twelve rows above assert the absence.
 			 */
 			TEXT("a joint levered open by an off-centre load says what is bending it"),
-			13, 78.4, 49.0, TEXT("2.0× margin"), 0.1032679733238288,
-			TEXT("#13  course 2 · #12  bed above  78.4 N  49.000 %  2.0× margin  313.6 N·cm bending"),
+			13, 548.8, 49.0, TEXT("2.0× margin"), 0.1032679733238288,
+			TEXT("#13  course 2 · #12  bed above  548.8 N  49.000 %  2.0× margin  2195.2 N·cm bending"),
 			EJointMarginBand::Caution,
-			313.6
+			2195.2
 		},
 	};
 

@@ -257,14 +257,21 @@ bool FProfileLibraryConnectionInvariantsTest::RunTest(const FString& Parameters)
 			{
 				/*
 				 * A mortared masonry joint is overwhelmingly a compression member:
-				 * it crushes at tens of MPa, debonds in shear at tenths of one, and
+				 * it crushes at MPa scale, debonds in shear at tenths of one, and
 				 * pulls apart at less again. If these come out close the directional
 				 * model has nothing to work with.
+				 *
+				 * 5x RATHER THAN THE OLD 10x SINCE THE 2026-08-14 MEAN RE-ANCHOR FLIP:
+				 * mean shear bond runs closer to mean compressive class than the
+				 * characteristic pair did (lime carries 2.0 / 0.27 = 7.4x; cement
+				 * 10 / 0.9 = 11.1x), so 10x stopped being a physics floor and became
+				 * a characteristic-basis artefact. 5x still separates a bonded joint
+				 * from anything isotropic by a wide margin.
 				 */
 				TestTrue(
-					*FString::Printf(TEXT("%s: compressive %g should be at least 10x cohesion %g"),
+					*FString::Printf(TEXT("%s: compressive %g should be at least 5x cohesion %g"),
 						*Where, S.CompressiveStrengthMPa, S.ShearCohesionMPa),
-					S.CompressiveStrengthMPa >= 10.0 * S.ShearCohesionMPa);
+					S.CompressiveStrengthMPa >= 5.0 * S.ShearCohesionMPa);
 
 				TestTrue(
 					*FString::Printf(TEXT("%s: cohesion %g should exceed tensile %g — mortar debonds in tension first"),
@@ -564,20 +571,27 @@ bool FProfileLibraryMaterialInvariantsTest::RunTest(const FString& Parameters)
 		GeneralPurposeMortar.TensileStrengthMPa < ClayBrick.Strength.TensileStrengthMPa);
 
 	/*
-	 * The shear ceiling is not a free parameter. Eurocode 6 truncates the
-	 * Mohr-Coulomb envelope at roughly 0.065 times the UNIT's compressive
-	 * strength, because past that the brick gives rather than the joint sliding —
-	 * so mortar's cap must track the brick it is laid with, not a number someone
-	 * liked. Generous tolerance: the coefficient is a code simplification.
+	 * The shear ceiling is not a free parameter: past it the brick gives rather
+	 * than the joint sliding, so mortar's cap must track the brick it is laid
+	 * with, not a number someone liked.
+	 *
+	 * MEAN BASIS (re-anchor 2026-08-13): the coefficient is 0.1, not Eurocode 6's
+	 * characteristic-basis 0.065 — forced by measurement, because the Newcastle
+	 * campaign's mean UNCONFINED shear bond reaches 1.81 MPa, above the old
+	 * 0.065 x 20 = 1.3 cap outright, so 0.065 f_b cannot be a mean-basis
+	 * truncation. 0.1 x f_b = 2.0 sits above mean cohesion plus the working
+	 * friction range and below the unit's own 3.0 MPa shear strength. Grade C,
+	 * and recorded as such: no published mean-basis equivalent of the EC6
+	 * truncation exists. Generous tolerance: the coefficient is a judgement.
 	 */
-	constexpr double EurocodeShearCapCoefficient = 0.065;
-	const double EurocodeCapMPa = EurocodeShearCapCoefficient * ClayBrick.Strength.CompressiveStrengthMPa;
+	constexpr double MeanBasisShearCapCoefficient = 0.1;
+	const double MeanBasisCapMPa = MeanBasisShearCapCoefficient * ClayBrick.Strength.CompressiveStrengthMPa;
 
 	TestTrue(
 		FString::Printf(
-			TEXT("mortar's shear cap %g MPa should be ~0.065 x brick compressive %g MPa = %g MPa"),
-			GeneralPurposeMortar.MaxShearStrengthMPa, ClayBrick.Strength.CompressiveStrengthMPa, EurocodeCapMPa),
-		FMath::IsNearlyEqual(GeneralPurposeMortar.MaxShearStrengthMPa, EurocodeCapMPa, 0.15 * EurocodeCapMPa));
+			TEXT("mortar's shear cap %g MPa should be ~0.1 x brick compressive %g MPa = %g MPa"),
+			GeneralPurposeMortar.MaxShearStrengthMPa, ClayBrick.Strength.CompressiveStrengthMPa, MeanBasisCapMPa),
+		FMath::IsNearlyEqual(GeneralPurposeMortar.MaxShearStrengthMPa, MeanBasisCapMPa, 0.15 * MeanBasisCapMPa));
 
 	return true;
 }

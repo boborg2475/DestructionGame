@@ -262,9 +262,11 @@ namespace StaircaseWallTestSupport
 	 *     2667.198625 x (M / 179.4817708 - F / 105.0625) / 10000  MPa
 	 *
 	 * where 10000 uu per MPa.cm2 is spelled out rather than imported. Against general-purpose
-	 * mortar's f_xk1 = 0.10 MPa (EN 1996-1-1 §3.6.3 Table 3.2, and already the number in the
-	 * profile) the bottom step of the staircase would reach 22.9 times capacity ON THAT PATCH
-	 * ALONE.
+	 * mortar's MEAN flexural bond f_x1 = 0.70 MPa (the 2026-08-13 re-anchor's figure — Gooch
+	 * et al. 2023, ConBuildMat 386:131578, twelve M4/M6 batch means averaging 0.571 bracketed
+	 * with UK NA NA.6 x the campaign's 1.89 mean/characteristic ratio; the retired
+	 * characteristic f_xk1 was 0.10) the bottom step of the staircase would reach 3.28 times
+	 * capacity ON THAT PATCH ALONE.
 	 *
 	 * AND THE PATCH ALONE IS NOT WHAT RESISTS IT — WHICH IS THE USER'S RULING OF 2026-08-06 AND
 	 * IS WHY EVERY NUMBER BELOW MOVED.
@@ -274,13 +276,14 @@ namespace StaircaseWallTestSupport
 	 * moment is a VERTICAL section through the bonded masonry standing over the joint, `t*D^2/6`
 	 * for a wall t thick and D deep. Eleven courses stand over the bottom step of this staircase
 	 * — 82.5 cm — so that section is 10.25 x 82.5^2 / 6 = 11,627.34 cm3 against the patch's
-	 * 179.48, a factor of 64.8, and the rung reads 0.369 instead of 22.93. ARCHING_DESIGN.md
-	 * slice 5.
+	 * 179.48, a factor of 64.8, and the rung reads 0.0527 instead of 3.28 (0.369 and 22.93 on
+	 * the characteristic basis — the section ratio is strength-free and did not move).
+	 * ARCHING_DESIGN.md slice 5.
 	 *
 	 * THE JOINT GIVES AT THE LESSER OF THE TWO, because composite action is an ALTERNATIVE way
 	 * of carrying the moment rather than an extra one. That `min` is what keeps the model nested
 	 * rather than replaced, and it is load-bearing at the TOP of the ladder: one course of depth
-	 * is 96.09 cm3, SHALLOWER than the bed patch, so course 12 keeps its own 0.058203838 to the
+	 * is 96.09 cm3, SHALLOWER than the bed patch, so course 12 keeps its own 0.0083148340 to the
 	 * last bit. It is also why `StructureBinding.AdoptedWallLoadsItsWaistEccentrically` and
 	 * `StructurePushTest`'s ragged end do not move — both are the top course of their wall.
 	 *
@@ -329,8 +332,14 @@ namespace StaircaseWallTestSupport
 	 */
 	constexpr double StaircaseForceUnitsPerMPaSqCm = 10000.0;
 
-	/** EN 1996-1-1 Table 3.2's f_xk1 for general-purpose mortar, asserted against the profile. */
-	constexpr double StaircaseMortarTensileMPa = 0.10;
+	/*
+	 * The MEAN flexural bond f_x1 for general-purpose mortar, asserted against the profile,
+	 * never imported. Re-anchored 2026-08-13 (DESIGN §3's mean-basis decision): 0.70 MPa is
+	 * the centre of the Newcastle campaign's measured M4/M6 batch means (average 0.571; Gooch
+	 * et al. 2023, ConBuildMat 386:131578) and the UK NA Table NA.6 inversion (0.4 x 1.89 =
+	 * 0.76). The retired characteristic f_xk1 was EN 1996-1-1 Table 3.2's 0.10.
+	 */
+	constexpr double StaircaseMortarTensileMPa = 0.70;
 
 	/** EN 1996-1-1's compressive figure for the same joint, likewise asserted, never imported. */
 	constexpr double StaircaseMortarCompressiveMPa = 10.0;
@@ -445,9 +454,11 @@ namespace StaircaseWallTestSupport
 	 * WHICH AXIS GOVERNS IS NOT ASSUMED — see StaircasePredictedCorbelCompressionUtilisation.
 	 * ComputeUtilisation returns the WORST of the three axes, so a fixture aimed at bending would
 	 * silently measure compression the moment compression happened to be higher, and every test
-	 * using these numbers asserts the comparison before it claims anything. It is a closer thing
-	 * than it was: relieving the opened edge from 22.93 to 0.369 leaves it only 1.5x clear of the
-	 * squeezed one, where it used to be 92x.
+	 * using these numbers asserts the comparison before it claims anything. On the mean basis it
+	 * is the sharp end of the both-edges rule: had the squeezed edge kept the patch's own
+	 * M/W_v + N/A it would read 0.239 at the bottom rung and GOVERN outright over the relieved
+	 * tension's 0.0527 — the whole mechanism masked on an axis nobody was measuring. With both
+	 * edges moving together the squeezed edge reads 0.0098 and tension governs by 5.4x.
 	 */
 	inline double StaircasePredictedCorbelUtilisation(int32 Course)
 	{
@@ -513,12 +524,21 @@ namespace StaircaseWallTestSupport
 	 * How many steps of the corbel the arithmetic puts OVER capacity, and it is NONE OF THE
 	 * ELEVEN.
 	 *
-	 * IT WAS EIGHT, AND THE CHANGE IS THE WHOLE POINT OF SLICE 5. Read against each step's own
-	 * bed patch the ladder marched 0.058, 0.271, 0.722, 1.494, 2.672, 4.338, 6.577, 9.472,
-	 * 13.107, 17.565, 22.930 and crossed 1.0 between its eighth and ninth rungs. Read against
-	 * the masonry actually standing over each step it marches 0.058, 0.156, 0.173, 0.195, 0.219,
-	 * 0.243, 0.268, 0.293, 0.318, 0.343, 0.369 — monotonic in the same direction, a factor of 62
-	 * lower at the bottom, and nowhere near the line.
+	 * IT WAS EIGHT ON THE CHARACTERISTIC BASIS; ON THE MEAN BASIS THE PATCH-ALONE LADDER
+	 * CONDEMNS FOUR — and either way THE CHANGE IS THE WHOLE POINT OF SLICE 5, which
+	 * re-sections the moment and leaves zero over. On today's mean basis (flipped
+	 * 2026-08-14, every figure /7 of its characteristic ancestor): read against each step's
+	 * own bed patch the ladder marches, top step first, 0.0083, 0.0387, 0.1031, 0.2134,
+	 * 0.3817, 0.6197, 0.9396, 1.3531, 1.8724, 2.5093, 3.2756 — the four BOTTOM steps
+	 * (1.3531 / 1.8724 / 2.5093 / 3.2756) over the line. MIND THE COUNTING DIRECTION when
+	 * comparing with the characteristic-era prose: the old "crossed between its eighth and
+	 * ninth rungs" counted rungs from the BOTTOM step up (eight of eleven over), while this
+	 * list is written top step first — one ladder, two conventions, and the crossing is
+	 * between the seventh and eighth values of this list, i.e. between the fourth and fifth
+	 * rungs from the bottom. Read against the masonry actually standing over each step it
+	 * marches 0.0083, 0.0223, 0.0247, 0.0279, 0.0313, 0.0347, 0.0383, 0.0419, 0.0454,
+	 * 0.0490, 0.0527 — monotonic in the same direction, a factor of 62 lower at the bottom
+	 * (the section ratio is strength-free), and nowhere near the line.
 	 *
 	 * THE LADDER STILL HAS TEETH. It is not flat: the bottom step reads six times the top one,
 	 * so a model that had simply deleted the moment would not produce it either.
@@ -529,10 +549,13 @@ namespace StaircaseWallTestSupport
 	 * The bottom rung: 1608.75 brick-weight-centimetres of bending against the 11,627.34 cm3 of
 	 * vertical section that eleven courses of masonry make, and NOT against the patch's 179.48.
 	 *
-	 * 22.92952589 is what the same moment reads on the bed patch alone, and it is kept in the
-	 * comment because it is the number the photographed failure was condemned by.
+	 * 0.0527187818 = 0.3690314727 / 7, the 2026-08-13 mean re-anchor of the slice-5 figure —
+	 * the stress side is statics and only the 0.10 -> 0.70 divisor moved. 3.2756 (22.92952589
+	 * on the characteristic basis) is what the same moment reads on the bed patch alone; the
+	 * characteristic 22.93 is kept in the comment because it is the number the photographed
+	 * failure was condemned by.
 	 */
-	constexpr double StaircasePredictedWorstCorbelUtilisation = 0.3690314727;
+	constexpr double StaircasePredictedWorstCorbelUtilisation = 0.0527187818;
 
 	/** Whether the arithmetic condemns this step of the corbel outright. */
 	inline bool StaircaseCorbelIsCondemned(int32 Course)

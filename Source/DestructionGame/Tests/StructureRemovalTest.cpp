@@ -1182,10 +1182,11 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 		/*
 		 * REMOVAL PROMOTES THE HEAD JOINT. With no bed joint left the piece falls back on
 		 * the plate, which takes the whole 5e5 uu as PURE SHEAR — 0.5 MPa against the
-		 * bolt's flat 1.0 MPa cohesion, so 0.50 and it holds. The load did not merely
-		 * change size, it changed AXIS, and the axis guard above is what says so: the
-		 * bolt's friction coefficient is exactly zero, so its shear capacity does not move
-		 * with compression and 0.50 can only have come from the shear axis.
+		 * bolt's flat 1.1 MPa cohesion (mean basis, re-anchor 2026-08-13), so 0.4545 and
+		 * it holds. The load did not merely change size, it changed AXIS, and the axis
+		 * guard above is what says so: the bolt's friction coefficient is exactly zero, so
+		 * its shear capacity does not move with compression and 0.4545 can only have come
+		 * from the shear axis.
 		 */
 		{
 			TEXT("removing the pad promotes the head joint, which takes the piece in shear"),
@@ -1193,7 +1194,7 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 			{ 0 },
 			{
 				{ 0.0, EJointKind::Bed, true, INDEX_NONE, 0.0 },
-				{ -ForceForMPa(0.5, 100.0), EJointKind::Head, false, INDEX_NONE,0.5 }
+				{ -ForceForMPa(0.5, 100.0), EJointKind::Head, false, INDEX_NONE, 0.5 / 1.1 }
 			},
 			{ false, true, true }
 		},
@@ -1632,14 +1633,15 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 	 *   ======                      ======   ======   ======
 	 *
 	 * CALL 1 breaks the left-hand lime joint only: 3.0 MPa against 2.0 is 1.50. The
-	 * right-hand three sit at 1.6 MPa apiece — lime 0.80, bolt 0.64, cement 0.16 — and all
-	 * hold, so the call is one pass and the high-water mark is 1.
+	 * right-hand three sit at 1.6 MPa apiece — lime 0.80, bolt 0.4706 (against the mean
+	 * f_c,90 of 3.4; re-anchor 2026-08-13), cement 0.16 — and all hold, so the call is one
+	 * pass and the high-water mark is 1.
 	 *
 	 * THEN PAD 4 IS PULLED. The cement joint is severed unstamped and the remaining two
-	 * share 200 cm2: 2.4 MPa. Lime is at 1.20 and gives (pass 2); the bolt is at 0.96 and
-	 * survives that pass by 4%, which is what makes the two passes genuinely sequential
+	 * share 200 cm2: 2.4 MPa. Lime is at 1.20 and gives (pass 2); the bolt is at 0.706 and
+	 * survives that pass by 29%, which is what makes the two passes genuinely sequential
 	 * rather than one pass breaking both. The re-solve then hands the bolt the whole load
-	 * over 100 cm2 — 4.8 MPa against 2.5, so 1.92 — and it gives in the next pass (pass 3).
+	 * over 100 cm2 — 4.8 MPa against 3.4, so 1.41 — and it gives in the next pass (pass 3).
 	 *
 	 * The call ran TWO breaking passes and stamped 2 and 3. Per-call numbering would stamp
 	 * 1 and 2; a cumulative count would still report two.
@@ -1649,7 +1651,8 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 	 * whatever its area — capacity is the only thing that can order the breaks. Dropping
 	 * one of N equal joints raises the stress by N/(N-1), at most 2x, so a two-pass cascade
 	 * needs two capacities less than a factor of two apart: lime's 2.0 and the fastener's
-	 * 2.5 are the only such pair in the profile library.
+	 * 3.4 are the only such pair in the profile library (1.7x — nearer the ceiling than
+	 * the characteristic era's 2.5 was, so mind this ladder if f_c,90 ever moves again).
 	 */
 	{
 		const FStructureSpec Spec = {
@@ -1680,7 +1683,7 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 		 */
 		Structure.SolveLoads();
 		CheckSettledCompression(*this, Structure, 1, 0.8, TEXT("as built"));
-		CheckSettledCompression(*this, Structure, 2, 0.64, TEXT("as built"));
+		CheckSettledCompression(*this, Structure, 2, 1.6 / 3.4, TEXT("as built"));
 		CheckSettledCompression(*this, Structure, 3, 0.16, TEXT("as built"));
 
 		const int32 PassesAsBuilt = Structure.SolveAndBreak();

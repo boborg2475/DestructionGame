@@ -233,9 +233,9 @@ namespace StructureMomentTestSupport
  *
  * WHAT IS WRONG TODAY. Gravity runs parallel to a head joint, so the mean normal stress
  * across it is EXACTLY zero and the only axis carrying anything is shear against mortar's
- * cohesion. The joint reads 0.0200165 — about fifty bricks from failure — while what is
- * physically happening is that the brick's weight acts 11.25 cm to one side of the joint
- * and levers the top of it open, against a tensile strength one hundredth of the
+ * cohesion. The joint reads 0.0044481 — over two hundred bricks from failure — while what
+ * is physically happening is that the brick's weight acts 11.25 cm to one side of the
+ * joint and levers the top of it open, against a tensile strength a fourteenth of the
  * compressive one. The averaged stress is the wrong number the moment the load path misses
  * the centroid, and it is wrong in the direction that leaves things standing.
  *
@@ -247,17 +247,19 @@ namespace StructureMomentTestSupport
  * is ambiguous for every mortared joint in a wall, and a face-based centroid would make
  * every lever arm depend on which brick the producer happened to name first. From a head
  * joint centred at X = 11.25 the brick's centre of mass at X = 22.5 is 11.25 cm away, so
- * the answer is 0.4157, and the joint geometry is asserted below so that the number and
- * the reason for it fail together.
+ * the answer is 0.0594 (0.4157 on the retired characteristic basis), and the joint
+ * geometry is asserted below so that the number and the reason for it fail together.
  *
- * THE ARITHMETIC, spelled from published figures and brick dimensions:
+ * THE ARITHMETIC, spelled from published figures and brick dimensions (mean basis since
+ * the 2026-08-13 re-anchor — the stress side is pure statics and does not move; only the
+ * divisor changed, 0.10 -> 0.70, a straight /7 on this and every chain multiple):
  *
  *     W       = 1.9 * 21.5 * 10.25 * 6.5 / 1000 * 980  = 2667.198625 uu
  *     M       = 2667.198625 * 11.25                    = 30005.98453125 uu.cm
  *     W_sec   = (4/3) * 5.125 * 3.25^2                 = 72.177083... cm3
  *     sigma_b = M / W_sec                              = 415.7273077 uu/cm2
  *                                                      = 0.04157273077 MPa
- *     tension = sigma_b / f_xk1 (0.10 MPa)             = 0.4157273077
+ *     tension = sigma_b / mean f_x1 (0.70 MPa)         = 0.0593896154
  *
  * NO NEW CONVERSION BOUNDARY, and it is worth checking rather than assuming because
  * "moments" sounds like it should introduce one. Length is cm, so M is uu.cm and M/W with
@@ -294,20 +296,23 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 	/*
 	 * The expectations are ratios of published strengths, so they only mean what they say
 	 * while the profile still carries the figures they were derived against. A retune has
-	 * to fail loudly here rather than quietly moving every number below. EN 1996-1-1 Table
-	 * 3.2's f_xk1 = 0.10 N/mm2 is the one the answer is divided by; the other two decide
-	 * which axis governs, and the friction coefficient decides whether shear gets any help
-	 * (it does not — the mean compressive stress on a head joint under gravity is zero).
+	 * to fail loudly here rather than quietly moving every number below. The MEAN flexural
+	 * bond f_x1 = 0.70 MPa (re-anchor 2026-08-13: Gooch et al. 2023, ConBuildMat
+	 * 386:131578 — twelve M4/M6 batch means averaging 0.571, and UK NA Table NA.6's 0.4
+	 * x the campaign's mean/characteristic ratio 1.89 = 0.76; 0.70 is the centre) is the
+	 * one the answer is divided by; the other two decide which axis governs, and the
+	 * friction coefficient decides whether shear gets any help (it does not — the mean
+	 * compressive stress on a head joint under gravity is zero).
 	 */
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against f_xk1 = 0.1 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.7 MPa, the profile carries %g"),
 			GeneralPurposeMortar.TensileStrengthMPa),
-		GeneralPurposeMortar.TensileStrengthMPa == 0.1);
+		GeneralPurposeMortar.TensileStrengthMPa == 0.7);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against cohesion 0.2 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean cohesion 0.9 MPa, the profile carries %g"),
 			GeneralPurposeMortar.ShearCohesionMPa),
-		GeneralPurposeMortar.ShearCohesionMPa == 0.2);
+		GeneralPurposeMortar.ShearCohesionMPa == 0.9);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against compressive 10 MPa, the profile carries %g"),
@@ -542,8 +547,8 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 
 		/*
 		 * AND IT MUST STILL STAND. A single brick on a single head joint really does hang
-		 * there; what changes is that it is now a fifth of the way to coming off rather
-		 * than a fiftieth, so two or three of them in a chain part. A row that expected
+		 * there; what changes is that it is now a seventeenth of the way to coming off
+		 * rather than a two-hundredth, so a chain of seventeen parts. A row that expected
 		 * something over 1.0 would be asserting a collapse this fixture does not have.
 		 */
 		TestTrue(
@@ -1057,10 +1062,12 @@ bool FStructureCompleteGeometryTest::RunTest(const FString& Parameters)
  *     sigma_b = 2667.198625 * 5.625 / W_v              = 8.3590619e-3 MPa
  *     sigma_n = -2667.198625 / A                       = -2.5386781e-3 MPa, compression
  *     tension = max(0, sigma_n + sigma_b)              = 5.8203838e-3 MPa
- *             / f_xk1 (0.10 MPa)                       = 0.058203838
+ *             / mean f_x1 (0.70 MPa)                   = 0.0083148340
  *
- * against the 2.5386781e-4 a centred load reads — a 229x change, and the joint still holds,
- * which is right: one overhanging brick does not come off.
+ * against the 2.5386781e-4 a centred load reads — a 33x change, and the joint still holds,
+ * which is right: one overhanging brick does not come off. (Mean basis since the
+ * 2026-08-13 re-anchor; the characteristic-basis figure was 0.058203838 and the change
+ * 229x. The stress side is untouched — only the 0.10 -> 0.70 divisor moved.)
  *
  * WHICH AXIS GOVERNS IS ASSERTED, NOT ASSUMED. ComputeUtilisation returns the WORST of the
  * three, so a test aimed at bending measures compression the moment compression happens to
@@ -1091,9 +1098,9 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 	 * only while the profile still carries the figures they were derived against.
 	 */
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against f_xk1 = 0.1 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.7 MPa, the profile carries %g"),
 			GeneralPurposeMortar.TensileStrengthMPa),
-		GeneralPurposeMortar.TensileStrengthMPa == 0.1);
+		GeneralPurposeMortar.TensileStrengthMPa == 0.7);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against compressive 10 MPa, the profile carries %g"),
@@ -1222,7 +1229,7 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 
 	/*
 	 * AND THE WALL MUST STILL STAND. One brick overhanging half its bed really does hold; the
-	 * change is that it is a twentieth of the way off rather than a four-thousandth.
+	 * change is that it is a hundred-and-twentieth of the way off rather than a four-thousandth.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE PRECONDITION: the wall must still stand, expected %.10f"),
@@ -1399,13 +1406,16 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
  *     W_u     = (4/3) * 5.125 * 3.25^2                 = 72.1770833 cm3
  *     sigma_b = n * 2667.198625 * 11.25 / W_u          = n * 0.041572731 MPa
  *     sigma_n = 0                                        gravity is parallel to a head joint
- *     tension = n * 0.041572731 / 0.10                 = n * 0.41572731
+ *     tension = n * 0.041572731 / 0.70                 = n * 0.059389616
  *
- * n = 2 gives 0.8314546 and holds; n = 3 gives 1.2471819 and gives. MOMENTS_DESIGN.md's
- * 1.626 for a two-brick chain is the slice-5 figure, where the moment accumulates along the
- * load path and the upper brick's own lever arm survives the trip down. Two bricks is
- * therefore NOT a red fixture today, which is exactly why it is in the table: it is the
- * control that stops an implementation which breaks whatever it is shown from passing.
+ * n = 16 gives 0.9502339 and holds; n = 17 gives 1.0096235 and gives. (Mean basis since
+ * the 2026-08-13 re-anchor: the divisor moved 0.10 -> 0.70, so the crossing moved from
+ * n = 3 — the characteristic-basis pair was 0.8314546 / 1.2471819 at n = 2 / 3.)
+ * MOMENTS_DESIGN.md's 1.626 for a two-brick chain was the slice-5 figure on the old
+ * basis, where the moment accumulates along the load path and the upper brick's own
+ * lever arm survives the trip down. The just-under-capacity chain is NOT a red fixture,
+ * which is exactly why it is in the table: it is the control that stops an
+ * implementation which breaks whatever it is shown from passing.
  *
  * THE FIXTURE IS A CORBEL, NOT A ROW. A horizontal chain of bricks does not work at all:
  * every piece with no bed joint beneath it falls back to ALL of its head joints, so the
@@ -1421,9 +1431,10 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
  *
  * WHICH AXIS GOVERNS IS ASSERTED. On a head joint under gravity the mean normal stress is
  * exactly zero and shear carries the whole force against mortar's cohesion, so the three
- * axes are close enough in kind to be worth comparing: at n = 3 tension reads 1.2471819
- * against shear at 0.0600495 and compression at 0.0124718. Bending in tension is what has to
- * take the joint apart, and a fixture where shear got there first would be a different test.
+ * axes are close enough in kind to be worth comparing: at n = 17 tension reads 1.0096235
+ * against shear at 0.0756179 (n x 0.0044481) and compression at 0.0706736 (n x 0.0041573).
+ * Bending in tension is what has to take the joint apart, and a fixture where shear got
+ * there first would be a different test.
  *
  * ASSERTED ON THE MECHANISM, NEVER ON MOVEMENT. FStructure has no positions to move and a
  * severed joint moves nothing anyway — two pieces can part and stay exactly where they are —
@@ -1445,14 +1456,14 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 	using namespace StructureMomentTestSupport;
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against f_xk1 = 0.1 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.7 MPa, the profile carries %g"),
 			GeneralPurposeMortar.TensileStrengthMPa),
-		GeneralPurposeMortar.TensileStrengthMPa == 0.1);
+		GeneralPurposeMortar.TensileStrengthMPa == 0.7);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against cohesion 0.2 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean cohesion 0.9 MPa, the profile carries %g"),
 			GeneralPurposeMortar.ShearCohesionMPa),
-		GeneralPurposeMortar.ShearCohesionMPa == 0.2);
+		GeneralPurposeMortar.ShearCohesionMPa == 0.9);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against compressive 10 MPa, the profile carries %g"),
@@ -1489,14 +1500,16 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 
 	const TArray<FChainCase> Cases = {
 		/*
-		 * THE CONTROL, AND IT COMES FIRST. Two bricks put the joint at five sixths of
+		 * THE CONTROL, AND IT COMES FIRST. Sixteen bricks put the joint at 95% of
 		 * capacity — genuinely, visibly loaded, and still holding. Without it every claim
 		 * below is satisfied by an implementation that breaks whatever it is shown.
+		 * (Two and three on the characteristic basis; the mean re-anchor moved the
+		 * crossing to seventeen brick weights, 1/0.059389616.)
 		 */
-		{ TEXT("two bricks hanging off one head joint"), 2, false },
+		{ TEXT("sixteen bricks hanging off one head joint"), 16, false },
 
-		/* THE CLAIM. The third brick takes it past capacity and it has to give. */
-		{ TEXT("three bricks hanging off one head joint"), 3, true },
+		/* THE CLAIM. The seventeenth brick takes it past capacity and it has to give. */
+		{ TEXT("seventeen bricks hanging off one head joint"), 17, true },
 	};
 
 	constexpr double Tolerance = 1.0e-9;
@@ -1751,26 +1764,29 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
  * from the design's own figures: arms of 10.75 and 33.25 cm against a 72.1771 cm3 modulus give
  * 4.0930 x 0.39725 = 1.626 exactly, which is the horizontal chain and nothing else. Against
  * the emitted MID-PLANE centroid the same horizontal chain would read 4 x 0.4157273077 =
- * 1.6629. Neither number belongs to a vertical stack, whose two-brick case stays at
- * 0.8314546 before and after.
+ * 1.6629. (Both are characteristic-basis figures, /7 on the mean basis.) Neither number
+ * belongs to a vertical stack, whose two-brick case stays at 0.1187792 before and after.
  *
  * SO THE FIXTURE THAT MOVES IS A CORBELLED CHAIN. Step each brick half its length further out
  * and the load path leaves the piece by a patch that is nowhere near the patch it arrived on,
- * which is the whole of the effect: two bricks take the head joint from 0.8314546 to 1.2287052
- * and it goes from holding to peeling.
+ * which is the whole of the effect: two bricks take the head joint from 0.1187792 to 0.1755293
+ * — a 48% jump from the identical bricks, purely because the moment now travels. (On the
+ * retired characteristic basis those read 0.8314546 and 1.2287052 and the jump crossed 1.0;
+ * at the mean f_x1 = 0.70 nothing in this table breaks any more, so the BREAK arm of the
+ * claim lives in MomentBreaksTheJointItOverloads' seventeen-brick chain, and every row here
+ * asserts the reading and the moment vector.)
  *
  * THE ZIG-ZAG ROW IS THE ONE THAT PINS THE SIGN, and it is not decoration. A chain that steps
  * out and then steps back puts the brick above's weight on the far side of the joint from the
  * one below's, so the two moments CANCEL — the middle bed joint carries exactly zero moment
  * while carrying two bricks. An accumulation that summed magnitudes, or that got the sign of
- * the transfer term backwards, cannot produce that; today's code reads 0.096824 there. It is
- * also the shape a plain toothed wall end has, where the load funnels straight down onto the
- * patch it will leave by.
+ * the transfer term backwards, cannot produce that. It is also the shape a plain toothed wall
+ * end has, where the load funnels straight down onto the patch it will leave by.
  *
  * WHICH AXIS GOVERNS IS ASSERTED FOR THE HEAD JOINT, because ComputeUtilisation returns the
  * WORST of three and a test aimed at bending measures shear the moment shear is higher. On a
  * head joint under gravity the mean normal stress is exactly zero, so the whole force is shear
- * against mortar's cohesion — 0.0400 for two bricks against 1.2287 in tension. Every joint's
+ * against mortar's cohesion — 0.0089 for two bricks against 0.1755 in tension. Every joint's
  * three axes are worked out and printed, and the claim is against the worst of them, so a
  * fixture whose governing axis moved would fail here rather than quietly measure the other one.
  *
@@ -1794,14 +1810,14 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 	 * while the profile still carries the figures they were derived against.
 	 */
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against f_xk1 = 0.1 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.7 MPa, the profile carries %g"),
 			GeneralPurposeMortar.TensileStrengthMPa),
-		GeneralPurposeMortar.TensileStrengthMPa == 0.1);
+		GeneralPurposeMortar.TensileStrengthMPa == 0.7);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against cohesion 0.2 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean cohesion 0.9 MPa, the profile carries %g"),
 			GeneralPurposeMortar.ShearCohesionMPa),
-		GeneralPurposeMortar.ShearCohesionMPa == 0.2);
+		GeneralPurposeMortar.ShearCohesionMPa == 0.9);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against compressive 10 MPa, the profile carries %g"),
@@ -1864,17 +1880,17 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 		{
 			TEXT("two bricks stacked squarely"),
 			{ BrickPitchCm, BrickPitchCm },
-			0.8314546153846154,
-			0.8314546153846154,
+			0.11877923076923077,
+			0.11877923076923077,
 			false
 		},
 
 		{
 			TEXT("three bricks stacked squarely"),
 			{ BrickPitchCm, BrickPitchCm, BrickPitchCm },
-			1.2471819230769232,
-			1.2471819230769232,
-			true
+			0.17816884615384615,
+			0.17816884615384615,
+			false
 		},
 
 		/*
@@ -1882,21 +1898,27 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 		 * leaves it 5.375 cm from where its own weight acts and arrives on the head joint
 		 * 16.625 cm out rather than 11.25. Arms of 11.25 and 22.0 against a 72.1771 cm3
 		 * modulus: 33.25 brick-weight-centimetres where the old rule saw 22.5.
+		 *
+		 * NO ROW IN THIS TABLE GIVES ANY MORE (mean re-anchor 2026-08-13): at the mean
+		 * f_x1 = 0.70 the worst chain here reads 0.348, so every bHeadMustGive is false
+		 * and what this test asserts is the reading and the moment vector. The break
+		 * decision agreeing with an over-capacity moment is MomentBreaksTheJointIt-
+		 * Overloads' seventeen-brick chain now.
 		 */
 		{
 			TEXT("two bricks, the upper one corbelled half a brick out"),
 			{ BrickPitchCm, BrickPitchCm + CorbelStepCm },
-			0.8314546153846154,
-			1.2287051538461540,
-			true
+			0.11877923076923077,
+			0.17552930769230769,
+			false
 		},
 
 		{
 			TEXT("three bricks, each corbelled half a brick further out"),
 			{ BrickPitchCm, BrickPitchCm + CorbelStepCm, BrickPitchCm + 2.0 * CorbelStepCm },
-			1.2471819230769232,
-			2.4389335384615385,
-			true
+			0.17816884615384615,
+			0.34841907692307692,
+			false
 		},
 
 		/*
@@ -1907,9 +1929,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 		{
 			TEXT("three bricks zig-zagging back over the joint below"),
 			{ BrickPitchCm, BrickPitchCm + CorbelStepCm, BrickPitchCm },
-			1.2471819230769232,
-			1.6444324615384616,
-			true
+			0.17816884615384615,
+			0.23491892307692308,
+			false
 		},
 
 		/*
@@ -1921,9 +1943,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 		{
 			TEXT("the corbelled pair mirrored, hanging to the left"),
 			{ -BrickPitchCm, -(BrickPitchCm + CorbelStepCm) },
-			0.8314546153846154,
-			1.2287051538461540,
-			true
+			0.11877923076923077,
+			0.17552930769230769,
+			false
 		},
 	};
 
@@ -2084,7 +2106,7 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 			 * THE CHAIN IS WHERE THAT IS EASIEST TO COUNT. Joint k is under brick k, so the
 			 * masonry over it is bricks k upward and D is that many course pitches. A HEAD joint
 			 * has no bed plane and no masonry standing on it in this sense — which is the whole
-			 * reason MOMENTS_DESIGN case (b) and the 0.8314546153846154 chain above did not move
+			 * reason MOMENTS_DESIGN case (b) and the squarely-stacked chain above did not move
 			 * — and the TOP brick of any chain has nothing resting on it, so it is one unit
 			 * rather than a composite of several and keeps its own patch.
 			 *

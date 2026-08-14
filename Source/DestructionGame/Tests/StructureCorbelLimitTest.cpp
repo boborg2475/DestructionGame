@@ -157,14 +157,22 @@ namespace StructureCorbelLimitTestSupport
  *     FAILURE IS THE FINDING; it is written as a strict inequality on integers, so it cannot pass
  *     by a tolerance.
  *
- * DERIVED BEFORE IT WAS MEASURED, so that a disagreement is visible. Taking the raking corbel's
- * own closed forms — F(s) = 1 + s + s(s+1)/4 brick weights and M(s) = 5.625(s+1) + 11.25*SUM F —
- * a k-step arm's root carries M(k-1) against a section of t*(7.5k)^2/6, which crosses 1.0 first
- * at k = 36: 0.99029 at 35, 1.01625 at 36. The proposal's chart says "near 35", extrapolated from
- * a straight-line fit; 36 is what the closed form gives and the two agree to one step. The lambda
- * cap is NOT expected to fire on any row here — e ~ 3.75k for a half-cell step, so lambda*e is
- * about 1.73 times the arm's own depth against a wall that stops at its top — which is
- * COMPOSITE_DEPTH_DESIGN's matched-corbel lemma, and it is printed per row rather than assumed.
+ * DERIVED BEFORE IT WAS MEASURED, so that a disagreement is visible — RE-DERIVED AT THE MEAN
+ * BASIS 2026-08-13. Taking the raking corbel's own closed forms — F(s) = 1 + s + s(s+1)/4 brick
+ * weights and M(s) = 5.625(s+1) + 11.25*SUM F — a k-step arm's root carries M(k-1) against a
+ * section of t*(7.5k)^2/6 in TENSION and F(k-1) against its 105.0625 cm2 patch in COMPRESSION.
+ * On the characteristic basis tension crossed first, at k = 36 (0.99029 at 35, 1.01625 at 36);
+ * at the mean f_x1 = 0.70 the tension ladder divides by 7 and does not reach 1.0 until past
+ * k ~ 250, while the compression ladder — against the UNMOVED 10 MPa — crosses first:
+ * F(k-1) * 2667.198625 / (105.0625e4 * 10) = 1 at F ~ 3939 brick weights, i.e. k ~ 124
+ * (F(122) = 3874.5 reads 0.983, F(123) = 3937 reads 0.99937, F(124) = 4000 reads 1.0154 — so
+ * the closed form puts the crossover at 125 steps, knife-edge at 124; the bisection is the
+ * measurement and the green phase pins what it returns). The crossover the test finds is
+ * therefore a CRUSHING limit now, and the test's name keeps its history rather than its axis.
+ * The lambda cap is NOT expected to fire on any row here — e ~ 3.75k for a half-cell step, so
+ * lambda*e is about 1.73 times the arm's own depth against a wall that stops at its top — which
+ * is COMPOSITE_DEPTH_DESIGN's matched-corbel lemma, and it is printed per row rather than
+ * assumed.
  *
  * NEEDS A TICKING WORLD: NO. FStructure is arithmetic over a graph and the fixture is boxes.
  */
@@ -183,9 +191,9 @@ bool FStructureCorbelCrossoverTest::RunTest(const FString& Parameters)
 	 * than imported: a test that read the profile would agree with a wrong profile.
 	 */
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against f_xk1 = 0.10 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.70 MPa (re-anchor 2026-08-13), the profile carries %g"),
 			GeneralPurposeMortar.TensileStrengthMPa),
-		GeneralPurposeMortar.TensileStrengthMPa == 0.10);
+		GeneralPurposeMortar.TensileStrengthMPa == 0.70);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against clay brick at 1.9 g/cm3, the profile carries %g"),
@@ -297,7 +305,12 @@ bool FStructureCorbelCrossoverTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	constexpr int32 MostStepsWorthTrying = 100;
+	/*
+	 * 150 rather than the original 100: at mean strengths the worst-axis crossover is the
+	 * ~124-step CRUSHING limit (see the header), and a 100-step cap would sit under it and
+	 * report that no crossover exists at all.
+	 */
+	constexpr int32 MostStepsWorthTrying = 150;
 
 	struct FSweep
 	{
@@ -462,29 +475,39 @@ bool FStructureCorbelCrossoverTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A HUNDRED-STEP CORBEL MUST COME DOWN, BY A MARGIN, AND IT MUST COME DOWN IN TENSION.
+ * A GIANT CORBEL MUST COME DOWN, BY A MARGIN — AND SINCE THE 2026-08-14 MEAN RE-ANCHOR FLIP IT
+ * COMES DOWN BY CRUSHING ITS ROOT, NOT BY OPENING IT.
  *
- * TEST F. The guarantee at the far end of the same curve E walks: eleven metres of overhang off a
- * one-metre base, with the counterweight in place. The point is not the number but that no future
- * change to the depth rule can quietly make this stand — every candidate bound proposed so far has
- * been checked against a case that must fail, and this is the one absurd enough that failing it is
- * unarguable.
+ * TEST F. The guarantee at the far end of the same curve E walks: seventeen metres of overhang
+ * off a one-metre base, with the counterweight in place. The point is not the number but that no
+ * future change to the depth rule can quietly make this stand — every candidate bound proposed so
+ * far has been checked against a case that must fail, and this is the one absurd enough that
+ * failing it is unarguable.
+ *
+ * WHY 150 STEPS AND NOT THE ORIGINAL 100. At the mean f_x1 = 0.70 the hundred-step tension
+ * reading falls to 2.6805 / 7 = 0.383 while its compression stays at 0.654 — BOTH under
+ * capacity, so the hundred-step corbel would STAND and the family's only far-above-1.0 guarantee
+ * would be gone. The first axis to cross capacity as steps grow is now COMPRESSION (the unmoved
+ * 10 MPa), at ~124 steps by the closed form below, so the fixture grows to 150 where crushing
+ * condemns it with a real margin. That is honest physics — a seventeen-metre corbel crushes the
+ * mortar at its root — and it keeps the must-fail guarantee alive without touching a strength.
  *
  * =========================================================================================
  * WHAT IS ASSERTED, AND WHY EACH FORM WAS CHOSEN
  * =========================================================================================
  *
- *   - OVER CAPACITY BY A MARGIN, NOT MARGINALLY. Asserted at 2.0, against a derived 2.68, so a
- *     depth rule that credited half again as much section would still fail here. A bare `> 1.0`
- *     would be one tuning away from flipping.
+ *   - OVER CAPACITY BY A MARGIN, NOT MARGINALLY. Asserted at 1.2, against a derived 1.457, so a
+ *     modest crediting error still fails here. A bare `> 1.0` would be one tuning away from
+ *     flipping.
  *
- *   - AND IT FAILS IN TENSION ON A BED JOINT, NAMING THE AXIS. `ComputeUtilisation` returns the
- *     WORST of three axes, so a row that only checked the number could pass by failing in
- *     compression for a reason that has nothing to do with corbelling — and at this scale the
- *     compression axis is genuinely live: the root carries about 2575 brick weights through a
- *     105 cm2 patch, which is 6.5 MPa against a 10 MPa mortar, 0.65 of capacity. Tension is
- *     asserted to be strictly the largest of the three, and the moment is asserted to be about
- *     the axis ACROSS the wall — the one the arm's own projection bends it about.
+ *   - AND IT FAILS BY CRUSHING, WITH THE AXIS NAMED. `ComputeUtilisation` returns the WORST of
+ *     three axes, so a row that only checked the number could pass on the wrong mechanism. The
+ *     root carries F(149) = 5737.5 brick weights through a 105 cm2 patch — 14.57 MPa against the
+ *     10 MPa mortar, 1.457 of capacity — while the composite-relieved tension reads 0.569
+ *     against the mean 0.70 basis. Compression is asserted to be strictly the largest of the
+ *     three, and the moment is still asserted to be about the axis ACROSS the wall.
+ *     (On the retired characteristic basis tension governed — 3.98 here, 2.68 at a hundred
+ *     steps — which is why this block is red until the profile rows flip.)
  *
  *   - AND THE OUTCOME, NEVER A DISPLACEMENT. Two pieces can sever and stay resting exactly where
  *     they were. What is asserted is that the TIP — the outermost brick of the top course, the
@@ -492,16 +515,18 @@ bool FStructureCorbelCrossoverTest::RunTest(const FString& Parameters)
  *     joint is one of the joints that failed UNDER LOAD rather than one that went with a removed
  *     piece. `GetBreakPass`'s contract spells that encoding out.
  *
- * DERIVED BEFORE IT WAS MEASURED. M(99) = 5.625*100 + 11.25*SUM F(0..98) = 965,812.5
- * brick-weight-cm against a section of 10.25 * 750^2 / 6 = 960,937.5 cm3, so the root reads
- * 965812.5 * 2667.198625 / (960937.5 * 10^4 * 0.10) = 2.6805. The proposal's chart says "about
- * 2.7" from a straight-line fit and the two agree to two digits. e = 375 cm, so lambda*e is
- * 1299 cm against 750 cm of arm: the cap does not fire, which is the matched-corbel lemma again
- * and is printed rather than assumed.
+ * DERIVED BEFORE IT WAS MEASURED, at 150 steps. F(149) = 1 + 149 + 149*150/4 = 5737.5 brick
+ * weights, so sigma_n = 5737.5 * 2667.198625 / (105.0625 * 10^4) = 14.566 MPa and the
+ * compression axis reads 1.457. The crushing crossover: F(k) * 2667.198625 / 1.050625e6 = 10
+ * at F(k) ~ 3939 brick weights, i.e. k ~ 124. The tension side: M(149) = 5.625*150 +
+ * 11.25*SUM F(0..148) = 3,227,625 brick-weight-cm against 10.25 * 1125^2 / 6 = 2,162,109.4 cm3,
+ * which is 0.398 MPa = 0.569 of the mean 0.70. e = M/F = 562.6 cm, so lambda*e is far past the
+ * 1125 cm arm depth: the cap does not fire, the matched-corbel lemma again.
  *
- * COST: this is the largest structure in the suite. The piece count and the wall-clock time are
- * both printed, and if either becomes unreasonable the same claim is available at sixty steps —
- * which reads about 1.6 and would need the assertion threshold lowered with it.
+ * COST: this is the largest structure in the suite (~6,800 pieces, up from the hundred-step
+ * 3,015). The piece count and the wall-clock time are both printed; if either becomes
+ * unreasonable the same claim is available at 130 steps — margin ~1.1, which would need the
+ * threshold lowered with it and is one retune from flapping, so shrink only under protest.
  *
  * NEEDS A TICKING WORLD: NO.
  */
@@ -514,7 +539,7 @@ bool FStructureHundredStepCorbelTest::RunTest(const FString& Parameters)
 {
 	using namespace StructureCorbelLimitTestSupport;
 
-	constexpr int32 Steps = 100;
+	constexpr int32 Steps = 150;
 
 	const FCorbelSpec Spec = CorbelCaseD(Steps);
 
@@ -545,57 +570,61 @@ bool FStructureHundredStepCorbelTest::RunTest(const FString& Parameters)
 		EJointRole::BedBeneath);
 
 	/*
-	 * BY A MARGIN, NOT MARGINALLY. Two, against a derived 2.68.
+	 * BY A MARGIN, NOT MARGINALLY. 1.2, against a derived 1.457 on the compression axis
+	 * (mean re-anchor 2026-08-13 — see the header for the arithmetic).
 	 */
 	TestTrue(
 		FString::Printf(
-			TEXT("A HUNDRED STEPS MUST COME DOWN BY A MARGIN — the root joint reads %s and must be ")
-			TEXT("at least 2.0, so that a rule crediting half again as much section still fails it"),
+			TEXT("A GIANT CORBEL MUST COME DOWN BY A MARGIN — the root joint reads %s and must be ")
+			TEXT("at least 1.2, so that a modest crediting error still fails it"),
 			*CorbelBits(Reading.Utilisation)),
-		Reading.Utilisation >= 2.0);
+		Reading.Utilisation >= 1.2);
 
 	/*
-	 * AND IN TENSION, WITH THE AXIS NAMED.
-	 *
-	 * The moment must be about Y — the axis ACROSS the wall — because that is the one an arm
-	 * projecting along X bends its seat about, and it is the one the depth is paired with. A
-	 * fixture that had drifted into bending about X would be read against a completely different
-	 * section modulus and would agree with none of the arithmetic above.
+	 * THE MOMENT AXIS, STILL NAMED. The moment must be about Y — the axis ACROSS the wall —
+	 * because that is the one an arm projecting along X bends its seat about, and it is the
+	 * one the depth is paired with. A fixture that had drifted into bending about X would be
+	 * read against a completely different section modulus and would agree with none of the
+	 * arithmetic above.
 	 */
 	const FVector MomentUuCm = Built.Structure.GetConnectionMoment(Built.RootJoint);
 
 	TestTrue(
 		FString::Printf(
-			TEXT("A HUNDRED STEPS: the root joint must be bent about the axis ACROSS the wall — its ")
+			TEXT("A GIANT CORBEL: the root joint must be bent about the axis ACROSS the wall — its ")
 			TEXT("moment is (%s, %s, %s) uu.cm"),
 			*CorbelBits(MomentUuCm.X), *CorbelBits(MomentUuCm.Y), *CorbelBits(MomentUuCm.Z)),
 		FMath::Abs(MomentUuCm.Y) > 0.0
 			&& FMath::Abs(MomentUuCm.X) <= 1.0e-9 * FMath::Abs(MomentUuCm.Y)
 			&& FMath::Abs(MomentUuCm.Z) <= 1.0e-9 * FMath::Abs(MomentUuCm.Y));
 
+	/*
+	 * AND IT FAILS BY CRUSHING, WITH THE AXIS NAMED. At mean strengths the composite-relieved
+	 * tension reads 0.569 while 5737.5 brick weights through one 105 cm2 patch read 1.457 of
+	 * the unmoved 10 MPa — the root CRUSHES. (Red until the profile flips: on the
+	 * characteristic basis tension still governs at 3.98.)
+	 */
 	TestTrue(
 		FString::Printf(
-			TEXT("A HUNDRED STEPS MUST FAIL IN TENSION — the bed joint opening is what a corbel on ")
-			TEXT("an immovable base can fail by, and tension must be STRICTLY the worst of the ")
-			TEXT("three axes: tension %s, compression %s, shear %s"),
+			TEXT("A GIANT CORBEL MUST FAIL BY CRUSHING — compression must be STRICTLY the worst of ")
+			TEXT("the three axes: tension %s, compression %s, shear %s"),
 			*CorbelBits(Reading.Axes.TensionUtilisation),
 			*CorbelBits(Reading.Axes.CompressionUtilisation),
 			*CorbelBits(Reading.Axes.ShearUtilisation)),
-		Reading.Axes.TensionUtilisation > Reading.Axes.CompressionUtilisation
-			&& Reading.Axes.TensionUtilisation > Reading.Axes.ShearUtilisation);
+		Reading.Axes.CompressionUtilisation > Reading.Axes.TensionUtilisation
+			&& Reading.Axes.CompressionUtilisation > Reading.Axes.ShearUtilisation);
 
 	/*
 	 * AND THE ORACLE MUST AGREE WITH THE SOLVER ON WHICH NUMBER THAT IS. Without this the axis
 	 * claim above would be a statement about this file's own arithmetic rather than about what
-	 * `GetConnectionUtilisation` returned. Two per cent, which distinguishes the three axes here
-	 * by a factor of four.
+	 * `GetConnectionUtilisation` returned. Two per cent.
 	 */
 	TestTrue(
 		FString::Printf(
-			TEXT("A HUNDRED STEPS: the tension the section arithmetic predicts (%s) must be what ")
+			TEXT("A GIANT CORBEL: the compression the section arithmetic predicts (%s) must be what ")
 			TEXT("the joint actually reads (%s)"),
-			*CorbelBits(Reading.Axes.TensionUtilisation), *CorbelBits(Reading.Utilisation)),
-		FMath::Abs(Reading.Axes.TensionUtilisation - Reading.Utilisation)
+			*CorbelBits(Reading.Axes.CompressionUtilisation), *CorbelBits(Reading.Utilisation)),
+		FMath::Abs(Reading.Axes.CompressionUtilisation - Reading.Utilisation)
 			<= 0.02 * Reading.Utilisation);
 
 	// --- and the outcome ---------------------------------------------------------------------
@@ -787,12 +816,13 @@ bool FStructureCorbelScaleTest::RunTest(const FString& Parameters)
  * all has already gone at ANY section modulus: a dry-laid corbel is condemned identically whether
  * the depth rule credits eleven courses, one course, or has not been written. No existing fixture
  * can tell those apart. `CohesionlessBond` is `DryStone` with that one blinding field changed —
- * zero cohesion so the frictional behaviour is real, 0.08 MPa of tensile bond so the reading is a
+ * zero cohesion so the frictional behaviour is real, a small tensile bond so the reading is a
  * number. It is data: one row in `ConnectionProfiles.cpp`, precedented by `Unbreakable`.
  *
- * 0.08 SITS BETWEEN LIME'S 0.05 AND CEMENT'S 0.10 DELIBERATELY. A row at either end could be
- * satisfied by a model that ignored the profile and simply read them in the order they were laid;
- * a row in the MIDDLE cannot.
+ * 0.40 SITS BETWEEN LIME'S 0.20 AND CEMENT'S 0.70 DELIBERATELY (re-placed at the 2026-08-13
+ * mean re-anchor — it was 0.08 between the characteristic 0.05 and 0.10; the property is the
+ * POSITION, not the number). A row at either end could be satisfied by a model that ignored the
+ * profile and simply read them in the order they were laid; a row in the MIDDLE cannot.
  *
  * WHAT IS DELIBERATELY NOT ASSERTED: that the frictional row comes DOWN. That is slice 5's shear
  * transfer gate, which has not been built, and asserting an outcome that depends on an unwritten

@@ -340,9 +340,9 @@ namespace RigidBlockOracleTestSupport
 	/**
 	 * The half-seated brick alone, mortared: weight at e = 5.625 cm from the seat
 	 * centre, contacts at +-5.125, so n_inboard = lambda*W*(1/2 - e/(2h)) and the bond
-	 * holds until lambda* = T_A / (W * (e/(2h) - 1/2)) — about 404: one brick is
-	 * nothing to a real bond, which is why the one-cell verdicts only ever turn on
-	 * geometry, not load.
+	 * holds until lambda* = T_A / (W * (e/(2h) - 1/2)) — about 404 at the retired
+	 * characteristic bond, about 2826 at the mean 0.70: one brick is nothing to a real
+	 * bond, which is why the one-cell verdicts only ever turn on geometry, not load.
 	 */
 	double JammingAloneTensionLambda(const FConnectionStrength& Strength)
 	{
@@ -352,6 +352,25 @@ namespace RigidBlockOracleTestSupport
 			Strength.TensileStrengthMPa * ConvHere * HalfSeatAreaSqCm / 2.0;
 
 		return TensionCapacityUu / (BrickWeightUu * (e / (2.0 * h) - 0.5));
+	}
+
+	/**
+	 * The same two-contact statics where CRUSHING at the outboard contact binds
+	 * instead: n_outboard = lambda*W*(1/2 + e/(2h)) against the contact's own
+	 * C_A = f_c*Conv*A/2, so lambda* = C_A / (W * (1/2 + e/(2h))) — about 1878 for
+	 * mortar. The two contacts and two equilibrium equations leave no freedom, so
+	 * the fixture's answer is exactly min(tension bound, crush bound); which one that
+	 * is FLIPPED at the 2026-08-14 mean re-anchor flip (tension x7, crushing unmoved), and
+	 * writing both is what lets the row state the minimum rather than an axis.
+	 */
+	double JammingAloneCrushLambda(const FConnectionStrength& Strength)
+	{
+		const double e = 5.625;
+		const double h = 5.125;
+		const double CrushCapacityUu =
+			Strength.CompressiveStrengthMPa * ConvHere * HalfSeatAreaSqCm / 2.0;
+
+		return CrushCapacityUu / (BrickWeightUu * (0.5 + e / (2.0 * h)));
 	}
 
 	/* ================================================================================
@@ -474,14 +493,31 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		DryStone.FrictionCoefficient, 0.7);
 	TestEqual(TEXT("FIXTURE: dry stone crushes at 30 MPa"),
 		DryStone.CompressiveStrengthMPa, 30.0);
-	TestEqual(TEXT("FIXTURE: mortar's characteristic bond is EN 1996-1-1's 0.10"),
-		GeneralPurposeMortar.TensileStrengthMPa, 0.1);
-	TestEqual(TEXT("FIXTURE: mortar's cohesion is f_vk0 = 0.20"),
-		GeneralPurposeMortar.ShearCohesionMPa, 0.2);
-	TestEqual(TEXT("FIXTURE: mortar's friction is 0.6"),
-		GeneralPurposeMortar.FrictionCoefficient, 0.6);
-	TestEqual(TEXT("FIXTURE: mortar crushes at M10's 10 MPa"),
+	/*
+	 * Mortar's rows are the MEAN basis since the 2026-08-13 re-anchor (Gooch et al. 2023/2025
+	 * measured means; DESIGN §3). The hand-answer helpers below read the profile, so every
+	 * mortared closed form re-derives itself — these pins are what keep the derivation
+	 * honest about WHICH numbers it re-derived from.
+	 */
+	TestEqual(TEXT("FIXTURE: mortar's bond is the mean f_x1 = 0.70 (re-anchor 2026-08-13)"),
+		GeneralPurposeMortar.TensileStrengthMPa, 0.7);
+	TestEqual(TEXT("FIXTURE: mortar's cohesion is the mean f_v0 = 0.90"),
+		GeneralPurposeMortar.ShearCohesionMPa, 0.9);
+	TestEqual(TEXT("FIXTURE: mortar's friction is the mean 0.75"),
+		GeneralPurposeMortar.FrictionCoefficient, 0.75);
+	TestEqual(TEXT("FIXTURE: mortar crushes at M10's 10 MPa (already a declared mean)"),
 		GeneralPurposeMortar.CompressiveStrengthMPa, 10.0);
+
+	/*
+	 * The two shear ceilings feed real LP rows and neither binds in any validation row —
+	 * pinned so a retune that made one bind cannot move a hand answer mysteriously (the
+	 * CURRENT_STATE item). Mortar's is the mean-basis 2.0 = 0.1 x f_b.
+	 */
+	TestEqual(TEXT("FIXTURE: mortar's shear ceiling is the mean-basis 2.0 MPa"),
+		GeneralPurposeMortar.MaxShearStrengthMPa, 2.0);
+	TestEqual(TEXT("FIXTURE: dry stone's shear ceiling is 6.0 MPa"),
+		DryStone.MaxShearStrengthMPa, 6.0);
+
 	TestEqual(TEXT("FIXTURE: the standard brick weighs 2.72163125 kg"),
 		BrickMassKg, 2.72163125);
 
@@ -525,8 +561,9 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		0.7, 0.0, 1.0e-9, 1.0e-9, EOracleOutcome::Falls });
 
 	Rows.Add({ TEXT("pushed mortared block"),
-		TEXT("lambda* = (c*Conv*A + mu*W)/W ~ 165.85 — the row that embeds the 10000 ")
-		TEXT("uu/MPa/cm2 conversion, so a factor-of-100 unit slip fails it outright"),
+		TEXT("lambda* = (c*Conv*A + mu*W)/W ~ 744.4 at the mean c = 0.9, mu = 0.75 — the row ")
+		TEXT("that embeds the 10000 uu/MPa/cm2 conversion, so a factor-of-100 unit slip fails ")
+		TEXT("it outright"),
 		[] { return SlidingProblem(DestructionProfiles::GeneralPurposeMortar, BrickWeightUu); },
 		SlidingLambda(GeneralPurposeMortar, BrickWeightUu), 0.0, 0.0, 1.0e-6,
 		EOracleOutcome::Stands });
@@ -562,26 +599,26 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 
 	Rows.Add({ TEXT("mortared stack 10 cm x 5 courses"),
 		TEXT("bottom-joint plastic tension bound: lambda* = T_A/(W*(d*m^2/(4h) - m/2)) ")
-		TEXT("~ 4.458 — STANDS, agreeing with acceptance case 1"),
+		TEXT("~ 31.2 at the mean bond — STANDS, agreeing with acceptance case 1"),
 		[] { return LeaningStackProblem(5, 10.0, DestructionProfiles::GeneralPurposeMortar); },
 		StackTensionLambda(GeneralPurposeMortar, 5, 10.0), 0.0, 0.0, 1.0e-6,
 		EOracleOutcome::Stands });
 
 	Rows.Add({ TEXT("mortared stack 10 cm x 8 courses"),
-		TEXT("~ 1.241 — STANDS with the margin measured, agreeing with acceptance case 2"),
+		TEXT("~ 8.69 at the mean bond — STANDS, agreeing with acceptance case 2"),
 		[] { return LeaningStackProblem(8, 10.0, DestructionProfiles::GeneralPurposeMortar); },
 		StackTensionLambda(GeneralPurposeMortar, 8, 10.0), 0.0, 0.0, 1.0e-6,
 		EOracleOutcome::Stands });
 
 	Rows.Add({ TEXT("mortared stack 10 cm x 30 courses"),
-		TEXT("~ 0.0629 — FALLS at a sixteenth of its weight, agreeing with acceptance ")
+		TEXT("~ 0.440 at the mean bond — still FALLS, agreeing with acceptance ")
 		TEXT("case 3, which production only reaches via the interim guard"),
 		[] { return LeaningStackProblem(30, 10.0, DestructionProfiles::GeneralPurposeMortar); },
 		StackTensionLambda(GeneralPurposeMortar, 30, 10.0), 0.0, 0.0, 1.0e-6,
 		EOracleOutcome::Falls });
 
 	Rows.Add({ TEXT("mortared stack 10 cm x 40 courses"),
-		TEXT("~ 0.0344 — FALLS, agreeing with acceptance case 4"),
+		TEXT("~ 0.241 at the mean bond — FALLS, agreeing with acceptance case 4"),
 		[] { return LeaningStackProblem(40, 10.0, DestructionProfiles::GeneralPurposeMortar); },
 		StackTensionLambda(GeneralPurposeMortar, 40, 10.0), 0.0, 0.0, 1.0e-6,
 		EOracleOutcome::Falls });
@@ -609,10 +646,22 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		[] { return JammingProblem(false, DestructionProfiles::DryStone); },
 		0.0, 0.0, 1.0e-6, 0.0, EOracleOutcome::Falls });
 
+	/*
+	 * MEASURED AT THE FLIP (2026-08-14): the governing axis of this fixture FLIPPED at the
+	 * mean re-anchor, exactly as TRAPS' strength-basis entry warns. The tension bound rose
+	 * x7 to ~2826 while the crush bound — against the UNMOVED 10 MPa — stayed at ~1878, so
+	 * crushing now governs and the LP answers 1877.92298545, which the crush closed form
+	 * reproduces to twelve digits. The row states the minimum of the two bounds, so it keeps
+	 * meaning "the two-contact statics, whole" on either basis.
+	 */
 	Rows.Add({ TEXT("one-cell half seat, mortared, no abutment"),
-		TEXT("the bond alone holds one brick at lambda* = T_A/(W*(e/(2h) - 1/2)) ~ 404"),
+		TEXT("two determinate contacts: lambda* = min(T_A/(W*(e/(2h) - 1/2)) ~ 2826, ")
+		TEXT("C_A/(W*(1/2 + e/(2h))) ~ 1878) — crushing governs at the mean bond"),
 		[] { return JammingProblem(false, DestructionProfiles::GeneralPurposeMortar); },
-		JammingAloneTensionLambda(GeneralPurposeMortar), 0.0, 0.0, 1.0e-6,
+		FMath::Min(
+			JammingAloneTensionLambda(GeneralPurposeMortar),
+			JammingAloneCrushLambda(GeneralPurposeMortar)),
+		0.0, 0.0, 1.0e-6,
 		EOracleOutcome::Stands });
 
 	/* ---- The redundant-joint path. ---------------------------------------------- */
@@ -637,11 +686,16 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 	 *
 	 * THE PROPERTY UNDER TEST IS EQUALITY, NOT PROXIMITY: a redundant joint is the same
 	 * constraint set as its un-duplicated twin, so lambda* must be the SAME NUMBER, not
-	 * merely close to the closed form both rows also happen to satisfy. Measured (this
-	 * build): both rows report 1.241110018676219, bit-identical (diff 0) despite the
-	 * twin row taking one more pivot (8 vs 7) to reach it — the cross-row check below
-	 * asserts that exact equality directly, rather than trusting two separately-toleranced
-	 * closed-form checks to imply it.
+	 * merely close to the closed form both rows also happen to satisfy. Measured at the
+	 * characteristic data: both rows reported 1.241110018676219, bit-identical (diff
+	 * exactly 0) despite the twin row taking one more pivot (8 vs 7). MEASURED AGAIN AT
+	 * THE MEAN RE-ANCHOR FLIP (2026-08-14): 8.6877701307335329 against
+	 * 8.6877701307335311 — the two pivot paths now land ONE ULP apart, so the cross-row
+	 * check below asserts equality to within 2 ulp rather than bit-for-bit. That is
+	 * still ~a million times tighter than the closed-form tolerance and far below the
+	 * ~1e-9 relative shift the recorded S8 mutation (one twin's area x(1+1e-9))
+	 * produces, so the check keeps the property S8 proved it guards: the twins are the
+	 * same constraint SET, not merely near the same closed form.
 	 */
 	Rows.Add({ TEXT("mortared stack, bottom joint split into half-area twins"),
 		TEXT("two half-area twins of one joint are the same constraint set, so ")
@@ -705,10 +759,10 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		TestTrue(
 			*FString::Printf(
 				TEXT("RELATION: a redundant joint is the same constraint set as its ")
-				TEXT("un-duplicated twin — lambda* must be the SAME NUMBER, not merely ")
-				TEXT("close (8-course %.17g vs twins %.17g)"),
+				TEXT("un-duplicated twin — lambda* must be the SAME NUMBER to within 2 ulp, ")
+				TEXT("not merely close (8-course %.17g vs twins %.17g)"),
 				Original, Twins),
-			Original == Twins);
+			FMath::Abs(Original - Twins) <= 4.5e-16 * FMath::Abs(Original));
 	}
 
 	if (Lambdas.Contains(TEXT("mortared stack 10 cm x 5 courses"))

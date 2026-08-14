@@ -180,10 +180,19 @@ namespace BeamAcceptanceTestSupport
 	 * rather than declared, because neither is used and a constant nobody reads is a constant that
 	 * can drift.
 	 */
-	constexpr double C24BendingMPa = 24.0;
+	/*
+	 * MEAN BASIS since the 2026-08-13 re-anchor: 24.0 was EN 338's characteristic f_m,k, and
+	 * JCSS PMC Part 3.5 Table 2 gives bending for European softwood as Lognormal with COV 0.25,
+	 * so mean / 5%-fractile = exp(1.645 x 0.2462) = 1.4993 and the mean is 24 x 1.50 = 36.0.
+	 */
+	constexpr double C24BendingMPa = 36.0;
 
-	/** EN 338: f_v,k, the characteristic shear strength. */
-	constexpr double C24ShearMPa = 4.0;
+	/*
+	 * Mean shear: JCSS states COV[R_v] = COV[R_m], so the same x1.50 applies to EN 338's
+	 * f_v,k = 4.0. (JCSS's own E[R_v] = 0.2 E[R_m] would give 7.2; 6.0 keeps the row's
+	 * identity as C24 — the derivation doc records the 20% disagreement.)
+	 */
+	constexpr double C24ShearMPa = 6.0;
 
 	/**
 	 * EN 338: rho_mean = 420 kg/m3 for C24, which is 0.42 g/cm3.
@@ -207,7 +216,13 @@ namespace BeamAcceptanceTestSupport
 	 * BOTH FIBRES AGAIN, AND HERE IT NEEDS NO ARGUMENT: steel yields at f_y in tension and in
 	 * compression alike.
 	 */
-	constexpr double S275YieldMPa = 275.0;
+	/*
+	 * MEAN (static) yield since the 2026-08-13 re-anchor: JCSS PMC Part 3 Table A,
+	 * E[f_y] = f_y,sp * alpha * exp(-u v) - C with v = 0.07, u in [-1.5, -2.0], alpha = 1.0
+	 * for flanges and C = 20 MPa (the mill-test to static-yield correction): 285-296 MPa for
+	 * S275. 290 is the centre. (The old 275.0 was EN 10025-2's nominal.)
+	 */
+	constexpr double S275YieldMPa = 290.0;
 
 	/**
 	 * f_y / sqrt(3) = 158.771 N/mm2 — the von Mises shear yield, EN 1993-1-1 §6.2.6.
@@ -433,8 +448,10 @@ namespace BeamAcceptanceTestSupport
 		 *
 		 * A 1884 kg steel plate on a 100 x 100 mm C24 joist over a 4 m span. Midspan moment is
 		 * 139,288,968 uu.cm = 13,928.9 N.m against a section modulus of 166.67 cm3, so the
-		 * extreme fibre sits at 83.57 MPa against EN 338's 24 MPa: 3.48 times capacity. The beam
-		 * breaks. Nothing else in the fixture is within two orders of magnitude of its own limit.
+		 * extreme fibre sits at 83.57 MPa against the mean 36 MPa: 2.32 times capacity (3.48x
+		 * the retired characteristic 24 — the 2026-08-14 re-anchor flip moved the margin, not the
+		 * verdict). The beam breaks. Nothing else in the fixture is within two orders of
+		 * magnitude of its own limit.
 		 */
 		Cases.Add({
 			1, TEXT("C24 timber beam, heavy load"), TEXT("member material (vs case 3)"),
@@ -445,7 +462,8 @@ namespace BeamAcceptanceTestSupport
 		/*
 		 * ROW 2 — THE SAME BEAM WELL INSIDE CAPACITY, differing from row 1 in the block's height
 		 * and in nothing else. 157 kg, midspan moment 12,354,468 uu.cm, extreme fibre 7.41 MPa,
-		 * 0.309 of capacity. A joist carrying a sensible load, and it must simply stand.
+		 * 0.206 of the mean 36 (0.309 of the retired characteristic 24). A joist carrying a
+		 * sensible load, and it must simply stand.
 		 */
 		Cases.Add({
 			2, TEXT("C24 timber beam, light load"), TEXT("load magnitude (vs case 1)"),
@@ -456,9 +474,11 @@ namespace BeamAcceptanceTestSupport
 		/*
 		 * ROW 3 — THE STEEL TWIN. Identical geometry, identical block, only the member material
 		 * changes. The heavier beam raises the midspan moment to 153,706,140 uu.cm and the extreme
-		 * fibre to 92.22 MPa, but S275 yields at 275, so it reads 0.335 and holds. Wood fails
-		 * where steel holds under the same load: that is the whole of the data-drivenness claim,
-		 * and today the model answers both identically.
+		 * fibre to 92.22 MPa, but S275's mean static yield is 290, so it reads 0.318 and holds
+		 * (0.335 against the old nominal 275). Wood fails where steel holds under the same load:
+		 * that is the whole of the data-drivenness claim, and today the model answers both
+		 * identically. The material discrimination is 290/36 = 8.1x (was 9.8x on the
+		 * characteristic/nominal pair) — the sweep's pinned figure moves with it.
 		 */
 		Cases.Add({
 			3, TEXT("S275 steel beam, heavy load"), TEXT("member material (vs case 1)"),

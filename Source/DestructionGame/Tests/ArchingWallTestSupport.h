@@ -311,10 +311,18 @@ namespace StructureArchingTestSupport
 	 * — so when lambda is ruled on, this number changes in one place, both identities keep
 	 * holding on their own terms, and that is the intended division of labour.
 	 *
-	 * 0.130114883 * 43.2749^2 / 486.2129 at lambda = 3.464, where 43.2749 brick weights and
-	 * 486.2129 brick-weight-cm are what the joint carries under twenty-nine courses of column.
+	 * 0.0185878 * 43.2749^2 / 486.2129 at lambda = 3.464 on the mean basis (the coefficient is
+	 * 0.130114883 / 7 since the 2026-08-14 re-anchor flip moved f_x1 0.10 -> 0.70), where 43.2749
+	 * brick weights and 486.2129 brick-weight-cm are what the joint carries under twenty-nine
+	 * courses of column.
+	 *
+	 * RE-MEASURE AT THE FLIP (green phase): this is written as the old measured bits divided by
+	 * 7.0, which is within an ulp of what production will read at f_x1 = 0.70 but not provably
+	 * bit-identical to it (production divides the stress by 0.7 directly). Both consumers pin
+	 * it with exact ==, so if either fails by the last bit when the profile flips, re-pin THIS
+	 * constant to the measured value — one place, both files, agreement preserved.
 	 */
-	constexpr double FreeEndThirtyCourseUtilisation = 0.50114032912317807;
+	constexpr double FreeEndThirtyCourseUtilisation = 0.50114032912317807 / 7.0;
 
 	/** Centre height of a course, cm: half a brick up, then one course pitch per course. */
 	constexpr double ArchWallCourseZCm(int32 Course)

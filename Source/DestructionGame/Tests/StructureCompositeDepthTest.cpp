@@ -54,8 +54,13 @@ namespace StructureCompositeDepthTestSupport
 	 */
 	constexpr double ForceUnitsPerMPaPerSqCm = 100.0 * 100.0;
 
-	/** EN 1996-1-1 Table 3.2's f_xk1 for general purpose mortar, asserted against the profile. */
-	constexpr double MortarTensileMPa = 0.10;
+	/*
+	 * The MEAN flexural bond f_x1 for general-purpose mortar, asserted against the profile
+	 * (re-anchor 2026-08-13: Gooch et al. 2023's M4/M6 batch means bracketed with the UK NA
+	 * Table NA.6 inversion; the retired characteristic f_xk1 was EN 1996-1-1's 0.10). Every
+	 * expectation in this file divides by this constant, so the whole ladder re-derived /7.
+	 */
+	constexpr double MortarTensileMPa = 0.70;
 
 	/** The half-brick bed patch a running-bond brick keeps when it loses one of its two seats. */
 	constexpr double HalfSeatAreaSqCm = BrickWidthCm * BrickWidthCm;
@@ -436,21 +441,27 @@ namespace ArchSupport = StructureArchingTestSupport;
  *     load. A single severed joint would not be a collapse.
  *
  * =========================================================================================
- * THE THIRD CONSTRAINT, WHICH IS THE NON-NEGOTIABLE ONE: SOMETHING MUST STILL COME DOWN
+ * THE THIRD CONSTRAINT — SOMETHING MUST STILL COME DOWN — NOW CARRIED BY THE DRY ROW ONLY
  * =========================================================================================
  *
- * A FORTY-FIVE-COURSE RAKING CORBEL FAILS AND IT FAILS BECAUSE THE DEPTH RAN OUT. The overturning
- * moment of a k-course corbel grows as roughly k^3 while the section it is resisted by grows only
- * as k^2, so the utilisation climbs with k and crosses 1.0 at about thirty-six courses:
+ * A FORTY-FIVE-COURSE RAKING CORBEL FAILED, AND IT FAILED BECAUSE THE DEPTH RAN OUT — ON THE
+ * CHARACTERISTIC BASIS THIS FILE WAS WRITTEN AGAINST. The overturning moment of a k-course corbel
+ * grows as roughly k^3 while the section it is resisted by grows only as k^2, so the utilisation
+ * climbs with k; against f_xk1 = 0.10 it crossed 1.0 at about thirty-six courses:
  *
  *     k       5      11      29      35      37      45
- *     reads   0.219  0.369   0.834   0.990   1.042   1.250
+ *     reads   0.219  0.369   0.834   0.990   1.042   1.250      (x 0.10 / 0.70 at the mean basis)
  *
- * That row is ONE-SIDED — it asserts at least 1.25019 — and that is deliberate. Every candidate
- * bound on the composite depth (shear transfer through the bed joints, bond continuity, a
- * span-to-depth ratio) can only credit LESS depth than the masonry actually standing there, and
- * less depth reads HIGHER. So the falling row survives whichever bound slice 5 lands, and the
- * standing rows are the upper bound on how little depth a correct rule may find.
+ * THE 2026-08-14 MEAN RE-ANCHOR FLIP TOOK THAT CONSTRAINT FROM THIS FILE. Against the mean f_x1 = 0.70
+ * the same ladder divides by 7 and does not reach 1.0 below roughly 250 steps — past the
+ * ~124-step crossover where CRUSHING against the unmoved 10 MPa condemns the family first
+ * (`CorbelStepsBeforeTensionWins` re-derives it) — so no buildable mortared corbel fails by the
+ * depth running out any more. The two forty-five-step rows are now UNASSERTED on outcome (a lost
+ * discrimination logged in CURRENT_STATE, not a re-tune), the DRY row below still falls exactly
+ * as before, and the suite's giant-corbel-must-fall guarantee lives in
+ * `AHundredStepCorbelMustComeDown` (150 steps, condemned by crushing). The standing rows remain
+ * the upper bound on how little depth a correct rule may find — a bound crediting no depth reads
+ * the eleven-step rung at 3.28 even on the mean basis and breaks them.
  *
  * AND THE k^3/k^2 ARGUMENT ABOVE IS TRUE ONLY OF A WALL THE SAME HEIGHT AS ITS CUT, WHICH EVERY
  * ROW OF THAT TABLE WAS AND NO ROW SAID. *(Found in review 2026-08-07; it is finding B1 and PART
@@ -682,23 +693,36 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		 * TEN BRICKS PER COURSE RATHER THAN TWELVE, deliberately: it must be the same wall the
 		 * two changing tests lay, cone deficit and all, or its number is about a different wall.
 		 */
+		/*
+		 * The published 0.369 was derived against the characteristic f_xk1 = 0.10; at the
+		 * mean basis (re-anchor 2026-08-13) the same statics divide by 0.70 and the rung
+		 * reads 0.0527. The division keeps the citation honest: the figure is still
+		 * ARCHING_DESIGN's, re-based, not a new target.
+		 */
 		{ TEXT("ELEVEN steps: THE STAIRCASE VOID"), 11, 13, 10, &GeneralPurposeMortar,
-			EVoidOutcome::MustStand, 0.369 },
+			EVoidOutcome::MustStand, 0.369 / 7.0 },
 
 		/*
-		 * FORTY-FIVE STEPS — THE DEPTH RUNS OUT, and this is the row the whole slice is gated
-		 * on. The moment climbs as k^3 and the section only as k^2, so 337.5 cm of masonry is
-		 * no longer enough for the 91,209 brick-weight-cm hanging off it: 1.25019, over
-		 * capacity, and the corbel comes down. Today it reads 1341.7, so the ROW is red on the
-		 * number and green on the outcome — which is the point. Slice 5 must not take the
-		 * outcome away.
+		 * FORTY-FIVE STEPS — THE ROW WHERE THE DEPTH USED TO RUN OUT, and the 2026-08-14 mean
+		 * re-anchor flip is what un-ran it. On the characteristic basis the moment climbing as k^3
+		 * against a section growing as k^2 crossed capacity here: 1.25019 against f_xk1 = 0.10,
+		 * over, and the corbel came down. Against the mean 0.70 the same statics read 0.1786 —
+		 * clear of the line, and the tension ladder does not reach 1.0 again below roughly 250
+		 * steps, past the ~124-step crossover where CRUSHING (the unmoved 10 MPa) condemns the
+		 * family first. So no mortared corbel below the crushing crossover can fail by the
+		 * depth running out any more, and the falling arm this row carried is LOST
+		 * DISCRIMINATION, recorded in CURRENT_STATE with the rest of the re-anchor's losses.
 		 *
-		 * ASSERTED ONE-SIDED, AT LEAST 1.25019. Any bound on the composite depth credits less
-		 * than the masonry standing there and therefore reads higher, so this row holds
-		 * whichever of the three candidate bounds slice 5 picks.
+		 * OUTCOME NOW UNASSERTED RATHER THAN FLIPPED TO MustStand: whether a 7.9-metre mortared
+		 * overhang should stand is a ruling nobody has made (the MustStand rows above are user
+		 * rulings), and asserting it here would also forbid any future depth bound crediting
+		 * less than ~2.4x fewer courses than the full walk — a constraint slice 5 never agreed
+		 * to. The must-fail guarantee this file used to gate on lives on in
+		 * `AHundredStepCorbelMustComeDown` (150 steps, condemned by crushing, corbel-limit
+		 * file) and in the DRY row below, which is untouched by the re-anchor.
 		 */
 		{ TEXT("FORTY-FIVE steps: the depth runs out"), 45, 47, 47, &GeneralPurposeMortar,
-			EVoidOutcome::MustComeDown, 0.0 },
+			EVoidOutcome::Unasserted, 0.0 },
 
 		/*
 		 * AND THE SAME STAIRCASE LAID DRY. You cannot corbel a dry-stone wall — there is no
@@ -744,15 +768,16 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		 * 45-step corbel needs something like a hundred and sixty courses — twelve metres of
 		 * wall — before the depth rescues it, and that is not a fixture anybody should build.
 		 *
-		 * KEPT AS A GUARD RATHER THAN DROPPED, AND IT BITES. The 47-course row is the design's
-		 * "something must still come down" constraint and this row is that same corbel with
-		 * twenty courses of extra load piled on it and nothing whatever removed; a depth rule
-		 * that rescued it would be rescuing a cantilever by putting a building on it. Under the
-		 * review's own 1.5x-depth mutation this row reads 0.606 and stands, so it fails there
-		 * and the row is not asserting nothing.
+		 * KEPT AS A GUARD RATHER THAN DROPPED — but the mean re-anchor (2026-08-13) took its
+		 * outcome with the row above's: 1.3634 against the characteristic 0.10 is 0.1948
+		 * against the mean 0.70, under the line, and the corbel stands. The moment/section
+		 * measurements in the comment above are strength-free and still hold; only the verdict
+		 * moved. UNASSERTED for the same reason as the row above — the falling arm is lost
+		 * discrimination (CURRENT_STATE), not a wrong expectation, and its replacement must be
+		 * a re-design at the crushing crossover rather than a re-tune.
 		 */
 		{ TEXT("FORTY-FIVE steps under SIXTY-SEVEN courses"), 45, 67, 47, &GeneralPurposeMortar,
-			EVoidOutcome::MustComeDown, 0.0 },
+			EVoidOutcome::Unasserted, 0.0 },
 
 		/*
 		 * ELEVEN STEPS UNDER FORTY COURSES — THE WALL THE GAME ACTUALLY RENDERS, and the
@@ -1487,13 +1512,14 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 	 * The joint carries its whole column n at the same 5.625 cm arm, so M = 5.625 n, and with m
 	 * courses of masonry over it the section is 10.25 * (7.5m)^2 / 6:
 	 *
-	 *     util = 5.625 * n * W_brick / (96.09375 m^2 * 10000 * f_xk1)  =  0.1561287 * n / m^2
+	 *     util = 5.625 * n * W_brick / (96.09375 m^2 * 10000 * f_x1)  =  0.0223041 * n / m^2
 	 *
-	 * against today's 0.058203838 * n. Left unbounded that reading is the lesser from m = 2
-	 * upward, falls as 1/m^2, and never reaches 1.0 for any wall this game builds — which is
-	 * exactly why the depth has to be bounded by SOMETHING, since on its own this mechanism
-	 * makes every free end and every jamb unbreakable in bending. The unbounded row is printed
-	 * below and nothing is derived from it.
+	 * at the mean f_x1 = 0.70 (0.1561287 * n / m^2 on the retired characteristic 0.10),
+	 * against today's unrelieved 0.0083148 * n (was 0.058203838 * n). Left unbounded that
+	 * reading is the lesser from m = 2 upward, falls as 1/m^2, and never reaches 1.0 for any
+	 * wall this game builds — which is exactly why the depth has to be bounded by SOMETHING,
+	 * since on its own this mechanism makes every free end and every jamb unbreakable in
+	 * bending. The unbounded row is printed below and nothing is derived from it.
 	 *
 	 * =========================================================================================
 	 * AND WHAT IT ACTUALLY READS IS THE ARM'S OWN IDENTITY, NOT THAT ONE. RE-DERIVED FOR
@@ -1504,16 +1530,20 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 	 * with `e = |M|/|F|`, and on this fixture the ARM is what binds: the wall has 217.5 cm of
 	 * masonry standing over the joint and the joint's own statical arm permits 38.92 of it.
 	 * The credited depth fell from the whole wall to about five courses, and the reading went
-	 * 0.0158818 -> 0.5011403 with it.
+	 * 0.00226883 -> 0.07159148 with it on the mean basis (0.0158818 -> 0.5011403 on the
+	 * retired characteristic data the slice was designed at).
 	 *
 	 * THAT IS CORRECT PHYSICS AND NOT A WEAKENING. A half seat's arm settles at 11.25 cm
 	 * however tall the column gets — its own weight acts at 5.625 and everything from above at
 	 * 11.25, so `e = (5.625 + 11.25(n-1))/n -> 11.25` — so `lambda*e` settles at about 39 cm
 	 * and the section STOPS GROWING while the load keeps coming. The reading is therefore
-	 * LINEAR in the wall's height rather than falling as 1/m^2, and the ruling survives by
-	 * 1.97x rather than by 62x. `Core.Structure.AFreeEndDeletionInATallWall` measures the whole
-	 * ladder — 0.3283 / 0.5011 / 0.6740 / 0.8469 / 1.0198 at 20 / 30 / 40 / 50 / 60 courses —
-	 * and this fixture's wall is its 30-course row.
+	 * LINEAR in the wall's height rather than falling as 1/m^2 (the DISCRIMINATION the bound
+	 * bought survives the re-anchor even though the characteristic-era 1.97x margin became
+	 * ~14x — the mean re-anchor's free-end loss, logged in CURRENT_STATE).
+	 * `Core.Structure.AFreeEndDeletionInATallWall` measures the whole ladder —
+	 * 0.0469 / 0.0716 / 0.0963 / 0.1210 / 0.1457 at 20 / 30 / 40 / 50 / 60 courses (each /7
+	 * of the characteristic 0.3283 / 0.5011 / 0.6740 / 0.8469 / 1.0198) — and this fixture's
+	 * wall is its 30-course row.
 	 *
 	 * WHERE `lambda*e` GOVERNS THE READING COLLAPSES TO ONE IDENTITY, and it is asserted in
 	 * that form rather than as the literal 0.5011403 for the same reason PART 2's moment walk

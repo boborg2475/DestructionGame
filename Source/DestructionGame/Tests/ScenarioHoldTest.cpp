@@ -72,21 +72,22 @@
  * =====================================================================================
  *
  *   - `corbel-a-bare-4` (10 pieces) IS THE CONTROL, AND IT IS THE SMALLEST STRUCTURE THAT CAN
- *     CARRY THE CLAIM. Its root reads 0.15613 — `COMPOSITE_DEPTH_DESIGN.md` works the bare arm
- *     through by hand — so settling it must release NOTHING, ever. Without a row like this, every
- *     assertion in the file is satisfied by a level that hands its whole structure to physics the
- *     moment the hold expires.
+ *     CARRY THE CLAIM. Its root reads 0.0223 at the mean basis (0.15613 on the characteristic
+ *     data `COMPOSITE_DEPTH_DESIGN.md` worked the bare arm through at) — so settling it must
+ *     release NOTHING, ever. Without a row like this, every assertion in the file is satisfied
+ *     by a level that hands its whole structure to physics the moment the hold expires.
  *
- *   - `corbel-e36` (519 pieces) IS THE CONDEMNED ONE, and it is the row the crossover is measured
- *     at: `Core.Structure.CorbelStepsBeforeTensionWins` bisects the family and finds 36 the
- *     smallest step count whose root joint reads over 1.0. Under today's game mode it is released
- *     at begin-play, so this is where the red lands.
+ *   - `corbel-e36` (519 pieces) WAS THE CONDEMNED ONE — the characteristic-era crossover's
+ *     upper rung, root over 1.0 — and the 2026-08-14 mean re-anchor flip un-condemned it: at the
+ *     mean f_x1 it reads ~0.145 and settling it must now break nothing. It stays joined as a
+ *     level and as a standing row; the condemned exemplar this file needs is owed with the
+ *     replacement crossover pair (~124 steps, crushing — CURRENT_STATE), and the condemned
+ *     floor below is suspended until it lands.
  *
- *   - `corbel-e35` (496 pieces) IS ARBITRATED WORLD-FREE ONLY. It is E36's straddle partner, one
- *     course shorter and reading just UNDER 1.0, so settling it must break nothing — the tightest
- *     control there is. It is not joined as a level because 496 more spawned actors buy nothing
- *     the ten-piece control does not already buy, and `World.Scenarios.CorbelRows` already holds
- *     the pair against each other.
+ *   - `corbel-e35` (496 pieces) IS ARBITRATED WORLD-FREE ONLY. It is E36's old straddle
+ *     partner, one course shorter, so settling it must break nothing. It is not joined as a
+ *     level because 496 more spawned actors buy nothing the ten-piece control does not already
+ *     buy, and `World.Scenarios.CorbelRows` already holds the pair against each other.
  *
  * `corbel-f-100` IS DELIBERATELY ABSENT. 3,015 bricks is the largest structure in the suite and
  * `Core.Structure.AHundredStepCorbelMustComeDown` already lays, solves and cascades it; standing
@@ -127,11 +128,18 @@ namespace ScenarioHoldTestSupport
 		bool bJoinAsLevel;
 	};
 
+	/*
+	 * MEAN RE-ANCHOR (2026-08-13): E36 is no longer condemned. Its root read 1.01625 against
+	 * the characteristic f_xk1 = 0.10 and reads ~0.145 against the mean 0.70, so settling it
+	 * must now break NOTHING — the condemned exemplar this file needs is owed with the
+	 * replacement crossover pair (~124 steps, compression-governed; CURRENT_STATE). Until it
+	 * lands, CondemnedCases legitimately counts zero and the floor below says so.
+	 */
 	const FScenarioHoldCase ScenarioHoldCases[] =
 	{
 		{ TEXT("corbel-a-bare-4"), 10, false, true },
 		{ TEXT("corbel-e35"), 496, false, false },
-		{ TEXT("corbel-e36"), 519, true, true },
+		{ TEXT("corbel-e36"), 519, false, true },
 	};
 
 	/** What settling a row does, read off the world-free catalogue. */
@@ -571,12 +579,20 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 	 * times over; with no standing row, a level that handed its entire structure to physics on the
 	 * frame the hold expired would pass every assertion above.
 	 */
+	/*
+	 * THE CONDEMNED FLOOR IS SUSPENDED BY THE 2026-08-14 MEAN RE-ANCHOR FLIP: E36 was the sweep's
+	 * one condemned-as-laid exemplar and reads ~0.145 at the mean f_x1, so no catalogue corbel
+	 * is condemned by its own geometry any more. The replacement condemned level (either side
+	 * of the ~124-step compression crossover) is recorded as owed in CURRENT_STATE; when it
+	 * lands, restore `CondemnedCases >= 1` here — the both-kinds floor is what makes this
+	 * sweep assert something, and running long without it is a known cost, not an oversight.
+	 */
 	TestTrue(
 		*FString::Printf(
-			TEXT("fixture: this sweep must carry BOTH kinds of row or it asserts nothing — %d ")
-			TEXT("condemned as laid and %d standing as laid"),
+			TEXT("fixture: this sweep must carry standing rows (condemned floor suspended at the ")
+			TEXT("mean re-anchor — see the comment) — %d condemned as laid and %d standing as laid"),
 			CondemnedCases, StandingCases),
-		CondemnedCases >= 1 && StandingCases >= 1);
+		StandingCases >= 2);
 
 	return true;
 }

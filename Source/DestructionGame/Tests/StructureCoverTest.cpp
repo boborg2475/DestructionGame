@@ -128,16 +128,16 @@ namespace StructureCoverTestSupport
  *   - H/V = 3L/(4 d_e) ON EVERY ROW, AT 2%. This is the mechanism and it is what a red run should
  *     be read against. W cancels out of the ratio, so it depends on no wall weight, no load
  *     distribution and no definition of which columns count — it is a statement about the geometry
- *     of the thrust line and nothing else. THE FOUR COVER-GOVERNED ROWS ARE THE RED ONES: they
- *     want 22.5, 11.25, 5.625 and 2.25 and they all read 0.866051 today.
+ *     of the thrust line and nothing else. The four cover-governed rows want 22.5, 11.25, 5.625
+ *     and 2.25; the strengths cannot move any of them (and the 2026-08-13 mean re-anchor did not).
  *
  *   - AND THE TWO ANGLE-GOVERNED ROWS ARE GREEN ON ARRIVAL AND MUST STAY THAT WAY. 202.5 cm and
  *     285 cm of cover both exceed 0.866 * 225 = 194.85, so the angle caps the depth and the answer
  *     is 0.866051 in both — which is exactly what slice 3 already computes. They are the guard
  *     that says the cover is a `min` and not a replacement: an implementation that took `d_e` as
  *     the cover outright would read 0.833 and 0.592 here and take both rows red. The 285 cm row is
- *     the identical fixture `StructureThrustTest` measures at 0.88649 of shear, so it is also the
- *     statement that slice 4 moves nothing slice 3 pinned.
+ *     the identical fixture `StructureThrustTest` measures (shear ~0.27 at mean strengths), so it
+ *     is also the statement that slice 4 moves nothing slice 3 pinned.
  *
  *   - THE COVER IS COUNTED IN WHOLE COURSE PITCHES, AND THE SPANNING COURSE IS THE FIRST OF THEM.
  *     That is the definition behind ARCHING_DESIGN's own 285 cm — a 40-course wall cut at course 1
@@ -157,14 +157,13 @@ namespace StructureCoverTestSupport
  *     moment compression happened to be higher — and an arched springing's compression axis reads
  *     2|sigma_n|/f_c, a plausible small number sitting right beside the one being asserted.
  *
- *   - AND THE OUTCOME, ON THE ONE ROW WHERE THE THRUST IS UNAMBIGUOUSLY WHAT DECIDES. A single
- *     severed joint is not a collapse, so the outcome claim is that the two springings are among
- *     the joints that FAILED UNDER LOAD and that at least the eleven bricks over the opening are
- *     left with no path to the ground. It is made only for the one-course row, and only after
- *     asserting that the re-seat head joint beside the springing is UNDER capacity there — on
- *     deeper rows that head joint is slice 2's own limit and is far past capacity, so a collapse
- *     there would prove nothing about the cover. Where the thing under test does not govern the
- *     result, the row does not claim the result.
+ *   - THE OUTCOME ARM IS RETIRED AS OF THE 2026-08-13 MEAN RE-ANCHOR. On the characteristic
+ *     basis the one-course row came down and carried the collapse claim; at mean strengths every
+ *     springing of this ten-cell table affords its thrust (the shallowest at ~0.35) and the wall
+ *     stands under every depth of cover here. The machinery (bMustComeDown, the attribution
+ *     precondition) is kept for the OWED replacement row — a 20-cell cut under one course, whose
+ *     hand estimate is ~1.4x over capacity — specified in CURRENT_STATE and to be measured in
+ *     the green phase.
  *
  * NEVER A DISPLACEMENT, ANYWHERE. Two pieces can sever and stay resting exactly where they were,
  * so how far anything moved would say nothing.
@@ -195,19 +194,19 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 	 * imported: a test that read the profile would agree with a wrong profile.
 	 */
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against f_vk0 = 0.2 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against the mean f_v0 = 0.9 MPa (re-anchor 2026-08-13), the profile carries %g"),
 			GeneralPurposeMortar.ShearCohesionMPa),
-		GeneralPurposeMortar.ShearCohesionMPa == 0.2);
+		GeneralPurposeMortar.ShearCohesionMPa == 0.9);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against friction 0.6, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean friction 0.75, the profile carries %g"),
 			GeneralPurposeMortar.FrictionCoefficient),
-		GeneralPurposeMortar.FrictionCoefficient == 0.6);
+		GeneralPurposeMortar.FrictionCoefficient == 0.75);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against a 1.3 MPa shear ceiling, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against the mean-basis 2.0 MPa shear ceiling (0.1 x f_b), the profile carries %g"),
 			GeneralPurposeMortar.MaxShearStrengthMPa),
-		GeneralPurposeMortar.MaxShearStrengthMPa == 1.3);
+		GeneralPurposeMortar.MaxShearStrengthMPa == 2.0);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against compressive 10 MPa, the profile carries %g"),
@@ -252,15 +251,36 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 		bool bMustComeDown;
 	};
 
+	/*
+	 * MEAN RE-ANCHOR (2026-08-13), AND THE VERDICT LAYER OF THIS TABLE INVERTED WITH IT. The
+	 * springing capacity moved from 0.2 + 0.6 sigma to 0.9 + 0.75 sigma, and the seat stress
+	 * under thin cover is tiny (the one-course springing carries ~0.014 MPa), so every row of
+	 * this ten-cell table now AFFORDS its thrust: even H/V = 22.5 costs only 22.5 x 0.014 =
+	 * 0.315 MPa against 0.91 of capacity. The four cover-governed rows flip from over- to
+	 * under-capacity, the one-course OUTCOME arm is retired, and what this file still pins
+	 * hard is the H/V = 3L/(4 d_e) geometry, which no strength can move.
+	 *
+	 * THE LOST falls-for-thin-cover DISCRIMINATOR IS OWED A REPLACEMENT, specified in
+	 * CURRENT_STATE: the demand is linear in the spanned load while the capacity is nearly
+	 * constant at these stresses, so a WIDER opening under the same one course fails again —
+	 * a 20-cell cut at course 38 puts ~11 bricks on each springing (sigma ~ 0.028) under
+	 * H/V = 45, demand ~ 1.26 MPa against ~0.92: ~1.4x over. To be laid and MEASURED in the
+	 * green phase, never tuned. (Same family as the case-21 inversion and StructureThrustTest's
+	 * retired twenty-cell arm.)
+	 *
+	 * The design cross-checks are re-derived through each row's implied seat stress, the same
+	 * propagation StructureThrustTest documents: 2.635 implies sigma = 0.0252 and re-reads as
+	 * 0.617; 0.763 implies sigma = 0.3738 and re-reads as 0.274.
+	 */
 	const TArray<FCoverCase> Cases = {
 		/*
 		 * ONE COURSE OVER — 7.5 cm — AND IT IS ARCHING_DESIGN'S OWN WORKED CASE. d_e = 7.5,
 		 * r = 2.5, so H/V = 3*225/(4*7.5) = 22.5 against the 0.866051 an uncapped depth gives:
-		 * a factor of 25.98, which is 0.866*L/cover exactly. The design records the springing at
-		 * 0.101 uncapped and 2.635 capped; this fixture reads about 0.058 and about 1.51, the
-		 * same 26-fold step from a lighter springing.
+		 * a factor of 25.98, which is 0.866*L/cover exactly. On the characteristic basis this
+		 * fixture read about 1.51 capped and was the outcome row; at mean strengths it reads
+		 * about 0.35 and stands.
 		 */
-		{ TEXT("ONE course of cover"), 38, 2.635, true },
+		{ TEXT("ONE course of cover"), 38, 0.617, false },
 
 		/* Two courses, 15 cm: H/V = 11.25. */
 		{ TEXT("TWO courses of cover"), 37, 0.0, false },
@@ -288,10 +308,11 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 		/*
 		 * THIRTY-EIGHT COURSES, 285 cm — the deepest this wall has, and the IDENTICAL FIXTURE
 		 * StructureThrustTest measures its ten-cell case on. The angle governs by 46%, so slice 4
-		 * may not move it at all: it reads 0.866051 of H/V and 0.88649 of shear before and after.
+		 * may not move it at all: it reads 0.866051 of H/V before and after (the shear reading is
+		 * strength-governed and moved with the mean re-anchor, to ~0.27).
 		 * An implementation that used the cover outright reads 0.592, 32% low.
 		 */
-		{ TEXT("THIRTY-EIGHT courses of cover, the deepest this wall has"), 1, 0.763, false },
+		{ TEXT("THIRTY-EIGHT courses of cover, the deepest this wall has"), 1, 0.274, false },
 	};
 
 	/** Each row's measured H/V, kept so the two angle-governed rows can be compared to each other. */
@@ -620,32 +641,19 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 					<= 1.0e-12 * FMath::Max(Published.Worst, 1.0e-12));
 
 			/*
-			 * THE ORDERING. Where the cover governs, the thrust ratio is at least 2.25 against a
-			 * capacity that friction can only lift so far, and the springing is over capacity;
-			 * where the angle governs it is 0.866 and the springing holds. That the crossover
-			 * between the two lands where it does is a consequence rather than a target — see the
-			 * loose cross-check below.
+			 * EVERY ROW OF THIS TEN-CELL TABLE IS UNDER CAPACITY AT MEAN STRENGTHS — the
+			 * cover-governed rows included (see the re-anchor note at the case table; on the
+			 * characteristic basis the four cover-governed rows read OVER and the shallowest
+			 * carried the outcome claim). The cover still moves the DEMAND — the H/V pins
+			 * above are the mechanism — but this wall's springings now afford all of it, and
+			 * the falls-for-thin-cover row is owed as a wider replacement fixture.
 			 */
-			const bool bCoverGoverns = CoverCm < ArchingDepthPerSpan * ClearSpanCm;
-
-			if (bCoverGoverns)
-			{
-				TestTrue(
-					FString::Printf(
-						TEXT("%s: %g cm of cover cannot carry a %g cm span — the springing must be ")
-						TEXT("OVER capacity in shear, it reads %s"),
-						*Where, CoverCm, ClearSpanCm, *Bits(Published.ShearUtilisation)),
-					Published.ShearUtilisation > 1.0);
-			}
-			else
-			{
-				TestTrue(
-					FString::Printf(
-						TEXT("%s: %g cm of cover is past the 0.866 angle, so this opening arches — ")
-						TEXT("the springing must be UNDER capacity in shear, it reads %s"),
-						*Where, CoverCm, *Bits(Published.ShearUtilisation)),
-					Published.ShearUtilisation < 1.0);
-			}
+			TestTrue(
+				FString::Printf(
+					TEXT("%s: at mean strengths this springing must afford its thrust — UNDER ")
+					TEXT("capacity in shear, it reads %s"),
+					*Where, *Bits(Published.ShearUtilisation)),
+				Published.ShearUtilisation < 1.0);
 
 			/*
 			 * AND LOOSELY AGAINST THE DESIGN'S OWN NUMBER, where it published one — a factor of two

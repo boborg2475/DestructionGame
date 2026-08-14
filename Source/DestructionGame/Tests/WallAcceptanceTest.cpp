@@ -194,11 +194,32 @@ namespace WallAcceptanceTestSupport
 	 */
 	constexpr double ForceUnitsPerMPaSqCmHere = 10000.0;
 
-	/** EN 1996-1-1 Table 3.4's f_vk0 for general purpose mortar, asserted against the profile. */
-	constexpr double MortarShearCohesionMPa = 0.2;
+	/*
+	 * The MEAN shear bond f_v0 for general-purpose mortar, asserted against the profile
+	 * (re-anchor 2026-08-13: Gooch et al. 2023's unconfined M4/M6 triplet means average 1.117,
+	 * the 2025 regression intercepts span 0.58-1.04; 0.90 is the centre of the regression
+	 * range. The retired characteristic f_vk0 was EN 1996-1-1 Table 3.4's 0.20).
+	 */
+	constexpr double MortarShearCohesionMPa = 0.9;
 
-	/** EN 1996-1-1 Table 3.2's f_xk1 for general purpose mortar, asserted against the profile. */
-	constexpr double MortarFlexuralBondMPa = 0.1;
+	/*
+	 * The MEAN flexural bond f_x1, asserted against the profile (re-anchor 2026-08-13: twelve
+	 * measured M4/M6 batch means averaging 0.571 bracketed with UK NA Table NA.6's 0.4 x the
+	 * campaign's 1.89 mean/characteristic ratio = 0.76; 0.70 is the centre. The retired
+	 * characteristic f_xk1 was EN 1996-1-1 Table 3.2's 0.10).
+	 */
+	constexpr double MortarFlexuralBondMPa = 0.7;
+
+	/*
+	 * The rest of the Mohr-Coulomb triple, needed since 2026-08-14 to say which AXIS a reading
+	 * is: mu is the centre of the measured means (initial 0.64-1.00, residual 0.60-1.11, Gooch
+	 * et al. 2025), the truncation is the mean-basis 0.1.f_b against a 20 MPa unit, and the
+	 * compressive strength is the unmoved declared-class figure. Asserted against the profile in
+	 * `SpanIsReadInTheJointNotInTheOutcome` — the only test here that reads them.
+	 */
+	constexpr double MortarFrictionCoefficient = 0.75;
+	constexpr double MortarMaxShearStrengthMPa = 2.0;
+	constexpr double MortarCompressiveStrengthMPa = 10.0;
 
 	/** A head joint: the end face of a brick, 10.25 cm through the wall by 6.5 cm high. */
 	constexpr double HeadJointAreaSqCm = BrickDepthCm * BrickHeightCm;
@@ -346,6 +367,23 @@ namespace WallAcceptanceTestSupport
 		 * it lands, these two go to zero and the exceptions are deleted.
 		 */
 		int32 StrandsToday = 0;
+
+		/**
+		 * The worst reading the cascade STARTED from, pinned — or 0.0 for a row that does not pin it.
+		 *
+		 * A COUNT SAYS THAT A WALL CAME DOWN; THIS SAYS HOW HARD IT WAS PUSHED. Case 22 is the
+		 * catalogue's one green Collapse row and it collapses on a knife edge: the mean re-anchor
+		 * cut its margin from 8.2x of capacity to a little over 1, so one modest routing change
+		 * now flips a verdict that used to have room for three. The drop count cannot see that
+		 * coming — a wall that fell by 1% and a wall that fell by 800% drop the same bricks — and
+		 * the figure quoted in the CASE 22 block was taken by hand once, at strengths the project
+		 * no longer carries, with nothing recomputing it.
+		 *
+		 * READ BEFORE ANY JOINT IS ALLOWED TO GIVE, which is what makes it a different number from
+		 * `FWallResult::Worst`: see that field for why the post-cascade reading is a statement
+		 * about the survivors instead.
+		 */
+		double PreCascadeWorstToday = 0.0;
 	};
 
 	/* ================================================================================
@@ -721,6 +759,25 @@ namespace WallAcceptanceTestSupport
 		double Worst = 0.0;
 		int32 WorstPieceA = INDEX_NONE;
 		int32 WorstPieceB = INDEX_NONE;
+
+		/**
+		 * THE WORST READING THE CASCADE STARTED FROM, which is a DIFFERENT QUANTITY from `Worst`.
+		 *
+		 * `Worst` is read after the cascade has run, by which time every joint that gave has been
+		 * skipped by `WorstUtilisation` — so on a row that collapses it reports what SURVIVED, and
+		 * says nothing at all about how far past capacity the wall was when it started coming
+		 * down. This is the loads solved ONCE on the structure the cascade is about to be handed
+		 * (after the cut, for a cutting row; as built, for a row whose as-built state IS the case),
+		 * with no joint yet allowed to give.
+		 *
+		 * IT EXISTS BECAUSE THE COLLAPSE ROWS' MARGIN WAS UNMEASURED. Case 22's was taken by hand
+		 * once, at the retired characteristic data, and nothing recomputed it across the mean
+		 * re-anchor; the row's own block carried a green-phase marker saying so for a day. A margin
+		 * quoted in a comment and computed nowhere is exactly the figure that goes stale silently.
+		 */
+		double PreCascadeWorst = 0.0;
+		int32 PreCascadeWorstPieceA = INDEX_NONE;
+		int32 PreCascadeWorstPieceB = INDEX_NONE;
 	};
 
 	/**
@@ -754,6 +811,16 @@ namespace WallAcceptanceTestSupport
 
 		OutResult.bCompleteGeometryAsBuilt = OutWall.Structure.HasCompleteGeometry();
 
+		/*
+		 * The as-built reading, taken before the first cascade is allowed to break anything. For a
+		 * row that cuts nothing this IS the reading the cascade started from; a cutting row
+		 * overwrites it below with the post-cut one, which is the state that decides that row.
+		 */
+		OutWall.Structure.SolveLoads();
+
+		OutResult.PreCascadeWorst = WorstUtilisation(
+			OutWall, OutResult.PreCascadeWorstPieceA, OutResult.PreCascadeWorstPieceB);
+
 		OutResult.IntactPasses = OutWall.Structure.SolveAndBreak();
 		OutResult.IntactFallen = FallenPieces(OutWall).Num();
 		OutResult.bIntactStood = OutResult.IntactPasses == 0 && OutResult.IntactFallen == 0;
@@ -773,6 +840,11 @@ namespace WallAcceptanceTestSupport
 			{
 				OutWall.Structure.RemovePiece(Piece);
 			}
+
+			OutWall.Structure.SolveLoads();
+
+			OutResult.PreCascadeWorst = WorstUtilisation(
+				OutWall, OutResult.PreCascadeWorstPieceA, OutResult.PreCascadeWorstPieceB);
 
 			OutResult.CutPasses = OutWall.Structure.SolveAndBreak();
 		}
@@ -943,7 +1015,7 @@ namespace WallAcceptanceTestSupport
 	{
 		Test.AddInfo(FString::Printf(
 			TEXT("case %02d %-44s expected %-10s | laid %d, cut %d, passes %d(+%d), fell %d (%d ")
-			TEXT("stranded) %s, worst %.6g%s"),
+			TEXT("stranded) %s, worst %.6g%s, pre-cascade worst %.17g%s"),
 			Case.Number, Case.Title, VerdictName(Case.Verdict),
 			Result.PiecesLaid, Result.PiecesCut, Result.IntactPasses, Result.CutPasses,
 			Result.Fallen.Num(), Result.Stranded, *DescribePieces(Wall, Result.Fallen),
@@ -953,7 +1025,16 @@ namespace WallAcceptanceTestSupport
 				: *FString::Printf(
 					TEXT(" at c%d/%g-c%d/%g"),
 					Wall.CourseOf[Result.WorstPieceA], Wall.CellOf[Result.WorstPieceA],
-					Wall.CourseOf[Result.WorstPieceB], Wall.CellOf[Result.WorstPieceB])));
+					Wall.CourseOf[Result.WorstPieceB], Wall.CellOf[Result.WorstPieceB]),
+			Result.PreCascadeWorst,
+			Result.PreCascadeWorstPieceA == INDEX_NONE
+				? TEXT("")
+				: *FString::Printf(
+					TEXT(" at c%d/%g-c%d/%g"),
+					Wall.CourseOf[Result.PreCascadeWorstPieceA],
+					Wall.CellOf[Result.PreCascadeWorstPieceA],
+					Wall.CourseOf[Result.PreCascadeWorstPieceB],
+					Wall.CellOf[Result.PreCascadeWorstPieceB])));
 	}
 
 	/* ================================================================================
@@ -1291,13 +1372,14 @@ namespace WallAcceptanceTestSupport
 	 *     f   M / Z = 324 uu/cm2, i.e. 0.0324 MPa — call it 0.03 to 0.04 depending on which reveal
 	 *         governs and on how much surcharge beyond the span window is counted in
 	 *
-	 * AGAINST WHAT. PROJECT_REVIEW.md §1 records the user's decision to move the profiles to MEAN
-	 * bond strength, 0.4 to 0.8 MPa, where 0.03-0.04 is FIVE TO TEN PER CENT of capacity. Even
-	 * against the conservative characteristic 0.10 MPa the profiles carry today it is under a third,
-	 * and the model's own reading agrees: its worst joint in this wall is c3/8.5-c4/8 at 0.362193 of
-	 * f_xk1 — the toothed corner of the reveal, not the midspan — which is the same "comfortable"
-	 * answer from a completely different route. Real half-brick walls bridge 1.2 m of missing
-	 * masonry routinely; a rule that forbids it is a rule about cracking, not about falling.
+	 * AGAINST WHAT. The profiles carry the MEAN bond since the 2026-08-13 re-anchor — 0.70 MPa —
+	 * where 0.03-0.04 is around five per cent of capacity. Even against the retired conservative
+	 * characteristic 0.10 it was under a third, and the model's own reading agrees: its worst
+	 * joint in this wall is c3/8.5-c4/8 at 0.0517 of the mean f_x1 (0.362193 of the retired
+	 * f_xk1) — the toothed corner of the reveal, not the midspan — which is the same
+	 * "comfortable" answer from a completely different route. Real half-brick walls bridge 1.2 m
+	 * of missing masonry routinely; a rule that forbids it is a rule about cracking, not about
+	 * falling.
 	 *
 	 * HENCE STANDS, WITH NO FALL REGION AND NO SURVIVOR REGION, because nothing comes down. Paired
 	 * against case 12 this row isolates PIER WIDTH — three cells of bearing against one — and on
@@ -1885,16 +1967,36 @@ namespace WallAcceptanceTestSupport
 	 * give, and the worst finite utilisation taken off the result — and they differ in whether
 	 * anything still takes it:
 	 *
-	 *   3.8429  CASE 21, and the slow sweep's wall-21 row does exactly this on every run: it calls
+	 *   CASE 21 — the slow sweep's wall-21 row does exactly this on every run: it calls
 	 *           `SolveLoads`, scans the utilisations, and only then cascades. It printed
-	 *           3.842883954008586 on 2026-08-13. REPORTED THERE, NOT ASSERTED, so it would drift
-	 *           visibly and silently.
-	 *   8.2241  CASE 22, which has no sweep row at all — the oracle refuses the fixture — so this
-	 *           one was taken by hand on 2026-08-13 and nothing recomputes it.
+	 *           3.842883954008586 at the characteristic data (2026-08-13) and
+	 *           **0.93542327561664174 at the mean data (2026-08-14)** — NOT the 3.8429/7 = 0.549
+	 *           the fallout plan predicted, because the worst joint's governing axis FLIPPED,
+	 *           leaving the wall a knife-edge 6.5% under the line. REPORTED THERE, NOT
+	 *           ASSERTED, so it drifts visibly and silently. WHICH axis it flipped TO is
+	 *           recorded everywhere as the squeezed-edge compression and is UNVERIFIED: the
+	 *           same attribution was made for case 9's jamb and for case 22's worst joint, and
+	 *           decomposing those two on 2026-08-14 found both to be Mohr-Coulomb SHEAR with
+	 *           compression an order of magnitude under. Case 21's joint is the same jamb-bed
+	 *           shape as both. Decomposing it is logged in CURRENT_STATE and is three lines
+	 *           over `GetConnectionForce` once the sweep row carries the force.
+	 *   CASE 22 — no sweep row at all (the oracle refuses the fixture), so its 8.2241 was taken
+	 *           by hand at the characteristic data on 2026-08-13 and nothing recomputed it for a
+	 *           day. IT IS COMPUTED HERE NOW, on every run: `SolveWallCase` solves the loads once
+	 *           on the cut structure before handing it to the cascade, and `FWallResult`'s
+	 *           pre-cascade fields carry the reading — printed on every row and PINNED on this
+	 *           one at 2.9133264370386338 (`FWallCase::PreCascadeWorstToday`). The fallout plan's
+	 *           re-base of 8.2241/7 = 1.1749 was WRONG BY 2.5x, exactly the way it warned it
+	 *           might be: /7 is the tension-axis factor and the measured ratio between the eras
+	 *           is 2.82. The collapse itself is three passes and 316 down (two and 254 at the
+	 *           characteristic data — the marginal cascade sheds MORE, not the fewer the plan
+	 *           guessed; the region pins hold because Falls/Stands are containment claims, not
+	 *           exact counts).
 	 *
-	 * They are quoted as evidence that the cascade started from genuine over-capacity rather than
-	 * from a routing failure, and nothing anywhere ASSERTS either. What this file does assert on
-	 * these two rows is the drop set, the survivor set, and the fact that at least one joint gave.
+	 * Case 21's is quoted as evidence about where the cascade starts and is asserted nowhere;
+	 * case 22's IS asserted, twice — that it is past 1.0 at all, and at its measured size. What
+	 * this file also asserts on these two rows is the drop/survivor sets and pass counts (case
+	 * 22), and the DropsToday/StrandsToday zeros of the inverted red (case 21).
 	 */
 
 	/* ================================================================================
@@ -2376,43 +2478,95 @@ namespace WallAcceptanceTestSupport
 		/* G — openings too big for what covers them. The set's only two falling verdicts. */
 
 		/*
-		 * COLLAPSE — USER-DIRECTED 2026-08-12, BUILT 2026-08-13, AND THE CATALOGUE'S FIRST
-		 * `Collapse` ROW EVER. Two courses of cover — the user's stated floor, since one course is
-		 * case 8 and stands — over an eighteen-cell opening, sized so the deep-beam check clears
-		 * the mean-basis ceiling: 1.2014 MPa against 0.8, i.e. 1.50x the top of the bracket every
-		 * §8 ruling is argued on and 12.01x the characteristic f_xk1 the profiles carry. The whole
-		 * derivation, the flat-arch pricing that answers case 8's reading, and the LP oracle's
-		 * measured DISAGREEMENT (it stands the fixture at lambda* = 5.511 by a mechanism 66x
-		 * stronger than the bond that has NOT been identified) are in the CASE 21 block of section
-		 * G. No `DropsToday`: production drops the cover and keeps the jambs, which is this row's
-		 * verdict.
+		 * COLLAPSE — USER-DIRECTED 2026-08-12, BUILT 2026-08-13, AND SINCE THE 2026-08-14 MEAN
+		 * RE-ANCHOR FLIP A DELIBERATE RED IN THE INVERTED DIRECTION, joining rows 10 and 19: the RULED
+		 * verdict is Collapse and stands (user, 2026-08-13, with the pricing experiments in hand
+		 * — hand deep-beam 1.2014 MPa is 1.71x even the coded mean f_x1 of 0.70, production's
+		 * 3-pass collapse and the brittleness argument all point the same way), but at the mean
+		 * strengths the MODEL now STANDS the wall: its pre-cascade worst reading was 3.8429
+		 * against the characteristic 0.10 and MEASURED 0.93542327561664174 at the flip
+		 * (2026-08-14) — not the predicted /7 = 0.549, because the worst joint's axis flipped
+		 * (to WHAT is unverified and was written here as squeezed-edge compression; the same
+		 * attribution proved wrong for cases 9 and 22, both of which decomposed to Mohr-Coulomb
+		 * SHEAR — see the pre-cascade block above), leaving the model 6.5% under the line — so
+		 * no joint gives and the cover hangs on. THE CAUSE IS THE COMPOSITE-RELIEF GAP, not the data:
+		 * production's tension sigma sits 3.1x below the hand sigma because composite vertical
+		 * action re-sections the moment (DESIGN §5.5's f_x2 under-crediting is the recorded
+		 * flip side), so the honest hand verdict and the model's reading part company exactly
+		 * where §7's routing gaps say they must. Goes green when that gap closes — evolution
+		 * step 4's equilibrium promotion or the composite/f_x2 rework — never by weakening
+		 * this row.
+		 *
+		 * THE PINS BELOW HOLD THE MODEL'S WRONG ANSWER AT ITS MEASURED SIZE, per the
+		 * rows-10/19 convention: `DropsToday = 0`, `StrandsToday = 0` — the model drops NOTHING
+		 * — and `Case21Stands` still names the jambs, so a regression inside the known failure
+		 * (dropping the jambs, say, or stranding pieces) fails loudly rather than hiding in an
+		 * already-red row. (In the pre-flip red phase these pins are the red: production still
+		 * collapses the wall at the old characteristic data, 45 down in 3 passes.)
+		 *
+		 * The LP oracle's stand (17.24 at the mean data; 5.511 at the characteristic, booked
+		 * 2026-08-13 as a rigid-plastic scope limit) is pinned in the slow sweep, whose
+		 * case-21 rows re-measured to `AgreeStands` at the flip: LP and production now agree
+		 * with each other and both disagree with this row's ruled Collapse — which is exactly
+		 * what THIS row's inverted red records.
 		 *
 		 * AND THE `Isolates` LINE SAYS "NOT A PAIR", WHICH IS A DELIBERATE REFUSAL. Against case 9
 		 * this row moves the cover from 60 cm to 15 AND the span from 214.75 cm to 394.75 — 1.84x —
-		 * so it is not a one-variable pair however the title reads, and calling it one would be
-		 * exactly the mistake that got the 7-vs-8 relocation deleted on 2026-08-11: attributing to
-		 * one variable a difference two variables produced. What the row IS is a fixture where thin
-		 * cover is the DECISIVE term, which is a weaker and true claim. Case 22 beside it is the
-		 * genuine article — case 9's own cover, only the span moved — and that is where the
-		 * one-variable claim in this section lives.
+		 * so it is not a one-variable pair however the title reads. What the row IS is a fixture
+		 * where thin cover is the DECISIVE term. Case 22 beside it is the genuine article — case
+		 * 9's own cover, only the span moved — and that is where the one-variable claim lives.
 		 */
-		Add(21, TEXT("Eighteen-brick opening, two courses over"), EVerdict::Collapse,
-			6, 22, Case21Cuts, Case21Falls, Case21Stands,
-			TEXT("thin cover made decisive — NOT a one-variable pair against case 9: cover 60 cm ")
-			TEXT("to 15 AND span 1.84x, both moved"));
+		{
+			FWallCase& Case = Add(21, TEXT("Eighteen-brick opening, two courses over"),
+				EVerdict::Collapse,
+				6, 22, Case21Cuts, Case21Falls, Case21Stands,
+				TEXT("thin cover made decisive — NOT a one-variable pair against case 9: cover 60 cm ")
+				TEXT("to 15 AND span 1.84x, both moved"));
+
+			Case.DropsToday = 0;
+			Case.StrandsToday = 0;
+		}
 
 		/*
-		 * COLLAPSE — USER-DIRECTED 2026-08-12, BUILT 2026-08-13. Case 9's own eight courses of
+		 * COLLAPSE — USER-DIRECTED 2026-08-12, BUILT 2026-08-13, AND IT SURVIVES THE MEAN
+		 * RE-ANCHOR AS THE CATALOGUE'S ONE GREEN Collapse ROW. Case 9's own eight courses of
 		 * cover over a span grown 3.62x, so the pair against case 9 varies the span and NOTHING
-		 * else: 1.1644 MPa against case 9's 0.0889, which is exactly the sigma ~ L^2 law over a
-		 * 13.098x span-squared ratio. 1.46x the mean ceiling. THE SET'S ONLY OUTCOME PAIR since the
-		 * 2026-08-12 rulings retired the last of the old five. The oracle REFUSES this fixture —
-		 * measured once, "phase-2 simplex failed" after 546 s — so this row's verdict rests on hand
-		 * statics and production, which is said plainly in the CASE 22 block rather than papered over.
+		 * else: 1.1644 MPa is 1.66x the coded mean f_x1 of 0.70 (it was quoted against the 0.8
+		 * bracket ceiling when the profiles carried the characteristic 0.10).
+		 *
+		 * THE MARGIN IS MEASURED AND PINNED, AND IT IS NOT THE ONE THE FALLOUT PLAN PREDICTED.
+		 * The plan re-based the model's characteristic-era pre-cascade worst of 8.2241 by
+		 * dividing by 7 — the tension-axis factor — and wrote ~1.175 with a caution that an axis
+		 * flip like case 21's would invalidate it. MEASURED AT THE FLIP (2026-08-14) the reading
+		 * is 2.9133264370386338, two and a half times the prediction, so the "one modest routing
+		 * change flips this verdict" alarm that figure raised was itself an artefact of the /7.
+		 * The wall still collapses in THREE passes shedding 316 pieces (two passes and 254 at the
+		 * characteristic data — the marginal cascade sheds MORE, not fewer; the region pins hold
+		 * because Falls and Stands are containment claims rather than counts). The pin below is
+		 * that measurement, and `FWallCase::PreCascadeWorstToday` says why a count could not have
+		 * caught this.
+		 *
+		 * AND THE AXIS FLIPPED, WHICH IS WHY THE PREDICTION MISSED. Decomposed from that joint's
+		 * own force at the pre-cascade solve (c3/36.5-c4/36 — the same jamb-bed shape as case 9's
+		 * c3/11.5-c4/11): 0.35540386 MPa of compression across it and 3.3985494 MPa of in-plane
+		 * stress along it, against a Mohr-Coulomb capacity of 0.9 + 0.75 x 0.35540386 =
+		 * 1.1665529 MPa — which is 2.9133264370386338 to the last bit. The reading is the jamb
+		 * SLIDING under 35,706 N of arch thrust. Its flexural tension is EXACTLY ZERO (production
+		 * clamps that joint's moment at the kern, so bending and normal stress cancel bit for
+		 * bit) and its compression reads 0.0710808 — so /7 could never have re-based it. The
+		 * decomposition is measured here rather than asserted; asserting it wants the pre-cascade
+		 * force carried on `FWallResult` the way the reading itself now is (logged in
+		 * CURRENT_STATE).
+		 *
+		 * THE SET'S ONLY OUTCOME PAIR since the 2026-08-12 rulings retired the last of the old
+		 * five. The oracle REFUSES this fixture — measured once, "phase-2 simplex failed" after
+		 * 546 s — so this row's verdict rests on hand statics and production, which is said
+		 * plainly in the CASE 22 block rather than papered over.
 		 */
 		Add(22, TEXT("Thirty-five-brick opening, eight courses over"), EVerdict::Collapse,
 			CoveredCourses, 39, Case22Cuts, Case22Falls, Case22Stands,
-			TEXT("span against case 9 — 7.77 m against 2.15, and it FALLS"));
+			TEXT("span against case 9 — 7.77 m against 2.15, and it FALLS"))
+			.PreCascadeWorstToday = 2.9133264370386338;
 
 		return Cases;
 	}
@@ -3139,14 +3293,45 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 					Result.Fallen.Num(), *DescribePieces(Wall, Result.Fallen)),
 				Result.Fallen.Num(), Case.DropsToday);
 		}
+
+		/*
+		 * AND A ROW MAY PIN THE MARGIN THE CASCADE STARTED FROM, WHICH IS NOT A COUNT.
+		 *
+		 * Two assertions rather than one, because they fail in different words about different
+		 * things. The first says the wall really was past capacity when it went — a Collapse
+		 * verdict reached from UNDER 1.0 would be pieces the router lost rather than masonry
+		 * failing, which is the same trap `StrandsToday` exists for, one layer up. The second
+		 * holds the margin at its measured size, so a change that took case 22 from 1.17x of
+		 * capacity to 1.01x — still collapsing, still green, one retune from silently inverting
+		 * the catalogue's only green Collapse row — fails loudly instead.
+		 */
+		if (Case.PreCascadeWorstToday > 0.0)
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: the cascade must have started PAST capacity for a %s to be a strength ")
+					TEXT("verdict — the worst joint read %.17g before any joint was allowed to give"),
+					*Where, VerdictName(Case.Verdict), Result.PreCascadeWorst),
+				Result.PreCascadeWorst > 1.0);
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: CHARACTERISATION of the MARGIN — the worst joint read %.17g of capacity ")
+					TEXT("before the cascade started, pinned at %.17g. A count cannot see this move: ")
+					TEXT("the same bricks come down at 1.01x as at 8x, and this row is the one thing ")
+					TEXT("that fails while a verdict is still standing but has stopped being safe"),
+					*Where, Result.PreCascadeWorst, Case.PreCascadeWorstToday),
+				FMath::IsNearlyEqual(
+					Result.PreCascadeWorst, Case.PreCascadeWorstToday, 1.0e-9));
+		}
 	}
 
 	return true;
 }
 
 /**
- * CASES 7 AND 9, THE PART A VERDICT CANNOT SAY: TRIPLING THE SPAN OVER AN OPENING TRIPLES WHAT ITS
- * JAMB READS, AND BOTH WALLS STAND ANYWAY.
+ * CASES 7 AND 9, THE PART A VERDICT CANNOT SAY: WIDENING AN OPENING CHANGES WHAT ITS JAMB IS DOING,
+ * NOT MERELY HOW HARD — AND BOTH WALLS STAND ANYWAY.
  *
  * WHY THIS TEST EXISTS AT ALL, AND WHAT IT REPLACES. 7 vs 9 was an OUTCOME pair — a four-cell
  * opening stands, a ten-cell one brings the wall down — and it was the LAST outcome pair the
@@ -3172,18 +3357,21 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
  * three counts:
  *
  *   THE DIRECTION IS RIGHT. A longer span delivers a larger reaction into its abutment, so the
- *   jamb beside the wider opening MUST read harder. It does: 0.269 at 68.5-91 cm of clear opening
- *   against 0.985 at 203.5-226 cm. (Those are the brackets the assertion's own arithmetic computes
- *   below — a toothed reveal opens a different width on the even and the odd courses, so each wall
- *   has a narrow and a wide value, and quoting the CELL gaps instead would double-count the brick
- *   that closes each reveal.) Nothing has to be excused.
+ *   jamb beside the wider opening MUST carry more. It does, and the cleanest way to see it carries
+ *   no strengths at all: the NORMAL FORCE through the governing joint is 56,010.7 uu at 68.5-91 cm
+ *   of clear opening against 106,676.3 uu at 203.5-226 cm. (Those are the brackets the assertion's
+ *   own arithmetic computes below — a toothed reveal opens a different width on the even and the
+ *   odd courses, so each wall has a narrow and a wide value, and quoting the CELL gaps instead
+ *   would double-count the brick that closes each reveal.) Nothing has to be excused.
  *
- *   THE MECHANISM IS THE SAME ON BOTH SIDES. Both fixtures are the same deep beam — eight courses
- *   (60 cm) of bonded cover over a toothed opening in a running-bond wall, same brick, same mortar,
- *   same 10.25 cm thickness — and both worst joints are bed joints in the RIGHT JAMB at or just
- *   below the head of the opening, i.e. where that beam delivers its reaction. The pair varies the
- *   span and the wall's cell count (12 against 14, which is what keeps two cells of jamb either
- *   side) and nothing else.
+ *   THE JOINT IS THE SAME KIND OF JOINT ON BOTH SIDES. Both fixtures are the same deep beam —
+ *   eight courses (60 cm) of bonded cover over a toothed opening in a running-bond wall, same
+ *   brick, same mortar, same 10.25 cm thickness — and both worst joints are bed joints in the
+ *   RIGHT JAMB at or just below the head of the opening, i.e. where that beam delivers its
+ *   reaction. The pair varies the span and the wall's cell count (12 against 14, which is what
+ *   keeps two cells of jamb either side) and nothing else. THE FAILURE MODE AT THAT JOINT IS NOT
+ *   THE SAME ON BOTH SIDES, and since the 2026-08-14 re-anchor that is the pair's finding rather
+ *   than a caveat — see the axis section below.
  *
  *   NEITHER READING IS TAKEN OFF A WALL THE ROUTER FAILED ON. Both cases drop NOTHING, break
  *   NOTHING and strand NOTHING, so both numbers are honest readings of a fully routed structure.
@@ -3206,32 +3394,75 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
  * MEASURED, which is worth doing on its own account: today a 2x drift in either reading would move
  * no verdict and pass every test in the suite silently.
  *
- * THE RELATION IS DERIVED, AND IT IS THE ASSERTION THAT CARRIES THE PHYSICS. The reaction a
- * simply-supported deep beam delivers into each abutment is w.L/2, and w — eight courses of brick
- * per unit length — is identical in the two fixtures, so the reaction grows AT LEAST LINEARLY with
- * the clear span. The clear spans are computed below from the cell grid rather than quoted: a gap
- * of n cell pitches between the surviving bricks either side is n.CellPitch - BrickLength of open
- * air, the toothed reveal gives each wall a narrow and a wide value, and the mean of the two is
- * 79.75 cm for case 7 against 214.75 cm for case 9 — a ratio of 2.6928. The measured readings
- * separate by 3.6558, which clears the linear floor by 36%. A solver with no span term reads them
- * the same and fails; a solver that reads span SUBLINEARLY fails too, which a bare "greater than"
- * would have let through.
+ * =====================================================================================
+ * THE SPAN-LAW ARM IS RETIRED, AND WHY — MEASURED 2026-08-14
+ * =====================================================================================
+ *
+ * THIS TEST USED TO ASSERT `ReadingRatio >= SpanRatio` (6.84 against 2.6928), justified by the
+ * reaction a simply-supported deep beam delivers into its abutment being w.L/2 with w identical
+ * in the two fixtures, so the jamb reading must grow at least linearly with the clear span. THE
+ * JUSTIFICATION DOES NOT SURVIVE THE AXES PARTING. A utilisation is a stress DIVIDED BY THE
+ * CAPACITY OF ITS OWN AXIS, so a ratio of two utilisations taken on different axes is a ratio of
+ * two reactions multiplied by the ratio of two unrelated strengths. The measured 3.66 -> 6.84
+ * move at the mean re-anchor is exactly that: the divisor under case 9 went from the flexural
+ * bond to a Mohr-Coulomb sliding capacity. The row passed for a reason unconnected to span.
+ *
+ * WORKED THREE WAYS, AND THE SPAN LAW HOLDS ON NONE OF THEM (decomposition below; every figure
+ * from the joint's own force, moment and geometry, none of it from a utilisation):
+ *
+ *     the WORST-AXIS stresses      0.0269441 MPa of tension against 0.2570131 MPa of shear —
+ *                                  9.54x, and a comparison of two different physical quantities
+ *                                  whether the inequality holds or not
+ *     the SAME axis, both walls    tension 0.0269441 -> 0.0 (case 9's patch tension is clamped
+ *                                  to exactly zero at the kern); shear 0.0 -> 0.2570131 (case 7's
+ *                                  jamb carries no horizontal force at all). Each is a ratio with
+ *                                  a zero in it
+ *     the honest REACTION          the normal force through the joint, no strength anywhere in
+ *                                  it: 56,010.69 -> 106,676.31 uu, a factor of 1.9046 for 2.6928
+ *                                  of span. SUBLINEAR — the model does not satisfy w.L/2 here
+ *
+ * So the arm is gone rather than restated, and the loss is recorded in CURRENT_STATE beside the
+ * other discriminations the re-anchor retired. WHAT REPLACED IT is stronger than the ratio ever
+ * was, because it does not need a strength to be meaningful: the wider opening puts 270,024 uu
+ * of HORIZONTAL THRUST through its jamb where the narrow one puts exactly none, and that is a
+ * span term the model demonstrably does have. A solver with no span term reads both jambs with
+ * no thrust and fails that row.
+ *
+ * =====================================================================================
+ * THE GOVERNING AXES, NAMED AND DERIVED — WHICH IS THE OTHER JOB THIS TEST NOW DOES
+ * =====================================================================================
  *
  * THE THING BEING MEASURED MUST BE THE THING GOVERNING, so each wall's worst joint is asserted by
  * (course, cell) before its magnitude is read. THE TWO ARE NOT THE SAME JOINT and this deliberately
  * does not pretend otherwise: case 7's is c2/8-c3/7.5, a bed joint one course BELOW the head, and
  * case 9's is c3/11.5-c4/11, the bed joint AT the head where the first course of cover lands on the
- * jamb. Both are in the right jamb within one course of the head — the reaction path — which is
- * what makes the comparison a comparison of one mechanism. If a future slice moves either maximum
- * somewhere structurally different, this fails and the pair has to be re-argued rather than
- * re-tuned.
+ * jamb. Both are in the right jamb within one course of the head — the reaction path. If a future
+ * slice moves either maximum somewhere structurally different, this fails and the pair has to be
+ * re-argued rather than re-tuned.
  *
- * AND CASE 9's READING IS WATCHED FOR THE CROSSING, which is the other job this test does.
- * Production reads it at 0.98502040901419818 — ONE RETUNE FROM 1.0. The day it crosses, this wall
- * drops its head, case 9's brand-new STANDS verdict becomes a catalogue red, and the oracle sweep's
- * pinned `AgreeStands` relation flips, all with nothing physical having changed. CURRENT_STATE
- * recorded that hazard with no test behind it; the absolute pin plus the explicit under-1.0 row
- * below is that test.
+ * AND SINCE 2026-08-14 THE AXIS IS ASSERTED TOO, not just the joint, because prose got it wrong.
+ * `ComputeUtilisation` returns the worst of three axes and reports only the number, so which one
+ * won is invisible unless a test computes it. DESIGN.md §6, CURRENT_STATE and this file's own
+ * comment all recorded case 9's post-flip reading as "the squeezed edge's COMPRESSION against the
+ * unmoved 10 MPa" — worked out here from the joint's own force and area, that axis reads
+ * 0.0203072, THIRTEEN TIMES BELOW what production reports. The reading is Mohr-Coulomb SHEAR:
+ *
+ *     case 7   |M_y| / (t.D^2/6) / f_x1, the composite deep-beam section production reports for
+ *              that joint (D = 35.128 cm), = 0.038491547555641249 EXACTLY — TENSION
+ *     case 9   |F_xy| / A / (f_v0 + mu.|F_z|/A), bare Mohr-Coulomb on the joint's own patch,
+ *              = 0.26329211195559277 EXACTLY — SHEAR, the jamb sliding under the arch thrust
+ *
+ * Both identities are asserted to 1e-9 below, and each is ONE formula over quantities production
+ * publishes (force, moment, composite depth) plus the published strengths — not a transcription
+ * of the composite walk. Getting the axis wrong is not cosmetic: it is what made the retired
+ * span-law arm look like a span term, and it is what made the old flap watch vacuous.
+ *
+ * THE OLD FLAP WATCH IS KEPT AND IS SAID TO BE VACUOUS. Production once read case 9's jamb at
+ * 0.98502040901419818, one retune from 1.0; at the mean strengths the governing axis moved and
+ * the reading sits ~3.8x clear. The under-1.0 row stays because the day it crosses, this wall
+ * drops its head, case 9's STANDS verdict becomes a catalogue red and the oracle sweep's pinned
+ * `AgreeStands` relation flips — but it is watching a shear reading now, not the flexural one the
+ * knife edge was about.
  *
  * GREEN ON ARRIVAL, AND SAID SO PLAINLY. This pins behaviour the model already produces; it drove
  * nothing. What it is for is that the case 9 ruling deleted an assertion — and, through
@@ -3255,6 +3486,22 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 	 * able to see is in the second decimal place.
 	 */
 	constexpr double UtilisationTolerance = 1.0e-9;
+
+	/*
+	 * THE WHOLE MOHR-COULOMB TRIPLE, CHECKED RATHER THAN IMPORTED, because since 2026-08-14 this
+	 * test names each reading's AXIS and the naming is only as good as the strengths it divides
+	 * by. `Acceptance.Wall.Catalogue` pins the two this file already used; the other three are
+	 * pinned here, at the only place that reads them.
+	 */
+	TestEqual(TEXT("FIXTURE: general purpose mortar's friction coefficient is the profile's mu"),
+		DestructionProfiles::GeneralPurposeMortar.FrictionCoefficient, MortarFrictionCoefficient);
+
+	TestEqual(TEXT("FIXTURE: general purpose mortar's shear truncation is the profile's"),
+		DestructionProfiles::GeneralPurposeMortar.MaxShearStrengthMPa, MortarMaxShearStrengthMPa);
+
+	TestEqual(TEXT("FIXTURE: general purpose mortar's compressive strength is the profile's"),
+		DestructionProfiles::GeneralPurposeMortar.CompressiveStrengthMPa,
+		MortarCompressiveStrengthMPa);
 
 	/* --- the two walls --------------------------------------------------------------------- */
 
@@ -3380,10 +3627,25 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 			*DescribeWorst(WideWall, WideResult)),
 		WorstJointIs(WideWall, WideResult, 3, 11.5, 4, 11.0));
 
-	/* --- the magnitudes, pinned as measured -------------------------------------------------- */
-
-	constexpr double NarrowWorst = 0.26944083288948872;
-	constexpr double WideWorst = 0.98502040901419818;
+	/*
+	 * --- the magnitudes, pinned as measured ---------------------------------------------------
+	 *
+	 * MEAN RE-ANCHOR (2026-08-13), MEASURED AT THE FLIP (2026-08-14) — AND THE PAIR'S TWO
+	 * READINGS PARTED AXES, which is exactly what TRAPS' strength-basis entry warns about.
+	 * Case 7's jamb stayed tension-governed and reads the old pin / 7 to the bit (f_x1
+	 * 0.10 -> 0.70; the stress side is statics). Case 9's jamb did NOT: its tension fell to
+	 * 0.98502040901419818 / 7 = 0.14071720128774259 and then to EXACTLY ZERO — production
+	 * clamps that joint's moment at the kern, so sigma_b and |sigma_n| cancel to the last bit
+	 * — while the SHEAR axis, which the characteristic data left 5% behind the tension, came
+	 * forward to read the 0.26329211195559277 pinned below.
+	 *
+	 * THE AXIS IS DERIVED AND ASSERTED BELOW RATHER THAN NAMED IN PROSE, because prose got it
+	 * wrong: this comment used to call it the squeezed edge's COMPRESSION against the unmoved
+	 * 10 MPa, and that axis reads 0.0203072 here — thirteen times under what production
+	 * reports. The governing JOINT did not move; the governing AXIS did, twice.
+	 */
+	constexpr double NarrowWorst = 0.26944083288948872 / 7.0;
+	constexpr double WideWorst = 0.26329211195559277;
 
 	TestTrue(
 		*FString::Printf(
@@ -3408,15 +3670,119 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 	 */
 	TestTrue(
 		*FString::Printf(
-			TEXT("THE FLAP WATCH: case 9's jamb reads %.17g and must stay UNDER 1.0. It sits within ")
-			TEXT("1.5%% of capacity, so one retune of mortar, density or the composite walk puts it ")
-			TEXT("over — and the day it does, this wall drops its head, case 9's 2026-08-12 STANDS ")
-			TEXT("ruling becomes a catalogue red and the oracle sweep's pinned AgreeStands relation ")
-			TEXT("flips, with nothing physical having changed. That is a re-derivation, not a retune"),
+			TEXT("THE FLAP WATCH: case 9's jamb reads %.17g and must stay UNDER 1.0. VACUOUS at the ")
+			TEXT("mean basis (re-anchor 2026-08-13) — the reading sits ~3.8x clear and is the jamb ")
+			TEXT("SLIDING under the arch thrust, not the flexural tension the characteristic-era ")
+			TEXT("0.985 knife-edge was about — and kept because the day it crosses, this wall drops ")
+			TEXT("its head, case 9's 2026-08-12 STANDS ruling becomes a catalogue red and the oracle ")
+			TEXT("sweep's pinned AgreeStands relation flips. That is a re-derivation, not a retune"),
 			WideResult.Worst),
 		WideResult.Worst < 1.0);
 
-	/* --- the pair's own claim: span is still measured, and at least linearly ------------------ */
+	/* --- which AXIS each reading is, derived from the joint's own force and moment ------------- */
+
+	/**
+	 * The two joints' loads, straight off production's published accessors.
+	 *
+	 * NOTHING HERE RE-IMPLEMENTS THE SOLVER. `GetConnectionForce`, `GetConnectionMoment` and
+	 * `GetConnectionCompositeDepthCm` report what the routing layer decided the joint carries;
+	 * what this file does with them is ONE published formula per axis, against the published
+	 * strengths written out at the top of this namespace. That is enough to say which of the
+	 * three axes `ComputeUtilisation` returned, which is the one thing a bare utilisation
+	 * cannot tell anybody.
+	 */
+	auto JointLoad = [](const FWall& Wall, const FWallResult& Result, int32& OutJoint)
+	{
+		OutJoint = INDEX_NONE;
+
+		for (int32 Joint = 0; Joint < Wall.Structure.NumConnections(); ++Joint)
+		{
+			const FConnection& Connection = Wall.Structure.GetConnection(Joint);
+
+			if (Connection.PieceA == Result.WorstPieceA && Connection.PieceB == Result.WorstPieceB)
+			{
+				OutJoint = Joint;
+				break;
+			}
+		}
+	};
+
+	int32 NarrowJoint = INDEX_NONE;
+	int32 WideJoint = INDEX_NONE;
+
+	JointLoad(NarrowWall, NarrowResult, NarrowJoint);
+	JointLoad(WideWall, WideResult, WideJoint);
+
+	if (NarrowJoint == INDEX_NONE || WideJoint == INDEX_NONE)
+	{
+		AddError(TEXT("FIXTURE: could not find the connection carrying a wall's worst reading"));
+
+		return true;
+	}
+
+	const FVector NarrowForceUu = NarrowWall.Structure.GetConnectionForce(NarrowJoint);
+	const FVector NarrowMomentUuCm = NarrowWall.Structure.GetConnectionMoment(NarrowJoint);
+	const double NarrowDepthCm = NarrowWall.Structure.GetConnectionCompositeDepthCm(NarrowJoint);
+
+	const FVector WideForceUu = WideWall.Structure.GetConnectionForce(WideJoint);
+	const double WideAreaSqCm = WideWall.Structure.GetConnection(WideJoint).InterfaceAreaSqCm;
+
+	/*
+	 * CASE 7 IS FLEXURAL TENSION, AND ON THE COMPOSITE SECTION. A bed joint bends about Y here,
+	 * so the deep beam standing over it has section t.D^2/6 with t the wall's 10.25 cm thickness
+	 * and D the depth production reports for that joint; the stress is |M_y| over it, and the
+	 * capacity is the published mean flexural bond. One division and one section formula.
+	 */
+	const double NarrowCompositeModulusCm3 =
+		BrickDepthCm * NarrowDepthCm * NarrowDepthCm / 6.0;
+
+	const double NarrowTensionUtilisation =
+		FMath::Abs(NarrowMomentUuCm.Y)
+		/ (NarrowCompositeModulusCm3 * ForceUnitsPerMPaSqCmHere) / MortarFlexuralBondMPa;
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("THE AXIS: case 7's jamb must be governed by FLEXURAL TENSION on the composite ")
+			TEXT("section — |M_y| %.8g uu.cm over t.D^2/6 = %.8g cm3 (D = %.8g cm) against f_x1 ")
+			TEXT("%.8g MPa is %.17g, and production reads %.17g. If these part company the reading ")
+			TEXT("has changed axis and every sentence about this pair has to be re-derived"),
+			FMath::Abs(NarrowMomentUuCm.Y), NarrowCompositeModulusCm3, NarrowDepthCm,
+			MortarFlexuralBondMPa, NarrowTensionUtilisation, NarrowResult.Worst),
+		FMath::IsNearlyEqual(NarrowResult.Worst, NarrowTensionUtilisation, UtilisationTolerance));
+
+	/*
+	 * CASE 9 IS MOHR-COULOMB SHEAR, ON THE JOINT'S OWN PATCH AND NOTHING ELSE. The jamb is being
+	 * pushed sideways by the arch thrust: shear stress is the in-plane force over the area, and
+	 * the capacity is cohesion plus friction times the compression across the joint. No bending
+	 * term and no composite section appear in it at all, which is precisely why calling this
+	 * reading a bending or a compression one was wrong.
+	 */
+	const double WideNormalStressMPa =
+		FMath::Abs(WideForceUu.Z) / (WideAreaSqCm * ForceUnitsPerMPaSqCmHere);
+
+	const double WideShearStressMPa =
+		FVector(WideForceUu.X, WideForceUu.Y, 0.0).Size()
+		/ (WideAreaSqCm * ForceUnitsPerMPaSqCmHere);
+
+	const double WideShearCapacityMPa = FMath::Min(
+		MortarShearCohesionMPa + MortarFrictionCoefficient * WideNormalStressMPa,
+		MortarMaxShearStrengthMPa);
+
+	const double WideShearUtilisation = WideShearStressMPa / WideShearCapacityMPa;
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("THE AXIS: case 9's jamb must be governed by MOHR-COULOMB SHEAR — %.8g MPa of ")
+			TEXT("in-plane stress against a capacity of f_v0 %.8g + mu %.8g x %.8g MPa of ")
+			TEXT("compression = %.8g MPa is %.17g, and production reads %.17g. The squeezed edge's ")
+			TEXT("COMPRESSION, which DESIGN §6 and CURRENT_STATE both named for this reading before ")
+			TEXT("2026-08-14, is %.8g — thirteen times under it"),
+			WideShearStressMPa, MortarShearCohesionMPa, MortarFrictionCoefficient,
+			WideNormalStressMPa, WideShearCapacityMPa, WideShearUtilisation, WideResult.Worst,
+			2.0 * WideNormalStressMPa / MortarCompressiveStrengthMPa),
+		FMath::IsNearlyEqual(WideResult.Worst, WideShearUtilisation, UtilisationTolerance));
+
+	/* --- the pair's own claim: the span is read in the joint ---------------------------------- */
 
 	/*
 	 * THE CLEAR SPANS, COMPUTED FROM THE CELL GRID RATHER THAN QUOTED. A gap of n cell pitches
@@ -3439,30 +3805,64 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 
 	const double SpanRatio = WideSpanCm / NarrowSpanCm;
 
-	const double ReadingRatio =
-		NarrowResult.Worst > 0.0 ? WideResult.Worst / NarrowResult.Worst : 0.0;
+	/*
+	 * THE SPAN TERM, ON A QUANTITY WITH NO STRENGTH IN IT. The narrow opening's jamb carries a
+	 * purely vertical force; the wide one's carries 270,024 uu — about 2,700 N — of HORIZONTAL
+	 * thrust as well. That is not a bigger number, it is a different mechanism arriving, and it
+	 * is what the retired `ReadingRatio >= SpanRatio` row was reaching for and could not express:
+	 * a solver with no span term delivers no thrust into either jamb and fails here, while no
+	 * choice of strengths anywhere can satisfy it, because no strength appears in it.
+	 */
+	const double NarrowThrustUu = FVector(NarrowForceUu.X, NarrowForceUu.Y, 0.0).Size();
+	const double WideThrustUu = FVector(WideForceUu.X, WideForceUu.Y, 0.0).Size();
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("SPAN: a wider opening must read HARDER at its jamb — %.8g clear against %.8g reads ")
-			TEXT("%.8g against %.8g. A model with no span term reads them the same."),
-			NarrowSpanCm, WideSpanCm, NarrowResult.Worst, WideResult.Worst),
-		WideResult.Worst > NarrowResult.Worst);
+			TEXT("SPAN: the wider opening must push its jamb SIDEWAYS where the narrow one does not ")
+			TEXT("— %.8g cm of clear opening delivers %.8g uu of in-plane thrust into its jamb and ")
+			TEXT("%.8g cm delivers %.8g uu. This is the pair's span discrimination since the ")
+			TEXT("2026-08-14 re-anchor retired the reading-ratio floor, and it carries no strength ")
+			TEXT("at all"),
+			NarrowSpanCm, NarrowThrustUu, WideSpanCm, WideThrustUu),
+		WideThrustUu > 0.0 && NarrowThrustUu <= 0.0);
 
 	/*
-	 * AT LEAST LINEARLY IN THE SPAN, NOT MERELY MORE. A strict inequality alone is satisfiable by a
-	 * last-bit difference, which is not a span term working. The reaction a deep beam delivers into
-	 * its abutment is w.L/2 with w identical in the two fixtures, so the jamb reading has to grow at
-	 * least as fast as the span does — 2.6928x here — and the measured separation is 3.6558x.
+	 * AND THE REACTION GROWS, WHICH IS THE OTHER HALF AND IS ALSO STRENGTH-FREE. The normal force
+	 * through the joint IS the reaction the cover delivers into that jamb, so this is the closest
+	 * like-for-like the two walls have: one quantity, one unit, no capacity anywhere.
 	 */
+	const double NarrowReactionUu = FMath::Abs(NarrowForceUu.Z);
+	const double WideReactionUu = FMath::Abs(WideForceUu.Z);
+
+	const double ReactionRatio =
+		NarrowReactionUu > 0.0 ? WideReactionUu / NarrowReactionUu : 0.0;
+
 	TestTrue(
 		*FString::Printf(
-			TEXT("SPAN: and at least LINEARLY — %.8g cm of clear opening against %.8g cm is a span ")
-			TEXT("ratio of %.8g, the readings separate by %.8g, and the reaction w.L/2 a deep beam ")
-			TEXT("delivers into its abutment grows linearly with L at constant w. A reading that grew ")
-			TEXT("more slowly than the span would be a span term measured too weakly to trust"),
-			NarrowSpanCm, WideSpanCm, SpanRatio, ReadingRatio),
-		NarrowResult.Worst > 0.0 && ReadingRatio >= SpanRatio);
+			TEXT("SPAN: and a wider opening must deliver a BIGGER reaction into its jamb — %.8g uu ")
+			TEXT("at %.8g cm of clear opening against %.8g uu at %.8g cm. A model with no span term ")
+			TEXT("reads them the same"),
+			NarrowReactionUu, NarrowSpanCm, WideReactionUu, WideSpanCm),
+		NarrowReactionUu > 0.0 && WideReactionUu > NarrowReactionUu);
+
+	/*
+	 * THE SUBLINEARITY IS PINNED AS A FINDING, NOT ASSERTED AS PHYSICS. w.L/2 says the reaction
+	 * grows at least linearly with the clear span; the model grows it 1.9046x for 2.6928x of
+	 * span, so the published relation does NOT hold here and a row demanding it would be a
+	 * seventh deliberate red for a defect nothing else in the suite is waiting on. Pinned instead,
+	 * so the day equilibrium promotion (DESIGN §7 step 4) gives the reaction an honest span term
+	 * this fires and someone re-derives rather than re-tunes.
+	 */
+	constexpr double PinnedReactionRatio = 1.9045707413720012;
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("CHARACTERISATION: the reaction ratio is %.17g against a span ratio of %.17g — ")
+			TEXT("SUBLINEAR, where a deep beam's w.L/2 requires at least linear. The pin is %.17g. ")
+			TEXT("This row PASSES and records a known-weak span term; it is not an endorsement"),
+			ReactionRatio, SpanRatio, PinnedReactionRatio),
+		FMath::IsNearlyEqual(ReactionRatio, PinnedReactionRatio, UtilisationTolerance)
+			&& ReactionRatio < SpanRatio);
 
 	return true;
 }
@@ -3521,20 +3921,24 @@ bool FWallAcceptanceCorbelProjectionTest::RunTest(const FString& Parameters)
 
 	/* --- the derivation, cross-checked against two figures produced elsewhere ---------------- */
 
+	/*
+	 * Both cross-check figures are the characteristic-basis publications divided by 7 — the
+	 * 2026-08-14 mean re-anchor flip moved f_x1 0.10 -> 0.70 and these ladders are pure tension.
+	 */
 	TestTrue(
 		*FString::Printf(
-			TEXT("CROSS-CHECK: five steps should reproduce ARCHING_DESIGN's published 0.219, the ")
+			TEXT("CROSS-CHECK: five steps should reproduce ARCHING_DESIGN's published 0.219 / 7, the ")
 			TEXT("closed form gives %.8g"),
 			CorbelBottomRungUtilisation(5)),
-		FMath::IsNearlyEqual(CorbelBottomRungUtilisation(5), 0.219, 0.02 * 0.219));
+		FMath::IsNearlyEqual(CorbelBottomRungUtilisation(5), 0.219 / 7.0, 0.02 * (0.219 / 7.0)));
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("CROSS-CHECK: eleven steps should reproduce the staircase anchor 0.36903147272727271, ")
+			TEXT("CROSS-CHECK: eleven steps should reproduce the staircase anchor 0.0527187818..., ")
 			TEXT("the closed form gives %.17g"),
 			CorbelBottomRungUtilisation(11)),
 		FMath::IsNearlyEqual(
-			CorbelBottomRungUtilisation(11), 0.36903147272727271, UtilisationTolerance));
+			CorbelBottomRungUtilisation(11), 0.36903147272727271 / 7.0, UtilisationTolerance));
 
 	/* --- the two walls -------------------------------------------------------------------- */
 
@@ -3765,19 +4169,24 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
 	const double ExpectedUnloaded =
 		FMath::Max(0.0, BendingMPa - OwnWeightMPa) / MortarFlexuralBondMPa;
 
+	/*
+	 * Both cross-checks are the characteristic-basis figures divided by 7 (mean re-anchor
+	 * 2026-08-13; the html's 0.058204 is the characteristic-era quote and its documentation
+	 * sweep is part of the green phase).
+	 */
 	TestTrue(
 		*FString::Printf(
-			TEXT("CROSS-CHECK: WALL_CASES.html quotes 0.058204 for case 16, the derivation gives ")
-			TEXT("%.8g"),
+			TEXT("CROSS-CHECK: WALL_CASES.html's characteristic-era 0.058204 / 7 for case 16; the ")
+			TEXT("derivation gives %.8g"),
 			ExpectedUnloaded),
-		FMath::IsNearlyEqual(ExpectedUnloaded, 0.058204, 1.0e-6));
+		FMath::IsNearlyEqual(ExpectedUnloaded, 0.058204 / 7.0, 1.0e-6));
 
 	TestTrue(
 		*FString::Printf(
 			TEXT("CROSS-CHECK: the same arithmetic on a CUT half-seated brick is the waist anchor ")
-			TEXT("0.058203838191552663, the derivation gives %.17g"),
+			TEXT("0.0083148340..., the derivation gives %.17g"),
 			ExpectedUnloaded),
-		FMath::IsNearlyEqual(ExpectedUnloaded, 0.058203838191552663, UtilisationTolerance));
+		FMath::IsNearlyEqual(ExpectedUnloaded, 0.058203838191552663 / 7.0, UtilisationTolerance));
 
 	/* --- the two walls ---------------------------------------------------------------------- */
 
@@ -3915,19 +4324,23 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
 		BareResult.Worst > LoadedResult.Worst);
 
 	/*
-	 * TEN TIMES, NOT MERELY MORE. A strict inequality alone is satisfiable by a last-bit
+	 * THREE TIMES, NOT MERELY MORE. A strict inequality alone is satisfiable by a last-bit
 	 * difference, which is not a superimposed-load term working; the measured separation is a
-	 * factor of 32, with the loaded joint's tension driven to exactly zero and compression left
-	 * governing. Ten is the floor and the measurement is three times clear of it — and it is
+	 * factor of 4.51, with the loaded joint's tension driven to exactly zero and compression
+	 * left governing. THE FLOOR WAS TEN AGAINST A MEASURED 32 IN THE CHARACTERISTIC ERA and
+	 * the 2026-08-13 mean re-anchor shrank the separation by exactly the /7 the BARE reading
+	 * moved: the loaded side is compression-governed and did not move, so the ratio is NOT
+	 * axis-invariant — the two sides answer to different strengths (TRAPS, strength basis).
+	 * Three is the re-derived floor with 1.5x headroom below the measurement, and it is
 	 * headroom in BOTH directions, because the ceiling is the ten-course wall's own base
-	 * compression at 0.00109, which caps the achievable factor at about 53.
+	 * compression at 0.00109, which caps the achievable factor at about 7.6.
 	 *
 	 * NOTE WHAT THIS IS A BOUND ON. `Worst` for case 15 is the worst joint ANYWHERE in that wall,
 	 * so bounding it above bounds the header's own joint above by the same number, whichever joint
 	 * happens to be carrying the maximum. That is the direction that makes the claim safe against a
 	 * later slice relieving the header further.
 	 */
-	constexpr double MinimumSeparation = 10.0;
+	constexpr double MinimumSeparation = 3.0;
 
 	TestTrue(
 		*FString::Printf(
@@ -3960,18 +4373,61 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
  * the load is parallel to both, so it is shear, split by area between two equal joints:
  *
  *     2667.198625 / (2 x 66.625) / 10000 uu per MPa.cm2  =  0.00200165 MPa
- *     0.00200165 / 0.2 MPa (f_vk0)                       =  0.01000825
+ *     0.00200165 / 0.9 MPa (mean f_v0)                   =  0.0022240556
+ *
+ * (0.01000825 on the retired characteristic f_vk0 = 0.2 — the 2026-08-13 mean re-anchor is a
+ * clean x2/9 on this figure because the capacity is bare cohesion and nothing else moved.)
  *
  * There is no friction to add: a vertical load on a vertical joint puts no compression across it,
  * so the capacity is bare cohesion.
  *
  * AND THE NUMBER DISAGREES WITH THE ONE IN THE BRIEF, WHICH IS WORTH SAYING OUT LOUD. WALL_CASES
- * and CURRENT_STATE both quote 0.0200 for this case, reached by dividing the same load over the
- * same two joints by 0.1 MPa — but 0.1 is f_xk1, the FLEXURAL BOND strength, and the joint here is
- * in shear against f_vk0 = 0.2. The repo's own 0.0200165 (Tests/ConnectionStrengthTest.cpp) is a
- * different quantity again: one brick weight over ONE head joint, which is MOMENTS_DESIGN case
- * (b)'s fixture, and it coincides only because the two errors are each a factor of two. The value
- * asserted here is the one that follows from the published strengths this project actually ships.
+ * and CURRENT_STATE both quoted 0.0200 for this case, reached by dividing the same load over the
+ * same two joints by the flexural bond — but the joint here is in shear against the shear bond.
+ * The value asserted here is the one that follows from the published strengths this project
+ * actually ships.
+ *
+ * =====================================================================================
+ * THE HEIGHTS ARE 12 AND 20 BECAUSE THE HEAD JOINT HAS TO BE THE WORST JOINT AT BOTH,
+ * AND AT THE OLD 10 AND 16 IT WAS NOT. MEASURED 2026-08-14.
+ * =====================================================================================
+ *
+ * `FWallResult::Worst` is the worst joint ANYWHERE in the wall, so this test is only about the
+ * hanging column while the hanging column is what reads worst. It stopped being that at the
+ * mean re-anchor: the head-joint reading is bare cohesion and moved x2/9 with f_v0, while the
+ * bed joint beside the hole (c5/6-c6/6, the seat carrying the brick that half-overhangs the
+ * cut) did not move with it — so the two crossed over and the taller of the old pair was
+ * measuring one joint while the shorter measured a different one on a different axis. The
+ * printed "factor of 2.465" over a 1.6x height ratio was then a comparison of two unrelated
+ * numbers, which is worse than no assertion because it looks like one.
+ *
+ * THE LADDER, MEASURED RATHER THAN ARGUED (worst HEAD against worst BED, one wall per rung):
+ *
+ *      courses   head joint    bed joint c5/6-c6/6   governs
+ *          7     0.00222406    0.00906354            BED
+ *          8     0.00444811    0.00904987            BED
+ *          9     0.00667217    0.00903624            BED
+ *         10     0.00889622    0.00902265            BED    <- the old lower rung, vacuous
+ *         11     0.01112028    0.00900910            head, by 1.23x
+ *         12     0.01334433    0.01038752            head, by 1.28x
+ *         16     0.02224056    0.01720933            head, by 1.29x
+ *         20     0.03113678    0.02395029            head, by 1.30x
+ *         30     0.05337733    0.04045825            head, by 1.32x
+ *
+ * The head reading is (courses - 6) x the per-pair figure to the last bit at every rung — the
+ * cut is in course 5, so a wall of n courses hangs n - 6 bricks over the hole and the model
+ * puts EVERY ONE OF THEM on the pair of head joints at the column's foot. The bed competitor
+ * bottoms out around 0.0090 and then grows sublinearly, so the head joint takes over at ELEVEN
+ * courses and stays ahead by a widening margin. 12 and 20 are the pair: both clear of the
+ * crossing, a 1.667x height ratio, and the margin over the bed competitor asserted below so
+ * this cannot go quietly vacuous a second time.
+ *
+ * WHAT IS RED AND WHAT IS NOT. The absolute rows and the height-independence row are the red —
+ * the model reads 6x and 14x the correct per-pair figure. The row that PASSES is the
+ * characterisation beside them, which pins the wrong answer at exactly (courses - 6) x that
+ * figure: the defect is not "some larger number", it is the whole hanging column's weight
+ * arriving at its foot, and a change that made the model differently wrong has to move that
+ * row rather than hide inside an already-red test.
  *
  * NEEDS A TICKING WORLD: NO.
  */
@@ -3995,12 +4451,24 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 	 */
 	constexpr double UtilisationTolerance = 1e-9;
 
-	/*
-	 * TWO HEIGHTS, THE SAME CUT. Ten courses leaves four bricks hanging above the hole and sixteen
-	 * leaves ten, so a model that concentrates the column on the joints at its foot reads two and a
-	 * half times as much at the taller wall while the correct answer does not move at all.
+	/**
+	 * The course the cut is in, read off Case18Cuts rather than written twice.
+	 *
+	 * A wall of n courses therefore hangs n - (CutCourse + 1) bricks over the hole, and that
+	 * count is what the model multiplies the per-pair figure by. Deriving it from the cut is
+	 * what stops the characterisation below silently meaning something else if the cut moves.
 	 */
-	const int32 Heights[] = { 10, 16 };
+	const int32 CutCourse = Case18Cuts[0].CourseLo;
+
+	/*
+	 * TWO HEIGHTS, THE SAME CUT. Twelve courses leaves six bricks hanging above the hole and
+	 * twenty leaves fourteen, so a model that concentrates the column on the joints at its foot
+	 * reads two and a third times as much at the taller wall while the correct answer does not
+	 * move at all. BOTH ARE PAST THE ELEVEN-COURSE CROSSING where the hanging column's head joint
+	 * overtakes the bed joint beside the hole — see the header's measured ladder, and do not
+	 * lower either rung without re-measuring it.
+	 */
+	const int32 Heights[] = { 12, 20 };
 
 	constexpr int32 HeightCount = static_cast<int32>(UE_ARRAY_COUNT(Heights));
 
@@ -4035,10 +4503,40 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 
 		/*
 		 * THE COLUMN MUST ACTUALLY BE HANGING, or the number below is measuring an ordinary bed
-		 * joint and the whole test is vacuous. The worst joint in a hanging stack-bond wall is a
-		 * head joint: the bottom bed joint of a sixteen-course column reads about 0.0018 against
-		 * 10 MPa, which is a fiftieth of what a head joint reads under the same load.
+		 * joint and the whole test is vacuous. Two assertions rather than one, because the first
+		 * of them was true at the old heights and still let the test go vacuous: knowing that the
+		 * worst joint is a HEAD joint says the column governs, and knowing BY HOW MUCH is what
+		 * fails while the crossing is still one retune away rather than after it has happened.
 		 */
+		double WorstHead = 0.0;
+		double WorstBed = 0.0;
+		int32 WorstBedA = INDEX_NONE;
+		int32 WorstBedB = INDEX_NONE;
+
+		for (int32 Joint = 0; Joint < Wall.Structure.NumConnections(); ++Joint)
+		{
+			const FConnection& Connection = Wall.Structure.GetConnection(Joint);
+
+			if (Connection.HasGiven())
+			{
+				continue;
+			}
+
+			const double Utilisation = Wall.Structure.GetConnectionUtilisation(Joint);
+
+			/* One course index for both ends is a head joint; two is a bed joint. */
+			if (Wall.CourseOf[Connection.PieceA] == Wall.CourseOf[Connection.PieceB])
+			{
+				WorstHead = FMath::Max(WorstHead, Utilisation);
+			}
+			else if (Utilisation > WorstBed)
+			{
+				WorstBed = Utilisation;
+				WorstBedA = Connection.PieceA;
+				WorstBedB = Connection.PieceB;
+			}
+		}
+
 		TestEqual(
 			*FString::Printf(
 				TEXT("%d courses: the wall must still stand, %d piece(s) came down %s"),
@@ -4055,12 +4553,59 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 			Result.WorstPieceA != INDEX_NONE
 				&& Wall.CourseOf[Result.WorstPieceA] == Wall.CourseOf[Result.WorstPieceB]);
 
+		/*
+		 * AND IT MUST GOVERN WITH ROOM TO SPARE. 1.15 is a tripwire, not a physical claim: the
+		 * measured margins are 1.285 at twelve courses and 1.300 at twenty, so this fires while
+		 * there is still a test here rather than after the bed joint has quietly taken over and
+		 * every number below has started describing a different joint. At the OLD ten-course rung
+		 * this ratio was 0.986 and the test was measuring the bed joint.
+		 */
+		constexpr double MinimumHeadOverBed = 1.15;
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%d courses: the hanging column's HEAD joint must govern with margin — it ")
+				TEXT("reads %.8g against the worst BED joint's %.8g at c%d/%g-c%d/%g, a ratio of ")
+				TEXT("%.4g, and below %.2f this test is measuring the wrong joint"),
+				Heights[Index], WorstHead, WorstBed,
+				WorstBedA == INDEX_NONE ? -1 : Wall.CourseOf[WorstBedA],
+				WorstBedA == INDEX_NONE ? -1.0 : Wall.CellOf[WorstBedA],
+				WorstBedB == INDEX_NONE ? -1 : Wall.CourseOf[WorstBedB],
+				WorstBedB == INDEX_NONE ? -1.0 : Wall.CellOf[WorstBedB],
+				WorstBed > 0.0 ? WorstHead / WorstBed : 0.0, MinimumHeadOverBed),
+			WorstBed > 0.0 && WorstHead >= MinimumHeadOverBed * WorstBed);
+
+		/*
+		 * THE RED. Every course the column gains sheds its own weight into its own pair of head
+		 * joints, so the joints at the foot never see more than one brick — the same number at
+		 * any height.
+		 */
 		TestTrue(
 			*FString::Printf(
 				TEXT("%d courses: the hanging column should read %.8g of head-joint shear ")
 				TEXT("capacity, it reads %.8g"),
 				Heights[Index], HangingColumnShearUtilisation, Result.Worst),
 			FMath::IsNearlyEqual(Result.Worst, HangingColumnShearUtilisation, UtilisationTolerance));
+
+		/*
+		 * AND THE WRONG ANSWER IS PINNED AT ITS MEASURED SIZE, exactly as the catalogue's
+		 * `DropsToday` pins a known-red row's drop count. This PASSES, and it is what turns "the
+		 * model reads some larger number" into a named defect: the reading is the per-pair figure
+		 * multiplied by the WHOLE HANGING COLUMN'S brick count, which is the entire content of
+		 * "the model routes a hanging column's load to its foot". A change that made the model
+		 * differently wrong fails here rather than hiding inside the already-red rows above.
+		 */
+		const int32 HangingBricks = Heights[Index] - (CutCourse + 1);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%d courses: CHARACTERISATION of the known red — the model should read the ")
+				TEXT("per-pair figure %.8g times the %d brick(s) hanging over the hole, %.17g, and ")
+				TEXT("it reads %.17g. This row PASSES: it holds the defect at its measured size"),
+				Heights[Index], HangingColumnShearUtilisation, HangingBricks,
+				HangingBricks * HangingColumnShearUtilisation, Result.Worst),
+			FMath::IsNearlyEqual(
+				Result.Worst, HangingBricks * HangingColumnShearUtilisation, UtilisationTolerance));
 	}
 
 	if (bRan[0] && bRan[1])
@@ -4068,14 +4613,21 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 		/*
 		 * THE PROPERTY, ASSERTED WITHOUT REFERENCE TO EITHER VALUE. This holds even if the
 		 * absolute figure above is wrong, and it is the half that a model piling the column onto
-		 * its foot cannot satisfy however it is tuned.
+		 * its foot cannot satisfy however it is tuned. Both rungs are past the eleven-course
+		 * crossing asserted above, so the two numbers compared here are the same joint of the
+		 * same column on the same axis at two heights — which is exactly what the old 10-and-16
+		 * pair had stopped being.
 		 */
 		TestTrue(
 			*FString::Printf(
 				TEXT("HEIGHT-INDEPENDENT: %d courses reads %.8g and %d courses reads %.8g, a ")
-				TEXT("factor of %.4g"),
+				TEXT("factor of %.4g over a height ratio of %.4g — the model reads the column's ")
+				TEXT("whole weight at its foot, so its separation is the ratio of the HANGING ")
+				TEXT("BRICK COUNTS (%d against %d) and not of the heights"),
 				Heights[0], Measured[0], Heights[1], Measured[1],
-				Measured[0] > 0.0 ? Measured[1] / Measured[0] : 0.0),
+				Measured[0] > 0.0 ? Measured[1] / Measured[0] : 0.0,
+				static_cast<double>(Heights[1]) / static_cast<double>(Heights[0]),
+				Heights[0] - (CutCourse + 1), Heights[1] - (CutCourse + 1)),
 			FMath::IsNearlyEqual(Measured[0], Measured[1], UtilisationTolerance));
 	}
 
@@ -4664,14 +5216,18 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	 * set grew" and "the set changed shape" are opposite pieces of news and used to fail in
 	 * identical words.
 	 *
-	 * AND CASES 21 AND 22 ARE DELIBERATELY NOT ON IT, which is the whole reason they were worth
-	 * building. Both are ruled COLLAPSE and the model produces a collapse of the shape they name —
-	 * the cover comes down in breaking passes, the jambs keep their footing — so the predicate
-	 * agrees and the rows are green. They arrived on 2026-08-13 with no scenario row and no level,
-	 * which failed loudly a few lines below ("there is no row to caption") until both landed later
-	 * the same day; nothing about that gap was ever a disagreement about physics.
+	 * CASE 21 JOINED THE SET AT THE 2026-08-14 MEAN RE-ANCHOR FLIP, in the INVERTED direction
+	 * beside 10 and 19: the ruled verdict is COLLAPSE (the hand deep-beam statics at 1.71x the
+	 * mean bond, upheld with the pricing experiments in hand), and at the mean strengths the
+	 * model now STANDS the wall — measured worst 0.93542327561664174, a knife edge 6.5% under
+	 * the line, and on an axis other than the bending the hand check condemns (that tension
+	 * reads ~3.1x below the hand sigma; WHICH other axis is unverified — see the pre-cascade
+	 * block above the case-21 catalogue row) — so no joint gives. The
+	 * disagreement is the composite-relief gap, not the data; the caption admits it. CASE 22 IS DELIBERATELY STILL NOT ON IT: its collapse survived the re-anchor — on a
+	 * knife edge (~1.2x, was 8.2x) — and the model still produces the collapse of the shape the
+	 * row names, so the predicate agrees and the row is green.
 	 */
-	const int32 KnownDisagreements[] = { 10, 19, 20 };
+	const int32 KnownDisagreements[] = { 10, 19, 20, 21 };
 
 	const TArray<FWallCase> Cases = AllWallCases();
 

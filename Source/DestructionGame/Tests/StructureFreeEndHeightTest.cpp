@@ -60,8 +60,18 @@ namespace StructureFreeEndHeightTestSupport
 	 */
 	constexpr double FreeEndForceUnitsPerMPaPerSqCm = 100.0 * 100.0;
 
-	/** EN 1996-1-1 Table 3.2's f_xk1 for general purpose mortar, asserted against the profile. */
-	constexpr double FreeEndMortarTensileMPa = 0.10;
+	/*
+	 * The MEAN flexural bond f_x1 for general-purpose mortar, asserted against the profile
+	 * (re-anchor 2026-08-13; the retired characteristic f_xk1 was EN 1996-1-1's 0.10).
+	 *
+	 * WHAT THE RE-ANCHOR DOES TO THIS LADDER: every reading divides by 7, so the 20-60 course
+	 * rungs fall to ~0.047-0.146 and the extrapolated capacity crossing moves from ~59 courses
+	 * to ~412 — far beyond any buildable wall. The fixture keeps its monotone property and its
+	 * agreement anchor but LOSES its above-1.0 discrimination at any real height; the
+	 * replacement is owed and recorded in CURRENT_STATE (re-design the fixture, e.g. a deeper
+	 * multi-course free-end cut, and MEASURE it — never re-tune this one).
+	 */
+	constexpr double FreeEndMortarTensileMPa = 0.70;
 
 	/** The DEEP BEAM's section, cm3: t*D^2/6 for a wall t thick and D deep. */
 	constexpr double FreeEndCompositeModulusCm3(double WallThicknessCm, double DepthCm)
@@ -154,10 +164,11 @@ namespace StructureFreeEndHeightTestSupport
  * arriving from above at 11.25, so `M = 5.625 + 11.25*(n - 1)` and `e = M/F` tends to 11.25 cm as
  * the column grows. With `D = lambda*e` that is about 39 cm of section however tall the wall gets,
  * so the reading is LINEAR in the column and therefore in the wall's height:
- * `M*W_brick / (10.25*39^2/6 * 10^4 * f_xk1)`, which is about 0.0116 per brick weight. At thirty
- * courses the design reports n = 43.2742 and 0.50636; scaling the column by 39/29 puts forty
- * courses near 0.67, and capacity somewhere past sixty courses. THE DESIGN'S OWN FIGURE IS ~0.68
- * AND IT IS AN EXTRAPOLATION TOO — neither number is measured, which is what this test is for.
+ * `M*W_brick / (10.25*39^2/6 * 10^4 * f_x1)`, which on the mean basis (re-anchor 2026-08-13) is
+ * about 0.00166 per brick weight — a seventh of the characteristic-basis 0.0116, so the thirty-
+ * course rung reads ~0.072, forty ~0.096, and the capacity crossing sits near 412 courses. The
+ * characteristic-basis history (0.50636 at thirty, crossing ~59) is what the lambda window was
+ * measured against; the ladder now discriminates by trend, not by a crossing.
  *
  * IF IT DOES NOT STAND AT FORTY, LAMBDA IS INFEASIBLE AND THAT IS A RULING, NOT A TUNING. The
  * window `COMPOSITE_DEPTH_DESIGN.md` derives is bounded below by this ruling and above by the

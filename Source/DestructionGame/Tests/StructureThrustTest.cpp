@@ -129,15 +129,15 @@ namespace StructureThrustTestSupport
  *     2|sigma_n|/f_c, which is a perfectly plausible small number sitting right next to the one
  *     being asserted. Both are printed and the comparison is a row of its own.
  *
- *   - AND THE ORDERING, WITH A COMFORTABLE MARGIN EITHER SIDE, WHICH IS THE POINT OF 10 AND 20.
- *     ARCHING_DESIGN is explicit that its own 356.3 cm critical span is the least trustworthy
- *     number in the document — a product of the rise choice, the bearing-area choice and a
- *     uniform-load idealisation, "an order-of-magnitude claim dressed up". What IS solid is the
- *     ordering: sliding at the springing governs, compression is a kilometre and a half away, and
- *     the thrust line is inside the kern by construction. So this pins ten cells under capacity
- *     and twenty cells over it and lets the crossover be wherever it falls. The design's own
- *     0.763 and 1.365 are kept only as a factor-of-two cross-check, and it is written so that a
- *     disagreement fails HERE rather than being tuned away.
+ *   - THE ORDERING CHANGED AT THE 2026-08-14 MEAN RE-ANCHOR FLIP: BOTH WIDTHS NOW STAND. Slidingat
+ *     the springing still governs and compression is still a kilometre and a half away, but the
+ *     capacity moved (c 0.20 -> 0.90, mu 0.6 -> 0.75) and at mean strengths this wall affords
+ *     the thrust at any width that fits it — the algebra at the case table shows a ~33-cell
+ *     opening would be needed against a 30-cell wall. Both rows now pin under-capacity readings
+ *     and the re-derived design cross-checks (0.274 and 0.606, re-derived through the design's
+ *     own implied seat stress); the too-wide-to-arch discriminator is OWED A REPLACEMENT
+ *     FIXTURE (thin cover high in a tall wall — see CURRENT_STATE), measured in the green
+ *     phase, never tuned.
  *
  *   - DRY STONE MUST NEVER ARCH, AT ANY SPAN. `ShearCohesionMPa` is exactly 0.0 and friction is
  *     0.7, against a thrust ratio that cannot fall below 0.866 — so the springing reads
@@ -184,19 +184,19 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 	 * imported: a test that read the profile would agree with a wrong profile.
 	 */
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against f_vk0 = 0.2 MPa, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against the mean f_v0 = 0.9 MPa (re-anchor 2026-08-13; Gooch et al. 2023/2025), the profile carries %g"),
 			GeneralPurposeMortar.ShearCohesionMPa),
-		GeneralPurposeMortar.ShearCohesionMPa == 0.2);
+		GeneralPurposeMortar.ShearCohesionMPa == 0.9);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against friction 0.6, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against mean friction 0.75, the profile carries %g"),
 			GeneralPurposeMortar.FrictionCoefficient),
-		GeneralPurposeMortar.FrictionCoefficient == 0.6);
+		GeneralPurposeMortar.FrictionCoefficient == 0.75);
 
 	TestTrue(
-		FString::Printf(TEXT("FIXTURE: derived against a 1.3 MPa shear ceiling, the profile carries %g"),
+		FString::Printf(TEXT("FIXTURE: derived against the mean-basis 2.0 MPa shear ceiling (0.1 x f_b), the profile carries %g"),
 			GeneralPurposeMortar.MaxShearStrengthMPa),
-		GeneralPurposeMortar.MaxShearStrengthMPa == 1.3);
+		GeneralPurposeMortar.MaxShearStrengthMPa == 2.0);
 
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against compressive 10 MPa, the profile carries %g"),
@@ -227,7 +227,8 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 
 	/*
 	 * ===================================================================================
-	 * PART 1 — TEN CELLS STANDS, TWENTY CELLS COMES DOWN, AND THE THRUST IS WHAT DECIDES.
+	 * PART 1 — TWO WIDTHS, AND THE THRUST IS WHAT THE SPRINGINGS MUST AFFORD.
+	 * (Both stand at mean strengths; the characteristic basis had twenty cells falling.)
 	 * ===================================================================================
 	 */
 
@@ -253,8 +254,32 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 
 		/** Whether the design says this opening is too wide for its abutments. */
 		bool bMustComeDown;
+
+		/**
+		 * Whether the COVER (rather than the 0.866 angle) governs d_e here. Decides the H/V
+		 * tolerance: the angle-governed ratio is the exact constant 3/(4 x 0.866) and gets 2%;
+		 * the cover-governed one moves with how span and cover are measured and gets 12%.
+		 * Used to ride on bMustComeDown, which stopped being the same question at the mean
+		 * re-anchor: H/V is geometry and does not move when strengths do.
+		 */
+		bool bCoverGoverns;
 	};
 
+	/*
+	 * MEAN RE-ANCHOR (2026-08-13). The springing capacity is c + mu sigma, and both moved
+	 * (0.20 -> 0.90, 0.6 -> 0.75), so the design cross-checks are re-derived through the
+	 * design's own implied seat stress: 0.763 at ten cells implies sigma = 0.3738 MPa
+	 * (0.86605 sigma / (0.2 + 0.6 sigma) = 0.763), which at the new capacity reads
+	 * 0.86605 x 0.3738 / (0.9 + 0.75 x 0.3738) = 0.274; 1.365 at twenty implies
+	 * sigma = 0.7475, which reads 1.18424 x 0.7475 / (0.9 + 0.5606) = 0.606.
+	 *
+	 * THE TWENTY-CELL COLLAPSE ARM IS THEREFORE GONE: at mean strengths this wall affords the
+	 * thrust at every width that fits it (the same algebra needs H/V >= 1.95, i.e. a ~33-cell
+	 * opening against a 30-cell wall). The file loses its "too wide for its abutments"
+	 * discriminator, and the REPLACEMENT IS OWED, specified in CURRENT_STATE: a wide opening
+	 * under thin cover high in a tall wall, where H/V = 3L/(4 cover) grows without the seat
+	 * stress growing with it — to be laid and MEASURED in the green phase, never tuned.
+	 */
 	const TArray<FThrustCase> Cases = {
 		/*
 		 * TEN CELLS, 225 cm. 0.866 * L is 194.85, which is less than the 285 cm of cover, so the
@@ -263,15 +288,15 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 		 * cover walk of slice 4 exists yet, so the tight ratio below is a fair thing to ask of
 		 * slice 3 on its own.
 		 */
-		{ TEXT("a 10-cell opening"), 10, 9, 0.763, false },
+		{ TEXT("a 10-cell opening"), 10, 9, 0.274, false, false },
 
 		/*
 		 * TWENTY CELLS, 450 cm. 0.866 * L is 389.7, so here the COVER governs at 285 and the
-		 * thrust ratio climbs to 1.184. ARCHING_DESIGN's own 1.365 assumes exactly that. If the
-		 * cover cap is deferred to slice 4 the same joint reads about 1.09 instead — still over
-		 * capacity, so this row still fires, but with far less margin than the design implies.
+		 * thrust ratio climbs to 1.184. On the retired characteristic basis this was the
+		 * over-capacity row (design 1.365, measured ~1.29); at mean strengths it stands at
+		 * ~0.61 and what it pins is the cover-governed H/V and the springing reading.
 		 */
-		{ TEXT("a 20-cell opening"), 20, 4, 1.365, true },
+		{ TEXT("a 20-cell opening"), 20, 4, 0.606, false, true },
 	};
 
 	for (const FThrustCase& Case : Cases)
@@ -592,7 +617,7 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 			 * spans every reasonable reading of both. It does NOT span the 0.866 a deferred cover
 			 * cap would give, which is stated in the message rather than tolerated.
 			 */
-			const double ThrustRatioTolerance = Case.bMustComeDown ? 0.12 : 0.02;
+			const double ThrustRatioTolerance = Case.bCoverGoverns ? 0.12 : 0.02;
 
 			TestTrue(
 				FString::Printf(
@@ -713,7 +738,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 
 		/*
 		 * ===========================================================================
-		 * AND THE OUTCOME: TWENTY CELLS COMES DOWN.
+		 * AND THE OUTCOME, WHERE A ROW CLAIMS ONE.
+		 * (No mortared row claims a collapse since the mean re-anchor — the arm is
+		 * kept for the owed replacement fixture.)
 		 * ===========================================================================
 		 *
 		 * A SINGLE SEVERED JOINT IS NOT A COLLAPSE, so the outcome claim is a count of pieces left
@@ -1039,7 +1066,14 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 			{ TEXT("dry stone, a FIVE-cell opening"), 5, 3 },
 		};
 
-		/** 0.866 / 0.7, and sigma_n has cancelled out of it. */
+		/*
+		 * 0.866 / 0.7 = 1.237215440448697, and sigma_n has cancelled out of it.
+		 *
+		 * MEAN RE-ANCHOR INVARIANT (2026-08-13): dry stone's row does not move — c and
+		 * tension stay exact zeros, mu stays 0.7 — so this identity and everything the
+		 * dry-stone cases read must come back BIT-IDENTICAL when the mortar rows flip.
+		 * If a dry row moves at the flip, the flip touched a row it must not have.
+		 */
 		const double DryStoneSpringingUtilisation =
 			(3.0 / (4.0 * ArchingDepthPerSpan)) / DryStone.FrictionCoefficient;
 

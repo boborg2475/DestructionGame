@@ -10,7 +10,8 @@
 
 /**
  * THE STAIRCASE'S ARITHMETIC, WITH NO WORLD AND NOTHING BROKEN: CUTTING THE VOID PUTS THE BOTTOM
- * OF THE CORBEL AT 0.369 OF CAPACITY AND NOT ONE OF ITS ELEVEN STEPS PAST THE LINE.
+ * OF THE CORBEL AT 0.0527 OF CAPACITY AND NOT ONE OF ITS ELEVEN STEPS PAST THE LINE.
+ * (0.369 before the 2026-08-14 mean re-anchor flip moved the flexural bond 0.10 -> 0.70.)
  *
  * IT USED TO SAY 22.9 AND EIGHT OF ELEVEN, AND THE CHANGE IS THE USER'S RULING OF 2026-08-06
  * RATHER THAN A TUNING. A brick deleted at a free end must not bring the wall down; any rule
@@ -52,9 +53,9 @@
  * WHICH AXIS GOVERNS IS ASSERTED BEFORE ANYTHING IS CLAIMED, AND IT MATTERS FAR MORE THAN IT USED
  * TO. ComputeUtilisation returns the WORST of compression, shear and tension, so a fixture aimed
  * at bending silently measures compression the moment compression is higher. Relieving the opened
- * edge from 22.93 to 0.369 closes a gap that used to be a factor of 92; the squeezed edge is
- * relieved with it — both are read against whichever section is carrying the moment — and the
- * bottom rung now reads 0.369 in tension against 0.00977 in compression. Shear is still exactly
+ * edge closes a gap that used to be a factor of 92; the squeezed edge is relieved with it — both
+ * are read against whichever section is carrying the moment — and the bottom rung now reads
+ * 0.0527 in tension against 0.00977 in compression, a 5.4x margin. Shear is still exactly
  * zero, because gravity is normal to a bed joint. Spelled out rather than assumed, so a change
  * that relieved one edge and not the other fails HERE.
  *
@@ -215,8 +216,10 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 	 * reading is pure bending on the vertical section, M / (t D^2 / 6), with no compression term
 	 * for the deficit to be shared unevenly with — and the MOMENT ladder is exact where the force
 	 * ladder is 2.4e-6 low, because the missing brickwork is load the cone would have delivered
-	 * straight down rather than out on an arm. The bottom rung reads 0.36903147272727271 against a
-	 * hand-derived 0.36903147272727271.
+	 * straight down rather than out on an arm. The bottom rung read 0.36903147272727271 against a
+	 * hand-derived 0.36903147272727271 when this was measured on the characteristic basis; the
+	 * 2026-08-13 mean re-anchor divides both sides by the same 7 (0.0527187818...), so the
+	 * agreement carries over unchanged.
 	 *
 	 * SO 1e-5, WHICH IS FOUR TIMES THE WORST MEASURED DEVIATION AND FIVE ORDERS OF MAGNITUDE
 	 * TIGHTER THAN ANY MODELLING ERROR. A wrong lever arm, a wrong section modulus or a missing
@@ -294,8 +297,8 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 	/*
 	 * NOT ONE JOINT IS OVER CAPACITY, AND THE LADDER IS WHAT MAKES THAT MEAN SOMETHING. "Nothing
 	 * broke" is also true of a wall carrying nothing at all, so the eleven rungs are printed and
-	 * asserted individually: they march 0.058, 0.156, 0.173, 0.195, 0.219, 0.243, 0.268, 0.293,
-	 * 0.318, 0.343, 0.369 — a real ladder, monotonic, six-fold from top to bottom, and every rung
+	 * asserted individually: they march 0.0083, 0.0223, 0.0247, 0.0279, 0.0313, 0.0347, 0.0383,
+	 * 0.0419, 0.0454, 0.0490, 0.0527 — a real ladder, monotonic, six-fold from top to bottom, and every rung
 	 * derived from the depth of masonry standing over it. A model that had deleted the moment
 	 * rather than re-sectioning it would read eleven zeroes and pass a count.
 	 */
