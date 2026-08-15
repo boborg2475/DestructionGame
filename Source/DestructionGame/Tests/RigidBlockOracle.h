@@ -312,6 +312,38 @@ namespace RigidBlockOracle
 		/** Simplex pivots taken, for diagnostics and the determinism assertions. */
 		int32 SimplexIterations = 0;
 
+		/*
+		 * WHAT AN EARLY EXIT WOULD SAVE, MEASURED WITHOUT TAKING ONE. PROMOTION_DESIGN
+		 * §3.2/§5.2 claim most of a standing structure's saving comes from stopping phase 1
+		 * the moment its infeasibility sum reaches tolerance, with no optimality proof. The
+		 * solver still runs phase 1 to OPTIMALITY — an early exit returns a feasible point
+		 * rather than an optimal one, which is a different contract and a decision the
+		 * promotion design has not taken — so these two fields report where the exit COULD
+		 * have fired while every pivot path, lambda* and count stays what it was. The saving
+		 * is (PhaseOnePivots - PivotsToFirstFeasible) / PhaseOnePivots, and
+		 * OracleSlowSweep.RigidBlock.FeasibilityReformulationCost is the row that reads it.
+		 *
+		 * INDEX_NONE rather than zero on both, so "nobody set this" stays loud rather than
+		 * reading as a plausible measurement of no work. A solve that never gets as far as
+		 * building a basis leaves both saying so.
+		 */
+
+		/**
+		 * How many of SimplexIterations phase 1 spent — zero on a problem that started
+		 * feasible, which is every gravity-live pose. INDEX_NONE: not reported.
+		 */
+		int32 PhaseOnePivots = INDEX_NONE;
+
+		/**
+		 * The pivot at which phase 1's infeasibility sum first reached tolerance, and so
+		 * the first moment feasibility was PROVED. INDEX_NONE when it never was: an
+		 * infeasible problem has no such pivot. A REFUSED solve may report either — both
+		 * fields are assigned before the PhaseOneFailure return, so a phase 1 that reached
+		 * feasibility and then refused reports the real pivot indices it reached, and only
+		 * a solve refused BEFORE phase 1 ran leaves them at INDEX_NONE.
+		 */
+		int32 PivotsToFirstFeasible = INDEX_NONE;
+
 		/**
 		 * HOW MUCH PRICING WORK THE SOLVE COST: one count per column evaluated against a
 		 * dual vector — a reduced cost c_j - y.A_j in phase 1 or 2, or a tableau entry

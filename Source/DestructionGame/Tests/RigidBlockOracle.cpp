@@ -842,6 +842,17 @@ namespace RigidBlockOracle
 			 */
 			int32 BlandDegenerateEntries = 0;
 
+			/*
+			 * Instrumentation only — nothing branches on it, AND THAT IS THE CONTRACT OF
+			 * THIS SLICE. The pivot at which phase 1's basic-artificial infeasibility sum
+			 * first came inside tolerance, which is the first moment an early exit COULD
+			 * have fired; the solver keeps going to optimality exactly as before, because
+			 * an early exit returns a feasible point rather than an optimal one and that is
+			 * a different contract nobody has taken. INDEX_NONE means the sum never came
+			 * inside tolerance — an infeasible problem has no such pivot.
+			 */
+			int32 PivotsToFirstFeasible = INDEX_NONE;
+
 			/* Scratch buffers, reused so the hot loops never allocate. */
 			TArray<double> ScratchOrig;
 			TArray<double> ScratchSlot;
@@ -1008,6 +1019,45 @@ namespace RigidBlockOracle
 				++PivotsSinceRefactor;
 			}
 		};
+
+		/**
+		 * PHASE 1'S OBJECTIVE, READ FROM THE BASIS: the sum of the basic artificials'
+		 * values. Zero (within tolerance) is exactly the statement that the original rows
+		 * have an admissible solution.
+		 *
+		 * It is a free function rather than the lambda it used to be because TWO places
+		 * need it — the solve, which decides whether phase 1 runs at all and whether it
+		 * succeeded, and the pivot loop, which records where feasibility was first reached
+		 * — and two transcriptions of one sum is how a measurement quietly measures
+		 * something else. The summation order is over basis slots, unchanged.
+		 */
+		double BasicArtificialInfeasibility(const FStandardForm& Form, const FRevisedState& State)
+		{
+			double Infeasibility = 0.0;
+
+			for (int32 Row = 0; Row < Form.NumRows; ++Row)
+			{
+				if (State.Basis[Row] >= Form.ArtificialStart)
+				{
+					Infeasibility += State.XB[Row];
+				}
+			}
+
+			return Infeasibility;
+		}
+
+		/** The scale the sum above is judged against: relative to the largest basic value. */
+		double InfeasibilityTolerance(const FStandardForm& Form, const FRevisedState& State)
+		{
+			double LargestRhs = 0.0;
+
+			for (int32 Row = 0; Row < Form.NumRows; ++Row)
+			{
+				LargestRhs = FMath::Max(LargestRhs, FMath::Abs(State.XB[Row]));
+			}
+
+			return (1.0 + LargestRhs) * 1.0e-9 * double(Form.NumRows);
+		}
 
 		enum class ESimplexEnd : uint8
 		{
@@ -1285,10 +1335,16 @@ namespace RigidBlockOracle
 		 * whose FTRAN image runs to 1e7. That one change is what turned the two
 		 * opening-ladder refusals into certified answers; the measurements sit with the
 		 * constant.
+		 *
+		 * bWatchArtificialFeasibility IS AN OBSERVATION AND NOTHING ELSE. Phase 1 passes it
+		 * true so the loop can record the pivot at which the problem first read feasible;
+		 * the loop then carries on to optimality exactly as it always has, so every pivot
+		 * path, every lambda* and every count in the suite is unchanged. It costs one walk
+		 * of the basis per pivot, and only until the moment it records.
 		 */
 		ESimplexEnd RunRevisedSimplex(
 			FRevisedState& S, const TArray<double>& Cost, int32 AllowedCols,
-			int32& InOutIterations)
+			int32& InOutIterations, bool bWatchArtificialFeasibility)
 		{
 			const FStandardForm& Form = *S.Form;
 			int32 DegenerateStreak = 0;
@@ -1443,6 +1499,20 @@ namespace RigidBlockOracle
 
 				S.ApplyPivot(Leaving, Entering, S.EnteringW, BestRatio);
 				++InOutIterations;
+
+				/*
+				 * THE EARLY-EXIT SEAM, MEASURED AND NOT TAKEN. The comparison is spelled so
+				 * that a NaN sum records nothing: every comparison against NaN is false, so
+				 * garbage arithmetic leaves the field saying "feasibility was never reached"
+				 * rather than claiming an exit could have fired at this pivot.
+				 */
+				if (bWatchArtificialFeasibility && S.PivotsToFirstFeasible == INDEX_NONE)
+				{
+					if (BasicArtificialInfeasibility(Form, S) <= InfeasibilityTolerance(Form, S))
+					{
+						S.PivotsToFirstFeasible = InOutIterations;
+					}
+				}
 			}
 		}
 	}
@@ -1801,33 +1871,6 @@ namespace RigidBlockOracle
 			return Refuse(EOracleRefusal::PhaseOneFailure);
 		}
 
-		const auto BasicArtificialInfeasibility = [&Form, &State]()
-		{
-			double Infeasibility = 0.0;
-
-			for (int32 Row = 0; Row < Form.NumRows; ++Row)
-			{
-				if (State.Basis[Row] >= Form.ArtificialStart)
-				{
-					Infeasibility += State.XB[Row];
-				}
-			}
-
-			return Infeasibility;
-		};
-
-		const auto InfeasibilityTolerance = [&Form, &State]()
-		{
-			double LargestRhs = 0.0;
-
-			for (int32 Row = 0; Row < Form.NumRows; ++Row)
-			{
-				LargestRhs = FMath::Max(LargestRhs, FMath::Abs(State.XB[Row]));
-			}
-
-			return (1.0 + LargestRhs) * 1.0e-9 * double(Form.NumRows);
-		};
-
 		/* ---- Phase 1: drive the artificials to zero. ---------------------------- */
 		int32 Iterations = 0;
 
@@ -1837,7 +1880,7 @@ namespace RigidBlockOracle
 		 * optimal and running the simplex would only churn degenerate pivots. Dead
 		 * loads put real values on the artificials and phase 1 must genuinely run.
 		 */
-		if (BasicArtificialInfeasibility() > InfeasibilityTolerance())
+		if (BasicArtificialInfeasibility(Form, State) > InfeasibilityTolerance(Form, State))
 		{
 			TArray<double> PhaseOneCost;
 			PhaseOneCost.SetNumZeroed(Form.NumCols);
@@ -1848,10 +1891,12 @@ namespace RigidBlockOracle
 			}
 
 			const ESimplexEnd PhaseOneEnd = RunRevisedSimplex(
-				State, PhaseOneCost, Form.NumCols, Iterations);
+				State, PhaseOneCost, Form.NumCols, Iterations, true);
 			Result.SimplexIterations = Iterations;
 			Result.PricingColumnScans = State.PricingColumnScans;
 			Result.BlandDegenerateEntries = State.BlandDegenerateEntries;
+			Result.PhaseOnePivots = Iterations;
+			Result.PivotsToFirstFeasible = State.PivotsToFirstFeasible;
 
 			if (PhaseOneEnd != ESimplexEnd::Optimal)
 			{
@@ -1864,7 +1909,7 @@ namespace RigidBlockOracle
 				return Refuse(EOracleRefusal::PhaseOneFailure);
 			}
 
-			if (BasicArtificialInfeasibility() > InfeasibilityTolerance())
+			if (BasicArtificialInfeasibility(Form, State) > InfeasibilityTolerance(Form, State))
 			{
 				/*
 				 * The DEAD loads alone admit no equilibrium (lambda = 0 is in the
@@ -1876,6 +1921,18 @@ namespace RigidBlockOracle
 				Result.Lambda = 0.0;
 				return Result;
 			}
+		}
+		else
+		{
+			/*
+			 * The problem was feasible before a single pivot, so phase 1 spent nothing and
+			 * an early exit at pivot zero would have saved nothing. Written as the branch's
+			 * OTHER ARM rather than as an initialiser above the branch: a default of zero
+			 * would let a phase 1 that forgot to report read as "already feasible", which is
+			 * a plausible number where INDEX_NONE is a loud one.
+			 */
+			Result.PhaseOnePivots = 0;
+			Result.PivotsToFirstFeasible = 0;
 		}
 
 		Result.SimplexIterations = Iterations;
@@ -1962,7 +2019,7 @@ namespace RigidBlockOracle
 			PhaseTwoCost[0] = -1.0;
 
 			const ESimplexEnd PhaseTwoEnd = RunRevisedSimplex(
-				State, PhaseTwoCost, Form.ArtificialStart, Iterations);
+				State, PhaseTwoCost, Form.ArtificialStart, Iterations, false);
 			Result.SimplexIterations = Iterations;
 			Result.PricingColumnScans = State.PricingColumnScans;
 			Result.BlandDegenerateEntries = State.BlandDegenerateEntries;
