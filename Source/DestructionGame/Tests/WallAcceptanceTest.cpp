@@ -1954,12 +1954,12 @@ namespace WallAcceptanceTestSupport
 	 *   Until one of them runs, every attribution in this block is a hypothesis and is written as
 	 *   one.
 	 *
-	 * CASE 22 GETS NO ORACLE VERDICT AT ALL, and that is measured rather than assumed: the LP
-	 * refuses it after 546 s and 49,557 pivots with "phase-2 simplex failed" — see its own block
-	 * for why that is not pinned as a sweep row. Production is the same on both rows and it is
-	 * unambiguous: 45 and 254 pieces down, three and two cascade passes, joints 3.8429 and 8.2241
-	 * over capacity before the cascade starts. Nothing here is the zero-pass unroutability that
-	 * decided cases 10 and 19.
+	 * CASE 22 NOW HAS AN ORACLE VERDICT, AND THE REFUSAL THIS PARAGRAPH USED TO RECORD IS GONE
+	 * (2026-08-15): the LP stands it at lambda* = 8.4149459982219277 — see its own block for the
+	 * measurement and for what the row could carry because of it. Production is the same on both
+	 * rows and it is unambiguous: 45 and 254 pieces down, three and two cascade passes, joints
+	 * 3.8429 and 8.2241 over capacity before the cascade starts. Nothing here is the zero-pass
+	 * unroutability that decided cases 10 and 19.
 	 *
 	 * WHERE THE TWO PRE-CASCADE READINGS COME FROM, since neither is a figure this file computes.
 	 * `FWallResult::Worst` is read AFTER the cascade and is therefore a different quantity. Both of
@@ -2176,31 +2176,45 @@ namespace WallAcceptanceTestSupport
 	 * again, not unroutability, and the TWO is what `Acceptance.Wall.Catalogue`'s collapse arm
 	 * asserts on this row: at least one joint has to have given, or this is cases 10 and 19 again.
 	 *
-	 * THE ORACLE HAS NO VERDICT HERE AND THAT IS A MEASUREMENT, NOT AN OMISSION. The rigid-block LP
-	 * REFUSES this fixture, measured once on 2026-08-13: 371 blocks / 900 joints, 49,557 pivots,
-	 * 546 s, `bAnswered` false, and the reason is **"phase-2 simplex failed"** rather than the
-	 * post-solve verification refusal every previous refusal in this project has been. The two
-	 * smaller members of the same family refuse the same way (twelve courses of 22 cells, 218
-	 * blocks / 526 joints, 30,836 pivots, 148 s; and of 30 cells, 290 blocks / 702 joints, 39,988
-	 * pivots, 300 s). SCALE ALONE IS NOT THE EXPLANATION — wall-01's 375 pieces answer at
-	 * lambda* = 272.20 — so what this locates is the eight-course-opening family, not a piece count.
+	 * THE ORACLE HAD NO VERDICT HERE UNTIL 2026-08-15, AND THE REFUSAL THAT KEPT IT SILENT WAS
+	 * STALE. What this block recorded — 371 blocks / 900 joints refused after 49,557 pivots and
+	 * 546 s with "phase-2 simplex failed", and two smaller members of the family refusing the same
+	 * way — was measured on 2026-08-13, at the CHARACTERISTIC strengths, one day before the mean
+	 * re-anchor changed every number the LP reads. Re-measured at today's profiles, this wall
+	 * ANSWERS: **lambda* = 8.4149459982219277, 371 blocks / 900 joints, 88,810 pivots, ~1,197 s,
+	 * `bAnswered` true**, unchanged to the last bit by slice 0a's solver fix (the family's two
+	 * genuine refusals were at 128 and 200 blocks, and closing them moved no pivot on this wall).
 	 *
-	 * WHICH IS WHY IT IS NOT A SWEEP ROW, and that choice is recorded rather than left implicit.
-	 * `ERelation::OracleRefusesAtThisScale` exists for exactly this shape, but it asserts the
-	 * refusal came from verification (`WhyNot` containing "failed verification"), and this one did
-	 * not; pinning it would have cost the opt-in group NINE MINUTES A RUN to assert a sentence the
-	 * machinery does not currently say. The one-time measurement above is the record instead, and
-	 * CURRENT_STATE carries it for the oracle roadmap — a phase-2 failure at 371 blocks beside an
-	 * answered 375-block wall is a numerical finding somebody should chase.
+	 * SO THE ROW'S THIRD METHOD HAS ARRIVED, AND IT DISSENTS. The catalogue rules Collapse, hand
+	 * statics and production agree, and the LP stands the wall at 8.41x its own weight — the same
+	 * shape of disagreement as case 21's (which stands at 17.24), on the same kind of fixture, and
+	 * the rigid-plastic scope limit recorded for that row (DESIGN section 8, 2026-08-13) is the
+	 * standing explanation for this one too until somebody prices it. The verdict does not move:
+	 * PROMOTION_DESIGN section 4 measures why no brittleness treatment plausibly brings a reading
+	 * of this size under 1.0, and case 21's precedent is that the catalogue row stands.
 	 *
-	 * WHAT THE EXTRAPOLATION WOULD HAVE SAID, stated as an extrapolation and NOT as a measurement:
-	 * the cover ladder at 22 cells reads 5.511 / 7.683 / 9.183 at two / four / six courses, and
-	 * lambda* falls roughly as 1/L^2, so eight courses at 777 cm would land near 2.6 — the LP would
-	 * probably stand this one too, by whatever it is that stands case 21. It is worth being clear
-	 * that this is an extrapolation of A CURVE AND NOT OF A MECHANISM: section G's block records
-	 * that the mechanism behind those numbers has not been identified, so nothing here can say the
-	 * two rows would be stood for the same reason. The honest shape is therefore HAND PLUS
-	 * PRODUCTION, said plainly, with the third method absent rather than assumed.
+	 * WHAT A SWEEP ROW WOULD COST AND WHAT IT WOULD SAY, specified rather than built. The row is
+	 * `ERelation::OracleStandsProductionFalls` — the enumerator case 21 already uses — with a
+	 * lambda window around 8.4149459982219277 and production's 254 drops / 0 strands / 2 passes
+	 * beside it, in `RigidBlockOracleSweepTest.cpp`'s wall table. **The price is TWENTY MINUTES a
+	 * run** on an opt-in group that is thirteen minutes today, which is why this is a specification
+	 * and not a row: it would more than double the slow group to add a second reading of a
+	 * disagreement case 21 already pins at a fifth of the cost. Two things must be true before it
+	 * is worth adding — a reason to watch this particular wall rather than case 21, and a solve
+	 * that fits (see below).
+	 *
+	 * AND THE HAZARD THAT COMES WITH THE ANSWER: 88,810 pivots against a MaxPivots of 100,000 is
+	 * 89% of the termination cap. Any pivot-path change — a pricing tweak, another tolerance move —
+	 * could put this wall over it, and the answer would become a refusal by a different route.
+	 * Nothing in the suite watches that number; CURRENT_STATE carries it.
+	 *
+	 * WHAT THE OLD EXTRAPOLATION SAID, kept because it was written down before the measurement and
+	 * is now checkable: the cover ladder at 22 cells reads 5.511 / 7.683 / 9.183 at two / four /
+	 * six courses at the characteristic data, lambda* falls roughly as 1/L^2, and eight courses at
+	 * 777 cm "would land near 2.6 — the LP would probably stand this one too". The direction was
+	 * right and the number was not: the measured 8.41 is 3.2x the extrapolation, on data the
+	 * re-anchor moved underneath it. An extrapolation of a curve is not a prediction of a
+	 * mechanism, which is what that paragraph said about itself and what the measurement confirms.
 	 */
 	const FWallRegion Case22Cuts[] = { { 1, 3, 1.75, 36.25 } };
 	const FWallRegion Case22Falls[] = { { 4, 4, 1.75, 36.25 }, { 5, 11, 6.25, 31.75 } };
@@ -2559,9 +2573,10 @@ namespace WallAcceptanceTestSupport
 		 * CURRENT_STATE).
 		 *
 		 * THE SET'S ONLY OUTCOME PAIR since the 2026-08-12 rulings retired the last of the old
-		 * five. The oracle REFUSES this fixture — measured once, "phase-2 simplex failed" after
-		 * 546 s — so this row's verdict rests on hand statics and production, which is said
-		 * plainly in the CASE 22 block rather than papered over.
+		 * five. The oracle answered this fixture for the first time on 2026-08-15 and STANDS it
+		 * at lambda* = 8.4149459982219277, so the row is a THIRD LP-vs-catalogue disagreement of
+		 * case 21's shape rather than a two-method verdict; the CASE 22 block carries the
+		 * measurement and says what a sweep row would cost.
 		 */
 		Add(22, TEXT("Thirty-five-brick opening, eight courses over"), EVerdict::Collapse,
 			CoveredCourses, 39, Case22Cuts, Case22Falls, Case22Stands,

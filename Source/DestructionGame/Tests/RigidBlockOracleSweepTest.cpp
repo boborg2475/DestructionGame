@@ -228,10 +228,21 @@ namespace RigidBlockSweepTestSupport
 		 * ladder's s=4 (149) answered, that row failed the day the solver was fixed, and it
 		 * was PROMOTED to a measured relation rather than absorbed (2026-08-13 — the
 		 * ratio-test relative pivot floor in RigidBlockOracle.cpp; the ladder now reads
-		 * 5.511 / 7.379 / 9.359 across j=2/3/4). NO ROW USES THIS TODAY. The machinery
-		 * stays because the eight-course-opening family (acceptance case 22) still refuses
-		 * this way at 218+ blocks for a reason that outlived the fix — recorded in
-		 * CURRENT_STATE — and a row pinning that refusal is the next user of it.
+		 * 5.511 / 7.379 / 9.359 across j=2/3/4).
+		 *
+		 * NOTHING USES THIS TODAY, AND NOTHING CAN: since Slice 0a (2026-08-15) NO FIXTURE
+		 * THIS PROJECT OWNS REACHES ANY PHASE-2 REFUSAL ARM. The whole slow group answers,
+		 * and the unbreakable lambda-cap tower terminates Optimal rather than unbounded.
+		 * The claim that stood here until then — that case 22's family still refused at
+		 * 218+ blocks "for a reason that outlived the fix" — was FALSE and had been for a
+		 * day: those readings were taken at the characteristic strengths and expired when
+		 * the mean re-anchor moved the data under them. Case 22 answers at 8.4149459982.
+		 *
+		 * The enumerator stays for the next refusal rather than for a known one, and that
+		 * is a deliberate choice with a cost: this branch is live code nothing drives. The
+		 * cheapest fixture that would drive it again is an ITERATION-CAP refusal, not this
+		 * one — case 22 answers at 88.8% of MaxPivots, so a slightly wider member of its
+		 * family hits the cap deterministically. CURRENT_STATE carries that as owed work.
 		 */
 		OracleRefusesPhaseTwo,
 	};
@@ -1332,6 +1343,97 @@ namespace RigidBlockSweepTestSupport
 				OutWhy = FString::Printf(
 					TEXT("the rung's cut piece %d could not be removed"), Piece);
 
+				return false;
+			}
+		}
+
+		Out = MoveTemp(Laid.Layout.Structure);
+		return true;
+	}
+
+	/**
+	 * THE EIGHT-COURSE-COVER FAMILY — acceptance case 22's shape, parameterised on width.
+	 *
+	 * WHY IT IS A SEPARATE BUILDER AND NOT A PARAMETER ON THE ONE ABOVE. `LadderCoverCourses`
+	 * is held at case 21's two by a file constant, and eleven pinned rungs read it through
+	 * `LadderCoverUndersideZCm`; widening that constant into a parameter would put a default
+	 * argument under every one of them. This family differs from the ladder in exactly one
+	 * dimension — the courses of cover — and its cut is one course band whatever the width,
+	 * so a sibling with its own arithmetic costs less than a shared one with a footnote.
+	 *
+	 * THE SHAPE IS CASE 22'S, DERIVED HERE RATHER THAN TRANSCRIBED. One grounded course, a
+	 * three-course opening cut through courses 1..3, jambs of `JambCells` either side, and
+	 * `CoverCourses` of masonry over it — so `CoursesHigh = 1 + 3 + CoverCourses` and
+	 * `Cells = OpeningCells + 2 * JambCells`. At eight cover courses and a 35-cell opening
+	 * between two-cell jambs that is twelve courses of thirty-nine cells and case 22's own
+	 * `{ 1, 3, 1.75, 36.25 }` region, which the acceptance file writes as a literal.
+	 *
+	 * THE CUT-COUNT PIN IS THE PARITY CHECK. Running bond loses `OpeningCells` whole bricks
+	 * from an even course and one fewer from an odd one, and the cut starts at course 1
+	 * (odd), so it takes (OpeningCells - 1) + OpeningCells + (OpeningCells - 1) bricks. A
+	 * builder that quietly disagreed with the bricklayer would otherwise measure a different
+	 * wall from the one its name claims.
+	 */
+	bool BuildCoveredOpeningWall(
+		int32 CoverCourses, int32 OpeningCells, int32 JambCells,
+		FStructure& Out, FString& OutWhy)
+	{
+		if (CoverCourses < 1 || JambCells < 1 || OpeningCells < 2)
+		{
+			OutWhy = FString::Printf(
+				TEXT("this family needs at least one course of cover, one cell of jamb and ")
+				TEXT("two cells of opening; asked for %d, %d and %d"),
+				CoverCourses, JambCells, OpeningCells);
+
+			return false;
+		}
+
+		DestructionWallCases::FWallSpec Spec;
+		Spec.BrickSizeCm = FVector(SweepBrickLengthCm, SweepBrickWidthCm, SweepBrickHeightCm);
+		Spec.JointThicknessCm = SweepJointCm;
+		Spec.DensityGramsPerCubicCm = SweepClayDensityGramsPerCubicCm;
+		Spec.CoursesHigh = 1 + LadderOpeningCourses + CoverCourses;
+		Spec.Cells = OpeningCells + 2 * JambCells;
+		Spec.Bond = DestructionWallCases::EWallBond::Running;
+		Spec.Strength = DestructionProfiles::GeneralPurposeMortar;
+
+		DestructionWallCases::FWallLayout Laid;
+
+		if (!DestructionWallCases::Build(Spec, Laid))
+		{
+			OutWhy = FString::Printf(
+				TEXT("the wall producer refused a %d-course, %d-cell wall"),
+				Spec.CoursesHigh, Spec.Cells);
+
+			return false;
+		}
+
+		TArray<DestructionWallCases::FWallRegion> Cut;
+
+		Cut.Add({ 1, LadderOpeningCourses,
+			double(JambCells) - 0.25,
+			double(JambCells + OpeningCells - 1) + 0.25 });
+
+		TArray<int32> CutPieces;
+		DestructionWallCases::PiecesInRegions(Laid, Cut, CutPieces);
+
+		const int32 Wanted = 3 * OpeningCells - 2;
+
+		if (CutPieces.Num() != Wanted)
+		{
+			OutWhy = FString::Printf(
+				TEXT("the cut named %d bricks; a three-course opening of %d cells starting ")
+				TEXT("on an odd course wants %d"),
+				CutPieces.Num(), OpeningCells, Wanted);
+
+			return false;
+		}
+
+		for (const int32 Piece : CutPieces)
+		{
+			if (!Laid.Layout.Structure.RemovePiece(Piece))
+			{
+				OutWhy = FString::Printf(TEXT("cut piece %d could not be removed"), Piece);
 				return false;
 			}
 		}
@@ -3433,8 +3535,11 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
  *       FTRAN is then -e_91 exactly — one nonzero, value -1 — so the ratio test finds no
  *       positive entry and the simplex reports Unbounded on a problem the cap row bounds.
  *
- *   (b) A BASIS PIVOTED INTO SINGULARITY — the 99-block rung, and the case-22 family's own
- *       218-block wall. A column nearly dependent on the basis is accepted on a ratio-test
+ *   (b) A BASIS PIVOTED INTO SINGULARITY — the 99-block rung, and a 218-block 12x22 wall
+ *       (recorded here as "case 22's own", which was true at the CHARACTERISTIC strengths
+ *       these readings were taken at; the 2026-08-14 mean re-anchor moved the data and
+ *       case 22 has answered ever since — Slice 0a, 2026-08-15). A column nearly dependent
+ *       on the basis is accepted on a ratio-test
  *       pivot barely over PivotTol = 1e-9; the next clean refactorisation then finds an LU
  *       pivot below SingularPivotTol = 1e-11 and `Factorise` refuses:
  *
@@ -3479,14 +3584,18 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
  * then REMOVED: with the floor in place, reverting the seam to its plain refusal leaves
  * both fixtures answering with bit-identical lambda* and identical pivot counts, so no
  * failing test drove it. The seam therefore still refuses a bounded problem if it is ever
- * reached — CURRENT_STATE books that as the residual mode and as a live candidate for the
- * case-22 family's continuing refusal.
+ * reached — CURRENT_STATE books that as the residual mode. It was ALSO booked here as a
+ * live candidate for case 22's refusal, and Slice 0a refuted that twice over: case 22 does
+ * not refuse, and across the entire covered-opening sweep the seam fired on NO SOLVE. It is
+ * unreached rather than sound, and nothing today can reach it.
  *
- * THE 218-BLOCK CASE-22 RUNG IS DELIBERATELY NOT ASSERTED HERE (143-275 s a solve), and it
- * still refuses after this fix. Also recorded so nobody re-measures it: the fallback EARNS
- * ITS KEEP on that rung — without it the pivot path runs past the 100,000-pivot cap (275 s,
- * no answer) where with it the run terminates in 143 s — so nothing here argues for
- * deleting it.
+ * THE 218-BLOCK RUNG IS DELIBERATELY NOT ASSERTED HERE (143-275 s a solve). It refused
+ * after this fix at the characteristic strengths; at today's mean strengths it answers, as
+ * does case 22's own 371-block wall (lambda* = 8.4149459982219277, 88,810 pivots). Also
+ * recorded so nobody re-measures it: the fallback EARNS ITS KEEP on that rung — without it
+ * the pivot path runs past the 100,000-pivot cap (275 s, no answer) where with it the run
+ * terminates in 143 s — so nothing here argues for deleting it. And a hazard that outlived
+ * the refusal: case 22 now answers at 88.8% of that same cap, with nothing watching it.
  *
  * WHAT THE FIX MUST NOT DO. It must not reach the answer by loosening the post-solve
  * verification gate, and it must not remove the iteration cap, which is the termination
@@ -3791,6 +3900,633 @@ bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
 	CheckBracketed(4, 3, 5,
 		TEXT("more jamb is more bearing and more weight over it, and this ladder reads "
 			"7.379 at three cells and 11.115 at five"));
+
+	return true;
+}
+
+/**
+ * ====================================================================================
+ * A REFUSAL MUST NAME WHICH TERMINATION PRODUCED IT — slice 0a's first red.
+ * ====================================================================================
+ *
+ * WHAT IS UNDER TEST, IN ONE SENTENCE. When `SolveRigidBlock` refuses, the result must
+ * carry a machine-readable reason that DISTINGUISHES the terminations it can refuse from —
+ * a hit iteration cap, a spurious unbounded ray and a numerical failure being three
+ * different events with three different fixes — rather than collapsing them, as today, into
+ * the one sentence "phase-2 simplex failed".
+ *
+ * WHY IT IS A BEHAVIOUR AND NOT A COMMENT. That collapse has cost two instrumented builds
+ * inside a week: the 2026-08-13 phase-2 diagnosis needed one to tell mode (a) from mode (b)
+ * on the rungs above, and slice 0a needed a second to find out which arm this family reaches
+ * now. It also blocks the promotion design's own risk experiment — §11 R4's cheapest test is
+ * "a run of the whole catalogue at production scale COUNTING REFUSALS BY REASON, once
+ * `WhyNot` distinguishes them", and §5.6 requires production to count fallbacks by reason as
+ * a quality metric. A sentence is a poor thing to count by, which is why the reason is an
+ * enumerator and the sentence is derived from it rather than the other way round.
+ *
+ * ------------------------------------------------------------------------------------
+ * THE ASSERTION, AND WHY IT IS SHAPED THIS WAY
+ * ------------------------------------------------------------------------------------
+ *
+ * DISTINCTNESS IS ASSERTED OVER THE WHOLE TAXONOMY AND NEEDS NO FIXTURE. Only ONE of the six
+ * refusing arms is reachable from a fixture this project owns — validation — so a test built
+ * only out of fixtures could not say anything at all about the arms the diagnosis actually had
+ * to tell apart. The pairwise-distinct sweep over the enumerators says it for all six, costs
+ * nothing, and is the assertion a constant string cannot satisfy.
+ *
+ * AND THE TAXONOMY IS TIED TO REALITY BY THE FIXTURES BESIDE IT, because a set of distinct
+ * strings nobody ever reports is worth as little as one string reported for everything. Each
+ * fixture row pins the reason it must produce and cross-checks it against something
+ * observable: the answering rung must report None with an empty sentence, and the poisoned
+ * problem must report InvalidProblem *and print its phrase*, which is the check that the
+ * enumerator and the sentence are one statement rather than two that can drift apart.
+ *
+ * THE PHASE-2 ROW WAS A PINNED CANARY, IT FIRED THE DAY IT WAS WRITTEN, AND IT IS GONE
+ * (2026-08-15). It solved the 8-cell / 128-block wall below and pinned it REFUSING with
+ * PhaseTwoNumericalFailure, under the standing instruction that the day the solver answered
+ * it the row must be re-pointed at whatever still refuses, or deleted if nothing does. Its
+ * sibling `PhaseTwoMustNotRefuseTheCoveredOpeningFamily` was made green the same day (the
+ * ratio test's `RelativePivotTol` 1e-11 -> 1e-9), the canary fired exactly as designed, and
+ * the check its instruction demanded before deletion was run: **no fixture this project owns
+ * reaches any phase-2 arm now**. The whole `OracleSlowSweep` group answers every row, and the
+ * one fixture that could reach an unbounded ray — the unbreakable lambda-cap tower — is
+ * bounded by the cap row and terminates Optimal. So the row was deleted rather than weakened
+ * into "it answers now", which would have cost 75 s of solve to assert what the control above
+ * already asserts in a second.
+ *
+ * WHAT THAT COSTS, RECORDED RATHER THAN GLOSSED: the three PhaseTwo enumerators and
+ * PhaseOneFailure and VerificationFailure are now proven DISTINCT but are reported by no
+ * fixture, so nothing here would catch a site that set the wrong one of them. CURRENT_STATE
+ * carries the owed replacement — a fixture that genuinely reaches a phase-2 arm, which the
+ * LU/eta factorisation fuzz specified there is the natural home for, since it is also the only
+ * planned exerciser of `ESimplexEnd::NumericalFailure`.
+ *
+ * ------------------------------------------------------------------------------------
+ * WHAT WAS MEASURED, 2026-08-15, AND WHAT IT CONTRADICTED
+ * ------------------------------------------------------------------------------------
+ *
+ * CURRENT_STATE proposed the unbreakable lambda-cap fixture and the case-22 wall as "the two
+ * fixtures that reach different arms". The first half is WRONG and the measurement says so:
+ * the cap row BOUNDS that LP, so the unbreakable tower terminates Optimal at lambda* =
+ * LambdaCap and refuses nothing at all (`Oracle.RigidBlock.ValidationCatalogue` pins it as an
+ * ANSWER). It reaches an unbounded ray only under mutation M5, with the cap row deleted, and
+ * a mutation is not a fixture.
+ *
+ * WHAT THAT FAMILY REACHED, instrumented and then reverted: phase 2 returned NumericalFailure,
+ * from the periodic refactorisation inside the pivot loop, because `Factorise` found an LU
+ * pivot under SingularPivotTol in the last few columns of the basis:
+ *
+ *     8-cell opening (128 blocks) : position 4018/4021, col 6119, pivot 4.3758616521949456e-12
+ *     16-cell opening (200 blocks): position 6322/6325, col 9639, pivot 4.928959752317684e-12
+ *
+ * NOT the spurious-unbounded arm (no solve in the family reached it) and NOT NB-7 (the
+ * artificial pivot-out pass took no pivot under 1e-6 absolute or 1e-7 relative on either
+ * wall). Both recorded suspects were refuted; the diagnosis, and the repair that closed it the
+ * same day, are in `PhaseTwoMustNotRefuseTheCoveredOpeningFamily`'s header. When this test
+ * pinned the 8-cell wall's refusal it reported reason 5 — PhaseTwoNumericalFailure — which is
+ * the instrumented finding independently reproduced by the shipped taxonomy, and the only
+ * reading of a phase-2 arm this suite has ever taken.
+ *
+ * COST: two solves under a second each, plus the taxonomy sweep, which needs none.
+ * NEEDS A TICKING WORLD: NO — producers and arithmetic, no cascade and no UWorld.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRigidBlockRefusalReasonTest,
+	"OracleSlowSweep.RigidBlock.RefusalNamesItsReason",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRigidBlockRefusalReasonTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockSweepTestSupport;
+
+	/* --- 1. The taxonomy: every refusing reason reads differently from every other. --- */
+
+	struct FReason
+	{
+		EOracleRefusal Value;
+		const TCHAR* Name;
+	};
+
+	const FReason Reasons[] =
+	{
+		{ EOracleRefusal::InvalidProblem,           TEXT("InvalidProblem") },
+		{ EOracleRefusal::PhaseOneFailure,          TEXT("PhaseOneFailure") },
+		{ EOracleRefusal::PhaseTwoIterationCap,     TEXT("PhaseTwoIterationCap") },
+		{ EOracleRefusal::PhaseTwoUnbounded,        TEXT("PhaseTwoUnbounded") },
+		{ EOracleRefusal::PhaseTwoNumericalFailure, TEXT("PhaseTwoNumericalFailure") },
+		{ EOracleRefusal::VerificationFailure,      TEXT("VerificationFailure") },
+	};
+
+	TestTrue(
+		TEXT("an ANSWERED result has no reason, so RefusalText(None) is empty — the reason "
+			"and bAnswered must be checkable against each other, which they cannot be if "
+			"None carries a sentence of its own"),
+		RefusalText(EOracleRefusal::None).IsEmpty());
+
+	for (const FReason& Reason : Reasons)
+	{
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s must have a reason phrase — an unnamed refusal is the state this "
+					"test exists to end"),
+				Reason.Name),
+			!RefusalText(Reason.Value).IsEmpty());
+	}
+
+	constexpr int32 NumReasons = UE_ARRAY_COUNT(Reasons);
+
+	for (int32 First = 0; First < NumReasons; ++First)
+	{
+		for (int32 Second = First + 1; Second < NumReasons; ++Second)
+		{
+			const FString FirstText = RefusalText(Reasons[First].Value);
+			const FString SecondText = RefusalText(Reasons[Second].Value);
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s and %s must not read the same, and both read \"%s\" — two "
+						"terminations with one sentence between them is exactly what forced "
+						"an instrumented build twice this week"),
+					Reasons[First].Name, Reasons[Second].Name, *FirstText),
+				FirstText != SecondText);
+		}
+	}
+
+	/* --- 2. An answered fixture reports no reason at all. ---------------------------- */
+
+	FStructure Standing;
+	FString StandingWhy;
+
+	/*
+	 * The builder's reason is read into a local BEFORE the message is built: folding the
+	 * call into the Printf's argument list is unsequenced, and the message would be made
+	 * from the empty string the reason had before the call ran (TRAPS records this).
+	 */
+	const bool bStandingLaid = BuildCoveredOpeningWall(2, 18, 2, Standing, StandingWhy);
+
+	if (TestTrue(
+			*FString::Printf(
+				TEXT("the answering control must be laid (it said: %s)"), *StandingWhy),
+			bStandingLaid))
+	{
+		FOracleProblem Problem;
+		FString BridgeWhy;
+
+		const bool bBridged = BuildRigidBlockProblem(Standing, Problem, BridgeWhy);
+
+		if (TestTrue(
+				*FString::Printf(
+					TEXT("the answering control must bridge (it said: %s)"), *BridgeWhy),
+				bBridged))
+		{
+			const FOracleResult Answered = SolveRigidBlock(Problem);
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("CONTROL (case 21's own rung, 83 blocks): it answers today at "
+						"lambda* ~17.24 and must keep answering, or every row below is "
+						"asserting against a solver that refuses everything (it said: %s)"),
+					*Answered.WhyNot),
+				Answered.bAnswered);
+
+			TestTrue(
+				TEXT("an answered result carries EOracleRefusal::None — the reason field and "
+					"bAnswered must agree, and this is the arm that catches a reason left "
+					"set from a previous solve"),
+				Answered.Refusal == EOracleRefusal::None);
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("an answered result carries no sentence either, and carried \"%s\""),
+					*Answered.WhyNot),
+				Answered.WhyNot.IsEmpty());
+		}
+	}
+
+	/* --- 3. A refusal BEFORE the simplex names validation, not a simplex arm. --------- */
+
+	{
+		FStructure Poisonable;
+		FString PoisonWhy;
+
+		const bool bPoisonableLaid =
+			BuildCoveredOpeningWall(2, 18, 2, Poisonable, PoisonWhy);
+
+		if (TestTrue(
+				*FString::Printf(
+					TEXT("the poisoned fixture must be laid (it said: %s)"), *PoisonWhy),
+				bPoisonableLaid))
+		{
+			FOracleProblem Problem;
+			FString BridgeWhy;
+
+			if (BuildRigidBlockProblem(Poisonable, Problem, BridgeWhy)
+				&& Problem.Joints.Num() > 0)
+			{
+				/* A non-unit normal: refused by ValidateProblem, so nothing is solved. */
+				Problem.Joints[0].NormalX = 0.5;
+				Problem.Joints[0].NormalZ = 0.5;
+
+				const FOracleResult Refused = SolveRigidBlock(Problem);
+
+				TestTrue(
+					TEXT("a poisoned problem is still refused"),
+					!Refused.bAnswered);
+
+				TestTrue(
+					*FString::Printf(
+						TEXT("a validation refusal reports InvalidProblem and reported %d — "
+							"the reason must separate 'the problem was never solvable' from "
+							"'the solver could not finish', which is the coarsest split in "
+							"the taxonomy and the one a caller branches on first"),
+						int32(Refused.Refusal)),
+					Refused.Refusal == EOracleRefusal::InvalidProblem);
+
+				TestTrue(
+					*FString::Printf(
+						TEXT("and the sentence it prints carries that reason's phrase: "
+							"\"%s\" must contain \"%s\""),
+						*Refused.WhyNot, *RefusalText(EOracleRefusal::InvalidProblem)),
+					Refused.WhyNot.Contains(RefusalText(EOracleRefusal::InvalidProblem)));
+			}
+		}
+	}
+
+	return true;
+}
+
+/**
+ * ====================================================================================
+ * THE EIGHT-COURSE-COVER FAMILY STILL REFUSES A BOUNDED, FEASIBLE PROBLEM — AND IT IS
+ * NOT THE WALL THE RECORD NAMES.
+ * ====================================================================================
+ *
+ * WHAT IS UNDER TEST, IN ONE SENTENCE. An 8-cell opening under eight courses of cover —
+ * 128 blocks, SMALLER than the 137- and 218-block members of its own family that answer
+ * beside it in this very run — must return an answer rather than "phase-2 simplex failed",
+ * and the answer must land between the two ladder neighbours that bracket it.
+ *
+ * THIS IS THE SAME DEFECT AS `PhaseTwoMustNotRefuseABoundedProblem`'S, ONE NOTCH DOWNSTREAM,
+ * AND THAT TEST IS GREEN. The 2026-08-13 fix (`RelativePivotTol`, a ratio-test pivot floor of
+ * 1e-11 of the entering column's own largest magnitude) closed the 99- and 107-block rungs
+ * and they stay closed; a floor of 1e-11 is not enough for this family. Its header carries
+ * the full evidence chain for the earlier round and is the thing to read first; this one
+ * records only what is new.
+ *
+ * ------------------------------------------------------------------------------------
+ * THE RECORD WAS STALE, AND THE MEASUREMENT THAT SAYS SO (2026-08-15)
+ * ------------------------------------------------------------------------------------
+ *
+ * CURRENT_STATE, PROMOTION_DESIGN §6/§10 and `WallAcceptanceTest`'s case-22 block all name
+ * the refusing fixtures as the 218-, 290- and 371-block members of this family, measured
+ * 2026-08-13. Those measurements were taken at the CHARACTERISTIC strengths, one day before
+ * the mean re-anchor changed every number in the LP's data. Re-measured at today's profiles,
+ * the whole family sweeps like this (opening cells between two-cell jambs, eight courses of
+ * cover, one course below — the whole family in one run):
+ *
+ *     opening   blocks  joints   lambda*                 pivots   secs
+ *        2        74     174     537.60206692224722       6,578    4.9
+ *        4        92     218     384.91922849080379      10,455   15.7
+ *        5       101     240     298.0111013112051       13,997   26.1
+ *        6       110     262     236.97383758407059      16,353   39.5
+ *        7       119     284     190.53602223331399      17,983   52.3
+ *        8       128     306     REFUSED                 17,316   40.1
+ *        9       137     328     127.7264657209236       22,753   89.7
+ *       10       146     350     105.64778136561756      24,635  106.9
+ *       12       164     394      75.120451403407529     29,261  157.5
+ *       14       182     438      55.975345056998457     30,848  166.0
+ *       16       200     482     REFUSED                  6,244   18.3
+ *       18       218     526      33.651690962702006     37,705  254.9
+ *       26       290     702      15.622461777098057     60,721  555.1
+ *       35       371     900       8.4149459982219277    88,810 1196.9
+ *
+ * SO ALL THREE WALLS THE RECORD NAMES ANSWER TODAY — including acceptance case 22 itself,
+ * the 35-cell opening at 371 blocks and 900 joints. The blockers are TWO ISOLATED HOLES at
+ * 128 and 200 blocks, sitting inside a smooth monotone curve their own neighbours certify
+ * from both sides. That is a stronger statement of the defect than the stale record made,
+ * not a weaker one: 128 blocks is a THIRD of the size at which the refusal was thought to
+ * start, and sits well inside any region the promotion design's §5.3 sandwich could use.
+ *
+ * ONE THING THE SWEEP FOUND THAT IS NOT THIS DEFECT AND MUST NOT BE READ AS FIXED WITH IT:
+ * case 22 answers after 88,810 pivots against a MaxPivots of 100,000, i.e. at 89% of the
+ * termination cap. A pivot-path change of any kind could put that wall over the cap and
+ * into a DIFFERENT refusal. CURRENT_STATE carries it.
+ *
+ * WHY THE PROBLEM IS BOUNDED AND FEASIBLE, so that refusing is a defect rather than
+ * correctness. Bounded: the lambda-cap row bounds every problem this oracle assembles.
+ * Feasible: lambda = 0 with every contact force zero satisfies a gravity-live problem's
+ * equalities, and the two neighbours either side of the hole are answered at lambda* = 190.5
+ * and 127.7 by the same solver in the same run — a family whose members vary continuously in
+ * one dimension does not contain an infeasible island at 8 cells between feasible ones at 7
+ * and 9.
+ *
+ * ------------------------------------------------------------------------------------
+ * THE ARM, MEASURED — AND BOTH RECORDED SUSPECTS ARE REFUTED
+ * ------------------------------------------------------------------------------------
+ *
+ * Instrumented 2026-08-15, then reverted. Phase 2 returns NumericalFailure, from the periodic
+ * refactorisation inside the pivot loop: `Factorise` finds an LU pivot at or under
+ * SingularPivotTol = 1e-11 in the last few columns of the basis and refuses it.
+ *
+ *     8-cell opening (128 blocks) : position 4018 of 4021, col 6119, pivot 4.3758616521949456e-12
+ *    16-cell opening (200 blocks) : position 6322 of 6325, col 9639, pivot 4.928959752317684e-12
+ *
+ * Both refusals are bit-reproducible across runs, and both land within three columns of the
+ * end of the factorisation.
+ *
+ *   - THE SPURIOUS-UNBOUNDED ARM IS NOT REACHED. CURRENT_STATE records it as the first live
+ *     candidate for this family. Instrumentation at the `Leaving == INDEX_NONE` seam fired
+ *     on NO solve in the whole sweep above. It remains unreached-rather-than-sound, and this
+ *     family is not the fixture that would license reinstating its repair.
+ *   - NB-7 IS NOT IT EITHER. The artificial pivot-out pass was instrumented to print any
+ *     pivot under 1e-6 absolute or 1e-7 of its own column's largest magnitude — the exact
+ *     defect class the 2026-08-13 fix closed one level up — and printed nothing on either
+ *     refusing wall. Its absolute `PivotTol` scan is still worth tightening on its own
+ *     merits, but it is not what refuses these two walls.
+ *
+ * ------------------------------------------------------------------------------------
+ * TWO ONE-CONSTANT EXPERIMENTS THAT BOTH REACH THE ANSWER — SO THE ANSWER EXISTS
+ * ------------------------------------------------------------------------------------
+ *
+ * Run 2026-08-15 on both refusing walls, each a single constant changed and then reverted.
+ * NEITHER IS PROPOSED AS THE FIX; they are what turns "the LP ought to be answerable" into
+ * "here is the answer, twice, by two different pivot paths".
+ *
+ *   RelativePivotTol 1e-11 -> 1e-9 (the ratio test's floor, one notch tighter than the
+ *   2026-08-13 fix):  128 blocks answers lambda* = 155.63200561101226 in 77 s / 21,394
+ *   pivots; 200 blocks answers 43.132916253688222 in 237 s / 34,825 pivots.
+ *
+ *   RefactoriseEvery 64 -> 16 (the basis rebuilt four times as often, the ratio test
+ *   untouched):  128 blocks answers 155.63200342392039 in 192 s / 20,606 pivots; 200
+ *   blocks answers 43.132560867194137 in 745 s / 34,272 pivots.
+ *
+ * THE TWO AGREE TO 1.4e-8 AND 8.2e-6 RELATIVE, on visibly different pivot paths (20,606 vs
+ * 21,394 pivots), and both cleared the 1e-6 post-solve verification gate. That pair is what
+ * licenses the certified windows below on a fixture the shipped solver has never solved.
+ * The 128-block reading also lands on the family's own L^-2.4 interpolation between its
+ * neighbours (~156) — a third derivation, from the physics rather than the solver.
+ *
+ * WHAT THE PAIR SAYS ABOUT THE CAUSE, AND WHAT IT DOES NOT. Both levers attack the same
+ * thing from opposite ends: one refuses weaker pivots into the basis, the other stops the
+ * eta file accumulating as much error before the basis is rebuilt. Their agreement says the
+ * basis is being driven into LU-singularity by ARITHMETIC OF THE SOLVER'S OWN MAKING and not
+ * by anything in the wall. Which lever is the right fix is deliberately left open: a third
+ * reading is that the FACTORISATION's fixed column order is the weak link — it pivots left
+ * to right through the basis with no fill-reducing or stability-driven ordering, which would
+ * explain why both failures land within three columns of the end — and that points at the
+ * Markowitz ordering already on the roadmap. The window and the bracket below are what stop
+ * a fix that merely stops refusing.
+ *
+ * WHAT THE FIX MUST NOT DO, carried over verbatim from the sibling test because every clause
+ * still applies: it must not reach the answer by loosening the post-solve verification gate;
+ * it must not remove the iteration cap, which is the termination proof; and it must not scale
+ * the OPTIMALITY tolerance by ||y||, which would report a lambda* too LOW that verification
+ * would certify happily.
+ *
+ * ------------------------------------------------------------------------------------
+ * A WINDOW AND A BRACKET, AND WHY BOTH
+ * ------------------------------------------------------------------------------------
+ *
+ * THE WINDOW IS +/-1e-4 RELATIVE, TEN TIMES THIS FILE'S USUAL 2e-5, and the looseness is
+ * deliberate rather than lazy: the two certified readings came from two DIAGNOSTIC variants,
+ * not from the fixed solver, so whatever pivot path the real fix takes is a third path this
+ * pair has not sampled — and the file's own PARTIAL-PRICING RE-PIN note records lambda* at
+ * 100+ blocks as reproducible only to ~1e-5 across paths. 1e-4 is ten times that and still
+ * four orders tighter than the bracket, so it can catch a wrong answer without flapping on
+ * a right one. Tighten it to 2e-5 once the fixed solver has produced a reading of its own.
+ *
+ * THE BRACKET SAYS SOMETHING THE WINDOW CANNOT, which is why it sits beside it rather than
+ * being replaced by it: lambda* falls monotonically with the opening across every rung of
+ * this family, so an 8-cell opening cannot be stronger than a 7-cell one nor weaker than a
+ * 9-cell one — a statement about masonry, closed by two neighbours measured in THIS run by
+ * THIS binary, which is what stops a number carried in from another run doing the work.
+ *
+ * THE PARITY CONFOUND IS PRESENT AND MEASURED SMALL. TRAPS records that running-bond opening
+ * families interleave two fixtures by course parity; here the cut's COURSES are fixed at
+ * 1..3 and only the opening's width alternates parity, and the sweep above shows the odd
+ * rungs (5, 7, 9) sitting smoothly among the even ones with no zig-zag at all. The bracket
+ * spans one cell either side, which is a factor of 1.49 wide — three orders of magnitude
+ * more than any parity step could be.
+ *
+ * AND EVERY RUNG CARRIES A BLOCK-AND-JOINT-COUNT PIN, per TRAPS: a lambda window and a
+ * bracket both pass on a rung that quietly built its neighbour's wall, and only a size pin
+ * caught the recorded rung-flip.
+ *
+ * THE SECOND REFUSER (16 cells, 200 blocks) CARRIES A WINDOW BUT NO BRACKET, because its
+ * own neighbours cost 166 s and 255 s and the bracket's value — that a number carried in
+ * from another run is not doing the work — is already bought once by the 8-cell trio. Two
+ * certified readings 8.2e-6 apart are what carry it, and it is here because one refusing
+ * fixture would leave the defect looking like an accident of one wall.
+ *
+ * COST: four solves, ~200 s (52 + 40 + 90 + 18 while the two refusers refuse early; expect
+ * ~420 s once they answer, which is the price of the fix being verified rather than claimed).
+ * NEEDS A TICKING WORLD: NO.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRigidBlockCoveredOpeningRefusalTest,
+	"OracleSlowSweep.RigidBlock.PhaseTwoMustNotRefuseTheCoveredOpeningFamily",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRigidBlockCoveredOpeningRefusalTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockSweepTestSupport;
+
+	struct FRung
+	{
+		const TCHAR* Name = nullptr;
+		int32 OpeningCells = 0;
+
+		int32 WantBlocks = 0;
+		int32 WantJoints = 0;
+
+		/** A loose sanity window on an answering neighbour; both zero on the rung under test. */
+		double SanityLo = 0.0;
+		double SanityHi = 0.0;
+
+		/**
+		 * The midpoint of TWO CERTIFIED READINGS taken by different pivot paths, +/-1e-4
+		 * relative. Both zero where no such pair exists. See the header for the two
+		 * diagnostic variants that produced them and for why the window is 10x this file's
+		 * usual 2e-5 rather than equal to it.
+		 */
+		double CertifiedLo = 0.0;
+		double CertifiedHi = 0.0;
+	};
+
+	const FRung Rungs[] =
+	{
+		{ TEXT("covered opening, 7 cells (the strong-lambda neighbour)"),
+			7, 119, 284, 188.6, 192.5, 0.0, 0.0 },
+		{ TEXT("covered opening, 8 cells (THE 128-BLOCK REFUSER)"),
+			8, 128, 306, 0.0, 0.0, 155.6164, 155.6476 },
+		{ TEXT("covered opening, 9 cells (the weak-lambda neighbour)"),
+			9, 137, 328, 126.4, 129.0, 0.0, 0.0 },
+		{ TEXT("covered opening, 16 cells (THE 200-BLOCK REFUSER)"),
+			16, 200, 482, 0.0, 0.0, 43.1284, 43.1371 },
+	};
+
+	constexpr int32 NumRungs = UE_ARRAY_COUNT(Rungs);
+
+	FOracleResult Results[NumRungs];
+	bool bMeasured[NumRungs] = {};
+
+	for (int32 Index = 0; Index < NumRungs; ++Index)
+	{
+		const FRung& Rung = Rungs[Index];
+
+		FStructure Structure;
+		FString BuildWhy;
+
+		if (!BuildCoveredOpeningWall(8, Rung.OpeningCells, 2, Structure, BuildWhy))
+		{
+			AddError(FString::Printf(
+				TEXT("%s: FIXTURE could not be laid: %s"), Rung.Name, *BuildWhy));
+
+			continue;
+		}
+
+		FOracleProblem Problem;
+		FString BridgeWhy;
+
+		/* The bridge's reason is read into a local first — argument order is unsequenced. */
+		const bool bBridged = BuildRigidBlockProblem(Structure, Problem, BridgeWhy);
+
+		if (!TestTrue(
+				*FString::Printf(
+					TEXT("%s: the bridge must represent this fixture (it said: %s)"),
+					Rung.Name, *BridgeWhy),
+				bBridged))
+		{
+			continue;
+		}
+
+		const double Started = FPlatformTime::Seconds();
+		Results[Index] = SolveRigidBlock(Problem);
+		const double Seconds = FPlatformTime::Seconds() - Started;
+		bMeasured[Index] = true;
+
+		const FString Line = FString::Printf(
+			TEXT("COVERED %s: blocks=%d joints=%d answered=%d lambda=%.17g pivots=%d ")
+			TEXT("bland=%d secs=%.2f%s%s"),
+			Rung.Name, Problem.Blocks.Num(), Problem.Joints.Num(),
+			Results[Index].bAnswered ? 1 : 0, Results[Index].Lambda,
+			Results[Index].SimplexIterations, Results[Index].BlandDegenerateEntries, Seconds,
+			Results[Index].WhyNot.IsEmpty() ? TEXT("") : TEXT(" | whynot: "),
+			Results[Index].WhyNot.IsEmpty() ? TEXT("") : *Results[Index].WhyNot);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+		AddInfo(Line);
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: the rung must be %d blocks and was %d — a size pin is the only ")
+				TEXT("thing that catches a rung quietly building its neighbour's wall"),
+				Rung.Name, Rung.WantBlocks, Problem.Blocks.Num()),
+			Problem.Blocks.Num(), Rung.WantBlocks);
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: the rung must carry %d joints and carried %d"),
+				Rung.Name, Rung.WantJoints, Problem.Joints.Num()),
+			Problem.Joints.Num(), Rung.WantJoints);
+	}
+
+	/*
+	 * THE NEIGHBOURS FIRST: they answer today, and their loose sanity windows are what stop
+	 * the bracket below being satisfiable by three pieces of garbage.
+	 */
+	for (int32 Index = 0; Index < NumRungs; ++Index)
+	{
+		const FRung& Rung = Rungs[Index];
+
+		if (!bMeasured[Index] || Rung.SanityHi <= 0.0)
+		{
+			continue;
+		}
+
+		if (!TestTrue(
+				*FString::Printf(
+					TEXT("%s: this neighbour answers today and must keep answering (it said: ")
+					TEXT("%s)"),
+					Rung.Name, *Results[Index].WhyNot),
+				Results[Index].bAnswered))
+		{
+			continue;
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: lambda* %.17g must stay inside the loose sanity window ")
+				TEXT("[%.6g, %.6g] — a deliberately slack floor under the bracket, a thousand ")
+				TEXT("times wider than the ~1e-5 a changed pivot path moves it"),
+				Rung.Name, Results[Index].Lambda, Rung.SanityLo, Rung.SanityHi),
+			Results[Index].Lambda >= Rung.SanityLo && Results[Index].Lambda <= Rung.SanityHi);
+	}
+
+	/* --- THE DEFECT ITSELF ----------------------------------------------------------- */
+
+	/*
+	 * EVERY REFUSER MUST ANSWER, AND MUST ANSWER THE NUMBER TWO INDEPENDENT PIVOT PATHS
+	 * ALREADY AGREED ON. The window is what stops a "fix" that merely stops refusing: a
+	 * solver reaching a different optimum fails this as loudly as one that refuses.
+	 */
+	for (int32 Index = 0; Index < NumRungs; ++Index)
+	{
+		const FRung& Rung = Rungs[Index];
+
+		if (!bMeasured[Index] || !(Rung.CertifiedHi > 0.0))
+		{
+			continue;
+		}
+
+		if (!TestTrue(
+				*FString::Printf(
+					TEXT("%s: the oracle MUST ANSWER this fixture — its LP is bounded by the ")
+					TEXT("lambda-cap row, and it has been SOLVED TWICE during the diagnosis, ")
+					TEXT("by two solver variants taking different pivot paths, both clearing ")
+					TEXT("the post-solve verification gate. It refused after %d pivots (%d of ")
+					TEXT("them in the Bland fallback), saying: %s"),
+					Rung.Name, Results[Index].SimplexIterations,
+					Results[Index].BlandDegenerateEntries, *Results[Index].WhyNot),
+				Results[Index].bAnswered))
+		{
+			continue;
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: lambda* %.17g must lie in [%.9g, %.9g] — the midpoint of two ")
+				TEXT("certified readings, +/-1e-4 relative. A move inside this window is the ")
+				TEXT("algorithm; a move outside it is a different answer, and this fixture's ")
+				TEXT("answer is not in dispute"),
+				Rung.Name, Results[Index].Lambda, Rung.CertifiedLo, Rung.CertifiedHi),
+			Results[Index].Lambda >= Rung.CertifiedLo
+				&& Results[Index].Lambda <= Rung.CertifiedHi);
+	}
+
+	/*
+	 * AND THE BRACKET BESIDE THE WINDOW, which the sibling test's header argues for and
+	 * which is a different statement: the window says what the number is, the bracket says
+	 * what the PHYSICS allows it to be, closed by two neighbours measured in this same run
+	 * by this same binary rather than carried in from another.
+	 */
+	if (bMeasured[0] && bMeasured[1] && bMeasured[2])
+	{
+		if (Results[1].bAnswered && Results[0].bAnswered && Results[2].bAnswered)
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("covered opening, 8 cells: lambda* %.17g must lie strictly between ")
+					TEXT("its neighbours (%.17g at 7 cells and %.17g at 9 cells) — lambda* ")
+					TEXT("falls monotonically with the opening across all twelve rungs of this ")
+					TEXT("family, so an 8-cell opening cannot be stronger than a 7-cell one ")
+					TEXT("nor weaker than a 9-cell one, and the family's L^-2.4 fit predicts ")
+					TEXT("~156. Failing THIS while the answer arrives is a different finding ")
+					TEXT("from refusing: it says the solver answered, wrongly"),
+					Results[1].Lambda, Results[0].Lambda, Results[2].Lambda),
+				Results[1].Lambda < Results[0].Lambda && Results[1].Lambda > Results[2].Lambda);
+		}
+	}
 
 	return true;
 }

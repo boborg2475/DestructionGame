@@ -246,6 +246,54 @@ namespace RigidBlockOracle
 		Stands,
 	};
 
+	/**
+	 * WHY THE ORACLE REFUSED, as a value rather than a sentence. None is the ZERO
+	 * enumerator, so a default-constructed or zero-filled result reads "no reason", which
+	 * is the only reading consistent with bAnswered's own zero-is-refused polarity being
+	 * checked against it rather than duplicated by it.
+	 *
+	 * THE THREE PhaseTwo ARMS ARE THE POINT. Until 2026-08-15 all three — a hit iteration
+	 * cap, a spurious unbounded ray and a numerical failure — arrived as the one sentence
+	 * "phase-2 simplex failed", so telling them apart had twice required an instrumented
+	 * build. They are different events with different fixes, and under the promotion design
+	 * production must be able to COUNT refusals by reason (§5.6, §11 R4), which a sentence
+	 * is a poor thing to count by.
+	 *
+	 * The sentences still CONTAIN the old wording (RigidBlockOracle.cpp's RefusalText says
+	 * why), so the split names the arm without renaming the event. The test that drives it
+	 * is OracleSlowSweep.RigidBlock.RefusalNamesItsReason.
+	 */
+	enum class EOracleRefusal : uint8
+	{
+		/** The oracle answered. */
+		None = 0,
+
+		/** Input validation refused the problem before any solving happened. */
+		InvalidProblem,
+
+		/** Phase 1 did not reach an optimum, or its factorisation refused. */
+		PhaseOneFailure,
+
+		/** Phase 2 ran into MaxPivots — the termination guarantee firing. */
+		PhaseTwoIterationCap,
+
+		/** Phase 2 found no positive ratio-test entry on a lambda-capped problem. */
+		PhaseTwoUnbounded,
+
+		/** Phase 2's basis went singular under refactorisation. */
+		PhaseTwoNumericalFailure,
+
+		/** The optimal basis failed the post-solve check against the original rows. */
+		VerificationFailure,
+	};
+
+	/**
+	 * The reason as a phrase, DISTINCT for every refusing enumerator and empty for None.
+	 * Distinctness is the whole contract: two different terminations that read the same
+	 * are what forced the instrumented builds.
+	 */
+	FString RefusalText(EOracleRefusal Refusal);
+
 	struct FOracleResult
 	{
 		/**
@@ -254,6 +302,9 @@ namespace RigidBlockOracle
 		 * guaranteed finite (never NaN) so no downstream comparison launders it.
 		 */
 		bool bAnswered = false;
+
+		/** Why it refused, when it did. None exactly when bAnswered is true. */
+		EOracleRefusal Refusal = EOracleRefusal::None;
 
 		/** lambda*, in [0, LambdaCap]. At the cap means "stands at every multiplier". */
 		double Lambda = 0.0;

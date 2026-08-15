@@ -47,12 +47,37 @@ namespace RigidBlockOracle
 		 * singular at 1.3e-13 and the whole solve was refused. Whatever error w carries
 		 * scales with |w|, so the floor under a believable pivot has to as well.
 		 *
-		 * 1e-11 of the column's largest magnitude sits a few orders above the noise that
-		 * reaches w through the LU and the eta file, and orders below any element carrying
-		 * information: on the measured columns it rejects 4.7e-9 out of 3e7 (a floor of
-		 * 3e-4) while admitting the 0.010, 0.026 and 0.033 pivots taken in the same
-		 * stretch. It is deliberately the same order as SingularPivotTol, which refuses
-		 * the same arithmetic one level down.
+		 * A floor at a fixed fraction of the column's largest magnitude sits above the
+		 * noise that reaches w through the LU and the eta file, and orders below any
+		 * element carrying information: on the measured columns 1e-11 rejected 4.7e-9 out
+		 * of 3e7 (a floor of 3e-4) while admitting the 0.010, 0.026 and 0.033 pivots taken
+		 * in the same stretch.
+		 *
+		 * 1e-11 WAS NOT ENOUGH, AND 1e-9 IS THE SAME FIX ONE NOTCH FURTHER (2026-08-15).
+		 * The eight-course-cover family refused two walls — an 8-cell opening at 128 blocks
+		 * and a 16-cell at 200 — while every neighbour either side answered, and the arm was
+		 * NumericalFailure from the periodic refactorisation: Factorise finding an LU pivot
+		 * of 4.38e-12 at position 4018 of 4021, and 4.93e-12 at 6322 of 6325. What makes
+		 * that a statement about THIS constant rather than about the factorisation is where
+		 * the factorisation gets its data: Refactorise builds the LU from the ORIGINAL
+		 * sparse columns and never from the eta file, so an LU that goes singular is saying
+		 * the BASIS COLUMN SET is numerically dependent — a basis the ratio test chose. The
+		 * product of U's diagonal IS det(B), so once the set is dependent no ordering of the
+		 * elimination can make its pivots large; a fill-reducing or Markowitz ordering
+		 * (roadmapped, and worth having for speed) is not a repair for this. The repair is
+		 * not to build that basis.
+		 *
+		 * 1e-9 of the entering column's own scale is still seven orders above where double
+		 * epsilon puts the noise, and the band 1e-11 left admissible was rounding-grade by
+		 * exactly that argument. Both refusers answer with the change (lambda* =
+		 * 155.63200561101226 and 43.132916253688222), and a SECOND, independent variant —
+		 * RefactoriseEvery 64 -> 16, this constant untouched, a visibly different pivot
+		 * path — answers 155.63200342392039 and 43.132560867194137, agreeing to 1.4e-8 and
+		 * 8.2e-6. The 128-block reading lands on the family's own L^-2.4 interpolation
+		 * between its neighbours (~156), which is a third derivation, from the physics
+		 * rather than from the solver. The cadence lever was not the one taken:
+		 * refactorisation is already a third of runtime, so quadrupling it pays everywhere
+		 * for a defect that lives in one place.
 		 *
 		 * WHAT ELSE WAS TRIED AND MEASURED, so nobody spends the instrumented build again:
 		 *
@@ -80,9 +105,11 @@ namespace RigidBlockOracle
 		 * its basic value slightly negative. ApplyPivot clamps that to zero; the magnitude
 		 * is bounded by theta * PivotFloor, and the final refactorisation recomputes every
 		 * basic value from the original right-hand side before the 1e-6 verification
-		 * judges it — in the direction verification can see, which is admissibility.
+		 * judges it — in the direction verification can see, which is admissibility. Raising
+		 * the floor raises that bound with it, which is why the whole slow group is re-run
+		 * against the 1e-6 gate whenever this number moves rather than the two walls alone.
 		 */
-		constexpr double RelativePivotTol = 1.0e-11;
+		constexpr double RelativePivotTol = 1.0e-9;
 
 		/*
 		 * This cap IS the termination guarantee, not defence in depth: the pivoting is
@@ -991,6 +1018,23 @@ namespace RigidBlockOracle
 		};
 
 		/**
+		 * A non-optimal phase-2 termination as the reason a caller can count. Optimal has
+		 * no reason and never reaches here; it is mapped to the numerical arm anyway
+		 * because a termination this function cannot name is a fault, and the fault-shaped
+		 * answer is the fail-closed one.
+		 */
+		EOracleRefusal PhaseTwoRefusalFor(ESimplexEnd End)
+		{
+			switch (End)
+			{
+			case ESimplexEnd::IterationCap:     return EOracleRefusal::PhaseTwoIterationCap;
+			case ESimplexEnd::Unbounded:        return EOracleRefusal::PhaseTwoUnbounded;
+			case ESimplexEnd::NumericalFailure: return EOracleRefusal::PhaseTwoNumericalFailure;
+			default:                            return EOracleRefusal::PhaseTwoNumericalFailure;
+			}
+		}
+
+		/**
 		 * THE ENTERING CHOICE: candidate-list partial pricing over a rotating window.
 		 *
 		 * A refill prices one window of PricingWindowCols consecutive columns — starting
@@ -1403,6 +1447,53 @@ namespace RigidBlockOracle
 		}
 	}
 
+	/*
+	 * THE THREE PHASE-2 PHRASES SHARE THEIR FIRST FIVE WORDS ON PURPOSE. "phase-2 simplex
+	 * failed" is the sentence every phase-2 refusal has printed until now, and two branches
+	 * of the sweep test still recognise a refusal by that literal (as one does the
+	 * verification refusal by "failed verification"); keeping it as the prefix means the
+	 * split ADDS the arm's name rather than renaming the event, so nothing that reads the
+	 * old sentence stops recognising it. Distinctness — which is what the taxonomy is for —
+	 * comes from the clause after the colon, and is asserted pairwise over the enumerators.
+	 *
+	 * None is empty rather than "no reason": a caller checks the reason against bAnswered,
+	 * and a sentence on the answering path would have to be filtered out of every message
+	 * that prints WhyNot.
+	 */
+	FString RefusalText(EOracleRefusal Refusal)
+	{
+		switch (Refusal)
+		{
+		case EOracleRefusal::None:
+			return FString();
+
+		case EOracleRefusal::InvalidProblem:
+			return TEXT("input validation refused the problem");
+
+		case EOracleRefusal::PhaseOneFailure:
+			return TEXT("phase-1 simplex failed");
+
+		case EOracleRefusal::PhaseTwoIterationCap:
+			return TEXT("phase-2 simplex failed: the iteration cap");
+
+		case EOracleRefusal::PhaseTwoUnbounded:
+			return TEXT("phase-2 simplex failed: an unbounded ray on a capped problem");
+
+		case EOracleRefusal::PhaseTwoNumericalFailure:
+			return TEXT("phase-2 simplex failed: the basis went singular");
+
+		case EOracleRefusal::VerificationFailure:
+			return TEXT("the optimal basis failed verification");
+		}
+
+		/*
+		 * An enumerator this function does not know is a refusal it cannot name, which is
+		 * the one thing this whole taxonomy exists to prevent — so it is reported as such
+		 * rather than answered with an empty string, which would read as "it answered".
+		 */
+		return TEXT("the oracle refused for an unnamed reason");
+	}
+
 	FOracleResult SolveRigidBlock(const FOracleProblem& Problem)
 	{
 		using namespace OracleDetail;
@@ -1411,11 +1502,28 @@ namespace RigidBlockOracle
 		Result.bAnswered = false;
 		Result.Lambda = 0.0;
 
-		Result.WhyNot = ValidateProblem(Problem);
-
-		if (!Result.WhyNot.IsEmpty())
+		/*
+		 * ONE STATEMENT SETS BOTH HALVES OF A REFUSAL. The reason and the sentence are two
+		 * spellings of one fact, and a site that set only one of them would leave a result
+		 * whose enumerator and whose text disagree — which is worse than either alone,
+		 * because a reader would have to know which to believe.
+		 */
+		const auto Refuse =
+			[&Result](EOracleRefusal Reason, const FString& Detail = FString()) -> FOracleResult&
 		{
+			Result.Refusal = Reason;
+			Result.WhyNot = Detail.IsEmpty()
+				? RefusalText(Reason)
+				: RefusalText(Reason) + TEXT(": ") + Detail;
+
 			return Result;
+		};
+
+		const FString InvalidReason = ValidateProblem(Problem);
+
+		if (!InvalidReason.IsEmpty())
+		{
+			return Refuse(EOracleRefusal::InvalidProblem, InvalidReason);
 		}
 
 		/*
@@ -1690,8 +1798,7 @@ namespace RigidBlockOracle
 
 		if (!State.Init(Form))
 		{
-			Result.WhyNot = TEXT("phase-1 simplex failed");
-			return Result;
+			return Refuse(EOracleRefusal::PhaseOneFailure);
 		}
 
 		const auto BasicArtificialInfeasibility = [&Form, &State]()
@@ -1748,8 +1855,13 @@ namespace RigidBlockOracle
 
 			if (PhaseOneEnd != ESimplexEnd::Optimal)
 			{
-				Result.WhyNot = TEXT("phase-1 simplex failed");
-				return Result;
+				/*
+				 * Phase 1's three non-optimal ends are one reason rather than three: its
+				 * objective is bounded below by zero so it cannot be unbounded, and no
+				 * fixture has ever reached any of them. Splitting it would be inventing a
+				 * distinction nothing can observe.
+				 */
+				return Refuse(EOracleRefusal::PhaseOneFailure);
 			}
 
 			if (BasicArtificialInfeasibility() > InfeasibilityTolerance())
@@ -1791,8 +1903,7 @@ namespace RigidBlockOracle
 			{
 				if (!State.Refactorise())
 				{
-					Result.WhyNot = TEXT("phase-1 simplex failed");
-					return Result;
+					return Refuse(EOracleRefusal::PhaseOneFailure);
 				}
 			}
 
@@ -1859,8 +1970,7 @@ namespace RigidBlockOracle
 			if (PhaseTwoEnd != ESimplexEnd::Optimal)
 			{
 				/* With the cap row a real unbounded ray is impossible; fail closed. */
-				Result.WhyNot = TEXT("phase-2 simplex failed");
-				return Result;
+				return Refuse(PhaseTwoRefusalFor(PhaseTwoEnd));
 			}
 		}
 
@@ -1871,8 +1981,8 @@ namespace RigidBlockOracle
 		 */
 		if (!State.Refactorise())
 		{
-			Result.WhyNot = TEXT("phase-2 simplex failed");
-			return Result;
+			/* The same event the pivot loop's periodic refactorisation reports: the basis. */
+			return Refuse(EOracleRefusal::PhaseTwoNumericalFailure);
 		}
 
 		/*
@@ -1916,9 +2026,9 @@ namespace RigidBlockOracle
 
 			if (bViolated)
 			{
-				Result.WhyNot = FString::Printf(
-					TEXT("the optimal basis failed verification against row %d"), RowIndex);
-				return Result;
+				return Refuse(
+					EOracleRefusal::VerificationFailure,
+					FString::Printf(TEXT("against row %d"), RowIndex));
 			}
 		}
 
