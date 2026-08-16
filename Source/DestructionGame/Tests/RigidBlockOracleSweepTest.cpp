@@ -76,9 +76,10 @@
  * it. Measured 2026-08-09: the 40-course stack solves in 0.084 s, the beam pair and the
  * one-cell pair in microseconds, corbel B in 0.21 s — those live in the fast suite.
  * Corbel C took 6.8 s and corbel D 79.6 s (90 blocks / 200 joints ~ 20 ms per pivot x
- * 4,092 pivots), so C and D live in the OPT-IN slow test at the bottom of this file;
- * the slow test's name deliberately does NOT contain "DestructionGame" so the documented
- * full-suite command never pays for it — see its header for the convention.
+ * 4,092 pivots), so C and D live in the OPT-IN sweep at the bottom of this file (in its
+ * FULL tier, OracleSweepFull.RigidBlock.WallsAndLadders); neither tier's name contains
+ * "DestructionGame", so the documented full-suite command never pays for either — see the
+ * two-tier header below for the convention and the per-test costs.
  *
  * THE ENVELOPE FINDING (2026-08-11, the full unmeasured sweep run, one row at a time):
  * past roughly a hundred blocks the dense simplex STOPS ANSWERING — the post-solve
@@ -231,7 +232,7 @@ namespace RigidBlockSweepTestSupport
 		 * 5.511 / 7.379 / 9.359 across j=2/3/4).
 		 *
 		 * NOTHING USES THIS TODAY, AND NOTHING CAN: since Slice 0a (2026-08-15) NO FIXTURE
-		 * THIS PROJECT OWNS REACHES ANY PHASE-2 REFUSAL ARM. The whole slow group answers,
+		 * THIS PROJECT OWNS REACHES ANY PHASE-2 REFUSAL ARM. The whole OracleSweep answers,
 		 * and the unbreakable lambda-cap tower terminates Optimal rather than unbounded.
 		 * The claim that stood here until then — that case 22's family still refused at
 		 * 218+ blocks "for a reason that outlived the fix" — was FALSE and had been for a
@@ -1747,19 +1748,51 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
 }
 
 /* ====================================================================================
- * THE OPT-IN SLOW SWEEP.
+ * THE OPT-IN ORACLE SWEEP, IN TWO TIERS.
  *
- * ITS NAME DELIBERATELY DOES NOT CONTAIN "DestructionGame", so the documented full-suite
- * command — Automation RunTests DestructionGame — NEVER runs it and the ~30 s suite
- * budget is untouched. Run it deliberately, either whole or one test at a time (the
- * free-end ladder alone is ~12 s, which is what makes it the cheap place to prove a
- * cross-row pin bites):
+ * NEITHER NAME CONTAINS "DestructionGame", so the documented full-suite command —
+ * Automation RunTests DestructionGame — NEVER runs either tier and the ~30 s suite budget
+ * is untouched. Both tiers substring-match one filter, which is what the names are for:
  *
- *     -ExecCmds="Automation RunTests OracleSlowSweep"
+ *     -ExecCmds="Automation RunTests OracleSweepFast"   7 tests,   80 s
+ *     -ExecCmds="Automation RunTests OracleSweepFull"   3 tests,  20.8 min
+ *     -ExecCmds="Automation RunTests OracleSweep"      10 tests,  22.0 min (both)
  *
- * This is the documented convention for a slow path: a distinct top-level group, opt-in
- * by filter, never a silent skip. Every row still carries pinned expectations exactly
- * like the fast rows; slowness buys exclusion from the default run and nothing else.
+ * MEASURED, not assumed (2026-08-16): those three filters return **7, 3 and 10** tests and
+ * the same count of Test Completed lines. The command-line filter is a plain SUBSTRING
+ * match (AutomationCommandline.cpp, GenerateTestNamesFromCommandLine — "otherwise just
+ * substring match"), so the shared OracleSweep stem is the union, and neither tier can be
+ * reached by the default suite's DestructionGame filter. Assuming filter semantics is what
+ * TRAPS' +-joined-filter entry exists to warn about, which is why these were counted.
+ *
+ * WHICH TEST GOES WHERE, and it is cost alone — every row in both tiers carries pinned
+ * expectations, and a tier buys exclusion from a run and nothing else. Per-test seconds,
+ * measured 2026-08-16 from the automation log's timestamps (the two biggest rows read 455
+ * and 432 s on the same fixtures a day earlier — this machine varies ~5% under load, which
+ * is more than several fast rows cost, so quote the range and not the last number):
+ *
+ *     FULL   WallsAndLadders                              478 s
+ *     FULL   PhaseTwoMustNotRefuseTheCoveredOpeningFamily  455 s
+ *     FULL   FeasibilityReformulationCost (other file)     313 s  (344 before its trim)
+ *     fast   OpeningMechanismLadders                      22.4 s
+ *     fast   PhaseTwoMustNotRefuseABoundedProblem         19.6 s
+ *     fast   FreeEndHeightLadder                          16.1 s
+ *     fast   RepairedRegionalSandwich (other file)         9.6 s
+ *     fast   RegionalSandwich (other file)                 7.2 s
+ *     fast   OpeningStrengthProbes                         4.1 s
+ *     fast   RefusalNamesItsReason                         1.0 s
+ *
+ * **THE FAST TIER IS FOR ITERATION AND IS NOT VERIFICATION.** Three tests are 94% of the
+ * cost and they are the three that watch the solver at scale: the wall catalogue's fifteen
+ * pinned lambda*, the covered-opening family's two repaired refusals, and the feasibility
+ * reformulation's eight-fixture cost table. **OracleSweepFull is mandatory before any
+ * commit that touches the LP oracle, and before any commit at all if the solver changed.**
+ * A green fast tier says nothing about any of that.
+ *
+ * AND THE HAZARD THE SPLIT CREATES, stated where the split is: an opt-in tier is a tier
+ * that rots. The NonNullRHI visual test rotted through five slices for exactly this reason
+ * and produced twelve errors when it was finally run (TRAPS). The mitigation is the rule
+ * above plus the cost table beside it — a tier nobody can price is a tier nobody runs.
  *
  * WHAT IT COSTS, AND WHY THAT FIGURE IS WRITTEN DOWN. The sparse rewrite (2026-08-12)
  * made the six dense-era rows so cheap that this group ran in 10.5 s — at which point
@@ -1780,7 +1813,8 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  * walls grew, which is the per-fixture trade the WallsAndLadders header works out.)
  * Every run so far has returned
  * bit-identical lambda* and worst readings on every row — thirty-five across the group's
- * four tests as of 2026-08-13 — which is the determinism contract holding across the
+ * four tests as of 2026-08-13, and every surviving row again across the 2026-08-16 tier
+ * split — which is the determinism contract holding across the
  * widest problem set it has ever been asked about. Keep this
  * number current — it is the whole argument for the group existing, and a slow group
  * nobody can justify is a slow group somebody deletes.
@@ -1929,7 +1963,7 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowWallSweepTest,
-	"OracleSlowSweep.RigidBlock.WallsAndLadders",
+	"OracleSweepFull.RigidBlock.WallsAndLadders",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
@@ -2507,7 +2541,7 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowFreeEndLadderTest,
-	"OracleSlowSweep.RigidBlock.FreeEndHeightLadder",
+	"OracleSweepFast.RigidBlock.FreeEndHeightLadder",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
@@ -2714,7 +2748,7 @@ bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowOpeningLaddersTest,
-	"OracleSlowSweep.RigidBlock.OpeningMechanismLadders",
+	"OracleSweepFast.RigidBlock.OpeningMechanismLadders",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
@@ -3330,7 +3364,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowOpeningProbesTest,
-	"OracleSlowSweep.RigidBlock.OpeningStrengthProbes",
+	"OracleSweepFast.RigidBlock.OpeningStrengthProbes",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
@@ -3660,7 +3694,7 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockPhaseTwoBoundedTest,
-	"OracleSlowSweep.RigidBlock.PhaseTwoMustNotRefuseABoundedProblem",
+	"OracleSweepFast.RigidBlock.PhaseTwoMustNotRefuseABoundedProblem",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
@@ -3948,7 +3982,7 @@ bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
  * sibling `PhaseTwoMustNotRefuseTheCoveredOpeningFamily` was made green the same day (the
  * ratio test's `RelativePivotTol` 1e-11 -> 1e-9), the canary fired exactly as designed, and
  * the check its instruction demanded before deletion was run: **no fixture this project owns
- * reaches any phase-2 arm now**. The whole `OracleSlowSweep` group answers every row, and the
+ * reaches any phase-2 arm now**. The whole `OracleSweep` group answers every row, and the
  * one fixture that could reach an unbounded ray — the unbreakable lambda-cap tower — is
  * bounded by the cap row and terminates Optimal. So the row was deleted rather than weakened
  * into "it answers now", which would have cost 75 s of solve to assert what the control above
@@ -3992,7 +4026,7 @@ bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockRefusalReasonTest,
-	"OracleSlowSweep.RigidBlock.RefusalNamesItsReason",
+	"OracleSweepFast.RigidBlock.RefusalNamesItsReason",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FRigidBlockRefusalReasonTest::RunTest(const FString& Parameters)
@@ -4324,7 +4358,7 @@ bool FRigidBlockRefusalReasonTest::RunTest(const FString& Parameters)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockCoveredOpeningRefusalTest,
-	"OracleSlowSweep.RigidBlock.PhaseTwoMustNotRefuseTheCoveredOpeningFamily",
+	"OracleSweepFull.RigidBlock.PhaseTwoMustNotRefuseTheCoveredOpeningFamily",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FRigidBlockCoveredOpeningRefusalTest::RunTest(const FString& Parameters)

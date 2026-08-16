@@ -98,6 +98,18 @@ Run all project tests headless:
 
 Narrow the run by lengthening the path after `RunTests` (e.g. `DestructionGame.Core.ConnectionLoad`).
 
+**The LP oracle's sweep is opt-in, in two tiers.** Neither name contains `DestructionGame`, so the full-suite command never pays for them:
+
+```
+-ExecCmds="Automation RunTests OracleSweepFast"   # 7 tests, 80 s — iteration
+-ExecCmds="Automation RunTests OracleSweepFull"   # 3 tests, 21 min — verification
+-ExecCmds="Automation RunTests OracleSweep"       # both, by substring match on the stem
+```
+
+**`OracleSweepFull` is mandatory before any commit that touches the LP oracle, and before any commit at all if the solver changed.** Those three tests are 94% of the cost because they are the three that watch the solver at scale; a green fast tier verifies none of it. An opt-in tier rots — see TRAPS.
+
+`Scripts/Run-OracleSweep.ps1` runs a tier one test per process (`-Tier All` ≈ 8 min against 22 serial), and `-Verify` runs both ways and diffs every reading to prove the split changed no answer.
+
 **Results do not go to stdout.** The command's own output is only SDK validation noise, and it exits 0 even when tests fail — so never judge a run by its exit code. Read `Saved/Logs/DestructionGame.log` and grep for `LogAutomationController`:
 
 ```bash

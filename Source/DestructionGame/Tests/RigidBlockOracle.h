@@ -261,7 +261,7 @@ namespace RigidBlockOracle
 	 *
 	 * The sentences still CONTAIN the old wording (RigidBlockOracle.cpp's RefusalText says
 	 * why), so the split names the arm without renaming the event. The test that drives it
-	 * is OracleSlowSweep.RigidBlock.RefusalNamesItsReason.
+	 * is OracleSweepFast.RigidBlock.RefusalNamesItsReason.
 	 */
 	enum class EOracleRefusal : uint8
 	{
@@ -321,7 +321,7 @@ namespace RigidBlockOracle
 		 * promotion design has not taken — so these two fields report where the exit COULD
 		 * have fired while every pivot path, lambda* and count stays what it was. The saving
 		 * is (PhaseOnePivots - PivotsToFirstFeasible) / PhaseOnePivots, and
-		 * OracleSlowSweep.RigidBlock.FeasibilityReformulationCost is the row that reads it.
+		 * OracleSweepFull.RigidBlock.FeasibilityReformulationCost is the row that reads it.
 		 *
 		 * INDEX_NONE rather than zero on both, so "nobody set this" stays loud rather than
 		 * reading as a plausible measurement of no work. A solve that never gets as far as

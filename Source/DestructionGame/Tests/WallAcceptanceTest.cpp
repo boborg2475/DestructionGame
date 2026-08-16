@@ -59,7 +59,7 @@
  *             opening reads 0.269 under a four-cell span and 0.985 under a ten-cell one, 3.66x,
  *             and the header of that test argues at length why this is NOT the 7-vs-8 trap.
  *   11 vs 12  the LP oracle: 128.12 on three cells of bearing against 89.12 on one, pinned in
- *             OracleSlowSweep.RigidBlock.WallsAndLadders.
+ *             OracleSweepFull.RigidBlock.WallsAndLadders.
  *    7 vs 10  the LP oracle likewise, and DELIBERATELY NOT relocated onto a production reading —
  *             see the ABUTMENT paragraph in the span test's header. wall-07 prices at 296.22 and
  *             wall-10 at 35.82, 8.27x in the physically right direction.
@@ -1193,7 +1193,7 @@ namespace WallAcceptanceTestSupport
 	 *     production  STANDS: drops nothing, breaks nothing, zero cascade passes; worst joint
 	 *                 0.98502040901419818 at c3/11.5-c4/11, the bed joint where the cover lands on
 	 *                 the right jamb
-	 *     LP oracle   STANDS at lambda* = 36.5639285 (146 blocks / 350 joints — OracleSlowSweep.
+	 *     LP oracle   STANDS at lambda* = 36.5639285 (146 blocks / 350 joints — OracleSweepFull.
 	 *                 RigidBlock.WallsAndLadders. Its 4,885 pivots in 50.4 s were MEASURED
 	 *                 PRE-PARTIAL-PRICING on 2026-08-12 and the in-flight pricing slice has since
 	 *                 moved them; lambda* and the block/joint counts are the measurement, the cost
@@ -1487,7 +1487,7 @@ namespace WallAcceptanceTestSupport
 	 * 11 sits an order of magnitude clear — rather than in the outcome, and the MatchedPairs row
 	 * that asserted the outcome half was removed with the same dating. The LP oracle has since paid
 	 * that debt: 128.12 on three cells of bearing against 89.12 on one, 1.44x in the physically
-	 * right direction, pinned in OracleSlowSweep.RigidBlock.WallsAndLadders.
+	 * right direction, pinned in OracleSweepFull.RigidBlock.WallsAndLadders.
 	 */
 	const FWallRegion Case12Cuts[] = { { 0, 3, 0.75, 6.25 } };
 
@@ -1881,7 +1881,7 @@ namespace WallAcceptanceTestSupport
 	 * 133 joints, 2,754 pivots, 1.3 s). It is the FIRST TIME IN THIS CATALOGUE THAT THE LP IS THE
 	 * OUTLIER — the last four rulings all moved the catalogue TOWARD it — so the row does not get
 	 * to wave it away, and the sweep pins it as a measured relation (`OracleStandsProductionFalls`
-	 * in OracleSlowSweep.RigidBlock.WallsAndLadders) rather than as a footnote.
+	 * in OracleSweepFull.RigidBlock.WallsAndLadders) rather than as a footnote.
 	 *
 	 *   WHAT IS ESTABLISHED, AND IT IS LESS THAN THE FIRST DRAFT OF THIS BLOCK CLAIMED. The LP is
 	 *   not pricing the mechanism this row's verdict is argued on. A 15 cm panel hanging on

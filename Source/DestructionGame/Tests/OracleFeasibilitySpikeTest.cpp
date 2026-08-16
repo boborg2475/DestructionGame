@@ -168,11 +168,16 @@
  *     leaning stack 5        5        4 / 0.000      22 / 0.000    0.18x        —
  *     leaning stack 30      30       29 / 0.006     163 / 0.006    0.18x    0.99x
  *     8x10 intact wall      84    2,606 / 0.749     491 / 0.065    5.31x    11.5x
- *     corbel D              90    9,490 / 10.21   1,022 / 0.274    9.29x    37.3x
- *     wall-18              119    3,885 / 2.765     468 / 0.062    8.30x    44.6x
- *     wall-15              125    6,076 / 3.819     803 / 0.204    7.57x    18.7x
- *     wall-06              146   14,209 / 16.10     876 / 0.314   16.22x    51.2x
+ *     corbel D    (t)       90    9,490 / 10.21   1,022 / 0.274    9.29x    37.3x
+ *     wall-18     (t)      119    3,885 / 2.765     468 / 0.062    8.30x    44.6x
+ *     wall-15     (t)      125    6,076 / 3.819     803 / 0.204    7.57x    18.7x
+ *     wall-06     (t)      146   14,209 / 16.10     876 / 0.314   16.22x    51.2x
  *     wall-01              375   58,806 / 280.5   5,407 / 25.99   10.88x    10.8x
+ *
+ * (t) = TRIMMED 2026-08-16. Those four rows no longer re-solve the LIVE pose — its lambda*
+ * is pinned in OracleSweepFull.RigidBlock.WallsAndLadders and its solve was identical —
+ * so their live columns above are the 2026-08-15 measurement of record and their speedup
+ * is a CROSS-RUN reading from here on. Every DEAD column is still measured every run.
  *
  * FOUR THINGS THE MEASUREMENT SAID THAT THE PREDICTION DID NOT:
  *
@@ -341,8 +346,13 @@
  * the measurement so it can only fire on a catastrophe. Ratios of pivots ARE pinned,
  * because pivot counts are deterministic; ratios of seconds are not.
  *
- * COST: both tests live in the OPT-IN OracleSlowSweep group. MEASURED 2026-08-15: 344 s
- * for the cost test and 7.2 s for the sandwich, taking the group from ~16 min to ~22 min.
+ * COST: this file's three tests live in the OPT-IN sweep, and SINCE 2026-08-16 THAT SWEEP
+ * HAS TWO TIERS — `OracleSweepFast` (7 tests, 80 s, for iteration) and `OracleSweepFull`
+ * (3 tests, 20.8 min, MANDATORY before any commit touching the LP oracle). The cost test is
+ * FULL; both sandwiches are FAST. `Automation RunTests OracleSweep` runs both by substring
+ * (measured: the three filters return 7 / 3 / 10 tests).
+ * MEASURED: 344 s for the cost test, **313 s since the 2026-08-16 live-pose trim**, with
+ * 7.2 s for the sandwich and 9.6 s for the repaired one.
  * The group is 10 tests and 10 GREEN since the repaired sandwich landed (2026-08-15) — this
  * file adds NO deliberate red. It briefly did: the
  * early-exit seam was written here as a red hand-off and the seam landed inside the same
@@ -1186,6 +1196,31 @@ namespace OracleFeasibilitySpikeSupport
 
 		/** 1 feasible at lambda = 1, 0 infeasible. INDEX_NONE is unmeasured. */
 		int32 Feasible = INDEX_NONE;
+
+		/*
+		 * WHETHER THIS ROW RE-SOLVES THE GRAVITY-LIVE POSE, and the four rows that do not
+		 * are the point of the 2026-08-16 tier split. corbel D, wall-06, wall-15 and
+		 * wall-18 have their lambda* pinned — same producer, same cut, same bridge, same
+		 * solver, so bit-for-bit the same solve — in OracleSweepFull.RigidBlock.
+		 * WallsAndLadders, which runs in the SAME TIER as this test. Re-solving them here
+		 * bought a lambda* window that already exists and ~33 s per run.
+		 *
+		 * WHAT IS DELIBERATELY KEPT LIVE, and each for a reason that is not duplication:
+		 * wall-01 (the ONLY pinned wall-01 lambda* in the project — the sweep excludes the
+		 * 30-course walls outright — and the 10.88x headline), the 84-block gate fixture
+		 * (the gate arithmetic and the 5.31x it rests on), and BOTH leaning stacks (the
+		 * 30-course one is the infeasible arm of the cross-validation, without which the
+		 * boolean is vacuous, and both are microseconds).
+		 *
+		 * WHAT IT COSTS, stated rather than glossed: on those four rows the lambda* window,
+		 * the LIVE pivot pin, the within-run cross-validation and the LIVE 0/0 phase-1 pins
+		 * all go, so their pivot SPEEDUP ratio becomes a cross-run comparison against
+		 * WallsAndLadders instead of a within-run one. The DEAD pose is untouched on every
+		 * row — which is why the pooled early-exit totals (9,245 and 58), the eight-point
+		 * block spread behind "the lever weakens with scale", and every feasibility verdict
+		 * come back bit-identical.
+		 */
+		bool bSolveLivePose = true;
 	};
 
 	/**
@@ -1459,26 +1494,34 @@ namespace OracleFeasibilitySpikeSupport
 /* ====================================================================================
  * TEST 1 — THE FEASIBILITY REFORMULATION'S COST.
  *
- * COST OF THIS TEST: it solves every fixture TWICE, once per pose, and the lambda* pose is
- * almost all of it — wall-01 alone is 280 s of the total. MEASURED 2026-08-15 in the whole
- * group: **344 s (5 min 44 s)**, which takes OracleSlowSweep from ~16 min to ~22 min. It
- * is in the OPT-IN group for exactly that reason, and the cheap half of the answer (the
- * DEAD poses) is 53 s of the 344.
+ * COST OF THIS TEST: the lambda* pose is almost all of it — wall-01 alone is 280 s.
+ * MEASURED 2026-08-15 in the whole group: **344 s (5 min 44 s)**, of which the cheap half
+ * of the answer (the DEAD poses, which are what the slice measures) is 53 s. It lives in
+ * the OPT-IN group's FULL tier for exactly that reason.
  *
- * A FUTURE TRIM, WITH ONE ROW EXPLICITLY EXCLUDED FROM IT. Dropping a live re-solve and
- * leaning on the sweep's own pinned lambda* costs a cross-run comparison instead of a
- * within-run one, which is affordable — EXCEPT on wall-01. `RigidBlockOracleSweepTest`
- * excludes the 30-course walls (cases 1-5) outright on arithmetic, so THIS FILE HOLDS THE
- * ONLY PINNED WALL-01 lambda* IN THE PROJECT and dropping its live re-solve would delete
- * that anchor rather than relocate it. The honest trim candidates are corbel D, wall-06,
- * wall-15 and wall-18 — about 56 s between them, every one of which is pinned in the
- * sweep as well.
+ * THE TRIM IS TAKEN (2026-08-16), AND ONE ROW IS EXPLICITLY EXCLUDED FROM IT. Four rows —
+ * corbel D, wall-06, wall-15 and wall-18 — no longer re-solve the gravity-live pose: it is
+ * the same producer, the same cut, the same bridge and the same solver as
+ * `OracleSweepFull.RigidBlock.WallsAndLadders`, which pins each of those four lambda* and
+ * runs in the SAME TIER, so the solve was duplicated work and its window a duplicated pin.
+ * MEASURED: 344 s -> 313 s, and WallsAndLadders' own log lines confirm the duplication was
+ * exact (corbel D 9,490 pivots, wall-18 3,885, wall-15 6,076 — the very counts this test
+ * used to pin). WALL-01 IS EXCLUDED AND STAYS LIVE: `RigidBlockOracleSweepTest` excludes the
+ * 30-course walls (cases 1-5) outright on arithmetic, so THIS FILE HOLDS THE ONLY PINNED
+ * WALL-01 lambda* IN THE PROJECT and dropping its live re-solve would delete that anchor
+ * rather than relocate it. The gate fixture and both leaning stacks stay live too — see
+ * FCostRow::bSolveLivePose for each reason and for what the trim costs.
+ *
+ * WHAT THE TRIM DID NOT TOUCH, and it is the reason it was worth taking: every DEAD solve.
+ * All eight fixtures still measure the reformulation, so the pooled early-exit totals
+ * (9,245 and 58), the eight-point block spread from 5 to 375 behind "the lever weakens
+ * with scale", the gate arithmetic and every feasibility verdict are bit-identical.
  *
  * NEEDS A TICKING WORLD: NO.
  * ==================================================================================== */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleFeasibilityCostTest,
-	"OracleSlowSweep.RigidBlock.FeasibilityReformulationCost",
+	"OracleSweepFull.RigidBlock.FeasibilityReformulationCost",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
@@ -1515,12 +1558,15 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 
 	Rows.Add({ TEXT("corbel D, ten steps with counterweight"),
 		TEXT("PREDICTED 400-900 dead-pose pivots against 8,439 live, ~10-20x. MEASURED ")
-		TEXT("1,022 — MISS, 14% over the top of the range; 9.29x on pivots, 37.3x on seconds"),
+		TEXT("1,022 — MISS, 14% over the top of the range; 9.29x on pivots, 37.3x on ")
+		TEXT("seconds. LIVE POSE NOT RE-SOLVED HERE since 2026-08-16: lambda* 161.14 is ")
+		TEXT("pinned in WallsAndLadders at [161.1375, 161.1439] and the 9,490-pivot live ")
+		TEXT("solve was 10.2 s of duplication"),
 		[](FStructure& Out, FString& Why)
 		{
 			return SpikeBuildScenario(TEXT("corbel-d-10-counterweight"), Out, Why);
 		},
-		90, 200, 161.1374, 161.1440, 9490, 1022, 1021, 1021, 1 });
+		90, 200, -1.0, -1.0, INDEX_NONE, 1022, 1021, 1021, 1, /*bSolveLivePose*/ false });
 
 	Rows.Add({ TEXT("wall-18 stack bond, one brick out"),
 		TEXT("PREDICTED 400-900 dead-pose pivots against 791 live — ABOUT 1x, the row ")
@@ -1529,31 +1575,38 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 		TEXT("PREDICTION'S PREMISE WAS STALE (791 was a 2026-08-12 Dantzig-path, ")
 		TEXT("characteristic-era reading), so 8.30x on pivots and 44.6x on seconds. No ")
 		TEXT("fixture in this list has a short climb today and the 'about 1x' hypothesis ")
-		TEXT("is UNTESTED rather than refuted"),
+		TEXT("is UNTESTED rather than refuted. LIVE POSE NOT RE-SOLVED HERE since ")
+		TEXT("2026-08-16: lambda* 897.73 is pinned in WallsAndLadders at [897.712, ")
+		TEXT("897.749]"),
 		[](FStructure& Out, FString& Why)
 		{
 			return SpikeBuildScenario(TEXT("wall-18"), Out, Why);
 		},
-		119, 203, 897.7125, 897.7486, 3885, 468, 467, 449, 1 });
+		119, 203, -1.0, -1.0, INDEX_NONE, 468, 467, 449, 1, /*bSolveLivePose*/ false });
 
 	Rows.Add({ TEXT("wall-15 header with six courses on top"),
 		TEXT("PREDICTED 500-1,200 dead-pose pivots against 3,745 live, ~3-7x. MEASURED ")
-		TEXT("803 (HIT); 7.57x on pivots against 6,076 live, 18.7x on seconds"),
+		TEXT("803 (HIT); 7.57x on pivots against 6,076 live, 18.7x on seconds. LIVE POSE ")
+		TEXT("NOT RE-SOLVED HERE since 2026-08-16: lambda* 868.6237 is pinned in ")
+		TEXT("WallsAndLadders at [868.62287, 868.62461], and as the 15/16 cross-row ")
+		TEXT("identity beside it"),
 		[](FStructure& Out, FString& Why)
 		{
 			return SpikeBuildScenario(TEXT("wall-15"), Out, Why);
 		},
-		125, 320, 868.6063, 868.6412, 6076, 803, 802, 799, 1 });
+		125, 320, -1.0, -1.0, INDEX_NONE, 803, 802, 799, 1, /*bSolveLivePose*/ false });
 
 	Rows.Add({ TEXT("wall-06 two-cell opening, deep cover"),
 		TEXT("PREDICTED 600-1,500 dead-pose pivots against 8,819 live, ~6-15x. MEASURED ")
 		TEXT("876 (HIT); 16.2x on pivots against 14,209 live, 51.2x on seconds — the ")
-		TEXT("largest speedup in the set"),
+		TEXT("largest speedup in the set, and the one the 2026-08-16 trim makes a ")
+		TEXT("CROSS-RUN reading: LIVE POSE NOT RE-SOLVED HERE, lambda* 634.58 pinned in ")
+		TEXT("WallsAndLadders at [634.570, 634.596], 16.1 s of duplication dropped"),
 		[](FStructure& Out, FString& Why)
 		{
 			return SpikeBuildScenario(TEXT("wall-06"), Out, Why);
 		},
-		146, 372, 634.5700, 634.5955, 14209, 876, 875, 866, 1 });
+		146, 372, -1.0, -1.0, INDEX_NONE, 876, 875, 866, 1, /*bSolveLivePose*/ false });
 
 	Rows.Add({ TEXT("wall-01 thirty courses (THE HEADLINE, 375 blocks)"),
 		TEXT("PREDICTED 1,500-4,000 dead-pose pivots against 58,605 live, ~15-40x. ")
@@ -1622,7 +1675,15 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 		FOracleProblem Dead = Live;
 		Dead.bGravityIsLive = false;
 
-		const FPoseReading LiveRead = SpikeSolve(Live);
+		/*
+		 * AND THE LIVE POSE IS SOLVED ONLY WHERE ITS ANSWER IS NOT ALREADY PINNED
+		 * ELSEWHERE IN THE SAME TIER — see FCostRow::bSolveLivePose for which four rows
+		 * that is and what dropping them costs. A skipped row leaves LiveRead at its
+		 * default, which is bAnswered = false: every reader of it below is inside the same
+		 * flag, and the log line says NOT RE-SOLVED rather than printing a zero that reads
+		 * like a refusal.
+		 */
+		const FPoseReading LiveRead = Row.bSolveLivePose ? SpikeSolve(Live) : FPoseReading();
 		const FPoseReading DeadRead = SpikeSolve(Dead);
 
 		/*
@@ -1638,19 +1699,27 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 					/ double(DeadRead.PhaseOnePivots)
 				: -1.0;
 
+		const FString LiveText = Row.bSolveLivePose
+			? FString::Printf(
+				TEXT("LIVE lambda*=%.17g answered=%d pivots=%d secs=%.3f | pivot ratio %.3f ")
+				TEXT("| time ratio %.3f | LIVE phase1=%d firstfeasible=%d"),
+				LiveRead.Lambda, LiveRead.bAnswered ? 1 : 0, LiveRead.Pivots, LiveRead.Seconds,
+				DeadRead.Pivots > 0 ? double(LiveRead.Pivots) / double(DeadRead.Pivots) : 0.0,
+				DeadRead.Seconds > 0.0 ? LiveRead.Seconds / DeadRead.Seconds : 0.0,
+				LiveRead.PhaseOnePivots, LiveRead.PivotsToFirstFeasible)
+			: FString(
+				TEXT("LIVE POSE NOT RE-SOLVED — lambda* is pinned in ")
+				TEXT("OracleSweepFull.RigidBlock.WallsAndLadders, which runs in the same tier"));
+
 		const FString Line = FString::Printf(
-			TEXT("SPIKE %s: blocks=%d joints=%d | LIVE lambda*=%.17g answered=%d pivots=%d ")
-			TEXT("secs=%.3f | DEAD feasible=%d lambda=%.17g answered=%d pivots=%d secs=%.3f ")
-			TEXT("| pivot ratio %.3f | time ratio %.3f | DEAD phase1=%d firstfeasible=%d ")
-			TEXT("earlyexit saving %.4f | LIVE phase1=%d firstfeasible=%d | %s%s%s"),
-			Row.Name, Live.Blocks.Num(), Live.Joints.Num(),
-			LiveRead.Lambda, LiveRead.bAnswered ? 1 : 0, LiveRead.Pivots, LiveRead.Seconds,
+			TEXT("SPIKE %s: blocks=%d joints=%d | %s ")
+			TEXT("| DEAD feasible=%d lambda=%.17g answered=%d pivots=%d secs=%.3f ")
+			TEXT("| DEAD phase1=%d firstfeasible=%d ")
+			TEXT("earlyexit saving %.4f | %s%s%s"),
+			Row.Name, Live.Blocks.Num(), Live.Joints.Num(), *LiveText,
 			SpikeIsFeasible(DeadRead) ? 1 : 0, DeadRead.Lambda, DeadRead.bAnswered ? 1 : 0,
 			DeadRead.Pivots, DeadRead.Seconds,
-			DeadRead.Pivots > 0 ? double(LiveRead.Pivots) / double(DeadRead.Pivots) : 0.0,
-			DeadRead.Seconds > 0.0 ? LiveRead.Seconds / DeadRead.Seconds : 0.0,
 			DeadRead.PhaseOnePivots, DeadRead.PivotsToFirstFeasible, EarlyExitSaving,
-			LiveRead.PhaseOnePivots, LiveRead.PivotsToFirstFeasible,
 			Row.Prediction,
 			DeadRead.WhyNot.IsEmpty() ? TEXT("") : TEXT(" | dead whynot: "),
 			DeadRead.WhyNot.IsEmpty() ? TEXT("") : *DeadRead.WhyNot);
@@ -1682,26 +1751,29 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 
 		/* ---- The live pose, whose lambda* is the cross-validation's other half. ---- */
 
-		if (!TestTrue(
-				*FString::Printf(TEXT("%s: the LIVE pose must answer (it said: %s)"),
-					Row.Name, *LiveRead.WhyNot),
-				LiveRead.bAnswered))
+		if (Row.bSolveLivePose)
 		{
-			continue;
-		}
+			if (!TestTrue(
+					*FString::Printf(TEXT("%s: the LIVE pose must answer (it said: %s)"),
+						Row.Name, *LiveRead.WhyNot),
+					LiveRead.bAnswered))
+			{
+				continue;
+			}
 
-		if (Row.LambdaLo < 0.0)
-		{
-			AddError(FString::Printf(
-				TEXT("%s: UNMEASURED lambda* — measured %.17g"), Row.Name, LiveRead.Lambda));
-		}
-		else
-		{
-			TestTrue(
-				*FString::Printf(
-					TEXT("%s: lambda* must lie in [%.9g, %.9g] and was %.17g"),
-					Row.Name, Row.LambdaLo, Row.LambdaHi, LiveRead.Lambda),
-				LiveRead.Lambda >= Row.LambdaLo && LiveRead.Lambda <= Row.LambdaHi);
+			if (Row.LambdaLo < 0.0)
+			{
+				AddError(FString::Printf(
+					TEXT("%s: UNMEASURED lambda* — measured %.17g"), Row.Name, LiveRead.Lambda));
+			}
+			else
+			{
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s: lambda* must lie in [%.9g, %.9g] and was %.17g"),
+						Row.Name, Row.LambdaLo, Row.LambdaHi, LiveRead.Lambda),
+					LiveRead.Lambda >= Row.LambdaLo && LiveRead.Lambda <= Row.LambdaHi);
+			}
 		}
 
 		/* ---- The dead pose: the feasibility answer, and what it costs. ---- */
@@ -1733,17 +1805,27 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 		 * THE CROSS-VALIDATION. The reformulation is only worth measuring if it means what
 		 * it should: an admissible equilibrium at lambda = 1 exists exactly when the
 		 * lambda* pose reads at or above 1. Two different formulations, one answer.
+		 *
+		 * IT IS A WITHIN-RUN COMPARISON OR IT IS NOTHING, which is why it is inside the
+		 * live-pose flag rather than run against a transcribed lambda*: comparing a
+		 * measured boolean to a number typed into this file would assert the typing. The
+		 * four rows that keep it span both arms — the 30-course stack is lambda* = 0.44 and
+		 * must come back INFEASIBLE, without which the boolean is vacuous.
 		 */
 		const bool bFeasible = SpikeIsFeasible(DeadRead);
-		const bool bStandsByLambda = LiveRead.Lambda >= 1.0;
 
-		TestTrue(
-			*FString::Printf(
-				TEXT("%s: CROSS-VALIDATION — feasibility at lambda = 1 (%d) must agree with ")
-				TEXT("lambda* >= 1 (%d, lambda* = %.17g). A disagreement means the ")
-				TEXT("reformulation does not pose the question the design says it poses."),
-				Row.Name, bFeasible ? 1 : 0, bStandsByLambda ? 1 : 0, LiveRead.Lambda),
-			bFeasible == bStandsByLambda);
+		if (Row.bSolveLivePose)
+		{
+			const bool bStandsByLambda = LiveRead.Lambda >= 1.0;
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: CROSS-VALIDATION — feasibility at lambda = 1 (%d) must agree with ")
+					TEXT("lambda* >= 1 (%d, lambda* = %.17g). A disagreement means the ")
+					TEXT("reformulation does not pose the question the design says it poses."),
+					Row.Name, bFeasible ? 1 : 0, bStandsByLambda ? 1 : 0, LiveRead.Lambda),
+				bFeasible == bStandsByLambda);
+		}
 
 		if (Row.Feasible == INDEX_NONE)
 		{
@@ -1756,22 +1838,40 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 				bFeasible ? 1 : 0, Row.Feasible);
 		}
 
-		if (Row.LivePivots == INDEX_NONE || Row.DeadPivots == INDEX_NONE)
+		/*
+		 * THE TWO PIVOT PINS ARE SEPARATE GUARDS, not one. They were a single branch while
+		 * every row solved both poses; a row that does not re-solve the live pose has no
+		 * live pivot count to pin, and folding the two together would have made the DEAD
+		 * pin — the reformulation's whole cost measurement — vanish with it.
+		 */
+		if (Row.bSolveLivePose)
+		{
+			if (Row.LivePivots == INDEX_NONE)
+			{
+				AddError(FString::Printf(
+					TEXT("%s: UNMEASURED LIVE COST — pin the live pivot count. Measured: ")
+					TEXT("%d pivots in %.3f s. %s"),
+					Row.Name, LiveRead.Pivots, LiveRead.Seconds, Row.Prediction));
+			}
+			else
+			{
+				TestEqual(
+					*FString::Printf(
+						TEXT("%s: the LIVE pose's pivot count is deterministic and pinned"),
+						Row.Name),
+					LiveRead.Pivots, Row.LivePivots);
+			}
+		}
+
+		if (Row.DeadPivots == INDEX_NONE)
 		{
 			AddError(FString::Printf(
-				TEXT("%s: UNMEASURED COST — this row has no pinned pivot counts. Measured: ")
-				TEXT("live %d pivots in %.3f s, dead %d pivots in %.3f s. %s"),
-				Row.Name, LiveRead.Pivots, LiveRead.Seconds,
-				DeadRead.Pivots, DeadRead.Seconds, Row.Prediction));
+				TEXT("%s: UNMEASURED DEAD COST — pin the dead pivot count. Measured: ")
+				TEXT("%d pivots in %.3f s. %s"),
+				Row.Name, DeadRead.Pivots, DeadRead.Seconds, Row.Prediction));
 		}
 		else
 		{
-			TestEqual(
-				*FString::Printf(
-					TEXT("%s: the LIVE pose's pivot count is deterministic and pinned"),
-					Row.Name),
-				LiveRead.Pivots, Row.LivePivots);
-
 			TestEqual(
 				*FString::Printf(
 					TEXT("%s: the DEAD pose's pivot count is deterministic and pinned — this ")
@@ -1843,12 +1943,20 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * AND THE LIVE POSE MUST REPORT 0/0 ON EVERY ROW. A gravity-live problem has every
+		 * AND THE LIVE POSE MUST REPORT 0/0 ON EVERY ROW THAT SOLVES ONE. A gravity-live
+		 * problem has every
 		 * equality right-hand side at zero, so it is feasible before a single pivot and
 		 * phase 1 never runs — the solver's own comment says so and this is what checks it
 		 * from the outside. It is also a second, independent guard on the pose itself: a
 		 * live load leaking into a problem posed as dead would put a non-zero phase 1 here.
+		 * Four rows no longer re-solve the live pose (bSolveLivePose), so the guard now
+		 * stands on four fixtures from 5 to 375 blocks rather than eight.
 		 */
+		if (!Row.bSolveLivePose)
+		{
+			continue;
+		}
+
 		TestEqual(
 			*FString::Printf(
 				TEXT("%s: the LIVE pose starts feasible, so phase 1 spends no pivots"),
@@ -2022,7 +2130,7 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
  * ==================================================================================== */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleRegionalSandwichTest,
-	"OracleSlowSweep.RigidBlock.RegionalSandwich",
+	"OracleSweepFast.RigidBlock.RegionalSandwich",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
@@ -3251,15 +3359,16 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
  *     manufacture a grounded delivery.
  *
  * COST OF THIS TEST: **9.4 s**, measured and printed at the bottom of the run, of which the
- * ten per-deletion global solves are about a third. It joins the OPT-IN OracleSlowSweep
- * group (now 10 tests, ~22 min) and adds well under 1% to it; the default suite is
+ * ten per-deletion global solves are about a third. It sits in the OPT-IN sweep's FAST
+ * tier (7 tests, ~78 s — the tier is for iteration; `OracleSweepFull` is what verifies a
+ * solver change), where it is one of the two most expensive rows; the default suite is
  * untouched at 173 = 167 green + the six standing deliberate reds.
  *
  * NEEDS A TICKING WORLD: NO.
  * ==================================================================================== */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleRepairedSandwichTest,
-	"OracleSlowSweep.RigidBlock.RepairedRegionalSandwich",
+	"OracleSweepFast.RigidBlock.RepairedRegionalSandwich",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FOracleRepairedSandwichTest::RunTest(const FString& Parameters)

@@ -134,7 +134,7 @@ The ruling was made on 2026-08-13 against characteristic-basis data, where zeroi
 
 ### 4.2 The measurement that kills the discount family
 
-MEASURED, at the mean basis, on the wall-21 family (`OracleSlowSweep.RigidBlock.OpeningStrengthProbes`, pinned):
+MEASURED, at the mean basis, on the wall-21 family (`OracleSweepFast.RigidBlock.OpeningStrengthProbes`, pinned):
 
 | probe | λ\* | ratio to control |
 |---|---|---|
@@ -233,7 +233,7 @@ The budget on the other side: `SolveLoads` at scenario scale is **6.4 ms** MEASU
 
 Discussed in §3.2. The whole of wall-01's 58,605 pivots is phase 2 climbing λ from 0 to 272.2; a feasibility problem at λ = 1 does not take that walk.
 
-**The estimate written here was 10–100× on standing structures and less on falling ones. Both halves were wrong, and the measurement is better than the estimate where it counts.** From `OracleSlowSweep.RigidBlock.FeasibilityReformulationCost` (eight fixtures, predictions written before the run):
+**The estimate written here was 10–100× on standing structures and less on falling ones. Both halves were wrong, and the measurement is better than the estimate where it counts.** From `OracleSweepFull.RigidBlock.FeasibilityReformulationCost` (eight fixtures, predictions written before the run):
 
 | fixture | blocks | λ\* pose | feasibility pose | pivots | seconds |
 |---|---|---|---|---|---|
