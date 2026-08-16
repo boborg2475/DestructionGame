@@ -343,14 +343,15 @@
  *
  * COST: both tests live in the OPT-IN OracleSlowSweep group. MEASURED 2026-08-15: 344 s
  * for the cost test and 7.2 s for the sandwich, taking the group from ~16 min to ~22 min.
- * The group is 9 tests and 9 GREEN — this file adds NO deliberate red. It briefly did: the
+ * The group is 10 tests and 10 GREEN since the repaired sandwich landed (2026-08-15) — this
+ * file adds NO deliberate red. It briefly did: the
  * early-exit seam was written here as a red hand-off and the seam landed inside the same
  * slice, so the two fields are now measured and pinned rather than demanded. The default
  * suite is untouched and re-run at 173 = 167 green + 6 deliberate reds.
  *
  * GREEN ON ARRIVAL IS NOT THE SAME AS ASSERTING NOTHING, and §9.5 is explicit that a row
  * which invalidated a published design section may not rest on an argued bite. So every
- * conclusion here has a RECORDED MUTATION, listed in TRAPS' registry as X1-X7:
+ * conclusion here has a RECORDED MUTATION, listed in TRAPS' registry as X1-X10:
  *
  *     X1  the ladder deletes from course 5 instead of 6      ->  7 assertions
  *     X2  the gate fixture built 8x11 instead of 8x10        ->  5 assertions
@@ -359,9 +360,28 @@
  *     X5  the watch records at pivot 1 unconditionally       -> 10 assertions, and the
  *                                                               ORDERING rows stay green
  *     X6  the extractor keeps the out-of-region blocks       -> 14 assertions, four of
- *                                                               them PART D's
+ *                                                               them PART D's; RE-MEASURED
+ *                                                               against the repaired
+ *                                                               extractor 2026-08-15 and
+ *                                                               still 14 here, plus 12 in
+ *                                                               RepairedRegionalSandwich
  *     X7  a region solve forced to REFUSE                    ->  1 assertion, and before
  *                                                               the guard landed, ZERO
+ *     X8  the surcharge applied at the CONTACT's X instead   ->  3 here + 4 in
+ *         of the charged component's centre of gravity           RepairedRegionalSandwich,
+ *                                                               and it RE-CREATES THE FALSE
+ *                                                               CERTIFICATE: band 0..5
+ *                                                               certifies feasible against
+ *                                                               an infeasible stack. The
+ *                                                               third is the LINE-OF-ACTION
+ *                                                               pin: 175 cm derived, 55
+ *                                                               measured
+ *     X9  the carried set computed as empty (repair (1)      ->  5 here + 8 in
+ *         removed, its plumbing left in place)                   RepairedRegionalSandwich,
+ *                                                               3 false certificates
+ *    X10  the Carried rule made to charge EVERY component    ->  0 here, 7 in
+ *                                                               RepairedRegionalSandwich —
+ *                                                               the Charged pins' prover
  *
  * X5, X6 and X7 exist because the early-exit numbers, Part D's booleans and every region
  * verdict were the three places this file's conclusions rested on assertions that a
@@ -608,6 +628,17 @@ namespace OracleFeasibilitySpikeSupport
 
 		/** Blocks in the region that are the EARTH — the only reaction a region can have. */
 		int32 Grounded = 0;
+
+		/*
+		 * WHO IS IN AND WHERE THEY WENT, published so the surcharge can be computed from
+		 * the SAME membership the region was cut with. Recomputing "core or shell" beside
+		 * the extractor would be a second derivation of the one thing the two sides of the
+		 * sandwich must agree about, and a divergence there would look like physics.
+		 */
+		TArray<bool> bInRegion;
+
+		/** Full-problem block index -> region block index; INDEX_NONE for an omitted block. */
+		TArray<int32> Remap;
 	};
 
 	/**
@@ -718,6 +749,15 @@ namespace OracleFeasibilitySpikeSupport
 
 		Counts.Blocks = Out.Blocks.Num();
 		Counts.Joints = Out.Joints.Num();
+
+		Counts.bInRegion.Init(false, NumBlocks);
+
+		for (int32 Block = 0; Block < NumBlocks; ++Block)
+		{
+			Counts.bInRegion[Block] = bInCore[Block] || bIsShell[Block];
+		}
+
+		Counts.Remap = MoveTemp(Remap);
 	}
 
 	/** A box mask on the coordinating grid: R courses up and down, R cells left and right. */
@@ -758,6 +798,341 @@ namespace OracleFeasibilitySpikeSupport
 		{
 			OutMask[Block] =
 				FMath::Abs(Full.Blocks[Block].CentroidZCm - CentreZCm) <= ReachZ;
+		}
+	}
+
+	/* ================================================================================
+	 * REPAIR (1) — THE OMITTED MATERIAL'S WEIGHT, KEPT AS A DEAD SURCHARGE.
+	 *
+	 * The refuted form dropped an omitted block's RESTRAINT and its WEIGHT together, and
+	 * the weight was the half that mattered: the leaning stack's twenty-four omitted
+	 * courses were carrying the destabilising moment, so deleting them turned a structure
+	 * with no equilibrium into a short stack that comfortably stands (lambda* 18.481 against
+	 * the whole stack's 0.44048 — wrong by 41.96x, PART D of the sandwich test).
+	 *
+	 * The repair keeps the demand and still refuses the restraint: an omitted block that
+	 * BEARS ON THE REGION contributes its weight as a DEAD applied force, while writing no
+	 * equilibrium row, no joint row, and holding nothing down.
+	 *
+	 * WHAT "BEARS ON THE REGION" MEANS, and getting this wrong in either direction is the
+	 * whole slice. Charge too little and the false certificate survives; charge everything
+	 * and a strip cut out of a wall is asked to carry the entire building, so the
+	 * pessimistic side never certifies and the lever is dead by a second route.
+	 *
+	 *   - MATERIAL ABOVE, whose only road to the ground runs through the region: the region
+	 *     genuinely carries it. CHARGED.
+	 *   - MATERIAL TO THE SIDE (and below) that stands on its own foundation: it reaches the
+	 *     earth without the region's help, so the region does not carry its weight.
+	 *     NOT CHARGED. This is the case the leaning stack does not have and every wall does,
+	 *     and it is why "the omitted weight" cannot mean "all of it".
+	 *
+	 * Stated as one rule with no geometry in it: DELETE THE REGION FROM THE JOINT GRAPH; an
+	 * omitted block whose remaining connected component contains no grounded block is
+	 * carried by the region, and every block in that component is charged. That is a
+	 * reachability question on the graph, derived from nothing the LP knows.
+	 *
+	 * WHERE THE LOAD IS APPLIED, and this is the part the false certificate turns on. A
+	 * component's weight is delivered at its interface joints, shared by AREA — but on the
+	 * VERTICAL LINE THROUGH THE COMPONENT'S OWN CENTRE OF GRAVITY, not at the contact's X.
+	 * A vertical force's moment does not depend on the Z of its application point
+	 * (torque = Rx*Fz - Rz*Fx, and Fx = 0), so applying every share on one vertical line
+	 * reproduces the component's total force AND its total moment about every point, exactly.
+	 * Applying at the contact centre instead would throw away precisely the overturning
+	 * moment that produced the 41.96x error — the stack's omitted courses weigh on a line
+	 * at X = 175 cm while their contact with the band sits at X = 55.
+	 *
+	 * THE SURCHARGE GOES ON THE PESSIMISTIC SIDE ONLY. The optimistic side's soundness
+	 * argument is "restrict a full-structure admissible force system to a grounded-shell
+	 * region and it stays admissible" — a restriction satisfies no row that was not in the
+	 * original problem, so adding a surcharge row to the optimistic side would break the one
+	 * half of the sandwich that survived review.
+	 *
+	 * KNOWN SCOPE LIMIT, NAMED RATHER THAN HIDDEN: the rule is exact when omitted material
+	 * is either wholly carried by the region or wholly self-supporting. It UNDER-CHARGES
+	 * material that has its own ground path AND bears on the region — which is what a
+	 * PARTIAL-HEIGHT strip in a laterally-connected wall produces, since the courses above
+	 * its top still reach the ground down the columns either side. That is why the wall
+	 * regions below are FULL HEIGHT by construction: full height is not a convenience, it is
+	 * the condition under which this rule is defensible on a wall.
+	 * ================================================================================ */
+
+	enum class ESpikeSurcharge : uint8
+	{
+		/** The refuted form: omitted material contributes nothing at all. */
+		None,
+
+		/** Only what the region carries — the component-reaches-no-ground rule above. */
+		Carried,
+
+		/**
+		 * Every omitted block, whatever it stands on. Deliberately TOO pessimistic, and
+		 * carried as a control so "charging everything never certifies" is a measurement
+		 * rather than the assertion of an argument.
+		 */
+		EveryOmittedBlock
+	};
+
+	struct FSurchargeCounts
+	{
+		int32 ChargedBlocks = 0;
+		int32 ChargedComponents = 0;
+		int32 InterfaceJoints = 0;
+
+		/**
+		 * A charged component sharing no joint with the region: its weight has nowhere to
+		 * be delivered and is silently lost, which is the refuted form returning by the
+		 * back door. Must be zero, and is asserted rather than assumed.
+		 */
+		int32 OrphanComponents = 0;
+
+		double ChargedWeightUu = 0.0;
+		double AppliedWeightUu = 0.0;
+
+		/**
+		 * Surcharge delivered onto a GROUNDED region block. A grounded block writes no
+		 * equilibrium row, so the assembly discards such a force in silence — the same
+		 * shape of loss as an orphan component and equally fatal to the repair. Counted so
+		 * it can be asserted zero.
+		 */
+		double DiscardedOntoGroundedUu = 0.0;
+	};
+
+	void SpikeAddSurcharge(
+		const FOracleProblem& Full,
+		const FRegionCounts& Region,
+		ESpikeSurcharge Rule,
+		FOracleProblem& InOut,
+		FSurchargeCounts& Out)
+	{
+		Out = FSurchargeCounts();
+
+		if (Rule == ESpikeSurcharge::None)
+		{
+			return;
+		}
+
+		const int32 NumBlocks = Full.Blocks.Num();
+
+		/*
+		 * Adjacency among OMITTED blocks only. The region is deleted for this question, so
+		 * every joint with an end inside it is gone — which is what makes "can this block
+		 * still reach the ground" mean "without the region's help".
+		 */
+		TArray<TArray<int32>> Adjacency;
+		Adjacency.SetNum(NumBlocks);
+
+		for (const FOracleJoint& Joint : Full.Joints)
+		{
+			if (Region.bInRegion[Joint.BlockA] || Region.bInRegion[Joint.BlockB])
+			{
+				continue;
+			}
+
+			Adjacency[Joint.BlockA].Add(Joint.BlockB);
+			Adjacency[Joint.BlockB].Add(Joint.BlockA);
+		}
+
+		TArray<int32> Component;
+		Component.Init(INDEX_NONE, NumBlocks);
+
+		TArray<TArray<int32>> Members;
+
+		for (int32 Seed = 0; Seed < NumBlocks; ++Seed)
+		{
+			if (Region.bInRegion[Seed] || Component[Seed] != INDEX_NONE)
+			{
+				continue;
+			}
+
+			const int32 Label = Members.Num();
+			Members.AddDefaulted();
+			Component[Seed] = Label;
+
+			TArray<int32> Pending;
+			Pending.Add(Seed);
+
+			while (Pending.Num() > 0)
+			{
+				const int32 At = Pending.Pop();
+				Members[Label].Add(At);
+
+				for (const int32 Next : Adjacency[At])
+				{
+					if (Component[Next] == INDEX_NONE)
+					{
+						Component[Next] = Label;
+						Pending.Add(Next);
+					}
+				}
+			}
+		}
+
+		for (int32 Label = 0; Label < Members.Num(); ++Label)
+		{
+			bool bReachesGround = false;
+
+			for (const int32 Block : Members[Label])
+			{
+				bReachesGround = bReachesGround || Full.Blocks[Block].bGrounded;
+			}
+
+			if (Rule == ESpikeSurcharge::Carried && bReachesGround)
+			{
+				continue;
+			}
+
+			double WeightUu = 0.0;
+			double WeightedXCm = 0.0;
+
+			for (const int32 Block : Members[Label])
+			{
+				const double W =
+					Full.Blocks[Block].MassKg * OracleGravityCmPerSecondSquared;
+
+				WeightUu += W;
+				WeightedXCm += W * Full.Blocks[Block].CentroidXCm;
+			}
+
+			if (!(WeightUu > 0.0))
+			{
+				continue;
+			}
+
+			const double GravityLineXCm = WeightedXCm / WeightUu;
+
+			++Out.ChargedComponents;
+			Out.ChargedBlocks += Members[Label].Num();
+			Out.ChargedWeightUu += WeightUu;
+
+			/* The contacts where this component meets the region, in joint index order. */
+			TArray<int32> Interface;
+			double TotalAreaSqCm = 0.0;
+
+			for (int32 J = 0; J < Full.Joints.Num(); ++J)
+			{
+				const FOracleJoint& Joint = Full.Joints[J];
+
+				const bool bAIn = Region.bInRegion[Joint.BlockA];
+				const bool bBIn = Region.bInRegion[Joint.BlockB];
+
+				const bool bTouches =
+					(bAIn && !bBIn && Component[Joint.BlockB] == Label)
+					|| (bBIn && !bAIn && Component[Joint.BlockA] == Label);
+
+				if (bTouches)
+				{
+					Interface.Add(J);
+					TotalAreaSqCm += Joint.AreaSqCm;
+				}
+			}
+
+			if (Interface.Num() == 0 || !(TotalAreaSqCm > 0.0))
+			{
+				++Out.OrphanComponents;
+				continue;
+			}
+
+			Out.InterfaceJoints += Interface.Num();
+
+			for (const int32 J : Interface)
+			{
+				const FOracleJoint& Joint = Full.Joints[J];
+
+				const int32 RegionSide =
+					Region.bInRegion[Joint.BlockA] ? Joint.BlockA : Joint.BlockB;
+
+				const int32 Target = Region.Remap[RegionSide];
+				const double ShareUu = WeightUu * (Joint.AreaSqCm / TotalAreaSqCm);
+
+				FOracleAppliedForce Applied;
+				Applied.Block = Target;
+				Applied.ForceXUu = 0.0;
+				Applied.ForceZUu = -ShareUu;
+				Applied.AtXCm = GravityLineXCm;
+				Applied.AtZCm = Joint.CentreZCm;
+				Applied.bLive = false;
+
+				InOut.AppliedForces.Add(Applied);
+				Out.AppliedWeightUu += ShareUu;
+
+				if (InOut.Blocks[Target].bGrounded)
+				{
+					Out.DiscardedOntoGroundedUu += ShareUu;
+				}
+			}
+		}
+	}
+
+	/** The repaired extractor: the same cut, plus repair (1) on the pessimistic side only. */
+	void SpikeExtractRepairedRegion(
+		const FOracleProblem& Full,
+		const TArray<bool>& bInCore,
+		bool bGroundTheShell,
+		ESpikeSurcharge Rule,
+		FOracleProblem& Out,
+		FRegionCounts& Counts,
+		FSurchargeCounts& Surcharge)
+	{
+		SpikeExtractRegion(Full, bInCore, bGroundTheShell, Out, Counts);
+
+		Surcharge = FSurchargeCounts();
+
+		if (bGroundTheShell)
+		{
+			return;
+		}
+
+		SpikeAddSurcharge(Full, Counts, Rule, Out, Surcharge);
+	}
+
+	/* ================================================================================
+	 * REPAIR (2) — REGIONS THAT REACH THE GROUND BY CONSTRUCTION.
+	 *
+	 * The free-boundary side is provably infeasible for any region containing no grounded
+	 * block: sum its vertical equilibrium rows, every internal contact cancels pairwise,
+	 * every leaving joint has been dropped, and what remains is 0 = -W_region. So the
+	 * growth parameter cannot be a RADIUS around the deletion — a ball only reaches the
+	 * foundation by accident, which is exactly why the refuted form certified five of ten
+	 * deletions and those five were the low ones.
+	 *
+	 * The parameter becomes the WIDTH of a full-height strip: every block within
+	 * (0.5 + w) cells of the deletion, at every height. The half cell is not slop — running
+	 * bond offsets alternate courses by half a cell, so a window written in whole cells
+	 * takes 2w+1 bricks from the aligned courses and NOTHING from the offset ones, and the
+	 * "strip" would be a ladder of disconnected rungs. With the half cell the aligned
+	 * courses give 2w+1 and the offset courses 2w+2, which is a connected strip at every w
+	 * including w = 0.
+	 * ================================================================================ */
+
+	void SpikeGroundStripMask(
+		const FOracleProblem& Full,
+		double CentreXCm,
+		int32 HalfWidthCells,
+		TArray<bool>& OutMask)
+	{
+		OutMask.Init(false, Full.Blocks.Num());
+
+		const double ReachX =
+			(0.5 + double(HalfWidthCells)) * SpikeCellPitchCm + SpikeRadiusSlackCm;
+
+		for (int32 Block = 0; Block < Full.Blocks.Num(); ++Block)
+		{
+			OutMask[Block] =
+				FMath::Abs(Full.Blocks[Block].CentroidXCm - CentreXCm) <= ReachX;
+		}
+	}
+
+	/** Everything from the foundation up to a height — the chain fixtures' ground strip. */
+	void SpikeGroundBandMask(
+		const FOracleProblem& Full,
+		double TopZCm,
+		TArray<bool>& OutMask)
+	{
+		OutMask.Init(false, Full.Blocks.Num());
+
+		for (int32 Block = 0; Block < Full.Blocks.Num(); ++Block)
+		{
+			OutMask[Block] = Full.Blocks[Block].CentroidZCm <= TopZCm + SpikeRadiusSlackCm;
 		}
 	}
 
@@ -880,6 +1255,147 @@ namespace OracleFeasibilitySpikeSupport
 		int32 Blocks = INDEX_NONE;
 		int32 Optimistic = INDEX_NONE;
 		int32 Pessimistic = INDEX_NONE;
+	};
+
+	/** One rung of the REPAIRED sandwich's strip ladder. INDEX_NONE is unmeasured. */
+	struct FStripPin
+	{
+		int32 HalfWidthCells = INDEX_NONE;
+		int32 Blocks = INDEX_NONE;
+
+		/** Blocks the Carried rule charges as a surcharge at this width. */
+		int32 Charged = INDEX_NONE;
+
+		int32 Optimistic = INDEX_NONE;
+		int32 Pessimistic = INDEX_NONE;
+	};
+
+	/**
+	 * THE REPAIRED SANDWICH'S PINS. Every one is INDEX_NONE or negative until measured, and
+	 * an unmeasured pin is an ERROR rather than a skip — that is this slice's red, and it is
+	 * the same red every pinned measurement in this file arrived through.
+	 */
+	struct FRepairPins
+	{
+		/* The refuted form's own fixture, pinned again so the two are the same wall. */
+		int32 WallBlocks = 149;
+		int32 WallGlobalPivots = 965;
+
+		/*
+		 * PREDICTED (P3, derivation record revision 1, written before the first run): the
+		 * strip closes at half-width 0 — a two-cell zig-zag column — because running bond
+		 * gives the course above a one-brick hole a bearing on BOTH sides inside the strip,
+		 * and GP mortar's 0.70 MPa of bond is ample for it. Predicted region 41 of 149
+		 * blocks (17 core + 24 shell), 28%, against the refuted form's 142 and 95%.
+		 *
+		 * MEASURED 2026-08-15: half-width 0, 41 blocks, 27.5%. HIT, block for block.
+		 *
+		 * P5 predicted a cost of 0.3-0.6x the global solve with a point estimate of 0.48x.
+		 * MEASURED 49 + 262 = 311 against 965 — 0.322x. Inside the range, and the point
+		 * estimate MISSED by a third for a reason worth keeping: the OPTIMISTIC side is
+		 * nearly free (49 pivots for 41 blocks) because grounding the shell turns most of
+		 * the region's boundary into earth, and a grounded block writes no equilibrium row
+		 * at all. The prediction priced both sides as if they had the same row count.
+		 */
+		int32 ClosingHalfWidth = 0;
+		int32 ClosingRegionBlocks = 41;
+		int32 ClosingOptimisticPivots = 49;
+		int32 ClosingPessimisticPivots = 262;
+
+		/*
+		 * PREDICTED (P4): TEN of ten deletions certify, against the refuted form's five. The
+		 * five that failed there were the five whose ball did not happen to reach the
+		 * foundation, and a ground-anchored strip reaches it by construction at every
+		 * deletion height, so the deletion's course should stop mattering entirely.
+		 *
+		 * MEASURED: 10. HIT, and the per-course lines show why — the region is 39 or 41
+		 * blocks at every course, alternating only with the deleted brick's bond parity.
+		 *
+		 * Named Agreements and not Certificates deliberately: the test also keeps a running
+		 * count of every closed sandwich in the whole file (20), and two counters called the
+		 * same thing at two different scopes is how a comparison comes to read plausibly and
+		 * mean nothing.
+		 */
+		int32 Agreements = 10;
+
+		/*
+		 * PREDICTED (P8): the over-inclusive control (charge EVERY omitted block, not only
+		 * what the region carries) reads INFEASIBLE at the closing width, i.e. 0 — a strip
+		 * cut out of a wall cannot carry the whole building.
+		 *
+		 * MEASURED 1: FEASIBLE. **P8 IS A MISS, and it is the most useful miss in the run.**
+		 * Charging all 108 omitted blocks — 271,309.925 uu on a 41-block strip — still
+		 * leaves it standing. The arithmetic says why: the whole wall weighs ~4 kN, the
+		 * surcharge is 2.7 kN of it, spread by area over 44 interface joints up the full
+		 * height of the strip, and every one of those joints has a mortar bond of 0.70 MPa
+		 * over ~110-220 cm². The wall arm has so much margin that IT CANNOT DISCRIMINATE
+		 * SURCHARGE RULES AT ALL. Two consequences, both recorded rather than smoothed over:
+		 * the "too pessimistic to certify" failure mode is NOT demonstrated by this fixture
+		 * and remains an untested hypothesis; and the closing width measured above would be
+		 * the same under either rule, so the wall arm is evidence about REPAIR (2) only.
+		 */
+		int32 ControlPessimistic = 1;
+
+		/*
+		 * PREDICTED (P7): a ground-anchored region's size scales with the STRUCTURE'S
+		 * HEIGHT, because reaching the foundation is what makes it certifiable at all. Same
+		 * wall 18 courses instead of 12: predicted the same closing half-width 0 and a
+		 * region of ~62 blocks, 1.5x the 12-course 41 for 1.5x the height.
+		 *
+		 * MEASURED: 224 blocks, closes at half-width 0, region 62 — 1.512x for 1.5x of
+		 * height, and 27.7% against 27.5%. HIT on the number and on the mechanism. The
+		 * fraction is height-invariant and the COUNT is not, which is the finding that
+		 * decides scenario scale: a 30-course wall's certified strip is ~102 blocks
+		 * (ESTIMATE, linear in height off two points), i.e. larger than the 84-block
+		 * fixture that answers in 0.0666 s.
+		 *
+		 * AND ITS TWO PIVOT COUNTS ARE PINNED, because they are the INPUT to that
+		 * extrapolation and not decoration: 79 + 474 = 553 against the 12-course
+		 * 49 + 262 = 311 is the 1.78x-per-1.5x-of-height slope the whole scenario-scale
+		 * answer rests on. Pinning the region's SIZE and leaving its COST unpinned would let
+		 * the number the conclusion is made of rot while every verdict stayed green.
+		 */
+		int32 TallWallBlocks = 224;
+		int32 TallClosingHalfWidth = 0;
+		int32 TallClosingRegionBlocks = 62;
+		int32 TallClosingOptimisticPivots = 79;
+		int32 TallClosingPessimisticPivots = 474;
+
+		/*
+		 * THE COLLAPSE ARM. PREDICTED (P9): the repaired pessimistic side is INFEASIBLE at
+		 * every band short of the whole stack (the surcharge restores the destabilising
+		 * moment the refuted form deleted), and the optimistic side is untouched by the
+		 * repair and still only goes infeasible with all thirty blocks. So the sandwich
+		 * closes at the WHOLE STRUCTURE and nowhere below it: the repair converts a FALSE
+		 * CERTIFICATE into a refusal to certify, and buys the collapse arm nothing.
+		 *
+		 * MEASURED: exactly that. Bands 0..5, 0..10, 0..15, 0..20 and 0..25 all read
+		 * optimistic FEASIBLE / pessimistic INFEASIBLE — no closure, grow the region — and
+		 * only 0..29, all thirty blocks, closes. HIT.
+		 */
+		int32 StackClosingTopCourse = 29;
+		int32 StackClosingRegionBlocks = 30;
+
+		/*
+		 * AND WHAT THE COLLAPSE ARM COSTS, which the first draft of this file measured and
+		 * did not report. At closure the two solves are 163 + 163 = 326 against a 163-pivot
+		 * global solve — **2.0x** — and the whole growth ladder from 0..5 upward is 1,300
+		 * pivots, **8x**. The standing arm's 0.322x and this 2.0x are the same measurement's
+		 * two halves and neither may be quoted alone: 2.0x is WORSE than the 1.68x the
+		 * refuted form was condemned for, and it lands on the arm a player's deletion cares
+		 * about. Pinned so the ratio is a contract rather than a sentence in a header.
+		 */
+		int32 StackClosingOptimisticPivots = 163;
+		int32 StackClosingPessimisticPivots = 163;
+		int32 StackLadderPivots = 1300;
+
+		/*
+		 * And the surcharge's own reading on the arm where it does the work: the band
+		 * 0..5 is 7 blocks (six core courses plus one shell) and charges the 23 courses
+		 * above it. Pinned because a reachability walk that quietly charged the wrong SET
+		 * would still produce an infeasible band and every verdict above would stay green.
+		 */
+		int32 StackBandChargedAtFive = 23;
 	};
 
 	int32 SpikePieceInCourse(const FStructure& Wall, int32 Course, double& OutXCm, double& OutZCm)
@@ -2135,6 +2651,36 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
 			 *     blocks instead of dropping them. That is the repair's direction in its
 			 *     crudest form, and it must turn the band infeasible.
 			 *
+			 * RE-AIMED 2026-08-15, WHEN THE REPAIR LANDED, AND HOW TO READ IT NOW. The rows
+			 * above still measure the UNREPAIRED extractor, because the 41.96x false
+			 * certificate is the evidence that no tightening of a boundary rule could have
+			 * rescued the old form, and it must stay executable rather than become a sentence
+			 * in a header. The rows BELOW measure the REPAIRED extractor on the IDENTICAL band
+			 * and carry the honest post-repair claim: the repaired band reads INFEASIBLE and
+			 * therefore AGREES with the whole stack, so the sandwich no longer closes on a
+			 * proper subset and no certificate is issued at all. Neither half may be tuned to
+			 * restore the other's green.
+			 *
+			 * THE FORWARD HAZARD BELOW CAME HALF TRUE, AND THE HALF THAT DID NOT IS THE MORE
+			 * USEFUL LESSON. Its PHYSICS was right to the digit: the repaired band is
+			 * infeasible, so "the bottom band must be FEASIBLE" is a false statement about
+			 * the repaired extractor. Its claim about the SUITE was wrong. It promised this
+			 * pin would go "red BY CONSTRUCTION on the day the repair lands" and would be
+			 * "the only thing in the suite that would notice"; in fact the repair landed as a
+			 * NEW function — SpikeExtractRepairedRegion — beside an untouched
+			 * SpikeExtractRegion, so PART D went on calling the old one and stayed GREEN
+			 * throughout. Nothing in the suite noticed. The re-aim above was made deliberately
+			 * rather than forced by a failure.
+			 *
+			 * Generalised, because it will happen again and it is not specific to regions:
+			 * A PIN CAN ONLY NOTICE A CHANGE THAT GOES THROUGH THE CODE IT CALLS, AND A
+			 * REPAIR IMPLEMENTED BESIDE THE THING IT REPAIRS IS INVISIBLE TO EVERY PIN ON THE
+			 * ORIGINAL. A forward hazard that names a behaviour is sound; one that predicts a
+			 * specific test will fail is a prediction about an implementation nobody has
+			 * chosen yet, and it should say so.
+			 *
+			 * The hazard as it stood, kept verbatim so the miss is legible:
+			 *
 			 * FORWARD HAZARD, AND IT IS NOT A DEFECT — READ THIS BEFORE "FIXING" THIS ROW.
 			 * PART D's GREEN ENCODES TODAY'S UNREPAIRED EXTRACTOR. The user-ruled repair
 			 * (§12 D2': the pessimistic side keeps the omitted material's WEIGHT as a dead
@@ -2269,8 +2815,1346 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
 						BandLiveRead.Lambda >= Pins.BandLiveLambdaLo
 							&& BandLiveRead.Lambda <= Pins.BandLiveLambdaHi);
 				}
+
+				/* ----------------------------------------------------------------
+				 * THE RE-AIM: THE SAME BAND, REPAIRED.
+				 *
+				 * One thing changes and it is repair (1) — the twenty-four omitted
+				 * courses' weight is applied as a DEAD surcharge on the vertical line
+				 * through their own centre of gravity, while they keep contributing no
+				 * restraint whatever (no equilibrium row, no joint row, nothing to hang
+				 * from). The band's blocks, joints and boundary condition are identical
+				 * to the free-boundary problem above, so a difference in the answer can
+				 * only be the surcharge.
+				 *
+				 * WHAT MUST NOW BE TRUE, and it is the claim the whole repair exists to
+				 * make: the repaired band AGREES with the whole stack. The certificate
+				 * that was wrong by 41.96x is not merely tightened, it is withdrawn —
+				 * the sandwich's two sides disagree (optimistic feasible, pessimistic
+				 * infeasible), which under the rule means GROW THE REGION rather than
+				 * certify. A repair that left this band feasible would have changed the
+				 * arithmetic and not the answer.
+				 * ---------------------------------------------------------------- */
+				{
+					FOracleProblem RepairedBand;
+					FRegionCounts RepairedCounts;
+					FSurchargeCounts RepairedSurcharge;
+
+					SpikeExtractRepairedRegion(
+						StackProblem, BandMask, /*bGroundTheShell*/ false,
+						ESpikeSurcharge::Carried,
+						RepairedBand, RepairedCounts, RepairedSurcharge);
+
+					const FPoseReading RepairedRead = SpikeSolve(RepairedBand);
+					const bool bRepaired = SpikeIsFeasible(RepairedRead);
+
+					/*
+					 * The omitted courses' weight, derived here from the brick mass and
+					 * the count rather than read off the extractor, so a surcharge that
+					 * charges the wrong SET cannot agree with a total it computed itself.
+					 */
+					const double ExpectedChargedUu =
+						24.0 * SpikeBrickMassKg * OracleGravityCmPerSecondSquared;
+
+					/*
+					 * AND WHERE IT ACTS, DERIVED A SECOND TIME FROM THE FIXTURE BUILDER'S OWN
+					 * EXPRESSION. The placement is the load-bearing half of repair (1) — the
+					 * force is the easy part and the MOMENT is what the refuted form lost —
+					 * and until this pin existed its only defence was a mutation recorded in
+					 * a markdown file. That is not enough: mutation X8 moves the load to the
+					 * CONTACT's X (~55 cm) and flips the band's verdict, but a wrong-but-
+					 * nearer X — the region block's centroid, the charged component's lowest
+					 * block — might not flip anything and would pass in silence.
+					 *
+					 * So the expected line of action is recomputed here from
+					 * SpikeBuildLeaningStack's own "double(Course) * 10.0", summed over the
+					 * charged courses, rather than transcribed off the extractor's weighted
+					 * mean. Two derivations, one number: 175.0 cm, which is 120 cm outboard
+					 * of the joint the band meets the omitted stack at (X = 55).
+					 */
+					double IndependentWeightUu = 0.0;
+					double IndependentMomentUuCm = 0.0;
+
+					for (int32 Course = 6; Course < 30; ++Course)
+					{
+						const double CourseWeightUu =
+							SpikeBrickMassKg * OracleGravityCmPerSecondSquared;
+
+						IndependentWeightUu += CourseWeightUu;
+						IndependentMomentUuCm += CourseWeightUu * (double(Course) * 10.0);
+					}
+
+					const double ExpectedLineXCm = IndependentMomentUuCm / IndependentWeightUu;
+
+					const FString RepairLine = FString::Printf(
+						TEXT("STACK BOTTOM BAND, REPAIRED: blocks=%d joints=%d charged=%d ")
+						TEXT("components=%d interface=%d orphans=%d chargedW=%.9g ")
+						TEXT("appliedW=%.9g discardedOntoGrounded=%.9g forces=%d | free+")
+						TEXT("surcharge feasible=%d pivots=%d secs=%.3f | WHOLE STACK ")
+						TEXT("feasible=%d | whynot='%s'"),
+						RepairedCounts.Blocks, RepairedCounts.Joints,
+						RepairedSurcharge.ChargedBlocks, RepairedSurcharge.ChargedComponents,
+						RepairedSurcharge.InterfaceJoints, RepairedSurcharge.OrphanComponents,
+						RepairedSurcharge.ChargedWeightUu, RepairedSurcharge.AppliedWeightUu,
+						RepairedSurcharge.DiscardedOntoGroundedUu,
+						RepairedBand.AppliedForces.Num(), bRepaired ? 1 : 0,
+						RepairedRead.Pivots, RepairedRead.Seconds, bWhole ? 1 : 0,
+						*RepairedRead.WhyNot);
+
+					UE_LOG(LogTemp, Display, TEXT("%s"), *RepairLine);
+					AddInfo(RepairLine);
+
+					MustAnswer(RepairedRead, TEXT("PART D: the REPAIRED band"));
+
+					TestEqual(
+						TEXT("PART D repaired: the region itself is unchanged — same six ")
+						TEXT("blocks, so the only difference from the row above is the ")
+						TEXT("surcharge"),
+						RepairedCounts.Blocks, BandFreeCounts.Blocks);
+
+					TestEqual(
+						TEXT("PART D repaired: the twenty-four courses above the band cannot ")
+						TEXT("reach the ground without it, so all twenty-four are charged"),
+						RepairedSurcharge.ChargedBlocks, 24);
+
+					TestEqual(
+						TEXT("PART D repaired: they are one connected component and it meets ")
+						TEXT("the band at exactly one joint"),
+						RepairedSurcharge.InterfaceJoints, 1);
+
+					TestEqual(
+						TEXT("PART D repaired: no charged component may be an ORPHAN — a ")
+						TEXT("component with no joint into the region loses its weight in ")
+						TEXT("silence, which is the refuted form coming back by the back door"),
+						RepairedSurcharge.OrphanComponents, 0);
+
+					TestEqual(
+						TEXT("PART D repaired: and none of it may land on a GROUNDED region ")
+						TEXT("block, which writes no equilibrium row and would swallow it"),
+						RepairedSurcharge.DiscardedOntoGroundedUu, 0.0);
+
+					TestTrue(
+						*FString::Printf(
+							TEXT("PART D repaired: the applied surcharge must equal the ")
+							TEXT("charged blocks' own weight, %.9g uu, and was %.9g uu"),
+							ExpectedChargedUu, RepairedSurcharge.AppliedWeightUu),
+						FMath::Abs(RepairedSurcharge.AppliedWeightUu - ExpectedChargedUu)
+							<= 1.0e-9 * ExpectedChargedUu);
+
+					/* ---- THE LINE OF ACTION, WHICH IS THE REPAIR'S ACTUAL CONTENT. ---- */
+
+					if (TestEqual(
+							TEXT("PART D repaired: one component meeting the band at one joint ")
+							TEXT("makes exactly one applied force"),
+							RepairedBand.AppliedForces.Num(), 1))
+					{
+						const FOracleAppliedForce& Applied = RepairedBand.AppliedForces[0];
+
+						TestTrue(
+							TEXT("PART D repaired: the surcharge is DEAD — a live surcharge ")
+							TEXT("would scale with lambda and the pose would stop being the ")
+							TEXT("feasibility question it is posed as"),
+							!Applied.bLive);
+
+						TestEqual(
+							TEXT("PART D repaired: the omitted material's weight is vertical, ")
+							TEXT("so the surcharge carries no horizontal component"),
+							Applied.ForceXUu, 0.0);
+
+						TestTrue(
+							*FString::Printf(
+								TEXT("PART D repaired: and it acts DOWNWARD at %.9g uu against ")
+								TEXT("the charged weight %.9g uu"),
+								-Applied.ForceZUu, ExpectedChargedUu),
+							FMath::Abs(-Applied.ForceZUu - ExpectedChargedUu)
+								<= 1.0e-9 * ExpectedChargedUu);
+
+						TestTrue(
+							*FString::Printf(
+								TEXT("PART D repaired, THE LINE OF ACTION: the surcharge must ")
+								TEXT("act on the vertical through the CHARGED COMPONENT'S OWN ")
+								TEXT("CENTRE OF GRAVITY — independently derived here as %.9g cm ")
+								TEXT("from the fixture builder's own course spacing — and it ")
+								TEXT("acted at %.9g cm. The contact it is delivered through ")
+								TEXT("sits at X = 55, so this pin is what separates the repair ")
+								TEXT("from the mutation that keeps the force and loses the ")
+								TEXT("moment. A boolean verdict alone cannot: a wrong X nearer ")
+								TEXT("than the contact's might not flip the band at all."),
+								ExpectedLineXCm, Applied.AtXCm),
+							FMath::Abs(Applied.AtXCm - ExpectedLineXCm)
+								<= 1.0e-9 * FMath::Abs(ExpectedLineXCm));
+					}
+
+					TestTrue(
+						TEXT("PART D repaired, THE CLAIM: the band that falsely certified a ")
+						TEXT("collapsing stack must now read INFEASIBLE, so it AGREES with the ")
+						TEXT("whole stack instead of contradicting it. The false certificate is ")
+						TEXT("withdrawn rather than tightened — the two sides now disagree, ")
+						TEXT("which means GROW THE REGION and issue no certificate at all."),
+						!bRepaired);
+
+					TestTrue(
+						TEXT("PART D repaired: stated as the agreement itself, so the row says ")
+						TEXT("what it is for — the repaired band's verdict equals the whole ")
+						TEXT("stack's verdict"),
+						bRepaired == bWhole);
+				}
 			}
 		}
+	}
+
+	return true;
+}
+
+/* ====================================================================================
+ * TEST 3 — THE REPAIRED REGIONAL SANDWICH (PROMOTION_DESIGN §12 D2', ruled 2026-08-15).
+ *
+ * WHAT WAS REFUTED, so nothing here rebuilds it. The two-sided sandwich as designed —
+ * solve a region with its boundary pinned grounded, solve it again with the boundary free,
+ * certify if the two agree — fails three ways. It closes only at 95-100% of the structure;
+ * it costs 1.68x a global solve; and its pessimistic side IS NOT A BOUND. A closed sandwich
+ * certified a leaning stack as standing whose real lambda* is 0.44048, while the certified
+ * band's own lambda* is 18.481256459924058 — wrong by 41.96x. The cause is one sentence:
+ * dropping material outside a region removed its WEIGHT along with its restraint, and in
+ * that fixture the omitted twenty-four courses were carrying the destabilising moment.
+ *
+ * WHAT SURVIVES AND IS NOT REPAIRED HERE: the optimistic side. Restricting a full-structure
+ * admissible force system to a grounded-shell region stays admissible (core blocks keep all
+ * their joints; shell blocks write no rows), so OPTIMISTIC-INFEASIBLE => GLOBALLY INFEASIBLE
+ * holds. It is used unchanged, and the surcharge is deliberately kept off it.
+ *
+ * THE TWO REPAIRS, both user-ruled, both defined at their code in the support namespace:
+ *
+ *   (1) The pessimistic side keeps the omitted material's weight as a DEAD SURCHARGE while
+ *       removing its restraint. "Bears on the region" is settled by graph reachability with
+ *       the region deleted, so material that stands on its own foundation is not charged and
+ *       material whose only road to the ground runs through the region is charged in full.
+ *       The load acts on the vertical line through the charged component's own centre of
+ *       gravity, which is what carries the overturning moment the old form lost.
+ *   (2) Regions grow GROUND-ANCHORED BY CONSTRUCTION. The growth parameter stops being a
+ *       radius and becomes the WIDTH of a full-height strip, because the free-boundary side
+ *       is provably infeasible for any region containing no grounded block.
+ *
+ * THE QUESTION THIS TEST EXISTS TO ANSWER, stated so the measurement can fail honestly:
+ *
+ *     WITH BOTH REPAIRS IN PLACE, HOW SMALL CAN A CERTIFIED REGION BE?
+ *
+ * Success needs regions that are BOTH much smaller than the structure AND cheap enough that
+ * two solves fit inside ~100 ms — the 84-block feasibility solve measures 0.0666 s, so a
+ * certified region near that size is the target. If the repaired sandwich certifies only at
+ * 90%+ of the structure, or costs more than a global solve, that is the same refutation in a
+ * new coat and it points at the asynchronous / size-scoped fallbacks rather than at another
+ * repair. This file must say so plainly if that is what it measures.
+ *
+ * ================================================================================
+ * PREDICTIONS — DERIVATION RECORD REVISION 1, WRITTEN BEFORE THE FIRST RUN
+ * (PROMOTION_DESIGN §7.3, mandatory: a prediction written after the measurement is not
+ *  evidence, it is a transcription. Each one is repeated at the pin it decides.)
+ * ================================================================================
+ *
+ *  P1  The carried set of a FULL-HEIGHT ground-anchored strip in a grounded wall is EMPTY
+ *      at every width, because every omitted block's own column reaches the grounded bottom
+ *      course. So repair (1) is a NO-OP on the wall arm and repair (2) does all the work
+ *      there; repair (1) earns its keep on the collapse arm alone. If that holds it is a
+ *      finding worth stating rather than a triviality — it says the two repairs are not
+ *      alternatives, they answer different fixtures.
+ *  P2  The optimistic side is FEASIBLE at every strip width (the cut wall stands globally,
+ *      and grounding the shell can only help), so on the wall arm closure is decided
+ *      entirely by the pessimistic side.
+ *  P3  CLOSES AT HALF-WIDTH 0 — a two-cell zig-zag column, 41 of 149 blocks, 28%. Running
+ *      bond gives the course above a one-brick hole a bearing on both sides inside the
+ *      strip. Fallback if wrong: half-width 1, 65 blocks, 44%.
+ *  P4  TEN of ten deletions certify at the closing width, against the refuted form's five.
+ *  P5  COST 0.3-0.6x a global solve. The dead pose runs ~2.2 pivots per equality row at
+ *      this scale and a 41-block region has ~35 ungrounded blocks = ~105 rows, so ~230
+ *      pivots a side, ~460 for the pair, against the whole wall's 965. Point estimate
+ *      0.48x, against the refuted form's 1.68x.
+ *  P6  TIME: two region solves well inside 100 ms (84 blocks answer in 0.0666 s; 41 blocks
+ *      should be ~0.02 s), so the VERDICT AT 12 COURSES IS PREDICTED YES.
+ *  P7  HEIGHT SCALES THE REGION. An 18-course wall closes at the same half-width with ~62
+ *      blocks — 1.5x the region for 1.5x the height. At the 30-course scenario height the
+ *      same strip is ~100 blocks, at or past the 84-block / 0.0666 s figure, so the honest
+ *      predicted answer is "small enough at 12 courses, marginal at 30".
+ *  P8  The over-inclusive control (charge EVERY omitted block) is INFEASIBLE at the closing
+ *      width and never certifies — the too-pessimistic failure mode, measured.
+ *  P9  COLLAPSE ARM: the repaired pessimistic side is infeasible at every band, the
+ *      optimistic side is unchanged, so the sandwich closes only with all thirty blocks.
+ *      The repair withdraws the false certificate; it does not make collapse cheaper.
+ * P10  NO FALSE CERTIFICATE ANYWHERE in this test: every closed sandwich agrees with the
+ *      whole structure's own verdict. This is the assertion the slice would be worthless
+ *      without, and it is counted rather than spot-checked.
+ *
+ * ================================================================================
+ * WHAT WAS MEASURED — 2026-08-15, one run, tree at HEAD 0564bf5
+ * ================================================================================
+ *
+ * THE WALL ARM. 12 courses x 12 cells, one brick out of course 6, 149 blocks / 385 joints,
+ * whole-wall feasibility 965 pivots (the refuted form's own fixture and numbers):
+ *
+ *     half-width   blocks   % of wall   charged   optimistic   pessimistic   closes
+ *              0       41       27.5%         0     feasible      feasible      YES
+ *              1       65       43.6%         0     feasible      feasible      yes
+ *              2       89       59.7%         0     feasible      feasible      yes
+ *              3      113       75.8%         0     feasible      feasible      yes
+ *              4      137       91.9%         0     feasible      feasible      yes
+ *              5      149      100.0%         0     feasible      feasible      yes
+ *
+ * **IT CLOSES AT THE FIRST RUNG: 41 OF 149 BLOCKS, 27.5%**, against the refuted form's 142
+ * and 95%. Its two solves take 49 + 262 = 311 pivots against the whole wall's 965 —
+ * **0.322x**, where the refuted form cost 1.68x — and 0.021 s for the pair against a
+ * 0.100 s budget. Ten deletions at courses 1..10 certify **TEN of ten** (the refuted form:
+ * five), every certificate checked against that deletion's own 149-block global solve.
+ *
+ * THE COLLAPSE ARM. Ground-anchored bands of the 30-course leaning stack:
+ *
+ *     band     blocks   charged   surcharge uu   optimistic   pessimistic   closes
+ *     0..5          7        23      61,345.57     feasible    INFEASIBLE       no
+ *     0..10        12        18      48,009.58     feasible    INFEASIBLE       no
+ *     0..15        17        13      34,673.58     feasible    INFEASIBLE       no
+ *     0..20        22         8      21,337.59     feasible    INFEASIBLE       no
+ *     0..25        27         3       8,001.60     feasible    INFEASIBLE       no
+ *     0..29        30         0              0   INFEASIBLE    INFEASIBLE      YES
+ *
+ * The repair does exactly what it was ruled to do and no more: **every false certificate is
+ * withdrawn** (the bands now DISAGREE, which means grow the region), and **the collapse arm
+ * is no cheaper than before** — it still certifies only with all thirty blocks, because the
+ * optimistic side is the side that certifies a collapse and the repair deliberately does
+ * not touch it. Across the whole test, 20 certificates issued and 0 of them false (and read
+ * the caveat block below before treating that as evidence of anything).
+ *
+ * **AND THE COLLAPSE ARM'S COST IS 2.0x, NOT 0.322x. QUOTE BOTH RATIOS OR NEITHER.** At
+ * closure the stack's two solves take 163 + 163 = 326 pivots against a 163-pivot global
+ * solve, and the whole growth ladder — every band from 0..5 up — costs 1,300 pivots, **8x**
+ * the global solve. So the standing arm's 0.322x and the collapse arm's 2.0x are the same
+ * measurement's two halves, and the 2.0x is WORSE THAN THE 1.68x THE REFUTED FORM WAS
+ * CONDEMNED FOR. The lever is cheap exactly where the answer is "it stands" and dear
+ * exactly where the answer is "it falls", which is the arm a player's deletion cares about.
+ *
+ * HEIGHT SCALES THE REGION, WHICH IS THE FINDING THAT PRICES SCENARIO SCALE. The same wall
+ * at 18 courses is 224 blocks and closes at the same half-width with 62 blocks — 27.7% of
+ * the structure, and 1.512x the 12-course region for 1.5x the height. The FRACTION is
+ * height-invariant; the COUNT is not. Linear in height off those two points (ESTIMATE), a
+ * 30-course scenario wall's certified strip is ~102 blocks, larger than the 84-block
+ * fixture that answers in 0.0666 s — so the answer to "is a certified region small enough
+ * for synchronous authority" is YES at 12 courses, MARGINAL at 30, and it is region SIZE
+ * rather than the sandwich that decides it.
+ *
+ * TWO PREDICTIONS MISSED, both recorded as misses at their pins:
+ *
+ *   - P5's point estimate (0.48x) against the measured 0.322x. The range held; the point
+ *     estimate priced both sides as if they had the same row count, and the OPTIMISTIC side
+ *     is nearly free (49 pivots for 41 blocks) because grounding the shell turns most of
+ *     the region's boundary into earth and a grounded block writes no equilibrium row.
+ *   - P8 outright. Charging EVERY omitted block — all 108, 271,309.925 uu — still leaves
+ *     the 41-block strip FEASIBLE, so the predicted "too pessimistic to certify" failure
+ *     mode is not demonstrated by this fixture and remains untested. The wall arm has so
+ *     much margin that it cannot discriminate surcharge rules at all.
+ *
+ * ================================================================================
+ * THE CAVEAT THAT MATTERS MOST, AND IT IS NOT A FOOTNOTE
+ * ================================================================================
+ *
+ * P1 held: the carried set of a full-height strip in a grounded wall is EMPTY at every
+ * width. So on the wall arm THE REPAIRED PESSIMISTIC SIDE IS BIT-IDENTICAL TO THE REFUTED
+ * ONE — same problem, no applied forces — and every wall certificate above rests on repair
+ * (2) alone. What repair (1) removes is one specific unsoundness: omitted material whose
+ * only road to the ground ran through the region, which is precisely the leaning stack's
+ * mode and which a full-height ground-anchored strip cannot produce at all.
+ *
+ * "20 CERTIFICATES, 0 FALSE" IS NO EVIDENCE OF SOUNDNESS, AND THE REASON IS MECHANICAL
+ * RATHER THAN A MATTER OF SAMPLE SIZE. Nineteen of the twenty are issued about structures
+ * the global solve reads FEASIBLE, and the twentieth is the whole leaning stack — so NOT
+ * ONE certificate in this file is issued about a PROPER SUBSET of an INFEASIBLE structure,
+ * which is the only shape a false certificate can take. CheckCertificate is therefore
+ * re-testing the OPTIMISTIC side (already sound by restriction) on every row it runs. This
+ * is TRAPS' "an invariant asserted over fixtures that all share a hidden property is not an
+ * invariant", verbatim: the hidden property is that every fixture with a proper-subset
+ * region stands. The honest split of the twenty is 18 proper-subset + 2 trivial
+ * whole-structure closures (the wall at w = 5, 149 of 149, where the pessimistic side's 965
+ * pivots ARE the global solve; and the stack at 0..29, 30 of 30).
+ *
+ * AND AT LEAST THREE UNSOUNDNESSES REMAIN, not one. Each is a way a certificate could be
+ * issued about a structure that falls, and none is exercised by any fixture here:
+ *
+ *   1. THE OMITTED MATERIAL THAT HAS ITS OWN GROUND PATH AND ALSO BEARS ON THE REGION. The
+ *      carried-set rule charges it nothing. No fixture can expose it, because every wall
+ *      the LP prices is feasible — the only sub-1.0 fixture in the catalogue is the stack.
+ *   2. THE INTERFACE JOINT IS NEVER CHECKED. SpikeExtractRegion drops every joint with an
+ *      end outside the region, and SpikeAddSurcharge applies the load DIRECTLY to the
+ *      region block — so the contact that would have to transmit it is not in the problem
+ *      and its capacity is never asked about. Review worked the stack's case: joint 5-6
+ *      would need T = 636,000 uu against a 412,562 uu cap, a demand the full structure
+ *      cannot deliver and the region problem never poses. The surcharge is a rigid
+ *      attachment where reality has a joint with a strength.
+ *   3. THE CHARGED COMPONENT'S OWN INTERNAL JOINTS VANISH — courses 6..29's twenty-three
+ *      bed joints are in no problem at all — so a hanging component that fails INTERNALLY
+ *      leaves the region certifying happily. And where a component meets the region at
+ *      SEVERAL joints, the area-proportional split is a fixed arbitrary choice where the
+ *      real structure lets the LP choose the distribution.
+ *
+ * The concrete shape to watch for, worth writing down because it is not exotic: a wall
+ * region carrying an omitted spandrel whose own bed joint sits at 1.01 of capacity. The
+ * spandrel's weight is charged, the region carries it comfortably, the certificate is
+ * issued, the spandrel drops, and nothing in this file notices.
+ *
+ * What would settle (1) is a wall the LP prices below 1.0 whose ground-anchored strip still
+ * stands. What would settle (2) and (3) is a surcharge that keeps the interface joint and
+ * the charged component's internal joints in the problem while still writing no equilibrium
+ * row for the component — a different and larger repair. All three are specified follow-ups,
+ * not findings this file may assume away.
+ *
+ * ================================================================================
+ * GREEN ON ARRIVAL IS NOT THE SAME AS ASSERTING NOTHING — THE MUTATIONS
+ * ================================================================================
+ *
+ * Every row here is green the day it lands, because the extractor and the measurement land
+ * together. TRAPS' registry carries the proof, and two of the three are new:
+ *
+ *   X8  the surcharge applied at the CONTACT's X instead of the charged component's centre
+ *       of gravity  ->  4 assertions here + **3** in RegionalSandwich's PART D, and it
+ *       **RE-CREATES THE FALSE CERTIFICATE**: band 0..5 certifies feasible=1 against a
+ *       stack that reads infeasible. That is the sharpest evidence in the slice — it says
+ *       the load-bearing half of repair (1) is WHERE the weight acts, not that it acts.
+ *       The third PART D assertion is the LINE-OF-ACTION pin, added 2026-08-15 in review:
+ *       "independently derived as 175 cm ... and it acted at 55 cm". It exists because the
+ *       verdict rows alone would let a wrong-but-NEARER X through in silence — the contact
+ *       is the extreme case, and a load misplaced onto the region block's own centroid
+ *       might flip nothing.
+ *   X9  the carried set computed as empty (repair (1) removed, plumbing left in place)
+ *       ->  8 assertions here + 5 in PART D, and THREE false certificates.
+ *  X10  the Carried rule made to charge EVERY component, grounded or not (the rule
+ *       selector inverted)  ->  7 here: five of the six wall Charged pins (0 -> 108, 84,
+ *       60, 36, 12 as the strip widens and the omitted set shrinks; w = 5 stays 0 because
+ *       nothing is omitted) plus BOTH pessimistic pivot pins (262 -> 514 and the tall
+ *       arm's 474 -> 761, the surcharge rows costing pivots). The prover the Charged pins
+ *       lacked, and the one that shows the RULE SELECTION is read and not only the total.
+ *       No verdict moves under it, which re-states P8's miss from a second direction.
+ *   X6  the extractor keeps the out-of-region blocks — re-measured against the repaired
+ *       extractor  ->  12 here (five block counts, the closing region's size and both its
+ *       pivot pins, the cost-ratio row, the under-half-the-wall row, the tall region and
+ *       the stack's closing band) and still 14 in RegionalSandwich.
+ *
+ * WHAT STILL HAS NO BITE-PROVER, recorded rather than papered over, because a green row
+ * nothing can fail is indistinguishable from a row that asserts nothing:
+ *
+ *   - **Agreements == 10.** Its only failure mode is a deletion that stops certifying, and
+ *     no mutation available moves it: X6 changes region sizes without changing verdicts,
+ *     X9/X10 change the surcharge where the wall arm's carried set is empty either way, and
+ *     an N6-style rung flip of the ten courses would leave the count at ten. It is a
+ *     ceiling-shaped pin and should be read as one.
+ *   - **The three surcharge-integrity guards in PoseSandwich** (no orphan component, none
+ *     delivered onto a grounded block, applied == charged). They RUN on a live non-zero
+ *     path — the EveryOmittedBlock control charges 108 blocks through 44 interface joints —
+ *     so they are exercised, but no mutation makes one FAIL. The cheapest provers are
+ *     recorded here rather than built: drop the interface search's "other end in region"
+ *     test to manufacture an orphan; deliver every share to the joint's BlockA to
+ *     manufacture a grounded delivery.
+ *
+ * COST OF THIS TEST: **9.4 s**, measured and printed at the bottom of the run, of which the
+ * ten per-deletion global solves are about a third. It joins the OPT-IN OracleSlowSweep
+ * group (now 10 tests, ~22 min) and adds well under 1% to it; the default suite is
+ * untouched at 173 = 167 green + the six standing deliberate reds.
+ *
+ * NEEDS A TICKING WORLD: NO.
+ * ==================================================================================== */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOracleRepairedSandwichTest,
+	"OracleSlowSweep.RigidBlock.RepairedRegionalSandwich",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FOracleRepairedSandwichTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockOracle;
+	using namespace OracleFeasibilitySpikeSupport;
+
+	const FRepairPins Pins;
+
+	const double Started = FPlatformTime::Seconds();
+
+	/*
+	 * A REFUSAL IS NOT AN INFEASIBILITY, and SpikeIsFeasible cannot tell them apart —
+	 * Refuse() returns bAnswered = false with lambda = 0, bit-for-bit what the dead-load
+	 * infeasibility arm returns. Every region solve in this test is guarded, for the same
+	 * reason the sandwich test's are: an unguarded refusal reads as "this region has no
+	 * admissible equilibrium", which is the shape of half the conclusions below.
+	 */
+	const auto MustAnswer = [this](const FPoseReading& Read, const FString& Where)
+	{
+		return TestTrue(
+			*FString::Printf(
+				TEXT("%s: the solve must ANSWER — a REFUSAL and an INFEASIBILITY are ")
+				TEXT("indistinguishable downstream (both are bAnswered=false, lambda=0). ")
+				TEXT("It said: %s"),
+				*Where, Read.WhyNot.IsEmpty() ? TEXT("(nothing)") : *Read.WhyNot),
+			Read.bAnswered);
+	};
+
+	/** One region, both boundary conditions, one verdict. */
+	struct FSandwich
+	{
+		int32 Blocks = 0;
+		int32 Joints = 0;
+		int32 GroundedFree = 0;
+		bool bOptimistic = false;
+		bool bPessimistic = false;
+		bool bCloses = false;
+		int32 OptimisticPivots = 0;
+		int32 PessimisticPivots = 0;
+		double Seconds = 0.0;
+		FSurchargeCounts Surcharge;
+	};
+
+	const auto PoseSandwich = [this, &MustAnswer](
+		const FOracleProblem& Full,
+		const TArray<bool>& Mask,
+		ESpikeSurcharge Rule,
+		const FString& Where) -> FSandwich
+	{
+		FSandwich Out;
+
+		FOracleProblem Optimistic;
+		FRegionCounts OptimisticCounts;
+		FSurchargeCounts OptimisticSurcharge;
+
+		SpikeExtractRepairedRegion(
+			Full, Mask, /*bGroundTheShell*/ true, Rule,
+			Optimistic, OptimisticCounts, OptimisticSurcharge);
+
+		FOracleProblem Pessimistic;
+		FRegionCounts PessimisticCounts;
+		FSurchargeCounts PessimisticSurcharge;
+
+		SpikeExtractRepairedRegion(
+			Full, Mask, /*bGroundTheShell*/ false, Rule,
+			Pessimistic, PessimisticCounts, PessimisticSurcharge);
+
+		/*
+		 * THE SURCHARGE IS THE PESSIMISTIC SIDE'S ALONE, asserted rather than trusted: it
+		 * is the one thing that would silently unsound the half of the sandwich review
+		 * verified, and the extractor's contract is one line of code away from doing it.
+		 */
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: the OPTIMISTIC side must carry no surcharge — its soundness is a ")
+				TEXT("restriction argument and a restriction satisfies no row that was not ")
+				TEXT("in the original problem"),
+				*Where),
+			Optimistic.AppliedForces.Num(), 0);
+
+		const FPoseReading OptimisticRead = SpikeSolve(Optimistic);
+		const FPoseReading PessimisticRead = SpikeSolve(Pessimistic);
+
+		MustAnswer(OptimisticRead, FString::Printf(TEXT("%s GROUNDED-boundary"), *Where));
+		MustAnswer(PessimisticRead, FString::Printf(TEXT("%s FREE-boundary"), *Where));
+
+		Out.Blocks = OptimisticCounts.Blocks;
+		Out.Joints = OptimisticCounts.Joints;
+		Out.GroundedFree = PessimisticCounts.Grounded;
+		Out.bOptimistic = SpikeIsFeasible(OptimisticRead);
+		Out.bPessimistic = SpikeIsFeasible(PessimisticRead);
+		Out.bCloses = Out.bOptimistic == Out.bPessimistic;
+		Out.OptimisticPivots = OptimisticRead.Pivots;
+		Out.PessimisticPivots = PessimisticRead.Pivots;
+		Out.Seconds = OptimisticRead.Seconds + PessimisticRead.Seconds;
+		Out.Surcharge = PessimisticSurcharge;
+
+		/*
+		 * REPAIR (2), MADE EXECUTABLE. A region with no grounded block is infeasible on the
+		 * free side whatever else is true of it (sum its vertical rows: 0 = -W_region), so
+		 * "ground-anchored by construction" is the property the whole strip parameterisation
+		 * exists to guarantee. If it ever fails, every certificate below is vacuous.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: a ground-anchored region must actually contain the earth, and this ")
+				TEXT("one holds %d grounded blocks"),
+				*Where, Out.GroundedFree),
+			Out.GroundedFree > 0);
+
+		/* The surcharge's own integrity, everywhere it is applied. */
+		TestEqual(
+			*FString::Printf(TEXT("%s: no ORPHAN charged component"), *Where),
+			Out.Surcharge.OrphanComponents, 0);
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: no surcharge delivered onto a GROUNDED block, which writes no ")
+				TEXT("equilibrium row and would swallow it"),
+				*Where),
+			Out.Surcharge.DiscardedOntoGroundedUu, 0.0);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the applied surcharge (%.9g uu) must equal the charged blocks' own ")
+				TEXT("weight (%.9g uu)"),
+				*Where, Out.Surcharge.AppliedWeightUu, Out.Surcharge.ChargedWeightUu),
+			FMath::Abs(Out.Surcharge.AppliedWeightUu - Out.Surcharge.ChargedWeightUu)
+				<= 1.0e-9 * (1.0 + Out.Surcharge.ChargedWeightUu));
+
+		return Out;
+	};
+
+	/* Every closed sandwich in this test is checked against the truth it certifies. */
+	int32 Certificates = 0;
+	int32 FalseCertificates = 0;
+
+	const auto CheckCertificate = [this, &Certificates, &FalseCertificates](
+		const FSandwich& Sandwich, bool bGlobalFeasible, const FString& Where)
+	{
+		if (!Sandwich.bCloses)
+		{
+			return;
+		}
+
+		++Certificates;
+
+		if (Sandwich.bOptimistic != bGlobalFeasible)
+		{
+			++FalseCertificates;
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the closed sandwich certifies feasible=%d and the whole structure ")
+				TEXT("reads feasible=%d. A disagreement here is a FALSE CERTIFICATE — the ")
+				TEXT("failure the repair exists to remove, and the one thing this slice ")
+				TEXT("cannot be allowed to reproduce quietly."),
+				*Where, Sandwich.bOptimistic ? 1 : 0, bGlobalFeasible ? 1 : 0),
+			Sandwich.bOptimistic == bGlobalFeasible);
+	};
+
+	/* ================================================================================
+	 * PART 1 — THE WALL, AND THE STRIP-WIDTH LADDER.
+	 *
+	 * The same fixture the refuted form measured: a 12-course x 12-cell wall with one brick
+	 * out of course 6, 149 blocks, whose whole-wall feasibility solve takes 965 pivots. Same
+	 * wall, same deletion, so the two tables are directly comparable and the only difference
+	 * is the region shape and the surcharge.
+	 * ================================================================================ */
+
+	constexpr int32 WallCourses = 12;
+	constexpr int32 WallCells = 12;
+	constexpr int32 WallDeleteCourse = 6;
+
+	FStructure Wall;
+	FString Why;
+
+	/*
+	 * Each producer call is its OWN statement before its message is built: folding a call
+	 * that writes Why into the Printf that reads it is unsequenced, and MSVC evaluates the
+	 * condition last (TRAPS). Every such pair in this test is split the same way.
+	 */
+	const bool bWallLaid = SpikeBuildIntactWall(WallCourses, WallCells, Wall, Why);
+
+	if (!TestTrue(
+			*FString::Printf(TEXT("repaired: the wall must lay (it said: %s)"), *Why),
+			bWallLaid))
+	{
+		return true;
+	}
+
+	double DeleteXCm = 0.0;
+	double DeleteZCm = 0.0;
+	const int32 Victim = SpikePieceInCourse(Wall, WallDeleteCourse, DeleteXCm, DeleteZCm);
+
+	if (!TestTrue(TEXT("repaired: there must be a brick to delete"), Victim != INDEX_NONE)
+		|| !TestTrue(TEXT("repaired: the brick must be removable"), Wall.RemovePiece(Victim)))
+	{
+		return true;
+	}
+
+	FOracleProblem Full;
+
+	const bool bBridged = BuildRigidBlockProblem(Wall, Full, Why);
+
+	if (!TestTrue(
+			*FString::Printf(TEXT("repaired: the bridge must represent the cut wall (%s)"), *Why),
+			bBridged))
+	{
+		return true;
+	}
+
+	TestEqual(TEXT("repaired: the wall is the refuted form's own fixture"),
+		Full.Blocks.Num(), Pins.WallBlocks);
+
+	FOracleProblem Global = Full;
+	Global.bGravityIsLive = false;
+
+	const FPoseReading GlobalRead = SpikeSolve(Global);
+	const bool bGlobalFeasible = SpikeIsFeasible(GlobalRead);
+
+	MustAnswer(GlobalRead, TEXT("repaired: the whole cut wall"));
+
+	TestEqual(
+		TEXT("repaired: the whole wall's feasibility pivot count — the number the regional ")
+		TEXT("lever has to beat, and the refuted form did not"),
+		GlobalRead.Pivots, Pins.WallGlobalPivots);
+
+	int32 ClosingHalfWidth = INDEX_NONE;
+	int32 ClosingRegionBlocks = INDEX_NONE;
+	int32 ClosingOptimisticPivots = INDEX_NONE;
+	int32 ClosingPessimisticPivots = INDEX_NONE;
+	double ClosingSeconds = -1.0;
+
+	/*
+	 * MEASURED / PREDICTED per rung. The Charged column is P1's test: it should read 0 at
+	 * every width, because a full-height strip leaves nothing stranded in a grounded wall.
+	 *
+	 * MEASURED 2026-08-15: the block count is exactly 24w + 41 up to the wall's own width
+	 * (17 core + 24 shell at w = 0, and 24 more core per step), the strip closes at the
+	 * VERY FIRST rung, and the Charged column reads 0 on all six — P1 held.
+	 */
+	TArray<FStripPin> StripPins;
+	StripPins.Add({ 0,  41, 0, 1, 1 });
+	StripPins.Add({ 1,  65, 0, 1, 1 });
+	StripPins.Add({ 2,  89, 0, 1, 1 });
+	StripPins.Add({ 3, 113, 0, 1, 1 });
+	StripPins.Add({ 4, 137, 0, 1, 1 });
+	StripPins.Add({ 5, 149, 0, 1, 1 });
+
+	for (const FStripPin& Pin : StripPins)
+	{
+		TArray<bool> Mask;
+		SpikeGroundStripMask(Full, DeleteXCm, Pin.HalfWidthCells, Mask);
+
+		const FSandwich Sandwich = PoseSandwich(
+			Full, Mask, ESpikeSurcharge::Carried,
+			FString::Printf(TEXT("strip w=%d"), Pin.HalfWidthCells));
+
+		if (Sandwich.bCloses && ClosingHalfWidth == INDEX_NONE)
+		{
+			ClosingHalfWidth = Pin.HalfWidthCells;
+			ClosingRegionBlocks = Sandwich.Blocks;
+			ClosingOptimisticPivots = Sandwich.OptimisticPivots;
+			ClosingPessimisticPivots = Sandwich.PessimisticPivots;
+			ClosingSeconds = Sandwich.Seconds;
+		}
+
+		const FString Line = FString::Printf(
+			TEXT("REPAIRED STRIP w=%d: blocks=%d (%.1f%% of %d) joints=%d groundedFree=%d | ")
+			TEXT("charged=%d components=%d interface=%d chargedW=%.9g | optimistic=%d ")
+			TEXT("pivots=%d | pessimistic=%d pivots=%d | closes=%d | secs=%.3f"),
+			Pin.HalfWidthCells, Sandwich.Blocks,
+			100.0 * double(Sandwich.Blocks) / double(Full.Blocks.Num()), Full.Blocks.Num(),
+			Sandwich.Joints, Sandwich.GroundedFree,
+			Sandwich.Surcharge.ChargedBlocks, Sandwich.Surcharge.ChargedComponents,
+			Sandwich.Surcharge.InterfaceJoints, Sandwich.Surcharge.ChargedWeightUu,
+			Sandwich.bOptimistic ? 1 : 0, Sandwich.OptimisticPivots,
+			Sandwich.bPessimistic ? 1 : 0, Sandwich.PessimisticPivots,
+			Sandwich.bCloses ? 1 : 0, Sandwich.Seconds);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+		AddInfo(Line);
+
+		CheckCertificate(Sandwich, bGlobalFeasible,
+			FString::Printf(TEXT("strip w=%d"), Pin.HalfWidthCells));
+
+		if (Pin.Blocks == INDEX_NONE || Pin.Charged == INDEX_NONE
+			|| Pin.Optimistic == INDEX_NONE || Pin.Pessimistic == INDEX_NONE)
+		{
+			AddError(FString::Printf(
+				TEXT("strip w=%d: UNMEASURED RUNG — pin blocks=%d charged=%d optimistic=%d ")
+				TEXT("pessimistic=%d"),
+				Pin.HalfWidthCells, Sandwich.Blocks, Sandwich.Surcharge.ChargedBlocks,
+				Sandwich.bOptimistic ? 1 : 0, Sandwich.bPessimistic ? 1 : 0));
+		}
+		else
+		{
+			TestEqual(*FString::Printf(TEXT("strip w=%d: region block count"),
+				Pin.HalfWidthCells), Sandwich.Blocks, Pin.Blocks);
+
+			TestEqual(
+				*FString::Printf(
+					TEXT("strip w=%d: how many omitted blocks the region CARRIES — P1 ")
+					TEXT("predicted zero at every width, because a full-height strip in a ")
+					TEXT("grounded wall leaves nothing stranded"),
+					Pin.HalfWidthCells),
+				Sandwich.Surcharge.ChargedBlocks, Pin.Charged);
+
+			TestEqual(*FString::Printf(TEXT("strip w=%d: GROUNDED-boundary verdict"),
+				Pin.HalfWidthCells), Sandwich.bOptimistic ? 1 : 0, Pin.Optimistic);
+
+			TestEqual(*FString::Printf(TEXT("strip w=%d: FREE-boundary verdict"),
+				Pin.HalfWidthCells), Sandwich.bPessimistic ? 1 : 0, Pin.Pessimistic);
+		}
+	}
+
+	if (Pins.ClosingHalfWidth == INDEX_NONE)
+	{
+		AddError(FString::Printf(
+			TEXT("repaired ladder: UNMEASURED CLOSING WIDTH — measured half-width %d at %d ")
+			TEXT("of %d blocks (%.1f%%), %d + %d pivots against the whole wall's %d ")
+			TEXT("(ratio %.3f), %.4f s for the pair. PREDICTED (P3/P5/P6): half-width 0, 41 ")
+			TEXT("blocks, 28%%, ~0.48x, under 100 ms. INDEX_NONE means it did not close at ")
+			TEXT("any width in the ladder."),
+			ClosingHalfWidth, ClosingRegionBlocks, Full.Blocks.Num(),
+			ClosingRegionBlocks > 0
+				? 100.0 * double(ClosingRegionBlocks) / double(Full.Blocks.Num()) : -1.0,
+			ClosingOptimisticPivots, ClosingPessimisticPivots, GlobalRead.Pivots,
+			GlobalRead.Pivots > 0
+				? double(ClosingOptimisticPivots + ClosingPessimisticPivots)
+					/ double(GlobalRead.Pivots)
+				: -1.0,
+			ClosingSeconds));
+	}
+	else
+	{
+		TestEqual(TEXT("repaired ladder: the closing strip half-width"),
+			ClosingHalfWidth, Pins.ClosingHalfWidth);
+
+		TestEqual(
+			TEXT("repaired ladder: HOW BIG the certified region is — the number the refuted ")
+			TEXT("form answered with 142 of 149, and the whole point of a decomposition"),
+			ClosingRegionBlocks, Pins.ClosingRegionBlocks);
+
+		TestEqual(TEXT("repaired ladder: optimistic pivots at the closing width"),
+			ClosingOptimisticPivots, Pins.ClosingOptimisticPivots);
+
+		TestEqual(TEXT("repaired ladder: pessimistic pivots at the closing width"),
+			ClosingPessimisticPivots, Pins.ClosingPessimisticPivots);
+
+		/*
+		 * THE COST COMPARISON, IN PIVOTS BECAUSE PIVOTS ARE DETERMINISTIC AND SECONDS ARE
+		 * NOT. The refuted form's two solves cost 1.68x the global solve it existed to
+		 * avoid, and this line is written as the strict inequality that says which side of
+		 * 1.0 the repaired form lands on. If it ever crosses back, the lever has stopped
+		 * being worth anything and this is where that is noticed.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("repaired ladder: THE SANDWICH MUST COST LESS THAN THE GLOBAL SOLVE — ")
+				TEXT("its two solves at the closing width take %d + %d = %d pivots against ")
+				TEXT("the whole wall's %d (ratio %.3f; the refuted form's was 1.68x)"),
+				ClosingOptimisticPivots, ClosingPessimisticPivots,
+				ClosingOptimisticPivots + ClosingPessimisticPivots, GlobalRead.Pivots,
+				double(ClosingOptimisticPivots + ClosingPessimisticPivots)
+					/ double(GlobalRead.Pivots)),
+			ClosingOptimisticPivots + ClosingPessimisticPivots < GlobalRead.Pivots);
+
+		/*
+		 * AND THE REGION MUST BE A NEIGHBOURHOOD RATHER THAN THE BUILDING. Half the
+		 * structure is the loosest reading of "much smaller than the whole" that could
+		 * still be called a decomposition; the refuted form's 95% failed it by a mile.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("repaired ladder: the certified region must be under half the wall — %d ")
+				TEXT("of %d blocks, %.1f%%"),
+				ClosingRegionBlocks, Full.Blocks.Num(),
+				100.0 * double(ClosingRegionBlocks) / double(Full.Blocks.Num())),
+			2 * ClosingRegionBlocks < Full.Blocks.Num());
+	}
+
+	/* ================================================================================
+	 * PART 2 — TEN DELETIONS AT THE CLOSING WIDTH.
+	 *
+	 * The refuted form certified five of ten and the five were exactly those whose ball
+	 * happened to reach the foundation. A ground-anchored strip reaches it by construction,
+	 * so the deletion's height should stop mattering — which is a prediction with a number
+	 * in it (P4: ten of ten) and a fixed ladder of ten bricks, the same ten every run.
+	 * ================================================================================ */
+
+	int32 Agreements = 0;
+
+	if (ClosingHalfWidth == INDEX_NONE)
+	{
+		AddError(TEXT("repaired agreement: skipped — the ladder never closed, so there is no ")
+			TEXT("width to run ten deletions at"));
+	}
+	else
+	{
+		for (int32 Course = 1; Course <= 10; ++Course)
+		{
+			FStructure Cut;
+			FString CutWhy;
+
+			const bool bCutLaid = SpikeBuildIntactWall(WallCourses, WallCells, Cut, CutWhy);
+
+			if (!TestTrue(
+					*FString::Printf(TEXT("repaired course %d: the wall must lay (%s)"),
+						Course, *CutWhy),
+					bCutLaid))
+			{
+				continue;
+			}
+
+			double XCm = 0.0;
+			double ZCm = 0.0;
+			const int32 Brick = SpikePieceInCourse(Cut, Course, XCm, ZCm);
+			const bool bRemoved = Brick != INDEX_NONE && Cut.RemovePiece(Brick);
+
+			if (!TestTrue(
+					*FString::Printf(TEXT("repaired course %d: a brick must exist there"), Course),
+					bRemoved))
+			{
+				continue;
+			}
+
+			FOracleProblem CutProblem;
+
+			const bool bCutBridged = BuildRigidBlockProblem(Cut, CutProblem, CutWhy);
+
+			if (!TestTrue(
+					*FString::Printf(TEXT("repaired course %d: the bridge must represent it (%s)"),
+						Course, *CutWhy),
+					bCutBridged))
+			{
+				continue;
+			}
+
+			FOracleProblem CutGlobal = CutProblem;
+			CutGlobal.bGravityIsLive = false;
+
+			const FPoseReading CutGlobalRead = SpikeSolve(CutGlobal);
+			const bool bCutFeasible = SpikeIsFeasible(CutGlobalRead);
+
+			MustAnswer(CutGlobalRead,
+				FString::Printf(TEXT("repaired course %d: the whole cut wall"), Course));
+
+			TArray<bool> Mask;
+			SpikeGroundStripMask(CutProblem, XCm, ClosingHalfWidth, Mask);
+
+			const FSandwich Sandwich = PoseSandwich(
+				CutProblem, Mask, ESpikeSurcharge::Carried,
+				FString::Printf(TEXT("repaired course %d"), Course));
+
+			if (Sandwich.bCloses)
+			{
+				++Agreements;
+			}
+
+			const FString Line = FString::Printf(
+				TEXT("REPAIRED AGREEMENT course=%d (brick at X=%.4f Z=%.4f): blocks=%d ")
+				TEXT("charged=%d | optimistic=%d pessimistic=%d closes=%d | global=%d | ")
+				TEXT("pivots %d + %d against %d | secs=%.3f"),
+				Course, XCm, ZCm, Sandwich.Blocks, Sandwich.Surcharge.ChargedBlocks,
+				Sandwich.bOptimistic ? 1 : 0, Sandwich.bPessimistic ? 1 : 0,
+				Sandwich.bCloses ? 1 : 0, bCutFeasible ? 1 : 0,
+				Sandwich.OptimisticPivots, Sandwich.PessimisticPivots, CutGlobalRead.Pivots,
+				Sandwich.Seconds);
+
+			UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+			AddInfo(Line);
+
+			CheckCertificate(Sandwich, bCutFeasible,
+				FString::Printf(TEXT("repaired course %d"), Course));
+		}
+	}
+
+	if (Pins.Agreements == INDEX_NONE)
+	{
+		AddError(FString::Printf(
+			TEXT("repaired agreement: UNMEASURED — at the closing width, %d of ten deletions ")
+			TEXT("certified. PREDICTED (P4) ten; the refuted form managed five at radius 4 ")
+			TEXT("with a region of 114 blocks."),
+			Agreements));
+	}
+	else
+	{
+		TestEqual(
+			TEXT("repaired agreement: how many of ten deletions certify at the closing width ")
+			TEXT("— distinct from the file-wide count of closed sandwiches, which is 20"),
+			Agreements, Pins.Agreements);
+	}
+
+	/* ================================================================================
+	 * PART 3 — THE OVER-INCLUSIVE CONTROL.
+	 *
+	 * "Keep the omitted material's weight" has an obvious reading — keep ALL of it — and
+	 * that reading is the second way to kill the lever, quietly: a pessimistic side that is
+	 * too pessimistic never certifies and looks exactly like a decomposition that does not
+	 * decompose. Measured rather than argued, at the same width and on the same wall, so the
+	 * only difference between this row and the certified one is the surcharge rule.
+	 * ================================================================================ */
+
+	if (ClosingHalfWidth != INDEX_NONE)
+	{
+		TArray<bool> Mask;
+		SpikeGroundStripMask(Full, DeleteXCm, ClosingHalfWidth, Mask);
+
+		const FSandwich Control = PoseSandwich(
+			Full, Mask, ESpikeSurcharge::EveryOmittedBlock, TEXT("control (charge everything)"));
+
+		const FString Line = FString::Printf(
+			TEXT("REPAIRED CONTROL w=%d, EVERY omitted block charged: blocks=%d charged=%d ")
+			TEXT("components=%d interface=%d chargedW=%.9g | optimistic=%d pessimistic=%d ")
+			TEXT("closes=%d"),
+			ClosingHalfWidth, Control.Blocks, Control.Surcharge.ChargedBlocks,
+			Control.Surcharge.ChargedComponents, Control.Surcharge.InterfaceJoints,
+			Control.Surcharge.ChargedWeightUu, Control.bOptimistic ? 1 : 0,
+			Control.bPessimistic ? 1 : 0, Control.bCloses ? 1 : 0);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+		AddInfo(Line);
+
+		if (Pins.ControlPessimistic == INDEX_NONE)
+		{
+			AddError(FString::Printf(
+				TEXT("repaired control: UNMEASURED — charging every omitted block leaves the ")
+				TEXT("FREE-boundary side reading feasible=%d (charged %d blocks, %.9g uu). ")
+				TEXT("PREDICTED (P8) 0 — infeasible, so the over-inclusive rule never ")
+				TEXT("certifies."),
+				Control.bPessimistic ? 1 : 0, Control.Surcharge.ChargedBlocks,
+				Control.Surcharge.ChargedWeightUu));
+		}
+		else
+		{
+			TestEqual(
+				TEXT("repaired control: the FREE-boundary verdict when EVERY omitted block is ")
+				TEXT("charged — the too-pessimistic failure mode, measured on the same wall ")
+				TEXT("and the same width as the certificate above"),
+				Control.bPessimistic ? 1 : 0, Pins.ControlPessimistic);
+		}
+	}
+
+	/* ================================================================================
+	 * PART 4 — HEIGHT SCALES THE REGION, AND THAT IS WHAT DECIDES SCENARIO SCALE.
+	 *
+	 * A ground-anchored region has to reach the foundation, so its size is set by the
+	 * structure's HEIGHT and not by any bonded distance around the deletion. Scenario walls
+	 * are 30 courses; this measures the slope with the same wall at 18.
+	 * ================================================================================ */
+
+	{
+		constexpr int32 TallCourses = 18;
+
+		FStructure Tall;
+		FString TallWhy;
+
+		const bool bTallLaid = SpikeBuildIntactWall(TallCourses, WallCells, Tall, TallWhy);
+
+		if (TestTrue(
+				*FString::Printf(TEXT("repaired tall: the wall must lay (%s)"), *TallWhy),
+				bTallLaid))
+		{
+			double TallXCm = 0.0;
+			double TallZCm = 0.0;
+			const int32 TallVictim = SpikePieceInCourse(Tall, WallDeleteCourse, TallXCm, TallZCm);
+			const bool bTallRemoved = TallVictim != INDEX_NONE && Tall.RemovePiece(TallVictim);
+
+			FOracleProblem TallProblem;
+
+			const bool bTallBridged = bTallRemoved
+				&& BuildRigidBlockProblem(Tall, TallProblem, TallWhy);
+
+			if (TestTrue(TEXT("repaired tall: the brick must be removable"), bTallRemoved)
+				&& TestTrue(
+					*FString::Printf(TEXT("repaired tall: the bridge must represent it (%s)"),
+						*TallWhy),
+					bTallBridged))
+			{
+				FOracleProblem TallGlobal = TallProblem;
+				TallGlobal.bGravityIsLive = false;
+
+				const FPoseReading TallGlobalRead = SpikeSolve(TallGlobal);
+				const bool bTallFeasible = SpikeIsFeasible(TallGlobalRead);
+
+				MustAnswer(TallGlobalRead, TEXT("repaired tall: the whole cut wall"));
+
+				int32 TallClosing = INDEX_NONE;
+				int32 TallClosingBlocks = INDEX_NONE;
+				int32 TallClosingOptimisticPivots = INDEX_NONE;
+				int32 TallClosingPessimisticPivots = INDEX_NONE;
+
+				for (int32 HalfWidth = 0; HalfWidth <= 2; ++HalfWidth)
+				{
+					TArray<bool> Mask;
+					SpikeGroundStripMask(TallProblem, TallXCm, HalfWidth, Mask);
+
+					const FSandwich Sandwich = PoseSandwich(
+						TallProblem, Mask, ESpikeSurcharge::Carried,
+						FString::Printf(TEXT("tall strip w=%d"), HalfWidth));
+
+					if (Sandwich.bCloses && TallClosing == INDEX_NONE)
+					{
+						TallClosing = HalfWidth;
+						TallClosingBlocks = Sandwich.Blocks;
+						TallClosingOptimisticPivots = Sandwich.OptimisticPivots;
+						TallClosingPessimisticPivots = Sandwich.PessimisticPivots;
+					}
+
+					const FString Line = FString::Printf(
+						TEXT("REPAIRED TALL (%d courses) w=%d: blocks=%d (%.1f%% of %d) ")
+						TEXT("charged=%d | optimistic=%d pessimistic=%d closes=%d | pivots ")
+						TEXT("%d + %d against %d | secs=%.3f"),
+						TallCourses, HalfWidth, Sandwich.Blocks,
+						100.0 * double(Sandwich.Blocks) / double(TallProblem.Blocks.Num()),
+						TallProblem.Blocks.Num(), Sandwich.Surcharge.ChargedBlocks,
+						Sandwich.bOptimistic ? 1 : 0, Sandwich.bPessimistic ? 1 : 0,
+						Sandwich.bCloses ? 1 : 0, Sandwich.OptimisticPivots,
+						Sandwich.PessimisticPivots, TallGlobalRead.Pivots, Sandwich.Seconds);
+
+					UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+					AddInfo(Line);
+
+					CheckCertificate(Sandwich, bTallFeasible,
+						FString::Printf(TEXT("tall strip w=%d"), HalfWidth));
+				}
+
+				if (Pins.TallWallBlocks == INDEX_NONE
+					|| Pins.TallClosingHalfWidth == INDEX_NONE
+					|| Pins.TallClosingRegionBlocks == INDEX_NONE)
+				{
+					AddError(FString::Printf(
+						TEXT("repaired tall: UNMEASURED — an %d-course wall is %d blocks and ")
+						TEXT("closes at half-width %d with a region of %d blocks (%.1f%%), ")
+						TEXT("costing %d + %d pivots against the whole wall's %d. PREDICTED ")
+						TEXT("(P7) half-width 0 and ~62 blocks, 1.5x the 12-course region for ")
+						TEXT("1.5x the height."),
+						TallCourses, TallProblem.Blocks.Num(), TallClosing, TallClosingBlocks,
+						TallClosingBlocks > 0
+							? 100.0 * double(TallClosingBlocks) / double(TallProblem.Blocks.Num())
+							: -1.0,
+						TallClosingOptimisticPivots, TallClosingPessimisticPivots,
+						TallGlobalRead.Pivots));
+				}
+				else
+				{
+					TestEqual(TEXT("repaired tall: the taller wall's block count"),
+						TallProblem.Blocks.Num(), Pins.TallWallBlocks);
+
+					TestEqual(TEXT("repaired tall: its closing half-width"),
+						TallClosing, Pins.TallClosingHalfWidth);
+
+					TestEqual(
+						TEXT("repaired tall: and the certified region's size, which is the ")
+						TEXT("measurement that says whether this lever survives a 30-course ")
+						TEXT("scenario wall"),
+						TallClosingBlocks, Pins.TallClosingRegionBlocks);
+
+					/*
+					 * THE COST AT HEIGHT, PINNED — the second point of the two the
+					 * scenario-scale extrapolation is drawn through. 79 + 474 = 553 here
+					 * against 49 + 262 = 311 at twelve courses is 1.78x of cost for 1.5x of
+					 * height, and that slope is the whole of the answer to "does a certified
+					 * region stay inside the budget at thirty courses".
+					 */
+					TestEqual(
+						TEXT("repaired tall: optimistic pivots at the closing width"),
+						TallClosingOptimisticPivots, Pins.TallClosingOptimisticPivots);
+
+					TestEqual(
+						TEXT("repaired tall: pessimistic pivots at the closing width — with ")
+						TEXT("the line above, the INPUT to the scenario-scale extrapolation"),
+						TallClosingPessimisticPivots, Pins.TallClosingPessimisticPivots);
+				}
+			}
+		}
+	}
+
+	/* ================================================================================
+	 * PART 5 — THE COLLAPSE ARM.
+	 *
+	 * Every wall the project owns is LP-feasible, so Parts 1-4 exercise only the standing
+	 * side. The 30-course leaning stack is the one cheap fixture the LP prices below 1.0
+	 * (lambda* 0.44048) and it is the fixture that exposed the false certificate. Here the
+	 * regions are ground-anchored BANDS — courses 0..k — which is repair (2)'s shape for a
+	 * chain, and each one is posed with repair (1) live.
+	 * ================================================================================ */
+
+	{
+		FStructure Stack;
+		FString StackWhy;
+
+		const bool bStackLaid = SpikeBuildLeaningStack(30, Stack, StackWhy);
+
+		if (TestTrue(
+				*FString::Printf(TEXT("repaired stack: it must lay (%s)"), *StackWhy),
+				bStackLaid))
+		{
+			FOracleProblem StackProblem;
+
+			const bool bStackBridged = BuildRigidBlockProblem(Stack, StackProblem, StackWhy);
+
+			if (TestTrue(
+					*FString::Printf(TEXT("repaired stack: the bridge must represent it (%s)"),
+						*StackWhy),
+					bStackBridged))
+			{
+				FOracleProblem StackGlobal = StackProblem;
+				StackGlobal.bGravityIsLive = false;
+
+				const FPoseReading StackGlobalRead = SpikeSolve(StackGlobal);
+				const bool bStackFeasible = SpikeIsFeasible(StackGlobalRead);
+
+				MustAnswer(StackGlobalRead, TEXT("repaired stack: the whole stack"));
+
+				TestTrue(
+					TEXT("repaired stack: the whole 30-course stack must be INFEASIBLE — it is ")
+					TEXT("the collapse arm and without it every certificate below is about a ")
+					TEXT("structure that stands"),
+					!bStackFeasible);
+
+				int32 StackClosingCourse = INDEX_NONE;
+				int32 StackClosingBlocks = INDEX_NONE;
+				int32 StackClosingOptimisticPivots = INDEX_NONE;
+				int32 StackClosingPessimisticPivots = INDEX_NONE;
+
+				/*
+				 * Every pivot the growth ladder spends before it certifies. A decomposition
+				 * that has to GROW is charged for the whole walk, not only for the rung it
+				 * stops on, and on this arm the walk is the entire cost.
+				 */
+				int32 StackLadderPivots = 0;
+
+				const int32 TopCourses[] = { 5, 10, 15, 20, 25, 29 };
+
+				for (const int32 TopCourse : TopCourses)
+				{
+					const double TopZCm =
+						SpikeBrickHeightCm / 2.0 + double(TopCourse) * SpikeCoursePitchCm;
+
+					TArray<bool> Mask;
+					SpikeGroundBandMask(StackProblem, TopZCm, Mask);
+
+					const FSandwich Sandwich = PoseSandwich(
+						StackProblem, Mask, ESpikeSurcharge::Carried,
+						FString::Printf(TEXT("stack band 0..%d"), TopCourse));
+
+					StackLadderPivots +=
+						Sandwich.OptimisticPivots + Sandwich.PessimisticPivots;
+
+					if (Sandwich.bCloses && StackClosingCourse == INDEX_NONE)
+					{
+						StackClosingCourse = TopCourse;
+						StackClosingBlocks = Sandwich.Blocks;
+						StackClosingOptimisticPivots = Sandwich.OptimisticPivots;
+						StackClosingPessimisticPivots = Sandwich.PessimisticPivots;
+					}
+
+					const FString Line = FString::Printf(
+						TEXT("REPAIRED STACK BAND 0..%d: blocks=%d (%.1f%% of %d) charged=%d ")
+						TEXT("components=%d interface=%d chargedW=%.9g | optimistic=%d ")
+						TEXT("pessimistic=%d closes=%d | pivots %d + %d against %d"),
+						TopCourse, Sandwich.Blocks,
+						100.0 * double(Sandwich.Blocks) / double(StackProblem.Blocks.Num()),
+						StackProblem.Blocks.Num(), Sandwich.Surcharge.ChargedBlocks,
+						Sandwich.Surcharge.ChargedComponents, Sandwich.Surcharge.InterfaceJoints,
+						Sandwich.Surcharge.ChargedWeightUu, Sandwich.bOptimistic ? 1 : 0,
+						Sandwich.bPessimistic ? 1 : 0, Sandwich.bCloses ? 1 : 0,
+						Sandwich.OptimisticPivots, Sandwich.PessimisticPivots,
+						StackGlobalRead.Pivots);
+
+					UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+					AddInfo(Line);
+
+					CheckCertificate(Sandwich, bStackFeasible,
+						FString::Printf(TEXT("stack band 0..%d"), TopCourse));
+
+					/*
+					 * THE SURCHARGE'S OWN SET, PINNED ON THE ARM WHERE IT DOES THE WORK. A
+					 * reachability walk that charged the wrong blocks would still leave this
+					 * band infeasible and every verdict in this section would stay green, so
+					 * the count is asserted rather than inferred from the answer.
+					 */
+					if (TopCourse == 5)
+					{
+						TestEqual(
+							TEXT("repaired stack: the band 0..5 is seven blocks and CARRIES the ")
+							TEXT("twenty-three courses above it — the weight the refuted form ")
+							TEXT("deleted along with their restraint"),
+							Sandwich.Surcharge.ChargedBlocks, Pins.StackBandChargedAtFive);
+
+						TestEqual(
+							TEXT("repaired stack: and they are one component meeting the band at ")
+							TEXT("exactly one joint, which is what a chain must give"),
+							Sandwich.Surcharge.InterfaceJoints, 1);
+					}
+				}
+
+				if (Pins.StackClosingTopCourse == INDEX_NONE
+					|| Pins.StackClosingRegionBlocks == INDEX_NONE)
+				{
+					AddError(FString::Printf(
+						TEXT("repaired stack: UNMEASURED — the smallest ground-anchored band ")
+						TEXT("whose two sides AGREE is courses 0..%d, a region of %d of %d ")
+						TEXT("blocks, costing %d + %d pivots against the whole stack's %d and ")
+						TEXT("%d over the whole growth ladder. PREDICTED (P9) only the whole ")
+						TEXT("structure: the repair withdraws the false certificate without ")
+						TEXT("making collapse cheaper."),
+						StackClosingCourse, StackClosingBlocks, StackProblem.Blocks.Num(),
+						StackClosingOptimisticPivots, StackClosingPessimisticPivots,
+						StackGlobalRead.Pivots, StackLadderPivots));
+				}
+				else
+				{
+					TestEqual(TEXT("repaired stack: the closing band's top course"),
+						StackClosingCourse, Pins.StackClosingTopCourse);
+
+					TestEqual(TEXT("repaired stack: and the region there"),
+						StackClosingBlocks, Pins.StackClosingRegionBlocks);
+
+					/* ---- AND WHAT THE COLLAPSE ARM COSTS, WHICH IS THE OTHER HALF. ---- */
+
+					TestEqual(TEXT("repaired stack: optimistic pivots at closure"),
+						StackClosingOptimisticPivots, Pins.StackClosingOptimisticPivots);
+
+					TestEqual(TEXT("repaired stack: pessimistic pivots at closure"),
+						StackClosingPessimisticPivots, Pins.StackClosingPessimisticPivots);
+
+					TestEqual(
+						TEXT("repaired stack: and every pivot the growth ladder spends before ")
+						TEXT("it gets there — a decomposition that must GROW is charged for the ")
+						TEXT("whole walk, not only the rung it stops on"),
+						StackLadderPivots, Pins.StackLadderPivots);
+
+					/*
+					 * THE RATIO, STATED AS THE INEQUALITY IT IS. The wall arm asserts the
+					 * sandwich costs LESS than the global solve; on the collapse arm the same
+					 * comparison goes the other way, and both directions are asserted so
+					 * neither ratio can be quoted without the other showing up beside it.
+					 */
+					TestTrue(
+						*FString::Printf(
+							TEXT("repaired stack: THE COLLAPSE ARM COSTS MORE THAN THE GLOBAL ")
+							TEXT("SOLVE — %d + %d = %d pivots at closure against %d (%.2fx), ")
+							TEXT("and %d over the whole ladder (%.2fx). The refuted form was ")
+							TEXT("condemned at 1.68x. If this ever drops below 1.0 the lever ")
+							TEXT("has become worth something on the arm that matters, and this ")
+							TEXT("is where that is noticed."),
+							StackClosingOptimisticPivots, StackClosingPessimisticPivots,
+							StackClosingOptimisticPivots + StackClosingPessimisticPivots,
+							StackGlobalRead.Pivots,
+							double(StackClosingOptimisticPivots + StackClosingPessimisticPivots)
+								/ double(StackGlobalRead.Pivots),
+							StackLadderPivots,
+							double(StackLadderPivots) / double(StackGlobalRead.Pivots)),
+						StackClosingOptimisticPivots + StackClosingPessimisticPivots
+							> StackGlobalRead.Pivots);
+				}
+			}
+		}
+	}
+
+	/* ================================================================================
+	 * THE ONE ASSERTION THIS SLICE WOULD BE WORTHLESS WITHOUT.
+	 *
+	 * The refuted form did not fail by certifying too rarely; it failed by certifying a
+	 * structure that has no equilibrium. Every closed sandwich in this file is checked
+	 * against the whole structure's own verdict as it is produced, and the count is asserted
+	 * here so "no false certificate" is one number rather than a scattering of rows that
+	 * could all be skipped by an early return.
+	 * ================================================================================ */
+	{
+		const FString Line = FString::Printf(
+			TEXT("REPAIRED TOTALS: %d certificates issued, %d of them FALSE. Test took %.3f s."),
+			Certificates, FalseCertificates, FPlatformTime::Seconds() - Started);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+		AddInfo(Line);
+
+		TestEqual(
+			TEXT("REPAIRED: not one closed sandwich in this test may disagree with the whole ")
+			TEXT("structure it certifies. The refuted form produced one that was wrong by ")
+			TEXT("41.96x; this is the count that says whether the repair removed it."),
+			FalseCertificates, 0);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("REPAIRED: and at least one certificate must actually be issued (%d), or ")
+				TEXT("'no false certificate' is true of a lever that certifies nothing"),
+				Certificates),
+			Certificates > 0);
 	}
 
 	return true;
