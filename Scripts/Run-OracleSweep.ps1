@@ -5,7 +5,8 @@
 .DESCRIPTION
     The sweep is dominated by three tests (measured 2026-08-16: WallsAndLadders 455 s,
     PhaseTwoMustNotRefuseTheCoveredOpeningFamily 432 s, FeasibilityReformulationCost 313 s)
-    against seven cheap ones totalling 80 s. Run serially that is ~22 minutes.
+    against the cheap ones. Run serially that is ~22 minutes. As of 2026-08-18 the tiers
+    hold 9 fast and 4 full tests; ExpectedTests below is the guard on those counts.
 
     MEASURED, 2026-08-16: -Tier All takes 648 s -- 2.0x, not the 2.9x the bucket split
     predicts. All three processes finished within a tenth of a second of each other, which
@@ -34,9 +35,9 @@
     to plain ASCII. See TRAPS.
 
 .PARAMETER Tier
-    Fast  -- the seven cheap tests only (~80 s, one process). Use while iterating.
-    Full  -- the three expensive tests, one process each.
-    All   -- both tiers. THE ONE TO RUN BEFORE A COMMIT.
+    Fast  -- the cheap tests only (9 as of 2026-08-18, ~90 s, one process). For iterating.
+    Full  -- the expensive tests (4), one process each.
+    All   -- both tiers (13). THE ONE TO RUN BEFORE A COMMIT.
 
 .PARAMETER Serial
     Run everything in a single process. Slower, and the reference a parallel run is
@@ -83,12 +84,34 @@ if (-not (Test-Path $EditorCmd)) { throw "UnrealEditor-Cmd not found: $EditorCmd
     past the others is just wasted wall time.
 #>
 $FastFilter = 'OracleSweepFast'
+$FullFilter = 'OracleSweepFull'
 
+<#
+    THE BUCKETS ARE A BALANCE HINT, NOT THE DEFINITION OF THE TIER, and that distinction
+    was paid for. The first version of this script defined the full tier AS this list, so
+    when WarmStartAtWallScale was added it joined no bucket and simply never ran -- in
+    every mode, including -Serial. The mandated pre-commit command was silently skipping a
+    solver-scale test, which is TRAPS' "an opt-in tier rots" arriving through the runner
+    rather than through the suite.
+
+    So: -Serial and -Verify run the STEMS, which cannot miss a new test. The parallel path
+    still needs names (you cannot split a stem across processes without enumerating), and
+    ExpectedTests below is what stops that enumeration going stale quietly -- any test in
+    the tier but in no bucket makes the count disagree and the run FAIL. Update the counts
+    deliberately when you add a test; the failure is the reminder.
+#>
 $FullBuckets = @(
     @{ Name = 'walls';   Filter = 'OracleSweepFull.RigidBlock.WallsAndLadders';                              Seconds = 455 },
     @{ Name = 'covered'; Filter = 'OracleSweepFull.RigidBlock.PhaseTwoMustNotRefuseTheCoveredOpeningFamily'; Seconds = 432 },
-    @{ Name = 'spike';   Filter = 'OracleSweepFull.RigidBlock.FeasibilityReformulationCost';                 Seconds = 313 }
+    @{ Name = 'spike';   Filter = 'OracleSweepFull.RigidBlock.FeasibilityReformulationCost';                 Seconds = 313 },
+    @{ Name = 'warm';    Filter = 'OracleSweepFull.RigidBlock.WarmStartAtWallScale';                         Seconds = 56  }
 )
+
+<#
+    MEASURED 2026-08-18. A mismatch is an error, never a warning: under-running looks
+    exactly like success, which is the failure mode this whole file exists to prevent.
+#>
+$ExpectedTests = @{ Fast = 9; Full = 4; All = 13 }
 
 function Get-Buckets {
     param([string] $ForTier)
@@ -212,10 +235,20 @@ function Invoke-Sweep {
     #>
     $Buckets = @(Get-Buckets -ForTier $ForTier)
 
+    <#
+        Serial runs the STEMS rather than the bucket names, so a test added to a tier
+        cannot be missed. This is the mode -Verify compares against, which makes it the
+        reference for whether the parallel enumeration is still complete.
+    #>
     if ($RunSerially) {
         $Filters = @()
         $Total   = 0
-        foreach ($B in $Buckets) { $Filters += $B.Filters; $Total += $B.Seconds }
+        foreach ($B in $Buckets) { $Total += $B.Seconds }
+
+        if ($ForTier -eq 'Fast')      { $Filters = @($FastFilter) }
+        elseif ($ForTier -eq 'Full')  { $Filters = @($FullFilter) }
+        else                          { $Filters = @($FastFilter, $FullFilter) }
+
         $Buckets = @( @{ Name = 'serial'; Filters = $Filters; Seconds = $Total } )
     }
 
@@ -264,7 +297,7 @@ function Invoke-Sweep {
 }
 
 function Write-Summary {
-    param($Result, [string] $Label)
+    param($Result, [string] $Label, [int] $Expected = 0)
 
     $Passed = @($Result.Completed | Where-Object { $_.Result -eq 'Success' })
     $Failed = @($Result.Completed | Where-Object { $_.Result -ne 'Success' })
@@ -288,6 +321,24 @@ function Write-Summary {
         return $false
     }
 
+    <#
+        The count guard. A test that is in the tier but in no parallel bucket runs nowhere
+        and the run still reports every test it DID run as passing -- which is how
+        WarmStartAtWallScale went unrun by the mandated pre-commit command. Under-running
+        is indistinguishable from success without this.
+    #>
+    if ($Expected -gt 0 -and $Result.Completed.Count -ne $Expected) {
+        Write-Host ("  ERROR: expected {0} tests, ran {1}." -f $Expected, $Result.Completed.Count)
+        if ($Result.Completed.Count -lt $Expected) {
+            Write-Host "         A test in this tier is in no bucket, so it ran NOWHERE."
+            Write-Host "         Add it to `$FullBuckets, or update `$ExpectedTests if it was removed."
+        }
+        else {
+            Write-Host "         More tests ran than declared - update `$ExpectedTests deliberately."
+        }
+        return $false
+    }
+
     return ($Failed.Count -eq 0)
 }
 
@@ -295,10 +346,10 @@ if ($Verify) {
     Write-Host "VERIFY: running serially, then in parallel, then comparing every reading."
 
     $SerialResult   = Invoke-Sweep -ForTier $Tier -RunSerially -RunTag 'verify-serial'
-    $SerialOk       = Write-Summary -Result $SerialResult -Label 'serial'
+    $SerialOk       = Write-Summary -Result $SerialResult -Label 'serial' -Expected $ExpectedTests[$Tier]
 
     $ParallelResult = Invoke-Sweep -ForTier $Tier -RunTag 'verify-parallel'
-    $ParallelOk     = Write-Summary -Result $ParallelResult -Label 'parallel'
+    $ParallelOk     = Write-Summary -Result $ParallelResult -Label 'parallel' -Expected $ExpectedTests[$Tier]
 
     $Diff = Compare-Object -ReferenceObject $SerialResult.Readings -DifferenceObject $ParallelResult.Readings
 
@@ -316,7 +367,7 @@ if ($Verify) {
 }
 
 $Result = Invoke-Sweep -ForTier $Tier -RunSerially:$Serial -RunTag ('run-' + $Tier.ToLower())
-$Ok     = Write-Summary -Result $Result -Label ("tier {0}" -f $Tier)
+$Ok     = Write-Summary -Result $Result -Label ("tier {0}" -f $Tier) -Expected $ExpectedTests[$Tier]
 
 Write-Host ""
 Write-Host "Logs:"

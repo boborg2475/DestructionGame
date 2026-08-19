@@ -563,7 +563,39 @@ namespace RigidBlockOracle
 				}
 			}
 
-			bool Factorise(const FStandardForm& Form, const TArray<int32>& Basis)
+			/**
+			 * The cold-start column of the LOWEST row that has no pivot yet — the slack or
+			 * artificial FStandardForm::InitialBasis gave it, which is a unit column in that
+			 * row alone. That is what makes it a repair the factorisation can always take: an
+			 * unassigned row's unit column pivots at magnitude 1 whatever else the basis
+			 * holds, so a substitution never needs a second substitution.
+			 */
+			int32 ColdColumnForAnUnassignedRow(const FStandardForm& Form) const
+			{
+				for (int32 Row = 0; Row < Form.NumRows; ++Row)
+				{
+					if (Pinv[Row] == INDEX_NONE)
+					{
+						return Form.InitialBasis[Row];
+					}
+				}
+
+				return INDEX_NONE;
+			}
+
+			/**
+			 * bRepairSingular IS FOR A WARM START AND NOTHING ELSE, and it is false on every
+			 * cold path, so the arithmetic below is untouched by its existence. A caller's
+			 * basis is a HINT: its columns were independent in the problem it came from, and
+			 * dropping some of that problem's rows and columns does not inherit independence.
+			 * With the flag set, a column that cannot pivot is REPLACED by the cold default of
+			 * an unassigned row and the position retried, so a hint that has gone singular
+			 * costs the caller the rows it named rather than the whole answer — a warm start
+			 * that failed closed would measure nothing. Basis is written in place, which is
+			 * how the caller learns what survived.
+			 */
+			bool Factorise(
+				const FStandardForm& Form, TArray<int32>& Basis, bool bRepairSingular = false)
 			{
 				M = Form.NumRows;
 				LCols.SetNum(M);
@@ -644,7 +676,27 @@ namespace RigidBlockOracle
 							Work[RowIndex] = 0.0;
 						}
 
-						return false;
+						if (!bRepairSingular)
+						{
+							return false;
+						}
+
+						const int32 Replacement = ColdColumnForAnUnassignedRow(Form);
+
+						/*
+						 * A replacement that is the column which just failed, or no unassigned
+						 * row at all, would repair nothing and loop forever; both are refused
+						 * rather than retried, which drops the caller back to a cold start.
+						 */
+						if (Replacement == INDEX_NONE || Replacement == Col)
+						{
+							return false;
+						}
+
+						/* Retry THIS position with the replacement: the for's ++ undoes the --. */
+						Basis[Position] = Replacement;
+						--Position;
+						continue;
 					}
 
 					const double Pivot = Work[PivotRow];
@@ -778,6 +830,232 @@ namespace RigidBlockOracle
 		};
 
 		/**
+		 * THE BASIC VALUES OF A BASIS, x_B = B^-1 b, WITH ONE PASS OF ITERATIVE REFINEMENT:
+		 * the residual b - B*x is formed against the original columns and a correction
+		 * solved, which knocks the solve noise of an ill-conditioned basis (the lambda cap's
+		 * 1e6 right-hand side amplifies it) from ~1e-6 down to rounding.
+		 *
+		 * It is a free function rather than part of Refactorise because TWO places need it —
+		 * the refactorisation, which clamps the tiny negatives it leaves, and the warm-start
+		 * seeding, which must read them UNCLAMPED because on a warm basis a negative basic
+		 * value is not rounding at a degenerate vertex but a real infeasibility to repair.
+		 * Two transcriptions of one arithmetic is how the two quietly stop agreeing.
+		 */
+		void SolveBasicValues(
+			const FStandardForm& Form,
+			const FBasisFactor& Factor,
+			const TArray<int32>& Basis,
+			TArray<double>& OutXB,
+			TArray<double>& ScratchOrig,
+			TArray<double>& ScratchSlot)
+		{
+			Factor.FTranFactor(Form.Rhs, OutXB);
+
+			/* One refinement pass: r = b - B*x, x += B^-1 r. */
+			ScratchOrig.Init(0.0, Form.NumRows);
+
+			for (int32 Slot = 0; Slot < Form.NumRows; ++Slot)
+			{
+				const int32 Col = Basis[Slot];
+				const double Value = OutXB[Slot];
+
+				if (Value != 0.0)
+				{
+					for (int32 At = Form.ColStart[Col]; At < Form.ColStart[Col + 1]; ++At)
+					{
+						ScratchOrig[Form.ColRow[At]] += Form.ColVal[At] * Value;
+					}
+				}
+			}
+
+			for (int32 Row = 0; Row < Form.NumRows; ++Row)
+			{
+				ScratchOrig[Row] = Form.Rhs[Row] - ScratchOrig[Row];
+			}
+
+			Factor.FTranFactor(ScratchOrig, ScratchSlot);
+
+			for (int32 Slot = 0; Slot < Form.NumRows; ++Slot)
+			{
+				OutXB[Slot] += ScratchSlot[Slot];
+			}
+		}
+
+		/**
+		 * APPEND -A_Source TO THE MATRIX AND RETURN ITS INDEX. It lands past every
+		 * artificial, so it is an artificial by index: phase 1 prices it and pays 1 per unit
+		 * of it, phase 2 (which prices only [0, ArtificialStart)) cannot enter it, the
+		 * pivot-out pass treats it as one to clear, and the answer extraction ignores it.
+		 * Negation preserves a column's sum of squares exactly, so its pricing norm is the
+		 * source's own bits rather than a re-derivation of them.
+		 *
+		 * ONLY A WARM START EVER REACHES HERE. Appending columns moves nothing that already
+		 * exists — the structural, slack and artificial blocks keep their indices — but a
+		 * column the cold pricer could see would move the window, the queue and therefore
+		 * every pinned cold pivot count in the sweep.
+		 */
+		int32 AppendNegatedColumn(FStandardForm& Form, int32 Source)
+		{
+			const int32 Appended = Form.NumCols;
+			const int32 End = Form.ColStart[Source + 1];
+
+			for (int32 At = Form.ColStart[Source]; At < End; ++At)
+			{
+				/* Its own locals: Add(Array[At]) can alias its storage across a grow (TRAPS). */
+				const int32 Row = Form.ColRow[At];
+				const double Value = Form.ColVal[At];
+
+				Form.ColRow.Add(Row);
+				Form.ColVal.Add(-Value);
+			}
+
+			const double SourceNorm = Form.ColNorm[Source];
+
+			Form.ColStart.Add(Form.ColRow.Num());
+			Form.ColNorm.Add(SourceNorm);
+			Form.NumCols = Form.ColStart.Num() - 1;
+
+			return Appended;
+		}
+
+		/**
+		 * SEED THE BASIS FROM A CALLER'S WARM START, AND RETURN HOW MUCH OF IT SURVIVED.
+		 * PROMOTION_DESIGN.md §5.4's lever. The hint is one column per row; every entry that
+		 * cannot be used is REPAIRED to that row's cold default rather than refused, because
+		 * a warm start that fails closed measures nothing (FOracleResult's field is what keeps
+		 * the repair honest — a hint thrown away and a hint that saved nothing are opposite
+		 * findings and only the count tells them apart).
+		 *
+		 * IT MAY NOT CHANGE THE ANSWER, AND HERE IS WHY IT CANNOT. Everything below either
+		 * chooses a starting basis — which the simplex is free to choose anyway — or ADDS an
+		 * artificial column. Artificials only enlarge the feasible set of the phase-1 problem
+		 * and are priced out of phase 2 entirely, so the phase-1 optimum is still zero exactly
+		 * when the original rows admit a solution, and the answer phase 2 then maximises is
+		 * over the same columns as ever. The post-solve verification against the ORIGINAL
+		 * assembly rows is unweakened and remains the gate.
+		 *
+		 * THREE THINGS GO WRONG WITH A HINT AND ALL THREE ARE REPAIRED IN PLACE:
+		 *
+		 *   - IT NAMES A COLUMN THAT NO LONGER EXISTS. Refused by range and left cold.
+		 *   - IT IS SINGULAR IN THE NEW MATRIX. Independence is not inherited across a
+		 *     changed problem, so Factorise runs in repair mode and swaps out what cannot
+		 *     pivot. A duplicated column is the same event seen from the other end: the
+		 *     second copy finds its pivot row already taken.
+		 *   - IT IS PRIMAL INFEASIBLE, WHICH IS THE NORMAL CASE AND THE DANGEROUS ONE. The
+		 *     deleted joints were carrying force, so B^-1 b has genuinely negative entries —
+		 *     and phase 1 would never look at them, because it is skipped whenever the basic
+		 *     artificials sum to zero, which a warm basis satisfies by construction (its
+		 *     artificials were driven out by the previous solve), while Refactorise would
+		 *     clamp the evidence away as rounding. So the repair is reached DELIBERATELY:
+		 *     for each slot whose value is negative, the basis column there is replaced by
+		 *     its own NEGATION, which flips exactly that component of x_B and leaves every
+		 *     other one alone (B' = B*D for a diagonal sign matrix D, so x' = D*x). The seed
+		 *     is then primal feasible by construction, the flipped columns are artificials by
+		 *     index and so carry phase-1 cost, and phase 1 genuinely runs and drives them out
+		 *     — which IS the repair, priced where the measurement can see it.
+		 */
+		int32 SeedWarmStartBasis(FStandardForm& Form, const FOracleBasis& Hint)
+		{
+			const TArray<int32> ColdBasis = Form.InitialBasis;
+			TArray<int32> Seed = ColdBasis;
+
+			const int32 Offered = FMath::Min(Hint.Columns.Num(), Form.NumRows);
+
+			for (int32 Row = 0; Row < Offered; ++Row)
+			{
+				const int32 Column = Hint.Columns[Row];
+
+				/* INDEX_NONE is "no hint for this row"; so is any index out of the matrix. */
+				if (Column >= 0 && Column < Form.NumCols)
+				{
+					Seed[Row] = Column;
+				}
+			}
+
+			FBasisFactor Factor;
+
+			if (!Factor.Factorise(Form, Seed, true))
+			{
+				return 0;
+			}
+
+			TArray<double> XB;
+			TArray<double> ScratchOrig;
+			TArray<double> ScratchSlot;
+
+			SolveBasicValues(Form, Factor, Seed, XB, ScratchOrig, ScratchSlot);
+
+			double LargestValue = 0.0;
+
+			for (const double Value : XB)
+			{
+				/*
+				 * A non-finite basic value means the seeded basis is arithmetic garbage, and
+				 * the cold start is an answer this solver can still stand behind: abandon the
+				 * whole warm start rather than repair around a NaN. Spelled as a refused
+				 * IsFinite because every comparison against NaN is false, so a magnitude test
+				 * would wave it through.
+				 */
+				if (!FMath::IsFinite(Value))
+				{
+					return 0;
+				}
+
+				LargestValue = FMath::Max(LargestValue, FMath::Abs(Value));
+			}
+
+			/*
+			 * WHAT COUNTS AS GENUINELY NEGATIVE, relative to the values in play — the same
+			 * shape of scale the phase-1 infeasibility test uses. Below it a negative value is
+			 * the rounding the cold path clamps, and flipping on that would cost a pivot on a
+			 * basis that is already optimal; above it, it is force the deletion took away.
+			 */
+			const double NegativeTolerance = (1.0 + LargestValue) * 1.0e-9;
+
+			for (int32 Slot = 0; Slot < Form.NumRows; ++Slot)
+			{
+				if (XB[Slot] < -NegativeTolerance)
+				{
+					Seed[Slot] = AppendNegatedColumn(Form, Seed[Slot]);
+				}
+			}
+
+			Form.InitialBasis = Seed;
+
+			/*
+			 * ACCEPTED MEANS THE SOLVE STARTED FROM THAT COLUMN — nothing weaker. A row whose
+			 * hint was repaired away is not accepted, and neither is one whose hint was
+			 * negated to make the start feasible: that slot holds a column the caller never
+			 * named, and counting it would report a warm start richer than the one taken.
+			 */
+			int32 Accepted = 0;
+
+			for (int32 Row = 0; Row < Offered; ++Row)
+			{
+				if (Hint.Columns[Row] >= 0 && Seed[Row] == Hint.Columns[Row])
+				{
+					++Accepted;
+				}
+			}
+
+			return Accepted;
+		}
+
+		/**
+		 * REPORT THE BASIS THE SOLVE IS STANDING ON, with the shape it belongs to. A column
+		 * index means nothing without knowing where the structural columns end and the
+		 * artificials begin, which is what a caller needs to map this basis onto the next
+		 * problem's columns — so the two integers travel with it rather than beside it.
+		 */
+		void ReportBasis(
+			const FStandardForm& Form, const TArray<int32>& Basis, FOracleBasis& Out)
+		{
+			Out.Columns = Basis;
+			Out.NumStructCols = Form.NumStructCols;
+			Out.ArtificialStart = Form.ArtificialStart;
+		}
+
+		/**
 		 * One product-form update: the basis column at Slot was replaced by a column
 		 * whose FTRAN image was w, held as its pivot element and off-pivot nonzeros.
 		 */
@@ -875,15 +1153,20 @@ namespace RigidBlockOracle
 
 			/**
 			 * THE ERROR RESET: refactorise the basis from the original sparse columns
-			 * and recompute the basic values from the original right-hand side, with ONE
-			 * PASS OF ITERATIVE REFINEMENT — the residual b - B*x is formed against the
-			 * original columns and a correction solved, which knocks the solve noise of
-			 * an ill-conditioned basis (the lambda cap's 1e6 right-hand side amplifies
-			 * it) from ~1e-6 down to rounding, so the verification gate judges the basis
-			 * itself and not the solver's arithmetic. Tiny negative basic values after
-			 * that are rounding at degenerate vertices and are clamped to zero; a
-			 * genuinely infeasible basis cannot hide behind the clamp because the final
-			 * answer is verified against the original unscaled rows.
+			 * and recompute the basic values from the original right-hand side, one pass
+			 * of iterative refinement included (SolveBasicValues), so the verification
+			 * gate judges the basis itself and not the solver's arithmetic. Tiny negative
+			 * basic values after that are rounding at degenerate vertices and are clamped
+			 * to zero; a genuinely infeasible basis cannot hide behind the clamp because
+			 * the final answer is verified against the original unscaled rows.
+			 *
+			 * THAT JUSTIFICATION IS ABOUT A BASIS THE SIMPLEX ITSELF BUILT, and it is
+			 * exactly false of one handed in from outside. A warm start is normally PRIMAL
+			 * INFEASIBLE — the deleted joints were carrying force — and there a negative
+			 * basic value is not rounding at all but the infeasibility phase 1 exists to
+			 * repair, which the clamp would launder into a plausible feasible-looking
+			 * point. That is why SeedWarmStartBasis reads the values BEFORE this function
+			 * ever runs on them, and turns each one into phase-1 work that can be seen.
 			 */
 			bool Refactorise()
 			{
@@ -895,36 +1178,7 @@ namespace RigidBlockOracle
 				Etas.Reset();
 				PivotsSinceRefactor = 0;
 
-				Factor.FTranFactor(Form->Rhs, XB);
-
-				/* One refinement pass: r = b - B*x, x += B^-1 r. */
-				ScratchOrig.Init(0.0, Form->NumRows);
-
-				for (int32 Slot = 0; Slot < Form->NumRows; ++Slot)
-				{
-					const int32 Col = Basis[Slot];
-					const double Value = XB[Slot];
-
-					if (Value != 0.0)
-					{
-						for (int32 At = Form->ColStart[Col]; At < Form->ColStart[Col + 1]; ++At)
-						{
-							ScratchOrig[Form->ColRow[At]] += Form->ColVal[At] * Value;
-						}
-					}
-				}
-
-				for (int32 Row = 0; Row < Form->NumRows; ++Row)
-				{
-					ScratchOrig[Row] = Form->Rhs[Row] - ScratchOrig[Row];
-				}
-
-				Factor.FTranFactor(ScratchOrig, ScratchSlot);
-
-				for (int32 Slot = 0; Slot < Form->NumRows; ++Slot)
-				{
-					XB[Slot] += ScratchSlot[Slot];
-				}
+				SolveBasicValues(*Form, Factor, Basis, XB, ScratchOrig, ScratchSlot);
 
 				for (double& Value : XB)
 				{
@@ -1564,7 +1818,8 @@ namespace RigidBlockOracle
 		return TEXT("the oracle refused for an unnamed reason");
 	}
 
-	FOracleResult SolveRigidBlock(const FOracleProblem& Problem)
+	/** One attempt at the problem exactly as posed, warm start included. */
+	FOracleResult SolveRigidBlockOnce(const FOracleProblem& Problem)
 	{
 		using namespace OracleDetail;
 
@@ -1864,6 +2119,17 @@ namespace RigidBlockOracle
 		FStandardForm Form;
 		BuildStandardForm(AssemblyRows, NumStructCols, Form);
 
+		/*
+		 * THE WARM START, AND IT IS THE WHOLE OF WHAT A SUPPLIED BASIS DOES. An empty one
+		 * touches nothing — no column is appended, no basis is reseeded, no branch below is
+		 * taken — which is what lets every pinned cold pivot count in the sweep be the
+		 * assertion that this seam changed nothing.
+		 */
+		if (Problem.StartingBasis.Columns.Num() > 0)
+		{
+			Result.WarmStartColumnsAccepted = SeedWarmStartBasis(Form, Problem.StartingBasis);
+		}
+
 		FRevisedState State;
 
 		if (!State.Init(Form))
@@ -1919,6 +2185,7 @@ namespace RigidBlockOracle
 				 */
 				Result.bAnswered = true;
 				Result.Lambda = 0.0;
+				ReportBasis(Form, State.Basis, Result.FinalBasis);
 				return Result;
 			}
 		}
@@ -2091,6 +2358,61 @@ namespace RigidBlockOracle
 
 		Result.bAnswered = true;
 		Result.Lambda = FMath::Clamp(StructValues[0], 0.0, LambdaCap);
+		ReportBasis(Form, State.Basis, Result.FinalBasis);
+		return Result;
+	}
+
+	/**
+	 * A WARM START THAT LEADS THE SOLVER INTO A DEAD END IS THROWN AWAY, NOT BELIEVED, AND
+	 * NOT ALLOWED TO COST AN ANSWER. A supplied basis is a hint; a hint that ends in a
+	 * refusal — the basis going singular under refactorisation, or an optimum that fails
+	 * verification against the original rows — says only that this starting point was a bad
+	 * one, and the problem still has the answer the cold start would have found. So a refused
+	 * warm attempt is followed by ONE cold solve, and that is the answer.
+	 *
+	 * MEASURED 2026-08-16, and this arm is reached: wall-01's mapped basis (12,459 of 13,362
+	 * columns carried) goes singular at the first periodic refactorisation, pivot 64 — with
+	 * AND WITHOUT the infeasibility repair, so it is the mapped basis that is fragile and not
+	 * anything the repair adds. The 84- and 150-block rows never reach here.
+	 *
+	 * TWO THINGS THIS MUST NOT DO, both of which would make the fallback a place for a wrong
+	 * answer to hide. It does not weaken the verification gate — a verification failure is
+	 * still a refusal, and the retry is a fresh solve of the ORIGINAL problem that must pass
+	 * the same gate. And it does not report the discarded attempt as free: the wasted pivots
+	 * and scans are added to the counts, and WarmStartColumnsAccepted is reported as ZERO,
+	 * which is the field's documented "asked and got nothing" — because a warm start that was
+	 * abandoned IS a cold start wearing a hat, and reporting the columns it briefly held would
+	 * hide exactly the thing the count exists to expose.
+	 */
+	FOracleResult SolveRigidBlock(const FOracleProblem& Problem)
+	{
+		if (Problem.StartingBasis.Columns.Num() == 0)
+		{
+			return SolveRigidBlockOnce(Problem);
+		}
+
+		const FOracleResult Warm = SolveRigidBlockOnce(Problem);
+
+		if (Warm.bAnswered)
+		{
+			return Warm;
+		}
+
+		FOracleProblem Cold = Problem;
+		Cold.StartingBasis = FOracleBasis();
+
+		FOracleResult Result = SolveRigidBlockOnce(Cold);
+		Result.SimplexIterations += Warm.SimplexIterations;
+		Result.PricingColumnScans += Warm.PricingColumnScans;
+		Result.BlandDegenerateEntries += Warm.BlandDegenerateEntries;
+
+		/* INDEX_NONE is "not reported" and adding to it would make it a plausible number. */
+		if (Result.PhaseOnePivots >= 0 && Warm.PhaseOnePivots >= 0)
+		{
+			Result.PhaseOnePivots += Warm.PhaseOnePivots;
+		}
+
+		Result.WarmStartColumnsAccepted = 0;
 		return Result;
 	}
 

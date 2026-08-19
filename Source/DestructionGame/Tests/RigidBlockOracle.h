@@ -220,11 +220,55 @@ namespace RigidBlockOracle
 		bool bLive = true;
 	};
 
+	/**
+	 * A SIMPLEX BASIS AS A VALUE, so one solve can hand its starting point to the next.
+	 * PROMOTION_DESIGN.md §5.4's warm-start lever, whose seam this is: production re-solves
+	 * after a SMALL CHANGE (a brick deleted from a structure it already answered), and the
+	 * question nobody has measured is whether starting from the previous solve's basis
+	 * collapses the pivot count.
+	 *
+	 * Columns holds ONE ENTRY PER ROW of the problem's standard form, in slot order.
+	 * INDEX_NONE means "no hint for this row, use the cold default", which is what lets a
+	 * caller supply a basis it could only map partially - the common case after a deletion,
+	 * where some of the previous basis names columns that no longer exist.
+	 *
+	 * NumStructCols and ArtificialStart DESCRIBE THE SHAPE THE BASIS BELONGS TO: a column
+	 * index is meaningless without knowing where the structural columns end and the
+	 * artificials begin, so they are what a caller needs in order to MAP one problem's basis
+	 * onto another's columns, and that is why a solve reports them. On the way IN they are
+	 * the caller's own bookkeeping and the solve does not read them — it validates the
+	 * columns themselves, one at a time, against the matrix it actually built, which is a
+	 * stronger check than agreeing with a shape the caller also supplied.
+	 *
+	 * A SUPPLIED BASIS IS A HINT AND MAY NEVER CHANGE THE ANSWER. That is the contract the
+	 * whole lever stands on - a warm start that moves lambda* or a verdict is a defect, not
+	 * a speedup - and it is enforceable rather than hoped for, because the post-solve
+	 * verification gate already checks the final basis against the ORIGINAL assembly rows.
+	 */
+	struct FOracleBasis
+	{
+		/** One column index per standard-form row; INDEX_NONE = use the cold default. */
+		TArray<int32> Columns;
+
+		/** Where the slack columns begin - i.e. how many structural columns there are. */
+		int32 NumStructCols = 0;
+
+		/** Where the artificial columns begin - i.e. structural plus slack columns. */
+		int32 ArtificialStart = 0;
+	};
+
 	struct FOracleProblem
 	{
 		TArray<FOracleBlock> Blocks;
 		TArray<FOracleJoint> Joints;
 		TArray<FOracleAppliedForce> AppliedForces;
+
+		/**
+		 * WHERE THE SIMPLEX STARTS, when a caller has a related problem's answer in hand.
+		 * Empty Columns means a cold start and MUST be bit-identical to the solver before
+		 * this field existed - every pinned pivot count in the sweep is that assertion.
+		 */
+		FOracleBasis StartingBasis;
 
 		/**
 		 * TRUE: gravity is the live load and lambda* answers "how many times its own
@@ -374,6 +418,31 @@ namespace RigidBlockOracle
 		 * Deterministic like every other count. int32 is ample: MaxPivots bounds it.
 		 */
 		int32 BlandDegenerateEntries = 0;
+
+		/**
+		 * THE BASIS THE SOLVE ENDED ON, so the next solve can start from it. Reported on
+		 * every ANSWERED solve, both arms — the optimum phase 2 reached, and the basis phase
+		 * 1 stopped on when the dead loads admit no equilibrium at all. Empty on a refusal:
+		 * a basis whose own solve was not certified is not a starting point anything should
+		 * be handed, and no measurement asks for one. Its NumStructCols and ArtificialStart
+		 * publish the shape it belongs to, which is the only way a caller can map it onto a
+		 * changed problem's columns.
+		 */
+		FOracleBasis FinalBasis;
+
+		/**
+		 * HOW MUCH OF A SUPPLIED WARM START THE SOLVE ACTUALLY STARTED FROM: the number of
+		 * FOracleProblem::StartingBasis entries that survived validation and basis repair.
+		 * INDEX_NONE when no warm start was supplied.
+		 *
+		 * It is here because without it a warm start that saved nothing is INDISTINGUISHABLE
+		 * from a warm start that was silently thrown away, and those are opposite findings:
+		 * one says the lever does not work, the other says it was never pulled. A hint that
+		 * names a column that no longer exists, that duplicates another row's column, or
+		 * that would make the basis singular is replaced by the cold default for its row -
+		 * repaired, never refused, because a warm start that fails closed measures nothing.
+		 */
+		int32 WarmStartColumnsAccepted = INDEX_NONE;
 
 		/** Why the oracle refused, when it did. Empty on an answered result. */
 		FString WhyNot;

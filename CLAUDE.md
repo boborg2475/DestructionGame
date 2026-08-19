@@ -101,10 +101,12 @@ Narrow the run by lengthening the path after `RunTests` (e.g. `DestructionGame.C
 **The LP oracle's sweep is opt-in, in two tiers.** Neither name contains `DestructionGame`, so the full-suite command never pays for them:
 
 ```
--ExecCmds="Automation RunTests OracleSweepFast"   # 7 tests, 80 s — iteration
--ExecCmds="Automation RunTests OracleSweepFull"   # 3 tests, 21 min — verification
--ExecCmds="Automation RunTests OracleSweep"       # both, by substring match on the stem
+-ExecCmds="Automation RunTests OracleSweepFast"   # 9 tests, ~90 s — iteration
+-ExecCmds="Automation RunTests OracleSweepFull"   # 4 tests, ~22 min — verification
+-ExecCmds="Automation RunTests OracleSweep"       # both (13), by substring match on the stem
 ```
+
+Counts as of 2026-08-18. `Run-OracleSweep.ps1` asserts them — a test in a tier but in no parallel bucket runs nowhere, which is how a solver-scale test was silently skipped once.
 
 **`OracleSweepFull` is mandatory before any commit that touches the LP oracle, and before any commit at all if the solver changed.** Those three tests are 94% of the cost because they are the three that watch the solver at scale; a green fast tier verifies none of it. An opt-in tier rots — see TRAPS.
 

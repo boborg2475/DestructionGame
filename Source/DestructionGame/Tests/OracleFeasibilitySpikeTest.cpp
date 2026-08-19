@@ -346,13 +346,14 @@
  * the measurement so it can only fire on a catastrophe. Ratios of pivots ARE pinned,
  * because pivot counts are deterministic; ratios of seconds are not.
  *
- * COST: this file's three tests live in the OPT-IN sweep, and SINCE 2026-08-16 THAT SWEEP
- * HAS TWO TIERS — `OracleSweepFast` (7 tests, 80 s, for iteration) and `OracleSweepFull`
+ * COST: this file's FOUR tests live in the OPT-IN sweep, and SINCE 2026-08-16 THAT SWEEP
+ * HAS TWO TIERS — `OracleSweepFast` (80 s at the split, for iteration) and `OracleSweepFull`
  * (3 tests, 20.8 min, MANDATORY before any commit touching the LP oracle). The cost test is
- * FULL; both sandwiches are FAST. `Automation RunTests OracleSweep` runs both by substring
- * (measured: the three filters return 7 / 3 / 10 tests).
+ * FULL; both sandwiches and the sub-1.0 wall are FAST. `Automation RunTests OracleSweep` runs
+ * both by substring (measured at the split: the three filters return 7 / 3 / 10 tests, and
+ * the fast count moves as tests land).
  * MEASURED: 344 s for the cost test, **313 s since the 2026-08-16 live-pose trim**, with
- * 7.2 s for the sandwich and 9.6 s for the repaired one.
+ * 7.2 s for the sandwich, 9.6 s for the repaired one and **8.0 s for the sub-1.0 wall**.
  * The group is 10 tests and 10 GREEN since the repaired sandwich landed (2026-08-15) — this
  * file adds NO deliberate red. It briefly did: the
  * early-exit seam was written here as a red hand-off and the seam landed inside the same
@@ -392,6 +393,10 @@
  *    X10  the Carried rule made to charge EVERY component    ->  0 here, 7 in
  *                                                               RepairedRegionalSandwich —
  *                                                               the Charged pins' prover
+ *    X11  the sub-1.0 wall's chimney built with NO LEAN      ->  SubUnityWallCertificate's
+ *         (SpikeChimneyLeanCm 10.0 -> 0.0), which leaves         fixture rows and its
+ *         every block count, joint count and region size         false-certificate count;
+ *         identical and makes the structure STAND               signature in the registry
  *
  * X5, X6 and X7 exist because the early-exit numbers, Part D's booleans and every region
  * verdict were the three places this file's conclusions rested on assertions that a
@@ -1489,6 +1494,325 @@ namespace OracleFeasibilitySpikeSupport
 
 		return Best;
 	}
+
+	/* ================================================================================
+	 * THE SUB-1.0 WALL — A WALL CARRYING A LEANING CHIMNEY.
+	 *
+	 * WHY THIS FIXTURE HAS TO EXIST, in one sentence: the repaired sandwich's pessimistic
+	 * side has never been shown to be a BOUND, and it cannot be, on any fixture the project
+	 * owns. PROMOTION_DESIGN §5.3's box and §11 R2 state the hole exactly — nineteen of the
+	 * twenty certificates the repaired test issues are about structures the LP already
+	 * prices feasible and the twentieth IS the whole structure, so not one is issued about a
+	 * PROPER SUBSET of an INFEASIBLE structure, which is the only shape a false certificate
+	 * can take. The 30-course leaning stack is the catalogue's only sub-1.0 fixture and it
+	 * never certifies short of all thirty blocks.
+	 *
+	 * WHAT THE FIXTURE NEEDS, and it is NOT merely lambda* < 1: the failure must live
+	 * OUTSIDE the strip. A wall that fails at its own foundation makes the strip infeasible
+	 * too, the sandwich opens, and that is the lever behaving correctly — it teaches nothing.
+	 *
+	 * THE MECHANISM CHOSEN, and why it is this one. PROMOTION_DESIGN's second suggested
+	 * route: a projecting mass that overturns globally while any ground-anchored strip stays
+	 * locally stable. A 30-course leaning chimney — the leaning-stack geometry, 10 cm of lean
+	 * per course — is mortared onto the RIGHTMOST FULL BRICK of the wall's top course and
+	 * leans out past the wall's end into open air. Its own bed joints cannot carry the
+	 * eccentric load above them; that chain is exactly the fixture the LP already prices at
+	 * lambda* = 0.44048, and the wall underneath it cannot help, because the chain's internal
+	 * joints see the same loads whether the chain stands on the earth or on a wall.
+	 *
+	 * THE THREE ROUTES NOT TAKEN, recorded so nobody re-derives them:
+	 *
+	 *   - WIDEN AN OPENING TO THE CROSSING. PROMOTION_DESIGN and DESIGN put case 21's family
+	 *     across lambda* = 1 somewhere near 40-45 cells — an eight-to-nine metre opening, so
+	 *     500+ blocks and tens of seconds per dead solve, several solves to bracket a knife
+	 *     edge. It is the right shape (a cover failure with jambs that stand) and it is
+	 *     minutes of runtime; the cost discipline says a cheaper mechanism, not a bigger slow
+	 *     tier.
+	 *   - A CORBEL. FWallSpec already has CorbelFromCourse / CorbelStepCm, but a stepped
+	 *     course is a corbel with the whole wall behind it as counterweight, and the
+	 *     catalogue prices those at lambda* 17-161. Reaching 1.0 by corbelling is a search.
+	 *   - A WEAK COURSE HIGH UP. Zeroing a band's bond does not by itself make masonry fall
+	 *     — dry stone stands — so it needs a mechanism beside it, which is the opening again.
+	 *
+	 * THE HONEST LIMITATION, stated here rather than discovered in review: the chimney makes
+	 * the structure infeasible BEFORE the deletion, so this counterexample is not
+	 * deletion-caused. That is deliberate and it does not weaken it — the pessimistic side's
+	 * claim is unconditional ("if this problem is feasible, the full structure is feasible"),
+	 * so any counterexample refutes it. A deletion-CAUSED non-local failure needs the
+	 * wide-opening fixture above, and is a specified follow-up rather than something this
+	 * fixture pretends to.
+	 * ================================================================================ */
+
+	constexpr int32 SpikeChimneyCourses = 30;
+
+	/**
+	 * How far each chimney course steps out, cm. The leaning stack's own 10 cm on a 21.5 cm
+	 * brick, so the two fixtures' chains are the same chain and the 0.44048 that prices one
+	 * is expected to price the other.
+	 */
+	constexpr double SpikeChimneyLeanCm = 10.0;
+
+	/**
+	 * THE BYPASSED INTERFACE JOINT'S MARGIN — capacity over demand on the root bed joint the
+	 * surcharge is never made to cross, derived from the two-contact form at the pin itself.
+	 * Measured 2026-08-18 at 1.54375, pinned in a window ~6e-5 wide: it is pure arithmetic on
+	 * this file's own constants, so it is bit-deterministic, but a window rather than an
+	 * equality says the CLAIM is "comfortably over 1.0" and not "these exact digits".
+	 */
+	constexpr double SpikeBypassedMarginLo = 1.5437;
+	constexpr double SpikeBypassedMarginHi = 1.5438;
+
+	struct FChimneyWall
+	{
+		FStructure Structure;
+
+		/** The brick removed from the wall, and where it sat. */
+		int32 Victim = INDEX_NONE;
+		double DeleteXCm = 0.0;
+		double DeleteZCm = 0.0;
+
+		/** The wall brick the chimney stands on, which is the far end of the structure. */
+		double RootXCm = 0.0;
+		double RootZCm = 0.0;
+
+		int32 ChimneyBlocks = 0;
+	};
+
+	/**
+	 * Lay the wall, choose the brick to delete, mortar the chimney onto the top course, then
+	 * delete. ChimneyCourses = 0 lays the SAME WALL WITH NO CHIMNEY, through the same code,
+	 * which is what makes the two comparable rather than similar.
+	 */
+	bool SpikeBuildChimneyWall(
+		int32 Courses,
+		int32 Cells,
+		int32 ChimneyCourses,
+		int32 DeleteCourse,
+		FChimneyWall& Out,
+		FString& OutWhy)
+	{
+		Out = FChimneyWall();
+
+		if (!SpikeBuildIntactWall(Courses, Cells, Out.Structure, OutWhy))
+		{
+			return false;
+		}
+
+		/*
+		 * THE VICTIM IS CHOSEN BEFORE THE CHIMNEY EXISTS, and that is not tidiness.
+		 * SpikePieceInCourse takes the middle of the structure's own X extent, and a chimney
+		 * reaching ~290 cm past the wall's right face would drag that middle to the wall's
+		 * far end — putting the deletion beside the failing part instead of far from it,
+		 * which is the one thing this fixture must not do. Choosing first also makes the
+		 * victim the SAME BRICK RepairedRegionalSandwich deletes, which is what lets the two
+		 * region problems be compared rather than merely described as similar.
+		 */
+		Out.Victim = SpikePieceInCourse(Out.Structure, DeleteCourse, Out.DeleteXCm, Out.DeleteZCm);
+
+		if (Out.Victim == INDEX_NONE)
+		{
+			OutWhy = FString::Printf(
+				TEXT("no brick to delete in course %d of a %d x %d wall"),
+				DeleteCourse, Courses, Cells);
+			return false;
+		}
+
+		if (ChimneyCourses > 0)
+		{
+			double TopZCm = -TNumericLimits<double>::Max();
+
+			for (int32 Piece = 0; Piece < Out.Structure.NumPieces(); ++Piece)
+			{
+				if (!Out.Structure.IsPieceRemoved(Piece))
+				{
+					TopZCm = FMath::Max(TopZCm, Out.Structure.GetPiece(Piece).CentreOfMassCm.Z);
+				}
+			}
+
+			/*
+			 * THE ROOT MUST BE A FULL BRICK, AND MASS IS HOW THIS KNOWS. A flush running-bond
+			 * course closes with a HALF BAT at each end, and the top course of a 12-course
+			 * wall is an odd one — so the rightmost piece up there is 10.25 cm long, not
+			 * 21.5. MakeInterface takes a BOX, and FStructure keeps no box, so the box has to
+			 * be reconstructed from the standard brick size; reconstructing it for a half bat
+			 * would hand the solver a joint 2x the area that actually exists. Selecting on
+			 * mass makes the reconstruction sound instead of hopeful, and the mass came off
+			 * the producer's own box.
+			 */
+			int32 Root = INDEX_NONE;
+			double RootXCm = -TNumericLimits<double>::Max();
+
+			for (int32 Piece = 0; Piece < Out.Structure.NumPieces(); ++Piece)
+			{
+				if (Out.Structure.IsPieceRemoved(Piece))
+				{
+					continue;
+				}
+
+				const FStructurePiece& Candidate = Out.Structure.GetPiece(Piece);
+
+				if (FMath::Abs(Candidate.CentreOfMassCm.Z - TopZCm) > 0.5 * SpikeCoursePitchCm)
+				{
+					continue;
+				}
+
+				if (FMath::Abs(Candidate.MassKg - SpikeBrickMassKg) > 1.0e-9 * SpikeBrickMassKg)
+				{
+					continue;
+				}
+
+				if (Candidate.CentreOfMassCm.X > RootXCm)
+				{
+					RootXCm = Candidate.CentreOfMassCm.X;
+					Root = Piece;
+				}
+			}
+
+			if (Root == INDEX_NONE)
+			{
+				OutWhy = TEXT("the top course holds no FULL brick to stand a chimney on");
+				return false;
+			}
+
+			const FVector FullExtentCm =
+				FVector(SpikeBrickLengthCm, SpikeBrickWidthCm, SpikeBrickHeightCm) * 0.5;
+
+			TArray<int32> Handles;
+			TArray<FPieceBox> Boxes;
+
+			FPieceBox RootBox;
+			RootBox.CentreCm = Out.Structure.GetPiece(Root).CentreOfMassCm;
+			RootBox.ExtentCm = FullExtentCm;
+
+			Handles.Add(Root);
+			Boxes.Add(RootBox);
+
+			Out.RootXCm = RootBox.CentreCm.X;
+			Out.RootZCm = RootBox.CentreCm.Z;
+
+			for (int32 Course = 0; Course < ChimneyCourses; ++Course)
+			{
+				FPieceBox Box;
+				Box.ExtentCm = FullExtentCm;
+				Box.CentreCm = FVector(
+					RootBox.CentreCm.X + double(Course) * SpikeChimneyLeanCm,
+					RootBox.CentreCm.Y,
+					RootBox.CentreCm.Z + double(Course + 1) * SpikeCoursePitchCm);
+
+				const int32 Handle = Out.Structure.AddPiece(
+					SpikeBrickMassKg, /*bIsGrounded*/ false, Box.CentreCm);
+
+				if (Handle == INDEX_NONE)
+				{
+					OutWhy = FString::Printf(TEXT("chimney course %d was refused"), Course);
+					return false;
+				}
+
+				Handles.Add(Handle);
+				Boxes.Add(Box);
+			}
+
+			/*
+			 * ALL PAIRS, exactly as the leaning stack's builder does it, so the joint COUNT is
+			 * a check rather than a claim: a chimney of N courses must emit N joints (the root
+			 * bed plus N-1 chain beds) and nothing else may touch. A lean that stepped far
+			 * enough to lose the overlap, or a course pitch that stopped matching the joint
+			 * thickness, shows up here as a wrong count instead of as a quietly missing joint.
+			 */
+			int32 Made = 0;
+
+			for (int32 First = 0; First < Handles.Num(); ++First)
+			{
+				for (int32 Second = First + 1; Second < Handles.Num(); ++Second)
+				{
+					FConnection Joint;
+
+					if (MakeInterface(Handles[First], Boxes[First], Handles[Second], Boxes[Second],
+							SpikeJointCm, GeneralPurposeMortar, Joint))
+					{
+						Out.Structure.AddConnection(Joint);
+						++Made;
+					}
+				}
+			}
+
+			if (Made != ChimneyCourses)
+			{
+				OutWhy = FString::Printf(
+					TEXT("the chimney emitted %d joints for %d courses"), Made, ChimneyCourses);
+				return false;
+			}
+
+			Out.ChimneyBlocks = ChimneyCourses;
+		}
+
+		if (!Out.Structure.RemovePiece(Out.Victim))
+		{
+			OutWhy = FString::Printf(TEXT("piece %d could not be removed"), Out.Victim);
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * THE SUB-1.0 WALL'S PINS. Every one is INDEX_NONE or negative until measured, and an
+	 * unmeasured pin is an ERROR rather than a skip — that is this slice's red, and it is the
+	 * same red every pinned measurement in this file arrived through.
+	 */
+	struct FSubUnityPins
+	{
+		/*
+		 * MEASURED 2026-08-16. The plain half is RepairedRegionalSandwich's own fixture and
+		 * comes back at its own pinned numbers (149 blocks, 965 pivots) — measured here in
+		 * the same run rather than transcribed, because the whole argument below is that the
+		 * two are THE SAME WALL and a transcription would assert the typing.
+		 */
+		int32 PlainBlocks = 149;
+		int32 PlainJoints = 385;
+		int32 PlainGlobalPivots = 965;
+
+		int32 CompositeBlocks = 179;
+		int32 CompositeJoints = 415;
+		int32 CompositeGlobalPivots = 1308;
+
+		/*
+		 * lambda* of the whole composite, gravity-live, in the file-wide +/-2e-5 window.
+		 *
+		 * MEASURED 0.44049301907204619, which lands inside the BARE 30-course leaning stack's
+		 * own pinned [0.440484, 0.440502] — Q1 predicted exactly that and the reason is the
+		 * finding: the binding joint is inside the chain, and a chain does not care whether it
+		 * stands on the earth or on a wall. The named fallback (the chimney's root joint at a
+		 * hand-priced ~1.5) did not fire.
+		 */
+		double CompositeLambdaLo = 0.4404842;
+		double CompositeLambdaHi = 0.4405019;
+
+		/**
+		 * How many of the six strip widths closed while the structure has no equilibrium.
+		 * MEASURED 4 — w = 0, 1, 2 and 3, the smallest of them 41 of 179 blocks.
+		 */
+		int32 FalseCertificates = 4;
+
+		/*
+		 * The certified strip's OWN lambda*, which is how false the certificate is.
+		 * MEASURED 621.95652149729517 against the structure's 0.44049 — **1,412x**, where
+		 * PART D's refuted-form certificate was wrong by 41.96x.
+		 */
+		double StripLambdaLo = 621.9441;
+		double StripLambdaHi = 621.9689;
+
+		/*
+		 * The contrast strip, cut at the chimney's root instead of at the deletion: the
+		 * chimney above it has no ground path, so all 27 blocks above the region are charged,
+		 * the pessimistic side goes INFEASIBLE and nothing is certified. MEASURED, and it is
+		 * the row that says the repair does real work where it can see the failing material.
+		 */
+		int32 ContrastBlocks = 38;
+		int32 ContrastCharged = 27;
+		int32 ContrastOptimistic = 1;
+		int32 ContrastPessimistic = 0;
+	};
 }
 
 /* ====================================================================================
@@ -4264,6 +4588,1008 @@ bool FOracleRepairedSandwichTest::RunTest(const FString& Parameters)
 				TEXT("'no false certificate' is true of a lever that certifies nothing"),
 				Certificates),
 			Certificates > 0);
+	}
+
+	return true;
+}
+
+/* ====================================================================================
+ * TEST 4 — THE SUB-1.0 WALL: IS THE REPAIRED PESSIMISTIC SIDE A BOUND, OR A HEURISTIC?
+ *
+ * THE GATING FOLLOW-UP OF PROMOTION_DESIGN §5.3's box and §11 R2, and the only fixture
+ * shape that can answer it. The repaired sandwich reports "20 certificates, 0 false", and
+ * that statistic CANNOT FIRE IN THE DIRECTION THAT MATTERS: nineteen of the twenty are
+ * issued about structures the LP already prices feasible and the twentieth region IS the
+ * whole structure, so not one is issued about a PROPER SUBSET of an INFEASIBLE structure —
+ * the only shape a false certificate can take. The pessimistic side has had exactly one
+ * counterexample removed (mutation X8's centre-of-gravity finding) and has never been shown
+ * to be a bound.
+ *
+ * THE FIXTURE and the three routes not taken are documented at SpikeBuildChimneyWall. In
+ * one line: the 12 x 12 wall RepairedRegionalSandwich already measures, with a 30-course
+ * LEANING CHIMNEY mortared onto the rightmost full brick of its top course, leaning 10 cm
+ * per course out past the wall's end. The chimney is the leaning stack's own chain, so the
+ * structure has no admissible equilibrium; the failure lives at the wall's far end, which is
+ * what makes a strip through a mid-wall deletion able to certify while the structure falls.
+ *
+ * ================================================================================
+ * PREDICTIONS — DERIVATION RECORD REVISION 1, WRITTEN BEFORE THE FIRST RUN
+ * (PROMOTION_DESIGN §7.3, mandatory. Each is repeated at the pin it decides.)
+ * ================================================================================
+ *
+ *  Q1  lambda* OF THE COMPOSITE IS THE BARE STACK'S, [0.440484, 0.440502]. The binding
+ *      joint is inside the chain, and the wall below changes none of the loads above it.
+ *      Named fallback if that misses: the chimney's ROOT joint governs instead, hand-priced
+ *      at ~1.5 — the thirty courses weigh 30 x 2.72163125 x 981 = 80,100 uu on a vertical
+ *      line 145 cm outboard of a joint whose half-length is 10.75, so equilibrium needs
+ *      T = (13.49 - 1)/2 x W = 500,000 uu of tension against 0.70 MPa x 110 cm2 = 770,000
+ *      uu of bond. Either way lambda* < 1 and the fixture does its job; only the number
+ *      moves, and which joint governs is the finding.
+ *  Q2  THE COMPOSITE IS INFEASIBLE at lambda = 1 and THE SAME WALL WITHOUT THE CHIMNEY IS
+ *      FEASIBLE. Both are measured here, in the same run, through the same builder, so the
+ *      chimney is demonstrably the whole of the difference rather than assumed to be.
+ *  Q3  SIZES: plain 149 blocks / 385 joints (RepairedRegionalSandwich's own fixture, and
+ *      pinned there); composite 179 / 415 — thirty blocks and thirty joints more (the root
+ *      bed joint plus twenty-nine chain beds).
+ *  Q4  THE STRIP AT w = 0 CHARGES NOTHING. Delete the strip from the joint graph and what
+ *      is left is ONE component containing the wall's grounded bottom course, with the
+ *      chimney hanging off it — so the Carried rule, which charges only material with no
+ *      ground path of its own, charges zero blocks. Repair (1) is a no-op here, exactly as
+ *      P1 measured on the chimney-free wall.
+ *  Q5  THE IDENTITY, and it is the mechanism stated as an equation: the w = 0 region problem
+ *      is THE SAME PROBLEM whether or not the chimney is attached — same block count, same
+ *      joint count, same verdicts, and the same pivot counts on both sides. The extractor
+ *      drops every chimney block and every chimney joint and the surcharge adds nothing, so
+ *      the region cannot see the chimney AT ALL. Predicted 49 optimistic / 262 pessimistic,
+ *      which is RepairedRegionalSandwich's w = 0 rung.
+ *  Q6  SO THE SANDWICH CLOSES AT w = 0 — both sides feasible — issuing a certificate about
+ *      41 of 179 blocks (23%) of a structure with no equilibrium. **PREDICTED: THE
+ *      CERTIFICATE IS FALSE, and the repaired pessimistic side is NOT a bound.**
+ *  Q7  THE LADDER. A half-width w reaches 12.25 + 22.5w cm; the deletion sits at X = 135.0
+ *      and the chimney root at X = 236.25, which is 101.25 cm away, so w = 4 is the first
+ *      width whose strip contains the root. PREDICTED: false certificates at w = 0, 1, 2, 3
+ *      — FOUR of them, the last covering 113 of 179 blocks — and NO closure at w = 4 or 5,
+ *      where the chimney above the strip becomes a component with no ground path, is
+ *      charged, and sinks the pessimistic side.
+ *  Q8  HOW FALSE, AS A NUMBER. The certified strip's own lambda*: 41 blocks, twelve courses,
+ *      two cells wide, predicted 400-1,100 (the 8-course 84-block wall reads 1128.4 and
+ *      lambda* falls with height — wall-01's thirty courses read 272.2). Against the
+ *      composite's 0.4405 that is a ratio of ~1,000-2,500x, an order of magnitude past PART
+ *      D's 41.96x.
+ *  Q9  THE CONTRAST STRIP, cut at the chimney's root instead of at the deletion: the chimney
+ *      above it becomes a component with no ground path, is CHARGED (~27 blocks), and the
+ *      pessimistic side reads INFEASIBLE while the optimistic side stays feasible — so it
+ *      does NOT close and issues no certificate. The repair works where it can SEE the
+ *      failing material and is blind where that material has a ground path of its own, which
+ *      is unsoundness (1) of §5.3's box demonstrated rather than argued.
+ * Q10  COST: under 10 s, FAST tier.
+ *
+ * ================================================================================
+ * WHAT IT MEANS IF Q6 MISSES, because a prediction with no other arm is a wish
+ * ================================================================================
+ *
+ * If the strip does NOT certify — if the pessimistic side finds this strip infeasible — then
+ * this is the first genuine evidence the repaired side works, on the only fixture shape that
+ * could have caught it lying, and the honest statement is that ONE fixture is not a proof.
+ * Either outcome is pinned as measured. Nothing here may be tuned to produce the other.
+ *
+ * ================================================================================
+ * WHAT WAS MEASURED — 2026-08-16, one run, tree at HEAD 74bb081
+ * ================================================================================
+ *
+ * **THE CERTIFICATE IS FALSE. THE REPAIRED PESSIMISTIC SIDE IS NOT A BOUND.**
+ *
+ *     composite   179 blocks / 415 joints, lambda* = 0.44049301907204619, INFEASIBLE
+ *     plain wall  149 blocks / 385 joints, FEASIBLE — so the chimney is the whole difference
+ *
+ *     w   blocks   % of 179   charged   optimistic   pessimistic   closes   FALSE
+ *     0       41      22.9%         0     feasible      feasible      YES     YES
+ *     1       65      36.3%         0     feasible      feasible      yes     yes
+ *     2       89      49.7%         0     feasible      feasible      yes     yes
+ *     3      113      63.1%        30     feasible      feasible      yes     yes
+ *     4      139      77.7%        28     feasible    INFEASIBLE       no       —
+ *     5      153      85.5%        26     feasible    INFEASIBLE       no       —
+ *
+ * FOUR FALSE CERTIFICATES, the smallest issued about 41 of 179 blocks — 22.9% of a structure
+ * that has no admissible equilibrium. Q1-Q9 all HIT, with ONE miss recorded below that is
+ * more useful than any of the hits.
+ *
+ *   - Q1 HIT: lambda* = 0.44049301907204619, inside the bare 30-course stack's pinned
+ *     [0.440484, 0.440502]. The chain governs and the wall under it changes nothing, so the
+ *     named fallback (the root joint at ~1.5) did not fire — and that hand price turns out to
+ *     matter anyway; see the Q7 miss.
+ *   - Q2 HIT: composite infeasible, the same wall without the chimney feasible.
+ *   - Q3 HIT block for block: 179/415 and 149/385.
+ *   - Q4/Q5 HIT EXACTLY, and Q5 is the finding stated as an equation: the w = 0 region is 41
+ *     blocks / 66 joints / 0 charged and takes **49 + 262 pivots** with a collapsing chimney
+ *     attached — the same three numbers and the same two pivot counts as the chimney-free
+ *     wall, and the same two RepairedRegionalSandwich pins at its own w = 0. The region
+ *     cannot see the chimney AT ALL.
+ *   - Q6 HIT: the sandwich closes and the certificate is false.
+ *   - Q8 HIT: the certified strip's own lambda* is **621.95652149729517** against the
+ *     structure's 0.44049 — the region the sandwich certified stands at **1,412x** the load
+ *     under which the structure it certified has no equilibrium. PART D's refuted-form
+ *     certificate was wrong by 41.96x; this one is wrong by thirty-three times that.
+ *   - Q9 HIT to the block: the contrast strip cut at the chimney's root charges 27, reads
+ *     optimistic feasible / pessimistic INFEASIBLE, and issues no certificate.
+ *
+ * **THE MISS, AND IT IS THE MOST USEFUL THING IN THE RUN. Q7 predicted `charged = 0` at every
+ * closing width, i.e. that all four false certificates came from the carried-set rule being
+ * BLIND. At w = 3 the rule is not blind — it charges all THIRTY chimney blocks, 80,100 uu on
+ * the vertical through their own centre of gravity — AND THE STRIP STILL CERTIFIES.** The
+ * arithmetic says why, and it is hole (3) of §5.3's box rather than hole (1):
+ *
+ *   - at w = 0..2 the chimney's root sits outside the region, so the omitted component
+ *     reaches the ground down the wall's own columns and is charged NOTHING. Hole (1):
+ *     material with its own ground path that also bears on the region.
+ *   - at w = 3 the root is pulled in as a SHELL block (it shares a head joint with a core
+ *     brick), so the chimney above it becomes a component with no ground path and IS charged
+ *     in full. **The load is applied DIRECTLY TO THE ROOT BRICK as an FOracleAppliedForce,
+ *     and the interface joint - the root's own bed joint under the chimney - is ITSELF
+ *     DROPPED**, because SpikeExtractRegion drops every joint with an end outside the region
+ *     and the chimney's first course is outside it. That is hole (1) of §5.3's box, present
+ *     here as well: the joint that must actually transmit the surcharge is never checked.
+ *
+ *     IT MAKES NO DIFFERENCE TO THE VERDICT, AND THAT IS THE POINT - hand statics say that
+ *     joint would have STOOD anyway, so the false certificate rests on hole (3) alone. The
+ *     model's own two-contact form, not a section modulus: the joint carries two contact
+ *     points at +/- h = 10.75 cm with a tributary area of A/2 = 110.1875 cm2 each. Thirty
+ *     courses weigh W = 30 x 2.72163125 kg x 980 = 80,015.96 uu on a vertical line
+ *     e = 14.5 x 10 = 145 cm outboard of the joint's centre, so vertical equilibrium plus
+ *     moment about that centre give the far contact
+ *
+ *         T = W x (e/h - 1) / 2 = 80,015.96 x (13.4884 - 1)/2 = 499,634.5 uu of TENSION
+ *
+ *     against a bond capacity of f_t x A/2 = 0.70 MPa x 110.1875 cm2 x 1e4 = 771,312.5 uu -
+ *     **a ratio of 1.5438, pinned below rather than left as prose.** The other two axes were
+ *     worked before that was believed: the near contact carries W x (e/h + 1)/2 = 579,650 uu
+ *     of compression, 0.053 of its 10 MPa crushing cap, and the surcharge is vertical so the
+ *     joint sees no shear at all. Tension governs, and it governs at 0.648.
+ *
+ *     (The `f_t x A x h` moment capacity this comment quoted until 2026-08-18 is ~2x the
+ *     model's two-contact value and landed near the right conclusion by luck; the number is
+ *     carried into a design decision, so it is derived the way the LP actually rows it.)
+ *
+ *     **The chain's twenty-nine internal bed joints — the ones that actually fail, at
+ *     lambda* 0.44 — are in no problem at all.** Hole (3): the charged component's own
+ *     internal joints vanish, so a hanging component that fails INTERNALLY leaves the region
+ *     certifying happily.
+ *   - at w = 4 the region finally swallows two chimney courses, so one failing chain joint is
+ *     posed for the first time, and the pessimistic side goes infeasible. **The region sees
+ *     the failure only when it contains the failing JOINT** — not when it contains the
+ *     failing material's weight.
+ *
+ * So the fixture exercises TWO of the three named unsoundnesses rather than the one it was
+ * built for, and the second is the sharper: a surcharge carries a force and a moment, and
+ * carries no STRENGTH. "The spandrel whose own bed joint sits at 1.01 of capacity" that
+ * §5.3's box writes down as a hypothetical is measured here.
+ *
+ * TWO SMALLER MISSES, recorded as misses:
+ *
+ *   - Q1's REASONING about cost. A small lambda* was expected to make the live pose cheap
+ *     (the bare stack's live solve is 29 pivots); the composite's is **2,321 pivots / 4.2 s**,
+ *     over half this test's runtime. A short climb in lambda is not a short climb in pivots.
+ *   - Q7's WIDTHS were right and its MECHANISM was wrong, which is exactly the shape TRAPS
+ *     warns about: the count (four) and the widths (0-3) came out as predicted for a reason
+ *     the prediction did not contain. A count agreeing is not a mechanism agreeing.
+ *
+ * WHAT THIS SETTLES, and what it does not. It settles §11 R2's open half: **a closed
+ * sandwich is a heuristic, not a certificate, and §5.6's fail-closed fallback is mandatory
+ * on every region solve.** It does NOT settle how to repair it — and the w = 3 rung says the
+ * obvious repair is bigger than it looks, because charging the weight correctly is not
+ * enough; the region would have to carry the charged component's internal joints and the
+ * interface joint too, which is §5.3's "different and larger repair".
+ *
+ * THE LIMITATION, restated where the numbers are: this structure is infeasible BEFORE the
+ * deletion, so the counterexample is not deletion-caused. The claim it refutes is
+ * unconditional, so that does not weaken it — but a deletion-CAUSED non-local failure (the
+ * wide-opening cover, jambs standing) would be strictly stronger evidence and is a specified
+ * follow-up in CURRENT_STATE.
+ *
+ * COST: **8.0-10.3 s**, measured and printed at the bottom of the run, of which the
+ * composite's gravity-live solve is ~4.2 s and the six-rung ladder ~2.4 s. QUOTED AS A RANGE
+ * ON PURPOSE: 8.0 s is a serial run and 10.285 s the same test in a parallel bucket on the
+ * same day, and CURRENT_STATE already records this machine varying by more under load than
+ * several fast rows cost. A single reading here would be a number the next person measures
+ * against and disbelieves. It sits in the OPT-IN sweep's FAST tier, taking it from ~80 s to
+ * ~90 s. The default suite is untouched.
+ *
+ * GREEN ON ARRIVAL, AND ITS THREE BITE-PROVERS. Every row here is green the day it lands,
+ * because the fixture and the measurement land together, and §9.5 is explicit that a row
+ * which settles a published design question may not rest on an argued bite.
+ *
+ *   X11  the chimney built with NO LEAN (`SpikeChimneyLeanCm` 10.0 -> 0.0), so the structure
+ *        STANDS  ->  **14 assertions**: the composite-is-infeasible row, its lambda* window
+ *        (0.44049 -> 275.414), its global pivot pin, the w = 4 and w = 5 rungs' block /
+ *        charged / free-boundary pins, the FALSE-CERTIFICATE COUNT (4 -> 0), the
+ *        charged-but-certifying row, and all three contrast pins. **The w = 0..3 rungs and
+ *        the whole IDENTITY correctly stay green** — the certified region is the same region
+ *        either way, which is the identity's own point. This mutation is also what found the
+ *        silent-skip hole: with nothing closing falsely, Parts 3 and 4 would have been
+ *        skipped without a word, so the loud-skip AddError above exists because of it.
+ *   X6   the extractor keeps the out-of-region blocks (the registry's existing entry,
+ *        re-measured against this test)  ->  **26 assertions**, including ALL FIVE IDENTITY
+ *        ROWS and the certified strip's lambda* window (621.957 -> 0.44049, the region having
+ *        become the whole structure). The identity is this test's mechanism claim and X6 is
+ *        what proves it is an assertion rather than a restatement.
+ *   X13  the chimney built ONE COURSE SHORT (`SpikeChimneyCourses` 30 -> 29)  ->  **9
+ *        assertions**: the composite's block and joint pins (179/415 -> 178/414), its lambda*
+ *        window (0.44049 -> 0.47322), its global pivot pin, the w = 3/4/5 charged pins, the
+ *        contrast strip's charged pin, and the bypassed-joint margin window (1.5438 ->
+ *        1.6588). Added 2026-08-18 because the composite SIZE pins had no prover — X11 moves
+ *        the fixture's falling-ness and X6 the extractor, and neither touches a count.
+ *        **WHAT STILL HAS NO PROVER, said plainly rather than implied away: the PLAIN wall's
+ *        149/385 pins and its FEASIBLE control.** No chimney mutation can reach them, which
+ *        is the point of a control - it would take a wall-side rung flip, and one is not
+ *        written.
+ *
+ * NEEDS A TICKING WORLD: NO.
+ * ==================================================================================== */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOracleSubUnityWallCertificateTest,
+	"OracleSweepFast.RigidBlock.SubUnityWallCertificate",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FOracleSubUnityWallCertificateTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockOracle;
+	using namespace OracleFeasibilitySpikeSupport;
+
+	const FSubUnityPins Pins;
+	const double Started = FPlatformTime::Seconds();
+
+	/*
+	 * A REFUSAL IS NOT AN INFEASIBILITY, and SpikeIsFeasible cannot tell them apart. Every
+	 * conclusion below is a verdict read off a solve, and the headline one is "the region
+	 * says FEASIBLE about a structure that says INFEASIBLE" — so a refused solve on either
+	 * side manufactures or destroys the finding in silence.
+	 */
+	const auto MustAnswer = [this](const FPoseReading& Read, const FString& Where)
+	{
+		return TestTrue(
+			*FString::Printf(
+				TEXT("%s: the solve must ANSWER — a REFUSAL and an INFEASIBILITY are ")
+				TEXT("indistinguishable downstream (both are bAnswered=false, lambda=0). ")
+				TEXT("It said: %s"),
+				*Where, Read.WhyNot.IsEmpty() ? TEXT("(nothing)") : *Read.WhyNot),
+			Read.bAnswered);
+	};
+
+	struct FStrip
+	{
+		int32 Blocks = 0;
+		int32 Joints = 0;
+		int32 Charged = 0;
+		bool bOptimistic = false;
+		bool bPessimistic = false;
+		bool bCloses = false;
+		int32 OptimisticPivots = 0;
+		int32 PessimisticPivots = 0;
+		double Seconds = 0.0;
+	};
+
+	/*
+	 * Both boundary conditions on one mask, with repair (1) live on the pessimistic side and
+	 * deliberately absent from the optimistic one — the same posing RepairedRegionalSandwich
+	 * uses, written locally rather than shared because a helper reaching across two tests
+	 * would make a change to one silently change the other's measurement.
+	 */
+	const auto PoseStrip = [this, &MustAnswer](
+		const FOracleProblem& Full, const TArray<bool>& Mask, const FString& Where) -> FStrip
+	{
+		FStrip Out;
+
+		FOracleProblem Optimistic;
+		FRegionCounts OptimisticCounts;
+		FSurchargeCounts OptimisticSurcharge;
+
+		SpikeExtractRepairedRegion(
+			Full, Mask, /*bGroundTheShell*/ true, ESpikeSurcharge::Carried,
+			Optimistic, OptimisticCounts, OptimisticSurcharge);
+
+		FOracleProblem Pessimistic;
+		FRegionCounts PessimisticCounts;
+		FSurchargeCounts PessimisticSurcharge;
+
+		SpikeExtractRepairedRegion(
+			Full, Mask, /*bGroundTheShell*/ false, ESpikeSurcharge::Carried,
+			Pessimistic, PessimisticCounts, PessimisticSurcharge);
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: the OPTIMISTIC side must carry no surcharge — its soundness is a ")
+				TEXT("restriction argument, and a restriction satisfies no row that was not in ")
+				TEXT("the original problem"),
+				*Where),
+			Optimistic.AppliedForces.Num(), 0);
+
+		const FPoseReading OptimisticRead = SpikeSolve(Optimistic);
+		const FPoseReading PessimisticRead = SpikeSolve(Pessimistic);
+
+		MustAnswer(OptimisticRead, FString::Printf(TEXT("%s GROUNDED-boundary"), *Where));
+		MustAnswer(PessimisticRead, FString::Printf(TEXT("%s FREE-boundary"), *Where));
+
+		Out.Blocks = OptimisticCounts.Blocks;
+		Out.Joints = OptimisticCounts.Joints;
+		Out.Charged = PessimisticSurcharge.ChargedBlocks;
+		Out.bOptimistic = SpikeIsFeasible(OptimisticRead);
+		Out.bPessimistic = SpikeIsFeasible(PessimisticRead);
+		Out.bCloses = Out.bOptimistic == Out.bPessimistic;
+		Out.OptimisticPivots = OptimisticRead.Pivots;
+		Out.PessimisticPivots = PessimisticRead.Pivots;
+		Out.Seconds = OptimisticRead.Seconds + PessimisticRead.Seconds;
+
+		/* Repair (2)'s own precondition: a strip that does not reach the earth certifies nothing. */
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: a ground-anchored region must actually contain the earth, and this one ")
+				TEXT("holds %d grounded blocks"),
+				*Where, PessimisticCounts.Grounded),
+			PessimisticCounts.Grounded > 0);
+
+		TestEqual(
+			*FString::Printf(TEXT("%s: no ORPHAN charged component"), *Where),
+			PessimisticSurcharge.OrphanComponents, 0);
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: no surcharge delivered onto a GROUNDED block, which writes no ")
+				TEXT("equilibrium row and would swallow it"),
+				*Where),
+			PessimisticSurcharge.DiscardedOntoGroundedUu, 0.0);
+
+		return Out;
+	};
+
+	/* ================================================================================
+	 * PART 1 — THE FIXTURE, AND THE TWO GLOBAL VERDICTS THAT MAKE IT ONE.
+	 * ================================================================================ */
+
+	constexpr int32 WallCourses = 12;
+	constexpr int32 WallCells = 12;
+	constexpr int32 WallDeleteCourse = 6;
+
+	FChimneyWall Composite;
+	FString Why;
+
+	const bool bCompositeLaid = SpikeBuildChimneyWall(
+		WallCourses, WallCells, SpikeChimneyCourses, WallDeleteCourse, Composite, Why);
+
+	if (!TestTrue(
+			*FString::Printf(TEXT("sub-1.0: the chimney wall must lay (it said: %s)"), *Why),
+			bCompositeLaid))
+	{
+		return true;
+	}
+
+	FChimneyWall Plain;
+	FString PlainWhy;
+
+	const bool bPlainLaid = SpikeBuildChimneyWall(
+		WallCourses, WallCells, /*ChimneyCourses*/ 0, WallDeleteCourse, Plain, PlainWhy);
+
+	if (!TestTrue(
+			*FString::Printf(TEXT("sub-1.0: the plain wall must lay (it said: %s)"), *PlainWhy),
+			bPlainLaid))
+	{
+		return true;
+	}
+
+	FOracleProblem CompositeFull;
+	FOracleProblem PlainFull;
+
+	const bool bCompositeBridged = BuildRigidBlockProblem(Composite.Structure, CompositeFull, Why);
+	const bool bPlainBridged = BuildRigidBlockProblem(Plain.Structure, PlainFull, PlainWhy);
+
+	if (!TestTrue(
+			*FString::Printf(TEXT("sub-1.0: the bridge must represent the chimney wall (%s)"), *Why),
+			bCompositeBridged)
+		|| !TestTrue(
+			*FString::Printf(TEXT("sub-1.0: the bridge must represent the plain wall (%s)"),
+				*PlainWhy),
+			bPlainBridged))
+	{
+		return true;
+	}
+
+	/*
+	 * THE TWO FIXTURES MUST BE THE SAME WALL, and this is the line that says so: the same
+	 * brick is deleted from the same place in both, so any difference below is the chimney
+	 * and nothing else. It is a within-run comparison rather than a transcription of
+	 * RepairedRegionalSandwich's 149.
+	 */
+	TestEqual(
+		TEXT("sub-1.0: the same brick is deleted from both fixtures (X)"),
+		Composite.DeleteXCm, Plain.DeleteXCm);
+
+	TestEqual(
+		TEXT("sub-1.0: the same brick is deleted from both fixtures (Z)"),
+		Composite.DeleteZCm, Plain.DeleteZCm);
+
+	FOracleProblem CompositeGlobal = CompositeFull;
+	CompositeGlobal.bGravityIsLive = false;
+
+	FOracleProblem PlainGlobal = PlainFull;
+	PlainGlobal.bGravityIsLive = false;
+
+	const FPoseReading CompositeGlobalRead = SpikeSolve(CompositeGlobal);
+	const FPoseReading PlainGlobalRead = SpikeSolve(PlainGlobal);
+	const FPoseReading CompositeLiveRead = SpikeSolve(CompositeFull);
+
+	const bool bCompositeFeasible = SpikeIsFeasible(CompositeGlobalRead);
+	const bool bPlainFeasible = SpikeIsFeasible(PlainGlobalRead);
+
+	{
+		const FString Line = FString::Printf(
+			TEXT("SUB-1.0 FIXTURE: composite blocks=%d joints=%d (chimney %d courses, root at ")
+			TEXT("X=%.4f Z=%.4f, deletion at X=%.4f Z=%.4f) | composite DEAD feasible=%d ")
+			TEXT("pivots=%d secs=%.3f | composite LIVE lambda*=%.17g answered=%d pivots=%d ")
+			TEXT("secs=%.3f | plain blocks=%d joints=%d DEAD feasible=%d pivots=%d | whynot ")
+			TEXT("dead='%s' live='%s' plain='%s'"),
+			CompositeFull.Blocks.Num(), CompositeFull.Joints.Num(), Composite.ChimneyBlocks,
+			Composite.RootXCm, Composite.RootZCm, Composite.DeleteXCm, Composite.DeleteZCm,
+			bCompositeFeasible ? 1 : 0, CompositeGlobalRead.Pivots, CompositeGlobalRead.Seconds,
+			CompositeLiveRead.Lambda, CompositeLiveRead.bAnswered ? 1 : 0,
+			CompositeLiveRead.Pivots, CompositeLiveRead.Seconds,
+			PlainFull.Blocks.Num(), PlainFull.Joints.Num(), bPlainFeasible ? 1 : 0,
+			PlainGlobalRead.Pivots, *CompositeGlobalRead.WhyNot, *CompositeLiveRead.WhyNot,
+			*PlainGlobalRead.WhyNot);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+		AddInfo(Line);
+	}
+
+	MustAnswer(CompositeGlobalRead, TEXT("sub-1.0: the whole composite, posed dead"));
+	MustAnswer(CompositeLiveRead, TEXT("sub-1.0: the whole composite, posed live"));
+	MustAnswer(PlainGlobalRead, TEXT("sub-1.0: the plain wall, posed dead"));
+
+	/* ---- Sizes first, so nothing below can secretly be solving another structure. ---- */
+
+	if (Pins.CompositeBlocks == INDEX_NONE || Pins.PlainBlocks == INDEX_NONE)
+	{
+		AddError(FString::Printf(
+			TEXT("sub-1.0: UNMEASURED SIZES — composite %d blocks / %d joints, plain %d / %d. ")
+			TEXT("PREDICTED (Q3) 179/415 and 149/385."),
+			CompositeFull.Blocks.Num(), CompositeFull.Joints.Num(),
+			PlainFull.Blocks.Num(), PlainFull.Joints.Num()));
+	}
+	else
+	{
+		TestEqual(TEXT("sub-1.0: composite block count"),
+			CompositeFull.Blocks.Num(), Pins.CompositeBlocks);
+		TestEqual(TEXT("sub-1.0: composite joint count"),
+			CompositeFull.Joints.Num(), Pins.CompositeJoints);
+		TestEqual(TEXT("sub-1.0: the plain wall is RepairedRegionalSandwich's own fixture"),
+			PlainFull.Blocks.Num(), Pins.PlainBlocks);
+		TestEqual(TEXT("sub-1.0: and its joint count"),
+			PlainFull.Joints.Num(), Pins.PlainJoints);
+
+		TestEqual(
+			TEXT("sub-1.0: the chimney is the ONLY difference — thirty blocks more, and thirty ")
+			TEXT("joints more (its root bed plus twenty-nine chain beds)"),
+			CompositeFull.Blocks.Num() - PlainFull.Blocks.Num(), SpikeChimneyCourses);
+	}
+
+	/* ---- The two verdicts that make this a fixture rather than a wall. ---- */
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("sub-1.0, THE WHOLE POINT: the composite must have NO admissible equilibrium at ")
+			TEXT("lambda = 1, and it read feasible=%d. Without this the test is measuring a ")
+			TEXT("standing wall and can say nothing about the pessimistic side."),
+			bCompositeFeasible ? 1 : 0),
+		!bCompositeFeasible);
+
+	TestTrue(
+		TEXT("sub-1.0: and the SAME WALL WITHOUT THE CHIMNEY must be FEASIBLE — so the chimney ")
+		TEXT("is measurably the whole of the difference, rather than a structure that was ")
+		TEXT("failing for some reason nobody attributed"),
+		bPlainFeasible);
+
+	if (Pins.CompositeLambdaLo < 0.0)
+	{
+		AddError(FString::Printf(
+			TEXT("sub-1.0: UNMEASURED COMPOSITE lambda* — the live pose read %.17g in %d pivots ")
+			TEXT("(%.3f s). PREDICTED (Q1) the bare stack's [0.440484, 0.440502], because the ")
+			TEXT("binding joint is inside the chain; named fallback ~1.5 if the chimney's ROOT ")
+			TEXT("joint governs instead."),
+			CompositeLiveRead.Lambda, CompositeLiveRead.Pivots, CompositeLiveRead.Seconds));
+	}
+	else
+	{
+		TestTrue(
+			*FString::Printf(
+				TEXT("sub-1.0: the composite's lambda* must lie in [%.9g, %.9g] and was %.17g. ")
+				TEXT("This is how far below 1.0 the structure the strip certifies actually is."),
+				Pins.CompositeLambdaLo, Pins.CompositeLambdaHi, CompositeLiveRead.Lambda),
+			CompositeLiveRead.Lambda >= Pins.CompositeLambdaLo
+				&& CompositeLiveRead.Lambda <= Pins.CompositeLambdaHi);
+	}
+
+	if (Pins.CompositeGlobalPivots == INDEX_NONE || Pins.PlainGlobalPivots == INDEX_NONE)
+	{
+		AddError(FString::Printf(
+			TEXT("sub-1.0: UNMEASURED GLOBAL COST — the composite answers feasibility in %d ")
+			TEXT("pivots and the plain wall in %d; these are what a regional lever exists to ")
+			TEXT("avoid"),
+			CompositeGlobalRead.Pivots, PlainGlobalRead.Pivots));
+	}
+	else
+	{
+		TestEqual(TEXT("sub-1.0: the composite's feasibility pivot count"),
+			CompositeGlobalRead.Pivots, Pins.CompositeGlobalPivots);
+		TestEqual(TEXT("sub-1.0: the plain wall's feasibility pivot count"),
+			PlainGlobalRead.Pivots, Pins.PlainGlobalPivots);
+	}
+
+	/* ================================================================================
+	 * PART 2 — THE STRIP LADDER, AND WHAT EACH RUNG CERTIFIES.
+	 *
+	 * A closed sandwich here claims "the whole structure is feasible" about a structure Part
+	 * 1 has just measured as having no equilibrium. Every closure is therefore a FALSE
+	 * CERTIFICATE by construction, and the count of them is this test's headline — pinned as
+	 * a MEASURED number rather than asserted to be zero, exactly as PART D pins the refuted
+	 * form's. A test that demanded zero here would be asserting the design's claim instead of
+	 * checking it.
+	 * ================================================================================ */
+
+	int32 FalseCertificates = 0;
+	int32 ClosingWidth = INDEX_NONE;
+
+	FStrip ClosingStrip;
+	TArray<bool> ClosingMask;
+
+	/*
+	 * THE RUNG THAT CHARGES THE FAILING MATERIAL IN FULL AND CERTIFIES ANYWAY, kept out of
+	 * the loop because it is a different finding from the other three and the table alone
+	 * leaves it as two cells nobody reads together.
+	 */
+	int32 ChargedCertifierWidth = INDEX_NONE;
+	FStrip ChargedCertifier;
+
+	/*
+	 * PREDICTED (Q7): closes at w = 0, 1, 2, 3 and not at 4 or 5. The reach at half-width w
+	 * is 12.25 + 22.5w cm, the deletion sits 101.25 cm from the chimney's root, so w = 4 is
+	 * the first strip that contains the root — and from there the chimney above the strip is
+	 * a component with no ground path, gets CHARGED, and sinks the pessimistic side.
+	 *
+	 * MEASURED 2026-08-16: the widths and the count are exactly as predicted and THE CHARGED
+	 * COLUMN IS NOT. w = 3 already charges all thirty chimney blocks — the root is pulled in
+	 * as a SHELL block through a head joint one core brick away — and the strip CERTIFIES
+	 * ANYWAY. The load is applied DIRECTLY TO THE ROOT BRICK and the interface joint under the
+	 * chimney is itself dropped, so it is never checked (hole (1)); hand statics below say it
+	 * would have stood anyway at 1.5438 of its two-contact bond capacity, so what the
+	 * certificate actually rests on is hole (3) — the chain's twenty-nine internal joints, the
+	 * ones that fail, are in no problem at all. The block counts are
+	 * RepairedRegionalSandwich's 24w + 41 up to w = 3, then +2 and +4 as chimney courses enter
+	 * the region.
+	 */
+	TArray<FStripPin> StripPins;
+	StripPins.Add({ 0,  41,  0, 1, 1 });
+	StripPins.Add({ 1,  65,  0, 1, 1 });
+	StripPins.Add({ 2,  89,  0, 1, 1 });
+	StripPins.Add({ 3, 113, 30, 1, 1 });
+	StripPins.Add({ 4, 139, 28, 1, 0 });
+	StripPins.Add({ 5, 153, 26, 1, 0 });
+
+	for (const FStripPin& Pin : StripPins)
+	{
+		TArray<bool> Mask;
+		SpikeGroundStripMask(CompositeFull, Composite.DeleteXCm, Pin.HalfWidthCells, Mask);
+
+		const FStrip Strip = PoseStrip(
+			CompositeFull, Mask, FString::Printf(TEXT("sub-1.0 strip w=%d"), Pin.HalfWidthCells));
+
+		const bool bFalseCertificate = Strip.bCloses && (Strip.bOptimistic != bCompositeFeasible);
+
+		if (bFalseCertificate)
+		{
+			++FalseCertificates;
+		}
+
+		if (Strip.bCloses && ClosingWidth == INDEX_NONE)
+		{
+			ClosingWidth = Pin.HalfWidthCells;
+			ClosingStrip = Strip;
+			ClosingMask = Mask;
+		}
+
+		if (bFalseCertificate && Strip.Charged > 0 && ChargedCertifierWidth == INDEX_NONE)
+		{
+			ChargedCertifierWidth = Pin.HalfWidthCells;
+			ChargedCertifier = Strip;
+		}
+
+		const FString Line = FString::Printf(
+			TEXT("SUB-1.0 STRIP w=%d: blocks=%d (%.1f%% of %d) joints=%d charged=%d | ")
+			TEXT("optimistic=%d pivots=%d | pessimistic=%d pivots=%d | closes=%d | WHOLE ")
+			TEXT("STRUCTURE feasible=%d | FALSE CERTIFICATE=%d | secs=%.3f"),
+			Pin.HalfWidthCells, Strip.Blocks,
+			100.0 * double(Strip.Blocks) / double(CompositeFull.Blocks.Num()),
+			CompositeFull.Blocks.Num(), Strip.Joints, Strip.Charged,
+			Strip.bOptimistic ? 1 : 0, Strip.OptimisticPivots,
+			Strip.bPessimistic ? 1 : 0, Strip.PessimisticPivots,
+			Strip.bCloses ? 1 : 0, bCompositeFeasible ? 1 : 0,
+			bFalseCertificate ? 1 : 0, Strip.Seconds);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+		AddInfo(Line);
+
+		if (Pin.Blocks == INDEX_NONE || Pin.Charged == INDEX_NONE
+			|| Pin.Optimistic == INDEX_NONE || Pin.Pessimistic == INDEX_NONE)
+		{
+			AddError(FString::Printf(
+				TEXT("sub-1.0 strip w=%d: UNMEASURED RUNG — pin blocks=%d charged=%d ")
+				TEXT("optimistic=%d pessimistic=%d"),
+				Pin.HalfWidthCells, Strip.Blocks, Strip.Charged,
+				Strip.bOptimistic ? 1 : 0, Strip.bPessimistic ? 1 : 0));
+		}
+		else
+		{
+			TestEqual(*FString::Printf(TEXT("sub-1.0 strip w=%d: region block count"),
+				Pin.HalfWidthCells), Strip.Blocks, Pin.Blocks);
+
+			TestEqual(
+				*FString::Printf(
+					TEXT("sub-1.0 strip w=%d: how many omitted blocks the region is CHARGED for ")
+					TEXT("— zero while the chimney can still reach the ground without the strip, ")
+					TEXT("and non-zero from the width that swallows its root"),
+					Pin.HalfWidthCells),
+				Strip.Charged, Pin.Charged);
+
+			TestEqual(*FString::Printf(TEXT("sub-1.0 strip w=%d: GROUNDED-boundary verdict"),
+				Pin.HalfWidthCells), Strip.bOptimistic ? 1 : 0, Pin.Optimistic);
+
+			TestEqual(*FString::Printf(TEXT("sub-1.0 strip w=%d: FREE-boundary verdict"),
+				Pin.HalfWidthCells), Strip.bPessimistic ? 1 : 0, Pin.Pessimistic);
+		}
+	}
+
+	if (Pins.FalseCertificates == INDEX_NONE)
+	{
+		AddError(FString::Printf(
+			TEXT("sub-1.0: UNMEASURED FALSE-CERTIFICATE COUNT — %d of the six strip widths ")
+			TEXT("closed while the whole structure has no equilibrium. PREDICTED (Q6/Q7) FOUR: ")
+			TEXT("w = 0, 1, 2 and 3. Zero would mean the repaired pessimistic side held on the ")
+			TEXT("only fixture shape that could catch it lying."),
+			FalseCertificates));
+	}
+	else
+	{
+		TestEqual(
+			TEXT("sub-1.0, THE HEADLINE: how many of the six ground-anchored strips certify ")
+			TEXT("'the whole structure is feasible' about a structure that has no equilibrium. ")
+			TEXT("This is pinned as a MEASUREMENT, not asserted to be zero — a test that ")
+			TEXT("demanded zero would be asserting the design's claim instead of checking it."),
+			FalseCertificates, Pins.FalseCertificates);
+	}
+
+	/*
+	 * AND THE SECOND UNSOUNDNESS, WHICH THE PREDICTION DID NOT CONTAIN. Q7 expected every
+	 * false certificate to come from the carried-set rule being BLIND — omitted material with
+	 * a ground path of its own, charged nothing, §5.3's hole (1). One rung is not blind: it
+	 * charges the whole chimney, on the vertical through the chimney's own centre of gravity,
+	 * and certifies anyway.
+	 *
+	 * WHERE THE LOAD GOES, stated correctly because the design is being written around it: the
+	 * surcharge is applied DIRECTLY TO THE ROOT BRICK, and the interface joint it would have
+	 * had to cross is itself dropped by the extractor along with every other joint leaving the
+	 * region. So hole (1) is present here too — that joint is BYPASSED, not exercised — and
+	 * the reason it does not matter is measured immediately below: it would have stood anyway,
+	 * at 1.5438 of its two-contact bond capacity. **The certificate rests on hole (3) alone**
+	 * — the charged component's own internal joints vanish, so the twenty-nine chain joints
+	 * that actually fail are in no problem at all — which is the finding measured rather than
+	 * hypothesised, and it says a surcharge carries a force and a moment and NO STRENGTH.
+	 */
+	if (Pins.FalseCertificates != INDEX_NONE && Pins.FalseCertificates > 0)
+	{
+		TestTrue(
+			*FString::Printf(
+				TEXT("sub-1.0: at least one FALSE certificate must come from a strip that ")
+				TEXT("CHARGED the failing material in full and certified anyway — measured at ")
+				TEXT("half-width %d, %d blocks charged, pessimistic feasible=%d. If this ever ")
+				TEXT("stops holding, the surcharge has started carrying the charged component's ")
+				TEXT("own strength and hole (3) of PROMOTION_DESIGN §5.3's box has moved."),
+				ChargedCertifierWidth, ChargedCertifier.Charged,
+				ChargedCertifier.bPessimistic ? 1 : 0),
+			ChargedCertifierWidth != INDEX_NONE && ChargedCertifier.Charged > 0);
+
+		/*
+		 * AND THE BYPASSED JOINT, PRICED BY HAND SO THE ATTRIBUTION IS A PIN AND NOT A
+		 * SENTENCE. The surcharge is applied straight to the root brick and the interface
+		 * joint under the chimney is dropped with every other joint leaving the region, so
+		 * hole (1) is present at this rung as well as hole (3). Attributing the false
+		 * certificate to hole (3) ALONE is therefore a claim that the bypassed joint would
+		 * have stood, and that claim is arithmetic on the fixture's own constants rather than
+		 * on anything the solver reports — which is what makes it capable of disagreeing with
+		 * the solver instead of echoing it.
+		 *
+		 * THE MODEL'S OWN TWO-CONTACT FORM. A joint carries two contact points at +/- h from
+		 * its centre, each with a tributary area of A/2, and the LP's tension row caps each at
+		 * f_t x A/2. Vertical equilibrium of the charged chimney gives n1 + n2 = W; moment
+		 * about the joint centre gives h x (n2 - n1) = W x e. So the far contact carries
+		 * T = W x (e/h - 1)/2 of tension and the near one W x (e/h + 1)/2 of compression.
+		 *
+		 * THE OTHER TWO AXES WERE WORKED BEFORE THIS WAS BELIEVED, because ComputeUtilisation
+		 * returning the worst of three is exactly how a test aimed at one axis silently
+		 * measures another (TRAPS): the near contact's compression is ~0.053 of the 10 MPa
+		 * crushing cap, and a vertical surcharge puts no shear through a bed joint at all.
+		 * Tension governs, at 0.648 of capacity.
+		 */
+		const double ChimneyWeightUu =
+			double(SpikeChimneyCourses) * SpikeBrickMassKg * OracleGravityCmPerSecondSquared;
+
+		/* Course c sits c x lean outboard of the root, so the mean of 0..N-1 is the lever. */
+		const double LeverArmCm =
+			0.5 * double(SpikeChimneyCourses - 1) * SpikeChimneyLeanCm;
+
+		const double HalfLengthCm = 0.5 * SpikeBrickLengthCm;
+		const double ContactAreaSqCm = 0.5 * SpikeBrickLengthCm * SpikeBrickWidthCm;
+
+		/* 1 MPa = 100 N/cm2 and 1 N = 100 uu, derived here rather than imported. */
+		const double UuPerMPaSqCm = 100.0 * 100.0;
+
+		const double TensionDemandUu =
+			ChimneyWeightUu * (LeverArmCm / HalfLengthCm - 1.0) * 0.5;
+		const double TensionCapacityUu =
+			GeneralPurposeMortar.TensileStrengthMPa * ContactAreaSqCm * UuPerMPaSqCm;
+		const double CompressionDemandUu =
+			ChimneyWeightUu * (LeverArmCm / HalfLengthCm + 1.0) * 0.5;
+		const double CrushCapacityUu =
+			GeneralPurposeMortar.CompressiveStrengthMPa * ContactAreaSqCm * UuPerMPaSqCm;
+
+		const double BypassedMargin = TensionCapacityUu / TensionDemandUu;
+
+		const FString BypassLine = FString::Printf(
+			TEXT("SUB-1.0 BYPASSED JOINT (the root bed joint the surcharge never crosses): ")
+			TEXT("W=%.17g uu at e=%.17g cm, h=%.17g cm, contact area=%.17g cm2 | TENSION ")
+			TEXT("demand=%.17g capacity=%.17g margin=%.17g | COMPRESSION demand=%.17g ")
+			TEXT("capacity=%.17g utilisation=%.6g"),
+			ChimneyWeightUu, LeverArmCm, HalfLengthCm, ContactAreaSqCm,
+			TensionDemandUu, TensionCapacityUu, BypassedMargin,
+			CompressionDemandUu, CrushCapacityUu, CompressionDemandUu / CrushCapacityUu);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *BypassLine);
+		AddInfo(BypassLine);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("sub-1.0: the axis must be TENSION, not crushing — the near contact reads ")
+				TEXT("%.6g of its cap against the far contact's %.6g, and an attribution made ")
+				TEXT("against the wrong axis is how this project has been wrong before"),
+				CompressionDemandUu / CrushCapacityUu, TensionDemandUu / TensionCapacityUu),
+			TensionDemandUu / TensionCapacityUu > CompressionDemandUu / CrushCapacityUu);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("sub-1.0: the BYPASSED interface joint would have STOOD — %.17g uu of ")
+				TEXT("tension against %.17g uu of two-contact bond, a margin of %.17g. This is ")
+				TEXT("what licenses attributing the false certificate to hole (3) ALONE: hole ")
+				TEXT("(1) is present (the joint is dropped, never checked) and is not what the ")
+				TEXT("certificate rests on."),
+				TensionDemandUu, TensionCapacityUu, BypassedMargin),
+			BypassedMargin > 1.0);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("sub-1.0: and that margin is pinned in [%.9g, %.9g] rather than left as a ")
+				TEXT("greater-than, because a bare 'it stands' would survive the fixture's ")
+				TEXT("geometry moving by a factor. It read %.17g."),
+				SpikeBypassedMarginLo, SpikeBypassedMarginHi, BypassedMargin),
+			BypassedMargin >= SpikeBypassedMarginLo && BypassedMargin <= SpikeBypassedMarginHi);
+	}
+
+	/* ================================================================================
+	 * PART 3 — WHY IT HAPPENS, AS AN IDENTITY RATHER THAN AS A SENTENCE.
+	 *
+	 * The certified region problem is THE SAME PROBLEM whether or not a collapsing chimney is
+	 * attached to the wall: the extractor drops every chimney block and every chimney joint,
+	 * and the Carried rule charges nothing because the chimney reaches the ground down the
+	 * wall's own columns. Same blocks, same joints, same verdicts, same pivot counts — and a
+	 * region whose answer cannot depend on the material it dropped cannot be a bound on a
+	 * structure that includes it. This is the mechanism of the false certificate, measured
+	 * within one run rather than argued.
+	 * ================================================================================ */
+
+	/*
+	 * A SKIP MUST BE LOUD. Parts 3 and 4 both hang off a sandwich having closed, and a run in
+	 * which none does would otherwise pass with the identity and the "how false" number never
+	 * evaluated — a test asserting nothing, which is the failure mode this file's own header
+	 * calls the worst available outcome. Found by mutation X11, which does exactly that on
+	 * one arm.
+	 */
+	if (ClosingWidth == INDEX_NONE)
+	{
+		AddError(
+			TEXT("sub-1.0: NO STRIP CLOSED at any width, so the IDENTITY and the certified ")
+			TEXT("strip's own lambda* were never evaluated. That is either the finding ")
+			TEXT("inverting — the repaired pessimistic side holding on this fixture, which is a ")
+			TEXT("result and must be pinned as one — or a fixture that stopped being what it ")
+			TEXT("was built to be. It is never a pass."));
+	}
+
+	if (ClosingWidth != INDEX_NONE)
+	{
+		TArray<bool> PlainMask;
+		SpikeGroundStripMask(PlainFull, Plain.DeleteXCm, ClosingWidth, PlainMask);
+
+		const FStrip PlainStrip = PoseStrip(
+			PlainFull, PlainMask,
+			FString::Printf(TEXT("sub-1.0 CHIMNEY-FREE strip w=%d"), ClosingWidth));
+
+		const FString Line = FString::Printf(
+			TEXT("SUB-1.0 IDENTITY w=%d: with chimney blocks=%d joints=%d charged=%d ")
+			TEXT("optimistic=%d/%d pessimistic=%d/%d | WITHOUT chimney blocks=%d joints=%d ")
+			TEXT("charged=%d optimistic=%d/%d pessimistic=%d/%d"),
+			ClosingWidth, ClosingStrip.Blocks, ClosingStrip.Joints, ClosingStrip.Charged,
+			ClosingStrip.bOptimistic ? 1 : 0, ClosingStrip.OptimisticPivots,
+			ClosingStrip.bPessimistic ? 1 : 0, ClosingStrip.PessimisticPivots,
+			PlainStrip.Blocks, PlainStrip.Joints, PlainStrip.Charged,
+			PlainStrip.bOptimistic ? 1 : 0, PlainStrip.OptimisticPivots,
+			PlainStrip.bPessimistic ? 1 : 0, PlainStrip.PessimisticPivots);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+		AddInfo(Line);
+
+		TestEqual(
+			TEXT("sub-1.0 IDENTITY: the certified region has the same block count with the ")
+			TEXT("chimney attached as without it"),
+			ClosingStrip.Blocks, PlainStrip.Blocks);
+
+		TestEqual(
+			TEXT("sub-1.0 IDENTITY: and the same joint count — the extractor drops every ")
+			TEXT("chimney joint"),
+			ClosingStrip.Joints, PlainStrip.Joints);
+
+		TestEqual(
+			TEXT("sub-1.0 IDENTITY: and charges the same nothing — the Carried rule sees a ")
+			TEXT("chimney that reaches the ground down the wall's own columns"),
+			ClosingStrip.Charged, PlainStrip.Charged);
+
+		TestEqual(
+			TEXT("sub-1.0 IDENTITY: the GROUNDED-boundary side takes the same pivot path"),
+			ClosingStrip.OptimisticPivots, PlainStrip.OptimisticPivots);
+
+		TestEqual(
+			TEXT("sub-1.0 IDENTITY, THE MECHANISM: the FREE-boundary side takes the same pivot ")
+			TEXT("path and returns the same verdict whether or not a collapsing chimney is ")
+			TEXT("attached to the wall. A region whose answer CANNOT DEPEND on the material it ")
+			TEXT("dropped cannot be a bound on a structure that includes it — that is why the ")
+			TEXT("certificate above is what it is, stated as an equation rather than as prose."),
+			ClosingStrip.PessimisticPivots, PlainStrip.PessimisticPivots);
+
+		TestEqual(
+			TEXT("sub-1.0 IDENTITY: and the same FREE-boundary verdict"),
+			ClosingStrip.bPessimistic ? 1 : 0, PlainStrip.bPessimistic ? 1 : 0);
+
+		/* ============================================================================
+		 * PART 4 — HOW FALSE, AS A NUMBER.
+		 *
+		 * PART D's precedent: a boolean trio says only that the certificate is on the wrong
+		 * side of 1.0, and would survive almost any perturbation of the fixture. The
+		 * certified region's OWN lambda* says whether the failure is a knife edge a tighter
+		 * extractor could tune away, or a gap no boundary rule can close.
+		 * ============================================================================ */
+
+		FOracleProblem CertifiedLive;
+		FRegionCounts CertifiedCounts;
+		FSurchargeCounts CertifiedSurcharge;
+
+		SpikeExtractRepairedRegion(
+			CompositeFull, ClosingMask, /*bGroundTheShell*/ false, ESpikeSurcharge::Carried,
+			CertifiedLive, CertifiedCounts, CertifiedSurcharge);
+
+		CertifiedLive.bGravityIsLive = true;
+
+		const FPoseReading CertifiedLiveRead = SpikeSolve(CertifiedLive);
+
+		MustAnswer(CertifiedLiveRead, TEXT("sub-1.0: the certified strip, posed live"));
+
+		const FString RatioLine = FString::Printf(
+			TEXT("SUB-1.0 HOW FALSE: the certified strip's own lambda*=%.17g (%d pivots) against ")
+			TEXT("the whole structure's %.17g — the region the sandwich certified stands at ")
+			TEXT("%.1fx the load under which the structure it certified has no equilibrium"),
+			CertifiedLiveRead.Lambda, CertifiedLiveRead.Pivots, CompositeLiveRead.Lambda,
+			CompositeLiveRead.Lambda > 0.0
+				? CertifiedLiveRead.Lambda / CompositeLiveRead.Lambda : -1.0);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *RatioLine);
+		AddInfo(RatioLine);
+
+		if (Pins.StripLambdaLo < 0.0)
+		{
+			AddError(FString::Printf(
+				TEXT("sub-1.0: UNMEASURED CERTIFIED-STRIP lambda* — it read %.17g in %d pivots. ")
+				TEXT("PREDICTED (Q8) 400-1,100, a ratio of ~1,000-2,500x against the structure's ")
+				TEXT("own lambda*, an order of magnitude past PART D's 41.96x."),
+				CertifiedLiveRead.Lambda, CertifiedLiveRead.Pivots));
+		}
+		else
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("sub-1.0: the certified strip's OWN lambda* must lie in [%.9g, %.9g] and ")
+					TEXT("was %.17g. Measured on this exact region and never scaled from another ")
+					TEXT("fixture — the point of the number is that the certified region is ")
+					TEXT("nowhere near the boundary, so no tightening of a boundary rule closes ")
+					TEXT("a gap of that size."),
+					Pins.StripLambdaLo, Pins.StripLambdaHi, CertifiedLiveRead.Lambda),
+				CertifiedLiveRead.Lambda >= Pins.StripLambdaLo
+					&& CertifiedLiveRead.Lambda <= Pins.StripLambdaHi);
+		}
+	}
+
+	/* ================================================================================
+	 * PART 5 — THE CONTRAST: THE SAME STRUCTURE, CUT WHERE THE FAILURE IS.
+	 *
+	 * The repair is not useless and this is the row that says where it works. Cut the strip
+	 * at the CHIMNEY'S ROOT instead of at the deletion and the chimney above the strip becomes
+	 * a component with no ground path of its own, so the Carried rule charges it, its weight
+	 * acts on the vertical through its own centre of gravity, and the pessimistic side reads
+	 * INFEASIBLE. The sandwich opens and issues no certificate — correct behaviour.
+	 *
+	 * So the same structure produces a false certificate at one cut and a correct refusal at
+	 * another, and the difference is exactly whether the failing material has a ground path
+	 * the region does not provide. That is unsoundness (1) of §5.3's box, demonstrated.
+	 * ================================================================================ */
+
+	{
+		TArray<bool> ContrastMask;
+		SpikeGroundStripMask(CompositeFull, Composite.RootXCm, /*HalfWidthCells*/ 0, ContrastMask);
+
+		const FStrip Contrast = PoseStrip(
+			CompositeFull, ContrastMask, TEXT("sub-1.0 CONTRAST strip at the chimney root"));
+
+		const FString Line = FString::Printf(
+			TEXT("SUB-1.0 CONTRAST (strip cut at the chimney root X=%.4f, w=0): blocks=%d ")
+			TEXT("joints=%d charged=%d | optimistic=%d pivots=%d | pessimistic=%d pivots=%d | ")
+			TEXT("closes=%d"),
+			Composite.RootXCm, Contrast.Blocks, Contrast.Joints, Contrast.Charged,
+			Contrast.bOptimistic ? 1 : 0, Contrast.OptimisticPivots,
+			Contrast.bPessimistic ? 1 : 0, Contrast.PessimisticPivots,
+			Contrast.bCloses ? 1 : 0);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+		AddInfo(Line);
+
+		if (Pins.ContrastBlocks == INDEX_NONE || Pins.ContrastCharged == INDEX_NONE
+			|| Pins.ContrastOptimistic == INDEX_NONE || Pins.ContrastPessimistic == INDEX_NONE)
+		{
+			AddError(FString::Printf(
+				TEXT("sub-1.0 CONTRAST: UNMEASURED — pin blocks=%d charged=%d optimistic=%d ")
+				TEXT("pessimistic=%d. PREDICTED (Q9) ~27 charged, optimistic feasible, ")
+				TEXT("pessimistic INFEASIBLE, so no certificate is issued."),
+				Contrast.Blocks, Contrast.Charged,
+				Contrast.bOptimistic ? 1 : 0, Contrast.bPessimistic ? 1 : 0));
+		}
+		else
+		{
+			TestEqual(TEXT("sub-1.0 CONTRAST: region block count"),
+				Contrast.Blocks, Pins.ContrastBlocks);
+
+			TestEqual(
+				TEXT("sub-1.0 CONTRAST: the chimney above this strip has no ground path of its ")
+				TEXT("own, so the Carried rule charges it — this is repair (1) doing the work it ")
+				TEXT("was ruled for, on the same structure where it charged nothing"),
+				Contrast.Charged, Pins.ContrastCharged);
+
+			TestEqual(TEXT("sub-1.0 CONTRAST: GROUNDED-boundary verdict"),
+				Contrast.bOptimistic ? 1 : 0, Pins.ContrastOptimistic);
+
+			TestEqual(
+				TEXT("sub-1.0 CONTRAST: FREE-boundary verdict — the two sides disagree, so the ")
+				TEXT("rule says GROW THE REGION and no certificate is issued"),
+				Contrast.bPessimistic ? 1 : 0, Pins.ContrastPessimistic);
+		}
+	}
+
+	{
+		const FString Line = FString::Printf(
+			TEXT("SUB-1.0 TOTALS: %d false certificates over six strip widths. Test took %.3f s."),
+			FalseCertificates, FPlatformTime::Seconds() - Started);
+
+		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
+		AddInfo(Line);
 	}
 
 	return true;
