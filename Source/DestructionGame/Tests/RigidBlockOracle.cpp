@@ -2115,6 +2115,70 @@ namespace RigidBlockOracle
 			}
 		}
 
+		/* ---- First-crack rows: uncracked peak-fibre limit for bonded joints. ---- */
+		if (Problem.bFirstCrackRows)
+		{
+			for (int32 JointIndex = 0; JointIndex < NumJoints; ++JointIndex)
+			{
+				const FOracleJoint& Joint = Problem.Joints[JointIndex];
+				const double FtMPa = Joint.Strength.TensileStrengthMPa;
+
+				/*
+				 * Keyed on DATA, not material: a joint with no tensile bond has nothing
+				 * to crack, so it keeps the plastic no-tension form and no first-crack row
+				 * is written — which is exactly what leaves every dry-stone (f_t = 0) joint
+				 * bit-identical whether the flag is on or off. The guard is written as
+				 * !(f_t > 0) so a NaN strength lands inside it rather than slipping past.
+				 *
+				 * DEFERRED, and benign (review 2026-08-21): unlike the tension row, this is
+				 * NOT also gated on f_t < UncappedStrengthMPa. A bonded joint carrying an
+				 * uncapped tensile strength would therefore get a first-crack row with RHS
+				 * ~ 1e13 * A -- trivially slack, so a non-binding inequality that cannot change
+				 * the optimum, and no sweep fixture drives it. Left ungated on purpose; if a
+				 * fixture ever carries an uncapped-yet-bonded joint, add the same < Uncapped
+				 * guard the tension row uses. Recorded in CURRENT_STATE.
+				 */
+				if (!(FtMPa > 0.0))
+				{
+					continue;
+				}
+
+				/*
+				 * The joint's two contacts sit at contact indices 2J and 2J+1, at -/+ h,
+				 * with signed normal (compression positive) n = n+ - n- in columns Base+0
+				 * and Base+1. The uncracked peak-fibre condition -(n1+n2) + 3|n1-n2| <=
+				 * f_t*A is two linear inequalities, one per sign of n1-n2, over the FULL
+				 * joint face area (Joint.AreaSqCm = 2 * tributary), cutting the bonded
+				 * section's plastic bending capacity to a third (PROMOTION_DESIGN Sec 4.3).
+				 * f_t > 0 makes bCanTension true for both contacts, so the n- columns exist.
+				 */
+				const int32 Base1 = 1 + 4 * (2 * JointIndex);
+				const int32 Base2 = 1 + 4 * (2 * JointIndex + 1);
+				const double Rhs =
+					FtMPa * OracleForceUnitsPerMPaSqCm * Joint.AreaSqCm;
+
+				/* n1 >= n2 branch: -(n1+n2) + 3(n1-n2) = 2*n1 - 4*n2 <= f_t*A. */
+				FAssemblyRow FirstCrackA;
+				FirstCrackA.Add(Base1 + 0, 2.0);
+				FirstCrackA.Add(Base1 + 1, -2.0);
+				FirstCrackA.Add(Base2 + 0, -4.0);
+				FirstCrackA.Add(Base2 + 1, 4.0);
+				FirstCrackA.Rhs = Rhs;
+				FirstCrackA.bEquality = false;
+				AssemblyRows.Add(MoveTemp(FirstCrackA));
+
+				/* n2 >= n1 branch: -(n1+n2) + 3(n2-n1) = -4*n1 + 2*n2 <= f_t*A. */
+				FAssemblyRow FirstCrackB;
+				FirstCrackB.Add(Base1 + 0, -4.0);
+				FirstCrackB.Add(Base1 + 1, 4.0);
+				FirstCrackB.Add(Base2 + 0, 2.0);
+				FirstCrackB.Add(Base2 + 1, -2.0);
+				FirstCrackB.Rhs = Rhs;
+				FirstCrackB.bEquality = false;
+				AssemblyRows.Add(MoveTemp(FirstCrackB));
+			}
+		}
+
 		/* ---- Standard form and the revised simplex's working state. ------------- */
 		FStandardForm Form;
 		BuildStandardForm(AssemblyRows, NumStructCols, Form);

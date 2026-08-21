@@ -1599,6 +1599,33 @@ namespace RigidBlockSweepTestSupport
 				What, WantedBlocks, Reading.Blocks),
 			Reading.Blocks, WantedBlocks);
 	}
+
+	/**
+	 * SLICE 0d's flag-on adjuster, as an AdjustProblem hook: turn the first-crack rows on
+	 * and RETURN the count of joints that will carry them — exactly the bonded set
+	 * (f_t > 0), which is what keys the rule on DATA, not on material. Pinning that count
+	 * through OverriddenJoints makes "a first-crack row for every bonded joint and none for
+	 * a dry one" a contract; a dry-only fixture returns 0, writes no rows, and so returns
+	 * bit-identical (the crux keyed-on-data invariant). The count is read from the same
+	 * f_t > 0 predicate the oracle keys its own rows on (RigidBlockOracle.cpp), so the two
+	 * agreeing is the check, not a copy — a keying change on either side moves this count.
+	 */
+	int32 TurnOnFirstCrackRows(FOracleProblem& Problem)
+	{
+		Problem.bFirstCrackRows = true;
+
+		int32 Bonded = 0;
+
+		for (const FOracleJoint& Joint : Problem.Joints)
+		{
+			if (Joint.Strength.TensileStrengthMPa > 0.0)
+			{
+				++Bonded;
+			}
+		}
+
+		return Bonded;
+	}
 }
 
 /**
@@ -1790,6 +1817,37 @@ bool FRigidBlockSweepCorbelFamilyTest::RunTest(const FString& Parameters)
 		},
 		ERelation::AgreeStands, 20.3328, 20.3331, 0 });
 
+	/*
+	 * SLICE 0d, A MOVER — the SAME bare arm with the first-crack rows on. Corbel A's four
+	 * bonded joints all reach first crack, and the ladder cuts to 0.2786 of the control
+	 * (measured 5.6638759380840851). It still stands (5.66 >= 1). The flag touches only the
+	 * oracle, so production is the untouched arm — its relation and zero drop count carry over.
+	 * OverriddenJoints = 4 pins that a first-crack row was written for every one of the arm's
+	 * bonded joints (keyed on data).
+	 *
+	 * WHY 0.2786 IS BELOW THE 1/3 FLOOR, AND IT IS NOT PER-JOINT NET TENSION (review, 2026-08-21):
+	 * a SINGLE joint at eccentricity k = |M|/(|N|h) has a first-crack/plastic ratio of
+	 * (1 + k)/(1 + 3k), which lives in (1/3, 1] — net tension (finite k) makes the cut LESS
+	 * deep, reaching 1/3 only in pure bending (k -> infinity, N -> 0, the beams). So no single
+	 * tension-bending joint can go below 1/3, and the earlier "net tension cuts DEEPER than /3"
+	 * gloss was wrong. The sub-1/3 result is a MULTI-JOINT REDISTRIBUTION effect: first crack
+	 * binds all four joints of the arm at once, and the LP can no longer trade eccentricity
+	 * between them to stay in each kern, so the arm's capacity falls further than any one
+	 * joint's would. A finding about the mechanism, not a bug — the rows are correct (item 1
+	 * of the review re-derived them), and the beams landing exactly at /3 prove the per-joint
+	 * floor holds.
+	 */
+	Rows.Add({ TEXT("corbel A, bare arm of four — first crack"),
+		TEXT("bonded bending across the four-joint arm, cut to 0.279 of control — below the ")
+		TEXT("per-joint 1/3 floor by multi-joint redistribution, not per-joint net tension; ")
+		TEXT("still stands 5.66x"),
+		[](FStructure& Out, FString& Why)
+		{
+			return BuildScenarioStructure(TEXT("corbel-a-bare-4"), Out, Why);
+		},
+		ERelation::AgreeStands, 5.66385, 5.66390, 0, 0,
+		TurnOnFirstCrackRows, 4 });
+
 	Rows.Add({ TEXT("corbel B, filled four steps"),
 		TEXT("the same reach filled solid jams as a block: 16.4x the bare arm's margin"),
 		[](FStructure& Out, FString& Why)
@@ -1798,7 +1856,69 @@ bool FRigidBlockSweepCorbelFamilyTest::RunTest(const FString& Parameters)
 		},
 		ERelation::AgreeStands, 333.402, 333.405, 0 });
 
-	RunRows(*this, Rows);
+	/*
+	 * SLICE 0d, THE COMPRESSION CONTROL — pinned as a CHARACTERISATION, because the invariant
+	 * is APPROXIMATE, not exact. Corbel B jams as a block (Mohr-Coulomb, the header's 16.4x),
+	 * so PROMOTION_DESIGN Sec 4.5 predicted first crack ~unchanged; MEASURED it moves 8%
+	 * (0.9205 of control, 306.88465535549665) because some bonded joints in the block do
+	 * reach net tension in bending and their first-crack rows bind. So category-B invariance
+	 * is APPROXIMATE here — recorded, not smoothed. The clean bit-identical control is not a
+	 * compression fixture at all: every BONDED fixture in the sweep writes rows and moves at
+	 * least this much, and only the DRY set (0 bonded joints, no rows) returns bit-identical.
+	 */
+	Rows.Add({ TEXT("corbel B, filled four steps — first crack"),
+		TEXT("compression/jamming governs, so first crack moves it only 8% (0.9205 of ")
+		TEXT("control) — APPROXIMATE invariance, pinned as a characterisation, NOT asserted ")
+		TEXT("as unchanged"),
+		[](FStructure& Out, FString& Why)
+		{
+			return BuildScenarioStructure(TEXT("corbel-b-filled-4"), Out, Why);
+		},
+		ERelation::AgreeStands, 306.883, 306.886, 0, 0,
+		TurnOnFirstCrackRows, 26 });
+
+	TArray<FSweepReading> Readings;
+	RunRows(*this, Rows, Readings);
+
+	const FSweepReading* AOff =
+		ReadingNamed(*this, Rows, Readings, TEXT("corbel A, bare arm of four"));
+	const FSweepReading* AOn = ReadingNamed(
+		*this, Rows, Readings, TEXT("corbel A, bare arm of four — first crack"));
+	const FSweepReading* BOff =
+		ReadingNamed(*this, Rows, Readings, TEXT("corbel B, filled four steps"));
+	const FSweepReading* BOn = ReadingNamed(
+		*this, Rows, Readings, TEXT("corbel B, filled four steps — first crack"));
+
+	if (AOff != nullptr && AOn != nullptr && BOff != nullptr && BOn != nullptr)
+	{
+		/*
+		 * THE MOVE IS THE FINDING, not either rung's window. Corbel A's first-crack/control
+		 * ratio is the mechanism: a single pure-bending joint reads exactly /3 = 0.3333 and no
+		 * single tension-bending joint can read below it ((1+k)/(1+3k) in (1/3, 1]); corbel A's
+		 * arm reads 0.2786, BELOW the per-joint floor, because first crack binds all four joints
+		 * at once and the LP can no longer redistribute eccentricity between them (see the
+		 * corbel-A mover comment above). The MOVE is the signature of that multi-joint effect;
+		 * if this ratio moved, the mechanism changed.
+		 */
+		CheckLambdaLadderRatio(*this,
+			TEXT("SLICE 0d: corbel A's four-joint arm under first crack"),
+			TEXT("a single pure-bending joint reads /3 = 0.3333 and none reads below it; the ")
+			TEXT("four-joint arm cuts to 0.2786 by multi-joint redistribution — the MOVE, not ")
+			TEXT("either rung, is the finding"),
+			*AOn, *AOff, 0.27854, 0.27858);
+
+		/*
+		 * AND THE CONTROL'S SMALL MOVE, pinned so "approximate invariance" is a number and
+		 * not a hedge: a compression-governed block still writes first-crack rows and they
+		 * bind by 8% (0.9205). A future change that made corbel B move MORE (or bit-identical)
+		 * fails here loudly rather than quietly re-attributing the mechanism.
+		 */
+		CheckLambdaLadderRatio(*this,
+			TEXT("SLICE 0d: corbel B's jamming block under first crack (approximate invariance)"),
+			TEXT("compression governs so the prediction was ~none; measured 0.9205 — a bonded ")
+			TEXT("block still writes rows that slightly bind, so the invariance is approximate"),
+			*BOn, *BOff, 0.92045, 0.92047);
+	}
 
 	return true;
 }
@@ -1838,6 +1958,268 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
 		ERelation::OracleStandsProductionFalls, 9592.67, 9592.69, 2, 0 });
 
 	RunRows(*this, Rows);
+
+	return true;
+}
+
+/**
+ * SLICE 0d — THE FIRST-CRACK ROWS BITE BONDED BENDING AND SPARE DRY JOINTS.
+ *
+ * WHAT IS UNDER TEST, IN ONE SENTENCE. With FOracleProblem::bFirstCrackRows set, the LP
+ * carries the two uncracked-first-crack rows -(n1+n2) + 3|n1-n2| <= f_t*A for every joint
+ * with a real tensile bond and ONLY those, cutting a bonded section's plastic bending
+ * capacity to a third (so a bonded-bending-governed lambda* falls toward control/3) while
+ * every dry-stone joint, having no bond to crack, returns bit-identical.
+ *
+ * WHY THIS IS THE RED, AND WHY IT FAILS FOR THE RIGHT REASON. bFirstCrackRows is a COMPILE
+ * SEAM ONLY today — a defaulted bool the solver does not read yet (RigidBlockOracle.h). So
+ * turning it on adds no rows and leaves lambda* exactly where it was. The beam assertions
+ * below demand a MEANINGFUL DROP; with the rows absent lambda*(on) == lambda*(off) and they
+ * fail because THE ROWS ARE MISSING, not because anything failed to compile. dev-expert
+ * makes them green by assembling the rows in SolveRigidBlockOnce, gated on the flag and on
+ * f_t > 0. See the predictions record (PROMOTION_DESIGN Sec 4.3/4.5; Slice 0d) for the
+ * full per-fixture table this cheap red is the front edge of.
+ *
+ * THE ASSERTIONS, AND WHY EACH.
+ *   - MECHANISM, not outcome: the beam rows assert lambda* MOVED (the rows bite), never a
+ *     verdict. Beam row 1's predicted 0.882 crosses 1.0 and would move a catalogue relation
+ *     — that is a USER RULING (PROMOTION_DESIGN Sec 4.3, Sec 8's beam caveat), REPORTED here,
+ *     never encoded as settled.
+ *   - PRECISE window near control/3: BuildBeam lays exactly ONE bonded joint (the glue line)
+ *     and a simply-supported span carries N~=0 at midspan, so first crack is at full /3
+ *     severity and lambda* -> control/3 near-exactly. The window is wide enough (0.28-0.42 of
+ *     control) for arching/shear wobble and green re-measurement, and 1.0 (the no-op) is
+ *     wildly outside it, so the red reason is unambiguous. Green MEASURES and re-pins;
+ *     never scale.
+ *   - BIT-IDENTITY for the dry pair is the crux keyed-on-DATA invariant. It is GREEN ON
+ *     ARRIVAL under the no-op seam and stays green when dev keys on f_t > 0 — so it asserts
+ *     nothing until proven to bite. Its bite-prover is a GREEN-PHASE mutation: key the rule
+ *     on "always" (or on material) and the dry lambda* moves. Recorded, not run here.
+ *
+ * TIER: DEFAULT SUITE. The beam is microseconds and the dry one-cell solves fast; two solves
+ * of each is still cheap. The FULL-SWEEP re-measurement (corbels, case 21, the slow walls,
+ * every bonded window moved and every dry identity pinned) is LARGER than one clean red step
+ * and is green-phase OracleSweepFull work — it needs measured windows that do not exist until
+ * the rows do. NEEDS A TICKING WORLD: NO.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRigidBlockFirstCrackBitesTest,
+	"DestructionGame.Oracle.RigidBlock.FirstCrack.BitesBondedBendingSparesDryJoints",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockSweepTestSupport;
+
+	/** Joints the first-crack rule keys on: a real tensile bond, exactly bCanTension's set. */
+	const auto CountBonded = [](const FOracleProblem& Problem)
+	{
+		int32 Bonded = 0;
+
+		for (const FOracleJoint& Joint : Problem.Joints)
+		{
+			if (Joint.Strength.TensileStrengthMPa > 0.0)
+			{
+				++Bonded;
+			}
+		}
+
+		return Bonded;
+	};
+
+	/*
+	 * Solve one built structure twice: control (flag off) then first-crack (flag on) on the
+	 * IDENTICAL bridged problem. Returns false and reports why if the fixture or bridge or
+	 * either solve fails, so a red never hides behind a broken fixture.
+	 */
+	struct FPair
+	{
+		bool bOk = false;
+		int32 Bonded = 0;
+		FOracleResult Off;
+		FOracleResult On;
+	};
+
+	const auto SolveBothWays =
+		[&CountBonded](FAutomationTestBase& Test, const TCHAR* Name,
+			const TFunction<bool(FStructure&, FString&)>& Build) -> FPair
+	{
+		FPair Out;
+
+		FStructure Structure;
+		FString Why;
+
+		if (!Build(Structure, Why))
+		{
+			Test.AddError(FString::Printf(TEXT("%s: fixture could not be laid: %s"), Name, *Why));
+			return Out;
+		}
+
+		FOracleProblem Problem;
+
+		if (!BuildRigidBlockProblem(Structure, Problem, Why))
+		{
+			Test.AddError(FString::Printf(TEXT("%s: bridge refused the fixture: %s"), Name, *Why));
+			return Out;
+		}
+
+		Out.Bonded = CountBonded(Problem);
+
+		Problem.bFirstCrackRows = false;
+		Out.Off = SolveRigidBlock(Problem);
+
+		Problem.bFirstCrackRows = true;
+		Out.On = SolveRigidBlock(Problem);
+
+		if (!Test.TestTrue(
+				*FString::Printf(TEXT("%s: control solve (flag off) must answer"), Name),
+				Out.Off.bAnswered)
+			|| !Test.TestTrue(
+				*FString::Printf(TEXT("%s: first-crack solve (flag on) must answer"), Name),
+				Out.On.bAnswered))
+		{
+			return Out;
+		}
+
+		Out.bOk = true;
+
+		UE_LOG(LogTemp, Display,
+			TEXT("FIRSTCRACK %s: bonded=%d lambdaOff=%.17g lambdaOn=%.17g ratio=%.6g ")
+			TEXT("pivotsOff=%d pivotsOn=%d"),
+			Name, Out.Bonded, Out.Off.Lambda, Out.On.Lambda,
+			Out.Off.Lambda > 0.0 ? Out.On.Lambda / Out.Off.Lambda : -1.0,
+			Out.Off.SimplexIterations, Out.On.SimplexIterations);
+
+		return Out;
+	};
+
+	/* ---- The three beam rows: one bonded glue line each, bending governs cleanly. -------- */
+	struct FBeamRow
+	{
+		const TCHAR* Name;
+		double Density;
+		double BendingMPa;
+		double ShearMPa;
+		double BlockHeightCm;
+		double ControlLambda;
+	};
+
+	const FBeamRow BeamRows[] = {
+		{ TEXT("C24 timber beam, heavy load"), BeamC24DensityGramsPerCubicCm,
+			BeamC24BendingMPa, BeamC24ShearMPa, 120.0, 2.6461037357339725 },
+		{ TEXT("C24 timber beam, light load"), BeamC24DensityGramsPerCubicCm,
+			BeamC24BendingMPa, BeamC24ShearMPa, 10.0, 28.801133612618997 },
+		{ TEXT("S275 steel beam, heavy load"), BeamSteelDensityGramsPerCubicCm,
+			BeamS275YieldMPa, BeamS275YieldMPa / FMath::Sqrt(3.0), 120.0,
+			18.299323934632291 },
+	};
+
+	for (const FBeamRow& Beam : BeamRows)
+	{
+		const FPair P = SolveBothWays(*this, Beam.Name,
+			[&Beam](FStructure& Out, FString& Why)
+			{
+				return BuildBeam(Beam.Density, Beam.BendingMPa, Beam.ShearMPa,
+					Beam.BlockHeightCm, Out, Why);
+			});
+
+		if (!P.bOk)
+		{
+			continue;
+		}
+
+		/*
+		 * The override target set is what the keying claims: exactly the ONE bonded glue
+		 * line. If this is not 1 the fixture changed and every prediction below is about a
+		 * different wall.
+		 */
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: exactly one bonded joint (the glue line) carries a first-crack row"),
+				Beam.Name),
+			P.Bonded, 1);
+
+		/*
+		 * The control must still read its pinned window — otherwise the flag-off path is not
+		 * the wall the prediction was made against, and the ratio below is meaningless.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: control lambda* %.9g must sit at the pinned %.9g (flag off is the ")
+				TEXT("untouched wall)"),
+				Beam.Name, P.Off.Lambda, Beam.ControlLambda),
+			FMath::Abs(P.Off.Lambda - Beam.ControlLambda) <= 1.0e-4 * Beam.ControlLambda);
+
+		/*
+		 * THE BITE (the red's must-pass): first crack is ADDED, so lambda* can only shrink
+		 * (monotone theorem), and where the bonded glue line's bending governs it shrinks
+		 * MEANINGFULLY — safely past half, well inside the /3 prediction. With the rows
+		 * absent lambda*(on) == lambda*(off) and this fails, which is the whole red.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: FIRST-CRACK ROWS MUST BITE — lambda*(on)=%.9g must fall below ")
+				TEXT("0.5x lambda*(off)=%.9g (predicted control/3=%.9g). It did not move, so ")
+				TEXT("the rows are absent"),
+				Beam.Name, P.On.Lambda, P.Off.Lambda, Beam.ControlLambda / 3.0),
+			P.On.Lambda < 0.5 * P.Off.Lambda);
+
+		/*
+		 * THE PRECISE ENCODING: N~=0 at midspan puts first crack at full /3 severity, so
+		 * lambda*(on) lands near control/3. The window is wide enough for arching/shear and
+		 * for green re-measurement; 1.0 (the no-op) is nowhere near it.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: lambda*(on)=%.9g must land near control/3=%.9g (window 0.28-0.42 of ")
+				TEXT("control %.9g) — the first-crack factor is exactly 3 in pure bending"),
+				Beam.Name, P.On.Lambda, Beam.ControlLambda / 3.0, Beam.ControlLambda),
+			P.On.Lambda >= 0.28 * P.Off.Lambda && P.On.Lambda <= 0.42 * P.Off.Lambda);
+	}
+
+	/*
+	 * USER-DECISION ITEM, REPORTED NOT ASSERTED: beam row 1's predicted 0.882 (2.6461/3)
+	 * crosses 1.0, which would move its catalogue relation toward AGREE(falls) — the right
+	 * verdict (the member fails in bending) by a slightly wrong route (the glue line cracks).
+	 * PROMOTION_DESIGN Sec 4.3/Sec 8 rule this the user's call; the test asserts the drop, not
+	 * the flip.
+	 */
+	AddInfo(TEXT(
+		"USER DECISION (do not bank): first-crack takes beam row 1 (C24 heavy) to ~0.882 "
+		"< 1.0, an oracle verdict flip to Falls — correct verdict, glue-line-cracking route "
+		"rather than member bending. Measure and REPORT for the user's ruling; do not encode "
+		"it as settled (PROMOTION_DESIGN Sec 4.3, Sec 8)."));
+
+	/* ---- The dry one-cell pair: no bond, must return bit-identical. ---------------------- */
+	{
+		const FPair P = SolveBothWays(*this, TEXT("one-cell dry half seat"),
+			[](FStructure& Out, FString& Why) { return BuildOneCellDryPair(Out, Why); });
+
+		if (P.bOk)
+		{
+			/* Keyed on data: a dry fixture offers the first-crack rule nothing to key on. */
+			TestEqual(
+				TEXT("one-cell dry half seat: zero bonded joints (nothing to carry a "
+					 "first-crack row)"),
+				P.Bonded, 0);
+
+			/*
+			 * THE CRUX INVARIANT: no bonded joint => no rows written => lambda* AND the pivot
+			 * count return bit-identical with the flag on. GREEN ON ARRIVAL under the no-op
+			 * seam; its bite-prover is a green-phase mutation (key the rule on material/always
+			 * and this dry lambda* moves), recorded, not run here.
+			 */
+			TestEqual(
+				TEXT("one-cell dry half seat: lambda* is BIT-IDENTICAL with the flag on — dry "
+					 "stone has no bond to crack, so the rule keyed on f_t > 0 writes no row"),
+				P.On.Lambda, P.Off.Lambda);
+
+			TestEqual(
+				TEXT("one-cell dry half seat: pivot count is bit-identical with the flag on — "
+					 "an identical problem is solved either way"),
+				P.On.SimplexIterations, P.Off.SimplexIterations);
+		}
+	}
 
 	return true;
 }
@@ -3461,7 +3843,12 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
  * link. Splitting it is one more row of the same shape and was deliberately left for
  * whoever needs that distinction; it is recorded in CURRENT_STATE rather than implied here.
  *
- * COST: four solves at 83 blocks, 4.4 s. NEEDS A TICKING WORLD: NO.
+ * SLICE 0d ADDED A FIFTH ROW — the first-crack flag-on window for case 21 (lambda* falls
+ * 12.3% to 15.117 and STANDS, the §4 confirmation that bond bending is minor here). It is
+ * the same wall and touches the LP only, so it takes the same rung-size and
+ * production-reading-vs-control guards the four probes do, plus its own MOVE ratio (0.8769).
+ *
+ * COST: five solves at 83 blocks, ~6 s. NEEDS A TICKING WORLD: NO.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowOpeningProbesTest,
@@ -3537,6 +3924,36 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 			return ScaleCoverHeadTension(1, 2.0, Problem);
 		}, 43 });
 
+	/*
+	 * SLICE 0d — THE FIRST-CRACK FLAG-ON WINDOW FOR CASE 21, and the §4 confirmation.
+	 * PROMOTION_DESIGN Sec 4.2/4.3 argue bond bending is a MINOR term here (the tension
+	 * probes above move lambda* only a few percent). This row measures it directly: with the
+	 * uncracked first-crack rows on EVERY bonded joint (133 of them — the whole wall), lambda*
+	 * falls only 12.3%, to 15.116881825572943, and the wall STILL STANDS. It does NOT flip.
+	 *
+	 * THIS IS THE POINT PROMOTION_DESIGN Sec 4 MAKES, CONFIRMED RATHER THAN SURPRISED: the
+	 * brittleness rule is right AND does not close the case-21 disagreement — the residual is
+	 * the non-brittle friction+compression mechanism Slice 0c attributed, which first crack
+	 * does not touch. A DISAGREEMENT WITH THE WRITTEN PREDICTION, recorded not smoothed: the
+	 * predictions record guessed 6-14 ("up to 3x"); measured it moved just 12.3%, so bond
+	 * tension is an even more minor term here than estimated. OverriddenJoints = 133 pins that
+	 * every bonded joint carried a row (keyed on data, the whole wall is mortared).
+	 *
+	 * The window is ~+/-2e-5 relative, matching this wall's four sibling probes above rather
+	 * than the tighter reading it happens to land on today: the file's pivot-path discipline
+	 * (a re-pin that "cost five re-pins once already") says a first-crack pin on the same
+	 * 83-block wall must be no tighter than the controls it sits beside, so a future solver-path
+	 * change flaps them together or not at all.
+	 */
+	Rows.Add({ TEXT("probe: first-crack rows on"),
+		TEXT("Slice 0d's flag-on window: the whole wall re-solved with uncracked first-crack ")
+		TEXT("rows on every bonded joint. lambda* falls only 12.3% (0.8769) to 15.117 and the ")
+		TEXT("wall STANDS — brittle bond bending is a minor term here, the §4 confirmation; it ")
+		TEXT("does not flip the verdict"),
+		CaseTwentyOne,
+		ERelation::AgreeStands, 15.11658, 15.11718, 0, 0,
+		TurnOnFirstCrackRows, 133 });
+
 	TArray<FSweepReading> Readings;
 	RunRows(*this, Rows, Readings);
 
@@ -3548,12 +3965,40 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 		*this, Rows, Readings, TEXT("probe: cover head-joint tension x0.5"));
 	const FSweepReading* DoubleTension = ReadingNamed(
 		*this, Rows, Readings, TEXT("probe: cover head-joint tension x2"));
+	const FSweepReading* FirstCrack = ReadingNamed(
+		*this, Rows, Readings, TEXT("probe: first-crack rows on"));
 
 	if (Control == nullptr || NoCohesion == nullptr || HalfTension == nullptr
-		|| DoubleTension == nullptr)
+		|| DoubleTension == nullptr || FirstCrack == nullptr)
 	{
 		return true;
 	}
+
+	/*
+	 * THE FIRST-CRACK ROW IS THE SAME WALL (83 blocks) and touched the LP only — production
+	 * reads the untouched control, exactly like the strength probes. So it takes the same
+	 * two guards: same rung size, and a bit-identical production reading against the control.
+	 */
+	CheckRungSize(*this, TEXT("probe: first-crack on"), *FirstCrack, 83);
+
+	CheckReadingRatio(
+		*this,
+		TEXT("the first-crack flag changed the LP only (production reading vs control)"),
+		FirstCrack->WorstUtilisation, Control->WorstUtilisation, 0.999999999, 1.000000001);
+
+	/*
+	 * THE §4 CONFIRMATION, AS A RATIO: case 21 with first crack on falls to 0.8769 of the
+	 * control and STAYS ABOVE 1.0. A panel spanning in brittle bond bending would third
+	 * (0.3333); case 21 barely moves, which is the measured statement that bond bending is a
+	 * minor term and the residual is friction+compression (Slice 0c), not brittle bond. The
+	 * verdict does not flip — the finding PROMOTION_DESIGN Sec 4 set this fixture up to make.
+	 */
+	CheckLambdaLadderRatio(
+		*this,
+		TEXT("SLICE 0d: case 21 under first crack STANDS and does not flip"),
+		TEXT("a bond-bending panel predicts 0.3333 (/3); case 21 measures 0.8769 and stays ")
+		TEXT("above 1.0 — bond bending is minor, the residual is friction+compression"),
+		*FirstCrack, *Control, 0.87689, 0.87692);
 
 	/*
 	 * ALL FOUR ROWS ARE ONE WALL, so all four bridge to the same 83 blocks. A probe row

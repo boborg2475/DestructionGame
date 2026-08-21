@@ -276,6 +276,20 @@ namespace RigidBlockOracle
 		 * forces — the classic dead/live split a sliding or surcharge problem needs.
 		 */
 		bool bGravityIsLive = true;
+
+		/**
+		 * TRUE: carry the uncracked first-crack rows for every joint with a real tensile
+		 * bond (f_t > 0) — -(n1+n2) + 3|n1-n2| <= f_t * A per joint, two linear rows,
+		 * cutting a bonded section's plastic bending capacity to one third (PROMOTION_DESIGN
+		 * Sec 4.3). Keyed on DATA, not material: an f_t = 0 joint has no bond to crack and
+		 * keeps the plastic no-tension form, so every dry-stone row stays bit-identical.
+		 *
+		 * SLICE 0d COMPILE SEAM ONLY, DEFAULT OFF: this flag is declared so the red test can
+		 * ask for the rows; the solver does not read it yet, which is precisely why that
+		 * test is red (the rows are absent, not the type). dev-expert wires it to actually
+		 * assemble the rows in SolveRigidBlockOnce.
+		 */
+		bool bFirstCrackRows = false;
 	};
 
 	/**
