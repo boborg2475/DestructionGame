@@ -1189,6 +1189,101 @@ namespace RigidBlockSweepTestSupport
 	}
 
 	/**
+	 * SLICE 0c'S CRUSHING-RELAX VALUE. "Relax the crushing cap" means REMOVE the compressive
+	 * limit, not zero it: zeroing CompressiveStrengthMPa would forbid the joint from carrying
+	 * ANY compression and collapse the wall for a reason that has nothing to do with crushing.
+	 * A value 1e5x the profile's real 10 MPa (and ~1e6x the ~0.09 MPa self-weight compression
+	 * a residual-lambda* solve ever asks of these joints) makes the crushing row non-binding
+	 * without introducing a NaN or an infinity the oracle would refuse. Derived here, not
+	 * imported, so it fails against a wrong production convention rather than agreeing with it.
+	 */
+	constexpr double ResidualUncappedCrushingMPa = 1.0e6;
+
+	/**
+	 * THE HEIGHT LINE THAT SPLITS THE JAMB CHAIN into its two bearing courses at the top and
+	 * its run down to the ground — the split CURRENT_STATE and the cohesion probe's own header
+	 * (OpeningStrengthProbes, "ONE HONEST LIMIT OF PROBE 1") record as owed. The cover
+	 * underside is at 4x the pitch for case 21 (CoursesBelow = 1, LadderOpeningCourses = 3),
+	 * and the below-cover bed joints occupy the four course levels beneath it. Two pitches up
+	 * puts the top two levels (the bearing courses the cover lands on) on one side and the run
+	 * to ground on the other, with a full course of clearance on either side of the line so it
+	 * never clips a joint it is meant to separate.
+	 */
+	constexpr double LadderChainBearingSplitZCm(int32 CoursesBelow)
+	{
+		return double(CoursesBelow + LadderOpeningCourses - 2) * SweepCoursePitchCm;
+	}
+
+	/**
+	 * SLICE 0c'S RESIDUAL-ATTRIBUTION KNOB: take case 21's residual state (jamb bed cohesion
+	 * gone, the state whose lambda* is 4.768) and remove ONE MORE resistance mechanism from a
+	 * chosen band of the jamb chain, so the re-solve says whether that mechanism was what held
+	 * the residual up.
+	 *
+	 * It is the SAME SHAPE as ZeroJambBedCohesion — a per-joint override on the oracle problem
+	 * only, leaving production reading the untouched wall as the control — extended two ways
+	 * the attribution needs and no further:
+	 *
+	 *   - WHICH mechanism: cohesion (the residual-defining removal), friction (the Coulomb
+	 *     mu term — the only shear a cohesionless bed joint has left), the crushing cap
+	 *     (relaxed, not zeroed — see ResidualUncappedCrushingMPa), and the flexural TENSILE
+	 *     bond (zeroed — the 0.70 MPa the mu=0 optimum re-forms on; probe 5 removes it on top
+	 *     of friction to prove the 9.935 was carried by that bond). Any combination, because
+	 *     "friction AND crushing" and "friction AND tension" are two of the measurements.
+	 *   - WHERE: a Z band [BandLoZCm, BandHiZCm), so the cohesion removal can be confined to
+	 *     the bearing courses or to the run to ground and the chain-vs-bearing split is one
+	 *     row of this shape rather than a new mechanism.
+	 *
+	 * @return how many jamb bed joints were rewritten — pinned or cross-checked by the row,
+	 *         never trusted, because a band selector that matched nothing measures nothing.
+	 */
+	int32 AdjustJambBedResidual(
+		int32 CoursesBelow,
+		bool bZeroCohesion,
+		bool bZeroFriction,
+		bool bRelaxCrushing,
+		bool bZeroTension,
+		double BandLoZCm,
+		double BandHiZCm,
+		FOracleProblem& Problem)
+	{
+		int32 Touched = 0;
+
+		for (FOracleJoint& Joint : Problem.Joints)
+		{
+			if (IsBedJoint(Joint)
+				&& Joint.CentreZCm < LadderCoverUndersideZCm(CoursesBelow)
+				&& Joint.CentreZCm >= BandLoZCm
+				&& Joint.CentreZCm < BandHiZCm)
+			{
+				if (bZeroCohesion)
+				{
+					Joint.Strength.ShearCohesionMPa = 0.0;
+				}
+
+				if (bZeroFriction)
+				{
+					Joint.Strength.FrictionCoefficient = 0.0;
+				}
+
+				if (bRelaxCrushing)
+				{
+					Joint.Strength.CompressiveStrengthMPa = ResidualUncappedCrushingMPa;
+				}
+
+				if (bZeroTension)
+				{
+					Joint.Strength.TensileStrengthMPa = 0.0;
+				}
+
+				++Touched;
+			}
+		}
+
+		return Touched;
+	}
+
+	/**
 	 * ONE RUNG OF EITHER LADDER: case 21's wall with exactly one thing moved.
 	 *
 	 * `CoursesBelow` is the masonry UNDER the opening — the rise ladder's variable, and
@@ -1754,12 +1849,14 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  * Automation RunTests DestructionGame — NEVER runs either tier and the ~30 s suite budget
  * is untouched. Both tiers substring-match one filter, which is what the names are for:
  *
- *     -ExecCmds="Automation RunTests OracleSweepFast"   7 tests,   80 s
- *     -ExecCmds="Automation RunTests OracleSweepFull"   3 tests,  20.8 min
- *     -ExecCmds="Automation RunTests OracleSweep"      10 tests,  22.0 min (both)
+ *     -ExecCmds="Automation RunTests OracleSweepFast"  10 tests,   ~2 min
+ *     -ExecCmds="Automation RunTests OracleSweepFull"   4 tests,  ~24 min
+ *     -ExecCmds="Automation RunTests OracleSweep"      14 tests,  ~26 min (both)
  *
- * MEASURED, not assumed (2026-08-16): those three filters return **7, 3 and 10** tests and
- * the same count of Test Completed lines. The command-line filter is a plain SUBSTRING
+ * MEASURED, not assumed (counts re-checked 2026-08-21): those three filters return
+ * **10, 4 and 14** tests and the same count of Test Completed lines. The count grew from
+ * 7/3/10 as the regional-sandwich, warm-start and Slice 0c attribution rows landed. The
+ * command-line filter is a plain SUBSTRING
  * match (AutomationCommandline.cpp, GenerateTestNamesFromCommandLine — "otherwise just
  * substring match"), so the shared OracleSweep stem is the union, and neither tier can be
  * reached by the default suite's DestructionGame filter. Assuming filter semantics is what
@@ -1774,11 +1871,15 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
  *     FULL   WallsAndLadders                              478 s
  *     FULL   PhaseTwoMustNotRefuseTheCoveredOpeningFamily  455 s
  *     FULL   FeasibilityReformulationCost (other file)     313 s  (344 before its trim)
+ *     FULL   WarmStartAtWallScale (other file)            (see OracleWarmStartTest.cpp)
  *     fast   OpeningMechanismLadders                      22.4 s
  *     fast   PhaseTwoMustNotRefuseABoundedProblem         19.6 s
  *     fast   FreeEndHeightLadder                          16.1 s
  *     fast   RepairedRegionalSandwich (other file)         9.6 s
+ *     fast   Case21ResidualAttribution                    ~7.0 s
  *     fast   RegionalSandwich (other file)                 7.2 s
+ *     fast   SubUnityWallCertificate                      (with the sandwich rows)
+ *     fast   WarmStartAfterADeletion (other file)         (see OracleWarmStartTest.cpp)
  *     fast   OpeningStrengthProbes                         4.1 s
  *     fast   RefusalNamesItsReason                         1.0 s
  *
@@ -3526,6 +3627,488 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 		TEXT("a bond-governed cover predicts 0.50, an unaffected one 1.00 — the mean data ")
 		TEXT("measures 0.9728 (0.952 at the characteristic)"),
 		*HalfTension, *Control, 0.97274, 0.97284);
+
+	return true;
+}
+
+/**
+ * ====================================================================================
+ * SLICE 0c — ATTRIBUTE CASE 21'S RESIDUAL lambda* = 4.768 TO ITS PHYSICAL CAUSE.
+ * ====================================================================================
+ *
+ * WHAT IS UNDER TEST, IN ONE SENTENCE. Case 21's residual — the lambda* that survives when
+ * its jamb bed cohesion is zeroed, 4.768, the number OpeningStrengthProbes pins and nobody
+ * has explained — is re-solved with the jamb's FRICTION zeroed, its CRUSHING cap relaxed,
+ * both, and with the cohesion removal split into the two bearing courses at the top of the
+ * jamb versus the run down to the ground, so the readings say WHICH resistance mechanism
+ * holds the residual up.
+ *
+ * WHY THIS SLICE EXISTS. PROMOTION_DESIGN §4.4 makes attributing the 4.768 a PRECONDITION on
+ * promoting the LP to cascade authority: the 2026-08-13 ruling booked case 21's stand to the
+ * LP mobilising brittle cohesion along a chain, the mean re-anchor refuted that (zeroing the
+ * cohesion OUTRIGHT still stands, at 4.768 — the discount family is dead), and "nobody can
+ * say what the remaining 4.768 is" is not a state in which to hand the LP a verdict. §4.2
+ * asserts the residual is "friction and compression, which are not brittle"; this test is
+ * the measurement that either confirms that or refutes it, in exactly the shape §4.4 names —
+ * three probe rows plus the chain-vs-bearing split, one afternoon, on the 83-block fixture.
+ *
+ * THE BRITTLENESS PRECONDITION IS ALREADY SETTLED and this test does not re-litigate it: the
+ * cohesion "discount" was refuted by measurement (OpeningStrengthProbes' own re-derivation),
+ * so the residual is NOT bond/cohesion. What holds it up instead is the open question, and
+ * these four measurements are how it is closed.
+ *
+ * ------------------------------------------------------------------------------------
+ * THE PREDICTIONS, AND WHAT THE RUN MEASURED (the mean-re-anchor derivation-record discipline:
+ * the guesses are KEPT beside their refutations, because the disagreement IS the finding)
+ * ------------------------------------------------------------------------------------
+ *
+ * The residual state is jamb bed cohesion = 0. On that state the jamb bed joints' only
+ * remaining shear capacity is Coulomb friction min(mu*sigma, cap) — cohesion is gone. The
+ * profile is mean GeneralPurposeMortar: mu = 0.75, cap = 2.0 MPa, crushing = 10 MPa,
+ * tension = 0.7 MPa. At self-weight the bed compression is ~0.018 MPa, so friction buys
+ * ~0.0135 MPa of shear and crushing (10 MPa) is ~500x clear of any demand a residual solve
+ * makes. THE DESIGN'S HYPOTHESIS (§4.2) — that friction and compression, both non-brittle,
+ * carry the residual — is CONFIRMED: with cohesion gone the residual stands on a no-tension,
+ * friction-mobilised compression mechanism with no brittle bond, and crushing is inert (probe
+ * 2). The friction probe does NOT expose that mechanism's ceiling; it unlocks a DIFFERENT,
+ * higher, bond-tension mechanism, which probe 5 then attributes by measurement:
+ *
+ *   PROBE 1 (friction also zeroed). PREDICTED: falls (lambda* < 1.0), on the theory that a
+ *     cohesionless bed joint's only shear is friction and a thrust chain with no shear path
+ *     has nothing left. MEASURED: lambda* RISES to 9.9349181343793767 and STANDS —
+ *     AgreeStands, not OracleFalls. THE FINDING: setting mu=0 is NOT the removal of a cap on
+ *     the frictional residual. With cohesion already gone it forbids ALL bed-joint shear
+ *     (the Coulomb row |v| <= mu*n collapses to |v| <= 0) and in the SAME move lifts the
+ *     coupling (n+ >= n-) that had held the joints in net compression, so the 0.70 MPa
+ *     flexural tensile bond — which this probe leaves INTACT; it zeroed Coulomb cohesion, not
+ *     the tensile bond — becomes usable and the wall re-forms on a DISTINCT bond-tension
+ *     mechanism that stands HIGHER (ratio 9.9349181343793767 / 4.7679865256023284 =
+ *     2.0836716045719785). The rise is friction disallowing shear and thereby UNLOCKING a
+ *     bond-tension mechanism, NOT friction capping a compression arch. Provable: any mu=0
+ *     optimum in net compression everywhere would be feasible for the mu=0.75 control and so
+ *     bounded by 4.768; that 9.935 > 4.768 therefore means the mu=0 optimum mobilises net
+ *     TENSION on at least one jamb bed joint — and probe 5, removing that bond, collapses it.
+ *
+ *   PROBE 2 (crushing relaxed). PREDICTED and CONFIRMED unchanged: lambda* =
+ *     4.7679865256023373, bit-identical to the control's 4.7679865256023284 (rel diff
+ *     1.86e-15). Crushing (10 MPa) sits ~500x clear of demand and does not bind. Asserted as
+ *     a same-number identity against the control, which would FAIL if crushing were binding
+ *     (relaxing a binding cap can only RAISE lambda*). Crushing is inert.
+ *
+ *   PROBE 3 (both). PREDICTED and CONFIRMED equal to probe 1: lambda* =
+ *     9.9349181343793749 = probe 1's 9.9349181343793767 (rel diff 1.79e-16). Once friction
+ *     is gone the bed joints carry no shear whatever the crushing cap, so relaxing crushing
+ *     on top changes nothing. Asserted as an identity against probe 1.
+ *
+ *   THE CHAIN-VS-BEARING SPLIT (cohesion zeroed in one band at a time). PREDICTED: the run
+ *     to ground is the tighter link (lambda*_run <= lambda*_bearing), because the mechanism
+ *     was found to run the full jamb chain to the foundation (thrust is not local —
+ *     CURRENT_STATE, the abutment ladder). MEASURED: THE OPPOSITE. Bearing courses only
+ *     (18 joints) reads 4.7681626950893188 — essentially the whole residual — while run to
+ *     ground only (18 joints) reads 5.9623697933567943. So bearing (4.76816) < run to ground
+ *     (5.96237): removing cohesion in the BEARING courses collapses the residual MORE. THE
+ *     FINDING: for the COHESION contribution specifically, the bearing courses at the top of
+ *     the jamb are the tighter link, NOT the run to ground — this refutes the "thrust runs
+ *     to ground" prediction for cohesion. (Friction is a genuine carrier of the residual —
+ *     part of the no-tension compression+friction mechanism the control stands on — while
+ *     cohesion localises to the bearing; the two mechanisms are distinct and that is the
+ *     whole point of keeping the attributions apart.)
+ *
+ *   PROBE 5 (friction AND jamb-bed tension both zeroed). THE PROOF THAT 9.935 IS BOND
+ *     TENSION. Probe 1 left the 0.70 MPa tensile bond intact; probe 5 zeroes it too, so with
+ *     both shear (mu=0) and tension (bond=0) forbidden on the jamb bed joints, the wall can
+ *     no longer use the bond-tension mechanism. PREDICTED: lambda* COLLAPSES from 9.935 back
+ *     to at-or-below the frictional residual — provably <= 4.768, because a bed joint carrying
+ *     only compression (no shear, no tension) is a strict capacity subset of the mu=0.75
+ *     control, whose optimum bounds it. MEASURED: lambda* = 3.7471595015086909 — it collapsed
+ *     to 3.747, BELOW even the control (the control still had friction-shear this probe took
+ *     away), so the prediction held and then some. This is the empirical companion to probe 1's
+ *     inequality: probe 1 proves the mu=0 optimum needs net tension somewhere; probe 5 removes
+ *     the bond that supplies it and watches the mechanism disappear.
+ *
+ * EVERY WINDOW BELOW IS NOW A MEASURED PIN at this file's bit-window discipline (~2e-5
+ * where one path produces the number). The two same-number identities (crushing vs control,
+ * both vs friction-alone) are the proof crushing is inert; the friction-raises-lambda
+ * relation is the headline and is asserted as a mechanism inequality, not only as two
+ * floats, so a solver that merely reproduced the numbers by accident could not satisfy it.
+ *
+ * NO NEW ORACLE SEAM. Like OpeningStrengthProbes, every probe rewrites FOracleProblem after
+ * the bridge and before the solve; RigidBlockOracle.h/.cpp is untouched, which is what keeps
+ * the oracle an independently derived second opinion. A contact-force decomposition at the
+ * chain joints would have needed a per-joint force seam the result does not expose — so the
+ * chain-vs-bearing split is measured by SPATIAL strength probes instead, which the design
+ * (§4.4, and the cohesion probe's own "splitting it is one more row of the same shape")
+ * names as the clean way to ask the question without one.
+ *
+ * COST: seven solves at 83 blocks, ~8 s — the reason this is in OracleSweepFast and not the
+ * default suite (case 21's full solve is ~1.1 s and the default suite budget is ~30 s).
+ * NEEDS A TICKING WORLD: NO — the oracle and the bridge are pure functions.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRigidBlockSlowCase21ResidualTest,
+	"OracleSweepFast.RigidBlock.Case21ResidualAttribution",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockSweepTestSupport;
+
+	/** Every row is case 21's own wall — s = 1, j = 2, 18 cells, untrimmed cover. */
+	const auto CaseTwentyOne = [](FStructure& Out, FString& Why)
+	{
+		return BuildOpeningLadderWall(18, 1, 2, INDEX_NONE, Out, Why);
+	};
+
+	/** The full below-cover band: every jamb bed joint, the 36 the cohesion probe touches. */
+	const double WholeChainLoZCm = -1.0e9;
+	const double WholeChainHiZCm = 1.0e9;
+	const double BearingSplitZCm = LadderChainBearingSplitZCm(1);
+
+	TArray<FSweepRow> Rows;
+
+	/*
+	 * THE RESIDUAL CONTROL. This is not the as-built wall (17.24) — it is case 21 with its
+	 * jamb bed cohesion already gone, the 4.768 state whose cause this whole test attributes.
+	 * Every probe below is read against THIS. Its value is the one OpeningStrengthProbes pins,
+	 * so this row is a KNOWN anchor, not a prediction.
+	 */
+	Rows.Add({ TEXT("residual control: case 21 with jamb bed cohesion zeroed"),
+		TEXT("the 4.768 residual itself — jamb bed cohesion gone, everything else as built. ")
+		TEXT("The state the three probes strip further and the two split rows re-pose; its ")
+		TEXT("lambda* is the value OpeningStrengthProbes already pins"),
+		CaseTwentyOne,
+		ERelation::AgreeStands, 4.76789, 4.76808, 0, 0,
+		[WholeChainLoZCm, WholeChainHiZCm](FOracleProblem& Problem)
+		{
+			return AdjustJambBedResidual(
+				1, true, false, false, false, WholeChainLoZCm, WholeChainHiZCm, Problem);
+		}, 36 });
+
+	/*
+	 * PROBE 1 — FRICTION ALSO ZEROED. THE HEADLINE. PREDICTED falls; MEASURED it RISES and
+	 * STANDS at 9.9349181343793767 — but NOT because friction was capping a compression arch.
+	 * With cohesion already gone, mu=0 forbids all bed-joint shear (|v| <= mu*n becomes |v| <=
+	 * 0) and simultaneously lifts the n+ >= n- coupling that had held the joints in net
+	 * compression, so the 0.70 MPa flexural tensile bond (left intact — this zeroed Coulomb
+	 * cohesion, not the tensile bond) becomes usable and the wall re-forms on a DISTINCT,
+	 * higher, bond-tension mechanism (2.08x). The window is a bit-window on the single measured
+	 * value; the mechanism inequality (friction-off lambda* > residual control) is asserted
+	 * below, and probe 5 is the measurement that names the higher mechanism as bond tension.
+	 */
+	Rows.Add({ TEXT("probe 1: friction also zeroed on the whole jamb chain"),
+		TEXT("cohesion AND the Coulomb mu gone from every jamb bed joint. lambda* RISES from ")
+		TEXT("4.768 to 9.935: disallowing bed-joint shear lifts the compression coupling and ")
+		TEXT("unlocks the 0.70 MPa tensile bond (left intact here), so the wall re-forms on a ")
+		TEXT("DISTINCT, higher bond-tension mechanism — friction did not cap a compression ")
+		TEXT("arch. CONFIRMS PROMOTION_DESIGN §4.2's non-brittle residual; probe 5 proves the ")
+		TEXT("9.935 is bond tension"),
+		CaseTwentyOne,
+		ERelation::AgreeStands, 9.93490, 9.93494, 0, 0,
+		[WholeChainLoZCm, WholeChainHiZCm](FOracleProblem& Problem)
+		{
+			return AdjustJambBedResidual(
+				1, true, true, false, false, WholeChainLoZCm, WholeChainHiZCm, Problem);
+		}, 36 });
+
+	/*
+	 * PROBE 2 — CRUSHING RELAXED. PREDICTED and MEASURED unchanged: lambda* =
+	 * 4.7679865256023373, bit-identical to the control (rel diff 1.86e-15). Crushing (10 MPa)
+	 * is ~500x clear of the ~0.02-0.09 MPa a residual solve ever asks, so removing the cap
+	 * does not move lambda*. The window is the control value and the same-number identity
+	 * below is the real claim — it FAILS if crushing were binding, because relaxing a binding
+	 * cap can only raise lambda*. Crushing is inert.
+	 */
+	Rows.Add({ TEXT("probe 2: crushing cap relaxed on the whole jamb chain"),
+		TEXT("cohesion gone and the crushing cap lifted to effectively infinite, friction ")
+		TEXT("left in place. If compression bearing is what the residual runs on and the ")
+		TEXT("joints are crushing-limited, lambda* rises; PREDICTED UNCHANGED because ")
+		TEXT("crushing sits ~500x clear of demand"),
+		CaseTwentyOne,
+		ERelation::AgreeStands, 4.76789, 4.76808, 0, 0,
+		[WholeChainLoZCm, WholeChainHiZCm](FOracleProblem& Problem)
+		{
+			return AdjustJambBedResidual(
+				1, true, false, true, false, WholeChainLoZCm, WholeChainHiZCm, Problem);
+		}, 36 });
+
+	/*
+	 * PROBE 3 — BOTH. PREDICTED and MEASURED equal to probe 1: lambda* =
+	 * 9.9349181343793749 = probe 1's 9.9349181343793767 (rel diff 1.79e-16). With friction
+	 * gone the bed joints carry no shear whatever the crushing cap, so relaxing crushing on
+	 * top changes nothing — the residual stands at probe 1's raised value, NOT a fall. Window
+	 * mirrors probe 1's bit-window; the real claim is the same-number identity against probe
+	 * 1 below, which FAILS if crushing relaxation revives a friction-killed residual.
+	 */
+	Rows.Add({ TEXT("probe 3: friction zeroed AND crushing relaxed on the whole jamb chain"),
+		TEXT("both non-cohesive mechanisms removed at once. Reads probe 1's 9.935 value — a ")
+		TEXT("friction-freed arch does not care how high the crushing cap is; the identity ")
+		TEXT("against probe 1 is the finding"),
+		CaseTwentyOne,
+		ERelation::AgreeStands, 9.93490, 9.93494, 0, 0,
+		[WholeChainLoZCm, WholeChainHiZCm](FOracleProblem& Problem)
+		{
+			return AdjustJambBedResidual(
+				1, true, true, true, false, WholeChainLoZCm, WholeChainHiZCm, Problem);
+		}, 36 });
+
+	/*
+	 * THE CHAIN-VS-BEARING SPLIT. The full cohesion removal (17.24 -> 4.768) is here split by
+	 * height: cohesion zeroed only in the two bearing courses at the top of the jamb, then
+	 * only in the run down to the ground. Each band touches 18 of the whole chain's 36 bed
+	 * joints (a measured, pinned partition — 18 + 18 = 36). MEASURED: the bearing band drops
+	 * lambda* to 4.7681626950893188 — essentially the whole residual — while the run-to-ground
+	 * band only reaches 5.9623697933567943, so the BEARING courses are the tighter link for
+	 * cohesion. This refutes the "thrust runs to ground" prediction for the COHESION term
+	 * (friction is a genuine carrier of the residual — see probe 1's finding — and localises
+	 * differently from cohesion; the two attributions stay distinct).
+	 */
+	Rows.Add({ TEXT("split: cohesion zeroed in the bearing courses only"),
+		TEXT("cohesion removed only from the top of the jamb, where the cover bears. Reads ")
+		TEXT("4.76816 — essentially the whole 4.768 residual — so the bearing courses are ")
+		TEXT("the tighter link for cohesion, NOT the run to ground. Refutes 'thrust runs to ")
+		TEXT("ground' for the cohesion contribution specifically"),
+		CaseTwentyOne,
+		ERelation::AgreeStands, 4.76814, 4.76818, 0, 0,
+		[BearingSplitZCm, WholeChainHiZCm](FOracleProblem& Problem)
+		{
+			return AdjustJambBedResidual(
+				1, true, false, false, false, BearingSplitZCm, WholeChainHiZCm, Problem);
+		}, 18 });
+
+	Rows.Add({ TEXT("split: cohesion zeroed in the run to ground only"),
+		TEXT("cohesion removed only from the lower jamb, its run to the foundation. Reads ")
+		TEXT("5.96237 — a WEAKER effect than the bearing band, refuting the prediction that ")
+		TEXT("the run to ground is the tighter link for cohesion. Removing cohesion here ")
+		TEXT("leaves more of the residual standing than removing it in the bearing courses"),
+		CaseTwentyOne,
+		ERelation::AgreeStands, 5.96235, 5.96239, 0, 0,
+		[WholeChainLoZCm, BearingSplitZCm](FOracleProblem& Problem)
+		{
+			return AdjustJambBedResidual(
+				1, true, false, false, false, WholeChainLoZCm, BearingSplitZCm, Problem);
+		}, 18 });
+
+	/*
+	 * PROBE 5 — FRICTION AND THE JAMB-BED TENSILE BOND BOTH ZEROED. THE EMPIRICAL PROOF THAT
+	 * 9.935 IS BOND TENSION. Probe 1 zeroed the Coulomb mu but left the 0.70 MPa flexural
+	 * tensile bond intact, and the wall re-formed on that bond at 9.935. This row zeroes BOTH
+	 * on the same 83-block jamb chain: with shear forbidden (mu=0) AND tension forbidden
+	 * (bond=0), the bed joints carry compression only, so the bond-tension mechanism cannot
+	 * form. PREDICTED (derivation-record shape, guess kept beside its refutation): lambda*
+	 * COLLAPSES from 9.935 back to at-or-below the frictional residual, provably <= 4.768 + a
+	 * small margin — a compression-only bed joint is a strict capacity subset of the mu=0.75
+	 * control, whose optimum (4.768) bounds it from above. MEASURED (2026-08-21): lambda* =
+	 * 3.7471595015086909 — it collapsed to 3.747, not merely to the control but BELOW it (the
+	 * control still had friction-shear this probe removed), confirming the prediction and the
+	 * bond-tension attribution. The window below is now a bit-window on that measured value;
+	 * the collapse is also asserted as a strict inequality against probe 1's 9.935 (finding 5).
+	 * NO CLOSED FORM: pinning 9.935 as 0.70 MPa x a bed-joint tension area needs a per-joint
+	 * contact-force seam the oracle result does not expose (see this test's "NO NEW ORACLE
+	 * SEAM" note), so the ceiling stays a measured number window rather than an identity.
+	 */
+	Rows.Add({ TEXT("probe 5: friction AND jamb-bed tension both zeroed on the whole jamb chain"),
+		TEXT("cohesion, the Coulomb mu AND the 0.70 MPa tensile bond all gone from every jamb ")
+		TEXT("bed joint — compression only. The bond-tension mechanism probe 1 unlocked cannot ")
+		TEXT("form, so lambda* COLLAPSES from 9.935 to 3.74716 — below even the 4.768 frictional ")
+		TEXT("residual (which kept its friction-shear). Empirical proof the 9.935 was bond tension"),
+		CaseTwentyOne,
+		ERelation::AgreeStands, 3.74714, 3.74718, 0, 0,
+		[WholeChainLoZCm, WholeChainHiZCm](FOracleProblem& Problem)
+		{
+			return AdjustJambBedResidual(
+				1, true, true, false, true, WholeChainLoZCm, WholeChainHiZCm, Problem);
+		}, 36 });
+
+	TArray<FSweepReading> Readings;
+	RunRows(*this, Rows, Readings);
+
+	const FSweepReading* Control = ReadingNamed(
+		*this, Rows, Readings,
+		TEXT("residual control: case 21 with jamb bed cohesion zeroed"));
+	const FSweepReading* FrictionOff = ReadingNamed(
+		*this, Rows, Readings,
+		TEXT("probe 1: friction also zeroed on the whole jamb chain"));
+	const FSweepReading* CrushingOff = ReadingNamed(
+		*this, Rows, Readings,
+		TEXT("probe 2: crushing cap relaxed on the whole jamb chain"));
+	const FSweepReading* Both = ReadingNamed(
+		*this, Rows, Readings,
+		TEXT("probe 3: friction zeroed AND crushing relaxed on the whole jamb chain"));
+	const FSweepReading* Bearing = ReadingNamed(
+		*this, Rows, Readings,
+		TEXT("split: cohesion zeroed in the bearing courses only"));
+	const FSweepReading* RunToGround = ReadingNamed(
+		*this, Rows, Readings,
+		TEXT("split: cohesion zeroed in the run to ground only"));
+	const FSweepReading* FrictionAndTensionOff = ReadingNamed(
+		*this, Rows, Readings,
+		TEXT("probe 5: friction AND jamb-bed tension both zeroed on the whole jamb chain"));
+
+	if (Control == nullptr || FrictionOff == nullptr || CrushingOff == nullptr
+		|| Both == nullptr || Bearing == nullptr || RunToGround == nullptr
+		|| FrictionAndTensionOff == nullptr)
+	{
+		return true;
+	}
+
+	/* All seven rows are one wall — all seven must bridge to the same 83 blocks. */
+	CheckRungSize(*this, TEXT("residual control"), *Control, 83);
+	CheckRungSize(*this, TEXT("probe 1 friction off"), *FrictionOff, 83);
+	CheckRungSize(*this, TEXT("probe 2 crushing relaxed"), *CrushingOff, 83);
+	CheckRungSize(*this, TEXT("probe 3 both"), *Both, 83);
+	CheckRungSize(*this, TEXT("split bearing"), *Bearing, 83);
+	CheckRungSize(*this, TEXT("split run to ground"), *RunToGround, 83);
+	CheckRungSize(*this, TEXT("probe 5 friction and tension off"), *FrictionAndTensionOff, 83);
+
+	/*
+	 * THE OVERRIDE TOUCHES THE LP ONLY. Production reads the untouched wall on every row, so
+	 * every production reading must equal the control's — a moved reading would mean the
+	 * fixture moved and the LP's number is uninterpretable.
+	 */
+	CheckReadingRatio(
+		*this, TEXT("probe 1 changed the LP only (production vs control)"),
+		FrictionOff->WorstUtilisation, Control->WorstUtilisation, 0.999999999, 1.000000001);
+	CheckReadingRatio(
+		*this, TEXT("probe 2 changed the LP only (production vs control)"),
+		CrushingOff->WorstUtilisation, Control->WorstUtilisation, 0.999999999, 1.000000001);
+	CheckReadingRatio(
+		*this, TEXT("probe 5 changed the LP only (production vs control)"),
+		FrictionAndTensionOff->WorstUtilisation, Control->WorstUtilisation,
+		0.999999999, 1.000000001);
+	CheckReadingRatio(
+		*this, TEXT("the split rows changed the LP only (bearing vs run-to-ground reading)"),
+		Bearing->WorstUtilisation, RunToGround->WorstUtilisation, 0.999999999, 1.000000001);
+
+	/*
+	 * THE SPLIT SELECTOR IS HONEST: the two bands partition the whole chain — their joint
+	 * counts sum to the 36 the control touched, and neither is empty. Each band's own count
+	 * (18) is now pinned in its row above; this cross-check is the complementary statement
+	 * that the two are a partition, catching a band that matched nothing or a pair that
+	 * overlapped.
+	 */
+	TestEqual(
+		TEXT("the two split bands must partition the whole jamb chain: bearing + run == 36"),
+		Bearing->JointsOverridden + RunToGround->JointsOverridden, 36);
+	TestTrue(
+		TEXT("the bearing band must have matched at least one jamb bed joint"),
+		Bearing->JointsOverridden > 0);
+	TestTrue(
+		TEXT("the run-to-ground band must have matched at least one jamb bed joint"),
+		RunToGround->JointsOverridden > 0);
+
+	/*
+	 * FINDING 1 — CRUSHING DOES NOT BIND THE RESIDUAL. The identity is a strictly tighter
+	 * claim than probe 2's window: relaxing a NON-binding cap leaves lambda* bit-stable,
+	 * relaxing a binding one raises it. If this holds, compression-crushing is not what holds
+	 * the residual up.
+	 */
+	CheckSameLambda(
+		*this,
+		TEXT("crushing relaxed vs the residual control"),
+		*CrushingOff, *Control, 1.0e-6);
+
+	/*
+	 * FINDING 2 — CRUSHING CANNOT REVIVE A FRICTION-KILLED RESIDUAL. Probe 3 must read
+	 * probe 1: once friction is gone the bed joints carry no shear whatever the crushing cap.
+	 * A break here would say the two mechanisms interact, which nothing predicts.
+	 */
+	CheckSameLambda(
+		*this,
+		TEXT("both (friction off + crushing relaxed) vs friction off alone"),
+		*Both, *FrictionOff, 1.0e-6);
+
+	/*
+	 * FINDING 3 — ZEROING FRICTION UNLOCKS A DISTINCT, HIGHER BOND-TENSION MECHANISM. THE
+	 * HEADLINE, asserted as a mechanism inequality rather than only as two floats: zeroing
+	 * friction on the whole cohesionless chain RAISES lambda* (4.768 -> 9.935). This is NOT
+	 * friction being a binding cap on a compression arch. With cohesion already gone, mu=0
+	 * forbids all bed-joint shear (|v| <= mu*n collapses to |v| <= 0) AND in the same move
+	 * lifts the n+ >= n- coupling that had held the joints in net compression, so the 0.70 MPa
+	 * flexural tensile bond (which this probe leaves intact — it zeroed Coulomb cohesion, not
+	 * the tensile bond) becomes usable and the wall re-forms on a DIFFERENT, bond-tension
+	 * mechanism that stands higher. The rise is friction disallowing shear and thereby
+	 * unlocking that mechanism, not friction capping an arch. Provable: any mu=0 optimum in net
+	 * compression everywhere would be feasible for the mu=0.75 control and so bounded by 4.768,
+	 * so 9.935 > 4.768 means the mu=0 optimum mobilises net TENSION on at least one jamb bed
+	 * joint. A solver that had merely reproduced the two window numbers by accident could still
+	 * fail this strict inequality. This CONFIRMS PROMOTION_DESIGN §4.2: the residual itself (the
+	 * control) is the non-brittle no-tension compression+friction mechanism, and probe 5 (below)
+	 * measures that the higher 9.935 is carried by the brittle bond, not by the residual.
+	 */
+	AddInfo(FString::Printf(
+		TEXT("FRICTION-OFF-UNLOCKS-BOND: residual control lambda* %.17g, friction-off %.17g, ")
+		TEXT("ratio %.17g (mu=0 forbids shear and unlocks the tensile bond — a distinct, ")
+		TEXT("higher mechanism, not friction capping an arch)"),
+		Control->Oracle.Lambda, FrictionOff->Oracle.Lambda,
+		FrictionOff->Oracle.Lambda / Control->Oracle.Lambda));
+	TestTrue(
+		*FString::Printf(
+			TEXT("zeroing friction must UNLOCK a higher mechanism, not cap the residual: ")
+			TEXT("friction-off lambda* (%.17g) must be STRICTLY GREATER than the residual ")
+			TEXT("control (%.17g). With cohesion gone, mu=0 forbids bed-joint shear and lifts ")
+			TEXT("the compression coupling, so the 0.70 MPa tensile bond becomes usable and the ")
+			TEXT("wall re-forms on a DISTINCT bond-tension mechanism that stands higher — a ")
+			TEXT("mu=0 optimum in net compression everywhere would be bounded by the control, ")
+			TEXT("so a rise proves net tension is mobilised (probe 5 removes that bond)"),
+			FrictionOff->Oracle.Lambda, Control->Oracle.Lambda),
+		FrictionOff->Oracle.Lambda > Control->Oracle.Lambda);
+
+	/*
+	 * FINDING 5 — THE 9.935 IS BOND TENSION: REMOVE THE BOND AND IT COLLAPSES. THE EMPIRICAL
+	 * COMPANION TO FINDING 3. Probe 1 proved (by inequality) that the mu=0 optimum must mobilise
+	 * net tension somewhere; probe 5 zeroes the 0.70 MPa jamb-bed tensile bond ON TOP of mu=0
+	 * and measures the mechanism disappear. With both bed-joint shear (mu=0) and tension
+	 * (bond=0) forbidden, the joints carry compression only — a strict capacity subset of the
+	 * mu=0.75 control — so lambda* MUST fall from probe 1's 9.935 to at-or-below the control's
+	 * 4.768. Asserted two ways: strictly below probe 1 (the bond-tension mechanism is gone), and
+	 * within a small margin at-or-below the control (it returned to the frictional residual's
+	 * ceiling). Reported as an info line first so the value is in the log regardless of verdict.
+	 */
+	AddInfo(FString::Printf(
+		TEXT("BOND-TENSION-COLLAPSE: friction-off (bond intact) lambda* %.17g, friction+tension ")
+		TEXT("off %.17g, residual control %.17g — removing the 0.70 MPa bond drops the mechanism"),
+		FrictionOff->Oracle.Lambda, FrictionAndTensionOff->Oracle.Lambda, Control->Oracle.Lambda));
+	TestTrue(
+		*FString::Printf(
+			TEXT("removing the jamb-bed tensile bond must COLLAPSE the 9.935 mechanism: ")
+			TEXT("friction+tension-off lambda* (%.17g) must be STRICTLY LESS than friction-off ")
+			TEXT("alone (%.17g). If it did not fall, the 9.935 was NOT carried by bond tension ")
+			TEXT("and finding 3's attribution is overturned"),
+			FrictionAndTensionOff->Oracle.Lambda, FrictionOff->Oracle.Lambda),
+		FrictionAndTensionOff->Oracle.Lambda < FrictionOff->Oracle.Lambda);
+	TestTrue(
+		*FString::Printf(
+			TEXT("with shear and tension both forbidden the residual must return to at-or-below ")
+			TEXT("the frictional control: friction+tension-off lambda* (%.17g) must be <= the ")
+			TEXT("control (%.17g) plus a small margin — a compression-only bed joint is a strict ")
+			TEXT("capacity subset of the mu=0.75 control, whose optimum bounds it"),
+			FrictionAndTensionOff->Oracle.Lambda, Control->Oracle.Lambda),
+		FrictionAndTensionOff->Oracle.Lambda <= Control->Oracle.Lambda + 1.0e-6);
+
+	/*
+	 * FINDING 4 — FOR COHESION, THE BEARING COURSES ARE THE TIGHTER LINK, NOT THE RUN TO
+	 * GROUND. Predicted the reverse (thrust runs the full jamb chain to the foundation, so
+	 * the run to ground should govern); MEASURED the opposite. Removing cohesion in the two
+	 * bearing courses at the top of the jamb collapses the residual essentially all the way
+	 * (4.76816), while removing it in the run to the foundation leaves more standing
+	 * (5.96237). So bearing lambda* < run-to-ground lambda*. This refutes the "thrust runs to
+	 * ground" prediction for the COHESION contribution specifically — friction (finding 3) is a
+	 * genuine carrier of the residual and localises differently, so the two attributions stay
+	 * distinct. Reported as an info line first so the two band values are in the log regardless
+	 * of the verdict.
+	 */
+	AddInfo(FString::Printf(
+		TEXT("CHAIN-VS-BEARING: cohesion-off bearing lambda* %.17g, run-to-ground %.17g ")
+		TEXT("(control 17.24 as built, residual 4.768 whole-chain)"),
+		Bearing->Oracle.Lambda, RunToGround->Oracle.Lambda));
+	TestTrue(
+		*FString::Printf(
+			TEXT("the bearing courses must be the tighter link for cohesion: bearing ")
+			TEXT("lambda* (%.17g) < run-to-ground lambda* (%.17g). Removing cohesion at the ")
+			TEXT("top collapses the residual more than removing it in the run to ground — ")
+			TEXT("thrust does NOT run to ground for the cohesion term"),
+			Bearing->Oracle.Lambda, RunToGround->Oracle.Lambda),
+		Bearing->Oracle.Lambda < RunToGround->Oracle.Lambda);
 
 	return true;
 }

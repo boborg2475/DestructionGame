@@ -6,7 +6,7 @@
     The sweep is dominated by three tests (measured 2026-08-16: WallsAndLadders 455 s,
     PhaseTwoMustNotRefuseTheCoveredOpeningFamily 432 s, FeasibilityReformulationCost 313 s)
     against the cheap ones. Run serially that is ~22 minutes. As of 2026-08-18 the tiers
-    hold 9 fast and 4 full tests; ExpectedTests below is the guard on those counts.
+    hold 10 fast and 4 full tests; ExpectedTests below is the guard on those counts.
 
     MEASURED, 2026-08-16: -Tier All takes 648 s -- 2.0x, not the 2.9x the bucket split
     predicts. All three processes finished within a tenth of a second of each other, which
@@ -111,7 +111,7 @@ $FullBuckets = @(
     MEASURED 2026-08-18. A mismatch is an error, never a warning: under-running looks
     exactly like success, which is the failure mode this whole file exists to prevent.
 #>
-$ExpectedTests = @{ Fast = 9; Full = 4; All = 13 }
+$ExpectedTests = @{ Fast = 10; Full = 4; All = 14 }
 
 function Get-Buckets {
     param([string] $ForTier)
