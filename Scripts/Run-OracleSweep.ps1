@@ -6,7 +6,7 @@
     The sweep is dominated by three tests (measured 2026-08-16: WallsAndLadders 455 s,
     PhaseTwoMustNotRefuseTheCoveredOpeningFamily 432 s, FeasibilityReformulationCost 313 s)
     against the cheap ones. Run serially that is ~22 minutes. As of 2026-08-18 the tiers
-    hold 10 fast and 4 full tests; ExpectedTests below is the guard on those counts.
+    hold 10 fast and 5 full tests; ExpectedTests below is the guard on those counts.
 
     MEASURED, 2026-08-16: -Tier All takes 648 s -- 2.0x, not the 2.9x the bucket split
     predicts. All three processes finished within a tenth of a second of each other, which
@@ -35,8 +35,8 @@
     to plain ASCII. See TRAPS.
 
 .PARAMETER Tier
-    Fast  -- the cheap tests only (9 as of 2026-08-18, ~90 s, one process). For iterating.
-    Full  -- the expensive tests (4), one process each.
+    Fast  -- the cheap tests only (10 as of 2026-08-21, ~90 s, one process). For iterating.
+    Full  -- the expensive tests (5), one process each.
     All   -- both tiers (13). THE ONE TO RUN BEFORE A COMMIT.
 
 .PARAMETER Serial
@@ -104,14 +104,15 @@ $FullBuckets = @(
     @{ Name = 'walls';   Filter = 'OracleSweepFull.RigidBlock.WallsAndLadders';                              Seconds = 455 },
     @{ Name = 'covered'; Filter = 'OracleSweepFull.RigidBlock.PhaseTwoMustNotRefuseTheCoveredOpeningFamily'; Seconds = 432 },
     @{ Name = 'spike';   Filter = 'OracleSweepFull.RigidBlock.FeasibilityReformulationCost';                 Seconds = 313 },
-    @{ Name = 'warm';    Filter = 'OracleSweepFull.RigidBlock.WarmStartAtWallScale';                         Seconds = 56  }
+    @{ Name = 'warm';    Filter = 'OracleSweepFull.RigidBlock.WarmStartAtWallScale';                         Seconds = 56  },
+    @{ Name = 'deletion'; Filter = 'OracleSweepFull.RigidBlock.DeletionResolveLatencyLadder';               Seconds = 17  }
 )
 
 <#
-    MEASURED 2026-08-18. A mismatch is an error, never a warning: under-running looks
+    MEASURED 2026-08-21. A mismatch is an error, never a warning: under-running looks
     exactly like success, which is the failure mode this whole file exists to prevent.
 #>
-$ExpectedTests = @{ Fast = 10; Full = 4; All = 14 }
+$ExpectedTests = @{ Fast = 10; Full = 5; All = 15 }
 
 function Get-Buckets {
     param([string] $ForTier)

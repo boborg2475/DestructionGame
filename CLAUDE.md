@@ -102,8 +102,8 @@ Narrow the run by lengthening the path after `RunTests` (e.g. `DestructionGame.C
 
 ```
 -ExecCmds="Automation RunTests OracleSweepFast"   # 10 tests, ~90 s — iteration
--ExecCmds="Automation RunTests OracleSweepFull"   # 4 tests, ~22 min — verification
--ExecCmds="Automation RunTests OracleSweep"       # both (14), by substring match on the stem
+-ExecCmds="Automation RunTests OracleSweepFull"   # 5 tests, ~22 min — verification
+-ExecCmds="Automation RunTests OracleSweep"       # both (15), by substring match on the stem
 ```
 
 Counts as of 2026-08-21. `Run-OracleSweep.ps1` asserts them — a test in a tier but in no parallel bucket runs nowhere, which is how a solver-scale test was silently skipped once.
