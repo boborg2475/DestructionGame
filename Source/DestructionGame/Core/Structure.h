@@ -376,10 +376,10 @@ struct FStructure
 	 * so there can be no more passes than there are connections.
 	 *
 	 * A PASS BREAKS ON TWO GROUNDS, NOT ONE. Beside the per-joint capacity sweep, the
-	 * interim overturning guard (BreakOverturnedBodies — DESIGN.md §7 step 2, disposable)
-	 * gives the bearing of any bonded body that has walked past its own bearing edge, in
-	 * the same pass and with the same stamp. Its scope is deliberately narrow; see its
-	 * own contract.
+	 * equilibrium gate (BreakByEquilibrium — DESIGN.md §7 step 4) asks the rigid-block LP
+	 * whether the whole structure has any admissible equilibrium with self-weight, and on
+	 * "no" gives the bearings of the body that has lost the earth, in the same pass and with
+	 * the same stamp. It is scoped by a block cap; see its own contract.
 	 *
 	 * PASS NUMBERS ARE GLOBAL TO THE STRUCTURE, NOT TO THE CALL. A second cascade
 	 * continues from the highest stamp already written, so a joint that gives after a
@@ -394,6 +394,17 @@ struct FStructure
 	 *         smaller than the pass numbers that call wrote.
 	 */
 	int32 SolveAndBreak();
+
+	/**
+	 * COMPILE STUB FOR SLICE 2 (PROMOTION_DESIGN.md §12 D6-c) — the injectable block cap that
+	 * scopes the equilibrium gate's authority by structure size. Written by test-expert to let
+	 * the scope-by-size red compile; it stores the value and NOTHING reads it yet. dev-expert
+	 * (Slice 2) makes the gate read it: authoritative when the block count is <= this cap, and
+	 * fail-closed to the router (no overturning check) above it. The production default is the
+	 * conservative end of the measured ~84-104-block band; a test sets a low cap to drive the
+	 * decline arm without building an over-cap fixture.
+	 */
+	void SetEquilibriumGateBlockCap(int32 MaxBlocks);
 
 	/**
 	 * Which breaking pass gave this joint, counted from 1, or INDEX_NONE if no pass did
@@ -990,35 +1001,42 @@ private:
 		const TArray<bool>& PieceReseatedOnAnArch) const;
 
 	/**
-	 * THE INTERIM OVERTURNING GUARD — DESIGN.md §7 evolution step 2, AND IT IS BUILT TO BE
-	 * DELETED. A rigid-block LP (step 4) makes a body past balance simply have no equilibrium
-	 * solution; until then this is the bolt-on second referee beside the joint checks, and the
-	 * leaning-stack acceptance set is its red test. One entry point, called from SolveAndBreak
-	 * and from nothing else.
+	 * THE EQUILIBRIUM GATE — DESIGN.md §7 evolution step 4, PROMOTION_DESIGN.md §6 Slice 2. It
+	 * replaces the interim overturning guard: instead of a per-body free-body moment test with a
+	 * single-bearing blind spot, it asks the rigid-block LP whether the WHOLE structure has any
+	 * admissible force system in equilibrium with self-weight, and on "no" brings down the body
+	 * that has lost the earth. One entry point, called from SolveAndBreak and from nothing else.
 	 *
 	 * WHAT IT CATCHES that no joint check can: ComputeUtilisation happily reports a confident
 	 * number for a joint on which NO EQUILIBRIUM SOLUTION EXISTS (DESIGN.md §5.7) — a stack
-	 * offset far enough per course reads the same comfortable utilisation at every height,
-	 * because the composite section's m^2 cancels the demand's m^2, while the real stack's
-	 * resultant has long since left the bearing.
+	 * offset far enough per course, or a body on two bearings both to one side of its centroid,
+	 * reads a comfortable per-joint utilisation while its resultant has long since left the
+	 * bearing. The LP reasons about the whole admissible force system, so it sees the loss the
+	 * guard's single-bearing scope could not.
 	 *
-	 * SCOPE IS THE WHOLE OF ITS SAFETY, so it is stated here rather than buried: it evaluates a
-	 * bed joint ONLY where that joint is the SOLE intact connection between an ungrounded bonded
-	 * body and the rest of the structure — a bridge in the graph — because that is the one shape
-	 * where "the whole body's weight passes through this bearing" is exact statics rather than an
-	 * estimate. Every running-bond wall, filled corbel, beam-on-piers and spanned opening in the
-	 * project has a second path around every bed joint, so the guard is structurally silent on
-	 * all of them; a NO-OP without complete geometry, so both fuzz generators — geometry-free,
-	 * and the only property tests over routing — are provably untouched.
+	 * THE POSE IS FEASIBILITY AT lambda = 1 (bGravityIsLive = false, PROMOTION_DESIGN §12 D6-b):
+	 * the identical Stands/Falls boolean as lambda* but far cheaper. SCOPED BY A BLOCK CAP
+	 * (EquilibriumGateBlockCap, D6-c): above it the gate DECLINES and behaviour falls through to
+	 * the per-joint capacity sweep with no overturning check — production's pre-gate behaviour,
+	 * which the guard's deletion cannot regress because the guard only ever fired well below the
+	 * cap. A NO-OP without complete geometry and on any LP refusal (fail closed to the router).
 	 *
-	 * A condemned body's bearing joint gives: latched and stamped with this pass, exactly as an
-	 * over-capacity joint is, because "the body about this bearing has no equilibrium" is a
-	 * failure of that bearing under load — the collapse sequence must contain it.
+	 * ADDITIVE-ONLY (D6): on Stands the gate does NOTHING — there is no release veto in Slice 2.
+	 * On Falls it attributes the loss coarsely to the single clean ground-borne ungrounded bonded
+	 * body and severs all its bearings, latched and stamped with this pass exactly as an
+	 * over-capacity joint is. Ambiguous attribution (no such body, or more than one) declines.
 	 *
 	 * @param Pass The cascade pass any break is stamped with.
 	 * @return Whether at least one joint gave.
 	 */
-	bool BreakOverturnedBodies(int32 Pass);
+	bool BreakByEquilibrium(int32 Pass);
+
+	/**
+	 * SLICE 2 COMPILE STUB — the equilibrium gate's block cap. Default is the conservative end of
+	 * the measured ~84-104-block authority band (D6-c). No cascade code reads it yet; dev wires
+	 * the gate to consult it. See SetEquilibriumGateBlockCap.
+	 */
+	int32 EquilibriumGateBlockCap = 84;
 
 	TArray<FStructurePiece> Pieces;
 	TArray<FConnection> Connections;

@@ -186,6 +186,17 @@ int32 FStructureBinding::SolveAndBreak()
 	return Structure.SolveAndBreak();
 }
 
+void FStructureBinding::SetEquilibriumGateBlockCap(int32 MaxBlocks)
+{
+	/*
+	 * SLICE 2 COMPILE STUB — forwards to the private FStructure, the only route to it. The cap
+	 * scopes the equilibrium gate's authority by structure size (PROMOTION_DESIGN.md §12 D6-c);
+	 * nothing reads it yet. Present so the scope-by-size red can reach the seam through the
+	 * player-facing door.
+	 */
+	Structure.SetEquilibriumGateBlockCap(MaxBlocks);
+}
+
 int32 FStructureBinding::ApplyResults()
 {
 	int32 ReleasedCount = 0;

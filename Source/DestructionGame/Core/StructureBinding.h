@@ -226,6 +226,14 @@ struct FStructureBinding
 	int32 SolveAndBreak();
 
 	/**
+	 * COMPILE STUB FOR SLICE 2 (PROMOTION_DESIGN.md §12 D6-c) — forward the equilibrium gate's
+	 * injectable block cap to the private FStructure, since the graph is otherwise reachable
+	 * from here by no route. Stores the value; nothing reads it yet. dev-expert wires the gate
+	 * to be authoritative at or below the cap and fail closed to the router above it.
+	 */
+	void SetEquilibriumGateBlockCap(int32 MaxBlocks);
+
+	/**
 	 * Push the last solve's answer onto the bindings: release every piece the solver
 	 * is no longer holding up.
 	 *

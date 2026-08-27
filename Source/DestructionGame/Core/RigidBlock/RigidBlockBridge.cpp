@@ -9,6 +9,16 @@ namespace RigidBlockOracle
 		FOracleProblem& OutProblem,
 		FString& OutWhyNot)
 	{
+		static const TSet<int32> None;
+		return BuildRigidBlockProblem(Structure, None, OutProblem, OutWhyNot);
+	}
+
+	bool BuildRigidBlockProblem(
+		const FStructure& Structure,
+		const TSet<int32>& ExcludedPieces,
+		FOracleProblem& OutProblem,
+		FString& OutWhyNot)
+	{
 		OutProblem = FOracleProblem();
 		OutWhyNot.Empty();
 
@@ -30,6 +40,12 @@ namespace RigidBlockOracle
 		{
 			if (Structure.IsPieceRemoved(Piece))
 			{
+				continue;
+			}
+
+			if (ExcludedPieces.Contains(Piece))
+			{
+				/* Deliberately treated as absent — the gate's "remainder without this body". */
 				continue;
 			}
 
@@ -56,6 +72,16 @@ namespace RigidBlockOracle
 
 			/* A joint that has given is out of the structure — latch included. */
 			if (Joint.HasGiven())
+			{
+				continue;
+			}
+
+			/*
+			 * A joint that touches an excluded body is skipped, not faulted: the body is
+			 * deliberately gone, so a live joint to it is expected rather than the tombstone
+			 * hole the check below refuses for an INCLUDED piece.
+			 */
+			if (ExcludedPieces.Contains(Joint.PieceA) || ExcludedPieces.Contains(Joint.PieceB))
 			{
 				continue;
 			}

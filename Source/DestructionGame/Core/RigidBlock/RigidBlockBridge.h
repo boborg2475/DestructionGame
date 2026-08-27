@@ -42,4 +42,20 @@ namespace RigidBlockOracle
 		const FStructure& Structure,
 		FOracleProblem& OutProblem,
 		FString& OutWhyNot);
+
+	/**
+	 * THE SAME BRIDGE WITH A SET OF PIECES TREATED AS ABSENT — the "remainder without this
+	 * body" projection the equilibrium gate needs to attribute a fall (Slice 2, D5 coarseness).
+	 *
+	 * A piece in ExcludedPieces contributes no block, and every joint that touches one is
+	 * skipped rather than treated as the tombstone hole — an excluded body is deliberately
+	 * gone, so a live joint to it is expected, not a fault. Every other refusal (incomplete
+	 * geometry, a genuine tombstone on an INCLUDED piece, an out-of-plane normal) stands
+	 * exactly as in the whole-structure form, which forwards to this with an empty set.
+	 */
+	bool BuildRigidBlockProblem(
+		const FStructure& Structure,
+		const TSet<int32>& ExcludedPieces,
+		FOracleProblem& OutProblem,
+		FString& OutWhyNot);
 }

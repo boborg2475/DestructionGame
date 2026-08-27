@@ -633,9 +633,11 @@ namespace LeaningStackTestSupport
  * that landed this file). Cases 3 and 4 were the red that drove the interim guard: the
  * JOINT checks still read their worst joint at ~0.1388 — the same number they read for
  * case 2, because the composite section credits the whole stack as a deep beam over every
- * bed joint — but BreakOverturnedBodies now notices the body those joints belong to has
- * walked off its base, severs the bearing, and brings the rows down. The 0.1388 reading is
- * the reason the guard exists; the rows are green because it does.
+ * bed joint — but the equilibrium gate (`BreakByEquilibrium`, Slice 2; the interim
+ * `BreakOverturnedBodies` it replaced did the same here) finds the body those joints belong
+ * to has no admissible equilibrium, severs the bearing, and brings the rows down. The 0.1388
+ * reading is why an ordinary joint check cannot decide these rows; the rows are green because
+ * the gate can.
  *
  * NEEDS A TICKING WORLD: NO. See the file header.
  */

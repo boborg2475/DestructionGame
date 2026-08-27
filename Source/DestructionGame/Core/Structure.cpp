@@ -3,6 +3,7 @@
 #include "Core/Structure.h"
 
 #include "Core/Profiles/ConnectionProfiles.h"
+#include "Core/RigidBlock/RigidBlockBridge.h"
 
 /*
  * EVERY NAME IN HERE CARRIES A Solver PREFIX, AND THAT IS NOT DECORATION.
@@ -97,61 +98,6 @@ namespace
 	 * mean a future correction to a lintel-loading angle silently re-ruled the free end.
 	 */
 	constexpr double SolverCompositeDepthPerArm = 3.464;
-
-	/**
-	 * The INTERIM OVERTURNING GUARD'S bed-joint bond strength, MPa — MEAN-basis, and READ
-	 * FROM THE GENERAL PURPOSE MORTAR PROFILE rather than duplicated here.
-	 *
-	 * IT IS THE PROFILE'S TensileStrengthMPa, 0.70, and until the 2026-08-14 mean-strength
-	 * re-anchor it could not be. Before that flip the profile carried the CHARACTERISTIC
-	 * 0.10 — a 5%-fractile design floor no honest overturning verdict could be ruled at —
-	 * so the guard held its own 0.6 literal, six times the profile's figure. Since the
-	 * re-anchor the profile's 0.70 IS a measured mean, and a second copy of a strength is
-	 * exactly the drift the profile library exists to end.
-	 *
-	 * THE SWAP LANDED BEHIND ITS OWN RED, under the project's non-waivable TDD rule: moving
-	 * 0.6 to 0.70 shifts every overturning verdict by 16.7%, and for a while nothing in the
-	 * suite could tell the two values apart — the leaning-stack bracket deliberately holds
-	 * at both ends, and the specified 8/11 interim-guard corbel pair answers identically at
-	 * both by construction. The fixture that discriminates them is
-	 * `Core.Structure.TheOverturningGuardRestoresAtTheProfilesMeanBond`
-	 * (Tests/OverturningGuardBasisTest.cpp): a nine-step bare corbel arm whose bearing
-	 * stands at 0.70 (ratio 0.869) and is severed at 0.6 (1.014), paired with a ten-step arm
-	 * that falls at either value, together bracketing this constant into
-	 * (0.60854, 0.75975) MPa. A retune that moves the profile's bond outside that bracket
-	 * fails that test rather than moving this quietly.
-	 *
-	 * NOT constexpr, AND THAT IS SAFE: `GeneralPurposeMortar` is an aggregate initialised
-	 * entirely from literals, so it is CONSTANT-initialised during static initialisation and
-	 * strongly happens-before any dynamic initialiser — including this one.
-	 *
-	 * The honest mean bracket for clay in general-purpose mortar is 0.6-1.0 MPa (UK NA to
-	 * BS EN 1996-1-1 Table NA.6 characteristic f_xk1 of 0.5 / 0.4 / 0.3 by water
-	 * absorption, mean tested bond ~2x characteristic again). 0.70 is the low-middle of it,
-	 * measured by the Gooch campaigns the profile cites, so a body the guard lets stand
-	 * stands at a defensible mean bond rather than at an optimistic one.
-	 *
-	 * MEASURED FROM BOTH SIDES rather than tuned: at the characteristic 0.10 the guard would
-	 * condemn the eight-course leaning stack (edge demand 0.24 MPa) AND corbel A, whose free
-	 * body overturns its bearing by ~18.5 N.m against the ~17.9 N.m a characteristic bond
-	 * restores — breaking the user's bonded-corbel ruling. At the profile's 0.70 corbel A
-	 * stands 6.8x on ~125.65 N.m restored, the eight-course stack 2.9x, and the thirty-course
-	 * stack still overturns 6.8x — every margin the safe side of the 0.6 the guard used to
-	 * carry (5.8x / 2.5x / 7.9x on ~107.7 N.m), which is why this was consistency work rather
-	 * than a retune. The whole acceptance window is 18x wide
-	 * (LeaningStackAcceptanceTest.cpp), so nothing about the value is delicate — only the
-	 * discriminator above is deliberately close to the line, because that is its job.
-	 *
-	 * KNOWN LIMITATION, STATED RATHER THAN BRANCHED AROUND: the guard credits GENERAL PURPOSE
-	 * MORTAR's mean to every bed joint it evaluates, whatever profile that joint actually
-	 * carries — a dry-stone or fastened bridge body is still restored by a bond it does not
-	 * have. Reading the profile fixes the duplication, not the per-joint blindness. No
-	 * fixture cascades such a body, selecting the joint's own strength would be capability no
-	 * test covers, and the guard dies at evolution step 4; if such a fixture arrives first,
-	 * this must read the joint's own profile before it.
-	 */
-	const double SolverInterimOverturningMeanBondMPa =
-		DestructionProfiles::GeneralPurposeMortar.TensileStrengthMPa;
 
 	/**
 	 * How far a joint's rectangle may disagree with its own area, as a FRACTION of it.
@@ -2488,16 +2434,30 @@ bool FStructure::HasArchingAbutment(
 	return false;
 }
 
-bool FStructure::BreakOverturnedBodies(int32 Pass)
+bool FStructure::BreakByEquilibrium(int32 Pass)
 {
 	/*
-	 * A NO-OP WITHOUT COMPLETE GEOMETRY, exactly like ReseatSpannedGroups and for the same
-	 * load-bearing reason: a free body is a weight at a centroid against a bearing rectangle,
-	 * and with either missing there is nothing to take moments of. Both fuzz generators emit
-	 * no geometry — 20,000 cases between them, the only property tests over routing — and the
-	 * cascade fuzz's sharpest property is "no joint broke that was not over capacity on the
-	 * graph its own pass was solved on", which a guard firing without geometry would set
-	 * against an oracle that has never heard of overturning.
+	 * SCOPE BY SIZE FIRST — the fail-closed boundary that keeps synchronous LP authority off
+	 * the flagship scenarios (PROMOTION_DESIGN.md §12 D6-c). Above the block cap the gate
+	 * DECLINES and does nothing, so behaviour falls through to the per-joint capacity sweep
+	 * (the router) with no overturning check at all — exactly production's pre-gate behaviour,
+	 * and the reason the guard's deletion regresses nothing over the cap (it only ever fired
+	 * on single-bearing bodies well below it). The cap is compared against the LIVE block
+	 * count, injectable through SetEquilibriumGateBlockCap for the scope-by-size test.
+	 *
+	 * Written as a positive test on the decline side (> cap), never NumPieces() <= cap, so a
+	 * degenerate cap lands on the fail-closed branch rather than slipping past.
+	 */
+	if (NumPieces() > EquilibriumGateBlockCap)
+	{
+		return false;
+	}
+
+	/*
+	 * A NO-OP WITHOUT COMPLETE GEOMETRY, exactly as the interim guard was and for the same
+	 * load-bearing reason: the LP reasons about moments of weights at centroids against
+	 * bearing rectangles, and with either missing there is nothing to take moments of. Both
+	 * fuzz generators emit no geometry, so they are provably untouched.
 	 */
 	if (!HasCompleteGeometry())
 	{
@@ -2505,9 +2465,51 @@ bool FStructure::BreakOverturnedBodies(int32 Pass)
 	}
 
 	/*
+	 * ASK THE RIGID-BLOCK LP WHETHER THE WHOLE STRUCTURE HAS AN ADMISSIBLE EQUILIBRIUM. The
+	 * pose is FEASIBILITY at lambda = 1 (bGravityIsLive = false, PROMOTION_DESIGN §12 D6-b):
+	 * it returns the identical Stands/Falls boolean as lambda* but is 5-16x cheaper and
+	 * inherits the measured ~84-104-block authority band the cap is set from. No dual and no
+	 * Farkas extraction — that is Slice 3; this is a boolean referee.
+	 *
+	 * A REFUSAL FAILS CLOSED TO THE ROUTER. The bridge declining (an out-of-plane joint, a
+	 * tombstone), the solver refusing or running over budget, all arrive as Unanswerable, and
+	 * every one of them declines here rather than inventing a break out of an answer the LP
+	 * could not give.
+	 */
+	RigidBlockOracle::FOracleProblem Problem;
+	FString WhyNot;
+
+	if (!RigidBlockOracle::BuildRigidBlockProblem(*this, Problem, WhyNot))
+	{
+		return false;
+	}
+
+	Problem.bGravityIsLive = false;
+
+	const RigidBlockOracle::FOracleResult Result = RigidBlockOracle::SolveRigidBlock(Problem);
+
+	if (RigidBlockOracle::OutcomeOf(Result) != RigidBlockOracle::EOracleOutcome::Falls)
+	{
+		/*
+		 * STANDS or UNANSWERABLE: do nothing. Slice 2 is ADDITIVE-ONLY (PROMOTION_DESIGN §12
+		 * D6) — there is NO release veto here, because a whole-structure "LP stands => release
+		 * nothing" veto would over-protect genuine local losses (a wall the LP stands globally
+		 * while two teeth correctly drop). Suppressing a spurious release is Slice 3's
+		 * per-piece dual, so the dry-stack red stays red and is not touched here.
+		 */
+		return false;
+	}
+
+	/*
+	 * THE STRUCTURE HAS NO ADMISSIBLE EQUILIBRIUM. Attribute the loss to a body and release it
+	 * — the coarse, whole-body attribution of Slice 2 (the mechanism-level break set is
+	 * Slice 3). This generalises the interim guard's flood but drops its single-bearing abort
+	 * and its per-body moment test: the LP has already decided the fall, so all that remains is
+	 * WHICH body to bring down.
+	 *
 	 * The intact joints touching each piece — the same walk SolveLoads makes, rebuilt here
 	 * because this runs AFTER the capacity sweep has latched this pass's over-capacity joints,
-	 * and a joint that has just given is not a path the flood below may cross.
+	 * and a joint that has just given is not a path a body may hold itself up through.
 	 */
 	TArray<TArray<int32>> PieceJoints;
 	PieceJoints.SetNum(Pieces.Num());
@@ -2532,101 +2534,67 @@ bool FStructure::BreakOverturnedBodies(int32 Pass)
 		}
 	}
 
-	bool bBrokeAny = false;
-
+	/*
+	 * THE GROUND-BORNE UNGROUNDED BONDED BODY: the maximal bonded set of non-grounded pieces
+	 * that reaches the earth only through bearing joints. Flood over intact joints among
+	 * non-grounded pieces to close each such set, then collect its BEARINGS — the intact joints
+	 * that link a member to a grounded piece. Iterated in piece-index order, so the choice is
+	 * deterministic and needs no threading.
+	 *
+	 * On the two-load-path fixture this is the single overhang, and its bearings are the two
+	 * bed joints beneath it: severing both drops it to Falling while both seats keep the earth.
+	 *
+	 * SLICE 2 ACTS ONLY ON A CLEAN, SINGLE ground-borne body. If none reaches the earth, or if
+	 * more than one does, the attribution is ambiguous at this coarseness and the gate DECLINES
+	 * rather than over-release — the accepted D5 coarseness, the joint sweep carries it. The
+	 * per-body selection an ambiguous case would need is not built because no test drives it.
+	 */
 	TArray<bool> Visited;
+	Visited.Init(false, Pieces.Num());
+
 	TArray<int32> Frontier;
 
-	for (int32 Index = 0; Index < Connections.Num(); ++Index)
+	int32 GroundBorneBodiesFound = 0;
+	TArray<int32> ChosenBearings;
+	TArray<int32> ChosenMembers;
+
+	for (int32 Start = 0; Start < Pieces.Num(); ++Start)
 	{
-		const FConnection& Joint = Connections[Index];
-
-		if (Joint.HasGiven())
+		if (Visited[Start] || Pieces[Start].bIsGrounded || IsPieceRemoved(Start))
 		{
 			continue;
 		}
 
 		/*
-		 * ONLY A BED JOINT HAS A BEARING EDGE. The piece the joint is beneath is the body's
-		 * first course; a head joint holds nothing up this way and MOMENTS_DESIGN case (b) —
-		 * a brick hanging off one — must keep reading what it reads.
+		 * Close one bonded set of non-grounded pieces, gathering the intact bearings that hang
+		 * it off grounded pieces as the flood reaches them.
 		 */
-		int32 Upper = INDEX_NONE;
-
-		if (GetJointRole(Index, Joint.PieceB) == EJointRole::BedBeneath)
-		{
-			Upper = Joint.PieceB;
-		}
-		else if (GetJointRole(Index, Joint.PieceA) == EJointRole::BedBeneath)
-		{
-			Upper = Joint.PieceA;
-		}
-		else
-		{
-			continue;
-		}
-
-		/*
-		 * ONLY A BODY THE SOLVER IS CURRENTLY HOLDING UP. A body already falling has no
-		 * bearing to overturn about, and condemning joints inside a region the cascade
-		 * released in an EARLIER pass would rewrite the collapse sequence — and could
-		 * dissolve a knot, moving the stranded counts the known-red wall rows pin —
-		 * without changing who reaches the earth. Supported and not Grounded, which also
-		 * drops removed pieces: after the solve at the top of this pass they read Falling.
-		 *
-		 * The protection is across passes, not within one: support state comes from the
-		 * pass-top solve, while the flood graph excludes this same pass's capacity breaks
-		 * — so a body whose only ground path was severed by THIS pass's sweep still reads
-		 * Supported here, and its bridge bearing can pick up a same-pass stamp. That is
-		 * consistent with the fixture convention that simultaneous failures share a pass,
-		 * and no current fixture reaches it; the convention is unpinned either way.
-		 */
-		if (GetPieceSupport(Upper) != EPieceSupport::Supported)
-		{
-			continue;
-		}
-
-		const int32 Seat = OtherEndOf(Joint, Upper);
-
-		/*
-		 * THE MAXIMAL BONDED BODY, AND THE JOINT MUST BE ITS ONLY BEARING. Flood outward from
-		 * the upper piece over every intact joint EXCEPT this one: reaching the seat means the
-		 * body has a second path around its bearing and no free-body statement about this one
-		 * edge is exact; reaching the earth means the "body" is holding itself up elsewhere.
-		 * Either way the guard stands aside — every running-bond wall, filled corbel and
-		 * spanned opening in the project aborts here within a few hops, which is what keeps
-		 * this affordable and every existing verdict untouched. Only when the flood closes
-		 * over an ungrounded set does the whole of that set's weight provably pass through
-		 * this joint, and the check below becomes plain statics.
-		 */
-		Visited.Init(false, Pieces.Num());
+		Visited[Start] = true;
 		Frontier.Reset();
+		Frontier.Add(Start);
 
-		Visited[Upper] = true;
-		Frontier.Add(Upper);
+		TArray<int32> Bearings;
 
-		bool bBodyIsFree = !Pieces[Upper].bIsGrounded;
-
-		for (int32 Head = 0; bBodyIsFree && Head < Frontier.Num(); ++Head)
+		for (int32 Head = 0; Head < Frontier.Num(); ++Head)
 		{
 			for (const int32 Walk : PieceJoints[Frontier[Head]])
 			{
-				if (Walk == Index)
-				{
-					continue;
-				}
-
 				const int32 Neighbour = OtherEndOf(Connections[Walk], Frontier[Head]);
 
-				if (Neighbour == INDEX_NONE || Visited[Neighbour])
+				if (Neighbour == INDEX_NONE)
 				{
 					continue;
 				}
 
-				if (Neighbour == Seat || Pieces[Neighbour].bIsGrounded)
+				if (Pieces[Neighbour].bIsGrounded)
 				{
-					bBodyIsFree = false;
-					break;
+					Bearings.Add(Walk);
+					continue;
+				}
+
+				if (Visited[Neighbour])
+				{
+					continue;
 				}
 
 				Visited[Neighbour] = true;
@@ -2634,119 +2602,83 @@ bool FStructure::BreakOverturnedBodies(int32 Pass)
 			}
 		}
 
-		if (!bBodyIsFree)
+		if (Bearings.Num() == 0)
 		{
+			/*
+			 * A non-grounded set with no bearing reaches the earth nowhere — an island the
+			 * support solve already reads as Falling and the router already releases. Not this
+			 * gate's body, and NOT counted, so its presence never makes the attribution ambiguous.
+			 */
 			continue;
 		}
 
 		/*
-		 * THE FREE BODY: its weight and where that weight acts. Every member is live (the
-		 * flood crosses only intact joints, and a removed piece keeps none) and placed (the
-		 * geometry gate above). Written as a positive test so a body whose mass is zero or
-		 * unreadable overturns nothing rather than dividing by it.
+		 * A SECOND ground-borne body makes the attribution ambiguous at this coarseness: decline
+		 * rather than guess which one the LP falls. Recorded by counting, so a later one still
+		 * declines even after the first was recorded.
 		 */
-		double BodyMassKg = 0.0;
-		FVector MassWeightedCentreKgCm = FVector::ZeroVector;
+		++GroundBorneBodiesFound;
 
-		for (const int32 Member : Frontier)
+		if (GroundBorneBodiesFound == 1)
 		{
-			BodyMassKg += Pieces[Member].MassKg;
-			MassWeightedCentreKgCm += Pieces[Member].MassKg * Pieces[Member].CentreOfMassCm;
+			ChosenBearings = MoveTemp(Bearings);
+			ChosenMembers = Frontier;
 		}
-
-		if (!(BodyMassKg > 0.0) || !FMath::IsFinite(BodyMassKg))
+		else
 		{
-			continue;
+			return false;
 		}
-
-		const FVector BodyCentreCm = MassWeightedCentreKgCm / BodyMassKg;
-		const double BodyWeightUu = BodyMassKg * SolverGravityCmPerSecondSquared;
-
-		/*
-		 * OVERTURNING ABOUT THE BEARING EDGE AGAINST WHAT RESTORES IT, one in-plane axis at a
-		 * time. Under complete geometry a rectangle sits only on an axis-aligned normal
-		 * (AddConnection refuses the rest), so a bed joint's plane is horizontal, gravity is
-		 * square to it, and the in-plane axes are exactly the rectangle's two non-zero
-		 * half-extents.
-		 *
-		 * THE EDGE IS THE RECTANGLE'S OWN BOUNDARY on the side the body's centroid sits:
-		 * lever = |centroid - joint centroid| - half-extent, per axis. At or inside the edge
-		 * the weight is standing on its bearing and restores; that is the "standing weight
-		 * inside the edge" term, and it is why a plumb tooth of stack-bonded bricks — lever
-		 * negative on both axes — can never fire this whatever its height.
-		 *
-		 * PAST THE EDGE the weight overturns, and what resists is the BOND: the bearing
-		 * rectangle at the profile's mean flexural bond, as the elastic section modulus about
-		 * the edge's own axis — (4/3) * h_other * h_axis^2, the same bd^2/6 every section in
-		 * this project is. Corbel A measures the pair: ~18.5 N.m of overturning against
-		 * ~125.65 N.m restored at 0.70 MPa over its 179.48 cm3 patch, standing 6.8x, while the
-		 * thirty-course leaning stack overturns its 225.93 cm3 by 6.8x.
-		 *
-		 * EVERY COMPARISON IS A POSITIVE TEST, so a NaN lever or a NaN modulus fires nothing:
-		 * the guard is a second referee that BREAKS, and inventing a break out of arithmetic
-		 * nobody can read would be failing open in the direction that dismantles structures.
-		 * The joint checks underneath keep their own fail-closed answers either way.
-		 */
-		bool bOverturns = false;
-
-		for (int32 Axis = 0; Axis < 3 && !bOverturns; ++Axis)
-		{
-			const double HalfExtentCm = Joint.InterfaceHalfExtentCm[Axis];
-
-			if (!(HalfExtentCm > 0.0))
-			{
-				continue;
-			}
-
-			const double LeverCm =
-				FMath::Abs(BodyCentreCm[Axis] - Joint.InterfaceCentreCm[Axis]) - HalfExtentCm;
-
-			if (!(LeverCm > 0.0))
-			{
-				continue;
-			}
-
-			/* The OTHER in-plane half-extent: the bearing's width across the tipping axis. */
-			double AcrossCm = 0.0;
-
-			for (int32 Other = 0; Other < 3; ++Other)
-			{
-				if (Other != Axis && Joint.InterfaceHalfExtentCm[Other] > 0.0)
-				{
-					AcrossCm = Joint.InterfaceHalfExtentCm[Other];
-				}
-			}
-
-			const double ModulusCm3 = (4.0 / 3.0) * AcrossCm * HalfExtentCm * HalfExtentCm;
-
-			const double OverturningUuCm = BodyWeightUu * LeverCm;
-			const double RestoringUuCm = SolverInterimOverturningMeanBondMPa
-				* DestructionForce::ForceUnitsPerMPaSqCm * ModulusCm3;
-
-			if (OverturningUuCm > RestoringUuCm)
-			{
-				bOverturns = true;
-			}
-		}
-
-		if (!bOverturns)
-		{
-			continue;
-		}
-
-		/*
-		 * THE BEARING GIVES. Latched and stamped exactly as the capacity sweep stamps, because
-		 * a bearing about which its body has no equilibrium has failed under load and belongs
-		 * in the collapse sequence; Sever is only the mechanism of latching without a second
-		 * utilisation evaluation. The body loses its one connection to everything else and the
-		 * re-solve reports it falling, whole.
-		 */
-		Connections[Index].Sever();
-		ConnectionBreakPass[Index] = Pass;
-		bBrokeAny = true;
 	}
 
-	return bBrokeAny;
+	if (GroundBorneBodiesFound != 1)
+	{
+		return false;
+	}
+
+	/*
+	 * IS THIS BODY THE REASON THERE IS NO EQUILIBRIUM? The whole-structure LP falls for the
+	 * WHOLE structure, which conflates a body this gate must bring down (a supported body past
+	 * balance) with a loss the ROUTER already owns (an island whose ground was cut, which reads
+	 * Falling without any help from here). Confirm the attribution by asking whether the
+	 * REMAINDER — the structure with this body's blocks taken out entirely, not merely severed —
+	 * has an admissible equilibrium. If it still does not, the fall belongs elsewhere and this
+	 * gate must DECLINE rather than fell a body that was holding the earth perfectly well (the
+	 * far standing wall of a distant-cut locality fixture is exactly this trap). A refusal on
+	 * the remainder fails closed the same way.
+	 */
+	const TSet<int32> Excluded(ChosenMembers);
+
+	RigidBlockOracle::FOracleProblem Remainder;
+	FString RemainderWhyNot;
+
+	if (!RigidBlockOracle::BuildRigidBlockProblem(*this, Excluded, Remainder, RemainderWhyNot))
+	{
+		return false;
+	}
+
+	Remainder.bGravityIsLive = false;
+
+	const RigidBlockOracle::FOracleResult RemainderResult = RigidBlockOracle::SolveRigidBlock(Remainder);
+
+	if (RigidBlockOracle::OutcomeOf(RemainderResult) != RigidBlockOracle::EOracleOutcome::Stands)
+	{
+		return false;
+	}
+
+	/*
+	 * THE BEARINGS GIVE. Latched and stamped exactly as the capacity sweep stamps, because a
+	 * body the LP finds no equilibrium for has failed under load and belongs in the collapse
+	 * sequence; Sever is only the mechanism of latching without a second utilisation
+	 * evaluation. The body loses every connection to the earth and the re-solve reports it
+	 * falling, whole.
+	 */
+	for (const int32 Bearing : ChosenBearings)
+	{
+		Connections[Bearing].Sever();
+		ConnectionBreakPass[Bearing] = Pass;
+	}
+
+	return true;
 }
 
 int32 FStructure::SolveAndBreak()
@@ -2860,14 +2792,16 @@ int32 FStructure::SolveAndBreak()
 		}
 
 		/*
-		 * THE SECOND GROUND A PASS BREAKS ON: the interim overturning guard (DESIGN.md §7
-		 * step 2, disposable, deleted at step 4). The capacity sweep asks each joint about
-		 * its own stresses; this asks whether any bonded body has walked past the edge of
-		 * the one bearing holding it — a state no per-joint number can express, which is
-		 * why a leaning stack read the same comfortable utilisation at every height. Same
-		 * pass, same stamp: the two grounds are simultaneous, not sequenced.
+		 * THE SECOND GROUND A PASS BREAKS ON: the equilibrium gate (DESIGN.md §7 step 4,
+		 * PROMOTION_DESIGN.md §6 Slice 2). The capacity sweep asks each joint about its own
+		 * stresses; this asks the rigid-block LP whether the WHOLE structure has any admissible
+		 * force system in equilibrium with self-weight — a state no per-joint number can
+		 * express, which is why a leaning stack read the same comfortable utilisation at every
+		 * height and a two-load-path body reads safe past its tipping point. Same pass, same
+		 * stamp: the two grounds are simultaneous, not sequenced. Scoped by a block cap and
+		 * fails closed to this router above it.
 		 */
-		if (BreakOverturnedBodies(Pass))
+		if (BreakByEquilibrium(Pass))
 		{
 			bBrokeThisPass = true;
 		}
@@ -2890,6 +2824,17 @@ int32 FStructure::SolveAndBreak()
 	}
 
 	return BreakingPasses;
+}
+
+void FStructure::SetEquilibriumGateBlockCap(int32 MaxBlocks)
+{
+	/*
+	 * SLICE 2 COMPILE STUB. Stores the cap and does nothing else — no cascade code reads
+	 * EquilibriumGateBlockCap yet. dev-expert wires the equilibrium gate to consult it so the
+	 * gate is authoritative at or below the cap and fails closed to the router above it. Kept a
+	 * bare assignment (no branch, no arithmetic) so it drives no behaviour on its own.
+	 */
+	EquilibriumGateBlockCap = MaxBlocks;
 }
 
 int32 FStructure::GetBreakPass(int32 ConnectionIndex) const

@@ -5,6 +5,7 @@
 #include "Core/Layout.h"
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Structure.h"
+#include "Core/StructureBinding.h"
 
 #include "Core/RigidBlock/RigidBlockOracle.h"
 #include "Core/RigidBlock/RigidBlockBridge.h"
@@ -14,13 +15,14 @@
 /**
  * THE INTERIM OVERTURNING GUARD'S DOCUMENTED BLIND SPOT — the in-flight RED that opens the
  * first PRODUCTION slice of DESIGN.md §7 evolution step 4 (PROMOTION_DESIGN.md §6 "Slice 2",
- * §9.4 "the first production slice"). NOT one of the six standing deliberate reds: it is a
- * behaviour red on production that persists through the oracle-relocation commit and goes green
- * when dev wires the equilibrium gate.
+ * §9.4 "the first production slice"). It was a behaviour red on production that WENT GREEN
+ * 2026-08-27 when Slice 2 wired the equilibrium gate; it now stands as the regression test that
+ * the gate fells a two-load-path body. Never one of the six standing deliberate reds.
  *
- * WHAT THE GUARD CANNOT JUDGE, RESTATED FROM ITS OWN CONTRACT. FStructure::BreakOverturnedBodies
- * (DESIGN.md §5.7, Structure.cpp) is a SINGLE-BODY overturning check. It fires only for a bonded
- * body whose SOLE connection to the rest of the structure is one bed-joint bridge: it floods
+ * WHAT THE GUARD COULD NOT JUDGE (historical — the guard is deleted). The interim
+ * FStructure::BreakOverturnedBodies (removed in Slice 2; DESIGN.md §5.7) was a SINGLE-BODY
+ * overturning check. It fired only for a bonded body whose SOLE connection to the rest of the
+ * structure was one bed-joint bridge: it flooded
  * outward from the body over every intact joint except the candidate bearing, and stands aside
  * the moment that flood reaches the bearing's seat OR the earth by any other route. Its own
  * comment says so — "everything with a second load path — walls, filled corbels, beams, spanned
@@ -295,6 +297,79 @@ namespace TwoLoadPathOverturningTestSupport
 
 		return Stranded;
 	}
+
+	/* ================================================================================
+	 * THE SAME FIXTURE, BUILT THROUGH THE PLAYER-FACING DOOR. FStructureBinding owns its
+	 * FStructure privately and hands out only a const reference, so the scope-by-size test
+	 * drives RemovePiece/SolveAndBreak/ApplyResults exactly as the acceptance tests do and
+	 * reads results off Binding.GetStructure(). No removal is needed — as with the dry-stack
+	 * acceptance fixture, the action is simply settling under gravity. Geometry, mass and the
+	 * mortar bond are the SAME constants the FStructure fixture above uses; nothing is copied.
+	 * ================================================================================ */
+
+	struct FTwoPathBinding
+	{
+		FStructureBinding Binding;
+
+		int32 Anchor = INDEX_NONE;
+		int32 Pivot = INDEX_NONE;
+		int32 Body = INDEX_NONE;
+
+		int32 AnchorJoint = INDEX_NONE;
+		int32 PivotJoint = INDEX_NONE;
+	};
+
+	void BuildBinding(FTwoPathBinding& Out)
+	{
+		const FPieceBox AnchorBox = MakeBox(AnchorCentreXCm, AnchorWidthXCm, SeatHeightCm / 2.0, SeatHeightCm);
+		const FPieceBox PivotBox = MakeBox(PivotCentreXCm, PivotWidthXCm, SeatHeightCm / 2.0, SeatHeightCm);
+		const FPieceBox BodyBox = MakeBox(BodyCentreXCm, BodyLengthXCm, BodyCentreZCm, BodyThicknessZCm);
+
+		Out.Anchor = Out.Binding.AddPiece(BoxMassKg(AnchorBox), /*bIsGrounded*/ true, /*Actor*/ nullptr, AnchorBox);
+		Out.Pivot = Out.Binding.AddPiece(BoxMassKg(PivotBox), /*bIsGrounded*/ true, /*Actor*/ nullptr, PivotBox);
+		Out.Body = Out.Binding.AddPiece(BoxMassKg(BodyBox), /*bIsGrounded*/ false, /*Actor*/ nullptr, BodyBox);
+
+		FConnection Joint;
+
+		if (MakeInterface(Out.Anchor, AnchorBox, Out.Body, BodyBox,
+				BedJointThicknessCm, GeneralPurposeMortar, Joint))
+		{
+			Out.AnchorJoint = Out.Binding.AddConnection(Joint);
+		}
+
+		if (MakeInterface(Out.Pivot, PivotBox, Out.Body, BodyBox,
+				BedJointThicknessCm, GeneralPurposeMortar, Joint))
+		{
+			Out.PivotJoint = Out.Binding.AddConnection(Joint);
+		}
+	}
+
+	/** True when a live piece has lost every path to the earth — the outcome a caught body shows. */
+	bool HasLostTheEarth(const FStructure& S, int32 Piece)
+	{
+		if (S.IsPieceRemoved(Piece))
+		{
+			return false;
+		}
+
+		const EPieceSupport Support = S.GetPieceSupport(Piece);
+		return Support != EPieceSupport::Grounded && Support != EPieceSupport::Supported;
+	}
+
+	int32 StrandedCount(const FStructure& S)
+	{
+		int32 Stranded = 0;
+
+		for (int32 Piece = 0; Piece < S.NumPieces(); ++Piece)
+		{
+			if (!S.IsPieceRemoved(Piece) && S.GetPieceSupport(Piece) == EPieceSupport::Stranded)
+			{
+				++Stranded;
+			}
+		}
+
+		return Stranded;
+	}
 }
 
 /**
@@ -454,16 +529,218 @@ bool FTwoLoadPathOverturningTest::RunTest(const FString& Parameters)
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("RED: a body past its tipping point on two load paths must lose the earth; its support "
-				 "reads %d after the cascade (want NOT Grounded/Supported), and the cascade ran %d pass(es). "
-				 "Today production stands it: N>=2 zeroes the moment and BreakOverturnedBodies is documented "
-				 "to exclude everything with a second load path"),
+			TEXT("REGRESSION: a body past its tipping point on two load paths must lose the earth; its "
+				 "support reads %d after the cascade (want NOT Grounded/Supported), and the cascade ran %d "
+				 "pass(es). The equilibrium gate fells it (LP infeasible at self-weight); the interim guard "
+				 "it replaced could not, because N>=2 zeroed the moment and it excluded any second load path"),
 			static_cast<int32>(Fixture.Structure.GetPieceSupport(Fixture.Body)), Passes),
 		Fallen.Contains(Fixture.Body));
 
 	TestTrue(TEXT("RED: the two grounded seats are the earth and must keep it — only the body falls"),
 		Fixture.Structure.GetPieceSupport(Fixture.Anchor) == EPieceSupport::Grounded
 			&& Fixture.Structure.GetPieceSupport(Fixture.Pivot) == EPieceSupport::Grounded);
+
+	return true;
+}
+
+/**
+ * THE EQUILIBRIUM GATE IS SCOPED BY A BLOCK CAP — the fail-closed seam Slice 2 must not drift.
+ *
+ * WHAT THIS PINS, AND WHY NEITHER EXISTING RED TOUCHES IT. The two-load-path red above proves
+ * the gate must CATCH a body the LP falls. This proves the OTHER half of D6-c: the gate's
+ * authority is bounded by structure size — authoritative at or below a block cap, and above it
+ * it DECLINES, falling through to the router (the joint sweep, with no overturning check), which
+ * is exactly today's behaviour. Without this pin a dev could wire a gate that runs unconditionally
+ * and the >cap fail-closed boundary — the thing that keeps synchronous LP authority off the
+ * flagship scenarios (§12 D2⁗) — would be untested and silently drift.
+ *
+ * HOW IT IS MADE TESTABLE WITHOUT AN 84-BLOCK FIXTURE. The cap exists precisely to avoid solving
+ * large structures, so a fixture at the real ~84-104-block band would defeat the purpose. Instead
+ * the cap is an INJECTABLE seam (SetEquilibriumGateBlockCap) and this test drives the SAME
+ * 3-piece two-load-path body the LP falls, twice, changing ONLY the cap:
+ *   - cap = 8  (>= the 3-piece block count): the gate is authoritative, so it must CATCH the
+ *              body — the body loses the earth and ApplyResults releases it. This does NOT happen
+ *              today (no gate exists), so THIS ARM IS THE RED that drives dev.
+ *   - cap = 2  (<  the 3-piece block count): the gate DECLINES; behaviour falls through to the
+ *              router with no overturning check, so the body is NOT caught — it stands, exactly as
+ *              production does today. This arm passes today and GUARDS the seam once the gate
+ *              exists: a capless gate would wrongly catch the body here and fail this arm.
+ *
+ * THE BLOCK-COUNT CONTRACT dev must implement to: the cap is compared against the structure's
+ * LIVE BLOCK COUNT (NumPieces, pinned to 3 below). Authoritative when count <= cap; decline when
+ * count > cap. If dev prefers to count only non-grounded blocks, the caps here must be re-derived
+ * so this fixture is unambiguously over-cap on one arm and under-cap on the other — the test is
+ * the spec, so state the change against it rather than around it.
+ *
+ * DRIVEN THROUGH THE PLAYER-FACING DOOR — FStructureBinding SolveAndBreak + ApplyResults, reading
+ * results off GetStructure() — so "caught" is an actual release (what the player sees the brick
+ * do), not just a support-state flag. No removal: like the dry-stack acceptance fixture the action
+ * is settling under gravity. OUTCOME assertions per DESIGN.md §4 — lost-earth, released count,
+ * Stranded == 0; displacement is never read.
+ *
+ * NEEDS A TICKING WORLD: NO. Same footing as the two-load-path red above.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FTwoLoadPathGateScopedByBlockCapTest,
+	"DestructionGame.Acceptance.Overturning.TheEquilibriumGateIsScopedByBlockCap",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTwoLoadPathGateScopedByBlockCapTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionProfiles;
+	using namespace TwoLoadPathOverturningTestSupport;
+
+	/* ------------------------------------------------------------------ *
+	 * PRECONDITIONS: the same past-tipping, LP-falls body as the red above.
+	 * The cap only means anything if the gate SHOULD catch this body below it.
+	 * ------------------------------------------------------------------ */
+
+	TestEqual(TEXT("FIXTURE: the seats are bonded with the mean-basis 0.70 flexural bond"),
+		GeneralPurposeMortar.TensileStrengthMPa, 0.7);
+
+	const double OverturningRatio =
+		OverturningMomentUuCm() / MaxPlasticRestoringMomentUuCm(GeneralPurposeMortar.TensileStrengthMPa);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("FIXTURE: the body must be past tipping under the MOST charitable plastic bond; "
+				 "overturning/restoring is %.10g and must exceed 2"),
+			OverturningRatio),
+		OverturningRatio > 2.0);
+
+	/* Build once for the topology/oracle preconditions; the two cascade runs each build fresh. */
+	FTwoPathBinding Probe;
+	BuildBinding(Probe);
+
+	if (Probe.AnchorJoint == INDEX_NONE || Probe.PivotJoint == INDEX_NONE)
+	{
+		AddError(TEXT("FIXTURE: the producer must emit both body-seat bed joints"));
+		return false;
+	}
+
+	const FStructure& ProbeS = Probe.Binding.GetStructure();
+
+	/*
+	 * THE BLOCK COUNT THE CAP IS COMPARED AGAINST — pinned so the two caps below are
+	 * unambiguously on either side of it. Three live pieces: two seats and one body.
+	 */
+	TestEqual(TEXT("FIXTURE: three live blocks — the count the cap gates on"), ProbeS.NumPieces(), 3);
+
+	TestEqual(TEXT("FIXTURE: exactly two load paths beneath the body"),
+		ProbeS.NumConnections(), 2);
+
+	/* The cross-check that licenses catching the body: the LP finds NO equilibrium at self-weight. */
+	RigidBlockOracle::FOracleProblem Problem;
+	FString BridgeWhy;
+
+	const bool bBridged = RigidBlockOracle::BuildRigidBlockProblem(ProbeS, Problem, BridgeWhy);
+
+	if (TestTrue(
+			*FString::Printf(TEXT("CROSS-CHECK: the oracle bridge must accept this 2D structure (%s)"), *BridgeWhy),
+			bBridged))
+	{
+		const RigidBlockOracle::FOracleResult Oracle = RigidBlockOracle::SolveRigidBlock(Problem);
+
+		AddInfo(FString::Printf(
+			TEXT("CROSS-CHECK: oracle answered %d, lambda* %.10g — Falls means lambda* < 1"),
+			Oracle.bAnswered ? 1 : 0, Oracle.Lambda));
+
+		TestTrue(
+			TEXT("CROSS-CHECK: the LP must find NO equilibrium at self-weight (lambda* < 1) — this is "
+				 "the body the gate must catch when it is authoritative"),
+			Oracle.bAnswered
+				&& RigidBlockOracle::OutcomeOf(Oracle) == RigidBlockOracle::EOracleOutcome::Falls
+				&& Oracle.Lambda < 0.9);
+	}
+
+	/* ------------------------------------------------------------------ *
+	 * RUN THE PLAYER PIPELINE TWICE, CHANGING ONLY THE CAP. Fresh build each
+	 * time — SolveAndBreak is destructive — so the only difference is the cap.
+	 * ------------------------------------------------------------------ */
+
+	struct FRun
+	{
+		int32 Passes = 0;
+		int32 Released = 0;
+		int32 Stranded = 0;
+		bool bBodyLostEarth = false;
+		EPieceSupport BodySupport = EPieceSupport::Falling;
+		bool bSeatsGrounded = false;
+	};
+
+	auto RunAtCap = [](int32 Cap) -> FRun
+	{
+		FTwoPathBinding Fx;
+		BuildBinding(Fx);
+		Fx.Binding.SetEquilibriumGateBlockCap(Cap);
+
+		FRun R;
+		R.Passes = Fx.Binding.SolveAndBreak();
+		R.Released = Fx.Binding.ApplyResults();
+
+		const FStructure& S = Fx.Binding.GetStructure();
+		R.Stranded = StrandedCount(S);
+		R.bBodyLostEarth = HasLostTheEarth(S, Fx.Body);
+		R.BodySupport = S.GetPieceSupport(Fx.Body);
+		R.bSeatsGrounded = S.GetPieceSupport(Fx.Anchor) == EPieceSupport::Grounded
+			&& S.GetPieceSupport(Fx.Pivot) == EPieceSupport::Grounded;
+		return R;
+	};
+
+	/* AT OR BELOW THE CAP the gate is authoritative and MUST catch the body. */
+	constexpr int32 AuthoritativeCap = 8;
+	const FRun Auth = RunAtCap(AuthoritativeCap);
+
+	/* ABOVE THE CAP the gate declines to the router — the body is NOT caught (today's behaviour). */
+	constexpr int32 DeclineCap = 2;
+	const FRun Decline = RunAtCap(DeclineCap);
+
+	AddInfo(FString::Printf(
+		TEXT("CAP=%d (>=3, authoritative): passes %d, released %d, body-lost-earth %d, body support %d, "
+			 "stranded %d. CAP=%d (<3, declines): passes %d, released %d, body-lost-earth %d, body support "
+			 "%d, stranded %d. (support 1=Grounded,2=Supported,3=Stranded,0=Falling)"),
+		AuthoritativeCap, Auth.Passes, Auth.Released, Auth.bBodyLostEarth ? 1 : 0,
+		static_cast<int32>(Auth.BodySupport), Auth.Stranded,
+		DeclineCap, Decline.Passes, Decline.Released, Decline.bBodyLostEarth ? 1 : 0,
+		static_cast<int32>(Decline.BodySupport), Decline.Stranded));
+
+	/* No routing artefact may wear a verdict's clothes in either run. */
+	TestEqual(TEXT("PRECONDITION: nothing Stranded at or below the cap"), Auth.Stranded, 0);
+	TestEqual(TEXT("PRECONDITION: nothing Stranded above the cap"), Decline.Stranded, 0);
+
+	TestTrue(TEXT("BOTH RUNS: the two grounded seats keep the earth — only the body is ever at stake"),
+		Auth.bSeatsGrounded && Decline.bSeatsGrounded);
+
+	/* ------------------------------------------------------------------ *
+	 * THE DECLINE ARM — passes today, and guards the seam once the gate lands.
+	 * Above the cap the gate must NOT run: the body stands, nothing is released.
+	 * ------------------------------------------------------------------ */
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("ABOVE CAP: the gate must decline to the router (no overturning check), so the body is "
+				 "NOT caught — it keeps the earth (support %d) and nothing is released (%d)"),
+			static_cast<int32>(Decline.BodySupport), Decline.Released),
+		!Decline.bBodyLostEarth && Decline.Released == 0);
+
+	/* ------------------------------------------------------------------ *
+	 * THE RED — below the cap the gate is authoritative and MUST catch the body.
+	 * Today no gate exists, so the body stands here too and this arm fails.
+	 * ------------------------------------------------------------------ */
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("RED, AT/BELOW CAP: with the gate authoritative the LP-infeasible body must lose the "
+				 "earth and be released; it reads support %d, released %d, passes %d. Today production "
+				 "stands it — no equilibrium gate exists — so this is the behaviour Slice 2 adds"),
+			static_cast<int32>(Auth.BodySupport), Auth.Released, Auth.Passes),
+		Auth.bBodyLostEarth && Auth.Released >= 1);
+
+	/* THE SEAM ITSELF: the block cap ALONE flips the verdict on one and the same body. */
+	TestTrue(
+		TEXT("RED, THE SEAM: the block cap alone must decide the gate's authority — the same body is "
+			 "caught at/below the cap and NOT caught above it"),
+		Auth.bBodyLostEarth && !Decline.bBodyLostEarth);
 
 	return true;
 }
