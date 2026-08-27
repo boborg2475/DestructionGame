@@ -58,6 +58,13 @@ namespace RigidBlockOracle
 
 			BlockOfPiece[Piece] = OutProblem.Blocks.Num();
 
+			/*
+			 * The inverse of BlockOfPiece, in block-index order, so a mechanism named over
+			 * oracle blocks can name the FStructure piece a caller understands (PROMOTION_DESIGN
+			 * §12 D7). Appended in lock-step with Blocks, so PieceOfBlock[b] is piece b's source.
+			 */
+			OutProblem.PieceOfBlock.Add(Piece);
+
 			FOracleBlock Block;
 			Block.MassKg = Data.MassKg;
 			Block.CentroidXCm = Data.CentreOfMassCm.X;
@@ -144,6 +151,9 @@ namespace RigidBlockOracle
 
 			Out.AreaSqCm = Joint.InterfaceAreaSqCm;
 			Out.Strength = Joint.Strength;
+
+			/* In lock-step with Joints, so ConnectionOfJoint[j] is joint j's source connection. */
+			OutProblem.ConnectionOfJoint.Add(Index);
 			OutProblem.Joints.Add(Out);
 		}
 

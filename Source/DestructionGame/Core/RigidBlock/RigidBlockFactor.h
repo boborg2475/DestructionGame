@@ -54,6 +54,19 @@ namespace RigidBlockOracle
 			/** Oriented right-hand side, non-negative by construction. */
 			TArray<double> Rhs;
 
+			/**
+			 * Per row, the signed factor the ASSEMBLY row was multiplied by to build this
+			 * standard-form row: the equilibration scale times the orientation flip's sign
+			 * (Scale, or -Scale where the row was flipped to make its right-hand side
+			 * non-negative). A dual y in this standard form acts on the SCALED rows, so the
+			 * PHYSICAL certificate on the original assembly rows is y[r] * RowScaleSigned[r] —
+			 * which is what the mechanism extraction needs to read a block's equilibrium duals
+			 * back as an unscaled virtual-motion triple (RigidBlockOracle.cpp's ExtractMechanism,
+			 * PROMOTION_DESIGN §3.3). Nothing in the solve reads it; it is bookkeeping for the
+			 * infeasible arm alone.
+			 */
+			TArray<double> RowScaleSigned;
+
 			/** Per row: the slack column where feasible as a start, else the artificial. */
 			TArray<int32> InitialBasis;
 		};

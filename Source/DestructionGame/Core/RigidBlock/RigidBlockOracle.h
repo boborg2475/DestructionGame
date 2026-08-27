@@ -309,6 +309,23 @@ namespace RigidBlockOracle
 		 * assemble the rows in SolveRigidBlockOnce.
 		 */
 		bool bFirstCrackRows = false;
+
+		/**
+		 * BRIDGE PROVENANCE — how an oracle block/joint index maps back to the FStructure
+		 * piece/connection it came from, so the mechanism (below) can NAME the bricks and
+		 * joints a caller understands. PieceOfBlock[b] is the piece that produced oracle
+		 * block b; ConnectionOfJoint[j] is the connection that produced oracle joint j.
+		 *
+		 * SLICE 3a COMPILE SEAM ONLY, EMPTY BY DEFAULT (PROMOTION_DESIGN §12 D7). The core
+		 * solver never reads these — they are carried through from the bridge, which is the
+		 * one unit that knows FStructure indices. They are declared empty so the red test can
+		 * ASK the bridge to fill them; the bridge does not yet, which is why that half of the
+		 * test is red (the provenance is absent, not the type). dev-expert (Slice 3a) fills
+		 * both in RigidBlockBridge alongside BlockOfPiece. A cold, hand-built FOracleProblem
+		 * that never went through the bridge legitimately leaves them empty.
+		 */
+		TArray<int32> PieceOfBlock;
+		TArray<int32> ConnectionOfJoint;
 	};
 
 	/**
@@ -370,6 +387,76 @@ namespace RigidBlockOracle
 	 * are what forced the instrumented builds.
 	 */
 	FString RefusalText(EOracleRefusal Refusal);
+
+	/**
+	 * ONE BLOCK'S VIRTUAL RIGID-BODY MOTION in the collapse mechanism — the phase-1 dual
+	 * triple (u_x, u_z, omega) read off the block's three equilibrium rows (PROMOTION_DESIGN
+	 * §3.3). (VirtualUx, VirtualUz) is the virtual translation of the block's CENTROID (the
+	 * moment rows are taken about the centroid, so the (Fx, Fz) duals ARE the centroid's
+	 * velocity), and VirtualOmega its virtual rotation. bMoves is the CANONICAL verdict:
+	 * true iff, after the certificate is normalized, this block's triple magnitude clears the
+	 * relative threshold tau. A grounded block writes no rows, so its triple is exactly zero
+	 * and bMoves is false.
+	 */
+	struct FOracleMechanismBlock
+	{
+		double VirtualUx = 0.0;
+		double VirtualUz = 0.0;
+		double VirtualOmega = 0.0;
+		bool bMoves = false;
+	};
+
+	/**
+	 * THE KINEMATIC COLLAPSE MECHANISM, extracted from the infeasible arm's phase-1 dual.
+	 *
+	 * When the feasibility formulation (bGravityIsLive = false) finds no admissible force
+	 * system, phase 1 terminates with a positive optimum whose dual y is a FARKAS CERTIFICATE
+	 * of infeasibility; in rigid-block limit analysis that dual IS the kinematic (upper-bound)
+	 * mechanism (Livesley 1978; PROMOTION_DESIGN §3.3). Mapped through the assembly's
+	 * row->block and column->contact bookkeeping it names, per block, a virtual-motion triple,
+	 * and per joint whether a contact of it opens or slides. THE BLOCKS WHOSE TRIPLE MOVES ARE
+	 * THE BLOCKS THAT FALL; THE JOINTS THAT OPEN/SLIDE ARE THE BREAK SET.
+	 *
+	 * THE RAW DUAL MULTIPLIERS ARE NON-UNIQUE where the problem is degenerate — measured: on
+	 * the 24-course degenerate fixture the per-joint plastic multipliers named 8 opening joints
+	 * on one column order and 13-16 on another. So the joint set is NOT read from the multipliers.
+	 * Instead a joint opens/slides iff its two blocks have relative rigid-body velocity at a
+	 * contact (associated flow), read off the BLOCK VELOCITY TRIPLES — which measured unique to
+	 * ~1e-15 on the fixtures owned. A block moves iff its normalized triple magnitude exceeds a
+	 * per-block relative threshold tau (MechanismRelativeTol). See RigidBlockOracle.cpp's
+	 * ExtractMechanism and PROMOTION_DESIGN §3.3 / §12 D7.
+	 *
+	 * DETERMINISM AT SCALE IS NOT YET PROVEN, AND IT IS THE GATE ON SLICE 3b. Block-velocity
+	 * uniqueness is a property of SINGLE-MODE collapses (the fixtures here have 0 Bland entries);
+	 * a marginally-infeasible wall with several simultaneous hinge lines has multiple Farkas rays
+	 * and its velocity field may NOT be permutation-unique. Before 3b wires any wall to this
+	 * mechanism, a Bland-degenerate multi-mode permutation fixture must show the named set stable
+	 * (the design's R3 test) OR the minimal-support tie-break named in D7 must be built — it is
+	 * NOT implemented, because no owned fixture drives it. The Shipping-FP run is also owed.
+	 */
+	struct FOracleMechanism
+	{
+		/** One entry per ORACLE BLOCK, in block-index order. Grounded/uninvolved read ~zero. */
+		TArray<FOracleMechanismBlock> Blocks;
+
+		/** One entry per ORACLE JOINT, in joint-index order: true iff a contact opens or slides. */
+		TArray<bool> JointOpensOrSlides;
+
+		/**
+		 * TRUE once the extracted certificate has been Farkas-verified (yA <= tol on every
+		 * structural column, yb > 0, and the named set non-empty). A present-but-uncertified
+		 * mechanism must never be handed out — the solve refuses with VerificationFailure
+		 * instead, exactly as the primal admissibility gate already refuses (§3.6).
+		 */
+		bool bIsCertified = false;
+
+		/**
+		 * TRUE when a mechanism was extracted at all — i.e. the feasibility formulation was
+		 * infeasible. FALSE on a feasible/standing problem, whose mechanism is empty by
+		 * definition (nothing moves), and on any answered gravity-live solve.
+		 */
+		bool bPresent = false;
+	};
 
 	struct FOracleResult
 	{
@@ -479,6 +566,12 @@ namespace RigidBlockOracle
 
 		/** Why the oracle refused, when it did. Empty on an answered result. */
 		FString WhyNot;
+
+		/**
+		 * THE COLLAPSE MECHANISM, when the feasibility formulation was infeasible. Empty by
+		 * default (bPresent = false) — Slice 3a fills it. See FOracleMechanism.
+		 */
+		FOracleMechanism Mechanism;
 	};
 
 	/** Solve the lower-bound LP. Deterministic: same problem, bit-identical result. */

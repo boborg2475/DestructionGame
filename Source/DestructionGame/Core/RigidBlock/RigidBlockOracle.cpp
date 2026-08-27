@@ -130,6 +130,40 @@ namespace RigidBlockOracle
 
 
 		/*
+		 * THE RELATIVE THRESHOLD tau THAT TURNS THE NON-UNIQUE DEGENERATE DUAL INTO A STABLE
+		 * NAMED SET (PROMOTION_DESIGN §3.3, §12 D7). The Farkas certificate is defined only up
+		 * to a positive scale, so the mechanism is normalized — each block's virtual-motion
+		 * triple against the LARGEST triple, each joint's relative-velocity against the largest
+		 * relative velocity — and a block MOVES (a joint OPENS) iff its normalized magnitude
+		 * clears tau. It is deliberately RELATIVE: a block's translation and rotation duals
+		 * differ by orders of magnitude (a rotation about a far fulcrum makes the centroid
+		 * velocity |u| ~ omega * lever), so no absolute cut-off could separate "moves" from
+		 * "still" across fixtures of different sizes.
+		 *
+		 * WHY 1e-6, DERIVED AGAINST THE FUZZ NOT EYEBALLED. Two floors bracket it. BELOW: a block
+		 * that does not participate reads a dual of pure rounding — grounded blocks are EXACTLY
+		 * zero (they write no rows), and an uninvolved free block's triple is the drift the dual
+		 * carries, bounded by the ~1e-9 relative floor the pivot tolerances are built on
+		 * (RelativePivotTol's note: a reduced cost of zero is computable only to ~1e-9 of ||y||).
+		 * ABOVE: a participating block reads an O(1) fraction of the normaliser. The permutation
+		 * fuzz (OracleMechanismExtractionTest's IsPermutationDeterministic) MEASURES the gap on
+		 * every fixture and seed — including a 24-course dry leaning stack whose block velocities
+		 * agree across permutations to 1e-15 — and the smallest moving magnitude and largest still
+		 * magnitude are separated by many orders, so 1e-6 sits three orders above the rounding
+		 * floor and well below any genuine motion and every block/joint lands on the SAME side of
+		 * tau under every column permutation. THE JOINT SET IS READ FROM THE BLOCK KINEMATICS, NOT
+		 * THE RAW PLASTIC MULTIPLIERS: those same 24 courses proved the multipliers are the part
+		 * of the degenerate dual that is non-unique (they named 8 opening joints one column order,
+		 * 13-16 another) while the block velocities are unique, so a joint gives iff its two
+		 * blocks have a non-zero relative velocity at a contact — a function of the stable triples
+		 * (see ExtractMechanism). That stability, not the exact value of tau, is the contract; the
+		 * test is what forbids picking either by eye, because only a tau in the gap and a joint
+		 * criterion off the unique kinematics pass it.
+		 */
+		constexpr double MechanismRelativeTol = 1.0e-6;
+
+
+		/*
 		 * A strength at or beyond this is "no cap at all" (Unbreakable's 1e12, the
 		 * MaxShear default of DBL_MAX): the row is omitted rather than written with an
 		 * astronomically large right-hand side that would wreck the problem's scaling.
@@ -317,6 +351,7 @@ namespace RigidBlockOracle
 			Out.ArtificialStart = NumStructCols + NumSlacks;
 			Out.NumCols = Out.ArtificialStart + NumRows;
 			Out.Rhs.SetNumZeroed(NumRows);
+			Out.RowScaleSigned.SetNumZeroed(NumRows);
 			Out.InitialBasis.SetNum(NumRows);
 
 			TArray<double> RowScale;
@@ -346,6 +381,7 @@ namespace RigidBlockOracle
 				RowScale[RowIndex] = Scale;
 				RowFlip[RowIndex] = bFlip;
 				Out.Rhs[RowIndex] = bFlip ? -ScaledRhs : ScaledRhs;
+				Out.RowScaleSigned[RowIndex] = bFlip ? -Scale : Scale;
 
 				if (!Row.bEquality)
 				{
@@ -1164,6 +1200,227 @@ namespace RigidBlockOracle
 		return TEXT("the oracle refused for an unnamed reason");
 	}
 
+	/**
+	 * EXTRACT THE COLLAPSE MECHANISM from phase 1's dual at the infeasible arm — the Farkas
+	 * certificate that IS the kinematic upper-bound mechanism (PROMOTION_DESIGN §3.3). Called
+	 * only when the dead loads admit no equilibrium (the Lambda = 0 arm), with State holding the
+	 * phase-1 OPTIMAL basis: no pivot happens between phase 1 returning and this call, so the
+	 * dual recomputed here is bit-for-bit the one the pricer proved optimal against.
+	 *
+	 * ONE BTRAN, and it increments no counted quantity. y = c_B B^-1 with the phase-1 cost (1 on
+	 * a basic artificial, 0 else) is the dual on the SCALED standard-form rows; multiplied by
+	 * RowScaleSigned it is the PHYSICAL certificate on the original assembly rows, whose per-block
+	 * equilibrium-row triple (Fx, Fz, moment) is that block's virtual (u_x, u_z, omega). The
+	 * global sign is fixed so a DESCENDING centroid reads VirtualUz < 0: with the dual negated,
+	 * the virtual work of gravity equals yb (the phase-1 objective) and is positive by
+	 * construction, which is the yb > 0 half of Farkas the caller and the test both rely on.
+	 *
+	 * FARKAS, FAIL CLOSED (§3.6), the mirror of the primal admissibility gate with the opposite
+	 * polarity: yb > 0 (infeasibility is certified) AND yA_j <= tol on every STRUCTURAL column
+	 * (which is exactly the phase-1 optimality the basis already satisfies) AND the named set is
+	 * non-empty. Any one failing returns false, and the caller refuses with VerificationFailure
+	 * rather than name bricks on a certificate it could not check — an ill-conditioned dual must
+	 * produce a refusal, never a plausible-looking wrong collapse.
+	 *
+	 * Returns true and fills OutMechanism (bPresent, bIsCertified, triples, opening flags) iff the
+	 * certificate verifies; false with OutMechanism left as the caller default otherwise.
+	 */
+	bool ExtractMechanism(
+		const FOracleProblem& Problem,
+		const OracleDetail::FStandardForm& Form,
+		OracleDetail::FRevisedState& State,
+		const TArray<int32>& EqFxRowOfBlock,
+		FOracleMechanism& OutMechanism)
+	{
+		using namespace OracleDetail;
+
+		const int32 NumRows = Form.NumRows;
+		const int32 NumBlocks = EqFxRowOfBlock.Num();
+		const int32 NumJoints = Problem.Joints.Num();
+
+		/* Phase-1 dual: y solves yT B = c_B with c_B the phase-1 cost. One BTRAN. */
+		State.ScratchSlot.SetNumUninitialized(NumRows);
+		for (int32 Slot = 0; Slot < NumRows; ++Slot)
+		{
+			State.ScratchSlot[Slot] = State.Basis[Slot] >= Form.ArtificialStart ? 1.0 : 0.0;
+		}
+		State.BtranScratchSlot(State.YRow);
+
+		/* The physical certificate on the ORIGINAL assembly rows: undo the row equilibration. */
+		TArray<double> YPhys;
+		YPhys.SetNumUninitialized(NumRows);
+		for (int32 Row = 0; Row < NumRows; ++Row)
+		{
+			YPhys[Row] = State.YRow[Row] * Form.RowScaleSigned[Row];
+		}
+
+		/*
+		 * yb > 0, computed in the scaled space the problem was solved in (yb is scale-invariant:
+		 * y_scaled . b_scaled = y_phys . b_assembly). It equals the phase-1 objective, so it is
+		 * positive by construction here; the explicit strict check is the fail-closed guard.
+		 */
+		double Yb = 0.0;
+		double YbMagnitude = 0.0;
+		for (int32 Row = 0; Row < NumRows; ++Row)
+		{
+			const double Term = State.YRow[Row] * Form.Rhs[Row];
+			Yb += Term;
+			YbMagnitude += FMath::Abs(Term);
+		}
+
+		if (!(Yb > 1.0e-9 * (1.0 + YbMagnitude)))
+		{
+			return false;
+		}
+
+		/*
+		 * yA_j <= tol on every structural column. Phase 1's cost is zero on these columns, so
+		 * optimality already guarantees the reduced cost -yA_j >= -CostTol; the loose relative
+		 * tolerance here only refuses a certificate that is violated well past rounding.
+		 */
+		for (int32 Col = 0; Col < Form.NumStructCols; ++Col)
+		{
+			double YA = 0.0;
+			double Magnitude = 0.0;
+
+			for (int32 At = Form.ColStart[Col]; At < Form.ColStart[Col + 1]; ++At)
+			{
+				const double Term = Form.ColVal[At] * State.YRow[Form.ColRow[At]];
+				YA += Term;
+				Magnitude += FMath::Abs(Term);
+			}
+
+			if (YA > 1.0e-6 * (1.0 + Magnitude))
+			{
+				return false;
+			}
+		}
+
+		/* ---- Block triples, negated so a descending centroid reads VirtualUz < 0. ---- */
+		OutMechanism.Blocks.SetNum(NumBlocks);
+		double LargestBlockMagnitude = 0.0;
+
+		for (int32 Block = 0; Block < NumBlocks; ++Block)
+		{
+			const int32 Fx = EqFxRowOfBlock[Block];
+
+			if (Fx == INDEX_NONE)
+			{
+				/* Grounded: writes no rows, so its triple is exactly zero and it never moves. */
+				continue;
+			}
+
+			FOracleMechanismBlock& Triple = OutMechanism.Blocks[Block];
+			Triple.VirtualUx = -YPhys[Fx];
+			Triple.VirtualUz = -YPhys[Fx + 1];
+			Triple.VirtualOmega = -YPhys[Fx + 2];
+
+			const double BlockMagnitude = FMath::Abs(Triple.VirtualUx)
+				+ FMath::Abs(Triple.VirtualUz) + FMath::Abs(Triple.VirtualOmega);
+			LargestBlockMagnitude = FMath::Max(LargestBlockMagnitude, BlockMagnitude);
+		}
+
+		/*
+		 * ---- Joint give: the RELATIVE virtual velocity across the contact, KINEMATIC. ----
+		 *
+		 * The raw plastic multipliers on the strength rows are the WRONG thing to read here:
+		 * they are the part of the degenerate dual that is NON-UNIQUE (the permutation fuzz
+		 * measures the block velocities agreeing to 1e-15 while the strength-row multipliers
+		 * name 8 opening joints on one column order and 13-16 on another — dual degeneracy
+		 * spreads the plastic flow over redundant contacts differently each pivot path). The
+		 * block velocity triples ARE unique, so the joint set is derived from THEM instead: a
+		 * joint gives iff its two blocks have a non-zero relative velocity at a contact point,
+		 * which is the associated-flow definition of the contact opening or sliding and is a
+		 * pure function of the (stable) triples and the fixed geometry. That is the canonical
+		 * tie-break the degenerate dual needs (PROMOTION_DESIGN §3.3, §12 D7): the SET is read
+		 * off the unique kinematics, never off the non-unique multipliers.
+		 */
+		auto VelocityAt = [](
+			const FOracleMechanismBlock& Triple, double CentroidX, double CentroidZ,
+			double PointX, double PointZ, double& OutVx, double& OutVz)
+		{
+			/* Rigid-body velocity v = u + omega x r, in the moment convention r_x*F_z - r_z*F_x. */
+			OutVx = Triple.VirtualUx - Triple.VirtualOmega * (PointZ - CentroidZ);
+			OutVz = Triple.VirtualUz + Triple.VirtualOmega * (PointX - CentroidX);
+		};
+
+		TArray<double> JointRelativeVelocity;
+		JointRelativeVelocity.Init(0.0, NumJoints);
+		double LargestJointRelativeVelocity = 0.0;
+
+		for (int32 Joint = 0; Joint < NumJoints; ++Joint)
+		{
+			const FOracleJoint& J = Problem.Joints[Joint];
+			const FOracleBlock& A = Problem.Blocks[J.BlockA];
+			const FOracleBlock& B = Problem.Blocks[J.BlockB];
+			const FOracleMechanismBlock& TripleA = OutMechanism.Blocks[J.BlockA];
+			const FOracleMechanismBlock& TripleB = OutMechanism.Blocks[J.BlockB];
+
+			/* The two contact points sit at Centre -/+ HalfLength along the in-plane tangent. */
+			const double TangentX = -J.NormalZ;
+			const double TangentZ = J.NormalX;
+
+			double Worst = 0.0;
+
+			for (int32 End = 0; End < 2; ++End)
+			{
+				const double Sign = End == 0 ? -1.0 : 1.0;
+				const double PointX = J.CentreXCm + Sign * J.HalfLengthCm * TangentX;
+				const double PointZ = J.CentreZCm + Sign * J.HalfLengthCm * TangentZ;
+
+				double AVx, AVz, BVx, BVz;
+				VelocityAt(TripleA, A.CentroidXCm, A.CentroidZCm, PointX, PointZ, AVx, AVz);
+				VelocityAt(TripleB, B.CentroidXCm, B.CentroidZCm, PointX, PointZ, BVx, BVz);
+
+				Worst = FMath::Max(Worst, FMath::Abs(BVx - AVx) + FMath::Abs(BVz - AVz));
+			}
+
+			JointRelativeVelocity[Joint] = Worst;
+			LargestJointRelativeVelocity = FMath::Max(LargestJointRelativeVelocity, Worst);
+		}
+
+		/* ---- Canonicalize: the named set is what clears the relative threshold. ---- */
+		OutMechanism.JointOpensOrSlides.Init(false, NumJoints);
+		int32 MovingCount = 0;
+
+		if (LargestBlockMagnitude > 0.0)
+		{
+			for (int32 Block = 0; Block < NumBlocks; ++Block)
+			{
+				const FOracleMechanismBlock& Triple = OutMechanism.Blocks[Block];
+				const double BlockMagnitude = FMath::Abs(Triple.VirtualUx)
+					+ FMath::Abs(Triple.VirtualUz) + FMath::Abs(Triple.VirtualOmega);
+
+				if (BlockMagnitude > MechanismRelativeTol * LargestBlockMagnitude)
+				{
+					OutMechanism.Blocks[Block].bMoves = true;
+					++MovingCount;
+				}
+			}
+		}
+
+		if (LargestJointRelativeVelocity > 0.0)
+		{
+			for (int32 Joint = 0; Joint < NumJoints; ++Joint)
+			{
+				if (JointRelativeVelocity[Joint] > MechanismRelativeTol * LargestJointRelativeVelocity)
+				{
+					OutMechanism.JointOpensOrSlides[Joint] = true;
+				}
+			}
+		}
+
+		/* A mechanism that moves nothing is not a mechanism — fail closed. */
+		if (MovingCount == 0)
+		{
+			return false;
+		}
+
+		OutMechanism.bPresent = true;
+		OutMechanism.bIsCertified = true;
+		return true;
+	}
+
 	/** One attempt at the problem exactly as posed, warm start included. */
 	FOracleResult SolveRigidBlockOnce(const FOracleProblem& Problem)
 	{
@@ -1253,6 +1510,17 @@ namespace RigidBlockOracle
 
 		TArray<FAssemblyRow> AssemblyRows;
 
+		/*
+		 * ROW -> BLOCK BOOKKEEPING for the mechanism extraction (PROMOTION_DESIGN §3.3, §12 D7).
+		 * EqFxRowOfBlock[b] is the assembly-row index of block b's Fx equilibrium row — its Fz
+		 * and moment rows follow at +1 and +2, in that fixed order — or INDEX_NONE for a grounded
+		 * block, which writes no rows. That triple is where the infeasible arm reads block b's
+		 * virtual-motion dual. Pure index-ordered bookkeeping, built as the rows are, deterministic
+		 * by construction. Nothing in the solve reads it — it is the infeasible arm's alone.
+		 */
+		TArray<int32> EqFxRowOfBlock;
+		EqFxRowOfBlock.Init(INDEX_NONE, Problem.Blocks.Num());
+
 		/* ---- Equilibrium: three equalities per non-grounded block. -------------- */
 		for (int32 BlockIndex = 0; BlockIndex < Problem.Blocks.Num(); ++BlockIndex)
 		{
@@ -1262,6 +1530,9 @@ namespace RigidBlockOracle
 			{
 				continue;
 			}
+
+			/* Fx lands at the current end; Fz and M follow it in the two next slots. */
+			EqFxRowOfBlock[BlockIndex] = AssemblyRows.Num();
 
 			FAssemblyRow RowFx;
 			FAssemblyRow RowFz;
@@ -1592,7 +1863,19 @@ namespace RigidBlockOracle
 				 * feasible set of every gravity-live problem, so this is only reachable
 				 * with dead loads). That is an answer, not a failure: nothing stands,
 				 * lambda* = 0.
+				 *
+				 * This is the mechanism seam (PROMOTION_DESIGN §3.3, §12 D7). The phase-1
+				 * dual here IS the Farkas certificate = the kinematic collapse mechanism;
+				 * ExtractMechanism reads it (one BTRAN, no counted quantity moved) and
+				 * Farkas-verifies it. A certificate that will not verify makes the solve
+				 * REFUSE rather than hand out named bricks — the fail-closed direction §3.6
+				 * adds on this arm.
 				 */
+				if (!ExtractMechanism(Problem, Form, State, EqFxRowOfBlock, Result.Mechanism))
+				{
+					return Refuse(EOracleRefusal::VerificationFailure, TEXT("Farkas certificate"));
+				}
+
 				Result.bAnswered = true;
 				Result.Lambda = 0.0;
 				ReportBasis(Form, State.Basis, Result.FinalBasis);
