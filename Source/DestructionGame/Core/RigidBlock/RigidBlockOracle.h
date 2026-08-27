@@ -4,18 +4,23 @@
 
 #include "CoreMinimal.h"
 
-#if WITH_DEV_AUTOMATION_TESTS
-
 #include "Core/ConnectionStrength.h"
-#include "Core/Structure.h"
 
 /**
- * THE RIGID-BLOCK LIMIT-ANALYSIS ORACLE — TEST SUPPORT ONLY, AND THAT IS A RULE, NOT A
- * PHASE. DESIGN.md §7 evolution step 3: everything in this header and its .cpp lives
- * under Tests/, ships nowhere, and is called by nothing in production. Its whole value
- * is being an INDEPENDENTLY DERIVED second opinion the fixture catalogue can be diffed
- * against; the moment it borrows production's routing, tiers, arching groups or
- * composite depth it stops being able to catch them being wrong.
+ * THE RIGID-BLOCK LIMIT-ANALYSIS ORACLE — NOW PRODUCTION, BUT ITS INDEPENDENCE FROM
+ * PRODUCTION IS STILL A RULE, NOT A PHASE. As of PROMOTION_DESIGN.md §6 Slice 1 this
+ * solver lives under Core/RigidBlock/ and compiles in every configuration, Shipping
+ * included, because the equilibrium gate it feeds is production authority. What has NOT
+ * changed, and must not, is the wall between it and the rest of production: the solver
+ * core reads nothing but the plain data structs and Core/ConnectionStrength.h, calls no
+ * production arithmetic, borrows no routing, tiers, arching groups or composite depth,
+ * and derives its own unit conversion. That independence used to be phrased as "test
+ * support only"; it is now a deliberate design rule with a sharper reason. The sweep's
+ * whole value is being an INDEPENDENTLY DERIVED second opinion the fixture catalogue can
+ * be diffed against, and the day the solver borrows production's own strength or geometry
+ * code is the day the diff can no longer catch production being wrong — because the two
+ * sides would then share the defect. The FStructure translation lives in the separate
+ * RigidBlockBridge unit precisely to keep this file free of any structural dependency.
  *
  * WHAT IT COMPUTES. The lower-bound (static / safe) theorem of limit analysis over
  * rigid blocks in the X-Z plane: does there exist ANY system of joint contact forces in
@@ -143,6 +148,20 @@ namespace RigidBlockOracle
 	 * agreeing with it.
 	 */
 	constexpr double OracleForceUnitsPerMPaSqCm = 100.0 * 100.0;
+
+	/*
+	 * THE INDEPENDENCE MADE ENFORCEABLE, NOT MERELY ASSERTED IN PROSE. The oracle derives
+	 * its own conversion above and this static_assert checks it AGREES with production's
+	 * DestructionForce::ForceUnitsPerMPaSqCm — it never shares the symbol, because an
+	 * oracle that imported the constant it is meant to check would agree with a wrong value
+	 * instead of failing against it. Two constants derived independently and proven equal is
+	 * the check; one constant used twice is no check at all. A production change that moved
+	 * the factor to a wrong 100x would break this build rather than passing a tuned sweep.
+	 */
+	static_assert(
+		OracleForceUnitsPerMPaSqCm == DestructionForce::ForceUnitsPerMPaSqCm,
+		"the oracle's independently derived MPa->uu conversion must agree with production's; "
+		"if this fires, one of the two is wrong — do NOT unify them into one symbol");
 
 	/** MassKg * 980 IS the weight in uu — the newton conversion is already inside it. */
 	constexpr double OracleGravityCmPerSecondSquared = 980.0;
@@ -467,31 +486,4 @@ namespace RigidBlockOracle
 
 	/** Stands iff answered and Lambda >= 1. Unanswerable is never Stands. */
 	EOracleOutcome OutcomeOf(const FOracleResult& Result);
-
-	/**
-	 * THE BRIDGE THE FIXTURE SWEEP CALLS: project a live FStructure into an X-Z
-	 * rigid-block problem.
-	 *
-	 * What it reads is exactly the data model DESIGN.md §7 says is the LP's input:
-	 * pieces with mass and centre of mass, joints with centre, half extents, normal and
-	 * strength profile. Removed pieces are skipped; joints that have GIVEN are skipped
-	 * (a broken joint is out of the structure, so the oracle judges the graph as it
-	 * stands now, latch included); a joint between two grounded pieces constrains
-	 * nothing and is skipped.
-	 *
-	 * REFUSED, fail closed: a structure without complete geometry (a defaulted centre
-	 * or rectangle would silently become a lever arm of "at the origin"), a live joint
-	 * naming a removed piece (the known AddConnection tombstone hole), and any joint
-	 * whose normal has a Y component — this is a 2D oracle and projecting an
-	 * out-of-plane joint would be a plausible number with wrong statics.
-	 *
-	 * @return true and a filled problem, or false with the reason; OutProblem is
-	 *         emptied on refusal so a caller who ignores the return solves nothing.
-	 */
-	bool BuildRigidBlockProblem(
-		const FStructure& Structure,
-		FOracleProblem& OutProblem,
-		FString& OutWhyNot);
 }
-
-#endif // WITH_DEV_AUTOMATION_TESTS

@@ -6,7 +6,8 @@
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Structure.h"
 #include "Core/WallCases.h"
-#include "Tests/RigidBlockOracle.h"
+#include "Core/RigidBlock/RigidBlockOracle.h"
+#include "Core/RigidBlock/RigidBlockBridge.h"
 #include "World/DestructionScenarios.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
