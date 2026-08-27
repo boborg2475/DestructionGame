@@ -144,20 +144,22 @@ the verdict the acceptance test asserts.
 | `Lvl_Wall21` | `wall-21` | Eighteen-brick opening, two courses over |
 | `Lvl_Wall22` | `wall-22` | Thirty-five-brick opening, eight courses over |
 
-### Four of these levels contradict the model, and say so — three of them in the inverted direction
+### One of these levels contradicts the model, and says so
 
-Cases **10, 19, 20 and 21** are the rows currently failing `Acceptance.Wall.Catalogue`. Case 20 is
-the old direction (the model drops more than the catalogue's named local loss). Cases 10 and 19 are
-the **inverse** since the 2026-08-12 rulings: the catalogue says STANDS, and the model — routing
-load only downward — wrongly collapses them, dropping the free-end panel and the underpinned wedge
-that real bonded masonry holds. Case 21 joined the inverted set at the 2026-08-14 mean re-anchor
-flip, pointing the other way round: the ruled verdict is **COLLAPSE** (hand deep-beam statics at
-1.71× the mean bond) and the model now *stands* the wall — on a knife edge, its worst joint
-measured at **0.935423** (6.5% under the line, on an axis nobody has decomposed — the compression
-attribution was checked on cases 9 and 22 and was wrong both times; the tension the hand
-check condemns sits ~3.1× lower in its reading). All four captions carry the words **THE MODEL CURRENTLY
-DISAGREES** alongside the expected verdict, because a level captioned with a verdict the solver
-does not produce would be a lie told to somebody standing in front of the counter-example.
+Case **21** is the one row currently failing `Acceptance.Wall.Catalogue`. The ruled verdict is
+**COLLAPSE** (hand deep-beam statics at 1.71× the mean bond) and the model now *stands* the wall —
+on a knife edge, its worst joint measured at **0.935423** (6.5% under the line, on an axis nobody
+has decomposed — the compression attribution was checked on cases 9 and 22 and was wrong both
+times; the tension the hand check condemns sits ~3.1× lower in its reading). The limit-analysis LP
+oracle also stands it (17.24), so both models agree with each other and disagree with the ruling —
+which is exactly what this row's inverted red records. Its caption carries **THE MODEL CURRENTLY
+DISAGREES** alongside the expected verdict, because a level captioned with a verdict the solver does
+not produce would be a lie told to somebody standing in front of the counter-example.
+
+**Cases 10, 19 and 20 came off this list at Slice 3b/4 (2026-08-27)** — the equilibrium LP became
+the break authority below the 200-block cap and stands all three (λ\* 111.5 / 48.0 / 218.42), so
+the model now agrees with the ruled STANDS (case 20 was re-ruled LocalLoss→Stands). Their captions
+no longer carry the disagreement marker.
 
 That marker is not a hand-maintained list. `Acceptance.Wall.EveryLevelsCaptionTellsTheTruth`
 *computes* which rows the model gets wrong by running each case, and requires the marker on exactly

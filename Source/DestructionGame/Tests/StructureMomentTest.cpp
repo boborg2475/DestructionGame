@@ -1380,20 +1380,26 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 }
 
 /**
- * A JOINT THE READOUT CALLS OVER CAPACITY MUST ACTUALLY GIVE — today the strain display and
- * the break decision disagree, and they disagree in the direction where nothing falls.
+ * THE ELASTIC PER-JOINT READOUT AND THE LP BREAK AUTHORITY LEGITIMATELY DISAGREE ABOVE THE
+ * ELASTIC LIMIT — and below the block cap the LP is right, so a joint reading past its
+ * section-modulus capacity is CARRIED, not broken.
  *
- * WHERE THEY PART. GetConnectionUtilisation composes FConnection::UtilisationUnder over the
- * routed force AND the routed moment, so it sees the eccentricity. SolveAndBreak's sweep
- * calls FConnection::ApplyForce with the force alone, and ApplyForce has no moment to give
- * it, so the decision is made on the averaged stress the whole of slice 3 exists to replace.
- * A joint can therefore sit at 1.25 of capacity, be drawn at 1.25 of capacity, and hold
- * forever.
+ * WHAT THIS TEST USED TO SAY, AND WHY IT FLIPPED (Slice 3b/4, 2026-08-27). Before the
+ * equilibrium LP became the break authority, this test pinned "a joint the readout calls over
+ * capacity must actually give": the display saw the eccentric moment while SolveAndBreak's
+ * per-joint sweep did not, so a joint could read 1.25 and hold forever, and that was a BUG. It
+ * is no longer the mechanism. Below the 200-block cap the break decision is the rigid-block LP,
+ * which reasons in PLASTIC limit analysis: the seventeen-brick chain's head joint reads 1.0096
+ * of its ELASTIC section-modulus capacity, but a plastic f_t/f_c stress block over the same
+ * section carries about 2.78x the demand, so an admissible force system exists and the chain
+ * STANDS. The elastic readout is a conservative diagnostic; the LP is the authority; and the
+ * two parting company above the elastic limit is now the CORRECT answer rather than the defect.
  *
- * THIS IS THE PROJECT'S RECURRING SIGNATURE — a second evaluation of the same question that
- * agrees until it does not — and the reason Connection.h insists ApplyForce be built OUT OF
- * UtilisationUnder rather than beside it. The composition is what has come apart, not the
- * arithmetic.
+ * THE READOUT IS STILL WORTH COMPUTING AND STILL PINNED. GetConnectionUtilisation composes
+ * FConnection::UtilisationUnder over the routed force AND moment, so it still sees the
+ * eccentricity and still crosses 1.0 between sixteen and seventeen bricks — the display tells a
+ * player which joint is working hardest even where the structure globally stands. What changed
+ * is only which evaluation LATCHES a break.
  *
  * WHY A CHAIN OF THREE, AND WHY TWO IS NOT ENOUGH. Under slice 3's rule the moment on a
  * determinate joint is this piece's own weight PLUS what it received from above, acting at
@@ -1438,13 +1444,14 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
  *
  * ASSERTED ON THE MECHANISM, NEVER ON MOVEMENT. FStructure has no positions to move and a
  * severed joint moves nothing anyway — two pieces can part and stay exactly where they are —
- * so the claim is the joint's own state: it has given, it carries a break-pass stamp, and
- * the cascade reports the pass. The closing invariant is the general form of the same thing:
- * once a cascade has settled, NO joint still in the structure may read above 1. That is the
- * agreement between the readout and the decision, stated as a property rather than as a
- * number, and it is what actually goes red here.
+ * so the claim is the joint's own state: it has NOT given, it carries no break-pass stamp, and
+ * the cascade reports zero passes, while its elastic readout still reads above 1.0. The closing
+ * invariant is the narrowed form of the same thing: once the LP has settled, every joint OTHER
+ * than the head (which carries no eccentricity) reads under 1.0, and the head joint is intact
+ * above its elastic reading exactly because the LP certified it. That divergence is what this
+ * test now pins, and reverting the break authority to the per-joint readout is what goes red.
  *
- * NO WORLD, NO TICK. The break decision is arithmetic over a graph.
+ * NO WORLD, NO TICK. The break decision is the equilibrium LP over a graph, not a simulation.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureMomentBreaksTheJointTest,
@@ -1494,21 +1501,33 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 		/** How many bricks hang off the one head joint. */
 		int32 BricksInChain;
 
-		/** Whether the head joint has to come apart under them. */
-		bool bMustGive;
+		/**
+		 * Whether the ELASTIC per-joint readout crosses 1.0 under them. This is NOT whether the
+		 * joint gives any more (Slice 3b/4): below the block cap the equilibrium LP is the break
+		 * authority and it stands BOTH chains by plastic redistribution, so nothing gives. This
+		 * flag is the readout's story, deliberately decoupled from the break decision's.
+		 */
+		bool bReadoutOverElastic;
 	};
 
 	const TArray<FChainCase> Cases = {
 		/*
-		 * THE CONTROL, AND IT COMES FIRST. Sixteen bricks put the joint at 95% of
-		 * capacity — genuinely, visibly loaded, and still holding. Without it every claim
-		 * below is satisfied by an implementation that breaks whatever it is shown.
-		 * (Two and three on the characteristic basis; the mean re-anchor moved the
+		 * THE CONTROL. Sixteen bricks put the joint at 95% of its ELASTIC section-modulus
+		 * capacity — genuinely, visibly loaded, and the readout says so — and it stands.
+		 * (Two and three on the characteristic basis; the mean re-anchor moved the elastic
 		 * crossing to seventeen brick weights, 1/0.059389616.)
 		 */
 		{ TEXT("sixteen bricks hanging off one head joint"), 16, false },
 
-		/* THE CLAIM. The seventeenth brick takes it past capacity and it has to give. */
+		/*
+		 * THE CLAIM, AND ITS SENSE FLIPPED AT SLICE 3b/4 (2026-08-27). The seventeenth brick
+		 * takes the ELASTIC readout to 1.0096, just past its section-modulus capacity — yet the
+		 * chain STANDS, because below the cap the equilibrium LP is the break authority and it
+		 * finds the plastic stress block the elastic modulus cannot express (lever-verified
+		 * margin ~2.78x: an f_t/f_c two-block distribution carries ~2.8x this demand). So the
+		 * readout and the break decision LEGITIMATELY disagree here, and the joint sits intact
+		 * above its elastic reading rather than giving.
+		 */
 		{ TEXT("seventeen bricks hanging off one head joint"), 17, true },
 	};
 
@@ -1614,10 +1633,11 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 		/* The table's own claim, restated against the arithmetic so the two cannot drift. */
 		TestTrue(
 			FString::Printf(
-				TEXT("%s: FIXTURE PRECONDITION: the case says it %s give and the arithmetic says %.10f"),
-				Case.Description, Case.bMustGive ? TEXT("must") : TEXT("must not"),
+				TEXT("%s: FIXTURE PRECONDITION: the case says the ELASTIC readout %s cross 1.0 and ")
+				TEXT("the arithmetic says %.10f"),
+				Case.Description, Case.bReadoutOverElastic ? TEXT("does") : TEXT("does not"),
 				ExpectedUtilisation),
-			(ExpectedUtilisation > 1.0) == Case.bMustGive);
+			(ExpectedUtilisation > 1.0) == Case.bReadoutOverElastic);
 
 		/*
 		 * THE READOUT ALREADY SEES IT, and asserting that first is what makes the failure
@@ -1635,28 +1655,51 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 				Case.Description, ExpectedUtilisation, ReadUtilisation),
 			FMath::IsNearlyEqual(ReadUtilisation, ExpectedUtilisation, Tolerance));
 
-		// --- the claim: the break decision has to agree with it --------------------------
+		// --- the claim: the LP is the break authority, and it stands BOTH chains ---------
 
+		/*
+		 * NEITHER CHAIN GIVES. The eighteen-piece structure (pad plus seventeen bricks) sits well
+		 * below the 200-block cap, so the equilibrium LP decides — and it finds an admissible
+		 * plastic force system for both, including the seventeenth brick whose ELASTIC readout has
+		 * crossed 1.0. This is the inversion of what this test asserted before Slice 3b: the joint
+		 * over its elastic capacity is CARRIED, not broken, because limit analysis sees the
+		 * redistribution the section-modulus readout cannot.
+		 */
 		const int32 Passes = Structure.SolveAndBreak();
 
 		TestEqual(
 			FString::Printf(
-				TEXT("%s: reading %.10f, the cascade should break in %d pass(es), it ran %d"),
-				Case.Description, ExpectedUtilisation, Case.bMustGive ? 1 : 0, Passes),
-			Passes, Case.bMustGive ? 1 : 0);
+				TEXT("%s: elastic reading %.10f, the LP stands the whole chain so the cascade should ")
+				TEXT("break in 0 pass(es), it ran %d"),
+				Case.Description, ExpectedUtilisation, Passes),
+			Passes, 0);
 
-		TestTrue(
+		TestFalse(
 			FString::Printf(
-				TEXT("%s: the head joint should%s have given at %.10f of capacity"),
-				Case.Description, Case.bMustGive ? TEXT("") : TEXT(" NOT"), ExpectedUtilisation),
-			Structure.GetConnection(HeadIndex).HasGiven() == Case.bMustGive);
+				TEXT("%s: the head joint must NOT have given — the LP carries it despite an elastic ")
+				TEXT("reading of %.10f"),
+				Case.Description, ExpectedUtilisation),
+			Structure.GetConnection(HeadIndex).HasGiven());
 
 		TestEqual(
 			FString::Printf(
-				TEXT("%s: the head joint's break pass should be %d, it is %d"),
-				Case.Description, Case.bMustGive ? 1 : INDEX_NONE,
-				Structure.GetBreakPass(HeadIndex)),
-			Structure.GetBreakPass(HeadIndex), Case.bMustGive ? 1 : INDEX_NONE);
+				TEXT("%s: the head joint carries no break pass, it is %d"),
+				Case.Description, Structure.GetBreakPass(HeadIndex)),
+			Structure.GetBreakPass(HeadIndex), INDEX_NONE);
+
+		/*
+		 * AND THE READOUT STILL SEES THE ELASTIC OVERLOAD — the divergence pinned as the point.
+		 * The head joint is intact (asserted above) AND its section-modulus readout is above 1.0
+		 * exactly on the row where the elastic crossing happens. An implementation that reverted
+		 * the break authority to the per-joint readout would break this joint and fail the STANDS
+		 * assertions above; one that stopped composing the moment into the readout would fail this.
+		 */
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: the intact head joint's elastic readout must be %s 1.0, it reads %.10f"),
+				Case.Description, Case.bReadoutOverElastic ? TEXT("above") : TEXT("below"),
+				ReadUtilisation),
+			ReadUtilisation > 1.0, Case.bReadoutOverElastic);
 
 		/*
 		 * THE BED JOINTS ARE NOT COLLATERAL. Each brick sits squarely on the one below, so
@@ -1678,13 +1721,17 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * THE CLOSING INVARIANT, and the general form of the whole claim: a settled cascade
-		 * may leave NO joint that is still in the structure reading above 1. The readout and
-		 * the break decision are two evaluations of one question, and this is them agreeing.
+		 * THE CLOSING INVARIANT, INVERTED AT SLICE 3b. Before the LP became the break authority
+		 * this asserted that no intact joint may read above 1.0 — the readout and the per-joint
+		 * break decision agreeing. Below the cap they no longer must: the head joint is intact AND
+		 * reads 1.0096 (the seventeen-brick row), because the LP overrides the elastic readout. So
+		 * the surviving general claim is narrower and still real — every joint OTHER than the head
+		 * carries no eccentricity and must read well under 1.0; only the head joint is permitted
+		 * above it, and only because the LP has certified an admissible force system for it.
 		 */
 		for (int32 Joint = 0; Joint < Structure.NumConnections(); ++Joint)
 		{
-			if (Structure.GetConnection(Joint).HasGiven())
+			if (Joint == HeadIndex || Structure.GetConnection(Joint).HasGiven())
 			{
 				continue;
 			}
@@ -1693,8 +1740,7 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 
 			TestTrue(
 				FString::Printf(
-					TEXT("%s: joint %d is still intact after the cascade settled and reads %s of ")
-					TEXT("its capacity — the readout and the break decision must not disagree"),
+					TEXT("%s: bed joint %d carries no eccentricity and must read under 1.0; it reads %s"),
 					Case.Description, Joint, *Bits(Settled)),
 				Settled <= 1.0);
 		}

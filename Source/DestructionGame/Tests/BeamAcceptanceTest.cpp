@@ -441,6 +441,17 @@ namespace BeamAcceptanceTestSupport
 
 	TArray<FBeamCase> AllBeamCases()
 	{
+		/*
+		 * THE DropsToday / PassesToday PINS ARE GONE SINCE SLICE 3b/4 (2026-08-27). All three rows
+		 * used to drop 3 in 1 pass because the one-cell thrust gate let their DRY bearings read
+		 * Max() outside the kern. Below the 200-block cap the equilibrium LP is now the sole break
+		 * authority, it stands all three bearings (the oracle sweep reads lambda* 2.65 / 28.80 /
+		 * 18.30, all >= 1), and production drops 0 in 0 passes — so the known-red characterisation
+		 * has nothing left to characterise and is deleted per FBeamCase::DropsToday's own rule.
+		 * Rows 2 and 3 (Stands) are now GREEN. Row 1 stays RED, but on its MEMBER-FAILURE
+		 * assertions alone (|M| = 0 at midspan, the beam does not part) — evolution step 6, not this
+		 * slice; the bearings being fixed does not give the solver a way to fail the member.
+		 */
 		TArray<FBeamCase> Cases;
 
 		/*
@@ -457,7 +468,7 @@ namespace BeamAcceptanceTestSupport
 			1, TEXT("C24 timber beam, heavy load"), TEXT("member material (vs case 3)"),
 			TEXT("C24 timber"), C24DensityGramsPerCubicCm, C24BendingMPa, C24ShearMPa,
 			/*BlockHeightCm*/ 120.0, EVerdict::PartsAtMidspan,
-			/*DropsToday*/ 3, /*PassesToday*/ 1 });
+			/*DropsToday*/ INDEX_NONE, /*PassesToday*/ INDEX_NONE });
 
 		/*
 		 * ROW 2 — THE SAME BEAM WELL INSIDE CAPACITY, differing from row 1 in the block's height
@@ -469,7 +480,7 @@ namespace BeamAcceptanceTestSupport
 			2, TEXT("C24 timber beam, light load"), TEXT("load magnitude (vs case 1)"),
 			TEXT("C24 timber"), C24DensityGramsPerCubicCm, C24BendingMPa, C24ShearMPa,
 			/*BlockHeightCm*/ 10.0, EVerdict::Stands,
-			/*DropsToday*/ 3, /*PassesToday*/ 1 });
+			/*DropsToday*/ INDEX_NONE, /*PassesToday*/ INDEX_NONE });
 
 		/*
 		 * ROW 3 — THE STEEL TWIN. Identical geometry, identical block, only the member material
@@ -484,7 +495,7 @@ namespace BeamAcceptanceTestSupport
 			3, TEXT("S275 steel beam, heavy load"), TEXT("member material (vs case 1)"),
 			TEXT("S275 steel"), SteelDensityGramsPerCubicCm, S275YieldMPa, S275ShearMPa,
 			/*BlockHeightCm*/ 120.0, EVerdict::Stands,
-			/*DropsToday*/ 3, /*PassesToday*/ 1 });
+			/*DropsToday*/ INDEX_NONE, /*PassesToday*/ INDEX_NONE });
 
 		return Cases;
 	}
@@ -1215,6 +1226,14 @@ bool FBeamAcceptanceMidspanMomentTest::RunTest(const FString& Parameters)
  * confirm it survives where brick failed. If that passes, the system is proven data-driven."
  *
  * TODAY BOTH ROWS ANSWER IDENTICALLY, which is the finding, not an accident.
+ *
+ * THE MECHANISM OF THAT IDENTITY MOVED AT SLICE 3b/4 (2026-08-27) BUT THE FINDING DID NOT. Until
+ * then both rows FELL (3 pieces each) because the dry bearings read Max(); now the equilibrium LP
+ * is the break authority below the cap and stands the bearings, so both rows STAND (0 fallen
+ * each). Either way the member material changes nothing, because the solver still has no member-
+ * failure mechanism — so timber over its bending capacity does not part where steel does not, and
+ * this assertion stays RED until evolution step 6. The count in the message is dynamic; it now
+ * reads 0 and 0 rather than 3 and 3.
  *
  * NEEDS A TICKING WORLD: NO.
  */

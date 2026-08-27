@@ -2434,251 +2434,254 @@ bool FStructure::HasArchingAbutment(
 	return false;
 }
 
-bool FStructure::BreakByEquilibrium(int32 Pass)
+FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pass)
 {
 	/*
 	 * SCOPE BY SIZE FIRST — the fail-closed boundary that keeps synchronous LP authority off
 	 * the flagship scenarios (PROMOTION_DESIGN.md §12 D6-c). Above the block cap the gate
 	 * DECLINES and does nothing, so behaviour falls through to the per-joint capacity sweep
-	 * (the router) with no overturning check at all — exactly production's pre-gate behaviour,
-	 * and the reason the guard's deletion regresses nothing over the cap (it only ever fired
-	 * on single-bearing bodies well below it). The cap is compared against the LIVE block
-	 * count, injectable through SetEquilibriumGateBlockCap for the scope-by-size test.
+	 * (the router), which then both breaks AND enumerates support exactly as production did
+	 * before the gate. The cap is compared against the LIVE block count, injectable through
+	 * SetEquilibriumGateBlockCap for the scope-by-size test.
 	 *
 	 * Written as a positive test on the decline side (> cap), never NumPieces() <= cap, so a
 	 * degenerate cap lands on the fail-closed branch rather than slipping past.
 	 */
 	if (NumPieces() > EquilibriumGateBlockCap)
 	{
-		return false;
+		return EEquilibriumGateDisposition::DeclinedToRouter;
 	}
 
 	/*
-	 * A NO-OP WITHOUT COMPLETE GEOMETRY, exactly as the interim guard was and for the same
-	 * load-bearing reason: the LP reasons about moments of weights at centroids against
-	 * bearing rectangles, and with either missing there is nothing to take moments of. Both
-	 * fuzz generators emit no geometry, so they are provably untouched.
+	 * A NO-OP WITHOUT COMPLETE GEOMETRY, for the same load-bearing reason the bridge itself
+	 * refuses one: the LP reasons about moments of weights at centroids against bearing
+	 * rectangles, and with either missing there is nothing to take moments of. Both fuzz
+	 * generators emit no geometry, so they are provably untouched and stay on the router.
 	 */
 	if (!HasCompleteGeometry())
 	{
-		return false;
+		return EEquilibriumGateDisposition::DeclinedToRouter;
 	}
 
 	/*
 	 * ASK THE RIGID-BLOCK LP WHETHER THE WHOLE STRUCTURE HAS AN ADMISSIBLE EQUILIBRIUM. The
 	 * pose is FEASIBILITY at lambda = 1 (bGravityIsLive = false, PROMOTION_DESIGN §12 D6-b):
-	 * it returns the identical Stands/Falls boolean as lambda* but is 5-16x cheaper and
-	 * inherits the measured ~84-104-block authority band the cap is set from. No dual and no
-	 * Farkas extraction — that is Slice 3; this is a boolean referee.
+	 * it returns the identical Stands/Falls boolean as lambda* but is 5-16x cheaper, and on the
+	 * infeasible arm its phase-1 dual is extracted and Farkas-verified as the collapse
+	 * mechanism (Slice 3a) — the named set of blocks that move and joints that open or slide.
 	 *
 	 * A REFUSAL FAILS CLOSED TO THE ROUTER. The bridge declining (an out-of-plane joint, a
 	 * tombstone), the solver refusing or running over budget, all arrive as Unanswerable, and
-	 * every one of them declines here rather than inventing a break out of an answer the LP
-	 * could not give.
+	 * every one of them declines here rather than inventing a break — or a support answer — out
+	 * of an answer the LP could not give.
 	 */
 	RigidBlockOracle::FOracleProblem Problem;
 	FString WhyNot;
 
 	if (!RigidBlockOracle::BuildRigidBlockProblem(*this, Problem, WhyNot))
 	{
-		return false;
+		return EEquilibriumGateDisposition::DeclinedToRouter;
 	}
 
 	Problem.bGravityIsLive = false;
 
 	const RigidBlockOracle::FOracleResult Result = RigidBlockOracle::SolveRigidBlock(Problem);
+	const RigidBlockOracle::EOracleOutcome Outcome = RigidBlockOracle::OutcomeOf(Result);
 
-	if (RigidBlockOracle::OutcomeOf(Result) != RigidBlockOracle::EOracleOutcome::Falls)
+	if (Outcome == RigidBlockOracle::EOracleOutcome::Unanswerable)
+	{
+		return EEquilibriumGateDisposition::DeclinedToRouter;
+	}
+
+	if (Outcome == RigidBlockOracle::EOracleOutcome::Stands)
 	{
 		/*
-		 * STANDS or UNANSWERABLE: do nothing. Slice 2 is ADDITIVE-ONLY (PROMOTION_DESIGN §12
-		 * D6) — there is NO release veto here, because a whole-structure "LP stands => release
-		 * nothing" veto would over-protect genuine local losses (a wall the LP stands globally
-		 * while two teeth correctly drop). Suppressing a spurious release is Slice 3's
-		 * per-piece dual, so the dry-stack red stays red and is not touched here.
+		 * THE LP STANDS THE WHOLE STRUCTURE, so every piece it carries is genuinely held — even
+		 * a piece the router could only strand for want of a rule to divide load round a knot or
+		 * across an unabutted opening (rows 10 and 19). The mechanism is empty, so nothing moves;
+		 * writing the LP support (all bridged pieces Supported/Grounded) is the SOLE effect, and
+		 * it is what makes GetPieceSupport LP-authoritative below the cap. Nothing breaks — this
+		 * is not a whole-structure release veto but the absence of any mechanism to release.
 		 */
-		return false;
+		ApplyLimitAnalysisSupport(Problem, Result);
+		return EEquilibriumGateDisposition::AuthoritativeNoBreak;
 	}
 
 	/*
-	 * THE STRUCTURE HAS NO ADMISSIBLE EQUILIBRIUM. Attribute the loss to a body and release it
-	 * — the coarse, whole-body attribution of Slice 2 (the mechanism-level break set is
-	 * Slice 3). This generalises the interim guard's flood but drops its single-bearing abort
-	 * and its per-body moment test: the LP has already decided the fall, so all that remains is
-	 * WHICH body to bring down.
-	 *
-	 * The intact joints touching each piece — the same walk SolveLoads makes, rebuilt here
-	 * because this runs AFTER the capacity sweep has latched this pass's over-capacity joints,
-	 * and a joint that has just given is not a path a body may hold itself up through.
+	 * THE STRUCTURE HAS NO ADMISSIBLE EQUILIBRIUM, and the mechanism NAMES the loss. On this arm
+	 * SolveRigidBlock either Farkas-verified the certificate or refused (Unanswerable, handled
+	 * above), so a Falls here carries a certified mechanism; the guard below is fail-closed
+	 * defence, declining to the router rather than acting on an uncertified set.
 	 */
-	TArray<TArray<int32>> PieceJoints;
-	PieceJoints.SetNum(Pieces.Num());
+	const RigidBlockOracle::FOracleMechanism& Mechanism = Result.Mechanism;
+
+	if (!Mechanism.bPresent || !Mechanism.bIsCertified)
+	{
+		return EEquilibriumGateDisposition::DeclinedToRouter;
+	}
+
+	/*
+	 * THE MECHANISM IS THE SOLE BREAK AUTHORITY (PROMOTION_DESIGN.md §12 D7's 3b section): a
+	 * piece is released iff the mechanism moves it, a joint severed iff it opens or slides.
+	 * Write the LP support first (moved pieces Falling, the rest Supported/Grounded), then sever
+	 * the intact joints the mechanism opens, mapped back to production connections through the
+	 * bridge's ConnectionOfJoint provenance. Index-ordered and single-threaded, so the choice is
+	 * deterministic. Sever is only the mechanism of latching without a second utilisation
+	 * evaluation, stamped with this pass exactly as an over-capacity joint is.
+	 *
+	 * A JOINT ALREADY GONE IS SKIPPED, and this is what makes the outer cascade terminate: once
+	 * a body's joints are all severed the bridge no longer carries them (a given joint is out of
+	 * the LP), so the free body still falls the LP but its mechanism names no INTACT joint left
+	 * to sever — the pass breaks nothing and the loop below ends.
+	 */
+	ApplyLimitAnalysisSupport(Problem, Result);
+
+	bool bSeveredThisPass = false;
+
+	for (int32 Joint = 0; Joint < Mechanism.JointOpensOrSlides.Num(); ++Joint)
+	{
+		if (!Mechanism.JointOpensOrSlides[Joint])
+		{
+			continue;
+		}
+
+		if (!Problem.ConnectionOfJoint.IsValidIndex(Joint))
+		{
+			continue;
+		}
+
+		const int32 Connection = Problem.ConnectionOfJoint[Joint];
+
+		if (!Connections.IsValidIndex(Connection) || Connections[Connection].HasGiven())
+		{
+			continue;
+		}
+
+		Connections[Connection].Sever();
+		ConnectionBreakPass[Connection] = Pass;
+		bSeveredThisPass = true;
+	}
+
+	return bSeveredThisPass
+		? EEquilibriumGateDisposition::AuthoritativeBroke
+		: EEquilibriumGateDisposition::AuthoritativeNoBreak;
+}
+
+void FStructure::ApplyLimitAnalysisSupport(
+	const RigidBlockOracle::FOracleProblem& Problem,
+	const RigidBlockOracle::FOracleResult& Result)
+{
+	/*
+	 * MAKE GetPieceSupport LP-AUTHORITATIVE BELOW THE CAP (PROMOTION_DESIGN.md §12 D7's 3b
+	 * section, §3.7). The router's downward flood strands a piece whose load returns to it round
+	 * a cycle it has no rule to divide; the LP has no routing to fail, so if it stands the
+	 * structure that piece is genuinely carried. Overwrite the router's per-piece support with
+	 * the LP verdict for every piece the bridge included:
+	 *
+	 *   - the LP STANDS the structure (no mechanism): every bridged piece is carried, so it
+	 *     reads Supported, or Grounded if it is a foundation block — the router's Stranded is
+	 *     overridden (rows 10 and 19 go from router-stranded to LP-carried);
+	 *   - the LP is INFEASIBLE (a mechanism is present): the pieces the mechanism moves have
+	 *     lost the earth and read Falling; every other bridged piece is still carried and reads
+	 *     Supported/Grounded.
+	 *
+	 * A grounded block writes no equilibrium rows, so its mechanism triple is exactly zero and
+	 * bMoves is false — it always reads carried, and GetPieceSupport maps a carried grounded
+	 * piece to Grounded. Pieces the bridge did NOT include (removed, or excluded) are left with
+	 * the router's answer, which is correct: a removed piece has no support to assert.
+	 *
+	 * PieceOfBlock[b] and Mechanism.Blocks[b] are the SAME block-index order, so they are read
+	 * in lock-step; a piece that the LP carries is never left Stranded.
+	 */
+	const RigidBlockOracle::FOracleMechanism& Mechanism = Result.Mechanism;
+
+	for (int32 Block = 0; Block < Problem.PieceOfBlock.Num(); ++Block)
+	{
+		const int32 Piece = Problem.PieceOfBlock[Block];
+
+		if (!PieceSupported.IsValidIndex(Piece))
+		{
+			continue;
+		}
+
+		const bool bMoves = Mechanism.bPresent
+			&& Mechanism.Blocks.IsValidIndex(Block)
+			&& Mechanism.Blocks[Block].bMoves;
+
+		PieceSupported[Piece] = !bMoves;
+		PieceStranded[Piece] = false;
+	}
+}
+
+bool FStructure::BreakByCapacitySweep(int32 Pass)
+{
+	/*
+	 * THE PER-JOINT CAPACITY SWEEP — the router's break authority, run once per pass. Every joint
+	 * over its own capacity gives in the same pass (DESIGN.md §3), stamped with this pass. This is
+	 * the SOLE break authority above the block cap and on any LP refusal; below the cap the
+	 * equilibrium gate answers instead and this sweep does not run, so it never latches a joint the
+	 * mechanism did not name. Returns whether any joint gave.
+	 */
+	bool bBroke = false;
 
 	for (int32 Index = 0; Index < Connections.Num(); ++Index)
 	{
-		const FConnection& Connection = Connections[Index];
+		/*
+		 * BY REFERENCE, and this is the one line where that matters. FConnection is
+		 * copyable and its "has given" latch is a member of the object, so
+		 *
+		 *     for (FConnection C : Connections)
+		 *
+		 * — one missing ampersand — would latch every overloaded joint on a
+		 * TEMPORARY, leave the real connections intact, and report a structure that
+		 * breaks nothing under any load whatsoever.
+		 */
+		FConnection& Connection = Connections[Index];
 
+		/*
+		 * A joint that has already given is skipped rather than re-evaluated, and
+		 * THIS SKIP IS WHAT MAKES THE LOOP TERMINATE AT ALL. ApplyForce answers a
+		 * given joint with zero without latching a second time, so calling it looks
+		 * harmless — but HasGiven below asks about the JOINT, not about that call,
+		 * and it is still true. Every joint broken in an earlier pass would
+		 * re-report itself as breaking now: the stamp would be rewritten to the
+		 * current pass, bBroke would be set every time, and a structure that
+		 * settled long ago would cascade for ever. Confirmed by mutation — deleting
+		 * these four lines hangs the suite rather than merely failing it.
+		 *
+		 * The stamp is history; the latch is only the present. Only the transition
+		 * from intact to given belongs to a pass.
+		 */
 		if (Connection.HasGiven())
 		{
 			continue;
 		}
 
-		if (PieceJoints.IsValidIndex(Connection.PieceA))
-		{
-			PieceJoints[Connection.PieceA].Add(Index);
-		}
-
-		if (PieceJoints.IsValidIndex(Connection.PieceB))
-		{
-			PieceJoints[Connection.PieceB].Add(Index);
-		}
-	}
-
-	/*
-	 * THE GROUND-BORNE UNGROUNDED BONDED BODY: the maximal bonded set of non-grounded pieces
-	 * that reaches the earth only through bearing joints. Flood over intact joints among
-	 * non-grounded pieces to close each such set, then collect its BEARINGS — the intact joints
-	 * that link a member to a grounded piece. Iterated in piece-index order, so the choice is
-	 * deterministic and needs no threading.
-	 *
-	 * On the two-load-path fixture this is the single overhang, and its bearings are the two
-	 * bed joints beneath it: severing both drops it to Falling while both seats keep the earth.
-	 *
-	 * SLICE 2 ACTS ONLY ON A CLEAN, SINGLE ground-borne body. If none reaches the earth, or if
-	 * more than one does, the attribution is ambiguous at this coarseness and the gate DECLINES
-	 * rather than over-release — the accepted D5 coarseness, the joint sweep carries it. The
-	 * per-body selection an ambiguous case would need is not built because no test drives it.
-	 */
-	TArray<bool> Visited;
-	Visited.Init(false, Pieces.Num());
-
-	TArray<int32> Frontier;
-
-	int32 GroundBorneBodiesFound = 0;
-	TArray<int32> ChosenBearings;
-	TArray<int32> ChosenMembers;
-
-	for (int32 Start = 0; Start < Pieces.Num(); ++Start)
-	{
-		if (Visited[Start] || Pieces[Start].bIsGrounded || IsPieceRemoved(Start))
-		{
-			continue;
-		}
-
 		/*
-		 * Close one bonded set of non-grounded pieces, gathering the intact bearings that hang
-		 * it off grounded pieces as the flood reaches them.
+		 * THE MOMENT GOES IN BESIDE THE FORCE, exactly as GetConnectionUtilisation
+		 * hands the same pair to the same evaluator. The two are one question asked
+		 * twice — what is this joint carrying — and a sweep that broke joints on the
+		 * force alone would answer it differently from the readout the moment a load
+		 * path missed a centroid: a joint drawn at 1.25 of capacity, holding for ever.
+		 * Both arrays are rebuilt by the solve above and are indexed alike.
+		 *
+		 * AND SO DOES THE COMPOSITE DEPTH, WHICH IS THE SAME SEAM POINTING THE OTHER
+		 * WAY. It is a relief rather than a load, so a sweep that omitted it would
+		 * break joints the readout draws as comfortable — a corbel shown at 0.37 and
+		 * snapped at 22.9. Three arrays now, one solve, one evaluator.
 		 */
-		Visited[Start] = true;
-		Frontier.Reset();
-		Frontier.Add(Start);
+		Connection.ApplyForce(
+			ConnectionForces[Index], ConnectionMoments[Index],
+			ConnectionCompositeDepthCm[Index]);
 
-		TArray<int32> Bearings;
-
-		for (int32 Head = 0; Head < Frontier.Num(); ++Head)
+		if (Connection.HasGiven())
 		{
-			for (const int32 Walk : PieceJoints[Frontier[Head]])
-			{
-				const int32 Neighbour = OtherEndOf(Connections[Walk], Frontier[Head]);
-
-				if (Neighbour == INDEX_NONE)
-				{
-					continue;
-				}
-
-				if (Pieces[Neighbour].bIsGrounded)
-				{
-					Bearings.Add(Walk);
-					continue;
-				}
-
-				if (Visited[Neighbour])
-				{
-					continue;
-				}
-
-				Visited[Neighbour] = true;
-				Frontier.Add(Neighbour);
-			}
-		}
-
-		if (Bearings.Num() == 0)
-		{
-			/*
-			 * A non-grounded set with no bearing reaches the earth nowhere — an island the
-			 * support solve already reads as Falling and the router already releases. Not this
-			 * gate's body, and NOT counted, so its presence never makes the attribution ambiguous.
-			 */
-			continue;
-		}
-
-		/*
-		 * A SECOND ground-borne body makes the attribution ambiguous at this coarseness: decline
-		 * rather than guess which one the LP falls. Recorded by counting, so a later one still
-		 * declines even after the first was recorded.
-		 */
-		++GroundBorneBodiesFound;
-
-		if (GroundBorneBodiesFound == 1)
-		{
-			ChosenBearings = MoveTemp(Bearings);
-			ChosenMembers = Frontier;
-		}
-		else
-		{
-			return false;
+			ConnectionBreakPass[Index] = Pass;
+			bBroke = true;
 		}
 	}
 
-	if (GroundBorneBodiesFound != 1)
-	{
-		return false;
-	}
-
-	/*
-	 * IS THIS BODY THE REASON THERE IS NO EQUILIBRIUM? The whole-structure LP falls for the
-	 * WHOLE structure, which conflates a body this gate must bring down (a supported body past
-	 * balance) with a loss the ROUTER already owns (an island whose ground was cut, which reads
-	 * Falling without any help from here). Confirm the attribution by asking whether the
-	 * REMAINDER — the structure with this body's blocks taken out entirely, not merely severed —
-	 * has an admissible equilibrium. If it still does not, the fall belongs elsewhere and this
-	 * gate must DECLINE rather than fell a body that was holding the earth perfectly well (the
-	 * far standing wall of a distant-cut locality fixture is exactly this trap). A refusal on
-	 * the remainder fails closed the same way.
-	 */
-	const TSet<int32> Excluded(ChosenMembers);
-
-	RigidBlockOracle::FOracleProblem Remainder;
-	FString RemainderWhyNot;
-
-	if (!RigidBlockOracle::BuildRigidBlockProblem(*this, Excluded, Remainder, RemainderWhyNot))
-	{
-		return false;
-	}
-
-	Remainder.bGravityIsLive = false;
-
-	const RigidBlockOracle::FOracleResult RemainderResult = RigidBlockOracle::SolveRigidBlock(Remainder);
-
-	if (RigidBlockOracle::OutcomeOf(RemainderResult) != RigidBlockOracle::EOracleOutcome::Stands)
-	{
-		return false;
-	}
-
-	/*
-	 * THE BEARINGS GIVE. Latched and stamped exactly as the capacity sweep stamps, because a
-	 * body the LP finds no equilibrium for has failed under load and belongs in the collapse
-	 * sequence; Sever is only the mechanism of latching without a second utilisation
-	 * evaluation. The body loses every connection to the earth and the re-solve reports it
-	 * falling, whole.
-	 */
-	for (const int32 Bearing : ChosenBearings)
-	{
-		Connections[Bearing].Sever();
-		ConnectionBreakPass[Bearing] = Pass;
-	}
-
-	return true;
+	return bBroke;
 }
 
 int32 FStructure::SolveAndBreak()
@@ -2734,76 +2737,31 @@ int32 FStructure::SolveAndBreak()
 		const int32 Pass = PassesAlreadyStamped + BreakingPasses + 1;
 		bool bBrokeThisPass = false;
 
-		for (int32 Index = 0; Index < Connections.Num(); ++Index)
-		{
-			/*
-			 * BY REFERENCE, and this is the one line where that matters. FConnection is
-			 * copyable and its "has given" latch is a member of the object, so
-			 *
-			 *     for (FConnection C : Connections)
-			 *
-			 * — one missing ampersand — would latch every overloaded joint on a
-			 * TEMPORARY, leave the real connections intact, and report a structure that
-			 * breaks nothing under any load whatsoever.
-			 */
-			FConnection& Connection = Connections[Index];
-
-			/*
-			 * A joint that has already given is skipped rather than re-evaluated, and
-			 * THIS SKIP IS WHAT MAKES THE LOOP TERMINATE AT ALL. ApplyForce answers a
-			 * given joint with zero without latching a second time, so calling it looks
-			 * harmless — but HasGiven below asks about the JOINT, not about that call,
-			 * and it is still true. Every joint broken in an earlier pass would
-			 * re-report itself as breaking now: the stamp would be rewritten to the
-			 * current pass, bBrokeThisPass would be set every time, and a structure that
-			 * settled long ago would cascade for ever. Confirmed by mutation — deleting
-			 * these four lines hangs the suite rather than merely failing it.
-			 *
-			 * The stamp is history; the latch is only the present. Only the transition
-			 * from intact to given belongs to a pass.
-			 */
-			if (Connection.HasGiven())
-			{
-				continue;
-			}
-
-			/*
-			 * THE MOMENT GOES IN BESIDE THE FORCE, exactly as GetConnectionUtilisation
-			 * hands the same pair to the same evaluator. The two are one question asked
-			 * twice — what is this joint carrying — and a sweep that broke joints on the
-			 * force alone would answer it differently from the readout the moment a load
-			 * path missed a centroid: a joint drawn at 1.25 of capacity, holding for ever.
-			 * Both arrays are rebuilt by the solve above and are indexed alike.
-			 *
-			 * AND SO DOES THE COMPOSITE DEPTH, WHICH IS THE SAME SEAM POINTING THE OTHER
-			 * WAY. It is a relief rather than a load, so a sweep that omitted it would
-			 * break joints the readout draws as comfortable — a corbel shown at 0.37 and
-			 * snapped at 22.9. Three arrays now, one solve, one evaluator.
-			 */
-			Connection.ApplyForce(
-				ConnectionForces[Index], ConnectionMoments[Index],
-				ConnectionCompositeDepthCm[Index]);
-
-			if (Connection.HasGiven())
-			{
-				ConnectionBreakPass[Index] = Pass;
-				bBrokeThisPass = true;
-			}
-		}
-
 		/*
-		 * THE SECOND GROUND A PASS BREAKS ON: the equilibrium gate (DESIGN.md §7 step 4,
-		 * PROMOTION_DESIGN.md §6 Slice 2). The capacity sweep asks each joint about its own
-		 * stresses; this asks the rigid-block LP whether the WHOLE structure has any admissible
-		 * force system in equilibrium with self-weight — a state no per-joint number can
-		 * express, which is why a leaning stack read the same comfortable utilisation at every
-		 * height and a two-load-path body reads safe past its tipping point. Same pass, same
-		 * stamp: the two grounds are simultaneous, not sequenced. Scoped by a block cap and
-		 * fails closed to this router above it.
+		 * THE EQUILIBRIUM GATE DECIDES THE PASS, AND BELOW THE BLOCK CAP IT IS THE SOLE BREAK
+		 * AUTHORITY (DESIGN.md §7 step 4, PROMOTION_DESIGN.md §6 Slice 3, §12 D7's 3b section). It
+		 * asks the rigid-block LP whether the WHOLE structure has any admissible force system in
+		 * equilibrium with self-weight — a state no per-joint number can express, which is why a
+		 * leaning stack read the same comfortable utilisation at every height and a two-load-path
+		 * body reads safe past its tipping point — and on "no" it severs exactly the joints the
+		 * collapse mechanism opens. It also rewrites the support arrays from the LP, so
+		 * GetPieceSupport is LP-authoritative below the cap.
+		 *
+		 * WHEN IT DECLINES (over the cap, no geometry, an LP refusal) the per-joint capacity sweep
+		 * is the sole authority this pass, exactly as production behaved before the gate. When it
+		 * ANSWERS, the capacity sweep is DEMOTED to the estimator it already is: the forces it would
+		 * read still sit in ConnectionForces from the solve above, so the utilisation overlay is
+		 * unchanged, but it latches nothing — the mechanism is the only thing that breaks a joint.
 		 */
-		if (BreakByEquilibrium(Pass))
+		const EEquilibriumGateDisposition Gate = BreakByEquilibrium(Pass);
+
+		if (Gate == EEquilibriumGateDisposition::AuthoritativeBroke)
 		{
 			bBrokeThisPass = true;
+		}
+		else if (Gate == EEquilibriumGateDisposition::DeclinedToRouter)
+		{
+			bBrokeThisPass = BreakByCapacitySweep(Pass);
 		}
 
 		/*
@@ -2829,10 +2787,10 @@ int32 FStructure::SolveAndBreak()
 void FStructure::SetEquilibriumGateBlockCap(int32 MaxBlocks)
 {
 	/*
-	 * SLICE 2 COMPILE STUB. Stores the cap and does nothing else — no cascade code reads
-	 * EquilibriumGateBlockCap yet. dev-expert wires the equilibrium gate to consult it so the
-	 * gate is authoritative at or below the cap and fails closed to the router above it. Kept a
-	 * bare assignment (no branch, no arithmetic) so it drives no behaviour on its own.
+	 * Stores the cap the equilibrium gate consults: the gate is authoritative at or below it and
+	 * fails closed to the router above it (PROMOTION_DESIGN.md §12 D6-c). Injectable so the
+	 * scope-by-size tests can drive either side of the boundary on a small fixture. A bare
+	 * assignment — no branch, no arithmetic — so it drives no behaviour on its own.
 	 */
 	EquilibriumGateBlockCap = MaxBlocks;
 }

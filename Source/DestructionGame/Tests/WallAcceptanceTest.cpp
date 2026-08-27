@@ -1795,7 +1795,7 @@ namespace WallAcceptanceTestSupport
 	 *                 entire content of a LOCAL LOSS verdict. By hand a tooth is cheap to hang:
 	 *                 0.1 MPa over two head joints (2 x 66.625 cm^2) and the two bed patches above
 	 *                 it (2 x 105.0625 cm^2) is 3434 N against a brick's 26.67 N, about 129x — so
-	 *                 the named teeth are demonstrably not what 82.63 is measuring
+	 *                 the named teeth are demonstrably not what 218.42 is measuring
 	 *
 	 * THE STANDING DOUBT SURVIVES THE MEASUREMENT UNTOUCHED: the true count is more than the two
 	 * named and fewer than the model's nine, and the LP could not narrow it because it does not
@@ -2349,14 +2349,19 @@ namespace WallAcceptanceTestSupport
 		 * could not route rather than pieces the wall could not hold, and the oracle sweep measured
 		 * that ALL twelve got there without a joint breaking.
 		 */
-		{
-			FWallCase& Case = Add(10, TEXT("Opening at a free end, no abutment"), EVerdict::Stands,
-				CoveredCourses, StandardCells, Case10Cuts, {}, Case10Stands,
-				TEXT("abutment against case 7 — NO LONGER SEPARATES; see the CASE 10 block"));
-
-			Case.DropsToday = 12;
-			Case.StrandsToday = 3;
-		}
+		/*
+		 * GREEN SINCE SLICE 3b/4 (2026-08-27). The pins are gone because the row is no longer
+		 * red: below the 200-block cap the equilibrium LP is the sole break authority, it stands
+		 * this wall (lambda* 111.5, measured in the oracle sweep) and carries the panel the router
+		 * could only strand, so production now drops 0 and strands 0 — it AGREES with the ruled
+		 * STANDS. The old `DropsToday = 12` / `StrandsToday = 3` characterised the router's wrong
+		 * answer (an absent loop-division rule, DESIGN §5.1), and per FWallCase::DropsToday's own
+		 * rule they are DELETED in the edit that greens the row rather than re-pinned to a new wrong
+		 * number. The survivor region stays as a now-tautological identity pin.
+		 */
+		Add(10, TEXT("Opening at a free end, no abutment"), EVerdict::Stands,
+			CoveredCourses, StandardCells, Case10Cuts, {}, Case10Stands,
+			TEXT("abutment against case 7 — NO LONGER SEPARATES; see the CASE 10 block"));
 
 		/* C — spanning between supports. */
 
@@ -2469,25 +2474,36 @@ namespace WallAcceptanceTestSupport
 		 * row that can see the spreading front MOVE rather than merely change size. The pins stay
 		 * because the model still disagrees.
 		 */
-		{
-			FWallCase& Case = Add(19, TEXT("Bottom course out under half the wall"),
-				EVerdict::Stands, 10, StandardCells, Case19Cuts, {}, Case19Stands, nullptr);
-
-			Case.DropsToday = 34;
-			Case.StrandsToday = 6;
-		}
+		/*
+		 * GREEN SINCE SLICE 3b/4 (2026-08-27), exactly as case 10. Below the cap the equilibrium
+		 * LP stands this wall (lambda* 48.0) and carries the half the router could only strand, so
+		 * production drops 0 and strands 0 — it AGREES with the ruled STANDS. The old
+		 * `DropsToday = 34` / `StrandsToday = 6` characterised the router's unroutability and are
+		 * DELETED here rather than re-pinned. The survivor region stays as an identity pin.
+		 */
+		Add(19, TEXT("Bottom course out under half the wall"),
+			EVerdict::Stands, 10, StandardCells, Case19Cuts, {}, Case19Stands, nullptr);
 
 		/*
-		 * LOCAL LOSS — RE-EXAMINED 2026-08-12 AND CONFIRMED UNCHANGED, which is a ruling too. It
-		 * went to the user with cases 9, 10 and 19; those three moved and this one did not. The
-		 * measurement had nothing to move it with: lambda* is global and a local loss is local, and
-		 * unlike 10 and 19 production's answer here IS a strength verdict (one pass, worst 42.71).
-		 * The standing doubt — the true count is above two and below the model's nine — survives
-		 * the measurement and waits for equilibrium promotion. See the block above Case20Cuts.
+		 * RE-RULED TO STANDS AT SLICE 4 (2026-08-27), the standing doubt settled by the LP. Through
+		 * 2026-08-12 this was a LOCAL LOSS of two teeth that production over-answered by dropping
+		 * nine, and the recorded doubt was that the true count sat "above two and below the model's
+		 * nine". The equilibrium LP settled it in the STANDS direction: below the 200-block cap it
+		 * is the sole break authority, it stands the whole wall (lambda* 218.42) and holds the two
+		 * teeth ~129x clear, so the true count is ZERO — the old two-tooth local loss was the
+		 * per-joint heuristic's error, not the wall's. Production now drops 0 (was 9), so the
+		 * `DropsToday = 9` pin is deleted with the re-ruling.
+		 *
+		 * WHY STANDS AND NOT A ROW-21-STYLE INVERTED RED. The global feasibility LP is the honest
+		 * mechanism here and it is feasible with a wide margin, so the LP and production AGREE on
+		 * STANDS — there is no residual disagreement to pin red (unlike row 21, whose ruled
+		 * COLLAPSE the LP contradicts). A genuinely-local two-tooth mechanism, if one exists, needs
+		 * per-region interrogation the global solve cannot express (PROMOTION_DESIGN §3.5, §12 D7);
+		 * that is a later slice, not a reason to hold this row red. The teeth are named as the
+		 * SURVIVOR region so their identity is pinned: they must keep their footing.
 		 */
-		Add(20, TEXT("Staircase void"), EVerdict::LocalLoss,
-			CoveredCourses, 14, Case20Cuts, Case20Falls, {}, nullptr)
-			.DropsToday = 9;
+		Add(20, TEXT("Staircase void"), EVerdict::Stands,
+			CoveredCourses, 14, Case20Cuts, {}, Case20Falls, nullptr);
 
 		/* G — openings too big for what covers them. The set's only two falling verdicts. */
 
@@ -5242,7 +5258,17 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	 * knife edge (~1.2x, was 8.2x) — and the model still produces the collapse of the shape the
 	 * row names, so the predicate agrees and the row is green.
 	 */
-	const int32 KnownDisagreements[] = { 10, 19, 20, 21 };
+	/*
+	 * SHRANK TO {21} AT SLICE 4 (2026-08-27). Cases 10, 19 and 20 left this set the day the
+	 * equilibrium LP became the break authority below the 200-block cap: it stands all three
+	 * (lambda* 111.5 / 48.0 / 218.42) where the router only stranded or over-dropped, so the model
+	 * now AGREES with their STANDS verdicts and their captions no longer admit a disagreement.
+	 * Case 21 stays — its ruled COLLAPSE the LP still contradicts (it stands the wall at 17.24),
+	 * the one surviving inverted red. This edit is the paperwork the tripwire below demands when
+	 * the set shrinks: the list, the three captions' disagreement markers, and the rows'
+	 * DropsToday/StrandsToday anchors in Acceptance.Wall.Catalogue all came off together.
+	 */
+	const int32 KnownDisagreements[] = { 21 };
 
 	const TArray<FWallCase> Cases = AllWallCases();
 

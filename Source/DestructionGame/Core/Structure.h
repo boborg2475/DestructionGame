@@ -5,6 +5,17 @@
 #include "CoreMinimal.h"
 #include "Core/Connection.h"
 
+/*
+ * Forward-declared so the equilibrium gate can take the LP problem and result by const
+ * reference without Structure.h pulling in the whole oracle header — the full definitions
+ * live in Core/RigidBlock, which Structure.cpp includes.
+ */
+namespace RigidBlockOracle
+{
+	struct FOracleProblem;
+	struct FOracleResult;
+}
+
 /**
  * A piece of a structure: plain data, deliberately.
  *
@@ -1001,42 +1012,92 @@ private:
 		const TArray<bool>& PieceReseatedOnAnArch) const;
 
 	/**
-	 * THE EQUILIBRIUM GATE — DESIGN.md §7 evolution step 4, PROMOTION_DESIGN.md §6 Slice 2. It
-	 * replaces the interim overturning guard: instead of a per-body free-body moment test with a
-	 * single-bearing blind spot, it asks the rigid-block LP whether the WHOLE structure has any
-	 * admissible force system in equilibrium with self-weight, and on "no" brings down the body
-	 * that has lost the earth. One entry point, called from SolveAndBreak and from nothing else.
+	 * HOW THE EQUILIBRIUM GATE DISPOSED OF A PASS, so SolveAndBreak knows whether the LP answered
+	 * authoritatively (and it must therefore NOT run the per-joint capacity sweep) or declined (and
+	 * the router sweep is the sole authority for this pass). Below the block cap the mechanism is
+	 * the ONLY break authority (PROMOTION_DESIGN.md §12 D7's 3b section, §3.7); the strength sweep
+	 * is demoted to an estimator that still populates the utilisation readout but latches nothing.
+	 *
+	 * DeclinedToRouter is the ZERO enumerator so a default or fail-closed value routes to the
+	 * capacity sweep — the same fail-closed polarity every other refusal here has.
+	 */
+	enum class EEquilibriumGateDisposition : uint8
+	{
+		/** Over cap / no geometry / bridge refused / LP unanswerable: the capacity sweep decides. */
+		DeclinedToRouter = 0,
+
+		/** The LP answered and severed nothing this pass (it stood, or the mechanism's joints were already gone). */
+		AuthoritativeNoBreak,
+
+		/** The LP answered Falls and severed the mechanism's opening/sliding joints this pass. */
+		AuthoritativeBroke,
+	};
+
+	/**
+	 * THE EQUILIBRIUM GATE — DESIGN.md §7 evolution step 4, PROMOTION_DESIGN.md §6 Slice 3. Below
+	 * the block cap it is the SOLE break authority: it asks the rigid-block LP whether the WHOLE
+	 * structure has any admissible force system in equilibrium with self-weight, and on "no" it
+	 * extracts the phase-1 dual (the Farkas certificate = the kinematic collapse mechanism, Slice
+	 * 3a) and severs exactly the joints that mechanism opens or slides. One entry point, called
+	 * from SolveAndBreak and from nothing else.
 	 *
 	 * WHAT IT CATCHES that no joint check can: ComputeUtilisation happily reports a confident
 	 * number for a joint on which NO EQUILIBRIUM SOLUTION EXISTS (DESIGN.md §5.7) — a stack
 	 * offset far enough per course, or a body on two bearings both to one side of its centroid,
 	 * reads a comfortable per-joint utilisation while its resultant has long since left the
 	 * bearing. The LP reasons about the whole admissible force system, so it sees the loss the
-	 * guard's single-bearing scope could not.
+	 * per-joint sweep cannot; equally it STANDS a structure the router only strands for want of a
+	 * routing rule (a knot, an opening with no abutment), which is why it also decides support.
 	 *
 	 * THE POSE IS FEASIBILITY AT lambda = 1 (bGravityIsLive = false, PROMOTION_DESIGN §12 D6-b):
 	 * the identical Stands/Falls boolean as lambda* but far cheaper. SCOPED BY A BLOCK CAP
 	 * (EquilibriumGateBlockCap, D6-c): above it the gate DECLINES and behaviour falls through to
-	 * the per-joint capacity sweep with no overturning check — production's pre-gate behaviour,
-	 * which the guard's deletion cannot regress because the guard only ever fired well below the
-	 * cap. A NO-OP without complete geometry and on any LP refusal (fail closed to the router).
+	 * the per-joint capacity sweep, which then both breaks AND enumerates support exactly as
+	 * production did before the gate. A NO-OP without complete geometry and on any LP refusal
+	 * (fail closed to the router).
 	 *
-	 * ADDITIVE-ONLY (D6): on Stands the gate does NOTHING — there is no release veto in Slice 2.
-	 * On Falls it attributes the loss coarsely to the single clean ground-borne ungrounded bonded
-	 * body and severs all its bearings, latched and stamped with this pass exactly as an
-	 * over-capacity joint is. Ambiguous attribution (no such body, or more than one) declines.
+	 * ON STANDS OR FALLS it rewrites the support arrays from the LP (PieceSupported/PieceStranded)
+	 * so GetPieceSupport is LP-authoritative below the cap: a piece the LP carries reads Supported,
+	 * a piece the mechanism moves reads Falling, overriding the router's Stranded verdict. On Falls
+	 * it severs the mechanism's joints (mapped to production connections through ConnectionOfJoint),
+	 * latched and stamped with this pass exactly as an over-capacity joint is.
 	 *
 	 * @param Pass The cascade pass any break is stamped with.
-	 * @return Whether at least one joint gave.
+	 * @return How the gate disposed of this pass (see EEquilibriumGateDisposition).
 	 */
-	bool BreakByEquilibrium(int32 Pass);
+	EEquilibriumGateDisposition BreakByEquilibrium(int32 Pass);
 
 	/**
-	 * SLICE 2 COMPILE STUB — the equilibrium gate's block cap. Default is the conservative end of
-	 * the measured ~84-104-block authority band (D6-c). No cascade code reads it yet; dev wires
-	 * the gate to consult it. See SetEquilibriumGateBlockCap.
+	 * REWRITE THE PER-PIECE SUPPORT ARRAYS FROM THE LP VERDICT, so GetPieceSupport is
+	 * LP-authoritative below the cap (PROMOTION_DESIGN.md §12 D7's 3b section). Every piece the
+	 * bridge included reads Supported/Grounded if the LP carries it and Falling if the mechanism
+	 * moves it; the router's Stranded verdict is overridden for the pieces the LP stands. Called
+	 * only from BreakByEquilibrium, on an answered (Stands or Falls) solve. See its definition.
 	 */
-	int32 EquilibriumGateBlockCap = 84;
+	void ApplyLimitAnalysisSupport(
+		const RigidBlockOracle::FOracleProblem& Problem,
+		const RigidBlockOracle::FOracleResult& Result);
+
+	/**
+	 * THE PER-JOINT CAPACITY SWEEP — the router's break authority, one sweep per pass, stamping
+	 * every joint over its own capacity with this pass. The sole break authority above the block
+	 * cap and on any LP refusal; below the cap the equilibrium gate answers instead and this does
+	 * not run. Returns whether any joint gave. Called only from SolveAndBreak.
+	 */
+	bool BreakByCapacitySweep(int32 Pass);
+
+	/**
+	 * THE EQUILIBRIUM GATE'S BLOCK CAP — the fail-closed boundary that keeps synchronous LP
+	 * authority off the flagship scenarios (D6-c). At or below it the gate is authoritative; above
+	 * it the gate declines to the router. Raised from the Slice-2 latency band (84) at Slice 3b so
+	 * the medium wall-catalogue fixtures (rows 10/19/20 at 125-174 blocks) are IN scope for the LP
+	 * to stand or fell — the driving reds of 3b — while the 375-block flagship wall and the giant
+	 * corbels stay above it on the router. This exceeds the measured ~84-104-block per-action
+	 * latency band, so a structure of a few hundred blocks now solves the LP synchronously; no
+	 * production structure sits in that range today (the default wall is ~1200 blocks), so the
+	 * cost is a test-time one for now — CURRENT_STATE carries the open latency item.
+	 */
+	int32 EquilibriumGateBlockCap = 200;
 
 	TArray<FStructurePiece> Pieces;
 	TArray<FConnection> Connections;

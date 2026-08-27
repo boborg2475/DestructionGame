@@ -437,8 +437,7 @@ namespace DestructionScenarios
 			TEXT("Case 7's four cells of cover, cut through to the free end so one side of the "
 				"opening has nothing beyond it. Expected: STANDS — the panel hanging off the jamb "
 				"cantilevers as a bonded deep beam, easily under both its characteristic and mean "
-				"bond strength. THE MODEL CURRENTLY DISAGREES: it still routes load only downward, "
-				"so it drops the unsupported panel instead of letting it cantilever."),
+				"bond strength, and the equilibrium LP now carries it exactly so."),
 			ScenariosWallCoveredCourses, ScenariosWallStandardCells,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall10Cuts },
@@ -513,9 +512,8 @@ namespace DestructionScenarios
 				"left-hand half of the wall. Expected: STANDS — the wedge of masonry left without "
 				"a footing cantilevers off the half that still has one, over more than a metre, the "
 				"way a bay of underpinning relies on the wall above bridging it; the hand check straddles "
-				"the published strength bases, the closest call in the set. THE MODEL CURRENTLY "
-				"DISAGREES: it still routes load only downward, so it drops the wedge instead of "
-				"letting it cantilever."),
+				"the published strength bases, the closest call in the set, and the equilibrium LP "
+				"now carries the wedge instead of stranding it."),
 			10, ScenariosWallStandardCells,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall19Cuts },
@@ -523,9 +521,10 @@ namespace DestructionScenarios
 		{ TEXT("wall-20"), TEXT("Lvl_Wall20"), TEXT("Staircase void"),
 			TEXT("A raking void cut up through the wall, each course reaching one cell less far "
 				"right than the one below, so the masonry beside it steps out over the hole as it "
-				"rises. Expected: LOCAL LOSS — the two bricks left with no bed under them at all "
-				"drop, and the overhang stands. THE MODEL CURRENTLY DISAGREES: it takes the "
-				"half-seated bricks down with them."),
+				"rises. Expected: STANDS — the equilibrium LP holds the whole overhang, the two "
+				"half-seated teeth included, ~129x clear of any admissible collapse. The old reading "
+				"expected the two end teeth to drop as a local loss; the LP finds a global force "
+				"path that carries them, so nothing comes down."),
 			ScenariosWallCoveredCourses, 14,
 			DestructionWallCases::EWallBond::Running, INDEX_NONE, 0.0, INDEX_NONE,
 			ScenariosWall20Cuts },

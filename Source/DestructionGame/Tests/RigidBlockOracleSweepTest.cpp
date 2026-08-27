@@ -1736,34 +1736,44 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
 
 	TArray<FSweepRow> Rows;
 
+	/*
+	 * ALL THREE MOVED FROM ORACLE-STANDS / PRODUCTION-FALLS TO AGREE-STANDS AT SLICE 3b/4
+	 * (2026-08-27). The oracle lambda* windows are UNCHANGED (the solver did not move); what
+	 * changed is production's half of the diff. Below the 200-block cap the equilibrium LP is now
+	 * the sole break authority, so it stands the bearings the one-cell thrust gate used to drop
+	 * via Max() outside the kern — production drops 0 (was 3) on every row and agrees with the
+	 * oracle it used to dissent from. The material discrimination (18.30 vs 2.65) still lives in
+	 * the oracle's lambda*; production has no member-failure mechanism either way, which is why
+	 * the beam CATALOGUE row 1 stays red on |M| = 0 (step 6) while these agree on STANDS.
+	 */
 	Rows.Add({ TEXT("C24 timber beam, heavy load"),
 		TEXT("oracle: plastic stress block + rigid-block redistribution reach 2.65; ")
-		TEXT("production: dry bearings read Max() outside the kern and everything falls"),
+		TEXT("production now agrees below the cap (the LP replaced the dry-bearing Max())"),
 		[](FStructure& Out, FString& Why)
 		{
 			return BuildBeam(BeamC24DensityGramsPerCubicCm, BeamC24BendingMPa,
 				BeamC24ShearMPa, 120.0, Out, Why);
 		},
-		ERelation::OracleStandsProductionFalls, 2.64609, 2.64612, 3, 0 });
+		ERelation::AgreeStands, 2.64609, 2.64612, 0, 0 });
 
 	Rows.Add({ TEXT("C24 timber beam, light load"),
-		TEXT("a sensibly loaded joist; production still drops it whole (bearing Max)"),
+		TEXT("a sensibly loaded joist; production now stands it too below the cap"),
 		[](FStructure& Out, FString& Why)
 		{
 			return BuildBeam(BeamC24DensityGramsPerCubicCm, BeamC24BendingMPa,
 				BeamC24ShearMPa, 10.0, Out, Why);
 		},
-		ERelation::OracleStandsProductionFalls, 28.8010, 28.8013, 3, 0 });
+		ERelation::AgreeStands, 28.8010, 28.8013, 0, 0 });
 
 	Rows.Add({ TEXT("S275 steel beam, heavy load"),
 		TEXT("steel at 18.30 vs timber's 2.65: the oracle discriminates the member ")
-		TEXT("material 6.9x; production answers all three rows identically"),
+		TEXT("material 6.9x; production stands all three below the cap"),
 		[](FStructure& Out, FString& Why)
 		{
 			return BuildBeam(BeamSteelDensityGramsPerCubicCm, BeamS275YieldMPa,
 				BeamS275YieldMPa / FMath::Sqrt(3.0), 120.0, Out, Why);
 		},
-		ERelation::OracleStandsProductionFalls, 18.2992, 18.2994, 3, 0 });
+		ERelation::AgreeStands, 18.2992, 18.2994, 0, 0 });
 
 	RunRows(*this, Rows);
 
@@ -1944,19 +1954,21 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
 	TArray<FSweepRow> Rows;
 
 	/*
-	 * MEASURED 2026-08-09: lambda* = 9592.68 (slice 1's floor of 100 was generous by
-	 * two orders), production drops BOTH non-grounded bricks in two passes: pass 1
-	 * breaks P's seat (relief refused at 1.4921, dry tension reads Max), P falls back
-	 * on its head joint to N, and pass 2 then condemns N's own seat — the combined
-	 * resultant sits outside N's kern and a dry joint outside the kern reads Max (the
-	 * missing no-tension rocking model, DESIGN's known standing-reads-as-falling gap).
-	 * So the disagreement is TWO bricks wide, not one.
+	 * MOVED FROM ORACLE-STANDS / PRODUCTION-FALLS TO AGREE-STANDS AT SLICE 3b/4 (2026-08-27); the
+	 * oracle lambda* is UNCHANGED at 9592.68. Through 2026-08-09 production dropped BOTH
+	 * non-grounded bricks in two passes — pass 1 refused P's relief at 1.4921 and a dry joint
+	 * outside the kern read Max(), pass 2 condemned N behind it — the missing no-tension rocking
+	 * model, DESIGN's standing-reads-as-falling gap. Below the 200-block cap the equilibrium LP is
+	 * now the break authority and finds the edge-contact jamming force system the limit theorem
+	 * always guaranteed, so production stands both bricks (drops 0, was 2) and agrees with the
+	 * oracle. The lambda* two orders above 1 confirms this is a wide-margin equilibrium, not a
+	 * knife edge.
 	 */
 	Rows.Add({ TEXT("one-cell dry half seat, with abutment"),
-		TEXT("edge-contact jamming (limit theorem) vs kern-and-centroid refusal at ")
-		TEXT("1.4921, which then takes the abutting neighbour down with it"),
+		TEXT("edge-contact jamming (limit theorem); production now stands both bricks below the ")
+		TEXT("cap where the LP replaced the kern-and-centroid refusal"),
 		[](FStructure& Out, FString& Why) { return BuildOneCellDryPair(Out, Why); },
-		ERelation::OracleStandsProductionFalls, 9592.67, 9592.69, 2, 0 });
+		ERelation::AgreeStands, 9592.67, 9592.69, 0, 0 });
 
 	RunRows(*this, Rows);
 
@@ -2642,19 +2654,20 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("and 0.14x of f_xk2 (0.40) on a STRAIGHT vertical plane, and the real crack path ")
 		TEXT("is a toothed staircase carrying bed-joint cohesion the plane cannot see. ")
 		TEXT("Same mechanism family as the 2026-08-06 free-end ruling, scaled up to 3.75 ")
-		TEXT("cells, which is what the ruling credited. AND ")
-		TEXT("PRODUCTION BREAKS NOTHING TO GET HERE: 0 cascade passes at a worst reading ")
-		TEXT("of 0.300, so all 12 are pieces the downward-only router could not route, ")
-		TEXT("not joints that gave — its verdict is an ABSENT MECHANISM, not a strength ")
-		TEXT("finding, and that is what decided the ruling: a router with nowhere to send ")
-		TEXT("the load is not a third opinion about masonry"),
+		TEXT("cells, which is what the ruling credited. PRODUCTION NOW AGREES (Slice 3b/4, ")
+		TEXT("2026-08-27): below the 200-block cap the equilibrium LP is the break authority ")
+		TEXT("and carries the panel the downward-only router could only strand, so production ")
+		TEXT("drops 0 (was 12) and strands 0 (was 3) — the absent-mechanism verdict is gone and ")
+		TEXT("the row agrees with the oracle. The lambda* window is UNCHANGED; only production's ")
+		TEXT("half of the diff moved"),
 		Scenario(TEXT("wall-10")),
 		/*
 		 * RE-PINNED 2026-08-12 for the partial-pricing pivot-path spread (see the
 		 * PARTIAL-PRICING RE-PIN note above): midpoint of 35.8172298 (old path) and
-		 * 35.817113279469787 (new path), +/-2e-5 relative.
+		 * 35.817113279469787 (new path), +/-2e-5 relative. THE LAMBDA* WINDOW IS UNTOUCHED
+		 * BY SLICE 4 — the solver did not move; only ProductionFallen/Stranded went 12/3 -> 0.
 		 */
-		ERelation::OracleStandsProductionFalls, 111.4952, 111.4997, 12, 3 });
+		ERelation::AgreeStands, 111.4952, 111.4997, 0, 0 });
 
 	Rows.Add({ TEXT("wall-19 bottom course out under half the wall"),
 		TEXT("THIS MEASUREMENT IS WHAT MOVED THE CATALOGUE, and it is the CLOSEST CALL of ")
@@ -2674,19 +2687,19 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("judgement and is recorded as one: it is an END CANTILEVER with no second ")
 		TEXT("support to redistribute to, against the practice anchor of ~1 m underpinning ")
 		TEXT("bays that a bonded wall is expected to bridge — and 135 cm is longer than ")
-		TEXT("that, which the ruling knows. Production ")
-		TEXT("breaks NOTHING to drop 34 either (0 cascade passes, worst reading 0.318) — ")
-		TEXT("with the base gone a downward-only router has nowhere to send the load, so ")
-		TEXT("this row and wall-10 both report an absent mechanism as a collapse"),
+		TEXT("that, which the ruling knows. PRODUCTION NOW AGREES (Slice 3b/4, 2026-08-27): ")
+		TEXT("below the cap the LP carries the wedge the base-less router could only strand, so ")
+		TEXT("production drops 0 (was 34) and strands 0 (was 6). The lambda* window is UNCHANGED"),
 		Scenario(TEXT("wall-19")),
 		/*
 		 * RE-PINNED 2026-08-12 for the partial-pricing pivot-path spread (see the
 		 * PARTIAL-PRICING RE-PIN note above wall-10): midpoint of 12.3824832 (old
 		 * path) and 12.382629959455667 (new path), +/-2e-5 relative — this fixture
 		 * carries the WORST measured pivot-path spread (1.19e-5), which is the
-		 * measurement the +/-2e-5 half-width is built from.
+		 * measurement the +/-2e-5 half-width is built from. THE LAMBDA* WINDOW IS
+		 * UNTOUCHED BY SLICE 4 — only ProductionFallen/Stranded went 34/6 -> 0.
 		 */
-		ERelation::OracleStandsProductionFalls, 47.96274, 47.96466, 34, 6 });
+		ERelation::AgreeStands, 47.96274, 47.96466, 0, 0 });
 
 	/*
 	 * THE PIER PAIR, WHOSE DISCRIMINATION DESIGN §8 EXPLICITLY HANDED TO THIS ORACLE.
@@ -2741,24 +2754,21 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		ERelation::AgreeStands, 868.62287, 868.62461, 0, 0 });
 
 	Rows.Add({ TEXT("wall-20 staircase void"),
-		TEXT("THE RULING THAT CONFIRMED A ROW RATHER THAN MOVING IT: examined on 2026-08-12 ")
-		TEXT("beside 9, 10 and 19 — which all moved — and ruled UNCHANGED, verdict, named ")
-		TEXT("teeth, pins and doubt alike. This is the row where the vocabularies do not meet: the ")
-		TEXT("catalogue rules a LOCAL LOSS of two NAMED teeth (course 3 cell 4.5, course ")
-		TEXT("5 cell 2.5), production drops 9, and a GLOBAL lambda* has no local ")
-		TEXT("vocabulary at all — 82.63x says every block INCLUDING both teeth has an ")
-		TEXT("admissible equilibrium. Why hanging a tooth is cheap, by hand: 0.1 MPa over ")
+		TEXT("RE-RULED TO AGREE-STANDS AT SLICE 4 (2026-08-27), the standing doubt settled in ")
+		TEXT("the LP's direction. Through 2026-08-12 the catalogue ruled a LOCAL LOSS of two ")
+		TEXT("NAMED teeth (course 3 cell 4.5, course 5 cell 2.5) that production over-answered by ")
+		TEXT("dropping 9; below the 200-block cap the equilibrium LP is now the break authority ")
+		TEXT("and stands the whole wall INCLUDING both teeth, so production drops 0 (was 9) and ")
+		TEXT("agrees with the oracle. Why hanging a tooth is cheap, by hand: 0.1 MPa over ")
 		TEXT("two head joints (2 x 66.625 cm^2) plus the two bed patches above it (2 x ")
 		TEXT("105.0625 cm^2) is 3434 N against a brick's 2667 uu = 26.67 N, about 129x, ")
-		TEXT("so the teeth are not what governs 82.63 and the LP is not merely tolerating ")
-		TEXT("them. CURRENT_STATE's standing doubt (true count more than 2, fewer than 9) ")
-		TEXT("is untouched by this measurement, stays open, and waits on equilibrium ")
-		TEXT("promotion rather than on another ruling. Unlike rows 10 and 19 this ")
-		TEXT("one IS a strength verdict in production: worst reading 42.71, one cascade ")
-		TEXT("pass, i.e. a joint 42x over capacity — the raking cut leaves teeth hanging ")
-		TEXT("where the two rows above merely leave pieces unrouted"),
+		TEXT("so the teeth are not what governs and the LP is not merely tolerating them. The ")
+		TEXT("catalogue row is re-ruled STANDS to match (a global feasible force path exists); a ")
+		TEXT("genuinely-local two-tooth mechanism, if one exists, needs the per-region ")
+		TEXT("interrogation the global solve cannot express (PROMOTION_DESIGN §3.5). The lambda* ")
+		TEXT("window is UNCHANGED"),
 		Scenario(TEXT("wall-20")),
-		ERelation::OracleStandsProductionFalls, 218.4185, 218.4272, 9, 0 });
+		ERelation::AgreeStands, 218.4185, 218.4272, 0, 0 });
 
 	Rows.Add({ TEXT("wall-11 wall on two piers, six-brick clear span"),
 		TEXT("the pier pair's wide half at 128.12x; the §8 case-11 ruling worked this ")
