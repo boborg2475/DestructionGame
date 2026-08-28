@@ -545,6 +545,153 @@ namespace MinViolationReadoutSupport
 	}
 
 	/* ================================================================================
+	 * FIXTURE TRIDEGEN — THE ≥2-DOF THREE-WAY REDUCIBLE TRADE (the 3-member even-split guard).
+	 *
+	 * Degen's ≥2-DOF corner with THREE flanks instead of two: within ONE overload group, a central
+	 * FORCED-CRITICAL pier beside a reducible trio of flanks that share a fixed subtotal, with three
+	 * DISTINCT caps so the min-sum reduction's optimal face is non-singleton. The canonical answer is
+	 * the even-slack split const/3, which the PER-GROUP LEXICOGRAPHIC-MINIMAX level recursion delivers
+	 * (central pinned at the top level t*, the trio evened at a lower recursion level).
+	 *
+	 * WHAT THIS FIXTURE GUARDS — AND WHAT IT DOES NOT, established by mutation, NOT by argument.
+	 * The original intent (the 6a re-review's recommendation) was to force the reduction's inner
+	 * FIXED-POINT loop (commit 18911a7) through >= 2 iterations, deeper than Degen's two-flank pair.
+	 * THAT INTENT IS REFUTED FOR THIS TOPOLOGY. Reverting the fixed-point loop to a single reduction
+	 * BITES Degen hard (its flanks read an uneven 103333/92666 split, drift ~3.07e4 across permutations)
+	 * but leaves THIS fixture bit-identical and even across 64 seeded permutations in BOTH the
+	 * const-below-t* and the Degen const-in-[t*,2t*] regimes — the three-flank trade collapses in a
+	 * SINGLE reduction, so the extra flank gives the one-shot min-sum an escape valve that the two-flank
+	 * pair lacks. So this is NOT a guard on the inner fixed-point loop (Degen already owns that).
+	 * What it DOES guard, pinned to the independent hand oracle below: the per-group LEVEL recursion's
+	 * even-slack canonicalization on a 3-member reducible family with distinct caps — a case no owned
+	 * fixture covers (PIERS/TWOGROUPS are symmetric-equal-cap, Degen is a 2-member pair). A single
+	 * global t (no recursion) would pin the flanks at the central's t* instead of const/3 and this
+	 * would bite; the assertions are exact independent-oracle values, so any canonicalization regression
+	 * that moved the 3-way split fails it.
+	 *
+	 * THE GEOMETRY. A rigid cap bears on FOUR grounded piers through four bed joints:
+	 *   - CENTRAL pier at x = 0 — distinct equilibrium column, so its reaction is UNIQUELY determined
+	 *     by moment + vertical equilibrium: R_C = W - S, forced. Over its crushing cap it is
+	 *     irreducibly CRITICAL at the top level t*.
+	 *   - THREE FLANKING piers at the SAME x = 100 — their normal-force columns are IDENTICAL, so
+	 *     equilibrium sees only their SUM S; the split R_1 vs R_2 vs R_3 is a FREE 2-DOF family. That
+	 *     is the three-way trade. Point contacts (HalfLen = 0) keep the statics a clean 4-reaction
+	 *     model AND split every joint into two co-located contacts sharing one joint force — the finer
+	 *     degeneracy the fixed point exists to canonicalize.
+	 *
+	 * Moment equilibrium about the cap centroid pins the flank SUBTOTAL exactly as in Degen:
+	 *     S = R_1 + R_2 + R_3 = ((x_c - x_central)/(x_flank - x_central)) * W = (40/100)*W = 196000 uu,
+	 *     R_C = W - S = 294000 uu (W = 500 kg * 980 = 490000 uu).
+	 *
+	 * THREE DISTINCT FLANK CAPACITIES (20000 / 25000 / 35000 uu) are the lever. With the whole feasible
+	 * range keeping ALL THREE flanks over their (different) caps, the trio's total slack is CONSTANT
+	 * along the trade (const = S - cap_1 - cap_2 - cap_3), so the min-Sigma reduction is INDIFFERENT to
+	 * the split. The physically-canonical answer is the EVEN-SLACK split (lexicographic minimax / L2 on
+	 * the slacks): each flank reads slack const/3, so its reaction is cap_i + const/3 — EQUAL slacks,
+	 * UNEQUAL reactions because the caps differ.
+	 *
+	 * THE REGIME. The trio total slack is placed in Degen's would-be biting band t* <= const <= 2 t*,
+	 * so the fixture is posed exactly as the deeper multi-iteration case was intended — even though the
+	 * mutation measurement above shows the three-flank trade resolves in a single reduction regardless
+	 * (force units):
+	 *     t*    = R_C - cap_C            = 294000 - 190000 = 104000   (central forced at t*)
+	 *     const = S - cap_1 - cap_2 - cap_3 = 196000 - 80000 = 116000 (trio total slack)
+	 *     even  = const / 3             = 38666.67                    (each flank's canonical slack)
+	 *   with:
+	 *     - t* >= even  (104000 >= 38666.67)  — central is the top level; each flank is genuinely
+	 *       reducible BELOW t*, not critical, so the canonical answer is the even split; AND
+	 *     - const in [t*, 2 t*]  (104000 <= 116000 <= 208000)  — a single flank COULD in principle be
+	 *       stranded at t* (const >= t*), while the even split (const/3) sits strictly below t* and is
+	 *       genuinely reducible. The stranding is what the fixed point cures on Degen; on this topology
+	 *       the one-shot reduction never lands there, so the point of the regime assertions is only to
+	 *       pin that the fixture is posed in the intended range and cannot silently drift out of it.
+	 *
+	 * THE INDEPENDENT ORACLE is rigid-body statics by hand: S and R_C from equilibrium, then the even
+	 * split of the traded subtotal. The lexicographic-minimax canonicalization evens the SLACKS, so
+	 * each flank reads slack const/3 = 38666.67 (identical across all three) and reaction cap_i +
+	 * const/3 (58666.67 / 63666.67 / 73666.67 — EQUAL slacks, UNEQUAL reactions).
+	 * ================================================================================ */
+
+	namespace TriDegen
+	{
+		constexpr double CapMassKg = 500.0;        /* W = 490000 uu */
+		constexpr double AreaSqCm = 100.0;         /* per joint face */
+		constexpr double HalfLenCm = 0.0;          /* POINT CONTACT: clean 4-reaction statics, no local moment */
+
+		constexpr double CentralXCm = 0.0;         /* distinct column => R_C uniquely determined */
+		constexpr double FlankXCm = 100.0;         /* ALL THREE flanking piers share this x => identical columns => trade */
+		constexpr double CapCentroidXCm = 40.0;    /* sets S = 0.4 W by moment equilibrium */
+
+		constexpr double FcCentral = 0.19;         /* cap_C = 0.19 * 10000 * 100 = 190000 uu */
+		constexpr double FcFlankLow = 0.02;        /* cap_1 = 0.02  * 10000 * 100 = 20000 uu */
+		constexpr double FcFlankMid = 0.025;       /* cap_2 = 0.025 * 10000 * 100 = 25000 uu */
+		constexpr double FcFlankHigh = 0.035;      /* cap_3 = 0.035 * 10000 * 100 = 35000 uu — three DISTINCT caps: the lever */
+
+		enum { JCentral = 0, JFlankLow = 1, JFlankMid = 2, JFlankHigh = 3 };
+
+		FOracleProblem Build()
+		{
+			FOracleProblem P;
+			P.bGravityIsLive = false;
+			P.bMinViolationReadout = true;
+
+			const int32 Central = P.Blocks.Add(GroundedBlock(CentralXCm, 10.0));
+			const int32 FlankA = P.Blocks.Add(GroundedBlock(FlankXCm, 10.0));
+			const int32 FlankB = P.Blocks.Add(GroundedBlock(FlankXCm, 10.0));
+			const int32 FlankC = P.Blocks.Add(GroundedBlock(FlankXCm, 10.0));
+			const int32 Cap = P.Blocks.Add(FreeBlock(CapMassKg, CapCentroidXCm, 25.0));
+
+			P.Joints.Add(Joint(Central, Cap, 0.0, 1.0, CentralXCm, 20.0, HalfLenCm, AreaSqCm,
+				CrushingOnly(FcCentral)));   /* JCentral = 0 */
+			P.Joints.Add(Joint(FlankA, Cap, 0.0, 1.0, FlankXCm, 20.0, HalfLenCm, AreaSqCm,
+				CrushingOnly(FcFlankLow)));  /* JFlankLow = 1 */
+			P.Joints.Add(Joint(FlankB, Cap, 0.0, 1.0, FlankXCm, 20.0, HalfLenCm, AreaSqCm,
+				CrushingOnly(FcFlankMid)));  /* JFlankMid = 2 */
+			P.Joints.Add(Joint(FlankC, Cap, 0.0, 1.0, FlankXCm, 20.0, HalfLenCm, AreaSqCm,
+				CrushingOnly(FcFlankHigh))); /* JFlankHigh = 3 */
+			return P;
+		}
+
+		double CapWeightUu() { return WeightUu(CapMassKg); }
+
+		/* Statics — S and R_C from equilibrium (central at x=0, all three flanks at x=100). */
+		double SubtotalUu() /* S = R_1 + R_2 + R_3 */
+		{
+			return ((CapCentroidXCm - CentralXCm) / (FlankXCm - CentralXCm)) * CapWeightUu();
+		}
+		double CentralNormalUu() { return CapWeightUu() - SubtotalUu(); } /* R_C */
+
+		double CapCentralUu() { return FcCentral * ForceUnitsPerMPaSqCmHere * AreaSqCm; }
+		double CapFlankLowUu() { return FcFlankLow * ForceUnitsPerMPaSqCmHere * AreaSqCm; }
+		double CapFlankMidUu() { return FcFlankMid * ForceUnitsPerMPaSqCmHere * AreaSqCm; }
+		double CapFlankHighUu() { return FcFlankHigh * ForceUnitsPerMPaSqCmHere * AreaSqCm; }
+
+		double CentralViolationUu() { return CentralNormalUu() - CapCentralUu(); } /* t* */
+		double TrioTotalSlackUu() /* const */
+		{
+			return SubtotalUu() - CapFlankLowUu() - CapFlankMidUu() - CapFlankHighUu();
+		}
+		double EvenFlankSlackUu() { return TrioTotalSlackUu() / 3.0; } /* const/3 — the canonical per-flank slack */
+
+		/* The physically-canonical (even-slack) flank reactions — UNEQUAL because caps differ. */
+		double FlankLowNormalUu() { return CapFlankLowUu() + EvenFlankSlackUu(); }
+		double FlankMidNormalUu() { return CapFlankMidUu() + EvenFlankSlackUu(); }
+		double FlankHighNormalUu() { return CapFlankHighUu() + EvenFlankSlackUu(); }
+
+		/* Per-joint expected utilisation = N / cap_joint on the canonical answer. */
+		double CentralUtil() { return CentralNormalUu() / CapCentralUu(); }
+		double FlankLowUtil() { return FlankLowNormalUu() / CapFlankLowUu(); }
+		double FlankMidUtil() { return FlankMidNormalUu() / CapFlankMidUu(); }
+		double FlankHighUtil() { return FlankHighNormalUu() / CapFlankHighUu(); }
+
+		/* Smallest flank cap — the one whose stranded vertex is easiest to reach at t*. */
+		double MinFlankCapUu()
+		{
+			return FMath::Min3(CapFlankLowUu(), CapFlankMidUu(), CapFlankHighUu());
+		}
+	}
+
+	/* ================================================================================
 	 * READOUT INSPECTION HELPERS.
 	 * ================================================================================ */
 
@@ -1279,6 +1426,234 @@ bool FOracleMinViolationDegenerateTradeTest::RunTest(const FString& Parameters)
 		TestTrue(
 			*FString::Printf(
 				TEXT("DEGEN seed=%d [PROBE a]: per-joint violation is permutation-stable (drift %.3e, worst base joint %d)"),
+				Seed, WorstViolationDrift, WorstJoint),
+			WorstViolationDrift <= 1.0e-6 * DriftScale);
+	}
+
+	return true;
+}
+
+/* ================================================================================================
+ * TEST 5 — THE THREE-WAY REDUCIBLE TRADE. THE 3-MEMBER EVEN-SPLIT REGRESSION GUARD (GREEN ON ARRIVAL).
+ *
+ * Pins the per-group lexicographic-minimax canonicalization on a THREE-member reducible flank family
+ * with distinct caps (§ FIXTURE TRIDEGEN): a central forced-critical pier at t* beside three flanks
+ * that share a fixed subtotal and must each read the even slack const/3. No owned fixture covers a
+ * 3-member reducible family — PIERS/TWOGROUPS are symmetric equal-cap, Degen is a 2-member pair.
+ *
+ * INTENT vs. MEASUREMENT — read the fixture header. This was proposed as the DEEPER guard forcing the
+ * reduction's inner FIXED-POINT loop (commit 18911a7) through >= 2 iterations. THAT INTENT IS REFUTED:
+ * reverting the loop to a single reduction bites Degen (uneven, ~3.07e4 drift) but leaves THIS fixture
+ * even and bit-identical across 64 seeded permutations in both regimes — the three-flank trade
+ * collapses in ONE reduction. So this does NOT guard the inner fixed-point loop (Degen owns that). It
+ * guards the LEVEL recursion's even-slack canonicalization on a 3-member family: a single global t
+ * (no recursion) would pin the flanks at the central's t* instead of const/3, and the exact
+ * independent-oracle assertions below would then fail.
+ *
+ * EXPECTED GREEN: it pins already-built, proven-correct behaviour to an independent hand oracle — a
+ * regression net, not a red probe.
+ *
+ * ASSERTS, over >= 8 seeded block+joint permutations (the same harness the TwoGroups / Degen gates use):
+ *   (a) PERMUTATION STABILITY — every joint's ViolationUu and Utilisation, mapped back through the
+ *       permutation inverse, are IDENTICAL to the base (drift <= 1e-6 * scale).
+ *   (b) THE CANONICAL EVEN VALUE — EACH flank reads slack const/3 (the same 38666.67 for all three;
+ *       equal slacks / L2-minimal split of the traded subtotal), i.e. reactions cap_i + const/3 =
+ *       58666.67 / 63666.67 / 73666.67 (three DISTINCT reactions from ONE even slack). The central
+ *       member reads its forced t* = 104000. Asserted on the readout mechanism (violation / normal /
+ *       utilisation), never displacement.
+ *
+ * Seeded and fully deterministic; each seed is printed so a failing case can be reproduced and
+ * promoted to a named regression.
+ *
+ * NEEDS A TICKING WORLD: NO — a pure hand-built FOracleProblem fed to SolveRigidBlock.
+ * ================================================================================================ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOracleMinViolationThreeWayTradeTest,
+	"DestructionGame.Oracle.RigidBlock.Readout.ThreeWayReducibleTradeIsPermutationStable",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FOracleMinViolationThreeWayTradeTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockOracle;
+	using namespace MinViolationReadoutSupport;
+
+	const FOracleProblem Base = TriDegen::Build();
+	const FOracleResult BaseR = SolveRigidBlock(Base);
+
+	TestTrue(TEXT("TRIDEGEN: the oracle answers"), BaseR.bAnswered);
+	TestTrue(TEXT("TRIDEGEN: the min-violation readout is present"), BaseR.Readout.bPresent);
+	TestEqual(TEXT("TRIDEGEN: one readout entry per joint"), BaseR.Readout.Joints.Num(), Base.Joints.Num());
+
+	if (!BaseR.Readout.bPresent || BaseR.Readout.Joints.Num() != Base.Joints.Num())
+	{
+		AddError(TEXT("TRIDEGEN: readout absent or wrong arity — cannot probe the trade"));
+		return false;
+	}
+
+	/* Dump the base readout so a failure shows exactly how the three flanks split. */
+	for (int32 J = 0; J < BaseR.Readout.Joints.Num(); ++J)
+	{
+		AddInfo(FString::Printf(
+			TEXT("TRIDEGEN base joint %d: N %.6g, violation %.6g, utilisation %.6g"),
+			J, NormalOf(BaseR.Readout, J), ViolationOf(BaseR.Readout, J), UtilisationOf(BaseR.Readout, J)));
+	}
+
+	/* ---- The regime the fixture is posed in, asserted so it cannot silently drift out of range. ---- */
+	const double TStar = TriDegen::CentralViolationUu();
+	const double Const = TriDegen::TrioTotalSlackUu();
+	const double Even = TriDegen::EvenFlankSlackUu();
+	AddInfo(FString::Printf(
+		TEXT("TRIDEGEN regime: t* (central forced) %.6g, trio const %.6g, even flank slack %.6g; "
+			 "expect flank N low %.6g / mid %.6g / high %.6g"),
+		TStar, Const, Even, TriDegen::FlankLowNormalUu(), TriDegen::FlankMidNormalUu(), TriDegen::FlankHighNormalUu()));
+
+	/* The three caps are mutually DISTINCT — a genuine non-singleton reduction face, not two-plus-a-copy. */
+	TestTrue(TEXT("TRIDEGEN: the three flank capacities are mutually DISTINCT (the non-singleton-face lever)"),
+		TriDegen::FcFlankLow != TriDegen::FcFlankMid
+			&& TriDegen::FcFlankMid != TriDegen::FcFlankHigh
+			&& TriDegen::FcFlankLow != TriDegen::FcFlankHigh);
+
+	/* Central is the top level: its forced slack sits at or above the flanks' even level. */
+	TestTrue(
+		*FString::Printf(TEXT("TRIDEGEN: central forced level t* %.6g >= flank even level %.6g"), TStar, Even),
+		TStar >= Even);
+
+	/* Each flank is genuinely reducible — its even slack sits strictly BELOW t*, so it is not critical. */
+	TestTrue(
+		*FString::Printf(TEXT("TRIDEGEN: the even flank slack %.6g sits below t* %.6g (genuinely reducible)"), Even, TStar),
+		Even < TStar);
+
+	/* Each flank stays over its cap in the canonical answer (the trio subtotal is a fixed constant). */
+	TestTrue(
+		*FString::Printf(TEXT("TRIDEGEN: the even flank slack %.6g is positive (each flank over its cap)"), Even),
+		Even > 0.0);
+
+	/*
+	 * A flank COULD in principle be stranded at t* (one flank joint at cap+t* fits within the subtotal,
+	 * S - cap_min >= t*) — the same hazard the fixed point cures on Degen. On this three-flank topology
+	 * the one-shot reduction never lands there (measured, header), so this asserts the fixture is posed
+	 * in the intended band, not that stranding actually occurs here.
+	 */
+	TestTrue(
+		*FString::Printf(TEXT("TRIDEGEN: a flank COULD reach t* (S - cap_min = %.6g >= t* %.6g); posed in the band"),
+			TriDegen::SubtotalUu() - TriDegen::MinFlankCapUu(), TStar),
+		TriDegen::SubtotalUu() - TriDegen::MinFlankCapUu() >= TStar);
+
+	const double DriftScale = FMath::Max(1.0, TriDegen::CentralNormalUu());
+
+	/*
+	 * (b) THE CANONICAL EVEN VALUE — base readout equals the hand statics: central forced at t*, each
+	 * flank evened to const/3 (ONE even slack, three UNEQUAL reactions). A false-critical would strand
+	 * a flank at ~104000 and starve another, failing these.
+	 */
+	{
+		const double TolN = 1.0e-3 * TriDegen::CentralNormalUu();
+
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: central N %.6g == forced R_C %.6g"),
+				NormalOf(BaseR.Readout, TriDegen::JCentral), TriDegen::CentralNormalUu()),
+			Near(NormalOf(BaseR.Readout, TriDegen::JCentral), TriDegen::CentralNormalUu(), TolN));
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: central violation %.6g == forced t* %.6g"),
+				ViolationOf(BaseR.Readout, TriDegen::JCentral), TriDegen::CentralViolationUu()),
+			Near(ViolationOf(BaseR.Readout, TriDegen::JCentral), TriDegen::CentralViolationUu(),
+				1.0e-3 * TriDegen::CentralViolationUu()));
+
+		/* Each flank's reaction is cap_i + even — three distinct values. */
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: low-cap flank N %.6g == even split %.6g"),
+				NormalOf(BaseR.Readout, TriDegen::JFlankLow), TriDegen::FlankLowNormalUu()),
+			Near(NormalOf(BaseR.Readout, TriDegen::JFlankLow), TriDegen::FlankLowNormalUu(), TolN));
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: mid-cap flank N %.6g == even split %.6g"),
+				NormalOf(BaseR.Readout, TriDegen::JFlankMid), TriDegen::FlankMidNormalUu()),
+			Near(NormalOf(BaseR.Readout, TriDegen::JFlankMid), TriDegen::FlankMidNormalUu(), TolN));
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: high-cap flank N %.6g == even split %.6g"),
+				NormalOf(BaseR.Readout, TriDegen::JFlankHigh), TriDegen::FlankHighNormalUu()),
+			Near(NormalOf(BaseR.Readout, TriDegen::JFlankHigh), TriDegen::FlankHighNormalUu(), TolN));
+
+		/* The crux: EACH flank reads the SAME even slack const/3 — the subtotal/3 canonical split. */
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: low-cap flank violation %.6g == even const/3 %.6g"),
+				ViolationOf(BaseR.Readout, TriDegen::JFlankLow), Even),
+			Near(ViolationOf(BaseR.Readout, TriDegen::JFlankLow), Even, 1.0e-3 * Even));
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: mid-cap flank violation %.6g == even const/3 %.6g"),
+				ViolationOf(BaseR.Readout, TriDegen::JFlankMid), Even),
+			Near(ViolationOf(BaseR.Readout, TriDegen::JFlankMid), Even, 1.0e-3 * Even));
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: high-cap flank violation %.6g == even const/3 %.6g"),
+				ViolationOf(BaseR.Readout, TriDegen::JFlankHigh), Even),
+			Near(ViolationOf(BaseR.Readout, TriDegen::JFlankHigh), Even, 1.0e-3 * Even));
+
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: low-cap flank utilisation %.6g == even %.6g"),
+				UtilisationOf(BaseR.Readout, TriDegen::JFlankLow), TriDegen::FlankLowUtil()),
+			Near(UtilisationOf(BaseR.Readout, TriDegen::JFlankLow), TriDegen::FlankLowUtil(),
+				1.0e-3 * TriDegen::FlankLowUtil()));
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: mid-cap flank utilisation %.6g == even %.6g"),
+				UtilisationOf(BaseR.Readout, TriDegen::JFlankMid), TriDegen::FlankMidUtil()),
+			Near(UtilisationOf(BaseR.Readout, TriDegen::JFlankMid), TriDegen::FlankMidUtil(),
+				1.0e-3 * TriDegen::FlankMidUtil()));
+		TestTrue(
+			*FString::Printf(TEXT("TRIDEGEN [PROBE b]: high-cap flank utilisation %.6g == even %.6g"),
+				UtilisationOf(BaseR.Readout, TriDegen::JFlankHigh), TriDegen::FlankHighUtil()),
+			Near(UtilisationOf(BaseR.Readout, TriDegen::JFlankHigh), TriDegen::FlankHighUtil(),
+				1.0e-3 * TriDegen::FlankHighUtil()));
+	}
+
+	/*
+	 * (a) PERMUTATION STABILITY — over >= 8 seeded block+joint permutations, every joint's violation
+	 * and utilisation mapped back through the inverse must be identical to the base. A canonicalization
+	 * that lands the 3-way split on a column-order-dependent vertex would drift here.
+	 */
+	const int32 BaseSeed = 0x3B17A9C5;
+	const int32 NumPermutations = 8;
+
+	for (int32 Perm = 0; Perm < NumPermutations; ++Perm)
+	{
+		const int32 Seed = BaseSeed + Perm;
+		FRandomStream Rng(Seed);
+
+		const TArray<int32> BlockPerm = SeededPermutation(Rng, Base.Blocks.Num());
+		const TArray<int32> JointPerm = SeededPermutation(Rng, Base.Joints.Num());
+
+		const FOracleProblem PermProblem = Permute(Base, BlockPerm, JointPerm);
+		const FOracleResult PermR = SolveRigidBlock(PermProblem);
+
+		TestTrue(*FString::Printf(TEXT("TRIDEGEN seed=%d: the permuted oracle answers"), Seed), PermR.bAnswered);
+		TestTrue(*FString::Printf(TEXT("TRIDEGEN seed=%d: the permuted readout is present"), Seed),
+			PermR.Readout.bPresent);
+
+		double WorstUtilDrift = 0.0;
+		double WorstViolationDrift = 0.0;
+		int32 WorstJoint = INDEX_NONE;
+		for (int32 Old = 0; Old < Base.Joints.Num(); ++Old)
+		{
+			const int32 New = JointPerm[Old];
+			const double UtilDrift =
+				FMath::Abs(UtilisationOf(BaseR.Readout, Old) - UtilisationOf(PermR.Readout, New));
+			const double ViolationDrift =
+				FMath::Abs(ViolationOf(BaseR.Readout, Old) - ViolationOf(PermR.Readout, New));
+
+			if (ViolationDrift > WorstViolationDrift)
+			{
+				WorstJoint = Old;
+			}
+			WorstUtilDrift = FMath::Max(WorstUtilDrift, UtilDrift);
+			WorstViolationDrift = FMath::Max(WorstViolationDrift, ViolationDrift);
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("TRIDEGEN seed=%d [PROBE a]: per-joint utilisation is permutation-stable (drift %.3e)"),
+				Seed, WorstUtilDrift),
+			WorstUtilDrift <= 1.0e-6 * DriftScale);
+		TestTrue(
+			*FString::Printf(
+				TEXT("TRIDEGEN seed=%d [PROBE a]: per-joint violation is permutation-stable (drift %.3e, worst base joint %d)"),
 				Seed, WorstViolationDrift, WorstJoint),
 			WorstViolationDrift <= 1.0e-6 * DriftScale);
 	}
