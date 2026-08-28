@@ -2515,6 +2515,7 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 		 * is not a whole-structure release veto but the absence of any mechanism to release.
 		 */
 		ApplyLimitAnalysisSupport(Problem, Result);
+		CacheMinViolationReadout(Problem);
 		return EEquilibriumGateDisposition::AuthoritativeNoBreak;
 	}
 
@@ -2573,9 +2574,77 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 		bSeveredThisPass = true;
 	}
 
+	CacheMinViolationReadout(Problem);
+
 	return bSeveredThisPass
 		? EEquilibriumGateDisposition::AuthoritativeBroke
 		: EEquilibriumGateDisposition::AuthoritativeNoBreak;
+}
+
+void FStructure::CacheMinViolationReadout(const RigidBlockOracle::FOracleProblem& Problem)
+{
+	/*
+	 * THE STRAIN READOUT IS A SEPARATE, ADDITIVE SOLVE (PROMOTION_DESIGN.md §3.5, SHED_PATH.md
+	 * Phase A 6b). The break authority above has already settled the verdict; this poses the
+	 * MIN-VIOLATION LP once on a COPY of the same assembly — bMinViolationReadout routes it to a
+	 * different formulation (equilibrium rows hard, every strength row relaxed with a penalised
+	 * slack) that reads the closest-to-admissible force distribution rather than the vacuous
+	 * maximise-lambda one. It writes nothing but this cache, so no break decision, support flag or
+	 * ConnectionForces can move — the readout is the estimator the overlay reads, never the verdict.
+	 *
+	 * FIRST-CRACK ROWS ARE DELIBERATELY OFF on the readout pose. The below-cap break authority
+	 * writes them (bFirstCrackRows), but whether the shipped readout should crack bonded joints at
+	 * first crack is a separate follow-on decision; this slice's fixture has M = 0, so the rows are
+	 * a no-op here, and turning them on would pre-empt that decision with no test to drive it.
+	 *
+	 * THE CACHE IS REBUILT EACH TIME, sized to the connections, so a below-cap re-solve cannot
+	 * leave a stale entry behind. A readout the solver could not produce (bPresent false) leaves the
+	 * cache all-absent rather than filling it with zeros, so GetConnectionReadout fails closed to the
+	 * router exactly as the gate itself does on a refusal.
+	 */
+	ConnectionReadoutCache.Init(FConnectionReadout{}, Connections.Num());
+
+	RigidBlockOracle::FOracleProblem ReadoutProblem = Problem;
+	ReadoutProblem.bMinViolationReadout = true;
+	ReadoutProblem.bFirstCrackRows = false;
+
+	const RigidBlockOracle::FOracleResult ReadoutResult = RigidBlockOracle::SolveRigidBlock(ReadoutProblem);
+
+	if (!ReadoutResult.Readout.bPresent)
+	{
+		return;
+	}
+
+	/*
+	 * KEY EACH ORACLE JOINT BACK TO ITS PRODUCTION CONNECTION through the bridge's ConnectionOfJoint
+	 * provenance — the SAME map BreakByEquilibrium uses to sever the mechanism's joints — so the
+	 * cache the overlay reads by connection index carries the LP's per-joint N, M, violation and
+	 * utilisation. A joint with no provenance entry, or a connection out of range, is skipped rather
+	 * than guessed.
+	 */
+	for (int32 Joint = 0; Joint < ReadoutResult.Readout.Joints.Num(); ++Joint)
+	{
+		if (!ReadoutProblem.ConnectionOfJoint.IsValidIndex(Joint))
+		{
+			continue;
+		}
+
+		const int32 Connection = ReadoutProblem.ConnectionOfJoint[Joint];
+
+		if (!ConnectionReadoutCache.IsValidIndex(Connection))
+		{
+			continue;
+		}
+
+		const RigidBlockOracle::FOracleJointReadout& JointReadout = ReadoutResult.Readout.Joints[Joint];
+
+		FConnectionReadout& Entry = ConnectionReadoutCache[Connection];
+		Entry.bPresent = true;
+		Entry.NormalUu = JointReadout.NormalUu;
+		Entry.MomentUuCm = JointReadout.MomentUuCm;
+		Entry.ViolationUu = JointReadout.ViolationUu;
+		Entry.Utilisation = JointReadout.Utilisation;
+	}
 }
 
 void FStructure::ApplyLimitAnalysisSupport(
@@ -2714,6 +2783,14 @@ int32 FStructure::SolveAndBreak()
 	 * one after another.
 	 */
 	int32 BreakingPasses = 0;
+
+	/*
+	 * INVALIDATE THE CACHED STRAIN READOUT before this settle (SHED_PATH.md Phase A 6b). It is
+	 * refilled solve-on-settle by BreakByEquilibrium below the cap; clearing it here means a
+	 * re-solve — including one that now DECLINES to the router above the cap — cannot return the
+	 * readout a previous below-cap settle cached, so a stale reading can never be served.
+	 */
+	ConnectionReadoutCache.Reset();
 
 	/*
 	 * PASS NUMBERS ARE GLOBAL TO THE STRUCTURE, so this call continues from the highest
@@ -2978,6 +3055,21 @@ double FStructure::GetConnectionUtilisation(int32 ConnectionIndex) const
 			GetConnectionForce(ConnectionIndex),
 			GetConnectionMoment(ConnectionIndex),
 			GetConnectionCompositeDepthCm(ConnectionIndex));
+}
+
+FStructure::FConnectionReadout FStructure::GetConnectionReadout(int32 ConnectionIndex) const
+{
+	/*
+	 * THE CACHED MIN-VIOLATION READOUT, or absent. BreakByEquilibrium fills it solve-on-settle below
+	 * the block cap (CacheMinViolationReadout, keyed by the bridge's ConnectionOfJoint provenance);
+	 * above the cap the gate declines, nothing solves it, and the cache stays empty so this reads
+	 * absent — the overlay then falls back to the router's GetConnectionUtilisation. Absent too for
+	 * an out-of-range handle and before any solve, exactly as the other solver accessors are empty
+	 * before they are filled.
+	 */
+	return ConnectionReadoutCache.IsValidIndex(ConnectionIndex)
+		? ConnectionReadoutCache[ConnectionIndex]
+		: FConnectionReadout{};
 }
 
 bool FStructure::IsPieceSupported(int32 PieceIndex) const

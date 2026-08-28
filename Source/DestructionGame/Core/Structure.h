@@ -585,6 +585,35 @@ struct FStructure
 	double GetConnectionUtilisation(int32 ConnectionIndex) const;
 
 	/**
+	 * ONE CONNECTION'S STRAIN READOUT FROM THE CACHED MIN-VIOLATION LP (Slice 6b,
+	 * PROMOTION_DESIGN.md §3.5). Below the block cap a settled structure solves the min-violation
+	 * (goal-programming) LP ONCE and caches its per-joint result, keyed back to production
+	 * connections through the bridge's ConnectionOfJoint provenance; this accessor hands one
+	 * connection's entry back so the strain overlay can show HOW LOADED / how-close-to-breaking a
+	 * joint is from the LP's own force distribution rather than the router's per-joint estimate.
+	 *
+	 * NormalUu is N = n1 + n2 (COMPRESSION POSITIVE, so a tension joint reads negative); MomentUuCm
+	 * is M about the joint centre; ViolationUu is the non-negative strength-row slack (0 within
+	 * capacity, > 0 by the amount the least-infeasible force system had to exceed a capacity here);
+	 * Utilisation maps that onto the same 0 -> 1 -> >1 scale GetConnectionUtilisation produces.
+	 *
+	 * bPresent is FALSE until a below-cap settle solved and cached the readout. Above the cap the
+	 * gate declines, no readout is solved, and this stays absent — the overlay then falls back to
+	 * the router's GetConnectionUtilisation. Absent for an out-of-range handle, and absent before
+	 * any solve, exactly as the other solver accessors are empty before they are filled.
+	 */
+	struct FConnectionReadout
+	{
+		bool bPresent = false;
+		double NormalUu = 0.0;
+		double MomentUuCm = 0.0;
+		double ViolationUu = 0.0;
+		double Utilisation = 0.0;
+	};
+
+	FConnectionReadout GetConnectionReadout(int32 ConnectionIndex) const;
+
+	/**
 	 * Whether this piece has a path to a grounded piece through SUPPORTS, after
 	 * SolveLoads. Grounded pieces are supported by definition.
 	 *
@@ -1079,6 +1108,16 @@ private:
 		const RigidBlockOracle::FOracleResult& Result);
 
 	/**
+	 * SOLVE AND CACHE THE MIN-VIOLATION STRAIN READOUT, keyed back to production connections through
+	 * the bridge's ConnectionOfJoint provenance (PROMOTION_DESIGN.md §3.5, SHED_PATH.md Phase A 6b).
+	 * Called only from BreakByEquilibrium on an answered below-cap solve, AFTER the break authority
+	 * has run: it poses a SEPARATE FOracleProblem with bMinViolationReadout set, so it changes no
+	 * break decision, support flag or ConnectionForces — the readout is purely additive, the closest
+	 * -to-admissible force distribution the overlay reads rather than the verdict. See its definition.
+	 */
+	void CacheMinViolationReadout(const RigidBlockOracle::FOracleProblem& Problem);
+
+	/**
 	 * THE PER-JOINT CAPACITY SWEEP — the router's break authority, one sweep per pass, stamping
 	 * every joint over its own capacity with this pass. The sole break authority above the block
 	 * cap and on any LP refusal; below the cap the equilibrium gate answers instead and this does
@@ -1178,6 +1217,19 @@ private:
 	 * whether a joint gave, never when.
 	 */
 	TArray<int32> ConnectionBreakPass;
+
+	/**
+	 * THE CACHED MIN-VIOLATION STRAIN READOUT, one entry per connection, read by GetConnectionReadout
+	 * (PROMOTION_DESIGN.md §3.5, SHED_PATH.md Phase A 6b). Filled solve-on-settle by BreakByEquilibrium
+	 * below the block cap through CacheMinViolationReadout, and cleared by SolveAndBreak so a re-solve
+	 * cannot return a stale readout. Above the cap the gate declines and nothing fills it, so it stays
+	 * empty and every handle reads absent — the overlay then falls back to the router.
+	 *
+	 * SOLVER OUTPUT LIKE THE ARRAYS ABOVE, but from a DIFFERENT solve than the verdict: the readout is
+	 * the min-violation force distribution, not the maximise-lambda break authority, so it is kept
+	 * apart from ConnectionForces and never feeds a break decision.
+	 */
+	TArray<FConnectionReadout> ConnectionReadoutCache;
 
 	/**
 	 * How many times SolveLoads has been entered, ever. See NumSolves.
