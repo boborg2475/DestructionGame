@@ -311,6 +311,31 @@ namespace RigidBlockOracle
 		bool bFirstCrackRows = false;
 
 		/**
+		 * TRUE: solve the MIN-VIOLATION (goal-programming) LP that sources the per-joint
+		 * STRAIN READOUT (PROMOTION_DESIGN §3.1/§3.5/§3.6 — Slice 6a), instead of reading a
+		 * per-joint number off the maximise-lambda primal (which is VACUOUS at lambda >= 1:
+		 * that LP is DEFINED as the search for a force system in which no joint reads over
+		 * 1.0, so every joint reads "misleadingly comfortable" — §3.1, and the trap worth a
+		 * comment at the seam). The min-violation LP is the DIFFERENT solve the readout needs:
+		 * fix the load at lambda = 1 (real self-weight — posed with bGravityIsLive = false so
+		 * gravity enters the equality rows as a dead constant), keep the per-block equilibrium
+		 * EQUALITY rows HARD, add one non-negative slack s_k >= 0 to every STRENGTH inequality
+		 * row relaxing a_k.x <= b_k to a_k.x <= b_k + s_k, and MINIMISE sum w_k*s_k. Because
+		 * equilibrium stays hard and only strength is relaxed a solution ALWAYS exists — the
+		 * least-infeasible force system — so a STANDING structure reads all slacks zero and an
+		 * OVER-CAPACITY one reads positive slack exactly on the over-stressed joints, with a
+		 * magnitude that is a genuine per-joint "distance past failure". See FOracleReadout.
+		 *
+		 * SLICE 6a COMPILE SEAM ONLY, DEFAULT OFF: this flag is declared so the red test can
+		 * ASK for the readout; the solver does not read it yet, which is precisely why that
+		 * test is red (the readout is EMPTY, not the type). dev-expert wires the min-violation
+		 * formulation and fills FOracleResult::Readout. It is an ADDITIVE new formulation
+		 * behind this flag: with it OFF the maximise-lambda solve stays bit-identical, so no
+		 * sweep pin (the slow OracleSweepFull included) may move — the D5/first-crack precedent.
+		 */
+		bool bMinViolationReadout = false;
+
+		/**
 		 * BRIDGE PROVENANCE — how an oracle block/joint index maps back to the FStructure
 		 * piece/connection it came from, so the mechanism (below) can NAME the bricks and
 		 * joints a caller understands. PieceOfBlock[b] is the piece that produced oracle
@@ -458,6 +483,43 @@ namespace RigidBlockOracle
 		bool bPresent = false;
 	};
 
+	/**
+	 * ONE JOINT'S STRAIN READOUT from the min-violation LP (PROMOTION_DESIGN §3.5, Slice 6a).
+	 *
+	 * NormalUu and MomentUuCm are the joint's resultant read off the min-violation PRIMAL — a
+	 * REAL closest-to-admissible equilibrium, NOT the vacuous maximise-lambda one. NormalUu is
+	 * N = n1 + n2 (COMPRESSION POSITIVE, the oracle's sign convention, so a joint in tension
+	 * reads negative); MomentUuCm is M = HalfLength * (n1 - n2) about the joint centre. Because
+	 * the equilibrium rows stay HARD, this resultant balances the block's dead load to solver
+	 * tolerance even where the joint is over capacity.
+	 *
+	 * ViolationUu is the total non-negative strength-row slack charged to this joint, in force
+	 * units: 0 exactly when the joint is within capacity, > 0 by the amount the force system had
+	 * to exceed a capacity here to keep equilibrium. Utilisation maps that onto the SAME
+	 * 0 -> 1 -> >1 scale FConnection::UtilisationUnder produces, so the overlay (Slice 6b) can
+	 * consume it directly: 0 within capacity, 1 at capacity, > 1 over — and for an over-capacity
+	 * joint Utilisation = 1 + ViolationUu / capacity = demand / capacity.
+	 */
+	struct FOracleJointReadout
+	{
+		double NormalUu = 0.0;
+		double MomentUuCm = 0.0;
+		double ViolationUu = 0.0;
+		double Utilisation = 0.0;
+	};
+
+	/**
+	 * THE PER-JOINT STRAIN READOUT, present only when the min-violation LP was solved
+	 * (FOracleProblem::bMinViolationReadout). Empty by default (bPresent = false) — Slice 6a
+	 * fills it. One entry per ORACLE JOINT, in joint-index order; a caller maps each back to its
+	 * FConnection through FOracleProblem::ConnectionOfJoint.
+	 */
+	struct FOracleReadout
+	{
+		bool bPresent = false;
+		TArray<FOracleJointReadout> Joints;
+	};
+
 	struct FOracleResult
 	{
 		/**
@@ -572,6 +634,12 @@ namespace RigidBlockOracle
 		 * default (bPresent = false) — Slice 3a fills it. See FOracleMechanism.
 		 */
 		FOracleMechanism Mechanism;
+
+		/**
+		 * THE MIN-VIOLATION STRAIN READOUT, when bMinViolationReadout was set. Empty by default
+		 * (bPresent = false) — Slice 6a fills it. See FOracleReadout.
+		 */
+		FOracleReadout Readout;
 	};
 
 	/** Solve the lower-bound LP. Deterministic: same problem, bit-identical result. */

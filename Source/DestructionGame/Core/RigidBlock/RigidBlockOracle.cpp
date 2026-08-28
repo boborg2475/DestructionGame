@@ -2056,6 +2056,800 @@ namespace RigidBlockOracle
 	}
 
 	/**
+	 * ONE MIN-VIOLATION SUB-SOLVE: minimise the given per-structural-column cost over the assembly
+	 * rows (equilibrium equalities HARD, everything else as posed), and hand back the structural
+	 * primal. Factored out of SolveMinViolationReadout so the lexicographic-minimax loop can pose
+	 * one LP per overload level without transcribing the two-phase machinery each time. Same
+	 * machinery as the maximise arm — phase 1 to feasibility, pivot the zero artificials out,
+	 * phase 2 to optimality, one clean refactorisation before extraction — and bOk is false with a
+	 * refusal reason set on any non-optimal termination, so the caller fails closed.
+	 */
+	struct FSubSolve
+	{
+		bool bOk = false;
+		EOracleRefusal Refusal = EOracleRefusal::None;
+		TArray<double> StructValues;
+		int32 Iterations = 0;
+		int32 PricingColumnScans = 0;
+		int32 BlandDegenerateEntries = 0;
+	};
+
+	FSubSolve SolveMinViolationLP(
+		const TArray<OracleDetail::FAssemblyRow>& AssemblyRows, int32 NumStructCols,
+		const TArray<double>& StructCost)
+	{
+		using namespace OracleDetail;
+
+		FSubSolve Out;
+
+		FStandardForm Form;
+		BuildStandardForm(AssemblyRows, NumStructCols, Form);
+
+		FRevisedState State;
+
+		if (!State.Init(Form))
+		{
+			Out.Refusal = EOracleRefusal::PhaseOneFailure;
+			return Out;
+		}
+
+		int32 Iterations = 0;
+
+		/* ---- Phase 1: drive the equilibrium artificials to zero. ---- */
+		if (BasicArtificialInfeasibility(Form, State) > InfeasibilityTolerance(Form, State))
+		{
+			TArray<double> PhaseOneCost;
+			PhaseOneCost.SetNumZeroed(Form.NumCols);
+
+			for (int32 Col = Form.ArtificialStart; Col < Form.NumCols; ++Col)
+			{
+				PhaseOneCost[Col] = 1.0;
+			}
+
+			const ESimplexEnd PhaseOneEnd =
+				RunRevisedSimplex(State, PhaseOneCost, Form.NumCols, Iterations, false);
+
+			if (PhaseOneEnd != ESimplexEnd::Optimal)
+			{
+				Out.Refusal = EOracleRefusal::PhaseOneFailure;
+				return Out;
+			}
+
+			/*
+			 * With the violations free the equilibrium equalities are always satisfiable, so a
+			 * residual infeasibility means a block no force system can balance (a floating block).
+			 * That is not a readout, it is a degenerate structure — fail closed.
+			 */
+			if (BasicArtificialInfeasibility(Form, State) > InfeasibilityTolerance(Form, State))
+			{
+				Out.Refusal = EOracleRefusal::PhaseOneFailure;
+				return Out;
+			}
+		}
+
+		/* Pivot any zero-value artificial out where a real column can, exactly as the maximise arm does. */
+		for (int32 Row = 0; Row < Form.NumRows; ++Row)
+		{
+			if (State.Basis[Row] < Form.ArtificialStart)
+			{
+				continue;
+			}
+
+			if (State.PivotsSinceRefactor >= RefactoriseEvery)
+			{
+				if (!State.Refactorise())
+				{
+					Out.Refusal = EOracleRefusal::PhaseOneFailure;
+					return Out;
+				}
+			}
+
+			State.ScratchSlot.Init(0.0, Form.NumRows);
+			State.ScratchSlot[Row] = 1.0;
+			State.BtranScratchSlot(State.YRow);
+
+			int32 Entering = INDEX_NONE;
+			double EnteringAbs = PivotTol;
+
+			for (int32 Col = 0; Col < Form.ArtificialStart; ++Col)
+			{
+				if (State.bIsBasic[Col])
+				{
+					continue;
+				}
+
+				double Alpha = 0.0;
+
+				for (int32 At = Form.ColStart[Col]; At < Form.ColStart[Col + 1]; ++At)
+				{
+					Alpha += Form.ColVal[At] * State.YRow[Form.ColRow[At]];
+				}
+
+				++State.PricingColumnScans;
+
+				if (FMath::Abs(Alpha) > EnteringAbs)
+				{
+					Entering = Col;
+					EnteringAbs = FMath::Abs(Alpha);
+				}
+			}
+
+			if (Entering == INDEX_NONE)
+			{
+				continue;
+			}
+
+			State.FtranColumn(Entering, State.EnteringW);
+
+			const double Theta = State.XB[Row] / State.EnteringW[Row];
+			State.ApplyPivot(Row, Entering, State.EnteringW, Theta);
+		}
+
+		/* ---- Phase 2: minimise the supplied structural cost. ---- */
+		{
+			TArray<double> PhaseTwoCost;
+			PhaseTwoCost.SetNumZeroed(Form.NumCols);
+
+			for (int32 Col = 0; Col < NumStructCols && Col < StructCost.Num(); ++Col)
+			{
+				PhaseTwoCost[Col] = StructCost[Col];
+			}
+
+			const ESimplexEnd PhaseTwoEnd =
+				RunRevisedSimplex(State, PhaseTwoCost, Form.ArtificialStart, Iterations, false);
+
+			if (PhaseTwoEnd != ESimplexEnd::Optimal)
+			{
+				Out.Refusal = PhaseTwoRefusalFor(PhaseTwoEnd);
+				return Out;
+			}
+		}
+
+		if (!State.Refactorise())
+		{
+			Out.Refusal = EOracleRefusal::PhaseTwoNumericalFailure;
+			return Out;
+		}
+
+		Out.StructValues.SetNumZeroed(NumStructCols);
+
+		for (int32 Row = 0; Row < Form.NumRows; ++Row)
+		{
+			if (State.Basis[Row] < NumStructCols)
+			{
+				Out.StructValues[State.Basis[Row]] = FMath::Max(0.0, State.XB[Row]);
+			}
+		}
+
+		Out.Iterations = Iterations;
+		Out.PricingColumnScans = State.PricingColumnScans;
+		Out.BlandDegenerateEntries = State.BlandDegenerateEntries;
+		Out.bOk = true;
+		return Out;
+	}
+
+	/**
+	 * THE MIN-VIOLATION (GOAL-PROGRAMMING) LP THAT SOURCES THE PER-JOINT STRAIN READOUT
+	 * (PROMOTION_DESIGN §3.1/§3.5/§3.6, Slice 6a). A DIFFERENT solve from the maximise-lambda
+	 * one above, and DELIBERATELY separate from it so that path stays bit-identical: nothing
+	 * here touches SolveRigidBlockOnce, and SolveRigidBlock routes to one or the other on the
+	 * flag alone.
+	 *
+	 * WHY A DIFFERENT SOLVE. At lambda >= 1 the maximise-lambda primal is DEFINED as the search
+	 * for a force system in which no joint reads over 1.0, so feeding those forces through a
+	 * utilisation reads "misleadingly comfortable" for every joint (§3.1). The readout instead
+	 * fixes the load at lambda = 1 (self-weight as the dead load — gravity enters the equality
+	 * rows as a constant, never scaled), keeps the per-block equilibrium EQUALITY rows HARD, and
+	 * relaxes every STRENGTH inequality a_k.x <= b_k to a_k.x - s_k <= b_k with a non-negative
+	 * violation s_k. Because equilibrium stays hard and only strength gives, a solution ALWAYS
+	 * exists — the least-infeasible force system — so a STANDING structure reads every s_k zero
+	 * and an OVER-capacity one reads positive s_k exactly on the over joints.
+	 *
+	 * THE CANONICALIZATION, AND WHY A SINGLE GLOBAL MINIMAX IS WRONG. A bare minimise-sum-of-slack
+	 * is constant over a statically indeterminate free family (its total is fixed at demand minus
+	 * capacity), so it lands on a permutation-dependent vertex and the readout WOBBLES with column
+	 * order (§3.5). Adding a single global minimax t with s_k <= t evens the ONE globally-maximal
+	 * group — but that t is pinned by that group alone, so any INDEPENDENT overload group at a
+	 * lower level is a free family the objective then ignores: its distribution is still
+	 * permutation-unstable and, worse, physically wrong (its slacks pile toward the global t
+	 * instead of evening at their own centroid). Two independent groups at different levels is the
+	 * counter-example the determinism gate carries.
+	 *
+	 * THE FIX IS PER-GROUP CANONICALIZATION VIA LEXICOGRAPHIC MINIMAX. Minimise the MAX slack;
+	 * FIX the slacks that are critical at that max (stuck there in every optimum); then minimise
+	 * the NEXT max over what remains; recurse until every slack is pinned. Each independent free
+	 * family is thereby evened at ITS OWN level — its centroid, a function of the geometry and not
+	 * the column indices, hence permutation-stable. Because the solver is LP-only, this is the
+	 * LP-compatible route to what a strictly-convex (min-L2) slack objective would give in one
+	 * solve: a bounded number of LPs, one pair per distinct overload level, and the readout is
+	 * cached (solve-on-settle), not per frame.
+	 *
+	 * "CRITICAL" IS THE CRUX, AND A BARE "FIX EVERYTHING BINDING AT t*" IS WRONG. The level solve
+	 * is free to leave a lower group's slack sitting at t* on a whim of the pivot path, and fixing
+	 * it there would pin the wrong distribution (exactly the single-global-t failure, one level
+	 * deep). So each level is TWO solves: a min-t to find t*, then a min-(sum of the candidates at
+	 * t*) that pushes every candidate that CAN come down off t*. Only those that survive that
+	 * second solve at t* are stuck in every optimum, and those are pinned — at the scalar t*, which
+	 * is even by construction and therefore permutation-invariant. Termination is guaranteed: t* is
+	 * achievable, so at least one slack is critical at every level, and there are finitely many.
+	 */
+	FOracleResult SolveMinViolationReadout(const FOracleProblem& Problem)
+	{
+		using namespace OracleDetail;
+
+		FOracleResult Result;
+		Result.bAnswered = false;
+		Result.Lambda = 0.0;
+
+		const auto Refuse =
+			[&Result](EOracleRefusal Reason, const FString& Detail = FString()) -> FOracleResult&
+		{
+			Result.Refusal = Reason;
+			Result.WhyNot = Detail.IsEmpty()
+				? RefusalText(Reason)
+				: RefusalText(Reason) + TEXT(": ") + Detail;
+
+			return Result;
+		};
+
+		const FString InvalidReason = ValidateProblem(Problem);
+
+		if (!InvalidReason.IsEmpty())
+		{
+			return Refuse(EOracleRefusal::InvalidProblem, InvalidReason);
+		}
+
+		const int32 NumJoints = Problem.Joints.Num();
+		const int32 NumContacts = NumJoints * 2;
+
+		/*
+		 * STRUCTURAL COLUMNS: per contact [n+, n-, p, q] with n = n+ - n- (compression
+		 * positive) and v = p - q, then one non-negative violation variable per strength row
+		 * (violation column k is NumForceCols + k), and — only while a level solve is posed — ONE
+		 * minimax variable t appended past them all. No lambda column and no cap row: the load is
+		 * fixed at lambda = 1, so there is nothing to maximise and gravity is a dead constant.
+		 */
+		const int32 NumForceCols = 4 * NumContacts;
+
+		struct FContact
+		{
+			int32 Joint = 0;
+			double PosX = 0.0;
+			double PosZ = 0.0;
+			double TributaryAreaSqCm = 0.0;
+			bool bCanTension = false;
+		};
+
+		TArray<FContact> Contacts;
+		Contacts.Reserve(NumContacts);
+
+		for (int32 JointIndex = 0; JointIndex < NumJoints; ++JointIndex)
+		{
+			const FOracleJoint& Joint = Problem.Joints[JointIndex];
+
+			const double TangentX = -Joint.NormalZ;
+			const double TangentZ = Joint.NormalX;
+
+			for (int32 End = 0; End < 2; ++End)
+			{
+				const double Sign = End == 0 ? -1.0 : 1.0;
+
+				FContact Contact;
+				Contact.Joint = JointIndex;
+				Contact.PosX = Joint.CentreXCm + Sign * Joint.HalfLengthCm * TangentX;
+				Contact.PosZ = Joint.CentreZCm + Sign * Joint.HalfLengthCm * TangentZ;
+				Contact.TributaryAreaSqCm = Joint.AreaSqCm / 2.0;
+				Contact.bCanTension = Joint.Strength.TensileStrengthMPa > 0.0;
+				Contacts.Add(Contact);
+			}
+		}
+
+		TArray<FAssemblyRow> AssemblyRows;
+
+		/* ---- Equilibrium: three HARD equalities per non-grounded block, load fixed. ---- */
+		for (int32 BlockIndex = 0; BlockIndex < Problem.Blocks.Num(); ++BlockIndex)
+		{
+			const FOracleBlock& Block = Problem.Blocks[BlockIndex];
+
+			if (Block.bGrounded)
+			{
+				continue;
+			}
+
+			FAssemblyRow RowFx;
+			FAssemblyRow RowFz;
+			FAssemblyRow RowM;
+
+			/* Every load enters the right-hand side: dead self-weight, live forces held at lambda = 1. */
+			double LoadX = 0.0, LoadZ = 0.0, LoadM = 0.0;
+
+			const double WeightUu = Block.MassKg * OracleGravityCmPerSecondSquared;
+			LoadZ -= WeightUu;
+
+			for (const FOracleAppliedForce& Applied : Problem.AppliedForces)
+			{
+				if (Applied.Block != BlockIndex)
+				{
+					continue;
+				}
+
+				const double Rx = Applied.AtXCm - Block.CentroidXCm;
+				const double Rz = Applied.AtZCm - Block.CentroidZCm;
+
+				LoadX += Applied.ForceXUu;
+				LoadZ += Applied.ForceZUu;
+				LoadM += Rx * Applied.ForceZUu - Rz * Applied.ForceXUu;
+			}
+
+			for (int32 ContactIndex = 0; ContactIndex < Contacts.Num(); ++ContactIndex)
+			{
+				const FContact& Contact = Contacts[ContactIndex];
+				const FOracleJoint& Joint = Problem.Joints[Contact.Joint];
+
+				double SignForBlock = 0.0;
+
+				if (Joint.BlockB == BlockIndex)
+				{
+					SignForBlock = 1.0;
+				}
+				else if (Joint.BlockA == BlockIndex)
+				{
+					SignForBlock = -1.0;
+				}
+				else
+				{
+					continue;
+				}
+
+				const double TangentX = -Joint.NormalZ;
+				const double TangentZ = Joint.NormalX;
+
+				const double Rx = Contact.PosX - Block.CentroidXCm;
+				const double Rz = Contact.PosZ - Block.CentroidZCm;
+
+				const double TorquePerNormal = Rx * Joint.NormalZ - Rz * Joint.NormalX;
+				const double TorquePerShear = Rx * TangentZ - Rz * TangentX;
+
+				const int32 Base = 4 * ContactIndex;
+
+				RowFx.Add(Base + 0, SignForBlock * Joint.NormalX);
+				RowFz.Add(Base + 0, SignForBlock * Joint.NormalZ);
+				RowM.Add(Base + 0, SignForBlock * TorquePerNormal);
+
+				if (Contact.bCanTension)
+				{
+					RowFx.Add(Base + 1, -SignForBlock * Joint.NormalX);
+					RowFz.Add(Base + 1, -SignForBlock * Joint.NormalZ);
+					RowM.Add(Base + 1, -SignForBlock * TorquePerNormal);
+				}
+
+				RowFx.Add(Base + 2, SignForBlock * TangentX);
+				RowFz.Add(Base + 2, SignForBlock * TangentZ);
+				RowM.Add(Base + 2, SignForBlock * TorquePerShear);
+
+				RowFx.Add(Base + 3, -SignForBlock * TangentX);
+				RowFz.Add(Base + 3, -SignForBlock * TangentZ);
+				RowM.Add(Base + 3, -SignForBlock * TorquePerShear);
+			}
+
+			RowFx.Rhs = -LoadX;
+			RowFz.Rhs = -LoadZ;
+			RowM.Rhs = -LoadM;
+
+			AssemblyRows.Add(MoveTemp(RowFx));
+			AssemblyRows.Add(MoveTemp(RowFz));
+			AssemblyRows.Add(MoveTemp(RowM));
+		}
+
+		/*
+		 * ---- Strength rows, each RELAXED by its own violation variable. ----
+		 *
+		 * The coefficients are exactly the maximise-lambda solver's (the FINITE-TENSION
+		 * mapping, the linearised Coulomb pair, crushing and the shear ceiling); the only
+		 * change is that a_k.x <= b_k becomes a_k.x - s_k <= b_k. Each row records the joint it
+		 * belongs to, its violation column and its capacity, so the readout can total the slack
+		 * per joint and read a per-row utilisation demand / capacity back off the primal.
+		 */
+		struct FStrengthRowInfo
+		{
+			int32 Joint = INDEX_NONE;
+			int32 ViolationCol = INDEX_NONE;
+			int32 RowIndex = INDEX_NONE;
+			double Capacity = 0.0;
+		};
+
+		TArray<FStrengthRowInfo> StrengthInfos;
+
+		const auto AddStrengthRow =
+			[&](int32 JointIndex, FAssemblyRow&& Row, double Capacity)
+		{
+			const int32 ViolationCol = NumForceCols + StrengthInfos.Num();
+			Row.Add(ViolationCol, -1.0);
+			Row.Rhs = Capacity;
+			Row.bEquality = false;
+
+			FStrengthRowInfo Info;
+			Info.Joint = JointIndex;
+			Info.ViolationCol = ViolationCol;
+			Info.RowIndex = AssemblyRows.Num();
+			Info.Capacity = Capacity;
+			StrengthInfos.Add(Info);
+
+			AssemblyRows.Add(MoveTemp(Row));
+		};
+
+		for (int32 ContactIndex = 0; ContactIndex < Contacts.Num(); ++ContactIndex)
+		{
+			const FContact& Contact = Contacts[ContactIndex];
+			const FConnectionStrength& S = Problem.Joints[Contact.Joint].Strength;
+			const int32 Base = 4 * ContactIndex;
+
+			const double Conv = OracleForceUnitsPerMPaSqCm;
+			const double AreaSqCm = Contact.TributaryAreaSqCm;
+
+			if (Contact.bCanTension && S.TensileStrengthMPa < UncappedStrengthMPa)
+			{
+				FAssemblyRow Tension;
+				Tension.Add(Base + 1, 1.0);
+				AddStrengthRow(Contact.Joint, MoveTemp(Tension), S.TensileStrengthMPa * Conv * AreaSqCm);
+			}
+
+			if (S.ShearCohesionMPa < UncappedStrengthMPa)
+			{
+				for (int32 Orientation = 0; Orientation < 2; ++Orientation)
+				{
+					const double ShearSign = Orientation == 0 ? 1.0 : -1.0;
+
+					FAssemblyRow Friction;
+					Friction.Add(Base + 0, -S.FrictionCoefficient);
+
+					if (Contact.bCanTension)
+					{
+						Friction.Add(Base + 1, S.FrictionCoefficient);
+					}
+
+					Friction.Add(Base + 2, ShearSign);
+					Friction.Add(Base + 3, -ShearSign);
+					AddStrengthRow(Contact.Joint, MoveTemp(Friction), S.ShearCohesionMPa * Conv * AreaSqCm);
+				}
+			}
+
+			if (S.CompressiveStrengthMPa < UncappedStrengthMPa)
+			{
+				FAssemblyRow Crush;
+				Crush.Add(Base + 0, 1.0);
+
+				if (Contact.bCanTension)
+				{
+					Crush.Add(Base + 1, -1.0);
+				}
+
+				AddStrengthRow(Contact.Joint, MoveTemp(Crush), S.CompressiveStrengthMPa * Conv * AreaSqCm);
+			}
+
+			if (S.MaxShearStrengthMPa < UncappedStrengthMPa)
+			{
+				for (int32 Orientation = 0; Orientation < 2; ++Orientation)
+				{
+					const double ShearSign = Orientation == 0 ? 1.0 : -1.0;
+
+					FAssemblyRow Ceiling;
+					Ceiling.Add(Base + 2, ShearSign);
+					Ceiling.Add(Base + 3, -ShearSign);
+					AddStrengthRow(Contact.Joint, MoveTemp(Ceiling), S.MaxShearStrengthMPa * Conv * AreaSqCm);
+				}
+			}
+		}
+
+		const int32 NumStrengthRows = StrengthInfos.Num();
+		const int32 NumStructBase = NumForceCols + NumStrengthRows;
+
+		/*
+		 * BaseRows holds the invariant physics — the per-block equilibrium equalities and the
+		 * relaxed strength rows. Every level of the lexicographic minimax below reuses these and
+		 * appends only its own per-slack rows (a minimax bound while a slack is free, an equality
+		 * once it is pinned), so the heavy assembly is built once. A level solve appends ONE
+		 * minimax column t at NumStructBase; a bound/final solve appends none.
+		 */
+		const TArray<FAssemblyRow> BaseRows = MoveTemp(AssemblyRows);
+
+		TArray<bool> bPinned;
+		TArray<double> PinnedValue;
+		bPinned.Init(false, NumStrengthRows);
+		PinnedValue.Init(0.0, NumStrengthRows);
+
+		int32 TotalIterations = 0;
+		int32 TotalScans = 0;
+		int32 TotalBland = 0;
+
+		const auto Accumulate = [&](const FSubSolve& Sub)
+		{
+			TotalIterations += Sub.Iterations;
+			TotalScans += Sub.PricingColumnScans;
+			TotalBland += Sub.BlandDegenerateEntries;
+		};
+
+		/*
+		 * Assemble BaseRows plus one row per strength slack: an equality s_k = pinned value once
+		 * the slack is pinned, otherwise a minimax bound s_k - t <= 0 (level mode) or a constant
+		 * bound s_k <= LevelBound (reduction / final mode).
+		 */
+		const auto AssembleWithSlackRows =
+			[&](bool bLevelMode, double LevelBound) -> TArray<FAssemblyRow>
+		{
+			TArray<FAssemblyRow> Rows = BaseRows;
+
+			for (int32 Info = 0; Info < NumStrengthRows; ++Info)
+			{
+				const int32 ViolationCol = NumForceCols + Info;
+
+				FAssemblyRow Row;
+				Row.Add(ViolationCol, 1.0);
+
+				if (bPinned[Info])
+				{
+					Row.Rhs = PinnedValue[Info];
+					Row.bEquality = true;
+				}
+				else if (bLevelMode)
+				{
+					Row.Add(NumStructBase, -1.0); /* s_k - t <= 0 */
+					Row.Rhs = 0.0;
+					Row.bEquality = false;
+				}
+				else
+				{
+					Row.Rhs = LevelBound; /* s_k <= LevelBound */
+					Row.bEquality = false;
+				}
+
+				Rows.Add(MoveTemp(Row));
+			}
+
+			return Rows;
+		};
+
+		/*
+		 * HOW BINDING AT t* IS DECIDED. A slack within BindingRelativeTol of t* (relative to t*,
+		 * floored at 1) counts as binding — chosen against the two-group fixture, whose level gap
+		 * is ~38000 uu while a reducible slack falls clear to its floor and a critical slack reads
+		 * t* to solver precision (~1e-9 of scale). Any tolerance between those two extremes selects
+		 * the same critical set, so this is a ruling in a constant's clothes: 1e-6 sits three
+		 * orders above the solve noise and orders below the gap, and the determinism gate is what
+		 * forbids picking it by eye. It never decides the pinned VALUE — that is always the scalar
+		 * t*, even by construction and hence permutation-invariant.
+		 */
+		constexpr double BindingRelativeTol = 1.0e-6;
+
+		while (true)
+		{
+			bool bAnyFree = false;
+
+			for (int32 Info = 0; Info < NumStrengthRows; ++Info)
+			{
+				if (!bPinned[Info])
+				{
+					bAnyFree = true;
+					break;
+				}
+			}
+
+			if (!bAnyFree)
+			{
+				break;
+			}
+
+			/* ---- Level solve: minimise the max free slack t. ---- */
+			const TArray<FAssemblyRow> LevelRows = AssembleWithSlackRows(true, 0.0);
+
+			TArray<double> LevelCost;
+			LevelCost.Init(0.0, NumStructBase + 1);
+			LevelCost[NumStructBase] = 1.0;
+
+			const FSubSolve Level = SolveMinViolationLP(LevelRows, NumStructBase + 1, LevelCost);
+			Accumulate(Level);
+
+			if (!Level.bOk)
+			{
+				return Refuse(Level.Refusal);
+			}
+
+			const double TStar = Level.StructValues[NumStructBase];
+			const double BindTol = BindingRelativeTol * FMath::Max(1.0, FMath::Abs(TStar));
+
+			TArray<int32> Candidates;
+
+			for (int32 Info = 0; Info < NumStrengthRows; ++Info)
+			{
+				if (!bPinned[Info] && Level.StructValues[NumForceCols + Info] >= TStar - BindTol)
+				{
+					Candidates.Add(Info);
+				}
+			}
+
+			/* ---- Reduction solve: push every candidate that CAN come down off t*. ---- */
+			const TArray<FAssemblyRow> BoundRows = AssembleWithSlackRows(false, TStar);
+
+			TArray<double> ReduceCost;
+			ReduceCost.Init(0.0, NumStructBase);
+
+			for (int32 Candidate : Candidates)
+			{
+				ReduceCost[NumForceCols + Candidate] = 1.0;
+			}
+
+			const FSubSolve Reduce = SolveMinViolationLP(BoundRows, NumStructBase, ReduceCost);
+			Accumulate(Reduce);
+
+			if (!Reduce.bOk)
+			{
+				return Refuse(Reduce.Refusal);
+			}
+
+			int32 PinnedThisLevel = 0;
+
+			for (int32 Candidate : Candidates)
+			{
+				if (Reduce.StructValues[NumForceCols + Candidate] >= TStar - BindTol)
+				{
+					bPinned[Candidate] = true;
+					PinnedValue[Candidate] = TStar;
+					++PinnedThisLevel;
+				}
+			}
+
+			/*
+			 * At least one candidate is critical whenever a free slack remains — t* is achievable,
+			 * so some slack is stuck at it in every optimum. If the arithmetic ever disagrees the
+			 * loop would not progress; fail closed rather than spin.
+			 */
+			if (PinnedThisLevel == 0)
+			{
+				return Refuse(
+					EOracleRefusal::VerificationFailure,
+					TEXT("lexicographic minimax made no progress at a level"));
+			}
+		}
+
+		/* ---- Final solve: every slack pinned, read the canonical equilibrium force system back. ---- */
+		const TArray<FAssemblyRow> FinalRows = AssembleWithSlackRows(false, 0.0);
+
+		TArray<double> FinalCost;
+		FinalCost.Init(0.0, NumStructBase);
+
+		const FSubSolve Final = SolveMinViolationLP(FinalRows, NumStructBase, FinalCost);
+		Accumulate(Final);
+
+		if (!Final.bOk)
+		{
+			return Refuse(Final.Refusal);
+		}
+
+		const TArray<double>& StructValues = Final.StructValues;
+
+		/* Verify the primal against the ORIGINAL physics — equilibrium HARD, strength relaxed. */
+		for (int32 RowIndex = 0; RowIndex < BaseRows.Num(); ++RowIndex)
+		{
+			const FAssemblyRow& Assembly = BaseRows[RowIndex];
+
+			double LeftHandSide = 0.0;
+			double Magnitude = FMath::Abs(Assembly.Rhs);
+
+			for (int32 Entry = 0; Entry < Assembly.Col.Num(); ++Entry)
+			{
+				const double Term = Assembly.Val[Entry] * StructValues[Assembly.Col[Entry]];
+				LeftHandSide += Term;
+				Magnitude += FMath::Abs(Term);
+			}
+
+			const double Tolerance = 1.0e-6 * (1.0 + Magnitude);
+
+			const bool bViolated = Assembly.bEquality
+				? FMath::Abs(LeftHandSide - Assembly.Rhs) > Tolerance
+				: LeftHandSide > Assembly.Rhs + Tolerance;
+
+			if (bViolated)
+			{
+				return Refuse(
+					EOracleRefusal::VerificationFailure,
+					FString::Printf(TEXT("against row %d"), RowIndex));
+			}
+		}
+
+		Result.SimplexIterations = TotalIterations;
+		Result.PricingColumnScans = TotalScans;
+		Result.BlandDegenerateEntries = TotalBland;
+
+		/*
+		 * ---- The per-joint readout. ----
+		 *
+		 * NormalUu = n1 + n2 (compression positive), MomentUuCm = HalfLength * (n1 - n2), read off
+		 * the two contacts' net normals n = n+ - n-. ViolationUu totals the joint's slack. The
+		 * utilisation is the WORST per-row demand / capacity, which matches FConnection's worst-axis
+		 * logic and equals 1 + ViolationUu / capacity on the governing axis so Slice 6b can consume
+		 * it. Fail closed: a non-positive or non-finite capacity carrying real demand reads OVER, and
+		 * a NaN demand reads OVER, rather than the comfortable side.
+		 */
+		FOracleReadout& Readout = Result.Readout;
+		Readout.Joints.SetNum(NumJoints);
+
+		/* Capacities run to tens of thousands of force units; this only separates a real cap from zero. */
+		constexpr double CapacityFloorUu = 1.0e-6;
+		constexpr double FailClosedUtilisation = 1.0e12;
+
+		for (int32 JointIndex = 0; JointIndex < NumJoints; ++JointIndex)
+		{
+			const FOracleJoint& Joint = Problem.Joints[JointIndex];
+			const int32 Base1 = 4 * (2 * JointIndex);
+			const int32 Base2 = 4 * (2 * JointIndex + 1);
+
+			const double N1 = StructValues[Base1 + 0] - StructValues[Base1 + 1];
+			const double N2 = StructValues[Base2 + 0] - StructValues[Base2 + 1];
+
+			FOracleJointReadout& Out = Readout.Joints[JointIndex];
+			Out.NormalUu = N1 + N2;
+			Out.MomentUuCm = Joint.HalfLengthCm * (N1 - N2);
+
+			double Violation = 0.0;
+			double Utilisation = 0.0;
+
+			for (const FStrengthRowInfo& Info : StrengthInfos)
+			{
+				if (Info.Joint != JointIndex)
+				{
+					continue;
+				}
+
+				Violation += StructValues[Info.ViolationCol];
+
+				/* The row's demand is its force-column terms alone, i.e. the LHS without the -s term. */
+				double Demand = 0.0;
+
+				const FAssemblyRow& Row = BaseRows[Info.RowIndex];
+
+				for (int32 Entry = 0; Entry < Row.Col.Num(); ++Entry)
+				{
+					if (Row.Col[Entry] != Info.ViolationCol)
+					{
+						Demand += Row.Val[Entry] * StructValues[Row.Col[Entry]];
+					}
+				}
+
+				double RowUtilisation;
+
+				if (Info.Capacity > CapacityFloorUu)
+				{
+					RowUtilisation = Demand / Info.Capacity;
+
+					if (!FMath::IsFinite(RowUtilisation))
+					{
+						RowUtilisation = FailClosedUtilisation;
+					}
+				}
+				else
+				{
+					/*
+					 * Zero-capacity axis: any real demand is over. Written as a refused negation
+					 * so a NaN demand lands here too — !(Demand <= floor) is true for NaN (every
+					 * comparison against NaN is false), which is the fail-closed side.
+					 */
+					RowUtilisation = !(Demand <= CapacityFloorUu) ? FailClosedUtilisation : 0.0;
+				}
+
+				Utilisation = FMath::Max(Utilisation, RowUtilisation);
+			}
+
+			Out.ViolationUu = Violation;
+			Out.Utilisation = Utilisation;
+		}
+
+		Readout.bPresent = true;
+		Result.bAnswered = true;
+		Result.Lambda = 1.0;
+		return Result;
+	}
+
+	/**
 	 * A WARM START THAT LEADS THE SOLVER INTO A DEAD END IS THROWN AWAY, NOT BELIEVED, AND
 	 * NOT ALLOWED TO COST AN ANSWER. A supplied basis is a hint; a hint that ends in a
 	 * refusal — the basis going singular under refactorisation, or an optimum that fails
@@ -2079,6 +2873,16 @@ namespace RigidBlockOracle
 	 */
 	FOracleResult SolveRigidBlock(const FOracleProblem& Problem)
 	{
+		/*
+		 * THE READOUT IS A DIFFERENT SOLVE, ROUTED HERE AND NOWHERE ELSE, so the maximise-lambda
+		 * path below stays bit-identical with the flag off — no sweep pin (OracleSweepFull
+		 * included) can move. The min-violation LP takes no warm start; it always solves cold.
+		 */
+		if (Problem.bMinViolationReadout)
+		{
+			return SolveMinViolationReadout(Problem);
+		}
+
 		if (Problem.StartingBasis.Columns.Num() == 0)
 		{
 			return SolveRigidBlockOnce(Problem);
