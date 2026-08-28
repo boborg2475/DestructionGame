@@ -2667,35 +2667,74 @@ namespace RigidBlockOracle
 				}
 			}
 
-			/* ---- Reduction solve: push every candidate that CAN come down off t*. ---- */
+			/*
+			 * ---- Reduction to a FIXED POINT: shrink the at-t* set until only the truly-critical
+			 * slacks remain. ----
+			 *
+			 * A single min-Sigma reduction pushes the candidate SUM down but is INDIFFERENT to a
+			 * trade WITHIN a reducible sub-family that shares a fixed subtotal — two contacts of one
+			 * joint, or any pair whose net force is what equilibrium fixes. When both members are in
+			 * the cost, rebalancing one down and its partner up is net-zero in the sum, so the simplex
+			 * leaves an arbitrary (column-order-dependent) vertex where one member is stranded at t*
+			 * while its partner sits low. Pinning that stranded member is the false-critical the Degen
+			 * fixture exposes: it is reducible, not critical, and its split then wobbles with column
+			 * order.
+			 *
+			 * The cure is to re-minimise over ONLY the slacks still reading t*. A member reducible
+			 * solely by rebalancing to a partner OUTSIDE that shrunk set now has an unpenalised
+			 * partner, so the trade strictly cuts the objective and the member drops clear of t*. A
+			 * member that stays at t* through this — because reducing it would need another at-ceiling
+			 * slack to rise past t*, which the bound forbids — is genuinely stuck in every optimum.
+			 * The at-t* set is monotonically non-increasing (nothing exceeds the t* bound, so a
+			 * dropped slack never returns), so the iteration reaches a stable set in at most one LP per
+			 * candidate. That stable set is the critical set — a function of the physics, not the
+			 * column order — and its members pin at the scalar t*, even by construction.
+			 */
 			const TArray<FAssemblyRow> BoundRows = AssembleWithSlackRows(false, TStar);
 
-			TArray<double> ReduceCost;
-			ReduceCost.Init(0.0, NumStructBase);
-
-			for (int32 Candidate : Candidates)
+			while (true)
 			{
-				ReduceCost[NumForceCols + Candidate] = 1.0;
-			}
+				TArray<double> ReduceCost;
+				ReduceCost.Init(0.0, NumStructBase);
 
-			const FSubSolve Reduce = SolveMinViolationLP(BoundRows, NumStructBase, ReduceCost);
-			Accumulate(Reduce);
+				for (int32 Candidate : Candidates)
+				{
+					ReduceCost[NumForceCols + Candidate] = 1.0;
+				}
 
-			if (!Reduce.bOk)
-			{
-				return Refuse(Reduce.Refusal);
+				const FSubSolve Reduce = SolveMinViolationLP(BoundRows, NumStructBase, ReduceCost);
+				Accumulate(Reduce);
+
+				if (!Reduce.bOk)
+				{
+					return Refuse(Reduce.Refusal);
+				}
+
+				TArray<int32> StillAtLevel;
+
+				for (int32 Candidate : Candidates)
+				{
+					if (Reduce.StructValues[NumForceCols + Candidate] >= TStar - BindTol)
+					{
+						StillAtLevel.Add(Candidate);
+					}
+				}
+
+				if (StillAtLevel.Num() == Candidates.Num())
+				{
+					break;
+				}
+
+				Candidates = MoveTemp(StillAtLevel);
 			}
 
 			int32 PinnedThisLevel = 0;
 
 			for (int32 Candidate : Candidates)
 			{
-				if (Reduce.StructValues[NumForceCols + Candidate] >= TStar - BindTol)
-				{
-					bPinned[Candidate] = true;
-					PinnedValue[Candidate] = TStar;
-					++PinnedThisLevel;
-				}
+				bPinned[Candidate] = true;
+				PinnedValue[Candidate] = TStar;
+				++PinnedThisLevel;
 			}
 
 			/*

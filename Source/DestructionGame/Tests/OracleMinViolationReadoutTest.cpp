@@ -437,6 +437,114 @@ namespace MinViolationReadoutSupport
 	}
 
 	/* ================================================================================
+	 * FIXTURE DEGEN — THE ≥2-DOF INTRA-GROUP DEGENERATE TRADE (the 6a residual probe).
+	 *
+	 * This is the corner the 6a re-review could not realize as a concrete FOracleProblem: within ONE
+	 * independent overload group at ONE stress level, a member that is FORCED critical (its reaction
+	 * uniquely determined — irreducible) sitting BESIDE a REDUCIBLE PAIR that can TRADE load within a
+	 * fixed subtotal, with MIXED CAPACITIES on the pair so the reduction's min-sum optimal FACE is
+	 * NON-SINGLETON. Every owned fixture (STAND/OVER/PIERS/TWOGROUPS) is a symmetric bound-pinned
+	 * SINGLETON whose reduction collapses to one even point, so none of them can probe this.
+	 *
+	 * THE GEOMETRY. A rigid cap bears on THREE grounded piers through three bed joints:
+	 *   - CENTRAL pier at x = 0 — its equilibrium column is DISTINCT, so its reaction is UNIQUELY
+	 *     determined by moment + vertical equilibrium: R_C = W - S, forced. Over its crushing cap it
+	 *     is irreducibly CRITICAL.
+	 *   - TWO FLANKING piers at the SAME x = 100 — their normal-force columns are IDENTICAL (same
+	 *     coefficient in the cap's Fz and moment rows), so equilibrium sees only their SUM S; the
+	 *     split R_L1 vs R_L2 is a FREE 1-DOF family. That is the trade. Point contacts (HalfLen = 0)
+	 *     keep the statics a clean 3-reaction model with no per-joint local moment.
+	 *
+	 * Moment equilibrium about the cap centroid (x_c) pins the flank SUBTOTAL:
+	 *     S = R_L1 + R_L2 = ((x_c - x_central)/(x_flank - x_central)) * W = (40/100)*W = 196000 uu,
+	 *     R_C = W - S = 294000 uu (W = 500 kg * 980 = 490000 uu).
+	 *
+	 * MIXED FLANK CAPACITIES are the lever that makes the min-sum reduction FACE non-singleton: with
+	 * the pair's whole feasible range keeping BOTH flanks over their (different) caps, the pair's
+	 * total slack is CONSTANT along the trade (const = S - cap_L1 - cap_L2), so min Sum s_k is
+	 * INDIFFERENT to the split. The simplex lands on a VERTEX of that flat face — and the danger is a
+	 * vertex where a flank slack hits t*, getting FALSELY declared critical and pinned there.
+	 *
+	 * THE REGIME, chosen so the corner actually bites (all in force units):
+	 *     t*   = s_C   = R_C - cap_C          = 294000 - 190000 = 104000   (central forced at t*)
+	 *     const = S - cap_L1 - cap_L2         = 196000 - 30000 - 50000 = 116000   (pair total slack)
+	 *   with  t* <= const <= 2*t*  (104000 <= 116000 <= 208000):
+	 *     - const >= t*  => a flank slack CAN reach t* (the false-critical vertex EXISTS), and
+	 *     - const <= 2*t* => the EVEN pair slack (const/2 = 58000) sits strictly BELOW t*, so the
+	 *       even answer is genuinely reducible and NOT critical. The physically-canonical answer is
+	 *       the even (lexicographic-minimax / L2-minimal on the slacks) split: 58000 slack per flank.
+	 *
+	 * THE INDEPENDENT ORACLE is rigid-body statics by hand: S and R_C from equilibrium, then the even
+	 * split of the traded subtotal. The lexicographic-minimax canonicalization evens the SLACKS, so
+	 * each flank reads slack const/2 = 58000, normal cap_flank + 58000 (88000 low-cap, 108000
+	 * high-cap — EQUAL slacks, UNEQUAL reactions because the caps differ; that inequality is what no
+	 * symmetric owned fixture exposes).
+	 * ================================================================================ */
+
+	namespace Degen
+	{
+		constexpr double CapMassKg = 500.0;        /* W = 490000 uu */
+		constexpr double AreaSqCm = 100.0;         /* per joint face */
+		constexpr double HalfLenCm = 0.0;          /* POINT CONTACT: clean 3-reaction statics, no local moment */
+
+		constexpr double CentralXCm = 0.0;         /* distinct column => R_C uniquely determined */
+		constexpr double FlankXCm = 100.0;         /* BOTH flanking piers share this x => identical columns => trade */
+		constexpr double CapCentroidXCm = 40.0;    /* sets S = 0.4 W by moment equilibrium */
+
+		constexpr double FcCentral = 0.19;         /* cap_C   = 0.19 * 10000 * 100 = 190000 uu */
+		constexpr double FcFlankLow = 0.03;        /* cap_L1  = 0.03 * 10000 * 100 =  30000 uu */
+		constexpr double FcFlankHigh = 0.05;       /* cap_L2  = 0.05 * 10000 * 100 =  50000 uu — DIFFERENT: the lever */
+
+		enum { JCentral = 0, JFlankLow = 1, JFlankHigh = 2 };
+
+		FOracleProblem Build()
+		{
+			FOracleProblem P;
+			P.bGravityIsLive = false;
+			P.bMinViolationReadout = true;
+
+			const int32 Central = P.Blocks.Add(GroundedBlock(CentralXCm, 10.0));
+			const int32 FlankA = P.Blocks.Add(GroundedBlock(FlankXCm, 10.0));
+			const int32 FlankB = P.Blocks.Add(GroundedBlock(FlankXCm, 10.0));
+			const int32 Cap = P.Blocks.Add(FreeBlock(CapMassKg, CapCentroidXCm, 25.0));
+
+			P.Joints.Add(Joint(Central, Cap, 0.0, 1.0, CentralXCm, 20.0, HalfLenCm, AreaSqCm,
+				CrushingOnly(FcCentral)));   /* JCentral = 0 */
+			P.Joints.Add(Joint(FlankA, Cap, 0.0, 1.0, FlankXCm, 20.0, HalfLenCm, AreaSqCm,
+				CrushingOnly(FcFlankLow)));  /* JFlankLow = 1 */
+			P.Joints.Add(Joint(FlankB, Cap, 0.0, 1.0, FlankXCm, 20.0, HalfLenCm, AreaSqCm,
+				CrushingOnly(FcFlankHigh))); /* JFlankHigh = 2 */
+			return P;
+		}
+
+		double CapWeightUu() { return WeightUu(CapMassKg); }
+
+		/* Statics — S and R_C from equilibrium (central at x=0, flanks at x=100). */
+		double SubtotalUu() /* S = R_L1 + R_L2 */
+		{
+			return ((CapCentroidXCm - CentralXCm) / (FlankXCm - CentralXCm)) * CapWeightUu();
+		}
+		double CentralNormalUu() { return CapWeightUu() - SubtotalUu(); } /* R_C */
+
+		double CapCentralUu() { return FcCentral * ForceUnitsPerMPaSqCmHere * AreaSqCm; }
+		double CapFlankLowUu() { return FcFlankLow * ForceUnitsPerMPaSqCmHere * AreaSqCm; }
+		double CapFlankHighUu() { return FcFlankHigh * ForceUnitsPerMPaSqCmHere * AreaSqCm; }
+
+		double CentralViolationUu() { return CentralNormalUu() - CapCentralUu(); } /* t* */
+		double PairTotalSlackUu() { return SubtotalUu() - CapFlankLowUu() - CapFlankHighUu(); } /* const */
+		double EvenFlankSlackUu() { return PairTotalSlackUu() / 2.0; } /* const/2 */
+
+		/* The physically-canonical (even-slack) flank reactions — UNEQUAL because caps differ. */
+		double FlankLowNormalUu() { return CapFlankLowUu() + EvenFlankSlackUu(); }
+		double FlankHighNormalUu() { return CapFlankHighUu() + EvenFlankSlackUu(); }
+
+		/* Per-joint expected utilisation = N / cap_joint on the canonical answer. */
+		double CentralUtil() { return CentralNormalUu() / CapCentralUu(); }
+		double FlankLowUtil() { return FlankLowNormalUu() / CapFlankLowUu(); }
+		double FlankHighUtil() { return FlankHighNormalUu() / CapFlankHighUu(); }
+	}
+
+	/* ================================================================================
 	 * READOUT INSPECTION HELPERS.
 	 * ================================================================================ */
 
@@ -989,6 +1097,190 @@ bool FOracleMinViolationEquilibriumFailClosedTest::RunTest(const FString& Parame
 		/* An answered min-violation solve must NOT be sitting on a refusal. */
 		TestEqual(TEXT("EQUIL OVER: an answered readout carries no refusal"),
 			static_cast<int32>(R.Refusal), static_cast<int32>(EOracleRefusal::None));
+	}
+
+	return true;
+}
+
+/* ================================================================================================
+ * TEST 4 — THE ≥2-DOF INTRA-GROUP DEGENERATE TRADE. THE 6a RESIDUAL PROBE (HARDENING/RED PROBE).
+ *
+ * This is the corner the 6a re-review flagged but could not realize: within ONE independent overload
+ * group at ONE stress level, a FORCED-CRITICAL central member beside a REDUCIBLE PAIR that trades
+ * within a fixed subtotal, MIXED-CAPACITY so the reduction's min-sum optimal FACE is NON-SINGLETON.
+ * The false-critical hazard: the min-sum reduction, being INDIFFERENT to the flank split, lands on a
+ * VERTEX where a flank slack hits t* and gets FALSELY declared critical (pinned at t* = 104000
+ * instead of the even 58000), which would be both permutation-dependent AND physically wrong.
+ *
+ * ASSERTS, over >= 8 seeded block+joint permutations (the same harness the TwoGroups gate uses):
+ *   (a) PERMUTATION STABILITY — every joint's ViolationUu and Utilisation, mapped back through the
+ *       permutation inverse, are IDENTICAL to the base (drift <= 1e-6 * scale). If the min-sum face
+ *       vertex flips with column order, this drifts — the determinism bug the reviewer suspected.
+ *   (b) THE CANONICAL EVEN VALUE — each flank reads slack const/2 = 58000 (equal slacks / L2-minimal
+ *       split of the traded subtotal), i.e. reactions 88000 (low cap) and 108000 (high cap), NOT a
+ *       false-critical vertex (104000 / 12000). The central member reads its forced t* = 104000.
+ *
+ * TWO OUTCOMES, BOTH VALUABLE:
+ *   RED — the split wobbles under permutation ((a) fails) or piles to a vertex ((b) fails): the
+ *         determinism bug is real. The per-joint numbers are printed every seed so the failing case
+ *         is fully characterized; DO NOT fix it here — hand it back red.
+ *   GREEN — every seed evens correctly and is stable: the corner is safe BY DEMONSTRATION and this
+ *         stands as a hardening test that closes the 6a residual.
+ *
+ * Seeded and fully deterministic; each seed is printed so a failing case can be reproduced.
+ *
+ * NEEDS A TICKING WORLD: NO — a pure hand-built FOracleProblem fed to SolveRigidBlock.
+ * ================================================================================================ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FOracleMinViolationDegenerateTradeTest,
+	"DestructionGame.Oracle.RigidBlock.Readout.DegenerateIntraGroupTradeIsPermutationStable",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FOracleMinViolationDegenerateTradeTest::RunTest(const FString& Parameters)
+{
+	using namespace RigidBlockOracle;
+	using namespace MinViolationReadoutSupport;
+
+	const FOracleProblem Base = Degen::Build();
+	const FOracleResult BaseR = SolveRigidBlock(Base);
+
+	TestTrue(TEXT("DEGEN: the oracle answers"), BaseR.bAnswered);
+	TestTrue(TEXT("DEGEN: the min-violation readout is present"), BaseR.Readout.bPresent);
+	TestEqual(TEXT("DEGEN: one readout entry per joint"), BaseR.Readout.Joints.Num(), Base.Joints.Num());
+
+	if (!BaseR.Readout.bPresent || BaseR.Readout.Joints.Num() != Base.Joints.Num())
+	{
+		AddError(TEXT("DEGEN: readout absent or wrong arity — cannot probe the trade"));
+		return false;
+	}
+
+	/* Dump the base readout so a failure shows exactly how the flank pair split. */
+	for (int32 J = 0; J < BaseR.Readout.Joints.Num(); ++J)
+	{
+		AddInfo(FString::Printf(
+			TEXT("DEGEN base joint %d: N %.6g, violation %.6g, utilisation %.6g"),
+			J, NormalOf(BaseR.Readout, J), ViolationOf(BaseR.Readout, J), UtilisationOf(BaseR.Readout, J)));
+	}
+
+	/* ---- The regime that makes the corner bite, asserted so the fixture cannot silently drift. ---- */
+	const double TStar = Degen::CentralViolationUu();
+	const double Const = Degen::PairTotalSlackUu();
+	AddInfo(FString::Printf(
+		TEXT("DEGEN regime: t* (central forced) %.6g, pair const %.6g, even flank slack %.6g; "
+			 "expect flank N low %.6g / high %.6g"),
+		TStar, Const, Degen::EvenFlankSlackUu(), Degen::FlankLowNormalUu(), Degen::FlankHighNormalUu()));
+
+	TestTrue(TEXT("DEGEN: the flank capacities are ASYMMETRIC (the non-singleton-face lever)"),
+		Degen::FcFlankLow != Degen::FcFlankHigh);
+	TestTrue(TEXT("DEGEN: a flank CAN reach t* (const >= t*), so a false-critical vertex EXISTS"),
+		Const >= TStar);
+	TestTrue(TEXT("DEGEN: the EVEN flank slack sits below t* (const <= 2 t*), so it is genuinely reducible"),
+		Const <= 2.0 * TStar);
+
+	const double DriftScale = FMath::Max(1.0, Degen::CentralNormalUu());
+
+	/*
+	 * (b) THE CANONICAL EVEN VALUE — base readout equals the hand statics: central forced at t*, each
+	 * flank evened to const/2 (equal slacks, UNEQUAL reactions). A false-critical would read a flank
+	 * at ~104000 and its partner at ~12000, failing these.
+	 */
+	{
+		const double TolN = 1.0e-3 * Degen::CentralNormalUu();
+
+		TestTrue(
+			*FString::Printf(TEXT("DEGEN [PROBE b]: central N %.6g == forced R_C %.6g"),
+				NormalOf(BaseR.Readout, Degen::JCentral), Degen::CentralNormalUu()),
+			Near(NormalOf(BaseR.Readout, Degen::JCentral), Degen::CentralNormalUu(), TolN));
+		TestTrue(
+			*FString::Printf(TEXT("DEGEN [PROBE b]: central violation %.6g == forced t* %.6g"),
+				ViolationOf(BaseR.Readout, Degen::JCentral), Degen::CentralViolationUu()),
+			Near(ViolationOf(BaseR.Readout, Degen::JCentral), Degen::CentralViolationUu(),
+				1.0e-3 * Degen::CentralViolationUu()));
+
+		TestTrue(
+			*FString::Printf(TEXT("DEGEN [PROBE b]: low-cap flank N %.6g == even split %.6g (NOT a vertex)"),
+				NormalOf(BaseR.Readout, Degen::JFlankLow), Degen::FlankLowNormalUu()),
+			Near(NormalOf(BaseR.Readout, Degen::JFlankLow), Degen::FlankLowNormalUu(), TolN));
+		TestTrue(
+			*FString::Printf(TEXT("DEGEN [PROBE b]: high-cap flank N %.6g == even split %.6g (NOT a vertex)"),
+				NormalOf(BaseR.Readout, Degen::JFlankHigh), Degen::FlankHighNormalUu()),
+			Near(NormalOf(BaseR.Readout, Degen::JFlankHigh), Degen::FlankHighNormalUu(), TolN));
+
+		TestTrue(
+			*FString::Printf(TEXT("DEGEN [PROBE b]: low-cap flank violation %.6g == even const/2 %.6g"),
+				ViolationOf(BaseR.Readout, Degen::JFlankLow), Degen::EvenFlankSlackUu()),
+			Near(ViolationOf(BaseR.Readout, Degen::JFlankLow), Degen::EvenFlankSlackUu(),
+				1.0e-3 * Degen::EvenFlankSlackUu()));
+		TestTrue(
+			*FString::Printf(TEXT("DEGEN [PROBE b]: high-cap flank violation %.6g == even const/2 %.6g"),
+				ViolationOf(BaseR.Readout, Degen::JFlankHigh), Degen::EvenFlankSlackUu()),
+			Near(ViolationOf(BaseR.Readout, Degen::JFlankHigh), Degen::EvenFlankSlackUu(),
+				1.0e-3 * Degen::EvenFlankSlackUu()));
+
+		TestTrue(
+			*FString::Printf(TEXT("DEGEN [PROBE b]: low-cap flank utilisation %.6g == even %.6g"),
+				UtilisationOf(BaseR.Readout, Degen::JFlankLow), Degen::FlankLowUtil()),
+			Near(UtilisationOf(BaseR.Readout, Degen::JFlankLow), Degen::FlankLowUtil(),
+				1.0e-3 * Degen::FlankLowUtil()));
+		TestTrue(
+			*FString::Printf(TEXT("DEGEN [PROBE b]: high-cap flank utilisation %.6g == even %.6g"),
+				UtilisationOf(BaseR.Readout, Degen::JFlankHigh), Degen::FlankHighUtil()),
+			Near(UtilisationOf(BaseR.Readout, Degen::JFlankHigh), Degen::FlankHighUtil(),
+				1.0e-3 * Degen::FlankHighUtil()));
+	}
+
+	/*
+	 * (a) PERMUTATION STABILITY — over >= 8 seeded block+joint permutations, every joint's violation
+	 * and utilisation mapped back through the inverse must be identical to the base. If the min-sum
+	 * vertex flips with column order, this drifts.
+	 */
+	const int32 BaseSeed = 0x0DE9E2A7;
+	const int32 NumPermutations = 8;
+
+	for (int32 Perm = 0; Perm < NumPermutations; ++Perm)
+	{
+		const int32 Seed = BaseSeed + Perm;
+		FRandomStream Rng(Seed);
+
+		const TArray<int32> BlockPerm = SeededPermutation(Rng, Base.Blocks.Num());
+		const TArray<int32> JointPerm = SeededPermutation(Rng, Base.Joints.Num());
+
+		const FOracleProblem PermProblem = Permute(Base, BlockPerm, JointPerm);
+		const FOracleResult PermR = SolveRigidBlock(PermProblem);
+
+		TestTrue(*FString::Printf(TEXT("DEGEN seed=%d: the permuted oracle answers"), Seed), PermR.bAnswered);
+		TestTrue(*FString::Printf(TEXT("DEGEN seed=%d: the permuted readout is present"), Seed),
+			PermR.Readout.bPresent);
+
+		double WorstUtilDrift = 0.0;
+		double WorstViolationDrift = 0.0;
+		int32 WorstJoint = INDEX_NONE;
+		for (int32 Old = 0; Old < Base.Joints.Num(); ++Old)
+		{
+			const int32 New = JointPerm[Old];
+			const double UtilDrift =
+				FMath::Abs(UtilisationOf(BaseR.Readout, Old) - UtilisationOf(PermR.Readout, New));
+			const double ViolationDrift =
+				FMath::Abs(ViolationOf(BaseR.Readout, Old) - ViolationOf(PermR.Readout, New));
+
+			if (ViolationDrift > WorstViolationDrift)
+			{
+				WorstJoint = Old;
+			}
+			WorstUtilDrift = FMath::Max(WorstUtilDrift, UtilDrift);
+			WorstViolationDrift = FMath::Max(WorstViolationDrift, ViolationDrift);
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("DEGEN seed=%d [PROBE a]: per-joint utilisation is permutation-stable (drift %.3e)"),
+				Seed, WorstUtilDrift),
+			WorstUtilDrift <= 1.0e-6 * DriftScale);
+		TestTrue(
+			*FString::Printf(
+				TEXT("DEGEN seed=%d [PROBE a]: per-joint violation is permutation-stable (drift %.3e, worst base joint %d)"),
+				Seed, WorstViolationDrift, WorstJoint),
+			WorstViolationDrift <= 1.0e-6 * DriftScale);
 	}
 
 	return true;
