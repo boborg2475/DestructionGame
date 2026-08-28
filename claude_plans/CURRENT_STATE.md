@@ -7,7 +7,7 @@
 - Check this file at the start of a work session and again before calling anything done.
 - Items are deliberately unnumbered where possible — they churn constantly.
 
-**This file assumes you already know the design.** [INDEX.md](INDEX.md) says which document owns what and where to write a new fact; [DESIGN.md](DESIGN.md) is the authority on the model, the constants, the anchors, the evolution path and the dated rulings; [TRAPS.md](TRAPS.md) holds the live footguns and the mutation registry; [PROMOTION_DESIGN.md](PROMOTION_DESIGN.md) owns evolution step 4; [LEVELS.md](LEVELS.md) indexes the thirty-one playable levels. Settled reasoning lives there and in git -- not here.
+**This file assumes you already know the design.** [INDEX.md](INDEX.md) says which document owns what and where to write a new fact; [DESIGN.md](DESIGN.md) is the authority on the model, the constants, the anchors, the evolution path and the dated rulings; [TRAPS.md](TRAPS.md) holds the live footguns and the mutation registry; [PROMOTION_DESIGN.md](PROMOTION_DESIGN.md) owns evolution step 4; [SHED_PATH.md](SHED_PATH.md) sequences the north-star brick-shed /goal (the layer above step 4 — the phased route through wood, tension, member failure and 3D to a playtest-verified shed, with the standing rulings); [LEVELS.md](LEVELS.md) indexes the thirty-one playable levels. Settled reasoning lives there and in git -- not here.
 
 Last updated: **2026-08-16**. **What landed recently lives in its own home, not in this file** -- rulings in DESIGN §8, step-4 measurements in PROMOTION_DESIGN, footguns and mutation signatures in TRAPS, and the numbers themselves in the test headers that pin them. This file is the list of what is NOT done; if you want the history, read git.
 
