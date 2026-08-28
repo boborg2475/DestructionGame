@@ -1737,24 +1737,30 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
 	TArray<FSweepRow> Rows;
 
 	/*
-	 * ALL THREE MOVED FROM ORACLE-STANDS / PRODUCTION-FALLS TO AGREE-STANDS AT SLICE 3b/4
-	 * (2026-08-27). The oracle lambda* windows are UNCHANGED (the solver did not move); what
-	 * changed is production's half of the diff. Below the 200-block cap the equilibrium LP is now
-	 * the sole break authority, so it stands the bearings the one-cell thrust gate used to drop
-	 * via Max() outside the kern — production drops 0 (was 3) on every row and agrees with the
-	 * oracle it used to dissent from. The material discrimination (18.30 vs 2.65) still lives in
-	 * the oracle's lambda*; production has no member-failure mechanism either way, which is why
-	 * the beam CATALOGUE row 1 stays red on |M| = 0 (step 6) while these agree on STANDS.
+	 * ROW 1 RE-PINNED AT THE FIRST-CRACK PROMOTION (2026-08-28); ROWS 2/3 STILL AGREE-STANDS.
+	 * The oracle here is the DEFAULT-OFF oracle, so its lambda* windows do NOT move — row 1 is
+	 * still 2.64610374 (plastic stress block + rigid-block redistribution). What moved is
+	 * PRODUCTION's half of the diff: below the 200-block cap production now solves with the
+	 * first-crack rows live, and the heavy C24 beam's single bonded midspan glue line carries
+	 * near-pure bending (N ~ 0 at midspan), so its uncracked peak-fibre capacity binds at
+	 * first-crack lambda* = 0.88258 < 1 (the value Beam.Catalogue row 1 asserts) and production
+	 * FELLS the beam — the glue line parts and the two half-beams plus the load block come down,
+	 * dropping 3. So row 1 is now ORACLE STANDS (2.65, default-off plastic) / PRODUCTION FALLS
+	 * (first crack), the honest first-crack disagreement. Rows 2/3 keep AGREE-STANDS: the light
+	 * timber (28.80) and the steel (18.30) sit far above 1.0 even at first crack's /3, so
+	 * production stands them too (0 dropped). The oracle's material discrimination (18.30 vs 2.65)
+	 * is unchanged; the oracle-lambda* window here must NOT move — only production's drop pin does.
 	 */
 	Rows.Add({ TEXT("C24 timber beam, heavy load"),
-		TEXT("oracle: plastic stress block + rigid-block redistribution reach 2.65; ")
-		TEXT("production now agrees below the cap (the LP replaced the dry-bearing Max())"),
+		TEXT("oracle (default-off, plastic) stands at 2.65; production now fells the beam ")
+		TEXT("below the cap — first crack binds the bonded midspan glue line at 0.883 and the ")
+		TEXT("two half-beams plus block come down"),
 		[](FStructure& Out, FString& Why)
 		{
 			return BuildBeam(BeamC24DensityGramsPerCubicCm, BeamC24BendingMPa,
 				BeamC24ShearMPa, 120.0, Out, Why);
 		},
-		ERelation::AgreeStands, 2.64609, 2.64612, 0, 0 });
+		ERelation::OracleStandsProductionFalls, 2.64609, 2.64612, 3, 0 });
 
 	Rows.Add({ TEXT("C24 timber beam, light load"),
 		TEXT("a sensibly loaded joist; production now stands it too below the cap"),

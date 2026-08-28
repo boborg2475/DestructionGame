@@ -2485,6 +2485,17 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 
 	Problem.bGravityIsLive = false;
 
+	/*
+	 * FIRST-CRACK PROMOTION. Below the cap the break authority now writes the uncracked
+	 * peak-fibre bending rows for every BONDED joint (f_t > 0), so a bonded joint carrying
+	 * tension-in-bending cracks at its elastic limit — 3x stricter than the plastic no-tension
+	 * form — rather than only at the plastic margin. Dry (f_t = 0) joints write no such row and
+	 * are bit-identical. The flag reaches only this below-cap production pose; the flagship
+	 * router, the geometry-free fuzzes, and the oracle sweeps (which set it themselves) are
+	 * untouched.
+	 */
+	Problem.bFirstCrackRows = true;
+
 	const RigidBlockOracle::FOracleResult Result = RigidBlockOracle::SolveRigidBlock(Problem);
 	const RigidBlockOracle::EOracleOutcome Outcome = RigidBlockOracle::OutcomeOf(Result);
 

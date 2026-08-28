@@ -1225,15 +1225,18 @@ bool FBeamAcceptanceMidspanMomentTest::RunTest(const FString& Parameters)
  * concept of member strength cannot fake. DESIGN.md §4: "run the same scenario on wood and
  * confirm it survives where brick failed. If that passes, the system is proven data-driven."
  *
- * TODAY BOTH ROWS ANSWER IDENTICALLY, which is the finding, not an accident.
- *
- * THE MECHANISM OF THAT IDENTITY MOVED AT SLICE 3b/4 (2026-08-27) BUT THE FINDING DID NOT. Until
- * then both rows FELL (3 pieces each) because the dry bearings read Max(); now the equilibrium LP
- * is the break authority below the cap and stands the bearings, so both rows STAND (0 fallen
- * each). Either way the member material changes nothing, because the solver still has no member-
- * failure mechanism — so timber over its bending capacity does not part where steel does not, and
- * this assertion stays RED until evolution step 6. The count in the message is dynamic; it now
- * reads 0 and 0 rather than 3 and 3.
+ * GREEN SINCE THE FIRST-CRACK PROMOTION (2026-08-28): the material now decides the OUTCOME, by
+ * the glue-line route. The history is worth keeping because the verdict moved twice. Until Slice
+ * 3b/4 both rows FELL (3 pieces each) because the dry bearings read Max(); Slice 3b/4 made the
+ * equilibrium LP the break authority below the cap, which stood the bearings, so both rows STOOD
+ * (0 each) — the finding then was that the material still changed nothing. Turning first-crack on
+ * (D1, promoted 2026-08-28) breaks that tie: a bonded joint cracks at first crack, so the weaker
+ * C24 TIMBER glue line parts and the beam FALLS (3, lambda* 0.883) while the stronger S275 STEEL
+ * glue line HOLDS and stands (0, lambda* 6.10). Timber falls where steel does not — the
+ * data-drivenness claim, delivered. The route is the JOINT (glue line) cracking, not the member
+ * itself snapping; the true member-bending mechanism is still evolution step 6, and its driving
+ * red (`Beam.MidspanCarriesTheMembersBendingMoment`, |M| = 0) is INTACT — this OUTCOME test
+ * greening early did not steal it. The counts in the message are dynamic (now 3 timber, 0 steel).
  *
  * NEEDS A TICKING WORLD: NO.
  */
