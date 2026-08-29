@@ -3,6 +3,7 @@
 #include "Core/Structure.h"
 
 #include "Core/Profiles/ConnectionProfiles.h"
+#include "Core/Profiles/MaterialProfiles.h"
 #include "Core/RigidBlock/RigidBlockBridge.h"
 
 /*
@@ -2897,6 +2898,22 @@ void FStructure::SetEquilibriumGateBlockCap(int32 MaxBlocks)
 	EquilibriumGateBlockCap = MaxBlocks;
 }
 
+void FStructure::SetPieceMaterial(int32 PieceIndex, const DestructionProfiles::FMaterialProfile* Material)
+{
+	/*
+	 * B3 COMPILE STUB (SHED_PATH.md Phase B / B3). Records what a piece is made of so a
+	 * cross-material joint can reach its two faces' materials. A bare store behind a range
+	 * guard — no branch on the value, no arithmetic — so it drives no behaviour on its own;
+	 * the wiring that CONSUMES it (router + oracle bridge, via EffectiveBondedStrength) is
+	 * dev-expert's B3 work. An out-of-range handle is ignored, the same fail-closed shape the
+	 * other accessors take.
+	 */
+	if (Pieces.IsValidIndex(PieceIndex))
+	{
+		Pieces[PieceIndex].Material = Material;
+	}
+}
+
 int32 FStructure::GetBreakPass(int32 ConnectionIndex) const
 {
 	/*
@@ -3064,11 +3081,47 @@ double FStructure::GetConnectionUtilisation(int32 ConnectionIndex) const
 	 * Zero for a handle no solve has reached, exactly as the force is, and zero is a
 	 * load path with no eccentricity rather than a tolerance.
 	 */
-	return GetConnection(ConnectionIndex)
-		.UtilisationUnder(
-			GetConnectionForce(ConnectionIndex),
-			GetConnectionMoment(ConnectionIndex),
-			GetConnectionCompositeDepthCm(ConnectionIndex));
+	/*
+	 * THE EVALUATOR IS STILL FConnection::UtilisationUnder, and it is still delegated whole
+	 * — but the STRENGTH it evaluates against is the weakest-link material pairing rather
+	 * than the bare connection, so a wood-on-brick bearing reads its material crush and not
+	 * the connection's own capacity. A copy carries the effective strength onto the same
+	 * geometry and the same routed force; nothing else about the joint changes, so the
+	 * identity Structure.h states still holds joint by joint. Where neither pairing applies
+	 * — no material on a face — EffectiveJointStrength returns the bare connection and this
+	 * is bit-identical to reading GetConnection directly.
+	 */
+	FConnection Paired = GetConnection(ConnectionIndex);
+	Paired.Strength = EffectiveJointStrength(ConnectionIndex);
+
+	return Paired.UtilisationUnder(
+		GetConnectionForce(ConnectionIndex),
+		GetConnectionMoment(ConnectionIndex),
+		GetConnectionCompositeDepthCm(ConnectionIndex));
+}
+
+FConnectionStrength FStructure::EffectiveJointStrength(int32 ConnectionIndex) const
+{
+	/*
+	 * PAIR THE CONNECTION WITH ITS TWO FACES' MATERIALS, weakest-link, ONLY when both faces
+	 * name one. A joint's two pieces are FConnection::PieceA / PieceB, and each piece carries
+	 * what it is made of on FStructurePiece::Material. When both are present the bearing is
+	 * cross-material and its capacity is min(connection, matA, matB) per axis
+	 * (DestructionForce::EffectiveBondedStrength); when either is null — "nobody said what
+	 * this is made of" — the bare connection governs, which is the fail-safe default every
+	 * fixture that assigns no material keeps reading.
+	 */
+	const FConnection& Connection = GetConnection(ConnectionIndex);
+
+	const DestructionProfiles::FMaterialProfile* MaterialA = GetPiece(Connection.PieceA).Material;
+	const DestructionProfiles::FMaterialProfile* MaterialB = GetPiece(Connection.PieceB).Material;
+
+	if (MaterialA == nullptr || MaterialB == nullptr)
+	{
+		return Connection.Strength;
+	}
+
+	return DestructionForce::EffectiveBondedStrength(Connection.Strength, *MaterialA, *MaterialB);
 }
 
 FStructure::FConnectionReadout FStructure::GetConnectionReadout(int32 ConnectionIndex) const

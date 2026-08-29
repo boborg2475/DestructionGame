@@ -150,7 +150,17 @@ namespace RigidBlockOracle
 				: Joint.InterfaceHalfExtentCm.Z;
 
 			Out.AreaSqCm = Joint.InterfaceAreaSqCm;
-			Out.Strength = Joint.Strength;
+
+			/*
+			 * THE LP SOLVES AGAINST THE WEAKEST-LINK MATERIAL PAIRING, not the bare
+			 * connection. FStructure::EffectiveJointStrength is the single point that pairs a
+			 * joint's connection with its two faces' materials (SHED_PATH.md B3), and it is the
+			 * same one the router's GetConnectionUtilisation reads — so the LP row and the
+			 * router readout can never disagree about a cross-material joint's capacity. Where a
+			 * face names no material it returns the bare connection, so a single-material or
+			 * unlabelled joint bridges bit for bit as it did before.
+			 */
+			Out.Strength = Structure.EffectiveJointStrength(Index);
 
 			/* In lock-step with Joints, so ConnectionOfJoint[j] is joint j's source connection. */
 			OutProblem.ConnectionOfJoint.Add(Index);

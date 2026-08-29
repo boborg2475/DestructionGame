@@ -16,6 +16,16 @@ namespace RigidBlockOracle
 	struct FOracleResult;
 }
 
+/*
+ * Forward-declared so a piece can carry a pointer to what it is MADE OF without
+ * Structure.h pulling in the material library — the concrete definition lives in
+ * Core/Profiles/MaterialProfiles.h, which a caller that assigns a material includes.
+ */
+namespace DestructionProfiles
+{
+	struct FMaterialProfile;
+}
+
 /**
  * A piece of a structure: plain data, deliberately.
  *
@@ -83,6 +93,26 @@ struct FStructurePiece
 	 * piece that has not been added to a structure is not in one.
 	 */
 	bool bIsInTheStructure = false;
+
+	/**
+	 * B3 COMPILE STUB (SHED_PATH.md Phase B / B3) — what this piece is MADE OF, so a joint
+	 * can pair its connection with its two faces' materials through
+	 * DestructionForce::EffectiveBondedStrength. Written by test-expert to let the
+	 * cross-material bearing red compile; it is a bare data carrier that NOTHING consumes
+	 * yet — the joint / LP strength path still reads the bare FConnection::Strength.
+	 * dev-expert (B3) makes the router (GetConnectionUtilisation) and the oracle bridge
+	 * (RigidBlockBridge) consult EffectiveBondedStrength with the two pieces' materials.
+	 *
+	 * NULLPTR IS "NOBODY SAID WHAT THIS IS MADE OF", and it is the fail-safe default: no
+	 * shipped fixture assigns a material today, so every existing joint keeps reading its
+	 * bare connection bit-for-bit and the wiring is a no-op wherever a material is absent.
+	 *
+	 * LIFETIME CONTRACT: this is a non-owning pointer that MUST point at a static /
+	 * program-lifetime profile — the `extern const` definitions in MaterialProfiles.cpp
+	 * (via `AllMaterialProfiles()` or a named `DestructionProfiles::Xxx`). Never store the
+	 * address of a temporary or stack-local profile; nothing copies the pointee.
+	 */
+	const DestructionProfiles::FMaterialProfile* Material = nullptr;
 };
 
 /**
@@ -418,6 +448,18 @@ struct FStructure
 	void SetEquilibriumGateBlockCap(int32 MaxBlocks);
 
 	/**
+	 * B3 COMPILE STUB (SHED_PATH.md Phase B / B3) — record what a piece is MADE OF, so a
+	 * cross-material joint can reach its two faces' materials. Written by test-expert to let
+	 * the cross-material bearing red compile; it is a bare store — no branch, no arithmetic —
+	 * so it drives no behaviour on its own. The WIRING that consults it (router + oracle
+	 * bridge, via DestructionForce::EffectiveBondedStrength) is dev-expert's B3 work.
+	 *
+	 * Out-of-range handles are ignored. A null pointer clears the assignment back to "nobody
+	 * said", which is the fail-safe default every piece starts at.
+	 */
+	void SetPieceMaterial(int32 PieceIndex, const DestructionProfiles::FMaterialProfile* Material);
+
+	/**
 	 * Which breaking pass gave this joint, counted from 1, or INDEX_NONE if no pass did
 	 * — including for an out-of-range handle, which is not a joint that broke.
 	 *
@@ -583,6 +625,28 @@ struct FStructure
 	 * scope as GetConnectionForce, which it reads.
 	 */
 	double GetConnectionUtilisation(int32 ConnectionIndex) const;
+
+	/**
+	 * THE JOINT'S EFFECTIVE STRENGTH — its bare connection paired with its two faces'
+	 * materials through the weakest-link rule (SHED_PATH.md Phase B / B3). This is the
+	 * SINGLE pairing point both production strength paths consult: the router reads it here
+	 * in GetConnectionUtilisation, and the oracle bridge reads it to fill each LP strength
+	 * row, so the two can never disagree about a cross-material joint's capacity.
+	 *
+	 * GATED ON BOTH FACES CARRYING A MATERIAL. Only when the connection's two pieces each
+	 * name a material is DestructionForce::EffectiveBondedStrength consulted; otherwise the
+	 * bare connection strength is returned unchanged. A null material is "nobody said what
+	 * this is made of", and every fixture that assigns none — which today is all of them —
+	 * reads its bare connection bit for bit, so wiring this in moved no existing verdict.
+	 *
+	 * COMPUTED ON DEMAND. Materials do not change mid-solve, so there is no cache; each
+	 * caller pays one min over three strengths, which is cheaper than a cache to invalidate.
+	 *
+	 * The bare connection strength for an out-of-range handle, because GetConnection hands
+	 * back a default-constructed placeholder and neither of its (absent) pieces names a
+	 * material — the same fail-closed answer the delegating accessors give.
+	 */
+	FConnectionStrength EffectiveJointStrength(int32 ConnectionIndex) const;
 
 	/**
 	 * ONE CONNECTION'S STRAIN READOUT FROM THE CACHED MIN-VIOLATION LP (Slice 6b,
