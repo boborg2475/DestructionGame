@@ -183,6 +183,27 @@ namespace RigidBlockOracle
 
 		/** A grounded block balances by definition: no equilibrium rows are written. */
 		bool bGrounded = false;
+
+		/**
+		 * TRUE: THIS BLOCK'S OWN WEIGHT IS A LIVE LOAD — it scales with lambda and enters the
+		 * lambda column, exactly as Problem.bGravityIsLive does globally but for one block. FALSE:
+		 * this block's weight is DEAD, a fixed right-hand-side constant. This is the per-block
+		 * dead/live split (PROMOTION_DESIGN §10/§472, Slice 6d) — the production path by which a
+		 * SURCHARGE (wall-15's six projecting-header courses, the shed's roof) is posed live while
+		 * the rest of a structure's self-weight is dead, which the GLOBAL bGravityIsLive cannot
+		 * express (it scales EVERY block's weight by the same lambda, so a multiplier-on-own-weight
+		 * measure cannot tell the surcharge's demand apart from the pre-compression that steadies
+		 * it — the reason wall-15 and wall-16 read one identical lambda* today).
+		 *
+		 * DEFAULT OFF, and it can only ADD liveness: the assembly routes a block's weight to the
+		 * lambda column iff Problem.bGravityIsLive OR Block.bLiveGravity (RigidBlockOracle.cpp
+		 * ~line 1548). A globally-live pose is therefore unchanged (true || x == true) and an
+		 * untagged block under a globally-dead pose is unchanged (false || false == false), so the
+		 * flag is INERT for every fixture that leaves it default — it turns a specific block live
+		 * only under a globally-dead pose. There is deliberately no way to force a block dead while
+		 * global gravity is live; no case needs it, so the branch is an OR, not a tri-state.
+		 */
+		bool bLiveGravity = false;
 	};
 
 	/**

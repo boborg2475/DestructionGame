@@ -1544,8 +1544,15 @@ namespace RigidBlockOracle
 
 			const double WeightUu = Block.MassKg * OracleGravityCmPerSecondSquared;
 
-			/* Gravity acts at the centroid: force only, no moment about it. */
-			if (Problem.bGravityIsLive)
+			/*
+			 * Gravity acts at the centroid: force only, no moment about it. A block's weight is
+			 * LIVE (scales with lambda, into the lambda column) iff the global switch OR this
+			 * block's own bLiveGravity says so — the per-block flag can only ADD liveness, never
+			 * remove it, so a globally-live pose is unchanged (true || x == true) and a globally-
+			 * dead pose lets specific blocks be posed live (the per-block dead/live split, Slice
+			 * 6d: a surcharge live while the rest of a structure's self-weight stays dead).
+			 */
+			if (Problem.bGravityIsLive || Block.bLiveGravity)
 			{
 				LiveZ -= WeightUu;
 			}
