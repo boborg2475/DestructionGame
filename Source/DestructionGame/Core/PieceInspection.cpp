@@ -52,7 +52,21 @@ FPieceInspection InspectPiece(const FStructure& Structure, int32 PieceIndex)
 		Joint.Role = Structure.GetJointRole(Index, PieceIndex);
 		Joint.ForceUu = Structure.GetConnectionForce(Index);
 		Joint.MomentUuCm = Structure.GetConnectionMoment(Index);
-		Joint.Utilisation = Structure.GetConnectionUtilisation(Index);
+
+		/*
+		 * BELOW THE CAP THE OVERLAY NUMBER IS THE LP'S, NOT THE ROUTER'S. When a below-cap settle
+		 * cached a min-violation readout for this connection (bPresent), its Utilisation is the
+		 * LP-primal first-crack demand/capacity — what actually holds the joint — so the shown
+		 * strain must be that, not the router's per-joint UtilisationUnder over the routed
+		 * ConnectionForces, which strands loads the LP carries and can read a sharply different
+		 * number. Above the cap (or before any solve) the readout is absent and the router owns the
+		 * overlay, so fall back to GetConnectionUtilisation exactly as before. Only the scalar
+		 * Utilisation switches source; ForceUu/MomentUuCm stay router-sourced.
+		 */
+		const FStructure::FConnectionReadout Readout = Structure.GetConnectionReadout(Index);
+		Joint.Utilisation = Readout.bPresent
+			? Readout.Utilisation
+			: Structure.GetConnectionUtilisation(Index);
 		Joint.bHasGiven = Connection.HasGiven();
 		Joint.BreakPass = Structure.GetBreakPass(Index);
 

@@ -2437,6 +2437,18 @@ bool FStructure::HasArchingAbutment(
 FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pass)
 {
 	/*
+	 * INVALIDATE THE READOUT PER PASS, not just per call. Only a pass that reaches an answering
+	 * arm (Stands or a certified Falls) refills the cache through CacheMinViolationReadout; every
+	 * decline return below (over cap, no geometry, an Unanswerable LP, an uncertified mechanism)
+	 * leaves without refilling. Clearing here means a pass that DECLINES cannot leave a prior
+	 * pass's below-cap reading behind, so an answered-then-declined cascade — which no owned
+	 * fixture reaches today but which becomes player-visible now InspectPiece serves the readout —
+	 * cannot serve a stale number. The per-call Reset in SolveAndBreak stays as the coarser guard;
+	 * this per-pass clear subsumes it for the within-call window.
+	 */
+	ConnectionReadoutCache.Reset();
+
+	/*
 	 * SCOPE BY SIZE FIRST — the fail-closed boundary that keeps synchronous LP authority off
 	 * the flagship scenarios (PROMOTION_DESIGN.md §12 D6-c). Above the block cap the gate
 	 * DECLINES and does nothing, so behaviour falls through to the per-joint capacity sweep
