@@ -51,9 +51,21 @@
  *
  * WHY THE EXPECTED CAP IS 20, NOT 21. The crush is the min over BOTH faces and the
  * connection: min(1e12, timber 21, brick 20) = 20, the weaker of the two MATERIALS. Pinning
- * exactly 20 (the brick) rather than 21 (the timber) is deliberate — it proves the wiring
- * consults BOTH pieces' materials, not just one, so an implementation that paired the joint
- * with only its upper (or only its lower) face would still fail this row.
+ * exactly 20 (the brick) rather than 21 (the timber) is deliberate — it forces the wiring to
+ * read the weaker of the two faces rather than the connection or the stronger face.
+ *
+ * WHY TWO CASES, MIRRORED — the both-faces contract is BIDIRECTIONAL. One row alone does not
+ * prove "consults both faces". In the case above the weaker material (brick 20) is the LOWER
+ * (footing) face, so an implementation that consulted ONLY the lower face would ALSO compute
+ * min(1e12, 20) = 20 and pass — only an UPPER-face-only bug (min(1e12, 21) = 21 -> util 0.476)
+ * is caught. So the test runs a MIRROR: a ClayBrick post (20) on a Timber footing (21), same
+ * Unbreakable joint. The crush is still min(1e12, 21, 20) = 20, but now the governing weaker
+ * material (brick) is the UPPER face — so a LOWER-face-only bug computes min(1e12, 21) = 21 ->
+ * util 0.476 and fails HERE, while the original catches the upper-face-only bug. Together, ANY
+ * single-face implementation reds at least one of the two rows; only the true Min3 over both
+ * faces greens both. The two rows are otherwise identical (same masses, same 98 cm2 bed, same
+ * 10 MPa bearing over a 20 MPa crush -> 0.5) so nothing but which face carries the weaker
+ * material distinguishes them.
  *
  * THE LOAD IS A KNOWN, CENTRED, PURE COMPRESSION so that the compression axis unambiguously
  * governs ComputeUtilisation's worst-axis answer. The post's centre of mass sits directly
@@ -115,8 +127,8 @@ namespace CrossMaterialBearingWiringSupport
 	{
 		FStructure Structure;
 
-		int32 Footing = INDEX_NONE;  // ClayBrick, grounded
-		int32 Post = INDEX_NONE;     // Timber, bears on the footing
+		int32 Footing = INDEX_NONE;  // grounded footing (material chosen per case)
+		int32 Post = INDEX_NONE;     // bears on the footing (material chosen per case)
 		int32 BedJoint = INDEX_NONE; // Post - Footing, Unbreakable connection
 	};
 
@@ -129,12 +141,18 @@ namespace CrossMaterialBearingWiringSupport
 	}
 
 	/**
-	 * Lay the grounded brick footing and the timber post that bears on it through one bed
-	 * joint laid in the Unbreakable connection, and TAG each piece with its material so the
-	 * wiring has two faces to pair. The post's centre sits over the joint centre (X = 0) so
-	 * the bearing is centred and the joint carries pure compression.
+	 * Lay the grounded footing and the post that bears on it through one bed joint laid in the
+	 * Unbreakable connection, and TAG each piece with its material so the wiring has two faces
+	 * to pair. The materials of the LOWER (footing) and UPPER (post) faces are passed in so the
+	 * same fixture builds both the timber-on-brick case and its brick-on-timber mirror — which
+	 * face carries the weaker material is the only thing that varies. The post's centre sits
+	 * over the joint centre (X = 0) so the bearing is centred and the joint carries pure
+	 * compression.
 	 */
-	void Build(FBearing& Out)
+	void Build(
+		FBearing& Out,
+		const FMaterialProfile& FootingMaterial,
+		const FMaterialProfile& PostMaterial)
 	{
 		/* Footing top at Z = 20; post bottom at Z = 21; the 1 cm gap is the joint. */
 		const FPieceBox FootBox = MakeBox(/*Z*/ 10.0, /*SizeZ*/ 20.0);
@@ -144,8 +162,8 @@ namespace CrossMaterialBearingWiringSupport
 		Out.Footing = Out.Structure.AddPiece(50.0, /*bIsGrounded*/ true, FootBox.CentreCm);
 		Out.Post = Out.Structure.AddPiece(PostMassKg, /*bIsGrounded*/ false, PostBox.CentreCm);
 
-		Out.Structure.SetPieceMaterial(Out.Footing, &ClayBrick);
-		Out.Structure.SetPieceMaterial(Out.Post, &Timber);
+		Out.Structure.SetPieceMaterial(Out.Footing, &FootingMaterial);
+		Out.Structure.SetPieceMaterial(Out.Post, &PostMaterial);
 
 		FConnection Joint;
 		if (MakeInterface(Out.Footing, FootBox, Out.Post, PostBox, JointThicknessCm, Unbreakable, Joint))
@@ -216,131 +234,161 @@ bool FCrossMaterialBearingWiringTest::RunTest(const FString& Parameters)
 		MaterialCrushMPa == 20.0);
 
 	/* ------------------------------------------------------------------ *
-	 * BUILD, AND CHECK THE TOPOLOGY IS THE ONE CLAIMED.
+	 * ONE CASE, RUN TWICE. Everything below is symmetric in the two faces'
+	 * materials — build, solve, check the pure-compression load, then assert
+	 * both strength seams read the weakest-link crush. The two invocations
+	 * differ ONLY in which face carries the weaker material (brick 20), which
+	 * is exactly what makes the pair enforce both-face consultation in both
+	 * directions: a single-face implementation reds whichever row puts the
+	 * weaker material on the face it ignores.
 	 * ------------------------------------------------------------------ */
 
-	FBearing Fx;
-	Build(Fx);
-
-	if (Fx.BedJoint == INDEX_NONE)
+	auto RunBearingCase =
+		[&](const FMaterialProfile& FootingMaterial,
+			const FMaterialProfile& PostMaterial,
+			const TCHAR* Label) -> void
 	{
-		AddError(TEXT("FIXTURE: the producer must emit the bed joint"));
-		return false;
-	}
+		/* ---- BUILD, AND CHECK THE TOPOLOGY IS THE ONE CLAIMED. ---- */
+		FBearing Fx;
+		Build(Fx, FootingMaterial, PostMaterial);
 
-	TestEqual(TEXT("FIXTURE: two pieces — the grounded brick footing and the timber post"),
-		Fx.Structure.NumPieces(), 2);
-	TestEqual(TEXT("FIXTURE: one joint — the wood-on-brick bed bearing"),
-		Fx.Structure.NumConnections(), 1);
-	TestTrue(TEXT("FIXTURE: every piece and joint must know where it is, or there are no honest lever arms"),
-		Fx.Structure.HasCompleteGeometry());
-	TestTrue(TEXT("FIXTURE: the post bears on the footing through a BED joint (a compression bearing)"),
-		Fx.Structure.GetJointRole(Fx.BedJoint, Fx.Post) == EJointRole::BedBeneath);
-
-	/* ------------------------------------------------------------------ *
-	 * THE KNOWN, CENTRED, PURE-COMPRESSION LOAD. Solve, then confirm the bed
-	 * joint carries the post's whole weight vertically, with no horizontal
-	 * component — so the compression axis is what ComputeUtilisation reads.
-	 * ------------------------------------------------------------------ */
-
-	Fx.Structure.SolveLoads();
-
-	const FVector BedForce = Fx.Structure.GetConnectionForce(Fx.BedJoint);
-	const double PostWeightUu = PostMassKg * GravityCmPerSecondSquared;               // 9.8e6
-
-	TestTrue(
-		FString::Printf(TEXT("FIXTURE: the bed joint carries the post's whole weight |%g| == %g uu"),
-			BedForce.Size(), PostWeightUu),
-		FMath::IsNearlyEqual(BedForce.Size(), PostWeightUu, 1.0));
-	TestTrue(
-		FString::Printf(TEXT("FIXTURE: the bearing force must be purely vertical (X %g, Y %g both ~0), "
-			"so the load is pure compression"), BedForce.X, BedForce.Y),
-		FMath::IsNearlyZero(BedForce.X, 1.0e-6) && FMath::IsNearlyZero(BedForce.Y, 1.0e-6));
-
-	/* The bearing stress, worked through independently: 9.8e6 uu / 98 cm2 / 10000 = 10 MPa. */
-	const double BedAreaSqCm = FaceLengthCm * WytheWidthCm;                           // 98
-	const double BearingStressMPa = PostWeightUu / BedAreaSqCm / UuPerMPaSqCm;        // 10
-
-	TestTrue(
-		FString::Printf(TEXT("FIXTURE: the bearing stress must be exactly 10 MPa, worked out to %g"),
-			BearingStressMPa),
-		FMath::IsNearlyEqual(BearingStressMPa, 10.0, 1.0e-9));
-
-	/*
-	 * 10 MPa is HALF the brick's 20 MPa crush, so the WIRED joint reads 0.5 and stands — the
-	 * assertion is a pure readout, nothing breaks. The BARE connection reads 10 / 1e12 ~ 1e-11.
-	 */
-	const double ExpectedWiredUtilisation = BearingStressMPa / MaterialCrushMPa;      // 0.5
-	const double BareUtilisation = BearingStressMPa / Unbreakable.CompressiveStrengthMPa; // ~1e-11
-
-	/* ------------------------------------------------------------------ *
-	 * SEAM 1, THE ROUTER — GetConnectionUtilisation must read the material
-	 * crush. Today it consumes the bare FConnection::Strength (1e12) and
-	 * reads ~0; the wiring makes it consult EffectiveBondedStrength(bed's
-	 * connection, timber, brick) so it reads 0.5.
-	 * ------------------------------------------------------------------ */
-
-	const double RouterUtilisation = Fx.Structure.GetConnectionUtilisation(Fx.BedJoint);
-
-	AddInfo(FString::Printf(
-		TEXT("ROUTER: GetConnectionUtilisation = %.12g. Wired (material 20 MPa) expects %.12g; "
-			"bare connection (1e12 MPa) gives %.3g"),
-		RouterUtilisation, ExpectedWiredUtilisation, BareUtilisation));
-
-	TestTrue(
-		FString::Printf(TEXT("SEAM 1 (ROUTER), THE RED: the joint's compression utilisation must reflect "
-			"the material crush (0.5), got %.12g. Today GetConnectionUtilisation reads the bare "
-			"connection (~%.3g) because the wiring is absent"),
-			RouterUtilisation, BareUtilisation),
-		FMath::IsNearlyEqual(RouterUtilisation, ExpectedWiredUtilisation, 1.0e-9));
-
-	/* ------------------------------------------------------------------ *
-	 * SEAM 2, THE ORACLE BRIDGE — the LP strength row the oracle solves
-	 * against must carry the material crush (20 MPa compressive). Today the
-	 * bridge copies the bare connection (1e12) verbatim.
-	 * ------------------------------------------------------------------ */
-
-	RigidBlockOracle::FOracleProblem Problem;
-	FString BridgeWhy;
-	const bool bBridged = RigidBlockOracle::BuildRigidBlockProblem(Fx.Structure, Problem, BridgeWhy);
-
-	TestTrue(
-		*FString::Printf(TEXT("CROSS-CHECK: the oracle bridge must accept this 2D structure (%s)"), *BridgeWhy),
-		bBridged);
-
-	if (bBridged)
-	{
-		int32 OracleJoint = INDEX_NONE;
-		for (int32 J = 0; J < Problem.ConnectionOfJoint.Num(); ++J)
+		if (Fx.BedJoint == INDEX_NONE)
 		{
-			if (Problem.ConnectionOfJoint[J] == Fx.BedJoint)
+			AddError(FString::Printf(TEXT("[%s] FIXTURE: the producer must emit the bed joint"), Label));
+			return;
+		}
+
+		TestEqual(*FString::Printf(TEXT("[%s] FIXTURE: two pieces — the grounded footing and the post"), Label),
+			Fx.Structure.NumPieces(), 2);
+		TestEqual(*FString::Printf(TEXT("[%s] FIXTURE: one joint — the cross-material bed bearing"), Label),
+			Fx.Structure.NumConnections(), 1);
+		TestTrue(*FString::Printf(TEXT("[%s] FIXTURE: every piece and joint must know where it is, or there "
+			"are no honest lever arms"), Label),
+			Fx.Structure.HasCompleteGeometry());
+		TestTrue(*FString::Printf(TEXT("[%s] FIXTURE: the post bears on the footing through a BED joint "
+			"(a compression bearing)"), Label),
+			Fx.Structure.GetJointRole(Fx.BedJoint, Fx.Post) == EJointRole::BedBeneath);
+
+		/*
+		 * The weakest-link crush FOR THIS CASE: min over the connection and both faces. It is 20
+		 * either way — the brick governs whether it is the footing or the post — but it is
+		 * recomputed from the faces actually laid so the assertion below is derived, not copied.
+		 */
+		const double CaseCrushMPa = FMath::Min3(
+			Unbreakable.CompressiveStrengthMPa,
+			FootingMaterial.Strength.CompressiveStrengthMPa,
+			PostMaterial.Strength.CompressiveStrengthMPa);
+
+		TestTrue(*FString::Printf(TEXT("[%s] FIXTURE: the weakest-link crush must be the brick's 20 MPa "
+			"(the weaker material, whichever face it is on), got %g"), Label, CaseCrushMPa),
+			CaseCrushMPa == 20.0);
+
+		/* ---- THE KNOWN, CENTRED, PURE-COMPRESSION LOAD. ---- */
+		Fx.Structure.SolveLoads();
+
+		const FVector BedForce = Fx.Structure.GetConnectionForce(Fx.BedJoint);
+		const double PostWeightUu = PostMassKg * GravityCmPerSecondSquared;               // 9.8e6
+
+		TestTrue(
+			*FString::Printf(TEXT("[%s] FIXTURE: the bed joint carries the post's whole weight |%g| == %g uu"),
+				Label, BedForce.Size(), PostWeightUu),
+			FMath::IsNearlyEqual(BedForce.Size(), PostWeightUu, 1.0));
+		TestTrue(
+			*FString::Printf(TEXT("[%s] FIXTURE: the bearing force must be purely vertical (X %g, Y %g both "
+				"~0), so the load is pure compression"), Label, BedForce.X, BedForce.Y),
+			FMath::IsNearlyZero(BedForce.X, 1.0e-6) && FMath::IsNearlyZero(BedForce.Y, 1.0e-6));
+
+		/* The bearing stress, worked through independently: 9.8e6 uu / 98 cm2 / 10000 = 10 MPa. */
+		const double BedAreaSqCm = FaceLengthCm * WytheWidthCm;                           // 98
+		const double BearingStressMPa = PostWeightUu / BedAreaSqCm / UuPerMPaSqCm;        // 10
+
+		TestTrue(
+			*FString::Printf(TEXT("[%s] FIXTURE: the bearing stress must be exactly 10 MPa, worked out to %g"),
+				Label, BearingStressMPa),
+			FMath::IsNearlyEqual(BearingStressMPa, 10.0, 1.0e-9));
+
+		/*
+		 * 10 MPa is HALF the brick's 20 MPa crush, so the WIRED joint reads 0.5 and stands — the
+		 * assertion is a pure readout, nothing breaks. The BARE connection reads 10 / 1e12 ~ 1e-11.
+		 * A SINGLE-FACE bug that ignored the brick face would instead read 10 / 21 ~ 0.476.
+		 */
+		const double ExpectedWiredUtilisation = BearingStressMPa / CaseCrushMPa;          // 0.5
+		const double BareUtilisation = BearingStressMPa / Unbreakable.CompressiveStrengthMPa; // ~1e-11
+
+		/* ---- SEAM 1, THE ROUTER — GetConnectionUtilisation must read the crush. ---- */
+		const double RouterUtilisation = Fx.Structure.GetConnectionUtilisation(Fx.BedJoint);
+
+		AddInfo(FString::Printf(
+			TEXT("[%s] ROUTER: GetConnectionUtilisation = %.12g. Wired (material 20 MPa) expects %.12g; "
+				"bare connection (1e12 MPa) gives %.3g"),
+			Label, RouterUtilisation, ExpectedWiredUtilisation, BareUtilisation));
+
+		TestTrue(
+			*FString::Printf(TEXT("[%s] SEAM 1 (ROUTER): the joint's compression utilisation must reflect the "
+				"weakest-link crush (0.5), got %.12g. A bare connection reads ~%.3g; a single-face bug that "
+				"ignored the brick face would read ~0.476"),
+				Label, RouterUtilisation, BareUtilisation),
+			FMath::IsNearlyEqual(RouterUtilisation, ExpectedWiredUtilisation, 1.0e-9));
+
+		/* ---- SEAM 2, THE ORACLE BRIDGE — the LP strength row must carry the crush. ---- */
+		RigidBlockOracle::FOracleProblem Problem;
+		FString BridgeWhy;
+		const bool bBridged = RigidBlockOracle::BuildRigidBlockProblem(Fx.Structure, Problem, BridgeWhy);
+
+		TestTrue(
+			*FString::Printf(TEXT("[%s] CROSS-CHECK: the oracle bridge must accept this 2D structure (%s)"),
+				Label, *BridgeWhy),
+			bBridged);
+
+		if (bBridged)
+		{
+			int32 OracleJoint = INDEX_NONE;
+			for (int32 J = 0; J < Problem.ConnectionOfJoint.Num(); ++J)
 			{
-				OracleJoint = J;
-				break;
+				if (Problem.ConnectionOfJoint[J] == Fx.BedJoint)
+				{
+					OracleJoint = J;
+					break;
+				}
+			}
+
+			TestTrue(*FString::Printf(TEXT("[%s] CROSS-CHECK: the bridged problem must carry the bed joint"), Label),
+				OracleJoint != INDEX_NONE);
+
+			if (OracleJoint != INDEX_NONE)
+			{
+				const double LpCompressiveMPa =
+					Problem.Joints[OracleJoint].Strength.CompressiveStrengthMPa;
+
+				AddInfo(FString::Printf(
+					TEXT("[%s] BRIDGE: LP row compressive strength = %.6g MPa. Wired expects %.6g (material "
+						"crush); bare connection copies %.3g"),
+					Label, LpCompressiveMPa, CaseCrushMPa, Unbreakable.CompressiveStrengthMPa));
+
+				TestTrue(
+					*FString::Printf(TEXT("[%s] SEAM 2 (BRIDGE): the LP strength row must carry the weakest-link "
+						"crush (%g MPa), got %.6g. A single-face bug that ignored the brick face would copy the "
+						"stronger face (%.3g)"),
+						Label, CaseCrushMPa, LpCompressiveMPa,
+						FMath::Max(FootingMaterial.Strength.CompressiveStrengthMPa,
+							PostMaterial.Strength.CompressiveStrengthMPa)),
+					FMath::IsNearlyEqual(LpCompressiveMPa, CaseCrushMPa, 1.0e-6));
 			}
 		}
+	};
 
-		TestTrue(TEXT("CROSS-CHECK: the bridged problem must carry the bed joint"),
-			OracleJoint != INDEX_NONE);
+	/*
+	 * CASE A — the weaker material is the LOWER face. Timber post (21) on a ClayBrick footing
+	 * (20). Catches an UPPER-face-only bug: it would read min(1e12, 21) = 21 -> util 0.476.
+	 */
+	RunBearingCase(/*Footing*/ ClayBrick, /*Post*/ Timber, TEXT("weaker=lower (timber-on-brick)"));
 
-		if (OracleJoint != INDEX_NONE)
-		{
-			const double LpCompressiveMPa =
-				Problem.Joints[OracleJoint].Strength.CompressiveStrengthMPa;
-
-			AddInfo(FString::Printf(
-				TEXT("BRIDGE: LP row compressive strength = %.6g MPa. Wired expects %.6g (material crush); "
-					"bare connection copies %.3g"),
-				LpCompressiveMPa, MaterialCrushMPa, Unbreakable.CompressiveStrengthMPa));
-
-			TestTrue(
-				FString::Printf(TEXT("SEAM 2 (BRIDGE), THE RED: the LP strength row must carry the material "
-					"crush (%g MPa), got %.6g. Today the bridge copies the bare connection (%.3g) so the "
-					"LP would never crush this bearing"),
-					MaterialCrushMPa, LpCompressiveMPa, Unbreakable.CompressiveStrengthMPa),
-				FMath::IsNearlyEqual(LpCompressiveMPa, MaterialCrushMPa, 1.0e-6));
-		}
-	}
+	/*
+	 * CASE B, THE MIRROR — the weaker material is the UPPER face. ClayBrick post (20) on a
+	 * Timber footing (21). Catches a LOWER-face-only bug: it would read min(1e12, 21) = 21 ->
+	 * util 0.476. Together with Case A, ANY single-face implementation reds at least one row.
+	 */
+	RunBearingCase(/*Footing*/ Timber, /*Post*/ ClayBrick, TEXT("weaker=upper (brick-on-timber)"));
 
 	return true;
 }
