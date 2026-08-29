@@ -11,7 +11,8 @@ int32 FStructureBinding::AddPiece(
 	double MassKg,
 	bool bIsGrounded,
 	UObject* Actor,
-	const DestructionLayout::FPieceBox& Box)
+	const DestructionLayout::FPieceBox& Box,
+	const DestructionProfiles::FMaterialProfile* Material)
 {
 	/*
 	 * THE BOX'S CENTRE IS THE PIECE'S CENTRE OF MASS, AND IT GOES DOWN WITH THE MASS. A
@@ -35,6 +36,15 @@ int32 FStructureBinding::AddPiece(
 	const int32 Handle = Box.CentreCm.ContainsNaN()
 		? Structure.AddPiece(MassKg, bIsGrounded)
 		: Structure.AddPiece(MassKg, bIsGrounded, Box.CentreCm);
+
+	/*
+	 * THE MATERIAL GOES DOWN THROUGH THE SAME DOOR AS THE PIECE, so what a brick is made of
+	 * cannot be laid in one layer and lost in the next. SetPieceMaterial fails closed on an
+	 * out-of-range handle, and AddPiece never fails silently, so tagging the handle it just
+	 * returned is unconditional; a null pointer clears to the "nobody said" default a piece
+	 * already starts at, which is what leaves a material-free caller's behaviour untouched.
+	 */
+	Structure.SetPieceMaterial(Handle, Material);
 
 	FPieceBinding Binding;
 	Binding.Actor = Actor;
@@ -318,8 +328,15 @@ bool AdoptLayout(
 	{
 		const FStructurePiece& Piece = Layout.Structure.GetPiece(PieceIndex);
 
+		/*
+		 * THE MATERIAL RIDES ACROSS WITH THE MASS. A piece carries what it is made of, and
+		 * dropping it here — as this replay once did — leaves the adopted joint reading its
+		 * bare connection instead of the weakest-link crush of its two faces, which makes a
+		 * cross-material bearing inert in the played world. It goes through AddPiece's own
+		 * door so the store cannot fall out of step with the piece.
+		 */
 		Out.AddPiece(
-			Piece.MassKg, Piece.bIsGrounded, Actors[PieceIndex], Layout.Boxes[PieceIndex]);
+			Piece.MassKg, Piece.bIsGrounded, Actors[PieceIndex], Layout.Boxes[PieceIndex], Piece.Material);
 	}
 
 	/*

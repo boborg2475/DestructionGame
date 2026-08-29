@@ -142,12 +142,20 @@ struct FStructureBinding
 	 * goes down to the solver as the piece's centre of mass, so a piece cannot be laid in
 	 * one place and load its joints from another. A box whose centre is not finite places
 	 * nothing, and the piece is added unplaced rather than with a centre nobody can use.
+	 *
+	 * MATERIAL TRAVELS WITH THE PIECE, defaulting to "nobody said" so callers that assign
+	 * no material are unchanged. It is what the graph pairs against a joint's connection to
+	 * reach the weakest-link crush, so it must survive the trip into the binding alongside
+	 * the mass — a piece whose material is dropped reads its joints off the bare connection,
+	 * which makes cross-material bearings inert. The store is behind the same private door as
+	 * the piece itself, so the two cannot fall out of step.
 	 */
 	int32 AddPiece(
 		double MassKg,
 		bool bIsGrounded,
 		UObject* Actor,
-		const DestructionLayout::FPieceBox& Box);
+		const DestructionLayout::FPieceBox& Box,
+		const DestructionProfiles::FMaterialProfile* Material = nullptr);
 
 	/** Forwards to FStructure::AddConnection, which validates at the door. */
 	int32 AddConnection(const FConnection& Connection);
