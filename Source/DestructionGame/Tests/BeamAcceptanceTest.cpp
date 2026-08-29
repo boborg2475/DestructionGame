@@ -1251,19 +1251,25 @@ bool FBeamAcceptanceMemberMaterialTest::RunTest(const FString& Parameters)
 
 	const TArray<FBeamCase> Cases = AllBeamCases();
 
-	const FBeamCase& Timber = Cases[0];
+	/*
+	 * TimberCase, not Timber: a block-local named `Timber` shadows the global material profile
+	 * DestructionProfiles::Timber (added in Phase B1), which trips C4459 (warning-as-error) whenever
+	 * this file's transitive using-directives bring that global into scope — a latent shadow the
+	 * shed-builder slice's unity re-grouping surfaced. The rename is behaviour-neutral.
+	 */
+	const FBeamCase& TimberCase = Cases[0];
 	const FBeamCase& Steel = Cases[2];
 
 	TestEqual(TEXT("FIXTURE: the pair carries the same block, so only the member differs"),
-		Timber.BlockHeightCm, Steel.BlockHeightCm);
+		TimberCase.BlockHeightCm, Steel.BlockHeightCm);
 
 	TestTrue(TEXT("FIXTURE: the pair really is two different member materials"),
-		Timber.MemberBendingMPa != Steel.MemberBendingMPa);
+		TimberCase.MemberBendingMPa != Steel.MemberBendingMPa);
 
 	FBeam TimberBeam;
 	FBeamResult TimberResult;
-	RunBeamCase(*this, Timber, TimberBeam, TimberResult);
-	ReportBeamCase(*this, Timber, TimberBeam, TimberResult);
+	RunBeamCase(*this, TimberCase, TimberBeam, TimberResult);
+	ReportBeamCase(*this, TimberCase, TimberBeam, TimberResult);
 
 	FBeam SteelBeam;
 	FBeamResult SteelResult;
@@ -1280,7 +1286,7 @@ bool FBeamAcceptanceMemberMaterialTest::RunTest(const FString& Parameters)
 			TEXT("the same load on the same beam must part C24 (%.10g of f_m,k) and not S275 ")
 			TEXT("(%.10g of f_y); the model gave the timber %d fallen piece(s) and the steel %d"),
 			MidspanBendingUtilisation(
-				Timber.BlockHeightCm, Timber.MemberDensityGramsPerCubicCm, Timber.MemberBendingMPa),
+				TimberCase.BlockHeightCm, TimberCase.MemberDensityGramsPerCubicCm, TimberCase.MemberBendingMPa),
 			MidspanBendingUtilisation(
 				Steel.BlockHeightCm, Steel.MemberDensityGramsPerCubicCm, Steel.MemberBendingMPa),
 			TimberResult.Fallen.Num(), SteelResult.Fallen.Num()),
