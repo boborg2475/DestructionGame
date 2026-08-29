@@ -33,10 +33,12 @@ namespace DestructionProfiles
 		FConnectionStrength Strength;
 
 		/**
-		 * How well a connection bonds to this material's face. DECLARED AND
-		 * DELIBERATELY UNUSED: connection-to-material pairing is deferred until a
-		 * second material exists to prove it (see CURRENT_STATE.md). 1.0 means a
-		 * connection reaches its full rated strength against this face.
+		 * How well a connection bonds to this material's face. 1.0 means a connection
+		 * reaches its full rated strength against this face; below 1.0 derates the
+		 * BOND (tension and shear cohesion) but never the bearing (compression). Read
+		 * by `EffectiveBondedStrength` below (SHED_PATH.md B2). Every shipped material
+		 * carries 1.0 today, so no joint is derated yet — a below-1 factor is a
+		 * per-material calibration a later slice sets when it has evidence.
 		 */
 		double BondFactor = 1.0;
 
@@ -73,4 +75,31 @@ namespace DestructionProfiles
 
 	/** Every material profile, so a sweep checks the whole library. */
 	TArrayView<const FNamedMaterialProfile> AllMaterialProfiles();
+}
+
+namespace DestructionForce
+{
+	/*
+	 * The connection x material weakest-link pairing (SHED_PATH.md B2).
+	 *
+	 * A joint between two pieces has a CONNECTION (its own directional strengths) and
+	 * TWO material faces (each an FMaterialProfile, carrying its own strengths and a
+	 * BondFactor). The joint fails at the WEAKEST link, per axis: the connection's own
+	 * capacity, the BOND to each face (connection capacity derated by that face's
+	 * BondFactor, which peels in tension and shear cohesion but not in compression
+	 * bearing), and each material's OWN capacity. Effective per-axis capacity is
+	 * min(ConnectionCap x min(BondFactor_A, BondFactor_B), MatCap_A, MatCap_B) on the
+	 * tensile and shear-cohesion (bond) axes, and min(ConnectionCap, MatCap_A, MatCap_B)
+	 * on the compression (bearing) axis, which BondFactor never touches. Friction and
+	 * the shear ceiling are carried from the connection unchanged.
+	 *
+	 * STANDALONE FOR THIS SLICE — nothing in production calls it yet; the joint / LP
+	 * strength path still reads the bare connection. Because every shipped material
+	 * carries BondFactor 1.0, a single-material joint would read bit-identically through
+	 * this function anyway, so wiring it in is a later slice's concern.
+	 */
+	FConnectionStrength EffectiveBondedStrength(
+		const FConnectionStrength& Connection,
+		const DestructionProfiles::FMaterialProfile& FaceA,
+		const DestructionProfiles::FMaterialProfile& FaceB);
 }

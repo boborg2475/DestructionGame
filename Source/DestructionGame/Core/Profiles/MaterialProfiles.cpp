@@ -196,3 +196,52 @@ namespace DestructionProfiles
 			MaterialProfileLibrary, UE_ARRAY_COUNT(MaterialProfileLibrary));
 	}
 }
+
+namespace DestructionForce
+{
+	/*
+	 * THE CONNECTION x MATERIAL WEAKEST-LINK PAIRING (SHED_PATH.md B2).
+	 *
+	 * A bonded joint carries load through its connection against two material faces, and
+	 * it gives at whichever link is weakest. The split across axes is physical rather
+	 * than uniform: a bond PEELS in tension and SLIDES in shear-cohesion, so those two
+	 * axes are the connection's own bond capacity DERATED by the weaker of the two faces'
+	 * BondFactor (the bond is only as good as the poorer face it grips), then further
+	 * CAPPED by either material's own tensile / shear capacity — the block itself can
+	 * tear or shear through before the bond does. Compression is different: it BEARS
+	 * through the face whatever the bond does, so it is NEVER derated by BondFactor, only
+	 * capped by the crushing strength of the connection or of either material.
+	 *
+	 * Friction and the shear ceiling are carried from the connection unchanged: friction
+	 * is bearing-driven rather than a bond, and MaxShearStrengthMPa is out of scope for
+	 * this slice. Copying the connection first also carries any field this rule does not
+	 * touch verbatim, which is why the construction is by assignment rather than a
+	 * positional aggregate — no risk of transposing tensile and shear.
+	 */
+	FConnectionStrength EffectiveBondedStrength(
+		const FConnectionStrength& Connection,
+		const DestructionProfiles::FMaterialProfile& FaceA,
+		const DestructionProfiles::FMaterialProfile& FaceB)
+	{
+		const double MinBondFactor = FMath::Min(FaceA.BondFactor, FaceB.BondFactor);
+
+		FConnectionStrength Effective = Connection;
+
+		Effective.TensileStrengthMPa = FMath::Min3(
+			Connection.TensileStrengthMPa * MinBondFactor,
+			FaceA.Strength.TensileStrengthMPa,
+			FaceB.Strength.TensileStrengthMPa);
+
+		Effective.ShearCohesionMPa = FMath::Min3(
+			Connection.ShearCohesionMPa * MinBondFactor,
+			FaceA.Strength.ShearCohesionMPa,
+			FaceB.Strength.ShearCohesionMPa);
+
+		Effective.CompressiveStrengthMPa = FMath::Min3(
+			Connection.CompressiveStrengthMPa,
+			FaceA.Strength.CompressiveStrengthMPa,
+			FaceB.Strength.CompressiveStrengthMPa);
+
+		return Effective;
+	}
+}
