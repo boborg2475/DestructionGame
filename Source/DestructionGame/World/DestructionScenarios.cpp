@@ -3,6 +3,7 @@
 #include "World/DestructionScenarios.h"
 
 #include "Core/Corbel.h"
+#include "Core/DestructionShed.h"
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Core/WallCases.h"
@@ -705,6 +706,46 @@ namespace DestructionScenarios
 				Row.CutCentresCm.Add(Laid.Layout.Boxes[Piece].CentreCm);
 			}
 		}
+
+		/*
+		 * AND THE SHED — SHED_PATH.md Phase F, the first multi-material level: two ClayBrick piers
+		 * carry a Timber roof, and a Timber overhang reaches out over the door on a grounded Timber
+		 * post plus a screwed wall fixing. It is laid by DestructionShed::Build rather than the
+		 * running-bond fallback, so the per-piece materials the builder authors survive the Build
+		 * path into play — which is the whole reason this row carries a LayStructure and not a Wall.
+		 *
+		 * THE ONE CUT PULLS THE POST, AND THAT IS THE LEVEL. The overhang's screw fixing to the
+		 * front head has too little lap to cantilever it unaided, so removing the grounded post
+		 * drops the overhang while the two piers keep the earth.
+		 */
+		FScenario& Shed = Rows.AddDefaulted_GetRef();
+
+		Shed.Name = FName(TEXT("shed"));
+		Shed.MapName = TEXT("Lvl_Shed");
+		Shed.Title = TEXT("A brick shed with a wooden roof and a post-supported overhang");
+
+		Shed.Expectation = TEXT(
+			"A brick shed: two clay-brick piers carry a wooden roof, and a wooden overhang reaches "
+			"out over the door on a wooden post. Pull the post and the overhang drops, while the two "
+			"piers keep standing.");
+
+		Shed.LayStructure = [](DestructionLayout::FBrickLayout& OutLayout)
+		{
+			return DestructionShed::Build(DestructionShed::FShedSpec{}, OutLayout);
+		};
+
+		/*
+		 * THE CUT IS THE GROUNDED POST, NAMED BY ITS BOX CENTRE. The builder lays the post from
+		 * z = 0 to the head top (base + joint + head course) across the post's X footprint, single
+		 * wythe centred on y = 0 — so its box centre is (PostCentreCm, 0, HeadTop / 2). Derived from
+		 * the same default spec fields the builder reads, so the centre lands on the post to the ulp
+		 * rather than merely near it, and ScenariosPieceAtCentre resolves it to the post's handle.
+		 */
+		const DestructionShed::FShedSpec ShedSpec;
+		const double ShedPostTopZCm =
+			ShedSpec.BaseHeightCm + ShedSpec.JointThicknessCm + ShedSpec.HeadHeightCm;
+
+		Shed.CutCentresCm.Add(FVector(ShedSpec.PostCentreCm, 0.0, ShedPostTopZCm / 2.0));
 
 		return Rows;
 	}
