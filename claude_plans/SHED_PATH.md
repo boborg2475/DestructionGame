@@ -22,8 +22,15 @@ Grounded against today's code:
 - **Cross-material bearings** — a per-joint `FConnectionStrength` already lets a wood-on-brick or
   post-on-ground *frictional* contact be laid today; what's missing is the connection × material
   weakest-link pairing (`BondFactor`, declared-and-unused until a 2nd material exists).
-- **Tension support (step 5)** — nail/screw/bolt withdrawal capacities are dead data with no
-  reachable code path. The overhang's wall-fixing needs this.
+- **Tension support (step 5) — LARGELY ALREADY DONE (discovered 2026-08-29).** This premise is
+  STALE: it predates Slice 3b/4. The LP has carried axial tension all along (`n⁻ ≤ f_t·A/2`,
+  `bCanTension = TensileStrengthMPa > 0`), and nail/screw/bolt withdrawal is NOT dead — EN 1995
+  withdrawal is mapped straight into `FConnectionStrength.TensileStrengthMPa` (Nail 0.071 / Screw
+  0.54 / Bolt 1.61 MPa) and the bridge passes it to the oracle. Since the LP became the sole break
+  authority below the cap (3b/4), a fastened joint resists pull-out up to `f_t·A` end-to-end — proven
+  by `Acceptance.Tension.AFastenedPieceHangsByItsWithdrawalCapacity` (Nail falls, Screw/Bolt hold,
+  λ*=capacity/weight exact). The overhang's wall-fixing (a Screw/Bolt joint) already works below the
+  cap. What REMAINS is C2 (the overhang assembly) — not the capability.
 - **Member failure (step 6)** — pieces never fail, only joints do. Wood members snapping needs this.
 - **3D** — the LP is strictly 2D X-Z (two contacts/joint, three equilibrium rows/block); the bridge
   *refuses* any Y-normal joint as "a plausible number with wrong statics." A shed is four walls in
@@ -94,10 +101,19 @@ behaviours are proven.
   under the LP carrying compression, dropping when the bearing is removed.
 
 **Phase C — tension support (step 5; dimension-independent; 2D LP). Required by R-Overhang.**
-- **C1** — fastener withdrawal goes live in the LP (the hanging test: a piece screwed under a grounded
-  slab stands while EN 1995 withdrawal holds, falls over-capacity).
-- **C2** — overhang hung/fixed to the wall: stands on posts-plus-wall-fixing; distinct removal
-  outcomes for pull-posts vs pull-wall-fixing.
+- **C1 — DONE (tension capacity was already live since 3b/4; regression guard added 2026-08-29).**
+  Fastener withdrawal is live in the LP: `Acceptance.Tension.AFastenedPieceHangsByItsWithdrawalCapacity`
+  (a fixed cube hung from a grounded stub by one fastener joint — DryStone/Nail fall, Screw/Bolt hold,
+  oracle λ*=capacity/weight to 10 sig figs; production reads Supported when it holds, Falling when it
+  doesn't, Stranded==0). Green-on-arrival characterisation, proven to bite (zeroing the tension RHS at
+  both assembly sites reds it; DryStone arm stays green). **NOTE: `CorbelStepsBeforeTensionWins` is
+  NOT this** — it drives the ROUTER readout (`GetConnectionUtilisation`), whose downward-only routing
+  never credits a counterweight's tension at the root joint; the LP break authority DOES credit it, so
+  that standing red is a router-readout gap mis-anchored to step 5, not the LP tension capability (see
+  CURRENT_STATE — needs re-examination, not greened by C1).
+- **C2 — the real remaining Phase C work** — overhang hung/fixed to the wall: stands on
+  posts-plus-wall-fixing; distinct removal outcomes for pull-posts vs pull-wall-fixing. This is the
+  honest RED Phase C opens on (an actual overhang assembly), and it starts to build the shed's shape.
 
 **Phase D — member failure (step 6; 2D LP). DEFERRED past first playable shed per R-Member.**
 - **D1** — piece-level member bending/crushing against `FMaterialProfile::Strength` (the standing
