@@ -60,7 +60,8 @@ namespace DestructionProfiles
 			/*Tensile*/ 3.0,
 			/*FrictionCoefficient*/ 0.0
 		},
-		/*BondFactor*/ 1.0
+		/*BondFactor*/ 1.0,
+		/*bCompressionDominant*/ true
 	};
 
 	/**
@@ -102,7 +103,63 @@ namespace DestructionProfiles
 			/*Tensile*/ 2.0,
 			/*FrictionCoefficient*/ 0.0
 		},
-		/*BondFactor*/ 1.0
+		/*BondFactor*/ 1.0,
+		/*bCompressionDominant*/ true
+	};
+
+	/**
+	 * STRUCTURAL TIMBER, STRENGTH CLASS C24 — the deliberate second structural
+	 * material, and the softwood the shed's roof and posts are cut from.
+	 *
+	 * Density 0.42 g/cm3 — EN 338 gives C24 a mean density rho_mean of 420 kg/m3,
+	 * i.e. 0.42 g/cm3 in UPhysicalMaterial's own unit. Weight is the only thing
+	 * density does and what a member weighs is its mean, so the mean is the figure
+	 * that goes in — not the 350 kg/m3 characteristic density the same table lists
+	 * for connection design. UNITS TRAP: 0.42, never 420.
+	 *
+	 * THE STRENGTHS ARE THE CHARACTERISTIC AXIAL PARALLEL-TO-GRAIN CAPACITIES, mapped
+	 * onto FConnectionStrength the same way concrete and brick map their own
+	 * directional strengths:
+	 *
+	 * Compressive 21 MPa — f_c,0,k, compression parallel to grain (EN 338 C24).
+	 *
+	 * Tensile 14 MPa — f_t,0,k, tension parallel to grain. THIS IS WHY TIMBER IS NOT
+	 * COMPRESSION-DOMINANT: wood genuinely carries tension along the grain at a large
+	 * fraction of its crushing strength (14 against 21, 1.5x), where masonry pulls
+	 * apart at a fraction of a tenth of it. That is the whole point of adding a second,
+	 * dissimilar material — it proves the directional code reads the profile rather
+	 * than having masonry's ratios baked in.
+	 *
+	 * Shear 4.0 MPa — f_v,k. Stored in ShearCohesionMPa, the material's own shear
+	 * capacity, the same convention concrete's 7.6 and brick's 3.0 follow.
+	 *
+	 * EDITION NOTE: f_v,k = 4.0 and rho_mean = 420 are the EN 338:2016 figures
+	 * (pre-2016 C24 shear was 2.5); f_t,0,k is kept at the pre-2016 14.0 rather than
+	 * 2016's 14.5 — all are published C24 values, and 14.0 gives the clean 7/14 = 0.5
+	 * the round-trip test uses to catch a compressive/tensile field swap. f_c,0,k 21
+	 * and the density are edition-stable.
+	 *
+	 * NOT THE MEMBER-BENDING 36/6 the beam-acceptance fixtures use: those are a
+	 * whole-stress-block bending derivation for a different limit state and are
+	 * deliberately kept out of any joint field. This profile is the axial/shear
+	 * joint-field convention, so the axial characteristic strengths are the right
+	 * numbers.
+	 *
+	 * FrictionCoefficient zero and MaxShear unbounded, like the other materials — a
+	 * material is not a sliding interface, so ComputeUtilisation gives three
+	 * independent axes. BondFactor 1.0 until the connection-to-material pairing rule
+	 * (SHED_PATH.md B2) makes it live.
+	 */
+	const FMaterialProfile Timber{
+		/*DensityGramsPerCubicCm*/ 0.42,
+		FConnectionStrength{
+			/*Compressive*/ 21.0,
+			/*ShearCohesion*/ 4.0,
+			/*Tensile*/ 14.0,
+			/*FrictionCoefficient*/ 0.0
+		},
+		/*BondFactor*/ 1.0,
+		/*bCompressionDominant*/ false
 	};
 
 	namespace
@@ -117,17 +174,19 @@ namespace DestructionProfiles
 		 * anonymous `Library` arrays of different types in `DestructionProfiles`
 		 * would be a redefinition error.
 		 *
-		 * DELIBERATELY NO WOOD. DESIGN.md §4 wants a second, dissimilar material
-		 * added exactly ONCE, to prove the directional code genuinely reads the
-		 * profile rather than having brick's numbers baked in — run the same shear
-		 * scenario on wood and confirm it survives where brick failed. Adding it
-		 * here alongside the calibration data would spend that proof for nothing;
-		 * it is its own task, together with the connection-to-material pairing rule
-		 * that BondFactor is reserved for.
+		 * TIMBER IS THE SECOND, DISSIMILAR MATERIAL DESIGN.md §4 asks for, added
+		 * exactly ONCE (SHED_PATH.md B1). It proves the directional code genuinely
+		 * reads the profile rather than having masonry's numbers baked in — wood is
+		 * tension-capable parallel to grain where masonry is not, and the sweep's
+		 * compression-member invariant now keys off bCompressionDominant so it still
+		 * bites for a bad masonry profile without condemning this one. The
+		 * connection-to-material pairing rule BondFactor is reserved for stays
+		 * deferred to B2.
 		 */
 		const FNamedMaterialProfile MaterialProfileLibrary[] = {
 			{ TEXT("StructuralConcrete"), StructuralConcrete },
 			{ TEXT("ClayBrick"),          ClayBrick },
+			{ TEXT("Timber"),             Timber },
 		};
 	}
 

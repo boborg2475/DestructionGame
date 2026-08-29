@@ -39,6 +39,22 @@ namespace DestructionProfiles
 		 * connection reaches its full rated strength against this face.
 		 */
 		double BondFactor = 1.0;
+
+		/**
+		 * Whether this material carries load overwhelmingly in compression, so that
+		 * its own tensile strength is a small fraction of its crushing strength.
+		 *
+		 * Masonry and concrete are compression members: they crush at many times the
+		 * stress that pulls them apart, and a masonry profile whose tensile figure
+		 * crept up near its compressive one is almost certainly mis-specified. Wood is
+		 * the counter-example — genuinely tension-capable parallel to the grain, its
+		 * tensile strength within a small factor of its compressive — and steel later
+		 * will be another. The library sweep keys its "compressive >= 5x tensile"
+		 * sanity check off this flag so it still bites for a bad MASONRY profile
+		 * without condemning a legitimately tension-capable one. Defaults to true, the
+		 * compression-member case that every structural masonry unit satisfies.
+		 */
+		bool bCompressionDominant = true;
 	};
 
 	/** One row of the library. Adding a material is adding one of these. */
@@ -52,6 +68,8 @@ namespace DestructionProfiles
 	extern const FMaterialProfile StructuralConcrete;
 
 	extern const FMaterialProfile ClayBrick;
+
+	extern const FMaterialProfile Timber;
 
 	/** Every material profile, so a sweep checks the whole library. */
 	TArrayView<const FNamedMaterialProfile> AllMaterialProfiles();

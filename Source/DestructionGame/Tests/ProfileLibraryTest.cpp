@@ -508,15 +508,27 @@ bool FProfileLibraryMaterialInvariantsTest::RunTest(const FString& Parameters)
 			S.MaxShearStrengthMPa >= S.ShearCohesionMPa);
 
 		/*
-		 * Masonry and concrete are compression members: they crush at ten times
-		 * the stress that pulls them apart. This is the material-side counterpart
-		 * of the bonded-joint rule, and it is what makes "brick crushes" a
-		 * different failure mode from "mortar gives".
+		 * COMPRESSION-MEMBER MATERIALS crush at many times the stress that pulls
+		 * them apart. This is the material-side counterpart of the bonded-joint rule,
+		 * and it is what makes "brick crushes" a different failure mode from "mortar
+		 * gives".
+		 *
+		 * SCOPED TO bCompressionDominant, not asserted over the whole library, because
+		 * it is a fact about masonry and concrete rather than about materials in
+		 * general. Timber is genuinely tension-capable parallel to the grain — C24 is
+		 * 21 MPa against 14, well under 5x — so applying this to it would be asserting
+		 * a masonry ratio of wood. Keying off the trait keeps the check biting for a
+		 * mis-specified MASONRY profile (a StructuralConcrete whose tensile crept above
+		 * compressive/5 stays flagged) while exempting the materials that legitimately
+		 * carry tension.
 		 */
-		TestTrue(
-			*FString::Printf(TEXT("%s: compressive %g should be at least 5x tensile %g"),
-				*Where, S.CompressiveStrengthMPa, S.TensileStrengthMPa),
-			S.CompressiveStrengthMPa >= 5.0 * S.TensileStrengthMPa);
+		if (M.bCompressionDominant)
+		{
+			TestTrue(
+				*FString::Printf(TEXT("%s: compressive %g should be at least 5x tensile %g"),
+					*Where, S.CompressiveStrengthMPa, S.TensileStrengthMPa),
+				S.CompressiveStrengthMPa >= 5.0 * S.TensileStrengthMPa);
+		}
 
 		/*
 		 * DECLARED AND UNUSED, but not therefore unconstrained: a bond factor is a
@@ -839,6 +851,163 @@ bool FProfileLibraryFastenerUncouplingTest::RunTest(const FString& Parameters)
 		FString::Printf(TEXT("squeezing a mortar joint must lower its utilisation, %g -> %g"),
 			MortarDry, MortarSqueezed),
 		MortarSqueezed < MortarDry);
+
+	return true;
+}
+
+/**
+ * TIMBER IS THE DELIBERATE SECOND STRUCTURAL MATERIAL — C24 softwood, EN 338.
+ *
+ * SHED_PATH.md Phase B / slice B1: the multi-material shed needs a wood profile,
+ * and it is the single data addition that proves the directional code genuinely
+ * reads the profile rather than having masonry's numbers baked in. This test
+ * specifies that the library carries it, with its published EN 338 C24 values, and
+ * that those values are wired into the real ComputeUtilisation path rather than
+ * merely typed.
+ *
+ * WHY CHARACTERISTIC PARALLEL-TO-GRAIN STRENGTHS, AND WHICH FIELD EACH MAPS TO.
+ * StructuralConcrete and ClayBrick store a material's OWN directional strengths in
+ * FConnectionStrength's compressive / shear / tensile fields — 38/7.6/3.0 and
+ * 20/3.0/2.0 respectively. The matching C24 quantities are its axial
+ * parallel-to-grain capacities, so the convention maps cleanly:
+ *
+ *     CompressiveStrengthMPa <- f_c,0,k = 21   (compression parallel to grain)
+ *     TensileStrengthMPa     <- f_t,0,k = 14   (tension parallel to grain)
+ *     ShearCohesionMPa       <- f_v,k   = 4.0  (shear)
+ *
+ * These are the EN 338 CHARACTERISTIC (5-percentile) figures, NOT the mean-basis
+ * uplift the beam-bending fixtures use (36/6). BeamAcceptanceTest's 36 is a
+ * member-BENDING derivation for a different concern — a whole stress block checked
+ * by one ratio — and it deliberately does not hand f_c,0,k / f_t,0,k to any joint
+ * field. This material profile IS the axial/shear joint-field convention, so the
+ * axial characteristic strengths are the right numbers, and matching
+ * StructuralConcrete/ClayBrick means these are the values that flow through
+ * ComputeUtilisation. Density is the mean rho_mean = 420 kg/m3 = 0.42 g/cm3,
+ * because weight is the only thing density does and what a beam weighs is the mean.
+ *
+ * UNITS TRAP (DESIGN.md §3): density is g/cm3 (0.42, never 420), strengths are SI
+ * MPa, and ComputeUtilisation needs an AREA — ForceForMPa spells the 1 N = 100 uu,
+ * 1 cm2 = 100 mm2 conversion out independently of the production constant.
+ *
+ * NO WORLD, NO TICKING SOLVER — arithmetic over plain structs, like its siblings.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FProfileLibraryTimberProfileTest,
+	"DestructionGame.Core.Profiles.TimberIsCharacterisedC24Softwood",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FProfileLibraryTimberProfileTest::RunTest(const FString& Parameters)
+{
+	using namespace ProfileLibraryTestSupport;
+
+	constexpr double Tolerance = 1e-9;
+
+	/*
+	 * EN 338 C24, published. Declared here as the external anchor the profile must
+	 * reproduce, so the assertions fail if the library stores a different number
+	 * rather than agreeing with whatever it happens to hold.
+	 */
+	constexpr double C24DensityGramsPerCubicCm = 0.42;   // rho_mean 420 kg/m3
+	constexpr double C24CompressiveMPa = 21.0;           // f_c,0,k, compression parallel
+	constexpr double C24TensileMPa = 14.0;               // f_t,0,k, tension parallel
+	constexpr double C24ShearMPa = 4.0;                  // f_v,k
+
+	const FNamedMaterialProfile* TimberRow = nullptr;
+	for (const FNamedMaterialProfile& Row : AllMaterialProfiles())
+	{
+		if (Row.Name != nullptr && FCString::Strcmp(Row.Name, TEXT("Timber")) == 0)
+		{
+			TimberRow = &Row;
+			break;
+		}
+	}
+
+	/*
+	 * THE RED. No Timber row exists in the library yet, so the lookup returns
+	 * nullptr and the whole specification cannot even begin. dev's green step is the
+	 * one-entry data addition (an extern const FMaterialProfile Timber + its row in
+	 * MaterialProfileLibrary) that makes this findable.
+	 */
+	if (TimberRow == nullptr)
+	{
+		AddError(FString::Printf(
+			TEXT("the material library must contain a profile named Timber; it does not (library has %d entries)"),
+			AllMaterialProfiles().Num()));
+		return false;
+	}
+
+	const FMaterialProfile& M = TimberRow->Profile;
+	const FConnectionStrength& S = M.Strength;
+
+	// --- the published values, pinned against the external anchor ---------------
+
+	TestTrue(
+		FString::Printf(TEXT("Timber density %g g/cm3 must be EN 338 C24 rho_mean %g g/cm3 (0.42, NOT 420 kg/m3)"),
+			M.DensityGramsPerCubicCm, C24DensityGramsPerCubicCm),
+		FMath::IsNearlyEqual(M.DensityGramsPerCubicCm, C24DensityGramsPerCubicCm, Tolerance));
+
+	TestTrue(
+		FString::Printf(TEXT("Timber compressive %g MPa must be C24 f_c,0,k %g MPa"),
+			S.CompressiveStrengthMPa, C24CompressiveMPa),
+		FMath::IsNearlyEqual(S.CompressiveStrengthMPa, C24CompressiveMPa, Tolerance));
+
+	TestTrue(
+		FString::Printf(TEXT("Timber tensile %g MPa must be C24 f_t,0,k %g MPa"),
+			S.TensileStrengthMPa, C24TensileMPa),
+		FMath::IsNearlyEqual(S.TensileStrengthMPa, C24TensileMPa, Tolerance));
+
+	TestTrue(
+		FString::Printf(TEXT("Timber shear %g MPa must be C24 f_v,k %g MPa"),
+			S.ShearCohesionMPa, C24ShearMPa),
+		FMath::IsNearlyEqual(S.ShearCohesionMPa, C24ShearMPa, Tolerance));
+
+	/*
+	 * --- and the values round-trip through the real code path ------------------
+	 *
+	 * A profile is behaviour, not a data blob: loading each axis in turn to ONE
+	 * absolute stress and reading the utilisation back proves the numbers are wired
+	 * into ComputeUtilisation, not merely stored.
+	 *
+	 * Each load is single-axis (CompressionOf / TensionOf / ShearOf set exactly one
+	 * component), so NO cross-axis coupling can silently govern: a compression-only
+	 * load reads zero on shear and tension, and a material's FrictionCoefficient is
+	 * zero so compression never feeds the shear capacity either. The governing axis
+	 * is therefore the one being loaded, by construction.
+	 *
+	 * 7 MPa is chosen so the three expected utilisations are all DISTINCT —
+	 * 7/21 = 0.3333..., 7/14 = 0.5, 7/4 = 1.75 — so a mis-wiring (e.g. the tensile
+	 * value landing in the compressive field) moves a reading and is caught, which a
+	 * common "half of each limit reads 0.5" probe would hide. Expected values divide
+	 * by the PUBLISHED constant above, independently of what the profile stores.
+	 */
+	constexpr double ProbeStressMPa = 7.0;
+
+	const double CompUtil = DestructionForce::ComputeUtilisation(
+		CompressionOf(ForceForMPa(ProbeStressMPa, JointAreaSqCm)), S, JointAreaSqCm);
+	const double ExpectedCompUtil = ProbeStressMPa / C24CompressiveMPa;
+
+	TestTrue(
+		FString::Printf(TEXT("Timber at %g MPa compression should read %g (7/21), got %g"),
+			ProbeStressMPa, ExpectedCompUtil, CompUtil),
+		FMath::IsNearlyEqual(CompUtil, ExpectedCompUtil, Tolerance));
+
+	const double TensUtil = DestructionForce::ComputeUtilisation(
+		TensionOf(ForceForMPa(ProbeStressMPa, JointAreaSqCm)), S, JointAreaSqCm);
+	const double ExpectedTensUtil = ProbeStressMPa / C24TensileMPa;
+
+	TestTrue(
+		FString::Printf(TEXT("Timber at %g MPa tension should read %g (7/14), got %g"),
+			ProbeStressMPa, ExpectedTensUtil, TensUtil),
+		FMath::IsNearlyEqual(TensUtil, ExpectedTensUtil, Tolerance));
+
+	const double ShearUtil = DestructionForce::ComputeUtilisation(
+		ShearOf(ForceForMPa(ProbeStressMPa, JointAreaSqCm)), S, JointAreaSqCm);
+	const double ExpectedShearUtil = ProbeStressMPa / C24ShearMPa;
+
+	TestTrue(
+		FString::Printf(TEXT("Timber at %g MPa shear should read %g (7/4), got %g"),
+			ProbeStressMPa, ExpectedShearUtil, ShearUtil),
+		FMath::IsNearlyEqual(ShearUtil, ExpectedShearUtil, Tolerance));
 
 	return true;
 }
