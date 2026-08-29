@@ -2541,6 +2541,62 @@ namespace RigidBlockOracle
 			}
 		}
 
+		/*
+		 * ---- First-crack rows, each RELAXED by its own violation variable. ----
+		 *
+		 * The maximise-lambda path writes the uncracked peak-fibre limit for every bonded joint
+		 * behind bFirstCrackRows, and below the cap the break authority poses it (Structure.cpp),
+		 * so a bonded joint cracks at three times the plastic no-tension bending stiffness. The
+		 * readout must assemble the SAME rows or its utilisation reports the plastic capacity a
+		 * bonded bending joint is never actually held to — four times too comfortable at e = 3h.
+		 * Each of the two sign branches of |n1 - n2| is one relaxed inequality carrying its OWN
+		 * violation slack through AddStrengthRow, so it joins the per-group lexicographic-minimax
+		 * canonicalization and the fixed-point reduction exactly like every other strength row
+		 * rather than being special-cased out of it.
+		 *
+		 * Keyed on DATA (f_t > 0), not material: a dry joint has nothing to crack, gets no row and
+		 * stays bit-identical whether the flag is on or off. The guard is written !(f_t > 0) so a
+		 * NaN strength lands inside it. Columns follow the min-violation layout (Base = 4 *
+		 * ContactIndex, no lambda column), the joint's two contacts sit at contact indices 2J and
+		 * 2J+1 at -/+ h, and the RHS is over the FULL joint face (Joint.AreaSqCm = 2 * tributary),
+		 * cutting the plastic bending capacity to a third (PROMOTION_DESIGN Sec 4.3). Like the
+		 * maximise-lambda path this is NOT gated on f_t < UncappedStrengthMPa: an uncapped-yet-bonded
+		 * joint's row is trivially slack, and no fixture drives it (CURRENT_STATE 0d residue c).
+		 */
+		if (Problem.bFirstCrackRows)
+		{
+			for (int32 JointIndex = 0; JointIndex < NumJoints; ++JointIndex)
+			{
+				const FOracleJoint& Joint = Problem.Joints[JointIndex];
+				const double FtMPa = Joint.Strength.TensileStrengthMPa;
+
+				if (!(FtMPa > 0.0))
+				{
+					continue;
+				}
+
+				const int32 Base1 = 4 * (2 * JointIndex);
+				const int32 Base2 = 4 * (2 * JointIndex + 1);
+				const double Rhs = FtMPa * OracleForceUnitsPerMPaSqCm * Joint.AreaSqCm;
+
+				/* n1 >= n2 branch: -(n1+n2) + 3(n1-n2) = 2*n1 - 4*n2 <= f_t*A. */
+				FAssemblyRow FirstCrackA;
+				FirstCrackA.Add(Base1 + 0, 2.0);
+				FirstCrackA.Add(Base1 + 1, -2.0);
+				FirstCrackA.Add(Base2 + 0, -4.0);
+				FirstCrackA.Add(Base2 + 1, 4.0);
+				AddStrengthRow(JointIndex, MoveTemp(FirstCrackA), Rhs);
+
+				/* n2 >= n1 branch: -(n1+n2) + 3(n2-n1) = -4*n1 + 2*n2 <= f_t*A. */
+				FAssemblyRow FirstCrackB;
+				FirstCrackB.Add(Base1 + 0, -4.0);
+				FirstCrackB.Add(Base1 + 1, 4.0);
+				FirstCrackB.Add(Base2 + 0, 2.0);
+				FirstCrackB.Add(Base2 + 1, -2.0);
+				AddStrengthRow(JointIndex, MoveTemp(FirstCrackB), Rhs);
+			}
+		}
+
 		const int32 NumStrengthRows = StrengthInfos.Num();
 		const int32 NumStructBase = NumForceCols + NumStrengthRows;
 

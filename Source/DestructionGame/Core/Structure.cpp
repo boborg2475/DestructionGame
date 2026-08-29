@@ -2592,10 +2592,12 @@ void FStructure::CacheMinViolationReadout(const RigidBlockOracle::FOracleProblem
 	 * maximise-lambda one. It writes nothing but this cache, so no break decision, support flag or
 	 * ConnectionForces can move — the readout is the estimator the overlay reads, never the verdict.
 	 *
-	 * FIRST-CRACK ROWS ARE DELIBERATELY OFF on the readout pose. The below-cap break authority
-	 * writes them (bFirstCrackRows), but whether the shipped readout should crack bonded joints at
-	 * first crack is a separate follow-on decision; this slice's fixture has M = 0, so the rows are
-	 * a no-op here, and turning them on would pre-empt that decision with no test to drive it.
+	 * FIRST-CRACK ROWS ARE ON, matching the below-cap break authority. BreakByEquilibrium poses the
+	 * gate with bFirstCrackRows below the cap, so a bonded joint cracks at its uncracked peak-fibre
+	 * limit — three times stricter in bending than the plastic no-tension form. The readout must
+	 * assemble the SAME rows or a bonded bending joint reports the plastic utilisation it is never
+	 * held to (four times too comfortable at e = 3h). At M = 0 first crack and plastic coincide, so
+	 * the pure-axial readouts are unchanged; the divergence is observable only where the joint bends.
 	 *
 	 * THE CACHE IS REBUILT EACH TIME, sized to the connections, so a below-cap re-solve cannot
 	 * leave a stale entry behind. A readout the solver could not produce (bPresent false) leaves the
@@ -2606,7 +2608,7 @@ void FStructure::CacheMinViolationReadout(const RigidBlockOracle::FOracleProblem
 
 	RigidBlockOracle::FOracleProblem ReadoutProblem = Problem;
 	ReadoutProblem.bMinViolationReadout = true;
-	ReadoutProblem.bFirstCrackRows = false;
+	ReadoutProblem.bFirstCrackRows = true;
 
 	const RigidBlockOracle::FOracleResult ReadoutResult = RigidBlockOracle::SolveRigidBlock(ReadoutProblem);
 
