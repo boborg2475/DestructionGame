@@ -181,4 +181,196 @@ namespace DestructionShed3D
 
 		return true;
 	}
+
+	bool BuildRecognizable(DestructionLayout::FBrickLayout& OutLayout)
+	{
+		/*
+		 * EMPTIED FIRST AND FILLED LAST, exactly as Build and the 2D shed do. A path that gives up
+		 * partway must leave a caller who ignored the return value with nothing, rather than with a
+		 * half-built shed whose missing joints would read as a healthy structure.
+		 *
+		 * There is no spec to guard: the recognizable shed's dimensions are canonical, hardcoded here
+		 * and pinned by the test's local constants. Every coordinate is a positive literal, so the
+		 * NaN-safe `!(x > 0.0)` guarding Build performs has nothing to reject; the fail-closed points
+		 * are AddPiece and Join, which refuse a degenerate box or a non-face pair.
+		 */
+		OutLayout = FBrickLayout();
+
+		const double JointThicknessCm = 1.0;
+
+		FBrickLayout Laid;
+
+		/*
+		 * ONE DOOR FOR EVERY PIECE — the same lambda Build uses: an axis-aligned box from its X, Y and
+		 * Z spans, the mass derived from that same box via the shared PieceMassKg so a piece cannot
+		 * weigh a different size than it sits, and the authored material recorded. The handle IS the
+		 * box index (FBrickLayout's parallel-array contract), so the box is appended in the same breath.
+		 */
+		const auto AddPiece =
+			[&](double LeftXCm, double RightXCm, double BackYCm, double FrontYCm,
+				double BottomZCm, double TopZCm,
+				const DestructionProfiles::FMaterialProfile& Material, bool bGrounded) -> int32
+		{
+			FPieceBox Box;
+			Box.CentreCm = FVector(
+				(LeftXCm + RightXCm) / 2.0, (BackYCm + FrontYCm) / 2.0, (BottomZCm + TopZCm) / 2.0);
+			Box.ExtentCm = FVector(
+				(RightXCm - LeftXCm) / 2.0, (FrontYCm - BackYCm) / 2.0, (TopZCm - BottomZCm) / 2.0);
+
+			const int32 Piece = Laid.Structure.AddPiece(
+				PieceMassKg(Box, Material.DensityGramsPerCubicCm), bGrounded, Box.CentreCm);
+
+			if (Piece == INDEX_NONE)
+			{
+				return INDEX_NONE;
+			}
+
+			Laid.Boxes.Add(Box);
+			Laid.Structure.SetPieceMaterial(Piece, &Material);
+
+			return Piece;
+		};
+
+		/*
+		 * THE 23 PIECES, in the order the file header lists them. Walls and door base (Z < 200), then
+		 * the window course in the left wall, then the two stepped gable ends, the timber roof of
+		 * purlins and a ridge, and the porch. ClayBrick masonry, Timber lintels/roof/porch. Grounded:
+		 * the four walls' feet (back wall, right wall, both door piers, the sill) and the two posts.
+		 */
+		const int32 BackWall = AddPiece(
+			0.0, 300.0, 0.0, 25.0, 0.0, 200.0, DestructionProfiles::ClayBrick, true);
+		const int32 RightWall = AddPiece(
+			275.0, 300.0, 26.0, 274.0, 0.0, 200.0, DestructionProfiles::ClayBrick, true);
+		const int32 LeftPier = AddPiece(
+			0.0, 110.0, 275.0, 300.0, 0.0, 175.0, DestructionProfiles::ClayBrick, true);
+		const int32 RightPier = AddPiece(
+			190.0, 300.0, 275.0, 300.0, 0.0, 175.0, DestructionProfiles::ClayBrick, true);
+		const int32 DoorHeader = AddPiece(
+			0.0, 300.0, 275.0, 300.0, 176.0, 200.0, DestructionProfiles::Timber, false);
+
+		const int32 Sill = AddPiece(
+			0.0, 25.0, 26.0, 274.0, 0.0, 89.0, DestructionProfiles::ClayBrick, true);
+		const int32 WinJambBack = AddPiece(
+			0.0, 25.0, 26.0, 120.0, 90.0, 170.0, DestructionProfiles::ClayBrick, false);
+		const int32 WinJambFront = AddPiece(
+			0.0, 25.0, 180.0, 274.0, 90.0, 170.0, DestructionProfiles::ClayBrick, false);
+		const int32 WinLintel = AddPiece(
+			0.0, 25.0, 26.0, 274.0, 171.0, 200.0, DestructionProfiles::Timber, false);
+
+		const int32 FGableBase = AddPiece(
+			0.0, 300.0, 275.0, 300.0, 201.0, 230.0, DestructionProfiles::ClayBrick, false);
+		const int32 FGableMid = AddPiece(
+			75.0, 225.0, 275.0, 300.0, 231.0, 260.0, DestructionProfiles::ClayBrick, false);
+		const int32 FGableApex = AddPiece(
+			125.0, 175.0, 275.0, 300.0, 261.0, 290.0, DestructionProfiles::ClayBrick, false);
+		const int32 BGableBase = AddPiece(
+			0.0, 300.0, 0.0, 25.0, 201.0, 230.0, DestructionProfiles::ClayBrick, false);
+		const int32 BGableMid = AddPiece(
+			75.0, 225.0, 0.0, 25.0, 231.0, 260.0, DestructionProfiles::ClayBrick, false);
+		const int32 BGableApex = AddPiece(
+			125.0, 175.0, 0.0, 25.0, 261.0, 290.0, DestructionProfiles::ClayBrick, false);
+
+		const int32 EavesPurlinL = AddPiece(
+			0.0, 75.0, 0.0, 300.0, 231.0, 255.0, DestructionProfiles::Timber, false);
+		const int32 EavesPurlinR = AddPiece(
+			225.0, 300.0, 0.0, 300.0, 231.0, 255.0, DestructionProfiles::Timber, false);
+		const int32 MidPurlinL = AddPiece(
+			75.0, 125.0, 0.0, 300.0, 261.0, 285.0, DestructionProfiles::Timber, false);
+		const int32 MidPurlinR = AddPiece(
+			175.0, 225.0, 0.0, 300.0, 261.0, 285.0, DestructionProfiles::Timber, false);
+		const int32 Ridge = AddPiece(
+			125.0, 175.0, 0.0, 300.0, 291.0, 315.0, DestructionProfiles::Timber, false);
+
+		const int32 PostL = AddPiece(
+			45.0, 75.0, 370.0, 395.0, 0.0, 200.0, DestructionProfiles::Timber, true);
+		const int32 PostR = AddPiece(
+			225.0, 255.0, 370.0, 395.0, 0.0, 200.0, DestructionProfiles::Timber, true);
+		const int32 Overhang = AddPiece(
+			40.0, 260.0, 301.0, 401.0, 201.0, 221.0, DestructionProfiles::Timber, false);
+
+		const int32 AllPieces[] = {
+			BackWall, RightWall, LeftPier, RightPier, DoorHeader, Sill, WinJambBack, WinJambFront,
+			WinLintel, FGableBase, FGableMid, FGableApex, BGableBase, BGableMid, BGableApex,
+			EavesPurlinL, EavesPurlinR, MidPurlinL, MidPurlinR, Ridge, PostL, PostR, Overhang };
+
+		for (const int32 Piece : AllPieces)
+		{
+			if (Piece == INDEX_NONE)
+			{
+				return false;
+			}
+		}
+
+		/*
+		 * THE JOINTS, EACH THROUGH MakeInterface — the same door the wall and the 2D shed use. Every
+		 * bearing names the LOWER piece as A and the UPPER as B, so the axis-of-separation normal
+		 * (oriented by B) reads as a bed BENEATH the piece it carries. MakeInterface refuses any pair
+		 * that does not share a face on exactly one axis, so a mis-sized piece is caught here.
+		 */
+		const auto Join =
+			[&](int32 A, int32 B, const FConnectionStrength& Strength) -> bool
+		{
+			FConnection Connection;
+
+			if (!MakeInterface(
+					A, Laid.Boxes[A], B, Laid.Boxes[B], JointThicknessCm, Strength, Connection))
+			{
+				return false;
+			}
+
+			return Laid.Structure.AddConnection(Connection) != INDEX_NONE;
+		};
+
+		/*
+		 * DOOR (2) and WINDOW (4) — the two lintels bear on their piers/jambs through compression-only
+		 * DryStone beds. CORNERS (4) close the box across the walls' out-of-plane (Y-normal) faces with
+		 * bonded mortar; all four are grounded-grounded, so the oracle skips them — they are closure,
+		 * not structure. GABLES (6) stack the stepped courses on bonded mortar beds. ROOF (10) rests
+		 * each purlin on its back and front gable shoulder through DryStone. PORCH (3): the overhang
+		 * bears on both posts (DryStone) and is tied back to the front gable by a Y-normal Screw fixing.
+		 */
+		if (!Join(LeftPier, DoorHeader, DestructionProfiles::DryStone)
+			|| !Join(RightPier, DoorHeader, DestructionProfiles::DryStone)
+			|| !Join(Sill, WinJambBack, DestructionProfiles::DryStone)
+			|| !Join(Sill, WinJambFront, DestructionProfiles::DryStone)
+			|| !Join(WinJambBack, WinLintel, DestructionProfiles::DryStone)
+			|| !Join(WinJambFront, WinLintel, DestructionProfiles::DryStone)
+			|| !Join(Sill, BackWall, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(Sill, LeftPier, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(RightWall, BackWall, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(RightWall, RightPier, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(DoorHeader, FGableBase, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(FGableBase, FGableMid, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(FGableMid, FGableApex, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(BackWall, BGableBase, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(BGableBase, BGableMid, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(BGableMid, BGableApex, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(FGableBase, EavesPurlinL, DestructionProfiles::DryStone)
+			|| !Join(BGableBase, EavesPurlinL, DestructionProfiles::DryStone)
+			|| !Join(FGableBase, EavesPurlinR, DestructionProfiles::DryStone)
+			|| !Join(BGableBase, EavesPurlinR, DestructionProfiles::DryStone)
+			|| !Join(FGableMid, MidPurlinL, DestructionProfiles::DryStone)
+			|| !Join(BGableMid, MidPurlinL, DestructionProfiles::DryStone)
+			|| !Join(FGableMid, MidPurlinR, DestructionProfiles::DryStone)
+			|| !Join(BGableMid, MidPurlinR, DestructionProfiles::DryStone)
+			|| !Join(FGableApex, Ridge, DestructionProfiles::DryStone)
+			|| !Join(BGableApex, Ridge, DestructionProfiles::DryStone)
+			|| !Join(PostL, Overhang, DestructionProfiles::DryStone)
+			|| !Join(PostR, Overhang, DestructionProfiles::DryStone)
+			|| !Join(FGableBase, Overhang, DestructionProfiles::Screw))
+		{
+			return false;
+		}
+
+		/*
+		 * THE 3D FLAG routes this structure to the Dim3D pose and lifts the bridge's Y-normal refusal,
+		 * so the four out-of-plane corner joints and the Y-normal porch fixing reach the 3D LP rather
+		 * than being rejected.
+		 */
+		Laid.Structure.SetThreeDimensional(true);
+
+		OutLayout = MoveTemp(Laid);
+
+		return true;
+	}
 }

@@ -104,4 +104,20 @@ namespace DestructionShed3D
 	 * @return true if a shed was laid.
 	 */
 	bool Build(const FShed3DSpec& Spec, DestructionLayout::FBrickLayout& OutLayout);
+
+	/**
+	 * THE RECOGNIZABLE 3D SHED — the v2 geometry that reads as a shed rather than four grey blocks
+	 * and a plank. All axis-aligned (the 3D bridge requires axis-aligned contact normals): four brick
+	 * walls closing a box, a DOOR opening in the front wall (two piers carrying a Timber lintel), a
+	 * WINDOW opening in the left wall (a sill course, two jambs, a Timber lintel), STEPPED brick gables
+	 * on the front and back walls rising in symmetric centred courses to a ridge, a Timber roof of
+	 * stepped purlins and a ridge beam bearing on the gable shoulders, and a Timber porch overhang over
+	 * the door carried on two grounded Timber posts and a wall fixing. Flagged SetThreeDimensional.
+	 *
+	 * The canonical dimensions live inside the builder (the test pins them as local constants and reads
+	 * the laid layout back), so there is no spec to pass — a later slice may parameterise it.
+	 *
+	 * Refuses by writing an empty layout; returns true when the shed was laid.
+	 */
+	bool BuildRecognizable(DestructionLayout::FBrickLayout& OutLayout);
 }
