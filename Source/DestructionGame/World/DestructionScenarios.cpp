@@ -86,6 +86,18 @@ namespace DestructionScenarios
 	 */
 	constexpr double ScenariosCameraYawDegrees = -90.0;
 
+	/*
+	 * THE THREE-QUARTER ANGLE, FOR THE ONE ROW THAT IS A GENUINE 3D BOX rather than a flat wall.
+	 *
+	 * The azimuth orbits the camera off the head-on -Y axis toward +X, so the box's depth is seen in
+	 * perspective instead of foreshortened to a flat front face; the elevation raises it so it looks
+	 * DOWN onto the structure and the overhang's fall off the front reads as a fall. Both are pleasing
+	 * three-quarter values rather than tuned numbers — the framing that keeps the whole box on screen
+	 * is sized from the bounding sphere below, independently of the exact angle.
+	 */
+	constexpr double ScenariosThreeQuarterAzimuthDegrees = 40.0;
+	constexpr double ScenariosThreeQuarterElevationDegrees = 30.0;
+
 	/**
 	 * The wall every row is laid from, at whatever size that row wants.
 	 *
@@ -777,6 +789,14 @@ namespace DestructionScenarios
 		};
 
 		/*
+		 * AND IT IS THE ONE ROW VIEWED FROM A THREE-QUARTER ANGLE. Every other level is a flat wall
+		 * that reads perfectly from straight in front, but the 3D shed is a closed box with an
+		 * overhang dropping off its front — head-on it is a flat front face with its depth and its
+		 * fall hidden. ThreeQuarter orbits and elevates the camera so both are visible.
+		 */
+		Shed3D.Framing = EScenarioFraming::ThreeQuarter;
+
+		/*
 		 * THE CUT IS THE GROUNDED POST, NAMED BY ITS BOX CENTRE. The builder lays the post from z = 0
 		 * to the wall top across the overhang's X footprint (centred on OverhangCentreXCm), spanning
 		 * the post's Y footprint (centred on PostCentreYCm) — so its box centre is
@@ -1028,10 +1048,58 @@ namespace DestructionScenarios
 		return true;
 	}
 
-	FViewpoint ViewpointFor(const FBox& BoundsCm, double AspectHeightOverWidth)
+	FViewpoint ViewpointFor(
+		const FBox& BoundsCm, double AspectHeightOverWidth, EScenarioFraming Framing)
 	{
 		const FVector CentreCm = BoundsCm.GetCenter();
 		const FVector HalfSizeCm = BoundsCm.GetExtent();
+
+		/*
+		 * THE THREE-QUARTER OVERRIDE FRAMES THE WHOLE 3D BOX, NOT JUST ITS FRONT FACE. Off an angle
+		 * the on-screen silhouette is no longer the X-Z face — the depth Y rotates into both the
+		 * horizontal and the vertical extent — so the honest "all of it is in frame at this
+		 * orientation" is a SPHERE enclosing the box, whose radius is the box's 3D half-diagonal.
+		 * That radius is strictly larger than any single half-extent, so a standoff sized from halfZ
+		 * alone (the head-on path below) leaves the sphere poking out top and bottom; sizing it from
+		 * the radius is what fixes the head-on view's Y-blindness for a box with depth.
+		 *
+		 * The vertical requirement binds because the aspect is under one, and each requirement is one
+		 * operation away from its own inequality — the divide-then-later-multiply the head-on path
+		 * relies on for the same reason. The floor sits second in FMath::Max so a NaN radius lands on
+		 * it rather than escaping as the camera distance.
+		 */
+		if (Framing == EScenarioFraming::ThreeQuarter)
+		{
+			const double RadiusCm = HalfSizeCm.Size();
+
+			const double FromWidthCm = ScenariosFrameMargin * RadiusCm;
+			const double FromHeightCm = (ScenariosFrameMargin * RadiusCm) / AspectHeightOverWidth;
+
+			const double StandoffCm = FMath::Max(
+				FMath::Max(FromWidthCm, FromHeightCm), ScenariosMinimumStandoffCm);
+
+			/*
+			 * THE DIRECTION FROM THE CENTRE TO THE CAMERA, orbited off the head-on +Y toward +X by the
+			 * azimuth and raised by the elevation. Head-on is +Y; a yaw of the azimuth about Z turns
+			 * that toward +X, and the elevation lifts it out of the horizontal, so the camera sits
+			 * off the centre's X and above its Z and looks back down at the box.
+			 */
+			const double AzimuthRad = FMath::DegreesToRadians(ScenariosThreeQuarterAzimuthDegrees);
+			const double ElevationRad = FMath::DegreesToRadians(ScenariosThreeQuarterElevationDegrees);
+			const double CosElevation = FMath::Cos(ElevationRad);
+
+			const FVector ToCameraDir(
+				CosElevation * FMath::Sin(AzimuthRad),
+				CosElevation * FMath::Cos(AzimuthRad),
+				FMath::Sin(ElevationRad));
+
+			FViewpoint Angled;
+
+			Angled.LocationCm = CentreCm + StandoffCm * ToCameraDir;
+			Angled.Rotation = (CentreCm - Angled.LocationCm).Rotation();
+
+			return Angled;
+		}
 
 		/*
 		 * THE MARGIN IS APPLIED TO EACH REQUIREMENT AND THE DIVISION COMES LAST, WHICH IS NOT

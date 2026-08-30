@@ -21,6 +21,24 @@
  */
 namespace DestructionScenarios
 {
+	/**
+	 * HOW A ROW WANTS TO BE FRAMED — data on the row, defaulting to the head-on view every
+	 * existing level was designed around.
+	 *
+	 * A flat wall reads perfectly from straight in front. A genuinely 3D structure (a closed box,
+	 * an overhang dropping off a front wall) reads as a flat front face from there, so its row
+	 * opts into a three-quarter view: orbited off the front axis and raised, so its depth and its
+	 * fall are visible rather than foreshortened.
+	 */
+	enum class EScenarioFraming : uint8
+	{
+		/** Straight in front along -Y, level — the original view; the default for every row. */
+		HeadOn,
+
+		/** Orbited off-axis and elevated, looking down at the centre, framing the full 3D box. */
+		ThreeQuarter,
+	};
+
 	/** One playable scenario: the wall, what to cut out of it, and what a human should see. */
 	struct FScenario
 	{
@@ -76,6 +94,12 @@ namespace DestructionScenarios
 		 * collapsed before the player's first frame was drawn.
 		 */
 		double HoldSeconds = 4.0;
+
+		/**
+		 * HOW THIS ROW WANTS TO BE VIEWED. Unset (HeadOn) is every existing row's head-on frame.
+		 * A 3D row sets ThreeQuarter so ViewpointFor angles the camera to show its depth.
+		 */
+		EScenarioFraming Framing = EScenarioFraming::HeadOn;
 	};
 
 	/** Every scenario, in menu order. */
@@ -149,6 +173,14 @@ namespace DestructionScenarios
 		FRotator Rotation = FRotator::ZeroRotator;
 	};
 
-	/** Where to stand so the whole of a structure is in frame. */
-	FViewpoint ViewpointFor(const FBox& BoundsCm, double AspectHeightOverWidth);
+	/**
+	 * Where to stand so the whole of a structure is in frame.
+	 *
+	 * `Framing` selects head-on (the default, unchanged for every existing row) or a three-quarter
+	 * angle that orbits and elevates the camera and frames the full 3D bounds including Y-depth.
+	 */
+	FViewpoint ViewpointFor(
+		const FBox& BoundsCm,
+		double AspectHeightOverWidth,
+		EScenarioFraming Framing = EScenarioFraming::HeadOn);
 }

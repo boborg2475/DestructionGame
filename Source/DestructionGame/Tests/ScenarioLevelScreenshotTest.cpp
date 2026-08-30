@@ -1012,7 +1012,7 @@ bool FScenarioShotJoinCommand::Update()
 	/* --- and where the level put the player ---------------------------------------------- */
 
 	const DestructionScenarios::FViewpoint Viewpoint = DestructionScenarios::ViewpointFor(
-		Record.Oracle.BoundsCm, ScenarioShotAspectHeightOverWidth);
+		Record.Oracle.BoundsCm, ScenarioShotAspectHeightOverWidth, Row->Framing);
 
 	APlayerController* const Controller = World->GetFirstPlayerController();
 	APawn* const Pawn = Controller != nullptr ? Controller->GetPawn() : nullptr;

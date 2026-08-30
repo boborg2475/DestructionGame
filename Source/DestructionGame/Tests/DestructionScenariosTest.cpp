@@ -1155,4 +1155,222 @@ bool FDestructionScenariosViewpointTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * THE OPTIONAL THREE-QUARTER FRAMING OVERRIDE — so a genuinely 3D structure is not photographed
+ * as a flat front wall.
+ *
+ * The head-on viewpoint stands the camera on the box's front axis (+Y from the centre) looking
+ * along -Y, level. That is exactly right for a flat wall and exactly wrong for a 3D box: the
+ * front face fills the frame and the box's DEPTH (its Y extent) and an overhang DROPPING off the
+ * front are foreshortened to nothing. `shed3d` is that box, and it opts into ThreeQuarter framing.
+ *
+ * =====================================================================================
+ * THREE SEPARATE CLAIMS, AND WHY EACH IS HERE
+ * =====================================================================================
+ *
+ *   1. THE REGRESSION PIN. The override is OPTIONAL, so every existing row — which sets nothing —
+ *      must still get the byte-identical head-on viewpoint it gets today. A refactor that threads
+ *      the override through but nudges HeadOn by a bit has moved thirty levels' cameras. So a
+ *      worked head-on row is asserted bit-identical BOTH through the defaulted call (no third
+ *      argument, the way every production caller still spells it) AND through an explicit HeadOn.
+ *
+ *   2. THE ROW OPTS IN. The behaviour is "the shed3d row sets it": the catalogue's shed3d row must
+ *      carry Framing == ThreeQuarter, or the 3D level is still framed head-on however clever
+ *      ViewpointFor becomes. This is the data pin.
+ *
+ *   3. THE ANGLED VIEW. Given ThreeQuarter, the camera must be OFF the centre's X (orbited in
+ *      azimuth), ABOVE the centre's Z (elevated), pitched DOWN and yawed OFF the head-on -90, still
+ *      pointing AT the centre, and standing far enough that the WHOLE 3D box is in frame — and the
+ *      framing test is applied to the box's full 3D extent, not just X and Z. Today's standoff
+ *      ignores the Y (depth) extent entirely; the override must not.
+ *
+ * =====================================================================================
+ * WHY FRAMING IS ASSERTED AGAINST THE BOUNDING SPHERE
+ * =====================================================================================
+ *
+ * The head-on test proves framing per axis: halfX < standoff and halfZ < standoff * aspect. Off a
+ * three-quarter angle the on-screen silhouette is no longer the X-Z face — the depth Y rotates
+ * into both the horizontal and vertical extent — so the honest generalisation of "the whole of it
+ * is in frame, at ANY view orientation" is that a sphere enclosing the box is in frame. Its radius
+ * is the box's 3D half-diagonal, which is strictly larger than any single half-extent whenever the
+ * box has depth, so the VERTICAL inequality (the binding one, aspect < 1) is what the current
+ * head-on standoff cannot satisfy for a 3D box: it sizes the distance from halfZ alone and leaves
+ * the sphere poking out top and bottom. That is the Y-blindness this override exists to fix,
+ * expressed as an inequality that survives whatever exact standoff dev-expert chooses.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FDestructionScenariosViewpointFramingTest,
+	"DestructionGame.World.Scenarios.ViewpointFraming",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FDestructionScenariosViewpointFramingTest::RunTest(const FString& Parameters)
+{
+	using namespace ScenariosTestSupport;
+	using namespace DestructionScenarios;
+
+	const double Aspect = ScenariosTestAspectHeightOverWidth;
+
+	/* --- 1. the regression pin: an unset row is byte-identical to today's head-on view ---- */
+
+	/*
+	 * THE WIDE WALL FROM THE HEAD-ON TEST, worked there: half-width governs, standoff 1.25 * 350
+	 * = 437.5 exactly, camera straight in front at (350, 437.5, 150), level and facing -Y. If the
+	 * override refactor moves this by one bit, this row fails.
+	 */
+	const FVector HeadOnCentreCm(350.0, 0.0, 150.0);
+	const FVector HeadOnHalfSizeCm(350.0, 5.125, 150.0);
+	const double HeadOnStandoffCm = 437.5;
+
+	const FBox HeadOnBounds = FBox::BuildAABB(HeadOnCentreCm, HeadOnHalfSizeCm);
+
+	const FVector ExpectedHeadOnCm(
+		HeadOnCentreCm.X, HeadOnCentreCm.Y + HeadOnStandoffCm, HeadOnCentreCm.Z);
+
+	const FViewpoint Defaulted = ViewpointFor(HeadOnBounds, Aspect);
+	const FViewpoint ExplicitHeadOn =
+		ViewpointFor(HeadOnBounds, Aspect, EScenarioFraming::HeadOn);
+
+	for (const TPair<const TCHAR*, FViewpoint>& Which :
+		{ TPair<const TCHAR*, FViewpoint>(TEXT("the defaulted call"), Defaulted),
+		  TPair<const TCHAR*, FViewpoint>(TEXT("an explicit HeadOn"), ExplicitHeadOn) })
+	{
+		TestTrue(
+			*FString::Printf(
+				TEXT("regression pin (%s): an unset/head-on row must still be viewed from %s, ")
+				TEXT("level and facing -Y; it is %s facing (%s, %s, %s)"),
+				Which.Key, *ScenariosTestVectorBits(ExpectedHeadOnCm),
+				*ScenariosTestVectorBits(Which.Value.LocationCm),
+				*ScenariosTestBits(Which.Value.Rotation.Pitch),
+				*ScenariosTestBits(Which.Value.Rotation.Yaw),
+				*ScenariosTestBits(Which.Value.Rotation.Roll)),
+			Which.Value.LocationCm.X == ExpectedHeadOnCm.X
+				&& Which.Value.LocationCm.Y == ExpectedHeadOnCm.Y
+				&& Which.Value.LocationCm.Z == ExpectedHeadOnCm.Z
+				&& Which.Value.Rotation.Pitch == 0.0
+				&& Which.Value.Rotation.Yaw == ScenariosTestCameraYawDegrees
+				&& Which.Value.Rotation.Roll == 0.0);
+	}
+
+	/* --- 2. the data pin: the shed3d row opts into three-quarter framing ------------------ */
+
+	const int32 Shed3DIndex = IndexOfName(FName(TEXT("shed3d")));
+
+	TestTrue(
+		TEXT("the catalogue must carry a 'shed3d' row for the 3D framing to attach to"),
+		Shed3DIndex != INDEX_NONE);
+
+	if (Shed3DIndex != INDEX_NONE)
+	{
+		const FScenario& Shed3D = Catalogue()[Shed3DIndex];
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("the 3D shed reads as a flat front wall head-on, so its row must opt into ")
+				TEXT("ThreeQuarter framing; its Framing is %d (HeadOn=%d, ThreeQuarter=%d)"),
+				static_cast<int32>(Shed3D.Framing),
+				static_cast<int32>(EScenarioFraming::HeadOn),
+				static_cast<int32>(EScenarioFraming::ThreeQuarter)),
+			Shed3D.Framing == EScenarioFraming::ThreeQuarter);
+	}
+
+	/* --- 3. the angled view: off-axis, elevated, pitched down, aimed at centre, fully framed */
+
+	/*
+	 * A GENUINELY 3D BOX — every half-extent meaningfully non-zero, so its depth Y is not a
+	 * rounding artefact and the bounding sphere is strictly larger than any face. Not the shed's
+	 * exact bounds (that would couple this to the builder's dimensions); any 3D box exercises the
+	 * same override.
+	 */
+	const FVector Box3DCentreCm(300.0, 200.0, 150.0);
+	const FVector Box3DHalfSizeCm(300.0, 200.0, 150.0);
+
+	const FBox Box3D = FBox::BuildAABB(Box3DCentreCm, Box3DHalfSizeCm);
+
+	const FViewpoint Angled = ViewpointFor(Box3D, Aspect, EScenarioFraming::ThreeQuarter);
+
+	const FRotationMatrix AngledFrame(Angled.Rotation);
+	const FVector Forward = AngledFrame.GetScaledAxis(EAxis::X);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("orbited: the three-quarter camera must be OFF the centre's X (%s), so the box's ")
+			TEXT("depth is not foreshortened; the camera X is %s"),
+			*ScenariosTestBits(Box3DCentreCm.X),
+			*ScenariosTestBits(Angled.LocationCm.X)),
+		Angled.LocationCm.X != Box3DCentreCm.X);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("elevated: the three-quarter camera must be ABOVE the centre's Z (%s), so it ")
+			TEXT("looks down onto the box; the camera Z is %s"),
+			*ScenariosTestBits(Box3DCentreCm.Z),
+			*ScenariosTestBits(Angled.LocationCm.Z)),
+		Angled.LocationCm.Z > Box3DCentreCm.Z);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("pitched down: the view must look downward (forward.Z < 0) rather than level; ")
+			TEXT("its forward is %s and its pitch is %s"),
+			*ScenariosTestVectorBits(Forward),
+			*ScenariosTestBits(Angled.Rotation.Pitch)),
+		Forward.Z < 0.0 && Angled.Rotation.Pitch != 0.0);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("off-axis yaw: the view must be orbited off the head-on -Y axis, both as a yaw ")
+			TEXT("away from %s and as a forward with real horizontal X; yaw %s, forward %s"),
+			*ScenariosTestBits(ScenariosTestCameraYawDegrees),
+			*ScenariosTestBits(Angled.Rotation.Yaw),
+			*ScenariosTestVectorBits(Forward)),
+		Angled.Rotation.Yaw != ScenariosTestCameraYawDegrees
+			&& FMath::Abs(Forward.X) > 0.05);
+
+	/*
+	 * STILL LOOKING AT THE CENTRE. Off-axis and elevated is only useful if the camera is aimed
+	 * back at the structure; a forward that points near the centre-ward direction is what makes
+	 * the box the subject rather than something off the edge of the frame.
+	 */
+	const FVector ToCentre = (Box3DCentreCm - Angled.LocationCm).GetSafeNormal();
+	const double AimDot = FVector::DotProduct(Forward, ToCentre);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("aimed at centre: the forward %s must point at the box centre (dir %s); their ")
+			TEXT("dot is %s"),
+			*ScenariosTestVectorBits(Forward), *ScenariosTestVectorBits(ToCentre),
+			*ScenariosTestBits(AimDot)),
+		AimDot > 0.99);
+
+	/*
+	 * THE WHOLE 3D BOX IN FRAME — the bounding-sphere framing that today's Y-blind standoff cannot
+	 * satisfy. Distance is the true 3D distance to the centre; the radius is the box's half-
+	 * diagonal, strictly larger than halfZ, so the vertical inequality bites on any box with depth.
+	 */
+	const double DistanceCm = (Angled.LocationCm - Box3DCentreCm).Size();
+	const double RadiusCm = Box3DHalfSizeCm.Size();
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("fully framed vertically: the camera must stand far enough (distance %s cm) that ")
+			TEXT("the box's bounding sphere (radius %s cm) clears the vertical frustum with the ")
+			TEXT("%s margin — distance * aspect %s must be >= %s"),
+			*ScenariosTestBits(DistanceCm), *ScenariosTestBits(RadiusCm),
+			*ScenariosTestBits(ScenariosTestFrameMargin),
+			*ScenariosTestBits(DistanceCm * Aspect),
+			*ScenariosTestBits(ScenariosTestFrameMargin * RadiusCm)),
+		DistanceCm * Aspect >= ScenariosTestFrameMargin * RadiusCm);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("fully framed horizontally: distance %s cm must clear the horizontal frustum for ")
+			TEXT("the bounding sphere (radius %s) with the %s margin — %s must be >= %s"),
+			*ScenariosTestBits(DistanceCm), *ScenariosTestBits(RadiusCm),
+			*ScenariosTestBits(ScenariosTestFrameMargin),
+			*ScenariosTestBits(DistanceCm),
+			*ScenariosTestBits(ScenariosTestFrameMargin * RadiusCm)),
+		DistanceCm >= ScenariosTestFrameMargin * RadiusCm);
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

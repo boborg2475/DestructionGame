@@ -213,7 +213,7 @@ void ADestructionGameGameMode::BeginPlay()
 	 * the next tick by whatever the controller still believed.
 	 */
 	const DestructionScenarios::FViewpoint Viewpoint = DestructionScenarios::ViewpointFor(
-		GameModeScenarioBounds(Layout), GameModeFrameAspectHeightOverWidth);
+		GameModeScenarioBounds(Layout), GameModeFrameAspectHeightOverWidth, Scenario.Framing);
 
 	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 	{
