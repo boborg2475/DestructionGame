@@ -37,7 +37,10 @@ namespace
 		DestructionContent::BrickNeighbourMaterialPaths[2],
 		DestructionContent::BrickNeighbourMaterialPaths[3],
 		DestructionContent::BrickNeighbourMaterialPaths[4],
-		DestructionContent::BrickNeighbourMaterialPaths[5]
+		DestructionContent::BrickNeighbourMaterialPaths[5],
+
+		DestructionContent::ShedBrickMaterialPath,
+		DestructionContent::ShedTimberMaterialPath
 	};
 }
 

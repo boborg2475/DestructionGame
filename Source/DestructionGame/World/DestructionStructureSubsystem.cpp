@@ -4,9 +4,12 @@
 
 #include "CollisionQueryParams.h"
 #include "Components/StaticMeshComponent.h"
+#include "Core/Profiles/MaterialProfiles.h"
 #include "Engine/HitResult.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Materials/MaterialInterface.h"
+#include "RequiredContent.h"
 #include "World/BrickActor.h"
 
 /*
@@ -45,12 +48,38 @@ namespace
 			Scale);
 	}
 
+	/**
+	 * The base-colour asset a piece's structural material paints element 0 with, or null for a
+	 * material the shed does not use.
+	 *
+	 * A PLAIN TABLE KEYED ON POINTER IDENTITY, not on a name string or a per-material class. A
+	 * piece's Material is a non-owning pointer into the program-lifetime profile library, so the
+	 * ClayBrick and Timber rows compare against their own addresses — the same identity the layout
+	 * itself carries. Anything else (a third material, or a piece nobody said what it is made of)
+	 * returns null, and the caller leaves the mesh's grey default in place.
+	 */
+	const TCHAR* ShedBaseMaterialPathFor(const DestructionProfiles::FMaterialProfile* Material)
+	{
+		if (Material == &DestructionProfiles::ClayBrick)
+		{
+			return DestructionContent::ShedBrickMaterialPath;
+		}
+
+		if (Material == &DestructionProfiles::Timber)
+		{
+			return DestructionContent::ShedTimberMaterialPath;
+		}
+
+		return nullptr;
+	}
+
 	/** One brick, sized, placed, weighed and told who it is. Null if it could not be built. */
 	ABrickActor* SpawnBrickForPiece(
 		UWorld& World,
 		const DestructionLayout::FPieceBox& Box,
 		double MassKg,
-		const FPieceRef& Ref)
+		const FPieceRef& Ref,
+		const DestructionProfiles::FMaterialProfile* Material)
 	{
 		ABrickActor* Brick = World.SpawnActorDeferred<ABrickActor>(
 			ABrickActor::StaticClass(), FTransform::Identity);
@@ -89,6 +118,21 @@ namespace
 		 * mesh's volume implies, which is what the solver is emphatically not using.
 		 */
 		Mesh->SetMassOverrideInKg(NAME_None, static_cast<float>(MassKg), true);
+
+		/*
+		 * BASE COLOUR BY STRUCTURAL MATERIAL, ON ELEMENT 0. A piece made of a material the shed
+		 * uses wears that material's colour so a brick wall reads brick-red and a timber roof reads
+		 * timber-tan; a material the table does not map keeps the mesh's grey default. This is the
+		 * look UNDERNEATH the highlight overlay, never the overlay itself, so a brick keeps its
+		 * colour when the cursor is nowhere near it.
+		 */
+		if (const TCHAR* const BasePath = ShedBaseMaterialPathFor(Material))
+		{
+			if (UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(nullptr, BasePath))
+			{
+				Mesh->SetMaterial(0, BaseMaterial);
+			}
+		}
 
 		Brick->FinishSpawning(BrickSpawnTransform(*BrickMesh, Box));
 
@@ -185,7 +229,8 @@ int32 UDestructionStructureSubsystem::BuildLayout(const DestructionLayout::FBric
 			World,
 			Layout.Boxes[PieceIndex],
 			Layout.Structure.GetPiece(PieceIndex).MassKg,
-			Ref));
+			Ref,
+			Layout.Structure.GetPiece(PieceIndex).Material));
 	}
 
 	TUniquePtr<FStructureBinding> Binding = MakeUnique<FStructureBinding>();

@@ -140,6 +140,20 @@ namespace DestructionContent
 		FLinearColor(0.20f, 0.45f, 0.05f, 1.0f)
 	};
 
+	/**
+	 * WHAT A BRICK WEARS AS ITS BASE COLOUR, ONE ASSET PER STRUCTURAL MATERIAL THE SHED IS MADE OF.
+	 *
+	 * THE BASE MATERIAL (element 0), NOT AN OVERLAY. The highlight assets above sit on top of a
+	 * brick so it keeps its own look underneath; these ARE that look underneath, so a wall reads
+	 * brick-red and a roof timber-tan before a cursor ever crosses either. A brick whose material
+	 * maps to neither keeps the mesh's grey default, which is why only the two the shed uses are
+	 * named here.
+	 */
+	inline constexpr const TCHAR* ShedBrickMaterialPath =
+		TEXT("/Game/Materials/M_Shed_Brick.M_Shed_Brick");
+	inline constexpr const TCHAR* ShedTimberMaterialPath =
+		TEXT("/Game/Materials/M_Shed_Timber.M_Shed_Timber");
+
 	/* The two mapping contexts ADestructionGamePlayerController adds for a local player. */
 	inline constexpr const TCHAR* DefaultMappingContextPath = TEXT("/Game/Input/IMC_Default.IMC_Default");
 	inline constexpr const TCHAR* MouseLookMappingContextPath = TEXT("/Game/Input/IMC_MouseLook.IMC_MouseLook");
