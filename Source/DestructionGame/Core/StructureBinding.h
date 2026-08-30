@@ -242,6 +242,14 @@ struct FStructureBinding
 	void SetEquilibriumGateBlockCap(int32 MaxBlocks);
 
 	/**
+	 * Flag this binding's structure 3D, forwarding to the private FStructure, which is
+	 * reachable from here by no other route. AdoptLayout is the only caller: a layout laid
+	 * 3D (DestructionShed3D::Build sets it) must stay 3D once adopted, or the world bridge
+	 * poses the shed in 2D and refuses its out-of-plane corners. See FStructure::SetThreeDimensional.
+	 */
+	void SetThreeDimensional(bool bIsThreeDimensional);
+
+	/**
 	 * Push the last solve's answer onto the bindings: release every piece the solver
 	 * is no longer holding up.
 	 *

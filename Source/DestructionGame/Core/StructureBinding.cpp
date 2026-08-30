@@ -207,6 +207,15 @@ void FStructureBinding::SetEquilibriumGateBlockCap(int32 MaxBlocks)
 	Structure.SetEquilibriumGateBlockCap(MaxBlocks);
 }
 
+void FStructureBinding::SetThreeDimensional(bool bIsThreeDimensional)
+{
+	/*
+	 * Forwards to the private FStructure, the only route to it — see the header. AdoptLayout
+	 * uses this to carry a laid layout's 3D flag across into the live binding.
+	 */
+	Structure.SetThreeDimensional(bIsThreeDimensional);
+}
+
 int32 FStructureBinding::ApplyResults()
 {
 	int32 ReleasedCount = 0;
@@ -348,6 +357,17 @@ bool AdoptLayout(
 	{
 		Out.AddConnection(Layout.Structure.GetConnection(JointIndex));
 	}
+
+	/*
+	 * THE 3D FLAG RIDES ACROSS WITH THE GRAPH. A layout laid genuinely three-dimensional
+	 * (DestructionShed3D::Build flags it) carries that as structure-level state, not on any
+	 * piece or joint, so the per-piece and per-joint replays above cannot bring it over —
+	 * and dropping it here, as this replay once did, leaves the world bridge posing the shed
+	 * in 2D, refusing its out-of-plane (Y-normal) corner joints, so the overhang never falls
+	 * when the post is cut. It goes through the binding's own forwarding door, the only route
+	 * to the private structure from this free function.
+	 */
+	Out.SetThreeDimensional(Layout.Structure.IsThreeDimensional());
 
 	return true;
 }
