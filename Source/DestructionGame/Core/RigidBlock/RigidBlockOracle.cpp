@@ -277,13 +277,26 @@ namespace RigidBlockOracle
 					return FString::Printf(TEXT("joint %d: joins a block to itself"), Index);
 				}
 
-				if (!FMath::IsFinite(Joint.NormalX) || !FMath::IsFinite(Joint.NormalZ))
+				/*
+				 * THE NORMAL IS MEASURED IN THE DIMENSION IT LIVES IN. A 2D joint's normal is a unit
+				 * vector in the X-Z plane and its Y component plays no part (the 2D assembler never
+				 * reads it), so a Dim2D problem is validated over X and Z alone exactly as before —
+				 * which also keeps a stray Y-normal on a 2D problem REFUSED, since its X-Z length is
+				 * not unit. A Dim3D joint's normal is a genuine unit 3-vector (the E3 bridge poses a
+				 * +Y-facing joint), so its Y component enters both the finiteness and the length check.
+				 */
+				const bool bThreeDimensional = Problem.Dim == EOracleDim::Dim3D;
+
+				if (!FMath::IsFinite(Joint.NormalX) || !FMath::IsFinite(Joint.NormalZ)
+					|| (bThreeDimensional && !FMath::IsFinite(Joint.NormalY)))
 				{
 					return FString::Printf(TEXT("joint %d: normal must be finite"), Index);
 				}
 
-				const double NormalLength =
-					FMath::Sqrt(Joint.NormalX * Joint.NormalX + Joint.NormalZ * Joint.NormalZ);
+				const double NormalLengthSq = Joint.NormalX * Joint.NormalX
+					+ Joint.NormalZ * Joint.NormalZ
+					+ (bThreeDimensional ? Joint.NormalY * Joint.NormalY : 0.0);
+				const double NormalLength = FMath::Sqrt(NormalLengthSq);
 
 				/* Validates, never normalises — same door policy as AddConnection. */
 				if (!(FMath::Abs(NormalLength - 1.0) <= 1.0e-9))

@@ -460,6 +460,30 @@ struct FStructure
 	void SetPieceMaterial(int32 PieceIndex, const DestructionProfiles::FMaterialProfile* Material);
 
 	/**
+	 * E3 COMPILE STUB (THREED_DESIGN.md E3 — the 3D bridge) — FLAG THIS STRUCTURE AS
+	 * GENUINELY 3D, so the oracle bridge poses it to the 3D LP (FOracleProblem::Dim = Dim3D)
+	 * and STOPS refusing its out-of-plane (Y) joint normals, while a 2D structure's Y-normal
+	 * stays loudly refused.
+	 *
+	 * WHY A STRUCTURE-LEVEL FLAG AND NOT "INFER 3D FROM ANY Y-NORMAL JOINT". The E3 ruling is
+	 * "lift the Y-normal refusal for Dim3D ONLY, keep the 2D refusal loud" — a 2D structure
+	 * that has ACCIDENTALLY acquired a Y-normal joint must still be refused (the 2D X-Z oracle
+	 * cannot honestly project it), not silently promoted to a 3D pose. Inferring 3D from the
+	 * presence of a Y-normal would erase exactly that loud refusal, so the intent to be 3D has
+	 * to be stated rather than guessed. False by default, so every existing 2D fixture is
+	 * unchanged and stays refused if it ever grows a Y-normal.
+	 *
+	 * The 3D SIGNAL the bridge branches on (E3, done): when set, `BuildRigidBlockProblem` poses
+	 * the structure as `Dim3D` — lifting the out-of-plane (Y) normal refusal, posing the block's
+	 * plan-Y and each joint's full 3D geometry (NormalY, CentreYCm, HalfUCm/HalfVCm) — instead of
+	 * the 2D X-Z projection; when unset (the default), the 2D path and its Y-normal refusal stand.
+	 */
+	void SetThreeDimensional(bool bIsThreeDimensional);
+
+	/** Whether SetThreeDimensional flagged this structure 3D. False by default (2D). */
+	bool IsThreeDimensional() const;
+
+	/**
 	 * Which breaking pass gave this joint, counted from 1, or INDEX_NONE if no pass did
 	 * — including for an out-of-range handle, which is not a joint that broke.
 	 *
@@ -1201,6 +1225,13 @@ private:
 	 * cost is a test-time one for now — CURRENT_STATE carries the open latency item.
 	 */
 	int32 EquilibriumGateBlockCap = 200;
+
+	/*
+	 * Whether SetThreeDimensional flagged this structure 3D (THREED_DESIGN.md E3). FALSE BY
+	 * DEFAULT so every existing structure is 2D and bridges exactly as before. The bridge reads
+	 * it (E3): true routes to the Dim3D pose and lifts the Y-normal refusal. See SetThreeDimensional.
+	 */
+	bool bThreeDimensional = false;
 
 	TArray<FStructurePiece> Pieces;
 	TArray<FConnection> Connections;

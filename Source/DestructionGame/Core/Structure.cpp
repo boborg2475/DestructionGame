@@ -2914,6 +2914,22 @@ void FStructure::SetPieceMaterial(int32 PieceIndex, const DestructionProfiles::F
 	}
 }
 
+void FStructure::SetThreeDimensional(bool bIsThreeDimensional)
+{
+	/*
+	 * The 3D signal `RigidBlockBridge` branches on (THREED_DESIGN.md E3, done). When set,
+	 * `BuildRigidBlockProblem` poses this structure as Dim3D — the real 3D joint geometry, the
+	 * out-of-plane Y normal accepted; when unset (the default), the 2D X-Z pose and its Y-normal
+	 * refusal stand.
+	 */
+	bThreeDimensional = bIsThreeDimensional;
+}
+
+bool FStructure::IsThreeDimensional() const
+{
+	return bThreeDimensional;
+}
+
 int32 FStructure::GetBreakPass(int32 ConnectionIndex) const
 {
 	/*

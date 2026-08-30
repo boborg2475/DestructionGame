@@ -751,6 +751,17 @@ namespace RigidBlockOracle
 		FOracleReadout Readout;
 	};
 
+	/**
+	 * TWO IN-PLANE AXES (U, V) DERIVED DETERMINISTICALLY FROM A UNIT NORMAL — the frame the 3D
+	 * assembler places its four contact corners in. Shared with RigidBlockBridge so the 3D bridge
+	 * poses HalfUCm/HalfVCm in the SAME (U, V) frame the solver later reads them against: the bridge
+	 * projects the interface's per-axis half-extents onto this U and V, and if the two derivations
+	 * disagreed the posed rectangle would be measured against a different frame than it was written
+	 * in. It is pure geometry — no strength or force crosses it — so sharing it does not breach the
+	 * oracle's independence from production arithmetic. N must be unit length; U x V = N.
+	 */
+	void DeriveInPlaneAxes(const double N[3], double U[3], double V[3]);
+
 	/** Solve the lower-bound LP. Deterministic: same problem, bit-identical result. */
 	FOracleResult SolveRigidBlock(const FOracleProblem& Problem);
 

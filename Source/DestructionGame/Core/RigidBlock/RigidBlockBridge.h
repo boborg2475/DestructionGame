@@ -31,9 +31,11 @@ namespace RigidBlockOracle
 	 *
 	 * REFUSED, fail closed: a structure without complete geometry (a defaulted centre
 	 * or rectangle would silently become a lever arm of "at the origin"), a live joint
-	 * naming a removed piece (the known AddConnection tombstone hole), and any joint
-	 * whose normal has a Y component — this is a 2D oracle and projecting an
-	 * out-of-plane joint would be a plausible number with wrong statics.
+	 * naming a removed piece (the known AddConnection tombstone hole), and — for a 2D
+	 * structure only — any joint whose normal has a Y component: a 2D oracle projecting
+	 * an out-of-plane joint would be a plausible number with wrong statics. A structure
+	 * flagged 3D (FStructure::IsThreeDimensional) is instead posed with its full Y
+	 * geometry and routed to the 3D oracle, so its Y-normal joints are carried, not refused.
 	 *
 	 * @return true and a filled problem, or false with the reason; OutProblem is
 	 *         emptied on refusal so a caller who ignores the return solves nothing.

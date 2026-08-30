@@ -167,10 +167,25 @@ multiplier regime; a genuinely 2-DOF KINEMATICALLY-AMBIGUOUS mechanism (a block 
 unpinned rotation axis — a different fixture shape) is the harder stressor and IS where determinism could
 break, needing the D7 minimal-support tie-break / E2b canonicalisation. That is a degenerate point-contact
 corner case a face/edge-bearing shed does not hit; build it only if a 3D shed fixture ever shows a
-point-pivot non-determinism. **E3** — the 3D bridge (lift the Y-normal refusal for
-Dim3D only, keep the 2D refusal loud; replace the `|Nz|vs|Nx|` half-extent shortcut with the two real
-interface axes). **E4** — block coarsening (coarse blocks + per-brick refinement near a cut; the real
-tractability lever). **E5** — 3D latency ladder + block-cap re-measure + R7 Shipping-FP in 3D.
+point-pivot non-determinism. **E3 — the 3D bridge — DONE (2026-08-30): 3D IS NOW REACHABLE FROM PRODUCTION.**
+`BuildRigidBlockProblem` branches on a new `FStructure::IsThreeDimensional()` flag (a structure-level SIGNAL,
+NOT inference — a 2D structure's stray Y-normal is still refused). `FStructure`/`FConnection` already carried
+full 3D joint geometry (3D `InterfaceNormal`/`InterfaceCentreCm`/per-axis `InterfaceHalfExtentCm`, 3D
+`CentreOfMassCm`; `AddConnection` validates the axis-aligned Y-normal rectangle), so E3 just POSES it: sets
+`Dim=Dim3D`, the block's `CentroidYCm`, the joint `NormalY`/`CentreYCm`, and `HalfUCm/HalfVCm` mapped via the
+now-SHARED `DeriveInPlaneAxes` (bridge + oracle use the same (U,V) frame — the bridge projects the per-axis
+half-extents onto U,V). `EffectiveJointStrength`/`ConnectionOfJoint`/`PieceOfBlock` carry over unchanged.
+**Also closed the E1a-flagged NormalY validation gap:** `ValidateProblem`'s normal-unit-length check is now
+dimension-aware (Dim3D includes NormalY in finiteness + length; Dim2D byte-identical, so a 2D structure with a
+pure-Y normal still fails its X-Z unit check and is refused). Driven by `ThreeD.BridgePosesAnOutOfPlaneJoint`
+(a block bonded to a grounded wall across a +Y joint, unequal half-extents {10,15}: bridge accepts, Dim3D,
+normal (0,1,0), centreY 5.5, halfU/halfV 10/15, area 600, block CentroidY 11; STANDS with a huge bond → shear
+carries the −Z weight, FALLS bondless → free block descends). 2D untouched (the 3D branch runs only under the
+flag): OracleSweepFull 5/5 byte-identical, narrowed 27/27, the 2D refusal intact at both the bridge and the
+validator. Suite 211 = 207 green + 4 standing reds. **So the 3D LP is COMPLETE and REACHABLE** — forward
+statics (E1) + deterministic mechanism (E2) + the production bridge (E3). Next: a 3D shed builder + scenario +
+rendered playtest. **E4** — block coarsening (coarse blocks + per-brick refinement near a cut; the real
+tractability lever, only if the 3D shed exceeds the cap). **E5** — 3D latency ladder + block-cap re-measure + R7 Shipping-FP in 3D.
 
 ## Biggest risks
 

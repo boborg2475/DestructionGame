@@ -23,6 +23,20 @@ namespace RigidBlockOracle
 		OutWhyNot.Empty();
 
 		/*
+		 * THE ONE SIGNAL THAT SPLITS THE TWO POSES (THREED_DESIGN E3). A 3D-flagged structure is
+		 * posed with its full Y geometry — the block's plan-Y, the joint's out-of-plane normal, its
+		 * two in-plane half-extents — and the Y-normal refusal below is lifted for it. Every 2D
+		 * structure (the default) takes the unchanged path: the Y is dropped and a stray Y-normal is
+		 * still refused rather than projected, so a 2D pose stays byte-for-byte what it was.
+		 */
+		const bool bThreeDimensional = Structure.IsThreeDimensional();
+
+		if (bThreeDimensional)
+		{
+			OutProblem.Dim = EOracleDim::Dim3D;
+		}
+
+		/*
 		 * A defaulted centre or rectangle would silently become a lever arm "at the
 		 * origin"; the structure's own completeness question is exactly this guard.
 		 */
@@ -70,6 +84,13 @@ namespace RigidBlockOracle
 			Block.CentroidXCm = Data.CentreOfMassCm.X;
 			Block.CentroidZCm = Data.CentreOfMassCm.Z;
 			Block.bGrounded = Data.bIsGrounded;
+
+			if (bThreeDimensional)
+			{
+				/* The plan-Y the 2D pose drops — a 3D centroid's third lever arm. */
+				Block.CentroidYCm = Data.CentreOfMassCm.Y;
+			}
+
 			OutProblem.Blocks.Add(Block);
 		}
 
@@ -123,7 +144,7 @@ namespace RigidBlockOracle
 				return false;
 			}
 
-			if (FMath::Abs(Normal.Y) > 1.0e-9)
+			if (!bThreeDimensional && FMath::Abs(Normal.Y) > 1.0e-9)
 			{
 				OutWhyNot = FString::Printf(
 					TEXT("joint %d has an out-of-plane (Y) normal, which a 2D X-Z ")
@@ -140,14 +161,41 @@ namespace RigidBlockOracle
 			Out.CentreXCm = Joint.InterfaceCentreCm.X;
 			Out.CentreZCm = Joint.InterfaceCentreCm.Z;
 
-			/*
-			 * The in-plane half length: the rectangle's extent on the X-Z axis that is
-			 * not the separation axis. The wythe (Y) extent enters through the area
-			 * alone, exactly as it does in production's stress arithmetic.
-			 */
-			Out.HalfLengthCm = FMath::Abs(Normal.Z) >= FMath::Abs(Normal.X)
-				? Joint.InterfaceHalfExtentCm.X
-				: Joint.InterfaceHalfExtentCm.Z;
+			if (bThreeDimensional)
+			{
+				/*
+				 * THE 3D POSE: carry the out-of-plane parts the 2D pose has no place for — the
+				 * normal's Y component, the patch centre's plan-Y, and BOTH in-plane half-extents.
+				 * The pair must be measured in the oracle's OWN frame, so derive the same (U, V) the
+				 * assembler will read the patch against and project the interface's per-axis
+				 * half-extents onto each: HalfUCm along U, HalfVCm along V. The interface is an
+				 * axis-aligned rectangle (AddConnection enforces it) with zero extent on the normal
+				 * axis, so each projection picks out exactly one in-plane extent and the posed
+				 * rectangle is the real face in the frame the solver measures it in.
+				 */
+				Out.NormalY = Normal.Y;
+				Out.CentreYCm = Joint.InterfaceCentreCm.Y;
+
+				const double N[3] = { Normal.X, Normal.Y, Normal.Z };
+				double U[3];
+				double V[3];
+				DeriveInPlaneAxes(N, U, V);
+
+				const FVector Half = Joint.InterfaceHalfExtentCm;
+				Out.HalfUCm = FMath::Abs(Half.X * U[0]) + FMath::Abs(Half.Y * U[1]) + FMath::Abs(Half.Z * U[2]);
+				Out.HalfVCm = FMath::Abs(Half.X * V[0]) + FMath::Abs(Half.Y * V[1]) + FMath::Abs(Half.Z * V[2]);
+			}
+			else
+			{
+				/*
+				 * The in-plane half length: the rectangle's extent on the X-Z axis that is
+				 * not the separation axis. The wythe (Y) extent enters through the area
+				 * alone, exactly as it does in production's stress arithmetic.
+				 */
+				Out.HalfLengthCm = FMath::Abs(Normal.Z) >= FMath::Abs(Normal.X)
+					? Joint.InterfaceHalfExtentCm.X
+					: Joint.InterfaceHalfExtentCm.Z;
+			}
 
 			Out.AreaSqCm = Joint.InterfaceAreaSqCm;
 
