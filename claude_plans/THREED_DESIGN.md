@@ -151,10 +151,23 @@ into `(u,ω)` 6-vectors, computes the virtual velocity `v=u+ω×(p−c)` with a 
 (`BlockL1` over all six components), and reuses the dimension-agnostic Farkas. Driven by
 `ThreeD.MechanismTipsAboutABaseEdge` (a block tipping about the +Y base edge → ω about X, out of plane,
 unrepresentable by the 2D scalar ω; Uz<0 descends). 2D mechanism tests + OracleSweepFull byte-identical;
-suite 209 = 205 green + 4 standing reds. **E2b (STILL TODO)** — the per-group canonicalisation over 3D
-velocity 6-vectors (the Slice-3a stable named set generalised) for indeterminate cases. **E2c (STILL TODO,
-HIGHEST RISK)** — re-run R3's determinism fuzz on E0-B (four redundant supports + pyramid = multiple Farkas
-rays); **likely build the D7 minimal-support tie-break 2D deferred**. **E3** — the 3D bridge (lift the Y-normal refusal for
+suite 209 = 205 green + 4 standing reds. **E2c DONE (2026-08-30) — the top risk is retired for the shed's
+cases: the 3D mechanism is PERMUTATION-DETERMINISTIC.** `ThreeD.MechanismIsPermutationDeterministic` fuzzes
+block/joint/column order across 8 seeds over TWO falling fixtures — the determinate tipping block AND a
+redundant FOUR-support fixture (1× statically indeterminate + k=8 pyramid shear freedom, CoM past the +Y
+support line) — asserting the moving set, the opening set, and each block's (u,ω) 6-vector NORMALISED to a
+unit ray (the Farkas ray is defined up to positive scale) are invariant. BOTH green, worst unit-drift
+0.000e+00; gate bites (a column-order-dependent term injected into the extraction reds it). This VALIDATES
+the design bet — reading the break set from the stable block KINEMATICS, not the non-unique multipliers,
+keeps 3D deterministic just as 2D's Slice 3a. So **E2b canonicalisation is NOT needed for these cases** and
+E2 is complete for the shed (whose blocks bear on faces/edges → pinned axes → deterministic). **CAVEAT
+(deferred hardening, not shed-relevant):** the redundant fixture's non-uniqueness lived in the PRIMAL, but
+its block-velocity DUAL came out unique (0 Bland pivots), so it did not exercise a heavily-degenerate
+multiplier regime; a genuinely 2-DOF KINEMATICALLY-AMBIGUOUS mechanism (a block point-pivoting with an
+unpinned rotation axis — a different fixture shape) is the harder stressor and IS where determinism could
+break, needing the D7 minimal-support tie-break / E2b canonicalisation. That is a degenerate point-contact
+corner case a face/edge-bearing shed does not hit; build it only if a 3D shed fixture ever shows a
+point-pivot non-determinism. **E3** — the 3D bridge (lift the Y-normal refusal for
 Dim3D only, keep the 2D refusal loud; replace the `|Nz|vs|Nx|` half-extent shortcut with the two real
 interface axes). **E4** — block coarsening (coarse blocks + per-brick refinement near a cut; the real
 tractability lever). **E5** — 3D latency ladder + block-cap re-measure + R7 Shipping-FP in 3D.
