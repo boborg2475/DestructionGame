@@ -208,8 +208,8 @@ about it; `Content.ScenarioMapsAreDistinctAssets` catches the one made by copyin
 
 ## Seeing them all without joining them
 
-`DestructionGame.Visual.ScenarioLevelScreenshots` opens all thirty-one as a player opens them and
-photographs each held and run — 62 frames into `Saved/Screenshots/WindowsEditor/`. It needs a real
+`DestructionGame.Visual.ScenarioLevelScreenshots` opens all thirty-two as a player opens them and
+photographs each held and run — 64 frames into `Saved/Screenshots/WindowsEditor/`. It needs a real
 RHI, so **`-nullrhi` must be absent**:
 
 ```bash

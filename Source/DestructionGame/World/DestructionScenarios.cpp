@@ -4,6 +4,7 @@
 
 #include "Core/Corbel.h"
 #include "Core/DestructionShed.h"
+#include "Core/DestructionShed3D.h"
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Core/WallCases.h"
@@ -746,6 +747,47 @@ namespace DestructionScenarios
 			ShedSpec.BaseHeightCm + ShedSpec.JointThicknessCm + ShedSpec.HeadHeightCm;
 
 		Shed.CutCentresCm.Add(FVector(ShedSpec.PostCentreCm, 0.0, ShedPostTopZCm / 2.0));
+
+		/*
+		 * AND THE 3D SHED — THREED_DESIGN.md Phase F, the first GENUINELY-THREE-DIMENSIONAL level:
+		 * four ClayBrick walls close a box and brace one another at the corners, a Timber roof bears
+		 * on the wall heads, and a Timber overhang reaches out over the door on a grounded Timber post
+		 * plus a screwed wall fixing. It is laid by DestructionShed3D::Build, whose builder flags the
+		 * structure 3D (SetThreeDimensional) so the bridge poses its out-of-plane corner joints to the
+		 * 3D LP — the whole reason this row carries its own distinct map rather than riding Lvl_Shed.
+		 *
+		 * THE ONE CUT PULLS THE POST, AND THAT IS THE LEVEL. The overhang's screw fixing to the front
+		 * wall has too little lap to cantilever it unaided, so removing the grounded post drops the
+		 * overhang while the four grounded walls keep the earth.
+		 */
+		FScenario& Shed3D = Rows.AddDefaulted_GetRef();
+
+		Shed3D.Name = FName(TEXT("shed3d"));
+		Shed3D.MapName = TEXT("Lvl_Shed3D");
+		Shed3D.Title = TEXT("A closed-box brick shed with a wooden roof and a post-supported overhang");
+
+		Shed3D.Expectation = TEXT(
+			"A closed-box brick shed: four clay-brick walls brace one another at the corners and carry "
+			"a wooden roof, and a wooden overhang reaches out over the door on a wooden post. Pull the "
+			"post and the overhang drops, while the four walls keep standing.");
+
+		Shed3D.LayStructure = [](DestructionLayout::FBrickLayout& OutLayout)
+		{
+			return DestructionShed3D::Build(DestructionShed3D::FShed3DSpec{}, OutLayout);
+		};
+
+		/*
+		 * THE CUT IS THE GROUNDED POST, NAMED BY ITS BOX CENTRE. The builder lays the post from z = 0
+		 * to the wall top across the overhang's X footprint (centred on OverhangCentreXCm), spanning
+		 * the post's Y footprint (centred on PostCentreYCm) — so its box centre is
+		 * (OverhangCentreXCm, PostCentreYCm, WallHeightCm / 2). Derived from the same default spec
+		 * fields the builder reads, so the centre lands on the post to the ulp and
+		 * ScenariosPieceAtCentre resolves it to the post's handle.
+		 */
+		const DestructionShed3D::FShed3DSpec Shed3DSpec;
+
+		Shed3D.CutCentresCm.Add(FVector(
+			Shed3DSpec.OverhangCentreXCm, Shed3DSpec.PostCentreYCm, Shed3DSpec.WallHeightCm / 2.0));
 
 		return Rows;
 	}
