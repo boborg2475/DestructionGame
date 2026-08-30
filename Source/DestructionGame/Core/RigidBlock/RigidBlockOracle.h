@@ -204,6 +204,15 @@ namespace RigidBlockOracle
 		 * global gravity is live; no case needs it, so the branch is an OR, not a tri-state.
 		 */
 		bool bLiveGravity = false;
+
+		/*
+		 * E1a 3D STUB — the block centroid's plan-Y coordinate, the third dimension the 2D
+		 * X-Z model has no place for. Declared at the STRUCT END so every existing 4-element
+		 * brace init { MassKg, CentroidXCm, CentroidZCm, bGrounded } still names the same
+		 * members and no 2D fixture shifts. Default 0.0 and inert on the 2D path (the current
+		 * assembler never reads it); AssembleThreeD (dev-expert, E1a green) is what consumes it.
+		 */
+		double CentroidYCm = 0.0;
 	};
 
 	/**
@@ -237,6 +246,26 @@ namespace RigidBlockOracle
 		double HalfLengthCm = 0.0;
 
 		double AreaSqCm = 0.0;
+
+		/*
+		 * E1a 3D STUB — the joint's third-dimension fields, declared at the STRUCT END so the
+		 * 2D path (which sets NormalX/NormalZ, CentreXCm/CentreZCm and HalfLengthCm by name) is
+		 * byte-for-byte unchanged and every 2D fixture stays inert at these defaults.
+		 *
+		 *   NormalY   — the Y component of the unit normal (0 on any X-Z joint).
+		 *   CentreYCm — the contact patch centre's plan-Y coordinate.
+		 *   HalfUCm/HalfVCm — the rectangular patch's two in-plane half-extents (the 3D
+		 *                     analogue of HalfLengthCm; both ZERO is the point patch — four
+		 *                     coincident corners, a single normal contact, exactly as the 2D
+		 *                     HalfLengthCm = 0 collapses its two contact points into one).
+		 *
+		 * The current assembler reads NONE of these — AssembleThreeD (dev-expert, E1a green) is
+		 * what turns them into six equilibrium rows and four-corner contacts.
+		 */
+		double NormalY = 0.0;
+		double CentreYCm = 0.0;
+		double HalfUCm = 0.0;
+		double HalfVCm = 0.0;
 
 		/** The profile row, SI megapascals, read exactly as production stores it. */
 		FConnectionStrength Strength;
@@ -297,11 +326,31 @@ namespace RigidBlockOracle
 		int32 ArtificialStart = 0;
 	};
 
+	/*
+	 * E1a 3D STUB — which physics the assembler poses. Dim2D is the zero enumerator and the
+	 * default, so every existing fixture is a 2D problem exactly as before (the safe-default,
+	 * enum-not-bool house idiom, THREED_DESIGN Data). Dim3D is the flag E1a lights up: one branch
+	 * at the top of SolveRigidBlock will route a Dim3D problem to AssembleThreeD. That branch does
+	 * NOT exist yet — a Dim3D problem falls through to the 2D assembler, which drops the Y
+	 * dimension entirely and returns a WRONG force system, which is precisely the E1a red.
+	 */
+	enum class EOracleDim : uint8
+	{
+		Dim2D,
+		Dim3D,
+	};
+
 	struct FOracleProblem
 	{
 		TArray<FOracleBlock> Blocks;
 		TArray<FOracleJoint> Joints;
 		TArray<FOracleAppliedForce> AppliedForces;
+
+		/*
+		 * E1a 3D STUB — 2D (X-Z) by default so no existing fixture moves. Set to Dim3D by the
+		 * tripod fixture; the solver has no 3D assembler yet, so the Dim3D path is the red.
+		 */
+		EOracleDim Dim = EOracleDim::Dim2D;
 
 		/**
 		 * WHERE THE SIMPLEX STARTS, when a caller has a related problem's answer in hand.

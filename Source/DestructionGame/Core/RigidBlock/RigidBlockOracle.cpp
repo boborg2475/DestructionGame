@@ -1421,6 +1421,360 @@ namespace RigidBlockOracle
 		return true;
 	}
 
+	/*
+	 * ================================================================================
+	 * THE 3D (Dim3D) ASSEMBLY — E1a. A SECOND PHYSICS ASSEMBLER, NOT A NEW SOLVER.
+	 *
+	 * The 2D assembler poses the X-Z plane (three equilibrium rows per block, two contact
+	 * points per joint); this poses full 3D (six rows per block, four contact corners per
+	 * joint). BuildStandardForm and the revised simplex below are dimension-agnostic, so 3D
+	 * is only a different set of assembly rows fed to the same machine (THREED_DESIGN, "The
+	 * architecture"). The 2D path stays a LITERAL separate branch so its NumRows-scaled
+	 * tolerance and pinned pivot paths cannot shift — 2D bit-identity is a theorem, not a hope.
+	 * ================================================================================
+	 */
+
+	/**
+	 * ONE 3D CONTACT POINT: its position, the joint's orthonormal frame (N, U, V) with
+	 * right-handed U x V = N, its tributary area, and whether its joint bonds in tension.
+	 */
+	struct FThreeDContact
+	{
+		int32 Joint = 0;
+		double Pos[3] = { 0.0, 0.0, 0.0 };
+		double N[3] = { 0.0, 0.0, 0.0 };
+		double U[3] = { 0.0, 0.0, 0.0 };
+		double V[3] = { 0.0, 0.0, 0.0 };
+		double TributaryAreaSqCm = 0.0;
+		bool bCanTension = false;
+	};
+
+	/**
+	 * TWO IN-PLANE AXES (U, V) DERIVED DETERMINISTICALLY FROM THE NORMAL — the 3D analogue of
+	 * the 2D fixed tangent (-Nz, Nx). Take the world axis LEAST aligned with N (lowest index on
+	 * a tie, the fixed-axis tie-break), project it off N and normalise for U, then V = N x U so
+	 * the frame is right-handed (U x V = N). For N = +Z the tie between X and Y resolves to X,
+	 * giving U = +X and V = +Y. The bridge (E3) will carry the real interface axes; this is the
+	 * hand-built stand-in E1a needs.
+	 */
+	void DeriveInPlaneAxes(const double N[3], double U[3], double V[3])
+	{
+		int32 Best = 0;
+		double BestAbs = FMath::Abs(N[0]);
+
+		for (int32 Axis = 1; Axis < 3; ++Axis)
+		{
+			const double AxisAbs = FMath::Abs(N[Axis]);
+
+			if (AxisAbs < BestAbs)
+			{
+				BestAbs = AxisAbs;
+				Best = Axis;
+			}
+		}
+
+		double Ref[3] = { 0.0, 0.0, 0.0 };
+		Ref[Best] = 1.0;
+
+		const double Dot = Ref[0] * N[0] + Ref[1] * N[1] + Ref[2] * N[2];
+		double Raw[3] = { Ref[0] - Dot * N[0], Ref[1] - Dot * N[1], Ref[2] - Dot * N[2] };
+
+		const double Length = FMath::Sqrt(Raw[0] * Raw[0] + Raw[1] * Raw[1] + Raw[2] * Raw[2]);
+
+		/* The guard is spelled > 0 so a NaN (whose every comparison is false) lands on the fallback. */
+		if (Length > 0.0)
+		{
+			U[0] = Raw[0] / Length;
+			U[1] = Raw[1] / Length;
+			U[2] = Raw[2] / Length;
+		}
+		else
+		{
+			U[0] = Ref[0];
+			U[1] = Ref[1];
+			U[2] = Ref[2];
+		}
+
+		V[0] = N[1] * U[2] - N[2] * U[1];
+		V[1] = N[2] * U[0] - N[0] * U[2];
+		V[2] = N[0] * U[1] - N[1] * U[0];
+	}
+
+	/**
+	 * FOUR CONTACT CORNERS PER JOINT at C +/- h_u*U +/- h_v*V, in a FIXED corner order so the
+	 * column layout is deterministic (THREED_DESIGN §2). A point patch (HalfUCm = HalfVCm = 0,
+	 * the tripod) collapses its four corners onto the centre — four coincident normal contacts
+	 * whose per-joint summed normal IS the joint's reaction, exactly as the 2D HalfLengthCm = 0
+	 * collapses its two points into one. Tributary area is the face area split four ways.
+	 */
+	void BuildThreeDContacts(const FOracleProblem& Problem, TArray<FThreeDContact>& Out)
+	{
+		const int32 NumJoints = Problem.Joints.Num();
+		Out.Reserve(NumJoints * 4);
+
+		static const double CornerU[4] = { -1.0, 1.0, -1.0, 1.0 };
+		static const double CornerV[4] = { -1.0, -1.0, 1.0, 1.0 };
+
+		for (int32 JointIndex = 0; JointIndex < NumJoints; ++JointIndex)
+		{
+			const FOracleJoint& Joint = Problem.Joints[JointIndex];
+
+			const double Normal[3] = { Joint.NormalX, Joint.NormalY, Joint.NormalZ };
+			double U[3];
+			double V[3];
+			DeriveInPlaneAxes(Normal, U, V);
+
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				const double Du = CornerU[Corner] * Joint.HalfUCm;
+				const double Dv = CornerV[Corner] * Joint.HalfVCm;
+
+				FThreeDContact Contact;
+				Contact.Joint = JointIndex;
+				Contact.N[0] = Normal[0];
+				Contact.N[1] = Normal[1];
+				Contact.N[2] = Normal[2];
+				Contact.U[0] = U[0];
+				Contact.U[1] = U[1];
+				Contact.U[2] = U[2];
+				Contact.V[0] = V[0];
+				Contact.V[1] = V[1];
+				Contact.V[2] = V[2];
+				Contact.Pos[0] = Joint.CentreXCm + Du * U[0] + Dv * V[0];
+				Contact.Pos[1] = Joint.CentreYCm + Du * U[1] + Dv * V[1];
+				Contact.Pos[2] = Joint.CentreZCm + Du * U[2] + Dv * V[2];
+				Contact.TributaryAreaSqCm = Joint.AreaSqCm / 4.0;
+				Contact.bCanTension = Joint.Strength.TensileStrengthMPa > 0.0;
+				Out.Add(Contact);
+			}
+		}
+	}
+
+	/**
+	 * ONE CONTACT'S EQUILIBRIUM COEFFICIENTS into the six rows (Fx, Fy, Fz, Mx, My, Mz). The
+	 * contact owns six columns at Base: [n+, n-, p_u, q_u, p_v, q_v], with net normal n = n+ - n-
+	 * along N, and net shears s_u = p_u - q_u along U and s_v = p_v - q_v along V. The force rows
+	 * take the components of each unit direction; the MOMENT rows take the components of r x e
+	 * (r = contact - centroid) for e in {N, U, V} — the 3D generalisation of the single 2D moment
+	 * row, whose Rx*Nz - Rz*Nx is exactly -(r x N)_y. The tension mirror (n-) negates the normal's
+	 * contribution across ALL THREE moment rows, and is emitted only when the joint bonds in tension.
+	 */
+	void AppendThreeDContactCoeffs(
+		OracleDetail::FAssemblyRow& Fx, OracleDetail::FAssemblyRow& Fy, OracleDetail::FAssemblyRow& Fz,
+		OracleDetail::FAssemblyRow& Mx, OracleDetail::FAssemblyRow& My, OracleDetail::FAssemblyRow& Mz,
+		int32 Base, double Sign, const FThreeDContact& Contact,
+		double CentroidXCm, double CentroidYCm, double CentroidZCm)
+	{
+		const double Rx = Contact.Pos[0] - CentroidXCm;
+		const double Ry = Contact.Pos[1] - CentroidYCm;
+		const double Rz = Contact.Pos[2] - CentroidZCm;
+
+		/* r x e, the moment about the centroid of a unit force along direction e. */
+		const double MnX = Ry * Contact.N[2] - Rz * Contact.N[1];
+		const double MnY = Rz * Contact.N[0] - Rx * Contact.N[2];
+		const double MnZ = Rx * Contact.N[1] - Ry * Contact.N[0];
+		const double MuX = Ry * Contact.U[2] - Rz * Contact.U[1];
+		const double MuY = Rz * Contact.U[0] - Rx * Contact.U[2];
+		const double MuZ = Rx * Contact.U[1] - Ry * Contact.U[0];
+		const double MvX = Ry * Contact.V[2] - Rz * Contact.V[1];
+		const double MvY = Rz * Contact.V[0] - Rx * Contact.V[2];
+		const double MvZ = Rx * Contact.V[1] - Ry * Contact.V[0];
+
+		/* n+ : the normal in compression. */
+		Fx.Add(Base + 0, Sign * Contact.N[0]);
+		Fy.Add(Base + 0, Sign * Contact.N[1]);
+		Fz.Add(Base + 0, Sign * Contact.N[2]);
+		Mx.Add(Base + 0, Sign * MnX);
+		My.Add(Base + 0, Sign * MnY);
+		Mz.Add(Base + 0, Sign * MnZ);
+
+		/* n- : the tension mirror, negating the normal across force AND all three moment rows. */
+		if (Contact.bCanTension)
+		{
+			Fx.Add(Base + 1, -Sign * Contact.N[0]);
+			Fy.Add(Base + 1, -Sign * Contact.N[1]);
+			Fz.Add(Base + 1, -Sign * Contact.N[2]);
+			Mx.Add(Base + 1, -Sign * MnX);
+			My.Add(Base + 1, -Sign * MnY);
+			Mz.Add(Base + 1, -Sign * MnZ);
+		}
+
+		/* p_u / q_u : the +/- shear along U. */
+		Fx.Add(Base + 2, Sign * Contact.U[0]);
+		Fy.Add(Base + 2, Sign * Contact.U[1]);
+		Fz.Add(Base + 2, Sign * Contact.U[2]);
+		Mx.Add(Base + 2, Sign * MuX);
+		My.Add(Base + 2, Sign * MuY);
+		Mz.Add(Base + 2, Sign * MuZ);
+
+		Fx.Add(Base + 3, -Sign * Contact.U[0]);
+		Fy.Add(Base + 3, -Sign * Contact.U[1]);
+		Fz.Add(Base + 3, -Sign * Contact.U[2]);
+		Mx.Add(Base + 3, -Sign * MuX);
+		My.Add(Base + 3, -Sign * MuY);
+		Mz.Add(Base + 3, -Sign * MuZ);
+
+		/* p_v / q_v : the +/- shear along V. */
+		Fx.Add(Base + 4, Sign * Contact.V[0]);
+		Fy.Add(Base + 4, Sign * Contact.V[1]);
+		Fz.Add(Base + 4, Sign * Contact.V[2]);
+		Mx.Add(Base + 4, Sign * MvX);
+		My.Add(Base + 4, Sign * MvY);
+		Mz.Add(Base + 4, Sign * MvZ);
+
+		Fx.Add(Base + 5, -Sign * Contact.V[0]);
+		Fy.Add(Base + 5, -Sign * Contact.V[1]);
+		Fz.Add(Base + 5, -Sign * Contact.V[2]);
+		Mx.Add(Base + 5, -Sign * MvX);
+		My.Add(Base + 5, -Sign * MvY);
+		Mz.Add(Base + 5, -Sign * MvZ);
+	}
+
+	/**
+	 * ASSEMBLE THE MAXIMISE-LAMBDA 3D LP (THREED_DESIGN §"The 3D physics"). Structural columns:
+	 * lambda at 0, then per contact [n+, n-, p_u, q_u, p_v, q_v] (six each), so
+	 * NumStructCols = 1 + 6 * NumContacts with NumContacts = NumJoints * 4.
+	 *
+	 * Six equilibrium equalities per non-grounded block; grounded blocks are the earth and write
+	 * none. Gravity is -Mass*980 into Fz (force only), live into the lambda column or dead into the
+	 * right-hand side exactly as 2D routes it. Then the lambda cap, then two strength rows per
+	 * contact over the tributary A/4: tension (n- <= f_t*Conv*A/4, tension-gated) and crushing
+	 * (n+ - n- <= f_c*Conv*A/4). FRICTION IS OFF for E1a — the k=8 pyramid is E1b — so no shear row
+	 * is written and shear is unconstrained. bFirstCrackRows is ignored on the 3D path (biaxial
+	 * first-crack is an E-tail). Applied forces are not posed in 3D yet; no E1a fixture carries one.
+	 */
+	void AssembleThreeD(
+		const FOracleProblem& Problem, TArray<OracleDetail::FAssemblyRow>& AssemblyRows,
+		int32& OutNumStructCols)
+	{
+		using namespace OracleDetail;
+
+		const int32 NumJoints = Problem.Joints.Num();
+		const int32 NumContacts = NumJoints * 4;
+		OutNumStructCols = 1 + 6 * NumContacts;
+
+		TArray<FThreeDContact> Contacts;
+		BuildThreeDContacts(Problem, Contacts);
+
+		/* ---- Equilibrium: six equalities per non-grounded block. ---- */
+		for (int32 BlockIndex = 0; BlockIndex < Problem.Blocks.Num(); ++BlockIndex)
+		{
+			const FOracleBlock& Block = Problem.Blocks[BlockIndex];
+
+			if (Block.bGrounded)
+			{
+				continue;
+			}
+
+			FAssemblyRow Fx;
+			FAssemblyRow Fy;
+			FAssemblyRow Fz;
+			FAssemblyRow Mx;
+			FAssemblyRow My;
+			FAssemblyRow Mz;
+
+			const double WeightUu = Block.MassKg * OracleGravityCmPerSecondSquared;
+
+			/* Gravity acts at the centroid in -Z: force only, live into lambda or dead into the RHS. */
+			double LiveZ = 0.0;
+			double DeadZ = 0.0;
+
+			if (Problem.bGravityIsLive || Block.bLiveGravity)
+			{
+				LiveZ -= WeightUu;
+			}
+			else
+			{
+				DeadZ -= WeightUu;
+			}
+
+			Fz.Add(0, LiveZ);
+
+			for (int32 ContactIndex = 0; ContactIndex < Contacts.Num(); ++ContactIndex)
+			{
+				const FThreeDContact& Contact = Contacts[ContactIndex];
+				const FOracleJoint& Joint = Problem.Joints[Contact.Joint];
+
+				double SignForBlock = 0.0;
+
+				if (Joint.BlockB == BlockIndex)
+				{
+					SignForBlock = 1.0;
+				}
+				else if (Joint.BlockA == BlockIndex)
+				{
+					SignForBlock = -1.0;
+				}
+				else
+				{
+					continue;
+				}
+
+				AppendThreeDContactCoeffs(
+					Fx, Fy, Fz, Mx, My, Mz, 1 + 6 * ContactIndex, SignForBlock, Contact,
+					Block.CentroidXCm, Block.CentroidYCm, Block.CentroidZCm);
+			}
+
+			Fx.Rhs = 0.0;
+			Fy.Rhs = 0.0;
+			Fz.Rhs = -DeadZ;
+			Mx.Rhs = 0.0;
+			My.Rhs = 0.0;
+			Mz.Rhs = 0.0;
+
+			AssemblyRows.Add(MoveTemp(Fx));
+			AssemblyRows.Add(MoveTemp(Fy));
+			AssemblyRows.Add(MoveTemp(Fz));
+			AssemblyRows.Add(MoveTemp(Mx));
+			AssemblyRows.Add(MoveTemp(My));
+			AssemblyRows.Add(MoveTemp(Mz));
+		}
+
+		/* ---- The lambda cap. ---- */
+		{
+			FAssemblyRow Cap;
+			Cap.Add(0, 1.0);
+			Cap.Rhs = LambdaCap;
+			Cap.bEquality = false;
+			AssemblyRows.Add(MoveTemp(Cap));
+		}
+
+		/* ---- Strength rows per contact: tension (gated) and crushing. Friction OFF (E1a). ---- */
+		for (int32 ContactIndex = 0; ContactIndex < Contacts.Num(); ++ContactIndex)
+		{
+			const FThreeDContact& Contact = Contacts[ContactIndex];
+			const FConnectionStrength& S = Problem.Joints[Contact.Joint].Strength;
+			const int32 Base = 1 + 6 * ContactIndex;
+
+			const double Conv = OracleForceUnitsPerMPaSqCm;
+			const double AreaSqCm = Contact.TributaryAreaSqCm;
+
+			if (Contact.bCanTension && S.TensileStrengthMPa < UncappedStrengthMPa)
+			{
+				FAssemblyRow Tension;
+				Tension.Add(Base + 1, 1.0);
+				Tension.Rhs = S.TensileStrengthMPa * Conv * AreaSqCm;
+				Tension.bEquality = false;
+				AssemblyRows.Add(MoveTemp(Tension));
+			}
+
+			if (S.CompressiveStrengthMPa < UncappedStrengthMPa)
+			{
+				FAssemblyRow Crush;
+				Crush.Add(Base + 0, 1.0);
+
+				if (Contact.bCanTension)
+				{
+					Crush.Add(Base + 1, -1.0);
+				}
+
+				Crush.Rhs = S.CompressiveStrengthMPa * Conv * AreaSqCm;
+				Crush.bEquality = false;
+				AssemblyRows.Add(MoveTemp(Crush));
+			}
+		}
+	}
+
 	/** One attempt at the problem exactly as posed, warm start included. */
 	FOracleResult SolveRigidBlockOnce(const FOracleProblem& Problem)
 	{
@@ -1455,6 +1809,25 @@ namespace RigidBlockOracle
 		}
 
 		/*
+		 * THE ASSEMBLY BRANCHES ON DIMENSION, and only here: the 3D assembler is called for a
+		 * Dim3D problem, the 2D assembler (verbatim, in the else) for everything else. Downstream
+		 * — standard form, the two simplex phases, verification — is dimension-agnostic and reads
+		 * these three shared locals whichever branch filled them. EqFxRowOfBlock is the mechanism
+		 * seam; the 3D path leaves it all-INDEX_NONE because the 3D mechanism is E2, and the E1a
+		 * fixture is gravity-live (feasible), so the infeasible arm that reads it is never taken.
+		 */
+		TArray<FAssemblyRow> AssemblyRows;
+		int32 NumStructCols = 0;
+		TArray<int32> EqFxRowOfBlock;
+
+		if (Problem.Dim == EOracleDim::Dim3D)
+		{
+			AssembleThreeD(Problem, AssemblyRows, NumStructCols);
+			EqFxRowOfBlock.Init(INDEX_NONE, Problem.Blocks.Num());
+		}
+		else
+		{
+		/*
 		 * STRUCTURAL COLUMNS: lambda, then per contact point [n+, n-, p, q] with
 		 * n = n+ - n- (compression positive) and v = p - q. Splitting n rather than
 		 * shifting it by the tension bound keeps huge bounds out of the right-hand
@@ -1462,7 +1835,7 @@ namespace RigidBlockOracle
 		 */
 		const int32 NumJoints = Problem.Joints.Num();
 		const int32 NumContacts = NumJoints * 2;
-		const int32 NumStructCols = 1 + 4 * NumContacts;
+		NumStructCols = 1 + 4 * NumContacts;
 
 		struct FContact
 		{
@@ -1508,8 +1881,6 @@ namespace RigidBlockOracle
 			}
 		}
 
-		TArray<FAssemblyRow> AssemblyRows;
-
 		/*
 		 * ROW -> BLOCK BOOKKEEPING for the mechanism extraction (PROMOTION_DESIGN §3.3, §12 D7).
 		 * EqFxRowOfBlock[b] is the assembly-row index of block b's Fx equilibrium row — its Fz
@@ -1518,7 +1889,6 @@ namespace RigidBlockOracle
 		 * virtual-motion dual. Pure index-ordered bookkeeping, built as the rows are, deterministic
 		 * by construction. Nothing in the solve reads it — it is the infeasible arm's alone.
 		 */
-		TArray<int32> EqFxRowOfBlock;
 		EqFxRowOfBlock.Init(INDEX_NONE, Problem.Blocks.Num());
 
 		/* ---- Equilibrium: three equalities per non-grounded block. -------------- */
@@ -1802,6 +2172,7 @@ namespace RigidBlockOracle
 				AssemblyRows.Add(MoveTemp(FirstCrackB));
 			}
 		}
+		} /* end of the 2D assembly branch */
 
 		/* ---- Standard form and the revised simplex's working state. ------------- */
 		FStandardForm Form;
@@ -2236,6 +2607,309 @@ namespace RigidBlockOracle
 	}
 
 	/**
+	 * THE 3D (Dim3D) MIN-VIOLATION READOUT — E1a, arm (i). The 3D analogue of
+	 * SolveMinViolationReadout below, kept a SEPARATE function so the 2D readout (and every sweep
+	 * pin and readout test on it) stays byte-for-byte untouched: SolveMinViolationReadout dispatches
+	 * here on Dim3D and is otherwise verbatim.
+	 *
+	 * Six HARD equilibrium equalities per non-grounded block (load fixed at lambda = 1, gravity a
+	 * dead constant into the RHS), four contact corners per joint, and the strength rows relaxed by a
+	 * per-row violation slack — tension (gated) and crushing, friction OFF for E1a exactly as the
+	 * maximise-lambda 3D assembler. The per-joint NormalUu sums the joint's FOUR contacts' net normals.
+	 *
+	 * A SINGLE min-sum-of-violations solve, NOT the per-group lexicographic minimax the 2D readout
+	 * runs. The E1a fixture (the tripod) is statically DETERMINATE — all three supports share a height,
+	 * so shear contributes no net moment and the per-joint normal sums are unique across every
+	 * admissible equilibrium — so any zero-violation force system reads the same reactions and the
+	 * canonicalization the indeterminate case needs is not yet exercised. The lexicographic minimax
+	 * for 3D is deferred to E2 (the indeterminate E0-B four-corner case), recorded in CURRENT_STATE.
+	 */
+	FOracleResult SolveMinViolationReadoutThreeD(const FOracleProblem& Problem)
+	{
+		using namespace OracleDetail;
+
+		FOracleResult Result;
+		Result.bAnswered = false;
+		Result.Lambda = 0.0;
+
+		const auto Refuse =
+			[&Result](EOracleRefusal Reason, const FString& Detail = FString()) -> FOracleResult&
+		{
+			Result.Refusal = Reason;
+			Result.WhyNot = Detail.IsEmpty()
+				? RefusalText(Reason)
+				: RefusalText(Reason) + TEXT(": ") + Detail;
+
+			return Result;
+		};
+
+		const FString InvalidReason = ValidateProblem(Problem);
+
+		if (!InvalidReason.IsEmpty())
+		{
+			return Refuse(EOracleRefusal::InvalidProblem, InvalidReason);
+		}
+
+		const int32 NumJoints = Problem.Joints.Num();
+
+		TArray<FThreeDContact> Contacts;
+		BuildThreeDContacts(Problem, Contacts);
+
+		const int32 NumContacts = Contacts.Num();
+		const int32 NumForceCols = 6 * NumContacts;
+
+		TArray<FAssemblyRow> AssemblyRows;
+
+		/* ---- Six HARD equilibrium equalities per non-grounded block; load fixed at lambda = 1. ---- */
+		for (int32 BlockIndex = 0; BlockIndex < Problem.Blocks.Num(); ++BlockIndex)
+		{
+			const FOracleBlock& Block = Problem.Blocks[BlockIndex];
+
+			if (Block.bGrounded)
+			{
+				continue;
+			}
+
+			FAssemblyRow Fx;
+			FAssemblyRow Fy;
+			FAssemblyRow Fz;
+			FAssemblyRow Mx;
+			FAssemblyRow My;
+			FAssemblyRow Mz;
+
+			/* Gravity is dead here (lambda = 1): its weight enters the Fz right-hand side. */
+			const double WeightUu = Block.MassKg * OracleGravityCmPerSecondSquared;
+			const double LoadZ = -WeightUu;
+
+			for (int32 ContactIndex = 0; ContactIndex < NumContacts; ++ContactIndex)
+			{
+				const FThreeDContact& Contact = Contacts[ContactIndex];
+				const FOracleJoint& Joint = Problem.Joints[Contact.Joint];
+
+				double SignForBlock = 0.0;
+
+				if (Joint.BlockB == BlockIndex)
+				{
+					SignForBlock = 1.0;
+				}
+				else if (Joint.BlockA == BlockIndex)
+				{
+					SignForBlock = -1.0;
+				}
+				else
+				{
+					continue;
+				}
+
+				AppendThreeDContactCoeffs(
+					Fx, Fy, Fz, Mx, My, Mz, 6 * ContactIndex, SignForBlock, Contact,
+					Block.CentroidXCm, Block.CentroidYCm, Block.CentroidZCm);
+			}
+
+			Fz.Rhs = -LoadZ;
+
+			AssemblyRows.Add(MoveTemp(Fx));
+			AssemblyRows.Add(MoveTemp(Fy));
+			AssemblyRows.Add(MoveTemp(Fz));
+			AssemblyRows.Add(MoveTemp(Mx));
+			AssemblyRows.Add(MoveTemp(My));
+			AssemblyRows.Add(MoveTemp(Mz));
+		}
+
+		/* ---- Strength rows, each RELAXED by its own violation variable: tension (gated) + crushing. ---- */
+		struct FStrengthRowInfo
+		{
+			int32 Joint = INDEX_NONE;
+			int32 ViolationCol = INDEX_NONE;
+			int32 RowIndex = INDEX_NONE;
+			double Capacity = 0.0;
+		};
+
+		TArray<FStrengthRowInfo> StrengthInfos;
+
+		const auto AddStrengthRow =
+			[&](int32 JointIndex, FAssemblyRow&& Row, double Capacity)
+		{
+			const int32 ViolationCol = NumForceCols + StrengthInfos.Num();
+			Row.Add(ViolationCol, -1.0);
+			Row.Rhs = Capacity;
+			Row.bEquality = false;
+
+			FStrengthRowInfo Info;
+			Info.Joint = JointIndex;
+			Info.ViolationCol = ViolationCol;
+			Info.RowIndex = AssemblyRows.Num();
+			Info.Capacity = Capacity;
+			StrengthInfos.Add(Info);
+
+			AssemblyRows.Add(MoveTemp(Row));
+		};
+
+		for (int32 ContactIndex = 0; ContactIndex < NumContacts; ++ContactIndex)
+		{
+			const FThreeDContact& Contact = Contacts[ContactIndex];
+			const FConnectionStrength& S = Problem.Joints[Contact.Joint].Strength;
+			const int32 Base = 6 * ContactIndex;
+
+			const double Conv = OracleForceUnitsPerMPaSqCm;
+			const double AreaSqCm = Contact.TributaryAreaSqCm;
+
+			if (Contact.bCanTension && S.TensileStrengthMPa < UncappedStrengthMPa)
+			{
+				FAssemblyRow Tension;
+				Tension.Add(Base + 1, 1.0);
+				AddStrengthRow(Contact.Joint, MoveTemp(Tension), S.TensileStrengthMPa * Conv * AreaSqCm);
+			}
+
+			if (S.CompressiveStrengthMPa < UncappedStrengthMPa)
+			{
+				FAssemblyRow Crush;
+				Crush.Add(Base + 0, 1.0);
+
+				if (Contact.bCanTension)
+				{
+					Crush.Add(Base + 1, -1.0);
+				}
+
+				AddStrengthRow(Contact.Joint, MoveTemp(Crush), S.CompressiveStrengthMPa * Conv * AreaSqCm);
+			}
+		}
+
+		const int32 NumStrengthRows = StrengthInfos.Num();
+		const int32 NumStructBase = NumForceCols + NumStrengthRows;
+
+		/* One min-sum-of-violations solve; the determinate fixture needs no per-group canonicalization. */
+		TArray<double> Cost;
+		Cost.Init(0.0, NumStructBase);
+
+		for (const FStrengthRowInfo& Info : StrengthInfos)
+		{
+			Cost[Info.ViolationCol] = 1.0;
+		}
+
+		const FSubSolve Solve = SolveMinViolationLP(AssemblyRows, NumStructBase, Cost);
+
+		if (!Solve.bOk)
+		{
+			return Refuse(Solve.Refusal);
+		}
+
+		Result.SimplexIterations = Solve.Iterations;
+		Result.PricingColumnScans = Solve.PricingColumnScans;
+		Result.BlandDegenerateEntries = Solve.BlandDegenerateEntries;
+
+		const TArray<double>& StructValues = Solve.StructValues;
+
+		/* Verify the primal against the ORIGINAL physics — equilibrium HARD, strength relaxed. */
+		for (int32 RowIndex = 0; RowIndex < AssemblyRows.Num(); ++RowIndex)
+		{
+			const FAssemblyRow& Assembly = AssemblyRows[RowIndex];
+
+			double LeftHandSide = 0.0;
+			double Magnitude = FMath::Abs(Assembly.Rhs);
+
+			for (int32 Entry = 0; Entry < Assembly.Col.Num(); ++Entry)
+			{
+				const double Term = Assembly.Val[Entry] * StructValues[Assembly.Col[Entry]];
+				LeftHandSide += Term;
+				Magnitude += FMath::Abs(Term);
+			}
+
+			const double Tolerance = 1.0e-6 * (1.0 + Magnitude);
+
+			const bool bViolated = Assembly.bEquality
+				? FMath::Abs(LeftHandSide - Assembly.Rhs) > Tolerance
+				: LeftHandSide > Assembly.Rhs + Tolerance;
+
+			if (bViolated)
+			{
+				return Refuse(
+					EOracleRefusal::VerificationFailure,
+					FString::Printf(TEXT("against row %d"), RowIndex));
+			}
+		}
+
+		/*
+		 * ---- The per-joint readout. ----
+		 *
+		 * NormalUu sums the joint's FOUR contacts' net normals n = n+ - n- (compression positive).
+		 * MomentUuCm is left zero: the biaxial moment resultant (Mx AND My about the patch centre) is
+		 * an E-tail, and no E1a assertion reads it. ViolationUu totals the joint's slack and the
+		 * utilisation is the worst per-row demand / capacity, fail-closed exactly as the 2D readout.
+		 */
+		FOracleReadout& Readout = Result.Readout;
+		Readout.Joints.SetNum(NumJoints);
+
+		constexpr double CapacityFloorUu = 1.0e-6;
+		constexpr double FailClosedUtilisation = 1.0e12;
+
+		for (int32 JointIndex = 0; JointIndex < NumJoints; ++JointIndex)
+		{
+			double NormalSum = 0.0;
+
+			for (int32 Corner = 0; Corner < 4; ++Corner)
+			{
+				const int32 Base = 6 * (4 * JointIndex + Corner);
+				NormalSum += StructValues[Base + 0] - StructValues[Base + 1];
+			}
+
+			FOracleJointReadout& Out = Readout.Joints[JointIndex];
+			Out.NormalUu = NormalSum;
+			Out.MomentUuCm = 0.0;
+
+			double Violation = 0.0;
+			double Utilisation = 0.0;
+
+			for (const FStrengthRowInfo& Info : StrengthInfos)
+			{
+				if (Info.Joint != JointIndex)
+				{
+					continue;
+				}
+
+				Violation += StructValues[Info.ViolationCol];
+
+				double Demand = 0.0;
+				const FAssemblyRow& Row = AssemblyRows[Info.RowIndex];
+
+				for (int32 Entry = 0; Entry < Row.Col.Num(); ++Entry)
+				{
+					if (Row.Col[Entry] != Info.ViolationCol)
+					{
+						Demand += Row.Val[Entry] * StructValues[Row.Col[Entry]];
+					}
+				}
+
+				double RowUtilisation;
+
+				if (Info.Capacity > CapacityFloorUu)
+				{
+					RowUtilisation = Demand / Info.Capacity;
+
+					if (!FMath::IsFinite(RowUtilisation))
+					{
+						RowUtilisation = FailClosedUtilisation;
+					}
+				}
+				else
+				{
+					RowUtilisation = !(Demand <= CapacityFloorUu) ? FailClosedUtilisation : 0.0;
+				}
+
+				Utilisation = FMath::Max(Utilisation, RowUtilisation);
+			}
+
+			Out.ViolationUu = Violation;
+			Out.Utilisation = Utilisation;
+		}
+
+		Readout.bPresent = true;
+		Result.bAnswered = true;
+		Result.Lambda = 1.0;
+		return Result;
+	}
+
+	/**
 	 * THE MIN-VIOLATION (GOAL-PROGRAMMING) LP THAT SOURCES THE PER-JOINT STRAIN READOUT
 	 * (PROMOTION_DESIGN §3.1/§3.5/§3.6, Slice 6a). A DIFFERENT solve from the maximise-lambda
 	 * one above, and DELIBERATELY separate from it so that path stays bit-identical: nothing
@@ -2283,6 +2957,12 @@ namespace RigidBlockOracle
 	FOracleResult SolveMinViolationReadout(const FOracleProblem& Problem)
 	{
 		using namespace OracleDetail;
+
+		/* The 3D readout is a separate assembler; dispatch and leave the 2D path below verbatim. */
+		if (Problem.Dim == EOracleDim::Dim3D)
+		{
+			return SolveMinViolationReadoutThreeD(Problem);
+		}
 
 		FOracleResult Result;
 		Result.bAnswered = false;

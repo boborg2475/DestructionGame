@@ -95,10 +95,26 @@ Both hand-built (no bridge), mirroring `RigidBlockOracleTest.cpp:137–181`.
 
 ## E1 slice sequence
 
-- **E1a — 3D equilibrium + 4-corner assembly behind the flag.** Red: `OracleThreeD.TripodMatchesHandStatics`
-  (E0-A (i)+(ii)). Green: enum + data fields + `AssembleThreeD` (six rows, four contacts, tension/crush,
-  friction off via huge μ or omitted). Guard: 2D bit-identity theorem (sweep + all 2D oracle rows
-  unchanged). Bite: zeroing the Mx/My coefficients reds the tripod.
+- **E1a — 3D equilibrium + 4-corner assembly — DONE (2026-08-30).** `AssembleThreeD` (`RigidBlockOracle.cpp`):
+  `DeriveInPlaneAxes` (deterministic right-handed frame from N̂), `BuildThreeDContacts` (4 corners, a point
+  patch collapsing to coincident normal contacts, A/4 tributary), `AppendThreeDContactCoeffs` (force rows =
+  components of N̂/û/v̂, moment rows = components of `r×ê` — the My row reproduces the 2D moment coefficient,
+  Mx/Mz added), six equilibrium equalities per non-grounded block, tension `n-≤f_t·Conv·A/4` + crush
+  `n+−n-≤f_c·Conv·A/4` (friction OFF — E1b). Branched at `SolveRigidBlockOnce` (maximise-λ) and via a
+  standalone `SolveMinViolationReadoutThreeD` (the 2D readout untouched; a single min-sum solve — determinate
+  tripod). Driven by `Oracle.RigidBlock.ThreeD.TripodMatchesHandStatics`: reactions (4900,2450,2450) =
+  (W/2,W/4,W/4), λ*=2; the moment machinery bites (zeroing My reverts to the 2D-degenerate (7350,0,2450)/2.667).
+  **2D BIT-IDENTITY PROVEN: `OracleSweepFull` 5/5 byte-identical, suite 206 = 202 green + 4 standing reds**
+  (the 3D branch never runs for a Dim2D problem). **E0 tractability MEASURED (R-Scope gate — 3D is tractable
+  toy-first):** 3D tripod vs 2D two-support — rows 1.19×, cols 4.3×, nonzeros 3.6×, pivots 2×, pricing scans
+  7.3× (per-fixture, 3 vs 2 supports; friction-off FLOOR — E1b's k=8 pyramid adds 8 rows/contact and will
+  dominate; consistent with the ~8–12× compact / up to ~25–30× estimate). **E1a scope boundaries (deferred, sound):**
+  applied forces are not posed on the 3D path (no fixture needs one; flagged before adding untested branching);
+  `ValidateProblem` doesn't yet unit-check `NormalY` (E3 bridge); 3D mechanism extraction is E2 (`EqFxRowOfBlock`
+  left INDEX_NONE — safe, the E1a load-factor pose is gravity-live/feasible so the infeasible arm never reads it);
+  the 3D readout uses a single min-sum not the per-group lex-minimax (E2, for the indeterminate E0-B). Cosmetic:
+  the 2D `else`-block is left at its original (one-level-shallow) indentation to avoid a 350-line re-indent diff —
+  functionally verbatim, byte-identical by the sweep; re-indent is a possible follow-up.
 - **E1b — friction pyramid.** Red: `OracleThreeD.SlidingOnAPyramidFacetAndOnADiagonal` (a 3D push with u
   AND v components; facet push λ*=(cA+μW)/|push|; DIAGONAL push exposes inscribed-vs-circumscribed by √2).
   Bite: inscribed↔circumscribed moves the diagonal red by √2.
