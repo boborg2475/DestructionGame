@@ -120,4 +120,24 @@ namespace DestructionShed3D
 	 * Refuses by writing an empty layout; returns true when the shed was laid.
 	 */
 	bool BuildRecognizable(DestructionLayout::FBrickLayout& OutLayout);
+
+	/**
+	 * THE REALISTIC-BRICK SHED SHELL — the v3 rebuild at TRUE MASONRY RESOLUTION (the user's
+	 * "rebuild with bricks that are the size of actual bricks ... realistic size and build").
+	 * Where BuildRecognizable lays one coarse block per wall face, this lays four running-bond
+	 * walls of REAL 21.5 x 10.25 x 6.5 cm clay bricks on 1 cm mortar joints, single-brick-thick,
+	 * closing a box, with a DOOR opening in the front wall and a WINDOW opening in a side wall,
+	 * each a genuine gap carrying a real Timber-board lintel. Flagged SetThreeDimensional.
+	 *
+	 * At this resolution the shed is hundreds of blocks — above the equilibrium gate's block cap —
+	 * so the per-joint capacity sweep (the router), not the LP, is the break authority, exactly as
+	 * the flagship ~1200-block wall is handled. The canonical dimensions live inside the builder;
+	 * the test pins the sizing and reads the laid layout back.
+	 *
+	 * The stepped brick gables, the timber gable roof and the porch on two posts are a LATER slice
+	 * (see the test report); this first slice is the realistic-brick shell that stands.
+	 *
+	 * Refuses by writing an empty layout; returns true when the shed was laid.
+	 */
+	bool BuildRealistic(DestructionLayout::FBrickLayout& OutLayout);
 }
