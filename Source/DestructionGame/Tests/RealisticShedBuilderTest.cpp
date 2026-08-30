@@ -396,6 +396,205 @@ namespace RealisticShedTestSupport
 		}
 		return false;
 	}
+
+	/* ================================================================================
+	 * GABLE + ROOF SCANNING (slice 2). The shell's 16 courses reach the eaves at Z = 119 (course 15 top,
+	 * 15 * 7.5 + 6.5). The stepped gables continue real-brick courses ABOVE that on the two GABLE-END
+	 * walls (front, Y-centre 5.125, which carries the door; back, Y-centre 128.875), each course stepping
+	 * IN toward the box centre X = 90 so the gable narrows to an apex under the ridge. The Timber roof
+	 * (stepped purlins + a ridge board) bears on the gable shoulders. Everything is found by scanning the
+	 * laid layout — origin-independent, robust to the exact bond the builder chooses inside each gable.
+	 * ================================================================================ */
+
+	constexpr double EavesTopZCm = 119.0;    // course 15 (0-based) top: 15 * 7.5 + 6.5
+	constexpr double GableFloorZCm = 119.5;  // a hair above the eaves — a gable brick sits above this
+
+	constexpr double FrontGableYCentreCm = 5.125;    // front wall band Y[0,10.25]
+	constexpr double BackGableYCentreCm = 128.875;   // back wall band Y[123.75,134]
+
+	/** The Z centre of a piece's box. */
+	double CentreZ(const FBrickLayout& Layout, int32 Piece)
+	{
+		return Layout.Boxes[Piece].CentreCm.Z;
+	}
+
+	/**
+	 * The X-width of every gable brick COURSE above the eaves on one gable end (front or back), returned
+	 * ascending in Z. A stepped gable NARROWS: each higher course is strictly less wide, reaching a narrow
+	 * apex. A course is one Z band of ClayBrick bricks in the gable end's thin Y band, above the eaves.
+	 */
+	void GableCourseWidths(const FBrickLayout& Layout, double GableYCentreCm,
+		TArray<double>& OutZ, TArray<double>& OutWidth)
+	{
+		const FStructure& S = Layout.Structure;
+
+		TArray<double> Zs;
+		TArray<double> LoX;
+		TArray<double> HiX;
+
+		for (int32 P = 0; P < S.NumPieces(); ++P)
+		{
+			if (S.IsPieceRemoved(P) || S.GetPiece(P).Material != &ClayBrick || !Layout.Boxes.IsValidIndex(P))
+			{
+				continue;
+			}
+			const FVector C = Layout.Boxes[P].CentreCm;
+			if (C.Z <= GableFloorZCm || !Near(C.Y, GableYCentreCm))
+			{
+				continue;
+			}
+
+			const double Lo = C.X - FMath::Abs(Layout.Boxes[P].ExtentCm.X);
+			const double Hi = C.X + FMath::Abs(Layout.Boxes[P].ExtentCm.X);
+
+			int32 Bucket = INDEX_NONE;
+			for (int32 K = 0; K < Zs.Num(); ++K)
+			{
+				if (Near(Zs[K], C.Z))
+				{
+					Bucket = K;
+					break;
+				}
+			}
+			if (Bucket == INDEX_NONE)
+			{
+				Zs.Add(C.Z);
+				LoX.Add(Lo);
+				HiX.Add(Hi);
+			}
+			else
+			{
+				LoX[Bucket] = FMath::Min(LoX[Bucket], Lo);
+				HiX[Bucket] = FMath::Max(HiX[Bucket], Hi);
+			}
+		}
+
+		TArray<int32> Order;
+		for (int32 I = 0; I < Zs.Num(); ++I)
+		{
+			Order.Add(I);
+		}
+		Order.Sort([&](int32 A, int32 B) { return Zs[A] < Zs[B]; });
+
+		for (const int32 I : Order)
+		{
+			OutZ.Add(Zs[I]);
+			OutWidth.Add(HiX[I] - LoX[I]);
+		}
+	}
+
+	/**
+	 * Do two GABLE bricks (both ClayBrick, both above the eaves, both in the named gable end's thin Y band)
+	 * bed on one another — a Z-normal MakeInterface joint between stepped gable courses? This is the
+	 * "bedded — a joint to the course below" property: the stepped courses are genuinely bonded, not
+	 * floating shelves.
+	 */
+	bool HasGableStepBed(const FBrickLayout& Layout, double GableYCentreCm)
+	{
+		const FStructure& S = Layout.Structure;
+		for (int32 J = 0; J < S.NumConnections(); ++J)
+		{
+			const FConnection& Cn = S.GetConnection(J);
+			if (!FMath::IsNearlyEqual(FMath::Abs(Cn.InterfaceNormal.Z), 1.0, 1.0e-9))
+			{
+				continue;
+			}
+			const int32 A = Cn.PieceA;
+			const int32 B = Cn.PieceB;
+			if (!Layout.Boxes.IsValidIndex(A) || !Layout.Boxes.IsValidIndex(B)
+				|| S.GetPiece(A).Material != &ClayBrick || S.GetPiece(B).Material != &ClayBrick)
+			{
+				continue;
+			}
+			const FVector CA = Layout.Boxes[A].CentreCm;
+			const FVector CB = Layout.Boxes[B].CentreCm;
+			if (Near(CA.Y, GableYCentreCm) && Near(CB.Y, GableYCentreCm)
+				&& CA.Z > GableFloorZCm && CB.Z > GableFloorZCm)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Does a Timber ROOF member bear on a gable brick — a Z-normal joint between a Timber piece above the
+	 * eaves and a ClayBrick gable brick? This is the roof "bearing on the gable shoulders" property: the
+	 * roof is carried by the masonry, not floating.
+	 */
+	bool HasRoofBearingOnGable(const FBrickLayout& Layout)
+	{
+		const FStructure& S = Layout.Structure;
+		for (int32 J = 0; J < S.NumConnections(); ++J)
+		{
+			const FConnection& Cn = S.GetConnection(J);
+			if (!FMath::IsNearlyEqual(FMath::Abs(Cn.InterfaceNormal.Z), 1.0, 1.0e-9))
+			{
+				continue;
+			}
+			const int32 A = Cn.PieceA;
+			const int32 B = Cn.PieceB;
+			if (!Layout.Boxes.IsValidIndex(A) || !Layout.Boxes.IsValidIndex(B))
+			{
+				continue;
+			}
+			const FMaterialProfile* MA = S.GetPiece(A).Material;
+			const FMaterialProfile* MB = S.GetPiece(B).Material;
+			const bool bTimberAbove = (MA == &Timber && CentreZ(Layout, A) > GableFloorZCm)
+				|| (MB == &Timber && CentreZ(Layout, B) > GableFloorZCm);
+			const bool bGableBrick = (MA == &ClayBrick && CentreZ(Layout, A) > GableFloorZCm)
+				|| (MB == &ClayBrick && CentreZ(Layout, B) > GableFloorZCm);
+			if (bTimberAbove && bGableBrick)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** The Timber roof member with the greatest Z centre — the ridge — or INDEX_NONE if the roof is absent. */
+	int32 RidgePiece(const FBrickLayout& Layout)
+	{
+		const FStructure& S = Layout.Structure;
+		int32 Best = INDEX_NONE;
+		double BestZ = -DBL_MAX;
+		for (int32 P = 0; P < S.NumPieces(); ++P)
+		{
+			if (S.IsPieceRemoved(P) || S.GetPiece(P).Material != &Timber || !Layout.Boxes.IsValidIndex(P))
+			{
+				continue;
+			}
+			const double Z = CentreZ(Layout, P);
+			if (Z > GableFloorZCm && Z > BestZ)
+			{
+				BestZ = Z;
+				Best = P;
+			}
+		}
+		return Best;
+	}
+
+	/** The topmost (apex) ClayBrick gable brick on one gable end, or INDEX_NONE. */
+	int32 GableApexPiece(const FBrickLayout& Layout, double GableYCentreCm)
+	{
+		const FStructure& S = Layout.Structure;
+		int32 Best = INDEX_NONE;
+		double BestZ = -DBL_MAX;
+		for (int32 P = 0; P < S.NumPieces(); ++P)
+		{
+			if (S.IsPieceRemoved(P) || S.GetPiece(P).Material != &ClayBrick || !Layout.Boxes.IsValidIndex(P))
+			{
+				continue;
+			}
+			const FVector C = Layout.Boxes[P].CentreCm;
+			if (C.Z > GableFloorZCm && Near(C.Y, GableYCentreCm) && C.Z > BestZ)
+			{
+				BestZ = C.Z;
+				Best = P;
+			}
+		}
+		return Best;
+	}
 }
 
 /**
@@ -580,6 +779,211 @@ bool FRealisticShedBuilderTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(TEXT("STANDS: the window lintel reads Supported (carried by its jambs)"),
 			IsStanding(Layout.Structure.GetPieceSupport(WindowLintel)));
+	}
+
+	return true;
+}
+
+/**
+ * SLICE 2 — THE STEPPED BRICK GABLES AND THE TIMBER GABLE ROOF, on top of the standing realistic shell.
+ *
+ * THE BEHAVIOUR, IN ONE SENTENCE. On top of the real-brick shell, DestructionShed3D::BuildRealistic
+ * continues real ClayBrick courses ABOVE the eaves on the two gable-end walls (front, which carries the
+ * door, and back), each course stepping IN toward the box centre so the gable narrows symmetrically to an
+ * apex under the ridge and beds on the course below, and lays a Timber roof of stepped board members
+ * (purlins rising to a ridge) bearing on the gable shoulders — so that the whole shed (shell + gables +
+ * roof) STANDS through production (SolveAndBreak / the router, above the 200-block cap) with nothing
+ * stranded, the roof members and the gable apex reading Supported.
+ *
+ * THE GABLE, HAND-DERIVED. Eaves top Z = 119 (course 15). Continue courses 16..19 on each gable end, thin
+ * Y band unchanged (front Y[0,10.25], back Y[123.75,134]), each course a band of real bricks centred on
+ * the box's X centre (~89.5) and stepping IN one brick pitch (22.5) per side per course: course 16 spans
+ * ~X[0,179] (8 bricks), 17 ~X[22.5,156.5] (6), 18 ~X[45,134] (4), 19 ~X[67.5,111.5] (2, the apex). The
+ * symmetric narrowing keeps each course's centroid over the course below, so the corbelled gable cannot
+ * overturn; each gable brick beds (1 cm) on a full-overlap brick below, so MakeInterface forms the beds.
+ *
+ * THE ROOF, HAND-DERIVED. Timber purlins run the full depth Y[0,134], bearing on BOTH gable shoulders
+ * (a simply-supported beam between the two gable ends — its centroid sits between its two bearings, so it
+ * cannot overturn). They step UP toward the centre onto successively higher shoulders — eaves purlins on
+ * the course-16 shoulder (Z ~127.5), mid purlins on the course-18 shoulder (Z ~142.5) — and a ridge board
+ * caps the apex course-19 shoulder (Z ~150). The stepped Z-levels read as a pitch; the ridge is the top.
+ * Each member is a real board section (~5 cm thick). Load path: purlin -> gable shoulder -> gable courses
+ * -> eaves wall -> ground. Symmetric, hand-derivably stable.
+ *
+ * THE RED. The builder lays the shell but NO gables and NO roof yet (its top course is 15, Z 119; the only
+ * Timber is the two lintels at Z ~93). So every gable and roof scan below finds nothing: no courses above
+ * the eaves, no ridge, no roof bearing. That is the expected RED — dev lays the stepped gables and the
+ * roof to the geometry above. The shell arm re-checks that slice 1 still holds.
+ *
+ * NEEDS A TICKING WORLD: NO. Same footing as the shell test — boxes, doubles, the router; gravity on.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRealisticShedGablesAndRoofTest,
+	"DestructionGame.Acceptance.Shed.ThreeD.RealisticBrickShedGablesAndRoofStandAsBuilt",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRealisticShedGablesAndRoofTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionProfiles;
+	using namespace RealisticShedTestSupport;
+
+	FBrickLayout Layout;
+	const bool bBuilt = DestructionShed3D::BuildRealistic(Layout);
+
+	TestTrue(TEXT("BUILD: the builder must lay the realistic-brick shed (the stub returns false — the RED)"),
+		bBuilt);
+	if (!bBuilt)
+	{
+		AddError(TEXT("BUILD: DestructionShed3D::BuildRealistic laid nothing — cannot examine gables/roof."));
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("SCALE: %d pieces, %d joints total (shell + gables + roof)."),
+		Layout.Structure.NumPieces(), Layout.Structure.NumConnections()));
+
+	/* ================================================================================
+	 * ARM 1 — STEPPED BRICK GABLES. Real-brick courses climb above the eaves on BOTH gable ends, narrowing
+	 * strictly with height to an apex, each course bedded to the one below. The shell (top course Z 119)
+	 * has no such courses, so these scans are the RED.
+	 * ================================================================================ */
+
+	for (int32 End = 0; End < 2; ++End)
+	{
+		const bool bFront = (End == 0);
+		const double GableYCentre = bFront ? FrontGableYCentreCm : BackGableYCentreCm;
+		const TCHAR* Name = bFront ? TEXT("front") : TEXT("back");
+
+		TArray<double> CourseZ;
+		TArray<double> CourseWidth;
+		GableCourseWidths(Layout, GableYCentre, CourseZ, CourseWidth);
+
+		FString Widths;
+		for (int32 I = 0; I < CourseWidth.Num(); ++I)
+		{
+			Widths += FString::Printf(TEXT("[Z%.4g w%.4g]"), CourseZ[I], CourseWidth[I]);
+		}
+		AddInfo(FString::Printf(TEXT("GABLE(%s): %d courses above the eaves: %s"),
+			Name, CourseWidth.Num(), *Widths));
+
+		TestTrue(*FString::Printf(TEXT("GABLE(%s): real-brick courses rise above the eaves in >= 3 steps"), Name),
+			CourseWidth.Num() >= 3);
+
+		bool bNarrows = CourseWidth.Num() >= 2;
+		for (int32 I = 1; I < CourseWidth.Num(); ++I)
+		{
+			if (!(CourseWidth[I] < CourseWidth[I - 1] - Tol))
+			{
+				bNarrows = false;
+			}
+		}
+		TestTrue(*FString::Printf(TEXT("GABLE(%s): each course is strictly narrower than the one below "
+			"(steps IN, symmetric, cannot overturn)"), Name), bNarrows);
+
+		if (CourseWidth.Num() > 0)
+		{
+			TestTrue(*FString::Printf(TEXT("GABLE(%s): the apex course is narrow (<= ~2 bricks) — it reaches a ridge"),
+				Name), CourseWidth.Last() <= 50.0);
+		}
+
+		TestTrue(*FString::Printf(TEXT("GABLE(%s): the stepped courses bed on one another (a Z-normal joint "
+			"between two gable bricks)"), Name), HasGableStepBed(Layout, GableYCentre));
+	}
+
+	/* ================================================================================
+	 * ARM 2 — TIMBER GABLE ROOF. Real board members span/bear on the gables, step up to read as a pitch,
+	 * and are capped by a ridge at the top. All absent in the shell — the RED.
+	 * ================================================================================ */
+
+	int32 NumRoofMembers = 0;
+	for (int32 P = 0; P < Layout.Structure.NumPieces(); ++P)
+	{
+		if (!Layout.Structure.IsPieceRemoved(P)
+			&& Layout.Structure.GetPiece(P).Material == &Timber
+			&& Layout.Boxes.IsValidIndex(P)
+			&& CentreZ(Layout, P) > GableFloorZCm)
+		{
+			++NumRoofMembers;
+		}
+	}
+	AddInfo(FString::Printf(TEXT("ROOF: %d Timber members above the eaves."), NumRoofMembers));
+
+	TestTrue(TEXT("ROOF: Timber roof members sit above the eaves (a ridge board plus stepped purlins)"),
+		NumRoofMembers >= 3);
+	TestTrue(TEXT("ROOF: a Timber member bears on a gable brick (the roof is carried by the masonry)"),
+		HasRoofBearingOnGable(Layout));
+
+	const int32 Ridge = RidgePiece(Layout);
+	TestTrue(TEXT("ROOF: a Timber ridge member exists at the top of the roof"), Ridge != INDEX_NONE);
+
+	if (Ridge != INDEX_NONE)
+	{
+		double Lo = 0.0, Mid = 0.0, Hi = 0.0;
+		SortedHalfExtents(Layout.Boxes[Ridge], Lo, Mid, Hi);
+		AddInfo(FString::Printf(TEXT("ROOF: ridge half-extents sorted (%.4g, %.4g, %.4g), Z centre %.4g"),
+			Lo, Mid, Hi, CentreZ(Layout, Ridge)));
+
+		TestTrue(TEXT("ROOF: the ridge is a real BOARD section — smallest half-extent small (<= 5 cm)"),
+			Lo <= 5.0);
+
+		const int32 FrontApex = GableApexPiece(Layout, FrontGableYCentreCm);
+		const int32 BackApex = GableApexPiece(Layout, BackGableYCentreCm);
+		if (FrontApex != INDEX_NONE && BackApex != INDEX_NONE)
+		{
+			TestTrue(TEXT("ROOF: the ridge sits ABOVE the gable apex bricks (it is the top of the roof)"),
+				CentreZ(Layout, Ridge) > CentreZ(Layout, FrontApex)
+					&& CentreZ(Layout, Ridge) > CentreZ(Layout, BackApex));
+		}
+	}
+
+	/* ================================================================================
+	 * ARM 3 — IT STANDS, through production (SolveAndBreak / the router above the cap). Support-state only,
+	 * never displacement (DESIGN §4): 0 stranded, the roof members read Supported, the gable apex bricks
+	 * read Supported. The gable/apex/roof checks are guarded so that when they are ABSENT the RED lands on
+	 * ARM 1/2 rather than crashing here.
+	 * ================================================================================ */
+
+	TestTrue(*FString::Printf(TEXT("SCALE: %d blocks is above the 200-block cap, so the router is authority"),
+		Layout.Structure.NumPieces()), Layout.Structure.NumPieces() > 200);
+
+	const int32 Passes = Layout.Structure.SolveAndBreak();
+	const int32 Stranded = StrandedCount(Layout.Structure);
+	AddInfo(FString::Printf(TEXT("STANDS: production ran %d pass(es); %d stranded."), Passes, Stranded));
+
+	TestEqual(TEXT("STANDS: nothing may be Stranded — the whole shed (shell + gables + roof) stands"),
+		Stranded, 0);
+
+	if (Ridge != INDEX_NONE)
+	{
+		TestTrue(TEXT("STANDS: the ridge reads Supported (carried down the roof to the gables)"),
+			IsStanding(Layout.Structure.GetPieceSupport(Ridge)));
+	}
+
+	int32 RoofChecked = 0;
+	for (int32 P = 0; P < Layout.Structure.NumPieces(); ++P)
+	{
+		if (Layout.Structure.IsPieceRemoved(P)
+			|| Layout.Structure.GetPiece(P).Material != &Timber
+			|| !Layout.Boxes.IsValidIndex(P)
+			|| CentreZ(Layout, P) <= GableFloorZCm)
+		{
+			continue;
+		}
+		++RoofChecked;
+		TestTrue(*FString::Printf(TEXT("STANDS: roof member %d reads Supported (bears on the gables)"), P),
+			IsStanding(Layout.Structure.GetPieceSupport(P)));
+	}
+	AddInfo(FString::Printf(TEXT("STANDS: checked %d roof member(s) for support."), RoofChecked));
+
+	for (int32 End = 0; End < 2; ++End)
+	{
+		const bool bFront = (End == 0);
+		const int32 Apex = GableApexPiece(Layout, bFront ? FrontGableYCentreCm : BackGableYCentreCm);
+		if (Apex != INDEX_NONE)
+		{
+			TestTrue(*FString::Printf(TEXT("STANDS: the %s gable apex brick reads Supported"),
+				bFront ? TEXT("front") : TEXT("back")),
+				IsStanding(Layout.Structure.GetPieceSupport(Apex)));
+		}
 	}
 
 	return true;

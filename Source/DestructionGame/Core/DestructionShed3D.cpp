@@ -635,7 +635,89 @@ namespace DestructionShed3D
 		const int32 WindowLintel = AddPiece(
 			0.0, WytheCm, WindowOpening.LintelRunLoCm, WindowOpening.LintelRunHiCm, 90.0, 96.5, Timber, false);
 
-		if (!bLayoutValid || DoorLintel == INDEX_NONE || WindowLintel == INDEX_NONE)
+		/*
+		 * THE STEPPED GABLES (file header, slice 2). Both gable ENDS — the front wall (which carries the
+		 * door) and the back wall, each a thin Y band one wythe deep — continue real ClayBrick courses
+		 * ABOVE the eaves (course 15 top Z = 119). Each higher course steps IN one brick pitch (22.5) per
+		 * side toward the box centre X = 89.5, narrowing symmetrically from an 8-brick course 16 to a
+		 * 2-brick apex on course 19. The symmetric narrowing keeps every course's centroid over the course
+		 * below, so the corbel cannot overturn; each course is stack-aligned with the one below (a full
+		 * overlap), and the lowest beds on the intact eaves course 15, so the joint sweep forms every 1 cm
+		 * bed. The bricks are laid ClayBrick and free — the eaves course beneath them is the grounded path.
+		 */
+		const int32 GableBaseCourse = NumCourses;
+		const int32 GableSteps = 4;
+
+		const auto LayGable =
+			[&](double ThinLoCm, double ThinHiCm)
+		{
+			for (int32 Step = 0; Step < GableSteps; ++Step)
+			{
+				const int32 Course = GableBaseCourse + Step;
+				const int32 NumBricks = FrontBackBricks - 2 * Step;
+				const double StartXCm = Step * PitchCm;
+				const double BottomZCm = Course * CoursePitchCm;
+				const double TopZCm = BottomZCm + CourseCm;
+
+				for (int32 Brick = 0; Brick < NumBricks; ++Brick)
+				{
+					const double LoXCm = StartXCm + Brick * PitchCm;
+					AddPiece(LoXCm, LoXCm + BrickLenCm, ThinLoCm, ThinHiCm, BottomZCm, TopZCm, ClayBrick, false);
+				}
+			}
+		};
+
+		LayGable(0.0, WytheCm);
+		LayGable(BackWallY0Cm, BackWallY0Cm + WytheCm);
+
+		/*
+		 * THE TIMBER GABLE ROOF (file header, slice 2). Five real board members run the full depth
+		 * Y[0,RoofFrontYCm] and bear on BOTH gable ends as a simply-supported beam — its centroid between
+		 * the two bearings, so it cannot overturn — stepping UP onto successively higher gable SHOULDERS
+		 * (the part of each gable course the course above steps back from). The eaves purlins sit on the
+		 * course-16 shoulder, the mid purlins on the course-18 shoulder, and the ridge caps the apex
+		 * course-19 shoulder. Each board's bottom is one JointCm above its shoulder brick top, so the
+		 * sweep forms a DryStone bed there; the ~8.5 cm gap over the low side walls is far more than a
+		 * joint, so MakeInterface forms no spurious bearing across it. Each is ~5 cm thick — a real board.
+		 * Load path: roof member -> gable shoulder -> gable courses -> eaves wall -> ground.
+		 */
+		const double RoofDepthFrontYCm = BackWallY0Cm + WytheCm;
+		const double RoofThicknessCm = 5.0;
+
+		/* The top Z of a gable course, and the bottom Z of a board bearing one JointCm above it. */
+		const auto ShoulderBottomZ =
+			[&](int32 Course) -> double
+		{
+			return Course * CoursePitchCm + CourseCm + JointCm;
+		};
+
+		const double EavesBottomZCm = ShoulderBottomZ(GableBaseCourse);           // course 16 shoulder
+		const double MidBottomZCm = ShoulderBottomZ(GableBaseCourse + 2);         // course 18 shoulder
+		const double RidgeBottomZCm = ShoulderBottomZ(GableBaseCourse + 3);       // course 19 apex shoulder
+
+		const double RunEndXCm = FrontBackBricks * PitchCm - JointCm;             // 179 — the gable run end
+
+		const int32 EavesPurlinL = AddPiece(
+			0.0, PitchCm, 0.0, RoofDepthFrontYCm,
+			EavesBottomZCm, EavesBottomZCm + RoofThicknessCm, Timber, false);
+		const int32 EavesPurlinR = AddPiece(
+			RunEndXCm - PitchCm, RunEndXCm, 0.0, RoofDepthFrontYCm,
+			EavesBottomZCm, EavesBottomZCm + RoofThicknessCm, Timber, false);
+
+		const int32 MidPurlinL = AddPiece(
+			2.0 * PitchCm, 3.0 * PitchCm, 0.0, RoofDepthFrontYCm,
+			MidBottomZCm, MidBottomZCm + RoofThicknessCm, Timber, false);
+		const int32 MidPurlinR = AddPiece(
+			5.0 * PitchCm - JointCm, 6.0 * PitchCm - JointCm, 0.0, RoofDepthFrontYCm,
+			MidBottomZCm, MidBottomZCm + RoofThicknessCm, Timber, false);
+
+		const int32 Ridge = AddPiece(
+			3.0 * PitchCm, 3.0 * PitchCm + 2.0 * PitchCm - JointCm, 0.0, RoofDepthFrontYCm,
+			RidgeBottomZCm, RidgeBottomZCm + RoofThicknessCm, Timber, false);
+
+		if (!bLayoutValid || DoorLintel == INDEX_NONE || WindowLintel == INDEX_NONE
+			|| EavesPurlinL == INDEX_NONE || EavesPurlinR == INDEX_NONE
+			|| MidPurlinL == INDEX_NONE || MidPurlinR == INDEX_NONE || Ridge == INDEX_NONE)
 		{
 			return false;
 		}
