@@ -515,6 +515,29 @@ namespace RigidBlockOracle
 		double VirtualUz = 0.0;
 		double VirtualOmega = 0.0;
 		bool bMoves = false;
+
+		/*
+		 * E2 3D STUBS — the third-dimension parts of the block's virtual rigid-body motion,
+		 * declared at the STRUCT END so every 2D reader (which names VirtualUx/VirtualUz/
+		 * VirtualOmega/bMoves) is byte-for-byte unchanged and every 2D fixture stays inert at
+		 * these defaults. On the 2D path the collapse lives entirely in the X-Z plane: the
+		 * translation is (VirtualUx, VirtualUz) and the rotation is a SINGLE scalar about the
+		 * Y axis (VirtualOmega), so VirtualUy and the two out-of-plane rotation components are
+		 * identically zero and the current ExtractMechanism never writes them.
+		 *
+		 *   VirtualUy      — the Y component of the centroid's virtual translation.
+		 *   VirtualOmegaX  — the virtual rotation about the X axis (out-of-plane tipping).
+		 *   VirtualOmegaZ  — the virtual rotation about the Z axis (plan twist).
+		 *
+		 * Together with VirtualOmega (the Y-axis component, kept as-is so 2D is untouched) these
+		 * are the full 3-vector omega = (VirtualOmegaX, VirtualOmega, VirtualOmegaZ) the 3D
+		 * mechanism needs (THREED_DESIGN Data). The 3D extractor (dev-expert, E2a) is what reads
+		 * the six-row block dual into (VirtualUx, VirtualUy, VirtualUz, omega) and fills these; a
+		 * 2D or genuinely-in-plane collapse leaves them zero.
+		 */
+		double VirtualUy = 0.0;
+		double VirtualOmegaX = 0.0;
+		double VirtualOmegaZ = 0.0;
 	};
 
 	/**

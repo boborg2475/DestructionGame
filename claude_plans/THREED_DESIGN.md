@@ -143,9 +143,18 @@ Both hand-built (no bridge), mirroring `RigidBlockOracleTest.cpp:137–181`.
 - **E1c — tension/biaxial first-crack — DEFER to E-tail** unless a shed fixture needs bonded biaxial
   discrimination.
 
-**Follow-ons:** **E2** — mechanism in 3D (lift `v=u+ω×(p−c)` to a 3-vector ω; re-derive per-group
-canonicalisation + Farkas; re-run R3's determinism fuzz on E0-B; **likely build the D7 minimal-support
-tie-break 2D deferred** — highest-risk follow-on). **E3** — the 3D bridge (lift the Y-normal refusal for
+**Follow-ons:** **E2 — mechanism in 3D. E2a DONE (2026-08-30):** `AssembleThreeD` populates the six
+`EqFxRowOfBlock` rows; `ExtractMechanism` branches on `Dim` (2D byte-identical) to read the six-row dual
+into `(u,ω)` 6-vectors, computes the virtual velocity `v=u+ω×(p−c)` with a full 3-vector cross product
+(a separate `VelocityAt3D` — the 3D My row is `+(r×e)_y`, so the standard cross product is right, not the
+2D scalar sign-flip), derives the moving set + opening joints from the 3D 4-corner block kinematics
+(`BlockL1` over all six components), and reuses the dimension-agnostic Farkas. Driven by
+`ThreeD.MechanismTipsAboutABaseEdge` (a block tipping about the +Y base edge → ω about X, out of plane,
+unrepresentable by the 2D scalar ω; Uz<0 descends). 2D mechanism tests + OracleSweepFull byte-identical;
+suite 209 = 205 green + 4 standing reds. **E2b (STILL TODO)** — the per-group canonicalisation over 3D
+velocity 6-vectors (the Slice-3a stable named set generalised) for indeterminate cases. **E2c (STILL TODO,
+HIGHEST RISK)** — re-run R3's determinism fuzz on E0-B (four redundant supports + pyramid = multiple Farkas
+rays); **likely build the D7 minimal-support tie-break 2D deferred**. **E3** — the 3D bridge (lift the Y-normal refusal for
 Dim3D only, keep the 2D refusal loud; replace the `|Nz|vs|Nx|` half-extent shortcut with the two real
 interface axes). **E4** — block coarsening (coarse blocks + per-brick refinement near a cut; the real
 tractability lever). **E5** — 3D latency ladder + block-cap re-measure + R7 Shipping-FP in 3D.

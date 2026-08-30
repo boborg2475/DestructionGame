@@ -1226,6 +1226,13 @@ namespace RigidBlockOracle
 		return TEXT("the oracle refused for an unnamed reason");
 	}
 
+	/*
+	 * Forward-declared so the 3D mechanism extraction can derive a joint's in-plane frame with the
+	 * SAME deterministic rule the 3D assembler used to place the contact corners — the definition
+	 * lives with the other 3D assembly helpers further down.
+	 */
+	void DeriveInPlaneAxes(const double N[3], double U[3], double V[3]);
+
 	/**
 	 * EXTRACT THE COLLAPSE MECHANISM from phase 1's dual at the infeasible arm — the Farkas
 	 * certificate that IS the kinematic upper-bound mechanism (PROMOTION_DESIGN §3.3). Called
@@ -1322,6 +1329,21 @@ namespace RigidBlockOracle
 			}
 		}
 
+		const bool bThreeD = Problem.Dim == EOracleDim::Dim3D;
+
+		/*
+		 * The L1 magnitude of a block's virtual motion over all six components. On the 2D path the
+		 * three out-of-plane components (VirtualUy, VirtualOmegaX, VirtualOmegaZ) are identically
+		 * zero and never written, so adding them changes no bit — this reduces exactly to the 2D
+		 * three-term sum and both 2D uses (the largest-magnitude scan and the moving-set threshold)
+		 * stay byte-for-byte what they were.
+		 */
+		auto BlockL1 = [](const FOracleMechanismBlock& T)
+		{
+			return FMath::Abs(T.VirtualUx) + FMath::Abs(T.VirtualUy) + FMath::Abs(T.VirtualUz)
+				+ FMath::Abs(T.VirtualOmegaX) + FMath::Abs(T.VirtualOmega) + FMath::Abs(T.VirtualOmegaZ);
+		};
+
 		/* ---- Block triples, negated so a descending centroid reads VirtualUz < 0. ---- */
 		OutMechanism.Blocks.SetNum(NumBlocks);
 		double LargestBlockMagnitude = 0.0;
@@ -1337,13 +1359,31 @@ namespace RigidBlockOracle
 			}
 
 			FOracleMechanismBlock& Triple = OutMechanism.Blocks[Block];
-			Triple.VirtualUx = -YPhys[Fx];
-			Triple.VirtualUz = -YPhys[Fx + 1];
-			Triple.VirtualOmega = -YPhys[Fx + 2];
 
-			const double BlockMagnitude = FMath::Abs(Triple.VirtualUx)
-				+ FMath::Abs(Triple.VirtualUz) + FMath::Abs(Triple.VirtualOmega);
-			LargestBlockMagnitude = FMath::Max(LargestBlockMagnitude, BlockMagnitude);
+			if (bThreeD)
+			{
+				/*
+				 * The six equilibrium rows are (Fx, Fy, Fz, Mx, My, Mz) in that fixed order, so the
+				 * dual maps the three force rows to the centroid translation u = (u_x, u_y, u_z) and
+				 * the three moment rows to the rotation omega = (omega_x, omega_y, omega_z). The
+				 * Y-axis rotation stays in VirtualOmega — the field the 2D scalar already carried —
+				 * so the full 3-vector is (VirtualOmegaX, VirtualOmega, VirtualOmegaZ).
+				 */
+				Triple.VirtualUx = -YPhys[Fx + 0];
+				Triple.VirtualUy = -YPhys[Fx + 1];
+				Triple.VirtualUz = -YPhys[Fx + 2];
+				Triple.VirtualOmegaX = -YPhys[Fx + 3];
+				Triple.VirtualOmega = -YPhys[Fx + 4];
+				Triple.VirtualOmegaZ = -YPhys[Fx + 5];
+			}
+			else
+			{
+				Triple.VirtualUx = -YPhys[Fx];
+				Triple.VirtualUz = -YPhys[Fx + 1];
+				Triple.VirtualOmega = -YPhys[Fx + 2];
+			}
+
+			LargestBlockMagnitude = FMath::Max(LargestBlockMagnitude, BlockL1(Triple));
 		}
 
 		/*
@@ -1370,6 +1410,28 @@ namespace RigidBlockOracle
 			OutVz = Triple.VirtualUz + Triple.VirtualOmega * (PointX - CentroidX);
 		};
 
+		/*
+		 * The 3D rigid-body velocity v = u + omega x r with the FULL 3-vector omega and the textbook
+		 * cross product. The 3D moment rows carry +(r x e) — the My row is +(r x e)_y, the global
+		 * negation of the 2D moment row's -(r x e)_y — so the dual omega is the standard angular
+		 * velocity here and this is NOT the sign-flipped 2D scalar form above.
+		 */
+		auto VelocityAt3D = [](
+			const FOracleMechanismBlock& T,
+			double Cx, double Cy, double Cz, double Px, double Py, double Pz,
+			double& OutVx, double& OutVy, double& OutVz)
+		{
+			const double Rx = Px - Cx;
+			const double Ry = Py - Cy;
+			const double Rz = Pz - Cz;
+			OutVx = T.VirtualUx + T.VirtualOmega * Rz - T.VirtualOmegaZ * Ry;
+			OutVy = T.VirtualUy + T.VirtualOmegaZ * Rx - T.VirtualOmegaX * Rz;
+			OutVz = T.VirtualUz + T.VirtualOmegaX * Ry - T.VirtualOmega * Rx;
+		};
+
+		static const double CornerU[4] = { -1.0, 1.0, -1.0, 1.0 };
+		static const double CornerV[4] = { -1.0, -1.0, 1.0, 1.0 };
+
 		TArray<double> JointRelativeVelocity;
 		JointRelativeVelocity.Init(0.0, NumJoints);
 		double LargestJointRelativeVelocity = 0.0;
@@ -1382,23 +1444,57 @@ namespace RigidBlockOracle
 			const FOracleMechanismBlock& TripleA = OutMechanism.Blocks[J.BlockA];
 			const FOracleMechanismBlock& TripleB = OutMechanism.Blocks[J.BlockB];
 
-			/* The two contact points sit at Centre -/+ HalfLength along the in-plane tangent. */
-			const double TangentX = -J.NormalZ;
-			const double TangentZ = J.NormalX;
-
 			double Worst = 0.0;
 
-			for (int32 End = 0; End < 2; ++End)
+			if (bThreeD)
 			{
-				const double Sign = End == 0 ? -1.0 : 1.0;
-				const double PointX = J.CentreXCm + Sign * J.HalfLengthCm * TangentX;
-				const double PointZ = J.CentreZCm + Sign * J.HalfLengthCm * TangentZ;
+				/*
+				 * The rectangular patch's four corners at Centre +/- h_u*U +/- h_v*V, the in-plane
+				 * frame (U, V) derived from the normal with the SAME rule the 3D assembler used to
+				 * place the contacts. A point patch (h_u = h_v = 0) collapses them onto the centre.
+				 * A joint gives iff the relative virtual velocity across a corner is non-negligible.
+				 */
+				const double Normal[3] = { J.NormalX, J.NormalY, J.NormalZ };
+				double U[3];
+				double V[3];
+				DeriveInPlaneAxes(Normal, U, V);
 
-				double AVx, AVz, BVx, BVz;
-				VelocityAt(TripleA, A.CentroidXCm, A.CentroidZCm, PointX, PointZ, AVx, AVz);
-				VelocityAt(TripleB, B.CentroidXCm, B.CentroidZCm, PointX, PointZ, BVx, BVz);
+				for (int32 Corner = 0; Corner < 4; ++Corner)
+				{
+					const double Du = CornerU[Corner] * J.HalfUCm;
+					const double Dv = CornerV[Corner] * J.HalfVCm;
+					const double PointX = J.CentreXCm + Du * U[0] + Dv * V[0];
+					const double PointY = J.CentreYCm + Du * U[1] + Dv * V[1];
+					const double PointZ = J.CentreZCm + Du * U[2] + Dv * V[2];
 
-				Worst = FMath::Max(Worst, FMath::Abs(BVx - AVx) + FMath::Abs(BVz - AVz));
+					double AVx, AVy, AVz, BVx, BVy, BVz;
+					VelocityAt3D(TripleA, A.CentroidXCm, A.CentroidYCm, A.CentroidZCm,
+						PointX, PointY, PointZ, AVx, AVy, AVz);
+					VelocityAt3D(TripleB, B.CentroidXCm, B.CentroidYCm, B.CentroidZCm,
+						PointX, PointY, PointZ, BVx, BVy, BVz);
+
+					Worst = FMath::Max(Worst,
+						FMath::Abs(BVx - AVx) + FMath::Abs(BVy - AVy) + FMath::Abs(BVz - AVz));
+				}
+			}
+			else
+			{
+				/* The two contact points sit at Centre -/+ HalfLength along the in-plane tangent. */
+				const double TangentX = -J.NormalZ;
+				const double TangentZ = J.NormalX;
+
+				for (int32 End = 0; End < 2; ++End)
+				{
+					const double Sign = End == 0 ? -1.0 : 1.0;
+					const double PointX = J.CentreXCm + Sign * J.HalfLengthCm * TangentX;
+					const double PointZ = J.CentreZCm + Sign * J.HalfLengthCm * TangentZ;
+
+					double AVx, AVz, BVx, BVz;
+					VelocityAt(TripleA, A.CentroidXCm, A.CentroidZCm, PointX, PointZ, AVx, AVz);
+					VelocityAt(TripleB, B.CentroidXCm, B.CentroidZCm, PointX, PointZ, BVx, BVz);
+
+					Worst = FMath::Max(Worst, FMath::Abs(BVx - AVx) + FMath::Abs(BVz - AVz));
+				}
 			}
 
 			JointRelativeVelocity[Joint] = Worst;
@@ -1414,8 +1510,7 @@ namespace RigidBlockOracle
 			for (int32 Block = 0; Block < NumBlocks; ++Block)
 			{
 				const FOracleMechanismBlock& Triple = OutMechanism.Blocks[Block];
-				const double BlockMagnitude = FMath::Abs(Triple.VirtualUx)
-					+ FMath::Abs(Triple.VirtualUz) + FMath::Abs(Triple.VirtualOmega);
+				const double BlockMagnitude = BlockL1(Triple);
 
 				if (BlockMagnitude > MechanismRelativeTol * LargestBlockMagnitude)
 				{
@@ -1665,13 +1760,19 @@ namespace RigidBlockOracle
 	 * none. Gravity is -Mass*980 into Fz (force only), live into the lambda column or dead into the
 	 * right-hand side exactly as 2D routes it. Then the lambda cap, then two strength rows per
 	 * contact over the tributary A/4: tension (n- <= f_t*Conv*A/4, tension-gated) and crushing
-	 * (n+ - n- <= f_c*Conv*A/4). FRICTION IS OFF for E1a — the k=8 pyramid is E1b — so no shear row
-	 * is written and shear is unconstrained. bFirstCrackRows is ignored on the 3D path (biaxial
-	 * first-crack is an E-tail). Applied forces are not posed in 3D yet; no E1a fixture carries one.
+	 * (n+ - n- <= f_c*Conv*A/4), plus the k=8 INSCRIBED friction pyramid (E1b — 8 facet rows scaled
+	 * by cos(pi/8) so the octagon inscribes the true Coulomb cone). Applied forces ARE posed (E1b):
+	 * force + r_app x F into the six rows, live/dead split. bFirstCrackRows is ignored on the 3D path
+	 * (biaxial first-crack is an E-tail).
+	 *
+	 * OutEqFxRowOfBlock[b] is filled with the assembly-row index of block b's Fx equilibrium row —
+	 * its Fy, Fz, Mx, My, Mz rows follow at +1..+5 in that fixed order — or INDEX_NONE for a
+	 * grounded block, which writes no rows. That sextuple is where the infeasible arm reads block
+	 * b's virtual-motion dual (E2a), the 3D analogue of the 2D arm's Fx/Fz/M triple bookkeeping.
 	 */
 	void AssembleThreeD(
 		const FOracleProblem& Problem, TArray<OracleDetail::FAssemblyRow>& AssemblyRows,
-		int32& OutNumStructCols)
+		int32& OutNumStructCols, TArray<int32>& OutEqFxRowOfBlock)
 	{
 		using namespace OracleDetail;
 
@@ -1682,6 +1783,8 @@ namespace RigidBlockOracle
 		TArray<FThreeDContact> Contacts;
 		BuildThreeDContacts(Problem, Contacts);
 
+		OutEqFxRowOfBlock.Init(INDEX_NONE, Problem.Blocks.Num());
+
 		/* ---- Equilibrium: six equalities per non-grounded block. ---- */
 		for (int32 BlockIndex = 0; BlockIndex < Problem.Blocks.Num(); ++BlockIndex)
 		{
@@ -1691,6 +1794,9 @@ namespace RigidBlockOracle
 			{
 				continue;
 			}
+
+			/* Fx lands at the current end; Fy, Fz, Mx, My, Mz follow it in the five next slots. */
+			OutEqFxRowOfBlock[BlockIndex] = AssemblyRows.Num();
 
 			FAssemblyRow Fx;
 			FAssemblyRow Fy;
@@ -1928,8 +2034,9 @@ namespace RigidBlockOracle
 		 * Dim3D problem, the 2D assembler (verbatim, in the else) for everything else. Downstream
 		 * — standard form, the two simplex phases, verification — is dimension-agnostic and reads
 		 * these three shared locals whichever branch filled them. EqFxRowOfBlock is the mechanism
-		 * seam; the 3D path leaves it all-INDEX_NONE because the 3D mechanism is E2, and the E1a
-		 * fixture is gravity-live (feasible), so the infeasible arm that reads it is never taken.
+		 * seam; each arm records the assembly-row index of every non-grounded block's first
+		 * equilibrium row (Fx) — three rows per block in 2D, six in 3D — so the infeasible arm can
+		 * read each block's virtual-motion dual off that fixed run of rows (ExtractMechanism).
 		 */
 		TArray<FAssemblyRow> AssemblyRows;
 		int32 NumStructCols = 0;
@@ -1937,8 +2044,7 @@ namespace RigidBlockOracle
 
 		if (Problem.Dim == EOracleDim::Dim3D)
 		{
-			AssembleThreeD(Problem, AssemblyRows, NumStructCols);
-			EqFxRowOfBlock.Init(INDEX_NONE, Problem.Blocks.Num());
+			AssembleThreeD(Problem, AssemblyRows, NumStructCols, EqFxRowOfBlock);
 		}
 		else
 		{
