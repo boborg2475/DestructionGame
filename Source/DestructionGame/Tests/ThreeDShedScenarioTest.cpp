@@ -15,61 +15,54 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE 3D SHED AS A PLAYABLE SCENARIO — the point where the genuinely-3D closed-box shed the
- * DestructionShed3D::Build builder lays (Acceptance.Shed.ThreeD.BuildsAClosedBoxThatStandsAndCollapsesCorrectly)
+ * THE RECOGNIZABLE 3D SHED AS A PLAYABLE SCENARIO — the point where the genuinely-3D shed the
+ * DestructionShed3D::BuildRecognizable builder lays (Acceptance.Shed.ThreeD.RecognizableShedStandsAsBuilt)
  * stops being reachable only from a unit test and becomes a LEVEL a human can join, watch hold, and
- * watch fall — the next step of the active /goal "finish the 3d solution".
+ * watch fall — the world-path counterpart of the recognizable-shed builder tests.
  *
  * THE BEHAVIOUR, IN ONE SENTENCE. The catalogue carries a `shed3d` row whose MapName is `Lvl_Shed3D`
- * and whose LayStructure is the 3D shed builder, so that DestructionScenarios::Build lays the
- * seven-piece genuinely-3D closed-box shed — four grounded ClayBrick walls, a Timber roof, a Timber
- * overhang and a grounded Timber post — as a structure FLAGGED 3D, which STANDS through the
- * PRODUCTION world path (AdoptLayout -> the rigid-block bridge -> SolveRigidBlock / BreakByEquilibrium
- * inside SolveAndBreak), and whose named cut PULLS THE POST so that, once applied, the WORLD/production
- * break authority (the 3D LP mechanism, not merely an oracle unit call) makes the overhang lose the
- * earth while the four grounded walls keep it.
+ * and whose LayStructure is the recognizable 3D shed builder, so that DestructionScenarios::Build lays
+ * the 24-piece genuinely-3D shed — four ClayBrick walls closing a box with a DOOR (two piers carrying a
+ * Timber lintel) and a WINDOW (a sill, two jambs, a Timber lintel), STEPPED brick gables rising to a
+ * ridge, a Timber roof of purlins bearing on the gable shoulders, and over the door a Timber porch that
+ * CANTILEVERS out on two grounded posts, its back tied to the wall by a narrow central cleat — as a
+ * structure FLAGGED 3D, which STANDS through the PRODUCTION world path (AdoptLayout -> the rigid-block
+ * bridge -> SolveRigidBlock / BreakByEquilibrium inside SolveAndBreak), and whose named cut PULLS THE
+ * RIGHT-HAND PORCH POST so that, once applied, the WORLD/production break authority (the 3D LP mechanism,
+ * not merely an oracle unit call) makes the overhang lose the earth while the shed keeps it.
  *
  * =====================================================================================
- * WHY THIS IS THE CATALOGUE / WORLD PATH, NOT A SECOND COPY OF THE 3D BUILDER TEST
+ * WHY THIS IS THE CATALOGUE / WORLD PATH, NOT A SECOND COPY OF THE BUILDER TEST
  * =====================================================================================
  *
- * `Acceptance.Shed.ThreeD.BuildsAClosedBoxThatStandsAndCollapsesCorrectly` proves the BUILDER —
- * DestructionShed3D::Build called directly, then bridged and solved. This test proves the SCENARIO
- * AND THE WORLD PATH: that a catalogue row exists, names the 3D shed builder as its LayStructure,
- * that DestructionScenarios::Build routes through that lambda, that the builder's 3D FLAG and its
- * per-piece MATERIALS survive the Build path into Layout.Structure (the AdoptLayout promise), and —
- * the part no oracle unit test reaches — that the 3D structure travels the SAME production door the
- * game uses: FStructure::SolveAndBreak, whose below-cap authority is BreakByEquilibrium (the LP).
- * The shed stands and the post fells the overhang exactly as the builder test's arms do, but reached
- * the way a human reaches it: by joining a level.
+ * `Acceptance.Shed.ThreeD.RecognizableShedStandsAsBuilt` and
+ * `Acceptance.Shed.ThreeD.RecognizableShedCollapsesWhenAPostOrPierIsPulled` prove the BUILDER —
+ * DestructionShed3D::BuildRecognizable called directly, then bridged and solved. This test proves the
+ * SCENARIO AND THE WORLD PATH: that a catalogue row exists, names the recognizable 3D shed builder as its
+ * LayStructure, that DestructionScenarios::Build routes through that lambda, that the builder's 3D FLAG
+ * and its per-piece MATERIALS survive the Build path into Layout.Structure (the AdoptLayout promise), and —
+ * the part no oracle unit test reaches — that the 3D structure travels the SAME production door the game
+ * uses: FStructure::SolveAndBreak, whose below-cap authority is BreakByEquilibrium (the LP). The shed
+ * stands and pulling the right post fells the porch overhang exactly as the builder tests' arms do, but
+ * reached the way a human reaches it: by joining a level.
  *
- * THE RED IS THE MISSING ROW. The `shed3d` row is not in the catalogue yet, so IndexOfName answers
- * INDEX_NONE and this test stops at the first assertion with a clear message — not a type error, a
- * compile stub, or a wrong-axis reading. dev-expert's green step is one catalogue row (a MapName, a
- * LayStructure calling DestructionShed3D::Build{}, and a one-piece cut list naming the post) plus the
- * duplicated `Lvl_Shed3D.umap` that Content.ScenarioMapsExist and Content.ScenarioMapsAreDistinctAssets
- * will then require. THE MAP IS A CONTENT STEP, made with Scripts/New-ScenarioMap.ps1, NEVER a file
- * copy: a copied .umap keeps the inner UWorld object's original name, so every copy claims the same
- * `Map:<name>` PrimaryAssetId and the editor refuses to open any of them.
- *
- * WHY THE ROW NEEDS ITS OWN MAP AND CANNOT RIDE `Lvl_Sandbox` OR `Lvl_Shed`. A scenario is selected
- * back from its map by IndexOfMapName, which returns the FIRST row spelling that map name. A row with
- * MapName `Lvl_Sandbox` (row 0) or `Lvl_Shed` (the 2D shed) would be selectable only by
- * `?Scenario=shed3d`, never by opening a level, and it would collide with that other row in both the
- * ScenarioMapsExist distinctness sweep and the ScenarioMapsAreDistinctAssets PrimaryAssetId sweep. A
- * distinct `Lvl_Shed3D` is mandatory; this test pins the row's MapName to it so the two content
- * guards then bite on the absent .umap.
+ * WHY THE ROW NEEDS ITS OWN MAP AND CANNOT RIDE `Lvl_Sandbox` OR `Lvl_Shed`. A scenario is selected back
+ * from its map by IndexOfMapName, which returns the FIRST row spelling that map name. A row with MapName
+ * `Lvl_Sandbox` (row 0) or `Lvl_Shed` (the 2D shed) would be selectable only by `?Scenario=shed3d`, never
+ * by opening a level, and it would collide with that other row in both the ScenarioMapsExist distinctness
+ * sweep and the ScenarioMapsAreDistinctAssets PrimaryAssetId sweep. A distinct `Lvl_Shed3D` is mandatory;
+ * this test pins the row's MapName to it.
  *
  * WHY THE ASSERTIONS ARE ON MECHANISM AND OUTCOME, NEVER DISPLACEMENT. Stands is asserted as LP
- * feasibility plus Stranded == 0 and the beams held up; Falls is asserted as the LP mechanism NAMING
- * the overhang a moving block AND production's GetPieceSupport reading it Fallen — two pieces can
- * sever and rest exactly in place, so no displacement is measured. The production reads (SolveAndBreak
- * then GetPieceSupport) are the load-bearing half: they prove the 3D LP is the break authority in the
- * actual game world, not just in the builder's own oracle call.
+ * feasibility plus Stranded == 0 and the spanning pieces held up; Falls is asserted as the LP mechanism
+ * NAMING the overhang a moving block AND production's GetPieceSupport reading it having lost the earth —
+ * two pieces can sever and rest exactly in place, so no displacement is measured. The production reads
+ * (SolveAndBreak then GetPieceSupport) are the load-bearing half: they prove the 3D LP is the break
+ * authority in the actual game world, not just in the builder's own oracle call.
  *
- * NEEDS A TICKING WORLD: NO. The catalogue is world-free, Build is arithmetic over boxes and a graph,
- * the bridge and the LP are pure, and SolveAndBreak is a synchronous settle over that graph — no
- * UWorld, no Chaos, no tick. Same footing as the 2D ShedScenarioTest and the 3D builder test.
+ * NEEDS A TICKING WORLD: NO. The catalogue is world-free, BuildRecognizable is arithmetic over boxes and
+ * a graph, the bridge and the LP are pure, and SolveAndBreak is a synchronous settle over that graph — no
+ * UWorld, no Chaos, no tick. Same footing as the 2D ShedScenarioTest and the recognizable builder tests.
  *
  * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
  */
@@ -84,82 +77,148 @@ namespace ThreeDShedScenarioTestSupport
 	/** The distinct map the row must select and be selected by. A content step for dev, not this test. */
 	const TCHAR* const Shed3DScenarioMapName = TEXT("Lvl_Shed3D");
 
-	/** The seven pieces of the laid 3D shed, named by material, grounding and position — never by handle. */
+	/* ================================================================================
+	 * THE CANONICAL SHED, spelled out so the identification reads the SAME numbers the builder lays. The
+	 * builder hardcodes these; the test reads back the laid layout and identifies pieces by POSITION, so
+	 * the assertions survive any re-handle of the pieces. These centroids are the same table the
+	 * recognizable builder tests use.
+	 * ================================================================================ */
+
+	constexpr int32 ExpectedPieces = 24;
+	constexpr int32 ExpectedJoints = 30;
+	constexpr int32 ExpectedGrounded = 7;    // BackWall, RightWall, LeftPier, RightPier, Sill, PostL, PostR
+	constexpr int32 ExpectedBrick = 13;
+	constexpr int32 ExpectedTimber = 11;     // + the Cleat (the wall tie); the cleat is NOT grounded
+
+	/* The right porch post's box centre — the cut the row must name. BuildRecognizable lays PostR over
+	 * X[215,245] Y[328,352] Z[0,200], so its box centre is (230, 340, 100). The scenario's cut centre must
+	 * equal this to the ulp (ScenariosPieceAtCentre uses an exact-to-1e-6 match), so this doubles as the
+	 * independent check that (230, 340, 100) names PostR and not some other piece. */
+	const FVector CutCentreForPostR(230.0, 340.0, 100.0);
+
+	/* Centroids of the pieces the assertions name, so identification is by POSITION not by handle. */
+	const FVector CBackWall(150.0, 12.5, 100.0);
+	const FVector CRightWall(287.5, 150.0, 100.0);
+	const FVector CLeftPier(55.0, 287.5, 87.5);
+	const FVector CRightPier(245.0, 287.5, 87.5);
+	const FVector CDoorHeader(150.0, 287.5, 188.0);
+	const FVector CCleat(150.0, 305.0, 188.0);
+	const FVector CSill(12.5, 150.0, 44.5);
+	const FVector CWinJambBack(12.5, 73.0, 130.0);
+	const FVector CWinJambFront(12.5, 227.0, 130.0);
+	const FVector CWinLintel(12.5, 150.0, 185.5);
+	const FVector CFGableBase(150.0, 287.5, 215.5);
+	const FVector CFGableMid(150.0, 287.5, 245.5);
+	const FVector CFGableApex(150.0, 287.5, 275.5);
+	const FVector CBGableApex(150.0, 12.5, 275.5);
+	const FVector CRidge(150.0, 150.0, 303.0);
+	const FVector CPostL(70.0, 340.0, 100.0);
+	const FVector CPostR(230.0, 340.0, 100.0);
+	const FVector COverhang(150.0, 376.0, 211.0);
+
+	/** The pieces of the laid recognizable 3D shed, named by POSITION, never by handle. */
 	struct FShed
 	{
 		int32 BackWall = INDEX_NONE;
-		int32 FrontWall = INDEX_NONE;
-		int32 LeftWall = INDEX_NONE;
 		int32 RightWall = INDEX_NONE;
-		int32 Roof = INDEX_NONE;
+		int32 LeftPier = INDEX_NONE;
+		int32 RightPier = INDEX_NONE;
+		int32 DoorHeader = INDEX_NONE;
+		int32 Cleat = INDEX_NONE;
+		int32 Sill = INDEX_NONE;
+		int32 WinJambBack = INDEX_NONE;
+		int32 WinJambFront = INDEX_NONE;
+		int32 WinLintel = INDEX_NONE;
+		int32 FGableBase = INDEX_NONE;
+		int32 FGableMid = INDEX_NONE;
+		int32 FGableApex = INDEX_NONE;
+		int32 BGableApex = INDEX_NONE;
+		int32 Ridge = INDEX_NONE;
+		int32 PostL = INDEX_NONE;
+		int32 PostR = INDEX_NONE;
 		int32 Overhang = INDEX_NONE;
-		int32 Post = INDEX_NONE;
 	};
 
-	/**
-	 * Name the seven pieces from a laid layout, or fail. Four grounded ClayBrick walls, one grounded
-	 * Timber post and two free Timber beams is the only shape that identifies — which is also the
-	 * assertion that the builder's MATERIALS and the 3D grounding survived the Build path. The four
-	 * walls are told apart by position (back smallest Y, front largest Y, then left smallest X and
-	 * right largest X); the two free beams by Y centroid (roof inboard < overhang cantilevered).
-	 */
-	inline bool Identify(const FBrickLayout& Layout, FShed& Out)
+	/** The live piece whose box contains the point, or INDEX_NONE. Robust identity by position. */
+	inline int32 PieceContaining(const FBrickLayout& Layout, const FVector& P)
 	{
 		const FStructure& S = Layout.Structure;
+		for (int32 Piece = 0; Piece < S.NumPieces(); ++Piece)
+		{
+			if (S.IsPieceRemoved(Piece) || !Layout.Boxes.IsValidIndex(Piece))
+			{
+				continue;
+			}
+			const FPieceBox& B = Layout.Boxes[Piece];
+			const FVector Lo = B.CentreCm - B.ExtentCm;
+			const FVector Hi = B.CentreCm + B.ExtentCm;
+			if (P.X >= Lo.X && P.X <= Hi.X && P.Y >= Lo.Y && P.Y <= Hi.Y && P.Z >= Lo.Z && P.Z <= Hi.Z)
+			{
+				return Piece;
+			}
+		}
+		return INDEX_NONE;
+	}
 
-		TArray<int32> BrickGrounded, TimberGrounded, TimberFree;
+	/** Name every asserted piece from its centroid, or fail if any is missing. */
+	inline bool Identify(const FBrickLayout& Layout, FShed& Out)
+	{
+		Out.BackWall = PieceContaining(Layout, CBackWall);
+		Out.RightWall = PieceContaining(Layout, CRightWall);
+		Out.LeftPier = PieceContaining(Layout, CLeftPier);
+		Out.RightPier = PieceContaining(Layout, CRightPier);
+		Out.DoorHeader = PieceContaining(Layout, CDoorHeader);
+		Out.Cleat = PieceContaining(Layout, CCleat);
+		Out.Sill = PieceContaining(Layout, CSill);
+		Out.WinJambBack = PieceContaining(Layout, CWinJambBack);
+		Out.WinJambFront = PieceContaining(Layout, CWinJambFront);
+		Out.WinLintel = PieceContaining(Layout, CWinLintel);
+		Out.FGableBase = PieceContaining(Layout, CFGableBase);
+		Out.FGableMid = PieceContaining(Layout, CFGableMid);
+		Out.FGableApex = PieceContaining(Layout, CFGableApex);
+		Out.BGableApex = PieceContaining(Layout, CBGableApex);
+		Out.Ridge = PieceContaining(Layout, CRidge);
+		Out.PostL = PieceContaining(Layout, CPostL);
+		Out.PostR = PieceContaining(Layout, CPostR);
+		Out.Overhang = PieceContaining(Layout, COverhang);
 
+		const int32 All[] = {
+			Out.BackWall, Out.RightWall, Out.LeftPier, Out.RightPier, Out.DoorHeader, Out.Cleat, Out.Sill,
+			Out.WinJambBack, Out.WinJambFront, Out.WinLintel, Out.FGableBase, Out.FGableMid,
+			Out.FGableApex, Out.BGableApex, Out.Ridge, Out.PostL, Out.PostR, Out.Overhang };
+
+		for (const int32 P : All)
+		{
+			if (P == INDEX_NONE)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	inline int32 CountMaterial(const FStructure& S, const FMaterialProfile* Material,
+		bool bGroundedFilter, bool bWantGrounded)
+	{
+		int32 N = 0;
 		for (int32 Piece = 0; Piece < S.NumPieces(); ++Piece)
 		{
 			if (S.IsPieceRemoved(Piece))
 			{
 				continue;
 			}
-
 			const FStructurePiece& P = S.GetPiece(Piece);
-
-			if (P.Material == &ClayBrick && P.bIsGrounded)
+			if (P.Material != Material)
 			{
-				BrickGrounded.Add(Piece);
+				continue;
 			}
-			else if (P.Material == &Timber)
+			if (bGroundedFilter && P.bIsGrounded != bWantGrounded)
 			{
-				(P.bIsGrounded ? TimberGrounded : TimberFree).Add(Piece);
+				continue;
 			}
+			++N;
 		}
-
-		if (BrickGrounded.Num() != 4 || TimberGrounded.Num() != 1 || TimberFree.Num() != 2)
-		{
-			return false;
-		}
-
-		/* Back = smallest Y centroid; front = largest Y. */
-		BrickGrounded.Sort([&S](const int32& A, const int32& B)
-		{
-			return S.GetPiece(A).CentreOfMassCm.Y < S.GetPiece(B).CentreOfMassCm.Y;
-		});
-		Out.BackWall = BrickGrounded[0];
-		Out.FrontWall = BrickGrounded[3];
-
-		/* The middle two (side walls) are told apart by X: left smallest, right largest. */
-		TArray<int32> Sides = { BrickGrounded[1], BrickGrounded[2] };
-		Sides.Sort([&S](const int32& A, const int32& B)
-		{
-			return S.GetPiece(A).CentreOfMassCm.X < S.GetPiece(B).CentreOfMassCm.X;
-		});
-		Out.LeftWall = Sides[0];
-		Out.RightWall = Sides[1];
-
-		Out.Post = TimberGrounded[0];
-
-		TimberFree.Sort([&S](const int32& A, const int32& B)
-		{
-			return S.GetPiece(A).CentreOfMassCm.Y < S.GetPiece(B).CentreOfMassCm.Y;
-		});
-		Out.Roof = TimberFree[0];
-		Out.Overhang = TimberFree[1];
-
-		return true;
+		return N;
 	}
 
 	inline int32 StrandedCount(const FStructure& S)
@@ -205,9 +264,10 @@ namespace ThreeDShedScenarioTestSupport
 }
 
 /**
- * THE 3D SHED ROW IS IN THE CATALOGUE, IT LAYS THE 3D SHED THROUGH THE BUILD PATH FLAGGED 3D, IT
- * STANDS THROUGH THE PRODUCTION WORLD PATH, AND THE POST IT NAMES FELLS THE OVERHANG WHEN PULLED — the
- * whole loss decided by the world break authority (the 3D LP), not by an oracle unit call.
+ * THE RECOGNIZABLE 3D SHED ROW IS IN THE CATALOGUE, IT LAYS THE 24-PIECE SHED THROUGH THE BUILD PATH
+ * FLAGGED 3D, IT STANDS THROUGH THE PRODUCTION WORLD PATH, AND THE POST IT NAMES FELLS THE PORCH OVERHANG
+ * WHEN PULLED — the whole loss decided by the world break authority (the 3D LP), not by an oracle unit
+ * call.
  *
  * NEEDS A TICKING WORLD: NO. See the file header.
  */
@@ -224,8 +284,7 @@ bool FThreeDShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 	using namespace DestructionScenarios;
 
 	/* ================================================================================
-	 * ARM 0 — THE ROW EXISTS AND NAMES THE 3D SHED. This is where the scenario is RED: no `shed3d`
-	 * row yet, so IndexOfName answers INDEX_NONE and there is nothing to build or solve.
+	 * ARM 0 — THE ROW EXISTS AND NAMES THE RECOGNIZABLE 3D SHED.
 	 * ================================================================================ */
 
 	const int32 Index = IndexOfName(FName(Shed3DScenarioName));
@@ -233,12 +292,9 @@ bool FThreeDShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 	if (!Catalogue().IsValidIndex(Index))
 	{
 		AddError(FString::Printf(
-			TEXT("the catalogue must carry a row named '%s' — the 3D shed is not joinable until it "
-				"does; IndexOfName returned %d against %d row(s). This is the RED: dev adds the row (a "
-				"MapName '%s', a LayStructure calling DestructionShed3D::Build, and a one-piece cut "
-				"naming the post) plus the duplicated Lvl_Shed3D.umap the content guards then require "
-				"(made with New-ScenarioMap.ps1, never a file copy — a copy collides on PrimaryAssetId)."),
-			Shed3DScenarioName, Index, Catalogue().Num(), Shed3DScenarioMapName));
+			TEXT("the catalogue must carry a row named '%s' — the 3D shed is not joinable until it does; "
+				"IndexOfName returned %d against %d row(s)."),
+			Shed3DScenarioName, Index, Catalogue().Num()));
 
 		return false;
 	}
@@ -251,14 +307,20 @@ bool FThreeDShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 		TEXT("the 3D shed row must name its own map 'Lvl_Shed3D' — it cannot ride Lvl_Sandbox or Lvl_Shed"),
 		FString(Scenario.MapName ? Scenario.MapName : TEXT("")), FString(Shed3DScenarioMapName));
 
-	/* --- the row must lay its structure through a LayStructure producer, so Build routes the 3D shed
-	 * builder rather than the running-bond fallback. --- */
+	/* --- the row must lay its structure through a LayStructure producer, so Build routes the recognizable
+	 * 3D shed builder rather than the running-bond fallback. --- */
 	TestTrue(
 		TEXT("the 3D shed row must carry a LayStructure producer (the shed is not a running-bond wall)"),
 		static_cast<bool>(Scenario.LayStructure));
 
+	/* --- and it is the one row framed from a three-quarter angle, so the box's depth and the overhang's
+	 * fall off its front are both visible. --- */
+	TestEqual(
+		TEXT("the 3D shed row is framed from a three-quarter angle (a closed box, not a flat wall)"),
+		static_cast<int32>(Scenario.Framing), static_cast<int32>(EScenarioFraming::ThreeQuarter));
+
 	/* ================================================================================
-	 * ARM 0 (cont.) — DestructionScenarios::Build lays the seven-piece 3D shed, the structure is
+	 * ARM 0 (cont.) — DestructionScenarios::Build lays the 24-piece recognizable 3D shed, the structure is
 	 * FLAGGED 3D (the flag survives the Build/AdoptLayout path), and the builder's MATERIALS survive.
 	 * ================================================================================ */
 
@@ -284,12 +346,20 @@ bool FThreeDShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 			"the out-of-plane corners"),
 		Layout.Structure.IsThreeDimensional());
 
-	TestEqual(TEXT("seven pieces — four walls, roof, overhang, post"),
-		Layout.Structure.NumPieces(), 7);
+	TestEqual(TEXT("24 pieces — walls, door, window, gables, roof, porch"),
+		Layout.Structure.NumPieces(), ExpectedPieces);
 	TestEqual(TEXT("one box per piece, or AdoptLayout refuses the layout"),
 		Layout.Boxes.Num(), Layout.Structure.NumPieces());
-	TestEqual(TEXT("eight joints — four corners, two roof bearings, the fixing, the post bearing"),
-		Layout.Structure.NumConnections(), 8);
+	TestEqual(TEXT("30 joints — door(2), window(4), corners(4), gables(6), roof(10), porch(4)"),
+		Layout.Structure.NumConnections(), ExpectedJoints);
+
+	TestEqual(TEXT("7 grounded pieces — the walls' feet, the door piers, the sill and the two posts"),
+		CountMaterial(Layout.Structure, &ClayBrick, true, true)
+			+ CountMaterial(Layout.Structure, &Timber, true, true), ExpectedGrounded);
+	TestEqual(TEXT("13 ClayBrick pieces (walls, piers, sill, jambs, gables)"),
+		CountMaterial(Layout.Structure, &ClayBrick, false, false), ExpectedBrick);
+	TestEqual(TEXT("11 Timber pieces (lintels, purlins, ridge, cleat, posts, overhang)"),
+		CountMaterial(Layout.Structure, &Timber, false, false), ExpectedTimber);
 
 	FShed S;
 	const bool bIdentified = Identify(Layout, S);
@@ -297,9 +367,8 @@ bool FThreeDShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 	if (!bIdentified)
 	{
 		AddError(TEXT(
-			"the built 3D shed must identify by MATERIAL and grounding — four grounded ClayBrick walls, "
-			"one grounded Timber post, two free Timber beams. Failing this means either the wrong "
-			"structure was laid or the builder's materials/grounding did not survive "
+			"the built recognizable 3D shed must identify its named pieces by POSITION. Failing this means "
+			"either the wrong structure was laid or the builder's geometry did not survive "
 			"DestructionScenarios::Build (the AdoptLayout material-carrying promise)."));
 
 		return false;
@@ -307,21 +376,33 @@ bool FThreeDShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 
 	/* The multi-material 3D shape, as authored, having come through the catalogue Build path. */
 	TestTrue(TEXT("the back wall is ClayBrick"), Layout.Structure.GetPiece(S.BackWall).Material == &ClayBrick);
-	TestTrue(TEXT("the front wall is ClayBrick"), Layout.Structure.GetPiece(S.FrontWall).Material == &ClayBrick);
-	TestTrue(TEXT("the left wall is ClayBrick"), Layout.Structure.GetPiece(S.LeftWall).Material == &ClayBrick);
 	TestTrue(TEXT("the right wall is ClayBrick"), Layout.Structure.GetPiece(S.RightWall).Material == &ClayBrick);
-	TestTrue(TEXT("the roof beam is Timber"), Layout.Structure.GetPiece(S.Roof).Material == &Timber);
+	TestTrue(TEXT("the door piers are ClayBrick"),
+		Layout.Structure.GetPiece(S.LeftPier).Material == &ClayBrick
+			&& Layout.Structure.GetPiece(S.RightPier).Material == &ClayBrick);
+	TestTrue(TEXT("the sill course is ClayBrick"), Layout.Structure.GetPiece(S.Sill).Material == &ClayBrick);
+	TestTrue(TEXT("the window jambs are ClayBrick"),
+		Layout.Structure.GetPiece(S.WinJambBack).Material == &ClayBrick
+			&& Layout.Structure.GetPiece(S.WinJambFront).Material == &ClayBrick);
+	TestTrue(TEXT("the gable courses are ClayBrick"),
+		Layout.Structure.GetPiece(S.FGableBase).Material == &ClayBrick
+			&& Layout.Structure.GetPiece(S.FGableApex).Material == &ClayBrick);
+	TestTrue(TEXT("the door lintel is Timber"), Layout.Structure.GetPiece(S.DoorHeader).Material == &Timber);
+	TestTrue(TEXT("the window lintel is Timber"), Layout.Structure.GetPiece(S.WinLintel).Material == &Timber);
+	TestTrue(TEXT("the ridge beam is Timber"), Layout.Structure.GetPiece(S.Ridge).Material == &Timber);
 	TestTrue(TEXT("the overhang is Timber"), Layout.Structure.GetPiece(S.Overhang).Material == &Timber);
-	TestTrue(TEXT("the post is Timber and grounded"),
-		Layout.Structure.GetPiece(S.Post).Material == &Timber && Layout.Structure.GetPiece(S.Post).bIsGrounded);
+	TestTrue(TEXT("the left post is Timber and grounded"),
+		Layout.Structure.GetPiece(S.PostL).Material == &Timber && Layout.Structure.GetPiece(S.PostL).bIsGrounded);
+	TestTrue(TEXT("the right post is Timber and grounded"),
+		Layout.Structure.GetPiece(S.PostR).Material == &Timber && Layout.Structure.GetPiece(S.PostR).bIsGrounded);
 
 	TestTrue(TEXT("the laid 3D shed knows where every piece and joint is, or every moment is silently zero"),
 		Layout.Structure.HasCompleteGeometry());
 
 	/* ================================================================================
-	 * ARM 1 — THE ASSEMBLED 3D SHED STANDS THROUGH THE PRODUCTION WORLD PATH. The bridge poses it in
-	 * 3D and the LP finds equilibrium (Stands); production's SolveAndBreak leaves nothing Stranded and
-	 * holds the roof and overhang up. The catalogue-built, world-path version of the builder's arm 0.
+	 * ARM 1 — THE ASSEMBLED 3D SHED STANDS THROUGH THE PRODUCTION WORLD PATH. The bridge poses it in 3D
+	 * and the LP finds equilibrium (Stands); production's SolveAndBreak leaves nothing Stranded and holds
+	 * the spanning pieces up. The catalogue-built, world-path version of the builder test's stand arm.
 	 * ================================================================================ */
 	{
 		FBrickLayout Assembled;
@@ -378,34 +459,47 @@ bool FThreeDShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 		FShed AS;
 		if (Identify(Assembled, AS))
 		{
-			TestTrue(TEXT("ARM 1: the roof is held up as laid, through the world path"),
-				IsStanding(Assembled.Structure.GetPieceSupport(AS.Roof)));
-			TestTrue(TEXT("ARM 1: the overhang is held up as laid, through the world path"),
+			/* The carried spanning pieces read Supported through the world path — the lintels by their
+			 * piers/jambs, the ridge by the gables, the overhang by the posts + cleat tie. */
+			TestTrue(TEXT("ARM 1: the door lintel is held up as laid, through the world path"),
+				IsStanding(Assembled.Structure.GetPieceSupport(AS.DoorHeader)));
+			TestTrue(TEXT("ARM 1: the window lintel is held up as laid, through the world path"),
+				IsStanding(Assembled.Structure.GetPieceSupport(AS.WinLintel)));
+			TestTrue(TEXT("ARM 1: the ridge is held up as laid, through the world path"),
+				IsStanding(Assembled.Structure.GetPieceSupport(AS.Ridge)));
+			TestTrue(TEXT("ARM 1: the porch overhang is held up as laid, through the world path"),
 				IsStanding(Assembled.Structure.GetPieceSupport(AS.Overhang)));
 		}
 	}
 
 	/* ================================================================================
-	 * ARM 2 — THE ROW'S CUT PULLS THE POST, AND THE WORLD BREAK AUTHORITY FELLS THE OVERHANG. The
-	 * level's headline "pull the post, it drops". The cut is the row's own, resolved by Build; the 3D
-	 * LP mechanism must name the overhang a moving block AND production's SolveAndBreak must drop it,
-	 * while the four grounded walls keep the earth. Assert on the mechanism and the outcome, never
-	 * displacement.
+	 * ARM 2 — THE ROW'S CUT PULLS THE RIGHT PORCH POST, AND THE WORLD BREAK AUTHORITY FELLS THE OVERHANG.
+	 * The level's headline "pull a post, the porch drops". The cut is the row's own, resolved by Build; it
+	 * must name PostR (the 3D LP mechanism must name the overhang a moving block AND production's
+	 * SolveAndBreak must drop it), while the shed keeps the earth. Assert on the mechanism and the outcome,
+	 * never displacement.
 	 * ================================================================================ */
 
-	/* The row must name exactly the post as its cut — the watchable event this level exists for. */
+	/* The row must name exactly the right porch post as its cut — the watchable event this level exists
+	 * for. The centre (230,340,100) is PostR's box centre; ScenariosPieceAtCentre resolves it exactly, so
+	 * asserting the resolved piece IS PostR is the independent check that the centre names the post. */
 	TestEqual(
-		TEXT("ARM 2: the 3D shed row must name exactly one cut — the post to pull"),
+		TEXT("ARM 2: the 3D shed row must name exactly one cut — the porch post to pull"),
 		Cut.Num(), 1);
+
+	TestTrue(
+		TEXT("ARM 2: the shared cut centre (230,340,100) is PostR's box centre (the right porch post)"),
+		Layout.Boxes.IsValidIndex(S.PostR)
+			&& Layout.Boxes[S.PostR].CentreCm.Equals(CutCentreForPostR, 1.0e-6));
 
 	if (Cut.Num() == 1)
 	{
 		const int32 CutPiece = Cut[0];
 
 		TestTrue(
-			*FString::Printf(TEXT("ARM 2: the cut must name the grounded Timber POST (it named piece %d)"),
-				CutPiece),
-			CutPiece == S.Post);
+			*FString::Printf(TEXT("ARM 2: the cut must name the grounded Timber right porch post PostR "
+				"(it named piece %d, PostR is piece %d)"), CutPiece, S.PostR),
+			CutPiece == S.PostR);
 	}
 
 	{
@@ -431,11 +525,11 @@ bool FThreeDShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 			Pulled.Structure.RemovePiece(Piece);
 		}
 
-		/* If the row named no cut (the RED-adjacent case dev must fix), pull the post ourselves so the
-		 * mechanism arm still says something rather than passing on an intact shed. */
+		/* If the row named no cut (a RED-adjacent case) pull PostR ourselves so the mechanism arm still
+		 * says something rather than passing on an intact shed. */
 		if (PulledCut.Num() == 0)
 		{
-			Pulled.Structure.RemovePiece(PS.Post);
+			Pulled.Structure.RemovePiece(PS.PostR);
 		}
 
 		RigidBlockOracle::FOracleProblem Problem;
@@ -499,20 +593,23 @@ bool FThreeDShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("ARM 2: nothing may be Stranded — the verdict must be about the shed"),
 			Stranded, 0);
 
-		/* Corner bracing: the four grounded walls keep the earth when the post goes. */
-		TestTrue(TEXT("ARM 2: the back wall keeps the earth"),
-			Pulled.Structure.GetPieceSupport(PS.BackWall) == EPieceSupport::Grounded);
-		TestTrue(TEXT("ARM 2: the front wall keeps the earth"),
-			Pulled.Structure.GetPieceSupport(PS.FrontWall) == EPieceSupport::Grounded);
-		TestTrue(TEXT("ARM 2: the left wall keeps the earth"),
-			Pulled.Structure.GetPieceSupport(PS.LeftWall) == EPieceSupport::Grounded);
-		TestTrue(TEXT("ARM 2: the right wall keeps the earth"),
-			Pulled.Structure.GetPieceSupport(PS.RightWall) == EPieceSupport::Grounded);
+		/* The shed keeps the earth when the right post goes: the four walls' feet, the surviving left
+		 * post, the door lintel and the ridge are all independent of the porch. */
+		const TArray<int32> ExpectedStanding = { PS.BackWall, PS.RightWall, PS.LeftPier, PS.RightPier,
+			PS.Sill, PS.PostL, PS.DoorHeader, PS.Ridge };
+
+		for (const int32 Piece : ExpectedStanding)
+		{
+			TestTrue(
+				*FString::Printf(TEXT("ARM 2: piece %d must still be held up (support %d)"), Piece,
+					static_cast<int32>(Pulled.Structure.GetPieceSupport(Piece))),
+				IsStanding(Pulled.Structure.GetPieceSupport(Piece)));
+		}
 
 		TestTrue(
-			*FString::Printf(TEXT("ARM 2: the overhang must lose the earth (support %d) — pulling the "
-				"post drops it, decided by the world break authority"),
-				static_cast<int32>(Pulled.Structure.GetPieceSupport(PS.Overhang))),
+			*FString::Printf(TEXT("ARM 2: the overhang (piece %d) must lose the earth (support %d) — "
+				"pulling the post drops the porch, decided by the world break authority"),
+				PS.Overhang, static_cast<int32>(Pulled.Structure.GetPieceSupport(PS.Overhang))),
 			HasLostTheEarth(Pulled.Structure, PS.Overhang));
 	}
 

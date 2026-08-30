@@ -232,10 +232,12 @@ namespace DestructionShed3D
 		};
 
 		/*
-		 * THE 23 PIECES, in the order the file header lists them. Walls and door base (Z < 200), then
+		 * THE 24 PIECES, in the order the file header lists them. Walls and door base (Z < 200), then
 		 * the window course in the left wall, then the two stepped gable ends, the timber roof of
-		 * purlins and a ridge, and the porch. ClayBrick masonry, Timber lintels/roof/porch. Grounded:
-		 * the four walls' feet (back wall, right wall, both door piers, the sill) and the two posts.
+		 * purlins and a ridge, and the porch — its two posts, its overhang, and the narrow central
+		 * Cleat that ties the overhang's back down to the wall. ClayBrick masonry, Timber
+		 * lintels/roof/porch. Grounded: the four walls' feet (back wall, right wall, both door piers,
+		 * the sill) and the two posts; the cleat is NOT grounded — the wall holds it.
 		 */
 		const int32 BackWall = AddPiece(
 			0.0, 300.0, 0.0, 25.0, 0.0, 200.0, DestructionProfiles::ClayBrick, true);
@@ -282,16 +284,28 @@ namespace DestructionShed3D
 			125.0, 175.0, 0.0, 300.0, 291.0, 315.0, DestructionProfiles::Timber, false);
 
 		const int32 PostL = AddPiece(
-			45.0, 75.0, 370.0, 395.0, 0.0, 200.0, DestructionProfiles::Timber, true);
+			55.0, 85.0, 328.0, 352.0, 0.0, 200.0, DestructionProfiles::Timber, true);
 		const int32 PostR = AddPiece(
-			225.0, 255.0, 370.0, 395.0, 0.0, 200.0, DestructionProfiles::Timber, true);
+			215.0, 245.0, 328.0, 352.0, 0.0, 200.0, DestructionProfiles::Timber, true);
 		const int32 Overhang = AddPiece(
-			40.0, 260.0, 301.0, 401.0, 201.0, 221.0, DestructionProfiles::Timber, false);
+			40.0, 260.0, 301.0, 451.0, 201.0, 221.0, DestructionProfiles::Timber, false);
+
+		/*
+		 * THE CLEAT: a narrow central Timber bracket, X[140,160] (20 cm wide, centred on X=150),
+		 * bonded to the DoorHeader's front face across a 1 cm mortar joint (its back sits at Y=301,
+		 * the header ending at Y=300) and projecting to Y=310, 10 cm past the wall. The overhang laps
+		 * ONLY this cleat — a Z-normal screwed tie over X[140,160] x Y[301,310] = 180 cm2 — so the
+		 * withdrawal reaction that holds the cantilever's back down acts on a HALF-WIDTH of just 10 cm
+		 * in X. That narrow X-couple arm is the whole point: it cannot answer the X-torsion a lost post
+		 * throws at the overhang, which is why pulling either post drops the porch.
+		 */
+		const int32 Cleat = AddPiece(
+			140.0, 160.0, 301.0, 310.0, 176.0, 200.0, DestructionProfiles::Timber, false);
 
 		const int32 AllPieces[] = {
 			BackWall, RightWall, LeftPier, RightPier, DoorHeader, Sill, WinJambBack, WinJambFront,
 			WinLintel, FGableBase, FGableMid, FGableApex, BGableBase, BGableMid, BGableApex,
-			EavesPurlinL, EavesPurlinR, MidPurlinL, MidPurlinR, Ridge, PostL, PostR, Overhang };
+			EavesPurlinL, EavesPurlinR, MidPurlinL, MidPurlinR, Ridge, PostL, PostR, Overhang, Cleat };
 
 		for (const int32 Piece : AllPieces)
 		{
@@ -326,8 +340,15 @@ namespace DestructionShed3D
 		 * DryStone beds. CORNERS (4) close the box across the walls' out-of-plane (Y-normal) faces with
 		 * bonded mortar; all four are grounded-grounded, so the oracle skips them — they are closure,
 		 * not structure. GABLES (6) stack the stepped courses on bonded mortar beds. ROOF (10) rests
-		 * each purlin on its back and front gable shoulder through DryStone. PORCH (3): the overhang
-		 * bears on both posts (DryStone) and is tied back to the front gable by a Y-normal Screw fixing.
+		 * each purlin on its back and front gable shoulder through DryStone. PORCH (4): a CANTILEVER tied
+		 * by the narrow central Cleat. The overhang is carried PRIMARILY by its two posts (DryStone
+		 * bearings); a Z-normal Screw TIE (Cleat-Overhang, 180 cm2) holds its back down in WITHDRAWAL, and
+		 * a Y-normal mortar ANCHOR (DoorHeader-Cleat, 480 cm2) bonds the cleat to the wall. The overhang's
+		 * weight sits FORWARD of the post line (centroid Y=376 > posts Y=340), so the tie carries no shear.
+		 * Its restoring couple about the X axis is that withdrawal force acting at the cleat's 10 cm
+		 * HALF-WIDTH, far too small to answer the X-torsion a lost post throws at the load line: pull either
+		 * post and the overhang tips toward the gap and drops. A WIDE bed would have held (its half-width
+		 * supplies an enormous couple), which is exactly why the tie is a narrow central cleat.
 		 */
 		if (!Join(LeftPier, DoorHeader, DestructionProfiles::DryStone)
 			|| !Join(RightPier, DoorHeader, DestructionProfiles::DryStone)
@@ -357,15 +378,15 @@ namespace DestructionShed3D
 			|| !Join(BGableApex, Ridge, DestructionProfiles::DryStone)
 			|| !Join(PostL, Overhang, DestructionProfiles::DryStone)
 			|| !Join(PostR, Overhang, DestructionProfiles::DryStone)
-			|| !Join(FGableBase, Overhang, DestructionProfiles::Screw))
+			|| !Join(DoorHeader, Cleat, DestructionProfiles::GeneralPurposeMortar)
+			|| !Join(Cleat, Overhang, DestructionProfiles::Screw))
 		{
 			return false;
 		}
 
 		/*
 		 * THE 3D FLAG routes this structure to the Dim3D pose and lifts the bridge's Y-normal refusal,
-		 * so the four out-of-plane corner joints and the Y-normal porch fixing reach the 3D LP rather
-		 * than being rejected.
+		 * so the four out-of-plane (Y-normal) corner joints reach the 3D LP rather than being rejected.
 		 */
 		Laid.Structure.SetThreeDimensional(true);
 
