@@ -171,6 +171,32 @@ namespace RigidBlockOracle
 		constexpr double UncappedStrengthMPa = 1.0e9;
 
 		/*
+		 * THE FRICTION PYRAMID'S FACET COUNT (THREED_DESIGN §"The 3D physics"). The true 3D
+		 * Coulomb limit is the cone sqrt(s_u^2 + s_v^2) <= c*A + mu*n, which is not LP-able; the
+		 * assembler replaces it with k linear facets INSCRIBED in the cone, at angles theta_i =
+		 * i*(2*pi/k). k = 8 gives an octagon whose facets include the 45deg diagonals, so a
+		 * diagonal shear is capped at the same inscribed radius as an axis shear rather than the
+		 * sqrt(2)-larger circumscribed value — the safe, conservative direction for a demolition
+		 * gate. Exposed as one constant so the accuracy/cost trade is a single number.
+		 */
+		constexpr int32 ThreeDFrictionPyramidFacets = 8;
+
+		/*
+		 * THE INSCRIBE FACTOR cos(pi/8), the apothem-to-circumradius ratio of a regular octagon.
+		 * A k=8 pyramid with its flat facets held at the true cone radius R CIRCUMSCRIBES the cone:
+		 * its vertices bulge to R/cos(pi/8) ~ 1.082*R, admitting a shear aimed between two facets up
+		 * to 8.2% beyond the true Coulomb limit — a slide certified as standing, the wrong direction
+		 * for a demolition gate. Scaling every facet's capacity (both the mu*n term and the cohesion
+		 * right-hand side) by this factor pulls the facets IN to the apothem cos(pi/8)*R, so the
+		 * octagon's vertices land exactly ON the cone at R and no direction is admitted past it.
+		 *
+		 * A full-precision literal, not FMath::Cos(PI/8), so the inscribed geometry does not ride on
+		 * that float intrinsic's precision. A frictionless contact (c = mu = 0) is unaffected:
+		 * 0*cos(pi/8) = 0, so its shear stays pinned to zero.
+		 */
+		constexpr double ThreeDPyramidInscribeFactor = 0.92387953251128674;
+
+		/*
 		 * PARTIAL PRICING: how many columns one refill window prices, and how many
 		 * candidates it keeps. Full Dantzig prices every non-basic column every
 		 * iteration, which is pivots x columns and is what left the 30-course walls
@@ -1675,20 +1701,73 @@ namespace RigidBlockOracle
 
 			const double WeightUu = Block.MassKg * OracleGravityCmPerSecondSquared;
 
-			/* Gravity acts at the centroid in -Z: force only, live into lambda or dead into the RHS. */
-			double LiveZ = 0.0;
-			double DeadZ = 0.0;
+			/*
+			 * Loads split live (into the lambda column) from dead (into the right-hand side).
+			 * Gravity acts at the centroid in -Z (force only, no moment). Each applied force adds
+			 * its three components to the force rows and its moment r_app x F to the three moment
+			 * rows, r_app = application point - centroid — the 3D generalisation of the 2D
+			 * applied-force pose, split live/dead by the force's own bLive exactly as gravity is.
+			 */
+			double LiveFx = 0.0, LiveFy = 0.0, LiveFz = 0.0;
+			double LiveMx = 0.0, LiveMy = 0.0, LiveMz = 0.0;
+			double DeadFx = 0.0, DeadFy = 0.0, DeadFz = 0.0;
+			double DeadMx = 0.0, DeadMy = 0.0, DeadMz = 0.0;
 
 			if (Problem.bGravityIsLive || Block.bLiveGravity)
 			{
-				LiveZ -= WeightUu;
+				LiveFz -= WeightUu;
 			}
 			else
 			{
-				DeadZ -= WeightUu;
+				DeadFz -= WeightUu;
 			}
 
-			Fz.Add(0, LiveZ);
+			for (const FOracleAppliedForce& Applied : Problem.AppliedForces)
+			{
+				if (Applied.Block != BlockIndex)
+				{
+					continue;
+				}
+
+				const double Rx = Applied.AtXCm - Block.CentroidXCm;
+				const double Ry = Applied.AtYCm - Block.CentroidYCm;
+				const double Rz = Applied.AtZCm - Block.CentroidZCm;
+
+				const double Fpx = Applied.ForceXUu;
+				const double Fpy = Applied.ForceYUu;
+				const double Fpz = Applied.ForceZUu;
+
+				/* r_app x F, the moment about the centroid of the applied force. */
+				const double Tx = Ry * Fpz - Rz * Fpy;
+				const double Ty = Rz * Fpx - Rx * Fpz;
+				const double Tz = Rx * Fpy - Ry * Fpx;
+
+				if (Applied.bLive)
+				{
+					LiveFx += Fpx;
+					LiveFy += Fpy;
+					LiveFz += Fpz;
+					LiveMx += Tx;
+					LiveMy += Ty;
+					LiveMz += Tz;
+				}
+				else
+				{
+					DeadFx += Fpx;
+					DeadFy += Fpy;
+					DeadFz += Fpz;
+					DeadMx += Tx;
+					DeadMy += Ty;
+					DeadMz += Tz;
+				}
+			}
+
+			Fx.Add(0, LiveFx);
+			Fy.Add(0, LiveFy);
+			Fz.Add(0, LiveFz);
+			Mx.Add(0, LiveMx);
+			My.Add(0, LiveMy);
+			Mz.Add(0, LiveMz);
 
 			for (int32 ContactIndex = 0; ContactIndex < Contacts.Num(); ++ContactIndex)
 			{
@@ -1715,12 +1794,12 @@ namespace RigidBlockOracle
 					Block.CentroidXCm, Block.CentroidYCm, Block.CentroidZCm);
 			}
 
-			Fx.Rhs = 0.0;
-			Fy.Rhs = 0.0;
-			Fz.Rhs = -DeadZ;
-			Mx.Rhs = 0.0;
-			My.Rhs = 0.0;
-			Mz.Rhs = 0.0;
+			Fx.Rhs = -DeadFx;
+			Fy.Rhs = -DeadFy;
+			Fz.Rhs = -DeadFz;
+			Mx.Rhs = -DeadMx;
+			My.Rhs = -DeadMy;
+			Mz.Rhs = -DeadMz;
 
 			AssemblyRows.Add(MoveTemp(Fx));
 			AssemblyRows.Add(MoveTemp(Fy));
@@ -1756,6 +1835,42 @@ namespace RigidBlockOracle
 				Tension.Rhs = S.TensileStrengthMPa * Conv * AreaSqCm;
 				Tension.bEquality = false;
 				AssemblyRows.Add(MoveTemp(Tension));
+			}
+
+			/*
+			 * The k=8 INSCRIBED friction pyramid: for each facet theta_i = i*(2*pi/k),
+			 * cos(theta_i)*(p_u - q_u) + sin(theta_i)*(p_v - q_v) - cos(pi/8)*mu*(n+ - n-) <=
+			 * cos(pi/8)*c*Conv*A/4. The cos(pi/8) factor on BOTH the mu*n term and the cohesion RHS
+			 * pulls each facet in to the apothem cos(pi/8)*R, inscribing the octagon so its vertices
+			 * sit ON the cone at R rather than bulging past it (see ThreeDPyramidInscribeFactor).
+			 * Gated on the cohesion exactly as the 2D Coulomb rows are, so a frictionless contact
+			 * (mu = c = 0) still writes k rows whose right-hand side is zero — pinning that
+			 * contact's shear to zero, which is what makes a frictionless roller a pure link.
+			 */
+			if (S.ShearCohesionMPa < UncappedStrengthMPa)
+			{
+				for (int32 Facet = 0; Facet < ThreeDFrictionPyramidFacets; ++Facet)
+				{
+					const double Theta = Facet * (2.0 * UE_DOUBLE_PI / ThreeDFrictionPyramidFacets);
+					const double CosT = FMath::Cos(Theta);
+					const double SinT = FMath::Sin(Theta);
+
+					FAssemblyRow Friction;
+					Friction.Add(Base + 0, -ThreeDPyramidInscribeFactor * S.FrictionCoefficient);
+
+					if (Contact.bCanTension)
+					{
+						Friction.Add(Base + 1, ThreeDPyramidInscribeFactor * S.FrictionCoefficient);
+					}
+
+					Friction.Add(Base + 2, CosT);
+					Friction.Add(Base + 3, -CosT);
+					Friction.Add(Base + 4, SinT);
+					Friction.Add(Base + 5, -SinT);
+					Friction.Rhs = ThreeDPyramidInscribeFactor * S.ShearCohesionMPa * Conv * AreaSqCm;
+					Friction.bEquality = false;
+					AssemblyRows.Add(MoveTemp(Friction));
+				}
 			}
 
 			if (S.CompressiveStrengthMPa < UncappedStrengthMPa)
@@ -2677,9 +2792,39 @@ namespace RigidBlockOracle
 			FAssemblyRow My;
 			FAssemblyRow Mz;
 
-			/* Gravity is dead here (lambda = 1): its weight enters the Fz right-hand side. */
+			/*
+			 * Every load is dead here (the readout holds lambda = 1) and enters the right-hand
+			 * side: gravity in -Z at the centroid, then each applied force's three components and
+			 * its moment r_app x F (r_app = application point - centroid), matching the
+			 * maximise-lambda 3D pose with everything routed dead.
+			 */
 			const double WeightUu = Block.MassKg * OracleGravityCmPerSecondSquared;
-			const double LoadZ = -WeightUu;
+			double LoadX = 0.0, LoadY = 0.0, LoadZ = 0.0;
+			double LoadMx = 0.0, LoadMy = 0.0, LoadMz = 0.0;
+			LoadZ -= WeightUu;
+
+			for (const FOracleAppliedForce& Applied : Problem.AppliedForces)
+			{
+				if (Applied.Block != BlockIndex)
+				{
+					continue;
+				}
+
+				const double Rx = Applied.AtXCm - Block.CentroidXCm;
+				const double Ry = Applied.AtYCm - Block.CentroidYCm;
+				const double Rz = Applied.AtZCm - Block.CentroidZCm;
+
+				const double Fpx = Applied.ForceXUu;
+				const double Fpy = Applied.ForceYUu;
+				const double Fpz = Applied.ForceZUu;
+
+				LoadX += Fpx;
+				LoadY += Fpy;
+				LoadZ += Fpz;
+				LoadMx += Ry * Fpz - Rz * Fpy;
+				LoadMy += Rz * Fpx - Rx * Fpz;
+				LoadMz += Rx * Fpy - Ry * Fpx;
+			}
 
 			for (int32 ContactIndex = 0; ContactIndex < NumContacts; ++ContactIndex)
 			{
@@ -2706,7 +2851,12 @@ namespace RigidBlockOracle
 					Block.CentroidXCm, Block.CentroidYCm, Block.CentroidZCm);
 			}
 
+			Fx.Rhs = -LoadX;
+			Fy.Rhs = -LoadY;
 			Fz.Rhs = -LoadZ;
+			Mx.Rhs = -LoadMx;
+			My.Rhs = -LoadMy;
+			Mz.Rhs = -LoadMz;
 
 			AssemblyRows.Add(MoveTemp(Fx));
 			AssemblyRows.Add(MoveTemp(Fy));
@@ -2759,6 +2909,40 @@ namespace RigidBlockOracle
 				FAssemblyRow Tension;
 				Tension.Add(Base + 1, 1.0);
 				AddStrengthRow(Contact.Joint, MoveTemp(Tension), S.TensileStrengthMPa * Conv * AreaSqCm);
+			}
+
+			/*
+			 * The k=8 INSCRIBED friction pyramid, each facet RELAXED by its own violation
+			 * variable exactly as every other strength row is. The cos(pi/8) inscribe factor scales
+			 * both the mu*n term and the cohesion capacity, mirroring the maximise-lambda assembler
+			 * row for row (see ThreeDPyramidInscribeFactor). A frictionless contact (mu = c = 0)
+			 * still writes k rows with a zero capacity, pinning its shear to zero — the readout
+			 * must see the SAME statics the maximise-lambda assembler does or its reactions differ.
+			 */
+			if (S.ShearCohesionMPa < UncappedStrengthMPa)
+			{
+				for (int32 Facet = 0; Facet < ThreeDFrictionPyramidFacets; ++Facet)
+				{
+					const double Theta = Facet * (2.0 * UE_DOUBLE_PI / ThreeDFrictionPyramidFacets);
+					const double CosT = FMath::Cos(Theta);
+					const double SinT = FMath::Sin(Theta);
+
+					FAssemblyRow Friction;
+					Friction.Add(Base + 0, -ThreeDPyramidInscribeFactor * S.FrictionCoefficient);
+
+					if (Contact.bCanTension)
+					{
+						Friction.Add(Base + 1, ThreeDPyramidInscribeFactor * S.FrictionCoefficient);
+					}
+
+					Friction.Add(Base + 2, CosT);
+					Friction.Add(Base + 3, -CosT);
+					Friction.Add(Base + 4, SinT);
+					Friction.Add(Base + 5, -SinT);
+					AddStrengthRow(
+						Contact.Joint, MoveTemp(Friction),
+						ThreeDPyramidInscribeFactor * S.ShearCohesionMPa * Conv * AreaSqCm);
+				}
 			}
 
 			if (S.CompressiveStrengthMPa < UncappedStrengthMPa)

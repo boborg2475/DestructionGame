@@ -54,13 +54,21 @@ deterministically from `N̂` (tie-broken by fixed axis index — the 3D analogue
 the bridge (E3) carries the real interface axes.
 
 **Friction PYRAMID [RULED k=8, INSCRIBED]:** the true cone `√(s_u²+s_v²) ≤ cA+μn` is not LP-able;
-replace with k=8 inscribed facets `cosθ_i·(p_u−q_u) + sinθ_i·(p_v−q_v) − μ(n+−n-) ≤ c·Conv·A/4`,
-`θ_i=i·π/4`. **Inscribed (conservative) is not a free choice:** the oracle is the safe lower-bound
-theorem ("is there ANY admissible equilibrium"); a circumscribed pyramid would let a contact carry
-shear it lacks and certify a sliding collapse as standing — the "plausible number, wrong statics"
-failure the project exists to avoid. Inscribing occasionally fells a structure the true cone stands —
-the honest, safe direction for a demolition gate. `k` is a constant so the accuracy/cost trade is one
-number.
+replace with a k=8 inscribed octagon. Each facet `cosθ_i·(p_u−q_u) + sinθ_i·(p_v−q_v) ≤ d`, `θ_i=i·π/4`,
+constrains the shear to a half-plane at distance `d` from the axis. **CRITICAL — the facet distance is
+`d = cos(π/8)·(cA+μn)`, NOT `cA+μn` [corrected 2026-08-30 after the E1b review caught the original
+formula was CIRCUMSCRIBED].** A facet at distance `d = cA+μn` (the true cone radius R) puts the octagon's
+VERTICES at `R/cos(π/8) ≈ 1.082R` — the octagon then CONTAINS the cone (circumscribed), letting a contact
+carry up to 8.2% more shear than it has in the 22.5°/67.5° vertex directions → certifies a sliding
+collapse as standing (the "plausible number, wrong statics" failure the project exists to avoid). To
+INSCRIBE (vertices ON the cone, facets pulled in), scale the capacity by `cos(π/8) ≈ 0.9239`, so per
+corner (tributary A/4): `cosθ_i·(p_u−q_u) + sinθ_i·(p_v−q_v) − cos(π/8)·μ·(n+−n-) ≤ cos(π/8)·c·Conv·A/4`.
+Then every direction reads ≤ the true cone (facets 0.9239·R conservative, vertices exactly R). **Inscribed
+(conservative) is not a free choice:** the oracle is the safe lower-bound theorem ("is there ANY admissible
+equilibrium"); inscribing occasionally fells a structure the true cone stands — the honest, safe direction
+for a demolition gate. `k` is a constant so the accuracy/cost trade is one number. **The test that pins
+this axis is a 22.5° VERTEX-direction push** (a facet/diagonal push cannot distinguish inscribed from
+circumscribed k=8): it must read ≤ R/P (the true-cone value), which circumscribed violates by 1.082×.
 
 **Tension/crush** generalise trivially (A/4 tributary, `bCanTension`-gated). **Biaxial first-crack is an
 E-TAIL [RULED defer]:** the peak fibre is now at a corner under Mx AND My
@@ -115,9 +123,23 @@ Both hand-built (no bridge), mirroring `RigidBlockOracleTest.cpp:137–181`.
   the 3D readout uses a single min-sum not the per-group lex-minimax (E2, for the indeterminate E0-B). Cosmetic:
   the 2D `else`-block is left at its original (one-level-shallow) indentation to avoid a 350-line re-indent diff —
   functionally verbatim, byte-identical by the sweep; re-indent is a possible follow-up.
-- **E1b — friction pyramid.** Red: `OracleThreeD.SlidingOnAPyramidFacetAndOnADiagonal` (a 3D push with u
-  AND v components; facet push λ*=(cA+μW)/|push|; DIAGONAL push exposes inscribed-vs-circumscribed by √2).
-  Bite: inscribed↔circumscribed moves the diagonal red by √2.
+- **E1b — friction pyramid — DONE (2026-08-30, inscribed + reviewed).** The E1b review caught the pyramid was
+  first CIRCUMSCRIBED (a safety bug); the fix inscribes it (`ThreeDPyramidInscribeFactor = cos(π/8)` scaling
+  both the μ term and the cohesion RHS at both sites), re-review confirmed genuinely conservative. k=8 pyramid
+  (`ThreeDFrictionPyramidFacets=8`): 8 facet rows/contact, θ_i=i·2π/8, gated on cohesion as the 2D Coulomb rows;
+  a frictionless contact (μ=c=0) writes 8 zero-RHS rows → shear pinned to 0. The `r_app×F` 3D applied-force
+  posing (E1a deferred) is CORRECT and reviewed (force + moment into the six rows, live→λ / dead→RHS, mirrored in
+  the readout), and the E1a-review sign-lock `ThreeD.AsymmetricMomentMatchesHandStatics` is GREEN and non-vacuous
+  (5-support, off-diagonal CoM, supports at different heights → reactions 3675/1225/4900/4900/4900, λ*=2; Mx↔My
+  swap and Mz-negate each red it). **THE PYRAMID BUG:** the first implementation wrote the facet distance at the
+  true cone radius R (`≤ c·Conv·A/4`), which is CIRCUMSCRIBED — the octagon contains the cone, permitting 8.2%
+  excess shear in the 22.5° vertex directions (a 22.5° push read λ*=2.165 = 1.082·R/P, certifying a slide as
+  standing). The two original arms (facet 0° / diagonal 45°) push along facet normals and cannot see it. **Fix:
+  inscribe** — scale the facet capacity by cos(π/8) (§3 corrected), so vertices sit on the cone; the sliding test
+  gets a 22.5° VERTEX arm asserting ≤ R/P, and its facet/diagonal expectations move to 2·cos(π/8)=1.848. Bites verified: inscribed→circumscribed moves the
+  diagonal 2.0→2.828. **2D byte-identical (OracleSweepFull 5/5); suite 208 = 204 green + 4 standing reds.**
+  Deferred (E3/validation): `ValidateProblem` doesn't finiteness-check `ForceYUu`/`AtYCm` (with the `NormalY`
+  unit-check gap) — a NaN 3D applied-force Y would flow unchecked; harden when the bridge carries real 3D forces.
 - **E1c — tension/biaxial first-crack — DEFER to E-tail** unless a shed fixture needs bonded biaxial
   discrimination.
 

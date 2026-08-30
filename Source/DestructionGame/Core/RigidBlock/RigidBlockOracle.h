@@ -287,6 +287,22 @@ namespace RigidBlockOracle
 
 		/** Live forces scale with lambda; dead forces are constants of the problem. */
 		bool bLive = true;
+
+		/*
+		 * E1b 3D STUB — the applied force's third-dimension components, declared at the STRUCT END
+		 * so every existing 2D brace init { Block, ForceXUu, ForceZUu, AtXCm, AtZCm, bLive } names
+		 * the same members and no 2D fixture shifts. Default 0.0 and inert on the 2D path; a 3D push
+		 * (the E1b sliding pyramid) needs a force with U and V components, which is what these carry.
+		 *
+		 *   ForceYUu — the Y component of the applied force (0 on any X-Z problem).
+		 *   AtYCm    — the plan-Y coordinate of the application point.
+		 *
+		 * The current assembler poses NO applied force on the 3D path (E1a deferred it — no fixture
+		 * needed one); AssembleThreeD (dev-expert, E1b green) is what consumes these alongside the
+		 * k=8 friction pyramid.
+		 */
+		double ForceYUu = 0.0;
+		double AtYCm = 0.0;
 	};
 
 	/**
