@@ -811,12 +811,13 @@ namespace DestructionScenarios
 		 * AND THE REALISTIC-BRICK SHED — the true-masonry counterpart of the recognizable 3D shed above,
 		 * laid by DestructionShed3D::BuildRealistic: four single-wythe running-bond ClayBrick walls of real
 		 * 21.5 x 10.25 x 6.5 cm bricks on 1 cm mortar joints close a box, a DOOR and a WINDOW opening each sit
-		 * under a Timber-board lintel, stepped brick GABLES rise to a ridge, and a Timber gable ROOF bears on
-		 * them — 438 pieces in all. The builder flags the structure 3D (SetThreeDimensional) so the bridge
+		 * under a Timber-board lintel, stepped brick GABLES rise to a ridge, a Timber gable ROOF bears on
+		 * them, and a PORCH of two grounded Timber posts carries a cantilevered overhang over the door — 442
+		 * pieces in all. The builder flags the structure 3D (SetThreeDimensional) so the bridge
 		 * poses its out-of-plane corner joints, which is why this row carries its own distinct map.
 		 *
 		 * NO CUT IN THIS SLICE. This makes the realistic shed a joinable, standing, renderable level; the
-		 * collapse cut that pulls a support is a later slice. At 438 blocks the shed is far above the
+		 * collapse cut that pulls a support is a later slice. At 442 blocks the shed is far above the
 		 * 200-block equilibrium-gate cap, so the world path's break authority is the router, not the 3D LP.
 		 */
 		FScenario& ShedRealistic = Rows.AddDefaulted_GetRef();
@@ -824,12 +825,13 @@ namespace DestructionScenarios
 		ShedRealistic.Name = FName(TEXT("shedrealistic"));
 		ShedRealistic.MapName = TEXT("Lvl_ShedRealistic");
 		ShedRealistic.Title =
-			TEXT("A brick shed built from real-sized bricks, with a gable roof, a door and a window");
+			TEXT("A brick shed built from real-sized bricks, with a gable roof, a porch, a door and a window");
 
 		ShedRealistic.Expectation = TEXT(
 			"A brick shed built from real-sized clay bricks: four running-bond walls with a door and a window "
-			"under wooden lintels rise to stepped gables carrying a wooden gable roof. Nothing is cut — it "
-			"stands there as laid, the whole 438-piece shell holding under its own weight.");
+			"under wooden lintels rise to stepped gables carrying a wooden gable roof, and a wooden porch stands "
+			"over the door on two posts. Nothing is cut — it stands there as laid, the whole 442-piece shed "
+			"holding under its own weight.");
 
 		ShedRealistic.LayStructure = [](DestructionLayout::FBrickLayout& OutLayout)
 		{

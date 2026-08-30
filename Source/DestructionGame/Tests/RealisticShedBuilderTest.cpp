@@ -595,6 +595,130 @@ namespace RealisticShedTestSupport
 		}
 		return Best;
 	}
+
+	/* ================================================================================
+	 * PORCH SCANNING (slice 3). A canopy over the DOOR: two grounded Timber POSTS flanking the
+	 * doorway, a Timber OVERHANG board bearing on both posts and cantilevering OUT over the door,
+	 * and a narrow wall FIXING tying the overhang's back down — a tension-capable fastener (a Screw
+	 * WITHDRAWAL tie), the one joint a compression-only DryStone bearing cannot be.
+	 *
+	 * WHICH WAY IS "OUT". The front wall (which carries the door) runs along X in the thin Y band
+	 * Y[0,10.25]; its OUTER face is Y = 0 and the box interior is +Y (toward the back wall at
+	 * Y[123.75,134]). So the porch cantilevers over the door in NEGATIVE Y, and every porch piece
+	 * has a centre at Y < 0. The door gap is X[57.5,122.5] (centre X = 90), so the two posts flank
+	 * it: one centre X < 90, one X > 90.
+	 *
+	 * A POST NEEDS NO COORDINATE TO FIND: the porch posts are the ONLY grounded Timber pieces in the
+	 * whole shed. Every shell / gable / roof Timber — the two lintels, the five roof members — is
+	 * free; only course-0 ClayBricks are grounded. So a grounded Timber piece IS a porch post,
+	 * identified by material and grounding alone, robust to the exact coordinates the builder picks.
+	 * ================================================================================ */
+
+	constexpr double PostHalfSectionCm = 5.0;    // a 10 x 10 cm post section (a real 4x4 timber)
+
+	bool IsGroundedTimber(const FStructure& S, int32 Piece)
+	{
+		return !S.IsPieceRemoved(Piece)
+			&& S.GetPiece(Piece).Material == &Timber
+			&& S.GetPiece(Piece).bIsGrounded;
+	}
+
+	/** A 10 x 10 cm post section: the two smallest half-extents ~ 5, the tall (Z) one larger. */
+	bool IsTenByTenSection(const FPieceBox& Box)
+	{
+		double Lo = 0.0, Mid = 0.0, Hi = 0.0;
+		SortedHalfExtents(Box, Lo, Mid, Hi);
+		return Near(Lo, PostHalfSectionCm) && Near(Mid, PostHalfSectionCm) && Hi > PostHalfSectionCm + Tol;
+	}
+
+	void FindPosts(const FBrickLayout& Layout, TArray<int32>& OutPosts)
+	{
+		const FStructure& S = Layout.Structure;
+		for (int32 P = 0; P < S.NumPieces(); ++P)
+		{
+			if (IsGroundedTimber(S, P) && Layout.Boxes.IsValidIndex(P))
+			{
+				OutPosts.Add(P);
+			}
+		}
+	}
+
+	/** Do two pieces share a joint, in either A/B order? */
+	bool SharesJoint(const FStructure& S, int32 P, int32 Q)
+	{
+		for (int32 J = 0; J < S.NumConnections(); ++J)
+		{
+			const FConnection& Cn = S.GetConnection(J);
+			if ((Cn.PieceA == P && Cn.PieceB == Q) || (Cn.PieceA == Q && Cn.PieceB == P))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * The porch OVERHANG: the free Timber board that bears on BOTH posts. Found by its joints, not
+	 * its coordinates — the one free Timber piece jointed to both grounded-Timber posts. A cleat (if
+	 * the builder uses one) is jointed to the overhang and the wall, never to both posts, so it is
+	 * never mistaken for the overhang.
+	 */
+	int32 FindOverhang(const FBrickLayout& Layout, const TArray<int32>& Posts)
+	{
+		if (Posts.Num() < 2)
+		{
+			return INDEX_NONE;
+		}
+		const FStructure& S = Layout.Structure;
+		for (int32 P = 0; P < S.NumPieces(); ++P)
+		{
+			if (S.IsPieceRemoved(P) || S.GetPiece(P).Material != &Timber
+				|| S.GetPiece(P).bIsGrounded || !Layout.Boxes.IsValidIndex(P))
+			{
+				continue;
+			}
+			bool bBearsOnAll = true;
+			for (const int32 Post : Posts)
+			{
+				if (!SharesJoint(S, P, Post))
+				{
+					bBearsOnAll = false;
+					break;
+				}
+			}
+			if (bBearsOnAll)
+			{
+				return P;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	/**
+	 * Is there a tension-capable FASTENER — a Screw-style WITHDRAWAL tie — incident to this piece? A
+	 * withdrawal tie carries real tension AND has zero friction (a mechanical fastener). The post
+	 * bearings are compression-only DryStone (Tensile 0) and every mortar joint has friction 0.75, so
+	 * this predicate reads the fixing and nothing else. It is asserted on the OVERHANG, so it fires
+	 * whether the builder ties the overhang straight to the wall or laps it onto a wall-anchored cleat
+	 * — either way the tie is a joint incident to the overhang.
+	 */
+	bool HasWithdrawalTie(const FStructure& S, int32 Piece)
+	{
+		for (int32 J = 0; J < S.NumConnections(); ++J)
+		{
+			const FConnection& Cn = S.GetConnection(J);
+			if (Cn.PieceA != Piece && Cn.PieceB != Piece)
+			{
+				continue;
+			}
+			if (Cn.Strength.TensileStrengthMPa > 0.0
+				&& FMath::IsNearlyEqual(Cn.Strength.FrictionCoefficient, 0.0))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 }
 
 /**
@@ -984,6 +1108,239 @@ bool FRealisticShedGablesAndRoofTest::RunTest(const FString& Parameters)
 				bFront ? TEXT("front") : TEXT("back")),
 				IsStanding(Layout.Structure.GetPieceSupport(Apex)));
 		}
+	}
+
+	return true;
+}
+
+/**
+ * SLICE 3 — THE PORCH: A DOOR CANOPY ON TWO REAL TIMBER POSTS, on top of the standing shell + gables
+ * + roof. The SAME builder (DestructionShed3D::BuildRealistic) grows a porch over the door.
+ *
+ * THE BEHAVIOUR, IN ONE SENTENCE. On top of the realistic shed, DestructionShed3D::BuildRealistic lays
+ * a porch over the DOOR — two GROUNDED Timber posts of a real 10 x 10 cm (4x4) section standing in front
+ * of the door and flanking it, a Timber OVERHANG board of a real ~5 cm plank section bearing on both
+ * posts and cantilevering OUT over the door away from the box interior, and a minimal wall FIXING (a
+ * Screw withdrawal tie) tying the overhang back to the front wall — so that the whole shed (shell +
+ * gables + roof + porch) STANDS through production (SolveAndBreak / the router, above the 200-block cap)
+ * with nothing stranded, and the overhang and both posts read Supported / Grounded.
+ *
+ * =========================================================================================
+ * THE PORCH, HAND-DERIVED — X IS WIDTH, Y IS DEPTH (INTO THE DOOR), Z IS HEIGHT, cm. The front wall's
+ * OUTER face is Y = 0 and the box interior is +Y, so "OUT over the door" is NEGATIVE Y. The door gap is
+ * X[57.5,122.5] (centre X = 90); the lintel footprint is X[50,130].
+ *
+ *   POSTS (2), Timber, GROUNDED, a 10 x 10 cm section rising from the ground to just under the overhang:
+ *     PostL X[50,60] (centre 55), PostR X[120,130] (centre 125) — flanking the door gap; both Y[-25,-15]
+ *     (15-25 cm out in front of the wall); Z[0,104].
+ *   OVERHANG (1), Timber, free, a real ~5 cm plank: X[50,130] (spans the whole door), Y[-70,-2]
+ *     (cantilevers 70 cm out, its back a hair off the wall so no spurious wall bearing forms), Z[105,110].
+ *     Bottom Z = 105 sits one 1 cm joint above the post tops (Z = 104) — MakeInterface reads a DryStone
+ *     bed BEARING on each post. Centroid Y = -36.
+ *   FIXING — a narrow central Timber CLEAT, X[85,95] (10 cm wide, centred on the door), Y[-11,-1]
+ *     (its back one 1 cm joint off the wall face Y = 0), Z[97.5,104]: a Y-normal GeneralPurposeMortar
+ *     ANCHOR bonds it to the front-wall masonry over the door, and a Z-normal SCREW tie (cleat top 104,
+ *     overhang bottom 105) holds the overhang's back DOWN in WITHDRAWAL. The narrow 10 cm X-width is the
+ *     whole point (below).
+ *
+ * WHY IT STANDS (both posts present). The overhang weighs 80 x 68 x 5 = 27,200 cm3 x 0.42 g/cm3 =
+ * 11.424 kg, W = 11,196 uu. Its weight centroid Y = -36 sits OUTBOARD (more -Y) of the post line
+ * Y = -20, so the board tips front-down / back-up about the posts; the back-up is held by the cleat's
+ * Z-normal Screw in withdrawal at Y ~ -6. Two support lines (posts at Y = -20 pushing up, fixing at
+ * Y ~ -6 pulling down) straddle the load, and the Screw's mean tensile strength 0.54 MPa over the
+ * ~90 cm2 tie carries 0.54 x 90 x 100 = 4,860 N = far more than the modest withdrawal reaction. The
+ * ROUTER (authority above the 200-block cap) is even gentler: it sees three bed joints BENEATH the
+ * overhang (two posts + the cleat) and splits the weight in compression among them, so the assembled
+ * porch strands nothing. STANDS is a router verdict here; the tension mechanism is DESIGN readiness.
+ *
+ * WHY A LOST POST DROPS IT (slice 4, NOT built here — the arithmetic for dev). Remove one post and the
+ * overhang keeps only ONE post (on one X-side) plus the narrow central cleat. The cleat's tie resists
+ * the Y-tip well (its 90 cm2 acts at the full Y lever), but its restoring couple about the Y axis is the
+ * withdrawal force acting over a HALF-WIDTH of just 5 cm in X — far too small to answer the X-torsion the
+ * now-asymmetric load throws at the overhang, which rotates about the surviving post toward the gap and
+ * drops. A WIDE fixing would have held (its half-width supplies a large X-couple); the tie is a narrow
+ * central cleat precisely so the POSTS are the genuine support and the porch is post-dependent under
+ * either break authority. THIS SLICE ONLY ASSERTS STANDS; slice 4 pulls a post.
+ *
+ * =========================================================================================
+ * THE RED. BuildRealistic lays the shell + gables + roof but NO porch: there is no grounded Timber piece
+ * (every Timber it lays is free), so FindPosts returns none, the overhang and fixing scans find nothing,
+ * and the porch assertions fail. That is the expected RED — dev lays the posts, the overhang and the
+ * fixing to the geometry above. The stands arm (0 stranded) already holds for the porch-less shed, so the
+ * RED lands squarely on the missing porch and not on the solver.
+ *
+ * NEEDS A TICKING WORLD: NO. Same footing as the shell and gables tests — boxes, doubles, the router;
+ * gravity on; every assertion on the laid layout or the solved support state, never on displacement.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRealisticShedPorchTest,
+	"DestructionGame.Acceptance.Shed.ThreeD.RealisticBrickShedPorchStandsAsBuilt",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRealisticShedPorchTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionProfiles;
+	using namespace RealisticShedTestSupport;
+
+	FBrickLayout Layout;
+	const bool bBuilt = DestructionShed3D::BuildRealistic(Layout);
+
+	TestTrue(TEXT("BUILD: the builder must lay the realistic-brick shed (returns false only for a stub)"),
+		bBuilt);
+	if (!bBuilt)
+	{
+		AddError(TEXT("BUILD: DestructionShed3D::BuildRealistic laid nothing — cannot examine the porch."));
+		return false;
+	}
+
+	const FStructure& S = Layout.Structure;
+
+	AddInfo(FString::Printf(TEXT("PORCH: %d pieces, %d joints total (shell + gables + roof + porch)."),
+		S.NumPieces(), S.NumConnections()));
+
+	/* ================================================================================
+	 * ARM 1 — TWO GROUNDED TIMBER POSTS, 10 x 10 cm, FLANKING THE DOOR. The porch posts are the only
+	 * grounded Timber in the shed, so a coordinate-free material+grounding scan finds them. The shell
+	 * lays no grounded Timber, so this arm is the RED.
+	 * ================================================================================ */
+
+	TArray<int32> Posts;
+	FindPosts(Layout, Posts);
+
+	AddInfo(FString::Printf(TEXT("PORCH: found %d grounded Timber post(s)."), Posts.Num()));
+
+	TestEqual(TEXT("POST: exactly two grounded Timber posts stand in front of the door"),
+		Posts.Num(), 2);
+
+	bool bBothTenByTen = Posts.Num() == 2;
+	bool bBothInFront = Posts.Num() == 2;
+	bool bFlankDoor = false;
+	if (Posts.Num() == 2)
+	{
+		for (const int32 Post : Posts)
+		{
+			const FPieceBox& Box = Layout.Boxes[Post];
+			AddInfo(FString::Printf(TEXT("POST %d: centre (%.4g, %.4g, %.4g), half-extents (%.4g, %.4g, %.4g)"),
+				Post, Box.CentreCm.X, Box.CentreCm.Y, Box.CentreCm.Z,
+				FMath::Abs(Box.ExtentCm.X), FMath::Abs(Box.ExtentCm.Y), FMath::Abs(Box.ExtentCm.Z)));
+			if (!IsTenByTenSection(Box))
+			{
+				bBothTenByTen = false;
+			}
+			if (!(Box.CentreCm.Y < 0.0))
+			{
+				bBothInFront = false;
+			}
+		}
+		const double X0 = Layout.Boxes[Posts[0]].CentreCm.X;
+		const double X1 = Layout.Boxes[Posts[1]].CentreCm.X;
+		bFlankDoor = (FMath::Min(X0, X1) < 90.0) && (FMath::Max(X0, X1) > 90.0);
+	}
+
+	TestTrue(TEXT("POST: both posts are a real 10 x 10 cm section (a 4x4 timber), tall in Z"),
+		bBothTenByTen);
+	TestTrue(TEXT("POST: both posts stand IN FRONT of the door (centre Y < 0, the porch side of the wall)"),
+		bBothInFront);
+	TestTrue(TEXT("POST: the two posts FLANK the doorway — one left of the door centre X=90, one right"),
+		bFlankDoor);
+
+	/* ================================================================================
+	 * ARM 2 — THE TIMBER OVERHANG BOARD, OVER THE DOOR, BEARING ON BOTH POSTS, TIED BACK. Found by its
+	 * joints (bears on both posts), then checked for a board section, a door-spanning width, a porch-side
+	 * position, and a tension-capable withdrawal tie. All absent in the shell — the RED.
+	 * ================================================================================ */
+
+	const int32 Overhang = FindOverhang(Layout, Posts);
+
+	TestTrue(TEXT("OVERHANG: a free Timber board bears on BOTH posts (the porch overhang)"),
+		Overhang != INDEX_NONE);
+
+	if (Overhang != INDEX_NONE)
+	{
+		const FPieceBox& Box = Layout.Boxes[Overhang];
+		double Lo = 0.0, Mid = 0.0, Hi = 0.0;
+		SortedHalfExtents(Box, Lo, Mid, Hi);
+		AddInfo(FString::Printf(TEXT("OVERHANG %d: centre (%.4g, %.4g, %.4g), half-extents sorted (%.4g, %.4g, %.4g)"),
+			Overhang, Box.CentreCm.X, Box.CentreCm.Y, Box.CentreCm.Z, Lo, Mid, Hi));
+
+		/* A real ~5 cm plank: smallest half-extent <= ~2.5 cm — a coarse block fails this. */
+		TestTrue(TEXT("OVERHANG: the overhang is a real BOARD section (<= ~5 cm thick), not a coarse block"),
+			Lo <= 2.5 + Tol);
+
+		/* Over the door: its X span covers the door centre X = 90 and is a real span (>= ~half the door). */
+		const double LoX = Box.CentreCm.X - FMath::Abs(Box.ExtentCm.X);
+		const double HiX = Box.CentreCm.X + FMath::Abs(Box.ExtentCm.X);
+		TestTrue(TEXT("OVERHANG: the board spans OVER the doorway (covers the door centre X=90 with real width)"),
+			LoX < 90.0 - 30.0 && HiX > 90.0 + 30.0);
+
+		/* On the porch side of the wall, cantilevering out over the door (centre Y < 0). */
+		TestTrue(TEXT("OVERHANG: the board sits OUT over the door (centre Y < 0, the porch side of the wall)"),
+			Box.CentreCm.Y < 0.0);
+
+		/* Bears on both posts individually (the FindOverhang property, re-asserted per post for clarity). */
+		bool bBearsBoth = true;
+		for (const int32 Post : Posts)
+		{
+			if (!SharesJoint(S, Overhang, Post))
+			{
+				bBearsBoth = false;
+			}
+		}
+		TestTrue(TEXT("OVERHANG: the board BEARS on both posts (a joint to each)"), bBearsBoth);
+
+		/*
+		 * THE FIXING is a tension-capable Screw WITHDRAWAL tie incident to the overhang — the one joint a
+		 * compression-only DryStone post bearing cannot be. This is the design-intent assertion: the posts
+		 * are the genuine support and the narrow tie only holds the back down, so a lost post drops the
+		 * porch (slice 4). Above the cap the router stands it either way; the tie is future readiness, and
+		 * it is a STRUCTURAL fact this slice pins now.
+		 */
+		TestTrue(TEXT("FIXING: the overhang is tied back by a Screw-style WITHDRAWAL tie (Tensile>0, mu=0) — "
+			"a wall fixing a compression-only bearing could not be"),
+			HasWithdrawalTie(S, Overhang));
+	}
+
+	/* ================================================================================
+	 * ARM 3 — THE WHOLE SHED (shell + gables + roof + porch) STANDS, through production (SolveAndBreak /
+	 * the router above the cap). Support-state only, never displacement (DESIGN §4): 0 stranded, the
+	 * overhang and both posts read Supported / Grounded, and the shell's lintels and the ridge still read
+	 * Supported so the porch did not disturb what already stood.
+	 * ================================================================================ */
+
+	TestTrue(*FString::Printf(TEXT("SCALE: %d blocks is above the 200-block cap, so the router is authority"),
+		S.NumPieces()), S.NumPieces() > 200);
+
+	const int32 Passes = Layout.Structure.SolveAndBreak();
+	const int32 Stranded = StrandedCount(Layout.Structure);
+	AddInfo(FString::Printf(TEXT("STANDS: production ran %d pass(es); %d stranded."), Passes, Stranded));
+
+	TestEqual(TEXT("STANDS: nothing may be Stranded — the whole shed (shell + gables + roof + porch) stands"),
+		Stranded, 0);
+
+	for (const int32 Post : Posts)
+	{
+		TestTrue(*FString::Printf(TEXT("STANDS: post %d reads Grounded/Supported"), Post),
+			IsStanding(Layout.Structure.GetPieceSupport(Post)));
+	}
+
+	if (Overhang != INDEX_NONE)
+	{
+		TestTrue(TEXT("STANDS: the overhang reads Supported (carried by its posts and the fixing)"),
+			IsStanding(Layout.Structure.GetPieceSupport(Overhang)));
+	}
+
+	/* The porch must not have unsettled the shell — spot-check the door lintel and the ridge. */
+	const int32 DoorLintel = PieceContaining(Layout, DoorLintelPt);
+	if (DoorLintel != INDEX_NONE)
+	{
+		TestTrue(TEXT("STANDS: the door lintel still reads Supported (the porch did not disturb the shell)"),
+			IsStanding(Layout.Structure.GetPieceSupport(DoorLintel)));
+	}
+	const int32 Ridge = RidgePiece(Layout);
+	if (Ridge != INDEX_NONE)
+	{
+		TestTrue(TEXT("STANDS: the ridge still reads Supported"),
+			IsStanding(Layout.Structure.GetPieceSupport(Ridge)));
 	}
 
 	return true;

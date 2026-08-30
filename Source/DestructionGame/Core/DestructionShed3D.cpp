@@ -761,6 +761,97 @@ namespace DestructionShed3D
 		}
 
 		/*
+		 * THE PORCH — A DOOR CANOPY ON TWO TIMBER POSTS (slice 3), laid AFTER the shell sweep so its four
+		 * joints are authored EXPLICITLY rather than swept. A swept timber-touching pair would author a
+		 * compression-only DryStone bearing, but the wall FIXING must be a tension-capable Screw and the
+		 * wall ANCHOR a bonded mortar joint — neither of which the sweep can produce — so the porch pieces
+		 * are added past NumPieces (the sweep's captured bound) and joined by hand below.
+		 *
+		 * THE GEOMETRY. The front wall's OUTER face is Y = 0 and the box interior is +Y, so the porch
+		 * cantilevers OUT over the door in NEGATIVE Y. Two GROUNDED 10 x 10 cm posts (PostL X[50,60], PostR
+		 * X[120,130], both Y[-25,-15], Z[0,104]) flank the door gap X[57.5,122.5] (centre 90). A free plank
+		 * OVERHANG (X[50,130], Y[-70,-2], Z[105,110]) bears on both post tops through 1 cm DryStone beds and
+		 * cantilevers 70 cm out; its back stands 2 cm off the wall (Y = -2, wall face Y = 0) so no spurious
+		 * wall bearing forms. Its weight centroid Y = -36 sits OUTBOARD of the post line Y = -20, so the
+		 * board tips front-down / back-up about the posts; a narrow central Timber CLEAT (X[85,95], Y[-11,-1],
+		 * Z[97.5,104]) holds that back-up DOWN with a Z-normal Screw WITHDRAWAL tie (cleat top 104 one joint
+		 * under the overhang bottom 105) and is itself anchored to a real course-13 front-wall brick over the
+		 * door by a Y-normal mortar joint (cleat back Y = -1 one joint off the wall face Y = 0).
+		 *
+		 * WHY IT STANDS, AND WHY IT IS POST-DEPENDENT. Above the block cap the router splits the overhang's
+		 * weight in compression among the three beds beneath it (two posts + the cleat), so nothing is
+		 * stranded. But the cleat is only 10 cm wide on purpose: its restoring couple about the Y axis is the
+		 * withdrawal force acting over a 5 cm HALF-WIDTH in X, far too small to answer the X-torsion a LOST
+		 * post throws at the now-asymmetric overhang. The posts are therefore the genuine support, so pulling
+		 * one drops the porch — the collapse arm of slice 4, NOT cut here.
+		 */
+		const int32 PostL = AddPiece(50.0, 60.0, -25.0, -15.0, 0.0, 104.0, Timber, true);
+		const int32 PostR = AddPiece(120.0, 130.0, -25.0, -15.0, 0.0, 104.0, Timber, true);
+		const int32 PorchOverhang = AddPiece(50.0, 130.0, -70.0, -2.0, 105.0, 110.0, Timber, false);
+		const int32 Cleat = AddPiece(85.0, 95.0, -11.0, -1.0, 97.5, 104.0, Timber, false);
+
+		/*
+		 * THE FRONT-WALL BRICK THE CLEAT ANCHORS TO — the course-13 stretcher over the door (Z[97.5,104],
+		 * the first full-masonry course above the door lintel band on course 12), found by the point at the
+		 * door centre on that course rather than by handle, so the exact bond the wall producer chose does
+		 * not matter. Its outer face Y = 0 stands one JointCm off the cleat's back Y = -1, so MakeInterface
+		 * reads a Y-normal mortar anchor bonding the cleat to real, load-bearing masonry.
+		 */
+		int32 CleatWallBrick = INDEX_NONE;
+		{
+			const FVector AnchorPtCm(90.0, 5.125, 100.75);
+			for (int32 P = 0; P < Laid.Structure.NumPieces(); ++P)
+			{
+				if (Laid.Structure.GetPiece(P).Material != &ClayBrick || !Laid.Boxes.IsValidIndex(P))
+				{
+					continue;
+				}
+				const FVector LoCm = Laid.Boxes[P].CentreCm - Laid.Boxes[P].ExtentCm;
+				const FVector HiCm = Laid.Boxes[P].CentreCm + Laid.Boxes[P].ExtentCm;
+				if (AnchorPtCm.X >= LoCm.X && AnchorPtCm.X <= HiCm.X
+					&& AnchorPtCm.Y >= LoCm.Y && AnchorPtCm.Y <= HiCm.Y
+					&& AnchorPtCm.Z >= LoCm.Z && AnchorPtCm.Z <= HiCm.Z)
+				{
+					CleatWallBrick = P;
+					break;
+				}
+			}
+		}
+
+		if (!bLayoutValid || PostL == INDEX_NONE || PostR == INDEX_NONE
+			|| PorchOverhang == INDEX_NONE || Cleat == INDEX_NONE || CleatWallBrick == INDEX_NONE)
+		{
+			return false;
+		}
+
+		/*
+		 * THE FOUR PORCH JOINTS, each through MakeInterface with the LOWER piece named A so a bed normal
+		 * reads as a bed BENEATH the piece it carries. Two Z-normal DryStone bearings carry the overhang on
+		 * the post tops (~100 cm2 each); a Z-normal Screw tie (~90 cm2) holds the overhang's back down in
+		 * withdrawal; a Y-normal mortar anchor (~65 cm2) bonds the cleat to the wall.
+		 */
+		const auto PorchJoin =
+			[&](int32 A, int32 B, const FConnectionStrength& Strength) -> bool
+		{
+			FConnection Connection;
+
+			if (!MakeInterface(A, Laid.Boxes[A], B, Laid.Boxes[B], JointCm, Strength, Connection))
+			{
+				return false;
+			}
+
+			return Laid.Structure.AddConnection(Connection) != INDEX_NONE;
+		};
+
+		if (!PorchJoin(PostL, PorchOverhang, DryStone)
+			|| !PorchJoin(PostR, PorchOverhang, DryStone)
+			|| !PorchJoin(Cleat, PorchOverhang, Screw)
+			|| !PorchJoin(Cleat, CleatWallBrick, GeneralPurposeMortar))
+		{
+			return false;
+		}
+
+		/*
 		 * THE 3D FLAG routes this structure to the Dim3D pose and lifts the bridge's Y-normal refusal,
 		 * so the side walls' Y-normal perpends and the out-of-plane corner joints are honoured rather
 		 * than rejected. Above the block cap the router (not the LP) is the break authority, but the

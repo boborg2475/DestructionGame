@@ -21,11 +21,12 @@
  *
  * THE BEHAVIOUR, IN ONE SENTENCE. The catalogue carries a `shedrealistic` row whose MapName is
  * `Lvl_ShedRealistic` and whose LayStructure is DestructionShed3D::BuildRealistic, so that
- * DestructionScenarios::Build lays the 438-piece real-brick shed — four single-wythe running-bond ClayBrick
+ * DestructionScenarios::Build lays the 442-piece real-brick shed — four single-wythe running-bond ClayBrick
  * walls of true 21.5 x 10.25 x 6.5 cm bricks on 1 cm mortar joints closing a box, a DOOR and a WINDOW opening
- * each under a Timber-board lintel, stepped brick GABLES rising to a ridge, and a Timber gable ROOF — as a
+ * each under a Timber-board lintel, stepped brick GABLES rising to a ridge, a Timber gable ROOF, and a PORCH
+ * of two grounded Timber posts carrying a cantilevered overhang over the door — as a
  * structure FLAGGED 3D (IsThreeDimensional), which STANDS through the PRODUCTION world path (FStructure::
- * SolveAndBreak, whose above-cap authority is the ROUTER's per-joint capacity sweep — the shed is 438 blocks,
+ * SolveAndBreak, whose above-cap authority is the ROUTER's per-joint capacity sweep — the shed is 442 blocks,
  * far above the 200-block equilibrium-gate cap), with NO cut yet: this slice makes the realistic shed a
  * joinable, standing, renderable level; the collapse cut that pulls a support is a LATER slice.
  *
@@ -37,7 +38,7 @@
  * This test proves the SCENARIO AND THE WORLD PATH: that a catalogue row exists, names the realistic builder
  * as its LayStructure, that DestructionScenarios::Build routes through that lambda, that the builder's 3D FLAG
  * and its per-piece MATERIALS survive the Build path into Layout.Structure (the AdoptLayout promise), and that
- * the 438-block shed travels the SAME production door the game uses: FStructure::SolveAndBreak, whose above-cap
+ * the 442-block shed travels the SAME production door the game uses: FStructure::SolveAndBreak, whose above-cap
  * authority is the router. The shed stands, reached the way a human reaches it: by joining a level.
  *
  * WHY THE ROW NEEDS ITS OWN MAP. A scenario is selected back from its map by IndexOfMapName, which returns the
@@ -51,13 +52,13 @@
  * through the world path — not as any piece having moved. Two pieces can sever and rest exactly in place, so
  * no displacement is measured. There is no collapse arm in this slice because the row names no cut.
  *
- * WHY NO LP / ORACLE ARM (unlike the recognizable Shed3DRow). At 438 blocks the shed is far above the LP's
+ * WHY NO LP / ORACLE ARM (unlike the recognizable Shed3DRow). At 442 blocks the shed is far above the LP's
  * 200-block cap, so SolveAndBreak's authority is the router (BreakByCapacitySweep), the same path the flagship
  * ~1200-block wall uses — the 3D LP is bypassed. The world-path proof here is therefore the production
  * SolveAndBreak read, not a bridge-then-SolveRigidBlock feasibility call.
  *
  * NEEDS A TICKING WORLD: NO. The catalogue is world-free, BuildRealistic is arithmetic over boxes and a graph,
- * and SolveAndBreak is a synchronous settle over that graph — no UWorld, no Chaos, no tick. The 438-block
+ * and SolveAndBreak is a synchronous settle over that graph — no UWorld, no Chaos, no tick. The 442-block
  * router solve is a few tens of milliseconds. Same footing as the 2D ShedScenarioTest and Shed3DRow.
  *
  * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
@@ -75,11 +76,11 @@ namespace RealisticShedScenarioTestSupport
 
 	/*
 	 * THE COMMITTED SIZE OF THE REALISTIC SHED, pinned so the row is proven to lay the REAL-brick shed and not
-	 * the 24-piece recognizable toy or the running-bond fallback. BuildRealistic lays 438 pieces / 1127 joints
-	 * (the shell's 393 + the gables and roof); the count is far above the 200-block cap, which is what puts the
+	 * the 24-piece recognizable toy or the running-bond fallback. BuildRealistic lays 442 pieces / 1131 joints
+	 * (the shell's 393 + the gables, the roof and the porch); the count is far above the 200-block cap, which puts the
 	 * router in charge of the verdict.
 	 */
-	constexpr int32 ExpectedPieces = 438;
+	constexpr int32 ExpectedPieces = 442;
 	constexpr int32 EquilibriumGateBlockCap = 200;
 
 	/* Fixed points the builder's canonical geometry places inside each Timber lintel — the same probe points
@@ -165,7 +166,7 @@ namespace RealisticShedScenarioTestSupport
 }
 
 /**
- * THE REALISTIC-BRICK SHED ROW IS IN THE CATALOGUE, IT LAYS THE 438-PIECE REAL-BRICK SHED THROUGH THE BUILD
+ * THE REALISTIC-BRICK SHED ROW IS IN THE CATALOGUE, IT LAYS THE 442-PIECE REAL-BRICK SHED THROUGH THE BUILD
  * PATH FLAGGED 3D WITH NO CUT, AND IT STANDS THROUGH THE PRODUCTION WORLD PATH — the whole verdict decided by
  * the world break authority (the router, above the block cap), reached by joining a level.
  *
@@ -223,7 +224,7 @@ bool FRealisticShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 		static_cast<int32>(Scenario.Framing), static_cast<int32>(EScenarioFraming::ThreeQuarter));
 
 	/* ================================================================================
-	 * ARM 0 (cont.) — DestructionScenarios::Build lays the 438-piece realistic shed, the structure is FLAGGED
+	 * ARM 0 (cont.) — DestructionScenarios::Build lays the 442-piece realistic shed, the structure is FLAGGED
 	 * 3D (the flag survives the Build/AdoptLayout path), it is multi-material, and it names NO cut in this slice.
 	 * ================================================================================ */
 
@@ -251,10 +252,10 @@ bool FRealisticShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 		TEXT("the built structure must be flagged 3D — the closed box's corners face out of the X-Z plane"),
 		Layout.Structure.IsThreeDimensional());
 
-	/* IT IS THE REAL-BRICK SHED, NOT THE 24-PIECE RECOGNIZABLE TOY NOR THE RUNNING-BOND FALLBACK. 438 pieces
+	/* IT IS THE REAL-BRICK SHED, NOT THE 24-PIECE RECOGNIZABLE TOY NOR THE RUNNING-BOND FALLBACK. 442 pieces
 	 * pins the exact committed realistic build; being above the 200-block cap is what makes the router — not
 	 * the LP — the break authority below. */
-	TestEqual(TEXT("438 pieces — the committed real-brick shell + gables + roof (not the 24-piece toy)"),
+	TestEqual(TEXT("442 pieces — the committed real-brick shell + gables + roof + porch (not the 24-piece toy)"),
 		Layout.Structure.NumPieces(), ExpectedPieces);
 	TestEqual(TEXT("one box per piece, or AdoptLayout refuses the layout"),
 		Layout.Boxes.Num(), Layout.Structure.NumPieces());
@@ -270,7 +271,7 @@ bool FRealisticShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 		Cut.Num(), 0);
 
 	/* ================================================================================
-	 * ARM 1 — THE ASSEMBLED REALISTIC SHED STANDS THROUGH THE PRODUCTION WORLD PATH. At 438 blocks it is above
+	 * ARM 1 — THE ASSEMBLED REALISTIC SHED STANDS THROUGH THE PRODUCTION WORLD PATH. At 442 blocks it is above
 	 * the 200-block equilibrium-gate cap, so SolveAndBreak's authority is the ROUTER (the per-joint capacity
 	 * sweep) — the same path the flagship ~1200-block wall uses; the 3D LP is bypassed. A standing shed strands
 	 * nothing and drops nothing; the lintels and the ridge read Supported. Support state only, never displacement.
