@@ -144,6 +144,42 @@ namespace ShedRealisticLatencyProbeSupport
 			default:                       return TEXT("Falling");
 		}
 	}
+
+	/*
+	 * COLLECT THE BACK-WALL BRICKS OF A LOW COURSE BAND INSIDE AN X WINDOW. The back wall runs along X in the
+	 * Y band centred on 128.875; course c has centre Z = c * 7.5 + 3.25. Courses 6 (even, 8 bricks) and 7
+	 * (odd, 9 bricks) sit at Z 48.25 and 55.75 — below the wall's mid-height (course 15 eaves top Z 119, so
+	 * halfway is course 7-8). A brick is taken if it is ClayBrick, sits in the back-wall Y band, falls in one
+	 * of the two course bands, and its X centre is inside [XLoCm, XHiCm].
+	 */
+	void CollectBackWallBand(
+		const FBrickLayout& L, int32 CourseLo, int32 CourseHi, double XLoCm, double XHiCm, TArray<int32>& Out)
+	{
+		const FStructure& S = L.Structure;
+		const double BackWallYCm = 128.875;
+		for (int32 P = 0; P < S.NumPieces(); ++P)
+		{
+			if (S.IsPieceRemoved(P) || S.GetPiece(P).Material != &ClayBrick || !L.Boxes.IsValidIndex(P))
+			{
+				continue;
+			}
+			const FVector C = L.Boxes[P].CentreCm;
+			const bool bBackWall = FMath::Abs(C.Y - BackWallYCm) < 1.0;
+			bool bInBand = false;
+			for (int32 Course = CourseLo; Course <= CourseHi; ++Course)
+			{
+				if (FMath::Abs(C.Z - (Course * 7.5 + 3.25)) < 1.0)
+				{
+					bInBand = true;
+					break;
+				}
+			}
+			if (bBackWall && bInBand && C.X >= XLoCm && C.X <= XHiCm)
+			{
+				Out.Add(P);
+			}
+		}
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -264,6 +300,72 @@ bool FShedRealisticRouterProbe::RunTest(const FString& Parameters)
 				 "%d pass(es), %d stranded, %d lost-earth."),
 			Candidate, Cut.Num(), DoorLintel, SupportName(LintelAfter),
 			Passes, StrandedCount(L.Structure), LostEarthCount(L.Structure)));
+	}
+
+	return true;
+}
+
+/**
+ * ARCH-vs-COLLAPSE OF A LOW 2-COURSE BAND CUT IN THE BACK WALL BODY — the EXPERIMENT that measures whether a
+ * bonded running-bond wall deep-beams over a low gap and stands, or drops the masonry above. Removes courses 6
+ * and 7 (Z 48.25 / 55.75, below the wall's mid-height) from the +Y back wall the ThreeQuarter camera faces, at
+ * three widths, and prints the router's lost-earth / stranded verdict for each. Diagnostic only — asserts
+ * nothing about wall-clock or verdict; it exists to be read. Invoke with `Automation RunTests ShedRealisticLatency`.
+ *
+ * NEEDS A TICKING WORLD: NO. Boxes, doubles and the router; gravity on.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FShedRealisticLowBandProbe,
+	"ShedRealisticLatency.Probe.LowBandArchVsCollapse",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FShedRealisticLowBandProbe::RunTest(const FString& Parameters)
+{
+	using namespace DestructionProfiles;
+	using namespace DestructionLayout;
+	using namespace ShedRealisticLatencyProbeSupport;
+
+	/*
+	 * THREE WIDTHS OF THE SAME LOW 2-COURSE BAND. NARROW takes the central ~3 columns (X 78..101); WIDE takes
+	 * most of the width leaving the two ends (X 22..158); FULL-WIDTH takes the whole back-wall low band (X
+	 * 0..180). Each is measured on a fresh build through the production router SolveAndBreak.
+	 */
+	struct FCase { const TCHAR* Name; int32 CourseLo; int32 CourseHi; double XLo; double XHi; };
+	const FCase Cases[] = {
+		{ TEXT("LOW  NARROW (c6-7, central ~3 cols, X 78..101)"), 6, 7, 78.0, 101.0 },
+		{ TEXT("LOW  WIDE   (c6-7, ends kept, X 22..158)"), 6, 7, 22.0, 158.0 },
+		{ TEXT("LOW  FULL   (c6-7, whole low band, X 0..180)"), 6, 7, 0.0, 180.0 },
+		{ TEXT("HIGH FULL   (c13-14 under eaves, whole band, X 0..180)"), 13, 14, 0.0, 180.0 },
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FBrickLayout L;
+		if (!DestructionShed3D::BuildRealistic(L))
+		{
+			AddError(TEXT("BuildRealistic returned false"));
+			return false;
+		}
+
+		TArray<int32> Band;
+		CollectBackWallBand(L, Case.CourseLo, Case.CourseHi, Case.XLo, Case.XHi, Band);
+
+		int32 Removed = 0;
+		for (const int32 P : Band)
+		{
+			if (L.Structure.RemovePiece(P))
+			{
+				++Removed;
+			}
+		}
+
+		const int32 Passes = L.Structure.SolveAndBreak();
+		const int32 Stranded = StrandedCount(L.Structure);
+		const int32 LostEarth = LostEarthCount(L.Structure);
+
+		AddInfo(FString::Printf(
+			TEXT("LOW-BAND %s: removed %d brick(s); %d pass(es); %d lost-earth; %d stranded."),
+			Case.Name, Removed, Passes, LostEarth, Stranded));
 	}
 
 	return true;
