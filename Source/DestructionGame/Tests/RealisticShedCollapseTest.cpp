@@ -12,75 +12,73 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE REALISTIC-BRICK SHED FALLS CORRECTLY WHEN YOU TAKE BRICKS OUT — slice 4 of the realistic shed,
- * the COLLAPSE arm, driven through the production world path under the ROUTER (the break authority at
- * this scale). This is the world-path counterpart of "watch it fall if you take bricks out": the
- * `shedrealistic` row must name a CUT that pulls the two bricks the door lintel bears on, and once that
- * cut is applied the door head — the lintel and the masonry coursing above it — must lose the earth,
- * while the rest of the shed keeps it.
- *
- * THE BEHAVIOUR, IN ONE SENTENCE. The `shedrealistic` catalogue row names a cut that removes the two
- * course-11 pier-top bricks the Timber door lintel bears on, so that DestructionScenarios::Build resolves
- * that cut and — after the level applies it (RemovePiece) and settles through the production door
- * (FStructure::SolveAndBreak, whose authority at 442 blocks is the ROUTER, above the 200-block cap) — the
- * door lintel and the door-head masonry above it lose the earth (a genuine collapse, nothing Stranded),
- * while the window lintel on the far wall, the ridge, the back wall and the porch posts keep the earth.
+ * THE REALISTIC-BRICK SHED FALLS BIG AND CAMERA-VISIBLY WHEN YOU TAKE ITS BACK EAVES COURSE OUT — slice 4
+ * of the realistic shed, the COLLAPSE arm, driven through the production world path under the ROUTER (the
+ * break authority at this scale). This is the world-path counterpart of "watch a big section fall if you
+ * take bricks out": the `shedrealistic` row must name a CUT that removes the top (eaves) course of the
+ * BACK wall — the footing under the back gable end — so that once the cut is applied the whole back gable
+ * (its stepped courses, ~20 bricks) loses the earth, while the rest of the shed keeps it.
  *
  * =====================================================================================
- * WHY THE ROUTER, AND WHY ONLY THE "TAKE BRICKS OUT" CASE (the authority decision this slice records)
+ * WHY THE BACK WALL, AND WHY THE GABLE (the camera + the mechanism)
  * =====================================================================================
  *
- * At 442 blocks the shed is far above the equilibrium gate's 200-block cap, so SolveAndBreak's authority
- * is the ROUTER's per-joint capacity sweep — the same path the flagship ~1200-block wall uses; the 3D LP
- * is bypassed. That authority was CHOSEN for this shed on measured cost (test-expert slice-4 report): a
- * router solve at 442 blocks is ~3 ms, whereas a single LP feasibility solve at 442 runs for MANY MINUTES
- * (measured > 10 min, still unfinished — the LP is super-linear and the promotable band was ~84-104
- * blocks). The cascade does several solves per action, so raising the cap to keep the accurate 3D LP is
- * impractical here; the router is the only tractable authority at this scale.
+ * THE CAMERA. The row is framed ThreeQuarter: ViewpointFor places the camera at
+ * Centre + Standoff * (cosEl*sinAz, cosEl*cosAz, sinEl) with Az = 40, El = 30 — direction
+ * (0.557, 0.663, 0.500), i.e. in the +X/+Y/+Z octant looking back at the box. It most directly faces the
+ * +Y BACK wall (dot 0.663) and the +X right wall (dot 0.557), and looks DOWN onto the roof. The -Y door
+ * face — where the old two-brick door-lintel cut lived — points AWAY from the camera, so that collapse
+ * barely showed. The back wall is the widest camera-facing face AND a gable end, so its stepped triangular
+ * top is the single most visible thing in frame; dropping it reads unmistakably.
  *
- * THE ROUTER GETS "TAKE BRICKS OUT" RIGHT AND "PULL A POST" WRONG — an honest, recorded scale limit.
- *   - TAKE BRICKS OUT (this test): the router routes load down bed joints, so pulling the two bricks the
- *     lintel bears on correctly strands the lintel and the door head above it — a clean fall (0 stranded).
- *   - PULL A POST (NOT tested here): measured, the router OVER-HOLDS the porch overhang — with one post
- *     gone it still reads Supported (the surviving post gives a downward path, and the router has no
- *     overturning / X-torsion bracket). The accurate post-collapse needs the 3D LP, which is impractical
- *     at 442 blocks, so that case is a documented scale limitation, NOT forced green here.
+ * THE MECHANISM. Bonded masonry DEEP-BEAMS over a mid-span gap and stands (the acceptance walls 11, 12 and
+ * 19 all keep their footing with holes cut in them), so cutting a low band out of the wall BODY just arches
+ * over and shows nothing. The back GABLE is different: its stepped courses (16..19) bed on the eaves course
+ * (course 15) and have NO lateral abutment — they are a free-standing triangle on top of the wall. Remove
+ * the eaves course across the back wall and the gable's entire footing is gone at once; with nothing beneath
+ * and nothing to arch to, all four stepped courses lose the earth together. A clean, big, visible fall.
  *
  * =====================================================================================
- * THE CASE-A CUT, HAND-DERIVED — WHICH TWO BRICKS, AND WHY THEY STRAND THE DOOR HEAD
+ * WHY THE ROUTER (the authority decision this slice records)
  * =====================================================================================
  *
- * The door gap is X[57.5,122.5], rising courses 0..11 (Z[0,89]); the Timber lintel occupies course 12
- * (Z[90,96.5]) with footprint X[50,130]. In the running bond, the ONLY masonry the lintel's bottom (Z=90)
- * beds on one joint below (Z=89) is the two course-11 (odd course) pier-top bricks:
- *     LEFT  brick X[33.75,55.25], centre (44.5,  5.125, 85.75) — bears the lintel over X[50,55.25];
- *     RIGHT brick X[123.75,145.25], centre (134.5, 5.125, 85.75) — bears the lintel over X[123.75,130].
- * No course-11 brick sits under the lintel between them (that span is the door gap), and the course-12
- * masonry beside the lintel stands off its ends by more than a joint (a 6 cm gap, X=44 to X=50), so the
- * lintel is carried by exactly those two bearings. Pull both and the lintel — and the spandrel bricks that
- * bed down onto it — have no downward path left. MEASURED through the router: 8 pieces lose the earth
- * (the lintel + 7 above), and NOTHING is stranded — a clean collapse of the door head. The far side of
- * the shed (window lintel, ridge, back wall, posts) is untouched and stands.
+ * At 442 blocks the shed is far above the equilibrium gate's 200-block cap, so SolveAndBreak's authority is
+ * the ROUTER's per-joint capacity sweep — the 3D LP is bypassed (a single LP feasibility solve at 442 runs
+ * for many minutes; the router solve is a few milliseconds). The router routes load down bed joints, so a
+ * course whose footing is entirely removed and which has no lateral bed path to ground correctly loses the
+ * earth. The back gable is exactly that: removing course 15 strands nothing (no knot), it simply falls.
+ *
+ * =====================================================================================
+ * THE CUT, HAND-DERIVED — THE BACK-WALL EAVES COURSE (course 15)
+ * =====================================================================================
+ *
+ * BuildRealistic lays the back wall along X in the Y band [123.75, 134] (Y centre 128.875), RunStart 0,
+ * 8 full bricks per even course, NoOpening, 16 courses. Course 15 is odd, so it is a half bat, seven full
+ * bricks, and a closing half bat — nine pieces, at X centres 5.125, 22.0, 44.5, 67.0, 89.5, 112.0, 134.5,
+ * 157.0, 173.875, all at Z = 15 * 7.5 + 3.25 = 115.75. The back gable rises above it: course 16 (8 bricks),
+ * 17 (6), 18 (4) and 19 (2) — 20 bricks in all — each bedding on the course below and the lowest on course
+ * 15. Pull course 15 and the gable has no path down; MEASURED through the router, 24 pieces lose the earth
+ * as a chunk — the twenty-brick back gable end plus the four roof purlins that bore on its shoulders — and
+ * nothing is Stranded (the ridge, spanning to the intact front gable, keeps the earth). The far side of the
+ * shed (door head, window lintel, front gable, back-wall body below the cut, porch posts) is untouched.
  *
  * =====================================================================================
  * THE RED, AND WHAT DEV BUILDS
  * =====================================================================================
  *
- * ARM 1 is the RED: the `shedrealistic` row names NO cut today (slice 5 left CutCentresCm empty), so
- * Build resolves an EMPTY cut and the cut-naming assertions fail. Dev makes it green by adding the two
- * bearing centres (44.5, 5.125, 85.75) and (134.5, 5.125, 85.75) to the row's CutCentresCm and updating
- * the row's Title/Expectation. THAT ALSO SUPERSEDES the slice-5 placeholder `Cut.Num() == 0` assertion in
- * World.Scenarios.ShedRealisticRow — dev must relax that to the new cut count as part of wiring the cut.
+ * ARM 1 is the RED: before the cut is rewired the `shedrealistic` row names the OLD two-brick door-lintel
+ * cut, so Build resolves two pieces that are NOT the nine back-eaves bricks and the cut-naming assertions
+ * fail. Dev makes it green by replacing the row's CutCentresCm with the nine back-eaves centres and updating
+ * the row's Title/Expectation. THAT ALSO SUPERSEDES the Cut.Num() == 2 pin in World.Scenarios.ShedRealisticRow
+ * — dev relaxes it to nine as part of wiring the cut.
  *
- * ARM 2 (the collapse itself) is written to run whether or not the cut is wired: it applies the row's cut
- * if present, else pulls the two bearing bricks itself, so the router-correct collapse is exercised now
- * (proving the assertions are right and fail for the intended reason — the missing CUT DATA, not a wrong
- * physics expectation) and stays green once the cut lands. Assertions are on mechanism / support-state
- * (HasLostTheEarth, Stranded == 0), never displacement (DESIGN.md §4).
+ * ARM 2 (the collapse itself) is written to run whether or not the cut is wired: it applies the row's cut if
+ * it names the nine back-eaves bricks, else pulls them itself, so the router-correct collapse is exercised now
+ * and stays green once the cut lands. Assertions are on mechanism / support-state (HasLostTheEarth,
+ * Stranded == 0), never displacement (DESIGN.md §4).
  *
  * NEEDS A TICKING WORLD: NO. The catalogue is world-free, BuildRealistic is arithmetic over boxes and a
  * graph, and SolveAndBreak is a synchronous router settle over that graph — no UWorld, no Chaos, no tick.
- * The 442-block router solve is a few milliseconds. Same footing as ShedRealisticRow and Shed3DRow.
  *
  * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
  */
@@ -91,16 +89,33 @@ namespace RealisticShedCollapseTestSupport
 
 	const TCHAR* const RealisticScenarioName = TEXT("shedrealistic");
 
-	/* THE CASE-A CUT — the two course-11 bricks the door lintel bears on, by exact box centre. The
-	 * scenario resolves a cut centre to a piece with a 1e-6 exact match, so these doubles are the same
-	 * literals dev adds to CutCentresCm. */
-	const FVector LintelBearingLeft(44.5, 5.125, 85.75);
-	const FVector LintelBearingRight(134.5, 5.125, 85.75);
+	/* THE BACK-WALL EAVES COURSE (course 15) — the nine bricks that are the back gable's footing, by exact
+	 * box centre. The scenario resolves a cut centre to a piece with a 1e-6 exact match, so these doubles are
+	 * the same literals dev adds to CutCentresCm. Course 15 is odd: a half bat, seven full bricks, a closing
+	 * half bat, all at Y centre 128.875 and Z centre 115.75. */
+	TArray<FVector> BackEavesCutCentres()
+	{
+		const double YCm = 128.875;
+		const double ZCm = 115.75;
+		const double XsCm[] = { 5.125, 22.0, 44.5, 67.0, 89.5, 112.0, 134.5, 157.0, 173.875 };
 
-	/* Probe points inside the far-side pieces that must KEEP the earth, and inside the door lintel. */
-	const FVector DoorLintelPt(90.0, 5.0, 93.0);       // inside the Timber door lintel
-	const FVector WindowLintelPt(5.0, 75.0, 93.0);     // inside the Timber window lintel (far wall)
-	const FVector BackWallPt(90.0, 128.875, 40.0);     // a back-wall brick, mid-height
+		TArray<FVector> Centres;
+		for (const double XCm : XsCm)
+		{
+			Centres.Add(FVector(XCm, YCm, ZCm));
+		}
+		return Centres;
+	}
+
+	/* Probe points inside pieces the collapse must DROP (the back gable) and pieces it must SPARE. */
+	const FVector BackGableBasePt(100.75, 128.875, 123.25);   // back gable course 16 — bottom step
+	const FVector BackGableApexPt(100.75, 128.875, 145.75);   // back gable course 19 — apex step
+
+	const FVector DoorLintelPt(90.0, 5.0, 93.0);       // the Timber door lintel (front wall, far side)
+	const FVector WindowLintelPt(5.0, 75.0, 93.0);     // the Timber window lintel (left wall)
+	const FVector FrontGableApexPt(100.75, 5.125, 145.75);  // the FRONT gable apex — independent of the back
+	const FVector BackWallBodyPt(100.75, 128.875, 63.25);   // back wall course 8 (even) — below the cut, still footed
+	const FVector PostLPt(55.0, -20.0, 52.0);          // the left porch post
 
 	int32 PieceContaining(const FBrickLayout& L, const FVector& Pt)
 	{
@@ -186,8 +201,8 @@ namespace RealisticShedCollapseTestSupport
 }
 
 /**
- * PULLING THE TWO BRICKS THE DOOR LINTEL BEARS ON DROPS THE DOOR HEAD OF THE REALISTIC SHED, THROUGH THE
- * PRODUCTION WORLD PATH, WHILE THE REST OF THE SHED STANDS — the router-authority collapse the level shows.
+ * PULLING THE BACK-WALL EAVES COURSE DROPS THE WHOLE BACK GABLE OF THE REALISTIC SHED, THROUGH THE PRODUCTION
+ * WORLD PATH, WHILE THE REST OF THE SHED STANDS — the router-authority, camera-facing collapse the level shows.
  *
  * NEEDS A TICKING WORLD: NO. See the file header.
  */
@@ -236,41 +251,48 @@ bool FRealisticShedCollapseRowTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("ARM 0: the built shed is above the 200-block cap, so the ROUTER is the break authority"),
 		Layout.Structure.NumPieces() > 200);
 
-	/* The two bearing bricks the cut must name exist where hand-derived — an independent geometry check,
-	 * true regardless of whether the cut is wired, so a wrong centre fails visibly here. */
-	const int32 BearingLeft = PieceContaining(Layout, LintelBearingLeft);
-	const int32 BearingRight = PieceContaining(Layout, LintelBearingRight);
-
-	TestTrue(TEXT("ARM 0: a ClayBrick sits at the LEFT door-lintel bearing (44.5, 5.125, 85.75)"),
-		BearingLeft != INDEX_NONE && Layout.Structure.GetPiece(BearingLeft).Material == &ClayBrick);
-	TestTrue(TEXT("ARM 0: a ClayBrick sits at the RIGHT door-lintel bearing (134.5, 5.125, 85.75)"),
-		BearingRight != INDEX_NONE && Layout.Structure.GetPiece(BearingRight).Material == &ClayBrick);
+	/* The nine back-eaves bricks the cut must name all exist where hand-derived — an independent geometry
+	 * check, true regardless of whether the cut is wired, so a wrong centre fails visibly here. */
+	const TArray<FVector> EavesCentres = BackEavesCutCentres();
+	TArray<int32> EavesPieces;
+	for (const FVector& CentreCm : EavesCentres)
+	{
+		const int32 P = PieceContaining(Layout, CentreCm);
+		TestTrue(*FString::Printf(TEXT("ARM 0: a ClayBrick sits at back-eaves centre (%.3f, %.3f, %.3f)"),
+			CentreCm.X, CentreCm.Y, CentreCm.Z),
+			P != INDEX_NONE && Layout.Structure.GetPiece(P).Material == &ClayBrick);
+		if (P != INDEX_NONE)
+		{
+			EavesPieces.Add(P);
+		}
+	}
 
 	/* ================================================================================
-	 * ARM 1 — THE RED. The row must NAME the case-A cut: the two bricks the door lintel bears on. Today the
-	 * row's CutCentresCm is empty (slice 5), so Build resolves an empty cut and both assertions fail. Dev
-	 * adds the two bearing centres to CutCentresCm (and relaxes ShedRealisticRow's Cut.Num()==0 placeholder).
+	 * ARM 1 — THE RED. The row must NAME the back-eaves cut: the nine course-15 bricks under the back gable.
+	 * Before the rewire the row names the OLD two-brick door-lintel cut, so these assertions fail. Dev replaces
+	 * the row's CutCentresCm with the nine centres (and relaxes ShedRealisticRow's Cut.Num() pin to nine).
 	 * ================================================================================ */
 
-	TestTrue(
-		*FString::Printf(TEXT("RED: the '%s' row must NAME a cut so the level pulls bricks — it names %d "
-			"today. Dev adds the two door-lintel bearing centres to the row's CutCentresCm."),
+	TestEqual(
+		*FString::Printf(TEXT("RED: the '%s' row must NAME the nine back-eaves bricks — it names %d today"),
 			RealisticScenarioName, Cut.Num()),
-		Cut.Num() >= 1);
+		Cut.Num(), EavesCentres.Num());
 
-	const bool bCutNamesLeft = BearingLeft != INDEX_NONE && Cut.Contains(BearingLeft);
-	const bool bCutNamesRight = BearingRight != INDEX_NONE && Cut.Contains(BearingRight);
-
-	TestTrue(
-		TEXT("RED: the cut must name the LEFT door-lintel bearing brick (44.5, 5.125, 85.75)"),
-		bCutNamesLeft);
-	TestTrue(
-		TEXT("RED: the cut must name the RIGHT door-lintel bearing brick (134.5, 5.125, 85.75)"),
-		bCutNamesRight);
+	int32 NamedEaves = 0;
+	for (const int32 P : EavesPieces)
+	{
+		if (Cut.Contains(P))
+		{
+			++NamedEaves;
+		}
+	}
+	TestEqual(
+		TEXT("RED: the cut must name every one of the nine back-eaves bricks"),
+		NamedEaves, EavesPieces.Num());
 
 	/* ================================================================================
-	 * ARM 2 — THE COLLAPSE, THROUGH THE PRODUCTION WORLD PATH. Apply the row's cut if it named one, else
-	 * pull the two bearing bricks ourselves so the router-correct collapse is exercised now and the
+	 * ARM 2 — THE COLLAPSE, THROUGH THE PRODUCTION WORLD PATH. Apply the row's cut if it named the nine
+	 * back-eaves bricks, else pull them ourselves so the router-correct collapse is exercised now and the
 	 * assertions are proven to fail (in ARM 1) only for want of the CUT DATA — not a wrong physics claim.
 	 * At 442 blocks SolveAndBreak's authority is the ROUTER. Support-state only, never displacement.
 	 * ================================================================================ */
@@ -283,41 +305,57 @@ bool FRealisticShedCollapseRowTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
+		const int32 BackGableBase = PieceContaining(Pulled, BackGableBasePt);
+		const int32 BackGableApex = PieceContaining(Pulled, BackGableApexPt);
 		const int32 DoorLintel = PieceContaining(Pulled, DoorLintelPt);
 		const int32 WindowLintel = PieceContaining(Pulled, WindowLintelPt);
+		const int32 FrontGableApex = PieceContaining(Pulled, FrontGableApexPt);
+		const int32 BackWallBody = PieceContaining(Pulled, BackWallBodyPt);
+		const int32 PostL = PieceContaining(Pulled, PostLPt);
 		const int32 Ridge = RidgePiece(Pulled);
-		const int32 BackWall = PieceContaining(Pulled, BackWallPt);
 
-		TestTrue(TEXT("ARM 2: the door lintel, window lintel, ridge and a back-wall brick must all be found"),
-			DoorLintel != INDEX_NONE && WindowLintel != INDEX_NONE && Ridge != INDEX_NONE
-				&& BackWall != INDEX_NONE);
+		TestTrue(TEXT("ARM 2: the back gable base and apex, and the spared probe pieces, must all be found"),
+			BackGableBase != INDEX_NONE && BackGableApex != INDEX_NONE && DoorLintel != INDEX_NONE
+				&& WindowLintel != INDEX_NONE && FrontGableApex != INDEX_NONE && BackWallBody != INDEX_NONE
+				&& PostL != INDEX_NONE);
 
-		/* Apply the row's own cut — the removal the level performs. */
+		/* Apply the row's own cut, but only if it is the back-eaves cut this test drives. */
 		int32 Applied = 0;
-		for (const int32 Piece : PulledCut)
+		bool bCutIsBackEaves = PulledCut.Num() == EavesCentres.Num();
+		if (bCutIsBackEaves)
 		{
-			if (Pulled.Structure.RemovePiece(Piece))
+			for (const FVector& CentreCm : EavesCentres)
 			{
-				++Applied;
+				const int32 P = PieceContaining(Pulled, CentreCm);
+				bCutIsBackEaves = bCutIsBackEaves && P != INDEX_NONE && PulledCut.Contains(P);
+			}
+		}
+		if (bCutIsBackEaves)
+		{
+			for (const int32 Piece : PulledCut)
+			{
+				if (Pulled.Structure.RemovePiece(Piece))
+				{
+					++Applied;
+				}
 			}
 		}
 
-		/* FALLBACK so ARM 2 says something on an un-wired row: pull the two bearing bricks ourselves. This
-		 * is the case-A removal hand-derived above; it makes ARM 2 green now and once the cut lands the row
-		 * performs the identical removal, so ARM 2 stays green while ARM 1 flips green with the cut. */
+		/* FALLBACK so ARM 2 says something on an un-rewired row: pull the nine back-eaves bricks ourselves.
+		 * This makes ARM 2 green now and, once the cut lands, the row performs the identical removal, so ARM 2
+		 * stays green while ARM 1 flips green with the cut. */
 		if (Applied == 0)
 		{
-			const int32 L = PieceContaining(Pulled, LintelBearingLeft);
-			const int32 R = PieceContaining(Pulled, LintelBearingRight);
-			if (L != INDEX_NONE)
+			for (const FVector& CentreCm : EavesCentres)
 			{
-				Pulled.Structure.RemovePiece(L);
+				const int32 P = PieceContaining(Pulled, CentreCm);
+				if (P != INDEX_NONE && Pulled.Structure.RemovePiece(P))
+				{
+					++Applied;
+				}
 			}
-			if (R != INDEX_NONE)
-			{
-				Pulled.Structure.RemovePiece(R);
-			}
-			AddInfo(TEXT("ARM 2: row named no cut yet — pulled the two bearing bricks via fallback."));
+			AddInfo(FString::Printf(
+				TEXT("ARM 2: row did not name the back-eaves cut yet — pulled %d bricks via fallback."), Applied));
 		}
 
 		const int32 Passes = Pulled.Structure.SolveAndBreak();
@@ -325,35 +363,53 @@ bool FRealisticShedCollapseRowTest::RunTest(const FString& Parameters)
 		const int32 LostEarth = LostEarthCount(Pulled.Structure);
 
 		AddInfo(FString::Printf(
-			TEXT("ARM 2: production ran %d pass(es); %d stranded; %d lost the earth."),
-			Passes, Stranded, LostEarth));
+			TEXT("ARM 2: removed %d brick(s); production ran %d pass(es); %d stranded; %d lost the earth."),
+			Applied, Passes, Stranded, LostEarth));
+		AddInfo(FString::Printf(
+			TEXT("ARM 2: support — backGableBase %d, backGableApex %d, ridge %d, doorLintel %d, "
+				"windowLintel %d, frontGableApex %d, backWallBody %d, postL %d."),
+			static_cast<int32>(Pulled.Structure.GetPieceSupport(BackGableBase)),
+			static_cast<int32>(Pulled.Structure.GetPieceSupport(BackGableApex)),
+			Ridge == INDEX_NONE ? -1 : static_cast<int32>(Pulled.Structure.GetPieceSupport(Ridge)),
+			static_cast<int32>(Pulled.Structure.GetPieceSupport(DoorLintel)),
+			static_cast<int32>(Pulled.Structure.GetPieceSupport(WindowLintel)),
+			static_cast<int32>(Pulled.Structure.GetPieceSupport(FrontGableApex)),
+			static_cast<int32>(Pulled.Structure.GetPieceSupport(BackWallBody)),
+			static_cast<int32>(Pulled.Structure.GetPieceSupport(PostL))));
 
 		/* A CLEAN COLLAPSE, NOT A ROUTING KNOT. Nothing may be Stranded, or a routing limitation would be
 		 * wearing the collapse's clothes (DESIGN.md §4). */
 		TestEqual(TEXT("ARM 2: nothing may be Stranded — the fall must be about the shed, not the router declining"),
 			Stranded, 0);
 
-		/* THE DOOR HEAD DROPS. The lintel lost both its bearings, so it loses the earth; the door-head
-		 * masonry above it comes down with it — a chunk (>= 3 pieces), not one loose brick. Mechanism /
-		 * support-state, never displacement. */
+		/* THE BACK GABLE DROPS AS A BIG CHUNK — its footing is gone and it has no lateral abutment. A large,
+		 * camera-facing fall (>= 15 pieces), mechanism / support-state, never displacement. */
 		TestTrue(
-			*FString::Printf(TEXT("ARM 2: the door lintel (piece %d, support %d) must lose the earth — its two "
-				"bearings are gone"), DoorLintel, static_cast<int32>(Pulled.Structure.GetPieceSupport(DoorLintel))),
-			HasLostTheEarth(Pulled.Structure, DoorLintel));
+			*FString::Printf(TEXT("ARM 2: the back gable base (piece %d, support %d) must lose the earth"),
+				BackGableBase, static_cast<int32>(Pulled.Structure.GetPieceSupport(BackGableBase))),
+			HasLostTheEarth(Pulled.Structure, BackGableBase));
+		TestTrue(
+			*FString::Printf(TEXT("ARM 2: the back gable apex (piece %d, support %d) must lose the earth"),
+				BackGableApex, static_cast<int32>(Pulled.Structure.GetPieceSupport(BackGableApex))),
+			HasLostTheEarth(Pulled.Structure, BackGableApex));
 
 		TestTrue(
-			*FString::Printf(TEXT("ARM 2: the door head comes down as a chunk — >= 3 pieces lose the earth (got %d)"),
-				LostEarth),
-			LostEarth >= 3);
+			*FString::Printf(TEXT("ARM 2: a big section comes down — >= 15 pieces lose the earth (got %d)"), LostEarth),
+			LostEarth >= 15);
 
-		/* THE REST OF THE SHED KEEPS THE EARTH — the fall is local to the door head. The window lintel on the
-		 * far (left) wall, the ridge, and a back-wall brick are all independent of the door piers. */
-		TestTrue(TEXT("ARM 2: the window lintel on the far wall keeps the earth"),
+		/* THE REST OF THE SHED KEEPS THE EARTH — the fall is local to the back gable. The door head and window
+		 * lintel on the far walls, the FRONT gable, the back-wall body below the cut, and the porch posts are all
+		 * independent of the back eaves course. */
+		TestTrue(TEXT("ARM 2: the door lintel on the front wall keeps the earth"),
+			IsStanding(Pulled.Structure.GetPieceSupport(DoorLintel)));
+		TestTrue(TEXT("ARM 2: the window lintel on the left wall keeps the earth"),
 			IsStanding(Pulled.Structure.GetPieceSupport(WindowLintel)));
-		TestTrue(TEXT("ARM 2: the ridge keeps the earth"),
-			IsStanding(Pulled.Structure.GetPieceSupport(Ridge)));
-		TestTrue(TEXT("ARM 2: a back-wall brick keeps the earth"),
-			IsStanding(Pulled.Structure.GetPieceSupport(BackWall)));
+		TestTrue(TEXT("ARM 2: the FRONT gable apex keeps the earth (independent of the back gable)"),
+			IsStanding(Pulled.Structure.GetPieceSupport(FrontGableApex)));
+		TestTrue(TEXT("ARM 2: a back-wall brick below the cut keeps the earth"),
+			IsStanding(Pulled.Structure.GetPieceSupport(BackWallBody)));
+		TestTrue(TEXT("ARM 2: the left porch post keeps the earth"),
+			IsStanding(Pulled.Structure.GetPieceSupport(PostL)));
 	}
 
 	return true;

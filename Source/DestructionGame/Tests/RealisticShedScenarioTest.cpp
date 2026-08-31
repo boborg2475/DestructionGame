@@ -27,9 +27,10 @@
  * of two grounded Timber posts carrying a cantilevered overhang over the door — as a
  * structure FLAGGED 3D (IsThreeDimensional), which STANDS through the PRODUCTION world path (FStructure::
  * SolveAndBreak, whose above-cap authority is the ROUTER's per-joint capacity sweep — the shed is 442 blocks,
- * far above the 200-block equilibrium-gate cap). The row now NAMES a collapse cut — the two bricks the door
- * lintel bears on — but this test proves only that the cut RESOLVES (two pieces) and does NOT apply it, so the
- * shed still stands as built; applying that cut and watching the door head fall is ShedRealisticCollapseRow.
+ * far above the 200-block equilibrium-gate cap). The row now NAMES a collapse cut — the nine bricks of the
+ * back wall's top (eaves) course — but this test proves only that the cut RESOLVES (nine pieces) and does NOT
+ * apply it, so the shed still stands as built; applying that cut and watching the back gable end come down is
+ * ShedRealisticCollapseRow.
  *
  * =====================================================================================
  * WHY THIS IS THE CATALOGUE / WORLD PATH, NOT A SECOND COPY OF THE BUILDER TEST
@@ -50,7 +51,7 @@
  *
  * WHY THE ASSERTIONS ARE ON MECHANISM AND OUTCOME, NEVER DISPLACEMENT. Stands is asserted as production's
  * SolveAndBreak leaving Stranded == 0 and the spanning pieces (the two lintels, the ridge) reading Supported
- * through the world path — not as any piece having moved. Two pieces can sever and rest exactly in place, so
+ * through the world path — not as any piece having moved. A severed piece can rest exactly in place, so
  * no displacement is measured. There is no collapse arm HERE because this test does not APPLY the cut it names;
  * the collapse itself is proven by ShedRealisticCollapseRow.
  *
@@ -266,12 +267,13 @@ bool FRealisticShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the shed knows where every piece and joint is (else every moment is silently zero)"),
 		Layout.Structure.HasCompleteGeometry());
 
-	/* THE ROW NAMES THE COLLAPSE CUT — the two course-11 pier-top bricks the door lintel bears on. This test
-	 * only proves the cut is NAMED (two pieces) and does not apply it: Build resolves the cut but leaves it to
-	 * the level to remove, so the shed still stands as built below. The collapse is ShedRealisticCollapseRow. */
+	/* THE ROW NAMES THE COLLAPSE CUT — the nine bricks of the back wall's eaves course (the footing under the
+	 * back gable). This test only proves the cut is NAMED (nine pieces) and does not apply it: Build resolves
+	 * the cut but leaves it to the level to remove, so the shed still stands as built below. The collapse is
+	 * ShedRealisticCollapseRow. */
 	TestEqual(
-		TEXT("the realistic shed row names the two-brick door-lintel-bearing cut — resolved but not applied here"),
-		Cut.Num(), 2);
+		TEXT("the realistic shed row names the nine-brick back-eaves cut — resolved but not applied here"),
+		Cut.Num(), 9);
 
 	/* ================================================================================
 	 * ARM 1 — THE ASSEMBLED REALISTIC SHED STANDS THROUGH THE PRODUCTION WORLD PATH. At 442 blocks it is above

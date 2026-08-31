@@ -816,27 +816,37 @@ namespace DestructionScenarios
 		 * pieces in all. The builder flags the structure 3D (SetThreeDimensional) so the bridge
 		 * poses its out-of-plane corner joints, which is why this row carries its own distinct map.
 		 *
-		 * THE CUT PULLS THE TWO BRICKS THE DOOR LINTEL BEARS ON, AND THAT IS THE COLLAPSE. The Timber door
-		 * lintel beds on exactly two course-11 pier-top bricks — the left and right bearings either side of the
-		 * door gap. Knock both out and the door head has no downward path left: the lintel and the masonry
-		 * coursing above it drop, while the rest of the shed keeps standing. At 442 blocks the shed is far
-		 * above the 200-block equilibrium-gate cap, so the world path's break authority is the router, not the
-		 * 3D LP — and the router routes load down bed joints, so it correctly strands the door head (8 pieces
-		 * lose the earth, nothing is stranded).
+		 * THE CUT REMOVES THE BACK WALL'S EAVES COURSE, AND THAT IS THE COLLAPSE. The back gable — its stepped
+		 * courses 16..19, twenty bricks narrowing to the apex — is a free-standing triangle bedding on the eaves
+		 * course (course 15) and has NO lateral abutment to arch to. Knock out that whole top course and the
+		 * gable's footing is gone at once: the entire back gable end loses its downward path and comes down,
+		 * while the wall body below the cut (a bonded deep beam) and the far side of the shed keep standing.
+		 *
+		 * WHY THE BACK WALL, AND WHY THE GABLE. The row is framed ThreeQuarter, so ViewpointFor puts the camera
+		 * in the +X/+Y/+Z octant looking DOWN at the box; it most directly faces the +Y BACK wall and sees the
+		 * roof, while the -Y door face points away. The back wall is the widest camera-facing face and a gable
+		 * end, so its stepped top is the most visible thing in frame — dropping it reads unmistakably in a
+		 * render. A low band cut out of the wall BODY would only deep-beam over the gap and stand (as the
+		 * acceptance walls do); the gable is the section that genuinely falls.
+		 *
+		 * At 442 blocks the shed is far above the 200-block equilibrium-gate cap, so the world path's break
+		 * authority is the router, not the 3D LP — and the router routes load down bed joints, so pulling the
+		 * gable's footing correctly drops it: MEASURED, 24 pieces lose the earth (the twenty-brick back gable end
+		 * and the four roof purlins that bore on its shoulders) and NOTHING is stranded, a clean and big collapse.
 		 */
 		FScenario& ShedRealistic = Rows.AddDefaulted_GetRef();
 
 		ShedRealistic.Name = FName(TEXT("shedrealistic"));
 		ShedRealistic.MapName = TEXT("Lvl_ShedRealistic");
 		ShedRealistic.Title =
-			TEXT("A real-brick shed — knock the bricks out under the door lintel and the door head comes down");
+			TEXT("A real-brick shed — knock out the back eaves course and the whole back gable end comes down");
 
 		ShedRealistic.Expectation = TEXT(
 			"A brick shed built from real-sized clay bricks: four running-bond walls with a door and a window "
 			"under wooden lintels rise to stepped gables carrying a wooden gable roof, and a wooden porch stands "
 			"over the door on two posts. It stands as laid, the whole 442-piece shed holding under its own weight "
-			"— until you knock out the two bricks the door lintel bears on, and the door head drops while the rest "
-			"of the shed keeps standing.");
+			"— until you knock out the top (eaves) course of the back wall, and the entire back gable end above "
+			"it comes down in a heap while the rest of the shed keeps standing.");
 
 		ShedRealistic.LayStructure = [](DestructionLayout::FBrickLayout& OutLayout)
 		{
@@ -851,16 +861,24 @@ namespace DestructionScenarios
 		ShedRealistic.Framing = EScenarioFraming::ThreeQuarter;
 
 		/*
-		 * THE CUT IS THE TWO COURSE-11 PIER-TOP BRICKS THE DOOR LINTEL BEARS ON, NAMED BY THEIR EXACT BOX
-		 * CENTRES. The door gap is X[57.5,122.5] and the Timber lintel occupies course 12 with footprint
-		 * X[50,130]; in the running bond the only masonry one bed joint below the lintel is these two odd-course
-		 * pier tops — the left brick X[33.75,55.25] centred (44.5, 5.125, 85.75), the right X[123.75,145.25]
-		 * centred (134.5, 5.125, 85.75). Pull both and the lintel and the door-head bricks bedding onto it have
-		 * no downward path left; through the router 8 pieces lose the earth and nothing is stranded, while the
-		 * far wall's window lintel, the ridge, the back wall and the porch posts all keep the earth.
+		 * THE CUT IS THE NINE BRICKS OF THE BACK WALL'S EAVES COURSE (course 15), NAMED BY THEIR EXACT BOX
+		 * CENTRES. The back wall runs along X in the Y band [123.75, 134] (Y centre 128.875) from RunStart 0,
+		 * eight full bricks per even course, sixteen courses. Course 15 is odd, so it is a half bat, seven full
+		 * bricks and a closing half bat — nine pieces at X centres 5.125, 22.0, 44.5, 67.0, 89.5, 112.0, 134.5,
+		 * 157.0, 173.875, all at Z = 15 * 7.5 + 3.25 = 115.75. This whole course is the footing of the back
+		 * gable (courses 16..19); pull it and the gable comes down. Each centre lands on its brick to the ulp,
+		 * and ScenariosPieceAtCentre resolves it to that brick's handle.
 		 */
-		ShedRealistic.CutCentresCm.Add(FVector(44.5, 5.125, 85.75));
-		ShedRealistic.CutCentresCm.Add(FVector(134.5, 5.125, 85.75));
+		const double ShedRealisticEavesYCm = 128.875;
+		const double ShedRealisticEavesZCm = 115.75;
+		const double ShedRealisticEavesXsCm[] =
+			{ 5.125, 22.0, 44.5, 67.0, 89.5, 112.0, 134.5, 157.0, 173.875 };
+
+		for (const double EavesXCm : ShedRealisticEavesXsCm)
+		{
+			ShedRealistic.CutCentresCm.Add(
+				FVector(EavesXCm, ShedRealisticEavesYCm, ShedRealisticEavesZCm));
+		}
 
 		return Rows;
 	}
