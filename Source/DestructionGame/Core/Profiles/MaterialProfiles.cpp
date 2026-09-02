@@ -117,32 +117,49 @@ namespace DestructionProfiles
 	 * that goes in — not the 350 kg/m3 characteristic density the same table lists
 	 * for connection design. UNITS TRAP: 0.42, never 420.
 	 *
-	 * THE STRENGTHS ARE THE CHARACTERISTIC AXIAL PARALLEL-TO-GRAIN CAPACITIES, mapped
-	 * onto FConnectionStrength the same way concrete and brick map their own
-	 * directional strengths:
+	 * THE STRENGTHS ARE THE MEAN AXIAL PARALLEL-TO-GRAIN CAPACITIES, mapped onto
+	 * FConnectionStrength the same way concrete and brick map their own directional
+	 * strengths:
 	 *
-	 * Compressive 21 MPa — f_c,0,k, compression parallel to grain (EN 338 C24).
+	 * Compressive 29 MPa — f_c,0 mean, compression parallel to grain.
 	 *
-	 * Tensile 14 MPa — f_t,0,k, tension parallel to grain. THIS IS WHY TIMBER IS NOT
+	 * Tensile 23 MPa — f_t,0 mean, tension parallel to grain. THIS IS WHY TIMBER IS NOT
 	 * COMPRESSION-DOMINANT: wood genuinely carries tension along the grain at a large
-	 * fraction of its crushing strength (14 against 21, 1.5x), where masonry pulls
-	 * apart at a fraction of a tenth of it. That is the whole point of adding a second,
-	 * dissimilar material — it proves the directional code reads the profile rather
-	 * than having masonry's ratios baked in.
+	 * fraction of its crushing strength (23 against 29), where masonry pulls apart at a
+	 * fraction of a tenth of it. That is the whole point of adding a second, dissimilar
+	 * material — it proves the directional code reads the profile rather than having
+	 * masonry's ratios baked in.
 	 *
-	 * Shear 4.0 MPa — f_v,k. Stored in ShearCohesionMPa, the material's own shear
+	 * Shear 6.0 MPa — f_v mean. Stored in ShearCohesionMPa, the material's own shear
 	 * capacity, the same convention concrete's 7.6 and brick's 3.0 follow.
 	 *
-	 * EDITION NOTE: f_v,k = 4.0 and rho_mean = 420 are the EN 338:2016 figures
-	 * (pre-2016 C24 shear was 2.5); f_t,0,k is kept at the pre-2016 14.0 rather than
-	 * 2016's 14.5 — all are published C24 values, and 14.0 gives the clean 7/14 = 0.5
-	 * the round-trip test uses to catch a compressive/tensile field swap. f_c,0,k 21
-	 * and the density are edition-stable.
+	 * MEAN BASIS — the 2026-09-02 re-anchor (item 6a), bringing the last profile row
+	 * onto the same footing every masonry row was flipped to on 2026-08-13/14
+	 * (DESIGN.md §3): the library carries MEASURED MEANS, not code characteristics,
+	 * because verdicts ruled at 5-percentile design values are 3-8x pessimistic against
+	 * real members. The retired figures were EN 338 C24's CHARACTERISTIC (5-percentile)
+	 * f_c,0,k 21 / f_t,0,k 14 / f_v,k 4.0.
 	 *
-	 * NOT THE MEMBER-BENDING 36/6 the beam-acceptance fixtures use: those are a
-	 * whole-stress-block bending derivation for a different limit state and are
-	 * deliberately kept out of any joint field. This profile is the axial/shear
-	 * joint-field convention, so the axial characteristic strengths are the right
+	 * THE CHAR -> MEAN FACTOR IS PER-PROPERTY, NOT A BLANKET SCALE (exactly as the
+	 * masonry re-anchor was), because the coefficient of variation differs by property.
+	 * EN 384 / EN 1990 define the characteristic as the 5-percentile of a lognormal
+	 * fit, so mean = char x exp(1.645 x sqrt(ln(1 + CoV^2))). JCSS PMC Part 3.5 Table 2
+	 * gives European softwood its per-property CoVs:
+	 *
+	 *     f_c,0 : CoV 0.20 -> factor 1.385 -> 21 x 1.385 = 29.1, pinned 29
+	 *     f_t,0 : CoV 0.30 -> factor 1.621 -> 14 x 1.621 = 22.7, pinned 23
+	 *     f_v   : CoV 0.25 -> factor 1.499 ->  4 x 1.499 =  6.0, pinned 6.0
+	 *
+	 * The shear CoV 0.25 and its factor 1.499 cross-check against the bending row the
+	 * beam fixtures already trust: EN 338's f_m,k 24 through the same factor is
+	 * 24 x 1.499 = 36.0, exactly BeamAcceptanceTest's independently derived C24 mean
+	 * bending, and exactly its C24ShearMPa 6.0. That the two files land on the same
+	 * shear mean by the same JCSS CoV, derived apart, is the anchor for the factor.
+	 *
+	 * NOT THE MEMBER-BENDING 36/6 the beam-acceptance fixtures use for the axial
+	 * fields: those are a whole-stress-block bending derivation for a different limit
+	 * state and are deliberately kept out of any joint field. This profile is the
+	 * axial/shear joint-field convention, so the axial MEAN strengths are the right
 	 * numbers.
 	 *
 	 * FrictionCoefficient zero and MaxShear unbounded, like the other materials — a
@@ -153,9 +170,9 @@ namespace DestructionProfiles
 	const FMaterialProfile Timber{
 		/*DensityGramsPerCubicCm*/ 0.42,
 		FConnectionStrength{
-			/*Compressive*/ 21.0,
-			/*ShearCohesion*/ 4.0,
-			/*Tensile*/ 14.0,
+			/*Compressive*/ 29.0,
+			/*ShearCohesion*/ 6.0,
+			/*Tensile*/ 23.0,
 			/*FrictionCoefficient*/ 0.0
 		},
 		/*BondFactor*/ 1.0,

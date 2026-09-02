@@ -865,25 +865,46 @@ bool FProfileLibraryFastenerUncouplingTest::RunTest(const FString& Parameters)
  * that those values are wired into the real ComputeUtilisation path rather than
  * merely typed.
  *
- * WHY CHARACTERISTIC PARALLEL-TO-GRAIN STRENGTHS, AND WHICH FIELD EACH MAPS TO.
+ * WHY MEAN PARALLEL-TO-GRAIN STRENGTHS, AND WHICH FIELD EACH MAPS TO.
  * StructuralConcrete and ClayBrick store a material's OWN directional strengths in
  * FConnectionStrength's compressive / shear / tensile fields — 38/7.6/3.0 and
  * 20/3.0/2.0 respectively. The matching C24 quantities are its axial
  * parallel-to-grain capacities, so the convention maps cleanly:
  *
- *     CompressiveStrengthMPa <- f_c,0,k = 21   (compression parallel to grain)
- *     TensileStrengthMPa     <- f_t,0,k = 14   (tension parallel to grain)
- *     ShearCohesionMPa       <- f_v,k   = 4.0  (shear)
+ *     CompressiveStrengthMPa <- f_c,0,mean = 29   (compression parallel to grain)
+ *     TensileStrengthMPa     <- f_t,0,mean = 23   (tension parallel to grain)
+ *     ShearCohesionMPa       <- f_v,mean   = 6.0  (shear)
  *
- * These are the EN 338 CHARACTERISTIC (5-percentile) figures, NOT the mean-basis
- * uplift the beam-bending fixtures use (36/6). BeamAcceptanceTest's 36 is a
- * member-BENDING derivation for a different concern — a whole stress block checked
- * by one ratio — and it deliberately does not hand f_c,0,k / f_t,0,k to any joint
- * field. This material profile IS the axial/shear joint-field convention, so the
- * axial characteristic strengths are the right numbers, and matching
- * StructuralConcrete/ClayBrick means these are the values that flow through
- * ComputeUtilisation. Density is the mean rho_mean = 420 kg/m3 = 0.42 g/cm3,
- * because weight is the only thing density does and what a beam weighs is the mean.
+ * MEAN BASIS — the 2026-09-02 re-anchor (item 6a), bringing the last profile row
+ * onto the same footing every masonry row was flipped to on 2026-08-13/14
+ * (DESIGN.md §3): the library carries MEASURED MEANS, not code characteristics,
+ * because verdicts ruled at 5-percentile design values are 3-8x pessimistic against
+ * real members. The retired figures were EN 338 C24's CHARACTERISTIC (5-percentile)
+ * f_c,0,k 21 / f_t,0,k 14 / f_v,k 4.0.
+ *
+ * THE CHAR -> MEAN FACTOR IS PER-PROPERTY, NOT A BLANKET SCALE (exactly as the
+ * masonry re-anchor was), because the coefficient of variation differs by property.
+ * EN 384 / EN 1990 define the characteristic as the 5-percentile of a lognormal
+ * fit, so mean = char x exp(1.645 x sqrt(ln(1 + CoV^2))). JCSS PMC Part 3.5 Table 2
+ * gives European softwood its per-property CoVs:
+ *
+ *     f_c,0 : CoV 0.20 -> factor 1.385 -> 21 x 1.385 = 29.1, pinned 29
+ *     f_t,0 : CoV 0.30 -> factor 1.621 -> 14 x 1.621 = 22.7, pinned 23
+ *     f_v   : CoV 0.25 -> factor 1.499 ->  4 x 1.499 =  6.0, pinned 6.0
+ *
+ * The shear CoV 0.25 and its factor 1.499 are cross-checked in the test against the
+ * bending row the file already trusts: EN 338's f_m,k 24 through the same factor is
+ * 24 x 1.499 = 36.0, exactly BeamAcceptanceTest's independently derived C24 mean
+ * bending, and exactly its C24ShearMPa 6.0. That the two files land on the same
+ * shear mean by the same JCSS CoV, derived apart, is the anchor for the factor.
+ *
+ * NOT the member-BENDING derivation itself (36/6) for the axial fields: that is a
+ * whole-stress-block check for a different limit state and deliberately reaches no
+ * joint field. This material profile IS the axial/shear joint-field convention, so
+ * the axial MEAN strengths are the right numbers, and matching StructuralConcrete/
+ * ClayBrick means these are the values that flow through ComputeUtilisation.
+ * Density is unchanged — already the mean rho_mean = 420 kg/m3 = 0.42 g/cm3, because
+ * weight is the only thing density does and what a beam weighs is the mean.
  *
  * UNITS TRAP (DESIGN.md §3): density is g/cm3 (0.42, never 420), strengths are SI
  * MPa, and ComputeUtilisation needs an AREA — ForceForMPa spells the 1 N = 100 uu,
@@ -893,7 +914,7 @@ bool FProfileLibraryFastenerUncouplingTest::RunTest(const FString& Parameters)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FProfileLibraryTimberProfileTest,
-	"DestructionGame.Core.Profiles.TimberIsCharacterisedC24Softwood",
+	"DestructionGame.Core.Profiles.TimberIsMeanBasisC24Softwood",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FProfileLibraryTimberProfileTest::RunTest(const FString& Parameters)
@@ -903,14 +924,82 @@ bool FProfileLibraryTimberProfileTest::RunTest(const FString& Parameters)
 	constexpr double Tolerance = 1e-9;
 
 	/*
-	 * EN 338 C24, published. Declared here as the external anchor the profile must
-	 * reproduce, so the assertions fail if the library stores a different number
-	 * rather than agreeing with whatever it happens to hold.
+	 * EN 338 C24 CHARACTERISTIC (5-percentile) parallel-to-grain figures, published.
+	 * These are the RETIRED anchors — kept here only as the base the mean is derived
+	 * FROM, and to prove the profile has moved OFF them.
 	 */
-	constexpr double C24DensityGramsPerCubicCm = 0.42;   // rho_mean 420 kg/m3
-	constexpr double C24CompressiveMPa = 21.0;           // f_c,0,k, compression parallel
-	constexpr double C24TensileMPa = 14.0;               // f_t,0,k, tension parallel
-	constexpr double C24ShearMPa = 4.0;                  // f_v,k
+	constexpr double C24CompressiveCharMPa = 21.0;       // f_c,0,k, compression parallel
+	constexpr double C24TensileCharMPa = 14.0;           // f_t,0,k, tension parallel
+	constexpr double C24ShearCharMPa = 4.0;              // f_v,k
+
+	/*
+	 * JCSS PMC Part 3.5 Table 2 per-property CoVs for European structural softwood.
+	 * The char->mean factor is NOT blanket: compression is the tightest-varying
+	 * property, tension the widest, shear between them — exactly why the masonry
+	 * re-anchor was derived per property too.
+	 */
+	constexpr double CoVCompression = 0.20;
+	constexpr double CoVTension = 0.30;
+	constexpr double CoVShear = 0.25;
+
+	/*
+	 * EN 384 / EN 1990: the characteristic is the 5-percentile of a lognormal fit,
+	 * so mean = char x exp(1.645 x sqrt(ln(1 + CoV^2))). Spelled out here, NOT
+	 * imported from any production constant, so a wrong factor fails this test rather
+	 * than agreeing with the code.
+	 */
+	const auto MeanFromCharacteristic = [](double CharMPa, double CoV)
+	{
+		const double SigmaLn = FMath::Sqrt(FMath::Loge(1.0 + CoV * CoV));
+		return CharMPa * FMath::Exp(1.645 * SigmaLn);
+	};
+
+	const double C24CompressiveRawMean = MeanFromCharacteristic(C24CompressiveCharMPa, CoVCompression); // ~29.09
+	const double C24TensileRawMean = MeanFromCharacteristic(C24TensileCharMPa, CoVTension);             // ~22.69
+	const double C24ShearRawMean = MeanFromCharacteristic(C24ShearCharMPa, CoVShear);                   // ~6.00
+
+	/*
+	 * THE PINNED, ROUNDED MEAN VALUES the profile must carry — the contract this
+	 * re-anchor establishes. Rounded to clean figures the way BeamAcceptanceTest
+	 * rounds its own C24 means (36.0, 6.0); the RawMean cross-checks below prove each
+	 * rounding stays a faithful mean rather than a number someone liked.
+	 */
+	constexpr double C24CompressiveMeanMPa = 29.0;
+	constexpr double C24TensileMeanMPa = 23.0;
+	constexpr double C24ShearMeanMPa = 6.0;
+
+	/*
+	 * The rounding sanity band: each pinned mean must sit within 3% of the raw
+	 * lognormal derivation. This is far tighter than the 27-38% gap up to the
+	 * characteristic, so passing it PROVES the pin is the mean and not the retired
+	 * 5-percentile figure.
+	 */
+	TestTrue(
+		FString::Printf(TEXT("pinned compressive mean %g must be within 3%% of the derived %g (char 21, CoV 0.20)"),
+			C24CompressiveMeanMPa, C24CompressiveRawMean),
+		FMath::IsNearlyEqual(C24CompressiveMeanMPa, C24CompressiveRawMean, 0.03 * C24CompressiveRawMean));
+	TestTrue(
+		FString::Printf(TEXT("pinned tensile mean %g must be within 3%% of the derived %g (char 14, CoV 0.30)"),
+			C24TensileMeanMPa, C24TensileRawMean),
+		FMath::IsNearlyEqual(C24TensileMeanMPa, C24TensileRawMean, 0.03 * C24TensileRawMean));
+	TestTrue(
+		FString::Printf(TEXT("pinned shear mean %g must be within 3%% of the derived %g (char 4.0, CoV 0.25)"),
+			C24ShearMeanMPa, C24ShearRawMean),
+		FMath::IsNearlyEqual(C24ShearMeanMPa, C24ShearRawMean, 0.03 * C24ShearRawMean));
+
+	/*
+	 * THE FACTOR, CROSS-CHECKED against the bending row the file already trusts.
+	 * EN 338's f_m,k = 24 through the SAME shear CoV 0.25 must reproduce the mean
+	 * bending 36.0 that BeamAcceptanceTest derived independently — so the two files
+	 * agree on the char->mean factor without sharing a line of it.
+	 */
+	const double C24BendingRawMean = MeanFromCharacteristic(24.0, CoVShear);
+	TestTrue(
+		FString::Printf(TEXT("cross-check: f_m,k 24 x the CoV-0.25 factor should give the file's mean bending 36, got %g"),
+			C24BendingRawMean),
+		FMath::IsNearlyEqual(C24BendingRawMean, 36.0, 0.03 * 36.0));
+
+	constexpr double C24DensityGramsPerCubicCm = 0.42;   // rho_mean 420 kg/m3, unchanged
 
 	const FNamedMaterialProfile* TimberRow = nullptr;
 	for (const FNamedMaterialProfile& Row : AllMaterialProfiles())
@@ -939,7 +1028,7 @@ bool FProfileLibraryTimberProfileTest::RunTest(const FString& Parameters)
 	const FMaterialProfile& M = TimberRow->Profile;
 	const FConnectionStrength& S = M.Strength;
 
-	// --- the published values, pinned against the external anchor ---------------
+	// --- the mean values, pinned against the derived anchor ---------------------
 
 	TestTrue(
 		FString::Printf(TEXT("Timber density %g g/cm3 must be EN 338 C24 rho_mean %g g/cm3 (0.42, NOT 420 kg/m3)"),
@@ -947,19 +1036,50 @@ bool FProfileLibraryTimberProfileTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(M.DensityGramsPerCubicCm, C24DensityGramsPerCubicCm, Tolerance));
 
 	TestTrue(
-		FString::Printf(TEXT("Timber compressive %g MPa must be C24 f_c,0,k %g MPa"),
-			S.CompressiveStrengthMPa, C24CompressiveMPa),
-		FMath::IsNearlyEqual(S.CompressiveStrengthMPa, C24CompressiveMPa, Tolerance));
+		FString::Printf(TEXT("Timber compressive %g MPa must be C24 MEAN f_c,0 %g MPa (re-anchored off char 21)"),
+			S.CompressiveStrengthMPa, C24CompressiveMeanMPa),
+		FMath::IsNearlyEqual(S.CompressiveStrengthMPa, C24CompressiveMeanMPa, Tolerance));
 
 	TestTrue(
-		FString::Printf(TEXT("Timber tensile %g MPa must be C24 f_t,0,k %g MPa"),
-			S.TensileStrengthMPa, C24TensileMPa),
-		FMath::IsNearlyEqual(S.TensileStrengthMPa, C24TensileMPa, Tolerance));
+		FString::Printf(TEXT("Timber tensile %g MPa must be C24 MEAN f_t,0 %g MPa (re-anchored off char 14)"),
+			S.TensileStrengthMPa, C24TensileMeanMPa),
+		FMath::IsNearlyEqual(S.TensileStrengthMPa, C24TensileMeanMPa, Tolerance));
 
 	TestTrue(
-		FString::Printf(TEXT("Timber shear %g MPa must be C24 f_v,k %g MPa"),
-			S.ShearCohesionMPa, C24ShearMPa),
-		FMath::IsNearlyEqual(S.ShearCohesionMPa, C24ShearMPa, Tolerance));
+		FString::Printf(TEXT("Timber shear %g MPa must be C24 MEAN f_v %g MPa (re-anchored off char 4.0)"),
+			S.ShearCohesionMPa, C24ShearMeanMPa),
+		FMath::IsNearlyEqual(S.ShearCohesionMPa, C24ShearMeanMPa, Tolerance));
+
+	/*
+	 * THE MEAN-BASIS INVARIANT the masonry rows already satisfy: a mean is the
+	 * average of a distribution whose 5-percentile is the characteristic, so a
+	 * mean-basis profile is STRICTLY STRONGER than its characteristic on every axis.
+	 * This is what catches a half-applied re-anchor — one axis left at char while the
+	 * others moved — that an exact pin on the other two would miss.
+	 */
+	TestTrue(
+		FString::Printf(TEXT("mean basis: compressive %g must exceed characteristic %g"),
+			S.CompressiveStrengthMPa, C24CompressiveCharMPa),
+		S.CompressiveStrengthMPa > C24CompressiveCharMPa);
+	TestTrue(
+		FString::Printf(TEXT("mean basis: tensile %g must exceed characteristic %g"),
+			S.TensileStrengthMPa, C24TensileCharMPa),
+		S.TensileStrengthMPa > C24TensileCharMPa);
+	TestTrue(
+		FString::Printf(TEXT("mean basis: shear %g must exceed characteristic %g"),
+			S.ShearCohesionMPa, C24ShearCharMPa),
+		S.ShearCohesionMPa > C24ShearCharMPa);
+
+	/*
+	 * The re-anchor does NOT touch the trait that makes wood dissimilar from masonry:
+	 * timber still carries tension at a large fraction of its crushing strength
+	 * (23 against 29), so it stays NOT compression-dominant and remains exempt from
+	 * the library's "compressive >= 5x tensile" masonry check.
+	 */
+	TestFalse(
+		FString::Printf(TEXT("timber must stay tension-capable (not compression-dominant): mean %g comp vs %g tens"),
+			S.CompressiveStrengthMPa, S.TensileStrengthMPa),
+		M.bCompressionDominant);
 
 	/*
 	 * --- and the values round-trip through the real code path ------------------
@@ -975,37 +1095,38 @@ bool FProfileLibraryTimberProfileTest::RunTest(const FString& Parameters)
 	 * is therefore the one being loaded, by construction.
 	 *
 	 * 7 MPa is chosen so the three expected utilisations are all DISTINCT —
-	 * 7/21 = 0.3333..., 7/14 = 0.5, 7/4 = 1.75 — so a mis-wiring (e.g. the tensile
-	 * value landing in the compressive field) moves a reading and is caught, which a
-	 * common "half of each limit reads 0.5" probe would hide. Expected values divide
-	 * by the PUBLISHED constant above, independently of what the profile stores.
+	 * 7/29 = 0.2414..., 7/23 = 0.3043..., 7/6 = 1.1667... — so a mis-wiring (e.g. the
+	 * tensile value landing in the compressive field) moves a reading and is caught,
+	 * which a common "half of each limit reads 0.5" probe would hide. Expected values
+	 * divide by the PINNED MEAN constant above, independently of what the profile
+	 * stores.
 	 */
 	constexpr double ProbeStressMPa = 7.0;
 
 	const double CompUtil = DestructionForce::ComputeUtilisation(
 		CompressionOf(ForceForMPa(ProbeStressMPa, JointAreaSqCm)), S, JointAreaSqCm);
-	const double ExpectedCompUtil = ProbeStressMPa / C24CompressiveMPa;
+	const double ExpectedCompUtil = ProbeStressMPa / C24CompressiveMeanMPa;
 
 	TestTrue(
-		FString::Printf(TEXT("Timber at %g MPa compression should read %g (7/21), got %g"),
+		FString::Printf(TEXT("Timber at %g MPa compression should read %g (7/29), got %g"),
 			ProbeStressMPa, ExpectedCompUtil, CompUtil),
 		FMath::IsNearlyEqual(CompUtil, ExpectedCompUtil, Tolerance));
 
 	const double TensUtil = DestructionForce::ComputeUtilisation(
 		TensionOf(ForceForMPa(ProbeStressMPa, JointAreaSqCm)), S, JointAreaSqCm);
-	const double ExpectedTensUtil = ProbeStressMPa / C24TensileMPa;
+	const double ExpectedTensUtil = ProbeStressMPa / C24TensileMeanMPa;
 
 	TestTrue(
-		FString::Printf(TEXT("Timber at %g MPa tension should read %g (7/14), got %g"),
+		FString::Printf(TEXT("Timber at %g MPa tension should read %g (7/23), got %g"),
 			ProbeStressMPa, ExpectedTensUtil, TensUtil),
 		FMath::IsNearlyEqual(TensUtil, ExpectedTensUtil, Tolerance));
 
 	const double ShearUtil = DestructionForce::ComputeUtilisation(
 		ShearOf(ForceForMPa(ProbeStressMPa, JointAreaSqCm)), S, JointAreaSqCm);
-	const double ExpectedShearUtil = ProbeStressMPa / C24ShearMPa;
+	const double ExpectedShearUtil = ProbeStressMPa / C24ShearMeanMPa;
 
 	TestTrue(
-		FString::Printf(TEXT("Timber at %g MPa shear should read %g (7/4), got %g"),
+		FString::Printf(TEXT("Timber at %g MPa shear should read %g (7/6), got %g"),
 			ProbeStressMPa, ExpectedShearUtil, ShearUtil),
 		FMath::IsNearlyEqual(ShearUtil, ExpectedShearUtil, Tolerance));
 

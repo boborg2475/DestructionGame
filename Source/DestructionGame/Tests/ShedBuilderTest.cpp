@@ -436,8 +436,8 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 		DryStone.TensileStrengthMPa, 0.0);
 	TestTrue(TEXT("FIXTURE: GeneralPurposeMortar is a bonded bed with real cohesion and tension"),
 		GeneralPurposeMortar.ShearCohesionMPa > 0.0 && GeneralPurposeMortar.TensileStrengthMPa > 0.0);
-	TestEqual(TEXT("FIXTURE: Timber C24 crushes at 21 MPa (f_c,0,k)"),
-		Timber.Strength.CompressiveStrengthMPa, 21.0);
+	TestEqual(TEXT("FIXTURE: Timber C24 crushes at 29 MPa (mean f_c,0)"),
+		Timber.Strength.CompressiveStrengthMPa, 29.0);
 	TestEqual(TEXT("FIXTURE: clay brick crushes at 20 MPa"),
 		ClayBrick.Strength.CompressiveStrengthMPa, 20.0);
 

@@ -57,7 +57,7 @@
  * THREE LIVE JOINTS (all bed joints, normal +Z, single wythe in X-Z — the 2D LP's domain):
  *   - WallBedJoint: WallBase (below) - WallTop (above), GeneralPurposeMortar. Holds the anchor up.
  *   - FixingJoint:  WallTop (below) - Beam (above), SCREW. A 4 cm x 20 cm = 80 cm2 patch, the
- *                   tension tie. Withdrawal is min(Screw 0.54, Timber 14, ClayBrick 2) = 0.54 MPa
+ *                   tension tie. Withdrawal is min(Screw 0.54, Timber 23, ClayBrick 2) = 0.54 MPa
  *                   (the screw is the weakest link, so the cross-material pairing leaves the fixing
  *                   a fastener withdrawal, exactly as the hanging test isolates).
  *   - PostJoint:    Post (below) - Beam (above), DRYSTONE (a frictional bearing, compression only,
@@ -396,16 +396,16 @@ bool FOverhangAssemblyTest::RunTest(const FString& Parameters)
 		Screw.TensileStrengthMPa, 0.54);
 	TestEqual(TEXT("FIXTURE: the post bearing is DryStone — a frictional contact with NO tension"),
 		DryStone.TensileStrengthMPa, 0.0);
-	TestEqual(TEXT("FIXTURE: Timber C24 crushes at 21 MPa (f_c,0,k)"),
-		Timber.Strength.CompressiveStrengthMPa, 21.0);
-	TestEqual(TEXT("FIXTURE: Timber C24 pulls apart at 14 MPa (f_t,0,k) — genuinely tension-capable"),
-		Timber.Strength.TensileStrengthMPa, 14.0);
+	TestEqual(TEXT("FIXTURE: Timber C24 crushes at 29 MPa (mean f_c,0)"),
+		Timber.Strength.CompressiveStrengthMPa, 29.0);
+	TestEqual(TEXT("FIXTURE: Timber C24 pulls apart at 23 MPa (mean f_t,0) — genuinely tension-capable"),
+		Timber.Strength.TensileStrengthMPa, 23.0);
 	TestEqual(TEXT("FIXTURE: clay brick crushes at 20 MPa"),
 		ClayBrick.Strength.CompressiveStrengthMPa, 20.0);
 
 	/*
 	 * The fixing is a fastener WITHDRAWAL: the weakest link on the tension axis is min(Screw 0.54,
-	 * Timber 14, ClayBrick 2) = the screw's 0.54. So the cross-material wiring leaves the wall-fixing
+	 * Timber 23, ClayBrick 2) = the screw's 0.54. So the cross-material wiring leaves the wall-fixing
 	 * exactly the screw's withdrawal, which is the tension capability the hanging test isolates.
 	 */
 	const double FixingTensileMPa = FMath::Min3(

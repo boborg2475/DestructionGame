@@ -195,9 +195,9 @@ bool FRouterSweepUsesEffectiveJointStrengthTest::RunTest(const FString& Paramete
 			"both materials, so the MATERIAL crush governs the pairing"), Unbreakable.CompressiveStrengthMPa),
 		Unbreakable.CompressiveStrengthMPa > 1.0e9);
 	TestTrue(
-		FString::Printf(TEXT("PRECONDITION: timber compressive must be 21 MPa, profile carries %g"),
+		FString::Printf(TEXT("PRECONDITION: timber compressive must be 29 MPa (C24 mean f_c,0), profile carries %g"),
 			Timber.Strength.CompressiveStrengthMPa),
-		Timber.Strength.CompressiveStrengthMPa == 21.0);
+		Timber.Strength.CompressiveStrengthMPa == 29.0);
 	TestTrue(
 		FString::Printf(TEXT("PRECONDITION: clay brick compressive must be 20 MPa, profile carries %g"),
 			ClayBrick.Strength.CompressiveStrengthMPa),

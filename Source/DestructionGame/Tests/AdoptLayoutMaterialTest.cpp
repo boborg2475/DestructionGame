@@ -41,7 +41,7 @@
  * bed joint, laid on the layout's OWN FStructure and each face tagged with its material, then
  * adopted. This is CrossMaterialBearingWiringTest's fixture put through the play path:
  *
- *        +----------+     Post: Timber (f_c,0 = 21 MPa), ungrounded.
+ *        +----------+     Post: Timber (f_c,0 mean = 29 MPa), ungrounded.
  *        +==========+  <- BED JOINT, Unbreakable connection (compressive 1e12 MPa):
  *        +----------+     the CONNECTION cannot govern, so the MATERIAL crush must.
  *        | FOOTING  |     Footing: ClayBrick (f_c = 20 MPa), grounded.
@@ -52,8 +52,8 @@
  * leaves behind) and the wired weakest-link reading (the brick's 20 MPa) cannot be confused:
  * the assertion is a clean discriminator, not a numeric coincidence.
  *
- * WHY 20, NOT 21. The crush is min over both faces and the connection:
- * min(1e12, timber 21, brick 20) = 20, the weaker of the two MATERIALS. Reaching 20 through
+ * WHY 20, NOT 29. The crush is min over both faces and the connection:
+ * min(1e12, timber 29, brick 20) = 20, the weaker of the two MATERIALS. Reaching 20 through
  * the adopted structure proves BOTH faces' materials survived adoption — the weaker one, even.
  *
  * THE STRONGEST ASSERTION (the one that proves the physics is live, not just a pointer): the
@@ -175,9 +175,9 @@ bool FAdoptLayoutCarriesPieceMaterialTest::RunTest(const FString& Parameters)
 		Unbreakable.CompressiveStrengthMPa > 1.0e9);
 
 	TestTrue(
-		FString::Printf(TEXT("PRECONDITION: timber compressive must be 21 MPa, profile carries %g"),
+		FString::Printf(TEXT("PRECONDITION: timber compressive must be 29 MPa (C24 mean f_c,0), profile carries %g"),
 			Timber.Strength.CompressiveStrengthMPa),
-		Timber.Strength.CompressiveStrengthMPa == 21.0);
+		Timber.Strength.CompressiveStrengthMPa == 29.0);
 
 	TestTrue(
 		FString::Printf(TEXT("PRECONDITION: clay brick compressive must be 20 MPa, profile carries %g"),
@@ -186,7 +186,7 @@ bool FAdoptLayoutCarriesPieceMaterialTest::RunTest(const FString& Parameters)
 
 	/*
 	 * The weakest link on the compression axis: min over the connection and both faces. The
-	 * brick (20) is the weaker MATERIAL, so it governs — NOT the timber (21), and emphatically
+	 * brick (20) is the weaker MATERIAL, so it governs — NOT the timber (29), and emphatically
 	 * not the connection (1e12). Reaching 20 through the adopted structure proves both faces
 	 * survived.
 	 */

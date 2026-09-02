@@ -35,7 +35,7 @@
  *
  * THE FIXTURE — A TIMBER POST BEARING ON A GROUNDED CLAY-BRICK FOOTING.
  *
- *        +----------+     Post: Timber (f_c,0 = 21 MPa), ungrounded.
+ *        +----------+     Post: Timber (f_c,0 mean = 29 MPa), ungrounded.
  *        |   POST   |     Its whole weight bears straight down onto the joint below.
  *        +==========+  <- BED JOINT, Unbreakable connection (compressive 1e12 MPa):
  *        +----------+     the CONNECTION cannot govern, so the MATERIAL crush must.
@@ -49,19 +49,19 @@
  * path reads the BRICK's 20 MPa. That gulf is what makes the assertion a clean discriminator
  * rather than a numeric coincidence: the two answers cannot be confused.
  *
- * WHY THE EXPECTED CAP IS 20, NOT 21. The crush is the min over BOTH faces and the
- * connection: min(1e12, timber 21, brick 20) = 20, the weaker of the two MATERIALS. Pinning
- * exactly 20 (the brick) rather than 21 (the timber) is deliberate — it forces the wiring to
+ * WHY THE EXPECTED CAP IS 20, NOT 29. The crush is the min over BOTH faces and the
+ * connection: min(1e12, timber 29, brick 20) = 20, the weaker of the two MATERIALS. Pinning
+ * exactly 20 (the brick) rather than 29 (the timber) is deliberate — it forces the wiring to
  * read the weaker of the two faces rather than the connection or the stronger face.
  *
  * WHY TWO CASES, MIRRORED — the both-faces contract is BIDIRECTIONAL. One row alone does not
  * prove "consults both faces". In the case above the weaker material (brick 20) is the LOWER
  * (footing) face, so an implementation that consulted ONLY the lower face would ALSO compute
- * min(1e12, 20) = 20 and pass — only an UPPER-face-only bug (min(1e12, 21) = 21 -> util 0.476)
- * is caught. So the test runs a MIRROR: a ClayBrick post (20) on a Timber footing (21), same
- * Unbreakable joint. The crush is still min(1e12, 21, 20) = 20, but now the governing weaker
- * material (brick) is the UPPER face — so a LOWER-face-only bug computes min(1e12, 21) = 21 ->
- * util 0.476 and fails HERE, while the original catches the upper-face-only bug. Together, ANY
+ * min(1e12, 20) = 20 and pass — only an UPPER-face-only bug (min(1e12, 29) = 29 -> util 0.345)
+ * is caught. So the test runs a MIRROR: a ClayBrick post (20) on a Timber footing (29), same
+ * Unbreakable joint. The crush is still min(1e12, 29, 20) = 20, but now the governing weaker
+ * material (brick) is the UPPER face — so a LOWER-face-only bug computes min(1e12, 29) = 29 ->
+ * util 0.345 and fails HERE, while the original catches the upper-face-only bug. Together, ANY
  * single-face implementation reds at least one of the two rows; only the true Min3 over both
  * faces greens both. The two rows are otherwise identical (same masses, same 98 cm2 bed, same
  * 10 MPa bearing over a 20 MPa crush -> 0.5) so nothing but which face carries the weaker
@@ -208,9 +208,9 @@ bool FCrossMaterialBearingWiringTest::RunTest(const FString& Parameters)
 		Unbreakable.CompressiveStrengthMPa > 1.0e9);
 
 	TestTrue(
-		FString::Printf(TEXT("PRECONDITION: timber compressive must be 21 MPa, profile carries %g"),
+		FString::Printf(TEXT("PRECONDITION: timber compressive must be 29 MPa (C24 mean f_c,0), profile carries %g"),
 			Timber.Strength.CompressiveStrengthMPa),
-		Timber.Strength.CompressiveStrengthMPa == 21.0);
+		Timber.Strength.CompressiveStrengthMPa == 29.0);
 
 	TestTrue(
 		FString::Printf(TEXT("PRECONDITION: clay brick compressive must be 20 MPa, profile carries %g"),
@@ -219,8 +219,8 @@ bool FCrossMaterialBearingWiringTest::RunTest(const FString& Parameters)
 
 	/*
 	 * The weakest link on the compression (bearing) axis: min over the connection and both
-	 * faces. The brick (20) is the weaker MATERIAL, so it governs — NOT the timber (21), and
-	 * emphatically not the connection (1e12). Pinning 20 rather than 21 is what forces the
+	 * faces. The brick (20) is the weaker MATERIAL, so it governs — NOT the timber (29), and
+	 * emphatically not the connection (1e12). Pinning 20 rather than 29 is what forces the
 	 * wiring to consult BOTH faces.
 	 */
 	const double MaterialCrushMPa = FMath::Min3(
@@ -310,7 +310,7 @@ bool FCrossMaterialBearingWiringTest::RunTest(const FString& Parameters)
 		/*
 		 * 10 MPa is HALF the brick's 20 MPa crush, so the WIRED joint reads 0.5 and stands — the
 		 * assertion is a pure readout, nothing breaks. The BARE connection reads 10 / 1e12 ~ 1e-11.
-		 * A SINGLE-FACE bug that ignored the brick face would instead read 10 / 21 ~ 0.476.
+		 * A SINGLE-FACE bug that ignored the brick face would instead read 10 / 29 ~ 0.345.
 		 */
 		const double ExpectedWiredUtilisation = BearingStressMPa / CaseCrushMPa;          // 0.5
 		const double BareUtilisation = BearingStressMPa / Unbreakable.CompressiveStrengthMPa; // ~1e-11
@@ -326,7 +326,7 @@ bool FCrossMaterialBearingWiringTest::RunTest(const FString& Parameters)
 		TestTrue(
 			*FString::Printf(TEXT("[%s] SEAM 1 (ROUTER): the joint's compression utilisation must reflect the "
 				"weakest-link crush (0.5), got %.12g. A bare connection reads ~%.3g; a single-face bug that "
-				"ignored the brick face would read ~0.476"),
+				"ignored the brick face would read ~0.345"),
 				Label, RouterUtilisation, BareUtilisation),
 			FMath::IsNearlyEqual(RouterUtilisation, ExpectedWiredUtilisation, 1.0e-9));
 
@@ -378,15 +378,15 @@ bool FCrossMaterialBearingWiringTest::RunTest(const FString& Parameters)
 	};
 
 	/*
-	 * CASE A — the weaker material is the LOWER face. Timber post (21) on a ClayBrick footing
-	 * (20). Catches an UPPER-face-only bug: it would read min(1e12, 21) = 21 -> util 0.476.
+	 * CASE A — the weaker material is the LOWER face. Timber post (29) on a ClayBrick footing
+	 * (20). Catches an UPPER-face-only bug: it would read min(1e12, 29) = 29 -> util 0.345.
 	 */
 	RunBearingCase(/*Footing*/ ClayBrick, /*Post*/ Timber, TEXT("weaker=lower (timber-on-brick)"));
 
 	/*
 	 * CASE B, THE MIRROR — the weaker material is the UPPER face. ClayBrick post (20) on a
-	 * Timber footing (21). Catches a LOWER-face-only bug: it would read min(1e12, 21) = 21 ->
-	 * util 0.476. Together with Case A, ANY single-face implementation reds at least one row.
+	 * Timber footing (29). Catches a LOWER-face-only bug: it would read min(1e12, 29) = 29 ->
+	 * util 0.345. Together with Case A, ANY single-face implementation reds at least one row.
 	 */
 	RunBearingCase(/*Footing*/ Timber, /*Post*/ ClayBrick, TEXT("weaker=upper (brick-on-timber)"));
 
