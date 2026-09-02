@@ -73,3 +73,7 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# One-off review render PNGs are large binaries with no build role; keep the
+# small RESULTS.md provenance the test comments cite, but not the images.
+TestResults/**/*.png
