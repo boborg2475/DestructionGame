@@ -3042,13 +3042,31 @@ bool FStructure::BreakByCapacitySweep(int32 Pass)
 		 * WAY. It is a relief rather than a load, so a sweep that omitted it would
 		 * break joints the readout draws as comfortable — a corbel shown at 0.37 and
 		 * snapped at 22.9. Three arrays now, one solve, one evaluator.
+		 *
+		 * THE STRENGTH IS THE WEAKEST-LINK PAIRING, NOT THE BARE CONNECTION — the same
+		 * EffectiveJointStrength the readout (GetConnectionUtilisation) and the LP bridge
+		 * decide on. A cross-material bearing (wood post on brick footing) reads its
+		 * material crush, not the connection's own capacity, so the one place that
+		 * actually severs above the cap agrees with the overlay that draws the joint
+		 * failed. Where neither face names a material EffectiveJointStrength returns the
+		 * bare connection bit-for-bit, so every single-material fixture is unaffected.
+		 *
+		 * THE COPY DECIDES; THE REAL CONNECTION SEVERS. The "has given" latch is a member
+		 * of the object, so ApplyForce is called on a COPY carrying the paired strength —
+		 * used only to reach the verdict — and the actual break is stamped onto the real
+		 * Connection via Sever(). Latching the copy and never touching the real joint is
+		 * the same missing-ampersand hazard the loop header warns about, one level in:
+		 * the structure would break nothing under any load.
 		 */
-		Connection.ApplyForce(
+		FConnection Paired = Connection;
+		Paired.Strength = EffectiveJointStrength(Index);
+		Paired.ApplyForce(
 			ConnectionForces[Index], ConnectionMoments[Index],
 			ConnectionCompositeDepthCm[Index]);
 
-		if (Connection.HasGiven())
+		if (Paired.HasGiven())
 		{
+			Connection.Sever();
 			ConnectionBreakPass[Index] = Pass;
 			bBroke = true;
 		}
