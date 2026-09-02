@@ -66,6 +66,22 @@ public:
 	FStructureBinding* Find(int32 StructureId);
 
 	/**
+	 * Tear a structure down: destroy every actor its binding still names and forget the
+	 * binding, so Find(StructureId) returns null and a ray along a former piece hits nothing.
+	 *
+	 * THE SCENARIO SWITCHER'S MISSING HALF. The Structures map only grows today, so a second
+	 * build leaves the first structure's bricks standing and clickable in the world; a
+	 * switcher needs one call that removes them. Destroying the actors AND dropping the map
+	 * entry are one operation because a dropped binding whose actors survived is exactly the
+	 * orphan-in-the-world failure, and destroyed actors whose binding survives is a Find that
+	 * hands back dangling actor pointers.
+	 *
+	 * @return true if a structure was held under this id and has been destroyed; false for an
+	 *         id that names nothing.
+	 */
+	bool Destroy(int32 StructureId);
+
+	/**
 	 * Settle one structure and push the answer onto the world: every piece the solver is
 	 * no longer holding up is handed to physics.
 	 *

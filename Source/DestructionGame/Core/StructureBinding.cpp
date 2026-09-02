@@ -38,6 +38,22 @@ int32 FStructureBinding::AddPiece(
 		: Structure.AddPiece(MassKg, bIsGrounded, Box.CentreCm);
 
 	/*
+	 * A REFUSED PIECE MUST NOT LAND IN THE BINDING EITHER. FStructure::AddPiece answers
+	 * INDEX_NONE for a mass that is negative or non-finite — its `!(MassKg >= 0.0)` guard
+	 * catches a NaN, against which every comparison is false. Appending the FPieceBinding
+	 * regardless would grow the binding's Pieces array while the structure's stayed put, and
+	 * from that call on GetActor(i) would name a different actor than GetPiece(i) for every
+	 * handle above the hole — the exact silent desync this whole type exists to make
+	 * inexpressible. So the refusal is relayed here, before anything is stored, and Pieces is
+	 * the only array to keep in step: the material below goes through SetPieceMaterial, which
+	 * itself fails closed on this INDEX_NONE, and nothing else is appended.
+	 */
+	if (Handle == INDEX_NONE)
+	{
+		return INDEX_NONE;
+	}
+
+	/*
 	 * THE MATERIAL GOES DOWN THROUGH THE SAME DOOR AS THE PIECE, so what a brick is made of
 	 * cannot be laid in one layer and lost in the next. SetPieceMaterial fails closed on an
 	 * out-of-range handle, and AddPiece never fails silently, so tagging the handle it just

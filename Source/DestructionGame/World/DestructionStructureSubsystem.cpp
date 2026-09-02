@@ -209,6 +209,27 @@ int32 UDestructionStructureSubsystem::BuildLayout(const DestructionLayout::FBric
 	const int32 StructureId = NextStructureId;
 	const int32 PieceCount = Layout.Structure.NumPieces();
 
+	/*
+	 * THE LAYOUT IS VALIDATED BEFORE A SINGLE BRICK IS SPAWNED, and refused whole if its
+	 * arrays are out of step. Two failures live here and one guard closes both.
+	 *
+	 * AdoptLayout below already refuses a layout whose Boxes array is not one-per-piece — but
+	 * by then the spawn loop has run, so a TOO-MANY-boxes layout has already littered the world
+	 * with actors that name no structure, and returning INDEX_NONE never destroys them. A
+	 * TOO-FEW-boxes layout is worse: the spawn loop indexes Layout.Boxes[PieceIndex] across the
+	 * whole 0..PieceCount range, so a short array is read past its end and TArray's range check
+	 * aborts the process before AdoptLayout can refuse anything at all. Checking `!=` here — both
+	 * directions — turns each of those into a clean refusal that spawns nothing.
+	 *
+	 * An empty layout is refused as well, matching AdoptLayout's own door: a build with no
+	 * pieces is a caller mistake, and spending an id on a structure nothing will ever name is
+	 * the same fail-open the box check is guarding against.
+	 */
+	if (PieceCount < 1 || Layout.Boxes.Num() != PieceCount)
+	{
+		return INDEX_NONE;
+	}
+
 	UWorld& World = *GetWorld();
 
 	TArray<UObject*> Actors;
@@ -479,4 +500,45 @@ FStructureBinding* UDestructionStructureSubsystem::Find(int32 StructureId)
 	const TUniquePtr<FStructureBinding>* Found = Structures.Find(StructureId);
 
 	return Found != nullptr ? Found->Get() : nullptr;
+}
+
+bool UDestructionStructureSubsystem::Destroy(int32 StructureId)
+{
+	/*
+	 * AN ID THAT NAMES NOTHING TEARS DOWN NOTHING, and answers false so a caller can tell a
+	 * teardown that happened from one that had nothing to do — the same fail-closed shape
+	 * Find, SolveAndPush and CommitPieceAction all take against an unknown id.
+	 */
+	FStructureBinding* Binding = Find(StructureId);
+
+	if (Binding == nullptr)
+	{
+		return false;
+	}
+
+	/*
+	 * EVERY ACTOR THE BINDING STILL NAMES IS DESTROYED, and this is the same idiom the two
+	 * commit doors use to consume their orphans: Cast the actor, which the binding's weak
+	 * pointer already answers null for a piece removed or destroyed by any other route, and
+	 * Destroy only what survives the cast. Iterating the handle range rather than a live count
+	 * is correct because GetActor fails closed on a tombstoned handle, so a removed piece is
+	 * simply skipped by the null cast rather than needing a separate check.
+	 */
+	for (int32 PieceIndex = 0; PieceIndex < Binding->NumPieces(); ++PieceIndex)
+	{
+		if (ABrickActor* Brick = Cast<ABrickActor>(Binding->GetActor(PieceIndex)))
+		{
+			Brick->Destroy();
+		}
+	}
+
+	/*
+	 * THE MAP ENTRY IS DROPPED LAST, so Find answers null and a ray along a former piece hits
+	 * nothing. NextStructureId is left where it is — ids are monotonic and never reused, so a
+	 * ref left over from a torn-down structure can never resolve against a later one that
+	 * happened to take the same slot.
+	 */
+	Structures.Remove(StructureId);
+
+	return true;
 }

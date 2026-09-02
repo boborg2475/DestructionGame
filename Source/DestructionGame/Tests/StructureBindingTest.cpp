@@ -9,6 +9,7 @@
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -1567,6 +1568,112 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 
 		ReleaseStandIns(Spares);
 	}
+
+	return true;
+}
+
+/**
+ * A PIECE THE STRUCTURE REFUSES MUST NOT LAND IN THE BINDING EITHER — otherwise the two
+ * arrays desync at the moment of the refusal and stay desynced forever.
+ *
+ * FStructure::AddPiece returns INDEX_NONE for a mass that is negative or non-finite (its
+ * `!(MassKg >= 0.0)` guard catches a NaN, which every comparison against is false). The
+ * binding forwards the mass to that door and then appends its own FPieceBinding — so if it
+ * appends UNCONDITIONALLY, a refused piece grows the binding's Pieces array while the
+ * structure's stays put, and from that call on Binding.GetActor(i) names a different actor
+ * than Structure.GetPiece(i) for every handle above the hole. Nothing crashes; the player
+ * shoots one brick and a different one falls.
+ *
+ * WORLD-FREE: FStructureBinding holds a UObject* it never dereferences, so a transient
+ * stand-in is all the actor this needs, exactly as the parallel tests above.
+ *
+ * THE ASSERTION IS ON THE MECHANISM, TWICE OVER: the refused call returns INDEX_NONE (the
+ * handle the structure handed back, not a fresh index the binding minted), AND the binding
+ * still spans exactly the handles it did before — checked against the STRUCTURE'S count via
+ * CheckArraysAreParallel, which is the desync this whole type exists to make inexpressible.
+ * A good piece is added first and read back afterwards, so the guard cannot pass by
+ * refusing everything.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FStructureBindingAddPieceHonoursRefusalTest,
+	"DestructionGame.Core.StructureBinding.AddPieceHonoursRefusal",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FStructureBindingAddPieceHonoursRefusalTest::RunTest(const FString& Parameters)
+{
+	using namespace StructureBindingTestSupport;
+
+	FStructureBinding Binding;
+	Binding.StructureId = 3;
+
+	TArray<UObject*> StandIns;
+
+	/*
+	 * ONE GOOD PIECE FIRST, so the arrays are non-empty and the refusal has something to
+	 * fail to disturb. Its handle is 0 and it stays 0 throughout.
+	 */
+	UObject* const Good = MakeStandIn();
+	StandIns.Add(Good);
+
+	const int32 GoodHandle = Binding.AddPiece(BrickMassKg, /*bIsGrounded*/ true, Good, BoxFor(0));
+
+	TestEqual(
+		FString::Printf(TEXT("a well-formed piece should take handle 0, got %d"), GoodHandle),
+		GoodHandle, 0);
+
+	CheckArraysAreParallel(*this, Binding, 1, TEXT("after one good piece"));
+
+	/*
+	 * THE REFUSED MASSES. A NaN and a negative both fail FStructure::AddPiece's guard, and
+	 * the binding must relay that refusal rather than swallowing it. Each is tried against a
+	 * fresh stand-in so a mistaken append would be visible as an extra handle AND would
+	 * leak an actor into the binding that names nothing in the graph.
+	 */
+	struct FRefusedCase
+	{
+		const TCHAR* Description;
+		double MassKg;
+	};
+
+	const TArray<FRefusedCase> Refused = {
+		{ TEXT("a NaN mass"), std::numeric_limits<double>::quiet_NaN() },
+		{ TEXT("an infinite mass"), std::numeric_limits<double>::infinity() },
+		{ TEXT("a negative mass"), -BrickMassKg },
+	};
+
+	for (const FRefusedCase& Case : Refused)
+	{
+		UObject* const Reject = MakeStandIn();
+		StandIns.Add(Reject);
+
+		const int32 Handle = Binding.AddPiece(Case.MassKg, /*bIsGrounded*/ false, Reject, BoxFor(9));
+
+		TestEqual(
+			FString::Printf(
+				TEXT("%s must be refused: AddPiece should relay INDEX_NONE, got %d"),
+				Case.Description, Handle),
+			Handle, static_cast<int32>(INDEX_NONE));
+
+		/*
+		 * THE ARRAYS ARE STILL PARALLEL AND STILL SPAN JUST THE ONE GOOD HANDLE. This is
+		 * the desync the type forbids: a binding that appended the refused piece would
+		 * report 2 handles here while its structure reports 1.
+		 */
+		CheckArraysAreParallel(*this, Binding, 1,
+			*FString::Printf(TEXT("after refusing %s"), Case.Description));
+	}
+
+	/*
+	 * AND THE GOOD PIECE IS UNTOUCHED. If a refusal had grown the binding array, handle 0
+	 * would still read back the good stand-in but every check that the array LENGTH matches
+	 * the structure would already have fired above; this last read proves the survivor was
+	 * not itself corrupted by the failed appends.
+	 */
+	TestTrue(
+		TEXT("handle 0 must still be the good stand-in after every refusal"),
+		Binding.GetActor(0) == Good);
+
+	ReleaseStandIns(StandIns);
 
 	return true;
 }
