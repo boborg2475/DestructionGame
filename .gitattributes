@@ -1,2 +1,18 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Unreal binary content must never be line-ending-normalized: a CRLF/LF
+# round-trip on a round-tripped .uasset/.umap corrupts the asset. Mark the
+# whole content-binary family explicit-binary so a cross-platform checkout
+# leaves them byte-for-byte.
+*.uasset binary
+*.umap   binary
+*.upk    binary
+*.udk    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.wav    binary
+*.ttf    binary
+*.otf    binary

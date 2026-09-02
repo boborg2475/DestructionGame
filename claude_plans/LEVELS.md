@@ -1,6 +1,6 @@
 # The levels
 
-Thirty-one playable maps, one per fixture the headless suite measures. You join, the structure is
+Thirty-four playable maps, one per fixture the headless suite measures. You join, the structure is
 already framed in front of you, a caption names it and says what to watch for, and four seconds
 later it does whatever it was always going to do.
 

@@ -53,12 +53,31 @@ param(
     [ValidatePattern('^Lvl_[A-Za-z0-9]+$')]
     [string] $MapName,
 
-    [string] $ProjectRoot = (Split-Path -Parent $PSScriptRoot),
+    [string] $ProjectRoot = '',
 
     [string] $UnrealCmd = "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
 )
 
 $ErrorActionPreference = 'Stop'
+
+<#
+ # RESOLVE THE PROJECT ROOT ROBUSTLY, in the body rather than as a param default.
+ #
+ # $PSScriptRoot is empty in some hosts at param-binding time (observed under
+ # `powershell -File` here), which silently joined every path onto nothing and failed
+ # obscurely. Derive the script's own directory from $MyInvocation as the fallback, and
+ # refuse loudly if we still cannot locate the project rather than limping on with ''.
+ #>
+if (-not $ProjectRoot)
+{
+    $ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+    $ProjectRoot = Split-Path -Parent $ScriptDir
+}
+
+if (-not $ProjectRoot -or -not (Test-Path $ProjectRoot))
+{
+    throw "could not resolve the project root (got '$ProjectRoot'); pass -ProjectRoot explicitly"
+}
 
 $Project     = Join-Path $ProjectRoot 'DestructionGame.uproject'
 $SourceMap   = Join-Path $ProjectRoot 'Content\Maps\Lvl_Sandbox.umap'
