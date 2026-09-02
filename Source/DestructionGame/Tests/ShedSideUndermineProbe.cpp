@@ -155,8 +155,13 @@ bool FShedSideUndermineProbe::RunTest(const FString& Parameters)
 	const int32 LowBandRemoved = RemovedInOrder.Num();
 
 	/*
-	 * STEP 1 (cont.) — THE BASELINE SOLVE. The router settles the arched structure; with the low band gone the
-	 * shed must still stand (0 live survivors lost the earth), or the experiment has no arch to undermine.
+	 * STEP 1 (cont.) — THE BASELINE SOLVE. The router settles the structure with the low band gone. Since
+	 * item 6b made the vertical brick-brick joints the weak-perpend row (cohesion 0.2, tensile 0.1), the
+	 * panel that used to arch across this full-width gap can no longer hang on the corner perpends: it comes
+	 * down, taking 93 live survivors off the earth with nothing stranded. That is the intended behaviour the
+	 * default-suite fixture RealisticBrickShedCornerHangFallsWithWeakPerpends pins; this baseline re-pins the
+	 * probe's own reading to it so the diagnostic stays honest. (Before 6b, strong perpends held the arch and
+	 * this read 0 — the old value this line pinned.)
 	 */
 	const int32 BaselinePasses = S.SolveAndBreak();
 	const int32 BaselineLost = LostEarthCount(S);
@@ -166,8 +171,11 @@ bool FShedSideUndermineProbe::RunTest(const FString& Parameters)
 		TEXT("SIDEUNDERMINE_BASELINE,lowband=%d,passes=%d,lostearth=%d,stranded=%d"),
 		LowBandRemoved, BaselinePasses, BaselineLost, BaselineStranded);
 
-	TestEqual(TEXT("BASELINE: the arched shed (low band removed) must stand — 0 live survivors lost the earth"),
-		BaselineLost, 0);
+	TestEqual(TEXT("BASELINE: with weak perpends the low-band-removed panel comes down — the corner hang "
+		"gives way and a whole section (93 live survivors) loses the earth"),
+		BaselineLost, 93);
+	TestEqual(TEXT("BASELINE: the fall strands nothing — the panel genuinely lost its load path"),
+		BaselineStranded, 0);
 
 	/*
 	 * STEP 2 — BUILD THE UNDERMINING ORDER. The LEFT side wall runs along Y at X band [0, 10.25] (centre

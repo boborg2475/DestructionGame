@@ -49,6 +49,13 @@ namespace DestructionProfiles
 	};
 
 	extern const FConnectionStrength GeneralPurposeMortar;
+
+	/**
+	 * The weak-perpend row — general purpose mortar in a vertical head/corner joint, its two bond axes
+	 * knocked down (owner-approved item 6b). See ConnectionProfiles.cpp for why a perpend is the weak link.
+	 */
+	extern const FConnectionStrength GeneralPurposeMortarPerpend;
+
 	extern const FConnectionStrength LimeMortar;
 	extern const FConnectionStrength DryStone;
 	extern const FConnectionStrength Nail;

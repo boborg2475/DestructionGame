@@ -755,6 +755,20 @@ namespace DestructionShed3D
 				if (MakeInterface(
 						Lower, Laid.Boxes[Lower], Upper, Laid.Boxes[Upper], JointCm, Strength, Connection))
 				{
+					/*
+					 * A brick-brick joint whose interface normal is NOT vertical is a PERPEND — an in-course
+					 * head joint or the vertical joint at a wall corner — which real masonry treats as the
+					 * weak link (owner-approved item 6b). Author it with the knocked-down bond row while the
+					 * horizontal BEDS beneath the pieces keep the strong GeneralPurposeMortar. MakeInterface
+					 * emits only axis-aligned normals, so |Z| is exactly 1 for a bed and 0 for a perpend or a
+					 * corner; the timber bearings authored DryStone above are left untouched.
+					 */
+					if (!bTimberBearing
+						&& FMath::Abs(Connection.InterfaceNormal.GetSafeNormal().Z) < 0.5)
+					{
+						Connection.Strength = GeneralPurposeMortarPerpend;
+					}
+
 					Laid.Structure.AddConnection(Connection);
 				}
 			}
@@ -763,8 +777,9 @@ namespace DestructionShed3D
 		/*
 		 * THE PORCH — A DOOR CANOPY ON TWO TIMBER POSTS (slice 3), laid AFTER the shell sweep so its four
 		 * joints are authored EXPLICITLY rather than swept. A swept timber-touching pair would author a
-		 * compression-only DryStone bearing, but the wall FIXING must be a tension-capable Screw and the
-		 * wall ANCHOR a bonded mortar joint — neither of which the sweep can produce — so the porch pieces
+		 * compression-only DryStone bearing, but both the overhang FIXING and the wall ANCHOR must be
+		 * tension-capable Screw fasteners — mortar does not bond to a timber cleat — which the sweep (DryStone
+		 * or GeneralPurposeMortar for a brick-brick pair) cannot produce, so the porch pieces
 		 * are added past NumPieces (the sweep's captured bound) and joined by hand below.
 		 *
 		 * THE GEOMETRY. The front wall's OUTER face is Y = 0 and the box interior is +Y, so the porch
@@ -776,7 +791,7 @@ namespace DestructionShed3D
 		 * board tips front-down / back-up about the posts; a narrow central Timber CLEAT (X[85,95], Y[-11,-1],
 		 * Z[97.5,104]) holds that back-up DOWN with a Z-normal Screw WITHDRAWAL tie (cleat top 104 one joint
 		 * under the overhang bottom 105) and is itself anchored to a real course-13 front-wall brick over the
-		 * door by a Y-normal mortar joint (cleat back Y = -1 one joint off the wall face Y = 0).
+		 * door by a Y-normal Screw withdrawal joint (cleat back Y = -1 one joint off the wall face Y = 0).
 		 *
 		 * WHY IT STANDS, AND WHY IT IS POST-DEPENDENT. Above the block cap the router splits the overhang's
 		 * weight in compression among the three beds beneath it (two posts + the cleat), so nothing is
@@ -795,7 +810,7 @@ namespace DestructionShed3D
 		 * the first full-masonry course above the door lintel band on course 12), found by the point at the
 		 * door centre on that course rather than by handle, so the exact bond the wall producer chose does
 		 * not matter. Its outer face Y = 0 stands one JointCm off the cleat's back Y = -1, so MakeInterface
-		 * reads a Y-normal mortar anchor bonding the cleat to real, load-bearing masonry.
+		 * reads a Y-normal Screw anchor fixing the cleat to real, load-bearing masonry.
 		 */
 		int32 CleatWallBrick = INDEX_NONE;
 		{
@@ -828,7 +843,7 @@ namespace DestructionShed3D
 		 * THE FOUR PORCH JOINTS, each through MakeInterface with the LOWER piece named A so a bed normal
 		 * reads as a bed BENEATH the piece it carries. Two Z-normal DryStone bearings carry the overhang on
 		 * the post tops (~100 cm2 each); a Z-normal Screw tie (~90 cm2) holds the overhang's back down in
-		 * withdrawal; a Y-normal mortar anchor (~65 cm2) bonds the cleat to the wall.
+		 * withdrawal; a Y-normal Screw anchor (~65 cm2) fixes the cleat to the wall.
 		 */
 		const auto PorchJoin =
 			[&](int32 A, int32 B, const FConnectionStrength& Strength) -> bool
@@ -846,7 +861,7 @@ namespace DestructionShed3D
 		if (!PorchJoin(PostL, PorchOverhang, DryStone)
 			|| !PorchJoin(PostR, PorchOverhang, DryStone)
 			|| !PorchJoin(Cleat, PorchOverhang, Screw)
-			|| !PorchJoin(Cleat, CleatWallBrick, GeneralPurposeMortar))
+			|| !PorchJoin(Cleat, CleatWallBrick, Screw))
 		{
 			return false;
 		}

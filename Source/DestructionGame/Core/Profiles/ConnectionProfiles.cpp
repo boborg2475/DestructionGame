@@ -103,6 +103,28 @@ namespace DestructionProfiles
 	};
 
 	/**
+	 * GENERAL PURPOSE MORTAR IN A PERPEND — the vertical head joint, which is the weak link in real masonry
+	 * and is authored as such (owner-approved item 6b, 2026-09-02).
+	 *
+	 * A perpend is the vertical mortar joint between units in a course, and the vertical joint at a wall
+	 * corner where perpendicular walls meet. Unlike a bed joint it is not compressed by the courses above,
+	 * it is filled by hand against a face that has already gone off, and it shrinks away from the unit as it
+	 * cures — so in practice it is frequently unfilled or debonded. EN 1996-1-1 declines to credit a perpend
+	 * in tension or shear at all for exactly this reason. This row keeps the bed row's BEARING (compressive
+	 * 10.0) and FRICTION (0.75) unchanged — a perpend still transmits compression and rubs like any mortar
+	 * face — and knocks only the two BOND axes down: shear cohesion 0.9 -> 0.2 and tensile 0.7 -> 0.1, so
+	 * the vertical joints give up long before the beds that carry the wall down. MaxShear stays the bed
+	 * row's 2.0, a property of the 20 MPa unit rather than of the mortar.
+	 */
+	const FConnectionStrength GeneralPurposeMortarPerpend{
+		/*Compressive*/ 10.0,
+		/*ShearCohesion*/ 0.2,
+		/*Tensile*/ 0.1,
+		/*FrictionCoefficient*/ 0.75,
+		/*MaxShear*/ 2.0
+	};
+
+	/**
 	 * LIME MORTAR — the soft historic binder, weaker than cement mortar on every
 	 * axis that has a bond in it. MEAN-basis, like the row above.
 	 *
@@ -410,14 +432,15 @@ namespace DestructionProfiles
 		 * to every file-local name in this module, not just to these two.
 		 */
 		const FNamedConnectionProfile ConnectionProfileLibrary[] = {
-			{ TEXT("GeneralPurposeMortar"), EConnectionProfileClass::Bonded,             GeneralPurposeMortar },
-			{ TEXT("LimeMortar"),           EConnectionProfileClass::Bonded,             LimeMortar },
-			{ TEXT("DryStone"),             EConnectionProfileClass::Frictional,         DryStone },
-			{ TEXT("Nail"),                 EConnectionProfileClass::MechanicalFastener, Nail },
-			{ TEXT("Screw"),                EConnectionProfileClass::MechanicalFastener, Screw },
-			{ TEXT("Bolt"),                 EConnectionProfileClass::MechanicalFastener, Bolt },
-			{ TEXT("Unbreakable"),          EConnectionProfileClass::TestFixture,        Unbreakable },
-			{ TEXT("CohesionlessBond"),     EConnectionProfileClass::TestFixture,        CohesionlessBond },
+			{ TEXT("GeneralPurposeMortar"),        EConnectionProfileClass::Bonded,             GeneralPurposeMortar },
+			{ TEXT("GeneralPurposeMortarPerpend"), EConnectionProfileClass::Bonded,             GeneralPurposeMortarPerpend },
+			{ TEXT("LimeMortar"),                  EConnectionProfileClass::Bonded,             LimeMortar },
+			{ TEXT("DryStone"),                    EConnectionProfileClass::Frictional,         DryStone },
+			{ TEXT("Nail"),                        EConnectionProfileClass::MechanicalFastener, Nail },
+			{ TEXT("Screw"),                       EConnectionProfileClass::MechanicalFastener, Screw },
+			{ TEXT("Bolt"),                        EConnectionProfileClass::MechanicalFastener, Bolt },
+			{ TEXT("Unbreakable"),                 EConnectionProfileClass::TestFixture,        Unbreakable },
+			{ TEXT("CohesionlessBond"),            EConnectionProfileClass::TestFixture,        CohesionlessBond },
 		};
 	}
 
