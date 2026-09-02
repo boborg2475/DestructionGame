@@ -1774,9 +1774,12 @@ namespace RigidBlockOracle
 	 * right-hand side exactly as 2D routes it. Then the lambda cap, then two strength rows per
 	 * contact over the tributary A/4: tension (n- <= f_t*Conv*A/4, tension-gated) and crushing
 	 * (n+ - n- <= f_c*Conv*A/4), plus the k=8 INSCRIBED friction pyramid (E1b — 8 facet rows scaled
-	 * by cos(pi/8) so the octagon inscribes the true Coulomb cone). Applied forces ARE posed (E1b):
-	 * force + r_app x F into the six rows, live/dead split. bFirstCrackRows is ignored on the 3D path
-	 * (biaxial first-crack is an E-tail).
+	 * by cos(pi/8) so the octagon inscribes the true Coulomb cone) and, where the profile truncates
+	 * shear, the matching k=8 shear-cap ceiling octagon (mu*n dropped, c -> f_v,max). Applied forces
+	 * ARE posed (E1b): force + r_app x F into the six rows, live/dead split. When bFirstCrackRows is
+	 * set, each bonded joint (f_t > 0) also gets its biaxial uncracked peak-fibre rows over the four
+	 * corners — the 3D analogue of the 2D two-point first-crack form, reducing to it exactly under
+	 * uniaxial bending.
 	 *
 	 * OutEqFxRowOfBlock[b] is filled with the assembly-row index of block b's Fx equilibrium row —
 	 * its Fy, Fz, Mx, My, Mz rows follow at +1..+5 in that fixed order — or INDEX_NONE for a
@@ -2005,6 +2008,106 @@ namespace RigidBlockOracle
 				Crush.Rhs = S.CompressiveStrengthMPa * Conv * AreaSqCm;
 				Crush.bEquality = false;
 				AssemblyRows.Add(MoveTemp(Crush));
+			}
+
+			/*
+			 * The truncated-shear ceiling, the 3D analogue of the 2D `+-(p - q) <= f_v,max*Conv*A/2`
+			 * row (RigidBlockOracle.cpp ~2329). It caps the in-plane shear MAGNITUDE at f_v,max
+			 * however hard the contact is compressed, so above the Mohr-Coulomb bite
+			 * sigma = (f_v,max - c)/mu the friction pyramid no longer credits shear the profile
+			 * forbids. Written as the SAME k=8 octagon the friction pyramid uses, but with the
+			 * mu*(n+ - n-) term DROPPED and cohesion c replaced by f_v,max: for each facet theta_i,
+			 * cos(theta_i)*(p_u - q_u) + sin(theta_i)*(p_v - q_v) <= cos(pi/8)*f_v,max*Conv*A/4.
+			 * The cos(pi/8) inscribe factor makes the ceiling octagon and the friction octagon the
+			 * SAME octagon in shear-direction space (inscribed, conservative), so a diagonal push is
+			 * not silently credited ~8% more shear than a pure-U one. Gated exactly as the 2D ceiling
+			 * (MaxShear below the uncapped sentinel), so a profile with no truncation writes no rows
+			 * and a NaN cap fails closed inside the guard rather than laundering.
+			 */
+			if (S.MaxShearStrengthMPa < UncappedStrengthMPa)
+			{
+				for (int32 Facet = 0; Facet < ThreeDFrictionPyramidFacets; ++Facet)
+				{
+					const double Theta = Facet * (2.0 * UE_DOUBLE_PI / ThreeDFrictionPyramidFacets);
+					const double CosT = FMath::Cos(Theta);
+					const double SinT = FMath::Sin(Theta);
+
+					FAssemblyRow Ceiling;
+					Ceiling.Add(Base + 2, CosT);
+					Ceiling.Add(Base + 3, -CosT);
+					Ceiling.Add(Base + 4, SinT);
+					Ceiling.Add(Base + 5, -SinT);
+					Ceiling.Rhs = ThreeDPyramidInscribeFactor * S.MaxShearStrengthMPa * Conv * AreaSqCm;
+					Ceiling.bEquality = false;
+					AssemblyRows.Add(MoveTemp(Ceiling));
+				}
+			}
+		}
+
+		/* ---- First-crack rows: biaxial uncracked peak-fibre limit for bonded joints. ---- */
+		if (Problem.bFirstCrackRows)
+		{
+			for (int32 JointIndex = 0; JointIndex < NumJoints; ++JointIndex)
+			{
+				const FOracleJoint& Joint = Problem.Joints[JointIndex];
+				const double FtMPa = Joint.Strength.TensileStrengthMPa;
+
+				/*
+				 * Keyed on DATA exactly as the 2D first-crack rows are (RigidBlockOracle.cpp ~2369):
+				 * a joint with no tensile bond has nothing to crack, so !(f_t > 0) leaves it in the
+				 * plastic no-tension form with no row written — and, written positively, a NaN
+				 * strength lands inside the guard and fails closed rather than slipping past. Unlike
+				 * the 2D twin this path ALSO gates on f_t < UncappedStrengthMPa, so an uncapped-yet-
+				 * bonded joint fails closed here too instead of writing a trivially-slack ~1e13*A row.
+				 */
+				if (!(FtMPa > 0.0) || !(FtMPa < UncappedStrengthMPa))
+				{
+					continue;
+				}
+
+				/*
+				 * The joint's four corners sit at contact indices 4J..4J+3 in the fixed corner order
+				 * (CornerU = {-1,+1,-1,+1}, CornerV = {-1,-1,+1,+1}), each with signed normal
+				 * n_c = n+ - n- in columns Base_c+0 and Base_c+1. Over a rectangular face the fibre
+				 * stress is planar, so the most-tensioned CORNER carries mean minus BOTH bending
+				 * amplitudes: -(sum n_c) + 3*(|bend_U| + |bend_V|) <= f_t*Conv*A, with the joint's FULL
+				 * face area (Joint.AreaSqCm), bend_U = sum CornerU_c*n_c and bend_V = sum CornerV_c*n_c.
+				 * The factor 3 cuts the bonded section's plastic bending capacity to a third, exactly
+				 * as the 2D two-point form does. Since max over signs of (su*bend_U + sv*bend_V) equals
+				 * |bend_U| + |bend_V|, the |.| pair is posed as the four sign combinations su, sv in
+				 * {+1,-1}. Under uniaxial bending about V the V-corners pair up (bend_V = 0) and this
+				 * collapses EXACTLY onto the 2D `-(n1+n2) + 3|n1-n2| <= f_t*A` rows, and symmetrically
+				 * about U — which is what keeps the 3D gate no more permissive than the 2D one.
+				 */
+				static const double CornerU[4] = { -1.0, 1.0, -1.0, 1.0 };
+				static const double CornerV[4] = { -1.0, -1.0, 1.0, 1.0 };
+
+				const double Rhs = FtMPa * OracleForceUnitsPerMPaSqCm * Joint.AreaSqCm;
+
+				for (int32 SignU = 0; SignU < 2; ++SignU)
+				{
+					for (int32 SignV = 0; SignV < 2; ++SignV)
+					{
+						const double Su = SignU == 0 ? 1.0 : -1.0;
+						const double Sv = SignV == 0 ? 1.0 : -1.0;
+
+						FAssemblyRow FirstCrack;
+
+						for (int32 Corner = 0; Corner < 4; ++Corner)
+						{
+							const int32 Base = 1 + 6 * (4 * JointIndex + Corner);
+							const double NormalCoeff =
+								-1.0 + 3.0 * Su * CornerU[Corner] + 3.0 * Sv * CornerV[Corner];
+
+							FirstCrack.Add(Base + 0, NormalCoeff);
+							FirstCrack.Add(Base + 1, -NormalCoeff);
+						}
+
+						FirstCrack.Rhs = Rhs;
+						FirstCrack.bEquality = false;
+						AssemblyRows.Add(MoveTemp(FirstCrack));
+					}
+				}
 			}
 		}
 	}
