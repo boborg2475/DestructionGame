@@ -2587,7 +2587,19 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 		bSeveredThisPass = true;
 	}
 
-	CacheMinViolationReadout(Problem);
+	/*
+	 * CACHE THE READOUT ONCE, ON THE SETTLED PASS — the same last-wins answer, computed once.
+	 * A pass that severs anything continues the cascade (AuthoritativeBroke below), and the next
+	 * pass re-settles on the severed assembly and recomputes the readout, so this pass's readout
+	 * would only be overwritten. Guarding on !bSeveredThisPass runs the separate min-violation LP
+	 * solely on the terminal non-breaking pass, whose result is precisely the one today's last-wins
+	 * already kept. This mirrors the per-pass ConnectionReadoutCache.Reset() reasoning above: only
+	 * the pass that actually answers the settled structure leaves a reading behind.
+	 */
+	if (!bSeveredThisPass)
+	{
+		CacheMinViolationReadout(Problem);
+	}
 
 	return bSeveredThisPass
 		? EEquilibriumGateDisposition::AuthoritativeBroke
@@ -2617,6 +2629,10 @@ void FStructure::CacheMinViolationReadout(const RigidBlockOracle::FOracleProblem
 	 * cache all-absent rather than filling it with zeros, so GetConnectionReadout fails closed to the
 	 * router exactly as the gate itself does on a refusal.
 	 */
+
+	// OBSERVABILITY ONLY: count each readout LP so a test can watch how many a cascade pays for.
+	++MinViolationReadoutSolves;
+
 	ConnectionReadoutCache.Init(FConnectionReadout{}, Connections.Num());
 
 	RigidBlockOracle::FOracleProblem ReadoutProblem = Problem;
@@ -2806,6 +2822,9 @@ int32 FStructure::SolveAndBreak()
 	 * readout a previous below-cap settle cached, so a stale reading can never be served.
 	 */
 	ConnectionReadoutCache.Reset();
+
+	// OBSERVABILITY ONLY: zero the readout-solve counter for this whole cascade (see the getter).
+	MinViolationReadoutSolves = 0;
 
 	/*
 	 * PASS NUMBERS ARE GLOBAL TO THE STRUCTURE, so this call continues from the highest
@@ -3153,6 +3172,12 @@ FStructure::FConnectionReadout FStructure::GetConnectionReadout(int32 Connection
 	return ConnectionReadoutCache.IsValidIndex(ConnectionIndex)
 		? ConnectionReadoutCache[ConnectionIndex]
 		: FConnectionReadout{};
+}
+
+int32 FStructure::GetMinViolationReadoutSolveCount() const
+{
+	// OBSERVABILITY ONLY — see the header. Bare accessor, no logic.
+	return MinViolationReadoutSolves;
 }
 
 bool FStructure::IsPieceSupported(int32 PieceIndex) const

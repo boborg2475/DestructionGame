@@ -702,6 +702,17 @@ struct FStructure
 	FConnectionReadout GetConnectionReadout(int32 ConnectionIndex) const;
 
 	/**
+	 * OBSERVABILITY ONLY — how many times CacheMinViolationReadout ran the min-violation
+	 * readout LP during the LAST SolveAndBreak. Incremented once at the top of that method
+	 * and reset once at the top of SolveAndBreak, so it counts the readout solves across a
+	 * whole cascade rather than one pass. Added as test scaffolding for the "compute the
+	 * readout once per settle" fix (the shape of PhaseOnePivots on the oracle): it drives no
+	 * behaviour, only lets a test watch how many separate readout LPs a below-cap cascade pays
+	 * for. No production code branches on it.
+	 */
+	int32 GetMinViolationReadoutSolveCount() const;
+
+	/**
 	 * Whether this piece has a path to a grounded piece through SUPPORTS, after
 	 * SolveLoads. Grounded pieces are supported by definition.
 	 *
@@ -1325,6 +1336,15 @@ private:
 	 * apart from ConnectionForces and never feeds a break decision.
 	 */
 	TArray<FConnectionReadout> ConnectionReadoutCache;
+
+	/**
+	 * OBSERVABILITY COUNTER (test scaffolding) — the number of min-violation readout LPs
+	 * CacheMinViolationReadout has run since the last SolveAndBreak began. Reset once at the
+	 * top of SolveAndBreak (NOT per pass, so it accumulates across a cascade) and bumped once
+	 * per CacheMinViolationReadout call. Nothing reads it but GetMinViolationReadoutSolveCount;
+	 * it drives no behaviour.
+	 */
+	int32 MinViolationReadoutSolves = 0;
 
 	/**
 	 * How many times SolveLoads has been entered, ever. See NumSolves.
