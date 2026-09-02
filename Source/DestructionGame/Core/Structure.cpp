@@ -1940,6 +1940,41 @@ void FStructure::ReseatSpannedGroups(
 
 			Arch.SpanCm = (EndCentreCm[0] - EndCentreCm[1]).Size();
 
+			/*
+			 * THE THRUST AXIS IS THE ABUTMENT-TO-ABUTMENT LINE, NOT THE FIRST ABUTMENT'S OWN
+			 * DIRECTION. TowardAbutmentCm[0] earned its keep just above as the CLASSIFICATION axis
+			 * that split the abutments into two ends by the sign of a projection - a job that only
+			 * needs an axis those abutments genuinely straddle, and runs before the end centres
+			 * exist. But it is the wrong axis to PUSH along: when a group re-seats onto perpendicular
+			 * (corner) walls the first abutment sits diagonally inboard, so that raw vector carries an
+			 * out-of-plane component and the thrust pass would shove each springing sideways out of
+			 * the wall plane - a force a flat arch's thrust line cannot produce.
+			 *
+			 * The true thrust axis is the line from one end's mean abutment centre to the other's:
+			 * the arch springs between the two abutment groups, and whatever out-of-plane offset each
+			 * end carries is shared by both, so it CANCELS in their difference. EndCentreCm[0] is the
+			 * +TowardEndZero side, so EndCentreCm[0] - EndCentreCm[1] points toward end 0 and keeps
+			 * the sign convention the thrust pass expects (end 0 pushed along +TowardEndZero). Zeroing
+			 * Z projects it onto the horizontal seat plane the thrust acts in.
+			 *
+			 * For a planar wall both abutments share an out-of-plane coordinate and a course, so this
+			 * difference is already axis-aligned along the wall run and normalises to the same
+			 * (+/-1, 0, 0) the raw first-abutment vector did - the in-plane arches are unmoved.
+			 *
+			 * A DIFFERENCE THAT WILL NOT NORMALISE means the two ends coincide horizontally, which
+			 * describes no span, so there is no arch here to thrust - the re-seat above stands either
+			 * way, the same fail-closed answer the classification-axis guard gives at the top.
+			 */
+			FVector ThrustAxisCm = EndCentreCm[0] - EndCentreCm[1];
+			ThrustAxisCm.Z = 0.0;
+
+			if (!ThrustAxisCm.Normalize())
+			{
+				continue;
+			}
+
+			Arch.TowardEndZero = ThrustAxisCm;
+
 			Arches.Add(MoveTemp(Arch));
 		}
 	}
