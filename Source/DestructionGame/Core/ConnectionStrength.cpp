@@ -158,6 +158,104 @@ namespace DestructionForce
 		double PeakCompressiveStress = FMath::Max(0.0, BendingStress - NormalStress);
 
 		/*
+		 * A NO-TENSION BED BEARING ECCENTRICALLY PAST ITS KERN DOES NOT FAIL AT THE KERN — it
+		 * cracks and stands on the part of the face still in contact. A dry joint (f_t = 0) has
+		 * no tension to carry, so the linear +-sigma_b picture is wrong the moment the resultant
+		 * leaves the kern: the opened edge cannot pull, the contact shrinks to a triangular block
+		 * of length L_c = 3(h/2 - e), and force balance over that block concentrates the squeezed
+		 * fibre to sigma_max = 2N/(W*L_c) = 2*sigma_mean*h/(3(h/2 - e)). It is continuous with the
+		 * linear regime at the kern (e = h/6 gives 2*sigma_mean, exactly the linear peak there) and
+		 * climbs to infinity as the resultant nears the face (e -> h/2), so the joint fails only by
+		 * CRUSHING that reduced contact or by the resultant leaving the face entirely. This is the
+		 * same no-tension partial-contact model the LP oracle already uses below the router's cap;
+		 * teaching it here lets a dry timber bearing stand on its reduced contact instead of the
+		 * router severing it at the kern. See the header and DESIGN §3.
+		 *
+		 * ENTERED ONLY FOR A GENUINE NO-TENSION JOINT IN NET COMPRESSION WHOSE RESULTANT HAS LEFT
+		 * THE KERN. f_t <= 0 is the dry joint; NormalStress < 0 is net compression (the only state
+		 * a contact bearing can be in); PeakTensileStress > 0 is the resultant past the (rhombic)
+		 * kern. A NaN on any of the three fails all three tests and skips the relief, leaving the
+		 * joint its own (failed) kern reading — the expensive direction to be wrong in, so garbage
+		 * stays conservative.
+		 *
+		 * THE TRIANGULAR BLOCK IS UNIAXIAL, SO EXACTLY ONE AXIS MAY BE CRACKED. An axis is past its
+		 * OWN kern when its bending stress alone exceeds the mean compression (sigma_b_i > |sigma_n|,
+		 * the per-axis form of M/W > N/A). When exactly one axis is cracked the contact is the
+		 * triangular block this formula owns and the relief fires about that axis; the other axis is
+		 * still inside its kern, so its bending is an ordinary linear compression added to the worst
+		 * corner exactly as the biaxial peak everywhere else in this file adds. When BOTH axes are
+		 * cracked the contact is a cut corner, and when NEITHER alone cracks yet the summed bending
+		 * still opens the corner (the only other way to enter here) that corner tension is likewise a
+		 * two-dimensional state — either way the 1-D formula does not apply and the joint is left
+		 * FAIL-CLOSED, its positive peak tension reading Max against f_t = 0. A genuinely biaxial dry
+		 * joint therefore stays conservative rather than being laundered into a bearing.
+		 *
+		 * PLACED BEFORE THE COMPOSITE RELIEF DELIBERATELY. A dry bearing may still carry a composite
+		 * depth (masonry standing over it), so the block below could otherwise fire on the same
+		 * joint; running the no-tension relief first and zeroing the peak tension leaves the
+		 * composite guard's CompositeBendingStress < PeakTensileStress false, so the two never both
+		 * apply. The no-tension contact model is the correct one for a dry bed and can only lower the
+		 * reading, so taking precedence is safe.
+		 */
+		if (Strength.TensileStrengthMPa <= 0.0 && NormalStress < 0.0 && PeakTensileStress > 0.0)
+		{
+			const double MeanCompressiveMagnitude = -NormalStress;
+
+			/*
+			 * Per-axis bending stresses, guarded by the moment flags so a non-bent axis with a zero
+			 * modulus contributes a clean 0.0 rather than a 0/0 NaN. These sum to the BendingStress
+			 * already formed above.
+			 */
+			const double BendingStressU = bBendsAboutU
+				? BendingStressMPa(Load.BendingMomentUUuCm, Section.SectionModulusUCm3) : 0.0;
+			const double BendingStressV = bBendsAboutV
+				? BendingStressMPa(Load.BendingMomentVUuCm, Section.SectionModulusVCm3) : 0.0;
+
+			const bool bCracksU = BendingStressU > MeanCompressiveMagnitude;
+			const bool bCracksV = BendingStressV > MeanCompressiveMagnitude;
+
+			/*
+			 * Exactly one cracked axis is the case the uniaxial block describes; both-cracked and
+			 * corner-tension are left fail-closed above.
+			 */
+			if (bCracksU != bCracksV)
+			{
+				const double CrackedModulusCm3 =
+					bCracksU ? Section.SectionModulusUCm3 : Section.SectionModulusVCm3;
+				const double CrackedBendingStress = bCracksU ? BendingStressU : BendingStressV;
+				const double OtherBendingStress = bCracksU ? BendingStressV : BendingStressU;
+
+				/*
+				 * Recover the cracked axis's depth from the rectangle identity h = 6*S/A. Its
+				 * modulus was already proven positive by the moment/modulus guard above, so a
+				 * non-positive or NaN depth means garbage — written as the positive test so it, and
+				 * only it, gates the relief on.
+				 */
+				const double DepthHCm = 6.0 * CrackedModulusCm3 / InterfaceAreaSqCm;
+
+				/*
+				 * The relief applies only while the resultant is still on the face, e < h/2 —
+				 * equivalently sigma_b < 3*|sigma_n|. Written as the plain `<` so a NaN bending
+				 * stress fails the test and the joint keeps its (failed) kern reading, and so that a
+				 * resultant AT or past the face edge falls through with its peak tension intact and
+				 * fails against f_t = 0. Only when the contact genuinely survives do we swap the
+				 * linear picture for the reduced-contact one.
+				 */
+				if (DepthHCm > 0.0 && CrackedBendingStress < 3.0 * MeanCompressiveMagnitude)
+				{
+					const double EccentricityCm =
+						CrackedBendingStress * DepthHCm / (6.0 * MeanCompressiveMagnitude);
+
+					PeakTensileStress = 0.0;
+					PeakCompressiveStress =
+						2.0 * MeanCompressiveMagnitude * DepthHCm
+							/ (3.0 * (0.5 * DepthHCm - EccentricityCm))
+						+ OtherBendingStress;
+				}
+			}
+		}
+
+		/*
 		 * AND THE DEEP BEAM STANDING OVER THE JOINT CARRIES THE SAME MOMENT ON A VERTICAL
 		 * SECTION, so the joint gives at the LESSER of the two demands. Composite action is an
 		 * alternative path rather than an extra one; see the header for why the composite

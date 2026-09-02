@@ -1433,4 +1433,437 @@ bool FConnectionStrengthDegenerateSectionTest::RunTest(const FString& Parameters
 	return true;
 }
 
+/**
+ * A DRY (no-tension) joint whose resultant sits OUTSIDE THE KERN but inside the
+ * face does NOT fail: it opens partially and bears on the reduced contact, and
+ * fails only when the resultant leaves the face (e >= h/2) or the peak
+ * compression on the shrunken contact reaches f_c (crushing).
+ *
+ * THE MECHANISM DRIVER FOR REVIEW ITEM 2. The as-built realistic brick shed
+ * breaks five DryStone timber-lintel bearings the instant it settles, because
+ * this is the router's above-cap break authority and it computes
+ *
+ *     PeakTensileStress = max(0, sigma_n + sigma_b)
+ *
+ * then hands that to AxisUtilisation(PeakTensileStress, f_t = 0), which returns
+ * TNumericLimits<double>::Max() for ANY positive peak tension. Positive peak
+ * tension appears the instant the resultant crosses the kern (e > h/6), so a dry
+ * joint currently "fails" at the kern — physically wrong. A masonry (no-tension)
+ * joint past the kern does not crack apart; the bed simply opens over part of its
+ * length and carries the whole load on the compressed remainder.
+ *
+ * ------------------------------------------------------------------------------
+ * THE GEOMETRY AND THE ARITHMETIC — every expected number derived here, not
+ * imported, so a wrong production constant fails this test instead of agreeing.
+ *
+ * A rectangular bed, depth h in the bending direction, width W out of plane:
+ *
+ *     A  = W * h                       area
+ *     S  = W * h^2 / 6 = A * h / 6     section modulus  ->  h = 6 * S / A
+ *     kern = S / A = h / 6             the middle-third boundary
+ *     edge = h / 2                     the face itself
+ *
+ * A normal (compression) resultant N applied at eccentricity e:
+ *
+ *     sigma_mean = N / A               (compression, so sigma_n = -sigma_mean)
+ *     sigma_b    = N*e / S = sigma_mean * (6e/h)
+ *     peak tension (linear) = max(0, sigma_n + sigma_b)
+ *                           = sigma_mean * (6e/h - 1)   -> positive once e > h/6
+ *
+ * INSIDE THE KERN (e <= h/6) nothing opens: the face is wholly in compression and
+ * the linear peak compression sigma_mean * (1 + 6e/h) is correct and finite.
+ *
+ * OUTSIDE THE KERN, INSIDE THE FACE (h/6 < e < h/2) the no-tension bed opens. The
+ * compressed zone is a triangle of length L_c whose resultant must sit under the
+ * load, so L_c = 3*(h/2 - e), and force balance (1/2)*sigma_max*W*L_c = N gives
+ *
+ *     sigma_max = 2N / (3*W*(h/2 - e)) = 2*sigma_mean*h / (3*(h/2 - e))
+ *
+ * which is STRICTLY LARGER than the linear reading it replaces (the contact
+ * shrank), rises without bound as e -> h/2, and equals 2*sigma_mean at e = h/6
+ * (matching the linear value there exactly, so the two regimes meet). Crushing is
+ * sigma_max = f_c, i.e. the joint fails at
+ *
+ *     e_crush = h * (1/2 - (2/3)*(sigma_mean/f_c))
+ *
+ * OFF THE FACE (e >= h/2) there is no compressed contact that balances the load:
+ * the joint fails outright.
+ *
+ * ------------------------------------------------------------------------------
+ * THE FIXTURE. h = 20, W = 10  ->  A = 200 cm2, S = 666.6667 cm3, kern = 3.3333,
+ * edge = 10. sigma_mean = 3 MPa against DryStone f_c = 30 MPa, so r = 0.1 and
+ * e_crush = 20*(0.5 - 0.0667) = 8.6667 cm. The four swept eccentricities ladder
+ * cleanly across the four regimes:
+ *
+ *     e = 2.5   (h/8, INSIDE kern)         util = sigma_mean*(1+6e/h)/f_c = 5.25/30 = 0.175    stands, finite
+ *     e = 5.0   (h/4, cracked, STANDS)     util = 2*sigma_mean*h/(3*(h/2-e))/f_c = 8.0/30 = 0.26667 stands, finite
+ *     e = 9.0   (0.45h, cracked, CRUSHES)  util = 40.0/30 = 1.33333                             fails by crushing, finite
+ *     e = 10.5  (0.525h, OFF the face)     util >= 1                                            fails, resultant off face
+ *
+ * WHICH AXIS GOVERNS IS THE ENTIRE RISK. Under the correct model peak tension is
+ * ZERO for every eccentric row (a dry bed carries no tension), shear is zero (a
+ * pure normal load), so COMPRESSION is the only working axis and it governs by
+ * construction. The reduced-contact compression 0.26667 is deliberately DIFFERENT
+ * from the linear 0.25 the pre-fix code would compute if someone merely deleted
+ * the spurious tension term: the shrunken contact concentrates the stress, so a
+ * fix that keeps the full-width linear compression reads 0.25 and still fails this
+ * row. That is the point — the reduced-contact formula is what is under test.
+ *
+ * RED TODAY: e = 5.0 reads Max() (positive peak tension against f_t = 0) where it
+ * must read 0.26667 < 1; e = 9.0 reads Max() (not finite) where it must read a
+ * FINITE 1.33333 by crushing. e = 2.5 (inside kern) and e = 10.5 (off face) are
+ * green on arrival and pin the two boundaries the fix must not move.
+ *
+ * NEEDS A TICKING WORLD: NO. Pure arithmetic on a classified load; gravity is
+ * irrelevant by design (DESIGN §4). The assertion is on the utilisation ratio.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FConnectionStrengthDryEccentricContactTest,
+	"DestructionGame.Core.ConnectionStrength.DryJointBearsOnReducedContactPastTheKern",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FConnectionStrengthDryEccentricContactTest::RunTest(const FString& Parameters)
+{
+	using namespace ConnectionStrengthTestSupport;
+	using namespace DestructionProfiles;
+
+	/*
+	 * Conversion spelled from first principles, NOT imported: 1 N = 100 uu,
+	 * 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2 -> 10000 uu per MPa per cm2. If the
+	 * production constant is wrong this test fails rather than agreeing with it.
+	 */
+	constexpr double UuPerMPaPerSqCm = 100.0 * 100.0;
+
+	constexpr double DepthHCm = 20.0;      // the bed depth in the bending direction
+	constexpr double WidthWCm = 10.0;      // out-of-plane width
+	constexpr double AreaSqCm = WidthWCm * DepthHCm;                     // 200
+	constexpr double ModulusUCm3 = WidthWCm * DepthHCm * DepthHCm / 6.0; // 666.6667
+	constexpr double MeanCompMPa = 3.0;
+	constexpr double CompressionForceUu = MeanCompMPa * UuPerMPaPerSqCm * AreaSqCm; // 6e6
+
+	constexpr double KernCm = DepthHCm / 6.0;   // 3.3333
+	constexpr double EdgeCm = DepthHCm / 2.0;   // 10.0
+	const double CrushCm =
+		DepthHCm * (0.5 - (2.0 / 3.0) * (MeanCompMPa / DryStone.CompressiveStrengthMPa)); // 8.6667
+
+	/* ---- FIXTURE PRECONDITIONS ---------------------------------------------- */
+
+	TestTrue(TEXT("FIXTURE: DryStone is a true no-tension joint — f_t = 0 and cohesion = 0"),
+		DryStone.TensileStrengthMPa == 0.0 && DryStone.ShearCohesionMPa == 0.0);
+	TestTrue(TEXT("FIXTURE: derived against DryStone f_c = 30 MPa, profile carries it"),
+		DryStone.CompressiveStrengthMPa == 30.0);
+	TestTrue(TEXT("FIXTURE: the section recovers h = 6 S / A = 20 cm"),
+		FMath::IsNearlyEqual(6.0 * ModulusUCm3 / AreaSqCm, DepthHCm, 1e-9));
+	TestTrue(FString::Printf(
+		TEXT("FIXTURE: the four eccentricities must ladder across the regimes: "
+			 "kern %.4f < stands 5 < crush %.4f < crushes 9 < edge %.4f"),
+			KernCm, CrushCm, EdgeCm),
+		KernCm < 5.0 && 5.0 < CrushCm && CrushCm < 9.0 && 9.0 < EdgeCm);
+
+	enum class ERegime
+	{
+		InsideKernStands,   // finite, < 1, exact
+		CrackedStands,      // finite, < 1, exact  (RED today: reads Max)
+		CrackedCrushes,     // finite, >= 1, exact (RED today: reads Max, not finite)
+		OffFaceFails        // >= 1                (boundary pin, green today)
+	};
+
+	struct FCase
+	{
+		const TCHAR* Description;
+		double EccentricityCm;
+		double ExpectedUtilisation;
+		ERegime Regime;
+	};
+
+	const TArray<FCase> Cases = {
+		{
+			TEXT("e = h/8, inside the kern: the whole bed bears, linear compression 5.25/30"),
+			2.5, 0.175, ERegime::InsideKernStands
+		},
+		{
+			TEXT("e = h/4, outside the kern: the bed opens and bears on reduced contact, 8.0/30 — NOT the linear 0.25"),
+			5.0, 8.0 / 30.0, ERegime::CrackedStands
+		},
+		{
+			TEXT("e = 0.45h, reduced-contact compression crosses f_c: crushes at 40/30, still FINITE"),
+			9.0, 40.0 / 30.0, ERegime::CrackedCrushes
+		},
+		{
+			TEXT("e = 0.525h, resultant off the face: fails outright"),
+			10.5, 0.0, ERegime::OffFaceFails
+		},
+	};
+
+	constexpr double Tolerance = 1e-9;
+
+	for (const FCase& Case : Cases)
+	{
+		const double MomentUuCm = CompressionForceUu * Case.EccentricityCm;
+		const FConnectionLoad Load = WithMomentU(CompressionOf(CompressionForceUu), MomentUuCm);
+		const FJointSection Section(AreaSqCm, ModulusUCm3, 0.0);
+
+		const double Utilisation =
+			DestructionForce::ComputeUtilisation(Load, DryStone, Section);
+
+		switch (Case.Regime)
+		{
+		case ERegime::InsideKernStands:
+		case ERegime::CrackedStands:
+			TestTrue(
+				FString::Printf(TEXT("%s: must be a real reading, not the failure sentinel (Max), got %g"),
+					Case.Description, Utilisation),
+				FMath::IsFinite(Utilisation) && Utilisation < TNumericLimits<double>::Max());
+			TestTrue(
+				FString::Printf(TEXT("%s: expected %.10f, got %.10f"),
+					Case.Description, Case.ExpectedUtilisation, Utilisation),
+				FMath::IsNearlyEqual(Utilisation, Case.ExpectedUtilisation, Tolerance));
+			TestTrue(
+				FString::Printf(TEXT("%s: bears on reduced contact, so it STANDS (util < 1), got %g"),
+					Case.Description, Utilisation),
+				Utilisation < 1.0);
+			break;
+
+		case ERegime::CrackedCrushes:
+			TestTrue(
+				FString::Printf(TEXT("%s: crushing is a real, bounded failure — not the failure sentinel (Max), got %g"),
+					Case.Description, Utilisation),
+				FMath::IsFinite(Utilisation) && Utilisation < TNumericLimits<double>::Max());
+			TestTrue(
+				FString::Printf(TEXT("%s: expected %.10f, got %.10f"),
+					Case.Description, Case.ExpectedUtilisation, Utilisation),
+				FMath::IsNearlyEqual(Utilisation, Case.ExpectedUtilisation, Tolerance));
+			TestTrue(
+				FString::Printf(TEXT("%s: peak compression past f_c, so it FAILS (util >= 1), got %g"),
+					Case.Description, Utilisation),
+				Utilisation >= 1.0);
+			break;
+
+		case ERegime::OffFaceFails:
+			TestTrue(
+				FString::Printf(TEXT("%s: the resultant has left the face, so the joint FAILS (util >= 1), got %g"),
+					Case.Description, Utilisation),
+				Utilisation >= 1.0);
+			break;
+		}
+	}
+
+	return true;
+}
+
+/**
+ * The BIAXIAL branch of the dry-joint reduced-contact rule, pinned directly.
+ *
+ * A CHARACTERIZATION PIN, GREEN ON ARRIVAL. The sibling test above
+ * (DryJointBearsOnReducedContactPastTheKern) only ever bends about U with the V
+ * modulus zeroed, so it never exercises the three-way split the code makes once
+ * BOTH axes carry a moment. The only production driver at scale — the 442-block
+ * realistic shed — is weakly biaxial at its door lintel (M_v is ~4% of M_u), so
+ * dropping the whole other-axis term would still pass the shed. This test is the
+ * missing bite-prover: it holds the biaxial arithmetic in place so that the three
+ * mutations below (drop the added other-axis bending; relieve instead of
+ * fail-closed on both-cracked; relieve instead of fail-closed on the summed
+ * corner) each turn exactly one row red.
+ *
+ * ------------------------------------------------------------------------------
+ * THE MODEL, restated for two axes. For a dry joint (f_t = 0, cohesion = 0) in
+ * net compression, an axis is CRACKED when its own bending stress alone exceeds
+ * the mean compression, sigma_b_i > |sigma_n| (the per-axis e_i > h/6). Then:
+ *
+ *   - EXACTLY ONE axis cracked: the contact is the uniaxial triangular block
+ *     about that axis, so the cracked axis gets the reduced-contact concentration
+ *         sigma_c = 2*|sigma_n|*h / (3*(h/2 - e))            (h, e of the cracked axis)
+ *     and the OTHER axis is still inside its own kern, an ordinary linear
+ *     compression that ADDS to the worst corner:
+ *         PeakCompressive = sigma_c + sigma_b_other        peak tension zeroed
+ *     util = PeakCompressive / f_c, and COMPRESSION governs (tension = shear = 0).
+ *
+ *   - BOTH axes cracked: the contact is a cut corner, the 1-D formula does not
+ *     apply, so the joint is left FAIL-CLOSED — its positive peak tension reads
+ *     AxisUtilisation(+, f_t = 0) = TNumericLimits<double>::Max().
+ *
+ *   - NEITHER alone cracked BUT the summed corner opens (sigma_bU + sigma_bV >
+ *     |sigma_n|): that corner tension is a two-dimensional state the 1-D formula
+ *     likewise does not own, so again FAIL-CLOSED at Max().
+ *
+ * ------------------------------------------------------------------------------
+ * THE FIXTURE. A rectangular bed 10 (out of the U-bending plane) by 20 (the
+ * U depth), so A = 200 cm2, and the two moduli are the two rectangle moduli:
+ *     S_U = W_v * h_U^2 / 6 = 10 * 20^2 / 6 = 666.6667 cm3   (h_U = 6 S_U/A = 20)
+ *     S_V = h_U * W_v^2 / 6 = 20 * 10^2 / 6 = 333.3333 cm3   (h_V = 6 S_V/A = 10)
+ * Mean compression |sigma_n| = 3 MPa against DryStone f_c = 30 (r = 0.1), so the
+ * force is N = 3 * 10000 * 200 = 6e6 uu and each axis's bending stress is set by
+ * a moment M_i = sigma_b_i * S_i * 10000 (conversion spelled from first
+ * principles, not imported). e_i = M_i / N recovers the eccentricity.
+ *
+ * ROW 1 (one-cracked, non-trivial other axis) — PINS the `+ sigma_b_other` term:
+ *     sigma_bU = 4.5 MPa  (> 3, cracked; e_U = 4.5*20/(6*3) = 5.0, in (h/6, h/2))
+ *     sigma_bV = 1.5 MPa  (= 0.5|sigma_n|, WITHIN its kern; e_V = 1.5*10/18 = 0.83 < h_V/6 = 1.667)
+ *     sigma_c  = 2*3*20 / (3*(10 - 5)) = 120/15 = 8.0 MPa
+ *     PeakCompressive = 8.0 + 1.5 = 9.5      util = 9.5 / 30 = 0.3166667, COMPRESSION governs
+ *   Drop the `+ sigma_b_other` and this reads 8.0/30 = 0.2666667 — the bite.
+ *
+ * ROW 2 (both cracked) — PINS the both-cracked fail-closed:
+ *     sigma_bU = 4.5 MPa (cracked), sigma_bV = 4.5 MPa (> 3, cracked; e_V = 2.5 > 1.667)
+ *     summed corner = 4.5 + 4.5 - 3 = 6 MPa tension survives  ->  util = Max()
+ *
+ * ROW 3 (neither alone cracks, summed corner in tension) — PINS that fail-closed:
+ *     sigma_bU = 2.0 MPa (< 3), sigma_bV = 2.0 MPa (< 3), sum 4 > 3
+ *     neither axis cracks, corner tension 4 - 3 = 1 MPa survives  ->  util = Max()
+ *
+ * WHICH AXIS GOVERNS IS THE ENTIRE RISK, and it is asserted explicitly: the
+ * relieved row must be a FINITE compression reading below 1 (peak tension and
+ * shear are both zero there, so nothing but compression can be governing), and
+ * each fail-closed row must be EXACTLY the Max sentinel (only the tension axis
+ * against f_t = 0 can produce it — the compression axis alone would be finite).
+ *
+ * NEEDS A TICKING WORLD: NO. Pure arithmetic on a classified load.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FConnectionStrengthDryBiaxialContactTest,
+	"DestructionGame.Core.ConnectionStrength.DryJointBiaxialReducedContact",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FConnectionStrengthDryBiaxialContactTest::RunTest(const FString& Parameters)
+{
+	using namespace ConnectionStrengthTestSupport;
+	using namespace DestructionProfiles;
+
+	/*
+	 * Conversion spelled from first principles, NOT imported: 1 N = 100 uu,
+	 * 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2 -> 10000 uu per MPa per cm2. A wrong
+	 * production constant fails this test rather than agreeing with it.
+	 */
+	constexpr double UuPerMPaPerSqCm = 100.0 * 100.0;
+
+	constexpr double DepthHUCm = 20.0;   // U-bending depth
+	constexpr double WidthWVCm = 10.0;   // the other dimension
+	constexpr double AreaSqCm = WidthWVCm * DepthHUCm;                        // 200
+	constexpr double ModulusUCm3 = WidthWVCm * DepthHUCm * DepthHUCm / 6.0;   // 666.6667
+	constexpr double ModulusVCm3 = DepthHUCm * WidthWVCm * WidthWVCm / 6.0;   // 333.3333
+	constexpr double DepthHVCm = 6.0 * ModulusVCm3 / AreaSqCm;                // 10
+
+	constexpr double MeanCompMPa = 3.0;
+	constexpr double CompressionForceUu = MeanCompMPa * UuPerMPaPerSqCm * AreaSqCm; // 6e6
+
+	/* ---- FIXTURE PRECONDITIONS ---------------------------------------------- */
+
+	TestTrue(TEXT("FIXTURE: DryStone is a true no-tension joint — f_t = 0 and cohesion = 0"),
+		DryStone.TensileStrengthMPa == 0.0 && DryStone.ShearCohesionMPa == 0.0);
+	TestTrue(TEXT("FIXTURE: derived against DryStone f_c = 30 MPa, profile carries it"),
+		DryStone.CompressiveStrengthMPa == 30.0);
+	TestTrue(TEXT("FIXTURE: the U section recovers h_U = 6 S_U / A = 20 cm"),
+		FMath::IsNearlyEqual(6.0 * ModulusUCm3 / AreaSqCm, DepthHUCm, 1e-9));
+	TestTrue(TEXT("FIXTURE: the V section recovers h_V = 6 S_V / A = 10 cm"),
+		FMath::IsNearlyEqual(DepthHVCm, 10.0, 1e-9));
+
+	/*
+	 * The moment that loads modulus S to a target bending stress, uu.cm. Independent
+	 * of production: sigma_b = |M| / (S * conv)  ->  M = sigma_b * S * conv.
+	 */
+	auto MomentForBendingStress = [&](double BendingStressMPa, double ModulusCm3)
+	{
+		return BendingStressMPa * ModulusCm3 * UuPerMPaPerSqCm;
+	};
+
+	/*
+	 * The reduced-contact concentration on a cracked axis, MPa, derived here:
+	 * sigma_c = 2*|sigma_n|*h / (3*(h/2 - e)), with e = sigma_b * h / (6*|sigma_n|).
+	 */
+	auto ReducedContactStress = [&](double CrackedBendingMPa, double DepthCm)
+	{
+		const double Ecc = CrackedBendingMPa * DepthCm / (6.0 * MeanCompMPa);
+		return 2.0 * MeanCompMPa * DepthCm / (3.0 * (0.5 * DepthCm - Ecc));
+	};
+
+	/* Row 1 oracle: reduced contact on U (sigma_bU = 4.5) plus within-kern V (1.5). */
+	const double Row1Sigma_c = ReducedContactStress(4.5, DepthHUCm);          // 8.0
+	const double Row1Util = (Row1Sigma_c + 1.5) / DryStone.CompressiveStrengthMPa; // 9.5/30
+
+	TestTrue(FString::Printf(TEXT("FIXTURE: row 1 reduced-contact stress is 8.0 MPa, derived %g"), Row1Sigma_c),
+		FMath::IsNearlyEqual(Row1Sigma_c, 8.0, 1e-9));
+
+	enum class ERegime
+	{
+		OneCrackedRelieves,   // finite, < 1, exact — compression governs
+		FailsClosed           // exactly the Max sentinel — the tension axis governs
+	};
+
+	struct FCase
+	{
+		const TCHAR* Description;
+		double BendingUMPa;
+		double BendingVMPa;
+		double ExpectedUtilisation;   // meaningful only for OneCrackedRelieves
+		ERegime Regime;
+	};
+
+	const TArray<FCase> Cases = {
+		{
+			TEXT("ROW 1 one-cracked (U 4.5>3, V 1.5<3): reduced contact on U plus within-kern V bending, 9.5/30"),
+			4.5, 1.5, Row1Util, ERegime::OneCrackedRelieves
+		},
+		{
+			TEXT("ROW 2 both-cracked (U 4.5>3, V 4.5>3): a cut corner, the 1-D block does not apply — fail-closed"),
+			4.5, 4.5, 0.0, ERegime::FailsClosed
+		},
+		{
+			TEXT("ROW 3 neither-cracked but summed corner in tension (U 2<3, V 2<3, sum 4>3): fail-closed"),
+			2.0, 2.0, 0.0, ERegime::FailsClosed
+		},
+	};
+
+	constexpr double Tolerance = 1e-9;
+
+	for (const FCase& Case : Cases)
+	{
+		FConnectionLoad Load = CompressionOf(CompressionForceUu);
+		Load.BendingMomentUUuCm = MomentForBendingStress(Case.BendingUMPa, ModulusUCm3);
+		Load.BendingMomentVUuCm = MomentForBendingStress(Case.BendingVMPa, ModulusVCm3);
+
+		const FJointSection Section(AreaSqCm, ModulusUCm3, ModulusVCm3);
+
+		const double Utilisation =
+			DestructionForce::ComputeUtilisation(Load, DryStone, Section);
+
+		switch (Case.Regime)
+		{
+		case ERegime::OneCrackedRelieves:
+			/*
+			 * COMPRESSION MUST GOVERN. Peak tension and shear are both zero on a
+			 * relieved dry bed under a pure normal load, so a finite reading below
+			 * Max can only be the compression axis — asserted, then pinned to value.
+			 */
+			TestTrue(
+				FString::Printf(TEXT("%s: must be a real compression reading, not the failure sentinel (Max), got %g"),
+					Case.Description, Utilisation),
+				FMath::IsFinite(Utilisation) && Utilisation < TNumericLimits<double>::Max());
+			TestTrue(
+				FString::Printf(TEXT("%s: expected %.10f, got %.10f"),
+					Case.Description, Case.ExpectedUtilisation, Utilisation),
+				FMath::IsNearlyEqual(Utilisation, Case.ExpectedUtilisation, Tolerance));
+			TestTrue(
+				FString::Printf(TEXT("%s: bears on reduced contact, so it STANDS (util < 1), got %g"),
+					Case.Description, Utilisation),
+				Utilisation < 1.0);
+			break;
+
+		case ERegime::FailsClosed:
+			/*
+			 * THE TENSION AXIS MUST GOVERN. Only AxisUtilisation(+, f_t = 0) yields
+			 * the Max sentinel exactly; the compression axis alone would be finite,
+			 * so equality with Max pins that the surviving corner tension is what
+			 * fails the joint rather than any relieved compression reading.
+			 */
+			TestEqual(
+				FString::Printf(TEXT("%s: must fail closed at exactly the Max sentinel, got %g"),
+					Case.Description, Utilisation),
+				Utilisation, TNumericLimits<double>::Max());
+			break;
+		}
+	}
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

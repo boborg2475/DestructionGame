@@ -1346,4 +1346,106 @@ bool FRealisticShedPorchTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * THE AS-BUILT REALISTIC BRICK SHED SETTLES WITHOUT BREAKING A SINGLE BEARING —
+ * zero breaking passes, no joint given.
+ *
+ * THE BEHAVIOUR, IN ONE SENTENCE. DestructionShed3D::BuildRealistic lays a shed
+ * that is a valid, standing structure, so settling it through production
+ * (FStructure::SolveAndBreak, the router above the 200-block cap) must break
+ * NOTHING: SolveAndBreak returns 0 breaking passes and no connection has given.
+ *
+ * WHY THIS IS SEPARATE FROM (AND STRICTER THAN) THE StandsAsBuilt TESTS ABOVE.
+ * Those assert only Stranded == 0. That is TOO WEAK: the shed's timber lintels
+ * bear on DryStone joints, and the router breaks five of them the instant it
+ * settles (the door-lintel top bearing sits ~2.5% past its kern, reads
+ * utilisation Max(), and severs on pass 1; its arch thrust then slides two more
+ * dry springings on passes 2-3). None of those broken bearings STRAND a piece —
+ * the timber lintel is left carrying only itself and the masonry arches over the
+ * gap — so Stranded stays 0 and those tests stay green while the shed quietly
+ * self-destructs five joints on the first settle. The pass count and HasGiven are
+ * the mechanism that exposes it. Assert on those, NEVER on displacement
+ * (DESIGN §4): a joint can sever and leave every piece resting exactly in place.
+ *
+ * THE DEFECT AND THE FIX IT DRIVES. A DryStone (no-tension) bearing whose
+ * resultant crosses the kern reads infinite utilisation, because
+ * ComputeUtilisation treats any positive peak tension against f_t = 0 as failure.
+ * The correct masonry model is a partial-contact (no-tension) bearing — the bed
+ * opens and carries the load on the reduced compressed contact, failing only off
+ * the face or by crushing. The focused mechanism driver for that is
+ * DestructionGame.Core.ConnectionStrength.DryJointBearsOnReducedContactPastTheKern.
+ * This test is the acceptance-level outcome: teach the router that model and the
+ * whole shed settles untouched.
+ *
+ * NEEDS A TICKING WORLD: NO. SolveAndBreak is the world-free settle on the
+ * structure the builder returns — the same static solve the StandsAsBuilt tests
+ * use — so there is no Chaos, no tick, and gravity is the solver's own self-weight
+ * (an INTEGRATION-shaped outcome assertion on a world-free structure).
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FRealisticShedSettlesUntouchedTest,
+	"DestructionGame.Acceptance.Shed.ThreeD.RealisticBrickShedSettlesWithoutBreakingABearing",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FRealisticShedSettlesUntouchedTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionProfiles;
+	using namespace RealisticShedTestSupport;
+
+	FBrickLayout Layout;
+	const bool bBuilt = DestructionShed3D::BuildRealistic(Layout);
+
+	TestTrue(TEXT("BUILD: the builder must lay the realistic-brick shed"), bBuilt);
+	if (!bBuilt)
+	{
+		AddError(TEXT("BUILD: DestructionShed3D::BuildRealistic laid nothing — cannot settle the shed."));
+		return false;
+	}
+
+	/*
+	 * FIXTURE PRECONDITION — this test only bites while the timber bearings are
+	 * DryStone (the no-tension joint whose kern break is the defect). If the
+	 * builder re-profiles them to a bonded joint the mechanism changes and this
+	 * fixture must be re-derived rather than silently still passing.
+	 */
+	TestTrue(TEXT("FIXTURE: DryStone bearings are the no-tension joint under test (f_t = 0)"),
+		DryStone.TensileStrengthMPa == 0.0);
+
+	const int32 Passes = Layout.Structure.SolveAndBreak();
+
+	/*
+	 * Count and name the joints that gave, so the RED prints the mechanism rather
+	 * than just a number: which joints severed and on which pass.
+	 */
+	int32 GivenJoints = 0;
+	FString GivenDetail;
+	for (int32 J = 0; J < Layout.Structure.NumConnections(); ++J)
+	{
+		if (Layout.Structure.GetConnection(J).HasGiven())
+		{
+			++GivenJoints;
+			if (GivenJoints <= 8)
+			{
+				GivenDetail += FString::Printf(TEXT(" [joint %d gave on pass %d]"),
+					J, Layout.Structure.GetBreakPass(J));
+			}
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("SETTLE: production ran %d breaking pass(es); %d joint(s) gave.%s"),
+		Passes, GivenJoints, *GivenDetail));
+
+	/*
+	 * THE TWO NEW REDS. A valid standing shed settles in ZERO breaking passes with
+	 * NO joint given. Today the router severs the dry timber bearings at the kern,
+	 * so Passes == 3 and five joints have given.
+	 */
+	TestEqual(TEXT("SETTLE: a valid standing shed breaks nothing — zero breaking passes"),
+		Passes, 0);
+	TestEqual(TEXT("SETTLE: no bearing may give as the shed settles (the dry timber lintels must hold)"),
+		GivenJoints, 0);
+
+	return true;
+}
+
 #endif

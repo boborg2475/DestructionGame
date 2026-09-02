@@ -286,10 +286,15 @@ int32 UDestructionStructureSubsystem::SolveAndPush(int32 StructureId)
 	 * collapse with it. A wall that cannot hold itself up should not stand waiting for a
 	 * click.
 	 *
-	 * THE PRICE IS PAID BY WALLS THAT WERE NEVER STANDING, and it is large where it lands:
-	 * a ragged end brick is a corbel carrying a real 5.625 cm eccentricity, so a tall
-	 * ragged wall sheds a staircase from both ends on spawn — 325 of 380 pieces at ten
-	 * wide. A wall UNDER capacity is untouched bit for bit, because the last thing
+	 * (2026-09-02: the ragged-wall figure above is retired — the dry-joint edge rule now
+	 * stands a running-bond ragged wall entirely, because a corbel past its bed-face edge
+	 * leans on its in-course neighbour across the head joint and the LP finds equilibrium,
+	 * so eccentricity alone no longer sheds one. The seam's point is unchanged and now
+	 * rides a structure that genuinely cannot stand: a BARE dry cantilever arm, no
+	 * neighbour to lean on, sheds its whole arm on spawn — see
+	 * `World.Push.AWallOverCapacityDoesNotWaitForAClick`.)
+	 *
+	 * THE PRICE IS PAID BY STRUCTURES THAT WERE NEVER STANDING. A wall UNDER capacity is untouched bit for bit, because the last thing
 	 * SolveAndBreak does is a complete solve that broke nothing: the game mode's own flush
 	 * scenario wall reads 0.00495 and settles in zero passes, so this costs it one solve
 	 * and nothing else.
