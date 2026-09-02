@@ -789,9 +789,11 @@ void FStructure::SolveLoads()
 	 * forgetting the re-seat the way the old solver forgot to filter falling supports.
 	 */
 	TArray<bool> PieceReseatedOnAnArch;
+	TArray<bool> PieceInRefusedArchGroup;
 	TArray<FSpannedArch> Arches;
 	ReseatSpannedGroups(
-		PieceJoints, PieceHasNoSeat, SupportConnections, PieceReseatedOnAnArch, Arches);
+		PieceJoints, PieceHasNoSeat, SupportConnections, PieceReseatedOnAnArch,
+		PieceInRefusedArchGroup, Arches);
 
 	/*
 	 * The same relation read the other way: who rests on each piece. Both of the
@@ -845,6 +847,24 @@ void FStructure::SolveLoads()
 	 */
 	TArray<bool> PieceOverturned;
 	PieceOverturned.Init(false, Pieces.Num());
+
+	/*
+	 * AND WHICH PIECES A REFUSED ONE-SIDED ARCH HAS RELEASED, kept beside the overturned set for
+	 * the same reason and used the same way. A run of seatless pieces spanning a hole forms a
+	 * group; when its one-sided abutment makes the opposition gate refuse the arch
+	 * (PieceInRefusedArchGroup, filled by ReseatSpannedGroups), the run keeps its sign-blind head
+	 * joints, and if those form a mutual-support cycle the stranding pass below would report the
+	 * run STRANDED. But a refused arch was the run's only hope of a path to earth, so the honest
+	 * answer is Falling, not the false knot Stranded (DESIGN §8 case-21 scope: above the cap the
+	 * brittle answer governs and a one-sided masonry cantilever falls). So when the cycle test
+	 * fires on a refused-group member, it is RELEASED here rather than stranded — excluded from the
+	 * next pass's walk exactly as an overturned piece is, so it and anything resting only on it come
+	 * out unsupported and read Falling. Gated STRICTLY on refused-group membership, which forms only
+	 * under complete geometry, so a geometry-free mutually-propping pair keeps its genuine Stranded.
+	 * Grows monotonically across passes, so the fixpoint still terminates.
+	 */
+	TArray<bool> PieceReleasedFromRefusedArch;
+	PieceReleasedFromRefusedArch.Init(false, Pieces.Num());
 
 	/*
 	 * Reachability and the load split depend on each other, so the solve runs to a
@@ -912,8 +932,17 @@ void FStructure::SolveLoads()
 				 * loses its own path to the earth on the next pass. The set is empty on the first
 				 * pass, so the reachability walk is bit-identical until the accumulation below finds
 				 * a body past tipping.
+				 *
+				 * A piece RELEASED FROM A REFUSED ARCH is excluded on the SAME footing: a seatless run
+				 * whose one-sided arch the opposition gate declined, and which the stranding pass
+				 * below then found in a sign-blind head-joint cycle, has genuinely no load path — so
+				 * from the next pass on it must not be reached through those head joints and it drops
+				 * clean through to Falling. Empty on the first pass and grows only when the stranding
+				 * pass releases a refused-group member, so a refused cantilever that reaches an
+				 * abutment WITHOUT a cycle is never released and keeps its Supported reading unchanged.
 				 */
-				if (!PieceSupported[Loader] && !PieceStranded[Loader] && !PieceOverturned[Loader])
+				if (!PieceSupported[Loader] && !PieceStranded[Loader] && !PieceOverturned[Loader]
+					&& !PieceReleasedFromRefusedArch[Loader])
 				{
 					PieceSupported[Loader] = true;
 					SupportedFrontier.Add(Loader);
@@ -1496,6 +1525,7 @@ void FStructure::SolveLoads()
 		 * break has shrunk the problem.
 		 */
 		bool bStrandedThisPass = false;
+		bool bReleasedThisPass = false;
 		for (int32 PieceIndex = 0; PieceIndex < Pieces.Num(); ++PieceIndex)
 		{
 			if (!PieceSupported[PieceIndex] || Pieces[PieceIndex].bIsGrounded)
@@ -1505,12 +1535,28 @@ void FStructure::SolveLoads()
 
 			if (LoadReturnsToPiece(PieceIndex, Pieces, Connections, LoadPaths))
 			{
-				PieceStranded[PieceIndex] = true;
-				bStrandedThisPass = true;
+				/*
+				 * A CYCLE ON A REFUSED-ARCH MEMBER IS A FALL, NOT A KNOT. The piece is only in this
+				 * head-joint cycle because its one-sided arch was refused; that refusal was the loss
+				 * of its only real load path, so it is released to Falling rather than reported
+				 * Stranded. A cycle on any OTHER piece is a genuine solver knot and stays Stranded —
+				 * which is what keeps the geometry-free mutually-propping pair (no group ever forms,
+				 * so it is not a refused-arch member) reading Stranded.
+				 */
+				if (PieceInRefusedArchGroup[PieceIndex])
+				{
+					PieceReleasedFromRefusedArch[PieceIndex] = true;
+					bReleasedThisPass = true;
+				}
+				else
+				{
+					PieceStranded[PieceIndex] = true;
+					bStrandedThisPass = true;
+				}
 			}
 		}
 
-		if (!bStrandedThisPass && !bOverturnedThisPass)
+		if (!bStrandedThisPass && !bOverturnedThisPass && !bReleasedThisPass)
 		{
 			break;
 		}
@@ -1648,14 +1694,19 @@ void FStructure::ReseatSpannedGroups(
 	const TArray<bool>& PieceHasNoSeat,
 	TArray<TArray<int32>>& SupportConnections,
 	TArray<bool>& PieceReseatedOnAnArch,
+	TArray<bool>& PieceInRefusedArchGroup,
 	TArray<FSpannedArch>& Arches) const
 {
 	/*
 	 * SIZED BEFORE THE GATE, so every caller downstream may index it without asking whether
 	 * this pass ran. An all-false array is exactly what "no group formed" means, and it is the
-	 * same answer a structure nobody placed gets.
+	 * same answer a structure nobody placed gets. PieceInRefusedArchGroup is sized here too and
+	 * stays all-false unless a group forms and its opposition gate refuses it — so a
+	 * geometry-free structure (no group ever forms) leaves it empty, which is exactly what keeps
+	 * a genuine geometry-free cycle-strand out of this reclassification.
 	 */
 	PieceReseatedOnAnArch.Init(false, Pieces.Num());
+	PieceInRefusedArchGroup.Init(false, Pieces.Num());
 	Arches.Reset();
 
 	/*
@@ -1807,6 +1858,21 @@ void FStructure::ReseatSpannedGroups(
 
 		if (!bAbutsOnBothSides)
 		{
+			/*
+			 * THE GATE REFUSES A ONE-SIDED CANTILEVER, CORRECTLY — but the run it declines is now
+			 * left on its sign-blind head joints, where each middle member lists both neighbours as
+			 * "supports", the run becomes a mutual-support chain and LoadReturnsToPiece strands it.
+			 * That Stranded is a solver artefact: a refused arch was the run's only hope of a load
+			 * path, so with it declined the honest answer is Falling. Record every member of this
+			 * refused group so SolveLoads can exclude them from the reachability walk exactly as it
+			 * excludes an overturned piece — they never reach the stranding branch and fall through
+			 * to Falling. This is gated STRICTLY on group membership, which only forms under
+			 * HasCompleteGeometry(), so a geometry-free knot is never touched.
+			 */
+			for (const int32 Member : Group)
+			{
+				PieceInRefusedArchGroup[Member] = true;
+			}
 			continue;
 		}
 

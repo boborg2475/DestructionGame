@@ -899,6 +899,17 @@ private:
 	 * @param SupportConnections   What holds each piece up. Rewritten in place for the members of
 	 *                             an abutted group, and left exactly as found everywhere else.
 	 * @param PieceReseatedOnAnArch Set for each piece this rewrote, and false everywhere else.
+	 * @param PieceInRefusedArchGroup Set for each member of a group that formed but whose
+	 *                             opposition gate REFUSED it — a one-sided cantilever with
+	 *                             nothing to thrust into. These pieces were NOT re-seated (the
+	 *                             gate declined), and left on their sign-blind head joints they
+	 *                             become a mutual-support knot the solver strands. Marking them
+	 *                             lets SolveLoads exclude them from the reachability walk exactly
+	 *                             as it excludes an overturned piece, so a refused cantilever
+	 *                             reads Falling rather than the false-knot Stranded. Only ever set
+	 *                             for members of a group the gate refused — a geometry-free
+	 *                             mutually-propping pair forms no group, so it is never marked and
+	 *                             keeps its genuine cycle-strand. False everywhere else.
 	 * @param Arches               One entry per group that actually spans, naming the seated
 	 *                             pieces at its two ends. Emptied first, so a structure with no
 	 *                             geometry and a structure with no hole both come back with none.
@@ -908,6 +919,7 @@ private:
 		const TArray<bool>& PieceHasNoSeat,
 		TArray<TArray<int32>>& SupportConnections,
 		TArray<bool>& PieceReseatedOnAnArch,
+		TArray<bool>& PieceInRefusedArchGroup,
 		TArray<FSpannedArch>& Arches) const;
 
 	/**
