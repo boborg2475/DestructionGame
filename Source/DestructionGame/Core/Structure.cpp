@@ -622,6 +622,13 @@ const FConnection& FStructure::GetConnection(int32 ConnectionIndex) const
 	return Connections.IsValidIndex(ConnectionIndex) ? Connections[ConnectionIndex] : Placeholder;
 }
 
+FConnection& FStructure::GetConnectionMutable(int32 ConnectionIndex)
+{
+	static FConnection Placeholder;
+	Placeholder = FConnection{};
+	return Connections.IsValidIndex(ConnectionIndex) ? Connections[ConnectionIndex] : Placeholder;
+}
+
 void FStructure::SolveLoads()
 {
 	/*

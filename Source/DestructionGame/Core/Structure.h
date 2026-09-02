@@ -394,6 +394,14 @@ struct FStructure
 	const FConnection& GetConnection(int32 ConnectionIndex) const;
 
 	/**
+	 * MUTABLE access to a built connection, for a DIAGNOSTIC probe that re-authors a joint's strength
+	 * on an already-built structure and re-solves (the mortar-sensitivity sweep). No logic — it hands
+	 * back the reference; an out-of-range handle returns a throwaway placeholder so a bad index writes
+	 * nowhere observable rather than reading out of bounds.
+	 */
+	FConnection& GetConnectionMutable(int32 ConnectionIndex);
+
+	/**
 	 * Recompute what every connection carries and which pieces reach the ground.
 	 *
 	 * Joints that have already given are skipped entirely: they are out of the
