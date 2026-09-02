@@ -833,6 +833,20 @@ void FStructure::SolveLoads()
 	PieceStranded.Init(false, Pieces.Num());
 
 	/*
+	 * AND WHICH PIECES HAVE OVERTURNED OFF THEIR SUPPORTS, a set kept beside the stranded one and
+	 * for the same reason: a body on two or more compression-only bearings whose centre of mass
+	 * projects outside their union has no admissible equilibrium and must lose the earth, yet no
+	 * per-joint number sees it — each seat reads a comfortable split. It is detected during the
+	 * accumulation below (once the load paths are known) and, like stranding, EXCLUDES the piece
+	 * from the next pass's reachability walk so it comes out unsupported. A local, not a member:
+	 * GetPieceSupport needs only PieceSupported and PieceStranded — an overturned piece is neither
+	 * supported nor caught in a knot, so it falls through to Falling, which is what it is. Grows
+	 * monotonically across passes, so the fixpoint still terminates.
+	 */
+	TArray<bool> PieceOverturned;
+	PieceOverturned.Init(false, Pieces.Num());
+
+	/*
 	 * Reachability and the load split depend on each other, so the solve runs to a
 	 * fixpoint rather than in one pass. Stranding a knot changes which pieces reach
 	 * the ground; that changes which supports the split is allowed to use; and that
@@ -892,7 +906,14 @@ void FStructure::SolveLoads()
 		{
 			for (const int32 Loader : Loaders[SupportedFrontier[Head]])
 			{
-				if (!PieceSupported[Loader] && !PieceStranded[Loader])
+				/*
+				 * An OVERTURNED body is excluded exactly as a stranded one is: the walk neither marks
+				 * it supported nor crosses it, so a piece resting only on something that has toppled
+				 * loses its own path to the earth on the next pass. The set is empty on the first
+				 * pass, so the reachability walk is bit-identical until the accumulation below finds
+				 * a body past tipping.
+				 */
+				if (!PieceSupported[Loader] && !PieceStranded[Loader] && !PieceOverturned[Loader])
 				{
 					PieceSupported[Loader] = true;
 					SupportedFrontier.Add(Loader);
@@ -999,6 +1020,13 @@ void FStructure::SolveLoads()
 		TArray<FVector> ReceivedMomentUuCm;
 		ReceivedMomentUuCm.Init(FVector::ZeroVector, Pieces.Num());
 
+		/*
+		 * SET WHEN THIS PASS FINDS A BODY PAST TIPPING, so the fixpoint runs once more with it
+		 * excluded — the same role bStrandedThisPass plays for a knot. A pass that only overturns
+		 * (strands nothing) still is not the last one.
+		 */
+		bool bOverturnedThisPass = false;
+
 		for (int32 Order = 0; Order < Ready.Num(); ++Order)
 		{
 			const int32 Current = Ready[Order];
@@ -1060,6 +1088,31 @@ void FStructure::SolveLoads()
 			 */
 			const bool bLoadPathIsDeterminate = LoadPaths[Current].Num() == 1
 				&& Pieces[Current].bHasCentreOfMass && !PieceReseatedOnAnArch[Current];
+
+			/*
+			 * BEFORE THE MOMENT IS ZEROED FOR TWO OR MORE SUPPORTS, ASK WHETHER THE BODY OVERTURNS.
+			 * Zeroing the moment for an indeterminate load path is right for a piece whose centre of
+			 * mass sits over its supports — a symmetric running-bond brick, whose reactions rearrange
+			 * to satisfy equilibrium with no couple on either seat. It is WRONG for a body whose
+			 * centre of mass has left the region its supports can push up through with no tension to
+			 * hold it down: there is no admissible equilibrium, and pretending each seat carries a
+			 * comfortable share leaves a board floating on bearings it has toppled off (the realistic
+			 * shed's ridge, once its back gable is gone). PieceOverturnsOffItsSupports answers that —
+			 * tension clause first, then centre of mass against the support union — and on YES the
+			 * piece is marked so the next reachability walk drops it and it comes out Falling.
+			 *
+			 * NOTHING ELSE ABOUT THIS PASS CHANGES: the piece is still split and still reads Supported
+			 * for the remainder of THIS pass (its forces are discarded when the fixpoint re-runs), so
+			 * every non-overturning piece — and every piece at all until a body past tipping is found —
+			 * is bit-identical. The check is gated on N >= 2 so single-support determinate pieces,
+			 * which the moment branch already handles exactly, never reach it.
+			 */
+			if (LoadPaths[Current].Num() >= 2 && !PieceOverturned[Current]
+				&& PieceOverturnsOffItsSupports(Current, LoadPaths[Current]))
+			{
+				PieceOverturned[Current] = true;
+				bOverturnedThisPass = true;
+			}
 
 			for (const int32 Index : LoadPaths[Current])
 			{
@@ -1457,7 +1510,7 @@ void FStructure::SolveLoads()
 			}
 		}
 
-		if (!bStrandedThisPass)
+		if (!bStrandedThisPass && !bOverturnedThisPass)
 		{
 			break;
 		}
@@ -1480,6 +1533,114 @@ void FStructure::SolveLoads()
 	 * it: FConnection::ApplyForce latches, so calling it would break joints as a
 	 * side effect of asking what they carry and make a solve unrepeatable.
 	 */
+}
+
+bool FStructure::PieceOverturnsOffItsSupports(int32 PieceIndex, const TArray<int32>& LoadPath) const
+{
+	const FStructurePiece& Piece = Pieces[PieceIndex];
+
+	/*
+	 * NO CENTRE OF MASS, NO POINT TO PROJECT — fail closed and keep today's stand. A piece nobody
+	 * placed carries no overturning either; its joints already answer a centred load exactly, so it
+	 * must read exactly as it did before this gate existed.
+	 */
+	if (!Piece.bHasCentreOfMass)
+	{
+		return false;
+	}
+
+	/*
+	 * THE TENSION CLAUSE, ASKED FIRST AND OFF THE STRENGTH DATA ITSELF. Any support in the load path
+	 * whose strength can carry tension holds the lifting side down in withdrawal, so the body has an
+	 * admissible equilibrium however far its centre of mass reaches past the compression bearings —
+	 * and it must NOT be overturned. This is what spares the porch overhang, tied back by a Screw, and
+	 * the tension-tied board of the anti-regression fixture. Reading TensileStrengthMPa directly keeps
+	 * the distinction in the material data: a new tension-capable connection type spares its bodies
+	 * with no change here.
+	 */
+	for (const int32 Index : LoadPath)
+	{
+		if (Connections[Index].Strength.TensileStrengthMPa > 0.0)
+		{
+			return false;
+		}
+	}
+
+	/*
+	 * ALL SUPPORTS ARE COMPRESSION-ONLY: the body stands only while its centre of mass projects onto
+	 * the region its bearings can push up through. That region is the CONVEX HULL of the contact
+	 * rectangles on the bed plane, and this tests the axis-aligned bounding BOX of those rectangles,
+	 * which is a SUPERSET of the hull. A centre of mass outside the box is therefore outside the hull
+	 * for certain, so felling on "outside the box" is CONSERVATIVE in the one direction that matters:
+	 * it can only ever FAIL to fell a body whose centre of mass is genuinely outside a non-rectangular
+	 * hull, NEVER fell one whose centre of mass is genuinely inside. That keeps the anchor-safety of
+	 * symmetric running bond exact — its centre of mass sits at the area-weighted centroid of its
+	 * seats, inside the box, so the box test never fires and every such piece stays bit-identical — at
+	 * the cost of under-felling some diagonal support arrangements that no fixture exhibits and the
+	 * co-linear ridge is the opposite of. This is a sound approximation of the hull test, not the hull.
+	 *
+	 * THE PROJECTION IS ONTO THE HORIZONTAL BED PLANE — the X and Y of each face — because gravity is
+	 * vertical and the bearings are horizontal seats; the height the centre of mass sits at cannot
+	 * change which seats can reach under it.
+	 */
+	double MinX = 0.0;
+	double MaxX = 0.0;
+	double MinY = 0.0;
+	double MaxY = 0.0;
+	bool bHaveBox = false;
+
+	for (const int32 Index : LoadPath)
+	{
+		const FConnection& Connection = Connections[Index];
+
+		/*
+		 * A JOINT THAT DID NOT MEASURE ITS FACE HAS NO RECTANGLE, so the box is undefined and the body
+		 * keeps today's reading — the same words HasCompleteGeometry uses for an unmeasured face, and
+		 * the fail-closed rule that a body with no support geometry must not spuriously overturn.
+		 */
+		if (Connection.InterfaceHalfExtentCm.IsZero())
+		{
+			return false;
+		}
+
+		const double LoX = Connection.InterfaceCentreCm.X - Connection.InterfaceHalfExtentCm.X;
+		const double HiX = Connection.InterfaceCentreCm.X + Connection.InterfaceHalfExtentCm.X;
+		const double LoY = Connection.InterfaceCentreCm.Y - Connection.InterfaceHalfExtentCm.Y;
+		const double HiY = Connection.InterfaceCentreCm.Y + Connection.InterfaceHalfExtentCm.Y;
+
+		if (!bHaveBox)
+		{
+			MinX = LoX;
+			MaxX = HiX;
+			MinY = LoY;
+			MaxY = HiY;
+			bHaveBox = true;
+		}
+		else
+		{
+			MinX = FMath::Min(MinX, LoX);
+			MaxX = FMath::Max(MaxX, HiX);
+			MinY = FMath::Min(MinY, LoY);
+			MaxY = FMath::Max(MaxY, HiY);
+		}
+	}
+
+	// No usable rectangle anywhere — fail closed.
+	if (!bHaveBox)
+	{
+		return false;
+	}
+
+	/*
+	 * OUTSIDE THE BOX, WRITTEN AS FOUR POSITIVE COMPARISONS. A negated conjunction, or FMath::Min /
+	 * Max against the centre of mass, would each let a non-finite coordinate through as an overturn —
+	 * every comparison against a NaN is false, so `!inside` reads true. Four `<`/`>` tests, each false
+	 * against a NaN, land such a piece on "inside" and keep its stand, which is the direction a joint
+	 * that should read failed must never be wrong in and here is the direction a piece that should
+	 * stand must never be felled in.
+	 */
+	const FVector Com = Piece.CentreOfMassCm;
+	return Com.X < MinX || Com.X > MaxX || Com.Y < MinY || Com.Y > MaxY;
 }
 
 void FStructure::ReseatSpannedGroups(

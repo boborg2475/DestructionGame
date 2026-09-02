@@ -116,6 +116,7 @@ namespace RealisticShedCollapseTestSupport
 	const FVector FrontGableApexPt(100.75, 5.125, 145.75);  // the FRONT gable apex — independent of the back
 	const FVector BackWallBodyPt(100.75, 128.875, 63.25);   // back wall course 8 (even) — below the cut, still footed
 	const FVector PostLPt(55.0, -20.0, 52.0);          // the left porch post
+	const FVector PorchOverhangPt(90.0, -36.0, 107.5); // the porch overhang board — CoM Y=-36, outboard of the posts
 
 	int32 PieceContaining(const FBrickLayout& L, const FVector& Pt)
 	{
@@ -312,12 +313,15 @@ bool FRealisticShedCollapseRowTest::RunTest(const FString& Parameters)
 		const int32 FrontGableApex = PieceContaining(Pulled, FrontGableApexPt);
 		const int32 BackWallBody = PieceContaining(Pulled, BackWallBodyPt);
 		const int32 PostL = PieceContaining(Pulled, PostLPt);
+		const int32 PorchOverhang = PieceContaining(Pulled, PorchOverhangPt);
 		const int32 Ridge = RidgePiece(Pulled);
 
 		TestTrue(TEXT("ARM 2: the back gable base and apex, and the spared probe pieces, must all be found"),
 			BackGableBase != INDEX_NONE && BackGableApex != INDEX_NONE && DoorLintel != INDEX_NONE
 				&& WindowLintel != INDEX_NONE && FrontGableApex != INDEX_NONE && BackWallBody != INDEX_NONE
-				&& PostL != INDEX_NONE);
+				&& PostL != INDEX_NONE && PorchOverhang != INDEX_NONE);
+
+		TestTrue(TEXT("ARM 2: a Timber ridge board exists at the top of the roof"), Ridge != INDEX_NONE);
 
 		/* Apply the row's own cut, but only if it is the back-eaves cut this test drives. */
 		int32 Applied = 0;
@@ -396,6 +400,37 @@ bool FRealisticShedCollapseRowTest::RunTest(const FString& Parameters)
 		TestTrue(
 			*FString::Printf(TEXT("ARM 2: a big section comes down — >= 15 pieces lose the earth (got %d)"), LostEarth),
 			LostEarth >= 15);
+
+		/* ================================================================================
+		 * THE RIDGE GOES WITH THE BACK GABLE — the review-item-3 RED. The ridge board spans the full depth
+		 * and bears on the apex bricks of BOTH gables through compression-only dry seats. Once the back gable
+		 * is gone it keeps only its FRONT-gable bearings, so its centre of mass (Y ~ 67, mid-depth) sits ~62 cm
+		 * BEHIND that surviving front bearing line (Y ~ 5): a rigid board on a single line of compression-only
+		 * bearings whose CoM projects past the line, and no tension tie to hold it — it overturns.
+		 *
+		 * Production STANDS it today: with two front bearings the ridge has two load paths, SolveLoads zeroes
+		 * its overturning moment (bLoadPathIsDeterminate is false for N >= 2), the seats read a comfortable
+		 * split compression, nothing breaks, and it reads Supported — the "top board still standing" artefact,
+		 * the reason the current collapse releases the four purlins (each on ONE bearing per gable, so N = 1
+		 * determinate) but NOT the ridge. The fix is the CoM-in-support-union gate WITH a tension clause. */
+		TestTrue(
+			*FString::Printf(TEXT("RED: the ridge (piece %d, support %d) must lose the earth — its CoM is behind "
+				"its surviving front-gable bearing line"),
+				Ridge, Ridge == INDEX_NONE ? -1 : static_cast<int32>(Pulled.Structure.GetPieceSupport(Ridge))),
+			HasLostTheEarth(Pulled.Structure, Ridge));
+
+		/* ================================================================================
+		 * THE PORCH OVERHANG STAYS UP — the ANTI-REGRESSION that forbids the naive per-axis fix. Its centre of
+		 * mass (Y = -36) is outboard of its two compression-only posts (Y = -20), so a union-only gate would
+		 * fell it — but it is genuinely held by the CLEAT, a Z-normal Screw withdrawal tie (Tensile > 0). It
+		 * really does stand, and the tension clause is what spares it. It is independent of the back gable, so
+		 * removing the back eaves course must leave it Supported. If this ever reads not-standing, the fix has
+		 * over-reached and felled a body a tension tie holds. */
+		TestTrue(
+			*FString::Printf(TEXT("ANTI-REGRESSION: the porch overhang (piece %d, support %d) must keep the earth — "
+				"its cleat is a tension-capable Screw tie"),
+				PorchOverhang, static_cast<int32>(Pulled.Structure.GetPieceSupport(PorchOverhang))),
+			IsStanding(Pulled.Structure.GetPieceSupport(PorchOverhang)));
 
 		/* THE REST OF THE SHED KEEPS THE EARTH — the fall is local to the back gable. The door head and window
 		 * lintel on the far walls, the FRONT gable, the back-wall body below the cut, and the porch posts are all

@@ -1140,6 +1140,31 @@ private:
 		const TArray<bool>& PieceReseatedOnAnArch) const;
 
 	/**
+	 * Whether a piece on TWO OR MORE compression-only supports overturns because its centre of mass
+	 * projects outside the region those supports can push up through — the router's answer to global
+	 * overturning, which no per-joint number can express (each seat reads a comfortable split while
+	 * the body as a whole has no admissible equilibrium).
+	 *
+	 * THE TENSION CLAUSE IS ASKED FIRST AND IS DATA, NOT CODE. Any support in the load path whose
+	 * strength can carry TENSION holds the lifting side down in withdrawal, so the body has an
+	 * equilibrium however far its centre of mass reaches past the compression bearings — and the
+	 * piece is spared. That is what stands the porch overhang on its Screw-tied cleat; the fact is
+	 * read off the SAME FConnectionStrength the break sweep reads, so a new tension-capable connection
+	 * type changes this with no code change.
+	 *
+	 * THE REGION IS THE CONVEX HULL of the contact rectangles on the bed plane, and this tests a
+	 * CONSERVATIVE axis-aligned bound of it — see the definition for why that is the safe direction.
+	 *
+	 * @param PieceIndex The loaded piece; its centre of mass is the point projected onto the bed plane.
+	 * @param LoadPath   Its supports that reach the ground — the connections whose contact rectangles
+	 *                   and tension capability decide the answer.
+	 * @return true only when the piece is on compression-only supports and its centre of mass is
+	 *         certainly outside their union; false — keep today's behaviour — otherwise, including
+	 *         on any missing or non-finite geometry (fail closed: never spuriously overturn).
+	 */
+	bool PieceOverturnsOffItsSupports(int32 PieceIndex, const TArray<int32>& LoadPath) const;
+
+	/**
 	 * HOW THE EQUILIBRIUM GATE DISPOSED OF A PASS, so SolveAndBreak knows whether the LP answered
 	 * authoritatively (and it must therefore NOT run the per-joint capacity sweep) or declined (and
 	 * the router sweep is the sole authority for this pass). Below the block cap the mechanism is

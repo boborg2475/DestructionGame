@@ -712,14 +712,20 @@ bool FTwoLoadPathGateScopedByBlockCapTest::RunTest(const FString& Parameters)
 		Auth.bSeatsGrounded && Decline.bSeatsGrounded);
 
 	/* ------------------------------------------------------------------ *
-	 * THE DECLINE ARM — passes today, and guards the seam once the gate lands.
-	 * Above the cap the gate must NOT run: the body stands, nothing is released.
+	 * THE DECLINE ARM — the body keeps the earth above the cap, and this arm
+	 * guards that. It STANDS for a reason that changed on 2026-09-02: the router's
+	 * SolveLoads now HAS an overturning check (review item 3, PieceOverturnsOffItsSupports),
+	 * but this body's seats are bonded GeneralPurposeMortar (f_t = 0.7 > 0), so the
+	 * gate's tension clause spares it — a tension-tied body has an admissible
+	 * equilibrium and does not overturn. (Make these seats dry and the router would
+	 * now correctly fell it — which is the whole of item 3.) Below the cap the LP is
+	 * the authority and fells it, the arm below.
 	 * ------------------------------------------------------------------ */
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("ABOVE CAP: the gate must decline to the router (no overturning check), so the body is "
-				 "NOT caught — it keeps the earth (support %d) and nothing is released (%d)"),
+			TEXT("ABOVE CAP: the body is bonded (tension-tied), so the router's overturning check spares "
+				 "it — it keeps the earth (support %d) and nothing is released (%d)"),
 			static_cast<int32>(Decline.BodySupport), Decline.Released),
 		!Decline.bBodyLostEarth && Decline.Released == 0);
 
