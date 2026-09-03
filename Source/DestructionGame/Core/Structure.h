@@ -456,6 +456,20 @@ struct FStructure
 	void SetEquilibriumGateBlockCap(int32 MaxBlocks);
 
 	/**
+	 * THE INJECTABLE REGION CAP the real SolveAndBreak cascade hands ProveRegionalCollapse in its
+	 * above-cap decline arm (REGIONAL_PROVER_PLAN.md §4, physics-model call 2). It bounds
+	 * |region ∪ grounded boundary| the flood may pose, mirroring SetEquilibriumGateBlockCap: a
+	 * mechanism larger than the cap is an accepted miss (the router covers it, and the prover only ever
+	 * moves toward collapse so a miss never over-holds unsoundly).
+	 *
+	 * The DEFAULT is a modest RegionalProverBlockCap (see its member) chosen for per-pass latency, not
+	 * the ratified 200 — 200 is a settable CEILING, reachable through here for tests and tuning (the
+	 * cascade seam test drives it to 512 to flood a whole small fixture). A bare store — no branch, no
+	 * arithmetic — so it drives no behaviour on its own; the cascade seam reads it.
+	 */
+	void SetRegionBlockCap(int32 MaxBlocks);
+
+	/**
 	 * B3 COMPILE STUB (SHED_PATH.md Phase B / B3) — record what a piece is MADE OF, so a
 	 * cross-material joint can reach its two faces' materials. Written by test-expert to let
 	 * the cross-material bearing red compile; it is a bare store — no branch, no arithmetic —
@@ -1281,6 +1295,29 @@ private:
 	EEquilibriumGateDisposition BreakByEquilibrium(int32 Pass);
 
 	/**
+	 * THE REGIONAL COLLAPSE PROVER (REGIONAL_PROVER_PLAN.md §§1-4, review item 12) — factored out of
+	 * SolveAndBreak_WithRegionalProver so BOTH the isolated test entry and the real cascade drive the
+	 * identical machinery. It floods a region from Seed by joint-hops over PieceJoints up to
+	 * RegionBlockCap, pins the one-hop frontier ring GROUNDED, poses R ∪ boundary at feasibility with
+	 * first-crack rows through RigidBlockOracle::BuildRegionalProblem, calls SolveRigidBlock, and on a
+	 * CERTIFIED Falls marks the moved INTERIOR pieces Falling (never Supported — the override is
+	 * one-directional, toward collapse only, so it can only UPGRADE a router stand to a proven fall)
+	 * and severs the intact joints the mechanism opens, stamping each with BreakPass.
+	 *
+	 * IT DOES NOT SOLVE LOADS — the caller has already settled the graph (SolveAndBreak's per-pass
+	 * SolveLoads, or SolveAndBreak_WithRegionalProver's baseline), so re-solving here would be wasted
+	 * work and, worse, would wipe the very support state the stitch overrides. A bridge refusal or a
+	 * non-Falls outcome releases nothing and leaves the caller's support state untouched.
+	 *
+	 * @param Seed           The pieces the region grows from (the disturbance neighbourhood).
+	 * @param RegionBlockCap The largest region the flood may reach (the grounded boundary rings it).
+	 * @param BreakPass      The cascade pass any severed joint is stamped with (default 1, the value
+	 *                       the isolated slice-1/2/3 entry used, so those tests are byte-for-byte).
+	 * @return the number of pieces the prover moved and marked Falling this call.
+	 */
+	int32 ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionBlockCap, int32 BreakPass = 1);
+
+	/**
 	 * REWRITE THE PER-PIECE SUPPORT ARRAYS FROM THE LP VERDICT, so GetPieceSupport is
 	 * LP-authoritative below the cap (PROMOTION_DESIGN.md §12 D7's 3b section). Every piece the
 	 * bridge included reads Supported/Grounded if the LP carries it and Falling if the mechanism
@@ -1321,6 +1358,27 @@ private:
 	 * cost is a test-time one for now — CURRENT_STATE carries the open latency item.
 	 */
 	int32 EquilibriumGateBlockCap = 200;
+
+	/*
+	 * THE REGIONAL PROVER'S BLOCK CAP — the largest |region ∪ grounded boundary| the cascade's
+	 * above-cap decline arm lets ProveRegionalCollapse pose (REGIONAL_PROVER_PLAN.md §4, physics-model
+	 * call 2).
+	 *
+	 * DELIBERATELY MODEST, NOT the equilibrium gate's 200. The prover poses a region-cap-sized LP on
+	 * EVERY above-cap cascade pass, so the cap is the per-pass solve cost; a 200-block LP per pass makes
+	 * a flagship 3D collapse (the 442-block shed, many passes) take tens of minutes. Over-holds are
+	 * LOCAL — a body reads a comfortable per-joint utilisation while the whole assembly has no
+	 * equilibrium in its own neighbourhood — so a small region catches them cheaply, and the grounded
+	 * boundary keeps every verdict sound regardless of where the cut falls (a miss only defers to the
+	 * router, never over-holds unsoundly). 200 stays reachable through SetRegionBlockCap as a ceiling
+	 * for tests and tuning. The proper fix for cheap LARGE reach is grow-on-contact (a small region that
+	 * grows only along the mechanism), deferred as REGIONAL_PROVER_PLAN.md slice 3.
+	 *
+	 * Named distinctly from the RegionBlockCap PARAMETER SolveAndBreak_WithRegionalProver and
+	 * ProveRegionalCollapse take, so the -Werror shadow (C4458) never fires: the isolated test entry
+	 * drives the cap through its parameter, the real cascade reads this member.
+	 */
+	int32 RegionalProverBlockCap = 48;
 
 	/*
 	 * INSTRUMENTATION for GetLastRegionalProblemBlockCount — the number of oracle blocks the last

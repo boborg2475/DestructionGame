@@ -3139,6 +3139,81 @@ int32 FStructure::SolveAndBreak()
 		PassesAlreadyStamped = FMath::Max(PassesAlreadyStamped, Stamp);
 	}
 
+	auto IsLiveInStructure = [this](int32 Piece)
+	{
+		return Pieces.IsValidIndex(Piece) && !IsPieceRemoved(Piece) && Pieces[Piece].bIsInTheStructure;
+	};
+
+	/*
+	 * THE REGIONAL PROVER'S SEED — the disturbance the region grows from (REGIONAL_PROVER_PLAN.md §1,
+	 * physics-model call 4). On the FIRST pass of this call the disturbance is the removal, so the seed
+	 * is the live neighbours of every tombstoned piece: the joints RemovePiece severed are the graph
+	 * edges the collapse propagates along, and a tombstone stamps no pass, so it is not reachable
+	 * through ConnectionBreakPass. On LATER passes the disturbance is the previous pass's breaks, so the
+	 * seed is the live endpoints of the joints stamped Pass - 1 — the same "what shed its load last
+	 * pass" the cascade already reads to sequence a collapse.
+	 */
+	auto DeriveRegionalSeed = [this, &IsLiveInStructure](int32 Pass, bool bFirstPass) -> TArray<int32>
+	{
+		TSet<int32> SeedSet;
+
+		if (bFirstPass)
+		{
+			for (int32 Piece = 0; Piece < Pieces.Num(); ++Piece)
+			{
+				if (Pieces[Piece].bIsInTheStructure)
+				{
+					continue;
+				}
+
+				for (const FConnection& Connection : Connections)
+				{
+					const int32 Other = OtherEndOf(Connection, Piece);
+
+					if (IsLiveInStructure(Other))
+					{
+						SeedSet.Add(Other);
+					}
+				}
+			}
+		}
+		else
+		{
+			for (int32 Index = 0; Index < Connections.Num(); ++Index)
+			{
+				if (!ConnectionBreakPass.IsValidIndex(Index) || ConnectionBreakPass[Index] != Pass - 1)
+				{
+					continue;
+				}
+
+				for (const int32 End : { Connections[Index].PieceA, Connections[Index].PieceB })
+				{
+					if (IsLiveInStructure(End))
+					{
+						SeedSet.Add(End);
+					}
+				}
+			}
+		}
+
+		return SeedSet.Array();
+	};
+
+	/* The count of intact (not-yet-severed) joints — the regional prover's monotone progress witness:
+	 * a pass that severs a joint made progress, and joints only ever decrease so the cascade ends. */
+	auto CountIntactJoints = [this]() -> int32
+	{
+		int32 Intact = 0;
+		for (const FConnection& Connection : Connections)
+		{
+			if (!Connection.HasGiven())
+			{
+				++Intact;
+			}
+		}
+		return Intact;
+	};
+
 	for (;;)
 	{
 		SolveLoads();
@@ -3171,6 +3246,53 @@ int32 FStructure::SolveAndBreak()
 		else if (Gate == EEquilibriumGateDisposition::DeclinedToRouter)
 		{
 			bBrokeThisPass = BreakByCapacitySweep(Pass);
+
+			/*
+			 * THE REGIONAL PROVER'S ARM (REGIONAL_PROVER_PLAN.md §4, slice 4a). Above the cap the gate
+			 * declined and the per-joint sweep is blind to a GLOBAL mechanism — a body that reads a
+			 * comfortable per-joint utilisation while the whole assembly has no admissible equilibrium.
+			 * A grounded-boundary LP over the disturbance neighbourhood can prove that collapse the
+			 * router missed and UPGRADE its stand to a proven fall — one-directional, toward Falling
+			 * only (grounding the boundary only ADDS support, so an infeasible region is genuinely
+			 * infeasible globally; it never credits a stand). Gated on HasCompleteGeometry() exactly as
+			 * BreakByEquilibrium, so the geometry-free fuzzes are a provable no-op.
+			 */
+			if (HasCompleteGeometry())
+			{
+				/*
+				 * PROGRESS IS A SEVERED JOINT, and ONLY a severed joint — never the prover's Falling
+				 * count. The prover RE-POSES its region every pass and the LP RE-FELLS a piece it already
+				 * felled last pass: a piece the prover disconnected is a jointless block in the next pose,
+				 * trivially "moving" under no constraints, so the LP names it again and the stitch re-marks
+				 * it Falling. Keying the cascade on "a piece went Falling" would count that re-mark as
+				 * progress and loop forever, posing an LP every pass. Intact joints only ever DECREASE, so
+				 * keying on a severed joint is a monotone, bounded termination guarantee: at most one pass
+				 * per connection.
+				 *
+				 * It is also a COMPLETE witness of a genuine felling. A rigid joint between a moved block
+				 * and a block that stays put cannot remain closed — the mechanism-extraction tolerance
+				 * (1e-6 relative, RigidBlockOracle.cpp) severs every moved-vs-standing joint, since only
+				 * the exact rotation centre is sub-tolerance and no finite-width contact sits there. So a
+				 * prover-felled piece ALWAYS fully disconnects from every standing piece, and SolveLoads,
+				 * which grants Supported only along intact paths to ground, then reads it Falling on its
+				 * own. (This is why the "router re-holds a felled-but-still-connected piece" case does not
+				 * exist and cannot be unit-tested — proven 2026-09-03; the guard is against the re-felling
+				 * loop above, not that.) The only felling that severs nothing is a body already fully
+				 * disconnected, so whenever the prover genuinely upgrades a router stand to a fall it
+				 * severs a boundary joint — and the Falling override is re-applied on every pass INCLUDING
+				 * the terminal non-breaking one, so the settled state carries it even when a pass counts
+				 * no break.
+				 */
+				const int32 IntactBefore = CountIntactJoints();
+
+				ProveRegionalCollapse(
+					DeriveRegionalSeed(Pass, /*bFirstPass*/ BreakingPasses == 0), RegionalProverBlockCap, Pass);
+
+				if (CountIntactJoints() < IntactBefore)
+				{
+					bBrokeThisPass = true;
+				}
+			}
 		}
 
 		/*
@@ -3196,14 +3318,28 @@ int32 FStructure::SolveAndBreak()
 int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, int32 RegionBlockCap)
 {
 	/*
-	 * THE REGIONAL COLLAPSE PROVER, SLICE 1 (REGIONAL_PROVER_PLAN.md §§1-3, review item 12). The
-	 * router baseline classifies support over the intact graph first; then a grounded-boundary LP
-	 * over a neighbourhood of the disturbance can UPGRADE a router stand to a proven fall — never the
-	 * reverse. A region LP with its frontier pinned to the earth is a one-directional prover: it can
-	 * prove collapse (grounding the boundary only ADDS support, so an infeasible region is genuinely
-	 * infeasible globally) but never standing, so it only ever marks pieces Falling.
+	 * THE ISOLATED TEST ENTRY (REGIONAL_PROVER_PLAN.md slice 1). It settles the router baseline, then
+	 * defers the whole region flood + grounded-boundary pose + Falling-only stitch to the shared
+	 * ProveRegionalCollapse — the identical machinery the real SolveAndBreak cascade drives (slice 4a).
+	 * BreakPass defaults to 1 here, exactly the stamp this entry wrote before the factoring, so the
+	 * slice-1/2/3 tests read unchanged.
 	 */
 	SolveLoads();
+	return ProveRegionalCollapse(Seed, RegionBlockCap);
+}
+
+int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionBlockCap, int32 BreakPass)
+{
+	/*
+	 * THE REGIONAL COLLAPSE PROVER (REGIONAL_PROVER_PLAN.md §§1-4, review item 12). A grounded-boundary
+	 * LP over a neighbourhood of the disturbance can UPGRADE a router stand to a proven fall — never the
+	 * reverse. A region LP with its frontier pinned to the earth is a one-directional prover: it can
+	 * prove collapse (grounding the boundary only ADDS support, so an infeasible region is genuinely
+	 * infeasible globally) but never standing, so it only ever marks pieces Falling. The caller has
+	 * ALREADY SETTLED the graph (SolveAndBreak's per-pass SolveLoads, or the isolated entry's baseline),
+	 * so this does NOT SolveLoads — re-solving would waste work and wipe the support state the stitch
+	 * overrides.
+	 */
 
 	/*
 	 * THE JOINT-HOP ADJACENCY the flood walks, rebuilt exactly as SolveLoads builds it: every intact
@@ -3430,7 +3566,7 @@ int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, in
 		}
 
 		Connections[Connection].Sever();
-		ConnectionBreakPass[Connection] = 1;
+		ConnectionBreakPass[Connection] = BreakPass;
 	}
 
 	return Released;
@@ -3456,6 +3592,20 @@ void FStructure::SetEquilibriumGateBlockCap(int32 MaxBlocks)
 	 * assignment — no branch, no arithmetic — so it drives no behaviour on its own.
 	 */
 	EquilibriumGateBlockCap = MaxBlocks;
+}
+
+void FStructure::SetRegionBlockCap(int32 MaxBlocks)
+{
+	/*
+	 * Stores the cap the regional prover's flood consults in SolveAndBreak's above-cap decline arm
+	 * (REGIONAL_PROVER_PLAN.md §4, physics-model call 2): the largest |region ∪ grounded boundary| the
+	 * flood may pose. The member DEFAULTS TO 48 (deliberately modest, NOT the equilibrium gate's 200 —
+	 * the prover poses a region-cap-sized LP every above-cap pass and over-holds are local, so a small
+	 * region catches them cheaply; 200 remains reachable through this setter as a ceiling). A bare
+	 * assignment — no branch, no arithmetic — so it drives no behaviour on its own; the cascade seam
+	 * reads it.
+	 */
+	RegionalProverBlockCap = MaxBlocks;
 }
 
 void FStructure::SetPieceMaterial(int32 PieceIndex, const DestructionProfiles::FMaterialProfile* Material)

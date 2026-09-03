@@ -126,13 +126,33 @@ derivation in `SolveAndBreak`.
   the flood-strategy change — when playability latency (posing a cap-sized LP per cascade pass)
   demands it. The cap-invariant property guard (`RegionUnionBoundaryCapInvariantHoldsAcrossSeedsAndCaps`)
   landed here and guards the flood arithmetic through that future change.
-- **Slice 4 — seed derivation + real above-cap disturbance (CHANGES COMMITTED VERDICTS — needs
-  sign-off).** Wire seed derivation into `SolveAndBreak`; drive `RemovePiece`+`SolveAndBreak` above the
-  real cap (e.g. the porch-post torsion the router over-holds, `DESIGN.md:385`). Assert the prover
-  fells what the router stood, 0 stranded, and `World.Scenarios.ShedRealisticCollapseRow` is unchanged.
-- **Slice 5 — determinism + `OracleSweepFull` byte-identity gate.** Permuted-seed / permuted-region
-  determinism (mirroring `OracleMechanismMultiModeDeterminismTest.cpp`); `OracleSweepFull` 5/5
-  byte-identical (core untouched by construction).
+- **Slice 4a — cascade integration. DONE 2026-09-03 (committed).** Wired into `SolveAndBreak`'s
+  above-cap decline arm (`SetRegionBlockCap` settable, default 48 per the latency unblock above;
+  `ProveRegionalCollapse` factored from the test entry; seed = tombstone neighbours pass 1, else
+  previous-pass severed-joint endpoints; gated on `HasCompleteGeometry` → fuzz no-op). Driven by the
+  Timber-board-on-a-token-Nail over-hold (`RegionalProverCascadeSeamTest`): the router stands the
+  cantilever (N≥2-load-path moment-zeroing + item-3's tension clause sparing it on the Nail's f_t>0),
+  the whole-structure LP fells it, and the cascade now fells it too, 0 stranded. Full suite 246/242/4;
+  **every committed scenario unchanged** — the prover is a sound no-op on today's scenarios (adds
+  correctness for the token-Nail over-hold class the router can't see). Oracle untouched → OracleSweepFull
+  byte-identity structural.
+  - **B1 finding (2026-09-03): the cascade termination fix guards a scenario that is provably
+    IMPOSSIBLE to reproduce at unit scale, so it has no small-fixture regression test — by proof, not
+    omission.** A prover-felled piece ALWAYS fully disconnects from every standing piece (the 1e-6
+    relative mechanism-extraction tolerance severs every moved-vs-standing joint; `SolveLoads` grants
+    Supported only along intact ground paths), so the "router re-holds a felled-but-still-connected
+    piece" case cannot exist. The real oscillation the `CountIntactJoints`-decreasing key prevents is
+    the prover RE-FELLING already-disconnected pieces each pass (jointless blocks are trivially moving
+    in the re-pose); termination is the monotone-intact-joints invariant (bounded by connection count),
+    which is proven, not empirical. **Follow-up:** dev observed a shed-corner-hang hang under a
+    Falling-count key at cap 200 — likely just the slow 200-block LPs (now cured by cap 48) rather than
+    a true loop; if it recurs, reproduce it by INSTRUMENTING the actual shed scenario (which piece
+    re-fells, via which pose), not a hand fixture. (`RigidBlockOracle.cpp` 1e-6 sever rule; `Structure.cpp`
+    SolveLoads support BFS; the corrected oscillation comment at the cascade arm.)
+- **Slice 5 (NEXT) — determinism + the DESIGN §8 ruling.** Permuted-seed / permuted-region determinism
+  (mirroring `OracleMechanismMultiModeDeterminismTest.cpp`); record the new above-cap authority
+  arrangement (one-directional collapse prover overriding the router toward Falling) as a dated DESIGN
+  §8 ruling. `OracleSweepFull` byte-identity stays structural (oracle core untouched).
 
 ### Slice-1 red test (concrete)
 Fixture: the **30-course, 10 cm/course mortared leaning stack** (`LeaningStackAcceptanceTest.cpp:57`)
@@ -169,11 +189,17 @@ All four are settled; slice 4 is unblocked.
    the porch-post torsion). Slice 4's test must assert the shed's committed collapse row is UNCHANGED
    and that a genuine over-hold now falls, 0 stranded — so every verdict change is caught before commit.
    (case-21 does not bar it: this is the collapse direction, the opposite of case-21's false *stand*.)
-2. **Region cap — RATIFIED: default 200, but SETTABLE.** Match the below-cap LP cap (200) as the
-   default, BUT it must be a configurable member with a setter (mirror `SetEquilibriumGateBlockCap` →
-   `SetRegionBlockCap(int32)`, default 200) so the owner can tune it later. Slice 1's entry point
-   already takes `RegionBlockCap` as a parameter; slice 4 adds the settable member the real cascade
-   reads. The accepted false-stand miss when a mechanism exceeds the cap stands ("thrust is not local").
+2. **Region cap — RATIFIED settable; DEFAULT LOWERED 200 → 48 (2026-09-03, owner-approved latency
+   unblock).** Originally ratified "match the LP cap (200) as the default", but slice 4a measured that
+   posing a 200-block LP on *every* above-cap cascade pass makes the 3D shed scenarios impractical
+   (`RealisticBrickShedCornerHangFallsWithWeakPerpends` ran >36 min, unfinished). The over-holds the
+   prover catches are LOCAL (the porch-torsion board is ~4 blocks), so the shipped default is now
+   `RegionalProverBlockCap = 48` — the same corner-hang test runs in **17 s**, the full suite completes,
+   and every committed scenario is unchanged (the prover is a sound no-op on them at 48). `SetRegionBlockCap`
+   keeps it fully settable; **200 remains reachable via the setter as the ceiling**, and the accepted
+   false-stand miss when a mechanism exceeds the cap stands ("thrust is not local"). **Grow-on-contact
+   (slice 3) is the deferred proper fix** that combines cheap typical cost with the full 200 reach; the
+   modest default is the quick unblock under it.
 3. **Crediting the first-crack LP locally above the cap — RATIFIED (no objection).** The prover poses
    the region with `bFirstCrackRows=true` (the below-cap authority). case-21 distrusts LP bond credit
    above the cap only for *stands*; the prover never stands anything, so case-21 does not bar it.
