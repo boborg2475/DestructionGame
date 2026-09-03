@@ -109,10 +109,23 @@ derivation in `SolveAndBreak`.
   mid-stack and the frontier ring is pinned grounded. Assert the grounded-boundary region is still
   infeasible and fells the sub-stack; the whole-structure ground-only LP names a superset (soundness
   witness). Teeth: mutate the boundary pose to *free* → wrongly feasible (grounding is load-bearing).
-- **Slice 3 — monotone growth on boundary contact.** Fixture whose mechanism straddles the initial
-  boundary. First solve names a boundary-touching mechanism → grow → strictly larger, stable, equals
-  the whole-structure LP set once grown. Assert monotone (no block un-falls). Cap-bound case: partial
-  sound subset returned, router stands the rest.
+- **Slice 3 — monotone growth on boundary contact. REFRAMED + DEFERRED as a latency/branching-reach
+  optimization (2026-09-03).** The finding that reframes it: the committed flood (slices 1-2) is
+  *greedy-fill-to-cap*, which already fells everything within the cap-ball of the seed — when
+  `cap ≥ structure` it fells the full truth (the seam test), and when `cap < structure` it fills
+  exactly to the cap and fells the cap-bound partial (the grounded-cut test). There is **no gap**
+  between them: "partial fell *with* cap headroom" is impossible on the greedy flood, so growth is
+  unobservable on a chain (the leaning stack). Growth only becomes meaningful with a *different* flood
+  strategy — a **modest initial region + grow-on-contact until interior or cap** — and its value shows
+  only in **branching** structures, where the greedy cap-ball wastes budget on non-mechanism branches
+  and so reaches less of a long mechanism than a mechanism-following grow would. So slice 3 is a
+  **latency + branching-reach refinement, NOT a correctness change** (the greedy flood is already
+  sound and within-cap-complete). Deferred: slice 4 proceeds on the greedy flood (sound, correct
+  within the cap-ball, just not latency-optimal), and grow-on-contact lands later — driven by a
+  BRANCHING fixture where greedy fells a partial with headroom that grow-on-contact completes, plus
+  the flood-strategy change — when playability latency (posing a cap-sized LP per cascade pass)
+  demands it. The cap-invariant property guard (`RegionUnionBoundaryCapInvariantHoldsAcrossSeedsAndCaps`)
+  landed here and guards the flood arithmetic through that future change.
 - **Slice 4 — seed derivation + real above-cap disturbance (CHANGES COMMITTED VERDICTS — needs
   sign-off).** Wire seed derivation into `SolveAndBreak`; drive `RemovePiece`+`SolveAndBreak` above the
   real cap (e.g. the porch-post torsion the router over-holds, `DESIGN.md:385`). Assert the prover
