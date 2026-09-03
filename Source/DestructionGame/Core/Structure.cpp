@@ -3193,6 +3193,191 @@ int32 FStructure::SolveAndBreak()
 	return BreakingPasses;
 }
 
+int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, int32 RegionBlockCap)
+{
+	/*
+	 * THE REGIONAL COLLAPSE PROVER, SLICE 1 (REGIONAL_PROVER_PLAN.md §§1-3, review item 12). The
+	 * router baseline classifies support over the intact graph first; then a grounded-boundary LP
+	 * over a neighbourhood of the disturbance can UPGRADE a router stand to a proven fall — never the
+	 * reverse. A region LP with its frontier pinned to the earth is a one-directional prover: it can
+	 * prove collapse (grounding the boundary only ADDS support, so an infeasible region is genuinely
+	 * infeasible globally) but never standing, so it only ever marks pieces Falling.
+	 */
+	SolveLoads();
+
+	/*
+	 * THE JOINT-HOP ADJACENCY the flood walks, rebuilt exactly as SolveLoads builds it: every intact
+	 * joint touching each piece, in ascending connection index. A given joint is out of the graph, so
+	 * a severed neighbourhood does not re-reach across a break.
+	 */
+	TArray<TArray<int32>> PieceJoints;
+	PieceJoints.SetNum(Pieces.Num());
+
+	for (int32 Index = 0; Index < Connections.Num(); ++Index)
+	{
+		const FConnection& Connection = Connections[Index];
+
+		if (Connection.HasGiven())
+		{
+			continue;
+		}
+
+		if (PieceJoints.IsValidIndex(Connection.PieceA))
+		{
+			PieceJoints[Connection.PieceA].Add(Index);
+		}
+
+		if (PieceJoints.IsValidIndex(Connection.PieceB))
+		{
+			PieceJoints[Connection.PieceB].Add(Index);
+		}
+	}
+
+	/*
+	 * FLOOD A REGION FROM THE SEED by joint-hops up to RegionBlockCap blocks. A neighbour reached
+	 * once the region is full joins the one-hop frontier RING instead, which is pinned grounded — the
+	 * region's tie to the earth it hangs from. With RegionBlockCap >= the live block count the flood
+	 * covers everything and the ring is empty, so the boundary is the earth alone (slice 1's case).
+	 */
+	TSet<int32> Region;
+	TSet<int32> Boundary;
+	TArray<int32> Frontier;
+
+	auto IsLiveInStructure = [this](int32 Piece)
+	{
+		return Pieces.IsValidIndex(Piece) && !IsPieceRemoved(Piece) && Pieces[Piece].bIsInTheStructure;
+	};
+
+	for (const int32 SeedPiece : Seed)
+	{
+		if (IsLiveInStructure(SeedPiece) && !Region.Contains(SeedPiece) && Region.Num() < RegionBlockCap)
+		{
+			Region.Add(SeedPiece);
+			Frontier.Add(SeedPiece);
+		}
+	}
+
+	for (int32 Head = 0; Head < Frontier.Num(); ++Head)
+	{
+		const int32 Piece = Frontier[Head];
+
+		for (const int32 Index : PieceJoints[Piece])
+		{
+			const int32 Other = OtherEndOf(Connections[Index], Piece);
+
+			if (!IsLiveInStructure(Other) || Region.Contains(Other))
+			{
+				continue;
+			}
+
+			if (Region.Num() < RegionBlockCap)
+			{
+				Region.Add(Other);
+				Frontier.Add(Other);
+			}
+			else
+			{
+				Boundary.Add(Other);
+			}
+		}
+	}
+
+	/*
+	 * POSE R + GROUNDED BOUNDARY at feasibility (bGravityIsLive = false) with the below-cap
+	 * first-crack rows — the identical authority BreakByEquilibrium poses. A bridge refusal fails
+	 * closed: no region opinion, so the router baseline stands untouched.
+	 */
+	RigidBlockOracle::FOracleProblem Problem;
+	FString WhyNot;
+
+	if (!RigidBlockOracle::BuildRegionalProblem(*this, Region, Boundary, Problem, WhyNot))
+	{
+		return 0;
+	}
+
+	Problem.bGravityIsLive = false;
+	Problem.bFirstCrackRows = true;
+
+	const RigidBlockOracle::FOracleResult Result = RigidBlockOracle::SolveRigidBlock(Problem);
+	const RigidBlockOracle::EOracleOutcome Outcome = RigidBlockOracle::OutcomeOf(Result);
+
+	if (Outcome != RigidBlockOracle::EOracleOutcome::Falls)
+	{
+		/* No certified fall in the region — the prover has no opinion and defers to the router. */
+		return 0;
+	}
+
+	const RigidBlockOracle::FOracleMechanism& Mechanism = Result.Mechanism;
+
+	if (!Mechanism.bPresent || !Mechanism.bIsCertified)
+	{
+		return 0;
+	}
+
+	/*
+	 * FALLING-ONLY STITCH. A grounded boundary block writes no equilibrium rows and never moves, so
+	 * the moved blocks are all INTERIOR by construction; map them back to pieces through PieceOfBlock
+	 * and mark each Falling. NEVER Supported — a region LP is a collapse prover only, and crediting a
+	 * stand above the cap is exactly the false-stand direction case-21 forbids. Falling is written as
+	 * SolveLoads writes it: not held up and not stranded.
+	 */
+	int32 Released = 0;
+
+	for (int32 Block = 0; Block < Mechanism.Blocks.Num(); ++Block)
+	{
+		if (!Mechanism.Blocks[Block].bMoves)
+		{
+			continue;
+		}
+
+		if (!Problem.PieceOfBlock.IsValidIndex(Block))
+		{
+			continue;
+		}
+
+		const int32 Piece = Problem.PieceOfBlock[Block];
+
+		if (!PieceSupported.IsValidIndex(Piece))
+		{
+			continue;
+		}
+
+		PieceSupported[Piece] = false;
+		PieceStranded[Piece] = false;
+		++Released;
+	}
+
+	/*
+	 * SEVER THE INTACT JOINTS THE MECHANISM OPENS, mapped back to production connections through the
+	 * bridge's ConnectionOfJoint provenance — the identical release/sever idiom BreakByEquilibrium
+	 * uses. A joint already gone is skipped; this pass stamps the ones it severs.
+	 */
+	for (int32 Joint = 0; Joint < Mechanism.JointOpensOrSlides.Num(); ++Joint)
+	{
+		if (!Mechanism.JointOpensOrSlides[Joint])
+		{
+			continue;
+		}
+
+		if (!Problem.ConnectionOfJoint.IsValidIndex(Joint))
+		{
+			continue;
+		}
+
+		const int32 Connection = Problem.ConnectionOfJoint[Joint];
+
+		if (!Connections.IsValidIndex(Connection) || Connections[Connection].HasGiven())
+		{
+			continue;
+		}
+
+		Connections[Connection].Sever();
+		ConnectionBreakPass[Connection] = 1;
+	}
+
+	return Released;
+}
+
 void FStructure::SetEquilibriumGateBlockCap(int32 MaxBlocks)
 {
 	/*

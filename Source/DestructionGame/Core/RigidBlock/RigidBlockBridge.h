@@ -60,4 +60,35 @@ namespace RigidBlockOracle
 		const TSet<int32>& ExcludedPieces,
 		FOracleProblem& OutProblem,
 		FString& OutWhyNot);
+
+	/**
+	 * THE GROUNDED-BOUNDARY BRIDGE — the regional collapse prover's pose (REGIONAL_PROVER_PLAN.md
+	 * §2, review item 12). It projects only a NEIGHBOURHOOD of the structure into an oracle problem,
+	 * with the neighbourhood's one-hop frontier pinned to the earth, so the LP can prove that a
+	 * disturbed region collapses without paying for the whole structure.
+	 *
+	 * Interior RegionPieces are bridged exactly as the excluded-pieces form bridges an included
+	 * piece — real mass, centroid, joints and EffectiveJointStrength weakest-link pairing. Frontier
+	 * BoundaryPieces are bridged with Block.bGrounded forced true: they become earth, writing no
+	 * equilibrium rows, so they can only ADD support versus reality. Only RegionPieces united with
+	 * BoundaryPieces are included; every other piece is treated as absent exactly as ExcludedPieces
+	 * are, and a joint touching an absent piece is skipped rather than faulted. A joint with two
+	 * grounded ends (which now includes a real-to-boundary or boundary-to-boundary joint) is skipped
+	 * as constraining nothing the earth does not already absorb. Every other refusal — incomplete
+	 * geometry, a genuine tombstone on an INCLUDED piece, a 2D out-of-plane normal, a degenerate
+	 * normal — stands exactly as in the excluded-pieces form.
+	 *
+	 * This is a SEPARATE function from BuildRigidBlockProblem on purpose: the shared bridge poses the
+	 * whole-structure and excluded-pieces problems the flagship scenarios and the oracle sweep pin
+	 * byte-for-byte, and forcing a boundary set grounded inside it would shift them. A piece present
+	 * in BOTH sets is treated as boundary (grounded), the conservative reading.
+	 *
+	 * @return true and a filled problem, or false with the reason; OutProblem is emptied on refusal.
+	 */
+	bool BuildRegionalProblem(
+		const FStructure& Structure,
+		const TSet<int32>& RegionPieces,
+		const TSet<int32>& BoundaryPieces,
+		FOracleProblem& OutProblem,
+		FString& OutWhyNot);
 }

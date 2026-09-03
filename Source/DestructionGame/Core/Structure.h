@@ -492,6 +492,32 @@ struct FStructure
 	bool IsThreeDimensional() const;
 
 	/**
+	 * THE EXPLICIT TEST ENTRY FOR THE REGIONAL COLLAPSE PROVER (REGIONAL_PROVER_PLAN.md slice 1) —
+	 * region extraction -> grounded-boundary pose -> SolveRigidBlock -> Falling-only stitch, end to
+	 * end, WITHOUT touching the real SolveAndBreak cascade (so no committed scenario verdict changes).
+	 * Slice 4 wires the same machinery into the cascade behind a settable region cap; this entry is
+	 * how slices 1-3 drive and test it in isolation.
+	 *
+	 * It runs the router baseline (SolveLoads), then floods a region from Seed by joint-hops over
+	 * PieceJoints up to RegionBlockCap, pins the one-hop frontier ring GROUNDED, poses R + boundary
+	 * with bGravityIsLive = false and bFirstCrackRows = true through the grounded-boundary bridge
+	 * overload RigidBlockOracle::BuildRegionalProblem, calls SolveRigidBlock, and on a CERTIFIED
+	 * Falls marks the moved INTERIOR pieces Falling (never Supported — the override is
+	 * one-directional, toward collapse only) and severs the intact joints the mechanism opens,
+	 * mapped back through the problem's ConnectionOfJoint provenance. A bridge refusal or a
+	 * non-Falls outcome releases nothing and defers to the router baseline.
+	 *
+	 * With RegionBlockCap >= the block count the region floods the WHOLE structure, so the grounded
+	 * boundary is the earth alone (no cut) and the released set equals the whole-structure
+	 * ground-only LP's moving set.
+	 *
+	 * @param Seed           The pieces the region grows from (the disturbance neighbourhood).
+	 * @param RegionBlockCap The largest region the flood may reach (the grounded boundary rings it).
+	 * @return the number of pieces the prover released (marked Falling) this call.
+	 */
+	int32 SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, int32 RegionBlockCap);
+
+	/**
 	 * Which breaking pass gave this joint, counted from 1, or INDEX_NONE if no pass did
 	 * — including for an out-of-range handle, which is not a joint that broke.
 	 *
