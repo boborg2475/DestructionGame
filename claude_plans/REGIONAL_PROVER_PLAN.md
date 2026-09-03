@@ -148,20 +148,24 @@ so (C) fails on missing behaviour while (A)/(B) pass.
 - **Interaction with items 2/3/5:** prover's Falling-only override composes with the item-3
   `PieceOverturned` set and item-5 refused-arch reclassification; assert 0-stranded through the union.
 
-## Physics-model calls (OWNER SIGN-OFF before slice 4) vs pure engineering
-**Owner sign-off:**
-1. **Override direction & authority** — the prover may upgrade an above-cap router *stand* to a proven
-   *fall* but never the reverse; this ratifies changing committed above-cap verdicts (may fell things
-   the flagship scenarios currently stand). (Tie to case-21: this is the collapse direction, so case-21
-   does not bar it.)
-2. **Region cap and growth/stopping policy** — how large a neighbourhood is worth proving, and the
-   accepted false-stand miss when a mechanism exceeds the cap ("thrust is not local",
-   `PROMOTION_DESIGN.md:293`, means a bounded region *will* miss some collapses — a knowingly-accepted
-   limitation like `DESIGN.md:385`).
-3. **Crediting the first-crack LP locally above the cap** at all (consistency with case-21 and the
-   442-shed router ruling).
-4. **Seed definition** — what counts as "the disturbance" (removal neighbours vs previous-pass severed
-   joints).
+## Physics-model calls — RATIFIED BY OWNER 2026-09-03
+All four are settled; slice 4 is unblocked.
+1. **Override direction & authority — RATIFIED: override toward Falling, LIVE in the cascade.** The
+   prover upgrades an above-cap router *stand* to a proven *fall* but never the reverse. This will
+   change committed above-cap verdicts (fell things the flagship scenarios currently over-hold, e.g.
+   the porch-post torsion). Slice 4's test must assert the shed's committed collapse row is UNCHANGED
+   and that a genuine over-hold now falls, 0 stranded — so every verdict change is caught before commit.
+   (case-21 does not bar it: this is the collapse direction, the opposite of case-21's false *stand*.)
+2. **Region cap — RATIFIED: default 200, but SETTABLE.** Match the below-cap LP cap (200) as the
+   default, BUT it must be a configurable member with a setter (mirror `SetEquilibriumGateBlockCap` →
+   `SetRegionBlockCap(int32)`, default 200) so the owner can tune it later. Slice 1's entry point
+   already takes `RegionBlockCap` as a parameter; slice 4 adds the settable member the real cascade
+   reads. The accepted false-stand miss when a mechanism exceeds the cap stands ("thrust is not local").
+3. **Crediting the first-crack LP locally above the cap — RATIFIED (no objection).** The prover poses
+   the region with `bFirstCrackRows=true` (the below-cap authority). case-21 distrusts LP bond credit
+   above the cap only for *stands*; the prover never stands anything, so case-21 does not bar it.
+4. **Seed definition — RATIFIED (no objection).** The disturbance = the removed piece's neighbours on
+   pass 1, then previous-pass severed-joint endpoints thereafter.
 
 **Pure engineering (no sign-off):** the grounded-boundary soundness itself (a proven relaxation bound,
 `PROMOTION_DESIGN.md:297`); the BFS flood; the bridge overload; sever/release/support idioms;
