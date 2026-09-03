@@ -3248,13 +3248,69 @@ int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, in
 		return Pieces.IsValidIndex(Piece) && !IsPieceRemoved(Piece) && Pieces[Piece].bIsInTheStructure;
 	};
 
+	/*
+	 * Admit a live candidate into the region ONLY IF the region united with the grounded boundary
+	 * ring it would then induce still fits RegionBlockCap. The frontier ring is derived from the
+	 * FINAL region, so the cap has to be spent on R AND the B that R carries — bounding |R| alone
+	 * lets the one-hop ring push the posed problem past the cap, which is exactly the plan's stopping
+	 * gate "region ∪ grounded boundary <= region cap" (REGIONAL_PROVER_PLAN.md §1). Boundary is kept
+	 * as the region's exact induced one-hop frontier at every step, so its running size IS the ring
+	 * that would be grounded; a rejected candidate simply stays in that boundary. Counting R∪B can
+	 * only make the region SMALLER, never wrong — by the relaxation bound every felled set is a
+	 * subset of the whole-structure truth regardless of where the R/B cut falls.
+	 */
+	auto AdmitToRegion = [&](int32 Candidate) -> bool
+	{
+		if (!IsLiveInStructure(Candidate) || Region.Contains(Candidate))
+		{
+			return false;
+		}
+
+		TSet<int32> NewRingPieces;
+
+		for (const int32 Index : PieceJoints[Candidate])
+		{
+			const int32 Other = OtherEndOf(Connections[Index], Candidate);
+
+			if (IsLiveInStructure(Other) && Other != Candidate && !Region.Contains(Other)
+				&& !Boundary.Contains(Other))
+			{
+				NewRingPieces.Add(Other);
+			}
+		}
+
+		const int32 ProspectiveRegion = Region.Num() + 1;
+		const int32 ProspectiveBoundary =
+			Boundary.Num() - (Boundary.Contains(Candidate) ? 1 : 0) + NewRingPieces.Num();
+
+		if (ProspectiveRegion + ProspectiveBoundary > RegionBlockCap)
+		{
+			return false;
+		}
+
+		Region.Add(Candidate);
+		Boundary.Remove(Candidate);
+
+		for (const int32 RingPiece : NewRingPieces)
+		{
+			Boundary.Add(RingPiece);
+		}
+
+		Frontier.Add(Candidate);
+		return true;
+	};
+
+	/*
+	 * A seed that cannot be admitted (the cap is already full) is dropped, NOT added to the grounded
+	 * boundary — unlike a rejected BFS ring piece below. Grounding a seed would pin the very
+	 * disturbance the region exists to examine, suppressing the collapse it seeds; and in the only
+	 * case a seed is rejected outright (a cap too small to hold even one seed's neighbourhood) the
+	 * region comes out empty and the prove fails closed to the router baseline. A rejected seed that
+	 * neighbours an admitted region piece is still picked up as boundary through the BFS below.
+	 */
 	for (const int32 SeedPiece : Seed)
 	{
-		if (IsLiveInStructure(SeedPiece) && !Region.Contains(SeedPiece) && Region.Num() < RegionBlockCap)
-		{
-			Region.Add(SeedPiece);
-			Frontier.Add(SeedPiece);
-		}
+		AdmitToRegion(SeedPiece);
 	}
 
 	for (int32 Head = 0; Head < Frontier.Num(); ++Head)
@@ -3270,12 +3326,7 @@ int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, in
 				continue;
 			}
 
-			if (Region.Num() < RegionBlockCap)
-			{
-				Region.Add(Other);
-				Frontier.Add(Other);
-			}
-			else
+			if (!AdmitToRegion(Other))
 			{
 				Boundary.Add(Other);
 			}
@@ -3294,6 +3345,13 @@ int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, in
 	{
 		return 0;
 	}
+
+	/*
+	 * Record the posed problem size — |region ∪ grounded boundary| — the moment the pose exists. The
+	 * flood above bounds this at RegionBlockCap, so GetLastRegionalProblemBlockCount is the gate's
+	 * witness that the ring never overspends the cap.
+	 */
+	LastRegionalProblemBlockCount = Problem.Blocks.Num();
 
 	Problem.bGravityIsLive = false;
 	Problem.bFirstCrackRows = true;
@@ -3376,6 +3434,17 @@ int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, in
 	}
 
 	return Released;
+}
+
+int32 FStructure::GetLastRegionalProblemBlockCount() const
+{
+	/*
+	 * The number of oracle blocks the last SolveAndBreak_WithRegionalProver posed to
+	 * BuildRegionalProblem — |region ∪ grounded boundary| — or INDEX_NONE if no regional prove has
+	 * posed a problem yet. The flood bounds this at RegionBlockCap (see the pose in
+	 * SolveAndBreak_WithRegionalProver), so it is the plan's stopping-gate witness.
+	 */
+	return LastRegionalProblemBlockCount;
 }
 
 void FStructure::SetEquilibriumGateBlockCap(int32 MaxBlocks)

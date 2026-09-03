@@ -518,6 +518,20 @@ struct FStructure
 	int32 SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, int32 RegionBlockCap);
 
 	/**
+	 * INSTRUMENTATION — the number of blocks the LAST SolveAndBreak_WithRegionalProver call posed
+	 * to the oracle, i.e. |region UNION grounded-boundary| (both interior R and the grounded ring B
+	 * become oracle blocks). Test-only observability for the flood's stopping gate, which bounds
+	 * "region ∪ grounded boundary <= RegionBlockCap" (REGIONAL_PROVER_PLAN.md §1): the flood holds a
+	 * candidate out as the grounded ring rather than admit it when doing so would push |R∪B| over
+	 * the cap, so this count comes in at or under RegionBlockCap.
+	 *
+	 * "Last POSED", not "last CALL": it is stamped only when a prove actually posed a problem (the
+	 * bridge accepted the region), so a later call whose bridge pose is refused leaves the previous
+	 * value in place. Returns INDEX_NONE until the first regional prove has posed a problem.
+	 */
+	int32 GetLastRegionalProblemBlockCount() const;
+
+	/**
 	 * Which breaking pass gave this joint, counted from 1, or INDEX_NONE if no pass did
 	 * — including for an out-of-range handle, which is not a joint that broke.
 	 *
@@ -1307,6 +1321,14 @@ private:
 	 * cost is a test-time one for now — CURRENT_STATE carries the open latency item.
 	 */
 	int32 EquilibriumGateBlockCap = 200;
+
+	/*
+	 * INSTRUMENTATION for GetLastRegionalProblemBlockCount — the number of oracle blocks the last
+	 * SolveAndBreak_WithRegionalProver posed to BuildRegionalProblem, i.e. |region ∪ grounded
+	 * boundary|. Stamped to Problem.Blocks.Num() the moment the pose is built; INDEX_NONE until a
+	 * regional prove has posed a problem. Test-only observability for the flood's stopping gate.
+	 */
+	int32 LastRegionalProblemBlockCount = INDEX_NONE;
 
 	/*
 	 * Whether SetThreeDimensional flagged this structure 3D (THREED_DESIGN.md E3). FALSE BY

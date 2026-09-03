@@ -36,13 +36,15 @@
  * set's size, and NOTHING reads Stranded. No centimetre of movement is read — a severed lean can
  * rest exactly in place and still be genuinely released, so displacement would be the wrong witness.
  *
- * RED FOR THE RIGHT REASON. FStructure::SolveAndBreak_WithRegionalProver is a slice-1 STUB that
- * establishes the router baseline (SolveLoads only) and does no regional work, so the lean STANDS:
- * every truth-set piece reads Supported (not Falling) and the released count is 0 (not the truth
- * size). The two truth-arm assertions (the whole-structure LP falls it, and certifies a non-empty
- * mechanism) PASS on arrival — they exercise existing, built behaviour and exist to prove the fixture
- * genuinely fells something, so the regional arm is measured against a real target. When dev-expert
- * builds the flood + grounded-boundary pose + Falling-only stitch, the regional arm turns green.
+ * NOW GREEN — THIS DROVE THE SLICE-1 BUILD, WHICH LANDED. FStructure::SolveAndBreak_WithRegionalProver
+ * is FULLY IMPLEMENTED (commit 2fd6e1b): it runs the router baseline, floods a region from the seed,
+ * pins the frontier ring grounded, poses R + boundary through BuildRegionalProblem, solves, and
+ * stitches the moved interior pieces Falling. So the regional arm passes — every truth-set piece
+ * reads Falling, the released count equals the truth size, and nothing is Stranded — alongside the
+ * two truth-arm assertions (the whole-structure LP falls the lean and certifies a non-empty
+ * mechanism). It began as the red that drove the slice-1 machinery; it stands now as the regression
+ * net over that machinery on the no-cut (cap >= structure size) case. The cutting case — a small cap
+ * whose frontier ring is interior structure — is pinned by RegionalProverGroundedCutTest (slice 2).
  *
  * THE PRODUCTION SURFACE THIS TEST SPECIFIES (what dev-expert builds to):
  *   - int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed,
