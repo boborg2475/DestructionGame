@@ -102,11 +102,11 @@ Narrow the run by lengthening the path after `RunTests` (e.g. `DestructionGame.C
 
 ```
 -ExecCmds="Automation RunTests OracleSweepFast"   # 10 tests, ~90 s — iteration
--ExecCmds="Automation RunTests OracleSweepFull"   # 5 tests, ~22 min — verification
--ExecCmds="Automation RunTests OracleSweep"       # both (15), by substring match on the stem
+-ExecCmds="Automation RunTests OracleSweepFull"   # 6 tests, ~24 min — verification
+-ExecCmds="Automation RunTests OracleSweep"       # both (16), by substring match on the stem
 ```
 
-Counts as of 2026-08-21. `Run-OracleSweep.ps1` asserts them — a test in a tier but in no parallel bucket runs nowhere, which is how a solver-scale test was silently skipped once.
+Counts as of 2026-09-03 (IsPermutationDeterministicAtScale moved from the default suite into OracleSweepFull 2026-09-03). `Run-OracleSweep.ps1` asserts them — a test in a tier but in no parallel bucket runs nowhere, which is how a solver-scale test was silently skipped once.
 
 **`OracleSweepFull` is mandatory before any commit that touches the LP oracle, and before any commit at all if the solver changed.** Those three tests are 94% of the cost because they are the three that watch the solver at scale; a green fast tier verifies none of it. An opt-in tier rots — see TRAPS.
 

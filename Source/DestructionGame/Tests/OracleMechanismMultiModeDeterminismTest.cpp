@@ -752,7 +752,7 @@ bool FOracleMechanismTwoIndependentModesTest::RunTest(const FString& Parameters)
  * ================================================================================================ */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleMechanismDeterminismAtScaleTest,
-	"DestructionGame.Oracle.RigidBlock.Mechanism.IsPermutationDeterministicAtScale",
+	"OracleSweepFull.RigidBlock.Mechanism.IsPermutationDeterministicAtScale",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 bool FOracleMechanismDeterminismAtScaleTest::RunTest(const FString& Parameters)

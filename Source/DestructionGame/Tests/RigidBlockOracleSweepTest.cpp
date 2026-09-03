@@ -2251,11 +2251,11 @@ bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
  * is untouched. Both tiers substring-match one filter, which is what the names are for:
  *
  *     -ExecCmds="Automation RunTests OracleSweepFast"  10 tests,   ~2 min
- *     -ExecCmds="Automation RunTests OracleSweepFull"   4 tests,  ~24 min
- *     -ExecCmds="Automation RunTests OracleSweep"      14 tests,  ~26 min (both)
+ *     -ExecCmds="Automation RunTests OracleSweepFull"   6 tests,  ~24 min
+ *     -ExecCmds="Automation RunTests OracleSweep"      16 tests,  ~26 min (both)
  *
- * MEASURED, not assumed (counts re-checked 2026-08-21): those three filters return
- * **10, 4 and 14** tests and the same count of Test Completed lines. The count grew from
+ * MEASURED, not assumed (counts re-checked 2026-09-03): those three filters return
+ * **10, 6 and 16** tests and the same count of Test Completed lines. The count grew from
  * 7/3/10 as the regional-sandwich, warm-start and Slice 0c attribution rows landed. The
  * command-line filter is a plain SUBSTRING
  * match (AutomationCommandline.cpp, GenerateTestNamesFromCommandLine — "otherwise just

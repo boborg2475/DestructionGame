@@ -6,7 +6,7 @@
     The sweep is dominated by three tests (measured 2026-08-16: WallsAndLadders 455 s,
     PhaseTwoMustNotRefuseTheCoveredOpeningFamily 432 s, FeasibilityReformulationCost 313 s)
     against the cheap ones. Run serially that is ~22 minutes. As of 2026-08-18 the tiers
-    hold 10 fast and 5 full tests; ExpectedTests below is the guard on those counts.
+    hold 10 fast and 6 full tests (perm moved into Full 2026-09-03); ExpectedTests below is the guard on those counts.
 
     MEASURED, 2026-08-16: -Tier All takes 648 s -- 2.0x, not the 2.9x the bucket split
     predicts. All three processes finished within a tenth of a second of each other, which
@@ -36,7 +36,7 @@
 
 .PARAMETER Tier
     Fast  -- the cheap tests only (10 as of 2026-08-21, ~90 s, one process). For iterating.
-    Full  -- the expensive tests (5), one process each.
+    Full  -- the expensive tests (6), one process each.
     All   -- both tiers (13). THE ONE TO RUN BEFORE A COMMIT.
 
 .PARAMETER Serial
@@ -106,13 +106,14 @@ $FullBuckets = @(
     @{ Name = 'spike';   Filter = 'OracleSweepFull.RigidBlock.FeasibilityReformulationCost';                 Seconds = 313 },
     @{ Name = 'warm';    Filter = 'OracleSweepFull.RigidBlock.WarmStartAtWallScale';                         Seconds = 56  },
     @{ Name = 'deletion'; Filter = 'OracleSweepFull.RigidBlock.DeletionResolveLatencyLadder';               Seconds = 17  }
+    @{ Name = 'perm';    Filter = 'OracleSweepFull.RigidBlock.Mechanism.IsPermutationDeterministicAtScale'; Seconds = 92  }
 )
 
 <#
     MEASURED 2026-08-21. A mismatch is an error, never a warning: under-running looks
     exactly like success, which is the failure mode this whole file exists to prevent.
 #>
-$ExpectedTests = @{ Fast = 10; Full = 5; All = 15 }
+$ExpectedTests = @{ Fast = 10; Full = 6; All = 16 }
 
 function Get-Buckets {
     param([string] $ForTier)
