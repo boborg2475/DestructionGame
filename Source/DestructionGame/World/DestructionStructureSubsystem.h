@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/BuildMode/SnapSolver.h"
 #include "Core/Layout.h"
 #include "Core/PieceActions.h"
 #include "Core/Profiles/MaterialProfiles.h"
@@ -24,6 +25,29 @@ struct FPieceHit
 	FPieceRef Ref;
 
 	int32 PieceHandle = INDEX_NONE;
+};
+
+/**
+ * What the ghost preview needs: the snap decision PlaceBuildPiece WOULD commit at a requested
+ * pose, surfaced without mutating the structure. bValid is false only for an unknown structure
+ * id; otherwise it carries the best-ranked candidate's kind, its snapped centre, and how many
+ * joints it would form — exactly what a subsequent PlaceBuildPiece at the same pose produces.
+ *
+ * IT PREDICTS THE COMMIT ONLY WHILE THE BINDING IS UNCHANGED. The prediction holds because the
+ * commit runs the SAME gather-and-solve on the SAME pieces; any placement or removal in between
+ * moves the answer, so a UI must re-preview after every mutation and treat the commit as
+ * authoritative. Note also that bValid means "the id is known", NOT "a piece would land": a
+ * degenerate extent previews valid with a kind, yet the commit fails closed with a default ref.
+ */
+struct FBuildPreview
+{
+	bool bValid = false;
+
+	BuildMode::ESnapKind Kind = BuildMode::ESnapKind::Free;
+
+	FVector CentreCm = FVector::ZeroVector;
+
+	int32 JointCount = 0;
 };
 
 /**
@@ -100,8 +124,24 @@ public:
 		const DestructionProfiles::FMaterialProfile& Material,
 		bool bGrounded);
 
+	/**
+	 * The snap decision PlaceBuildPiece WOULD commit at this pose, WITHOUT mutating anything —
+	 * no piece added, no actor spawned, no connection formed. It is the same gather-and-solve
+	 * PlaceBuildPiece runs (SolveSnapCandidates against the live pieces, Candidates[0]), so the
+	 * returned kind, snapped centre and joint count match the piece a following PlaceBuildPiece
+	 * at the same pose lands. Fails closed: bValid is false for an unknown structure id.
+	 */
+	FBuildPreview PreviewBuildPiece(
+		int32 StructureId,
+		const FVector& RequestedCentreCm,
+		const FVector& ExtentCm,
+		const DestructionProfiles::FMaterialProfile& Material) const;
+
 	/** The binding for a structure id, or null. */
 	FStructureBinding* Find(int32 StructureId);
+
+	/** Const overload, so a const query (PreviewBuildPiece) can reach the binding read-only. */
+	const FStructureBinding* Find(int32 StructureId) const;
 
 	/**
 	 * Tear a structure down: destroy every actor its binding still names and forget the

@@ -169,9 +169,13 @@ preview and a palette on that proven core — it invents no physics.
   (live-feedback-off default). Driven by `World.BuildMode.PlaceBuildPieceGrowsALiveStructure`. Follow-ups
   (CURRENT_STATE): factor the shared decision→add helper as UI-2's first step; return `Kind`/joints not just
   a ref; the UI owns the cancel/Destroy of an abandoned build.
-- **UI-2 — ghost preview + snap highlight.** A translucent preview actor at `Candidates[0].CentreCm`;
-  `SetHighlighted` on the neighbour(s) the snap would joint to, tinted by `Kind`. Functional test + the
-  screenshot harness (assert the ghost pose == the candidate pose; judge the picture by eye).
+- **UI-2 — ghost preview + snap highlight.** Data source LANDED 2026-09-04:
+  `UDestructionStructureSubsystem::PreviewBuildPiece(...) const -> FBuildPreview{bValid,Kind,CentreCm,
+  JointCount}` — the non-mutating query the ghost draws from (and the world gather+decision is now one
+  shared `ComputeBuildPlacement`). Driven by `World.BuildMode.PreviewBuildPieceIsNonMutatingAndPredictsTheCommit`.
+  STILL TO DO: a translucent preview ACTOR at `FBuildPreview.CentreCm` (never an `ABrickActor` bound into
+  the structure), `SetHighlighted` on the neighbour(s) the snap would joint to tinted by `Kind` — functional
+  test + the screenshot harness (assert the ghost pose == the preview centre; judge the picture by eye).
 - **UI-3 — material / piece palette.** Pick brick vs timber and a size; drives the `Material`+`ExtentCm`
   handed to `PlaceBuildPiece`. (First cut: ClayBrick full brick, Timber plate/lintel.)
 - **UI-4 — build/destroy mode toggle + input** (a build player controller/mode): cursor → build-plane

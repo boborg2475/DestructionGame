@@ -281,4 +281,168 @@ bool FBuildPlacePieceGrowsALiveStructureTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * BUILD-MODE UI-2, FIRST STEP — the NON-MUTATING preview query.
+ *
+ * PreviewBuildPiece answers what the best-ranked candidate WOULD be if placed here — the snapped
+ * pose, the snap kind, and how many joints it would form — WITHOUT changing anything. It is the
+ * exact snap decision PlaceBuildPiece makes, surfaced so the UI can draw a ghost before the click.
+ *
+ * A WORLD TEST for the same reason its sibling above is: PlaceBuildPiece (used to seed and then to
+ * confirm) spawns a real ABrickActor and binds it, so the fixture needs the FBrickTestWorld
+ * harness. It never ticks — every assertion is on the query result and on the structure's own
+ * state, the MECHANISM, never displacement.
+ *
+ * THE ASSERTIONS ARE THREE THINGS AT ONCE:
+ *  - PREDICTION: the preview's Kind is BrickNextCourse, its CentreCm is the running-bond snap
+ *    (11.25, 0, 7.5) — not the requested (11, 0, 7.5) — and it would form exactly ONE joint (the
+ *    bed). The numbers are read from SnapSolverTest's grid, not re-derived here.
+ *  - NON-MUTATION: after the preview the structure still holds ONE piece, ZERO connections, and
+ *    GetActor(1) is still null — no second actor was spawned. This is the entire point: a preview
+ *    that added a piece, or spawned a ghost's actor into the live binding, would be a place, not a
+ *    preview.
+ *  - CONSISTENCY: a following PlaceBuildPiece at the SAME requested pose lands its box at exactly
+ *    the previewed CentreCm and forms exactly the previewed JointCount — so the preview provably
+ *    predicts the commit rather than merely being plausible.
+ *
+ * AND FAIL-CLOSED: PreviewBuildPiece against an unknown structure id returns bValid == false.
+ *
+ * NEEDS A TICKING WORLD: a real world for the seed/confirm actor spawns, but it never ticks.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPreviewBuildPieceIsNonMutatingAndPredictsTheCommitTest,
+	"DestructionGame.World.BuildMode.PreviewBuildPieceIsNonMutatingAndPredictsTheCommit",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPreviewBuildPieceIsNonMutatingAndPredictsTheCommitTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildPlacePieceTestSupport;
+	using namespace DestructionProfiles;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
+
+	/* One grounded brick, so there is something for a next-course preview to snap to. */
+	const int32 StructureId = Subsystem.BeginBuild();
+
+	Subsystem.PlaceBuildPiece(StructureId, FVector(0.0, 0.0, 0.0), HalfBrick, ClayBrick, /*bGrounded*/ true);
+
+	FStructureBinding* Binding = Subsystem.Find(StructureId);
+	if (Binding == nullptr)
+	{
+		AddError(TEXT("the structure vanished after seeding the first piece"));
+		return true;
+	}
+
+	TestEqual(
+		FString::Printf(TEXT("precondition: the seeded structure holds exactly 1 piece, got %d"),
+			Binding->NumPieces()),
+		Binding->NumPieces(), 1);
+
+	/* The requested pose is off-grid on purpose — the snap must move it, and the preview must say so. */
+	const FVector RequestedCentre(11.0, 0.0, 7.5);
+
+	const FBuildPreview Preview =
+		Subsystem.PreviewBuildPiece(StructureId, RequestedCentre, HalfBrick, ClayBrick);
+
+	/* PREDICTION. */
+	TestTrue(
+		TEXT("a preview against a known structure is valid"),
+		Preview.bValid);
+
+	TestTrue(
+		FString::Printf(TEXT("the +X next-course preview snaps to BrickNextCourse, got kind %d"),
+			static_cast<int32>(Preview.Kind)),
+		Preview.Kind == BuildMode::ESnapKind::BrickNextCourse);
+
+	TestTrue(
+		FString::Printf(
+			TEXT("the preview centre is the running-bond snap (11.25, 0, 7.5), got (%g, %g, %g)"),
+			Preview.CentreCm.X, Preview.CentreCm.Y, Preview.CentreCm.Z),
+		Preview.CentreCm.Equals(ExpectedRunningBondCentre, KINDA_SMALL_NUMBER));
+
+	TestEqual(
+		FString::Printf(TEXT("the preview would form exactly one bed joint, got %d"),
+			Preview.JointCount),
+		Preview.JointCount, 1);
+
+	/*
+	 * NON-MUTATION — the whole point. Re-fetch and prove nothing grew: still one piece, still no
+	 * connection, and no second actor was spawned into the binding (GetActor(1) is null for an
+	 * unknown handle).
+	 */
+	Binding = Subsystem.Find(StructureId);
+	if (Binding == nullptr)
+	{
+		AddError(TEXT("the structure vanished across the preview call"));
+		return true;
+	}
+
+	TestEqual(
+		FString::Printf(TEXT("preview must NOT add a piece: still 1 piece, got %d"),
+			Binding->NumPieces()),
+		Binding->NumPieces(), 1);
+
+	TestEqual(
+		FString::Printf(TEXT("preview must NOT form a connection: still 0 connections, got %d"),
+			Binding->GetStructure().NumConnections()),
+		Binding->GetStructure().NumConnections(), 0);
+
+	TestNull(
+		FString::Printf(TEXT("preview must NOT spawn a second actor: GetActor(1) should be null, got %s"),
+			*GetNameSafe(Binding->GetActor(1))),
+		Binding->GetActor(1));
+
+	/*
+	 * CONSISTENCY — the preview predicts the commit. Place the real piece at the SAME requested
+	 * pose and read it back: the placed box sits at the previewed centre and forms the previewed
+	 * number of joints.
+	 */
+	const FPieceRef Placed =
+		Subsystem.PlaceBuildPiece(StructureId, RequestedCentre, HalfBrick, ClayBrick, /*bGrounded*/ false);
+
+	TestTrue(
+		FString::Printf(TEXT("the committed piece should be ref {%d, 1}, got {%d, %d}"),
+			StructureId, Placed.StructureId, Placed.PieceIndex),
+		Placed == FPieceRef{ StructureId, 1 });
+
+	Binding = Subsystem.Find(StructureId);
+	if (Binding == nullptr)
+	{
+		AddError(TEXT("the structure vanished after the confirming placement"));
+		return true;
+	}
+
+	const FVector PlacedCentre = Binding->GetBinding(1).Box.CentreCm;
+	TestTrue(
+		FString::Printf(
+			TEXT("the committed box lands at the previewed centre (%g, %g, %g), got (%g, %g, %g)"),
+			Preview.CentreCm.X, Preview.CentreCm.Y, Preview.CentreCm.Z,
+			PlacedCentre.X, PlacedCentre.Y, PlacedCentre.Z),
+		PlacedCentre.Equals(Preview.CentreCm, KINDA_SMALL_NUMBER));
+
+	TestEqual(
+		FString::Printf(
+			TEXT("the commit forms exactly the previewed joint count %d, got %d connections"),
+			Preview.JointCount, Binding->GetStructure().NumConnections()),
+		Binding->GetStructure().NumConnections(), Preview.JointCount);
+
+	/* FAIL-CLOSED — an unknown structure id previews nothing. */
+	const FBuildPreview UnknownPreview =
+		Subsystem.PreviewBuildPiece(9999, RequestedCentre, HalfBrick, ClayBrick);
+
+	TestFalse(
+		TEXT("a preview against an unknown structure id is invalid"),
+		UnknownPreview.bValid);
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

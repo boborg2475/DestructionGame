@@ -142,6 +142,61 @@ namespace
 	}
 
 	/**
+	 * The snap DECISION for a piece placed into a binding, with no mutation and no world.
+	 *
+	 * THE CONTAINER-INDEPENDENT MIDDLE PlaceBuildPiece AND PreviewBuildPiece SHARE. One gathers
+	 * the live pieces to spawn a real brick, the other to draw a ghost — but the decision between
+	 * is identical, so it lives here once. NearbyBoxes is the whole live piece array and
+	 * NearbyMaterials is parallel to it, so a candidate's OtherPieceIndex is exactly the existing
+	 * piece's handle. Both are read through const routes off the binding, which is why this takes
+	 * a const reference: it decides, it never places.
+	 */
+	struct FBuildPlacement
+	{
+		BuildMode::ESnapKind Kind = BuildMode::ESnapKind::Free;
+		FVector CentreCm = FVector::ZeroVector;
+		double MassKg = 0.0;
+		TArray<BuildMode::FFormedJoint> Joints;
+	};
+
+	FBuildPlacement ComputeBuildPlacement(
+		const FStructureBinding& Binding,
+		const FVector& RequestedCentreCm,
+		const FVector& ExtentCm,
+		const DestructionProfiles::FMaterialProfile& Material)
+	{
+		using namespace DestructionLayout;
+
+		const int32 PieceCount = Binding.NumPieces();
+
+		TArray<FPieceBox> NearbyBoxes;
+		TArray<DestructionProfiles::FMaterialProfile> NearbyMaterials;
+		NearbyBoxes.Reserve(PieceCount);
+		NearbyMaterials.Reserve(PieceCount);
+		for (int32 i = 0; i < PieceCount; ++i)
+		{
+			NearbyBoxes.Add(Binding.GetBinding(i).Box);
+			const DestructionProfiles::FMaterialProfile* Existing = Binding.GetStructure().GetPiece(i).Material;
+			NearbyMaterials.Add(Existing != nullptr ? *Existing : DestructionProfiles::FMaterialProfile());
+		}
+
+		const BuildMode::FSnapSettings Settings;
+		const FPieceBox Requested{ RequestedCentreCm, ExtentCm };
+		const TArray<BuildMode::FSnapCandidate> Candidates = BuildMode::SolveSnapCandidates(
+			Requested, Material, NearbyBoxes, NearbyMaterials, Settings);
+
+		/* The solver always offers at least the Free fallback, so Candidates[0] exists. */
+		const BuildMode::FSnapCandidate& Chosen = Candidates[0];
+
+		FBuildPlacement Placement;
+		Placement.Kind = Chosen.Kind;
+		Placement.CentreCm = Chosen.CentreCm;
+		Placement.MassKg = PieceMassKg(FPieceBox{ Chosen.CentreCm, ExtentCm }, Material.DensityGramsPerCubicCm);
+		Placement.Joints = Chosen.Joints;
+		return Placement;
+	}
+
+	/**
 	 * Hand every piece the last solve stopped holding up to physics.
 	 *
 	 * THE CALLER MUST ALREADY HAVE SOLVED, AND THE NAME SAYS SO. FStructureBinding::ApplyResults
@@ -318,34 +373,14 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 	}
 
 	/*
-	 * THE SAME SNAP DECISION AS BuildMode::PlacePiece — only the world-add differs. NearbyBoxes is
-	 * the whole live piece array and NearbyMaterials is parallel to it, so a candidate's
-	 * OtherPieceIndex is exactly the existing piece's handle. The materials are read back off the
-	 * structure, which is why PlaceBuildPiece stores each piece's material below.
+	 * THE SNAP DECISION IS THE SHARED HELPER; only the world-add lives here. ComputeBuildPlacement
+	 * gathers the live pieces and solves exactly as PreviewBuildPiece does, so a placement lands
+	 * where its own preview said it would.
 	 */
-	const int32 PieceCount = Binding->NumPieces();
+	const FBuildPlacement Placement =
+		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material);
 
-	TArray<FPieceBox> NearbyBoxes;
-	TArray<DestructionProfiles::FMaterialProfile> NearbyMaterials;
-	NearbyBoxes.Reserve(PieceCount);
-	NearbyMaterials.Reserve(PieceCount);
-	for (int32 i = 0; i < PieceCount; ++i)
-	{
-		NearbyBoxes.Add(Binding->GetBinding(i).Box);
-		const DestructionProfiles::FMaterialProfile* Existing = Binding->GetStructure().GetPiece(i).Material;
-		NearbyMaterials.Add(Existing != nullptr ? *Existing : DestructionProfiles::FMaterialProfile());
-	}
-
-	const BuildMode::FSnapSettings Settings;
-	const FPieceBox Requested{ RequestedCentreCm, ExtentCm };
-	const TArray<BuildMode::FSnapCandidate> Candidates = BuildMode::SolveSnapCandidates(
-		Requested, Material, NearbyBoxes, NearbyMaterials, Settings);
-
-	/* The solver always offers at least the Free fallback, so Candidates[0] exists. */
-	const BuildMode::FSnapCandidate& Chosen = Candidates[0];
-
-	const FPieceBox Box{ Chosen.CentreCm, ExtentCm };
-	const double MassKg = PieceMassKg(Box, Material.DensityGramsPerCubicCm);
+	const FPieceBox Box{ Placement.CentreCm, ExtentCm };
 
 	/*
 	 * Handles are sequential, so the actor can be told its intended ref before AddPiece runs —
@@ -353,11 +388,11 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 	 */
 	FPieceRef Ref;
 	Ref.StructureId = StructureId;
-	Ref.PieceIndex = PieceCount;
+	Ref.PieceIndex = Binding->NumPieces();
 
-	ABrickActor* Actor = SpawnBrickForPiece(*GetWorld(), Box, MassKg, Ref, &Material);
+	ABrickActor* Actor = SpawnBrickForPiece(*GetWorld(), Box, Placement.MassKg, Ref, &Material);
 
-	const int32 Handle = Binding->AddPiece(MassKg, bGrounded, Actor, Box, &Material);
+	const int32 Handle = Binding->AddPiece(Placement.MassKg, bGrounded, Actor, Box, &Material);
 
 	/*
 	 * FAILS CLOSED. AddPiece refuses a degenerate box (NaN mass) with INDEX_NONE; on refusal the
@@ -373,7 +408,8 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 		return FPieceRef{};
 	}
 
-	for (const BuildMode::FFormedJoint& Joint : Chosen.Joints)
+	const BuildMode::FSnapSettings Settings;
+	for (const BuildMode::FFormedJoint& Joint : Placement.Joints)
 	{
 		FConnection Conn;
 		if (MakeInterface(
@@ -392,6 +428,35 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 	return FPieceRef{ StructureId, Handle };
 }
 
+FBuildPreview UDestructionStructureSubsystem::PreviewBuildPiece(
+	int32 StructureId,
+	const FVector& RequestedCentreCm,
+	const FVector& ExtentCm,
+	const DestructionProfiles::FMaterialProfile& Material) const
+{
+	const FStructureBinding* Binding = Find(StructureId);
+
+	/* Fails closed: an unknown structure id previews nothing. */
+	if (Binding == nullptr)
+	{
+		return FBuildPreview{};
+	}
+
+	/*
+	 * THE SAME DECISION PlaceBuildPiece COMMITS, and nothing more — the shared helper reads the
+	 * binding const and mutates neither it nor the world, so this surfaces the snapped kind, pose
+	 * and joint count a following place at the same pose would produce.
+	 */
+	const FBuildPlacement Placement =
+		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material);
+
+	FBuildPreview Preview;
+	Preview.bValid = true;
+	Preview.Kind = Placement.Kind;
+	Preview.CentreCm = Placement.CentreCm;
+	Preview.JointCount = Placement.Joints.Num();
+	return Preview;
+}
 int32 UDestructionStructureSubsystem::SolveAndPush(int32 StructureId)
 {
 	FStructureBinding* Binding = Find(StructureId);
@@ -609,6 +674,13 @@ int32 UDestructionStructureSubsystem::CommitPieceActionForAll(
 }
 
 FStructureBinding* UDestructionStructureSubsystem::Find(int32 StructureId)
+{
+	const TUniquePtr<FStructureBinding>* Found = Structures.Find(StructureId);
+
+	return Found != nullptr ? Found->Get() : nullptr;
+}
+
+const FStructureBinding* UDestructionStructureSubsystem::Find(int32 StructureId) const
 {
 	const TUniquePtr<FStructureBinding>* Found = Structures.Find(StructureId);
 
