@@ -23,34 +23,6 @@
 namespace
 {
 	/**
-	 * Where to put a brick actor, and how big to make it, so that its MESH fills the box.
-	 *
-	 * BOTH HALVES ARE READ OFF THE MESH, AND NEITHER IS A CONSTANT. The scale is the box's
-	 * size over the mesh's own local size, never over 100 — SM_Cube happens to be authored
-	 * at 100 uu, so a hard 100 is right by accident today and silently wrong the day a real
-	 * brick mesh lands, at which point the wall merely looks a bit off.
-	 *
-	 * AND THE PIVOT IS NOT ASSUMED TO BE THE CENTRE, because SM_Cube's is not: its local
-	 * bounds run from (0, 0, 0) to (100, 100, 100), so its origin is a CORNER. Placing the
-	 * actor at the box's centre would put the brick a half-size out on all three axes —
-	 * (10.75, 5.125, 3.25) cm for a full brick — while GetActorLocation agreed with the
-	 * layout perfectly and the wall sat visibly off its own grid. Subtracting the scaled
-	 * local centre puts the mesh's BOUNDS where the box is, whatever the pivot happens to
-	 * be, which is also the quantity Tests/BrickActorTest.cpp asserts on.
-	 */
-	FTransform BrickSpawnTransform(const UStaticMesh& BrickMesh, const DestructionLayout::FPieceBox& Box)
-	{
-		const FBox LocalBounds = BrickMesh.GetBoundingBox();
-
-		const FVector Scale = (Box.ExtentCm * 2.0) / LocalBounds.GetSize();
-
-		return FTransform(
-			FRotator::ZeroRotator,
-			Box.CentreCm - Scale * LocalBounds.GetCenter(),
-			Scale);
-	}
-
-	/**
 	 * The base-colour asset a piece's structural material paints element 0 with, or null for a
 	 * material the shed does not use.
 	 *
@@ -136,7 +108,7 @@ namespace
 			}
 		}
 
-		Brick->FinishSpawning(BrickSpawnTransform(*BrickMesh, Box));
+		Brick->FinishSpawning(UDestructionStructureSubsystem::BrickSpawnTransform(*BrickMesh, Box));
 
 		return Brick;
 	}
@@ -671,6 +643,19 @@ int32 UDestructionStructureSubsystem::CommitPieceActionForAll(
 	PushSolvedResultsToWorld(*Binding);
 
 	return Result.RanCount;
+}
+
+FTransform UDestructionStructureSubsystem::BrickSpawnTransform(
+	const UStaticMesh& BrickMesh, const DestructionLayout::FPieceBox& Box)
+{
+	const FBox LocalBounds = BrickMesh.GetBoundingBox();
+
+	const FVector Scale = (Box.ExtentCm * 2.0) / LocalBounds.GetSize();
+
+	return FTransform(
+		FRotator::ZeroRotator,
+		Box.CentreCm - Scale * LocalBounds.GetCenter(),
+		Scale);
 }
 
 FStructureBinding* UDestructionStructureSubsystem::Find(int32 StructureId)

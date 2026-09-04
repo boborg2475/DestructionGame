@@ -11,6 +11,8 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "DestructionStructureSubsystem.generated.h"
 
+class UStaticMesh;
+
 /**
  * What a trace into the world found, if it found a piece at all.
  *
@@ -136,6 +138,23 @@ public:
 		const FVector& RequestedCentreCm,
 		const FVector& ExtentCm,
 		const DestructionProfiles::FMaterialProfile& Material) const;
+
+	/**
+	 * Where to put a brick actor, and how big to scale it, so its MESH bounds fill the box —
+	 * the ONE placement formula the world spawn and the build-mode ghost both go through.
+	 *
+	 * BOTH HALVES ARE READ OFF THE MESH, AND NEITHER IS A CONSTANT. The scale is the box's size
+	 * over the mesh's own local size, never over 100 — SM_Cube happens to be authored at 100 uu,
+	 * so a hard 100 is right by accident today and silently wrong the day a real brick mesh lands.
+	 *
+	 * AND THE PIVOT IS NOT ASSUMED TO BE THE CENTRE, because SM_Cube's is not: its local bounds run
+	 * from (0, 0, 0) to (100, 100, 100), so its origin is a CORNER. Placing the actor at the box's
+	 * centre would put the mesh a half-size out on all three axes while GetActorLocation agreed with
+	 * the layout perfectly. Subtracting the scaled local centre puts the mesh's BOUNDS where the box
+	 * is, whatever the pivot happens to be — the quantity Tests/BrickActorTest.cpp asserts on, and
+	 * the reason a ghost positioned by a bare SetActorLocation(CentreCm) read a half-brick off.
+	 */
+	static FTransform BrickSpawnTransform(const UStaticMesh& BrickMesh, const DestructionLayout::FPieceBox& Box);
 
 	/** The binding for a structure id, or null. */
 	FStructureBinding* Find(int32 StructureId);

@@ -173,13 +173,18 @@ preview and a palette on that proven core — it invents no physics.
   `UDestructionStructureSubsystem::PreviewBuildPiece(...) const -> FBuildPreview{bValid,Kind,CentreCm,
   JointCount}` — the non-mutating query the ghost draws from (and the world gather+decision is now one
   shared `ComputeBuildPlacement`). Driven by `World.BuildMode.PreviewBuildPieceIsNonMutatingAndPredictsTheCommit`.
-  STILL TO DO: a translucent preview ACTOR at `FBuildPreview.CentreCm` (never an `ABrickActor` bound into
-  the structure), `SetHighlighted` on the neighbour(s) the snap would joint to tinted by `Kind` — functional
-  test + the screenshot harness (assert the ghost pose == the preview centre; judge the picture by eye).
+  The preview ACTOR also landed via UI-4a's `UBuildModeComponent` (a standalone unbound ghost positioned by
+  the shared `BrickSpawnTransform`, collision off). STILL TO DO: `SetHighlighted` on the neighbour(s) the
+  snap would joint to tinted by `Kind`, a genuinely translucent ghost material, and the owed ghost-vs-placed
+  screenshot (CURRENT_STATE) — judge the picture by eye.
 - **UI-3 — material / piece palette.** Pick brick vs timber and a size; drives the `Material`+`ExtentCm`
   handed to `PlaceBuildPiece`. (First cut: ClayBrick full brick, Timber plate/lintel.)
-- **UI-4 — build/destroy mode toggle + input** (a build player controller/mode): cursor → build-plane
-  raycast, confirm to place, a key to switch to destroy.
+- **UI-4 — build/destroy mode toggle + input.** UI-4a LANDED 2026-09-04: `UBuildModeComponent` — the
+  interactive loop's testable core (`BeginBuild`/`UpdatePreviewAt(cursor)`/`ConfirmPlace`, one preview →
+  one commit), driven by `World.BuildMode.Component*`. STILL TO DO (UI-4b): wire real input on a build
+  player controller/pawn — cursor → build-plane raycast → `UpdatePreviewAt`, click → `ConfirmPlace`, a key
+  to switch material and to destroy; a playable build level. (Functional/manual; the component core it calls
+  is already tested.)
 - **UI-5 — save/load** a player building (OPEN decision below).
 
 ### Open decisions (owner-delegated; decide when the slice is reached, record in DESIGN §8)
