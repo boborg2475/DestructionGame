@@ -63,6 +63,49 @@ namespace BuildMode
 		 */
 		const double HalfStaggerX = (Settings.BrickSizeCm.X + Settings.JointThicknessCm) / 2.0;
 
+		/*
+		 * Same-course pitch: one whole brick length plus one head joint. End-to-end on
+		 * the same course, so the pose is a full pitch across at the SAME Y and Z, not
+		 * a course up.
+		 */
+		const double SameCoursePitchX = Settings.BrickSizeCm.X + Settings.JointThicknessCm;
+
+		/*
+		 * Emit a snap at Centre, or merge into a coincident one. A brick laid in running
+		 * bond STRADDLES the two below it, so per-neighbour poses that coincide are
+		 * coalesced into ONE candidate carrying every bed joint; the same union serves
+		 * any other kind whose poses happen to meet. Poses beyond the snap radius are
+		 * dropped.
+		 */
+		auto EmitOrMerge =
+			[&Candidates, &Placed, &Settings](
+				ESnapKind Kind, const FVector& Centre, const FFormedJoint& Joint)
+		{
+			const double Offset = (Centre - Placed.CentreCm).Size();
+			if (Offset > Settings.SnapRadiusCm)
+			{
+				return;
+			}
+
+			FSnapCandidate* Existing = Candidates.FindByPredicate(
+				[&Centre](const FSnapCandidate& C)
+				{
+					return C.CentreCm.Equals(Centre, KINDA_SMALL_NUMBER);
+				});
+			if (Existing != nullptr)
+			{
+				Existing->Joints.Add(Joint);
+				return;
+			}
+
+			FSnapCandidate Candidate;
+			Candidate.Kind = Kind;
+			Candidate.CentreCm = Centre;
+			Candidate.OffsetFromRequestedCm = Offset;
+			Candidate.Joints.Add(Joint);
+			Candidates.Add(MoveTemp(Candidate));
+		};
+
 		for (int32 i = 0; i < NearbyBoxes.Num(); ++i)
 		{
 			const DestructionLayout::FPieceBox& Other = NearbyBoxes[i];
@@ -71,44 +114,37 @@ namespace BuildMode
 				continue;
 			}
 
-			const double CoursePitchZ =
-				Other.ExtentCm.Z + Settings.JointThicknessCm + Placed.ExtentCm.Z;
 			const double SignX = (Placed.CentreCm.X >= Other.CentreCm.X) ? 1.0 : -1.0;
 
-			const FVector Centre =
+			/*
+			 * Next course up: half a brick across so head joints stagger, one course up
+			 * so the placed brick beds on this one. The shared face is horizontal, so the
+			 * interface normal is +Z and JointForContact returns the strong bed mortar.
+			 */
+			const double CoursePitchZ =
+				Other.ExtentCm.Z + Settings.JointThicknessCm + Placed.ExtentCm.Z;
+			const FVector NextCourseCentre =
 				Other.CentreCm + FVector(SignX * HalfStaggerX, 0.0, CoursePitchZ);
-			const double Offset = (Centre - Placed.CentreCm).Size();
-			if (Offset > Settings.SnapRadiusCm)
-			{
-				continue;
-			}
-
-			const FFormedJoint BedJoint{
-				i,
-				JointForContact(PlacedMaterial, NearbyMaterials[i], FVector(0.0, 0.0, 1.0)) };
+			EmitOrMerge(
+				ESnapKind::BrickNextCourse,
+				NextCourseCentre,
+				FFormedJoint{
+					i,
+					JointForContact(PlacedMaterial, NearbyMaterials[i], FVector(0.0, 0.0, 1.0)) });
 
 			/*
-			 * Coalesce a straddle: if a snap already sits at this pose, the placed brick
-			 * beds onto this neighbour too, so add the joint to that candidate rather
-			 * than emitting a duplicate pose.
+			 * Same course, end to end: a full pitch across at the SAME Y and Z. The
+			 * shared face is an END face, so the interface normal is horizontal (+/-X)
+			 * and JointForContact returns the WEAK perpend, not the bed mortar.
 			 */
-			FSnapCandidate* Existing = Candidates.FindByPredicate(
-				[&Centre](const FSnapCandidate& C)
-				{
-					return C.CentreCm.Equals(Centre, KINDA_SMALL_NUMBER);
-				});
-			if (Existing != nullptr)
-			{
-				Existing->Joints.Add(BedJoint);
-				continue;
-			}
-
-			FSnapCandidate Candidate;
-			Candidate.Kind = ESnapKind::BrickNextCourse;
-			Candidate.CentreCm = Centre;
-			Candidate.OffsetFromRequestedCm = Offset;
-			Candidate.Joints.Add(BedJoint);
-			Candidates.Add(MoveTemp(Candidate));
+			const FVector SameCourseCentre =
+				Other.CentreCm + FVector(SignX * SameCoursePitchX, 0.0, 0.0);
+			EmitOrMerge(
+				ESnapKind::BrickSameCourse,
+				SameCourseCentre,
+				FFormedJoint{
+					i,
+					JointForContact(PlacedMaterial, NearbyMaterials[i], FVector(1.0, 0.0, 0.0)) });
 		}
 
 		// Nearest snap first; equal offsets keep their relative order (stable sort).

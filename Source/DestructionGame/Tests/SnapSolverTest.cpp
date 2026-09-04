@@ -451,4 +451,276 @@ bool FSnapSolverTimberOnBrickTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * BEHAVIOR 2b, the SECOND snap kind: brick SAME-COURSE END-TO-END (the head joint).
+ * A ClayBrick placed BESIDE an existing ClayBrick on the SAME course (same Z,
+ * abutting its END face) offers a BrickSameCourse candidate at the coordinating-grid
+ * pose (existing centre + one same-course pitch in X = 22.5, SAME Y, SAME Z) that
+ * auto-forms exactly one HEAD joint to it, plus a Free fallback ranked last.
+ *
+ * THE HEAD JOINT IS THE PERPEND, NOT THE BED. The shared face is an END face, so the
+ * interface normal is HORIZONTAL (+/-X); JointForContact with a +/-X normal returns
+ * the WEAK GeneralPurposeMortarPerpend, not the strong bed GeneralPurposeMortar. The
+ * profile is pinned FULL-FIELD so a bed-normal mistake (mortar) or a plain-mortar
+ * substitution fails — the solver must DERIVE this via JointForContact with a
+ * horizontal normal, never hardcode it.
+ *
+ * THE SAME-COURSE PITCH IS READ, NOT RE-DERIVED: brick length 21.5 + 1 cm head joint
+ * = the 22.5 cm coordinating pitch in X, at the SAME Z (not a course up).
+ *
+ * Guard: the same-course pose must NOT ALSO be emitted as a BrickNextCourse candidate
+ * — the requested pose is at the same Z, not a course up. (The next-course logic only
+ * ever offers poses one course up at Z=7.5, so a next-course candidate landing at the
+ * same-course pose would be a genuine cross-wire.)
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverBrickSameCourseTest,
+	"DestructionGame.Core.BuildMode.SnapSolverBrickSameCourse",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverBrickSameCourseTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// One existing full brick at the origin.
+	const FPieceBox Existing{ FVector(0.0, 0.0, 0.0), HalfBrick };
+	const TArray<FPieceBox> NearbyBoxes = { Existing };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick };
+
+	/*
+	 * The piece being placed: same size, requested BESIDE it on the same course
+	 * toward +X (same Y, same Z=0). 21 is near the 22.5 pitch and well inside the
+	 * 30 cm snap radius.
+	 */
+	const FVector Requested(21.0, 0.0, 0.0);
+	const FPieceBox Placed{ Requested, HalfBrick };
+
+	const FSnapSettings Settings; // BrickSize 21.5x10.25x6.5, joint 1.0, radius 30.
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, ClayBrick, NearbyBoxes, NearbyMaterials, Settings);
+
+	/*
+	 * Same-course pitch in X = BrickSizeCm.X + JointThicknessCm = 22.5, on the +X
+	 * side the requested pose leans toward, SAME Y and SAME Z: origin + (22.5,0,0).
+	 * Tight tolerance — this is an exact coordinate.
+	 */
+	const FVector ExpectedSameCourseCentre(22.5, 0.0, 0.0);
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	int32 SameCourseIndex = INDEX_NONE;
+	int32 FreeIndex = INDEX_NONE;
+	bool bNextCourseAtSameCoursePose = false;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		const FSnapCandidate& C = Candidates[i];
+		if (SameCourseIndex == INDEX_NONE
+			&& C.Kind == ESnapKind::BrickSameCourse
+			&& C.CentreCm.Equals(ExpectedSameCourseCentre, Tol))
+		{
+			SameCourseIndex = i;
+		}
+		if (FreeIndex == INDEX_NONE && C.Kind == ESnapKind::Free)
+		{
+			FreeIndex = i;
+		}
+		// Guard: a BrickNextCourse candidate must never land at the same-course pose.
+		if (C.Kind == ESnapKind::BrickNextCourse
+			&& C.CentreCm.Equals(ExpectedSameCourseCentre, Tol))
+		{
+			bNextCourseAtSameCoursePose = true;
+		}
+	}
+
+	// 1. The same-course candidate exists at the exact +X coordinating pose.
+	const bool bFoundSameCourse = SameCourseIndex != INDEX_NONE;
+	TestTrue(
+		TEXT("a BrickSameCourse candidate exists at origin + (22.5, 0, 0)"),
+		bFoundSameCourse);
+
+	// 3. A Free fallback candidate exists at the requested pose.
+	const bool bFoundFree = FreeIndex != INDEX_NONE;
+	TestTrue(TEXT("a Free fallback candidate exists"), bFoundFree);
+
+	if (bFoundSameCourse)
+	{
+		const FSnapCandidate& Snap = Candidates[SameCourseIndex];
+
+		/*
+		 * 2. Exactly ONE joint, to the existing brick (index 0 into NearbyBoxes),
+		 * whose profile is the WEAK perpend. The solver must DERIVE this via
+		 * JointForContact with a +/-X (horizontal, head-face) normal — pinned
+		 * full-field so a bed-normal mistake or a plain-mortar substitution fails.
+		 */
+		TestEqual(TEXT("same-course candidate forms exactly one joint"),
+			Snap.Joints.Num(), 1);
+		if (Snap.Joints.Num() == 1)
+		{
+			TestEqual(TEXT("joint is to the existing brick (OtherPieceIndex 0)"),
+				Snap.Joints[0].OtherPieceIndex, 0);
+			CheckProfileIdentity(
+				*this,
+				TEXT("head joint profile == GeneralPurposeMortarPerpend: "),
+				Snap.Joints[0].Profile,
+				GeneralPurposeMortarPerpend);
+		}
+
+		/*
+		 * The offset field carries the ranking key's meaning: the Euclidean distance
+		 * from the requested pose (21,0,0) to the snapped pose (22.5,0,0) = 1.5.
+		 */
+		TestEqual(TEXT("same-course OffsetFromRequestedCm is the distance to the snap"),
+			Snap.OffsetFromRequestedCm, 1.5, 1.0e-6);
+	}
+
+	if (bFoundFree)
+	{
+		// 3 (cont). The Free candidate sits at the requested pose and forms no joint.
+		const FSnapCandidate& Free = Candidates[FreeIndex];
+		TestTrue(TEXT("Free candidate sits at the requested pose"),
+			Free.CentreCm.Equals(Requested, Tol));
+		TestEqual(TEXT("Free candidate forms no joints"), Free.Joints.Num(), 0);
+	}
+
+	// 3 (cont). Free stays LAST — behind every snap.
+	if (bFoundFree)
+	{
+		TestEqual(TEXT("Free is the last candidate"),
+			FreeIndex, Candidates.Num() - 1);
+	}
+
+	// 1 (cont). An in-range snap BEATS free: the same-course candidate precedes it.
+	if (bFoundSameCourse && bFoundFree)
+	{
+		TestTrue(
+			TEXT("BrickSameCourse is ranked ahead of Free (appears earlier)"),
+			SameCourseIndex < FreeIndex);
+	}
+
+	// Guard: no BrickNextCourse candidate spuriously at the same-course pose.
+	TestFalse(
+		TEXT("no BrickNextCourse candidate lands at the same-course pose (22.5,0,0)"),
+		bNextCourseAtSameCoursePose);
+
+	return true;
+}
+
+/**
+ * BEHAVIOR 2b, EMERGENT WALL JOINT SET (regression pin). The point of both snap
+ * kinds together: a brick laid into a running-bond wall PAST the first course forms
+ * BOTH a bed joint (down onto the brick below) AND a head joint (across to the
+ * adjacent brick on its own course), and the pose-keyed merge coalesces the two into
+ * ONE candidate carrying BOTH joints — the first case producing the joint set a real
+ * wall needs. This guards that merge.
+ *
+ * Fixture: course 0 has bricks at (0,0,0) [idx 0] and (22.5,0,0) [idx 1]; course 1
+ * has a brick at (11.25,0,7.5) [idx 2]. A brick placed at the running-bond pose
+ * (33.75,0,7.5) beds onto the course-0 brick@22.5 (next-course, +Z bed normal ->
+ * GeneralPurposeMortar) AND abuts the course-1 brick@11.25 end-to-end (same-course,
+ * +/-X head normal -> GeneralPurposeMortarPerpend).
+ *
+ * Kind is deliberately NOT asserted: which neighbour emits the merged candidate first
+ * decides its label, a known ordering nit logged separately. Joints are matched to
+ * neighbours by OtherPieceIndex, never by array order.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverBedAndHeadMergeTest,
+	"DestructionGame.Core.BuildMode.SnapSolverBedAndHeadMerge",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverBedAndHeadMergeTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// Two bricks on course 0, one on course 1.
+	const FPieceBox Course0Left{ FVector(0.0, 0.0, 0.0), HalfBrick };   // idx 0
+	const FPieceBox Course0Right{ FVector(22.5, 0.0, 0.0), HalfBrick }; // idx 1
+	const FPieceBox Course1Mid{ FVector(11.25, 0.0, 7.5), HalfBrick };  // idx 2
+	const TArray<FPieceBox> NearbyBoxes = { Course0Left, Course0Right, Course1Mid };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick, ClayBrick, ClayBrick };
+
+	// The brick being placed: the running-bond pose that both beds onto idx 1 and
+	// abuts idx 2 end-to-end.
+	const FVector Requested(33.75, 0.0, 7.5);
+	const FPieceBox Placed{ Requested, HalfBrick };
+	const FSnapSettings Settings;
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, ClayBrick, NearbyBoxes, NearbyMaterials, Settings);
+
+	const FVector ExpectedCentre(33.75, 0.0, 7.5);
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	const int32 BedNeighbour = 1;  // course-0 brick@22.5, one course below -> bed.
+	const int32 HeadNeighbour = 2; // course-1 brick@11.25, same course -> head.
+
+	// Every non-Free candidate sitting at the merged pose. Expect exactly one.
+	TArray<int32> AtPose;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		const FSnapCandidate& C = Candidates[i];
+		if (C.Kind != ESnapKind::Free && C.CentreCm.Equals(ExpectedCentre, Tol))
+		{
+			AtPose.Add(i);
+		}
+	}
+
+	TestEqual(
+		TEXT("exactly one candidate at the merged running-bond pose (33.75,0,7.5)"),
+		AtPose.Num(), 1);
+
+	if (AtPose.Num() == 1)
+	{
+		const FSnapCandidate& Snap = Candidates[AtPose[0]];
+
+		// It carries BOTH joints — the bed and the head — merged into one candidate.
+		TestEqual(TEXT("merged candidate forms two joints (bed + head)"),
+			Snap.Joints.Num(), 2);
+
+		if (Snap.Joints.Num() == 2)
+		{
+			// Match joints to neighbours by OtherPieceIndex, not array order.
+			const FFormedJoint* BedJoint = Snap.Joints.FindByPredicate(
+				[BedNeighbour](const FFormedJoint& J)
+				{ return J.OtherPieceIndex == BedNeighbour; });
+			const FFormedJoint* HeadJoint = Snap.Joints.FindByPredicate(
+				[HeadNeighbour](const FFormedJoint& J)
+				{ return J.OtherPieceIndex == HeadNeighbour; });
+
+			// The OtherPieceIndex set is exactly {bed neighbour, head neighbour}.
+			TestNotNull(TEXT("a joint to the course-0 brick@22.5 (bed neighbour) exists"),
+				BedJoint);
+			TestNotNull(TEXT("a joint to the course-1 brick@11.25 (head neighbour) exists"),
+				HeadJoint);
+
+			if (BedJoint != nullptr)
+			{
+				// Bed joint: +Z normal -> strong bed mortar, full-field.
+				CheckProfileIdentity(
+					*this,
+					TEXT("bed joint (to brick@22.5) == GeneralPurposeMortar: "),
+					BedJoint->Profile,
+					GeneralPurposeMortar);
+			}
+			if (HeadJoint != nullptr)
+			{
+				// Head joint: +/-X normal -> weak perpend, full-field.
+				CheckProfileIdentity(
+					*this,
+					TEXT("head joint (to brick@11.25) == GeneralPurposeMortarPerpend: "),
+					HeadJoint->Profile,
+					GeneralPurposeMortarPerpend);
+			}
+		}
+	}
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

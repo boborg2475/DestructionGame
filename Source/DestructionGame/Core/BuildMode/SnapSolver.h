@@ -20,9 +20,10 @@
  * direction of inclusion — this includes JointInference.h and Layout.h; nothing
  * under Tests/ is included by it.
  *
- * BEHAVIOR 2a is the first snap kind only: brick-on-brick RUNNING-BOND NEXT
- * COURSE. Same-course, corner and timber snaps are later behaviors — the enum
- * names them so the surface does not churn, but the solver need not emit them yet.
+ * BEHAVIORS 2a/2b implement two brick-on-brick snap kinds: RUNNING-BOND NEXT
+ * COURSE (bed joint) and SAME-COURSE END-TO-END (head joint). Corner and timber
+ * snaps are later behaviors — the enum names them so the surface does not churn,
+ * but the solver need not emit them yet.
  */
 namespace BuildMode
 {
