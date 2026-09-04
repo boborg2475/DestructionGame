@@ -1,8 +1,12 @@
 # Build Mode — interactive building with brick and wood (feature plan)
 
-**Status: IN PROGRESS (started 2026-09-03).** Slice 1 behavior 1 — `BuildMode::JointForContact`, the
-automatic joint inference — has landed (see the ruling at the bottom). The snap-candidate solver and the
-placement API are next. Read [CLAUDE.md](../CLAUDE.md), [DESIGN.md](DESIGN.md) and
+**Status: IN PROGRESS (started 2026-09-03).** Landed so far: `BuildMode::JointForContact` (the automatic
+joint inference, see the ruling at the bottom) and the snap-candidate solver's FIRST kind —
+`BuildMode::SolveSnapCandidates` (`Core/BuildMode/SnapSolver.*`) offering the running-bond next-course
+brick snap with auto-formed bed joints (a straddling brick correctly forms a bed to each neighbour below),
+ranked by proximity ahead of a free-placement fallback. Next: the remaining snap kinds (same-course,
+corner return, timber centered/edge-flush), then the placement API loop and the UI. Read
+[CLAUDE.md](../CLAUDE.md), [DESIGN.md](DESIGN.md) and
 [CURRENT_STATE.md](CURRENT_STATE.md) first — they own the model, the constants and the standing rulings.
 
 ## The feature (owner's words, distilled)
