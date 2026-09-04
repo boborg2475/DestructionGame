@@ -17,6 +17,7 @@ Last updated: **2026-09-03** — the 2026-09-01 review's ranked items 1–13 are
 - **Authority boundary:** the rigid-block LP is the break authority ≤ 200 blocks (`EquilibriumGateBlockCap`); above it the per-joint router (`BreakByCapacitySweep`) decides. Every realistic structure — the 442-block realistic shed, the ~1,200-block default wall — is on the router. The router is dimension-agnostic (routes load down bed joints, reads normals directly); the 3D LP bridge is only consulted below the cap.
 - **The 2026-09-01 review's items 1–13 are COMPLETE** (committed; CODE rulings in DESIGN §8, the regional prover in REGIONAL_PROVER_PLAN.md). Do not re-narrate them here — the follow-ups they left open are below.
 - **The realistic-brick shed /goal is MET** (built, stands, collapses correctly, coloured, rendered and shown). The remaining north-star polish is brick-resolution walls, load-bearing corner joints and a per-scenario camera azimuth — captured under the open items below.
+- **NEXT FEATURE (agreed 2026-09-03): interactive BUILD MODE** — place/snap brick and timber with automatic logical joint formation, then destroy. Full spec + approach (brain-first, TDD) in [BUILD_MODE_PLAN.md](BUILD_MODE_PLAN.md). Slice 1 = the snap-candidate + joint-formation brain.
 
 ### The four standing reds — what each anchors
 
