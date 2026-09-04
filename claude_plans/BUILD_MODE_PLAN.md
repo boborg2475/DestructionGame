@@ -12,11 +12,12 @@ vocabulary is COMPLETE** (brick overlap, timber centered-on/edge-of, free). The 
 `BuildMode::PlacePiece` (`Core/BuildMode/Placement.*`) has also landed: it runs the solver against the
 pieces already placed, adopts the piece at the best-ranked pose (mass from geometry, material set), and
 forms that candidate's joints as real `FConnection`s via `MakeInterface` — so a scripted place/place/place
-grows a live, jointed `FStructure`. Next: a small place→adopt→render harness proving a scripted build
-assembles and STANDS (a `SolveLoads` on the built structure), then a render of it (contract notes in
-CURRENT_STATE — the harness sets `SetThreeDimensional` for corners, keeps requested poses clear of occupied
-cells, and asserts `Candidates[0]`'s
-Kind per step). Then start the interactive UI (the /goal's "after the first part"). CORNER-return is its own
+grows a live, jointed `FStructure`. And `BuildMode::BuildDemoBuilding` (`Core/BuildMode/DemoBuilding.*`)
+scripts a small running-bond wall + timber wall-plate via `PlacePiece` and PROVES it STANDS (8 pieces, 14
+joints — 6 mortar beds, 5 perpend heads, 3 DryStone bearings — every non-grounded piece Supported after
+`SolveLoads`). Next: the RENDER of that structure (adopt into a world via a catalogue row + a
+`New-ScenarioMap.ps1` map + a `LEVELS.md` entry, screenshot it, show the owner). Then start the interactive
+UI (the /goal's "after the first part"). CORNER-return is its own
 later slice (needs the head-vs-corner inference extension — see CURRENT_STATE). Occupancy is handled — snap
 candidates into an occupied cell are dropped; free placement is honoured verbatim (the owner-delegated
 "place anywhere OR snap" ruling, DESIGN §8). (Open follow-ups — ranking policy, merged-candidate labelling,
