@@ -1,5 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
+#include <limits>
+
 #include "Misc/AutomationTest.h"
 
 #include "CollisionQueryParams.h"
@@ -622,6 +624,567 @@ bool FBuildModeComponentDestroysGhostOnTeardownTest::RunTest(const FString& Para
 	TestFalse(
 		TEXT("destroying the component must destroy its ghost — no orphan brick may survive it"),
 		Ghost.IsValid());
+
+	return true;
+}
+
+/**
+ * BUILD-MODE UI-4b — a WORLD RAY drives the preview through a horizontal build plane.
+ *
+ * The real player controller deprojects the mouse into a world ray; that deprojection needs a
+ * viewport and is untestable by construction. This slice is the pure, testable seam BETWEEN a ray
+ * and the preview: UpdatePreviewFromRay intersects the ray with the horizontal plane Z ==
+ * BuildPlaneZCm and, when it meets the plane IN FRONT of the origin, drives UpdatePreviewAt at the
+ * intersection (X, Y, BuildPlaneZCm) — so the whole ray -> plane -> snap -> ghost -> confirm chain
+ * is exercised with no simulated input.
+ *
+ * THE RAY-PLANE MATH, DERIVED HERE not imported. A ray P(t) = Origin + t * Direction meets the
+ * plane Z == BuildPlaneZCm where Origin.Z + t * Direction.Z == BuildPlaneZCm, i.e.
+ * t = (BuildPlaneZCm - Origin.Z) / Direction.Z, valid only when Direction.Z != 0 (else parallel)
+ * and t >= 0 (else the plane is behind the origin). With BuildPlaneZCm = 7.5, a ray from
+ * (11.25, 0, 1000) pointing straight down (0, 0, -1) gives t = (7.5 - 1000) / (-1) = 992.5 >= 0,
+ * so the hit is Origin + 992.5 * Direction = (11.25, 0, 7.5). That XY on the plane is exactly the
+ * running-bond next-course snap over the origin seed, so the preview centres on (11.25, 0, 7.5).
+ *
+ * NEEDS A TICKING WORLD: a real world for the actor spawns (ghost and bricks), but it never ticks —
+ * every assertion is on the MECHANISM (the returned preview, the ghost's bounds and visibility, the
+ * subsystem's piece count), never on displacement.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBuildModeComponentRayDrivesPreviewAndGhostTest,
+	"DestructionGame.World.BuildMode.ComponentRayDrivesPreviewAndGhost",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FBuildModeComponentRayDrivesPreviewAndGhostTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildModeComponentTestSupport;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
+
+	AActor* Owner = TestWorld.World->SpawnActor<AActor>();
+	if (Owner == nullptr)
+	{
+		AddError(TEXT("fixture: the component's owner actor failed to spawn"));
+		return true;
+	}
+
+	UBuildModeComponent* Comp = NewObject<UBuildModeComponent>(Owner);
+	Comp->RegisterComponent();
+
+	Comp->BeginBuild();
+	const int32 StructureId = Comp->GetStructureId();
+
+	/* A grounded seed brick at the origin: preview then confirm grows the structure to 1. */
+	Comp->bBuildGrounded = true;
+	Comp->UpdatePreviewAt(FVector(0.0, 0.0, 0.0));
+	Comp->ConfirmPlace();
+
+	FStructureBinding* Binding = Subsystem.Find(StructureId);
+	if (Binding == nullptr)
+	{
+		AddError(TEXT("the structure vanished after the seed placement"));
+		return true;
+	}
+
+	TestEqual(
+		FString::Printf(TEXT("fixture: the seed confirm should grow the structure to 1 piece, got %d"),
+			Binding->NumPieces()),
+		Binding->NumPieces(), 1);
+
+	/*
+	 * ONE COURSE UP, PICKED BY A RAY. The build plane is raised to the next course, and a ray fired
+	 * straight DOWN through the running-bond pose meets it at (11.25, 0, 7.5) — the ray hit and the
+	 * snapped centre coincide, which is what makes the numbers read cleanly.
+	 */
+	Comp->bBuildGrounded = false;
+	Comp->BuildPlaneZCm = 7.5;
+
+	const FVector RayOrigin(11.25, 0.0, 1000.0);
+	const FVector RayDown(0.0, 0.0, -1.0);
+	const FBuildPreview Preview = Comp->UpdatePreviewFromRay(RayOrigin, RayDown);
+
+	TestTrue(
+		TEXT("a ray meeting the plane in front of the origin gives a valid preview"),
+		Preview.bValid);
+
+	TestTrue(
+		FString::Printf(TEXT("the ray-picked next-course preview snaps to BrickNextCourse, got kind %d"),
+			static_cast<int32>(Preview.Kind)),
+		Preview.Kind == BuildMode::ESnapKind::BrickNextCourse);
+
+	TestTrue(
+		FString::Printf(
+			TEXT("the preview centre is the ray/plane hit and running-bond snap (11.25, 0, 7.5), got (%g, %g, %g)"),
+			Preview.CentreCm.X, Preview.CentreCm.Y, Preview.CentreCm.Z),
+		Preview.CentreCm.Equals(ExpectedRunningBondCentre, KINDA_SMALL_NUMBER));
+
+	/* The ghost must show where the click will land — visible, bounds centred on the snapped pose. */
+	AActor* Ghost = Comp->GetGhostActor();
+
+	TestNotNull(
+		TEXT("a valid ray preview should have positioned a ghost actor"),
+		Ghost);
+
+	if (Ghost != nullptr)
+	{
+		TestFalse(
+			TEXT("the ghost must be VISIBLE while the ray preview is valid"),
+			Ghost->IsHidden());
+
+		const FBox GhostBounds = Ghost->GetComponentsBoundingBox(/*bNonColliding*/ true);
+		const FVector GhostBoundsCentre = GhostBounds.GetCenter();
+		const FVector GhostBoundsSize = GhostBounds.GetSize();
+
+		TestTrue(
+			FString::Printf(
+				TEXT("the ghost's BOUNDS centre must be the snapped centre (11.25, 0, 7.5), got (%g, %g, %g)"),
+				GhostBoundsCentre.X, GhostBoundsCentre.Y, GhostBoundsCentre.Z),
+			GhostBoundsCentre.Equals(ExpectedRunningBondCentre, BoundsToleranceCm));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("the ghost must be a full-brick 21.5 x 10.25 x 6.5, got (%g, %g, %g)"),
+				GhostBoundsSize.X, GhostBoundsSize.Y, GhostBoundsSize.Z),
+			GhostBoundsSize.Equals(FullBrickSizeCm, BoundsToleranceCm));
+	}
+
+	/* Confirm lands the real piece at the ray-previewed pose, growing the structure to 2. */
+	const FPieceRef Placed = Comp->ConfirmPlace();
+
+	TestTrue(
+		FString::Printf(TEXT("the ray-confirmed piece should be ref {%d, 1}, got {%d, %d}"),
+			StructureId, Placed.StructureId, Placed.PieceIndex),
+		Placed == FPieceRef{ StructureId, 1 });
+
+	Binding = Subsystem.Find(StructureId);
+	if (Binding == nullptr)
+	{
+		AddError(TEXT("the structure vanished after the confirming placement"));
+		return true;
+	}
+
+	TestEqual(
+		FString::Printf(TEXT("the ray confirm should grow the structure to 2 pieces, got %d"),
+			Binding->NumPieces()),
+		Binding->NumPieces(), 2);
+
+	if (Binding->NumPieces() >= 2)
+	{
+		const FVector PlacedCentre = Binding->GetBinding(1).Box.CentreCm;
+		TestTrue(
+			FString::Printf(
+				TEXT("the committed box lands at the ray-previewed centre (11.25, 0, 7.5), got (%g, %g, %g)"),
+				PlacedCentre.X, PlacedCentre.Y, PlacedCentre.Z),
+			PlacedCentre.Equals(ExpectedRunningBondCentre, KINDA_SMALL_NUMBER));
+	}
+
+	return true;
+}
+
+/**
+ * BUILD-MODE UI-4b — a ray that never reaches the plane in front of the origin PLACES NOTHING.
+ *
+ * Two ways a ray misses: it points AWAY from the plane (the intersection is behind the origin,
+ * t < 0), or it runs PARALLEL to the plane (Direction.Z == 0, no intersection at all). Both must
+ * return an invalid preview and hide the ghost, exactly as an unknown-structure preview does, so a
+ * cursor off the build plane never leaves a stale brick floating.
+ *
+ * A valid down-ray is fired first purely to SHOW the ghost, so the subsequent hide is a real state
+ * change rather than a ghost that was hidden all along. Assertions are on the returned preview's
+ * bValid and the ghost's IsHidden — the mechanism, never displacement.
+ *
+ * NEEDS A TICKING WORLD: a world for the ghost's spawn, but it never ticks.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBuildModeComponentRayMissingPlaneHidesGhostTest,
+	"DestructionGame.World.BuildMode.ComponentRayMissingPlaneHidesGhost",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FBuildModeComponentRayMissingPlaneHidesGhostTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildModeComponentTestSupport;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
+
+	AActor* Owner = TestWorld.World->SpawnActor<AActor>();
+	if (Owner == nullptr)
+	{
+		AddError(TEXT("fixture: the component's owner actor failed to spawn"));
+		return true;
+	}
+
+	UBuildModeComponent* Comp = NewObject<UBuildModeComponent>(Owner);
+	Comp->RegisterComponent();
+
+	Comp->BeginBuild();
+	const int32 StructureId = Comp->GetStructureId();
+
+	/* A grounded seed so a next-course ray has something to snap against. */
+	Comp->bBuildGrounded = true;
+	Comp->UpdatePreviewAt(FVector(0.0, 0.0, 0.0));
+	Comp->ConfirmPlace();
+
+	Comp->bBuildGrounded = false;
+	Comp->BuildPlaneZCm = 7.5;
+
+	const FVector RayOrigin(11.25, 0.0, 1000.0);
+
+	/* A valid down-ray first, to SHOW the ghost — so the later hide is a genuine transition. */
+	const FBuildPreview Shown = Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, -1.0));
+
+	TestTrue(
+		TEXT("fixture: a valid down-ray must show a valid preview before the miss cases"),
+		Shown.bValid);
+
+	AActor* Ghost = Comp->GetGhostActor();
+
+	TestNotNull(
+		TEXT("fixture: the valid preview should have spawned a ghost"),
+		Ghost);
+
+	if (Ghost != nullptr)
+	{
+		TestFalse(
+			TEXT("fixture: the ghost must be visible after the valid down-ray"),
+			Ghost->IsHidden());
+	}
+
+	/*
+	 * RAY POINTING AWAY: (0, 0, +1) from Z = 1000 with the plane at Z = 7.5 gives
+	 * t = (7.5 - 1000) / (+1) = -992.5 < 0 — the plane is behind the origin, so no placement.
+	 */
+	const FBuildPreview Away = Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, 1.0));
+
+	TestFalse(
+		TEXT("a ray pointing away from the plane must return an invalid preview"),
+		Away.bValid);
+
+	if (Ghost != nullptr)
+	{
+		TestTrue(
+			TEXT("a ray pointing away from the plane must HIDE the ghost"),
+			Ghost->IsHidden());
+	}
+
+	/*
+	 * A CONFIRM RIGHT AFTER THE AWAY MISS FAILS CLOSED. The valid down-ray above HELD a preview;
+	 * the miss must have SPENT it (bHasValidPreview cleared), so this confirm commits nothing. If
+	 * the miss path failed to clear that flag, the STALE previewed pose would commit here — this is
+	 * the assertion that bites the missing clear, not the IsHidden legs (a hidden ghost with a live
+	 * preview still commits). A default ref AND an unchanged count are the mechanism, not position.
+	 */
+	const FPieceRef AfterAway = Comp->ConfirmPlace();
+
+	TestEqual(
+		FString::Printf(
+			TEXT("a confirm after the away miss must return a default ref, got piece index %d"),
+			AfterAway.PieceIndex),
+		AfterAway.PieceIndex, static_cast<int32>(INDEX_NONE));
+
+	if (FStructureBinding* AfterAwayBinding = Subsystem.Find(StructureId))
+	{
+		TestEqual(
+			FString::Printf(
+				TEXT("a confirm after the away miss must place NOTHING; the structure holds %d pieces"),
+				AfterAwayBinding->NumPieces()),
+			AfterAwayBinding->NumPieces(), 1);
+	}
+
+	/* Re-show the ghost, so the parallel case is likewise a real hide rather than a no-op. */
+	Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, -1.0));
+
+	if (Ghost != nullptr)
+	{
+		TestFalse(
+			TEXT("fixture: a valid down-ray must re-show the ghost before the parallel case"),
+			Ghost->IsHidden());
+	}
+
+	/*
+	 * RAY PARALLEL TO THE PLANE: Direction.Z == 0, so it never meets Z = 7.5 — no intersection,
+	 * no placement, regardless of how far along the ray runs.
+	 */
+	const FBuildPreview Parallel = Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 1.0, 0.0));
+
+	TestFalse(
+		TEXT("a ray parallel to the plane must return an invalid preview"),
+		Parallel.bValid);
+
+	if (Ghost != nullptr)
+	{
+		TestTrue(
+			TEXT("a ray parallel to the plane must HIDE the ghost"),
+			Ghost->IsHidden());
+	}
+
+	/* Same fail-closed proof for the parallel miss: the re-shown preview must be spent by it. */
+	const FPieceRef AfterParallel = Comp->ConfirmPlace();
+
+	TestEqual(
+		FString::Printf(
+			TEXT("a confirm after the parallel miss must return a default ref, got piece index %d"),
+			AfterParallel.PieceIndex),
+		AfterParallel.PieceIndex, static_cast<int32>(INDEX_NONE));
+
+	/* Nothing was placed by any miss: the structure still holds only the seed. */
+	FStructureBinding* Binding = Subsystem.Find(StructureId);
+
+	TestNotNull(
+		FString::Printf(TEXT("the structure %d should still exist"), StructureId),
+		Binding);
+
+	if (Binding != nullptr)
+	{
+		TestEqual(
+			FString::Printf(TEXT("no miss may place a piece; the structure holds %d pieces"),
+				Binding->NumPieces()),
+			Binding->NumPieces(), 1);
+	}
+
+	return true;
+}
+
+/**
+ * BUILD-MODE UI-4b — an OBLIQUE ray's intersection ARITHMETIC, pinned independently of the origin.
+ *
+ * The happy-path ray test above fires straight DOWN from (11.25, 0, 1000): its origin XY already
+ * equals the plane hit XY, so the mutant `Hit = RayOriginCm` — dropping the t * Direction term
+ * entirely — would still pass it. That test cannot tell "solve the intersection" from "take the
+ * origin's XY". This one fires SLANTED rays whose origin XY is NOWHERE NEAR the hit, so only the
+ * real intersection formula lands on the running-bond pose.
+ *
+ * DERIVED HERE, NOT IMPORTED. With the plane at Z = 7.5 and t = (7.5 - Origin.Z) / Direction.Z:
+ *   Ray A: Origin (-30, 0, 107.5), Direction (41.25, 0, -100) -> t = (7.5 - 107.5)/(-100) = 1,
+ *          Hit = Origin + 1 * Direction = (-30 + 41.25, 0, 107.5 - 100) = (11.25, 0, 7.5).
+ *   Ray B: Origin (-30, 0, 207.5), Direction (20.625, 0, -100) -> t = (7.5 - 207.5)/(-100) = 2,
+ *          Hit = Origin + 2 * Direction = (-30 + 41.25, 0, 7.5) = (11.25, 0, 7.5).
+ * Ray B's SECOND, HALVED direction reaches the SAME point only at t = 2, so it pins the MAGNITUDE
+ * of t, not merely its sign: the mutant `Hit = Origin + Direction` (t forced to 1) lands B at
+ * (-30 + 20.625, 0, ...) = (-9.375, 0, 7.5) and fails.
+ *
+ * AN EMPTY STRUCTURE ON PURPOSE. With no neighbours the snap is Free, so the preview centre is the
+ * requested pose EXACTLY — no running-bond tolerance to blur whether the ray math hit the point.
+ * The assertion is on CentreCm, which for a Free placement IS the picked point.
+ *
+ * PROVED TO BITE: under the mutant `Hit = RayOriginCm` the centre reads (-30, 0, 7.5) for both
+ * rays and both legs fail. NEEDS A TICKING WORLD for the ghost spawn, but never ticks.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBuildModeComponentObliqueRayHitsIntersectionTest,
+	"DestructionGame.World.BuildMode.ComponentObliqueRayHitsIntersection",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FBuildModeComponentObliqueRayHitsIntersectionTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildModeComponentTestSupport;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	AActor* Owner = TestWorld.World->SpawnActor<AActor>();
+	if (Owner == nullptr)
+	{
+		AddError(TEXT("fixture: the component's owner actor failed to spawn"));
+		return true;
+	}
+
+	UBuildModeComponent* Comp = NewObject<UBuildModeComponent>(Owner);
+	Comp->RegisterComponent();
+
+	/* EMPTY structure: no seed, so the snap is Free and the centre is the picked point exactly. */
+	Comp->BeginBuild();
+	Comp->bBuildGrounded = false;
+	Comp->BuildPlaneZCm = 7.5;
+
+	const FVector ExpectedHit(11.25, 0.0, 7.5);
+
+	/* Ray A: t = 1. Origin XY (-30) is far from the hit XY (11.25); only the real solve lands it. */
+	const FBuildPreview PreviewA =
+		Comp->UpdatePreviewFromRay(FVector(-30.0, 0.0, 107.5), FVector(41.25, 0.0, -100.0));
+
+	TestTrue(
+		TEXT("an oblique ray meeting the plane in front of the origin gives a valid preview"),
+		PreviewA.bValid);
+
+	TestTrue(
+		FString::Printf(
+			TEXT("oblique ray A (t = 1) must centre on the intersection (11.25, 0, 7.5), got (%g, %g, %g)"),
+			PreviewA.CentreCm.X, PreviewA.CentreCm.Y, PreviewA.CentreCm.Z),
+		PreviewA.CentreCm.Equals(ExpectedHit, KINDA_SMALL_NUMBER));
+
+	/* Ray B: same hit, but only reached at t = 2 — this pins the magnitude of t, not just its sign. */
+	const FBuildPreview PreviewB =
+		Comp->UpdatePreviewFromRay(FVector(-30.0, 0.0, 207.5), FVector(20.625, 0.0, -100.0));
+
+	TestTrue(
+		TEXT("the second oblique ray also gives a valid preview"),
+		PreviewB.bValid);
+
+	TestTrue(
+		FString::Printf(
+			TEXT("oblique ray B (t = 2) must centre on the SAME intersection (11.25, 0, 7.5), got (%g, %g, %g)"),
+			PreviewB.CentreCm.X, PreviewB.CentreCm.Y, PreviewB.CentreCm.Z),
+		PreviewB.CentreCm.Equals(ExpectedHit, KINDA_SMALL_NUMBER));
+
+	return true;
+}
+
+/**
+ * BUILD-MODE UI-4b — a NON-FINITE ray FAILS CLOSED (RED until the guards reject NaN).
+ *
+ * The parallel guard is FMath::IsNearlyZero and the front-of-origin guard is t < 0. Every
+ * comparison against NaN is FALSE, so a NaN slips BOTH: IsNearlyZero(NaN) is false (not parallel),
+ * NaN < 0 is false (not behind), and the code proceeds to Hit = Origin + NaN * Direction — a NaN
+ * point that PreviewBuildPiece reports valid (the id is known) and that the ghost is
+ * SetActorTransform'd to. A garbage ray must instead be treated as a MISS: invalid preview, hidden
+ * ghost, and a following confirm that places nothing.
+ *
+ * TWO NON-FINITE SHAPES, because the fix must guard BOTH operands: a NaN in the DIRECTION
+ * (0, 0, NaN) and a NaN in the ORIGIN (NaN, 0, 1000) with an otherwise-finite downward direction.
+ *
+ * A VALID DOWN-RAY IS HELD FIRST so the confirm-places-nothing leg bites: if the NaN path leaves
+ * the previously-held valid preview standing, the confirm would commit that stale pose. Assertions
+ * are on the mechanism — bValid, IsHidden, the returned ref and the piece count — never position.
+ *
+ * RED TODAY. dev fixes with FVector::ContainsNaN / IsFinite guards on origin and direction (and
+ * `!(HitT >= 0.0)` in place of `HitT < 0.0`). NEEDS A TICKING WORLD for the spawns, never ticks.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBuildModeComponentNonFiniteRayFailsClosedTest,
+	"DestructionGame.World.BuildMode.ComponentNonFiniteRayFailsClosed",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FBuildModeComponentNonFiniteRayFailsClosedTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildModeComponentTestSupport;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
+
+	AActor* Owner = TestWorld.World->SpawnActor<AActor>();
+	if (Owner == nullptr)
+	{
+		AddError(TEXT("fixture: the component's owner actor failed to spawn"));
+		return true;
+	}
+
+	UBuildModeComponent* Comp = NewObject<UBuildModeComponent>(Owner);
+	Comp->RegisterComponent();
+
+	Comp->BeginBuild();
+	const int32 StructureId = Comp->GetStructureId();
+
+	/* A grounded seed so a next-course ray has something valid to snap against. */
+	Comp->bBuildGrounded = true;
+	Comp->UpdatePreviewAt(FVector(0.0, 0.0, 0.0));
+	Comp->ConfirmPlace();
+
+	Comp->bBuildGrounded = false;
+	Comp->BuildPlaneZCm = 7.5;
+
+	const FVector RayOrigin(11.25, 0.0, 1000.0);
+	const double Nan = std::numeric_limits<double>::quiet_NaN();
+
+	/*
+	 * NaN IN THE DIRECTION. Hold a valid preview first so the confirm-nothing leg can bite a stale
+	 * commit, then fire the garbage ray.
+	 */
+	const FBuildPreview Shown = Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, -1.0));
+	TestTrue(
+		TEXT("fixture: a valid down-ray must hold a preview before the NaN cases"),
+		Shown.bValid);
+
+	const FBuildPreview NanDir = Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, Nan));
+
+	TestFalse(
+		TEXT("a ray with a NaN direction must return an invalid preview, not a NaN pose"),
+		NanDir.bValid);
+
+	AActor* Ghost = Comp->GetGhostActor();
+	if (Ghost != nullptr)
+	{
+		TestTrue(
+			TEXT("a ray with a NaN direction must HIDE the ghost"),
+			Ghost->IsHidden());
+	}
+
+	const FPieceRef AfterNanDir = Comp->ConfirmPlace();
+	TestEqual(
+		FString::Printf(
+			TEXT("a confirm after a NaN-direction ray must return a default ref, got piece index %d"),
+			AfterNanDir.PieceIndex),
+		AfterNanDir.PieceIndex, static_cast<int32>(INDEX_NONE));
+
+	/*
+	 * NaN IN THE ORIGIN, finite downward direction. Re-hold a valid preview first so this leg's
+	 * confirm-nothing is likewise a genuine fail-closed rather than an already-empty confirm.
+	 */
+	Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, -1.0));
+
+	const FBuildPreview NanOrigin =
+		Comp->UpdatePreviewFromRay(FVector(Nan, 0.0, 1000.0), FVector(0.0, 0.0, -1.0));
+
+	TestFalse(
+		TEXT("a ray with a NaN origin must return an invalid preview, not a NaN pose"),
+		NanOrigin.bValid);
+
+	if (Ghost != nullptr)
+	{
+		TestTrue(
+			TEXT("a ray with a NaN origin must HIDE the ghost"),
+			Ghost->IsHidden());
+	}
+
+	const FPieceRef AfterNanOrigin = Comp->ConfirmPlace();
+	TestEqual(
+		FString::Printf(
+			TEXT("a confirm after a NaN-origin ray must return a default ref, got piece index %d"),
+			AfterNanOrigin.PieceIndex),
+		AfterNanOrigin.PieceIndex, static_cast<int32>(INDEX_NONE));
+
+	/* No non-finite ray may place a piece: the structure still holds only the seed. */
+	FStructureBinding* Binding = Subsystem.Find(StructureId);
+
+	TestNotNull(
+		FString::Printf(TEXT("the structure %d should still exist"), StructureId),
+		Binding);
+
+	if (Binding != nullptr)
+	{
+		TestEqual(
+			FString::Printf(
+				TEXT("no non-finite ray may place a piece; the structure holds %d pieces"),
+				Binding->NumPieces()),
+			Binding->NumPieces(), 1);
+	}
 
 	return true;
 }

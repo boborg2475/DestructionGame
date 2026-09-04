@@ -43,6 +43,15 @@ public:
 	 */
 	FBuildPreview UpdatePreviewAt(const FVector& WorldCursorCm);
 
+	/**
+	 * Preview from a world ray: intersect it with the horizontal build plane Z == BuildPlaneZCm and,
+	 * when it meets the plane IN FRONT of the ray origin, drive UpdatePreviewAt at the intersection
+	 * point (X, Y, BuildPlaneZCm) and return that snap preview. A ray parallel to the plane, or one
+	 * meeting it behind the origin, hides the ghost and returns an invalid preview. Pure ray-plane
+	 * geometry — no world trace.
+	 */
+	FBuildPreview UpdatePreviewFromRay(const FVector& RayOriginCm, const FVector& RayDirectionCm);
+
 	/** Commit the last-previewed cursor pose through PlaceBuildPiece and return the new ref. */
 	FPieceRef ConfirmPlace();
 
@@ -60,6 +69,12 @@ public:
 
 	/** Whether the next placed piece is grounded. The caller sets this; default false. */
 	bool bBuildGrounded = false;
+
+	/**
+	 * The height in cm of the horizontal build plane the cursor's ray picks a point ON. Raise it to
+	 * stack a course; the snap solver then snaps the picked point relative to nearby pieces.
+	 */
+	double BuildPlaneZCm = 0.0;
 
 protected:
 

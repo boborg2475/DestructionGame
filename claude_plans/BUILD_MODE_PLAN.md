@@ -181,10 +181,15 @@ preview and a palette on that proven core — it invents no physics.
   handed to `PlaceBuildPiece`. (First cut: ClayBrick full brick, Timber plate/lintel.)
 - **UI-4 — build/destroy mode toggle + input.** UI-4a LANDED 2026-09-04: `UBuildModeComponent` — the
   interactive loop's testable core (`BeginBuild`/`UpdatePreviewAt(cursor)`/`ConfirmPlace`, one preview →
-  one commit), driven by `World.BuildMode.Component*`. STILL TO DO (UI-4b): wire real input on a build
-  player controller/pawn — cursor → build-plane raycast → `UpdatePreviewAt`, click → `ConfirmPlace`, a key
-  to switch material and to destroy; a playable build level. (Functional/manual; the component core it calls
-  is already tested.)
+  one commit). UI-4b ray seam LANDED: `UpdatePreviewFromRay(rayOrigin, rayDir)` intersects a world ray with
+  the horizontal plane `Z == BuildPlaneZCm` and previews the hit (fails closed on parallel/behind/non-finite
+  rays), so the controller's ONLY untestable part is the mouse deprojection. Driven by
+  `World.BuildMode.Component*Ray*`. STILL TO DO (UI-4b wiring, functional/manual — the logic it calls is
+  tested): on a build player controller/pawn, `DeprojectMousePositionToWorld` → `UpdatePreviewFromRay` on
+  mouse-move, LMB → `ConfirmPlace`, keys to switch material and to raise the build plane a course / toggle
+  destroy; a playable build level. Deferred refinements (CURRENT_STATE): a max-ray-distance clamp, a
+  raise-plane/auto-plane-from-last-piece mechanism (BuildPlaneZCm is the plane of piece centres), the
+  grounded-course half-buried convention.
 - **UI-5 — save/load** a player building (OPEN decision below).
 
 ### Open decisions (owner-delegated; decide when the slice is reached, record in DESIGN §8)

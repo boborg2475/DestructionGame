@@ -98,6 +98,71 @@ FBuildPreview UBuildModeComponent::UpdatePreviewAt(const FVector& WorldCursorCm)
 	return Preview;
 }
 
+FBuildPreview UBuildModeComponent::UpdatePreviewFromRay(
+	const FVector& RayOriginCm,
+	const FVector& RayDirectionCm)
+{
+	/*
+	 * PURE RAY-PLANE GEOMETRY, NO WORLD TRACE. The ray P(t) = RayOriginCm + t * RayDirectionCm meets
+	 * the horizontal build plane Z == BuildPlaneZCm where RayOriginCm.Z + t * RayDirectionCm.Z ==
+	 * BuildPlaneZCm, i.e. t = (BuildPlaneZCm - RayOriginCm.Z) / RayDirectionCm.Z.
+	 *
+	 * A RAY THAT CANNOT REACH THE PLANE IN FRONT OF THE ORIGIN FAILS CLOSED: parallel to the plane
+	 * (RayDirectionCm.Z == 0, no intersection) or meeting it behind the origin (t < 0). Either hides
+	 * the ghost, does NOT drive UpdatePreviewAt — so no valid preview is HELD — and returns a default
+	 * invalid preview, so a ConfirmPlace after a missed ray places nothing. The parallel guard uses
+	 * FMath::IsNearlyZero so a near-grazing ray with a huge t is treated as a miss, not a wild snap.
+	 *
+	 * A NON-FINITE RAY FAILS CLOSED FIRST OF ALL. Every comparison against NaN is false, so a NaN in
+	 * either operand would slip both guards below — IsNearlyZero(NaN) is false and NaN < 0 is false —
+	 * and drive the ghost to a NaN pose that PreviewBuildPiece reports valid. This is reachable once
+	 * the mouse wiring lands: DeprojectMousePositionToWorld can return false without setting its
+	 * out-params, leaving the ray uninitialised. Rejecting a NaN or infinite origin/direction here
+	 * turns that garbage into an ordinary miss rather than a committed, unseen brick.
+	 */
+	if (RayOriginCm.ContainsNaN() || RayDirectionCm.ContainsNaN() ||
+		!FMath::IsFinite(RayOriginCm.X) || !FMath::IsFinite(RayOriginCm.Y) || !FMath::IsFinite(RayOriginCm.Z) ||
+		!FMath::IsFinite(RayDirectionCm.X) || !FMath::IsFinite(RayDirectionCm.Y) || !FMath::IsFinite(RayDirectionCm.Z))
+	{
+		if (AActor* Ghost = EnsureGhost())
+		{
+			Ghost->SetActorHiddenInGame(true);
+		}
+		bHasValidPreview = false;
+		return FBuildPreview{};
+	}
+
+	if (FMath::IsNearlyZero(RayDirectionCm.Z))
+	{
+		if (AActor* Ghost = EnsureGhost())
+		{
+			Ghost->SetActorHiddenInGame(true);
+		}
+		bHasValidPreview = false;
+		return FBuildPreview{};
+	}
+
+	const double HitT = (BuildPlaneZCm - RayOriginCm.Z) / RayDirectionCm.Z;
+	if (!(HitT >= 0.0))
+	{
+		if (AActor* Ghost = EnsureGhost())
+		{
+			Ghost->SetActorHiddenInGame(true);
+		}
+		bHasValidPreview = false;
+		return FBuildPreview{};
+	}
+
+	/*
+	 * The hit's X/Y come off the ray; Z is pinned to BuildPlaneZCm exactly rather than reconstructed
+	 * as t * RayDirectionCm.Z, so float drift in the division cannot nudge the picked point off the
+	 * plane. UpdatePreviewAt already drives the ghost, holds the valid preview and remembers the
+	 * cursor for ConfirmPlace — the ray path reuses it whole.
+	 */
+	const FVector Hit = RayOriginCm + HitT * RayDirectionCm;
+	return UpdatePreviewAt(FVector(Hit.X, Hit.Y, BuildPlaneZCm));
+}
+
 FPieceRef UBuildModeComponent::ConfirmPlace()
 {
 	/*
