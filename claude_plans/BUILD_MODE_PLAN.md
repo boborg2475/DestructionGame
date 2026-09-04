@@ -5,11 +5,14 @@ joint inference, see the ruling at the bottom) and the snap-candidate solver `Bu
 (`Core/BuildMode/SnapSolver.*`) with these kinds: brick running-bond NEXT-COURSE bed, brick SAME-COURSE
 end-to-end head (each auto-forming its joint by inference — bed → mortar, head → perpend; a brick in a wall
 past course 1 coalesces into one candidate carrying both its bed and head joints), and TIMBER CENTERED-ON a
-brick (a bearing, DryStone by the ruling) whose bearings are CONTACT-BASED so a lintel forms a DryStone
-bearing to every brick it spans. Candidates are ranked by proximity ahead of a free-placement fallback.
-Next in slice 1: the TIMBER EDGE-FLUSH snap, then a small render of a placed structure. Then start the
-interactive UI (the /goal's "after the first part"). CORNER-return is its own later slice (needs the
-head-vs-corner inference extension — see CURRENT_STATE). (Open follow-ups — occupancy, ranking policy,
+brick and TIMBER EDGE-FLUSH to a brick's near X-face (both bearings, DryStone by the ruling) whose bearings
+are CONTACT-BASED so a lintel/plate forms a DryStone bearing to every brick it spans, deduped by neighbour.
+Candidates are ranked by proximity ahead of a free-placement fallback. **The /goal's slice-1 snap
+vocabulary is COMPLETE** (brick overlap, timber centered-on/edge-of, free). Next: a small
+place→adopt→render harness proving a scripted build assembles into a live `FStructure` (contract notes in
+CURRENT_STATE — nearby-index→handle mapping, `MakeInterface` per joint, occupancy, assert `Candidates[0]`'s
+Kind per step). Then start the interactive UI (the /goal's "after the first part"). CORNER-return is its own
+later slice (needs the head-vs-corner inference extension — see CURRENT_STATE). (Open follow-ups — occupancy, ranking policy,
 merged-candidate labelling, half-bat bearings — are in CURRENT_STATE.)
 Read
 [CLAUDE.md](../CLAUDE.md), [DESIGN.md](DESIGN.md) and

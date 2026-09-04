@@ -97,7 +97,26 @@ namespace BuildMode
 				});
 			if (Existing != nullptr)
 			{
-				Existing->Joints.Append(Joints);
+				/*
+				 * Union by OtherPieceIndex. A placed piece forms at most one joint to any
+				 * one neighbour at a single pose, so a second joint to an index already
+				 * present is a true duplicate — as happens when a brick-width plank's
+				 * centred and edge-flush poses coincide and the same bearing set merges
+				 * twice. Distinct indices (the brick straddle, the bed+head pair, a plate's
+				 * separate bearings) carry different neighbours and are all kept.
+				 */
+				for (const FFormedJoint& Joint : Joints)
+				{
+					const bool bAlreadyJoined = Existing->Joints.ContainsByPredicate(
+						[&Joint](const FFormedJoint& Have)
+						{
+							return Have.OtherPieceIndex == Joint.OtherPieceIndex;
+						});
+					if (!bAlreadyJoined)
+					{
+						Existing->Joints.Add(Joint);
+					}
+				}
 				return;
 			}
 
@@ -107,6 +126,49 @@ namespace BuildMode
 			Candidate.OffsetFromRequestedCm = Offset;
 			Candidate.Joints = Joints;
 			Candidates.Add(MoveTemp(Candidate));
+		};
+
+		/*
+		 * The bearings a timber piece forms when placed at Pose. A plank SPANS: it rests
+		 * on EVERY brick beneath it, not only the one that fixed its pose, so its bearings
+		 * are found by CONTACT — a brick j qualifies when the timber positively overlaps
+		 * it in both X and Y and its underside sits exactly one joint above j's top face.
+		 * Each is a passive DryStone bearing; JointForContact returns DryStone because the
+		 * timber face is not compression-dominant, whatever the normal. Both timber snap
+		 * kinds (centred, edge-flush) differ only in their pose and share this.
+		 */
+		auto BearingsAtPose =
+			[&NearbyBoxes, &NearbyMaterials, &Placed, &PlacedMaterial, &Settings](
+				const FVector& Pose) -> TArray<FFormedJoint>
+		{
+			TArray<FFormedJoint> Bearings;
+			for (int32 j = 0; j < NearbyBoxes.Num(); ++j)
+			{
+				const DestructionLayout::FPieceBox& Support = NearbyBoxes[j];
+				if (!IsBrickSized(Support.ExtentCm, Settings.BrickSizeCm))
+				{
+					continue;
+				}
+
+				const bool bOverlapX =
+					FMath::Abs(Pose.X - Support.CentreCm.X)
+						< Placed.ExtentCm.X + Support.ExtentCm.X;
+				const bool bOverlapY =
+					FMath::Abs(Pose.Y - Support.CentreCm.Y)
+						< Placed.ExtentCm.Y + Support.ExtentCm.Y;
+				const double GapZ =
+					(Pose.Z - Placed.ExtentCm.Z) - (Support.CentreCm.Z + Support.ExtentCm.Z);
+				const bool bRestsOn =
+					FMath::Abs(GapZ - Settings.JointThicknessCm) < KINDA_SMALL_NUMBER;
+
+				if (bOverlapX && bOverlapY && bRestsOn)
+				{
+					Bearings.Add(FFormedJoint{
+						j,
+						JointForContact(PlacedMaterial, NearbyMaterials[j], FVector(0.0, 0.0, 1.0)) });
+				}
+			}
+			return Bearings;
 		};
 
 		for (int32 i = 0; i < NearbyBoxes.Num(); ++i)
@@ -155,52 +217,32 @@ namespace BuildMode
 			if (bPlacedIsTimber)
 			{
 				/*
-				 * Timber centred on the brick top: a plank does not bond into the bond
-				 * pattern, it rests across its support, so the horizontal centre snaps to
-				 * the brick's centre and the height keys on the PLACED piece's own
-				 * half-thickness — brick top + one joint + placed half-height.
+				 * A plank rests one joint above the support top, keyed on the PLACED piece's
+				 * own half-thickness — brick top + one joint + placed half-height.
 				 */
 				const double BearZ =
 					Other.CentreCm.Z + Other.ExtentCm.Z + Settings.JointThicknessCm + Placed.ExtentCm.Z;
-				const FVector CentredCentre(Other.CentreCm.X, Other.CentreCm.Y, BearZ);
 
 				/*
-				 * A lintel SPANS: sitting at this pose it rests on EVERY brick beneath it,
-				 * not only the one it centred on, so its bearings are found by CONTACT. A
-				 * brick j qualifies when the timber positively overlaps it in both X and Y
-				 * and its underside sits exactly one joint above j's top face. Each is a
-				 * passive DryStone bearing — JointForContact returns DryStone because the
-				 * timber face is not compression-dominant, whatever the normal.
+				 * Centred: the horizontal centre snaps to the brick's centre — a plank does
+				 * not bond into the bond pattern, it rests across its support.
 				 */
-				TArray<FFormedJoint> Bearings;
-				for (int32 j = 0; j < NearbyBoxes.Num(); ++j)
-				{
-					const DestructionLayout::FPieceBox& Support = NearbyBoxes[j];
-					if (!IsBrickSized(Support.ExtentCm, Settings.BrickSizeCm))
-					{
-						continue;
-					}
+				const FVector CentredCentre(Other.CentreCm.X, Other.CentreCm.Y, BearZ);
+				EmitOrMerge(
+					ESnapKind::TimberCentered, CentredCentre, BearingsAtPose(CentredCentre));
 
-					const bool bOverlapX =
-						FMath::Abs(CentredCentre.X - Support.CentreCm.X)
-							< Placed.ExtentCm.X + Support.ExtentCm.X;
-					const bool bOverlapY =
-						FMath::Abs(CentredCentre.Y - Support.CentreCm.Y)
-							< Placed.ExtentCm.Y + Support.ExtentCm.Y;
-					const double GapZ =
-						(BearZ - Placed.ExtentCm.Z) - (Support.CentreCm.Z + Support.ExtentCm.Z);
-					const bool bRestsOn =
-						FMath::Abs(GapZ - Settings.JointThicknessCm) < KINDA_SMALL_NUMBER;
-
-					if (bOverlapX && bOverlapY && bRestsOn)
-					{
-						Bearings.Add(FFormedJoint{
-							j,
-							JointForContact(PlacedMaterial, NearbyMaterials[j], FVector(0.0, 0.0, 1.0)) });
-					}
-				}
-
-				EmitOrMerge(ESnapKind::TimberCentered, CentredCentre, Bearings);
+				/*
+				 * Edge-flush: the plank's NEAR X-face aligns with the brick's near X-face
+				 * instead of centring. Pick the face on the side the cursor leans toward, so
+				 * a plank pushed to one end of a beam finishes flush there. For the +X face
+				 * the plank centre sits its own half-width inboard of that face; the -X face
+				 * mirrors it.
+				 */
+				const double BrickXFace = Other.CentreCm.X + SignX * Other.ExtentCm.X;
+				const FVector EdgeFlushCentre(
+					BrickXFace - SignX * Placed.ExtentCm.X, Other.CentreCm.Y, BearZ);
+				EmitOrMerge(
+					ESnapKind::TimberEdgeFlush, EdgeFlushCentre, BearingsAtPose(EdgeFlushCentre));
 			}
 		}
 

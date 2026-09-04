@@ -20,11 +20,11 @@
  * direction of inclusion — this includes JointInference.h and Layout.h; nothing
  * under Tests/ is included by it.
  *
- * BEHAVIORS 2a/2b/2d implement three snap kinds: brick RUNNING-BOND NEXT COURSE
- * (bed joint), brick SAME-COURSE END-TO-END (head joint) and TIMBER CENTERED-ON a
- * brick (DryStone bearing). Corner returns and the edge-flush timber snap are later
- * behaviors — the enum names them so the surface does not churn, but the solver need
- * not emit them yet.
+ * BEHAVIORS 2a/2b/2d/2e implement four snap kinds: brick RUNNING-BOND NEXT COURSE
+ * (bed joint), brick SAME-COURSE END-TO-END (head joint), TIMBER CENTERED-ON a brick
+ * and TIMBER EDGE-FLUSH to a brick face (both DryStone bearings). Corner returns are
+ * a later behavior — the enum names it so the surface does not churn, but the solver
+ * need not emit it yet.
  */
 namespace BuildMode
 {

@@ -994,4 +994,392 @@ bool FSnapSolverTimberLintelBearsAllTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * BEHAVIOR 2e, the TIMBER EDGE-FLUSH snap. A TIMBER plank NARROWER than the brick in
+ * X, requested off toward the brick's +X horizontal edge, snaps so its NEAR (+X) face
+ * aligns FLUSH with the brick's +X face rather than centering — still resting one
+ * joint-thickness on top and forming a passive DryStone bearing. This is the second
+ * timber snap the /goal names ("timber centered-on / edge-of a brick").
+ *
+ * THE POSE IS EXACT, NOT FITTED. The brick at the origin has extent HalfBrick, so its
+ * +X face is at X = 10.75 and its top at Z = 3.25. The plank's half-extent in X is 5
+ * (10 cm wide — deliberately NARROWER than the 21.5 cm brick, so edge-flush is a
+ * DISTINCT pose from centered). Flushing the plank's +X face to the brick's +X face
+ * puts the plank centre at X = brick +X face - plank half-X = 10.75 - 5 = 5.75; Y stays
+ * on the brick centre (0); Z is brick top (3.25) + one joint (1.0) + plank half-height
+ * (1.5) = 5.75. So the snapped centre is (5.75, 0, 5.75), and the flush edge reads back
+ * as 5.75 + 5 = 10.75 == the brick's +X face. The requested pose (8, 0, 5) leans toward
+ * that +X edge and above.
+ *
+ * THE JOINT IS DERIVED, NOT HARDCODED. A timber face is not compression-dominant, so
+ * JointForContact(Timber, ClayBrick, +/-Z) returns the passive DryStone bearing.
+ * Pinned FULL-FIELD so a mortar substitution or a materials-ignoring DryStone hardcode
+ * cannot pass. The plank at X=5.75 spans [0.75, 10.75], overlapping ONLY brick 0 — so
+ * exactly one bearing.
+ *
+ * RANKING: the requested pose (8,·) is nearer the edge-flush pose (offset sqrt(5.625) ~
+ * 2.37) than the centered pose (0,0,5.75) (offset sqrt(64.5625) ~ 8.04), so the
+ * edge-flush candidate must rank AHEAD of any TimberCentered candidate. The solver MAY
+ * still offer TimberCentered — that is not forbidden; only its ranking behind the
+ * edge-flush snap is pinned. Free stays LAST.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverTimberEdgeFlushTest,
+	"DestructionGame.Core.BuildMode.SnapSolverTimberEdgeFlush",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverTimberEdgeFlushTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// One existing full brick at the origin: +X face at X = 10.75, top at Z = 3.25.
+	const FPieceBox Existing{ FVector(0.0, 0.0, 0.0), HalfBrick };
+	const TArray<FPieceBox> NearbyBoxes = { Existing };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick };
+
+	/*
+	 * A TIMBER plank NARROWER than the brick in X (half-extent 5 -> 10 cm wide), so
+	 * flush-to-edge is a distinct pose from centered. Requested off toward the +X edge
+	 * and above.
+	 */
+	const FVector PlacedHalfExtent(5.0, 5.125, 1.5);
+	const FVector Requested(8.0, 0.0, 5.0);
+	const FPieceBox Placed{ Requested, PlacedHalfExtent };
+
+	const FSnapSettings Settings; // BrickSize 21.5x10.25x6.5, joint 1.0, radius 30.
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, Timber, NearbyBoxes, NearbyMaterials, Settings);
+
+	/*
+	 * +X face flush: X = brick +X face (10.75) - plank half-X (5) = 5.75; Y = brick
+	 * centre (0); Z = brick top (3.25) + joint (1.0) + plank half-height (1.5) = 5.75.
+	 * An exact coordinate, tight tolerance.
+	 */
+	const FVector ExpectedCentre(5.75, 0.0, 5.75);
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	int32 EdgeFlushIndex = INDEX_NONE;
+	int32 CenteredIndex = INDEX_NONE;
+	int32 FreeIndex = INDEX_NONE;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		const FSnapCandidate& C = Candidates[i];
+		if (EdgeFlushIndex == INDEX_NONE
+			&& C.Kind == ESnapKind::TimberEdgeFlush
+			&& C.CentreCm.Equals(ExpectedCentre, Tol))
+		{
+			EdgeFlushIndex = i;
+		}
+		if (CenteredIndex == INDEX_NONE && C.Kind == ESnapKind::TimberCentered)
+		{
+			CenteredIndex = i;
+		}
+		if (FreeIndex == INDEX_NONE && C.Kind == ESnapKind::Free)
+		{
+			FreeIndex = i;
+		}
+	}
+
+	// 1. The edge-flush candidate exists at the exact +X-flush pose (5.75, 0, 5.75).
+	const bool bFoundEdgeFlush = EdgeFlushIndex != INDEX_NONE;
+	TestTrue(
+		TEXT("a TimberEdgeFlush candidate exists at the +X-flush pose (5.75,0,5.75)"),
+		bFoundEdgeFlush);
+
+	// 3. A Free fallback candidate exists at the requested pose.
+	const bool bFoundFree = FreeIndex != INDEX_NONE;
+	TestTrue(TEXT("a Free fallback candidate exists"), bFoundFree);
+
+	if (bFoundEdgeFlush)
+	{
+		const FSnapCandidate& Snap = Candidates[EdgeFlushIndex];
+
+		/*
+		 * 1 (cont). The flush edge reads back exactly: plank centre X + plank half-X
+		 * == brick +X face. Independently derived from the geometry, not from a
+		 * production constant.
+		 */
+		const double PlankPlusXFace = Snap.CentreCm.X + PlacedHalfExtent.X;
+		const double BrickPlusXFace = Existing.CentreCm.X + HalfBrick.X;
+		TestEqual(
+			TEXT("plank +X face is flush with the brick +X face (both 10.75)"),
+			PlankPlusXFace, BrickPlusXFace, 1.0e-6);
+
+		/*
+		 * 2. Exactly ONE joint, to the existing brick (index 0), whose profile is the
+		 * PASSIVE DryStone bearing. The plank at X=5.75 spans [0.75, 10.75], overlapping
+		 * only brick 0. The solver must DERIVE the profile via JointForContact(Timber,
+		 * ClayBrick, ...) — pinned FULL-FIELD so a mortar substitution fails.
+		 */
+		TestEqual(TEXT("edge-flush candidate forms exactly one joint"),
+			Snap.Joints.Num(), 1);
+		if (Snap.Joints.Num() == 1)
+		{
+			TestEqual(TEXT("joint is to the existing brick (OtherPieceIndex 0)"),
+				Snap.Joints[0].OtherPieceIndex, 0);
+			CheckProfileIdentity(
+				*this,
+				TEXT("edge-flush bearing joint profile == DryStone: "),
+				Snap.Joints[0].Profile,
+				DryStone);
+		}
+
+		/*
+		 * The offset field carries the ranking key's meaning: the Euclidean distance
+		 * from the requested pose (8,0,5) to the snapped pose (5.75,0,5.75) =
+		 * sqrt(2.25^2 + 0.75^2) = sqrt(5.625). Derived independently from the distance
+		 * formula, not read back from production.
+		 */
+		TestEqual(TEXT("edge-flush OffsetFromRequestedCm is the distance to the snap"),
+			Snap.OffsetFromRequestedCm, FMath::Sqrt(5.625), 1.0e-6);
+	}
+
+	if (bFoundFree)
+	{
+		// 3 (cont). The Free candidate sits at the requested pose and forms no joint.
+		const FSnapCandidate& Free = Candidates[FreeIndex];
+		TestTrue(TEXT("Free candidate sits at the requested pose"),
+			Free.CentreCm.Equals(Requested, Tol));
+		TestEqual(TEXT("Free candidate forms no joints"), Free.Joints.Num(), 0);
+
+		// 3 (cont). Free stays LAST — behind every snap.
+		TestEqual(TEXT("Free is the last candidate"),
+			FreeIndex, Candidates.Num() - 1);
+	}
+
+	// 1 (cont). An in-range snap BEATS free: the edge-flush candidate precedes it.
+	if (bFoundEdgeFlush && bFoundFree)
+	{
+		TestTrue(
+			TEXT("TimberEdgeFlush is ranked ahead of Free (appears earlier)"),
+			EdgeFlushIndex < FreeIndex);
+	}
+
+	/*
+	 * 4. Edge-flush wins near an edge. The solver MAY also offer a TimberCentered
+	 * candidate (at (0,0,5.75)); that is allowed. But because the requested pose leans
+	 * toward the +X edge, the edge-flush pose is nearer than centered, so when both
+	 * exist the edge-flush candidate must rank AHEAD of the centered one.
+	 */
+	if (bFoundEdgeFlush && CenteredIndex != INDEX_NONE)
+	{
+		TestTrue(
+			TEXT("TimberEdgeFlush is ranked ahead of TimberCentered when the cursor is near the edge"),
+			EdgeFlushIndex < CenteredIndex);
+	}
+
+	return true;
+}
+
+/**
+ * BEHAVIOR 2e, MERGE BUG DRIVER — brick-WIDTH plank must not carry DUPLICATE bearings.
+ *
+ * When a timber plank is exactly the brick's X/Y footprint, its TimberCentered pose and
+ * its TimberEdgeFlush pose COINCIDE: edge-flush X = BrickXFace - SignX*Placed.ExtentX,
+ * and with Placed.ExtentX == Other.ExtentX that collapses to the brick centre — the
+ * centred pose. EmitOrMerge keys candidates by POSE and Appends the joint lists of any
+ * coincident emission, so the same contact-based bearing set is added TWICE: the merged
+ * candidate ends up carrying two DryStone bearings to the SAME OtherPieceIndex, silently
+ * doubling that brick's bearing capacity. A wall plate cut to brick width hits this on
+ * every brick.
+ *
+ * Fixture: one ClayBrick at the origin (extent HalfBrick); a TIMBER plank of half-extent
+ * (10.75, 5.125, 1.5) — the SAME X/Y footprint as the brick (so centred == edge-flush),
+ * thin in Z (full 3.0, so NOT brick-sized: the brick kinds do not fire). Requested (1,0,5)
+ * leans +X and above; SignX = +1. Both timber poses land at (0, 0, brick top 3.25 + joint
+ * 1.0 + plank half-height 1.5) = (0,0,5.75).
+ *
+ * Assert on the single timber-kind candidate at (0,0,5.75): it forms EXACTLY ONE bearing
+ * joint (to brick 0, full-field DryStone), not two. RED today: it carries two duplicate
+ * joints to index 0.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverTimberBrickWidthNoDuplicateJointsTest,
+	"DestructionGame.Core.BuildMode.SnapSolverTimberBrickWidthNoDuplicateJoints",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverTimberBrickWidthNoDuplicateJointsTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// One existing full brick at the origin.
+	const FPieceBox Existing{ FVector(0.0, 0.0, 0.0), HalfBrick };
+	const TArray<FPieceBox> NearbyBoxes = { Existing };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick };
+
+	/*
+	 * A TIMBER plank with the SAME X/Y footprint as the brick (half-extent 10.75 x 5.125)
+	 * so the centred and edge-flush poses coincide, thin in Z (half 1.5 -> full 3.0, not
+	 * brick-sized). Requested off toward +X and above.
+	 */
+	const FVector PlacedHalfExtent(10.75, 5.125, 1.5);
+	const FVector Requested(1.0, 0.0, 5.0);
+	const FPieceBox Placed{ Requested, PlacedHalfExtent };
+
+	const FSnapSettings Settings; // BrickSize 21.5x10.25x6.5, joint 1.0, radius 30.
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, Timber, NearbyBoxes, NearbyMaterials, Settings);
+
+	// The coincident centred/edge-flush pose: brick centre X/Y, brick top + joint + half-height.
+	const FVector ExpectedCentre(0.0, 0.0, 5.75);
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	/*
+	 * Every timber-kind candidate at the coincident pose. Scoped to that pose so the
+	 * already-logged brick-kind misnomer for brick-width timber (at OTHER poses) cannot
+	 * trip this; here the plank is not brick-sized anyway, so no brick kinds fire.
+	 */
+	TArray<int32> AtPose;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		const FSnapCandidate& C = Candidates[i];
+		if ((C.Kind == ESnapKind::TimberCentered || C.Kind == ESnapKind::TimberEdgeFlush)
+			&& C.CentreCm.Equals(ExpectedCentre, Tol))
+		{
+			AtPose.Add(i);
+		}
+	}
+
+	TestEqual(
+		TEXT("exactly one timber-kind candidate at the coincident centred/edge-flush pose (0,0,5.75)"),
+		AtPose.Num(), 1);
+
+	if (AtPose.Num() == 1)
+	{
+		const FSnapCandidate& Snap = Candidates[AtPose[0]];
+
+		/*
+		 * The core assertion: ONE bearing, not two. The merge Appends the contact-based
+		 * bearing set once per coincident emission; with centred and edge-flush landing on
+		 * the same pose the naive merge doubles it. There is only one brick to rest on, so
+		 * the correct count is exactly one.
+		 */
+		TestEqual(TEXT("candidate forms exactly one bearing joint (no duplicate)"),
+			Snap.Joints.Num(), 1);
+		if (Snap.Joints.Num() == 1)
+		{
+			TestEqual(TEXT("the single bearing is to the existing brick (OtherPieceIndex 0)"),
+				Snap.Joints[0].OtherPieceIndex, 0);
+			CheckProfileIdentity(
+				*this,
+				TEXT("bearing joint profile == DryStone: "),
+				Snap.Joints[0].Profile,
+				DryStone);
+		}
+	}
+
+	return true;
+}
+
+/**
+ * BEHAVIOR 2e, WALL-PLATE PIN — a brick-width plate spanning a course keeps its THREE
+ * DISTINCT bearings, not duplicates. The companion to the brick-width duplicate driver:
+ * it pins that the fix drops only the duplicate, never a real bearing.
+ *
+ * Fixture: a course of three ClayBricks at X = 0, 22.5, 45 (tops level, centre Z = 0,
+ * extent HalfBrick). A TIMBER plate of half-extent (33.75, 5.125, 1.5) — full length
+ * 67.5 cm — centred on brick@22.5 spans X in [-11.25, 56.25] and rests on all three.
+ * Requested (24, 0, 5) leans toward brick@22.5 and above, so the centred pose is
+ * (22.5, 0, brick top 3.25 + joint 1.0 + plate half-height 1.5) = (22.5, 0, 5.75).
+ *
+ * Assert on the ONE candidate at (22.5,0,5.75): exactly one such candidate, THREE bearing
+ * joints, OtherPieceIndex set == {0,1,2} (order-independent, so no index bedded twice),
+ * all full-field DryStone. GREEN today (the three poses do not coincide, so no duplicate
+ * arises here) — it guards against an over-aggressive dedupe fix that would drop real
+ * bearings.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverTimberWallPlateBearsDistinctTest,
+	"DestructionGame.Core.BuildMode.SnapSolverTimberWallPlateBearsDistinct",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverTimberWallPlateBearsDistinctTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// A course of three bricks the plate spans.
+	const FPieceBox Brick0{ FVector(0.0, 0.0, 0.0), HalfBrick };   // idx 0
+	const FPieceBox Brick1{ FVector(22.5, 0.0, 0.0), HalfBrick };  // idx 1
+	const FPieceBox Brick2{ FVector(45.0, 0.0, 0.0), HalfBrick };  // idx 2
+	const TArray<FPieceBox> NearbyBoxes = { Brick0, Brick1, Brick2 };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick, ClayBrick, ClayBrick };
+
+	// A TIMBER plate, full length 67.5 cm: centred on brick@22.5 it rests on all three.
+	const FVector PlacedHalfExtent(33.75, 5.125, 1.5);
+	const FVector Requested(24.0, 0.0, 5.0);
+	const FPieceBox Placed{ Requested, PlacedHalfExtent };
+	const FSnapSettings Settings;
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, Timber, NearbyBoxes, NearbyMaterials, Settings);
+
+	// Centred on brick@22.5: (22.5, 0, brick top 3.25 + joint 1.0 + plate half-height 1.5).
+	const FVector ExpectedCentre(22.5, 0.0, 5.75);
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	// Every timber-kind candidate AT the brick@22.5 pose. Expect exactly one.
+	TArray<int32> AtPose;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		const FSnapCandidate& C = Candidates[i];
+		if ((C.Kind == ESnapKind::TimberCentered || C.Kind == ESnapKind::TimberEdgeFlush)
+			&& C.CentreCm.Equals(ExpectedCentre, Tol))
+		{
+			AtPose.Add(i);
+		}
+	}
+
+	TestEqual(
+		TEXT("exactly one timber-kind candidate at the plate's centred pose (22.5,0,5.75)"),
+		AtPose.Num(), 1);
+
+	if (AtPose.Num() == 1)
+	{
+		const FSnapCandidate& Snap = Candidates[AtPose[0]];
+
+		// It bears on ALL three spanned bricks: three joints, no more (no duplicate).
+		TestEqual(TEXT("plate candidate forms three bearing joints (one per spanned brick)"),
+			Snap.Joints.Num(), 3);
+
+		if (Snap.Joints.Num() == 3)
+		{
+			/*
+			 * The OtherPieceIndex set is exactly {0, 1, 2}, order-independent — each spanned
+			 * brick bedded ONCE, none twice. Three joints found across three distinct indices
+			 * proves distinctness with no duplicate.
+			 */
+			for (int32 Expected = 0; Expected <= 2; ++Expected)
+			{
+				const FFormedJoint* J = Snap.Joints.FindByPredicate(
+					[Expected](const FFormedJoint& Joint)
+					{ return Joint.OtherPieceIndex == Expected; });
+				TestNotNull(
+					*FString::Printf(TEXT("a distinct bearing joint to brick idx %d exists"), Expected),
+					J);
+				if (J != nullptr)
+				{
+					CheckProfileIdentity(
+						*this,
+						FString::Printf(TEXT("plate bearing to brick idx %d == DryStone: "), Expected),
+						J->Profile,
+						DryStone);
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
