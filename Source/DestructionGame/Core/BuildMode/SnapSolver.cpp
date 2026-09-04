@@ -17,6 +17,32 @@ namespace BuildMode
 		{
 			return (ExtentCm * 2.0).Equals(BrickSizeCm, 0.5);
 		}
+
+		/*
+		 * Whether a placed box at Pose (with half-extent PlacedExtentCm) shares VOLUME with
+		 * any nearby box. Interpenetration is a strict overlap on ALL THREE axes at once:
+		 * Abs(dCentre) < sum-of-half-extents on X and Y and Z. The strict < is the whole
+		 * distinction from a legitimate joint contact, which is GAPPED (or exactly touching)
+		 * on one axis - a next-course pose clears in Z (7.5 > 6.5), a same-course pose clears
+		 * in X (22.5 > 21.5) - so it overlaps on only two axes and is NOT an interpenetration.
+		 */
+		bool InterpenetratesAny(
+			const FVector& Pose,
+			const FVector& PlacedExtentCm,
+			TArrayView<const DestructionLayout::FPieceBox> NearbyBoxes)
+		{
+			for (const DestructionLayout::FPieceBox& Other : NearbyBoxes)
+			{
+				const FVector Sum = PlacedExtentCm + Other.ExtentCm;
+				if (FMath::Abs(Pose.X - Other.CentreCm.X) < Sum.X
+					&& FMath::Abs(Pose.Y - Other.CentreCm.Y) < Sum.Y
+					&& FMath::Abs(Pose.Z - Other.CentreCm.Z) < Sum.Z)
+				{
+					return true;
+				}
+			}
+			return false;
+		}
 	}
 
 	/*
@@ -81,11 +107,21 @@ namespace BuildMode
 		 * dropped.
 		 */
 		auto EmitOrMerge =
-			[&Candidates, &Placed, &Settings](
+			[&Candidates, &Placed, &NearbyBoxes, &Settings](
 				ESnapKind Kind, const FVector& Centre, const TArray<FFormedJoint>& Joints)
 		{
 			const double Offset = (Centre - Placed.CentreCm).Size();
 			if (Offset > Settings.SnapRadiusCm)
+			{
+				return;
+			}
+
+			/*
+			 * Drop a pose whose box would OCCUPY a cell another piece already fills. The
+			 * placed half-extent is what interpenetrates, so it is measured, not the snap
+			 * geometry; a joint contact is gapped on one axis and survives this.
+			 */
+			if (InterpenetratesAny(Centre, Placed.ExtentCm, NearbyBoxes))
 			{
 				return;
 			}
@@ -253,7 +289,13 @@ namespace BuildMode
 				return A.OffsetFromRequestedCm < B.OffsetFromRequestedCm;
 			});
 
-		// Free fallback last: place exactly where requested, forming no joint.
+		/*
+		 * Free fallback last: place exactly where requested, forming no joint. It is NOT
+		 * occupancy-filtered - the raw requested pose is the caller's explicit ask and the
+		 * last resort when nothing snaps, and an existing fixture places it deliberately
+		 * touching a neighbour. Only the auto-generated SNAP poses are dropped for occupancy,
+		 * since those are the ones the solver invents.
+		 */
 		Candidates.Add(FSnapCandidate{ ESnapKind::Free, Placed.CentreCm, 0.0, {} });
 		return Candidates;
 	}

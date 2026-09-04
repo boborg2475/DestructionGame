@@ -17,8 +17,10 @@ assembles and STANDS (a `SolveLoads` on the built structure), then a render of i
 CURRENT_STATE — the harness sets `SetThreeDimensional` for corners, keeps requested poses clear of occupied
 cells, and asserts `Candidates[0]`'s
 Kind per step). Then start the interactive UI (the /goal's "after the first part"). CORNER-return is its own
-later slice (needs the head-vs-corner inference extension — see CURRENT_STATE). (Open follow-ups — occupancy, ranking policy,
-merged-candidate labelling, half-bat bearings — are in CURRENT_STATE.)
+later slice (needs the head-vs-corner inference extension — see CURRENT_STATE). Occupancy is handled — snap
+candidates into an occupied cell are dropped; free placement is honoured verbatim (the owner-delegated
+"place anywhere OR snap" ruling, DESIGN §8). (Open follow-ups — ranking policy, merged-candidate labelling,
+half-bat bearings, the UI's occupied-pose warning signal — are in CURRENT_STATE.)
 Read
 [CLAUDE.md](../CLAUDE.md), [DESIGN.md](DESIGN.md) and
 [CURRENT_STATE.md](CURRENT_STATE.md) first — they own the model, the constants and the standing rulings.

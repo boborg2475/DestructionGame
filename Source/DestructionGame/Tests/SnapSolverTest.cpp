@@ -1382,4 +1382,231 @@ bool FSnapSolverTimberWallPlateBearsDistinctTest::RunTest(const FString& Paramet
 	return true;
 }
 
+/**
+ * BEHAVIOR 2b, OCCUPANCY FILTER (RED driver). A snap whose placed-piece box would land
+ * INSIDE an already-placed piece — a true volume intersection, positive overlap on ALL
+ * THREE axes at once — must be DROPPED, however near the cursor it is. This is what stops
+ * the solver offering a brick inside a brick.
+ *
+ * INTERPENETRATION (the drop rule dev must implement), derived independently of any
+ * production constant: for the candidate box at CentreCm with the PLACED half-extent, and
+ * a nearby box at its own centre/half-extent,
+ *     Abs(dCentre.X) < ExtentX_placed + ExtentX_other  AND
+ *     Abs(dCentre.Y) < ExtentY_placed + ExtentY_other  AND
+ *     Abs(dCentre.Z) < ExtentZ_placed + ExtentZ_other
+ * ALL THREE strictly true => the boxes share volume => DROP. A pose that is merely
+ * TOUCHING (equal on an axis: the joint-separated snaps) is NOT an interpenetration and
+ * must survive — see the companion FSnapSolverContactPoseSurvives test. sumExtent for two
+ * full bricks is (21.5, 10.25, 6.5).
+ *
+ * Fixture: two ClayBricks already placed — brick@(0,0,0) [idx 0] and brick@(11.25,0,7.5)
+ * [idx 1], the second sitting running-bond next-course on the first (an occupied cell). A
+ * new ClayBrick is requested at (11.25,0,15) — CLEAR of both bricks (dZ to brick 1 is 7.5
+ * > sumZ 6.5), directly above the occupied cell. The natural best snap is brick 0's +X
+ * next-course pose, (0,0,0)+(11.25,0,7.5) = (11.25,0,7.5) — EXACTLY brick 1's cell, so
+ * that candidate's box is coincident with brick 1 (interpenetrates on all three axes) and
+ * must be dropped. It is also the NEAREST snap (offset 7.5 < the next survivor's 11.25),
+ * so without the filter it would rank first among snaps.
+ *
+ * Clear survivors genuinely exist: brick 1's own +X next-course pose (22.5,0,15) [gapped in
+ * Z], and brick 0's same-course end-to-end pose (22.5,0,0) [gapped in X], neither of which
+ * interpenetrates anything. The requested pose is itself clear, so the Free fallback also
+ * survives.
+ *
+ * RED today: the solver has no occupancy filter, so the (11.25,0,7.5) candidate IS
+ * returned (and ranks first among snaps).
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverOccupiedCellDroppedTest,
+	"DestructionGame.Core.BuildMode.SnapSolverOccupiedCellDropped",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverOccupiedCellDroppedTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// Two bricks: brick 0 at the origin, brick 1 one running-bond course up on it.
+	const FPieceBox Brick0{ FVector(0.0, 0.0, 0.0), HalfBrick };      // idx 0
+	const FPieceBox Brick1{ FVector(11.25, 0.0, 7.5), HalfBrick };    // idx 1 (occupied cell)
+	const TArray<FPieceBox> NearbyBoxes = { Brick0, Brick1 };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick, ClayBrick };
+
+	/*
+	 * Requested directly above brick 1's cell, clear of both bricks (dZ to brick 1 is
+	 * 15 - 7.5 = 7.5 > sumZ 6.5). Brick 0's +X next-course pose is exactly brick 1's
+	 * cell (11.25,0,7.5) — the occupied pose that must be dropped.
+	 */
+	const FVector Requested(11.25, 0.0, 15.0);
+	const FPieceBox Placed{ Requested, HalfBrick };
+	const FSnapSettings Settings; // BrickSize 21.5x10.25x6.5, joint 1.0, radius 30.
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, ClayBrick, NearbyBoxes, NearbyMaterials, Settings);
+
+	const FVector OccupiedCell(11.25, 0.0, 7.5);
+	const FVector ClearSurvivor(22.5, 0.0, 15.0); // brick 1's +X next-course, gapped in Z.
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	/*
+	 * 1. THE OCCUPANCY DROP. No returned SNAP candidate may sit at the occupied cell — its box
+	 * would be coincident with brick 1 (interpenetration on all three axes). The filter applies
+	 * to snap candidates; the Free fallback is honoured verbatim (the "place anywhere" escape),
+	 * and survives here only because this fixture's requested pose is itself clear.
+	 */
+	bool bOccupiedReturned = false;
+	for (const FSnapCandidate& C : Candidates)
+	{
+		if (C.CentreCm.Equals(OccupiedCell, Tol))
+		{
+			bOccupiedReturned = true;
+		}
+	}
+	TestFalse(
+		TEXT("the occupied-cell candidate at (11.25,0,7.5) is dropped (its box interpenetrates brick 1)"),
+		bOccupiedReturned);
+
+	/*
+	 * 2. THE FILTER DID NOT EMPTY THE LIST. A clear next-course survivor genuinely exists —
+	 * brick 1's own +X next-course pose (22.5,0,15), which is gapped from brick 1 in Z (dZ
+	 * 7.5 > sumZ 6.5) and so is not an interpenetration. Its box must not overlap any nearby
+	 * piece on all three axes; assert it survives and forms its bed joint to brick 1.
+	 */
+	int32 SurvivorIndex = INDEX_NONE;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		if (Candidates[i].Kind == ESnapKind::BrickNextCourse
+			&& Candidates[i].CentreCm.Equals(ClearSurvivor, Tol))
+		{
+			SurvivorIndex = i;
+			break;
+		}
+	}
+	const bool bFoundSurvivor = SurvivorIndex != INDEX_NONE;
+	TestTrue(
+		TEXT("a clear next-course survivor at (22.5,0,15) is still offered"),
+		bFoundSurvivor);
+	if (bFoundSurvivor)
+	{
+		const FSnapCandidate& Snap = Candidates[SurvivorIndex];
+		TestEqual(TEXT("survivor forms exactly one bed joint"), Snap.Joints.Num(), 1);
+		if (Snap.Joints.Num() == 1)
+		{
+			TestEqual(TEXT("survivor beds onto brick 1 (OtherPieceIndex 1)"),
+				Snap.Joints[0].OtherPieceIndex, 1);
+			CheckProfileIdentity(
+				*this,
+				TEXT("survivor bed joint profile == GeneralPurposeMortar: "),
+				Snap.Joints[0].Profile,
+				GeneralPurposeMortar);
+		}
+	}
+
+	/*
+	 * 3. Belt-and-braces: NO returned candidate's box interpenetrates ANY nearby piece.
+	 * Derived here independently from the box-overlap definition above so the filter is
+	 * pinned by behaviour, not by agreeing with a production helper. (The Free fallback at
+	 * the clear requested pose is covered by this too.)
+	 */
+	for (const FSnapCandidate& C : Candidates)
+	{
+		for (int32 j = 0; j < NearbyBoxes.Num(); ++j)
+		{
+			const FPieceBox& Other = NearbyBoxes[j];
+			const bool bOverlapX =
+				FMath::Abs(C.CentreCm.X - Other.CentreCm.X) < Placed.ExtentCm.X + Other.ExtentCm.X - Tol;
+			const bool bOverlapY =
+				FMath::Abs(C.CentreCm.Y - Other.CentreCm.Y) < Placed.ExtentCm.Y + Other.ExtentCm.Y - Tol;
+			const bool bOverlapZ =
+				FMath::Abs(C.CentreCm.Z - Other.CentreCm.Z) < Placed.ExtentCm.Z + Other.ExtentCm.Z - Tol;
+			TestFalse(
+				*FString::Printf(
+					TEXT("candidate at (%g,%g,%g) does not interpenetrate nearby piece %d"),
+					C.CentreCm.X, C.CentreCm.Y, C.CentreCm.Z, j),
+				bOverlapX && bOverlapY && bOverlapZ);
+		}
+	}
+
+	return true;
+}
+
+/**
+ * BEHAVIOR 2b, CONTACT POSE SURVIVES (regression pin). The occupancy filter must drop only
+ * true interpenetrations, never a legitimate joint-separated contact. A next-course snap
+ * sits one joint-thickness ABOVE the brick it beds on — its box overlaps that brick in X
+ * and Y but is GAPPED in Z (dZ 7.5 > sumZ 6.5), so it is a CONTACT, not an overlap, and
+ * must remain offered.
+ *
+ * Fixture: one ClayBrick at (0,0,0); a ClayBrick requested at (11.0,0,7.5), whose +X
+ * next-course pose is (11.25,0,7.5) — one joint above brick 0. This is the exact pose the
+ * BEHAVIOR 2a test already pins; here it re-asserts it survives the occupancy filter, so a
+ * too-aggressive filter that treated the joint-contact as an overlap would fail.
+ *
+ * Green today (no filter to over-drop yet) and must stay green after the filter lands.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverContactPoseSurvivesTest,
+	"DestructionGame.Core.BuildMode.SnapSolverContactPoseSurvives",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverContactPoseSurvivesTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	const FPieceBox Existing{ FVector(0.0, 0.0, 0.0), HalfBrick };
+	const TArray<FPieceBox> NearbyBoxes = { Existing };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick };
+
+	// Requested just below/beside the next-course pose so the +X stagger is the natural snap.
+	const FVector Requested(11.0, 0.0, 7.5);
+	const FPieceBox Placed{ Requested, HalfBrick };
+	const FSnapSettings Settings;
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, ClayBrick, NearbyBoxes, NearbyMaterials, Settings);
+
+	// The next-course pose one joint above brick 0: gapped in Z, so a contact, not an overlap.
+	const FVector ContactPose(11.25, 0.0, 7.5);
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	int32 ContactIndex = INDEX_NONE;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		if (Candidates[i].Kind == ESnapKind::BrickNextCourse
+			&& Candidates[i].CentreCm.Equals(ContactPose, Tol))
+		{
+			ContactIndex = i;
+			break;
+		}
+	}
+
+	const bool bFound = ContactIndex != INDEX_NONE;
+	TestTrue(
+		TEXT("the joint-separated next-course contact at (11.25,0,7.5) survives the occupancy filter"),
+		bFound);
+
+	if (bFound)
+	{
+		const FSnapCandidate& Snap = Candidates[ContactIndex];
+		TestEqual(TEXT("contact candidate forms exactly one bed joint"), Snap.Joints.Num(), 1);
+		if (Snap.Joints.Num() == 1)
+		{
+			TestEqual(TEXT("contact candidate beds onto brick 0 (OtherPieceIndex 0)"),
+				Snap.Joints[0].OtherPieceIndex, 0);
+			CheckProfileIdentity(
+				*this,
+				TEXT("contact bed joint profile == GeneralPurposeMortar: "),
+				Snap.Joints[0].Profile,
+				GeneralPurposeMortar);
+		}
+	}
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
