@@ -3369,33 +3369,24 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 		}
 	}
 
-	/*
-	 * FLOOD A REGION FROM THE SEED by joint-hops up to RegionBlockCap blocks. A neighbour reached
-	 * once the region is full joins the one-hop frontier RING instead, which is pinned grounded — the
-	 * region's tie to the earth it hangs from. With RegionBlockCap >= the live block count the flood
-	 * covers everything and the ring is empty, so the boundary is the earth alone (slice 1's case).
-	 */
-	TSet<int32> Region;
-	TSet<int32> Boundary;
-	TArray<int32> Frontier;
-
 	auto IsLiveInStructure = [this](int32 Piece)
 	{
 		return Pieces.IsValidIndex(Piece) && !IsPieceRemoved(Piece) && Pieces[Piece].bIsInTheStructure;
 	};
 
 	/*
-	 * Admit a live candidate into the region ONLY IF the region united with the grounded boundary
-	 * ring it would then induce still fits RegionBlockCap. The frontier ring is derived from the
-	 * FINAL region, so the cap has to be spent on R AND the B that R carries — bounding |R| alone
-	 * lets the one-hop ring push the posed problem past the cap, which is exactly the plan's stopping
-	 * gate "region ∪ grounded boundary <= region cap" (REGIONAL_PROVER_PLAN.md §1). Boundary is kept
-	 * as the region's exact induced one-hop frontier at every step, so its running size IS the ring
-	 * that would be grounded; a rejected candidate simply stays in that boundary. Counting R∪B can
-	 * only make the region SMALLER, never wrong — by the relaxation bound every felled set is a
-	 * subset of the whole-structure truth regardless of where the R/B cut falls.
+	 * THE REGION AND ITS GROUNDED FRONTIER, grown IN PLACE. AdmitToRegion moves a live candidate into
+	 * Region only if the region united with the grounded boundary ring it would then induce still fits
+	 * the running block budget — the budget is spent on R AND the B that R carries (bounding |R| alone
+	 * lets the one-hop ring push the posed problem past the budget, the plan's gate "region u grounded
+	 * boundary <= budget", REGIONAL_PROVER_PLAN.md §1). Boundary is kept as the region's exact induced
+	 * one-hop frontier at every step; a rejected candidate stays in that boundary — its grounded ring is
+	 * the region's tie to the earth it hangs from.
 	 */
-	auto AdmitToRegion = [&](int32 Candidate) -> bool
+	TSet<int32> Region;
+	TSet<int32> Boundary;
+
+	auto AdmitToRegion = [&](int32 Candidate, int32 Budget) -> bool
 	{
 		if (!IsLiveInStructure(Candidate) || Region.Contains(Candidate))
 		{
@@ -3419,7 +3410,7 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 		const int32 ProspectiveBoundary =
 			Boundary.Num() - (Boundary.Contains(Candidate) ? 1 : 0) + NewRingPieces.Num();
 
-		if (ProspectiveRegion + ProspectiveBoundary > RegionBlockCap)
+		if (ProspectiveRegion + ProspectiveBoundary > Budget)
 		{
 			return false;
 		}
@@ -3432,81 +3423,277 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 			Boundary.Add(RingPiece);
 		}
 
-		Frontier.Add(Candidate);
 		return true;
 	};
 
 	/*
-	 * A seed that cannot be admitted (the cap is already full) is dropped, NOT added to the grounded
-	 * boundary — unlike a rejected BFS ring piece below. Grounding a seed would pin the very
-	 * disturbance the region exists to examine, suppressing the collapse it seeds; and in the only
-	 * case a seed is rejected outright (a cap too small to hold even one seed's neighbourhood) the
-	 * region comes out empty and the prove fails closed to the router baseline. A rejected seed that
-	 * neighbours an admitted region piece is still picked up as boundary through the BFS below.
+	 * GROW THE REGION by a BFS in joint-hops from a frontier seed set, up to Budget blocks, returning the
+	 * number of blocks admitted. A frontier seed that cannot be admitted (the budget is full) is DROPPED,
+	 * not grounded — grounding the very pieces the growth pushes from would pin the collapse it chases; a
+	 * BFS-discovered neighbour that cannot be admitted becomes grounded boundary instead. The BFS order is
+	 * a function of the (sorted) frontier array and the ascending-connection-index adjacency, both fixed,
+	 * so a caller that hands a deterministically-ordered frontier gets a deterministic region.
 	 */
-	for (const int32 SeedPiece : Seed)
+	auto GrowFrom = [&](const TArray<int32>& FrontierSeeds, int32 Budget) -> int32
 	{
-		AdmitToRegion(SeedPiece);
-	}
+		const int32 Before = Region.Num();
+		TArray<int32> Active;
 
-	for (int32 Head = 0; Head < Frontier.Num(); ++Head)
-	{
-		const int32 Piece = Frontier[Head];
-
-		for (const int32 Index : PieceJoints[Piece])
+		for (const int32 SeedPiece : FrontierSeeds)
 		{
-			const int32 Other = OtherEndOf(Connections[Index], Piece);
-
-			if (!IsLiveInStructure(Other) || Region.Contains(Other))
+			if (AdmitToRegion(SeedPiece, Budget))
 			{
-				continue;
+				Active.Add(SeedPiece);
+			}
+		}
+
+		for (int32 Head = 0; Head < Active.Num(); ++Head)
+		{
+			const int32 Piece = Active[Head];
+
+			for (const int32 Index : PieceJoints[Piece])
+			{
+				const int32 Other = OtherEndOf(Connections[Index], Piece);
+
+				if (!IsLiveInStructure(Other) || Region.Contains(Other))
+				{
+					continue;
+				}
+
+				if (AdmitToRegion(Other, Budget))
+				{
+					Active.Add(Other);
+				}
+				else
+				{
+					Boundary.Add(Other);
+				}
+			}
+		}
+
+		return Region.Num() - Before;
+	};
+
+	/* Set equality without an operator== on TSet: same size and one contained in the other. */
+	auto RegionsMatch = [](const TSet<int32>& A, const TSet<int32>& B) -> bool
+	{
+		if (A.Num() != B.Num())
+		{
+			return false;
+		}
+
+		for (const int32 Piece : A)
+		{
+			if (!B.Contains(Piece))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	};
+
+	/*
+	 * PHASE 1 — a MODEST initial region flooded from the disturbance seed, DELIBERATELY far smaller than
+	 * RegionBlockCap (REGIONAL_PROVER_PLAN.md §§1-3). This is the whole point of grow-on-contact: pose an
+	 * LP the size of the local mechanism, not the size of the cap. A cap-sized first pose is what made the
+	 * flagship 3D scenarios impractical (a ~200-block LP on every above-cap cascade pass); a modest region
+	 * that GROWS only as the proved mechanism demands keeps every pose mechanism-sized even with a large
+	 * cap standing as the ceiling. The budget is the seed's own footprint plus a small ring, floored at
+	 * 16 so a single-piece seed still poses a meaningful neighbourhood, and never above the cap.
+	 */
+	const int32 InitialBudget = FMath::Min(RegionBlockCap, FMath::Max(16, Seed.Num() + 8));
+	int32 EffectiveBudget = InitialBudget;
+
+	GrowFrom(Seed, EffectiveBudget);
+
+	/*
+	 * GROW-ON-CONTACT (REGIONAL_PROVER_PLAN.md slice 3). After each solve:
+	 *   - a certified fall whose mechanism is INTERIOR (no moved block touches a cut-artifact grounded
+	 *     boundary — every grounded neighbour is a genuine bIsGrounded foundation) is complete: the true
+	 *     mechanism cannot extend past real earth, so stitch it;
+	 *   - a certified fall that DOES touch a cut-artifact grounded boundary may hide more collapse behind
+	 *     that pinned block, so RE-FLOOD the region from the moved set at a larger budget — mechanism
+	 *     directed, so a disconnected standing component the modest flood happened to admit (a grounded
+	 *     island) is dropped (it is unreachable from the moved seeds) and the whole budget is re-spent on
+	 *     the collapse. Re-flood, not merely grow-the-frontier, is what prunes that dead weight;
+	 *   - a pose that does NOT fall has not yet reached the mechanism (the modest region may be too small
+	 *     to contain it), so grow a bounded SPECULATIVE search outward from the whole current boundary and
+	 *     look again.
+	 * Growth is monotone (freeing a cut-artifact grounded block can only let MORE move) and the budget
+	 * DOUBLES each grow, so a local mechanism settles in one or two solves and a cap-spanning one in a few.
+	 * Termination: an interior mechanism; the budget already at its ceiling (CAP-BOUND for a fall — stitch
+	 * the sound partial, the router keeps the rest); a grow/re-flood that changes nothing (fixpoint); or
+	 * the monotone iteration bound. GetLastRegionalProblemBlockCount reports the FINAL pose's |R u B|.
+	 */
+	RigidBlockOracle::FOracleProblem Problem;
+	RigidBlockOracle::FOracleResult Result;
+	bool bLastPoseFell = false;
+
+	const int32 MaxGrowIterations = Pieces.Num() + 4;
+
+	for (int32 Iteration = 0; Iteration < MaxGrowIterations; ++Iteration)
+	{
+		/*
+		 * POSE R + GROUNDED BOUNDARY at feasibility (bGravityIsLive = false) with the below-cap
+		 * first-crack rows — the identical authority BreakByEquilibrium poses. A bridge refusal fails
+		 * closed: no region opinion, so the router baseline stands untouched.
+		 */
+		Problem = RigidBlockOracle::FOracleProblem();
+		FString WhyNot;
+
+		if (!RigidBlockOracle::BuildRegionalProblem(*this, Region, Boundary, Problem, WhyNot))
+		{
+			return 0;
+		}
+
+		/*
+		 * Record the posed problem size — |region u grounded boundary| — the moment the pose exists. Each
+		 * grow pass overwrites it, so GetLastRegionalProblemBlockCount reports the FINAL pose; every grow
+		 * bounds the budget at RegionBlockCap, so it is the gate's witness the ring never overspends.
+		 */
+		LastRegionalProblemBlockCount = Problem.Blocks.Num();
+
+		Problem.bGravityIsLive = false;
+		Problem.bFirstCrackRows = true;
+
+		Result = RigidBlockOracle::SolveRigidBlock(Problem);
+
+		const bool bCertifiedFall =
+			RigidBlockOracle::OutcomeOf(Result) == RigidBlockOracle::EOracleOutcome::Falls
+			&& Result.Mechanism.bPresent && Result.Mechanism.bIsCertified;
+
+		bLastPoseFell = bCertifiedFall;
+
+		/*
+		 * The frontier the next grow pushes from, and the budget ceiling it may grow to. A CERTIFIED FALL
+		 * re-floods mechanism-directed (from the moved set) up to the full RegionBlockCap — real collapse is
+		 * worth the whole budget. A pose that does NOT fall grows a SPECULATIVE search from the whole
+		 * boundary, capped at RegionSpeculativeCeiling far below RegionBlockCap: without a mechanism to
+		 * size to, a blind flood must not balloon toward the cap. A large standing region is the single
+		 * most expensive pose (a feasibility proof over hundreds of blocks), and a blind flood on a big
+		 * structure hits exactly that — the speculative ceiling is what keeps a wandering search cheap,
+		 * while a chain small enough to fit inside it still floods to its free end and falls (so the
+		 * one-directional prover still upgrades those router over-holds). A local mechanism the search
+		 * would only reach past the ceiling is an accepted miss — the router already stands it
+		 * (REGIONAL_PROVER_PLAN.md §1, "a region too small to contain the mechanism ... acceptable").
+		 */
+		const int32 RegionSpeculativeCeiling = FMath::Min(RegionBlockCap, 48);
+
+		TArray<int32> GrowFrontier;
+		int32 GrowCeiling = RegionBlockCap;
+		bool bReFloodFromMechanism = false;
+
+		if (bCertifiedFall)
+		{
+			TSet<int32> MovedPieces;
+
+			for (int32 Block = 0; Block < Result.Mechanism.Blocks.Num(); ++Block)
+			{
+				if (Result.Mechanism.Blocks[Block].bMoves && Problem.PieceOfBlock.IsValidIndex(Block))
+				{
+					MovedPieces.Add(Problem.PieceOfBlock[Block]);
+				}
 			}
 
-			if (!AdmitToRegion(Other))
+			/*
+			 * THE CONTACT TEST — does a moved block neighbour a cut-artifact grounded boundary block (in
+			 * Boundary but NOT a genuine bIsGrounded foundation)? A real foundation is earth and stays
+			 * earth; only a block the flood pinned grounded may hide more collapse behind it. No contact
+			 * means the mechanism is bounded by genuine foundations — interior, nothing more to reveal.
+			 */
+			bool bContact = false;
+
+			for (const int32 BoundaryPiece : Boundary)
 			{
-				Boundary.Add(Other);
+				if (!Pieces.IsValidIndex(BoundaryPiece) || Pieces[BoundaryPiece].bIsGrounded)
+				{
+					continue;
+				}
+
+				for (const int32 Index : PieceJoints[BoundaryPiece])
+				{
+					if (MovedPieces.Contains(OtherEndOf(Connections[Index], BoundaryPiece)))
+					{
+						bContact = true;
+						break;
+					}
+				}
+
+				if (bContact)
+				{
+					break;
+				}
 			}
+
+			if (!bContact)
+			{
+				/* Interior mechanism — bounded by genuine foundations. Done; stitch it below. */
+				break;
+			}
+
+			/* Re-flood from the moved set so a disconnected standing component is pruned as budget grows. */
+			GrowFrontier = MovedPieces.Array();
+			bReFloodFromMechanism = true;
+		}
+		else
+		{
+			/*
+			 * No fall yet — the modest region has not reached the mechanism. Grow a SPECULATIVE search
+			 * outward from the whole current boundary (there is no mechanism to follow) and look again,
+			 * bounded by the speculative ceiling. This is the only branch that grows a non-mechanism
+			 * direction, and it runs ONLY while nothing has fallen, so it cannot grow into a standing
+			 * island that sits beside a live collapse (that path always falls first and re-floods above).
+			 */
+			GrowFrontier = Boundary.Array();
+			GrowCeiling = RegionSpeculativeCeiling;
+		}
+
+		/* Deterministic admission order regardless of TSet iteration order. */
+		GrowFrontier.Sort();
+
+		if (EffectiveBudget >= GrowCeiling)
+		{
+			/*
+			 * At the applicable ceiling — CAP-BOUND for a fall (stitch the sound partial below, the router
+			 * keeps the rest), or the speculative ceiling reached with no fall (an accepted miss, return 0).
+			 */
+			break;
+		}
+
+		EffectiveBudget = FMath::Min(GrowCeiling, EffectiveBudget * 2);
+
+		if (bReFloodFromMechanism)
+		{
+			/*
+			 * RE-FLOOD from the mechanism at the larger budget: rebuild the region from the moved seeds so
+			 * blocks unreachable from the collapse (a disconnected grounded island) fall out and the budget
+			 * is re-spent on the mechanism's own component. A rebuild that reproduces the region is a
+			 * fixpoint (or cap-bound) — nothing more to reach, so stitch the current mechanism.
+			 */
+			TSet<int32> PriorRegion = Region;
+			Region.Reset();
+			Boundary.Reset();
+			GrowFrom(GrowFrontier, EffectiveBudget);
+
+			if (RegionsMatch(Region, PriorRegion))
+			{
+				break;
+			}
+		}
+		else if (GrowFrom(GrowFrontier, EffectiveBudget) == 0)
+		{
+			/* The speculative frontier admitted nothing even at the larger budget — a fixpoint. Stop. */
+			break;
 		}
 	}
 
-	/*
-	 * POSE R + GROUNDED BOUNDARY at feasibility (bGravityIsLive = false) with the below-cap
-	 * first-crack rows — the identical authority BreakByEquilibrium poses. A bridge refusal fails
-	 * closed: no region opinion, so the router baseline stands untouched.
-	 */
-	RigidBlockOracle::FOracleProblem Problem;
-	FString WhyNot;
-
-	if (!RigidBlockOracle::BuildRegionalProblem(*this, Region, Boundary, Problem, WhyNot))
+	if (!bLastPoseFell)
 	{
-		return 0;
-	}
-
-	/*
-	 * Record the posed problem size — |region ∪ grounded boundary| — the moment the pose exists. The
-	 * flood above bounds this at RegionBlockCap, so GetLastRegionalProblemBlockCount is the gate's
-	 * witness that the ring never overspends the cap.
-	 */
-	LastRegionalProblemBlockCount = Problem.Blocks.Num();
-
-	Problem.bGravityIsLive = false;
-	Problem.bFirstCrackRows = true;
-
-	const RigidBlockOracle::FOracleResult Result = RigidBlockOracle::SolveRigidBlock(Problem);
-	const RigidBlockOracle::EOracleOutcome Outcome = RigidBlockOracle::OutcomeOf(Result);
-
-	if (Outcome != RigidBlockOracle::EOracleOutcome::Falls)
-	{
-		/* No certified fall in the region — the prover has no opinion and defers to the router. */
 		return 0;
 	}
 
 	const RigidBlockOracle::FOracleMechanism& Mechanism = Result.Mechanism;
-
-	if (!Mechanism.bPresent || !Mechanism.bIsCertified)
-	{
-		return 0;
-	}
 
 	/*
 	 * FALLING-ONLY STITCH. A grounded boundary block writes no equilibrium rows and never moves, so
@@ -3599,11 +3786,12 @@ void FStructure::SetRegionBlockCap(int32 MaxBlocks)
 	/*
 	 * Stores the cap the regional prover's flood consults in SolveAndBreak's above-cap decline arm
 	 * (REGIONAL_PROVER_PLAN.md §4, physics-model call 2): the largest |region ∪ grounded boundary| the
-	 * flood may pose. The member DEFAULTS TO 48 (deliberately modest, NOT the equilibrium gate's 200 —
-	 * the prover poses a region-cap-sized LP every above-cap pass and over-holds are local, so a small
-	 * region catches them cheaply; 200 remains reachable through this setter as a ceiling). A bare
-	 * assignment — no branch, no arithmetic — so it drives no behaviour on its own; the cascade seam
-	 * reads it.
+	 * flood may pose. The member DEFAULTS TO 200 (matching the equilibrium gate), the owner's original
+	 * "match 200" reach — affordable because grow-from-modest poses a MECHANISM-sized region, not a
+	 * cap-sized one (a local over-hold poses a few blocks even at cap 200, and the speculative ceiling
+	 * keeps a no-fall search cheap), so the cap is only ever the ceiling a genuinely large propagating
+	 * collapse extends toward. A bare assignment — no branch, no arithmetic — so it drives no behaviour
+	 * on its own; the cascade seam reads it.
 	 */
 	RegionalProverBlockCap = MaxBlocks;
 }

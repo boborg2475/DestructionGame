@@ -109,8 +109,18 @@ derivation in `SolveAndBreak`.
   mid-stack and the frontier ring is pinned grounded. Assert the grounded-boundary region is still
   infeasible and fells the sub-stack; the whole-structure ground-only LP names a superset (soundness
   witness). Teeth: mutate the boundary pose to *free* → wrongly feasible (grounding is load-bearing).
-- **Slice 3 — monotone growth on boundary contact. REFRAMED + DEFERRED as a latency/branching-reach
-  optimization (2026-09-03).** The finding that reframes it: the committed flood (slices 1-2) is
+- **Slice 3 — monotone growth on boundary contact. LANDED 2026-09-03 (grow-from-modest); default cap
+  raised back to 200.** `ProveRegionalCollapse` now floods a MODEST initial region (~16 blocks) from the
+  seed and grows only as the proof demands: an interior fall (bounded by genuine `bIsGrounded`
+  foundations) is stitched; a fall touching a cut-artifact grounded boundary re-floods mechanism-directed
+  from the moved set at a doubled budget up to the full cap; a no-fall pose grows a bounded speculative
+  search capped at `min(cap,48)` (a blind standing flood must not balloon toward the cap). Monotone,
+  terminating (interior / cap-bound / fixpoint / iteration bound). Every pose is mechanism-sized, so the
+  cap-200 corner-hang is **0.53 s** (was >25 min greedy-at-200) and the default cap is back to **200** —
+  the owner's original reach, now cheap. Driven by `RegionalProver.GrowOnContactReachesPastAStandingBranch`.
+  The reframe below is kept as the historical reasoning that got us here.
+
+  *(Historical — why the first attempt was reframed:)* The committed flood (slices 1-2) was
   *greedy-fill-to-cap*, which already fells everything within the cap-ball of the seed — when
   `cap ≥ structure` it fells the full truth (the seam test), and when `cap < structure` it fills
   exactly to the cap and fells the cap-bound partial (the grounded-cut test). There is **no gap**
@@ -127,7 +137,7 @@ derivation in `SolveAndBreak`.
   demands it. The cap-invariant property guard (`RegionUnionBoundaryCapInvariantHoldsAcrossSeedsAndCaps`)
   landed here and guards the flood arithmetic through that future change.
 - **Slice 4a — cascade integration. DONE 2026-09-03 (committed).** Wired into `SolveAndBreak`'s
-  above-cap decline arm (`SetRegionBlockCap` settable, default 48 per the latency unblock above;
+  above-cap decline arm (`SetRegionBlockCap` settable, default 200 (grow-from-modest makes it cheap — see slice 3);
   `ProveRegionalCollapse` factored from the test entry; seed = tombstone neighbours pass 1, else
   previous-pass severed-joint endpoints; gated on `HasCompleteGeometry` → fuzz no-op). Driven by the
   Timber-board-on-a-token-Nail over-hold (`RegionalProverCascadeSeamTest`): the router stands the
@@ -145,7 +155,7 @@ derivation in `SolveAndBreak`.
     the prover RE-FELLING already-disconnected pieces each pass (jointless blocks are trivially moving
     in the re-pose); termination is the monotone-intact-joints invariant (bounded by connection count),
     which is proven, not empirical. **Follow-up:** dev observed a shed-corner-hang hang under a
-    Falling-count key at cap 200 — likely just the slow 200-block LPs (now cured by cap 48) rather than
+    Falling-count key at cap 200 — likely just the slow 200-block LPs (now cured by grow-from-modest — cap 200 is sub-second) rather than
     a true loop; if it recurs, reproduce it by INSTRUMENTING the actual shed scenario (which piece
     re-fells, via which pose), not a hand fixture. (`RigidBlockOracle.cpp` 1e-6 sever rule; `Structure.cpp`
     SolveLoads support BFS; the corrected oscillation comment at the cascade arm.)
@@ -199,7 +209,7 @@ All four are settled; slice 4 is unblocked.
    keeps it fully settable; **200 remains reachable via the setter as the ceiling**, and the accepted
    false-stand miss when a mechanism exceeds the cap stands ("thrust is not local"). **Grow-on-contact
    (slice 3) is the deferred proper fix** that combines cheap typical cost with the full 200 reach; the
-   modest default is the quick unblock under it.
+   48 default was the interim unblock; grow-from-modest has since landed and the default is back to 200.
 3. **Crediting the first-crack LP locally above the cap — RATIFIED (no objection).** The prover poses
    the region with `bFirstCrackRows=true` (the below-cap authority). case-21 distrusts LP bond credit
    above the cap only for *stands*; the prover never stands anything, so case-21 does not bar it.

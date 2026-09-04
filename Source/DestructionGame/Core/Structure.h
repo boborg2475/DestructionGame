@@ -1378,7 +1378,7 @@ private:
 	 * ProveRegionalCollapse take, so the -Werror shadow (C4458) never fires: the isolated test entry
 	 * drives the cap through its parameter, the real cascade reads this member.
 	 */
-	int32 RegionalProverBlockCap = 48;
+	int32 RegionalProverBlockCap = 200;
 
 	/*
 	 * INSTRUMENTATION for GetLastRegionalProblemBlockCount — the number of oracle blocks the last
