@@ -1,8 +1,9 @@
 # Build Mode — interactive building with brick and wood (feature plan)
 
-**Status: agreed 2026-09-03, not yet started.** This is the spec to build from after a context
-compaction. Read [CLAUDE.md](../CLAUDE.md), [DESIGN.md](DESIGN.md) and [CURRENT_STATE.md](CURRENT_STATE.md)
-first — they own the model, the constants and the standing rulings.
+**Status: IN PROGRESS (started 2026-09-03).** Slice 1 behavior 1 — `BuildMode::JointForContact`, the
+automatic joint inference — has landed (see the ruling at the bottom). The snap-candidate solver and the
+placement API are next. Read [CLAUDE.md](../CLAUDE.md), [DESIGN.md](DESIGN.md) and
+[CURRENT_STATE.md](CURRENT_STATE.md) first — they own the model, the constants and the standing rulings.
 
 ## The feature (owner's words, distilled)
 Let the player **build different buildings** out of **brick and timber**, bringing pieces together
@@ -21,12 +22,14 @@ the brain first as TDD-tested code, drivable by a thin harness (a scripted place
 that renders), then layer the interactive UI on a proven core.** Do NOT start with the full editor UX.
 
 ## Three parts, in order of how much is new
-1. **Joint formation — mostly REUSE.** When a placed piece abuts others, the connection profile is
-   chosen by material pairing + contact direction: brick–brick bed → `GeneralPurposeMortar`; the
-   vertical head/corner joint → `GeneralPurposeMortarPerpend`; timber-on-brick → the `Screw`/cleat
-   fastener; dry contact → `DryStone` friction. This is the exact geometry-and-materials logic
-   `DestructionShed3D::BuildRealistic` already uses to assemble the 442-piece shed. Exposing it to
-   interactive placement is largely reuse.
+1. **Joint formation — now inference (`BuildMode::JointForContact`, LANDED).** When a placed piece abuts
+   others, the connection profile is chosen automatically by material pairing + contact direction — see
+   the ruling at the bottom for the exact contract: brick–brick bed → `GeneralPurposeMortar`; the
+   vertical head/corner joint → `GeneralPurposeMortarPerpend`; **any timber contact → `DryStone` passive
+   bearing** (a placed plank is resting, not fixed — fastening with `Screw`/`Nail`/`Bolt` is a later
+   slice's explicit override, never auto-inferred). This encodes the same judgment
+   `DestructionShed3D::BuildRealistic` applies by hand per joint; that builder's sweep is not yet wired
+   onto the function (see CURRENT_STATE) — today they agree on every axis-aligned contact.
 2. **Snap-candidate solver — the NEW BRAIN.** A well-bounded, testable unit:
    *(piece being placed + nearby pieces + their materials) → ranked candidate poses.* This is where
    the feature's expressiveness lives. Snap vocabulary below.
@@ -77,8 +80,10 @@ Candidates are ranked; the caller (harness now, UI later) picks among them.
 - **Grow:** posts/beams/framing, gable roofs, stack-bond, alternate materials, the interactive UI, save/load.
 
 ## Open decisions — surface to the owner before they change committed behavior
-- **Joint override:** infer the joint from materials+contact by default; allow "screw this vs mortar
-  this" override later. (Default: infer.)
+- **Joint override:** CLOSED for the default direction (owner-delegated 2026-09-03, see the ruling at
+  the bottom) — infer the passive resting joint from materials + contact; masonry beds → mortar,
+  heads/corners → perpend, any timber → DryStone bearing. Still OPEN: the explicit per-joint override
+  ("screw this one vs let it rest") — a later slice, once fastening is added.
 - **Live structural feedback while building:** the build mode *can* tell you when what you placed is
   over-capacity / would fall (same `SolveLoads`), or leave it to be discovered on "run." (Owner call.)
 - **Persistence / save format:** a real new piece; shape it when the first cut works.
@@ -91,3 +96,21 @@ placement) plus automatic joint formation reusing the material-pairing/interface
 selection** — driven by unit tests (snap poses, chosen joint profiles, running-bond overlap) and a
 render of a small placed structure. Later slices add the placement API loop, the interactive UI, and
 save/load.
+
+## Ruling — automatic joint inference default (decided 2026-09-03, owner-delegated)
+The owner delegated this call ("make the best decision... I'll be expanding features... don't stop to
+ask"), so it is decided rather than deferred:
+
+**`JointForContact(materialA, materialB, interfaceNormal)` picks the PASSIVE resting joint:**
+- both faces compression-dominant masonry (`bCompressionDominant`), interface normal ~ vertical (bed) →
+  `GeneralPurposeMortar`.
+- both masonry, interface normal horizontal (head / corner return) → `GeneralPurposeMortarPerpend`.
+- **any face NOT compression-dominant (timber today) → `DryStone`** — a compression + friction BEARING,
+  carrying no tension. A placed plank/lintel is *resting*, not *fixed*.
+- Fastening (`Screw`/`Nail`/`Bolt`, tension-capable) is an **explicit override**, a later slice — never
+  auto-inferred. This is the "joint override" open decision, now closed for the default direction.
+
+Rationale: physically honest (nothing is tension-capable unless you say so), never hides an instability,
+matches every roof-purlin/post bearing in `BuildRealistic`, and keys off a real material property
+(`bCompressionDominant`) rather than profile identity, so it extends to new materials without a rewrite.
+The discriminator is a *hint* to dev-expert; the test asserts on the returned profile, not the branch.
