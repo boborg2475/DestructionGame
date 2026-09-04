@@ -15,9 +15,11 @@ forms that candidate's joints as real `FConnection`s via `MakeInterface` — so 
 grows a live, jointed `FStructure`. And `BuildMode::BuildDemoBuilding` (`Core/BuildMode/DemoBuilding.*`)
 scripts a small running-bond wall + timber wall-plate via `PlacePiece` and PROVES it STANDS (8 pieces, 14
 joints — 6 mortar beds, 5 perpend heads, 3 DryStone bearings — every non-grounded piece Supported after
-`SolveLoads`). Next: the RENDER of that structure (adopt into a world via a catalogue row + a
-`New-ScenarioMap.ps1` map + a `LEVELS.md` entry, screenshot it, show the owner). Then start the interactive
-UI (the /goal's "after the first part"). CORNER-return is its own
+`SolveLoads`). And the RENDER landed — `DestructionGame.Visual.BuildDemoScreenshot` (a self-contained
+NonNullRHI screenshot harness) stands the demo up and writes `Saved/Screenshots/WindowsEditor/BuildDemo.png`,
+verified by eye as a faithful head-on view of the standing wall+plate. **THE FIRST PART IS CLOSED** (brain +
+render). Follow-ups logged in CURRENT_STATE (half-buried grounded course, HUD banner, harness hardening).
+NOW STARTING THE INTERACTIVE UI (the /goal's "after the first part") — see the UI design section below. CORNER-return is its own
 later slice (needs the head-vs-corner inference extension — see CURRENT_STATE). Occupancy is handled — snap
 candidates into an occupied cell are dropped; free placement is honoured verbatim (the owner-delegated
 "place anywhere OR snap" ruling, DESIGN §8). (Open follow-ups — ranking policy, merged-candidate labelling,
@@ -135,3 +137,51 @@ Rationale: physically honest (nothing is tension-capable unless you say so), nev
 matches every roof-purlin/post bearing in `BuildRealistic`, and keys off a real material property
 (`bCompressionDominant`) rather than profile identity, so it extends to new materials without a rewrite.
 The discriminator is a *hint* to dev-expert; the test asserts on the returned profile, not the branch.
+
+## Interactive UI — the second part (design, 2026-09-04)
+The /goal: "start the interactive UI after you are done with the first part." The brain (snap solver +
+`JointForContact` + `PlacePiece` + occupancy) and its render close the first part. The UI layers input,
+preview and a palette on that proven core — it invents no physics.
+
+### The build loop (one placement)
+1. Cursor/aim → a **requested world pose** (raycast onto a build plane, or onto the face of an existing
+   piece for stacking). 2. Run `BuildMode::SolveSnapCandidates` against the current structure's boxes →
+   ranked candidates. 3. Show a **ghost** of `Candidates[0]` at its `CentreCm`, tinted by `Kind` (and/or
+   showing the joints it would form). 4. On confirm (click) → an incremental world-layer place: call
+   `BuildMode::PlacePiece` on the bound `FBrickLayout`, then spawn ONE `ABrickActor` for the new piece and
+   adopt the delta — the structure stays live and immediately destructible. 5. The existing destroy loop
+   (cut/Release/settle) knocks it down.
+
+### Reuse (do NOT rebuild)
+- `BuildMode::PlacePiece` / `SolveSnapCandidates` / occupancy — the whole placement decision.
+- `UDestructionStructureSubsystem` (`BuildLayout`, `AdoptLayout`, `Destroy`, `Find`, `CommitPieceAction`),
+  `ABrickActor` (`Release`, **`SetHighlighted(EBrickHighlight)`** for the snap highlight, movable/kinematic
+  body, `SetPieceRef`). `BrickHighlightForNeighbourSlot` already maps a slot → highlight colour.
+- The scenario/world framing + the screenshot harness for functional-test coverage.
+
+### New parts (each its own TDD slice)
+- **UI-1 — incremental world place (the core new seam).** A subsystem call, e.g.
+  `PlaceBuildPiece(StructureId, RequestedCentreCm, ExtentCm, Material, bGrounded) -> FPieceRef/handle`,
+  that runs `BuildMode::PlacePiece` on the bound layout and spawns the ONE new `ABrickActor` (kinematic,
+  material-coloured), keeping the binding's boxes/handles parallel. Unit/world-testable directly (spawn a
+  brick, assert the structure grew by one live jointed piece + one actor). This is the click-to-build loop
+  with a fixed material and no ghost yet — build a wall, then destroy it.
+- **UI-2 — ghost preview + snap highlight.** A translucent preview actor at `Candidates[0].CentreCm`;
+  `SetHighlighted` on the neighbour(s) the snap would joint to, tinted by `Kind`. Functional test + the
+  screenshot harness (assert the ghost pose == the candidate pose; judge the picture by eye).
+- **UI-3 — material / piece palette.** Pick brick vs timber and a size; drives the `Material`+`ExtentCm`
+  handed to `PlaceBuildPiece`. (First cut: ClayBrick full brick, Timber plate/lintel.)
+- **UI-4 — build/destroy mode toggle + input** (a build player controller/mode): cursor → build-plane
+  raycast, confirm to place, a key to switch to destroy.
+- **UI-5 — save/load** a player building (OPEN decision below).
+
+### Open decisions (owner-delegated; decide when the slice is reached, record in DESIGN §8)
+- **Live structural feedback while building:** RECOMMEND default OFF — build freely, discover on "run"
+  (matches the existing game loop and keeps the loop simple); add an optional overlay later that runs
+  `SolveLoads` and tints a piece that is over-capacity / would fall. Revisit if the owner wants it live.
+- **Save/load format:** RECOMMEND the build is a serialized ordered list of placements
+  `{RequestedCentreCm, ExtentCm, Material id, bGrounded}` replayed through `PlacePiece` — deterministic,
+  tiny, and it reproduces the exact same joints because the solver is pure. (A raw piece/joint dump is the
+  alternative; the replay list is smaller and self-validating.) Shape it when UI-1..4 work.
+- **Occupied-pose warning:** the `bRequestedPoseOccupied` signal (CURRENT_STATE) so the UI can warn when
+  only Free was available.
