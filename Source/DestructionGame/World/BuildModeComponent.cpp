@@ -160,6 +160,24 @@ FBuildPreview UBuildModeComponent::UpdatePreviewFromRay(
 	 * cursor for ConfirmPlace — the ray path reuses it whole.
 	 */
 	const FVector Hit = RayOriginCm + HitT * RayDirectionCm;
+
+	/*
+	 * A HIT BEYOND THE PICK CLAMP IS A MISS. A near-grazing ray (a tiny but non-zero
+	 * RayDirectionCm.Z) slips the parallel guard yet solves to an enormous t, naming a point
+	 * thousands of km out along the ray — a place the player is not pointing at, only one the ray
+	 * technically meets the plane at. Rejecting it fails closed exactly as the branches above do.
+	 * The NaN-safe !(dist <= max) form also catches a non-finite distance that slipped the guards.
+	 */
+	if (!((Hit - RayOriginCm).Size() <= MaxPickDistanceCm))
+	{
+		if (AActor* Ghost = EnsureGhost())
+		{
+			Ghost->SetActorHiddenInGame(true);
+		}
+		bHasValidPreview = false;
+		return FBuildPreview{};
+	}
+
 	return UpdatePreviewAt(FVector(Hit.X, Hit.Y, BuildPlaneZCm));
 }
 

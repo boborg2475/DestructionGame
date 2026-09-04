@@ -1189,4 +1189,155 @@ bool FBuildModeComponentNonFiniteRayFailsClosedTest::RunTest(const FString& Para
 	return true;
 }
 
+/**
+ * BUILD-MODE UI-4b hardening — a NEAR-GRAZING ray whose hit is BEYOND the pick clamp FAILS CLOSED.
+ *
+ * The parallel guard is FMath::IsNearlyZero(Direction.Z) at ~1e-8. A ray with a TINY but non-zero
+ * Direction.Z passes that guard, yet t = (BuildPlaneZCm - Origin.Z) / Direction.Z is enormous, so
+ * the solved hit sits thousands of kilometres out along the ray — a pose PreviewBuildPiece reports
+ * VALID (the id is known, the snap is Free) and the ghost is teleported to, and a click would build
+ * there. The fix clamps the pick: a hit farther than MaxPickDistanceCm from the origin is a MISS,
+ * exactly like the parallel / behind-origin / non-finite branches.
+ *
+ * THE CONCRETE NUMBERS, derived here not imported (BuildPlaneZCm = 0):
+ *   Origin (0, 0, 1000), Direction (1, 0, -1e-6).
+ *   |Direction.Z| = 1e-6 > 1e-8, so this is NOT caught by the parallel guard — a genuine new case
+ *   (the whole point; a Direction.Z the guard already rejected would prove nothing).
+ *   t = (0 - 1000) / (-1e-6) = 1e9.
+ *   Hit = Origin + t * Direction = (1e9, 0, 1000 - 1000) = (1e9, 0, 0); Z pinned to the plane.
+ *   distance(Hit, Origin) = sqrt((1e9)^2 + 1000^2) ~= 1e9 cm = 10,000 km, FAR beyond the
+ *   MaxPickDistanceCm = 100,000 cm (1 km) clamp.
+ *
+ * A VALID nearby down-ray is HELD FIRST so the confirm-places-nothing leg bites: if the far ray
+ * leaves the previously-held valid preview standing, the confirm would commit that stale pose. The
+ * held ray hits (11.25, 0, 0) at distance ~1000 cm — well WITHIN the clamp, so it also serves as
+ * the control that a legitimate nearby pick is NOT rejected. Assertions are on the mechanism —
+ * bValid, IsHidden, the returned ref and the piece count — never position.
+ *
+ * RED TODAY: the far ray currently previews a valid Free pose at (1e9, 0, 0), shows the ghost, and
+ * a confirm commits a brick there. dev clamps on MaxPickDistanceCm. NEEDS A TICKING WORLD for the
+ * spawns, but never ticks.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBuildModeComponentGrazingRayBeyondClampFailsClosedTest,
+	"DestructionGame.World.BuildMode.ComponentGrazingRayBeyondClampFailsClosed",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FBuildModeComponentGrazingRayBeyondClampFailsClosedTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildModeComponentTestSupport;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
+
+	AActor* Owner = TestWorld.World->SpawnActor<AActor>();
+	if (Owner == nullptr)
+	{
+		AddError(TEXT("fixture: the component's owner actor failed to spawn"));
+		return true;
+	}
+
+	UBuildModeComponent* Comp = NewObject<UBuildModeComponent>(Owner);
+	Comp->RegisterComponent();
+
+	/*
+	 * EMPTY structure at the origin build plane: the snap is Free, so every hit previews as valid
+	 * and the only thing under test is the pick-distance clamp, not any running-bond geometry.
+	 */
+	Comp->BeginBuild();
+	const int32 StructureId = Comp->GetStructureId();
+	Comp->bBuildGrounded = false;
+	Comp->BuildPlaneZCm = 0.0;
+
+	/* The clamp default is a concrete 1 km; pin it so the test breaks if that default moves. */
+	TestEqual(
+		FString::Printf(TEXT("the default pick clamp should be 100000 cm (1 km), got %g"),
+			Comp->MaxPickDistanceCm),
+		Comp->MaxPickDistanceCm, 100000.0);
+
+	/*
+	 * CONTROL: a nearby down-ray. Origin (11.25, 0, 1000), straight down -> t = 1000, hit
+	 * (11.25, 0, 0), distance ~1000 cm — WELL WITHIN the clamp. This both HOLDS a valid preview
+	 * (so the far ray's clear can bite below) and proves the clamp does not reject a legitimate
+	 * nearby pick.
+	 */
+	const FVector NearOrigin(11.25, 0.0, 1000.0);
+	const FBuildPreview Near = Comp->UpdatePreviewFromRay(NearOrigin, FVector(0.0, 0.0, -1.0));
+
+	TestTrue(
+		TEXT("control: a nearby down-ray within the clamp must give a valid preview"),
+		Near.bValid);
+
+	AActor* Ghost = Comp->GetGhostActor();
+
+	TestNotNull(
+		TEXT("the valid control preview should have spawned a ghost"),
+		Ghost);
+
+	if (Ghost != nullptr)
+	{
+		TestFalse(
+			TEXT("control: the ghost must be visible after the nearby valid ray"),
+			Ghost->IsHidden());
+	}
+
+	/*
+	 * THE NEAR-GRAZING FAR RAY. Direction.Z = -1e-6 clears the ~1e-8 parallel guard, t = 1e9, and
+	 * the hit lands ~1e9 cm (10,000 km) out — far beyond the 1 km clamp. It must fail closed.
+	 */
+	const FVector GrazingOrigin(0.0, 0.0, 1000.0);
+	const FVector GrazingDir(1.0, 0.0, -1e-6);
+	const FBuildPreview Grazing = Comp->UpdatePreviewFromRay(GrazingOrigin, GrazingDir);
+
+	TestFalse(
+		TEXT("a near-grazing ray whose hit is beyond the clamp must return an invalid preview"),
+		Grazing.bValid);
+
+	if (Ghost != nullptr)
+	{
+		TestTrue(
+			TEXT("a near-grazing ray beyond the clamp must HIDE the ghost"),
+			Ghost->IsHidden());
+	}
+
+	/*
+	 * AND A CONFIRM AFTER THE FAR MISS PLACES NOTHING. The control ray HELD a valid preview; the
+	 * far ray must have SPENT it (bHasValidPreview cleared), so this confirm commits nothing. If
+	 * the clamp path failed to clear that flag, the stale (11.25, 0, 0) pose would commit here —
+	 * this is the leg that bites the missing clear, not the IsHidden legs. A default ref AND an
+	 * unchanged (zero) count are the mechanism, never position.
+	 */
+	const FPieceRef AfterGrazing = Comp->ConfirmPlace();
+
+	TestEqual(
+		FString::Printf(
+			TEXT("a confirm after the beyond-clamp ray must return a default ref, got piece index %d"),
+			AfterGrazing.PieceIndex),
+		AfterGrazing.PieceIndex, static_cast<int32>(INDEX_NONE));
+
+	FStructureBinding* Binding = Subsystem.Find(StructureId);
+
+	TestNotNull(
+		FString::Printf(TEXT("the structure %d should still exist"), StructureId),
+		Binding);
+
+	if (Binding != nullptr)
+	{
+		TestEqual(
+			FString::Printf(
+				TEXT("no beyond-clamp ray may place a piece; the structure holds %d pieces"),
+				Binding->NumPieces()),
+			Binding->NumPieces(), 0);
+	}
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

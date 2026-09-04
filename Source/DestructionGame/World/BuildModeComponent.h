@@ -76,6 +76,14 @@ public:
 	 */
 	double BuildPlaneZCm = 0.0;
 
+	/**
+	 * The FARTHEST a ray-plane hit may be from the ray origin before it is treated as a MISS. A
+	 * near-grazing ray (a tiny but non-zero Direction.Z) slips the parallel guard yet solves to an
+	 * enormous t, previewing a valid pose thousands of km away; clamping the pick distance fails
+	 * that closed. 1 km is generous for any real build.
+	 */
+	double MaxPickDistanceCm = 100000.0;
+
 protected:
 
 	//~ UActorComponent
