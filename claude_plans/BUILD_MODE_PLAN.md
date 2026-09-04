@@ -160,12 +160,15 @@ preview and a palette on that proven core — it invents no physics.
 - The scenario/world framing + the screenshot harness for functional-test coverage.
 
 ### New parts (each its own TDD slice)
-- **UI-1 — incremental world place (the core new seam).** A subsystem call, e.g.
-  `PlaceBuildPiece(StructureId, RequestedCentreCm, ExtentCm, Material, bGrounded) -> FPieceRef/handle`,
-  that runs `BuildMode::PlacePiece` on the bound layout and spawns the ONE new `ABrickActor` (kinematic,
-  material-coloured), keeping the binding's boxes/handles parallel. Unit/world-testable directly (spawn a
-  brick, assert the structure grew by one live jointed piece + one actor). This is the click-to-build loop
-  with a fixed material and no ghost yet — build a wall, then destroy it.
+- **UI-1 — incremental world place (the core new seam). LANDED 2026-09-04.**
+  `UDestructionStructureSubsystem::BeginBuild() -> StructureId` opens an empty live structure;
+  `PlaceBuildPiece(StructureId, RequestedCentreCm, ExtentCm, Material, bGrounded) -> FPieceRef` runs the snap
+  brain (`SolveSnapCandidates`) against the structure's live pieces, spawns the ONE new `ABrickActor`, and
+  forms the candidate's joints via `MakeInterface`/`AddConnection` — one call grows a live, jointed,
+  actor-backed structure. Fails closed (refused piece → actor destroyed, no desync); does NOT solve
+  (live-feedback-off default). Driven by `World.BuildMode.PlaceBuildPieceGrowsALiveStructure`. Follow-ups
+  (CURRENT_STATE): factor the shared decision→add helper as UI-2's first step; return `Kind`/joints not just
+  a ref; the UI owns the cancel/Destroy of an abandoned build.
 - **UI-2 — ghost preview + snap highlight.** A translucent preview actor at `Candidates[0].CentreCm`;
   `SetHighlighted` on the neighbour(s) the snap would joint to, tinted by `Kind`. Functional test + the
   screenshot harness (assert the ghost pose == the candidate pose; judge the picture by eye).

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Core/Layout.h"
 #include "Core/PieceActions.h"
+#include "Core/Profiles/MaterialProfiles.h"
 #include "Core/StructureBinding.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "DestructionStructureSubsystem.generated.h"
@@ -61,6 +62,43 @@ public:
 	 * @return the new structure's id, or INDEX_NONE if nothing was built. A refusal spends no id.
 	 */
 	int32 BuildLayout(const DestructionLayout::FBrickLayout& Layout);
+
+	/**
+	 * Begin an empty, live build structure: register a new, EMPTY FStructureBinding in
+	 * Structures and return its id, so an interactive build can start with nothing and grow one
+	 * placed piece at a time. BuildLayout refuses an empty layout because an id spent on a
+	 * structure nothing will ever name is fail-open; this is the opposite — the id is spent on a
+	 * structure the NEXT call names, and the monotonic-never-reused id discipline is preserved.
+	 *
+	 * THE CALLER OWNS THE CANCEL PATH: an abandoned build leaks an empty binding until Destroy,
+	 * so a UI that opens a build and walks away must Destroy(id) itself. Returns the new id.
+	 */
+	int32 BeginBuild();
+
+	/**
+	 * Run the snap brain against the pieces already in this structure, adopt the piece at the
+	 * best-ranked snapped pose, spawn one ABrickActor for it and form that candidate's joints as
+	 * real FConnections — growing the world structure by one live, jointed, actor-backed piece.
+	 * The snap DECISION is exactly BuildMode::PlacePiece's (SolveSnapCandidates against the live
+	 * pieces' boxes/materials, Candidates[0]); only the world-add differs (it spawns the actor
+	 * and grows the binding rather than a bare FBrickLayout).
+	 *
+	 * FAILS CLOSED: if the piece is refused (a degenerate box gives a NaN mass), the just-spawned
+	 * actor is destroyed and a default (INDEX_NONE) ref returned, so Boxes/actors never desync
+	 * from the piece array. Returns the new piece's FPieceRef, or a default ref on failure/unknown
+	 * structure.
+	 *
+	 * IT DOES NOT SOLVE. A placed piece that cannot stand (a Free brick in mid-air) sits kinematic
+	 * with no support answer until something calls SolveAndPush — which matches the plan's
+	 * "live structural feedback OFF by default" recommendation; the destroy/run path is what
+	 * solves and settles.
+	 */
+	FPieceRef PlaceBuildPiece(
+		int32 StructureId,
+		const FVector& RequestedCentreCm,
+		const FVector& ExtentCm,
+		const DestructionProfiles::FMaterialProfile& Material,
+		bool bGrounded);
 
 	/** The binding for a structure id, or null. */
 	FStructureBinding* Find(int32 StructureId);

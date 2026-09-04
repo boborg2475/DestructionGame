@@ -4,6 +4,8 @@
 
 #include "CollisionQueryParams.h"
 #include "Components/StaticMeshComponent.h"
+#include "Core/BuildMode/SnapSolver.h"
+#include "Core/Connection.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Engine/HitResult.h"
 #include "Engine/StaticMesh.h"
@@ -277,6 +279,117 @@ int32 UDestructionStructureSubsystem::BuildLayout(const DestructionLayout::FBric
 	Structures.Add(StructureId, MoveTemp(Binding));
 
 	return StructureId;
+}
+
+int32 UDestructionStructureSubsystem::BeginBuild()
+{
+	/*
+	 * OPEN AN EMPTY LIVE STRUCTURE. BuildLayout refuses an empty layout, so this is the only
+	 * door to a structure that starts with nothing and grows one placed piece at a time. It
+	 * mirrors BuildLayout's id discipline — an id is spent only once the structure exists —
+	 * but adopts no layout: the binding is created empty and PlaceBuildPiece fills it.
+	 */
+	const int32 StructureId = NextStructureId;
+
+	TUniquePtr<FStructureBinding> Binding = MakeUnique<FStructureBinding>();
+	Binding->StructureId = StructureId;
+
+	NextStructureId = StructureId + 1;
+	Structures.Add(StructureId, MoveTemp(Binding));
+
+	return StructureId;
+}
+
+FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
+	int32 StructureId,
+	const FVector& RequestedCentreCm,
+	const FVector& ExtentCm,
+	const DestructionProfiles::FMaterialProfile& Material,
+	bool bGrounded)
+{
+	using namespace DestructionLayout;
+
+	FStructureBinding* Binding = Find(StructureId);
+
+	/* An id that names nothing places nothing, the same fail-closed shape as every other door. */
+	if (Binding == nullptr)
+	{
+		return FPieceRef{};
+	}
+
+	/*
+	 * THE SAME SNAP DECISION AS BuildMode::PlacePiece — only the world-add differs. NearbyBoxes is
+	 * the whole live piece array and NearbyMaterials is parallel to it, so a candidate's
+	 * OtherPieceIndex is exactly the existing piece's handle. The materials are read back off the
+	 * structure, which is why PlaceBuildPiece stores each piece's material below.
+	 */
+	const int32 PieceCount = Binding->NumPieces();
+
+	TArray<FPieceBox> NearbyBoxes;
+	TArray<DestructionProfiles::FMaterialProfile> NearbyMaterials;
+	NearbyBoxes.Reserve(PieceCount);
+	NearbyMaterials.Reserve(PieceCount);
+	for (int32 i = 0; i < PieceCount; ++i)
+	{
+		NearbyBoxes.Add(Binding->GetBinding(i).Box);
+		const DestructionProfiles::FMaterialProfile* Existing = Binding->GetStructure().GetPiece(i).Material;
+		NearbyMaterials.Add(Existing != nullptr ? *Existing : DestructionProfiles::FMaterialProfile());
+	}
+
+	const BuildMode::FSnapSettings Settings;
+	const FPieceBox Requested{ RequestedCentreCm, ExtentCm };
+	const TArray<BuildMode::FSnapCandidate> Candidates = BuildMode::SolveSnapCandidates(
+		Requested, Material, NearbyBoxes, NearbyMaterials, Settings);
+
+	/* The solver always offers at least the Free fallback, so Candidates[0] exists. */
+	const BuildMode::FSnapCandidate& Chosen = Candidates[0];
+
+	const FPieceBox Box{ Chosen.CentreCm, ExtentCm };
+	const double MassKg = PieceMassKg(Box, Material.DensityGramsPerCubicCm);
+
+	/*
+	 * Handles are sequential, so the actor can be told its intended ref before AddPiece runs —
+	 * exactly how BuildLayout spawns each brick with the index it is about to take.
+	 */
+	FPieceRef Ref;
+	Ref.StructureId = StructureId;
+	Ref.PieceIndex = PieceCount;
+
+	ABrickActor* Actor = SpawnBrickForPiece(*GetWorld(), Box, MassKg, Ref, &Material);
+
+	const int32 Handle = Binding->AddPiece(MassKg, bGrounded, Actor, Box, &Material);
+
+	/*
+	 * FAILS CLOSED. AddPiece refuses a degenerate box (NaN mass) with INDEX_NONE; on refusal the
+	 * just-spawned actor names a piece that will never exist, so it is destroyed and a default ref
+	 * returned rather than leaving an orphan in the world.
+	 */
+	if (Handle == INDEX_NONE)
+	{
+		if (Actor != nullptr)
+		{
+			Actor->Destroy();
+		}
+		return FPieceRef{};
+	}
+
+	for (const BuildMode::FFormedJoint& Joint : Chosen.Joints)
+	{
+		FConnection Conn;
+		if (MakeInterface(
+				Handle,
+				Box,
+				Joint.OtherPieceIndex,
+				Binding->GetBinding(Joint.OtherPieceIndex).Box,
+				Settings.JointThicknessCm,
+				Joint.Profile,
+				Conn))
+		{
+			Binding->AddConnection(Conn);
+		}
+	}
+
+	return FPieceRef{ StructureId, Handle };
 }
 
 int32 UDestructionStructureSubsystem::SolveAndPush(int32 StructureId)
