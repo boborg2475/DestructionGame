@@ -48,11 +48,14 @@ namespace BuildMode
 	{
 		TArray<FSnapCandidate> Candidates;
 
-		if (!IsBrickSized(Placed.ExtentCm, Settings.BrickSizeCm))
-		{
-			Candidates.Add(FSnapCandidate{ ESnapKind::Free, Placed.CentreCm, 0.0, {} });
-			return Candidates;
-		}
+		/*
+		 * What the PLACED piece is decides which snap kinds it can take. A brick-sized
+		 * piece bonds into the running-bond grid (bed + head). A timber piece — not
+		 * compression-dominant — does not bond; it BEARS, sitting centred on the support
+		 * below rather than staggering into a course, so it gets the centred snap only.
+		 */
+		const bool bPlacedIsBrick = IsBrickSized(Placed.ExtentCm, Settings.BrickSizeCm);
+		const bool bPlacedIsTimber = !PlacedMaterial.bCompressionDominant;
 
 		/*
 		 * Two sources that AGREE inside the brick-sized gate. The half-stagger across
@@ -79,7 +82,7 @@ namespace BuildMode
 		 */
 		auto EmitOrMerge =
 			[&Candidates, &Placed, &Settings](
-				ESnapKind Kind, const FVector& Centre, const FFormedJoint& Joint)
+				ESnapKind Kind, const FVector& Centre, const TArray<FFormedJoint>& Joints)
 		{
 			const double Offset = (Centre - Placed.CentreCm).Size();
 			if (Offset > Settings.SnapRadiusCm)
@@ -94,7 +97,7 @@ namespace BuildMode
 				});
 			if (Existing != nullptr)
 			{
-				Existing->Joints.Add(Joint);
+				Existing->Joints.Append(Joints);
 				return;
 			}
 
@@ -102,7 +105,7 @@ namespace BuildMode
 			Candidate.Kind = Kind;
 			Candidate.CentreCm = Centre;
 			Candidate.OffsetFromRequestedCm = Offset;
-			Candidate.Joints.Add(Joint);
+			Candidate.Joints = Joints;
 			Candidates.Add(MoveTemp(Candidate));
 		};
 
@@ -116,35 +119,89 @@ namespace BuildMode
 
 			const double SignX = (Placed.CentreCm.X >= Other.CentreCm.X) ? 1.0 : -1.0;
 
-			/*
-			 * Next course up: half a brick across so head joints stagger, one course up
-			 * so the placed brick beds on this one. The shared face is horizontal, so the
-			 * interface normal is +Z and JointForContact returns the strong bed mortar.
-			 */
-			const double CoursePitchZ =
-				Other.ExtentCm.Z + Settings.JointThicknessCm + Placed.ExtentCm.Z;
-			const FVector NextCourseCentre =
-				Other.CentreCm + FVector(SignX * HalfStaggerX, 0.0, CoursePitchZ);
-			EmitOrMerge(
-				ESnapKind::BrickNextCourse,
-				NextCourseCentre,
-				FFormedJoint{
-					i,
-					JointForContact(PlacedMaterial, NearbyMaterials[i], FVector(0.0, 0.0, 1.0)) });
+			if (bPlacedIsBrick)
+			{
+				/*
+				 * Next course up: half a brick across so head joints stagger, one course up
+				 * so the placed brick beds on this one. The shared face is horizontal, so the
+				 * interface normal is +Z and JointForContact returns the strong bed mortar.
+				 */
+				const double CoursePitchZ =
+					Other.ExtentCm.Z + Settings.JointThicknessCm + Placed.ExtentCm.Z;
+				const FVector NextCourseCentre =
+					Other.CentreCm + FVector(SignX * HalfStaggerX, 0.0, CoursePitchZ);
+				EmitOrMerge(
+					ESnapKind::BrickNextCourse,
+					NextCourseCentre,
+					{ FFormedJoint{
+						i,
+						JointForContact(PlacedMaterial, NearbyMaterials[i], FVector(0.0, 0.0, 1.0)) } });
 
-			/*
-			 * Same course, end to end: a full pitch across at the SAME Y and Z. The
-			 * shared face is an END face, so the interface normal is horizontal (+/-X)
-			 * and JointForContact returns the WEAK perpend, not the bed mortar.
-			 */
-			const FVector SameCourseCentre =
-				Other.CentreCm + FVector(SignX * SameCoursePitchX, 0.0, 0.0);
-			EmitOrMerge(
-				ESnapKind::BrickSameCourse,
-				SameCourseCentre,
-				FFormedJoint{
-					i,
-					JointForContact(PlacedMaterial, NearbyMaterials[i], FVector(1.0, 0.0, 0.0)) });
+				/*
+				 * Same course, end to end: a full pitch across at the SAME Y and Z. The
+				 * shared face is an END face, so the interface normal is horizontal (+/-X)
+				 * and JointForContact returns the WEAK perpend, not the bed mortar.
+				 */
+				const FVector SameCourseCentre =
+					Other.CentreCm + FVector(SignX * SameCoursePitchX, 0.0, 0.0);
+				EmitOrMerge(
+					ESnapKind::BrickSameCourse,
+					SameCourseCentre,
+					{ FFormedJoint{
+						i,
+						JointForContact(PlacedMaterial, NearbyMaterials[i], FVector(1.0, 0.0, 0.0)) } });
+			}
+
+			if (bPlacedIsTimber)
+			{
+				/*
+				 * Timber centred on the brick top: a plank does not bond into the bond
+				 * pattern, it rests across its support, so the horizontal centre snaps to
+				 * the brick's centre and the height keys on the PLACED piece's own
+				 * half-thickness — brick top + one joint + placed half-height.
+				 */
+				const double BearZ =
+					Other.CentreCm.Z + Other.ExtentCm.Z + Settings.JointThicknessCm + Placed.ExtentCm.Z;
+				const FVector CentredCentre(Other.CentreCm.X, Other.CentreCm.Y, BearZ);
+
+				/*
+				 * A lintel SPANS: sitting at this pose it rests on EVERY brick beneath it,
+				 * not only the one it centred on, so its bearings are found by CONTACT. A
+				 * brick j qualifies when the timber positively overlaps it in both X and Y
+				 * and its underside sits exactly one joint above j's top face. Each is a
+				 * passive DryStone bearing — JointForContact returns DryStone because the
+				 * timber face is not compression-dominant, whatever the normal.
+				 */
+				TArray<FFormedJoint> Bearings;
+				for (int32 j = 0; j < NearbyBoxes.Num(); ++j)
+				{
+					const DestructionLayout::FPieceBox& Support = NearbyBoxes[j];
+					if (!IsBrickSized(Support.ExtentCm, Settings.BrickSizeCm))
+					{
+						continue;
+					}
+
+					const bool bOverlapX =
+						FMath::Abs(CentredCentre.X - Support.CentreCm.X)
+							< Placed.ExtentCm.X + Support.ExtentCm.X;
+					const bool bOverlapY =
+						FMath::Abs(CentredCentre.Y - Support.CentreCm.Y)
+							< Placed.ExtentCm.Y + Support.ExtentCm.Y;
+					const double GapZ =
+						(BearZ - Placed.ExtentCm.Z) - (Support.CentreCm.Z + Support.ExtentCm.Z);
+					const bool bRestsOn =
+						FMath::Abs(GapZ - Settings.JointThicknessCm) < KINDA_SMALL_NUMBER;
+
+					if (bOverlapX && bOverlapY && bRestsOn)
+					{
+						Bearings.Add(FFormedJoint{
+							j,
+							JointForContact(PlacedMaterial, NearbyMaterials[j], FVector(0.0, 0.0, 1.0)) });
+					}
+				}
+
+				EmitOrMerge(ESnapKind::TimberCentered, CentredCentre, Bearings);
+			}
 		}
 
 		// Nearest snap first; equal offsets keep their relative order (stable sort).

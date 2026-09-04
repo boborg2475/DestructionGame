@@ -645,8 +645,10 @@ bool FSnapSolverBedAndHeadMergeTest::RunTest(const FString& Parameters)
 	const TArray<FPieceBox> NearbyBoxes = { Course0Left, Course0Right, Course1Mid };
 	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick, ClayBrick, ClayBrick };
 
-	// The brick being placed: the running-bond pose that both beds onto idx 1 and
-	// abuts idx 2 end-to-end.
+	/*
+	 * The brick being placed: the running-bond pose that both beds onto idx 1 and
+	 * abuts idx 2 end-to-end.
+	 */
 	const FVector Requested(33.75, 0.0, 7.5);
 	const FPieceBox Placed{ Requested, HalfBrick };
 	const FSnapSettings Settings;
@@ -716,6 +718,275 @@ bool FSnapSolverBedAndHeadMergeTest::RunTest(const FString& Parameters)
 					TEXT("head joint (to brick@11.25) == GeneralPurposeMortarPerpend: "),
 					HeadJoint->Profile,
 					GeneralPurposeMortarPerpend);
+			}
+		}
+	}
+
+	return true;
+}
+
+/**
+ * BEHAVIOR 2d, the TIMBER CENTERED-ON-a-brick snap. A TIMBER piece (a plank/lintel,
+ * NOT brick-sized) placed above and roughly over a brick snaps to sit CENTERED on the
+ * brick's top face: horizontal centre aligned to the brick, resting one joint-thickness
+ * above it, auto-forming exactly one PASSIVE DryStone bearing joint to it.
+ *
+ * THE POSE IS EXACT, NOT FITTED. Horizontal centre snaps to the brick centre (X=0, Y=0);
+ * the height is the brick TOP face + one bed joint + the placed piece's HALF height:
+ * 3.25 + 1.0 + 1.5 = 5.75. So the snapped centre is (0, 0, 5.75). The requested pose is
+ * deliberately off-centre in X (2) and low (5) so "centering" and the one-joint rise are
+ * both observable, and well inside the 30 cm snap radius.
+ *
+ * THE JOINT IS DERIVED, NOT HARDCODED. A timber face is not compression-dominant, so
+ * JointForContact(Timber, ClayBrick, +/-Z) returns the passive DryStone bearing
+ * REGARDLESS of the normal (the passive-bearing ruling). Pinned FULL-FIELD so a mortar
+ * substitution or a DryStone hardcode that ignores the materials cannot pass.
+ *
+ * GUARD: a TIMBER lintel is NOT brick-sized (60 x 10.25 x 3.0 full dims != the 21.5 x
+ * 10.25 x 6.5 coordinating brick), so the brick kinds — which gate on IsBrickSized —
+ * must NOT fire. Assert no BrickNextCourse/BrickSameCourse candidate appears, and that
+ * the Free fallback still exists and is ranked LAST behind the timber snap.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverTimberCenteredOnBrickTest,
+	"DestructionGame.Core.BuildMode.SnapSolverTimberCenteredOnBrick",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverTimberCenteredOnBrickTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// One existing full brick at the origin: top face at Z = HalfBrick.Z = 3.25.
+	const FPieceBox Existing{ FVector(0.0, 0.0, 0.0), HalfBrick };
+	const TArray<FPieceBox> NearbyBoxes = { Existing };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick };
+
+	/*
+	 * A TIMBER lintel/plank: wider in X than the brick, thin in Z — deliberately NOT
+	 * brick-sized (full dims 60 x 10.25 x 3.0). Requested above the brick, off-centre
+	 * in X and low in Z so centering and the one-joint rise are both observable.
+	 */
+	const FVector PlacedHalfExtent(30.0, 5.125, 1.5);
+	const FVector Requested(2.0, 0.0, 5.0);
+	const FPieceBox Placed{ Requested, PlacedHalfExtent };
+
+	const FSnapSettings Settings; // BrickSize 21.5x10.25x6.5, joint 1.0, radius 30.
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, Timber, NearbyBoxes, NearbyMaterials, Settings);
+
+	/*
+	 * Centered on the brick top: X = brick centre X (0), Y = brick centre Y (0), Z =
+	 * brick top (3.25) + one joint (1.0) + placed half-height (1.5) = 5.75. An exact
+	 * coordinate, tight tolerance.
+	 */
+	const FVector ExpectedCentre(0.0, 0.0, 5.75);
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	int32 CenteredIndex = INDEX_NONE;
+	int32 FreeIndex = INDEX_NONE;
+	bool bAnyBrickKind = false;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		const FSnapCandidate& C = Candidates[i];
+		if (CenteredIndex == INDEX_NONE
+			&& C.Kind == ESnapKind::TimberCentered
+			&& C.CentreCm.Equals(ExpectedCentre, Tol))
+		{
+			CenteredIndex = i;
+		}
+		if (FreeIndex == INDEX_NONE && C.Kind == ESnapKind::Free)
+		{
+			FreeIndex = i;
+		}
+		if (C.Kind == ESnapKind::BrickNextCourse || C.Kind == ESnapKind::BrickSameCourse)
+		{
+			bAnyBrickKind = true;
+		}
+	}
+
+	// 1. The timber centered-on candidate exists at the exact centered pose (0,0,5.75).
+	const bool bFoundCentered = CenteredIndex != INDEX_NONE;
+	TestTrue(
+		TEXT("a TimberCentered candidate exists at the brick-centred pose (0,0,5.75)"),
+		bFoundCentered);
+
+	// 3. A Free fallback candidate exists at the requested pose.
+	const bool bFoundFree = FreeIndex != INDEX_NONE;
+	TestTrue(TEXT("a Free fallback candidate exists"), bFoundFree);
+
+	if (bFoundCentered)
+	{
+		const FSnapCandidate& Snap = Candidates[CenteredIndex];
+
+		/*
+		 * 2. Exactly ONE joint, to the existing brick (index 0 into NearbyBoxes),
+		 * whose profile is the PASSIVE DryStone bearing. The solver must DERIVE this
+		 * via JointForContact(Timber, ClayBrick, +/-Z) — pinned FULL-FIELD so a mortar
+		 * substitution fails (DryStone != mortar on compression, both bond axes,
+		 * friction and the shear ceiling).
+		 */
+		TestEqual(TEXT("timber centered candidate forms exactly one joint"),
+			Snap.Joints.Num(), 1);
+		if (Snap.Joints.Num() == 1)
+		{
+			TestEqual(TEXT("joint is to the existing brick (OtherPieceIndex 0)"),
+				Snap.Joints[0].OtherPieceIndex, 0);
+			CheckProfileIdentity(
+				*this,
+				TEXT("timber-on-brick bearing joint profile == DryStone: "),
+				Snap.Joints[0].Profile,
+				DryStone);
+		}
+
+		/*
+		 * The offset field carries the ranking key's meaning: the Euclidean distance
+		 * from the requested pose (2,0,5) to the snapped pose (0,0,5.75) =
+		 * sqrt(4 + 0.5625) = sqrt(4.5625). Derived independently from the distance
+		 * formula, not read back from production.
+		 */
+		TestEqual(TEXT("timber centered OffsetFromRequestedCm is the distance to the snap"),
+			Snap.OffsetFromRequestedCm, FMath::Sqrt(4.5625), 1.0e-6);
+	}
+
+	if (bFoundFree)
+	{
+		// 3 (cont). The Free candidate sits at the requested pose and forms no joint.
+		const FSnapCandidate& Free = Candidates[FreeIndex];
+		TestTrue(TEXT("Free candidate sits at the requested pose"),
+			Free.CentreCm.Equals(Requested, Tol));
+		TestEqual(TEXT("Free candidate forms no joints"), Free.Joints.Num(), 0);
+
+		// 3 (cont). Free stays LAST — behind every snap.
+		TestEqual(TEXT("Free is the last candidate"),
+			FreeIndex, Candidates.Num() - 1);
+	}
+
+	// 1 (cont). An in-range snap BEATS free: the timber candidate precedes it.
+	if (bFoundCentered && bFoundFree)
+	{
+		TestTrue(
+			TEXT("TimberCentered is ranked ahead of Free (appears earlier)"),
+			CenteredIndex < FreeIndex);
+	}
+
+	/*
+	 * 4. Guard: a non-brick-sized TIMBER lintel must not cross-fire the brick kinds.
+	 * The brick snaps gate on IsBrickSized; this lintel is not brick-sized, so it may
+	 * only ever be TimberCentered (+ later timber kinds) or Free.
+	 */
+	TestFalse(
+		TEXT("no BrickNextCourse/BrickSameCourse candidate for a non-brick-sized timber lintel"),
+		bAnyBrickKind);
+
+	return true;
+}
+
+
+/**
+ * BEHAVIOR 2d, LINTEL BEARS ON ALL IT SPANS (RED driver). A timber lintel centered
+ * on a brick rests on EVERY brick it overlaps, not just the one it centred on — so
+ * the single TimberCentered candidate must carry one passive DryStone bearing per
+ * spanned brick.
+ *
+ * Fixture: a course of three ClayBricks at X = 0, 22.5, 45 (all centre Z = 0, extent
+ * HalfBrick). A TIMBER lintel of half-extent (30, 5.125, 1.5) — full length 60 cm —
+ * centred on brick@22.5 spans X in [-7.5, 52.5], overlapping all three bricks. The
+ * requested pose (24, 0, 5) leans toward brick@22.5 and above, so the centered-on
+ * pose is (22.5, 0, 5.75): brick centre X/Y, brick top (3.25) + joint (1.0) + placed
+ * half-height (1.5).
+ *
+ * Assert on the ONE candidate at (22.5,0,5.75): exactly one such candidate, three
+ * joints, OtherPieceIndex set == {0,1,2} (order-independent), all three full-field
+ * DryStone. Other TimberCentered candidates centred on brick@0 or brick@45 may also
+ * exist at their own poses — not forbidden, simply not asserted on.
+ *
+ * RED today: the candidate carries a single bearing to brick@22.5 only.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverTimberLintelBearsAllTest,
+	"DestructionGame.Core.BuildMode.SnapSolverTimberLintelBearsAll",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverTimberLintelBearsAllTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// A course of three bricks the lintel will span.
+	const FPieceBox Brick0{ FVector(0.0, 0.0, 0.0), HalfBrick };   // idx 0
+	const FPieceBox Brick1{ FVector(22.5, 0.0, 0.0), HalfBrick };  // idx 1
+	const FPieceBox Brick2{ FVector(45.0, 0.0, 0.0), HalfBrick };  // idx 2
+	const TArray<FPieceBox> NearbyBoxes = { Brick0, Brick1, Brick2 };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick, ClayBrick, ClayBrick };
+
+	/*
+	 * A TIMBER lintel, full length 60 cm: centred on brick@22.5 it spans [-7.5, 52.5]
+	 * and rests on all three bricks. Requested near brick@22.5 and above.
+	 */
+	const FVector PlacedHalfExtent(30.0, 5.125, 1.5);
+	const FVector Requested(24.0, 0.0, 5.0);
+	const FPieceBox Placed{ Requested, PlacedHalfExtent };
+	const FSnapSettings Settings;
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, Timber, NearbyBoxes, NearbyMaterials, Settings);
+
+	// Centered on brick@22.5: (22.5, 0, brick top 3.25 + joint 1.0 + half-height 1.5).
+	const FVector ExpectedCentre(22.5, 0.0, 5.75);
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	// Every TimberCentered candidate AT the brick@22.5 pose. Expect exactly one.
+	TArray<int32> AtPose;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		const FSnapCandidate& C = Candidates[i];
+		if (C.Kind == ESnapKind::TimberCentered && C.CentreCm.Equals(ExpectedCentre, Tol))
+		{
+			AtPose.Add(i);
+		}
+	}
+
+	TestEqual(
+		TEXT("exactly one TimberCentered candidate at the brick@22.5 pose (22.5,0,5.75)"),
+		AtPose.Num(), 1);
+
+	if (AtPose.Num() == 1)
+	{
+		const FSnapCandidate& Snap = Candidates[AtPose[0]];
+
+		// It bears on ALL three spanned bricks: three joints.
+		TestEqual(TEXT("lintel candidate forms three bearing joints (one per spanned brick)"),
+			Snap.Joints.Num(), 3);
+
+		if (Snap.Joints.Num() == 3)
+		{
+			/*
+			 * The OtherPieceIndex set is exactly {0, 1, 2}, order-independent — each
+			 * spanned brick bedded once, none twice. Match by index, never array order.
+			 */
+			for (int32 Expected = 0; Expected <= 2; ++Expected)
+			{
+				const FFormedJoint* J = Snap.Joints.FindByPredicate(
+					[Expected](const FFormedJoint& Joint)
+					{ return Joint.OtherPieceIndex == Expected; });
+				TestNotNull(
+					*FString::Printf(TEXT("a bearing joint to brick idx %d exists"), Expected),
+					J);
+				if (J != nullptr)
+				{
+					// Timber contact -> passive DryStone bearing, full-field.
+					CheckProfileIdentity(
+						*this,
+						FString::Printf(TEXT("lintel bearing to brick idx %d == DryStone: "), Expected),
+						J->Profile,
+						DryStone);
+				}
 			}
 		}
 	}

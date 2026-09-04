@@ -1,13 +1,16 @@
 # Build Mode — interactive building with brick and wood (feature plan)
 
 **Status: IN PROGRESS (started 2026-09-03).** Landed so far: `BuildMode::JointForContact` (the automatic
-joint inference, see the ruling at the bottom) and the snap-candidate solver's first two brick kinds —
-`BuildMode::SolveSnapCandidates` (`Core/BuildMode/SnapSolver.*`) offering the running-bond NEXT-COURSE bed
-snap and the SAME-COURSE end-to-end head snap, each auto-forming its joint by inference (bed → mortar,
-head → perpend); a brick in a wall past the first course coalesces into one candidate carrying both its
-bed and head joints, and candidates are ranked by proximity ahead of a free-placement fallback. Next: the
-CORNER-return brick snap and the TIMBER snaps (centered-on / edge-flush), then the placement API loop and
-the UI. (Open follow-ups — occupancy, ranking policy, merged-candidate labelling — are in CURRENT_STATE.)
+joint inference, see the ruling at the bottom) and the snap-candidate solver `BuildMode::SolveSnapCandidates`
+(`Core/BuildMode/SnapSolver.*`) with these kinds: brick running-bond NEXT-COURSE bed, brick SAME-COURSE
+end-to-end head (each auto-forming its joint by inference — bed → mortar, head → perpend; a brick in a wall
+past course 1 coalesces into one candidate carrying both its bed and head joints), and TIMBER CENTERED-ON a
+brick (a bearing, DryStone by the ruling) whose bearings are CONTACT-BASED so a lintel forms a DryStone
+bearing to every brick it spans. Candidates are ranked by proximity ahead of a free-placement fallback.
+Next in slice 1: the TIMBER EDGE-FLUSH snap, then a small render of a placed structure. Then start the
+interactive UI (the /goal's "after the first part"). CORNER-return is its own later slice (needs the
+head-vs-corner inference extension — see CURRENT_STATE). (Open follow-ups — occupancy, ranking policy,
+merged-candidate labelling, half-bat bearings — are in CURRENT_STATE.)
 Read
 [CLAUDE.md](../CLAUDE.md), [DESIGN.md](DESIGN.md) and
 [CURRENT_STATE.md](CURRENT_STATE.md) first — they own the model, the constants and the standing rulings.
