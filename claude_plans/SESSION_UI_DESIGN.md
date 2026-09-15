@@ -17,12 +17,15 @@ with this they win.
 
 ## (a) Design principles
 
-**1. The game is an instrument, not a toy.** Every number on screen is a real one the solver
-computed — newtons, megapascals, percentages of capacity, kilograms. The UI's job is to make a
-player believe the collapse they are about to watch, which means the panel that explains a brick has
-to look like a strain gauge readout and not like a loot tooltip. No drop shadows, no rounded pills,
-no gradients, no icon glyphs standing in for words. Thin rules, flat fills, a monospaced column for
-anything numeric, and generous use of the word "why".
+**1. The readout is an instrument; the toolbar is a toy box.** Every number on screen is a real
+one the solver computed — newtons, megapascals, percentages of capacity, kilograms — and the
+details WINDOW that explains a brick looks like a strain-gauge readout: thin rules, a monospaced
+column for anything numeric, generous use of the word "why". The TOOLBAR is the opposite (owner
+feedback 2026-09-15: "make the toolbar and the buttons look more fun"): chunky rounded chips with a
+2 px drop edge that press down on click and lift on hover, a warm glow on the lit chip in the mode's
+colour, a little brick / plank swatch drawn on each piece chip so the chip looks like the thing you
+are about to lay, a bold rounded caption face, and small keycap glyphs for the shortcuts. Fun on the
+strip, sober in the window.
 
 **2. Readable at a glance while flying a camera.** The player is moving through the world with WASD
 at all times. Two consequences that dominate every layout decision below: (i) **nothing important
@@ -61,19 +64,25 @@ widget comparing a string against `"grounded"` to pick a green is the failure mo
 
 ## (b) The toolbar
 
-A strip across the bottom of the viewport, full width, **72 px tall** in Slate's scaled space,
-sitting on the panel fill. It is always up during a session. It never scrolls and never wraps: the
-longest configuration (Build mode, ten buttons) measures under 1,100 px, which clears 1280.
+A strip across the bottom of the viewport, full width, **48 px tall** in Slate's scaled space
+(owner feedback 2026-09-15: the first 72 px cut was "way too big"), sitting on the toolbar fill. It
+is always up during a session. It never scrolls and never wraps: the longest configuration (Build
+mode, ten chips) measures under 900 px, which clears 1280 with room.
 
 ```
-[ Mode tabs ] │ [ ------------- the current mode's settings ------------- ] │ [ status ]
+[ Mode tabs ] │ [ ------------- the current mode's settings ------------- ] │ [ command ]
 ```
 
-Three regions, left to right, separated by 1 px vertical rules at 16 % white:
+Three regions, left to right, separated by 1 px vertical rules at 14 % white:
 
 - **Mode tabs** — fixed, always the first two slots, per `SessionToolbarButtons`' ordering rule.
 - **Settings group** — everything that changes with the mode.
-- **Status readout** — right-aligned, non-interactive, a single line of small type.
+- **Command** — the mode's one big command (`Run structure`) at the far right, on its own.
+
+**The toolbar carries NO readouts** (owner feedback 2026-09-15): piece counts, joint counts and
+"what is selected" belong in the details WINDOW (§c), never on the strip. The strip is settings and
+commands only. (The earlier status-readout idea is dropped; `FSessionStatusReadout` moves into the
+window's footer if it is built at all.)
 
 The commands (`Clear build`, `Run structure`) sit at the **right end of the settings group**,
 separated from the settings by a rule, so a destructive click is never adjacent to a setting click.
@@ -204,19 +213,13 @@ needs its own red test and its own review. **Recommendation: defer, and log it i
 In the meantime `Run structure` is the explicit settle, and the toolbar's Destroy group reads
 honestly: every delete settles, and Run re-settles whatever the player has been staring at.
 
-### Status readout
+### Status readout — NOT on the toolbar
 
-Right-aligned, small type, non-interactive, one line:
-
-```
-18 pieces · 31 joints · 4 grounded · worst joint 62 %
-```
-
-Every figure is an existing accessor (`NumPieces`, the connection count, `GetPieceSupport`,
-`GetConnectionUtilisation`), and the last one is present only when the load overlay has solved —
-otherwise the field reads `not solved`. It goes on a new presenter struct `FSessionStatusReadout`
-with one `FString` per figure plus the composed line, for the reason every string on
-`FPieceMenuInspector` lives there.
+Dropped from the strip (owner feedback 2026-09-15). If a session summary line is ever wanted —
+`18 pieces · 31 joints · 4 grounded · worst joint 62 %`, every figure an existing accessor
+(`NumPieces`, the connection count, `GetPieceSupport`, `GetConnectionUtilisation`), `not solved`
+until the load overlay has solved — it goes in the details WINDOW's footer as an
+`FSessionStatusReadout` presenter struct, never on the strip.
 
 ---
 
@@ -246,11 +249,14 @@ disambiguate every click, which is the thing city-builder toolbars exist to avoi
 
 ### The details panel — where it lives
 
-**Docked at the right edge, vertically centred, draggable, clamped.** That is exactly what
-`PieceMenuHomeOffset` and `ClampPanelOffset` already do, and the reasoning in their headers stands
-unchanged. **One change is required**: both take the viewport, and the viewport now has a 72 px
-toolbar across the bottom of it. A panel dragged into the bottom-right corner would sit *under* the
-toolbar.
+**It is its own WINDOW, not part of the toolbar** (owner feedback 2026-09-15: "it can be a window
+that defaults to opening on the right hand side of the screen and can click and drag"). **Docked at
+the right edge by default, vertically centred, draggable by its grab strip, clamped to the screen.**
+That is exactly what `PieceMenuHomeOffset` and `ClampPanelOffset` already do for the piece menu, and
+the reasoning in their headers stands unchanged — the session's details window IS the piece menu
+panel, grown by the fields below. **One change is required**: both take the viewport, and the
+viewport now has a 48 px toolbar across the bottom of it. A panel dragged into the bottom-right
+corner would sit *under* the toolbar.
 
 *The fix is a new pure function, not an inset baked into the widget:*
 
@@ -494,22 +500,28 @@ number is bigger than its label is a scoreboard, not an instrument.
 ### Spacing
 
 An **8 px grid**, everywhere, with two exceptions inherited from the existing panel (its 14/10
-banner padding and its 10 px indent). Toolbar: 72 px tall, 12 px vertical padding, 16 px between
-groups, 4 px between buttons within a group, 0 px inside a segmented control. Panel: 12 px padding,
-8 px between rows, 16 px above a rule and 12 px below it.
+banner padding and its 10 px indent). Toolbar: 48 px tall, 34 px chips, 5 px vertical padding,
+10 px between groups (with a 1 px rule), 5 px between chips within a group, 0 px inside a segmented
+control. Panel: 12 px padding, 8 px between rows, 16 px above a rule and 12 px below it.
 
-### How active state is rendered
+### How active state is rendered (the chips)
 
 **Three visual states, and they must be three, for the reason `EBrickHighlight` has ten and not one:
 `bActive` and `bEnabled` are different questions and a widget that drew them alike would make a lit
 button that does nothing indistinguishable from a greyed one that works.**
 
-| State | Fill | Caption | Border |
+| State | Fill | Caption | Edge |
 |---|---|---|---|
-| Idle (`!bActive, bEnabled`) | white @ 6 % | readout text | none |
-| Hovered | white @ 12 % | header text | none |
-| **Active** (`bActive`) | mode accent @ 18 % | header text | 2 px bottom bar in the mode accent |
-| **Disabled** (`!bEnabled`) | white @ 3 % | readout text @ 35 % | none |
+| Idle (`!bActive, bEnabled`) | chip fill (light: white; dark: `#2A2F3A`), 10 px radius | body text | 2 px drop edge below (the "press me" cue) |
+| Hovered | chip fill one step warmer, lifted 1 px | header text | drop edge |
+| Pressed | pushed down 1 px | — | drop edge collapses to 0 |
+| **Active** (`bActive`) | vertical gradient of the mode accent (light→accent), dark ink caption | header text | drop edge in the accent's shadow + a soft glow in the accent |
+| **Disabled** (`!bEnabled`) | chip fill @ 3 %, 50 % opacity | dim text | none |
+
+The mode tabs are the same chip, one size up, with a 16 px icon (a brick bond for Build, a burst for
+Destroy). `Run structure` is a command chip filled in the destroy accent. The three piece chips carry
+a CSS-drawn swatch — a brick-red block, a timber-tan plank at two lengths — in place of a size
+caption; the size lives in a hover tooltip and on the ghost card.
 
 A **command** (`ClearBuild`, `RunStructure`, `CourseUp/Down`) never reaches the Active row —
 `SessionToolbarIsActive`'s default arm guarantees it, and its comment says why: *a latched Clear
