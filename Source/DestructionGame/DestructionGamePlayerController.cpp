@@ -102,6 +102,28 @@ namespace
 static constexpr int32 PieceMenuMappingContextPriority = 0;
 
 /*
+ * AND THE SESSION'S CONTEXT GOES ABOVE THEM, WHICH IS WHAT MAKES THE CAMERA TURN AT ALL.
+ *
+ * IMC_MouseLook's one Mouse2D mapping is CHORDED on IA_LookModifier, and IMC_Session is where the
+ * modifier is mapped to the right mouse button. UInputTriggerChordAction::UpdateState answers by
+ * reading the chord action's TriggerStateTracker off the player input, and
+ * UEnhancedPlayerInput::EvaluateInputImpl resets every mapping's trigger state at the END of the
+ * frame rather than the start — its own comment says why: "Delay MappingTriggerState reset until
+ * here to allow dependent triggers (e.g. chords) access to this tick's values". So the modifier's
+ * mapping has to be evaluated EARLIER IN THE SAME FRAME than the mapping that chords off it, or the
+ * chord reads a state cleared last frame, answers "not held", and free-look never triggers however
+ * hard the button is held.
+ *
+ * A PRIORITY IS THE ONLY LEVER THAT REACHES ACROSS TWO CONTEXTS.
+ * IEnhancedInputSubsystemInterface::ReorderMappings puts chording mappings before chorded ones
+ * WITHIN ONE CONTEXT, and these two are in different assets, so that reorder never sees the pair.
+ * Across contexts RebuildControlMappings orders by a priority-descending ValueSort, which decides
+ * nothing between equals — at one shared priority the list came out with the chorded axis first and
+ * a probe measured 0° of yaw. One above is what puts IMC_Session's mappings in front.
+ */
+static constexpr int32 SessionMappingContextPriority = PieceMenuMappingContextPriority + 1;
+
+/*
  * How far a ray cast from the cursor reaches, in cm (1 uu = 1 cm), i.e. 100 m.
  *
  * ONE REACH FOR BOTH HANDLERS, because they are the same ray: what a click would hit and what
@@ -643,13 +665,33 @@ ADestructionGamePlayerController::ADestructionGamePlayerController()
 	static ConstructorHelpers::FObjectFinder<UInputMappingContext> MouseLookContext(DestructionContent::MouseLookMappingContextPath);
 
 	/*
-	 * the look context is remembered by name as well as applied, because the piece menu takes
-	 * it away while it is up — the SAME pointer in both places, so there is nothing to drift
+	 * the look context is remembered by name as well as applied — the SAME pointer in both
+	 * places, so there is nothing to drift; its header says why it still has a name of its own
 	 */
 	MouseLookMappingContext = MouseLookContext.Object;
 
 	DefaultMappingContexts.Add(DefaultContext.Object);
 	DefaultMappingContexts.Add(MouseLookMappingContext);
+
+	/*
+	 * AND THE SESSION'S OWN KEYBOARD, PUSHED IN BESIDE THEM RATHER THAN APPLIED SEPARATELY.
+	 *
+	 * SetupInputComponent adds every context in this list, so a third one here is applied for the
+	 * whole session by the code that already applies the other two — and an apply written a second
+	 * way is an apply that can be forgotten on a route somebody adds later. Nine mappings in a
+	 * context nothing applies is nine dead keys, and from the player's chair that looks exactly like
+	 * eight missing BindAction calls.
+	 *
+	 * IT IS NAMED AS WELL AS LISTED, THE SAME POINTER IN BOTH PLACES, for the same reason
+	 * MouseLookMappingContext is — and here the name carries a second job: it is what the one apply
+	 * loop asks "is this the session's?" to give it SessionMappingContextPriority rather than the
+	 * shared one. The priority's own header says why it cannot be the shared one.
+	 */
+	static ConstructorHelpers::FObjectFinder<UInputMappingContext> SessionContext(DestructionContent::SessionMappingContextPath);
+
+	SessionMappingContext = SessionContext.Object;
+
+	DefaultMappingContexts.Add(SessionMappingContext);
 
 	/* the piece menu's own input, by the same one spelling of its path */
 	static ConstructorHelpers::FObjectFinder<UInputAction> InspectPieceActionAsset(DestructionContent::InspectPieceActionPath);
@@ -660,6 +702,31 @@ ADestructionGamePlayerController::ADestructionGamePlayerController()
 	static ConstructorHelpers::FObjectFinder<UInputAction> HoverPieceActionAsset(DestructionContent::HoverPieceActionPath);
 
 	HoverPieceAction = HoverPieceActionAsset.Object;
+
+	/*
+	 * AND THE EIGHT SESSION SHORTCUTS, BY THE SAME ONE SPELLING OF EACH PATH.
+	 *
+	 * IA_LookModifier IS NOT AMONG THEM, DELIBERATELY. It does nothing on its own: it exists only
+	 * to be the action IMC_MouseLook's chord watches, so there is no handler for it to reach and
+	 * a reference here would be a UPROPERTY nothing ever reads.
+	 */
+	static ConstructorHelpers::FObjectFinder<UInputAction> SessionToggleModeAsset(DestructionContent::SessionToggleModeActionPath);
+	static ConstructorHelpers::FObjectFinder<UInputAction> SessionPieceBrickAsset(DestructionContent::SessionPieceBrickActionPath);
+	static ConstructorHelpers::FObjectFinder<UInputAction> SessionPiecePlateAsset(DestructionContent::SessionPiecePlateActionPath);
+	static ConstructorHelpers::FObjectFinder<UInputAction> SessionPieceLintelAsset(DestructionContent::SessionPieceLintelActionPath);
+	static ConstructorHelpers::FObjectFinder<UInputAction> SessionSnapToggleAsset(DestructionContent::SessionSnapToggleActionPath);
+	static ConstructorHelpers::FObjectFinder<UInputAction> SessionCourseUpAsset(DestructionContent::SessionCourseUpActionPath);
+	static ConstructorHelpers::FObjectFinder<UInputAction> SessionCourseDownAsset(DestructionContent::SessionCourseDownActionPath);
+	static ConstructorHelpers::FObjectFinder<UInputAction> SessionRunAsset(DestructionContent::SessionRunActionPath);
+
+	SessionToggleModeAction = SessionToggleModeAsset.Object;
+	SessionPieceBrickAction = SessionPieceBrickAsset.Object;
+	SessionPiecePlateAction = SessionPiecePlateAsset.Object;
+	SessionPieceLintelAction = SessionPieceLintelAsset.Object;
+	SessionSnapToggleAction = SessionSnapToggleAsset.Object;
+	SessionCourseUpAction = SessionCourseUpAsset.Object;
+	SessionCourseDownAction = SessionCourseDownAsset.Object;
+	SessionRunAction = SessionRunAsset.Object;
 
 	/*
 	 * THE BUILD LOOP IS PART OF WHAT A CONTROLLER IS, so it is a default subobject rather than
@@ -804,12 +871,12 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 		}
 
 		/*
-		 * AND THE CURSOR COMES UP. IMC_MouseLook binds the raw mouse axis with no held button, so
-		 * without a pointer there is nothing to aim the ghost with and nothing to press the strip
-		 * with. This borrows the piece menu's apply — cursor on, look context off — because it is
-		 * the same request; SESSION_UI_DESIGN §d's permanent-cursor scheme (S6) replaces both.
+		 * AND NOTHING IS DONE ABOUT THE CURSOR, WHICH IS A CHANGE AND NOT AN OMISSION. This used
+		 * to raise it, because there is no aiming a ghost without a pointer. The pointer is the
+		 * SESSION's now — SetSessionControls raises it once in BeginPlay and nothing lowers it —
+		 * so a mode that raised it would be a mode that owned it, and the mode that did not would
+		 * take it away again (SESSION_UI_DESIGN §d, S6).
 		 */
-		SetPieceMenuControls(true);
 		break;
 
 	case EToolbarButtonId::ModeDestroy:
@@ -824,8 +891,7 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 			BuildComponent->HidePreview();
 		}
 
-		/* The cursor goes back to the rule it has always followed: up for as long as a menu is. */
-		SetPieceMenuControls(IsPieceMenuShown());
+		/* And the cursor stays where it is: the strip is on screen in Destroy mode too. */
 		break;
 
 	case EToolbarButtonId::PieceBrick:
@@ -882,6 +948,39 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 	RefreshSessionToolbar();
 
 	return true;
+}
+
+bool ADestructionGamePlayerController::ToggleSessionMode()
+{
+	using namespace DestructionSession;
+
+	/*
+	 * THE READ IS THE WHOLE FUNCTION, AND IT IS THE ONLY DECISION IN THE SESSION'S KEYBOARD. A
+	 * toggle that always dispatched one id is a key that takes the player into whichever mode it
+	 * favours and then appears to jam. Everything else — whether the button is drawn, whether it
+	 * is greyed, what it does to the build component — is already the one door's.
+	 */
+	return OnToolbarButton(
+		SessionToolbarState.Mode == ESessionMode::Build
+			? EToolbarButtonId::ModeDestroy
+			: EToolbarButtonId::ModeBuild);
+}
+
+bool ADestructionGamePlayerController::ToggleSessionPlacement()
+{
+	using namespace DestructionSession;
+
+	/*
+	 * AND THE SAME SHAPE FOR Snap/Free, WHERE THE DOOR EARNS ITS KEEP. Neither placement chip is
+	 * on the Destroy strip, so this must be REFUSED there — written as "set the other value" it
+	 * would flip a setting in a mode that does not draw it, and the player would come back to
+	 * Build to find bricks landing wherever the cursor is. OnToolbarButton consults the same list
+	 * the strip greys from, so the key and the chip refuse together.
+	 */
+	return OnToolbarButton(
+		SessionToolbarState.Placement == EPlacementMode::Snap
+			? EToolbarButtonId::PlacementFree
+			: EToolbarButtonId::PlacementSnap);
 }
 
 void ADestructionGamePlayerController::PointerAlongRay(const FVector& StartCm, const FVector& EndCm)
@@ -1265,7 +1364,7 @@ bool ADestructionGamePlayerController::ShowPieceMenu(TArrayView<const FPieceMenu
 	 * SHOWING IS DEFINED AS DISMISSING AND THEN BUILDING, WHICH IS THE POINT RATHER THAN AN
 	 * IMPLEMENTATION DETAIL. There is exactly one route out of "a menu is up", so replacing a
 	 * menu, showing an empty one and closing one outright all take it — which is what makes the
-	 * controls come back on every one of them without three copies of the restore. It is also
+	 * inspected brick let go of on every one of them without three copies of that. It is also
 	 * what keeps the widget half honest, which is why the build below sits here and the removal
 	 * sits beside the Reset in DismissPieceMenu: a second add with no matching remove leaks the
 	 * previous menu on screen forever and no headless assertion can see that, but the
@@ -1286,8 +1385,12 @@ bool ADestructionGamePlayerController::ShowPieceMenu(TArrayView<const FPieceMenu
 
 	BuildPieceMenuWidget();
 
-	SetPieceMenuControls(true);
-
+	/*
+	 * AND THE CONTROLS ARE NOT TOUCHED. A menu used to raise the cursor and remove the free-look
+	 * context here, and give both back on the way out; the cursor is the session's now and the
+	 * camera is chorded to a held right mouse button, so there is nothing to take away and nothing
+	 * a route out of "a menu is up" could forget to restore (SESSION_UI_DESIGN §d, S6).
+	 */
 	return true;
 }
 
@@ -1318,8 +1421,6 @@ bool ADestructionGamePlayerController::DismissPieceMenu()
 	 * there is no panel left to draw into by this point.
 	 */
 	SetInspectedPiece(FPieceRef());
-
-	SetPieceMenuControls(false);
 
 	return true;
 }
@@ -1367,9 +1468,9 @@ bool ADestructionGamePlayerController::ChoosePieceMenuRow(int32 RowIndex)
 	const FPieceAction* const Action = ShownPieceMenuRows[RowIndex].Action;
 
 	/*
-	 * IT COMES DOWN FIRST, BY THE ONE ROUTE OUT OF "A MENU IS UP" — so the cursor and
-	 * free-look are given back by the same restore every other route takes, and the commit
-	 * below runs with nothing on screen naming the bricks it is about to remove.
+	 * IT COMES DOWN FIRST, BY THE ONE ROUTE OUT OF "A MENU IS UP" — so the brick it was
+	 * reading out is let go of by the same call every other route makes, and the commit below
+	 * runs with nothing on screen naming the bricks it is about to remove.
 	 */
 	DismissPieceMenu();
 
@@ -1394,7 +1495,28 @@ bool ADestructionGamePlayerController::ChoosePieceMenuRow(int32 RowIndex)
 	 * single-piece commit here would reach the same wall at N times the price — and would
 	 * push N times, each against an answer that had seen only part of the batch.
 	 */
-	return Subsystem->CommitPieceActionForAll(Refs, *Action) > 0;
+	const bool bCommitted = Subsystem->CommitPieceActionForAll(Refs, *Action) > 0;
+
+	/*
+	 * AND THE SESSION IS ASKED AGAIN WHETHER THERE IS ANYTHING LEFT TO COMMAND.
+	 *
+	 * THIS IS THE ONLY DOOR THAT CHANGES THE WORLD WITHOUT BEING A TOOLBAR CLICK. OnToolbarButton
+	 * refreshes `bHasStructure` at its own door, so every route through the strip keeps the chips
+	 * honest; a delete arrives here instead, and without this the state — which is what the strip
+	 * on screen is drawn from — goes on carrying the answer from the click that LAID the brick.
+	 * The player would be offered Run and Clear over an empty plot until they happened to press
+	 * something else, and pressing Run would solve an empty graph and report success.
+	 *
+	 * ONLY WHEN SOMETHING ACTUALLY COMMITTED, because a refused action changed nothing and a
+	 * refresh is a solve-free question with a widget rebuild behind it.
+	 */
+	if (bCommitted)
+	{
+		RefreshSessionHasStructure();
+		RefreshSessionToolbar();
+	}
+
+	return bCommitted;
 }
 
 void ADestructionGamePlayerController::BuildPieceMenuWidget()
@@ -1580,7 +1702,16 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 				+ SHorizontalBox::Slot()
 				.FillWidth(1.0f)
 				[
+					/*
+					 * NOT FOCUSABLE, FOR THE SAME REASON THE TOOLBAR'S CHIPS ARE NOT. Slate gives user
+					 * focus to a focusable widget on click and SButton::OnKeyDown then handles Enter
+					 * and Space itself, so clicking a brick row costs the player Run (Enter) and the
+					 * pawn's jump (Space) until they click the viewport again — with the cursor now
+					 * permanent this menu is one clickable surface among several, so that stolen focus
+					 * outlives whatever they opened it for.
+					 */
 					SNew(SButton)
+					.IsFocusable(false)
 					.OnHovered(FSimpleDelegate::CreateUObject(
 						this, &ADestructionGamePlayerController::OnPieceMenuEntryHovered, Entry.Ref))
 					.OnUnhovered(FSimpleDelegate::CreateUObject(
@@ -1711,7 +1842,15 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 				SNew(SOverlay)
 				+ SOverlay::Slot()
 				[
+					/*
+					 * NOT FOCUSABLE, AND THIS SITE NEEDS ITS OWN SAY BECAUSE IT IS A SECOND ONE. An
+					 * action row is built here and an entry row is built above, so the fix applied to
+					 * one leaves the other taking the keyboard: a focused SButton's OnKeyDown handles
+					 * Enter and Space, which in this session are Run and the pawn's jump, and the only
+					 * way back is a click on the viewport.
+					 */
 					SNew(SButton)
+					.IsFocusable(false)
 					.ButtonColorAndOpacity(Row.bIsDestructive
 						? PieceMenuDestructiveRowColour : PieceMenuOrdinaryRowColour)
 					.Text(FText::FromString(Row.Label))
@@ -2393,31 +2532,49 @@ FReply ADestructionGamePlayerController::OnSessionToolbarButtonClicked(
 	return FReply::Handled();
 }
 
-void ADestructionGamePlayerController::SetPieceMenuControls(bool bMenuIsUp)
+void ADestructionGamePlayerController::SetSessionControls()
 {
-	bShowMouseCursor = bMenuIsUp;
-
-	UEnhancedInputLocalPlayerSubsystem* const Subsystem =
-		ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer());
+	bShowMouseCursor = true;
 
 	/*
-	 * A CONTROLLER WITH NO LOCAL PLAYER HAS NO SUBSYSTEM TO TAKE A CONTEXT OFF, and presenting
-	 * must still work rather than merely not crash — so this fails closed and leaves the
-	 * cursor flag, which needs nothing, already set above.
+	 * A CONTROLLER WITH NO LOCAL PLAYER HAS NO VIEWPORT TO SET AN INPUT MODE AGAINST, and a
+	 * session must still work rather than merely not crash — so this fails closed after the
+	 * cursor flag, which needs nothing and is what every headless assertion reads.
 	 */
-	if (Subsystem == nullptr || MouseLookMappingContext == nullptr)
+	if (GetLocalPlayer() == nullptr)
 	{
 		return;
 	}
 
-	if (bMenuIsUp)
-	{
-		Subsystem->RemoveMappingContext(MouseLookMappingContext);
-	}
-	else
-	{
-		Subsystem->AddMappingContext(MouseLookMappingContext, PieceMenuMappingContextPriority);
-	}
+	/*
+	 * GameAndUI, BECAUSE BOTH HALVES ARE LIVE AT ONCE AND NEITHER MAY WIN OUTRIGHT. The strip and
+	 * the piece menu are clicked with the same pointer the ghost is aimed with, so a UI-only mode
+	 * would stop the pawn flying and a game-only mode would put the cursor away.
+	 *
+	 * HIDDEN DURING CAPTURE, WHICH IS THE RIGHT-DRAG: the look chord takes capture, the pointer
+	 * vanishes for the length of the drag and comes back where it was on release — §d's "cursor
+	 * hidden, recentred on release". NOT LOCKED to the viewport, because a session is played in a
+	 * window as often as not and a lock the player did not ask for reads as the game hanging.
+	 */
+	SetInputMode(
+		FInputModeGameAndUI()
+			.SetHideCursorDuringCapture(true)
+			.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock));
+}
+
+void ADestructionGamePlayerController::OnSessionShortcut(DestructionSession::EToolbarButtonId Id)
+{
+	OnToolbarButton(Id);
+}
+
+void ADestructionGamePlayerController::OnSessionToggleMode()
+{
+	ToggleSessionMode();
+}
+
+void ADestructionGamePlayerController::OnSessionTogglePlacement()
+{
+	ToggleSessionPlacement();
 }
 
 void ADestructionGamePlayerController::SetupInputComponent()
@@ -2429,9 +2586,27 @@ void ADestructionGamePlayerController::SetupInputComponent()
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
 		{
+			/*
+			 * ONE LOOP, TWO PRIORITIES: THE SESSION'S CONTEXT IS APPLIED ABOVE THE OTHER TWO.
+			 *
+			 * IMC_MouseLook's Mouse2D mapping is chorded on IA_LookModifier, and IA_LookModifier is
+			 * mapped in IMC_Session. A chord reads the modifier's TriggerStateTracker, which
+			 * EvaluateInputImpl resets at the END of the frame, so the modifier's mapping must be
+			 * evaluated EARLIER in the same frame or the chord reads last frame's cleared state and
+			 * the camera never turns. ReorderMappings only orders chording-before-chorded within ONE
+			 * context; across contexts the order is a priority-descending sort that decides nothing
+			 * between equals. Hence the priority — see SessionMappingContextPriority's header.
+			 *
+			 * The special case is here rather than in a second AddMappingContext call because an
+			 * apply written a second way is an apply a later route can forget.
+			 */
 			for (UInputMappingContext* CurrentContext : DefaultMappingContexts)
 			{
-				Subsystem->AddMappingContext(CurrentContext, PieceMenuMappingContextPriority);
+				const int32 Priority = CurrentContext == SessionMappingContext
+					? SessionMappingContextPriority
+					: PieceMenuMappingContextPriority;
+
+				Subsystem->AddMappingContext(CurrentContext, Priority);
 			}
 		}
 	}
@@ -2475,6 +2650,64 @@ void ADestructionGamePlayerController::SetupInputComponent()
 				ETriggerEvent::Triggered,
 				this,
 				&ADestructionGamePlayerController::OnHoverPiece);
+		}
+
+		/*
+		 * THE SESSION'S EIGHT SHORTCUTS, ON Started, EXACTLY ONCE EACH.
+		 *
+		 * Started FOR THE REASON IA_InspectPiece USES IT AND IA_HoverPiece DOES NOT: these are
+		 * one-shot presses of digital keys. With no explicit trigger asset, Triggered fires on
+		 * every frame the key is HELD — holding `]` would walk the build plane up the wall at
+		 * sixty courses a second, and holding `Enter` would re-settle the structure on every
+		 * frame, which releases pieces irreversibly. Completed is the release, which would run
+		 * the command on let-go.
+		 *
+		 * AND EXACTLY ONCE, NOT AT LEAST ONCE. Two bindings on `Tab` toggle the mode twice per
+		 * press, which is a mode switch that appears to do nothing at all.
+		 *
+		 * SIX OF THEM CARRY THEIR ID AS A BOUND PAYLOAD, because a shortcut IS a toolbar click:
+		 * the model's greying and refusals are consulted at the one door either way. The mode and
+		 * placement keys stand for a PAIR of chips each, so they go through the toggles, which
+		 * read the session before they choose.
+		 */
+		const auto BindSessionShortcut =
+			[this, EnhancedInputComponent](
+				UInputAction* Action, DestructionSession::EToolbarButtonId Id)
+			{
+				if (Action != nullptr)
+				{
+					EnhancedInputComponent->BindAction(
+						Action,
+						ETriggerEvent::Started,
+						this,
+						&ADestructionGamePlayerController::OnSessionShortcut,
+						Id);
+				}
+			};
+
+		BindSessionShortcut(SessionPieceBrickAction, DestructionSession::EToolbarButtonId::PieceBrick);
+		BindSessionShortcut(SessionPiecePlateAction, DestructionSession::EToolbarButtonId::PieceTimberPlate);
+		BindSessionShortcut(SessionPieceLintelAction, DestructionSession::EToolbarButtonId::PieceTimberLintel);
+		BindSessionShortcut(SessionCourseUpAction, DestructionSession::EToolbarButtonId::CourseUp);
+		BindSessionShortcut(SessionCourseDownAction, DestructionSession::EToolbarButtonId::CourseDown);
+		BindSessionShortcut(SessionRunAction, DestructionSession::EToolbarButtonId::RunStructure);
+
+		if (SessionToggleModeAction != nullptr)
+		{
+			EnhancedInputComponent->BindAction(
+				SessionToggleModeAction,
+				ETriggerEvent::Started,
+				this,
+				&ADestructionGamePlayerController::OnSessionToggleMode);
+		}
+
+		if (SessionSnapToggleAction != nullptr)
+		{
+			EnhancedInputComponent->BindAction(
+				SessionSnapToggleAction,
+				ETriggerEvent::Started,
+				this,
+				&ADestructionGamePlayerController::OnSessionTogglePlacement);
 		}
 	}
 }
@@ -2524,6 +2757,14 @@ void ADestructionGamePlayerController::OnHoverPiece()
 void ADestructionGamePlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+
+	/*
+	 * THE CURSOR COMES UP ONCE, HERE, AND FOR THE WHOLE SESSION. A toolbar that is on screen in
+	 * both modes has to be clickable in both, and the alternative this replaced — raising the
+	 * pointer only while a piece menu was up — made the strip reachable only by first opening a
+	 * menu over a brick.
+	 */
+	SetSessionControls();
 
 	BuildScenarioLabelWidget();
 }

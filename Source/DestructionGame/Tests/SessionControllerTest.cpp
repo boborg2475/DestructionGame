@@ -293,9 +293,10 @@ namespace SessionControllerTestSupport
 	 * A controller in the world with a REAL ULocalPlayer, and its build component, or nulls.
 	 *
 	 * THE LOCAL PLAYER IS NOT DECORATION. `bShowMouseCursor` is a plain field and would flip without
-	 * one, but `SetPieceMenuControls` also removes and restores an input mapping context through the
-	 * Enhanced Input local player subsystem — and a controller with no local player has none. A
-	 * fixture without one would assert the cursor half of the mode switch while the controls half
+	 * one, but `SetSessionControls` also sets the input mode and the session's mapping contexts are
+	 * applied through the Enhanced Input LOCAL PLAYER subsystem — and a controller with no local
+	 * player has none, so the engine never runs `SetupInputComponent` for it either. A fixture
+	 * without one would assert the cursor half of the session's controls while the input half
 	 * silently failed closed.
 	 */
 	struct FSessionFixture
@@ -515,10 +516,11 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Subsystem.Find(Build.GetStructureId()));
 
 		/*
-		 * THE CURSOR IS THE OTHER HALF OF "BUILD MODE IS USABLE". IMC_MouseLook binds the raw mouse
-		 * axis with no held button, so without a pointer there is nothing to aim the ghost with and
-		 * nothing to click the strip with. S6 replaces this with a permanent cursor; until then the
-		 * mode switch is what raises it.
+		 * THE CURSOR IS THE OTHER HALF OF "BUILD MODE IS USABLE". There is no aiming a ghost, and no
+		 * pressing a chip, without a pointer. S6 makes it permanent — SetSessionControls raises it
+		 * in BeginPlay and nothing lowers it — so this reads the same as it always did while meaning
+		 * something weaker than it used to: the mode switch no longer has to raise it, it only has
+		 * to leave it up. Section NINE is the half that bites.
 		 */
 		TestTrue(
 			TEXT("Build mode must show the mouse cursor — there is no aiming a ghost with a camera "
@@ -742,6 +744,42 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 					 "one; the component holds %d"),
 				BuildStructureId, Build.GetStructureId()),
 			Build.GetStructureId(), BuildStructureId);
+	}
+
+	/* --- NINE: and the cursor does not go away when the mode does -------------------------- */
+
+	{
+		TestTrue(
+			TEXT("the Destroy tab is always live"),
+			Controller.OnToolbarButton(EToolbarButtonId::ModeDestroy));
+
+		/*
+		 * THE CURSOR IS THE SESSION'S, NOT THE MODE'S (SESSION_UI_DESIGN §d, S6).
+		 *
+		 * `OnToolbarButton(ModeDestroy)` USED TO hand the controls back through the piece menu's own
+		 * apply, so switching mode HID the pointer — and with the toolbar always on screen that was
+		 * a strip a human could not click until they first opened a piece menu, which is not a
+		 * toolbar. The strip is up in both modes, Destroy hovers and inspects with the same pointer
+		 * Build aims a ghost with, and the camera is a held right-drag in both; so the cursor cannot
+		 * be something a mode raises and lowers, and since S6 it is not — `SetSessionControls` raises
+		 * it once in BeginPlay and no mode switch touches it.
+		 *
+		 * THE MODE MUST NOT CHANGE HOW THE CAMERA WORKS, which is the same sentence from the other
+		 * end: a player who has to re-learn flying twice a minute is a player who stops switching
+		 * mode.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("DESTROY MODE KEEPS THE CURSOR. It is the session's pointer, not Build mode's — "
+					 "the strip is on screen in both modes and hovering a brick needs it as much as "
+					 "aiming a ghost does. The state is %s"),
+				*SessionStateBits(Controller.GetSessionToolbarState())),
+			Controller.bShowMouseCursor);
+
+		TestTrue(
+			TEXT("and back in Build it is still up — this is not a toggle that happens to be true "
+				 "in one mode"),
+			Controller.OnToolbarButton(EToolbarButtonId::ModeBuild) && Controller.bShowMouseCursor);
 	}
 
 	Fixture.End();
@@ -1732,18 +1770,19 @@ bool FSessionGameModeOpensBuildModeTest::RunTest(const FString& Parameters)
  * THE STATE IS REFRESHED THROUGH A REAL DOOR BEFORE IT IS READ
  * =====================================================================================
  *
- * `ChoosePieceMenuRow` does not call `RefreshSessionHasStructure` — nothing on the delete path does —
- * so `bHasStructure` is still carrying the answer from the click that LAID the brick when the delete
- * finishes. Read cold, the flag would say `true` for a stale reason and the claim would pass without
- * biting. So the Destroy tab (always live, a bitwise no-op on the state) is clicked afterwards, which
- * is what any further interaction with the strip does: `OnToolbarButton` refreshes at the door,
- * precisely so a command is never refused on a stale precondition. The first claim below —
+ * The Destroy tab (always live, a bitwise no-op on the state) is clicked before the flag is read,
+ * which is what any further interaction with the strip does: `OnToolbarButton` refreshes at the
+ * door, precisely so a command is never refused on a stale precondition. The first claim below —
  * `GetSessionStructureId` itself — is asked directly and needs no such door.
  *
- * (That the delete path itself never refreshes is a separate finding, logged rather than asserted
- * here: it means the strip on screen goes on offering Run against a build that has just emptied
- * until the next click. Fixing the reading below does not fix that; it only makes the answer right
- * whenever it IS asked.)
+ * (THE CLICK IS NOW BELT AND BRACES RATHER THAN THE ONLY ROUTE, and the paragraph that used to
+ * stand here said the opposite: at the time `ChoosePieceMenuRow` refreshed nothing, so reading the
+ * flag cold would have found the answer from the click that LAID the brick and the claim would have
+ * passed without biting. `World.Session.DeleteRefreshesTheSessionFlag` is the test that drove that
+ * hole shut — it makes the same read with NO intervening toolbar click, which is the discipline
+ * this one deliberately does not have — and the refresh now happens on the delete path itself. The
+ * click is kept because it costs nothing and this test is about WHICH STRUCTURE the session names,
+ * not about when the flag is refreshed.)
  *
  * NEEDS A TICKING WORLD: a world with begin-play run under a URL — the sandbox row lays its 1,220
  * bricks, which is where the run time goes — and a real line trace against real collision. It never
@@ -1980,6 +2019,235 @@ bool FSessionStructureIsTheLiveOneTest::RunTest(const FString& Parameters)
 	}
 
 	TestWorld.End();
+
+	return true;
+}
+
+/**
+ * DELETING THE LAST PIECE REFRESHES THE STRIP'S ONE PRECONDITION: `bHasStructure` READS FALSE
+ * IMMEDIATELY, WITHOUT WAITING FOR THE NEXT TOOLBAR CLICK.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * After the player lays one brick and then deletes it through the piece menu, the session state
+ * read COLD — with no intervening `OnToolbarButton` — says there is nothing to command, so the
+ * strip on screen greys `Clear build` and `Run structure` instead of offering them over an empty
+ * plot.
+ *
+ * =====================================================================================
+ * WHY THE READ IS COLD, AND WHY THAT IS THE WHOLE TEST
+ * =====================================================================================
+ *
+ * `OnToolbarButton` refreshes the precondition at the door, deliberately — its header says why: a
+ * command refused on a stale flag reads as a dropped click. The DELETE path had no such door.
+ * `ChoosePieceMenuRow` → `CommitPieceActionForAll` called neither `RefreshSessionHasStructure` nor
+ * `RefreshSessionToolbar`, so the flag on the state went on carrying the answer from the click that
+ * LAID the brick, and the strip actually on screen went on being drawn from it: the player saw two
+ * live commands over a plot with nothing on it, and pressing Run solved an empty graph and reported
+ * success. `ChoosePieceMenuRow` now refreshes both on a committed action, and this is the test that
+ * holds it there.
+ *
+ * `World.Session.SessionStructureIsTheLiveOne` reaches its flag through a deliberate Destroy-tab
+ * click and its header says so out loud, precisely because this hole was known and not yet driven
+ * by a test. This is that test, and its entire discipline is the ABSENCE of that click: any
+ * `OnToolbarButton` between the delete and the read makes it pass without biting.
+ *
+ * =====================================================================================
+ * A BARE WORLD, WITH NO LEVEL WALL BEHIND THE BUILD
+ * =====================================================================================
+ *
+ * The sibling above needs a scenario level because its bug is about which of TWO structures wins.
+ * This one is the opposite and must have only one: with a wall standing behind the build,
+ * `GetSessionStructureId` would fall back to it and `bHasStructure` would be correctly true, so the
+ * claim would be unfalsifiable. A bare `FBrickTestWorld` runs no game mode of this class, so the
+ * fallback answers `INDEX_NONE` and "there is nothing to command" is simply the truth — which is
+ * asserted beside the flag rather than assumed, so a failure says which of the two is wrong.
+ *
+ * =====================================================================================
+ * WHAT IS ASSERTED
+ * =====================================================================================
+ *
+ * The flag, the structure id it should have been derived from, and what the STRIP would draw from
+ * it — `SessionToolbarButtons` asked for `RunStructure`. The last is the player-facing statement
+ * and the reason the first two matter: a lit command over an empty plot is a button that does
+ * nothing, which `Core/SessionToolbar.h` already argues is indistinguishable from a missed click.
+ *
+ * NEEDS A TICKING WORLD: a world for the spawns and for the Destroy ray's real line trace against
+ * real brick collision, but it never ticks one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSessionDeleteRefreshesTheFlagTest,
+	"DestructionGame.World.Session.DeleteRefreshesTheSessionFlag",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSessionDeleteRefreshesTheFlagTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace DestructionSession;
+	using namespace SessionControllerTestSupport;
+
+	FSessionFixture Fixture;
+
+	if (!Fixture.Begin(*this))
+	{
+		Fixture.End();
+		return true;
+	}
+
+	ADestructionGamePlayerController& Controller = *Fixture.Controller;
+	UBuildModeComponent& Build = *Fixture.Build;
+	UDestructionStructureSubsystem& Subsystem = *Fixture.TestWorld.Subsystem;
+
+	if (!Controller.OnToolbarButton(EToolbarButtonId::ModeBuild))
+	{
+		AddError(TEXT("fixture: the Build tab must be clickable for any of this to run"));
+		Fixture.End();
+		return true;
+	}
+
+	const int32 BuildStructureId = Build.GetStructureId();
+
+	/* --- ONE: one brick, and the session knows it has something to command ------------------ */
+
+	{
+		const bool bPlaced = Controller.PrimaryAlongRay(
+			SessionPointerRayStart(0.0), SessionPointerRayEnd(0.0));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture: the click must lay the player's one brick; it reported %d"),
+				bPlaced ? 1 : 0),
+			bPlaced);
+	}
+
+	FStructureBinding* Binding = Subsystem.Find(BuildStructureId);
+
+	if (Binding == nullptr || Binding->NumPieces() != 1)
+	{
+		AddError(FString::Printf(
+			TEXT("fixture: the build must hold exactly the one laid brick; it holds %d"),
+			Binding != nullptr ? Binding->NumPieces() : INDEX_NONE));
+
+		Fixture.End();
+		return true;
+	}
+
+	const FVector LaidCentreCm = Binding->GetBinding(0).Box.CentreCm;
+
+	if (!Controller.OnToolbarButton(EToolbarButtonId::ModeDestroy))
+	{
+		AddError(TEXT("fixture: the Destroy tab must be clickable"));
+		Fixture.End();
+		return true;
+	}
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("fixture: with one brick laid and the mode switched, the session must already KNOW "
+				 "it has a structure — otherwise 'false afterwards' says nothing. The state is %s"),
+			*SessionStateBits(Controller.GetSessionToolbarState())),
+		Controller.GetSessionToolbarState().bHasStructure);
+
+	/* --- TWO: and then the player takes it straight back out again ------------------------- */
+
+	{
+		const FVector InspectStart(
+			LaidCentreCm.X, LaidCentreCm.Y - SessionInspectReachCm, LaidCentreCm.Z);
+
+		const FVector InspectEnd(
+			LaidCentreCm.X, LaidCentreCm.Y + SessionInspectReachCm, LaidCentreCm.Z);
+
+		Controller.PrimaryAlongRay(InspectStart, InspectEnd);
+
+		const TArrayView<const FPieceMenuRow> Rows = Controller.GetShownPieceMenuRows();
+
+		const int32 DeleteRow = SessionFindMenuRow(Rows, TEXT("Delete"));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("fixture: the click must put the laid brick's menu up with a Delete row against "
+					 "structure %d piece 0; it shows [%s]"),
+				BuildStructureId, *SessionDescribeMenuRows(Rows)),
+			DeleteRow != INDEX_NONE
+				&& Rows.IsValidIndex(DeleteRow)
+				&& Rows[DeleteRow].Ref.StructureId == BuildStructureId
+				&& Rows[DeleteRow].Ref.PieceIndex == 0);
+
+		if (DeleteRow == INDEX_NONE || Rows[DeleteRow].Ref.StructureId != BuildStructureId)
+		{
+			Fixture.End();
+			return true;
+		}
+
+		TestTrue(
+			TEXT("fixture: choosing Delete must report that it committed"),
+			Controller.ChoosePieceMenuRow(DeleteRow));
+	}
+
+	/*
+	 * FROM HERE TO THE END OF THIS TEST, NOTHING MAY TOUCH THE TOOLBAR.
+	 *
+	 * `OnToolbarButton` refreshes the precondition at its door, so a single click of any button —
+	 * even one the strip refuses — would make every claim below pass while the defect stands. The
+	 * whole of this test is the gap between the delete and the read.
+	 */
+
+	Binding = Subsystem.Find(BuildStructureId);
+
+	if (Binding == nullptr)
+	{
+		AddError(TEXT("the build structure vanished under the delete"));
+		Fixture.End();
+		return true;
+	}
+
+	TestEqual(
+		FString::Printf(
+			TEXT("fixture: RemovePiece tombstones rather than compacting, so the emptied build still "
+				 "answers a piece count of 1; it answers %d"),
+			Binding->NumPieces()),
+		Binding->NumPieces(), 1);
+
+	TestEqual(
+		FString::Printf(
+			TEXT("fixture: and nothing in it is live — the plot is empty; %d are"),
+			Binding->GetStructure().NumLivePieces()),
+		Binding->GetStructure().NumLivePieces(), 0);
+
+	TestEqual(
+		FString::Printf(
+			TEXT("fixture: and this bare world laid no wall of its own, so there is genuinely nothing "
+				 "for the session to name; it names %d"),
+			Controller.GetSessionStructureId()),
+		Controller.GetSessionStructureId(), static_cast<int32>(INDEX_NONE));
+
+	/* --- THREE: the cold read ------------------------------------------------------------- */
+
+	{
+		const FSessionToolbarState& State = Controller.GetSessionToolbarState();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("THE DELETE MUST REFRESH THE SESSION'S ONE PRECONDITION. The player's only brick "
+					 "is gone and nothing else stands, so the state must say so WITHOUT waiting for "
+					 "the next toolbar click — the strip on screen is drawn from this, and an unrefreshed "
+					 "flag goes on offering Run and Clear over an empty plot until something else is "
+					 "pressed. The state is %s"),
+				*SessionStateBits(State)),
+			!State.bHasStructure);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("AND THE STRIP MUST THEREFORE GREY Run structure. A lit command over a plot with "
+					 "nothing on it is a button that solves an empty graph and reports success, which "
+					 "is indistinguishable from the game having missed the click. The state is %s"),
+				*SessionStateBits(State)),
+			!SessionButtonIsEnabled(State, EToolbarButtonId::RunStructure));
+	}
+
+	Fixture.End();
 
 	return true;
 }

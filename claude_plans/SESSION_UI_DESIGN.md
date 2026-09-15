@@ -374,23 +374,24 @@ The warning line is the only red thing in Build mode, and it is text rather than
 
 ## (d) Cursor and camera
 
-### What is true today
+### What was true before S6 (2026-09-15), and why it had to change
 
-`IMC_MouseLook` binds the raw `Mouse2D` axis **unconditionally, with no held button**, so the camera
-follows the mouse all the time and there is no pointer. The only way a cursor appears is
-`SetPieceMenuControls(true)`, which *removes the whole context* for as long as a menu is up. That is
-a coherent design for a game whose only UI is a transient context menu. **It is incompatible with a
-toolbar that is always on screen** — a permanent strip you can only click by first opening a piece
-menu is not a toolbar.
+`IMC_MouseLook` bound the raw `Mouse2D` axis **unconditionally, with no held button**, so the camera
+followed the mouse all the time and there was no pointer. The only way a cursor appeared was
+`SetPieceMenuControls(true)`, which *removed the whole context* for as long as a menu was up. That
+was a coherent design for a game whose only UI was a transient context menu. **It is incompatible
+with a toolbar that is always on screen** — a permanent strip you can only click by first opening a
+piece menu is not a toolbar.
 
-### The proposed scheme
+### The scheme (LANDED with S6, 2026-09-15; the human playtest check is still owed)
 
 **The cursor is visible for the whole session, in both modes. Camera look is a held right-drag.**
+`SetSessionControls()` runs once from the controller's `BeginPlay`; `SetPieceMenuControls` is gone.
 
 | Input | Build | Destroy |
 |---|---|---|
 | `W A S D` | fly | fly |
-| `Q` / `E` (`IA_Jump`) | descend / ascend | descend / ascend |
+| `Space` (`IA_Jump`; §d once said `Q`/`E` — `IMC_Default` maps neither) | ascend | ascend |
 | Mouse move | ghost follows the build plane; cursor over UI | hover highlight; cursor over UI |
 | **RMB held** + mouse move | **camera look** (cursor hidden, recentred on release) | same |
 | LMB | place | select / toggle selection |
@@ -404,17 +405,24 @@ the camera works, or the player has to re-learn flying twice a minute.
 
 1. **New asset `IA_LookModifier`** (Digital / bool), and a `RequiredContent.h` row for it beside
    `MouseLookActionPath`.
-2. **`IMC_MouseLook`'s `IA_MouseLook` mapping gains a `Chorded Action` trigger** referencing
-   `IA_LookModifier`; `IMC_Default` (or a new `IMC_Session`) maps `IA_LookModifier` to the right
-   mouse button. This is an **asset edit, not code** — `*.uasset` changes are TDD-exempt per
-   CLAUDE.md, but the *consequence* is not: a test that asserts the mapping context's shape is the
-   right way to keep it, and `Tests/RequiredContentTest.cpp` is where it goes.
-3. **`SetPieceMenuControls` loses its context removal entirely** and is replaced by a session-wide
-   `SetSessionControls()` called once in `BeginPlay`: `bShowMouseCursor = true` and
-   `FInputModeGameAndUI` with `SetHideCursorDuringCapture(false)` and no widget to focus. The
-   function's own header currently argues for one-function-with-one-branch so the restore cannot
-   fall out of step with the apply — with a permanent cursor there is no apply/restore pair left to
-   fall out of step, which is strictly simpler.
+2. **`IMC_MouseLook`'s `IA_MouseLook` mapping carries a `Chorded Action` trigger** referencing
+   `IA_LookModifier`; `IMC_Session` maps `IA_LookModifier` to the right mouse button (authored by
+   `Scripts/Author-SessionInput.py`). An asset edit, TDD-exempt per CLAUDE.md, but the *consequence*
+   is not: `Content.SessionInput.LookNeedsTheModifierHeld` asserts the shape. **THE ORDERING TRAP
+   (review, 2026-09-15):** a chord reads its modifier's trigger-state tracker, which EnhancedInput
+   resets at the END of each frame, so the modifier's mapping must evaluate EARLIER in the frame
+   than the chorded one; `ReorderMappings` guarantees that only WITHIN one context, and across
+   contexts the order is priority-descending and unstable among equals. With all three contexts at
+   priority 0 the camera never turned. `IMC_Session` is therefore applied at a HIGHER priority than
+   `IMC_MouseLook`/`IMC_Default`, pinned on the rebuilt mapping list by
+   `World.Input.LookModifierEvaluatesBeforeTheChord`. (The more robust shape — the RMB mapping
+   living in `IMC_MouseLook` itself — is the fallback if priorities ever need to change.)
+3. **`SetPieceMenuControls` is deleted**, replaced by the session-wide `SetSessionControls()`
+   called once in `BeginPlay`: `bShowMouseCursor = true` and `FInputModeGameAndUI` with
+   `SetHideCursorDuringCapture(true)` — the cursor disappears while RMB is held for the look and
+   comes back where it was on release, which is what the table above means by "cursor hidden,
+   recentred on release" — and no widget to focus. With a permanent cursor there is no
+   apply/restore pair left to fall out of step, which is strictly simpler.
 4. **`IA_HoverPiece` can now be folded back into `IA_MouseLook`** — it exists *only* because
    `IMC_MouseLook` was being removed under the menu (both headers say so explicitly). Once nothing
    removes the context, the separate action has no reason to exist. **Recommendation: keep it
@@ -632,7 +640,7 @@ the pattern every new panel follows.
 | **S4** | **The strip on screen** | `ADestructionGamePlayerController::BuildSessionToolbarPanel() -> TSharedRef<SWidget>`, `GetSessionToolbarState()`, `OnToolbarButton(EToolbarButtonId)` | `World.Session.ToolbarDrivesTheSession` — headless: clicking through `OnToolbarButton` moves the state *and* pushes it onto `UBuildModeComponent` via `SetPieceKind` / `SetCourse` / `PlacementMode` ONLY (the component derives material, extent and `BuildPlaneZCm` itself; **grounded is never pushed** — it is derived from the snapped pose inside the subsystem, DESIGN §8 2026-09-15, and `IsCourseGrounded` is only the readout's intent) | Build tab lit with its accent bar, Brick lit, Snap lit, `Course 0`, `Clear build` visibly greyed |
 | **S5** | Mode switch is total | `OnToolbarButton(ModeDestroy)` hides the ghost, `Destroy` disables placement; and back | `World.Session.ModeSwitchIsTotal` — no ghost survives into Destroy, the build settings survive the round trip (the model already promises this) | one shot per mode, same camera |
 | **S5b** | Arming `Clear build` | `FSessionToolbarState::ClearArmedAtSeconds` + a transition | `Core.SessionToolbar.ClearArms` — first click arms and changes the caption, second within the window clears, a click elsewhere disarms | armed state, red caption |
-| **S6** | **Cursor + RMB look** | `SetSessionControls()`; `IA_LookModifier` asset + chorded trigger; `.IsFocusable(false)` everywhere | `Content.RequiredContent` gains the new action; a mapping-shape assertion | cursor visible over the toolbar, the wall not spinning, and **`W` still flies after a button click** (the human check) |
+| **S6** (LANDED 2026-09-15 with S0/S4; `SetPieceMenuControls` deleted, shortcuts Tab/1/2/3/G/[/]/Enter in `IMC_Session`) | **Cursor + RMB look** | `SetSessionControls()`; `IA_LookModifier` asset + chorded trigger; `.IsFocusable(false)` everywhere | `Content.RequiredContent` gains the new action; a mapping-shape assertion | cursor visible over the toolbar, the wall not spinning, and **`W` still flies after a button click** (the human check) |
 | **S7** | Identity line | `FPieceMenuInspector::IdentityText` — material name by library-row identity, size from the box, mass from `GetPiece` | `Presenter.PieceIdentityText` — a clay brick reads exactly `Clay brick · 21.5 × 10.25 × 6.5 cm · 2.9 kg`; an unlisted material reads `Unknown material`; a ref naming nothing reads empty | panel with the line under the inspected label |
 | **S8** | Hover peek | `HoverAlongRay` also builds a `Compact` inspector when nothing is selected | `World.Session.HoverPeek` — peek appears on hover, is suppressed by a real selection, and changes nothing about the selection | cursor on an un-selected brick, compact panel up |
 | **S9** | **Ghost card** | `EPieceMenuDetail::GhostCard`, `FBuildPreviewInspector BuildBuildPreviewInspector(...)`; needs CURRENT_STATE (b2) `bWouldPlace` and (v-a) `bRequestedPoseOccupied` first | `Presenter.BuildPreviewInspector` — a kind table → words; free-in-open-space vs every-snap-occupied are different sentences; `KindText` summarises the *joints* rather than the ambiguous merged `Kind` | ghost in the world and a card that agrees with it, joint for joint |

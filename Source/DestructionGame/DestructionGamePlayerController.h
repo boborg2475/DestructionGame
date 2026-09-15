@@ -82,6 +82,26 @@ public:
 	bool OnToolbarButton(DestructionSession::EToolbarButtonId Id);
 
 	/**
+	 * The two keys that stand for a PAIR of chips: read where the session is, dispatch the other.
+	 *
+	 * THROUGH OnToolbarButton RATHER THAN AT THE FIELD, which is the whole of what these are for.
+	 * `Tab` and `G` are each one binding standing for two buttons, so each carries a read of the
+	 * current state and a choice between two ids — and that read is the only decision anywhere in
+	 * the session's keyboard. Written the obvious way, as "set the other value", `G` would flip
+	 * Snap/Free in Destroy mode, which does not draw it: the player would come back to Build and
+	 * find bricks landing wherever the cursor is. Going through the one door means the model's
+	 * refusals apply to a key exactly as they apply to a chip.
+	 *
+	 * The other six shortcuts have no function here because they have no decision in them — each
+	 * is one constant id, dispatched straight at the door.
+	 *
+	 * @return whether the toggle landed, with false a refusal rather than a failure — a silent
+	 *         no-op on a key reads as a dropped press.
+	 */
+	bool ToggleSessionMode();
+	bool ToggleSessionPlacement();
+
+	/**
 	 * The structure this session's commands act on, or INDEX_NONE.
 	 *
 	 * THE PLAYER'S OWN BUILD FIRST, AND THE LEVEL'S WALL BEHIND IT. Twenty-eight of the twenty-nine
@@ -300,27 +320,76 @@ protected:
 	/**
 	 * The input that keeps the highlight following the cursor.
 	 *
-	 * A SECOND ACTION RATHER THAN IA_MouseLook, THOUGH BOTH READ Mouse2D. IA_MouseLook lives
-	 * in IMC_MouseLook, which SetPieceMenuControls takes away for as long as a menu is up — so
-	 * hover hung off it would stop updating at exactly the moment the cursor appears and the
-	 * player starts moving it over bricks to pick more. It therefore has to share the axis with
-	 * free-look, and RequiredContent.h records why the asset must not CONSUME it.
+	 * A SECOND ACTION RATHER THAN IA_MouseLook, THOUGH BOTH READ Mouse2D. Free-look is CHORDED
+	 * to a held right mouse button now, and hovering has to work while no button is held at all —
+	 * a brick is called out at exactly the moment the player is pointing at it rather than
+	 * spinning the camera. It therefore shares the axis with free-look, and RequiredContent.h
+	 * records why the asset must not CONSUME it.
 	 */
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputAction> HoverPieceAction;
 
 	/**
-	 * The always-on free-look context, named separately because the menu turns it off.
+	 * The always-on free-look context, named separately so the constructor reads plainly.
 	 *
-	 * IT IS ALSO IN DefaultMappingContexts, AND IT IS THE SAME POINTER — this is a name for
-	 * one of the contexts that are applied, not a second one. IMC_MouseLook binds the raw
-	 * Mouse2D axis unconditionally with no held button, so the camera follows the mouse all
-	 * the time and there is no pointer; a menu drawn on top of that is unusable. IMC_Default
-	 * is deliberately NOT named here and is never removed, because it carries IA_InspectPiece,
-	 * which is how the player closes the menu by clicking somewhere else.
+	 * IT IS ALSO IN DefaultMappingContexts, AND IT IS THE SAME POINTER — this is a name for one
+	 * of the contexts that are applied, not a second one. It used to be named here because the
+	 * piece menu REMOVED it: IMC_MouseLook binds the raw Mouse2D axis, so with no held button the
+	 * camera followed the mouse all the time and a cursor drawn over it was unusable. The removal
+	 * is gone (SESSION_UI_DESIGN §d, S6) — the mapping now carries a Chorded Action trigger on
+	 * IA_LookModifier, so look happens only while the right mouse button is down and there is
+	 * nothing for a panel to take away.
 	 */
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputMappingContext> MouseLookMappingContext;
+
+	/**
+	 * The session's own keyboard, named for the same reason and used for one more.
+	 *
+	 * IT IS ALSO IN DefaultMappingContexts, AND IT IS THE SAME POINTER — a name for one of the
+	 * contexts that are applied, not a second one. What the name is FOR here is the priority: the
+	 * apply loop gives this context one step above the others, because IMC_MouseLook's Mouse2D
+	 * mapping is chorded on the IA_LookModifier this context maps, and a chord only sees its
+	 * modifier if the modifier's mapping was evaluated earlier in the same frame. The reasoning is
+	 * at SessionMappingContextPriority in the .cpp.
+	 */
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputMappingContext> SessionMappingContext;
+
+	/**
+	 * THE EIGHT SESSION SHORTCUTS, ONE PROPERTY PER ACTION.
+	 *
+	 * EIGHT RATHER THAN A LIST, because each is bound to a different dispatch and the binding is
+	 * where a list would have to be turned back into names anyway. IA_LookModifier is deliberately
+	 * NOT among them: it feeds IMC_MouseLook's chord and has no handler to reach, so a C++ binding
+	 * on it would be dead code.
+	 *
+	 * Resolved by the paths RequiredContent.h names, so these and the required-content table
+	 * cannot become two lists that disagree.
+	 */
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> SessionToggleModeAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> SessionPieceBrickAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> SessionPiecePlateAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> SessionPieceLintelAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> SessionSnapToggleAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> SessionCourseUpAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> SessionCourseDownAction;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> SessionRunAction;
 
 	/** Input mapping context setup */
 	virtual void SetupInputComponent() override;
@@ -356,14 +425,40 @@ private:
 	void OnHoverPiece();
 
 	/**
-	 * Hand the controls to the menu, or give them back.
+	 * Put the session's controls up, once, and never take them down again.
 	 *
-	 * ONE FUNCTION WITH ONE BRANCH RATHER THAN TWO, so the restore cannot quietly fall out of
-	 * step with the apply — forgetting it leaves the player with a cursor and no camera, which
-	 * is unrecoverable rather than merely untidy. A controller with no ULocalPlayer has no
-	 * Enhanced Input subsystem to remove a context from, and that fails closed here.
+	 * IT REPLACES AN APPLY/RESTORE PAIR, AND THE ABSENCE OF THE RESTORE IS THE POINT. There was a
+	 * SetPieceMenuControls(bool) here: it raised the cursor and REMOVED the free-look context
+	 * while a menu was up, and put both back on the way out. That was a correct answer to a real
+	 * hazard — IMC_MouseLook binds the raw Mouse2D axis, so a pointer drawn over a camera that
+	 * follows every mouse movement is unusable — and it is incompatible with a toolbar that is on
+	 * screen for the whole session: a strip a player can only click by first opening a piece menu
+	 * is not a toolbar. The hazard is closed at the ASSET now, by IMC_MouseLook's Chorded Action
+	 * trigger on IA_LookModifier, so there is nothing for a panel to take away and no restore any
+	 * route can forget (SESSION_UI_DESIGN §d, S6).
+	 *
+	 * THE CURSOR HIDES WHILE THE BUTTON IS HELD, which is what SetHideCursorDuringCapture(true)
+	 * buys: the right-drag that turns the camera takes capture, the pointer vanishes for the
+	 * length of the drag and comes back where it was on release. And the mouse is NOT locked to
+	 * the viewport, because a session is played in a window as often as not.
+	 *
+	 * A controller with no ULocalPlayer has no viewport to set an input mode against, and that
+	 * fails closed here — the cursor flag, which needs nothing, is set first.
 	 */
-	void SetPieceMenuControls(bool bMenuIsUp);
+	void SetSessionControls();
+
+	/**
+	 * The session shortcuts' handlers: one call each, and nothing else belongs in them.
+	 *
+	 * SIX OF THE EIGHT SHARE ONE FUNCTION WITH THE ID AS A BOUND PAYLOAD, because they differ by
+	 * nothing but that id — six one-line functions would be six places for a copy-paste to put
+	 * the wrong constant. The two toggles cannot: each reads the session before it chooses, which
+	 * is why ToggleSessionMode and ToggleSessionPlacement are public seams a test can drive, and
+	 * these are the void wrappers Enhanced Input's delegate signature needs.
+	 */
+	void OnSessionShortcut(DestructionSession::EToolbarButtonId Id);
+	void OnSessionToggleMode();
+	void OnSessionTogglePlacement();
 
 	/**
 	 * Put one button per presented row on screen, and take them off again.

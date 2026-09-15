@@ -50,13 +50,66 @@ namespace DestructionContent
 	 * beside IA_InspectPiece.
 	 *
 	 * A SECOND ACTION RATHER THAN IA_MouseLook, EVEN THOUGH BOTH READ THE SAME Mouse2D AXIS.
-	 * IA_MouseLook lives in IMC_MouseLook, and SetPieceMenuControls REMOVES that context for as
-	 * long as a menu is up — so hover hung off it would stop updating at exactly the moment the
-	 * cursor appears and the player starts moving it over bricks. IMC_Default is never removed,
-	 * which is the whole reason IA_InspectPiece lives there, and it is why this does too.
+	 * IA_MouseLook lived in a context the piece menu REMOVED for as long as it was up, so hover
+	 * hung off it would have stopped updating at exactly the moment the cursor appeared and the
+	 * player started moving it over bricks. Nothing removes a context any more — IMC_MouseLook's
+	 * mapping is chorded to IA_LookModifier below, which is what made the removal unnecessary —
+	 * so what keeps the two actions apart now is the CHORD: hover must fire while no button is
+	 * held, and IA_MouseLook by definition does not. Folding them back together is logged in
+	 * CURRENT_STATE as a later content change, and Content.SessionInput.LookNeedsTheModifierHeld
+	 * is what insists the chord has not been copied onto this one in the meantime.
 	 */
 	inline constexpr const TCHAR* HoverPieceActionPath =
 		TEXT("/Game/Input/Actions/IA_HoverPiece.IA_HoverPiece");
+
+	/**
+	 * THE ONE ACTION NOTHING BINDS, AND THE REASON THE CAMERA CAN BE POINTED AT ALL.
+	 *
+	 * IA_LookModifier has no handler and must not get one. It exists to be the action
+	 * IMC_MouseLook's Chorded Action trigger WATCHES: free-look used to read the raw Mouse2D
+	 * axis with no held button, so the camera followed the mouse all the time and the only
+	 * cursor this game had came from REMOVING that whole context while a piece menu was up —
+	 * which a toolbar that is on screen for the whole session cannot live with. Gating look on
+	 * a held right mouse button leaves a panel nothing to take away.
+	 *
+	 * IT IS RESOLVED ONTO NO CDO, WHICH IS WHY THE TABLE ROW MATTERS MORE HERE THAN ANYWHERE.
+	 * Every other path below is also held by a constructor, so a missing asset shows up twice.
+	 * This one is referenced only by the IMC_Session mapping and by IMC_MouseLook's chord, so
+	 * the table sweep is the only thing that would say it had gone.
+	 */
+	inline constexpr const TCHAR* LookModifierActionPath =
+		TEXT("/Game/Input/Actions/IA_LookModifier.IA_LookModifier");
+
+	/**
+	 * THE EIGHT SESSION SHORTCUTS, ONE ACTION PER CONTROL THE TOOLBAR DRAWS.
+	 *
+	 * ONE ACTION PER CHIP RATHER THAN ONE PER KEY, because a keyboard shortcut in this design
+	 * IS a toolbar click: every one of these is bound to a single OnToolbarButton dispatch, so
+	 * the model's refusals apply to the keyboard exactly as they apply to the strip. Two of them
+	 * stand for a PAIR of buttons — Tab toggles the mode tabs and G toggles Snap/Free — which is
+	 * a read of the current state rather than a second id, and is why those two go through
+	 * ToggleSessionMode and ToggleSessionPlacement instead of straight at the door.
+	 *
+	 * The keys themselves live in IMC_Session and are pinned by
+	 * Content.SessionInput.SessionContextMapsTheShortcuts; that none of them is a key IMC_Default
+	 * already flies the pawn with is the separate claim of Content.SessionInput.SessionKeysAreFree.
+	 */
+	inline constexpr const TCHAR* SessionToggleModeActionPath =
+		TEXT("/Game/Input/Actions/IA_SessionToggleMode.IA_SessionToggleMode");
+	inline constexpr const TCHAR* SessionPieceBrickActionPath =
+		TEXT("/Game/Input/Actions/IA_SessionPieceBrick.IA_SessionPieceBrick");
+	inline constexpr const TCHAR* SessionPiecePlateActionPath =
+		TEXT("/Game/Input/Actions/IA_SessionPiecePlate.IA_SessionPiecePlate");
+	inline constexpr const TCHAR* SessionPieceLintelActionPath =
+		TEXT("/Game/Input/Actions/IA_SessionPieceLintel.IA_SessionPieceLintel");
+	inline constexpr const TCHAR* SessionSnapToggleActionPath =
+		TEXT("/Game/Input/Actions/IA_SessionSnapToggle.IA_SessionSnapToggle");
+	inline constexpr const TCHAR* SessionCourseUpActionPath =
+		TEXT("/Game/Input/Actions/IA_SessionCourseUp.IA_SessionCourseUp");
+	inline constexpr const TCHAR* SessionCourseDownActionPath =
+		TEXT("/Game/Input/Actions/IA_SessionCourseDown.IA_SessionCourseDown");
+	inline constexpr const TCHAR* SessionRunActionPath =
+		TEXT("/Game/Input/Actions/IA_SessionRun.IA_SessionRun");
 
 	/**
 	 * What a called-out brick wears, one asset per state that is not None.
@@ -154,9 +207,21 @@ namespace DestructionContent
 	inline constexpr const TCHAR* ShedTimberMaterialPath =
 		TEXT("/Game/Materials/M_Shed_Timber.M_Shed_Timber");
 
-	/* The two mapping contexts ADestructionGamePlayerController adds for a local player. */
+	/* The three mapping contexts ADestructionGamePlayerController adds for a local player. */
 	inline constexpr const TCHAR* DefaultMappingContextPath = TEXT("/Game/Input/IMC_Default.IMC_Default");
 	inline constexpr const TCHAR* MouseLookMappingContextPath = TEXT("/Game/Input/IMC_MouseLook.IMC_MouseLook");
+
+	/**
+	 * The session's own keyboard, applied alongside the other two for the whole session.
+	 *
+	 * A THIRD CONTEXT RATHER THAN NINE MORE MAPPINGS IN IMC_Default, because these are the
+	 * SESSION's keys rather than the pawn's: what they do is decided by the toolbar model, they
+	 * arrive and change together, and keeping them in one asset is what lets
+	 * Content.SessionInput.SessionKeysAreFree diff them against the flying pawn's keys and say
+	 * that none of them has been stolen. bConsumeInput defaults to true, so a collision would
+	 * not double up — it would WITHHOLD the key and the pawn would silently stop answering.
+	 */
+	inline constexpr const TCHAR* SessionMappingContextPath = TEXT("/Game/Input/IMC_Session.IMC_Session");
 
 	/**
 	 * ABrickActor's placeholder mesh, and the one reference reflection cannot see: it is

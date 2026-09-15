@@ -99,6 +99,15 @@ namespace PieceMenuPanelLayoutTestSupport
 		FString Label;
 		FVector2D TopLeftPx = FVector2D::ZeroVector;
 		FVector2D SizePx = FVector2D::ZeroVector;
+
+		/**
+		 * Whether clicking it takes USER FOCUS, which is a property of the row rather than of where
+		 * it landed — and the one thing about this panel no other kind of test can see.
+		 *
+		 * DEFAULTED TRUE, which is `SButton`'s own default and therefore the unsafe answer: a
+		 * collector that failed to fill this in must report the hazard rather than clear it.
+		 */
+		bool bFocusable = true;
 	};
 
 	/**
@@ -163,6 +172,13 @@ namespace PieceMenuPanelLayoutTestSupport
 			Button.Label = PanelWidgetText(Widget);
 			Button.TopLeftPx = FVector2D(Geometry.GetAbsolutePosition());
 			Button.SizePx = FVector2D(Geometry.GetAbsoluteSize());
+
+			/*
+			 * ASKED OF THE WIDGET RATHER THAN OF AN SButton CAST, because SupportsKeyboardFocus is
+			 * SWidget's own virtual and SButton's override is what answers it — the same answer Slate
+			 * itself gets when it decides where a click puts focus.
+			 */
+			Button.bFocusable = Widget->SupportsKeyboardFocus();
 		}
 
 		FArrangedChildren Arranged(EVisibility::All);
@@ -257,13 +273,14 @@ namespace PieceMenuPanelLayoutTestSupport
 		for (int32 Index = 0; Index < Buttons.Num(); ++Index)
 		{
 			Line += FString::Printf(
-				TEXT("%s'%s'@(%.2f, %.2f) %.2f x %.2f px"),
+				TEXT("%s'%s'@(%.2f, %.2f) %.2f x %.2f px%s"),
 				Index == 0 ? TEXT("") : TEXT(", "),
 				*Buttons[Index].Label,
 				Buttons[Index].TopLeftPx.X,
 				Buttons[Index].TopLeftPx.Y,
 				Buttons[Index].SizePx.X,
-				Buttons[Index].SizePx.Y);
+				Buttons[Index].SizePx.Y,
+				Buttons[Index].bFocusable ? TEXT(" FOCUSABLE") : TEXT(""));
 		}
 
 		return Line;
@@ -3039,6 +3056,129 @@ bool FPieceMenuPanelFitsItsBrickListTest::RunTest(const FString& Parameters)
 			TEXT("with 3 bricks picked the panel must not strand the readout: %.2f px of nothing between the last brick row (ending y %.2f) and '%s' (starting y %.2f), against a row %.2f px tall"),
 			DeadSpacePx, LastRowBottomPx, *Inspector.InspectedHintText, ReadoutTopPx, RowHeightPx),
 		DeadSpacePx <= RowHeightPx);
+
+	Fixture.End();
+
+	return true;
+}
+
+/**
+ * NO BUTTON IN THE PIECE MENU MAY TAKE KEYBOARD FOCUS.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * Every `SButton` the piece menu draws — the per-brick entry rows and the action rows alike —
+ * reports `SupportsKeyboardFocus() == false`, so clicking one leaves the keyboard where it was.
+ *
+ * =====================================================================================
+ * WHY THIS IS A DEFECT, AND WHY IT ONLY BECAME ONE IN S6
+ * =====================================================================================
+ *
+ * `SButton` is focusable by default, and Slate gives user focus to a focusable widget on click.
+ * `SButton::OnKeyDown` then HANDLES `Enter` and `Space` itself — it treats them as presses of the
+ * focused button — so both keys stop reaching the game while that focus is held. In this session
+ * that is `Enter` (Run structure) and `Space` (`IA_Jump` on the flying pawn): a player who deletes a
+ * brick and then presses Space finds the pawn does not rise, and pressing Enter re-clicks the menu
+ * row instead of settling the structure. Nothing in the log says so, and the only way back is to
+ * click the viewport.
+ *
+ * Before S6 there was a cursor only while a menu was up, and the menu was dismissed by the next
+ * click; with the permanent cursor the menu is one surface among several the player clicks all
+ * session long, and stolen focus outlives whatever they clicked it for. `BuildSessionToolbarPanel`
+ * already sets `.IsFocusable(false)` on every chip for exactly this reason and says so at the site —
+ * this is the same hazard on the older panel, which never got the same treatment.
+ *
+ * =====================================================================================
+ * WHY THE WALK IS OVER EVERY BUTTON, AND WHY THE COUNT IS ASSERTED
+ * =====================================================================================
+ *
+ * The panel builds buttons at two sites — one per selected brick, and one per action row — and they
+ * are not the same code, so a fix applied to one is a menu that still steals the keyboard from the
+ * other. A sweep over whatever the tree actually holds covers both, and covers a third site added
+ * later.
+ *
+ * AND A SWEEP OVER AN EMPTY LIST PASSES. A panel that failed to build its rows, or a walk that
+ * stopped finding them, would satisfy "every button is unfocusable" while saying nothing — so the
+ * count is asserted at two or more, which the fixture's three picked bricks plus its action rows
+ * comfortably exceed. Two rather than a tighter number because the exact row count is the
+ * presenter's business and `World.Menu.*` next door already owns it.
+ *
+ * NEEDS A TICKING WORLD: a world, because the controller is an actor and the selection comes from a
+ * real ray at a real wall. It never ticks one, and it needs no RHI — focusability is a property of
+ * the widget, read off the same arranged tree every other test in this file measures.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPieceMenuButtonsNeverTakeFocusTest,
+	"DestructionGame.World.Menu.PieceMenuButtonsNeverTakeFocus",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPieceMenuButtonsNeverTakeFocusTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace DestructionLayout;
+	using namespace PieceMenuPanelLayoutTestSupport;
+
+	FPanelFixture Fixture;
+
+	if (!Fixture.Begin(*this))
+	{
+		Fixture.End();
+		return true;
+	}
+
+	ADestructionGamePlayerController* const Controller = Fixture.Controller;
+
+	/*
+	 * A BRICK IS SINGLED OUT, WHICH IS THE STATE A PLAYER IS IN WHEN THEY CLICK A ROW. It changes
+	 * nothing about focusability — the rows are built the same way either way — and it means the
+	 * panel is drawn in its fullest configuration rather than its emptiest.
+	 */
+	Controller->SetInspectedPiece(Fixture.InspectedRef);
+
+	const TSharedRef<SWidget> Panel = Controller->BuildPieceMenuPanel();
+
+	const FPanelLayoutState State = MeasurePanel(Panel, PanelRootGeometry());
+
+	AddInfo(FString::Printf(
+		TEXT("the panel drew: %s"), *DescribePanelButtons(State.Buttons)));
+
+	/* --- ANTI-VACUITY: there are buttons to make a claim about ----------------------------- */
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("fixture: the panel must draw at least 2 buttons — an entry row and an action row — "
+				 "for a sweep over its buttons to mean anything; it drew %d [%s]"),
+			State.Buttons.Num(), *DescribePanelButtons(State.Buttons)),
+		State.Buttons.Num() >= 2);
+
+	/* --- THE CLAIM: not one of them takes the keyboard -------------------------------------- */
+
+	int32 Focusable = 0;
+
+	for (const FPanelButton& Button : State.Buttons)
+	{
+		Focusable += Button.bFocusable ? 1 : 0;
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("THE PIECE MENU'S '%s' MUST NOT TAKE KEYBOARD FOCUS. Slate focuses a focusable "
+					 "widget on click and SButton::OnKeyDown then swallows Enter and Space, so a player "
+					 "who clicks this row loses Run (Enter) and the pawn's jump (Space) until they "
+					 "click the viewport again — with nothing on screen and nothing in the log to say "
+					 "why. SupportsKeyboardFocus reports %d"),
+				*Button.Label, Button.bFocusable ? 1 : 0),
+			!Button.bFocusable);
+	}
+
+	TestEqual(
+		FString::Printf(
+			TEXT("and NONE of the panel's %d button(s) may, not merely most of them — the entry rows "
+				 "and the action rows are built at two different sites and a fix applied to one leaves "
+				 "the other stealing the keyboard. %d still do [%s]"),
+			State.Buttons.Num(), Focusable, *DescribePanelButtons(State.Buttons)),
+		Focusable, 0);
 
 	Fixture.End();
 

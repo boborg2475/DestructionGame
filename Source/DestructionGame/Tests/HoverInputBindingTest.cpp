@@ -225,10 +225,15 @@ bool FHoverInputBindingTest::RunTest(const FString& Parameters)
  *
  * IMC_Default RATHER THAN IMC_MouseLook, AND THAT IS THE LOAD-BEARING HALF. Both actions read
  * the same Mouse2D axis, so hanging hover off the existing IA_MouseLook looks like it saves an
- * asset — but SetPieceMenuControls REMOVES IMC_MouseLook for as long as a menu is up, so hover
- * would stop updating at exactly the moment the cursor appears and the player starts moving it
- * across bricks to pick more of them. IMC_Default is never removed, for the same reason
- * IA_InspectPiece lives in it: it is how a player interacts with a menu that is already open.
+ * asset — but free-look has never been continuously live. It used to be TAKEN AWAY:
+ * SetPieceMenuControls removed IMC_MouseLook for as long as a menu was up, so a hover hung off it
+ * would have stopped updating at exactly the moment the cursor appeared and the player started
+ * moving it across bricks. S6 deleted that function and CHORDED free-look on a held right mouse
+ * button instead, which leaves the same hole by a different route: a hover in that context would
+ * only update while the player was holding RMB to spin the camera, which is the one moment they
+ * are not looking for a brick. IMC_Default is applied for the whole session and gated on nothing,
+ * for the same reason IA_InspectPiece lives in it: it is how a player interacts with a menu that
+ * is already open.
  *
  * AND THEREFORE THE KEY IS SHARED, WHICH IS THE HAZARD. UInputAction::bConsumeInput defaults to
  * TRUE, and a consumed key is withheld from every mapping below it in the applied stack — so a
@@ -315,11 +320,13 @@ bool FHoverPieceIsBoundTest::RunTest(const FString& Parameters)
 		HoverKeys.Num() >= 1);
 
 	/*
-	 * TWO: AND NOT IN THE FREE-LOOK CONTEXT. IMC_MouseLook is taken away while a menu is up, so
-	 * a hover mapping placed there stops updating at exactly the moment the cursor appears.
+	 * TWO: AND NOT IN THE FREE-LOOK CONTEXT. That context used to be taken away while a menu was
+	 * up; since S6 its one mapping is CHORDED on a held right mouse button. Either way a hover
+	 * mapping placed there is dead at the moment it is wanted — once because the context was gone,
+	 * now because the player is not holding RMB while they point at a brick.
 	 */
 	TestTrue(
-		TEXT("the hover action belongs in IMC_Default, not in IMC_MouseLook — that context is removed while a menu is up, which is when the cursor is visible and moving over bricks"),
+		TEXT("the hover action belongs in IMC_Default, not in IMC_MouseLook — that context's one mapping is chorded on a held right mouse button, and the player is not holding it while moving the cursor over bricks"),
 		!MouseLookContext->HasMappingForInputAction(HoverAction));
 
 	/*

@@ -21,6 +21,25 @@ namespace
 		DestructionContent::HoverPieceActionPath,
 		DestructionContent::DefaultMappingContextPath,
 		DestructionContent::MouseLookMappingContextPath,
+
+		/*
+		 * THE SESSION'S KEYBOARD: the modifier the camera is chorded to, the eight shortcuts the
+		 * toolbar draws, and the context that maps them. The modifier is the row that earns its
+		 * keep on its own — nothing resolves it onto a CDO, so this table is the only place that
+		 * would notice it had gone, and what goes wrong when it does is that the camera stops
+		 * turning entirely rather than that one key stops working.
+		 */
+		DestructionContent::LookModifierActionPath,
+		DestructionContent::SessionToggleModeActionPath,
+		DestructionContent::SessionPieceBrickActionPath,
+		DestructionContent::SessionPiecePlateActionPath,
+		DestructionContent::SessionPieceLintelActionPath,
+		DestructionContent::SessionSnapToggleActionPath,
+		DestructionContent::SessionCourseUpActionPath,
+		DestructionContent::SessionCourseDownActionPath,
+		DestructionContent::SessionRunActionPath,
+		DestructionContent::SessionMappingContextPath,
+
 		DestructionContent::BrickPlaceholderMeshPath,
 		DestructionContent::BrickHoverMaterialPath,
 		DestructionContent::BrickSelectedMaterialPath,

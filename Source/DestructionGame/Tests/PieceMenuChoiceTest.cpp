@@ -181,7 +181,22 @@ namespace PieceMenuChoiceTestSupport
 	 *
 	 * Tests/PieceMenuPresenterTest.cpp owns the controls CONTRACT; this checks it across the
 	 * one route that file does not have — choosing a row — because a choice that committed
-	 * perfectly and forgot to restore leaves a player deleting bricks with no camera.
+	 * perfectly and moved the controls around leaves a player deleting bricks with no camera.
+	 *
+	 * THE CONTRACT IS NOW "NOTHING MOVES", WHICH IS WHY THERE ARE NO EXPECTATIONS TO PASS IN.
+	 * This used to take bExpectCursor and bExpectLook, and every call site flipped them: cursor on
+	 * and free-look REMOVED while a menu was up, both restored on the way out. SESSION_UI_DESIGN §d
+	 * (S6) replaces that with a permanent cursor and a camera chorded to a held right mouse button,
+	 * so a panel has nothing to take away and nothing to give back. The hazard the removal answered
+	 * was real — a pointer drawn over a camera that follows every mouse movement is unusable — and
+	 * it is now closed at the ASSET, by IA_MouseLook's Chorded Action trigger on IA_LookModifier,
+	 * rather than by a pair of calls this route had to remember to make.
+	 *
+	 * AND THIS FILE IS THE REASON THE INVERSION IS WORTH ASSERTING RATHER THAN DELETING. Choosing a
+	 * row is the third way out of "a menu is up", it was added after the other two, and it needed
+	 * its own copy of the restore precisely because a restore is the kind of thing a new route
+	 * forgets. A fourth route — the toolbar's Escape, the details window's close — inherits "the
+	 * controls do not move" for free, and this is what says so.
 	 */
 	void CheckChoiceControls(
 		FAutomationTestBase& Test,
@@ -189,19 +204,17 @@ namespace PieceMenuChoiceTestSupport
 		UEnhancedInputLocalPlayerSubsystem& Input,
 		const UInputMappingContext& DefaultContext,
 		const UInputMappingContext& MouseLookContext,
-		const TCHAR* Where,
-		bool bExpectCursor,
-		bool bExpectLook)
+		const TCHAR* Where)
 	{
-		Test.TestEqual(
-			FString::Printf(TEXT("%s: the mouse cursor should%s be shown"),
-				Where, bExpectCursor ? TEXT("") : TEXT(" NOT")),
-			Controller.bShowMouseCursor, bExpectCursor);
+		Test.TestTrue(
+			*FString::Printf(TEXT("%s: the mouse cursor must be shown — it is the session's pointer, "
+								  "up whether or not a menu is"), Where),
+			Controller.bShowMouseCursor);
 
-		Test.TestEqual(
-			FString::Printf(TEXT("%s: IMC_MouseLook should%s be applied"),
-				Where, bExpectLook ? TEXT("") : TEXT(" NOT")),
-			Input.HasMappingContext(&MouseLookContext), bExpectLook);
+		Test.TestTrue(
+			*FString::Printf(TEXT("%s: IMC_MouseLook must stay applied — look is gated by the RMB "
+								  "chord, so nothing about a menu may remove it"), Where),
+			Input.HasMappingContext(&MouseLookContext));
 
 		/* IMC_Default carries IA_InspectPiece, which is how a menu is closed by clicking away. */
 		Test.TestTrue(
@@ -285,13 +298,14 @@ namespace PieceMenuChoiceTestSupport
 }
 
 /**
- * CHOOSING ROW N COMMITS ROW N'S OWN ACTION AGAINST ROW N'S OWN REF, TAKES THE MENU DOWN AND
- * GIVES THE CONTROLS BACK — AND AN INDEX THAT NAMES NO ROW COMMITS NOTHING AND CHANGES NOTHING.
+ * CHOOSING ROW N COMMITS ROW N'S OWN ACTION AGAINST ROW N'S OWN REF AND TAKES THE MENU DOWN,
+ * WITHOUT MOVING THE PLAYER'S CONTROLS AT ALL — AND AN INDEX THAT NAMES NO ROW COMMITS NOTHING
+ * AND CHANGES NOTHING.
  *
  * THIS IS THE LAST ASSERTABLE STEP OF THE MVP LOOP. Everything before it exists: a click
  * reaches the chain, the chain builds the right brick's rows, and the controller presents and
- * holds them. What is missing is any route from a presented row to CommitPieceAction, so a
- * player who clicks a brick gets a cursor, loses free-look, and can do nothing with either.
+ * holds them. What was missing was any route from a presented row to CommitPieceAction, so a
+ * player who clicked a brick got a menu and no way to act on it.
  * The button that will call this is the untested inch — a code-built test world has no
  * UGameViewportClient at all, so AddViewportWidgetContent has nothing to add to — and that
  * inch is exactly one call wide, which is the smallest it can be made.
@@ -313,8 +327,8 @@ namespace PieceMenuChoiceTestSupport
  * tripwire sees that immediately.
  *
  * AND A REFUSAL CHANGES NOTHING, including the menu. A refused index that also dismissed would
- * make the menu vanish when a player clicks a millimetre past the last entry, with the cursor
- * and free-look flipping back at the same time; nothing about that reads as a bug.
+ * make the menu vanish when a player clicks a millimetre past the last entry; nothing about that
+ * reads as a bug.
  *
  * WHAT IS DELIBERATELY NOT PINNED: what a choice should do when the row's own commit REFUSES —
  * a row naming a brick a cascade removed between the menu opening and the click. Both readings
@@ -453,7 +467,7 @@ bool FPieceMenuChoiceCommitsThatRowTest::RunTest(const FString& Parameters)
 
 	CheckChoiceControls(
 		*this, *Controller, *Input, *DefaultContext, *MouseLookContext,
-		TEXT("fixture, with the two-row menu up"), true, false);
+		TEXT("fixture, with the two-row menu up"));
 
 	struct FRefusedIndexCase
 	{
@@ -502,7 +516,7 @@ bool FPieceMenuChoiceCommitsThatRowTest::RunTest(const FString& Parameters)
 
 		CheckChoiceControls(
 			*this, *Controller, *Input, *DefaultContext, *MouseLookContext,
-			Case.Description, true, false);
+			Case.Description);
 	}
 
 	/*
@@ -580,7 +594,7 @@ bool FPieceMenuChoiceCommitsThatRowTest::RunTest(const FString& Parameters)
 
 		CheckChoiceControls(
 			*this, *Controller, *Input, *DefaultContext, *MouseLookContext,
-			TEXT("after choosing row 1"), false, true);
+			TEXT("after choosing row 1"));
 	}
 
 	/*
@@ -636,7 +650,7 @@ bool FPieceMenuChoiceCommitsThatRowTest::RunTest(const FString& Parameters)
 
 		CheckChoiceControls(
 			*this, *Controller, *Input, *DefaultContext, *MouseLookContext,
-			TEXT("after choosing row 0"), false, true);
+			TEXT("after choosing row 0"));
 	}
 
 	TestWorld.End();
@@ -662,11 +676,12 @@ bool FPieceMenuChoiceCommitsThatRowTest::RunTest(const FString& Parameters)
  * nobody re-solved still reports them held up by a brick that is not there — the "the brick
  * vanishes and the wall stands there" failure, seen from the far end of the chain.
  *
- * AND THE CONTROLS ARE ASSERTED ON BOTH SIDES OF THE CHOICE, because the state this closes is
- * currently worse than nothing: today a click on a brick takes free-look away and puts up a
- * cursor with NO MENU behind it, recoverable only by clicking somewhere that misses. The
- * cursor-on/look-off row is that state, asserted deliberately rather than incidentally; the
- * row after the choice is the recovery that makes it stop mattering.
+ * AND THE CONTROLS ARE ASSERTED ON BOTH SIDES OF THE CHOICE, AND THE CLAIM IS NOW THAT THEY DO
+ * NOT MOVE. It used to be that a click on a brick took free-look away and raised a cursor, and
+ * the rows here recorded that flip and its recovery. SESSION_UI_DESIGN §d (S6) makes the cursor
+ * permanent and gates the camera on a held right mouse button instead, so there is no flip left to
+ * record — which is the stronger reading, because "restore it afterwards" was a step this route
+ * had to be told about separately and a fifth route would have to be told again.
  *
  * WHAT IT STILL CANNOT REACH: the widget. A code-built test world has no UGameViewportClient,
  * so nothing here can assert a button appeared or that clicking it calls anything — and
@@ -797,7 +812,7 @@ bool FPieceMenuChoiceDeletesTheBrickTest::RunTest(const FString& Parameters)
 
 	CheckChoiceControls(
 		*this, *Controller, *Input, *DefaultContext, *MouseLookContext,
-		TEXT("fixture, before anything is clicked"), false, true);
+		TEXT("fixture, before anything is clicked"));
 
 	/*
 	 * ONE: THE RAY PUTS UP THE WAIST BRICK'S MENU AND TAKES THE CONTROLS.
@@ -833,13 +848,14 @@ bool FPieceMenuChoiceDeletesTheBrickTest::RunTest(const FString& Parameters)
 	CheckChoiceMenu(*this, *Controller, TEXT("after inspecting the waist"), Rows);
 
 	/*
-	 * THIS IS THE STATE THAT IS CURRENTLY WORSE THAN NOTHING, asserted deliberately: the
-	 * cursor is up and free-look is gone, and until a row can be chosen there is nothing
-	 * behind either of them.
+	 * THE MENU IS UP AND THE CONTROLS HAVE NOT MOVED, asserted deliberately: the cursor was
+	 * already there before the click and free-look is still applied behind it, gated on the RMB
+	 * chord. A menu that reached for the old apply here would take the camera away for as long as
+	 * the player is reading a joint breakout.
 	 */
 	CheckChoiceControls(
 		*this, *Controller, *Input, *DefaultContext, *MouseLookContext,
-		TEXT("with the inspected brick's menu up"), true, false);
+		TEXT("with the inspected brick's menu up"));
 
 	/*
 	 * TWO: CHOOSING THE ROW TAKES THE BRICK OUT OF THE WALL AND THE WORLD.
@@ -927,7 +943,7 @@ bool FPieceMenuChoiceDeletesTheBrickTest::RunTest(const FString& Parameters)
 
 	CheckChoiceControls(
 		*this, *Controller, *Input, *DefaultContext, *MouseLookContext,
-		TEXT("after choosing the row"), false, true);
+		TEXT("after choosing the row"));
 
 	/* And a second choice with nothing up commits nothing more. */
 	TestTrue(
