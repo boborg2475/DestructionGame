@@ -403,7 +403,6 @@ bool FBuildGhostBuildCommand::Update()
 	Record.StructureId = Comp->GetStructureId();
 
 	/* A grounded seed brick at the offset origin: preview then confirm grows the structure to 1. */
-	Comp->bBuildGrounded = true;
 	Comp->UpdatePreviewAt(SeedCursorCm);
 	Comp->ConfirmPlace();
 
@@ -412,7 +411,6 @@ bool FBuildGhostBuildCommand::Update()
 	 * moves it to the running-bond next-course pose (11.25, -1500, 7.5), and the ghost follows the
 	 * snap. This is the state frame 1 photographs.
 	 */
-	Comp->bBuildGrounded = false;
 	const FBuildPreview Preview = Comp->UpdatePreviewAt(NextCourseCursorCm);
 
 	Test->TestTrue(

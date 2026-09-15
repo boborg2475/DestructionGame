@@ -165,10 +165,12 @@ preview and a palette on that proven core — it invents no physics.
 ### New parts (each its own TDD slice)
 - **UI-1 — incremental world place (the core new seam). LANDED 2026-09-04.**
   `UDestructionStructureSubsystem::BeginBuild() -> StructureId` opens an empty live structure;
-  `PlaceBuildPiece(StructureId, RequestedCentreCm, ExtentCm, Material, bGrounded) -> FPieceRef` runs the snap
-  brain (`SolveSnapCandidates`) against the structure's live pieces, spawns the ONE new `ABrickActor`, and
+  `PlaceBuildPiece(StructureId, RequestedCentreCm, ExtentCm, Material, Placement = Snap) -> FPieceRef` runs
+  the snap brain (`SolveSnapCandidates`) against the structure's live pieces (Snap = `Candidates[0]`; Free =
+  the Free candidate, the requested pose verbatim with no joints), spawns the ONE new `ABrickActor`, and
   forms the candidate's joints via `MakeInterface`/`AddConnection` — one call grows a live, jointed,
-  actor-backed structure. Fails closed (refused piece → actor destroyed, no desync); does NOT solve
+  actor-backed structure. Since 2026-09-15 the piece's GROUNDED flag is DERIVED from the snapped pose
+  (bottom face within one joint of Z=0; DESIGN §8), never passed in. Fails closed (refused piece → actor destroyed, no desync); does NOT solve
   (live-feedback-off default). Driven by `World.BuildMode.PlaceBuildPieceGrowsALiveStructure`. Follow-ups
   (CURRENT_STATE): factor the shared decision→add helper as UI-2's first step; return `Kind`/joints not just
   a ref; the UI owns the cancel/Destroy of an abandoned build.
@@ -195,9 +197,11 @@ preview and a palette on that proven core — it invents no physics.
   `World.BuildMode.Component*Ray*`. STILL TO DO (UI-4b wiring, functional/manual — the logic it calls is
   tested): on a build player controller/pawn, `DeprojectMousePositionToWorld` → `UpdatePreviewFromRay` on
   mouse-move, LMB → `ConfirmPlace`, keys to switch material and to raise the build plane a course / toggle
-  destroy; a playable build level. Deferred refinements (CURRENT_STATE): a max-ray-distance clamp, a
-  raise-plane/auto-plane-from-last-piece mechanism (BuildPlaneZCm is the plane of piece centres), the
-  grounded-course half-buried convention.
+  destroy; a playable build level. LANDED 2026-09-15 (slice 2): the component's settings — `SetPieceKind`
+  (material + half extent from the palette), `SetCourse` (`BuildPlaneZCm` from `CoursePlaneZCm`, the
+  rests-on-the-ground ruling), `PlacementMode` Snap/Free, `CancelBuild` (and `BeginBuild` cancels an open
+  build), and pose-derived grounded (`FBuildPreview::bGrounded`). The max-ray-distance clamp landed earlier.
+  Still deferred (CURRENT_STATE): the ray-vs-brick-face "auto-plane from the piece under the cursor" variant.
 - **UI-5 — save/load** a player building (OPEN decision below).
 
 ### Open decisions (owner-delegated; decide when the slice is reached, record in DESIGN §8)
@@ -205,7 +209,9 @@ preview and a palette on that proven core — it invents no physics.
   (matches the existing game loop and keeps the loop simple); add an optional overlay later that runs
   `SolveLoads` and tints a piece that is over-capacity / would fall. Revisit if the owner wants it live.
 - **Save/load format:** RECOMMEND the build is a serialized ordered list of placements
-  `{RequestedCentreCm, ExtentCm, Material id, bGrounded}` replayed through `PlacePiece` — deterministic,
+  `{RequestedCentreCm, PieceKind (→ extent + material), Placement (Snap/Free)}` replayed through the
+  same placement door — deterministic (grounded is derived from the replayed pose, so it is NOT recorded;
+  Placement IS, because it changes the committed pose and joints),
   tiny, and it reproduces the exact same joints because the solver is pure. (A raw piece/joint dump is the
   alternative; the replay list is smaller and self-validating.) Shape it when UI-1..4 work.
 - **Occupied-pose warning:** the `bRequestedPoseOccupied` signal (CURRENT_STATE) so the UI can warn when

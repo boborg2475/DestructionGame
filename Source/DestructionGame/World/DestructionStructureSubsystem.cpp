@@ -125,9 +125,21 @@ namespace
 	 */
 	struct FBuildPlacement
 	{
+		/**
+		 * WHETHER A CANDIDATE WAS FOUND AT ALL, and the field every other one here is conditional
+		 * on. A default-constructed placement is a massless piece at the world origin, which
+		 * FStructure::AddPiece would accept — a zero mass is meaningful — so "no decision" must be
+		 * said out loud rather than left to be read off the numbers.
+		 */
+		bool bDecided = false;
+
 		BuildMode::ESnapKind Kind = BuildMode::ESnapKind::Free;
 		FVector CentreCm = FVector::ZeroVector;
 		double MassKg = 0.0;
+
+		/** Whether the CHOSEN pose rests on the earth. Derived below, never taken from a caller. */
+		bool bGrounded = false;
+
 		TArray<BuildMode::FFormedJoint> Joints;
 	};
 
@@ -135,7 +147,8 @@ namespace
 		const FStructureBinding& Binding,
 		const FVector& RequestedCentreCm,
 		const FVector& ExtentCm,
-		const DestructionProfiles::FMaterialProfile& Material)
+		const DestructionProfiles::FMaterialProfile& Material,
+		DestructionSession::EPlacementMode Placement)
 	{
 		using namespace DestructionLayout;
 
@@ -157,15 +170,94 @@ namespace
 		const TArray<BuildMode::FSnapCandidate> Candidates = BuildMode::SolveSnapCandidates(
 			Requested, Material, NearbyBoxes, NearbyMaterials, Settings);
 
-		/* The solver always offers at least the Free fallback, so Candidates[0] exists. */
-		const BuildMode::FSnapCandidate& Chosen = Candidates[0];
+		/*
+		 * SNAP TAKES THE BEST-RANKED CANDIDATE, FREE TAKES THE FREE ONE — AND FINDS IT BY KIND.
+		 * SolveSnapCandidates always offers the Free fallback (the requested pose verbatim, bonded
+		 * to nothing), but it appends it LAST, after the distance ranking; selecting it by index
+		 * would be selecting whatever the ranking happened to leave in that slot the day another
+		 * candidate is added. Searching on Kind says what it means.
+		 *
+		 * AN ABSENT FREE CANDIDATE IS A REFUSAL, NEVER A FALL BACK TO THE NEAREST SNAP. Free is the
+		 * player naming this exact pose; answering with a different one would move a piece they are
+		 * watching land. Leaving bDecided false fails both doors closed instead.
+		 */
+		const BuildMode::FSnapCandidate* Chosen = nullptr;
 
-		FBuildPlacement Placement;
-		Placement.Kind = Chosen.Kind;
-		Placement.CentreCm = Chosen.CentreCm;
-		Placement.MassKg = PieceMassKg(FPieceBox{ Chosen.CentreCm, ExtentCm }, Material.DensityGramsPerCubicCm);
-		Placement.Joints = Chosen.Joints;
-		return Placement;
+		if (Placement == DestructionSession::EPlacementMode::Free)
+		{
+			Chosen = Candidates.FindByPredicate(
+				[](const BuildMode::FSnapCandidate& Candidate)
+				{
+					return Candidate.Kind == BuildMode::ESnapKind::Free;
+				});
+		}
+		else if (Candidates.Num() > 0)
+		{
+			Chosen = &Candidates[0];
+		}
+
+		if (Chosen == nullptr)
+		{
+			return FBuildPlacement{};
+		}
+
+		/*
+		 * A NON-FINITE CHOSEN CENTRE IS REFUSED HERE, BEFORE EITHER DOOR ACTS ON IT — and it is the
+		 * CHOSEN pose that is tested, not the requested one, because Snap may substitute a finite
+		 * candidate for a wild cursor and Free honours the request verbatim.
+		 *
+		 * THE GHOST: a pose no click can commit must not be previewed. AddPiece refuses a non-finite
+		 * centre of mass, so a preview drawn at one is showing the player a brick that cannot exist;
+		 * leaving bDecided false makes PreviewBuildPiece answer a default FBuildPreview (bValid and
+		 * bGrounded both false) instead.
+		 *
+		 * THE COMMIT: an actor must never be spawned at a transform the engine ensures on. Without
+		 * this guard PlaceBuildPiece spawned the brick first and only then let AddPiece refuse the
+		 * pose, so the refusal path ran a NaN transform through SetWorldTransform and the body's
+		 * physics state on its way to destroying the actor again — three handled ensures for a piece
+		 * that was never going to exist.
+		 *
+		 * BOTH TESTS, AND DELIBERATELY NOT ONE. FVector::ContainsNaN also reports the infinities
+		 * today, but the name only promises NaN; the explicit IsFinite sweep is what actually pins
+		 * the +infinity pose, so neither half is relied on alone.
+		 */
+		if (Chosen->CentreCm.ContainsNaN()
+			|| !FMath::IsFinite(Chosen->CentreCm.X)
+			|| !FMath::IsFinite(Chosen->CentreCm.Y)
+			|| !FMath::IsFinite(Chosen->CentreCm.Z))
+		{
+			return FBuildPlacement{};
+		}
+
+		FBuildPlacement Decision;
+		Decision.bDecided = true;
+		Decision.Kind = Chosen->Kind;
+		Decision.CentreCm = Chosen->CentreCm;
+		Decision.MassKg = PieceMassKg(FPieceBox{ Chosen->CentreCm, ExtentCm }, Material.DensityGramsPerCubicCm);
+		Decision.Joints = Chosen->Joints;
+
+		/*
+		 * GROUNDED IS DERIVED FROM THE POSE THE PIECE ACTUALLY TOOK, and from nothing a caller said
+		 * — the 2026-09-15 DESIGN §8 ruling. Candidates rank by raw distance, so a cursor on the
+		 * grounded course beside a standing brick is pulled UP onto that brick's bed; a piece that
+		 * landed 7.5 cm in the air carrying a grounded flag terminates load at the earth, which
+		 * makes it a brick that can never fall and a lie every piece stacked on it inherits.
+		 *
+		 * ONE JOINT OF TOLERANCE, AND THE EDGE IS INCLUSIVE: a brick laid on the earth beds into
+		 * its own mortar, and both conventions this project has laid bricks under must read
+		 * grounded — the rests-on-the-ground centre (bottom face exactly 0) and every pre-ruling
+		 * harness's centre-at-0 seed (bottom face below the plane).
+		 *
+		 * THIS IS THE ONE COMPARISON DELIBERATELY NOT IN THE HOUSE !(x > y) FORM. Every comparison
+		 * against NaN is false, so !(Bottom > Joint) would answer TRUE for a non-finite pose — a
+		 * piece nobody can place, credited with the earth and unable to fall, which is fail-OPEN in
+		 * exactly the expensive direction. Bottom <= Joint answers false for a NaN, so garbage
+		 * arithmetic lands a piece that is NOT grounded and the solver is free to drop it.
+		 */
+		const double BottomFaceZCm = Chosen->CentreCm.Z - ExtentCm.Z;
+		Decision.bGrounded = BottomFaceZCm <= Settings.JointThicknessCm;
+
+		return Decision;
 	}
 
 	/**
@@ -332,7 +424,7 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 	const FVector& RequestedCentreCm,
 	const FVector& ExtentCm,
 	const DestructionProfiles::FMaterialProfile& Material,
-	bool bGrounded)
+	DestructionSession::EPlacementMode Placement)
 {
 	using namespace DestructionLayout;
 
@@ -349,10 +441,16 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 	 * gathers the live pieces and solves exactly as PreviewBuildPiece does, so a placement lands
 	 * where its own preview said it would.
 	 */
-	const FBuildPlacement Placement =
-		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material);
+	const FBuildPlacement Decision =
+		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material, Placement);
 
-	const FPieceBox Box{ Placement.CentreCm, ExtentCm };
+	/* A pose the solver would not name places nothing, the same refusal an unknown id gets. */
+	if (!Decision.bDecided)
+	{
+		return FPieceRef{};
+	}
+
+	const FPieceBox Box{ Decision.CentreCm, ExtentCm };
 
 	/*
 	 * Handles are sequential, so the actor can be told its intended ref before AddPiece runs —
@@ -362,9 +460,9 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 	Ref.StructureId = StructureId;
 	Ref.PieceIndex = Binding->NumPieces();
 
-	ABrickActor* Actor = SpawnBrickForPiece(*GetWorld(), Box, Placement.MassKg, Ref, &Material);
+	ABrickActor* Actor = SpawnBrickForPiece(*GetWorld(), Box, Decision.MassKg, Ref, &Material);
 
-	const int32 Handle = Binding->AddPiece(Placement.MassKg, bGrounded, Actor, Box, &Material);
+	const int32 Handle = Binding->AddPiece(Decision.MassKg, Decision.bGrounded, Actor, Box, &Material);
 
 	/*
 	 * FAILS CLOSED. AddPiece refuses a degenerate box (NaN mass) with INDEX_NONE; on refusal the
@@ -381,7 +479,7 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 	}
 
 	const BuildMode::FSnapSettings Settings;
-	for (const BuildMode::FFormedJoint& Joint : Placement.Joints)
+	for (const BuildMode::FFormedJoint& Joint : Decision.Joints)
 	{
 		FConnection Conn;
 		if (MakeInterface(
@@ -404,7 +502,8 @@ FBuildPreview UDestructionStructureSubsystem::PreviewBuildPiece(
 	int32 StructureId,
 	const FVector& RequestedCentreCm,
 	const FVector& ExtentCm,
-	const DestructionProfiles::FMaterialProfile& Material) const
+	const DestructionProfiles::FMaterialProfile& Material,
+	DestructionSession::EPlacementMode Placement) const
 {
 	const FStructureBinding* Binding = Find(StructureId);
 
@@ -419,16 +518,28 @@ FBuildPreview UDestructionStructureSubsystem::PreviewBuildPiece(
 	 * binding const and mutates neither it nor the world, so this surfaces the snapped kind, pose
 	 * and joint count a following place at the same pose would produce.
 	 */
-	const FBuildPlacement Placement =
-		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material);
+	const FBuildPlacement Decision =
+		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material, Placement);
+
+	/* A pose the solver would not name previews nothing, exactly as the commit would place nothing. */
+	if (!Decision.bDecided)
+	{
+		return FBuildPreview{};
+	}
 
 	FBuildPreview Preview;
 	Preview.bValid = true;
-	Preview.Kind = Placement.Kind;
-	Preview.CentreCm = Placement.CentreCm;
-	Preview.JointCount = Placement.Joints.Num();
+	Preview.Kind = Decision.Kind;
+	Preview.CentreCm = Decision.CentreCm;
+	Preview.JointCount = Decision.Joints.Num();
+
+	/* The same pose-derived answer the commit will store on the piece, shown before the click. */
+	Preview.bGrounded = Decision.bGrounded;
+
 	return Preview;
 }
+
+
 int32 UDestructionStructureSubsystem::SolveAndPush(int32 StructureId)
 {
 	FStructureBinding* Binding = Find(StructureId);

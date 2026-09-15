@@ -29,22 +29,103 @@ namespace
 	}
 }
 
+UBuildModeComponent::UBuildModeComponent()
+{
+	/*
+	 * A FRESH COMPONENT IS A BRICK ON THE GROUNDED COURSE, AND THE PALETTE SAYS WHAT THAT MEANS.
+	 * Seeding through SetPieceKind rather than by member initialisers is what keeps the material,
+	 * the extent and the build plane derived from one place: a plane left at 0 until the first
+	 * SetCourse would put a brick's centre on the ground and half of it under the earth, and it
+	 * would only be wrong before the player touched the toolbar — the hardest moment to notice.
+	 */
+	SetPieceKind(CurrentKind);
+}
+
 void UBuildModeComponent::BeginBuild()
 {
+	/*
+	 * A BUILD ALREADY OPEN IS CANCELLED, NOT ABANDONED. Adopting a fresh id would leave the old
+	 * binding in the subsystem's map with its bricks standing in the world and nothing naming
+	 * them; opening a new build is the player saying "not that one". CancelBuild is a no-op when
+	 * nothing is open — Destroy fails closed on INDEX_NONE.
+	 */
+	CancelBuild();
+
 	if (UDestructionStructureSubsystem* Subsystem = SubsystemFor(*this))
 	{
 		/*
-		 * A second BeginBuild simply adopts a fresh id; the old structure is left standing in
-		 * the world, which this slice does not tear down.
-		 *
-		 * A FRESH BUILD HOLDS NO POSE. Clearing the held preview and the remembered cursor stops a
-		 * confirm right after a second BeginBuild from committing the previous build's last cursor
-		 * (world origin by default) into the new, empty structure.
+		 * A FRESH BUILD HOLDS NO POSE. The cancel above dropped the held preview; the remembered
+		 * cursor goes with it, so a confirm right after a second BeginBuild cannot commit the
+		 * previous build's last cursor into the new, empty structure.
 		 */
 		StructureId = Subsystem->BeginBuild();
-		bHasValidPreview = false;
 		LastCursorCm = FVector::ZeroVector;
 	}
+}
+
+void UBuildModeComponent::CancelBuild()
+{
+	/*
+	 * THE STRUCTURE GOES FIRST, AND IT TAKES ITS BRICKS WITH IT. Destroy tears down every actor
+	 * the binding still names and drops the binding itself, so no orphan brick is left standing
+	 * where a build used to be; an id naming nothing is refused there, which is what makes a
+	 * cancel with no build open a silent no-op.
+	 */
+	if (UDestructionStructureSubsystem* Subsystem = SubsystemFor(*this))
+	{
+		Subsystem->Destroy(StructureId);
+	}
+
+	/*
+	 * THEN THE COMPONENT FORGETS THE BUILD ENTIRELY. The held preview named a structure that no
+	 * longer exists, so a confirm after a cancel must find nothing to commit — and the id is
+	 * cleared last so a stray ConfirmPlace reaches the subsystem's own unknown-id refusal too.
+	 */
+	HidePreview();
+	StructureId = INDEX_NONE;
+}
+
+void UBuildModeComponent::SetPieceKind(DestructionSession::EBuildPieceKind Kind)
+{
+	/*
+	 * THE PALETTE IS THE SOURCE OF ALL THREE. BuildPieceMaterial hands back the SHIPPED library
+	 * row by reference — identity matters, because a copy would go on serving stale numbers after
+	 * a retune and every joint inferred off the piece with it.
+	 */
+	CurrentKind = Kind;
+	CurrentMaterial = &DestructionSession::BuildPieceMaterial(Kind);
+	CurrentExtentCm = DestructionSession::BuildPieceHalfExtentCm(Kind);
+
+	/*
+	 * AND THE PLANE MOVES WITH THE PIECE, not only with the course. CoursePlaneZCm rests the piece
+	 * ON the course rather than centring it there, so a 10 cm-thick plate planes 1.75 cm higher
+	 * than a brick on the same course — which is the difference between a board bearing on the
+	 * wall and a board buried in it.
+	 */
+	BuildPlaneZCm = DestructionSession::CoursePlaneZCm(CurrentCourse, CurrentExtentCm.Z);
+}
+
+DestructionSession::EBuildPieceKind UBuildModeComponent::GetPieceKind() const
+{
+	return CurrentKind;
+}
+
+void UBuildModeComponent::SetCourse(int32 Course)
+{
+	/*
+	 * THE CLAMP IS APPLIED ON THE WAY IN, so the stored course is the one the plane was derived
+	 * from. The course vocabulary in DestructionSession treats a negative course as course 0
+	 * everywhere; storing the raw value and clamping only inside CoursePlaneZCm would leave the
+	 * getter reporting a course below the earth while the plane sat on it.
+	 */
+	CurrentCourse = FMath::Max(0, Course);
+
+	BuildPlaneZCm = DestructionSession::CoursePlaneZCm(CurrentCourse, CurrentExtentCm.Z);
+}
+
+int32 UBuildModeComponent::GetCourse() const
+{
+	return CurrentCourse;
 }
 
 FBuildPreview UBuildModeComponent::UpdatePreviewAt(const FVector& WorldCursorCm)
@@ -58,8 +139,8 @@ FBuildPreview UBuildModeComponent::UpdatePreviewAt(const FVector& WorldCursorCm)
 		return FBuildPreview{};
 	}
 
-	const FBuildPreview Preview =
-		Subsystem->PreviewBuildPiece(StructureId, WorldCursorCm, CurrentExtentCm, *CurrentMaterial);
+	const FBuildPreview Preview = Subsystem->PreviewBuildPiece(
+		StructureId, WorldCursorCm, CurrentExtentCm, *CurrentMaterial, PlacementMode);
 
 	/*
 	 * THE GHOST TRACKS THE PREDICTED SNAP, NOT THE CURSOR. It sits at the snapped centre the
@@ -124,32 +205,20 @@ FBuildPreview UBuildModeComponent::UpdatePreviewFromRay(
 		!FMath::IsFinite(RayOriginCm.X) || !FMath::IsFinite(RayOriginCm.Y) || !FMath::IsFinite(RayOriginCm.Z) ||
 		!FMath::IsFinite(RayDirectionCm.X) || !FMath::IsFinite(RayDirectionCm.Y) || !FMath::IsFinite(RayDirectionCm.Z))
 	{
-		if (AActor* Ghost = EnsureGhost())
-		{
-			Ghost->SetActorHiddenInGame(true);
-		}
-		bHasValidPreview = false;
+		HidePreview();
 		return FBuildPreview{};
 	}
 
 	if (FMath::IsNearlyZero(RayDirectionCm.Z))
 	{
-		if (AActor* Ghost = EnsureGhost())
-		{
-			Ghost->SetActorHiddenInGame(true);
-		}
-		bHasValidPreview = false;
+		HidePreview();
 		return FBuildPreview{};
 	}
 
 	const double HitT = (BuildPlaneZCm - RayOriginCm.Z) / RayDirectionCm.Z;
 	if (!(HitT >= 0.0))
 	{
-		if (AActor* Ghost = EnsureGhost())
-		{
-			Ghost->SetActorHiddenInGame(true);
-		}
-		bHasValidPreview = false;
+		HidePreview();
 		return FBuildPreview{};
 	}
 
@@ -170,11 +239,7 @@ FBuildPreview UBuildModeComponent::UpdatePreviewFromRay(
 	 */
 	if (!((Hit - RayOriginCm).Size() <= MaxPickDistanceCm))
 	{
-		if (AActor* Ghost = EnsureGhost())
-		{
-			Ghost->SetActorHiddenInGame(true);
-		}
-		bHasValidPreview = false;
+		HidePreview();
 		return FBuildPreview{};
 	}
 
@@ -207,7 +272,7 @@ FPieceRef UBuildModeComponent::ConfirmPlace()
 	}
 
 	const FPieceRef Placed = Subsystem->PlaceBuildPiece(
-		StructureId, LastCursorCm, CurrentExtentCm, *CurrentMaterial, bBuildGrounded);
+		StructureId, LastCursorCm, CurrentExtentCm, *CurrentMaterial, PlacementMode);
 
 	/* The preview is spent on this commit; a repeat confirm now fails the guard above. */
 	bHasValidPreview = false;
@@ -223,6 +288,21 @@ AActor* UBuildModeComponent::GetGhostActor() const
 int32 UBuildModeComponent::GetStructureId() const
 {
 	return StructureId;
+}
+
+void UBuildModeComponent::HidePreview()
+{
+	/*
+	 * HIDDEN AND UNHELD, TOGETHER. Hiding the ghost without clearing the held preview would leave
+	 * a confirm able to commit the pose the player can no longer see, which is the one way a brick
+	 * lands somewhere nobody looked.
+	 */
+	if (AActor* Ghost = EnsureGhost())
+	{
+		Ghost->SetActorHiddenInGame(true);
+	}
+
+	bHasValidPreview = false;
 }
 
 ABrickActor* UBuildModeComponent::EnsureGhost()

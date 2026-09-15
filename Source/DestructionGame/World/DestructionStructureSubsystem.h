@@ -7,6 +7,7 @@
 #include "Core/Layout.h"
 #include "Core/PieceActions.h"
 #include "Core/Profiles/MaterialProfiles.h"
+#include "Core/SessionToolbar.h"
 #include "Core/StructureBinding.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "DestructionStructureSubsystem.generated.h"
@@ -38,8 +39,9 @@ struct FPieceHit
  * IT PREDICTS THE COMMIT ONLY WHILE THE BINDING IS UNCHANGED. The prediction holds because the
  * commit runs the SAME gather-and-solve on the SAME pieces; any placement or removal in between
  * moves the answer, so a UI must re-preview after every mutation and treat the commit as
- * authoritative. Note also that bValid means "the id is known", NOT "a piece would land": a
- * degenerate extent previews valid with a kind, yet the commit fails closed with a default ref.
+ * authoritative. Note also that bValid means "the id is known and a pose was chosen", NOT "a piece
+ * would land": a degenerate extent previews valid with a kind, yet the commit fails closed with a
+ * default ref.
  */
 struct FBuildPreview
 {
@@ -50,6 +52,17 @@ struct FBuildPreview
 	FVector CentreCm = FVector::ZeroVector;
 
 	int32 JointCount = 0;
+
+	/**
+	 * Whether the SNAPPED pose rests on the earth — the very flag the commit will store on the
+	 * piece, shown before the click (DESIGN §8, 2026-09-15).
+	 *
+	 * IT IS A PROPERTY OF THE POSE, NOT OF THE COURSE THE TOOLBAR IS ON. A piece is grounded when
+	 * its bottom face sits at or below one joint thickness above Z = 0, and nothing else decides
+	 * it; DestructionSession::IsCourseGrounded reports the toolbar's INTENT and the two genuinely
+	 * disagree, because a distance-ranked snap can lift a course-0 cursor onto a next-course bed.
+	 */
+	bool bGrounded = false;
 };
 
 /**
@@ -106,7 +119,8 @@ public:
 	 * best-ranked snapped pose, spawn one ABrickActor for it and form that candidate's joints as
 	 * real FConnections — growing the world structure by one live, jointed, actor-backed piece.
 	 * The snap DECISION is exactly BuildMode::PlacePiece's (SolveSnapCandidates against the live
-	 * pieces' boxes/materials, Candidates[0]); only the world-add differs (it spawns the actor
+	 * pieces' boxes/materials, Candidates[0] — for a Snap placement; a Free placement takes the
+	 * solver's Free candidate by Kind instead); only the world-add differs (it spawns the actor
 	 * and grows the binding rather than a bare FBrickLayout).
 	 *
 	 * FAILS CLOSED: if the piece is refused (a degenerate box gives a NaN mass), the just-spawned
@@ -118,26 +132,38 @@ public:
 	 * with no support answer until something calls SolveAndPush — which matches the plan's
 	 * "live structural feedback OFF by default" recommendation; the destroy/run path is what
 	 * solves and settles.
+	 *
+	 * GROUNDED IS DERIVED FROM THE SNAPPED POSE, AND THERE IS NO ARGUMENT FOR IT (DESIGN §8,
+	 * 2026-09-15). The committed piece is grounded when its bottom face lands at or below one joint
+	 * thickness above Z = 0. A caller's own answer is exactly what the ruling forbids: snapping
+	 * ranks by raw distance, so a cursor on the grounded course can be pulled onto a neighbour's
+	 * bed a whole course up, and a floating piece flagged grounded terminates load at the earth —
+	 * it can never fall, and neither can anything stacked on it.
+	 *
+	 * Placement selects WHICH candidate is committed: Snap takes the best-ranked one, Free takes
+	 * the requested pose verbatim, bonded to nothing.
 	 */
 	FPieceRef PlaceBuildPiece(
 		int32 StructureId,
 		const FVector& RequestedCentreCm,
 		const FVector& ExtentCm,
 		const DestructionProfiles::FMaterialProfile& Material,
-		bool bGrounded);
+		DestructionSession::EPlacementMode Placement = DestructionSession::EPlacementMode::Snap);
 
 	/**
 	 * The snap decision PlaceBuildPiece WOULD commit at this pose, WITHOUT mutating anything —
 	 * no piece added, no actor spawned, no connection formed. It is the same gather-and-solve
-	 * PlaceBuildPiece runs (SolveSnapCandidates against the live pieces, Candidates[0]), so the
-	 * returned kind, snapped centre and joint count match the piece a following PlaceBuildPiece
-	 * at the same pose lands. Fails closed: bValid is false for an unknown structure id.
+	 * PlaceBuildPiece runs (SolveSnapCandidates against the live pieces, under the same Placement
+	 * mode), so the returned kind, snapped centre, joint count and pose-derived grounded flag match
+	 * the piece a following PlaceBuildPiece at the same pose lands. Fails closed: bValid is false
+	 * for an unknown structure id, and for a Placement the solver offered no candidate for.
 	 */
 	FBuildPreview PreviewBuildPiece(
 		int32 StructureId,
 		const FVector& RequestedCentreCm,
 		const FVector& ExtentCm,
-		const DestructionProfiles::FMaterialProfile& Material) const;
+		const DestructionProfiles::FMaterialProfile& Material,
+		DestructionSession::EPlacementMode Placement = DestructionSession::EPlacementMode::Snap) const;
 
 	/**
 	 * Where to put a brick actor, and how big to scale it, so its MESH bounds fill the box —

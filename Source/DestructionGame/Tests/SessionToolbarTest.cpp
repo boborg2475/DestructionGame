@@ -2,7 +2,9 @@
 
 #include "Misc/AutomationTest.h"
 
+#include "Core/BuildMode/DemoBuilding.h"
 #include "Core/BuildMode/SnapSolver.h"
+#include "Core/Layout.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Core/SessionToolbar.h"
 
@@ -35,17 +37,22 @@ namespace SessionToolbarTestSupport
 	constexpr double PlateHalfHeightCm = 5.0;
 
 	/**
-	 * WHERE Core/BuildMode/DemoBuilding.cpp PUTS ITS TIMBER PLATE, transcribed from that file.
+	 * WHICH PIECE OF THE DEMO BUILDING EACH COURSE'S HEIGHT IS READ OFF, by placement index.
 	 *
-	 * The demo centres course 0 at Z = 0, so its bricks straddle the ground plane and its plate
-	 * lands at 16.75. The model this file pins adopts the RESTS-ON-THE-GROUND convention instead,
-	 * which is the same geometry lifted by exactly one brick half-height. The integration claim
-	 * below is that the lift is EXACTLY that and is the SAME on every course — a convention change,
-	 * not a re-authoring of the building.
+	 * THE HEIGHTS THEMSELVES ARE NO LONGER TRANSCRIBED. They used to be three literals copied out
+	 * of Core/BuildMode/DemoBuilding.cpp (0, 7.5, 16.75) — which pinned the demo's numbers in a
+	 * second file, so migrating the demo onto the rests-on-the-ground convention would have left
+	 * this test agreeing with a building that no longer exists. Running the builder and reading the
+	 * placed centres out of its own FBrickLayout makes the comparison live: the day the demo moves,
+	 * the lift here stops being one brick half-height and this test says so.
+	 *
+	 * The indices are the builder's documented placement order (Tests/DemoBuildingTest.cpp pins the
+	 * whole eight-step sequence): 0-3 are the grounded course, 4-6 the staggered course above it,
+	 * and 7 the timber wall plate bearing across the top.
 	 */
-	constexpr double DemoPlateCentreZCm = 16.75;
-	constexpr double DemoCourseZeroCentreZCm = 0.0;
-	constexpr double DemoCourseOneCentreZCm = 7.5;
+	constexpr int32 DemoCourseZeroPieceIndex = 0;
+	constexpr int32 DemoCourseOnePieceIndex = 4;
+	constexpr int32 DemoPlatePieceIndex = 7;
 
 	const TCHAR* NameOfMode(DestructionSession::ESessionMode Mode)
 	{
@@ -1303,9 +1310,16 @@ bool FSessionToolbarCourseGroundingAndLabelTest::RunTest(const FString& Paramete
  * way to describe buildings: it is a presenter over the snap solver and the placement API that
  * Core/BuildMode/DemoBuilding.cpp already drives, and the way to know it has not invented its own
  * geometry is to point it at the one building this project has already built and pinned. Every
- * number here comes from that file — the plate's extent, its Z, and the two brick course centres —
- * so if the palette or the plane drifts away from what the demo uses, the two stop agreeing here
- * rather than in a screenshot somebody looks at later.
+ * number on the demo's side is READ OUT OF THE BUILDING ITSELF — BuildDemoBuilding is run into an
+ * FBrickLayout here and the placed centres and extents are taken off Layout.Boxes — so if the
+ * palette or the plane drifts away from what the demo uses, the two stop agreeing here rather than
+ * in a screenshot somebody looks at later.
+ *
+ * READ, NOT TRANSCRIBED, AND THAT IS THE WHOLE POINT OF THE INDIRECTION. Three copied literals
+ * (0, 7.5, 16.75) would keep passing after the demo migrated onto this very convention, because
+ * they would still describe the building as it used to be. Reading the layout makes this test go
+ * red AT the migration — which is exactly when somebody needs to be told that the lift is now zero
+ * and this claim has been discharged — and not one commit before.
  *
  * THE ASSERTION IS THE OFFSET BEING THE SAME ON EVERY COURSE, not that any one height matches. A
  * model that put the plate at 20.0 by luck and the bricks somewhere else would satisfy a single
@@ -1333,12 +1347,30 @@ bool FSessionToolbarDemoBuildingHeightsTest::RunTest(const FString& Parameters)
 	const FVector PlateHalfExtentCm = BuildPieceHalfExtentCm(EBuildPieceKind::TimberPlate);
 	const FVector BrickHalfExtentCm = BuildPieceHalfExtentCm(EBuildPieceKind::Brick);
 
+	/*
+	 * THE DEMO BUILDING, BUILT. World-free: BuildDemoBuilding grows an FBrickLayout through
+	 * BuildMode::PlacePiece, so the boxes it leaves behind are the poses the snap solver actually
+	 * committed — not a description of them.
+	 */
+	DestructionLayout::FBrickLayout DemoLayout;
+	BuildMode::BuildDemoBuilding(DemoLayout, BuildMode::FSnapSettings{});
+
+	if (DemoLayout.Boxes.Num() <= DemoPlatePieceIndex)
+	{
+		AddError(FString::Printf(
+			TEXT("fixture: the demo building laid only %d boxes, too few to read its plate at index %d"),
+			DemoLayout.Boxes.Num(), DemoPlatePieceIndex));
+		return true;
+	}
+
+	const DestructionLayout::FPieceBox& DemoPlateBox = DemoLayout.Boxes[DemoPlatePieceIndex];
+
 	/* The palette's plate IS the demo's plate, or the heights below are about a different board. */
 	TestTrue(
 		*FString::Printf(
-			TEXT("the palette's plate must be the demo building's own (33.75, 5.125, 5) cm plate, it is %s cm"),
-			*DescribeVector(PlateHalfExtentCm)),
-		VectorsExactlyEqual(PlateHalfExtentCm, FVector(33.75, 5.125, 5.0)));
+			TEXT("the palette's plate must be the board the demo actually lays, which is %s cm; the palette's is %s cm"),
+			*DescribeVector(DemoPlateBox.ExtentCm), *DescribeVector(PlateHalfExtentCm)),
+		VectorsExactlyEqual(PlateHalfExtentCm, DemoPlateBox.ExtentCm));
 
 	const double PlateZCm = CoursePlaneZCm(2, PlateHalfExtentCm.Z);
 
@@ -1356,9 +1388,12 @@ bool FSessionToolbarDemoBuildingHeightsTest::RunTest(const FString& Parameters)
 	};
 
 	const FLiftCase Cases[] = {
-		{ TEXT("the grounded brick course"), 0, BrickHalfHeightCm, DemoCourseZeroCentreZCm },
-		{ TEXT("the staggered course above it"), 1, BrickHalfHeightCm, DemoCourseOneCentreZCm },
-		{ TEXT("the timber wall plate bearing across the top"), 2, PlateHalfExtentCm.Z, DemoPlateCentreZCm },
+		{ TEXT("the grounded brick course"), 0, BrickHalfHeightCm,
+			DemoLayout.Boxes[DemoCourseZeroPieceIndex].CentreCm.Z },
+		{ TEXT("the staggered course above it"), 1, BrickHalfHeightCm,
+			DemoLayout.Boxes[DemoCourseOnePieceIndex].CentreCm.Z },
+		{ TEXT("the timber wall plate bearing across the top"), 2, PlateHalfExtentCm.Z,
+			DemoPlateBox.CentreCm.Z },
 	};
 
 	for (const FLiftCase& Case : Cases)

@@ -1,11 +1,14 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
+#include <limits>
+
 #include "Misc/AutomationTest.h"
 
 #include "Core/Connection.h"
 #include "Core/Layout.h"
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
+#include "Core/SessionToolbar.h"
 #include "Core/Structure.h"
 #include "Tests/BrickWorldTestSupport.h"
 #include "World/BrickActor.h"
@@ -139,7 +142,7 @@ bool FBuildPlacePieceGrowsALiveStructureTest::RunTest(const FString& Parameters)
 
 	/* STEP 2: the first grounded brick lands as piece 0, actor-backed, no joint yet. */
 	const FPieceRef Ref0 =
-		Subsystem.PlaceBuildPiece(StructureId, FVector(0.0, 0.0, 0.0), HalfBrick, ClayBrick, /*bGrounded*/ true);
+		Subsystem.PlaceBuildPiece(StructureId, FVector(0.0, 0.0, 0.0), HalfBrick, ClayBrick);
 
 	TestTrue(
 		FString::Printf(TEXT("the first placed piece should be ref {%d, 0}, got {%d, %d}"),
@@ -165,8 +168,13 @@ bool FBuildPlacePieceGrowsALiveStructureTest::RunTest(const FString& Parameters)
 			*GetNameSafe(Binding->GetActor(0))),
 		Actor0);
 
+	/*
+	 * GROUNDED COMES FROM THE POSE, NOT FROM AN ARGUMENT (2026-09-15 DESIGN §8 ruling). This seed
+	 * is centred at Z = 0, so its underside sits at -3.25 cm — at or below the ground plane, hence
+	 * within one 1 cm joint of it — and the structure must record it grounded on that basis alone.
+	 */
 	TestTrue(
-		TEXT("piece 0 was placed grounded, so the structure must record it grounded"),
+		TEXT("piece 0's snapped pose rests it on the earth, so the structure must record it grounded"),
 		Binding->GetStructure().GetPiece(0).bIsGrounded);
 
 	TestTrue(
@@ -183,7 +191,7 @@ bool FBuildPlacePieceGrowsALiveStructureTest::RunTest(const FString& Parameters)
 	 * stagger and auto-forms one real bed joint.
 	 */
 	const FPieceRef Ref1 =
-		Subsystem.PlaceBuildPiece(StructureId, FVector(11.0, 0.0, 7.5), HalfBrick, ClayBrick, /*bGrounded*/ false);
+		Subsystem.PlaceBuildPiece(StructureId, FVector(11.0, 0.0, 7.5), HalfBrick, ClayBrick);
 
 	TestTrue(
 		FString::Printf(TEXT("the second placed piece should be ref {%d, 1}, got {%d, %d}"),
@@ -332,7 +340,7 @@ bool FPreviewBuildPieceIsNonMutatingAndPredictsTheCommitTest::RunTest(const FStr
 	/* One grounded brick, so there is something for a next-course preview to snap to. */
 	const int32 StructureId = Subsystem.BeginBuild();
 
-	Subsystem.PlaceBuildPiece(StructureId, FVector(0.0, 0.0, 0.0), HalfBrick, ClayBrick, /*bGrounded*/ true);
+	Subsystem.PlaceBuildPiece(StructureId, FVector(0.0, 0.0, 0.0), HalfBrick, ClayBrick);
 
 	FStructureBinding* Binding = Subsystem.Find(StructureId);
 	if (Binding == nullptr)
@@ -406,7 +414,7 @@ bool FPreviewBuildPieceIsNonMutatingAndPredictsTheCommitTest::RunTest(const FStr
 	 * number of joints.
 	 */
 	const FPieceRef Placed =
-		Subsystem.PlaceBuildPiece(StructureId, RequestedCentre, HalfBrick, ClayBrick, /*bGrounded*/ false);
+		Subsystem.PlaceBuildPiece(StructureId, RequestedCentre, HalfBrick, ClayBrick);
 
 	TestTrue(
 		FString::Printf(TEXT("the committed piece should be ref {%d, 1}, got {%d, %d}"),
@@ -441,6 +449,412 @@ bool FPreviewBuildPieceIsNonMutatingAndPredictsTheCommitTest::RunTest(const FStr
 	TestFalse(
 		TEXT("a preview against an unknown structure id is invalid"),
 		UnknownPreview.bValid);
+
+	return true;
+}
+
+/**
+ * GROUNDED IS DERIVED FROM THE SNAPPED POSE, AND FROM NOTHING ELSE — the 2026-09-15 DESIGN §8
+ * ruling, at the subsystem door where it is decided.
+ *
+ * PlaceBuildPiece no longer takes a bGrounded argument. A caller's guess is exactly what the
+ * ruling forbids: the snap solver ranks by raw DISTANCE, so a cursor on the grounded course beside
+ * a standing brick can be lifted a whole course onto its bed, and a piece 7.5 cm in the air that
+ * was flagged grounded terminates load at the earth and CAN NEVER FALL. The committed piece's flag
+ * must therefore come from where the piece actually ended up.
+ *
+ * THE RULE, SPELLED OUT HERE RATHER THAN IMPORTED. A piece is grounded when its BOTTOM FACE
+ * (CentreCm.Z - ExtentCm.Z) is at or below one joint thickness above the ground plane Z = 0 —
+ * i.e. `bottom <= 1.0`, with 1.0 cm being FSnapSettings::JointThicknessCm written out
+ * independently. One joint of tolerance rather than zero because a brick laid on the earth beds
+ * into its own mortar, and because both conventions this project has used must read grounded: the
+ * rests-on-the-ground centre 3.25 (bottom exactly 0) and every pre-ruling harness's centre 0
+ * (bottom -3.25, below the plane).
+ *
+ * AND IT IS DELIBERATELY NOT THE HOUSE `!(x > y)` FORM, which would be the WRONG POLARITY here.
+ * The house form exists to make a NaN land inside the guard — but GROUNDED IS THE FAIL-OPEN SIDE
+ * of this comparison: a grounded piece terminates load at the earth, absorbs whatever is stacked
+ * on it and can never fall. Every comparison against NaN is false, so `!(bottom > 1.0)` answers
+ * TRUE for a non-finite pose and mints exactly that immovable brick out of garbage arithmetic.
+ * `bottom <= 1.0` answers FALSE for a NaN, so an unplaceable pose reads NOT grounded and the
+ * solver stays free to drop it. DestructionGame.World.BuildMode.NonFinitePoseNeverCommitsGrounded
+ * is the row that pins this polarity; production spells the same reasoning at the site
+ * (ComputeBuildPlacement, World/DestructionStructureSubsystem.cpp).
+ *
+ * A TABLE, NOT FIVE TESTS, and every row is a HALF-BRICK of 3.25 so the arithmetic is one
+ * subtraction the reader can do. The two rows either side of 4.25 are the whole point: 4.25 puts
+ * the bottom at exactly 1.0 (grounded, the inclusive edge) and 4.5 puts it at 1.25 (not grounded),
+ * so a `<` where the ruling says `<=`, or a tolerance retuned to 0 or to a course pitch, is caught.
+ * A greater-than on the CENTRE rather than on the bottom face would also fail: centre 3.25 and
+ * centre 4.25 are both grounded while 4.5 is not, which no centre threshold reproduces with a
+ * brick-height gap between the rows.
+ *
+ * EACH ROW GETS ITS OWN EMPTY BUILD, so the piece is the structure's first and the snap is Free at
+ * exactly the requested pose. That keeps the row about the grounded rule alone — a neighbour would
+ * let the solver move the pose and confuse which Z was tested — and the placed box centre is
+ * asserted to be the requested one so a row cannot silently be measuring some other pose.
+ *
+ * NEEDS A TICKING WORLD: a real world for the actor spawns, but it never ticks. Every assertion is
+ * on the MECHANISM — the structure's own bIsGrounded flag and the placed box — never displacement.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPlaceBuildPieceDerivesGroundedFromPoseTest,
+	"DestructionGame.World.BuildMode.PlaceBuildPieceDerivesGroundedFromPose",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPlaceBuildPieceDerivesGroundedFromPoseTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildPlacePieceTestSupport;
+	using namespace DestructionProfiles;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
+
+	struct FGroundedCase
+	{
+		const TCHAR* Description;
+		double CentreZCm;
+		double BottomFaceZCm;
+		bool bExpectGrounded;
+	};
+
+	const FGroundedCase Cases[] = {
+		{ TEXT("the rests-on-the-ground course 0 centre"),      3.25,  0.0,   true  },
+		{ TEXT("the legacy half-buried course 0 centre"),       0.0,  -3.25,  true  },
+		{ TEXT("a bottom face exactly one joint up (the edge)"), 4.25, 1.0,   true  },
+		{ TEXT("a bottom face a quarter centimetre past it"),   4.5,   1.25,  false },
+		{ TEXT("a brick bedded a whole course in the air"),     10.75, 7.5,   false },
+	};
+
+	for (const FGroundedCase& Case : Cases)
+	{
+		const int32 StructureId = Subsystem.BeginBuild();
+
+		const FVector RequestedCentre(0.0, 0.0, Case.CentreZCm);
+
+		const FPieceRef Ref =
+			Subsystem.PlaceBuildPiece(StructureId, RequestedCentre, HalfBrick, ClayBrick);
+
+		FStructureBinding* Binding = Subsystem.Find(StructureId);
+
+		if (Binding == nullptr || Ref.PieceIndex != 0)
+		{
+			AddError(FString::Printf(
+				TEXT("fixture: %s did not place a first piece (ref {%d, %d})"),
+				Case.Description, Ref.StructureId, Ref.PieceIndex));
+			continue;
+		}
+
+		/* The lone piece is Free at the requested pose, so the row is about the Z it names. */
+		const FVector PlacedCentre = Binding->GetBinding(0).Box.CentreCm;
+
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture: %s should land at its requested pose (0, 0, %g), got (%g, %g, %g)"),
+				Case.Description, Case.CentreZCm, PlacedCentre.X, PlacedCentre.Y, PlacedCentre.Z),
+			PlacedCentre.Equals(RequestedCentre, KINDA_SMALL_NUMBER));
+
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: centre Z %g minus the 3.25 half-height puts the bottom face at %g, which is %s one 1 cm joint of the ground, so the committed piece must read %s"),
+				Case.Description, Case.CentreZCm, Case.BottomFaceZCm,
+				Case.bExpectGrounded ? TEXT("WITHIN") : TEXT("BEYOND"),
+				Case.bExpectGrounded ? TEXT("grounded") : TEXT("NOT grounded")),
+			Binding->GetStructure().GetPiece(0).bIsGrounded, Case.bExpectGrounded);
+	}
+
+	return true;
+}
+
+/**
+ * FREE PLACEMENT HONOURS THE REQUESTED POSE AND FORMS NO JOINTS — the deliberate escape from the
+ * bond, selected by EPlacementMode rather than by luck.
+ *
+ * THE SOLVER ALREADY EMITS A FREE CANDIDATE, but it is appended LAST, so today it is reached only
+ * when every snap is out of radius or occupancy-filtered. "Place it exactly where I am pointing"
+ * is a mode the player chooses, so PreviewBuildPiece / PlaceBuildPiece take a
+ * DestructionSession::EPlacementMode and Free selects that candidate however close a snap is.
+ *
+ * THE SAME REQUESTED POSE, TWICE, ONE PIECE OF STATE APART. Against the same one-brick structure
+ * the cursor (11, 0, 10) is 0.79 cm from the running-bond next-course pose (11.25, 0, 10.75) — the
+ * nearest snap by a wide margin over the same-course pose at (22.5, 0, 3.25), 13.33 cm away — so
+ * Snap must move it there and form one bed joint, while Free must leave it at (11, 0, 10) forming
+ * none. Asserting both from one fixture is what makes the mode demonstrably the cause: a
+ * production that ignored the parameter would give the same answer twice, and one of the two legs
+ * would fail whichever way it ignored it.
+ *
+ * THE NUMBERS ARE DERIVED, NOT IMPORTED. Brick 21.5 x 10.25 x 6.5 on 1 cm joints gives a
+ * coordinating grid of 22.5 x 11.25 x 7.5, so the next-course pose over a seed centred at
+ * (0, 0, 3.25) is (0 + 11.25, 0, 3.25 + 7.5) = (11.25, 0, 10.75) and the same-course pose is
+ * (22.5, 0, 3.25). Offsets from (11, 0, 10): sqrt(0.25^2 + 0.75^2) = 0.79 and
+ * sqrt(11.5^2 + 6.75^2) = 13.33.
+ *
+ * AND THE COMMIT AGREES WITH THE PREVIEW. A Free commit at the same pose lands its box at the
+ * cursor exactly and leaves NumConnections at zero — the mechanism reading of "formed no joints",
+ * exact and countable, never a position tolerance.
+ *
+ * NEEDS A TICKING WORLD: a real world for the actor spawns, but it never ticks.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPreviewBuildPieceFreeIgnoresSnapsTest,
+	"DestructionGame.World.BuildMode.PreviewBuildPieceFreeIgnoresSnaps",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPreviewBuildPieceFreeIgnoresSnapsTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildPlacePieceTestSupport;
+	using namespace DestructionProfiles;
+	using namespace DestructionSession;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
+
+	/* One seed brick RESTING ON THE GROUND (centre 3.25, underside 0), the ruling's convention. */
+	const int32 StructureId = Subsystem.BeginBuild();
+
+	Subsystem.PlaceBuildPiece(StructureId, FVector(0.0, 0.0, 3.25), HalfBrick, ClayBrick);
+
+	FStructureBinding* Binding = Subsystem.Find(StructureId);
+	if (Binding == nullptr)
+	{
+		AddError(TEXT("the structure vanished after seeding the first piece"));
+		return true;
+	}
+
+	TestEqual(
+		FString::Printf(TEXT("fixture: the seeded structure holds exactly 1 piece, got %d"),
+			Binding->NumPieces()),
+		Binding->NumPieces(), 1);
+
+	const FVector FreeCursorCm(11.0, 0.0, 10.0);
+	const FVector NextCourseCm(11.25, 0.0, 10.75);
+
+	/* SNAP: the nearest candidate wins and the cursor is moved onto the bond. */
+	const FBuildPreview Snapped =
+		Subsystem.PreviewBuildPiece(StructureId, FreeCursorCm, HalfBrick, ClayBrick, EPlacementMode::Snap);
+
+	TestTrue(
+		FString::Printf(TEXT("the Snap preview must take the next-course candidate, got kind %d"),
+			static_cast<int32>(Snapped.Kind)),
+		Snapped.Kind == BuildMode::ESnapKind::BrickNextCourse);
+
+	TestTrue(
+		FString::Printf(
+			TEXT("the Snap preview centres on (11.25, 0, 10.75), got (%g, %g, %g)"),
+			Snapped.CentreCm.X, Snapped.CentreCm.Y, Snapped.CentreCm.Z),
+		Snapped.CentreCm.Equals(NextCourseCm, KINDA_SMALL_NUMBER));
+
+	TestEqual(
+		FString::Printf(TEXT("the Snap preview would form one bed joint, got %d"), Snapped.JointCount),
+		Snapped.JointCount, 1);
+
+	/* FREE: the same cursor, honoured verbatim, jointless. */
+	const FBuildPreview Free =
+		Subsystem.PreviewBuildPiece(StructureId, FreeCursorCm, HalfBrick, ClayBrick, EPlacementMode::Free);
+
+	TestTrue(
+		FString::Printf(TEXT("the Free preview must be the Free candidate, got kind %d"),
+			static_cast<int32>(Free.Kind)),
+		Free.Kind == BuildMode::ESnapKind::Free);
+
+	TestTrue(
+		FString::Printf(
+			TEXT("the Free preview centres on the cursor (11, 0, 10) EXACTLY, got (%g, %g, %g)"),
+			Free.CentreCm.X, Free.CentreCm.Y, Free.CentreCm.Z),
+		Free.CentreCm.Equals(FreeCursorCm, KINDA_SMALL_NUMBER));
+
+	TestEqual(
+		FString::Printf(TEXT("a Free placement bonds to nothing, so 0 joints, got %d"), Free.JointCount),
+		Free.JointCount, 0);
+
+	/* Its bottom face is at 6.75 cm, most of a course in the air, so it is not grounded. */
+	TestFalse(
+		TEXT("the Free pose's bottom face sits 6.75 cm up, so the preview must not read it grounded"),
+		Free.bGrounded);
+
+	/* THE COMMIT AGREES: the box lands at the cursor and the structure gains no connection. */
+	const FPieceRef Placed = Subsystem.PlaceBuildPiece(
+		StructureId, FreeCursorCm, HalfBrick, ClayBrick, EPlacementMode::Free);
+
+	TestTrue(
+		FString::Printf(TEXT("the Free commit should be ref {%d, 1}, got {%d, %d}"),
+			StructureId, Placed.StructureId, Placed.PieceIndex),
+		Placed == FPieceRef{ StructureId, 1 });
+
+	Binding = Subsystem.Find(StructureId);
+	if (Binding == nullptr)
+	{
+		AddError(TEXT("the structure vanished after the Free placement"));
+		return true;
+	}
+
+	const FVector PlacedCentre = Binding->GetBinding(1).Box.CentreCm;
+
+	TestTrue(
+		FString::Printf(
+			TEXT("the Free commit lands its box on the cursor (11, 0, 10), got (%g, %g, %g)"),
+			PlacedCentre.X, PlacedCentre.Y, PlacedCentre.Z),
+		PlacedCentre.Equals(FreeCursorCm, KINDA_SMALL_NUMBER));
+
+	TestEqual(
+		FString::Printf(TEXT("a Free commit forms no joint, so the structure still holds %d connections"),
+			Binding->GetStructure().NumConnections()),
+		Binding->GetStructure().NumConnections(), 0);
+
+	TestFalse(
+		TEXT("the Free-committed piece is in the air, so the structure must not record it grounded"),
+		Binding->GetStructure().GetPiece(1).bIsGrounded);
+
+	return true;
+}
+
+/**
+ * A NON-FINITE POSE NEVER READS GROUNDED — the POLARITY of the pose-derived rule, pinned so the
+ * house style cannot be applied to it by reflex.
+ *
+ * WHAT IT DROVE, AND WHAT IT PINS NOW. Written as a regression pin on the polarity of the grounded
+ * comparison (ComputeBuildPlacement writes `BottomFaceZCm <= Settings.JointThicknessCm`), its first
+ * run found something else: the COMMIT leg tripped three engine ensures, because PlaceBuildPiece
+ * called SpawnBrickForPiece BEFORE FStructure::AddPiece got to refuse the non-finite centre, so an
+ * ABrickActor was spawned at a NaN transform and then destroyed (`NewTransform.IsValid()`,
+ * `!NewTransform.ContainsNaN()`, `bIsValid` in SQVisitor). The fix that row drove is a guard in
+ * ComputeBuildPlacement that leaves bDecided FALSE for a non-finite CHOSEN centre, so both doors
+ * fail closed before anything is spawned: the ghost query returns a default FBuildPreview (bValid
+ * false, bGrounded false — a pose no click can commit must not preview) and the commit returns a
+ * default ref with no actor. THAT GUARD IS WHAT THIS TEST BITES ON NOW: remove it and the ensures
+ * come back. The `<=` polarity beneath it is no longer reachable by a NaN pose (the guard refuses
+ * the pose first), so it is defence in depth, protected by the reasoning here and in TRAPS rather
+ * than by a discriminating row — a pose that is finite cannot tell `<=` from `!(>)`. Measured, not
+ * assumed: with the guard in place, swapping the `<=` for `!(> )` leaves the whole BuildMode group
+ * green (dev-expert, 2026-09-15).
+ *
+ * WHY THE HOUSE `!(x > y)` FORM IS WRONG HERE, and this is the whole point of the row. Everywhere
+ * else in this codebase a guard is written `!(x > y)` precisely so a NaN lands INSIDE it — because
+ * everywhere else, inside the guard is the safe side. Grounded inverts that: a grounded piece is
+ * one the earth holds up, so it terminates load, absorbs anything stacked on it and CAN NEVER
+ * FALL. That makes `true` the fail-OPEN answer. Since every comparison against NaN is false,
+ * `!(bottom > 1.0)` evaluates to TRUE for a NaN pose — a brick nobody could place, credited with
+ * the earth, immovable, and a lie inherited by every piece bonded above it. The `<=` production
+ * uses evaluates to FALSE for a NaN, so garbage arithmetic yields a piece that is NOT grounded and
+ * the solver may drop it. Fail closed means NOT GROUNDED here.
+ *
+ * BOTH DOORS, because both must answer the same thing about the same pose: the ghost query
+ * (PreviewBuildPiece -> bGrounded) is what the player sees before the click, and the commit
+ * (PlaceBuildPiece -> FStructurePiece::bIsGrounded) is what the solver reads afterwards. A preview
+ * that says "not grounded" over a commit that stores grounded would be the worst of both.
+ *
+ * THE COMMIT LEG IS WRITTEN "IF IT LANDS A PIECE AT ALL". A NaN centre is refused deeper down —
+ * FStructure::AddPiece rejects a non-finite centre of mass outright — so the outcome today is a
+ * default ref and an EMPTY structure, and the assertion is the invariant that survives either
+ * behaviour: no piece in the binding may read grounded. It is deliberately not "the place must
+ * refuse", because refusing is AddPiece's guarantee (pinned by its own tests) and not this rule's;
+ * if a later slice makes a non-finite pose placeable, this row must still hold.
+ *
+ * FREE PLACEMENT, ON AN EMPTY BUILD, so the requested pose is honoured verbatim and reaches the
+ * grounded derivation unchanged. Under Snap with neighbours the solver could substitute a finite
+ * candidate pose and the row would quietly stop testing a NaN at all.
+ *
+ * TWO NON-FINITE SHAPES. +Inf is the honest degenerate companion (a brick infinitely high is not
+ * grounded, and the guard refuses it just as it refuses a NaN — `ContainsNaN` alone would let it
+ * through, which is why the guard also tests `IsFinite` per component). The NaN row is the one
+ * that would have discriminated the two comparison spellings had the pose reached the comparison.
+ * -Inf is NOT swept: a bottom face infinitely far BELOW the earth is refused by the same guard, and
+ * asserting it would only repeat the +Inf row.
+ *
+ * NEEDS A TICKING WORLD: a real world, because these are the world-layer subsystem doors and the
+ * commit spawns an actor — but it never ticks. Every assertion is on the MECHANISM (the grounded
+ * flag and the piece count), never displacement.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBuildModeNonFinitePoseNeverCommitsGroundedTest,
+	"DestructionGame.World.BuildMode.NonFinitePoseNeverCommitsGrounded",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FBuildModeNonFinitePoseNeverCommitsGroundedTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildPlacePieceTestSupport;
+	using namespace DestructionProfiles;
+	using namespace DestructionSession;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
+
+	struct FNonFiniteCase
+	{
+		const TCHAR* Description;
+		double CentreZCm;
+	};
+
+	const FNonFiniteCase Cases[] = {
+		{ TEXT("a NaN Z (the row that discriminates <= from !(> ))"),
+			std::numeric_limits<double>::quiet_NaN() },
+		{ TEXT("a +infinity Z"), std::numeric_limits<double>::infinity() },
+	};
+
+	for (const FNonFiniteCase& Case : Cases)
+	{
+		/* Its own EMPTY build, so the Free candidate is the requested pose and nothing else. */
+		const int32 StructureId = Subsystem.BeginBuild();
+
+		const FVector RequestedCentre(50.0, 0.0, Case.CentreZCm);
+
+		/* THE GHOST QUERY. */
+		const FBuildPreview Preview = Subsystem.PreviewBuildPiece(
+			StructureId, RequestedCentre, HalfBrick, ClayBrick, EPlacementMode::Free);
+
+		TestFalse(
+			FString::Printf(
+				TEXT("%s: the preview must NOT read grounded — a non-finite bottom face is not on the earth, and a grounded piece can never fall"),
+				Case.Description),
+			Preview.bGrounded);
+
+		/* THE COMMIT. */
+		const FPieceRef Ref = Subsystem.PlaceBuildPiece(
+			StructureId, RequestedCentre, HalfBrick, ClayBrick, EPlacementMode::Free);
+
+		const FStructureBinding* Binding = Subsystem.Find(StructureId);
+		if (Binding == nullptr)
+		{
+			AddError(FString::Printf(
+				TEXT("fixture: %s lost its structure across the commit"), Case.Description));
+			continue;
+		}
+
+		/*
+		 * NO PIECE IN THE BINDING MAY READ GROUNDED. The loop covers both outcomes: zero pieces
+		 * (today's refusal, deep in AddPiece) and a landed piece, whose message names the ref so
+		 * the log says which of the two happened.
+		 */
+		for (int32 PieceIndex = 0; PieceIndex < Binding->NumPieces(); ++PieceIndex)
+		{
+			TestFalse(
+				FString::Printf(
+					TEXT("%s: it committed piece %d (ref index %d) — a piece landed from a non-finite pose must NOT be recorded grounded"),
+					Case.Description, PieceIndex, Ref.PieceIndex),
+				Binding->GetStructure().GetPiece(PieceIndex).bIsGrounded);
+		}
+	}
 
 	return true;
 }
