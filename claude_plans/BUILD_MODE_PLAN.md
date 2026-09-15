@@ -178,8 +178,13 @@ preview and a palette on that proven core — it invents no physics.
   snap would joint to tinted by `Kind`, a genuinely translucent ghost material, and the owed ghost-vs-placed
   screenshot (CURRENT_STATE) — judge the picture by eye.
 - **UI-3 — material / piece palette.** Pick brick vs timber and a size; drives the `Material`+`ExtentCm`
-  handed to `PlaceBuildPiece`. (First cut: ClayBrick full brick, Timber plate/lintel.)
-- **UI-4 — build/destroy mode toggle + input.** UI-4a LANDED 2026-09-04: `UBuildModeComponent` — the
+  handed to `PlaceBuildPiece`. (First cut: ClayBrick full brick, Timber plate/lintel.) MODEL LANDED
+  2026-09-15: `DestructionSession::EBuildPieceKind` + `BuildPieceHalfExtentCm`/`BuildPieceMaterial`
+  (`Core/SessionToolbar.*`); the component/Slate wiring is the next slice.
+- **UI-4 — build/destroy mode toggle + input.** The TOOLBAR MODEL landed 2026-09-15 (`DestructionSession::
+  FSessionToolbarState` / `SessionToolbarButtons` / `ApplyToolbarButton`, the strip as data with Build and
+  Destroy modes, Snap/Free, the course stepper and the Run command; the rests-on-the-ground course
+  convention is a DESIGN §8 ruling). UI-4a LANDED 2026-09-04: `UBuildModeComponent` — the
   interactive loop's testable core (`BeginBuild`/`UpdatePreviewAt(cursor)`/`ConfirmPlace`, one preview →
   one commit). UI-4b ray seam LANDED: `UpdatePreviewFromRay(rayOrigin, rayDir)` intersects a world ray with
   the horizontal plane `Z == BuildPlaneZCm` and previews the hit (fails closed on parallel/behind/non-finite

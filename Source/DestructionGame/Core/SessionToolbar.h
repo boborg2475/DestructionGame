@@ -1,0 +1,270 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Core/Profiles/MaterialProfiles.h"
+
+/**
+ * THE SESSION TOOLBAR'S PRESENTER MODEL — what the build/destroy strip offers, which button is lit,
+ * which is greyed, and what one click does to the session.
+ *
+ * IT IS Core/PieceMenu.h'S ROLE FOR THE TOOLBAR, and it is here for the same argument. A strip of
+ * buttons is a list of decisions — which buttons exist in which mode, in which order, with which
+ * caption, lit or not, live or greyed — and a decision spelled as a run of AddSlot calls in Slate is
+ * a decision in the one place no test can reach. What is left for the widget is drawing: which
+ * green, which font, which margin.
+ *
+ * NO SLATE, NO WORLD, NO UObject. One plain struct in, plain structs out, exactly as
+ * BuildPieceMenuRows and PieceMenuPanelSizePx take. That is what makes every claim about the strip
+ * a headless microsecond rather than a viewport somebody has to look at.
+ */
+namespace DestructionSession
+{
+	/**
+	 * What the session is doing: laying pieces, or pulling them out.
+	 *
+	 * Build IS ENUMERATOR ZERO because a default-constructed session must be the one that CANNOT
+	 * destroy anything. The two modes are not symmetric in what a mistake costs: opening in Build
+	 * offers a ghost nobody asked for, opening in Destroy offers a click that removes a brick.
+	 */
+	enum class ESessionMode : uint8
+	{
+		/** Placing pieces. The palette, the placement mode and the course are all live. */
+		Build,
+
+		/** Pulling pieces out and watching what happens. The build settings are kept for the way back. */
+		Destroy,
+	};
+
+	/**
+	 * Which piece the ghost is.
+	 *
+	 * A KIND RATHER THAN AN EXTENT AND A MATERIAL ON THE STATE. The palette is data — an extent and
+	 * a library row per kind, below — and a session state that carried the numbers instead of the
+	 * name would be a fourth place brick dimensions are written down, free to drift from the three
+	 * that already agree.
+	 */
+	enum class EBuildPieceKind : uint8
+	{
+		/** The standard 21.5 x 10.25 x 6.5 cm clay unit this whole project is calibrated on. */
+		Brick,
+
+		/** The demo building's own 67.5 cm timber wall plate. */
+		TimberPlate,
+
+		/** That plate's 90 cm sibling, for spanning an opening. */
+		TimberLintel,
+	};
+
+	/** Whether a placement is pulled onto the bond, or dropped exactly where the cursor is. */
+	enum class EPlacementMode : uint8
+	{
+		/** The solver's ranked snap wins. The normal way to lay a wall. */
+		Snap,
+
+		/** The requested pose is honoured verbatim, overlaps and all. The deliberate escape. */
+		Free,
+	};
+
+	/**
+	 * Everything the toolbar knows about the session, and the only thing a click changes.
+	 *
+	 * DURABLE STATE RATHER THAN WIDGET STATE. A controller that kept the mode in one field, the
+	 * piece in a combo box and the course in a spinner has the session spread across four owners
+	 * that can disagree; kept as one struct, every transition is state-in/state-out and every
+	 * transition is therefore a table row in a test.
+	 */
+	struct FSessionToolbarState
+	{
+		ESessionMode Mode = ESessionMode::Build;
+
+		EBuildPieceKind Piece = EBuildPieceKind::Brick;
+
+		EPlacementMode Placement = EPlacementMode::Snap;
+
+		/**
+		 * Which course the build plane is on. NEVER NEGATIVE.
+		 *
+		 * Course 0 is the one with the earth under it. A negative course is a build plane below the
+		 * ground and a readout nobody can make sense of, so ApplyToolbarButton refuses to produce
+		 * one and the three course functions below all treat one as course 0 — one clamp spelled
+		 * once, rather than four functions each with their own opinion about a state that is not
+		 * supposed to exist.
+		 */
+		int32 Course = 0;
+
+		/**
+		 * Whether there is a live structure for the commands to act on.
+		 *
+		 * THE ONLY PRECONDITION EITHER COMMAND HAS. Clear with nothing built clears nothing and Run
+		 * with nothing built solves an empty structure; both are silent no-ops, and a silent no-op
+		 * on a command button is indistinguishable from the game having missed the click.
+		 */
+		bool bHasStructure = false;
+	};
+
+	/**
+	 * Every button the strip can carry.
+	 *
+	 * AN ID RATHER THAN A CAPTION IS WHAT MAKES A CLICK ATTRIBUTABLE. A widget that reported which
+	 * button was pressed by handing back its text would be routing behaviour through wording, which
+	 * is the one thing on the row that is allowed to be retuned.
+	 */
+	enum class EToolbarButtonId : uint8
+	{
+		ModeBuild,
+		ModeDestroy,
+		PieceBrick,
+		PieceTimberPlate,
+		PieceTimberLintel,
+		PlacementSnap,
+		PlacementFree,
+		CourseDown,
+		CourseUp,
+		ClearBuild,
+		RunStructure,
+	};
+
+	/** One button on the strip: what it is, what it reads, whether it is lit, and whether it is live. */
+	struct FToolbarButton
+	{
+		/** Which button this is. What a click reports back, and never the caption. */
+		EToolbarButtonId Id = EToolbarButtonId::ModeBuild;
+
+		/**
+		 * What the button reads.
+		 *
+		 * DATA ON THE ROW FOR THE REASON FPieceMenuRow::Label IS: a widget spelling its own text
+		 * holds the wording where no test can read it, and this strip's wording is load-bearing —
+		 * Snap versus Free is the difference between a piece that lands on the bond and one that
+		 * lands where the cursor was.
+		 */
+		FString Label;
+
+		/**
+		 * "THIS IS WHAT YOU HAVE CHOSEN", which is not the same question as bEnabled.
+		 *
+		 * Exactly one button of each setting group carries it, and a COMMAND never does. A latched
+		 * Clear button reads as a mode the player is stuck in, and the toolbar has two real modes
+		 * already.
+		 */
+		bool bActive = false;
+
+		/**
+		 * Whether the thing behind the button can actually happen.
+		 *
+		 * THE MODEL OWNS THE GREYING BECAUSE THE MODEL OWNS THE REFUSAL — ApplyToolbarButton reads
+		 * this same answer rather than deciding again. Two derivations of "can this happen" is how
+		 * a lit button that does nothing gets shipped.
+		 *
+		 * FALSE BY DEFAULT: a half-built row must not claim a click will land.
+		 */
+		bool bEnabled = false;
+	};
+
+	/**
+	 * The strip for a session state: one fixed list per mode, in one fixed order.
+	 *
+	 * THE MODE PAIR IS ALWAYS FIRST, and it is the one ordering claim with a player-facing reason.
+	 * Everything else on the strip changes with the mode; the two buttons that switch modes may not
+	 * move, because a strip whose first two slots shifted would put a different button under a
+	 * cursor that has not moved.
+	 *
+	 * THE LIST'S CONTENT DEPENDS ON THE MODE ALONE. A piece selection or a course number that added,
+	 * removed or reordered a button would be a strip that rearranges itself while a player uses it.
+	 */
+	TArray<FToolbarButton> SessionToolbarButtons(const FSessionToolbarState& State);
+
+	/**
+	 * One click, as a pure function: the state before and the button, in; the state after, out.
+	 *
+	 * PURE BECAUSE THAT IS THE ONLY WAY IT IS ASSERTABLE. A controller mutating its own fields from
+	 * a Slate callback puts the whole of the toolbar's behaviour behind a click only a human can
+	 * perform; state-in/state-out makes every transition a table row.
+	 *
+	 * IT REFUSES WHATEVER THE STRIP REFUSES, by asking SessionToolbarButtons rather than by
+	 * re-deciding: a button that state does not draw, or draws greyed, is a bitwise no-op. That
+	 * includes the course floor — down from the grounded course is REFUSED rather than clamped into
+	 * a new state, which is the same answer today and stops being the same answer the moment
+	 * anything else on the state moves with a course change.
+	 *
+	 * THE FIELDS A TRANSITION DOES NOT NAME SURVIVE IT. Going to Destroy and back must return a
+	 * player to the piece, the placement and the course they left with.
+	 */
+	FSessionToolbarState ApplyToolbarButton(const FSessionToolbarState& State, EToolbarButtonId Id);
+
+	/**
+	 * A piece kind's HALF extent, in centimetres.
+	 *
+	 * TRANSCRIBED FROM WHAT THE DEMO BUILDING ALREADY LAYS rather than newly authored: the brick is
+	 * the standard 21.5 x 10.25 x 6.5 unit halved, and the plate is
+	 * Core/BuildMode/DemoBuilding.cpp's own (33.75, 5.125, 5.0). The lintel is that plate's 90 cm
+	 * sibling.
+	 *
+	 * IT FAILS CLOSED ON A KIND THIS BUILD DOES NOT KNOW. EBuildPieceKind is a uint8 and a cast is
+	 * all it takes to make one; the answer is the ZERO extent, because an extent that is not a
+	 * number is a mass that is not a number two calls later, and a piece of no size is an obvious
+	 * refusal rather than a plausible brick.
+	 */
+	FVector BuildPieceHalfExtentCm(EBuildPieceKind Kind);
+
+	/**
+	 * A piece kind's material, BY REFERENCE TO THE SHIPPED LIBRARY ROW.
+	 *
+	 * NEVER A COPY, AND IDENTITY IS THE POINT. Two profiles with equal fields are equal in every way
+	 * except the one that matters: which row a future retune moves. A private copy of Timber would
+	 * go on serving stale numbers after a re-anchor, and every joint the snap solver infers off that
+	 * piece would be inferred from them. It is the same identity rule PieceActionsFor keeps.
+	 *
+	 * IT FAILS CLOSED ON A KIND THIS BUILD DOES NOT KNOW, and Timber is the fail-closed answer
+	 * rather than an arbitrary one: it is not compression-dominant, so BuildMode::JointForContact
+	 * infers DryStone for it — a bearing that carries compression and friction and NO tension, the
+	 * weakest joint the inference can hand out. An unknown piece is credited with nothing it has not
+	 * earned.
+	 */
+	const DestructionProfiles::FMaterialProfile& BuildPieceMaterial(EBuildPieceKind Kind);
+
+	/**
+	 * The Z a piece of the given half-height takes when it is laid on the given course, in cm.
+	 *
+	 * THE RESTS-ON-THE-GROUND CONVENTION — OWNER-DELEGATED RULING, 2026-09-15. Every harness this
+	 * project had built before this model centred course 0 at Z = 0, which puts the grounded course
+	 * half BELOW the ground plane; the build-mode render follow-up records the half-buried bottom
+	 * row that produces. A player laying the first brick of their own building must see it sitting
+	 * ON the ground, so course 0 answers with the piece's own half-height. Nothing about the
+	 * STRUCTURE changes — the solver reads relative positions only — so this is the same building
+	 * lifted by exactly one brick half-height, on every course.
+	 *
+	 * THE PITCH IS THE BRICK'S, WHATEVER THE PIECE IS: BrickSizeCm.Z plus one bed joint, read from
+	 * BuildMode::FSnapSettings rather than written down again. A course is a property of the WALL
+	 * rather than of the thing being laid into it — a timber plate on course 2 bears on two brick
+	 * courses and their joints, which is exactly where the demo building puts its own plate, and a
+	 * pitch derived from the piece would put the plate at its own doubled height with the bearing
+	 * imaginary.
+	 *
+	 * A NEGATIVE COURSE IS COURSE 0, like every other course function here.
+	 */
+	double CoursePlaneZCm(int32 Course, double PieceHalfHeightCm);
+
+	/**
+	 * Whether the toolbar INTENDS the build plane to sit on the earth, which is true of course 0
+	 * and nothing else. THIS IS THE TOOLBAR'S INTENT FOR THE PLANE, NOT THE COMMITTED PIECE'S FLAG.
+	 *
+	 * GROUNDED IS THE FLAG FStructure ROUTES LOAD TO, so this is not a cosmetic question: a piece
+	 * laid with it set absorbs whatever reaches it, and a whole building marked grounded cannot
+	 * fall. And the snap solver ranks candidates by raw distance, so a cursor on the course-0 plane
+	 * beside a standing brick can be snapped UP onto its next-course bed — a piece bedded on another
+	 * brick, 7.5 cm above the earth, that this function would still call grounded. The flag the
+	 * committed piece carries must therefore be derived from the SNAPPED POSE (its bottom face
+	 * within a joint of the ground), never from the course this reports; this answer only says
+	 * which readout the toolbar shows. A negative course answers as course 0 — the clamp is a
+	 * property of the whole course vocabulary, because a below-ground course reading "not
+	 * grounded" on one call and getting a course-0 build plane on the next is two functions
+	 * disagreeing about a state that is not supposed to exist.
+	 */
+	bool IsCourseGrounded(int32 Course);
+
+	/** The course readout, naming its own course. A negative course reads as course 0. */
+	FString CourseLabel(int32 Course);
+}
