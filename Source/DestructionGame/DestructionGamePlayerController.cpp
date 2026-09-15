@@ -2135,6 +2135,24 @@ void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
 		];
 
 	/*
+	 * AND WHAT THAT BRICK IS, DIRECTLY UNDER ITS NAME, BECAUSE THE TWO ARE ONE THOUGHT — which
+	 * brick, and what is it. The identity line below the joint table would be the brick's weight
+	 * printed where a player who has read the heading has already stopped looking.
+	 *
+	 * NO EMPTINESS CHECK, EXACTLY AS THE ROW ABOVE HAS NONE. The model leaves IdentityText empty
+	 * in the same state it leaves InspectedLabel empty, so an unsingled-out panel draws an empty
+	 * text block here and the branch stays where a test can read it.
+	 */
+	Readout->AddSlot()
+		.AutoHeight()
+		[
+			SNew(STextBlock)
+			.Font(PieceMenuBodyFont())
+			.ColorAndOpacity(PieceMenuReadoutColour)
+			.Text(FText::FromString(Inspector.IdentityText))
+		];
+
+	/*
 	 * THE SUPPORT WORD AND THE JOINT LIST'S SENTENCE, WHICH IS THERE WHETHER OR NOT THERE ARE
 	 * ANY JOINTS. That is why there is no emptiness check here: an isolated grounded pad reads
 	 * "No joints", and the model is what says so. A widget noticing Joints.Num() == 0 for itself

@@ -265,6 +265,21 @@ namespace DestructionSession
 	 */
 	bool IsCourseGrounded(int32 Course);
 
-	/** The course readout, naming its own course. A negative course reads as course 0. */
+	/**
+	 * The course readout, naming its own course — AND IT COUNTS FROM ONE WHERE THE INDEX IT IS
+	 * GIVEN COUNTS FROM ZERO. CourseLabel(0) reads "Course 1".
+	 *
+	 * OWNER-DELEGATED RULING, 2026-09-15. The session has two surfaces that name a course and they
+	 * disagreed: this strip printed the grounded course as "Course 0" while the piece menu's entry
+	 * rows have counted from one since they were written (Core/PieceMenu.cpp, "BOTH NUMBERS COUNT
+	 * FROM ONE"), so the proof frames show a player laying a brick on "Course 0" that the details
+	 * window then calls "course 1 · #1". The readout a player spends longest reading is the one
+	 * naming individual bricks, so the strip is what moved.
+	 *
+	 * FSessionToolbarState::Course IS STILL THE ZERO-BASED INDEX, and that separation is the whole
+	 * of the change: CoursePlaneZCm, IsCourseGrounded and the stepper's floor are arithmetic over
+	 * an index and none of them moved. A negative course still reads as course 0 does, which is
+	 * now "Course 1".
+	 */
 	FString CourseLabel(int32 Course);
 }

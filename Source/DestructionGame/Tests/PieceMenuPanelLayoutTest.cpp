@@ -1956,6 +1956,12 @@ bool FPieceMenuPanelKeepsEveryClickableRowStillTest::RunTest(const FString& Para
  * Both strings come from whichever state supplies them, so this file pins no wording of its own
  * and Presenter.PieceMenuInspector remains the one place the words are decided.
  *
+ * THE IDENTITY LINE (SESSION_UI_DESIGN §c, S7) JOINS THE SAME SWEEP, AND WITH A POSITION. It is a
+ * model field with no reader on the day it lands, which is the exact shape of the headroom scale
+ * above — so it is drawn, it is absent with nothing singled out, and it sits between the name of
+ * the brick and its joint summary, because "which brick, and what is it" is one thought and a
+ * panel that split them across a joint table would have satisfied the presenter's own test.
+ *
  * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI, like every test in this file.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -2032,6 +2038,68 @@ bool FPieceMenuPanelPrintsTheModelTest::RunTest(const FString& Parameters)
 		*this, InspectedState, Inspected.InspectedLabel,
 		TEXT("the name of the brick the readout is about"));
 
+	/*
+	 * AND WHAT THAT BRICK IS — ITS MATERIAL, ITS SIZE AND ITS MASS — DIRECTLY UNDER THE NAME.
+	 *
+	 * SESSION_UI_DESIGN §c puts the identity line second for a reason a layout test is entitled to
+	 * hold: the two lines are one thought, "which brick, and what is it". A model that composed the
+	 * line while the panel drew it anywhere else would pass the presenter's own test and put the
+	 * brick's weight below its joint table, where the player reading the heading has already
+	 * stopped looking.
+	 *
+	 * THE FIXTURE'S WALL IS A RunningBond ONE AND ITS BRICKS CARRY NO MATERIAL, so the line here
+	 * reads "Unknown material · …". That is deliberate rather than a weakness: what this file owns
+	 * is that the panel draws the string the model supplies, whatever it says, and
+	 * Presenter.PieceIdentityText is what owns which string that is.
+	 */
+	TestFalse(
+		TEXT("fixture: the singled-out brick must have an identity line for the panel to draw"),
+		Inspected.IdentityText.IsEmpty());
+
+	CheckPanelDrawsLine(
+		*this, InspectedState, Inspected.IdentityText,
+		TEXT("what the brick is made of, how big it is and what it weighs"));
+
+	/*
+	 * THE LOWEST OCCURRENCE OF THE NAME, NOT THE FIRST. The readout's heading reads exactly the
+	 * same as that brick's ENTRY ROW — the model pins the two to each other on purpose — so the
+	 * first match is the row up in the list, and measuring against it would only say the identity
+	 * line is somewhere below the brick list, which every line of the readout already is.
+	 */
+	const FPanelText* NameLine = nullptr;
+	const FPanelText* IdentityLine = FindPanelLine(InspectedState.Texts, Inspected.IdentityText);
+
+	for (const FPanelText& Line : InspectedState.Texts)
+	{
+		if (Line.Text == Inspected.InspectedLabel
+			&& (NameLine == nullptr || Line.TopLeftPx.Y > NameLine->TopLeftPx.Y))
+		{
+			NameLine = &Line;
+		}
+	}
+
+	const FPanelText* const JointsLine = FindPanelLine(InspectedState.Texts, Inspected.JointsText);
+
+	if (NameLine != nullptr && IdentityLine != nullptr)
+	{
+		TestTrue(
+			*FString::Printf(
+				TEXT("the identity line '%s' must sit UNDER the name '%s' — it is at y%.2f and the name is at y%.2f"),
+				*Inspected.IdentityText, *Inspected.InspectedLabel,
+				IdentityLine->TopLeftPx.Y, NameLine->TopLeftPx.Y),
+			IdentityLine->TopLeftPx.Y > NameLine->TopLeftPx.Y);
+	}
+
+	if (JointsLine != nullptr && IdentityLine != nullptr)
+	{
+		TestTrue(
+			*FString::Printf(
+				TEXT("and ABOVE the joint summary '%s' — what a brick IS belongs with its name, not "
+					 "below its joint table; identity at y%.2f, summary at y%.2f"),
+				*Inspected.JointsText, IdentityLine->TopLeftPx.Y, JointsLine->TopLeftPx.Y),
+			IdentityLine->TopLeftPx.Y < JointsLine->TopLeftPx.Y);
+	}
+
 	CheckPanelDrawsLine(
 		*this, InspectedState, Inspected.SupportText, TEXT("why the brick is or is not held up"));
 
@@ -2075,6 +2143,10 @@ bool FPieceMenuPanelPrintsTheModelTest::RunTest(const FString& Parameters)
 	CheckPanelDrawsNoLine(
 		*this, InspectedState, Idle.InspectedHintText,
 		TEXT("the hint line, now that a brick IS singled out"));
+
+	CheckPanelDrawsNoLine(
+		*this, IdleState, Inspected.IdentityText,
+		TEXT("the identity line, with no brick singled out to have an identity"));
 
 	if (Inspected.Joints.Num() > 0)
 	{

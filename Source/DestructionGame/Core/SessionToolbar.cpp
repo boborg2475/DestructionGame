@@ -269,6 +269,14 @@ namespace DestructionSession
 
 	FString CourseLabel(int32 Course)
 	{
-		return FString::Printf(TEXT("Course %d"), SessionToolbarGroundedCourse(Course));
+		/*
+		 * THE PRINTED NUMBER COUNTS FROM ONE AND THE STORED ONE DOES NOT, WHICH IS THE WHOLE OF THIS
+		 * LINE. FSessionToolbarState::Course is an array subscript and stays one — CoursePlaneZCm
+		 * and IsCourseGrounded are arithmetic over it and are untouched — but a person counting
+		 * courses of brick starts at one, and Core/PieceMenu.cpp has named the bricks that way since
+		 * it was written ("BOTH NUMBERS COUNT FROM ONE"). Two surfaces naming one course had to
+		 * agree, and this is the one that moved.
+		 */
+		return FString::Printf(TEXT("Course %d"), SessionToolbarGroundedCourse(Course) + 1);
 	}
 }

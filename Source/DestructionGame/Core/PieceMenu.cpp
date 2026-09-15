@@ -2,6 +2,8 @@
 
 #include "Core/PieceMenu.h"
 
+#include "Core/Profiles/MaterialProfiles.h"
+
 /*
  * EVERY NAME IN HERE CARRIES A Presenter PREFIX, for the reason Structure.cpp's header
  * comment sets out at length: an anonymous namespace is private to a TRANSLATION UNIT
@@ -171,6 +173,113 @@ namespace
 		return BrickCount == 1
 			? FString(TEXT("1 brick"))
 			: FString::Printf(TEXT("%d bricks"), BrickCount);
+	}
+
+	/**
+	 * WHAT A PIECE IS MADE OF, NAMED BY WHICH LIBRARY ROW IT IS AND NEVER BY ITS NUMBERS.
+	 *
+	 * IDENTITY, NOT EQUALITY, AND THE TWO ARE NOT THE SAME QUESTION. "What shipped profile is
+	 * this piece built from" is a question about which row: a profile field-for-field equal to
+	 * ClayBrick is still a different row the moment one of the two is retuned, and a lookup that
+	 * compared numbers would confidently call it a clay brick until the day that happened. The
+	 * address is what BuildMode::PlacePiece stores — BuildPieceMaterial hands out a reference to
+	 * the shipped constant precisely so a retune reaches every brick — so the address is what
+	 * this asks.
+	 *
+	 * THE LIBRARY IS WALKED RATHER THAN THE THREE EXTERNS COMPARED, so a material stays DATA.
+	 * A chain of `== &DestructionProfiles::ClayBrick` tests here would be a branch per material
+	 * in a presenter, which is DESIGN §2's drift stated exactly — and its failure mode is quiet:
+	 * a fourth profile would read "Unknown material" with nothing to say why. Adding a row to
+	 * MaterialProfileLibrary is what names it here too.
+	 *
+	 * A PIECE NOBODY SAID WHAT IT IS MADE OF IS THE COMMON CASE RATHER THAN THE EXOTIC ONE.
+	 * DestructionLayout::RunningBond lays every wall in this game off a bare density and sets no
+	 * material at all, so the null arm is most of the pieces in the project; it reads as an
+	 * undescribed material rather than as a blank, because the size and the mass beside it are
+	 * still known and a readout that went silent would hide the two facts it has.
+	 */
+	FString PresenterWordForMaterial(const DestructionProfiles::FMaterialProfile* Material)
+	{
+		if (Material != nullptr)
+		{
+			for (const DestructionProfiles::FNamedMaterialProfile& Row :
+				DestructionProfiles::AllMaterialProfiles())
+			{
+				if (&Row.Profile == Material && Row.Name != nullptr)
+				{
+					return FString(Row.Name);
+				}
+			}
+		}
+
+		return FString(TEXT("Unknown material"));
+	}
+
+	/**
+	 * A LENGTH IN CENTIMETRES, TO AT MOST TWO DECIMALS AND WITH NO TRAILING ZEROS.
+	 *
+	 * THE PRECISION IS A DECISION AND SO IS THE TRIMMING. A bare "%.2f" reads "67.50 × 10.25 ×
+	 * 10.00" for a wall plate, which is three numbers written to a precision nothing in this game
+	 * measures to, and a "%g" is right for these dimensions and wrong the first time one of them
+	 * needs three decimals — it would drop to scientific notation instead. Two decimals is the
+	 * coordinating grid's own resolution (the brick is 10.25 cm deep), and a whole number of
+	 * centimetres reads as one.
+	 *
+	 * THE TRIM STOPS AT THE POINT, WHICH IS WHY IT NEEDS NO GUARD AGAINST EATING A NUMBER'S OWN
+	 * ZEROS. "1000.00" loses two zeros and then meets the '.', which is not a '0', so the loop
+	 * ends and the point is chopped once — leaving "1000" rather than "1". The same property is
+	 * what lets a non-finite length through untouched: "%.2f" of a NaN is a word with no trailing
+	 * zeros and no point at all, so it stays visibly a word instead of being chopped into a
+	 * plausible number.
+	 */
+	FString PresenterCentimetreText(double LengthCm)
+	{
+		FString Text = FString::Printf(TEXT("%.2f"), LengthCm);
+
+		while (Text.EndsWith(TEXT("0"), ESearchCase::CaseSensitive))
+		{
+			Text.LeftChopInline(1);
+		}
+
+		if (Text.EndsWith(TEXT("."), ESearchCase::CaseSensitive))
+		{
+			Text.LeftChopInline(1);
+		}
+
+		return Text;
+	}
+
+	/**
+	 * WHAT THE INSPECTED BRICK IS: its material, its size and its mass, as one composed line.
+	 *
+	 * THE SIZE IS THE BOX'S FULL DIMENSIONS, WHICH IS TWICE WHAT THE BINDING STORES.
+	 * FPieceBox::ExtentCm is a HALF size, matching FBox::GetExtent, so a readout printing it raw
+	 * presents a standard brick as 10.75 × 5.125 × 3.25 — a plausible-looking set of numbers for
+	 * a brick half the size of every brick in the game.
+	 *
+	 * AND THE MASS IS THE PIECE'S OWN RATHER THAN A SECOND DERIVATION FROM THAT BOX.
+	 * FStructurePiece::MassKg is the number the solver routes as load; a readout that multiplied
+	 * the dimensions by a density again would be a third copy of DestructionLayout::PieceMassKg,
+	 * free to disagree with the physics it is describing. It is the same discipline
+	 * Core/PieceInspection.h states about utilisation, one layer further out.
+	 *
+	 * ONE DECIMAL ON THE KILOGRAMS, which is a hundredth of the lightest piece this game lays and
+	 * the precision anybody would weigh a brick to. The unit conversion that catches everything
+	 * else in this project is nowhere near this line: density is g/cm3 and length is cm, both of
+	 * them Unreal's own units, and no force is computed here at all.
+	 */
+	FString PresenterIdentityLine(const FStructureBinding& Binding, int32 PieceIndex)
+	{
+		const FVector FullSizeCm = 2.0 * Binding.GetBinding(PieceIndex).Box.ExtentCm;
+		const FStructurePiece& Piece = Binding.GetStructure().GetPiece(PieceIndex);
+
+		return FString::Printf(
+			TEXT("%s · %s × %s × %s cm · %.1f kg"),
+			*PresenterWordForMaterial(Piece.Material),
+			*PresenterCentimetreText(FullSizeCm.X),
+			*PresenterCentimetreText(FullSizeCm.Y),
+			*PresenterCentimetreText(FullSizeCm.Z),
+			Piece.MassKg);
 	}
 
 	/**
@@ -1040,6 +1149,24 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	 * Copied off the marked entry, so the two halves of the panel cannot drift apart.
 	 */
 	Inspector.InspectedLabel = Inspector.Pieces[InspectedEntry].Label;
+
+	/*
+	 * AND WHAT THAT BRICK IS, BESIDE WHERE IT IS. The label above says which brick the readout is
+	 * about and has never said what it is made of, how big it is or what it weighs — so two pieces
+	 * of one wall differing by a whole material and a factor of four in weight present identically,
+	 * and a player asking why the timber held and the brick crushed has every number except the
+	 * ones that answer it.
+	 *
+	 * IT IS COMPOSED HERE FOR THE REASON EVERY OTHER STRING ON THIS STRUCT IS. Choosing a unit, a
+	 * precision and a separator is logic, and the menu widget was landed under a recorded exception
+	 * to the TDD gate on the condition that it holds none: a widget printing "2.72163125 kg" would
+	 * be the same defect as a widget picking its own colours.
+	 *
+	 * REACHED ONLY PAST THE bHasInspectedPiece RETURN ABOVE, so it is empty exactly when no brick
+	 * is singled out — the state SupportText and JointsText are already empty in, rather than a
+	 * fourth one — and the handle it reads is InspectPiece's own resolved answer, never the ref.
+	 */
+	Inspector.IdentityText = PresenterIdentityLine(Binding, Inspection.PieceIndex);
 
 	/*
 	 * AND THE READOUT'S OWN DOT AND WORD, OFF ONE BUCKET FOR THE REASON EVERY ENTRY ROW'S ARE.

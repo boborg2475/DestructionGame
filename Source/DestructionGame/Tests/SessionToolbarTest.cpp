@@ -1226,6 +1226,22 @@ bool FSessionToolbarCoursePlaneZTest::RunTest(const FString& Parameters)
  * must never read the same — a readout that says the same thing on every course is a readout that
  * is not reading anything.
  *
+ * AND THE NUMBER IT PRINTS COUNTS FROM ONE, WHICH IS NOT THE NUMBER IT IS STORING — OWNER-DELEGATED
+ * RULING, 2026-09-15 (CURRENT_STATE finding P1). The session has TWO surfaces that name courses and
+ * they disagreed: this strip printed the grounded course as "Course 0" while the piece menu's own
+ * readout counts from one ("course 1 · #2" for a brick laid on that very plane, Core/PieceMenu.cpp,
+ * "BOTH NUMBERS COUNT FROM ONE"). The session proof frames are what made it a defect rather than a
+ * quibble — a player lays a brick on the strip's "Course 0" and the details window calls the brick
+ * they just laid "course 1". One of the two had to move, and the one that moves is THIS one: a
+ * person counting courses of brick starts at one and always has, and the readout the player spends
+ * longest reading is the one naming individual bricks.
+ *
+ * FSessionToolbarState::Course STAYS ZERO-BASED, and that separation is the whole of the change.
+ * CoursePlaneZCm, IsCourseGrounded and the stepper's floor are arithmetic over an index and are
+ * untouched — course 0 is still the one with the earth under it and still planes at one half-height.
+ * What moves is the one function that turns that index into words, which is why this is a label
+ * change with no physical consequence and why the grounding rows above it are unchanged.
+ *
  * A NEGATIVE COURSE ANSWERS AS COURSE 0 THROUGHOUT. The clamp is a property of the whole course
  * vocabulary rather than of one function: a below-ground course that reads "not grounded" on one
  * call and gets a course-0 build plane on the next is two functions disagreeing about a state that
@@ -1259,11 +1275,40 @@ bool FSessionToolbarCourseGroundingAndLabelTest::RunTest(const FString& Paramete
 		TEXT("FAIL CLOSED: a negative course answers as course 0 does — grounded"),
 		IsCourseGrounded(-1));
 
+	/*
+	 * THE TWO EXACT PINS, AND THEY ARE EXACT BECAUSE THE WHOLE CLAIM IS ONE OF AGREEMENT. A
+	 * "contains its number" assertion is satisfied by either convention on most courses — "Course 1"
+	 * contains a 1 whether it is the index or the index plus one — so the rows that separate the two
+	 * conventions have to be spelled out in full.
+	 */
+	TestEqual(
+		FString::Printf(
+			TEXT("the GROUNDED course is the player's FIRST course: CourseLabel(0) must read 'Course 1', it reads '%s'"),
+			*CourseLabel(0)),
+		CourseLabel(0), FString(TEXT("Course 1")));
+
+	TestEqual(
+		FString::Printf(
+			TEXT("and the count keeps step: CourseLabel(2) must read 'Course 3', it reads '%s'"),
+			*CourseLabel(2)),
+		CourseLabel(2), FString(TEXT("Course 3")));
+
 	const FString LabelForThree = CourseLabel(3);
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("the course readout must name its course: CourseLabel(3) reads '%s' and must contain '3'"),
+			TEXT("the course readout must name its course ONE-BASED: CourseLabel(3) reads '%s' and must contain '4'"),
+			*LabelForThree),
+		LabelForThree.Contains(TEXT("4")));
+
+	/*
+	 * AND MUST NOT STILL PRINT THE INDEX. Without this row a label reading "Course 3 (index 3)" —
+	 * or an implementation that printed both numbers to keep everyone happy — would satisfy the
+	 * row above it, and the player would be back to reading two different numbers for one course.
+	 */
+	TestFalse(
+		*FString::Printf(
+			TEXT("and must NOT print the zero-based index beside it: CourseLabel(3) reads '%s' and must not contain '3'"),
 			*LabelForThree),
 		LabelForThree.Contains(TEXT("3")));
 
@@ -1279,9 +1324,9 @@ bool FSessionToolbarCourseGroundingAndLabelTest::RunTest(const FString& Paramete
 
 		TestTrue(
 			*FString::Printf(
-				TEXT("the course readout must contain its own number: course %d reads '%s'"),
-				Course, *Label),
-			Label.Contains(FString::FromInt(Course)));
+				TEXT("the course readout must contain its own ONE-BASED number: index %d must read '%d', it reads '%s'"),
+				Course, Course + 1, *Label),
+			Label.Contains(FString::FromInt(Course + 1)));
 
 		bool bAlreadyThere = false;
 		SeenLabels.Add(Label, &bAlreadyThere);
@@ -1298,6 +1343,12 @@ bool FSessionToolbarCourseGroundingAndLabelTest::RunTest(const FString& Paramete
 			TEXT("FAIL CLOSED: a negative course must read as course 0 ('%s'), it reads '%s'"),
 			*CourseLabel(0), *CourseLabel(-2)),
 		CourseLabel(-2), CourseLabel(0));
+
+	TestEqual(
+		FString::Printf(
+			TEXT("FAIL CLOSED, AND IT IS THE PLAYER'S FIRST COURSE IT FALLS BACK TO: CourseLabel(-1) must read 'Course 1', it reads '%s'"),
+			*CourseLabel(-1)),
+		CourseLabel(-1), FString(TEXT("Course 1")));
 
 	return true;
 }

@@ -289,7 +289,7 @@ drawn; everything marked *(new)* is a new field and therefore a new red test.
 │ ◆ course 3 · #27        Supported                 │   ◆ = bIsInspected (exists)
 ├──────────────────────────────────────────────────┤
 │ course 3 · #27                                    │   InspectedLabel (exists)
-│ Clay brick · 21.5 × 10.25 × 6.5 cm · 2.9 kg       │   (new) IdentityText
+│ ClayBrick · 21.5 × 10.25 × 6.5 cm · 2.7 kg       │   (new) IdentityText
 │ ● Supported — held by a path to the earth         │   SupportText (exists), SupportBand (exists)
 │                                                   │
 │ 4 joints, worst at 38 % of capacity               │   JointsText (exists)
@@ -308,7 +308,7 @@ drawn; everything marked *(new)* is a new field and therefore a new red test.
 
 Three new model fields, each its own slice:
 
-- **`IdentityText`** *(new)* — `"Clay brick · 21.5 × 10.25 × 6.5 cm · 2.9 kg"`. Every part is
+- **`IdentityText`** *(new)* — `"ClayBrick · 21.5 × 10.25 × 6.5 cm · 2.7 kg"`. Every part is
   already in the graph: the material name by pointer identity against `AllMaterialProfiles()` (the
   identity rule `BuildPieceMaterial` states is what makes this safe), the size from
   `FPieceBinding::Box.ExtentCm` doubled, the mass from `FStructure::GetPiece(i).MassKg`. It is one
@@ -341,7 +341,7 @@ Same dock, same width, different contents. It is a third `EPieceMenuDetail` — 
 │ PLACING                        Snap      │  HeaderText, PlacementText
 ├──────────────────────────────────────────┤
 │ Brick                                    │  PieceText (from the palette caption)
-│ Clay brick · 21.5 × 10.25 × 6.5 cm · 2.9 kg │  IdentityText — SAME composer as the inspector's
+│ ClayBrick · 21.5 × 10.25 × 6.5 cm · 2.7 kg │  IdentityText — SAME composer as the inspector's
 │ Course 3 · centre Z 25.75 cm             │  CourseText (from CourseLabel + CoursePlaneZCm)
 │                                          │
 │ Running bond, next course                │  KindText — the ESnapKind word
@@ -556,8 +556,8 @@ the model (`FToolbarButton::ShortcutText`), for the reason captions do.
 │                             ░ gold ghost ░                        │ PLACING        Snap    ││
 │                    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   ├────────────────────────┤│
 │                    ▓▓▓▓▓▓▓▓▓▓ brick wall ▓▓▓▓▓▓                   │ Brick                  ││
-│                    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   │ Clay brick · 21.5 ×    ││
-│  ──────────────────────────────────────────────────────────────── │ 10.25 × 6.5 cm · 2.9 kg││
+│                    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓                   │ ClayBrick · 21.5 ×     ││
+│  ──────────────────────────────────────────────────────────────── │ 10.25 × 6.5 cm · 2.7 kg││
 │                                                                   │ Course 3 · centre Z    ││
 │                                                                   │ 25.75 cm               ││
 │                                                                   │                        ││
@@ -590,8 +590,8 @@ the model (`FToolbarButton::ShortcutText`), for the reason captions do.
 │      ✦ = inspected (magenta)   ▒ = selected (teal)        │ ◆ course 3 · #27     Supported │ │
 │                                                          ├────────────────────────────────┤ │
 │                                                          │ course 3 · #27                 │ │
-│                                                          │ Clay brick · 21.5 × 10.25 ×    │ │
-│                                                          │ 6.5 cm · 2.9 kg                │ │
+│                                                          │ ClayBrick · 21.5 × 10.25 ×     │ │
+│                                                          │ 6.5 cm · 2.7 kg                │ │
 │                                                          │ ● Supported — held by a path   │ │
 │                                                          │   to the earth                 │ │
 │                                                          │ 4 joints, worst at 38 %        │ │
@@ -641,7 +641,7 @@ the pattern every new panel follows.
 | **S5** | Mode switch is total | `OnToolbarButton(ModeDestroy)` hides the ghost, `Destroy` disables placement; and back | `World.Session.ModeSwitchIsTotal` — no ghost survives into Destroy, the build settings survive the round trip (the model already promises this) | one shot per mode, same camera |
 | **S5b** | Arming `Clear build` | `FSessionToolbarState::ClearArmedAtSeconds` + a transition | `Core.SessionToolbar.ClearArms` — first click arms and changes the caption, second within the window clears, a click elsewhere disarms | armed state, red caption |
 | **S6** (LANDED 2026-09-15 with S0/S4; `SetPieceMenuControls` deleted, shortcuts Tab/1/2/3/G/[/]/Enter in `IMC_Session`) | **Cursor + RMB look** | `SetSessionControls()`; `IA_LookModifier` asset + chorded trigger; `.IsFocusable(false)` everywhere | `Content.RequiredContent` gains the new action; a mapping-shape assertion | cursor visible over the toolbar, the wall not spinning, and **`W` still flies after a button click** (the human check) |
-| **S7** | Identity line | `FPieceMenuInspector::IdentityText` — material name by library-row identity, size from the box, mass from `GetPiece` | `Presenter.PieceIdentityText` — a clay brick reads exactly `Clay brick · 21.5 × 10.25 × 6.5 cm · 2.9 kg`; an unlisted material reads `Unknown material`; a ref naming nothing reads empty | panel with the line under the inspected label |
+| **S7** (LANDED 2026-09-15; the library names are `ClayBrick`/`Timber` and the brick weighs 2.7 kg — a display-friendly name is a follow-up) | Identity line | `FPieceMenuInspector::IdentityText` — material name by library-row identity, size from the box, mass from `GetPiece` | `Presenter.PieceIdentityText` — a clay brick reads exactly `ClayBrick · 21.5 × 10.25 × 6.5 cm · 2.7 kg`; an unlisted material reads `Unknown material`; a ref naming nothing reads empty | panel with the line under the inspected label |
 | **S8** | Hover peek | `HoverAlongRay` also builds a `Compact` inspector when nothing is selected | `World.Session.HoverPeek` — peek appears on hover, is suppressed by a real selection, and changes nothing about the selection | cursor on an un-selected brick, compact panel up |
 | **S9** | **Ghost card** | `EPieceMenuDetail::GhostCard`, `FBuildPreviewInspector BuildBuildPreviewInspector(...)`; needs CURRENT_STATE (b2) `bWouldPlace` and (v-a) `bRequestedPoseOccupied` first | `Presenter.BuildPreviewInspector` — a kind table → words; free-in-open-space vs every-snap-occupied are different sentences; `KindText` summarises the *joints* rather than the ambiguous merged `Kind` | ghost in the world and a card that agrees with it, joint for joint |
 | **S10** | Removal forecast (model) | `FRemovalForecast ForecastRemoval(const FStructure&, int32 PieceIndex, int32 PieceCap)` — copy, remove, `SolveAndBreak` on the copy | `Core.RemovalForecast` — a corbel keystone drops N and the live structure is **bit-identical afterwards**; an isolated grounded pad drops 0; above the cap it refuses rather than running | — |

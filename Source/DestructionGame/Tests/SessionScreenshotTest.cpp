@@ -52,7 +52,7 @@
  *   FRAME 1 "Session_Build": the plot as the level opens — Build mode, the strip up — with a small
  *   wall laid through `PrimaryAlongRay`: three bricks on course 0, two staggered onto them on course
  *   1, and a timber plate bearing across the top on course 2. A gold GHOST hovers at the cursor, one
- *   plate-length past the wall. The strip reads Build lit, Timber plate lit, Course 2, Clear build
+ *   plate-length past the wall. The strip reads Build lit, Timber plate lit, Course 3 (index 2 — the readout is one-based), Clear build
  *   live.
  *
  *   FRAME 2 "Session_Destroy": Destroy mode (ghost gone), a real trace into the MIDDLE BOTTOM brick,

@@ -446,6 +446,29 @@ struct FPieceMenuInspector
 	FString InspectedLabel;
 
 	/**
+	 * WHAT THAT BRICK IS — its material, its size and its mass — as one composed line:
+	 * "ClayBrick · 21.5 × 10.25 × 6.5 cm · 2.7 kg".
+	 *
+	 * THE LABEL ABOVE SAYS WHICH BRICK AND NEVER SAYS WHAT IT IS. Two pieces of one wall can
+	 * differ by a whole material and by a factor of four in weight and present identically today,
+	 * so a player asking why the timber held where the brick crushed has every number except the
+	 * ones that answer it.
+	 *
+	 * ONE STRING, COMPOSED IN THE MODEL, for the reason every other string here is: choosing a
+	 * unit, a precision and a separator is logic, and the widget that draws this was landed under
+	 * a recorded exception to the TDD gate on the condition that it holds none.
+	 *
+	 * THE MATERIAL IS NAMED BY WHICH LIBRARY ROW IT IS, NOT BY ITS NUMBERS, and a piece whose
+	 * material is not a row — including one nobody ever set, which is most of the pieces in this
+	 * game — reads "Unknown material" rather than going blank. The size and the mass are known
+	 * either way, and a readout that refused to say anything about a piece it could not name
+	 * would hide the two facts it has.
+	 *
+	 * EMPTY EXACTLY WHEN NO BRICK IS SINGLED OUT, like SupportText, JointsText and InspectedLabel.
+	 */
+	FString IdentityText;
+
+	/**
 	 * What the readout region says when there is no brick to break out, and NOTHING WHEN
 	 * THERE IS.
 	 *

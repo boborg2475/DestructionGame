@@ -59,11 +59,21 @@ namespace DestructionProfiles
 		bool bCompressionDominant = true;
 	};
 
-	/** One row of the library. Adding a material is adding one of these. */
+	/**
+	 * One row of the library. Adding a material is adding one of these.
+	 *
+	 * THE PROFILE IS A REFERENCE TO THE SHIPPED CONSTANT, NEVER A COPY OF IT, so `&Row.Profile`
+	 * IS the address a piece carrying that material stores. It was a copy, and a copy makes the
+	 * obvious lookup — walk the library, compare the pointer a piece holds against the row's
+	 * profile — answer "no such row" for every piece in the game, quietly and without a cast to
+	 * warn anybody. A material is named by WHICH ROW it is rather than by what its numbers
+	 * currently are (`BuildPieceMaterial` hands out references for exactly that reason: a retune
+	 * of ClayBrick must reach every brick), so the library has to be askable by address.
+	 */
 	struct FNamedMaterialProfile
 	{
 		const TCHAR* Name = nullptr;
-		FMaterialProfile Profile;
+		const FMaterialProfile& Profile;
 	};
 
 	/** The calibration baseline: every other material is a ratio of this one. */
