@@ -73,6 +73,17 @@ namespace DestructionScenarios
 		TArray<FVector> CutCentresCm;
 
 		/**
+		 * THIS ROW LAYS NOTHING, BECAUSE THE PLAYER LAYS IT — the build sandbox.
+		 *
+		 * Every other row is a structure somebody else built and a question about what it does. A
+		 * build sandbox is an empty plot: the game mode opens NO layout, spawns no brick, and arms
+		 * NO hold timer, because there is nothing laid for a run to do anything to. `Build` refuses
+		 * such a row outright (`RunningBond` refuses a spec of zero courses), so the game mode must
+		 * branch on this BEFORE it asks for a layout.
+		 */
+		bool bBuildSandbox = false;
+
+		/**
 		 * HOW LONG THE LEVEL HOLDS THIS STRUCTURE EXACTLY AS LAID BEFORE IT RUNS, seconds.
 		 *
 		 * ONE CLOCK, ON EVERY ROW, AND THE NAME IS NOT THE CUT'S. It was `CutDelaySeconds`, which

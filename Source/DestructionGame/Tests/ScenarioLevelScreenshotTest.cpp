@@ -1390,6 +1390,12 @@ bool FScenarioShotCheckFilesCommand::Update()
 
 	for (const DestructionScenarios::FScenario& Row : DestructionScenarios::Catalogue())
 	{
+		/* A build sandbox was never photographed — an empty plot has nothing to photograph. */
+		if (Row.bBuildSandbox)
+		{
+			continue;
+		}
+
 		for (const TCHAR* const Suffix : { ScenarioShotHeldSuffix, ScenarioShotRunSuffix })
 		{
 			const FString BaseName = ScenarioShotBaseName(Row, Suffix);
@@ -1534,6 +1540,22 @@ bool FScenarioLevelScreenshotTest::RunTest(const FString& Parameters)
 	 */
 	for (int32 RowIndex = 0; RowIndex < Rows.Num(); ++RowIndex)
 	{
+		/*
+		 * A BUILD SANDBOX IS NOT PHOTOGRAPHED, because there is nothing there to photograph: the row
+		 * lays no structure and the player is the one who fills the plot, so a held frame and a run
+		 * frame would both be a picture of empty ground. Skipped here AND in the file check below,
+		 * which reads "the file exists" as "this row rendered".
+		 */
+		if (Rows[RowIndex].bBuildSandbox)
+		{
+			AddInfo(FString::Printf(
+				TEXT("SKIPPED '%s': a build sandbox lays nothing, so there is no structure to "
+					"photograph held or run"),
+				*Rows[RowIndex].Name.ToString()));
+
+			continue;
+		}
+
 		ADD_LATENT_AUTOMATION_COMMAND(FScenarioShotOpenMapCommand(this, RowIndex));
 		ADD_LATENT_AUTOMATION_COMMAND(FScenarioShotJoinCommand(this, RowIndex, 0));
 

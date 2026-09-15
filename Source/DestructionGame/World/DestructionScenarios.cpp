@@ -616,6 +616,37 @@ namespace DestructionScenarios
 		Sandbox.Wall = ScenariosWallSpec(40, 30);
 
 		/*
+		 * AND THE ONE ROW THAT LAYS NOTHING, BECAUSE THE PLAYER LAYS IT. Every other level in this
+		 * table is a structure somebody else built and a question about what it does; the build
+		 * sandbox is an empty plot, a toolbar, and whatever the player decides to stand up on it.
+		 *
+		 * IT IS A CATALOGUE ROW SO THAT JOINING IT IS THE SAME ACT AS JOINING ANY OTHER LEVEL —
+		 * `?Scenario=build` and the map `Lvl_Build` both reach it through the same
+		 * IndexForOptionsAndMap everything else is reached by, rather than the build mode being a
+		 * second way of starting the game.
+		 *
+		 * IT CARRIES NOTHING TO LAY, AND THAT IS WHAT THE FLAG SAYS: no LayStructure, a default
+		 * Wall, no cut. `Build` therefore REFUSES it (RunningBond refuses a spec of zero courses),
+		 * so the game mode reads bBuildSandbox BEFORE it asks for a layout — see BeginPlay.
+		 *
+		 * AND IT IS FRAMED FROM A THREE-QUARTER ANGLE. There are no bounds to frame, so the game
+		 * mode invents a plot box centred on the origin; head-on at a flat box is a level camera
+		 * showing the horizon, while ThreeQuarter elevates and looks DOWN at the ground the player
+		 * is about to build on.
+		 */
+		FScenario& BuildSandbox = Rows.AddDefaulted_GetRef();
+
+		BuildSandbox.Name = FName(TEXT("build"));
+		BuildSandbox.MapName = TEXT("Lvl_Build");
+		BuildSandbox.Title = TEXT("Build sandbox — your own building");
+
+		BuildSandbox.Expectation = TEXT(
+			"Nothing is cut. Lay bricks, then switch to Destroy and pull one out.");
+
+		BuildSandbox.bBuildSandbox = true;
+		BuildSandbox.Framing = EScenarioFraming::ThreeQuarter;
+
+		/*
 		 * THE USER'S OWN REPORTED CASE: one brick deleted at a free end, under forty courses of
 		 * wall. It is the fixture Core.Structure.AFreeEndDeletionInATallWall reads, so the level
 		 * and the number that test prints are about one wall rather than two that look alike.

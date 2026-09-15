@@ -1,6 +1,7 @@
 # The levels
 
-Thirty-four playable maps, one per fixture the headless suite measures. You join, the structure is
+Thirty-five playable maps: thirty-four are one per fixture the headless suite measures, and one —
+`Lvl_Build` — is the empty plot you build on yourself. On the thirty-four you join, the structure is
 already framed in front of you, a caption names it and says what to watch for, and four seconds
 later it does whatever it was always going to do.
 
@@ -76,6 +77,29 @@ being in free fall.
 |---|---|---|
 | `Lvl_Sandbox` | `sandbox` | The 30 × 40 wall Play has always given you. Cuts nothing. |
 | `Lvl_FreeEnd40` | `free-end-40` | Your original bug report: one brick out of the free end of a forty-course wall. It must **not** come down. |
+
+## The level you build yourself
+
+| Level | `?Scenario=` | What it is |
+|---|---|---|
+| `Lvl_Build` | `build` | An empty plot. Nothing is laid and nothing is cut: lay bricks yourself, then switch to Destroy and pull one out. |
+
+It is the one row in the catalogue flagged `bBuildSandbox`, and the flag is what makes it a build
+level rather than a broken one. The game mode reads it **before** it asks the catalogue for a
+layout: nothing is built, no structure id is kept, and **no hold is armed** — there is nothing laid
+for the four-second moment to cut or settle. Having no structure it has no bounds either, so the
+camera is framed on an invented plot box (±150 cm across, ±50 cm high, on the origin) from the
+three-quarter angle, which looks *down* at the ground you are about to build on rather than level at
+the horizon.
+
+Join it exactly like any other level — by its map, or by name on any map:
+
+```bash
+"C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "C:\Users\bobby\Documents\Unreal Projects\DestructionGame\DestructionGame.uproject" /Game/Maps/Scenarios/Lvl_Build -game
+"C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "C:\Users\bobby\Documents\Unreal Projects\DestructionGame\DestructionGame.uproject" /Game/Maps/Lvl_Sandbox?Scenario=build -game
+```
+
+`Visual.ScenarioLevelScreenshots` **skips** this row: an empty plot has nothing to photograph.
 
 ## The corbel family
 
@@ -208,9 +232,10 @@ about it; `Content.ScenarioMapsAreDistinctAssets` catches the one made by copyin
 
 ## Seeing them all without joining them
 
-`DestructionGame.Visual.ScenarioLevelScreenshots` opens all thirty-four as a player opens them and
-photographs each held and run — 68 frames into `Saved/Screenshots/WindowsEditor/`. It needs a real
-RHI, so **`-nullrhi` must be absent**:
+`DestructionGame.Visual.ScenarioLevelScreenshots` opens all thirty-four structures as a player opens
+them and photographs each held and run — 68 frames into `Saved/Screenshots/WindowsEditor/`. The
+build sandbox is skipped (there is nothing on it to photograph). It needs a real RHI, so
+**`-nullrhi` must be absent**:
 
 ```bash
 "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "C:\Users\bobby\Documents\Unreal Projects\DestructionGame\DestructionGame.uproject" /Game/Maps/Lvl_Sandbox -game -windowed -ResX=1920 -ResY=1080 -ForceRes -RenderOffScreen -nosplash -NoSound -unattended -nopause -ExecCmds="Automation RunTests DestructionGame.Visual.ScenarioLevelScreenshots" -TestExit="Automation Test Queue Empty"

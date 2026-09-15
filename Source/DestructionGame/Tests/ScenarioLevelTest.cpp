@@ -4,6 +4,7 @@
 
 #include "DestructionGameFlyingPawn.h"
 #include "DestructionGameGameMode.h"
+#include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
@@ -79,6 +80,32 @@ namespace ScenarioLevelTestSupport
 	/** The row the option selects, and the row the default gives — named, never indexed. */
 	const TCHAR* const ScenarioLevelCutRowName = TEXT("free-end-40");
 	const TCHAR* const ScenarioLevelDefaultRowName = TEXT("sandbox");
+
+	/** The level that lays nothing, because the player lays it. */
+	const TCHAR* const ScenarioLevelBuildRowName = TEXT("build");
+
+	/**
+	 * HOW NEAR THE ORIGIN THE PLAYER MUST STAND ON AN EMPTY PLOT, cm.
+	 *
+	 * TWENTY METRES IS A CEILING AND NOT A TARGET. The exact standoff is `ViewpointFor`'s to choose
+	 * from whatever default bounds the game mode hands it — that arithmetic is already pinned by
+	 * `World.Scenarios.Viewpoint` and pinning it a second time here would only make this test fail
+	 * when the framing is retuned. What must hold is the thing a human would notice: the player is
+	 * standing on the plot they are about to build on, not half a kilometre away from it, and not
+	 * where the harness spawned them fifty metres out and five below the floor.
+	 */
+	constexpr double ScenarioLevelBuildPlotReachCm = 2000.0;
+
+	/**
+	 * HOW NEARLY THE VIEW MUST POINT AT THE PLOT — the cosine of the angle between where the camera
+	 * looks and where the origin is from there.
+	 *
+	 * 0.9 is about twenty-five degrees, which is loose on purpose: the game mode is free to aim at
+	 * the centre of whatever default box it frames — ground level, or half a structure's height up —
+	 * and both are the plot. What it is not free to do is look past it, which is what a camera
+	 * carrying the previous scenario's yaw, or a default rotation nobody set, does.
+	 */
+	constexpr double ScenarioLevelBuildAimDot = 0.9;
 
 	/**
 	 * THE ASPECT A LEVEL FRAMES FOR WHEN NOTHING CAN TELL IT THE VIEWPORT'S.
@@ -326,6 +353,30 @@ namespace ScenarioLevelTestSupport
 		for (int32 Piece = 0; Piece < Binding.NumPieces(); ++Piece)
 		{
 			if (IsValid(Cast<ABrickActor>(Binding.GetActor(Piece))))
+			{
+				++Bricks;
+			}
+		}
+
+		return Bricks;
+	}
+
+	/**
+	 * EVERY BRICK IN THE WHOLE WORLD, bound or not — the count that says whether anything was laid.
+	 *
+	 * ASKED OF THE WORLD RATHER THAN OF A BINDING, because the claim for a build sandbox is that
+	 * there is no structure to ask. `UDestructionStructureSubsystem` exposes no count of the
+	 * structures it holds, so the honest outside measure of "nothing was built" is that no brick
+	 * exists anywhere — which also catches the failure a structure count would miss entirely: a
+	 * wall laid, its actors spawned, and its id then dropped.
+	 */
+	inline int32 ScenarioLevelBricksInWorld(UWorld& World)
+	{
+		int32 Bricks = 0;
+
+		for (TActorIterator<ABrickActor> It(&World); It; ++It)
+		{
+			if (IsValid(*It))
 			{
 				++Bricks;
 			}
@@ -1025,6 +1076,263 @@ bool FScenarioLevelSandboxCutsNothingTest::RunTest(const FString& Parameters)
 			TEXT("and nothing may have been handed to physics either: %d piece(s) were released"),
 			ScenarioLevelReleasedCount(*Binding)),
 		ScenarioLevelReleasedCount(*Binding) == 0);
+
+	TestWorld.End();
+
+	return true;
+}
+
+/**
+ * JOINING THE BUILD LEVEL OPENS AN EMPTY PLOT, FRAMED, WITH NOTHING ARMED AND NOTHING LAID.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * On a build-sandbox row the game mode builds NO structure, spawns NO brick, arms NO run, and still
+ * puts the player in front of the plot with the level's own label on screen.
+ *
+ * =====================================================================================
+ * WHY "NOTHING WAS BUILT" IS ASSERTED TWICE, IN TWO DIFFERENT CURRENCIES
+ * =====================================================================================
+ *
+ * `GetBuiltStructureId() == INDEX_NONE` is the game mode's own record, and on its own it is a claim
+ * about a field. A game mode that laid the wall, spawned twelve hundred bricks and then forgot to
+ * keep the id would satisfy it exactly, and the player would be looking at a wall on the level
+ * whose whole point is that there is nothing there. So the second currency is the WORLD: not one
+ * `ABrickActor` exists anywhere in it. The subsystem exposes no count of the structures it holds,
+ * and the brick count is the better measure anyway — it is what a human sees.
+ *
+ * =====================================================================================
+ * THE RUN TIMER IS ASSERTED ON ITS CONSEQUENCE, AND THIS IS A DELIBERATE WEAKENING
+ * =====================================================================================
+ *
+ * `ScenarioHoldTimer` is private and `FTimerManager` exposes no way to ask whether an OBJECT has
+ * timers pending, so there is no handle to read from out here. What is asserted instead is that the
+ * moment never arrives: the world is ticked well past the longest hold any row uses, and afterwards
+ * nothing has been laid, nothing has been cut, and the label still reports no cut. A timer armed on
+ * a callback that provably does nothing is indistinguishable from an unarmed one FROM OUTSIDE — and
+ * with no structure to name, `RunScenario` is exactly that. The pairing with the INDEX_NONE
+ * assertion is what closes the gap: the only run this game mode can arm is one it arms because it
+ * built something, and it must not have built anything.
+ *
+ * =====================================================================================
+ * THE FRAMING IS PINNED AS A PROPERTY, NEVER AS A PLACE
+ * =====================================================================================
+ *
+ * The other two tests in this file pin the pawn to the exact centimetre, because their walls have
+ * bounds and the arithmetic over those bounds is the thing under test. An empty plot has NO bounds
+ * — the box the game mode frames is a default one it invents — so pinning a number here would pin
+ * the invention rather than the requirement, and `World.Scenarios.Viewpoint` already owns the
+ * arithmetic. What is required is what a human would notice:
+ *
+ *   - the pawn ends up somewhere FINITE, NEAR the plot (inside twenty metres of the origin) and
+ *     ABOVE the ground rather than in it;
+ *   - the view is pitched DOWN, because a level camera on an empty plot shows the horizon and
+ *     nothing else — which means the row must ask for a framing that looks down at the ground it
+ *     is framing rather than head-on at a wall that is not there;
+ *   - and the view points AT the plot rather than past it.
+ *
+ * AND THE PAWN IS SPAWNED FIFTY METRES OUT AND FIVE BELOW THE FLOOR, so every one of those is a
+ * claim about a MOVE. A game mode that framed nothing at all leaves the pawn there, which fails the
+ * reach, the height and the aim together rather than passing one of them by luck.
+ *
+ * NEEDS A TICKING WORLD: YES. The "nothing ever runs" half is a claim about elapsed time.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FScenarioLevelBuildSandboxTest,
+	"DestructionGame.World.Scenario.GameModeOpensAnEmptyBuildSandbox",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FScenarioLevelBuildSandboxTest::RunTest(const FString& Parameters)
+{
+	using namespace ScenarioLevelTestSupport;
+	using namespace BrickWorldTestSupport;
+
+	const DestructionScenarios::FScenario* const Row =
+		ScenarioLevelRowNamed(*this, ScenarioLevelBuildRowName);
+
+	if (Row == nullptr)
+	{
+		return true;
+	}
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("fixture: '%s' must be the row that lays NOTHING — bBuildSandbox set, no cut; it ")
+			TEXT("is %s and names %d cut(s)"),
+			ScenarioLevelBuildRowName,
+			Row->bBuildSandbox ? TEXT("flagged") : TEXT("NOT flagged"),
+			Row->CutCentresCm.Num()),
+		Row->bBuildSandbox && Row->CutCentresCm.Num() == 0);
+
+	FBrickTestWorld TestWorld;
+
+	APlayerController* Controller = nullptr;
+	APawn* Pawn = nullptr;
+
+	TestWorld.Wrapper.BeginPlayURL.AddOption(
+		*FString::Printf(TEXT("Scenario=%s"), ScenarioLevelBuildRowName));
+
+	TestWorld.Wrapper.BeforeBeginPlay = [&Controller, &Pawn](UWorld& World)
+	{
+		ScenarioLevelSpawnPlayer(World, Controller, Pawn);
+	};
+
+	if (!TestWorld.Begin(*this, ADestructionGameGameMode::StaticClass()))
+	{
+		return true;
+	}
+
+	ADestructionGameGameMode* const GameMode =
+		TestWorld.World->GetAuthGameMode<ADestructionGameGameMode>();
+
+	if (GameMode == nullptr || Controller == nullptr || Pawn == nullptr)
+	{
+		AddError(FString::Printf(
+			TEXT("fixture: the world must run ADestructionGameGameMode (%s) with a player (%s / %s) ")
+			TEXT("already in it"),
+			*GetNameSafe(TestWorld.World->GetAuthGameMode()),
+			*GetNameSafe(Controller), *GetNameSafe(Pawn)));
+
+		TestWorld.End();
+		return true;
+	}
+
+	/* --- ONE: the URL selected the build row, and it selected it BY OPTION ---------------- */
+
+	const int32 BuildRowIndex =
+		DestructionScenarios::IndexOfName(FName(ScenarioLevelBuildRowName));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("?Scenario=%s must select the build row (%d) by option; the game mode recorded row ")
+			TEXT("%d, selection %d (ByOption is %d)"),
+			ScenarioLevelBuildRowName, BuildRowIndex, GameMode->GetSelectedScenarioRow(),
+			static_cast<int32>(GameMode->GetScenarioSelection()),
+			static_cast<int32>(DestructionScenarios::EScenarioSelection::ByOption)),
+		GameMode->GetSelectedScenarioRow() == BuildRowIndex
+			&& GameMode->GetScenarioSelection()
+				== DestructionScenarios::EScenarioSelection::ByOption);
+
+	/* --- TWO: nothing was built, in both currencies --------------------------------------- */
+
+	const int32 BricksAtBeginPlay = ScenarioLevelBricksInWorld(*TestWorld.World);
+
+	AddInfo(FString::Printf(
+		TEXT("the build level began play with built structure id %d and %d brick(s) in the world; ")
+		TEXT("the pawn was spawned at %s and left at %s facing (%s, %s, %s)"),
+		GameMode->GetBuiltStructureId(), BricksAtBeginPlay,
+		*ScenarioLevelVectorBits(ScenarioLevelPawnStartsAtCm),
+		*ScenarioLevelVectorBits(Pawn->GetActorLocation()),
+		*ScenarioLevelBits(Controller->GetControlRotation().Pitch),
+		*ScenarioLevelBits(Controller->GetControlRotation().Yaw),
+		*ScenarioLevelBits(Controller->GetControlRotation().Roll)));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("A BUILD SANDBOX LAYS NOTHING: the game mode must build no structure at all, so ")
+			TEXT("GetBuiltStructureId stays INDEX_NONE (%d); it is %d, and the subsystem %s a ")
+			TEXT("structure by that id"),
+			INDEX_NONE, GameMode->GetBuiltStructureId(),
+			TestWorld.Subsystem->Find(GameMode->GetBuiltStructureId()) != nullptr
+				? TEXT("holds") : TEXT("holds no")),
+		GameMode->GetBuiltStructureId() == INDEX_NONE
+			&& TestWorld.Subsystem->Find(GameMode->GetBuiltStructureId()) == nullptr);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("and NOT ONE BRICK may stand in the world — the plot is empty until the player ")
+			TEXT("lays something on it; %d brick(s) are there"),
+			BricksAtBeginPlay),
+		BricksAtBeginPlay == 0);
+
+	/* --- THREE: the level still says what it is ------------------------------------------ */
+
+	const DestructionScenarios::FScenarioLabel Label = GameMode->GetScenarioLabel();
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the build level must still carry its OWN label — a level with no structure is ")
+			TEXT("exactly the one a player needs told what it is for. Title '%s' against the row's ")
+			TEXT("'%s'; expectation '%s' against '%s'"),
+			*Label.TitleText, Row->Title, *Label.ExpectationText, Row->Expectation),
+		Label.TitleText == FString(Row->Title)
+			&& Label.ExpectationText == FString(Row->Expectation));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("and it must claim NO CUT and no clock — there is nothing laid to take out. Its ")
+			TEXT("cut state is %d (NoCut is %d) with %s s on the clock, and it reads '%s'"),
+			static_cast<int32>(Label.CutState),
+			static_cast<int32>(DestructionScenarios::EScenarioCutState::NoCut),
+			*ScenarioLevelBits(Label.SecondsUntilCut), *Label.CutText),
+		Label.CutState == DestructionScenarios::EScenarioCutState::NoCut
+			&& Label.SecondsUntilCut == 0.0);
+
+	/* --- FOUR: the player is standing on the plot, looking down at it --------------------- */
+
+	const FVector PawnCm = Pawn->GetActorLocation();
+	const FRotator ControlRotation = Controller->GetControlRotation();
+
+	const FVector Forward = FRotationMatrix(ControlRotation).GetScaledAxis(EAxis::X);
+	const FVector ToPlot = (FVector::ZeroVector - PawnCm).GetSafeNormal();
+	const double AimDot = FVector::DotProduct(Forward, ToPlot);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the player must be MOVED onto the plot: a finite place within %s cm of the origin ")
+			TEXT("and above the ground, rather than left at the %s they were spawned at; the pawn ")
+			TEXT("is at %s, %s cm out"),
+			*ScenarioLevelBits(ScenarioLevelBuildPlotReachCm),
+			*ScenarioLevelVectorBits(ScenarioLevelPawnStartsAtCm),
+			*ScenarioLevelVectorBits(PawnCm), *ScenarioLevelBits(PawnCm.Size())),
+		PawnCm.ContainsNaN() == false && PawnCm.Size() <= ScenarioLevelBuildPlotReachCm
+			&& PawnCm.Z > 0.0);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("and the view must look DOWN at the ground it is framing — an empty plot seen from ")
+			TEXT("a level camera is the horizon and nothing else, so the row must ask for a framing ")
+			TEXT("that pitches down; the pitch is %s and the forward is %s"),
+			*ScenarioLevelBits(ControlRotation.Pitch), *ScenarioLevelVectorBits(Forward)),
+		ControlRotation.Pitch < 0.0 && Forward.Z < 0.0);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("and it must point AT the plot rather than past it: the forward %s against the ")
+			TEXT("direction to the origin %s reads %s, and must be over %s"),
+			*ScenarioLevelVectorBits(Forward), *ScenarioLevelVectorBits(ToPlot),
+			*ScenarioLevelBits(AimDot), *ScenarioLevelBits(ScenarioLevelBuildAimDot)),
+		AimDot > ScenarioLevelBuildAimDot);
+
+	/* --- FIVE: and the moment never arrives ---------------------------------------------- */
+
+	/*
+	 * PAST THE LONGEST HOLD ANY ROW USES, read off the cutting row's own figure so the two cannot
+	 * drift, so "nothing runs" is a claim about ever rather than about yet.
+	 */
+	const DestructionScenarios::FScenario* const CutRow =
+		ScenarioLevelRowNamed(*this, ScenarioLevelCutRowName);
+
+	const double PastEveryDelaySeconds =
+		FMath::Max(1.0, (CutRow != nullptr ? CutRow->HoldSeconds : 4.0) * 1.5);
+
+	TestWorld.TickSeconds(PastEveryDelaySeconds);
+
+	const DestructionScenarios::FScenarioLabel AfterLabel = GameMode->GetScenarioLabel();
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("NO RUN MAY BE ARMED ON A BUILD SANDBOX: after %s s the plot must still be empty ")
+			TEXT("(%d brick(s), structure id %d) and the label must still claim no cut (state %d, ")
+			TEXT("'%s')"),
+			*ScenarioLevelBits(PastEveryDelaySeconds),
+			ScenarioLevelBricksInWorld(*TestWorld.World), GameMode->GetBuiltStructureId(),
+			static_cast<int32>(AfterLabel.CutState), *AfterLabel.CutText),
+		ScenarioLevelBricksInWorld(*TestWorld.World) == 0
+			&& GameMode->GetBuiltStructureId() == INDEX_NONE
+			&& AfterLabel.CutState == DestructionScenarios::EScenarioCutState::NoCut);
 
 	TestWorld.End();
 

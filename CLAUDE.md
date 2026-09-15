@@ -4,7 +4,7 @@ A realistic physics-destruction game built in Unreal Engine 5.8 on Chaos, writte
 
 Full design decisions and the testing strategy live in [claude_plans/DESIGN.md](claude_plans/DESIGN.md) — read that before implementing anything substantial.
 
-**Want to look at a structure rather than read about one?** [claude_plans/LEVELS.md](claude_plans/LEVELS.md) lists the twenty-nine playable levels — one per fixture the suite measures — and how to join them. No scenario map holds any placed content: the map's *name* selects a catalogue row and the game mode builds everything.
+**Want to look at a structure rather than read about one?** [claude_plans/LEVELS.md](claude_plans/LEVELS.md) lists the thirty-five playable levels — one per fixture the suite measures, plus `Lvl_Build`, the empty plot you build on yourself — and how to join them. No scenario map holds any placed content: the map's *name* selects a catalogue row and the game mode builds everything (or, on the build plot, nothing).
 
 **Adding a level means DUPLICATING a map, never copying the file.** A map's `PrimaryAssetId` is `Map:<the inner UWorld object's name>`, and copying `Lvl_Sandbox.umap` to a new filename leaves that object still called `Lvl_Sandbox` — so every copy claims the same id and **the editor refuses to open any of them**. The `-game` loader never consults the asset manager and loads them happily, which is how twenty-eight broken maps passed a headless check. `Content.ScenarioMapsAreDistinctAssets` is the test that catches it now; `Scripts/New-ScenarioMap.ps1` is the way to make one.
 

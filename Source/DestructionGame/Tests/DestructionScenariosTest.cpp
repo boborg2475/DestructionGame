@@ -551,6 +551,47 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 		FBrickLayout Built;
 		TArray<int32> Cut;
 
+		/*
+		 * A BUILD SANDBOX IS THE ONE ROW THAT LAYS NOTHING, AND Build MUST REFUSE IT RATHER THAN
+		 * HAND BACK AN EMPTY WALL.
+		 *
+		 * The sweep below asserts of every other row that it builds and that it lays SOMETHING,
+		 * which is exactly the right claim for a row describing a structure — a level showing an
+		 * empty world is the failure it exists to stop. A build sandbox is deliberately that empty
+		 * world, because the player is the one who fills it, so it cannot be swept with the rest:
+		 * it carries no `LayStructure` and a default `Wall`, and `RunningBond` refuses a spec of
+		 * zero courses.
+		 *
+		 * SO THE CLAIM IS INVERTED RATHER THAN SKIPPED, and it is the claim that makes the game
+		 * mode's branch NECESSARY: `Build` writes nothing and says so, so a game mode that fell
+		 * through to `Build` on this row would return before it framed anything. Pre-poisoned for
+		 * the same reason the refusal rows below are — "wrote nothing" is only a claim with teeth
+		 * if there was something there to overwrite.
+		 */
+		if (Row.bBuildSandbox)
+		{
+			Built.Boxes.Add(FPieceBox());
+			Cut.Add(4242);
+
+			const bool bBuilt = Build(Row, Built, Cut);
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s is a BUILD SANDBOX — it lays nothing and the player builds — so Build ")
+					TEXT("must REFUSE it rather than hand back an empty wall; it returned %s"),
+					*Label, bBuilt ? TEXT("true") : TEXT("false")),
+				!bBuilt);
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: a refused build writes nothing — it left %d box(es), %d piece(s) and ")
+					TEXT("%d cut piece(s) behind"),
+					*Label, Built.Boxes.Num(), Built.Structure.NumPieces(), Cut.Num()),
+				Built.Boxes.Num() == 0 && Built.Structure.NumPieces() == 0 && Cut.Num() == 0);
+
+			continue;
+		}
+
 		if (!Build(Row, Built, Cut))
 		{
 			AddError(FString::Printf(
@@ -1369,6 +1410,283 @@ bool FDestructionScenariosViewpointFramingTest::RunTest(const FString& Parameter
 			*ScenariosTestBits(DistanceCm),
 			*ScenariosTestBits(ScenariosTestFrameMargin * RadiusCm)),
 		DistanceCm >= ScenariosTestFrameMargin * RadiusCm);
+
+	return true;
+}
+
+/**
+ * THE PLAYABLE BUILD LEVEL: A CATALOGUE ROW THAT LAYS NOTHING, BECAUSE THE PLAYER LAYS IT.
+ *
+ * =====================================================================================
+ * WHAT MAKES THIS A ROW RATHER THAN A FLAG SOMEWHERE ELSE
+ * =====================================================================================
+ *
+ * Every other level in this catalogue is a structure somebody else built and a question about what
+ * it does. The build sandbox is the opposite: an empty plot, a toolbar, and whatever the player
+ * decides to stand up on it — and it is a CATALOGUE ROW so that joining it is the same act as
+ * joining any other level. `?Scenario=build` and the map `Lvl_Build` both select it, through the
+ * same `IndexForOptionsAndMap` every other row is reached by, so the build level is not a second
+ * way of starting the game.
+ *
+ * =====================================================================================
+ * THE ROW IS PINNED BY WHAT IT MUST NOT CARRY, WHICH IS THE UNUSUAL PART
+ * =====================================================================================
+ *
+ * A row that lays nothing is describable only by absences: no `LayStructure`, a `Wall` left exactly
+ * as default-constructed, and no `CutCentresCm`. Each absence is asserted on its own rather than as
+ * "Build produces no pieces", because a row that quietly carried, say, a one-course wall would
+ * still fail to build and would still look like this one from the outside.
+ *
+ * AND `Build` REFUSES IT, which is asserted here as well as in `World.Scenarios.Build` because it
+ * is the fact the game mode's branch exists for. `RunningBond` rejects a spec of zero courses, so
+ * `Build` writes nothing and returns false — which means a game mode that reached `Build` on this
+ * row would take its refusal path, frame nobody, and leave the player staring at the inside of the
+ * world origin. The branch must come FIRST.
+ *
+ * NEEDS A TICKING WORLD: NO. The catalogue is boxes and doubles; the game mode's half of this
+ * behaviour is `World.Scenario.GameModeOpensAnEmptyBuildSandbox`, which does.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FDestructionScenariosBuildSandboxRowTest,
+	"DestructionGame.World.Scenarios.BuildSandboxRowExists",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FDestructionScenariosBuildSandboxRowTest::RunTest(const FString& Parameters)
+{
+	using namespace ScenariosTestSupport;
+	using namespace DestructionScenarios;
+	using namespace DestructionLayout;
+
+	const int32 Index = IndexOfName(FName(TEXT("build")));
+
+	if (!Catalogue().IsValidIndex(Index))
+	{
+		AddError(FString::Printf(
+			TEXT("the catalogue must carry a row named 'build' — the level on which the player ")
+			TEXT("builds their own structure from nothing; IndexOfName returned %d against %d row(s)"),
+			Index, Catalogue().Num()));
+
+		return true;
+	}
+
+	const FScenario& Row = Catalogue()[Index];
+
+	/* --- ONE: it is the level Lvl_Build, reachable both ways a level is ever reached ------ */
+
+	TestEqual(
+		TEXT("the build row is selected by its own map"),
+		FString(Row.MapName), FString(TEXT("Lvl_Build")));
+
+	{
+		EScenarioSelection How = EScenarioSelection::Default;
+
+		const int32 ByOption =
+			IndexForOptionsAndMap(TEXT("?Scenario=build"), TEXT("Lvl_NoSuchMap"), How);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("?Scenario=build must select the build row (%d) BY OPTION; it selected %d ")
+				TEXT("(selection %d, ByOption is %d)"),
+				Index, ByOption, static_cast<int32>(How),
+				static_cast<int32>(EScenarioSelection::ByOption)),
+			ByOption == Index && How == EScenarioSelection::ByOption);
+	}
+
+	{
+		EScenarioSelection How = EScenarioSelection::Default;
+
+		/*
+		 * AND BY THE MAP, IN THE DECORATED FORM PIE HANDS OVER. `Lvl_Build` is the name on disk;
+		 * `UEDPIE_0_Lvl_Build` is what `UWorld::GetMapName` answers in the editor, and a row only
+		 * reachable by the undecorated spelling works for whoever typed it and for nobody else.
+		 */
+		const int32 ByMap = IndexForOptionsAndMap(FString(), TEXT("UEDPIE_0_Lvl_Build"), How);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("the map Lvl_Build must select the build row (%d) BY MAP NAME, PIE prefix and ")
+				TEXT("all; it selected %d (selection %d, ByMapName is %d)"),
+				Index, ByMap, static_cast<int32>(How),
+				static_cast<int32>(EScenarioSelection::ByMapName)),
+			ByMap == Index && How == EScenarioSelection::ByMapName);
+	}
+
+	/* --- TWO: it says it is a build sandbox, and it carries nothing to lay --------------- */
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the build row must be FLAGGED a build sandbox — bBuildSandbox is what the game ")
+			TEXT("mode branches on, and a row that merely happens to lay nothing is a broken level ")
+			TEXT("rather than a build one; it is %s"),
+			Row.bBuildSandbox ? TEXT("set") : TEXT("NOT set")),
+		Row.bBuildSandbox);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the build row must carry NO LayStructure — the player is the producer; it %s one"),
+			static_cast<bool>(Row.LayStructure) ? TEXT("carries") : TEXT("carries no")),
+		!static_cast<bool>(Row.LayStructure));
+
+	/*
+	 * AND ITS `Wall` IS EXACTLY THE DEFAULT ONE. Asserted on the two fields that decide whether a
+	 * wall exists at all rather than on the whole spec, because those are the two `RunningBond`
+	 * refuses on and the two the catalogue sweep's "carries a running-bond spec" guard reads: a row
+	 * with either of them set is a row claiming to describe a wall.
+	 */
+	TestTrue(
+		*FString::Printf(
+			TEXT("the build row must carry an EMPTY wall spec — no courses and no bricks per ")
+			TEXT("course; it carries %d courses of %d"),
+			Row.Wall.CoursesHigh, Row.Wall.BricksPerCourse),
+		Row.Wall.CoursesHigh == 0 && Row.Wall.BricksPerCourse == 0);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the build row must cut NOTHING — there is nothing laid to cut; it names %d cut(s)"),
+			Row.CutCentresCm.Num()),
+		Row.CutCentresCm.Num() == 0);
+
+	/* --- THREE: a human is told what this level is for ----------------------------------- */
+
+	const FString Title(Row.Title != nullptr ? Row.Title : TEXT(""));
+	const FString Expectation(Row.Expectation != nullptr ? Row.Expectation : TEXT(""));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the build row's title must say it is the BUILD level — it is the one level whose ")
+			TEXT("subject is the player rather than a structure; it reads '%s'"),
+			*Title),
+		Title.Contains(TEXT("Build")));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the build row must still say in one line what a human should do here; it reads ")
+			TEXT("'%s'"),
+			*Expectation),
+		Expectation.Len() > 0);
+
+	/* --- FOUR: Build REFUSES it, writing nothing — which is why the game mode must branch - */
+
+	{
+		FBrickLayout Built;
+		Built.Boxes.Add(FPieceBox());
+
+		TArray<int32> Cut;
+		Cut.Add(4242);
+
+		const bool bBuilt = Build(Row, Built, Cut);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("Build must REFUSE the build sandbox — it describes no structure, so there is ")
+				TEXT("nothing to lay and an empty-looking wall would be a lie; it returned %s"),
+				bBuilt ? TEXT("true") : TEXT("false")),
+			!bBuilt);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("and the refusal writes nothing: %d box(es), %d piece(s), %d cut piece(s)"),
+				Built.Boxes.Num(), Built.Structure.NumPieces(), Cut.Num()),
+			Built.Boxes.Num() == 0 && Built.Structure.NumPieces() == 0 && Cut.Num() == 0);
+	}
+
+	return true;
+}
+
+/**
+ * EXACTLY ONE ROW IS A BUILD SANDBOX, SWEPT OVER THE WHOLE CATALOGUE.
+ *
+ * `bBuildSandbox` turns a level from "watch this structure" into "there is no structure". Set by
+ * accident on one of the thirty-odd real scenarios — a copied row, a field left behind by an edit —
+ * it silently deletes that level's wall, and the level still loads, still names itself, still
+ * carries its title and its expectation, and shows a player an empty plot where a corbel should be.
+ * Nothing else in the suite would say so: every acceptance and hold test looks up its row by NAME
+ * and measures the structure the fixture lays, not the one the level would.
+ *
+ * SO THE FLAG IS PINNED AS A CARDINALITY OVER THE TABLE rather than as a property of one row, which
+ * is the same shape as the catalogue's own duplicate-name sweep and for the same reason: it is
+ * adding a row that must stay cheap, and adding one must not be able to quietly claim this.
+ *
+ * NEEDS A TICKING WORLD: NO.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FDestructionScenariosOneBuildSandboxTest,
+	"DestructionGame.World.Scenarios.EveryOtherRowIsNotABuildSandbox",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FDestructionScenariosOneBuildSandboxTest::RunTest(const FString& Parameters)
+{
+	using namespace ScenariosTestSupport;
+	using namespace DestructionScenarios;
+
+	const TArray<FScenario>& Rows = Catalogue();
+
+	/*
+	 * A FLOOR ON THE SWEEP, so a catalogue that emptied fails here rather than turning "exactly one"
+	 * into a loop over no rows that cannot count to one anyway. Thirty-five is the thirty-four
+	 * levels LEVELS.md indexes plus this one, and a floor rather than an equality because adding a
+	 * scenario is meant to be adding a row.
+	 */
+	constexpr int32 ScenariosTestRowFloor = 35;
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("fixture: the catalogue must carry at least the %d existing levels plus the build ")
+			TEXT("sandbox, or this sweeps nothing; it carries %d"),
+			ScenariosTestRowFloor - 1, Rows.Num()),
+		Rows.Num() >= ScenariosTestRowFloor);
+
+	TArray<FString> SandboxRowNames;
+
+	for (int32 Index = 0; Index < Rows.Num(); ++Index)
+	{
+		const FScenario& Row = Rows[Index];
+
+		if (!Row.bBuildSandbox)
+		{
+			continue;
+		}
+
+		SandboxRowNames.Add(FString::Printf(TEXT("row %d ('%s')"), Index, *Row.Name.ToString()));
+
+		/*
+		 * AND A ROW THAT CLAIMS IT MUST MEAN IT. The flag and the emptiness are two facts that can
+		 * disagree, and the dangerous direction is a row that carries a real structure AND the flag:
+		 * the level would lay nothing and a human would be told the builder was broken.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("row %d ('%s') is flagged a build sandbox, so it must describe NO structure: ")
+				TEXT("it carries %s LayStructure, %d courses of %d, and %d cut(s)"),
+				Index, *Row.Name.ToString(),
+				static_cast<bool>(Row.LayStructure) ? TEXT("a") : TEXT("no"),
+				Row.Wall.CoursesHigh, Row.Wall.BricksPerCourse, Row.CutCentresCm.Num()),
+			!static_cast<bool>(Row.LayStructure) && Row.Wall.CoursesHigh == 0
+				&& Row.Wall.BricksPerCourse == 0 && Row.CutCentresCm.Num() == 0);
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("swept %d catalogue rows; the build sandboxes are: %s"),
+		Rows.Num(),
+		SandboxRowNames.Num() > 0 ? *FString::Join(SandboxRowNames, TEXT(", ")) : TEXT("none")));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("EXACTLY ONE row may be a build sandbox — the flag deletes a level's structure, so ")
+			TEXT("a copy-paste onto a real scenario is an empty plot where a wall should be; %d ")
+			TEXT("row(s) carry it: %s"),
+			SandboxRowNames.Num(),
+			SandboxRowNames.Num() > 0 ? *FString::Join(SandboxRowNames, TEXT(", ")) : TEXT("none")),
+		SandboxRowNames.Num() == 1);
+
+	const int32 BuildRow = IndexOfName(FName(TEXT("build")));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("and the one that carries it must be 'build' (row %d) — the flag is what makes ")
+			TEXT("that row the build level rather than a broken one"),
+			BuildRow),
+		Catalogue().IsValidIndex(BuildRow) && Rows[BuildRow].bBuildSandbox);
 
 	return true;
 }

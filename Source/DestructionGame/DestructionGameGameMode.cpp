@@ -77,6 +77,44 @@ namespace DestructionGameModeScenario
 		return FString::Join(Names, TEXT(", "));
 	}
 
+	/**
+	 * THE PLOT AN EMPTY LEVEL IS FRAMED ON, half-size in cm.
+	 *
+	 * A BUILD SANDBOX HAS NO STRUCTURE, SO IT HAS NO BOUNDS. Every other row is framed on the union
+	 * of the boxes it laid, which is the honest answer for a structure and no answer at all for an
+	 * empty plot — an empty box collapses onto ViewpointFor's minimum standoff and aims the camera at
+	 * the origin from wherever that happens to be. So the level invents the ground the player is about
+	 * to build on instead: three metres by three metres of plot, a metre of headroom, centred on the
+	 * origin the first brick will be laid near.
+	 */
+	const FVector GameModeBuildPlotHalfSizeCm(150.0, 150.0, 50.0);
+
+	/** Put every player in front of a viewpoint: the control rotation, and the pawn's place. */
+	void GameModeFramePlayers(UWorld& World, const DestructionScenarios::FViewpoint& Viewpoint)
+	{
+		/*
+		 * THE CONTROL ROTATION IS THE ROTATION THAT MATTERS. The flying pawn is an ADefaultPawn and
+		 * takes its facing from its controller, so setting the pawn's own would be overwritten on the
+		 * next tick by whatever the controller still believed.
+		 */
+		for (FConstPlayerControllerIterator It = World.GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* const Controller = It->Get();
+
+			if (Controller == nullptr)
+			{
+				continue;
+			}
+
+			Controller->SetControlRotation(Viewpoint.Rotation);
+
+			if (APawn* const Pawn = Controller->GetPawn())
+			{
+				Pawn->SetActorLocation(Viewpoint.LocationCm);
+			}
+		}
+	}
+
 	/** Every box of a laid layout, unioned: the structure a player is about to be shown. */
 	FBox GameModeScenarioBounds(const DestructionLayout::FBrickLayout& Layout)
 	{
@@ -156,6 +194,31 @@ void ADestructionGameGameMode::BeginPlay()
 	}
 
 	/*
+	 * A BUILD SANDBOX IS OPENED EMPTY, AND THE BRANCH COMES BEFORE THE BUILD RATHER THAN AFTER IT.
+	 *
+	 * The row describes no structure — no producer, a default wall spec, no cut — so
+	 * DestructionScenarios::Build REFUSES it, and a refusal returns from begin-play before anything
+	 * is framed. Reached that way the player would be left facing wherever they spawned, on the one
+	 * level whose entire subject is the ground in front of them. So the row is read first: nothing is
+	 * laid, BuiltStructureId stays INDEX_NONE, no hold is armed — there is nothing laid for a run to
+	 * cut or settle — and the player is put in front of the plot anyway.
+	 *
+	 * THE ROW IS STILL RECORDED, above, so the level names itself like every other one: the label
+	 * reads its title and its expectation off the row this selected.
+	 */
+	if (Scenario.bBuildSandbox)
+	{
+		GameModeFramePlayers(
+			*World,
+			DestructionScenarios::ViewpointFor(
+				FBox(-GameModeBuildPlotHalfSizeCm, GameModeBuildPlotHalfSizeCm),
+				GameModeFrameAspectHeightOverWidth,
+				Scenario.Framing));
+
+		return;
+	}
+
+	/*
 	 * THE CATALOGUE LAYS THE WALL AND RESOLVES THE CUT TOGETHER, and it refuses both if either
 	 * fails — a cut centre naming no brick would otherwise give a level that stands there
 	 * looking intact and never does anything, which reads exactly like a level whose wall
@@ -207,30 +270,11 @@ void ADestructionGameGameMode::BeginPlay()
 	 * rather than from a constant, because the rows are different shapes: the seven-wide wall
 	 * is governed by its height and the thirty-wide one by its width, so a viewpoint framed on
 	 * either extent alone puts one of the two off the edge of the screen.
-	 *
-	 * THE CONTROL ROTATION IS THE ROTATION THAT MATTERS. The flying pawn is an ADefaultPawn and
-	 * takes its facing from its controller, so setting the pawn's own would be overwritten on
-	 * the next tick by whatever the controller still believed.
 	 */
-	const DestructionScenarios::FViewpoint Viewpoint = DestructionScenarios::ViewpointFor(
-		GameModeScenarioBounds(Layout), GameModeFrameAspectHeightOverWidth, Scenario.Framing);
-
-	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
-	{
-		APlayerController* const Controller = It->Get();
-
-		if (Controller == nullptr)
-		{
-			continue;
-		}
-
-		Controller->SetControlRotation(Viewpoint.Rotation);
-
-		if (APawn* const Pawn = Controller->GetPawn())
-		{
-			Pawn->SetActorLocation(Viewpoint.LocationCm);
-		}
-	}
+	GameModeFramePlayers(
+		*World,
+		DestructionScenarios::ViewpointFor(
+			GameModeScenarioBounds(Layout), GameModeFrameAspectHeightOverWidth, Scenario.Framing));
 
 	/*
 	 * AND THE LEVEL IS ARMED RATHER THAN RUN. A player who joins to find the hole already
