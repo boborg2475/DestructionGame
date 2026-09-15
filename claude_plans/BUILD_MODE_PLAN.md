@@ -139,6 +139,9 @@ matches every roof-purlin/post bearing in `BuildRealistic`, and keys off a real 
 The discriminator is a *hint* to dev-expert; the test asserts on the returned profile, not the branch.
 
 ## Interactive UI — the second part (design, 2026-09-04)
+**The SCREEN's shape — the Cities-Skylines-style toolbar, the details panel, the cursor/camera scheme
+and the S0–S15 slice order — is designed in [SESSION_UI_DESIGN.md](SESSION_UI_DESIGN.md) (2026-09-15).
+This section owns the seams the UI drives; that document owns what the player sees.**
 The /goal: "start the interactive UI after you are done with the first part." The brain (snap solver +
 `JointForContact` + `PlacePiece` + occupancy) and its render close the first part. The UI layers input,
 preview and a palette on that proven core — it invents no physics.

@@ -34,6 +34,8 @@ Corollary, learned 2026-08-15: **a pin only notices a change that goes through t
 | [PROMOTION_DESIGN.md](PROMOTION_DESIGN.md) | Evolution step 4's design, its measurements and its decisions (§12) | Copies of DESIGN §8 rulings — cite them |
 | [LEVELS.md](LEVELS.md) | The playable levels and how to reach them | Verdict reasoning (→ WALL_CASES / DESIGN) |
 | [WALL_CASES.html](WALL_CASES.html) | The wall catalogue as a reader-facing page: each case, its verdict, the hand statics | Solver internals; anything the acceptance test is the authority on |
+| [BUILD_MODE_PLAN.md](BUILD_MODE_PLAN.md) | The interactive build mode's feature plan: the snap/joint brain, the world seams, the UI slices and their status | Rulings (→ DESIGN §8, cited); the screen's shape (→ SESSION_UI_DESIGN) |
+| [SESSION_UI_DESIGN.md](SESSION_UI_DESIGN.md) | The *shape* of the in-game session UI: the build/destroy toolbar, the details panel, cursor/camera scheme, palette, and the S0–S15 slice order | The model, constants and rulings (those documents win where they disagree) |
 | **Test file headers** | **The measurements themselves** — prediction beside measurement, and the reasoning for the assertion choice | — (this is the source of truth; everything else cites it) |
 
 ## Where does this fact go?
