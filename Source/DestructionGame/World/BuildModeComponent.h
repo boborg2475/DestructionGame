@@ -101,6 +101,24 @@ public:
 	/** Commit the last-previewed cursor pose through PlaceBuildPiece and return the new ref. */
 	FPieceRef ConfirmPlace();
 
+	/**
+	 * Show nothing and hold nothing: hide the ghost and drop the held preview.
+	 *
+	 * THE ONE SPELLING OF FAILING CLOSED, because there are now six ways to reach it — four ray
+	 * misses, a cancel, and leaving build mode — and a site that hid the ghost but left
+	 * bHasValidPreview set would let a confirm commit a pose nobody can see.
+	 *
+	 * IT HIDES A GHOST THAT EXISTS AND NEVER SPAWNS ONE. The ghost is spawned by the first preview;
+	 * a hide that spawned one would put a brick in the world on the first BeginBuild, which cancels
+	 * first — and an empty plot with a brick standing on it is a level that lays something after all.
+	 *
+	 * PUBLIC BECAUSE LEAVING BUILD MODE IS ONE OF THOSE WAYS. The session's toolbar switches to
+	 * Destroy while a ghost is up, and a gold brick left hanging in the air over a wall the player
+	 * is demolishing is the most confusing thing this UI can do. The controller has no other way to
+	 * say it: CancelBuild would take the player's build with it.
+	 */
+	void HidePreview();
+
 	/** The translucent preview actor the component owns, or null before the first preview. */
 	AActor* GetGhostActor() const;
 
@@ -150,15 +168,6 @@ private:
 
 	/** Lazily spawn the standalone ghost actor on first preview, or return the existing one. */
 	ABrickActor* EnsureGhost();
-
-	/**
-	 * Show nothing and hold nothing: hide the ghost and drop the held preview.
-	 *
-	 * THE ONE SPELLING OF FAILING CLOSED, because there are now five ways to reach it — four ray
-	 * misses and a cancel — and a site that hid the ghost but left bHasValidPreview set would let a
-	 * confirm commit a pose nobody can see.
-	 */
-	void HidePreview();
 
 	DestructionSession::EBuildPieceKind CurrentKind = DestructionSession::EBuildPieceKind::Brick;
 

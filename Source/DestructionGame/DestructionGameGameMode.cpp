@@ -3,6 +3,7 @@
 #include "DestructionGameGameMode.h"
 #include "Core/Layout.h"
 #include "Core/PieceActions.h"
+#include "Core/SessionToolbar.h"
 #include "DestructionGameFlyingPawn.h"
 #include "DestructionGamePlayerController.h"
 #include "Engine/World.h"
@@ -115,6 +116,38 @@ namespace DestructionGameModeScenario
 		}
 	}
 
+	/**
+	 * Open the session for every player: the strip up, and on a plot they lay themselves, Build mode.
+	 *
+	 * THROUGH THE CONTROLLER'S ONE DOOR RATHER THAN BY SETTING A MODE. OnToolbarButton is what opens
+	 * the build, raises the cursor and redraws the strip; a game mode that set the mode field would
+	 * put a player in Build mode with no structure behind it, where every click fails closed.
+	 *
+	 * THE STRIP GOES UP ON EVERY ROW, INCLUDING THE TWENTY-EIGHT THAT OPEN IN DESTROY. It is how the
+	 * player reaches Run structure on the wall the level just laid, and how they get to Build mode
+	 * on any level at all.
+	 */
+	void GameModeOpenSession(UWorld& World, bool bBuildSandbox)
+	{
+		for (FConstPlayerControllerIterator It = World.GetPlayerControllerIterator(); It; ++It)
+		{
+			ADestructionGamePlayerController* const Controller =
+				Cast<ADestructionGamePlayerController>(It->Get());
+
+			if (Controller == nullptr)
+			{
+				continue;
+			}
+
+			Controller->ShowSessionToolbar();
+
+			if (bBuildSandbox)
+			{
+				Controller->OnToolbarButton(DestructionSession::EToolbarButtonId::ModeBuild);
+			}
+		}
+	}
+
 	/** Every box of a laid layout, unioned: the structure a player is about to be shown. */
 	FBox GameModeScenarioBounds(const DestructionLayout::FBrickLayout& Layout)
 	{
@@ -215,6 +248,12 @@ void ADestructionGameGameMode::BeginPlay()
 				GameModeFrameAspectHeightOverWidth,
 				Scenario.Framing));
 
+		/*
+		 * AND THE ONE LEVEL THAT LAYS NOTHING OPENS IN BUILD MODE. A session opened in Destroy here
+		 * would offer the player an empty plot and no way to put anything on it.
+		 */
+		GameModeOpenSession(*World, /*bBuildSandbox*/ true);
+
 		return;
 	}
 
@@ -275,6 +314,12 @@ void ADestructionGameGameMode::BeginPlay()
 		*World,
 		DestructionScenarios::ViewpointFor(
 			GameModeScenarioBounds(Layout), GameModeFrameAspectHeightOverWidth, Scenario.Framing));
+
+	/*
+	 * WITH THE STRIP UP AND THE SESSION IN DESTROY, which is where a level that has already laid a
+	 * wall wants the player: the click they are about to make is on it.
+	 */
+	GameModeOpenSession(*World, /*bBuildSandbox*/ false);
 
 	/*
 	 * AND THE LEVEL IS ARMED RATHER THAN RUN. A player who joins to find the hole already

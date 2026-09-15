@@ -8,6 +8,7 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "InputAction.h"
+#include "InputCoreTypes.h"
 #include "InputMappingContext.h"
 #include "InputTriggers.h"
 #include "Styling/CoreStyle.h"
@@ -26,6 +27,7 @@
 #include "DestructionGameGameMode.h"
 #include "RequiredContent.h"
 #include "World/BrickActor.h"
+#include "World/BuildModeComponent.h"
 #include "World/DestructionStructureSubsystem.h"
 
 /*
@@ -67,6 +69,24 @@ namespace
 		}
 
 		return Cast<ABrickActor>(Binding->GetActor(Binding->ResolvePiece(Ref)));
+	}
+
+	/**
+	 * WHETHER A STRUCTURE HAS ANYTHING IN IT WORTH COMMANDING — ONE READING, USED TWICE.
+	 *
+	 * LIVE PIECES RATHER THAN PIECES, because RemovePiece TOMBSTONES instead of compacting: a plot
+	 * whose every brick has been deleted still answers a piece count. Which structure the session
+	 * names and whether that structure has anything in it are the same question asked from two
+	 * places — GetSessionStructureId choosing between the player's build and the level's wall, and
+	 * RefreshSessionHasStructure setting the flag both commands are greyed on — and they agree for
+	 * every state except exactly one: a build that has had pieces and has none left. Asked two ways
+	 * there, the choice picks the emptied build and the flag then reads zero off it, so one deleted
+	 * brick greys Run over a wall standing in front of the player. One function, so they cannot
+	 * drift again.
+	 */
+	bool SessionStructureIsLive(const FStructureBinding* Binding)
+	{
+		return Binding != nullptr && Binding->GetStructure().NumLivePieces() > 0;
 	}
 }
 
@@ -324,6 +344,41 @@ static const FLinearColor PieceMenuDestructiveRowColour(0.72f, 0.16f, 0.14f, 1.0
 static const FLinearColor PieceMenuOrdinaryRowColour(1.0f, 1.0f, 1.0f, 1.0f);
 
 /*
+ * THE SESSION STRIP'S OWN MEASUREMENTS, FROM SESSION_UI_DESIGN.md §e.
+ *
+ * 48 px TALL IS AN OWNER RULING RATHER THAN A FIT: the first cut was 72 and was "way too big". A
+ * 34 px chip inside it leaves 7 px of air above and below, which is what makes the strip read as a
+ * bar with buttons on it rather than as a row of buttons.
+ *
+ * NOTHING HERE IS MEASURED BY ANY TEST, and that is the division of labour the panel tests already
+ * draw: which buttons, in what order, greyed or live, focusable or not is the model's and is
+ * asserted; every pixel below is this file's and is looked at by a human on the screenshot proof.
+ */
+static constexpr float SessionToolbarHeightPx = 48.0f;
+static constexpr float SessionToolbarChipHeightPx = 34.0f;
+static constexpr float SessionToolbarChipGapPx = 5.0f;
+static constexpr float SessionToolbarChipPaddingPx = 12.0f;
+static constexpr float SessionToolbarEdgePaddingPx = 10.0f;
+static constexpr float SessionToolbarReadoutPaddingPx = 6.0f;
+
+/*
+ * WHAT THE STRIP IS DRAWN IN, AND THE FILL IS ONE STEP LIGHTER THAN THE PANEL'S ON PURPOSE.
+ *
+ * The details window sits on PieceMenuPanelBackgroundColour and the strip sits on this, so the two
+ * read as separate objects rather than as one dark shape with a seam in it. Both are the design's
+ * LINEAR triples, which is the number Slate takes — the sRGB hexes in §e are what the eye checks
+ * them against, and confusing the two is how a palette drifts.
+ *
+ * AND THE ACCENTS ARE THE COLOURS THIS UI ALREADY USES. Build amber is the Caution band's and the
+ * ghost's own gold; destroy red is the destructive row's. A third and fourth hue for the same two
+ * ideas would be two more things to keep in step with nothing holding them there.
+ */
+static const FLinearColor SessionToolbarFillColour(0.020f, 0.023f, 0.030f, 0.96f);
+static const FLinearColor SessionToolbarIdleChipColour(0.16f, 0.18f, 0.24f, 0.75f);
+static const FLinearColor SessionToolbarBuildAccentColour(0.95f, 0.66f, 0.13f, 1.0f);
+static const FLinearColor SessionToolbarDestroyAccentColour(0.72f, 0.16f, 0.14f, 1.0f);
+
+/*
  * A SECOND FILE-LOCAL NAMESPACE, BELOW THE CONSTANTS IT READS RATHER THAN BESIDE THE ONE AT THE
  * TOP OF THE FILE. Everything in here draws the panel and every one of them needs a size or a
  * colour declared above, so the split is declaration order rather than a second grouping. The
@@ -356,6 +411,24 @@ namespace
 	FSlateFontInfo PieceMenuSmallFont()
 	{
 		return FCoreStyle::GetDefaultFontStyle("Regular", 7);
+	}
+
+	/**
+	 * THE TWO CAPTION FACES, AND THE WEIGHT IS HOW `bActive` IS SAID IN TYPE.
+	 *
+	 * The chip says it twice — the caption's weight and the chip's fill — because they are two
+	 * different readings of one decision the model already made, and either alone is fragile: a
+	 * player reading the strip from peripheral vision sees the fill, and a player looking straight
+	 * at it reads the word. Which mode you are in is the highest-order fact on this screen.
+	 */
+	FSlateFontInfo SessionToolbarActiveFont()
+	{
+		return FCoreStyle::GetDefaultFontStyle("Bold", 11);
+	}
+
+	FSlateFontInfo SessionToolbarIdleFont()
+	{
+		return FCoreStyle::GetDefaultFontStyle("Regular", 11);
 	}
 
 	/**
@@ -587,6 +660,278 @@ ADestructionGamePlayerController::ADestructionGamePlayerController()
 	static ConstructorHelpers::FObjectFinder<UInputAction> HoverPieceActionAsset(DestructionContent::HoverPieceActionPath);
 
 	HoverPieceAction = HoverPieceActionAsset.Object;
+
+	/*
+	 * THE BUILD LOOP IS PART OF WHAT A CONTROLLER IS, so it is a default subobject rather than
+	 * something a level or a Blueprint attaches. A session whose Build tab found no component would
+	 * put the player in a mode where every click fails closed and nothing on screen says why.
+	 */
+	BuildComponent = CreateDefaultSubobject<UBuildModeComponent>(TEXT("BuildComponent"));
+
+	/*
+	 * AND THE SESSION OPENS IN DESTROY, WHICH IS DELIBERATELY NOT THE MODEL'S OWN DEFAULT.
+	 *
+	 * FSessionToolbarState::Mode defaults to Build and Core/SessionToolbar.h argues for it: a
+	 * default-constructed session must be the one that cannot destroy anything. A CONTROLLER is a
+	 * different question. Twenty-eight of the twenty-nine playable levels lay a structure and invite
+	 * the player to pull it apart, and opening those in Build mode would hang a gold ghost over
+	 * somebody else's wall and swallow the first click on it. The one build plot is put into Build
+	 * mode by the game mode, through the same single door every other click goes through.
+	 */
+	SessionToolbarState.Mode = DestructionSession::ESessionMode::Destroy;
+}
+
+UBuildModeComponent* ADestructionGamePlayerController::GetBuildComponent() const
+{
+	return BuildComponent;
+}
+
+const DestructionSession::FSessionToolbarState&
+	ADestructionGamePlayerController::GetSessionToolbarState() const
+{
+	return SessionToolbarState;
+}
+
+int32 ADestructionGamePlayerController::GetSessionStructureId() const
+{
+	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
+
+	if (Subsystem == nullptr)
+	{
+		return INDEX_NONE;
+	}
+
+	/*
+	 * THE PLAYER'S OWN BUILD WINS, BUT ONLY ONCE THERE IS SOMETHING LIVE IN IT.
+	 *
+	 * BeginBuild spends an id on an EMPTY binding the moment Build mode is entered, so "the
+	 * component names a structure" is true long before there is anything to command. An empty build
+	 * that won here would shadow the level's own wall with nothing — Run would solve an empty graph
+	 * and report success, on a level with a wall standing in front of the player. A build whose
+	 * every brick has been DELETED is the same emptiness wearing a piece count, which is why the
+	 * question goes through SessionStructureIsLive rather than being asked a second way here.
+	 */
+	if (BuildComponent != nullptr)
+	{
+		const int32 BuildId = BuildComponent->GetStructureId();
+
+		if (SessionStructureIsLive(Subsystem->Find(BuildId)))
+		{
+			return BuildId;
+		}
+	}
+
+	/*
+	 * OTHERWISE THE LEVEL'S OWN WALL, WHICH IS WHAT MAKES A DESTROY SESSION ON A SCENARIO LEVEL
+	 * ANYTHING BUT INERT. A row that built nothing — the build plot — leaves INDEX_NONE here, and
+	 * the strip greys both commands until the player's first brick lands.
+	 */
+	const UWorld* const World = GetWorld();
+
+	const ADestructionGameGameMode* const GameMode =
+		World != nullptr ? World->GetAuthGameMode<ADestructionGameGameMode>() : nullptr;
+
+	return GameMode != nullptr ? GameMode->GetBuiltStructureId() : INDEX_NONE;
+}
+
+void ADestructionGamePlayerController::RefreshSessionHasStructure()
+{
+	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
+
+	const FStructureBinding* const Binding =
+		Subsystem != nullptr ? Subsystem->Find(GetSessionStructureId()) : nullptr;
+
+	SessionToolbarState.bHasStructure = SessionStructureIsLive(Binding);
+}
+
+bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::EToolbarButtonId Id)
+{
+	using namespace DestructionSession;
+
+	/*
+	 * WHAT THERE IS TO COMMAND IS ASKED FIRST, BEFORE THE STRIP IS ASKED WHAT IS LIVE.
+	 *
+	 * `bHasStructure` is the precondition on both commands, and it is a fact about the world rather
+	 * than a choice the player made — the brick they just laid, the cascade that just took six, the
+	 * wall the level built. Asked after the greying check, Run would be refused on the first click
+	 * after the build became real and accepted on the second, which reads as a dropped click.
+	 */
+	RefreshSessionHasStructure();
+
+	/*
+	 * AND THE REFUSAL IS THE MODEL'S, ASKED RATHER THAN RE-DECIDED. ApplyToolbarButton consults the
+	 * same list for the same answer, so the only thing left to decide here is whether the SIDE
+	 * EFFECT runs — and it must not. A greyed `Course down` that still pushed its own decrement onto
+	 * the component would put the build plane under the earth with the readout saying course 0.
+	 */
+	const TArray<FToolbarButton> Buttons = SessionToolbarButtons(SessionToolbarState);
+
+	const FToolbarButton* const Button = Buttons.FindByPredicate(
+		[Id](const FToolbarButton& Candidate) { return Candidate.Id == Id; });
+
+	if (Button == nullptr || !Button->bEnabled)
+	{
+		return false;
+	}
+
+	SessionToolbarState = ApplyToolbarButton(SessionToolbarState, Id);
+
+	/*
+	 * THE SETTINGS ARE PUSHED FROM THE STATE THE TRANSITION PRODUCED, NEVER FROM THE BUTTON.
+	 *
+	 * `CourseUp` means "one more than whatever the course was", and the state is where that sum
+	 * already lives — the component is told the number, not the gesture. It is also the only reading
+	 * that stays right when a transition starts refusing or clamping something: whatever the model
+	 * decided the course is, that is the course the build plane is derived from.
+	 *
+	 * AND THE COMPONENT DERIVES THE REST ITSELF. SetPieceKind takes the kind and works out the
+	 * material, the half extent and the plane; grounded is never pushed at all — it is derived from
+	 * the snapped pose inside the subsystem (DESIGN §8, 2026-09-15), and IsCourseGrounded is only
+	 * what the readout intends.
+	 */
+	switch (Id)
+	{
+	case EToolbarButtonId::ModeBuild:
+		/*
+		 * A BUILD IS OPENED IF ONE IS NOT ALREADY. Build mode with no structure behind it is a mode
+		 * in which every click fails closed against an unknown id — and opening one unconditionally
+		 * would be worse, because BeginBuild cancels: a player who looked at a brick in Destroy mode
+		 * and came back would find their plot swept.
+		 */
+		if (BuildComponent != nullptr && BuildComponent->GetStructureId() == INDEX_NONE)
+		{
+			BuildComponent->BeginBuild();
+		}
+
+		/*
+		 * AND THE CURSOR COMES UP. IMC_MouseLook binds the raw mouse axis with no held button, so
+		 * without a pointer there is nothing to aim the ghost with and nothing to press the strip
+		 * with. This borrows the piece menu's apply — cursor on, look context off — because it is
+		 * the same request; SESSION_UI_DESIGN §d's permanent-cursor scheme (S6) replaces both.
+		 */
+		SetPieceMenuControls(true);
+		break;
+
+	case EToolbarButtonId::ModeDestroy:
+		/*
+		 * NO GHOST SURVIVES INTO DESTROY MODE. A gold brick hanging in the air over a wall the
+		 * player is demolishing is the most confusing thing this UI can do. The BUILD survives —
+		 * CancelBuild is one call away and "leaving Build mode" reads like a reason to make it,
+		 * which would hand the player a fresh empty plot every time they looked at a brick.
+		 */
+		if (BuildComponent != nullptr)
+		{
+			BuildComponent->HidePreview();
+		}
+
+		/* The cursor goes back to the rule it has always followed: up for as long as a menu is. */
+		SetPieceMenuControls(IsPieceMenuShown());
+		break;
+
+	case EToolbarButtonId::PieceBrick:
+	case EToolbarButtonId::PieceTimberPlate:
+	case EToolbarButtonId::PieceTimberLintel:
+		if (BuildComponent != nullptr)
+		{
+			BuildComponent->SetPieceKind(SessionToolbarState.Piece);
+		}
+		break;
+
+	case EToolbarButtonId::PlacementSnap:
+	case EToolbarButtonId::PlacementFree:
+		if (BuildComponent != nullptr)
+		{
+			BuildComponent->PlacementMode = SessionToolbarState.Placement;
+		}
+		break;
+
+	case EToolbarButtonId::CourseDown:
+	case EToolbarButtonId::CourseUp:
+		if (BuildComponent != nullptr)
+		{
+			BuildComponent->SetCourse(SessionToolbarState.Course);
+		}
+		break;
+
+	case EToolbarButtonId::ClearBuild:
+		/*
+		 * CLEAR IS "START AGAIN" RATHER THAN "STOP BUILDING", so a fresh plot is left open behind
+		 * it. BeginBuild cancels whatever is open first — bricks, binding and all — so the two
+		 * halves are one call rather than a cancel this function could forget to follow.
+		 */
+		if (BuildComponent != nullptr)
+		{
+			BuildComponent->BeginBuild();
+		}
+		break;
+
+	case EToolbarButtonId::RunStructure:
+		if (UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this))
+		{
+			Subsystem->SolveAndPush(GetSessionStructureId());
+		}
+		break;
+	}
+
+	/*
+	 * AND WHAT THERE IS TO COMMAND IS ASKED AGAIN, BECAUSE A COMMAND CHANGES IT. Clear leaves an
+	 * empty plot, so the strip has to grey Clear and Run again on the way out of the very click that
+	 * emptied it — a strip still offering them would be offering a command over nothing.
+	 */
+	RefreshSessionHasStructure();
+	RefreshSessionToolbar();
+
+	return true;
+}
+
+void ADestructionGamePlayerController::PointerAlongRay(const FVector& StartCm, const FVector& EndCm)
+{
+	if (SessionToolbarState.Mode == DestructionSession::ESessionMode::Build)
+	{
+		/*
+		 * THE COMPONENT IS GIVEN A DIRECTION, NOT AN END POINT, and it intersects that with the
+		 * build plane itself. Handing it the end point would place the ghost wherever the ray was
+		 * cut off rather than where it meets the course the player is laying on.
+		 */
+		if (BuildComponent != nullptr)
+		{
+			BuildComponent->UpdatePreviewFromRay(StartCm, (EndCm - StartCm).GetSafeNormal());
+		}
+
+		return;
+	}
+
+	HoverAlongRay(StartCm, EndCm);
+}
+
+bool ADestructionGamePlayerController::PrimaryAlongRay(const FVector& StartCm, const FVector& EndCm)
+{
+	if (SessionToolbarState.Mode != DestructionSession::ESessionMode::Build)
+	{
+		/* Destroy mode's click is the one this controller has always had. */
+		return InspectAlongRay(StartCm, EndCm).Num() > 0;
+	}
+
+	if (BuildComponent == nullptr)
+	{
+		return false;
+	}
+
+	/*
+	 * THE POSE IS TAKEN AGAIN FROM THIS RAY BEFORE IT IS COMMITTED, rather than trusting whatever
+	 * the last pointer move held. A preview predicts the commit only while the binding is unchanged,
+	 * and the previous click changed it — so a click that reused a stale preview would lay the
+	 * second brick at the pose the first one was going to take.
+	 */
+	BuildComponent->UpdatePreviewFromRay(StartCm, (EndCm - StartCm).GetSafeNormal());
+
+	const FPieceRef Placed = BuildComponent->ConfirmPlace();
+
+	/* A brick landing is what turns an empty plot into something Clear and Run can act on. */
+	RefreshSessionHasStructure();
+	RefreshSessionToolbar();
+
+	return Placed.StructureId != INDEX_NONE && Placed.PieceIndex != INDEX_NONE;
 }
 
 TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
@@ -1825,6 +2170,229 @@ void ADestructionGamePlayerController::OnPieceMenuEntryUnhovered()
 	SetInspectedPiece(FPieceRef());
 }
 
+TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
+{
+	using namespace DestructionSession;
+
+	/*
+	 * THE STRIP IS THE MODEL'S LIST, DRAWN IN ITS OWN ORDER, AND NOTHING BELOW DECIDES ANYTHING
+	 * ELSE. Which buttons exist in this mode, what each reads, which one is lit and which are greyed
+	 * are all SessionToolbarButtons' answers — Core/SessionToolbar.h says at length why a strip of
+	 * buttons spelled as a run of AddSlot calls is a list of decisions in the one place no test can
+	 * reach. What is left here is the chip: a size, two fonts and two fills.
+	 */
+	const TArray<FToolbarButton> Buttons = SessionToolbarButtons(SessionToolbarState);
+
+	/*
+	 * ONE ACCENT PER MODE, TAKEN FROM THE MODE RATHER THAN FROM THE BUTTON. Everything lit on a
+	 * Build strip is amber and everything lit on a Destroy strip is red, so the colour of the strip
+	 * is itself a reading of which mode the player is in — which is the fact they need from
+	 * peripheral vision while flying a camera.
+	 */
+	const FLinearColor AccentColour = SessionToolbarState.Mode == ESessionMode::Build
+		? SessionToolbarBuildAccentColour
+		: SessionToolbarDestroyAccentColour;
+
+	TSharedRef<SHorizontalBox> Strip = SNew(SHorizontalBox);
+
+	for (const FToolbarButton& Button : Buttons)
+	{
+		Strip->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, SessionToolbarChipGapPx, 0.0f)
+			[
+				SNew(SBox)
+				.HeightOverride(SessionToolbarChipHeightPx)
+				[
+					/*
+					 * NOT FOCUSABLE, AND IT IS THE ONE LINE ON THIS CHIP THAT IS NOT COSMETIC. A
+					 * focusable SButton takes user focus when it is clicked, and the flying pawn
+					 * then stops answering W — a player reports that as the game freezing, and
+					 * nothing but a headless arrange of this tree can see it.
+					 */
+					SNew(SButton)
+					.IsFocusable(false)
+					.IsEnabled(Button.bEnabled)
+					.ButtonColorAndOpacity(
+						Button.bActive ? AccentColour : SessionToolbarIdleChipColour)
+					.ContentPadding(FMargin(SessionToolbarChipPaddingPx, 0.0f))
+					.HAlign(HAlign_Center)
+					.VAlign(VAlign_Center)
+					.OnClicked(FOnClicked::CreateUObject(
+						this,
+						&ADestructionGamePlayerController::OnSessionToolbarButtonClicked,
+						Button.Id))
+					[
+						SNew(STextBlock)
+						.Font(Button.bActive ? SessionToolbarActiveFont() : SessionToolbarIdleFont())
+						.ColorAndOpacity(
+							Button.bActive ? PieceMenuHeaderColour : PieceMenuReadoutColour)
+						.Text(FText::FromString(Button.Label))
+					]
+				]
+			];
+
+		if (Button.Id != EToolbarButtonId::CourseDown)
+		{
+			continue;
+		}
+
+		/*
+		 * THE COURSE READS OUT BETWEEN ITS OWN TWO ARROWS, AND IT IS NOT A CHIP.
+		 *
+		 * ARROW, VALUE, ARROW IS WHAT A STEPPER IS — a value tacked onto the end of the strip would
+		 * be a different control, and the two arrows would go on reading as acting on nothing. So it
+		 * is hung off the DOWN arrow's own slot rather than off the mode, which also makes it
+		 * Build-only for free: SessionToolbarButtons draws the course pair in Build mode and nowhere
+		 * else, and there is no build plane in Destroy mode for a number to be about.
+		 *
+		 * AND A TEXT SLOT RATHER THAN AN ELEVENTH BUTTON, because the model has no row for it: a
+		 * chip here would be a lit control that does nothing when it is pressed, and would put the
+		 * drawn strip out of step with the list that is supposed to be its single source of truth.
+		 * The wording is CourseLabel's, which Core.SessionToolbar.* already owns.
+		 */
+		Strip->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(SessionToolbarReadoutPaddingPx, 0.0f, SessionToolbarReadoutPaddingPx, 0.0f)
+			[
+				SNew(STextBlock)
+				.Font(SessionToolbarIdleFont())
+				.ColorAndOpacity(PieceMenuReadoutColour)
+				.Text(FText::FromString(CourseLabel(SessionToolbarState.Course)))
+			];
+	}
+
+	/*
+	 * A BAR ACROSS THE BOTTOM, AND THE REST OF THE SCREEN IS NOT THE TOOLBAR'S.
+	 *
+	 * The widget the viewport is handed fills the viewport, so everything above the bar is a fill
+	 * slot holding nothing — and the root is SelfHitTestInvisible so that the empty part of it does
+	 * not swallow the click the player is aiming at a brick.
+	 *
+	 * HIT-TESTABLE IS NOT ENOUGH, AND BELIEVING IT WAS IS THE DEFECT. Slate routes a press to a
+	 * hit-testable widget and then, finding NOTHING BOUND, bubbles it on — to the SViewport, into
+	 * the input stack, into IA_InspectPiece, and in Build mode into PrimaryAlongRay. So missing a
+	 * chip by three pixels LAYS A BRICK where that pixel's ray meets the build plane. The two
+	 * handlers below are what actually stops the fall-through: being routed to is the precondition,
+	 * answering Handled is the act.
+	 *
+	 * THE RELEASE TOO, BECAUSE A SWALLOWED PRESS WITH A LEAKED RELEASE IS HALF A CLICK. Enhanced
+	 * Input reads key-up as well as key-down, so a bar that ate only the press would deliver the end
+	 * of a gesture to the world with nothing having started it.
+	 *
+	 * AND THE LEFT BUTTON ONLY. The right button is the look chord (SESSION_UI_DESIGN §d, S6):
+	 * held-RMB turns the camera, and a bar that swallowed it would make the strip a dead patch a
+	 * player cannot drag their view across.
+	 *
+	 * THE MIDDLE THIRD OF THE SCREEN IS WHERE THE WALL IS (SESSION_UI_DESIGN §a): the strip is at
+	 * the bottom edge and the details window homes against the right, so neither is ever over the
+	 * thing the player is pointing at.
+	 */
+	const auto SwallowLeftButton =
+		[](const FGeometry& /*Geometry*/, const FPointerEvent& Event)
+		{
+			return Event.GetEffectingButton() == EKeys::LeftMouseButton
+				? FReply::Handled()
+				: FReply::Unhandled();
+		};
+
+	return SNew(SVerticalBox)
+		.Visibility(EVisibility::SelfHitTestInvisible)
+		+ SVerticalBox::Slot()
+		.FillHeight(1.0f)
+		[
+			SNullWidget::NullWidget
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew(SBox)
+			.HeightOverride(SessionToolbarHeightPx)
+			[
+				SNew(SBorder)
+				.BorderImage(PieceMenuFillBrush())
+				.BorderBackgroundColor(SessionToolbarFillColour)
+				.Padding(FMargin(SessionToolbarEdgePaddingPx, 0.0f))
+				.VAlign(VAlign_Center)
+				.OnMouseButtonDown_Lambda(SwallowLeftButton)
+				.OnMouseButtonUp_Lambda(SwallowLeftButton)
+				[
+					Strip
+				]
+			]
+		];
+}
+
+void ADestructionGamePlayerController::ShowSessionToolbar()
+{
+	UWorld* const World = GetWorld();
+
+	UGameViewportClient* const Viewport = World != nullptr ? World->GetGameViewport() : nullptr;
+
+	/*
+	 * NO VIEWPORT MEANS NO STRIP, AND THAT IS THE ORDINARY CASE IN A TEST rather than an error — a
+	 * world built in code has no UGameViewportClient at all. The session state is the record and it
+	 * stands alone, exactly as the presented rows do for the piece menu.
+	 */
+	if (Viewport == nullptr)
+	{
+		return;
+	}
+
+	/*
+	 * REMOVE THEN ADD, WHICH IS WHAT KEEPS THE ADDS AND THE REMOVES PAIRED. This is also the redraw
+	 * path, so a second add with no matching remove — the one leak that would go unseen — is on the
+	 * same code path as the first show rather than on a branch of its own.
+	 */
+	RemoveSessionToolbarWidget();
+
+	SessionToolbarWidget = BuildSessionToolbarPanel();
+
+	Viewport->AddViewportWidgetContent(SessionToolbarWidget.ToSharedRef());
+}
+
+void ADestructionGamePlayerController::RefreshSessionToolbar()
+{
+	/*
+	 * NOTHING ON SCREEN IS NOTHING TO REDRAW. Every accepted click calls this, including the ones a
+	 * headless test makes before any strip has been shown — and a refresh that put one up would
+	 * make a redraw into a show, which is a different thing and belongs to the game mode.
+	 */
+	if (!SessionToolbarWidget.IsValid())
+	{
+		return;
+	}
+
+	ShowSessionToolbar();
+}
+
+void ADestructionGamePlayerController::RemoveSessionToolbarWidget()
+{
+	if (!SessionToolbarWidget.IsValid())
+	{
+		return;
+	}
+
+	UWorld* const World = GetWorld();
+
+	if (UGameViewportClient* const Viewport = World != nullptr ? World->GetGameViewport() : nullptr)
+	{
+		Viewport->RemoveViewportWidgetContent(SessionToolbarWidget.ToSharedRef());
+	}
+
+	SessionToolbarWidget.Reset();
+}
+
+FReply ADestructionGamePlayerController::OnSessionToolbarButtonClicked(
+	DestructionSession::EToolbarButtonId Id)
+{
+	OnToolbarButton(Id);
+
+	return FReply::Handled();
+}
+
 void ADestructionGamePlayerController::SetPieceMenuControls(bool bMenuIsUp)
 {
 	bShowMouseCursor = bMenuIsUp;
@@ -1925,7 +2493,13 @@ void ADestructionGamePlayerController::OnInspectPiece()
 		return;
 	}
 
-	InspectAlongRay(StartCm, StartCm + Direction * PieceMenuCursorReachCm);
+	/*
+	 * THROUGH THE SESSION'S DISPATCH RATHER THAN STRAIGHT AT THE INSPECT, because what a click means
+	 * now depends on the mode: in Build it lays a piece and in Destroy it is the inspect this
+	 * handler has always made. The deprojection and the reach are unchanged — the untestable inch
+	 * stays exactly as long as it was.
+	 */
+	PrimaryAlongRay(StartCm, StartCm + Direction * PieceMenuCursorReachCm);
 }
 
 void ADestructionGamePlayerController::OnHoverPiece()
@@ -1943,7 +2517,8 @@ void ADestructionGamePlayerController::OnHoverPiece()
 		return;
 	}
 
-	HoverAlongRay(StartCm, StartCm + Direction * PieceMenuCursorReachCm);
+	/* The same dispatch as OnInspectPiece, for the same reason: pointing means two things now. */
+	PointerAlongRay(StartCm, StartCm + Direction * PieceMenuCursorReachCm);
 }
 
 void ADestructionGamePlayerController::BeginPlay()
@@ -1956,6 +2531,7 @@ void ADestructionGamePlayerController::BeginPlay()
 void ADestructionGamePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	RemoveScenarioLabelWidget();
+	RemoveSessionToolbarWidget();
 
 	Super::EndPlay(EndPlayReason);
 }

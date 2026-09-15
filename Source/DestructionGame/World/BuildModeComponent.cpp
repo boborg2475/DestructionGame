@@ -296,10 +296,16 @@ void UBuildModeComponent::HidePreview()
 	 * HIDDEN AND UNHELD, TOGETHER. Hiding the ghost without clearing the held preview would leave
 	 * a confirm able to commit the pose the player can no longer see, which is the one way a brick
 	 * lands somewhere nobody looked.
+	 *
+	 * HIDE WHAT EXISTS, NEVER SPAWN ONE TO HIDE IT. EnsureGhost here would put an ABrickActor in the
+	 * world on the first BeginBuild — which cancels first, and a cancel hides — so opening an empty
+	 * plot would leave a brick standing on it before the player had laid anything. Hidden is not
+	 * absent: World.Scenario.GameModeOpensAnEmptyBuildSandbox counts the actors in the world, and it
+	 * is right to. A ghost with nothing to preview is nothing to hide.
 	 */
-	if (AActor* Ghost = EnsureGhost())
+	if (GhostActor != nullptr)
 	{
-		Ghost->SetActorHiddenInGame(true);
+		GhostActor->SetActorHiddenInGame(true);
 	}
 
 	bHasValidPreview = false;

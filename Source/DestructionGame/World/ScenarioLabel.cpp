@@ -72,6 +72,30 @@ namespace DestructionScenarios
 		Label.TitleText = Row.Title;
 		Label.ExpectationText = Row.Expectation;
 
+		/*
+		 * THE BUILD PLOT HAS NOTHING TO REPORT, SO IT REPORTS NOTHING.
+		 *
+		 * Every other row here says something about a cut because there is a building to say it
+		 * about: a corbel that cuts nothing is still a corbel somebody laid, and "what you are
+		 * watching is how it was laid" is the honest line for it. On a build sandbox it is two lies
+		 * in one sentence — nothing has been laid, so there is nothing that was laid a particular
+		 * way, and the row's own Expectation already tells the player nothing is cut here.
+		 *
+		 * AN ABSENCE RATHER THAN A THIRD SENTENCE, which is FPieceMenuInspector::InspectedHintText's
+		 * rule one document over: the state where a line is NOT DRAWN is distinct from the state
+		 * where it is drawn saying nothing happens, and a sentence invented to fill the slot would
+		 * be a third thing to keep true. SESSION_UI_DESIGN.md §f draws this banner with the title
+		 * and the expectation and nothing under them.
+		 *
+		 * BEFORE THE NO-CUT ARM RATHER THAN INSIDE IT. The two coincide today — a build sandbox lays
+		 * nothing, so it can name no cut — and they stop coinciding the moment a plot is allowed to
+		 * come with something pre-laid, which is the point of asking the flag rather than the count.
+		 */
+		if (Row.bBuildSandbox)
+		{
+			return Label;
+		}
+
 		/* A row that names no brick has no clock, whatever the caller measured. */
 		if (Row.CutCentresCm.Num() == 0)
 		{

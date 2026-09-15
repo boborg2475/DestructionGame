@@ -46,8 +46,13 @@ namespace DestructionScenarios
 
 		/**
 		 * The cut line: a countdown, a report that it has fired, or an honest statement that this
-		 * scenario cuts nothing at all. NEVER EMPTY, and never a countdown to something that will
-		 * not happen — a corbel's story is the settle, and a clock ticking down to nothing is a lie.
+		 * scenario cuts nothing at all. Never a countdown to something that will not happen — a
+		 * corbel's story is the settle, and a clock ticking down to nothing is a lie.
+		 *
+		 * EMPTY ON EXACTLY ONE KIND OF ROW, AND IT IS A CLAIM RATHER THAN A GAP. A build sandbox has
+		 * had nothing laid on it, so there is no building for a line to describe and the banner is
+		 * two lines rather than three; everywhere else a blank line reads as a readout that failed,
+		 * and World.Scenarios.Label asserts the distinction in both directions.
 		 */
 		FString CutText;
 

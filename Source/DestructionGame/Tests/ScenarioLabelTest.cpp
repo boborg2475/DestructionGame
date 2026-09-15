@@ -285,14 +285,36 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 
 				/* --- the cut line is always there, and the number behind it is always sane -- */
 
-				if (Label.CutText.IsEmpty())
+				/*
+				 * THE BUILD PLOT IS THE ONE ROW WHOSE CUT LINE IS BLANK ON PURPOSE.
+				 *
+				 * Everywhere else a hole where the state of the level should be reads as a readout
+				 * that failed, which is why this invariant exists. On `build` there is no level yet
+				 * — the player is standing on an empty plot they are about to lay themselves — and
+				 * the no-cut line ("Nothing is cut here — what you are watching is how it was
+				 * laid") is then two lies in one sentence: it says "nothing is cut" over a plot
+				 * where nothing is anything, and it says "how it was laid" about a building nobody
+				 * has laid. The banner's third line is therefore absent rather than wrong, which is
+				 * what SESSION_UI_DESIGN.md §f draws: title, expectation, and nothing under them.
+				 *
+				 * ASSERTED IN BOTH DIRECTIONS RATHER THAN EXEMPTED. A blank line is REQUIRED on a
+				 * build sandbox and FORBIDDEN everywhere else, so this stays a claim about every
+				 * row rather than a hole carved in one.
+				 */
+				if (Label.CutText.IsEmpty() != Row.bBuildSandbox)
 				{
 					if (BlankLineFailures == 0)
 					{
 						AddError(FString::Printf(
-							TEXT("%s: the cut line must never be blank — a hole where the state of ")
-							TEXT("the level should be reads as a readout that failed"),
-							*Where));
+							TEXT("%s: this row %s a build sandbox, so its cut line must %s; it reads ")
+							TEXT("'%s'"),
+							*Where,
+							Row.bBuildSandbox ? TEXT("IS") : TEXT("is NOT"),
+							Row.bBuildSandbox
+								? TEXT("be blank — there is nothing laid for a line to describe")
+								: TEXT("never be blank — a hole where the state of the level should "
+									   "be reads as a readout that failed"),
+							*Label.CutText));
 					}
 
 					++BlankLineFailures;
@@ -473,8 +495,9 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 
 	TestTrue(
 		*FString::Printf(
-			TEXT("every one of the %d swept labels must say SOMETHING about the cut; %d were ")
-			TEXT("blank"),
+			TEXT("every one of the %d swept labels must say SOMETHING about the cut, unless it is the ")
+			TEXT("build plot — where there is nothing laid to say anything about, and the line is ")
+			TEXT("blank on purpose; %d rows said the wrong one of the two"),
 			SweptCases, BlankLineFailures),
 		BlankLineFailures == 0);
 
@@ -919,6 +942,178 @@ bool FScenarioLabelOnALevelTest::RunTest(const FString& Parameters)
 
 		TestWorld.End();
 	}
+
+	return true;
+}
+
+/**
+ * THE BUILD PLOT'S BANNER SAYS NOTHING ABOUT A CUT, AND EVERY OTHER NO-CUT LEVEL STILL SAYS WHAT IT
+ * ALWAYS SAID.
+ *
+ * =====================================================================================
+ * THE LIE THIS CLOSES (CURRENT_STATE, session S0 deferral (d))
+ * =====================================================================================
+ *
+ * `BuildScenarioLabel` picks its no-cut line off one question — does this row name any brick to
+ * take out — and the answer on `build` is no, for a completely different reason from every other
+ * row. A corbel cuts nothing because it is condemned by its own geometry, and the line is honest
+ * about that: "Nothing is cut here — what you are watching is how it was laid." Over the build plot
+ * it is two lies in one sentence. There is nothing laid, so there is nothing that was laid a
+ * particular way; and "nothing is cut" duplicates a sentence the row's own Expectation already
+ * carries, so the banner says it twice.
+ *
+ * =====================================================================================
+ * WHY THE ANSWER IS AN ABSENCE RATHER THAN A THIRD SENTENCE
+ * =====================================================================================
+ *
+ * SESSION_UI_DESIGN.md §f draws the build level's banner with exactly two lines under it — the
+ * title and the expectation — and nothing where the cut line goes. That is the honest shape: a
+ * plot with nothing on it has nothing to report, and a sentence invented to fill the slot would be
+ * a third thing to keep true. `FPieceMenuInspector::InspectedHintText` is the precedent the rest of
+ * this project follows: the state where a block is NOT DRAWN is distinct from the state where it is
+ * drawn saying nothing happens.
+ *
+ * =====================================================================================
+ * AND THE OTHER HALF, WHICH IS WHAT STOPS THIS BEING A REGRESSION
+ * =====================================================================================
+ *
+ * A change that simply blanked the no-cut line for every row would satisfy the first claim and
+ * silently strip the sentence off the seven corbels and the sandbox. So the same test reads every
+ * OTHER no-cut row and insists they still share ONE non-empty line between them — a structural
+ * reading of "unchanged" rather than a literal, for the reason this whole file avoids matching on
+ * wording: the line is the presenter's to reword, and it is not this test's business which words it
+ * uses, only that there is still exactly one of them and that the build plot does not use it.
+ *
+ * NEEDS A TICKING WORLD: NO. Nor a world at all — a row index, a double and a bool in.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FScenarioLabelBuildPlotHasNoCutLineTest,
+	"DestructionGame.World.Scenarios.BuildPlotLabelHasNoCutLine",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FScenarioLabelBuildPlotHasNoCutLineTest::RunTest(const FString& Parameters)
+{
+	using namespace ScenarioLabelTestSupport;
+	using namespace DestructionScenarios;
+
+	const TArray<FScenario>& Rows = Catalogue();
+
+	const int32 BuildRow = IndexOfName(FName(TEXT("build")));
+
+	if (!Rows.IsValidIndex(BuildRow))
+	{
+		AddError(TEXT("fixture: the catalogue must carry a row named 'build'"));
+		return true;
+	}
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("fixture: row %d ('build') must be the build sandbox and must cut nothing; it is %s ")
+			TEXT("and names %d cut(s)"),
+			BuildRow, Rows[BuildRow].bBuildSandbox ? TEXT("flagged") : TEXT("NOT flagged"),
+			Rows[BuildRow].CutCentresCm.Num()),
+		Rows[BuildRow].bBuildSandbox && Rows[BuildRow].CutCentresCm.Num() == 0);
+
+	/* --- ONE: the build plot's cut line is absent, at every moment ------------------------- */
+
+	/*
+	 * SWEPT OVER THE SAME MOMENTS THE MAIN SWEEP USES rather than sampled once, because the failure
+	 * this is about is a BRANCH: a presenter that blanked the line only on the path it happened to
+	 * be tested on would leave the sentence back on screen the moment a clock reported something
+	 * unusual. There is no cut here, so every one of these must land on the same absence.
+	 */
+	const double BuildMoments[] =
+	{
+		Rows[BuildRow].HoldSeconds, 1.0, 0.0, -1.0, 1.0e9, ScenarioLabelMakeNaN()
+	};
+
+	for (const double SecondsIn : BuildMoments)
+	{
+		for (int32 FiredCase = 0; FiredCase < 2; ++FiredCase)
+		{
+			const bool bFired = FiredCase == 1;
+
+			const FScenarioLabel Label = BuildScenarioLabel(BuildRow, SecondsIn, bFired);
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("THE BUILD PLOT HAS NOTHING TO REPORT: its cut line must be EMPTY (%s s in, ")
+					TEXT("fired = %s), because 'nothing is cut here — what you are watching is how it ")
+					TEXT("was laid' is two lies over a plot nobody has laid anything on. It reads '%s'"),
+					*ScenarioLabelBits(SecondsIn), bFired ? TEXT("true") : TEXT("false"),
+					*Label.CutText),
+				Label.CutText.IsEmpty());
+
+			/*
+			 * AND THE REST OF THE BANNER IS UNTOUCHED. An empty cut line must be an absence of one
+			 * line, not a label that gave up: the title and the expectation are what tell the player
+			 * which level they are on, and they matter MORE here than anywhere else — there is
+			 * nothing in the world to identify the level by.
+			 */
+			TestTrue(
+				*FString::Printf(
+					TEXT("and the rest of the banner must still be there — a level with nothing in it ")
+					TEXT("is exactly the one a player needs told what it is for. Title '%s', ")
+					TEXT("expectation '%s'"),
+					*Label.TitleText, *Label.ExpectationText),
+				Label.TitleText == FString(Rows[BuildRow].Title)
+					&& Label.ExpectationText == FString(Rows[BuildRow].Expectation));
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("and it still claims no cut and no clock: state %s with %s s to go"),
+					*ScenarioLabelStateName(Label.CutState),
+					*ScenarioLabelBits(Label.SecondsUntilCut)),
+				Label.CutState == EScenarioCutState::NoCut && Label.SecondsUntilCut == 0.0);
+		}
+	}
+
+	/* --- TWO: every other no-cut row still says what it always said ----------------------- */
+
+	TSet<FString> OtherNoCutLines;
+	int32 OtherNoCutRows = 0;
+
+	for (int32 Index = 0; Index < Rows.Num(); ++Index)
+	{
+		if (Rows[Index].bBuildSandbox || Rows[Index].CutCentresCm.Num() > 0)
+		{
+			continue;
+		}
+
+		++OtherNoCutRows;
+
+		const FScenarioLabel Label = BuildScenarioLabel(Index, Rows[Index].HoldSeconds, false);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("row %d ('%s') cuts nothing but is NOT a build plot — it is a wall or a corbel "
+					 "that was laid and is being watched — so it must still say so. It reads '%s'"),
+				Index, *Rows[Index].Name.ToString(), *Label.CutText),
+			!Label.CutText.IsEmpty());
+
+		OtherNoCutLines.Add(Label.CutText);
+	}
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("fixture: there must be at least one no-cut row that is NOT the build plot, or the "
+				 "regression half of this test is vacuous; there are %d"),
+			OtherNoCutRows),
+		OtherNoCutRows >= 1);
+
+	/*
+	 * ONE LINE BETWEEN THEM ALL, which is the structural reading of "unchanged". The sandbox and the
+	 * seven corbels have always shared a single sentence, and a presenter that started varying it
+	 * per row would be inventing wording no test reads — the failure Core/PieceMenu.h's
+	 * model-owns-the-string rule exists to stop.
+	 */
+	TestEqual(
+		FString::Printf(
+			TEXT("and all %d of them must share the ONE line they have always shared; they produced "
+				 "%d: [%s]"),
+			OtherNoCutRows, OtherNoCutLines.Num(),
+			*FString::Join(OtherNoCutLines.Array(), TEXT(" | "))),
+		OtherNoCutLines.Num(), 1);
 
 	return true;
 }

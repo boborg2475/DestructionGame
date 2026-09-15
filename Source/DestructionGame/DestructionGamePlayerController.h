@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Core/PieceMenu.h"
 #include "Core/PieceSelection.h"
+#include "Core/SessionToolbar.h"
 #include "GameFramework/PlayerController.h"
 #include "Input/Reply.h"
 #include "Layout/Margin.h"
@@ -13,6 +14,7 @@
 
 class SBox;
 class SWidget;
+class UBuildModeComponent;
 class UGameViewportClient;
 class UInputAction;
 class UInputMappingContext;
@@ -41,6 +43,100 @@ public:
 
 	/** Constructor */
 	ADestructionGamePlayerController();
+
+	/**
+	 * The build loop this session lays pieces with.
+	 *
+	 * A DEFAULT SUBOBJECT RATHER THAN SOMETHING SOMEBODY REMEMBERS TO ADD. Every controller in
+	 * every level is a session, and a session with no build component is one where the Build tab
+	 * puts the player in a mode whose every click fails closed with nothing on screen saying why.
+	 */
+	UBuildModeComponent* GetBuildComponent() const;
+
+	/**
+	 * What the session is doing, and the only thing the strip draws.
+	 *
+	 * READ-ONLY, WHICH IS THE WHOLE OF THE OWNERSHIP RULE. OnToolbarButton is the single mutator, so
+	 * that every change goes through DestructionSession::ApplyToolbarButton's refusals and through
+	 * the side effects that keep the build component in step — a caller setting the course here
+	 * would move the readout and leave the build plane where it was.
+	 */
+	const DestructionSession::FSessionToolbarState& GetSessionToolbarState() const;
+
+	/**
+	 * One toolbar click: move the session, and move the world with it.
+	 *
+	 * THE ONE DOOR, AND EVERY INPUT COMES THROUGH IT — the strip's own buttons and, when they land,
+	 * the keyboard shortcuts. Core/SessionToolbar.h says why: the model consults
+	 * SessionToolbarButtons for whether a click can happen at all, so a controller setting fields
+	 * beside it would be a second opinion about what is greyed.
+	 *
+	 * A REFUSED CLICK CHANGES NOTHING AT ALL, state and side effects alike. A button the strip does
+	 * not draw, or draws greyed, must not run its side effect either — a greyed `Course down` that
+	 * still pushed its own decrement would put the build plane under the earth with the readout
+	 * still saying course 0.
+	 *
+	 * @return whether the click landed. FALSE IS A REFUSAL RATHER THAN A FAILURE, and it is said
+	 *         out loud because a silent no-op on a command button reads as a missed click.
+	 */
+	bool OnToolbarButton(DestructionSession::EToolbarButtonId Id);
+
+	/**
+	 * The structure this session's commands act on, or INDEX_NONE.
+	 *
+	 * THE PLAYER'S OWN BUILD FIRST, AND THE LEVEL'S WALL BEHIND IT. Twenty-eight of the twenty-nine
+	 * levels lay something for the player to pull apart and `Run structure` has to reach it; the one
+	 * build plot lays nothing, so until the player's first brick lands there is genuinely nothing to
+	 * run and the button is greyed. An EMPTY build does not win — a structure with no pieces in it
+	 * would shadow the level's wall with nothing, which is a Run that silently solves an empty graph.
+	 */
+	int32 GetSessionStructureId() const;
+
+	/**
+	 * Point along this ray: in Build the ghost follows it, in Destroy the brick under it is called
+	 * out.
+	 *
+	 * A RAY IN RATHER THAN A CURSOR, for the reason InspectAlongRay takes one — the deprojection
+	 * needs a viewport and this half needs only a world. WHAT DIFFERS FROM HoverAlongRay IS THE
+	 * DISPATCH: the mode decides which of the two seams the cursor is driving, and the mode is the
+	 * session's rather than the input's.
+	 */
+	void PointerAlongRay(const FVector& StartCm, const FVector& EndCm);
+
+	/**
+	 * The primary click along this ray: in Build it lays a piece, in Destroy it inspects one.
+	 *
+	 * NO PIECE MENU IN BUILD MODE. A Delete menu over the brick the player has just laid, with the
+	 * cursor already on it, is today's click leaking through — so the two are dispatched rather than
+	 * layered.
+	 *
+	 * @return whether the click did its mode's job: a piece landed, or a menu came up.
+	 */
+	bool PrimaryAlongRay(const FVector& StartCm, const FVector& EndCm);
+
+	/**
+	 * Build the session's toolbar strip, and hand it back instead of drawing it.
+	 *
+	 * PUBLIC FOR THE REASON BuildPieceMenuPanel IS, and the reason bites harder here. Which buttons
+	 * the strip draws, in what order, greyed or live, focusable or not, and what one press calls are
+	 * all decided in this one function; kept private behind AddViewportWidgetContent every one of
+	 * them would be unreachable. A focusable SButton takes user focus on click and the flying pawn
+	 * stops answering W — a defect a player reports as the game freezing, and one nothing but a
+	 * headless arrange of this tree can see.
+	 */
+	TSharedRef<SWidget> BuildSessionToolbarPanel();
+
+	/**
+	 * Put the strip on screen, and redraw it when the session moves.
+	 *
+	 * REBUILT RATHER THAN RE-BOUND. Every chip's caption, greying and lit state comes off
+	 * SessionToolbarButtons for one state, so a state that changed while the same widgets stayed up
+	 * would be a strip describing the session the player used to be in. A world with no viewport —
+	 * every headless test — draws nothing and carries on, which is the ordinary case rather than an
+	 * error, exactly as the piece menu and the banner do.
+	 */
+	void ShowSessionToolbar();
+	void RefreshSessionToolbar();
 
 	/**
 	 * Inspect whatever this ray hits: open the piece menu for it, or dismiss the menu.
@@ -315,6 +411,26 @@ private:
 	/** A button's click: choose the row it stands for. Nothing else belongs here. */
 	FReply OnPieceMenuRowClicked(int32 RowIndex);
 
+	/** A chip's click: put its id through the one door. Nothing else belongs here either. */
+	FReply OnSessionToolbarButtonClicked(DestructionSession::EToolbarButtonId Id);
+
+	/** Take the strip off screen. Paired with ShowSessionToolbar's add, and run on EndPlay. */
+	void RemoveSessionToolbarWidget();
+
+	/**
+	 * Ask the world whether there is anything for the commands to act on, and record the answer.
+	 *
+	 * DERIVED, NEVER SET. `bHasStructure` is the only field on the session state that is a fact
+	 * about the world rather than a choice the player made, so a controller that set it when it
+	 * placed a brick would have to remember to unset it on every route a piece can leave by — a
+	 * delete, a cascade, a Clear. Asked afresh instead, it cannot go stale.
+	 *
+	 * LIVE PIECES, BECAUSE A STRUCTURE OF TOMBSTONES IS NOTHING TO RUN. RemovePiece tombstones
+	 * rather than compacting, so a plot whose every brick has been deleted still answers a piece
+	 * count and would leave Clear and Run lit over an empty plot.
+	 */
+	void RefreshSessionHasStructure();
+
 	/**
 	 * Put the scenario banner on screen, and take it off again.
 	 *
@@ -508,6 +624,36 @@ private:
 	 * tells the player they still have a selection.
 	 */
 	void ClearPieceSelection();
+
+	/**
+	 * THE BUILD LOOP, OWNED BY THE CONTROLLER THAT DRIVES IT.
+	 *
+	 * A default subobject, so every controller in every level has one and nothing has to remember
+	 * to attach it. It holds the player's live build, its ghost and the piece settings the toolbar
+	 * pushes onto it; the session state above is the presenter's record of the same three choices,
+	 * and OnToolbarButton is the one place they are kept in step.
+	 */
+	UPROPERTY()
+	TObjectPtr<UBuildModeComponent> BuildComponent;
+
+	/**
+	 * WHAT THE SESSION IS DOING. One struct, changed only by OnToolbarButton.
+	 *
+	 * IT OPENS IN DESTROY, WHICH IS NOT THE MODEL'S OWN DEFAULT, and the constructor says why: a
+	 * default-constructed session must be the one that cannot destroy anything, but a controller is
+	 * a different question — twenty-eight of the twenty-nine levels lay a wall for the player to
+	 * pull apart, and opening those in Build would put a ghost over it and swallow the first click.
+	 */
+	DestructionSession::FSessionToolbarState SessionToolbarState;
+
+	/**
+	 * The strip that state is drawn as, valid for as long as the session is on screen.
+	 *
+	 * A THIRD VIEWPORT WIDGET WITH ITS OWN ADD AND ITS OWN REMOVE, held so the remove has something
+	 * to hand back — and its own rather than the banner's, because the banner is built once and this
+	 * is torn down and rebuilt on every click that changes what the strip says.
+	 */
+	TSharedPtr<SWidget> SessionToolbarWidget;
 
 	/** The rows on screen right now. Empty means no menu. */
 	TArray<FPieceMenuRow> ShownPieceMenuRows;
