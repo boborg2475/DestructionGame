@@ -9,6 +9,13 @@
 #include "GameFramework/PlayerController.h"
 #include "Input/Reply.h"
 #include "Layout/Margin.h"
+/*
+ * THE ONE SLATE STYLE HEADER THIS FILE PULLS, AND IT IS PULLED FOR STORAGE RATHER THAN FOR A
+ * PARAMETER TYPE. SButton keeps a raw `const FButtonStyle*` and never copies it, so the chips'
+ * styles have to live somewhere that outlives the widgets and does not move — a member array of
+ * complete FButtonStyles, which a forward declaration cannot express.
+ */
+#include "Styling/SlateTypes.h"
 #include "World/ScenarioLabel.h"
 #include "DestructionGamePlayerController.generated.h"
 
@@ -145,6 +152,27 @@ public:
 	 * headless arrange of this tree can see.
 	 */
 	TSharedRef<SWidget> BuildSessionToolbarPanel();
+
+	/**
+	 * The style one chip is wearing: a rounded box filled the way the model says, with its hover and
+	 * press variants.
+	 *
+	 * A REFERENCE INTO STORAGE THAT OUTLIVES THE WIDGET, AND THAT IS THE WHOLE REASON THIS EXISTS AS
+	 * A MEMBER RATHER THAN AS A FUNCTION RETURNING A VALUE. SButton keeps the `const FButtonStyle*`
+	 * it is given and never copies it, so a per-call temporary would be a dangling pointer the moment
+	 * the caller's frame went away, and a TMap value would move on the next rehash. The styles live
+	 * in a fixed array indexed by EToolbarButtonId whose slots never relocate; rebuilding the strip
+	 * overwrites them in place, which is what lets the look follow the session's state while every
+	 * pointer already handed out stays good.
+	 *
+	 * PUBLIC BECAUSE SButton EXPOSES NO STYLE GETTER. It is welded to the widget rather than being a
+	 * seam only a test reads: World.Session.ToolbarChipsAreRoundedAndGrouped asserts that the chip's
+	 * own border brush IS one of this style's four, by address.
+	 *
+	 * A BUTTON THIS BUILD HAS NEVER HEARD OF GETS THE GREYED STYLE, which is the fail-closed answer:
+	 * an undeclared chip reads as one that cannot be clicked rather than borrowing a live chip's.
+	 */
+	const FButtonStyle& SessionChipStyleFor(const DestructionSession::FToolbarButton& Button) const;
 
 	/**
 	 * Put the strip on screen, and redraw it when the session moves.
@@ -513,6 +541,15 @@ private:
 	void RemoveSessionToolbarWidget();
 
 	/**
+	 * Write every chip's style into the fixed array, from the look the model decided for this state.
+	 *
+	 * RUN BEFORE THE CHIPS ARE MADE, ON EVERY REBUILD, because the look follows the state: which chip
+	 * is filled with the mode's accent changes with the very click that rebuilds the strip. In place
+	 * rather than into fresh storage — the slots may not move while any chip is pointing at one.
+	 */
+	void RebuildSessionChipStyles(const TArray<DestructionSession::FToolbarButton>& Buttons);
+
+	/**
 	 * Ask the world whether there is anything for the commands to act on, and record the answer.
 	 *
 	 * DERIVED, NEVER SET. `bHasStructure` is the only field on the session state that is a fact
@@ -749,6 +786,33 @@ private:
 	 * is torn down and rebuilt on every click that changes what the strip says.
 	 */
 	TSharedPtr<SWidget> SessionToolbarWidget;
+
+	/**
+	 * HOW MANY CHIP STYLES ARE KEPT: one per button the model knows, plus one for the ones it does
+	 * not.
+	 *
+	 * DERIVED FROM THE LAST ENUMERATOR RATHER THAN WRITTEN AS A COUNT, so that adding a button to
+	 * EToolbarButtonId grows the storage with it instead of silently overflowing it. The extra slot
+	 * at the end is where an id outside the enumeration lands — including one a cast invented, which
+	 * is all it takes with a uint8 enum — and SessionChipStyleFor fills it with the greyed look.
+	 */
+	static constexpr int32 SessionChipStyleCount =
+		static_cast<int32>(DestructionSession::EToolbarButtonId::RunStructure) + 2;
+
+	/**
+	 * THE CHIPS' STYLES, IN STORAGE THAT DOES NOT MOVE.
+	 *
+	 * A FIXED ARRAY, AND THE FIXEDNESS IS THE FEATURE. SButton stores the `const FButtonStyle*` it is
+	 * handed and never copies it, so every chip on screen is reading these objects for as long as it
+	 * is up. A TMap would relocate its values on the next rehash and a local would not outlive the
+	 * call — either way the next placement would be painting through a dangling pointer. Rebuilding
+	 * the strip overwrites these in place, so the look follows the session's state and every pointer
+	 * already handed out stays good.
+	 *
+	 * NOT A UPROPERTY, AND IT DOES NOT NEED TO BE: these brushes are rounded boxes with no resource
+	 * object, so there is no UObject reference here for the collector to keep alive.
+	 */
+	FButtonStyle SessionChipStyles[SessionChipStyleCount];
 
 	/** The rows on screen right now. Empty means no menu. */
 	TArray<FPieceMenuRow> ShownPieceMenuRows;

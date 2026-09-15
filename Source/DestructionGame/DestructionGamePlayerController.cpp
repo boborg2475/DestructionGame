@@ -11,6 +11,7 @@
 #include "InputCoreTypes.h"
 #include "InputMappingContext.h"
 #include "InputTriggers.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Styling/CoreStyle.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Widgets/Images/SImage.h"
@@ -384,6 +385,27 @@ static constexpr float SessionToolbarEdgePaddingPx = 10.0f;
 static constexpr float SessionToolbarReadoutPaddingPx = 6.0f;
 
 /*
+ * THE HAIRLINE BETWEEN TWO GROUPS, AND THE AIR EITHER SIDE OF IT. §e's 10 px between groups, spent
+ * as the chip gap on the left of the rule and the rest on its right.
+ */
+static constexpr float SessionToolbarRuleWidthPx = 1.0f;
+static constexpr float SessionToolbarRuleGapPx = 10.0f;
+
+/*
+ * AND THE TWO PIECE SWATCHES, WHICH ARE TWO SHAPES AS WELL AS TWO COLOURS.
+ *
+ * THE PLANK IS LONGER AND THINNER THAN THE BLOCK, and that is what makes the three piece chips
+ * readable from each other without reading the words — which is the whole of why §e draws a swatch
+ * "in place of a size caption". The proportions are the pieces' own, roughly: a brick is about twice
+ * as long as it is tall in elevation and a board is three times that.
+ */
+static constexpr float SessionToolbarBrickSwatchWidthPx = 18.0f;
+static constexpr float SessionToolbarBrickSwatchHeightPx = 11.0f;
+static constexpr float SessionToolbarTimberSwatchWidthPx = 26.0f;
+static constexpr float SessionToolbarTimberSwatchHeightPx = 8.0f;
+static constexpr float SessionToolbarSwatchGapPx = 7.0f;
+
+/*
  * WHAT THE STRIP IS DRAWN IN, AND THE FILL IS ONE STEP LIGHTER THAN THE PANEL'S ON PURPOSE.
  *
  * The details window sits on PieceMenuPanelBackgroundColour and the strip sits on this, so the two
@@ -391,14 +413,14 @@ static constexpr float SessionToolbarReadoutPaddingPx = 6.0f;
  * LINEAR triples, which is the number Slate takes — the sRGB hexes in §e are what the eye checks
  * them against, and confusing the two is how a palette drifts.
  *
- * AND THE ACCENTS ARE THE COLOURS THIS UI ALREADY USES. Build amber is the Caution band's and the
- * ghost's own gold; destroy red is the destructive row's. A third and fourth hue for the same two
- * ideas would be two more things to keep in step with nothing holding them there.
+ * THE ACCENTS AND THE CHIP FILLS ARE NOT HERE ANY MORE, AND THEIR ABSENCE IS THE POINT. They were
+ * two file-static colours and a pair of ternaries in the panel builder, which made "how a chip is
+ * drawn" a decision in the one place no test can reach — and the multiply through FCoreStyle's grey
+ * button brush meant the amber this project chose was never the amber a player saw. The whole look
+ * is DestructionSession::ChipLookFor's answer now, swept by Core.SessionToolbar.ChipLook, and this
+ * file turns it into a brush.
  */
 static const FLinearColor SessionToolbarFillColour(0.020f, 0.023f, 0.030f, 0.96f);
-static const FLinearColor SessionToolbarIdleChipColour(0.16f, 0.18f, 0.24f, 0.75f);
-static const FLinearColor SessionToolbarBuildAccentColour(0.95f, 0.66f, 0.13f, 1.0f);
-static const FLinearColor SessionToolbarDestroyAccentColour(0.72f, 0.16f, 0.14f, 1.0f);
 
 /*
  * A SECOND FILE-LOCAL NAMESPACE, BELOW THE CONSTANTS IT READS RATHER THAN BESIDE THE ONE AT THE
@@ -436,21 +458,133 @@ namespace
 	}
 
 	/**
-	 * THE TWO CAPTION FACES, AND THE WEIGHT IS HOW `bActive` IS SAID IN TYPE.
+	 * THE TWO CAPTION FACES, AND WHICH ONE A CHIP WEARS IS THE MODEL'S ANSWER.
 	 *
-	 * The chip says it twice — the caption's weight and the chip's fill — because they are two
-	 * different readings of one decision the model already made, and either alone is fragile: a
-	 * player reading the strip from peripheral vision sees the fill, and a player looking straight
-	 * at it reads the word. Which mode you are in is the highest-order fact on this screen.
+	 * The chip says `bActive` twice — in the caption's weight and in the chip's fill — because they
+	 * are two readings of one decision, and either alone is fragile: a player reading the strip from
+	 * peripheral vision sees the fill, and a player looking straight at it reads the word. Which of
+	 * the two a chip gets is FChipLook::bBoldCaption rather than a ternary here, for the reason the
+	 * fill is FChipLook::Fill.
 	 */
-	FSlateFontInfo SessionToolbarActiveFont()
+	FSlateFontInfo SessionToolbarBoldFont()
 	{
 		return FCoreStyle::GetDefaultFontStyle("Bold", 11);
 	}
 
-	FSlateFontInfo SessionToolbarIdleFont()
+	FSlateFontInfo SessionToolbarRegularFont()
 	{
 		return FCoreStyle::GetDefaultFontStyle("Regular", 11);
+	}
+
+	/**
+	 * The same fill one step toward white, which is how a chip answers the cursor.
+	 *
+	 * CLAMPED AT WHITE RATHER THAN LERPED, so a channel already at full stays put instead of the
+	 * whole colour drifting. The clamp is FMath::Min, which REPLACES a NaN rather than discarding it
+	 * — the right direction here: a look that is not a number must stay not a number rather than
+	 * becoming a plausible colour, and Core.SessionToolbar.ChipLook sweeps every look for finiteness
+	 * so one can never arrive.
+	 */
+	FLinearColor SessionToolbarLiftedFill(const FLinearColor& Fill)
+	{
+		constexpr float LiftPerChannel = 0.12f;
+
+		return FLinearColor(
+			FMath::Min(1.0f, Fill.R + LiftPerChannel),
+			FMath::Min(1.0f, Fill.G + LiftPerChannel),
+			FMath::Min(1.0f, Fill.B + LiftPerChannel),
+			Fill.A);
+	}
+
+	/** And the same fill pushed down, which is how it answers the press. */
+	FLinearColor SessionToolbarPressedFill(const FLinearColor& Fill)
+	{
+		constexpr float PressScale = 0.82f;
+
+		return FLinearColor(Fill.R * PressScale, Fill.G * PressScale, Fill.B * PressScale, Fill.A);
+	}
+
+	/**
+	 * A CHIP'S WHOLE STYLE, BUILT FROM THE LOOK THE MODEL DECIDED.
+	 *
+	 * A ROUNDED BOX BRUSH RATHER THAN FCoreStyle'S BUTTON BRUSH WITH A COLOUR MULTIPLIED THROUGH IT,
+	 * and this is the defect the slice exists to close: the stock brush is GREY, so multiplying the
+	 * design's amber into it produces dark mustard — the accent this project chose was never the
+	 * accent on screen, and no retune of the constant could fix it because the thing being multiplied
+	 * into is grey. The brush has to be the chip's own.
+	 *
+	 * ALL FOUR STATES ARE ROUNDED. SButton swaps its border brush for the state it is in, so a square
+	 * disabled or pressed brush would be a chip that changed shape under the cursor.
+	 */
+	FButtonStyle SessionToolbarChipStyle(const DestructionSession::FChipLook& Look)
+	{
+		/* All four corners the same. FVector4 rather than FVector4f: FSlateBrushOutlineSettings' own. */
+		const FVector4 Radii(
+			Look.CornerRadiusPx, Look.CornerRadiusPx, Look.CornerRadiusPx, Look.CornerRadiusPx);
+
+		FButtonStyle Style;
+
+		Style.SetNormal(
+			FSlateRoundedBoxBrush(Look.Fill, Radii, Look.Outline, Look.OutlineWidthPx));
+
+		Style.SetHovered(
+			FSlateRoundedBoxBrush(
+				SessionToolbarLiftedFill(Look.Fill), Radii, Look.Outline, Look.OutlineWidthPx));
+
+		Style.SetPressed(
+			FSlateRoundedBoxBrush(
+				SessionToolbarPressedFill(Look.Fill), Radii, Look.Outline, Look.OutlineWidthPx));
+
+		Style.SetDisabled(
+			FSlateRoundedBoxBrush(Look.Fill, Radii, Look.Outline, Look.OutlineWidthPx));
+
+		return Style;
+	}
+
+	/** How big a swatch of this kind is drawn: the plank longer and thinner than the block. */
+	FVector2f SessionToolbarSwatchSizePx(DestructionSession::EToolbarSwatch Swatch)
+	{
+		return Swatch == DestructionSession::EToolbarSwatch::Timber
+			? FVector2f(SessionToolbarTimberSwatchWidthPx, SessionToolbarTimberSwatchHeightPx)
+			: FVector2f(SessionToolbarBrickSwatchWidthPx, SessionToolbarBrickSwatchHeightPx);
+	}
+
+	/**
+	 * THE LITTLE BLOCK OF COLOUR THAT MAKES A PIECE CHIP LOOK LIKE THE THING IT LAYS.
+	 *
+	 * ONE WIDGET, AND ITS SIZE IS ITS OWN PADDING. A border with nothing inside it is a filled
+	 * rectangle whose desired size is exactly the padding around the nothing, which is what lets the
+	 * swatch be a single widget rather than a sizing box wrapped around an image — and a single
+	 * widget is what a reader, human or test, can point at and call "the swatch".
+	 *
+	 * THE COLOUR IS THE MODEL'S. SwatchColour(Kind) is the shed material's own base colour, so the
+	 * palette chip and the brick that lands are one decision rather than two people picking the same
+	 * red.
+	 */
+	TSharedRef<SWidget> SessionToolbarSwatchBlock(DestructionSession::EToolbarSwatch Swatch)
+	{
+		const FVector2f SizePx = SessionToolbarSwatchSizePx(Swatch);
+
+		return SNew(SBorder)
+			.BorderImage(PieceMenuFillBrush())
+			.BorderBackgroundColor(DestructionSession::SwatchColour(Swatch))
+			.Padding(FMargin(0.5f * SizePx.X, 0.5f * SizePx.Y));
+	}
+
+	/**
+	 * THE 1 px RULE THAT SEPARATES TWO REGIONS OF THE STRIP.
+	 *
+	 * IT IS DRAWN WHERE THE MODEL'S GROUP CHANGES AND NOWHERE ELSE, which is §b's reason rather than
+	 * a decoration: the commands sit past a rule "so that a destructive click is never adjacent to a
+	 * setting click". Full chip height, so it reads as a division of the bar rather than as a tick.
+	 */
+	TSharedRef<SWidget> SessionToolbarGroupRule()
+	{
+		return SNew(SImage)
+			.Image(PieceMenuFillBrush())
+			.ColorAndOpacity(PieceMenuRuleColour)
+			.DesiredSizeOverride(
+				FVector2D(SessionToolbarRuleWidthPx, SessionToolbarChipHeightPx));
 	}
 
 	/**
@@ -2341,19 +2475,68 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 	const TArray<FToolbarButton> Buttons = SessionToolbarButtons(SessionToolbarState);
 
 	/*
-	 * ONE ACCENT PER MODE, TAKEN FROM THE MODE RATHER THAN FROM THE BUTTON. Everything lit on a
-	 * Build strip is amber and everything lit on a Destroy strip is red, so the colour of the strip
-	 * is itself a reading of which mode the player is in — which is the fact they need from
-	 * peripheral vision while flying a camera.
+	 * THE STYLES ARE REBUILT HERE, BEFORE A SINGLE CHIP IS MADE, BECAUSE THE LOOK FOLLOWS THE STATE.
+	 * Every chip's fill, edge and caption weight is ChipLookFor's answer for the state the strip is
+	 * being drawn for, and this function is called afresh on every click that changes it — so the
+	 * styles are written in place first and the chips are then pointed at them.
 	 */
-	const FLinearColor AccentColour = SessionToolbarState.Mode == ESessionMode::Build
-		? SessionToolbarBuildAccentColour
-		: SessionToolbarDestroyAccentColour;
+	RebuildSessionChipStyles(Buttons);
 
 	TSharedRef<SHorizontalBox> Strip = SNew(SHorizontalBox);
 
-	for (const FToolbarButton& Button : Buttons)
+	for (int32 Index = 0; Index < Buttons.Num(); ++Index)
 	{
+		const FToolbarButton& Button = Buttons[Index];
+
+		/*
+		 * A HAIRLINE WHERE THE REGION CHANGES, AND NOWHERE ELSE.
+		 *
+		 * COMPARED AGAINST THE NEIGHBOUR RATHER THAN COUNTED OUT IN SLOTS, which is the whole reason
+		 * EToolbarGroup is on the row: the model says the three regions are contiguous and in order,
+		 * so "the group changed" is all this needs to know, and a strip whose buttons are retuned
+		 * keeps its rules without anything here being touched.
+		 */
+		if (Index > 0 && Buttons[Index - 1].Group != Button.Group)
+		{
+			Strip->AddSlot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, SessionToolbarRuleGapPx, 0.0f)
+				[
+					SessionToolbarGroupRule()
+				];
+		}
+
+		const FChipLook Look = ChipLookFor(Button, SessionToolbarState.Mode);
+
+		/*
+		 * A CHIP'S CONTENT IS ITS SWATCH AND ITS CAPTION, and the swatch comes FIRST. §e puts it "in
+		 * place of a size caption" on the piece chips, and a block of brick red drawn after the word
+		 * would read as a status light rather than as the thing about to be laid.
+		 */
+		TSharedRef<SHorizontalBox> Content = SNew(SHorizontalBox);
+
+		if (Button.Swatch != EToolbarSwatch::None)
+		{
+			Content->AddSlot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, SessionToolbarSwatchGapPx, 0.0f)
+				[
+					SessionToolbarSwatchBlock(Button.Swatch)
+				];
+		}
+
+		Content->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Font(Look.bBoldCaption ? SessionToolbarBoldFont() : SessionToolbarRegularFont())
+				.ColorAndOpacity(Look.Caption)
+				.Text(FText::FromString(Button.Label))
+			];
+
 		Strip->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
@@ -2367,12 +2550,16 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 					 * focusable SButton takes user focus when it is clicked, and the flying pawn
 					 * then stops answering W — a player reports that as the game freezing, and
 					 * nothing but a headless arrange of this tree can see it.
+					 *
+					 * THE STYLE IS A POINTER INTO THE CONTROLLER'S OWN STORAGE, and it has to be:
+					 * SButton keeps what it is given and never copies it. There is no tint on the
+					 * button any more — the fill IS the style's brush, because a colour multiplied
+					 * through FCoreStyle's grey brush could never be the design's amber.
 					 */
 					SNew(SButton)
 					.IsFocusable(false)
 					.IsEnabled(Button.bEnabled)
-					.ButtonColorAndOpacity(
-						Button.bActive ? AccentColour : SessionToolbarIdleChipColour)
+					.ButtonStyle(&SessionChipStyleFor(Button))
 					.ContentPadding(FMargin(SessionToolbarChipPaddingPx, 0.0f))
 					.HAlign(HAlign_Center)
 					.VAlign(VAlign_Center)
@@ -2381,11 +2568,7 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 						&ADestructionGamePlayerController::OnSessionToolbarButtonClicked,
 						Button.Id))
 					[
-						SNew(STextBlock)
-						.Font(Button.bActive ? SessionToolbarActiveFont() : SessionToolbarIdleFont())
-						.ColorAndOpacity(
-							Button.bActive ? PieceMenuHeaderColour : PieceMenuReadoutColour)
-						.Text(FText::FromString(Button.Label))
+						Content
 					]
 				]
 			];
@@ -2415,7 +2598,7 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 			.Padding(SessionToolbarReadoutPaddingPx, 0.0f, SessionToolbarReadoutPaddingPx, 0.0f)
 			[
 				SNew(STextBlock)
-				.Font(SessionToolbarIdleFont())
+				.Font(SessionToolbarRegularFont())
 				.ColorAndOpacity(PieceMenuReadoutColour)
 				.Text(FText::FromString(CourseLabel(SessionToolbarState.Course)))
 			];
@@ -2480,6 +2663,60 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 				]
 			]
 		];
+}
+
+const FButtonStyle& ADestructionGamePlayerController::SessionChipStyleFor(
+	const DestructionSession::FToolbarButton& Button) const
+{
+	const int32 Index = static_cast<int32>(Button.Id);
+
+	/*
+	 * THE LAST SLOT IS THE ONE NOBODY'S BUTTON OWNS, and an id outside the enumeration lands there
+	 * rather than on somebody else's chip. EToolbarButtonId is a uint8 and a cast is all it takes to
+	 * make one; RebuildSessionChipStyles fills that slot with the GREYED look, so an undeclared
+	 * button reads as one that cannot be clicked instead of borrowing a live chip's amber.
+	 */
+	const bool bKnown = Index >= 0 && Index < SessionChipStyleCount - 1;
+
+	return SessionChipStyles[bKnown ? Index : SessionChipStyleCount - 1];
+}
+
+void ADestructionGamePlayerController::RebuildSessionChipStyles(
+	const TArray<DestructionSession::FToolbarButton>& Buttons)
+{
+	using namespace DestructionSession;
+
+	/*
+	 * EVERY SLOT IS WRITTEN, STARTING FROM THE GREYED LOOK.
+	 *
+	 * A DEFAULT FToolbarButton IS bEnabled == false, so this IS the greyed answer rather than a
+	 * second spelling of it — which is what the unknown slot needs, and what a button that is not on
+	 * THIS mode's strip should keep so that a stale amber cannot survive a mode switch.
+	 */
+	const FButtonStyle GreyedStyle =
+		SessionToolbarChipStyle(ChipLookFor(FToolbarButton(), SessionToolbarState.Mode));
+
+	for (FButtonStyle& Style : SessionChipStyles)
+	{
+		Style = GreyedStyle;
+	}
+
+	/*
+	 * THEN THE STRIP'S OWN, IN PLACE. The array's slots do not move, so a chip already on screen
+	 * holding a pointer into one of them goes on reading a valid style — it simply starts reading the
+	 * new look, which is what a rebuilt strip wants.
+	 */
+	for (const FToolbarButton& Button : Buttons)
+	{
+		const int32 Index = static_cast<int32>(Button.Id);
+
+		if (Index < 0 || Index >= SessionChipStyleCount - 1)
+		{
+			continue;
+		}
+
+		SessionChipStyles[Index] = SessionToolbarChipStyle(ChipLookFor(Button, SessionToolbarState.Mode));
+	}
 }
 
 void ADestructionGamePlayerController::ShowSessionToolbar()

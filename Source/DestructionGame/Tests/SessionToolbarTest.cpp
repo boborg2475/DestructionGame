@@ -110,6 +110,153 @@ namespace SessionToolbarTestSupport
 		return TEXT("<not a toolbar button>");
 	}
 
+	const TCHAR* NameOfGroup(DestructionSession::EToolbarGroup Group)
+	{
+		switch (Group)
+		{
+		case DestructionSession::EToolbarGroup::Mode:     return TEXT("Mode");
+		case DestructionSession::EToolbarGroup::Settings: return TEXT("Settings");
+		case DestructionSession::EToolbarGroup::Command:  return TEXT("Command");
+		}
+
+		return TEXT("<not a toolbar group>");
+	}
+
+	const TCHAR* NameOfSwatch(DestructionSession::EToolbarSwatch Swatch)
+	{
+		switch (Swatch)
+		{
+		case DestructionSession::EToolbarSwatch::None:   return TEXT("None");
+		case DestructionSession::EToolbarSwatch::Brick:  return TEXT("Brick");
+		case DestructionSession::EToolbarSwatch::Timber: return TEXT("Timber");
+		}
+
+		return TEXT("<not a toolbar swatch>");
+	}
+
+	/**
+	 * WHICH REGION OF THE STRIP EACH BUTTON BELONGS TO, WRITTEN OUT HERE RATHER THAN ASKED OF THE
+	 * MODEL.
+	 *
+	 * SESSION_UI_DESIGN §b draws the strip as three regions — the mode tabs, the current mode's
+	 * settings, and the mode's one command at the far right — separated by rules, so that "a
+	 * destructive click is never adjacent to a setting click". A test that read the group off the
+	 * same function it is checking would assert nothing; the table is the design transcribed.
+	 */
+	DestructionSession::EToolbarGroup ExpectedGroupOf(DestructionSession::EToolbarButtonId Id)
+	{
+		using namespace DestructionSession;
+
+		switch (Id)
+		{
+		case EToolbarButtonId::ModeBuild:
+		case EToolbarButtonId::ModeDestroy:
+			return EToolbarGroup::Mode;
+
+		case EToolbarButtonId::PieceBrick:
+		case EToolbarButtonId::PieceTimberPlate:
+		case EToolbarButtonId::PieceTimberLintel:
+		case EToolbarButtonId::PlacementSnap:
+		case EToolbarButtonId::PlacementFree:
+		case EToolbarButtonId::CourseDown:
+		case EToolbarButtonId::CourseUp:
+			return EToolbarGroup::Settings;
+
+		case EToolbarButtonId::ClearBuild:
+		case EToolbarButtonId::RunStructure:
+			return EToolbarGroup::Command;
+		}
+
+		return EToolbarGroup::Command;
+	}
+
+	/** Which little block of colour a chip carries: the thing the player is about to lay, or nothing. */
+	DestructionSession::EToolbarSwatch ExpectedSwatchOf(DestructionSession::EToolbarButtonId Id)
+	{
+		using namespace DestructionSession;
+
+		switch (Id)
+		{
+		case EToolbarButtonId::PieceBrick:        return EToolbarSwatch::Brick;
+		case EToolbarButtonId::PieceTimberPlate:  return EToolbarSwatch::Timber;
+		case EToolbarButtonId::PieceTimberLintel: return EToolbarSwatch::Timber;
+		default:                                  return EToolbarSwatch::None;
+		}
+	}
+
+	/**
+	 * THE DESIGN'S PALETTE, TRANSCRIBED RATHER THAN IMPORTED, AND IT IS LINEAR.
+	 *
+	 * SESSION_UI_DESIGN §e gives every colour twice — the LINEAR triple the implementer writes and the
+	 * sRGB hex the designer checks — and says in as many words that confusing the two is how a palette
+	 * drifts. These are the linear ones, spelled here so that a production constant retuned away from
+	 * the design fails on a row that names the design rather than agreeing with whatever the widget
+	 * now uses. Build amber is the Caution band's own gold and destroy red is the destructive row's;
+	 * the two swatches are `M_Shed_Brick` and `M_Shed_Timber`'s own base colours, from
+	 * Scripts/Author-ShedMaterials.py — the chip and the thing the player lays are one colour.
+	 */
+	const FLinearColor DesignBuildAccent(0.95f, 0.66f, 0.13f, 1.0f);
+	const FLinearColor DesignDestroyAccent(0.72f, 0.16f, 0.14f, 1.0f);
+	const FLinearColor DesignBrickSwatch(0.35f, 0.06f, 0.04f, 1.0f);
+	const FLinearColor DesignTimberSwatch(0.45f, 0.22f, 0.09f, 1.0f);
+
+	/** Rounded chips with a drop edge — §a principle 1, "chunky rounded chips with a 2 px drop edge". */
+	constexpr float DesignChipCornerRadiusPx = 10.0f;
+	constexpr float DesignChipOutlineWidthPx = 2.0f;
+
+	/**
+	 * THE ALPHA A FADED CHIP MUST BE AT OR UNDER, AND THE ONE ITS CAPTION MUST BE AT OR UNDER.
+	 *
+	 * §e's disabled row is "chip fill @ 3 %, 50 % opacity, dim text". What matters is not the exact
+	 * number but that a greyed chip is VISIBLY not a live one: the model already refuses the click, so
+	 * a chip drawn like its live neighbour tells the player the game missed the press.
+	 */
+	constexpr float DisabledFillAlphaCeiling = 0.35f;
+	constexpr float DisabledCaptionAlphaCeiling = 0.5f;
+
+	bool ColoursExactlyEqual(const FLinearColor& A, const FLinearColor& B)
+	{
+		return A.R == B.R && A.G == B.G && A.B == B.B && A.A == B.A;
+	}
+
+	bool ColoursExactlyEqualRGB(const FLinearColor& A, const FLinearColor& B)
+	{
+		return A.R == B.R && A.G == B.G && A.B == B.B;
+	}
+
+	FString DescribeColour(const FLinearColor& C)
+	{
+		return FString::Printf(TEXT("(%g, %g, %g, a %g)"), C.R, C.G, C.B, C.A);
+	}
+
+	/**
+	 * HOW BRIGHT A COLOUR READS, on the linear luminance weights.
+	 *
+	 * The active chip's caption is DARK INK on a lit fill and an idle chip's is a readable grey, and
+	 * "dark" and "readable" are the claim rather than any one triple — pinning §e's exact
+	 * (0.02, 0.015, 0.01) would make every future nudge of the ink a failure with nothing wrong
+	 * behind it.
+	 */
+	double LinearLuminance(const FLinearColor& C)
+	{
+		return 0.2126 * C.R + 0.7152 * C.G + 0.0722 * C.B;
+	}
+
+	FString DescribeLook(const DestructionSession::FChipLook& Look)
+	{
+		return FString::Printf(
+			TEXT("fill %s, outline %s, caption %s, radius %g, edge %g, %s"),
+			*DescribeColour(Look.Fill), *DescribeColour(Look.Outline), *DescribeColour(Look.Caption),
+			Look.CornerRadiusPx, Look.OutlineWidthPx,
+			Look.bBoldCaption ? TEXT("BOLD") : TEXT("regular"));
+	}
+
+	bool ColourIsFinite(const FLinearColor& C)
+	{
+		return FMath::IsFinite(C.R) && FMath::IsFinite(C.G) && FMath::IsFinite(C.B)
+			&& FMath::IsFinite(C.A);
+	}
+
 	/** Every button the model knows, so a sweep covers the whole vocabulary rather than a favourite few. */
 	TArray<DestructionSession::EToolbarButtonId> AllButtonIds()
 	{
@@ -1465,6 +1612,589 @@ bool FSessionToolbarDemoBuildingHeightsTest::RunTest(const FString& Parameters)
 			TEXT("the ground offset must BE the palette brick's half height, which is %g cm"),
 			BrickHalfExtentCm.Z),
 		BrickHalfExtentCm.Z, BrickHalfHeightCm);
+
+	return true;
+}
+
+/**
+ * EVERY CHIP KNOWS WHICH REGION OF THE STRIP IT IS IN AND WHICH PIECE IT LAYS, THE THREE REGIONS ARE
+ * CONTIGUOUS AND IN ORDER, AND THE MODE PAIR IS EXACTLY THE FIRST REGION.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * `SessionToolbarButtons` answers, per button, which of the three regions of the strip it belongs to
+ * (`Mode`, `Settings`, `Command`) and which piece swatch it carries (`Brick`, `Timber`, `None`), and
+ * the list it returns is those regions in that order with no interleaving.
+ *
+ * =====================================================================================
+ * WHY THE GROUP IS A MODEL ANSWER RATHER THAN A RUN OF AddSlot CALLS
+ * =====================================================================================
+ *
+ * SESSION_UI_DESIGN §b draws the strip as three regions separated by 1 px rules, and the reason it
+ * gives is not decoration: the commands sit past a rule "so that a destructive click is never
+ * adjacent to a setting click". That is a decision about where `Clear build` may be, and a widget
+ * that decided it by counting slots would hold the decision in the one place no test can reach —
+ * Core/SessionToolbar.h's own argument, applied to the thing that separates the buttons rather than
+ * to the buttons.
+ *
+ * CONTIGUITY IS THE CLAIM THAT MAKES A RULE DRAWABLE AT ALL. A widget draws a divider where the
+ * group changes; if a group could appear twice, the strip would grow a rule in the middle of a
+ * region and the three-region reading — the thing a player navigates by from peripheral vision —
+ * would be gone. Asserting it here is what lets the Slate side simply compare neighbours.
+ *
+ * AND THE MODE PAIR IS EXACTLY THE FIRST GROUP, which is `SessionToolbarButtons`' existing ordering
+ * promise restated in the new vocabulary: the two buttons that switch modes may not move, because a
+ * strip whose first slots shifted would put a different button under a stationary cursor.
+ *
+ * THE SWATCH IS THE OTHER HALF OF §a's "the chip looks like the thing you are about to lay". It is
+ * a KIND rather than a colour, for the reason `EJointMarginBand` is a band rather than a green: the
+ * model decides that a brick chip carries a brick, and the widget decides which red.
+ *
+ * SWEPT OVER ALL 72 STATES, because both claims are about every strip the session can draw, and a
+ * hand-picked state or two covers only the shapes the author had in mind.
+ *
+ * NEEDS A TICKING WORLD: no, and not even a world.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSessionToolbarGroupsAndSwatchesTest,
+	"DestructionGame.Core.SessionToolbar.GroupsAndSwatches",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
+{
+	using namespace SessionToolbarTestSupport;
+	using namespace DestructionSession;
+
+	/*
+	 * THE GROUPS IN THE ORDER THEY MUST APPEAR, read as a rank rather than as the enumerator's own
+	 * value — so the claim is "left to right, tabs then settings then command" rather than "the
+	 * enumerators happen to be declared in that order", which is a different and much weaker thing.
+	 */
+	const auto RankOf = [](EToolbarGroup Group)
+	{
+		switch (Group)
+		{
+		case EToolbarGroup::Mode:     return 0;
+		case EToolbarGroup::Settings: return 1;
+		case EToolbarGroup::Command:  return 2;
+		}
+
+		return 3;
+	};
+
+	/*
+	 * HOW MANY BUTTONS THE SWEEP OWES, ACCUMULATED FROM THE MODE AND SETTLED AT THE END. The same
+	 * measured floor Core.SessionToolbar.Labels carries: every claim below is a loop over the buttons
+	 * that came back, so a model returning nothing would satisfy all of them by having nothing to
+	 * check.
+	 */
+	int32 ButtonsOwed = 0;
+	int32 ButtonsSeen = 0;
+
+	for (const FSessionToolbarState& State : AllStates())
+	{
+		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
+		const bool bBuilding = State.Mode == ESessionMode::Build;
+
+		ButtonsOwed += bBuilding ? 10 : 3;
+
+		int32 ModeGroupButtons = 0;
+		int32 BrickSwatches = 0;
+		int32 TimberSwatches = 0;
+
+		for (int32 Index = 0; Index < Buttons.Num(); ++Index)
+		{
+			const FToolbarButton& Button = Buttons[Index];
+
+			++ButtonsSeen;
+
+			const EToolbarGroup ExpectedGroup = ExpectedGroupOf(Button.Id);
+			const EToolbarSwatch ExpectedSwatch = ExpectedSwatchOf(Button.Id);
+
+			TestEqual(
+				FString::Printf(
+					TEXT("%s: %s belongs to the %s group, it reports %s — [%s]"),
+					*DescribeState(State), NameOfButton(Button.Id), NameOfGroup(ExpectedGroup),
+					NameOfGroup(Button.Group), *DescribeButtons(Buttons)),
+				static_cast<int32>(Button.Group), static_cast<int32>(ExpectedGroup));
+
+			TestEqual(
+				FString::Printf(
+					TEXT("%s: %s carries the %s swatch, it reports %s — the chip must look like the "
+						 "thing the player is about to lay — [%s]"),
+					*DescribeState(State), NameOfButton(Button.Id), NameOfSwatch(ExpectedSwatch),
+					NameOfSwatch(Button.Swatch), *DescribeButtons(Buttons)),
+				static_cast<int32>(Button.Swatch), static_cast<int32>(ExpectedSwatch));
+
+			ModeGroupButtons += Button.Group == EToolbarGroup::Mode ? 1 : 0;
+			BrickSwatches += Button.Swatch == EToolbarSwatch::Brick ? 1 : 0;
+			TimberSwatches += Button.Swatch == EToolbarSwatch::Timber ? 1 : 0;
+
+			/*
+			 * NON-DECREASING RANK IS CONTIGUITY AND ORDER IN ONE COMPARISON. Anything that appeared
+			 * twice would have to come back after a higher rank, and anything out of order would
+			 * step down; both show up here as the same failure.
+			 */
+			if (Index > 0)
+			{
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s: the strip's groups must run Mode, Settings, Command with no "
+							 "interleaving — %s (%s) follows %s (%s). A group that appeared twice "
+							 "would put a divider in the middle of a region — [%s]"),
+						*DescribeState(State), NameOfButton(Button.Id), NameOfGroup(Button.Group),
+						NameOfButton(Buttons[Index - 1].Id), NameOfGroup(Buttons[Index - 1].Group),
+						*DescribeButtons(Buttons)),
+					RankOf(Button.Group) >= RankOf(Buttons[Index - 1].Group));
+			}
+		}
+
+		/*
+		 * THE MODE PAIR IS EXACTLY THE FIRST GROUP: two buttons, both of them first. With the
+		 * non-decreasing claim above, "exactly two are Mode" is enough to place them — but the two
+		 * slots are asserted directly as well, because that is the player-facing promise and it
+		 * deserves to fail by name.
+		 */
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: exactly two buttons are mode tabs — [%s]"),
+				*DescribeState(State), *DescribeButtons(Buttons)),
+			ModeGroupButtons, 2);
+
+		if (Buttons.Num() >= 2)
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: the first two slots ARE the mode group — a strip whose first slots "
+						 "shifted would put a different button under a cursor that has not moved. "
+						 "They are %s and %s — [%s]"),
+					*DescribeState(State), NameOfGroup(Buttons[0].Group),
+					NameOfGroup(Buttons[1].Group), *DescribeButtons(Buttons)),
+				Buttons[0].Group == EToolbarGroup::Mode && Buttons[1].Group == EToolbarGroup::Mode);
+		}
+
+		/*
+		 * AND THE PALETTE CARRIES ONE BRICK AND TWO PLANKS, in the mode that draws it. Counted as
+		 * well as checked per button so that a model answering `None` everywhere — the inert
+		 * scaffold's own answer — fails on a row that says the swatches are missing rather than
+		 * only on three per-button rows.
+		 */
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: the strip must carry %d brick swatch(es) — [%s]"),
+				*DescribeState(State), bBuilding ? 1 : 0, *DescribeButtons(Buttons)),
+			BrickSwatches, bBuilding ? 1 : 0);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: the strip must carry %d timber swatch(es) — [%s]"),
+				*DescribeState(State), bBuilding ? 2 : 0, *DescribeButtons(Buttons)),
+			TimberSwatches, bBuilding ? 2 : 0);
+	}
+
+	TestEqual(
+		FString::Printf(
+			TEXT("the sweep must actually have read %d buttons, it read %d — a strip that drew none "
+				 "would pass every claim above by having nothing to check"),
+			ButtonsOwed, ButtonsSeen),
+		ButtonsSeen, ButtonsOwed);
+
+	return true;
+}
+
+/**
+ * A CHIP'S LOOK IS A MODEL ANSWER: ROUNDED AND EDGED ALWAYS, THE MODE'S ACCENT WHEN IT IS THE ONE
+ * YOU HAVE CHOSEN, FADED WHEN IT CANNOT BE CLICKED, AND THE "GO" CHIP LIT WITHOUT BEING LATCHED.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * `ChipLookFor(Button, Mode)` turns the two flags the model already decided — `bActive` and
+ * `bEnabled` — plus the button's own identity into the fill, the caption colour, the caption weight
+ * and the chip's geometry, so that three visual states are three and the accent on a lit chip is the
+ * MODE's accent.
+ *
+ * =====================================================================================
+ * WHY THE LOOK IS DECIDED HERE AND NOT IN SLATE
+ * =====================================================================================
+ *
+ * §e states the rule and gives the reason in the same breath: "three visual states, and they must be
+ * three, for the reason `EBrickHighlight` has ten and not one — `bActive` and `bEnabled` are
+ * different questions and a widget that drew them alike would make a lit button that does nothing
+ * indistinguishable from a greyed one that works." That is a decision with a player-facing
+ * consequence, and today it is spelled as two ternaries inside `BuildSessionToolbarPanel` where
+ * nothing can read it: the panel test can only say "the lit one looks different from the idle one",
+ * which a decorative alternation would satisfy forever.
+ *
+ * WHAT IS PINNED EXACTLY AND WHAT IS PINNED AS A RELATION, deliberately:
+ *
+ *   - THE ACCENT IS EXACT. It is the design's own build amber and destroy red, which are the Caution
+ *     band's gold and the destructive row's red — the same two colours this UI already uses — and
+ *     equality is the point: a third and fourth hue for the same two ideas is two more things to keep
+ *     in step with nothing holding them there.
+ *
+ *   - THE IDLE FILL IS NOT. §e's chip fill is a dark slate and nudging it is free; what may not drift
+ *     is that it is NEITHER accent (an idle chip that reads as chosen is a lie about the session) and
+ *     that it is not faded (an idle chip that reads as greyed is a lie about the click).
+ *
+ *   - THE CAPTION IS A LUMINANCE BAND rather than a triple, for the same reason.
+ *
+ * THE "GO" CHIP IS THE ROW THAT IS NOT A RESTATEMENT. `Run structure` is a COMMAND — the model's own
+ * rule is that a command is never `bActive`, because "a latched Clear button reads as a mode the
+ * player is stuck in" — and yet §e asks for it "filled in the destroy accent". Those two are only
+ * compatible if the fill is a function of the BUTTON and not merely of `bActive`, which is exactly
+ * what this test forces and what a widget writing `bActive ? Accent : Idle` cannot express.
+ *
+ * AND `Clear build` IS DANGER IN THE CAPTION, NOT IN THE FILL. It is the one irreversible control in
+ * the Build group (`FPieceAction::bIsDestructive` is the house precedent that destructiveness is
+ * data), but a chip filled destroy-red sitting on an amber strip would read as the mode you are in.
+ * So: idle fill, warm caption — asserted as a relation between channels rather than as a hue.
+ *
+ * EVERY LOOK IS FINITE, which is the fail-closed row. A colour channel that is not a number becomes
+ * a chip Slate draws as whatever the clamp happens to return, and DESIGN §4 is explicit that
+ * `FMath::Max` discards a NaN and `FMath::Min` replaces it — so a degenerate look becomes a
+ * plausible one rather than an obvious fault.
+ *
+ * NEEDS A TICKING WORLD: no, and not even a world — which is the whole reason the look is a free
+ * function. `World.Session.ToolbarChipsAreRoundedAndGrouped` is where the widget is held against it.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSessionToolbarChipLookTest,
+	"DestructionGame.Core.SessionToolbar.ChipLook",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
+{
+	using namespace SessionToolbarTestSupport;
+	using namespace DestructionSession;
+
+	/* --- ONE: the two accents and the two swatches are the design's own colours ------------- */
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("BUILD MODE'S ACCENT IS THE DESIGN'S AMBER %s — the Caution band's gold and the "
+				 "ghost's own colour, reused rather than re-picked. It is %s"),
+			*DescribeColour(DesignBuildAccent), *DescribeColour(ModeAccent(ESessionMode::Build))),
+		ColoursExactlyEqual(ModeAccent(ESessionMode::Build), DesignBuildAccent));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("AND DESTROY MODE'S IS THE DESIGN'S RED %s — the destructive row's. It is %s"),
+			*DescribeColour(DesignDestroyAccent), *DescribeColour(ModeAccent(ESessionMode::Destroy))),
+		ColoursExactlyEqual(ModeAccent(ESessionMode::Destroy), DesignDestroyAccent));
+
+	/*
+	 * AND THEY ARE DIFFERENT COLOURS, which is the precondition every claim below leans on: "the lit
+	 * chip is the MODE's accent" says nothing at all if the two modes share one.
+	 */
+	TestFalse(
+		*FString::Printf(
+			TEXT("the two modes must not share an accent — which mode you are in is the highest-order "
+				 "fact on the screen. Both read %s"),
+			*DescribeColour(ModeAccent(ESessionMode::Build))),
+		ColoursExactlyEqualRGB(ModeAccent(ESessionMode::Build), ModeAccent(ESessionMode::Destroy)));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("THE BRICK SWATCH IS THE CLAY BRICK'S OWN COLOUR %s, which is M_Shed_Brick's base "
+				 "colour — the chip and the brick the player lays are one colour. It is %s"),
+			*DescribeColour(DesignBrickSwatch),
+			*DescribeColour(SwatchColour(EToolbarSwatch::Brick))),
+		ColoursExactlyEqual(SwatchColour(EToolbarSwatch::Brick), DesignBrickSwatch));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("AND THE TIMBER SWATCH IS M_Shed_Timber'S %s. It is %s"),
+			*DescribeColour(DesignTimberSwatch),
+			*DescribeColour(SwatchColour(EToolbarSwatch::Timber))),
+		ColoursExactlyEqual(SwatchColour(EToolbarSwatch::Timber), DesignTimberSwatch));
+
+	TestEqual(
+		FString::Printf(
+			TEXT("A CHIP WITH NO SWATCH DRAWS NOTHING, so the no-swatch colour is transparent rather "
+				 "than a colour that would paint a block on every command chip. Its alpha is %g"),
+			SwatchColour(EToolbarSwatch::None).A),
+		SwatchColour(EToolbarSwatch::None).A, 0.0f);
+
+	/*
+	 * FAIL CLOSED ON A VALUE NOBODY DECLARED. Both enums are uint8 and a cast is all it takes; a
+	 * swatch that is not a swatch must draw nothing rather than a plausible block, and an accent that
+	 * is not a mode's must still be a colour Slate can draw.
+	 */
+	TestEqual(
+		FString::Printf(
+			TEXT("FAIL CLOSED: a swatch kind this build has never heard of must draw nothing; its "
+				 "alpha is %g"),
+			SwatchColour(static_cast<EToolbarSwatch>(200)).A),
+		SwatchColour(static_cast<EToolbarSwatch>(200)).A, 0.0f);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("FAIL CLOSED: a session mode this build has never heard of must still answer with a "
+				 "real colour, it answered %s"),
+			*DescribeColour(ModeAccent(static_cast<ESessionMode>(200)))),
+		ColourIsFinite(ModeAccent(static_cast<ESessionMode>(200))));
+
+	/* --- TWO: the three visual states, over every chip of every strip ----------------------- */
+
+	int32 IdleChips = 0;
+	int32 ActiveChips = 0;
+	int32 DisabledChips = 0;
+	int32 GoChips = 0;
+	int32 DangerChips = 0;
+
+	for (const FSessionToolbarState& State : AllStates())
+	{
+		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
+		const FLinearColor Accent = ModeAccent(State.Mode);
+
+		int32 AccentLitModeChips = 0;
+		int32 AccentLitPieceChips = 0;
+		int32 AccentLitPlacementChips = 0;
+
+		for (const FToolbarButton& Button : Buttons)
+		{
+			const FChipLook Look = ChipLookFor(Button, State.Mode);
+
+			const FString Where = FString::Printf(
+				TEXT("%s: %s reads [%s]"),
+				*DescribeState(State), NameOfButton(Button.Id), *DescribeLook(Look));
+
+			/* EVERY CHIP IS A NUMBER. The fail-closed row, and it is cheap. */
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s — every channel of every colour must be finite; a NaN becomes whatever "
+						 "the clamp returns rather than an obvious fault"),
+					*Where),
+				ColourIsFinite(Look.Fill) && ColourIsFinite(Look.Outline)
+					&& ColourIsFinite(Look.Caption)
+					&& FMath::IsFinite(Look.CornerRadiusPx) && FMath::IsFinite(Look.OutlineWidthPx));
+
+			/* ROUNDED AND EDGED, ALWAYS — §a principle 1's chunky chip with its 2 px drop edge. */
+			TestEqual(
+				FString::Printf(
+					TEXT("%s — every chip is rounded at %g px"), *Where, DesignChipCornerRadiusPx),
+				Look.CornerRadiusPx, DesignChipCornerRadiusPx);
+
+			TestEqual(
+				FString::Printf(
+					TEXT("%s — and carries a %g px drop edge"), *Where, DesignChipOutlineWidthPx),
+				Look.OutlineWidthPx, DesignChipOutlineWidthPx);
+
+			if (!Button.bEnabled)
+			{
+				++DisabledChips;
+
+				/*
+				 * DISABLED IS FADED, AND FADED IS NOT ACCENTED. The model already refuses the click;
+				 * what this stops is the strip telling the player the click is going to do something.
+				 */
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s — A GREYED CHIP MUST BE FADED: its fill alpha must be at or under "
+							 "%g, it is %g"),
+						*Where, DisabledFillAlphaCeiling, Look.Fill.A),
+					Look.Fill.A <= DisabledFillAlphaCeiling);
+
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s — and its caption dimmed to at or under %g alpha, it is %g"),
+						*Where, DisabledCaptionAlphaCeiling, Look.Caption.A),
+					Look.Caption.A <= DisabledCaptionAlphaCeiling);
+
+				TestFalse(
+					*FString::Printf(
+						TEXT("%s — a greyed chip must NOT wear the mode's accent %s; a lit chip that "
+							 "does nothing is the failure bEnabled exists for"),
+						*Where, *DescribeColour(Accent)),
+					ColoursExactlyEqualRGB(Look.Fill, Accent));
+
+				TestFalse(
+					*FString::Printf(TEXT("%s — nor a bold caption, which is the lit chip's weight"),
+						*Where),
+					Look.bBoldCaption);
+			}
+			else if (Button.bActive)
+			{
+				++ActiveChips;
+
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s — THE CHIP YOU HAVE CHOSEN IS FILLED WITH THE MODE'S ACCENT %s "
+							 "exactly. Everything lit on a Build strip is amber and everything lit "
+							 "on a Destroy strip is red, so the colour of the strip is itself a "
+							 "reading of which mode you are in"),
+						*Where, *DescribeColour(Accent)),
+					ColoursExactlyEqual(Look.Fill, Accent));
+
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s — and its caption is DARK INK on that fill: luminance must be under "
+							 "0.1, it is %g. A pale caption on amber is unreadable at a glance, "
+							 "which is the one thing the lit chip exists for"),
+						*Where, LinearLuminance(Look.Caption)),
+					LinearLuminance(Look.Caption) < 0.1);
+
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s — and it is BOLD. The chip says bActive twice, in the fill and in "
+							 "the weight: one is read from peripheral vision and the other by a "
+							 "player looking straight at it"),
+						*Where),
+					Look.bBoldCaption);
+			}
+			else if (Button.Id == EToolbarButtonId::RunStructure)
+			{
+				++GoChips;
+
+				/*
+				 * THE "GO" CHIP. A command is never bActive — the model guarantees it — so a widget
+				 * that filled on bActive alone could never draw this, and §e asks for it anyway.
+				 */
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s — RUN STRUCTURE IS THE 'GO' CHIP and is filled in the destroy accent "
+							 "%s even though it is never bActive. A command that looked like every "
+							 "other chip is a command nobody finds"),
+						*Where, *DescribeColour(ModeAccent(ESessionMode::Destroy))),
+					ColoursExactlyEqual(Look.Fill, ModeAccent(ESessionMode::Destroy)));
+			}
+			else
+			{
+				++IdleChips;
+
+				/*
+				 * IDLE: NOT CHOSEN AND NOT GREYED, AND IT MUST LOOK LIKE NEITHER. The exact fill is
+				 * the widget's to nudge; these two are what may not drift.
+				 */
+				TestFalse(
+					*FString::Printf(
+						TEXT("%s — an idle chip must NOT wear the mode's accent %s, or the player "
+							 "cannot tell what they have chosen"),
+						*Where, *DescribeColour(Accent)),
+					ColoursExactlyEqualRGB(Look.Fill, Accent));
+
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s — nor may it be faded like a greyed one: its fill alpha must be "
+							 "above %g, it is %g"),
+						*Where, DisabledFillAlphaCeiling, Look.Fill.A),
+					Look.Fill.A > DisabledFillAlphaCeiling);
+
+				TestFalse(
+					*FString::Printf(
+						TEXT("%s — and an idle caption is not bold; the weight is how bActive is said "
+							 "in type"),
+						*Where),
+					Look.bBoldCaption);
+
+				TestTrue(
+					*FString::Printf(
+						TEXT("%s — and its caption is readable: alpha must be above %g, it is %g"),
+						*Where, DisabledCaptionAlphaCeiling, Look.Caption.A),
+					Look.Caption.A > DisabledCaptionAlphaCeiling);
+
+				if (Button.Id == EToolbarButtonId::ClearBuild)
+				{
+					++DangerChips;
+
+					/*
+					 * DANGER IN THE CAPTION, NOT IN THE FILL. A chip filled destroy-red on an amber
+					 * strip would read as the mode you are in; a warm caption reads as a warning.
+					 */
+					TestTrue(
+						*FString::Printf(
+							TEXT("%s — CLEAR BUILD IS THE ONE IRREVERSIBLE CONTROL IN THE BUILD GROUP "
+								 "and its caption must be tinted toward the danger red: R must "
+								 "exceed both G and B"),
+							*Where),
+						Look.Caption.R > Look.Caption.G && Look.Caption.R > Look.Caption.B);
+				}
+				else
+				{
+					TestTrue(
+						*FString::Printf(
+							TEXT("%s — an idle caption is bright: luminance must be at least 0.5, it "
+								 "is %g"),
+							*Where, LinearLuminance(Look.Caption)),
+						LinearLuminance(Look.Caption) >= 0.5);
+				}
+			}
+
+			/*
+			 * AND NO CHIP OF A BUILD STRIP MAY WEAR THE DESTROY ACCENT IN ITS FILL. The mode's accent
+			 * is the MODE's: a red chip on an amber strip is the one thing that would make "which
+			 * mode am I in" unreadable from the corner of an eye.
+			 */
+			if (State.Mode == ESessionMode::Build)
+			{
+				TestFalse(
+					*FString::Printf(
+						TEXT("%s — nothing on a BUILD strip may be filled with the destroy accent %s"),
+						*Where, *DescribeColour(ModeAccent(ESessionMode::Destroy))),
+					ColoursExactlyEqualRGB(Look.Fill, ModeAccent(ESessionMode::Destroy)));
+			}
+
+			if (Button.bActive && ColoursExactlyEqual(Look.Fill, Accent))
+			{
+				AccentLitModeChips += Button.Group == EToolbarGroup::Mode ? 1 : 0;
+
+				AccentLitPieceChips += (Button.Id == EToolbarButtonId::PieceBrick
+					|| Button.Id == EToolbarButtonId::PieceTimberPlate
+					|| Button.Id == EToolbarButtonId::PieceTimberLintel) ? 1 : 0;
+
+				AccentLitPlacementChips += (Button.Id == EToolbarButtonId::PlacementSnap
+					|| Button.Id == EToolbarButtonId::PlacementFree) ? 1 : 0;
+			}
+		}
+
+		/*
+		 * EXACTLY ONE LIT CHIP PER SETTING GROUP, COUNTED THROUGH THE FILL. Core.SessionToolbar's
+		 * ActiveFlags already counts bActive; what this counts is the chips that came out ACCENTED,
+		 * which is the same claim one layer further on — a look function that ignored bActive would
+		 * satisfy ActiveFlags forever and light nothing.
+		 */
+		const bool bBuilding = State.Mode == ESessionMode::Build;
+
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: exactly one MODE tab must come out accented — [%s]"),
+				*DescribeState(State), *DescribeButtons(Buttons)),
+			AccentLitModeChips, 1);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: exactly one PIECE chip must come out accented when the palette is drawn — "
+					 "[%s]"),
+				*DescribeState(State), *DescribeButtons(Buttons)),
+			AccentLitPieceChips, bBuilding ? 1 : 0);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: exactly one PLACEMENT chip must come out accented when the pair is drawn — "
+					 "[%s]"),
+				*DescribeState(State), *DescribeButtons(Buttons)),
+			AccentLitPlacementChips, bBuilding ? 1 : 0);
+	}
+
+	/*
+	 * AND EVERY ONE OF THE FIVE SHAPES WAS ACTUALLY REACHED. Four of the five arms above are inside
+	 * an if/else over the model's own flags, so a model that never greyed anything — or a strip that
+	 * drew nothing — would leave whole arms unentered and every claim in them unmade.
+	 */
+	AddInfo(FString::Printf(
+		TEXT("the sweep read %d idle chips, %d lit, %d greyed, %d 'go' and %d danger-captioned"),
+		IdleChips, ActiveChips, DisabledChips, GoChips, DangerChips));
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the sweep must have reached all five shapes for its claims to mean anything: idle "
+				 "%d, active %d, disabled %d, go %d, danger %d"),
+			IdleChips, ActiveChips, DisabledChips, GoChips, DangerChips),
+		IdleChips > 0 && ActiveChips > 0 && DisabledChips > 0 && GoChips > 0 && DangerChips > 0);
 
 	return true;
 }

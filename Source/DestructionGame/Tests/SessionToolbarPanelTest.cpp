@@ -7,8 +7,11 @@
 #include "Layout/ArrangedChildren.h"
 #include "Layout/ArrangedWidget.h"
 #include "Layout/Geometry.h"
+#include "Styling/SlateBrush.h"
 #include "Styling/SlateColor.h"
+#include "Styling/SlateTypes.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/SWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -159,18 +162,31 @@ namespace SessionToolbarPanelTestSupport
 	}
 
 	/**
-	 * A chip's fill, as a string.
+	 * A chip's fill, as a string — READ OFF THE BRUSH THE CHIP IS ACTUALLY WEARING.
 	 *
-	 * AN UNSPECIFIED COLOUR IS ITS OWN ANSWER rather than a read of `GetSpecifiedColor`, which is not
-	 * meaningful for a colour that defers to the style. Two buttons both deferring to the style read
-	 * the same, which is the honest answer: they look the same, and if that is how the strip draws
-	 * `bActive` then the font had better be doing the work instead.
+	 * IT USED TO READ `SButton::GetBorderBackgroundColor`, AND THAT READING WENT BLIND. While the
+	 * strip tinted a stock grey brush through `ButtonColorAndOpacity`, the background colour WAS the
+	 * chip's fill and the lit-versus-idle rows below were about a colour. The chip-styling slice moved
+	 * the fill into the button's own rounded-box brush and left the tint at its default white — so
+	 * every chip on the strip now answers that getter with the same white, and a comparison built on
+	 * it would report "these two look identical" for a strip drawn in two different colours, or worse,
+	 * pass forever on the font alone.
+	 *
+	 * THE BRUSH IS WHAT SButton PAINTS, so it is what the claim should be about. A brush with no
+	 * specified tint is still its own answer, for the reason the old one gave: two chips deferring to
+	 * something unreadable look the same, and if that is how the strip says `bActive` then the font
+	 * had better be doing the work instead.
 	 */
-	FString SessionColourBits(const FSlateColor& Colour)
+	FString SessionChipFillBits(const FSlateBrush* Brush)
 	{
-		return Colour.IsColorSpecified()
-			? Colour.GetSpecifiedColor().ToString()
-			: FString(TEXT("<from the style>"));
+		if (Brush == nullptr)
+		{
+			return FString(TEXT("<no brush>"));
+		}
+
+		return Brush->TintColor.IsColorSpecified()
+			? Brush->TintColor.GetSpecifiedColor().ToString()
+			: FString(TEXT("<from the style, unreadable>"));
 	}
 
 	/** One button of the drawn strip: what it reads, whether it is live, and how it looks. */
@@ -217,7 +233,7 @@ namespace SessionToolbarPanelTestSupport
 			Chip.Look = FString::Printf(
 				TEXT("font %s, fill %s"),
 				Caption.IsValid() ? *SessionFontBits(Caption->GetFont()) : TEXT("<no caption>"),
-				*SessionColourBits(Button->GetBorderBackgroundColor()));
+				*SessionChipFillBits(Button->GetBorderImage()));
 		}
 
 		FArrangedChildren Arranged(EVisibility::All);
@@ -490,6 +506,181 @@ namespace SessionToolbarPanelTestSupport
 		}
 
 		return Line;
+	}
+
+	/**
+	 * ONE ENTRY OF THE STRIP'S TOP-LEVEL RUN: a chip, or something between two chips.
+	 *
+	 * THE WALK STOPS AT A CHIP, WHICH IS THE WHOLE POINT OF THIS LIST. The claim below is about what
+	 * sits BETWEEN the chips — a 1 px rule where the group changes and nothing where it does not —
+	 * and a chip's own insides (its caption, and the piece swatch this slice adds) are not between
+	 * anything. Descending into them would count the swatch as a divider.
+	 */
+	struct FSessionStripItem
+	{
+		FString Type;
+		bool bIsChip = false;
+		float WidthPx = 0.0f;
+		float HeightPx = 0.0f;
+		TSharedPtr<SWidget> Widget;
+		FGeometry Geometry;
+	};
+
+	void SessionCollectStripRun(
+		const TSharedRef<SWidget>& Widget,
+		const FGeometry& Geometry,
+		TArray<FSessionStripItem>& Out)
+	{
+		const bool bIsChip = Widget->GetType() == TEXT("SButton");
+
+		FSessionStripItem& Item = Out.AddDefaulted_GetRef();
+		Item.Type = Widget->GetType().ToString();
+		Item.bIsChip = bIsChip;
+		Item.WidthPx = static_cast<float>(Geometry.GetLocalSize().X);
+		Item.HeightPx = static_cast<float>(Geometry.GetLocalSize().Y);
+		Item.Widget = Widget;
+		Item.Geometry = Geometry;
+
+		if (bIsChip)
+		{
+			return;
+		}
+
+		FArrangedChildren Arranged(EVisibility::All);
+
+		Widget->ArrangeChildren(Geometry, Arranged);
+
+		for (int32 Index = 0; Index < Arranged.Num(); ++Index)
+		{
+			SessionCollectStripRun(Arranged[Index].Widget, Arranged[Index].Geometry, Out);
+		}
+	}
+
+	/**
+	 * WHETHER AN ITEM IS A DIVIDER: a hairline of something that is not a chip.
+	 *
+	 * MEASURED RATHER THAN NAMED, because the widget class is the widget's business — an SBorder, an
+	 * SImage or an SSeparator all draw the same line. What makes it a rule is that it is under 3 px
+	 * wide and tall enough to be seen, which nothing else on a 48 px strip is: the chips are dozens of
+	 * pixels wide, the course readout is a word, and the padding is empty space rather than a widget.
+	 */
+	bool SessionItemIsARule(const FSessionStripItem& Item)
+	{
+		return !Item.bIsChip && Item.WidthPx > 0.0f && Item.WidthPx < 3.0f && Item.HeightPx >= 2.0f;
+	}
+
+	/** Whether any STextBlock lives under this widget — which is what makes a box a swatch and not a caption. */
+	bool SessionHasTextDescendant(const TSharedRef<SWidget>& Widget)
+	{
+		if (Widget->GetType() == TEXT("STextBlock"))
+		{
+			return true;
+		}
+
+		FChildren* const Children = Widget->GetChildren();
+
+		for (int32 Index = 0; Children != nullptr && Index < Children->Num(); ++Index)
+		{
+			if (SessionHasTextDescendant(Children->GetChildAt(Index)))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/** One little block of colour drawn on a chip, before its caption. */
+	struct FSessionSwatch
+	{
+		FString Type;
+		float WidthPx = 0.0f;
+		float HeightPx = 0.0f;
+		bool bColourSpecified = false;
+		FLinearColor Colour = FLinearColor::Transparent;
+	};
+
+	/**
+	 * THE SWATCHES DRAWN INSIDE ONE CHIP, BEFORE ITS CAPTION.
+	 *
+	 * BEFORE THE CAPTION IS PART OF THE CLAIM. §e puts the swatch "in place of a size caption" on the
+	 * piece chips, and a block of brick red drawn AFTER the word reads as a status light rather than
+	 * as the thing about to be laid. Pre-order arrangement is left-to-right, so "before" is an index.
+	 *
+	 * A SWATCH IS A COLOURED BOX WITH NO WORDS IN IT AND IT IS SHORTER THAN THE CHIP. The height bound
+	 * is what separates it from the wrappers a chip's content sits in, which are the chip's own full
+	 * 34 px; nothing about its exact size is claimed here beyond that.
+	 */
+	TArray<FSessionSwatch> SessionChipSwatches(const FSessionStripItem& Chip)
+	{
+		TArray<FArrangedWidget> Inside;
+
+		SessionCollectArranged(Chip.Widget.ToSharedRef(), Chip.Geometry, Inside);
+
+		int32 FirstText = Inside.Num();
+
+		for (int32 Index = 0; Index < Inside.Num(); ++Index)
+		{
+			if (Inside[Index].Widget->GetType() == TEXT("STextBlock"))
+			{
+				FirstText = Index;
+				break;
+			}
+		}
+
+		TArray<FSessionSwatch> Swatches;
+
+		for (int32 Index = 0; Index < FirstText; ++Index)
+		{
+			const TSharedRef<SWidget> Widget = Inside[Index].Widget;
+
+			if (Widget == Chip.Widget || SessionHasTextDescendant(Widget))
+			{
+				continue;
+			}
+
+			const FVector2f SizePx = FVector2f(Inside[Index].Geometry.GetLocalSize());
+
+			if (SizePx.X < 3.0f || SizePx.Y < 2.0f || SizePx.Y > 20.0f)
+			{
+				continue;
+			}
+
+			FSessionSwatch& Swatch = Swatches.AddDefaulted_GetRef();
+			Swatch.Type = Widget->GetType().ToString();
+			Swatch.WidthPx = SizePx.X;
+			Swatch.HeightPx = SizePx.Y;
+
+			if (Widget->GetType() == TEXT("SBorder"))
+			{
+				const FSlateColor Fill =
+					StaticCastSharedRef<SBorder>(Widget)->GetBorderBackgroundColor();
+
+				Swatch.bColourSpecified = Fill.IsColorSpecified();
+				Swatch.Colour = Fill.IsColorSpecified()
+					? Fill.GetSpecifiedColor() : FLinearColor::Transparent;
+			}
+		}
+
+		return Swatches;
+	}
+
+	bool SessionColoursExactlyEqual(const FLinearColor& A, const FLinearColor& B)
+	{
+		return A.R == B.R && A.G == B.G && A.B == B.B && A.A == B.A;
+	}
+
+	FString SessionDescribeColour(const FLinearColor& C)
+	{
+		return FString::Printf(TEXT("(%g, %g, %g, a %g)"), C.R, C.G, C.B, C.A);
+	}
+
+	/** A brush's tint, or a sentence saying it has none — never a silent zero. */
+	FString SessionDescribeTint(const FSlateBrush& Brush)
+	{
+		return Brush.TintColor.IsColorSpecified()
+			? SessionDescribeColour(Brush.TintColor.GetSpecifiedColor())
+			: FString(TEXT("<from the style, unreadable>"));
 	}
 
 	/** The SButton reading exactly this caption, found in the live tree so it can be pressed. */
@@ -1203,6 +1394,381 @@ bool FSessionToolbarShowsTheCourseReadoutTest::RunTest(const FString& Parameters
 				TEXT("and '%s' must be gone from it. The strip draws [%s]"),
 				*CourseZero, *SessionDescribeTexts(Texts)),
 			Texts.Contains(CourseZero));
+	}
+
+	TestWorld.End();
+
+	return true;
+}
+
+/**
+ * THE CHIPS ARE ROUNDED, EDGED, GROUPED BY A HAIRLINE RULE, AND THE PIECE CHIPS CARRY THE COLOUR OF
+ * THE THING THEY LAY.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * Every chip is drawn with a rounded-box brush at the look model's own corner radius and edge width
+ * and the look model's own fill, hover lifts that fill and a press pushes it down; a 1 px vertical
+ * rule sits between two chips whose `EToolbarGroup` differs and nowhere else; and each of the three
+ * piece chips carries one small block of its material's colour before its caption.
+ *
+ * =====================================================================================
+ * WHY THIS IS A DEFECT AND NOT A NICETY
+ * =====================================================================================
+ *
+ * The owner's words, 2026-09-15: "make the toolbar and the buttons look more fun". What is on screen
+ * today is `FCoreStyle`'s grey button brush with a colour multiplied through it — CURRENT_STATE
+ * records what that produces: "the lit accent is multiplied into FCoreStyle's grey button brush and
+ * reads as dark mustard / maroon; greyed chips differ mainly by caption dimming". A multiply cannot
+ * produce the design's amber, because the thing it is multiplying into is grey. So the accent this
+ * project chose is not the accent a player sees, and no amount of retuning the constant fixes it —
+ * the brush has to be the chip's own.
+ *
+ * AND THE STRIP HAS NO REGIONS. §b's three regions exist so that "a destructive click is never
+ * adjacent to a setting click": today `Clear build` sits one 5 px gap from `Course up`, drawn
+ * identically, and the only thing between a player and clearing their building is reading the word.
+ *
+ * =====================================================================================
+ * WHAT IS PINNED, AND WHY EACH ROW IS THE ONE THAT BITES
+ * =====================================================================================
+ *
+ *   - THE STYLE IS READ THROUGH `SessionChipStyleFor`, because `SButton` exposes no style getter.
+ *     A seam invented for a test is a smell, so it is welded to the widget in the same block: the
+ *     chip's own border brush must BE one of the four brushes of the style this function hands back,
+ *     by ADDRESS. That is not pedantry — `SButton` stores a raw `const FButtonStyle*` and never
+ *     copies it, so the storage behind this reference has to outlive the widget and not move. A
+ *     per-call temporary or a rehashing `TMap` value would be a dangling pointer on the next
+ *     placement, and this row is what says so before it is a crash.
+ *
+ *   - HOVER IS BRIGHTER AND A PRESS IS DARKER, as a RELATION rather than as two more triples. §e
+ *     asks for a chip that lifts on hover and presses down on click; the hues are the widget's.
+ *
+ *   - THE RULES ARE COUNTED BETWEEN EVERY PAIR OF NEIGHBOURING CHIPS, both ways round. "There is a
+ *     divider where the group changes" alone would be satisfied by a strip that drew a divider
+ *     between every pair, which is a different and much noisier design; "and none where it does not"
+ *     is the half that makes the three regions three.
+ *
+ *   - THE SWATCH IS ASSERTED BY COLOUR AND BY SHAPE. The colour is the model's `SwatchColour`, which
+ *     `Core.SessionToolbar.ChipLook` pins to the two shed materials' own base colours — so the chip
+ *     and the brick are one colour by construction rather than by two people picking the same red.
+ *     The shape claim is a relation: the timber plank is longer and thinner than the brick block,
+ *     which is what makes the three piece chips readable from each other without reading the words.
+ *
+ * WHAT IS DELIBERATELY NOT PINNED: the idle fill, the hover and press hues, the rule's own colour,
+ * the swatches' exact pixels, and every padding. Those are the widget's, and `Core.SessionToolbar.*`
+ * owns the decisions that are not.
+ *
+ * NEEDS A TICKING WORLD: a world, because the controller is an actor and entering Build mode opens a
+ * structure on the subsystem. It never ticks one and it never needs an RHI — layout is arithmetic on
+ * desired sizes, exactly as the three tests above it rely on.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSessionToolbarChipsAreRoundedAndGroupedTest,
+	"DestructionGame.World.Session.ToolbarChipsAreRoundedAndGrouped",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace DestructionSession;
+	using namespace SessionToolbarPanelTestSupport;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	ADestructionGamePlayerController* const Controller =
+		TestWorld.World->SpawnActor<ADestructionGamePlayerController>();
+
+	TestNotNull(TEXT("fixture: the test world should spawn the game's player controller"), Controller);
+
+	if (Controller == nullptr)
+	{
+		TestWorld.End();
+		return true;
+	}
+
+	/*
+	 * IN BUILD MODE, BECAUSE IT IS THE ONLY STRIP THAT DRAWS ALL THREE REGIONS AND ALL THREE
+	 * SWATCHES. The Destroy strip is mode-pair plus one command, which would exercise one rule and
+	 * no swatch at all.
+	 */
+	TestTrue(
+		TEXT("fixture: the Build tab must be clickable"),
+		Controller->OnToolbarButton(EToolbarButtonId::ModeBuild));
+
+	const FSessionToolbarState& State = Controller->GetSessionToolbarState();
+	const TArray<FToolbarButton> Model = SessionToolbarButtons(State);
+
+	/*
+	 * ONE PANEL, BUILT ONCE AND USED FOR EVERY CLAIM. The style rows compare the widget's own brush
+	 * pointer against the controller's storage, so a second panel built halfway through would be
+	 * comparing one tree's pointers against another tree's styles.
+	 */
+	const TSharedRef<SWidget> Panel = Controller->BuildSessionToolbarPanel();
+
+	Panel->SlatePrepass(1.0f);
+
+	TArray<FSessionStripItem> Run;
+
+	SessionCollectStripRun(Panel, SessionPanelRootGeometry(), Run);
+
+	TArray<int32> ChipItems;
+
+	for (int32 Index = 0; Index < Run.Num(); ++Index)
+	{
+		if (Run[Index].bIsChip)
+		{
+			ChipItems.Add(Index);
+		}
+	}
+
+	{
+		FString RunLine;
+
+		for (const FSessionStripItem& Item : Run)
+		{
+			if (Item.bIsChip || SessionItemIsARule(Item))
+			{
+				RunLine += FString::Printf(
+					TEXT("%s%s(%gx%g)"),
+					RunLine.IsEmpty() ? TEXT("") : TEXT(", "),
+					Item.bIsChip ? TEXT("CHIP") : *Item.Type, Item.WidthPx, Item.HeightPx);
+			}
+		}
+
+		AddInfo(FString::Printf(
+			TEXT("the Build strip's top-level run holds %d widgets; its chips and hairlines are [%s]"),
+			Run.Num(), *RunLine));
+	}
+
+	if (ChipItems.Num() != Model.Num())
+	{
+		AddError(FString::Printf(
+			TEXT("fixture: the strip must draw one chip per model row — %d, not %d. "
+				 "ToolbarPanelDrawsTheModel owns that claim; nothing below can be said without it"),
+			Model.Num(), ChipItems.Num()));
+
+		TestWorld.End();
+		return true;
+	}
+
+	/* --- ONE: every chip is a rounded box, and it is the style the model asked for ---------- */
+
+	for (int32 Index = 0; Index < Model.Num(); ++Index)
+	{
+		const FToolbarButton& Button = Model[Index];
+		const FSessionStripItem& Item = Run[ChipItems[Index]];
+		const FChipLook Look = ChipLookFor(Button, State.Mode);
+
+		const FButtonStyle& Style = Controller->SessionChipStyleFor(Button);
+
+		const FString Where = FString::Printf(TEXT("the chip reading '%s'"), *Button.Label);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s must be drawn as a ROUNDED BOX. FCoreStyle's grey button brush with a colour "
+					 "multiplied through it cannot produce the design's amber — the accent a player "
+					 "sees today is dark mustard. Its Normal brush draws as %d, RoundedBox is %d"),
+				*Where, static_cast<int32>(Style.Normal.DrawAs),
+				static_cast<int32>(ESlateBrushDrawType::RoundedBox)),
+			Style.Normal.DrawAs == ESlateBrushDrawType::RoundedBox);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s must be rounded at the look's own %g px, its brush says %g"),
+				*Where, Look.CornerRadiusPx, Style.Normal.OutlineSettings.CornerRadii.X),
+			Style.Normal.OutlineSettings.CornerRadii.X == Look.CornerRadiusPx);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s must carry the look's own %g px drop edge, its brush says %g"),
+				*Where, Look.OutlineWidthPx, Style.Normal.OutlineSettings.Width),
+			Style.Normal.OutlineSettings.Width == Look.OutlineWidthPx);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s must be FILLED with the look's own %s — the model decides the fill and the "
+					 "widget draws it; the brush tints %s"),
+				*Where, *SessionDescribeColour(Look.Fill), *SessionDescribeTint(Style.Normal)),
+			Style.Normal.TintColor.IsColorSpecified()
+				&& SessionColoursExactlyEqual(Style.Normal.TintColor.GetSpecifiedColor(), Look.Fill));
+
+		if (Style.Normal.TintColor.IsColorSpecified()
+			&& Style.Hovered.TintColor.IsColorSpecified()
+			&& Style.Pressed.TintColor.IsColorSpecified())
+		{
+			const FLinearColor Normal = Style.Normal.TintColor.GetSpecifiedColor();
+			const FLinearColor Hovered = Style.Hovered.TintColor.GetSpecifiedColor();
+			const FLinearColor Pressed = Style.Pressed.TintColor.GetSpecifiedColor();
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s must LIFT under the cursor: every channel of its hovered fill %s must be "
+						 "at least its normal %s, and at least one brighter. A chip that does not "
+						 "answer the cursor reads as scenery"),
+					*Where, *SessionDescribeColour(Hovered), *SessionDescribeColour(Normal)),
+				Hovered.R >= Normal.R && Hovered.G >= Normal.G && Hovered.B >= Normal.B
+					&& (Hovered.R > Normal.R || Hovered.G > Normal.G || Hovered.B > Normal.B));
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s must PRESS DOWN on click: every channel of its pressed fill %s must be at "
+						 "most its normal %s, and at least one darker"),
+					*Where, *SessionDescribeColour(Pressed), *SessionDescribeColour(Normal)),
+				Pressed.R <= Normal.R && Pressed.G <= Normal.G && Pressed.B <= Normal.B
+					&& (Pressed.R < Normal.R || Pressed.G < Normal.G || Pressed.B < Normal.B));
+		}
+
+		/*
+		 * AND THE CHIP ON SCREEN IS WEARING THAT STYLE OBJECT, BY ADDRESS. Without this row
+		 * SessionChipStyleFor is a function only a test calls, and the strip could go on drawing
+		 * FCoreStyle's grey while every claim above passed.
+		 */
+		const TSharedRef<SButton> Chip = StaticCastSharedRef<SButton>(Item.Widget.ToSharedRef());
+
+		const FSlateBrush* const Worn = Chip->GetBorderImage();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s must actually BE WEARING the style SessionChipStyleFor reports — its border "
+					 "brush must be one of that style's four. SButton stores a raw const FButtonStyle* "
+					 "and never copies it, so the storage behind that reference must outlive the "
+					 "widget and must not move"),
+				*Where),
+			Worn == &Style.Normal || Worn == &Style.Hovered || Worn == &Style.Pressed
+				|| Worn == &Style.Disabled);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s draws its border with a brush whose DrawAs is %d; a chip is rounded in "
+					 "whichever state it is in"),
+				*Where, Worn != nullptr ? static_cast<int32>(Worn->DrawAs) : -1),
+			Worn != nullptr && Worn->DrawAs == ESlateBrushDrawType::RoundedBox);
+	}
+
+	/* --- TWO: a hairline rule where the group changes, and nowhere else --------------------- */
+
+	for (int32 Index = 0; Index + 1 < Model.Num(); ++Index)
+	{
+		const bool bGroupChanges = Model[Index].Group != Model[Index + 1].Group;
+
+		int32 Rules = 0;
+
+		for (int32 Between = ChipItems[Index] + 1; Between < ChipItems[Index + 1]; ++Between)
+		{
+			Rules += SessionItemIsARule(Run[Between]) ? 1 : 0;
+		}
+
+		if (bGroupChanges)
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("A RULE MUST SEPARATE '%s' FROM '%s' — they are in different regions of the "
+						 "strip, and §b puts the commands past a rule so that a destructive click is "
+						 "never adjacent to a setting click. %d hairline(s) were drawn between them"),
+					*Model[Index].Label, *Model[Index + 1].Label, Rules),
+				Rules >= 1);
+		}
+		else
+		{
+			TestEqual(
+				FString::Printf(
+					TEXT("AND NO RULE MAY SPLIT ONE REGION: '%s' and '%s' are both in the same group, "
+						 "and %d hairline(s) were drawn between them. A divider between every pair is "
+						 "a different design and reads as noise"),
+					*Model[Index].Label, *Model[Index + 1].Label, Rules),
+				Rules, 0);
+		}
+	}
+
+	/* --- THREE: the piece chips carry the colour of the thing they lay ---------------------- */
+
+	{
+		FSessionSwatch BrickSwatch;
+		FSessionSwatch TimberSwatch;
+		bool bHaveBrick = false;
+		bool bHaveTimber = false;
+
+		for (int32 Index = 0; Index < Model.Num(); ++Index)
+		{
+			const FToolbarButton& Button = Model[Index];
+
+			const TArray<FSessionSwatch> Swatches = SessionChipSwatches(Run[ChipItems[Index]]);
+
+			const int32 Expected = Button.Swatch == EToolbarSwatch::None ? 0 : 1;
+
+			TestEqual(
+				FString::Printf(
+					TEXT("the chip reading '%s' must carry %d swatch box(es) before its caption, it "
+						 "carries %d — a brick chip that looks like a word is a chip a player has to "
+						 "READ while flying a camera"),
+					*Button.Label, Expected, Swatches.Num()),
+				Swatches.Num(), Expected);
+
+			if (Swatches.Num() != 1 || Expected != 1)
+			{
+				continue;
+			}
+
+			const FSessionSwatch& Swatch = Swatches[0];
+
+			AddInfo(FString::Printf(
+				TEXT("'%s' carries a %s swatch of %g x %g px, filled %s"),
+				*Button.Label, *Swatch.Type, Swatch.WidthPx, Swatch.HeightPx,
+				Swatch.bColourSpecified ? *SessionDescribeColour(Swatch.Colour)
+					: TEXT("<no readable colour>")));
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("'%s' must fill its swatch with the model's own %s — the palette chip and the "
+						 "piece it lays are one colour, decided once. It is filled %s"),
+					*Button.Label, *SessionDescribeColour(SwatchColour(Button.Swatch)),
+					Swatch.bColourSpecified ? *SessionDescribeColour(Swatch.Colour)
+						: TEXT("<no readable colour>")),
+				Swatch.bColourSpecified
+					&& SessionColoursExactlyEqual(Swatch.Colour, SwatchColour(Button.Swatch)));
+
+			if (Button.Swatch == EToolbarSwatch::Brick)
+			{
+				BrickSwatch = Swatch;
+				bHaveBrick = true;
+			}
+			else if (Button.Swatch == EToolbarSwatch::Timber)
+			{
+				TimberSwatch = Swatch;
+				bHaveTimber = true;
+			}
+		}
+
+		/*
+		 * AND THE TWO ARE DIFFERENT SHAPES, NOT JUST DIFFERENT COLOURS. A plank is longer and thinner
+		 * than a brick, which is what lets the three piece chips be told apart at a glance — and it
+		 * is a relation rather than a pixel count, so the design is free to retune both.
+		 */
+		if (bHaveBrick && bHaveTimber)
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("THE TIMBER SWATCH IS A PLANK AND THE BRICK'S IS A BLOCK: %g x %g against "
+						 "%g x %g. The plank must be longer and thinner"),
+					TimberSwatch.WidthPx, TimberSwatch.HeightPx,
+					BrickSwatch.WidthPx, BrickSwatch.HeightPx),
+				TimberSwatch.WidthPx > BrickSwatch.WidthPx
+					&& TimberSwatch.HeightPx < BrickSwatch.HeightPx);
+		}
+		else
+		{
+			AddError(FString::Printf(
+				TEXT("the Build strip must draw both a brick swatch and a timber one for the shape "
+					 "claim to be sayable; brick %d, timber %d"),
+				bHaveBrick ? 1 : 0, bHaveTimber ? 1 : 0));
+		}
 	}
 
 	TestWorld.End();

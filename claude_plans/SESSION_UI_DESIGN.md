@@ -512,7 +512,18 @@ banner padding and its 10 px indent). Toolbar: 48 px tall, 34 px chips, 5 px ver
 10 px between groups (with a 1 px rule), 5 px between chips within a group, 0 px inside a segmented
 control. Panel: 12 px padding, 8 px between rows, 16 px above a rule and 12 px below it.
 
-### How active state is rendered (the chips)
+### How active state is rendered (the chips) — LANDED 2026-09-15, with deviations
+
+Landed as `DestructionSession::ChipLookFor` (the model decides the look) drawn through per-id
+`FSlateRoundedBoxBrush` button styles. Deviations from the table below, all deliberate and logged in
+CURRENT_STATE (C1–C7): the lit fill is a FLAT accent (no gradient, no glow); the "drop edge" is a
+full 2 px ring, not an edge below; no 1 px hover lift / pressed push yet; and the mode pair is drawn
+as ordinary chips, NOT as the §b "tabs" — §b and this section contradicted each other (tab with a top
+bar vs "the same chip, one size up, with an icon"), and the resolution is: **chips, one size up
+with an icon is the target; the tab-with-top-bar idea is dropped.** The Run "go" chip and the lit
+Destroy tab currently share the destroy accent (C2, the next fix: Run becomes idle fill + accent
+outline). Colour note: the timber world colour below is `#B38255` as the sRGB of the linear
+`(0.45, 0.22, 0.09)` the code transcribes from `M_Shed_Timber`, not `#C2A06A`.
 
 **Three visual states, and they must be three, for the reason `EBrickHighlight` has ten and not one:
 `bActive` and `bEnabled` are different questions and a widget that drew them alike would make a lit

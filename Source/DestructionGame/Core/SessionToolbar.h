@@ -126,6 +126,52 @@ namespace DestructionSession
 		RunStructure,
 	};
 
+	/**
+	 * Which of the three regions of the strip a button sits in.
+	 *
+	 * A REGION IS A MODEL ANSWER RATHER THAN A RUN OF AddSlot CALLS, for the reason the list itself
+	 * is. SESSION_UI_DESIGN §b draws the strip as mode tabs, then the current mode's settings, then
+	 * the mode's one command, separated by 1 px rules — and the reason it gives is not decoration:
+	 * the commands sit past a rule "so that a destructive click is never adjacent to a setting
+	 * click". That is a decision about where Clear build may be, and a widget that decided it by
+	 * counting slots would hold it where nothing can read it.
+	 *
+	 * THE THREE ARE CONTIGUOUS AND IN THIS ORDER, which is what makes a rule drawable at all: the
+	 * widget compares neighbours and draws a hairline where the group changes. A group appearing
+	 * twice would put a rule in the middle of a region and the three-region reading — the thing a
+	 * player navigates by from peripheral vision — would be gone.
+	 */
+	enum class EToolbarGroup : uint8
+	{
+		/** The two mode tabs. Always the first slots, and they never move. */
+		Mode,
+
+		/** Everything that changes with the mode: the palette, the placement pair, the course stepper. */
+		Settings,
+
+		/** The mode's one command, past a rule from the settings. */
+		Command,
+	};
+
+	/**
+	 * Which little block of colour a chip carries: the thing the player is about to lay, or nothing.
+	 *
+	 * A KIND RATHER THAN A COLOUR, for the reason EJointMarginBand is a band rather than a green
+	 * (SESSION_UI_DESIGN §a principle 6). The model decides that a brick chip carries a brick; which
+	 * red that is is the widget's, through SwatchColour below.
+	 */
+	enum class EToolbarSwatch : uint8
+	{
+		/** Nothing to draw. Every chip that is not a piece chip. */
+		None,
+
+		/** The clay unit. */
+		Brick,
+
+		/** Both boards — the plate and the lintel are one material at two lengths. */
+		Timber,
+	};
+
 	/** One button on the strip: what it is, what it reads, whether it is lit, and whether it is live. */
 	struct FToolbarButton
 	{
@@ -161,6 +207,60 @@ namespace DestructionSession
 		 * FALSE BY DEFAULT: a half-built row must not claim a click will land.
 		 */
 		bool bEnabled = false;
+
+		/**
+		 * Which region of the strip the button is in.
+		 *
+		 * Command BY DEFAULT, AND THAT IS THE FAIL-CLOSED END. A row nobody filled in draws past the
+		 * last rule, on its own, rather than claiming to be one of the two mode tabs that may never
+		 * move — an undeclared button at the far right is visibly odd, and an undeclared button
+		 * sitting in the mode pair is a strip whose first slots have shifted.
+		 */
+		EToolbarGroup Group = EToolbarGroup::Command;
+
+		/** Which piece the chip lays, if it lays one. Nothing to draw, by default. */
+		EToolbarSwatch Swatch = EToolbarSwatch::None;
+	};
+
+	/**
+	 * HOW ONE CHIP IS DRAWN — the fill, the edge, the caption and the chip's own geometry.
+	 *
+	 * DECIDED HERE AND NOT IN SLATE, which is SESSION_UI_DESIGN §e's rule with its reason attached:
+	 * "three visual states, and they must be three, for the reason EBrickHighlight has ten and not
+	 * one — bActive and bEnabled are different questions and a widget that drew them alike would make
+	 * a lit button that does nothing indistinguishable from a greyed one that works". Spelled as two
+	 * ternaries inside the panel builder, that decision is unreadable: a widget test can only say
+	 * "the lit one looks different from the idle one", which a decorative alternation satisfies
+	 * forever.
+	 *
+	 * COLOURS, NOT BRUSHES. Nothing in this file knows what Slate is. The widget turns these into a
+	 * rounded-box brush and its hover and press variants, which is drawing rather than deciding.
+	 */
+	struct FChipLook
+	{
+		/** What the chip is filled with. The mode's accent when it is the one you have chosen. */
+		FLinearColor Fill = FLinearColor::Transparent;
+
+		/** The 2 px drop edge under it — §a principle 1's "press me" cue. */
+		FLinearColor Outline = FLinearColor::Transparent;
+
+		/** What the caption is written in. Dark ink on a lit chip, a readable grey on an idle one. */
+		FLinearColor Caption = FLinearColor::White;
+
+		/** How round the chip's corners are, in pixels. The same on every chip of every strip. */
+		float CornerRadiusPx = 0.0f;
+
+		/** How thick the drop edge is, in pixels. Likewise the same on every chip. */
+		float OutlineWidthPx = 0.0f;
+
+		/**
+		 * Whether the caption is set in the bold face.
+		 *
+		 * THE CHIP SAYS bActive TWICE, in the fill and in the weight, because they are two readings
+		 * of one decision: the fill is what a player flying a camera catches from the corner of an
+		 * eye, and the weight is what a player looking straight at the strip reads.
+		 */
+		bool bBoldCaption = false;
 	};
 
 	/**
@@ -193,6 +293,56 @@ namespace DestructionSession
 	 * player to the piece, the placement and the course they left with.
 	 */
 	FSessionToolbarState ApplyToolbarButton(const FSessionToolbarState& State, EToolbarButtonId Id);
+
+	/**
+	 * A MODE'S ACCENT — build amber, destroy red.
+	 *
+	 * THE TWO COLOURS THIS UI ALREADY USES, reused rather than re-picked: the amber is the Caution
+	 * band's gold and the ghost's own colour, and the red is the destructive row's. A third and
+	 * fourth hue for the same two ideas would be two more things to keep in step with nothing
+	 * holding them there.
+	 *
+	 * IT IS THE MODE'S RATHER THAN THE BUTTON'S, and that is the whole point of taking a mode: every
+	 * lit chip on a Build strip is amber and every lit chip on a Destroy strip is red, so the colour
+	 * of the strip is itself a reading of which mode the player is in — the fact they need from
+	 * peripheral vision while flying a camera.
+	 *
+	 * A MODE THIS BUILD HAS NEVER HEARD OF ANSWERS WITH THE DESTROY ACCENT, which is the answer that
+	 * agrees with the rest of the model rather than an arbitrary one: SessionToolbarButtons draws the
+	 * Destroy strip for anything that is not Build, so the strip and its accent stay one reading.
+	 */
+	FLinearColor ModeAccent(ESessionMode Mode);
+
+	/**
+	 * What a swatch kind is painted in — and it is the colour of the thing the player will lay.
+	 *
+	 * THE SHED MATERIALS' OWN BASE COLOURS, so the palette chip and the brick that lands are one
+	 * decision rather than two people picking the same red.
+	 *
+	 * None IS TRANSPARENT, AND SO IS A KIND NOBODY DECLARED. The swatch is drawn through one widget
+	 * whichever kind it is, so "nothing to draw" has to be a colour; a plausible block of colour on
+	 * a command chip would name a piece that chip does not lay.
+	 */
+	FLinearColor SwatchColour(EToolbarSwatch Swatch);
+
+	/**
+	 * How one chip of one mode's strip is drawn.
+	 *
+	 * THE PRECEDENCE IS !bEnabled, THEN bActive, THEN THE "GO" CHIP, THEN IDLE, and the order is the
+	 * claim rather than an implementation detail. A greyed Run structure must read as greyed even
+	 * though Run is the one chip that is filled without being lit; a lit chip must read as lit even
+	 * though it is also enabled.
+	 *
+	 * THE "GO" CHIP IS WHY THIS TAKES A BUTTON AND NOT MERELY TWO FLAGS. A command is never bActive
+	 * — a latched Clear button reads as a mode the player is stuck in — and §e still asks for Run
+	 * structure "filled in the destroy accent". The two are only compatible if the fill is a function
+	 * of the BUTTON, which is exactly what a widget writing `bActive ? Accent : Idle` cannot express.
+	 *
+	 * AND Clear build IS DANGER IN THE CAPTION, NOT IN THE FILL. It is the one irreversible control
+	 * in the Build group, but a chip filled destroy-red sitting on an amber strip would read as the
+	 * mode you are in — so the warning is a warm caption on an ordinary idle chip.
+	 */
+	FChipLook ChipLookFor(const FToolbarButton& Button, ESessionMode Mode);
 
 	/**
 	 * A piece kind's HALF extent, in centimetres.

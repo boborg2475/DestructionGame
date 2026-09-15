@@ -42,6 +42,114 @@ namespace DestructionSession
 			return Course > 0 ? Course : 0;
 		}
 
+		/*
+		 * THE STRIP'S PALETTE, IN LINEAR — which is the number this model hands out and the number
+		 * Slate takes. SESSION_UI_DESIGN §e gives every colour twice, the linear triple and the sRGB
+		 * hex the designer checks it against, and says in as many words that confusing the two is how
+		 * a palette drifts.
+		 *
+		 * THE TWO ACCENTS ARE THE COLOURS THIS UI ALREADY USES, WRITTEN OUT HERE BECAUSE THERE IS
+		 * NOWHERE SHAREABLE TO READ THEM FROM. The amber is the Caution band's gold and the red is the
+		 * destructive row's, and both live today as file-static constants inside
+		 * DestructionGamePlayerController.cpp — a widget file this Core namespace must not depend on,
+		 * and one nothing else can include. So they are transcribed once, here, where the model that
+		 * decides the look can reach them; the widget no longer keeps its own copy.
+		 *
+		 * AND THE TWO SWATCHES ARE THE SHED MATERIALS' OWN BASE COLOURS, from
+		 * Scripts/Author-ShedMaterials.py — M_Shed_Brick is (0.35, 0.06, 0.04) and M_Shed_Timber is
+		 * (0.45, 0.22, 0.09). The palette chip and the piece that lands are meant to be one DECISION;
+		 * they are not one pixel, because the swatch is a flat Slate fill over a near-black bar and
+		 * the brick is a lit surface, which is the same caveat RequiredContent.h's neighbour palette
+		 * carries. Nobody may retune one of these to match a screenshot.
+		 */
+		const FLinearColor SessionToolbarBuildAccent(0.95f, 0.66f, 0.13f, 1.0f);
+		const FLinearColor SessionToolbarDestroyAccent(0.72f, 0.16f, 0.14f, 1.0f);
+		const FLinearColor SessionToolbarBrickSwatch(0.35f, 0.06f, 0.04f, 1.0f);
+		const FLinearColor SessionToolbarTimberSwatch(0.45f, 0.22f, 0.09f, 1.0f);
+
+		/*
+		 * AND THE THREE VISUAL STATES' OWN COLOURS.
+		 *
+		 * THE IDLE FILL IS THE PANEL'S INACTIVE-TAB SLATE, which is dark enough to sit under a caption
+		 * and solid enough not to read as greyed. The greyed fill is the same colour faded: the model
+		 * has already refused the click, and what the fade stops is the strip telling the player the
+		 * click was going to do something.
+		 *
+		 * DARK INK ON A LIT CHIP, because the lit chip is filled with an accent that is bright in
+		 * display terms — amber especially — and a pale caption on it is unreadable at exactly the
+		 * glance the lit chip exists for.
+		 *
+		 * AND THE DANGER CAPTION IS WARM RATHER THAN RED-FILLED. Clear build is the one irreversible
+		 * control in the Build group, but a chip filled destroy-red sitting on an amber strip would
+		 * read as the mode you are in; a caption tinted toward the red reads as a warning.
+		 */
+		const FLinearColor SessionToolbarIdleFill(0.16f, 0.18f, 0.24f, 0.75f);
+		const FLinearColor SessionToolbarDisabledFill(0.16f, 0.18f, 0.24f, 0.30f);
+		const FLinearColor SessionToolbarIdleCaption(0.82f, 0.86f, 0.92f, 1.0f);
+		const FLinearColor SessionToolbarDisabledCaption(0.55f, 0.60f, 0.68f, 0.45f);
+		const FLinearColor SessionToolbarDarkInkCaption(0.02f, 0.015f, 0.01f, 1.0f);
+		const FLinearColor SessionToolbarDangerCaption(0.95f, 0.55f, 0.50f, 1.0f);
+
+		/*
+		 * THE DROP EDGE — a shadow under the chip on anything clickable, and nothing at all on a chip
+		 * that is not. §e's disabled row asks for no edge; the GEOMETRY stays uniform (every chip is
+		 * rounded the same and edged the same width, so the strip is one row of one shape) and it is
+		 * the edge's own alpha that takes it away.
+		 */
+		const FLinearColor SessionToolbarChipEdge(0.0f, 0.0f, 0.0f, 0.35f);
+		const FLinearColor SessionToolbarNoEdge(0.0f, 0.0f, 0.0f, 0.0f);
+
+		/* §a principle 1's chunky rounded chip with its 2 px drop edge, on every chip of every strip. */
+		constexpr float SessionToolbarChipCornerRadiusPx = 10.0f;
+		constexpr float SessionToolbarChipOutlineWidthPx = 2.0f;
+
+		/**
+		 * Which region of the strip a button sits in.
+		 *
+		 * THE DEFAULT ARM IS Command, which is the fail-closed end for the reason the field's own
+		 * default is: a button this build has never heard of draws past the last rule on its own,
+		 * rather than joining the mode pair that may never move.
+		 */
+		EToolbarGroup SessionToolbarGroup(EToolbarButtonId Id)
+		{
+			switch (Id)
+			{
+			case EToolbarButtonId::ModeBuild:
+			case EToolbarButtonId::ModeDestroy:
+				return EToolbarGroup::Mode;
+
+			case EToolbarButtonId::PieceBrick:
+			case EToolbarButtonId::PieceTimberPlate:
+			case EToolbarButtonId::PieceTimberLintel:
+			case EToolbarButtonId::PlacementSnap:
+			case EToolbarButtonId::PlacementFree:
+			case EToolbarButtonId::CourseDown:
+			case EToolbarButtonId::CourseUp:
+				return EToolbarGroup::Settings;
+
+			default:
+				return EToolbarGroup::Command;
+			}
+		}
+
+		/**
+		 * Which piece a chip lays, if it lays one.
+		 *
+		 * BOTH BOARDS ARE Timber, because they are one material at two lengths — BuildPieceMaterial
+		 * hands the same library row to the plate and the lintel, and a swatch that disagreed with it
+		 * would be the chip promising a piece the placement does not lay.
+		 */
+		EToolbarSwatch SessionToolbarSwatch(EToolbarButtonId Id)
+		{
+			switch (Id)
+			{
+			case EToolbarButtonId::PieceBrick:        return EToolbarSwatch::Brick;
+			case EToolbarButtonId::PieceTimberPlate:
+			case EToolbarButtonId::PieceTimberLintel: return EToolbarSwatch::Timber;
+			default:                                  return EToolbarSwatch::None;
+			}
+		}
+
 		/**
 		 * What a button reads.
 		 *
@@ -154,6 +262,8 @@ namespace DestructionSession
 			Button.Label = SessionToolbarCaption(Id);
 			Button.bActive = SessionToolbarIsActive(State, Id);
 			Button.bEnabled = SessionToolbarIsEnabled(State, Id);
+			Button.Group = SessionToolbarGroup(Id);
+			Button.Swatch = SessionToolbarSwatch(Id);
 
 			Buttons.Add(MoveTemp(Button));
 		}
@@ -212,6 +322,109 @@ namespace DestructionSession
 		}
 
 		return After;
+	}
+
+	FLinearColor ModeAccent(ESessionMode Mode)
+	{
+		/*
+		 * ANYTHING THAT IS NOT Build ANSWERS WITH THE DESTROY ACCENT, and that is written as a
+		 * comparison rather than as a switch with a default arm on purpose: SessionToolbarButtons
+		 * draws the Destroy strip for anything that is not Build (`bBuilding = Mode == Build`), so a
+		 * mode this build has never heard of gets the Destroy strip AND the Destroy accent. Two
+		 * answers derived the same way cannot come apart; a switch here with its own fallback is
+		 * exactly where they would.
+		 */
+		return Mode == ESessionMode::Build ? SessionToolbarBuildAccent : SessionToolbarDestroyAccent;
+	}
+
+	FLinearColor SwatchColour(EToolbarSwatch Swatch)
+	{
+		switch (Swatch)
+		{
+		case EToolbarSwatch::Brick:  return SessionToolbarBrickSwatch;
+		case EToolbarSwatch::Timber: return SessionToolbarTimberSwatch;
+		default:                     break;
+		}
+
+		/*
+		 * None AND ANY KIND NOBODY DECLARED DRAW NOTHING. The swatch goes through one widget whatever
+		 * it is, so "nothing to draw" has to be a colour — and a plausible block of colour on a chip
+		 * that lays nothing would name a piece that chip cannot lay.
+		 */
+		return FLinearColor::Transparent;
+	}
+
+	FChipLook ChipLookFor(const FToolbarButton& Button, ESessionMode Mode)
+	{
+		FChipLook Look;
+
+		/*
+		 * THE GEOMETRY IS THE SAME ON EVERY CHIP OF EVERY STRIP, whatever state it is in. A strip
+		 * whose chips changed shape with their state would read as several kinds of control; the
+		 * state is said in colour and in weight, and the shape is what makes them all one row.
+		 */
+		Look.CornerRadiusPx = SessionToolbarChipCornerRadiusPx;
+		Look.OutlineWidthPx = SessionToolbarChipOutlineWidthPx;
+
+		if (!Button.bEnabled)
+		{
+			/*
+			 * GREYED COMES FIRST, INCLUDING AHEAD OF THE "GO" CHIP BELOW. Run structure with nothing
+			 * built is the one chip that is both filled-by-identity and refused, and it has to read as
+			 * refused: a lit button that does nothing is the failure bEnabled exists for.
+			 */
+			Look.Fill = SessionToolbarDisabledFill;
+			Look.Outline = SessionToolbarNoEdge;
+			Look.Caption = SessionToolbarDisabledCaption;
+			Look.bBoldCaption = false;
+
+			return Look;
+		}
+
+		Look.Outline = SessionToolbarChipEdge;
+
+		if (Button.bActive)
+		{
+			/*
+			 * THE MODE'S ACCENT, NOT THE BUTTON'S. Everything lit on a Build strip is amber and
+			 * everything lit on a Destroy strip is red, so the colour of the strip is itself a reading
+			 * of which mode the player is in — the fact they need from the corner of an eye while
+			 * flying a camera.
+			 */
+			Look.Fill = ModeAccent(Mode);
+			Look.Caption = SessionToolbarDarkInkCaption;
+			Look.bBoldCaption = true;
+
+			return Look;
+		}
+
+		if (Button.Id == EToolbarButtonId::RunStructure)
+		{
+			/*
+			 * THE "GO" CHIP, AND IT IS WHY THIS FUNCTION TAKES A BUTTON. A command is never bActive —
+			 * SessionToolbarIsActive's default arm guarantees it, because a latched command reads as a
+			 * mode the player is stuck in — and §e asks for Run structure filled in the destroy accent
+			 * anyway. Written as `bActive ? Accent : Idle` the two are irreconcilable; keyed on the
+			 * button they are simply two different chips.
+			 *
+			 * THE DESTROY ACCENT BY NAME RATHER THAN THE MODE'S, which costs nothing today (Run is
+			 * drawn in Destroy mode alone) and says the right thing: this chip is red because of what
+			 * it does, not because of where it is.
+			 */
+			Look.Fill = SessionToolbarDestroyAccent;
+			Look.Caption = SessionToolbarDarkInkCaption;
+			Look.bBoldCaption = true;
+
+			return Look;
+		}
+
+		Look.Fill = SessionToolbarIdleFill;
+		Look.Caption = Button.Id == EToolbarButtonId::ClearBuild
+			? SessionToolbarDangerCaption
+			: SessionToolbarIdleCaption;
+		Look.bBoldCaption = false;
+
+		return Look;
 	}
 
 	FVector BuildPieceHalfExtentCm(EBuildPieceKind Kind)
