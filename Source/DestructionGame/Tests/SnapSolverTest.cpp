@@ -2,6 +2,7 @@
 
 #include "Misc/AutomationTest.h"
 #include "Core/BuildMode/SnapSolver.h"
+#include "Core/Connection.h"
 #include "Core/Layout.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Core/Profiles/ConnectionProfiles.h"
@@ -33,6 +34,21 @@
 namespace SnapSolverTestSupport
 {
 	const FVector HalfBrick(10.75, 5.125, 3.25);
+
+	/*
+	 * THE SAME BRICK TURNED THROUGH 90 DEGREES — the piece a corner return and a Y-run
+	 * wall are made of. A UK metric brick is 21.5 x 10.25 x 6.5, so the stretcher laid
+	 * along X is (10.75, 5.125, 3.25) and the same brick running along Y is
+	 * (5.125, 10.75, 3.25). Nothing about it is a different piece: the solver's
+	 * brick-sized gate has to accept BOTH footprints or a rotated brick snaps to nothing.
+	 */
+	const FVector HalfBrickRotated(5.125, 10.75, 3.25);
+
+	/** The X and Y components of a vector swapped — the mirror an X-run maps to a Y-run by. */
+	FVector SwapXY(const FVector& V)
+	{
+		return FVector(V.Y, V.X, V.Z);
+	}
 
 	/*
 	 * Full-field profile identity. FConnectionStrength has no operator==, so a joint
@@ -1603,6 +1619,728 @@ bool FSnapSolverContactPoseSurvivesTest::RunTest(const FString& Parameters)
 				TEXT("contact bed joint profile == GeneralPurposeMortar: "),
 				Snap.Joints[0].Profile,
 				GeneralPurposeMortar);
+		}
+	}
+
+	return true;
+}
+
+/**
+ * CR-2a, THE CORNER RETURN — behaviour in one sentence: a brick-sized piece laid with
+ * its long axis PERPENDICULAR to a brick-sized neighbour's, on the same course, is
+ * offered FOUR BrickCornerReturn poses (one at each end of the neighbour x one for each
+ * of the neighbour's two width faces the return can finish flush with), each carrying
+ * exactly ONE joint to that neighbour whose profile is the quoin's full
+ * GeneralPurposeMortar — never the perpend.
+ *
+ * THE GEOMETRY, DERIVED HERE AND NOT READ BACK FROM PRODUCTION. The neighbour is an
+ * X-long brick at (0,0,3.25), half-extent (10.75, 5.125, 3.25), so its END faces are at
+ * X = +/-10.75 and its WIDTH faces at Y = +/-5.125. The return is the same brick turned
+ * to run along Y, half-extent (5.125, 10.75, 3.25). Abutting the +X end across one 1 cm
+ * joint puts the return's near long face at X = 11.75, so its centre is at
+ * X = 10.75 + 1 + 5.125 = 16.875. Finishing FLUSH with the neighbour's -Y width face puts
+ * the return's own end face at Y = -5.125, so its centre is at Y = -5.125 + 10.75 = 5.625;
+ * flush with the +Y face mirrors that to Y = -5.625. The -X end mirrors X. Four poses:
+ * (+/-16.875, +/-5.625, 3.25).
+ *
+ * WHY FLUSH AT ALL, AND WHY IT IS THE ASSERTION THAT MATTERS: flushness is what makes the
+ * pair an L rather than a header laid through the wall, and the L is what earns the
+ * bonded-quoin mortar (DESIGN §8 2026-09-15 + its KNOWN LIMIT). A return whose end face
+ * stuck out past BOTH of the neighbour's width faces would be a closer, and a perpend.
+ *
+ * THE PROFILE IS THE MIGRATION PIN (CR-2 (C)). The solver forms this joint across a
+ * HORIZONTAL (+/-X) interface — exactly the normal the three-argument JointForContact
+ * answers GeneralPurposeMortarPerpend for. Only the BOXED overload, which reads the two
+ * footprints, returns full mortar here. So a corner candidate carrying the perpend is
+ * precisely the "emitted the pose but never migrated the call site" failure, and the
+ * full-field comparison is what separates the two (they differ ONLY on cohesion 0.9 vs
+ * 0.2 and tension 0.7 vs 0.1).
+ *
+ * AND THE POSE IS A REAL FACE. Each returned pose is fed back through
+ * DestructionLayout::MakeInterface — the same composition Placement.cpp performs — and
+ * must yield the brick's 10.25 x 6.5 = 66.625 cm2 END-face area with a horizontal normal.
+ * That is what proves the emitted centre is one joint off the neighbour and not merely
+ * near it: an interpenetrating or gapped pose forms no face at all, or a different one.
+ *
+ * NEEDS A TICKING WORLD: NO. Deterministic geometry over boxes; nothing is solved and
+ * nothing moves, so no displacement is (or could be) asserted.
+ *
+ * RED TODAY: IsBrickSized rejects the rotated footprint, so the rotated brick is offered
+ * nothing but the Free fallback and no BrickCornerReturn candidate exists.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverBrickCornerReturnTest,
+	"DestructionGame.Core.BuildMode.SnapSolverBrickCornerReturn",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverBrickCornerReturnTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// One existing X-long brick, resting on the ground (bottom face at Z = 0).
+	const FPieceBox Existing{ FVector(0.0, 0.0, 3.25), HalfBrick };
+	const TArray<FPieceBox> NearbyBoxes = { Existing };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick };
+
+	const FSnapSettings Settings; // BrickSize 21.5x10.25x6.5, joint 1.0, radius 30.
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	/*
+	 * SECTION ONE — ALL FOUR RETURNS. The cursor sits ON the neighbour's centre, which is
+	 * equidistant (17.7878 cm) from all four corner poses and inside the 30 cm radius, so
+	 * every one of them is in range at once. Their relative ORDER is therefore a tie and is
+	 * deliberately not asserted here; section three pins ranking with a cursor that breaks it.
+	 */
+	const FVector Requested(0.0, 0.0, 3.25);
+	const FPieceBox Placed{ Requested, HalfBrickRotated };
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, ClayBrick, NearbyBoxes, NearbyMaterials, Settings);
+
+	const TArray<FVector> ExpectedPoses = {
+		FVector(16.875, 5.625, 3.25),
+		FVector(16.875, -5.625, 3.25),
+		FVector(-16.875, 5.625, 3.25),
+		FVector(-16.875, -5.625, 3.25),
+	};
+
+	// Distance from the cursor to every one of them: sqrt(16.875^2 + 5.625^2).
+	const double ExpectedOffset = FMath::Sqrt(16.875 * 16.875 + 5.625 * 5.625);
+
+	int32 FreeIndex = INDEX_NONE;
+	bool bAnyBedOrHeadKind = false;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		if (FreeIndex == INDEX_NONE && Candidates[i].Kind == ESnapKind::Free)
+		{
+			FreeIndex = i;
+		}
+		if (Candidates[i].Kind == ESnapKind::BrickNextCourse
+			|| Candidates[i].Kind == ESnapKind::BrickSameCourse)
+		{
+			bAnyBedOrHeadKind = true;
+		}
+	}
+
+	for (const FVector& Pose : ExpectedPoses)
+	{
+		const FString Prefix = FString::Printf(
+			TEXT("corner return at (%g,%g,%g): "), Pose.X, Pose.Y, Pose.Z);
+
+		TArray<int32> AtPose;
+		for (int32 i = 0; i < Candidates.Num(); ++i)
+		{
+			if (Candidates[i].Kind == ESnapKind::BrickCornerReturn
+				&& Candidates[i].CentreCm.Equals(Pose, Tol))
+			{
+				AtPose.Add(i);
+			}
+		}
+
+		// 1. Exactly one candidate per pose — four distinct returns, none duplicated.
+		TestEqual(*(Prefix + TEXT("exactly one BrickCornerReturn candidate exists")),
+			AtPose.Num(), 1);
+		if (AtPose.Num() != 1)
+		{
+			continue;
+		}
+
+		const FSnapCandidate& Snap = Candidates[AtPose[0]];
+
+		/*
+		 * 2. ONE joint, to the neighbour (index 0), carrying the QUOIN's full mortar. The
+		 * full-field comparison is the whole point: mortar and perpend are separated only
+		 * by cohesion and tension, so a partial check would accept the unmigrated answer.
+		 */
+		TestEqual(*(Prefix + TEXT("forms exactly one joint")), Snap.Joints.Num(), 1);
+		if (Snap.Joints.Num() == 1)
+		{
+			TestEqual(*(Prefix + TEXT("the joint is to the existing brick (OtherPieceIndex 0)")),
+				Snap.Joints[0].OtherPieceIndex, 0);
+			CheckProfileIdentity(
+				*this,
+				Prefix + TEXT("quoin joint profile == GeneralPurposeMortar: "),
+				Snap.Joints[0].Profile,
+				GeneralPurposeMortar);
+		}
+
+		TestEqual(*(Prefix + TEXT("OffsetFromRequestedCm is the distance to the snap")),
+			Snap.OffsetFromRequestedCm, ExpectedOffset, 1.0e-6);
+
+		TestTrue(*(Prefix + TEXT("ranked ahead of the Free fallback")),
+			FreeIndex != INDEX_NONE && AtPose[0] < FreeIndex);
+
+		/*
+		 * 3. THE POSE IS A REAL QUOIN FACE. Composed the way Placement.cpp composes a
+		 * joint, the returned centre must form an interface with the neighbour whose area
+		 * is the brick's END face — the 10.25 cm width overlap by the 6.5 cm course
+		 * overlap = 66.625 cm2 — across a HORIZONTAL normal. Derived from the brick's own
+		 * dimensions, not from any production constant.
+		 */
+		FConnection Connection;
+		const FPieceBox AtSnap{ Snap.CentreCm, HalfBrickRotated };
+		const bool bFormed = MakeInterface(
+			1, AtSnap, 0, Existing, Settings.JointThicknessCm,
+			Snap.Joints.Num() == 1 ? Snap.Joints[0].Profile : FConnectionStrength(), Connection);
+
+		TestTrue(*(Prefix + TEXT("the pose forms a face at all (one axis separated by the joint)")),
+			bFormed);
+		if (bFormed)
+		{
+			TestEqual(*(Prefix + TEXT("interface area is the brick end face 66.625 cm2")),
+				Connection.InterfaceAreaSqCm, 66.625, 1.0e-6);
+			TestEqual(*(Prefix + TEXT("the interface normal is on the X axis (|X| == 1)")),
+				FMath::Abs(Connection.InterfaceNormal.GetSafeNormal().X), 1.0, Tol);
+		}
+	}
+
+	/*
+	 * 4. A ROTATED BRICK TAKES NO BED AND NO HEAD FROM A CROSSED NEIGHBOUR. Running bond
+	 * is a property of pieces laid the SAME way: a brick turned across the wall does not
+	 * bed half a brick along its neighbour's length, and it does not make a head joint
+	 * with it. The only thing this pairing offers is the corner return.
+	 */
+	TestFalse(
+		TEXT("no BrickNextCourse/BrickSameCourse candidate for a rotated brick beside an X-long one"),
+		bAnyBedOrHeadKind);
+
+	// 5. The Free fallback is still there, at the requested pose, last, forming nothing.
+	const bool bFoundFree = FreeIndex != INDEX_NONE;
+	TestTrue(TEXT("a Free fallback candidate exists"), bFoundFree);
+	if (bFoundFree)
+	{
+		TestTrue(TEXT("Free candidate sits at the requested pose"),
+			Candidates[FreeIndex].CentreCm.Equals(Requested, Tol));
+		TestEqual(TEXT("Free candidate forms no joints"), Candidates[FreeIndex].Joints.Num(), 0);
+		TestEqual(TEXT("Free is the last candidate"), FreeIndex, Candidates.Num() - 1);
+	}
+
+	/*
+	 * SECTION TWO — RANKING IS BY DISTANCE, as for every other kind. A cursor at
+	 * (16, 5, 3.25) is 1.0753 cm from the +X/-Y-flush return and 11.1 cm from the
+	 * +X/+Y-flush one, and the two -X returns are 33 cm away — outside the radius. So the
+	 * nearest corner return must be the FIRST candidate returned.
+	 */
+	const FVector NearRequested(16.0, 5.0, 3.25);
+	const FPieceBox NearPlaced{ NearRequested, HalfBrickRotated };
+
+	const TArray<FSnapCandidate> NearCandidates = SolveSnapCandidates(
+		NearPlaced, ClayBrick, NearbyBoxes, NearbyMaterials, Settings);
+
+	TestTrue(TEXT("the cursor near one corner return gets at least one candidate plus Free"),
+		NearCandidates.Num() >= 2);
+	if (NearCandidates.Num() >= 1)
+	{
+		TestEqual(TEXT("the nearest corner return ranks FIRST (Kind)"),
+			static_cast<int32>(NearCandidates[0].Kind),
+			static_cast<int32>(ESnapKind::BrickCornerReturn));
+		TestTrue(
+			TEXT("the nearest corner return ranks FIRST (pose (16.875, 5.625, 3.25))"),
+			NearCandidates[0].CentreCm.Equals(FVector(16.875, 5.625, 3.25), Tol));
+	}
+
+	return true;
+}
+
+/**
+ * CR-2a, THE Y-RUN GRID — behaviour in one sentence: running bond steps along the
+ * NEIGHBOUR'S LONG AXIS, so a Y-long brick beside a Y-long neighbour is offered its
+ * same-course pose at N +/- (0, 22.5, 0) and its next-course pose at N + (0, +/-11.25,
+ * 7.5), and never the X-stepped poses an X-long wall would take.
+ *
+ * WHY IT MATTERS: today the grid is X-only (SnapSolver.cpp steps HalfStaggerX and
+ * SameCoursePitchX off the X axis unconditionally), so a wall running along Y cannot
+ * grow at all — which is half of what a corner is for. The corner return lays the first
+ * brick of the second leg; this is what lets the leg continue.
+ *
+ * THE NUMBERS ARE THE SAME COORDINATING GRID, MIRRORED, and are derived here rather than
+ * read back: brick length 21.5 + one 1 cm head joint = the 22.5 cm same-course pitch, half
+ * of it (11.25) is the running-bond stagger, and brick height 6.5 + one 1 cm bed joint =
+ * the 7.5 cm course rise. For a Y-long neighbour those first two run along Y.
+ *
+ * THE JOINTS ARE THE ORDINARY ONES: the next-course pose beds onto the neighbour across a
+ * VERTICAL normal (full GeneralPurposeMortar) and the same-course pose abuts it end to end
+ * across a HORIZONTAL one between two pieces whose long axes AGREE — a head joint, so the
+ * weak GeneralPurposeMortarPerpend. Neither is a corner, which is exactly why this test is
+ * separate from the corner-return one: it pins that widening the brick-sized gate did not
+ * turn every Y-long pairing into a quoin.
+ *
+ * NEEDS A TICKING WORLD: NO.
+ *
+ * RED TODAY: IsBrickSized rejects both rotated footprints, so the solver offers nothing
+ * but Free.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverYLongRunningBondStepsAlongYTest,
+	"DestructionGame.Core.BuildMode.SnapSolverYLongRunningBondStepsAlongY",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverYLongRunningBondStepsAlongYTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// One existing Y-long brick on the ground: the first brick of a wall running along Y.
+	const FPieceBox Existing{ FVector(0.0, 0.0, 3.25), HalfBrickRotated };
+	const TArray<FPieceBox> NearbyBoxes = { Existing };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick };
+
+	/*
+	 * The cursor leans +Y and one course up, so the +Y stagger is the nearest pose. Both
+	 * the next-course pose (offset 0.25) and the same-course pose (offset 13.7295) are
+	 * inside the 30 cm radius from here, so one solve exercises both.
+	 */
+	const FVector Requested(0.0, 11.0, 10.75);
+	const FPieceBox Placed{ Requested, HalfBrickRotated };
+	const FSnapSettings Settings;
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, ClayBrick, NearbyBoxes, NearbyMaterials, Settings);
+
+	const FVector ExpectedNextCourse(0.0, 11.25, 10.75);
+	const FVector ExpectedSameCourse(0.0, 22.5, 3.25);
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	/*
+	 * The X-STEPPED poses an X-only grid produces for this neighbour. They are physically
+	 * wrong for a Y-long pair — (11.25, 0, 10.75) would bed a brick half over open air
+	 * across the wall's thickness — so their ABSENCE is asserted, which is what tells a
+	 * long-axis-aware grid from a widened brick-sized gate alone.
+	 */
+	const FVector XSteppedNextCourse(11.25, 0.0, 10.75);
+	const FVector XSteppedSameCourse(22.5, 0.0, 3.25);
+
+	int32 NextCourseIndex = INDEX_NONE;
+	int32 SameCourseIndex = INDEX_NONE;
+	int32 FreeIndex = INDEX_NONE;
+	bool bAnyXSteppedPose = false;
+	for (int32 i = 0; i < Candidates.Num(); ++i)
+	{
+		const FSnapCandidate& C = Candidates[i];
+		if (NextCourseIndex == INDEX_NONE
+			&& C.Kind == ESnapKind::BrickNextCourse
+			&& C.CentreCm.Equals(ExpectedNextCourse, Tol))
+		{
+			NextCourseIndex = i;
+		}
+		if (SameCourseIndex == INDEX_NONE
+			&& C.Kind == ESnapKind::BrickSameCourse
+			&& C.CentreCm.Equals(ExpectedSameCourse, Tol))
+		{
+			SameCourseIndex = i;
+		}
+		if (FreeIndex == INDEX_NONE && C.Kind == ESnapKind::Free)
+		{
+			FreeIndex = i;
+		}
+		if (C.CentreCm.Equals(XSteppedNextCourse, Tol)
+			|| C.CentreCm.Equals(XSteppedSameCourse, Tol))
+		{
+			bAnyXSteppedPose = true;
+		}
+	}
+
+	// 1. The next-course pose steps HALF A BRICK ALONG Y and one course up.
+	const bool bFoundNextCourse = NextCourseIndex != INDEX_NONE;
+	TestTrue(
+		TEXT("a BrickNextCourse candidate exists at the Y stagger (0, 11.25, 10.75)"),
+		bFoundNextCourse);
+	if (bFoundNextCourse)
+	{
+		const FSnapCandidate& Snap = Candidates[NextCourseIndex];
+		TestEqual(TEXT("Y-run next-course candidate forms exactly one joint"),
+			Snap.Joints.Num(), 1);
+		if (Snap.Joints.Num() == 1)
+		{
+			TestEqual(TEXT("Y-run bed joint is to the existing brick (OtherPieceIndex 0)"),
+				Snap.Joints[0].OtherPieceIndex, 0);
+			CheckProfileIdentity(
+				*this,
+				TEXT("Y-run bed joint profile == GeneralPurposeMortar: "),
+				Snap.Joints[0].Profile,
+				GeneralPurposeMortar);
+		}
+		TestEqual(TEXT("Y-run next-course OffsetFromRequestedCm is the distance to the snap"),
+			Snap.OffsetFromRequestedCm, 0.25, 1.0e-6);
+	}
+
+	// 2. The same-course pose steps ONE WHOLE PITCH ALONG Y, at the same height.
+	const bool bFoundSameCourse = SameCourseIndex != INDEX_NONE;
+	TestTrue(
+		TEXT("a BrickSameCourse candidate exists at the Y pitch (0, 22.5, 3.25)"),
+		bFoundSameCourse);
+	if (bFoundSameCourse)
+	{
+		const FSnapCandidate& Snap = Candidates[SameCourseIndex];
+		TestEqual(TEXT("Y-run same-course candidate forms exactly one joint"),
+			Snap.Joints.Num(), 1);
+		if (Snap.Joints.Num() == 1)
+		{
+			TestEqual(TEXT("Y-run head joint is to the existing brick (OtherPieceIndex 0)"),
+				Snap.Joints[0].OtherPieceIndex, 0);
+			/*
+			 * TWO PIECES RUNNING THE SAME WAY MAKE A HEAD JOINT, NOT A CORNER — the weak
+			 * perpend. Pinned full-field, so a boxed-inference call that read the pairing as
+			 * crossed (and handed it the quoin's mortar, 4.5x the bond) fails here.
+			 */
+			CheckProfileIdentity(
+				*this,
+				TEXT("Y-run head joint profile == GeneralPurposeMortarPerpend: "),
+				Snap.Joints[0].Profile,
+				GeneralPurposeMortarPerpend);
+		}
+		TestEqual(TEXT("Y-run same-course OffsetFromRequestedCm is the distance to the snap"),
+			Snap.OffsetFromRequestedCm, FMath::Sqrt(11.5 * 11.5 + 7.5 * 7.5), 1.0e-6);
+	}
+
+	// 3. No X-stepped pose survives for a Y-long neighbour.
+	TestFalse(
+		TEXT("no candidate at the X-stepped poses (11.25,0,10.75) / (22.5,0,3.25)"),
+		bAnyXSteppedPose);
+
+	// 4. Free is still the last resort.
+	TestTrue(TEXT("a Free fallback candidate exists"), FreeIndex != INDEX_NONE);
+	if (FreeIndex != INDEX_NONE)
+	{
+		TestEqual(TEXT("Free is the last candidate"), FreeIndex, Candidates.Num() - 1);
+	}
+
+	return true;
+}
+
+/**
+ * CR-2a, THE MIRROR PROPERTY — behaviour in one sentence: a wall running along Y grows
+ * exactly as a wall running along X does, reflected through the plane x = y.
+ *
+ * WHY A PROPERTY AND NOT MORE ROWS. "Steps along the neighbour's long axis" is a
+ * TOPOLOGICAL claim about the whole candidate set, and a hand-written row table only ever
+ * covers the poses somebody thought of — an implementation that emitted the right Y poses
+ * but kept a stray X one, dropped a candidate, re-ordered the ranking or changed a profile
+ * would pass a row table aimed at the two poses. So the ORACLE here is the X-run answer
+ * itself, mapped through the reflection: the two solves are run independently and every
+ * candidate is compared index for index, which pins count, order, kind, pose, offset and
+ * every formed joint at once.
+ *
+ * THE ORACLE IS INDEPENDENTLY DERIVED in the only sense that matters: it is not a
+ * re-implementation of the grid arithmetic (which would agree with a wrong solver), it is
+ * a SYMMETRY the physics has and the code currently does not. Reflecting a brick wall
+ * through x = y gives a brick wall; nothing in the coordinating grid distinguishes the two
+ * axes. The settings object is deliberately left unmirrored — FSnapSettings names the
+ * brick's LENGTH (21.5) and its WIDTH (10.25), which are properties of the brick, not of
+ * the world axes, so a solver that reads the pitch off BrickSizeCm.X may keep doing so as
+ * long as it applies it along the NEIGHBOUR'S long axis.
+ *
+ * NO TIES TO BREAK in either row: each cursor leans clear of one pose, so both
+ * configurations rank their candidates strictly and an index-for-index comparison is
+ * meaningful.
+ *
+ * TWO ROWS, BECAUSE THE SYMMETRY HAS TWO HALVES. The COLLINEAR row reflects a
+ * running-bond pair (bed + head); the CROSSED row reflects a corner return, where the
+ * placed brick runs across its neighbour — the reflection maps an X-long wall with a
+ * Y-long return onto a Y-long wall with an X-long return, so the four corner poses must
+ * come back reflected, in the same ranked order, carrying the same quoin mortar. Adding a
+ * third arrangement should be a row here, never a new test.
+ *
+ * NEEDS A TICKING WORLD: NO.
+ *
+ * GREEN ON ARRIVAL for the crossed row: CR-2a landed both the long-axis-aware grid and the
+ * corner return, so this row pins behaviour that already exists rather than driving any. It
+ * is the review's non-blocking ask, and it earns its runtime by making the reflection
+ * property cover the corner kind too — the mutation that proves it bites is in the report.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverYWallMirrorsTheXWallTest,
+	"DestructionGame.Core.BuildMode.SnapSolverYWallMirrorsTheXWall",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverYWallMirrorsTheXWallTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	const FSnapSettings Settings;
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	/*
+	 * One arrangement, stated in the X frame. The Y frame is derived from it by reflection
+	 * and never written out, which is the point: a transcribed "expected Y answer" would be
+	 * a second hand-written table, not a symmetry.
+	 *
+	 * ExpectedXCandidates is the VACUITY GUARD — if both solves collapsed to the Free
+	 * fallback alone the mirror would hold trivially, so the X frame's own candidate count
+	 * is pinned before the two are compared.
+	 */
+	struct FMirrorRow
+	{
+		const TCHAR* Label;
+		FVector NeighbourCentreCm;
+		FVector NeighbourExtentCm;
+		FVector PlacedExtentCm;
+		FVector RequestedCentreCm;
+		int32 ExpectedXCandidates;
+	};
+
+	const FMirrorRow Rows[] = {
+		/*
+		 * COLLINEAR: an X-long brick beside an X-long neighbour, the cursor leaning +X and
+		 * one course up. Two snaps (next-course, same-course) plus Free.
+		 */
+		{ TEXT("collinear stretchers"),
+			FVector(0.0, 0.0, 3.25), HalfBrick, HalfBrick,
+			FVector(11.0, 0.0, 10.75), 3 },
+
+		/*
+		 * CROSSED: the same neighbour, but the placed brick turned to run along Y — a corner
+		 * return. The cursor at (16, 5, 3.25) is 1.075 cm from the +X-end / -Y-flush return at
+		 * (16.875, 5.625, 3.25) and 10.66 cm from the +X-end / +Y-flush one at
+		 * (16.875, -5.625, 3.25); the two -X-end returns are 32.9 and 34.6 cm away, outside
+		 * the 30 cm radius. So two corner snaps plus Free, strictly ranked — and under the
+		 * reflection the cursor becomes (5, 16, 3.25) against a Y-long neighbour, which is the
+		 * same corner seen from the other leg.
+		 */
+		{ TEXT("crossed pair, a corner return"),
+			FVector(0.0, 0.0, 3.25), HalfBrick, HalfBrickRotated,
+			FVector(16.0, 5.0, 3.25), 3 },
+	};
+
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick };
+
+	for (const FMirrorRow& Row : Rows)
+	{
+		const FString RowPrefix = FString::Printf(TEXT("[%s] "), Row.Label);
+
+		const FPieceBox XNeighbour{ Row.NeighbourCentreCm, Row.NeighbourExtentCm };
+		const TArray<FPieceBox> XBoxes = { XNeighbour };
+		const FPieceBox XPlaced{ Row.RequestedCentreCm, Row.PlacedExtentCm };
+
+		// The Y frame: the same fixture reflected through x = y, piece by piece.
+		const FPieceBox YNeighbour{ SwapXY(XNeighbour.CentreCm), SwapXY(XNeighbour.ExtentCm) };
+		const TArray<FPieceBox> YBoxes = { YNeighbour };
+		const FPieceBox YPlaced{ SwapXY(XPlaced.CentreCm), SwapXY(XPlaced.ExtentCm) };
+
+		const TArray<FSnapCandidate> XCandidates = SolveSnapCandidates(
+			XPlaced, ClayBrick, XBoxes, NearbyMaterials, Settings);
+		const TArray<FSnapCandidate> YCandidates = SolveSnapCandidates(
+			YPlaced, ClayBrick, YBoxes, NearbyMaterials, Settings);
+
+		TestEqual(*(RowPrefix + TEXT("the X frame offers the expected number of candidates")),
+			XCandidates.Num(), Row.ExpectedXCandidates);
+
+		TestEqual(*(RowPrefix + TEXT("the Y frame offers the same number of candidates as the X frame")),
+			YCandidates.Num(), XCandidates.Num());
+
+		const int32 Common = FMath::Min(XCandidates.Num(), YCandidates.Num());
+		for (int32 i = 0; i < Common; ++i)
+		{
+			const FSnapCandidate& X = XCandidates[i];
+			const FSnapCandidate& Y = YCandidates[i];
+			const FString Prefix = RowPrefix + FString::Printf(TEXT("candidate %d: "), i);
+
+			TestEqual(*(Prefix + TEXT("same Kind in both frames")),
+				static_cast<int32>(Y.Kind), static_cast<int32>(X.Kind));
+
+			const FVector MirroredCentre = SwapXY(X.CentreCm);
+			TestTrue(
+				*FString::Printf(
+					TEXT("%sthe Y-frame pose (%g,%g,%g) is the X-frame pose (%g,%g,%g) reflected through x = y"),
+					*Prefix, Y.CentreCm.X, Y.CentreCm.Y, Y.CentreCm.Z,
+					X.CentreCm.X, X.CentreCm.Y, X.CentreCm.Z),
+				Y.CentreCm.Equals(MirroredCentre, Tol));
+
+			// A reflection is an isometry, so the ranking key is unchanged.
+			TestEqual(*(Prefix + TEXT("same OffsetFromRequestedCm in both frames")),
+				Y.OffsetFromRequestedCm, X.OffsetFromRequestedCm, 1.0e-9);
+
+			TestEqual(*(Prefix + TEXT("same number of formed joints in both frames")),
+				Y.Joints.Num(), X.Joints.Num());
+
+			const int32 CommonJoints = FMath::Min(X.Joints.Num(), Y.Joints.Num());
+			for (int32 j = 0; j < CommonJoints; ++j)
+			{
+				TestEqual(
+					*FString::Printf(TEXT("%sjoint %d names the same neighbour"), *Prefix, j),
+					Y.Joints[j].OtherPieceIndex, X.Joints[j].OtherPieceIndex);
+				CheckProfileIdentity(
+					*this,
+					FString::Printf(TEXT("%sjoint %d has the same profile in both frames: "), *Prefix, j),
+					Y.Joints[j].Profile,
+					X.Joints[j].Profile);
+			}
+		}
+	}
+
+	return true;
+}
+
+/**
+ * CR-2a REVIEW FINDING B2, THE CROSSED BED — behaviour in one sentence: a brick's
+ * NextCourse candidate forms a BED joint to EVERY brick-sized neighbour whose top face it
+ * rests on, whatever way that neighbour runs.
+ *
+ * WHY THIS IS THE ONE THAT BONDS A CORNER. A bricklayer's quoin is not one joint; it is
+ * the alternate-course LAP. The course-1 stretcher over an L's corner sits half on the leg
+ * it continues and half on the RETURN laid across it, and that second bed is what makes
+ * the return carry load from above. Today the bed/head branch is gated on
+ * bSameOrientation, so a crossed neighbour under the placed brick contributes nothing at
+ * all: the quoin is held by its vertical joint alone, and a vertical joint routes no
+ * vertical load (SolveLoads sends weight down beds). The mechanism already exists in the
+ * file — BearingsAtPose is the contact sweep a timber lintel uses to find every support it
+ * spans — it is simply not applied to the brick bed.
+ *
+ * THE FIXTURE IS THE REVIEWER'S OWN, REDUCED TO TWO NEIGHBOURS. Numbers derived here from
+ * the brick (21.5 x 10.25 x 6.5 on 1 cm joints), not read back from production:
+ *
+ *   piece 0, X-long  at (45.000, 0.000, 3.25) half (10.75, 5.125, 3.25)
+ *            spans X [34.25, 55.75]  Y [-5.125,  5.125]  Z [0, 6.5]
+ *   piece 1, Y-long  at (61.875, 5.625, 3.25) half ( 5.125, 10.75, 3.25)
+ *            spans X [56.75, 67.00]  Y [-5.125, 16.375]  Z [0, 6.5]
+ *   placed,  X-long  at (56.250, 0.000,10.75) half (10.75, 5.125, 3.25)
+ *            spans X [45.50, 67.00]  Y [-5.125,  5.125]  Z [7.5, 14.0]
+ *
+ * The placed brick's underside is at Z = 7.5, one 1 cm bed joint above both neighbours'
+ * tops at Z = 6.5 — so it RESTS ON BOTH. Against piece 0 the footprints overlap
+ * [45.5, 55.75] x [-5.125, 5.125] = 10.25 x 10.25; against piece 1 they overlap
+ * [56.75, 67] x [-5.125, 5.125] = 10.25 x 10.25. Both faces are therefore
+ * 10.25 x 10.25 = 105.0625 cm2 — a full brick width square, which is exactly what a lap
+ * over a return is.
+ *
+ * WHY THE POSE IS ASSERTED AND THE KIND IS ONLY ASSERTED NOT-FREE. The candidate at
+ * (56.25, 0, 10.75) is a MERGED one (piece 0's next-course pose; once the gate widens,
+ * piece 1's bed joins it), and CURRENT_STATE's snap-solver item (vii) records that a
+ * merged candidate's single Kind label is order-dependent and due to be replaced by a
+ * truthful multi-kind label. Pinning the exact enumerator would make this test fight that
+ * rework for no gain, so the geometry is pinned instead: the exact centre, one course
+ * (7.5 cm) above the neighbours, which no other candidate in the set shares.
+ *
+ * THE ASSERTION IS THE MECHANISM, NOT A DISPLACEMENT — a connection that exists, names the
+ * right neighbour, carries the right profile and composes to the right face. Nothing here
+ * is solved and nothing moves.
+ *
+ * NEEDS A TICKING WORLD: NO.
+ *
+ * RED TODAY: the best candidate carries ONE joint (to piece 0). The bed onto the crossed
+ * return is missing entirely.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSnapSolverNextCourseBedsOnACrossedNeighbourTest,
+	"DestructionGame.Core.BuildMode.SnapSolverNextCourseBedsOnACrossedNeighbour",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSnapSolverNextCourseBedsOnACrossedNeighbourTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace SnapSolverTestSupport;
+
+	// The X leg's end brick, and the rotated return laid across it.
+	const FPieceBox LegEnd{ FVector(45.0, 0.0, 3.25), HalfBrick };
+	const FPieceBox Return{ FVector(61.875, 5.625, 3.25), HalfBrickRotated };
+	const TArray<FPieceBox> NearbyBoxes = { LegEnd, Return };
+	const TArray<FMaterialProfile> NearbyMaterials = { ClayBrick, ClayBrick };
+
+	// The course-1 corner brick, asked for exactly at its running-bond pose.
+	const FVector Requested(56.25, 0.0, 10.75);
+	const FPieceBox Placed{ Requested, HalfBrick };
+
+	const FSnapSettings Settings; // BrickSize 21.5x10.25x6.5, joint 1.0, radius 30.
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	/*
+	 * The lap area, spelled out from the brick rather than imported: the placed brick and
+	 * each neighbour share a full brick width in both in-plane axes.
+	 */
+	const double BrickWidthCm = Settings.BrickSizeCm.Y; // 10.25
+	const double ExpectedBedAreaSqCm = BrickWidthCm * BrickWidthCm; // 105.0625
+
+	const TArray<FSnapCandidate> Candidates = SolveSnapCandidates(
+		Placed, ClayBrick, NearbyBoxes, NearbyMaterials, Settings);
+
+	TestTrue(TEXT("the solver offers at least one snap plus the Free fallback"),
+		Candidates.Num() >= 2);
+	if (Candidates.Num() < 1)
+	{
+		return false;
+	}
+
+	const FSnapCandidate& Best = Candidates[0];
+
+	/*
+	 * 1. THE BEST CANDIDATE IS THE COURSE-UP POSE. The cursor sits exactly on it, so its
+	 * offset is zero and nothing else in the set can outrank it. Z = 10.75 is one course
+	 * (brick 6.5 + bed joint 1.0) above the neighbours' 3.25.
+	 */
+	TestTrue(
+		*FString::Printf(
+			TEXT("the first candidate sits at (56.25, 0, 10.75), got (%g,%g,%g)"),
+			Best.CentreCm.X, Best.CentreCm.Y, Best.CentreCm.Z),
+		Best.CentreCm.Equals(Requested, Tol));
+	TestEqual(TEXT("the first candidate is one course (7.5 cm) above the neighbours"),
+		Best.CentreCm.Z - LegEnd.CentreCm.Z, 7.5, 1.0e-9);
+	TestEqual(TEXT("the first candidate's OffsetFromRequestedCm is zero"),
+		Best.OffsetFromRequestedCm, 0.0, 1.0e-9);
+	TestNotEqual(TEXT("the first candidate is a snap, not the Free fallback"),
+		static_cast<int32>(Best.Kind), static_cast<int32>(ESnapKind::Free));
+
+	/*
+	 * 2. TWO JOINTS — one to each neighbour it rests on. Looked up BY NEIGHBOUR INDEX
+	 * rather than by position, since the order joints are appended in is an implementation
+	 * detail the behaviour does not depend on.
+	 */
+	TestEqual(TEXT("the course-up candidate forms TWO bed joints"), Best.Joints.Num(), 2);
+
+	for (int32 j = 0; j < NearbyBoxes.Num(); ++j)
+	{
+		const FString Prefix = FString::Printf(
+			TEXT("bed onto neighbour %d (%s): "), j, (j == 0) ? TEXT("collinear") : TEXT("crossed"));
+
+		const FFormedJoint* Joint = Best.Joints.FindByPredicate(
+			[j](const FFormedJoint& Have) { return Have.OtherPieceIndex == j; });
+
+		TestNotNull(*(Prefix + TEXT("a joint to it exists")), Joint);
+		if (Joint == nullptr)
+		{
+			continue;
+		}
+
+		/*
+		 * 3. A BED IS A BED WHICHEVER WAY THE NEIGHBOUR RUNS. The contact normal is
+		 * vertical, so the boxed inference classifies Bed before orientation is ever
+		 * consulted — full GeneralPurposeMortar, never the crossed pair's quoin reasoning
+		 * and never the perpend. Full-field, because mortar and perpend differ only on
+		 * cohesion and tension.
+		 */
+		CheckProfileIdentity(
+			*this,
+			Prefix + TEXT("profile == GeneralPurposeMortar: "),
+			Joint->Profile,
+			GeneralPurposeMortar);
+
+		/*
+		 * 4. THE JOINT IS A REAL FACE, composed the way Placement.cpp composes one: a
+		 * 10.25 x 10.25 = 105.0625 cm2 horizontal lap across a VERTICAL normal. The normal
+		 * is what makes the area mean something — a face this size could only otherwise be
+		 * a coincidence of two side overlaps.
+		 */
+		FConnection Connection;
+		const FPieceBox AtSnap{ Best.CentreCm, HalfBrick };
+		const bool bFormed = MakeInterface(
+			2, AtSnap, j, NearbyBoxes[j], Settings.JointThicknessCm, Joint->Profile, Connection);
+
+		TestTrue(*(Prefix + TEXT("the pose forms a face at all")), bFormed);
+		if (bFormed)
+		{
+			TestEqual(*(Prefix + TEXT("interface area is the 10.25 x 10.25 lap, 105.0625 cm2")),
+				Connection.InterfaceAreaSqCm, ExpectedBedAreaSqCm, 1.0e-6);
+			TestEqual(*(Prefix + TEXT("the interface normal is vertical (|Z| == 1)")),
+				FMath::Abs(Connection.InterfaceNormal.GetSafeNormal().Z), 1.0, Tol);
 		}
 	}
 

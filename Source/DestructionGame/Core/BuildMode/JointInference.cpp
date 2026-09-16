@@ -85,6 +85,51 @@ namespace BuildMode
 
 			return Difference > 0.0 ? ELongAxis::X : ELongAxis::Y;
 		}
+
+		/*
+		 * How many of a NEIGHBOUR's two width-face planes the other piece PROPERLY CROSSES.
+		 *
+		 * Take the neighbour's long axis as the wall's direction; the other in-plane axis is
+		 * its WIDTH, and its two faces are planes on that axis. Measure the other piece's
+		 * span along that same axis. A crossing is STRICT — `low < plane < high` — so a span
+		 * that merely ENDS on a plane does not cross it, which is the whole distinction the
+		 * caller turns on: a quoin's return finishes FLUSH with one width face and earns its
+		 * corner from the OTHER face, the one it genuinely passes. Write either comparison
+		 * loosely and a flush return crosses two planes and is demoted to a closer.
+		 *
+		 * BOTH TESTS ARE WRITTEN IN THE AFFIRMATIVE, which is the fail-closed direction here
+		 * rather than the usual `!(x > y)` shape. Every comparison against a NaN is false, so
+		 * a non-finite centre or extent counts NO crossings, and no crossings is not a corner
+		 * — the weaker joint. Turning either comparison round would let a NaN manufacture one.
+		 */
+		int32 CountWidthPlaneCrossings(
+			const DestructionLayout::FPieceBox& Neighbour,
+			ELongAxis NeighbourLongAxis,
+			const DestructionLayout::FPieceBox& Crossing)
+		{
+			// X-long means the width faces are the Y ones, and the other way round.
+			const int32 WidthIndex = (NeighbourLongAxis == ELongAxis::X) ? 1 : 0;
+
+			const double LowPlane = Neighbour.CentreCm[WidthIndex] - Neighbour.ExtentCm[WidthIndex];
+			const double HighPlane = Neighbour.CentreCm[WidthIndex] + Neighbour.ExtentCm[WidthIndex];
+
+			const double SpanLow = Crossing.CentreCm[WidthIndex] - Crossing.ExtentCm[WidthIndex];
+			const double SpanHigh = Crossing.CentreCm[WidthIndex] + Crossing.ExtentCm[WidthIndex];
+
+			int32 Crossings = 0;
+
+			if (SpanLow < LowPlane && LowPlane < SpanHigh)
+			{
+				++Crossings;
+			}
+
+			if (SpanLow < HighPlane && HighPlane < SpanHigh)
+			{
+				++Crossings;
+			}
+
+			return Crossings;
+		}
 	}
 
 	/*
@@ -153,7 +198,43 @@ namespace BuildMode
 			LongAxisB != ELongAxis::None &&
 			LongAxisA != LongAxisB;
 
-		return bCrossed ? EMasonryContact::Corner : EMasonryContact::Head;
+		if (!bCrossed)
+		{
+			return EMasonryContact::Head;
+		}
+
+		/*
+		 * CROSSED LONG AXES ARE NECESSARY BUT NOT SUFFICIENT, and this is the test that
+		 * closes DESIGN §8's KNOWN LIMIT — "a header laid beside a stretcher IN THE SAME
+		 * WALL LINE (a Flemish-bond closer) also crosses and will be credited as a corner;
+		 * refine with an L-footprint test (the return extends past the neighbour's outer
+		 * face) when CR-2's rotate control makes a header placeable". CR-2 makes it
+		 * placeable, so the refinement lands with it.
+		 *
+		 * THE RULE. The contact is a CORNER exactly when one piece's span along the OTHER
+		 * piece's width axis PROPERLY CROSSES exactly ONE of that other piece's two
+		 * width-face planes. A quoin turns a corner: the wall changes direction, so the
+		 * return leaves the neighbour's line on ONE side and stops at or inside the other.
+		 *
+		 * EITHER PIECE MAY BE THE ONE THAT LEAVES THE LINE, and the function cannot know
+		 * which of its two arguments the caller thinks of as the wall — the snap solver
+		 * names the placed piece first, the shed sweep names the lower one — so the rule is
+		 * symmetric by OR: A's span against B's width planes, or B's against A's. That is
+		 * not a convenience; the across-Y quoin (a return off a stretcher's end whose own
+		 * long face is flush with that end) crosses NOTHING in the first direction and is
+		 * a corner only by the second.
+		 *
+		 * BOTH FAILURES ARE HEAD, THE WEAKER MASONRY ANSWER — fail closed. Crossing BOTH
+		 * planes is a closer laid THROUGH the wall line; crossing NEITHER is a header
+		 * buried in a wall thicker than it is long, or two pieces that never leave each
+		 * other's line at all. Neither turns a corner, and crediting either with full
+		 * mortar overstates the bond by 4.5x on cohesion (0.9 against the perpend's 0.2).
+		 */
+		const bool bTurnsACorner =
+			CountWidthPlaneCrossings(A, LongAxisA, B) == 1 ||
+			CountWidthPlaneCrossings(B, LongAxisB, A) == 1;
+
+		return bTurnsACorner ? EMasonryContact::Corner : EMasonryContact::Head;
 	}
 
 	/*

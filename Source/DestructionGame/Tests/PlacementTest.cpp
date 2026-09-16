@@ -41,6 +41,12 @@ namespace PlacementTestSupport
 	const FVector HalfBrick(10.75, 5.125, 3.25);
 
 	/*
+	 * The same brick turned through 90 degrees — the return a corner is made of. A UK
+	 * metric brick is 21.5 x 10.25 x 6.5, so running along Y it is (5.125, 10.75, 3.25).
+	 */
+	const FVector HalfBrickRotated(5.125, 10.75, 3.25);
+
+	/*
 	 * Full-field profile identity. FConnectionStrength has no operator==, so a joint
 	 * profile is pinned by matching all five fields against the named library
 	 * constant — the same discipline SnapSolverTest / JointInferenceTest use. This is
@@ -280,6 +286,118 @@ bool FPlacementRefusedDegeneratePieceKeepsBoxesParallelTest::RunTest(const FStri
 	TestEqual(TEXT("valid placement: one connection"), Layout.Structure.NumConnections(), 1);
 	TestEqual(TEXT("valid placement: boxes parallel to pieces"),
 		Layout.Boxes.Num(), Layout.Structure.NumPieces());
+
+	return true;
+}
+
+/**
+ * CR-2a, PLACEMENT FORMS THE QUOIN — behaviour in one sentence: PlacePiece laying a
+ * rotated brick against the end of a stretcher adopts the corner-return snap and forms a
+ * LIVE connection carrying the quoin's full GeneralPurposeMortar over the brick's
+ * 66.625 cm2 end face, not the head joint's weak perpend.
+ *
+ * WHY THIS AND NOT ONLY THE SOLVER TEST. The solver decides the profile; the placement
+ * path is where it becomes a joint the collapse system can read, and the two are joined by
+ * Placement.cpp's loop handing the candidate's profile to DestructionLayout::MakeInterface.
+ * This pins the whole chain: the pose survives MakeInterface's face test (one axis
+ * separated by exactly the joint, positive overlap on the other two), the area it computes
+ * is the END face rather than a bed or a sliver, the normal it derives is HORIZONTAL — so
+ * this is precisely the contact the pre-refinement rule called a perpend — and the profile
+ * riding on the connection is the corner's mortar.
+ *
+ * THE AREA IS DERIVED, NOT COPIED: the shared face is the brick's width by its height,
+ * 10.25 x 6.5 = 66.625 cm2, the same end-face figure Core/Layout.h documents.
+ *
+ * WHY THE CORNER SNAP MUST WIN. The cursor at (16.5, 5.5, 3.25) is 0.395 cm from the
+ * +X-end return that finishes flush with the stretcher's -Y face, 11.1 cm from the other
+ * flush choice at that end, and past the 30 cm radius from both -X-end returns. Ranking is
+ * raw distance, so the nearest return is Candidates[0] and PlacePiece adopts it.
+ *
+ * NEEDS A TICKING WORLD: NO. Nothing ticks and nothing is solved — the assertions are on
+ * the live structure the placement produced.
+ *
+ * RED TODAY: the rotated brick is brick-sized in no orientation the solver accepts, so
+ * PlacePiece falls back to Free and forms no joint at all.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPlacementFormsTheCornerReturnJointTest,
+	"DestructionGame.Core.BuildMode.PlacementFormsTheCornerReturnJoint",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FPlacementFormsTheCornerReturnJointTest::RunTest(const FString& Parameters)
+{
+	using namespace DestructionLayout;
+	using namespace DestructionProfiles;
+	using namespace BuildMode;
+	using namespace PlacementTestSupport;
+
+	const FSnapSettings Settings; // BrickSize 21.5x10.25x6.5, joint 1.0, radius 30.
+	const double Tol = KINDA_SMALL_NUMBER;
+
+	FBrickLayout Layout;
+
+	/*
+	 * 1. The stretcher: a grounded ClayBrick running along X, resting ON the ground
+	 * (centre Z = 3.25, bottom face at 0 — the 2026-09-15 course convention).
+	 */
+	const FPlacementResult Seed = PlacePiece(
+		Layout, FVector(0.0, 0.0, 3.25), HalfBrick, ClayBrick, /*bGrounded*/ true, Settings);
+
+	TestEqual(TEXT("seed placement returns handle 0"), Seed.PieceHandle, 0);
+	TestEqual(TEXT("seed placement is a Free placement"),
+		static_cast<int32>(Seed.Kind), static_cast<int32>(ESnapKind::Free));
+
+	/*
+	 * 2. The return: the SAME brick turned to run along Y, asked for just off the
+	 * stretcher's +X end. It must snap to (16.875, 5.625, 3.25) — the stretcher's end face
+	 * at 10.75, one 1 cm joint, then the return's own half-width 5.125 — with its end face
+	 * flush at Y = -5.125 against the stretcher's -Y width face.
+	 */
+	const FPlacementResult Return = PlacePiece(
+		Layout, FVector(16.5, 5.5, 3.25), HalfBrickRotated, ClayBrick, /*bGrounded*/ true, Settings);
+
+	TestEqual(TEXT("return placement returns handle 1"), Return.PieceHandle, 1);
+	TestEqual(TEXT("return placement snaps to BrickCornerReturn"),
+		static_cast<int32>(Return.Kind), static_cast<int32>(ESnapKind::BrickCornerReturn));
+	TestEqual(TEXT("return placement forms one joint"), Return.JointsFormed, 1);
+
+	TestEqual(TEXT("structure has two pieces"), Layout.Structure.NumPieces(), 2);
+	TestEqual(TEXT("structure has one connection"), Layout.Structure.NumConnections(), 1);
+	TestEqual(TEXT("boxes parallel to pieces"),
+		Layout.Boxes.Num(), Layout.Structure.NumPieces());
+
+	if (Layout.Boxes.Num() == 2)
+	{
+		TestTrue(TEXT("adopted box centre is the corner-return pose (16.875, 5.625, 3.25)"),
+			Layout.Boxes[1].CentreCm.Equals(FVector(16.875, 5.625, 3.25), Tol));
+	}
+
+	if (Layout.Structure.NumConnections() == 1)
+	{
+		const FConnection& Conn = Layout.Structure.GetConnection(0);
+
+		/*
+		 * THE ASSERTION THE SLICE EXISTS FOR. Full-field, because mortar and perpend are
+		 * separated only by cohesion (0.9 vs 0.2) and tension (0.7 vs 0.1) — a partial
+		 * comparison would accept the answer the unmigrated three-argument inference gives
+		 * for a horizontal normal.
+		 */
+		CheckProfileIdentity(
+			*this,
+			TEXT("corner joint profile == GeneralPurposeMortar: "),
+			Conn.Strength,
+			GeneralPurposeMortar);
+
+		TestEqual(TEXT("corner joint interface area is the brick end face 66.625 cm2"),
+			Conn.InterfaceAreaSqCm, 66.625, 1.0e-6);
+		TestEqual(TEXT("corner joint normal is on the X axis (|X| == 1)"),
+			FMath::Abs(Conn.InterfaceNormal.X), 1.0, static_cast<double>(KINDA_SMALL_NUMBER));
+
+		const bool bLinksZeroAndOne =
+			(Conn.PieceA == 0 && Conn.PieceB == 1) ||
+			(Conn.PieceA == 1 && Conn.PieceB == 0);
+		TestTrue(TEXT("connection links handles 0 and 1"), bLinksZeroAndOne);
+	}
 
 	return true;
 }

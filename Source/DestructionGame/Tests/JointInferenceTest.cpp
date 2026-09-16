@@ -272,6 +272,20 @@ bool FJointInferenceTest::RunTest(const FString& Parameters)
  * it would have to get the real geometry right, which for the quoin row it cannot
  * (Core/Layout.h documents why a centroid direction is not an interface normal).
  *
+ * THE POSES ARE NOW LOAD-BEARING, NOT DECORATIVE. The CROSSING RULE makes the verdict
+ * depend on WHERE the crossed piece sits, not only on how it is turned — a fixture that
+ * merely "looked like" a corner used to be harmless and no longer is. Two of them were
+ * not corners at all: the across-Y quoin was a T-JUNCTION (a return centred on the
+ * stretcher's line, overhanging it both sides) and the tolerance pair was the same shape,
+ * and keeping either as a Corner row made the table CONTRADICTORY under rotation — see
+ * the fixtures' own comments for the derivation. Both are now genuine L's, which is what
+ * makes this table a satisfiable specification rather than a wish.
+ *
+ * A NOTE ON WHAT IS AND IS NOT DRIVING. The closer and thick-wall-header rows are the new
+ * claim; the re-posed quoin rows are the guard that the refinement does not over-fire and
+ * demote a real corner. Both directions are needed — a rule that answered Head to
+ * everything would satisfy the first set alone.
+ *
  * NEEDS A TICKING WORLD: NO. Pure arithmetic over boxes and a vector.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -305,8 +319,61 @@ bool FClassifyMasonryContactByOrientationTest::RunTest(const FString& Parameters
 	 */
 	const FPieceBox QuoinReturnAcrossX{ FVector(16.875, 5.625, 3.25), YLongBrick };
 
-	// The same perpendicular pairing met across a Y face instead — the other quoin normal.
-	const FPieceBox QuoinReturnAcrossY{ FVector(0.0, 16.875, 3.25), YLongBrick };
+	/*
+	 * THE SAME CORNER MET ACROSS A Y FACE — the other quoin normal, and the fixture that had
+	 * to be RE-POSED before this table was even SATISFIABLE.
+	 *
+	 * It used to sit at (0, 16.875): a Y-long brick centred on the stretcher's long axis,
+	 * overhanging the stretcher's line by 5.125 cm on BOTH sides. That is a T-JUNCTION, not
+	 * an L — a wall branching from the MIDDLE of another wall — and it was harmless only
+	 * while classification read the extents alone. Rotate the CLOSER row below by -90
+	 * degrees about Z and translate it by (0, -16.875) and it IS that old row with the two
+	 * arguments swapped, so the table asked for Head and Corner for one and the same
+	 * contact. No rotation-equivariant, swap-symmetric rule can answer both, and X/Y
+	 * asymmetry is excluded by SnapSolverYWallMirrorsTheXWall.
+	 *
+	 * The honest across-Y quoin is the L a bricklayer actually builds: the return runs along
+	 * Y off the stretcher's +X END, its own +X long face FLUSH with the stretcher's end face
+	 * at X = 10.75 (so its X span is [0.5, 10.75]), meeting the stretcher's +Y SIDE face
+	 * across one 1 cm joint (Y spans [-5.125, 5.125] and [6.125, 27.625]). The wall runs
+	 * along X and turns to run along Y; the outer corner is (10.75, 5.125).
+	 */
+	const FPieceBox QuoinReturnAcrossY{ FVector(5.625, 16.875, 3.25), YLongBrick };
+
+	/*
+	 * THE FOUR WAYS A CROSSED BRICK CAN SIT AGAINST A STRETCHER'S END, which is what the
+	 * CROSSING rule tells apart (DESIGN §8 2026-09-15's KNOWN LIMIT). The stretcher's WIDTH
+	 * faces are the planes Y = +/-5.125 and the crossed brick's span along Y is 21.5 cm, so:
+	 *
+	 *   FLUSH-NEAR (16.875, 5.625) spans [-5.125, 16.375] — crosses the +Y plane, FLUSH
+	 *                                with the -Y plane (flush is not a crossing).
+	 *   FLUSH-FAR  (16.875, -5.625) spans [-16.375, 5.125] — crosses the -Y plane, flush
+	 *                                with the +Y plane.
+	 *   SET IN     (16.875, 8.0)    spans [-2.75, 18.75]  — crosses the +Y plane and is
+	 *                                flush with NEITHER, which is why it is here: the rule
+	 *                                is "crosses exactly one width plane", not "is exactly
+	 *                                flush with one".
+	 *   CLOSER     (16.875, 0)      spans [-10.75, 10.75] — crosses BOTH planes.
+	 *
+	 * The first three turn a corner: the wall changes direction and the return leaves the
+	 * stretcher's line on ONE side. The last does not — it is a header laid THROUGH the
+	 * wall line (a Flemish-bond closer), which is a head joint's weak perpend however
+	 * crossed the two long axes are.
+	 */
+	const FPieceBox QuoinReturnFlushFarFace{ FVector(16.875, -5.625, 3.25), YLongBrick };
+	const FPieceBox QuoinReturnSetIn{ FVector(16.875, 8.0, 3.25), YLongBrick };
+	const FPieceBox CloserInTheWallLine{ FVector(16.875, 0.0, 3.25), YLongBrick };
+
+	/*
+	 * A WALL THICKER THAN ONE BRICK, and a brick laid across it end-on. The wall is
+	 * 40 x 22 x 6.5 (half-extent 20 x 11 x 3.25) so it is X-long with width faces at
+	 * Y = +/-11, and the header's 21.5 cm span sits INSIDE both of them — it crosses the
+	 * wall's long axis without leaving the wall on either side, so nothing about it is an
+	 * L. Past NEITHER face, like past BOTH, is the weaker answer.
+	 */
+	const FVector ThickWallHalfExtent(20.0, 11.0, 3.25);
+	const FPieceBox ThickXLongWall{ FVector(0.0, 0.0, 3.25), ThickWallHalfExtent };
+	const FPieceBox HeaderInsideTheThickWall{ FVector(26.125, 0.0, 3.25), YLongBrick };
 
 	const FPieceBox YRunStretcher{ FVector(0.0, 0.0, 3.25), YLongBrick };
 	const FPieceBox YRunNeighbour{ FVector(0.0, 22.5, 3.25), YLongBrick };
@@ -317,9 +384,24 @@ bool FClassifyMasonryContactByOrientationTest::RunTest(const FString& Parameters
 	const FPieceBox XLongBesideSquare{ FVector(16.75, 0.0, 3.0), XLongBrick };
 	const FPieceBox XLongAheadOfSquare{ FVector(0.0, 11.125, 3.0), XLongBrick };
 
-	const FPieceBox NearSquare{ FVector(11.2, 0.0, 3.0), NearSquareBlock };
-	const FPieceBox BarelyXLong{ FVector(11.6, 0.0, 3.0), BarelyXLongBlock };
+	/*
+	 * THE TWO TOLERANCE ROWS' PIECES, POSED AS A GENUINE L (CURRENT_STATE corner note (v):
+	 * the original centres INTERPENETRATED, which was sound while classification read
+	 * extents alone and is not once the crossing rule reads POSITIONS too; and the first
+	 * re-pose merely abutted, which under the crossing rule is a T-junction and would have
+	 * made the Corner row unsatisfiable exactly as the old across-Y quoin did).
+	 *
+	 * The Y-long block runs along Y from -10.75 to 10.75 with its long faces at X = 6.0 and
+	 * X = 16.25. Both test blocks sit one 1 cm joint off its +X long face — 16.25 + 1 + the
+	 * block's own half-width, which is 22.45 for the near-square one and 22.85 for the
+	 * barely-X-long one — and BOTH sit at the SAME Y centre, 5.75, so their Y span is
+	 * [0.75, 10.75]: flush with the Y-long block's +Y END and overhanging nothing at the
+	 * other. That is the butt corner a bricklayer turns, and it makes the 0.4 cm of extent
+	 * the ONLY difference between the two rows — which is the whole point of the pair.
+	 */
 	const FPieceBox YLongBesideBlock{ FVector(11.125, 0.0, 3.0), YLongBrick };
+	const FPieceBox NearSquare{ FVector(22.45, 5.75, 3.0), NearSquareBlock };
+	const FPieceBox BarelyXLong{ FVector(22.85, 5.75, 3.0), BarelyXLongBlock };
 
 	const FPieceBox NaNBox{
 		FVector(11.0, 0.0, 3.0), FVector(NaNValue, NaNValue, NaNValue) };
@@ -372,6 +454,76 @@ bool FClassifyMasonryContactByOrientationTest::RunTest(const FString& Parameters
 			Stretcher, QuoinReturnAcrossY, FVector(0.0, -1.0, 0.0), EMasonryContact::Corner },
 
 		/*
+		 * CROSSED LONG AXES ARE NECESSARY BUT NOT SUFFICIENT — the CROSSING RULE (DESIGN §8
+		 * 2026-09-15's KNOWN LIMIT; CURRENT_STATE corner note (iv)). A quoin turns a corner:
+		 * one of the two pieces leaves the other's line on exactly ONE side. A brick that
+		 * crosses the long axes but leaves the line on BOTH sides is a header laid through
+		 * the wall — a Flemish-bond closer — and one that leaves it on NEITHER is a header
+		 * buried in a thicker wall. Both are head joints: the weak perpend, which is the
+		 * fail-closed answer, and the 4.5x-too-strong bond the unrefined rule would have
+		 * credited them with is exactly what this refinement exists to refuse.
+		 *
+		 * THE RULE, STATED ONCE AND THEN DERIVED PER ROW BELOW. Take one piece as the
+		 * NEIGHBOUR: its long axis is the wall's direction and the other in-plane axis is
+		 * its WIDTH, whose two faces are planes. Take the other piece's SPAN along that same
+		 * width axis. The contact is a CORNER exactly when that span PROPERLY CROSSES
+		 * (strictly: low < plane < high) exactly ONE of the two width planes. Crossing both
+		 * is a closer; crossing neither is a buried header or two pieces that never leave
+		 * each other's line at all.
+		 *
+		 * FLUSH IS NOT A CROSSING, and that is deliberate rather than an accident of the
+		 * inequality: a return whose end face lands exactly ON the neighbour's width plane
+		 * is the canonical quoin, and it earns its Corner from the plane at the OTHER side,
+		 * which it genuinely crosses. Write the comparison loosely and a flush return
+		 * crosses two planes and becomes a closer.
+		 *
+		 * WHICH PIECE IS THE "NEIGHBOUR" IS NOT A CHOICE THE RULE CAN MAKE — either piece
+		 * may be the one that leaves the other's line — so the rule is symmetric by OR:
+		 * A's span against B's width planes, OR B's span against A's. The swap assertion
+		 * below drives that home on every row, and the re-posed across-Y quoin above is the
+		 * row where only the SECOND direction fires.
+		 *
+		 * THE DERIVATION, ROW BY ROW. "N" names the piece supplying the width planes and
+		 * "C" the piece supplying the span; only the direction that decides is written out.
+		 *
+		 *   QUOIN ACROSS X, FLUSH-NEAR (Stretcher, 16.875/5.625)
+		 *     N = stretcher, width axis Y, planes -5.125 / +5.125.
+		 *     C span [-5.125, 16.375]: crosses +5.125, flush at -5.125 -> ONE -> Corner.
+		 *   QUOIN ACROSS X, FLUSH-FAR (Stretcher, 16.875/-5.625)
+		 *     Same planes; C span [-16.375, 5.125]: crosses -5.125, flush at +5.125 -> ONE.
+		 *   QUOIN ACROSS X, SET IN (Stretcher, 16.875/8.0)
+		 *     Same planes; C span [-2.75, 18.75]: crosses +5.125 only, flush with neither.
+		 *   QUOIN ACROSS Y (Stretcher, 5.625/16.875) — THE ONE THAT NEEDS THE SECOND DIRECTION
+		 *     N = stretcher first: width axis Y, planes -5.125 / +5.125, C span
+		 *     [6.125, 27.625] — entirely beyond, crossing NOTHING. Now the other way:
+		 *     N = return, long axis Y, width axis X, planes 0.5 / 10.75; C = stretcher, span
+		 *     [-10.75, 10.75]: crosses 0.5, flush at 10.75 -> ONE -> Corner.
+		 *   CLOSER (Stretcher, 16.875/0)
+		 *     N = stretcher: C span [-10.75, 10.75] crosses BOTH -5.125 and +5.125 -> two.
+		 *     N = closer (width axis X, planes 11.75 / 22.0): C span [-10.75, 10.75] lies
+		 *     wholly below both -> zero. Neither direction gives one -> Head.
+		 *   THICK-WALL HEADER (ThickXLongWall, 26.125/0)
+		 *     N = wall (width planes Y = -11 / +11): C span [-10.75, 10.75] is INSIDE both
+		 *     -> zero. N = header (width planes X = 21 / 31.25): C span [-20, 20] is wholly
+		 *     below both -> zero. Head.
+		 *   TOLERANCE PAIR (YLongBesideBlock vs BarelyXLong, 22.85/5.75)
+		 *     N = YLongBesideBlock (width planes X = 6.0 / 16.25): C span [17.25, 28.45]
+		 *     lies wholly beyond both -> zero. N = BarelyXLong (X-long by 0.6 cm, width
+		 *     planes Y = 0.75 / 10.75): C span [-10.75, 10.75] crosses 0.75 and is flush at
+		 *     10.75 -> ONE -> Corner. The near-square block never reaches this test at all:
+		 *     with no long axis the pair is not crossed, so it is a Head on orientation.
+		 */
+		{ TEXT("return flush with the FAR width face (past the -Y face only) -> the quoin"),
+			Stretcher, QuoinReturnFlushFarFace, FVector(1.0, 0.0, 0.0), EMasonryContact::Corner },
+		{ TEXT("return SET IN, flush with neither face but past the +Y face only -> the quoin"),
+			Stretcher, QuoinReturnSetIn, FVector(1.0, 0.0, 0.0), EMasonryContact::Corner },
+		{ TEXT("closer in the wall line (past BOTH width faces) -> the weaker answer"),
+			Stretcher, CloserInTheWallLine, FVector(1.0, 0.0, 0.0), EMasonryContact::Head },
+		{ TEXT("header inside a wall thicker than one brick (past NEITHER) -> the weaker answer"),
+			ThickXLongWall, HeaderInsideTheThickWall, FVector(1.0, 0.0, 0.0),
+			EMasonryContact::Head },
+
+		/*
 		 * NO LONG AXIS -> HEAD, FAIL CLOSED. A square footprint has no orientation to
 		 * agree or disagree with, so it takes the WEAKER of the two masonry answers: a
 		 * square block can never be credited with a quoin's full mortar on geometry
@@ -390,6 +542,12 @@ bool FClassifyMasonryContactByOrientationTest::RunTest(const FString& Parameters
 		 * X-long, so against a Y-long piece it is a corner. Without the second row a
 		 * "difference > 0 means long" implementation and a "difference > 0.5" one are
 		 * indistinguishable; without the first, an exact-equality one is.
+		 *
+		 * BOTH BLOCKS SIT AT THE SAME L (their fixtures above carry the derivation), so the
+		 * 0.4 cm of extent is the ONLY thing separating these two rows. Pose them
+		 * differently and the pair stops measuring the tolerance and starts measuring the
+		 * geometry instead — which is how the earlier T-junction pose made the Corner row
+		 * unsatisfiable without anyone noticing what it had stopped testing.
 		 */
 		{ TEXT("near-square block (0.2 cm apart) against a Y-long brick, +X"),
 			YLongBesideBlock, NearSquare, FVector(1.0, 0.0, 0.0), EMasonryContact::Head },
@@ -506,7 +664,16 @@ bool FCornerContactGetsFullMortarTest::RunTest(const FString& Parameters)
 	const FPieceBox SameCourseNeighbour{ FVector(22.5, 0.0, 3.25), XLongBrick };
 	const FPieceBox NextCourseAbove{ FVector(11.25, 0.0, 10.75), XLongBrick };
 	const FPieceBox QuoinReturnAcrossX{ FVector(16.875, 5.625, 3.25), YLongBrick };
-	const FPieceBox QuoinReturnAcrossY{ FVector(0.0, 16.875, 3.25), YLongBrick };
+
+	/*
+	 * THE ACROSS-Y QUOIN IS THE RE-POSED ONE — the same L the classification table now
+	 * carries (its fixture there has the derivation). Its old (0, 16.875) pose was a
+	 * T-junction, and under the crossing rule a T-junction is a head joint, so a Corner row
+	 * on that geometry asked for something no coherent rule could give.
+	 */
+	const FPieceBox QuoinReturnAcrossY{ FVector(5.625, 16.875, 3.25), YLongBrick };
+	const FPieceBox QuoinReturnFlushFarFace{ FVector(16.875, -5.625, 3.25), YLongBrick };
+	const FPieceBox CloserInTheWallLine{ FVector(16.875, 0.0, 3.25), YLongBrick };
 	const FPieceBox Square{ FVector(0.0, 0.0, 3.0), SquareBlock };
 	const FPieceBox XLongBesideSquare{ FVector(16.75, 0.0, 3.0), XLongBrick };
 
@@ -525,6 +692,21 @@ bool FCornerContactGetsFullMortarTest::RunTest(const FString& Parameters)
 		{ TEXT("brick/brick quoin across a Y face, +Y"),
 			&ClayBrick, &ClayBrick, Stretcher, QuoinReturnAcrossY, FVector(0.0, 1.0, 0.0),
 			&GeneralPurposeMortar, TEXT("GeneralPurposeMortar") },
+		{ TEXT("brick/brick quoin returning the OTHER way (flush with the far face), +X"),
+			&ClayBrick, &ClayBrick, Stretcher, QuoinReturnFlushFarFace, FVector(1.0, 0.0, 0.0),
+			&GeneralPurposeMortar, TEXT("GeneralPurposeMortar") },
+
+		/*
+		 * THE CLOSER IS NOT A QUOIN — the profile consequence of the L-footprint refinement
+		 * (DESIGN §8's KNOWN LIMIT). A rotated brick laid end-on to a stretcher IN THE SAME
+		 * WALL LINE crosses long axes exactly as a return does, but it turns no corner, so
+		 * it earns the perpend. Crediting it full mortar is a 4.5x overstatement of the bond
+		 * (cohesion 0.9 against 0.2), which is why it is pinned beside the corner rows
+		 * rather than left to the classification test alone.
+		 */
+		{ TEXT("brick/brick closer in the wall line, +X"),
+			&ClayBrick, &ClayBrick, Stretcher, CloserInTheWallLine, FVector(1.0, 0.0, 0.0),
+			&GeneralPurposeMortarPerpend, TEXT("GeneralPurposeMortarPerpend") },
 
 		/*
 		 * THE HEAD JOINT IS UNCHANGED — the collinear pair across the SAME normal that
@@ -654,12 +836,35 @@ bool FBoxedOverloadAgreesWithTheUnboxedOneOffCornersTest::RunTest(const FString&
 		{
 			/*
 			 * The two boxes are separated on the X axis by one 1 cm joint and overlap on
-			 * the other two, so every row is a real face. The classification reads only the
-			 * extents, so one pose serves all six normals.
+			 * the other two, so every row is a real face. One pose serves all six normals.
+			 *
+			 * THE Y OFFSET MAKES EVERY CROSSED ROW A CANONICAL L. Under the crossing rule,
+			 * crossed long axes alone are not a quoin — one piece must leave the other's line
+			 * on exactly one side, or the pair is a closer laid through the wall line and
+			 * stays a head joint. Offsetting B by (B's half-width - A's half-width) on Y
+			 * aligns the pair's -Y faces: 0 for the two collinear brick pairings (their poses
+			 * are unchanged), 0.125 for square/X-long (no long axis, a head joint at any
+			 * pose), and +/-5.625 for the two perpendicular ones, which is the quoin.
+			 *
+			 * THE DERIVATION FOR THE TWO ROWS THAT DIFFER, since a pose that quietly stopped
+			 * being an L would make this sweep agree with the 3-arg overload everywhere and
+			 * the count below is the only thing that would notice:
+			 *   X-long / Y-long: A at the origin, B at (16.875, 5.625). A's width planes are
+			 *     Y = -5.125 / +5.125 and B's span is [-5.125, 16.375] — crosses +5.125,
+			 *     flush at -5.125. ONE crossing -> Corner.
+			 *   Y-long / X-long: A at the origin, B at (16.875, -5.625). This time the FIRST
+			 *     direction gives nothing (A's width planes X = -5.125 / +5.125, B's span
+			 *     [6.125, 27.625], wholly beyond); the second decides it — B's width planes
+			 *     are Y = -10.75 / -0.5 and A's span is [-10.75, 10.75], flush at -10.75 and
+			 *     crossing -0.5. ONE crossing -> Corner.
 			 */
 			const FPieceBox BoxA{ FVector(0.0, 0.0, 3.25), Pairing.ExtentA };
 			const FPieceBox BoxB{
-				FVector(Pairing.ExtentA.X + 1.0 + Pairing.ExtentB.X, 0.0, 3.25), Pairing.ExtentB };
+				FVector(
+					Pairing.ExtentA.X + 1.0 + Pairing.ExtentB.X,
+					Pairing.ExtentB.Y - Pairing.ExtentA.Y,
+					3.25),
+				Pairing.ExtentB };
 
 			for (const FVector& Normal : AxisNormals)
 			{

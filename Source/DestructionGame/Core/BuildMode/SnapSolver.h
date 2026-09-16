@@ -22,9 +22,22 @@
  *
  * BEHAVIORS 2a/2b/2d/2e implement four snap kinds: brick RUNNING-BOND NEXT COURSE
  * (bed joint), brick SAME-COURSE END-TO-END (head joint), TIMBER CENTERED-ON a brick
- * and TIMBER EDGE-FLUSH to a brick face (both DryStone bearings). Corner returns are
- * a later behavior — the enum names it so the surface does not churn, but the solver
- * need not emit it yet.
+ * and TIMBER EDGE-FLUSH to a brick face (both DryStone bearings). CR-2a adds the fifth,
+ * brick CORNER RETURN — the quoin of DESIGN §8's 2026-09-15 ruling.
+ *
+ * THE BRICK GRID IS LONG-AXIS-AWARE, NOT X-AXIS-AWARE. Bed and head poses step along the
+ * NEIGHBOUR'S long axis and are offered only when the placed brick is laid the SAME way,
+ * so a wall running along Y grows exactly as one running along X does, reflected. A
+ * placed brick laid ACROSS a brick-sized neighbour takes neither, and is offered the four
+ * corner returns instead — one at each of the neighbour's ends, finishing flush with each
+ * of its two width faces.
+ *
+ * ORIENTATION DECIDES THE POSE, CONTACT DECIDES THE JOINTS. Once a next-course pose is
+ * offered, the brick BEDS ON EVERY brick-sized piece its underside has come to rest on —
+ * a joint gap above that piece's top face, overlapping it in plan — whichever way that
+ * piece runs. That is what bonds the course-1 stretcher a bricklayer laps OVER a corner
+ * return to the return itself, and it is the same contact sweep a timber lintel uses to
+ * find every support it spans.
  */
 namespace BuildMode
 {
