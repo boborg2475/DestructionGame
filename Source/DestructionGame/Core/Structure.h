@@ -546,6 +546,32 @@ struct FStructure
 	int32 GetLastRegionalProblemBlockCount() const;
 
 	/**
+	 * INSTRUMENTATION for which physics the LAST equilibrium-gate pose was posed in: 2 for a 2D
+	 * (X-Z) problem, 3 for a 3D one, INDEX_NONE until a pose has been built.
+	 *
+	 * `BuildRigidBlockProblem` poses the CHEAPEST SOUND problem — 2D whenever every joint it
+	 * actually poses has an in-plane normal AND every posed row sits at one common Y, 3D
+	 * otherwise, with the `IsThreeDimensional` flag staying the stated PERMISSION to pose 3D
+	 * rather than the choice itself — so a 3D-flagged straight wall reads 2 here while a build
+	 * with a posed out-of-plane joint reads 3. The two poses are not the same physics (the 2D
+	 * rows carry the exact Coulomb cone, the 3D rows an inscribed octagon — DESIGN §8,
+	 * 2026-09-16), which is why the reading is worth pinning.
+	 *
+	 * "Last POSED", not "last CALL", exactly as `LastRegionalProblemBlockCount`: a pass that
+	 * declines before the bridge (over the block cap, no complete geometry) or after it (an
+	 * Unanswerable LP) leaves the previous reading in place.
+	 *
+	 * AN INT, NOT `RigidBlockOracle::EOracleDim`, on purpose: Structure.h forward-declares the
+	 * oracle's two structs precisely so it never pulls in that header, and an enum cannot be
+	 * forward-declared without fixing its underlying type here. 2 and 3 are the dimensions
+	 * themselves, so the reading needs no lookup table.
+	 *
+	 * Test-only observability, exactly like GetLastRegionalProblemBlockCount and
+	 * GetMinViolationReadoutSolveCount: no production code may branch on it.
+	 */
+	int32 GetLastEquilibriumProblemDim() const;
+
+	/**
 	 * Which breaking pass gave this joint, counted from 1, or INDEX_NONE if no pass did
 	 * — including for an out-of-range handle, which is not a joint that broke.
 	 *
@@ -1387,6 +1413,13 @@ private:
 	 * regional prove has posed a problem. Test-only observability for the flood's stopping gate.
 	 */
 	int32 LastRegionalProblemBlockCount = INDEX_NONE;
+
+	/*
+	 * INSTRUMENTATION for GetLastEquilibriumProblemDim — 2 or 3 for the dimension the last
+	 * equilibrium-gate pose was built in, INDEX_NONE before any. Stamped in BreakByEquilibrium from
+	 * Problem.Dim the moment BuildRigidBlockProblem accepts, so it reports the last POSE.
+	 */
+	int32 LastEquilibriumProblemDim = INDEX_NONE;
 
 	/*
 	 * Whether SetThreeDimensional flagged this structure 3D (THREED_DESIGN.md E3). FALSE BY

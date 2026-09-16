@@ -2765,6 +2765,18 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 		return EEquilibriumGateDisposition::DeclinedToRouter;
 	}
 
+	/*
+	 * Record WHICH PHYSICS this pose was built in the moment the pose exists — 2 for the X-Z
+	 * problem, 3 for the volumetric one. The bridge picks the cheapest sound pose, so a 3D-flagged
+	 * build whose posed joints are all in-plane AND whose posed rows share one Y reads 2 here (a
+	 * roof bearing on walls at two different Y reads 3 even with every normal in-plane); that is the
+	 * whole observable
+	 * GetLastEquilibriumProblemDim exists to serve, in the shape of LastRegionalProblemBlockCount.
+	 * Stamped on the POSE and not on the CALL: a pass that declines before the bridge (over cap, no
+	 * geometry) or after it (an Unanswerable LP) leaves the previous reading in place.
+	 */
+	LastEquilibriumProblemDim = Problem.Dim == RigidBlockOracle::EOracleDim::Dim3D ? 3 : 2;
+
 	Problem.bGravityIsLive = false;
 
 	/*
@@ -3770,6 +3782,17 @@ int32 FStructure::GetLastRegionalProblemBlockCount() const
 	return LastRegionalProblemBlockCount;
 }
 
+int32 FStructure::GetLastEquilibriumProblemDim() const
+{
+	/*
+	 * The dimension the last equilibrium-gate pose was built in — 2 for the X-Z problem, 3 for the
+	 * volumetric one — or INDEX_NONE if no pose has been built. Stamped by BreakByEquilibrium from
+	 * Problem.Dim the moment the bridge accepts, so a declined pass reports the last POSE rather
+	 * than the last call. Test-only observability: no production code may branch on it.
+	 */
+	return LastEquilibriumProblemDim;
+}
+
 void FStructure::SetEquilibriumGateBlockCap(int32 MaxBlocks)
 {
 	/*
@@ -3815,10 +3838,12 @@ void FStructure::SetPieceMaterial(int32 PieceIndex, const DestructionProfiles::F
 void FStructure::SetThreeDimensional(bool bIsThreeDimensional)
 {
 	/*
-	 * The 3D signal `RigidBlockBridge` branches on (THREED_DESIGN.md E3, done). When set,
-	 * `BuildRigidBlockProblem` poses this structure as Dim3D — the real 3D joint geometry, the
-	 * out-of-plane Y normal accepted; when unset (the default), the 2D X-Z pose and its Y-normal
-	 * refusal stand.
+	 * The 3D PERMISSION `RigidBlockBridge` branches on (THREED_DESIGN.md E3, amended
+	 * 2026-09-16). When set, `BuildRigidBlockProblem` MAY pose this structure as Dim3D — the real
+	 * 3D joint geometry, the out-of-plane Y normal accepted — and does so only when the posed
+	 * problem actually leaves the X-Z plane; a flagged structure whose posed rows are all planar
+	 * is posed 2D (`GetLastEquilibriumProblemDim` reads which). When unset (the default), the 2D
+	 * X-Z pose and its Y-normal refusal stand.
 	 */
 	bThreeDimensional = bIsThreeDimensional;
 }

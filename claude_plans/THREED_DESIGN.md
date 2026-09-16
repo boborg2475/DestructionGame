@@ -169,7 +169,12 @@ break, needing the D7 minimal-support tie-break / E2b canonicalisation. That is 
 corner case a face/edge-bearing shed does not hit; build it only if a 3D shed fixture ever shows a
 point-pivot non-determinism. **E3 — the 3D bridge — DONE (2026-08-30): 3D IS NOW REACHABLE FROM PRODUCTION.**
 `BuildRigidBlockProblem` branches on a new `FStructure::IsThreeDimensional()` flag (a structure-level SIGNAL,
-NOT inference — a 2D structure's stray Y-normal is still refused). `FStructure`/`FConnection` already carried
+NOT inference — a 2D structure's stray Y-normal is still refused). **AMENDED 2026-09-16 (DESIGN §8):** the flag
+is the PERMISSION to pose 3D, not the pose. Within it the bridge (equilibrium and regional, in lock-step) poses
+2D whenever every POSED joint normal is in-plane AND every posed row sits at one common Y, 3D otherwise — a
+flagged straight wall is a 2D problem; the refusal side of the flag is unchanged. The two poses are not the same
+feasible set (the 3D friction rows are an inscribed octagon, 0.924× the exact cone), so this is recorded as a
+ruling with a cost, not a no-op. `FStructure`/`FConnection` already carried
 full 3D joint geometry (3D `InterfaceNormal`/`InterfaceCentreCm`/per-axis `InterfaceHalfExtentCm`, 3D
 `CentreOfMassCm`; `AddConnection` validates the axis-aligned Y-normal rectangle), so E3 just POSES it: sets
 `Dim=Dim3D`, the block's `CentroidYCm`, the joint `NormalY`/`CentreYCm`, and `HalfUCm/HalfVCm` mapped via the

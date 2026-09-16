@@ -33,9 +33,19 @@ namespace RigidBlockOracle
 	 * or rectangle would silently become a lever arm of "at the origin"), a live joint
 	 * naming a removed piece (the known AddConnection tombstone hole), and — for a 2D
 	 * structure only — any joint whose normal has a Y component: a 2D oracle projecting
-	 * an out-of-plane joint would be a plausible number with wrong statics. A structure
-	 * flagged 3D (FStructure::IsThreeDimensional) is instead posed with its full Y
-	 * geometry and routed to the 3D oracle, so its Y-normal joints are carried, not refused.
+	 * an out-of-plane joint would be a plausible number with wrong statics.
+	 *
+	 * THE 3D FLAG (FStructure::IsThreeDimensional) IS THE PERMISSION TO POSE 3D, NOT THE
+	 * POSE. A flagged structure MAY carry its full Y geometry and be routed to the 3D
+	 * oracle, so its Y-normal joints are carried rather than refused — but the bridge
+	 * poses the CHEAPEST SOUND problem for what it actually contains: 2D whenever BOTH
+	 * every joint it POSES (after the given / earth-to-earth skips) has an in-plane normal
+	 * AND every Y that enters an equilibrium row (each ungrounded block's centroid, each
+	 * posed patch centre) is one common Y; 3D otherwise. The two poses are NOT the same
+	 * feasible set: the 3D friction rows are an inscribed octagon, 0.924x the exact
+	 * Coulomb cone the 2D rows carry, so the 2D pose is the more accurate formulation and
+	 * ~37x cheaper (DESIGN §8, 2026-09-16). An UNflagged structure is never promoted: a
+	 * stray Y-normal joint is still refused.
 	 *
 	 * @return true and a filled problem, or false with the reason; OutProblem is
 	 *         emptied on refusal so a caller who ignores the return solves nothing.
