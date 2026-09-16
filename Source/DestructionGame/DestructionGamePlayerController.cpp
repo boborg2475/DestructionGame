@@ -1161,6 +1161,19 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 		}
 		break;
 
+	case EToolbarButtonId::RotatePiece:
+		/*
+		 * THE STATE'S FLAG, READ AFTER THE TRANSITION, exactly as the piece and the course are. The
+		 * chip is a toggle and the model is where that flip already happened, so the component is
+		 * told WHICH WAY the next piece lies rather than that a chip was clicked — and it derives
+		 * the swapped footprint itself, which is what keeps the rotation and the palette one answer.
+		 */
+		if (BuildComponent != nullptr)
+		{
+			BuildComponent->SetRotated(SessionToolbarState.bRotated);
+		}
+		break;
+
 	case EToolbarButtonId::PlacementSnap:
 	case EToolbarButtonId::PlacementFree:
 		if (BuildComponent != nullptr)

@@ -123,6 +123,7 @@ namespace SessionToolbarTestSupport
 		case EToolbarButtonId::PieceBrick:        return TEXT("PieceBrick");
 		case EToolbarButtonId::PieceTimberPlate:  return TEXT("PieceTimberPlate");
 		case EToolbarButtonId::PieceTimberLintel: return TEXT("PieceTimberLintel");
+		case EToolbarButtonId::RotatePiece:       return TEXT("RotatePiece");
 		case EToolbarButtonId::PlacementSnap:     return TEXT("PlacementSnap");
 		case EToolbarButtonId::PlacementFree:     return TEXT("PlacementFree");
 		case EToolbarButtonId::CourseDown:        return TEXT("CourseDown");
@@ -181,6 +182,14 @@ namespace SessionToolbarTestSupport
 		case EToolbarButtonId::PieceBrick:
 		case EToolbarButtonId::PieceTimberPlate:
 		case EToolbarButtonId::PieceTimberLintel:
+
+		/*
+		 * AND SO IS ROTATE, which is the whole of what it means for it to LATCH. It is a property of
+		 * the next placement — which way round the piece lies — rather than something that happens,
+		 * so it belongs with the palette it modifies and in front of the rule the commands sit past.
+		 */
+		case EToolbarButtonId::RotatePiece:
+
 		case EToolbarButtonId::PlacementSnap:
 		case EToolbarButtonId::PlacementFree:
 
@@ -315,6 +324,7 @@ namespace SessionToolbarTestSupport
 			EToolbarButtonId::PieceBrick,
 			EToolbarButtonId::PieceTimberPlate,
 			EToolbarButtonId::PieceTimberLintel,
+			EToolbarButtonId::RotatePiece,
 			EToolbarButtonId::PlacementSnap,
 			EToolbarButtonId::PlacementFree,
 			EToolbarButtonId::JointAuto,
@@ -468,7 +478,8 @@ namespace SessionToolbarTestSupport
 			&& A.Joint == B.Joint
 			&& A.Course == B.Course
 			&& A.bHasStructure == B.bHasStructure
-			&& A.bLoadOverlay == B.bLoadOverlay;
+			&& A.bLoadOverlay == B.bLoadOverlay
+			&& A.bRotated == B.bRotated;
 	}
 
 	const DestructionSession::FToolbarButton* FindButton(
@@ -493,7 +504,8 @@ namespace SessionToolbarTestSupport
 		int32 Course,
 		bool bHasStructure,
 		bool bLoadOverlay = false,
-		DestructionSession::EJointChoice Joint = DestructionSession::EJointChoice::Auto)
+		DestructionSession::EJointChoice Joint = DestructionSession::EJointChoice::Auto,
+		bool bRotated = false)
 	{
 		DestructionSession::FSessionToolbarState State;
 		State.Mode = Mode;
@@ -503,6 +515,7 @@ namespace SessionToolbarTestSupport
 		State.bHasStructure = bHasStructure;
 		State.bLoadOverlay = bLoadOverlay;
 		State.Joint = Joint;
+		State.bRotated = bRotated;
 		return State;
 	}
 
@@ -532,6 +545,16 @@ namespace SessionToolbarTestSupport
 	 * and a player would come back from one Destroy click to find their screws turned into mortar.
 	 * Six values rather than a pair, because "exactly one of six is lit" is the claim and a
 	 * segmented control tested with two members can be lit by a boolean.
+	 *
+	 * `bRotated` IS DELIBERATELY *NOT* A DIMENSION, AND THIS IS THE ONE OMISSION IN THE MATRIX.
+	 * Another boolean doubles 864 to 1728 and doubles the cost of the six sweeps that run over it,
+	 * for a flag that changes exactly ONE chip's `bActive` and nothing else on the strip — no
+	 * button's presence, no greying, no caption, no group, no swatch. So every state below carries
+	 * `bRotated == false`, which makes those six sweeps' claims about the Rotate chip half-claims
+	 * ("it is not lit when the session is not rotated"), and the OTHER half — lit exactly when the
+	 * session is rotated, and the round trip through Destroy that brings the choice back — is swept
+	 * BOTH ways inside `Core.SessionToolbar.RotateChip`, which is the only test that needs it.
+	 * Anybody adding a flag that DOES move the strip's shape must add it here instead.
 	 */
 	TArray<DestructionSession::FSessionToolbarState> AllStates()
 	{
@@ -642,6 +665,19 @@ bool FSessionToolbarButtonsByModeTest::RunTest(const FString& Parameters)
 		EToolbarButtonId::PieceBrick,
 		EToolbarButtonId::PieceTimberPlate,
 		EToolbarButtonId::PieceTimberLintel,
+
+		/*
+		 * ROTATE SITS WITH THE PALETTE, IMMEDIATELY AFTER THE THREE PIECES AND BEFORE Snap/Free, and
+		 * the position is the claim rather than a preference. It is not a fourth piece — it is a
+		 * modifier on whichever of the three is lit, so it reads as the tail of the palette rather
+		 * than as a member of it; and it is in front of the placement pair because the two
+		 * questions are ordered the way a player asks them (which piece, lying which way, then
+		 * snapped or free, then fastened how). The failure the slot pins is the obvious alternative
+		 * — a chip dropped in at the end, beside the irreversible `Clear build`, where a harmless
+		 * setting sits hard against the one control on this strip that cannot be undone.
+		 */
+		EToolbarButtonId::RotatePiece,
+
 		EToolbarButtonId::PlacementSnap,
 		EToolbarButtonId::PlacementFree,
 
@@ -771,6 +807,7 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 		int32 ActiveJointButtons = 0;
 		int32 JointButtonsSeen = 0;
 		int32 LoadOverlayButtonsSeen = 0;
+		int32 RotateButtonsSeen = 0;
 
 		for (const FToolbarButton& Button : Buttons)
 		{
@@ -867,6 +904,26 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 				break;
 			}
 
+			case EToolbarButtonId::RotatePiece:
+				/*
+				 * ROTATE LATCHES TOO, AND IT IS THE SAME CLAIM AS THE OVERLAY'S ONE SLOT-GROUP OVER.
+				 * Which way the next piece lies is a SETTING that stays until it is changed, so the
+				 * chip has to say so — a toggle drawn unlit while every brick lands turned ninety
+				 * degrees leaves the player with a rotated ghost and no control that admits to it,
+				 * and the obvious next move is to click the chip expecting to turn rotation ON.
+				 *
+				 * SWEPT ONLY AT bRotated == false HERE (AllStates says why), so what this arm pins is
+				 * the half a wrongly-wired chip most often gets wrong anyway: lit by default.
+				 * Core.SessionToolbar.RotateChip sweeps both values.
+				 */
+				++RotateButtonsSeen;
+				TestEqual(
+					*FString::Printf(
+						TEXT("%s: RotatePiece is lit exactly when the next piece is rotated — [%s]"),
+						*DescribeState(State), *DescribeButtons(Buttons)),
+					Button.bActive, State.bRotated);
+				break;
+
 			case EToolbarButtonId::ToggleLoadOverlay:
 				/*
 				 * A SETTING LATCHES, WHICH IS THE WHOLE DIFFERENCE BETWEEN THIS CHIP AND Run structure
@@ -947,6 +1004,17 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 					 "— [%s]"),
 				*DescribeState(State), *DescribeButtons(Buttons)),
 			LoadOverlayButtonsSeen, bBuilding ? 0 : 1);
+
+		/*
+		 * AND THE ROTATE CHIP WAS ACTUALLY THERE TO BE READ — the mirror-image floor. It is drawn in
+		 * Build mode and nowhere else: Destroy lays nothing, so a chip saying which way the next
+		 * piece lies would be a setting over a mode that has no next piece.
+		 */
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: the rotate chip must be on the strip in Build mode and nowhere else — [%s]"),
+				*DescribeState(State), *DescribeButtons(Buttons)),
+			RotateButtonsSeen, bBuilding ? 1 : 0);
 	}
 
 	return true;
@@ -1127,6 +1195,15 @@ bool FSessionToolbarLabelsTest::RunTest(const FString& Parameters)
 		{ EToolbarButtonId::JointNail,   TEXT("Nail") },
 		{ EToolbarButtonId::JointScrew,  TEXT("Screw") },
 		{ EToolbarButtonId::JointBolt,   TEXT("Bolt") },
+
+		/*
+		 * AND THE ROTATE CHIP SAYS "Rotate". The word is the whole claim and the rest is the
+		 * widget's — "Rotate", "Rotate 90", "Rotate piece" are all the chip a player is hunting
+		 * for — but this control is the only way to lay a header or turn a wall's second leg, and a
+		 * chip whose caption does not contain the verb is one the player finds by clicking it and
+		 * watching the ghost jump.
+		 */
+		{ EToolbarButtonId::RotatePiece, TEXT("Rotate") },
 	};
 
 	/*
@@ -1147,13 +1224,14 @@ bool FSessionToolbarLabelsTest::RunTest(const FString& Parameters)
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
 
 		/*
-		 * TEN IN BUILD AND FOUR IN DESTROY. A Build strip owes ModeBuild, ModeDestroy, the two
-		 * placement captions and the SIX joint chips; a Destroy strip owes ModeBuild, ModeDestroy,
-		 * Run and the load toggle. The two mode captions are the only rows both strips share.
+		 * ELEVEN IN BUILD AND FOUR IN DESTROY. A Build strip owes ModeBuild, ModeDestroy, the two
+		 * placement captions, the SIX joint chips and ROTATE; a Destroy strip owes ModeBuild,
+		 * ModeDestroy, Run and the load toggle. The two mode captions are the only rows both strips
+		 * share.
 		 */
 		WordChecksOwed += State.Mode == ESessionMode::Build
-			? 2 + 2 + 6   /* the mode pair, Snap and Free, then the six joint chips */
-			: 2 + 2;      /* the mode pair, then Run structure and Load overlay */
+			? 2 + 2 + 6 + 1   /* the mode pair, Snap and Free, the six joint chips, then Rotate */
+			: 2 + 2;          /* the mode pair, then Run structure and Load overlay */
 
 		TestTrue(
 			*FString::Printf(
@@ -2194,7 +2272,8 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
 		const bool bBuilding = State.Mode == ESessionMode::Build;
 
-		ButtonsOwed += bBuilding ? 16 : 4;
+		/* Seventeen in Build since the rotate chip joined the palette; four in Destroy. */
+		ButtonsOwed += bBuilding ? 17 : 4;
 
 		int32 ModeGroupButtons = 0;
 		int32 BrickSwatches = 0;
@@ -3056,6 +3135,346 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 				 "into something that is not one — it answered %s"),
 			NameOfConnectionProfileByAddress(JointOverrideFor(UnknownChoice))),
 		IsAShippedConnectionProfileOrNull(JointOverrideFor(UnknownChoice)));
+
+	return true;
+}
+
+/**
+ * CR-2b — THE PLAYER TURNS THE NEXT PIECE NINETY DEGREES: ONE LATCHING CHIP AT THE END OF THE
+ * PALETTE, AND IT SURVIVES A TRIP THROUGH DESTROY MODE.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * `FSessionToolbarState` carries a `bRotated` flag; the Build strip draws it as a single LATCHING
+ * `RotatePiece` chip in the Settings group, immediately after the three piece chips and before the
+ * placement pair, lit exactly when the flag is set, live in every Build state; and
+ * `ApplyToolbarButton` TOGGLES the flag and touches nothing else.
+ *
+ * =====================================================================================
+ * WHY A FLAG ON THE STATE AND NOT A FOURTH PIECE KIND
+ * =====================================================================================
+ *
+ * A rotated brick is the same brick. `EBuildPieceKind` names the thing in the palette — an extent
+ * and a library row — and adding `BrickRotated`, `TimberPlateRotated` and `TimberLintelRotated`
+ * would triple a table whose whole reason for existing (SessionToolbar.h, "A KIND RATHER THAN AN
+ * EXTENT AND A MATERIAL") is that brick dimensions must be written down in ONE place. Rotation is
+ * orthogonal: it is a transform ON whichever kind is lit, so it is one bit beside the kind and one
+ * chip beside the three. That is also why it is the palette's tail rather than a fourth swatch —
+ * see the slot claim below.
+ *
+ * =====================================================================================
+ * WHY IT LATCHES RATHER THAN BEING A VERB
+ * =====================================================================================
+ *
+ * `Rotate` reads like a thing that HAPPENS, and a chip drawn unlit while every ghost lands turned
+ * ninety degrees would leave the player with a rotated wall and no control on screen that admits to
+ * it — the failure `ToggleLoadOverlay` exists to avoid, one group over. So `bActive == bRotated`
+ * and the same chip turns it off; there is deliberately no second "un-rotate" chip.
+ *
+ * AND IT SURVIVES A ROUND TRIP THROUGH DESTROY, which is the half a model gets wrong by rebuilding
+ * the state rather than amending it. The Destroy strip does not draw the chip at all, so nothing
+ * refreshes the flag on the way back; a player who turned a piece to lay the second leg of an L,
+ * looked at a brick and came back must find it still turned, or their next click lays a stretcher
+ * across the corner they were building.
+ *
+ * =====================================================================================
+ * WHAT THIS TEST OWNS THAT THE SWEEPS ABOVE DO NOT
+ * =====================================================================================
+ *
+ * `AllStates` deliberately does NOT carry `bRotated` as a dimension (its own header says why:
+ * 864 states would become 1728 for a flag that moves exactly one chip's `bActive`). So the six
+ * sweeps see the chip only at `bRotated == false` — which pins that it is drawn, where, in which
+ * group, with which caption, live, and NOT lit by default. What is left here, and what nothing else
+ * can say, is every claim that needs the flag SET: the chip lit, the toggle in both directions, the
+ * round trip through Destroy, and the refusal in a mode that does not draw it.
+ *
+ * NEEDS A TICKING WORLD: no, and not even a world. One plain struct in, plain structs out.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSessionToolbarRotateChipTest,
+	"DestructionGame.Core.SessionToolbar.RotateChip",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
+{
+	using namespace SessionToolbarTestSupport;
+	using namespace DestructionSession;
+
+	/*
+	 * THE WHOLE MATRIX, EACH STATE TAKEN BOTH WAYS ROUND. This is the one test that pays for the
+	 * doubling AllStates refuses, and it pays for it over its own claims alone rather than over
+	 * every claim in the file.
+	 */
+	TArray<FSessionToolbarState> RotatedBothWays;
+
+	for (const FSessionToolbarState& State : AllStates())
+	{
+		FSessionToolbarState Upright = State;
+		Upright.bRotated = false;
+		RotatedBothWays.Add(Upright);
+
+		FSessionToolbarState Turned = State;
+		Turned.bRotated = true;
+		RotatedBothWays.Add(Turned);
+	}
+
+	/* --- ZERO: a session opens UPRIGHT ------------------------------------------------------- */
+
+	/*
+	 * THE DEFAULT IS THE ONE THAT DECIDES LEAST, exactly as Mode's is Build and the overlay's is
+	 * off. A session that opened rotated would lay its first brick turned ninety degrees across the
+	 * grid every harness and every level is laid on, with the strip's own chip the only thing on
+	 * screen saying so.
+	 */
+	{
+		const FSessionToolbarState Fresh;
+
+		TestFalse(
+			*FString::Printf(
+				TEXT("a default-constructed session must NOT be rotated — the first brick of every "
+					 "build lies along the grid. It reads %s"),
+				*DescribeState(Fresh)),
+			Fresh.bRotated);
+	}
+
+	/* --- ONE: the slot, the group, the swatch, the greying and the latch ---------------------- */
+
+	int32 BuildStripsRead = 0;
+	int32 LitChipsSeen = 0;
+	int32 UnlitChipsSeen = 0;
+
+	for (const FSessionToolbarState& State : RotatedBothWays)
+	{
+		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
+
+		if (State.Mode != ESessionMode::Build)
+		{
+			/*
+			 * THE DESTROY STRIP DRAWS NO ROTATE CHIP, EVEN WITH THE FLAG SET. Destroy lays nothing,
+			 * so a control saying which way the next piece lies would be a setting over a mode with
+			 * no next piece — and the flag being SET is exactly the state a model that drew the chip
+			 * "when it is on" would get wrong. ButtonsByMode sweeps the list at bRotated == false;
+			 * this is the other half.
+			 */
+			TestNull(
+				*FString::Printf(
+					TEXT("%s: the DESTROY strip must not draw the rotate chip, not even with the flag "
+						 "set — [%s]"),
+					*DescribeState(State), *DescribeButtons(Buttons)),
+				FindButton(Buttons, EToolbarButtonId::RotatePiece));
+
+			continue;
+		}
+
+		++BuildStripsRead;
+
+		const int32 LintelAt = Buttons.IndexOfByPredicate(
+			[](const FToolbarButton& B) { return B.Id == EToolbarButtonId::PieceTimberLintel; });
+
+		const int32 RotateAt = Buttons.IndexOfByPredicate(
+			[](const FToolbarButton& B) { return B.Id == EToolbarButtonId::RotatePiece; });
+
+		const int32 SnapAt = Buttons.IndexOfByPredicate(
+			[](const FToolbarButton& B) { return B.Id == EToolbarButtonId::PlacementSnap; });
+
+		/*
+		 * THE SLOT, AS A RELATION TO ITS TWO NEIGHBOURS RATHER THAN AS AN INDEX. Pinning "slot 5"
+		 * would make every future chip added before it a failure with nothing wrong behind it; what
+		 * may not drift is that rotation is read as the tail of the PALETTE — the piece and the way
+		 * it lies, together — and not as a member of the placement pair beyond it.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the rotate chip must sit IMMEDIATELY after the three piece chips (Lintel at "
+					 "%d) and IMMEDIATELY before the placement pair (Snap at %d); it is at %d — "
+					 "[%s]"),
+				*DescribeState(State), LintelAt, SnapAt, RotateAt, *DescribeButtons(Buttons)),
+			LintelAt != INDEX_NONE && RotateAt == LintelAt + 1 && SnapAt == RotateAt + 1);
+
+		const FToolbarButton* const Rotate = FindButton(Buttons, EToolbarButtonId::RotatePiece);
+
+		if (Rotate == nullptr)
+		{
+			/* The slot claim has already failed; there is nothing further to read. */
+			continue;
+		}
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: RotatePiece must be in the %s group, it is in %s — it changes what the NEXT "
+					 "placement is rather than doing anything, so it sits in front of the rule the "
+					 "commands are past — [%s]"),
+				*DescribeState(State), NameOfGroup(EToolbarGroup::Settings),
+				NameOfGroup(Rotate->Group), *DescribeButtons(Buttons)),
+			static_cast<int32>(Rotate->Group), static_cast<int32>(EToolbarGroup::Settings));
+
+		/*
+		 * NO SWATCH, AND THAT IS A CLAIM RATHER THAN A DEFAULT. A swatch names the PIECE a chip
+		 * lays; a block of brick red on the rotate chip would make it read as a fourth piece in the
+		 * palette — which is precisely the model this slice rejected.
+		 */
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: RotatePiece must carry no swatch, it carries %s — a swatch would make it "
+					 "read as a fourth piece rather than as a modifier on the three — [%s]"),
+				*DescribeState(State), NameOfSwatch(Rotate->Swatch), *DescribeButtons(Buttons)),
+			static_cast<int32>(Rotate->Swatch), static_cast<int32>(EToolbarSwatch::None));
+
+		/*
+		 * ALWAYS LIVE. Rotation has no precondition whatever: it describes the next placement, so it
+		 * is settable on an empty plot, on the grounded course, before a single brick is laid — and
+		 * that is exactly where a player decides to lay a header.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: RotatePiece must be live — rotation has no precondition, it describes the "
+					 "next placement — [%s]"),
+				*DescribeState(State), *DescribeButtons(Buttons)),
+			Rotate->bEnabled);
+
+		/* THE LATCH, BOTH WAYS ROUND — the claim AllStates cannot make. */
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: RotatePiece is lit exactly when the next piece is rotated; it reads %s — "
+					 "[%s]"),
+				*DescribeState(State), Rotate->bActive ? TEXT("LIT") : TEXT("unlit"),
+				*DescribeButtons(Buttons)),
+			Rotate->bActive, State.bRotated);
+
+		LitChipsSeen += Rotate->bActive ? 1 : 0;
+		UnlitChipsSeen += Rotate->bActive ? 0 : 1;
+	}
+
+	/*
+	 * AND BOTH SHAPES WERE ACTUALLY REACHED. The latch claim above is an equality inside a loop, so
+	 * a model that never lit the chip would satisfy it on every upright state and be caught only by
+	 * this: a segmented reading with one observed value is a reading of a constant.
+	 */
+	TestTrue(
+		*FString::Printf(
+			TEXT("the sweep must have read some Build strips (%d) and must have seen the chip BOTH "
+				 "lit (%d) and unlit (%d) — a chip only ever seen one way is a constant, not a latch"),
+			BuildStripsRead, LitChipsSeen, UnlitChipsSeen),
+		BuildStripsRead > 0 && LitChipsSeen > 0 && UnlitChipsSeen > 0);
+
+	/* --- TWO: the click TOGGLES the flag, and moves nothing else ------------------------------ */
+
+	int32 TogglesMade = 0;
+
+	for (const FSessionToolbarState& State : RotatedBothWays)
+	{
+		if (State.Mode != ESessionMode::Build)
+		{
+			/*
+			 * A CLICK IN A MODE THAT DOES NOT DRAW THE CHIP IS A BITWISE NO-OP. The Transitions
+			 * sweep holds the two functions against each other over every button — but at
+			 * bRotated == false only, so a model that toggled the flag REGARDLESS of the strip would
+			 * turn a Destroy click into an un-rotation the player never asked for and never saw.
+			 */
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: clicking RotatePiece in a mode that does not draw it must change nothing "
+						 "at all; it produced %s"),
+					*DescribeState(State),
+					*DescribeState(ApplyToolbarButton(State, EToolbarButtonId::RotatePiece))),
+				StatesEqual(ApplyToolbarButton(State, EToolbarButtonId::RotatePiece), State));
+
+			continue;
+		}
+
+		++TogglesMade;
+
+		const FSessionToolbarState After = ApplyToolbarButton(State, EToolbarButtonId::RotatePiece);
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s: one click must TOGGLE the rotation rather than latch it on — the same chip "
+					 "is the only way back, and a player who cannot un-rotate is a player who must "
+					 "reopen the level. It produced %s"),
+				*DescribeState(State), *DescribeState(After)),
+			After.bRotated, !State.bRotated);
+
+		/*
+		 * AND NOTHING ELSE MOVED. Built by taking the state before and flipping the ONE field the
+		 * transition names, so this compares the whole struct field for field: a transition that
+		 * also reset the piece, the joint or the course would pass a `bRotated` check and lose the
+		 * player's palette.
+		 */
+		FSessionToolbarState OnlyRotationMoved = State;
+		OnlyRotationMoved.bRotated = !State.bRotated;
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: and the rotate click must move NOTHING else — the piece, the placement, the "
+					 "joint, the course and both flags survive it. It produced %s"),
+				*DescribeState(State), *DescribeState(After)),
+			StatesEqual(After, OnlyRotationMoved));
+
+		/* TWO CLICKS ARE WHERE YOU STARTED. The honest reading of "toggle". */
+		const FSessionToolbarState Back =
+			ApplyToolbarButton(After, EToolbarButtonId::RotatePiece);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: and two clicks must land back on the state it started in; it landed on %s"),
+				*DescribeState(State), *DescribeState(Back)),
+			StatesEqual(Back, State));
+	}
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the toggle sweep must actually have clicked some live rotate chips; it made %d"),
+			TogglesMade),
+		TogglesMade > 0);
+
+	/* --- THREE: the round trip through Destroy brings the rotation back ----------------------- */
+
+	/*
+	 * THE FAILURE THIS ROW EXISTS FOR IS NOT HYPOTHETICAL. A player turns a piece to lay the second
+	 * leg of an L, switches to Destroy to look at what they have built, and comes back — and a model
+	 * that rebuilt its state on a mode change rather than amending it would hand them an UPRIGHT
+	 * ghost with the chip unlit. Their next click lays a stretcher straight across the corner.
+	 *
+	 * THE WHOLE STATE IS COMPARED, not merely the flag, because "the fields a transition does not
+	 * name survive it" is one rule and the rotation is just the newest field it has to cover.
+	 */
+	{
+		FSessionToolbarState Turned =
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberLintel, EPlacementMode::Free,
+				4, true, false, EJointChoice::Screw, /*bRotated*/ true);
+
+		const FSessionToolbarState InDestroy =
+			ApplyToolbarButton(Turned, EToolbarButtonId::ModeDestroy);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("going to Destroy must keep the rotation the player chose; the state reads %s"),
+				*DescribeState(InDestroy)),
+			InDestroy.bRotated);
+
+		const FSessionToolbarState BackInBuild =
+			ApplyToolbarButton(InDestroy, EToolbarButtonId::ModeBuild);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("AND COMING BACK MUST RETURN THE WHOLE SESSION: the lintel, Free, course 4, the "
+					 "screws AND the rotation. It went out as %s and came back as %s"),
+				*DescribeState(Turned), *DescribeState(BackInBuild)),
+			StatesEqual(BackInBuild, Turned));
+
+		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(BackInBuild);
+
+		const FToolbarButton* const Rotate = FindButton(Buttons, EToolbarButtonId::RotatePiece);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("and the chip must be drawn LIT on the way back in, or the strip is telling the "
+					 "player a rotation it is about to commit is off — [%s]"),
+				*DescribeButtons(Buttons)),
+			Rotate != nullptr && Rotate->bActive);
+	}
 
 	return true;
 }

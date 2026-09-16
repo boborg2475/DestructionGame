@@ -463,6 +463,22 @@ int32 UDestructionStructureSubsystem::BeginBuild()
 	TUniquePtr<FStructureBinding> Binding = MakeUnique<FStructureBinding>();
 	Binding->StructureId = StructureId;
 
+	/*
+	 * A PLAYER'S BUILD IS THREE-DIMENSIONAL, STATED AT THE DOOR AND NEVER INFERRED. A build grown
+	 * from clicks has no layout to carry the flag across the way AdoptLayout does, and the player
+	 * can rotate a piece at any moment: a rotated snap forms Y-normal head joints, which the 2D
+	 * X-Z oracle refuses for the WHOLE problem, silently demoting the break authority for the
+	 * entire build from the LP to the router.
+	 *
+	 * It is UNCONDITIONAL because the alternative — flagging on the first rotation, or on the
+	 * first Y-normal joint that forms — is exactly the inference FStructure::SetThreeDimensional's
+	 * own contract rules out (the E3 ruling: a 2D structure which has accidentally acquired an
+	 * out-of-plane joint must stay loudly refused, so the intent has to be stated), and it would
+	 * put a cliff in the middle of a build, where the brick that lands moves the authority
+	 * deciding whether the wall stands.
+	 */
+	Binding->SetThreeDimensional(true);
+
 	NextStructureId = StructureId + 1;
 	Structures.Add(StructureId, MoveTemp(Binding));
 

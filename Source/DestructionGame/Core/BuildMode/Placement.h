@@ -35,9 +35,13 @@ namespace BuildMode
 	 *
 	 * DELIBERATELY DOES NOT CALL SetThreeDimensional. Whether a build is planar or 3D is a
 	 * structure-level intent the caller/harness owns, not a per-placement decision — so a
-	 * build that forms corner-return (Y-normal) joints must SetThreeDimensional(true) on
-	 * the structure BEFORE SolveLoads, or the LP bridge refuses the Y-normal joint below
-	 * the cap. Every slice-1 joint is X/Z-normal, so a 2D build needs no such call.
+	 * build that forms out-of-plane (Y-normal) joints must SetThreeDimensional(true) on the
+	 * structure BEFORE the break gate runs, or `SolveAndBreak`'s below-cap LP gate refuses
+	 * the whole problem on the first Y normal and falls back to the router. `SolveLoads` is
+	 * unaffected either way — the router reads normals directly and is dimension-agnostic.
+	 * In a corner the Y normals are the Y leg's HEAD joints; the quoin itself is X-normal,
+	 * so a single-leg wall needs no such call. The world path states it at the door instead
+	 * (UDestructionStructureSubsystem::BeginBuild); this layout path leaves it to its caller.
 	 *
 	 * @param InOutLayout        The structure + parallel Boxes to grow. Handles index both.
 	 * @param RequestedCentreCm  Where the caller asked to put the piece.

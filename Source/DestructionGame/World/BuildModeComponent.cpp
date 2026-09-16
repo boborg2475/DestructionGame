@@ -87,22 +87,9 @@ void UBuildModeComponent::CancelBuild()
 
 void UBuildModeComponent::SetPieceKind(DestructionSession::EBuildPieceKind Kind)
 {
-	/*
-	 * THE PALETTE IS THE SOURCE OF ALL THREE. BuildPieceMaterial hands back the SHIPPED library
-	 * row by reference — identity matters, because a copy would go on serving stale numbers after
-	 * a retune and every joint inferred off the piece with it.
-	 */
 	CurrentKind = Kind;
-	CurrentMaterial = &DestructionSession::BuildPieceMaterial(Kind);
-	CurrentExtentCm = DestructionSession::BuildPieceHalfExtentCm(Kind);
 
-	/*
-	 * AND THE PLANE MOVES WITH THE PIECE, not only with the course. CoursePlaneZCm rests the piece
-	 * ON the course rather than centring it there, so a 10 cm-thick plate planes 1.75 cm higher
-	 * than a brick on the same course — which is the difference between a board bearing on the
-	 * wall and a board buried in it.
-	 */
-	BuildPlaneZCm = DestructionSession::CoursePlaneZCm(CurrentCourse, CurrentExtentCm.Z);
+	ApplyPalette();
 }
 
 DestructionSession::EBuildPieceKind UBuildModeComponent::GetPieceKind() const
@@ -120,12 +107,58 @@ void UBuildModeComponent::SetCourse(int32 Course)
 	 */
 	CurrentCourse = FMath::Max(0, Course);
 
-	BuildPlaneZCm = DestructionSession::CoursePlaneZCm(CurrentCourse, CurrentExtentCm.Z);
+	ApplyPalette();
 }
 
 int32 UBuildModeComponent::GetCourse() const
 {
 	return CurrentCourse;
+}
+
+void UBuildModeComponent::SetRotated(bool bInRotated)
+{
+	bRotated = bInRotated;
+
+	ApplyPalette();
+}
+
+bool UBuildModeComponent::IsRotated() const
+{
+	return bRotated;
+}
+
+void UBuildModeComponent::ApplyPalette()
+{
+	/*
+	 * THE PALETTE IS THE SOURCE OF ALL THREE. BuildPieceMaterial hands back the SHIPPED library
+	 * row by reference — identity matters, because a copy would go on serving stale numbers after
+	 * a retune and every joint inferred off the piece with it.
+	 */
+	CurrentMaterial = &DestructionSession::BuildPieceMaterial(CurrentKind);
+
+	const FVector UprightCm = DestructionSession::BuildPieceHalfExtentCm(CurrentKind);
+
+	/*
+	 * AND A ROTATION IS X AND Y SWAPPED, WHICH IS THE ONLY SPELLING OF IT THERE IS. Everything
+	 * downstream is axis-aligned — an FPieceBox is a centre and a half extent, the snap solver
+	 * reads which way a piece runs off those numbers, and the joint inference classifies a quoin
+	 * from two boxes and a normal — so the swapped footprint IS the quarter turn rather than a
+	 * consequence of one held somewhere else.
+	 *
+	 * Z IS NOT ONE OF THE TWO. A turn about Z cannot change how tall a piece is, which is what
+	 * keeps the plane below a plane the piece rests ON rather than one it is buried in.
+	 */
+	CurrentExtentCm = bRotated
+		? FVector(UprightCm.Y, UprightCm.X, UprightCm.Z)
+		: UprightCm;
+
+	/*
+	 * AND THE PLANE MOVES WITH THE PIECE, not only with the course. CoursePlaneZCm rests the piece
+	 * ON the course rather than centring it there, so a 10 cm-thick plate planes 1.75 cm higher
+	 * than a brick on the same course — which is the difference between a board bearing on the
+	 * wall and a board buried in it.
+	 */
+	BuildPlaneZCm = DestructionSession::CoursePlaneZCm(CurrentCourse, CurrentExtentCm.Z);
 }
 
 FBuildPreview UBuildModeComponent::UpdatePreviewAt(const FVector& WorldCursorCm)

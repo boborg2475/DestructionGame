@@ -808,10 +808,10 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 		 */
 		TestTrue(
 			*FString::Printf(
-				TEXT("fixture: the Build strip is the sixteen-chip configuration; the model offers %d "
+				TEXT("fixture: the Build strip is the seventeen-chip configuration; the model offers %d "
 					 "[%s]"),
 				Model.Num(), *SessionDescribeModel(Model)),
-			Model.Num() == 16);
+			Model.Num() == 17);
 
 		SessionCheckStripMatchesModel(*this, TEXT("Build mode"), BuildChips, Model);
 	}
@@ -1784,9 +1784,10 @@ bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parame
  * THE BEHAVIOUR IN ONE SENTENCE
  * =====================================================================================
  *
- * Laid out at Slate scale 1, the RIGHT EDGE of the last chip on the Build strip — the sixteen-chip
- * configuration, the widest the model ever produces — sits within the design's 1280 px reference
- * width less the bar's own 10 px edge padding, and so does the Destroy strip's.
+ * Laid out at Slate scale 1, the RIGHT EDGE of the last chip on the Build strip — the SEVENTEEN-chip
+ * configuration since CR-2b added `Rotate` to the palette, the widest the model ever produces — sits
+ * within the design's 1280 px reference width less the bar's own 10 px edge padding, and so does the
+ * Destroy strip's.
  *
  * =====================================================================================
  * WHY THIS IS A DEFECT AND NOT A NICETY
@@ -1933,7 +1934,7 @@ bool FSessionToolbarBuildStripFitsTheReferenceWidthTest::RunTest(const FString& 
 
 	const FStripCase Cases[] = {
 		{
-			TEXT("the BUILD strip — the sixteen-chip configuration, the widest the model ever draws, "
+			TEXT("the BUILD strip — the seventeen-chip configuration, the widest the model ever draws, "
 				 "and the one §b names as the measurement"),
 			ESessionMode::Build,
 		},

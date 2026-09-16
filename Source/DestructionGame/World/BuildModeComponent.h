@@ -83,6 +83,25 @@ public:
 	int32 GetCourse() const;
 
 	/**
+	 * Lay the next piece the other way round: re-derive its half extent with X AND Y SWAPPED.
+	 *
+	 * THE SWAPPED EXTENT IS THE ROTATION, AND THERE IS NO OTHER REPRESENTATION OF IT. Nothing below
+	 * this component knows what an angle is — DestructionLayout::FPieceBox is an axis-aligned centre
+	 * and a half extent, the snap solver reads a long axis off those numbers, and the joint
+	 * inference classifies a contact from the two boxes and a normal. A flag remembered without the
+	 * swap would go on previewing a stretcher.
+	 *
+	 * AND Z IS UNTOUCHED, SO THE BUILD PLANE DOES NOT MOVE. A quarter turn about Z cannot change how
+	 * tall a piece is; a plane re-derived from the swapped X would put a rotated brick's centre at
+	 * its own half WIDTH and lay every rotated piece 1.875 cm into the earth, on a course readout
+	 * that would never mention it.
+	 */
+	void SetRotated(bool bInRotated);
+
+	/** Whether the next piece lies the other way round. Default false, along X. */
+	bool IsRotated() const;
+
+	/**
 	 * Preview at a world cursor: ask the subsystem what a click here would place, move the ghost
 	 * to that snapped centre and show it when the preview is valid (hide it otherwise), remember
 	 * the cursor for ConfirmPlace, and return the preview.
@@ -179,10 +198,23 @@ private:
 	/** Lazily spawn the standalone ghost actor on first preview, or return the existing one. */
 	ABrickActor* EnsureGhost();
 
+	/**
+	 * Re-derive the material, the half extent and the build plane from the kind, the rotation and
+	 * the course.
+	 *
+	 * ONE DERIVATION SITE, WHICH IS THE POINT OF IT BEING A FUNCTION. Three doors change one of
+	 * those three inputs each, and every one of them changes the answer: a rotation applied inside
+	 * SetRotated alone would be undone by the next palette click, and a palette click that swapped
+	 * without asking the rotation would un-turn the ghost while the strip's chip stayed lit.
+	 */
+	void ApplyPalette();
+
 	DestructionSession::EBuildPieceKind CurrentKind = DestructionSession::EBuildPieceKind::Brick;
 
 	/** Never negative: SetCourse clamps, so the getter and the plane cannot name different courses. */
 	int32 CurrentCourse = 0;
+
+	bool bRotated = false;
 
 	int32 StructureId = INDEX_NONE;
 

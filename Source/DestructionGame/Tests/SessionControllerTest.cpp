@@ -6,8 +6,12 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 
+#include "Core/BuildMode/SnapSolver.h"
+#include "Core/Connection.h"
 #include "Core/PieceMenu.h"
+#include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/SessionToolbar.h"
+#include "Core/Structure.h"
 #include "Core/StructureBinding.h"
 #include "DestructionGameFlyingPawn.h"
 #include "DestructionGameGameMode.h"
@@ -166,6 +170,76 @@ namespace SessionControllerTestSupport
 		return FVector(XCm, 0.0, SessionRayEndZCm);
 	}
 
+	/*
+	 * THE SAME RAY AIMED ANYWHERE IN PLAN, for the corner builds below — a leg that runs along Y
+	 * cannot be aimed at with a Y = 0 cursor. Straight down from 300 cm, so the component's
+	 * ray-vs-plane intersection lands on (XCm, YCm) whatever course the plane is on.
+	 */
+	FVector SessionPointerRayStartAt(double XCm, double YCm)
+	{
+		return FVector(XCm, YCm, SessionRayStartZCm);
+	}
+
+	FVector SessionPointerRayEndAt(double XCm, double YCm)
+	{
+		return FVector(XCm, YCm, SessionRayEndZCm);
+	}
+
+	/**
+	 * Whether the rigid-block bridge will POSE this joint at all.
+	 *
+	 * A JOINT BETWEEN TWO GROUNDED PIECES IS SKIPPED BY THE BRIDGE, not posed and not refused:
+	 * `BuildRigidBlockProblem` drops it with "two grounded ends constrain nothing the earth does not
+	 * already absorb" BEFORE it ever looks at the normal. That skip is the reason the corner fixture
+	 * below is six pieces rather than three — an L laid entirely on the earth has every one of its
+	 * Y-normal head joints between two grounded pieces, so the 2D bridge never reaches the refusal,
+	 * the gate answers, and a test built on it would be green today for a reason that has nothing to
+	 * do with the flag. It is also why the readout assertions here are made only over the joints this
+	 * predicate admits: a skipped joint has no provenance entry and therefore no readout, whatever
+	 * the dimension.
+	 */
+	bool SessionJointIsPosedByTheLP(const FStructure& Structure, int32 Connection)
+	{
+		const FConnection& Joint = Structure.GetConnection(Connection);
+
+		return !(Structure.GetPiece(Joint.PieceA).bIsGrounded
+			&& Structure.GetPiece(Joint.PieceB).bIsGrounded);
+	}
+
+	/** One joint on one line — pieces, normal, which ends are grounded, and its LP readout. */
+	FString SessionDescribeJoint(const FStructure& Structure, int32 Connection)
+	{
+		const FConnection& Joint = Structure.GetConnection(Connection);
+		const FStructure::FConnectionReadout Readout = Structure.GetConnectionReadout(Connection);
+
+		return FString::Printf(
+			TEXT("joint %d: %d-%d, n (%g, %g, %g), %.4f cm2, grounded %d/%d, posed %d, readout "
+				 "present %d (N %g, util %g)"),
+			Connection, Joint.PieceA, Joint.PieceB,
+			Joint.InterfaceNormal.X, Joint.InterfaceNormal.Y, Joint.InterfaceNormal.Z,
+			Joint.InterfaceAreaSqCm,
+			Structure.GetPiece(Joint.PieceA).bIsGrounded ? 1 : 0,
+			Structure.GetPiece(Joint.PieceB).bIsGrounded ? 1 : 0,
+			SessionJointIsPosedByTheLP(Structure, Connection) ? 1 : 0,
+			Readout.bPresent ? 1 : 0, Readout.NormalUu, Readout.Utilisation);
+	}
+
+	/** How many pieces the binding has released — `IsReleased`, never a distance moved. */
+	int32 SessionCountReleased(const FStructureBinding& Binding)
+	{
+		int32 Released = 0;
+
+		for (int32 Piece = 0; Piece < Binding.NumPieces(); ++Piece)
+		{
+			if (Binding.IsReleased(Piece))
+			{
+				++Released;
+			}
+		}
+
+		return Released;
+	}
+
 	const TCHAR* SessionModeName(ESessionMode Mode)
 	{
 		switch (Mode)
@@ -219,7 +293,8 @@ namespace SessionControllerTestSupport
 			&& A.Piece == B.Piece
 			&& A.Placement == B.Placement
 			&& A.Course == B.Course
-			&& A.bHasStructure == B.bHasStructure;
+			&& A.bHasStructure == B.bHasStructure
+			&& A.bRotated == B.bRotated;
 	}
 
 	/**
@@ -2245,6 +2320,1080 @@ bool FSessionDeleteRefreshesTheFlagTest::RunTest(const FString& Parameters)
 					 "is indistinguishable from the game having missed the click. The state is %s"),
 				*SessionStateBits(State)),
 			!SessionButtonIsEnabled(State, EToolbarButtonId::RunStructure));
+	}
+
+	Fixture.End();
+
+	return true;
+}
+
+/**
+ * CR-2b — THE ROTATE CHIP TURNS THE GHOST'S FOOTPRINT, AND A TURNED BRICK BESIDE A LAID ONE SNAPS TO
+ * THE CORNER RETURN.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * `OnToolbarButton(RotatePiece)` pushes the session's `bRotated` onto the build component
+ * (`SetRotated`), which re-derives `CurrentExtentCm` as the palette's half extent WITH X AND Y
+ * SWAPPED and leaves `BuildPlaneZCm` alone — so the very next preview beside an X-long brick is a
+ * `BrickCornerReturn`, and the click that follows bonds it with full mortar.
+ *
+ * =====================================================================================
+ * WHY THE EXTENT IS THE THING ASSERTED AND NOT A ROTATION
+ * =====================================================================================
+ *
+ * Nothing downstream of the toolbar knows what an angle is. `FPieceBox` is an axis-aligned centre
+ * and a half extent, the snap solver reads a long axis off those numbers, and the joint inference
+ * classifies a contact from the two boxes and a normal — so "rotated" IS the swapped extent and
+ * there is no second representation of it to check. A component that stored a flag and went on
+ * previewing a 21.5 cm stretcher would satisfy any claim phrased as "is it rotated"; the half extent
+ * is the only reading that cannot be satisfied by remembering the click.
+ *
+ * AND THE PLANE MUST NOT MOVE. Z is untouched by a rotation about it, so a brick on course 0 is
+ * still centred at 3.25 whichever way it lies. A `SetRotated` that re-derived the plane from the
+ * SWAPPED extent would put a rotated brick's centre at its own half WIDTH — 5.125 — and every
+ * rotated piece would be laid 1.875 cm into the earth, which no course readout would ever mention.
+ * That is why the plate is in the table too: its half height (5.0) is NOT one of the two numbers
+ * that swap, so a plate laid rotated is the case where a plane derived from the wrong axis is
+ * visible at all.
+ *
+ * =====================================================================================
+ * AND WHY THE PROOF ENDS IN A CORNER RETURN RATHER THAN IN THREE NUMBERS
+ * =====================================================================================
+ *
+ * The extents are the mechanism; the corner return is what they are FOR. CR-2a taught the solver to
+ * offer a quoin when two brick-sized boxes cross long axes, and `Core.BuildMode.CornerWallStands`
+ * proves that through `PlacePiece` — but until this chip exists there is no way for a PLAYER to
+ * produce a crossed box at all, so the whole corner vocabulary is unreachable from the game. The
+ * pose, the joint count and the profile here are the same numbers `CornerWallStands` pins at its own
+ * step 3, measured off the seed brick instead of off brick 2: a return finishing flush with an
+ * X-long brick's -Y face, one joint, and FULL `GeneralPurposeMortar` rather than the weak perpend a
+ * pre-CR-2a inference gave every vertical face.
+ *
+ * WHY THE CURSOR IS AT Y = 5.0 AND NOT AT THE POSE. Ranking is raw distance and four return poses
+ * exist per crossed neighbour. The intended one is 0.625 cm from this cursor; its sibling at the
+ * same end is 10.625 cm away, and the two off the seed's -X end are 33.75 cm away, outside the 30 cm
+ * snap radius. Bed and head candidates need the SAME orientation and there are none. So the
+ * intended pose wins outright rather than by a hair, and the Free fallback — which honours the
+ * cursor verbatim at (16.875, 5.0) — is appended last and cannot outrank a snap in Snap mode.
+ *
+ * NEEDS A TICKING WORLD: a world, for the component's structure and its ghost actor. It never ticks
+ * one — nothing here is about anything moving, and the placement is a graph mutation.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSessionRotateSwapsTheGhostFootprintTest,
+	"DestructionGame.World.Session.RotateSwapsTheGhostFootprint",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace DestructionSession;
+	using namespace SessionControllerTestSupport;
+
+	/*
+	 * THE FOUR FOOTPRINTS, SPELLED OUT RATHER THAN DERIVED FROM THE PALETTE. Asking
+	 * BuildPieceHalfExtentCm and swapping its X and Y here would make this test agree with the
+	 * palette however wrong it is, and the swap itself is the behaviour under test.
+	 */
+	const FVector BrickUprightHalfCm(10.75, 5.125, 3.25);
+	const FVector BrickRotatedHalfCm(5.125, 10.75, 3.25);
+	const FVector PlateRotatedHalfCm(5.125, 33.75, 5.0);
+
+	/*
+	 * THE CORNER RETURN'S NUMBERS, WORKED OFF THE SEED BRICK AT THE ORIGIN.
+	 *
+	 * The seed is X-long, half (10.75, 5.125, 3.25). A rotated brick returning off its +X end stands
+	 * one joint clear of that end face: 10.75 + 1.0 + 5.125 = 16.875. Finishing FLUSH with the
+	 * seed's -Y face (y = -5.125) puts its centre at -5.125 + 10.75 = 5.625. Course 0 leaves Z at
+	 * 3.25. The quoin it forms is the seed's end face, 10.25 cm of width by 6.5 cm of course.
+	 */
+	const FVector CornerReturnCentreCm(16.875, 5.625, 3.25);
+	constexpr double CornerCursorXCm = 16.875;
+	constexpr double CornerCursorYCm = 5.0;
+	constexpr double QuoinAreaSqCm = 66.625;
+
+	/*
+	 * A DOUBLE TOLERANCE, SPELLED OUT. Every number here is a sum of exact halves on the coordinating
+	 * grid, so the comparison is effectively exact and the tolerance is only there to keep a
+	 * floating-point equality honest. `KINDA_SMALL_NUMBER` is a FLOAT and makes TestEqual's double
+	 * overload ambiguous, which is a compile error rather than a looser test.
+	 */
+	constexpr double SessionPlaneToleranceCm = 1.0e-6;
+
+	FSessionFixture Fixture;
+
+	if (!Fixture.Begin(*this))
+	{
+		Fixture.End();
+		return true;
+	}
+
+	ADestructionGamePlayerController& Controller = *Fixture.Controller;
+	UBuildModeComponent& Build = *Fixture.Build;
+	UDestructionStructureSubsystem& Subsystem = *Fixture.TestWorld.Subsystem;
+
+	if (!Controller.OnToolbarButton(EToolbarButtonId::ModeBuild))
+	{
+		AddError(TEXT("fixture: the Build tab must be clickable for any of this to run"));
+		Fixture.End();
+		return true;
+	}
+
+	const int32 BuildStructureId = Build.GetStructureId();
+
+	/* --- ONE: a session opens with an UPRIGHT brick --------------------------------------- */
+
+	{
+		TestFalse(
+			*FString::Printf(
+				TEXT("a fresh session must not be rotated; the state is %s"),
+				*SessionStateBits(Controller.GetSessionToolbarState())),
+			Controller.GetSessionToolbarState().bRotated);
+
+		TestFalse(
+			TEXT("and the component must agree — the copy the world is driven from is the one that "
+				 "decides what lands"),
+			Build.IsRotated());
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("the brick's upright half extent must be (10.75, 5.125, 3.25) — the 21.5 x 10.25 x "
+					 "6.5 unit halved, lying along X; it is (%g, %g, %g)"),
+				Build.CurrentExtentCm.X, Build.CurrentExtentCm.Y, Build.CurrentExtentCm.Z),
+			Build.CurrentExtentCm.Equals(BrickUprightHalfCm, KINDA_SMALL_NUMBER));
+
+		TestEqual(
+			FString::Printf(
+				TEXT("and the course-0 build plane for a brick is its own half height, 3.25; it is %g"),
+				Build.BuildPlaneZCm),
+			Build.BuildPlaneZCm, SessionBrickPlaneCourse0Cm, SessionPlaneToleranceCm);
+	}
+
+	/* --- TWO: the click swaps X and Y, and leaves Z where it was --------------------------- */
+
+	{
+		TestTrue(
+			TEXT("THE ROTATE CHIP MUST BE CLICKABLE IN EVERY BUILD STATE — rotation has no "
+				 "precondition, it describes the next placement"),
+			Controller.OnToolbarButton(EToolbarButtonId::RotatePiece));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("the session must record the rotation, because the strip's lit chip is drawn from "
+					 "it; the state is %s"),
+				*SessionStateBits(Controller.GetSessionToolbarState())),
+			Controller.GetSessionToolbarState().bRotated);
+
+		TestTrue(
+			TEXT("AND THE COMPONENT MUST BE PUSHED. The state is the presenter's record and the "
+				 "component is what the world does; a click that moved only the first lights a chip "
+				 "over a ghost that has not turned"),
+			Build.IsRotated());
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("THE ROTATED BRICK'S HALF EXTENT IS THE UPRIGHT ONE WITH X AND Y SWAPPED — "
+					 "(5.125, 10.75, 3.25), a header lying along Y. There is no other representation "
+					 "of 'rotated' downstream: FPieceBox is axis-aligned, so this IS the rotation. It "
+					 "is (%g, %g, %g)"),
+				Build.CurrentExtentCm.X, Build.CurrentExtentCm.Y, Build.CurrentExtentCm.Z),
+			Build.CurrentExtentCm.Equals(BrickRotatedHalfCm, KINDA_SMALL_NUMBER));
+
+		TestEqual(
+			FString::Printf(
+				TEXT("AND THE BUILD PLANE MUST NOT MOVE: Z is untouched by a rotation about it, so the "
+					 "course-0 plane is still 3.25. It is %g"),
+				Build.BuildPlaneZCm),
+			Build.BuildPlaneZCm, SessionBrickPlaneCourse0Cm, SessionPlaneToleranceCm);
+	}
+
+	/* --- THREE: choosing another piece while rotated re-derives the SWAPPED extent ---------- */
+
+	/*
+	 * THE PLATE IS THE CASE THAT TELLS A RE-DERIVATION FROM A REMEMBERED SWAP. `SetPieceKind` reads
+	 * the palette afresh, so it has to honour a rotation that was chosen BEFORE it; a component that
+	 * swapped the extent inside `SetRotated` alone would hand back an upright 67.5 cm board here and
+	 * the ghost would silently un-rotate itself on a palette click.
+	 *
+	 * AND ITS HALF HEIGHT IS 5.0 RATHER THAN 3.25, which is what makes the plane assertion mean
+	 * something: 5.0 is not one of the two numbers that swap, so a plane derived off the wrong axis
+	 * reads 5.125 here and is visibly not the plate's own half height.
+	 */
+	{
+		TestTrue(
+			TEXT("a piece chip is always live in Build mode"),
+			Controller.OnToolbarButton(EToolbarButtonId::PieceTimberPlate));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("THE PLATE MUST BE DERIVED ROTATED TOO — (5.125, 33.75, 5.0), the demo's 67.5 cm "
+					 "board turned to run along Y. SetPieceKind re-derives from the palette, so it has "
+					 "to honour a rotation chosen before it. It is (%g, %g, %g)"),
+				Build.CurrentExtentCm.X, Build.CurrentExtentCm.Y, Build.CurrentExtentCm.Z),
+			Build.CurrentExtentCm.Equals(PlateRotatedHalfCm, KINDA_SMALL_NUMBER));
+
+		TestEqual(
+			FString::Printf(
+				TEXT("and the plate's course-0 plane is ITS OWN half height, 5.0 — never the 5.125 a "
+					 "plane taken off the swapped X would give. It is %g"),
+				Build.BuildPlaneZCm),
+			Build.BuildPlaneZCm, SessionPlatePlaneCourse0Cm, SessionPlaneToleranceCm);
+
+		TestTrue(TEXT("back to the brick"), Controller.OnToolbarButton(EToolbarButtonId::PieceBrick));
+	}
+
+	/* --- FOUR: the same chip turns it back -------------------------------------------------- */
+
+	{
+		TestTrue(
+			TEXT("the second click on the chip must land too"),
+			Controller.OnToolbarButton(EToolbarButtonId::RotatePiece));
+
+		TestFalse(
+			*FString::Printf(
+				TEXT("A SETTING THE PLAYER CANNOT UNSET IS NOT A SETTING: the session must read "
+					 "upright again. It is %s"),
+				*SessionStateBits(Controller.GetSessionToolbarState())),
+			Controller.GetSessionToolbarState().bRotated);
+
+		TestFalse(TEXT("and so must the component"), Build.IsRotated());
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("and the brick's footprint is back to the upright (10.75, 5.125, 3.25); it is "
+					 "(%g, %g, %g)"),
+				Build.CurrentExtentCm.X, Build.CurrentExtentCm.Y, Build.CurrentExtentCm.Z),
+			Build.CurrentExtentCm.Equals(BrickUprightHalfCm, KINDA_SMALL_NUMBER));
+	}
+
+	/* --- FIVE: an upright seed brick on the earth ------------------------------------------- */
+
+	{
+		const bool bPlaced = Controller.PrimaryAlongRay(
+			SessionPointerRayStart(0.0), SessionPointerRayEnd(0.0));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("fixture: the seed brick must land at the origin; the click reported %d"),
+				bPlaced ? 1 : 0),
+			bPlaced);
+	}
+
+	/* --- SIX: rotated, the ghost beside it previews a CORNER RETURN -------------------------- */
+
+	TestTrue(
+		TEXT("rotate again, to lay the return"),
+		Controller.OnToolbarButton(EToolbarButtonId::RotatePiece));
+
+	const FVector CornerRayStart(CornerCursorXCm, CornerCursorYCm, SessionRayStartZCm);
+	const FVector CornerRayEnd(CornerCursorXCm, CornerCursorYCm, SessionRayEndZCm);
+
+	/*
+	 * THE PLAYER'S OWN SEAM FIRST — this is what a moving cursor does, and it is what puts the ghost
+	 * on screen at the pose the click will take.
+	 */
+	Controller.PointerAlongRay(CornerRayStart, CornerRayEnd);
+
+	if (AActor* const Ghost = Build.GetGhostActor())
+	{
+		TestFalse(
+			TEXT("pointing beside the seed with a rotated piece must SHOW the ghost — the player has "
+				 "to see the return before they commit to it"),
+			Ghost->IsHidden());
+	}
+	else
+	{
+		AddError(TEXT("pointing in Build mode must reach the component's preview, which spawns its "
+					  "ghost"));
+	}
+
+	/*
+	 * AND THE POSE IS READ BACK THROUGH THE COMPONENT'S NON-MUTATING QUERY, because it is the only
+	 * way to READ what the pointer just drove: PointerAlongRay returns nothing, and the ghost ACTOR's
+	 * transform is a spawn transform whose pivot is the brick's corner rather than its centre.
+	 * `UpdatePreviewFromRay` is the very call PointerAlongRay makes, with the same arguments.
+	 */
+	{
+		const FBuildPreview Preview =
+			Build.UpdatePreviewFromRay(CornerRayStart, CornerRayEnd - CornerRayStart);
+
+		AddInfo(FString::Printf(
+			TEXT("the rotated preview beside the seed is kind %d at (%.4f, %.4f, %.4f) with %d "
+				 "joint(s), valid %d, grounded %d"),
+			static_cast<int32>(Preview.Kind), Preview.CentreCm.X, Preview.CentreCm.Y,
+			Preview.CentreCm.Z, Preview.JointCount, Preview.bValid ? 1 : 0,
+			Preview.bGrounded ? 1 : 0));
+
+		TestEqual(
+			FString::Printf(
+				TEXT("A ROTATED BRICK BESIDE AN X-LONG ONE MUST PREVIEW A **CORNER RETURN** (%d), the "
+					 "pose CR-2a added and the one no player could reach until this chip existed; it "
+					 "previews %d"),
+				static_cast<int32>(BuildMode::ESnapKind::BrickCornerReturn),
+				static_cast<int32>(Preview.Kind)),
+			static_cast<int32>(Preview.Kind),
+			static_cast<int32>(BuildMode::ESnapKind::BrickCornerReturn));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("and at the pose that TURNS THE CORNER — (16.875, 5.625, 3.25), finishing flush "
+					 "with the seed's -Y face. Four return poses exist off one neighbour and only this "
+					 "one builds an L; it previews (%g, %g, %g)"),
+				Preview.CentreCm.X, Preview.CentreCm.Y, Preview.CentreCm.Z),
+			Preview.CentreCm.Equals(CornerReturnCentreCm, KINDA_SMALL_NUMBER));
+
+		TestEqual(
+			FString::Printf(
+				TEXT("forming exactly ONE joint — the quoin onto the seed's end face; it previews %d"),
+				Preview.JointCount),
+			Preview.JointCount, 1);
+	}
+
+	/* --- SEVEN: the click commits it, and the quoin is FULL MORTAR --------------------------- */
+
+	{
+		const bool bPlaced = Controller.PrimaryAlongRay(CornerRayStart, CornerRayEnd);
+
+		TestTrue(
+			FString::Printf(
+				TEXT("the click on the return must land; it reported %d"), bPlaced ? 1 : 0),
+			bPlaced);
+
+		FStructureBinding* const Binding = Subsystem.Find(BuildStructureId);
+
+		if (Binding == nullptr || Binding->NumPieces() != 2)
+		{
+			AddError(FString::Printf(
+				TEXT("the build must hold the seed and the return, 2 pieces; it holds %d"),
+				Binding != nullptr ? Binding->NumPieces() : INDEX_NONE));
+
+			Fixture.End();
+			return true;
+		}
+
+		const FVector CentreCm = Binding->GetBinding(1).Box.CentreCm;
+		const FVector ExtentCm = Binding->GetBinding(1).Box.ExtentCm;
+
+		TestTrue(
+			FString::Printf(
+				TEXT("the committed piece must be at the pose the ghost showed, (16.875, 5.625, 3.25); "
+					 "it is (%g, %g, %g)"),
+				CentreCm.X, CentreCm.Y, CentreCm.Z),
+			CentreCm.Equals(CornerReturnCentreCm, KINDA_SMALL_NUMBER));
+
+		TestTrue(
+			FString::Printf(
+				TEXT("AND IT MUST BE THE TURNED BOX THAT LANDED, half (5.125, 10.75, 3.25) — a "
+					 "committed piece carrying the upright footprint would stand across the corner it "
+					 "was meant to turn. It is (%g, %g, %g)"),
+				ExtentCm.X, ExtentCm.Y, ExtentCm.Z),
+			ExtentCm.Equals(BrickRotatedHalfCm, KINDA_SMALL_NUMBER));
+
+		TestEqual(
+			FString::Printf(
+				TEXT("and exactly one connection joins the two; the build holds %d"),
+				Binding->GetStructure().NumConnections()),
+			Binding->GetStructure().NumConnections(), 1);
+
+		if (Binding->GetStructure().NumConnections() == 1)
+		{
+			const FConnection& Quoin = Binding->GetStructure().GetConnection(0);
+			const FConnectionStrength& Got = Quoin.Strength;
+			const FConnectionStrength& Want = DestructionProfiles::GeneralPurposeMortar;
+
+			/*
+			 * ALL FIVE FIELDS, because the mortar and its perpend sibling differ on TWO of them
+			 * (cohesion 0.9 vs 0.2, tension 0.7 vs 0.1) and on nothing else — which is exactly the
+			 * pair this assertion has to tell apart. A one-field check would admit the weak perpend
+			 * a pre-CR-2a inference gave every vertical face.
+			 */
+			const bool bIsFullMortar =
+				Got.CompressiveStrengthMPa == Want.CompressiveStrengthMPa
+				&& Got.ShearCohesionMPa == Want.ShearCohesionMPa
+				&& Got.TensileStrengthMPa == Want.TensileStrengthMPa
+				&& Got.FrictionCoefficient == Want.FrictionCoefficient
+				&& Got.MaxShearStrengthMPa == Want.MaxShearStrengthMPa;
+
+			AddInfo(FString::Printf(
+				TEXT("the quoin (%d-%d) is {c %g, coh %g, t %g, mu %g, cap %g} over %g cm2, normal "
+					 "(%g, %g, %g)"),
+				Quoin.PieceA, Quoin.PieceB, Got.CompressiveStrengthMPa, Got.ShearCohesionMPa,
+				Got.TensileStrengthMPa, Got.FrictionCoefficient, Got.MaxShearStrengthMPa,
+				Quoin.InterfaceAreaSqCm, Quoin.InterfaceNormal.X, Quoin.InterfaceNormal.Y,
+				Quoin.InterfaceNormal.Z));
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("THE PLAYER'S CORNER MUST BE A BONDED QUOIN — full GeneralPurposeMortar over "
+						 "a vertical face, which is the whole of the 2026-09-15 ruling. The "
+						 "pre-CR-2a inference called this contact a weak perpend, and the two differ "
+						 "on cohesion and tension alone. It reads {coh %g, t %g}"),
+					Got.ShearCohesionMPa, Got.TensileStrengthMPa),
+				bIsFullMortar);
+
+			TestEqual(
+				TEXT("over the seed's end face, 10.25 cm of width by 6.5 cm of course = 66.625 cm2"),
+				Quoin.InterfaceAreaSqCm, QuoinAreaSqCm, 1.0e-6);
+
+			/*
+			 * AND THE NORMAL IS HORIZONTAL, WHICH IS WHAT MAKES THE PROFILE CLAIM MEAN ANYTHING. A
+			 * mortar joint across a VERTICAL normal is an ordinary bed and proves nothing about
+			 * corners; |X| == 1 is what says this is the end face of the seed.
+			 */
+			TestEqual(
+				TEXT("across a HORIZONTAL normal on the X axis (|X| == 1) — the seed's end face, not "
+					 "a bed"),
+				FMath::Abs(Quoin.InterfaceNormal.X), 1.0, SessionPlaneToleranceCm);
+		}
+	}
+
+	Fixture.End();
+
+	return true;
+}
+
+/**
+ * CR-2b (xiii) — A CORNER THE PLAYER LAYS IS JUDGED BY THE LP, NOT SILENTLY DEMOTED TO THE ROUTER.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * `UDestructionStructureSubsystem::BeginBuild` opens the player's build FLAGGED THREE-DIMENSIONAL, so
+ * the Y-normal head joints a rotated leg forms are POSED by the rigid-block bridge rather than
+ * refused — and the whole build's break verdict on `Run structure` comes from the LP below the cap,
+ * as it does for every other below-cap structure in the game.
+ *
+ * =====================================================================================
+ * THE DEFECT, AND WHY IT IS INVISIBLE
+ * =====================================================================================
+ *
+ * Nothing in the session ever calls `SetThreeDimensional`. Only the scenario builders do, and
+ * `AdoptLayout` carries their flag across (`Core/StructureBinding.cpp` ~386) — a player's build is
+ * adopted from nothing and starts at the default, FALSE.
+ *
+ * The router does not care: `SolveLoads` reads normals directly and is dimension-agnostic, so a
+ * corner wall routes its load down its beds and reads perfectly healthy. The one reader of the flag
+ * is `RigidBlockOracle::BuildRigidBlockProblem`, and with it unset that function REFUSES the whole
+ * problem the moment it meets a joint whose normal has a Y component — "joint %d has an out-of-plane
+ * (Y) normal, which a 2D X-Z oracle must refuse rather than project". `FStructure::BreakByEquilibrium`
+ * turns that refusal into `EEquilibriumGateDisposition::DeclinedToRouter` and says nothing, so ONE
+ * rotated brick anywhere in a build moves the break authority for the ENTIRE build — straight legs
+ * included — off the LP and onto `BreakByCapacitySweep`. The LP stands knot and opening arrangements
+ * the router strands, fells the leaning-stack class the router holds, and is the only thing that
+ * applies first-crack; none of that reaches a build with a corner in it.
+ *
+ * And nothing on screen says so. The wall stands either way, which is exactly the "wrong answer that
+ * looks plausible" DESIGN §5 names as this codebase's recurring enemy.
+ *
+ * =====================================================================================
+ * THE TWO ASSERTIONS, AND WHY BOTH ARE NEEDED
+ * =====================================================================================
+ *
+ * MECHANISM: `IsThreeDimensional()` on the binding's structure, asserted TWICE — once on the EMPTY
+ * build the Build tab opens, and once on the finished L. The empty one is the load-bearing half: it
+ * forbids the cheap fix of flagging 3D when the first Y-normal joint forms. That would be INFERENCE,
+ * which `FStructure::SetThreeDimensional`'s own contract (the E3 ruling, Structure.h ~490) rules out
+ * in terms — "a 2D structure that has ACCIDENTALLY acquired a Y-normal joint must still be refused
+ * ... the intent to be 3D has to be stated rather than guessed" — and it would put a cliff in the
+ * middle of a build, where the authority deciding whether the wall stands changes as a brick lands.
+ *
+ * OUTCOME: after `Run structure`, the LP's own per-joint readout is PRESENT
+ * (`GetConnectionReadout(k).bPresent`). That is the honest witness that the gate ANSWERED: the cache
+ * is cleared at the top of every pass and refilled only by an arm that reached a verdict, so absent
+ * means declined. `Released == 0` is asserted too but proves nothing on its own — the router stands
+ * this wall perfectly well today, which is precisely how the defect hides.
+ *
+ * NEVER DISPLACEMENT, in either direction. Nothing here ticks, and DESIGN §4 forbids reading a
+ * distance as evidence of a break in any case.
+ *
+ * =====================================================================================
+ * WHY THE FIXTURE IS SIX PIECES AND NOT THREE — THE GROUNDED-PAIR SKIP
+ * =====================================================================================
+ *
+ * The obvious fixture is the two-piece corner plus one more Y-leg brick, which does form a genuine
+ * Y-normal head joint. It does NOT work, and the reason is worth the paragraph: the bridge drops any
+ * joint whose two pieces are BOTH grounded before it ever looks at the normal (`RigidBlockBridge.cpp`
+ * ~133, "two grounded ends constrain nothing the earth does not already absorb"). Every piece on
+ * course 0 is grounded — the session derives that from the pose — so an L laid entirely on the earth
+ * presents the bridge with NO Y-normal joint at all, is not refused, and answers today. A test built
+ * on it would be green on arrival for a reason that has nothing to do with the flag.
+ *
+ * So the Y leg is carried up a course: 5-4 is a head joint between two pieces that reach the earth
+ * only through their beds, it IS posed, and it is what the 2D bridge refuses. The same skip is why
+ * the readout assertions run over the posed joints only — a skipped joint has no provenance entry and
+ * therefore no readout however the structure is flagged.
+ *
+ * =====================================================================================
+ * THE ELEVEN NUMBERS, WORKED OFF THE COORDINATING GRID
+ * =====================================================================================
+ *
+ * The brick is 21.5 x 10.25 x 6.5 on a 1 cm joint, so the grid is 22.5 x 11.25 x 7.5 and course n
+ * centres a brick at n * 7.5 + 3.25. The poses are `Core.BuildMode.CornerWallStands`' own, measured
+ * off a ONE-brick X leg instead of a three-brick one:
+ *
+ *   - the seed, upright at the origin, (0, 0, 3.25);
+ *   - the return, ROTATED, one joint off the seed's +X end (10.75 + 1 + 5.125 = 16.875) and flush
+ *     with its -Y face (-5.125 + 10.75 = 5.625), so the pair reads as an L;
+ *   - the Y leg, same course, stepping 22.5 cm along Y: 28.125 and 50.625;
+ *   - course 1, staggered half a pitch: 16.875 and 39.375, each bedded on the two below it.
+ *
+ * THE CURSORS ARE OFFSET DELIBERATELY, exactly as the screenshot harness's table is. The same-course
+ * bricks are asked for 0.125 cm SHORT of their pitch so the same-course pose beats the next-course
+ * one on raw distance (ranking is Euclidean), and the course-1 bricks are asked for AT the running
+ * bond, where an offset of zero cannot be outranked. The return is asked for at (16.875, 5.0): the
+ * intended one of the four corner poses is 0.625 cm away and its nearest sibling is 10.625 cm away.
+ *
+ * NEEDS A TICKING WORLD: a world, for the binding's bricks and the ghost actor. It never ticks one —
+ * every reading is a graph mechanism.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSessionCornerBuildIsJudgedByTheLPTest,
+	"DestructionGame.World.Session.CornerBuildIsJudgedByTheLP",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace DestructionSession;
+	using namespace SessionControllerTestSupport;
+
+	/* The cursor for each of the six clicks, in order. See the header for every number. */
+	struct FCornerLayStep
+	{
+		double CursorXCm;
+		double CursorYCm;
+		bool bRotated;
+		int32 Course;
+	};
+
+	const FCornerLayStep CornerLaySteps[] = {
+		{  0.000,  0.000, false, 0 },   /* the X leg's one stretcher, on the earth */
+		{ 16.875,  5.000, true,  0 },   /* the return — the quoin, across the seed's end face */
+		{ 16.875, 28.000, true,  0 },   /* the Y leg, same course */
+		{ 16.875, 50.500, true,  0 },
+		{ 16.875, 16.875, true,  1 },   /* course 1, staggered over the two below */
+		{ 16.875, 39.375, true,  1 },
+	};
+
+	constexpr int32 CornerExpectedPieces = 6;
+	constexpr int32 CornerExpectedConnections = 8;
+
+	/*
+	 * FIVE POSED, THREE SKIPPED. The three earth-to-earth joints are the quoin (1-0) and the two
+	 * course-0 heads (2-1, 3-2); the five the LP poses are the four beds (4-1, 4-2, 5-2, 5-3) and
+	 * the course-1 head 5-4 — the one out-of-plane joint the 2D bridge has to meet. Pinned as
+	 * counts so a fixture that quietly stopped forming one of them cannot make the readout sweep
+	 * vacuous.
+	 */
+	constexpr int32 CornerPosedJoints = 5;
+	constexpr int32 CornerSkippedJoints = 3;
+
+	/** The six pieces' grounding, by handle: four on the earth, two reaching it through beds. */
+	constexpr int32 CornerLastGroundedPiece = 3;
+
+	constexpr double SessionNormalToleranceCm = 1.0e-6;
+
+	FSessionFixture Fixture;
+
+	if (!Fixture.Begin(*this))
+	{
+		Fixture.End();
+		return true;
+	}
+
+	ADestructionGamePlayerController& Controller = *Fixture.Controller;
+	UBuildModeComponent& Build = *Fixture.Build;
+	UDestructionStructureSubsystem& Subsystem = *Fixture.TestWorld.Subsystem;
+
+	if (!Controller.OnToolbarButton(EToolbarButtonId::ModeBuild))
+	{
+		AddError(TEXT("fixture: the Build tab must be clickable for any of this to run"));
+		Fixture.End();
+		return true;
+	}
+
+	const int32 BuildStructureId = Build.GetStructureId();
+
+	/* --- ONE: THE FLAG IS SET AT THE DOOR, ON A BUILD WITH NOTHING IN IT -------------------- */
+
+	{
+		const FStructureBinding* const Fresh = Subsystem.Find(BuildStructureId);
+
+		if (Fresh == nullptr)
+		{
+			AddError(FString::Printf(
+				TEXT("fixture: entering Build mode must open a binding; structure %d names nothing"),
+				BuildStructureId));
+
+			Fixture.End();
+			return true;
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("THE EMPTY BUILD MUST ALREADY BE FLAGGED 3D. BeginBuild has to STATE the intent, "
+					 "never infer it when the first Y-normal joint lands: the E3 ruling "
+					 "(Structure.h ~490) is that 3D is stated and a 2D structure which has accidentally "
+					 "acquired an out-of-plane joint stays loudly refused — and an inferred flag would "
+					 "put a cliff mid-build, where the brick that lands moves the authority deciding "
+					 "whether the wall stands. Structure %d with %d pieces reads IsThreeDimensional() "
+					 "== false"),
+				BuildStructureId, Fresh->NumPieces()),
+			Fresh->GetStructure().IsThreeDimensional());
+	}
+
+	/* --- TWO: lay the L, through the player's own clicks ------------------------------------ */
+
+	{
+		int32 Course = 0;
+		bool bRotated = false;
+
+		for (int32 Step = 0; Step < UE_ARRAY_COUNT(CornerLaySteps); ++Step)
+		{
+			const FCornerLayStep& Lay = CornerLaySteps[Step];
+
+			if (Lay.bRotated != bRotated)
+			{
+				Controller.OnToolbarButton(EToolbarButtonId::RotatePiece);
+				bRotated = Lay.bRotated;
+			}
+
+			while (Course < Lay.Course)
+			{
+				Controller.OnToolbarButton(EToolbarButtonId::CourseUp);
+				++Course;
+			}
+
+			const bool bPlaced = Controller.PrimaryAlongRay(
+				SessionPointerRayStartAt(Lay.CursorXCm, Lay.CursorYCm),
+				SessionPointerRayEndAt(Lay.CursorXCm, Lay.CursorYCm));
+
+			if (!bPlaced)
+			{
+				AddError(FString::Printf(
+					TEXT("fixture: click %d at (%g, %g), course %d, rotated %d must lay a brick; it "
+						 "reported nothing placed"),
+					Step, Lay.CursorXCm, Lay.CursorYCm, Lay.Course, Lay.bRotated ? 1 : 0));
+			}
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("fixture: the session must still be rotated and on course 1 after the last click; "
+					 "the state is %s"),
+				*SessionStateBits(Controller.GetSessionToolbarState())),
+			Controller.GetSessionToolbarState().bRotated
+				&& Controller.GetSessionToolbarState().Course == 1);
+	}
+
+	FStructureBinding* Binding = Subsystem.Find(BuildStructureId);
+
+	if (Binding == nullptr
+		|| Binding->NumPieces() != CornerExpectedPieces
+		|| Binding->GetStructure().NumConnections() != CornerExpectedConnections)
+	{
+		AddError(FString::Printf(
+			TEXT("fixture: the six clicks must give a %d-piece, %d-connection L; the build holds %d "
+				 "pieces and %d connections"),
+			CornerExpectedPieces, CornerExpectedConnections,
+			Binding != nullptr ? Binding->NumPieces() : INDEX_NONE,
+			Binding != nullptr ? Binding->GetStructure().NumConnections() : INDEX_NONE));
+
+		Fixture.End();
+		return true;
+	}
+
+	/* --- THREE: the fixture guards — this really is a corner, with a POSED Y-normal joint ---- */
+
+	{
+		const FStructure& Structure = Binding->GetStructure();
+
+		for (int32 Joint = 0; Joint < Structure.NumConnections(); ++Joint)
+		{
+			AddInfo(SessionDescribeJoint(Structure, Joint));
+		}
+
+		for (int32 Piece = 0; Piece < Structure.NumPieces(); ++Piece)
+		{
+			const bool bWantGrounded = Piece <= CornerLastGroundedPiece;
+
+			TestEqual(
+				FString::Printf(
+					TEXT("fixture: piece %d must be %s — the two course-1 bricks reach the earth only "
+						 "through their beds, which is what makes their joints POSED rather than "
+						 "skipped as earth-to-earth"),
+					Piece, bWantGrounded ? TEXT("grounded") : TEXT("off the earth")),
+				Structure.GetPiece(Piece).bIsGrounded, bWantGrounded);
+		}
+
+		int32 Quoins = 0;
+		int32 PosedOutOfPlane = 0;
+		int32 Posed = 0;
+
+		for (int32 Joint = 0; Joint < Structure.NumConnections(); ++Joint)
+		{
+			const FConnection& Connection = Structure.GetConnection(Joint);
+			const bool bIsPosed = SessionJointIsPosedByTheLP(Structure, Joint);
+
+			Posed += bIsPosed ? 1 : 0;
+
+			if (FMath::Abs(FMath::Abs(Connection.InterfaceNormal.X) - 1.0) < SessionNormalToleranceCm)
+			{
+				++Quoins;
+			}
+
+			if (bIsPosed
+				&& FMath::Abs(FMath::Abs(Connection.InterfaceNormal.Y) - 1.0) < SessionNormalToleranceCm)
+			{
+				++PosedOutOfPlane;
+			}
+		}
+
+		TestEqual(
+			FString::Printf(
+				TEXT("fixture: exactly one joint across the X axis — the QUOIN, the seed's end face "
+					 "that the rotated return abuts. The build holds %d"),
+				Quoins),
+			Quoins, 1);
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("FIXTURE, AND THE WHOLE POINT OF THE SIX PIECES: exactly one POSED joint across "
+					 "the Y axis — the course-1 head 5-4, between two pieces neither of which is "
+					 "grounded. This is the out-of-plane normal a 2D bridge refuses; with every "
+					 "Y-normal joint earth-to-earth the bridge would skip them all, never reach the "
+					 "refusal, and this test would be green for the wrong reason. It holds %d"),
+				PosedOutOfPlane),
+			PosedOutOfPlane, 1);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("fixture: %d of the %d joints are posed (the rest join two grounded pieces and are "
+					 "skipped by the bridge); %d are posed"),
+				CornerPosedJoints, CornerExpectedConnections, Posed),
+			Posed, CornerPosedJoints);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("fixture: and %d are the earth-to-earth ones — the quoin and the two course-0 "
+					 "heads; %d are"),
+				CornerSkippedJoints, Structure.NumConnections() - Posed),
+			Structure.NumConnections() - Posed, CornerSkippedJoints);
+	}
+
+	/* --- FOUR: THE MECHANISM — the finished corner build is 3D ------------------------------ */
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("THE PLAYER'S CORNER BUILD MUST BE FLAGGED 3D. It carries a Y-normal head joint, and "
+				 "`BuildRigidBlockProblem` refuses the WHOLE problem on the first out-of-plane normal "
+				 "it meets unless the structure states it is 3D — 'a 2D X-Z oracle must refuse rather "
+				 "than project'. Nothing in the session sets it: only the scenario builders do, and "
+				 "AdoptLayout carries THEIR flag across. Structure %d reads IsThreeDimensional() == "
+				 "false with %d pieces and %d connections"),
+			BuildStructureId, Binding->NumPieces(), Binding->GetStructure().NumConnections()),
+		Binding->GetStructure().IsThreeDimensional());
+
+	/* --- FIVE: THE OUTCOME — Run is answered by the LP, not by the router -------------------- */
+
+	TestTrue(
+		TEXT("the Destroy tab is always live"),
+		Controller.OnToolbarButton(EToolbarButtonId::ModeDestroy));
+
+	TestEqual(
+		FString::Printf(
+			TEXT("fixture: the session must run the PLAYER'S build, structure %d; it names %d"),
+			BuildStructureId, Controller.GetSessionStructureId()),
+		Controller.GetSessionStructureId(), BuildStructureId);
+
+	TestTrue(
+		TEXT("fixture: clicking Run on a live build must report that it landed"),
+		Controller.OnToolbarButton(EToolbarButtonId::RunStructure));
+
+	Binding = Subsystem.Find(BuildStructureId);
+
+	if (Binding == nullptr)
+	{
+		AddError(TEXT("the build must survive its own Run"));
+		Fixture.End();
+		return true;
+	}
+
+	{
+		const FStructure& Structure = Binding->GetStructure();
+
+		AddInfo(FString::Printf(
+			TEXT("after Run: %d piece(s) released, %d min-violation readout solve(s)"),
+			SessionCountReleased(*Binding), Structure.GetMinViolationReadoutSolveCount()));
+
+		for (int32 Joint = 0; Joint < Structure.NumConnections(); ++Joint)
+		{
+			AddInfo(SessionDescribeJoint(Structure, Joint));
+		}
+
+		TestEqual(
+			FString::Printf(
+				TEXT("A BONDED L MUST STILL BE STANDING AFTER RUN — nothing may be released. This is "
+					 "the weak half of the claim and it passes today through the router; it is here so "
+					 "a fix that reaches the LP cannot pay for it by dropping the player's wall. %d "
+					 "piece(s) went"),
+				SessionCountReleased(*Binding)),
+			SessionCountReleased(*Binding), 0);
+
+		for (int32 Joint = 0; Joint < Structure.NumConnections(); ++Joint)
+		{
+			if (!SessionJointIsPosedByTheLP(Structure, Joint))
+			{
+				continue;
+			}
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("THE LP MUST HAVE ANSWERED THIS BUILD: every posed joint carries a "
+						 "min-violation readout after a below-cap settle, and this one does not. An "
+						 "ABSENT readout is the gate having DECLINED — the cache is cleared at the top "
+						 "of every pass and refilled only by an arm that reached a verdict — and the "
+						 "decline is silent: the 2D bridge refused the whole problem on the "
+						 "out-of-plane (Y) normal of the course-1 head, so BreakByCapacitySweep, not "
+						 "the LP, decided whether this corner stands. %s"),
+					*SessionDescribeJoint(Structure, Joint)),
+				Structure.GetConnectionReadout(Joint).bPresent);
+		}
+	}
+
+	Fixture.End();
+
+	return true;
+}
+
+/**
+ * CR-2b (xiii), THE CONTROL — A STRAIGHT BUILD IS FLAGGED 3D TOO, AND STILL READS THE LP.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * The same `BeginBuild` flag is UNCONDITIONAL — a build with no rotated piece in it is opened 3D as
+ * well — and posing a planar running-bond wall three-dimensionally does not cost it its LP answer.
+ *
+ * =====================================================================================
+ * WHY THIS IS A SEPARATE TEST AND NOT A SECTION
+ * =====================================================================================
+ *
+ * It is the pair to `CornerBuildIsJudgedByTheLP` and it is where "unconditional" is pinned. The
+ * corner test alone is satisfied by a fix that flags 3D when a rotated piece is placed, or when a
+ * Y-normal joint appears — both inferences the E3 ruling forbids, and both a cliff in the middle of
+ * a build. This wall contains no rotated piece and no Y-normal joint at all, so the flag assertion
+ * here can only be met by stating the intent at the door.
+ *
+ * ITS TWO HALVES ARRIVE IN DIFFERENT COLOURS, AND THAT IS DELIBERATE:
+ *
+ *   - the flag assertion is RED today, exactly as the corner's is;
+ *   - the readout assertion is GREEN today — this wall is 2D, the bridge poses it happily and the
+ *     LP answers. It is a REGRESSION NET rather than a driver: the fix moves every session build,
+ *     including this one, onto the 3D pose, and a 3D pose that stopped answering for a planar wall
+ *     would take the LP off every straight wall a player lays. That assertion is proven to bite by
+ *     its twin in the corner test, which is the same line against the same accessor and is red.
+ *
+ * =====================================================================================
+ * THE THREE NUMBERS
+ * =====================================================================================
+ *
+ * Course 0 at (0, 0, 3.25) and (22.5, 0, 3.25) — one brick plus one head joint apart, asked for at
+ * x = 22.0 so the same-course pose wins by 0.5 cm against a next-course pose 13.1 cm away — then
+ * course 1 at (11.25, 0, 10.75), asked for exactly at the running bond, which beds on BOTH below it.
+ * Three pieces, three joints: the course-0 head is earth-to-earth and skipped by the bridge, so the
+ * two beds are the posed pair the readout is asserted over (see `SessionJointIsPosedByTheLP`).
+ *
+ * NEEDS A TICKING WORLD: a world for the bricks; it never ticks one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSessionStraightBuildIsJudgedByTheLPTest,
+	"DestructionGame.World.Session.StraightBuildIsJudgedByTheLP",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSessionStraightBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace DestructionSession;
+	using namespace SessionControllerTestSupport;
+
+	constexpr int32 StraightExpectedPieces = 3;
+	constexpr int32 StraightExpectedConnections = 3;
+	constexpr int32 StraightPosedJoints = 2;
+
+	/* Course 1's plane for a brick: 1 * 7.5 + 3.25, and the running-bond stagger it lands on. */
+	constexpr double StraightCourse1XCm = 11.25;
+
+	FSessionFixture Fixture;
+
+	if (!Fixture.Begin(*this))
+	{
+		Fixture.End();
+		return true;
+	}
+
+	ADestructionGamePlayerController& Controller = *Fixture.Controller;
+	UBuildModeComponent& Build = *Fixture.Build;
+	UDestructionStructureSubsystem& Subsystem = *Fixture.TestWorld.Subsystem;
+
+	if (!Controller.OnToolbarButton(EToolbarButtonId::ModeBuild))
+	{
+		AddError(TEXT("fixture: the Build tab must be clickable for any of this to run"));
+		Fixture.End();
+		return true;
+	}
+
+	const int32 BuildStructureId = Build.GetStructureId();
+
+	/* --- ONE: the flag at the door, with no rotation anywhere in this test ------------------- */
+
+	{
+		const FStructureBinding* const Fresh = Subsystem.Find(BuildStructureId);
+
+		if (Fresh == nullptr)
+		{
+			AddError(FString::Printf(
+				TEXT("fixture: entering Build mode must open a binding; structure %d names nothing"),
+				BuildStructureId));
+
+			Fixture.End();
+			return true;
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("EVERY BUILD IS OPENED 3D, INCLUDING THIS ONE. The Rotate chip is never clicked in "
+					 "this test and no joint here has a Y normal, so a flag set on a rotation — or "
+					 "inferred from an out-of-plane joint — leaves this build 2D and lets the fix be "
+					 "rotation-conditional, which is a cliff rather than a rule. Structure %d reads "
+					 "IsThreeDimensional() == false"),
+				BuildStructureId),
+			Fresh->GetStructure().IsThreeDimensional());
+	}
+
+	/* --- TWO: two courses of running bond, laid through the player's clicks ------------------ */
+
+	Controller.PrimaryAlongRay(SessionPointerRayStart(0.0), SessionPointerRayEnd(0.0));
+
+	Controller.PrimaryAlongRay(
+		SessionPointerRayStart(SessionSecondCursorXCm), SessionPointerRayEnd(SessionSecondCursorXCm));
+
+	Controller.OnToolbarButton(EToolbarButtonId::CourseUp);
+
+	Controller.PrimaryAlongRay(
+		SessionPointerRayStart(StraightCourse1XCm), SessionPointerRayEnd(StraightCourse1XCm));
+
+	FStructureBinding* Binding = Subsystem.Find(BuildStructureId);
+
+	if (Binding == nullptr
+		|| Binding->NumPieces() != StraightExpectedPieces
+		|| Binding->GetStructure().NumConnections() != StraightExpectedConnections)
+	{
+		AddError(FString::Printf(
+			TEXT("fixture: the three clicks must give a %d-piece, %d-connection wall; the build holds "
+				 "%d pieces and %d connections"),
+			StraightExpectedPieces, StraightExpectedConnections,
+			Binding != nullptr ? Binding->NumPieces() : INDEX_NONE,
+			Binding != nullptr ? Binding->GetStructure().NumConnections() : INDEX_NONE));
+
+		Fixture.End();
+		return true;
+	}
+
+	{
+		const FStructure& Structure = Binding->GetStructure();
+
+		int32 Posed = 0;
+		int32 OutOfPlane = 0;
+
+		for (int32 Joint = 0; Joint < Structure.NumConnections(); ++Joint)
+		{
+			AddInfo(SessionDescribeJoint(Structure, Joint));
+
+			Posed += SessionJointIsPosedByTheLP(Structure, Joint) ? 1 : 0;
+			OutOfPlane += FMath::Abs(Structure.GetConnection(Joint).InterfaceNormal.Y) > 1.0e-9 ? 1 : 0;
+		}
+
+		TestEqual(
+			TEXT("fixture: NOT ONE joint in this wall has a Y component in its normal — that is what "
+				 "makes it the control for the corner's out-of-plane head"),
+			OutOfPlane, 0);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("fixture: the two beds under the course-1 brick are posed and the earth-to-earth "
+					 "head is skipped, so %d joints are posed; %d are"),
+				StraightPosedJoints, Posed),
+			Posed, StraightPosedJoints);
+	}
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("AND THE LAID WALL IS 3D TOO — the flag is a property of the build, stated once when "
+				 "it is opened, not of what happens to be in it. Structure %d reads "
+				 "IsThreeDimensional() == false"),
+			BuildStructureId),
+		Binding->GetStructure().IsThreeDimensional());
+
+	/* --- THREE: and Run still reads the LP ---------------------------------------------------- */
+
+	TestTrue(
+		TEXT("the Destroy tab is always live"),
+		Controller.OnToolbarButton(EToolbarButtonId::ModeDestroy));
+
+	TestTrue(
+		TEXT("fixture: clicking Run on a live build must report that it landed"),
+		Controller.OnToolbarButton(EToolbarButtonId::RunStructure));
+
+	Binding = Subsystem.Find(BuildStructureId);
+
+	if (Binding == nullptr)
+	{
+		AddError(TEXT("the build must survive its own Run"));
+		Fixture.End();
+		return true;
+	}
+
+	{
+		const FStructure& Structure = Binding->GetStructure();
+
+		AddInfo(FString::Printf(
+			TEXT("after Run: %d piece(s) released, %d min-violation readout solve(s)"),
+			SessionCountReleased(*Binding), Structure.GetMinViolationReadoutSolveCount()));
+
+		for (int32 Joint = 0; Joint < Structure.NumConnections(); ++Joint)
+		{
+			AddInfo(SessionDescribeJoint(Structure, Joint));
+		}
+
+		TestEqual(
+			FString::Printf(
+				TEXT("a bonded running-bond wall must still be standing after Run; %d piece(s) went"),
+				SessionCountReleased(*Binding)),
+			SessionCountReleased(*Binding), 0);
+
+		for (int32 Joint = 0; Joint < Structure.NumConnections(); ++Joint)
+		{
+			if (!SessionJointIsPosedByTheLP(Structure, Joint))
+			{
+				continue;
+			}
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("A STRAIGHT PLAYER WALL READS THE LP TODAY AND MUST GO ON READING IT: this "
+						 "posed bed carries no min-violation readout, which means the gate declined. "
+						 "If this line is red while the corner's twin is green, the 3D pose has stopped "
+						 "answering for a PLANAR wall and the fix has taken the LP off every straight "
+						 "wall a player lays. %s"),
+					*SessionDescribeJoint(Structure, Joint)),
+				Structure.GetConnectionReadout(Joint).bPresent);
+		}
 	}
 
 	Fixture.End();

@@ -117,13 +117,14 @@ one-line read in the controller and the transition is still the tested pure one.
 | Piece: brick | `PieceBrick` | `Brick` | `21.5 × 10.25 × 6.5 cm` | `Piece == Brick` | always | `1` |
 | Piece: plate | `PieceTimberPlate` | `Plate` (the swatch says timber) | `67.5 × 10.25 × 10 cm` | `Piece == TimberPlate` | always | `2` |
 | Piece: lintel | `PieceTimberLintel` | `Lintel` | `90 × 10.25 × 10 cm` | `Piece == TimberLintel` | always | `3` |
+| Rotate (CR-2b, 2026-09-16) | `RotatePiece` | `Rotate` | — | `bRotated` (latches) | always | none yet |
 | Placement: snap | `PlacementSnap` | `Snap` | — | `Placement == Snap` | always | `G` (toggles) |
 | Placement: free | `PlacementFree` | `Free` | — | `Placement != Snap` | always | `G` (toggles) |
 | Joint: auto / mortar / dry / nail / screw / bolt (UI-6, 2026-09-16) | `JointAuto` … `JointBolt` | `Auto` `Mortar` `Dry` `Nail` `Screw` `Bolt` | — | `Joint == choice` (exactly one) | always | none yet |
 | Course down | `CourseDown` | `-` (ASCII; landed) | — | never (command) | `Course >= 1` | `[` |
 | Course readout | *(not a button)* | `Course 3` | — | — | — | — |
 | Course up | `CourseUp` | `+` (landed) | — | never (command) | always | `]` |
-| Clear build | `ClearBuild` | `Clear build` | — | never (command) | `bHasStructure` | `Backspace` |
+| Clear build | `ClearBuild` | `Clear` (shortened for the 17-chip strip) | — | never (command) | `bHasStructure` | `Backspace` |
 
 Four notes, each of which is a decision rather than a transcription:
 

@@ -243,9 +243,12 @@ struct FStructureBinding
 
 	/**
 	 * Flag this binding's structure 3D, forwarding to the private FStructure, which is
-	 * reachable from here by no other route. AdoptLayout is the only caller: a layout laid
+	 * reachable from here by no other route. Two callers: AdoptLayout, where a layout laid
 	 * 3D (DestructionShed3D::Build sets it) must stay 3D once adopted, or the world bridge
-	 * poses the shed in 2D and refuses its out-of-plane corners. See FStructure::SetThreeDimensional.
+	 * poses the shed in 2D and refuses its out-of-plane corners; and
+	 * UDestructionStructureSubsystem::BeginBuild, which states it unconditionally for a
+	 * player's build because a build grown from clicks adopts no layout to carry it.
+	 * See FStructure::SetThreeDimensional.
 	 */
 	void SetThreeDimensional(bool bIsThreeDimensional);
 

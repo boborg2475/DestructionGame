@@ -365,6 +365,14 @@ bool FCornerWallStandsTest::RunTest(const FString& Parameters)
 	 * SetThreeDimensional FIRST, because this build forms Y-NORMAL joints (the Y leg's head
 	 * joints) and Placement.h's contract puts that call on the caller: whether a build is
 	 * planar or 3D is a structure-level intent, not a per-placement one.
+	 *
+	 * BUT SolveLoads ITSELF DOES NOT READ THE FLAG, and the line above is not what makes this
+	 * section pass. The router is dimension-agnostic — it routes load down bed joints and reads
+	 * each normal directly — so it answers a Y-normal joint identically either way. The ONE
+	 * reader is the LP bridge (RigidBlockOracle::BuildRigidBlockProblem), which refuses an
+	 * out-of-plane normal unless the structure states it is 3D; so the call matters to
+	 * SolveAndBreak's below-cap gate, not here. It is kept because the intent is genuine and
+	 * because any later section that settles this layout would need it.
 	 */
 	Layout.Structure.SetThreeDimensional(true);
 	Layout.Structure.SolveLoads();

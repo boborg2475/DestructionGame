@@ -138,6 +138,31 @@ namespace DestructionSession
 		int32 Course = 0;
 
 		/**
+		 * Whether the next piece lies the OTHER way round — turned a quarter turn about Z.
+		 *
+		 * A BIT BESIDE THE KIND RATHER THAN THREE MORE KINDS. A rotated brick is the same brick:
+		 * EBuildPieceKind names what is in the palette, an extent and a library row, and a
+		 * BrickRotated / TimberPlateRotated / TimberLintelRotated triple would treble the one table
+		 * this model exists to keep brick dimensions out of (see the enum's own header). Rotation is
+		 * orthogonal to the kind, so it is stored orthogonally.
+		 *
+		 * AND IT IS WHAT MAKES THE CORNER VOCABULARY REACHABLE AT ALL. The snap solver offers a
+		 * quoin when two brick-sized boxes cross long axes, but every placement's footprint comes
+		 * from the palette — so until a player could turn a piece, the whole of CR-2a was code no
+		 * click could get to.
+		 *
+		 * UPRIGHT BY DEFAULT, for the reason Mode defaults to Build: a default-constructed session is
+		 * the one that has decided least. A session that opened rotated would lay its first brick
+		 * across the grid every harness and every level in this project is laid on.
+		 *
+		 * IT SURVIVES A TRIP THROUGH DESTROY MODE, exactly as the piece, the placement and the joint
+		 * do. A player who turned a piece to lay the second leg of an L, looked at what they had
+		 * built and came back must find it still turned — otherwise their next click lays a stretcher
+		 * straight across the corner.
+		 */
+		bool bRotated = false;
+
+		/**
 		 * Whether there is a live structure for the commands to act on.
 		 *
 		 * THE ONLY PRECONDITION EITHER COMMAND HAS. Clear with nothing built clears nothing and Run
@@ -180,6 +205,18 @@ namespace DestructionSession
 		PieceBrick,
 		PieceTimberPlate,
 		PieceTimberLintel,
+
+		/**
+		 * Turn the next piece a quarter turn about Z — the tail of the palette, and a LATCH.
+		 *
+		 * IT IS DRAWN WITH THE PIECES AND NOT AS ONE. It modifies whichever of the three is lit
+		 * rather than being a fourth of them, which is why it sits immediately after them and
+		 * carries no swatch: a block of brick red on this chip would name a piece it does not lay.
+		 * It is in front of the placement pair because that is the order the player asks the
+		 * questions in — which piece, lying which way, then snapped or free, then fastened how.
+		 */
+		RotatePiece,
+
 		PlacementSnap,
 		PlacementFree,
 

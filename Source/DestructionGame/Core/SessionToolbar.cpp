@@ -138,6 +138,14 @@ namespace DestructionSession
 			case EToolbarButtonId::PieceBrick:
 			case EToolbarButtonId::PieceTimberPlate:
 			case EToolbarButtonId::PieceTimberLintel:
+
+			/*
+			 * AND SO IS ROTATE. Which way the next piece lies is a property of that placement rather
+			 * than something that happens, so it belongs with the palette it modifies and in front
+			 * of the rule the commands sit past.
+			 */
+			case EToolbarButtonId::RotatePiece:
+
 			case EToolbarButtonId::PlacementSnap:
 			case EToolbarButtonId::PlacementFree:
 
@@ -212,6 +220,13 @@ namespace DestructionSession
 			 */
 			case EToolbarButtonId::PieceTimberPlate:  return TEXT("Plate");
 			case EToolbarButtonId::PieceTimberLintel: return TEXT("Lintel");
+			/*
+			 * THE VERB, AND ONLY THE VERB. "Rotate 90" and "Rotate piece" say the same thing at more
+			 * of the 1280 px this strip may not scroll past; what may not drift is the word a player
+			 * hunting for a way to lay a header actually looks for.
+			 */
+			case EToolbarButtonId::RotatePiece:       return TEXT("Rotate");
+
 			case EToolbarButtonId::PlacementSnap:     return TEXT("Snap");
 			case EToolbarButtonId::PlacementFree:     return TEXT("Free");
 
@@ -239,7 +254,20 @@ namespace DestructionSession
 			case EToolbarButtonId::CourseDown:        return TEXT("-");
 			case EToolbarButtonId::CourseUp:          return TEXT("+");
 			case EToolbarButtonId::ToggleLoadOverlay: return TEXT("Load overlay");
-			case EToolbarButtonId::ClearBuild:        return TEXT("Clear build");
+
+			/*
+			 * ONE WORD, BECAUSE THE SEVENTEENTH CHIP TOOK THE ROOM. `Clear build` was the widest chip
+			 * on the Build strip and the strip ended one pixel past the 1270 px `Rotate` left it —
+			 * one pixel off the right of a 1280-wide viewport, where a control cannot be clicked and
+			 * nothing on screen says why. The strip is the only place this word appears, and it
+			 * appears on the Build strip alone, so "build" was the fact the chip was drawing twice.
+			 *
+			 * THE VERB IS WHAT SURVIVES, which is the same rule the stepper's `-`/`+` and the
+			 * palette's `Plate`/`Lintel` were shortened under: what may not drift is the word that
+			 * says what happens. `Clear` keeps its warm danger caption, so it still reads as the one
+			 * irreversible control in the group.
+			 */
+			case EToolbarButtonId::ClearBuild:        return TEXT("Clear");
 			case EToolbarButtonId::RunStructure:      return TEXT("Run structure");
 			}
 
@@ -280,6 +308,14 @@ namespace DestructionSession
 			case EToolbarButtonId::JointNail:         return State.Joint == EJointChoice::Nail;
 			case EToolbarButtonId::JointScrew:        return State.Joint == EJointChoice::Screw;
 			case EToolbarButtonId::JointBolt:         return State.Joint == EJointChoice::Bolt;
+
+			/*
+			 * ROTATE LATCHES, WHICH IS THE WHOLE DIFFERENCE BETWEEN IT AND A VERB. The word reads
+			 * like something that HAPPENS, and a chip drawn unlit while every ghost lands turned
+			 * ninety degrees would leave the player with a rotated wall and nothing on screen
+			 * admitting to it — the failure ToggleLoadOverlay exists to avoid, one strip over.
+			 */
+			case EToolbarButtonId::RotatePiece:       return State.bRotated;
 
 			/*
 			 * A SETTING LATCHES, WHICH IS THE WHOLE DIFFERENCE BETWEEN THIS CHIP AND Run structure
@@ -344,6 +380,7 @@ namespace DestructionSession
 				EToolbarButtonId::PieceBrick,
 				EToolbarButtonId::PieceTimberPlate,
 				EToolbarButtonId::PieceTimberLintel,
+				EToolbarButtonId::RotatePiece,
 				EToolbarButtonId::PlacementSnap,
 				EToolbarButtonId::PlacementFree,
 				EToolbarButtonId::JointAuto,
@@ -421,6 +458,15 @@ namespace DestructionSession
 		case EToolbarButtonId::JointNail:         After.Joint = EJointChoice::Nail; break;
 		case EToolbarButtonId::JointScrew:        After.Joint = EJointChoice::Screw; break;
 		case EToolbarButtonId::JointBolt:         After.Joint = EJointChoice::Bolt; break;
+
+		case EToolbarButtonId::RotatePiece:
+			/*
+			 * A TOGGLE, LIKE THE OVERLAY AND FOR THE SAME REASON: the same chip is the only way
+			 * back, and a rotation a player cannot undo is a player reopening the level. The flag is
+			 * all that moves, so the piece, the placement, the joint and the course all survive it.
+			 */
+			After.bRotated = !State.bRotated;
+			break;
 
 		case EToolbarButtonId::CourseDown:
 			/*

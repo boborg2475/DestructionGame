@@ -50,7 +50,7 @@
  * photograph a loop the player cannot reach.
  *
  * =========================================================================================
- * THE FIVE FRAMES
+ * THE SIX FRAMES
  * =========================================================================================
  *
  *   FRAME 1 "Session_Build": the plot as the level opens — Build mode, the strip up — with a small
@@ -85,8 +85,18 @@
  *   FRAME 5 "Session_Run": back in Build for one FREE brick three courses up in mid-air with no
  *   joints, then Destroy and Run structure — the brick is released and has fallen to the ground.
  *
- * THE CAMERA DOES NOT MOVE BETWEEN THEM. It is placed ONCE, before the first frame, so the five
- * pictures can be laid side by side and read against each other in the same pixels.
+ *   FRAME 6 "Session_Corner" (CR-2b): the plot CLEARED and an L-WALL laid on it — a three-brick leg
+ *   along X, a ROTATED brick returning at its end, a leg along Y, and a staggered course lapped over
+ *   all three — every rotation made with the strip's own `Rotate` chip, with a rotated ghost left
+ *   hovering at the end of the second leg. It is the only picture in this project of a building that
+ *   turns a corner, and it exists because until that chip landed a player could not hand the game a
+ *   turned box at all: CR-2a's whole corner vocabulary was code nobody could reach.
+ *
+ * THE CAMERA DOES NOT MOVE BETWEEN FRAMES 1 AND 5. It is placed ONCE, before the first frame, so the
+ * five pictures can be laid side by side and read against each other in the same pixels. FRAME 6
+ * REFRAMES, exactly once, and its own command says why: the L is a different building in a different
+ * footprint — 61 cm along Y where the wall was 10 cm deep — and the frame-1 camera would show the
+ * corner edge-on, which is the one thing a picture of a corner may not be.
  *
  * =========================================================================================
  * THE CAMERA IS THE GAME MODE'S FRAMING, MOVED IN ONCE
@@ -108,7 +118,8 @@
  * invariants that make it a picture of the thing it claims: the session's mode, the build's piece
  * count, whether a menu is up, whether the ghost is visible, and the one mechanism reading that frame
  * is about — 6 pieces and at least 8 connections for the laid wall, `IsPieceMenuShown` for the
- * inspector, `IsPieceRemoved` for the delete, and `IsReleased` for the Run. NEVER DISPLACEMENT: the
+ * inspector, `IsPieceRemoved` for the delete, `IsReleased` for the Run, and for the corner the
+ * profile MIX (12 mortar, 7 perpend) plus every piece Grounded or Supported. NEVER DISPLACEMENT: the
  * fallen brick's travel is REPORTED so a human can read it beside the picture, and the claim that Run
  * did its job is `IsReleased`, exactly as `World.Session.RunStructureSettlesTheBuild` has it.
  *
@@ -143,20 +154,22 @@ namespace SessionScreenshotSupport
 {
 	using namespace DestructionSession;
 
-	/** The five frames' file base names, under FPaths::ScreenShotDir(). */
+	/** The six frames' file base names, under FPaths::ScreenShotDir(). */
 	const TCHAR* const BuildBaseName = TEXT("Session_Build");
 	const TCHAR* const DestroyBaseName = TEXT("Session_Destroy");
 	const TCHAR* const DeletedBaseName = TEXT("Session_Deleted");
 	const TCHAR* const LoadOverlayBaseName = TEXT("Session_LoadOverlay");
 	const TCHAR* const RunBaseName = TEXT("Session_Run");
+	const TCHAR* const CornerBaseName = TEXT("Session_Corner");
 
 	/**
-	 * ALL FIVE IN ONE LIST, because every claim made about one is made about the other four — the
-	 * deletion before the run and the PNG check after it are the same two statements five times over,
-	 * and a list is what stops the fifth shot quietly acquiring a weaker version of either.
+	 * ALL SIX IN ONE LIST, because every claim made about one is made about the other five — the
+	 * deletion before the run and the PNG check after it are the same two statements six times over,
+	 * and a list is what stops the sixth shot quietly acquiring a weaker version of either.
 	 */
 	const TCHAR* const ScreenshotBaseNames[] = {
-		BuildBaseName, DestroyBaseName, DeletedBaseName, LoadOverlayBaseName, RunBaseName };
+		BuildBaseName, DestroyBaseName, DeletedBaseName, LoadOverlayBaseName, RunBaseName,
+		CornerBaseName };
 
 	/**
 	 * `Shot` and not `HighResShot`, and `showui` with it.
@@ -306,6 +319,115 @@ namespace SessionScreenshotSupport
 	inline FVector LayRayEnd(double XCm, double PlaneZCm)
 	{
 		return FVector(XCm, 0.0, PlaneZCm);
+	}
+
+	/** The same ray, off the Y = 0 line — the L-wall's second leg runs along Y. */
+	inline FVector LayRayStartXY(double XCm, double YCm, double PlaneZCm)
+	{
+		return FVector(XCm, YCm, PlaneZCm + RayHeightCm);
+	}
+
+	inline FVector LayRayEndXY(double XCm, double YCm, double PlaneZCm)
+	{
+		return FVector(XCm, YCm, PlaneZCm);
+	}
+
+	/*
+	 * =====================================================================================
+	 * FRAME 6 — THE L-WALL, AND WHERE ITS ELEVEN CURSORS COME FROM
+	 * =====================================================================================
+	 *
+	 * The cursors and the expected answers are `Core.BuildMode.CornerWallStands`' own table, laid
+	 * here through the PLAYER's click instead of through `BuildMode::PlacePiece`. That test's header
+	 * works every one of them against the solver — the return asked for 0.625 cm off its pose so the
+	 * one flush choice that turns the corner wins outright, the two Y-leg bricks asked for 0.125 cm
+	 * short of the pitch so the same-course pose beats the next-course one, and course 1 asked for
+	 * AT the running bond where nothing can outrank an offset of zero.
+	 *
+	 * THE ORDER IS CornerWallStands' ORDER AND THAT IS LOAD-BEARING, NOT COSMETIC. CURRENT_STATE's
+	 * CR-2a finding (ix) records that joints come only from candidates the PLACED piece emits, so a
+	 * brick laid after a neighbour it should bond to forms no joint to it. The course-1 corner brick
+	 * at (56.25, 0) takes its quoin from a corner-return pose of the Y leg's course-1 brick at
+	 * (61.875, 16.875) — which therefore has to be standing FIRST. Laid the other way round the L is
+	 * still a wall, but it is an eighteen-connection wall, and the twelve-mortar count below would be
+	 * eleven.
+	 */
+	struct FCornerStep
+	{
+		double XCm;
+		double YCm;
+
+		/** 0 or 1 — the only two courses this wall has. */
+		int32 Course;
+
+		/** Whether the piece lies along Y: the `Rotate` chip's own flag. */
+		bool bRotated;
+	};
+
+	const FCornerStep CornerSteps[] = {
+		/* Course 0, the X leg — three stretchers on the earth. */
+		{  0.000,  0.000, 0, false },
+		{ 22.500,  0.000, 0, false },
+		{ 45.000,  0.000, 0, false },
+
+		/* The corner: a ROTATED brick returning off the X leg's +X end. This is the chip's reason. */
+		{ 61.875,  5.000, 0, true },
+
+		/* Course 0, the Y leg — the same running bond, stepping along Y. */
+		{ 61.875, 28.000, 0, true },
+		{ 61.875, 50.500, 0, true },
+
+		/* Course 1, staggered over the X leg. */
+		{ 11.250,  0.000, 1, false },
+		{ 33.750,  0.000, 1, false },
+
+		/* The Y leg's first course-1 brick — BEFORE the lap, see the order note above. */
+		{ 61.875, 16.875, 1, true },
+
+		/* The corner brick: the stretcher a bricklayer laps OVER the return, bonding both legs. */
+		{ 56.250,  0.000, 1, false },
+
+		/* And the Y leg's second. */
+		{ 61.875, 39.375, 1, true },
+	};
+
+	constexpr int32 CornerExpectedPieces = 11;
+	constexpr int32 CornerExpectedConnections = 19;
+	constexpr int32 CornerExpectedMortar = 12;
+	constexpr int32 CornerExpectedPerpend = 7;
+
+	/** The six laid on the earth; everything after index 5 reaches it only through its beds. */
+	constexpr int32 CornerLastGroundedPiece = 5;
+
+	/**
+	 * WHERE THE GHOST HOVERS IN FRAME 6: the next brick along the Y leg, still rotated.
+	 *
+	 * The leg's course-1 bricks step 22.5 cm along Y, so 39.375 + 22.5 = 61.875 is where the next one
+	 * goes. A rotated ghost there is the picture the frame is for — a header-on brick, visibly turned
+	 * ninety degrees to the three stretchers in the same shot.
+	 */
+	constexpr double CornerGhostXCm = 61.875;
+	constexpr double CornerGhostYCm = 61.875;
+
+	/**
+	 * THE L'S OWN BOUNDS, and the ONE reframe in this harness.
+	 *
+	 * The other five frames share a camera on purpose — they are five readings of one plot and are
+	 * meant to be laid side by side. This one is a different building in a different footprint: the
+	 * L reaches 61 cm along Y where the wall was 10 cm deep, so the frame-1 camera would show it
+	 * edge-on and foreshortened, which is the one thing a picture of a CORNER may not be. Framed
+	 * through the same production function (`ViewpointFor`, `ThreeQuarter`), so the angle is still
+	 * the one the game puts a player at.
+	 *
+	 *   the X leg           X -10.75 .. 55.75,  Y  -5.125 ..  5.125
+	 *   the course-1 lap    X  45.50 .. 67.00,  Y  -5.125 ..  5.125
+	 *   the Y leg           X  56.75 .. 67.00,  Y  -5.125 .. 61.375
+	 *   the rotated ghost   X  56.75 .. 67.00,  Y  51.125 .. 72.625
+	 *   and Z 0 .. 14 (two courses of brick on their joints)
+	 */
+	inline FBox CornerStageBoundsCm()
+	{
+		return FBox(FVector(-10.75, -5.125, 0.0), FVector(67.0, 72.625, 14.0));
 	}
 
 	/**
@@ -1711,6 +1833,396 @@ bool FSessionShootRunCommand::Update()
 }
 
 /**
+ * FRAME 6's BUILD: clear the plot, reframe the camera, and lay an L-WALL with the rotate chip.
+ *
+ * =====================================================================================
+ * WHY THIS FRAME EXISTS AND WHY IT IS RED UNTIL THE CHIP DOES
+ * =====================================================================================
+ *
+ * CR-2a taught the solver a corner return and `Core.BuildMode.CornerWallStands` proves the wall it
+ * builds — but through `BuildMode::PlacePiece`, which takes an extent as an argument. A PLAYER has
+ * no way to hand the game a turned box: every placement's footprint comes from the palette, so
+ * until there is a chip that swaps X and Y the whole corner vocabulary is code nobody can reach.
+ * This frame is the proof that they can, and it is the only picture in this project of a building
+ * that turns a corner.
+ *
+ * SO IT IS GATED ON THE CHIP, AT THE TOP, AND SAYS SO. `PrimaryAlongRay` with a rotated ghost is
+ * impossible before `EToolbarButtonId::RotatePiece` exists — the model refuses a button it does not
+ * draw — so a probe click is made first and the whole build is abandoned with one named error if it
+ * comes back false. That keeps the failure readable as "the control is missing" rather than as
+ * eleven snap poses landing in the wrong places.
+ *
+ * =====================================================================================
+ * WHAT IT ASSERTS BESIDE THE PICTURE
+ * =====================================================================================
+ *
+ * The same mechanism readings `CornerWallStands` makes, taken through the binding: eleven pieces,
+ * nineteen connections, twelve full-mortar joints (ten beds and two quoins) and seven weak perpend
+ * heads, then every piece Grounded or Supported after a solve. The profile MIX is what makes the
+ * picture a picture of a CORNER — a wall whose quoins came back as perpends looks identical in every
+ * pixel and is a different building.
+ *
+ * `SolveLoads` IS NON-DESTRUCTIVE AND IS THE RIGHT CALL HERE. It is re-runnable by contract
+ * (`FStructureBinding::SolveLoads`, "ApplyResults is what turns the answer into work on the world"),
+ * so reading support kinds off it changes nothing in the frame — unlike `SolveAndBreak`, which the
+ * Run command uses and which would settle the wall before it is photographed.
+ *
+ * THE 3D FLAG IS NO LONGER SET BY HAND HERE. `UDestructionStructureSubsystem::BeginBuild` states it
+ * for every player's build, so the L this frame photographs arrives flagged and the harness has
+ * nothing to state. It changed nothing this frame reads in any case — `SolveLoads` does not read the
+ * flag at all (the router is dimension-agnostic, routing load down bed joints and reading each normal
+ * directly), and the one reader, the LP bridge, is consulted only by the below-cap break gate inside
+ * `SolveAndBreak`, which this frame deliberately never runs. What the flag really buys is the
+ * player's `Run structure`, which is `World.Session.CornerBuildIsJudgedByTheLP`'s business rather
+ * than this picture's.
+ */
+DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
+	FSessionShotCornerCommand, FAutomationTestBase*, Test);
+
+bool FSessionShotCornerCommand::Update()
+{
+	using namespace DestructionSession;
+	using namespace SessionScreenshotSupport;
+
+	FSessionShotRecord& Record = SessionShotRecord();
+
+	if (!Record.bStaged)
+	{
+		return true;
+	}
+
+	ADestructionGamePlayerController* const Controller = Record.Controller.Get();
+
+	if (Controller == nullptr)
+	{
+		Test->AddError(TEXT("the controller vanished before the corner build"));
+		return true;
+	}
+
+	Test->TestTrue(
+		TEXT("the Build tab is always live"),
+		Controller->OnToolbarButton(EToolbarButtonId::ModeBuild));
+
+	/* --- THE GATE: is there a rotate chip at all? --------------------------------------------- */
+
+	if (!Controller->OnToolbarButton(EToolbarButtonId::RotatePiece))
+	{
+		Test->AddError(
+			TEXT("CR-2b: OnToolbarButton(RotatePiece) was REFUSED, so there is no way for a player to "
+				 "turn a piece and no L-wall can be laid. The model refuses a button it does not draw, "
+				 "which is exactly what a missing chip looks like from here. Frame 6 will be a picture "
+				 "of an empty plot until the chip exists"));
+
+		return true;
+	}
+
+	/* And straight back, so the table below owns every rotation from a known upright start. */
+	Test->TestTrue(
+		TEXT("and the same chip must turn it off again — a setting the player cannot unset is not a "
+			 "setting"),
+		Controller->OnToolbarButton(EToolbarButtonId::RotatePiece));
+
+	Test->TestFalse(
+		*FString::Printf(
+			TEXT("the corner build must start from an UPRIGHT session; it reads %s"),
+			*StateBits(Controller->GetSessionToolbarState())),
+		Controller->GetSessionToolbarState().bRotated);
+
+	/* --- a fresh plot: the five frames before this one leave a wall and a fallen brick on it --- */
+
+	Test->TestTrue(
+		TEXT("Clear build must be live over the settled plot"),
+		Controller->OnToolbarButton(EToolbarButtonId::ClearBuild));
+
+	Test->TestTrue(
+		TEXT("Snap placement is always live in Build mode — frame 5 left the session on Free, and an "
+			 "L laid Free would form no joint at all"),
+		Controller->OnToolbarButton(EToolbarButtonId::PlacementSnap));
+
+	Test->TestTrue(
+		TEXT("and the Brick chip, because frame 5's brick is the piece this L is built from"),
+		Controller->OnToolbarButton(EToolbarButtonId::PieceBrick));
+
+	/* Frame 5 climbed to course 5; the L starts on the earth. */
+	while (Controller->GetSessionToolbarState().Course > 0)
+	{
+		const int32 Before = Controller->GetSessionToolbarState().Course;
+
+		Test->TestTrue(
+			*FString::Printf(TEXT("Course down from %d must land"), Before),
+			Controller->OnToolbarButton(EToolbarButtonId::CourseDown));
+
+		if (Controller->GetSessionToolbarState().Course >= Before)
+		{
+			Test->AddError(TEXT("Course down did not lower the course; refusing to loop"));
+			break;
+		}
+	}
+
+	Test->TestEqual(
+		FString::Printf(
+			TEXT("fixture: the L starts on the grounded course; the session reads %d"),
+			Controller->GetSessionToolbarState().Course),
+		Controller->GetSessionToolbarState().Course, 0);
+
+	/* --- the camera, moved ONCE for this frame ------------------------------------------------ */
+
+	if (APawn* const Pawn = Controller->GetPawn())
+	{
+		const FBox CornerCm = CornerStageBoundsCm();
+
+		const DestructionScenarios::FViewpoint Viewpoint = DestructionScenarios::ViewpointFor(
+			CornerCm, FrameAspectHeightOverWidth, DestructionScenarios::EScenarioFraming::ThreeQuarter);
+
+		Pawn->SetActorLocation(Viewpoint.LocationCm);
+		Controller->SetControlRotation(Viewpoint.Rotation);
+
+		Test->AddInfo(FString::Printf(
+			TEXT("frame 6 reframes over the L's %.2f x %.2f x %.2f cm bounds: camera at "
+				 "(%.2f, %.2f, %.2f), rotation (%.2f, %.2f, %.2f)"),
+			2.0 * CornerCm.GetExtent().X, 2.0 * CornerCm.GetExtent().Y, 2.0 * CornerCm.GetExtent().Z,
+			Viewpoint.LocationCm.X, Viewpoint.LocationCm.Y, Viewpoint.LocationCm.Z,
+			Viewpoint.Rotation.Pitch, Viewpoint.Rotation.Yaw, Viewpoint.Rotation.Roll));
+	}
+	else
+	{
+		Test->AddError(TEXT("the player controller has no pawn to reframe the corner on"));
+	}
+
+	/* --- the eleven clicks ------------------------------------------------------------------- */
+
+	for (int32 Index = 0; Index < UE_ARRAY_COUNT(CornerSteps); ++Index)
+	{
+		const FCornerStep& Step = CornerSteps[Index];
+
+		/* The course, stepped one chip click at a time — this wall only ever goes up. */
+		while (Controller->GetSessionToolbarState().Course < Step.Course)
+		{
+			Test->TestTrue(
+				*FString::Printf(TEXT("step %d: Course up must land"), Index),
+				Controller->OnToolbarButton(EToolbarButtonId::CourseUp));
+		}
+
+		/* And the rotation, which is one click whenever the next piece lies the other way. */
+		if (Controller->GetSessionToolbarState().bRotated != Step.bRotated)
+		{
+			Test->TestTrue(
+				*FString::Printf(
+					TEXT("step %d: the rotate chip must land — the L needs it five times, once at each "
+						 "change of direction"),
+					Index),
+				Controller->OnToolbarButton(EToolbarButtonId::RotatePiece));
+
+			Test->TestEqual(
+				*FString::Printf(
+					TEXT("step %d: and the session must read %s after it"),
+					Index, Step.bRotated ? TEXT("ROTATED") : TEXT("upright")),
+				Controller->GetSessionToolbarState().bRotated, Step.bRotated);
+		}
+
+		/*
+		 * The brick's own course plane: course 0 rests it on the earth at 3.25, course 1 one pitch
+		 * above at 10.75. Spelled from the two named constants rather than multiplied out, so the
+		 * arithmetic stays where the file's own grid note put it.
+		 */
+		const double PlaneZCm = Step.Course == 0 ? BrickPlaneCourse0Cm : BrickPlaneCourse1Cm;
+
+		const bool bPlaced = Controller->PrimaryAlongRay(
+			LayRayStartXY(Step.XCm, Step.YCm, PlaneZCm),
+			LayRayEndXY(Step.XCm, Step.YCm, PlaneZCm));
+
+		Test->TestTrue(
+			*FString::Printf(
+				TEXT("step %d: a click at (%g, %g) on course %d, %s, must lay a brick; it reported %d"),
+				Index, Step.XCm, Step.YCm, Step.Course,
+				Step.bRotated ? TEXT("rotated") : TEXT("upright"), bPlaced ? 1 : 0),
+			bPlaced);
+
+		if (Index == 0)
+		{
+			/* The cleared plot opened a NEW binding; the first brick is what gives it an id. */
+			Record.StructureId = Controller->GetSessionStructureId();
+
+			Test->TestTrue(
+				*FString::Printf(
+					TEXT("the first brick of the L must give the session a structure to name; it names "
+						 "%d"),
+					Record.StructureId),
+				Record.StructureId != INDEX_NONE);
+		}
+	}
+
+	/* --- what the L actually is, before it is photographed ------------------------------------ */
+
+	FStructureBinding* const Binding = FindBuild(Controller->GetWorld(), Record.StructureId);
+
+	if (Binding == nullptr)
+	{
+		Test->AddError(FString::Printf(
+			TEXT("the L-wall's structure %d vanished while it was being laid"), Record.StructureId));
+
+		return true;
+	}
+
+	for (int32 Piece = 0; Piece < Binding->NumPieces(); ++Piece)
+	{
+		const FVector CentreCm = Binding->GetBinding(Piece).Box.CentreCm;
+		const FVector ExtentCm = Binding->GetBinding(Piece).Box.ExtentCm;
+
+		Test->AddInfo(FString::Printf(
+			TEXT("L piece %d laid at (%.3f, %.3f, %.3f), half extent (%.3f, %.3f, %.3f), grounded %d"),
+			Piece, CentreCm.X, CentreCm.Y, CentreCm.Z, ExtentCm.X, ExtentCm.Y, ExtentCm.Z,
+			Binding->GetStructure().GetPiece(Piece).bIsGrounded ? 1 : 0));
+	}
+
+	Test->TestEqual(
+		FString::Printf(
+			TEXT("eleven clicks must give eleven pieces; the L holds %d"), Binding->NumPieces()),
+		Binding->NumPieces(), CornerExpectedPieces);
+
+	Test->TestEqual(
+		FString::Printf(
+			TEXT("AND NINETEEN CONNECTIONS: 10 beds, 2 quoins and 7 heads. Eleven boxes standing in an "
+				 "L with no joints between them are the same photograph and a different building. It "
+				 "holds %d"),
+			Binding->GetStructure().NumConnections()),
+		Binding->GetStructure().NumConnections(), CornerExpectedConnections);
+
+	/*
+	 * THE PROFILE MIX, COUNTED — and it is what makes this a picture of a CORNER rather than of a
+	 * wall that happens to bend. The quoin is a mortar joint across a HORIZONTAL normal, which is
+	 * exactly the contact the pre-CR-2a inference called a weak perpend; counted both ways so a
+	 * wrong profile somewhere cannot cancel against a right one elsewhere.
+	 */
+	{
+		const auto Matches = [](const FConnectionStrength& Got, const FConnectionStrength& Want)
+		{
+			return Got.CompressiveStrengthMPa == Want.CompressiveStrengthMPa
+				&& Got.ShearCohesionMPa == Want.ShearCohesionMPa
+				&& Got.TensileStrengthMPa == Want.TensileStrengthMPa
+				&& Got.FrictionCoefficient == Want.FrictionCoefficient
+				&& Got.MaxShearStrengthMPa == Want.MaxShearStrengthMPa;
+		};
+
+		int32 Mortar = 0;
+		int32 Perpend = 0;
+		int32 Unrecognised = 0;
+
+		for (int32 Index = 0; Index < Binding->GetStructure().NumConnections(); ++Index)
+		{
+			const FConnectionStrength& S = Binding->GetStructure().GetConnection(Index).Strength;
+
+			if (Matches(S, DestructionProfiles::GeneralPurposeMortar))
+			{
+				++Mortar;
+			}
+			else if (Matches(S, DestructionProfiles::GeneralPurposeMortarPerpend))
+			{
+				++Perpend;
+			}
+			else
+			{
+				++Unrecognised;
+			}
+		}
+
+		Test->TestEqual(
+			FString::Printf(
+				TEXT("TWELVE BONDED JOINTS — ten beds and TWO QUOINS. A corner whose quoins came back "
+					 "as perpends is a wall the player cannot tell apart in this frame and that comes "
+					 "down under a push. %d did"),
+				Mortar),
+			Mortar, CornerExpectedMortar);
+
+		Test->TestEqual(
+			FString::Printf(
+				TEXT("and seven WEAK perpend heads — the control for the claim above: same materials, "
+					 "same vertical faces, and the only difference is that those two bricks run the "
+					 "same way. %d did"),
+				Perpend),
+			Perpend, CornerExpectedPerpend);
+
+		Test->TestEqual(
+			FString::Printf(
+				TEXT("and nothing carrying a profile this build did not choose; %d did"), Unrecognised),
+			Unrecognised, 0);
+	}
+
+	/*
+	 * AND IT STANDS, NOT BY BEING PINNED TO THE EARTH. The exact support kind per piece: the six laid
+	 * on the ground read Grounded and the five above them reach the earth ONLY through the beds the
+	 * player's own clicks formed, so a bed that never formed reads Falling or Stranded here rather
+	 * than quietly making a prettier picture.
+	 */
+	Binding->SolveLoads();
+
+	for (int32 Piece = 0; Piece < Binding->NumPieces(); ++Piece)
+	{
+		const EPieceSupport Want = Piece <= CornerLastGroundedPiece
+			? EPieceSupport::Grounded
+			: EPieceSupport::Supported;
+
+		Test->TestEqual(
+			*FString::Printf(
+				TEXT("L piece %d must read %s after the solve; it reads %d"),
+				Piece,
+				Piece <= CornerLastGroundedPiece ? TEXT("Grounded") : TEXT("Supported"),
+				static_cast<int32>(Binding->GetStructure().GetPieceSupport(Piece))),
+			static_cast<int32>(Binding->GetStructure().GetPieceSupport(Piece)),
+			static_cast<int32>(Want));
+	}
+
+	/* --- and the ghost, still rotated, where the next brick of the Y leg would go -------------- */
+
+	Controller->PointerAlongRay(
+		LayRayStartXY(CornerGhostXCm, CornerGhostYCm, BrickPlaneCourse1Cm),
+		LayRayEndXY(CornerGhostXCm, CornerGhostYCm, BrickPlaneCourse1Cm));
+
+	Test->TestTrue(
+		*FString::Printf(
+			TEXT("the frame's ghost must be a ROTATED one — a header-on brick beside three stretchers "
+				 "is the whole picture. The session reads %s"),
+			*StateBits(Controller->GetSessionToolbarState())),
+		Controller->GetSessionToolbarState().bRotated);
+
+	if (const UBuildModeComponent* const Build = Controller->GetBuildComponent())
+	{
+		if (const AActor* const Ghost = Build->GetGhostActor())
+		{
+			Test->AddInfo(FString::Printf(
+				TEXT("the corner ghost stands at (%.2f, %.2f, %.2f), hidden %d"),
+				Ghost->GetActorLocation().X, Ghost->GetActorLocation().Y, Ghost->GetActorLocation().Z,
+				Ghost->IsHidden() ? 1 : 0));
+		}
+	}
+
+	return true;
+}
+
+/** FRAME 6: the L-wall, turned corner and all, with a rotated ghost at the end of its second leg. */
+DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
+	FSessionShootCornerCommand, FAutomationTestBase*, Test);
+
+bool FSessionShootCornerCommand::Update()
+{
+	using namespace SessionScreenshotSupport;
+
+	if (!SessionShotRecord().bStaged)
+	{
+		return true;
+	}
+
+	CheckStageBeforeShot(
+		*Test, TEXT("frame 6 (corner)"), DestructionSession::ESessionMode::Build,
+		/*ExpectedPieces*/ CornerExpectedPieces, /*bExpectMenu*/ false,
+		/*bExpectGhostVisible*/ true);
+
+	RequestScreenshot(*Test, ShotCommandFor(FString(CornerBaseName)));
+
+	return true;
+}
+
+/**
  * Take the build off the plot, through the toolbar, and leave the level as the game mode left it.
  *
  * `Clear build` RATHER THAN A SWEEP OF THE WORLD, because it is the session's own command and it is
@@ -1747,7 +2259,7 @@ bool FSessionShotTearDownCommand::Update()
 	return true;
 }
 
-/** All five files landed and they are real PNGs. All five were deleted before the run. */
+/** All six files landed and they are real PNGs. All six were deleted before the run. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotCheckFilesCommand, FAutomationTestBase*, Test);
 
@@ -1912,6 +2424,17 @@ bool FSessionScreenshotsTest::RunTest(const FString& Parameters)
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SettleFrames));
 
 	ADD_LATENT_AUTOMATION_COMMAND(FSessionShootRunCommand(this));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(WriteFrames));
+
+	/*
+	 * AND FRAME 6 LAST, because it is the one that CLEARS the plot: everything before it is five
+	 * readings of one wall, and an L laid on top of that wall would snap onto it.
+	 */
+	ADD_LATENT_AUTOMATION_COMMAND(FSessionShotCornerCommand(this));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SlateFrames));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SettleFrames));
+
+	ADD_LATENT_AUTOMATION_COMMAND(FSessionShootCornerCommand(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(WriteFrames));
 
 	ADD_LATENT_AUTOMATION_COMMAND(FSessionShotTearDownCommand(this));
