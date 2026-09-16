@@ -127,6 +127,20 @@ bool UBuildModeComponent::IsRotated() const
 	return bRotated;
 }
 
+void UBuildModeComponent::SetPlacementMode(DestructionSession::EPlacementMode Mode)
+{
+	PlacementMode = Mode;
+
+	ApplyPalette();
+}
+
+void UBuildModeComponent::SetJointChoice(DestructionSession::EJointChoice Choice)
+{
+	JointChoice = Choice;
+
+	ApplyPalette();
+}
+
 void UBuildModeComponent::ApplyPalette()
 {
 	/*
@@ -159,6 +173,41 @@ void UBuildModeComponent::ApplyPalette()
 	 * wall and a board buried in it.
 	 */
 	BuildPlaneZCm = DestructionSession::CoursePlaneZCm(CurrentCourse, CurrentExtentCm.Z);
+
+	/*
+	 * AND THE GHOST CATCHES UP WITH THE SETTING IMMEDIATELY, rather than at the player's next mouse
+	 * movement (the owner's playtest, 2026-09-16: "it should show where the brick is going to go
+	 * without clicking anything"). A chip that lights while the ghost keeps the old footprint at the
+	 * old pose reads as a click that was dropped.
+	 *
+	 * IT IS SAFE FROM THE CONSTRUCTOR, WHICH SEEDS THE PALETTE THROUGH SetPieceKind. Nothing is held
+	 * before the first preview, so the refusal below runs and reaches neither the world nor the
+	 * subsystem — which an unregistered component has yet to have.
+	 */
+	RefreshPreview();
+}
+
+bool UBuildModeComponent::RefreshPreview()
+{
+	/*
+	 * NO HELD PREVIEW, NO REFRESH — the same fail-closed guard ConfirmPlace takes, at the door that
+	 * would otherwise arm it. The settings chips are clickable before the player has pointed at
+	 * anything and LastCursorCm is the world origin until they do, so a refresh that ran regardless
+	 * would put a ghost down there and HOLD it, and the next click would commit a brick nobody saw.
+	 * A preview a commit has spent is not held either, which keeps one preview to one commit.
+	 */
+	if (!bHasValidPreview)
+	{
+		return false;
+	}
+
+	/*
+	 * THE HELD CURSOR, PUT BACK ON THE CURRENT BUILD PLANE. UpdatePreviewAt takes a world point and
+	 * the plane enters only through a ray, so replaying LastCursorCm verbatim would leave the one
+	 * setting whose entire meaning is a height — the course — unable to move the ghost at all. The
+	 * X and Y are where the player is pointing; the Z is which course they are laying on.
+	 */
+	return UpdatePreviewAt(FVector(LastCursorCm.X, LastCursorCm.Y, BuildPlaneZCm)).bValid;
 }
 
 FBuildPreview UBuildModeComponent::UpdatePreviewAt(const FVector& WorldCursorCm)

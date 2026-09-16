@@ -102,6 +102,38 @@ public:
 	bool IsRotated() const;
 
 	/**
+	 * Choose whether the next placement is pulled onto the bond or dropped where the cursor is.
+	 *
+	 * A SETTER OVER A FIELD THAT IS STILL PUBLIC, AND THE SETTER IS WHAT PRODUCTION CALLS. The field
+	 * stays where the fixtures can reach it (S4 decided the controller owns the choice), but a
+	 * toolbar click that assigned it directly would change what the next click lays without moving
+	 * the ghost that is showing the player where it lands — which is the whole of the owner's
+	 * complaint.
+	 */
+	void SetPlacementMode(DestructionSession::EPlacementMode Mode);
+
+	/** Choose what fastens the joints the next placement forms. The same setter-over-field shape. */
+	void SetJointChoice(DestructionSession::EJointChoice Choice);
+
+	/**
+	 * Re-drive the HELD preview at the cursor it is already holding, with no new pointer event.
+	 *
+	 * THE HELD CURSOR IS PUT BACK ON THE CURRENT BUILD PLANE — (LastCursorCm.X, LastCursorCm.Y,
+	 * BuildPlaneZCm) — rather than replayed verbatim. UpdatePreviewAt takes a world point and the
+	 * plane only ever entered through a RAY, so a literal replay would make `Course up` a click that
+	 * lights a chip and moves nothing: the one setting whose whole meaning is a height.
+	 *
+	 * IT REFUSES WHEN NOTHING IS HELD, which is the fail-closed half. The settings are clickable
+	 * before the player has pointed at anything, and LastCursorCm is the world ORIGIN on a fresh
+	 * component — a refresh that ran regardless would spawn a ghost down there, HOLD that preview and
+	 * let the next click commit a brick nobody ever saw. A preview ConfirmPlace has SPENT is not held
+	 * either, so a refresh cannot re-arm the one-preview-one-commit rule into a double placement.
+	 *
+	 * @return whether a valid preview is held after the refresh; false when there was none to refresh.
+	 */
+	bool RefreshPreview();
+
+	/**
 	 * Preview at a world cursor: ask the subsystem what a click here would place, move the ghost
 	 * to that snapped centre and show it when the preview is valid (hide it otherwise), remember
 	 * the cursor for ConfirmPlace, and return the preview.
@@ -206,6 +238,11 @@ private:
 	 * those three inputs each, and every one of them changes the answer: a rotation applied inside
 	 * SetRotated alone would be undone by the next palette click, and a palette click that swapped
 	 * without asking the rotation would un-turn the ghost while the strip's chip stayed lit.
+	 *
+	 * AND IT ENDS BY REFRESHING THE HELD PREVIEW, WHICH IS WHY THE PLACEMENT AND JOINT SETTERS COME
+	 * THROUGH HERE TOO THOUGH THEY DERIVE NOTHING. Every settings door in this component converges
+	 * on this one, so "a settings change moves the ghost" is one line in one place rather than a
+	 * rule five setters have to remember — and the next setter added gets it for free.
 	 */
 	void ApplyPalette();
 

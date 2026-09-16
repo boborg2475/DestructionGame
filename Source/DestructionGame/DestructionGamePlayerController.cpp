@@ -1178,7 +1178,7 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 	case EToolbarButtonId::PlacementFree:
 		if (BuildComponent != nullptr)
 		{
-			BuildComponent->PlacementMode = SessionToolbarState.Placement;
+			BuildComponent->SetPlacementMode(SessionToolbarState.Placement);
 		}
 		break;
 
@@ -1196,7 +1196,7 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 		 */
 		if (BuildComponent != nullptr)
 		{
-			BuildComponent->JointChoice = SessionToolbarState.Joint;
+			BuildComponent->SetJointChoice(SessionToolbarState.Joint);
 		}
 		break;
 
@@ -1326,9 +1326,21 @@ bool ADestructionGamePlayerController::PrimaryAlongRay(const FVector& StartCm, c
 	 * and the previous click changed it — so a click that reused a stale preview would lay the
 	 * second brick at the pose the first one was going to take.
 	 */
-	BuildComponent->UpdatePreviewFromRay(StartCm, (EndCm - StartCm).GetSafeNormal());
+	const FVector Direction = (EndCm - StartCm).GetSafeNormal();
+
+	BuildComponent->UpdatePreviewFromRay(StartCm, Direction);
 
 	const FPieceRef Placed = BuildComponent->ConfirmPlace();
+
+	/*
+	 * AND AGAIN AFTERWARDS, ALONG THE SAME RAY, BECAUSE THE COMMIT SPENT THE ONE IT JUST USED. With
+	 * the mouse still there is no pointer event to re-drive it — the tick's refresh is throttled on
+	 * the cursor's pixel position and skips until the player jogs the mouse — so without this the
+	 * gold ghost stands inside the red brick it just laid with no preview behind it. Asked again on
+	 * the changed binding, the solver drops the pose now occupied and answers the next one, which is
+	 * what "show where the brick is going to go" means during a run of clicks.
+	 */
+	BuildComponent->UpdatePreviewFromRay(StartCm, Direction);
 
 	/* A brick landing is what turns an empty plot into something Clear and Run can act on. */
 	RefreshSessionHasStructure();
@@ -1342,6 +1354,35 @@ bool ADestructionGamePlayerController::PrimaryAlongRay(const FVector& StartCm, c
 	RefreshLoadOverlay();
 
 	return Placed.StructureId != INDEX_NONE && Placed.PieceIndex != INDEX_NONE;
+}
+
+bool ADestructionGamePlayerController::RefreshBuildPreviewFromRay(
+	const FVector& OriginCm,
+	const FVector& Direction)
+{
+	/*
+	 * DESTROY MODE IS A NO-OP, AND IT IS CHECKED FIRST. This runs every frame the cursor moves, so a
+	 * refresh that leaked the mode would hang a gold ghost over the wall the player is demolishing and
+	 * re-arm a preview a stray confirm could commit — exactly the ghost that switching to Destroy
+	 * hides. Reporting false rather than falling through to the hover keeps the two cursor jobs apart:
+	 * pointing in Destroy mode is IA_HoverPiece's, through PointerAlongRay.
+	 */
+	if (SessionToolbarState.Mode != DestructionSession::ESessionMode::Build)
+	{
+		return false;
+	}
+
+	if (BuildComponent == nullptr)
+	{
+		return false;
+	}
+
+	/*
+	 * AND THE SAME SEAM A POINTER MOVE USES, so a refreshed ghost and a hovered one cannot come to
+	 * different answers about where the click would land. The component intersects the ray with the
+	 * build plane itself and fails closed on a miss, which is what makes the return value honest.
+	 */
+	return BuildComponent->UpdatePreviewFromRay(OriginCm, Direction).bValid;
 }
 
 TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
@@ -3220,6 +3261,71 @@ void ADestructionGamePlayerController::OnHoverPiece()
 
 	/* The same dispatch as OnInspectPiece, for the same reason: pointing means two things now. */
 	PointerAlongRay(StartCm, StartCm + Direction * PieceMenuCursorReachCm);
+}
+
+void ADestructionGamePlayerController::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+
+	RefreshBuildPreviewFromCursor();
+}
+
+void ADestructionGamePlayerController::RefreshBuildPreviewFromCursor()
+{
+	/*
+	 * NOT WHILE THE LOOK CHORD IS HELD. The right button turns the camera and the cursor is hidden
+	 * for the length of the drag, so there is nothing on screen for the ghost to follow — and
+	 * re-previewing every frame would drag it across the plot behind the player's back. The button is
+	 * read directly rather than through IA_LookModifier because the action has no handler to reach;
+	 * the two are the same press, and IMC_MouseLook's chord is what makes it mean "look".
+	 */
+	if (IsInputKeyDown(EKeys::RightMouseButton))
+	{
+		return;
+	}
+
+	/*
+	 * NO VIEWPORT, NO CURSOR. GetMousePosition answers false when there is no local player or no
+	 * viewport to read one from — a headless run, exactly — leaving its out-params untouched, so this
+	 * returns rather than deprojecting whatever was on the stack.
+	 */
+	float CursorXPx = 0.0f;
+	float CursorYPx = 0.0f;
+
+	if (!GetMousePosition(CursorXPx, CursorYPx))
+	{
+		return;
+	}
+
+	/*
+	 * AND A STILL MOUSE COSTS NOTHING. A cursor that has not moved names the same point on the same
+	 * plane and re-solves the same snap; the settings half of this slice is already carried by the
+	 * component's own setters, so nothing needs the pointer re-read on a frame it did not move.
+	 */
+	const FVector2D CursorPx(CursorXPx, CursorYPx);
+
+	if (bHasBuildCursorPx && CursorPx == LastBuildCursorPx)
+	{
+		return;
+	}
+
+	LastBuildCursorPx = CursorPx;
+	bHasBuildCursorPx = true;
+
+	/*
+	 * The same untestable inch as OnHoverPiece, and the same failure closed. Everything that can be
+	 * wrong in a way a player would notice — which mode this may run in, where the ghost lands,
+	 * whether it shows — is behind RefreshBuildPreviewFromRay.
+	 */
+	FVector StartCm;
+	FVector Direction;
+
+	if (!DeprojectMousePositionToWorld(StartCm, Direction))
+	{
+		return;
+	}
+
+	RefreshBuildPreviewFromRay(StartCm, Direction);
 }
 
 void ADestructionGamePlayerController::BeginPlay()

@@ -2300,4 +2300,535 @@ bool FBuildModeBeginBuildTwiceCancelsTheFirstTest::RunTest(const FString& Parame
 	return true;
 }
 
+/**
+ * CURSOR-DRIVEN GHOST — EVERY SETTINGS CHANGE RE-DRIVES THE HELD PREVIEW, AT THE SAME CURSOR, WITH
+ * NO NEW POINTER EVENT.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * While a preview is HELD, every setting the player can change — rotation, piece kind, placement
+ * mode, course — re-runs the preview at the cursor the component is already holding, so the ghost
+ * shows where the brick is going to go the instant the setting changes rather than at the next
+ * mouse move (the owner's playtest, 2026-09-16).
+ *
+ * =====================================================================================
+ * WHY THE GHOST'S BOUNDS ARE THE THING ASSERTED
+ * =====================================================================================
+ *
+ * The ghost IS the feature — the player's complaint is about what is on screen, not about what a
+ * return value says — and the only pivot-agnostic reading of where an ABrickActor is drawn is its
+ * world BOUNDS (SM_Cube's pivot is a corner; `GetActorLocation` reads right while the bounds sit a
+ * half-brick out, which is the bug `BrickSpawnTransform` exists to close). So the mechanism read
+ * here is the bounds' SIZE — which encodes the piece kind and the rotation exactly, since "rotated"
+ * has no representation downstream but a swapped half extent — and the bounds' CENTRE, which is
+ * where the click would land.
+ *
+ * NEVER A DISPLACEMENT: nothing is released, nothing is settled and nothing ticks. A ghost is moved
+ * by an assignment, and the count of pieces in the binding never changes in this test at all.
+ *
+ * =====================================================================================
+ * THE NUMBERS, WORKED OUT HERE RATHER THAN IMPORTED
+ * =====================================================================================
+ *
+ * A brick is 21.5 x 10.25 x 6.5 cm on 1 cm joints, so the coordinating grid is 22.5 x 11.25 x 7.5
+ * and a brick's own half height is 3.25. Course 0 rests it on the earth at Z = 3.25; course 1 at
+ * 7.5 + 3.25 = 10.75 (DESIGN §8, 2026-09-15). The seed goes at (0, 0, 3.25), X-long.
+ *
+ * THE HELD CURSOR IS (11.25, 3.0, 3.25), AND ITS Y IS 3.0 ON PURPOSE. Off-grid in Y, so that the
+ * two corner-return poses a ROTATED brick can take beside the seed — (16.875, +5.625) and
+ * (16.875, -5.625) — are 6.21 cm and 10.30 cm from it rather than exactly tied, which is what keeps
+ * the solver's answer a single well-separated pose rather than one decided by emission order
+ * (CURRENT_STATE's merged-candidate item (vii)). Upright, from that cursor:
+ *     next-course (11.25, 0, 10.75)  -> sqrt(0^2 + 3^2 + 7.5^2)       =  8.08 cm   WINNER
+ *     same-course (22.50, 0,  3.25)  -> sqrt(11.25^2 + 3^2)           = 11.64 cm
+ *     next-course (-11.25, 0, 10.75) -> sqrt(22.5^2 + 3^2 + 7.5^2)    = 23.90 cm
+ *     same-course (-22.50, 0, 3.25)  -> 33.79 cm, outside the 30 cm snap radius, dropped
+ * so the held preview is the running-bond next-course pose, by a 3.5 cm margin over its nearest
+ * rival. The Free candidate is appended last and cannot outrank a snap in Snap mode.
+ *
+ * =====================================================================================
+ * AND WHAT THE COURSE LEG DECIDES (READ THIS BEFORE CHANGING IT)
+ * =====================================================================================
+ *
+ * A refresh that re-ran the preview at the held cursor VERBATIM would be a no-op for the course:
+ * `UpdatePreviewAt` takes a world point, and the build plane only enters through a RAY. But the
+ * course chip has to move the ghost — a player clicking `Course up` and seeing the ghost stay put
+ * has been told the click was dropped. So the refresh must put the held cursor back ON THE CURRENT
+ * BUILD PLANE: the refreshed pose is (LastCursor.X, LastCursor.Y, BuildPlaneZCm). Section SIX is
+ * what pins that, in FREE placement, where the pose IS the cursor and the reading is exact:
+ * course 0 -> 3.25, course 1 -> 10.75, one course of 7.5 cm apart. (An implementation that instead
+ * remembered the last RAY and re-intersected it with the new plane satisfies every assertion here
+ * too, and is the better answer for the controller's oblique camera ray; the component has no ray
+ * to remember, so the projection is what it can do.)
+ *
+ * In SNAP placement the course cannot be read this way at all — a snapped pose is decided by the
+ * neighbours, not by the cursor's height — which is why the Free legs come last and carry it.
+ *
+ * RED TODAY: `RefreshPreview`, `SetPlacementMode` and `SetJointChoice` do not exist, and no mutator
+ * re-drives the preview — the ghost keeps the old footprint at the old pose until the next
+ * `UpdatePreviewAt`.
+ *
+ * NEEDS A TICKING WORLD: a real world for the subsystem and the ghost actor's spawn. It never ticks
+ * one; nothing here is about anything moving.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBuildModeSettingsChangeRefreshesTheHeldPreviewTest,
+	"DestructionGame.World.BuildMode.SettingsChangeRefreshesTheHeldPreview",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildModeComponentTestSupport;
+	using namespace DestructionSession;
+
+	/*
+	 * THE FOUR FOOTPRINTS, SPELLED OUT RATHER THAN ASKED OF THE PALETTE. Deriving them from
+	 * BuildPieceHalfExtentCm and doubling would make this test agree with the palette however wrong
+	 * it is, and the swap itself is half of what is under test.
+	 */
+	const FVector UprightBrickSizeCm(21.5, 10.25, 6.5);
+	const FVector RotatedBrickSizeCm(10.25, 21.5, 6.5);
+	const FVector UprightPlateSizeCm(67.5, 10.25, 10.0);
+
+	/* The held cursor, and the two poses the Free legs read exactly. */
+	const FVector HeldCursorCm(11.25, 3.0, 3.25);
+	const FVector FreeAtCourse0Cm(11.25, 3.0, 3.25);
+	const FVector FreeAtCourse1Cm(11.25, 3.0, 10.75);
+
+	/* The running-bond next-course pose the held preview snaps to, upright. */
+	const FVector NextCourseCentreCm(11.25, 0.0, 10.75);
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
+
+	UBuildModeComponent* Comp = MakeComponent(*this, TestWorld.World);
+	if (Comp == nullptr)
+	{
+		return true;
+	}
+
+	Comp->BeginBuild();
+	const int32 StructureId = Comp->GetStructureId();
+
+	/* --- ZERO: a grounded seed brick at the origin, X-long ---------------------------------- */
+
+	Comp->UpdatePreviewAt(GroundedSeedCursorCm);
+	Comp->ConfirmPlace();
+
+	{
+		FStructureBinding* const Binding = Subsystem.Find(StructureId);
+
+		if (Binding == nullptr || Binding->NumPieces() != 1)
+		{
+			AddError(TEXT("fixture: the seed confirm must leave exactly one piece to snap against"));
+			return true;
+		}
+	}
+
+	/*
+	 * READING THE GHOST. Both legs of every claim below come off this: the bounds are taken
+	 * bNonColliding because the ghost's collision is disabled, and a missing ghost is reported once
+	 * as a fixture error rather than as a silent zero box.
+	 */
+	const auto GhostBounds = [this, Comp]() -> FBox
+	{
+		AActor* const Ghost = Comp->GetGhostActor();
+
+		if (Ghost == nullptr)
+		{
+			AddError(TEXT("there is no ghost actor to read — a valid preview must have posed one"));
+			return FBox(ForceInit);
+		}
+
+		return Ghost->GetComponentsBoundingBox(/*bNonColliding*/ true);
+	};
+
+	/* --- ONE: the held preview, and a refresh that changes nothing --------------------------- */
+
+	{
+		const FBuildPreview Held = Comp->UpdatePreviewAt(HeldCursorCm);
+
+		TestTrue(
+			TEXT("fixture: the held preview beside the seed must be valid"),
+			Held.bValid);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("fixture: the held preview must be the running-bond next-course pose "
+					 "(11.25, 0, 10.75); it is (%g, %g, %g), kind %d"),
+				Held.CentreCm.X, Held.CentreCm.Y, Held.CentreCm.Z, static_cast<int32>(Held.Kind)),
+			Held.CentreCm.Equals(NextCourseCentreCm, KINDA_SMALL_NUMBER));
+
+		const FBox Bounds = GhostBounds();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("fixture: the ghost must stand at that pose, bounds centre (%g, %g, %g)"),
+				Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.GetCenter().Z),
+			Bounds.GetCenter().Equals(NextCourseCentreCm, BoundsToleranceCm));
+
+		/*
+		 * A REFRESH WITH NOTHING CHANGED CHANGES NOTHING, and it says so — the preview is still
+		 * held, so the answer is TRUE rather than the fail-closed false a spent preview gives.
+		 */
+		TestTrue(
+			TEXT("RefreshPreview must report the held preview still valid when nothing has changed"),
+			Comp->RefreshPreview());
+
+		const FBox Again = GhostBounds();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("and the ghost must not have moved: (%g, %g, %g)"),
+				Again.GetCenter().X, Again.GetCenter().Y, Again.GetCenter().Z),
+			Again.GetCenter().Equals(NextCourseCentreCm, BoundsToleranceCm));
+	}
+
+	/* --- TWO: SetRotated turns the GHOST, with no pointer call at all ------------------------ */
+
+	/*
+	 * THE POSE IS NOT PINNED BY HAND HERE, AND THE ORACLE IS WHY. A rotated brick beside an X-long
+	 * one takes a corner return, and which of the four the solver ranks first is the snap solver's
+	 * business rather than this test's. What IS this test's business is that the ghost is showing
+	 * the SAME thing a fresh pointer event at the same cursor would show — so the ghost's pose is
+	 * snapshotted FIRST, and only then is a fresh preview taken at the held cursor and compared
+	 * against the snapshot. Preview is non-mutating, so the oracle reading cannot disturb anything,
+	 * and the comparison is not circular: the snapshot predates the call it is measured against.
+	 */
+	{
+		Comp->SetRotated(true);
+
+		const FBox Refreshed = GhostBounds();
+		const FVector RefreshedCentre = Refreshed.GetCenter();
+		const FVector RefreshedSize = Refreshed.GetSize();
+
+		AActor* const Ghost = Comp->GetGhostActor();
+
+		if (Ghost != nullptr)
+		{
+			TestFalse(
+				TEXT("a rotation must leave the ghost VISIBLE — the player is still pointing at a "
+					 "pose, they have only turned the piece"),
+				Ghost->IsHidden());
+		}
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("SetRotated MUST RE-DRIVE THE HELD PREVIEW: the ghost's footprint must be the "
+					 "brick turned about Z — 10.25 x 21.5 x 6.5 — with no new pointer event. It is "
+					 "(%g, %g, %g)"),
+				RefreshedSize.X, RefreshedSize.Y, RefreshedSize.Z),
+			RefreshedSize.Equals(RotatedBrickSizeCm, BoundsToleranceCm));
+
+		const FBuildPreview Oracle = Comp->UpdatePreviewAt(HeldCursorCm);
+
+		AddInfo(FString::Printf(
+			TEXT("the rotated preview at the held cursor is kind %d at (%.4f, %.4f, %.4f), %d joint(s)"),
+			static_cast<int32>(Oracle.Kind), Oracle.CentreCm.X, Oracle.CentreCm.Y, Oracle.CentreCm.Z,
+			Oracle.JointCount));
+
+		TestTrue(
+			TEXT("fixture: a rotated brick beside the seed must still preview something valid"),
+			Oracle.bValid);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("AND AT THE POSE A FRESH POINTER WOULD GIVE: the refreshed ghost stood at "
+					 "(%g, %g, %g) while a pointer event at the same cursor answers (%g, %g, %g)"),
+				RefreshedCentre.X, RefreshedCentre.Y, RefreshedCentre.Z,
+				Oracle.CentreCm.X, Oracle.CentreCm.Y, Oracle.CentreCm.Z),
+			RefreshedCentre.Equals(Oracle.CentreCm, BoundsToleranceCm));
+	}
+
+	/* --- THREE: and the same chip turns it back, onto the pose section ONE read -------------- */
+
+	{
+		Comp->SetRotated(false);
+
+		const FBox Bounds = GhostBounds();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("un-rotating must re-drive the preview too: the ghost is 21.5 x 10.25 x 6.5 "
+					 "again, it is (%g, %g, %g)"),
+				Bounds.GetSize().X, Bounds.GetSize().Y, Bounds.GetSize().Z),
+			Bounds.GetSize().Equals(UprightBrickSizeCm, BoundsToleranceCm));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("and back at the running-bond pose (11.25, 0, 10.75) it held before the turn; "
+					 "it is at (%g, %g, %g)"),
+				Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.GetCenter().Z),
+			Bounds.GetCenter().Equals(NextCourseCentreCm, BoundsToleranceCm));
+	}
+
+	/* --- FOUR: SetPieceKind re-draws the ghost as the new piece ------------------------------ */
+
+	/*
+	 * SIZE ONLY, DELIBERATELY. The plate's build plane is its own half height (5.0) rather than the
+	 * brick's 3.25, so the refreshed cursor legitimately moves in Z with the piece — and where a
+	 * 67.5 cm board snaps beside a single brick is the snap solver's answer, not this test's. The
+	 * footprint is the part that is the SETTING, and a ghost still wearing the brick's 21.5 cm is
+	 * the exact defect the owner reported.
+	 */
+	{
+		Comp->SetPieceKind(EBuildPieceKind::TimberPlate);
+
+		const FBox Bounds = GhostBounds();
+
+		AddInfo(FString::Printf(
+			TEXT("after SetPieceKind(TimberPlate) the ghost is (%.4f, %.4f, %.4f) sized "
+				 "(%.4f, %.4f, %.4f), plane %.4f"),
+			Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.GetCenter().Z,
+			Bounds.GetSize().X, Bounds.GetSize().Y, Bounds.GetSize().Z, Comp->BuildPlaneZCm));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("SetPieceKind MUST RE-DRIVE THE HELD PREVIEW: the ghost must be the demo's "
+					 "67.5 x 10.25 x 10 plate, with no new pointer event. It is (%g, %g, %g)"),
+				Bounds.GetSize().X, Bounds.GetSize().Y, Bounds.GetSize().Z),
+			Bounds.GetSize().Equals(UprightPlateSizeCm, BoundsToleranceCm));
+	}
+
+	/* --- FIVE: SetPlacementMode(Free) drops the ghost onto the cursor ------------------------ */
+
+	{
+		Comp->SetPieceKind(EBuildPieceKind::Brick);
+		Comp->SetPlacementMode(EPlacementMode::Free);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("the setter and the field are one thing: PlacementMode reads %d"),
+				static_cast<int32>(Comp->PlacementMode)),
+			Comp->PlacementMode == EPlacementMode::Free);
+
+		const FBox Bounds = GhostBounds();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("SetPlacementMode(Free) MUST RE-DRIVE THE HELD PREVIEW: Free honours the cursor "
+					 "verbatim, so the ghost must leave the snapped pose and stand at the held "
+					 "cursor (11.25, 3, 3.25). It is at (%g, %g, %g)"),
+				Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.GetCenter().Z),
+			Bounds.GetCenter().Equals(FreeAtCourse0Cm, BoundsToleranceCm));
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("and it is still a brick, 21.5 x 10.25 x 6.5; it is (%g, %g, %g)"),
+				Bounds.GetSize().X, Bounds.GetSize().Y, Bounds.GetSize().Z),
+			Bounds.GetSize().Equals(UprightBrickSizeCm, BoundsToleranceCm));
+	}
+
+	/* --- SIX: SetCourse lifts the ghost by exactly one course -------------------------------- */
+
+	{
+		Comp->SetCourse(1);
+
+		TestEqual(
+			FString::Printf(TEXT("fixture: the component must be on course 1, it reads %d"),
+				Comp->GetCourse()),
+			Comp->GetCourse(), 1);
+
+		const FBox Bounds = GhostBounds();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("SetCourse MUST RE-DRIVE THE HELD PREVIEW ONTO THE NEW PLANE: a brick on course "
+					 "1 rests at 7.5 + 3.25 = 10.75, so the Free ghost must rise exactly one course "
+					 "to (11.25, 3, 10.75). It is at (%g, %g, %g)"),
+				Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.GetCenter().Z),
+			Bounds.GetCenter().Equals(FreeAtCourse1Cm, BoundsToleranceCm));
+	}
+
+	/* --- SEVEN: the joint chip is a setter too, and it disturbs nothing ---------------------- */
+
+	/*
+	 * A JOINT CHOICE MOVES NO GHOST — it changes what the click FASTENS WITH, which lives on
+	 * FBuildPreview::JointProfile rather than in any bounds. So what is pinned here is that the
+	 * setter exists, that it and the public field are one thing, and that refreshing through it
+	 * leaves the held preview exactly where it was rather than dropping it.
+	 */
+	{
+		Comp->SetJointChoice(EJointChoice::Screw);
+
+		TestTrue(
+			*FString::Printf(TEXT("the setter and the field are one thing: JointChoice reads %d"),
+				static_cast<int32>(Comp->JointChoice)),
+			Comp->JointChoice == EJointChoice::Screw);
+
+		const FBox Bounds = GhostBounds();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("and the ghost must still stand at the cursor on course 1, (11.25, 3, 10.75); "
+					 "it is at (%g, %g, %g)"),
+				Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.GetCenter().Z),
+			Bounds.GetCenter().Equals(FreeAtCourse1Cm, BoundsToleranceCm));
+	}
+
+	/* Nothing in this test commits anything: the structure still holds only the seed. */
+	if (FStructureBinding* const Binding = Subsystem.Find(StructureId))
+	{
+		TestEqual(
+			FString::Printf(
+				TEXT("no refresh may PLACE anything; the structure holds %d pieces"),
+				Binding->NumPieces()),
+			Binding->NumPieces(), 1);
+	}
+
+	return true;
+}
+
+/**
+ * CURSOR-DRIVEN GHOST — A REFRESH WITH NO HELD PREVIEW DOES NOTHING, AND SAYS SO.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * `RefreshPreview` re-drives only a preview that is actually HELD: with none — before any pointer
+ * event, and after a `ConfirmPlace` has consumed the one there was — it returns false, spawns and
+ * shows nothing, and leaves the component unable to commit until a fresh pointer event arrives.
+ *
+ * =====================================================================================
+ * WHY THIS IS THE GUARD AND NOT A DETAIL
+ * =====================================================================================
+ *
+ * Every settings mutator is about to call this, and the settings are clickable when no ghost is up
+ * at all — a player opens Build mode, clicks `Rotate`, and has pointed at nothing. A refresh that
+ * ran regardless would preview at `LastCursorCm`, which is the world ORIGIN on a fresh component,
+ * spawn a ghost there and HOLD that preview — so the next click would commit a brick at a pose
+ * nobody ever saw. That is exactly the defect `ComponentConfirmWithoutPreviewFailsClosed` closed on
+ * the confirm door, arriving by a new route.
+ *
+ * AND THE POST-COMMIT LEG MIRRORS `ComponentConfirmTwiceWithoutRepreviewPlacesOnce`. One preview,
+ * one commit: the commit SPENDS the held preview, so a refresh cannot hand it back and a second
+ * confirm must still place nothing. A refresh that re-armed a spent preview would re-open the very
+ * double-commit that test exists to prevent.
+ *
+ * THE ASSERTIONS ARE COUNTS AND A NULL — the returned bool, `GetGhostActor()` being null (the
+ * component never spawns a ghost except to show one), the returned ref, and the binding's piece
+ * count. Never a position: the bug would be that a piece exists AT ALL.
+ *
+ * RED TODAY only in the sense that `RefreshPreview` does not exist; it is a FAIL-CLOSED GUARD, so
+ * it goes green the moment the member does, and it earns its runtime by refusing the refresh-on-
+ * nothing that the mutators would otherwise let through.
+ *
+ * NEEDS A TICKING WORLD: a world for the subsystem and any spawn, but it never ticks one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FBuildModeRefreshWithoutAHeldPreviewDoesNothingTest,
+	"DestructionGame.World.BuildMode.RefreshWithoutAHeldPreviewDoesNothing",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FBuildModeRefreshWithoutAHeldPreviewDoesNothingTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace BuildModeComponentTestSupport;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
+
+	UBuildModeComponent* Comp = MakeComponent(*this, TestWorld.World);
+	if (Comp == nullptr)
+	{
+		return true;
+	}
+
+	Comp->BeginBuild();
+	const int32 StructureId = Comp->GetStructureId();
+
+	/* --- ONE: a fresh build, pointed at nothing ---------------------------------------------- */
+
+	{
+		TestFalse(
+			TEXT("a refresh with no held preview must report NO valid preview — the player has not "
+				 "pointed at anything yet"),
+			Comp->RefreshPreview());
+
+		TestNull(
+			*FString::Printf(
+				TEXT("and it must not spawn a ghost to show at the default cursor (the world "
+					 "origin); it left %s standing"),
+				*GetNameSafe(Comp->GetGhostActor())),
+			Comp->GetGhostActor());
+
+		FStructureBinding* const Fresh = Subsystem.Find(StructureId);
+
+		TestNotNull(
+			FString::Printf(TEXT("fixture: the build structure %d must exist"), StructureId),
+			Fresh);
+
+		if (Fresh != nullptr)
+		{
+			TestEqual(
+				FString::Printf(TEXT("a refresh alone must place nothing; the structure holds %d "
+									 "pieces"),
+					Fresh->NumPieces()),
+				Fresh->NumPieces(), 0);
+		}
+	}
+
+	/* --- TWO: a preview, then the commit that spends it -------------------------------------- */
+
+	Comp->UpdatePreviewAt(GroundedSeedCursorCm);
+
+	const FPieceRef Seed = Comp->ConfirmPlace();
+
+	TestTrue(
+		FString::Printf(TEXT("fixture: the seed must land as ref {%d, 0}, it landed {%d, %d}"),
+			StructureId, Seed.StructureId, Seed.PieceIndex),
+		Seed == FPieceRef{ StructureId, 0 });
+
+	/* --- THREE: the spent preview cannot be refreshed back into existence -------------------- */
+
+	{
+		TestFalse(
+			TEXT("ONE PREVIEW, ONE COMMIT: the commit SPENT the held preview, so a refresh must "
+				 "report none — a refresh that re-armed it would re-open the double commit"),
+			Comp->RefreshPreview());
+
+		const FPieceRef Repeat = Comp->ConfirmPlace();
+
+		TestEqual(
+			FString::Printf(
+				TEXT("and a confirm after that refresh must return a default ref, got piece index %d"),
+				Repeat.PieceIndex),
+			Repeat.PieceIndex, static_cast<int32>(INDEX_NONE));
+
+		FStructureBinding* const Binding = Subsystem.Find(StructureId);
+
+		TestNotNull(
+			FString::Printf(TEXT("the structure %d should still exist"), StructureId),
+			Binding);
+
+		if (Binding != nullptr)
+		{
+			TestEqual(
+				FString::Printf(
+					TEXT("no second piece may be committed without a fresh pointer event; the "
+						 "structure holds %d pieces"),
+					Binding->NumPieces()),
+				Binding->NumPieces(), 1);
+		}
+	}
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -397,9 +397,9 @@ piece menu is not a toolbar.
 |---|---|---|
 | `W A S D` | fly | fly |
 | `Space` (`IA_Jump`; §d once said `Q`/`E` — `IMC_Default` maps neither) | ascend | ascend |
-| Mouse move | ghost follows the build plane; cursor over UI | hover highlight; cursor over UI |
+| Mouse move | ghost follows the build plane — driven from the CURSOR POSITION every tick in `PlayerTick` (2026-09-16: no click needed; a chip click moves the ghost at once); cursor over UI | hover highlight; cursor over UI |
 | **RMB held** + mouse move | **camera look** (cursor hidden, recentred on release) | same |
-| LMB | place | select / toggle selection |
+| LMB | place — and re-drive the ghost along the SAME ray to the next pose with no mouse movement (2026-09-16; the commit spends the held preview, so without this the ghost would sit inside the brick just laid) | select / toggle selection |
 | Mouse wheel | course ± | *(free — reserve for fly speed)* |
 
 This is the scheme every building game converges on, and it costs one held button. It also makes the
@@ -428,7 +428,9 @@ the camera works, or the player has to re-learn flying twice a minute.
    comes back where it was on release, which is what the table above means by "cursor hidden,
    recentred on release" — and no widget to focus. With a permanent cursor there is no
    apply/restore pair left to fall out of step, which is strictly simpler.
-4. **`IA_HoverPiece` can now be folded back into `IA_MouseLook`** — it exists *only* because
+4. **`IA_HoverPiece` can now be folded back into `IA_MouseLook`** — and since 2026-09-16 its Build
+   half is a DUPLICATE in play: `PlayerTick` re-previews from the cursor position on every moved
+   frame, so the axis path previews the same ray a second time (CURRENT_STATE (xvii-h)). It exists *only* because
    `IMC_MouseLook` was being removed under the menu (both headers say so explicitly). Once nothing
    removes the context, the separate action has no reason to exist. **Recommendation: keep it
    anyway, for now.** It costs one asset, it consumes nothing, and deleting it is a content change
@@ -654,7 +656,7 @@ the pattern every new panel follows.
 | **S1** | Toolbar groups + sub-captions | `FToolbarButton` gains `Group` (`EToolbarGroup`) and `SubLabel` | `Core.SessionToolbar.Groups` — group per button per mode; sub-caption is `2 ×` the half extent and empty for an unknown kind | — (model only) |
 | **S2** | Shortcuts on the model | `FToolbarButton::ShortcutText` + `EToolbarButtonId ToolbarButtonForShortcut(TCHAR)` | `Core.SessionToolbar.Shortcuts` — every drawn button has one, unique within its mode, round-trips through the reverse lookup, and never collides with `W A S D Q E` | — |
 | **S3** | Safe area | `SessionSafeAreaPx(Viewport, ToolbarHeight)`, fed into `PieceMenuHomeOffset` + `ClampPanelOffset` | `Presenter.SessionSafeArea` — a panel dragged to the bottom-right never overlaps the strip; non-finite/negative height is treated as zero; the existing clamps are unchanged by composition | — |
-| **S4** | **The strip on screen** | `ADestructionGamePlayerController::BuildSessionToolbarPanel() -> TSharedRef<SWidget>`, `GetSessionToolbarState()`, `OnToolbarButton(EToolbarButtonId)` | `World.Session.ToolbarDrivesTheSession` — headless: clicking through `OnToolbarButton` moves the state *and* pushes it onto `UBuildModeComponent` via `SetPieceKind` / `SetCourse` / `PlacementMode` ONLY (the component derives material, extent and `BuildPlaneZCm` itself; **grounded is never pushed** — it is derived from the snapped pose inside the subsystem, DESIGN §8 2026-09-15, and `IsCourseGrounded` is only the readout's intent) | Build tab lit with its accent bar, Brick lit, Snap lit, `Course 0`, `Clear build` visibly greyed |
+| **S4** | **The strip on screen** | `ADestructionGamePlayerController::BuildSessionToolbarPanel() -> TSharedRef<SWidget>`, `GetSessionToolbarState()`, `OnToolbarButton(EToolbarButtonId)` | `World.Session.ToolbarDrivesTheSession` — headless: clicking through `OnToolbarButton` moves the state *and* pushes it onto `UBuildModeComponent` via its SETTERS ONLY — `SetPieceKind` / `SetCourse` / `SetRotated` / `SetPlacementMode` / `SetJointChoice`, every one of which re-drives the held ghost through `ApplyPalette() → RefreshPreview()` (2026-09-16; a bare field write is exactly what left the Snap/Free ghost stale) (the component derives material, extent and `BuildPlaneZCm` itself; **grounded is never pushed** — it is derived from the snapped pose inside the subsystem, DESIGN §8 2026-09-15, and `IsCourseGrounded` is only the readout's intent) | Build tab lit with its accent bar, Brick lit, Snap lit, `Course 0`, `Clear build` visibly greyed |
 | **S5** | Mode switch is total | `OnToolbarButton(ModeDestroy)` hides the ghost, `Destroy` disables placement; and back | `World.Session.ModeSwitchIsTotal` — no ghost survives into Destroy, the build settings survive the round trip (the model already promises this) | one shot per mode, same camera |
 | **S5b** | Arming `Clear build` | `FSessionToolbarState::ClearArmedAtSeconds` + a transition | `Core.SessionToolbar.ClearArms` — first click arms and changes the caption, second within the window clears, a click elsewhere disarms | armed state, red caption |
 | **S6** (LANDED 2026-09-15 with S0/S4; `SetPieceMenuControls` deleted, shortcuts Tab/1/2/3/G/[/]/Enter in `IMC_Session`) | **Cursor + RMB look** | `SetSessionControls()`; `IA_LookModifier` asset + chorded trigger; `.IsFocusable(false)` everywhere | `Content.RequiredContent` gains the new action; a mapping-shape assertion | cursor visible over the toolbar, the wall not spinning, and **`W` still flies after a button click** (the human check) |

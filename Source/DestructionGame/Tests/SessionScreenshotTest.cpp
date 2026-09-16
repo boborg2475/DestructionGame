@@ -50,7 +50,7 @@
  * photograph a loop the player cannot reach.
  *
  * =========================================================================================
- * THE SIX FRAMES
+ * THE SEVEN FRAMES
  * =========================================================================================
  *
  *   FRAME 1 "Session_Build": the plot as the level opens — Build mode, the strip up — with a small
@@ -92,11 +92,23 @@
  *   turns a corner, and it exists because until that chip landed a player could not hand the game a
  *   turned box at all: CR-2a's whole corner vocabulary was code nobody could reach.
  *
+ *   FRAME 7 "Session_Ghost" (the cursor-driven ghost): the plot CLEARED again and ONE seed brick laid
+ *   on the earth, then — WITH NO PRIMARY CLICK OF ANY KIND — a gold ghost standing beside it at the
+ *   running-bond snap, TURNED HEADER-ON by the `Rotate` chip. It is the owner's 2026-09-16 playtest
+ *   ask photographed ("it should show where the brick is going to go without clicking anything"): in
+ *   the session they played, the ghost appeared only after a click, so there was no way to see where
+ *   a brick would land before committing it. The ghost is driven through
+ *   `RefreshBuildPreviewFromRay`, which is the testable half of the per-tick cursor refresh — the
+ *   deprojection the tick really starts from needs a viewport and cannot run headless — and then the
+ *   chip is pressed, so BOTH halves of the ask are in one picture: a ghost that is up without a click,
+ *   and a ghost that answers a setting immediately rather than at the next mouse move.
+ *
  * THE CAMERA DOES NOT MOVE BETWEEN FRAMES 1 AND 5. It is placed ONCE, before the first frame, so the
- * five pictures can be laid side by side and read against each other in the same pixels. FRAME 6
- * REFRAMES, exactly once, and its own command says why: the L is a different building in a different
+ * five pictures can be laid side by side and read against each other in the same pixels. FRAMES 6 AND
+ * 7 EACH REFRAME ONCE, and their own commands say why: the L is a different building in a different
  * footprint — 61 cm along Y where the wall was 10 cm deep — and the frame-1 camera would show the
- * corner edge-on, which is the one thing a picture of a corner may not be.
+ * corner edge-on, which is the one thing a picture of a corner may not be; and frame 7's subject is
+ * ONE brick and ONE ghost, which at the wall's standoff would be a pair of specks.
  *
  * =========================================================================================
  * THE CAMERA IS THE GAME MODE'S FRAMING, MOVED IN ONCE
@@ -119,7 +131,8 @@
  * count, whether a menu is up, whether the ghost is visible, and the one mechanism reading that frame
  * is about — 6 pieces and at least 8 connections for the laid wall, `IsPieceMenuShown` for the
  * inspector, `IsPieceRemoved` for the delete, `IsReleased` for the Run, and for the corner the
- * profile MIX (12 mortar, 7 perpend) plus every piece Grounded or Supported. NEVER DISPLACEMENT: the
+ * profile MIX (12 mortar, 7 perpend) plus every piece Grounded or Supported, and for the ghost its own
+ * BOUNDS SIZE beside a piece count that never moved. NEVER DISPLACEMENT: the
  * fallen brick's travel is REPORTED so a human can read it beside the picture, and the claim that Run
  * did its job is `IsReleased`, exactly as `World.Session.RunStructureSettlesTheBuild` has it.
  *
@@ -154,22 +167,23 @@ namespace SessionScreenshotSupport
 {
 	using namespace DestructionSession;
 
-	/** The six frames' file base names, under FPaths::ScreenShotDir(). */
+	/** The seven frames' file base names, under FPaths::ScreenShotDir(). */
 	const TCHAR* const BuildBaseName = TEXT("Session_Build");
 	const TCHAR* const DestroyBaseName = TEXT("Session_Destroy");
 	const TCHAR* const DeletedBaseName = TEXT("Session_Deleted");
 	const TCHAR* const LoadOverlayBaseName = TEXT("Session_LoadOverlay");
 	const TCHAR* const RunBaseName = TEXT("Session_Run");
 	const TCHAR* const CornerBaseName = TEXT("Session_Corner");
+	const TCHAR* const GhostBaseName = TEXT("Session_Ghost");
 
 	/**
-	 * ALL SIX IN ONE LIST, because every claim made about one is made about the other five — the
-	 * deletion before the run and the PNG check after it are the same two statements six times over,
-	 * and a list is what stops the sixth shot quietly acquiring a weaker version of either.
+	 * ALL SEVEN IN ONE LIST, because every claim made about one is made about the other six — the
+	 * deletion before the run and the PNG check after it are the same two statements seven times over,
+	 * and a list is what stops the newest shot quietly acquiring a weaker version of either.
 	 */
 	const TCHAR* const ScreenshotBaseNames[] = {
 		BuildBaseName, DestroyBaseName, DeletedBaseName, LoadOverlayBaseName, RunBaseName,
-		CornerBaseName };
+		CornerBaseName, GhostBaseName };
 
 	/**
 	 * `Shot` and not `HighResShot`, and `showui` with it.
@@ -428,6 +442,90 @@ namespace SessionScreenshotSupport
 	inline FBox CornerStageBoundsCm()
 	{
 		return FBox(FVector(-10.75, -5.125, 0.0), FVector(67.0, 72.625, 14.0));
+	}
+
+	/*
+	 * =====================================================================================
+	 * FRAME 7 — THE CURSOR-DRIVEN GHOST, AND WHY IT IS ONE BRICK AND ONE RAY
+	 * =====================================================================================
+	 *
+	 * The numbers are `World.Session.CursorRefreshDrivesTheGhostFromARay`'s own, laid here through the
+	 * PLAYER's seam instead of against a bare fixture: a seed brick clicked onto the earth at the
+	 * origin (centre (0, 0, 3.25)), then a ray dropped straight down through (11.25, 3) — the running
+	 * bond's half stagger, three centimetres off the wall line so the picked point is NOT the snap
+	 * itself and the ghost has to have been SOLVED rather than parroted back.
+	 *
+	 * ONE SEED AND NOT A WALL, because the subject is the GHOST. Two bricks either side of it would
+	 * make the one gold box in the frame harder to find, and every extra piece is another pose the
+	 * solver could have picked for the turn.
+	 */
+
+	/** The seed brick's cursor: the empty plot's Free fallback honours it verbatim. */
+	constexpr double GhostSeedCursorXCm = 0.0;
+
+	/** Where the "cursor" points: the half stagger, 3 cm off the wall line. */
+	constexpr double GhostRayXCm = 11.25;
+	constexpr double GhostRayYCm = 3.0;
+
+	/** Straight down, from well above the course-0 plane — the same shape every laying ray has. */
+	inline FVector GhostRayOriginCm()
+	{
+		return FVector(GhostRayXCm, GhostRayYCm, BrickPlaneCourse0Cm + RayHeightCm);
+	}
+
+	inline FVector GhostRayDirection()
+	{
+		return FVector(0.0, 0.0, -1.0);
+	}
+
+	/**
+	 * THE TWO FOOTPRINTS, WRITTEN OUT RATHER THAN IMPORTED, and they are this frame's whole claim.
+	 *
+	 * A brick is 21.5 x 10.25 x 6.5 cm, and the `Rotate` chip is a quarter turn about Z — X and Y
+	 * swapped, Z untouched, because a turn about Z cannot change how tall a piece is. So the ghost's
+	 * BOUNDS SIZE is the one reading that says the chip reached the ghost: a turn that lit the chip and
+	 * left the ghost's footprint alone is the exact defect the owner reported (a click that looks
+	 * dropped), and it is invisible in a photograph of a symmetrical box.
+	 */
+	const FVector UprightGhostSizeCm(21.5, 10.25, 6.5);
+	const FVector RotatedGhostSizeCm(10.25, 21.5, 6.5);
+
+	/**
+	 * WHERE THE UPRIGHT GHOST STANDS BEFORE THE CHIP: the running-bond next-course snap beside the
+	 * seed. Asserted as this frame's FIXTURE — the claim being photographed is that the chip TURNED a
+	 * ghost, which is only a claim if a ghost was standing somewhere known first.
+	 */
+	const FVector UprightGhostCentreCm(11.25, 0.0, 10.75);
+
+	/** A pose read off an actor's bounds; the sibling session tests use the same 0.05 cm. */
+	constexpr double GhostBoundsToleranceCm = 0.05;
+
+	/**
+	 * THE GHOST FRAME'S BOX — the seed, and room around it for wherever the turned ghost lands.
+	 *
+	 * WITH SLACK RATHER THAN PINNED TO THE POSE, on purpose. The rotated pose is the SOLVER's answer
+	 * and this frame does not assert it (the size is the claim, the centre is reported), so a box drawn
+	 * tightly around one predicted centre would turn a legitimate change of snap policy into a picture
+	 * of an empty plot rather than into a red assertion. What it has to cover, measured:
+	 *
+	 *   the seed brick      X -10.75 .. 10.75,  Y  -5.125 ..  5.125,  Z 0 .. 6.5
+	 *   the turned ghost    X  11.75 .. 22.00,  Y  -5.125 .. 16.375,  Z 0 .. 6.5
+	 *
+	 * The ghost's centre (16.875, 5.625, 3.25) is the corner return off the seed's +X face on a 1 cm
+	 * joint — 10.75 + 1 + 5.125 — flush with its -Y face at -5.125 + 10.75. A couple of centimetres
+	 * either side of that is enough that a near-miss still photographs; the three-quarter framing sizes
+	 * its standoff off the bounding SPHERE, so slack costs a little distance and nothing else.
+	 *
+	 * AND ON THIS SUBJECT IT COSTS NOTHING AT ALL, WHICH IS WORTH KNOWING BEFORE ANYBODY SHRINKS IT.
+	 * `ViewpointFor` floors its standoff at the production `ScenariosMinimumStandoffCm` (120 cm), and
+	 * a 38 cm box is far under it — so this camera sits at the floor and would sit there for any box
+	 * this small. Two bricks are therefore as large in the frame as the game's own framing will ever
+	 * draw them, and making the box tighter changes the picture by nothing. Standing closer than a
+	 * player's own camera ever does is what this harness may not do.
+	 */
+	inline FBox GhostStageBoundsCm()
+	{
+		return FBox(FVector(-13.0, -9.0, 0.0), FVector(25.0, 19.0, 9.0));
 	}
 
 	/**
@@ -2223,6 +2321,340 @@ bool FSessionShootCornerCommand::Update()
 }
 
 /**
+ * FRAME 7's STAGE: clear the plot, lay ONE seed brick, and put a ghost up WITHOUT CLICKING ANYTHING.
+ *
+ * =====================================================================================
+ * WHAT THIS FRAME IS A PICTURE OF
+ * =====================================================================================
+ *
+ * The owner's 2026-09-16 playtest ask, photographed: "it should show where the brick is going to go
+ * without clicking anything". In the session they played the ghost was driven by the hover action
+ * alone, so it appeared only after a click had already committed a brick — a player could not see
+ * where a piece would land before landing it. Two things fix that and both are in this one frame: a
+ * ghost that is UP from the cursor with no click behind it, and a ghost that answers a SETTING at
+ * once rather than at the next mouse move.
+ *
+ * =====================================================================================
+ * THE RAY IS THE SEAM, AND THE SEAM IS THE POINT
+ * =====================================================================================
+ *
+ * The real per-tick refresh starts at `DeprojectMousePositionToWorld`, which needs a viewport and
+ * cannot run in a harness — the same inch `OnHoverPiece` and `OnInspectPiece` are kept down to. So
+ * the ghost here is driven through `RefreshBuildPreviewFromRay`, the half of that refresh a test can
+ * reach and the half everything a player would notice lives behind. `PointerAlongRay` would have put
+ * the same ghost up, and using it instead would photograph the OLD path — the one the owner reported
+ * — rather than the new one.
+ *
+ * NO `PrimaryAlongRay` AFTER THE SEED, ANYWHERE IN THIS COMMAND. That is the claim, so the piece
+ * count is asserted unchanged at the end: a frame with a gold brick in it and a second brick in the
+ * structure would be a picture of a click, which is exactly what this denies.
+ *
+ * =====================================================================================
+ * AND THE CHIP, WHICH IS WHY THE GHOST IS TURNED
+ * =====================================================================================
+ *
+ * `Rotate` is pressed with the ghost already standing, and the ghost's BOUNDS SIZE is read again
+ * afterwards. That reading is the one that cannot be got right by accident: a chip that lights while
+ * the ghost keeps its old footprint is the defect the owner described as a dropped click, and in a
+ * photograph of a rectangular box a wrong footprint is perfectly plausible. The CENTRE is reported
+ * and not asserted — which pose the solver picks for a turned brick beside a stretcher is its
+ * business and `Core.BuildMode`'s to pin, not this picture's.
+ */
+DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
+	FSessionShotGhostCommand, FAutomationTestBase*, Test);
+
+bool FSessionShotGhostCommand::Update()
+{
+	using namespace DestructionSession;
+	using namespace SessionScreenshotSupport;
+
+	FSessionShotRecord& Record = SessionShotRecord();
+
+	if (!Record.bStaged)
+	{
+		return true;
+	}
+
+	ADestructionGamePlayerController* const Controller = Record.Controller.Get();
+
+	if (Controller == nullptr)
+	{
+		Test->AddError(TEXT("the controller vanished before the ghost frame"));
+		return true;
+	}
+
+	Test->TestTrue(
+		TEXT("the Build tab is always live"),
+		Controller->OnToolbarButton(EToolbarButtonId::ModeBuild));
+
+	/* --- a fresh plot: frame 6 leaves an eleven-piece L standing on this one ------------------ */
+
+	Test->TestTrue(
+		TEXT("Clear build must be live over the L"),
+		Controller->OnToolbarButton(EToolbarButtonId::ClearBuild));
+
+	Test->TestTrue(
+		TEXT("and the Brick chip, because the seed and the ghost are both bricks"),
+		Controller->OnToolbarButton(EToolbarButtonId::PieceBrick));
+
+	Test->TestTrue(
+		TEXT("and Snap placement, or the ghost would sit at the cursor verbatim and prove nothing "
+			 "about a solved pose"),
+		Controller->OnToolbarButton(EToolbarButtonId::PlacementSnap));
+
+	/* Frame 6 ends on course 1, rotated. The seed goes down upright, on the earth. */
+	while (Controller->GetSessionToolbarState().Course > 0)
+	{
+		const int32 Before = Controller->GetSessionToolbarState().Course;
+
+		Test->TestTrue(
+			*FString::Printf(TEXT("Course down from %d must land"), Before),
+			Controller->OnToolbarButton(EToolbarButtonId::CourseDown));
+
+		if (Controller->GetSessionToolbarState().Course >= Before)
+		{
+			Test->AddError(TEXT("Course down did not lower the course; refusing to loop"));
+			break;
+		}
+	}
+
+	if (Controller->GetSessionToolbarState().bRotated)
+	{
+		Test->TestTrue(
+			TEXT("the rotate chip must land — frame 6 left the session turned and the seed is a "
+				 "stretcher"),
+			Controller->OnToolbarButton(EToolbarButtonId::RotatePiece));
+	}
+
+	Test->TestFalse(
+		*FString::Printf(
+			TEXT("fixture: the seed must be laid UPRIGHT, so the turn below is a change and not the "
+				 "state it started in; the session reads %s"),
+			*StateBits(Controller->GetSessionToolbarState())),
+		Controller->GetSessionToolbarState().bRotated);
+
+	Test->TestEqual(
+		FString::Printf(
+			TEXT("fixture: the seed goes on the grounded course; the session reads %d"),
+			Controller->GetSessionToolbarState().Course),
+		Controller->GetSessionToolbarState().Course, 0);
+
+	/* --- the camera, moved once for this frame ------------------------------------------------ */
+
+	if (APawn* const Pawn = Controller->GetPawn())
+	{
+		const FBox GhostCm = GhostStageBoundsCm();
+
+		const DestructionScenarios::FViewpoint Viewpoint = DestructionScenarios::ViewpointFor(
+			GhostCm, FrameAspectHeightOverWidth, DestructionScenarios::EScenarioFraming::ThreeQuarter);
+
+		Pawn->SetActorLocation(Viewpoint.LocationCm);
+		Controller->SetControlRotation(Viewpoint.Rotation);
+
+		Test->AddInfo(FString::Printf(
+			TEXT("frame 7 reframes over the seed-and-ghost %.2f x %.2f x %.2f cm box: camera at "
+				 "(%.2f, %.2f, %.2f), rotation (%.2f, %.2f, %.2f)"),
+			2.0 * GhostCm.GetExtent().X, 2.0 * GhostCm.GetExtent().Y, 2.0 * GhostCm.GetExtent().Z,
+			Viewpoint.LocationCm.X, Viewpoint.LocationCm.Y, Viewpoint.LocationCm.Z,
+			Viewpoint.Rotation.Pitch, Viewpoint.Rotation.Yaw, Viewpoint.Rotation.Roll));
+	}
+	else
+	{
+		Test->AddError(TEXT("the player controller has no pawn to reframe the ghost frame on"));
+	}
+
+	/* --- ONE: the seed brick, the only click in this whole frame ------------------------------ */
+
+	{
+		const bool bPlaced = Controller->PrimaryAlongRay(
+			LayRayStart(GhostSeedCursorXCm, BrickPlaneCourse0Cm),
+			LayRayEnd(GhostSeedCursorXCm, BrickPlaneCourse0Cm));
+
+		Test->TestTrue(
+			*FString::Printf(
+				TEXT("the seed brick must land at x = %g on course 0; the click reported %d"),
+				GhostSeedCursorXCm, bPlaced ? 1 : 0),
+			bPlaced);
+	}
+
+	Record.StructureId = Controller->GetSessionStructureId();
+
+	Test->TestTrue(
+		*FString::Printf(
+			TEXT("the cleared plot opened a new binding and the seed must name it; it names %d"),
+			Record.StructureId),
+		Record.StructureId != INDEX_NONE);
+
+	const FStructureBinding* const Binding = FindBuild(Controller->GetWorld(), Record.StructureId);
+
+	if (Binding == nullptr)
+	{
+		Test->AddError(FString::Printf(
+			TEXT("the ghost frame's structure %d vanished under the seed"), Record.StructureId));
+
+		return true;
+	}
+
+	Test->TestEqual(
+		FString::Printf(
+			TEXT("fixture: one click, one piece; the plot holds %d"), Binding->NumPieces()),
+		Binding->NumPieces(), 1);
+
+	const UBuildModeComponent* const Build = Controller->GetBuildComponent();
+
+	if (Build == nullptr)
+	{
+		Test->AddError(TEXT("the controller has no build component, so there is no ghost to photograph"));
+		return true;
+	}
+
+	/* --- TWO: the cursor puts a ghost up, with NO click -------------------------------------- */
+
+	{
+		const bool bRefreshed = Controller->RefreshBuildPreviewFromRay(
+			GhostRayOriginCm(), GhostRayDirection());
+
+		Test->TestTrue(
+			*FString::Printf(
+				TEXT("A CURSOR REFRESH IN BUILD MODE MUST PUT A GHOST UP WITH NO CLICK BEHIND IT — that "
+					 "is the owner's ask and the whole subject of this frame. It reported %d"),
+				bRefreshed ? 1 : 0),
+			bRefreshed);
+
+		const AActor* const Ghost = Build->GetGhostActor();
+
+		Test->TestNotNull(TEXT("and there must be a ghost actor to photograph"), Ghost);
+
+		if (Ghost == nullptr)
+		{
+			return true;
+		}
+
+		Test->TestFalse(
+			TEXT("and it must be VISIBLE before the chip is touched — a preview nobody can see is not a "
+				 "preview"),
+			Ghost->IsHidden());
+
+		const FBox Bounds = Ghost->GetComponentsBoundingBox(/*bNonColliding*/ true);
+
+		Test->AddInfo(FString::Printf(
+			TEXT("the un-turned ghost's bounds are centred (%.3f, %.3f, %.3f), size (%.3f, %.3f, %.3f)"),
+			Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.GetCenter().Z,
+			Bounds.GetSize().X, Bounds.GetSize().Y, Bounds.GetSize().Z));
+
+		Test->TestTrue(
+			*FString::Printf(
+				TEXT("fixture: and it must stand at the RUNNING-BOND snap beside the seed, (11.25, 0, "
+					 "10.75) — the ray was dropped 3 cm off that line, so a ghost sitting at the cursor "
+					 "would mean nothing solved it. It is at (%.3f, %.3f, %.3f)"),
+				Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.GetCenter().Z),
+			Bounds.GetCenter().Equals(UprightGhostCentreCm, GhostBoundsToleranceCm));
+
+		Test->TestTrue(
+			*FString::Printf(
+				TEXT("fixture: and it must be an UPRIGHT brick, 21.5 x 10.25 x 6.5, so the turn below is "
+					 "a change; it is (%.3f, %.3f, %.3f)"),
+				Bounds.GetSize().X, Bounds.GetSize().Y, Bounds.GetSize().Z),
+			Bounds.GetSize().Equals(UprightGhostSizeCm, GhostBoundsToleranceCm));
+	}
+
+	/* --- THREE: the Rotate chip turns the ghost where it stands, still with no click --------- */
+
+	{
+		Test->TestTrue(
+			TEXT("the rotate chip must land"),
+			Controller->OnToolbarButton(EToolbarButtonId::RotatePiece));
+
+		Test->TestTrue(
+			*FString::Printf(
+				TEXT("and the session must read ROTATED for the frame; it reads %s"),
+				*StateBits(Controller->GetSessionToolbarState())),
+			Controller->GetSessionToolbarState().bRotated);
+
+		const AActor* const Ghost = Build->GetGhostActor();
+
+		Test->TestNotNull(TEXT("the ghost must survive the chip"), Ghost);
+
+		if (Ghost == nullptr)
+		{
+			return true;
+		}
+
+		Test->TestFalse(
+			TEXT("THE GHOST MUST STILL BE VISIBLE AFTER THE CHIP — a setting that puts the preview out "
+				 "reads as the click being eaten"),
+			Ghost->IsHidden());
+
+		const FBox Bounds = Ghost->GetComponentsBoundingBox(/*bNonColliding*/ true);
+
+		Test->AddInfo(FString::Printf(
+			TEXT("the turned ghost's bounds are centred (%.3f, %.3f, %.3f), size (%.3f, %.3f, %.3f)"),
+			Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.GetCenter().Z,
+			Bounds.GetSize().X, Bounds.GetSize().Y, Bounds.GetSize().Z));
+
+		Test->TestTrue(
+			*FString::Printf(
+				TEXT("AND IT MUST BE THE TURNED FOOTPRINT, 10.25 x 21.5 x 6.5 — X and Y swapped, Z "
+					 "untouched. A chip that lit while the ghost kept its old footprint is the owner's "
+					 "'the click did nothing', and it is invisible in a photograph of a box. It is "
+					 "(%.3f, %.3f, %.3f)"),
+				Bounds.GetSize().X, Bounds.GetSize().Y, Bounds.GetSize().Z),
+			Bounds.GetSize().Equals(RotatedGhostSizeCm, GhostBoundsToleranceCm));
+	}
+
+	/* --- FOUR: and NOTHING was committed by any of it ----------------------------------------- */
+
+	{
+		const FStructureBinding* const After = FindBuild(Controller->GetWorld(), Record.StructureId);
+
+		if (After == nullptr)
+		{
+			Test->AddError(TEXT("the ghost frame's structure vanished under the preview"));
+			return true;
+		}
+
+		Test->TestEqual(
+			FString::Printf(
+				TEXT("THE PLOT MUST STILL HOLD EXACTLY THE ONE SEED: a preview places nothing, and a "
+					 "second brick here would make this a picture of a click rather than of a ghost. It "
+					 "holds %d piece(s)"),
+				After->NumPieces()),
+			After->NumPieces(), 1);
+
+		Test->TestEqual(
+			FString::Printf(
+				TEXT("and one LIVE piece with it, so nothing was laid and quietly removed either; %d are "
+					 "live"),
+				After->GetStructure().NumLivePieces()),
+			After->GetStructure().NumLivePieces(), 1);
+	}
+
+	return true;
+}
+
+/** FRAME 7: one seed brick, and a turned gold ghost beside it that no click put there. */
+DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
+	FSessionShootGhostCommand, FAutomationTestBase*, Test);
+
+bool FSessionShootGhostCommand::Update()
+{
+	using namespace SessionScreenshotSupport;
+
+	if (!SessionShotRecord().bStaged)
+	{
+		return true;
+	}
+
+	CheckStageBeforeShot(
+		*Test, TEXT("frame 7 (ghost)"), DestructionSession::ESessionMode::Build,
+		/*ExpectedPieces*/ 1, /*bExpectMenu*/ false, /*bExpectGhostVisible*/ true);
+
+	RequestScreenshot(*Test, ShotCommandFor(FString(GhostBaseName)));
+
+	return true;
+}
+
+/**
  * Take the build off the plot, through the toolbar, and leave the level as the game mode left it.
  *
  * `Clear build` RATHER THAN A SWEEP OF THE WORLD, because it is the session's own command and it is
@@ -2259,7 +2691,7 @@ bool FSessionShotTearDownCommand::Update()
 	return true;
 }
 
-/** All six files landed and they are real PNGs. All six were deleted before the run. */
+/** All seven files landed and they are real PNGs. All seven were deleted before the run. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotCheckFilesCommand, FAutomationTestBase*, Test);
 
@@ -2377,8 +2809,9 @@ bool FSessionScreenshotsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE SEQUENCE: set the state up, let the view settle, shoot — five times, off ONE camera placed
-	 * before the first warm-up. Screen messages go off before anything is waited on; each shot is
+	 * THE SEQUENCE: set the state up, let the view settle, shoot — seven times, off ONE camera placed
+	 * before the first warm-up and reframed once each for frames 6 and 7. Screen messages go off before
+	 * anything is waited on; each shot is
 	 * followed by its write wait because ProcessScreenShots writes at end of draw; and each of the two
 	 * mutations that hands bodies to physics is followed by a fall wait and a settle.
 	 */
@@ -2435,6 +2868,18 @@ bool FSessionScreenshotsTest::RunTest(const FString& Parameters)
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SettleFrames));
 
 	ADD_LATENT_AUTOMATION_COMMAND(FSessionShootCornerCommand(this));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(WriteFrames));
+
+	/*
+	 * AND FRAME 7 AFTER IT, for frame 6's own reason: it CLEARS the plot too, and its whole subject is
+	 * one seed brick with one ghost beside it — laid on top of the L, the ghost would be solving
+	 * against eleven bricks instead of the one, and the gold box would be lost in the picture.
+	 */
+	ADD_LATENT_AUTOMATION_COMMAND(FSessionShotGhostCommand(this));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SlateFrames));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SettleFrames));
+
+	ADD_LATENT_AUTOMATION_COMMAND(FSessionShootGhostCommand(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(WriteFrames));
 
 	ADD_LATENT_AUTOMATION_COMMAND(FSessionShotTearDownCommand(this));

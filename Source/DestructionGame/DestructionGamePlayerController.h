@@ -142,6 +142,24 @@ public:
 	bool PrimaryAlongRay(const FVector& StartCm, const FVector& EndCm);
 
 	/**
+	 * Put the ghost where this ray points, WITHOUT the player having clicked anything.
+	 *
+	 * THE TESTABLE HALF OF THE PER-TICK CURSOR REFRESH. PlayerTick's own first step is a
+	 * deprojection, which needs a viewport and is untestable by construction — the inch OnHoverPiece
+	 * and OnInspectPiece are already kept down to — so everything that can be wrong in a way a player
+	 * would notice lives behind this call, which needs only a world.
+	 *
+	 * IN DESTROY MODE IT DOES NOTHING AT ALL, and that is the leg that cannot be got right by
+	 * accident. Run every frame, a refresh that leaked the mode would hang a gold ghost over the wall
+	 * the player is demolishing and re-arm a preview a stray confirm could commit — the very ghost
+	 * OnToolbarButton(ModeDestroy) hides on the way in.
+	 *
+	 * @return whether a valid preview is up: false in Destroy mode, and on a ray that misses the
+	 *         build plane.
+	 */
+	bool RefreshBuildPreviewFromRay(const FVector& OriginCm, const FVector& Direction);
+
+	/**
 	 * Build the session's toolbar strip, and hand it back instead of drawing it.
 	 *
 	 * PUBLIC FOR THE REASON BuildPieceMenuPanel IS, and the reason bites harder here. Which buttons
@@ -419,6 +437,17 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputAction> SessionRunAction;
 
+	/**
+	 * The session's per-frame cursor refresh, and nothing else this controller does per frame.
+	 *
+	 * IT IS HERE RATHER THAN ON IA_HoverPiece BECAUSE AN AXIS ACTION ONLY FIRES WHEN IT MOVES. That
+	 * is the owner's report (2026-09-16): with the ghost driven only by Mouse2D, a session that
+	 * begins with a still mouse shows nothing until something actuates the axis — and a settings
+	 * change waits for the same event. The setters carry the settings half; this carries "the player
+	 * is pointing somewhere and has not clicked".
+	 */
+	virtual void PlayerTick(float DeltaTime) override;
+
 	/** Input mapping context setup */
 	virtual void SetupInputComponent() override;
 
@@ -451,6 +480,35 @@ private:
 	 * reason the binding is on Triggered rather than Started; see SetupInputComponent.
 	 */
 	void OnHoverPiece();
+
+	/**
+	 * PlayerTick's handler: turn the cursor into a world ray and re-drive the build ghost along it.
+	 *
+	 * THE SAME DEPROJECTION-PLUS-ONE-CALL SHAPE AS OnHoverPiece, AND UNTESTABLE FOR THE SAME REASON —
+	 * DeprojectMousePositionToWorld needs a viewport, so everything that can be wrong in a way a
+	 * player would notice lives behind RefreshBuildPreviewFromRay. Anything added here grows the
+	 * untested surface.
+	 *
+	 * IT IS SKIPPED WHILE THE LOOK CHORD IS HELD. The right button turns the camera, and re-previewing
+	 * every frame of a drag would drag the ghost across the plot behind the player's back — and the
+	 * cursor is hidden for the length of it, so there is nothing on screen for the ghost to follow.
+	 *
+	 * AND IT IS SKIPPED WHEN THE MOUSE HAS NOT MOVED, which is what keeps a per-frame handler cheap: a
+	 * still cursor names the same point on the same plane and re-solves the same snap. The settings
+	 * half is already covered by the component's own setters, so nothing needs this to run on a frame
+	 * the pointer did not move.
+	 */
+	void RefreshBuildPreviewFromCursor();
+
+	/**
+	 * Where the cursor was on the last frame this refreshed, and whether it has ever been read.
+	 *
+	 * The flag is what makes a first frame with the pointer at exactly (0, 0) a refresh rather than a
+	 * skip; it is the ordinary "no reading yet" case rather than a coordinate worth special-casing.
+	 */
+	FVector2D LastBuildCursorPx = FVector2D::ZeroVector;
+
+	bool bHasBuildCursorPx = false;
 
 	/**
 	 * Put the session's controls up, once, and never take them down again.
