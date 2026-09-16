@@ -203,6 +203,15 @@ preview and a palette on that proven core — it invents no physics.
   build), and pose-derived grounded (`FBuildPreview::bGrounded`). The max-ray-distance clamp landed earlier.
   Still deferred (CURRENT_STATE): the ray-vs-brick-face "auto-plane from the piece under the cursor" variant.
 - **UI-5 — save/load** a player building (OPEN decision below).
+- **UI-6 — the JOINT CHOICE (owner ask, 2026-09-15: "build mode should allow the user to choose what type of
+  joint between materials").** A Build-settings control `Joint: Auto | Mortar | Dry | Nail | Screw | Bolt`
+  (`EJointChoice` on `FSessionToolbarState`, one `EToolbarButtonId` per choice, Settings group, a segmented
+  chip like Snap/Free). `Auto` = today's inference (`JointForContact`). Any other choice OVERRIDES the profile
+  of EVERY joint the placed piece forms (the snap candidates' `FFormedJoint.Profile` — the override rides
+  through `PreviewBuildPiece`/`PlaceBuildPiece` as an optional `const FConnectionStrength*`; nullptr = auto),
+  so a plank can be screwed to a plate or a brick laid dry. The choice is recorded per placement for save/load
+  (it changes committed physics). The ghost card (S9) shows the joint that would form. This is the "fastening
+  override" the 2026-09-03 ruling deferred, now explicit and player-driven.
 
 ### Open decisions (owner-delegated; decide when the slice is reached, record in DESIGN §8)
 - **Live structural feedback while building:** RECOMMEND default OFF — build freely, discover on "run"
