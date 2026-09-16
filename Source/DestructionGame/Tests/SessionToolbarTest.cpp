@@ -103,6 +103,7 @@ namespace SessionToolbarTestSupport
 		case EToolbarButtonId::PlacementFree:     return TEXT("PlacementFree");
 		case EToolbarButtonId::CourseDown:        return TEXT("CourseDown");
 		case EToolbarButtonId::CourseUp:          return TEXT("CourseUp");
+		case EToolbarButtonId::ToggleLoadOverlay: return TEXT("ToggleLoadOverlay");
 		case EToolbarButtonId::ClearBuild:        return TEXT("ClearBuild");
 		case EToolbarButtonId::RunStructure:      return TEXT("RunStructure");
 		}
@@ -160,6 +161,15 @@ namespace SessionToolbarTestSupport
 		case EToolbarButtonId::PlacementFree:
 		case EToolbarButtonId::CourseDown:
 		case EToolbarButtonId::CourseUp:
+
+		/*
+		 * AND THE LOAD OVERLAY IS A SETTING, NOT A COMMAND, WHICH IS §b's TABLE READ LITERALLY. It
+		 * changes how the session LOOKS at the structure rather than doing anything to it, so it sits
+		 * with the settings and past no rule — the rule exists so that "a destructive click is never
+		 * adjacent to a setting click", and a toggle filed beside Run structure would put a harmless
+		 * click hard against the one that settles the wall.
+		 */
+		case EToolbarButtonId::ToggleLoadOverlay:
 			return EToolbarGroup::Settings;
 
 		case EToolbarButtonId::ClearBuild:
@@ -272,6 +282,7 @@ namespace SessionToolbarTestSupport
 			EToolbarButtonId::PlacementFree,
 			EToolbarButtonId::CourseDown,
 			EToolbarButtonId::CourseUp,
+			EToolbarButtonId::ToggleLoadOverlay,
 			EToolbarButtonId::ClearBuild,
 			EToolbarButtonId::RunStructure,
 		};
@@ -280,12 +291,13 @@ namespace SessionToolbarTestSupport
 	FString DescribeState(const DestructionSession::FSessionToolbarState& State)
 	{
 		return FString::Printf(
-			TEXT("{%s, %s, %s, Course %d, %s}"),
+			TEXT("{%s, %s, %s, Course %d, %s, %s}"),
 			NameOfMode(State.Mode),
 			NameOfPiece(State.Piece),
 			NameOfPlacement(State.Placement),
 			State.Course,
-			State.bHasStructure ? TEXT("has a structure") : TEXT("no structure"));
+			State.bHasStructure ? TEXT("has a structure") : TEXT("no structure"),
+			State.bLoadOverlay ? TEXT("load overlay ON") : TEXT("load overlay off"));
 	}
 
 	FString DescribeButtons(const TArray<DestructionSession::FToolbarButton>& Buttons)
@@ -328,7 +340,8 @@ namespace SessionToolbarTestSupport
 			&& A.Piece == B.Piece
 			&& A.Placement == B.Placement
 			&& A.Course == B.Course
-			&& A.bHasStructure == B.bHasStructure;
+			&& A.bHasStructure == B.bHasStructure
+			&& A.bLoadOverlay == B.bLoadOverlay;
 	}
 
 	const DestructionSession::FToolbarButton* FindButton(
@@ -351,7 +364,8 @@ namespace SessionToolbarTestSupport
 		DestructionSession::EBuildPieceKind Piece,
 		DestructionSession::EPlacementMode Placement,
 		int32 Course,
-		bool bHasStructure)
+		bool bHasStructure,
+		bool bLoadOverlay = false)
 	{
 		DestructionSession::FSessionToolbarState State;
 		State.Mode = Mode;
@@ -359,6 +373,7 @@ namespace SessionToolbarTestSupport
 		State.Placement = Placement;
 		State.Course = Course;
 		State.bHasStructure = bHasStructure;
+		State.bLoadOverlay = bLoadOverlay;
 		return State;
 	}
 
@@ -369,13 +384,18 @@ namespace SessionToolbarTestSupport
 	 * Every rule about which buttons exist, which is lit and which is greyed is a claim about ALL
 	 * states, and a hand-picked handful covers only the shapes the author had in mind — DESIGN §4's
 	 * "an invariant asserted over fixtures that all share a hidden property is not an invariant".
-	 * Two modes x three pieces x two placements x three courses x two structure flags is 72 states
-	 * and costs microseconds, so the sweep is the cheap way to be sure the hidden property is not
-	 * "the author always wrote Course 0".
+	 * Two modes x three pieces x two placements x three courses x two structure flags x two load
+	 * overlay flags is 144 states and costs microseconds, so the sweep is the cheap way to be sure
+	 * the hidden property is not "the author always wrote Course 0".
 	 *
 	 * The courses are 0 (the grounded course, where CourseDown must be refused), 1 (the first course
 	 * where it must be offered) and 5 (well clear of the boundary, so an off-by-one at 1 cannot be
 	 * the only thing the boundary rows see).
+	 *
+	 * AND THE LOAD OVERLAY IS A DIMENSION RATHER THAN A ROW OR TWO, BECAUSE IT IS ORTHOGONAL TO
+	 * EVERYTHING ELSE ON THE STRIP. It survives a trip through Build mode, where it is not drawn at
+	 * all, so every Build state has to be swept with it BOTH ways — a model that reset it whenever
+	 * the Build strip was asked for would pass a sweep that only ever set it in Destroy.
 	 */
 	TArray<DestructionSession::FSessionToolbarState> AllStates()
 	{
@@ -387,6 +407,7 @@ namespace SessionToolbarTestSupport
 		const EPlacementMode Placements[] = { EPlacementMode::Snap, EPlacementMode::Free };
 		const int32 Courses[] = { 0, 1, 5 };
 		const bool Structures[] = { false, true };
+		const bool Overlays[] = { false, true };
 
 		TArray<FSessionToolbarState> States;
 
@@ -400,7 +421,11 @@ namespace SessionToolbarTestSupport
 					{
 						for (bool bHasStructure : Structures)
 						{
-							States.Add(MakeState(Mode, Piece, Placement, Course, bHasStructure));
+							for (bool bLoadOverlay : Overlays)
+							{
+								States.Add(MakeState(
+									Mode, Piece, Placement, Course, bHasStructure, bLoadOverlay));
+							}
 						}
 					}
 				}
@@ -484,9 +509,22 @@ bool FSessionToolbarButtonsByModeTest::RunTest(const FString& Parameters)
 		EToolbarButtonId::ClearBuild,
 	};
 
+	/*
+	 * THE DESTROY STRIP NOW HAS A SETTINGS GROUP, AND THE LOAD OVERLAY IS ITS FIRST MEMBER.
+	 *
+	 * SESSION_UI_DESIGN §b's Destroy table, in its order: the mode pair that may never move, then the
+	 * mode's settings, then the mode's one command past a rule. The toggle is BETWEEN the pair and
+	 * Run structure rather than beside it, which is the whole of the three-region rule — a click that
+	 * only changes how the wall is coloured must not sit hard against the one that settles it.
+	 *
+	 * IT IS DRAWN IN DESTROY MODE ALONE. `bLoadOverlay` is swept both ways over both modes below, so
+	 * a model that drew the chip on the Build strip whenever the overlay happened to be on fails here
+	 * rather than in a screenshot.
+	 */
 	const TArray<EToolbarButtonId> ExpectedInDestroy = {
 		EToolbarButtonId::ModeBuild,
 		EToolbarButtonId::ModeDestroy,
+		EToolbarButtonId::ToggleLoadOverlay,
 		EToolbarButtonId::RunStructure,
 	};
 
@@ -570,6 +608,7 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 		int32 ActiveModeButtons = 0;
 		int32 ActivePieceButtons = 0;
 		int32 ActivePlacementButtons = 0;
+		int32 LoadOverlayButtonsSeen = 0;
 
 		for (const FToolbarButton& Button : Buttons)
 		{
@@ -638,6 +677,23 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 					Button.bActive, State.Placement == EPlacementMode::Free);
 				break;
 
+			case EToolbarButtonId::ToggleLoadOverlay:
+				/*
+				 * A SETTING LATCHES, WHICH IS THE WHOLE DIFFERENCE BETWEEN THIS CHIP AND Run structure
+				 * SITTING TWO SLOTS AWAY. The overlay is a way of LOOKING at the wall and it stays on
+				 * until it is turned off, so the chip has to say so — a toggle drawn unlit while the
+				 * whole structure is tinted green and amber leaves the player with a coloured wall and
+				 * no control that admits to having done it, and the obvious next move is to click the
+				 * chip again and turn it OFF while expecting it to turn on.
+				 */
+				++LoadOverlayButtonsSeen;
+				TestEqual(
+					*FString::Printf(
+						TEXT("%s: ToggleLoadOverlay is lit exactly when the overlay is on — [%s]"),
+						*DescribeState(State), *DescribeButtons(Buttons)),
+					Button.bActive, State.bLoadOverlay);
+				break;
+
 			default:
 				TestFalse(
 					*FString::Printf(
@@ -670,6 +726,19 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 				TEXT("%s: exactly one Placement button must be lit when the group is drawn — [%s]"),
 				*DescribeState(State), *DescribeButtons(Buttons)),
 			ActivePlacementButtons, bBuilding ? 1 : 0);
+
+		/*
+		 * AND THE TOGGLE WAS ACTUALLY ON THE STRIP TO BE READ. The claim above lives inside the loop
+		 * over the buttons that came back, so a Destroy strip that simply did not draw the chip would
+		 * satisfy it by having nothing to check — the same measured floor every other sweep in this
+		 * file carries.
+		 */
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: the load overlay toggle must be on the strip in Destroy mode and nowhere else "
+					 "— [%s]"),
+				*DescribeState(State), *DescribeButtons(Buttons)),
+			LoadOverlayButtonsSeen, bBuilding ? 0 : 1);
 	}
 
 	return true;
@@ -728,12 +797,14 @@ bool FSessionToolbarEnabledFlagsTest::RunTest(const FString& Parameters)
 			*FString::Printf(
 				TEXT("%s: %s must be on the strip for its enablement to mean anything — [%s]"),
 				*DescribeState(State),
-				bBuilding ? TEXT("CourseDown and ClearBuild") : TEXT("RunStructure"),
+				bBuilding ? TEXT("CourseDown and ClearBuild")
+					: TEXT("RunStructure and ToggleLoadOverlay"),
 				*DescribeButtons(Buttons)),
 			bBuilding
 				? (FindButton(Buttons, EToolbarButtonId::CourseDown) != nullptr
 					&& FindButton(Buttons, EToolbarButtonId::ClearBuild) != nullptr)
-				: FindButton(Buttons, EToolbarButtonId::RunStructure) != nullptr);
+				: (FindButton(Buttons, EToolbarButtonId::RunStructure) != nullptr
+					&& FindButton(Buttons, EToolbarButtonId::ToggleLoadOverlay) != nullptr));
 
 		for (const FToolbarButton& Button : Buttons)
 		{
@@ -751,6 +822,17 @@ bool FSessionToolbarEnabledFlagsTest::RunTest(const FString& Parameters)
 			case EToolbarButtonId::RunStructure:
 				bExpectedEnabled = State.bHasStructure;
 				Why = TEXT("it acts on a live structure and there must be one");
+				break;
+
+			case EToolbarButtonId::ToggleLoadOverlay:
+				/*
+				 * THE SAME PRECONDITION, AND IT IS A PRECONDITION RATHER THAN TIDINESS. The overlay
+				 * solves the session's structure and then tints its pieces; with nothing built there
+				 * is nothing to solve and nothing to tint, so a live chip would latch on, colour
+				 * exactly zero bricks, and leave the player looking for the wall it had lit.
+				 */
+				bExpectedEnabled = State.bHasStructure;
+				Why = TEXT("it tints a live structure and there must be one");
 				break;
 
 			default:
@@ -812,6 +894,14 @@ bool FSessionToolbarLabelsTest::RunTest(const FString& Parameters)
 		{ EToolbarButtonId::PlacementSnap, TEXT("Snap") },
 		{ EToolbarButtonId::PlacementFree, TEXT("Free") },
 		{ EToolbarButtonId::RunStructure,  TEXT("Run") },
+
+		/*
+		 * THE WORD IS "Load" AND THE REST IS THE WIDGET'S. "Load overlay", "Load view", "Show load" —
+		 * all of them are the button the player is hunting for, and pinning the whole caption would
+		 * make every retune a red test with nothing wrong behind it. What may not drift is that the
+		 * chip that colours the wall by load says so.
+		 */
+		{ EToolbarButtonId::ToggleLoadOverlay, TEXT("Load") },
 	};
 
 	/*
@@ -831,8 +921,14 @@ bool FSessionToolbarLabelsTest::RunTest(const FString& Parameters)
 	{
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
 
-		/* ModeBuild, ModeDestroy and either the two placement captions or Run. */
-		WordChecksOwed += State.Mode == ESessionMode::Build ? 4 : 3;
+		/*
+		 * FOUR EITHER WAY, AND THE COINCIDENCE IS WORTH SPELLING OUT RATHER THAN COLLAPSING. A Build
+		 * strip owes ModeBuild, ModeDestroy and the two placement captions; a Destroy strip owes
+		 * ModeBuild, ModeDestroy, Run and the load toggle. They are different four.
+		 */
+		WordChecksOwed += State.Mode == ESessionMode::Build
+			? 2 + 2   /* the mode pair, then Snap and Free */
+			: 2 + 2;  /* the mode pair, then Run structure and Load overlay */
 
 		TestTrue(
 			*FString::Printf(
@@ -1054,6 +1150,70 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 			EToolbarButtonId::CourseDown,
 			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 3, true),
 		},
+
+		/* --- THE LOAD OVERLAY: A SETTING, SO IT LATCHES AND IT SURVIVES A MODE CHANGE ---------- */
+
+		{
+			TEXT("the load overlay goes on, and changes nothing else about the session"),
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 4, true, false),
+			EToolbarButtonId::ToggleLoadOverlay,
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 4, true, true),
+		},
+		{
+			TEXT("and the same click takes it off again — a toggle, not a latch that only latches"),
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 4, true, true),
+			EToolbarButtonId::ToggleLoadOverlay,
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 4, true, false),
+		},
+		{
+			TEXT("with nothing built the chip is greyed, so the click is a bitwise no-op"),
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, false, false),
+			EToolbarButtonId::ToggleLoadOverlay,
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, false, false),
+		},
+		{
+			TEXT("and a greyed chip cannot turn an overlay OFF either, which is the sharper half"),
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, false, true),
+			EToolbarButtonId::ToggleLoadOverlay,
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, false, true),
+		},
+		{
+			TEXT("the chip is not on the Build strip, so a click carrying it must not quietly toggle"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, true, false),
+			EToolbarButtonId::ToggleLoadOverlay,
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, true, false),
+		},
+		{
+			/*
+			 * THE PRESERVATION ROW, AND IT IS THE ONE THIS SETTING EXISTS TO GET WRONG. Going to Build
+			 * takes the chip off the strip; the player's choice must still be theirs when they come
+			 * back, exactly as the piece, the placement and the course are. A controller that "tidied
+			 * up" by clearing the flag on the way out would leave a wall that was tinted a moment ago
+			 * plain, with no click anywhere having asked for that.
+			 */
+			TEXT("switching to Build does NOT clear a load overlay the player turned on"),
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::TimberLintel, EPlacementMode::Free, 3, true, true),
+			EToolbarButtonId::ModeBuild,
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberLintel, EPlacementMode::Free, 3, true, true),
+		},
+		{
+			TEXT("and coming back to Destroy finds it still on"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberLintel, EPlacementMode::Free, 3, true, true),
+			EToolbarButtonId::ModeDestroy,
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::TimberLintel, EPlacementMode::Free, 3, true, true),
+		},
+		{
+			TEXT("a Build-mode setting click leaves the overlay flag alone as well"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 1, true, true),
+			EToolbarButtonId::PieceTimberPlate,
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberPlate, EPlacementMode::Snap, 1, true, true),
+		},
+		{
+			TEXT("and so does Run, which is a command and touches no state at all"),
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 1, true, true),
+			EToolbarButtonId::RunStructure,
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 1, true, true),
+		},
 	};
 
 	for (const FTransitionCase& Case : Cases)
@@ -1071,7 +1231,7 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 	/*
 	 * THE TWO FUNCTIONS HELD AGAINST EACH OTHER, over every state and every button in the
 	 * vocabulary — including the buttons that state does not draw. This is the property the table
-	 * above cannot cover by enumeration: 72 states times 11 buttons is 792 clicks, and what it
+	 * above cannot cover by enumeration: 144 states times 12 buttons is 1,728 clicks, and what it
 	 * asserts is one-directional on purpose. A button that is absent or greyed MUST leave the state
 	 * alone; nothing is claimed here about the ones that are lit and enabled, because that is what
 	 * the table is for.
@@ -1698,7 +1858,7 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
 		const bool bBuilding = State.Mode == ESessionMode::Build;
 
-		ButtonsOwed += bBuilding ? 10 : 3;
+		ButtonsOwed += bBuilding ? 10 : 4;
 
 		int32 ModeGroupButtons = 0;
 		int32 BrickSwatches = 0;
@@ -1848,6 +2008,13 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
  * compatible if the fill is a function of the BUTTON and not merely of `bActive`, which is exactly
  * what this test forces and what a widget writing `bActive ? Accent : Idle` cannot express.
  *
+ * AND THE `Destroy` TAB AND `Run structure` MAY NOT BE THE SAME CHIP (the C2 row, section ONE-B).
+ * That one is the "go" chip's own consequence rather than a new idea: the lit mode tab is filled with
+ * the mode's accent and Run is filled with the destroy accent BY NAME, so on a Destroy strip they
+ * come out identical — a latched tab and an irreversible verb, two slots apart, telling a glancing
+ * player nothing. The claim is an INEQUALITY in fill or outline rather than a look, because which of
+ * the two honest fixes is taken is the design's decision and not this test's.
+ *
  * AND `Clear build` IS DANGER IN THE CAPTION, NOT IN THE FILL. It is the one irreversible control in
  * the Build group (`FPieceAction::bIsDestructive` is the house precedent that destructiveness is
  * data), but a chip filled destroy-red sitting on an amber strip would read as the mode you are in.
@@ -1937,6 +2104,80 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 				 "real colour, it answered %s"),
 			*DescribeColour(ModeAccent(static_cast<ESessionMode>(200)))),
 		ColourIsFinite(ModeAccent(static_cast<ESessionMode>(200))));
+
+	/* --- ONE-B: A LATCHED TAB AND A VERB MAY NOT BE THE SAME CHIP ---------------------------- */
+
+	/*
+	 * THE C2 ROW, AND IT IS A LEGIBILITY DEFECT RATHER THAN A PREFERENCE.
+	 *
+	 * On today's Destroy strip the lit `Destroy` tab and the `Run structure` command come out
+	 * IDENTICAL — both are filled with the destroy accent, both carry the chip edge, both are bold
+	 * dark ink — and they are two slots apart on the same bar. One of them is a statement about where
+	 * the player already is; the other settles the wall, releases bricks and cannot be undone. A
+	 * player scanning the strip has nothing to tell them apart but the words, which is exactly the
+	 * reading §a principle 2 says must survive peripheral vision.
+	 *
+	 * ASSERTED AS AN INEQUALITY RATHER THAN AS A LOOK, DELIBERATELY. There are at least two honest
+	 * fixes — Run keeps the idle fill and takes the accent in its OUTLINE ("outlined go"), or §b's tab
+	 * treatment moves the mode pair to a fill-plus-top-bar of its own — and picking one here would be
+	 * this test deciding the design. What may not stand is the two being indistinguishable, so the
+	 * claim is that they differ in the FILL or in the OUTLINE, RGB-exactly, in at least one of the
+	 * two.
+	 *
+	 * FILL OR OUTLINE AND NOT THE CAPTION, BECAUSE THE CAPTION IS NOT THE THING BEING READ HERE. A
+	 * player who is reading the captions has already told them apart; the failure is the glance that
+	 * does not.
+	 *
+	 * ALPHA IS EXCLUDED FROM THE COMPARISON — ColoursExactlyEqualRGB — for the reason every other
+	 * "these must differ" row in this file excludes it: a chip distinguished only by being slightly
+	 * more transparent over a near-black bar is not distinguished.
+	 *
+	 * SWEPT OVER EVERY DESTROY STATE THAT HAS SOMETHING TO RUN, because with nothing built Run is
+	 * greyed and the two are ALREADY different for a reason that has nothing to do with this.
+	 */
+	int32 DestroyPairsCompared = 0;
+
+	for (const FSessionToolbarState& State : AllStates())
+	{
+		if (State.Mode == ESessionMode::Build || !State.bHasStructure)
+		{
+			continue;
+		}
+
+		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
+
+		const FToolbarButton* const Run = FindButton(Buttons, EToolbarButtonId::RunStructure);
+		const FToolbarButton* const Tab = FindButton(Buttons, EToolbarButtonId::ModeDestroy);
+
+		if (Run == nullptr || Tab == nullptr)
+		{
+			continue;
+		}
+
+		++DestroyPairsCompared;
+
+		const FChipLook RunLook = ChipLookFor(*Run, State.Mode);
+		const FChipLook TabLook = ChipLookFor(*Tab, State.Mode);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: THE LIT `Destroy` TAB AND THE `Run structure` COMMAND MUST NOT BE THE SAME "
+					 "CHIP. A latched tab says where you are; a command settles the wall and releases "
+					 "bricks, and there is no way back. Drawn alike, two slots apart, the only thing "
+					 "between a player and an irreversible click is reading the caption. They must "
+					 "differ in the fill or in the outline (RGB, alpha aside). Run reads [%s]; the tab "
+					 "reads [%s]"),
+				*DescribeState(State), *DescribeLook(RunLook), *DescribeLook(TabLook)),
+			!ColoursExactlyEqualRGB(RunLook.Fill, TabLook.Fill)
+				|| !ColoursExactlyEqualRGB(RunLook.Outline, TabLook.Outline));
+	}
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the sweep must actually have found some Destroy strips with a live Run chip to "
+				 "compare; it compared %d pairs"),
+			DestroyPairsCompared),
+		DestroyPairsCompared > 0);
 
 	/* --- TWO: the three visual states, over every chip of every strip ----------------------- */
 

@@ -102,6 +102,25 @@ namespace DestructionSession
 		 * on a command button is indistinguishable from the game having missed the click.
 		 */
 		bool bHasStructure = false;
+
+		/**
+		 * Whether the DESTROY-mode load overlay is on — every live piece tinted by its worst
+		 * joint's margin band.
+		 *
+		 * A SETTING RATHER THAN A COMMAND, SO IT LATCHES. It is a way of looking at the structure
+		 * rather than a thing that happens to it, which is what makes its chip lit while it is on
+		 * and what makes a second click turn it off.
+		 *
+		 * OFF BY DEFAULT, for the reason Mode defaults to Build: a default-constructed session must
+		 * be the one that has done the least. The overlay costs a solve per toggle-on and per
+		 * mutation, and a session that opened paying it would pay it on twenty-eight scenario levels
+		 * that never asked.
+		 *
+		 * IT SURVIVES A TRIP THROUGH BUILD MODE. The Build strip does not draw the chip, and
+		 * ApplyToolbarButton's "the fields a transition does not name survive it" rule is what keeps
+		 * the player's choice waiting for them when they come back.
+		 */
+		bool bLoadOverlay = false;
 	};
 
 	/**
@@ -122,6 +141,10 @@ namespace DestructionSession
 		PlacementFree,
 		CourseDown,
 		CourseUp,
+
+		/** The Destroy strip's one setting: tint every piece by its worst joint's margin band. */
+		ToggleLoadOverlay,
+
 		ClearBuild,
 		RunStructure,
 	};
@@ -241,7 +264,16 @@ namespace DestructionSession
 		/** What the chip is filled with. The mode's accent when it is the one you have chosen. */
 		FLinearColor Fill = FLinearColor::Transparent;
 
-		/** The 2 px drop edge under it — §a principle 1's "press me" cue. */
+		/**
+		 * The 2 px drop edge around it — §a principle 1's "press me" cue.
+		 *
+		 * AND THE ONE CHANNEL THAT TELLS THE "GO" CHIP FROM A LIT MODE TAB. `Run structure` is filled
+		 * with the destroy accent by identity and the lit `Destroy` tab is filled with the mode's,
+		 * which on a Destroy strip is the same red two slots along — a statement about where the
+		 * player is, drawn exactly like the command that settles the wall. Both fills are spoken for,
+		 * so the ring is where the difference lives: the go chip wears a bright rim and everything
+		 * else wears the shadow.
+		 */
 		FLinearColor Outline = FLinearColor::Transparent;
 
 		/** What the caption is written in. Dark ink on a lit chip, a readable grey on an idle one. */

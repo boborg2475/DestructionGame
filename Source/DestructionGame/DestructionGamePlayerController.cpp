@@ -294,19 +294,19 @@ static const FLinearColor PieceMenuHeadroomTrackColour(0.0f, 0.0f, 0.0f, 0.55f);
 static const FLinearColor PieceMenuGrabStripColour(0.16f, 0.18f, 0.24f, 0.75f);
 
 /*
- * WHAT EACH BAND OF BAR IS FILLED IN, AND THE BAND ITSELF IS THE MODEL'S DECISION RATHER THAN
- * THIS FILE'S.
+ * THE THREE BAND COLOURS ARE NOT HERE ANY MORE, AND THEIR ABSENCE IS THE POINT — the same move the
+ * neighbour palette made, for the same reason and one slice later.
  *
- * EJointMarginBand says WHERE the colour changes — which side of 10x and of 2x margin a joint
- * falls on — because that is a decision about what this game calls dangerous and it belongs
- * where a test can read it. What is left here is the hue, which is exactly the half nothing
- * headless can judge. Every bar was this one green until now, so the joint at 200 % of capacity
- * and the joint at a ten-thousandth of it differed only by a length with nothing to compare it
- * against.
+ * EJointMarginBand says WHERE the colour changes — which side of 10x and of 2x margin a joint falls
+ * on — because that is a decision about what this game calls dangerous, and it belongs where a test
+ * can read it. What was left here was the hue; the load overlay then needed the SAME three hues in
+ * three MATERIALS, which are content and cannot reach a file-static in a widget. Two copies of green
+ * would have been a brick tinted one green beside a bar drawn another, two inches apart.
+ *
+ * DestructionContent::BrickLoadSwatchColours now sits beside the three material paths it has to
+ * agree with, one row per band, and there is deliberately no colour literal left in this file for a
+ * bar to drift back to.
  */
-static const FLinearColor PieceMenuHeadroomComfortableColour(0.18f, 0.76f, 0.55f, 1.0f);
-static const FLinearColor PieceMenuHeadroomCautionColour(0.95f, 0.66f, 0.13f, 1.0f);
-static const FLinearColor PieceMenuHeadroomCriticalColour(0.95f, 0.24f, 0.20f, 1.0f);
 
 /*
  * AND WHAT EACH SUPPORT BUCKET'S DOT IS DRAWN IN, ON THE SAME TERMS AS THE BAR ABOVE.
@@ -595,17 +595,20 @@ namespace
 	 * Nothing here compares a number against anything, so there is no second copy of that rule to
 	 * drift — and the arm past the end of the enumeration answers with the most severe colour,
 	 * because a bar that is wrong about its own band must not look calm.
+	 *
+	 * THE TABLE IS THE OVERLAY'S, AND THAT IS WHAT MAKES THE BAR AND THE BRICK ONE DECISION. The
+	 * three colours live beside the three load-overlay material paths in RequiredContent.h, indexed
+	 * by the band itself, so this is a subscript rather than a second palette.
 	 */
 	FLinearColor PieceMenuBandColour(EJointMarginBand Band)
 	{
-		switch (Band)
-		{
-		case EJointMarginBand::Comfortable: return PieceMenuHeadroomComfortableColour;
-		case EJointMarginBand::Caution:     return PieceMenuHeadroomCautionColour;
-		case EJointMarginBand::Critical:    return PieceMenuHeadroomCriticalColour;
-		}
+		const int32 Index = static_cast<int32>(Band);
 
-		return PieceMenuHeadroomCriticalColour;
+		const bool bKnown =
+			Index >= 0 && Index < UE_ARRAY_COUNT(DestructionContent::BrickLoadSwatchColours);
+
+		return DestructionContent::BrickLoadSwatchColours[
+			bKnown ? Index : static_cast<int32>(EJointMarginBand::Critical)];
 	}
 
 	/**
@@ -945,6 +948,127 @@ void ADestructionGamePlayerController::RefreshSessionHasStructure()
 	SessionToolbarState.bHasStructure = SessionStructureIsLive(Binding);
 }
 
+void ADestructionGamePlayerController::RefreshLoadOverlay()
+{
+	/*
+	 * WHAT WAS TINTED IS REMEMBERED BEFORE ANYTHING IS RECOMPUTED, and it is the half that has to be:
+	 * a brick stops wearing a band without being touched at all — the overlay goes off, the session
+	 * moves to another structure, a piece is pulled out — so a refresh that told only the NEW set
+	 * would leave the old one coloured by a solve nobody can date. Same obligation, same shape, as
+	 * RefreshNeighbourHighlights' "were neighbours" argument.
+	 */
+	const int32 WasStructureId = LoadOverlayStructureId;
+	const int32 WasCount = LoadOverlayStates.Num();
+
+	LoadOverlayStructureId = INDEX_NONE;
+	LoadOverlayStates.Reset();
+
+	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
+
+	const int32 StructureId = GetSessionStructureId();
+
+	FStructureBinding* const Binding =
+		SessionToolbarState.bLoadOverlay && Subsystem != nullptr ? Subsystem->Find(StructureId) : nullptr;
+
+	if (Binding != nullptr)
+	{
+		/*
+		 * A STRUCTURE THAT ALREADY HOLDS AN ANSWER IS READ, NEVER RE-SOLVED, AND THE SECOND SOLVE
+		 * WOULD BE HARMFUL RATHER THAN MERELY WASTEFUL.
+		 *
+		 * A settle runs SolveAndBreak, whose equilibrium gate calls ApplyLimitAnalysisSupport and
+		 * makes the LP the support authority below the block cap. A bare SolveLoads has no gate: it
+		 * rebuilds the same per-piece arrays from the router's downward flood alone. So a refresh
+		 * that solved unconditionally would overwrite the settle's verdict with a worse one on the
+		 * very array ApplyResults releases from — looking at a wall would change what it does next.
+		 *
+		 * SO THE RULE IS "SOLVE WHEN THERE IS NO ANSWER", NOT "NEVER SOLVE". A freshly built plot has
+		 * never been solved at all (laying a brick deliberately does not solve), and so has a
+		 * structure that HAS been settled and then had a piece placed on it — the old pieces carry
+		 * the settle's answer and the new one carries none. Asking per LIVE piece catches both:
+		 * HasSupportAnswer is false for a handle added since the last solve, and a removed or
+		 * released piece is not part of what the overlay is describing.
+		 *
+		 * AND WHEN IT DOES SOLVE IT IS NON-DESTRUCTIVE, which is the first thing in this game to lean
+		 * on that sentence in anger. SolveLoads is documented as leaving every connection exactly as
+		 * intact as it found it; SolveAndBreak is the deliberate step and is never reached from here.
+		 */
+		bool bAnyPieceWithoutAnAnswer = false;
+
+		for (int32 Index = 0; Index < Binding->NumPieces(); ++Index)
+		{
+			if (Binding->IsPieceRemoved(Index) || Binding->IsReleased(Index))
+			{
+				continue;
+			}
+
+			if (!Binding->GetStructure().HasSupportAnswer(Index))
+			{
+				bAnyPieceWithoutAnAnswer = true;
+				break;
+			}
+		}
+
+		if (bAnyPieceWithoutAnAnswer)
+		{
+			Binding->SolveLoads();
+		}
+
+		LoadOverlayStructureId = StructureId;
+		LoadOverlayStates.Reserve(Binding->NumPieces());
+
+		for (int32 Index = 0; Index < Binding->NumPieces(); ++Index)
+		{
+			/*
+			 * A HOLE WEARS NOTHING, AND NEITHER DOES A BRICK THAT HAS ALREADY GONE. A removed piece
+			 * has no actor to tint and WorstJointBandForPiece fails it closed to Critical, which is
+			 * the right answer for a READING of a handle and the wrong one to paint: the brick is
+			 * gone, so there is nothing there to be in trouble.
+			 *
+			 * A RELEASED PIECE IS THE SAME FACT ONE STEP EARLIER — it is a rigid body falling through
+			 * the air under Chaos, its joints say nothing about it any more, and it too reads
+			 * Critical for want of support. Painting that is the instrument spending its loudest
+			 * signal on a brick the player can already see moving, when the whole point of the red is
+			 * to pick out the one that has not moved yet.
+			 */
+			LoadOverlayStates.Add(
+				Binding->IsPieceRemoved(Index) || Binding->IsReleased(Index)
+					? EBrickHighlight::None
+					: BrickHighlightForLoadBand(
+						WorstJointBandForPiece(Binding->GetStructure(), Index)));
+		}
+	}
+
+	/*
+	 * THEN THE UNION OF THE OLD SET AND THE NEW ONE IS PUT BACK THROUGH THE PRECEDENCE. Nothing here
+	 * paints: every brick is asked afresh what state it should be in, so a hovered or selected brick
+	 * keeps what it had and an unclaimed one falls to its band — or to None, which is what taking the
+	 * overlay off means.
+	 *
+	 * THE OLD SET FIRST AND THE NEW SET SECOND, AND THE BRICKS IN BOTH ARE SIMPLY TOLD TWICE. That is
+	 * harmless for the same reason RefreshNeighbourHighlights' overlap is: SetHighlighted is
+	 * idempotent and HighlightForPiece is asked afresh each time, so a second telling cannot say
+	 * anything different from the first.
+	 */
+	for (int32 Index = 0; Index < WasCount; ++Index)
+	{
+		FPieceRef Ref;
+		Ref.StructureId = WasStructureId;
+		Ref.PieceIndex = Index;
+
+		RefreshPieceHighlight(Ref);
+	}
+
+	for (int32 Index = 0; Index < LoadOverlayStates.Num(); ++Index)
+	{
+		FPieceRef Ref;
+		Ref.StructureId = LoadOverlayStructureId;
+		Ref.PieceIndex = Index;
+
+		RefreshPieceHighlight(Ref);
+	}
+}
+
 bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::EToolbarButtonId Id)
 {
 	using namespace DestructionSession;
@@ -1070,6 +1194,21 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 		{
 			Subsystem->SolveAndPush(GetSessionStructureId());
 		}
+
+		/*
+		 * AND THE OVERLAY IS RECOMPUTED AGAINST WHAT IS LEFT. A settle breaks joints and releases
+		 * pieces, so every band on screen is a reading of a structure that no longer exists — and a
+		 * green brick over a gap is worse advice than none.
+		 */
+		RefreshLoadOverlay();
+		break;
+
+	case EToolbarButtonId::ToggleLoadOverlay:
+		/*
+		 * THE FLAG IS ALREADY THE TRANSITION'S; this is the world catching up with it, in both
+		 * directions — the tint goes on, or it comes off every brick that was wearing one.
+		 */
+		RefreshLoadOverlay();
 		break;
 	}
 
@@ -1163,6 +1302,13 @@ bool ADestructionGamePlayerController::PrimaryAlongRay(const FVector& StartCm, c
 	/* A brick landing is what turns an empty plot into something Clear and Run can act on. */
 	RefreshSessionHasStructure();
 	RefreshSessionToolbar();
+
+	/*
+	 * AND A NEW BRICK IS A NEW LOAD PATH. The overlay survives a trip through Build mode, so a piece
+	 * laid while it is on has to be given a band of its own — and the pieces it now stands on have to
+	 * be read again, because that is the whole of what laying a brick does to a structure.
+	 */
+	RefreshLoadOverlay();
 
 	return Placed.StructureId != INDEX_NONE && Placed.PieceIndex != INDEX_NONE;
 }
@@ -1337,7 +1483,35 @@ EBrickHighlight ADestructionGamePlayerController::HighlightForPiece(const FPiece
 		return EBrickHighlight::Hovered;
 	}
 
-	return EBrickHighlight::None;
+	/*
+	 * AND THE LOAD OVERLAY LAST, WHICH IS WHERE A STATE THAT COVERS EVERY PIECE AT ONCE HAS TO SIT.
+	 *
+	 * Everything above says "this one" — the brick being read, the bricks picked, the bricks a row
+	 * points at, the brick under the cursor — and the overlay says something about all of them. An
+	 * overlay that beat any of those would take away the reading the player is actually making,
+	 * which for the selection is the one thing they must be able to check before pressing Delete.
+	 *
+	 * IT IS ASKED HERE RATHER THAN PAINTED ON, and that is the whole shape of the feature. A refresh
+	 * that called SetHighlighted on every brick would be in a fight with the cursor it wins: the next
+	 * refresh repaints over the hover and the selection, and the hover's own refresh would leave a
+	 * brick plain forever afterwards. One function decides where states coincide; the overlay is one
+	 * more question it asks, at the bottom of the order.
+	 */
+	return LoadHighlightForPiece(Ref);
+}
+
+EBrickHighlight ADestructionGamePlayerController::LoadHighlightForPiece(const FPieceRef& Ref) const
+{
+	/*
+	 * THE STRUCTURE IS CHECKED AS WELL AS THE INDEX, for the reason NeighbourHighlightForPiece checks
+	 * it: piece 4 of every wall on screen is not piece 4 of the one the overlay solved.
+	 */
+	if (Ref.StructureId != LoadOverlayStructureId || !LoadOverlayStates.IsValidIndex(Ref.PieceIndex))
+	{
+		return EBrickHighlight::None;
+	}
+
+	return LoadOverlayStates[Ref.PieceIndex];
 }
 
 EBrickHighlight ADestructionGamePlayerController::NeighbourHighlightForPiece(
@@ -1648,6 +1822,14 @@ bool ADestructionGamePlayerController::ChoosePieceMenuRow(int32 RowIndex)
 	{
 		RefreshSessionHasStructure();
 		RefreshSessionToolbar();
+
+		/*
+		 * AND THE OVERLAY IS RECOMPUTED, WHICH IS THE CLAIM THE WHOLE FEATURE IS FOR. "See where the
+		 * load is, then pull THAT one" is worth nothing if the picture does not move when the player
+		 * pulls: a refresh that ran only on the toggle would leave the wall coloured by the structure
+		 * as it stood before the delete. It costs nothing while the overlay is off.
+		 */
+		RefreshLoadOverlay();
 	}
 
 	return bCommitted;

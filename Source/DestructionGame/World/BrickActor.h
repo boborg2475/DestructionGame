@@ -10,6 +10,9 @@
 class UMaterialInterface;
 class UStaticMeshComponent;
 
+/* Core/PieceMenu.h's band, forward-declared so World does not drag the whole presenter in. */
+enum class EJointMarginBand : uint8;
+
 /**
  * How a brick is currently called out to the player.
  *
@@ -63,7 +66,24 @@ enum class EBrickHighlight : uint8
 	Neighbour2,
 	Neighbour3,
 	Neighbour4,
-	Neighbour5
+	Neighbour5,
+
+	/*
+	 * AND THREE MORE FOR "THIS IS HOW HARD THIS PIECE'S WORST JOINT IS WORKING", one per band of
+	 * EJointMarginBand. These are the load overlay's states: a wall tinted green through amber to red
+	 * at its base, so the player can see where the load is before pulling anything out.
+	 *
+	 * THEY ARE THE WEAKEST STATES IN THE PRECEDENCE, which is HighlightForPiece's decision and lives
+	 * there. The overlay covers EVERY live piece at once, so anything that says "this one" — the
+	 * cursor, the selection, the readout's own colours — has to beat it, or turning the overlay on
+	 * would take away the one thing a player checks before pressing Delete.
+	 *
+	 * AND THE NUMERIC ORDER IS STILL NOT THE PRECEDENCE ORDER: these are last in the enum and last in
+	 * the precedence, and that agreement is a coincidence nothing may read anything into.
+	 */
+	LoadComfortable,
+	LoadCaution,
+	LoadCritical
 };
 
 /**
@@ -85,6 +105,24 @@ enum class EBrickHighlight : uint8
  * so that a row past the end draws no colour instead of borrowing somebody else's.
  */
 EBrickHighlight BrickHighlightForNeighbourSlot(int32 ColourSlot);
+
+/**
+ * The state a piece is in when the load overlay is on and its worst joint sits in this band.
+ *
+ * THE ONE MAPPING BETWEEN A BAND AND A STATE, for the reason BrickHighlightForNeighbourSlot is the
+ * one mapping between a slot and a state. The presenter answers a band — EJointMarginBand, which
+ * already decides which side of 10x and of 2x margin a joint is on — and the brick needs the state
+ * that names the material. A second table anywhere would be an overlay drawing amber for a joint the
+ * readout beside it calls comfortable.
+ *
+ * A SWITCH RATHER THAN ARITHMETIC ON THE ENUMERATOR, for the same reason: EBrickHighlight promises
+ * nothing about its layout except that None is zero.
+ *
+ * FAILS CLOSED TO None ON A BAND THIS BUILD HAS NEVER HEARD OF. EJointMarginBand is a uint8 and a
+ * cast is all it takes to make one; a piece with no answer must draw PLAIN rather than draw a
+ * plausible green, because a green brick is a positive claim that the thing is nowhere near failing.
+ */
+EBrickHighlight BrickHighlightForLoadBand(EJointMarginBand Band);
 
 /**
  * One brick in the world: the actor a piece handle points at.
@@ -156,6 +194,20 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> InspectedMaterial;
+
+	/**
+	 * And what each band of the load overlay wears, on exactly the same terms as the three above:
+	 * one property per STATE, because None wears nothing and an array indexed by a state would
+	 * carry a null the required-content sweep could not tell from a broken reference.
+	 */
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> LoadComfortableMaterial;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> LoadCautionMaterial;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> LoadCriticalMaterial;
 
 	/**
 	 * What each COLOUR SLOT of the joint readout wears, indexed by the slot itself.

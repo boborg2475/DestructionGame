@@ -564,6 +564,31 @@ private:
 	void RefreshSessionHasStructure();
 
 	/**
+	 * Re-paint the session's structure by load, or take the paint off again.
+	 *
+	 * WHILE IT IS ON: solve the session's structure NON-DESTRUCTIVELY — `FStructureBinding::SolveLoads`
+	 * is documented as leaving every connection exactly as intact as it found it, and it must, because
+	 * an overlay is a way of LOOKING at a wall and a look that broke joints would be the most
+	 * expensive instrument ever shipped — then give every live piece the band of its worst joint.
+	 *
+	 * IT IS AN INPUT TO HighlightForPiece, NOT A SetHighlighted OF ITS OWN. A refresh that painted
+	 * bricks directly would fight the cursor: the next hover would clear the overlay off one brick and
+	 * the next refresh would paint over the selection. The overlay is the WEAKEST state in the
+	 * precedence, and the only way a precedence can be honoured is for one function to decide.
+	 *
+	 * WHEN IT IS OFF: the load input is cleared, so every piece falls back through the same precedence
+	 * — to Hovered or Selected if it is one of those, and to None otherwise.
+	 *
+	 * CALLED WHENEVER THE ANSWER COULD HAVE MOVED, which is the toggle itself, a Run, a committed
+	 * Delete and a Build-mode placement. An overlay computed once is a photograph of a structure the
+	 * player has since changed, and a green brick over a hole is exactly the lie this is for.
+	 *
+	 * A SOLVE PER MUTATION AND NEVER PER FRAME. Cost is the reason the overlay is a setting rather
+	 * than always on.
+	 */
+	void RefreshLoadOverlay();
+
+	/**
 	 * Put the scenario banner on screen, and take it off again.
 	 *
 	 * THE SECOND INCH OF THE GAME NO TEST CAN REACH, and it is kept to exactly that. Every word
@@ -714,6 +739,19 @@ private:
 	EBrickHighlight NeighbourHighlightForPiece(const FPieceRef& Ref) const;
 
 	/**
+	 * Which band this brick is in under the load overlay, as the state that wears it.
+	 *
+	 * THE OVERLAY'S ANSWER, READ BACK RATHER THAN WORKED OUT AGAIN — the same discipline
+	 * NeighbourHighlightForPiece keeps. RefreshLoadOverlay computed a state per piece from one solve;
+	 * re-deriving it here would mean a solve per brick per refresh, and two answers to "what band is
+	 * this" drawn a frame apart.
+	 *
+	 * None WHEN THERE IS NO ANSWER, which is what lets HighlightForPiece end on it: the overlay off,
+	 * a ref naming another structure, a piece added since the last refresh, or a hole.
+	 */
+	EBrickHighlight LoadHighlightForPiece(const FPieceRef& Ref) const;
+
+	/**
 	 * Every brick the readout is currently pointing at, in its rows' order.
 	 *
 	 * WHAT THE SET WAS AND WHAT IT BECOMES ARE BOTH NEEDED, WHICH IS WHY THIS IS A LIST RATHER THAN
@@ -837,6 +875,24 @@ private:
 	 * HighlightForPiece and nowhere else.
 	 */
 	FPieceRef InspectedPiece;
+
+	/**
+	 * WHICH STRUCTURE THE LOAD OVERLAY WAS COMPUTED OVER, and what each of its pieces came out as.
+	 *
+	 * AN ARRAY INDEXED BY THE PIECE HANDLE, because handles are dense and never compacted — removal
+	 * tombstones — so the subscript IS the piece and a hole is simply a None in its own slot.
+	 *
+	 * THE STRUCTURE ID IS HELD BESIDE IT AND IS NOT DECORATION: piece 4 of the level's wall is not
+	 * piece 4 of the player's build, and an overlay that answered on the index alone would tint one
+	 * structure with another's bands the moment the session named a different one.
+	 *
+	 * BOTH EMPTY MEANS NO OVERLAY — which is the state a session opens in, and the state the second
+	 * click on the chip puts it back into. It is not a second record of the toolbar's flag: the flag
+	 * is what the player asked for, and this is the answer the last solve gave for it.
+	 */
+	int32 LoadOverlayStructureId = INDEX_NONE;
+
+	TArray<EBrickHighlight> LoadOverlayStates;
 
 	/** The widget those rows are drawn as, valid only while a menu is up. */
 	TSharedPtr<SWidget> PieceMenuWidget;

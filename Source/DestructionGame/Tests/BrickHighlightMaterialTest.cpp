@@ -53,7 +53,19 @@ namespace BrickHighlightMaterialTestSupport
 		{ EBrickHighlight::Neighbour2, TEXT("Neighbour2"), DestructionContent::BrickNeighbourMaterialPaths[2] },
 		{ EBrickHighlight::Neighbour3, TEXT("Neighbour3"), DestructionContent::BrickNeighbourMaterialPaths[3] },
 		{ EBrickHighlight::Neighbour4, TEXT("Neighbour4"), DestructionContent::BrickNeighbourMaterialPaths[4] },
-		{ EBrickHighlight::Neighbour5, TEXT("Neighbour5"), DestructionContent::BrickNeighbourMaterialPaths[5] }
+		{ EBrickHighlight::Neighbour5, TEXT("Neighbour5"), DestructionContent::BrickNeighbourMaterialPaths[5] },
+
+		/*
+		 * AND THE LOAD OVERLAY'S THREE BANDS. These matter more to this sweep than any state above
+		 * them, because they are the states the player sees on EVERY live piece at once: a band that
+		 * fell through `SetHighlighted`'s `default:` arm would set a null overlay and draw the piece
+		 * PLAIN, so an overlay that silently covered two bands out of three would look like a wall
+		 * with a green base and nothing wrong anywhere else. That is precisely a plausible picture,
+		 * which is the failure mode this project keeps closing.
+		 */
+		{ EBrickHighlight::LoadComfortable, TEXT("LoadComfortable"), DestructionContent::BrickLoadComfortableMaterialPath },
+		{ EBrickHighlight::LoadCaution,     TEXT("LoadCaution"),     DestructionContent::BrickLoadCautionMaterialPath },
+		{ EBrickHighlight::LoadCritical,    TEXT("LoadCritical"),    DestructionContent::BrickLoadCriticalMaterialPath }
 	};
 
 	/** How many states there are, which is how wide the expectation table has to be. */

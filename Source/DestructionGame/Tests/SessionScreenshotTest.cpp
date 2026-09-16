@@ -15,6 +15,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Tests/AutomationCommon.h"
+#include "World/BrickActor.h"
 #include "World/BuildModeComponent.h"
 #include "World/DestructionScenarios.h"
 #include "World/DestructionStructureSubsystem.h"
@@ -46,7 +47,7 @@
  * photograph a loop the player cannot reach.
  *
  * =========================================================================================
- * THE FOUR FRAMES
+ * THE FIVE FRAMES
  * =========================================================================================
  *
  *   FRAME 1 "Session_Build": the plot as the level opens — Build mode, the strip up — with a small
@@ -66,10 +67,17 @@
  *   FRAME 3 "Session_Deleted": the Delete row chosen. The middle bottom brick is gone and whatever
  *   the delete's own solve condemns has settled.
  *
- *   FRAME 4 "Session_Run": back in Build for one FREE brick three courses up in mid-air with no
+ *   FRAME 4 "Session_LoadOverlay": the Destroy strip's `Load overlay` chip clicked ON over that same
+ *   settled wall — every piece wearing the band of its worst joint, and the chip lit. TAKEN AFTER THE
+ *   DELETE RATHER THAN BEFORE IT, because the delete is what SOLVES: laying never does, so the same
+ *   click made one frame earlier would be photographing the overlay's own first solve rather than a
+ *   settled wall's. The chip is clicked OFF again immediately afterwards, and that is asserted, so
+ *   frame 5 is the picture it has always been.
+ *
+ *   FRAME 5 "Session_Run": back in Build for one FREE brick three courses up in mid-air with no
  *   joints, then Destroy and Run structure — the brick is released and has fallen to the ground.
  *
- * THE CAMERA DOES NOT MOVE BETWEEN THEM. It is placed ONCE, before the first frame, so the four
+ * THE CAMERA DOES NOT MOVE BETWEEN THEM. It is placed ONCE, before the first frame, so the five
  * pictures can be laid side by side and read against each other in the same pixels.
  *
  * =========================================================================================
@@ -127,19 +135,20 @@ namespace SessionScreenshotSupport
 {
 	using namespace DestructionSession;
 
-	/** The four frames' file base names, under FPaths::ScreenShotDir(). */
+	/** The five frames' file base names, under FPaths::ScreenShotDir(). */
 	const TCHAR* const BuildBaseName = TEXT("Session_Build");
 	const TCHAR* const DestroyBaseName = TEXT("Session_Destroy");
 	const TCHAR* const DeletedBaseName = TEXT("Session_Deleted");
+	const TCHAR* const LoadOverlayBaseName = TEXT("Session_LoadOverlay");
 	const TCHAR* const RunBaseName = TEXT("Session_Run");
 
 	/**
-	 * ALL FOUR IN ONE LIST, because every claim made about one is made about the other three — the
-	 * deletion before the run and the PNG check after it are the same two statements four times over,
-	 * and a list is what stops the fourth shot quietly acquiring a weaker version of either.
+	 * ALL FIVE IN ONE LIST, because every claim made about one is made about the other four — the
+	 * deletion before the run and the PNG check after it are the same two statements five times over,
+	 * and a list is what stops the fifth shot quietly acquiring a weaker version of either.
 	 */
 	const TCHAR* const ScreenshotBaseNames[] = {
-		BuildBaseName, DestroyBaseName, DeletedBaseName, RunBaseName };
+		BuildBaseName, DestroyBaseName, DeletedBaseName, LoadOverlayBaseName, RunBaseName };
 
 	/**
 	 * `Shot` and not `HighResShot`, and `showui` with it.
@@ -1104,6 +1113,220 @@ bool FSessionShootDeletedCommand::Update()
 }
 
 /**
+ * Switch the load overlay ON over the settled wall, and check the world actually wears the bands.
+ *
+ * THE PICTURE IS THE POINT AND THE ASSERTION IS WHAT MAKES IT A PICTURE OF THE RIGHT THING. Every
+ * headless test of this feature runs `-nullrhi`, so not one of them has ever caused a coloured brick to
+ * exist; what this adds is the frame. The claim made beside it is the one the frame cannot make for
+ * itself — that each brick wears exactly `BrickHighlightForLoadBand(WorstJointBandForPiece(...))`,
+ * composed here from the two production functions rather than written down as a literal, because which
+ * band a given brick of this wall lands in is a solver answer this harness has no business pinning.
+ *
+ * A RELEASED PIECE IS SKIPPED. The delete's own settle may have let go of bodies, and a brick handed to
+ * physics is no longer part of the structure the overlay describes — `World.Session`'s own
+ * `LoadOverlayIgnoresReleasedPieces` is where that rule lives, and repeating it here would make this
+ * harness fail for that test's reason.
+ */
+DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
+	FSessionShotLoadOverlayCommand, FAutomationTestBase*, Test);
+
+bool FSessionShotLoadOverlayCommand::Update()
+{
+	using namespace DestructionSession;
+	using namespace SessionScreenshotSupport;
+
+	FSessionShotRecord& Record = SessionShotRecord();
+
+	if (!Record.bStaged)
+	{
+		return true;
+	}
+
+	ADestructionGamePlayerController* const Controller = Record.Controller.Get();
+
+	if (Controller == nullptr)
+	{
+		Test->AddError(TEXT("the controller vanished before the load overlay"));
+		return true;
+	}
+
+	Test->TestTrue(
+		TEXT("the Load overlay chip must be live over the player's settled build"),
+		ButtonIsEnabled(Controller->GetSessionToolbarState(), EToolbarButtonId::ToggleLoadOverlay));
+
+	const bool bToggled = Controller->OnToolbarButton(EToolbarButtonId::ToggleLoadOverlay);
+
+	Test->TestTrue(
+		*FString::Printf(
+			TEXT("clicking Load overlay must report that it landed; it reported %d"), bToggled ? 1 : 0),
+		bToggled);
+
+	Test->TestTrue(
+		TEXT("and the session must record it as on, because the chip in this frame is drawn lit from "
+			 "that flag"),
+		Controller->GetSessionToolbarState().bLoadOverlay);
+
+	const FStructureBinding* const Binding = FindBuild(Controller->GetWorld(), Record.StructureId);
+
+	if (Binding == nullptr)
+	{
+		Test->AddError(TEXT("the build structure vanished before the overlay frame"));
+		return true;
+	}
+
+	int32 Tinted = 0;
+	int32 Standing = 0;
+
+	FString Line;
+
+	for (int32 Piece = 0; Piece < Binding->NumPieces(); ++Piece)
+	{
+		if (Binding->IsPieceRemoved(Piece) || Binding->IsReleased(Piece))
+		{
+			continue;
+		}
+
+		++Standing;
+
+		const ABrickActor* const Brick = Cast<ABrickActor>(Binding->GetActor(Piece));
+
+		if (Brick == nullptr)
+		{
+			continue;
+		}
+
+		const EJointMarginBand Band = WorstJointBandForPiece(Binding->GetStructure(), Piece);
+		const EBrickHighlight Expected = BrickHighlightForLoadBand(Band);
+		const EBrickHighlight Worn = Brick->GetHighlight();
+
+		Tinted += Worn == EBrickHighlight::LoadComfortable
+			|| Worn == EBrickHighlight::LoadCaution
+			|| Worn == EBrickHighlight::LoadCritical ? 1 : 0;
+
+		Line += FString::Printf(
+			TEXT("%s%d:%d"), Line.IsEmpty() ? TEXT("") : TEXT(", "), Piece, static_cast<int32>(Worn));
+
+		Test->TestEqual(
+			FString::Printf(
+				TEXT("piece %d must wear the state its worst joint's band maps to (%d); it wears %d"),
+				Piece, static_cast<int32>(Expected), static_cast<int32>(Worn)),
+			static_cast<int32>(Worn), static_cast<int32>(Expected));
+	}
+
+	Test->AddInfo(FString::Printf(
+		TEXT("with the overlay on, %d of the %d standing pieces wear a load state — the wall reads [%s]"),
+		Tinted, Standing, *Line));
+
+	Test->TestTrue(
+		*FString::Printf(
+			TEXT("AND SOMETHING MUST ACTUALLY BE COLOURED, or this is a photograph of an untinted wall "
+				 "agreeing with an overlay that computes nothing. %d of %d"),
+			Tinted, Standing),
+		Tinted >= 1);
+
+	return true;
+}
+
+/** FRAME 4: the settled wall tinted by where its load is, with the chip lit. */
+DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
+	FSessionShootLoadOverlayCommand, FAutomationTestBase*, Test);
+
+bool FSessionShootLoadOverlayCommand::Update()
+{
+	using namespace SessionScreenshotSupport;
+
+	if (!SessionShotRecord().bStaged)
+	{
+		return true;
+	}
+
+	CheckStageBeforeShot(
+		*Test, TEXT("frame 4 (load overlay)"), DestructionSession::ESessionMode::Destroy,
+		/*ExpectedPieces*/ 6, /*bExpectMenu*/ false, /*bExpectGhostVisible*/ false);
+
+	RequestScreenshot(*Test, ShotCommandFor(FString(LoadOverlayBaseName)));
+
+	return true;
+}
+
+/**
+ * And the overlay OFF again, so the frames after it are the pictures they have always been.
+ *
+ * THE CLAIM IS "NO LOAD STATE ANYWHERE" RATHER THAN "EVERY BRICK IS None", DELIBERATELY. The hover and
+ * the selection are the overlay's superiors in `HighlightForPiece`, and a brick that happens to be
+ * claimed by one of them is not evidence of a stale tint — asserting `None` here would be asserting
+ * that taking the overlay off also drops the hover, which is the opposite of the precedence
+ * `World.Session.LoadOverlayYieldsToHover` pins.
+ */
+DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
+	FSessionShotLoadOverlayOffCommand, FAutomationTestBase*, Test);
+
+bool FSessionShotLoadOverlayOffCommand::Update()
+{
+	using namespace DestructionSession;
+	using namespace SessionScreenshotSupport;
+
+	FSessionShotRecord& Record = SessionShotRecord();
+
+	if (!Record.bStaged)
+	{
+		return true;
+	}
+
+	ADestructionGamePlayerController* const Controller = Record.Controller.Get();
+
+	if (Controller == nullptr)
+	{
+		Test->AddError(TEXT("the controller vanished before the overlay was taken off"));
+		return true;
+	}
+
+	Test->TestTrue(
+		TEXT("the second click on the chip must land too"),
+		Controller->OnToolbarButton(EToolbarButtonId::ToggleLoadOverlay));
+
+	Test->TestFalse(
+		TEXT("and the session must record the overlay as off"),
+		Controller->GetSessionToolbarState().bLoadOverlay);
+
+	const FStructureBinding* const Binding = FindBuild(Controller->GetWorld(), Record.StructureId);
+
+	if (Binding == nullptr)
+	{
+		Test->AddError(TEXT("the build structure vanished under the overlay toggle"));
+		return true;
+	}
+
+	for (int32 Piece = 0; Piece < Binding->NumPieces(); ++Piece)
+	{
+		if (Binding->IsPieceRemoved(Piece))
+		{
+			continue;
+		}
+
+		const ABrickActor* const Brick = Cast<ABrickActor>(Binding->GetActor(Piece));
+
+		if (Brick == nullptr)
+		{
+			continue;
+		}
+
+		const EBrickHighlight Worn = Brick->GetHighlight();
+
+		Test->TestFalse(
+			*FString::Printf(
+				TEXT("NO BRICK MAY STILL BE WEARING A BAND IN THE FRAMES THAT FOLLOW: piece %d wears %d. A "
+					 "tint left behind would change frame 5 into a picture of a state no click produced"),
+				Piece, static_cast<int32>(Worn)),
+			Worn == EBrickHighlight::LoadComfortable
+				|| Worn == EBrickHighlight::LoadCaution
+				|| Worn == EBrickHighlight::LoadCritical);
+	}
+
+	return true;
+}
+
+/**
  * Lay one FREE brick in mid-air with nothing under it, then Run the plot so it is let go.
  *
  * THE FLOATING BRICK IS THE WHOLE FIXTURE, for the reason `World.Session.RunStructureSettlesTheBuild`
@@ -1271,7 +1494,7 @@ bool FSessionShotRunCommand::Update()
 }
 
 /**
- * FRAME 4: the freed brick, after three seconds of falling.
+ * FRAME 5: the freed brick, after three seconds of falling.
  *
  * HOW FAR IT TRAVELLED IS REPORTED AND NOT ASSERTED. It is the number a reader needs to tell a
  * picture of a brick that fell from a picture of a brick that was released and did not move — and it
@@ -1316,7 +1539,7 @@ bool FSessionShootRunCommand::Update()
 	}
 
 	CheckStageBeforeShot(
-		*Test, TEXT("frame 4 (run)"), DestructionSession::ESessionMode::Destroy,
+		*Test, TEXT("frame 5 (run)"), DestructionSession::ESessionMode::Destroy,
 		/*ExpectedPieces*/ 7, /*bExpectMenu*/ false, /*bExpectGhostVisible*/ false);
 
 	RequestScreenshot(*Test, ShotCommandFor(FString(RunBaseName)));
@@ -1361,7 +1584,7 @@ bool FSessionShotTearDownCommand::Update()
 	return true;
 }
 
-/** All four files landed and they are real PNGs. All four were deleted before the run. */
+/** All five files landed and they are real PNGs. All five were deleted before the run. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotCheckFilesCommand, FAutomationTestBase*, Test);
 
@@ -1479,7 +1702,7 @@ bool FSessionScreenshotsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE SEQUENCE: set the state up, let the view settle, shoot — four times, off ONE camera placed
+	 * THE SEQUENCE: set the state up, let the view settle, shoot — five times, off ONE camera placed
 	 * before the first warm-up. Screen messages go off before anything is waited on; each shot is
 	 * followed by its write wait because ProcessScreenShots writes at end of draw; and each of the two
 	 * mutations that hands bodies to physics is followed by a fall wait and a settle.
@@ -1510,6 +1733,16 @@ bool FSessionScreenshotsTest::RunTest(const FString& Parameters)
 
 	ADD_LATENT_AUTOMATION_COMMAND(FSessionShootDeletedCommand(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(WriteFrames));
+
+	ADD_LATENT_AUTOMATION_COMMAND(FSessionShotLoadOverlayCommand(this));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SlateFrames));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SettleFrames));
+
+	ADD_LATENT_AUTOMATION_COMMAND(FSessionShootLoadOverlayCommand(this));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(WriteFrames));
+
+	ADD_LATENT_AUTOMATION_COMMAND(FSessionShotLoadOverlayOffCommand(this));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SlateFrames));
 
 	ADD_LATENT_AUTOMATION_COMMAND(FSessionShotRunCommand(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(FallFrames));

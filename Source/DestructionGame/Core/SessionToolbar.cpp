@@ -99,6 +99,22 @@ namespace DestructionSession
 		const FLinearColor SessionToolbarChipEdge(0.0f, 0.0f, 0.0f, 0.35f);
 		const FLinearColor SessionToolbarNoEdge(0.0f, 0.0f, 0.0f, 0.0f);
 
+		/*
+		 * AND THE ONE CHIP THAT IS RINGED RATHER THAN EDGED: the "go" command.
+		 *
+		 * A LATCHED TAB AND AN IRREVERSIBLE VERB MAY NOT BE THE SAME CHIP, and on a Destroy strip
+		 * they nearly are — the lit `Destroy` tab is filled with the mode's accent and `Run
+		 * structure` is filled with the destroy accent by name, which is the same red two slots
+		 * apart. One says where the player already is; the other settles the wall, releases bricks
+		 * and cannot be undone, and a glance that only reaches the colour reads them alike.
+		 *
+		 * THE DIFFERENCE HAS TO BE IN THE OUTLINE BECAUSE THE FILL IS SPOKEN FOR. §e asks for Run
+		 * filled in the destroy accent and the model already promises exactly that, so the ring is
+		 * what is left — and a bright rim on a filled chip is the ordinary way a UI says "this is
+		 * the button that does the thing", rather than another colour nobody can place.
+		 */
+		const FLinearColor SessionToolbarGoChipRing(1.0f, 0.95f, 0.92f, 0.90f);
+
 		/* §a principle 1's chunky rounded chip with its 2 px drop edge, on every chip of every strip. */
 		constexpr float SessionToolbarChipCornerRadiusPx = 10.0f;
 		constexpr float SessionToolbarChipOutlineWidthPx = 2.0f;
@@ -125,6 +141,14 @@ namespace DestructionSession
 			case EToolbarButtonId::PlacementFree:
 			case EToolbarButtonId::CourseDown:
 			case EToolbarButtonId::CourseUp:
+
+			/*
+			 * AND THE LOAD OVERLAY IS A SETTING. It changes how the session LOOKS at the structure
+			 * rather than doing anything to it, so it belongs with the settings and in front of the
+			 * rule the commands sit past — which is what keeps a harmless click off the edge of the
+			 * one that settles the wall.
+			 */
+			case EToolbarButtonId::ToggleLoadOverlay:
 				return EToolbarGroup::Settings;
 
 			default:
@@ -171,6 +195,7 @@ namespace DestructionSession
 			case EToolbarButtonId::PlacementFree:     return TEXT("Free");
 			case EToolbarButtonId::CourseDown:        return TEXT("Course down");
 			case EToolbarButtonId::CourseUp:          return TEXT("Course up");
+			case EToolbarButtonId::ToggleLoadOverlay: return TEXT("Load overlay");
 			case EToolbarButtonId::ClearBuild:        return TEXT("Clear build");
 			case EToolbarButtonId::RunStructure:      return TEXT("Run structure");
 			}
@@ -196,6 +221,15 @@ namespace DestructionSession
 			case EToolbarButtonId::PieceTimberLintel: return State.Piece == EBuildPieceKind::TimberLintel;
 			case EToolbarButtonId::PlacementSnap:     return State.Placement == EPlacementMode::Snap;
 			case EToolbarButtonId::PlacementFree:     return State.Placement != EPlacementMode::Snap;
+
+			/*
+			 * A SETTING LATCHES, WHICH IS THE WHOLE DIFFERENCE BETWEEN THIS CHIP AND Run structure
+			 * TWO SLOTS AWAY. The overlay stays on until it is turned off, so the chip has to say
+			 * so: a toggle drawn unlit over a wall it has tinted green and amber leaves the player
+			 * with no control that admits to having done it.
+			 */
+			case EToolbarButtonId::ToggleLoadOverlay: return State.bLoadOverlay;
+
 			default:                                  return false;
 			}
 		}
@@ -218,6 +252,15 @@ namespace DestructionSession
 			case EToolbarButtonId::ClearBuild:
 			case EToolbarButtonId::RunStructure:
 				/* Both act on a live structure, and a silent no-op reads as a missed click. */
+				return State.bHasStructure;
+
+			case EToolbarButtonId::ToggleLoadOverlay:
+				/*
+				 * THE SAME PRECONDITION, AND IT IS A PRECONDITION RATHER THAN TIDINESS. The overlay
+				 * solves the session's structure and tints its pieces; with nothing built there is
+				 * nothing to solve and nothing to tint, so a live chip would latch on, colour
+				 * exactly zero bricks and leave the player hunting for the wall it had lit.
+				 */
 				return State.bHasStructure;
 
 			default:
@@ -250,6 +293,7 @@ namespace DestructionSession
 			: TArray<EToolbarButtonId>{
 				EToolbarButtonId::ModeBuild,
 				EToolbarButtonId::ModeDestroy,
+				EToolbarButtonId::ToggleLoadOverlay,
 				EToolbarButtonId::RunStructure };
 
 		TArray<FToolbarButton> Buttons;
@@ -313,6 +357,15 @@ namespace DestructionSession
 
 		case EToolbarButtonId::CourseUp:
 			After.Course = State.Course + 1;
+			break;
+
+		case EToolbarButtonId::ToggleLoadOverlay:
+			/*
+			 * A TOGGLE, NOT A LATCH. The same chip turns it off, because a setting the player cannot
+			 * unset is not a setting — and the flag is all that moves, so the overlay survives every
+			 * trip through Build mode where the chip is not drawn at all.
+			 */
+			After.bLoadOverlay = !State.bLoadOverlay;
 			break;
 
 		case EToolbarButtonId::ClearBuild:
@@ -410,8 +463,12 @@ namespace DestructionSession
 			 * THE DESTROY ACCENT BY NAME RATHER THAN THE MODE'S, which costs nothing today (Run is
 			 * drawn in Destroy mode alone) and says the right thing: this chip is red because of what
 			 * it does, not because of where it is.
+			 *
+			 * AND THE RING IS WHAT KEEPS IT APART FROM THE LIT `Destroy` TAB, which carries the same
+			 * red fill for a completely different reason — see SessionToolbarGoChipRing.
 			 */
 			Look.Fill = SessionToolbarDestroyAccent;
+			Look.Outline = SessionToolbarGoChipRing;
 			Look.Caption = SessionToolbarDarkInkCaption;
 			Look.bBoldCaption = true;
 

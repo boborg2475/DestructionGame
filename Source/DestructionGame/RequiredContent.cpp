@@ -45,6 +45,11 @@ namespace
 		DestructionContent::BrickSelectedMaterialPath,
 		DestructionContent::BrickInspectedMaterialPath,
 
+		/* The load overlay's three bands. See RequiredContent.h for why there are exactly three. */
+		DestructionContent::BrickLoadComfortableMaterialPath,
+		DestructionContent::BrickLoadCautionMaterialPath,
+		DestructionContent::BrickLoadCriticalMaterialPath,
+
 		/*
 		 * ONE ROW PER COLOUR SLOT, SPELLED OUT RATHER THAN SPLICED IN FROM THE ARRAY. This table is
 		 * a LIST OF PATHS, and a loop appending six of them would make it a list that cannot be

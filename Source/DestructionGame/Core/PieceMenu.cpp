@@ -1463,3 +1463,106 @@ FVector2D ClampPanelOffset(
 		PresenterPanelAxisPinned(DesiredOffsetPx.X, ViewportSizePx.X - PanelSizePx.X),
 		PresenterPanelAxisPinned(DesiredOffsetPx.Y, ViewportSizePx.Y - PanelSizePx.Y));
 }
+
+EJointMarginBand WorstJointBandForPiece(const FStructure& Structure, int32 PieceIndex)
+{
+	/*
+	 * ONE QUESTION CLOSES EVERY HANDLE THAT NAMES NOTHING, exactly as InspectPiece's does:
+	 * IsPieceRemoved already answers true for a negative handle, INDEX_NONE, a handle past the end
+	 * and a piece the player pulled out, so a second, weaker copy of that rule here would be one
+	 * more place for the four to come apart.
+	 */
+	if (Structure.IsPieceRemoved(PieceIndex))
+	{
+		return EJointMarginBand::Critical;
+	}
+
+	/*
+	 * AND A STRUCTURE NOTHING HAS SOLVED IS NOT A COMFORTABLE ONE.
+	 *
+	 * GetConnectionUtilisation answers ZERO before any load has been routed — its contract says so —
+	 * so reading it straight would paint an untouched wall green from end to end, drawing "no data"
+	 * as "three orders of magnitude of headroom". HasSupportAnswer is the one accessor that can tell
+	 * the two apart: the support array is sized by SolveLoads and by nothing else, so its extent IS
+	 * the set of handles the last solve answered for. A piece added since that solve reads false and
+	 * lands here too, which is the same fail-closed direction.
+	 */
+	if (!Structure.HasSupportAnswer(PieceIndex))
+	{
+		return EJointMarginBand::Critical;
+	}
+
+	/*
+	 * AND THE SOLVE IS ASKED WHETHER ANYTHING IS HOLDING THIS PIECE UP BEFORE ITS JOINTS ARE ASKED
+	 * ANYTHING AT ALL.
+	 *
+	 * A piece with no path to the earth is Critical whatever its joints read, and that is the
+	 * ordinary shape of a wall coming down rather than a degenerate case: the load path is severed,
+	 * so what is left hanging off the piece is an unloaded joint reading a fraction of a per cent —
+	 * a brick in mid-air drawn as the safest thing on the wall. The support array costs nothing
+	 * extra, because the solve the overlay already reads writes it on the way past.
+	 */
+	if (!Structure.IsPieceSupported(PieceIndex))
+	{
+		return EJointMarginBand::Critical;
+	}
+
+	/*
+	 * THE WORST OF THE PIECE'S OWN JOINTS, BUCKETED ONE AT A TIME BY THE FUNCTION THE ROWS USE.
+	 *
+	 * Banding each joint and taking the worst is the same answer as banding the worst utilisation —
+	 * the bucketing is monotone — and it is written this way round so that PresenterMarginBand is
+	 * the only thing that ever compares a number against the two edges. A max taken here would be
+	 * an FMath::Max over a utilisation that may be a NaN, and DESIGN §4 is explicit that Max
+	 * DISCARDS a NaN: the degenerate joint would vanish and the piece would come out of this
+	 * function wearing whatever the other joints said. Through PresenterMarginBand a NaN falls into
+	 * the first negated guard and the piece reads Critical, which is the direction that costs
+	 * nothing but a red brick.
+	 *
+	 * A JOINT THAT HAS GIVEN IS SKIPPED, WHICH IS THE ONE PLACE THIS RULE DIFFERS FROM THE ROW'S.
+	 * The row says "this joint is gone" and draws it Critical, which is right for a row. Carried
+	 * into a PIECE aggregate the same rule paints every neighbour of every deleted brick red, and a
+	 * wall that turns red wherever the player has already pulled is an instrument reporting its own
+	 * history instead of the load.
+	 */
+	EJointMarginBand Worst = EJointMarginBand::Comfortable;
+	bool bAnyLiveJoint = false;
+
+	for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
+	{
+		const FConnection& Connection = Structure.GetConnection(Index);
+
+		if (Connection.PieceA != PieceIndex && Connection.PieceB != PieceIndex)
+		{
+			continue;
+		}
+
+		if (Connection.HasGiven())
+		{
+			continue;
+		}
+
+		bAnyLiveJoint = true;
+
+		/*
+		 * bHasGiven is false BECAUSE THE GIVEN ONES ARE ALREADY GONE, not because it is being
+		 * ignored — the skip above is the whole of that decision and this argument only restates it.
+		 */
+		const EJointMarginBand Band = PresenterMarginBand(
+			100.0 * Structure.GetConnectionUtilisation(Index), /*bHasGiven*/ false);
+
+		if (static_cast<uint8>(Band) < static_cast<uint8>(Worst))
+		{
+			Worst = Band;
+		}
+	}
+
+	/*
+	 * AND A SUPPORTED PIECE WITH NOTHING LEFT TO READ IS NOT A PIECE IN TROUBLE. A brick with no
+	 * joints at all — the first one a player lays on the earth — and one whose every joint has given
+	 * both arrive here, and the guard above has already established that something is holding this
+	 * one up. There is simply nothing to report about how hard it is working, and Critical would
+	 * paint the single brick on an empty plot bright red the moment it landed.
+	 */
+	return bAnyLiveJoint ? Worst : EJointMarginBand::Comfortable;
+}

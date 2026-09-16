@@ -687,3 +687,43 @@ FVector2D ClampPanelOffset(
 	FVector2D DesiredOffsetPx,
 	FVector2D PanelSizePx,
 	FVector2D ViewportSizePx);
+
+/**
+ * HOW HARD THE HARDEST-WORKING JOINT OF ONE PIECE IS WORKING, as the band a bar would be drawn in.
+ *
+ * THE LOAD OVERLAY'S WHOLE MODEL. Tinting a wall by load is a decision per PIECE, and the piece's
+ * own number is the WORST of its joints' — a brick whose bed joint is at 80 % and whose head joint
+ * is unloaded is an 80 % brick, because the thing that will fail is the thing that fails first.
+ *
+ * THE SAME BAND THE INSPECTOR DRAWS, NOT A SECOND ONE. `FInspectorJointRow::MarginBand` already
+ * decides which side of 10x and of 2x margin a joint sits on; an overlay with its own thresholds
+ * would paint a brick amber beside a panel calling its joints comfortable, which is the "third
+ * hand-copy of the break decision" this file's readout exists to prevent. So this reads
+ * `GetConnectionUtilisation` — the same number the break decision used — over the piece's own
+ * connections, and buckets the worst of them with the SAME function the rows are bucketed with.
+ *
+ * A JOINT THAT HAS GIVEN IS NOT COUNTED, AND THIS IS THE ONE PLACE THE OVERLAY'S RULE DIFFERS FROM
+ * THE ROW'S — deliberately, because the two are answering different questions. A row says "this
+ * joint is gone", and drawing it Critical is exactly right. A PIECE beside a hole is not a piece in
+ * trouble: the joint that went is out of the graph and carries nothing, so counting it would paint
+ * every neighbour of every deleted brick red, and a wall that turns red as the player pulls it apart
+ * is an instrument saying nothing at all. What is left is the max over the joints still IN the
+ * structure, which is `GetConnectionUtilisation`'s own answer for them.
+ *
+ * SUPPORT IS ASKED BEFORE THE JOINTS ARE, AND IT OVERRULES THEM BOTH WAYS. A piece the last solve
+ * found no path to the earth for is Critical whatever its joints say — that is not a degenerate case
+ * but the ordinary shape of a wall coming down, where the load path is severed and all that is left
+ * on the falling brick is an unloaded joint reading a fraction of a per cent. And a piece that IS
+ * held up but has no live joint to read — the first brick a player lays on the earth, or a survivor
+ * whose every joint has given — is Comfortable: something is carrying it and there is nothing to
+ * report about how hard it is working, where Critical would paint the single brick on an empty plot
+ * red the moment it landed.
+ *
+ * SO THE ORDER OF THE QUESTIONS IS PART OF THE ANSWER: a handle naming no piece or a removed one,
+ * then a structure nothing has solved, then support, then the joints. The first two are Critical
+ * because that is EJointMarginBand's own fail-closed zero — the expensive direction on an overlay
+ * whose whole job is to say what is about to fall down is over-promising, and that is the same
+ * direction a utilisation that is not a number falls in, since PresenterMarginBand's guards are
+ * negated.
+ */
+EJointMarginBand WorstJointBandForPiece(const FStructure& Structure, int32 PieceIndex);

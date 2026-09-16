@@ -521,8 +521,9 @@ full 2 px ring, not an edge below; no 1 px hover lift / pressed push yet; and th
 as ordinary chips, NOT as the §b "tabs" — §b and this section contradicted each other (tab with a top
 bar vs "the same chip, one size up, with an icon"), and the resolution is: **chips, one size up
 with an icon is the target; the tab-with-top-bar idea is dropped.** The Run "go" chip and the lit
-Destroy tab currently share the destroy accent (C2, the next fix: Run becomes idle fill + accent
-outline). Colour note: the timber world colour below is `#B38255` as the sRGB of the linear
+Destroy tab still share the destroy accent FILL — that fill is pinned exactly by `ChipLook`'s go-chip
+row — so C2 was closed in the OUTLINE instead (2026-09-15): the go chip wears a bright bone-white
+ring and every other chip wears the dark drop edge. Colour note: the timber world colour below is `#B38255` as the sRGB of the linear
 `(0.45, 0.22, 0.09)` the code transcribes from `M_Shed_Timber`, not `#C2A06A`.
 
 **Three visual states, and they must be three, for the reason `EBrickHighlight` has ten and not one:
@@ -657,7 +658,7 @@ the pattern every new panel follows.
 | **S9** | **Ghost card** | `EPieceMenuDetail::GhostCard`, `FBuildPreviewInspector BuildBuildPreviewInspector(...)`; needs CURRENT_STATE (b2) `bWouldPlace` and (v-a) `bRequestedPoseOccupied` first | `Presenter.BuildPreviewInspector` — a kind table → words; free-in-open-space vs every-snap-occupied are different sentences; `KindText` summarises the *joints* rather than the ambiguous merged `Kind` | ghost in the world and a card that agrees with it, joint for joint |
 | **S10** | Removal forecast (model) | `FRemovalForecast ForecastRemoval(const FStructure&, int32 PieceIndex, int32 PieceCap)` — copy, remove, `SolveAndBreak` on the copy | `Core.RemovalForecast` — a corbel keystone drops N and the live structure is **bit-identical afterwards**; an isolated grounded pad drops 0; above the cap it refuses rather than running | — |
 | **S11** | Removal forecast (panel) | `ForecastText` + the `X` toggle + the 200 ms hover settle | `Presenter.ForecastText` — four states (off / nothing falls / N fall / too large) are four distinct sentences | the block populated on a load-bearing brick |
-| **S12** | **Load overlay** | 3 × `EBrickHighlight`, 3 materials, 3 `RequiredContent.h` rows + swatch constants, `RefreshLoadOverlay()`, precedence below `Hovered` | `World.Session.LoadOverlayPrecedence` — an overlaid brick that is hovered still draws `Hovered`; the band per piece is its worst joint's band; toggling off restores `None` | a wall tinted green through amber to red at its base — the money shot |
+| **S12** (LANDED 2026-09-15; the `L` shortcut deferred, see CURRENT_STATE S12-a) | **Load overlay** | 3 × `EBrickHighlight`, 3 materials, 3 `RequiredContent.h` rows + swatch constants, `RefreshLoadOverlay()`, precedence below `Hovered` | `World.Session.LoadOverlayYieldsToHover` — an overlaid brick that is hovered still draws `Hovered`; the band per piece is its worst joint's band; toggling off restores `None` | a wall tinted green through amber to red at its base — the money shot |
 | **S13** | Joint lines | `DrawDebugLine` between the inspected piece and each neighbour, coloured through `BrickNeighbourSwatchColours` | `World.Session.JointLineColours` — line *i*'s colour is swatch *i*, which is the far brick's overlay slot | a brick with six coloured lines matching six coloured neighbours |
 | **S14** | Status readout | `FSessionStatusReadout` | `Presenter.SessionStatus` — every figure, including `not solved` before any solve | the strip's right end |
 | **S15** | `F1` hides the UI; narrow-width layout | a `bool` + `FToolbarLayout(WidthPx)` | `Core.SessionToolbar.LayoutDropsCaptionsBeforeButtons` | 1280 and 1000 side by side; a clean plate with `F1` down |

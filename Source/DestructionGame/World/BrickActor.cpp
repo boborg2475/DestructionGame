@@ -3,6 +3,7 @@
 #include "World/BrickActor.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "Core/PieceMenu.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "RequiredContent.h"
@@ -18,6 +19,18 @@ EBrickHighlight BrickHighlightForNeighbourSlot(int32 ColourSlot)
 	case 3: return EBrickHighlight::Neighbour3;
 	case 4: return EBrickHighlight::Neighbour4;
 	case 5: return EBrickHighlight::Neighbour5;
+	}
+
+	return EBrickHighlight::None;
+}
+
+EBrickHighlight BrickHighlightForLoadBand(EJointMarginBand Band)
+{
+	switch (Band)
+	{
+	case EJointMarginBand::Comfortable: return EBrickHighlight::LoadComfortable;
+	case EJointMarginBand::Caution:     return EBrickHighlight::LoadCaution;
+	case EJointMarginBand::Critical:    return EBrickHighlight::LoadCritical;
 	}
 
 	return EBrickHighlight::None;
@@ -73,6 +86,27 @@ ABrickActor::ABrickActor()
 	HoverMaterial = HoverMaterialAsset.Object;
 	SelectedMaterial = SelectedMaterialAsset.Object;
 	InspectedMaterial = InspectedMaterialAsset.Object;
+
+	/*
+	 * AND THE LOAD OVERLAY'S THREE BANDS, ONE FINDER EACH.
+	 *
+	 * THREE NAMED PROPERTIES AND NOT AN ARRAY, for the reason the three above are named: these are
+	 * indexed by a STATE rather than by a number the model computed, and an array indexed by a state
+	 * carries a null in None's slot that the required-content sweep cannot tell from a reference
+	 * which stopped resolving.
+	 */
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> LoadComfortableMaterialAsset(
+		DestructionContent::BrickLoadComfortableMaterialPath);
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> LoadCautionMaterialAsset(
+		DestructionContent::BrickLoadCautionMaterialPath);
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> LoadCriticalMaterialAsset(
+		DestructionContent::BrickLoadCriticalMaterialPath);
+
+	LoadComfortableMaterial = LoadComfortableMaterialAsset.Object;
+	LoadCautionMaterial = LoadCautionMaterialAsset.Object;
+	LoadCriticalMaterial = LoadCriticalMaterialAsset.Object;
 
 	/*
 	 * AND ONE OVERLAY PER COLOUR SLOT OF THE JOINT READOUT, SO A ROW OF NUMBERS AND A BRICK IN THE
@@ -163,6 +197,24 @@ void ABrickActor::SetHighlighted(EBrickHighlight NewHighlight)
 
 	case EBrickHighlight::Inspected:
 		Overlay = InspectedMaterial;
+		break;
+
+	/*
+	 * THE THREE LOAD BANDS, NAMED HERE RATHER THAN ANSWERED THROUGH BrickHighlightForLoadBand'S
+	 * INVERSE. The six neighbours below go through their slot mapping because a slot is a NUMBER and
+	 * walking the mapping is cheaper than a hand-written inverse of it; a band is one of three states
+	 * with a property each, so a case each is the same shape the three above already have.
+	 */
+	case EBrickHighlight::LoadComfortable:
+		Overlay = LoadComfortableMaterial;
+		break;
+
+	case EBrickHighlight::LoadCaution:
+		Overlay = LoadCautionMaterial;
+		break;
+
+	case EBrickHighlight::LoadCritical:
+		Overlay = LoadCriticalMaterial;
 		break;
 
 	/*

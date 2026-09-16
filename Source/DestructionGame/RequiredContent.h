@@ -133,6 +133,61 @@ namespace DestructionContent
 		TEXT("/Game/Materials/M_BrickInspected.M_BrickInspected");
 
 	/**
+	 * WHAT A PIECE WEARS UNDER THE LOAD OVERLAY, one asset per band of EJointMarginBand.
+	 *
+	 * THREE ASSETS BECAUSE THERE ARE THREE BANDS, AND THE BANDS ARE THE MODEL'S. The presenter
+	 * already decides which side of 10x and of 2x margin a joint sits on — SESSION_UI_DESIGN §a
+	 * principle 6's "the colour of a thing is the model's decision; the hue is the widget's" — so
+	 * these three are the hue half of a decision made in Core/PieceMenu.cpp, and a fourth asset
+	 * would be a band nothing can produce.
+	 *
+	 * THE SAME KIND OF OVERLAY AS M_BrickHover, which matters more here than anywhere: the overlay
+	 * covers EVERY LIVE PIECE at once rather than one or six, so anything that replaced the brick's
+	 * own material would repaint the whole wall and anything opaque would hide the bond. They are
+	 * additive overlays on a non-Nanite mesh, exactly as the highlight family above is.
+	 *
+	 * GREEN, AMBER, RED — AND THEY ARE THE HEADROOM BAR'S OWN THREE. The bar in the details window
+	 * already paints the three bands; the overlay saying amber for a joint the panel beside it draws
+	 * gold would be two answers to one question. The three colours are the array directly below,
+	 * which the panel now reads as well.
+	 */
+	inline constexpr const TCHAR* BrickLoadComfortableMaterialPath =
+		TEXT("/Game/Materials/M_BrickLoadComfortable.M_BrickLoadComfortable");
+	inline constexpr const TCHAR* BrickLoadCautionMaterialPath =
+		TEXT("/Game/Materials/M_BrickLoadCaution.M_BrickLoadCaution");
+	inline constexpr const TCHAR* BrickLoadCriticalMaterialPath =
+		TEXT("/Game/Materials/M_BrickLoadCritical.M_BrickLoadCritical");
+
+	/**
+	 * AND WHAT EACH BAND IS PAINTED IN — the emissive constant of the three materials above, the
+	 * fill of the details window's headroom bar, and the dot beside a falling brick, ALL ONE HOME.
+	 *
+	 * BESIDE THE PATHS FOR THE REASON BrickNeighbourSwatchColours IS: the colour and the asset are
+	 * one row, and adjacency is what makes a fourth band arriving with a path and no colour visible
+	 * to the person adding it. These three lived as file-statics inside
+	 * DestructionGamePlayerController.cpp, where the three new MATERIALS could not reach them — and
+	 * a brick tinted one green beside a bar drawn another is two answers to one question, drawn two
+	 * inches apart. That is exactly how the neighbour palette drifted before it was moved here.
+	 *
+	 * INDEXED BY EJointMarginBand'S OWN ENUMERATORS, so Critical is zero, Caution is one and
+	 * Comfortable is two. The band is a number the model computed — the same shape the neighbour
+	 * slots have — and an array keyed on it needs no switch at the call site to turn the answer back
+	 * into a name. The enum lives in Core/PieceMenu.h and this header deliberately does not include
+	 * it: this is a table of content, not of presentation logic, and the ordering is asserted where
+	 * the two meet rather than by a dependency in this direction.
+	 *
+	 * EQUALITY HERE IS NOT EQUALITY ON SCREEN, exactly as the neighbour palette's comment says at
+	 * length: the bar is a flat Slate fill over a near-black panel and the brick is a translucent
+	 * unlit overlay composited over a lit surface. The two are one DECISION, not one pixel, and
+	 * nobody may retune either to match a screenshot.
+	 */
+	inline constexpr FLinearColor BrickLoadSwatchColours[] = {
+		FLinearColor(0.95f, 0.24f, 0.20f, 1.0f),
+		FLinearColor(0.95f, 0.66f, 0.13f, 1.0f),
+		FLinearColor(0.18f, 0.76f, 0.55f, 1.0f)
+	};
+
+	/**
 	 * ONE MATERIAL PER COLOUR SLOT OF THE JOINT READOUT, so a row of numbers and a brick in the
 	 * world are the same colour.
 	 *
