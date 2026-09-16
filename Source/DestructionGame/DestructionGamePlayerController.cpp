@@ -1169,6 +1169,24 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 		}
 		break;
 
+	case EToolbarButtonId::JointAuto:
+	case EToolbarButtonId::JointMortar:
+	case EToolbarButtonId::JointDry:
+	case EToolbarButtonId::JointNail:
+	case EToolbarButtonId::JointScrew:
+	case EToolbarButtonId::JointBolt:
+		/*
+		 * THE STATE'S CHOICE, READ AFTER THE TRANSITION, exactly as the piece and the course are.
+		 * The component is told WHICH joint, never which chip — and the profile is looked up at the
+		 * door rather than here, so nothing between the strip and the placement holds a library
+		 * address it could get wrong.
+		 */
+		if (BuildComponent != nullptr)
+		{
+			BuildComponent->JointChoice = SessionToolbarState.Joint;
+		}
+		break;
+
 	case EToolbarButtonId::CourseDown:
 	case EToolbarButtonId::CourseUp:
 		if (BuildComponent != nullptr)

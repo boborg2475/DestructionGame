@@ -67,7 +67,10 @@ widget comparing a string against `"grounded"` to pick a green is the failure mo
 A strip across the bottom of the viewport, full width, **48 px tall** in Slate's scaled space
 (owner feedback 2026-09-15: the first 72 px cut was "way too big"), sitting on the toolbar fill. It
 is always up during a session. It never scrolls and never wraps: the longest configuration (Build
-mode, ten chips) measures under 900 px, which clears 1280 with room.
+mode, SIXTEEN chips since UI-6's joint control) MUST measure under 1280 px at Slate scale 1 — pinned by
+`World.Session.BuildStripFitsTheReferenceWidth`; the long captions ("Course down"/"Course up",
+"Timber plate"/"Timber lintel") overflowed it at ~1430 px and are shortened to the design's own `-`/`+`,
+"Plate"/"Lintel".
 
 ```
 [ Mode tabs ] │ [ ------------- the current mode's settings ------------- ] │ [ command ]
@@ -112,13 +115,14 @@ one-line read in the controller and the transition is still the tested pure one.
 | Control | Id | Caption | Caption 2 (small) | Active when | Enabled when | Shortcut |
 |---|---|---|---|---|---|---|
 | Piece: brick | `PieceBrick` | `Brick` | `21.5 × 10.25 × 6.5 cm` | `Piece == Brick` | always | `1` |
-| Piece: plate | `PieceTimberPlate` | `Timber plate` | `67.5 × 10.25 × 10 cm` | `Piece == TimberPlate` | always | `2` |
-| Piece: lintel | `PieceTimberLintel` | `Timber lintel` | `90 × 10.25 × 10 cm` | `Piece == TimberLintel` | always | `3` |
+| Piece: plate | `PieceTimberPlate` | `Plate` (the swatch says timber) | `67.5 × 10.25 × 10 cm` | `Piece == TimberPlate` | always | `2` |
+| Piece: lintel | `PieceTimberLintel` | `Lintel` | `90 × 10.25 × 10 cm` | `Piece == TimberLintel` | always | `3` |
 | Placement: snap | `PlacementSnap` | `Snap` | — | `Placement == Snap` | always | `G` (toggles) |
 | Placement: free | `PlacementFree` | `Free` | — | `Placement != Snap` | always | `G` (toggles) |
-| Course down | `CourseDown` | `−` | — | never (command) | `Course >= 1` | `[` |
+| Joint: auto / mortar / dry / nail / screw / bolt (UI-6, 2026-09-16) | `JointAuto` … `JointBolt` | `Auto` `Mortar` `Dry` `Nail` `Screw` `Bolt` | — | `Joint == choice` (exactly one) | always | none yet |
+| Course down | `CourseDown` | `-` (ASCII; landed) | — | never (command) | `Course >= 1` | `[` |
 | Course readout | *(not a button)* | `Course 3` | — | — | — | — |
-| Course up | `CourseUp` | `+` | — | never (command) | always | `]` |
+| Course up | `CourseUp` | `+` (landed) | — | never (command) | always | `]` |
 | Clear build | `ClearBuild` | `Clear build` | — | never (command) | `bHasStructure` | `Backspace` |
 
 Four notes, each of which is a decision rather than a transcription:
@@ -271,7 +275,7 @@ screen — the fail-open direction is right here, because the failure being guar
 that cannot be reached, not one that overlaps a strip). One function, one red test, and both
 existing clamps compose with it unchanged.
 
-Sizes: `PieceMenuPanelSizePx` already answers **640 × h** for `Full` and a measured-narrower size for
+Sizes: `PieceMenuPanelSizePx` answers **800 × h** for `Full` since UI-6 (640 before; the joint rows now carry the profile's library name, and the 27-character `generalpurposemortarperpend` is what cost the width — INTERIM until the display-name column J1 lands, when the width is re-measured) and a measured-narrower size for
 `Compact`, both derived from the longest line the readout can compose. The Build-mode variant is a
 third detail mode (below) and gets its own measured size by the same rule.
 

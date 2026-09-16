@@ -808,10 +808,10 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 		 */
 		TestTrue(
 			*FString::Printf(
-				TEXT("fixture: the Build strip is the ten-chip configuration; the model offers %d "
+				TEXT("fixture: the Build strip is the sixteen-chip configuration; the model offers %d "
 					 "[%s]"),
 				Model.Num(), *SessionDescribeModel(Model)),
-			Model.Num() == 10);
+			Model.Num() == 16);
 
 		SessionCheckStripMatchesModel(*this, TEXT("Build mode"), BuildChips, Model);
 	}
@@ -1768,6 +1768,259 @@ bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parame
 				TEXT("the Build strip must draw both a brick swatch and a timber one for the shape "
 					 "claim to be sayable; brick %d, timber %d"),
 				bHaveBrick ? 1 : 0, bHaveTimber ? 1 : 0));
+		}
+	}
+
+	TestWorld.End();
+
+	return true;
+}
+
+/**
+ * THE STRIP FITS THE SCREEN IT IS DESIGNED FOR. Every chip of the longest configuration lands inside
+ * a 1280 px viewport, and none of them is blank.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * Laid out at Slate scale 1, the RIGHT EDGE of the last chip on the Build strip — the sixteen-chip
+ * configuration, the widest the model ever produces — sits within the design's 1280 px reference
+ * width less the bar's own 10 px edge padding, and so does the Destroy strip's.
+ *
+ * =====================================================================================
+ * WHY THIS IS A DEFECT AND NOT A NICETY
+ * =====================================================================================
+ *
+ * SESSION_UI_DESIGN §b: the strip "never scrolls and never wraps". An `SHorizontalBox` of
+ * `AutoWidth` slots does exactly what it is told — it lays every chip out at its desired width and
+ * runs off the end of the bar, drawing nothing to say it has. MEASURED on the sixteen-chip Build
+ * strip: the run spans x = 10 .. 1439, so on a 1280-wide viewport the last three chips — the course
+ * stepper and `Clear build` — are simply NOT ON SCREEN, and the player has no way to reach a control
+ * that the model reports as live and that a keyboard shortcut still fires. A greyed chip at least
+ * says why it cannot be clicked; a chip past the right edge says nothing at all.
+ *
+ * The strip only got this wide when UI-6 added six joint chips to a row that already carried two
+ * eleven-character piece captions and two eleven-character course captions. §b's own answer is
+ * SHORTER CAPTIONS — `-`/`+` for the arrows, "Plate"/"Lintel" for the timber pieces.
+ *
+ * =====================================================================================
+ * WHY THE WIDTH AND NOT THE WORDS
+ * =====================================================================================
+ *
+ * This test deliberately pins NO caption. The captions are the model's, `Core.SessionToolbar.Labels`
+ * owns which words they are, and a test that demanded "-" here would forbid the icon §e eventually
+ * wants, or a two-chip stepper, or a narrower font — every one of which fixes the actual problem.
+ * What is not negotiable is that the sixteenth chip is on the screen.
+ *
+ * AND THE SECOND ROW IS WHAT STOPS THE CHEAPEST FIX. A strip whose captions were all blanked would
+ * measure beautifully and be unusable, so every chip must still READ something. Between the two
+ * rows, the only way through is captions that are shorter AND present.
+ *
+ * =====================================================================================
+ * THE MEASUREMENT, AND WHY 1920 IS STILL THE SURFACE
+ * =====================================================================================
+ *
+ * The chips sit in `AutoWidth` slots, so each takes its DESIRED width and the arrangement is the
+ * same whatever surface it is handed — 1920 is used only because it is wide enough that nothing is
+ * clipped or squeezed, which is what makes the reading a measurement of the strip rather than of the
+ * viewport. The fixture asserts that the run really did fit inside the measuring surface, so a strip
+ * that one day overflowed 1920 as well fails saying "measure it somewhere wider" rather than going
+ * quietly green on a clamped number.
+ *
+ * THE REFERENCE WIDTH AND THE PADDING ARE TRANSCRIBED FROM §b RATHER THAN IMPORTED, for the reason
+ * every other number in this suite is: a test that asked the widget for its own padding would agree
+ * with it however wrong it was.
+ *
+ * NEEDS A TICKING WORLD: a world, because the controller is an actor and entering Build mode opens a
+ * structure on the subsystem. It never ticks one and it never needs an RHI — layout is arithmetic on
+ * desired sizes, exactly as its three siblings above rely on.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSessionToolbarBuildStripFitsTheReferenceWidthTest,
+	"DestructionGame.World.Session.BuildStripFitsTheReferenceWidth",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSessionToolbarBuildStripFitsTheReferenceWidthTest::RunTest(const FString& Parameters)
+{
+	using namespace BrickWorldTestSupport;
+	using namespace DestructionSession;
+	using namespace SessionToolbarPanelTestSupport;
+
+	/*
+	 * THE DESIGN'S OWN REFERENCE WIDTH (§b), and the bar's own edge padding with it. A chip whose
+	 * right edge is past 1280 - 10 is a chip a 1280-wide player cannot click.
+	 */
+	constexpr float ReferenceViewportWidthPx = 1280.0f;
+	constexpr float BarEdgePaddingPx = 10.0f;
+	constexpr float RightmostAllowedEdgePx = ReferenceViewportWidthPx - BarEdgePaddingPx;
+
+	FBrickTestWorld TestWorld;
+
+	if (!TestWorld.Begin(*this))
+	{
+		return true;
+	}
+
+	ADestructionGamePlayerController* const Controller =
+		TestWorld.World->SpawnActor<ADestructionGamePlayerController>();
+
+	TestNotNull(TEXT("fixture: the test world should spawn the game's player controller"), Controller);
+
+	if (Controller == nullptr)
+	{
+		TestWorld.End();
+		return true;
+	}
+
+	/** One strip measured: every chip's caption and the span it occupies. */
+	struct FMeasuredChip
+	{
+		FString Caption;
+		float LeftPx = 0.0f;
+		float RightPx = 0.0f;
+	};
+
+	const auto MeasureStripChips = [](ADestructionGamePlayerController& Player)
+	{
+		TArray<FMeasuredChip> Measured;
+
+		for (const FArrangedWidget& Entry : SessionArrangeStrip(Player))
+		{
+			if (Entry.Widget->GetType() != TEXT("SButton"))
+			{
+				continue;
+			}
+
+			const FVector2f PositionPx = FVector2f(Entry.Geometry.GetAbsolutePosition());
+			const FVector2f SizePx = FVector2f(Entry.Geometry.GetAbsoluteSize());
+
+			FMeasuredChip& Chip = Measured.AddDefaulted_GetRef();
+			Chip.Caption = SessionWidgetText(Entry.Widget);
+			Chip.LeftPx = PositionPx.X;
+			Chip.RightPx = PositionPx.X + SizePx.X;
+		}
+
+		return Measured;
+	};
+
+	const auto DescribeMeasured = [](const TArray<FMeasuredChip>& Measured)
+	{
+		if (Measured.Num() == 0)
+		{
+			return FString(TEXT("<no chips>"));
+		}
+
+		FString Line;
+
+		for (int32 Index = 0; Index < Measured.Num(); ++Index)
+		{
+			Line += FString::Printf(
+				TEXT("%s'%s'[%g..%g]"),
+				Index == 0 ? TEXT("") : TEXT(", "),
+				*Measured[Index].Caption, Measured[Index].LeftPx, Measured[Index].RightPx);
+		}
+
+		return Line;
+	};
+
+	/* Both strips, because the claim is about the widget's layout and not about one mode's list. */
+	struct FStripCase
+	{
+		const TCHAR* Description;
+		ESessionMode Mode;
+	};
+
+	const FStripCase Cases[] = {
+		{
+			TEXT("the BUILD strip — the sixteen-chip configuration, the widest the model ever draws, "
+				 "and the one §b names as the measurement"),
+			ESessionMode::Build,
+		},
+		{
+			TEXT("and the DESTROY strip, which is four chips and should already fit — here so the "
+				 "claim is about the strip rather than about one mode's list"),
+			ESessionMode::Destroy,
+		},
+	};
+
+	for (const FStripCase& Case : Cases)
+	{
+		const EToolbarButtonId Tab = Case.Mode == ESessionMode::Build
+			? EToolbarButtonId::ModeBuild
+			: EToolbarButtonId::ModeDestroy;
+
+		if (!Controller->OnToolbarButton(Tab))
+		{
+			AddError(FString::Printf(
+				TEXT("fixture: %s — the mode tab must be clickable for the strip to be drawn"),
+				Case.Description));
+
+			continue;
+		}
+
+		const TArray<FToolbarButton> Model =
+			SessionToolbarButtons(Controller->GetSessionToolbarState());
+
+		const TArray<FMeasuredChip> Measured = MeasureStripChips(*Controller);
+
+		AddInfo(FString::Printf(
+			TEXT("%s: %d chip(s) — %s"),
+			Case.Description, Measured.Num(), *DescribeMeasured(Measured)));
+
+		if (Measured.Num() != Model.Num() || Measured.Num() == 0)
+		{
+			AddError(FString::Printf(
+				TEXT("fixture: %s — the strip must draw one chip per model row (%d) to be measured; it "
+					 "drew %d. ToolbarPanelDrawsTheModel owns that claim"),
+				Case.Description, Model.Num(), Measured.Num()));
+
+			continue;
+		}
+
+		const FMeasuredChip& Last = Measured.Last();
+
+		/*
+		 * THE MEASURING SURFACE HAS TO BE BIGGER THAN THE THING BEING MEASURED, or the number read
+		 * back is a clamp rather than a width.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("fixture: %s — the run must fit inside the %g px arrange surface for its width to "
+					 "be a measurement at all; its last chip ends at %g"),
+				Case.Description, SessionPanelWidthPx, Last.RightPx),
+			Last.RightPx < SessionPanelWidthPx - BarEdgePaddingPx);
+
+		/*
+		 * THE CLAIM. §b: the strip never scrolls and never wraps, so every chip has to be ON the
+		 * reference screen — a control drawn past the right edge is one the player cannot reach while
+		 * the model goes on reporting it live.
+		 */
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: THE LAST CHIP ('%s') MUST END BY %g px — the design's %g px reference width "
+					 "less the bar's %g px edge padding. It ends at %g, which puts it %g px off the "
+					 "right-hand side of a %g-wide viewport, where it can never be clicked and nothing "
+					 "on screen says why. The fix is SHORTER CAPTIONS in the model (§b's own -/+ and "
+					 "Plate/Lintel), never a narrower test. The strip measured [%s]"),
+				Case.Description, *Last.Caption, RightmostAllowedEdgePx, ReferenceViewportWidthPx,
+				BarEdgePaddingPx, Last.RightPx, Last.RightPx - RightmostAllowedEdgePx,
+				ReferenceViewportWidthPx, *DescribeMeasured(Measured)),
+			Last.RightPx <= RightmostAllowedEdgePx);
+
+		/*
+		 * AND EVERY CHIP STILL SAYS SOMETHING. This is the row that stops the cheap fix: a strip with
+		 * every caption blanked measures perfectly and is a row of identical dark lozenges.
+		 */
+		for (int32 Index = 0; Index < Measured.Num(); ++Index)
+		{
+			TestFalse(
+				*FString::Printf(
+					TEXT("%s: chip %d (the model calls it '%s') MUST STILL READ SOMETHING — a strip that "
+						 "fits because its captions were emptied is a row of identical lozenges, which "
+						 "is a worse UI than one that overflows. The strip measured [%s]"),
+					Case.Description, Index, *Model[Index].Label, *DescribeMeasured(Measured)),
+				Measured[Index].Caption.TrimStartAndEnd().IsEmpty());
 		}
 	}
 

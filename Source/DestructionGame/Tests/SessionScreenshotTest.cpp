@@ -2,8 +2,11 @@
 
 #include "Misc/AutomationTest.h"
 
+#include "Core/Connection.h"
 #include "Core/PieceMenu.h"
+#include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/SessionToolbar.h"
+#include "Core/Structure.h"
 #include "Core/StructureBinding.h"
 #include "DestructionGamePlayerController.h"
 #include "Engine/Engine.h"
@@ -52,20 +55,25 @@
  *
  *   FRAME 1 "Session_Build": the plot as the level opens — Build mode, the strip up — with a small
  *   wall laid through `PrimaryAlongRay`: three bricks on course 0, two staggered onto them on course
- *   1, and a timber plate bearing across the top on course 2. A gold GHOST hovers at the cursor, one
- *   plate-length past the wall. The strip reads Build lit, Timber plate lit, Course 3 (index 2 — the readout is one-based), Clear build
- *   live.
+ *   1, and a timber plate bearing across the top on course 2. THE PLATE IS SCREWED DOWN: the `Screw`
+ *   joint chip is clicked before it is laid and put back to `Auto` afterwards, so the bricks keep
+ *   their inferred mortar and the plate's two bearings carry the fastener the player picked — the
+ *   UI-6 choice, committed. A gold GHOST hovers at the cursor, one plate-length past the wall. The
+ *   strip reads Build lit, Plate lit, Auto lit again, Course 3 (index 2 — the readout is
+ *   one-based), Clear build live.
  *
- *   FRAME 2 "Session_Destroy": Destroy mode (ghost gone), a real trace into the MIDDLE BOTTOM brick,
- *   hovered then clicked, so the piece menu / details window is open on it with its Delete row and
- *   its joint readout, and the strip's Run structure is live. THE READOUT SAYS "not solved yet" AND
- *   0.0 N ON ALL FOUR JOINTS, AND THAT IS THE TRUTH RATHER THAN A BROKEN PICTURE: laying a piece
- *   never solves (the live-feedback-off default this build was laid under), so the numbers arrive
- *   only once something asks for them — Run, or a delete. The joint LIST is real: four joints, two
- *   heads on its own course and two beds above.
+ *   FRAME 2 "Session_Destroy": Destroy mode (ghost gone), a real trace into the COURSE-1 BRICK UNDER
+ *   THE PLATE, hovered then clicked, so the piece menu / details window is open on it with its
+ *   Delete row and its joint readout, and the strip's Run structure is live. THAT BRICK IS THE ONE
+ *   WORTH PHOTOGRAPHING BECAUSE ITS ROWS NAME THREE DIFFERENT PROFILES: two mortared beds under it,
+ *   a perpend head joint beside it, and the SCREWED bearing the plate is fastened to it with — which
+ *   is the only place in the game a player can see which joint they chose. THE READOUT SAYS "not
+ *   solved yet" AND 0.0 N ON EVERY JOINT, AND THAT IS THE TRUTH RATHER THAN A BROKEN PICTURE: laying
+ *   a piece never solves (the live-feedback-off default this build was laid under), so the numbers
+ *   arrive only once something asks for them — Run, or a delete.
  *
- *   FRAME 3 "Session_Deleted": the Delete row chosen. The middle bottom brick is gone and whatever
- *   the delete's own solve condemns has settled.
+ *   FRAME 3 "Session_Deleted": the Delete row chosen. That brick is gone and whatever the delete's
+ *   own solve condemns has settled.
  *
  *   FRAME 4 "Session_LoadOverlay": the Destroy strip's `Load overlay` chip clicked ON over that same
  *   settled wall — every piece wearing the band of its worst joint, and the chip lit. TAKEN AFTER THE
@@ -235,9 +243,22 @@ namespace SessionScreenshotSupport
 	constexpr double Course1CursorsXCm[] = { 11.25, 33.75 };
 	constexpr double PlateCursorXCm = 22.5;
 
-	/** The middle bottom brick — the second one laid, so piece index 1. This is the one deleted. */
-	constexpr int32 MiddleBottomPieceIndex = 1;
-	constexpr double MiddleBottomCentreXCm = 22.5;
+	/**
+	 * THE BRICK THE DETAILS WINDOW IS OPENED ON, AND THE ONE THEN DELETED: the FIRST COURSE-1 BRICK,
+	 * the fourth piece laid, so index 3 — at x = 11.25, one course up.
+	 *
+	 * CHOSEN BECAUSE IT CARRIES A SCREWED BEARING, which is the whole point of the frame. The plate
+	 * is laid with the `Joint screw` chip down, and it bears on BOTH course-1 bricks whichever of
+	 * the two tied centred snaps it takes (see GhostCursorXCm: centred at 11.25 it spans -22.5..45,
+	 * centred at 33.75 it spans 0..67.5, and both bricks sit inside either span). So this brick's
+	 * readout shows its two mortared beds, its perpend head joint and ONE SCREW — four rows that
+	 * name three different profiles, which is a picture of the joint-choice feature rather than of a
+	 * readout that prints the same word four times.
+	 *
+	 * IT USED TO BE THE MIDDLE BOTTOM BRICK (index 1, x = 22.5), whose four joints are all mortar.
+	 */
+	constexpr int32 InspectedPieceIndex = 3;
+	constexpr double InspectedCentreXCm = 11.25;
 
 	/**
 	 * WHERE THE GHOST HOVERS IN FRAME 1, AND WHY IT IS THIS FAR OUT.
@@ -755,6 +776,25 @@ bool FSessionShotBuildCommand::Update()
 		TEXT("and Course up again, onto course 2"),
 		Controller->OnToolbarButton(EToolbarButtonId::CourseUp));
 
+	/*
+	 * AND THE PLATE IS SCREWED DOWN — the joint chip clicked BEFORE the piece it applies to.
+	 *
+	 * THE BRICKS ARE LEFT ON AUTO ON PURPOSE. The choice applies to the NEXT placement only, so a
+	 * wall laid under Auto and a plate laid under Screw is one structure carrying three different
+	 * profiles — mortared beds, the inferred weak perpends, and two screwed bearings — which is what
+	 * makes frame 2's readout show the setting rather than one word repeated. A session that screwed
+	 * everything would photograph the same picture whether the chip worked or not.
+	 */
+	Test->TestTrue(
+		TEXT("the Screw chip must be clickable — a joint choice has no precondition"),
+		Controller->OnToolbarButton(EToolbarButtonId::JointScrew));
+
+	Test->TestTrue(
+		*FString::Printf(
+			TEXT("and the session must record it before the plate is laid; it reads %d"),
+			static_cast<int32>(Controller->GetSessionToolbarState().Joint)),
+		Controller->GetSessionToolbarState().Joint == EJointChoice::Screw);
+
 	{
 		const bool bPlaced = Controller->PrimaryAlongRay(
 			LayRayStart(PlateCursorXCm, PlatePlaneCourse2Cm),
@@ -766,6 +806,20 @@ bool FSessionShotBuildCommand::Update()
 				PlateCursorXCm, bPlaced ? 1 : 0),
 			bPlaced);
 	}
+
+	/*
+	 * BACK TO AUTO, so the strip in frame 1 is the one a player sees by default and the Free brick
+	 * frame 5 lays is not photographed under a setting this frame happened to leave down.
+	 */
+	Test->TestTrue(
+		TEXT("the Auto chip must be clickable"),
+		Controller->OnToolbarButton(EToolbarButtonId::JointAuto));
+
+	Test->TestTrue(
+		*FString::Printf(
+			TEXT("and the session must be back on Auto for the frame; it reads %d"),
+			static_cast<int32>(Controller->GetSessionToolbarState().Joint)),
+		Controller->GetSessionToolbarState().Joint == EJointChoice::Auto);
 
 	/* --- what the wall actually is, asserted before it is photographed ------------------------ */
 
@@ -802,6 +856,70 @@ bool FSessionShotBuildCommand::Update()
 				 "and at least 2 bearings under the plate, so at least 8 connections. It holds %d"),
 			Binding->GetStructure().NumConnections()),
 		Binding->GetStructure().NumConnections() >= 8);
+
+	/*
+	 * AND THE PLATE'S BEARINGS ARE SCREWS — BOTH OF THEM, READ OFF THE GRAPH.
+	 *
+	 * THE MECHANISM READING BEHIND FRAME 2'S WORDS. The details window is a presenter over these
+	 * connections, so if the chip never reached the door the readout would name mortar and the frame
+	 * would be a perfectly sharp picture of the wrong structure. TWO of them because one override
+	 * written onto the first joint leaves the far end of a screwed plate resting on friction, which
+	 * is `World.BuildMode.JointOverrideRidesThroughPlacement`'s own claim and is worth a sentence
+	 * here because this is the only place the whole click-to-committed-physics path runs at once.
+	 *
+	 * ALL FIVE FIELDS, because the library is siblings by construction and one field would admit a
+	 * neighbour.
+	 */
+	{
+		const int32 PlatePiece = Binding->NumPieces() - 1;
+
+		int32 Bearings = 0;
+		int32 ScrewedBearings = 0;
+
+		for (int32 Index = 0; Index < Binding->GetStructure().NumConnections(); ++Index)
+		{
+			const FConnection& Conn = Binding->GetStructure().GetConnection(Index);
+
+			if (Conn.PieceA != PlatePiece && Conn.PieceB != PlatePiece)
+			{
+				continue;
+			}
+
+			++Bearings;
+
+			const FConnectionStrength& S = Conn.Strength;
+			const FConnectionStrength& Want = DestructionProfiles::Screw;
+
+			const bool bIsScrew = S.CompressiveStrengthMPa == Want.CompressiveStrengthMPa
+				&& S.ShearCohesionMPa == Want.ShearCohesionMPa
+				&& S.TensileStrengthMPa == Want.TensileStrengthMPa
+				&& S.FrictionCoefficient == Want.FrictionCoefficient
+				&& S.MaxShearStrengthMPa == Want.MaxShearStrengthMPa;
+
+			ScrewedBearings += bIsScrew ? 1 : 0;
+
+			Test->AddInfo(FString::Printf(
+				TEXT("plate joint #%d (%d-%d): {c %g, coh %g, t %g, mu %g, cap %g}"),
+				Index, Conn.PieceA, Conn.PieceB,
+				S.CompressiveStrengthMPa, S.ShearCohesionMPa, S.TensileStrengthMPa,
+				S.FrictionCoefficient, S.MaxShearStrengthMPa));
+		}
+
+		Test->TestEqual(
+			FString::Printf(
+				TEXT("fixture: the plate must bear on BOTH course-1 bricks, it formed %d joint(s)"),
+				Bearings),
+			Bearings, 2);
+
+		Test->TestEqual(
+			FString::Printf(
+				TEXT("AND BOTH OF THEM MUST CARRY THE SCREW THE PLAYER CHOSE: %d of %d do. A plate "
+					 "screwed at one end and resting on friction at the other is the defect the "
+					 "every-joint claim exists for, and the details window in frame 2 is reading these "
+					 "very connections"),
+				ScrewedBearings, Bearings),
+			ScrewedBearings, 2);
+	}
 
 	for (int32 Piece = 0; Piece < Binding->NumPieces(); ++Piece)
 	{
@@ -841,7 +959,7 @@ bool FSessionShotBuildCommand::Update()
 
 	Test->TestTrue(
 		*FString::Printf(
-			TEXT("frame 1's strip must read Build, Timber plate, course 2, with a structure to command; "
+			TEXT("frame 1's strip must read Build, Plate, course 2, with a structure to command; "
 				 "the state is %s"),
 			*StateBits(State)),
 		State.Mode == ESessionMode::Build
@@ -916,8 +1034,8 @@ bool FSessionShotInspectCommand::Update()
 		TEXT("the Destroy tab is always live"),
 		Controller->OnToolbarButton(EToolbarButtonId::ModeDestroy));
 
-	const FVector InspectStart(MiddleBottomCentreXCm, -InspectReachCm, BrickPlaneCourse0Cm);
-	const FVector InspectEnd(MiddleBottomCentreXCm, InspectReachCm, BrickPlaneCourse0Cm);
+	const FVector InspectStart(InspectedCentreXCm, -InspectReachCm, BrickPlaneCourse1Cm);
+	const FVector InspectEnd(InspectedCentreXCm, InspectReachCm, BrickPlaneCourse1Cm);
 
 	/* Pointing first, which is what a player's cursor does on its way to the click. */
 	Controller->PointerAlongRay(InspectStart, InspectEnd);
@@ -937,13 +1055,14 @@ bool FSessionShotInspectCommand::Update()
 
 	Test->TestTrue(
 		*FString::Printf(
-			TEXT("and it must offer Delete against the MIDDLE BOTTOM brick, {%d,%d} — an overhead ray "
-				 "would have hit the plate instead, which is why this one goes along Y. It shows [%s]"),
-			Record.StructureId, MiddleBottomPieceIndex, *DescribeMenuRows(Rows)),
+			TEXT("and it must offer Delete against the COURSE-1 BRICK UNDER THE PLATE, {%d,%d} — an "
+				 "overhead ray would have hit the plate instead, which is why this one goes along Y. It "
+				 "shows [%s]"),
+			Record.StructureId, InspectedPieceIndex, *DescribeMenuRows(Rows)),
 		DeleteRow != INDEX_NONE
 			&& Rows.IsValidIndex(DeleteRow)
 			&& Rows[DeleteRow].Ref.StructureId == Record.StructureId
-			&& Rows[DeleteRow].Ref.PieceIndex == MiddleBottomPieceIndex);
+			&& Rows[DeleteRow].Ref.PieceIndex == InspectedPieceIndex);
 
 	if (DeleteRow == INDEX_NONE || !Rows.IsValidIndex(DeleteRow))
 	{
@@ -970,6 +1089,50 @@ bool FSessionShotInspectCommand::Update()
 	Test->AddInfo(FString::Printf(
 		TEXT("readout: '%s' / support '%s' / '%s' over %d joint(s)"),
 		*Inspector.CountText, *Inspector.SupportText, *Inspector.JointsText, Inspector.Joints.Num()));
+
+	/*
+	 * THE ROWS IN THIS PICTURE NAME THREE DIFFERENT PROFILES, AND THAT IS WHAT MAKES IT A PICTURE OF
+	 * THE JOINT CHOICE.
+	 *
+	 * The brick under the plate wears mortared beds, a perpend head joint and the ONE SCREW the
+	 * player chose when they laid the plate — so a human looking at the frame can read the setting
+	 * they clicked back off the window, which is the only place the choice is ever visible (a screwed
+	 * plate and a dry-bedded one sit in exactly the same pixels). Asserted as COUNTS rather than as a
+	 * sentence: `Presenter.JointRowNamesTheProfile` owns the wording, and what this frame needs is
+	 * that both words are in the picture at once.
+	 */
+	{
+		const auto RowSays = [](const FString& Text, const TCHAR* Word)
+		{
+			return Text.Contains(FString(Word), ESearchCase::IgnoreCase);
+		};
+
+		int32 ScrewRows = 0;
+		int32 MortarRows = 0;
+
+		for (const FInspectorJointRow& Row : Inspector.Joints)
+		{
+			Test->AddInfo(FString::Printf(TEXT("joint row: '%s'"), *Row.Text));
+
+			ScrewRows += RowSays(Row.Text, TEXT("screw")) ? 1 : 0;
+			MortarRows += RowSays(Row.Text, TEXT("mortar")) || RowSays(Row.Text, TEXT("perpend"))
+				? 1 : 0;
+		}
+
+		Test->TestEqual(
+			FString::Printf(
+				TEXT("the inspected brick must show EXACTLY ONE screwed row — the plate's bearing over "
+					 "it — and %d did"),
+				ScrewRows),
+			ScrewRows, 1);
+
+		Test->TestTrue(
+			*FString::Printf(
+				TEXT("and at least one mortared row beside it, or the frame shows one word and proves "
+					 "nothing about the choice; %d did"),
+				MortarRows),
+			MortarRows >= 1);
+	}
 
 	/* And the Destroy strip's own command, which this frame claims to be showing live. */
 	const FSessionToolbarState& State = Controller->GetSessionToolbarState();
@@ -1061,9 +1224,9 @@ bool FSessionShotDeleteCommand::Update()
 
 	Test->TestTrue(
 		*FString::Printf(
-			TEXT("THE MIDDLE BOTTOM BRICK MUST BE GONE: IsPieceRemoved(%d) reports %d"),
-			MiddleBottomPieceIndex, Binding->IsPieceRemoved(MiddleBottomPieceIndex) ? 1 : 0),
-		Binding->IsPieceRemoved(MiddleBottomPieceIndex));
+			TEXT("THE INSPECTED BRICK MUST BE GONE: IsPieceRemoved(%d) reports %d"),
+			InspectedPieceIndex, Binding->IsPieceRemoved(InspectedPieceIndex) ? 1 : 0),
+		Binding->IsPieceRemoved(InspectedPieceIndex));
 
 	/*
 	 * AND ONLY THAT ONE IS REMOVED. The cascade RELEASES pieces it condemns rather than removing them,

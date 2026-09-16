@@ -143,6 +143,16 @@ public:
 	DestructionSession::EPlacementMode PlacementMode = DestructionSession::EPlacementMode::Snap;
 
 	/**
+	 * What fastens every joint the next placement forms — the toolbar's six joint chips, turned into
+	 * a profile by DestructionSession::JointOverrideFor on the way to both subsystem doors.
+	 *
+	 * A BARE PUBLIC FIELD, EXACTLY LIKE PlacementMode, AND FOR THE SAME DECIDED REASON (S4): the
+	 * controller's FSessionToolbarState owns the choice and OnToolbarButton is the only thing in
+	 * production that writes this copy of it. It is public so the fixtures can set it directly.
+	 */
+	DestructionSession::EJointChoice JointChoice = DestructionSession::EJointChoice::Auto;
+
+	/**
 	 * The height in cm of the horizontal build plane the cursor's ray picks a point ON.
 	 *
 	 * DERIVED FROM THE COURSE AND THE CURRENT PIECE'S HALF HEIGHT (DestructionSession::

@@ -144,8 +144,8 @@ namespace PieceIdentityTestSupport
  * &Material verbatim), so the slice made FNamedMaterialProfile::Profile a REFERENCE to the extern,
  * which is what lets the presenter look the name up by identity. This test asserts only the
  * strings, and it deliberately contains a row that fails if anything ever compares by value again.
- * (FNamedConnectionProfile still holds its profile by value — the same trap, logged in
- * CURRENT_STATE for whoever first asks a connection which row it is.)
+ * (FNamedConnectionProfile::Strength is now a REFERENCE too, made one by UI-6 when the details
+ * window first had to ask a joint which row fastens it — the same trap, closed the same way.)
  *
  * THE SIZE IS THE BOX'S FULL DIMENSIONS, WHICH IS TWICE WHAT THE GRAPH STORES. FPieceBox::ExtentCm
  * is a HALF size, matching FBox::GetExtent, and a readout printing it raw would present a standard

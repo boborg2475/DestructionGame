@@ -63,6 +63,19 @@ struct FBuildPreview
 	 * disagree, because a distance-ranked snap can lift a course-0 cursor onto a next-course bed.
 	 */
 	bool bGrounded = false;
+
+	/**
+	 * Which shipped library row the joints WOULD carry, so a ghost card can say "perpend" before the
+	 * click — the override when one was given, the row the FIRST joint's inferred profile matches
+	 * when it was not, and null when the placement forms no joint at all.
+	 *
+	 * IT IS A SHIPPED ROW'S ADDRESS AND NEVER A POINTER INTO THE DECISION. The inferred profile is
+	 * returned BY VALUE by BuildMode::JointForContact and lives inside the placement decision, which
+	 * dies with the call; a pointer into that would dangle the moment the preview returned — a card
+	 * reading a freed stack frame, which prints something plausible for exactly as long as it takes
+	 * to ship.
+	 */
+	const FConnectionStrength* JointProfile = nullptr;
 };
 
 /**
@@ -142,13 +155,21 @@ public:
 	 *
 	 * Placement selects WHICH candidate is committed: Snap takes the best-ranked one, Free takes
 	 * the requested pose verbatim, bonded to nothing.
+	 *
+	 * AND A NON-NULL JointOverride FASTENS **EVERY** JOINT THIS PLACEMENT FORMS WITH THAT PROFILE,
+	 * in place of the one BuildMode::JointForContact inferred. It is a SUBSTITUTION rather than a
+	 * different placement: the same pose, the same joints, the same normals and the same areas — and
+	 * the joints ALREADY in the structure are never re-priced, because a chip that re-fastened a wall
+	 * the player finished an hour ago would change committed physics with nothing on screen saying
+	 * so. Null infers, exactly as this door did before the override existed.
 	 */
 	FPieceRef PlaceBuildPiece(
 		int32 StructureId,
 		const FVector& RequestedCentreCm,
 		const FVector& ExtentCm,
 		const DestructionProfiles::FMaterialProfile& Material,
-		DestructionSession::EPlacementMode Placement = DestructionSession::EPlacementMode::Snap);
+		DestructionSession::EPlacementMode Placement = DestructionSession::EPlacementMode::Snap,
+		const FConnectionStrength* JointOverride = nullptr);
 
 	/**
 	 * The snap decision PlaceBuildPiece WOULD commit at this pose, WITHOUT mutating anything —
@@ -157,13 +178,18 @@ public:
 	 * mode), so the returned kind, snapped centre, joint count and pose-derived grounded flag match
 	 * the piece a following PlaceBuildPiece at the same pose lands. Fails closed: bValid is false
 	 * for an unknown structure id, and for a Placement the solver offered no candidate for.
+	 *
+	 * JointOverride IS THE COMMIT'S, TOO, and it is passed here for the reason every other argument
+	 * is: a ghost that previewed the inference over a piece the click will screw down is a ghost
+	 * predicting a different structure. It names the answer on FBuildPreview::JointProfile.
 	 */
 	FBuildPreview PreviewBuildPiece(
 		int32 StructureId,
 		const FVector& RequestedCentreCm,
 		const FVector& ExtentCm,
 		const DestructionProfiles::FMaterialProfile& Material,
-		DestructionSession::EPlacementMode Placement = DestructionSession::EPlacementMode::Snap) const;
+		DestructionSession::EPlacementMode Placement = DestructionSession::EPlacementMode::Snap,
+		const FConnectionStrength* JointOverride = nullptr) const;
 
 	/**
 	 * Where to put a brick actor, and how big to scale it, so its MESH bounds fill the box —

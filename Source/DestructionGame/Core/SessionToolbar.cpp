@@ -3,6 +3,7 @@
 #include "Core/SessionToolbar.h"
 
 #include "Core/BuildMode/SnapSolver.h"
+#include "Core/Profiles/ConnectionProfiles.h"
 
 namespace DestructionSession
 {
@@ -139,6 +140,19 @@ namespace DestructionSession
 			case EToolbarButtonId::PieceTimberLintel:
 			case EToolbarButtonId::PlacementSnap:
 			case EToolbarButtonId::PlacementFree:
+
+			/*
+			 * AND THE SIX JOINT CHIPS ARE SETTINGS, for the reason the placement pair is one: the
+			 * choice is a property of the NEXT placement rather than something that happens, so it
+			 * latches, it is lit, and it sits in front of the rule the commands are past.
+			 */
+			case EToolbarButtonId::JointAuto:
+			case EToolbarButtonId::JointMortar:
+			case EToolbarButtonId::JointDry:
+			case EToolbarButtonId::JointNail:
+			case EToolbarButtonId::JointScrew:
+			case EToolbarButtonId::JointBolt:
+
 			case EToolbarButtonId::CourseDown:
 			case EToolbarButtonId::CourseUp:
 
@@ -189,12 +203,41 @@ namespace DestructionSession
 			case EToolbarButtonId::ModeBuild:         return TEXT("Build");
 			case EToolbarButtonId::ModeDestroy:       return TEXT("Destroy");
 			case EToolbarButtonId::PieceBrick:        return TEXT("Brick");
-			case EToolbarButtonId::PieceTimberPlate:  return TEXT("Timber plate");
-			case EToolbarButtonId::PieceTimberLintel: return TEXT("Timber lintel");
+
+			/*
+			 * THE PIECE, NOT ITS MATERIAL — THE SWATCH IS ALREADY SAYING "TIMBER". Each of these chips
+			 * carries a plank-shaped block of timber colour before its caption, so the word "Timber"
+			 * in front of both of them was the same fact drawn twice, at eleven characters a time on
+			 * a strip that has to fit a 1280 px screen without scrolling or wrapping (§b).
+			 */
+			case EToolbarButtonId::PieceTimberPlate:  return TEXT("Plate");
+			case EToolbarButtonId::PieceTimberLintel: return TEXT("Lintel");
 			case EToolbarButtonId::PlacementSnap:     return TEXT("Snap");
 			case EToolbarButtonId::PlacementFree:     return TEXT("Free");
-			case EToolbarButtonId::CourseDown:        return TEXT("Course down");
-			case EToolbarButtonId::CourseUp:          return TEXT("Course up");
+
+			/*
+			 * THE FASTENER'S OWN WORD, AND "Dry" RATHER THAN "DryStone". The library row is DryStone
+			 * and the chip is one slot of a six-slot control on a 48 px bar; what may not drift is
+			 * the word a player reads as "no bond at all", which both spellings carry.
+			 */
+			case EToolbarButtonId::JointAuto:         return TEXT("Auto");
+			case EToolbarButtonId::JointMortar:       return TEXT("Mortar");
+			case EToolbarButtonId::JointDry:          return TEXT("Dry");
+			case EToolbarButtonId::JointNail:         return TEXT("Nail");
+			case EToolbarButtonId::JointScrew:        return TEXT("Screw");
+			case EToolbarButtonId::JointBolt:         return TEXT("Bolt");
+			/*
+			 * THE STEPPER'S ARROWS SAY NOTHING THE READOUT BETWEEN THEM DOES NOT. `CourseLabel` is
+			 * drawn between these two chips, so "Course down" and "Course up" spelled the word
+			 * "Course" a third and a fourth time for 210 px of a 1280 px strip that may not scroll.
+			 *
+			 * ASCII, DELIBERATELY. §b writes the pair as the typographic minus and plus; the minus is
+			 * U+2212 and a TEXT() literal is the one place in this codebase a non-ASCII character is
+			 * at the mercy of the source file's encoding and the compiler's assumption about it. The
+			 * hyphen reads identically at 11 px and cannot be mangled into a question mark.
+			 */
+			case EToolbarButtonId::CourseDown:        return TEXT("-");
+			case EToolbarButtonId::CourseUp:          return TEXT("+");
 			case EToolbarButtonId::ToggleLoadOverlay: return TEXT("Load overlay");
 			case EToolbarButtonId::ClearBuild:        return TEXT("Clear build");
 			case EToolbarButtonId::RunStructure:      return TEXT("Run structure");
@@ -221,6 +264,22 @@ namespace DestructionSession
 			case EToolbarButtonId::PieceTimberLintel: return State.Piece == EBuildPieceKind::TimberLintel;
 			case EToolbarButtonId::PlacementSnap:     return State.Placement == EPlacementMode::Snap;
 			case EToolbarButtonId::PlacementFree:     return State.Placement != EPlacementMode::Snap;
+
+			/*
+			 * AUTO IS LIT WHEN NOTHING IS OVERRIDDEN, WHICH IS THE SAME ANSWER DERIVED ONCE RATHER
+			 * THAN TWICE. `State.Joint == Auto` would read the same today and come apart on a choice
+			 * this build has never heard of: JointOverrideFor hands that back to the inference, so
+			 * the strip would show a segmented control with NO chip lit over a session that is, in
+			 * fact, on Auto. It is the argument ModeAccent makes for deriving the Destroy accent from
+			 * the same comparison the Destroy strip is drawn from.
+			 */
+			case EToolbarButtonId::JointAuto:         return JointOverrideFor(State.Joint) == nullptr;
+
+			case EToolbarButtonId::JointMortar:       return State.Joint == EJointChoice::Mortar;
+			case EToolbarButtonId::JointDry:          return State.Joint == EJointChoice::Dry;
+			case EToolbarButtonId::JointNail:         return State.Joint == EJointChoice::Nail;
+			case EToolbarButtonId::JointScrew:        return State.Joint == EJointChoice::Screw;
+			case EToolbarButtonId::JointBolt:         return State.Joint == EJointChoice::Bolt;
 
 			/*
 			 * A SETTING LATCHES, WHICH IS THE WHOLE DIFFERENCE BETWEEN THIS CHIP AND Run structure
@@ -287,6 +346,12 @@ namespace DestructionSession
 				EToolbarButtonId::PieceTimberLintel,
 				EToolbarButtonId::PlacementSnap,
 				EToolbarButtonId::PlacementFree,
+				EToolbarButtonId::JointAuto,
+				EToolbarButtonId::JointMortar,
+				EToolbarButtonId::JointDry,
+				EToolbarButtonId::JointNail,
+				EToolbarButtonId::JointScrew,
+				EToolbarButtonId::JointBolt,
 				EToolbarButtonId::CourseDown,
 				EToolbarButtonId::CourseUp,
 				EToolbarButtonId::ClearBuild }
@@ -344,6 +409,18 @@ namespace DestructionSession
 		case EToolbarButtonId::PieceTimberLintel: After.Piece = EBuildPieceKind::TimberLintel; break;
 		case EToolbarButtonId::PlacementSnap:     After.Placement = EPlacementMode::Snap; break;
 		case EToolbarButtonId::PlacementFree:     After.Placement = EPlacementMode::Free; break;
+
+		/*
+		 * ONE CHIP OF A SEGMENTED CONTROL REPLACES THE CHOICE; it never adds to it, and Auto is a
+		 * choice like the other five rather than the absence of one — a player who has screwed a
+		 * plate down and now wants an ordinary bedded brick has no other way to say so.
+		 */
+		case EToolbarButtonId::JointAuto:         After.Joint = EJointChoice::Auto; break;
+		case EToolbarButtonId::JointMortar:       After.Joint = EJointChoice::Mortar; break;
+		case EToolbarButtonId::JointDry:          After.Joint = EJointChoice::Dry; break;
+		case EToolbarButtonId::JointNail:         After.Joint = EJointChoice::Nail; break;
+		case EToolbarButtonId::JointScrew:        After.Joint = EJointChoice::Screw; break;
+		case EToolbarButtonId::JointBolt:         After.Joint = EJointChoice::Bolt; break;
 
 		case EToolbarButtonId::CourseDown:
 			/*
@@ -482,6 +559,35 @@ namespace DestructionSession
 		Look.bBoldCaption = false;
 
 		return Look;
+	}
+
+	const FConnectionStrength* JointOverrideFor(EJointChoice Joint)
+	{
+		switch (Joint)
+		{
+		/*
+		 * THE BED BOND AND NOT THE PERPEND. Mortar is the player asking for a full bond wherever the
+		 * piece lands, head joints included — a wall stronger than a bonded one, which is the whole
+		 * reason the choice exists. The weak perpend is a thing the INFERENCE picks for a vertical
+		 * face, so there is no chip for it.
+		 */
+		case EJointChoice::Mortar: return &DestructionProfiles::GeneralPurposeMortar;
+
+		case EJointChoice::Dry:    return &DestructionProfiles::DryStone;
+		case EJointChoice::Nail:   return &DestructionProfiles::Nail;
+		case EJointChoice::Screw:  return &DestructionProfiles::Screw;
+		case EJointChoice::Bolt:   return &DestructionProfiles::Bolt;
+
+		case EJointChoice::Auto:   break;
+		}
+
+		/*
+		 * Auto AND A CHOICE THIS BUILD HAS NEVER HEARD OF BOTH OVERRIDE NOTHING — see the header.
+		 * The unknown arm is the fail-closed end: handing back the inference credits a joint with
+		 * exactly what it would have had before there was a chip, where a plausible row would fasten
+		 * it with a profile nobody picked.
+		 */
+		return nullptr;
 	}
 
 	FVector BuildPieceHalfExtentCm(EBuildPieceKind Kind)

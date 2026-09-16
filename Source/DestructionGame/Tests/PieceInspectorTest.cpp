@@ -2131,8 +2131,8 @@ bool FPieceMenuJointReadoutTest::RunTest(const FString& Parameters)
 	 * connection index is the only name a joint has.
 	 */
 	const TArray<FString> ExpectedLines = {
-		TEXT("#0  course 1 · #1  bed below  49.0 N  0.049 %  2041× margin"),
-		TEXT("#1  course 3 · #1  bed above  29.4 N  0.029 %  3401× margin"),
+		TEXT("#0  course 1 · #1  bed below  generalpurposemortar  49.0 N  0.049 %  2041× margin"),
+		TEXT("#1  course 3 · #1  bed above  generalpurposemortar  29.4 N  0.029 %  3401× margin"),
 		TEXT("#2  course 2 · #2  head  broken (went with a removed piece)"),
 	};
 
@@ -3132,7 +3132,7 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		{
 			TEXT("a thousandth of capacity: the top decade, and the bar is full"),
 			0, 49.0, 0.1, TEXT("1000× margin"), 1.0,
-			TEXT("#0  course 2 · #1  bed above  49.0 N  0.100 %  1000× margin"),
+			TEXT("#0  course 2 · #1  bed above  generalpurposemortar  49.0 N  0.100 %  1000× margin"),
 			EJointMarginBand::Comfortable
 		},
 		{
@@ -3143,13 +3143,13 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("a hundredth of capacity: two decades of bar, and a whole-number margin"),
 			1, 490.0, 1.0, TEXT("100× margin"), 2.0 / 3.0,
-			TEXT("#1  course 2 · #2  bed above  490.0 N  1.000 %  100× margin"),
+			TEXT("#1  course 2 · #2  bed above  generalpurposemortar  490.0 N  1.000 %  100× margin"),
 			EJointMarginBand::Comfortable
 		},
 		{
 			TEXT("a tenth of capacity: one decade of bar, and a margin worth a decimal"),
 			2, 4900.0, 10.0, TEXT("10.0× margin"), 1.0 / 3.0,
-			TEXT("#2  course 2 · #3  bed above  4.9 kN  10.000 %  10.0× margin"),
+			TEXT("#2  course 2 · #3  bed above  generalpurposemortar  4.9 kN  10.000 %  10.0× margin"),
 			EJointMarginBand::Caution
 		},
 		{
@@ -3161,7 +3161,7 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("exactly at the limit: the bar is empty and there is no margin to quote"),
 			3, 49000.0, 100.0, TEXT("no margin left"), 0.0,
-			TEXT("#3  course 2 · #4  bed above  49.0 kN  100.000 %  no margin left"),
+			TEXT("#3  course 2 · #4  bed above  generalpurposemortar  49.0 kN  100.000 %  no margin left"),
 			EJointMarginBand::Critical
 		},
 		{
@@ -3173,7 +3173,7 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("four decades of margin: the bar pegs full and the number does not"),
 			4, 4.9, 0.01, TEXT("10000× margin"), 1.0,
-			TEXT("#4  course 2 · #5  bed above  4.9 N  0.010 %  10000× margin"),
+			TEXT("#4  course 2 · #5  bed above  generalpurposemortar  4.9 N  0.010 %  10000× margin"),
 			EJointMarginBand::Comfortable
 		},
 		{
@@ -3184,7 +3184,7 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("just under a hundred times: still a decimal"),
 			5, 499.8, 1.02, TEXT("98.0× margin"), 0.66379994274602749,
-			TEXT("#5  course 2 · #6  bed above  499.8 N  1.020 %  98.0× margin"),
+			TEXT("#5  course 2 · #6  bed above  generalpurposemortar  499.8 N  1.020 %  98.0× margin"),
 			EJointMarginBand::Comfortable
 		},
 		{
@@ -3198,13 +3198,13 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("past the limit: still no margin, never a fraction of one"),
 			6, 98000.0, 200.0, TEXT("no margin left"), 0.0,
-			TEXT("#6  course 2 · #7  bed above  98.0 kN  200.000 %  no margin left"),
+			TEXT("#6  course 2 · #7  bed above  generalpurposemortar  98.0 kN  200.000 %  no margin left"),
 			EJointMarginBand::Critical
 		},
 		{
 			TEXT("twelve and a half times, between two decades"),
 			7, 3920.0, 8.0, TEXT("12.5× margin"), 0.36563667100268549,
-			TEXT("#7  course 2 · #8  bed above  3.9 kN  8.000 %  12.5× margin"),
+			TEXT("#7  course 2 · #8  bed above  generalpurposemortar  3.9 kN  8.000 %  12.5× margin"),
 			EJointMarginBand::Comfortable
 		},
 		{
@@ -3217,14 +3217,14 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("exactly one thousand newtons reads in kilonewtons"),
 			8, 1000.0, 2.0408163265306123, TEXT("49.0× margin"), 0.56339869334283788,
-			TEXT("#8  course 2 · #9  bed above  1.0 kN  2.041 %  49.0× margin"),
+			TEXT("#8  course 2 · #9  bed above  generalpurposemortar  1.0 kN  2.041 %  49.0× margin"),
 			EJointMarginBand::Comfortable
 		},
 		{
 			/* And one tenth of a newton under it, which does not. */
 			TEXT("a tenth of a newton below the switch still reads in newtons"),
 			9, 999.9, 2.0406122448979592, TEXT("49.0× margin"), 0.5634131705494404,
-			TEXT("#9  course 2 · #10  bed above  999.9 N  2.041 %  49.0× margin"),
+			TEXT("#9  course 2 · #10  bed above  generalpurposemortar  999.9 N  2.041 %  49.0× margin"),
 			EJointMarginBand::Comfortable
 		},
 		{
@@ -3242,7 +3242,7 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("an intact joint carrying nothing has no margin figure and a full bar"),
 			10, 0.0, 0.0, TEXT("no load"), 1.0,
-			TEXT("#10  course 1 · #1  head  0.0 N  0.000 %  no load"),
+			TEXT("#10  course 1 · #1  head  generalpurposemortar  0.0 N  0.000 %  no load"),
 			EJointMarginBand::Comfortable
 		},
 		{
@@ -3295,7 +3295,7 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("a far end nobody can place falls back to the ref-shaped label"),
 			12, 49.0, 0.1, TEXT("1000× margin"), 1.0,
-			TEXT("#12  brick 21:13  bed above  49.0 N  0.100 %  1000× margin"),
+			TEXT("#12  brick 21:13  bed above  generalpurposemortar  49.0 N  0.100 %  1000× margin"),
 			EJointMarginBand::Comfortable
 		},
 		{
@@ -3339,7 +3339,7 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			 */
 			TEXT("a joint levered open by an off-centre load says what is bending it"),
 			13, 548.8, 49.0, TEXT("2.0× margin"), 0.1032679733238288,
-			TEXT("#13  course 2 · #12  bed above  548.8 N  49.000 %  2.0× margin  2195.2 N·cm bending"),
+			TEXT("#13  course 2 · #12  bed above  generalpurposemortar  548.8 N  49.000 %  2.0× margin  2195.2 N·cm bending"),
 			EJointMarginBand::Caution,
 			2195.2
 		},

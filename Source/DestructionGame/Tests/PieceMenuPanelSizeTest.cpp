@@ -15,28 +15,32 @@
 namespace PieceMenuPanelSizeTestSupport
 {
 	/**
-	 * THE PANEL AS IT IS DRAWN TODAY, TRANSCRIBED RATHER THAN IMPORTED, AND IT IS 640 x 560 px.
+	 * THE PANEL AS IT IS DRAWN TODAY, TRANSCRIBED RATHER THAN IMPORTED, AND IT IS 800 x 560 px.
 	 *
 	 * PieceMenuPanelWidthPx and PieceMenuPanelHeightPx are file-static in
 	 * DestructionGamePlayerController.cpp and a test may not reach them — which is the right way
 	 * round, and is about to stop mattering: the whole point of this test is that the size becomes
 	 * the PRESENTER's answer, so that the mode can change it and something can read what it said.
 	 *
-	 * NEITHER NUMBER IS PICKED, AND THE WIDTH IS THE ONE WITH A DERIVATION. 640 px is a measured
+	 * NEITHER NUMBER IS PICKED, AND THE WIDTH IS THE ONE WITH A DERIVATION. 800 px is a measured
 	 * floor plus a stated clearance: World.Menu.TheReadoutFitsInsideThePanel lays the readout out
 	 * over a ragged wall whose corbel sits on one off-centre patch — the only wall shape that bends
-	 * at all, and so the only one whose joint line grows the bending clause — and puts the floor at
-	 * 617.5 px. 640 clears it by 22 px, about four characters at the readout's font, which is the
-	 * room a course number in the hundreds still wants in the game's own 1,220-brick wall. The
-	 * height is a fit rather than a measurement: 560 px is about half a 1080 viewport, so the list,
-	 * the readout and the action rows are all on screen at once.
+	 * at all, and so the only one whose joint line grows the bending clause — and the measurement
+	 * MOVED when the joint row learned to name the profile that fastens it: the same line overran
+	 * the old 640 px panel by 101 px carrying `generalpurposemortar`, and the floor allows a further
+	 * 39 px for `generalpurposemortarperpend`, which is seven characters longer and is in every
+	 * bonded wall in the game. 640 + 101 + 39 = 780, and at 800 the sweep measures 59 px of spare on
+	 * the mortar line — the perpend's 39 plus about 20 px of real clearance, the same few characters
+	 * of room the old figure kept. The height is a fit rather than a measurement: 560 px
+	 * is about half a 1080 viewport, so the list, the readout and the action rows are all on screen
+	 * at once.
 	 *
 	 * PINNING THEM HERE IS WHAT KEEPS *Full* HONEST WHILE COMPACT IS ADDED. A mode-dependent size
 	 * whose Full arm quietly drifted would take the measured floor with it, and the wall that can
 	 * see that floor is expensive to build — so the cheap claim lives here and the expensive one
 	 * stays where the pixels are.
 	 */
-	constexpr double FullPanelWidthPx = 640.0;
+	constexpr double FullPanelWidthPx = 800.0;
 	constexpr double FullPanelHeightPx = 560.0;
 
 	/**
@@ -93,7 +97,7 @@ namespace PieceMenuPanelSizeTestSupport
  * and it takes up so much of the screen." The first half is answered — ClampPanelOffset is in and
  * the title strip drags. The second is not: EPieceMenuDetail::Compact drops the joint table and the
  * headroom scale, and then draws the lines that are left into a rectangle overridden to exactly
- * 640 x 560 px whatever the mode, with the readout in a slot that FILLS whatever it is given. So a
+ * 800 x 560 px whatever the mode, with the readout in a slot that FILLS whatever it is given. So a
  * compact panel is a full-sized panel with fewer words in it, and the player gets back no screen at
  * all. Making the size a function of the mode is the behaviour; making it a function LIVING HERE is
  * what makes the behaviour assertable.
@@ -108,7 +112,7 @@ namespace PieceMenuPanelSizeTestSupport
  * axes rather than one, and that it is smaller by enough to be worth a player's while.
  *
  * FULL IS PINNED EXACTLY AND COMPACT IS BOUNDED, WHICH IS THE ASYMMETRY THE DERIVATION IMPLIES.
- * 640 x 560 is a measured floor plus a stated clearance and a retune of it is a decision somebody
+ * 800 x 560 is a measured floor plus a stated clearance and a retune of it is a decision somebody
  * should have to make on purpose; the compact figure is a derivation this test cannot perform, so
  * pinning one here would be inventing the number the task exists to avoid inventing.
  *
@@ -203,7 +207,7 @@ bool FPieceMenuPanelSizeTest::RunTest(const FString& Parameters)
 	 */
 	TestEqual(
 		FString::Printf(
-			TEXT("the full panel must stay the measured 640 x 560 px, it is %s"), *DescribeSize(Full)),
+			TEXT("the full panel must stay the measured 800 x 560 px, it is %s"), *DescribeSize(Full)),
 		Full, FVector2D(FullPanelWidthPx, FullPanelHeightPx));
 
 	/* And the mode nobody declared answers as Full does, rather than hiding half the readout. */

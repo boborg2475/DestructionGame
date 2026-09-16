@@ -2,7 +2,10 @@
 
 #include "Core/PieceMenu.h"
 
+#include "Core/Connection.h"
+#include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
+#include "Core/Structure.h"
 
 /*
  * EVERY NAME IN HERE CARRIES A Presenter PREFIX, for the reason Structure.cpp's header
@@ -37,6 +40,50 @@ namespace
 		}
 
 		return TEXT("no tier");
+	}
+
+	/**
+	 * WHAT FASTENS A JOINT, NAMED BY WHICH LIBRARY ROW IT IS — AND "custom" FOR ONE THAT IS NONE.
+	 *
+	 * THE ROLE IS NOT ENOUGH, WHICH IS THE WHOLE REASON THIS EXISTS. "bed below" is the same
+	 * sentence for a screwed plate and a dry-bedded one, and those two structures behave nothing
+	 * alike the moment either is run — the choice changes COMMITTED PHYSICS and nothing on screen
+	 * moves when it does, so the details window is the only place a player can find out what they
+	 * built.
+	 *
+	 * THE LOOKUP IS BY VALUE BECAUSE THE IDENTITY IS ALREADY GONE. An FConnection stores a COPY of
+	 * the profile it was made with, so there is no address left to compare by the time a joint is in
+	 * a wall;
+	 * FindConnectionProfileRow matches the five fields back to the shipped row. That is a lookup into
+	 * DATA rather than a branch per profile, which is what keeps connection types data — a row added
+	 * to the library is named here without touching this file.
+	 *
+	 * LOWER CASE BECAUSE IT SITS MID-SENTENCE. The library spells its rows GeneralPurposeMortar; the
+	 * line it lands in reads "#2  course 1 · #3  head  ...", and a capitalised name in the middle of
+	 * that reads as the start of a new clause.
+	 *
+	 * AND A STRENGTH THIS LIBRARY NEVER SHIPPED READS "custom" RATHER THAN GOING QUIET OR GUESSING.
+	 * Nothing in the game builds one today — every joint is made from a library row — but a hand-made
+	 * profile in a fixture, a future authored joint, or a connection index that names nothing would
+	 * all land here, and a row that silently dropped the word would read exactly like the ROLE-only
+	 * sentence this was written to end. Naming the nearest row instead would be worse: this library
+	 * is siblings by construction, so "nearest" is a plausible lie.
+	 */
+	FString PresenterWordForJointProfile(const FStructure& Structure, int32 ConnectionIndex)
+	{
+		if (ConnectionIndex >= 0 && ConnectionIndex < Structure.NumConnections())
+		{
+			const DestructionProfiles::FNamedConnectionProfile* const Row =
+				DestructionProfiles::FindConnectionProfileRow(
+					Structure.GetConnection(ConnectionIndex).Strength);
+
+			if (Row != nullptr && Row->Name != nullptr)
+			{
+				return FString(Row->Name).ToLower();
+			}
+		}
+
+		return FString(TEXT("custom"));
 	}
 
 	/**
@@ -797,26 +844,37 @@ namespace
 	/*
 	 * HOW MUCH SCREEN THE FULL PANEL TAKES, AND NEITHER FIGURE IS PICKED.
 	 *
-	 * THE WIDTH IS A MEASURED FLOOR PLUS A STATED CLEARANCE. 617.5 px is the longest line this
-	 * readout can compose — "#4  course 3 · #1  bed above  40.0 N  4.551 %  22.0× margin  150.0
-	 * N·cm bending", laid out on the ragged corbel wall, which is the only wall shape that bends at
-	 * all and so the only one from which this number is visible. World.Menu.TheReadoutFitsInside-
-	 * ThePanel measures it. 640 px clears it by 22 px, about four characters at the readout's font,
-	 * which is the room a course number in the hundreds still wants in the game's own 1,220-brick
-	 * wall.
+	 * THE WIDTH IS A MEASURED FLOOR PLUS A STATED CLEARANCE, AND THE FLOOR MOVED WHEN THE JOINT ROW
+	 * LEARNED TO NAME ITS PROFILE. The longest line this readout can compose is the bending clause
+	 * on the ragged corbel wall — the only wall shape that bends at all, and so the only one from
+	 * which this number is visible — which now reads "#4  course 3 · #1  bed above
+	 * generalpurposemortar  40.0 N  0.650 %  154× margin  150.0 N·cm bending" and overran the old
+	 * 640 px panel by 101 px. World.Menu.TheReadoutFitsInsideThePanel measures it.
+	 *
+	 * AND THE FLOOR IS SIZED FOR THE LONGEST *LIBRARY ROW*, NOT FOR THE FIXTURE'S. The measured
+	 * overrun is a line carrying `generalpurposemortar`; `generalpurposemortarperpend` is seven
+	 * characters longer and is in every bonded wall in the game, so the floor takes those seven
+	 * (about 39 px at this font) as well — otherwise the panel would fit the wall the test happens
+	 * to lay and clip the head joints of every other one. 640 + 101 + 39 = 780 is the floor. At 800
+	 * px the sweep MEASURES 59 px of spare on the mortar line, which is the perpend's 39 plus about
+	 * 20 px of real clearance: the same few characters of room the old figure kept.
 	 *
 	 * THE HEIGHT IS A FIT RATHER THAN A MEASUREMENT: 560 px is about half a 1080 viewport, so the
-	 * brick list, the readout and the action rows are all on screen at once.
+	 * brick list, the readout and the action rows are all on screen at once. It did not move —
+	 * naming the profile makes lines longer, never more numerous.
 	 *
 	 * PINNED TO THE PIXEL BY Presenter.PieceMenuPanelSize, as characterisation rather than as a
 	 * claim it can check: a Full arm that quietly drifted would take the measured floor with it,
 	 * and the wall that can see that floor is expensive to build.
 	 */
-	constexpr double PresenterFullPanelWidthPx = 640.0;
+	constexpr double PresenterFullPanelWidthPx = 800.0;
 	constexpr double PresenterFullPanelHeightPx = 560.0;
 
 	/*
-	 * AND HOW MUCH THE COMPACT PANEL TAKES, WHICH IS 0.7 OF EACH AXIS — HALF THE AREA.
+	 * AND HOW MUCH THE COMPACT PANEL TAKES, WHICH IS A FLOOR OF ITS OWN RATHER THAN A FRACTION OF
+	 * THE FULL ONE. It was 0.7 of each axis of a 640 px panel; the full width has since moved to fit
+	 * a line COMPACT DOES NOT DRAW, so following it would spend screen on the one complaint this
+	 * mode exists to answer. The figures below are unchanged and their own measurement stands.
 	 *
 	 * THE PLAYER'S COMPLAINT, VERBATIM: "it takes up so much of the screen." Compact already drops
 	 * the joint table and the headroom scale, so the sentences that set the full width are gone;
@@ -830,10 +888,10 @@ namespace
 	 * left towards it. Swept in World.Menu.TheReadoutFitsInsideThePanel, that gap closes at about
 	 * 231 px of panel and is still 74 px clear at 380 px. 448 px is comfortably outside it.
 	 *
-	 * THE HEIGHT FOLLOWS THE SAME FRACTION so the panel keeps its proportions rather than becoming a
-	 * band across the screen — EPieceMenuDetail::Compact has to be strictly smaller on BOTH axes,
-	 * and 0.7 x 0.7 leaves 49 % of the area, inside the two thirds the mode's own description of
-	 * itself promises.
+	 * THE HEIGHT IS 0.7 OF THE FULL PANEL'S so the panel keeps a sensible shape rather than becoming
+	 * a band across the screen — EPieceMenuDetail::Compact has to be strictly smaller on BOTH axes,
+	 * and 448 x 392 against 800 x 560 leaves 39 % of the area, well inside the two thirds the mode's
+	 * own description of itself promises.
 	 */
 	constexpr double PresenterCompactPanelWidthPx = 448.0;
 	constexpr double PresenterCompactPanelHeightPx = 392.0;
@@ -1214,10 +1272,12 @@ FPieceMenuInspector BuildPieceMenuInspector(
 
 	/*
 	 * THE BREAKOUT IS InspectPiece'S ANSWER CONVERTED AND WORDED, ROW FOR ROW, IN ITS
-	 * ORDER. Nothing here consults FConnection, a normal or a strength profile: the tier,
-	 * the force, the ratio and the two break fields are read straight off the model,
-	 * because a second derivation agrees to nine decimal places forever and still differs
-	 * in the last bit. That includes the ADJACENCY — a joint that has given is dropped
+	 * ORDER. Nothing here re-derives a NUMBER: the tier, the force, the ratio and the two
+	 * break fields are read straight off the model, because a second derivation agrees to
+	 * nine decimal places forever and still differs in the last bit. (The one thing read
+	 * off the graph is the joint's PROFILE, which the inspection does not carry and which
+	 * is a fact about the wall rather than about the solve.) That includes the ADJACENCY —
+	 * a joint that has given is dropped
 	 * from the solver's support lists before the tier is even decided, and it is exactly
 	 * the row a player who just pulled a brick is looking for.
 	 */
@@ -1318,15 +1378,31 @@ FPieceMenuInspector BuildPieceMenuInspector(
 		 * at 49 % of capacity beside 490.0 N at 1 %, and the term that reconciles them named
 		 * nowhere on the line.
 		 */
+		/*
+		 * AND WHAT HOLDS IT, BESIDE WHERE IT IS. The role says which face of the brick the joint is
+		 * on; this says what is IN it, which is the fact that decides whether the joint gives —
+		 * "bed below" is one sentence for a screwed plate and a dry-bedded one. It sits next to the
+		 * role because the two are one description of the joint, ahead of the three numbers that
+		 * describe its LOAD.
+		 *
+		 * READ OFF THE GRAPH RATHER THAN OFF THE INSPECTION, which is the one thing in this loop
+		 * that is. A profile is not a reading of the solve — a brick nobody has solved for is
+		 * fastened with exactly what it was built with — so there is no second derivation to drift
+		 * from: FJointInspection does not carry it, and giving it one would be adding a field to the
+		 * model so that the presenter could avoid a lookup.
+		 */
+		const FString ProfileWord =
+			PresenterWordForJointProfile(Binding.GetStructure(), Row.ConnectionIndex);
+
 		Row.Text = Row.bHasGiven
 			? FString::Printf(
 				TEXT("#%d  %s  %s  broken (went with a removed piece)"),
 				Row.ConnectionIndex, *OtherPieceText,
 				PresenterWordForJointRole(Row.Role))
 			: FString::Printf(
-				TEXT("#%d  %s  %s  %s  %.3f %%  %s%s"),
+				TEXT("#%d  %s  %s  %s  %s  %.3f %%  %s%s"),
 				Row.ConnectionIndex, *OtherPieceText,
-				PresenterWordForJointRole(Row.Role),
+				PresenterWordForJointRole(Row.Role), *ProfileWord,
 				*PresenterForceText(Row.ForceN), Row.UtilisationPercent, *Row.MarginText,
 				*PresenterBendingText(Row.MomentNCm));
 	}

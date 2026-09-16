@@ -139,8 +139,14 @@ FBuildPreview UBuildModeComponent::UpdatePreviewAt(const FVector& WorldCursorCm)
 		return FBuildPreview{};
 	}
 
+	/*
+	 * THE CHOICE IS TURNED INTO A PROFILE AT THE DOOR, and the ghost is previewed with the same
+	 * override the commit below will use — a ghost that previewed the inference over a piece the
+	 * click will screw down is a ghost predicting a different structure.
+	 */
 	const FBuildPreview Preview = Subsystem->PreviewBuildPiece(
-		StructureId, WorldCursorCm, CurrentExtentCm, *CurrentMaterial, PlacementMode);
+		StructureId, WorldCursorCm, CurrentExtentCm, *CurrentMaterial, PlacementMode,
+		DestructionSession::JointOverrideFor(JointChoice));
 
 	/*
 	 * THE GHOST TRACKS THE PREDICTED SNAP, NOT THE CURSOR. It sits at the snapped centre the
@@ -272,7 +278,8 @@ FPieceRef UBuildModeComponent::ConfirmPlace()
 	}
 
 	const FPieceRef Placed = Subsystem->PlaceBuildPiece(
-		StructureId, LastCursorCm, CurrentExtentCm, *CurrentMaterial, PlacementMode);
+		StructureId, LastCursorCm, CurrentExtentCm, *CurrentMaterial, PlacementMode,
+		DestructionSession::JointOverrideFor(JointChoice));
 
 	/* The preview is spent on this commit; a repeat confirm now fails the guard above. */
 	bHasValidPreview = false;

@@ -68,6 +68,39 @@ namespace DestructionSession
 	};
 
 	/**
+	 * What fastens the next piece the player lays.
+	 *
+	 * Auto IS ENUMERATOR ZERO AND IT IS NOT "NO CHOICE". It is the choice that hands every joint
+	 * back to BuildMode::JointForContact, which is what makes a brick bed in mortar and a plank bear
+	 * dry without the player having to say so — the answer a default-constructed session must give,
+	 * for the reason Mode defaults to Build: the default is the one that decides least.
+	 *
+	 * A CHOICE RATHER THAN A PROFILE POINTER ON THE STATE, for the reason EBuildPieceKind is a kind
+	 * rather than an extent and a material. The state is what the strip draws and what a save file
+	 * would carry; a raw pointer on it would be a library address serialised into a session, and the
+	 * chip that is lit would be decided by comparing one.
+	 *
+	 * THE FIVE NAMED ONES ARE LIBRARY ROWS, ONE EACH, and they are the whole vocabulary a player
+	 * gets — JointOverrideFor below is the map. There is deliberately no perpend chip: the weak
+	 * perpend is a thing the INFERENCE chooses for a vertical face, not a thing anybody asks for.
+	 */
+	enum class EJointChoice : uint8
+	{
+		/** The inference decides, per joint, exactly as it did before there was a chip. */
+		Auto,
+
+		/** The full general-purpose bed bond, in every joint the piece forms. */
+		Mortar,
+
+		/** No bond at all: compression and friction only. */
+		Dry,
+
+		Nail,
+		Screw,
+		Bolt,
+	};
+
+	/**
 	 * Everything the toolbar knows about the session, and the only thing a click changes.
 	 *
 	 * DURABLE STATE RATHER THAN WIDGET STATE. A controller that kept the mode in one field, the
@@ -82,6 +115,16 @@ namespace DestructionSession
 		EBuildPieceKind Piece = EBuildPieceKind::Brick;
 
 		EPlacementMode Placement = EPlacementMode::Snap;
+
+		/**
+		 * What fastens every joint the next placement forms.
+		 *
+		 * IT SURVIVES A TRIP THROUGH DESTROY MODE, which is the half this field exists to get wrong.
+		 * The Destroy strip draws none of the six chips, and ApplyToolbarButton's "the fields a
+		 * transition does not name survive it" rule is what brings the player back to the screws they
+		 * chose rather than to Auto — a difference they cannot see until the structure is run.
+		 */
+		EJointChoice Joint = EJointChoice::Auto;
 
 		/**
 		 * Which course the build plane is on. NEVER NEGATIVE.
@@ -139,6 +182,20 @@ namespace DestructionSession
 		PieceTimberLintel,
 		PlacementSnap,
 		PlacementFree,
+
+		/**
+		 * The six joint chips, in the enum's own order, drawn between the placement pair and the
+		 * course stepper. Both are segmented controls over the NEXT placement — how the piece is
+		 * positioned, then how it is fastened — so they read as one band, and neither is next to the
+		 * irreversible command past the rule.
+		 */
+		JointAuto,
+		JointMortar,
+		JointDry,
+		JointNail,
+		JointScrew,
+		JointBolt,
+
 		CourseDown,
 		CourseUp,
 
@@ -375,6 +432,29 @@ namespace DestructionSession
 	 * mode you are in — so the warning is a warm caption on an ordinary idle chip.
 	 */
 	FChipLook ChipLookFor(const FToolbarButton& Button, ESessionMode Mode);
+
+	/**
+	 * What a joint choice OVERRIDES every formed joint's profile with — or NOTHING, for Auto.
+	 *
+	 * A POINTER, AND nullptr IS A REAL ANSWER RATHER THAN A FAILURE. The override rides through
+	 * PreviewBuildPiece / PlaceBuildPiece as an optional profile, and "let the inference decide" has
+	 * to be expressible in that same type: a sentinel profile meaning "infer" would be a seventh
+	 * library row every consumer has to know to special-case, and the first one that forgot would
+	 * BOND A JOINT WITH IT.
+	 *
+	 * IT IS THE SHIPPED ROW'S OWN ADDRESS, NEVER A COPY, which is the identity rule
+	 * BuildPieceMaterial keeps for the palette and for the same reason. Two FConnectionStrengths with
+	 * equal fields are equal in everything except which row a retune moves, and this library is
+	 * siblings by construction — Nail, Screw and Bolt are one shape at three scales. A copy would go
+	 * on serving stale numbers after a re-anchor, and every joint the player screwed would be screwed
+	 * with them.
+	 *
+	 * A CHOICE THIS BUILD HAS NEVER HEARD OF OVERRIDES NOTHING, AND THAT IS THE FAIL-CLOSED END.
+	 * EJointChoice is a uint8 and a cast is all it takes to make one; answering with a plausible row
+	 * would fasten a joint with a profile nobody picked, where answering with nothing hands it back
+	 * to the inference that decided every joint in this game before the chip existed.
+	 */
+	const FConnectionStrength* JointOverrideFor(EJointChoice Joint);
 
 	/**
 	 * A piece kind's HALF extent, in centimetres.

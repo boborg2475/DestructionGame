@@ -6,6 +6,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Core/BuildMode/SnapSolver.h"
 #include "Core/Connection.h"
+#include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Engine/HitResult.h"
 #include "Engine/StaticMesh.h"
@@ -141,6 +142,9 @@ namespace
 		bool bGrounded = false;
 
 		TArray<BuildMode::FFormedJoint> Joints;
+
+		/** Which SHIPPED library row those joints carry, for the ghost card. Null if there are none. */
+		const FConnectionStrength* JointProfile = nullptr;
 	};
 
 	FBuildPlacement ComputeBuildPlacement(
@@ -148,7 +152,8 @@ namespace
 		const FVector& RequestedCentreCm,
 		const FVector& ExtentCm,
 		const DestructionProfiles::FMaterialProfile& Material,
-		DestructionSession::EPlacementMode Placement)
+		DestructionSession::EPlacementMode Placement,
+		const FConnectionStrength* JointOverride)
 	{
 		using namespace DestructionLayout;
 
@@ -235,6 +240,51 @@ namespace
 		Decision.CentreCm = Chosen->CentreCm;
 		Decision.MassKg = PieceMassKg(FPieceBox{ Chosen->CentreCm, ExtentCm }, Material.DensityGramsPerCubicCm);
 		Decision.Joints = Chosen->Joints;
+
+		/*
+		 * THE OVERRIDE REPLACES **EVERY** JOINT'S PROFILE, AND IT IS A SUBSTITUTION RATHER THAN A
+		 * DIFFERENT PLACEMENT. The pose, the pieces jointed, the normals and the areas are the ones
+		 * the solver already chose — only the strength moves. A timber plate laid across a two-brick
+		 * course forms TWO bearings from one placement, so writing the override onto Joints[0] alone
+		 * would leave the far end of a plate the player screwed down resting on friction.
+		 *
+		 * AND IT TOUCHES ONLY THE JOINTS THIS PLACEMENT FORMS. The ones already in the structure are
+		 * never re-priced — a chip that re-fastened a wall the player finished an hour ago would
+		 * change committed physics with nothing on screen saying it had happened.
+		 */
+		if (JointOverride != nullptr)
+		{
+			for (BuildMode::FFormedJoint& Joint : Decision.Joints)
+			{
+				Joint.Profile = *JointOverride;
+			}
+		}
+
+		/*
+		 * AND WHAT THE GHOST CARD MAY NAME: the override when there is one, otherwise the SHIPPED ROW
+		 * the first joint's inferred profile matches — never a pointer into Decision.Joints, which
+		 * dies with the caller's copy of this struct.
+		 *
+		 * BOTH ARMS ARE GUARDED ON THERE BEING A JOINT AT ALL, AND THE OVERRIDE ARM IS THE ONE THAT
+		 * BITES. The reading is what the joints WOULD carry, so where the placement forms none there
+		 * is nothing for it to be the answer to: the first brick of every build and every Free
+		 * placement over empty ground is jointless, and a card naming the fastener the player chose
+		 * would promise them the piece is screwed to SOMETHING over exactly the pose that is one Run
+		 * away from lying on the ground. "Bonded to nothing" is a fact about the pose, not a missing
+		 * reading, and the card has to be able to say it.
+		 */
+		if (JointOverride != nullptr && Decision.Joints.Num() > 0)
+		{
+			Decision.JointProfile = JointOverride;
+		}
+		else if (Decision.Joints.Num() > 0)
+		{
+			if (const DestructionProfiles::FNamedConnectionProfile* const Row =
+				DestructionProfiles::FindConnectionProfileRow(Decision.Joints[0].Profile))
+			{
+				Decision.JointProfile = &Row->Strength;
+			}
+		}
 
 		/*
 		 * GROUNDED IS DERIVED FROM THE POSE THE PIECE ACTUALLY TOOK, and from nothing a caller said
@@ -424,7 +474,8 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 	const FVector& RequestedCentreCm,
 	const FVector& ExtentCm,
 	const DestructionProfiles::FMaterialProfile& Material,
-	DestructionSession::EPlacementMode Placement)
+	DestructionSession::EPlacementMode Placement,
+	const FConnectionStrength* JointOverride)
 {
 	using namespace DestructionLayout;
 
@@ -442,7 +493,7 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 	 * where its own preview said it would.
 	 */
 	const FBuildPlacement Decision =
-		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material, Placement);
+		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material, Placement, JointOverride);
 
 	/* A pose the solver would not name places nothing, the same refusal an unknown id gets. */
 	if (!Decision.bDecided)
@@ -503,7 +554,8 @@ FBuildPreview UDestructionStructureSubsystem::PreviewBuildPiece(
 	const FVector& RequestedCentreCm,
 	const FVector& ExtentCm,
 	const DestructionProfiles::FMaterialProfile& Material,
-	DestructionSession::EPlacementMode Placement) const
+	DestructionSession::EPlacementMode Placement,
+	const FConnectionStrength* JointOverride) const
 {
 	const FStructureBinding* Binding = Find(StructureId);
 
@@ -519,7 +571,7 @@ FBuildPreview UDestructionStructureSubsystem::PreviewBuildPiece(
 	 * and joint count a following place at the same pose would produce.
 	 */
 	const FBuildPlacement Decision =
-		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material, Placement);
+		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material, Placement, JointOverride);
 
 	/* A pose the solver would not name previews nothing, exactly as the commit would place nothing. */
 	if (!Decision.bDecided)
@@ -535,6 +587,9 @@ FBuildPreview UDestructionStructureSubsystem::PreviewBuildPiece(
 
 	/* The same pose-derived answer the commit will store on the piece, shown before the click. */
 	Preview.bGrounded = Decision.bGrounded;
+
+	/* And the library row every one of those joints will carry — see FBuildPreview::JointProfile. */
+	Preview.JointProfile = Decision.JointProfile;
 
 	return Preview;
 }

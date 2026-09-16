@@ -5,6 +5,7 @@
 #include "Core/BuildMode/DemoBuilding.h"
 #include "Core/BuildMode/SnapSolver.h"
 #include "Core/Layout.h"
+#include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Core/SessionToolbar.h"
 
@@ -88,12 +89,35 @@ namespace SessionToolbarTestSupport
 		return TEXT("<not a placement mode>");
 	}
 
+	const TCHAR* NameOfJoint(DestructionSession::EJointChoice Joint)
+	{
+		using namespace DestructionSession;
+
+		switch (Joint)
+		{
+		case EJointChoice::Auto:   return TEXT("Auto");
+		case EJointChoice::Mortar: return TEXT("Mortar");
+		case EJointChoice::Dry:    return TEXT("Dry");
+		case EJointChoice::Nail:   return TEXT("Nail");
+		case EJointChoice::Screw:  return TEXT("Screw");
+		case EJointChoice::Bolt:   return TEXT("Bolt");
+		}
+
+		return TEXT("<not a joint choice>");
+	}
+
 	const TCHAR* NameOfButton(DestructionSession::EToolbarButtonId Id)
 	{
 		using namespace DestructionSession;
 
 		switch (Id)
 		{
+		case EToolbarButtonId::JointAuto:         return TEXT("JointAuto");
+		case EToolbarButtonId::JointMortar:       return TEXT("JointMortar");
+		case EToolbarButtonId::JointDry:          return TEXT("JointDry");
+		case EToolbarButtonId::JointNail:         return TEXT("JointNail");
+		case EToolbarButtonId::JointScrew:        return TEXT("JointScrew");
+		case EToolbarButtonId::JointBolt:         return TEXT("JointBolt");
 		case EToolbarButtonId::ModeBuild:         return TEXT("ModeBuild");
 		case EToolbarButtonId::ModeDestroy:       return TEXT("ModeDestroy");
 		case EToolbarButtonId::PieceBrick:        return TEXT("PieceBrick");
@@ -159,6 +183,19 @@ namespace SessionToolbarTestSupport
 		case EToolbarButtonId::PieceTimberLintel:
 		case EToolbarButtonId::PlacementSnap:
 		case EToolbarButtonId::PlacementFree:
+
+		/*
+		 * AND THE SIX JOINT CHIPS ARE SETTINGS TOO, for the same reason the placement pair is one:
+		 * the choice is a property of the NEXT placement rather than something that happens, so it
+		 * latches, it is lit, and it sits in front of the rule the commands are past.
+		 */
+		case EToolbarButtonId::JointAuto:
+		case EToolbarButtonId::JointMortar:
+		case EToolbarButtonId::JointDry:
+		case EToolbarButtonId::JointNail:
+		case EToolbarButtonId::JointScrew:
+		case EToolbarButtonId::JointBolt:
+
 		case EToolbarButtonId::CourseDown:
 		case EToolbarButtonId::CourseUp:
 
@@ -280,6 +317,12 @@ namespace SessionToolbarTestSupport
 			EToolbarButtonId::PieceTimberLintel,
 			EToolbarButtonId::PlacementSnap,
 			EToolbarButtonId::PlacementFree,
+			EToolbarButtonId::JointAuto,
+			EToolbarButtonId::JointMortar,
+			EToolbarButtonId::JointDry,
+			EToolbarButtonId::JointNail,
+			EToolbarButtonId::JointScrew,
+			EToolbarButtonId::JointBolt,
 			EToolbarButtonId::CourseDown,
 			EToolbarButtonId::CourseUp,
 			EToolbarButtonId::ToggleLoadOverlay,
@@ -288,13 +331,96 @@ namespace SessionToolbarTestSupport
 		};
 	}
 
+	/**
+	 * WHICH CHOICE EACH JOINT CHIP STANDS FOR, WRITTEN OUT HERE RATHER THAN ASKED OF THE MODEL.
+	 *
+	 * The pairing is the design — one chip per choice, in the enum's own order — and a test that
+	 * read it off the function it is checking would assert nothing at all. It is also the only
+	 * place the "Screw chip lights when the choice is Screw" claim can come from: the model's own
+	 * answer would agree with itself whichever way the six were wired up.
+	 */
+	DestructionSession::EJointChoice JointChoiceOfButton(DestructionSession::EToolbarButtonId Id)
+	{
+		using namespace DestructionSession;
+
+		switch (Id)
+		{
+		case EToolbarButtonId::JointMortar: return EJointChoice::Mortar;
+		case EToolbarButtonId::JointDry:    return EJointChoice::Dry;
+		case EToolbarButtonId::JointNail:   return EJointChoice::Nail;
+		case EToolbarButtonId::JointScrew:  return EJointChoice::Screw;
+		case EToolbarButtonId::JointBolt:   return EJointChoice::Bolt;
+		default:                            return EJointChoice::Auto;
+		}
+	}
+
+	/** Every joint choice the model knows, so a sweep covers the whole segmented control. */
+	TArray<DestructionSession::EJointChoice> AllJointChoices()
+	{
+		using namespace DestructionSession;
+
+		return {
+			EJointChoice::Auto,
+			EJointChoice::Mortar,
+			EJointChoice::Dry,
+			EJointChoice::Nail,
+			EJointChoice::Screw,
+			EJointChoice::Bolt,
+		};
+	}
+
+	/**
+	 * Which shipped CONNECTION profile an override points at, BY ADDRESS. Never a value comparison.
+	 *
+	 * THE SAME IDENTITY RULE NameOfMaterialByAddress KEEPS, and it bites harder here. Two
+	 * FConnectionStrengths with equal fields are equal in every way except which library row a
+	 * retune moves, and this library's rows are siblings by construction — GeneralPurposeMortar and
+	 * its perpend differ on two axes, Nail, Screw and Bolt on one scaling. A by-value answer would
+	 * go on passing against a private copy the next re-anchor never reaches.
+	 */
+	const TCHAR* NameOfConnectionProfileByAddress(const FConnectionStrength* Profile)
+	{
+		using namespace DestructionProfiles;
+
+		if (Profile == nullptr)                          { return TEXT("<nullptr — inferred>"); }
+		if (Profile == &GeneralPurposeMortar)            { return TEXT("GeneralPurposeMortar"); }
+		if (Profile == &GeneralPurposeMortarPerpend)     { return TEXT("GeneralPurposeMortarPerpend"); }
+		if (Profile == &LimeMortar)                      { return TEXT("LimeMortar"); }
+		if (Profile == &DryStone)                        { return TEXT("DryStone"); }
+		if (Profile == &Nail)                            { return TEXT("Nail"); }
+		if (Profile == &Screw)                           { return TEXT("Screw"); }
+		if (Profile == &Bolt)                            { return TEXT("Bolt"); }
+		if (Profile == &Unbreakable)                     { return TEXT("Unbreakable"); }
+		if (Profile == &CohesionlessBond)                { return TEXT("CohesionlessBond"); }
+
+		return TEXT("<not a shipped library row>");
+	}
+
+	/** Whether an override points at a row of the shipped library at all, or at nothing. */
+	bool IsAShippedConnectionProfileOrNull(const FConnectionStrength* Profile)
+	{
+		using namespace DestructionProfiles;
+
+		return Profile == nullptr
+			|| Profile == &GeneralPurposeMortar
+			|| Profile == &GeneralPurposeMortarPerpend
+			|| Profile == &LimeMortar
+			|| Profile == &DryStone
+			|| Profile == &Nail
+			|| Profile == &Screw
+			|| Profile == &Bolt
+			|| Profile == &Unbreakable
+			|| Profile == &CohesionlessBond;
+	}
+
 	FString DescribeState(const DestructionSession::FSessionToolbarState& State)
 	{
 		return FString::Printf(
-			TEXT("{%s, %s, %s, Course %d, %s, %s}"),
+			TEXT("{%s, %s, %s, joint %s, Course %d, %s, %s}"),
 			NameOfMode(State.Mode),
 			NameOfPiece(State.Piece),
 			NameOfPlacement(State.Placement),
+			NameOfJoint(State.Joint),
 			State.Course,
 			State.bHasStructure ? TEXT("has a structure") : TEXT("no structure"),
 			State.bLoadOverlay ? TEXT("load overlay ON") : TEXT("load overlay off"));
@@ -339,6 +465,7 @@ namespace SessionToolbarTestSupport
 		return A.Mode == B.Mode
 			&& A.Piece == B.Piece
 			&& A.Placement == B.Placement
+			&& A.Joint == B.Joint
 			&& A.Course == B.Course
 			&& A.bHasStructure == B.bHasStructure
 			&& A.bLoadOverlay == B.bLoadOverlay;
@@ -365,7 +492,8 @@ namespace SessionToolbarTestSupport
 		DestructionSession::EPlacementMode Placement,
 		int32 Course,
 		bool bHasStructure,
-		bool bLoadOverlay = false)
+		bool bLoadOverlay = false,
+		DestructionSession::EJointChoice Joint = DestructionSession::EJointChoice::Auto)
 	{
 		DestructionSession::FSessionToolbarState State;
 		State.Mode = Mode;
@@ -374,6 +502,7 @@ namespace SessionToolbarTestSupport
 		State.Course = Course;
 		State.bHasStructure = bHasStructure;
 		State.bLoadOverlay = bLoadOverlay;
+		State.Joint = Joint;
 		return State;
 	}
 
@@ -385,8 +514,8 @@ namespace SessionToolbarTestSupport
 	 * states, and a hand-picked handful covers only the shapes the author had in mind — DESIGN §4's
 	 * "an invariant asserted over fixtures that all share a hidden property is not an invariant".
 	 * Two modes x three pieces x two placements x three courses x two structure flags x two load
-	 * overlay flags is 144 states and costs microseconds, so the sweep is the cheap way to be sure
-	 * the hidden property is not "the author always wrote Course 0".
+	 * overlay flags x SIX JOINT CHOICES is 864 states and costs milliseconds, so the sweep is the
+	 * cheap way to be sure the hidden property is not "the author always wrote Course 0".
 	 *
 	 * The courses are 0 (the grounded course, where CourseDown must be refused), 1 (the first course
 	 * where it must be offered) and 5 (well clear of the boundary, so an off-by-one at 1 cannot be
@@ -396,6 +525,13 @@ namespace SessionToolbarTestSupport
 	 * EVERYTHING ELSE ON THE STRIP. It survives a trip through Build mode, where it is not drawn at
 	 * all, so every Build state has to be swept with it BOTH ways — a model that reset it whenever
 	 * the Build strip was asked for would pass a sweep that only ever set it in Destroy.
+	 *
+	 * THE JOINT CHOICE IS A DIMENSION FOR THE MIRROR-IMAGE REASON. It is drawn in BUILD mode alone,
+	 * so every DESTROY state has to be swept with all six — a model that reset the choice to Auto
+	 * whenever the Destroy strip was asked for would pass a sweep that only ever set it in Build,
+	 * and a player would come back from one Destroy click to find their screws turned into mortar.
+	 * Six values rather than a pair, because "exactly one of six is lit" is the claim and a
+	 * segmented control tested with two members can be lit by a boolean.
 	 */
 	TArray<DestructionSession::FSessionToolbarState> AllStates()
 	{
@@ -423,8 +559,12 @@ namespace SessionToolbarTestSupport
 						{
 							for (bool bLoadOverlay : Overlays)
 							{
-								States.Add(MakeState(
-									Mode, Piece, Placement, Course, bHasStructure, bLoadOverlay));
+								for (EJointChoice Joint : AllJointChoices())
+								{
+									States.Add(MakeState(
+										Mode, Piece, Placement, Course, bHasStructure,
+										bLoadOverlay, Joint));
+								}
 							}
 						}
 					}
@@ -504,6 +644,26 @@ bool FSessionToolbarButtonsByModeTest::RunTest(const FString& Parameters)
 		EToolbarButtonId::PieceTimberLintel,
 		EToolbarButtonId::PlacementSnap,
 		EToolbarButtonId::PlacementFree,
+
+		/*
+		 * THE JOINT CHOICE SITS AFTER THE PLACEMENT PAIR AND BEFORE THE COURSE STEPPER, and the
+		 * position is the claim rather than a preference. Both are segmented controls over the
+		 * NEXT placement — how the piece is positioned, then how it is fastened — so they read as
+		 * one band; the course stepper past them is a different question (where the plane is)
+		 * and the command past the rule is a different kind of thing entirely. A chip dropped in
+		 * beside `Clear build` would put a harmless setting hard against the irreversible one.
+		 *
+		 * AND Auto IS FIRST, because it is the default the session opens on and the one a player
+		 * returns to; a segmented control whose default is in the middle reads as a value on a
+		 * scale rather than as "leave it to the game".
+		 */
+		EToolbarButtonId::JointAuto,
+		EToolbarButtonId::JointMortar,
+		EToolbarButtonId::JointDry,
+		EToolbarButtonId::JointNail,
+		EToolbarButtonId::JointScrew,
+		EToolbarButtonId::JointBolt,
+
 		EToolbarButtonId::CourseDown,
 		EToolbarButtonId::CourseUp,
 		EToolbarButtonId::ClearBuild,
@@ -608,6 +768,8 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 		int32 ActiveModeButtons = 0;
 		int32 ActivePieceButtons = 0;
 		int32 ActivePlacementButtons = 0;
+		int32 ActiveJointButtons = 0;
+		int32 JointButtonsSeen = 0;
 		int32 LoadOverlayButtonsSeen = 0;
 
 		for (const FToolbarButton& Button : Buttons)
@@ -677,6 +839,34 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 					Button.bActive, State.Placement == EPlacementMode::Free);
 				break;
 
+			case EToolbarButtonId::JointAuto:
+			case EToolbarButtonId::JointMortar:
+			case EToolbarButtonId::JointDry:
+			case EToolbarButtonId::JointNail:
+			case EToolbarButtonId::JointScrew:
+			case EToolbarButtonId::JointBolt:
+			{
+				/*
+				 * EXACTLY ONE OF SIX IS LIT, AND IT IS THE ONE THE STATE NAMES. A segmented control
+				 * with two lit chips tells the player the next brick is screwed AND laid dry, and
+				 * one with none lit tells them the click they just made did nothing — and this
+				 * choice changes the COMMITTED PHYSICS of every joint the next piece forms, so
+				 * "which one did I pick" is not a cosmetic question.
+				 */
+				++JointButtonsSeen;
+				ActiveJointButtons += Button.bActive ? 1 : 0;
+
+				const EJointChoice ChoiceOfThisChip = JointChoiceOfButton(Button.Id);
+
+				TestEqual(
+					*FString::Printf(
+						TEXT("%s: %s is lit exactly when %s is the chosen joint — [%s]"),
+						*DescribeState(State), NameOfButton(Button.Id),
+						NameOfJoint(ChoiceOfThisChip), *DescribeButtons(Buttons)),
+					Button.bActive, State.Joint == ChoiceOfThisChip);
+				break;
+			}
+
 			case EToolbarButtonId::ToggleLoadOverlay:
 				/*
 				 * A SETTING LATCHES, WHICH IS THE WHOLE DIFFERENCE BETWEEN THIS CHIP AND Run structure
@@ -726,6 +916,24 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 				TEXT("%s: exactly one Placement button must be lit when the group is drawn — [%s]"),
 				*DescribeState(State), *DescribeButtons(Buttons)),
 			ActivePlacementButtons, bBuilding ? 1 : 0);
+
+		/*
+		 * AND THE SEGMENTED JOINT CONTROL IS ALL SIX CHIPS OR NONE, WITH EXACTLY ONE LIT WHEN IT IS
+		 * DRAWN. The count floor is what stops this passing on a strip that drew Auto alone: a
+		 * one-chip segmented control is always correctly lit, and it is also a control the player
+		 * cannot change anything with.
+		 */
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: the six joint chips must be drawn in Build mode and nowhere else — [%s]"),
+				*DescribeState(State), *DescribeButtons(Buttons)),
+			JointButtonsSeen, bBuilding ? 6 : 0);
+
+		TestEqual(
+			FString::Printf(
+				TEXT("%s: exactly one Joint button must be lit when the group is drawn — [%s]"),
+				*DescribeState(State), *DescribeButtons(Buttons)),
+			ActiveJointButtons, bBuilding ? 1 : 0);
 
 		/*
 		 * AND THE TOGGLE WAS ACTUALLY ON THE STRIP TO BE READ. The claim above lives inside the loop
@@ -902,6 +1110,23 @@ bool FSessionToolbarLabelsTest::RunTest(const FString& Parameters)
 		 * chip that colours the wall by load says so.
 		 */
 		{ EToolbarButtonId::ToggleLoadOverlay, TEXT("Load") },
+
+		/*
+		 * AND THE SIX JOINT CHIPS SAY WHAT THEY FASTEN WITH. The word is the whole claim and the
+		 * rest is the widget's — "Screw", "Screwed", "Screw joint" are all the chip a player is
+		 * hunting for — but a chip that does not contain its own fastener's name is a segmented
+		 * control the player has to click to identify, and this one commits physics.
+		 *
+		 * "Dry" RATHER THAN "DryStone": the library row is DryStone, and the chip is one slot of a
+		 * six-slot control on a 48 px bar. What may not drift is the word a player reads as "no
+		 * bond at all", and both spellings contain it.
+		 */
+		{ EToolbarButtonId::JointAuto,   TEXT("Auto") },
+		{ EToolbarButtonId::JointMortar, TEXT("Mortar") },
+		{ EToolbarButtonId::JointDry,    TEXT("Dry") },
+		{ EToolbarButtonId::JointNail,   TEXT("Nail") },
+		{ EToolbarButtonId::JointScrew,  TEXT("Screw") },
+		{ EToolbarButtonId::JointBolt,   TEXT("Bolt") },
 	};
 
 	/*
@@ -922,13 +1147,13 @@ bool FSessionToolbarLabelsTest::RunTest(const FString& Parameters)
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
 
 		/*
-		 * FOUR EITHER WAY, AND THE COINCIDENCE IS WORTH SPELLING OUT RATHER THAN COLLAPSING. A Build
-		 * strip owes ModeBuild, ModeDestroy and the two placement captions; a Destroy strip owes
-		 * ModeBuild, ModeDestroy, Run and the load toggle. They are different four.
+		 * TEN IN BUILD AND FOUR IN DESTROY. A Build strip owes ModeBuild, ModeDestroy, the two
+		 * placement captions and the SIX joint chips; a Destroy strip owes ModeBuild, ModeDestroy,
+		 * Run and the load toggle. The two mode captions are the only rows both strips share.
 		 */
 		WordChecksOwed += State.Mode == ESessionMode::Build
-			? 2 + 2   /* the mode pair, then Snap and Free */
-			: 2 + 2;  /* the mode pair, then Run structure and Load overlay */
+			? 2 + 2 + 6   /* the mode pair, Snap and Free, then the six joint chips */
+			: 2 + 2;      /* the mode pair, then Run structure and Load overlay */
 
 		TestTrue(
 			*FString::Printf(
@@ -1214,6 +1439,117 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 			EToolbarButtonId::RunStructure,
 			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 1, true, true),
 		},
+
+		/* --- THE JOINT CHOICE: A SEGMENTED SETTING, SO IT LATCHES AND IT SURVIVES A MODE CHANGE -- */
+
+		{
+			TEXT("choosing Screw changes the joint and nothing else"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 3, true,
+				true, EJointChoice::Auto),
+			EToolbarButtonId::JointScrew,
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 3, true,
+				true, EJointChoice::Screw),
+		},
+		{
+			TEXT("and Dry after it — one chip of a segmented control REPLACES the choice, never adds to it"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 3, true,
+				true, EJointChoice::Screw),
+			EToolbarButtonId::JointDry,
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 3, true,
+				true, EJointChoice::Dry),
+		},
+		{
+			TEXT("Mortar, from a fastener"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 1, false,
+				false, EJointChoice::Bolt),
+			EToolbarButtonId::JointMortar,
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 1, false,
+				false, EJointChoice::Mortar),
+		},
+		{
+			TEXT("Nail"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberLintel, EPlacementMode::Snap, 2, true,
+				false, EJointChoice::Mortar),
+			EToolbarButtonId::JointNail,
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberLintel, EPlacementMode::Snap, 2, true,
+				false, EJointChoice::Nail),
+		},
+		{
+			TEXT("Bolt"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberLintel, EPlacementMode::Snap, 2, true,
+				false, EJointChoice::Nail),
+			EToolbarButtonId::JointBolt,
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberLintel, EPlacementMode::Snap, 2, true,
+				false, EJointChoice::Bolt),
+		},
+		{
+			/*
+			 * AND BACK TO Auto, WHICH IS THE ONE THAT HAS TO BE REACHABLE. Auto is not "no choice",
+			 * it is the choice that hands the joint back to BuildMode::JointForContact — and a
+			 * player who has screwed one plate and now wants an ordinary bedded brick has no other
+			 * way to say so.
+			 */
+			TEXT("and back to Auto, which hands the joint back to the inference"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Free, 4, true,
+				true, EJointChoice::Bolt),
+			EToolbarButtonId::JointAuto,
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Free, 4, true,
+				true, EJointChoice::Auto),
+		},
+		{
+			TEXT("clicking the joint you already have changes nothing"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, true,
+				false, EJointChoice::Screw),
+			EToolbarButtonId::JointScrew,
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, true,
+				false, EJointChoice::Screw),
+		},
+		{
+			TEXT("the joint chips are not on the Destroy strip, so a click carrying one must not change it"),
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, true,
+				false, EJointChoice::Screw),
+			EToolbarButtonId::JointDry,
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, true,
+				false, EJointChoice::Screw),
+		},
+		{
+			/*
+			 * THE PRESERVATION PAIR, AND IT IS THE ONE THIS SETTING EXISTS TO GET WRONG. Going to
+			 * Destroy takes the six chips off the strip; a session that "tidied up" on the way out
+			 * would bring the player back to Auto, and the next plate they lay would be dry-bedded
+			 * where they asked for screws — a difference they cannot see until the structure runs.
+			 */
+			TEXT("switching to Destroy does NOT clear the joint the player chose"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 3, true,
+				false, EJointChoice::Screw),
+			EToolbarButtonId::ModeDestroy,
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 3, true,
+				false, EJointChoice::Screw),
+		},
+		{
+			TEXT("and coming back to Build finds it still screwed"),
+			MakeState(ESessionMode::Destroy, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 3, true,
+				false, EJointChoice::Screw),
+			EToolbarButtonId::ModeBuild,
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 3, true,
+				false, EJointChoice::Screw),
+		},
+		{
+			TEXT("and every other Build-mode setting click leaves the joint alone"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 1, true,
+				false, EJointChoice::Bolt),
+			EToolbarButtonId::PieceTimberLintel,
+			MakeState(ESessionMode::Build, EBuildPieceKind::TimberLintel, EPlacementMode::Snap, 1, true,
+				false, EJointChoice::Bolt),
+		},
+		{
+			TEXT("including the course stepper"),
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 1, true,
+				false, EJointChoice::Dry),
+			EToolbarButtonId::CourseUp,
+			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, true,
+				false, EJointChoice::Dry),
+		},
 	};
 
 	for (const FTransitionCase& Case : Cases)
@@ -1231,7 +1567,7 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 	/*
 	 * THE TWO FUNCTIONS HELD AGAINST EACH OTHER, over every state and every button in the
 	 * vocabulary — including the buttons that state does not draw. This is the property the table
-	 * above cannot cover by enumeration: 144 states times 12 buttons is 1,728 clicks, and what it
+	 * above cannot cover by enumeration: 864 states times 18 buttons is 15,552 clicks, and what it
 	 * asserts is one-directional on purpose. A button that is absent or greyed MUST leave the state
 	 * alone; nothing is claimed here about the ones that are lit and enabled, because that is what
 	 * the table is for.
@@ -1858,7 +2194,7 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
 		const bool bBuilding = State.Mode == ESessionMode::Build;
 
-		ButtonsOwed += bBuilding ? 10 : 4;
+		ButtonsOwed += bBuilding ? 16 : 4;
 
 		int32 ModeGroupButtons = 0;
 		int32 BrickSwatches = 0;
@@ -2436,6 +2772,290 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 				 "%d, active %d, disabled %d, go %d, danger %d"),
 			IdleChips, ActiveChips, DisabledChips, GoChips, DangerChips),
 		IdleChips > 0 && ActiveChips > 0 && DisabledChips > 0 && GoChips > 0 && DangerChips > 0);
+
+	return true;
+}
+
+/**
+ * UI-6 — THE PLAYER CHOOSES WHAT FASTENS THE NEXT PIECE: SIX CHIPS, ONE LIT, AND EACH NAMES THE
+ * SHIPPED LIBRARY ROW EVERY JOINT THE NEXT PLACEMENT FORMS WILL CARRY.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * `FSessionToolbarState` carries an `EJointChoice`; the Build strip draws it as a six-chip
+ * segmented control in the Settings group between the placement pair and the course stepper, with
+ * exactly the chosen one lit and all six live; and `JointOverrideFor` turns that choice into either
+ * NOTHING (Auto — the inference keeps deciding) or the ADDRESS of one shipped connection profile.
+ *
+ * =====================================================================================
+ * WHY THE OVERRIDE IS A POINTER AND WHY nullptr IS A REAL ANSWER
+ * =====================================================================================
+ *
+ * BUILD_MODE_PLAN's UI-6 makes the override ride through `PreviewBuildPiece`/`PlaceBuildPiece` as
+ * an optional `const FConnectionStrength*`, and Auto has to be expressible in the same type — a
+ * sentinel profile meaning "infer" would be a seventh library row that every consumer has to know
+ * to special-case, and the first one that forgot would BOND A JOINT WITH IT. So Auto is nullptr
+ * and every other choice is one row's address.
+ *
+ * AND THE ADDRESS IS THE CLAIM, NEVER THE FIELDS. Two FConnectionStrengths with equal fields are
+ * equal in everything except which row a retune moves, and this library is siblings by
+ * construction: Nail, Screw and Bolt are one shape at three scales and the two mortars differ on
+ * two axes. A by-value answer would go on passing against a private copy that the next re-anchor
+ * never reaches, and every joint the player screwed would be screwed with stale numbers. It is the
+ * same identity rule `BuildPieceMaterial` keeps for the palette — and it is why
+ * `FNamedConnectionProfile::Strength` became a REFERENCE to the extern in this slice: held BY VALUE,
+ * as it was, it repeated exactly the trap that made the MATERIAL lookup answer "no such row" for
+ * every piece in the game until its own field became a reference.
+ *
+ * =====================================================================================
+ * WHAT THIS TEST OWNS THAT THE SWEEPS ABOVE DO NOT
+ * =====================================================================================
+ *
+ * `AllStates` now carries the joint choice as a dimension, so ButtonsByMode, ActiveFlags,
+ * EnabledFlags, Labels and Transitions already sweep it — which chips exist in which mode, exactly
+ * one lit, all six live, the six captions, and the transitions including the round trip through
+ * Destroy. What is left here is the two claims none of those can make: the chips' POSITION inside
+ * the Build strip (a contiguous run after Free and before Course down), and the choice-to-profile
+ * map itself.
+ *
+ * NEEDS A TICKING WORLD: no. One plain struct in, an array of plain structs and one pointer out.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSessionToolbarJointChoiceTest,
+	"DestructionGame.Core.SessionToolbar.JointChoice",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
+{
+	using namespace SessionToolbarTestSupport;
+	using namespace DestructionSession;
+
+	/* --- ONE: the six chips are a contiguous run between Free and Course down ---------------- */
+
+	const TArray<EToolbarButtonId> JointIds = {
+		EToolbarButtonId::JointAuto,
+		EToolbarButtonId::JointMortar,
+		EToolbarButtonId::JointDry,
+		EToolbarButtonId::JointNail,
+		EToolbarButtonId::JointScrew,
+		EToolbarButtonId::JointBolt,
+	};
+
+	int32 StatesRead = 0;
+
+	for (const FSessionToolbarState& State : AllStates())
+	{
+		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
+
+		if (State.Mode != ESessionMode::Build)
+		{
+			/* The Destroy strip draws none of them; ButtonsByMode owns that list. */
+			continue;
+		}
+
+		++StatesRead;
+
+		const int32 FreeAt = Buttons.IndexOfByPredicate(
+			[](const FToolbarButton& B) { return B.Id == EToolbarButtonId::PlacementFree; });
+
+		const int32 CourseDownAt = Buttons.IndexOfByPredicate(
+			[](const FToolbarButton& B) { return B.Id == EToolbarButtonId::CourseDown; });
+
+		const bool bBracketed = FreeAt != INDEX_NONE && CourseDownAt != INDEX_NONE
+			&& CourseDownAt == FreeAt + 1 + JointIds.Num();
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: the six joint chips must fill the slots BETWEEN Free (%d) and Course down "
+					 "(%d) — one band of settings about the next placement, and never a chip dropped "
+					 "in beside the irreversible Clear — [%s]"),
+				*DescribeState(State), FreeAt, CourseDownAt, *DescribeButtons(Buttons)),
+			bBracketed);
+
+		for (int32 Offset = 0; Offset < JointIds.Num(); ++Offset)
+		{
+			const int32 Slot = FreeAt + 1 + Offset;
+
+			const bool bRightChipInRightSlot = FreeAt != INDEX_NONE
+				&& Buttons.IsValidIndex(Slot)
+				&& Buttons[Slot].Id == JointIds[Offset];
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: slot %d (the %dth after Free) must be %s — [%s]"),
+					*DescribeState(State), Slot, Offset + 1, NameOfButton(JointIds[Offset]),
+					*DescribeButtons(Buttons)),
+				bRightChipInRightSlot);
+		}
+
+		/* --- TWO: every one of them is a Settings chip with no swatch, and always live ------- */
+
+		for (EToolbarButtonId Id : JointIds)
+		{
+			const FToolbarButton* const Button = FindButton(Buttons, Id);
+
+			if (Button == nullptr)
+			{
+				/* The bracket claim above has already failed; nothing further to read. */
+				continue;
+			}
+
+			TestEqual(
+				*FString::Printf(
+					TEXT("%s: %s must be in the %s group, it is in %s — [%s]"),
+					*DescribeState(State), NameOfButton(Id), NameOfGroup(EToolbarGroup::Settings),
+					NameOfGroup(Button->Group), *DescribeButtons(Buttons)),
+				static_cast<int32>(Button->Group), static_cast<int32>(EToolbarGroup::Settings));
+
+			/*
+			 * NO SWATCH, AND THAT IS A CLAIM RATHER THAN A DEFAULT. A swatch names the PIECE the
+			 * chip lays; a block of brick red on a chip that chooses mortar would say the chip
+			 * lays a brick, which is the one thing it does not do.
+			 */
+			TestEqual(
+				*FString::Printf(
+					TEXT("%s: %s must carry no swatch, it carries %s — [%s]"),
+					*DescribeState(State), NameOfButton(Id), NameOfSwatch(Button->Swatch),
+					*DescribeButtons(Buttons)),
+				static_cast<int32>(Button->Swatch), static_cast<int32>(EToolbarSwatch::None));
+
+			/*
+			 * AND ALL SIX ARE LIVE IN EVERY BUILD STATE. A joint choice has no precondition at all
+			 * — it describes the NEXT placement, so it is settable before a single brick is laid
+			 * and on the grounded course, which is exactly where a player decides how to start.
+			 */
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: %s must be live — a joint choice has no precondition, it describes the "
+						 "next placement — [%s]"),
+					*DescribeState(State), NameOfButton(Id), *DescribeButtons(Buttons)),
+				Button->bEnabled);
+		}
+	}
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("the sweep must actually have read some Build strips, it read %d — a model drawing "
+				 "no Build strip at all would satisfy every claim above by having nothing to check"),
+			StatesRead),
+		StatesRead > 0);
+
+	/* --- THREE: the choice-to-profile map, BY ADDRESS ---------------------------------------- */
+
+	struct FOverrideCase
+	{
+		const TCHAR* Description;
+		EJointChoice Choice;
+		const FConnectionStrength* Expected;
+	};
+
+	const FOverrideCase Cases[] = {
+		{
+			TEXT("Auto overrides NOTHING — BuildMode::JointForContact goes on deciding, which is what "
+				 "makes a brick bed in mortar and a plank bear dry without the player saying so"),
+			EJointChoice::Auto,
+			nullptr,
+		},
+		{
+			TEXT("Mortar is the general-purpose bed bond, the strongest thing the library ships for "
+				 "masonry — NOT the weak perpend, which is a thing the inference chooses for a "
+				 "vertical face rather than a thing a player asks for"),
+			EJointChoice::Mortar,
+			&DestructionProfiles::GeneralPurposeMortar,
+		},
+		{
+			TEXT("Dry is DryStone: compression and friction and no bond at all, so a player can lay a "
+				 "wall that stands only while it is being squeezed"),
+			EJointChoice::Dry,
+			&DestructionProfiles::DryStone,
+		},
+		{
+			TEXT("Nail, the weakest of the three fasteners"),
+			EJointChoice::Nail,
+			&DestructionProfiles::Nail,
+		},
+		{
+			TEXT("Screw"),
+			EJointChoice::Screw,
+			&DestructionProfiles::Screw,
+		},
+		{
+			TEXT("Bolt, the strongest"),
+			EJointChoice::Bolt,
+			&DestructionProfiles::Bolt,
+		},
+	};
+
+	for (const FOverrideCase& Case : Cases)
+	{
+		const FConnectionStrength* const Got = JointOverrideFor(Case.Choice);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s (%s): the override must BE %s, by address — it is %s"),
+				Case.Description, NameOfJoint(Case.Choice),
+				NameOfConnectionProfileByAddress(Case.Expected),
+				NameOfConnectionProfileByAddress(Got)),
+			Got == Case.Expected);
+	}
+
+	/*
+	 * AND NO TWO CHOICES MAY ANSWER WITH THE SAME ROW. Six chips that all override with mortar is a
+	 * control that looks like it works, commits one physics whatever the player picks, and is
+	 * invisible until the structure runs. The rows above pin each answer; this pins that they are
+	 * six ANSWERS.
+	 */
+	for (int32 A = 0; A < AllJointChoices().Num(); ++A)
+	{
+		for (int32 B = A + 1; B < AllJointChoices().Num(); ++B)
+		{
+			const EJointChoice ChoiceA = AllJointChoices()[A];
+			const EJointChoice ChoiceB = AllJointChoices()[B];
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s and %s must not override with the same profile; both answered %s"),
+					NameOfJoint(ChoiceA), NameOfJoint(ChoiceB),
+					NameOfConnectionProfileByAddress(JointOverrideFor(ChoiceA))),
+				JointOverrideFor(ChoiceA) != JointOverrideFor(ChoiceB));
+		}
+	}
+
+	/*
+	 * A CHOICE THIS BUILD HAS NEVER HEARD OF OVERRIDES **NOTHING**. EJointChoice is a uint8 and a
+	 * cast is all it takes to make one.
+	 *
+	 * THE ROW USED TO ACCEPT "nullptr OR ANY SHIPPED ROW", AND THAT IS NO LONGER THE HONEST CLAIM.
+	 * Two things have since committed to the stricter one. `JointOverrideFor`'s own header says an
+	 * unheard-of choice hands the joint back to the inference, because a plausible row would fasten
+	 * it with a profile nobody picked. And `SessionToolbarIsActive` now DERIVES the Auto chip's lit
+	 * state from exactly this answer (`JointOverrideFor(State.Joint) == nullptr`) rather than from
+	 * `State.Joint == Auto` — so a build that answered an unknown choice with a row would draw a
+	 * six-chip segmented control with NO chip lit at all, over a session that is in fact being
+	 * fastened by the inference. The looser row would pass over that.
+	 *
+	 * AND IT IS STILL A POINTER WORTH FOLLOWING — the shipped-row check is kept as the second half,
+	 * so a garbage pointer fails as a garbage pointer rather than merely as "not null".
+	 */
+	const EJointChoice UnknownChoice = static_cast<EJointChoice>(200);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("a joint choice this build has never heard of must override NOTHING — the header "
+				 "commits to it, and the Auto chip's lit state is derived from it, so a row here "
+				 "leaves the strip with no chip lit over a session the inference is deciding. It "
+				 "answered %s"),
+			NameOfConnectionProfileByAddress(JointOverrideFor(UnknownChoice))),
+		JointOverrideFor(UnknownChoice) == nullptr);
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("and whatever it answers must be a shipped library row or nothing, never a pointer "
+				 "into something that is not one — it answered %s"),
+			NameOfConnectionProfileByAddress(JointOverrideFor(UnknownChoice))),
+		IsAShippedConnectionProfileOrNull(JointOverrideFor(UnknownChoice)));
 
 	return true;
 }

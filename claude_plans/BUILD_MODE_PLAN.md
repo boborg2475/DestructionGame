@@ -211,7 +211,7 @@ preview and a palette on that proven core — it invents no physics.
   through `PreviewBuildPiece`/`PlaceBuildPiece` as an optional `const FConnectionStrength*`; nullptr = auto),
   so a plank can be screwed to a plate or a brick laid dry. The choice is recorded per placement for save/load
   (it changes committed physics). The ghost card (S9) shows the joint that would form. This is the "fastening
-  override" the 2026-09-03 ruling deferred, now explicit and player-driven.
+  override" the 2026-09-03 ruling deferred, now explicit and player-driven. LANDED 2026-09-16 (chips, override through both doors, inspector naming); the display-name column, per-joint choice, save/load recording and the ghost card are logged in CURRENT_STATE (J1–J7).
 
 ### Open decisions (owner-delegated; decide when the slice is reached, record in DESIGN §8)
 - **Live structural feedback while building:** RECOMMEND default OFF — build freely, discover on "run"

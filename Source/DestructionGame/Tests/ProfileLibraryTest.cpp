@@ -6,6 +6,8 @@
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
 
+#include <limits>
+
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
@@ -1129,6 +1131,202 @@ bool FProfileLibraryTimberProfileTest::RunTest(const FString& Parameters)
 		FString::Printf(TEXT("Timber at %g MPa shear should read %g (7/6), got %g"),
 			ProbeStressMPa, ExpectedShearUtil, ShearUtil),
 		FMath::IsNearlyEqual(ShearUtil, ExpectedShearUtil, Tolerance));
+
+	return true;
+}
+
+/**
+ * EVERY SHIPPED ROW FINDS ITSELF AGAIN FROM ITS VALUES ALONE — AND NOTHING ELSE DOES.
+ *
+ * =====================================================================================
+ * THE BEHAVIOUR IN ONE SENTENCE
+ * =====================================================================================
+ *
+ * `FindConnectionProfileRow(Row.Strength)` answers `&Row` — the SAME row, by address — for every row
+ * in `AllConnectionProfiles()`, and answers null for a strength this library never shipped.
+ *
+ * =====================================================================================
+ * WHY THE ROUND TRIP IS THE CLAIM, AND WHY IT IS A POINTER COMPARISON
+ * =====================================================================================
+ *
+ * The lookup exists because a joint's IDENTITY is gone by the time anybody can ask: `FConnection`
+ * stores a COPY of the profile it was made with, so the only route back to "which shipped row
+ * fastens this" is the five numbers. That route has exactly two ways to be wrong, and one assertion
+ * closes both:
+ *
+ *   - IT MAY FIND THE WRONG ROW. This library is siblings by construction — the bed mortar and its
+ *     perpend differ on two axes, Nail/Screw/Bolt are one shape at three scales, and DryStone and
+ *     the CohesionlessBond fixture differ on TENSION ALONE. A Find comparing four fields instead of
+ *     five answers with a plausible neighbour, and the details window then names a joint the player
+ *     did not build while every number beside it stays perfectly believable. Comparing the returned
+ *     POINTER against the row the query came from is what catches that: a four-field Find drops
+ *     CohesionlessBond onto DryStone's row and this sweep fails on it by name.
+ *
+ *   - TWO SHIPPED ROWS MAY BE FIELD-IDENTICAL. `FindConnectionProfileRow`'s header states the
+ *     ambiguity and says there is nothing the function can do about it — which makes it the
+ *     LIBRARY's invariant to hold, and this is where it is held. A retune that collapsed two rows
+ *     onto one set of numbers would make every joint of the second read as the first, silently; here
+ *     the second row's round trip comes back pointing at the first and says so.
+ *
+ * A SWEEP OVER `AllConnectionProfiles()` RATHER THAN A LIST, so adding a profile is adding a row and
+ * it inherits both claims for free — the rule this whole file is built on.
+ *
+ * =====================================================================================
+ * AND THE NEGATIVES, WHICH ARE WHAT MAKE THE SWEEP MEAN ANYTHING
+ * =====================================================================================
+ *
+ * A Find that returned the first row for everything would pass nothing here, but a Find that matched
+ * LOOSELY — a tolerance, a "nearest row" — would pass the sweep above and be exactly the plausible
+ * lie the header forbids. So:
+ *
+ *   - A SCREW WITH ONE FIELD NUDGED BY 0.01 MPa IS NOT A SCREW. It is a hundredth of a megapascal
+ *     from a shipped row and it is not that row, because the question is "which row IS this" and not
+ *     "which row is this LIKE".
+ *
+ *   - A SCREW WITH ONE FIELD NaN IS NOT ANY ROW, and that is the fail-closed end. NaN compares equal
+ *     to nothing, so the exact comparison rejects it by construction — the property is asserted on
+ *     every one of the five fields in turn, because a Find rewritten with `FMath::IsNearlyEqual`
+ *     would answer TRUE for a NaN on whichever axis it forgot (`Abs(NaN - x) <= tol` is false, but
+ *     the many other shapes this comparison gets rewritten into are not all so lucky), and a joint
+ *     whose strength is not a number must never read as a shipped profile.
+ *
+ * NO WORLD, NO TICKING SOLVER, NOTHING SOLVED. Nine rows and twelve struct copies.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FProfileLibraryConnectionRowRoundTripTest,
+	"DestructionGame.Core.Profiles.ConnectionRowsRoundTripByValue",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FProfileLibraryConnectionRowRoundTripTest::RunTest(const FString& Parameters)
+{
+	using namespace ProfileLibraryTestSupport;
+
+	/** Which row an answer IS, by address, so a failure names the row rather than five numbers. */
+	const auto NameOfRow = [](const FNamedConnectionProfile* Row)
+	{
+		if (Row == nullptr)
+		{
+			return FString(TEXT("<no row>"));
+		}
+
+		return Row->Name != nullptr ? FString(Row->Name) : FString(TEXT("<unnamed row>"));
+	};
+
+	const auto DescribeStrength = [](const FConnectionStrength& S)
+	{
+		return FString::Printf(
+			TEXT("{c %g, coh %g, t %g, mu %g, cap %g}"),
+			S.CompressiveStrengthMPa, S.ShearCohesionMPa, S.TensileStrengthMPa,
+			S.FrictionCoefficient, S.MaxShearStrengthMPa);
+	};
+
+	/* --- ONE: every shipped row finds ITSELF, by address ------------------------------------- */
+
+	int32 RowsSwept = 0;
+
+	for (const FNamedConnectionProfile& Row : AllConnectionProfiles())
+	{
+		++RowsSwept;
+
+		const FNamedConnectionProfile* const Found = FindConnectionProfileRow(Row.Strength);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s must find ITSELF from its own five numbers %s — a lookup that answers with a "
+					 "SIBLING names a joint the player never built, and a library holding two "
+					 "field-identical rows makes every joint of the second read as the first. It "
+					 "answered %s"),
+				*NameOfRow(&Row), *DescribeStrength(Row.Strength), *NameOfRow(Found)),
+			Found == &Row);
+
+		/*
+		 * AND THE ANSWER'S OWN STRENGTH IS THE LIBRARY'S, BY ADDRESS. FNamedConnectionProfile::Strength
+		 * is a REFERENCE to the shipped extern precisely so that `&FindConnectionProfileRow(S)->Strength`
+		 * is the library's address rather than a pointer into a private copy — which is the defect the
+		 * MATERIAL library had until its own field became a reference, and it answered "no such row"
+		 * for every piece in the game while looking perfectly healthy.
+		 */
+		if (Found != nullptr)
+		{
+			TestTrue(
+				*FString::Printf(
+					TEXT("%s: the found row's Strength must BE the shipped constant, by address — a row "
+						 "holding a COPY hands every caller a pointer a retune never reaches"),
+					*NameOfRow(&Row)),
+				&Found->Strength == &Row.Strength);
+		}
+	}
+
+	TestTrue(
+		*FString::Printf(
+			TEXT("fixture: the sweep must have read the library, it read %d row(s)"), RowsSwept),
+		RowsSwept >= 7);
+
+	/* --- TWO: a strength this library never shipped is NO row -------------------------------- */
+
+	struct FNotARowCase
+	{
+		FString Description;
+		FConnectionStrength Strength;
+	};
+
+	const double NotANumber = std::numeric_limits<double>::quiet_NaN();
+
+	/*
+	 * A SCREW, ONE FIELD AT A TIME, ADDRESSED BY MEMBER POINTER SO THE FIVE ARE A TABLE RATHER THAN
+	 * FIVE COPIES OF ONE PARAGRAPH. Screw is the subject because it is the middle of the three
+	 * fasteners — a sibling on either side — so a loose match has somewhere plausible to land.
+	 */
+	struct FFieldCase
+	{
+		const TCHAR* Name;
+		double FConnectionStrength::* Field;
+	};
+
+	const FFieldCase Fields[] = {
+		{ TEXT("compressive strength"), &FConnectionStrength::CompressiveStrengthMPa },
+		{ TEXT("shear cohesion"),       &FConnectionStrength::ShearCohesionMPa },
+		{ TEXT("tensile strength"),     &FConnectionStrength::TensileStrengthMPa },
+		{ TEXT("friction coefficient"), &FConnectionStrength::FrictionCoefficient },
+		{ TEXT("shear ceiling"),        &FConnectionStrength::MaxShearStrengthMPa },
+	};
+
+	TArray<FNotARowCase> NotRows;
+
+	{
+		FConnectionStrength Nudged = Screw;
+		Nudged.TensileStrengthMPa += 0.01;
+
+		NotRows.Add({
+			TEXT("a Screw whose withdrawal is 0.01 MPa out — a hundredth of a megapascal from a "
+				 "shipped row and NOT that row, because the question is which row this IS and never "
+				 "which row it is LIKE"),
+			Nudged });
+	}
+
+	for (const FFieldCase& Field : Fields)
+	{
+		FConnectionStrength NotFinite = Screw;
+		NotFinite.*Field.Field = NotANumber;
+
+		NotRows.Add({
+			FString::Printf(TEXT("a Screw whose %s is NaN"), Field.Name),
+			NotFinite });
+	}
+
+	for (const FNotARowCase& Case : NotRows)
+	{
+		const FNamedConnectionProfile* const Found = FindConnectionProfileRow(Case.Strength);
+
+		TestTrue(
+			*FString::Printf(
+				TEXT("%s: it must find NO ROW. Naming the nearest one is worse than naming none — this "
+					 "library is siblings by construction, so 'nearest' is a plausible lie, and a "
+					 "strength that is not a number must never read as a shipped profile. %s answered "
+					 "%s"),
+				*Case.Description, *DescribeStrength(Case.Strength), *NameOfRow(Found)),
+			Found == nullptr);
+	}
 
 	return true;
 }

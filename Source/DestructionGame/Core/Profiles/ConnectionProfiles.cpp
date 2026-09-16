@@ -449,4 +449,33 @@ namespace DestructionProfiles
 		return TArrayView<const FNamedConnectionProfile>(
 			ConnectionProfileLibrary, UE_ARRAY_COUNT(ConnectionProfileLibrary));
 	}
+
+	const FNamedConnectionProfile* FindConnectionProfileRow(const FConnectionStrength& Strength)
+	{
+		/*
+		 * THE LIBRARY IS WALKED RATHER THAN THE SEVEN EXTERNS COMPARED, so a connection profile
+		 * stays DATA. A chain of `== GeneralPurposeMortar` tests would be a branch per profile —
+		 * DESIGN §2's drift stated exactly — and its failure mode is quiet: a row added to the
+		 * library would read as no row at all with nothing to say why. Adding a row above is what
+		 * makes it findable here too.
+		 *
+		 * ALL FIVE FIELDS, AND THAT IS THE POINT RATHER THAN THOROUGHNESS. This library is siblings
+		 * by construction: the bed mortar and its perpend differ on two axes and nothing else, and
+		 * Nail, Screw and Bolt are one shape at three scales. Comparing fewer fields would name a
+		 * plausible neighbour of the right row, which is worse than naming none.
+		 */
+		for (const FNamedConnectionProfile& Row : AllConnectionProfiles())
+		{
+			if (Row.Strength.CompressiveStrengthMPa == Strength.CompressiveStrengthMPa
+				&& Row.Strength.ShearCohesionMPa == Strength.ShearCohesionMPa
+				&& Row.Strength.TensileStrengthMPa == Strength.TensileStrengthMPa
+				&& Row.Strength.FrictionCoefficient == Strength.FrictionCoefficient
+				&& Row.Strength.MaxShearStrengthMPa == Strength.MaxShearStrengthMPa)
+			{
+				return &Row;
+			}
+		}
+
+		return nullptr;
+	}
 }
