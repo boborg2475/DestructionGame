@@ -1,0 +1,12 @@
+=== BASELINE: the level's own settle when its hold expired, nothing cut (world time 4.4503 s) ===
+total 65.782 ms; 0 breaking pass(es), 1 passes run; live pieces before 5612; intact joints 15042 -> 15042
+pass,passMs,solveMs,supportListsMs,reseatMs,fixpointMs,fixpointIterations,archingMs,gateMs,gateDisposition,jointsSeveredByGate,sweepMs,jointsGivenToSweep,proverMs,proverPoses,proverLpPivots,proverLpMs,proverLastBlocks,proverFell,jointsSeveredByProver,piecesFelledByProver,livePiecesAfter,intactJointsAfter,notHeldAfter
+1,65.760,63.228,1.955,0.164,60.633,1,0.000,0.042,0,0,1.259,0,0.802,1,1,0.014,0,0,0,0,5612,15042,0
+  pass 1 fixpoint iteration 1: 5612 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
+=== THE CUT: course 37 of the back wall deleted through CommitPieceActionForAll at world time 4.4503 s; the whole commit (remove + cascade + destroy actors + push) took 221.761 ms ===
+total 200.796 ms; 0 breaking pass(es), 1 passes run; live pieces before 5581; intact joints 14917 -> 14917
+pass,passMs,solveMs,supportListsMs,reseatMs,fixpointMs,fixpointIterations,archingMs,gateMs,gateDisposition,jointsSeveredByGate,sweepMs,jointsGivenToSweep,proverMs,proverPoses,proverLpPivots,proverLpMs,proverLastBlocks,proverFell,jointsSeveredByProver,piecesFelledByProver,livePiecesAfter,intactJointsAfter,notHeldAfter
+1,200.773,147.964,1.531,0.111,145.912,3,0.000,0.077,0,0,1.242,0,50.929,1,183,49.178,75,0,0,0,5581,14917,718
+  pass 1 fixpoint iteration 1: 5167 reached from the ground, 0 overturned, 0 stranded, 10 released from a refused arch
+  pass 1 fixpoint iteration 2: 4864 reached from the ground, 1 overturned, 0 stranded, 0 released from a refused arch
+  pass 1 fixpoint iteration 3: 4863 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch

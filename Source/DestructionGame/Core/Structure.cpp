@@ -5,6 +5,13 @@
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Core/RigidBlock/RigidBlockBridge.h"
+#include "HAL/PlatformTime.h"
+
+/*
+ * THE SOLVER'S OWN LOG, so a break decision can be read out of a log without a debugger: a Log
+ * line per cascade that broke something or cost more than a frame, Verbose lines per pass.
+ */
+DEFINE_LOG_CATEGORY_STATIC(LogDestructionSolve, Log, All);
 
 /*
  * EVERY NAME IN HERE CARRIES A Solver PREFIX, AND THAT IS NOT DECORATION.
@@ -640,6 +647,13 @@ void FStructure::SolveLoads()
 	++SolveCount;
 
 	/*
+	 * PROFILED, NOT BUDGETED. The phase clocks below feed GetLastSolveLoadsProfile and nothing
+	 * else; a Seconds() read costs tens of nanoseconds against a solve that costs milliseconds.
+	 */
+	LastSolveLoadsProfile = FSolveLoadsProfile();
+	const double ProfileStartSeconds = FPlatformTime::Seconds();
+
+	/*
 	 * WHICH JOINTS TOUCH WHICH PIECE, BUILT ONCE BY WALKING THE CONNECTIONS.
 	 *
 	 * The tier decision below wants a piece's own joints and nothing else, and it used to
@@ -798,9 +812,15 @@ void FStructure::SolveLoads()
 	TArray<bool> PieceReseatedOnAnArch;
 	TArray<bool> PieceInRefusedArchGroup;
 	TArray<FSpannedArch> Arches;
+
+	const double ReseatStartSeconds = FPlatformTime::Seconds();
+	LastSolveLoadsProfile.SupportListsMs = (ReseatStartSeconds - ProfileStartSeconds) * 1000.0;
+
 	ReseatSpannedGroups(
 		PieceJoints, PieceHasNoSeat, SupportConnections, PieceReseatedOnAnArch,
 		PieceInRefusedArchGroup, Arches);
+
+	LastSolveLoadsProfile.ReseatMs = (FPlatformTime::Seconds() - ReseatStartSeconds) * 1000.0;
 
 	/*
 	 * The same relation read the other way: who rests on each piece. Both of the
@@ -886,8 +906,16 @@ void FStructure::SolveLoads()
 	 * first use, so hoisting them would be correct today and would leave nothing but
 	 * the opportunity for a later pass to read what an earlier one wrote.
 	 */
+	const double FixpointStartSeconds = FPlatformTime::Seconds();
+
 	for (;;)
 	{
+		++LastSolveLoadsProfile.FixpointIterations;
+		LastSolveLoadsProfile.SupportedPerIteration.Add(0);
+		LastSolveLoadsProfile.OverturnedPerIteration.Add(0);
+		LastSolveLoadsProfile.StrandedPerIteration.Add(0);
+		LastSolveLoadsProfile.ReleasedPerIteration.Add(0);
+
 		/*
 		 * Recomputed from scratch every pass, so re-solving — and re-trying after a
 		 * stranding — gives the same answer rather than accumulating onto the last one.
@@ -1148,6 +1176,7 @@ void FStructure::SolveLoads()
 			{
 				PieceOverturned[Current] = true;
 				bOverturnedThisPass = true;
+				++LastSolveLoadsProfile.OverturnedPerIteration.Last();
 			}
 
 			for (const int32 Index : LoadPaths[Current])
@@ -1554,12 +1583,22 @@ void FStructure::SolveLoads()
 				{
 					PieceReleasedFromRefusedArch[PieceIndex] = true;
 					bReleasedThisPass = true;
+					++LastSolveLoadsProfile.ReleasedPerIteration.Last();
 				}
 				else
 				{
 					PieceStranded[PieceIndex] = true;
 					bStrandedThisPass = true;
+					++LastSolveLoadsProfile.StrandedPerIteration.Last();
 				}
+			}
+		}
+
+		for (int32 PieceIndex = 0; PieceIndex < Pieces.Num(); ++PieceIndex)
+		{
+			if (PieceSupported[PieceIndex])
+			{
+				++LastSolveLoadsProfile.SupportedPerIteration.Last();
 			}
 		}
 
@@ -1578,7 +1617,15 @@ void FStructure::SolveLoads()
 	 * support list, no split, no accumulation order and no moment. That is what lets the whole
 	 * vertical answer of the structure stay bit-identical to one computed before arches existed.
 	 */
+	const double ArchingStartSeconds = FPlatformTime::Seconds();
+
 	ApplyArchingThrust(PieceJoints, Arches);
+
+	const double ProfileEndSeconds = FPlatformTime::Seconds();
+
+	LastSolveLoadsProfile.FixpointMs = (ArchingStartSeconds - FixpointStartSeconds) * 1000.0;
+	LastSolveLoadsProfile.ArchingMs = (ProfileEndSeconds - ArchingStartSeconds) * 1000.0;
+	LastSolveLoadsProfile.TotalMs = (ProfileEndSeconds - ProfileStartSeconds) * 1000.0;
 
 	/*
 	 * Nothing is evaluated against a strength here. Solving computes what each
@@ -3226,12 +3273,51 @@ int32 FStructure::SolveAndBreak()
 		return Intact;
 	};
 
+	/* Pieces the last solve is not holding up: Falling or Stranded, live and answered. */
+	auto CountNotHeld = [this]() -> int32
+	{
+		int32 NotHeld = 0;
+		for (int32 Piece = 0; Piece < Pieces.Num(); ++Piece)
+		{
+			if (IsPieceRemoved(Piece) || !HasSupportAnswer(Piece))
+			{
+				continue;
+			}
+			const EPieceSupport Support = GetPieceSupport(Piece);
+			if (Support != EPieceSupport::Grounded && Support != EPieceSupport::Supported)
+			{
+				++NotHeld;
+			}
+		}
+		return NotHeld;
+	};
+
+	/*
+	 * THE REPORT IS FILLED AS THE CASCADE RUNS, AND IT DECIDES NOTHING. Every clock and count here
+	 * feeds GetLastSolveAndBreakReport so a reader can see which pass cost what and why; the cascade
+	 * itself reads none of it back.
+	 */
+	LastSolveAndBreakReport = FSolveAndBreakReport();
+	LastSolveAndBreakReport.LivePiecesBefore = NumLivePieces();
+	LastSolveAndBreakReport.IntactJointsBefore = CountIntactJoints();
+
+	const double CascadeStartSeconds = FPlatformTime::Seconds();
+
 	for (;;)
 	{
+		const double PassStartSeconds = FPlatformTime::Seconds();
+
 		SolveLoads();
 
 		const int32 Pass = PassesAlreadyStamped + BreakingPasses + 1;
 		bool bBrokeThisPass = false;
+
+		FBreakPassReport& Report = LastSolveAndBreakReport.Passes.AddDefaulted_GetRef();
+		Report.Pass = Pass;
+		Report.Solve = LastSolveLoadsProfile;
+
+		const double GateStartSeconds = FPlatformTime::Seconds();
+		const int32 IntactBeforeGate = CountIntactJoints();
 
 		/*
 		 * THE EQUILIBRIUM GATE DECIDES THE PASS, AND BELOW THE BLOCK CAP IT IS THE SOLE BREAK
@@ -3251,13 +3337,23 @@ int32 FStructure::SolveAndBreak()
 		 */
 		const EEquilibriumGateDisposition Gate = BreakByEquilibrium(Pass);
 
+		Report.GateMs = (FPlatformTime::Seconds() - GateStartSeconds) * 1000.0;
+		Report.GateDisposition = static_cast<int32>(Gate);
+		Report.JointsSeveredByGate = IntactBeforeGate - CountIntactJoints();
+
 		if (Gate == EEquilibriumGateDisposition::AuthoritativeBroke)
 		{
 			bBrokeThisPass = true;
 		}
 		else if (Gate == EEquilibriumGateDisposition::DeclinedToRouter)
 		{
+			const double SweepStartSeconds = FPlatformTime::Seconds();
+			const int32 IntactBeforeSweep = CountIntactJoints();
+
 			bBrokeThisPass = BreakByCapacitySweep(Pass);
+
+			Report.CapacitySweepMs = (FPlatformTime::Seconds() - SweepStartSeconds) * 1000.0;
+			Report.JointsGivenToSweep = IntactBeforeSweep - CountIntactJoints();
 
 			/*
 			 * THE REGIONAL PROVER'S ARM (REGIONAL_PROVER_PLAN.md §4, slice 4a). Above the cap the gate
@@ -3296,9 +3392,18 @@ int32 FStructure::SolveAndBreak()
 				 * no break.
 				 */
 				const int32 IntactBefore = CountIntactJoints();
+				const double ProverStartSeconds = FPlatformTime::Seconds();
 
-				ProveRegionalCollapse(
+				Report.PiecesFelledByProver = ProveRegionalCollapse(
 					DeriveRegionalSeed(Pass, /*bFirstPass*/ BreakingPasses == 0), RegionalProverBlockCap, Pass);
+
+				Report.RegionalProverMs = (FPlatformTime::Seconds() - ProverStartSeconds) * 1000.0;
+				Report.RegionalPoses = LastProverPoses;
+				Report.RegionalLpPivots = LastProverLpPivots;
+				Report.RegionalLpMs = LastProverLpMs;
+				Report.RegionalLastBlocks = LastProverPoses > 0 ? LastRegionalProblemBlockCount : INDEX_NONE;
+				Report.bRegionalFell = bLastProverFell;
+				Report.JointsSeveredByProver = IntactBefore - CountIntactJoints();
 
 				if (CountIntactJoints() < IntactBefore)
 				{
@@ -3306,6 +3411,21 @@ int32 FStructure::SolveAndBreak()
 				}
 			}
 		}
+
+		Report.LivePieces = NumLivePieces();
+		Report.IntactJointsAfter = CountIntactJoints();
+		Report.NotHeldAfter = CountNotHeld();
+		Report.PassMs = (FPlatformTime::Seconds() - PassStartSeconds) * 1000.0;
+
+		UE_LOG(LogDestructionSolve, Verbose,
+			TEXT("SolveAndBreak pass %d: solve %.2f ms (%d fixpoint iterations), gate %.2f ms (disposition %d, severed %d), ")
+			TEXT("sweep %.2f ms gave %d, prover %.2f ms (%d poses, %d pivots, %.2f ms LP, last %d blocks, fell %d) ")
+			TEXT("severed %d felled %d; after: %d live, %d intact joints, %d not held; pass %.2f ms"),
+			Pass, Report.Solve.TotalMs, Report.Solve.FixpointIterations, Report.GateMs, Report.GateDisposition,
+			Report.JointsSeveredByGate, Report.CapacitySweepMs, Report.JointsGivenToSweep, Report.RegionalProverMs, Report.RegionalPoses,
+			Report.RegionalLpPivots, Report.RegionalLpMs, Report.RegionalLastBlocks, Report.bRegionalFell ? 1 : 0,
+			Report.JointsSeveredByProver, Report.PiecesFelledByProver, Report.LivePieces, Report.IntactJointsAfter,
+			Report.NotHeldAfter, Report.PassMs);
 
 		/*
 		 * A pass that breaks nothing is the last one, and it is not counted: the loads
@@ -3324,7 +3444,34 @@ int32 FStructure::SolveAndBreak()
 		++BreakingPasses;
 	}
 
+	LastSolveAndBreakReport.BreakingPasses = BreakingPasses;
+	LastSolveAndBreakReport.IntactJointsAfter = CountIntactJoints();
+	LastSolveAndBreakReport.TotalMs = (FPlatformTime::Seconds() - CascadeStartSeconds) * 1000.0;
+
+	/*
+	 * SAID OUT LOUD AT Log LEVEL ONLY WHEN IT MATTERS TO A PLAYER: a cascade that broke something, or
+	 * one that cost more than a frame. A settle that changed nothing in a few milliseconds is Verbose.
+	 */
+	if (BreakingPasses > 0 || LastSolveAndBreakReport.TotalMs > 50.0)
+	{
+		UE_LOG(LogDestructionSolve, Log,
+			TEXT("SolveAndBreak: %d breaking pass(es) of %d in %.1f ms on %d live pieces; intact joints %d -> %d"),
+			BreakingPasses, LastSolveAndBreakReport.Passes.Num(), LastSolveAndBreakReport.TotalMs,
+			LastSolveAndBreakReport.LivePiecesBefore, LastSolveAndBreakReport.IntactJointsBefore,
+			LastSolveAndBreakReport.IntactJointsAfter);
+	}
+
 	return BreakingPasses;
+}
+
+const FStructure::FSolveAndBreakReport& FStructure::GetLastSolveAndBreakReport() const
+{
+	return LastSolveAndBreakReport;
+}
+
+const FStructure::FSolveLoadsProfile& FStructure::GetLastSolveLoadsProfile() const
+{
+	return LastSolveLoadsProfile;
 }
 
 int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, int32 RegionBlockCap)
@@ -3542,6 +3689,13 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 	RigidBlockOracle::FOracleResult Result;
 	bool bLastPoseFell = false;
 
+	/* Observability for the pass report: reset per call, written per pose. */
+	LastProverPoses = 0;
+	LastProverLpPivots = 0;
+	LastProverLpMs = 0.0;
+	bLastProverFell = false;
+	LastProverJointsSevered = 0;
+
 	const int32 MaxGrowIterations = Pieces.Num() + 4;
 
 	for (int32 Iteration = 0; Iteration < MaxGrowIterations; ++Iteration)
@@ -3569,7 +3723,13 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 		Problem.bGravityIsLive = false;
 		Problem.bFirstCrackRows = true;
 
+		const double LpStartSeconds = FPlatformTime::Seconds();
+
 		Result = RigidBlockOracle::SolveRigidBlock(Problem);
+
+		++LastProverPoses;
+		LastProverLpPivots += Result.SimplexIterations;
+		LastProverLpMs += (FPlatformTime::Seconds() - LpStartSeconds) * 1000.0;
 
 		const bool bCertifiedFall =
 			RigidBlockOracle::OutcomeOf(Result) == RigidBlockOracle::EOracleOutcome::Falls
@@ -3700,6 +3860,8 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 		}
 	}
 
+	bLastProverFell = bLastPoseFell;
+
 	if (!bLastPoseFell)
 	{
 		return 0;
@@ -3766,6 +3928,7 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 
 		Connections[Connection].Sever();
 		ConnectionBreakPass[Connection] = BreakPass;
+		++LastProverJointsSevered;
 	}
 
 	return Released;

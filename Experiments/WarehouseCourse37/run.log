@@ -1,0 +1,36 @@
+=== COLLAPSE run, 2026.09.18-12.09.11 ===
+clock pinned at 0.016667 s per frame
+opening /Game/Maps/Scenarios/Lvl_Warehouse
+JOINED Lvl_Warehouse at world time 0.0167 s: 5612 pieces, 15042 joints, 5612 live; bounds X[0.000,679.625] Y[-11.250,347.750] Z[0.000,681.500]
+COURSE 37 OF THE BACK WALL: 31 pieces (Z in [277.5, 284.0], Y >= 326.25). Level view (975.2, 925.5, 911.4) pitch -30.0 yaw -130.0; close view (909.1, 1032.2, 864.7) pitch -30.0 yaw -130.0
+SELECTED at world time 1.0003 s (0.9836 s into the hold): 31 clicks issued, 31 landed, selection holds 31, 31 bricks wear a highlight; clicking took 709.8 ms
+SHOT Warehouse_C37_Before_NoUI (no UI) at world time 1.0670 s
+BASELINE settle at world time 4.4503 s: 65.8 ms, 0 breaking passes, 1 passes; solve 63.2 ms with 1 fixpoint iterations; 0 not held
+CUT at world time 4.4503 s: commit 221.761 ms of which SolveAndBreak 200.796 ms in 0 breaking pass(es) (1 run); 0 joints severed in total (); after: 57 grounded, 4806 supported, 0 stranded, 718 falling, 0 unanswered, 31 removed; 718 pieces released to physics
+REAL TIME: 63.3 ms passed between the commit returning and the next latent tick — the frame that released 718 bricks to physics, plus the first physics step
+FALL frame 15 (0.233 s after the cut): 718 released, 689 moving this frame, max drop 28.6 cm, mean drop 22.9 cm, max displacement 28.6 cm; this frame took 21.6 ms of real time
+SHOT Warehouse_C37_After_0p25s requested on frame 15 (0.233 s after the cut)
+FALL frame 30 (0.483 s after the cut): 718 released, 715 moving this frame, max drop 78.9 cm, mean drop 40.3 cm, max displacement 83.9 cm; this frame took 23.2 ms of real time
+SHOT Warehouse_C37_After_0p5s requested on frame 30 (0.483 s after the cut)
+FALL frame 60 (0.983 s after the cut): 718 released, 714 moving this frame, max drop 370.2 cm, mean drop 149.1 cm, max displacement 381.4 cm; this frame took 18.2 ms of real time
+SHOT Warehouse_C37_After_1s requested on frame 60 (0.983 s after the cut)
+FALL frame 120 (1.983 s after the cut): 718 released, 417 moving this frame, max drop 465.5 cm, mean drop 350.1 cm, max displacement 679.5 cm; this frame took 17.2 ms of real time
+SHOT Warehouse_C37_After_2s requested on frame 120 (1.983 s after the cut)
+FALL frame 180 (2.983 s after the cut): 718 released, 26 moving this frame, max drop 465.5 cm, mean drop 353.8 cm, max displacement 733.9 cm; this frame took 14.1 ms of real time
+SHOT Warehouse_C37_After_3s requested on frame 180 (2.983 s after the cut)
+FALL frame 300 (4.983 s after the cut): 718 released, 1 moving this frame, max drop 465.5 cm, mean drop 353.8 cm, max displacement 733.9 cm; this frame took 13.6 ms of real time
+SHOT Warehouse_C37_After_5s requested on frame 300 (4.983 s after the cut)
+FALL frame 480 (7.983 s after the cut): 718 released, 1 moving this frame, max drop 465.5 cm, mean drop 353.8 cm, max displacement 733.9 cm; this frame took 12.0 ms of real time
+SHOT Warehouse_C37_After_8s requested on frame 480 (7.983 s after the cut)
+FINAL at world time 12.5003 s (8.050 s after the cut): of 718 released pieces 718 moved more than 5 cm and 0 did not; 0 unreleased bricks moved (must be 0)
+FRAME Warehouse_C37_Before -> C:/Users/bobby/Documents/Unreal Projects/DestructionGame/Experiments/WarehouseCourse37/Warehouse_C37_Before.png (2755338 bytes)
+FRAME Warehouse_C37_Before_NoUI -> C:/Users/bobby/Documents/Unreal Projects/DestructionGame/Experiments/WarehouseCourse37/Warehouse_C37_Before_NoUI.png (3362853 bytes)
+FRAME Warehouse_C37_After_0s (2556531 bytes)
+FRAME Warehouse_C37_After_0p25s (2698680 bytes)
+FRAME Warehouse_C37_After_0p5s (2755659 bytes)
+FRAME Warehouse_C37_After_1s (2884626 bytes)
+FRAME Warehouse_C37_After_2s (2940517 bytes)
+FRAME Warehouse_C37_After_3s (2820338 bytes)
+FRAME Warehouse_C37_After_5s (2764273 bytes)
+FRAME Warehouse_C37_After_8s (2746927 bytes)
+FRAME Warehouse_C37_After_Final (2617353 bytes)

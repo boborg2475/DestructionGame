@@ -77,3 +77,9 @@ DerivedDataCache/*
 # One-off review render PNGs are large binaries with no build role; keep the
 # small RESULTS.md provenance the test comments cite, but not the images.
 TestResults/**/*.png
+
+# Experiment captures: keep the write-up and the data (REPORT.md, CSVs, break_report,
+# headless_timing), but not the large frame PNGs or the full engine session logs — the
+# same rule TestResults PNGs follow. The PNGs still sit in the folder on disk for review.
+Experiments/**/*.png
+Experiments/**/engine*.log

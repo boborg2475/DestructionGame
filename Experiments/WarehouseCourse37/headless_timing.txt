@@ -1,0 +1,18 @@
+=== HEADLESS TIMING, 2026.09.18-11.39.01: Warehouse.json loaded world-free, course 37 of the back wall removed, one SolveAndBreak per fresh load ===
+repeat 0: load+sweep 87.1 ms | AS LAID: 65.486 ms, 1 fixpoint iterations, prover 0.875 ms | CUT: 206.785 ms total, 0 breaking pass(es) of 1, solve 159.898 ms (3 fixpoint iterations), gate 0.074 ms, sweep 1.204 ms, prover 45.055 ms (1 poses, 183 pivots, 75 blocks, fell 0), 718 not held
+--- repeat 0, as laid, pass table ---
+total 65.486 ms; 0 breaking pass(es), 1 passes run; live pieces before 5612; intact joints 15042 -> 15042
+pass,passMs,solveMs,supportListsMs,reseatMs,fixpointMs,fixpointIterations,archingMs,gateMs,gateDisposition,jointsSeveredByGate,sweepMs,jointsGivenToSweep,proverMs,proverPoses,proverLpPivots,proverLpMs,proverLastBlocks,proverFell,jointsSeveredByProver,piecesFelledByProver,livePiecesAfter,intactJointsAfter,notHeldAfter
+1,65.464,62.764,1.383,0.085,60.993,1,0.016,0.138,0,0,1.266,0,0.875,1,1,0.047,0,0,0,0,5612,15042,0
+  pass 1 fixpoint iteration 1: 5612 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
+--- repeat 0, after the cut, pass table ---
+total 206.785 ms; 0 breaking pass(es), 1 passes run; live pieces before 5581; intact joints 14917 -> 14917
+pass,passMs,solveMs,supportListsMs,reseatMs,fixpointMs,fixpointIterations,archingMs,gateMs,gateDisposition,jointsSeveredByGate,sweepMs,jointsGivenToSweep,proverMs,proverPoses,proverLpPivots,proverLpMs,proverLastBlocks,proverFell,jointsSeveredByProver,piecesFelledByProver,livePiecesAfter,intactJointsAfter,notHeldAfter
+1,206.754,159.898,1.394,0.139,158.017,3,0.000,0.074,0,0,1.204,0,45.055,1,183,43.376,75,0,0,0,5581,14917,718
+  pass 1 fixpoint iteration 1: 5167 reached from the ground, 0 overturned, 0 stranded, 10 released from a refused arch
+  pass 1 fixpoint iteration 2: 4864 reached from the ground, 1 overturned, 0 stranded, 0 released from a refused arch
+  pass 1 fixpoint iteration 3: 4863 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
+repeat 1: load+sweep 87.2 ms | AS LAID: 62.382 ms, 1 fixpoint iterations, prover 0.799 ms | CUT: 192.238 ms total, 0 breaking pass(es) of 1, solve 147.064 ms (3 fixpoint iterations), gate 0.047 ms, sweep 1.198 ms, prover 43.406 ms (1 poses, 183 pivots, 75 blocks, fell 0), 718 not held
+repeat 2: load+sweep 88.3 ms | AS LAID: 63.695 ms, 1 fixpoint iterations, prover 0.802 ms | CUT: 192.779 ms total, 0 breaking pass(es) of 1, solve 147.558 ms (3 fixpoint iterations), gate 0.044 ms, sweep 1.206 ms, prover 43.338 ms (1 poses, 183 pivots, 75 blocks, fell 0), 718 not held
+repeat 3: load+sweep 87.2 ms | AS LAID: 63.111 ms, 1 fixpoint iterations, prover 0.801 ms | CUT: 191.431 ms total, 0 breaking pass(es) of 1, solve 146.297 ms (3 fixpoint iterations), gate 0.060 ms, sweep 1.215 ms, prover 43.297 ms (1 poses, 183 pivots, 75 blocks, fell 0), 718 not held
+repeat 4: load+sweep 91.8 ms | AS LAID: 68.015 ms, 1 fixpoint iterations, prover 0.802 ms | CUT: 191.687 ms total, 0 breaking pass(es) of 1, solve 146.359 ms (3 fixpoint iterations), gate 0.043 ms, sweep 1.217 ms, prover 43.523 ms (1 poses, 183 pivots, 75 blocks, fell 0), 718 not held

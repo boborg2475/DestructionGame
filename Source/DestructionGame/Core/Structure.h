@@ -572,6 +572,121 @@ struct FStructure
 	int32 GetLastEquilibriumProblemDim() const;
 
 	/**
+	 * WHAT ONE SOLVE OF THE LOADS COST, phase by phase — OBSERVABILITY ONLY (2026-09-18, the
+	 * warehouse course-37 experiment). Wall-clock milliseconds from FPlatformTime, so the numbers are
+	 * about THIS machine on THIS run and are meant to be read, never asserted against a threshold.
+	 */
+	struct FSolveLoadsProfile
+	{
+		/** Building the per-piece joint lists and the two-tier support lists (step one). */
+		double SupportListsMs = 0.0;
+
+		/** ReseatSpannedGroups — runs that span a hole are re-seated on their ends. */
+		double ReseatMs = 0.0;
+
+		/** The reachability / load-split fixpoint (steps two to five), all its iterations. */
+		double FixpointMs = 0.0;
+
+		/** How many times the fixpoint ran a complete solve from scratch before nothing changed. */
+		int32 FixpointIterations = 0;
+
+		/**
+		 * What each iteration found, one entry per iteration: pieces reached from the ground, pieces
+		 * that overturned off their supports, pieces stranded in a load cycle, and refused-arch members
+		 * released. Every iteration but the last changes at least one of the last three; the last is
+		 * the one whose loads are the answer.
+		 */
+		TArray<int32> SupportedPerIteration;
+		TArray<int32> OverturnedPerIteration;
+		TArray<int32> StrandedPerIteration;
+		TArray<int32> ReleasedPerIteration;
+
+		/** ApplyArchingThrust (step six). */
+		double ArchingMs = 0.0;
+
+		double TotalMs = 0.0;
+	};
+
+	/**
+	 * WHAT ONE PASS OF THE BREAK CASCADE DID AND COST. A pass is one SolveLoads, then the equilibrium
+	 * gate (which above the block cap DECLINES to the router without posing anything), then — only
+	 * when it declined — the per-joint capacity sweep and the regional collapse prover.
+	 */
+	struct FBreakPassReport
+	{
+		/** The global stamp this pass wrote on every joint it severed. */
+		int32 Pass = 0;
+
+		FSolveLoadsProfile Solve;
+
+		double GateMs = 0.0;
+
+		/** EEquilibriumGateDisposition as an integer: 0 declined to the router, otherwise it answered. */
+		int32 GateDisposition = 0;
+
+		/** Joints the gate severed when it answered below the cap — the LP mechanism's opened joints. */
+		int32 JointsSeveredByGate = 0;
+
+		double CapacitySweepMs = 0.0;
+
+		/** Joints the capacity sweep severed this pass — over their own weakest-link capacity. */
+		int32 JointsGivenToSweep = 0;
+
+		double RegionalProverMs = 0.0;
+
+		/** How many LPs the prover posed while growing its region, and their pivots and time in total. */
+		int32 RegionalPoses = 0;
+		int32 RegionalLpPivots = 0;
+		double RegionalLpMs = 0.0;
+
+		/** |region ∪ grounded boundary| of the prover's FINAL pose this pass, or INDEX_NONE. */
+		int32 RegionalLastBlocks = INDEX_NONE;
+
+		/** Whether the prover's final pose was a certified fall. */
+		bool bRegionalFell = false;
+
+		/** Joints the prover severed and pieces it marked Falling this pass. */
+		int32 JointsSeveredByProver = 0;
+		int32 PiecesFelledByProver = 0;
+
+		/** The structure after this pass: live pieces, intact joints, pieces not held up. */
+		int32 LivePieces = 0;
+		int32 IntactJointsAfter = 0;
+		int32 NotHeldAfter = 0;
+
+		double PassMs = 0.0;
+	};
+
+	/**
+	 * THE BREAK-DECISION REPORT: what the LAST SolveAndBreak did, pass by pass, and what it cost.
+	 *
+	 * OBSERVABILITY, NOT AUTHORITY. It is filled as a side effect of SolveAndBreak and read by
+	 * diagnostics and experiments; no production code branches on it. The terminal pass — the one
+	 * that broke nothing and whose loads are the settled state — is included, so a structure that
+	 * stands as built reports one pass with zero breaks.
+	 */
+	struct FSolveAndBreakReport
+	{
+		double TotalMs = 0.0;
+
+		/** The value SolveAndBreak returned: passes that broke at least one joint. */
+		int32 BreakingPasses = 0;
+
+		int32 LivePiecesBefore = 0;
+		int32 IntactJointsBefore = 0;
+		int32 IntactJointsAfter = 0;
+
+		/** Every pass run, breaking or terminal, in order. */
+		TArray<FBreakPassReport> Passes;
+	};
+
+	/** The report of the last SolveAndBreak, or a default one if none has run. */
+	const FSolveAndBreakReport& GetLastSolveAndBreakReport() const;
+
+	/** The phase profile of the last SolveLoads, however it was called. */
+	const FSolveLoadsProfile& GetLastSolveLoadsProfile() const;
+
+	/**
 	 * Which breaking pass gave this joint, counted from 1, or INDEX_NONE if no pass did
 	 * — including for an out-of-range handle, which is not a joint that broke.
 	 *
@@ -1420,6 +1535,20 @@ private:
 	 * Problem.Dim the moment BuildRigidBlockProblem accepts, so it reports the last POSE.
 	 */
 	int32 LastEquilibriumProblemDim = INDEX_NONE;
+
+	/** See GetLastSolveAndBreakReport / GetLastSolveLoadsProfile: observability, never authority. */
+	FSolveAndBreakReport LastSolveAndBreakReport;
+	FSolveLoadsProfile LastSolveLoadsProfile;
+
+	/**
+	 * What the last ProveRegionalCollapse did, for the pass report: poses, pivots, LP time, whether
+	 * its final pose fell, and how many joints it severed. Written by ProveRegionalCollapse only.
+	 */
+	int32 LastProverPoses = 0;
+	int32 LastProverLpPivots = 0;
+	double LastProverLpMs = 0.0;
+	bool bLastProverFell = false;
+	int32 LastProverJointsSevered = 0;
 
 	/*
 	 * Whether SetThreeDimensional flagged this structure 3D (THREED_DESIGN.md E3). FALSE BY
