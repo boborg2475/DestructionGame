@@ -1282,4 +1282,254 @@ bool FWarehouseCutTimingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * IMPROVEMENT #2 — "RIGHT-SIZE THE MECHANISM-DIRECTED RE-FLOOD" — RED DRIVER + GREEN GUARD.
+ *
+ * FStructure::ProveRegionalCollapse grows a flooded region and poses a rigid-block LP per grow
+ * iteration. When a pose certifies a fall whose mechanism CONTACTS a cut-artifact grounded boundary
+ * (a block the flood pinned grounded, not a genuine bIsGrounded foundation), the prover RE-FLOODS from
+ * the moved set to reveal collapse hidden behind that pinned block. TODAY that re-flood simply DOUBLES
+ * the budget (`EffectiveBudget = FMath::Min(GrowCeiling, EffectiveBudget * 2)` in Structure.cpp), and
+ * the doubled budget grows the pose to swallow standing structure that is not part of the mechanism.
+ *
+ * MEASURED ON THE L-CUT (BackWallAndChimneyEndCourse37), pass 2 poses TWICE:
+ *   pose 1 = 35 blocks / 196 pivots (certified fall — the mechanism the re-flood grows FROM);
+ *   pose 2 = 70 blocks / 617 pivots (certified fall — the DOUBLED re-flood, the oversized one).
+ * The certified mechanism fells 4 pieces and severs 10 joints — ~14 moved blocks. The rigid-block LP
+ * is strongly super-linear, so the 70-block pose is ~96% of the pass's prover cost. #2 sizes pose 2 to
+ * |moved-set u one adjacency ring| (~20 blocks) instead of the doubled budget.
+ *
+ * WHY THIS FIXTURE, AND NOT A SYNTHETIC ONE. The mechanism-directed re-flood only fires when a
+ * certified fall's MOVED blocks reach the budget edge of a MODEST flood AND beyond that edge lies more
+ * connected NON-grounded standing structure for the doubling to swallow — the compact-mechanism-in-a-
+ * large-standing-shell topology. On a synthetic chain the mechanism grows ring-by-ring and even the
+ * right-sized re-flood eventually reaches the same block count (the chain is the one case doubling is
+ * already optimal for), so a chain fixture cannot separate red from green. The measured L-cut is the
+ * topology that separates them, so the RED driver rides it directly (headless, world-free, no RHI,
+ * no ticking world — DestructionLayoutFile::LoadFile builds the FStructure and SolveAndBreak decides).
+ *
+ * ASSERT ON MECHANISM, NEVER WALL-CLOCK (DESIGN.md §4). The RED reads a pose's BLOCK COUNT; the GREEN
+ * reads felled-piece / severed-joint / not-held COUNTS. No LpMs threshold is ever asserted.
+ */
+namespace WarehouseReFloodSupport
+{
+	using namespace WarehouseCutExperiment;
+
+	/**
+	 * Load the warehouse world-free, apply the L-cut (BackWallAndChimneyEndCourse37), and run the real
+	 * SolveAndBreak. RegionBlockCap is left at the production default — exactly as the timing harness
+	 * runs it, which is where the 35/70 pose split was measured. Returns false only on a load failure.
+	 */
+	inline bool LoadLCutAndSolve(DestructionLayout::FBrickLayout& Cut, int32& OutRemoved, FString& OutWhy)
+	{
+		if (!DestructionLayoutFile::LoadFile(
+				DestructionLayoutFile::ContentPath(TEXT("Warehouse")), Cut, &OutWhy))
+		{
+			return false;
+		}
+
+		const int32 SpecIndex = IndexOfSpec(TEXT("BackWallAndChimneyEndCourse37"));
+		const FCutSpec& Spec = Specs()[SpecIndex];
+
+		OutRemoved = 0;
+		for (int32 Piece = 0; Piece < Cut.Boxes.Num(); ++Piece)
+		{
+			if (IsCutPiece(Cut.Boxes[Piece], Spec) && Cut.Structure.RemovePiece(Piece))
+			{
+				++OutRemoved;
+			}
+		}
+
+		Cut.Structure.SolveAndBreak();
+		return true;
+	}
+
+	/** Dump every prover pose so a failure shows the pose split, not just a bare comparison. */
+	inline void DumpPoses(FAutomationTestBase& Test, const FStructure::FSolveAndBreakReport& R)
+	{
+		for (const FStructure::FBreakPassReport& P : R.Passes)
+		{
+			for (int32 I = 0; I < P.RegionalPoseBreakdown.Num(); ++I)
+			{
+				const FStructure::FProverPoseReport& Pose = P.RegionalPoseBreakdown[I];
+				Test.AddInfo(FString::Printf(
+					TEXT("pass %d pose %d: %d blocks, %d pivots, fell=%s"),
+					P.Pass, I, Pose.Blocks, Pose.LpPivots, Pose.bFell ? TEXT("true") : TEXT("false")));
+			}
+		}
+	}
+}
+
+/**
+ * RED DRIVER. The first mechanism-directed re-flood pose — a pose that immediately follows a CERTIFIED
+ * FALL in the same pass (the only thing that follows a fall is the contact re-flood: an interior fall
+ * STOPS, and a speculative grow only follows a NON-fall) — must be sized to the mechanism it grows
+ * from, hence NO LARGER than the certified-fall pose that triggered it. The moved set is a subset of
+ * that pose's posed blocks and one adjacency ring around it stays within them, so |moved u ring| <=
+ * the trigger pose's block count. TODAY the code doubles the budget instead: the re-flood pose is 70
+ * blocks against the 35-block pose it grew from — RED, and RED because the doubling is oversized, not
+ * because the fixture or the report is malformed (both are asserted sound above the comparison).
+ *
+ * NEEDS A TICKING WORLD: NO — world-free LoadFile + SolveAndBreak, every assertion a report read.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FWarehouseReFloodRightSizedTest,
+	"Experiment.WarehouseCut.RegionalReFloodIsRightSizedToTheMechanism",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FWarehouseReFloodRightSizedTest::RunTest(const FString& Parameters)
+{
+	using namespace WarehouseCutExperiment;
+	using namespace WarehouseReFloodSupport;
+	using namespace DestructionLayout;
+
+	FBrickLayout Cut;
+	FString Why;
+	int32 Removed = 0;
+	if (!TestTrue(*FString::Printf(TEXT("the warehouse must load: %s"), *Why),
+			LoadLCutAndSolve(Cut, Removed, Why)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("FIXTURE: the L-cut removes 42 pieces"), Removed, 42);
+
+	const FStructure::FSolveAndBreakReport& R = Cut.Structure.GetLastSolveAndBreakReport();
+	DumpPoses(*this, R);
+
+	/*
+	 * Find the FIRST mechanism-directed re-flood: the first pose that certified a fall and is followed
+	 * by another pose in the same pass. Asserting on the first pair only precisely encodes "the re-flood
+	 * off a mechanism is right-sized," and stays robust if a correct #2 needs a second, still-small
+	 * re-flood after it (a later pair could legitimately be one ring larger than its predecessor).
+	 */
+	bool bFoundReFlood = false;
+	for (const FStructure::FBreakPassReport& P : R.Passes)
+	{
+		if (bFoundReFlood)
+		{
+			break;
+		}
+		for (int32 I = 0; I + 1 < P.RegionalPoseBreakdown.Num(); ++I)
+		{
+			const FStructure::FProverPoseReport& Trigger = P.RegionalPoseBreakdown[I];
+			const FStructure::FProverPoseReport& ReFlood = P.RegionalPoseBreakdown[I + 1];
+
+			/* Only a certified fall re-floods from its mechanism; a non-fall grows a speculative search. */
+			if (!Trigger.bFell)
+			{
+				continue;
+			}
+
+			bFoundReFlood = true;
+
+			TestTrue(
+				*FString::Printf(
+					TEXT("RED: pass %d — the mechanism-directed re-flood pose (%d blocks) must be sized to the ")
+					TEXT("moved set plus one ring, i.e. no larger than the %d-block certified-fall pose it grew ")
+					TEXT("from. Today it DOUBLES the budget (measured 70 vs 35)."),
+					P.Pass, ReFlood.Blocks, Trigger.Blocks),
+				ReFlood.Blocks <= Trigger.Blocks);
+			break;
+		}
+	}
+
+	/* If no re-flood was posed, the fixture no longer exercises the feature — fail loudly, not vacuously. */
+	TestTrue(
+		TEXT("the L-cut still provokes a mechanism-directed re-flood (a fall followed by a re-flood pose)"),
+		bFoundReFlood);
+
+	return true;
+}
+
+/**
+ * GREEN GUARD (green today, must STAY green after #2 — the safety net, not the driver). #2 changes the
+ * re-flood BUDGET only; it must not change WHAT collapses. This pins the L-cut's certified mechanism as
+ * a reusable characterization: the pass that carries the mechanism-directed re-flood fells exactly 4
+ * pieces and severs exactly 10 joints through the prover, and the whole cascade leaves exactly 974
+ * pieces not held. If a right-sized re-flood UNDER-floods and misses a piece, these counts drop and the
+ * guard bites. Improvement #3 ("carry the region across passes") reuses this same characterization.
+ *
+ * NEEDS A TICKING WORLD: NO.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FWarehouseLCutMechanismCharacterizationTest,
+	"Experiment.WarehouseCut.LCutMechanismIsFourPiecesTenJoints",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FWarehouseLCutMechanismCharacterizationTest::RunTest(const FString& Parameters)
+{
+	using namespace WarehouseCutExperiment;
+	using namespace WarehouseReFloodSupport;
+	using namespace DestructionLayout;
+
+	FBrickLayout Cut;
+	FString Why;
+	int32 Removed = 0;
+	if (!TestTrue(*FString::Printf(TEXT("the warehouse must load: %s"), *Why),
+			LoadLCutAndSolve(Cut, Removed, Why)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("FIXTURE: the L-cut removes 42 pieces"), Removed, 42);
+
+	const FStructure::FSolveAndBreakReport& R = Cut.Structure.GetLastSolveAndBreakReport();
+	DumpPoses(*this, R);
+
+	/*
+	 * The pass that carries the mechanism-directed re-flood (a certified-fall pose followed by another
+	 * pose). Its prover contribution is the mechanism #2 must preserve exactly.
+	 */
+	const FStructure::FBreakPassReport* ReFloodPass = nullptr;
+	for (const FStructure::FBreakPassReport& P : R.Passes)
+	{
+		for (int32 I = 0; I + 1 < P.RegionalPoseBreakdown.Num(); ++I)
+		{
+			if (P.RegionalPoseBreakdown[I].bFell)
+			{
+				ReFloodPass = &P;
+				break;
+			}
+		}
+		if (ReFloodPass != nullptr)
+		{
+			break;
+		}
+	}
+
+	if (TestNotNull(TEXT("the L-cut poses a mechanism-directed re-flood"), ReFloodPass))
+	{
+		TestEqual(
+			TEXT("GUARD: the re-flood pass's prover fells exactly 4 pieces (the L-cut mechanism)"),
+			ReFloodPass->PiecesFelledByProver, 4);
+		TestEqual(
+			TEXT("GUARD: the re-flood pass's prover severs exactly 10 joints (the L-cut mechanism)"),
+			ReFloodPass->JointsSeveredByProver, 10);
+	}
+
+	/*
+	 * THE WHOLE OUTCOME. Recomputed from the structure with the timing harness's own predicate (a piece
+	 * with a support answer that is neither Grounded nor Supported), independent of the report's own
+	 * NotHeldAfter tally. 974 is the measured, deterministic count across five loads.
+	 */
+	int32 NotHeld = 0;
+	for (int32 Piece = 0; Piece < Cut.Structure.NumPieces(); ++Piece)
+	{
+		if (Cut.Structure.IsPieceRemoved(Piece) || !Cut.Structure.HasSupportAnswer(Piece))
+		{
+			continue;
+		}
+		const EPieceSupport PS = Cut.Structure.GetPieceSupport(Piece);
+		if (PS != EPieceSupport::Grounded && PS != EPieceSupport::Supported)
+		{
+			++NotHeld;
+		}
+	}
+
+	TestEqual(TEXT("GUARD: the L-cut leaves exactly 974 pieces not held up"), NotHeld, 974);
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

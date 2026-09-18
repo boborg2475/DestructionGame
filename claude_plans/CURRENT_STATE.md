@@ -13,7 +13,7 @@ Last updated: **2026-09-16** — the interactive build/destroy SESSION is DELIVE
 
 ## Current state
 
-- **SOLVER SPEED at building scale — measured, not yet acted on (2026-09-18).** The warehouse
+- **SOLVER SPEED at building scale — measured; improvement #2 landed, #3 open (2026-09-18).** The warehouse
   course-37 playtest ([Experiments/WarehouseCourse37/REPORT.md](../Experiments/WarehouseCourse37/REPORT.md))
   timed one `FStructure::SolveAndBreak` on the 5,581-live-piece building at ~201 ms. Where it goes,
   and the three ways to cut it, are in the report's "How it could be made faster". Ranked: (1) the
@@ -39,9 +39,29 @@ Last updated: **2026-09-16** — the interactive build/destroy SESSION is DELIVE
   RegionalLpMs/RegionalLastBlocks/bRegionalFell` aggregates (reconciliation pinned by
   `RegionalProver.CascadeFellsAnAboveCapOverHold…`; empty-case pinned by the report test). The
   WarehouseCut harness dumps it per pose in `break_report.txt`, so **every future run collects it** —
-  this is the data that decides between improvement #2 (size the re-flood to the mechanism) and #3
-  (carry the region across passes): whether pass-2's 573 ms is one large pose plus a small one, or two
-  large poses. Also landed 2026-09-18: per-joint `FStructure::GetBreakAuthority()` (1 gate / 2 sweep /
+  this is the data that decided between improvement #2 and #3. It showed pass-2 is ONE oversized
+  re-flood pose plus a small one (pose 0 = 35 blocks / 196 pivots / 24 ms, fell; pose 1 = the
+  doubled-budget re-flood = 70 blocks / 617 pivots / 574 ms, fell — 96% of the pass's prover cost),
+  NOT two large poses — so the lever was the re-flood's blind budget-doubling.
+  **IMPROVEMENT #2 LANDED 2026-09-18 ("right-size the mechanism-directed re-flood"):**
+  `ProveRegionalCollapse`'s mechanism-directed re-flood (`bReFloodFromMechanism`) now sizes its budget
+  to the moved set grown by TWO adjacency rings (`|moved ∪ MovableRing ∪ PinnedRing|`) instead of
+  `EffectiveBudget * 2`. The budget bounds `region + grounded boundary`, so one MOVABLE ring advances
+  per iteration and the second ring is the grounded boundary that pins it; sizing to one ring alone
+  pins that ring as boundary and fixpoints short of the mechanism (that naive version regressed the
+  `RegionalProver` completeness siblings — the two-ring form is the correct reading, not a fixture fit).
+  A mechanism deeper than one ring is revealed by the next iteration re-flooding from the enlarged
+  moved set; monotone, terminates at RegionsMatch fixpoint / cap-bound / iteration bound; prover stays
+  one-directional. Measured **70 → 29 blocks** on the L-cut re-flood pose, collapse unchanged (same 4
+  felled / 10 prover-severed / 974 not held). Driven by
+  `Experiment.WarehouseCut.RegionalReFloodIsRightSizedToTheMechanism`, guarded by
+  `...LCutMechanismIsFourPiecesTenJoints`; the speculative (no-fall) branch keeps its `*2` doubling and
+  `min(cap,48)` ceiling, untouched. **IMPROVEMENT #3 REMAINS OPEN** — carry the disturbed region and
+  joint adjacency ACROSS passes (seed both the load solve and the prover flood from the previous pass's
+  region) rather than re-flooding cold from the seed each pass; the larger structural win, and the
+  soundness bar is real (a carried region must never drop a piece a newly-severed joint would move —
+  that is the red to write first). Re-price it against the fresh L-cut decision time now #2 has landed.
+  Also landed 2026-09-18: per-joint `FStructure::GetBreakAuthority()` (1 gate / 2 sweep /
   3 prover; `INDEX_NONE` for intact or went-with-a-removed-piece), a `severedBy` column in the harness's
   `joints.csv`, both observability-only. **FOLLOW-UP (review, non-blocking):** on the rare mid-loop
   `BuildRegionalProblem`-refusal exit (`Structure.cpp` ~3718 `return 0`) the post-loop

@@ -3854,16 +3854,47 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 			break;
 		}
 
-		EffectiveBudget = FMath::Min(GrowCeiling, EffectiveBudget * 2);
-
 		if (bReFloodFromMechanism)
 		{
 			/*
-			 * RE-FLOOD from the mechanism at the larger budget: rebuild the region from the moved seeds so
-			 * blocks unreachable from the collapse (a disconnected grounded island) fall out and the budget
-			 * is re-spent on the mechanism's own component. A rebuild that reproduces the region is a
-			 * fixpoint (or cap-bound) — nothing more to reach, so stitch the current mechanism.
+			 * RE-FLOOD sized to the mechanism plus exactly ONE adjacency ring of new exploration, rather
+			 * than a blind doubling that balloons several times past it. The budget bounds region PLUS
+			 * grounded boundary, so growing the movable region by one ring costs two joint-hops of budget:
+			 * the moved set unioned with its immediate neighbours is the region the pose must be free to
+			 * move (MovableRing), and one hop further out is the grounded boundary that pins it (PinnedRing).
+			 * Sizing to the movable ring ALONE would pin that ring as boundary instead of admitting it to the
+			 * region, and re-flooding from the same moved set would then reproduce the same pinned ring — a
+			 * fixpoint short of the true mechanism, so a deep collapse behind the ring would never be revealed
+			 * (its moved set never reaches the ring). With the boundary hop included the region advances one
+			 * movable ring per iteration: a mechanism deeper than one ring is revealed by the NEXT iteration,
+			 * which re-floods from the new, larger moved set, so the region keeps expanding while collapse
+			 * continues and still terminates at the cap or a fixpoint. Rebuild the region from the moved seeds
+			 * so blocks unreachable from the collapse (a disconnected grounded island) fall out and the budget
+			 * is re-spent on the mechanism's own component. A rebuild that reproduces the region is a fixpoint
+			 * (or cap-bound) — nothing more to reach, so stitch the current mechanism.
 			 */
+			TSet<int32> MovableRing(GrowFrontier);
+
+			for (const int32 Piece : GrowFrontier)
+			{
+				for (const int32 Index : PieceJoints[Piece])
+				{
+					MovableRing.Add(OtherEndOf(Connections[Index], Piece));
+				}
+			}
+
+			TSet<int32> PinnedRing = MovableRing;
+
+			for (const int32 Piece : MovableRing.Array())
+			{
+				for (const int32 Index : PieceJoints[Piece])
+				{
+					PinnedRing.Add(OtherEndOf(Connections[Index], Piece));
+				}
+			}
+
+			EffectiveBudget = FMath::Min(GrowCeiling, PinnedRing.Num());
+
 			TSet<int32> PriorRegion = Region;
 			Region.Reset();
 			Boundary.Reset();
@@ -3874,10 +3905,19 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 				break;
 			}
 		}
-		else if (GrowFrom(GrowFrontier, EffectiveBudget) == 0)
+		else
 		{
-			/* The speculative frontier admitted nothing even at the larger budget — a fixpoint. Stop. */
-			break;
+			/*
+			 * SPECULATIVE re-flood with no mechanism to size to: double the budget and search wider from the
+			 * whole boundary, bounded by the speculative ceiling.
+			 */
+			EffectiveBudget = FMath::Min(GrowCeiling, EffectiveBudget * 2);
+
+			if (GrowFrom(GrowFrontier, EffectiveBudget) == 0)
+			{
+				/* The speculative frontier admitted nothing even at the larger budget — a fixpoint. Stop. */
+				break;
+			}
 		}
 	}
 
