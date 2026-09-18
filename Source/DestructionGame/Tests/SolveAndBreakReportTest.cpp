@@ -160,6 +160,54 @@ bool FSolveAndBreakReportTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and the cascade's joints plus the cut's are the structure's severed count"),
 		SeveredPerReport + (S.NumConnections() - AfterCut.IntactJointsBefore), SeveredNow);
 
+	/*
+	 * THE PER-JOINT AUTHORITY STAMP AGREES WITH THE CASCADE. This 48-piece wall is below the 200-block
+	 * equilibrium-gate cap, so every joint the cascade gave was given by the gate (code 1) — no sweep,
+	 * no prover. GetBreakAuthority is INDEX_NONE for an intact joint and for one that went with the
+	 * cut (severed without an authority), so counting the code-1 stamps must reproduce the cascade's
+	 * own severed count, and no joint may carry a sweep or prover stamp on a below-cap structure.
+	 */
+	int32 GateStamped = 0;
+	int32 SweepStamped = 0;
+	int32 ProverStamped = 0;
+	int32 Unstamped = 0;
+	for (int32 J = 0; J < S.NumConnections(); ++J)
+	{
+		switch (S.GetBreakAuthority(J))
+		{
+		case 1: ++GateStamped; break;
+		case 2: ++SweepStamped; break;
+		case 3: ++ProverStamped; break;
+		default: ++Unstamped; break;
+		}
+	}
+
+	const int32 CutSevered = S.NumConnections() - AfterCut.IntactJointsBefore;
+
+	TestEqual(TEXT("below the cap, the gate authored every cascade sever"), GateStamped, SeveredPerReport);
+	TestEqual(TEXT("no joint was given to the sweep below the cap"), SweepStamped, 0);
+	TestEqual(TEXT("no joint was given to the prover below the cap"), ProverStamped, 0);
+	TestEqual(TEXT("the unstamped joints are exactly the intact ones and the cut's own"),
+		Unstamped, IntactNow + CutSevered);
+
+	/*
+	 * THE PER-POSE BREAKDOWN IS EMPTY WHEN THE PROVER NEVER RUNS. This 48-piece wall is below the
+	 * 200-block gate cap, so the equilibrium gate answers and the regional prover is never posed:
+	 * every pass reports RegionalPoses == 0, and its RegionalPoseBreakdown decomposes that into an
+	 * empty array. This is the other direction of the "one entry per pose" invariant the cascade-seam
+	 * test pins on the felling side.
+	 */
+	for (int32 Index = 0; Index < AfterCut.Passes.Num(); ++Index)
+	{
+		const FStructure::FBreakPassReport& Pass = AfterCut.Passes[Index];
+		TestEqual(
+			*FString::Printf(TEXT("below the cap, pass %d poses no prover LP"), Index),
+			Pass.RegionalPoses, 0);
+		TestEqual(
+			*FString::Printf(TEXT("below the cap, pass %d has an empty per-pose breakdown"), Index),
+			Pass.RegionalPoseBreakdown.Num(), 0);
+	}
+
 	return true;
 }
 

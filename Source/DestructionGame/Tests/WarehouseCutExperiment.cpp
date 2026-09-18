@@ -409,6 +409,14 @@ namespace WarehouseCutExperiment
 					P.Solve.StrandedPerIteration.IsValidIndex(It) ? P.Solve.StrandedPerIteration[It] : -1,
 					P.Solve.ReleasedPerIteration.IsValidIndex(It) ? P.Solve.ReleasedPerIteration[It] : -1));
 			}
+
+			for (int32 Pz = 0; Pz < P.RegionalPoseBreakdown.Num(); ++Pz)
+			{
+				const FStructure::FProverPoseReport& Pose = P.RegionalPoseBreakdown[Pz];
+				Append(FileName, FString::Printf(
+					TEXT("  pass %d prover pose %d: %d blocks, %d pivots, %.3f ms, fell=%d"),
+					P.Pass, Pz + 1, Pose.Blocks, Pose.LpPivots, Pose.LpMs, Pose.bFell ? 1 : 0));
+			}
 		}
 	}
 
@@ -868,14 +876,16 @@ bool FWCutDelete::Update()
 	}
 
 	FString JointsCsv;
-	Buffer(JointsCsv, TEXT("joint,pieceA,pieceB,nx,ny,nz,areaSqCm,breakPass,utilisationAfterCut"));
+	Buffer(JointsCsv, TEXT("joint,pieceA,pieceB,nx,ny,nz,areaSqCm,breakPass,severedBy,utilisationAfterCut"));
 	for (int32 J = 0; J < S.NumConnections(); ++J)
 	{
 		const FConnection& C = S.GetConnection(J);
 		const int32 Pass = S.GetBreakPass(J);
+		/* severedBy: 0 none, 1 gate, 2 capacity sweep, 3 regional prover — see FStructure::GetBreakAuthority. */
+		const int32 Authority = FMath::Max(0, S.GetBreakAuthority(J));
 		const double Util = C.HasGiven() ? -1.0 : S.GetConnectionUtilisation(J);
-		Buffer(JointsCsv, FString::Printf(TEXT("%d,%d,%d,%.4f,%.4f,%.4f,%.3f,%d,%.4f"),
-			J, C.PieceA, C.PieceB, C.InterfaceNormal.X, C.InterfaceNormal.Y, C.InterfaceNormal.Z, C.InterfaceAreaSqCm, Pass, Util));
+		Buffer(JointsCsv, FString::Printf(TEXT("%d,%d,%d,%.4f,%.4f,%.4f,%.3f,%d,%d,%.4f"),
+			J, C.PieceA, C.PieceB, C.InterfaceNormal.X, C.InterfaceNormal.Y, C.InterfaceNormal.Z, C.InterfaceAreaSqCm, Pass, Authority, Util));
 	}
 	R.PiecesAfterCutCsv = MoveTemp(PiecesCsv);
 	R.JointsCsv = MoveTemp(JointsCsv);

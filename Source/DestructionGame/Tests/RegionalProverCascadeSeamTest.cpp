@@ -388,6 +388,96 @@ bool FRegionalProverCascadeFellsAnAboveCapOverHoldTest::RunTest(const FString& P
 	TestTrue(TEXT("SUBSET: the back anchor keeps the earth"),
 		IsStanding(Fixture.Structure.GetPieceSupport(Fixture.Anchor)));
 
+	/* ================================================================================
+	 * (D) PER-POSE PROVER PROFILING — the RegionalPoseBreakdown array is a FAITHFUL DECOMPOSITION of
+	 * the per-pass prover aggregates. This fixture drives the regional prover for real (GateBlockCap=0,
+	 * RegionBlockCap=512), so at least one pass poses at least one LP: RegionalPoses > 0. We assert the
+	 * MECHANISM — the per-pose array reconciles the RegionalPoses/RegionalLpPivots/RegionalLpMs/
+	 * RegionalLastBlocks/bRegionalFell aggregates — never a wall-clock threshold.
+	 * ================================================================================ */
+	const FStructure::FSolveAndBreakReport& Report = Fixture.Structure.GetLastSolveAndBreakReport();
+
+	bool bSomePassPosed = false;
+	for (const FStructure::FBreakPassReport& Pass : Report.Passes)
+	{
+		if (Pass.RegionalPoses > 0)
+		{
+			bSomePassPosed = true;
+		}
+
+		// One entry per pose, in every pass — including the 0-pose passes, whose array is empty.
+		TestEqual(
+			*FString::Printf(
+				TEXT("PROFILE: pass %d — one RegionalPoseBreakdown entry per prover pose (RegionalPoses=%d)"),
+				Pass.Pass, Pass.RegionalPoses),
+			Pass.RegionalPoseBreakdown.Num(), Pass.RegionalPoses);
+
+		if (Pass.RegionalPoses > 0)
+		{
+			int32 PivotSum = 0;
+			double MsSum = 0.0;
+			for (const FStructure::FProverPoseReport& Pose : Pass.RegionalPoseBreakdown)
+			{
+				PivotSum += Pose.LpPivots;
+				MsSum += Pose.LpMs;
+
+				/* Every posed LP covers at least the seed block, and its wall-clock time is a real,
+				 * finite, non-negative reading. */
+				TestTrue(
+					*FString::Printf(TEXT("PROFILE: pass %d pose posed at least one block (Blocks=%d)"),
+						Pass.Pass, Pose.Blocks),
+					Pose.Blocks >= 1);
+				TestTrue(
+					*FString::Printf(TEXT("PROFILE: pass %d pose LpMs is finite and >= 0 (LpMs=%g)"),
+						Pass.Pass, Pose.LpMs),
+					FMath::IsFinite(Pose.LpMs) && Pose.LpMs >= 0.0);
+			}
+
+			// The poses' pivots and time sum to the pass aggregates they decompose.
+			TestEqual(
+				*FString::Printf(TEXT("PROFILE: pass %d — pose pivots sum to RegionalLpPivots"), Pass.Pass),
+				PivotSum, Pass.RegionalLpPivots);
+			TestTrue(
+				*FString::Printf(
+					TEXT("PROFILE: pass %d — pose LpMs sum (%g) == RegionalLpMs (%g)"),
+					Pass.Pass, MsSum, Pass.RegionalLpMs),
+				FMath::IsNearlyEqual(MsSum, Pass.RegionalLpMs, 1.0e-6));
+
+			/*
+			 * The reported "last blocks" and "fell" are the FINAL pose's — the one the pass ended on.
+			 * Guarded on a non-empty array: Last() asserts on an empty TArray, so in the RED state
+			 * (nothing populates the breakdown yet) the Num()==RegionalPoses check above fails cleanly
+			 * on value rather than this crashing the runner. Once populated, the array is non-empty and
+			 * these run.
+			 */
+			if (!Pass.RegionalPoseBreakdown.IsEmpty())
+			{
+				TestEqual(
+					*FString::Printf(TEXT("PROFILE: pass %d — final pose Blocks == RegionalLastBlocks"), Pass.Pass),
+					Pass.RegionalPoseBreakdown.Last().Blocks, Pass.RegionalLastBlocks);
+				TestEqual(
+					*FString::Printf(TEXT("PROFILE: pass %d — final pose bFell == bRegionalFell"), Pass.Pass),
+					Pass.RegionalPoseBreakdown.Last().bFell, Pass.bRegionalFell);
+			}
+
+			AddInfo(FString::Printf(
+				TEXT("PROFILE: pass %d posed %d LP(s) — decomposition follows:"),
+				Pass.Pass, Pass.RegionalPoses));
+			for (int32 P = 0; P < Pass.RegionalPoseBreakdown.Num(); ++P)
+			{
+				const FStructure::FProverPoseReport& Pose = Pass.RegionalPoseBreakdown[P];
+				AddInfo(FString::Printf(
+					TEXT("PROFILE:   pose %d — %d blocks, %d pivots, %.3f ms, fell=%s"),
+					P, Pose.Blocks, Pose.LpPivots, Pose.LpMs, Pose.bFell ? TEXT("true") : TEXT("false")));
+			}
+		}
+	}
+
+	/* If the prover posed nothing at all, this fixture no longer exercises the feature — fail loudly
+	 * rather than passing the reconciliation vacuously over empty arrays. */
+	TestTrue(TEXT("PROFILE: the regional prover posed at least one LP across the cascade (fixture drives it)"),
+		bSomePassPosed);
+
 	return true;
 }
 

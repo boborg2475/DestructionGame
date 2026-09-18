@@ -608,6 +608,33 @@ struct FStructure
 	};
 
 	/**
+	 * WHAT ONE PROVER POSE COST — one LP the regional collapse prover posed while growing/re-flooding
+	 * its region within a pass. A pass poses several of these (RegionalPoses of them), and the
+	 * per-pass aggregates on FBreakPassReport (RegionalPoses, RegionalLpPivots, RegionalLpMs,
+	 * RegionalLastBlocks, bRegionalFell) are exactly this record summed/reduced over the pass — this
+	 * struct is the faithful decomposition that says whether a slow pass is one big pose or several.
+	 *
+	 * Test-only observability, exactly like GetLastRegionalProblemBlockCount and the RegionalPoses
+	 * aggregate it decomposes: no production code may branch on it. Wall-clock LpMs comes from
+	 * FPlatformTime, so it is about THIS machine on THIS run and is meant to be read, never asserted
+	 * against a threshold.
+	 */
+	struct FProverPoseReport
+	{
+		/** |region ∪ grounded boundary| posed for this pose (both interior R and the grounded ring B). */
+		int32 Blocks = INDEX_NONE;
+
+		/** Result.SimplexIterations for this pose. */
+		int32 LpPivots = 0;
+
+		/** Wall-clock ms of this pose's SolveRigidBlock. */
+		double LpMs = 0.0;
+
+		/** Whether this pose was a certified fall. */
+		bool bFell = false;
+	};
+
+	/**
 	 * WHAT ONE PASS OF THE BREAK CASCADE DID AND COST. A pass is one SolveLoads, then the equilibrium
 	 * gate (which above the block cap DECLINES to the router without posing anything), then — only
 	 * when it declined — the per-joint capacity sweep and the regional collapse prover.
@@ -644,6 +671,9 @@ struct FStructure
 
 		/** Whether the prover's final pose was a certified fall. */
 		bool bRegionalFell = false;
+
+		/** One entry per prover pose this pass, in pose order — a faithful decomposition of the RegionalPoses/RegionalLpPivots/RegionalLpMs aggregates above. */
+		TArray<FProverPoseReport> RegionalPoseBreakdown;
 
 		/** Joints the prover severed and pieces it marked Falling this pass. */
 		int32 JointsSeveredByProver = 0;
@@ -704,6 +734,22 @@ struct FStructure
 	 *     broke in pass N     HasGiven true,  N >= 1
 	 */
 	int32 GetBreakPass(int32 ConnectionIndex) const;
+
+	/**
+	 * WHICH AUTHORITY SEVERED A JOINT, for observability — the break decision has three, and an
+	 * experiment that wants to SEE where a collapse came from needs to tell a below-cap gate ruling
+	 * apart from a per-joint capacity failure (the sweep) and from a proven regional mechanism (the
+	 * prover). The codes:
+	 *
+	 *     1  the below-cap equilibrium gate (BreakByEquilibrium)
+	 *     2  the per-joint capacity sweep (BreakByCapacitySweep)
+	 *     3  the regional collapse prover (ProveRegionalCollapse)
+	 *
+	 * INDEX_NONE means no AUTHORITY severed it: it is either intact, or it went with a removed piece
+	 * — RemovePiece severs without stamping, exactly as it leaves the break pass INDEX_NONE. This is
+	 * a read-only companion to GetBreakPass; no production code may branch on it.
+	 */
+	int32 GetBreakAuthority(int32 ConnectionIndex) const;
 
 	/**
 	 * What this connection is to this piece: the solver's own two-tier decision, exposed.
@@ -1551,6 +1597,15 @@ private:
 	int32 LastProverJointsSevered = 0;
 
 	/*
+	 * THE PER-POSE DECOMPOSITION of the aggregates above — reset at the top of each
+	 * ProveRegionalCollapse call, one entry appended per prover pose in pose order, so its Num()
+	 * equals LastProverPoses and its Blocks/LpPivots/LpMs sum to LastRegionalProblemBlockCount's
+	 * final value, LastProverLpPivots and LastProverLpMs respectively. GetLastSolveAndBreakReport
+	 * surfaces it as FBreakPassReport::RegionalPoseBreakdown; observability only, never authority.
+	 */
+	TArray<FProverPoseReport> LastProverPoseBreakdown;
+
+	/*
 	 * Whether SetThreeDimensional flagged this structure 3D (THREED_DESIGN.md E3). FALSE BY
 	 * DEFAULT so every existing structure is 2D and bridges exactly as before. The bridge reads
 	 * it (E3): true routes to the Dim3D pose and lifts the Y-normal refusal. See SetThreeDimensional.
@@ -1636,6 +1691,14 @@ private:
 	 * whether a joint gave, never when.
 	 */
 	TArray<int32> ConnectionBreakPass;
+
+	/**
+	 * WHICH AUTHORITY GAVE EACH CONNECTION, parallel to ConnectionBreakPass and grown beside it in
+	 * AddConnection so the two stay index-aligned by construction. Written once at the sever site by
+	 * whichever authority ruled (gate, sweep or prover); INDEX_NONE until then. Pure observability —
+	 * GetBreakAuthority reads it, and nothing in the solve consults it — so it never steers a break.
+	 */
+	TArray<int32> ConnectionBreakAuthority;
 
 	/**
 	 * THE CACHED MIN-VIOLATION STRAIN READOUT, one entry per connection, read by GetConnectionReadout

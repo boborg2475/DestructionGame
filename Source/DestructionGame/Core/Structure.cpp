@@ -465,6 +465,7 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 	 * it exists, which is also the answer for a handle that names no joint at all.
 	 */
 	ConnectionBreakPass.Add(INDEX_NONE);
+	ConnectionBreakAuthority.Add(INDEX_NONE);
 
 	return Connections.Add(Connection);
 }
@@ -2912,6 +2913,7 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 
 		Connections[Connection].Sever();
 		ConnectionBreakPass[Connection] = Pass;
+		ConnectionBreakAuthority[Connection] = 1;
 		bSeveredThisPass = true;
 	}
 
@@ -3134,6 +3136,7 @@ bool FStructure::BreakByCapacitySweep(int32 Pass)
 		{
 			Connection.Sever();
 			ConnectionBreakPass[Index] = Pass;
+			ConnectionBreakAuthority[Index] = 2;
 			bBroke = true;
 		}
 	}
@@ -3402,6 +3405,7 @@ int32 FStructure::SolveAndBreak()
 				Report.RegionalLpPivots = LastProverLpPivots;
 				Report.RegionalLpMs = LastProverLpMs;
 				Report.RegionalLastBlocks = LastProverPoses > 0 ? LastRegionalProblemBlockCount : INDEX_NONE;
+				Report.RegionalPoseBreakdown = LastProverPoseBreakdown;
 				Report.bRegionalFell = bLastProverFell;
 				Report.JointsSeveredByProver = IntactBefore - CountIntactJoints();
 
@@ -3695,6 +3699,7 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 	LastProverLpMs = 0.0;
 	bLastProverFell = false;
 	LastProverJointsSevered = 0;
+	LastProverPoseBreakdown.Reset();
 
 	const int32 MaxGrowIterations = Pieces.Num() + 4;
 
@@ -3727,15 +3732,31 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 
 		Result = RigidBlockOracle::SolveRigidBlock(Problem);
 
+		/*
+		 * Compute this pose's wall-clock ONCE and feed both the aggregate and the per-pose record, so
+		 * the RegionalPoseBreakdown ms sum reconciles exactly with LastProverLpMs.
+		 */
+		const double PoseMs = (FPlatformTime::Seconds() - LpStartSeconds) * 1000.0;
+
 		++LastProverPoses;
 		LastProverLpPivots += Result.SimplexIterations;
-		LastProverLpMs += (FPlatformTime::Seconds() - LpStartSeconds) * 1000.0;
+		LastProverLpMs += PoseMs;
 
 		const bool bCertifiedFall =
 			RigidBlockOracle::OutcomeOf(Result) == RigidBlockOracle::EOracleOutcome::Falls
 			&& Result.Mechanism.bPresent && Result.Mechanism.bIsCertified;
 
 		bLastPoseFell = bCertifiedFall;
+
+		/*
+		 * One record per pose, appended here where every loop iteration reaches it exactly once — the
+		 * increment above and this append stay in lockstep, so RegionalPoseBreakdown.Num() == RegionalPoses.
+		 */
+		FProverPoseReport& Pose = LastProverPoseBreakdown.AddDefaulted_GetRef();
+		Pose.Blocks = Problem.Blocks.Num();
+		Pose.LpPivots = Result.SimplexIterations;
+		Pose.LpMs = PoseMs;
+		Pose.bFell = bCertifiedFall;
 
 		/*
 		 * The frontier the next grow pushes from, and the budget ceiling it may grow to. A CERTIFIED FALL
@@ -3928,6 +3949,7 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 
 		Connections[Connection].Sever();
 		ConnectionBreakPass[Connection] = BreakPass;
+		ConnectionBreakAuthority[Connection] = 3;
 		++LastProverJointsSevered;
 	}
 
@@ -4024,6 +4046,17 @@ int32 FStructure::GetBreakPass(int32 ConnectionIndex) const
 	 */
 	return ConnectionBreakPass.IsValidIndex(ConnectionIndex)
 		? ConnectionBreakPass[ConnectionIndex]
+		: INDEX_NONE;
+}
+
+int32 FStructure::GetBreakAuthority(int32 ConnectionIndex) const
+{
+	/*
+	 * An unknown connection severed nothing, so it fails closed to INDEX_NONE — the same answer as a
+	 * joint no authority ever gave. See the header for the code meanings (1 gate, 2 sweep, 3 prover).
+	 */
+	return ConnectionBreakAuthority.IsValidIndex(ConnectionIndex)
+		? ConnectionBreakAuthority[ConnectionIndex]
 		: INDEX_NONE;
 }
 
