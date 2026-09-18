@@ -33,7 +33,10 @@ public class DestructionGame : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			// Content tests read package headers through the asset registry, loading nothing
-			"AssetRegistry"
+			"AssetRegistry",
+
+			// layout files: an authored or saved structure is a JSON file of boxes, not C++
+			"Json"
 		});
 
 		PublicIncludePaths.AddRange(new string[] {

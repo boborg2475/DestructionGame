@@ -5,6 +5,7 @@
 #include "Core/Corbel.h"
 #include "Core/DestructionShed.h"
 #include "Core/DestructionShed3D.h"
+#include "Core/LayoutFile.h"
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
 #include "Core/WallCases.h"
@@ -910,6 +911,51 @@ namespace DestructionScenarios
 			ShedRealistic.CutCentresCm.Add(
 				FVector(EavesXCm, ShedRealisticEavesYCm, ShedRealisticEavesZCm));
 		}
+
+		/*
+		 * AND THE WAREHOUSE — the large real-brick building the owner asked for on 2026-09-18 to play
+		 * with, and THE FIRST LEVEL THAT IS DATA RATHER THAN CODE: its building is the layout file
+		 * Content/Layouts/Warehouse.json (Core/LayoutFile.h), written by Scripts/New-WarehouseLayout.ps1
+		 * from claude_plans/WAREHOUSE_DESIGN.md — a two-storey block of running-bond ClayBrick walls on a
+		 * stone plinth, pilasters, ten window bays a side under Timber lintels, a stone string course and
+		 * cornice, stepped gables carrying a stepped Timber roof, a doorway in the +X gable end and two
+		 * brick chimneys against that end — 5,612 pieces, flagged 3D, far above the block cap, so the
+		 * router is its break authority. The owner's ruling: a building is data, because players will
+		 * build in the game without C++ ("Pivot to data driven"), so no builder was kept for it.
+		 *
+		 * NOTHING IS CUT, AND NOTHING IS PROMISED ABOUT WHAT SETTLING DOES. The owner ruled "if it falls,
+		 * that is ok, I just want it built"; the row holds it as laid like every other and then settles
+		 * it, and the caption says exactly that rather than claiming a verdict nobody engineered.
+		 */
+		FScenario& Warehouse = Rows.AddDefaulted_GetRef();
+
+		Warehouse.Name = FName(TEXT("warehouse"));
+		Warehouse.MapName = TEXT("Lvl_Warehouse");
+		Warehouse.Title = TEXT("The warehouse — a two-storey real-brick building, nothing cut");
+
+		Warehouse.Expectation = TEXT(
+			"A two-storey brick warehouse of real-sized clay bricks: pilastered walls with tall windows on "
+			"both floors under wooden lintels, a stone plinth, string course and cornice, stepped gables under "
+			"a stepped wooden roof, a doorway in the near end and two chimneys beside it. Nothing is cut: it "
+			"is held as laid, then settles to whatever its joints can carry. Switch to Destroy and pull "
+			"bricks out of it yourself.");
+
+		Warehouse.LayStructure = [](DestructionLayout::FBrickLayout& OutLayout)
+		{
+			FString Why;
+			const bool bLoaded = DestructionLayoutFile::LoadFile(
+				DestructionLayoutFile::ContentPath(TEXT("Warehouse")), OutLayout, &Why);
+
+			if (!bLoaded)
+			{
+				UE_LOG(LogTemp, Error, TEXT("the warehouse layout file could not be read: %s"), *Why);
+			}
+
+			return bLoaded;
+		};
+
+		/* A closed box with a roof and chimneys: framed three-quarter so the door end and a long wall show. */
+		Warehouse.Framing = EScenarioFraming::ThreeQuarter;
 
 		return Rows;
 	}

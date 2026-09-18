@@ -101,6 +101,34 @@ Join it exactly like any other level — by its map, or by name on any map:
 
 `Visual.ScenarioLevelScreenshots` **skips** this row: an empty plot has nothing to photograph.
 
+## The warehouse — the large building
+
+| Level | `?Scenario=` | What it is |
+|---|---|---|
+| `Lvl_Warehouse` | `warehouse` | A two-storey real-brick warehouse, 6.5 × 3.4 m to a 4.8 m eaves and 6.8 m to the chimney caps: ~5,600 pieces. Nothing is cut. |
+
+The owner's "realistic large building ... that can test our current work" (2026-09-18), after a
+Minecraft brick warehouse: running-bond ClayBrick walls one wythe thick on a stone plinth, six
+pilasters a side, five tall window bays a side on both floors under timber lintels and on stone
+sills, a stone string course between the floors and a projecting stone cornice under the eaves,
+stepped brick gables on both ends carrying a stepped timber roof of full-length boards, a
+2.25 m doorway in the near gable end, and two bonded brick chimneys with stone caps standing
+against that end's outer face. Every number is in [WAREHOUSE_DESIGN.md](WAREHOUSE_DESIGN.md).
+
+**It is the first level that is DATA rather than code.** The building is
+`Content/Layouts/Warehouse.json` — a layout file (`Core/LayoutFile.h`: boxes and materials; the
+joints are found on load) — written by `Scripts/New-WarehouseLayout.ps1` from a course-filling
+rule on the half-pitch grid, and the row does nothing but load it. Change the script, re-run it,
+and the level changes without a build. That is the owner's rule for every authored building from
+here on ("Pivot to data driven", 2026-09-18): the same loader is the door a player's saved build
+will come back through.
+
+It is about twice `corbel-f-100`'s size, far above the equilibrium gate's block cap, so the router
+is its break authority. **The owner ruled that whether it stands as laid is not to be engineered:**
+"If it falls, that is ok, I just want it built." The level holds it four seconds like every other,
+then settles it, and the strip opens in Destroy so you can pull bricks out of it yourself. Framed
+three-quarter, so the door end with its chimneys and one long wall are both in view.
+
 ## The corbel family
 
 The structures drawn in [CORBEL_CASES.html](CORBEL_CASES.html) and [CORBEL_CASES_EF.html](CORBEL_CASES_EF.html).
