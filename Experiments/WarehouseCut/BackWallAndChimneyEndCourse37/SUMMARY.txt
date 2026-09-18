@@ -6,6 +6,6 @@ RELEASED: 974 pieces (939 clay, 19 stone, 16 timber; 929 upper wall, 45 roof/gab
 STOOD: 57 grounded, 4539 supported.
 SETTLED: 974 released pieces came to rest >5 cm from where they were laid; max drop 533 cm.
 
-BREAK DECISION: 995.1 ms total, 2 breaking pass(es).
-  first pass: load solve 96.1 ms (2 fixpoint iterations), gate 0.06 ms (declined=1), sweep 1.2 ms severed 18, prover 78.5 ms (1 poses, 248 pivots, 101 blocks, fell=0) severed 0.
+BREAK DECISION: 440.6 ms total, 2 breaking pass(es).
+  first pass: load solve 98.4 ms (2 fixpoint iterations), gate 0.07 ms (declined=1), sweep 1.2 ms severed 18, prover 77.3 ms (1 poses, 248 pivots, 101 blocks, fell=0) severed 0.
 MECHANISM: joint failure — joints gave over their capacity (51 joints severed by the break authority; 974 pieces lost their load path).

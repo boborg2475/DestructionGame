@@ -1,28 +1,28 @@
-=== BackWallAndChimneyEndCourse37, 2026.09.18-14.06.14 ===
+=== BackWallAndChimneyEndCourse37, 2026.09.18-17.54.55 ===
 clock pinned at 0.016667 s per frame
 === BackWallAndChimneyEndCourse37: course 37 wrapping from the BACK long wall around the corner onto the CHIMNEY-END wall (front wall intact) — an L-shaped cut ===
 opening /Game/Maps/Scenarios/Lvl_Warehouse
 JOINED at world time 0.0167 s: 5612 pieces, 15042 joints; the cut names 42 pieces of course 37
-SELECTED 0.9836 s into the hold: 42 clicks, 42 landed, selection holds 42 (0 of the course missing); clicking took 1047.2 ms
-BASELINE settle: 66.8 ms, 0 breaking passes, 0 not held
-CUT: commit 1020.910 ms of which SolveAndBreak 995.127 ms in 2 breaking pass(es); after: 57 grounded, 4539 supported, 0 stranded, 974 falling, 42 removed; 974 released
-FALL 0.233 s: 974 released, 937 moving, max drop 34.3 cm, mean 22.7 cm; frame took 28.1 ms real
-FALL 0.483 s: 974 released, 968 moving, max drop 78.5 cm, mean 42.9 cm; frame took 28.0 ms real
-FALL 0.983 s: 974 released, 968 moving, max drop 367.9 cm, mean 154.5 cm; frame took 25.4 ms real
-FALL 1.983 s: 974 released, 608 moving, max drop 533.0 cm, mean 354.8 cm; frame took 26.5 ms real
-FALL 2.983 s: 974 released, 93 moving, max drop 533.0 cm, mean 363.7 cm; frame took 21.5 ms real
-FALL 4.983 s: 974 released, 9 moving, max drop 533.0 cm, mean 363.9 cm; frame took 21.2 ms real
-FALL 7.983 s: 974 released, 5 moving, max drop 533.0 cm, mean 363.9 cm; frame took 18.3 ms real
+SELECTED 0.9836 s into the hold: 42 clicks, 42 landed, selection holds 42 (0 of the course missing); clicking took 1105.7 ms
+BASELINE settle: 71.0 ms, 0 breaking passes, 0 not held
+CUT: commit 466.272 ms of which SolveAndBreak 440.614 ms in 2 breaking pass(es); after: 57 grounded, 4539 supported, 0 stranded, 974 falling, 42 removed; 974 released
+FALL 0.233 s: 974 released, 937 moving, max drop 34.3 cm, mean 22.7 cm; frame took 28.4 ms real
+FALL 0.483 s: 974 released, 968 moving, max drop 78.5 cm, mean 42.9 cm; frame took 31.6 ms real
+FALL 0.983 s: 974 released, 968 moving, max drop 367.9 cm, mean 154.5 cm; frame took 26.0 ms real
+FALL 1.983 s: 974 released, 608 moving, max drop 533.0 cm, mean 354.8 cm; frame took 30.2 ms real
+FALL 2.983 s: 974 released, 93 moving, max drop 533.0 cm, mean 363.7 cm; frame took 23.2 ms real
+FALL 4.983 s: 974 released, 9 moving, max drop 533.0 cm, mean 363.9 cm; frame took 21.4 ms real
+FALL 7.983 s: 974 released, 5 moving, max drop 533.0 cm, mean 363.9 cm; frame took 18.4 ms real
 FINAL 8.050 s after the cut: 974 released moved >5 cm, 0 did not, 0 unreleased moved (must be 0)
 SUMMARY.txt written
-FRAME BackWallAndChimneyEndCourse37_Before (3113196 bytes)
-FRAME BackWallAndChimneyEndCourse37_Before_NoUI (3765724 bytes)
-FRAME BackWallAndChimneyEndCourse37_After_0s (3038343 bytes)
-FRAME BackWallAndChimneyEndCourse37_After_0p25s (3054776 bytes)
-FRAME BackWallAndChimneyEndCourse37_After_0p5s (3059202 bytes)
-FRAME BackWallAndChimneyEndCourse37_After_1s (3253986 bytes)
-FRAME BackWallAndChimneyEndCourse37_After_2s (3477222 bytes)
-FRAME BackWallAndChimneyEndCourse37_After_3s (3277260 bytes)
-FRAME BackWallAndChimneyEndCourse37_After_5s (3159045 bytes)
-FRAME BackWallAndChimneyEndCourse37_After_8s (3133693 bytes)
-FRAME BackWallAndChimneyEndCourse37_After_Final_Wide (3329848 bytes)
+FRAME BackWallAndChimneyEndCourse37_Before (2759463 bytes)
+FRAME BackWallAndChimneyEndCourse37_Before_NoUI (3366547 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_0s (2722042 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_0p25s (2743435 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_0p5s (2743246 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_1s (2903228 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_2s (3101414 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_3s (2925394 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_5s (2814163 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_8s (2797477 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_Final_Wide (3001397 bytes)
