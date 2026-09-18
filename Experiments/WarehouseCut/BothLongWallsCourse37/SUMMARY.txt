@@ -1,0 +1,11 @@
+# BothLongWallsCourse37
+course 37 (the upper sill course) across BOTH long walls — the back cut extended across the front face
+
+CUT: 62 pieces removed.
+RELEASED: 1436 pieces (1394 clay, 30 stone, 12 timber; 1434 upper wall, 2 roof/gable).
+STOOD: 57 grounded, 4057 supported.
+SETTLED: 1436 released pieces came to rest >5 cm from where they were laid; max drop 465 cm.
+
+BREAK DECISION: 341.7 ms total, 0 breaking pass(es).
+  first pass: load solve 118.5 ms (3 fixpoint iterations), gate 0.08 ms (declined=1), sweep 1.2 ms severed 0, prover 221.2 ms (1 poses, 453 pivots, 142 blocks, fell=0) severed 0.
+MECHANISM: load-path loss — nothing over capacity, the masonry above simply lost the ground (0 joints severed by the break authority; 1436 pieces lost their load path).

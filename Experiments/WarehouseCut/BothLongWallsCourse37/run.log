@@ -1,0 +1,28 @@
+=== BothLongWallsCourse37, 2026.09.18-12.24.06 ===
+clock pinned at 0.016667 s per frame
+=== BothLongWallsCourse37: course 37 (the upper sill course) across BOTH long walls — the back cut extended across the front face ===
+opening /Game/Maps/Scenarios/Lvl_Warehouse
+JOINED at world time 0.0167 s: 5612 pieces, 15042 joints; the cut names 62 pieces of course 37
+SELECTED 0.9836 s into the hold: 62 clicks, 62 landed, selection holds 62 (0 of the course missing); clicking took 1909.7 ms
+BASELINE settle: 65.5 ms, 0 breaking passes, 0 not held
+CUT: commit 374.754 ms of which SolveAndBreak 341.674 ms in 0 breaking pass(es); after: 57 grounded, 4057 supported, 0 stranded, 1436 falling, 62 removed; 1436 released
+FALL 0.233 s: 1436 released, 1377 moving, max drop 28.6 cm, mean 22.9 cm; frame took 35.6 ms real
+FALL 0.483 s: 1436 released, 1431 moving, max drop 78.9 cm, mean 40.3 cm; frame took 39.6 ms real
+FALL 0.983 s: 1436 released, 1427 moving, max drop 370.2 cm, mean 148.8 cm; frame took 34.3 ms real
+FALL 1.983 s: 1436 released, 820 moving, max drop 465.5 cm, mean 351.7 cm; frame took 32.8 ms real
+FALL 2.983 s: 1436 released, 61 moving, max drop 465.5 cm, mean 356.1 cm; frame took 27.3 ms real
+FALL 4.983 s: 1436 released, 11 moving, max drop 465.5 cm, mean 356.1 cm; frame took 26.6 ms real
+FALL 7.983 s: 1436 released, 9 moving, max drop 465.5 cm, mean 356.1 cm; frame took 27.9 ms real
+FINAL 8.050 s after the cut: 1436 released moved >5 cm, 0 did not, 0 unreleased moved (must be 0)
+SUMMARY.txt written
+FRAME BothLongWallsCourse37_Before (2226422 bytes)
+FRAME BothLongWallsCourse37_Before_NoUI (2837300 bytes)
+FRAME BothLongWallsCourse37_After_0s (2684080 bytes)
+FRAME BothLongWallsCourse37_After_0p25s (2748964 bytes)
+FRAME BothLongWallsCourse37_After_0p5s (2799871 bytes)
+FRAME BothLongWallsCourse37_After_1s (2957707 bytes)
+FRAME BothLongWallsCourse37_After_2s (2998697 bytes)
+FRAME BothLongWallsCourse37_After_3s (2946949 bytes)
+FRAME BothLongWallsCourse37_After_5s (2878915 bytes)
+FRAME BothLongWallsCourse37_After_8s (2817677 bytes)
+FRAME BothLongWallsCourse37_After_Final_Wide (2786225 bytes)

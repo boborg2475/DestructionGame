@@ -1,0 +1,12 @@
+=== BASELINE: the level's own settle at the end of its hold, nothing cut (world time 4.4503 s) ===
+total 65.496 ms; 0 breaking pass(es), 1 passes run; live pieces before 5612; intact joints 15042 -> 15042
+pass,passMs,solveMs,supportListsMs,reseatMs,fixpointMs,fixpointIterations,archingMs,gateMs,gateDisposition,jointsSeveredByGate,sweepMs,jointsGivenToSweep,proverMs,proverPoses,proverLpPivots,proverLpMs,proverLastBlocks,proverFell,jointsSeveredByProver,piecesFelledByProver,livePiecesAfter,intactJointsAfter,notHeldAfter
+1,65.470,62.901,1.624,0.074,60.845,1,0.000,0.048,0,0,1.258,0,0.816,1,1,0.015,0,0,0,0,5612,15042,0
+  pass 1 fixpoint iteration 1: 5612 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
+=== THE CUT: course 37 (the upper sill course) across BOTH long walls — the back cut extended across the front face, deleted through the player's menu at world time 4.4503 s; whole commit 374.754 ms ===
+total 341.674 ms; 0 breaking pass(es), 1 passes run; live pieces before 5550; intact joints 14792 -> 14792
+pass,passMs,solveMs,supportListsMs,reseatMs,fixpointMs,fixpointIterations,archingMs,gateMs,gateDisposition,jointsSeveredByGate,sweepMs,jointsGivenToSweep,proverMs,proverPoses,proverLpPivots,proverLpMs,proverLastBlocks,proverFell,jointsSeveredByProver,piecesFelledByProver,livePiecesAfter,intactJointsAfter,notHeldAfter
+1,341.647,118.461,1.778,0.096,116.208,3,0.000,0.084,0,0,1.213,0,221.248,1,453,218.725,142,0,0,0,5550,14792,1436
+  pass 1 fixpoint iteration 1: 4722 reached from the ground, 0 overturned, 0 stranded, 20 released from a refused arch
+  pass 1 fixpoint iteration 2: 4116 reached from the ground, 2 overturned, 0 stranded, 0 released from a refused arch
+  pass 1 fixpoint iteration 3: 4114 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch

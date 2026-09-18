@@ -1,0 +1,13 @@
+=== HEADLESS TIMING, 2026.09.18-12.23.27: course 37 (the upper sill course) across BOTH long walls — the back cut extended across the front face, one SolveAndBreak per fresh world-free load ===
+repeat 0: load 87.1 ms, 62 removed | CUT DECISION: 335.495 ms total, 0 breaking pass(es); solve 116.054 ms (3 fixpoint it), gate 0.085 ms, sweep 1.230 ms severed 0, prover 217.577 ms (1 poses, 453 pivots, 142 blocks, fell 0) severed 0; 1436 not held
+--- repeat 0 pass table ---
+total 335.495 ms; 0 breaking pass(es), 1 passes run; live pieces before 5550; intact joints 14792 -> 14792
+pass,passMs,solveMs,supportListsMs,reseatMs,fixpointMs,fixpointIterations,archingMs,gateMs,gateDisposition,jointsSeveredByGate,sweepMs,jointsGivenToSweep,proverMs,proverPoses,proverLpPivots,proverLpMs,proverLastBlocks,proverFell,jointsSeveredByProver,piecesFelledByProver,livePiecesAfter,intactJointsAfter,notHeldAfter
+1,335.469,116.054,1.353,0.084,114.331,3,0.001,0.085,0,0,1.230,0,217.577,1,453,215.049,142,0,0,0,5550,14792,1436
+  pass 1 fixpoint iteration 1: 4722 reached from the ground, 0 overturned, 0 stranded, 20 released from a refused arch
+  pass 1 fixpoint iteration 2: 4116 reached from the ground, 2 overturned, 0 stranded, 0 released from a refused arch
+  pass 1 fixpoint iteration 3: 4114 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
+repeat 1: load 89.1 ms, 62 removed | CUT DECISION: 345.853 ms total, 0 breaking pass(es); solve 118.838 ms (3 fixpoint it), gate 0.115 ms, sweep 1.214 ms severed 0, prover 225.121 ms (1 poses, 453 pivots, 142 blocks, fell 0) severed 0; 1436 not held
+repeat 2: load 93.4 ms, 62 removed | CUT DECISION: 339.803 ms total, 0 breaking pass(es); solve 117.075 ms (3 fixpoint it), gate 0.090 ms, sweep 1.218 ms severed 0, prover 220.877 ms (1 poses, 453 pivots, 142 blocks, fell 0) severed 0; 1436 not held
+repeat 3: load 86.8 ms, 62 removed | CUT DECISION: 342.960 ms total, 0 breaking pass(es); solve 115.998 ms (3 fixpoint it), gate 0.090 ms, sweep 1.214 ms severed 0, prover 225.101 ms (1 poses, 453 pivots, 142 blocks, fell 0) severed 0; 1436 not held
+repeat 4: load 90.1 ms, 62 removed | CUT DECISION: 340.685 ms total, 0 breaking pass(es); solve 120.043 ms (3 fixpoint it), gate 0.080 ms, sweep 1.218 ms severed 0, prover 218.830 ms (1 poses, 453 pivots, 142 blocks, fell 0) severed 0; 1436 not held
