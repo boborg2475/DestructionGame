@@ -1,17 +1,22 @@
 === BASELINE: the level's own settle at the end of its hold, nothing cut (world time 4.4503 s) ===
-total 66.282 ms; 0 breaking pass(es), 1 passes run; live pieces before 5612; intact joints 15042 -> 15042
+total 66.795 ms; 0 breaking pass(es), 1 passes run; live pieces before 5612; intact joints 15042 -> 15042
 pass,passMs,solveMs,supportListsMs,reseatMs,fixpointMs,fixpointIterations,archingMs,gateMs,gateDisposition,jointsSeveredByGate,sweepMs,jointsGivenToSweep,proverMs,proverPoses,proverLpPivots,proverLpMs,proverLastBlocks,proverFell,jointsSeveredByProver,piecesFelledByProver,livePiecesAfter,intactJointsAfter,notHeldAfter
-1,66.256,63.681,1.679,0.078,61.596,1,0.000,0.068,0,0,1.261,0,0.774,1,1,0.014,0,0,0,0,5612,15042,0
+1,66.772,64.248,1.564,0.075,62.257,1,0.000,0.052,0,0,1.271,0,0.772,1,1,0.016,0,0,0,0,5612,15042,0
   pass 1 fixpoint iteration 1: 5612 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
-=== THE CUT: course 37 wrapping from the BACK long wall around the corner onto the CHIMNEY-END wall (front wall intact) — an L-shaped cut, deleted through the player's menu at world time 4.4503 s; whole commit 986.232 ms ===
-total 960.886 ms; 2 breaking pass(es), 3 passes run; live pieces before 5570; intact joints 14858 -> 14807
+  pass 1 prover pose 1: 0 blocks, 1 pivots, 0.016 ms, fell=0
+=== THE CUT: course 37 wrapping from the BACK long wall around the corner onto the CHIMNEY-END wall (front wall intact) — an L-shaped cut, deleted through the player's menu at world time 4.4503 s; whole commit 1020.910 ms ===
+total 995.127 ms; 2 breaking pass(es), 3 passes run; live pieces before 5570; intact joints 14858 -> 14807
 pass,passMs,solveMs,supportListsMs,reseatMs,fixpointMs,fixpointIterations,archingMs,gateMs,gateDisposition,jointsSeveredByGate,sweepMs,jointsGivenToSweep,proverMs,proverPoses,proverLpPivots,proverLpMs,proverLastBlocks,proverFell,jointsSeveredByProver,piecesFelledByProver,livePiecesAfter,intactJointsAfter,notHeldAfter
-1,176.160,96.387,1.571,0.099,94.351,2,0.007,0.070,0,0,1.208,18,77.940,1,248,75.984,101,0,0,0,5570,14840,963
+1,176.522,96.134,1.598,0.117,94.043,2,0.007,0.058,0,0,1.247,18,78.523,1,248,76.508,101,0,0,0,5570,14840,963
   pass 1 fixpoint iteration 1: 5076 reached from the ground, 2 overturned, 0 stranded, 13 released from a refused arch
   pass 1 fixpoint iteration 2: 4607 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
-2,671.165,95.834,1.631,0.111,93.681,2,0.023,0.060,0,0,1.198,23,573.513,2,813,572.263,70,1,10,4,5570,14807,974
+  pass 1 prover pose 1: 101 blocks, 248 pivots, 76.508 ms, fell=0
+2,699.419,97.989,1.536,0.094,96.052,2,0.026,0.103,0,0,1.266,23,599.469,2,813,598.204,70,1,10,4,5570,14807,974
   pass 2 fixpoint iteration 1: 5074 reached from the ground, 2 overturned, 0 stranded, 13 released from a refused arch
   pass 2 fixpoint iteration 2: 4596 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
-3,113.534,94.642,1.499,0.097,92.674,2,0.016,0.061,0,0,1.221,0,17.110,1,104,16.278,45,1,0,1,5570,14807,974
+  pass 2 prover pose 1: 35 blocks, 196 pivots, 24.082 ms, fell=1
+  pass 2 prover pose 2: 70 blocks, 617 pivots, 574.123 ms, fell=1
+3,119.162,99.913,1.531,0.096,97.917,2,0.017,0.105,0,0,1.247,0,17.300,1,104,16.433,45,1,0,1,5570,14807,974
   pass 3 fixpoint iteration 1: 5070 reached from the ground, 2 overturned, 0 stranded, 13 released from a refused arch
   pass 3 fixpoint iteration 2: 4596 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
+  pass 3 prover pose 1: 45 blocks, 104 pivots, 16.433 ms, fell=1

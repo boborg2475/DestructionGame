@@ -45,14 +45,15 @@ widen `FCutSpec` and `IsCutPiece` — that is the one place the "which pieces" q
 | file | what |
 |---|---|
 | `SUMMARY.txt` | the headline: pieces cut, released (by material and band), what stood, the break-decision timing, and the mechanism |
-| `break_report.txt` | the baseline settle and the cut's settle, pass by pass, per fixpoint iteration |
+| `break_report.txt` | the baseline settle and the cut's settle, pass by pass, per fixpoint iteration, and per prover pose (blocks / pivots / ms / fell) |
 | `selection.csv` | the selected pieces as laid |
 | `pieces_after_cut.csv` | every piece the instant after the cut |
-| `joints.csv` | every joint: ends, normal, area, which pass severed it, utilisation |
+| `joints.csv` | every joint: ends, normal, area, which pass severed it, which authority severed it (`severedBy`: 0 none, 1 gate, 2 capacity sweep, 3 regional prover), utilisation |
 | `fall_summary.csv` | per frame for 8 s, including real ms/frame |
 | `fall_pieces.csv` | per released piece every 6th frame |
 | `pieces_final.csv` | laid vs final position |
 | `headless_timing.txt` | five headless repeats of the decision |
+| `mechanism_map_v2.svg` | (L-cut only) an elevation of the run: amber = load-solve-released, white = the cut, teal = sweep-severed joints, red diamonds = prover-severed joints (the certified mechanism surface) |
 | `*.png` | the selection and the fall (gitignored, on disk for review) |
 
 ## Findings so far
@@ -83,11 +84,22 @@ third**, versus zero for every straight cut.
 
 **The L-cut is ~5× slower to decide (~961 ms), and almost all of the extra cost is one LP.** The load
 solve is flat across every cut (~95 ms/pass, it re-runs the whole building regardless). What explodes
-is the pass-2 regional prover: **573 ms, 813 simplex pivots, 2 poses** — because once the sweep severs
-the first ring of joints the disturbed region grows, the prover re-floods a larger neighbourhood, and
-a bigger rigid-block LP is a super-linear cost. A straight cut never triggers this: reachability has
-already released everything, so the prover finds nothing and returns cheap. The speed notes in
-`../WarehouseCourse37/REPORT.md` apply unchanged, and this run is the strongest evidence yet for
-improvement #2 there (skip/scope the prover when the failure is already decided) — except that here
-the prover is *not* redundant, so the real lesson is #1: seed the solve **and** the prover from the
-disturbed region instead of re-flooding from scratch each pass.
+is the pass-2 regional prover: **~600 ms, 813 simplex pivots, 2 poses**. Per-pose profiling
+(`RegionalPoseBreakdown`, dumped per pose in `break_report.txt`) now says exactly where that goes,
+and it is **one oversized pose, not two large ones**:
+
+| pass-2 pose | blocks | pivots | ms | fell |
+|---|---|---|---|---|
+| 1 (modest initial flood) | 35 | 196 | 24 | yes |
+| 2 (doubled-budget re-flood) | 70 | 617 | **574** | yes |
+
+Pose 1 certifies a fall that touches a cut-artifact grounded boundary, which triggers a re-flood at a
+**doubled** budget — and that second pose, at 70 blocks, is 96% of the pass's prover cost. The actual
+mechanism only fells 4 pieces / severs 10 joints (a ~14-block collapse), so the 70-block pose is a
+~5× overshoot, and the rigid-block LP is strongly super-linear: 35 blocks → 24 ms, 70 blocks → 574 ms
+(2× the blocks, ~24× the time). A straight cut never triggers this: reachability has already released
+everything, so the prover finds nothing and returns cheap. The clear lever the data now points at is
+to **size the re-flood to the moved-set plus a ring instead of blindly doubling** — that alone would
+bring pose 2 back toward pose-1 cost and roughly halve the L-cut decision. Carrying the disturbed
+region across passes (rather than re-flooding cold each pass) is the larger structural win behind it.
+See `../../claude_plans/CURRENT_STATE.md` "SOLVER SPEED at building scale".
