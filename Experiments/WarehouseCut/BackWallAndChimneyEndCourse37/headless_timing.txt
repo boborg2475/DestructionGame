@@ -1,0 +1,18 @@
+=== HEADLESS TIMING, 2026.09.18-12.36.08: course 37 wrapping from the BACK long wall around the corner onto the CHIMNEY-END wall (front wall intact) — an L-shaped cut, one SolveAndBreak per fresh world-free load ===
+repeat 0: load 89.8 ms, 42 removed | CUT DECISION: 972.738 ms total, 2 breaking pass(es); solve 95.309 ms (2 fixpoint it), gate 0.085 ms, sweep 1.271 ms severed 18, prover 78.629 ms (1 poses, 248 pivots, 101 blocks, fell 0) severed 0; 974 not held
+--- repeat 0 pass table ---
+total 972.738 ms; 2 breaking pass(es), 3 passes run; live pieces before 5570; intact joints 14858 -> 14807
+pass,passMs,solveMs,supportListsMs,reseatMs,fixpointMs,fixpointIterations,archingMs,gateMs,gateDisposition,jointsSeveredByGate,sweepMs,jointsGivenToSweep,proverMs,proverPoses,proverLpPivots,proverLpMs,proverLastBlocks,proverFell,jointsSeveredByProver,piecesFelledByProver,livePiecesAfter,intactJointsAfter,notHeldAfter
+1,175.818,95.309,1.455,0.107,93.432,2,0.031,0.085,0,0,1.271,18,78.629,1,248,76.658,101,0,0,0,5570,14840,963
+  pass 1 fixpoint iteration 1: 5076 reached from the ground, 2 overturned, 0 stranded, 13 released from a refused arch
+  pass 1 fixpoint iteration 2: 4607 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
+2,684.362,98.084,1.367,0.096,96.318,2,0.022,0.071,0,0,1.300,23,584.397,2,813,583.117,70,1,10,4,5570,14807,974
+  pass 2 fixpoint iteration 1: 5074 reached from the ground, 2 overturned, 0 stranded, 13 released from a refused arch
+  pass 2 fixpoint iteration 2: 4596 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
+3,112.532,93.876,1.363,0.091,92.132,2,0.013,0.053,0,0,1.262,0,16.822,1,104,15.978,45,1,0,1,5570,14807,974
+  pass 3 fixpoint iteration 1: 5070 reached from the ground, 2 overturned, 0 stranded, 13 released from a refused arch
+  pass 3 fixpoint iteration 2: 4596 reached from the ground, 0 overturned, 0 stranded, 0 released from a refused arch
+repeat 1: load 89.5 ms, 42 removed | CUT DECISION: 986.662 ms total, 2 breaking pass(es); solve 97.972 ms (2 fixpoint it), gate 0.086 ms, sweep 1.286 ms severed 18, prover 90.772 ms (1 poses, 248 pivots, 101 blocks, fell 0) severed 0; 974 not held
+repeat 2: load 88.7 ms, 42 removed | CUT DECISION: 1016.577 ms total, 2 breaking pass(es); solve 95.868 ms (2 fixpoint it), gate 0.063 ms, sweep 1.261 ms severed 18, prover 90.838 ms (1 poses, 248 pivots, 101 blocks, fell 0) severed 0; 974 not held
+repeat 3: load 92.2 ms, 42 removed | CUT DECISION: 1037.103 ms total, 2 breaking pass(es); solve 96.739 ms (2 fixpoint it), gate 0.086 ms, sweep 1.268 ms severed 18, prover 85.375 ms (1 poses, 248 pivots, 101 blocks, fell 0) severed 0; 974 not held
+repeat 4: load 89.2 ms, 42 removed | CUT DECISION: 958.063 ms total, 2 breaking pass(es); solve 96.576 ms (2 fixpoint it), gate 0.077 ms, sweep 1.281 ms severed 18, prover 85.805 ms (1 poses, 248 pivots, 101 blocks, fell 0) severed 0; 974 not held

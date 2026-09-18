@@ -1,0 +1,28 @@
+=== BackWallAndChimneyEndCourse37, 2026.09.18-12.36.52 ===
+clock pinned at 0.016667 s per frame
+=== BackWallAndChimneyEndCourse37: course 37 wrapping from the BACK long wall around the corner onto the CHIMNEY-END wall (front wall intact) — an L-shaped cut ===
+opening /Game/Maps/Scenarios/Lvl_Warehouse
+JOINED at world time 0.0167 s: 5612 pieces, 15042 joints; the cut names 42 pieces of course 37
+SELECTED 0.9836 s into the hold: 42 clicks, 42 landed, selection holds 42 (0 of the course missing); clicking took 1101.1 ms
+BASELINE settle: 66.3 ms, 0 breaking passes, 0 not held
+CUT: commit 986.232 ms of which SolveAndBreak 960.886 ms in 2 breaking pass(es); after: 57 grounded, 4539 supported, 0 stranded, 974 falling, 42 removed; 974 released
+FALL 0.233 s: 974 released, 937 moving, max drop 34.3 cm, mean 22.7 cm; frame took 26.4 ms real
+FALL 0.483 s: 974 released, 968 moving, max drop 78.5 cm, mean 42.9 cm; frame took 27.4 ms real
+FALL 0.983 s: 974 released, 968 moving, max drop 367.9 cm, mean 154.5 cm; frame took 24.1 ms real
+FALL 1.983 s: 974 released, 608 moving, max drop 533.0 cm, mean 354.8 cm; frame took 27.2 ms real
+FALL 2.983 s: 974 released, 93 moving, max drop 533.0 cm, mean 363.7 cm; frame took 21.6 ms real
+FALL 4.983 s: 974 released, 9 moving, max drop 533.0 cm, mean 363.9 cm; frame took 20.3 ms real
+FALL 7.983 s: 974 released, 5 moving, max drop 533.0 cm, mean 363.9 cm; frame took 17.8 ms real
+FINAL 8.050 s after the cut: 974 released moved >5 cm, 0 did not, 0 unreleased moved (must be 0)
+SUMMARY.txt written
+FRAME BackWallAndChimneyEndCourse37_Before (2749399 bytes)
+FRAME BackWallAndChimneyEndCourse37_Before_NoUI (3367491 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_0s (2721064 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_0p25s (2737351 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_0p5s (2741911 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_1s (2901421 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_2s (3099835 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_3s (2919339 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_5s (2813225 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_8s (2797009 bytes)
+FRAME BackWallAndChimneyEndCourse37_After_Final_Wide (2997838 bytes)

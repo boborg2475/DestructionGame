@@ -69,6 +69,16 @@ namespace WarehouseCutExperiment
 	constexpr double BackWallWytheMinYCm = 326.25;
 	constexpr double BuildingMidYCm = 168.25;
 
+	/*
+	 * THE CHIMNEY-SIDE END WALL runs along Y at the HIGH-X end, X [641.25, 651.5] — the door/gable end,
+	 * the two chimney stacks standing just beyond it at X [652.5, 674]. Its wythe spans the full depth
+	 * between the two long walls, Y (10.25, 326.25); a piece there on neither long wall is this end
+	 * wall. It has no pilasters (those are long-wall only), so every piece is reached the same way.
+	 */
+	constexpr double ChimneyEndWallXLoCm = 641.25;
+	constexpr double ChimneyEndWallXHiCm = 651.5;
+	constexpr double ChimneyEndInteriorRayXCm = 550.0;
+
 	/** The six pilaster slots of a long wall, as X ranges (grid units 3,13,..,53 of pitch 11.25). */
 	inline bool BehindAPilaster(const FPieceBox& Box)
 	{
@@ -86,9 +96,9 @@ namespace WarehouseCutExperiment
 		return false;
 	}
 
-	enum class EFace : uint8 { Front, Back };
+	enum class EFace : uint8 { Front, Back, ChimneyEnd };
 
-	/** One experiment: a name, the course to pull, which long walls, and which face to frame close. */
+	/** One experiment: a name, the course to pull, which walls, and which face to frame close. */
 	struct FCutSpec
 	{
 		const TCHAR* Name = nullptr;
@@ -96,6 +106,7 @@ namespace WarehouseCutExperiment
 		int32 Course = 0;
 		bool bFront = false;
 		bool bBack = false;
+		bool bChimneyEnd = false;
 		EFace CloseFace = EFace::Back;
 	};
 
@@ -108,13 +119,16 @@ namespace WarehouseCutExperiment
 		static const TArray<FCutSpec> Table = {
 			{ TEXT("BackWallCourse37"),
 			  TEXT("course 37 (the upper sill course) across the BACK long wall"),
-			  37, /*front*/ false, /*back*/ true, EFace::Back },
+			  37, /*front*/ false, /*back*/ true, /*chimneyEnd*/ false, EFace::Back },
 			{ TEXT("FrontWallCourse37"),
 			  TEXT("course 37 (the upper sill course) across the FRONT long wall"),
-			  37, /*front*/ true, /*back*/ false, EFace::Front },
+			  37, /*front*/ true, /*back*/ false, /*chimneyEnd*/ false, EFace::Front },
 			{ TEXT("BothLongWallsCourse37"),
 			  TEXT("course 37 (the upper sill course) across BOTH long walls — the back cut extended across the front face"),
-			  37, /*front*/ true, /*back*/ true, EFace::Front },
+			  37, /*front*/ true, /*back*/ true, /*chimneyEnd*/ false, EFace::Front },
+			{ TEXT("BackWallAndChimneyEndCourse37"),
+			  TEXT("course 37 wrapping from the BACK long wall around the corner onto the CHIMNEY-END wall (front wall intact) — an L-shaped cut"),
+			  37, /*front*/ false, /*back*/ true, /*chimneyEnd*/ true, EFace::Back },
 		};
 		return Table;
 	}
@@ -132,7 +146,7 @@ namespace WarehouseCutExperiment
 		return INDEX_NONE;
 	}
 
-	/** The face a piece belongs to, or false if it is on neither long wall (an end wall / roof). */
+	/** The wall a piece belongs to, or false if it is on none the harness names (roof, low-X end). */
 	inline bool FaceOf(const FPieceBox& Box, EFace& OutFace)
 	{
 		const double YLo = Box.CentreCm.Y - Box.ExtentCm.Y;
@@ -145,6 +159,19 @@ namespace WarehouseCutExperiment
 		if (YLo >= BackWallWytheMinYCm - GeometryToleranceCm && Box.CentreCm.Y > BuildingMidYCm)
 		{
 			OutFace = EFace::Back;
+			return true;
+		}
+		/*
+		 * THE CHIMNEY-END WALL, checked AFTER the long walls so a back/front corner piece (which also
+		 * sits in the end's X band) is claimed by its long wall first. What is left in that X band with
+		 * an interior Y is the end wall itself. The chimney STACKS stand beyond it at X >= 652.5 and are
+		 * excluded by the upper X bound, so this never claims a chimney brick.
+		 */
+		if (Box.CentreCm.X > ChimneyEndWallXLoCm - GeometryToleranceCm
+			&& Box.CentreCm.X < ChimneyEndWallXHiCm + GeometryToleranceCm
+			&& Box.CentreCm.Y > FrontWallWytheMaxYCm && Box.CentreCm.Y < BackWallWytheMinYCm)
+		{
+			OutFace = EFace::ChimneyEnd;
 			return true;
 		}
 		return false;
@@ -169,7 +196,9 @@ namespace WarehouseCutExperiment
 		{
 			return false;
 		}
-		return (Face == EFace::Front && Spec.bFront) || (Face == EFace::Back && Spec.bBack);
+		return (Face == EFace::Front && Spec.bFront)
+			|| (Face == EFace::Back && Spec.bBack)
+			|| (Face == EFace::ChimneyEnd && Spec.bChimneyEnd);
 	}
 
 	/**
@@ -183,22 +212,25 @@ namespace WarehouseCutExperiment
 		EFace Face = EFace::Back;
 		FaceOf(Box, Face);
 
+		OutEnd = Box.CentreCm;
+
+		/*
+		 * THE END WALL IS CLICKED FROM INSIDE, along +X. Its outer face is at the +X end where the two
+		 * chimney stacks stand, so an outside ray would hit a chimney before the wall for the pieces
+		 * behind them; the hollow interior is clear straight to the inner face.
+		 */
+		if (Face == EFace::ChimneyEnd)
+		{
+			OutStart = FVector(ChimneyEndInteriorRayXCm, Box.CentreCm.Y, Box.CentreCm.Z);
+			return;
+		}
+
 		const double YLo = Box.CentreCm.Y - Box.ExtentCm.Y;
 		const double YHi = Box.CentreCm.Y + Box.ExtentCm.Y;
 		const bool bPilaster = (Face == EFace::Back) ? YLo > FrontWallWytheMaxYCm + 320.0 : YHi < 0.0;
 		const bool bFromInside = !bPilaster && BehindAPilaster(Box);
 
-		double StartY;
-		if (Face == EFace::Back)
-		{
-			StartY = bFromInside ? 280.0 : 420.0;
-		}
-		else
-		{
-			StartY = bFromInside ? 80.0 : -80.0;
-		}
-
-		OutEnd = Box.CentreCm;
+		const double StartY = (Face == EFace::Back) ? (bFromInside ? 280.0 : 420.0) : (bFromInside ? 80.0 : -80.0);
 		OutStart = FVector(Box.CentreCm.X, StartY, Box.CentreCm.Z);
 	}
 
@@ -598,10 +630,11 @@ bool FWCutJoin::Update()
 		const FVector Hi = Box.CentreCm + Box.ExtentCm;
 		EFace Face = EFace::Back;
 		FaceOf(Box, Face);
-		const bool bPilaster = (Face == EFace::Back) ? Lo.Y > 336.5 : Hi.Y < 0.0;
+		const TCHAR* FaceName = Face == EFace::Back ? TEXT("back") : (Face == EFace::Front ? TEXT("front") : TEXT("chimneyEnd"));
+		const bool bPilaster = Face == EFace::Back ? Lo.Y > 336.5 : (Face == EFace::Front ? Hi.Y < 0.0 : false);
 		Append(TEXT("selection.csv"), FString::Printf(
 			TEXT("%d,%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%s,%s"),
-			Piece, MaterialName(S, Piece), Face == EFace::Back ? TEXT("back") : TEXT("front"),
+			Piece, MaterialName(S, Piece), FaceName,
 			S.GetPiece(Piece).MassKg, Lo.X, Lo.Y, Lo.Z, Hi.X, Hi.Y, Hi.Z,
 			JointCount(S, Piece), SupportName(S.GetPieceSupport(Piece)),
 			bPilaster ? TEXT("pilaster") : TEXT("wythe")));

@@ -28,6 +28,7 @@ Defined in `Source/DestructionGame/Tests/WarehouseCutExperiment.cpp`, in the `Sp
 | `BackWallCourse37` | course 37 (upper sill course) across the back long wall |
 | `FrontWallCourse37` | the same course across the front long wall |
 | `BothLongWallsCourse37` | course 37 across both long walls at once |
+| `BackWallAndChimneyEndCourse37` | course 37 along the back wall wrapping around the corner onto the chimney-end wall (front wall intact) — an L-shaped cut |
 
 ## Add a row
 
@@ -56,17 +57,37 @@ widen `FCutSpec` and `IsCutPiece` — that is the one place the "which pieces" q
 
 ## Findings so far
 
-All three course-37 cuts fail the same way — a **load-path loss**, not a joint breaking. Removing a
-whole course severs the wall horizontally, and the masonry above becomes a disconnected island with
-no path to the ground, so the load solve releases it. No joint is ever over its capacity.
+There are **two distinct failure mechanisms**, and which one you get depends on the *shape* of the
+cut, not its size.
 
-| cut | removed | released | break decision |
-|---|---|---|---|
-| back wall | 31 | 718 | ~201 ms |
-| front wall | 31 | 718 | ~190 ms |
-| both walls | 62 | 1,436 | ~340 ms |
+| cut | removed | released | passes | joints severed | break decision | mechanism |
+|---|---|---|---|---|---|---|
+| back wall | 31 | 718 | 0 | 0 | ~201 ms | load-path loss |
+| front wall | 31 | 718 | 0 | 0 | ~190 ms | load-path loss |
+| both walls | 62 | 1,436 | 0 | 0 | ~340 ms | load-path loss |
+| back + chimney-end (L) | 42 | 974 | 2 | 51 | ~961 ms | **joint failure** |
 
-Both walls costs more not because more falls but because the regional-prover LP grows with the
-disturbed region — 142 blocks and 453 pivots against 75 and 183 for one wall. The load solve itself
-barely moves (it re-runs the whole building either way). The speed notes in
-`../WarehouseCourse37/REPORT.md` apply unchanged.
+**The straight cuts fail by load-path loss.** Removing a whole course severs a wall horizontally,
+and the masonry above becomes a disconnected island with no path to the ground, so the load solve
+releases it. No joint is ever over its capacity — the wall above does not "break", it is simply no
+longer held up. Both-walls costs more than one wall not because more falls but because the
+regional-prover LP grows with the disturbed region (142 blocks, 453 pivots against 75 and 183).
+
+**The L-cut fails by joints breaking.** Wrapping the cut around the corner leaves the masonry above
+*still connected* — through the corner return and the intact end wall — but no longer able to carry
+its load, so the corner is over-stressed rather than orphaned. The capacity sweep severs 41 joints
+over two breaking passes, and the regional prover certifies a genuine collapse mechanism, severing 10
+more and felling 4 pieces the sweep alone would have left standing. This is the first cut in the
+series where the break authority does real work: **51 joints severed, 2 breaking passes, a terminal
+third**, versus zero for every straight cut.
+
+**The L-cut is ~5× slower to decide (~961 ms), and almost all of the extra cost is one LP.** The load
+solve is flat across every cut (~95 ms/pass, it re-runs the whole building regardless). What explodes
+is the pass-2 regional prover: **573 ms, 813 simplex pivots, 2 poses** — because once the sweep severs
+the first ring of joints the disturbed region grows, the prover re-floods a larger neighbourhood, and
+a bigger rigid-block LP is a super-linear cost. A straight cut never triggers this: reachability has
+already released everything, so the prover finds nothing and returns cheap. The speed notes in
+`../WarehouseCourse37/REPORT.md` apply unchanged, and this run is the strongest evidence yet for
+improvement #2 there (skip/scope the prover when the failure is already decided) — except that here
+the prover is *not* redundant, so the real lesson is #1: seed the solve **and** the prover from the
+disturbed region instead of re-flooding from scratch each pass.
