@@ -80,8 +80,25 @@ Last updated: **2026-09-16** — the interactive build/destroy SESSION is DELIVE
   SAME fixpoint (same Grounded/Supported answer for EVERY piece) as the whole-structure solve. Answer-
   transparency is mandatory — the prover carry failed exactly this. Cheaper, zero-soundness-risk fallback
   still open: `SolveLoads` rebuilds per-piece joint adjacency (~3,600 small allocs) every call, replaceable
-  by count-then-fill (the code comment names it) — no verdict change, smaller win. Next step: PLAN the
-  region-seeded load solve to judge whether sound answer-transparency is achievable before building.
+  by count-then-fill (the code comment names it) — no verdict change, smaller win. **PLANNED AND
+  VERDICT REACHED 2026-09-18 (Plan pass): build NEITHER remaining #3 lever now.** The load solve
+  decomposes (break_report columns) into `supportListsMs ~1.5 ms / reseatMs ~0.1 ms / fixpointMs ~94 ms`
+  per pass — the **fixpoint accumulation is ~96% of the load solve**, and the ~3 passes each re-walk the
+  near-whole structure (5076/5074/5070 pieces reached). So: (i) **count-then-fill is negligible** — it
+  targets only the ~1.5 ms support-list build, saving <~0.5 ms total against a 441 ms decision; not worth
+  a cycle. (ii) **Region-seeding the fixpoint is the only lever on the real cost but is RESEARCH-GATED,
+  not the planned win:** it is sound-able in principle (reachability is clean monotone incremental
+  reachability; the load half is an incremental Kahn fixpoint) BUT redistribution always propagates to
+  the foundation, so the sound dirty-set is a full-height column + the orphaned island (a bounded ~2-3×
+  win, not 10×), it must engulf whole `ReseatSpannedGroups`/`ApplyArchingThrust`/overturning/composite-
+  depth structures (the most non-local code in `SolveLoads`), and it must re-sum the dirty/clean boundary
+  in whole-structure index order to preserve the ulp-at-1.0 break decision. Its general-correctness
+  argument is the same class review rejected on the prover-carry. **If ever built it must be gated behind
+  a differential red** (region-seeded SolveAndBreak ≡ whole-structure, on a fixture where a distant
+  foundation joint tips over 1.0 only through redistribution — the LeaningStack differential is the
+  template), derive the region PER-PASS from `DeriveRegionalSeed` (do NOT revive `CarriedProverRegion`).
+  Net: #1 and #2 (the achievable wins) are done; #3's remaining path is a high-risk research investment
+  for a bounded win, deliberately deferred pending an explicit decision to fund that risk.
   Also landed 2026-09-18: per-joint `FStructure::GetBreakAuthority()` (1 gate / 2 sweep /
   3 prover; `INDEX_NONE` for intact or went-with-a-removed-piece), a `severedBy` column in the harness's
   `joints.csv`, both observability-only. **FOLLOW-UP (review, non-blocking):** on the rare mid-loop
