@@ -6,27 +6,24 @@
 #include "Core/Profiles/MaterialProfiles.h"
 
 /**
- * THE SESSION TOOLBAR'S PRESENTER MODEL — what the build/destroy strip offers, which button is lit,
- * which is greyed, and what one click does to the session.
+ * The session toolbar's presenter model — what the build/destroy strip offers, which button is
+ * lit, which is greyed, and what one click does to the session.
  *
- * IT IS Core/PieceMenu.h'S ROLE FOR THE TOOLBAR, and it is here for the same argument. A strip of
- * buttons is a list of decisions — which buttons exist in which mode, in which order, with which
- * caption, lit or not, live or greyed — and a decision spelled as a run of AddSlot calls in Slate is
- * a decision in the one place no test can reach. What is left for the widget is drawing: which
- * green, which font, which margin.
+ * Core/PieceMenu.h's role for the toolbar, for the same reason: a strip of buttons is a list of
+ * decisions (which buttons, which order, caption, lit or greyed), and spelled as AddSlot calls in
+ * Slate that decision sits where no test can reach it. The widget is left only to draw.
  *
- * NO SLATE, NO WORLD, NO UObject. One plain struct in, plain structs out, exactly as
- * BuildPieceMenuRows and PieceMenuPanelSizePx take. That is what makes every claim about the strip
- * a headless microsecond rather than a viewport somebody has to look at.
+ * No Slate, no world, no UObject — plain structs in and out, exactly as BuildPieceMenuRows and
+ * PieceMenuPanelSizePx take, so every claim about the strip is a headless microsecond.
  */
 namespace DestructionSession
 {
 	/**
 	 * What the session is doing: laying pieces, or pulling them out.
 	 *
-	 * Build IS ENUMERATOR ZERO because a default-constructed session must be the one that CANNOT
-	 * destroy anything. The two modes are not symmetric in what a mistake costs: opening in Build
-	 * offers a ghost nobody asked for, opening in Destroy offers a click that removes a brick.
+	 * Build is enumerator zero because a default-constructed session must be the one that cannot
+	 * destroy anything: opening in Build offers an unwanted ghost, opening in Destroy offers a
+	 * click that removes a brick.
 	 */
 	enum class ESessionMode : uint8
 	{
@@ -40,10 +37,9 @@ namespace DestructionSession
 	/**
 	 * Which piece the ghost is.
 	 *
-	 * A KIND RATHER THAN AN EXTENT AND A MATERIAL ON THE STATE. The palette is data — an extent and
-	 * a library row per kind, below — and a session state that carried the numbers instead of the
-	 * name would be a fourth place brick dimensions are written down, free to drift from the three
-	 * that already agree.
+	 * A kind rather than an extent and a material on the state: the palette is data (an extent and
+	 * a library row per kind, below), and carrying the numbers instead of the name would be a
+	 * fourth place brick dimensions are written down, free to drift from the three that agree.
 	 */
 	enum class EBuildPieceKind : uint8
 	{
@@ -70,19 +66,14 @@ namespace DestructionSession
 	/**
 	 * What fastens the next piece the player lays.
 	 *
-	 * Auto IS ENUMERATOR ZERO AND IT IS NOT "NO CHOICE". It is the choice that hands every joint
-	 * back to BuildMode::JointForContact, which is what makes a brick bed in mortar and a plank bear
-	 * dry without the player having to say so — the answer a default-constructed session must give,
-	 * for the reason Mode defaults to Build: the default is the one that decides least.
+	 * Auto is enumerator zero and is not "no choice" — it hands every joint back to
+	 * BuildMode::JointForContact, the same reason Mode defaults to Build: the default decides least.
+	 * A choice rather than a profile pointer, for the reason EBuildPieceKind is a kind rather than an
+	 * extent and a material: a raw pointer would be a library address serialised into a session.
 	 *
-	 * A CHOICE RATHER THAN A PROFILE POINTER ON THE STATE, for the reason EBuildPieceKind is a kind
-	 * rather than an extent and a material. The state is what the strip draws and what a save file
-	 * would carry; a raw pointer on it would be a library address serialised into a session, and the
-	 * chip that is lit would be decided by comparing one.
-	 *
-	 * THE FIVE NAMED ONES ARE LIBRARY ROWS, ONE EACH, and they are the whole vocabulary a player
-	 * gets — JointOverrideFor below is the map. There is deliberately no perpend chip: the weak
-	 * perpend is a thing the INFERENCE chooses for a vertical face, not a thing anybody asks for.
+	 * The five named ones are library rows, one each — JointOverrideFor below is the map. There is
+	 * deliberately no perpend chip: the weak perpend is what the inference chooses for a vertical
+	 * face, not a thing anybody asks for.
 	 */
 	enum class EJointChoice : uint8
 	{
@@ -103,10 +94,9 @@ namespace DestructionSession
 	/**
 	 * Everything the toolbar knows about the session, and the only thing a click changes.
 	 *
-	 * DURABLE STATE RATHER THAN WIDGET STATE. A controller that kept the mode in one field, the
-	 * piece in a combo box and the course in a spinner has the session spread across four owners
-	 * that can disagree; kept as one struct, every transition is state-in/state-out and every
-	 * transition is therefore a table row in a test.
+	 * Durable state rather than widget state: a controller spreading mode, piece and course across
+	 * separate owners can have them disagree, where one struct makes every transition
+	 * state-in/state-out and therefore a table row in a test.
 	 */
 	struct FSessionToolbarState
 	{
@@ -119,74 +109,57 @@ namespace DestructionSession
 		/**
 		 * What fastens every joint the next placement forms.
 		 *
-		 * IT SURVIVES A TRIP THROUGH DESTROY MODE, which is the half this field exists to get wrong.
-		 * The Destroy strip draws none of the six chips, and ApplyToolbarButton's "the fields a
-		 * transition does not name survive it" rule is what brings the player back to the screws they
-		 * chose rather than to Auto — a difference they cannot see until the structure is run.
+		 * Survives a trip through Destroy mode: the Destroy strip draws none of the six chips, and
+		 * ApplyToolbarButton's "fields a transition does not name survive it" rule is what brings the
+		 * player back to the screws they chose rather than to Auto — invisible until the structure runs.
 		 */
 		EJointChoice Joint = EJointChoice::Auto;
 
 		/**
-		 * Which course the build plane is on. NEVER NEGATIVE.
+		 * Which course the build plane is on. Never negative.
 		 *
-		 * Course 0 is the one with the earth under it. A negative course is a build plane below the
-		 * ground and a readout nobody can make sense of, so ApplyToolbarButton refuses to produce
-		 * one and the three course functions below all treat one as course 0 — one clamp spelled
-		 * once, rather than four functions each with their own opinion about a state that is not
-		 * supposed to exist.
+		 * Course 0 has the earth under it. A negative course is a build plane below the ground and
+		 * an unreadable readout, so ApplyToolbarButton refuses to produce one and the three course
+		 * functions below all treat one as course 0 — one clamp spelled once rather than four
+		 * functions disagreeing about a state that should not exist.
 		 */
 		int32 Course = 0;
 
 		/**
 		 * Whether the next piece lies the OTHER way round — turned a quarter turn about Z.
 		 *
-		 * A BIT BESIDE THE KIND RATHER THAN THREE MORE KINDS. A rotated brick is the same brick:
-		 * EBuildPieceKind names what is in the palette, an extent and a library row, and a
-		 * BrickRotated / TimberPlateRotated / TimberLintelRotated triple would treble the one table
-		 * this model exists to keep brick dimensions out of (see the enum's own header). Rotation is
-		 * orthogonal to the kind, so it is stored orthogonally.
+		 * A bit beside the kind rather than three more kinds: a rotated brick is the same brick, and
+		 * a BrickRotated / TimberPlateRotated / TimberLintelRotated triple would treble the one table
+		 * this model keeps brick dimensions out of. It is also what makes the corner vocabulary
+		 * reachable at all — the snap solver offers a quoin when two brick-sized boxes cross long
+		 * axes, but until a player could turn a piece, CR-2a was code no click could reach.
 		 *
-		 * AND IT IS WHAT MAKES THE CORNER VOCABULARY REACHABLE AT ALL. The snap solver offers a
-		 * quoin when two brick-sized boxes cross long axes, but every placement's footprint comes
-		 * from the palette — so until a player could turn a piece, the whole of CR-2a was code no
-		 * click could get to.
-		 *
-		 * UPRIGHT BY DEFAULT, for the reason Mode defaults to Build: a default-constructed session is
-		 * the one that has decided least. A session that opened rotated would lay its first brick
-		 * across the grid every harness and every level in this project is laid on.
-		 *
-		 * IT SURVIVES A TRIP THROUGH DESTROY MODE, exactly as the piece, the placement and the joint
-		 * do. A player who turned a piece to lay the second leg of an L, looked at what they had
-		 * built and came back must find it still turned — otherwise their next click lays a stretcher
-		 * straight across the corner.
+		 * Upright by default, for the reason Mode defaults to Build (the default decides least), and
+		 * it survives a trip through Destroy mode like the piece, placement and joint do: a player
+		 * who turned a piece for the second leg of an L must find it still turned on return.
 		 */
 		bool bRotated = false;
 
 		/**
 		 * Whether there is a live structure for the commands to act on.
 		 *
-		 * THE ONLY PRECONDITION EITHER COMMAND HAS. Clear with nothing built clears nothing and Run
-		 * with nothing built solves an empty structure; both are silent no-ops, and a silent no-op
-		 * on a command button is indistinguishable from the game having missed the click.
+		 * The only precondition either command has: Clear or Run with nothing built are silent
+		 * no-ops, indistinguishable from the game missing the click.
 		 */
 		bool bHasStructure = false;
 
 		/**
-		 * Whether the DESTROY-mode load overlay is on — every live piece tinted by its worst
+		 * Whether the Destroy-mode load overlay is on — every live piece tinted by its worst
 		 * joint's margin band.
 		 *
-		 * A SETTING RATHER THAN A COMMAND, SO IT LATCHES. It is a way of looking at the structure
-		 * rather than a thing that happens to it, which is what makes its chip lit while it is on
-		 * and what makes a second click turn it off.
+		 * A setting rather than a command, so it latches: a way of looking at the structure rather
+		 * than a thing that happens to it, so its chip stays lit until a second click turns it off.
 		 *
-		 * OFF BY DEFAULT, for the reason Mode defaults to Build: a default-constructed session must
-		 * be the one that has done the least. The overlay costs a solve per toggle-on and per
-		 * mutation, and a session that opened paying it would pay it on twenty-eight scenario levels
-		 * that never asked.
-		 *
-		 * IT SURVIVES A TRIP THROUGH BUILD MODE. The Build strip does not draw the chip, and
-		 * ApplyToolbarButton's "the fields a transition does not name survive it" rule is what keeps
-		 * the player's choice waiting for them when they come back.
+		 * Off by default, for the reason Mode defaults to Build: the overlay costs a solve per
+		 * toggle-on and per mutation, and a session that opened paying it would pay it on every
+		 * scenario level that never asked. It survives a trip through Build mode — the Build strip
+		 * does not draw the chip, and ApplyToolbarButton's "fields a transition does not name survive
+		 * it" rule keeps the player's choice waiting for them.
 		 */
 		bool bLoadOverlay = false;
 	};
@@ -194,9 +167,8 @@ namespace DestructionSession
 	/**
 	 * Every button the strip can carry.
 	 *
-	 * AN ID RATHER THAN A CAPTION IS WHAT MAKES A CLICK ATTRIBUTABLE. A widget that reported which
-	 * button was pressed by handing back its text would be routing behaviour through wording, which
-	 * is the one thing on the row that is allowed to be retuned.
+	 * An id rather than a caption is what makes a click attributable: reporting a press by its text
+	 * would route behaviour through wording, the one thing on a row allowed to be retuned.
 	 */
 	enum class EToolbarButtonId : uint8
 	{
@@ -207,13 +179,11 @@ namespace DestructionSession
 		PieceTimberLintel,
 
 		/**
-		 * Turn the next piece a quarter turn about Z — the tail of the palette, and a LATCH.
+		 * Turn the next piece a quarter turn about Z — the tail of the palette, and a latch.
 		 *
-		 * IT IS DRAWN WITH THE PIECES AND NOT AS ONE. It modifies whichever of the three is lit
-		 * rather than being a fourth of them, which is why it sits immediately after them and
-		 * carries no swatch: a block of brick red on this chip would name a piece it does not lay.
-		 * It is in front of the placement pair because that is the order the player asks the
-		 * questions in — which piece, lying which way, then snapped or free, then fastened how.
+		 * Drawn with the pieces, not as one of them: it modifies whichever of the three is lit,
+		 * so it carries no swatch and sits right after them, ahead of the placement pair — the order
+		 * the player asks the questions in: which piece, lying which way, snapped or free, fastened how.
 		 */
 		RotatePiece,
 
@@ -246,17 +216,14 @@ namespace DestructionSession
 	/**
 	 * Which of the three regions of the strip a button sits in.
 	 *
-	 * A REGION IS A MODEL ANSWER RATHER THAN A RUN OF AddSlot CALLS, for the reason the list itself
-	 * is. SESSION_UI_DESIGN §b draws the strip as mode tabs, then the current mode's settings, then
-	 * the mode's one command, separated by 1 px rules — and the reason it gives is not decoration:
-	 * the commands sit past a rule "so that a destructive click is never adjacent to a setting
-	 * click". That is a decision about where Clear build may be, and a widget that decided it by
-	 * counting slots would hold it where nothing can read it.
+	 * A model answer rather than a run of AddSlot calls: SESSION_UI_DESIGN §b draws the strip as
+	 * mode tabs, then the mode's settings, then its one command, separated by 1 px rules "so that a
+	 * destructive click is never adjacent to a setting click" — a decision a widget counting slots
+	 * could not hold.
 	 *
-	 * THE THREE ARE CONTIGUOUS AND IN THIS ORDER, which is what makes a rule drawable at all: the
-	 * widget compares neighbours and draws a hairline where the group changes. A group appearing
-	 * twice would put a rule in the middle of a region and the three-region reading — the thing a
-	 * player navigates by from peripheral vision — would be gone.
+	 * The three are contiguous and in this order, which is what makes a rule drawable at all: the
+	 * widget draws a hairline where neighbours' groups change, so a group appearing twice would
+	 * break the three-region reading a player navigates by from peripheral vision.
 	 */
 	enum class EToolbarGroup : uint8
 	{
@@ -273,8 +240,8 @@ namespace DestructionSession
 	/**
 	 * Which little block of colour a chip carries: the thing the player is about to lay, or nothing.
 	 *
-	 * A KIND RATHER THAN A COLOUR, for the reason EJointMarginBand is a band rather than a green
-	 * (SESSION_UI_DESIGN §a principle 6). The model decides that a brick chip carries a brick; which
+	 * A kind rather than a colour, for the reason EJointMarginBand is a band rather than a green
+	 * (SESSION_UI_DESIGN §a principle 6): the model decides a brick chip carries a brick, and which
 	 * red that is is the widget's, through SwatchColour below.
 	 */
 	enum class EToolbarSwatch : uint8
@@ -298,40 +265,36 @@ namespace DestructionSession
 		/**
 		 * What the button reads.
 		 *
-		 * DATA ON THE ROW FOR THE REASON FPieceMenuRow::Label IS: a widget spelling its own text
+		 * Data on the row, for the reason FPieceMenuRow::Label is: a widget spelling its own text
 		 * holds the wording where no test can read it, and this strip's wording is load-bearing —
-		 * Snap versus Free is the difference between a piece that lands on the bond and one that
-		 * lands where the cursor was.
+		 * Snap versus Free is the difference between a piece on the bond and one where the cursor was.
 		 */
 		FString Label;
 
 		/**
-		 * "THIS IS WHAT YOU HAVE CHOSEN", which is not the same question as bEnabled.
+		 * "This is what you have chosen" — not the same question as bEnabled.
 		 *
-		 * Exactly one button of each setting group carries it, and a COMMAND never does. A latched
-		 * Clear button reads as a mode the player is stuck in, and the toolbar has two real modes
-		 * already.
+		 * Exactly one button of each setting group carries it, and a command never does: a latched
+		 * Clear button would read as a mode the player is stuck in.
 		 */
 		bool bActive = false;
 
 		/**
 		 * Whether the thing behind the button can actually happen.
 		 *
-		 * THE MODEL OWNS THE GREYING BECAUSE THE MODEL OWNS THE REFUSAL — ApplyToolbarButton reads
-		 * this same answer rather than deciding again. Two derivations of "can this happen" is how
-		 * a lit button that does nothing gets shipped.
-		 *
-		 * FALSE BY DEFAULT: a half-built row must not claim a click will land.
+		 * The model owns the greying because it owns the refusal — ApplyToolbarButton reads this
+		 * same answer rather than deciding again; two derivations of "can this happen" is how a lit
+		 * button that does nothing gets shipped. False by default, so a half-built row cannot claim
+		 * a click will land.
 		 */
 		bool bEnabled = false;
 
 		/**
 		 * Which region of the strip the button is in.
 		 *
-		 * Command BY DEFAULT, AND THAT IS THE FAIL-CLOSED END. A row nobody filled in draws past the
-		 * last rule, on its own, rather than claiming to be one of the two mode tabs that may never
-		 * move — an undeclared button at the far right is visibly odd, and an undeclared button
-		 * sitting in the mode pair is a strip whose first slots have shifted.
+		 * Command by default, the fail-closed end: a row nobody filled in draws past the last rule
+		 * on its own rather than claiming to be one of the two mode tabs that may never move —
+		 * visibly odd, rather than a strip whose first slots have silently shifted.
 		 */
 		EToolbarGroup Group = EToolbarGroup::Command;
 
@@ -340,18 +303,16 @@ namespace DestructionSession
 	};
 
 	/**
-	 * HOW ONE CHIP IS DRAWN — the fill, the edge, the caption and the chip's own geometry.
+	 * How one chip is drawn — the fill, the edge, the caption and the chip's own geometry.
 	 *
-	 * DECIDED HERE AND NOT IN SLATE, which is SESSION_UI_DESIGN §e's rule with its reason attached:
-	 * "three visual states, and they must be three, for the reason EBrickHighlight has ten and not
-	 * one — bActive and bEnabled are different questions and a widget that drew them alike would make
-	 * a lit button that does nothing indistinguishable from a greyed one that works". Spelled as two
-	 * ternaries inside the panel builder, that decision is unreadable: a widget test can only say
-	 * "the lit one looks different from the idle one", which a decorative alternation satisfies
-	 * forever.
+	 * Decided here and not in Slate, per SESSION_UI_DESIGN §e: bActive and bEnabled are different
+	 * questions, and drawing them alike would make a lit button that does nothing indistinguishable
+	 * from a greyed one that works. Spelled as ternaries inside the panel builder that decision is
+	 * unreadable — a widget test can only say "the lit one looks different", which a decorative
+	 * alternation satisfies forever.
 	 *
-	 * COLOURS, NOT BRUSHES. Nothing in this file knows what Slate is. The widget turns these into a
-	 * rounded-box brush and its hover and press variants, which is drawing rather than deciding.
+	 * Colours, not brushes: nothing here knows what Slate is. The widget turns these into a
+	 * rounded-box brush and its hover/press variants — drawing, not deciding.
 	 */
 	struct FChipLook
 	{
@@ -361,12 +322,10 @@ namespace DestructionSession
 		/**
 		 * The 2 px drop edge around it — §a principle 1's "press me" cue.
 		 *
-		 * AND THE ONE CHANNEL THAT TELLS THE "GO" CHIP FROM A LIT MODE TAB. `Run structure` is filled
-		 * with the destroy accent by identity and the lit `Destroy` tab is filled with the mode's,
-		 * which on a Destroy strip is the same red two slots along — a statement about where the
-		 * player is, drawn exactly like the command that settles the wall. Both fills are spoken for,
-		 * so the ring is where the difference lives: the go chip wears a bright rim and everything
-		 * else wears the shadow.
+		 * Also the one channel that tells the "go" chip from a lit mode tab: `Run structure` is
+		 * filled with the destroy accent by identity, and the lit `Destroy` tab is filled with the
+		 * mode's — the same red two slots along. Both fills are spoken for, so the ring carries the
+		 * difference: the go chip wears a bright rim, everything else wears the shadow.
 		 */
 		FLinearColor Outline = FLinearColor::Transparent;
 
@@ -382,9 +341,8 @@ namespace DestructionSession
 		/**
 		 * Whether the caption is set in the bold face.
 		 *
-		 * THE CHIP SAYS bActive TWICE, in the fill and in the weight, because they are two readings
-		 * of one decision: the fill is what a player flying a camera catches from the corner of an
-		 * eye, and the weight is what a player looking straight at the strip reads.
+		 * The chip says bActive twice, in fill and weight: the fill is what a player flying a camera
+		 * catches from the corner of an eye, and the weight is what they read looking straight at it.
 		 */
 		bool bBoldCaption = false;
 	};
@@ -392,193 +350,157 @@ namespace DestructionSession
 	/**
 	 * The strip for a session state: one fixed list per mode, in one fixed order.
 	 *
-	 * THE MODE PAIR IS ALWAYS FIRST, and it is the one ordering claim with a player-facing reason.
-	 * Everything else on the strip changes with the mode; the two buttons that switch modes may not
-	 * move, because a strip whose first two slots shifted would put a different button under a
-	 * cursor that has not moved.
+	 * The mode pair is always first — the two buttons that switch modes may not move, or a strip
+	 * whose first slots shifted would put a different button under a cursor that has not moved.
 	 *
-	 * THE LIST'S CONTENT DEPENDS ON THE MODE ALONE. A piece selection or a course number that added,
-	 * removed or reordered a button would be a strip that rearranges itself while a player uses it.
+	 * The list's content depends on the mode alone: a piece selection or course number that added,
+	 * removed or reordered a button would be a strip rearranging itself while a player uses it.
 	 */
 	TArray<FToolbarButton> SessionToolbarButtons(const FSessionToolbarState& State);
 
 	/**
 	 * One click, as a pure function: the state before and the button, in; the state after, out.
 	 *
-	 * PURE BECAUSE THAT IS THE ONLY WAY IT IS ASSERTABLE. A controller mutating its own fields from
-	 * a Slate callback puts the whole of the toolbar's behaviour behind a click only a human can
-	 * perform; state-in/state-out makes every transition a table row.
+	 * Pure because that is the only way it is assertable — a controller mutating its own fields from
+	 * a Slate callback puts the toolbar's behaviour behind a click only a human can perform.
 	 *
-	 * IT REFUSES WHATEVER THE STRIP REFUSES, by asking SessionToolbarButtons rather than by
-	 * re-deciding: a button that state does not draw, or draws greyed, is a bitwise no-op. That
-	 * includes the course floor — down from the grounded course is REFUSED rather than clamped into
-	 * a new state, which is the same answer today and stops being the same answer the moment
-	 * anything else on the state moves with a course change.
+	 * Refuses whatever the strip refuses, by asking SessionToolbarButtons rather than re-deciding:
+	 * a button the state does not draw, or draws greyed, is a bitwise no-op — including the course
+	 * floor, refused rather than clamped, which stops agreeing with a clamp the moment anything
+	 * else on the state moves with a course change.
 	 *
-	 * THE FIELDS A TRANSITION DOES NOT NAME SURVIVE IT. Going to Destroy and back must return a
-	 * player to the piece, the placement and the course they left with.
+	 * The fields a transition does not name survive it: going to Destroy and back must return a
+	 * player to the piece, placement and course they left with.
 	 */
 	FSessionToolbarState ApplyToolbarButton(const FSessionToolbarState& State, EToolbarButtonId Id);
 
 	/**
-	 * A MODE'S ACCENT — build amber, destroy red.
+	 * A mode's accent — build amber, destroy red.
 	 *
-	 * THE TWO COLOURS THIS UI ALREADY USES, reused rather than re-picked: the amber is the Caution
-	 * band's gold and the ghost's own colour, and the red is the destructive row's. A third and
-	 * fourth hue for the same two ideas would be two more things to keep in step with nothing
-	 * holding them there.
-	 *
-	 * IT IS THE MODE'S RATHER THAN THE BUTTON'S, and that is the whole point of taking a mode: every
-	 * lit chip on a Build strip is amber and every lit chip on a Destroy strip is red, so the colour
-	 * of the strip is itself a reading of which mode the player is in — the fact they need from
-	 * peripheral vision while flying a camera.
-	 *
-	 * A MODE THIS BUILD HAS NEVER HEARD OF ANSWERS WITH THE DESTROY ACCENT, which is the answer that
-	 * agrees with the rest of the model rather than an arbitrary one: SessionToolbarButtons draws the
-	 * Destroy strip for anything that is not Build, so the strip and its accent stay one reading.
+	 * The two colours this UI already uses: amber is the Caution band's gold, red is the destructive
+	 * row's. The mode's accent rather than the button's, so every lit chip on a Build strip is amber
+	 * and every lit chip on a Destroy strip is red — the strip's colour reads the mode from
+	 * peripheral vision while flying a camera. A mode this build has never heard of answers with the
+	 * destroy accent, agreeing with SessionToolbarButtons, which draws the Destroy strip for anything
+	 * that is not Build.
 	 */
 	FLinearColor ModeAccent(ESessionMode Mode);
 
 	/**
-	 * What a swatch kind is painted in — and it is the colour of the thing the player will lay.
+	 * What a swatch kind is painted in — the colour of the thing the player will lay.
 	 *
-	 * THE SHED MATERIALS' OWN BASE COLOURS, so the palette chip and the brick that lands are one
+	 * The shed materials' own base colours, so the palette chip and the brick that lands are one
 	 * decision rather than two people picking the same red.
 	 *
-	 * None IS TRANSPARENT, AND SO IS A KIND NOBODY DECLARED. The swatch is drawn through one widget
-	 * whichever kind it is, so "nothing to draw" has to be a colour; a plausible block of colour on
-	 * a command chip would name a piece that chip does not lay.
+	 * None is transparent, and so is a kind nobody declared: the swatch is drawn through one widget
+	 * whatever kind it is, so "nothing to draw" has to be a colour, and a block of colour on a
+	 * command chip would name a piece that chip does not lay.
 	 */
 	FLinearColor SwatchColour(EToolbarSwatch Swatch);
 
 	/**
 	 * How one chip of one mode's strip is drawn.
 	 *
-	 * THE PRECEDENCE IS !bEnabled, THEN bActive, THEN THE "GO" CHIP, THEN IDLE, and the order is the
-	 * claim rather than an implementation detail. A greyed Run structure must read as greyed even
-	 * though Run is the one chip that is filled without being lit; a lit chip must read as lit even
-	 * though it is also enabled.
+	 * Precedence is !bEnabled, then bActive, then the "go" chip, then idle: a greyed Run structure
+	 * must read as greyed even though Run is filled without being lit. The "go" chip is why this
+	 * takes a button rather than two flags — a command is never bActive, yet §e asks for Run
+	 * structure "filled in the destroy accent", which `bActive ? Accent : Idle` cannot express.
 	 *
-	 * THE "GO" CHIP IS WHY THIS TAKES A BUTTON AND NOT MERELY TWO FLAGS. A command is never bActive
-	 * — a latched Clear button reads as a mode the player is stuck in — and §e still asks for Run
-	 * structure "filled in the destroy accent". The two are only compatible if the fill is a function
-	 * of the BUTTON, which is exactly what a widget writing `bActive ? Accent : Idle` cannot express.
-	 *
-	 * AND Clear build IS DANGER IN THE CAPTION, NOT IN THE FILL. It is the one irreversible control
-	 * in the Build group, but a chip filled destroy-red sitting on an amber strip would read as the
-	 * mode you are in — so the warning is a warm caption on an ordinary idle chip.
+	 * Clear build carries its danger in the caption, not the fill: a chip filled destroy-red on an
+	 * amber strip would read as the mode you are in, so the warning is a warm caption instead.
 	 */
 	FChipLook ChipLookFor(const FToolbarButton& Button, ESessionMode Mode);
 
 	/**
-	 * What a joint choice OVERRIDES every formed joint's profile with — or NOTHING, for Auto.
+	 * What a joint choice overrides every formed joint's profile with — or nothing, for Auto.
 	 *
-	 * A POINTER, AND nullptr IS A REAL ANSWER RATHER THAN A FAILURE. The override rides through
-	 * PreviewBuildPiece / PlaceBuildPiece as an optional profile, and "let the inference decide" has
-	 * to be expressible in that same type: a sentinel profile meaning "infer" would be a seventh
-	 * library row every consumer has to know to special-case, and the first one that forgot would
-	 * BOND A JOINT WITH IT.
+	 * A pointer, and nullptr is a real answer rather than a failure: the override rides through
+	 * PreviewBuildPiece / PlaceBuildPiece as an optional profile, so "let the inference decide" must
+	 * be expressible in that type — a sentinel profile meaning "infer" would be a seventh library row
+	 * every consumer has to special-case.
 	 *
-	 * IT IS THE SHIPPED ROW'S OWN ADDRESS, NEVER A COPY, which is the identity rule
-	 * BuildPieceMaterial keeps for the palette and for the same reason. Two FConnectionStrengths with
-	 * equal fields are equal in everything except which row a retune moves, and this library is
-	 * siblings by construction — Nail, Screw and Bolt are one shape at three scales. A copy would go
-	 * on serving stale numbers after a re-anchor, and every joint the player screwed would be screwed
-	 * with them.
+	 * The shipped row's own address, never a copy — the identity rule BuildPieceMaterial keeps for
+	 * the palette, since Nail, Screw and Bolt are one shape at three scales and a copy would go on
+	 * serving stale numbers after a re-anchor.
 	 *
-	 * A CHOICE THIS BUILD HAS NEVER HEARD OF OVERRIDES NOTHING, AND THAT IS THE FAIL-CLOSED END.
-	 * EJointChoice is a uint8 and a cast is all it takes to make one; answering with a plausible row
-	 * would fasten a joint with a profile nobody picked, where answering with nothing hands it back
-	 * to the inference that decided every joint in this game before the chip existed.
+	 * A choice this build has never heard of overrides nothing, the fail-closed end: a plausible row
+	 * would fasten a joint with a profile nobody picked, where nothing hands it back to the
+	 * inference that decided every joint before the chip existed.
 	 */
 	const FConnectionStrength* JointOverrideFor(EJointChoice Joint);
 
 	/**
 	 * A piece kind's HALF extent, in centimetres.
 	 *
-	 * TRANSCRIBED FROM WHAT THE DEMO BUILDING ALREADY LAYS rather than newly authored: the brick is
-	 * the standard 21.5 x 10.25 x 6.5 unit halved, and the plate is
-	 * Core/BuildMode/DemoBuilding.cpp's own (33.75, 5.125, 5.0). The lintel is that plate's 90 cm
-	 * sibling.
+	 * Transcribed from what the demo building already lays rather than newly authored: the brick is
+	 * the standard 21.5 x 10.25 x 6.5 unit halved, the plate is Core/BuildMode/DemoBuilding.cpp's own
+	 * (33.75, 5.125, 5.0), and the lintel is that plate's 90 cm sibling.
 	 *
-	 * IT FAILS CLOSED ON A KIND THIS BUILD DOES NOT KNOW. EBuildPieceKind is a uint8 and a cast is
-	 * all it takes to make one; the answer is the ZERO extent, because an extent that is not a
+	 * Fails closed on a kind this build does not know with the zero extent: an extent that is not a
 	 * number is a mass that is not a number two calls later, and a piece of no size is an obvious
 	 * refusal rather than a plausible brick.
 	 */
 	FVector BuildPieceHalfExtentCm(EBuildPieceKind Kind);
 
 	/**
-	 * A piece kind's material, BY REFERENCE TO THE SHIPPED LIBRARY ROW.
+	 * A piece kind's material, by reference to the shipped library row.
 	 *
-	 * NEVER A COPY, AND IDENTITY IS THE POINT. Two profiles with equal fields are equal in every way
-	 * except the one that matters: which row a future retune moves. A private copy of Timber would
-	 * go on serving stale numbers after a re-anchor, and every joint the snap solver infers off that
-	 * piece would be inferred from them. It is the same identity rule PieceActionsFor keeps.
+	 * Never a copy — identity is the point. Two profiles with equal fields differ in the one thing
+	 * that matters: which row a future retune moves. A private copy of Timber would go on serving
+	 * stale numbers after a re-anchor.
 	 *
-	 * IT FAILS CLOSED ON A KIND THIS BUILD DOES NOT KNOW, and Timber is the fail-closed answer
-	 * rather than an arbitrary one: it is not compression-dominant, so BuildMode::JointForContact
-	 * infers DryStone for it — a bearing that carries compression and friction and NO tension, the
-	 * weakest joint the inference can hand out. An unknown piece is credited with nothing it has not
-	 * earned.
+	 * Fails closed on a kind this build does not know, and Timber is the fail-closed answer rather
+	 * than an arbitrary one: it is not compression-dominant, so BuildMode::JointForContact infers
+	 * DryStone against it — compression and friction, no tension, the weakest joint the inference
+	 * can hand out.
 	 */
 	const DestructionProfiles::FMaterialProfile& BuildPieceMaterial(EBuildPieceKind Kind);
 
 	/**
 	 * The Z a piece of the given half-height takes when it is laid on the given course, in cm.
 	 *
-	 * THE RESTS-ON-THE-GROUND CONVENTION — OWNER-DELEGATED RULING, 2026-09-15. Every harness this
-	 * project had built before this model centred course 0 at Z = 0, which puts the grounded course
-	 * half BELOW the ground plane; the build-mode render follow-up records the half-buried bottom
-	 * row that produces. A player laying the first brick of their own building must see it sitting
-	 * ON the ground, so course 0 answers with the piece's own half-height. Nothing about the
-	 * STRUCTURE changes — the solver reads relative positions only — so this is the same building
-	 * lifted by exactly one brick half-height, on every course.
+	 * The rests-on-the-ground convention — owner-delegated ruling, 2026-09-15. Every harness before
+	 * this model centred course 0 at Z = 0, putting the grounded course half below the ground plane;
+	 * a player laying the first brick must see it sitting on the ground, so course 0 answers with
+	 * the piece's own half-height. Nothing about the structure changes — the solver reads relative
+	 * positions only — so this is the same building lifted by one brick half-height, on every course.
 	 *
-	 * THE PITCH IS THE BRICK'S, WHATEVER THE PIECE IS: BrickSizeCm.Z plus one bed joint, read from
-	 * BuildMode::FSnapSettings rather than written down again. A course is a property of the WALL
-	 * rather than of the thing being laid into it — a timber plate on course 2 bears on two brick
-	 * courses and their joints, which is exactly where the demo building puts its own plate, and a
-	 * pitch derived from the piece would put the plate at its own doubled height with the bearing
-	 * imaginary.
+	 * The pitch is the brick's, whatever the piece is: BrickSizeCm.Z plus one bed joint, read from
+	 * BuildMode::FSnapSettings rather than written down again. A course is a property of the wall
+	 * rather than of the thing laid into it — a timber plate on course 2 bears on two brick courses
+	 * and their joints, exactly where the demo building puts its own plate; a pitch derived from the
+	 * piece would put the plate at its own doubled height with the bearing imaginary.
 	 *
-	 * A NEGATIVE COURSE IS COURSE 0, like every other course function here.
+	 * A negative course is course 0, like every other course function here.
 	 */
 	double CoursePlaneZCm(int32 Course, double PieceHalfHeightCm);
 
 	/**
-	 * Whether the toolbar INTENDS the build plane to sit on the earth, which is true of course 0
-	 * and nothing else. THIS IS THE TOOLBAR'S INTENT FOR THE PLANE, NOT THE COMMITTED PIECE'S FLAG.
+	 * Whether the toolbar INTENDS the build plane to sit on the earth — true of course 0 and
+	 * nothing else. This is the toolbar's intent for the plane, not the committed piece's flag.
 	 *
-	 * GROUNDED IS THE FLAG FStructure ROUTES LOAD TO, so this is not a cosmetic question: a piece
-	 * laid with it set absorbs whatever reaches it, and a whole building marked grounded cannot
-	 * fall. And the snap solver ranks candidates by raw distance, so a cursor on the course-0 plane
-	 * beside a standing brick can be snapped UP onto its next-course bed — a piece bedded on another
-	 * brick, 7.5 cm above the earth, that this function would still call grounded. The flag the
-	 * committed piece carries must therefore be derived from the SNAPPED POSE (its bottom face
-	 * within a joint of the ground), never from the course this reports; this answer only says
-	 * which readout the toolbar shows. A negative course answers as course 0 — the clamp is a
-	 * property of the whole course vocabulary, because a below-ground course reading "not
-	 * grounded" on one call and getting a course-0 build plane on the next is two functions
-	 * disagreeing about a state that is not supposed to exist.
+	 * Grounded is the flag FStructure routes load to, so this is not cosmetic: a piece laid with it
+	 * set absorbs whatever reaches it, and a whole building marked grounded cannot fall. The snap
+	 * solver ranks candidates by raw distance, so a cursor on the course-0 plane beside a standing
+	 * brick can snap UP onto its next-course bed, 7.5 cm above the earth, that this function would
+	 * still call grounded — so the committed piece's flag must be derived from the snapped pose
+	 * instead, never from the course this reports; this answer only says which readout the toolbar
+	 * shows. A negative course answers as course 0, the same clamp every course function here uses.
 	 */
 	bool IsCourseGrounded(int32 Course);
 
 	/**
-	 * The course readout, naming its own course — AND IT COUNTS FROM ONE WHERE THE INDEX IT IS
-	 * GIVEN COUNTS FROM ZERO. CourseLabel(0) reads "Course 1".
+	 * The course readout, naming its own course — and it counts from one where the index it is
+	 * given counts from zero. CourseLabel(0) reads "Course 1".
 	 *
-	 * OWNER-DELEGATED RULING, 2026-09-15. The session has two surfaces that name a course and they
-	 * disagreed: this strip printed the grounded course as "Course 0" while the piece menu's entry
-	 * rows have counted from one since they were written (Core/PieceMenu.cpp, "BOTH NUMBERS COUNT
-	 * FROM ONE"), so the proof frames show a player laying a brick on "Course 0" that the details
-	 * window then calls "course 1 · #1". The readout a player spends longest reading is the one
-	 * naming individual bricks, so the strip is what moved.
+	 * Owner-delegated ruling, 2026-09-15: the session had two surfaces naming a course that
+	 * disagreed, this strip printing "Course 0" while the piece menu's rows count from one
+	 * (Core/PieceMenu.cpp, "both numbers count from one"), so a player laying a brick on "Course 0"
+	 * saw the details window call it "course 1 · #1". This strip moved to match, since it is the
+	 * readout a player reads longest.
 	 *
-	 * FSessionToolbarState::Course IS STILL THE ZERO-BASED INDEX, and that separation is the whole
-	 * of the change: CoursePlaneZCm, IsCourseGrounded and the stepper's floor are arithmetic over
-	 * an index and none of them moved. A negative course still reads as course 0 does, which is
-	 * now "Course 1".
+	 * FSessionToolbarState::Course is still the zero-based index; CoursePlaneZCm, IsCourseGrounded
+	 * and the stepper's floor are unchanged arithmetic over it.
 	 */
 	FString CourseLabel(int32 Course);
 }

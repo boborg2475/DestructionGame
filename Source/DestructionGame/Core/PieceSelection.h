@@ -9,22 +9,20 @@
 /**
  * The set of pieces the player has picked out, in the order they were picked.
  *
- * A PLAIN STRUCT WITH NO WORLD, for the same reason FStructureBinding is one: what a
+ * A plain struct with no world, for the same reason FStructureBinding is one: what a
  * selection can get wrong — a toggle that adds twice, a toggle that fails to remove, a
  * default ref smuggled in as if it were a brick — is arithmetic on a list, and arithmetic
- * belongs in the suite that runs in milliseconds. The controller owns one; nothing about
- * that ownership needs to be simulated to be checked.
+ * belongs in the suite that runs in milliseconds.
  *
- * ORDER IS INSERTION ORDER, NOT HANDLE ORDER, and it is kept rather than sorted. What the
- * menu commits against is this list, and a player who picks three bricks has said something
- * about the order they picked them in; sorting would throw that away for no gain, and a
- * TSet would throw away the order AND the stable iteration a presented menu needs.
+ * Order is insertion order, not handle order, and is kept rather than sorted: a player who
+ * picks three bricks has said something about the order they picked them in, and a TSet
+ * would throw away that order along with the stable iteration a presented menu needs.
  *
- * A REF MISSING EITHER HALF IS REFUSED RATHER THAN STORED. A click on the floor arrives as a
- * default FPieceRef, and a default is also what "we have no answer" looks like — the same
- * polarity trap Core/PieceMenu.h records. A selection is a COMMAND's target list, so it must
- * take the cautious reading: nothing is selected rather than "piece nothing of structure
- * nothing" is. Whether a miss should also CLEAR the set is the presenter's policy and is
+ * A ref missing either half is refused rather than stored. A click on the floor arrives as
+ * a default FPieceRef, and a default is also what "we have no answer" looks like — the same
+ * polarity trap Core/PieceMenu.h records. A selection is a command's target list, so it
+ * takes the cautious reading: nothing selected rather than "piece nothing of structure
+ * nothing" is. Whether a miss should also clear the set is the presenter's policy,
  * deliberately not decided here.
  */
 struct FPieceSelection

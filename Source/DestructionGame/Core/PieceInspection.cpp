@@ -7,13 +7,12 @@ FPieceInspection InspectPiece(const FStructure& Structure, int32 PieceIndex)
 	FPieceInspection Inspection;
 
 	/*
-	 * ONE QUESTION CLOSES EVERY FAIL-CLOSED CASE AT ONCE. IsPieceRemoved already answers
+	 * One question closes every fail-closed case at once: IsPieceRemoved already answers
 	 * true for a handle past the end, a negative one, INDEX_NONE and a piece the player
-	 * pulled out, so a readout that asked its own range question would be a second, weaker
-	 * copy of a rule that is already written down. Returning here rather than filling
-	 * fields in is what keeps the stale support answer FStructure legitimately keeps for a
-	 * removed piece from ever reaching a row: a solver accessor with a documented scope may
-	 * hand it back, and a readout drawn beside a brick that is gone may not.
+	 * pulled out, so a readout asking its own range question would be a second, weaker copy
+	 * of a rule already written down. Returning here rather than filling fields in keeps the
+	 * stale support answer FStructure legitimately keeps for a removed piece from ever
+	 * reaching a row.
 	 */
 	if (Structure.IsPieceRemoved(PieceIndex))
 	{
@@ -26,14 +25,13 @@ FPieceInspection InspectPiece(const FStructure& Structure, int32 PieceIndex)
 	Inspection.Support = Structure.GetPieceSupport(PieceIndex);
 
 	/*
-	 * A SCAN IN CONNECTION ORDER, AND EVERY FIELD ON A ROW IS AN ACCESSOR CALL. Nothing
-	 * here decides anything the solver has already decided — the tier is GetJointRole, the
-	 * force is GetConnectionForce, the bend is GetConnectionMoment, the ratio is
-	 * GetConnectionUtilisation, the state is the connection's own latch and stamp — because a
-	 * second derivation agrees to nine decimal places forever and still differs in the last bit.
+	 * A scan in connection order, and every field on a row is an accessor call. Nothing here
+	 * decides anything the solver has already decided — the tier is GetJointRole, the force
+	 * is GetConnectionForce, the bend is GetConnectionMoment, the ratio is
+	 * GetConnectionUtilisation, the state is the connection's own latch and stamp.
 	 *
 	 * The filter is raw connectivity rather than the solver's support lists, deliberately:
-	 * those drop a joint that has GIVEN before the tier is even decided, and the joint a
+	 * those drop a joint that has given before the tier is even decided, and the joint a
 	 * player just broke is precisely the one a breakout is being looked at for.
 	 */
 	for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
@@ -54,14 +52,15 @@ FPieceInspection InspectPiece(const FStructure& Structure, int32 PieceIndex)
 		Joint.MomentUuCm = Structure.GetConnectionMoment(Index);
 
 		/*
-		 * BELOW THE CAP THE OVERLAY NUMBER IS THE LP'S, NOT THE ROUTER'S. When a below-cap settle
-		 * cached a min-violation readout for this connection (bPresent), its Utilisation is the
-		 * LP-primal first-crack demand/capacity — what actually holds the joint — so the shown
-		 * strain must be that, not the router's per-joint UtilisationUnder over the routed
-		 * ConnectionForces, which strands loads the LP carries and can read a sharply different
-		 * number. Above the cap (or before any solve) the readout is absent and the router owns the
-		 * overlay, so fall back to GetConnectionUtilisation exactly as before. Only the scalar
-		 * Utilisation switches source; ForceUu/MomentUuCm stay router-sourced.
+		 * Below the cap the overlay number is the LP's, not the router's. When a below-cap
+		 * settle cached a min-violation readout for this connection (bPresent), its
+		 * Utilisation is the LP-primal first-crack demand/capacity — what actually holds the
+		 * joint — so the shown strain must be that, not the router's per-joint
+		 * UtilisationUnder over the routed ConnectionForces, which strands loads the LP
+		 * carries and can read a sharply different number. Above the cap, or before any
+		 * solve, the readout is absent and the router owns the overlay, so this falls back to
+		 * GetConnectionUtilisation. Only the scalar Utilisation switches source;
+		 * ForceUu/MomentUuCm stay router-sourced.
 		 */
 		const FStructure::FConnectionReadout Readout = Structure.GetConnectionReadout(Index);
 		Joint.Utilisation = Readout.bPresent
@@ -79,11 +78,10 @@ FPieceInspection InspectPiece(const FStructure& Structure, int32 PieceIndex)
 FPieceInspection InspectPiece(const FStructureBinding& Binding, const FPieceRef& Ref)
 {
 	/*
-	 * A RESOLVE AND NOTHING ELSE. ResolvePiece already refuses a ref naming another
+	 * A resolve and nothing else. ResolvePiece already refuses a ref naming another
 	 * structure, a ref carrying either default, an index outside the handle range and one
-	 * naming a piece that has gone — answering INDEX_NONE, which the handle overload
-	 * above fails closed on. A guard of its own here would be a second policy at a second
-	 * door, and the two doors would eventually disagree about which bricks exist.
+	 * naming a piece that has gone — answering INDEX_NONE, which the handle overload above
+	 * fails closed on. A guard of its own here would be a second policy at a second door.
 	 */
 	return InspectPiece(Binding.GetStructure(), Binding.ResolvePiece(Ref));
 }

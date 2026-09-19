@@ -15,21 +15,19 @@ int32 FStructureBinding::AddPiece(
 	const DestructionProfiles::FMaterialProfile* Material)
 {
 	/*
-	 * THE BOX'S CENTRE IS THE PIECE'S CENTRE OF MASS, AND IT GOES DOWN WITH THE MASS. A
+	 * The box's centre is the piece's centre of mass, and it goes down with the mass. A
 	 * brick is a homogeneous rectangular solid whose mass came from this same box, so the
-	 * two are one fact and Layout::RunningBond already derives them together for the
-	 * structures it lays itself. Keeping the box up here and forwarding only the mass loses
-	 * the centre between the two layers, and losing it is INVISIBLE: an unplaced piece loads
-	 * its joints exactly as a centred one does, so a wall that came through the binding —
-	 * which is every wall the game builds — reports the same forces, the same support
-	 * answers and the same piece count while every corbel in it is answered as though its
-	 * weight acted through the middle of its support.
+	 * two are one fact and Layout::RunningBond already derives them together. Keeping the
+	 * box up here and forwarding only the mass loses the centre invisibly: an unplaced piece
+	 * loads its joints exactly as a centred one does, so every wall the game builds through
+	 * the binding would answer every corbel as though its weight acted through the middle of
+	 * its support.
 	 *
-	 * A CENTRE THAT IS NOT ONE IS NOT HANDED DOWN. Box.CentreCm is whatever the caller had,
+	 * A centre that is not one is not handed down. Box.CentreCm is whatever the caller had,
 	 * and a piece nobody could place carries a non-finite one; storing that would launder a
-	 * NaN into the lever arm the moment anything subtracts a joint centroid from it, which
-	 * is a plausible-looking load rather than an obvious fault. The two-argument door leaves
-	 * the piece honestly unplaced instead, and FStructure::HasCompleteGeometry is what makes
+	 * NaN into the lever arm the moment anything subtracts a joint centroid from it — a
+	 * plausible-looking load rather than an obvious fault. The two-argument door leaves the
+	 * piece honestly unplaced instead, and FStructure::HasCompleteGeometry is what makes
 	 * that askable rather than silent. ContainsNaN is !IsFinite on each component, so an
 	 * infinity lands inside the guard alongside a NaN.
 	 */
@@ -38,15 +36,13 @@ int32 FStructureBinding::AddPiece(
 		: Structure.AddPiece(MassKg, bIsGrounded, Box.CentreCm);
 
 	/*
-	 * A REFUSED PIECE MUST NOT LAND IN THE BINDING EITHER. FStructure::AddPiece answers
+	 * A refused piece must not land in the binding either. FStructure::AddPiece answers
 	 * INDEX_NONE for a mass that is negative or non-finite — its `!(MassKg >= 0.0)` guard
 	 * catches a NaN, against which every comparison is false. Appending the FPieceBinding
-	 * regardless would grow the binding's Pieces array while the structure's stayed put, and
-	 * from that call on GetActor(i) would name a different actor than GetPiece(i) for every
-	 * handle above the hole — the exact silent desync this whole type exists to make
-	 * inexpressible. So the refusal is relayed here, before anything is stored, and Pieces is
-	 * the only array to keep in step: the material below goes through SetPieceMaterial, which
-	 * itself fails closed on this INDEX_NONE, and nothing else is appended.
+	 * regardless would grow the binding's Pieces array while the structure's stayed put, so
+	 * GetActor(i) would name a different actor than GetPiece(i) for every handle above the
+	 * hole — the exact silent desync this type exists to make inexpressible. The refusal is
+	 * relayed here before anything is stored.
 	 */
 	if (Handle == INDEX_NONE)
 	{
@@ -54,11 +50,11 @@ int32 FStructureBinding::AddPiece(
 	}
 
 	/*
-	 * THE MATERIAL GOES DOWN THROUGH THE SAME DOOR AS THE PIECE, so what a brick is made of
+	 * The material goes down through the same door as the piece, so what a brick is made of
 	 * cannot be laid in one layer and lost in the next. SetPieceMaterial fails closed on an
-	 * out-of-range handle, and AddPiece never fails silently, so tagging the handle it just
+	 * out-of-range handle, and AddPiece never fails silently, so tagging the handle just
 	 * returned is unconditional; a null pointer clears to the "nobody said" default a piece
-	 * already starts at, which is what leaves a material-free caller's behaviour untouched.
+	 * already starts at, leaving a material-free caller's behaviour untouched.
 	 */
 	Structure.SetPieceMaterial(Handle, Material);
 
@@ -73,23 +69,18 @@ int32 FStructureBinding::AddPiece(
 
 int32 FStructureBinding::AddConnection(const FConnection& Connection)
 {
-	/*
-	 * Straight through: connections name piece handles and nothing else, so there is no
-	 * second half of a joint for this layer to keep in step. FStructure validates at the
-	 * door and there is nothing to add to that.
-	 */
+	/* Straight through: connections name piece handles only, so there is no second half
+	 * of a joint for this layer to keep in step. FStructure validates at the door. */
 	return Structure.AddConnection(Connection);
 }
 
 bool FStructureBinding::RemovePiece(int32 PieceIndex)
 {
 	/*
-	 * THE GRAPH DECIDES WHETHER THIS IS A REMOVAL AT ALL, and the binding acts only if
-	 * it was. FStructure::RemovePiece already answers false for a handle that names no
-	 * piece and for one that has already gone, so asking it first means there is exactly
-	 * one place that knows what a live piece is — a second check here would be a copy
-	 * that can disagree, and the two disagreeing is precisely the desync this whole type
-	 * exists to make inexpressible.
+	 * The graph decides whether this is a removal at all, and the binding acts only if it
+	 * was. FStructure::RemovePiece already answers false for a handle that names no piece and
+	 * for one that has already gone, so asking it first means there is exactly one place that
+	 * knows what a live piece is — a second check here would be a copy that can disagree.
 	 */
 	if (!Structure.RemovePiece(PieceIndex))
 	{
@@ -97,10 +88,10 @@ bool FStructureBinding::RemovePiece(int32 PieceIndex)
 	}
 
 	/*
-	 * The actor is the ONLY field removal touches. The box stays, because it is a record
-	 * of where the brick was rather than a reference to anything that can die, and
-	 * clearing it would leave a well-formed zero-size box at the world origin — which
-	 * reads as real geometry rather than as absent. See FPieceBinding.
+	 * The actor is the only field removal touches. The box stays: it is a record of where
+	 * the brick was rather than a reference to anything that can die, and clearing it would
+	 * leave a well-formed zero-size box at the origin, reading as real geometry rather than
+	 * absent. See FPieceBinding.
 	 */
 	Pieces[PieceIndex].Actor = nullptr;
 
@@ -110,32 +101,28 @@ bool FStructureBinding::RemovePiece(int32 PieceIndex)
 int32 FStructureBinding::NumPieces() const
 {
 	/*
-	 * THE BINDING ARRAY'S OWN EXTENT, not a forward to the structure. The two being
-	 * equal is the invariant, so answering with the structure's count would make every
-	 * check of that invariant compare a number against itself and pass forever.
+	 * The binding array's own extent, not a forward to the structure: the two being equal
+	 * is the invariant, so answering with the structure's count would make every check of
+	 * that invariant compare a number against itself and pass forever.
 	 *
-	 * Like FStructure::NumPieces this is the handle RANGE and never a live count:
-	 * callers iterate 0..NumPieces() and resolve each handle.
+	 * Like FStructure::NumPieces this is the handle range, never a live count: callers
+	 * iterate 0..NumPieces() and resolve each handle.
 	 */
 	return Pieces.Num();
 }
 
 bool FStructureBinding::IsPieceRemoved(int32 PieceIndex) const
 {
-	/*
-	 * Forwarded, never mirrored. The tombstone on FStructurePiece is the record of what
-	 * has gone; a bool kept here beside it would be a second answer to the same
-	 * question, and only one of them would be updated by whoever next touches removal.
-	 */
+	/* Forwarded, never mirrored: the tombstone on FStructurePiece is the record of what
+	 * has gone, and a bool kept here beside it would be a second answer to the same
+	 * question that only one of them gets updated. */
 	return Structure.IsPieceRemoved(PieceIndex);
 }
 
 const FPieceBinding& FStructureBinding::GetBinding(int32 PieceIndex) const
 {
-	/*
-	 * A default placeholder for an unknown handle, matching FStructure::GetPiece — and
-	 * every field of it is the fail-closed answer: no actor, no box, not released.
-	 */
+	/* A default placeholder for an unknown handle, matching FStructure::GetPiece — every
+	 * field of it is the fail-closed answer: no actor, no box, not released. */
 	static const FPieceBinding Placeholder;
 	return Pieces.IsValidIndex(PieceIndex) ? Pieces[PieceIndex] : Placeholder;
 }
@@ -143,13 +130,12 @@ const FPieceBinding& FStructureBinding::GetBinding(int32 PieceIndex) const
 UObject* FStructureBinding::GetActor(int32 PieceIndex) const
 {
 	/*
-	 * THREE WAYS TO GET NULL, AND ONLY ONE OF THEM IS CODE HERE. An unknown handle gets
-	 * the placeholder, a removed piece had its actor cleared by RemovePiece, and an
-	 * actor destroyed by any other route — a level transition, a lifespan, anything
-	 * calling Destroy — is answered null by the weak pointer itself, which is the whole
-	 * reason the field is weak. TWeakObjectPtr::Get does not resolve an object that has
-	 * been marked garbage, so the answer changes at the moment of destruction rather
-	 * than at the next collect.
+	 * Three ways to get null, and only one is code here: an unknown handle gets the
+	 * placeholder, a removed piece had its actor cleared by RemovePiece, and an actor
+	 * destroyed by any other route — a level transition, a lifespan, anything calling
+	 * Destroy — is answered null by the weak pointer itself, the whole reason the field is
+	 * weak. TWeakObjectPtr::Get does not resolve an object marked garbage, so the answer
+	 * changes at the moment of destruction rather than at the next collect.
 	 */
 	return GetBinding(PieceIndex).Actor.Get();
 }
@@ -162,12 +148,11 @@ bool FStructureBinding::IsReleased(int32 PieceIndex) const
 int32 FStructureBinding::ResolvePiece(const FPieceRef& Ref) const
 {
 	/*
-	 * AN UNIDENTIFIED BINDING MATCHES NOTHING, and this is the first check rather than a
-	 * clause of the second because equality alone gets it backwards: a binding still
-	 * carrying the default INDEX_NONE would otherwise match a ref that never learned who
-	 * it belonged to, and two unidentified things finding each other is the fail-OPEN
-	 * direction. The inequality below then rejects a defaulted ref against a real
-	 * binding, so both halves of "neither default may ever match" are closed.
+	 * An unidentified binding matches nothing, checked first rather than folded into the
+	 * second because equality alone gets it backwards: a binding still carrying the default
+	 * INDEX_NONE would otherwise match a ref that never learned who it belonged to, the
+	 * fail-open direction. The inequality below then rejects a defaulted ref against a real
+	 * binding, closing both halves of "neither default may ever match".
 	 */
 	if (StructureId == INDEX_NONE || Ref.StructureId != StructureId)
 	{
@@ -175,12 +160,11 @@ int32 FStructureBinding::ResolvePiece(const FPieceRef& Ref) const
 	}
 
 	/*
-	 * A BOUNDS CHECK ALONE IS NOT ENOUGH, which is why this asks IsPieceRemoved rather
-	 * than IsValidIndex: a tombstoned slot is still a perfectly valid array index, and
-	 * accepting one hands the caller a confident handle to a brick that is not in the
-	 * graph. IsPieceRemoved answers true for an out-of-range handle as well, so the one
-	 * call closes the range and the tombstone together — a stale ref is the normal case
-	 * here, not the exotic one.
+	 * A bounds check alone is not enough, which is why this asks IsPieceRemoved rather than
+	 * IsValidIndex: a tombstoned slot is still a valid array index, and accepting one hands
+	 * the caller a confident handle to a brick that is not in the graph. IsPieceRemoved
+	 * answers true for an out-of-range handle too, so one call closes the range and the
+	 * tombstone together — a stale ref is the normal case here, not the exotic one.
 	 */
 	if (IsPieceRemoved(Ref.PieceIndex))
 	{
@@ -192,11 +176,8 @@ int32 FStructureBinding::ResolvePiece(const FPieceRef& Ref) const
 
 void FStructureBinding::SolveLoads()
 {
-	/*
-	 * Solving is the world-free half and stays that way: it computes, it releases
-	 * nothing, and ApplyResults is the separate, explicit push. A callback from in here
-	 * would fire during a solve that anything is allowed to re-run for a strain readout.
-	 */
+	/* Solving is the world-free half and stays that way: it computes, releases nothing,
+	 * and ApplyResults is the separate, explicit push. */
 	Structure.SolveLoads();
 }
 
@@ -204,10 +185,9 @@ int32 FStructureBinding::SolveAndBreak()
 {
 	/*
 	 * Straight through, and the forward is the point: this layer has nothing to add to the
-	 * cascade, and the graph is private, so without a door here there is no route to it from
-	 * anything that owns a world. The binding is untouched — a joint giving changes what the
-	 * structure carries, not which actor stands for which piece — and ApplyResults is still
-	 * the separate, explicit push that turns the settled answer into work on the world.
+	 * cascade, and the graph is private, so without a door here nothing that owns a world can
+	 * reach it. The binding is untouched — a joint giving changes what the structure carries,
+	 * not which actor stands for which piece.
 	 */
 	return Structure.SolveAndBreak();
 }
@@ -215,20 +195,17 @@ int32 FStructureBinding::SolveAndBreak()
 void FStructureBinding::SetEquilibriumGateBlockCap(int32 MaxBlocks)
 {
 	/*
-	 * SLICE 2 COMPILE STUB — forwards to the private FStructure, the only route to it. The cap
+	 * Slice 2 compile stub — forwards to the private FStructure, the only route to it. The cap
 	 * scopes the equilibrium gate's authority by structure size (PROMOTION_DESIGN.md §12 D6-c);
-	 * nothing reads it yet. Present so the scope-by-size red can reach the seam through the
-	 * player-facing door.
+	 * nothing reads it yet.
 	 */
 	Structure.SetEquilibriumGateBlockCap(MaxBlocks);
 }
 
 void FStructureBinding::SetThreeDimensional(bool bIsThreeDimensional)
 {
-	/*
-	 * Forwards to the private FStructure, the only route to it — see the header. AdoptLayout
-	 * uses this to carry a laid layout's 3D flag across into the live binding.
-	 */
+	/* Forwards to the private FStructure, the only route to it — see the header. AdoptLayout
+	 * uses this to carry a laid layout's 3D flag across into the live binding. */
 	Structure.SetThreeDimensional(bIsThreeDimensional);
 }
 
@@ -241,12 +218,11 @@ int32 FStructureBinding::ApplyResults()
 		FPieceBinding& Binding = Pieces[PieceIndex];
 
 		/*
-		 * ONE WAY, AND THIS IS THE SKIP THAT MAKES IT SO. A piece already handed to
-		 * physics has MOVED, and nothing in this layer knows where it went — so it is
-		 * neither released again nor frozen back, however the solver's answer has
-		 * changed since. Removal genuinely can change it: pulling a piece out promotes a
-		 * head joint that a bed joint beneath had outranked, and the piece above reads
-		 * Supported on the very next solve.
+		 * One way, and this is the skip that makes it so: a piece already handed to physics
+		 * has moved, and nothing in this layer knows where it went, so it is neither released
+		 * again nor frozen back however the solver's answer has changed since. Removal
+		 * genuinely can change it: pulling a piece out promotes a head joint a bed joint
+		 * beneath had outranked, and the piece above reads Supported next solve.
 		 */
 		if (Binding.bReleased)
 		{
@@ -254,6 +230,7 @@ int32 FStructureBinding::ApplyResults()
 		}
 
 		/* A removed piece has no actor left to hand to physics. */
+
 		if (IsPieceRemoved(PieceIndex))
 		{
 			continue;
@@ -280,12 +257,11 @@ int32 FStructureBinding::ApplyResults()
 		}
 
 		/*
-		 * RELEASE IS EXACTLY "NOT HELD UP", AND IS BLIND TO WHY. Grounded and Supported
-		 * stay put; Stranded and Falling both come down, and are deliberately not told
-		 * apart. The distinction is a diagnostic about the SOLVE — Stranded means the
-		 * solver declined to divide load round a knot rather than that anything is
-		 * carrying the piece — so branching on it here would amount to claiming a
-		 * stranded brick should hang in the air.
+		 * Release is exactly "not held up", and is blind to why: Grounded and Supported stay
+		 * put, Stranded and Falling both come down, deliberately not told apart. The
+		 * distinction is a diagnostic about the solve — Stranded means the solver declined to
+		 * divide load round a knot, not that anything is carrying the piece — so branching on
+		 * it here would amount to claiming a stranded brick should hang in the air.
 		 */
 		const EPieceSupport Support = Structure.GetPieceSupport(PieceIndex);
 
@@ -313,27 +289,23 @@ bool AdoptLayout(
 	const int32 PieceCount = Layout.Structure.NumPieces();
 
 	/*
-	 * REFUSED OUTRIGHT IF THE INPUT IS ALREADY OUT OF STEP, and nothing is written.
+	 * Refused outright if the input is already out of step, and nothing is written.
 	 *
-	 * RunningBond can genuinely produce such a layout: an infinite brick dimension passes
-	 * its !(x > 0.0) spec guard, PieceMassKg answers with something FStructure::AddPiece
-	 * refuses, and the box is appended regardless — so Boxes ends up one longer than the
-	 * piece array. Copying that index-by-index PROPAGATES the desync into the one type
-	 * whose entire contract is that its two arrays cannot desync, and the AddPiece-return
-	 * guard already queued on FStructureBinding would NOT close it: the mass handed over
-	 * is a real one belonging to the wrong piece, or a zero, both of which the door
-	 * accepts. A type that makes a bad state inexpressible must not be the thing that
-	 * launders a known-bad input into that shape, so the check is at the door.
+	 * RunningBond can genuinely produce such a layout: an infinite brick dimension passes its
+	 * !(x > 0.0) spec guard, PieceMassKg answers with something FStructure::AddPiece refuses,
+	 * and the box is appended regardless — so Boxes ends up one longer than the piece array.
+	 * Copying that index-by-index propagates the desync into the one type whose contract is
+	 * that its two arrays cannot desync, and the AddPiece-return guard already queued on
+	 * FStructureBinding would not close it: the mass handed over is a real one belonging to
+	 * the wrong piece, or a zero, both of which the door accepts.
 	 *
 	 * The actor list is the third parallel array and comes from a different place again —
-	 * whoever spawned the bricks. Too few and a handle binds to nothing; too many and
-	 * there are actors in the world no piece will ever name, which is the direction that
-	 * looks fine.
+	 * whoever spawned the bricks. Too few and a handle binds to nothing; too many and there
+	 * are actors in the world no piece will ever name, the direction that looks fine.
 	 *
-	 * An empty layout is refused as well. RunningBond rejects every spec that would
-	 * produce one, so accepting it here would make this the more permissive of the two,
-	 * and a caller handed true would have a binding it can never see anything from and no
-	 * way to tell that from success.
+	 * An empty layout is refused as well. RunningBond rejects every spec that would produce
+	 * one, so accepting it here would make this the more permissive of the two, and a caller
+	 * handed true would have a binding it can never see anything from.
 	 */
 	if (PieceCount < 1 || Layout.Boxes.Num() != PieceCount || Actors.Num() != PieceCount)
 	{
@@ -341,47 +313,39 @@ bool AdoptLayout(
 	}
 
 	/*
-	 * A REPLAY, AND IT IS CORRECT ONLY BECAUSE A LAYOUT IS APPEND-ONLY. RunningBond adds
-	 * pieces and connections and never removes one, so no slot is tombstoned, no handle is
-	 * a hole, and handle i of the layout is handle i of the binding by construction — which
-	 * is what makes copying by index sound and what makes NumPieces a live count here as
-	 * well as a range. The moment a producer removes a piece or reuses a slot, that stops
-	 * being true and this has to replay the holes too, or every connection above the first
-	 * one names the wrong pieces.
+	 * A replay, correct only because a layout is append-only: RunningBond adds pieces and
+	 * connections and never removes one, so no slot is tombstoned and handle i of the layout
+	 * is handle i of the binding by construction — what makes copying by index sound. The
+	 * moment a producer removes a piece or reuses a slot, this has to replay the holes too, or
+	 * every connection above the first one names the wrong pieces.
 	 */
 	for (int32 PieceIndex = 0; PieceIndex < PieceCount; ++PieceIndex)
 	{
 		const FStructurePiece& Piece = Layout.Structure.GetPiece(PieceIndex);
 
 		/*
-		 * THE MATERIAL RIDES ACROSS WITH THE MASS. A piece carries what it is made of, and
-		 * dropping it here — as this replay once did — leaves the adopted joint reading its
-		 * bare connection instead of the weakest-link crush of its two faces, which makes a
-		 * cross-material bearing inert in the played world. It goes through AddPiece's own
-		 * door so the store cannot fall out of step with the piece.
+		 * The material rides across with the mass: dropping it here, as this replay once did,
+		 * leaves the adopted joint reading its bare connection instead of the weakest-link
+		 * crush of its two faces, making a cross-material bearing inert in the played world.
 		 */
 		Out.AddPiece(
 			Piece.MassKg, Piece.bIsGrounded, Actors[PieceIndex], Layout.Boxes[PieceIndex], Piece.Material);
 	}
 
-	/*
-	 * Joints go over whole, pairing and normal together: a normal inconsistent with its
-	 * A/B pairing is the one thing the produced graph cannot survive, and reading the
-	 * connection back out as one value is what makes transposing them impossible here.
-	 */
+	/* Joints go over whole, pairing and normal together: a normal inconsistent with its
+	 * A/B pairing is the one thing the produced graph cannot survive. */
 	for (int32 JointIndex = 0; JointIndex < Layout.Structure.NumConnections(); ++JointIndex)
 	{
 		Out.AddConnection(Layout.Structure.GetConnection(JointIndex));
 	}
 
 	/*
-	 * THE 3D FLAG RIDES ACROSS WITH THE GRAPH. A layout laid genuinely three-dimensional
+	 * The 3D flag rides across with the graph. A layout laid genuinely three-dimensional
 	 * (DestructionShed3D::Build flags it) carries that as structure-level state, not on any
 	 * piece or joint, so the per-piece and per-joint replays above cannot bring it over —
-	 * and dropping it here, as this replay once did, leaves the world bridge posing the shed
-	 * in 2D, refusing its out-of-plane (Y-normal) corner joints, so the overhang never falls
-	 * when the post is cut. It goes through the binding's own forwarding door, the only route
-	 * to the private structure from this free function.
+	 * dropping it here, as this replay once did, leaves the world bridge posing the shed in
+	 * 2D, refusing its out-of-plane corner joints, so the overhang never falls when the post
+	 * is cut.
 	 */
 	Out.SetThreeDimensional(Layout.Structure.IsThreeDimensional());
 
