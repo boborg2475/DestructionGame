@@ -14,50 +14,36 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * CARRY A STRUCTURE'S 3D FLAG from a built layout into the live played world, so a shed
- * authored as genuinely three-dimensional stays three-dimensional once it reaches a
- * FStructureBinding — the same class of AdoptLayout drop the already-green
- * CrossMaterialBearing.AdoptLayoutCarriesPieceMaterial test pins for the per-piece Material.
+ * A layout's 3D flag must survive AdoptLayout into a live FStructureBinding, so a shed
+ * authored as three-dimensional (FStructure::SetThreeDimensional(true), as
+ * DestructionShed3D::Build sets) stays 3D once it reaches the played world — the same
+ * class of drop CrossMaterialBearing.AdoptLayoutCarriesPieceMaterial pins for Material.
  *
- * BEHAVIOUR UNDER TEST, in one sentence: when a layout flagged 3D
- * (FStructure::SetThreeDimensional(true), as DestructionShed3D::Build sets) is adopted into a
- * live FStructureBinding, the adopted structure is STILL flagged 3D.
+ * WHY THIS IS THE RED. AdoptLayout (Core/StructureBinding.cpp) is the only route from a
+ * laid FBrickLayout into a live FStructure: it replays every piece and connection into a
+ * FRESH Out structure but never copies bThreeDimensional, which defaults false. Every
+ * shed the game builds (DestructionScenarios::Build -> BuildLayout -> AdoptLayout) loses
+ * its 3D flag here, so the bridge poses it in 2D and refuses its out-of-plane corner
+ * joints — the exact symptom the real-RHI render caught: the shed3d overhang did not
+ * fall when the post was cut, though the world-free oracle on the 3D-flagged structure
+ * fells it.
  *
- * WHY THIS IS THE RED. AdoptLayout (Core/StructureBinding.cpp) is the only public route from a
- * laid FBrickLayout into a live binding's FStructure. It replays every piece (mass, grounding,
- * actor, box, Material) and every connection into a FRESH Out structure — but it never copies
- * FStructure::bThreeDimensional. FStructure defaults that flag to false, so a 3D-flagged layout
- * becomes a 2D live structure the moment it is adopted. The live world path is
- * DestructionScenarios::Build -> UDestructionStructureSubsystem::BuildLayout -> AdoptLayout, so
- * every shed the game actually builds loses its 3D flag here. The bridge then poses the adopted
- * structure in 2D, refuses its out-of-plane (Y-normal) corner joints, and the shed misbehaves in
- * play — the exact signature the real-RHI render (DestructionGame.Visual.ScenarioLevelScreenshots)
- * caught: the shed3d overhang did NOT fall when the post was cut, though the world-free oracle on
- * the 3D-flagged structure fells it.
+ * THE MECHANISM WITNESS. IsThreeDimensional() on the adopted structure is binary and
+ * immune to solver jitter, so it pins the fault unambiguously on AdoptLayout — the same
+ * way the material test's pointer-level witness pins its own drop.
  *
- * THE MECHANISM WITNESS, and why it is the whole test. IsThreeDimensional() on the adopted
- * structure is BINARY and immune to solver jitter — true means the flag rode across, false means
- * it was dropped. That pins the fault unambiguously on AdoptLayout, exactly as the material test's
- * pointer-level witness (adopted Material == &Timber) pins its drop. It needs no world, no bridge
- * and no LP: it reads one bool off the graph AdoptLayout produced.
+ * WHY NOT ALSO DRIVE THE POST-CUT COLLAPSE HERE. That consequence is already covered on
+ * the built Layout.Structure by World.Scenarios.Shed3DRow ARM 2. Through the 2D-broken
+ * binding it would be red for a tangled reason: a 2D-posed overhang can read Stranded,
+ * which is neither Grounded nor Supported, so a "lost the earth" assertion could pass on
+ * the broken structure and assert nothing.
  *
- * WHY NOT ALSO DRIVE THE POST-CUT COLLAPSE HERE. The behavioural consequence (pull the post, the
- * overhang loses the earth) is ALREADY covered on the built Layout.Structure by
- * World.Scenarios.Shed3DRow ARM 2. Driving it through the 2D-broken binding would be red for a
- * TANGLED reason rather than the flag drop: with the structure posed 2D, the overhang can read
- * Stranded (a diagnostic about the solve, not a support answer), and Stranded is neither Grounded
- * nor Supported — so a "lost the earth" assertion could pass on the broken 2D structure and go
- * green on arrival, asserting nothing. The clean binary witness is the right minimal red; the
- * collapse-level coverage lives where it can be asserted without that ambiguity.
+ * THE POSITIVE CONTROL below confirms the built layout's own structure already reads
+ * IsThreeDimensional() == true, so the drop is unambiguously AdoptLayout's.
  *
- * THE POSITIVE CONTROL. Before adoption the built layout's OWN structure already reads
- * IsThreeDimensional() == true (DestructionShed3D::Build flags it), so the drop below is
- * unambiguously AdoptLayout's, not a mis-built fixture.
- *
- * NEEDS A TICKING WORLD: NO. DestructionShed3D::Build is arithmetic over boxes and a graph;
- * AdoptLayout is a replay; the assertion is one bool. Stand-in UObjects in the transient package
- * stand in for the brick actors, exactly as the material test and StructureBindingTest do —
- * AdoptLayout only holds the pointers.
+ * NEEDS A TICKING WORLD: NO. DestructionShed3D::Build is arithmetic over boxes and a
+ * graph; AdoptLayout is a replay; the assertion is one bool. Stand-in UObjects in the
+ * transient package stand in for brick actors, as CrossMaterialBearing does.
  *
  * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
  */
@@ -111,11 +97,8 @@ bool FAdoptLayoutCarriesThreeDimensionalFlagTest::RunTest(const FString& Paramet
 		return false;
 	}
 
-	/* ------------------------------------------------------------------ *
-	 * POSITIVE CONTROL — the built layout's OWN structure is already flagged
-	 * 3D. If this failed the fixture would be wrong and the adoption result
-	 * meaningless; passing it pins the drop below on AdoptLayout alone.
-	 * ------------------------------------------------------------------ */
+	/* POSITIVE CONTROL — the layout's own structure must already read 3D, or the fixture
+	 * is wrong and the result below is meaningless. */
 	TestTrue(
 		TEXT("CONTROL: the built layout's own structure must already be flagged 3D before adoption"),
 		Layout.Structure.IsThreeDimensional());
@@ -151,12 +134,9 @@ bool FAdoptLayoutCarriesThreeDimensionalFlagTest::RunTest(const FString& Paramet
 	TestEqual(TEXT("adoption should carry every piece"),
 		Binding.GetStructure().NumPieces(), Layout.Structure.NumPieces());
 
-	/* ------------------------------------------------------------------ *
-	 * THE MECHANISM WITNESS — the 3D flag itself. Today AdoptLayout replays
-	 * pieces and connections into a fresh structure and never copies
-	 * bThreeDimensional, which defaults false — so the adopted structure reads
-	 * 2D where the layout read 3D. That is the drop, and the render's symptom.
-	 * ------------------------------------------------------------------ */
+	/* THE MECHANISM WITNESS — the 3D flag itself. AdoptLayout replays pieces and
+	 * connections into a fresh structure and never copies bThreeDimensional (defaults
+	 * false), so the adopted structure reads 2D where the layout read 3D. */
 	AddInfo(FString::Printf(
 		TEXT("ADOPTED IsThreeDimensional = %s (layout had true)"),
 		Binding.GetStructure().IsThreeDimensional() ? TEXT("true") : TEXT("false")));

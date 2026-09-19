@@ -10,37 +10,37 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * RULING (b), 2026-09-02: A MASONRY RUN THAT LOSES ONE SPRINGING OF ITS ARCH FALLS CLEANLY —
- * 0 STRANDED, THE RELEASED PIECES READING Falling — RATHER THAN THE ROUTING/STRANDING ARTEFACT
- * THE ROUTER PRODUCES TODAY.
+ * Ruling (b), 2026-09-02: a masonry run that loses one springing of its arch falls cleanly —
+ * 0 Stranded, the released pieces reading Falling — rather than the routing/stranding artefact
+ * the router produces today.
  *
  * THE MECHANISM, AND WHY IT MIS-CLASSIFIES TODAY. A run of bricks with no seat of their own spans
  * a hole. ReseatSpannedGroups groups them through their intact head joints and re-seats them onto
- * the abutments they push against — but ONLY if something seated stands on BOTH sides of the
- * group's centre (its opposition gate, FVector::DotProduct(...) < 0). That gate is CORRECT and is
- * not what this test touches: a run with an abutment on ONE side only is a cantilever with nothing
- * to thrust into, and granting it an arch would hang a wall's free end off open air. So the gate
+ * the abutments they push against, but only if something seated stands on both sides of the
+ * group's centre (its opposition gate, FVector::DotProduct(...) < 0). That gate is correct and
+ * not what this test touches: a run abutted on one side only is a cantilever with nothing to
+ * thrust into, and granting it an arch would hang a wall's free end off open air. So the gate
  * refuses, `continue`s, and the seatless run keeps the two-tier fallback SolveLoads already gave
- * it: its HEAD joints. The head tier is sign-blind, so each middle brick lists BOTH its neighbours
- * as "supports", the run becomes a mutual-support chain, LoadReturnsToPiece finds the cycle, and
- * every middle brick comes out STRANDED (EPieceSupport::Stranded, the enumerator 3). That is a
- * SOLVER LIMITATION wearing a collapse's clothes: the run genuinely has no load path to the earth
- * (its one real hope, the arch, was refused), so the honest answer is Falling (enumerator 0), and
- * a collapse test must read 0 Stranded (DESIGN.md §4) so a false knot cannot pass for structure.
+ * it: its head joints. That tier is sign-blind, so each middle brick lists both its neighbours as
+ * "supports", the run becomes a mutual-support chain, LoadReturnsToPiece finds the cycle, and
+ * every middle brick comes out Stranded (enumerator 3) — a solver limitation wearing a collapse's
+ * clothes: the run genuinely has no load path to the earth (its one real hope, the arch, was
+ * refused), so the honest answer is Falling (0), and a collapse test must read 0 Stranded
+ * (DESIGN.md §4) so a false knot cannot pass for structure.
  *
  * THIS IS ABOVE-CAP ROUTER BEHAVIOUR, DELIBERATELY. Below the 200-block cap the equilibrium LP is
- * the authority and, per the case-21 scope ruling (DESIGN.md §8, 2026-08-13/14), MAY stand a
- * one-sided mortar run on rigid-plastic bond cohesion the model distrusts — that is the distrusted
- * but scoped LP credit, and it is NOT what this test asserts. The fixture is forced onto the ROUTER
- * with SetEquilibriumGateBlockCap(0) (every non-empty structure is then above the cap), which is
- * the same authority the 442-block realistic shed runs under — where the corner-undermine currently
- * reports 10 stranded (8 back-wall + 2 side-wall refused-arch bricks) instead of an honest fall.
- * A below-cap fixture must NOT assert Falling for a mortar run; the LP would stand it (case 21).
+ * the authority and, per the case-21 scope ruling (DESIGN.md §8, 2026-08-13/14), may stand a
+ * one-sided mortar run on rigid-plastic bond cohesion the model distrusts — that scoped LP credit
+ * is not what this test asserts. The fixture is forced onto the router with
+ * SetEquilibriumGateBlockCap(0) (every non-empty structure then above the cap), the same
+ * authority the 442-block realistic shed runs under, where the corner-undermine currently reports
+ * 10 stranded (8 back-wall + 2 side-wall refused-arch bricks) instead of an honest fall. A
+ * below-cap fixture must not assert Falling for a mortar run; the LP would stand it (case 21).
  *
- * THE FIXTURE — ONE RUN, TWO SEATINGS, SO THE TEST DISCRIMINATES. A course of full bricks bridges
- * a hole. The two middle bricks (B, C) have no seat of their own; the run is abutted on the left by
- * a seated brick (A) standing on a grounded pillar. A boolean adds a MIRRORED right abutment (D on
- * its own grounded pillar):
+ * THE FIXTURE — one run, two seatings, so the test discriminates. A course of full bricks bridges
+ * a hole. The two middle bricks (B, C) have no seat of their own; the run is abutted on the left
+ * by a seated brick (A) on a grounded pillar. A boolean adds a mirrored right abutment (D on its
+ * own grounded pillar):
  *
  *   BOTH ABUTMENTS (positive control, must STAND):
  *      span course   [A=0][B=22.5][C=45][D=67.5]      A on LeftPillar, D on RightPillar
@@ -53,24 +53,24 @@
  *      -> group {B,C} abutted on ONE side -> opposition gate refuses -> today B, C read
  *         Stranded (3); under ruling (b) they must read Falling (0) with 0 stranded.
  *
- * THE ASSERTIONS, per DESIGN.md §4 — MECHANISM, NEVER DISPLACEMENT. Two pieces can sever and rest
- * exactly in place, so how far anything moved says nothing; this reads support STATE off the solver.
- *   - Refused cantilever: B and C read Falling (GetPieceSupport == Falling), AND the whole
- *     structure has ZERO Stranded pieces (the invariant that holds whether it stands or falls).
- *   - Positive control: the SAME run with both abutments reads B and C Supported and 0 Stranded,
- *     which can only happen if the arch FIRED — so a red cantilever is "the one-sided arch is
- *     refused and its run falls", not "the arch never fires at all".
+ * THE ASSERTIONS, per DESIGN.md §4 — mechanism, never displacement (two pieces can sever and rest
+ * exactly in place, so how far anything moved says nothing; this reads support state off the
+ * solver): the refused cantilever's B and C read Falling and the whole structure has zero
+ * Stranded (the invariant that holds whether it stands or falls); the positive control's same run
+ * with both abutments reads B and C Supported and 0 Stranded, which can only happen if the arch
+ * fired — so a red cantilever means "the one-sided arch is refused and its run falls", not "the
+ * arch never fires at all".
  *
- * NOTHING IS IMPORTED FROM THE CODE UNDER TEST EXCEPT THE PRODUCER (MakeInterface) AND THE MORTAR
- * PROFILE. Masses come from box volume x density here; the geometry is spelled out; no production
- * constant is reached for, so a wrong one disagrees with this test rather than agreeing with it.
+ * Nothing is imported from the code under test except the producer (MakeInterface) and the
+ * mortar profile — masses come from box volume x density here, the geometry is spelled out, and
+ * no production constant is reached for, so a wrong one disagrees rather than agrees.
  *
- * NEEDS A TICKING WORLD: NO. FStructure is plain arithmetic over a graph; gravity is mass x 980,
- * everything is connected, and every assertion is on solver support state. Same footing as the
+ * Needs a ticking world: no. FStructure is plain arithmetic over a graph; gravity is mass x 980,
+ * everything is connected, and every assertion is on solver support state — same footing as the
  * two-load-path overturning and spanned-hole tests.
  *
- * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation unit, at
- * which point two anonymous namespaces are the SAME namespace and identically-named helpers clash.
+ * Named namespace, not anonymous: a unity build merges many files into one translation unit, at
+ * which point two anonymous namespaces are the same namespace and identically-named helpers clash.
  */
 namespace RefusedArchFallsNotStrandsTestSupport
 {
@@ -101,12 +101,10 @@ namespace RefusedArchFallsNotStrandsTestSupport
 	constexpr double SpanBottomZCm = PillarTopZCm + MortarJointCm;   // 7.5
 	constexpr double SpanCentreZCm = SpanBottomZCm + BrickHeightCm / 2.0; // 10.75
 
-	/*
-	 * THE FOUR COLUMNS OF THE SPAN COURSE, one pitch apart. A sits over the LEFT pillar (X = 0),
-	 * D sits over the RIGHT pillar (X = 67.5). B and C are between them with NOTHING beneath — the
-	 * seatless run. The LEFT pillar is always present; the RIGHT pillar and D are added only for the
-	 * two-sided positive control.
-	 */
+	/* The four columns of the span course, one pitch apart. A sits over the left pillar (X = 0),
+	 * D over the right pillar (X = 67.5). B and C are between them with nothing beneath — the
+	 * seatless run. The left pillar is always present; the right pillar and D are added only for
+	 * the two-sided positive control. */
 	constexpr double AxCm = 0.0 * BrickPitchCm;   // 0     — seated on the left pillar (abutment)
 	constexpr double BxCm = 1.0 * BrickPitchCm;   // 22.5  — no seat
 	constexpr double CxCm = 2.0 * BrickPitchCm;   // 45    — no seat
@@ -226,22 +224,16 @@ bool FRefusedArchFallsNotStrandsTest::RunTest(const FString& Parameters)
 {
 	using namespace RefusedArchFallsNotStrandsTestSupport;
 
-	/*
-	 * THE EXPECTED BEHAVIOUR IS TIED TO THE MORTAR PROFILE, so assert the profile still carries the
-	 * figures this fixture was reasoned against rather than importing them.
-	 */
+	/* The expected behaviour is tied to the mortar profile, so assert the profile still carries
+	 * the figures this fixture was reasoned against rather than importing them. */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: mortar tensile f_x1 must be the mean 0.7 MPa, profile carries %g"),
 			GeneralPurposeMortar.TensileStrengthMPa),
 		GeneralPurposeMortar.TensileStrengthMPa == 0.7);
 
-	/*
-	 * ===================================================================================
-	 * POSITIVE CONTROL — BOTH ABUTMENTS. The arch fires, so the seatless run STANDS. This is what
-	 * makes the red discriminate: it proves the run is capable of standing when abutted both sides,
-	 * so the cantilever's fall is "the one-sided arch is refused", not "the arch never fires".
-	 * ===================================================================================
-	 */
+	/* POSITIVE CONTROL — both abutments. The arch fires, so the seatless run stands. This is what
+	 * makes the red discriminate: it proves the run can stand when abutted both sides, so the
+	 * cantilever's fall means "the one-sided arch is refused", not "the arch never fires". */
 	{
 		FSpannedRun TwoSided;
 		Build(TwoSided, /*bTwoSided*/ true);
@@ -276,13 +268,9 @@ bool FRefusedArchFallsNotStrandsTest::RunTest(const FString& Parameters)
 			StrandedCount(TwoSided.Structure), 0);
 	}
 
-	/*
-	 * ===================================================================================
-	 * THE RED — ONE ABUTMENT. The opposition gate refuses the cantilever (correctly), and the
-	 * refused run must FALL CLEANLY: B and C read Falling and the whole structure has 0 Stranded.
-	 * Today they read Stranded (3) via the sign-blind head-joint fallback chain, so this is red.
-	 * ===================================================================================
-	 */
+	/* THE RED — one abutment. The opposition gate refuses the cantilever (correctly), and the
+	 * refused run must fall cleanly: B and C read Falling and the whole structure has 0 Stranded.
+	 * Today they read Stranded (3) via the sign-blind head-joint fallback chain, so this is red. */
 	{
 		FSpannedRun OneSided;
 		Build(OneSided, /*bTwoSided*/ false);
@@ -303,11 +291,9 @@ bool FRefusedArchFallsNotStrandsTest::RunTest(const FString& Parameters)
 			TEXT("REFUSED CANTILEVER (one abutment): B reads %s, C reads %s, stranded = %d"),
 			*SupportName(OneSidedB), *SupportName(OneSidedC), StrandedCount(OneSided.Structure)));
 
-		/*
-		 * THE INVARIANT THAT HOLDS WHETHER THE RUN STANDS OR FALLS: a refused-arch run is a solver
+		/* The invariant that holds whether the run stands or falls: a refused-arch run is a solver
 		 * limitation only if it reports Stranded. Ruling (b) is that it has genuinely no support,
-		 * so nothing in the structure may read Stranded.
-		 */
+		 * so nothing in the structure may read Stranded. */
 		TestEqual(
 			TEXT("RED: the refused one-sided arch strands NOBODY — the released run has genuinely no "
 				 "support path, so 0 Stranded (today the two middle bricks read Stranded)"),

@@ -11,17 +11,18 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * A DIAGNOSTIC PROBE, NOT A PERMANENT RED. This measures the ROUTER solve time at the realistic
- * shed's ~442 blocks and prints what the ROUTER does when a porch post is pulled (case B) and when
- * the door piers are pulled (case A) — the fast half of the slice-4 authority decision. It ASSERTS
- * nothing about wall-clock (that would flake on a shared machine); it exists to be read. The name
- * deliberately omits "DestructionGame" so the full suite never runs it; invoke it with
+ * A diagnostic probe, not a permanent red. This measures the router solve time at the realistic
+ * shed's ~442 blocks and prints what the router does when a porch post is pulled (case B) and
+ * when the door piers are pulled (case A) — the fast half of the slice-4 authority decision. It
+ * asserts nothing about wall-clock (that would flake on a shared machine); it exists to be read.
+ * The name deliberately omits "DestructionGame" so the full suite never runs it; invoke it with
  * `Automation RunTests ShedRealisticLatency`.
  *
- * THE LP HALF WAS RETIRED. A single LP feasibility solve at 442 blocks ran for over twenty minutes
- * (measured, still unfinished — the LP is super-linear and the promotable band was ~84-104 blocks),
- * which is the recorded number that rules the LP out and puts the router in charge at this scale; a
- * >20-minute opt-in test is dead weight, so the LpSolveAt442 probe that produced it was deleted.
+ * THE LP HALF WAS RETIRED. A single LP feasibility solve at 442 blocks ran for over twenty
+ * minutes (measured, still unfinished — the LP is super-linear and the promotable band was
+ * ~84-104 blocks), the recorded number that rules the LP out and puts the router in charge at
+ * this scale; a >20-minute opt-in test is dead weight, so the LpSolveAt442 probe that produced
+ * it was deleted.
  *
  * NEEDS A TICKING WORLD: NO. Boxes, doubles and the router; gravity on. No Chaos, no tick.
  */
@@ -146,11 +147,12 @@ namespace ShedRealisticLatencyProbeSupport
 	}
 
 	/*
-	 * COLLECT THE BACK-WALL BRICKS OF A LOW COURSE BAND INSIDE AN X WINDOW. The back wall runs along X in the
-	 * Y band centred on 128.875; course c has centre Z = c * 7.5 + 3.25. Courses 6 (even, 8 bricks) and 7
-	 * (odd, 9 bricks) sit at Z 48.25 and 55.75 — below the wall's mid-height (course 15 eaves top Z 119, so
-	 * halfway is course 7-8). A brick is taken if it is ClayBrick, sits in the back-wall Y band, falls in one
-	 * of the two course bands, and its X centre is inside [XLoCm, XHiCm].
+	 * Collect the back-wall bricks of a low course band inside an X window. The back wall runs
+	 * along X in the Y band centred on 128.875; course c has centre Z = c * 7.5 + 3.25. Courses 6
+	 * (even, 8 bricks) and 7 (odd, 9 bricks) sit at Z 48.25 and 55.75 — below the wall's
+	 * mid-height (course 15 eaves top Z 119, so halfway is course 7-8). A brick is taken if it is
+	 * ClayBrick, sits in the back-wall Y band, falls in one of the two course bands, and its X
+	 * centre is inside [XLoCm, XHiCm].
 	 */
 	void CollectBackWallBand(
 		const FBrickLayout& L, int32 CourseLo, int32 CourseHi, double XLoCm, double XHiCm, TArray<int32>& Out)
@@ -264,7 +266,7 @@ bool FShedRealisticRouterProbe::RunTest(const FString& Parameters)
 			bool bTake = false;
 			if (Candidate == 0)
 			{
-				/* (0) THE WHOLE DOOR PIERS below the lintel: both flanks of the door, courses 0..11. */
+				/* (0) The whole door piers below the lintel: both flanks of the door, courses 0..11. */
 				const bool bLowCourses = C.Z < 89.5;
 				const bool bLeftPier = C.X < 57.5;
 				const bool bRightPier = C.X > 122.5;
@@ -272,8 +274,8 @@ bool FShedRealisticRouterProbe::RunTest(const FString& Parameters)
 			}
 			else
 			{
-				/* (1) ONLY the two course-11 pier tops the lintel bears on: Z centre ~85.25, edges at the
-				 * door (left brick [33.75,55.25], right [123.75,145.25]). */
+				/* (1) Only the two course-11 pier tops the lintel bears on: Z centre ~85.25, edges at
+				 * the door (left brick [33.75,55.25], right [123.75,145.25]). */
 				const bool bCourse11 = FMath::Abs(C.Z - 85.25) < 1.0;
 				const bool bLeftBearing = C.X > 33.0 && C.X < 56.0;
 				const bool bRightBearing = C.X > 123.0 && C.X < 146.0;
@@ -306,11 +308,12 @@ bool FShedRealisticRouterProbe::RunTest(const FString& Parameters)
 }
 
 /**
- * ARCH-vs-COLLAPSE OF A LOW 2-COURSE BAND CUT IN THE BACK WALL BODY — the EXPERIMENT that measures whether a
- * bonded running-bond wall deep-beams over a low gap and stands, or drops the masonry above. Removes courses 6
- * and 7 (Z 48.25 / 55.75, below the wall's mid-height) from the +Y back wall the ThreeQuarter camera faces, at
- * three widths, and prints the router's lost-earth / stranded verdict for each. Diagnostic only — asserts
- * nothing about wall-clock or verdict; it exists to be read. Invoke with `Automation RunTests ShedRealisticLatency`.
+ * Arch-vs-collapse of a low 2-course band cut in the back wall body — the experiment that
+ * measures whether a bonded running-bond wall deep-beams over a low gap and stands, or drops the
+ * masonry above. Removes courses 6 and 7 (Z 48.25 / 55.75, below the wall's mid-height) from the
+ * +Y back wall the ThreeQuarter camera faces, at three widths, and prints the router's
+ * lost-earth / stranded verdict for each. Diagnostic only — asserts nothing about wall-clock or
+ * verdict; it exists to be read. Invoke with `Automation RunTests ShedRealisticLatency`.
  *
  * NEEDS A TICKING WORLD: NO. Boxes, doubles and the router; gravity on.
  */
@@ -326,9 +329,10 @@ bool FShedRealisticLowBandProbe::RunTest(const FString& Parameters)
 	using namespace ShedRealisticLatencyProbeSupport;
 
 	/*
-	 * THREE WIDTHS OF THE SAME LOW 2-COURSE BAND. NARROW takes the central ~3 columns (X 78..101); WIDE takes
-	 * most of the width leaving the two ends (X 22..158); FULL-WIDTH takes the whole back-wall low band (X
-	 * 0..180). Each is measured on a fresh build through the production router SolveAndBreak.
+	 * Three widths of the same low 2-course band. Narrow takes the central ~3 columns (X
+	 * 78..101); wide takes most of the width leaving the two ends (X 22..158); full-width takes
+	 * the whole back-wall low band (X 0..180). Each is measured on a fresh build through the
+	 * production router SolveAndBreak.
 	 */
 	struct FCase { const TCHAR* Name; int32 CourseLo; int32 CourseHi; double XLo; double XHi; };
 	const FCase Cases[] = {

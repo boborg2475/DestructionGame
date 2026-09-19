@@ -11,72 +11,63 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * SLICE 5 OF THE REGIONAL COLLAPSE PROVER (REGIONAL_PROVER_PLAN.md slice 5, review item 12) — THE
- * DETERMINISM GUARD, GREEN ON ARRIVAL. The prover's felled set must be INVARIANT under input-order
+ * Slice 5 of the regional collapse prover (REGIONAL_PROVER_PLAN.md slice 5, review item 12) — the
+ * determinism guard, green on arrival. The prover's felled set must be invariant under input-order
  * permutation: permuting the order pieces and joints are added to the structure, and the order the
- * seed is supplied, must never change WHICH pieces the prover fells. This is a characterisation net,
- * not a driver — review-expert observed the committed flood uses fixed insertion-order loops
- * (a TArray Frontier walked head-to-tail, PieceJoints in ascending connection index, the Seed TArray
- * in array order), so it is deterministic per build and this test is GREEN the day it lands. Its
- * value is locking that property against a future regression: a hash-order or raw-index dependency
- * slipping into the flood when grow-on-contact (deferred slice 3) lands or the region cap is raised.
+ * seed is supplied, must never change which pieces the prover fells. This is a characterisation
+ * net, not a driver — review-expert observed the committed flood uses fixed insertion-order loops
+ * (a TArray Frontier walked head-to-tail, PieceJoints in ascending connection index, the Seed
+ * TArray in array order), so it is deterministic per build and green the day it lands. Its value is
+ * locking that property against a future regression: a hash-order or raw-index dependency slipping
+ * into the flood when grow-on-contact (deferred slice 3) lands or the region cap is raised.
  *
- * WHY THE CAP MUST BITE FOR THIS TO MEAN ANYTHING. When RegionBlockCap >= the live block count the
- * flood admits everything and the region is the whole structure regardless of order — invariance is
- * then trivial and tests nothing about admission. So both arms pose a cap SMALLER than the 30-course
- * stack (15 and 25): the flood STOPS mid-structure and admits a STRICT SUBSET (the top 14 / top 24
- * courses), so the admission loop genuinely runs against its budget. The felled set is still invariant
- * because, on this linear chain seeded at the free top, the region reachable within the cap is forced
- * by CONNECTIVITY (the only live neighbours of the top course are lower, so the region can only be the
- * contiguous top sub-stack) — not by the order pieces happen to be admitted. That is exactly the
- * property under guard: the felled set follows from the geometry, never from insertion order.
+ * WHY THE CAP MUST BITE. When RegionBlockCap >= the live block count the flood admits everything
+ * and the region is the whole structure regardless of order, making invariance trivial. So both
+ * arms pose a cap smaller than the 30-course stack (15 and 25): the flood stops mid-structure and
+ * admits a strict subset (the top 14 / top 24 courses), so the admission loop genuinely runs
+ * against its budget. The felled set stays invariant because, on this linear chain seeded at the
+ * free top, the region reachable within the cap is forced by connectivity (the only live neighbours
+ * of the top course are lower, so it can only be the contiguous top sub-stack) — not by admission
+ * order. That is the property under guard: the felled set follows from geometry, never from order.
  *
- * WHY NOT A FULL-CAP (whole-structure) ARM. Measured while writing this guard: with the cap >= 30 the
- * region IS the whole 30-block stack, and posing that full problem exposes a DIFFERENT, pre-existing
- * effect — the LP's own phase-1 verdict is not fully permutation-robust at that size (some column
- * orderings drive it to decline rather than certify Falls, so the prover fells 0 = fail-closed, no
- * false collapse). That is the documented oracle characteristic OracleMechanismMultiModeDeterminism
- * pins ("the VERDICT is not fully permutation-robust even though NAMING is; a decline is fail-closed").
- * It is a property of the shared solver core, NOT of this slice's flood, so guarding it here would
- * couple this test to that unrelated concern. The biting-cap regions (<= 28 blocks) are below where it
- * bites — measured 0 divergences across many hundreds of construction+seed permutations — so both arms
- * stay a clean, strict-invariance guard on the flood, which is what slice 5 owns.
+ * WHY NOT A FULL-CAP ARM. Measured while writing this guard: with the cap >= 30 the region is the
+ * whole 30-block stack, and that exposes a different, pre-existing effect — the LP's own phase-1
+ * verdict is not fully permutation-robust at that size (some column orderings decline rather than
+ * certify Falls, so the prover fails closed with 0 released rather than a false collapse). That is
+ * the documented characteristic OracleMechanismMultiModeDeterminism pins ("the verdict is not fully
+ * permutation-robust even though naming is; a decline is fail-closed") — a property of the shared
+ * solver core, not this slice's flood. The biting-cap regions (<= 28 blocks) sit below where it
+ * bites — measured 0 divergences across many hundreds of permutations — so both arms stay a clean,
+ * strict-invariance guard on the flood, which is what slice 5 owns.
  *
  * TWO PERMUTATION AXES, both order-sensitive inputs to the flood:
  *   - CONSTRUCTION ORDER. The stack is rebuilt with its 30 courses added in a seeded-shuffled order,
- *     so piece INDICES and connection INDICES are relabelled. This drives PieceJoints (built in
- *     ascending connection index) to list each piece's neighbours in a different order, and drives
- *     the TSet Region/Boundary the pose iterates to a different internal layout. The felled set is
- *     read back and compared AS COURSE IDENTITIES (physical course numbers), mapped through the known
- *     relabelling — so a stable answer means "same physical pieces fell", not "same indices".
- *   - SEED ARRAY ORDER. The multi-course seed is itself shuffled, exercising the `for (SeedPiece :
- *     Seed)` admission loop against reordering.
+ *     relabelling piece and connection indices. This drives PieceJoints (built in ascending
+ *     connection index) to list each piece's neighbours in a different order, and the felled set is
+ *     read back and compared as course identities (physical course numbers) rather than indices.
+ *   - SEED ARRAY ORDER. The multi-course seed is itself shuffled, exercising the admission loop.
  *
- * ASSERT ON MECHANISM, NEVER DISPLACEMENT (DESIGN.md §4). The comparison is solver state only: the
- * set of course numbers reading Falling, the released count the prover returns, and zero stranded —
- * in both the base and every permuted run. No centimetre of movement is read; a severed lean can rest
- * in place and still be genuinely released.
+ * Asserts on mechanism, never displacement (DESIGN.md §4): the set of course numbers reading
+ * Falling, the released count, and zero stranded, in both the base and every permuted run.
  *
- * INDEPENDENCE FROM THE THING UNDER TEST. The felled set is compared between two runs of the SAME
- * production entry (SolveAndBreak_WithRegionalProver) on physically-identical structures built in
- * different orders — the invariant is a property of the production code against its own inputs, so it
- * needs no external oracle. Units are derived here, never imported.
+ * The felled set is compared between two runs of the same production entry
+ * (SolveAndBreak_WithRegionalProver) on physically-identical structures built in different orders,
+ * so the invariant is a property of production code against its own inputs and needs no external
+ * oracle. Units derived here, never imported.
  *
- * NEEDS A TICKING WORLD: NO. Pure FStructure construction and state queries feeding the prover's own
- * FOracleProblem solves; no Chaos, no world tick.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation unit.
+ * Needs no ticking world: pure FStructure construction and state queries feeding the prover's own
+ * FOracleProblem solves. Named namespace: a unity build merges many files into one translation unit.
  */
 namespace RegionalProverDeterminismSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* ================================================================================
-	 * THE FIXTURE — the 30-course, 10 cm/course mortared leaning stack (the FALLS rung of
+	/*
+	 * The fixture: the 30-course, 10 cm/course mortared leaning stack (the Falls rung of
 	 * LeaningStackAcceptanceTest, and the geometry RegionalProverGroundedCutTest cuts). Units in
 	 * centimetres at Unreal's default 1 uu = 1 cm; mass and density are published values unconverted.
-	 * ================================================================================ */
+	 */
 
 	constexpr double BrickLengthCm = 21.5;
 	constexpr double BrickWidthCm = 10.25;
@@ -230,11 +221,9 @@ namespace RegionalProverDeterminismSupport
 
 /**
  * The felled set, expressed as physical course identities, is identical across every seeded
- * permutation of construction order and seed order — on a biting cap where the flood admits only a
- * strict subset (arm A), and on a full cap where the whole stack comes down (arm B). The released
- * count matches and nothing is stranded, in the base and every permuted run.
- *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * permutation of construction order and seed order, on two biting caps that each admit a strict
+ * subset of the stack. The released count matches and nothing is stranded, in the base and every
+ * permuted run. Needs no ticking world; see the file header.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRegionalProverDeterminismTest,
@@ -268,9 +257,7 @@ bool FRegionalProverDeterminismTest::RunTest(const FString& Parameters)
 
 	for (const FArm& Arm : Arms)
 	{
-		/* ================================================================================
-		 * THE BASE — identity construction, seed in supplied order. Everything else is compared to it.
-		 * ================================================================================ */
+		/* The base: identity construction, seed in supplied order. Everything else compares to it. */
 		const FFelled Base = ProveAndReadFelled(IdentityOrder(), SeedCourses, Arm.Cap);
 
 		AddInfo(FString::Printf(
@@ -299,11 +286,11 @@ bool FRegionalProverDeterminismTest::RunTest(const FString& Parameters)
 				Arm.Label, Base.Courses.Num(), Courses - 1),
 			Base.Courses.Num() < Courses - 1);
 
-		/* ================================================================================
-		 * THE SWEEP — permute BOTH construction order and seed order, and demand the felled COURSE
-		 * set, the released count and the stranded count match the base every time. The permutation
-		 * SEED is printed on any divergence so a failing case can be reproduced and promoted.
-		 * ================================================================================ */
+		/*
+		 * The sweep: permute both construction order and seed order, and demand the felled course
+		 * set, released count and stranded count match the base every time. The permutation seed is
+		 * printed on any divergence so a failing case can be reproduced and promoted.
+		 */
 		for (int32 Perm = 0; Perm < NumPermutations; ++Perm)
 		{
 			const int32 PermSeed = 0x5A5A0000 + Perm;

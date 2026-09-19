@@ -11,60 +11,47 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE PLAYER IS TOLD WHAT THEY ARE LOOKING AT: WHICH SCENARIO, WHAT TO WATCH FOR, AND WHERE THE
- * CUT IS.
+ * The player is told what they are looking at: which scenario, what to watch for, and
+ * where the cut is.
  *
- * =====================================================================================
- * THE GAP, WHICH IS THE OTHER HALF OF "OBSERVE WHAT HAPPENS"
- * =====================================================================================
+ * The gap, which is the other half of "observe what happens": joining a scenario level
+ * today gives you a wall and nothing else. Nothing says which of the nine rows it is,
+ * nothing says what it is supposed to do, and nothing says that in four seconds a brick is
+ * going to vanish. Two of the nine walls are seven metres of running bond that differ only
+ * in which brick goes, and seven are corbels that differ by one course — a human watching
+ * cannot tell a correct level from a broken one, the entire point of making these joinable.
  *
- * Joining a scenario level today gives you a wall and nothing else. Nothing says which of the
- * nine rows it is, nothing says what it is supposed to do, and nothing says that in four seconds
- * a brick is going to vanish. Two of the nine walls are seven metres of running bond that differ
- * only in which brick goes, and seven of them are corbels that differ by one course — so a human
- * watching cannot tell a correct level from a broken one, which is the entire point of making
- * these joinable in the first place.
- *
- * =====================================================================================
- * A PRESENTER, EXACTLY AS Core/PieceMenu.h IS ONE
- * =====================================================================================
- *
- * The label's CONTENT is a pure function of (which row, seconds still to wait, has it fired), so
- * it is tested as arithmetic and Slate is left with nothing to do but draw strings. Nothing here
- * scrapes a viewport: a test that hunted a rendered frame for words would be slow, would need an
- * RHI the automation run does not have, and would pass against a label drawn off the bottom of
+ * A presenter, exactly as Core/PieceMenu.h is one: the label's content is a pure function
+ * of (which row, seconds still to wait, has it fired), so it is tested as arithmetic and
+ * Slate is left with nothing to do but draw strings. Nothing here scrapes a viewport: a
+ * test that hunted a rendered frame for words would be slow, would need an RHI the
+ * automation run does not have, and would pass against a label drawn off the bottom of
  * the screen.
  *
- * =====================================================================================
- * WHAT IS ASSERTED, AND WHY IT IS NOT THE WORDING
- * =====================================================================================
+ * What is asserted, and why it is not the wording. Tests/ScenarioReportTest.cpp already
+ * records why matching on TEXT is fragile — a reworded string breaks a test that was
+ * never about the wording — so the claims here are structural, and each one bites:
  *
- * `Tests/ScenarioReportTest.cpp` already records why matching on TEXT is fragile — a reworded
- * string breaks a test that was never about the wording. So the claims here are STRUCTURAL, and
- * each one bites:
+ *   - The title and the expectation are the row's own, verbatim and by exact equality.
+ *     Those two strings already exist in the catalogue and are already asserted non-empty
+ *     on every row, so "the label carries them" is a claim with no wording in it at all.
+ *   - A row with no cut says the same thing whatever the clock does — the honest-instead-
+ *     of-counting-down requirement, stated as a property rather than a sentence: a
+ *     countdown to nothing changes as time passes, so text invariant across every time and
+ *     both fired states cannot be one. Every corbel and the sandbox are in this case.
+ *   - A row with a cut says something different at different times, and something
+ *     different again once it has fired — "it counts down and then reports", no format
+ *     pinned.
+ *   - And a no-cut row's line is none of the cut rows' lines. Without this the three
+ *     claims above are all satisfied by a presenter that writes "cut in 4 s" onto a
+ *     corbel, the exact lie this whole readout exists not to tell.
  *
- *   - THE TITLE AND THE EXPECTATION ARE THE ROW'S OWN, verbatim and by exact equality. Those two
- *     strings already exist in the catalogue and are already asserted non-empty on every row, so
- *     "the label carries them" is a claim with no wording in it at all.
+ * The state and the number sit beside the words for the reason EJointMarginBand sits
+ * beside MarginText: a widget colouring a countdown by comparing the sentence against a
+ * string literal would be a policy in the one place no test can reach.
  *
- *   - A ROW WITH NO CUT SAYS THE SAME THING WHATEVER THE CLOCK DOES. That is the honest-instead-
- *     of-counting-down requirement, stated as a property rather than as a sentence: a countdown
- *     to nothing CHANGES as time passes, so text that is invariant across every time and both
- *     fired states cannot be one. Every corbel and the sandbox are in this case.
- *
- *   - A ROW WITH A CUT SAYS SOMETHING DIFFERENT AT DIFFERENT TIMES, and something different again
- *     once it has fired. That is "it counts down and then reports", with no format pinned.
- *
- *   - AND A NO-CUT ROW'S LINE IS NONE OF THE CUT ROWS' LINES. Without this the three claims above
- *     are all satisfied by a presenter that writes "cut in 4 s" onto a corbel, which is the exact
- *     lie this whole readout exists not to tell.
- *
- * The STATE and the NUMBER sit beside the words for the reason `EJointMarginBand` sits beside
- * `MarginText`: a widget colouring a countdown by comparing the sentence against a string literal
- * would be a policy in the one place no test can reach.
- *
- * NEEDS A TICKING WORLD: NO. Nor a world at all. A row index, a double and a bool in; strings,
- * an enum and a double out.
+ * No ticking world needed, nor a world at all: a row index, a double and a bool in;
+ * strings, an enum and a double out.
  */
 namespace ScenarioLabelTestSupport
 {
@@ -145,10 +132,10 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 	const TArray<FScenario>& Rows = Catalogue();
 
 	/*
-	 * A FLOOR, so a catalogue that emptied fails here rather than turning the sweep below into a
-	 * loop over nothing that passes in silence. Nine is what slices A to C left, and the sweep
-	 * NEEDS BOTH KINDS: at least one row that cuts and at least one that does not, or half the
-	 * claims in this file are vacuous. Both are checked explicitly under it.
+	 * A floor, so a catalogue that emptied fails here rather than turning the sweep below
+	 * into a loop over nothing that passes in silence. Nine is what slices A to C left, and
+	 * the sweep needs both kinds — at least one row that cuts and at least one that does
+	 * not, or half the claims in this file are vacuous — checked explicitly under it.
 	 */
 	constexpr int32 ScenarioLabelRowFloor = 9;
 
@@ -177,11 +164,11 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 	const double NotANumber = ScenarioLabelMakeNaN();
 
 	/*
-	 * THE MOMENTS, AND THE DEGENERATE ONES ARE NOT DECORATION. A countdown is arithmetic on a
-	 * clock somebody else owns: a late tick hands over a NEGATIVE remainder, a timer that was
-	 * never armed hands over whatever its manager answers for an unknown handle, and a NaN passes
-	 * straight through FMath::Max and is replaced by FMath::Min — so an unguarded label puts a
-	 * plausible-looking number on screen for a clock that is not running.
+	 * The moments, and the degenerate ones are not decoration. A countdown is arithmetic on
+	 * a clock somebody else owns: a late tick hands over a negative remainder, a timer that
+	 * was never armed hands over whatever its manager answers for an unknown handle, and a
+	 * NaN passes straight through FMath::Max and is replaced by FMath::Min — so an
+	 * unguarded label puts a plausible-looking number on screen for a clock not running.
 	 */
 	const FScenarioLabelMoment Moments[] =
 	{
@@ -199,12 +186,12 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 	int32 SweptCases = 0;
 
 	/*
-	 * ONE ERROR PER INVARIANT, NOT ONE PER CASE, which is the shape Tests/StructureFuzzTest.cpp
-	 * and Tests/ScenarioSelectionTest.cpp already use. Nine rows times nine moments times two
-	 * fired states is 162 labels, and a presenter that returns nothing at all fails most of the
-	 * assertions on every one of them — five hundred identical errors that bury the two or three
-	 * that say something different. So the FIRST of each kind is reported in full and the rest are
-	 * counted, and the counts are what is asserted at the end.
+	 * One error per invariant, not one per case — the shape StructureFuzzTest.cpp and
+	 * ScenarioSelectionTest.cpp already use. Nine rows times nine moments times two fired
+	 * states is 162 labels, and a presenter that returns nothing at all fails most of the
+	 * assertions on every one of them — hundreds of identical errors burying the few that
+	 * say something different. So the first of each kind is reported in full and the rest
+	 * are counted, and the counts are what is asserted at the end.
 	 */
 	int32 TitleFailures = 0;
 	int32 ExpectationFailures = 0;
@@ -215,9 +202,9 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 	int32 ArmedCountdownFailures = 0;
 
 	/*
-	 * THE LINES EACH KIND OF ROW PRODUCES, collected so the cross-check below can hold them
-	 * against each other. A no-cut row's line matching any cut row's is the failure this whole
-	 * readout exists to stop — a corbel with a clock ticking down to nothing.
+	 * The lines each kind of row produces, collected so the cross-check below can hold
+	 * them against each other. A no-cut row's line matching any cut row's is the failure
+	 * this whole readout exists to stop — a corbel with a clock ticking down to nothing.
 	 */
 	TSet<FString> NoCutLines;
 	TSet<FString> CutLines;
@@ -286,20 +273,20 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 				/* --- the cut line is always there, and the number behind it is always sane -- */
 
 				/*
-				 * THE BUILD PLOT IS THE ONE ROW WHOSE CUT LINE IS BLANK ON PURPOSE.
+				 * The build plot is the one row whose cut line is blank on purpose.
+				 * Everywhere else a hole where the state of the level should be reads as
+				 * a readout that failed, which is why this invariant exists. On `build`
+				 * there is no level yet — the player is standing on an empty plot they
+				 * are about to lay themselves — and the no-cut line ("Nothing is cut
+				 * here — what you are watching is how it was laid") is then two lies in
+				 * one sentence: it says "nothing is cut" over a plot where nothing is
+				 * anything, and it says "how it was laid" about a building nobody has
+				 * laid. The banner's third line is therefore absent rather than wrong,
+				 * as SESSION_UI_DESIGN.md §f draws: title, expectation, nothing under.
 				 *
-				 * Everywhere else a hole where the state of the level should be reads as a readout
-				 * that failed, which is why this invariant exists. On `build` there is no level yet
-				 * — the player is standing on an empty plot they are about to lay themselves — and
-				 * the no-cut line ("Nothing is cut here — what you are watching is how it was
-				 * laid") is then two lies in one sentence: it says "nothing is cut" over a plot
-				 * where nothing is anything, and it says "how it was laid" about a building nobody
-				 * has laid. The banner's third line is therefore absent rather than wrong, which is
-				 * what SESSION_UI_DESIGN.md §f draws: title, expectation, and nothing under them.
-				 *
-				 * ASSERTED IN BOTH DIRECTIONS RATHER THAN EXEMPTED. A blank line is REQUIRED on a
-				 * build sandbox and FORBIDDEN everywhere else, so this stays a claim about every
-				 * row rather than a hole carved in one.
+				 * Asserted in both directions rather than exempted: a blank line is
+				 * required on a build sandbox and forbidden everywhere else, so this
+				 * stays a claim about every row rather than a hole carved in one.
 				 */
 				if (Label.CutText.IsEmpty() != Row.bBuildSandbox)
 				{
@@ -357,9 +344,9 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 				}
 
 				/*
-				 * NOTHING LEFT TO WAIT FOR ONCE THERE IS NOTHING COMING. A state that promises no
-				 * cut beside a number that says how long until one is the readout disagreeing with
-				 * itself, and the widget draws both.
+				 * Nothing left to wait for once there is nothing coming. A state that
+				 * promises no cut beside a number that says how long until one is the
+				 * readout disagreeing with itself, and the widget draws both.
 				 */
 				if (Label.CutState != EScenarioCutState::Armed && Label.SecondsUntilCut != 0.0)
 				{
@@ -376,10 +363,11 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 				}
 
 				/*
-				 * AND AN ARMED COUNTDOWN IS THE CALLER'S OWN NUMBER, unchanged, whenever that
-				 * number is one a clock could actually produce. Only the out-of-range and
-				 * non-finite moments are clamped — see the bound asserted above, which covers
-				 * those without dictating WHICH end of the range a NaN lands on.
+				 * And an armed countdown is the caller's own number, unchanged, whenever
+				 * that number is one a clock could actually produce. Only the
+				 * out-of-range and non-finite moments are clamped — see the bound
+				 * asserted above, which covers those without dictating which end of the
+				 * range a NaN lands on.
 				 */
 				if (Label.CutState == EScenarioCutState::Armed
 					&& FMath::IsFinite(SecondsIn)
@@ -409,11 +397,11 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 		if (!bRowCuts)
 		{
 			/*
-			 * ONE LINE, WHATEVER THE CLOCK SAYS. A corbel is condemned by its own geometry and its
-			 * whole story is as-laid versus settled — there is no cut to wait for, so there is
-			 * nothing for a delay to do. A countdown CHANGES with time by definition, so text that
-			 * is identical across every moment and both fired states cannot be one, and this holds
-			 * without pinning a single word of it.
+			 * One line, whatever the clock says. A corbel is condemned by its own
+			 * geometry and its whole story is as-laid versus settled — there is no cut
+			 * to wait for, so there is nothing for a delay to do. A countdown changes
+			 * with time by definition, so text identical across every moment and both
+			 * fired states cannot be one, and this holds without pinning a single word.
 			 */
 			TestTrue(
 				*FString::Printf(
@@ -428,9 +416,10 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 		else
 		{
 			/*
-			 * A ROW THAT CUTS COUNTS DOWN AND THEN REPORTS, which is three different lines: the
-			 * full delay, one second left, and afterwards. Written as "these three differ" rather
-			 * than as three literals, so the format stays the presenter's business.
+			 * A row that cuts counts down and then reports — three different lines:
+			 * the full delay, one second left, and afterwards. Written as "these three
+			 * differ" rather than as three literals, so the format stays the
+			 * presenter's business.
 			 */
 			const FScenarioLabel AtStart = BuildScenarioLabel(Index, Row.HoldSeconds, false);
 			const FScenarioLabel AlmostThere = BuildScenarioLabel(Index, 1.0, false);
@@ -458,10 +447,10 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 	/* --- and the two kinds of line are never the same line ------------------------------- */
 
 	/*
-	 * THE CROSS-CHECK, AND IT IS THE ONE THAT STOPS THE OTHERS BEING SATISFIED BY A LIE. Every
-	 * claim above holds against a presenter that writes a cut row's countdown onto a corbel and
-	 * simply never varies it — one line, invariant, non-empty. Held against the cut rows' lines,
-	 * it cannot.
+	 * The cross-check, and it is the one that stops the others being satisfied by a lie.
+	 * Every claim above holds against a presenter that writes a cut row's countdown onto
+	 * a corbel and simply never varies it — one line, invariant, non-empty. Held against
+	 * the cut rows' lines, it cannot.
 	 */
 	for (const FString& NoCutLine : NoCutLines)
 	{
@@ -532,11 +521,11 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 	/* --- a row that names nothing fails closed ------------------------------------------- */
 
 	/*
-	 * THE LABEL IS A READOUT RATHER THAN A COMMAND, so the fail-closed direction is that it still
-	 * says something — an empty banner reads as a readout that broke — while claiming NOTHING it
-	 * cannot support. In particular it must not borrow a real scenario's title: a level whose row
-	 * index went wrong showing a confident "Corbel F — a hundred steps" is worse than one showing
-	 * a blank, because the first is believed.
+	 * The label is a readout rather than a command, so the fail-closed direction is that
+	 * it still says something — an empty banner reads as a readout that broke — while
+	 * claiming nothing it cannot support. In particular it must not borrow a real
+	 * scenario's title: a level whose row index went wrong showing a confident "Corbel F
+	 * — a hundred steps" is worse than one showing a blank, because the first is believed.
 	 */
 	const int32 NoSuchRows[] = { INDEX_NONE, -7, Rows.Num(), Rows.Num() + 100 };
 
@@ -575,40 +564,32 @@ bool FScenarioLabelTest::RunTest(const FString& Parameters)
 }
 
 /**
- * AND THE LABEL ON A LEVEL NAMES THE SCENARIO THE GAME MODE ACTUALLY BUILT, COUNTS ITS CUT DOWN,
- * AND SAYS WHEN IT HAS FIRED.
+ * And the label on a level names the scenario the game mode actually built, counts its
+ * cut down, and says when it has fired.
  *
- * =====================================================================================
- * THE RECORDED ROW, NOT THE REQUESTED ONE — WHICH IS THE CASE A WRONG LABEL IS WORST IN
- * =====================================================================================
+ * The recorded row, not the requested one — the case a wrong label is worst in. A
+ * `?Scenario=` that names nothing falls back to `sandbox` and says so through
+ * `EScenarioSelection::OptionNamedNoScenario`, and
+ * `World.Scenario.GameModeRecordsWhichScenarioItBuilt` already pins that pair. The label
+ * is a thin read of it — but "thin read" is exactly where this goes wrong: a label built
+ * from the option string, or from the map, would print "One brick out of a free end,
+ * under forty courses" over the sandbox wall, and the player would spend four seconds
+ * waiting for a cut that is never coming on a wall that is not the one named. So the
+ * assertion is the label against `GetSelectedScenarioRow`'s own row, and against the
+ * other row by name, in both directions.
  *
- * A `?Scenario=` that names nothing falls back to `sandbox` and says so through
- * `EScenarioSelection::OptionNamedNoScenario`, and `World.Scenario.GameModeRecordsWhichScenarioIt
- * Built` already pins that pair. The label is a thin read of it — but "thin read" is exactly
- * where this goes wrong: a label built from the option string, or from the map, would print
- * "One brick out of a free end, under forty courses" over the sandbox wall, and the player would
- * spend four seconds waiting for a cut that is never coming on a wall that is not the one named.
- * So the assertion is the label against `GetSelectedScenarioRow`'s OWN row, and against the other
- * row by name, in both directions.
+ * The countdown is asserted as a decrease, not only as a number: a label reading "4 s"
+ * forever satisfies any single-sample assertion about the value. So it is read three
+ * times through one world — at begin-play, most of the way through the delay, and past
+ * it — and the middle reading has to be strictly less than the first. That is what makes
+ * it a clock rather than a constant.
  *
- * =====================================================================================
- * THE COUNTDOWN IS ASSERTED AS A DECREASE, NOT ONLY AS A NUMBER
- * =====================================================================================
+ * And a corbel never claims a cut is coming, however long it is left — ticked well past
+ * the delay every cutting row uses, so "it never counts down" is a claim about ever
+ * rather than about yet.
  *
- * A label reading "4 s" forever satisfies any single-sample assertion about the value. So it is
- * read three times through one world — at begin-play, most of the way through the delay, and past
- * it — and the middle reading has to be STRICTLY LESS than the first. That is what makes it a
- * clock rather than a constant.
- *
- * =====================================================================================
- * AND A CORBEL NEVER CLAIMS A CUT IS COMING, HOWEVER LONG IT IS LEFT
- * =====================================================================================
- *
- * Ticked well past the delay every cutting row uses, so "it never counts down" is a claim about
- * ever rather than about yet.
- *
- * NEEDS A TICKING WORLD: YES, and the ticking is the point — the countdown is measured in world
- * seconds. The naming half needs only a world with begin-play run.
+ * Needs a ticking world, and the ticking is the point — the countdown is measured in
+ * world seconds. The naming half needs only a world with begin-play run.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FScenarioLabelOnALevelTest,
@@ -662,10 +643,8 @@ bool FScenarioLabelOnALevelTest::RunTest(const FString& Parameters)
 			*AtBeginPlay.TitleText, *ScenarioLabelStateName(AtBeginPlay.CutState),
 			*ScenarioLabelBits(AtBeginPlay.SecondsUntilCut)));
 
-		/*
-		 * THE LABEL IS THE RECORDED ROW'S, read back through GetSelectedScenarioRow rather than
-		 * assumed — so this stays a statement about the two agreeing even if selection changes.
-		 */
+		/* The label is the recorded row's, read back through GetSelectedScenarioRow rather
+		 * than assumed — so this stays a statement about the two agreeing even if selection changes. */
 		const int32 Recorded = GameMode->GetSelectedScenarioRow();
 
 		TestTrue(
@@ -690,10 +669,8 @@ bool FScenarioLabelOnALevelTest::RunTest(const FString& Parameters)
 				CutRow->Expectation, *AtBeginPlay.ExpectationText),
 			AtBeginPlay.ExpectationText == FString(CutRow->Expectation));
 
-		/*
-		 * AND THE CUT IS ANNOUNCED BEFORE IT HAPPENS. A brick vanishing out of a wall with no
-		 * warning is the same picture as a brick vanishing out of a wall that was never armed.
-		 */
+		/* And the cut is announced before it happens: a brick vanishing out of a wall with
+		 * no warning is the same picture as one vanishing out of a wall never armed. */
 		TestTrue(
 			*FString::Printf(
 				TEXT("at begin-play the cut must read Armed with about the whole %s s still to ")
@@ -738,9 +715,9 @@ bool FScenarioLabelOnALevelTest::RunTest(const FString& Parameters)
 				&& FMath::IsFinite(PartWay.SecondsUntilCut));
 
 		/*
-		 * AND THE NUMBER IS THE REAL REMAINDER RATHER THAN MERELY SMALLER. Half a second is what
-		 * is left of four after three and a half, and a tenth is far more slack than the 1/60
-		 * ticking introduces.
+		 * And the number is the real remainder rather than merely smaller. Half a second
+		 * is what is left of four after three and a half, and a tenth is far more slack
+		 * than the 1/60 ticking introduces.
 		 */
 		const double ExpectedRemainingSeconds =
 			CutRow->HoldSeconds - AlmostTheDelaySeconds;
@@ -840,10 +817,8 @@ bool FScenarioLabelOnALevelTest::RunTest(const FString& Parameters)
 			Label.ExpectationText == FString(DefaultRow->Expectation)
 				&& Label.ExpectationText != FString(CutRow->Expectation));
 
-		/*
-		 * AND THE FALLBACK WALL CUTS NOTHING, so no clock starts. A player who mistyped and is
-		 * then counted down to a cut that will never come has been told two wrong things.
-		 */
+		/* And the fallback wall cuts nothing, so no clock starts — a player who mistyped
+		 * and is then counted down to a cut that will never come has been told two wrong things. */
 		TestTrue(
 			*FString::Printf(
 				TEXT("'%s' cuts nothing, so the label must not count down: it reads %s with %s s ")
@@ -927,10 +902,10 @@ bool FScenarioLabelOnALevelTest::RunTest(const FString& Parameters)
 				&& Afterwards.SecondsUntilCut == 0.0);
 
 		/*
-		 * AND ITS LINE DOES NOT CHANGE, which is the same property the world-free sweep asserts
-		 * and is worth restating here because this one is a real clock rather than a passed-in
-		 * double: a game mode that fed elapsed world time to a row with no cut would produce a
-		 * line that drifts even though the state stays NoCut.
+		 * And its line does not change, the same property the world-free sweep asserts,
+		 * restated here because this one is a real clock rather than a passed-in double: a
+		 * game mode feeding elapsed world time to a row with no cut would drift the line
+		 * even though the state stays NoCut.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -947,44 +922,36 @@ bool FScenarioLabelOnALevelTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE BUILD PLOT'S BANNER SAYS NOTHING ABOUT A CUT, AND EVERY OTHER NO-CUT LEVEL STILL SAYS WHAT IT
- * ALWAYS SAID.
+ * The build plot's banner says nothing about a cut, and every other no-cut level still
+ * says what it always said.
  *
- * =====================================================================================
- * THE LIE THIS CLOSES (CURRENT_STATE, session S0 deferral (d))
- * =====================================================================================
+ * The lie this closes (CURRENT_STATE, session S0 deferral (d)): `BuildScenarioLabel`
+ * picks its no-cut line off one question — does this row name any brick to take out —
+ * and the answer on `build` is no, for a completely different reason from every other
+ * row. A corbel cuts nothing because it is condemned by its own geometry, and the line
+ * is honest about that: "Nothing is cut here — what you are watching is how it was
+ * laid." Over the build plot it is two lies in one sentence: there is nothing laid, so
+ * there is nothing that was laid a particular way, and "nothing is cut" duplicates a
+ * sentence the row's own Expectation already carries.
  *
- * `BuildScenarioLabel` picks its no-cut line off one question — does this row name any brick to
- * take out — and the answer on `build` is no, for a completely different reason from every other
- * row. A corbel cuts nothing because it is condemned by its own geometry, and the line is honest
- * about that: "Nothing is cut here — what you are watching is how it was laid." Over the build plot
- * it is two lies in one sentence. There is nothing laid, so there is nothing that was laid a
- * particular way; and "nothing is cut" duplicates a sentence the row's own Expectation already
- * carries, so the banner says it twice.
+ * Why the answer is an absence rather than a third sentence: SESSION_UI_DESIGN.md §f
+ * draws the build level's banner with exactly two lines under it — the title and the
+ * expectation — and nothing where the cut line goes. That is the honest shape: a plot
+ * with nothing on it has nothing to report, and a sentence invented to fill the slot
+ * would be a third thing to keep true. `FPieceMenuInspector::InspectedHintText` is the
+ * precedent the rest of this project follows: the state where a block is not drawn is
+ * distinct from the state where it is drawn saying nothing happens.
  *
- * =====================================================================================
- * WHY THE ANSWER IS AN ABSENCE RATHER THAN A THIRD SENTENCE
- * =====================================================================================
+ * And the other half, which is what stops this being a regression: a change that simply
+ * blanked the no-cut line for every row would satisfy the first claim and silently strip
+ * the sentence off the seven corbels and the sandbox. So the same test reads every other
+ * no-cut row and insists they still share one non-empty line between them — a structural
+ * reading of "unchanged" rather than a literal, for the reason this whole file avoids
+ * matching on wording: the line is the presenter's to reword, and it is not this test's
+ * business which words it uses, only that there is still exactly one of them and that
+ * the build plot does not use it.
  *
- * SESSION_UI_DESIGN.md §f draws the build level's banner with exactly two lines under it — the
- * title and the expectation — and nothing where the cut line goes. That is the honest shape: a
- * plot with nothing on it has nothing to report, and a sentence invented to fill the slot would be
- * a third thing to keep true. `FPieceMenuInspector::InspectedHintText` is the precedent the rest of
- * this project follows: the state where a block is NOT DRAWN is distinct from the state where it is
- * drawn saying nothing happens.
- *
- * =====================================================================================
- * AND THE OTHER HALF, WHICH IS WHAT STOPS THIS BEING A REGRESSION
- * =====================================================================================
- *
- * A change that simply blanked the no-cut line for every row would satisfy the first claim and
- * silently strip the sentence off the seven corbels and the sandbox. So the same test reads every
- * OTHER no-cut row and insists they still share ONE non-empty line between them — a structural
- * reading of "unchanged" rather than a literal, for the reason this whole file avoids matching on
- * wording: the line is the presenter's to reword, and it is not this test's business which words it
- * uses, only that there is still exactly one of them and that the build plot does not use it.
- *
- * NEEDS A TICKING WORLD: NO. Nor a world at all — a row index, a double and a bool in.
+ * No ticking world needed, nor a world at all — a row index, a double and a bool in.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FScenarioLabelBuildPlotHasNoCutLineTest,

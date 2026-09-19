@@ -14,30 +14,28 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE SHED BUILDER — SHED_PATH.md Phase F, slice F1, the first authored, catalogue-buildable shed,
- * and the point where the shed stops being a pile of proven mechanisms and becomes a thing you can
- * build through the scenario/binding pipeline.
+ * The shed builder (SHED_PATH.md Phase F, slice F1): the first authored, catalogue-buildable
+ * shed, and the point where the shed stops being a pile of proven mechanisms and becomes a
+ * thing built through the scenario/binding pipeline.
  *
- * THE BEHAVIOUR, IN ONE SENTENCE. DestructionShed::Build lays a minimal 2D X-Z shed cross-section
- * — two grounded ClayBrick piers, a Timber roof beam bearing on both wall heads, and a Timber
- * overhang screwed to the front pier and carried on a grounded Timber post — as an FBrickLayout in
- * which every piece carries its authored MATERIAL and every contact its authored CONNECTION, so
- * that the assembled shed STANDS under the rigid-block LP, pulling the POST drops the overhang,
- * pulling the BACK head drops the roof, and pulling the FRONT head drops both.
+ * DestructionShed::Build lays a minimal 2D X-Z shed cross-section — two grounded ClayBrick
+ * piers, a Timber roof beam bearing on both wall heads, and a Timber overhang screwed to the
+ * front pier and carried on a grounded Timber post — as an FBrickLayout where every piece
+ * carries its authored material and every contact its authored connection. Assembled it
+ * stands under the rigid-block LP; pulling the post drops the overhang, pulling the back head
+ * drops the roof, pulling the front head drops both.
  *
- * EVERYTHING THE PHYSICS NEEDS IS ALREADY PROVEN AND DIMENSION-INDEPENDENT (2D LP): the Timber C24
- * material (B1), the connection x material weakest-link bearing (B2/B3), fastener withdrawal tension
- * (C1), and the whole posts-plus-fixing overhang mechanism (C2,
- * Acceptance.Overhang.CarriedByPostsInCompressionAndAWallFixingInTension). This slice does NOT add
- * physics; it authors a builder that composes those mechanisms into one structure. So the RED is
- * expected to be "the builder lays nothing yet" — the F1 stub is a bare `return false` — and NOT a
- * physics gap. Every arm below is either the C2 overhang mechanism verbatim or a simply-supported
- * beam on two compression bearings, both of which the suite already stands and fells correctly.
+ * Everything the physics needs is already proven and dimension-independent (2D LP): the
+ * Timber C24 material (B1), the connection x material weakest-link bearing (B2/B3), fastener
+ * withdrawal tension (C1), and the posts-plus-fixing overhang mechanism (C2,
+ * Acceptance.Overhang.CarriedByPostsInCompressionAndAWallFixingInTension). This slice adds no
+ * physics; it authors a builder that composes those mechanisms into one structure, so the red
+ * is "the builder lays nothing yet" (the F1 stub is a bare `return false`), never a physics
+ * gap. Every arm below is either the C2 overhang mechanism verbatim or a simply-supported beam
+ * on two compression bearings, both already proven elsewhere.
  *
- * =========================================================================================
- * THE FIXTURE — A 2D X-Z CROSS-SECTION THROUGH THE DOORWAY. X IS DEPTH (BACK -> FRONT -> DOOR),
- * Z IS HEIGHT. SEVEN PIECES, SIX BED JOINTS.
- * =========================================================================================
+ * The fixture — a 2D X-Z cross-section through the doorway. X is depth (back -> front ->
+ * door), Z is height. Seven pieces, six bed joints.
  *
  *                                                          overhang centroid c = X 296
  *                              roof beam (Timber)                 |
@@ -54,7 +52,7 @@
  *   +========+                     +========+
  *      earth                          earth
  *
- * SEVEN PIECES (a masonry pier is a grounded BASE, several fused courses, plus one removable HEAD):
+ * Seven pieces (a masonry pier is a grounded base, several fused courses, plus one removable head):
  *   - BackBase  : ClayBrick, GROUNDED. X in [0,40],   Z in [0,170].
  *   - BackHead  : ClayBrick.           X in [0,40],   Z in [171,181]. Carries the roof's back end.
  *   - FrontBase : ClayBrick, GROUNDED. X in [160,200],Z in [0,170].
@@ -66,7 +64,7 @@
  *                 (the fixing patch) and cantilevers out over the door. Centroid X 296.
  *   - Post      : Timber, GROUNDED.    X in [254,266],Z in [0,181]. Under the front of the overhang.
  *
- * SIX BED JOINTS (all normal +Z, single wythe in X-Z — the 2D LP's domain; no head/Y-normal joints):
+ * Six bed joints (all normal +Z, single wythe in X-Z — the 2D LP's domain; no head/Y-normal joints):
  *   - BackBed   : BackBase  - BackHead,  GeneralPurposeMortar (a brick mortar bed).
  *   - FrontBed  : FrontBase - FrontHead, GeneralPurposeMortar.
  *   - RoofBack  : BackHead  - Roof,      DRYSTONE (wood-on-brick frictional bearing, compression).
@@ -78,67 +76,66 @@
  * they never form a joint with each other — the roof spans the shed, the overhang cantilevers the
  * door, and the front head is what they share.
  *
- * =========================================================================================
- * THE STATICS ARE HAND-DERIVED (never mirrored from the LP; the bridged LP is the SECOND,
+ * The statics are hand-derived (never mirrored from the LP; the bridged LP is the second,
  * independently-derived confirmation).
- * =========================================================================================
  *
- * THE OVERHANG is C2 verbatim — same length 200, same 4 cm fixing lap, same post 62 cm outboard of
- * the fixing and 36 cm inboard of the centroid — so its three arms come out exactly as C2's:
- *   (a) ASSEMBLED: the fixing carries a comfortable TENSION T = W*(c-Xp)/(Xp-Xf), its withdrawal
- *       capacity ~37x over -> stands.
- *   (b) POST REMOVED: the 4 cm fixing alone must cantilever the beam; its plastic couple is ~2.1x
- *       short of the cantilever moment W*(c-Xf) -> falls.
- *   (c) FIXING ANCHOR REMOVED: the post alone (DryStone, no tension) cannot stop the beam toppling
- *       off it; the topple moment W*(c-Xp) is ~6x the post's compression-only couple -> falls.
+ * The overhang is C2 verbatim — same length 200, same 4 cm fixing lap, same post 62 cm
+ * outboard of the fixing and 36 cm inboard of the centroid — so its three arms come out
+ * exactly as C2's:
+ *   (a) Assembled: the fixing carries a comfortable tension T = W*(c-Xp)/(Xp-Xf), its
+ *       withdrawal capacity ~37x over -> stands.
+ *   (b) Post removed: the 4 cm fixing alone must cantilever the beam; its plastic couple is
+ *       ~2.1x short of the cantilever moment W*(c-Xf) -> falls.
+ *   (c) Fixing anchor removed: the post alone (DryStone, no tension) cannot stop the beam
+ *       toppling off it; the topple moment W*(c-Xp) is ~6x the post's compression-only
+ *       couple -> falls.
  *
- * THE ROOF is a simply-supported beam on two compression-only (DryStone) bearings:
- *   (d) ASSEMBLED: centroid X 95 lies BETWEEN the back bearing (centre 20) and the front bearing
- *       (centre 175), so both vertical reactions are positive -> stands.
- *   (e) EITHER HEAD REMOVED: the roof is left on ONE compression-only bearing with its centroid
- *       well outboard, so the toppling moment W*(centre - centroid) far exceeds the bearing's
- *       compression-only couple halfWidth*W -> falls. (Back head gone: ~5.3x. Front head gone:
- *       ~3.8x.)
+ * The roof is a simply-supported beam on two compression-only (DryStone) bearings:
+ *   (d) Assembled: centroid X 95 lies between the back bearing (centre 20) and the front
+ *       bearing (centre 175), so both vertical reactions are positive -> stands.
+ *   (e) Either head removed: the roof is left on one compression-only bearing with its
+ *       centroid well outboard, so the toppling moment W*(centre - centroid) far exceeds
+ *       the bearing's compression-only couple halfWidth*W -> falls (back head gone: ~5.3x;
+ *       front head gone: ~3.8x).
  *
- * =========================================================================================
- * UNITS — SPELLED OUT LOCALLY (DESIGN.md §3). 1 N = 100 uu, 1 cm2 = 100 mm2, so 1 MPa over 1 cm2 is
- * 100*100 = 10000 uu. DELIBERATELY not the production constant, so a wrong conversion fails here.
- * Weight is MassKg * 980 (the 1 N = 100 uu factor is already inside the 980); masses come from the
- * published densities (Timber 0.42, ClayBrick 1.9) times the true volumes.
+ * Units, spelled out locally (DESIGN.md §3): 1 N = 100 uu, 1 cm2 = 100 mm2, so 1 MPa over
+ * 1 cm2 is 100*100 = 10000 uu — deliberately not the production constant, so a wrong
+ * conversion fails here. Weight is MassKg * 980 (the 1 N = 100 uu factor is already inside
+ * the 980); masses come from the published densities (Timber 0.42, ClayBrick 1.9) times
+ * the true volumes.
  *
- * NEEDS A TICKING WORLD: NO. The builder is arithmetic over boxes; the structure is arithmetic over
- * a graph; gravity is on (weight = mass*980); every assertion is on the laid layout, the oracle, or
- * the solved outcome. Same footing as the overhang (C2), cross-material bearing (B3) and F0 tests.
+ * No ticking world needed: the builder is arithmetic over boxes, the structure is
+ * arithmetic over a graph, gravity is on (weight = mass*980), and every assertion is on the
+ * laid layout, the oracle, or the solved outcome — same footing as the overhang (C2),
+ * cross-material bearing (B3) and F0 tests.
  *
- * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
+ * Named namespace, not anonymous: a unity build merges files into one translation unit.
  */
 namespace ShedBuilderTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* ================================================================================
-	 * UNITS AND DENSITIES. Lengths in cm at Unreal's default 1 uu = 1 cm.
-	 * ================================================================================ */
+	// Units and densities. Lengths in cm at Unreal's default 1 uu = 1 cm.
 
-	/** Structural timber C24, EN 338 mean density. UNITS TRAP: 0.42, never 420. */
+	/** Structural timber C24, EN 338 mean density. Units trap: 0.42, never 420. */
 	constexpr double TimberDensityGramsPerCubicCm = 0.42;
 
 	/** Fired clay, the figure every wall fixture uses. */
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
 
-	/** MassKg * 980 IS a weight in uu — the 1 N = 100 uu conversion is already inside it. */
+	/** MassKg * 980 is a weight in uu — the 1 N = 100 uu conversion is already inside it. */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
-	/** 1 MPa over 1 cm2 is 10000 uu. DELIBERATELY a local literal, not the production constant. */
+	/** 1 MPa over 1 cm2 is 10000 uu. Deliberately a local literal, not the production constant. */
 	constexpr double ForceUnitsPerMPaSqCmHere = 100.0 * 100.0;
 
-	/* ================================================================================
-	 * THE SPEC — the canonical shed, spelled out here so the hand-derivation below reads from the
-	 * SAME numbers the builder is handed. The builder's contract is to honour this spec; the sizing
-	 * is derived from it independently, and the bridged LP is called against whatever the builder
-	 * actually lays.
-	 * ================================================================================ */
+	/*
+	 * The spec — the canonical shed, spelled out here so the hand-derivation below reads
+	 * from the same numbers the builder is handed. The builder's contract is to honour this
+	 * spec; the sizing is derived from it independently, and the bridged LP is called
+	 * against whatever the builder actually lays.
+	 */
 
 	constexpr double WytheCm = 20.0;
 	constexpr double JointThicknessCm = 1.0;
@@ -205,9 +202,7 @@ namespace ShedBuilderTestSupport
 		return Spec;
 	}
 
-	/* ================================================================================
-	 * THE INDEPENDENT STATICS — moments about a support against the plastic joint capacity.
-	 * ================================================================================ */
+	// The independent statics — moments about a support against the plastic joint capacity.
 
 	double BeamWeightUu(double LengthXCm, double ThicknessZCm)
 	{
@@ -270,11 +265,11 @@ namespace ShedBuilderTestSupport
 		return (BearingWidthCm / 2.0) * RoofWeightUu();
 	}
 
-	/* ================================================================================
-	 * THE LAID SHED — identified by MATERIAL, GROUNDING and RELATIVE X, never by a handle the
-	 * builder happened to hand back in a particular order. That keeps these assertions about the
-	 * shed's SHAPE rather than about the builder's internal piece numbering.
-	 * ================================================================================ */
+	/*
+	 * The laid shed — identified by material, grounding and relative X, never by a handle
+	 * the builder happened to hand back in a particular order, so these assertions are
+	 * about the shed's shape rather than the builder's internal piece numbering.
+	 */
 
 	struct FShed
 	{
@@ -409,10 +404,9 @@ namespace ShedBuilderTestSupport
 }
 
 /**
- * THE BUILDER LAYS A MULTI-MATERIAL SHED THAT STANDS AS BUILT AND DROPS WHEN THE POST OR A PIER IS
- * PULLED — the headline "pull the posts, it drops; pull the wall, it drops."
- *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * The builder lays a multi-material shed that stands as built and drops when the post or a
+ * pier is pulled — "pull the posts, it drops; pull the wall, it drops." No ticking world
+ * needed; see the file header.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FShedBuilderTest,
@@ -424,11 +418,11 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 	using namespace DestructionProfiles;
 	using namespace ShedBuilderTestSupport;
 
-	/* ------------------------------------------------------------------ *
-	 * PRECONDITIONS ON THE STRENGTH BASIS — the verdicts turn on these,
-	 * so they are pinned to the published figures the sizing was derived
-	 * against rather than read from the profiles.
-	 * ------------------------------------------------------------------ */
+	/*
+	 * Preconditions on the strength basis — the verdicts turn on these, so they are pinned
+	 * to the published figures the sizing was derived against rather than read from the
+	 * profiles.
+	 */
 
 	TestEqual(TEXT("FIXTURE: the fixing is a Screw, withdrawal 0.54 MPa (EN 1995-1-1 8.7.2)"),
 		Screw.TensileStrengthMPa, 0.54);
@@ -441,12 +435,12 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FIXTURE: clay brick crushes at 20 MPa"),
 		ClayBrick.Strength.CompressiveStrengthMPa, 20.0);
 
-	/* ------------------------------------------------------------------ *
-	 * THE "NEITHER ALONE SUFFICIENT" SIZING, HAND-DERIVED. The overhang is
-	 * C2 verbatim; the roof is a two-support beam whose centroid sits
-	 * between its bearings. Independent of the builder — a guard that these
-	 * chosen dimensions actually produce the intended regimes.
-	 * ------------------------------------------------------------------ */
+	/*
+	 * The "neither alone sufficient" sizing, hand-derived. The overhang is C2 verbatim; the
+	 * roof is a two-support beam whose centroid sits between its bearings. Independent of
+	 * the builder — a guard that these chosen dimensions actually produce the intended
+	 * regimes.
+	 */
 
 	const double Wover = OverhangWeightUu();
 	const double AssembledTension = AssembledFixingTensionUu();
@@ -488,11 +482,11 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("SIZING (e): with the front head gone the roof's topple moment must outrun its bearing"),
 		RoofTopFrontGone > 1.5 * RoofCapFrontGone);
 
-	/* ================================================================================
-	 * ARM 0 — THE BUILDER LAYS THE SHED. Piece counts, per-piece MATERIAL and grounding, and the
-	 * six authored joints with their connection profiles. This is where the F1 stub is RED: it lays
-	 * nothing, so Build returns false and Identify fails.
-	 * ================================================================================ */
+	/*
+	 * Arm 0 — the builder lays the shed. Piece counts, per-piece material and grounding,
+	 * and the six authored joints with their connection profiles. This is where the F1 stub
+	 * is red: it lays nothing, so Build returns false and Identify fails.
+	 */
 
 	FBrickLayout Layout;
 	const bool bBuilt = DestructionShed::Build(CanonicalSpec(), Layout);
@@ -593,11 +587,11 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("F1: the post bearing is the 12 cm x 20 cm face, 240 cm2"),
 		Layout.Structure.GetConnection(PostBrg).InterfaceAreaSqCm, PostBearingAreaSqCm);
 
-	/* ================================================================================
-	 * THE STANDS-AND-FALLS ARMS. Each rebuilds a fresh shed, pulls the arm's piece, then reads the
-	 * oracle mechanism and the production outcome — mechanism (feasibility, the mechanism's moving
-	 * blocks) and outcome (Supported vs Falling, Stranded == 0), never displacement.
-	 * ================================================================================ */
+	/*
+	 * The stands-and-falls arms. Each rebuilds a fresh shed, pulls the arm's piece, then
+	 * reads the oracle mechanism and the production outcome — mechanism (feasibility, the
+	 * moving blocks) and outcome (Supported vs Falling, Stranded == 0), never displacement.
+	 */
 
 	enum class EArm : uint8 { Assembled, PostRemoved, BackHeadRemoved, FrontHeadRemoved };
 

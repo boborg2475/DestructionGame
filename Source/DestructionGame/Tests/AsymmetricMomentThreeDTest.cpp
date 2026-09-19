@@ -7,40 +7,38 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * E1b HARDENING — THE ASYMMETRIC-MOMENT SIGN LOCK (E1a-review finding 2), riding with the pyramid.
+ * E1b hardening — the asymmetric-moment sign lock (E1a-review finding 2), riding with the pyramid.
  *
- * WHY THIS FIXTURE EXISTS. The E0-A tripod (TripodThreeDTest.cpp) is X<->Y SYMMETRIC (CoM at
- * (L/4, L/4), supports at (0,0)/(L,0)/(0,L)) and puts every support at ONE height, so its normal
- * reactions are pinned by Fz, Mx, My alone — the Mz row and the shear->moment (height) coupling
- * are TRIVIALLY satisfied and never bind. A wrong Mz sign, or an Mx<->My swap, would leave the
- * tripod green. This second DETERMINATE 3D fixture removes both blind spots: an OFF-DIAGONAL CoM
- * (cx = 10 != cy = 20, breaking X<->Y) and supports at DIFFERENT HEIGHTS, driven by a horizontal
- * push, so a horizontal reaction carries net moment and Mz AND the U/V moment coupling BIND. Its
- * reactions and lambda* are exact hand statics, so nothing here launders a wrong sign into a
- * plausible number.
+ * The E0-A tripod (TripodThreeDTest.cpp) is X<->Y symmetric (CoM at (L/4, L/4), supports at
+ * (0,0)/(L,0)/(0,L)) with every support at one height, so its normal reactions are pinned by Fz,
+ * Mx, My alone — the Mz row and the shear->moment (height) coupling never bind, and a wrong Mz
+ * sign or an Mx<->My swap would leave it green. This second determinate 3D fixture removes both
+ * blind spots: an off-diagonal CoM (cx = 10 != cy = 20) and supports at different heights driven
+ * by a horizontal push, so a horizontal reaction carries net moment and Mz and the U/V moment
+ * coupling both bind. Its reactions and lambda* are exact hand statics.
  *
- * THE FIXTURE — one FREE block, centroid C = (10, 20, 30), on FIVE FRICTIONLESS point-patch
+ * THE FIXTURE — one free block, centroid C = (10, 20, 30), on five frictionless point-patch
  * supports (c = 0, mu = 0), plus a horizontal push. Frictionless is load-bearing: with the k=8
- * pyramid a c = mu = 0 support caps its shear at zero, so each carries ONLY its normal force — a
- * pure "link" — which is what makes the system statically DETERMINATE (five normal unknowns, five
- * non-trivial equilibrium equations). The supports:
+ * pyramid a c = mu = 0 support caps its shear at zero, so each carries only its normal force — a
+ * pure "link" — making the system statically determinate (five normal unknowns, five non-trivial
+ * equilibrium equations).
  *
  *     THREE VERTICAL rollers (N = +Z), at plan (0,0), (40,0), (0,40)   -> normals nv1, nv2, nv3
  *     TWO HORIZONTAL rollers (N = -X, pushing the block in -X), at
  *         HxA: plan-y = 20, height z = 0                               -> normal Ra
- *         HxB: plan-y =  0, height z = 10  (DIFFERENT height)          -> normal Rb
+ *         HxB: plan-y =  0, height z = 10  (different height)          -> normal Rb
  *
- * Loads: DEAD gravity W = M*980 = 9800 uu at C, and a push H = (P, 0, 0), P = 9800 uu, applied at
- * (10, 10, 0). H's moment about C is (0, -30P, +10P): it feeds Fx, My AND Mz.
+ * Loads: dead gravity W = M*980 = 9800 uu at C, and a push H = (P, 0, 0), P = 9800 uu, applied at
+ * (10, 10, 0). H's moment about C is (0, -30P, +10P): it feeds Fx, My and Mz.
  *
- * THE HAND STATICS (all six equilibrium equations, verified). The horizontal reactions decouple
+ * HAND STATICS (all six equilibrium equations, verified). The horizontal reactions decouple
  * (vertical forces give nothing to Fx, Fy, Mz):
  *
  *     Fx : P - Ra - Rb = 0
  *     Mz : +10P (push) - 20*Rb (HxB at plan-y 0) = 0     -> Rb = P/2 = 4900,  Ra = P/2 = 4900
  *
  * then the vertical normals, whose My equation carries the horizontal reactions' moment through
- * their DIFFERENT heights (30*Ra from HxA at z=0, 20*Rb from HxB at z=10):
+ * their different heights (30*Ra from HxA at z=0, 20*Rb from HxB at z=10):
  *
  *     Fz : nv1 + nv2 + nv3 = W
  *     Mx : -nv1 - nv2 + nv3 = 0                            -> nv3 = nv1 + nv2 = W/2 = 4900
@@ -48,30 +46,28 @@
  *
  *     => nv1 = 3W/8 = 3675 ,  nv2 = W/8 = 1225 ,  nv3 = W/2 = 4900 ,  Ra = Rb = 4900
  *
- * All five reactions are positive (compression) — a valid dry no-tension force system. They are
- * asymmetric in x and y (cx != cy), and Rb is pinned by the Mz balance, so:
+ * All five reactions are positive (compression) — a valid dry no-tension force system, asymmetric
+ * in x and y, with Rb pinned by the Mz balance:
  *
- *   BITE 1 (Mx<->My swap in AppendThreeDContactCoeffs): the vertical-normal equations use the x-
- *          and y-plan geometry, which differ (V2 at x=40 vs V3 at y=40, cx != cy); swapping the Mx
- *          and My coefficients scrambles them and moves (nv1, nv2, nv3) off (3675, 1225, 4900).
+ *   BITE 1 (Mx<->My swap in AppendThreeDContactCoeffs): the vertical-normal equations use x- and
+ *          y-plan geometry, which differ (V2 at x=40 vs V3 at y=40); swapping Mx and My scrambles
+ *          them and moves (nv1, nv2, nv3) off (3675, 1225, 4900).
  *   BITE 2 (negate the contact Mz coefficients): the Mz balance becomes +10P + 20*Rb = 0 -> Rb =
- *          -P/2 < 0, which a no-tension roller cannot supply -> the readout can no longer reproduce
- *          the reactions (infeasible / relaxed), reddening the assertion.
+ *          -P/2 < 0, which a no-tension roller cannot supply, reddening the assertion.
  *
- * lambda* (arm ii): make gravity AND the push LIVE (both scale with lambda), and cap crushing on
- * every support at C = f_c*Conv*A = 0.01*10000*98 = 9800 uu. Every reaction scales linearly, the
- * most-loaded three (nv3, Ra, Rb = 4900) crush together, so lambda* = C / 4900 = 2 exactly.
+ * lambda* (arm ii): make gravity and the push both live, and cap crushing on every support at
+ * C = f_c*Conv*A = 0.01*10000*98 = 9800 uu. Every reaction scales linearly and the most-loaded
+ * three (nv3, Ra, Rb = 4900) crush together, so lambda* = C / 4900 = 2 exactly.
  *
- * STATE — RED NOW, THE SIGN-LOCKING GUARD ONCE E1b LANDS. This fixture's determinacy DEPENDS on
+ * STATE — red now, the sign-locking guard once E1b lands. This fixture's determinacy depends on
  * the friction pyramid zeroing the frictionless supports' shear and on the 3D push being posed;
- * E1a supplies NEITHER, so against current production it is RED (free shear -> the system is
- * indeterminate, the min-violation readout lands on the wrong vertex, and lambda* is not 2). That
- * red is the ABSENCE of E1b, NOT a sign bug. Once dev lands E1b (pyramid + applied force) it turns
- * GREEN and thereafter GUARDS the moment signs the tripod cannot — the two bites above are what it
- * is worth. (If it were ever red AFTER E1b with the frictionless links determinate, THAT would be a
- * genuine sign defect to surface.)
+ * E1a supplies neither, so today it is red (free shear makes the system indeterminate, the
+ * min-violation readout lands on the wrong vertex, lambda* is not 2) — the absence of E1b, not a
+ * sign bug. Once E1b lands (pyramid + applied force) it turns green and thereafter guards the
+ * moment signs the tripod cannot, via the two bites above. (Red after E1b with the frictionless
+ * links determinate would be a genuine sign defect.)
  *
- * UNITS derived here, NOT imported. NEEDS A TICKING WORLD: NO. NAMED NAMESPACE for the unity build.
+ * Units derived here, not imported. Needs no ticking world. Named namespace for the unity build.
  */
 namespace AsymmetricMomentThreeDSupport
 {
@@ -221,16 +217,14 @@ namespace AsymmetricMomentThreeDSupport
 	bool Near(double A, double B, double Tol) { return FMath::Abs(A - B) <= Tol; }
 }
 
-/* ================================================================================================
- * THE ASYMMETRIC-MOMENT FIXTURE MATCHES HAND STATICS — reactions AND load factor.
+/*
+ * The asymmetric-moment fixture matches hand statics — reactions and load factor.
  *
- * RED NOW: E1b (the friction pyramid that zeroes the frictionless supports' shear, and the 3D
+ * Red now: E1b (the friction pyramid zeroing the frictionless supports' shear, and the 3D
  * applied-force posing) does not exist yet, so the system is indeterminate and neither the
- * reactions nor lambda* match. GREEN once E1b lands, thereafter a sign-locking regression guard
- * (BITE 1 Mx<->My swap; BITE 2 negate contact Mz — see the header).
- *
- * NEEDS A TICKING WORLD: NO.
- * ================================================================================================ */
+ * reactions nor lambda* match. Green once E1b lands, thereafter a sign-locking regression guard
+ * (bite 1 Mx<->My swap; bite 2 negate contact Mz — see the header). Needs no ticking world.
+ */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FAsymmetricMomentThreeDMatchesHandStaticsTest,
 	"DestructionGame.Oracle.RigidBlock.ThreeD.AsymmetricMomentMatchesHandStatics",

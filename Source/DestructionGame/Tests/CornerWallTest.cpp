@@ -15,40 +15,40 @@
  * Integration test for the corner-return slice — CR-2a, DESIGN §8's 2026-09-15 corner
  * ruling, built the way a player builds.
  *
- * THE BEHAVIOUR, IN ONE SENTENCE: an L-shaped wall laid ENTIRELY through
+ * The behaviour, in one sentence: an L-shaped wall laid entirely through
  * BuildMode::PlacePiece — a run along X, a rotated brick returning at its end, a run
- * along Y, and a staggered course LAPPED OVER THE CORNER on top of all three — snaps to
- * the intended pose at every step and STANDS under its own weight.
+ * along Y, and a staggered course lapped over the corner on top of all three — snaps to
+ * the intended pose at every step and stands under its own weight.
  *
- * WHY AN L AND NOT A STRAIGHT WALL. Every piece of CR-2a is needed before this building
- * can exist, and none of them alone builds it: the corner return places the first brick of
- * the second leg, the long-axis-aware running bond lets that leg grow along Y, and the
+ * Why an L and not a straight wall: every piece of CR-2a is needed before this building
+ * can exist, and none of them alone builds it — the corner return places the first brick
+ * of the second leg, the long-axis-aware running bond lets that leg grow along Y, and the
  * boxed joint inference is what makes the quoin a bonded corner rather than a perpend.
  * A straight wall (DemoBuildingTest) exercises none of the three.
  *
- * ASSERT ON THE MECHANISM AND THE OUTCOME, NEVER DISPLACEMENT — the same two families
+ * Assert on the mechanism and the outcome, never displacement — the same two families
  * DemoBuildingTest uses, for the same reason (DESIGN §4): two pieces can sever and stay
  * resting exactly in place, so a position check measures nothing.
- *   - MECHANISM: the per-step snap Kind and joints-formed sequence, the piece and
+ *   - Mechanism: the per-step snap Kind and joints-formed sequence, the piece and
  *     connection counts, the profile mix, and the individual joints' profile / area /
- *     normal. Each binary and exact. THE QUOIN AND THE CORNER LAP LIVE HERE, not in the
+ *     normal. Each binary and exact. The quoin and the corner lap live here, not in the
  *     outcome — see the next paragraph.
- *   - OUTCOME: after SolveLoads, the EXACT support kind per piece — the six laid on the
+ *   - Outcome: after SolveLoads, the exact support kind per piece — the six laid on the
  *     earth Grounded, the five above them Supported, and nothing Falling or Stranded. What
- *     this pins is that every course-1 brick reaches the earth THROUGH BEDS the builder
+ *     this pins is that every course-1 brick reaches the earth through beds the builder
  *     formed: a bed that never formed leaves its brick with no load path.
  *
- * WHAT THE STANDS-CLAIM DOES *NOT* PIN, corrected after the CR-2a review called the
- * earlier wording false. The QUOIN (2-3) is a VERTICAL-normal joint, and SolveLoads routes
- * weight DOWN BEDS — so the quoin carries no vertical load and deleting it would change no
- * support kind in section SIX. Brick 3 rests on the earth either way. The quoin bonds the
- * two legs LATERALLY, which is what keeps the corner together under a horizontal push, and
- * it is pinned by the MECHANISM sections (THREE and FIVE) alone. The joint that genuinely
- * makes the return load-bearing FROM ABOVE is the course-1 corner brick's BED ONTO IT
- * (9-3), section SEVEN — that one is a horizontal face under a vertical load path, so its
+ * What the stands-claim does not pin, corrected after the CR-2a review called the earlier
+ * wording false. The quoin (2-3) is a vertical-normal joint, and SolveLoads routes weight
+ * down beds — so the quoin carries no vertical load and deleting it would change no
+ * support kind in section six. Brick 3 rests on the earth either way. The quoin bonds the
+ * two legs laterally, which is what keeps the corner together under a horizontal push, and
+ * it is pinned by the mechanism sections (three and five) alone. The joint that genuinely
+ * makes the return load-bearing from above is the course-1 corner brick's bed onto it
+ * (9-3), section seven — that one is a horizontal face under a vertical load path, so its
  * utilisation after a solve is a positive number rather than a claim about a label.
  *
- * THE BUILD, STEP BY STEP (requested CENTRES handed to PlacePiece; HalfBrick =
+ * The build, step by step (requested centres handed to PlacePiece; HalfBrick =
  * (10.75,5.125,3.25) laid along X, HalfBrickRotated = (5.125,10.75,3.25) laid along Y;
  * the 22.5 x 11.25 x 7.5 coordinating grid of Core/Layout.h, and course 0 RESTING ON THE
  * GROUND at centre Z = 3.25 per the 2026-09-15 convention):
@@ -69,49 +69,49 @@
  *  10    (61.875, 39.375,10.75)  Y-long    no        -> BrickNextCourse    3  beds ->4,5
  *                                                                            + head->8
  *
- * WHERE THE CURSORS COME FROM, since ranking is raw distance and the numbers have to be
+ * Where the cursors come from, since ranking is raw distance and the numbers have to be
  * worked against the solver rather than guessed:
  *   - step 3 is asked for at Y = 5.0, which is 0.625 cm from the corner return that
  *     finishes flush with brick 2's -Y face (61.875, 5.625) and 10.625 cm from the other
  *     flush choice at that end, so the intended return wins outright. The same-end returns
- *     off brick 1 land at (39.375, +/-5.625), INSIDE brick 2, and are dropped as occupied;
+ *     off brick 1 land at (39.375, +/-5.625), inside brick 2, and are dropped as occupied;
  *     the -X-end returns off brick 2 are 33.75 cm away, outside the 30 cm radius.
  *   - steps 4 and 5 are asked for 0.125 cm short of the Y pitch, so the same-course pose
  *     beats the next-course pose 13.4 cm away. The corner returns off brick 2 that are in
  *     range from there land exactly on brick 3 and are dropped as occupied.
- *   - steps 6 to 10 are asked for AT their running-bond poses (offset 0), where several
- *     neighbours' poses coincide and MERGE into one candidate carrying every one of their
+ *   - steps 6 to 10 are asked for at their running-bond poses (offset 0), where several
+ *     neighbours' poses coincide and merge into one candidate carrying every one of their
  *     joints. Nothing else can outrank an offset of zero. Their same-course poses that
  *     land on cells course 0 already fills are dropped as occupied.
  *
- * STEP 9 IS THE CORNER BRICK — THE REVIEW'S FINDING B2, and the reason this test grew. A
- * bricklayer laps the course-1 stretcher OVER the return so the two legs are bonded on
+ * Step 9 is the corner brick — the review's finding B2, and the reason this test grew. A
+ * bricklayer laps the course-1 stretcher over the return so the two legs are bonded on
  * every course, not just at one vertical face. Laid at (56.25, 0, 10.75) it spans
  * X [45.5, 67] x Y [-5.125, 5.125] with its underside at Z = 7.5 — one 1 cm bed joint
- * above BOTH brick 2 (top Z = 6.5, footprint X [34.25, 55.75]) and brick 3, the rotated
+ * above both brick 2 (top Z = 6.5, footprint X [34.25, 55.75]) and brick 3, the rotated
  * return (top Z = 6.5, footprint X [56.75, 67] x Y [-5.125, 16.375]). Each lap is a full
  * brick width square: 10.25 x 10.25 = 105.0625 cm2. It also abuts brick 7 end to end
  * (a head joint) and meets the Y-leg's course-1 brick 8 across a horizontal face
  * 10.25 x 6.5 = 66.625 cm2 which the L-footprint rule reads as a bonded corner.
  *
- * NINETEEN CONNECTIONS: 10 beds + 2 quoins (all GeneralPurposeMortar) + 7 heads (the weak
- * GeneralPurposeMortarPerpend). A quoin is a mortar joint with a HORIZONTAL normal, which
+ * Nineteen connections: 10 beds + 2 quoins (all GeneralPurposeMortar) + 7 heads (the weak
+ * GeneralPurposeMortarPerpend). A quoin is a mortar joint with a horizontal normal, which
  * is exactly what the 2026-09-15 ruling adds and what the pre-ruling inference would have
  * called a perpend.
  *
- * WORLD-FREE, AND NEEDS NO TICKING WORLD. FStructure::SolveLoads is a world-free
- * structural solve (gravity is applied inside it), not a Chaos tick.
+ * World-free, needs no ticking world: FStructure::SolveLoads is a world-free structural
+ * solve (gravity is applied inside it), not a Chaos tick.
  *
- * RED TODAY (the CR-2a review's blocking finding B2): the solver's bed/head branch is
- * gated on the two bricks running the SAME way, so step 9's candidate never beds onto the
+ * Red today (the CR-2a review's blocking finding B2): the solver's bed/head branch is
+ * gated on the two bricks running the same way, so step 9's candidate never beds onto the
  * crossed return. It forms three joints instead of four, the wall has eighteen connections
- * instead of nineteen, one bonded mortar joint is missing, and the lap section SEVEN finds
+ * instead of nineteen, one bonded mortar joint is missing, and the lap section seven finds
  * no connection between the corner brick and the return at all.
  */
 
 /*
- * NAMED NAMESPACE, distinct from every other one in this module — an anonymous namespace
- * is private to a TRANSLATION UNIT, not a file, and a unity build merges files. See
+ * Named namespace, distinct from every other one in this module — an anonymous namespace
+ * is private to a translation unit, not a file, and a unity build merges files. See
  * DemoBuildingTest.cpp / SnapSolverTest.cpp for the rule.
  */
 namespace CornerWallTestSupport
@@ -226,10 +226,10 @@ bool FCornerWallStandsTest::RunTest(const FString& Parameters)
 	FBrickLayout Layout; // empty: the wall is grown from nothing, one PlacePiece at a time.
 
 	/*
-	 * 1. PER-STEP SNAP SEQUENCE. Each placement's Kind, its joints-formed count and the
-	 * pose it actually adopted. Adding the adopted CENTRE is what stops a step passing on
-	 * the right label at the wrong place — the corner return in particular has four poses
-	 * and only one of them turns this corner.
+	 * 1. Per-step snap sequence: each placement's Kind, its joints-formed count and the
+	 * pose it actually adopted. Adding the adopted centre stops a step passing on the
+	 * right label at the wrong place — the corner return in particular has four poses and
+	 * only one of them turns this corner.
 	 */
 	for (int32 i = 0; i < ExpectedPieces; ++i)
 	{
@@ -257,25 +257,23 @@ bool FCornerWallStandsTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * 2. STRUCTURE SHAPE. Eleven pieces and nineteen connections, boxes kept strictly
-	 * parallel to the piece array (PlacePiece's invariant).
-	 */
+	/* 2. Structure shape: eleven pieces and nineteen connections, boxes kept strictly
+	 * parallel to the piece array (PlacePiece's invariant). */
 	TestEqual(TEXT("the L-wall has eleven pieces"), Layout.Structure.NumPieces(), ExpectedPieces);
 	TestEqual(TEXT("the L-wall has nineteen connections"), Layout.Structure.NumConnections(), 19);
 	TestEqual(TEXT("boxes parallel to pieces"),
 		Layout.Boxes.Num(), Layout.Structure.NumPieces());
 
 	/*
-	 * 3. THE QUOIN ITSELF. The joint between the X leg's end brick (2) and the return (3)
-	 * is CR-2a's own behaviour: full mortar over the brick's END face — 10.25 cm of width
-	 * by 6.5 cm of course = 66.625 cm2 — across a HORIZONTAL normal. The normal is
+	 * 3. The quoin itself. The joint between the X leg's end brick (2) and the return (3)
+	 * is CR-2a's own behaviour: full mortar over the brick's end face — 10.25 cm of width
+	 * by 6.5 cm of course = 66.625 cm2 — across a horizontal normal. The normal is
 	 * asserted because it is what makes the profile assertion mean something: this is
 	 * precisely the contact the 2026-09-03 inference called a weak perpend.
 	 *
-	 * IT IS PINNED HERE AND NOWHERE ELSE. Both bricks rest on the earth and the joint is
-	 * vertical, so it carries no vertical load and section SIX cannot see it at all — the
-	 * bond it provides is LATERAL. This mechanism assertion is the whole of the evidence
+	 * Pinned here and nowhere else: both bricks rest on the earth and the joint is
+	 * vertical, so it carries no vertical load and section six cannot see it at all — the
+	 * bond it provides is lateral. This mechanism assertion is the whole of the evidence
 	 * for it, which is why the profile is compared across all five fields.
 	 */
 	const FConnection* Quoin = FindConnection(Layout.Structure, 2, 3);
@@ -291,8 +289,8 @@ bool FCornerWallStandsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * 4. THE HEAD JOINTS STAY WEAK. The X leg's two head joints are the control for the
-	 * quoin: same materials, same horizontal contact, and the ONLY difference is that the
+	 * 4. The head joints stay weak. The X leg's two head joints are the control for the
+	 * quoin: same materials, same horizontal contact, and the only difference is that the
 	 * two bricks run the same way. If they came back as mortar too, the corner's mortar
 	 * would prove nothing about orientation.
 	 */
@@ -312,13 +310,13 @@ bool FCornerWallStandsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * 5. THE PROFILE MIX, COUNTED. Twelve bonded joints (ten beds + two quoins) and seven
+	 * 5. The profile mix, counted. Twelve bonded joints (ten beds + two quoins) and seven
 	 * perpends, with nothing unrecognised — so a wrong profile somewhere cannot cancel
 	 * against a right one elsewhere in the totals.
 	 *
-	 * THE SECOND QUOIN IS 9-8, the course-1 corner brick's horizontal face against the Y
+	 * The second quoin is 9-8, the course-1 corner brick's horizontal face against the Y
 	 * leg's course-1 brick. It is a bonded corner by the L-footprint rule of the
-	 * 2026-09-15 ruling, NOT by a separate decision: the corner brick's X span [45.5, 67]
+	 * 2026-09-15 ruling, not by a separate decision: the corner brick's X span [45.5, 67]
 	 * properly crosses exactly one of brick 8's two width-face planes (X = 56.75, not
 	 * X = 67, which it only reaches), and brick 8's Y span crosses neither of the corner
 	 * brick's. One crossing, so Corner. Recorded here because a reader counting "six beds
@@ -350,29 +348,26 @@ bool FCornerWallStandsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no connection has an unexpected profile"), UnrecognisedCount, 0);
 
 	/*
-	 * 6. IT STANDS, AND NOT BY BEING PINNED TO THE EARTH. The exact support kind per piece,
+	 * 6. It stands, and not by being pinned to the earth. The exact support kind per piece,
 	 * via GetPieceSupport rather than the composite IsPieceSupported — which is true for a
-	 * grounded piece AND a joint-supported one, so "all supported" would pass even if every
+	 * grounded piece and a joint-supported one, so "all supported" would pass even if every
 	 * piece were grounded. The six laid on the ground read Grounded; the five course-1
-	 * bricks were laid bGrounded = false and reach the earth ONLY through the joints the
+	 * bricks were laid bGrounded = false and reach the earth only through the joints the
 	 * builder formed, so anything wrong with those beds reads Falling (genuinely no load
 	 * path) or Stranded (the solver could not route it) instead of Supported.
 	 *
-	 * THIS SECTION SAYS NOTHING ABOUT THE QUOIN, deliberately (see the header): 2-3 is a
-	 * VERTICAL-normal joint between two pieces that both rest on the earth, so no support
+	 * This section says nothing about the quoin, deliberately (see the header): 2-3 is a
+	 * vertical-normal joint between two pieces that both rest on the earth, so no support
 	 * kind here depends on it. What it does pin is that each course-1 brick found its beds.
 	 *
-	 * SetThreeDimensional FIRST, because this build forms Y-NORMAL joints (the Y leg's head
+	 * SetThreeDimensional first, because this build forms Y-normal joints (the Y leg's head
 	 * joints) and Placement.h's contract puts that call on the caller: whether a build is
-	 * planar or 3D is a structure-level intent, not a per-placement one.
-	 *
-	 * BUT SolveLoads ITSELF DOES NOT READ THE FLAG, and the line above is not what makes this
-	 * section pass. The router is dimension-agnostic — it routes load down bed joints and reads
-	 * each normal directly — so it answers a Y-normal joint identically either way. The ONE
-	 * reader is the LP bridge (RigidBlockOracle::BuildRigidBlockProblem), which refuses an
-	 * out-of-plane normal unless the structure states it is 3D; so the call matters to
-	 * SolveAndBreak's below-cap gate, not here. It is kept because the intent is genuine and
-	 * because any later section that settles this layout would need it.
+	 * planar or 3D is a structure-level intent, not a per-placement one. SolveLoads itself
+	 * does not read the flag — the router is dimension-agnostic, routing load down bed
+	 * joints and reading each normal directly — so this line is not what makes the section
+	 * pass; the one reader is the LP bridge (RigidBlockOracle::BuildRigidBlockProblem),
+	 * which refuses an out-of-plane normal unless the structure states it is 3D. Kept
+	 * because the intent is genuine and any later section that settles this layout needs it.
 	 */
 	Layout.Structure.SetThreeDimensional(true);
 	Layout.Structure.SolveLoads();
@@ -389,25 +384,25 @@ bool FCornerWallStandsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * 7. THE CORNER LAP — the CR-2a review's finding B2, and the joint that makes the
-	 * return LOAD-BEARING FROM ABOVE rather than merely bonded sideways. The course-1
+	 * 7. The corner lap — the CR-2a review's finding B2, and the joint that makes the
+	 * return load-bearing from above rather than merely bonded sideways. The course-1
 	 * corner brick (9) beds onto the rotated return (3) over a full brick width square: the
 	 * two footprints overlap [56.75, 67] in X and [-5.125, 5.125] in Y, so
-	 * 10.25 x 10.25 = 105.0625 cm2, across a VERTICAL normal.
+	 * 10.25 x 10.25 = 105.0625 cm2, across a vertical normal.
 	 *
-	 * THE NORMAL IS WHAT MAKES THE AREA MEAN SOMETHING. A joint of exactly this size could
-	 * also be two side faces meeting; |Z| == 1 is what says the brick RESTS on the return
+	 * The normal is what makes the area mean something. A joint of exactly this size could
+	 * also be two side faces meeting; |Z| == 1 is what says the brick rests on the return
 	 * rather than merely touching it, and a vertical normal is what SolveLoads routes
 	 * weight down. Its profile is the bed's full mortar: the boxed inference classifies a
 	 * vertical contact as a Bed before orientation is ever consulted, so a bed onto a
-	 * CROSSED neighbour is a bed like any other and not a quoin.
+	 * crossed neighbour is a bed like any other and not a quoin.
 	 *
-	 * AND THE UTILISATION IS THE PROOF IT CARRIES, not merely exists. After the solve the
+	 * And the utilisation is the proof it carries, not merely exists. After the solve the
 	 * corner brick's weight is split between its two beds by interface area, so the share
-	 * crossing 9-3 is strictly positive — which is exactly the claim "the return now takes
-	 * load from above" and exactly what the quoin below it cannot say. Asserted as > 0
-	 * rather than at a value: the magnitude is a tiny fraction of masonry's compressive
-	 * capacity and pinning it would be pinning the router's arithmetic, not this bond.
+	 * crossing 9-3 is strictly positive — exactly the claim "the return now takes load from
+	 * above" and exactly what the quoin below it cannot say. Asserted as > 0 rather than at
+	 * a value: the magnitude is a tiny fraction of masonry's compressive capacity and
+	 * pinning it would be pinning the router's arithmetic, not this bond.
 	 */
 	const int32 CornerLapIndex = FindConnectionIndex(Layout.Structure, 9, 3);
 	TestTrue(

@@ -8,15 +8,15 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE WORLD-LAYER LIFECYCLE GUARDS. Two defects live where the subsystem turns a layout
- * into actors and where it should turn them back: a refused build that leaves its bricks
- * standing, and the absence of any teardown at all. Both need a world that can spawn actors
- * — a world-free FStructureBinding test cannot see a leaked AActor — so both ride the shared
- * FBrickTestWorld harness under AGameModeBase (no scenario, so the world starts brick-empty).
+ * The world-layer lifecycle guards. Two defects live where the subsystem turns a layout into
+ * actors and where it should turn them back: a refused build that leaves its bricks standing,
+ * and the absence of any teardown at all. Both need a world that can spawn actors — a world-free
+ * FStructureBinding test cannot see a leaked AActor — so both ride the shared FBrickTestWorld
+ * harness under AGameModeBase (no scenario, so the world starts brick-empty).
  *
- * THE COUNT IS OF LIVE ABrickActors IN THE WORLD, not of binding handles: a leak is precisely
- * an actor the binding no longer (or never did) name, so a handle count cannot see it. A
- * TActorIterator over the test world is the only place the leak is visible.
+ * The count is of live ABrickActors in the world, not of binding handles: a leak is an actor the
+ * binding no longer (or never did) name, invisible to a handle count. A TActorIterator over the
+ * test world is the only place it is visible.
  */
 namespace SubsystemLifecycleTestSupport
 {
@@ -38,30 +38,26 @@ namespace SubsystemLifecycleTestSupport
 }
 
 /**
- * A REFUSED BuildLayout MUST LEAVE NO BRICKS IN THE WORLD.
+ * A refused BuildLayout must leave no bricks in the world.
  *
- * BuildLayout spawns one ABrickActor per piece and only THEN hands the lot to AdoptLayout,
- * which refuses a layout whose Boxes array is not one-per-piece (StructureBinding.cpp's door).
- * On that refusal BuildLayout returns INDEX_NONE — but the actors it already spawned are never
- * destroyed, so a refused build silently litters the world with bricks that name no structure.
+ * BuildLayout spawns one ABrickActor per piece and only then hands the lot to AdoptLayout, which
+ * refuses a layout whose Boxes array is not one-per-piece (StructureBinding.cpp's door). On that
+ * refusal BuildLayout returns INDEX_NONE — but the actors it already spawned are never destroyed,
+ * so a refused build silently litters the world with bricks that name no structure.
  *
- * THE FIXTURE IS A VALID WALL WITH ONE EXTRA BOX, which is the refusal that DOES NOT crash.
- * A layout with FEWER boxes than pieces makes BuildLayout read Layout.Boxes past its end in
- * the spawn loop (Layout.Boxes[PieceIndex] for the whole 0..PieceCount range) BEFORE AdoptLayout
- * can refuse it — and TArray's range check is fatal, so that case aborts the whole run rather
- * than failing an assertion. An EXTRA box keeps every spawn-loop index in bounds (the loop runs
- * to PieceCount, not Boxes.Num()), so the seven actors spawn cleanly and AdoptLayout then refuses
- * on Boxes.Num() != PieceCount — exercising the orphan-on-refusal path without the crash. The
- * same top-of-BuildLayout guard that would make this green (validate Boxes.Num() == PieceCount
- * before spawning anything) also closes the fatal short-boxes read, which is why one test drives
- * both halves of the hole. See the test-expert report accompanying this file.
+ * THE FIXTURE IS A VALID WALL WITH ONE EXTRA BOX — the refusal that does not crash. Fewer boxes
+ * than pieces makes BuildLayout read Layout.Boxes past its end in the spawn loop before
+ * AdoptLayout can refuse it, and TArray's range check is fatal there rather than merely failing
+ * an assertion. An extra box keeps every spawn-loop index in bounds, so all seven actors spawn
+ * cleanly and AdoptLayout then refuses on Boxes.Num() != PieceCount — exercising the
+ * orphan-on-refusal path without the crash. The same top-of-BuildLayout guard that fixes this
+ * (validate Boxes.Num() == PieceCount before spawning anything) also closes the fatal
+ * short-boxes read, so one test drives both halves of the hole.
  *
- * THE ASSERTION IS ON THE COUNT, NOT DISPLACEMENT: zero ABrickActor in the world after the
- * refused build. BuildLayout returning INDEX_NONE already passes today (AdoptLayout does refuse)
- * — the brick count is what bites.
+ * The assertion is on the count, not displacement: zero ABrickActor in the world after the
+ * refused build. BuildLayout returning INDEX_NONE already passes today — the brick count bites.
  *
- * NEEDS A TICKING WORLD: yes for the spawn, though it never ticks — this is about what exists
- * in the world, not about anything falling.
+ * NEEDS A TICKING WORLD: yes for the spawn, though it never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSubsystemBuildLayoutRefusalLeavesNoBricksTest,
@@ -135,22 +131,16 @@ bool FSubsystemBuildLayoutRefusalLeavesNoBricksTest::RunTest(const FString& Para
 }
 
 /**
- * DESTROYING A STRUCTURE MUST REMOVE ITS BRICKS FROM THE WORLD AND FORGET THE BINDING.
+ * Destroying a structure must remove its bricks from the world and forget the binding.
  *
- * The subsystem's Structures map only ever grows: there is no teardown, so the planned
- * scenario switcher's second build leaves the first structure's bricks standing and clickable.
- * Destroy(StructureId) is the missing half — it must destroy every actor the binding names,
- * drop the map entry so Find returns null, and leave a ray along a former piece hitting nothing.
- *
- * THIS RED IS RED-BECAUSE-UNIMPLEMENTED, NOT BECAUSE-UNCOMPILABLE. Destroy exists as an
- * empty stub returning false (the smallest declaration that lets this compile and run); the
- * behaviour is dev-expert's to write. Every assertion below fails against that stub: it returns
- * false, Find still hands back the binding, the seven bricks are still in the world, and a trace
- * through piece 0 still resolves to it.
+ * The subsystem's Structures map only ever grows: there is no teardown, so the planned scenario
+ * switcher's second build would leave the first structure's bricks standing and clickable.
+ * Destroy(StructureId) is the missing half — it must destroy every actor the binding names, drop
+ * the map entry so Find returns null, and leave a ray along a former piece hitting nothing.
  *
  * THREE INDEPENDENT WITNESSES so a partial implementation cannot pass by accident: the return
  * value, the count of live ABrickActors (a leaked actor is invisible to Find), and a TracePiece
- * that must now hit nothing (the clickability the switcher must not leave behind). The count is
+ * that must now hit nothing — the clickability the switcher must not leave behind. The count is
  * against a measured baseline, so it cannot pass vacuously in an already-empty world.
  *
  * NEEDS A TICKING WORLD: yes, for the spawn and the trace; it never ticks.

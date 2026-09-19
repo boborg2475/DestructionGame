@@ -7,49 +7,44 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE 3D ASSEMBLY IGNORES bFirstCrackRows — review item 8, defect 2 (the brittleness-precondition
+ * The 3D assembly ignores bFirstCrackRows — review item 8, defect 2 (the brittleness-precondition
  * gap the 2026-08-14 LP-authority ruling, DESIGN §8, set as a precondition).
  *
- * WHY THIS FIXTURE EXISTS. Below the block cap FStructure::BreakByEquilibrium poses the gate with
- * bFirstCrackRows = true (Structure.cpp), so a BONDED joint (f_t > 0) in bending cracks at its
- * uncracked peak-fibre limit `-(n1+n2) + 3|n1-n2| <= f_t*A` — three times stricter than the plastic
- * no-tension form. The 2D assembler writes those rows (RigidBlockOracle.cpp ~2346-2408). AssembleThreeD
- * (~1786-2010) IGNORES the flag — its header (~1778) calls biaxial first crack a deferred E-tail — so
- * the SAME bonded joint judged in 3D is up to 3x MORE PERMISSIVE than in 2D, and the 3D gate does not
- * meet the brittleness precondition the ruling requires.
+ * Below the block cap FStructure::BreakByEquilibrium poses the gate with bFirstCrackRows = true
+ * (Structure.cpp), so a bonded joint (f_t > 0) in bending should crack at its uncracked peak-fibre
+ * limit `-(n1+n2) + 3|n1-n2| <= f_t*A` — three times stricter than the plastic no-tension form. The
+ * 2D assembler writes those rows (RigidBlockOracle.cpp ~2346-2408); AssembleThreeD (~1786-2010)
+ * ignores the flag (its header calls biaxial first crack a deferred E-tail), so the same bonded
+ * joint reads up to 3x more permissive in 3D than in 2D — missing the brittleness precondition.
  *
- * THE FIXTURE — one free block cantilevering off ONE bonded bed joint (normal +Z), its own weight
- * LIVE and eccentric so the joint is in PURE BENDING ABOUT THE V AXIS (uniform across V). Uniaxial
- * bending is deliberate: it collapses the biaxial 3D peak-fibre condition onto the 2D two-point form,
- * so the CORRECT 3D lambda* MUST equal the 2D lambda* exactly — the cleanest possible "no more
- * permissive" comparison, with no ambiguity about the biaxial generalisation.
+ * THE FIXTURE — one free block cantilevering off one bonded bed joint (normal +Z), its weight live
+ * and eccentric so the joint is in pure bending about the V axis (uniform across V). Uniaxial
+ * bending collapses the biaxial 3D peak-fibre condition onto the 2D two-point form, so the correct
+ * 3D lambda* must equal the 2D one exactly — no ambiguity about the biaxial generalisation.
  *
- *     Face area A = 200 cm2 (2*HalfU=20 by 2*HalfV=10),  Conv = 10000 uu/(MPa.cm2),  f_t = 0.7 MPa.
- *     Half-length h = HalfU = 10 cm.  Centroid eccentricity e = 20 cm (block overhangs the +h edge
- *         contact by e - h = 10 cm — a corbel).  Weight W = 700,000 uu (MassKg = W/980).
- *     Gravity LIVE, so lambda scales W and the eccentricity e/h = 2 stays fixed.
+ *     Face area A = 200 cm2 (2*HalfU=20 by 2*HalfV=10), Conv = 10000 uu/(MPa.cm2), f_t = 0.7 MPa.
+ *     Half-length h = HalfU = 10 cm. Centroid eccentricity e = 20 cm (overhangs the +h contact by
+ *     e - h = 10 cm — a corbel). Weight W = 700,000 uu (MassKg = W/980), gravity live.
  *
- * THE HAND STATICS (moments about the joint centre; contacts at u = -h and u = +h). At load factor
- * lambda: n1 + n2 = lambda*W and n2 - n1 = lambda*W*e/h = 2*lambda*W, so
- *     n1 = -lambda*W/2  (TENSION at the overhung-away edge),  n2 = 3*lambda*W/2  (compression).
+ * HAND STATICS (moments about the joint centre; contacts at u = +/-h). At load factor lambda:
+ * n1 + n2 = lambda*W, n2 - n1 = lambda*W*e/h = 2*lambda*W, so n1 = -lambda*W/2 (tension at the
+ * overhung-away edge), n2 = 3*lambda*W/2 (compression).
  *
- *     PLASTIC (no first crack): the tension resultant may sit at the edge, n1 >= -f_t*Conv*A/2 =>
- *         lambda*_plastic = f_t*Conv*A / W = 1.4e6 / 0.7e6 = 2.0            -> STANDS.
- *     FIRST CRACK: -(n1+n2) + 3|n1-n2| = -lambda*W + 3*(2*lambda*W) = 5*lambda*W <= f_t*Conv*A =>
- *         lambda*_firstcrack = f_t*Conv*A / (5*W) = 1.4e6 / 3.5e6 = 0.4     -> FALLS.
+ *     PLASTIC:     n1 >= -f_t*Conv*A/2 => lambda*_plastic = f_t*Conv*A/W = 1.4e6/0.7e6 = 2.0 -> stands
+ *     FIRST CRACK: 5*lambda*W <= f_t*Conv*A => lambda*_firstcrack = f_t*Conv*A/(5*W) = 0.4    -> falls
  *
- * The two models straddle 1.0 by design (plastic 2.0, first crack 0.4). Both problems below carry
- * bFirstCrackRows = true — exactly the production below-cap pose.
+ * The two models straddle 1.0 by design. Both problems below carry bFirstCrackRows = true — the
+ * production below-cap pose.
  *
- *   ARM 2D (control): with first crack the 2D LP FALLS at lambda* = 0.4. This is the behaviour 3D
- *       must not be more permissive than.
- *   ARM 3D (the RED): the SAME joint posed Dim3D. Today AssembleThreeD ignores the flag, judges it
- *       plastic and STANDS at lambda* = 2.0 — 5x more permissive than 2D, standing where 2D falls.
- *       RED. GREEN once AssembleThreeD writes the first-crack rows (over each joint's four corners,
- *       reducing to the 2D two-point rows in this uniaxial case), giving 3D lambda* = 0.4 = Falls.
+ *   ARM 2D (control): with first crack the 2D LP falls at lambda* = 0.4 — the behaviour 3D must
+ *       not be more permissive than.
+ *   ARM 3D (the RED): the same joint posed Dim3D. Today AssembleThreeD ignores the flag, judges it
+ *       plastic and stands at lambda* = 2.0 — 5x more permissive, standing where 2D falls. Green
+ *       once AssembleThreeD writes the first-crack rows (over each joint's four corners, reducing
+ *       to the 2D two-point rows in this uniaxial case), giving 3D lambda* = 0.4 = Falls.
  *
- * ASSERTS ON THE LP OUTCOME (Falls / lambda* matches 2D), never displacement. UNITS derived here,
- * NOT imported. NEEDS A TICKING WORLD: NO. NAMED NAMESPACE for the unity build.
+ * Asserts on the LP outcome (Falls / lambda* matches 2D), never displacement. Units derived here,
+ * not imported. Needs no ticking world. Named namespace for the unity build.
  */
 namespace ThreeDFirstCrackSupport
 {
@@ -170,10 +165,9 @@ bool FThreeDFirstCrackNoMorePermissiveTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("3D: the oracle answers"), R3D.bAnswered);
 
 	/*
-	 * THE RED ASSERTION, two ways. (1) The 3D verdict must be Falls, exactly as the 2D verdict is —
-	 * a bonded joint that first-cracks-and-fails in 2D cannot stand in 3D. (2) The 3D lambda* must
-	 * be no more permissive than the 2D one; in this uniaxial fixture they must in fact match. Today
-	 * 3D ignores the flag and stands at ~2.0, so both fail.
+	 * Two checks: the 3D verdict must be Falls, exactly as 2D is, and the 3D lambda* must be no
+	 * more permissive than 2D's — in this uniaxial fixture they must match exactly. Today 3D
+	 * ignores the flag and stands at ~2.0, so both fail.
 	 */
 	TestEqual(
 		*FString::Printf(

@@ -16,10 +16,10 @@
 #include "World/BrickActor.h"
 
 /*
- * File-local names are spelled for what they are and where they live, deliberately.
- * An anonymous namespace is private to a TRANSLATION UNIT rather than to a file, and a
- * unity build merges many files into one — so two file-local names that collide are a
- * hard compile error between files that never refer to each other. See CURRENT_STATE.md.
+ * File-local names are spelled for what they are and where they live, deliberately: an
+ * anonymous namespace is private to a translation unit, not a file, and a unity build
+ * merges many files into one, so colliding file-local names become a hard compile error
+ * between files that never refer to each other. See CURRENT_STATE.md.
  */
 namespace
 {
@@ -27,11 +27,10 @@ namespace
 	 * The base-colour asset a piece's structural material paints element 0 with, or null for a
 	 * material the shed does not use.
 	 *
-	 * A PLAIN TABLE KEYED ON POINTER IDENTITY, not on a name string or a per-material class. A
-	 * piece's Material is a non-owning pointer into the program-lifetime profile library, so the
-	 * ClayBrick and Timber rows compare against their own addresses — the same identity the layout
-	 * itself carries. Anything else (a third material, or a piece nobody said what it is made of)
-	 * returns null, and the caller leaves the mesh's grey default in place.
+	 * A plain table keyed on pointer identity, not a name string: a piece's Material is a
+	 * non-owning pointer into the program-lifetime profile library, so ClayBrick and Timber
+	 * compare against their own addresses. Anything else returns null, leaving the mesh's
+	 * grey default.
 	 */
 	const TCHAR* ShedBaseMaterialPathFor(const DestructionProfiles::FMaterialProfile* Material)
 	{
@@ -68,10 +67,9 @@ namespace
 		UStaticMesh* BrickMesh = Mesh->GetStaticMesh();
 
 		/*
-		 * NO MESH, NO BRICK. The mesh is a hard content reference resolved on the CDO, so
-		 * deleting the asset leaves it null rather than failing to compile — and the
-		 * sizing below divides by its bounds, which would make an infinite scale out of a
-		 * missing asset and put a brick of no known size somewhere plausible.
+		 * No mesh, no brick: the mesh is a hard content reference resolved on the CDO, so a
+		 * deleted asset leaves it null rather than failing to compile, and the sizing below
+		 * divides by its bounds — an infinite scale otherwise.
 		 */
 		if (BrickMesh == nullptr)
 		{
@@ -82,24 +80,17 @@ namespace
 		Brick->SetPieceRef(Ref);
 
 		/*
-		 * MASS AT SPAWN, NOT AT RELEASE, and it is the mass the producer already derived
-		 * for this very piece rather than a second derivation from the same box.
-		 * DestructionLayout::PieceMassKg is the one place geometry becomes a mass; reading
-		 * the piece's own figure back out means there is not even a second CALL to it here
-		 * to disagree with the graph the solver is using.
-		 *
-		 * Setting it before FinishSpawning is what gets it into the body at creation. Doing
-		 * it at release instead would leave every intact brick carrying whatever mass the
-		 * mesh's volume implies, which is what the solver is emphatically not using.
+		 * Mass at spawn, not release, and it is the mass the producer already derived for this
+		 * piece rather than a second derivation from the same box. Setting it before
+		 * FinishSpawning gets it into the body at creation; at release instead, every intact
+		 * brick would carry whatever mass the mesh's volume implies — not what the solver uses.
 		 */
 		Mesh->SetMassOverrideInKg(NAME_None, static_cast<float>(MassKg), true);
 
 		/*
-		 * BASE COLOUR BY STRUCTURAL MATERIAL, ON ELEMENT 0. A piece made of a material the shed
-		 * uses wears that material's colour so a brick wall reads brick-red and a timber roof reads
-		 * timber-tan; a material the table does not map keeps the mesh's grey default. This is the
-		 * look UNDERNEATH the highlight overlay, never the overlay itself, so a brick keeps its
-		 * colour when the cursor is nowhere near it.
+		 * Base colour by structural material, on element 0 — brick reads brick-red, timber
+		 * reads timber-tan. This is the look underneath the highlight overlay, never the
+		 * overlay itself, so a brick keeps its colour when the cursor is nowhere near it.
 		 */
 		if (const TCHAR* const BasePath = ShedBaseMaterialPathFor(Material))
 		{
@@ -115,22 +106,20 @@ namespace
 	}
 
 	/**
-	 * The snap DECISION for a piece placed into a binding, with no mutation and no world.
+	 * The snap decision for a piece placed into a binding, with no mutation and no world.
 	 *
-	 * THE CONTAINER-INDEPENDENT MIDDLE PlaceBuildPiece AND PreviewBuildPiece SHARE. One gathers
-	 * the live pieces to spawn a real brick, the other to draw a ghost — but the decision between
-	 * is identical, so it lives here once. NearbyBoxes is the whole live piece array and
-	 * NearbyMaterials is parallel to it, so a candidate's OtherPieceIndex is exactly the existing
-	 * piece's handle. Both are read through const routes off the binding, which is why this takes
-	 * a const reference: it decides, it never places.
+	 * The container-independent middle PlaceBuildPiece and PreviewBuildPiece share: one
+	 * gathers the live pieces to spawn a real brick, the other to draw a ghost, but the
+	 * decision is identical. NearbyBoxes and NearbyMaterials run parallel to the live piece
+	 * array, so a candidate's OtherPieceIndex is exactly the existing piece's handle. Takes a
+	 * const reference: it decides, it never places.
 	 */
 	struct FBuildPlacement
 	{
 		/**
-		 * WHETHER A CANDIDATE WAS FOUND AT ALL, and the field every other one here is conditional
-		 * on. A default-constructed placement is a massless piece at the world origin, which
-		 * FStructure::AddPiece would accept — a zero mass is meaningful — so "no decision" must be
-		 * said out loud rather than left to be read off the numbers.
+		 * Whether a candidate was found at all. A default-constructed placement is a massless
+		 * piece at the origin, which AddPiece would accept (zero mass is meaningful), so "no
+		 * decision" must be said out loud.
 		 */
 		bool bDecided = false;
 
@@ -176,15 +165,13 @@ namespace
 			Requested, Material, NearbyBoxes, NearbyMaterials, Settings);
 
 		/*
-		 * SNAP TAKES THE BEST-RANKED CANDIDATE, FREE TAKES THE FREE ONE — AND FINDS IT BY KIND.
-		 * SolveSnapCandidates always offers the Free fallback (the requested pose verbatim, bonded
-		 * to nothing), but it appends it LAST, after the distance ranking; selecting it by index
-		 * would be selecting whatever the ranking happened to leave in that slot the day another
-		 * candidate is added. Searching on Kind says what it means.
+		 * Snap takes the best-ranked candidate, Free takes the free one — found by kind, not
+		 * index, since SolveSnapCandidates appends the Free fallback last, after the distance
+		 * ranking.
 		 *
-		 * AN ABSENT FREE CANDIDATE IS A REFUSAL, NEVER A FALL BACK TO THE NEAREST SNAP. Free is the
-		 * player naming this exact pose; answering with a different one would move a piece they are
-		 * watching land. Leaving bDecided false fails both doors closed instead.
+		 * An absent Free candidate is a refusal, never a fall back to the nearest snap: Free
+		 * is the player naming this exact pose, and answering with a different one would move
+		 * a piece they are watching land.
 		 */
 		const BuildMode::FSnapCandidate* Chosen = nullptr;
 
@@ -207,24 +194,20 @@ namespace
 		}
 
 		/*
-		 * A NON-FINITE CHOSEN CENTRE IS REFUSED HERE, BEFORE EITHER DOOR ACTS ON IT — and it is the
-		 * CHOSEN pose that is tested, not the requested one, because Snap may substitute a finite
-		 * candidate for a wild cursor and Free honours the request verbatim.
+		 * A non-finite chosen centre is refused here, before either door acts on it — the
+		 * chosen pose is tested, not the requested one, since Snap may substitute a finite
+		 * candidate for a wild cursor.
 		 *
-		 * THE GHOST: a pose no click can commit must not be previewed. AddPiece refuses a non-finite
-		 * centre of mass, so a preview drawn at one is showing the player a brick that cannot exist;
-		 * leaving bDecided false makes PreviewBuildPiece answer a default FBuildPreview (bValid and
-		 * bGrounded both false) instead.
+		 * The ghost: a pose no click can commit must not be previewed, so leaving bDecided
+		 * false makes PreviewBuildPiece answer a default FBuildPreview instead.
 		 *
-		 * THE COMMIT: an actor must never be spawned at a transform the engine ensures on. Without
-		 * this guard PlaceBuildPiece spawned the brick first and only then let AddPiece refuse the
-		 * pose, so the refusal path ran a NaN transform through SetWorldTransform and the body's
-		 * physics state on its way to destroying the actor again — three handled ensures for a piece
-		 * that was never going to exist.
+		 * The commit: an actor must never be spawned at a transform the engine ensures on.
+		 * Without this guard, PlaceBuildPiece spawned the brick first and only then let
+		 * AddPiece refuse the pose, running a NaN transform through SetWorldTransform on its
+		 * way to destroying the actor again.
 		 *
-		 * BOTH TESTS, AND DELIBERATELY NOT ONE. FVector::ContainsNaN also reports the infinities
-		 * today, but the name only promises NaN; the explicit IsFinite sweep is what actually pins
-		 * the +infinity pose, so neither half is relied on alone.
+		 * Both tests, deliberately not one: FVector::ContainsNaN also catches infinities
+		 * today, but the name only promises NaN, so the explicit IsFinite sweep pins it too.
 		 */
 		if (Chosen->CentreCm.ContainsNaN()
 			|| !FMath::IsFinite(Chosen->CentreCm.X)
@@ -242,15 +225,13 @@ namespace
 		Decision.Joints = Chosen->Joints;
 
 		/*
-		 * THE OVERRIDE REPLACES **EVERY** JOINT'S PROFILE, AND IT IS A SUBSTITUTION RATHER THAN A
-		 * DIFFERENT PLACEMENT. The pose, the pieces jointed, the normals and the areas are the ones
-		 * the solver already chose — only the strength moves. A timber plate laid across a two-brick
-		 * course forms TWO bearings from one placement, so writing the override onto Joints[0] alone
-		 * would leave the far end of a plate the player screwed down resting on friction.
+		 * The override replaces every joint's profile — a substitution, not a different
+		 * placement: only the strength moves. A timber plate across a two-brick course forms
+		 * two bearings from one placement, so writing the override onto Joints[0] alone would
+		 * leave the far end resting on friction.
 		 *
-		 * AND IT TOUCHES ONLY THE JOINTS THIS PLACEMENT FORMS. The ones already in the structure are
-		 * never re-priced — a chip that re-fastened a wall the player finished an hour ago would
-		 * change committed physics with nothing on screen saying it had happened.
+		 * It touches only the joints this placement forms; joints already in the structure
+		 * are never re-priced, or a chip could silently change committed physics an hour later.
 		 */
 		if (JointOverride != nullptr)
 		{
@@ -261,16 +242,13 @@ namespace
 		}
 
 		/*
-		 * AND WHAT THE GHOST CARD MAY NAME: the override when there is one, otherwise the SHIPPED ROW
-		 * the first joint's inferred profile matches — never a pointer into Decision.Joints, which
-		 * dies with the caller's copy of this struct.
+		 * What the ghost card may name: the override when given, otherwise the shipped row
+		 * the first joint's inferred profile matches — never a pointer into Decision.Joints,
+		 * which dies with the caller's copy.
 		 *
-		 * BOTH ARMS ARE GUARDED ON THERE BEING A JOINT AT ALL, AND THE OVERRIDE ARM IS THE ONE THAT
-		 * BITES. The reading is what the joints WOULD carry, so where the placement forms none there
-		 * is nothing for it to be the answer to: the first brick of every build and every Free
-		 * placement over empty ground is jointless, and a card naming the fastener the player chose
-		 * would promise them the piece is screwed to SOMETHING over exactly the pose that is one Run
-		 * away from lying on the ground. "Bonded to nothing" is a fact about the pose, not a missing
+		 * Both arms are guarded on there being a joint at all: the first brick of every build
+		 * is jointless, and a card naming a fastener would falsely promise the piece is
+		 * screwed to something. "Bonded to nothing" is a fact about the pose, not a missing
 		 * reading, and the card has to be able to say it.
 		 */
 		if (JointOverride != nullptr && Decision.Joints.Num() > 0)
@@ -287,22 +265,19 @@ namespace
 		}
 
 		/*
-		 * GROUNDED IS DERIVED FROM THE POSE THE PIECE ACTUALLY TOOK, and from nothing a caller said
-		 * — the 2026-09-15 DESIGN §8 ruling. Candidates rank by raw distance, so a cursor on the
-		 * grounded course beside a standing brick is pulled UP onto that brick's bed; a piece that
-		 * landed 7.5 cm in the air carrying a grounded flag terminates load at the earth, which
-		 * makes it a brick that can never fall and a lie every piece stacked on it inherits.
+		 * Grounded is derived from the pose the piece actually took, never from a caller's
+		 * own answer (2026-09-15 DESIGN §8): candidates rank by raw distance, so a cursor on
+		 * the grounded course beside a standing brick is pulled up onto that brick's bed, and
+		 * a piece flagged grounded in mid-air would be a brick that can never fall — a lie
+		 * every piece stacked on it inherits.
 		 *
-		 * ONE JOINT OF TOLERANCE, AND THE EDGE IS INCLUSIVE: a brick laid on the earth beds into
-		 * its own mortar, and both conventions this project has laid bricks under must read
-		 * grounded — the rests-on-the-ground centre (bottom face exactly 0) and every pre-ruling
-		 * harness's centre-at-0 seed (bottom face below the plane).
+		 * One joint of tolerance, edge inclusive, so both conventions this project lays
+		 * bricks under read grounded.
 		 *
-		 * THIS IS THE ONE COMPARISON DELIBERATELY NOT IN THE HOUSE !(x > y) FORM. Every comparison
-		 * against NaN is false, so !(Bottom > Joint) would answer TRUE for a non-finite pose — a
-		 * piece nobody can place, credited with the earth and unable to fall, which is fail-OPEN in
-		 * exactly the expensive direction. Bottom <= Joint answers false for a NaN, so garbage
-		 * arithmetic lands a piece that is NOT grounded and the solver is free to drop it.
+		 * The one comparison deliberately not in the house `!(x > y)` form: every comparison
+		 * against NaN is false, so `!(Bottom > Joint)` would answer true for a non-finite pose
+		 * — fail-open in the expensive direction. `Bottom <= Joint` answers false for a NaN
+		 * instead, so garbage arithmetic lands a piece that is not grounded.
 		 */
 		const double BottomFaceZCm = Chosen->CentreCm.Z - ExtentCm.Z;
 		Decision.bGrounded = BottomFaceZCm <= Settings.JointThicknessCm;
@@ -313,22 +288,16 @@ namespace
 	/**
 	 * Hand every piece the last solve stopped holding up to physics.
 	 *
-	 * THE CALLER MUST ALREADY HAVE SOLVED, AND THE NAME SAYS SO. FStructureBinding::ApplyResults
-	 * refuses to release any piece the last solve has no answer for, because
-	 * EPieceSupport::Falling is also what an ABSENT answer reads as — so a wall nobody has solved
-	 * would otherwise drop entire, foundation included, with the one-way latch making it
-	 * permanent. Both callers discharge that obligation before they arrive: SolveAndPush settles on
-	 * the line above, and RunPieceAction ends by settling the wall — a cascade whose last act is a
-	 * complete solve that broke nothing, which is exactly the settled answer this wants.
+	 * The caller must already have solved: ApplyResults refuses to release a piece the last
+	 * solve has no answer for, since EPieceSupport::Falling is also what an absent answer
+	 * reads as — an unsolved wall would otherwise drop entire, permanently, via the one-way
+	 * latch. Both callers discharge that obligation before they arrive.
 	 *
-	 * THE WALK IS OVER EVERY RELEASED PIECE, NOT OVER THIS CALL'S. ApplyResults answers how many
-	 * it released, not which, and IsReleased is the record — so bricks released by an earlier push
-	 * are revisited here. That is correct rather than merely tolerable because ABrickActor::Release
-	 * is idempotent: the body's own simulating state is the record it derives from, so a second
-	 * call on a falling brick returns early instead of recreating the body and leaving it hanging
-	 * still in mid-air.
+	 * The walk is over every released piece, not this call's: ApplyResults answers how many
+	 * it released, not which, so bricks released by an earlier push are revisited here —
+	 * harmless because ABrickActor::Release is idempotent and returns early on a falling brick.
 	 *
-	 * @return how many pieces THIS call released.
+	 * @return how many pieces this call released.
 	 */
 	int32 PushSolvedResultsToWorld(FStructureBinding& Binding)
 	{
@@ -341,11 +310,7 @@ namespace
 				continue;
 			}
 
-			/*
-			 * GetActor already answers null for a removed piece and for an actor destroyed by
-			 * any route at all, so the Cast is the only check needed and there is no second
-			 * lifetime test here to disagree with the binding's.
-			 */
+			/* GetActor already answers null for a removed piece, so the Cast is the only check needed. */
 			if (ABrickActor* Brick = Cast<ABrickActor>(Binding.GetActor(PieceIndex)))
 			{
 				Brick->Release();
@@ -361,11 +326,11 @@ int32 UDestructionStructureSubsystem::BuildRunningBond(const DestructionLayout::
 	DestructionLayout::FBrickLayout Layout;
 
 	/*
-	 * THE PRODUCER LAYS THE WALL, AND NOTHING HERE RE-DERIVES ANY OF IT. RunningBond emits
-	 * the boxes and the solved-ready graph together, indexed by the same handles; this
-	 * spawns one actor per box and hands the lot to AdoptLayout. A second opinion about
-	 * where a brick goes or which pairs touch would be a second producer, and the whole
-	 * point of the split in Core/Layout is that there is one.
+	 * The producer lays the wall, and nothing here re-derives any of it: RunningBond emits
+	 * the boxes and the solved-ready graph together, indexed by the same handles, and this
+	 * spawns one actor per box and hands the lot to AdoptLayout. A second opinion about where
+	 * a brick goes or which pairs touch would be a second producer, and the whole point of
+	 * the split in Core/Layout is that there is one.
 	 */
 	if (!DestructionLayout::RunningBond(Spec, Layout))
 	{
@@ -381,20 +346,18 @@ int32 UDestructionStructureSubsystem::BuildLayout(const DestructionLayout::FBric
 	const int32 PieceCount = Layout.Structure.NumPieces();
 
 	/*
-	 * THE LAYOUT IS VALIDATED BEFORE A SINGLE BRICK IS SPAWNED, and refused whole if its
-	 * arrays are out of step. Two failures live here and one guard closes both.
+	 * The layout is validated before a single brick is spawned, and refused whole if its
+	 * arrays are out of step.
 	 *
-	 * AdoptLayout below already refuses a layout whose Boxes array is not one-per-piece — but
-	 * by then the spawn loop has run, so a TOO-MANY-boxes layout has already littered the world
-	 * with actors that name no structure, and returning INDEX_NONE never destroys them. A
-	 * TOO-FEW-boxes layout is worse: the spawn loop indexes Layout.Boxes[PieceIndex] across the
-	 * whole 0..PieceCount range, so a short array is read past its end and TArray's range check
-	 * aborts the process before AdoptLayout can refuse anything at all. Checking `!=` here — both
-	 * directions — turns each of those into a clean refusal that spawns nothing.
+	 * AdoptLayout below already refuses a Boxes array that is not one-per-piece — but by
+	 * then the spawn loop has run, so too many boxes has already littered the world with
+	 * actors naming no structure. Too few is worse: the spawn loop indexes
+	 * Layout.Boxes[PieceIndex] across the whole range, so a short array aborts the process
+	 * before AdoptLayout can refuse anything. Checking `!=` here turns both into a clean
+	 * refusal that spawns nothing.
 	 *
-	 * An empty layout is refused as well, matching AdoptLayout's own door: a build with no
-	 * pieces is a caller mistake, and spending an id on a structure nothing will ever name is
-	 * the same fail-open the box check is guarding against.
+	 * An empty layout is refused too, matching AdoptLayout's own door: spending an id on a
+	 * structure nothing will ever name is the same fail-open.
 	 */
 	if (PieceCount < 1 || Layout.Boxes.Num() != PieceCount)
 	{
@@ -408,11 +371,7 @@ int32 UDestructionStructureSubsystem::BuildLayout(const DestructionLayout::FBric
 
 	for (int32 PieceIndex = 0; PieceIndex < PieceCount; ++PieceIndex)
 	{
-		/*
-		 * EACH BRICK IS TOLD ITS OWN IDENTITY AT SPAWN, which is why there is no
-		 * actor-to-handle map anywhere in this subsystem: we spawn the bricks, so the
-		 * answer can travel on them. See FPieceRef.
-		 */
+		/* Each brick is told its own identity at spawn, so no actor-to-handle map is needed. */
 		FPieceRef Ref;
 		Ref.StructureId = StructureId;
 		Ref.PieceIndex = PieceIndex;
@@ -429,21 +388,16 @@ int32 UDestructionStructureSubsystem::BuildLayout(const DestructionLayout::FBric
 	Binding->StructureId = StructureId;
 
 	/*
-	 * ADOPTION IS THE ONLY ROUTE IN, and it refuses rather than adopting anything already
-	 * out of step — a layout whose arrays disagree, or an actor list that is not one per
-	 * piece. Writing the replay loop here instead would put the two-arrays-in-lockstep code
-	 * at a call site where nothing checks it, which is exactly what FStructureBinding
-	 * exists to outlaw.
+	 * Adoption is the only route in, and it refuses rather than adopting anything out of
+	 * step. Writing the replay loop here instead would put the two-arrays-in-lockstep code
+	 * at a call site nothing checks — what FStructureBinding exists to outlaw.
 	 */
 	if (!AdoptLayout(Layout, Actors, *Binding))
 	{
 		return INDEX_NONE;
 	}
 
-	/*
-	 * THE ID IS ONLY SPENT ONCE THE STRUCTURE EXISTS, so a refused build leaves the
-	 * numbering untouched and no id is ever handed to a brick that names nothing.
-	 */
+	/* The id is only spent once the structure exists, so a refused build leaves the numbering untouched. */
 	NextStructureId = StructureId + 1;
 	Structures.Add(StructureId, MoveTemp(Binding));
 
@@ -453,10 +407,9 @@ int32 UDestructionStructureSubsystem::BuildLayout(const DestructionLayout::FBric
 int32 UDestructionStructureSubsystem::BeginBuild()
 {
 	/*
-	 * OPEN AN EMPTY LIVE STRUCTURE. BuildLayout refuses an empty layout, so this is the only
-	 * door to a structure that starts with nothing and grows one placed piece at a time. It
-	 * mirrors BuildLayout's id discipline — an id is spent only once the structure exists —
-	 * but adopts no layout: the binding is created empty and PlaceBuildPiece fills it.
+	 * Open an empty live structure: the only door to one that starts with nothing and grows
+	 * one placed piece at a time. Mirrors BuildLayout's id discipline but adopts no layout —
+	 * the binding is created empty and PlaceBuildPiece fills it.
 	 */
 	const int32 StructureId = NextStructureId;
 
@@ -464,18 +417,15 @@ int32 UDestructionStructureSubsystem::BeginBuild()
 	Binding->StructureId = StructureId;
 
 	/*
-	 * A PLAYER'S BUILD IS THREE-DIMENSIONAL, STATED AT THE DOOR AND NEVER INFERRED. A build grown
-	 * from clicks has no layout to carry the flag across the way AdoptLayout does, and the player
-	 * can rotate a piece at any moment: a rotated snap forms Y-normal head joints, which the 2D
-	 * X-Z oracle refuses for the WHOLE problem, silently demoting the break authority for the
-	 * entire build from the LP to the router.
+	 * A player's build is three-dimensional, stated at the door and never inferred: the
+	 * player can rotate a piece at any moment, and a rotated snap forms Y-normal head joints
+	 * the 2D X-Z oracle refuses for the whole problem, silently demoting the break authority
+	 * from the LP to the router.
 	 *
-	 * It is UNCONDITIONAL because the alternative — flagging on the first rotation, or on the
-	 * first Y-normal joint that forms — is exactly the inference FStructure::SetThreeDimensional's
-	 * own contract rules out (the E3 ruling: a 2D structure which has accidentally acquired an
-	 * out-of-plane joint must stay loudly refused, so the intent has to be stated), and it would
-	 * put a cliff in the middle of a build, where the brick that lands moves the authority
-	 * deciding whether the wall stands.
+	 * Unconditional, because flagging on the first rotation is exactly the inference
+	 * FStructure::SetThreeDimensional's contract rules out (the E3 ruling), and would put a
+	 * cliff in the middle of a build where the brick that lands moves the authority deciding
+	 * whether the wall stands.
 	 */
 	Binding->SetThreeDimensional(true);
 
@@ -503,11 +453,7 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 		return FPieceRef{};
 	}
 
-	/*
-	 * THE SNAP DECISION IS THE SHARED HELPER; only the world-add lives here. ComputeBuildPlacement
-	 * gathers the live pieces and solves exactly as PreviewBuildPiece does, so a placement lands
-	 * where its own preview said it would.
-	 */
+	/* The snap decision is the shared helper; only the world-add lives here, so a placement lands where its own preview said it would. */
 	const FBuildPlacement Decision =
 		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material, Placement, JointOverride);
 
@@ -519,10 +465,7 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 
 	const FPieceBox Box{ Decision.CentreCm, ExtentCm };
 
-	/*
-	 * Handles are sequential, so the actor can be told its intended ref before AddPiece runs —
-	 * exactly how BuildLayout spawns each brick with the index it is about to take.
-	 */
+	/* Handles are sequential, so the actor can be told its ref before AddPiece runs, as BuildLayout does. */
 	FPieceRef Ref;
 	Ref.StructureId = StructureId;
 	Ref.PieceIndex = Binding->NumPieces();
@@ -531,11 +474,7 @@ FPieceRef UDestructionStructureSubsystem::PlaceBuildPiece(
 
 	const int32 Handle = Binding->AddPiece(Decision.MassKg, Decision.bGrounded, Actor, Box, &Material);
 
-	/*
-	 * FAILS CLOSED. AddPiece refuses a degenerate box (NaN mass) with INDEX_NONE; on refusal the
-	 * just-spawned actor names a piece that will never exist, so it is destroyed and a default ref
-	 * returned rather than leaving an orphan in the world.
-	 */
+	/* Fails closed: AddPiece refuses a degenerate box with INDEX_NONE, so the just-spawned actor is destroyed rather than left an orphan. */
 	if (Handle == INDEX_NONE)
 	{
 		if (Actor != nullptr)
@@ -581,11 +520,7 @@ FBuildPreview UDestructionStructureSubsystem::PreviewBuildPiece(
 		return FBuildPreview{};
 	}
 
-	/*
-	 * THE SAME DECISION PlaceBuildPiece COMMITS, and nothing more — the shared helper reads the
-	 * binding const and mutates neither it nor the world, so this surfaces the snapped kind, pose
-	 * and joint count a following place at the same pose would produce.
-	 */
+	/* The same decision PlaceBuildPiece commits, and nothing more: reads the binding const, mutates neither it nor the world. */
 	const FBuildPlacement Decision =
 		ComputeBuildPlacement(*Binding, RequestedCentreCm, ExtentCm, Material, Placement, JointOverride);
 
@@ -622,38 +557,25 @@ int32 UDestructionStructureSubsystem::SolveAndPush(int32 StructureId)
 	}
 
 	/*
-	 * THE SOLVE COMES FIRST, AND THAT ORDER IS THE GUARD RATHER THAN A STYLE.
-	 * FStructureBinding::ApplyResults refuses to release any piece the last solve has no
-	 * answer for, because EPieceSupport::Falling is also what an ABSENT answer reads as —
-	 * so a freshly built wall with nothing solved would otherwise drop entire, foundation
-	 * included, with the one-way latch making it permanent. Solving is what discharges
-	 * that obligation, so the push may never be run without it.
+	 * The solve comes first, and that order is the guard: ApplyResults refuses to release a
+	 * piece the last solve has no answer for, so a freshly built wall with nothing solved
+	 * would otherwise drop entire via the one-way latch.
 	 *
-	 * AND IT SETTLES RATHER THAN MERELY SOLVING, WHICH IS THE ONE SEAM THAT HAD BEEN LEFT
-	 * OUT OF DESIGN.md §3'S OWN RULE. SolveLoads is documented as non-destructive and
-	 * breaks nothing however far a joint is over capacity, while both commit doors run
-	 * SolveAndBreak — so a wall that could not hold itself up the moment it was laid stood
-	 * there indefinitely and then shed on the first click ANYWHERE in it, and a player was
-	 * told they had done something they had not: a 40-course ragged wall reads 1.248 as
-	 * built, and deleting one brick thirty courses away from anything overloaded took the
-	 * collapse with it. A wall that cannot hold itself up should not stand waiting for a
-	 * click.
+	 * It settles rather than merely solving — the seam DESIGN.md §3's own rule had left out.
+	 * SolveLoads breaks nothing however far a joint is over capacity, while both commit doors
+	 * run SolveAndBreak, so a wall that could not hold itself up the moment it was laid stood
+	 * indefinitely and then shed on the first click anywhere in it, crediting the player with
+	 * a collapse they had not caused.
 	 *
-	 * (2026-09-02: the ragged-wall figure above is retired — the dry-joint edge rule now
-	 * stands a running-bond ragged wall entirely, because a corbel past its bed-face edge
-	 * leans on its in-course neighbour across the head joint and the LP finds equilibrium,
-	 * so eccentricity alone no longer sheds one. The seam's point is unchanged and now
-	 * rides a structure that genuinely cannot stand: a BARE dry cantilever arm, no
-	 * neighbour to lean on, sheds its whole arm on spawn — see
+	 * (2026-09-02: the ragged-wall figure once cited here is retired — the dry-joint edge
+	 * rule now stands a running-bond ragged wall entirely. The seam's point now rides a bare
+	 * dry cantilever arm instead, which sheds on spawn — see
 	 * `World.Push.AWallOverCapacityDoesNotWaitForAClick`.)
 	 *
-	 * THE PRICE IS PAID BY STRUCTURES THAT WERE NEVER STANDING. A wall UNDER capacity is untouched bit for bit, because the last thing
-	 * SolveAndBreak does is a complete solve that broke nothing: the game mode's own flush
-	 * scenario wall reads 0.00495 and settles in zero passes, so this costs it one solve
-	 * and nothing else.
-	 *
-	 * SETTLING IS THE ONLY THING THAT CHANGES; the answer this then pushes is a settled
-	 * one rather than a mid-cascade one, which is exactly what ApplyResults wants.
+	 * The price is paid only by structures that were never standing: a wall under capacity is
+	 * untouched bit for bit, since SolveAndBreak's last act is a complete solve that broke
+	 * nothing. Settling is the only thing that changes, and a settled answer is what
+	 * ApplyResults wants.
 	 */
 	Binding->SolveAndBreak();
 
@@ -666,11 +588,7 @@ FPieceHit UDestructionStructureSubsystem::TracePiece(const FVector& StartCm, con
 
 	FHitResult TraceResult;
 
-	/*
-	 * ECC_Visibility because that is the channel the player's own click will use. A channel
-	 * invented for this would be a second answer to "can you see it", and the first thing to
-	 * go wrong with two answers is a brick you can see and cannot click.
-	 */
+	/* ECC_Visibility because that is the channel the player's own click uses. */
 	const bool bHitSomething = GetWorld()->LineTraceSingleByChannel(
 		TraceResult,
 		StartCm,
@@ -683,10 +601,7 @@ FPieceHit UDestructionStructureSubsystem::TracePiece(const FVector& StartCm, con
 		return Hit;
 	}
 
-	/*
-	 * THE FLOOR, THE SKY AND EVERYTHING ELSE IN THE WORLD LEAVE HERE. Only a brick carries a
-	 * ref, and only a brick can name a piece.
-	 */
+	/* The floor, the sky and everything else in the world leave here: only a brick carries a ref. */
 	const ABrickActor* Brick = Cast<ABrickActor>(TraceResult.GetActor());
 
 	if (Brick == nullptr)
@@ -695,11 +610,10 @@ FPieceHit UDestructionStructureSubsystem::TracePiece(const FVector& StartCm, con
 	}
 
 	/*
-	 * THE REF THE BRICK CARRIES IS AN ACTOR'S CLAIM, NOT AN ANSWER, so it is resolved against
-	 * the structure it names before any of it is handed back. A brick whose structure this
-	 * subsystem no longer holds, or whose piece has since been removed, is a brick standing in
-	 * the world for something that is not there — and the whole hit fails closed, rather than
-	 * a ref coming back beside a handle of INDEX_NONE for a caller to remember to check.
+	 * The ref the brick carries is an actor's claim, not an answer, so it is resolved against
+	 * the structure it names before being handed back. A brick whose structure this
+	 * subsystem no longer holds fails the whole hit closed, rather than a handle of
+	 * INDEX_NONE a caller must remember to check.
 	 */
 	const FStructureBinding* Binding = Find(Brick->GetPieceRef().StructureId);
 
@@ -724,9 +638,9 @@ FPieceHit UDestructionStructureSubsystem::TracePiece(const FVector& StartCm, con
 bool UDestructionStructureSubsystem::CommitPieceAction(const FPieceRef& Ref, const FPieceAction& Action)
 {
 	/*
-	 * AN ID THAT NAMES NOTHING COMMITS NOTHING, checked here rather than by sweeping every
-	 * binding — the same shape as SolveAndPush, and it is what a click on the floor arrives
-	 * as: a wholly default ref.
+	 * An id that names nothing commits nothing, checked here rather than by sweeping every
+	 * binding — the same shape as SolveAndPush, and what a click on the floor arrives as: a
+	 * wholly default ref.
 	 */
 	FStructureBinding* Binding = Find(Ref.StructureId);
 
@@ -738,13 +652,10 @@ bool UDestructionStructureSubsystem::CommitPieceAction(const FPieceRef& Ref, con
 	const FPieceActionResult Result = RunPieceAction(*Binding, Ref, Action);
 
 	/*
-	 * AND THIS IS WHERE ActorToDestroy IS FINALLY CONSUMED. RunPieceAction is world-free and
-	 * hands the orphan back rather than destroying it, so until something does this a deleted
-	 * brick's mesh stays standing in the hole it was deleted from — not merely untidy, but a
-	 * collider nothing in the model knows about.
-	 *
-	 * A commit that did nothing hands back nothing, so there is no second check here for
-	 * whether it ran; the result already answers that in the only way that matters.
+	 * Where ActorToDestroy is finally consumed: RunPieceAction is world-free and hands the
+	 * orphan back rather than destroying it, so without this a deleted brick's mesh stays
+	 * standing — a collider nothing in the model knows about. A commit that did nothing
+	 * hands back nothing, so no second check on whether it ran is needed.
 	 */
 	if (AActor* Orphan = Cast<AActor>(Result.ActorToDestroy))
 	{
@@ -752,21 +663,14 @@ bool UDestructionStructureSubsystem::CommitPieceAction(const FPieceRef& Ref, con
 	}
 
 	/*
-	 * AND THE ANSWER IS PUSHED ONTO THE WORLD, which is the line whose absence a player found
-	 * in ten seconds. RunPieceAction re-solves, so the graph knew perfectly well that the
-	 * bricks above a deleted one had lost the ground — and nothing ever told them. They hung
-	 * in the air, kinematic, held up by a piece that was no longer there.
+	 * The answer is pushed onto the world — the line whose absence a player found in ten
+	 * seconds: RunPieceAction re-solves, so bricks above a deleted one had lost the ground
+	 * and nothing told them, hanging kinematic in the air.
 	 *
-	 * THE PUSH HALF ONLY, NOT SolveAndPush, AND THAT IS NOW A CORRECTNESS RULE AS WELL AS A COST
-	 * ONE. RunPieceAction ends by settling the wall, so solving again here would be a second
-	 * complete solve per click for an answer already in hand — 30 ms of it at scenario scale,
-	 * which doubles the cost of a click for nothing. Cascading again would be worse than
-	 * wasteful: breaking is irreversible and stamps the pass numbers a collapse is replayed in,
-	 * so one click would stamp twice and the replay would show two collapses.
-	 *
-	 * Unconditional past this point, for the same reason the destroy above needs no second
-	 * check on bRan: a commit that ran nothing settled an unchanged wall, so ApplyResults finds
-	 * nothing new to release and answers zero.
+	 * The push half only, not SolveAndPush, now a correctness rule as well as a cost one:
+	 * RunPieceAction already settles the wall, so solving again doubles the cost of a click,
+	 * and cascading again would stamp a second collapse for one click. Unconditional, since
+	 * a commit that ran nothing settled an unchanged wall and ApplyResults answers zero.
 	 */
 	PushSolvedResultsToWorld(*Binding);
 
@@ -778,11 +682,9 @@ int32 UDestructionStructureSubsystem::CommitPieceActionForAll(
 	const FPieceAction& Action)
 {
 	/*
-	 * A SELECTION IS BUILT BY CLICKING ONE WALL, so the structure is the one its refs name
-	 * and the first of them is as good as any. An empty selection and an id that names
-	 * nothing commit nothing, the same shape as the single-piece commit and as SolveAndPush;
-	 * refs naming anything else are then refused piece by piece by the re-resolve inside
-	 * RunPieceActions, which needs no help from here.
+	 * A selection is built by clicking one wall, so the first ref's structure is as good as
+	 * any. An empty selection commits nothing; refs naming anything else are refused piece
+	 * by piece by the re-resolve inside RunPieceActions.
 	 */
 	FStructureBinding* Binding = Refs.Num() > 0 ? Find(Refs[0].StructureId) : nullptr;
 
@@ -793,12 +695,7 @@ int32 UDestructionStructureSubsystem::CommitPieceActionForAll(
 
 	const FPieceBatchActionResult Result = RunPieceActions(*Binding, Refs, Action);
 
-	/*
-	 * AND THIS IS WHERE THE ORPHANS ARE FINALLY CONSUMED — one per piece that ran, because
-	 * RunPieceActions is world-free and hands them back rather than destroying them. Until
-	 * something does this, every deleted brick's mesh stays standing in the hole it was
-	 * deleted from: not merely untidy, but a collider nothing in the model knows about.
-	 */
+	/* Where the orphans are finally consumed, one per piece that ran, since RunPieceActions hands them back rather than destroying them. */
 	for (UObject* const Orphan : Result.ActorsToDestroy)
 	{
 		if (AActor* Actor = Cast<AActor>(Orphan))
@@ -808,19 +705,13 @@ int32 UDestructionStructureSubsystem::CommitPieceActionForAll(
 	}
 
 	/*
-	 * ONE PUSH, BEHIND THE ONE SETTLE, AND THAT ORDERING IS THE WHOLE POINT OF BATCHING HERE
-	 * RATHER THAN LOOPING CommitPieceAction. RunPieceActions settles exactly once and does it
-	 * after the LAST action ran, so this is pushing an answer that saw every removal AND every
-	 * joint that gave because of them; FStructureBinding::ApplyResults refuses to release a
-	 * piece the last solve has no answer for, so a push behind a mistimed settle leaves the
-	 * pieces the batch orphaned hanging in the air — the exact defect a player found in ten
-	 * seconds, reintroduced by a batch.
+	 * One push, behind the one settle — the whole point of batching rather than looping
+	 * CommitPieceAction. RunPieceActions settles exactly once, after the last action ran, so
+	 * this pushes an answer that saw every removal; a push behind a mistimed settle would
+	 * leave the batch's orphaned pieces hanging in the air.
 	 *
-	 * THE PUSH HALF ONLY, NOT SolveAndPush, for the reason the single-piece commit gives: the
-	 * answer is already in hand, a second full solve doubles the cost of a click for nothing,
-	 * and a second CASCADE would stamp a second collapse for one click. Unconditional, because
-	 * a batch that ran nothing settled an unchanged wall and ApplyResults then finds nothing
-	 * new to release.
+	 * The push half only, not SolveAndPush, for the reason the single-piece commit gives.
+	 * Unconditional, because a batch that ran nothing settled an unchanged wall.
 	 */
 	PushSolvedResultsToWorld(*Binding);
 
@@ -856,11 +747,7 @@ const FStructureBinding* UDestructionStructureSubsystem::Find(int32 StructureId)
 
 bool UDestructionStructureSubsystem::Destroy(int32 StructureId)
 {
-	/*
-	 * AN ID THAT NAMES NOTHING TEARS DOWN NOTHING, and answers false so a caller can tell a
-	 * teardown that happened from one that had nothing to do — the same fail-closed shape
-	 * Find, SolveAndPush and CommitPieceAction all take against an unknown id.
-	 */
+	/* An id that names nothing tears down nothing, answering false — the same fail-closed shape every other door takes. */
 	FStructureBinding* Binding = Find(StructureId);
 
 	if (Binding == nullptr)
@@ -869,12 +756,10 @@ bool UDestructionStructureSubsystem::Destroy(int32 StructureId)
 	}
 
 	/*
-	 * EVERY ACTOR THE BINDING STILL NAMES IS DESTROYED, and this is the same idiom the two
-	 * commit doors use to consume their orphans: Cast the actor, which the binding's weak
-	 * pointer already answers null for a piece removed or destroyed by any other route, and
-	 * Destroy only what survives the cast. Iterating the handle range rather than a live count
-	 * is correct because GetActor fails closed on a tombstoned handle, so a removed piece is
-	 * simply skipped by the null cast rather than needing a separate check.
+	 * Every actor the binding still names is destroyed, the same idiom the commit doors use:
+	 * Cast the actor and destroy only what survives it. Iterating the handle range is
+	 * correct because GetActor fails closed on a tombstoned handle, so a removed piece is
+	 * simply skipped.
 	 */
 	for (int32 PieceIndex = 0; PieceIndex < Binding->NumPieces(); ++PieceIndex)
 	{
@@ -885,10 +770,9 @@ bool UDestructionStructureSubsystem::Destroy(int32 StructureId)
 	}
 
 	/*
-	 * THE MAP ENTRY IS DROPPED LAST, so Find answers null and a ray along a former piece hits
-	 * nothing. NextStructureId is left where it is — ids are monotonic and never reused, so a
-	 * ref left over from a torn-down structure can never resolve against a later one that
-	 * happened to take the same slot.
+	 * The map entry is dropped last, so Find answers null. NextStructureId is left where it
+	 * is — ids are monotonic and never reused, so a stale ref can never resolve against a
+	 * later structure taking the same slot.
 	 */
 	Structures.Remove(StructureId);
 

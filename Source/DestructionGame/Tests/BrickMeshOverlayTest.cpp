@@ -26,14 +26,13 @@ namespace BrickMeshOverlayTestSupport
 	/**
 	 * One mesh the game draws a highlight OVERLAY on, and where it came from.
 	 *
-	 * THE MESH IS REACHED THROUGH THE PRODUCTION PATH — the actor's own CDO — NEVER BY RE-TYPING
-	 * AN ASSET PATH. The failure this test exists for is the placeholder cube being swapped for a
-	 * real brick mesh; a test that named SM_Cube by hand would go on checking an asset the brick
-	 * no longer uses and stay green through exactly that swap.
+	 * Reached through the production path — the actor's own CDO — never by re-typing an asset
+	 * path: a test that named SM_Cube by hand would go on checking an asset the brick no longer
+	 * uses and stay green through exactly the swap this test exists to catch.
 	 *
-	 * A TABLE WITH ONE ROW TODAY, because the rule is about a CAPABILITY an overlay-highlighted
-	 * mesh must have rather than about this brick: the day debris, a ghost preview or a second
-	 * highlighted actor lands, it is a row here, not a second test.
+	 * One row today, because the rule is about a CAPABILITY an overlay-highlighted mesh must
+	 * have rather than about this brick: debris, a ghost preview or a second highlighted actor
+	 * is a row here, not a second test.
 	 */
 	struct FOverlayHighlightedMeshRow
 	{
@@ -62,84 +61,50 @@ namespace BrickMeshOverlayTestSupport
 }
 
 /**
- * A MESH THE GAME HIGHLIGHTS WITH AN OVERLAY MUST BE A MESH THAT CAN DRAW ONE — SO IT MUST NOT
- * BE A NANITE MESH.
+ * A mesh the game highlights with an overlay must be a mesh that can draw one — so it must not
+ * be a Nanite mesh.
  *
- * WHAT WAS BROKEN WHEN THIS WAS WRITTEN, AND IS FIXED NOW — SO THIS IS A REGRESSION NET AND NOT A
- * RED STEP ANY MORE. ABrickActor::SetHighlighted called UMeshComponent::SetOverlayMaterial with the
- * right asset for the right state, the two overlay materials were well-formed and visibly
- * different, the controller decided the state correctly, and a player still saw NOTHING when they
- * pointed at or picked a brick. The brick's mesh is /Game/LevelPrototyping/Meshes/SM_Cube, and that
- * asset had Nanite enabled. The fix was one checkbox on that asset; both assertions below were red
- * against it and are green against the fixed one.
+ * WHAT WAS BROKEN, NOW FIXED — a regression net, not a red step. ABrickActor::SetHighlighted
+ * called SetOverlayMaterial correctly for both states and a player still saw NOTHING when
+ * pointing at or picking a brick: the brick's mesh, /Game/LevelPrototyping/Meshes/SM_Cube, had
+ * Nanite enabled. The fix was one checkbox; both assertions below were red against the unfixed
+ * asset.
  *
- * THE CAUSAL CHAIN, READ OUT OF THE 5.8 ENGINE SOURCE RATHER THAN FROM MEMORY — AND THE CLAIM THAT
- * MATTERS IS ABOUT NANITE, NOT ABOUT STATIC MESHES. OverlayMaterial is referenced in 52 files under
- * Engine/Source/Runtime, and FOUR scene proxies actually emit an overlay mesh batch — six sites,
- * found by grepping for the assignment `bOverlayMaterial = true` rather than for the material name:
- * FStaticMeshSceneProxy (Engine/Private/StaticMeshSceneProxy.cpp, the static path at line 1469 and
- * the dynamic one at 1611), FSkeletalMeshSceneProxy (SkeletalMeshSceneProxy.cpp:840),
- * FInstancedStaticMeshSceneProxy (InstancedStaticMesh.cpp:1158) and the hierarchical variant
- * (HierarchicalInstancedStaticMesh.cpp:1355 and 1487). What NO Nanite proxy does is emit one:
- * NaniteSceneProxy.h has zero Overlay references of any kind. UStaticMeshComponent::ShouldCreateNaniteProxy
- * decides which proxy a component gets, and a Nanite-enabled mesh gets a Nanite::FSceneProxy — which
- * has no overlay member at all. There is no gate, no fallback, no ensure and no log line: the
- * overlay is simply never drawn.
+ * THE CAUSAL CHAIN, read out of the 5.8 engine source. Four scene proxies emit an overlay mesh
+ * batch (found by grepping for the assignment `bOverlayMaterial = true`, not the material name):
+ * FStaticMeshSceneProxy (StaticMeshSceneProxy.cpp:1469 and 1611), FSkeletalMeshSceneProxy
+ * (SkeletalMeshSceneProxy.cpp:840), and the instanced and hierarchical-instanced static mesh
+ * proxies (InstancedStaticMesh.cpp:1158, HierarchicalInstancedStaticMesh.cpp:1355/1487) — so ISM
+ * bricks could still highlight if that optimisation ever lands. No Nanite proxy does:
+ * UStaticMeshComponent::ShouldCreateNaniteProxy gives a Nanite-enabled mesh a Nanite::FSceneProxy
+ * with no overlay member at all, no gate, no fallback and no log line — the overlay is simply
+ * never drawn.
  *
- * THE DIRECTION OF THAT CORRECTION IS THE POINT. An earlier version of this comment, and of the
- * failure message below, said StaticMeshSceneProxy.cpp was the ONLY file in Runtime that touches
- * OverlayMaterial. It is not, and the difference is not pedantry: the obvious next optimisation for
- * a 1,220-brick wall is instanced static meshes, and "only FStaticMeshSceneProxy draws overlays"
- * tells the engineer holding that idea that ISM cannot highlight. IT CAN — both ISM and HISM emit
- * overlay batches. The false sentence also sat inside the message somebody reads at the exact
- * moment they are debugging this, which is the worst possible place to be wrong.
+ * ONE LATENT HAZARD, recorded and not acted on: an ISM'd brick whose overlay material lacks
+ * bUsedWithInstancedStaticMeshes would be silently swapped for the default material — the same
+ * class of failure, needing a row here (or in Content.HighlightMaterialsPaintSomething) the day
+ * the first ISM lands.
  *
- * ONE LATENT HAZARD ON THAT ROUTE, RECORDED AND DELIBERATELY NOT ACTED ON. If bricks ever do become
- * instanced static meshes, an overlay material without bUsedWithInstancedStaticMeshes is silently
- * swapped for the default material — the same class of failure as this one, a highlight defeated by
- * a property of an asset nobody was looking at, and it would need a row here (or in
- * Content.HighlightMaterialsPaintSomething) the day the first ISM lands.
+ * WHY THIS TEST IS WORTH MORE THAN THE FIX. Highlighting was built, wired and covered by three
+ * other green tests (World.Brick.HighlightWearsAMaterial, World.Select,
+ * Content.HighlightMaterialsPaintSomething), and all three stayed green while a property of an
+ * UNRELATED asset defeated it entirely. ABrickActor's own constructor comment says a real brick
+ * mesh "changes nothing but the asset path" — a Nanite-enabled replacement re-breaks highlighting
+ * identically.
  *
- * WHY THIS TEST IS WORTH MORE THAN THE FIX. The fix is one checkbox on one asset. The failure mode
- * is that highlighting — built, wired and covered by World.Brick.HighlightWearsAMaterial,
- * World.Select and Content.HighlightMaterialsPaintSomething, every one of them green — was defeated
- * entirely by a property of an UNRELATED asset, silently. ABrickActor's own constructor comment anticipates the
- * placeholder being replaced and says a real brick mesh "changes nothing but the asset path"; a
- * Nanite-enabled replacement re-breaks highlighting identically, and every one of those tests
- * stays green.
+ * TWO ASSERTIONS: the capability and its cause. UStaticMeshComponent::ShouldCreateNaniteProxy
+ * (protected, reached via Nanite::FNaniteResourcesHelper::ShouldCreateNaniteProxy,
+ * NaniteResourcesHelper.h:172) is `!UseNanite(ShaderPlatform) || !Component.HasValidNaniteData()`.
+ * HasValidNaniteData() is public and runtime, so it is asserted — it measured TRUE against the
+ * unfixed asset even with FApp::CanEverRender() FALSE under -nullrhi, because Nanite pages build
+ * at load rather than at render. UseNanite(ShaderPlatform) is the machine's RHI and is
+ * deliberately left untouched. bEnabled is asserted too, as the fail-closed backstop: it is what
+ * travels in git, while the built pages are derived data a DDC-less machine could read false and
+ * go green over an asset still authored as Nanite. Neither assertion alone can pass the test.
  *
- * TWO ASSERTIONS, AND THEY ARE THE CAPABILITY AND ITS CAUSE RATHER THAN ONE CLAIM TWICE. The
- * honest statement is the capability — "this mesh cannot render the overlay the highlight depends
- * on" — and the engine's own answer to that is UStaticMeshComponent::ShouldCreateNaniteProxy,
- * which is PROTECTED and reachable only through the public template
- * Nanite::FNaniteResourcesHelper::ShouldCreateNaniteProxy. Its body
- * (Rendering/NaniteResourcesHelper.h, line 172) is
- * `if (!UseNanite(ShaderPlatform) || !Component.HasValidNaniteData())`, and those two conjuncts
- * are very different propositions to a test:
- *
- *   HasValidNaniteData() IS PUBLIC AND RUNTIME, so it is asserted. It reads the built Nanite pages
- *   off the mesh's render data, which is as close to "the renderer will take the Nanite path" as
- *   anything reachable without a GPU. It is genuinely a capability reading rather than a proxy for
- *   one. It measured TRUE against the unfixed asset — and true even though FApp::CanEverRender() is
- *   FALSE in this -nullrhi run, because the pages are built at load rather than at render, which is
- *   worth writing down because assuming the opposite is the obvious mistake. Against the fixed
- *   asset all three readings are false, and the AddInfo below prints them so a future failure can
- *   be told apart from a machine that simply never built the pages.
- *
- *   UseNanite(ShaderPlatform) IS THE MACHINE, so nothing here touches it. Reaching through it
- *   would make the test's answer depend on the RHI of whoever ran it.
- *
- * AND THE AUTHORING FLAG IS ASSERTED AS WELL, AS THE FAIL-CLOSED BACKSTOP, because the runtime
- * reading can only ever be the WEAKER of the two. bEnabled is what is serialised into the .uasset
- * and what travels in git; the built pages are derived data, and a machine whose DDC never built
- * them would read HasValidNaniteData() false and go green over an asset that is still authored as
- * a Nanite mesh and still breaks the moment anyone else opens it. Neither assertion can make this
- * test pass on its own, so the pair fails closed in the direction this project always chooses.
- *
- * SO THE MESSAGES CARRY THE CHAIN. "bEnabled should be false" tells a future reader nothing about
- * why it is a rule, and the rule is not "Nanite is bad" — it is that THESE meshes are highlighted
- * by an overlay and Nanite meshes do not draw overlays. Anyone who wants Nanite bricks has to
- * replace the highlight mechanism first, and the failure says so.
+ * The failure messages below carry this chain rather than just "bEnabled should be false": the
+ * rule is not "Nanite is bad", it is that these meshes highlight via overlay and Nanite meshes
+ * cannot draw one — Nanite bricks need a different highlight mechanism first.
  *
  * NEEDS A TICKING WORLD: no, and no world at all. A CDO exists from module load, so this reads an
  * asset pointer and a bool.
@@ -176,12 +141,11 @@ bool FBrickMeshOverlayTest::RunTest(const FString& Parameters)
 		const bool bHasNaniteData = Row.Component->HasValidNaniteData();
 
 		/*
-		 * ALL THREE READINGS TOGETHER, SO THE LOG SETTLES THE ARGUMENT RATHER THAN THIS COMMENT.
-		 * CanEverRender is reported because of what it does NOT imply: against the unfixed asset it
-		 * was false while HasValidNaniteData was true, so the Nanite pages exist in a headless run
-		 * and a reader cannot explain away either assertion by pointing at -nullrhi. All three read
-		 * false today, and printing them side by side is what tells a genuine regression apart from
-		 * a machine whose DDC never built the pages.
+		 * All three readings together, so the log settles the argument. CanEverRender is reported
+		 * because of what it does NOT imply: against the unfixed asset it was false while
+		 * HasValidNaniteData was true, so a reader cannot explain away either assertion by pointing
+		 * at -nullrhi. All three read false today; printing them side by side tells a genuine
+		 * regression apart from a machine whose DDC never built the pages.
 		 */
 		AddInfo(FString::Printf(
 			TEXT("%s: '%s' — NaniteSettings.bEnabled=%s; HasValidNaniteData()=%s; FApp::CanEverRender()=%s"),
@@ -191,11 +155,8 @@ bool FBrickMeshOverlayTest::RunTest(const FString& Parameters)
 			bHasNaniteData ? TEXT("TRUE") : TEXT("false"),
 			FApp::CanEverRender() ? TEXT("true") : TEXT("false")));
 
-		/*
-		 * THE CAPABILITY, STATED AS DIRECTLY AS ANYTHING REACHABLE WITHOUT A GPU. This is one of
-		 * the two conjuncts ShouldCreateNaniteProxy itself tests; the other is the machine's RHI
-		 * and is deliberately left alone.
-		 */
+		/* The capability, as directly as anything is reachable without a GPU — the other conjunct
+		 * ShouldCreateNaniteProxy tests is the machine's RHI, deliberately left alone. */
 		TestFalse(
 			*FString::Printf(
 				TEXT("%s: '%s' has BUILT NANITE DATA, so the renderer takes the Nanite path for it ")
@@ -206,10 +167,8 @@ bool FBrickMeshOverlayTest::RunTest(const FString& Parameters)
 				Row.Where, *DescribeMesh(Row.Mesh)),
 			bHasNaniteData);
 
-		/*
-		 * AND THE CAUSE, WHICH IS THE HALF THAT TRAVELS IN GIT. Derived data can be missing on a
-		 * machine that never built it; this bool is in the .uasset.
-		 */
+		/* And the cause, which is the half that travels in git: derived data can be missing on a
+		 * machine that never built it, but this bool is in the .uasset. */
 		TestFalse(
 			*FString::Printf(
 				TEXT("%s: '%s' has Nanite ENABLED, so it cannot draw the highlight overlay. ")

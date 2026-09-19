@@ -21,64 +21,49 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE BUILD-MODE DEMO BUILDING, PHOTOGRAPHED STANDING: ONE HEAD-ON FRAME OF WHAT THE PLACEMENT
- * BRAIN LAYS.
+ * The build-mode demo building, photographed standing: one head-on frame of what the placement
+ * brain lays.
  *
- * =========================================================================================
- * WHY THIS FILE EXISTS
- * =========================================================================================
+ * WHY THIS FILE EXISTS. `BuildMode::BuildDemoBuilding` is the proof that the placement brain
+ * composes: eight PlacePiece calls that assemble a two-course running-bond ClayBrick wall with a
+ * Timber wall-plate bearing across the top, returned as a live `FBrickLayout` that stands under
+ * `SolveLoads`. Every test that exercises it — `Core.BuildMode.*` — is world-free arithmetic over
+ * `FStructure` and `FPieceBox`, which is why it runs in milliseconds and exactly why it cannot
+ * produce a picture. The /goal asks for a small render of a placed structure, and this is it: the
+ * same eight pieces those tests solve, stood up in a `UWorld` as `ABrickActor`s and photographed
+ * once, head-on.
  *
- * `BuildMode::BuildDemoBuilding` is the proof that the placement brain composes: eight PlacePiece
- * calls that assemble a two-course running-bond ClayBrick wall with a Timber wall-plate bearing
- * across the top, returned as a live `FBrickLayout` that stands under `SolveLoads`. Every test that
- * exercises it — `Core.BuildMode.*` — is WORLD-FREE arithmetic over `FStructure` and `FPieceBox`,
- * which is why it runs in milliseconds, and which is exactly why it CANNOT PRODUCE A PICTURE. The
- * /goal asks for a small render of a placed structure, and this is it: the same eight pieces those
- * tests solve, stood up in a `UWorld` as `ABrickActor`s and photographed once, head-on.
+ * IT MIRRORS `Tests/CorbelScreenshotTest.cpp` RATHER THAN REINVENTING A HARNESS. The corbel
+ * harness is the project's pattern for standing an arbitrary `FStructure` + its `FPieceBox`es up
+ * in the world and photographing it through the game viewport's `Shot showui` exec. The machinery
+ * is reused here almost verbatim — the mesh-fills-the-box spawn transform, the viewport-client
+ * screenshot request, the delete-first-so-existence-means-something rule, the PNG signature and
+ * IHDR read by hand. What differs is the subject and the shape of the shot:
  *
- * =========================================================================================
- * IT MIRRORS `Tests/CorbelScreenshotTest.cpp` RATHER THAN REINVENTING A HARNESS
- * =========================================================================================
+ *   - The subject is built by `BuildDemoBuilding`, not by a corbel fixture. The layout goes in
+ *     empty and comes out with eight jointed pieces, and the picture is of that.
+ *   - There is one frame, not a pair. The corbel family photographs either side of a cascade
+ *     because a corbel is condemned by its own geometry; the demo building stands, so there is
+ *     nothing to settle and no "after". The bricks are spawned kinematic and never released.
  *
- * The corbel harness is the project's pattern for standing an arbitrary `FStructure` + its
- * `FPieceBox`es up in the world and photographing it through the game viewport's `Shot showui` exec.
- * The machinery is reused here almost verbatim — the mesh-fills-the-box spawn transform, the
- * viewport-client screenshot request, the delete-first-so-existence-means-something rule, the PNG
- * signature and IHDR read by hand. What differs is the subject and the shape of the shot:
+ * IT BUILDS FIFTEEN METRES OFF THE SCENARIO WALL, LIKE THE CORBEL HARNESS. `ADestructionGame
+ * GameMode::BeginPlay` lays a wall at the origin and every automation test shares one world, so
+ * the demo building is spawned `StageOriginYCm` down the Y axis to keep the two out of each
+ * other's frame — a constant translation along an axis gravity does not act on, so the structure
+ * photographed is arithmetically the one `Core.BuildMode` solves. Nothing here destroys the
+ * scenario wall, so a sibling `Visual.*` shot can run in the same process.
  *
- *   - THE SUBJECT IS BUILT BY `BuildDemoBuilding`, not by a corbel fixture. The layout goes in empty
- *     and comes out with eight jointed pieces, and the picture is of that.
- *   - THERE IS ONE FRAME, NOT A PAIR. The corbel family photographs either side of a cascade because
- *     a corbel is condemned by its own geometry; the demo building STANDS, so there is nothing to
- *     settle and no "after". The bricks are spawned kinematic and never released.
- *
- * =========================================================================================
- * IT BUILDS FIFTEEN METRES OFF THE SCENARIO WALL, LIKE THE CORBEL HARNESS
- * =========================================================================================
- *
- * `ADestructionGameGameMode::BeginPlay` lays a wall at the origin and every automation test shares
- * one world, so the demo building is spawned `StageOriginYCm` down the Y axis to keep the two out of
- * each other's frame — a constant translation along an axis gravity does not act on, so the
- * structure photographed is arithmetically the one `Core.BuildMode` solves. Nothing here destroys
- * the scenario wall, so a sibling `Visual.*` shot can run in the same process.
- *
- * =========================================================================================
- * WHAT IT ASSERTS — DELIBERATELY LIGHT, BECAUSE THE POINT IS THE IMAGE
- * =========================================================================================
- *
- * A harness that only takes a picture is green whatever is in the picture, so it asserts the modest
- * invariants that make the frame a picture of the right thing: the layout built to eight pieces, an
- * `ABrickActor` stands for every live piece, and the file landed as a real PNG — signature, IHDR,
- * sane dimensions, and a byte count no flat colour could reach. It asserts NOTHING about what the
+ * WHAT IT ASSERTS — deliberately light, because the point is the image. A harness that only takes
+ * a picture is green whatever is in the picture, so it asserts the modest invariants that make
+ * the frame a picture of the right thing: the layout built to eight pieces, an `ABrickActor`
+ * stands for every live piece, and the file landed as a real PNG — signature, IHDR, sane
+ * dimensions, and a byte count no flat colour could reach. It asserts nothing about what the
  * image looks like; judging that is a human's job.
  *
- * =========================================================================================
- * IT NEEDS A TICKING WORLD *AND* A REAL RHI, hence EAutomationTestFlags::NonNullRHI
- * =========================================================================================
- *
- * Without that flag the ordinary `-nullrhi` suite would run this, find no viewport, write no file
- * and GO GREEN. With it, the ordinary suite never mentions this test exists, so it must be RUN
- * EXPLICITLY. From PowerShell (Git Bash mangles the map path):
+ * IT NEEDS A TICKING WORLD *AND* A REAL RHI, hence EAutomationTestFlags::NonNullRHI. Without that
+ * flag the ordinary `-nullrhi` suite would run this, find no viewport, write no file and go
+ * green. With it, the ordinary suite never mentions this test exists, so it must be run
+ * explicitly. From PowerShell (Git Bash mangles the map path):
  *
  *   & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
  *     "<project>\DestructionGame.uproject" /Game/Maps/Lvl_Sandbox
@@ -87,9 +72,9 @@
  *     -ExecCmds="Automation RunTests DestructionGame.Visual.BuildDemoScreenshot"
  *     -TestExit="Automation Test Queue Empty"
  *
- * `-nullrhi` MUST BE ABSENT: `FApp::CanEverRender()` is false with it and `UGameEngine::Init` only
- * builds a window and a viewport under that, so there would be nothing to screenshot even if the
- * filter let the test through.
+ * `-nullrhi` must be absent: `FApp::CanEverRender()` is false with it and `UGameEngine::Init`
+ * only builds a window and a viewport under that, so there would be nothing to screenshot even
+ * if the filter let the test through.
  */
 namespace BuildDemoScreenshotSupport
 {
@@ -117,12 +102,13 @@ namespace BuildDemoScreenshotSupport
 	const TCHAR* const DisableScreenMessagesCommand = TEXT("DisableAllScreenMessages");
 
 	/**
-	 * THE TIMINGS, WHICH ARE THE CORBEL HARNESS'S.
+	 * The timings, which are the corbel harness's.
 	 *
-	 * `WarmUpFrames` and `SettleFrames` cover TSR's temporal history and auto-exposure; `SlateFrames`
-	 * is the layout pass a rebuilt view needs; `WriteFrames` is because `ProcessScreenShots` writes at
-	 * END OF DRAW, so moving on in the same frame as the request loses the file. There is no fall or
-	 * cascade here — the structure stands — so the corbel harness's `FallFrames` has no counterpart.
+	 * `WarmUpFrames` and `SettleFrames` cover TSR's temporal history and auto-exposure;
+	 * `SlateFrames` is the layout pass a rebuilt view needs; `WriteFrames` is because
+	 * `ProcessScreenShots` writes at end of draw, so moving on in the same frame as the request
+	 * loses the file. There is no fall or cascade here — the structure stands — so the corbel
+	 * harness's `FallFrames` has no counterpart.
 	 */
 	constexpr int32 WarmUpFrames = 120;
 	constexpr int32 SettleFrames = 60;
@@ -138,21 +124,22 @@ namespace BuildDemoScreenshotSupport
 	constexpr int32 MinimumScreenshotHeight = 480;
 
 	/**
-	 * HOW THE CAMERA IS PLACED, COPIED FROM THE CORBEL HARNESS AND FOR ITS REASONS.
+	 * How the camera is placed, copied from the corbel harness and for its reasons.
 	 *
-	 * The default `UCameraComponent` field of view is 90 degrees HORIZONTALLY, so at a standoff `s`
-	 * the visible width is `2s` and the visible height at 16:9 is `2s * 1080/1920`. Inverting that for
-	 * the structure's bounding box gives the standoff, and the margin keeps the wall off the edges of
-	 * the frame with some ground and sky to read it against.
+	 * The default `UCameraComponent` field of view is 90 degrees horizontally, so at a standoff
+	 * `s` the visible width is `2s` and the visible height at 16:9 is `2s * 1080/1920`. Inverting
+	 * that for the structure's bounding box gives the standoff, and the margin keeps the wall off
+	 * the edges of the frame with some ground and sky to read it against.
 	 */
 	constexpr double FrameMargin = 1.25;
 	constexpr double ViewportAspectHeightOverWidth = 1080.0 / 1920.0;
 
 	/**
-	 * THE CAMERA LOOKS ALONG -Y, WHICH IS HEAD-ON TO THIS WALL. The demo building is planar in X-Z at
-	 * y = 0 — the grounded course, the staggered course and the plate all share it — so a view down
-	 * the Y axis is square-on to the wall face with the plate reading across the top. Yaw -90 puts the
-	 * view along -Y and +X to the right, the same sense as every elevation in the design documents.
+	 * The camera looks along -Y, which is head-on to this wall. The demo building is planar in
+	 * X-Z at y = 0 — the grounded course, the staggered course and the plate all share it — so a
+	 * view down the Y axis is square-on to the wall face with the plate reading across the top.
+	 * Yaw -90 puts the view along -Y and +X to the right, the same sense as every elevation in
+	 * the design documents.
 	 */
 	constexpr double CameraYawDegrees = -90.0;
 
@@ -160,11 +147,11 @@ namespace BuildDemoScreenshotSupport
 	constexpr double MinimumStandoffCm = 120.0;
 
 	/**
-	 * FIFTEEN METRES DOWN THE Y AXIS FROM THE SCENARIO WALL, applied to the SPAWN and to nothing else.
-	 * See the file header: a constant translation along an axis gravity does not act on, so the
-	 * structure being photographed is arithmetically the structure the world-free tests read. The
-	 * camera stands off along +Y from here and looks along -Y (see CameraYawDegrees), so the scenario
-	 * wall at y = 0 is behind the lens rather than in shot.
+	 * Fifteen metres down the Y axis from the scenario wall, applied to the spawn and to nothing
+	 * else. See the file header: a constant translation along an axis gravity does not act on, so
+	 * the structure being photographed is arithmetically the structure the world-free tests read.
+	 * The camera stands off along +Y from here and looks along -Y (see CameraYawDegrees), so the
+	 * scenario wall at y = 0 is behind the lens rather than in shot.
 	 */
 	constexpr double StageOriginYCm = -1500.0;
 
@@ -233,9 +220,9 @@ namespace BuildDemoScreenshotSupport
 		UStaticMesh* const BrickMesh = Mesh != nullptr ? Mesh->GetStaticMesh() : nullptr;
 
 		/*
-		 * NO MESH, NO BRICK. The mesh is a hard content reference resolved on the CDO, so deleting the
-		 * asset leaves it null rather than failing to compile — and the sizing above divides by its
-		 * bounds, which would make an infinite scale out of a missing asset.
+		 * No mesh, no brick. The mesh is a hard content reference resolved on the CDO, so
+		 * deleting the asset leaves it null rather than failing to compile — and the sizing
+		 * above divides by its bounds, which would make an infinite scale out of a missing asset.
 		 */
 		if (BrickMesh == nullptr)
 		{

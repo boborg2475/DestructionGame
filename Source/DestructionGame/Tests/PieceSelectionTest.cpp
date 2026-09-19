@@ -7,10 +7,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges
- * many files into one. See CURRENT_STATE.md; the `using namespace` lives inside RunTest for
- * the same reason.
+ * Named namespace, and named differently from every other one in this module — an anonymous
+ * namespace is private to a translation unit, not a file, and a unity build merges many files
+ * into one. `using namespace` lives inside RunTest for the same reason.
  */
 namespace PieceSelectionTestSupport
 {
@@ -68,25 +67,23 @@ namespace PieceSelectionTestSupport
 }
 
 /**
- * TOGGLING A REF ADDS IT, TOGGLING IT AGAIN REMOVES IT, CLEARING EMPTIES THE SET, AND A REF
- * THAT NAMES NOTHING NEVER GETS IN.
+ * Toggling a ref adds it, toggling it again removes it, clearing empties the set, and a ref
+ * that names nothing never gets in.
  *
- * A SCRIPT RATHER THAN A TEST PER OPERATION, because a selection is a state machine and every
- * bug worth catching is about the state left BEHIND an operation rather than its return value.
- * Each step asserts the answer, the count, and the exact contents in order, so an add that
- * added twice, a remove that removed the wrong entry, and a clear that left one behind are all
- * different failures with different messages.
+ * A script rather than one test per operation: a selection is a state machine and every bug
+ * worth catching is about the state left BEHIND an operation, not its return value. Each step
+ * asserts the answer, the count, and the exact contents in order.
  *
  * ORDER IS ASSERTED, NOT JUST MEMBERSHIP. The batched commit runs the action against these refs
  * in this order and hands back one orphaned actor per piece in the same order, so a set that
- * quietly re-orders itself makes the commit's own results unreadable — and a TSet, which is the
- * obvious implementation, gives no order at all.
+ * quietly re-orders itself makes the commit's own results unreadable — and a TSet, the obvious
+ * implementation, gives no order at all.
  *
- * TOGGLE ANSWERS "IS IT SELECTED NOW", which is what a caller that has just clicked wants and
- * is also why a REFUSED ref answers false rather than true: it is not in the set either way,
- * and a refusal reported as success would put a menu up for a brick nobody picked.
+ * Toggle answers "is it selected now", which is also why a REFUSED ref answers false rather
+ * than true: it is not in the set either way, and a refusal reported as success would put a
+ * menu up for a brick nobody picked.
  *
- * ZERO IS A REAL STRUCTURE AND A REAL PIECE, so the first row picks {0,0} — the very piece the
+ * Zero is a real structure and a real piece, so the first row picks {0,0} — the very piece the
  * game mode's wall starts with. INDEX_NONE is the sentinel and zero is not; a guard written as
  * `if (!Ref.StructureId)` would silently refuse the first brick of the first wall.
  *
@@ -116,10 +113,10 @@ bool FPieceSelectionTogglingBuildsTheSetTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A DIFFERENT FPieceRef VALUE THAT NAMES THE SAME PIECE. A ref is copied through the
+			 * A different FPieceRef value naming the same piece. A ref is copied through the
 			 * trace, the brick actor and the menu row before it comes back here, so membership
-			 * has to be by VALUE. An implementation comparing anything else deselects nothing
-			 * and the set grows without bound as the player clicks the same brick.
+			 * has to be by value — comparing anything else deselects nothing and the set grows
+			 * without bound as the player clicks the same brick.
 			 */
 			TEXT("clicking the first brick again deselects it, by value not identity"),
 			ESelectionOp::Toggle, SelectionRef(0, 0), false, { Second }
@@ -130,8 +127,8 @@ bool FPieceSelectionTogglingBuildsTheSetTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * THE REFUSAL ROWS SIT IN THE MIDDLE OF THE SCRIPT, WITH A NON-EMPTY SET, on purpose:
-			 * against an empty set "refused" and "added then removed" are the same observation.
+			 * The refusal rows sit mid-script, against a non-empty set, on purpose: against an
+			 * empty set "refused" and "added then removed" are the same observation.
 			 */
 			TEXT("a wholly default ref — what a click on the floor arrives as"),
 			ESelectionOp::Toggle, FPieceRef(), false, { Second, Third }
@@ -150,9 +147,9 @@ bool FPieceSelectionTogglingBuildsTheSetTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * CLEARING AN EMPTY SET ANSWERS FALSE, which is what makes the answer worth having:
-			 * "a click on empty space dismissed something" and "there was nothing up" are
-			 * different events, and a presenter that always reports a change cannot tell them.
+			 * Clearing an empty set answers false: "a click on empty space dismissed something"
+			 * and "there was nothing up" are different events, and a presenter that always
+			 * reports a change cannot tell them apart.
 			 */
 			TEXT("clearing again reports that there was nothing to clear"),
 			ESelectionOp::Clear, FPieceRef(), false, TArray<FPieceRef>()
@@ -228,10 +225,8 @@ bool FPieceSelectionTogglingBuildsTheSetTest::RunTest(const FString& Parameters)
 				Selection.Contains(Step.ExpectedSet[Index]));
 		}
 
-		/*
-		 * AND Contains AGREES WITH THE LIST IN THE OTHER DIRECTION TOO. Without this a Contains
-		 * that answered true for everything satisfies every row above.
-		 */
+		/* And Contains agrees with the list in the other direction too, or a Contains that
+		 * answered true for everything would satisfy every row above. */
 		for (const FPieceRef& Candidate : { First, Second, Third, FPieceRef() })
 		{
 			bool bInList = false;

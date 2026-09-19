@@ -10,10 +10,9 @@
 #include "Input/Reply.h"
 #include "Layout/Margin.h"
 /*
- * THE ONE SLATE STYLE HEADER THIS FILE PULLS, AND IT IS PULLED FOR STORAGE RATHER THAN FOR A
- * PARAMETER TYPE. SButton keeps a raw `const FButtonStyle*` and never copies it, so the chips'
- * styles have to live somewhere that outlives the widgets and does not move — a member array of
- * complete FButtonStyles, which a forward declaration cannot express.
+ * The one Slate style header this file pulls: SButton keeps a raw `const FButtonStyle*` and
+ * never copies it, so the chips' styles need storage that outlives the widgets and does not
+ * move — a member array of FButtonStyles, which a forward declaration can't express.
  */
 #include "Styling/SlateTypes.h"
 #include "World/ScenarioLabel.h"
@@ -27,9 +26,9 @@ class UInputAction;
 class UInputMappingContext;
 
 /*
- * The drag handlers take both of these by const reference, so a declaration is all this header
- * needs — and pulling Slate's geometry and event headers in for two parameter types would put them
- * in front of every test that includes this controller.
+ * The drag handlers take both by const reference, so a declaration suffices — pulling Slate's
+ * geometry/event headers in for two parameter types would put them in front of every test that
+ * includes this controller.
  */
 struct FGeometry;
 struct FPointerEvent;
@@ -54,56 +53,39 @@ public:
 	/**
 	 * The build loop this session lays pieces with.
 	 *
-	 * A DEFAULT SUBOBJECT RATHER THAN SOMETHING SOMEBODY REMEMBERS TO ADD. Every controller in
-	 * every level is a session, and a session with no build component is one where the Build tab
-	 * puts the player in a mode whose every click fails closed with nothing on screen saying why.
+	 * A default subobject, not something somebody remembers to add — a session with no build
+	 * component would put the Build tab in a mode whose every click fails closed silently.
 	 */
 	UBuildModeComponent* GetBuildComponent() const;
 
 	/**
 	 * What the session is doing, and the only thing the strip draws.
 	 *
-	 * READ-ONLY, WHICH IS THE WHOLE OF THE OWNERSHIP RULE. OnToolbarButton is the single mutator, so
-	 * that every change goes through DestructionSession::ApplyToolbarButton's refusals and through
-	 * the side effects that keep the build component in step — a caller setting the course here
-	 * would move the readout and leave the build plane where it was.
+	 * Read-only: OnToolbarButton is the single mutator, so every change goes through
+	 * DestructionSession::ApplyToolbarButton's refusals and keeps the build component in step.
 	 */
 	const DestructionSession::FSessionToolbarState& GetSessionToolbarState() const;
 
 	/**
 	 * One toolbar click: move the session, and move the world with it.
 	 *
-	 * THE ONE DOOR, AND EVERY INPUT COMES THROUGH IT — the strip's own buttons and, when they land,
-	 * the keyboard shortcuts. Core/SessionToolbar.h says why: the model consults
-	 * SessionToolbarButtons for whether a click can happen at all, so a controller setting fields
-	 * beside it would be a second opinion about what is greyed.
+	 * The one door: every input, strip buttons and keyboard shortcuts alike, comes through it, so
+	 * a controller setting fields directly would be a second opinion about what is greyed
+	 * (Core/SessionToolbar.h). A refused click changes nothing, state and side effects alike.
 	 *
-	 * A REFUSED CLICK CHANGES NOTHING AT ALL, state and side effects alike. A button the strip does
-	 * not draw, or draws greyed, must not run its side effect either — a greyed `Course down` that
-	 * still pushed its own decrement would put the build plane under the earth with the readout
-	 * still saying course 0.
-	 *
-	 * @return whether the click landed. FALSE IS A REFUSAL RATHER THAN A FAILURE, and it is said
-	 *         out loud because a silent no-op on a command button reads as a missed click.
+	 * @return whether the click landed; false is a refusal, not a failure.
 	 */
 	bool OnToolbarButton(DestructionSession::EToolbarButtonId Id);
 
 	/**
-	 * The two keys that stand for a PAIR of chips: read where the session is, dispatch the other.
+	 * The two keys that stand for a pair of chips: read where the session is, dispatch the other.
 	 *
-	 * THROUGH OnToolbarButton RATHER THAN AT THE FIELD, which is the whole of what these are for.
-	 * `Tab` and `G` are each one binding standing for two buttons, so each carries a read of the
-	 * current state and a choice between two ids — and that read is the only decision anywhere in
-	 * the session's keyboard. Written the obvious way, as "set the other value", `G` would flip
-	 * Snap/Free in Destroy mode, which does not draw it: the player would come back to Build and
-	 * find bricks landing wherever the cursor is. Going through the one door means the model's
-	 * refusals apply to a key exactly as they apply to a chip.
+	 * Goes through OnToolbarButton rather than setting the field directly, so the model's
+	 * refusals apply to a key exactly as to a chip. `Tab`/`G` each carry a read of the current
+	 * state and a choice between two ids — the only decision in the session's keyboard; the other
+	 * six shortcuts dispatch one constant id straight at the door.
 	 *
-	 * The other six shortcuts have no function here because they have no decision in them — each
-	 * is one constant id, dispatched straight at the door.
-	 *
-	 * @return whether the toggle landed, with false a refusal rather than a failure — a silent
-	 *         no-op on a key reads as a dropped press.
+	 * @return whether the toggle landed; false is a refusal, not a failure.
 	 */
 	bool ToggleSessionMode();
 	bool ToggleSessionPlacement();
@@ -111,11 +93,8 @@ public:
 	/**
 	 * The structure this session's commands act on, or INDEX_NONE.
 	 *
-	 * THE PLAYER'S OWN BUILD FIRST, AND THE LEVEL'S WALL BEHIND IT. Twenty-eight of the twenty-nine
-	 * levels lay something for the player to pull apart and `Run structure` has to reach it; the one
-	 * build plot lays nothing, so until the player's first brick lands there is genuinely nothing to
-	 * run and the button is greyed. An EMPTY build does not win — a structure with no pieces in it
-	 * would shadow the level's wall with nothing, which is a Run that silently solves an empty graph.
+	 * The player's own build first, the level's wall behind it. The build plot lays nothing, so
+	 * until the first brick lands there is genuinely nothing to run and the button is greyed.
 	 */
 	int32 GetSessionStructureId() const;
 
@@ -123,83 +102,63 @@ public:
 	 * Point along this ray: in Build the ghost follows it, in Destroy the brick under it is called
 	 * out.
 	 *
-	 * A RAY IN RATHER THAN A CURSOR, for the reason InspectAlongRay takes one — the deprojection
-	 * needs a viewport and this half needs only a world. WHAT DIFFERS FROM HoverAlongRay IS THE
-	 * DISPATCH: the mode decides which of the two seams the cursor is driving, and the mode is the
-	 * session's rather than the input's.
+	 * A ray in rather than a cursor — the deprojection needs a viewport, this half needs only a
+	 * world. The session's mode decides which seam the cursor is driving.
 	 */
 	void PointerAlongRay(const FVector& StartCm, const FVector& EndCm);
 
 	/**
 	 * The primary click along this ray: in Build it lays a piece, in Destroy it inspects one.
 	 *
-	 * NO PIECE MENU IN BUILD MODE. A Delete menu over the brick the player has just laid, with the
-	 * cursor already on it, is today's click leaking through — so the two are dispatched rather than
-	 * layered.
+	 * No piece menu in Build mode — a Delete menu over the brick just laid, with the cursor already
+	 * on it, would be today's click leaking through, so the two are dispatched rather than layered.
 	 *
 	 * @return whether the click did its mode's job: a piece landed, or a menu came up.
 	 */
 	bool PrimaryAlongRay(const FVector& StartCm, const FVector& EndCm);
 
 	/**
-	 * Put the ghost where this ray points, WITHOUT the player having clicked anything.
+	 * Put the ghost where this ray points, without the player having clicked anything.
 	 *
-	 * THE TESTABLE HALF OF THE PER-TICK CURSOR REFRESH. PlayerTick's own first step is a
-	 * deprojection, which needs a viewport and is untestable by construction — the inch OnHoverPiece
-	 * and OnInspectPiece are already kept down to — so everything that can be wrong in a way a player
-	 * would notice lives behind this call, which needs only a world.
+	 * The testable half of the per-tick cursor refresh — PlayerTick's own deprojection is
+	 * untestable by construction, so everything that can go wrong lives behind this call instead.
 	 *
-	 * IN DESTROY MODE IT DOES NOTHING AT ALL, and that is the leg that cannot be got right by
-	 * accident. Run every frame, a refresh that leaked the mode would hang a gold ghost over the wall
-	 * the player is demolishing and re-arm a preview a stray confirm could commit — the very ghost
-	 * OnToolbarButton(ModeDestroy) hides on the way in.
+	 * Does nothing in Destroy mode; run every frame, a leak would hang a gold ghost over the wall
+	 * the player is demolishing and re-arm a preview a stray confirm could commit.
 	 *
-	 * @return whether a valid preview is up: false in Destroy mode, and on a ray that misses the
-	 *         build plane.
+	 * @return whether a valid preview is up: false in Destroy mode, or on a ray missing the plane.
 	 */
 	bool RefreshBuildPreviewFromRay(const FVector& OriginCm, const FVector& Direction);
 
 	/**
 	 * Build the session's toolbar strip, and hand it back instead of drawing it.
 	 *
-	 * PUBLIC FOR THE REASON BuildPieceMenuPanel IS, and the reason bites harder here. Which buttons
-	 * the strip draws, in what order, greyed or live, focusable or not, and what one press calls are
-	 * all decided in this one function; kept private behind AddViewportWidgetContent every one of
-	 * them would be unreachable. A focusable SButton takes user focus on click and the flying pawn
-	 * stops answering W — a defect a player reports as the game freezing, and one nothing but a
-	 * headless arrange of this tree can see.
+	 * Public, for the reason BuildPieceMenuPanel is: which buttons draw, greyed or live, focusable
+	 * or not, and what each press calls are all decided here — kept private, none of it would be
+	 * reachable, and a focusable SButton stealing focus on click is a defect only a headless
+	 * arrange of this tree can see.
 	 */
 	TSharedRef<SWidget> BuildSessionToolbarPanel();
 
 	/**
-	 * The style one chip is wearing: a rounded box filled the way the model says, with its hover and
-	 * press variants.
+	 * The style one chip is wearing: a rounded box filled the way the model says, with its hover
+	 * and press variants.
 	 *
-	 * A REFERENCE INTO STORAGE THAT OUTLIVES THE WIDGET, AND THAT IS THE WHOLE REASON THIS EXISTS AS
-	 * A MEMBER RATHER THAN AS A FUNCTION RETURNING A VALUE. SButton keeps the `const FButtonStyle*`
-	 * it is given and never copies it, so a per-call temporary would be a dangling pointer the moment
-	 * the caller's frame went away, and a TMap value would move on the next rehash. The styles live
-	 * in a fixed array indexed by EToolbarButtonId whose slots never relocate; rebuilding the strip
-	 * overwrites them in place, which is what lets the look follow the session's state while every
-	 * pointer already handed out stays good.
+	 * A reference into storage that outlives the widget — SButton keeps the raw pointer it is
+	 * given and never copies it, so a per-call temporary or a TMap value (which rehashes) would
+	 * dangle. The styles live in a fixed array whose slots never relocate; rebuilding the strip
+	 * overwrites them in place.
 	 *
-	 * PUBLIC BECAUSE SButton EXPOSES NO STYLE GETTER. It is welded to the widget rather than being a
-	 * seam only a test reads: World.Session.ToolbarChipsAreRoundedAndGrouped asserts that the chip's
-	 * own border brush IS one of this style's four, by address.
-	 *
-	 * A BUTTON THIS BUILD HAS NEVER HEARD OF GETS THE GREYED STYLE, which is the fail-closed answer:
-	 * an undeclared chip reads as one that cannot be clicked rather than borrowing a live chip's.
+	 * Public because SButton exposes no style getter (World.Session.ToolbarChipsAreRoundedAndGrouped
+	 * checks the border brush by address). An undeclared button id gets the greyed, fail-closed style.
 	 */
 	const FButtonStyle& SessionChipStyleFor(const DestructionSession::FToolbarButton& Button) const;
 
 	/**
 	 * Put the strip on screen, and redraw it when the session moves.
 	 *
-	 * REBUILT RATHER THAN RE-BOUND. Every chip's caption, greying and lit state comes off
-	 * SessionToolbarButtons for one state, so a state that changed while the same widgets stayed up
-	 * would be a strip describing the session the player used to be in. A world with no viewport —
-	 * every headless test — draws nothing and carries on, which is the ordinary case rather than an
-	 * error, exactly as the piece menu and the banner do.
+	 * Rebuilt rather than re-bound, so a state change is never drawn by stale widgets. A world
+	 * with no viewport — every headless test — draws nothing and carries on, the ordinary case.
 	 */
 	void ShowSessionToolbar();
 	void RefreshSessionToolbar();
@@ -207,31 +166,28 @@ public:
 	/**
 	 * Inspect whatever this ray hits: open the piece menu for it, or dismiss the menu.
 	 *
-	 * A RAY IN RATHER THAN A CLICK, and the split is deliberate. Turning the cursor into a
-	 * world ray needs a viewport, which a headless test does not have; everything AFTER
-	 * that — trace, resolve, build the menu, present or dismiss it — is the part that can
-	 * be wrong in a way a player would notice, and it needs only a world. So the input
-	 * handler deprojects and calls this, and this is what a test drives.
+	 * A ray in rather than a click, deliberately: turning the cursor into a world ray needs a
+	 * viewport a headless test does not have, while everything after — trace, resolve, build the
+	 * menu, present or dismiss it — can be wrong in a way a player would notice and needs only a
+	 * world. The input handler deprojects and calls this, which is what a test drives.
 	 *
-	 * @return the rows now presented. EMPTY MEANS THE MENU WAS DISMISSED, which is the
-	 *         answer for a ray that hit the floor, hit nothing, or hit a brick standing for
-	 *         a piece that has gone — and it must actually dismiss rather than leave the
-	 *         previous piece's menu on screen naming a brick the player is no longer
-	 *         pointing at.
+	 * @return the rows now presented. Empty means the menu was dismissed — the answer for a ray
+	 *         that hit the floor, hit nothing, or hit a brick for a piece that has gone — and it
+	 *         must dismiss rather than leave the previous piece's menu naming a brick the player
+	 *         is no longer pointing at.
 	 */
 	TArray<FPieceMenuRow> InspectAlongRay(const FVector& StartCm, const FVector& EndCm);
 
 	/**
 	 * Call out whatever this ray hits, so the player can see what they would hit.
 	 *
-	 * SEPARATE FROM InspectAlongRay BECAUSE HOVERING IS NOT CLICKING. This changes nothing but
-	 * which brick is called out: no selection is touched, no menu opens and none closes. The
-	 * same seam is drawn at the same place for the same reason — the cursor-to-ray half needs a
-	 * viewport and this half needs only a world.
+	 * Separate from InspectAlongRay because hovering is not clicking: this changes nothing but
+	 * which brick is called out, no selection touched, no menu opened or closed. The same seam is
+	 * drawn at the same place for the same reason — the cursor-to-ray half needs a viewport and
+	 * this half needs only a world.
 	 *
-	 * A SELECTED BRICK STAYS SELECTED WHEN IT IS HOVERED. The two states are distinct on
-	 * purpose, and the stronger one wins: a brick the menu is about must not start reading as
-	 * merely-pointed-at because the cursor drifted over it.
+	 * A selected brick stays selected when hovered — the stronger state wins, so a brick the menu
+	 * is about must not start reading as merely-pointed-at because the cursor drifted over it.
 	 *
 	 * @return the piece now hovered, or a default ref when the ray hit nothing.
 	 */
@@ -240,35 +196,34 @@ public:
 	/**
 	 * The bricks the player has picked, which is what the menu is about.
 	 *
-	 * THE COUNT A MENU REPORTS IS Num() ON THIS, and the rows carry the same refs, because the
-	 * menu is a projection of this set rebuilt whenever it changes rather than a second record
-	 * of it. A MENU IS UP EXACTLY WHEN THIS IS NON-EMPTY.
+	 * The count a menu reports is Num() on this, and the rows carry the same refs: the menu is a
+	 * projection of this set, rebuilt whenever it changes rather than a second record of it. A
+	 * menu is up exactly when this is non-empty.
 	 */
 	const FPieceSelection& GetPieceSelection() const;
 
 	/**
-	 * Single out ONE of the selected bricks as the one the joint readout describes.
+	 * Single out one of the selected bricks as the one the joint readout describes.
 	 *
-	 * A THIRD THING FROM HOVERED AND SELECTED. Hovering an entry in the menu singles that
-	 * brick out without disturbing the rest of the selection, so this touches neither the
-	 * selection nor the presented rows — only which brick is called out how.
+	 * A third thing from Hovered and Selected: hovering an entry in the menu singles that brick
+	 * out without disturbing the rest of the selection, so this touches neither the selection
+	 * nor the presented rows — only which brick is called out how.
 	 *
-	 * A DEFAULT REF SINGLES OUT NOTHING, which is how the cursor leaving the list is said.
+	 * A default ref singles out nothing, which is how the cursor leaving the list is said.
 	 */
 	void SetInspectedPiece(const FPieceRef& Ref);
 
 	/**
 	 * Put these rows on screen as the piece menu, replacing whatever was up.
 	 *
-	 * ROWS ONLY, NO SEPARATE REF. FPieceMenuRow already carries the ref it commits against,
-	 * and Core/PieceMenu.h says why that is the whole reason the row is a struct: a presenter
-	 * that remembered the ref beside the rows is one stale field away from committing the
-	 * right action against the wrong brick. A second ref parameter here would re-open exactly
-	 * that, one layer up.
+	 * Rows only, no separate ref: FPieceMenuRow already carries the ref it commits against, and
+	 * Core/PieceMenu.h says why that is the whole reason the row is a struct — a presenter that
+	 * remembered the ref beside the rows is one stale field away from committing the right action
+	 * against the wrong brick. A second ref parameter here would re-open exactly that, one layer up.
 	 *
-	 * AN EMPTY LIST DISMISSES rather than showing an empty box. Every miss route out of
-	 * InspectAlongRay produces an empty list, so "the ray hit nothing" and "take the menu
-	 * down" have to be the same call or the previous brick's menu stays on screen.
+	 * An empty list dismisses rather than showing an empty box. Every miss route out of
+	 * InspectAlongRay produces an empty list, so "the ray hit nothing" and "take the menu down"
+	 * have to be the same call or the previous brick's menu stays on screen.
 	 *
 	 * @return whether a menu is now presented — false for an empty list.
 	 */
@@ -286,8 +241,8 @@ public:
 	/**
 	 * Choose a presented row: commit it and take the menu down.
 	 *
-	 * AN INDEX INTO THE PRESENTED ROWS IS THE WHOLE INPUT, which is what keeps the widget
-	 * half to a single call. A button knows which entry it is and nothing else.
+	 * An index into the presented rows is the whole input, which keeps the widget half to a
+	 * single call — a button knows which entry it is and nothing else.
 	 *
 	 * @return whether the chosen row's action actually committed.
 	 */
@@ -296,40 +251,37 @@ public:
 	/**
 	 * Build the whole panel the viewport is handed, and hand it back instead of drawing it.
 	 *
-	 * PUBLIC, AND THAT IS THE POINT RATHER THAN AN ACCIDENT. Everything the panel's LAYOUT can
-	 * get wrong — a row that moves out from under a stationary cursor when the readout beside
-	 * it changes size — is decided here and needs no viewport, no renderer and no RHI to
-	 * measure: a widget tree can be prepassed and arranged in a headless test. Keeping the
-	 * build private and reachable only through AddViewportWidgetContent is what made that
-	 * whole surface unreachable.
+	 * Public, and that is the point rather than an accident: everything the panel's layout can
+	 * get wrong — a row that moves out from under a stationary cursor when the readout beside it
+	 * changes size — is decided here and needs no viewport, renderer or RHI to measure, since a
+	 * widget tree can be prepassed and arranged in a headless test. Keeping the build private and
+	 * reachable only through AddViewportWidgetContent made that whole surface unreachable.
 	 *
-	 * IT ASSIGNS PieceMenuInspectorBox, so the readout can be swapped afterwards by
-	 * SetInspectedPiece without rebuilding the panel — which is the behaviour under test.
+	 * It assigns PieceMenuInspectorBox, so the readout can be swapped afterwards by
+	 * SetInspectedPiece without rebuilding the panel — the behaviour under test.
 	 */
 	TSharedRef<SWidget> BuildPieceMenuPanel();
 
 	/**
 	 * The readout model for the current selection and inspected brick, or an empty one.
 	 *
-	 * THE GUARDS HERE ARE THE SAME PLUMBING InspectAlongRay HAS, AND FOR THE SAME REASON: a
+	 * The guards here are the same plumbing InspectAlongRay has, and for the same reason: a
 	 * binding has to be found before the model can be asked, and no world, no subsystem and no
 	 * such structure all mean the same thing — nothing to read out. It lives on the controller
-	 * rather than in the widget so that the widget itself resolves nothing.
+	 * rather than the widget so the widget itself resolves nothing.
 	 *
-	 * PUBLIC BECAUSE IT IS A WIRE BETWEEN TWO CORRECT HALVES AND NOTHING ELSE REACHES IT. Every
-	 * headless world is built in code and so has no UGameViewportClient, which means the only
-	 * two callers — BuildPieceMenuPanel and RefreshPieceMenuInspectorWidget — used to return
-	 * early before ever getting here. CURRENT_STATE.md's integration entry rule names exactly
-	 * this shape: a call nobody makes cannot be reached by testing the halves.
+	 * Public because it is a wire between two correct halves and nothing else reaches it. Every
+	 * headless world is built in code and has no UGameViewportClient, so the only two callers —
+	 * BuildPieceMenuPanel and RefreshPieceMenuInspectorWidget — used to return early before ever
+	 * getting here; CURRENT_STATE.md's integration entry rule names exactly this shape: a call
+	 * nobody makes cannot be reached by testing the halves.
 	 *
-	 * THE DETAIL IS ASKED FOR BY THE CALLER AND DEFAULTS TO Full, WHICH IS THE WHOLE CARE ON THIS
-	 * SIGNATURE. This accessor is not only the panel's: NeighbourHighlightForPiece walks
-	 * Inspector.Joints and colours a brick in the wall from each row's ColourSlot, and
-	 * NeighbourPieces turns the same rows into refs — so the joint table is an INDEX THE BRICK
-	 * HIGHLIGHTS ARE KEYED ON as well as a readout. A compact answer handed to those would put
-	 * every neighbour colour in the wall out at once, and nothing on screen would say why. So the
-	 * two panel builders pass PieceMenuPanelDetail and everything else takes the default, and the
-	 * default is the mode that withholds nothing — a caller that forgets suppresses nothing.
+	 * Detail is asked for by the caller and defaults to Full. This accessor is not only the
+	 * panel's: NeighbourHighlightForPiece and NeighbourPieces also walk Inspector.Joints, so the
+	 * joint table is an index the brick highlights are keyed on as well as a readout. A compact
+	 * answer handed to those would black out every neighbour colour at once with nothing on
+	 * screen to say why — so the two panel builders pass PieceMenuPanelDetail explicitly and
+	 * everything else takes the default, the mode that withholds nothing.
 	 */
 	FPieceMenuInspector PieceMenuInspectorForSelection(
 		EPieceMenuDetail Detail = EPieceMenuDetail::Full) const;
@@ -337,12 +289,12 @@ public:
 	/**
 	 * Which detail the next BuildPieceMenuPanel draws at. A field's value, and nothing else.
 	 *
-	 * PUBLIC FOR THE SAME REASON BuildPieceMenuPanel IS. The mode is toggled today by a double
-	 * click on the title strip, and OnPieceMenuPanelDetailToggled takes an FPointerEvent and tears
-	 * the whole widget down through the viewport — so the only route into compact runs through the
-	 * one layer a headless run has none of. The panel a compact mode produces is exactly what
-	 * World.Menu.TheReadoutFitsInsideThePanel has to measure, so the state it is built from needs a
-	 * seam a test can set. It decides nothing: no rebuild, no clamp, no redraw.
+	 * Public for the same reason BuildPieceMenuPanel is. The mode is toggled today by a double
+	 * click on the title strip, and OnPieceMenuPanelDetailToggled tears the whole widget down
+	 * through the viewport, so the only route into compact runs through the one layer a headless
+	 * run has none of — the panel a compact mode produces is exactly what
+	 * World.Menu.TheReadoutFitsInsideThePanel has to measure, so the state needs a seam a test can
+	 * set. It decides nothing: no rebuild, no clamp, no redraw.
 	 */
 	void SetPieceMenuDetail(EPieceMenuDetail Detail);
 
@@ -355,10 +307,9 @@ protected:
 	/**
 	 * The input that opens the piece context menu.
 	 *
-	 * ON THE CONTROLLER RATHER THAN THE PAWN: the controller already owns the mapping
-	 * contexts, it outlives any pawn, and it is what carries the cursor this action needs.
-	 * Resolved by the path RequiredContent.h names, so this and the required-content table
-	 * cannot become two lists that disagree.
+	 * On the controller rather than the pawn: it already owns the mapping contexts, outlives
+	 * any pawn, and carries the cursor this action needs. Resolved by the path RequiredContent.h
+	 * names, so this and the required-content table cannot become two lists that disagree.
 	 */
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputAction> InspectPieceAction;
@@ -366,11 +317,11 @@ protected:
 	/**
 	 * The input that keeps the highlight following the cursor.
 	 *
-	 * A SECOND ACTION RATHER THAN IA_MouseLook, THOUGH BOTH READ Mouse2D. Free-look is CHORDED
-	 * to a held right mouse button now, and hovering has to work while no button is held at all —
-	 * a brick is called out at exactly the moment the player is pointing at it rather than
-	 * spinning the camera. It therefore shares the axis with free-look, and RequiredContent.h
-	 * records why the asset must not CONSUME it.
+	 * A second action rather than IA_MouseLook, though both read Mouse2D. Free-look is chorded to
+	 * a held right mouse button now, and hovering has to work while no button is held at all — a
+	 * brick is called out the moment the player points at it rather than spins the camera. It
+	 * shares the axis with free-look, and RequiredContent.h records why the asset must not
+	 * consume it.
 	 */
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputAction> HoverPieceAction;
@@ -378,13 +329,12 @@ protected:
 	/**
 	 * The always-on free-look context, named separately so the constructor reads plainly.
 	 *
-	 * IT IS ALSO IN DefaultMappingContexts, AND IT IS THE SAME POINTER — this is a name for one
-	 * of the contexts that are applied, not a second one. It used to be named here because the
-	 * piece menu REMOVED it: IMC_MouseLook binds the raw Mouse2D axis, so with no held button the
-	 * camera followed the mouse all the time and a cursor drawn over it was unusable. The removal
-	 * is gone (SESSION_UI_DESIGN §d, S6) — the mapping now carries a Chorded Action trigger on
-	 * IA_LookModifier, so look happens only while the right mouse button is down and there is
-	 * nothing for a panel to take away.
+	 * Also in DefaultMappingContexts, and the same pointer — a name for one of the applied
+	 * contexts, not a second one. It used to matter because the piece menu removed it: IMC_MouseLook
+	 * binds the raw Mouse2D axis, so with no held button the camera followed the mouse and a cursor
+	 * drawn over it was unusable. That removal is gone (SESSION_UI_DESIGN §d, S6) — the mapping now
+	 * carries a Chorded Action trigger on IA_LookModifier, so look happens only while the right
+	 * mouse button is down and there is nothing for a panel to take away.
 	 */
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputMappingContext> MouseLookMappingContext;
@@ -392,22 +342,21 @@ protected:
 	/**
 	 * The session's own keyboard, named for the same reason and used for one more.
 	 *
-	 * IT IS ALSO IN DefaultMappingContexts, AND IT IS THE SAME POINTER — a name for one of the
-	 * contexts that are applied, not a second one. What the name is FOR here is the priority: the
-	 * apply loop gives this context one step above the others, because IMC_MouseLook's Mouse2D
-	 * mapping is chorded on the IA_LookModifier this context maps, and a chord only sees its
-	 * modifier if the modifier's mapping was evaluated earlier in the same frame. The reasoning is
-	 * at SessionMappingContextPriority in the .cpp.
+	 * Also in DefaultMappingContexts, and the same pointer — a name for one of the applied
+	 * contexts, not a second one. The name is for the priority: the apply loop gives this context
+	 * one step above the others, because IMC_MouseLook's Mouse2D mapping is chorded on the
+	 * IA_LookModifier this context maps, and a chord only sees its modifier if the modifier's
+	 * mapping was evaluated earlier in the same frame. See SessionMappingContextPriority in the .cpp.
 	 */
 	UPROPERTY(EditAnywhere, Category="Input")
 	TObjectPtr<UInputMappingContext> SessionMappingContext;
 
 	/**
-	 * THE EIGHT SESSION SHORTCUTS, ONE PROPERTY PER ACTION.
+	 * The eight session shortcuts, one property per action.
 	 *
-	 * EIGHT RATHER THAN A LIST, because each is bound to a different dispatch and the binding is
+	 * Eight rather than a list, because each is bound to a different dispatch and the binding is
 	 * where a list would have to be turned back into names anyway. IA_LookModifier is deliberately
-	 * NOT among them: it feeds IMC_MouseLook's chord and has no handler to reach, so a C++ binding
+	 * not among them: it feeds IMC_MouseLook's chord and has no handler to reach, so a C++ binding
 	 * on it would be dead code.
 	 *
 	 * Resolved by the paths RequiredContent.h names, so these and the required-content table
@@ -440,11 +389,11 @@ protected:
 	/**
 	 * The session's per-frame cursor refresh, and nothing else this controller does per frame.
 	 *
-	 * IT IS HERE RATHER THAN ON IA_HoverPiece BECAUSE AN AXIS ACTION ONLY FIRES WHEN IT MOVES. That
-	 * is the owner's report (2026-09-16): with the ghost driven only by Mouse2D, a session that
-	 * begins with a still mouse shows nothing until something actuates the axis — and a settings
-	 * change waits for the same event. The setters carry the settings half; this carries "the player
-	 * is pointing somewhere and has not clicked".
+	 * Here rather than on IA_HoverPiece because an axis action only fires when it moves — the
+	 * owner's report (2026-09-16): with the ghost driven only by Mouse2D, a session that begins
+	 * with a still mouse shows nothing until something actuates the axis, and a settings change
+	 * waits for the same event. The setters carry the settings half; this carries "the player is
+	 * pointing somewhere and has not clicked".
 	 */
 	virtual void PlayerTick(float DeltaTime) override;
 
@@ -460,51 +409,49 @@ private:
 	/**
 	 * IA_InspectPiece's handler: turn the cursor into a world ray and inspect along it.
 	 *
-	 * A DEPROJECTION PLUS ONE CALL, AND NOTHING ELSE, BY DESIGN. DeprojectMousePositionToWorld
-	 * needs a viewport and a headless run has none, so this is the one link in the chain no
-	 * test can reach — which is exactly why everything that can be wrong in a way a player
-	 * would notice lives behind InspectAlongRay instead. Anything added here grows the
-	 * untested surface.
+	 * A deprojection plus one call, and nothing else, by design: DeprojectMousePositionToWorld
+	 * needs a viewport a headless run has none of, so this is the one link in the chain no test
+	 * can reach — exactly why everything that can be wrong in a way a player would notice lives
+	 * behind InspectAlongRay instead. Anything added here grows the untested surface.
 	 */
 	void OnInspectPiece();
 
 	/**
 	 * IA_HoverPiece's handler: turn the cursor into a world ray and call out what it points at.
 	 *
-	 * THE SAME DEPROJECTION-PLUS-ONE-CALL SHAPE AS OnInspectPiece, AND FOR THE SAME REASON —
-	 * DeprojectMousePositionToWorld needs a viewport, so this is untestable by construction and
-	 * everything that can be wrong in a way a player would notice lives behind HoverAlongRay.
+	 * The same deprojection-plus-one-call shape as OnInspectPiece and for the same reason —
+	 * untestable by construction, so everything that can be wrong in a way a player would notice
+	 * lives behind HoverAlongRay.
 	 *
-	 * IT RUNS ON EVERY FRAME THE MOUSE MOVES, which is one line trace per moved frame against
-	 * whatever wall is up. That is the price of a highlight that is never stale, and it is the
-	 * reason the binding is on Triggered rather than Started; see SetupInputComponent.
+	 * Runs on every frame the mouse moves: one line trace per moved frame against whatever wall
+	 * is up. That is the price of a highlight that is never stale, and why the binding is on
+	 * Triggered rather than Started; see SetupInputComponent.
 	 */
 	void OnHoverPiece();
 
 	/**
 	 * PlayerTick's handler: turn the cursor into a world ray and re-drive the build ghost along it.
 	 *
-	 * THE SAME DEPROJECTION-PLUS-ONE-CALL SHAPE AS OnHoverPiece, AND UNTESTABLE FOR THE SAME REASON —
-	 * DeprojectMousePositionToWorld needs a viewport, so everything that can be wrong in a way a
-	 * player would notice lives behind RefreshBuildPreviewFromRay. Anything added here grows the
-	 * untested surface.
+	 * The same deprojection-plus-one-call shape as OnHoverPiece, untestable for the same reason —
+	 * everything that can be wrong in a way a player would notice lives behind
+	 * RefreshBuildPreviewFromRay. Anything added here grows the untested surface.
 	 *
-	 * IT IS SKIPPED WHILE THE LOOK CHORD IS HELD. The right button turns the camera, and re-previewing
-	 * every frame of a drag would drag the ghost across the plot behind the player's back — and the
-	 * cursor is hidden for the length of it, so there is nothing on screen for the ghost to follow.
+	 * Skipped while the look chord is held: the right button turns the camera, and re-previewing
+	 * every frame of a drag would drag the ghost across the plot behind the player's back, with the
+	 * cursor hidden so there is nothing on screen for the ghost to follow.
 	 *
-	 * AND IT IS SKIPPED WHEN THE MOUSE HAS NOT MOVED, which is what keeps a per-frame handler cheap: a
-	 * still cursor names the same point on the same plane and re-solves the same snap. The settings
-	 * half is already covered by the component's own setters, so nothing needs this to run on a frame
-	 * the pointer did not move.
+	 * Also skipped when the mouse has not moved, which keeps a per-frame handler cheap — a still
+	 * cursor names the same point on the same plane and re-solves the same snap. The settings half
+	 * is already covered by the component's own setters, so nothing needs this to run on a frame the
+	 * pointer did not move.
 	 */
 	void RefreshBuildPreviewFromCursor();
 
 	/**
 	 * Where the cursor was on the last frame this refreshed, and whether it has ever been read.
 	 *
-	 * The flag is what makes a first frame with the pointer at exactly (0, 0) a refresh rather than a
-	 * skip; it is the ordinary "no reading yet" case rather than a coordinate worth special-casing.
+	 * The flag makes a first frame with the pointer at exactly (0, 0) a refresh rather than a skip
+	 * — the ordinary "no reading yet" case rather than a coordinate worth special-casing.
 	 */
 	FVector2D LastBuildCursorPx = FVector2D::ZeroVector;
 
@@ -513,34 +460,32 @@ private:
 	/**
 	 * Put the session's controls up, once, and never take them down again.
 	 *
-	 * IT REPLACES AN APPLY/RESTORE PAIR, AND THE ABSENCE OF THE RESTORE IS THE POINT. There was a
-	 * SetPieceMenuControls(bool) here: it raised the cursor and REMOVED the free-look context
-	 * while a menu was up, and put both back on the way out. That was a correct answer to a real
-	 * hazard — IMC_MouseLook binds the raw Mouse2D axis, so a pointer drawn over a camera that
-	 * follows every mouse movement is unusable — and it is incompatible with a toolbar that is on
-	 * screen for the whole session: a strip a player can only click by first opening a piece menu
-	 * is not a toolbar. The hazard is closed at the ASSET now, by IMC_MouseLook's Chorded Action
-	 * trigger on IA_LookModifier, so there is nothing for a panel to take away and no restore any
-	 * route can forget (SESSION_UI_DESIGN §d, S6).
+	 * Replaces an apply/restore pair, and the absence of the restore is the point. There was a
+	 * SetPieceMenuControls(bool) here that raised the cursor and removed the free-look context
+	 * while a menu was up, putting both back on the way out — a correct answer to a real hazard
+	 * (IMC_MouseLook binds the raw Mouse2D axis, so a pointer over a camera that follows every
+	 * mouse movement is unusable), but incompatible with a toolbar on screen for the whole session:
+	 * a strip only clickable by first opening a piece menu is not a toolbar. The hazard is closed
+	 * at the asset now, by IMC_MouseLook's Chorded Action trigger on IA_LookModifier, so there is
+	 * nothing for a panel to take away and no restore any route can forget (SESSION_UI_DESIGN §d, S6).
 	 *
-	 * THE CURSOR HIDES WHILE THE BUTTON IS HELD, which is what SetHideCursorDuringCapture(true)
-	 * buys: the right-drag that turns the camera takes capture, the pointer vanishes for the
-	 * length of the drag and comes back where it was on release. And the mouse is NOT locked to
-	 * the viewport, because a session is played in a window as often as not.
+	 * The cursor hides while the button is held — SetHideCursorDuringCapture(true): the right-drag
+	 * that turns the camera takes capture, the pointer vanishes for the drag and returns on release.
+	 * The mouse is not locked to the viewport, since a session is played in a window as often as not.
 	 *
-	 * A controller with no ULocalPlayer has no viewport to set an input mode against, and that
-	 * fails closed here — the cursor flag, which needs nothing, is set first.
+	 * A controller with no ULocalPlayer has no viewport to set an input mode against, so the cursor
+	 * flag, which needs nothing, is set first.
 	 */
 	void SetSessionControls();
 
 	/**
 	 * The session shortcuts' handlers: one call each, and nothing else belongs in them.
 	 *
-	 * SIX OF THE EIGHT SHARE ONE FUNCTION WITH THE ID AS A BOUND PAYLOAD, because they differ by
-	 * nothing but that id — six one-line functions would be six places for a copy-paste to put
-	 * the wrong constant. The two toggles cannot: each reads the session before it chooses, which
-	 * is why ToggleSessionMode and ToggleSessionPlacement are public seams a test can drive, and
-	 * these are the void wrappers Enhanced Input's delegate signature needs.
+	 * Six of the eight share one function with the id as a bound payload, since they differ by
+	 * nothing but that id — six one-line functions would be six places for a copy-paste to put the
+	 * wrong constant. The two toggles cannot: each reads the session before it chooses, which is
+	 * why ToggleSessionMode/ToggleSessionPlacement are public seams a test can drive, and these are
+	 * the void wrappers Enhanced Input's delegate signature needs.
 	 */
 	void OnSessionShortcut(DestructionSession::EToolbarButtonId Id);
 	void OnSessionToggleMode();
@@ -549,30 +494,26 @@ private:
 	/**
 	 * Put one button per presented row on screen, and take them off again.
 	 *
-	 * THIS IS THE ONE INCH OF THE LOOP NO TEST CAN REACH, and it is deliberately kept to
-	 * exactly that: a code-built test world has no UGameViewportClient at all, so
-	 * AddViewportWidgetContent has nothing to add to and no headless assertion can see a
-	 * button, a click, or a leak. Everything a menu could get wrong — which rows, which ref,
-	 * which action, the dismissal, the controls restore, an index naming no row — is already
-	 * decided by ChoosePieceMenuRow and the presenter, both of which are covered. So there is
-	 * no logic here to be wrong: a button per row, its label off the row, and a click that
+	 * The one inch of the loop no test can reach, deliberately kept to exactly that: a code-built
+	 * test world has no UGameViewportClient at all, so AddViewportWidgetContent has nothing to add
+	 * to and no headless assertion can see a button, click or leak. Everything a menu could get
+	 * wrong — which rows, which ref, which action, the dismissal, the controls restore, an index
+	 * naming no row — is already decided by ChoosePieceMenuRow and the presenter, both covered. So
+	 * there is no logic here to be wrong: a button per row, its label off the row, and a click that
 	 * calls ChoosePieceMenuRow with its own index and nothing else.
 	 *
-	 * IT DRAWS THE READOUT TOO, AND EVERY STRING IN IT IS ALREADY DECIDED. HeaderText, CountText,
-	 * each entry's Label, the inspected brick's InspectedLabel, SupportText and JointsText, one
-	 * finished line per joint, the headroom caption and its decade ticks — and the hint that
-	 * stands in for the whole breakout when no brick is singled out — all come off
-	 * FPieceMenuInspector, which Core/PieceMenu.h explains is worded there precisely so that
-	 * nothing here has to choose a unit, a precision, a singular or a plural. Even the emptiness
-	 * is the model's: InspectedLabel and InspectedHintText are empty in exactly the states the
-	 * other is not, so drawing both unconditionally draws whichever exists. A branch appearing in
-	 * this function is the drift to watch for; if the readout ever needs one, the missing string
-	 * belongs in the model.
+	 * It draws the readout too, and every string in it is already decided. HeaderText, CountText,
+	 * each entry's Label, InspectedLabel, SupportText and JointsText, the headroom caption and its
+	 * decade ticks, and the hint standing in for the breakout when no brick is singled out — all
+	 * come off FPieceMenuInspector, worded there (Core/PieceMenu.h) precisely so nothing here
+	 * chooses a unit, a precision, a singular or a plural. Even the emptiness is the model's:
+	 * InspectedLabel and InspectedHintText are empty in exactly the states the other is not, so
+	 * drawing both unconditionally draws whichever exists. A branch appearing here is the drift to
+	 * watch for; a missing string belongs in the model.
 	 *
 	 * The build sits beside the Append in ShowPieceMenu and the removal beside the Reset in
-	 * DismissPieceMenu, so it inherits the dismiss-then-build discipline that already makes
-	 * the controls restore correct — which is what keeps a second add with no matching remove,
-	 * the one leak that would go unseen, on the same code path as the asserted one.
+	 * DismissPieceMenu, inheriting the dismiss-then-build discipline that keeps a second add with
+	 * no matching remove on the same code path as the asserted one.
 	 */
 	void BuildPieceMenuWidget();
 	void RemovePieceMenuWidget();
@@ -580,12 +521,11 @@ private:
 	/**
 	 * Redraw the joint readout for whichever brick is now singled out.
 	 *
-	 * ONLY THE READOUT, AND THAT IS A CORRECTNESS DECISION RATHER THAN AN ECONOMY. The entry
-	 * buttons are what the cursor is sitting on when this runs — hovering one is what changed
-	 * the inspected brick — so rebuilding the whole panel would destroy the very button being
-	 * hovered, and Slate would then fire OnHovered on its replacement next frame, and again on
-	 * the one after that. Swapping the contents of a box that holds nothing interactive leaves
-	 * the buttons alone and cannot feed itself.
+	 * Only the readout — a correctness decision rather than an economy. The entry buttons are
+	 * what the cursor is sitting on when this runs (hovering one is what changed the inspected
+	 * brick), so rebuilding the whole panel would destroy the very button being hovered, and
+	 * Slate would fire OnHovered on its replacement next frame, and again after. Swapping the
+	 * contents of a box that holds nothing interactive leaves the buttons alone.
 	 */
 	void RefreshPieceMenuInspectorWidget();
 
@@ -601,64 +541,63 @@ private:
 	/**
 	 * Write every chip's style into the fixed array, from the look the model decided for this state.
 	 *
-	 * RUN BEFORE THE CHIPS ARE MADE, ON EVERY REBUILD, because the look follows the state: which chip
-	 * is filled with the mode's accent changes with the very click that rebuilds the strip. In place
-	 * rather than into fresh storage — the slots may not move while any chip is pointing at one.
+	 * Run before the chips are made, on every rebuild, since the look follows the state — which
+	 * chip is filled with the mode's accent changes with the very click that rebuilds the strip. In
+	 * place rather than fresh storage, since the slots may not move while any chip points at one.
 	 */
 	void RebuildSessionChipStyles(const TArray<DestructionSession::FToolbarButton>& Buttons);
 
 	/**
 	 * Ask the world whether there is anything for the commands to act on, and record the answer.
 	 *
-	 * DERIVED, NEVER SET. `bHasStructure` is the only field on the session state that is a fact
-	 * about the world rather than a choice the player made, so a controller that set it when it
-	 * placed a brick would have to remember to unset it on every route a piece can leave by — a
-	 * delete, a cascade, a Clear. Asked afresh instead, it cannot go stale.
+	 * Derived, never set: `bHasStructure` is the only session-state field that is a fact about the
+	 * world rather than a player choice, so setting it on placement would mean remembering to unset
+	 * it on every route a piece can leave by — delete, cascade, Clear. Asked afresh, it cannot go
+	 * stale.
 	 *
-	 * LIVE PIECES, BECAUSE A STRUCTURE OF TOMBSTONES IS NOTHING TO RUN. RemovePiece tombstones
-	 * rather than compacting, so a plot whose every brick has been deleted still answers a piece
-	 * count and would leave Clear and Run lit over an empty plot.
+	 * Live pieces, because a structure of tombstones is nothing to run: RemovePiece tombstones
+	 * rather than compacting, so a plot whose every brick has been deleted would still answer a
+	 * piece count and leave Clear and Run lit over an empty plot.
 	 */
 	void RefreshSessionHasStructure();
 
 	/**
 	 * Re-paint the session's structure by load, or take the paint off again.
 	 *
-	 * WHILE IT IS ON: solve the session's structure NON-DESTRUCTIVELY — `FStructureBinding::SolveLoads`
-	 * is documented as leaving every connection exactly as intact as it found it, and it must, because
-	 * an overlay is a way of LOOKING at a wall and a look that broke joints would be the most
-	 * expensive instrument ever shipped — then give every live piece the band of its worst joint.
+	 * While it is on: solve the structure non-destructively — `FStructureBinding::SolveLoads` is
+	 * documented as leaving every connection exactly as intact as it found it, since an overlay is
+	 * a way of looking at a wall and a look that broke joints would be the most expensive instrument
+	 * ever shipped — then give every live piece the band of its worst joint.
 	 *
-	 * IT IS AN INPUT TO HighlightForPiece, NOT A SetHighlighted OF ITS OWN. A refresh that painted
-	 * bricks directly would fight the cursor: the next hover would clear the overlay off one brick and
-	 * the next refresh would paint over the selection. The overlay is the WEAKEST state in the
-	 * precedence, and the only way a precedence can be honoured is for one function to decide.
+	 * An input to HighlightForPiece, not a SetHighlighted of its own: a refresh that painted bricks
+	 * directly would fight the cursor, with the next hover clearing the overlay off one brick and
+	 * the next refresh painting over the selection. The overlay is the weakest state in the
+	 * precedence, and only one function can honour a precedence.
 	 *
-	 * WHEN IT IS OFF: the load input is cleared, so every piece falls back through the same precedence
-	 * — to Hovered or Selected if it is one of those, and to None otherwise.
+	 * When it is off, the load input is cleared, so every piece falls back through the same
+	 * precedence — to Hovered or Selected if it is one of those, else None.
 	 *
-	 * CALLED WHENEVER THE ANSWER COULD HAVE MOVED, which is the toggle itself, a Run, a committed
-	 * Delete and a Build-mode placement. An overlay computed once is a photograph of a structure the
-	 * player has since changed, and a green brick over a hole is exactly the lie this is for.
+	 * Called whenever the answer could have moved: the toggle itself, a Run, a committed Delete, a
+	 * Build-mode placement. An overlay computed once is a photograph of a structure the player has
+	 * since changed, and a green brick over a hole is exactly the lie this is for.
 	 *
-	 * A SOLVE PER MUTATION AND NEVER PER FRAME. Cost is the reason the overlay is a setting rather
-	 * than always on.
+	 * A solve per mutation and never per frame — cost is why the overlay is a setting rather than
+	 * always on.
 	 */
 	void RefreshLoadOverlay();
 
 	/**
 	 * Put the scenario banner on screen, and take it off again.
 	 *
-	 * THE SECOND INCH OF THE GAME NO TEST CAN REACH, and it is kept to exactly that. Every word
-	 * and every number in it is already decided by DestructionScenarios::BuildScenarioLabel, which
-	 * World.Scenarios.Label sweeps 162 ways, and the game mode's GetScenarioLabel is what
-	 * World.Scenario.GameModeLabelsTheScenarioItBuilt ticks a real world against. What is left
-	 * here is three text blocks reading three strings, so there is no logic to be wrong: a branch
-	 * appearing in this pair is the drift to watch for, and a missing string belongs on
-	 * FScenarioLabel.
+	 * The second inch of the game no test can reach, kept to exactly that. Every word and number
+	 * in it is already decided by DestructionScenarios::BuildScenarioLabel, which
+	 * World.Scenarios.Label sweeps 162 ways, and by the game mode's GetScenarioLabel, which
+	 * World.Scenario.GameModeLabelsTheScenarioItBuilt ticks against a real world. What is left here
+	 * is three text blocks reading three strings — a branch appearing in this pair is the drift to
+	 * watch for, and a missing string belongs on FScenarioLabel.
 	 *
-	 * A code-built test world has no UGameViewportClient at all, so this draws nothing headless —
-	 * which is the ordinary case rather than an error, exactly as it is for the piece menu.
+	 * A code-built test world has no UGameViewportClient at all, so this draws nothing headless,
+	 * the ordinary case rather than an error, exactly as for the piece menu.
 	 */
 	void BuildScenarioLabelWidget();
 	void RemoveScenarioLabelWidget();
@@ -666,11 +605,11 @@ private:
 	/**
 	 * What the banner reads, right now, asked again on every paint.
 	 *
-	 * BOUND AS ATTRIBUTES RATHER THAN BAKED IN AT BUILD TIME, because half the label is a clock:
-	 * the countdown to an armed cut changes every frame, and a banner built once would show the
-	 * whole delay for as long as the level ran. The game mode is the only thing that knows which
-	 * row it RECORDED and how much of the delay is left, and a level with no game mode of this
-	 * class reads as an empty line rather than as a crash.
+	 * Bound as attributes rather than baked in at build time, since half the label is a clock: the
+	 * countdown to an armed cut changes every frame, and a banner built once would show the whole
+	 * delay for as long as the level ran. The game mode is the only thing that knows which row it
+	 * recorded and how much delay is left, and a level with no game mode of this class reads as an
+	 * empty line rather than a crash.
 	 */
 	DestructionScenarios::FScenarioLabel ScenarioLabelNow() const;
 
@@ -679,25 +618,25 @@ private:
 	FText ScenarioLabelCutText() const;
 
 	/**
-	 * THE PANEL'S TITLE STRIP, DRAGGED: press, move, release.
+	 * The panel's title strip, dragged: press, move, release.
 	 *
-	 * EVERY DECISION THESE THREE COULD MAKE IS ClampPanelOffset'S, WHICH IS WHY THEY ARE THIS
-	 * SHORT. Where a drag is allowed to leave the panel is the half that can strand it — an offset
-	 * that puts the title strip off the top of the screen leaves the player with nothing to grab
-	 * and no way back short of restarting — and it is arithmetic on six doubles, so it lives in
-	 * Core where Presenter.PanelOffsetClamp can hold it. What is left here is a cursor position
-	 * and a subtraction.
+	 * Every decision these three could make is ClampPanelOffset's, which is why they are this
+	 * short. Where a drag is allowed to leave the panel is the half that can strand it — an offset
+	 * that puts the title strip off the top of the screen leaves the player nothing to grab and no
+	 * way back short of restarting — and it is arithmetic on six doubles, so it lives in Core where
+	 * Presenter.PanelOffsetClamp can hold it. What is left here is a cursor position and a
+	 * subtraction.
 	 *
-	 * THE CURSOR IS TAKEN THROUGH THE STRIP'S OWN GEOMETRY RATHER THAN IN SCREEN PIXELS. A
+	 * The cursor is taken through the strip's own geometry rather than in screen pixels. A
 	 * viewport widget is laid out under Slate's DPI scaler, so a screen-space delta moves the
-	 * panel by the DPI scale rather than by the distance the cursor travelled — and the offset the
+	 * panel by the DPI scale rather than by the distance the cursor travelled, and the offset the
 	 * canvas is given is in the scaled space, not the screen's. AbsoluteToLocal on both ends puts
 	 * the delta in the space the offset is stated in, whatever the scale, and the translation
 	 * cancels in the subtraction.
 	 *
-	 * THE PRESS TAKES MOUSE CAPTURE, so a drag survives the cursor outrunning a 640 px strip.
-	 * Without it Slate stops sending moves the instant the pointer leaves the widget, and a quick
-	 * drag drops the panel wherever the cursor happened to cross the edge.
+	 * The press takes mouse capture, so a drag survives the cursor outrunning a 640 px strip —
+	 * without it Slate stops sending moves the instant the pointer leaves the widget, and a quick
+	 * drag drops the panel wherever the cursor crossed the edge.
 	 */
 	FReply OnPieceMenuPanelGrabbed(const FGeometry& Geometry, const FPointerEvent& Event);
 	FReply OnPieceMenuPanelDragged(const FGeometry& Geometry, const FPointerEvent& Event);
@@ -706,63 +645,62 @@ private:
 	/**
 	 * The same strip, double-clicked: swap the panel between its two detail modes.
 	 *
-	 * A GESTURE RATHER THAN A CAPTIONED BUTTON, AND THE REASON IS THE NO-LOGIC RULE THIS WIDGET
-	 * WAS LANDED UNDER. A button needs a caption, a caption is a word, and choosing a word is a
-	 * decision that belongs on FPieceMenuInspector where a test can read it — there is no such
-	 * field today and inventing one here would put the decision in the one place nothing can
-	 * reach. Double-clicking a title bar to roll a panel up is also the gesture every desktop
-	 * already uses for exactly this. CURRENT_STATE.md carries the follow-up: a captioned toggle
-	 * needs a model field, and a model field needs a red test.
+	 * A gesture rather than a captioned button, for the no-logic rule this widget was landed
+	 * under: a button needs a caption, a caption is a word, and choosing a word is a decision that
+	 * belongs on FPieceMenuInspector where a test can read it — no such field exists today, and
+	 * inventing one here would put the decision in the one place nothing can reach. Double-clicking
+	 * a title bar to roll a panel up is also the gesture every desktop already uses for this.
+	 * CURRENT_STATE.md carries the follow-up: a captioned toggle needs a model field and a red test.
 	 */
 	FReply OnPieceMenuPanelDetailToggled(const FGeometry& Geometry, const FPointerEvent& Event);
 
 	/**
 	 * Where the panel's top-left corner is, as the constraint canvas wants it.
 	 *
-	 * AN ATTRIBUTE RATHER THAN A VALUE BAKED INTO THE SLOT, so a drag moves the panel without
-	 * rebuilding it — the same reason the readout is a box whose content is swapped rather than a
-	 * panel torn down and put back. It marshals PieceMenuPanelOffsetPx into an FMargin and does
-	 * nothing else; the size is the child's own, which is what AutoSize on the slot is for.
+	 * An attribute rather than a value baked into the slot, so a drag moves the panel without
+	 * rebuilding it — the same reason the readout is a box whose content is swapped rather than
+	 * torn down and put back. It marshals PieceMenuPanelOffsetPx into an FMargin and does nothing
+	 * else; the size is the child's own, which is what AutoSize on the slot is for.
 	 */
 	FMargin PieceMenuPanelSlotOffset() const;
 
 	/**
 	 * The viewport, in the units the offset above is stated in.
 	 *
-	 * READ OFF THE PANEL'S OWN ROOT RATHER THAN FROM UGameViewportClient::GetViewportSize, and the
+	 * Read off the panel's own root rather than UGameViewportClient::GetViewportSize — the
 	 * difference is the DPI scale. GetViewportSize answers in screen pixels; the constraint canvas
 	 * lays out in Slate's scaled space, and a clamp fed one and applied to the other lets the panel
-	 * off the edge of the screen by exactly the scale factor — which is the one outcome
-	 * ClampPanelOffset exists to prevent. The root canvas IS the viewport, so its own local size is
-	 * the answer in its own units.
+	 * off the edge of the screen by exactly the scale factor, the one outcome ClampPanelOffset
+	 * exists to prevent. The root canvas is the viewport, so its own local size is the answer in
+	 * its own units.
 	 *
-	 * ZERO WHEN THERE IS NO PANEL, which clamps every offset to the origin. That is the fail-closed
-	 * corner rather than a special case, and it is unreachable from the drag handlers — the strip
-	 * being dragged lives inside the widget being asked about.
+	 * Zero when there is no panel, which clamps every offset to the origin — the fail-closed
+	 * corner rather than a special case, unreachable from the drag handlers since the strip being
+	 * dragged lives inside the widget being asked about.
 	 */
 	FVector2D PieceMenuViewportSizePx() const;
 
 	/**
 	 * The same screen, asked of the viewport client because there is no panel to ask yet.
 	 *
-	 * A SECOND ROUTE TO ONE ANSWER, AND THE SPLIT IS WHEN RATHER THAN WHAT. The function above reads
-	 * the panel's own laid-out root, which is exact and needs no conversion — and is zero for a
-	 * widget built this frame, so the HOME cannot come from it. This one asks the client, whose
-	 * answer is in screen pixels and so is out by exactly the DPI scale the canvas lays out under,
-	 * and divides it back. Both are the viewport in the units PieceMenuPanelOffsetPx is stated in.
+	 * A second route to one answer, split by when rather than what. The function above reads the
+	 * panel's own laid-out root, exact and needing no conversion, but zero for a widget built this
+	 * frame, so the home cannot come from it. This one asks the client, whose answer is in screen
+	 * pixels and so is out by exactly the DPI scale the canvas lays out under, and divides it back.
+	 * Both are the viewport in the units PieceMenuPanelOffsetPx is stated in.
 	 *
-	 * ZERO WHEN THE SCALE IS NOT A POSITIVE NUMBER, which puts the home at the origin — the corner
-	 * that is on screen at every viewport size and every scale, and the one both PieceMenuHomeOffset
-	 * and ClampPanelOffset already fail closed to.
+	 * Zero when the scale is not a positive number, which puts the home at the origin — the corner
+	 * on screen at every viewport size and scale, and the one both PieceMenuHomeOffset and
+	 * ClampPanelOffset already fail closed to.
 	 */
 	FVector2D PieceMenuViewportSizeAtOpenPx(const UGameViewportClient& Viewport) const;
 
 	/**
 	 * An entry row's hover: single that brick out, and let it go again.
 	 *
-	 * THE CURSOR ON AN ENTRY IS THE WHOLE INPUT. A player reading a joint breakout has to be
-	 * able to say which brick it is about without disturbing what they have picked, and moving
-	 * the mouse down the list is the cheapest way to say it. Both are one call each.
+	 * The cursor on an entry is the whole input. A player reading a joint breakout needs to say
+	 * which brick it is about without disturbing what they have picked, and moving the mouse down
+	 * the list is the cheapest way to say it. Both are one call each.
 	 */
 	void OnPieceMenuEntryHovered(FPieceRef Ref);
 	void OnPieceMenuEntryUnhovered();
@@ -770,14 +708,14 @@ private:
 	/**
 	 * What state this brick should now be called out in, and putting it there.
 	 *
-	 * ONE FUNCTION DECIDES, AND EVERY ROUTE ASKS IT, which is what makes "the stronger state
-	 * wins" true everywhere rather than at the call sites somebody remembered: a selected
-	 * brick under the cursor reads Selected, so it cannot flicker back to merely-pointed-at
-	 * the moment the player looks at it. Both halves are read back off the selection and the
-	 * hovered ref rather than remembered per brick, so there is no third record to drift.
+	 * One function decides, and every route asks it, which makes "the stronger state wins" true
+	 * everywhere rather than at call sites somebody remembered: a selected brick under the cursor
+	 * reads Selected, so it cannot flicker back to merely-pointed-at the moment the player looks
+	 * at it. Both halves are read back off the selection and the hovered ref rather than remembered
+	 * per brick, so there is no third record to drift.
 	 *
-	 * A ref naming no brick refreshes nothing, which is what makes the pieces a commit has
-	 * just destroyed harmless to pass in.
+	 * A ref naming no brick refreshes nothing, which makes pieces a commit has just destroyed
+	 * harmless to pass in.
 	 */
 	EBrickHighlight HighlightForPiece(const FPieceRef& Ref) const;
 	void RefreshPieceHighlight(const FPieceRef& Ref);
@@ -785,59 +723,58 @@ private:
 	/**
 	 * Which of the readout's colour slots this brick is the far end of, as the state that wears it.
 	 *
-	 * THE PANEL'S OWN ANSWER, READ BACK RATHER THAN WORKED OUT AGAIN. FInspectorJointRow::ColourSlot
-	 * has already decided that joint row i takes slot i, and a second derivation out here — walking
-	 * the graph's connections, or numbering the neighbours in some other order — is the drift this
-	 * project keeps paying for: two answers to "which brick is the blue one", drawn two inches apart.
+	 * The panel's own answer, read back rather than worked out again. FInspectorJointRow::ColourSlot
+	 * has already decided that joint row i takes slot i, and a second derivation here — walking the
+	 * graph's connections, or numbering neighbours some other way — is the drift this project keeps
+	 * paying for: two answers to "which brick is the blue one", drawn two inches apart.
 	 *
-	 * None WHEN IT IS NOT ONE, which is what lets HighlightForPiece fall through to Hovered. That
-	 * covers a brick with no joint row at all, a row past the end of the palette (ColourSlot is
-	 * INDEX_NONE by the model's own rule) and every state where nothing is singled out.
+	 * None when it is not one, which lets HighlightForPiece fall through to Hovered — a brick with
+	 * no joint row, a row past the end of the palette (ColourSlot is INDEX_NONE by the model's own
+	 * rule), and every state where nothing is singled out.
 	 */
 	EBrickHighlight NeighbourHighlightForPiece(const FPieceRef& Ref) const;
 
 	/**
 	 * Which band this brick is in under the load overlay, as the state that wears it.
 	 *
-	 * THE OVERLAY'S ANSWER, READ BACK RATHER THAN WORKED OUT AGAIN — the same discipline
-	 * NeighbourHighlightForPiece keeps. RefreshLoadOverlay computed a state per piece from one solve;
-	 * re-deriving it here would mean a solve per brick per refresh, and two answers to "what band is
-	 * this" drawn a frame apart.
+	 * The overlay's answer, read back rather than worked out again — the same discipline
+	 * NeighbourHighlightForPiece keeps. RefreshLoadOverlay computed a state per piece from one
+	 * solve; re-deriving it here would mean a solve per brick per refresh, two answers to "what
+	 * band is this" drawn a frame apart.
 	 *
-	 * None WHEN THERE IS NO ANSWER, which is what lets HighlightForPiece end on it: the overlay off,
-	 * a ref naming another structure, a piece added since the last refresh, or a hole.
+	 * None when there is no answer, which lets HighlightForPiece end on it: the overlay off, a ref
+	 * naming another structure, a piece added since the last refresh, or a hole.
 	 */
 	EBrickHighlight LoadHighlightForPiece(const FPieceRef& Ref) const;
 
 	/**
 	 * Every brick the readout is currently pointing at, in its rows' order.
 	 *
-	 * WHAT THE SET WAS AND WHAT IT BECOMES ARE BOTH NEEDED, WHICH IS WHY THIS IS A LIST RATHER THAN
-	 * A TEST. The neighbours change wholesale when the readout moves to a different brick, so
-	 * telling only the NEW ones leaves the old ones lit — and running the cursor down a list of six
-	 * entries would end with the whole wall coloured. It is asked before the change and again after,
-	 * and both answers are refreshed.
+	 * What the set was and what it becomes are both needed, which is why this is a list rather
+	 * than a test. The neighbours change wholesale when the readout moves to a different brick, so
+	 * telling only the new ones leaves the old ones lit — running the cursor down a list of six
+	 * entries would end with the whole wall coloured. Asked before the change and again after, with
+	 * both answers refreshed.
 	 *
-	 * IT INCLUDES BRICKS THAT ARE GONE. A joint that went with a removed piece is still one of the
+	 * Includes bricks that are gone: a joint that went with a removed piece is still one of the
 	 * inspected brick's rows and still takes a slot, so the ref is handed to RefreshPieceHighlight,
-	 * which is where "this ref names no actor" is already answered.
+	 * which already answers "this ref names no actor".
 	 */
 	TArray<FPieceRef> NeighbourPieces() const;
 
 	/**
-	 * Put every brick the readout points at into the colour it should now be in — INCLUDING THE
-	 * ONES IT HAS STOPPED POINTING AT, which is the half that has to be passed in.
+	 * Put every brick the readout points at into the colour it should now be in — including the
+	 * ones it has stopped pointing at, which is the half that has to be passed in.
 	 *
-	 * THE SET CHANGES WHOLESALE AND ITS OLD MEMBERS ARE THE ONES NOTHING ELSE WILL TELL. Every
+	 * The set changes wholesale and its old members are the ones nothing else will tell. Every
 	 * other refresh in this class is keyed on a ref something already has in hand — the brick
-	 * clicked, the brick left, the bricks that were picked — but a brick stops being a neighbour
-	 * without being touched at all, so the caller has to have asked NeighbourPieces() BEFORE it
-	 * changed anything. A refresh that told only the new members would leave the old ones lit, and
-	 * a cursor run down a list of six entries would end with the whole wall coloured.
+	 * clicked, the brick left, the bricks picked — but a brick stops being a neighbour without
+	 * being touched at all, so the caller has to have asked NeighbourPieces() before anything
+	 * changed. A refresh that told only the new members would leave the old ones lit.
 	 *
-	 * THE READOUT MOVES FOR TWO REASONS AND BOTH CALL THIS. Which brick is singled out is the
-	 * obvious one; the other is the SELECTION changing underneath it, because a brick that leaves
-	 * the selection stops being singled out and takes every neighbour colour with it.
+	 * The readout moves for two reasons and both call this: which brick is singled out, and the
+	 * selection changing underneath it — a brick that leaves the selection stops being singled
+	 * out and takes every neighbour colour with it.
 	 */
 	void RefreshNeighbourHighlights(TArrayView<const FPieceRef> WereNeighbours);
 
@@ -847,29 +784,29 @@ private:
 	/**
 	 * Pick nothing, and stop calling out everything that was picked.
 	 *
-	 * THE REFS ARE COPIED OUT FIRST, because Clear empties the very array they live in — the
-	 * same trap ChoosePieceMenuRow copies its row for. A cleared set that left bricks lit
-	 * tells the player they still have a selection.
+	 * The refs are copied out first, since Clear empties the very array they live in — the same
+	 * trap ChoosePieceMenuRow copies its row for. A cleared set that left bricks lit would tell the
+	 * player they still have a selection.
 	 */
 	void ClearPieceSelection();
 
 	/**
-	 * THE BUILD LOOP, OWNED BY THE CONTROLLER THAT DRIVES IT.
+	 * The build loop, owned by the controller that drives it.
 	 *
 	 * A default subobject, so every controller in every level has one and nothing has to remember
 	 * to attach it. It holds the player's live build, its ghost and the piece settings the toolbar
 	 * pushes onto it; the session state above is the presenter's record of the same three choices,
-	 * and OnToolbarButton is the one place they are kept in step.
+	 * kept in step by OnToolbarButton alone.
 	 */
 	UPROPERTY()
 	TObjectPtr<UBuildModeComponent> BuildComponent;
 
 	/**
-	 * WHAT THE SESSION IS DOING. One struct, changed only by OnToolbarButton.
+	 * What the session is doing. One struct, changed only by OnToolbarButton.
 	 *
-	 * IT OPENS IN DESTROY, WHICH IS NOT THE MODEL'S OWN DEFAULT, and the constructor says why: a
+	 * Opens in Destroy, not the model's own default — the constructor says why: a
 	 * default-constructed session must be the one that cannot destroy anything, but a controller is
-	 * a different question — twenty-eight of the twenty-nine levels lay a wall for the player to
+	 * a different question. Twenty-eight of the twenty-nine levels lay a wall for the player to
 	 * pull apart, and opening those in Build would put a ghost over it and swallow the first click.
 	 */
 	DestructionSession::FSessionToolbarState SessionToolbarState;
@@ -877,35 +814,35 @@ private:
 	/**
 	 * The strip that state is drawn as, valid for as long as the session is on screen.
 	 *
-	 * A THIRD VIEWPORT WIDGET WITH ITS OWN ADD AND ITS OWN REMOVE, held so the remove has something
-	 * to hand back — and its own rather than the banner's, because the banner is built once and this
-	 * is torn down and rebuilt on every click that changes what the strip says.
+	 * A third viewport widget with its own add and remove, held so the remove has something to
+	 * hand back — its own rather than the banner's, since the banner is built once and this is
+	 * torn down and rebuilt on every click that changes what the strip says.
 	 */
 	TSharedPtr<SWidget> SessionToolbarWidget;
 
 	/**
-	 * HOW MANY CHIP STYLES ARE KEPT: one per button the model knows, plus one for the ones it does
-	 * not.
+	 * How many chip styles are kept: one per button the model knows, plus one for the ones it
+	 * does not.
 	 *
-	 * DERIVED FROM THE LAST ENUMERATOR RATHER THAN WRITTEN AS A COUNT, so that adding a button to
+	 * Derived from the last enumerator rather than written as a count, so adding a button to
 	 * EToolbarButtonId grows the storage with it instead of silently overflowing it. The extra slot
-	 * at the end is where an id outside the enumeration lands — including one a cast invented, which
-	 * is all it takes with a uint8 enum — and SessionChipStyleFor fills it with the greyed look.
+	 * is where an id outside the enumeration lands — including one a cast invented, all it takes
+	 * with a uint8 enum — and SessionChipStyleFor fills it with the greyed look.
 	 */
 	static constexpr int32 SessionChipStyleCount =
 		static_cast<int32>(DestructionSession::EToolbarButtonId::RunStructure) + 2;
 
 	/**
-	 * THE CHIPS' STYLES, IN STORAGE THAT DOES NOT MOVE.
+	 * The chips' styles, in storage that does not move.
 	 *
-	 * A FIXED ARRAY, AND THE FIXEDNESS IS THE FEATURE. SButton stores the `const FButtonStyle*` it is
-	 * handed and never copies it, so every chip on screen is reading these objects for as long as it
-	 * is up. A TMap would relocate its values on the next rehash and a local would not outlive the
-	 * call — either way the next placement would be painting through a dangling pointer. Rebuilding
-	 * the strip overwrites these in place, so the look follows the session's state and every pointer
-	 * already handed out stays good.
+	 * A fixed array, and the fixedness is the feature. SButton stores the `const FButtonStyle*` it
+	 * is handed and never copies it, so every chip on screen is reading these objects for as long
+	 * as it is up. A TMap would relocate its values on the next rehash and a local would not
+	 * outlive the call — either way the next placement would paint through a dangling pointer.
+	 * Rebuilding the strip overwrites these in place, so the look follows the session's state and
+	 * every pointer already handed out stays good.
 	 *
-	 * NOT A UPROPERTY, AND IT DOES NOT NEED TO BE: these brushes are rounded boxes with no resource
+	 * Not a UPROPERTY, and it does not need to be: these brushes are rounded boxes with no resource
 	 * object, so there is no UObject reference here for the collector to keep alive.
 	 */
 	FButtonStyle SessionChipStyles[SessionChipStyleCount];
@@ -919,34 +856,34 @@ private:
 	/**
 	 * The one brick under the cursor, or a default ref for none.
 	 *
-	 * ONE REF RATHER THAN A SET, because there is one cursor. It is not a second record of
-	 * anything: which bricks are PICKED is the selection's, and this is only what is being
-	 * pointed at — the two are combined by HighlightForPiece and nowhere else.
+	 * One ref rather than a set, since there is one cursor. Not a second record of anything: which
+	 * bricks are picked is the selection's, this is only what is being pointed at — the two are
+	 * combined by HighlightForPiece and nowhere else.
 	 */
 	FPieceRef HoveredPiece;
 
 	/**
 	 * The one selected brick being read in detail, or a default ref for none.
 	 *
-	 * A THIRD REF RATHER THAN A FLAG ON THE SELECTION, for the reason HoveredPiece is one:
-	 * there is one readout, the selection is the durable state, and the two are combined by
+	 * A third ref rather than a flag on the selection, for the reason HoveredPiece is one: there is
+	 * one readout, the selection is the durable state, and the two are combined by
 	 * HighlightForPiece and nowhere else.
 	 */
 	FPieceRef InspectedPiece;
 
 	/**
-	 * WHICH STRUCTURE THE LOAD OVERLAY WAS COMPUTED OVER, and what each of its pieces came out as.
+	 * Which structure the load overlay was computed over, and what each of its pieces came out as.
 	 *
-	 * AN ARRAY INDEXED BY THE PIECE HANDLE, because handles are dense and never compacted — removal
-	 * tombstones — so the subscript IS the piece and a hole is simply a None in its own slot.
+	 * An array indexed by the piece handle, since handles are dense and never compacted — removal
+	 * tombstones — so the subscript is the piece and a hole is simply a None in its own slot.
 	 *
-	 * THE STRUCTURE ID IS HELD BESIDE IT AND IS NOT DECORATION: piece 4 of the level's wall is not
+	 * The structure id is held beside it and is not decoration: piece 4 of the level's wall is not
 	 * piece 4 of the player's build, and an overlay that answered on the index alone would tint one
 	 * structure with another's bands the moment the session named a different one.
 	 *
-	 * BOTH EMPTY MEANS NO OVERLAY — which is the state a session opens in, and the state the second
-	 * click on the chip puts it back into. It is not a second record of the toolbar's flag: the flag
-	 * is what the player asked for, and this is the answer the last solve gave for it.
+	 * Both empty means no overlay — the state a session opens in, and the state the second click on
+	 * the chip returns it to. Not a second record of the toolbar's flag: the flag is what the
+	 * player asked for, this is the answer the last solve gave for it.
 	 */
 	int32 LoadOverlayStructureId = INDEX_NONE;
 
@@ -958,81 +895,80 @@ private:
 	/**
 	 * The banner naming the scenario, valid for as long as this controller is playing.
 	 *
-	 * A SECOND VIEWPORT WIDGET WITH ITS OWN ADD AND ITS OWN REMOVE, held so the remove has
-	 * something to hand back. It is not the menu's: the menu comes and goes with every click and
-	 * the banner is up the whole time, so sharing one handle would take the banner down with the
-	 * first dismissal.
+	 * A second viewport widget with its own add and remove, held so the remove has something to
+	 * hand back. Not the menu's: the menu comes and goes with every click while the banner is up
+	 * the whole time, so sharing one handle would take the banner down with the first dismissal.
 	 */
 	TSharedPtr<SWidget> ScenarioLabelWidget;
 
 	/**
 	 * The one part of that widget the readout is swapped in and out of.
 	 *
-	 * A HANDLE INTO THE PANEL RATHER THAN A SECOND VIEWPORT WIDGET, so there is still exactly
-	 * one add and one remove and the leak the dismiss-then-build discipline guards against
-	 * stays a single pair. It is valid exactly while PieceMenuWidget is.
+	 * A handle into the panel rather than a second viewport widget, so there is still exactly one
+	 * add and one remove and the leak the dismiss-then-build discipline guards against stays a
+	 * single pair. Valid exactly while PieceMenuWidget is.
 	 */
 	TSharedPtr<SBox> PieceMenuInspectorBox;
 
 	/**
 	 * The strip the player grabs to move the panel, held only so a press can capture to it.
 	 *
-	 * FReply::CaptureMouse WANTS THE WIDGET, AND A UObject HANDLER HAS NO SharedThis. It is a
-	 * handle into the panel exactly as PieceMenuInspectorBox is, valid for exactly as long, and
-	 * released beside it.
+	 * FReply::CaptureMouse wants the widget, and a UObject handler has no SharedThis. A handle
+	 * into the panel exactly as PieceMenuInspectorBox is, valid for exactly as long, released
+	 * beside it.
 	 */
 	TSharedPtr<SWidget> PieceMenuGrabStrip;
 
 	/**
-	 * WHERE THE PANEL'S TOP-LEFT CORNER SITS, IN THE CANVAS'S OWN PIXELS.
+	 * Where the panel's top-left corner sits, in the canvas's own pixels.
 	 *
-	 * THE PANEL'S POSITION IS STATE NOW, WHICH IS THE WHOLE OF WHAT MAKES IT DRAGGABLE. It was an
-	 * alignment before — right edge, vertically centred — which is a placement no player can
-	 * argue with, and the complaint this answers is exactly that they could not.
+	 * The panel's position is state now, which is the whole of what makes it draggable. It was an
+	 * alignment before — right edge, vertically centred — a placement no player could argue with,
+	 * and the complaint this answers is exactly that they could not.
 	 *
-	 * IT STARTS AT THE ORIGIN AND IS MOVED TO ITS HOME THE FIRST TIME A MENU IS SHOWN. The origin
-	 * is the one corner that is on screen at every viewport size and every DPI scale, which is why
-	 * both PieceMenuHomeOffset and ClampPanelOffset fail closed to it — so it is the value this
-	 * holds until there is a screen to measure a home against, rather than a placement anybody chose.
+	 * Starts at the origin and is moved to its home the first time a menu is shown. The origin is
+	 * the one corner on screen at every viewport size and DPI scale, which is why both
+	 * PieceMenuHomeOffset and ClampPanelOffset fail closed to it — the value this holds until
+	 * there is a screen to measure a home against, rather than a placement anybody chose.
 	 *
-	 * IT IS ALWAYS THE OUTPUT OF ClampPanelOffset OR OF PieceMenuHomeOffset, AND NEVER A RAW DRAG.
-	 * That is what the idempotence sweep in Presenter.PanelOffsetClamp is for, and why
-	 * Presenter.PanelHomeOffset clamps every home it produces and insists nothing moves: this value
-	 * is stored, fed back in on the next drag and clamped again on every rebuild, so a home the
-	 * clamp would move is a panel that jumps the first time it is picked up.
+	 * Always the output of ClampPanelOffset or PieceMenuHomeOffset, never a raw drag. That is what
+	 * the idempotence sweep in Presenter.PanelOffsetClamp is for, and why Presenter.PanelHomeOffset
+	 * clamps every home it produces and insists nothing moves: this value is stored, fed back in on
+	 * the next drag and clamped again on every rebuild, so a home the clamp would move is a panel
+	 * that jumps the first time it is picked up.
 	 */
 	FVector2D PieceMenuPanelOffsetPx = FVector2D::ZeroVector;
 
 	/**
 	 * Whether the panel has ever been placed, so its home is taken once rather than on every build.
 	 *
-	 * THE MENU IS TORN DOWN AND REBUILT ON EVERY CLICK, and the corner above is controller state
-	 * precisely so that a placement the player chose survives that. A home re-taken on each build
-	 * would overwrite it and snap the panel back across the screen the next time they picked a
-	 * brick — which is the complaint the drag affordance exists to answer, arrived at backwards.
+	 * The menu is torn down and rebuilt on every click, and the corner above is controller state
+	 * precisely so a placement the player chose survives that. A home re-taken on each build would
+	 * overwrite it and snap the panel back across the screen the next time they picked a brick —
+	 * the complaint the drag affordance exists to answer, arrived at backwards.
 	 */
 	bool bPieceMenuPanelHasOpened = false;
 
 	/**
 	 * Where the panel was and where the cursor was when this drag began, and whether one is on.
 	 *
-	 * THE ANCHOR IS THE CORNER AT THE PRESS RATHER THAN THE LAST FRAME'S, so the panel follows the
-	 * cursor exactly instead of accumulating a frame of rounding per move — and so that dragging
-	 * into a corner and back out again returns to where it started rather than to wherever the
-	 * clamp pinned it on the way. The flag is what tells a move that is a drag from a move that is
-	 * the cursor merely crossing the strip.
+	 * The anchor is the corner at the press rather than the last frame's, so the panel follows the
+	 * cursor exactly instead of accumulating a frame of rounding per move, and so dragging into a
+	 * corner and back out returns to where it started rather than wherever the clamp pinned it on
+	 * the way. The flag tells a move that is a drag from one that is the cursor merely crossing
+	 * the strip.
 	 */
 	FVector2D PieceMenuPanelGrabbedFromPx = FVector2D::ZeroVector;
 	FVector2D PieceMenuCursorGrabbedAtPx = FVector2D::ZeroVector;
 	bool bPieceMenuPanelIsHeld = false;
 
 	/**
-	 * How much of the readout THE PANEL is asked for. Nothing else ever asks for less.
+	 * How much of the readout the panel is asked for. Nothing else ever asks for less.
 	 *
-	 * ON THE CONTROLLER RATHER THAN INSIDE THE WIDGET, because the panel is rebuilt from scratch
+	 * On the controller rather than inside the widget, since the panel is rebuilt from scratch
 	 * every time a menu opens and a mode held in the widget tree would be forgotten on every
-	 * click. It is deliberately NOT read by NeighbourHighlightForPiece or NeighbourPieces — see
-	 * PieceMenuInspectorForSelection, where the reason is set out at length.
+	 * click. Deliberately not read by NeighbourHighlightForPiece or NeighbourPieces — see
+	 * PieceMenuInspectorForSelection.
 	 */
 	EPieceMenuDetail PieceMenuPanelDetail = EPieceMenuDetail::Full;
 };

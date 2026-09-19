@@ -9,63 +9,56 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE STAIRCASE'S ARITHMETIC, WITH NO WORLD AND NOTHING BROKEN: CUTTING THE VOID PUTS THE BOTTOM
- * OF THE CORBEL AT 0.0527 OF CAPACITY AND NOT ONE OF ITS ELEVEN STEPS PAST THE LINE.
- * (0.369 before the 2026-08-14 mean re-anchor flip moved the flexural bond 0.10 -> 0.70.)
+ * The staircase's arithmetic, with no world and nothing broken: cutting the void puts the bottom
+ * of the corbel at 0.0527 of capacity and not one of its eleven steps past the line. (0.369
+ * before the 2026-08-14 mean re-anchor flip moved the flexural bond 0.10 -> 0.70.)
  *
- * IT USED TO SAY 22.9 AND EIGHT OF ELEVEN, AND THE CHANGE IS THE USER'S RULING OF 2026-08-06
- * RATHER THAN A TUNING. A brick deleted at a free end must not bring the wall down; any rule
- * local enough to save the free end also saves this corbel, so composite vertical action was
- * adopted and this test is one of the things it makes wrong. The wall over a raking cut resists
- * as a DEEP BEAM — a vertical section through eleven courses of bonded masonry, 11,627 cm3
- * against one bed patch's 179.48 — and every rung of the ladder is re-derived from that section
- * in StaircaseWallTestSupport.h rather than from whatever makes this file green.
+ * It used to say 22.9 and eight of eleven; the change is the user's ruling of 2026-08-06, not a
+ * tuning. A brick deleted at a free end must not bring the wall down, and any rule local enough
+ * to save the free end also saves this corbel — so composite vertical action was adopted, and
+ * this test is one of the things it makes wrong. The wall over a raking cut now resists as a deep
+ * beam — a vertical section through eleven courses of bonded masonry, 11,627 cm3 against one bed
+ * patch's 179.48 — and every rung of the ladder is re-derived from that section in
+ * StaircaseWallTestSupport.h rather than from whatever makes this file green.
  *
- * WHAT IS UNCHANGED IS THE WHOLE LOAD PATH, and it is asserted here exactly as it was: the same
- * eleven forces, 38.5 brick weights down to 1, to the same 1e-5. Composite action changes the
- * SECTION the moment is read against and nothing about what the wall hands down, so a change
- * that had moved the ladder itself fails on the force rows first and says so.
+ * What is unchanged is the whole load path, asserted here exactly as it was: the same eleven
+ * forces, 38.5 brick weights down to 1, to the same 1e-5. Composite action changes the section
+ * the moment is read against and nothing about what the wall hands down, so a change that moved
+ * the ladder itself fails on the force rows first.
  *
- * WHY THIS EXISTS AS A SEPARATE TEST, AND IT IS NOT A DUPLICATE OF THE INTEGRATION ONE. The
- * integration test cuts the same void through a real wall in a real world and watches the bricks
- * come down. It used to assert the corbel's utilisation as the precondition that made "the overhang
- * fell" mean something — and it can no longer read it, for a reason that is the design working
- * rather than failing: the cascade now runs inside the commit, a joint that has given carries
- * exactly nothing, and only the BREAKING call reports the ratio that broke it (DESIGN.md §3). By
- * the time a test in a world can look, the ladder reads zero all the way up. Any wire that makes
- * the overhang fall must break those joints first, so the magnitudes are simply not observable
- * there.
+ * WHY A SEPARATE TEST FROM THE INTEGRATION ONE. That test cuts the same void through a real wall
+ * in a real world and watches the bricks come down; it used to assert the corbel's utilisation as
+ * the precondition that made "the overhang fell" mean something, and can no longer read it — the
+ * cascade now runs inside the commit, a given joint carries exactly nothing, and only the
+ * breaking call reports the ratio that broke it (DESIGN.md §3). By the time a world test can
+ * look, the ladder reads zero all the way up. SolveLoads is non-destructive by contract
+ * ("solving must leave every connection exactly as intact as it found it"), so the same void cut
+ * into the same wall can be read at full precision here with the joints still standing after —
+ * this is where the eleven numbers live; the integration test keeps the half only a world can
+ * answer, that those five joints then actually gave and the bricks then actually fell.
  *
- * SolveLoads IS. It is non-destructive by contract — "solving must leave every connection exactly
- * as intact as it found it" — so the same void, cut into the same wall, can be read at full
- * precision here and the joints are still standing afterwards. This is where the eleven numbers
- * live; the integration test keeps the half that only a world can answer, which is that those five
- * joints then actually gave, in the first sweep, and that the bricks then actually fell.
- *
- * THE ORACLE IS HAND ARITHMETIC, NOT A SECOND SOLVER. StaircaseWallTestSupport works TWO ladders
- * out from the picture — the FORCE, where each corbelled brick takes its own weight, all of the
- * corbelled brick above it and half of the next brick along; and the MOMENT, where each step adds
+ * THE ORACLE IS HAND ARITHMETIC, NOT A SECOND SOLVER. StaircaseWallTestSupport works two ladders
+ * out from the picture — the force, where each corbelled brick takes its own weight, all of the
+ * corbelled brick above it and half of the next brick along; and the moment, where each step adds
  * its own 5.625 cm arm to the step above's moment carried across the 11.25 cm the corbel has
- * stepped out — and turns the pair into a stress with beam theory on the 10.25 x 10.25 patch it
+ * stepped out — then turns the pair into a stress with beam theory on the 10.25 x 10.25 patch it
  * hangs off. Nothing in either derivation walks the graph, so agreeing with them is evidence
  * rather than tautology.
  *
- * WHICH AXIS GOVERNS IS ASSERTED BEFORE ANYTHING IS CLAIMED, AND IT MATTERS FAR MORE THAN IT USED
- * TO. ComputeUtilisation returns the WORST of compression, shear and tension, so a fixture aimed
- * at bending silently measures compression the moment compression is higher. Relieving the opened
- * edge closes a gap that used to be a factor of 92; the squeezed edge is relieved with it — both
- * are read against whichever section is carrying the moment — and the bottom rung now reads
- * 0.0527 in tension against 0.00977 in compression, a 5.4x margin. Shear is still exactly
- * zero, because gravity is normal to a bed joint. Spelled out rather than assumed, so a change
- * that relieved one edge and not the other fails HERE.
+ * WHICH AXIS GOVERNS IS ASSERTED BEFORE ANYTHING IS CLAIMED. ComputeUtilisation returns the worst
+ * of compression, shear and tension, so a fixture aimed at bending would silently measure
+ * compression the moment compression is higher. Relieving the opened edge closes a gap that used
+ * to be a factor of 92; the squeezed edge is relieved with it, and the bottom rung now reads
+ * 0.0527 in tension against 0.00977 in compression, a 5.4x margin. Shear is exactly zero, since
+ * gravity is normal to a bed joint.
  *
- * TWO CONTROLS, AND NEITHER IS DECORATION. The wall as built must have nothing over capacity, or
- * the staircase caused none of this; and no surviving piece may be Stranded, or a wall reported as
- * unheld would be the solver declining to divide load round a loop rather than physics.
+ * TWO CONTROLS: the wall as built must have nothing over capacity, or the staircase caused none
+ * of this; and no surviving piece may be Stranded, or a wall reported as unheld would be the
+ * solver declining to divide load round a loop rather than physics.
  *
- * NEEDS A TICKING WORLD: NO. Not one line of this needs an actor, a tick or a renderer — it is
- * boxes and doubles, which is precisely why the magnitudes belong here and the composition belongs
- * in Integration.AStaircaseVoidLeavesTheOverhangStanding.
+ * Needs a ticking world: no. Not one line needs an actor, a tick or a renderer — it is boxes and
+ * doubles, which is why the magnitudes belong here and the composition belongs in
+ * Integration.AStaircaseVoidLeavesTheOverhangStanding.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStaircaseCorbelLoadTest,
@@ -78,11 +71,9 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 	using namespace DestructionProfiles;
 	using namespace StaircaseWallTestSupport;
 
-	/*
-	 * THE EXPECTED NUMBERS ARE RATIOS OF PUBLISHED STRENGTHS, so they mean what they say only while
-	 * the profile still carries the figures they were derived against. Asserted rather than
-	 * imported: a test that read the profile would agree with a wrong profile.
-	 */
+	/* The expected numbers are ratios of published strengths, so they mean what they say only
+	 * while the profile still carries the figures they were derived against — asserted rather
+	 * than imported, since a test that read the profile would agree with a wrong profile. */
 	TestTrue(
 		*FString::Printf(TEXT("fixture: derived against f_xk1 = %g MPa, the profile carries %g"),
 			StaircaseMortarTensileMPa, GeneralPurposeMortar.TensileStrengthMPa),
@@ -98,11 +89,9 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 			ClayBrick.DensityGramsPerCubicCm),
 		ClayBrick.DensityGramsPerCubicCm == 1.9);
 
-	/*
-	 * AND THE AXIS. Every rung is compared here, not only the worst one, because the ladder spans a
-	 * factor of 38 in load and both stresses are linear in it — so if tension governs at one end it
-	 * governs at the other, and saying so for all eleven costs one loop.
-	 */
+	/* And the axis: every rung is compared here, not only the worst one, because the ladder spans
+	 * a factor of 38 in load and both stresses are linear in it — so if tension governs at one
+	 * end it governs at the other, and saying so for all eleven costs one loop. */
 	for (int32 Course = StaircaseLowestCorbelCourse; Course <= StaircaseHighestCorbelCourse; ++Course)
 	{
 		const double Tension = StaircasePredictedCorbelUtilisation(Course);
@@ -130,12 +119,9 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 		TEXT("fixture: the laid wall must know where every piece and every joint is, or every moment below is silently zero"),
 		Laid.Structure.HasCompleteGeometry());
 
-	/*
-	 * THE POSITIVE CONTROL. A wall that arrived with a joint past capacity would be condemned for a
-	 * reason the staircase had nothing to do with, and the flush end is what buys this — see
-	 * StaircaseWallSpec for why a ragged 13-course wall reads 0.36 at its own ends before anyone
-	 * has touched it.
-	 */
+	/* The positive control: a wall that arrived with a joint past capacity would be condemned for
+	 * a reason the staircase had nothing to do with, and the flush end is what buys this — see
+	 * StaircaseWallSpec for why a ragged 13-course wall reads 0.36 at its own ends untouched. */
 	Laid.Structure.SolveLoads();
 
 	double WorstAsBuilt = 0.0;
@@ -187,44 +173,33 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 	Laid.Structure.SolveLoads();
 
 	/*
-	 * THE LADDER, BOTTOM TO TOP, IN TWO SEPARATE CLAIMS. The FORCE says the load routed the way the
-	 * picture says it does — each step handing everything it carries to the one below — and the
-	 * UTILISATION says the moment on that force was resolved correctly against the 10.25 cm patch
-	 * it hangs off. Printing and asserting both is what makes a failure say WHICH of the two is
-	 * wrong, rather than only that the number moved.
-	 */
-	/*
-	 * A RELATIVE TOLERANCE, AND THE ONE THING IT HAS TO ADMIT IS MEASURED RATHER THAN GUESSED.
+	 * THE LADDER, BOTTOM TO TOP, IN TWO SEPARATE CLAIMS. The force says the load routed the way
+	 * the picture says it does — each step handing everything it carries to the one below — and
+	 * the utilisation says the moment on that force was resolved correctly against the 10.25 cm
+	 * patch it hangs off. Printing and asserting both is what makes a failure say which of the
+	 * two is wrong, not only that the number moved.
 	 *
-	 * The ladder spans a factor of 38 in force and 286 in moment, so a fixed absolute slack would be
-	 * meaningless at one end and vacuous at the other. Ten of the eleven force rungs come back
-	 * agreeing with the hand arithmetic to every digit printed. The eleventh — the bottom step, the
-	 * one that integrates the most wall — comes back 2.4e-6 LOW, and that is a real effect rather
-	 * than rounding: the hand ladder assumes the load cone above each step lies entirely inside the
-	 * wall, and the cone above the BOTTOM step of a 10-brick-wide wall reaches X = 225 cm at course
-	 * 12, where the wall stops at 213.75. The few brickless centimetres are load the idealisation
-	 * counts and the wall does not have, worth 9.1e-5 of a brick weight out of 38.5.
+	 * A RELATIVE TOLERANCE, measured rather than guessed. The ladder spans a factor of 38 in
+	 * force and 286 in moment, so a fixed absolute slack would be meaningless at one end and
+	 * vacuous at the other. Ten of the eleven force rungs agree with the hand arithmetic to every
+	 * digit printed; the eleventh — the bottom step, integrating the most wall — comes back
+	 * 2.4e-6 low, a real effect: the hand ladder assumes the load cone above each step lies
+	 * entirely inside the wall, and the cone above the bottom step of a 10-brick-wide wall
+	 * reaches X = 225 cm at course 12, where the wall stops at 213.75 (confirmed, not argued for,
+	 * by widening the wall to 26 bricks per course, where the bottom rung matches the hand figure
+	 * to the last digit — the fixture stays 10 wide because the integration test's geometry is
+	 * written around that wall).
 	 *
-	 * IT WAS CONFIRMED BY WIDENING THE WALL, NOT ARGUED FOR. Run identically at 26 bricks per
-	 * course — wide enough that the cone clears the end — the bottom rung reads 102687.1471 uu,
-	 * which is the hand figure to the last digit. The fixture stays 10 wide because the integration
-	 * test spawns an actor per piece and its whole geometry is written around that wall; the
-	 * idealisation is recorded here instead.
+	 * That deficit no longer reaches the utilisation at all — a consequence of the section, not
+	 * an improvement in the fixture. Under composite action the governing reading is pure bending
+	 * on the vertical section, M / (t D^2 / 6), with no compression term for the deficit to share
+	 * unevenly with, and the moment ladder is exact where the force ladder is 2.4e-6 low, since
+	 * the missing brickwork is load the cone would have delivered straight down rather than out
+	 * on an arm.
 	 *
-	 * THE SAME DEFICIT NO LONGER REACHES THE UTILISATION AT ALL, and that is a consequence of the
-	 * section rather than an improvement in the fixture. Under composite action the governing
-	 * reading is pure bending on the vertical section, M / (t D^2 / 6), with no compression term
-	 * for the deficit to be shared unevenly with — and the MOMENT ladder is exact where the force
-	 * ladder is 2.4e-6 low, because the missing brickwork is load the cone would have delivered
-	 * straight down rather than out on an arm. The bottom rung read 0.36903147272727271 against a
-	 * hand-derived 0.36903147272727271 when this was measured on the characteristic basis; the
-	 * 2026-08-13 mean re-anchor divides both sides by the same 7 (0.0527187818...), so the
-	 * agreement carries over unchanged.
-	 *
-	 * SO 1e-5, WHICH IS FOUR TIMES THE WORST MEASURED DEVIATION AND FIVE ORDERS OF MAGNITUDE
-	 * TIGHTER THAN ANY MODELLING ERROR. A wrong lever arm, a wrong section modulus or a missing
-	 * 100x would all be percent-scale or larger; nothing this test is looking for can hide under a
-	 * hundred-thousandth.
+	 * So 1e-5: four times the worst measured deviation and five orders of magnitude tighter than
+	 * any modelling error. A wrong lever arm, a wrong section modulus or a missing 100x would all
+	 * be percent-scale or larger; nothing this test looks for can hide under a hundred-thousandth.
 	 */
 	constexpr double RelativeTolerance = 1.0e-5;
 
@@ -275,11 +250,9 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 				Course, ExpectedUtilisation, Utilisation),
 			FMath::Abs(Utilisation - ExpectedUtilisation) <= RelativeTolerance * ExpectedUtilisation);
 
-		/*
-		 * AND SOLVING BROKE NOTHING, which is what makes this reading possible at all. If SolveLoads
-		 * ever started breaking, every number above would go to zero and read as a wall carrying
-		 * nothing rather than as a contract violation.
-		 */
+		/* And solving broke nothing, which is what makes this reading possible at all: if
+		 * SolveLoads ever started breaking, every number above would go to zero and read as a
+		 * wall carrying nothing rather than as a contract violation. */
 		TestTrue(
 			*FString::Printf(
 				TEXT("solving is non-destructive, so course %d's corbel joint must still be intact after it"),
@@ -295,12 +268,12 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * NOT ONE JOINT IS OVER CAPACITY, AND THE LADDER IS WHAT MAKES THAT MEAN SOMETHING. "Nothing
+	 * Not one joint is over capacity, and the ladder is what makes that mean something: "nothing
 	 * broke" is also true of a wall carrying nothing at all, so the eleven rungs are printed and
-	 * asserted individually: they march 0.0083, 0.0223, 0.0247, 0.0279, 0.0313, 0.0347, 0.0383,
-	 * 0.0419, 0.0454, 0.0490, 0.0527 — a real ladder, monotonic, six-fold from top to bottom, and every rung
-	 * derived from the depth of masonry standing over it. A model that had deleted the moment
-	 * rather than re-sectioning it would read eleven zeroes and pass a count.
+	 * asserted individually. They march 0.0083, 0.0223, 0.0247, 0.0279, 0.0313, 0.0347, 0.0383,
+	 * 0.0419, 0.0454, 0.0490, 0.0527 — a real ladder, monotonic, six-fold top to bottom, each rung
+	 * derived from the depth of masonry standing over it. A model that deleted the moment rather
+	 * than re-sectioning it would read eleven zeroes and pass a count.
 	 */
 	AddInfo(FString::Printf(
 		TEXT("the staircase leaves %d of %d corbel joints over capacity, worst %.8f (the arithmetic predicts %d and %.8f)"),
@@ -319,14 +292,12 @@ bool FStaircaseCorbelLoadTest::RunTest(const FString& Parameters)
 		FMath::Abs(WorstCorbel - StaircasePredictedWorstCorbelUtilisation)
 			<= RelativeTolerance * StaircasePredictedWorstCorbelUtilisation);
 
-	/*
-	 * AND NO SURVIVOR IS Stranded. A staircase void is exactly the shape that makes unroutable
-	 * knots — cut two bricks in a row out from under a course and the pair above fall back on each
-	 * other's head joints, each naming the other as its support — and a wall condemned because the
-	 * solver declined to divide load round a loop is a model limitation wearing a collapse's
-	 * clothes. The corbel is built from single bed joints for that reason: every step is
-	 * statically determinate.
-	 */
+	/* And no survivor is Stranded. A staircase void is exactly the shape that makes unroutable
+	 * knots — cut two bricks in a row out from under a course and the pair above fall back on
+	 * each other's head joints, each naming the other as its support — and a wall condemned
+	 * because the solver declined to divide load round a loop is a model limitation wearing a
+	 * collapse's clothes. The corbel is built from single bed joints for that reason: every step
+	 * is statically determinate. */
 	for (int32 Piece = 0; Piece < Laid.Structure.NumPieces(); ++Piece)
 	{
 		if (Laid.Structure.IsPieceRemoved(Piece))

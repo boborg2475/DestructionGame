@@ -23,83 +23,64 @@
  * THE BUILD-MODE GHOST, PHOTOGRAPHED: THE GHOST TRACKING A PREVIEW, THEN THE REAL BRICK LANDING
  * WHERE THE GHOST WAS.
  *
- * =========================================================================================
- * WHY THIS FILE EXISTS — THE OWED VISUAL PROOF FOR UI-4a
- * =========================================================================================
+ * WHY THIS FILE EXISTS. `Tests/BuildModeComponentTest.cpp` proves the drive loop world-free-ish:
+ * UBuildModeComponent begins a build, drives a GHOST actor to the snap the subsystem's
+ * non-mutating PreviewBuildPiece predicts, and on confirm grows the structure by one real
+ * ABrickActor at exactly that pose. Its central claim — asserted on BOUNDS so the corner-pivot
+ * offset cannot make one agree while the other is a half-brick out — is that the ghost's bounds
+ * sit exactly where the committed brick lands. That is arithmetic over transforms and boxes,
+ * which is why it runs in milliseconds and exactly why it cannot produce a picture. This is the
+ * picture: two frames of the same loop, so a human can see the ghost's pose coincide with where
+ * the brick lands.
  *
- * `Tests/BuildModeComponentTest.cpp` proves the drive loop world-free-ish: UBuildModeComponent
- * begins a build, drives a GHOST actor to the snap the subsystem's non-mutating PreviewBuildPiece
- * predicts, and on confirm grows the structure by one real ABrickActor at exactly that pose. Its
- * central claim — asserted on BOUNDS so the corner-pivot offset cannot make one agree while the
- * other is a half-brick out — is that the ghost's bounds sit EXACTLY where the committed brick
- * lands. That is arithmetic over transforms and boxes, which is why it runs in milliseconds and
- * which is exactly why it CANNOT PRODUCE A PICTURE. This is the picture: two frames of the same
- * loop, so a human can see the ghost's pose coincide with where the brick lands.
- *
- * =========================================================================================
- * THE TWO FRAMES
- * =========================================================================================
+ * THE TWO FRAMES.
  *
  *   FRAME 1 "BuildGhost_Preview": a real grounded SEED brick stands, and the GHOST hovers at the
- *   running-bond next-course snap one cell up and over — the pose a click would commit. This is
- *   "the ghost shows where the click will land".
+ *   running-bond next-course snap one cell up and over — the pose a click would commit. "The
+ *   ghost shows where the click will land."
  *
- *   FRAME 2 "BuildGhost_Placed": the click has landed. The real brick now stands exactly where the
- *   ghost stood in frame 1, and the ghost has moved ONE cell further along the same course to the
- *   next snap. The proof is that the second real brick occupies the first frame's ghost pose.
+ *   FRAME 2 "BuildGhost_Placed": the click has landed. The real brick now stands exactly where
+ *   the ghost stood in frame 1, and the ghost has moved ONE cell further along the same course to
+ *   the next snap — the second real brick occupies the first frame's ghost pose.
  *
- * THE CAMERA DOES NOT MOVE BETWEEN THE TWO, deliberately: it is framed once over the union of every
- * pose that will ever appear, so a reader can lay the frames side by side and read the ghost of
- * frame 1 against the brick of frame 2 in the same pixels.
+ * The camera does not move between the two, deliberately: it is framed once over the union of
+ * every pose that will ever appear, so a reader can lay the frames side by side and read the
+ * ghost of frame 1 against the brick of frame 2 in the same pixels.
  *
- * =========================================================================================
- * IT DRIVES THE REAL COMPONENT AND THE REAL SUBSYSTEM, NOT A PARALLEL SPAWN LOOP
- * =========================================================================================
- *
+ * IT DRIVES THE REAL COMPONENT AND THE REAL SUBSYSTEM, not a parallel spawn loop.
  * `Tests/BuildDemoScreenshotTest.cpp` and `Tests/CorbelScreenshotTest.cpp` hand-roll a spawn loop
- * because their subject is a world-free FStructure that has to be stood up. This subject is the
+ * because their subject is a world-free FStructure that has to be stood up; this subject is the
  * COMPONENT ITSELF, so it is driven exactly as `Tests/BuildModeComponentTest.cpp` drives it: an
- * owner actor spawned in the shared game world, a UBuildModeComponent NewObject'd onto it and
+ * owner actor in the shared game world, a UBuildModeComponent NewObject'd onto it and
  * RegisterComponent'd so GetWorld resolves, then BeginBuild / UpdatePreviewAt / ConfirmPlace. The
- * ghost and the real bricks are the component's and the subsystem's own actors; nothing here spawns
- * a brick by hand. What is reused verbatim from the sibling harnesses is only the CAMERA-AND-FILM
- * plumbing: the head-on frame computed from a bounding box, the fixed-timestep exposure warm-up, the
- * `Shot showui` exec routed through the game viewport client, and the PNG signature read by hand.
+ * ghost and the real bricks are the component's and the subsystem's own actors. What is reused
+ * verbatim from the sibling harnesses is only the camera-and-film plumbing: the head-on frame
+ * computed from a bounding box, the fixed-timestep exposure warm-up, the `Shot showui` exec
+ * routed through the game viewport client, and the PNG signature read by hand.
  *
- * =========================================================================================
- * IT BUILDS FIFTEEN METRES OFF THE SCENARIO WALL, LIKE THE SIBLING HARNESSES
- * =========================================================================================
+ * IT BUILDS FIFTEEN METRES OFF THE SCENARIO WALL, like the sibling harnesses.
+ * `ADestructionGameGameMode::BeginPlay` lays a 30 x 40 wall at the origin, so a build driven at
+ * the unit test's literal cursors would grow the structure inside that wall, brick through brick.
+ * Every cursor here is translated `StageOriginYCm` down the Y axis — an axis gravity does not act
+ * on and the running-bond snap carries through unchanged — so the seed lands at (0, -1500, 0),
+ * the ghost snaps to (11.25, -1500, 7.5), and the whole loop is arithmetically the one the unit
+ * test measures, a pure translation of it off the scenario wall's frame. Nothing here destroys
+ * that wall, so a sibling `Visual.*` shot can run in the same process; the build's own bricks are
+ * torn down through the subsystem at the end.
  *
- * `ADestructionGameGameMode::BeginPlay` lays a 30 x 40 wall at the origin, and the component's snap
- * brain seeds and grows from wherever the requested cursor is. A build driven at the literal cursors
- * of the unit test — (0,0,0), then (11,0,7.5) — would grow the structure INSIDE that scenario wall,
- * brick through brick, and every frame would be a picture of the interference rather than of the
- * ghost. So every cursor here is translated `StageOriginYCm` down the Y axis, an axis gravity does
- * not act on and the running-bond snap carries through unchanged: the seed lands at (0, -1500, 0),
- * the ghost snaps to (11.25, -1500, 7.5), and the whole loop is arithmetically the one the unit test
- * measures — a pure translation of it, off the scenario wall's frame. Nothing here destroys that
- * wall, so a sibling `Visual.*` shot can run in the same process; the build's own bricks are torn
- * down through the subsystem at the end.
- *
- * =========================================================================================
- * WHAT IT ASSERTS — DELIBERATELY LIGHT, BECAUSE THE POINT IS THE IMAGE
- * =========================================================================================
- *
- * A harness that only takes a picture is green whatever is in the picture, so it asserts the modest
- * invariants that make each frame a picture of the right thing: the build reached the expected piece
- * count at each stage (1 after the seed, 2 after the commit), the ghost actor exists and is VISIBLE
- * in each frame, and each file landed as a real PNG — signature, IHDR, sane dimensions, and a byte
- * count no flat colour could reach. It asserts NOTHING about what the images look like; judging that,
+ * WHAT IT ASSERTS — deliberately light, because the point is the image. A harness that only
+ * takes a picture is green whatever is in the picture, so it asserts the modest invariants that
+ * make each frame a picture of the right thing: the build reached the expected piece count at
+ * each stage (1 after the seed, 2 after the commit), the ghost actor exists and is VISIBLE in
+ * each frame, and each file landed as a real PNG — signature, IHDR, sane dimensions, a byte count
+ * no flat colour could reach. It asserts nothing about what the images look like; judging that,
  * and in particular whether the opaque grey hover-tinted ghost reads as distinct from the real
  * bricks, is a human's job.
  *
- * =========================================================================================
- * IT NEEDS A TICKING WORLD *AND* A REAL RHI, hence EAutomationTestFlags::NonNullRHI
- * =========================================================================================
- *
- * Without that flag the ordinary `-nullrhi` suite would run this, find no viewport, write no file
- * and GO GREEN. With it, the ordinary suite never mentions this test exists, so it must be RUN
- * EXPLICITLY. From PowerShell (Git Bash mangles the map path):
+ * IT NEEDS A TICKING WORLD *AND* A REAL RHI, hence EAutomationTestFlags::NonNullRHI. Without that
+ * flag the ordinary `-nullrhi` suite would run this, find no viewport, write no file and go
+ * green. With it, the ordinary suite never mentions this test exists, so it must be run
+ * explicitly. From PowerShell (Git Bash mangles the map path):
  *
  *   & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
  *     "<project>\DestructionGame.uproject" /Game/Maps/Lvl_Sandbox
@@ -108,9 +89,9 @@
  *     -ExecCmds="Automation RunTests DestructionGame.Visual.BuildGhostScreenshot"
  *     -TestExit="Automation Test Queue Empty"
  *
- * `-nullrhi` MUST BE ABSENT: `FApp::CanEverRender()` is false with it and `UGameEngine::Init` only
- * builds a window and a viewport under that, so there would be nothing to screenshot even if the
- * filter let the test through.
+ * `-nullrhi` MUST BE ABSENT: `FApp::CanEverRender()` is false with it and `UGameEngine::Init`
+ * only builds a window and a viewport under that, so there would be nothing to screenshot even if
+ * the filter let the test through.
  */
 namespace BuildGhostScreenshotSupport
 {
@@ -136,13 +117,11 @@ namespace BuildGhostScreenshotSupport
 	const TCHAR* const DisableScreenMessagesCommand = TEXT("DisableAllScreenMessages");
 
 	/**
-	 * THE TIMINGS, WHICH ARE THE SIBLING HARNESSES'.
-	 *
-	 * `WarmUpFrames` and `SettleFrames` cover TSR's temporal history and auto-exposure; `SlateFrames`
-	 * is the layout pass a rebuilt view needs; `WriteFrames` is because `ProcessScreenShots` writes at
-	 * END OF DRAW, so moving on in the same frame as the request loses the file. `AdvanceFrames` is a
-	 * short settle after the commit spawns the second brick, so its lit surface is present in frame 2;
-	 * nothing here is released, so there is no fall to wait on.
+	 * The timings, which are the sibling harnesses'. `WarmUpFrames` and `SettleFrames` cover
+	 * TSR's temporal history and auto-exposure; `SlateFrames` is the layout pass a rebuilt view
+	 * needs; `WriteFrames` is because `ProcessScreenShots` writes at end of draw, so moving on in
+	 * the same frame as the request loses the file. `AdvanceFrames` is a short settle after the
+	 * commit spawns the second brick, so its lit surface is present in frame 2.
 	 */
 	constexpr int32 WarmUpFrames = 120;
 	constexpr int32 SettleFrames = 60;
@@ -159,21 +138,18 @@ namespace BuildGhostScreenshotSupport
 	constexpr int32 MinimumScreenshotHeight = 480;
 
 	/**
-	 * HOW THE CAMERA IS PLACED, COPIED FROM THE SIBLING HARNESSES AND FOR THEIR REASONS.
-	 *
-	 * The default `UCameraComponent` field of view is 90 degrees HORIZONTALLY, so at a standoff `s`
-	 * the visible width is `2s` and the visible height at 16:9 is `2s * 1080/1920`. Inverting that for
-	 * the union bounding box gives the standoff, and the margin keeps the bricks off the edges of the
-	 * frame with some ground and sky to read them against.
+	 * How the camera is placed, copied from the sibling harnesses. The default `UCameraComponent`
+	 * field of view is 90 degrees horizontally, so at a standoff `s` the visible width is `2s` and
+	 * the visible height at 16:9 is `2s * 1080/1920`. Inverting that for the union bounding box
+	 * gives the standoff, and the margin keeps the bricks off the edges of the frame.
 	 */
 	constexpr double FrameMargin = 1.25;
 	constexpr double ViewportAspectHeightOverWidth = 1080.0 / 1920.0;
 
 	/**
-	 * THE CAMERA LOOKS ALONG -Y, WHICH IS HEAD-ON TO THIS WALL. The build is planar in X-Z at
-	 * y = -1500 — the seed, the placed brick and the ghost all share it — so a view down the Y axis
-	 * is square-on to the wall face. Yaw -90 puts the view along -Y and +X to the right, the same
-	 * sense as every elevation in the design documents.
+	 * The camera looks along -Y, head-on to this wall: the build is planar in X-Z at y = -1500 —
+	 * the seed, the placed brick and the ghost all share it. Yaw -90 puts the view along -Y and
+	 * +X to the right, the same sense as every elevation in the design documents.
 	 */
 	constexpr double CameraYawDegrees = -90.0;
 
@@ -181,19 +157,17 @@ namespace BuildGhostScreenshotSupport
 	constexpr double MinimumStandoffCm = 120.0;
 
 	/**
-	 * FIFTEEN METRES DOWN THE Y AXIS FROM THE SCENARIO WALL, applied to every cursor the component
-	 * is driven with. See the file header: a pure translation along an axis gravity does not act on,
-	 * carried by the running-bond snap, so the loop photographed is arithmetically the one the unit
-	 * test measures. The camera stands off along +Y from here and looks along -Y, so the scenario
-	 * wall at y = 0 is behind the lens rather than in shot.
+	 * Fifteen metres down the Y axis from the scenario wall, applied to every cursor the
+	 * component is driven with — see the file header. The camera stands off along +Y from here
+	 * and looks along -Y, so the scenario wall at y = 0 is behind the lens rather than in shot.
 	 */
 	constexpr double StageOriginYCm = -1500.0;
 
 	/**
-	 * THE THREE CURSORS, offset by StageOriginYCm. These are the unit test's (0,0,0) and (11,0,7.5),
-	 * plus one cell further on for the second ghost. The seed is grounded and lands at its cursor; the
-	 * next-course cursor is off-grid on purpose so the snap has to move it, and the ghost follows the
-	 * snap to (11.25, -1500, 7.5); the third cursor is one 22.5 cm grid cell further along the course.
+	 * The three cursors, offset by StageOriginYCm — the unit test's (0,0,0) and (11,0,7.5), plus
+	 * one cell further on for the second ghost. The seed is grounded and lands at its cursor; the
+	 * next-course cursor is off-grid on purpose so the snap moves it to (11.25, -1500, 7.5); the
+	 * third cursor is one 22.5 cm grid cell further along the course.
 	 */
 	const FVector SeedCursorCm(0.0, StageOriginYCm, 0.0);
 	const FVector NextCourseCursorCm(11.0, StageOriginYCm, 7.5);
@@ -203,10 +177,9 @@ namespace BuildGhostScreenshotSupport
 	const FVector HalfBrickCm(10.75, 5.125, 3.25);
 
 	/**
-	 * WHAT THE RUN BUILT, CARRIED BETWEEN LATENT COMMANDS.
-	 *
-	 * FILE-SCOPE STATE, for the reason the sibling harnesses give: a latent command carries only what
-	 * its parameters carry, and the build, the two shots and the file check run frames apart.
+	 * What the run built, carried between latent commands. File-scope state, for the reason the
+	 * sibling harnesses give: a latent command carries only what its parameters carry, and the
+	 * build, the two shots and the file check run frames apart.
 	 */
 	struct FBuildGhostRecord
 	{
@@ -248,11 +221,10 @@ namespace BuildGhostScreenshotSupport
 	}
 
 	/**
-	 * Ask for a screenshot, THROUGH THE VIEWPORT CLIENT AND NOT THROUGH GEngine.
-	 *
-	 * MEASURED, NOT PREFERRED — see `Tests/CorbelScreenshotTest.cpp`: a request routed through
-	 * `UEngine::Exec` asserts everything correctly and writes no PNG, because there is no SHOT handler
-	 * there. `HandleScreenshotCommand` lives on `UGameViewportClient`.
+	 * Ask for a screenshot, through the viewport client and not through GEngine. Measured, not
+	 * preferred — see `Tests/CorbelScreenshotTest.cpp`: a request routed through `UEngine::Exec`
+	 * writes no PNG, since there is no SHOT handler there. `HandleScreenshotCommand` lives on
+	 * `UGameViewportClient`.
 	 */
 	inline void RequestScreenshot(FAutomationTestBase& Test, const FString& Command)
 	{
@@ -338,11 +310,8 @@ bool FBuildGhostOpenStageCommand::Update()
 
 	Test->AddInfo(FString::Printf(TEXT("game world is %s"), *World->GetMapName()));
 
-	/*
-	 * THE VIEWPORT IS ASSERTED HERE rather than left to show up as a missing file, because without one
-	 * `HandleScreenshotCommand` returns having done nothing at all and the only symptom downstream
-	 * reads identically to a renderer that failed.
-	 */
+	/* The viewport is asserted here rather than left to show up as a missing file: without one
+	 * `HandleScreenshotCommand` does nothing, which reads identically to a renderer that failed. */
 	UGameViewportClient* const Viewport = GEngine != nullptr ? GEngine->GameViewport : nullptr;
 
 	Test->TestNotNull(
@@ -353,13 +322,12 @@ bool FBuildGhostOpenStageCommand::Update()
 }
 
 /**
- * Attach the component, begin the build, seed a grounded brick, preview the next-course snap so the
- * ghost is hovering at it, and aim the camera head-on over the whole loop's footprint.
+ * Attach the component, begin the build, seed a grounded brick, preview the next-course snap so
+ * the ghost is hovering at it, and aim the camera head-on over the whole loop's footprint.
  *
- * THE DRIVE IS THE COMPONENT'S OWN, exactly as `Tests/BuildModeComponentTest.cpp` drives it: an owner
- * actor, a registered UBuildModeComponent, BeginBuild, a grounded seed via preview + confirm, then a
- * next-course preview that leaves the ghost standing at the snap. The camera is framed once over the
- * union of the seed, the placed pose and the second ghost pose, so it need not move between frames.
+ * The drive is the component's own, exactly as `Tests/BuildModeComponentTest.cpp` drives it. The
+ * camera is framed once over the union of the seed, the placed pose and the second ghost pose, so
+ * it need not move between frames.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FBuildGhostBuildCommand, FAutomationTestBase*, Test);
@@ -406,11 +374,9 @@ bool FBuildGhostBuildCommand::Update()
 	Comp->UpdatePreviewAt(SeedCursorCm);
 	Comp->ConfirmPlace();
 
-	/*
-	 * THE NEXT-COURSE PREVIEW LEAVES THE GHOST HOVERING AT THE SNAP. The cursor is off-grid; the snap
-	 * moves it to the running-bond next-course pose (11.25, -1500, 7.5), and the ghost follows the
-	 * snap. This is the state frame 1 photographs.
-	 */
+	/* The next-course preview leaves the ghost hovering at the snap: the cursor is off-grid, so the
+	 * snap moves it to the running-bond pose (11.25, -1500, 7.5). This is the state frame 1
+	 * photographs. */
 	const FBuildPreview Preview = Comp->UpdatePreviewAt(NextCourseCursorCm);
 
 	Test->TestTrue(
@@ -565,9 +531,9 @@ bool FBuildGhostShootPlacedCommand::Update()
 /**
  * Take the build off the stage, leaving the scenario wall standing.
  *
- * THE COMPONENT AND THE SUBSYSTEM DESTROY THEIR OWN: DestroyComponent takes the ghost with it (its
- * EndPlay owns that), Destroy(StructureId) takes the real bricks, and the owner actor goes last.
- * Nothing sweeps the world, so the scenario wall a sibling `Visual.*` shot needs is untouched.
+ * The component and the subsystem destroy their own: DestroyComponent takes the ghost with it
+ * (its EndPlay owns that), Destroy(StructureId) takes the real bricks, and the owner actor goes
+ * last. Nothing sweeps the world, so a sibling `Visual.*` shot's scenario wall is untouched.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FBuildGhostTearDownCommand, FAutomationTestBase*, Test);
@@ -644,12 +610,9 @@ bool FBuildGhostCheckFilesCommand::Update()
 			continue;
 		}
 
-		/*
-		 * THE SIGNATURE AND THE IHDR, READ BY HAND. Eight signature bytes, then a four-byte chunk
-		 * length, then "IHDR", then width and height as big-endian 32-bit integers. A byte count alone
-		 * passes for a file of random bytes, and a decoder would be a dependency on the very rendering
-		 * stack under test.
-		 */
+		/* The signature and the IHDR, read by hand: eight signature bytes, a four-byte chunk
+		 * length, "IHDR", then width and height as big-endian 32-bit integers. A byte count alone
+		 * passes for random bytes, and a decoder would depend on the rendering stack under test. */
 		static const uint8 PngSignature[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
 
 		const bool bIsPng = FMemory::Memcmp(Bytes.GetData(), PngSignature, 8) == 0
@@ -700,11 +663,9 @@ bool FBuildGhostScreenshotTest::RunTest(const FString& Parameters)
 
 	BuildGhostRecord().Reset();
 
-	/*
-	 * THE OLD FILES GO FIRST, SYNCHRONOUSLY, BEFORE ANY LATENT COMMAND IS QUEUED. Everything
-	 * downstream reads "the file exists" as "this run rendered a frame", and that reading is only true
-	 * if the file cannot have survived from an earlier run.
-	 */
+	/* The old files go first, synchronously, before any latent command is queued: everything
+	 * downstream reads "the file exists" as "this run rendered a frame", true only if the file
+	 * cannot have survived from an earlier run. */
 	for (const TCHAR* const BaseName : { PreviewBaseName, PlacedBaseName })
 	{
 		const FString Path = ScreenshotPathFor(FString(BaseName));

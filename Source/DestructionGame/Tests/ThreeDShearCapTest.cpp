@@ -7,52 +7,48 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE 3D ASSEMBLY OMITS THE TRUNCATED-SHEAR CEILING THE 2D ASSEMBLY HAS — review item 8, defect 1.
+ * The 3D assembly omits the truncated-shear ceiling the 2D assembly has — review item 8, defect 1.
  *
- * WHY THIS FIXTURE EXISTS. The 2D assembler (RigidBlockOracle.cpp ~2329-2343) writes a MaxShear
- * ceiling row `±(p - q) <= f_v,max * Conv * A/2` on every joint whose profile caps its shear, on
- * top of the Mohr-Coulomb friction row `|v| <= c + mu*sigma`. AssembleThreeD (~1786-2010) writes
- * the tension row, the k=8 inscribed friction pyramid and the crush row but NO ceiling — so in 3D
- * a joint's shear capacity is the UNBOUNDED Coulomb value c + mu*sigma however high the compression
- * drives it. For GeneralPurposeMortar (c = 0.9, mu = 0.75, cap f_v,max = 2.0 MPa) the bite point is
- * sigma = (2.0 - 0.9)/0.75 = 1.467 MPa of compression: above it, `c + mu*sigma` exceeds the cap and
- * the 3D LP credits shear the 2D LP forbids. A tall / heavily-compressed 3D structure reaches that
- * bite, so a 3D joint that SHOULD fail in shear at the ceiling does not.
+ * The 2D assembler (RigidBlockOracle.cpp ~2329-2343) writes a MaxShear ceiling row
+ * `±(p - q) <= f_v,max * Conv * A/2` on every joint whose profile caps its shear, on top of the
+ * Mohr-Coulomb friction row `|v| <= c + mu*sigma`. AssembleThreeD (~1786-2010) writes the tension
+ * row, the k=8 inscribed friction pyramid and the crush row but no ceiling — so in 3D a joint's
+ * shear capacity is the unbounded Coulomb value c + mu*sigma however high the compression drives
+ * it. For GeneralPurposeMortar (c = 0.9, mu = 0.75, cap f_v,max = 2.0 MPa) the bite point is
+ * sigma = (2.0 - 0.9)/0.75 = 1.467 MPa: above it, `c + mu*sigma` exceeds the cap and the 3D LP
+ * credits shear the 2D LP forbids — so a heavily-compressed 3D joint that should fail in shear at
+ * the ceiling does not.
  *
- * THE FIXTURE — one free block on ONE bonded point-patch joint (normal +Z), determinate. A DEAD
- * vertical load (the block's own weight, gravity dead) sets a fixed pre-compression well past the
- * bite; a LIVE horizontal push (+X = the U shear axis for a +Z normal) provides the shear demand,
- * so lambda* is exactly (shear capacity) / (shear demand at lambda = 1) and nothing else binds.
+ * THE FIXTURE — one free block on one bonded point-patch joint (normal +Z), determinate. A dead
+ * vertical load (the block's own weight) sets a fixed pre-compression well past the bite; a live
+ * horizontal push (+X, the U shear axis) provides the shear demand, so lambda* is exactly (shear
+ * capacity) / (shear demand at lambda = 1) and nothing else binds.
  *
- *     Face area A = 100 cm2,  Conv = 10000 uu / (MPa.cm2).
- *     DEAD compression: sigma_n = 4.0 MPa  ->  N = 4.0*Conv*A = 4,000,000 uu  (block weight W = N,
- *         so MassKg = N/980). 4.0 MPa is 2.7x the 1.467 MPa bite — comfortably past it.
- *     LIVE push:       tau_1  = 2.5 MPa  ->  H = 2.5*Conv*A = 2,500,000 uu, applied AT the joint
- *         point so it raises no moment (push and its shear reaction are colinear at one point).
+ *     Face area A = 100 cm2, Conv = 10000 uu/(MPa.cm2).
+ *     Dead compression: sigma_n = 4.0 MPa -> N = 4.0*Conv*A = 4,000,000 uu (W = N, MassKg = N/980).
+ *         4.0 MPa is 2.7x the 1.467 MPa bite.
+ *     Live push: tau_1 = 2.5 MPa -> H = 2.5*Conv*A = 2,500,000 uu, applied at the joint point so it
+ *         raises no moment.
  *
  * THE TWO ENVELOPES, worked independently of production (the octagon apothem cos(pi/8) is derived
- * here, not imported). Pushed purely along U, the governing friction facet is theta = 0, so the
- * 3D friction octagon credits pure-U shear up to  cos(pi/8) * (mu*N + c*Conv*A) — the SAME apothem
+ * here, not imported). Pushed purely along U, the governing friction facet is theta = 0, so the 3D
+ * friction octagon credits pure-U shear up to cos(pi/8) * (mu*N + c*Conv*A) — the same apothem
  * factor the assembler scales its pyramid by:
  *
- *     UNCAPPED (3D today):  cap_uncapped = cos(pi/8) * (0.75*4e6 + 0.9*1e6)
- *                                        = 0.9238795 * 3.9e6 = 3,603,130 uu
- *                           lambda*_uncapped = 3,603,130 / 2,500,000 = 1.4413   -> STANDS
+ *     UNCAPPED (3D today): cap_uncapped = cos(pi/8)*(0.75*4e6 + 0.9*1e6) = 0.9238795*3.9e6
+ *                          = 3,603,130 uu -> lambda*_uncapped = 3,603,130/2,500,000 = 1.4413 -> stands
  *
- *     CAPPED (2D form mirrored to 3D):  the ceiling is a flat f_v,max octagon, no mu term —
- *                           cap_capped   = cos(pi/8) * f_v,max * Conv * A = 0.9238795 * 2e6
- *                                        = 1,847,759 uu
- *                           lambda*_capped   = 1,847,759 / 2,500,000 = 0.7391   -> FALLS
+ *     CAPPED (2D form mirrored to 3D): flat f_v,max octagon, no mu term —
+ *                          cap_capped = cos(pi/8)*f_v,max*Conv*A = 0.9238795*2e6 = 1,847,759 uu
+ *                          -> lambda*_capped = 1,847,759/2,500,000 = 0.7391 -> falls
  *
- * RED TODAY: 3D omits the ceiling, credits the unbounded 1.4413 friction and STANDS a joint whose
- * shear demand (2.5 MPa) is past its 2.0 MPa truncation — so the assertion "this over-capacity
- * joint FALLS" fails against production. GREEN once AssembleThreeD writes the ceiling as an octagon
- * on the in-plane shear magnitude (the recommended form; see the report). The Falls verdict is
- * robust to whether dev applies the inscribe factor to the ceiling: without it lambda*_capped =
- * 2e6/2.5e6 = 0.8, still < 1.
+ * RED TODAY: 3D omits the ceiling, credits the unbounded 1.4413 friction and stands a joint whose
+ * shear demand (2.5 MPa) is past its 2.0 MPa truncation. Green once AssembleThreeD writes the
+ * ceiling as an octagon on the in-plane shear magnitude. The Falls verdict is robust to whether dev
+ * applies the inscribe factor to the ceiling: without it lambda*_capped = 2e6/2.5e6 = 0.8, still < 1.
  *
- * ASSERTS ON THE LP OUTCOME (Falls / lambda* < 1), never displacement. UNITS derived here, NOT
- * imported. NEEDS A TICKING WORLD: NO. NAMED NAMESPACE for the unity build.
+ * Asserts on the LP outcome (Falls / lambda* < 1), never displacement. Units derived here, not
+ * imported. Needs no ticking world. Named namespace for the unity build.
  */
 namespace ThreeDShearCapSupport
 {
@@ -186,9 +182,9 @@ bool FThreeDShearCapCeilingBindsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("SHEAR CAP: the oracle answers this determinate 3D feasibility pose"), R.bAnswered);
 
 	/*
-	 * THE RED ASSERTION. A joint loaded to 2.5 MPa of shear on a 2.0 MPa truncation is over
-	 * capacity and the LP must find NO admissible equilibrium at self-weight — Falls, lambda* < 1.
-	 * Today the 3D assembly omits the ceiling and stands it at ~1.44 on unbounded friction.
+	 * A joint loaded to 2.5 MPa of shear on a 2.0 MPa truncation is over capacity, so the LP must
+	 * find no admissible equilibrium at self-weight — Falls, lambda* < 1. Today the 3D assembly
+	 * omits the ceiling and stands it at ~1.44 on unbounded friction.
 	 */
 	TestEqual(
 		*FString::Printf(

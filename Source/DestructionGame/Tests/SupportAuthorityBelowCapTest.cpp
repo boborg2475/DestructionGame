@@ -12,43 +12,35 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * GetPieceSupport IS LP-AUTHORITATIVE BELOW THE BLOCK CAP — the one genuinely NEW semantics that
- * Slice 3b introduces (PROMOTION_DESIGN.md §12 D7's 3b section, §3.7). This is the RED that pins it
- * so a wrong wiring cannot quietly pass, and it is the miniature of catalogue rows 10 and 19.
+ * GetPieceSupport IS LP-AUTHORITATIVE BELOW THE BLOCK CAP — the new semantics Slice 3b
+ * introduces (PROMOTION_DESIGN.md §12 D7's 3b section, §3.7), the miniature of catalogue
+ * rows 10 and 19.
  *
- * THE SEAM UNDER TEST, STATED AS ARITHMETIC. Support is answered two different ways by the two
- * mechanisms this step reconciles:
- *   - The ROUTER (SolveLoads' downward flood) can only route a piece's load to the ground DOWN a
- *     support graph. A piece caught in a knot — its own load returning to it round a cycle it has
- *     no rule to divide — has no honest brittle path to ground. Where the knot could yet be a real
- *     force system the flood cannot see, that is conservatively `Stranded` (DESIGN.md §5.1); but
- *     where the topology is a REFUSED one-sided arch, which the brittle model cannot honestly stand
- *     at all, ruling (b) (DESIGN §8, case-21 scope limit) FALLS the pieces instead — `Stranded`
- *     there would be a lie, claiming a resolvable loop where none exists.
- *   - The LP (rigid-block limit analysis) asks whether ANY admissible force system exists in
- *     equilibrium with self-weight. It has no routing to fail and no accumulation order to be
- *     defeated by a loop, so it stands a structure the router strands whenever a real equilibrium
- *     exists — which is exactly why rows 10 and 19 (λ* 111.5 / 48.0) STAND while the router drops
- *     the pieces it could not route.
+ * THE SEAM, AS ARITHMETIC. Support is answered two different ways:
+ *   - The ROUTER (SolveLoads' downward flood) can only route a piece's load to the ground
+ *     DOWN a support graph. A piece caught in a knot — its own load returning round a cycle
+ *     it has no rule to divide — has no honest brittle path to ground. Where the knot could
+ *     yet be a real force system the flood cannot see, that is conservatively `Stranded`
+ *     (DESIGN.md §5.1); but a REFUSED one-sided arch, which the brittle model cannot
+ *     honestly stand at all, is FALLEN instead under ruling (b) (DESIGN §8, case-21 scope
+ *     limit) — `Stranded` there would falsely claim a resolvable loop.
+ *   - The LP (rigid-block limit analysis) asks whether ANY admissible force system exists
+ *     in equilibrium with self-weight. It has no routing to fail and no accumulation order
+ *     to be defeated by a loop, so it stands a structure the router strands whenever a real
+ *     equilibrium exists — why rows 10 and 19 (λ* 111.5 / 48.0) STAND while the router
+ *     drops the pieces it could not route.
  *
- * Slice 3b makes the LP the authority BELOW the block cap: after a settling solve, a piece the LP
- * carries reads `Supported`/`Grounded`, NOT `Stranded`, because the LP stands the whole structure.
- * That is the ruling D7 names ("a piece in the LP force system reads Supported") and it is what
- * greens rows 10/19 — the wall harness's FallenPieces/StrandedCount read GetPieceSupport, so a
- * router-`Stranded` piece the LP carries is counted as fallen today and must stop being.
+ * Slice 3b makes the LP the authority BELOW the block cap: a piece the LP carries reads
+ * `Supported`/`Grounded`, not `Stranded` — the ruling D7 names, and what greens rows 10/19
+ * (the wall harness's FallenPieces/StrandedCount read GetPieceSupport).
  *
- * ABOVE THE CAP THE BRITTLE ANSWER GOVERNS. The cap is the fail-closed boundary that keeps
- * synchronous LP authority off the flagship scenarios (PROMOTION_DESIGN.md §12 D2⁗); above it
- * GetPieceSupport must fall through to the brittle router. And under ruling (b) (DESIGN §8, the
- * case-21 brittle-bond scope limit) the brittle router does not merely fail to route a refused
- * one-sided arch — it FALLS it: a one-sided arch with an opening at a free end has no honest
- * (compression-only / trusted-bond) support path, so its genuinely-stranded refused-arch pieces are
- * classed `Falling`, not `Stranded`. (Stranding was the artefact ruling (b) removes — a `Stranded`
- * verdict claims the solver merely could not divide a loop it might yet resolve, which is a lie for
- * a structure the brittle model cannot honestly stand at all.) This test drives BOTH sides of the
- * cap on ONE AND THE SAME structure, changing only the injectable cap (SetEquilibriumGateBlockCap) —
- * so it pins that the LP verdict overrides the brittle router below the cap and ONLY below it, and
- * that the flip is the sharpest possible: Supported below, Falling above.
+ * ABOVE THE CAP THE BRITTLE ANSWER GOVERNS. The cap is the fail-closed boundary keeping
+ * synchronous LP authority off the flagship scenarios (PROMOTION_DESIGN.md §12 D2⁗); above
+ * it GetPieceSupport falls through to the brittle router, which under ruling (b) FALLS
+ * (not strands) a refused one-sided arch's pieces. This test drives BOTH sides of the cap
+ * on ONE AND THE SAME structure, changing only the injectable cap
+ * (SetEquilibriumGateBlockCap) — pinning that the LP verdict overrides the router below the
+ * cap and ONLY below it, flipping as sharply as Supported vs Falling.
  *
  * THE FIXTURE — THE ROW-10 SHAPE IN MINIATURE: AN OPENING AT A FREE END, NO ABUTMENT.
  *
@@ -61,47 +53,38 @@
  *                      +==========+
  *                          earth
  *
- * FOUR PIECES. B0 is grounded. A bears on B0 through a BED joint, so A is genuinely SEATED (it does
- * NOT fall back to head joints — no support-graph pollution from a grounded neighbour naming a
- * cantilever as its own support). R and L hang out to the LEFT over a void: their only joints are
- * HEAD joints (R↔A and L↔R), and NOTHING sits beneath them, so both are SEATLESS.
+ * FOUR PIECES. B0 is grounded; A bears on B0 through a BED joint, so A is genuinely SEATED
+ * (no head-joint fallback). R and L hang out to the LEFT over a void, joined only by HEAD
+ * joints (R-A and L-R), so both are SEATLESS.
  *
- * WHY THE BRITTLE ROUTER FALLS R AND L (and this is genuine, not contrived). A seatless piece falls
- * back to its head joints as supports, sign-blind. So R's supports are {A, L} and L's support is
- * {R}: L leans on R and R leans (partly) on L, a two-node cycle. LoadReturnsToPiece walks R → L → R
- * and R → A → B0(ground); the return to R via L makes R its own support, so the downward flood has
- * no honest path to ground for either brick. The re-seat that would rescue a spanned run
- * (ReseatSpannedGroups) does NOT fire here: it only routes a group with a SEATED abutment on BOTH
- * opposite sides, and this opening has an abutment (A) on the RIGHT only — the free end on the left
- * has none. That is precisely case 10's shape, "opening at a free end, no abutment": a REFUSED
- * one-sided arch. Under ruling (b) the brittle router does not leave such genuinely-stranded pieces
- * `Stranded` (which would imply a resolvable loop); it FALLS them, because a refused one-sided arch
- * cannot be stood on any honest brittle path. So above the cap R and L both read `Falling`.
+ * WHY THE ROUTER FALLS R AND L. A seatless piece falls back to its head joints as supports,
+ * sign-blind: R's supports are {A, L}, L's support is {R} — a two-node cycle. LoadReturnsToPiece
+ * walks R -> L -> R (and R -> A -> B0), so the flood has no honest path to ground for either
+ * brick. ReseatSpannedGroups does not rescue this: it only routes a group with a SEATED
+ * abutment on BOTH opposite sides, and this opening has one (A) on the right only. That is
+ * case 10's shape — a REFUSED one-sided arch — so under ruling (b) the router FALLS R and L
+ * rather than stranding them.
  *
- * WHY THE LP CARRIES THEM. The head joints are vertical faces; the seatless bricks' weight is
- * carried across them in SHEAR (mortar cohesion 0.9 MPa over a 66.6 cm² face is ~483× each brick's
- * ~1240 uu weight), and the small cantilever moment is taken by the joints' tension/compression
- * couple far inside the flexural bond. So an admissible equilibrium at self-weight plainly exists
- * and the LP stands the whole structure with a large margin — asserted here through the oracle as a
- * PRECONDITION (router-strands / LP-carries is the whole point, so a fixture the LP did not stand
- * would be wrong), exactly as the two-load-path red asserts its oracle Falls.
+ * WHY THE LP CARRIES THEM. The head joints are vertical faces; the seatless bricks' weight
+ * is carried across them in SHEAR (mortar cohesion 0.9 MPa over a 66.6 cm² face is ~483x
+ * each brick's ~1240 uu weight), and the small cantilever moment is taken by the joints'
+ * tension/compression couple, far inside the flexural bond. An admissible equilibrium at
+ * self-weight plainly exists, so the LP stands the structure with a large margin — asserted
+ * as a PRECONDITION via the oracle directly.
  *
- * ASSERTIONS, per DESIGN.md §4. OUTCOME/support-state only; displacement is never read. Nothing is
- * released and no joint breaks under load in either arm — the flip is a re-classification of one
- * piece's support state by the AUTHORITY answering it, not a break. The mechanism asserted is the
- * discrete support ENUMERATOR (Falling above the cap vs Supported/Grounded below it), which is
- * binary and immune to jitter, and it is exactly the reading GetPieceSupport hands the wall harness.
- * That the SAME seatless brick reads Falling above the cap and Supported below it — with only the
- * injectable cap changed — is the whole property, and the sharpest form of "the cap flips authority".
+ * ASSERTIONS are OUTCOME/support-state only, per DESIGN.md §4; displacement is never read.
+ * Nothing is released and no joint breaks under load in either arm — the flip is a
+ * re-classification of support state by the AUTHORITY answering it, not a break. The
+ * mechanism asserted is the discrete support ENUMERATOR, binary and immune to jitter: the
+ * SAME seatless brick reads Falling above the cap and Supported below it, with only the
+ * injectable cap changed.
  *
- * NOTHING IS IMPORTED FROM THE CODE UNDER TEST EXCEPT THE PRODUCER (MakeInterface) and the mortar
- * profile the joints are laid in; masses are derived here from density and geometry. The verdict
- * rests on the LP's own answer (which derives its own MPa conversion) and on the router's own
- * support enumeration — not on any strength constant this file re-derives.
+ * Nothing is imported from the code under test except the producer (MakeInterface) and the
+ * mortar profile the joints are laid in; masses are derived here from density and geometry.
  *
  * NEEDS A TICKING WORLD: NO. Gravity is on the ordinary way (weight is MassKg × 980 inside
- * FStructure), everything is connected, and every assertion is on solver state, the oracle, or the
- * settled support enumeration. Same footing as the two-load-path and dry-stack acceptance tests.
+ * FStructure); every assertion is on solver state, the oracle, or the settled support
+ * enumeration.
  *
  * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation unit.
  */
@@ -110,9 +93,7 @@ namespace SupportAuthorityBelowCapSupport
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* ================================================================================
-	 * GEOMETRY. Every length is centimetres, at Unreal's default 1 uu = 1 cm.
-	 * ================================================================================ */
+	/* GEOMETRY. Every length is centimetres, at Unreal's default 1 uu = 1 cm. */
 
 	/** Fired clay, 1.9 g/cm3 — the same figure every wall fixture uses. */
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
@@ -155,9 +136,8 @@ namespace SupportAuthorityBelowCapSupport
 	}
 
 	/**
-	 * Lay the four pieces and the three joints — one bed (A on B0) and two head (R↔A, L↔R). The two
-	 * seatless bricks R and L get NO joint beneath them, by construction, so the tier can only class
-	 * them seatless and the router can only route them through their head joints.
+	 * Lay the four pieces and three joints — one bed (A on B0), two head (R↔A, L↔R). R and L get
+	 * NO joint beneath them, by construction, so the router can only route them through the heads.
 	 */
 	void Build(FFreeEndOpening& Out)
 	{
@@ -256,11 +236,8 @@ bool FSupportAuthorityBelowCapTest::RunTest(const FString& Parameters)
 	using namespace DestructionProfiles;
 	using namespace SupportAuthorityBelowCapSupport;
 
-	/* ------------------------------------------------------------------ *
-	 * PRECONDITION ON THE STRENGTH BASIS — the LP only carries seatless
-	 * bricks in shear if the joints have cohesion, so a dry profile would
-	 * not stand this. Pin the mortar bond the fixture relies on.
-	 * ------------------------------------------------------------------ */
+	/* PRECONDITION ON THE STRENGTH BASIS — the LP only carries seatless bricks in shear if
+	 * the joints have cohesion. Pin the mortar bond the fixture relies on. */
 
 	TestEqual(TEXT("FIXTURE: the joints are the mean-basis 0.90 MPa cohesion mortar"),
 		GeneralPurposeMortar.ShearCohesionMPa, 0.9);
@@ -268,10 +245,8 @@ bool FSupportAuthorityBelowCapTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FIXTURE: the joints are the mean-basis 0.70 MPa flexural bond mortar"),
 		GeneralPurposeMortar.TensileStrengthMPa, 0.7);
 
-	/* ------------------------------------------------------------------ *
-	 * BUILD, AND CHECK THE TOPOLOGY IS THE ONE CLAIMED: four pieces, three
-	 * joints, complete geometry, R and L held only by head joints.
-	 * ------------------------------------------------------------------ */
+	/* BUILD, AND CHECK THE TOPOLOGY IS THE ONE CLAIMED: four pieces, three joints, complete
+	 * geometry, R and L held only by head joints. */
 
 	FFreeEndOpening Probe;
 	Build(Probe);
@@ -301,11 +276,8 @@ bool FSupportAuthorityBelowCapTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("FIXTURE: L (the free end) is held to R by a HEAD joint — the two-node cycle's other edge"),
 		Probe.Structure.GetJointRole(Probe.OuterHeadJoint, Probe.Outer) == EJointRole::Head);
 
-	/* ------------------------------------------------------------------ *
-	 * THE CROSS-CHECK: the LP finds an admissible equilibrium at self-weight
-	 * (Stands, λ* ≥ 1). Router-strands / LP-carries is the whole property, so
-	 * a fixture the LP did NOT stand would be wrong — asserted, not reported.
-	 * ------------------------------------------------------------------ */
+	/* THE CROSS-CHECK: the LP finds an admissible equilibrium at self-weight (Stands,
+	 * λ* ≥ 1). A fixture the LP did NOT stand would be wrong — asserted, not reported. */
 
 	RigidBlockOracle::FOracleProblem Problem;
 	FString BridgeWhy;
@@ -340,10 +312,8 @@ bool FSupportAuthorityBelowCapTest::RunTest(const FString& Parameters)
 			Oracle.bAnswered && Oracle.Lambda > 1.0);
 	}
 
-	/* ------------------------------------------------------------------ *
-	 * RUN THE SETTLING SOLVE TWICE, CHANGING ONLY THE CAP. Fresh build each
-	 * time — SolveAndBreak stamps — so the ONLY difference is the block cap.
-	 * ------------------------------------------------------------------ */
+	/* RUN THE SETTLING SOLVE TWICE, CHANGING ONLY THE CAP. Fresh build each time —
+	 * SolveAndBreak stamps — so the ONLY difference is the block cap. */
 
 	struct FRun
 	{
@@ -379,7 +349,8 @@ bool FSupportAuthorityBelowCapTest::RunTest(const FString& Parameters)
 	constexpr int32 AuthoritativeCap = 8;
 	const FRun Auth = RunAtCap(AuthoritativeCap);
 
-	/* ABOVE THE CAP the gate declines: GetPieceSupport falls through to the brittle router, which FALLS the refused one-sided arch. */
+	/* ABOVE THE CAP the gate declines: GetPieceSupport falls through to the brittle router,
+	 * which FALLS the refused one-sided arch. */
 	constexpr int32 DeclineCap = 2;
 	const FRun Decline = RunAtCap(DeclineCap);
 
@@ -394,10 +365,8 @@ bool FSupportAuthorityBelowCapTest::RunTest(const FString& Parameters)
 		static_cast<int32>(Decline.Inner), static_cast<int32>(Decline.Outer),
 		static_cast<int32>(Decline.Abutment), static_cast<int32>(Decline.Base)));
 
-	/* ------------------------------------------------------------------ *
-	 * THE STRUCTURE STANDS IN BOTH ARMS. The flip is a re-classification of a
-	 * support state, never a break: nothing is felled, no joint gives.
-	 * ------------------------------------------------------------------ */
+	/* THE STRUCTURE STANDS IN BOTH ARMS. The flip is a re-classification of a support
+	 * state, never a break: nothing is felled, no joint gives. */
 
 	TestEqual(TEXT("BOTH ARMS: the LP stands the structure, so no joint may break under load — above cap"),
 		Decline.bAnyBroke, false);
@@ -410,15 +379,10 @@ bool FSupportAuthorityBelowCapTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("BOTH ARMS: the seated abutment A is held by B0 in both arms (never stranded)"),
 		Auth.Abutment == EPieceSupport::Supported && Decline.Abutment == EPieceSupport::Supported);
 
-	/* ------------------------------------------------------------------ *
-	 * THE BRITTLE ROUTER BASELINE (above the cap) — the "brittle answer governs"
-	 * half of the property, and the guard that the LP authority is bounded by the
-	 * cap. Above the cap GetPieceSupport is the brittle router, and under ruling
-	 * (b) (DESIGN §8, the case-21 brittle-bond scope limit) a refused one-sided
-	 * arch has no honest support path: its genuinely-stranded refused-arch pieces
-	 * are classed FALLING, not Stranded. So R and L both read Falling here, and
-	 * NOTHING reads Stranded — stranding was the artefact ruling (b) removes.
-	 * ------------------------------------------------------------------ */
+	/* THE BRITTLE ROUTER BASELINE (above the cap) — the guard that the LP authority is
+	 * bounded by the cap. Under ruling (b) (DESIGN §8, case-21 scope limit) a refused
+	 * one-sided arch has no honest support path, so R and L are classed FALLING, not
+	 * Stranded — stranding was the artefact ruling (b) removes. */
 
 	TestEqual(
 		TEXT("ABOVE CAP: the brittle router FALLS exactly the two seatless bricks of the refused one-sided "
@@ -438,13 +402,8 @@ bool FSupportAuthorityBelowCapTest::RunTest(const FString& Parameters)
 		*FString::Printf(TEXT("ABOVE CAP: L reads Falling (brittle router, ruling b), support %d"), static_cast<int32>(Decline.Outer)),
 		static_cast<int32>(Decline.Outer), static_cast<int32>(EPieceSupport::Falling));
 
-	/* ------------------------------------------------------------------ *
-	 * THE RED — below the cap the LP is authoritative, so the two bricks it
-	 * carries must read Supported/Grounded, NOT Stranded. Today GetPieceSupport
-	 * still hands out the router's Stranded below the cap, so this arm fails —
-	 * which is the behaviour Slice 3b adds (§3.7's release-rule change, the
-	 * ruling that "a piece in the LP force system reads Supported").
-	 * ------------------------------------------------------------------ */
+	/* THE RED — below the cap the LP is authoritative, so the two bricks it carries must
+	 * read Supported/Grounded, NOT Stranded (§3.7's release-rule change, Slice 3b). */
 
 	TestEqual(
 		TEXT("BELOW CAP, THE RED: with the LP authoritative, nothing may read Stranded — the LP carries "
@@ -465,14 +424,9 @@ bool FSupportAuthorityBelowCapTest::RunTest(const FString& Parameters)
 			static_cast<int32>(Auth.Outer)),
 		IsStanding(Auth.Outer));
 
-	/* ------------------------------------------------------------------ *
-	 * THE SEAM ITSELF: the block cap ALONE decides which authority answers.
-	 * The SAME piece reads Falling above the cap (the brittle router refuses the
-	 * one-sided arch) and Supported/Grounded below it (the distrusted LP stands
-	 * the mortar cantilever on brittle bond) — the LP verdict overrides the
-	 * router's support enumeration below the cap and ONLY below it. The flip is
-	 * now Supported-vs-Falling, the sharpest form of the property.
-	 * ------------------------------------------------------------------ */
+	/* THE SEAM ITSELF: the block cap ALONE decides which authority answers. The SAME piece
+	 * reads Falling above the cap and Supported/Grounded below it — the sharpest form of
+	 * the property. */
 
 	TestTrue(
 		TEXT("THE SEAM: the block cap alone flips R's support — Falling above the cap (brittle router "

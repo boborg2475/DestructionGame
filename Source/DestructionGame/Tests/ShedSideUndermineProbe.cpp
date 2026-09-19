@@ -10,22 +10,23 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * A PROGRESSIVE-FAILURE DIAGNOSTIC, NOT A PERMANENT RED. It starts from the ARCHED realistic shed — the
- * full-width low back-wall band (courses 6 and 7, 17 bricks) removed so the back wall stands only by arching
- * into its two back corners — then UNDERMINES the LEFT back corner abutment: it pulls the left side wall's
- * column of bricks nearest the back wall (largest Y), starting near the arch-thrust height (Z ~ 59.5, the
- * slot mid-height) and working DOWN toward the ground, ONE brick per step, re-solving with the ROUTER
- * (SolveAndBreak — the break authority at 442 blocks, well above the 200-block LP cap) after each removal.
- * It logs the whole progression so the question "is the arch's hold robust, or just barely propped by the
- * corner?" can be read off the step count and the shape of the failure (gradual vs sudden).
+ * A progressive-failure diagnostic, not a permanent red. It starts from the arched realistic shed
+ * — the full-width low back-wall band (courses 6 and 7, 17 bricks) removed so the back wall
+ * stands only by arching into its two back corners — then undermines the left back corner
+ * abutment: it pulls the left side wall's column of bricks nearest the back wall (largest Y),
+ * starting near the arch-thrust height (Z ~ 59.5, the slot mid-height) and working down toward
+ * the ground, one brick per step, re-solving with the router (SolveAndBreak — the break authority
+ * at 442 blocks, well above the 200-block LP cap) after each removal. It logs the whole
+ * progression so the question "is the arch's hold robust, or just barely propped by the corner?"
+ * can be read off the step count and the shape of the failure (gradual vs sudden).
  *
- * It ASSERTS almost nothing — it exists to be grepped out of Saved/Logs/DestructionGame.log under the
- * SIDEUNDERMINE_ prefix. The name deliberately omits "DestructionGame" so the full suite never runs it;
- * invoke it with `Automation RunTests ShedRealisticLoads`.
+ * It asserts almost nothing — it exists to be grepped out of Saved/Logs/DestructionGame.log under
+ * the SIDEUNDERMINE_ prefix. The name deliberately omits "DestructionGame" so the full suite
+ * never runs it; invoke it with `Automation RunTests ShedRealisticLoads`.
  *
- * NEEDS A TICKING WORLD: NO. Boxes, doubles and the router; gravity on. No Chaos, no tick.
+ * Needs a ticking world: no. Boxes, doubles and the router; gravity on. No Chaos, no tick.
  *
- * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
+ * Named namespace, not anonymous: a unity build merges files into one translation unit.
  */
 namespace ShedSideUndermineProbeSupport
 {
@@ -47,11 +48,9 @@ namespace ShedSideUndermineProbeSupport
 		return Support == EPieceSupport::Grounded || Support == EPieceSupport::Supported;
 	}
 
-	/*
-	 * A LIVE SURVIVOR THAT LOST THE EARTH — a piece that is still present (not one we deliberately removed)
-	 * yet reads neither Grounded nor Supported after the router settle. This is the count that tells us the
-	 * arch gave.
-	 */
+	/* A live survivor that lost the earth: a piece still present (not one we deliberately removed)
+	 * yet reading neither Grounded nor Supported after the router settle — the count that tells
+	 * us the arch gave. */
 	int32 LostEarthCount(const FStructure& S)
 	{
 		int32 N = 0;
@@ -95,9 +94,9 @@ namespace ShedSideUndermineProbeSupport
 }
 
 /**
- * PROGRESSIVELY UNDERMINE THE LEFT BACK-CORNER ABUTMENT OF THE ARCHED SHED AND WATCH FOR COLLAPSE.
+ * Progressively undermine the left back-corner abutment of the arched shed and watch for collapse.
  *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * Needs a ticking world: no. See the file header.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FShedSideUndermineProbe,
@@ -119,12 +118,11 @@ bool FShedSideUndermineProbe::RunTest(const FString& Parameters)
 
 	FStructure& S = L.Structure;
 
-	/*
-	 * STEP 1 — THE ARCH STATE. Pull the full-width low back-wall band: courses 6 and 7 of the +Y back wall
-	 * (Z centres 48.25 / 55.75), the 17-brick band the running-bond wall deep-beams over by arching into its
-	 * two back corners. Identified exactly as ShedRealisticLoads.Dump.LowBandRemoved does: ClayBrick, in the
-	 * back-wall Y band centred on 128.875, Z centre matching one of the two course centres.
-	 */
+	/* STEP 1 — the arch state. Pull the full-width low back-wall band: courses 6 and 7 of the +Y
+	 * back wall (Z centres 48.25 / 55.75), the 17-brick band the running-bond wall deep-beams over
+	 * by arching into its two back corners. Identified exactly as
+	 * ShedRealisticLoads.Dump.LowBandRemoved does: ClayBrick, in the back-wall Y band centred on
+	 * 128.875, Z centre matching one of the two course centres. */
 	TArray<int32> RemovedInOrder;
 	{
 		TArray<int32> Band;
@@ -154,15 +152,14 @@ bool FShedSideUndermineProbe::RunTest(const FString& Parameters)
 
 	const int32 LowBandRemoved = RemovedInOrder.Num();
 
-	/*
-	 * STEP 1 (cont.) — THE BASELINE SOLVE. The router settles the structure with the low band gone. Since
-	 * item 6b made the vertical brick-brick joints the weak-perpend row (cohesion 0.2, tensile 0.1), the
-	 * panel that used to arch across this full-width gap can no longer hang on the corner perpends: it comes
-	 * down, taking 93 live survivors off the earth with nothing stranded. That is the intended behaviour the
-	 * default-suite fixture RealisticBrickShedCornerHangFallsWithWeakPerpends pins; this baseline re-pins the
-	 * probe's own reading to it so the diagnostic stays honest. (Before 6b, strong perpends held the arch and
-	 * this read 0 — the old value this line pinned.)
-	 */
+	/* STEP 1 (cont.) — the baseline solve. The router settles the structure with the low band
+	 * gone. Since item 6b made the vertical brick-brick joints the weak-perpend row (cohesion 0.2,
+	 * tensile 0.1), the panel that used to arch across this full-width gap can no longer hang on
+	 * the corner perpends: it comes down, taking 93 live survivors off the earth with nothing
+	 * stranded. That is the intended behaviour the default-suite fixture
+	 * RealisticBrickShedCornerHangFallsWithWeakPerpends pins; this baseline re-pins the probe's
+	 * own reading to it so the diagnostic stays honest. (Before 6b, strong perpends held the arch
+	 * and this read 0.) */
 	const int32 BaselinePasses = S.SolveAndBreak();
 	const int32 BaselineLost = LostEarthCount(S);
 	const int32 BaselineStranded = StrandedCount(S);
@@ -177,18 +174,17 @@ bool FShedSideUndermineProbe::RunTest(const FString& Parameters)
 	TestEqual(TEXT("BASELINE: the fall strands nothing — the panel genuinely lost its load path"),
 		BaselineStranded, 0);
 
-	/*
-	 * STEP 2 — BUILD THE UNDERMINING ORDER. The LEFT side wall runs along Y at X band [0, 10.25] (centre
-	 * 5.125), thin in X. A left side-wall brick is a ClayBrick with cx ~ 5.125 whose Y centre sits strictly
-	 * between the front corner (cy ~ 5.125) and the back wall (cy ~ 128.875) — cy in (10, 123). We keep only
-	 * bricks at or below the arch-thrust height (course <= 8, Z centre <= ~63.75): undermining is about what
-	 * carries the thrust DOWN to the ground, not the wall above it.
+	/* STEP 2 — build the undermining order. The left side wall runs along Y at X band [0, 10.25]
+	 * (centre 5.125), thin in X. A left side-wall brick is a ClayBrick with cx ~ 5.125 whose Y
+	 * centre sits strictly between the front corner (cy ~ 5.125) and the back wall (cy ~ 128.875)
+	 * — cy in (10, 123). We keep only bricks at or below the arch-thrust height (course <= 8, Z
+	 * centre <= ~63.75): undermining is about what carries the thrust down to the ground, not the
+	 * wall above it.
 	 *
-	 * The column NEAREST the back wall is, per course, the brick with the largest Y. We remove that column
-	 * first, top (near the slot) to bottom (ground) — ColumnRank 0, course descending — then, only if the
-	 * arch still holds, the next column in (ColumnRank 1), and so on up to the cap. That is "undermine the
-	 * abutment from the load height down, one brick per step".
-	 */
+	 * The column nearest the back wall is, per course, the brick with the largest Y. We remove
+	 * that column first, top (near the slot) to bottom (ground) — ColumnRank 0, course descending
+	 * — then, only if the arch still holds, the next column in (ColumnRank 1), and so on up to
+	 * the cap: "undermine the abutment from the load height down, one brick per step". */
 	TArray<FSideBrick> Side;
 	for (int32 P = 0; P < S.NumPieces(); ++P)
 	{
@@ -244,10 +240,9 @@ bool FShedSideUndermineProbe::RunTest(const FString& Parameters)
 		TEXT("SIDEUNDERMINE_PLAN,left_side_bricks_at_or_below_course8=%d,cap=25,collapse_threshold_lostearth=5"),
 		Side.Num());
 
-	/*
-	 * STEP 3 — THE PROGRESSION. Remove one side brick, re-solve with the router, log the step. Continue until
-	 * a live section comes down (lostearth >= 5) or we have pulled 25 side bricks without collapse.
-	 */
+	/* STEP 3 — the progression. Remove one side brick, re-solve with the router, log the step.
+	 * Continue until a live section comes down (lostearth >= 5) or we have pulled 25 side bricks
+	 * without collapse. */
 	const int32 SideCap = 25;
 	const int32 CollapseThreshold = 5;
 
@@ -288,11 +283,9 @@ bool FShedSideUndermineProbe::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * STEP 4 — CLASSIFY WHAT CAME DOWN. Tally the live survivors that lost the earth by rough role so the
-	 * summary can name the failure: Timber roof members; back-wall / back-gable bricks (cy ~ 128.875); left
-	 * side-wall bricks (cx ~ 5.125); and everything else.
-	 */
+	/* STEP 4 — classify what came down. Tally the live survivors that lost the earth by rough role
+	 * so the summary can name the failure: Timber roof members; back-wall / back-gable bricks (cy
+	 * ~ 128.875); left side-wall bricks (cx ~ 5.125); and everything else. */
 	int32 FellRoof = 0;
 	int32 FellBackWall = 0;
 	int32 FellLeftSide = 0;
@@ -340,11 +333,9 @@ bool FShedSideUndermineProbe::RunTest(const FString& Parameters)
 			"stranded=%d,what_fell=<%s>"),
 		Collapsed, CollapseAtStep, SideRemoved, FinalLost, FinalStranded, *WhatFell);
 
-	/*
-	 * STEP 5 — THE CUT LIST. Every brick removed, in removal order — the 17 low-band bricks first, then the
-	 * side bricks up to and including the collapse trigger — as SIDEUNDERMINE_CUT lines, so the exact cut can
-	 * be grepped out and wired into a scenario for rendering.
-	 */
+	/* STEP 5 — the cut list. Every brick removed, in removal order — the 17 low-band bricks first,
+	 * then the side bricks up to and including the collapse trigger — as SIDEUNDERMINE_CUT lines,
+	 * so the exact cut can be grepped out and wired into a scenario for rendering. */
 	for (const int32 P : RemovedInOrder)
 	{
 		if (!L.Boxes.IsValidIndex(P))

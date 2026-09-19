@@ -18,105 +18,50 @@
  * BuildRigidBlockProblem, solved by the rigid-block LP, and DIFFED against what the
  * production cascade does with the identical structure. The deliverable is a measurement
  * per fixture — lambda*, the load factor the acceptance rulings never had — and a PINNED
- * CLASSIFICATION of every agreement and disagreement, so that a change on EITHER side
- * fails loudly. This is the DropsToday pattern lifted from "what the model wrongly does"
- * to "how the two methods relate".
+ * CLASSIFICATION of every agreement and disagreement, so a change on EITHER side fails
+ * loudly.
  *
  * WHAT A CLASSIFICATION IS AND IS NOT. The oracle is finite-tension rigid-plastic limit
  * analysis at the CODED characteristic strengths; production is an uncracked-elastic
  * routing solver plus an interim overturning guard. Where they disagree, NEITHER is
- * automatically right: each disagreement row names its mechanism, and the ones that
- * touch a user ruling (DESIGN.md §8) classify against the ruling's recorded cost rather
- * than relitigating it. Two systematic slants to keep in mind when reading lambda*:
+ * automatically right: each disagreement row names its mechanism, and rows touching a
+ * user ruling (DESIGN.md §8) classify against the ruling's recorded cost rather than
+ * relitigating it. Two systematic slants when reading lambda*:
  *
  *   - CAPACITY IS READ AT THE PLASTIC LIMIT — up to 3x the uncracked first-crack moment
- *     (the oracle header's own caveat), plus FULL LOAD REDISTRIBUTION: a rigid block
- *     resting on two contacts may put its weight wherever equilibrium allows, where the
- *     real elastic path loads the middle. Both push lambda* UP relative to a brittle
+ *     (the oracle header's own caveat), plus FULL LOAD REDISTRIBUTION: a rigid block on
+ *     two contacts may put its weight wherever equilibrium allows, where the real
+ *     elastic path loads the middle. Both push lambda* UP relative to a brittle
  *     first-crack criterion, so "the oracle stands it" is the MOST charitable reading.
- *   - STRENGTHS WERE THE CODED CHARACTERISTIC VALUES (f_xk1 = 0.10) WHEN EVERY WINDOW
- *     IN THIS FILE WAS PINNED, and the /6 characteristic-vs-mean discount the §8 rulings
- *     applied on top is SPENT by the 2026-08-14 mean re-anchor flip (TRAPS.md): the discount
- *     now lives in the profile data and must never be applied twice.
- *
- *     >>> MEAN RE-ANCHOR, GREEN-PHASE RE-MEASUREMENT MARKER (2026-08-13) <<<
- *     When the profile rows flip to the mean basis, EVERY strength-governed lambda*
- *     window in this file moves (roughly x4.5 where jamb-bed cohesion binds, x7 where
- *     tension binds — but utilisation does NOT scale linearly across mechanisms: the
- *     cohesion/tension ordering flips on some fixtures, so no window may be re-pinned by
- *     scaling). Production's drop/strand pins move wherever the cascade outcome was
- *     strength-governed (rows 10/19 are unroutability, zero passes — their counts do NOT
- *     move; row 20, 21 and 22's do). Re-pin per this file's established discipline: two
- *     certified readings per window (the pivot-path lesson — never tighter than ~1e-5
- *     relative at 120+ blocks), window + ratio + block-count pins as a set (the N6
- *     rung-flip lesson), and the case-21 probe's AgreeFalls row must be re-checked
- *     against the 1.0 line (its 0.785 scales ~x4.5 to ~3.5 and the enumerator likely
- *     flips to a stand — that is a re-measurement, not a regression). The DRY-STONE rows
- *     (leaning-stack dry ladder, the 1.2372 springing identity family) must come back
- *     BIT-IDENTICAL — dry stone's row does not move. The beam-pair rows transcribe their
- *     own characteristic C24/S275 constants (below) while BeamAcceptanceTest moved to
- *     means 2026-08-13: the re-transcription (24->36, 4->6, 275->290) and the re-measured
- *     windows (member-bound rows expected ~x1.5 / x1.055) are owed in the same pass.
+ *   - STRENGTHS ARE THE PROFILE'S MEAN-BASIS VALUES (post the 2026-08-14 re-anchor,
+ *     TRAPS.md); the old /6 characteristic-vs-mean discount the §8 rulings applied now
+ *     lives in the profile data and must never be applied twice.
  *
  * PRODUCTION'S VERDICT, FOR THE DIFF, is the cascade outcome on the same structure:
  * SolveAndBreak to a standstill, then count live pieces with no path to the earth
- * (Stranded counts as fallen, exactly as the acceptance suite folds them — a piece
- * nothing carries comes down either way; the stranded count is reported separately so a
- * routing limitation stays visible). "Production falls" in a relation below means "at
- * least one piece came down", with the exact count PINNED per row.
+ * (Stranded counts as fallen, as the acceptance suite folds them; the stranded count is
+ * reported separately so a routing limitation stays visible). "Production falls" below
+ * means "at least one piece came down", with the exact count PINNED per row.
  *
- * THE ORACLE'S VERDICT IS GLOBAL, and that is a real asymmetry of vocabulary: lambda* is
- * one number for the whole structure, so a LOCAL LOSS — two bricks drop, the wall is
- * fine — reads Falls (lambda* ~ 0) exactly like a collapse. The relation rows account
- * for it in their mechanism text; where the local/global split is the whole question the
- * row's comment works the survivor arithmetic rather than pretending lambda* can.
+ * THE ORACLE'S VERDICT IS GLOBAL: lambda* is one number for the whole structure, so a
+ * LOCAL LOSS — two bricks drop, the wall is fine — reads Falls (lambda* ~ 0) exactly
+ * like a collapse. Where the local/global split is the whole question, the row's
+ * comment works the survivor arithmetic rather than pretending lambda* can.
  *
- * COST AND THE DENSE ENVELOPE, BOTH MEASURED — HISTORY NOW; the solver described in this
- * paragraph and the next was retired 2026-08-12 (see THE SPARSE REWRITE below). The dense
- * tableau WAS O(rows x columns) doubles and one pivot touched all of
- * it. Measured 2026-08-09: the 40-course stack solves in 0.084 s, the beam pair and the
- * one-cell pair in microseconds, corbel B in 0.21 s — those live in the fast suite.
- * Corbel C took 6.8 s and corbel D 79.6 s (90 blocks / 200 joints ~ 20 ms per pivot x
- * 4,092 pivots), so C and D live in the OPT-IN sweep at the bottom of this file (in its
- * FULL tier, OracleSweepFull.RigidBlock.WallsAndLadders); neither tier's name contains
- * "DestructionGame", so the documented full-suite command never pays for either — see the
- * two-tier header below for the convention and the per-test costs.
+ * COST, AND WHY SOME ROWS ARE OPT-IN. The solver is a sparse revised simplex with
+ * periodic clean refactorisation (RigidBlockOracle.h records the method); it answers
+ * every fixture the earlier dense tableau refused, with verified residuals. Slow rows
+ * (corbel C/D, the wall-case ladders) still cost seconds to tens of minutes at scale, so
+ * they live in the OPT-IN sweep at the bottom of this file (its FULL tier,
+ * OracleSweepFull.RigidBlock.WallsAndLadders); neither tier's name contains
+ * "DestructionGame", so the documented full-suite command never pays for either — see
+ * the two-tier header below for the convention and per-test costs.
  *
- * THE ENVELOPE FINDING (2026-08-11, the full unmeasured sweep run, one row at a time):
- * past roughly a hundred blocks the dense simplex STOPS ANSWERING — the post-solve
- * verification finds the basic solution violating an assembly row by more than its
- * 1e-6 relative tolerance and the oracle refuses, fail closed, exactly as designed
- * (accumulated pivot error in a dense tableau, not a formulation defect: every refusal
- * came after ~4,000-13,000 pivots). Every fixture at >= 119 blocks refused. Every
- * fixture at <= 90 blocks answered — reproducing its slice-1 value where one existed —
- * EXCEPT the 74-block free-end 7x10 (183 joints, 3,993 pivots), which refuses and is
- * this file's live canary: block count alone does not separate answer from refusal
- * (corbel D answers at 90 blocks / 200 joints / 4,092 pivots), so treat the envelope
- * as measured per-fixture, never as a block-count rule. A 74-block refusal is the
- * recorded state, not a solver regression.
- * The refusals were RECORDED MEASUREMENTS (the slow test's header carried the table),
- * one refusal stayed live as a pinned canary until the sparse rewrite flipped and
- * promoted it, and the walls beyond the envelope were deliberately-listed deferrals —
- * never silent skips. No refusal row is live today; the refusal branch below is kept
- * for FUTURE refusal pins (a 30-course attempt would use it), not exercised by any row.
- * EXCLUDED OUTRIGHT on arithmetic alone: the 30-course walls (cases 1-5, ~375 pieces /
- * ~1,000 joints: a ~13k x 33k tableau is ~3.5 GB and hours of pivots), corbels E35/E36
- * (~400 pieces, same league) and corbel F (3,015 pieces, hundreds of GB).
- *
- * THE SPARSE REWRITE RETIRED THAT ENVELOPE (2026-08-12). The solver is now a sparse
- * revised simplex with periodic clean refactorisation (RigidBlockOracle.h records the
- * method); every fixture the dense tableau refused ANSWERS with verified residuals,
- * the free-end 7x10 canary failed exactly as written and was promoted to a measured
- * pin, and the paragraphs above stand as the history that motivated the rewrite. The
- * slow test's header carries the new measured table, and every fixture in it became a
- * PINNED ROW in the same day's classification slice — nineteen rows across the two slow
- * tests, fifteen of them acceptance wall cases. Three scales remain beyond the
- * PRACTICAL envelope: the 30-course walls (cases 1-5, ~375 pieces / ~13k rows) are now
- * REPRESENTABLE (tens of MB, no dense tableau), but wall-01 was still pivoting after
- * ~45 minutes when its measuring run was cut off — full Dantzig pricing over ~34k
- * columns per iteration is the measured cost driver, and partial pricing is the known
- * lever if those five rows are ever wanted; corbels E35/E36 (~400 pieces) sit in the
- * same league; corbel F (3,015 pieces) remains far out.
+ * THREE SCALES REMAIN BEYOND THE PRACTICAL ENVELOPE and are excluded outright: the
+ * 30-course walls (cases 1-5, ~375 pieces / ~13k rows) are representable but wall-01 was
+ * still pivoting after ~45 minutes when cut off (full Dantzig pricing over ~34k columns
+ * per iteration is the cost driver; partial pricing is the known lever if ever wanted);
+ * corbels E35/E36 (~400 pieces) sit in the same league; corbel F (3,015 pieces) is far out.
  *
  * NEEDS A TICKING WORLD: NO. Producers, graph, LP — plain arithmetic on plain structs.
  *
@@ -129,10 +74,8 @@ namespace RigidBlockSweepTestSupport
 	using namespace DestructionProfiles;
 	using namespace RigidBlockOracle;
 
-	/* ================================================================================
-	 * THE BRICK AND THE UNITS — derived here, imported from nowhere, same discipline as
-	 * every acceptance file: a wrong production constant must DISAGREE with this file.
-	 * ================================================================================ */
+	/* THE BRICK AND THE UNITS — derived here, imported from nowhere, same discipline as
+	 * every acceptance file: a wrong production constant must DISAGREE with this file. */
 
 	constexpr double SweepBrickLengthCm = 21.5;
 	constexpr double SweepBrickWidthCm = 10.25;
@@ -145,45 +88,37 @@ namespace RigidBlockSweepTestSupport
 	constexpr double SweepBrickMassKg = SweepClayDensityGramsPerCubicCm
 		* SweepBrickLengthCm * SweepBrickWidthCm * SweepBrickHeightCm / 1000.0;
 
-	/* ================================================================================
-	 * THE CROSS-ROW TOLERANCES — chosen from the measurement, not from taste.
-	 * ================================================================================ */
+	/* THE CROSS-ROW TOLERANCES — chosen from the measurement, not from taste. */
 
 	/**
 	 * How close two fixtures have to read for "the LP prices these identically" to be a
-	 * PIN rather than a remark — a window is a box around one number and cannot say two
-	 * numbers are the same one, so this is deliberately three orders tighter than any row
-	 * window in the file. MEASURED 2026-08-12: the free-end pair agrees to 2.21e-16
-	 * relative (256.82001841913814 vs ...19 — ONE ULP) and the superimposed pair to
-	 * 1.31e-16 (868.62373637245832 vs ...21, also one ulp). 1e-15 leaves four to eight
-	 * ulps of headroom, which is room for a different pivot path to the same optimum and
-	 * no room at all for a different optimum.
+	 * PIN rather than a remark — deliberately three orders tighter than any row window in
+	 * the file. MEASURED 2026-08-12: the free-end pair agrees to 2.21e-16 relative (ONE
+	 * ULP) and the superimposed pair to 1.31e-16 (also one ulp). 1e-15 leaves four to
+	 * eight ulps of headroom — room for a different pivot path to the same optimum, none
+	 * for a different optimum.
 	 */
 	constexpr double SameNumberRelativeTolerance = 1.0e-15;
 
 	/*
-	 * Production's wall-16 / wall-15 worst-joint ratio, re-measured 4.5082330043756453 at
-	 * the mean re-anchor (0.0083148340273646662 over 0.0018443665221594297 — both ends are
-	 * DESIGN §6 anchors). It was 31.5576 at the characteristic data and the shrink is the
-	 * TRAPS axis lesson in one number: the bare side is tension-governed and moved /7, the
-	 * loaded side is compression-governed and did not move, so the ratio is NOT
-	 * strength-invariant. The acceptance suite's own floor moved 10 -> 3 with the same
-	 * measurement.
+	 * Production's wall-16 / wall-15 worst-joint ratio, measured 4.5082330043756453 on
+	 * the mean basis (both ends are DESIGN §6 anchors). It was 31.5576 at the
+	 * characteristic data — the shrink is the TRAPS axis lesson in one number: the bare
+	 * side is tension-governed and moved /7, the loaded side is compression-governed and
+	 * did not move, so the ratio is NOT strength-invariant.
 	 */
 	constexpr double SuperimposedReadingRatioLo = 4.5081;
 	constexpr double SuperimposedReadingRatioHi = 4.5084;
 
 	/**
-	 * Production's 20-course / 10-course free-end ratio, measured 2.11985065259119
-	 * (1.9576612517914398 over 0.92349017578125003). Height-LINEAR, and a shade over 2
-	 * because the removed brick's own course does not double with the wall.
+	 * Production's 20-course / 10-course free-end ratio, measured 2.11985065259119.
+	 * Height-LINEAR, and a shade over 2 because the removed brick's own course does not
+	 * double with the wall.
 	 */
 	constexpr double FreeEndReadingRatioLo = 2.119;
 	constexpr double FreeEndReadingRatioHi = 2.121;
 
-	/* ================================================================================
-	 * WHAT ONE SWEPT FIXTURE PRODUCES, AND HOW A ROW IS JUDGED.
-	 * ================================================================================ */
+	/* WHAT ONE SWEPT FIXTURE PRODUCES, AND HOW A ROW IS JUDGED. */
 
 	/**
 	 * How the two methods relate on one fixture. Unmeasured is the ZERO enumerator and
@@ -217,34 +152,18 @@ namespace RigidBlockSweepTestSupport
 		OracleRefusesAtThisScale,
 
 		/**
-		 * The oracle refuses with "PHASE-2 SIMPLEX FAILED", which is a different refusal
-		 * from the one above and needed its own enumerator rather than a widened check:
-		 * the verification gate rejects an answer it has computed, while this one never
-		 * reaches an answer at all. CURRENT_STATE recorded that the eight-course-opening
-		 * family (acceptance case 22) refuses this way and that
-		 * `OracleRefusesAtThisScale` could not pin it, because that branch asserts the
-		 * reason contains "failed verification".
+		 * The oracle refuses with "PHASE-2 SIMPLEX FAILED" — a different refusal from the
+		 * one above: the verification gate rejects an answer it computed, while this one
+		 * never reaches an answer at all, so it needed its own enumerator rather than a
+		 * widened check.
 		 *
-		 * SCALE WAS NEVER THE EXPLANATION, and the canary discipline paid: the abutment
-		 * ladder's j=4 rung refused at 107 blocks while its own j=3 rung (95) and the rise
-		 * ladder's s=4 (149) answered, that row failed the day the solver was fixed, and it
-		 * was PROMOTED to a measured relation rather than absorbed (2026-08-13 — the
-		 * ratio-test relative pivot floor in RigidBlockOracle.cpp; the ladder now reads
-		 * 5.511 / 7.379 / 9.359 across j=2/3/4).
-		 *
-		 * NOTHING USES THIS TODAY, AND NOTHING CAN: since Slice 0a (2026-08-15) NO FIXTURE
-		 * THIS PROJECT OWNS REACHES ANY PHASE-2 REFUSAL ARM. The whole OracleSweep answers,
-		 * and the unbreakable lambda-cap tower terminates Optimal rather than unbounded.
-		 * The claim that stood here until then — that case 22's family still refused at
-		 * 218+ blocks "for a reason that outlived the fix" — was FALSE and had been for a
-		 * day: those readings were taken at the characteristic strengths and expired when
-		 * the mean re-anchor moved the data under them. Case 22 answers at 8.4149459982.
-		 *
-		 * The enumerator stays for the next refusal rather than for a known one, and that
-		 * is a deliberate choice with a cost: this branch is live code nothing drives. The
-		 * cheapest fixture that would drive it again is an ITERATION-CAP refusal, not this
-		 * one — case 22 answers at 88.8% of MaxPivots, so a slightly wider member of its
-		 * family hits the cap deterministically. CURRENT_STATE carries that as owed work.
+		 * NOTHING USES THIS TODAY, AND NOTHING CAN: since Slice 0a (2026-08-15) no fixture
+		 * this project owns reaches a phase-2 refusal arm; the unbreakable lambda-cap
+		 * tower terminates Optimal rather than unbounded. The enumerator stays for the
+		 * NEXT refusal rather than a known one — a deliberate choice with a cost, since
+		 * this branch is live code nothing drives. The cheapest fixture that would drive
+		 * it again is an ITERATION-CAP refusal (case 22 answers at 88.8% of MaxPivots),
+		 * which CURRENT_STATE carries as owed work.
 		 */
 		OracleRefusesPhaseTwo,
 	};
@@ -300,25 +219,19 @@ namespace RigidBlockSweepTestSupport
 		 * A PRICING EXPERIMENT'S KNOB: rewrite the ORACLE'S PROBLEM after the bridge has
 		 * built it and before the LP is solved, returning how many joints it changed.
 		 *
-		 * WHY THE PROBLEM AND NOT THE STRUCTURE. The question these rows exist to answer is
-		 * "which of the LP's capacities is binding" — so the fixture must be held EXACTLY
-		 * fixed while one strength moves, and production must be left reading the untouched
-		 * wall. Rewriting FStructure would move both methods at once and there would be no
-		 * control; rewriting FOracleProblem::Joints[i].Strength moves one and leaves
-		 * production as a bit-identical control, which the probe rows then ASSERT.
+		 * WHY THE PROBLEM AND NOT THE STRUCTURE. These rows ask "which of the LP's
+		 * capacities is binding", so the fixture must be held EXACTLY fixed while one
+		 * strength moves, with production reading the untouched wall. Rewriting
+		 * FStructure would move both methods at once and there would be no control;
+		 * rewriting FOracleProblem::Joints[i].Strength moves one and leaves production as
+		 * a bit-identical control, which the probe rows then ASSERT. No new seam was
+		 * needed in the oracle for this — FOracleProblem is a plain struct of public
+		 * arrays, so a per-joint strength override is expressible in the test alone.
 		 *
-		 * NO NEW SEAM WAS NEEDED IN THE ORACLE for this. FOracleProblem is a plain struct of
-		 * public arrays and FOracleJoint already carries its own FConnectionStrength row —
-		 * the bridge and the solve are separate calls by construction, so a per-joint
-		 * strength override is expressible in the test that wants it. Nothing in
-		 * RigidBlockOracle.h/.cpp changed to make these rows possible, which is the property
-		 * that keeps the oracle an independently derived second opinion.
-		 *
-		 * THE RETURN VALUE IS THE POINT, not a convenience. A selector that matched nothing
-		 * would leave lambda* exactly where it was, and "lambda* did not move" is precisely
-		 * the answer one of these experiments can report — so an override that silently
-		 * touched zero joints is INDISTINGUISHABLE from a real negative result unless the
-		 * count is pinned. OverriddenJoints below is that pin.
+		 * THE RETURN VALUE IS THE POINT: a selector that matched nothing would leave
+		 * lambda* exactly where it was, and "lambda* did not move" is a valid answer for
+		 * one of these experiments — so an override that silently touched zero joints is
+		 * INDISTINGUISHABLE from a real negative result unless the count is pinned.
 		 */
 		TFunction<int32(FOracleProblem&)> AdjustProblem;
 
@@ -772,10 +685,8 @@ namespace RigidBlockSweepTestSupport
 			Ratio >= RatioLo && Ratio <= RatioHi);
 	}
 
-	/* ================================================================================
-	 * FIXTURE BUILDERS. Producers are production's; hand-laid geometry is transcribed
-	 * from the acceptance fixture it mirrors, with preconditions pinning the shape.
-	 * ================================================================================ */
+	/* FIXTURE BUILDERS. Producers are production's; hand-laid geometry is transcribed from
+	 * the acceptance fixture it mirrors, with preconditions pinning the shape. */
 
 	/** Lay a scenario row's structure and apply its cut — production data end to end. */
 	bool BuildScenarioStructure(const TCHAR* ScenarioName, FStructure& Out, FString& OutWhy)
@@ -1637,20 +1548,17 @@ namespace RigidBlockSweepTestSupport
  * WHAT WAS MEASURED, 2026-08-09 at the characteristic bond: lambda* = 4.4582 / 1.2411 /
  * 0.06293 / 0.03443 at 5/8/30/40 courses — matching slice 1's hand-built ladder through
  * the REAL fixture and bridge this time — while production's cascade agrees on every
- * verdict (0 / 0 / 29 / 39 dropped, the tall rows via the interim guard) and its worst
- * JOINT reading is height-INVARIANT (0.138781067 then). That last number is the
- * composite-depth measurement in one line: the credited deep beam's m^2 cancels the
- * demand's m^2, so a fixture whose true margin the LP measures moving 130x reads
- * IDENTICAL to the joint checks, and at 30 courses the joint reading overstates the
- * true margin by a factor of ~115. The verdicts only agree because
- * BreakOverturnedBodies exists — exactly what DESIGN.md §7 step 4 will replace with
- * this LP.
+ * verdict (0 / 0 / 29 / 39 dropped) and its worst JOINT reading is height-INVARIANT
+ * (0.138781067 then). That last number is the composite-depth measurement in one line:
+ * the credited deep beam's m^2 cancels the demand's m^2, so a fixture whose true margin
+ * the LP measures moving 130x reads IDENTICAL to the joint checks, and at 30 courses the
+ * joint reading overstates the true margin by a factor of ~115. The verdicts only agree
+ * because BreakOverturnedBodies exists — exactly what DESIGN.md §7 step 4 replaces.
  *
  * RE-MEASURED AT THE MEAN RE-ANCHOR FLIP (2026-08-14): every rung is tension-governed
  * and moved exactly x7 with the bond (31.207384811713876 / 8.6877701307335329 /
- * 0.44049301907204624 / 0.24100815422114152), the drop counts did not move (the guard's
- * verdicts hold at the profile-read 0.70 bond), and the windows below are re-pinned on
- * those measurements at the file's usual relative width.
+ * 0.44049301907204624 / 0.24100815422114152); drop counts did not move (the guard's
+ * verdicts hold at the profile-read 0.70 bond).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSweepLeaningStackTest,
@@ -1696,14 +1604,11 @@ bool FRigidBlockSweepLeaningStackTest::RunTest(const FString& Parameters)
  * WHAT WAS MEASURED, 2026-08-09, and both halves are findings:
  *
  *   - PRODUCTION DROPS ALL THREE BEAMS ENTIRELY, light load included. Its worst joint
- *     reads Max() AS BUILT, one pass breaks it, and every non-grounded piece falls —
- *     verified against Acceptance.Beam.Catalogue's own run the same day (identical
- *     fallen sets and Max() readings), so this is production's real current mode, not a
- *     fixture drift. The BeamAcceptanceTest header's "nothing anywhere is close to
- *     failing, at any load" and DESIGN §6's "light-wood and heavy-steel rows stand"
- *     PREDATE it: the dry bearings' eccentric moments are now refused arching relief
- *     (the one-cell gate's dry-stone refusal, H/V-shaped ratio far over mu = 0.7), the
- *     no-tension bearings read Max outside the kern, and the whole fixture unzips.
+ *     reads Max() AS BUILT and every non-grounded piece falls — verified against
+ *     Acceptance.Beam.Catalogue's own run the same day, so this is production's real
+ *     current mode, not a fixture drift. The dry bearings' eccentric moments are now
+ *     refused arching relief (the one-cell gate's dry-stone refusal), the no-tension
+ *     bearings read Max outside the kern, and the whole fixture unzips.
  *
  *   - THE ORACLE, WITH GLOBAL EQUILIBRIUM, STANDS ALL THREE: lambda* = 1.764 (heavy
  *     timber), 19.20 (light timber), 17.35 (heavy steel) at the characteristic
@@ -1738,18 +1643,14 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
 
 	/*
 	 * ROW 1 RE-PINNED AT THE FIRST-CRACK PROMOTION (2026-08-28); ROWS 2/3 STILL AGREE-STANDS.
-	 * The oracle here is the DEFAULT-OFF oracle, so its lambda* windows do NOT move — row 1 is
-	 * still 2.64610374 (plastic stress block + rigid-block redistribution). What moved is
-	 * PRODUCTION's half of the diff: below the 200-block cap production now solves with the
-	 * first-crack rows live, and the heavy C24 beam's single bonded midspan glue line carries
-	 * near-pure bending (N ~ 0 at midspan), so its uncracked peak-fibre capacity binds at
-	 * first-crack lambda* = 0.88258 < 1 (the value Beam.Catalogue row 1 asserts) and production
-	 * FELLS the beam — the glue line parts and the two half-beams plus the load block come down,
-	 * dropping 3. So row 1 is now ORACLE STANDS (2.65, default-off plastic) / PRODUCTION FALLS
-	 * (first crack), the honest first-crack disagreement. Rows 2/3 keep AGREE-STANDS: the light
-	 * timber (28.80) and the steel (18.30) sit far above 1.0 even at first crack's /3, so
-	 * production stands them too (0 dropped). The oracle's material discrimination (18.30 vs 2.65)
-	 * is unchanged; the oracle-lambda* window here must NOT move — only production's drop pin does.
+	 * The oracle here is DEFAULT-OFF, so its lambda* windows do NOT move — row 1 stays
+	 * 2.64610374 (plastic stress block + redistribution). What moved is PRODUCTION's half:
+	 * below the 200-block cap it now solves with the first-crack rows live, and the heavy
+	 * C24 beam's bonded midspan glue line carries near-pure bending, so its uncracked
+	 * peak-fibre capacity binds at first-crack lambda* = 0.88258 < 1 and production FELLS
+	 * the beam, dropping 3. Row 1 is now ORACLE STANDS (2.65, plastic) / PRODUCTION FALLS
+	 * (first crack). Rows 2/3 keep AGREE-STANDS: light timber (28.80) and steel (18.30) sit
+	 * far above 1.0 even at first crack's /3, so production stands them too (0 dropped).
 	 */
 	Rows.Add({ TEXT("C24 timber beam, heavy load"),
 		TEXT("oracle (default-off, plastic) stands at 2.65; production now fells the beam ")
@@ -1795,24 +1696,22 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
  * ("production cannot express overturning of a bonded corbel; the oracle can"): the
  * oracle AGREES WITH EVERY RULING even at the CODED characteristic bond — A 2.905,
  * B 221.4, C 2.567, D 58.06, all >= 1 — so the limit theorem does NOT condemn the
- * corbels the user ruled must stand, and the expected principled disagreement never
- * materialised. The measured margins carry two findings the verdicts cannot:
+ * corbels the user ruled must stand. The measured margins carry two findings the
+ * verdicts cannot:
  *
  *   - FILLING BUYS 76x (A 2.905 -> B 221.4, same reach): a filled corbel jams as a
  *     block where a bare arm hangs on its bond ladder.
  *   - THE COUNTERWEIGHT BUYS 22.6x (C 2.567 -> D 58.06) in the LP, where production
- *     reads C and D within 0.4% of each other (0.34481 vs 0.34348) and the deliberate
- *     red CorbelStepsBeforeTensionWins records they cross 1.0 at 36 steps IDENTICALLY.
+ *     reads C and D within 0.4% of each other and the deliberate red
+ *     CorbelStepsBeforeTensionWins records they cross 1.0 at 36 steps IDENTICALLY.
  *     Downward-only routing makes the counterweight buy nothing; global equilibrium
- *     measures exactly what it buys. This is the C-vs-D finding turned into a number.
+ *     measures exactly what it buys.
  *
  * RE-MEASURED AT THE MEAN RE-ANCHOR FLIP (2026-08-14), and the two rungs moved by
- * DIFFERENT factors — the recorded proof that no window here may ever be re-pinned by
- * scaling: A is tension-bound and moved exactly x7 with the bond
- * (20.332907144632795), while B's jamming is bound in the Mohr-Coulomb family and
- * moved x1.506 (333.40338835842761), between the cap's x1.538 and mu's x1.25 —
- * filling now buys 16.4x on the mean basis, not 76x. (CorbelStepsBeforeTensionWins'
- * crossover likewise re-derived to ~124 steps in COMPRESSION at the re-anchor.)
+ * DIFFERENT factors — proof no window here may ever be re-pinned by scaling: A is
+ * tension-bound and moved exactly x7 with the bond (20.332907144632795), while B's
+ * jamming is bound in the Mohr-Coulomb family and moved x1.506 (333.40338835842761),
+ * between the cap's x1.538 and mu's x1.25 — filling now buys 16.4x, not 76x.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSweepCorbelFamilyTest,
@@ -1960,15 +1859,13 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
 	TArray<FSweepRow> Rows;
 
 	/*
-	 * MOVED FROM ORACLE-STANDS / PRODUCTION-FALLS TO AGREE-STANDS AT SLICE 3b/4 (2026-08-27); the
-	 * oracle lambda* is UNCHANGED at 9592.68. Through 2026-08-09 production dropped BOTH
-	 * non-grounded bricks in two passes — pass 1 refused P's relief at 1.4921 and a dry joint
-	 * outside the kern read Max(), pass 2 condemned N behind it — the missing no-tension rocking
-	 * model, DESIGN's standing-reads-as-falling gap. Below the 200-block cap the equilibrium LP is
-	 * now the break authority and finds the edge-contact jamming force system the limit theorem
-	 * always guaranteed, so production stands both bricks (drops 0, was 2) and agrees with the
-	 * oracle. The lambda* two orders above 1 confirms this is a wide-margin equilibrium, not a
-	 * knife edge.
+	 * MOVED FROM ORACLE-STANDS / PRODUCTION-FALLS TO AGREE-STANDS AT SLICE 3b/4 (2026-08-27);
+	 * the oracle lambda* is UNCHANGED at 9592.68. Through 2026-08-09 production dropped BOTH
+	 * non-grounded bricks — pass 1 refused P's relief at 1.4921 and a dry joint outside the
+	 * kern read Max(), pass 2 condemned N behind it — the missing no-tension rocking model.
+	 * Below the 200-block cap the equilibrium LP is now the break authority and finds the
+	 * edge-contact jamming force system the limit theorem always guaranteed, so production
+	 * stands both bricks (drops 0, was 2) and agrees with the oracle.
 	 */
 	Rows.Add({ TEXT("one-cell dry half seat, with abutment"),
 		TEXT("edge-contact jamming (limit theorem); production now stands both bricks below the ")
@@ -1984,41 +1881,32 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
 /**
  * SLICE 0d — THE FIRST-CRACK ROWS BITE BONDED BENDING AND SPARE DRY JOINTS.
  *
- * WHAT IS UNDER TEST, IN ONE SENTENCE. With FOracleProblem::bFirstCrackRows set, the LP
- * carries the two uncracked-first-crack rows -(n1+n2) + 3|n1-n2| <= f_t*A for every joint
- * with a real tensile bond and ONLY those, cutting a bonded section's plastic bending
- * capacity to a third (so a bonded-bending-governed lambda* falls toward control/3) while
- * every dry-stone joint, having no bond to crack, returns bit-identical.
- *
- * WHY THIS IS THE RED, AND WHY IT FAILS FOR THE RIGHT REASON. bFirstCrackRows is a COMPILE
- * SEAM ONLY today — a defaulted bool the solver does not read yet (RigidBlockOracle.h). So
- * turning it on adds no rows and leaves lambda* exactly where it was. The beam assertions
- * below demand a MEANINGFUL DROP; with the rows absent lambda*(on) == lambda*(off) and they
- * fail because THE ROWS ARE MISSING, not because anything failed to compile. dev-expert
- * makes them green by assembling the rows in SolveRigidBlockOnce, gated on the flag and on
- * f_t > 0. See the predictions record (PROMOTION_DESIGN Sec 4.3/4.5; Slice 0d) for the
- * full per-fixture table this cheap red is the front edge of.
+ * WHAT IS UNDER TEST. With FOracleProblem::bFirstCrackRows set, the LP carries the two
+ * uncracked-first-crack rows -(n1+n2) + 3|n1-n2| <= f_t*A for every joint with a real
+ * tensile bond and ONLY those, cutting a bonded section's plastic bending capacity to a
+ * third (so a bonded-bending-governed lambda* falls toward control/3) while every
+ * dry-stone joint, having no bond to crack, returns bit-identical. See the predictions
+ * record (PROMOTION_DESIGN Sec 4.3/4.5; Slice 0d) for the full per-fixture table this
+ * cheap red is the front edge of.
  *
  * THE ASSERTIONS, AND WHY EACH.
  *   - MECHANISM, not outcome: the beam rows assert lambda* MOVED (the rows bite), never a
- *     verdict. Beam row 1's predicted 0.882 crosses 1.0 and would move a catalogue relation
- *     — that is a USER RULING (PROMOTION_DESIGN Sec 4.3, Sec 8's beam caveat), REPORTED here,
- *     never encoded as settled.
- *   - PRECISE window near control/3: BuildBeam lays exactly ONE bonded joint (the glue line)
- *     and a simply-supported span carries N~=0 at midspan, so first crack is at full /3
- *     severity and lambda* -> control/3 near-exactly. The window is wide enough (0.28-0.42 of
- *     control) for arching/shear wobble and green re-measurement, and 1.0 (the no-op) is
- *     wildly outside it, so the red reason is unambiguous. Green MEASURES and re-pins;
- *     never scale.
- *   - BIT-IDENTITY for the dry pair is the crux keyed-on-DATA invariant. It is GREEN ON
- *     ARRIVAL under the no-op seam and stays green when dev keys on f_t > 0 — so it asserts
- *     nothing until proven to bite. Its bite-prover is a GREEN-PHASE mutation: key the rule
- *     on "always" (or on material) and the dry lambda* moves. Recorded, not run here.
+ *     verdict. Beam row 1's predicted 0.882 crosses 1.0 and would move a catalogue
+ *     relation — that is a USER RULING (PROMOTION_DESIGN Sec 4.3, Sec 8's beam caveat),
+ *     REPORTED here, never encoded as settled.
+ *   - PRECISE window near control/3: BuildBeam lays exactly ONE bonded joint (the glue
+ *     line) and a simply-supported span carries N~=0 at midspan, so first crack is at
+ *     full /3 severity and lambda* -> control/3 near-exactly. The window (0.28-0.42 of
+ *     control) leaves room for arching/shear wobble and green re-measurement, and 1.0
+ *     (the no-op) sits wildly outside it, so the red reason is unambiguous.
+ *   - BIT-IDENTITY for the dry pair is the crux keyed-on-DATA invariant: green on
+ *     arrival under a no-op rule and stays green once the rule keys on f_t > 0, so it
+ *     asserts nothing until proven to bite. Its bite-prover is a mutation that keys the
+ *     rule on "always" (or on material) and moves the dry lambda* — recorded, not run here.
  *
- * TIER: DEFAULT SUITE. The beam is microseconds and the dry one-cell solves fast; two solves
- * of each is still cheap. The FULL-SWEEP re-measurement (corbels, case 21, the slow walls,
- * every bonded window moved and every dry identity pinned) is LARGER than one clean red step
- * and is green-phase OracleSweepFull work — it needs measured windows that do not exist until
+ * TIER: DEFAULT SUITE. The beam is microseconds and the dry one-cell solves fast. The
+ * FULL-SWEEP re-measurement (corbels, case 21, the slow walls) is larger than one clean
+ * step and is OracleSweepFull work — it needs measured windows that do not exist until
  * the rows do. NEEDS A TICKING WORLD: NO.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -2323,145 +2211,57 @@ bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
  * ==================================================================================== */
 
 /**
- * THE WALL CATALOGUE — sweep item (d), scoped in the dense era to that solver's measured
- * envelope; since the 2026-08-12 sparse rewrite every scoped-out wall except the
- * 30-course five ANSWERS, and as of the same day's classification slice every one of them
- * is PINNED here. Fifteen of the twenty acceptance wall cases now carry a load factor.
- * Rows are laid through the SCENARIO CATALOGUE (production data end to end: the same
- * producer, the same cuts the acceptance suite pins), removed, bridged and diffed.
- * Ordered cheap to expensive so a killed run still leaves its measurements in the log
- * (each row logs immediately — which is exactly how the 2026-08-11 measuring run survived
- * being killed at row 15 of 18). Sweep item (e), the free-end ladder, moved to its own
- * test below when the classification slice gave it a second height to be compared with.
+ * THE WALL CATALOGUE — sweep item (d). Since the 2026-08-12 sparse rewrite every wall
+ * except the 30-course five ANSWERS, and fifteen of the twenty acceptance wall cases
+ * carry a load factor, pinned below. Rows are laid through the SCENARIO CATALOGUE
+ * (production data end to end: the same producer, the same cuts the acceptance suite
+ * pins), removed, bridged and diffed. Ordered cheap to expensive so a killed run still
+ * leaves its measurements in the log. Sweep item (e), the free-end ladder, moved to its
+ * own test below when the classification slice gave it a second height to compare
+ * against.
  *
- * WHAT THE 2026-08-11 RUN MEASURED, ROW BY ROW. Answered, and now pinned below:
+ * COST HISTORY (kept for provenance, not current). The dense-era solver answered five
+ * rows (corbel C/D, wall-08/13/14, up to 79.6 s) and refused every fixture >= 119
+ * blocks. The 2026-08-12 sparse rewrite answered all of them with verified residuals, at
+ * costs from ~1 s to ~130 s per row (wall-06 the worst, 126.6 s / 8,819 pivots on the
+ * Dantzig path). An uncommitted partial-pricing slice later re-pinned five windows
+ * (wall-10/19/06/12/09) to a different pivot path — a ~10% net tax across rows that
+ * already ran, in exchange for answering wall-01 (full Dantzig never finished it; the
+ * partial pricer answers at lambda* = 272.20 in ~4.2 minutes). The free-end 7x20 row was
+ * the dense era's pinned refusal canary; the sparse rewrite answered it (lambda*
+ * 256.820018) and it was promoted into FreeEndHeightLadder below.
  *
- *     corbel C     lambda* 2.56724674   1,502 pivots   6.8 s    51 blk / 110 jnt
- *     wall-08      lambda* 324.732096   1,289 pivots   4.7 s    52 blk / 101 jnt
- *     wall-13      lambda* 645.946096   2,948 pivots  53.6 s    87 blk / 218 jnt
- *     wall-14      lambda* 232.549126   2,541 pivots  45.0 s    89 blk / 215 jnt
- *     corbel D     lambda* 58.0599138   4,092 pivots  79.6 s    90 blk / 200 jnt
- *
- * REFUSED — post-solve verification failed, fail closed, at every fixture >= 119
- * blocks (production's half of each diff still measured, and it matched every
- * acceptance pin: wall-19 dropped 34 and stranded 6, wall-10 dropped 12 and
- * stranded 3, everything else dropped nothing):
- *
- *     free end 7x10   74 blk / 183 jnt    3,993 pivots    69 s   (worstU 0.9235)
- *     wall-17        120 blk / 207 jnt    4,293 pivots   104 s
- *     wall-18        119 blk / 203 jnt    4,894 pivots   114 s
- *     wall-15        125 blk / 320 jnt    5,372 pivots   237 s
- *     wall-16        125 blk / 320 jnt    7,230 pivots   408 s
- *     wall-19        119 blk / 308 jnt    5,173 pivots   233 s
- *     wall-06        146 blk / 372 jnt   13,397 pivots 1,188 s
- *     wall-07        140 blk / 350 jnt    8,551 pivots   570 s
- *     wall-10        138 blk / 349 jnt    5,873 pivots   316 s
- *
- * The free-end row stayed LIVE in this test as the pinned canary — one refusal kept
- * executable so the envelope was asserted by a test rather than remembered by a
- * comment, and chosen because it is the lambda = 3.464 measurement fixture: the day
- * the solver answers it, the canary fails and the gap-5 measurement it owes becomes
- * takeable. THAT DAY WAS 2026-08-12: the sparse rewrite answered it, the canary
- * failed exactly as written (lambda* 256.820018 against the pinned refusal), and its
- * promotion now lives in FreeEndHeightLadder below, beside the second height that
- * turned one reading into the ladder measurement.
- *
- * WHAT THE 2026-08-12 SPARSE MEASURING RUN ANSWERED — every residual verified, and as
- * of the 2026-08-12 CLASSIFICATION SLICE every one of them is a PINNED ROW below rather
- * than a comment. The measuring run's cost table is kept because it is the reason the
- * rows sit in the opt-in group and because it is the only record of the pivot counts.
- * MEASURED PRE-PARTIAL-PRICING (2026-08-12, Dantzig path). EVERY LAMBDA* COLUMN BELOW IS
- * AN OLD-PATH READING, and five of them have since moved: the uncommitted partial-pricing
- * slice takes a different pivot path, which re-pinned the wall-10, wall-19, wall-06,
- * wall-12 and wall-09 windows. The PARTIAL-PRICING RE-PIN note by wall-10 carries the
- * new-path value for each and the spread between the two; this table is kept as the
- * Dantzig-path record — the only surviving one of its pivot counts — not as the current
- * reading:
- *
- *     wall-18          649.464192      791 pv    1.3 s   119 blk / 203 jnt
- *     wall-17          918.046031    1,608 pv    4.2 s   120 blk / 207 jnt
- *     wall-10           35.8172298   2,640 pv   11.5 s   138 blk / 349 jnt  (production: 12 fall, 3 stranded)
- *     wall-19           12.3824832   2,970 pv   16.1 s   119 blk / 308 jnt  (production: 34 fall, 6 stranded)
- *     wall-12           89.1151243   2,877 pv   16.2 s   128 blk / 326 jnt
- *     wall-16          868.623736    3,319 pv   23.1 s   125 blk / 320 jnt
- *     wall-15          868.623736    3,745 pv   25.7 s   125 blk / 320 jnt
- *     wall-20           82.629597    3,387 pv   27.9 s   156 blk / 384 jnt  (production: 9 fall in 1 pass)
- *     wall-11          128.118261    5,102 pv   45.8 s   128 blk / 326 jnt
- *     wall-09           36.5639285   4,885 pv   50.4 s   146 blk / 350 jnt  (production stands at worstU 0.985)
- *     wall-07          296.220581    5,293 pv   62.0 s   140 blk / 350 jnt
- *     wall-06          622.031942    8,819 pv  126.6 s   146 blk / 372 jnt
- *     free end 7x20    256.820018   2,701 pv   22.5 s   149 blk / 388 jnt  (production: 1 falls, worstU 1.958)
- *
- * NOTE, POST-PARTIAL-PRICING. Two rows illustrate the trade in opposite directions:
- * corbel D 8,439 pivots / ~9.0 s (8.95 and 8.995 over two runs) and wall-09 25,848
- * pivots / 120.9-124.6 s against the table's 4,885 pv / 50.4 s. Corbel D IS a row of this
- * slow test and always has been — the 2026-08-12 table above simply omits it, because it
- * was timed on 2026-08-11 at 79.6 s (4,092 pv) and never re-listed; the comparison is
- * against that older figure rather than against a fast-suite measurement, which is what
- * an earlier draft of this note wrongly claimed. BOTH rows take MORE pivots; corbel D
- * still finishes ~8.8x faster and wall-09 ~2.4x slower. Partial pricing buys cheap
- * iterations and spends some of the saving on a longer path, and which way the net falls
- * is a property of the fixture.
- *
- * WHAT IT COSTS OVERALL, HONESTLY: +9.6% across the THIRTEEN ROWS THIS TABLE TIMES, 433 s
- * of solver on the Dantzig path against 475 s on the partial-pricing one, and the per-row
- * outcomes run from 5.3x FASTER (wall-15, 25.7 -> 4.9 s) to 2.7x SLOWER (wall-19, 16.1 ->
- * 44.2 s), with wall-09 (50.4 -> 120.9 s) and wall-12 (16.2 -> 33.7 s) the other two that
- * pay. Calling that "a wash" reads as neutral and hides both tails. THE ARGUMENT FOR THE
- * SLICE IS NOT THIS TEST'S TOTAL — it is wall-01, which full Dantzig never answered at
- * all (cut off still pivoting after ~45 minutes) and which the partial pricer answers at
- * lambda* = 272.20 in ~4.2 minutes. A ~10% tax on the rows that already ran, in exchange
- * for a scale that did not run, is the trade being made; Devex/dynamic weights are the
- * roadmapped way to stop paying it (CURRENT_STATE, the solver performance roadmap).
- *
- * WHAT THE MEASUREMENTS SAID ONCE CLASSIFIED, which is the part a table cannot carry:
+ * WHAT THE MEASUREMENTS SAID ONCE CLASSIFIED:
  *
  *   - THE ORACLE'S ORDERING AGREED WITH THE CATALOGUE'S VERDICTS EVEN WHERE ITS
- *     THRESHOLD DID NOT, AND THE 2026-08-12 RULINGS THEN FOLLOWED THE ORDERING. As
- *     measured, the four rows the catalogue did not rule STANDS read the four LOWEST
- *     lambda* of the fifteen wall fixtures — 19 at 12.38, 10 at 35.82, 9 at 36.56, 20 at
- *     82.63 — and the next lowest is wall-12 at 89.12: a clean separation at ~85 with
- *     nothing in between, so the LP ranked the human rulings correctly and simply put the
- *     collapse line somewhere else. THREE OF THOSE FOUR HAVE SINCE BEEN RE-RULED TO
- *     STAND, so the ordering is no longer a ranking of verdicts; what survives is that
- *     the four fixtures the catalogue found hardest are still the four the LP prices
- *     lowest, which is the cross-method agreement the rulings rested on. No separate
- *     assertion pins the ordering because every row's window is tight enough that a
- *     reorder cannot happen without a window failing first.
- *   - THE FOUR ROWS THAT NEEDED A USER RULING WERE ALL RULED ON 2026-08-12, and each
- *     records its own outcome in its mechanism text: 9, 10 and 19 re-ruled from COLLAPSE
- *     to STANDS, 20 confirmed as it stood. The wall-08 precedent held throughout — the
- *     pin records the outlier state, the ruling resolves it, and the two are separate
- *     acts, so not one lambda* window or relation enum moved with the rulings.
- *   - AND THE RULINGS SPLIT THE ACCEPTANCE SET IN A WAY IT HAD NOT BEEN SPLIT BEFORE.
- *     Case 9's re-ruling handed its row to the model and it went green; cases 10 and 19
- *     stayed red with the SIGN REVERSED — the catalogue now says they stand and
- *     production drops 12 and 34. Those are the suite's first rows where a STANDS verdict
- *     is the thing the model fails.
+ *     THRESHOLD DID NOT: the four rows the catalogue did not rule STANDS read the four
+ *     LOWEST lambda* of the fifteen wall fixtures (19, 10, 9, 20), with a clean
+ *     separation from wall-12 at ~85. Three of those four have since been re-ruled to
+ *     STAND, so the ordering is no longer a ranking of verdicts, but the four fixtures
+ *     the catalogue found hardest are still the four the LP prices lowest.
+ *   - THE FOUR ROWS THAT NEEDED A USER RULING WERE ALL RULED ON 2026-08-12: 9, 10 and 19
+ *     re-ruled from COLLAPSE to STANDS, 20 confirmed as it stood — each ruling recorded
+ *     in its own row's mechanism text, separate from the pin itself.
+ *   - THE RULINGS SPLIT THE ACCEPTANCE SET IN A NEW WAY: cases 10 and 19 stayed red with
+ *     the SIGN REVERSED — the catalogue now says they stand and production drops 12 and
+ *     34, the suite's first rows where a STANDS verdict is the thing the model fails.
  *   - TWO PAIRS ARE PINNED AS CROSS-ROW IDENTITIES rather than as two windows: 15/16
  *     (the LP reads the superimposed-load pair as the SAME NUMBER) and the free-end
- *     height ladder in its own test below. See CheckSameLambda for why an identity is a
- *     strictly stronger pin than two boxes.
- *   - TWO OF THE FOUR PRODUCTION "COLLAPSES" BREAK NO JOINT AT ALL. wall-10 (12 down)
- *     and wall-19 (34 down) both cascade in ZERO passes at worst readings of 0.300 and
- *     0.318: every one of those pieces is UNROUTED, not overloaded. That is measurable
- *     here and nowhere else in the suite — the acceptance rows count what came down, not
- *     what broke — and it says the disagreement with the LP on those two rows is about a
- *     missing mechanism (nothing routes load sideways or upward) rather than about
- *     strength. THAT ZERO IS WHAT DECIDED THE 2026-08-12 RULINGS ON BOTH: a router with
- *     nowhere to send the load is not a third opinion about masonry, so those two
- *     "collapses" were never evidence against the LP. wall-20 is the opposite and its
- *     text says so: one pass, worst reading 42.71, a joint genuinely 42x over capacity —
- *     which is exactly why its verdict was CONFIRMED rather than moved.
- *   - THE STACK-BOND PAIR SEPARATES 36.75x IN PRODUCTION (0.040033 with a brick out
- *     against 0.0010893 intact) and 1.41x in the LP. Deliberately NOT pinned as a ratio:
- *     the stack-bond family is where production carries a standing deliberate red
- *     (StackBondColumnShearIsHeightIndependent reads this routing height-linearly), and
- *     pinning a ratio over a known-wrong reading dresses the defect as a discrimination
- *     — the trap DESIGN §8 recorded for the 7-vs-8 cover pair.
+ *     height ladder below. See CheckSameLambda for why an identity is a strictly
+ *     stronger pin than two boxes.
+ *   - TWO OF THE FOUR PRODUCTION "COLLAPSES" BREAK NO JOINT AT ALL: wall-10 (12 down)
+ *     and wall-19 (34 down) both cascade in ZERO passes at worst readings under 0.32 —
+ *     every one of those pieces is UNROUTED, not overloaded, which is what decided the
+ *     2026-08-12 rulings on both. wall-20 is the opposite (one pass, worst reading
+ *     42.71, a joint genuinely 42x over capacity) — why its verdict was CONFIRMED, not
+ *     moved.
+ *   - THE STACK-BOND PAIR SEPARATES 36.75x IN PRODUCTION against 1.41x in the LP.
+ *     Deliberately NOT pinned as a ratio: the stack-bond family carries a standing
+ *     deliberate red (StackBondColumnShearIsHeightIndependent), and pinning a ratio over
+ *     a known-wrong reading would dress the defect as a discrimination.
  *
- * The 30-course walls (cases 1-5) remain beyond the PRACTICAL envelope — now on
- * pricing cost, not memory; the file header at the top carries the measured detail.
+ * The 30-course walls (cases 1-5) remain beyond the PRACTICAL envelope on pricing cost;
+ * the file header carries the measured detail.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowWallSweepTest,

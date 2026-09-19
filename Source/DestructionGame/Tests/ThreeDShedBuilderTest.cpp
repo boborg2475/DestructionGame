@@ -14,10 +14,10 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE 3D SHED BUILDER — SHED_PATH.md Phase F on the completed 3D LP (THREED_DESIGN.md E1-E3), the
- * point where the shed stops being a flat cross-section and becomes a genuinely-3D closed box.
+ * THE 3D SHED BUILDER — the point where the shed stops being a flat cross-section and becomes a
+ * genuinely-3D closed box (THREED_DESIGN.md E1-E3).
  *
- * THE BEHAVIOUR, IN ONE SENTENCE. DestructionShed3D::Build lays a minimal TOY 3D shed — four
+ * THE BEHAVIOUR, IN ONE SENTENCE. DestructionShed3D::Build lays a minimal toy 3D shed — four
  * grounded ClayBrick walls forming a closed box braced at the corners by out-of-plane (Y-normal)
  * mortar joints, a Timber roof beam bearing on the back and front walls, and a Timber overhang
  * screwed to the front wall and carried on a grounded Timber post — as a SetThreeDimensional
@@ -26,13 +26,12 @@
  * overhang, and pulling the BACK wall drops the roof while the other three corner-braced walls
  * still stand.
  *
- * EVERYTHING THE PHYSICS NEEDS IS ALREADY PROVEN AND REACHABLE (THREED_DESIGN.md E1-E3): the 3D
+ * The physics this needs is already proven and reachable (THREED_DESIGN.md E1-E3): the 3D
  * six-equilibrium-row assembly + inscribed friction pyramid (E1), the deterministic 3D collapse
  * mechanism (E2), and the production bridge that poses a SetThreeDimensional FStructure to the 3D
  * LP and stops refusing its Y-normal joints (E3). The 2D shed's overhang and roof mechanisms are
- * proven (Acceptance.Shed / Acceptance.Overhang, C2). This slice does NOT add physics; it authors a
- * builder that composes those into one 3D structure. So the RED is expected to be "the builder lays
- * nothing yet" — the stub is a bare `return false` — and NOT a physics gap.
+ * proven (Acceptance.Shed / Acceptance.Overhang, C2); this test authors a builder that composes
+ * those into one 3D structure rather than adding new physics.
  *
  * =========================================================================================
  * THE FIXTURE — A CLOSED AXIS-ALIGNED BOX. X IS WIDTH, Y IS DEPTH (INTO THE DOOR), Z IS HEIGHT.
@@ -98,16 +97,14 @@
  *       independently grounded, so the box does NOT fully collapse (corner bracing shown by their
  *       survival, and the roof loses a bearing rather than a whole-box failure).
  *
- * =========================================================================================
- * UNITS — SPELLED OUT LOCALLY (DESIGN.md §3). 1 N = 100 uu, 1 cm2 = 100 mm2, so 1 MPa over 1 cm2 is
- * 100*100 = 10000 uu. DELIBERATELY not the production constant, so a wrong conversion fails here.
- * Weight is MassKg * 980 (the 1 N = 100 uu factor is already inside the 980); masses come from the
- * published densities (Timber 0.42, ClayBrick 1.9) times the true volumes.
+ * UNITS — spelled out locally (DESIGN.md §3). 1 N = 100 uu, 1 cm2 = 100 mm2, so 1 MPa over 1 cm2
+ * is 100*100 = 10000 uu, deliberately not the production constant, so a wrong conversion fails
+ * here. Weight is MassKg * 980 (the 1 N = 100 uu factor is already inside the 980); masses come
+ * from the published densities (Timber 0.42, ClayBrick 1.9) times the true volumes.
  *
- * NEEDS A TICKING WORLD: NO. The builder is arithmetic over boxes; the structure is arithmetic over
- * a graph; the LP is arithmetic over that; gravity is on (weight = mass*980); every assertion is on
- * the laid layout, the bridged oracle, or the solved outcome — no Chaos, no world tick. Same footing
- * as the 2D shed (Acceptance.Shed), the 3D bridge (Oracle.RigidBlock.ThreeD.*) and CrossMaterial.
+ * NEEDS A TICKING WORLD: no. The builder is arithmetic over boxes, the structure over a graph,
+ * the LP over that; gravity is on (weight = mass*980); every assertion is on the laid layout, the
+ * bridged oracle, or the solved outcome — no Chaos, no world tick.
  *
  * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
  */
@@ -290,10 +287,11 @@ namespace ThreeDShedBuilderTestSupport
 	};
 
 	/**
-	 * Name the seven pieces from a laid layout, or fail. Four grounded bricks (walls), one grounded
-	 * timber (post) and two free timbers (roof, overhang) is the only shape that identifies; the four
-	 * walls are told apart by position — back is smallest Y, front largest Y, then left smallest X and
-	 * right largest X — and the two free beams by Y centroid (roof 110 < overhang 316).
+	 * Name the seven pieces from a laid layout, or fail. Four grounded bricks (walls), one
+	 * grounded timber (post) and two free timbers (roof, overhang) is the only shape that
+	 * identifies; the walls are told apart by position — back smallest Y, front largest Y, then
+	 * left smallest X and right largest X — and the free beams by Y centroid (roof 110 < overhang
+	 * 316).
 	 */
 	bool Identify(const FBrickLayout& Layout, FShed& Out)
 	{
@@ -414,10 +412,10 @@ namespace ThreeDShedBuilderTestSupport
 
 /**
  * THE 3D SHED BUILDER LAYS A CLOSED, MULTI-MATERIAL BOX THAT STANDS AS BUILT AND DROPS THE RIGHT
- * PIECE WHEN THE POST OR A WALL IS PULLED — the headline "pull the post, the overhang drops; pull a
- * wall, the roof drops and the box stands on its other three corners."
+ * PIECE WHEN THE POST OR A WALL IS PULLED — the headline "pull the post, the overhang drops; pull
+ * a wall, the roof drops and the box stands on its other three corners."
  *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * NEEDS A TICKING WORLD: no. See the file header.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FThreeDShedBuilderTest,
@@ -429,11 +427,8 @@ bool FThreeDShedBuilderTest::RunTest(const FString& Parameters)
 	using namespace DestructionProfiles;
 	using namespace ThreeDShedBuilderTestSupport;
 
-	/* ------------------------------------------------------------------ *
-	 * PRECONDITIONS ON THE STRENGTH BASIS — the verdicts turn on these,
-	 * so they are pinned to the published figures the sizing was derived
-	 * against rather than read from the profiles.
-	 * ------------------------------------------------------------------ */
+	/* Preconditions on the strength basis — the verdicts turn on these, so they are pinned to the
+	 * published figures the sizing was derived against rather than read from the profiles. */
 
 	TestEqual(TEXT("FIXTURE: the fixing is a Screw, withdrawal 0.54 MPa (EN 1995-1-1 8.7.2)"),
 		Screw.TensileStrengthMPa, 0.54);
@@ -446,12 +441,9 @@ bool FThreeDShedBuilderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FIXTURE: clay brick crushes at 20 MPa"),
 		ClayBrick.Strength.CompressiveStrengthMPa, 20.0);
 
-	/* ------------------------------------------------------------------ *
-	 * THE "NEITHER ALONE SUFFICIENT" SIZING, HAND-DERIVED. The overhang is
-	 * C2 with X->Y; the roof is a two-support beam whose centroid sits
-	 * between its bearings. Independent of the builder — a guard that these
-	 * chosen dimensions actually produce the intended regimes.
-	 * ------------------------------------------------------------------ */
+	/* The "neither alone sufficient" sizing, hand-derived: the overhang is C2 with X->Y, the roof
+	 * a two-support beam whose centroid sits between its bearings — independent of the builder, a
+	 * guard that these chosen dimensions actually produce the intended regimes. */
 
 	const double Wover = OverhangWeightUu();
 	const double AssembledTension = AssembledFixingTensionUu();
@@ -482,12 +474,8 @@ bool FThreeDShedBuilderTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("SIZING (e): with the back wall gone the roof's topple moment must outrun its bearing"),
 		RoofTopBackGone > 1.5 * RoofCapBackGone);
 
-	/* ================================================================================
-	 * ARM 0 — THE BUILDER LAYS THE 3D SHED. Piece counts, per-piece MATERIAL and grounding, the 3D
-	 * flag, and the eight authored joints with their connection profiles. This is where the stub is
-	 * RED: it lays nothing and does not flag the structure 3D, so Build returns false and Identify
-	 * fails.
-	 * ================================================================================ */
+	/* Arm 0 — the builder lays the 3D shed. Piece counts, per-piece material and grounding, the 3D
+	 * flag, and the eight authored joints with their connection profiles. */
 
 	FBrickLayout Layout;
 	const bool bBuilt = DestructionShed3D::Build(CanonicalSpec(), Layout);
@@ -608,11 +596,9 @@ bool FThreeDShedBuilderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("BUILD: the post bearing is the 12 cm x 20 cm face, 240 cm2"),
 		Layout.Structure.GetConnection(PostBrg).InterfaceAreaSqCm, PostBearingAreaSqCm);
 
-	/* ================================================================================
-	 * THE STANDS-AND-FALLS ARMS. Each rebuilds a fresh shed, pulls the arm's piece, then reads the
-	 * 3D oracle mechanism and the production outcome — mechanism (feasibility, the mechanism's moving
-	 * blocks) and outcome (Supported vs Falling, Stranded == 0), never displacement.
-	 * ================================================================================ */
+	/* The stands-and-falls arms. Each rebuilds a fresh shed, pulls the arm's piece, then reads the
+	 * 3D oracle mechanism and the production outcome — mechanism (feasibility, the mechanism's
+	 * moving blocks) and outcome (Supported vs Falling, Stranded == 0), never displacement. */
 
 	enum class EArm : uint8 { Assembled, PostRemoved, BackWallRemoved };
 

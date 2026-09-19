@@ -3,21 +3,19 @@
 #include "World/ScenarioLabel.h"
 
 /*
- * File-local names carry a ScenarioLabel prefix and sit in the NAMED namespace rather than in an
- * anonymous one. An anonymous namespace is private to a TRANSLATION UNIT rather than to a file,
- * and a unity build merges many files into one — so two file-local names that collide are a hard
- * compile error between files that never refer to each other. See CURRENT_STATE.md.
+ * File-local names carry a ScenarioLabel prefix and sit in the named namespace rather than an
+ * anonymous one: an anonymous namespace is private to a translation unit, not a file, and a
+ * unity build merges many files into one, so colliding file-local names become a hard compile
+ * error between files that never refer to each other. See CURRENT_STATE.md.
  */
 namespace DestructionScenarios
 {
 	/**
-	 * WHAT A ROW WITH NO CUT SAYS, AND IT SAYS THE SAME THING FOREVER.
+	 * What a row with no cut says, and it says the same thing forever.
 	 *
-	 * ONE STRING WITH NO NUMBER IN IT, which is the whole requirement rather than a wording choice:
-	 * every corbel and the sandbox are condemned or safe by how they were laid, so there is nothing
-	 * for a clock to count towards. A countdown CHANGES as time passes, so a line that cannot change
-	 * cannot be mistaken for one — and this is the only line here that names no cut, so it can never
-	 * collide with a cutting row's.
+	 * One string with no number in it: every corbel and the sandbox are condemned or safe by
+	 * how they were laid, so there is nothing for a clock to count towards. A countdown
+	 * changes as time passes, so a line that cannot change can never be mistaken for one.
 	 */
 	const TCHAR* const ScenarioLabelNoCutLine =
 		TEXT("Nothing is cut here — what you are watching is how it was laid.");
@@ -33,9 +31,8 @@ namespace DestructionScenarios
 		TEXT("This level names no scenario in the catalogue, so nothing here says what it should do.");
 
 	/**
-	 * The countdown, with the seconds in it — which is what makes it a clock rather than a caption.
-	 *
-	 * ONE DECIMAL, so the line changes on every tenth of a second and a player can see it running.
+	 * The countdown, with the seconds in it, which makes it a clock rather than a caption.
+	 * One decimal, so the line changes every tenth of a second and reads as running.
 	 */
 	static FString ScenarioLabelCountdownLine(double SecondsUntilCut)
 	{
@@ -54,9 +51,9 @@ namespace DestructionScenarios
 		const TArray<FScenario>& Rows = Catalogue();
 
 		/*
-		 * A ROW THAT NAMES NOTHING STILL READS, AND CLAIMS NOTHING. An empty banner reads as a
-		 * readout that broke, and a banner confidently carrying some other row's title over the
-		 * wrong wall is worse than either — it is believed.
+		 * A row that names nothing still reads, and claims nothing: an empty banner reads as a
+		 * broken readout, and one carrying some other row's title over the wrong wall is worse
+		 * — it is believed.
 		 */
 		if (!Rows.IsValidIndex(ScenarioRow))
 		{
@@ -73,23 +70,17 @@ namespace DestructionScenarios
 		Label.ExpectationText = Row.Expectation;
 
 		/*
-		 * THE BUILD PLOT HAS NOTHING TO REPORT, SO IT REPORTS NOTHING.
+		 * The build plot has nothing to report, so it reports nothing. Every other row says
+		 * something about a cut because there is a building to say it about; on a sandbox
+		 * nothing has been laid, and the row's own Expectation already says nothing is cut here.
 		 *
-		 * Every other row here says something about a cut because there is a building to say it
-		 * about: a corbel that cuts nothing is still a corbel somebody laid, and "what you are
-		 * watching is how it was laid" is the honest line for it. On a build sandbox it is two lies
-		 * in one sentence — nothing has been laid, so there is nothing that was laid a particular
-		 * way, and the row's own Expectation already tells the player nothing is cut here.
+		 * An absence rather than a third sentence — FPieceMenuInspector::InspectedHintText's
+		 * rule one document over: a line not drawn differs from one drawn saying nothing
+		 * happens. SESSION_UI_DESIGN.md §f draws this banner with the title and expectation and
+		 * nothing under them.
 		 *
-		 * AN ABSENCE RATHER THAN A THIRD SENTENCE, which is FPieceMenuInspector::InspectedHintText's
-		 * rule one document over: the state where a line is NOT DRAWN is distinct from the state
-		 * where it is drawn saying nothing happens, and a sentence invented to fill the slot would
-		 * be a third thing to keep true. SESSION_UI_DESIGN.md §f draws this banner with the title
-		 * and the expectation and nothing under them.
-		 *
-		 * BEFORE THE NO-CUT ARM RATHER THAN INSIDE IT. The two coincide today — a build sandbox lays
-		 * nothing, so it can name no cut — and they stop coinciding the moment a plot is allowed to
-		 * come with something pre-laid, which is the point of asking the flag rather than the count.
+		 * Checked before the no-cut arm rather than inside it: the two coincide today only
+		 * because a sandbox lays nothing, and will stop the moment a plot can come pre-laid.
 		 */
 		if (Row.bBuildSandbox)
 		{
@@ -113,19 +104,13 @@ namespace DestructionScenarios
 		}
 
 		/*
-		 * AND THE COUNTDOWN IS CLAMPED INTO THE DELAY THE ROW ACTUALLY WAITS, WITH BOTH GUARDS
-		 * WRITTEN AGAINST THE DEGENERATE VALUE RATHER THAN FOR THE GOOD ONE.
-		 *
-		 * The number arrives from a clock somebody else owns: a late tick hands over a NEGATIVE
-		 * remainder, a timer that was never armed answers -1, and a world torn down mid-delay can
-		 * answer a NaN. `!(X > 0.0)` puts a NaN INSIDE the floor, where FMath::Max would have
-		 * discarded it and FMath::Min replaced it — either way turning it into a plausible-looking
-		 * number on screen for a clock that is not running.
-		 *
-		 * The ceiling is then written the other way round, `Delay < Remaining`, so that a row whose
-		 * OWN delay was somehow not a number leaves the caller's finite value alone rather than
-		 * copying the NaN over it. Every comparison against a NaN is false, so whichever operand
-		 * carries one, no clamp happens and what reaches the screen is still a number.
+		 * Clamped into the delay the row actually waits, both guards written against the
+		 * degenerate value rather than for the good one. The number arrives from a clock
+		 * somebody else owns: a late tick can hand back a negative remainder, an unarmed timer
+		 * answers -1, and a torn-down world can answer a NaN. `!(X > 0.0)` catches a NaN in the
+		 * floor the way `FMath::Max`/`Min` would, and the ceiling is written `Delay < Remaining`
+		 * so a NaN delay leaves the caller's finite value alone rather than overwriting it —
+		 * every comparison against NaN is false.
 		 */
 		double RemainingSeconds = SecondsUntilCut;
 

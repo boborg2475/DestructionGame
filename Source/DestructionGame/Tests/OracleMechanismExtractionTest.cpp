@@ -14,56 +14,43 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * SLICE 3a OF THE STEP-4 PROMOTION — THE ORACLE-SIDE COLLAPSE-MECHANISM EXTRACTION, RED.
+ * Oracle-side collapse-mechanism extraction tests (PROMOTION_DESIGN.md §12 D7), driving the
+ * extraction before any wall depends on it. They pin three things:
  *
- * These are the analog of the LU/eta factorisation fuzz that preceded Slice 1: the oracle-level
- * tests that must EXIST and DRIVE the mechanism extraction BEFORE any wall depends on it
- * (PROMOTION_DESIGN.md §12 D7). They pin the behaviour the phase-1 dual extraction is about to
- * build:
+ *   1. Mechanism correctness against an independent kinematic oracle. Two small infeasible
+ *      fixtures whose collapse mechanism is hand-derivable — a brick overhanging its tipping
+ *      point on one bearing, and a body on two load paths left of its centroid — asserted
+ *      against hand rigid-body kinematics rather than the LP dual, plus a feasible fixture
+ *      whose mechanism must be empty.
+ *   2. Permuted-column determinism, the gate: the canonical named set must be identical when the
+ *      problem's block/joint order is permuted by a seeded permutation, pinning the non-unique
+ *      degenerate dual to a stable break set. A failure here is a design-gate failure: the whole
+ *      slice stops and the design changes shape (D7).
+ *   3. Farkas fail-closed: a reported mechanism must be certified (bIsCertified) and be a
+ *      genuine downward collapse (positive virtual work of gravity, the yb > 0 half of Farkas,
+ *      checked independently here). A feasible problem must never report one.
  *
- *   1. MECHANISM CORRECTNESS against an INDEPENDENT kinematic oracle. Two small infeasible
- *      fixtures whose collapse mechanism is hand-derivable by rigid-body kinematics — a single
- *      brick overhanging past its tipping point on one bearing, and a body on two load paths
- *      both left of its centroid. The mechanism the extractor names (which blocks move, which
- *      joints open) is asserted against the HAND kinematics, derived a DIFFERENT way than the LP
- *      dual, plus a feasible fixture whose mechanism must be EMPTY.
- *   2. PERMUTED-COLUMN DETERMINISM — THE GATE. The canonical named set must be IDENTICAL when the
- *      problem's block/joint order is permuted by a seeded permutation. This pins the non-unique
- *      degenerate dual to a stable break set. A FAILURE HERE IS A DESIGN-GATE FAILURE, NOT A
- *      TUNING NIT: if the canonical mechanism cannot be made permutation-stable, the whole slice
- *      stops and the design changes shape (D7).
- *   3. FARKAS FAIL-CLOSED. A reported mechanism must be certified (bIsCertified) — the extractor
- *      verifies its own certificate — and the mechanism must physically be a downward collapse
- *      (positive virtual work of gravity, the yb > 0 half of Farkas, checked independently here
- *      from the reported triples). A feasible problem must never report a non-empty mechanism.
+ * Why the feasibility formulation: the mechanism lives on the infeasible arm of the feasibility
+ * LP (PROMOTION_DESIGN §3.2/§3.3) — gravity dead (bGravityIsLive = false), no live forces, so
+ * phase 1 genuinely runs and, when no admissible force system exists, its dual is the Farkas
+ * certificate = the kinematic mechanism. A standing structure then reads Lambda = LambdaCap and
+ * a falling one Lambda = 0 (RigidBlockOracle.cpp's infeasible arm, ~line 1596).
  *
- * WHY THE FEASIBILITY FORMULATION. The mechanism lives on the INFEASIBLE arm of the feasibility
- * LP (PROMOTION_DESIGN §3.2/§3.3): gravity DEAD (bGravityIsLive = false), no live forces, so
- * phase 1 genuinely runs and, when no admissible force system exists, terminates on a positive
- * optimum whose dual is the Farkas certificate = the kinematic mechanism. Every fixture below
- * sets bGravityIsLive = false for exactly this reason. On that formulation a STANDING structure
- * reads Lambda = LambdaCap (nothing scales lambda once gravity is dead) and a FALLING one reads
- * Lambda = 0 (dead loads admit no equilibrium — RigidBlockOracle.cpp's infeasible arm ~line
- * 1596), which is where the extraction hangs.
- *
- * INDEPENDENCE IS THE WHOLE VALUE. The kinematic oracle here is rigid-body statics worked BY HAND
- * — which block rotates about which edge, which contact lifts — derived a different way from the
- * LP's phase-1 dual. An oracle that mirrored the dual would be worthless. Units are derived in
+ * Independence is the whole value: the kinematic oracle is rigid-body statics worked by hand —
+ * which block rotates about which edge, which contact lifts — derived a different way from the
+ * LP's phase-1 dual; an oracle that mirrored the dual would be worthless. Units are derived in
  * this file (1 MPa over 1 cm2 = 10000 uu), never imported, so a wrong production constant
  * disagrees rather than agrees.
  *
- * RED FOR THE RIGHT REASON. The stub FOracleMechanism is empty by default (bPresent = false, no
- * block triples, no joint flags, bIsCertified = false), so every "the body moves", "the joint
- * opens", "the mechanism is present/certified", "positive collapse work" and "the named set is
- * non-empty" assertion fails on MISSING BEHAVIOUR, not a compile error or a broken fixture. The
- * seat-stays-still and feasible-is-empty assertions are green on arrival (correctly — an empty
- * mechanism moves nothing); each header below names the mutation that proves it will bite once
- * dev implements extraction.
+ * Red for the right reason: FOracleMechanism is empty by default (bPresent = false, no triples,
+ * uncertified), so every moves/opens/present/certified/positive-work assertion fails on missing
+ * behaviour; the seat-stays-still and feasible-is-empty assertions are green on arrival (an
+ * empty mechanism moves nothing).
  *
- * NEEDS A TICKING WORLD: NO. Every fixture is a pure FOracleProblem (or a bridged FStructure) fed
- * to SolveRigidBlock; no Chaos, no world tick. Same footing as the factorisation fuzz.
+ * No ticking world: every fixture is a pure FOracleProblem (or a bridged FStructure) fed to
+ * SolveRigidBlock — no Chaos, no world tick.
  *
- * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation unit.
+ * Named namespace, not anonymous: a unity build merges many files into one translation unit.
  */
 namespace OracleMechanismExtractionSupport
 {
@@ -71,9 +58,7 @@ namespace OracleMechanismExtractionSupport
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* ================================================================================
-	 * UNITS, derived here so a wrong production constant fails rather than agrees.
-	 * ================================================================================ */
+	/* Units, derived here so a wrong production constant fails rather than agrees. */
 
 	/** MassKg * 980 is a weight in uu — the 1 N = 100 uu conversion is already inside it. */
 	constexpr double GravityCmPerSecondSquared = 980.0;
@@ -84,11 +69,9 @@ namespace OracleMechanismExtractionSupport
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
 	constexpr double WytheWidthCm = 10.25;
 
-	/* ================================================================================
-	 * A TINY HAND-BUILT FOracleProblem VOCABULARY. Blocks and one bed joint, all in the
-	 * X-Z plane with an upward (0,1) normal, so nothing goes near the bridge and the
-	 * kinematics stay hand-checkable.
-	 * ================================================================================ */
+	/* A tiny hand-built FOracleProblem vocabulary: blocks and one bed joint, all in the X-Z
+	 * plane with an upward (0,1) normal, so nothing goes near the bridge and the kinematics
+	 * stay hand-checkable. */
 
 	/** A grounded seat block: it is the earth, writes no equilibrium rows, must read a zero triple. */
 	FOracleBlock GroundedSeat(double CentreXCm, double CentreZCm)
@@ -128,12 +111,11 @@ namespace OracleMechanismExtractionSupport
 		return J;
 	}
 
-	/* ================================================================================
-	 * FIXTURE A — A SINGLE BRICK OVERHANGING PAST ITS TIPPING POINT ON ONE BEARING.
+	/* FIXTURE A — a single brick overhanging past its tipping point on one bearing.
 	 *
-	 * A long bar rests on one narrow grounded seat near its left end; its centre of mass
-	 * hangs far to the RIGHT of the seat. Under its own dead weight it rotates CLOCKWISE
-	 * about the seat's right contact edge (the fulcrum); the seat's LEFT contact lifts.
+	 * A long bar rests on one narrow grounded seat near its left end; its centre of mass hangs
+	 * far to the right of the seat. Under its own dead weight it rotates clockwise about the
+	 * seat's right contact edge (the fulcrum); the seat's left contact lifts.
 	 *
 	 *   body centroid (X = 97.5) --------------------------------+
 	 *   +--------------------------------------------------------+   one free bar
@@ -141,20 +123,17 @@ namespace OracleMechanismExtractionSupport
 	 *   +--##----------------------------------------------------+
 	 *      earth      seat spans X in [-5, +5], fulcrum at X = +5
 	 *
-	 * HAND-DERIVED MECHANISM (rigid-body kinematics, NOT the LP dual):
-	 *   - The BODY is the only moving block. It rotates about the fulcrum, so VirtualOmega != 0
-	 *     and its centroid (at X = 97.5, right of the fulcrum) DESCENDS: VirtualUz < 0.
-	 *   - The SEAT is grounded, uninvolved: its triple is ~zero, bMoves = false.
-	 *   - The single bed JOINT OPENS: its left contact carries tension in the plastic limit and
-	 *     lifts, so a strength-row multiplier is non-zero -> JointOpensOrSlides[0] = true.
-	 *   - GRAVITY DOES POSITIVE WORK on the mechanism (the body descends): sum -W_i*VirtualUz_i > 0,
-	 *     which is the yb > 0 half of the Farkas certificate, checked here from the triples alone.
+	 * Hand-derived mechanism (rigid-body kinematics, not the LP dual): the body is the only
+	 * moving block — it rotates about the fulcrum (VirtualOmega != 0) and its centroid (right
+	 * of the fulcrum) descends (VirtualUz < 0); the seat is grounded and uninvolved (triple ~0,
+	 * bMoves = false); the single bed joint opens (its left contact carries tension at the
+	 * plastic limit and lifts, so JointOpensOrSlides[0] = true); gravity does positive work on
+	 * the mechanism, the yb > 0 half of the Farkas certificate, checked here from the triples.
 	 *
-	 * PAST TIPPING BY A CLEAR MARGIN. Overturning about the fulcrum is W*(X_com - X_fulcrum). The
-	 * MOST charitable plastic bond is the left contact pulling down at f_t over its tributary
-	 * half-area, at its lever from the fulcrum (the right contact sits on the fulcrum, zero lever).
-	 * Worked in RunTest, overturning outruns that by ~4x, so no admissible force system exists.
-	 * ================================================================================ */
+	 * Past tipping by a clear margin: overturning about the fulcrum is W*(X_com - X_fulcrum),
+	 * and the most charitable plastic bond — the left contact pulling down at f_t over its
+	 * tributary half-area, at its lever from the fulcrum — is worked in RunTest and outrun by
+	 * ~4x, so no admissible force system exists. */
 
 	constexpr double A_SeatHalfXCm = 5.0;           /* seat spans X in [-5, +5] */
 	constexpr double A_SeatCentreXCm = 0.0;
@@ -205,14 +184,11 @@ namespace OracleMechanismExtractionSupport
 		return P;
 	}
 
-	/* ================================================================================
-	 * FIXTURE C — A STABLE BRICK CENTRED ON ITS SEAT (FEASIBLE).
-	 *
-	 * The body's centre of mass sits directly over the middle of a wide seat, well inside the
-	 * kern, so an admissible force system exists (pure compression). Under the feasibility
-	 * formulation it reads Lambda = LambdaCap and its mechanism must be EMPTY (bPresent = false,
-	 * no moving block). This is the "feasible never reports a mechanism" control for Farkas.
-	 * ================================================================================ */
+	/* FIXTURE C — a stable brick centred on its seat (feasible). The body's centre of mass sits
+	 * directly over the middle of a wide seat, well inside the kern, so an admissible force
+	 * system exists (pure compression). Under the feasibility formulation it reads
+	 * Lambda = LambdaCap and its mechanism must be empty — the "feasible never reports a
+	 * mechanism" control for Farkas. */
 
 	constexpr double C_SeatHalfXCm = 30.0;   /* wide seat, X in [-30, +30] */
 	constexpr double C_BodyHalfXCm = 20.0;   /* narrower body, centred */
@@ -237,17 +213,14 @@ namespace OracleMechanismExtractionSupport
 		return P;
 	}
 
-	/* ================================================================================
-	 * FIXTURE B — A BODY ON TWO LOAD PATHS, PAST TIPPING, built as an FStructure and
-	 * BRIDGED, so the bridge path and its provenance maps get driven. Two grounded seats,
-	 * both LEFT of the body's centroid, so the body races out past both bearings and
-	 * rotates about the rightmost bearing edge. This is the topology TwoLoadPathOverturning
-	 * uses; its constants are re-derived here.
+	/* FIXTURE B — a body on two load paths, past tipping, built as an FStructure and bridged so
+	 * the bridge path and its provenance maps get driven. Two grounded seats, both left of the
+	 * body's centroid, so the body races out past both bearings and rotates about the rightmost
+	 * bearing edge — the topology TwoLoadPathOverturning uses, constants re-derived here.
 	 *
-	 * HAND-DERIVED MECHANISM: the BODY moves (rotation about the right edge of the pivot seat,
-	 * centroid far to the right descends -> VirtualUz < 0); BOTH grounded seats stay still
-	 * (zero triples); BOTH bed joints open on their lifting side.
-	 * ================================================================================ */
+	 * Hand-derived mechanism: the body moves (rotation about the pivot seat's right edge,
+	 * centroid far to the right descends -> VirtualUz < 0); both grounded seats stay still
+	 * (zero triples); both bed joints open on their lifting side. */
 
 	constexpr double B_SeatHeightCm = 20.0;
 	constexpr double B_BedJointThicknessCm = 1.0;
@@ -312,30 +285,27 @@ namespace OracleMechanismExtractionSupport
 		}
 	}
 
-	/* ================================================================================
-	 * FIXTURE D — A GENUINELY DEGENERATE MULTI-BLOCK INFEASIBLE FIXTURE, added so the
-	 * permutation-determinism GATE is not vacuous. Fixtures A and B each have exactly ONE
-	 * free block, so their moving set is trivially that one block whatever the dual does —
-	 * they exercise extraction but NOT the canonical SELECTION of a non-trivial subset from a
-	 * degenerate dual (PROMOTION_DESIGN §12 D7's flagged risk). D poses two disconnected
-	 * sub-structures in one problem:
+	/* FIXTURE D — a genuinely degenerate multi-block infeasible fixture, added so the
+	 * permutation-determinism gate is not vacuous. Fixtures A and B each have exactly one free
+	 * block, so their moving set is trivially that block whatever the dual does — they exercise
+	 * extraction but not the canonical selection of a non-trivial subset from a degenerate dual
+	 * (PROMOTION_DESIGN §12 D7's flagged risk). D poses two disconnected sub-structures:
 	 *
-	 *   - a DRY leaning stack, offset hard past its tipping point, on its own grounded base —
-	 *     no tensile bond, so it rocks and falls. ALL its free blocks rotate together, so they
-	 *     are the moving set. NOTE (corrected 2026-08-27): this fixture measures 0 Bland entries
-	 *     — its degeneracy is dual-MULTIPLIER non-uniqueness (which is what made the joint set
-	 *     wobble 8->16 before the kinematic derivation), NOT the 170-358-Bland opening-ladder
-	 *     regime. It does NOT exercise the Bland fallback; the Bland-degenerate multi-mode
-	 *     permutation fixture the D7 gate needs before 3b is still owed (CURRENT_STATE).
-	 *   - a robustly STABLE dry stack, centred well inside its own wide grounded seat far away
-	 *     in X — it stands, so its free blocks have ~zero virtual motion and must stay OUT of
+	 *   - a dry leaning stack, offset hard past its tipping point, on its own grounded base — no
+	 *     tensile bond, so it rocks and falls; all its free blocks rotate together and are the
+	 *     moving set. NOTE (corrected 2026-08-27): this fixture measures 0 Bland entries — its
+	 *     degeneracy is dual-multiplier non-uniqueness (what made the joint set wobble 8->16
+	 *     before the kinematic derivation), not the 170-358-Bland opening-ladder regime; it does
+	 *     not exercise the Bland fallback. The Bland-degenerate multi-mode permutation fixture
+	 *     D7 needs before 3b is still owed (CURRENT_STATE).
+	 *   - a robustly stable dry stack, centred well inside its own wide grounded seat far away
+	 *     in X — it stands, so its free blocks have ~zero virtual motion and must stay out of
 	 *     the moving set under every column permutation.
 	 *
-	 * So the canonical named set is a STRICT, non-trivial subset of the free blocks, selected
+	 * So the canonical named set is a strict, non-trivial subset of the free blocks, selected
 	 * from a degenerate dual: exactly the case the determinism gate must bite on. Dry stone
 	 * (f_t = 0) keeps the plastic no-tension form, so the tipping is hand-obvious and the
-	 * infeasibility does not depend on a bond constant.
-	 * ================================================================================ */
+	 * infeasibility does not depend on a bond constant. */
 
 	FOracleJoint DryBedJoint(
 		int32 BlockA, int32 BlockB, double CentreXCm, double CentreZCm, double HalfLengthCm, double AreaSqCm)
@@ -408,11 +378,9 @@ namespace OracleMechanismExtractionSupport
 		return P;
 	}
 
-	/* ================================================================================
-	 * MECHANISM INSPECTION — the NAMED SET, and the independent Farkas-lite work check.
-	 * All of it guards against the empty stub so a missing mechanism fails an assertion
-	 * rather than reads out of bounds.
-	 * ================================================================================ */
+	/* Mechanism inspection — the named set, and the independent Farkas-lite work check. Guards
+	 * against the empty stub so a missing mechanism fails an assertion rather than reads out of
+	 * bounds. */
 
 	/** The set of oracle-block indices the canonical mechanism says MOVE. */
 	TSet<int32> MovingBlocks(const FOracleMechanism& M)
@@ -489,11 +457,9 @@ namespace OracleMechanismExtractionSupport
 		return Worst;
 	}
 
-	/* ================================================================================
-	 * PERMUTATION — reorder an FOracleProblem's blocks and joints by seeded permutations,
-	 * remapping every block reference, so the same physics is posed in a different column
-	 * and row order. NewIndex = Perm[OldIndex].
-	 * ================================================================================ */
+	/* Permutation — reorder an FOracleProblem's blocks and joints by seeded permutations,
+	 * remapping every block reference, so the same physics is posed in a different column and
+	 * row order. NewIndex = Perm[OldIndex]. */
 
 	TArray<int32> SeededPermutation(FRandomStream& Rng, int32 N)
 	{
@@ -550,28 +516,23 @@ namespace OracleMechanismExtractionSupport
 	}
 }
 
-/* ================================================================================================
- * TEST 1 — MECHANISM CORRECTNESS AGAINST AN INDEPENDENT KINEMATIC ORACLE.
+/* TEST 1 — mechanism correctness against an independent kinematic oracle.
  *
- * ASSERTS (against hand-derived rigid-body kinematics, NOT the LP dual):
- *   - Fixture A (single overhang): the BODY moves, the SEAT does not, the single JOINT opens, the
- *     body's centroid DESCENDS, and gravity does positive work on the mechanism.
- *   - Fixture C (stable, centred): the mechanism is EMPTY (bPresent = false, nothing moves).
- *   - Fixture B (two load paths, bridged): the BODY moves, both SEATS stay still, and the bridge
- *     fills its provenance maps (PieceOfBlock / ConnectionOfJoint) so the mechanism can name real
- *     pieces. The body block is located by CENTROID MATCH, independent of block order and of
- *     provenance, so a wrong provenance map cannot mask a wrong mechanism.
+ * Asserts (against hand-derived rigid-body kinematics, not the LP dual): Fixture A (single
+ * overhang) — the body moves, the seat does not, the single joint opens, the body's centroid
+ * descends, and gravity does positive work; Fixture C (stable, centred) — the mechanism is
+ * empty (bPresent = false, nothing moves); Fixture B (two load paths, bridged) — the body
+ * moves, both seats stay still, and the bridge fills its provenance maps (PieceOfBlock /
+ * ConnectionOfJoint) so the mechanism can name real pieces. The body block is located by
+ * centroid match, independent of block order and provenance, so a wrong provenance map cannot
+ * mask a wrong mechanism.
  *
- * RED BECAUSE: FOracleMechanism is empty by default, so "the body moves", "the joint opens",
- * "present", "positive collapse work" all fail on missing behaviour. The seat-still and
- * feasible-empty arms are green on arrival.
+ * Red because FOracleMechanism is empty by default, so moves/opens/present/positive-work all
+ * fail on missing behaviour; the seat-still and feasible-empty arms are green on arrival.
+ * Mutation that proves it bites once extraction lands: force the mechanism empty (skip the
+ * BTRAN / clear the arrays at the infeasible arm) and every such assertion goes red again.
  *
- * MUTATION THAT PROVES IT BITES once dev implements extraction: force the mechanism EMPTY (skip the
- * BTRAN / clear the arrays at the infeasible arm) and every body-moves / joint-opens / present /
- * work assertion goes red again.
- *
- * NEEDS A TICKING WORLD: NO.
- * ================================================================================================ */
+ * Needs a ticking world: no. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleMechanismCorrectnessTest,
 	"DestructionGame.Oracle.RigidBlock.Mechanism.NamesTheHandDerivedCollapse",
@@ -746,11 +707,9 @@ bool FOracleMechanismCorrectnessTest::RunTest(const FString& Parameters)
 				*FString::Printf(TEXT("FIXTURE B [RED]: gravity does positive work on the mechanism, %.6g > 0"), Work),
 				Work > 0.0);
 
-			/*
-			 * BRIDGE PROVENANCE SEAM (PROMOTION_DESIGN §12 D7). The bridge must fill PieceOfBlock and
-			 * ConnectionOfJoint so the mechanism can name real pieces/joints. RED now: the stub leaves
-			 * them empty. These are SEPARATE from the mechanism reds above (which map by centroid).
-			 */
+			/* Bridge provenance seam (PROMOTION_DESIGN §12 D7): the bridge must fill PieceOfBlock and
+			 * ConnectionOfJoint so the mechanism can name real pieces/joints. Red now — the stub
+			 * leaves them empty — separately from the mechanism reds above (which map by centroid). */
 			TestEqual(TEXT("FIXTURE B [RED]: the bridge fills PieceOfBlock, one entry per block"),
 				P.PieceOfBlock.Num(), P.Blocks.Num());
 			TestEqual(TEXT("FIXTURE B [RED]: the bridge fills ConnectionOfJoint, one entry per joint"),
@@ -767,35 +726,29 @@ bool FOracleMechanismCorrectnessTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-/* ================================================================================================
- * TEST 2 — PERMUTED-COLUMN DETERMINISM. THE GATE ON THE WHOLE SLICE.
+/* TEST 2 — permuted-column determinism, the gate on the whole slice.
  *
- * A FAILURE HERE IS A DESIGN-GATE FAILURE, NOT A TUNING NIT. The break set now depends on the LP's
- * last bits; the phase-1 optimum is massively degenerate (170-358 Bland entries on a single
- * opening-ladder rung), so the RAW dual is non-unique. Canonicalization (normalize the certificate,
- * per-block relative-magnitude threshold tau, minimal-support lexicographic tie-break) must pin it
- * to ONE named set that does not depend on the order the columns/blocks happen to arrive in. If it
- * cannot be made permutation-stable, Slice 3 STOPS and the design changes shape (D7). tau and the
- * tie-break are a "ruling wearing a constant's clothes" — they must be chosen against THIS
+ * A failure here is a design-gate failure, not a tuning nit. The phase-1 optimum is massively
+ * degenerate (170-358 Bland entries on a single opening-ladder rung), so the raw dual is
+ * non-unique. Canonicalization (normalize the certificate, per-block relative-magnitude
+ * threshold tau, minimal-support lexicographic tie-break) must pin it to one named set that does
+ * not depend on column/block arrival order — if it cannot be made permutation-stable, Slice 3
+ * stops and the design changes shape (D7). tau and the tie-break must be chosen against this
  * permutation fuzz, never by eye.
  *
- * ASSERTS, for fixtures A and B over several seeded block+joint permutations:
- *   - the base (unpermuted) mechanism NAMES A NON-EMPTY moving set (guards against the two
- *     compared-empty sets passing vacuously);
- *   - the canonical moving set and opening-joint set, translated back through the known
- *     permutation inverse, are IDENTICAL across every permutation.
+ * Asserts, for fixtures A and B over several seeded block+joint permutations: the base
+ * (unpermuted) mechanism names a non-empty moving set (guards against two compared-empty sets
+ * passing vacuously); the canonical moving set and opening-joint set, translated back through
+ * the known permutation inverse, are identical across every permutation.
  *
- * RED BECAUSE: the empty stub names an empty set, so the non-empty assertion fails on missing
- * behaviour. (The set-equality assertion is vacuously green while empty; it becomes load-bearing
- * the moment extraction populates a set.)
+ * Red because the empty stub names an empty set, so the non-empty assertion fails on missing
+ * behaviour (the set-equality assertion is vacuously green while empty; it becomes load-bearing
+ * once extraction populates a set). Mutation that proves it bites: replace the canonical
+ * selection with a fixed non-canonical one (e.g. "move the lowest-index non-grounded block", or
+ * the raw dual without the lexicographic tie-break) — the named set then tracks column order and
+ * diverges from the base under permutation.
  *
- * MUTATION THAT PROVES IT BITES once dev implements extraction: replace the canonical selection
- * with a FIXED NON-CANONICAL one (e.g. "move the lowest-index non-grounded block", or take the raw
- * dual without the lexicographic minimal-support tie-break). The named set then tracks column order
- * and the permuted set diverges from the base — this test goes red.
- *
- * NEEDS A TICKING WORLD: NO.
- * ================================================================================================ */
+ * Needs a ticking world: no. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleMechanismPermutationDeterminismTest,
 	"DestructionGame.Oracle.RigidBlock.Mechanism.IsPermutationDeterministic",
@@ -873,12 +826,10 @@ bool FOracleMechanismPermutationDeterminismTest::RunTest(const FString& Paramete
 			*FString::Printf(TEXT("%s [RED]: the base mechanism names a NON-EMPTY moving set"), *Fixture.Label),
 			BaseMoving.Num() >= 1);
 
-		/*
-		 * Track whether the RAW dual actually moves under permutation. If the permuted solve's
+		/* Track whether the raw dual actually moves under permutation: if the permuted solve's
 		 * per-block VirtualUz (mapped back to base indices) ever differs from the base's beyond
-		 * rounding, the dual is genuinely NON-UNIQUE and the canonical named set holding steady
-		 * is canonicalization doing real work — not a trivially unique dual relabelled.
-		 */
+		 * rounding, the dual is genuinely non-unique and the canonical set holding steady is
+		 * canonicalization doing real work, not a trivially unique dual relabelled. */
 		double WorstRawDualDrift = 0.0;
 
 		for (int32 Perm = 0; Perm < NumPermutations; ++Perm)
@@ -956,32 +907,26 @@ bool FOracleMechanismPermutationDeterminismTest::RunTest(const FString& Paramete
 	return true;
 }
 
-/* ================================================================================================
- * TEST 3 — FARKAS FAIL-CLOSED. The extraction must certify its own certificate.
+/* TEST 3 — Farkas fail-closed. The extraction must certify its own certificate.
  *
- * ASSERTS:
- *   - Fixture A (infeasible): the reported mechanism is CERTIFIED (bIsCertified) AND is a genuine
- *     downward collapse (gravity does positive work, the yb > 0 half of Farkas, recomputed here).
- *     A present-but-uncertified mechanism is forbidden.
- *   - Fixture C (feasible): NO mechanism is ever reported (bPresent false, nothing moves, not
- *     certified) — a feasible problem must never name bricks.
+ * Asserts: Fixture A (infeasible) — the reported mechanism is certified (bIsCertified) and is a
+ * genuine downward collapse (gravity does positive work, the yb > 0 half of Farkas, recomputed
+ * here); a present-but-uncertified mechanism is forbidden. Fixture C (feasible) — no mechanism
+ * is ever reported (bPresent false, nothing moves, not certified).
  *
- * SPECIFIED, not driven here (needs a solver mutation to reach): an UNVERIFIABLE certificate must
- * make the solve REFUSE with EOracleRefusal::VerificationFailure rather than hand out a mechanism —
- * the two-sided verification gate of §3.6. dev-expert wires that at the infeasible arm; the R7
- * gate and a Farkas-corruption mutation exercise it. Asserted here only in the weaker direction: a
- * certified fixture must NOT be sitting on VerificationFailure.
+ * Specified, not driven here (needs a solver mutation to reach): an unverifiable certificate
+ * must make the solve refuse with EOracleRefusal::VerificationFailure rather than hand out a
+ * mechanism — the two-sided verification gate of §3.6, wired by dev-expert at the infeasible
+ * arm and exercised by the R7 gate and a Farkas-corruption mutation. Asserted here only in the
+ * weaker direction: a certified fixture must not be sitting on VerificationFailure.
  *
- * RED BECAUSE: the empty stub never certifies (bIsCertified false) and does no work, so fixture A's
- * certified / positive-work assertions fail on missing behaviour. Fixture C's empty-mechanism arm
- * is green on arrival (correct — nothing to certify).
+ * Red because the empty stub never certifies and does no work, so fixture A's certified /
+ * positive-work assertions fail on missing behaviour; fixture C's empty-mechanism arm is green
+ * on arrival (nothing to certify). Mutation that proves it bites: (a) skip the Farkas check so
+ * bIsCertified stays false while present -> fixture A's certified assertion goes red; (b) emit a
+ * mechanism on the feasible arm too -> fixture C goes red.
  *
- * MUTATION THAT PROVES IT BITES once dev implements extraction: (a) skip the Farkas check so
- * bIsCertified stays false while a mechanism is present -> fixture A's certified assertion goes red;
- * (b) make the extractor emit a mechanism on the FEASIBLE arm too -> fixture C goes red.
- *
- * NEEDS A TICKING WORLD: NO.
- * ================================================================================================ */
+ * Needs a ticking world: no. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleMechanismFarkasFailClosedTest,
 	"DestructionGame.Oracle.RigidBlock.Mechanism.FarkasCertificateFailsClosed",

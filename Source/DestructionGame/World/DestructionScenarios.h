@@ -6,29 +6,26 @@
 #include "Core/Layout.h"
 
 /**
- * THE NAMED CATALOGUE OF PLAYABLE DESTRUCTION SCENARIOS — the fixtures the suite has been
- * proving headlessly, addressable as levels a human can join and watch.
+ * The named catalogue of playable destruction scenarios — the fixtures the suite proves
+ * headlessly, addressable as levels a human can join and watch.
  *
- * WORLD-FREE, exactly like Core/Layout. Boxes and doubles: no UWorld, no actors, no
- * UObject anywhere. That is what makes the catalogue's own tests part of the fast suite
- * rather than a world harness, and it is what lets the game mode be the only thing that
+ * World-free, like Core/Layout: no UWorld, no actors, no UObject, which keeps the
+ * catalogue's own tests in the fast suite and lets the game mode be the only thing that
  * knows a level exists.
  *
- * ONE DIRECTION OF INCLUSION. This includes Core/Layout.h and the profile headers, and
- * nothing from Tests/. A test may reach the other way — asserting that a row's wall is the
- * same wall a world-free fixture measures is exactly the drift check that keeps a level
+ * One direction of inclusion: this includes Core/Layout.h and the profile headers, nothing
+ * from Tests/. A test may reach the other way — that drift check is what keeps a level
  * honest — but production may not.
  */
 namespace DestructionScenarios
 {
 	/**
-	 * HOW A ROW WANTS TO BE FRAMED — data on the row, defaulting to the head-on view every
+	 * How a row wants to be framed — data on the row, defaulting to the head-on view every
 	 * existing level was designed around.
 	 *
-	 * A flat wall reads perfectly from straight in front. A genuinely 3D structure (a closed box,
-	 * an overhang dropping off a front wall) reads as a flat front face from there, so its row
-	 * opts into a three-quarter view: orbited off the front axis and raised, so its depth and its
-	 * fall are visible rather than foreshortened.
+	 * A flat wall reads perfectly from straight in front; a genuinely 3D structure reads as a
+	 * flat front face from there, so its row opts into a three-quarter view instead: orbited
+	 * off-axis and raised, so depth and fall are visible rather than foreshortened.
 	 */
 	enum class EScenarioFraming : uint8
 	{
@@ -56,16 +53,15 @@ namespace DestructionScenarios
 		DestructionLayout::FRunningBondSpec Wall;
 
 		/**
-		 * WHAT LAYS THIS ROW, WHEN A RUNNING BOND CANNOT — the producer as DATA on the row.
+		 * What lays this row, when a running bond cannot — the producer as data on the row.
 		 *
-		 * Unset means the `Wall` spec above, laid by `RunningBond`. A corbel steps half a cell per
-		 * course off an immovable base, which `RunningBond` cannot express at all, so its row
+		 * Unset means the `Wall` spec above, laid by `RunningBond`. A corbel steps half a cell
+		 * per course off an immovable base, which `RunningBond` cannot express, so its row
 		 * carries the call that lays it instead.
 		 *
-		 * A FUNCTION AND NOT AN ENUM WITH A SWITCH IN `Build`. Scenarios are data in this project
-		 * for the same reason materials and connection types are: a switch grows a branch per
-		 * family, and every family added afterwards pays for every family already there. A row that
-		 * carries its own producer is one row of a table, and `Build` never learns what a corbel is.
+		 * A function, not an enum with a switch in `Build`: scenarios are data here for the
+		 * same reason materials and connection types are, so a row carrying its own producer
+		 * is one row of a table and `Build` never learns what a corbel is.
 		 */
 		TFunction<bool(DestructionLayout::FBrickLayout&)> LayStructure;
 
@@ -73,43 +69,32 @@ namespace DestructionScenarios
 		TArray<FVector> CutCentresCm;
 
 		/**
-		 * THIS ROW LAYS NOTHING, BECAUSE THE PLAYER LAYS IT — the build sandbox.
+		 * This row lays nothing, because the player lays it — the build sandbox.
 		 *
-		 * Every other row is a structure somebody else built and a question about what it does. A
-		 * build sandbox is an empty plot: the game mode opens NO layout, spawns no brick, and arms
-		 * NO hold timer, because there is nothing laid for a run to do anything to. `Build` refuses
-		 * such a row outright (`RunningBond` refuses a spec of zero courses), so the game mode must
-		 * branch on this BEFORE it asks for a layout.
+		 * A build sandbox is an empty plot: the game mode opens no layout, spawns no brick, and
+		 * arms no hold timer. `Build` refuses such a row outright (`RunningBond` refuses zero
+		 * courses), so the game mode must branch on this before it asks for a layout.
 		 */
 		bool bBuildSandbox = false;
 
 		/**
-		 * HOW LONG THE LEVEL HOLDS THIS STRUCTURE EXACTLY AS LAID BEFORE IT RUNS, seconds.
+		 * How long the level holds this structure exactly as laid before it runs, seconds.
 		 *
-		 * ONE CLOCK, ON EVERY ROW, AND THE NAME IS NOT THE CUT'S. It was `CutDelaySeconds`, which
-		 * lied on seven of the nine rows: a corbel cuts nothing at all, so a field named for the
-		 * cut said "four seconds until the thing that never happens". The same class of dishonesty
-		 * as the countdown-to-nothing the label already had taken out of it.
+		 * One clock, on every row, named for what it does rather than for the cut:
+		 * `CutDelaySeconds` lied on seven of nine rows, since a corbel cuts nothing at all.
 		 *
-		 * WHAT "HOLD" MEANS IS AS LAID, WHICH IS NOT THE SAME AS UNSOLVED. Every brick spawns
-		 * kinematic and only `ABrickActor::Release` makes it dynamic, so holding is simply not
-		 * releasing anything — but the structure is still SOLVED while it is held, because
-		 * `EPieceSupport::Falling` is what an ABSENT answer reads as and a level whose strain
-		 * readout said every brick was falling would be lying in the other direction. Solved and
-		 * not settled: no joint has been asked to give yet.
+		 * "Hold" means as laid, not unsolved: every brick spawns kinematic and only
+		 * `ABrickActor::Release` makes it dynamic, so holding is simply not releasing
+		 * anything, while the structure is still solved — `EPieceSupport::Falling` is what an
+		 * absent answer reads as. Solved and not settled: no joint has been asked to give yet.
 		 *
-		 * AND AT THIS MOMENT THE LEVEL RUNS: it applies whatever cuts the row names, and it
-		 * SETTLES — every joint over its own capacity gives, and what the solver stops holding up
-		 * is handed to physics. A row with no cut still has a moment; that is the whole point of
-		 * a corbel level, whose story is AS LAID versus SETTLED and which until now had already
-		 * collapsed before the player's first frame was drawn.
+		 * At this moment the level runs: it applies whatever cuts the row names and settles —
+		 * every joint over capacity gives. A row with no cut still has a moment; that is the
+		 * whole point of a corbel level, whose story is as-laid versus settled.
 		 */
 		double HoldSeconds = 4.0;
 
-		/**
-		 * HOW THIS ROW WANTS TO BE VIEWED. Unset (HeadOn) is every existing row's head-on frame.
-		 * A 3D row sets ThreeQuarter so ViewpointFor angles the camera to show its depth.
-		 */
+		/** How this row wants to be viewed. A 3D row sets ThreeQuarter to show its depth. */
 		EScenarioFraming Framing = EScenarioFraming::HeadOn;
 	};
 
@@ -123,13 +108,12 @@ namespace DestructionScenarios
 	int32 IndexOfMapName(const FString& MapName);
 
 	/**
-	 * HOW A SCENARIO CAME TO BE CHOSEN — so a FALLBACK is never mistaken for a default.
+	 * How a scenario came to be chosen — so a fallback is never mistaken for a default.
 	 *
-	 * The index alone cannot carry this. A URL naming a scenario that does not exist and a URL
-	 * naming nothing at all both end up on `sandbox`, and the player must be TOLD which of the
-	 * two happened: the first is a typo they can fix if something names the rows that do exist,
-	 * and the second is the game opening normally. Indistinguishable, they are a player staring
-	 * at the wrong wall wondering why.
+	 * The index alone cannot carry this: a URL naming a nonexistent scenario and a URL naming
+	 * nothing at all both end up on `sandbox`, and the player must be told which happened —
+	 * a typo they can fix, or the game opening normally. Indistinguishable, they are a player
+	 * staring at the wrong wall wondering why.
 	 */
 	enum class EScenarioSelection : uint8
 	{
@@ -149,13 +133,13 @@ namespace DestructionScenarios
 	/**
 	 * Which scenario a level should build, from its URL options and its map name.
 	 *
-	 * ALWAYS A VALID ROW, never INDEX_NONE: a level showing an empty world is a worse failure
-	 * than a level showing the default wall.
+	 * Always a valid row, never INDEX_NONE: an empty world is a worse failure than the
+	 * default wall.
 	 *
 	 * @param Options  the URL options string, `?Key=Value?Key=Value`, as
 	 *                 `AGameModeBase::OptionsString` carries it.
-	 * @param MapName  the map, as `UWorld::GetMapName()` gives it — which carries a `UEDPIE_0_`
-	 *                 prefix in PIE and can be a long package path elsewhere.
+	 * @param MapName  the map, as `UWorld::GetMapName()` gives it — a `UEDPIE_0_`-prefixed
+	 *                 name in PIE, or a long package path elsewhere.
 	 * @param OutHow   how the answer was reached. See EScenarioSelection.
 	 */
 	int32 IndexForOptionsAndMap(
@@ -166,9 +150,8 @@ namespace DestructionScenarios
 	/**
 	 * Lay a row's wall and resolve the bricks its cut names.
 	 *
-	 * REFUSES A CUT CENTRE THAT NAMES NO BRICK, writing nothing: a silently dropped cut is a
-	 * level that looks intact, never does anything, and is indistinguishable from a level
-	 * whose wall correctly stood.
+	 * Refuses a cut centre that names no brick, writing nothing: a silently dropped cut is
+	 * indistinguishable from a level whose wall correctly stood.
 	 *
 	 * @return true if the wall was laid and every cut centre found its brick.
 	 */
@@ -187,8 +170,8 @@ namespace DestructionScenarios
 	/**
 	 * Where to stand so the whole of a structure is in frame.
 	 *
-	 * `Framing` selects head-on (the default, unchanged for every existing row) or a three-quarter
-	 * angle that orbits and elevates the camera and frames the full 3D bounds including Y-depth.
+	 * `Framing` selects head-on or a three-quarter angle that orbits and elevates the camera
+	 * to frame the full 3D bounds including Y-depth.
 	 */
 	FViewpoint ViewpointFor(
 		const FBox& BoundsCm,

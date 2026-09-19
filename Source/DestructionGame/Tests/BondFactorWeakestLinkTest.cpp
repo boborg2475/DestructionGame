@@ -8,35 +8,25 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * SHED_PATH.md Phase B / slice B2 — the connection x material weakest-link pairing.
+ * The connection x material weakest-link pairing (SHED_PATH.md Phase B2).
  *
- * BEHAVIOUR UNDER TEST, in one sentence: a bonded joint's effective TENSILE and
- * SHEAR-COHESION capacity is the connection's own capacity DERATED by the weaker of
- * its two material faces' BondFactor (the bond peels off the poorer face), while its
- * COMPRESSION capacity is bearing and is NOT derated — so a wood-on-brick joint whose
- * wood face bonds poorly gives up under a tension the bare connection would have held.
+ * A bonded joint's effective TENSILE and SHEAR-COHESION capacity is the connection's
+ * own capacity DERATED by the weaker of its two material faces' BondFactor (the bond
+ * peels off the poorer face), while its COMPRESSION capacity is bearing and is NOT
+ * derated — so a wood-on-brick joint whose wood face bonds poorly gives up under a
+ * tension the bare connection would have held. DestructionForce::EffectiveBondedStrength
+ * is the seam that combines a connection with its two faces.
  *
- * WHY THIS IS THE RED FOR B2. Today a joint reads ONLY its connection's
- * FConnectionStrength (FConnection::Strength -> ComputeUtilisation); the materials'
- * BondFactor is declared and unused (the only reader is ProfileLibraryTest's range
- * check). DestructionForce::EffectiveBondedStrength is the seam that will combine a
- * connection with its two faces, and its B2 stub returns the bare connection unchanged
- * — so every derated expectation below reads the un-derated bare capacity and the
- * tension/shear rows fail. That failure IS the missing behaviour, not a broken fixture.
- *
- * THE JUDGMENT THIS ENCODES (flagged to the reviewer): BondFactor is a bond property.
- * A bond PEELS in tension and slides in shear-cohesion, so those two axes derate by
- * min(BondFactor_A, BondFactor_B). Compression BEARS through the face whatever the
- * bond does — a poorly-bonded block still carries crushing load — so compression is
- * governed by the material's own crush, never by BondFactor. That split is asserted
- * directly: the compression row is a green characterisation pin that must stay
- * un-derated, and it is the guard against a green implementation that derates every
- * axis uniformly.
+ * THE JUDGMENT THIS ENCODES: a bond PEELS in tension and slides in shear-cohesion, so
+ * those two axes derate by min(BondFactor_A, BondFactor_B). Compression BEARS through
+ * the face whatever the bond does — a poorly-bonded block still carries crushing load —
+ * so it is governed by the material's own crush, never by BondFactor. The compression
+ * row below is the guard against an implementation that derates every axis uniformly.
  *
  * Pure arithmetic on classified loads: no world, no solver, no tick. Gravity is
- * irrelevant by design (one load axis at a time, isolated). The assertion is on the
- * MECHANISM — the effective per-axis capacity and the utilisation ratio it produces —
- * never on anything moving, exactly as DESIGN.md §4 asks of a unit test.
+ * irrelevant by design (one load axis at a time). Assertions are on the MECHANISM — the
+ * effective per-axis capacity and the utilisation ratio it produces — never on anything
+ * moving.
  */
 namespace BondFactorWeakestLinkTestSupport
 {
@@ -62,12 +52,11 @@ namespace BondFactorWeakestLinkTestSupport
 	FConnectionLoad CompressionOf(double Force) { FConnectionLoad L; L.Compression = Force; return L; }
 
 	/**
-	 * The derating wood face: production Timber, but with BondFactor overridden to a
-	 * value < 1 to stand in for a poorer-bonding face. PRODUCTION Timber's BondFactor
-	 * is 1.0 today (as are ClayBrick's and StructuralConcrete's), so no shipped fixture
-	 * derates and every single-material joint stays bit-identical once B2 lands. This
-	 * fixture proves the MECHANISM reads BondFactor; the datum (what a mortar bond to
-	 * real timber actually is) is a separate calibration question, not this slice's.
+	 * The derating wood face: production Timber with BondFactor overridden below 1 to
+	 * stand in for a poorer-bonding face. Production BondFactor is 1.0 for Timber,
+	 * ClayBrick and StructuralConcrete today, so no shipped fixture derates; this proves
+	 * the MECHANISM reads BondFactor, not the real-timber datum, which is a separate
+	 * calibration question.
 	 */
 	constexpr double WoodFaceBondFactor = 0.5;
 
@@ -93,10 +82,9 @@ bool FBondFactorWeakestLinkTest::RunTest(const FString& Parameters)
 	using namespace BondFactorWeakestLinkTestSupport;
 
 	/*
-	 * THE JOINT: a wood-on-brick BONDED joint. The connection is general-purpose
-	 * mortar (a real cohesive bond); one face is a poorly-bonding wood face
-	 * (BondFactor 0.5), the other is clay brick (BondFactor 1.0). The bond therefore
-	 * peels at the WEAKER face, so min(BondFactor) = 0.5.
+	 * THE JOINT: a wood-on-brick BONDED joint via general-purpose mortar. One face is
+	 * poorly-bonding wood (BondFactor 0.5), the other clay brick (BondFactor 1.0), so
+	 * the bond peels at the weaker face: min(BondFactor) = 0.5.
 	 */
 	const FConnectionStrength& Connection = GeneralPurposeMortar;
 	const FMaterialProfile WoodFace = PoorlyBondingWoodFace();
@@ -105,10 +93,9 @@ bool FBondFactorWeakestLinkTest::RunTest(const FString& Parameters)
 	const double MinBondFactor = FMath::Min(WoodFace.BondFactor, BrickFace.BondFactor);
 
 	/*
-	 * FIXTURE PRECONDITIONS — the numbers below only mean what they say while the
-	 * profiles still carry the strengths they were hand-derived against, and while the
-	 * weaker face really is the wood one. A retune must fail loudly here, not quietly
-	 * move every expectation.
+	 * FIXTURE PRECONDITIONS: these numbers only mean what they say while the profiles
+	 * carry the strengths they were hand-derived against, and while wood really is the
+	 * weaker face. A retune must fail loudly here, not quietly move every expectation.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("PRECONDITION: mortar tensile bond must be 0.7 MPa, profile carries %g"),
@@ -128,10 +115,10 @@ bool FBondFactorWeakestLinkTest::RunTest(const FString& Parameters)
 		MinBondFactor == WoodFace.BondFactor && MinBondFactor < 1.0);
 
 	/*
-	 * The material OWN capacities must not govern the bond axes here — if they did,
-	 * this test would be measuring the material cap rather than BondFactor, and could
-	 * pass for the wrong reason. Both faces' tensile and shear strengths sit well above
-	 * the derated bond, so min(...) picks the bonded term. Asserted, not assumed.
+	 * The materials' OWN capacities must not govern the bond axes, or this test would
+	 * measure the material cap rather than BondFactor. Both faces sit well above the
+	 * derated bond on tension and shear, so min(...) picks the bonded term — asserted,
+	 * not assumed.
 	 */
 	const double DeratedTensileMPa = Connection.TensileStrengthMPa * MinBondFactor;     // 0.35
 	const double DeratedShearMPa = Connection.ShearCohesionMPa * MinBondFactor;         // 0.45
@@ -151,30 +138,24 @@ bool FBondFactorWeakestLinkTest::RunTest(const FString& Parameters)
 	constexpr double Tolerance = 1e-9;
 
 	/*
-	 * --- MECHANISM: the effective bond capacity is derated by min(BondFactor) --------
-	 *
-	 * Tension: min(0.7 * 0.5, timber 14, brick 2.0) = 0.35 MPa. Today the stub returns
-	 * the bare mortar (0.7) and this fails — which is the B2 red.
+	 * MECHANISM: effective bond capacity derates by min(BondFactor). Tension:
+	 * min(0.7 * 0.5, timber 14, brick 2.0) = 0.35 MPa.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("effective TENSILE must be the derated bond %g MPa, got %g"),
 			DeratedTensileMPa, Effective.TensileStrengthMPa),
 		FMath::IsNearlyEqual(Effective.TensileStrengthMPa, DeratedTensileMPa, Tolerance));
 
-	/*
-	 * Shear cohesion: min(0.9 * 0.5, timber 4.0, brick 3.0) = 0.45 MPa. Same red.
-	 */
+	// Shear cohesion: min(0.9 * 0.5, timber 4.0, brick 3.0) = 0.45 MPa.
 	TestTrue(
 		FString::Printf(TEXT("effective SHEAR COHESION must be the derated bond %g MPa, got %g"),
 			DeratedShearMPa, Effective.ShearCohesionMPa),
 		FMath::IsNearlyEqual(Effective.ShearCohesionMPa, DeratedShearMPa, Tolerance));
 
 	/*
-	 * --- THE JUDGMENT: compression BEARS, so BondFactor must NOT derate it ------------
-	 *
-	 * min(mortar 10, timber 21, brick 20) = 10 MPa, and crucially NOT 10 * 0.5 = 5.
-	 * This row is green on arrival (the bare stub already returns 10) and stays green
-	 * after B2 — it is the guard against an implementation that derates every axis.
+	 * THE JUDGMENT: compression BEARS, so BondFactor must NOT derate it. min(mortar 10,
+	 * timber 21, brick 20) = 10 MPa, not 10 * 0.5 = 5 — the guard against an
+	 * implementation that derates every axis.
 	 */
 	const double BearingCompressiveMPa = FMath::Min3(
 		Connection.CompressiveStrengthMPa,
@@ -194,13 +175,10 @@ bool FBondFactorWeakestLinkTest::RunTest(const FString& Parameters)
 			Connection.CompressiveStrengthMPa * MinBondFactor, Tolerance));
 
 	/*
-	 * --- VERDICT: a load in the gap between derated and un-derated capacity ----------
-	 *
-	 * Each load below sits ABOVE the derated bond but BELOW the bare connection, so it
-	 * FAILS the joint under the weakest-link rule and would STAND on the bare
-	 * connection. That crossing of 1.0 is what proves BondFactor is live rather than
-	 * merely a different number, and it is asserted on the utilisation ComputeUtilisation
-	 * returns — the same mechanism the break authority and the strain readout consume.
+	 * VERDICT: each load below sits above the derated bond but below the bare
+	 * connection, so it FAILS the weakest-link joint but would STAND on the bare
+	 * connection. That crossing of 1.0 proves BondFactor is live, asserted on the
+	 * utilisation ComputeUtilisation returns.
 	 */
 	struct FGapCase
 	{
@@ -211,9 +189,8 @@ bool FBondFactorWeakestLinkTest::RunTest(const FString& Parameters)
 	};
 
 	/*
-	 * Tension gap: 0.35 (derated) < 0.5 (load) < 0.7 (bare). Shear gap: 0.45 < 0.6 <
-	 * 0.9. Zero compression on both, so no friction is bought and mortar's shear cap
-	 * (2.0) never binds — the cohesion is the whole shear capacity, cleanly derated.
+	 * Tension gap: 0.35 < 0.5 < 0.7. Shear gap: 0.45 < 0.6 < 0.9. Zero compression on
+	 * both, so mortar's shear cap (2.0) never binds — cohesion is the whole capacity.
 	 */
 	const TArray<FGapCase> GapCases = {
 		{
@@ -255,9 +232,8 @@ bool FBondFactorWeakestLinkTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * And the compression counterpart of the verdict: a compression at 0.5 of the
-	 * bearing capacity reads 0.5 whether or not the bond is derated — BondFactor does
-	 * not touch it. Green on arrival, and it stays green after B2.
+	 * Compression counterpart of the verdict: a load at half the bearing capacity reads
+	 * 0.5 whether or not the bond is derated — BondFactor does not touch it.
 	 */
 	const double CompressionUtilisation = DestructionForce::ComputeUtilisation(
 		CompressionOf(ForceForMPa(BearingCompressiveMPa / 2.0)), Effective, UnitAreaSqCm);

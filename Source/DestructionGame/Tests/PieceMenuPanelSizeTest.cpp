@@ -7,55 +7,52 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges many
- * files into one. See CURRENT_STATE.md and Tests/ConnectionLoadTest.cpp, which is where that rule
- * was paid for; the `using namespace` lives inside RunTest for the same reason.
+ * Named namespace, and named differently from every other one in this module — an anonymous
+ * namespace is private to a translation unit, not a file, and a unity build merges many files
+ * into one. `using namespace` lives inside RunTest for the same reason.
  */
 namespace PieceMenuPanelSizeTestSupport
 {
 	/**
-	 * THE PANEL AS IT IS DRAWN TODAY, TRANSCRIBED RATHER THAN IMPORTED, AND IT IS 800 x 560 px.
+	 * The panel as it is drawn today, transcribed rather than imported: 800 x 560 px.
 	 *
 	 * PieceMenuPanelWidthPx and PieceMenuPanelHeightPx are file-static in
-	 * DestructionGamePlayerController.cpp and a test may not reach them — which is the right way
-	 * round, and is about to stop mattering: the whole point of this test is that the size becomes
-	 * the PRESENTER's answer, so that the mode can change it and something can read what it said.
+	 * DestructionGamePlayerController.cpp and a test may not reach them — the right way round,
+	 * since the point of this test is that the size becomes the PRESENTER's answer, so the mode
+	 * can change it and something can read what it said.
 	 *
-	 * NEITHER NUMBER IS PICKED, AND THE WIDTH IS THE ONE WITH A DERIVATION. 800 px is a measured
-	 * floor plus a stated clearance: World.Menu.TheReadoutFitsInsideThePanel lays the readout out
-	 * over a ragged wall whose corbel sits on one off-centre patch — the only wall shape that bends
-	 * at all, and so the only one whose joint line grows the bending clause — and the measurement
-	 * MOVED when the joint row learned to name the profile that fastens it: the same line overran
-	 * the old 640 px panel by 101 px carrying `generalpurposemortar`, and the floor allows a further
-	 * 39 px for `generalpurposemortarperpend`, which is seven characters longer and is in every
-	 * bonded wall in the game. 640 + 101 + 39 = 780, and at 800 the sweep measures 59 px of spare on
-	 * the mortar line — the perpend's 39 plus about 20 px of real clearance, the same few characters
-	 * of room the old figure kept. The height is a fit rather than a measurement: 560 px
-	 * is about half a 1080 viewport, so the list, the readout and the action rows are all on screen
-	 * at once.
+	 * Neither number is picked, and the width is the one with a derivation. 800 px is a measured
+	 * floor plus a stated clearance: World.Menu.TheReadoutFitsInsideThePanel lays the readout over
+	 * a ragged wall whose corbel sits on one off-centre patch — the only shape whose joint line
+	 * grows a bending clause — and the measurement moved when the joint row learned to name the
+	 * profile that fastens it: that line overran the old 640 px panel by 101 px carrying
+	 * `generalpurposemortar`, plus a 39 px floor for the seven-character-longer
+	 * `generalpurposemortarperpend`. 640 + 101 + 39 = 780, and 800 leaves 59 px of spare (the
+	 * perpend's 39 plus ~20 px of real clearance). The height is a fit, not a measurement: 560 px
+	 * is about half a 1080 viewport, so the list, the readout and the action rows are all on
+	 * screen at once.
 	 *
-	 * PINNING THEM HERE IS WHAT KEEPS *Full* HONEST WHILE COMPACT IS ADDED. A mode-dependent size
+	 * Pinning them here is what keeps *Full* honest while Compact is added: a mode-dependent size
 	 * whose Full arm quietly drifted would take the measured floor with it, and the wall that can
-	 * see that floor is expensive to build — so the cheap claim lives here and the expensive one
+	 * see that floor is expensive to build, so the cheap claim lives here and the expensive one
 	 * stays where the pixels are.
 	 */
 	constexpr double FullPanelWidthPx = 800.0;
 	constexpr double FullPanelHeightPx = 560.0;
 
 	/**
-	 * HOW MUCH OF THE PANEL COMPACT HAS TO GIVE BACK, AND IT IS THE MODEL'S OWN CLAIM RATHER THAN
-	 * A NUMBER CHOSEN HERE.
+	 * How much of the panel Compact has to give back — the model's own claim, not a number
+	 * chosen here.
 	 *
-	 * EPieceMenuDetail::Compact says of itself, in Core/PieceMenu.h, that dropping the joint table
-	 * "is the cut that buys back a third of the screen". A third back is two thirds left, and that
-	 * is the whole of this constant — read as a fraction of the PANEL, which is the conservative
-	 * reading of the sentence and the only one this function is in a position to promise.
+	 * EPieceMenuDetail::Compact says of itself, in Core/PieceMenu.h, that dropping the joint
+	 * table "is the cut that buys back a third of the screen". A third back is two thirds left,
+	 * read as a fraction of the PANEL — the conservative reading, and the only one this function
+	 * can promise.
 	 *
-	 * IT IS AREA RATHER THAN EITHER AXIS BECAUSE "STRICTLY SMALLER" IS SATISFIED BY ONE PIXEL. A
-	 * compact panel 639 x 559 px is smaller in both axes, passes every ordering claim below, and
+	 * Area rather than either axis, because "strictly smaller" is satisfied by one pixel: a
+	 * 639 x 559 px compact panel is smaller on both axes, passes every ordering claim below, and
 	 * answers the player's complaint — "it takes up so much of the screen" — with nothing at all.
-	 * The per-axis claims say WHICH WAY it must shrink; this one says it has to be worth doing.
+	 * The per-axis claims say which way it must shrink; this one says it has to be worth doing.
 	 */
 	constexpr double CompactPanelAreaBudget = 2.0 / 3.0;
 
@@ -89,38 +86,38 @@ namespace PieceMenuPanelSizeTestSupport
 }
 
 /**
- * A COMPACT PANEL IS A SMALLER PANEL — STRICTLY NARROWER *AND* STRICTLY SHORTER THAN THE FULL ONE
- * — AND HOW BIG EITHER OF THEM IS, IS THE PRESENTER'S ANSWER RATHER THAN A CONSTANT BESIDE THE
- * SLATE THAT DRAWS IT.
+ * A compact panel is a smaller panel — strictly narrower *and* strictly shorter than the full
+ * one — and how big either of them is, is the presenter's answer rather than a constant beside
+ * the slate that draws it.
  *
- * THE COMPLAINT THIS IS THE SECOND HALF OF, VERBATIM: "I can't move the menu if it is in my way
- * and it takes up so much of the screen." The first half is answered — ClampPanelOffset is in and
- * the title strip drags. The second is not: EPieceMenuDetail::Compact drops the joint table and the
- * headroom scale, and then draws the lines that are left into a rectangle overridden to exactly
- * 800 x 560 px whatever the mode, with the readout in a slot that FILLS whatever it is given. So a
- * compact panel is a full-sized panel with fewer words in it, and the player gets back no screen at
- * all. Making the size a function of the mode is the behaviour; making it a function LIVING HERE is
- * what makes the behaviour assertable.
+ * The complaint this is the second half of, verbatim: "I can't move the menu if it is in my way
+ * and it takes up so much of the screen." The first half is answered — ClampPanelOffset is in
+ * and the title strip drags. The second is not: EPieceMenuDetail::Compact drops the joint table
+ * and the headroom scale, then draws what's left into a rectangle overridden to exactly
+ * 800 x 560 px whatever the mode, with the readout in a slot that fills whatever it is given. So
+ * a compact panel is a full-sized panel with fewer words in it, and the player gets back no
+ * screen at all. Making the size a function of the mode is the behaviour; making that function
+ * live here is what makes it assertable.
  *
  * THE ASSERTIONS ARE ORDERINGS AND A BUDGET, NOT A COMPACT SIZE. This test deliberately does not
- * say what the compact panel measures, because that figure has to be DERIVED the way the full one
- * was — from the longest line the mode still shows, which is an entry row rather than a joint row,
- * and which only a laid-out panel over a real wall can measure. That measurement is
- * World.Menu.TheReadoutFitsInsideThePanel's job and it now sweeps both modes. What is pinned here
- * is everything that measurement cannot say: that the answer exists, that it is finite and
- * positive, that Full has not drifted off its own measured floor, that Compact is smaller on BOTH
- * axes rather than one, and that it is smaller by enough to be worth a player's while.
+ * say what the compact panel measures, because that figure has to be DERIVED the way the full
+ * one was — from the longest line the mode still shows, an entry row rather than a joint row,
+ * which only a laid-out panel over a real wall can measure. That's
+ * World.Menu.TheReadoutFitsInsideThePanel's job, and it now sweeps both modes. Pinned here is
+ * everything that measurement cannot say: the answer exists, is finite and positive, Full has
+ * not drifted off its own measured floor, Compact is smaller on BOTH axes rather than one, and
+ * by enough to be worth a player's while.
  *
- * FULL IS PINNED EXACTLY AND COMPACT IS BOUNDED, WHICH IS THE ASYMMETRY THE DERIVATION IMPLIES.
- * 800 x 560 is a measured floor plus a stated clearance and a retune of it is a decision somebody
- * should have to make on purpose; the compact figure is a derivation this test cannot perform, so
- * pinning one here would be inventing the number the task exists to avoid inventing.
+ * FULL IS PINNED EXACTLY AND COMPACT IS BOUNDED — the asymmetry the derivation implies. 800 x 560
+ * is a measured floor plus a stated clearance, and a retune of it should be a decision made on
+ * purpose; the compact figure is a derivation this test cannot perform, so pinning one here would
+ * invent the number the task exists to avoid inventing.
  *
- * WHAT THIS CANNOT REACH, SAID PLAINLY: whether the WIDGET honours the answer. An SBox override
- * sets a desired size and a filling slot arranges its child at whatever width it was handed — this
- * project has already shipped a 540 px canvas sitting over 96 px bars on exactly that mistake. The
- * join is measured in World.Menu.TheReadoutFitsInsideThePanel, which arranges the real panel in
- * both modes and compares what moved against what this function said.
+ * WHAT THIS CANNOT REACH: whether the widget honours the answer. An SBox override sets a desired
+ * size and a filling slot arranges its child at whatever width it was handed — this project has
+ * already shipped a 540 px canvas sitting over 96 px bars on exactly that mistake. That join is
+ * measured in World.Menu.TheReadoutFitsInsideThePanel, which arranges the real panel in both
+ * modes and compares what moved against what this function said.
  *
  * NEEDS A TICKING WORLD: no, and not even a world. One enumerator in, two doubles out.
  */
@@ -137,10 +134,10 @@ bool FPieceMenuPanelSizeTest::RunTest(const FString& Parameters)
 	const FVector2D Compact = PieceMenuPanelSizePx(EPieceMenuDetail::Compact);
 
 	/*
-	 * AN ENUMERATOR NOBODY DECLARED, WHICH IS THE FAIL-CLOSED ROW. EPieceMenuDetail is a uint8 and
-	 * a cast is all it takes to produce one; the direction that matters is which arm a value this
-	 * function does not know falls into. Compact would SUPPRESS numbers somebody asked for, which
-	 * is the failure the enum's own comment names as the reason Full is enumerator zero.
+	 * An enumerator nobody declared — the fail-closed row. EPieceMenuDetail is a uint8 and a
+	 * cast is all it takes to produce one; what matters is which arm an unknown value falls
+	 * into. Compact would SUPPRESS numbers somebody asked for, which is why the enum's own
+	 * comment makes Full enumerator zero.
 	 */
 	const EPieceMenuDetail UnknownDetail = static_cast<EPieceMenuDetail>(200);
 
@@ -155,9 +152,9 @@ bool FPieceMenuPanelSizeTest::RunTest(const FString& Parameters)
 		const FVector2D SizePx = PieceMenuPanelSizePx(Case.Detail);
 
 		/*
-		 * FINITE FIRST AND SEPARATELY FROM THE VALUE. A NaN compares false against everything
-		 * including itself, so the positivity claim below would report "it is nan x nan px" as an
-		 * ordinary too-small panel rather than as the fault it is.
+		 * Finite first and separately from the value: a NaN compares false against everything
+		 * including itself, so the positivity claim below would report "it is nan x nan px" as
+		 * an ordinary too-small panel rather than the fault it is.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -166,9 +163,9 @@ bool FPieceMenuPanelSizeTest::RunTest(const FString& Parameters)
 			SizeIsFinite(SizePx));
 
 		/*
-		 * AND A PANEL OF NO SIZE IS NOT A SMALL PANEL. Zero draws no heading, and the heading is
-		 * the strip the whole drag affordance hangs off — a panel that cannot be grabbed is the
-		 * state ClampPanelOffset exists to refuse, arrived at from the other direction.
+		 * A panel of no size is not a small panel: zero draws no heading, and the heading is the
+		 * strip the drag affordance hangs off — a panel that cannot be grabbed is the state
+		 * ClampPanelOffset exists to refuse, arrived at from the other direction.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -177,9 +174,8 @@ bool FPieceMenuPanelSizeTest::RunTest(const FString& Parameters)
 			SizePx.X > 0.0 && SizePx.Y > 0.0);
 
 		/*
-		 * NO MODE IS BIGGER THAN Full ON EITHER AXIS. Full is the mode that withholds nothing, so
-		 * it is the mode that needs the most room; a mode asking for more than it is asking for
-		 * more room to show less.
+		 * No mode is bigger than Full on either axis: Full withholds nothing, so it needs the
+		 * most room, and a mode asking for more is asking for more room to show less.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -188,9 +184,9 @@ bool FPieceMenuPanelSizeTest::RunTest(const FString& Parameters)
 			SizePx.X <= Full.X && SizePx.Y <= Full.Y);
 
 		/*
-		 * AND THE ANSWER IS THE SAME ANSWER TWICE. It is read while a widget tree is built and read
-		 * again while the panel is placed; a size that moved between the two calls would be a panel
-		 * anchored to a corner it is not the size of.
+		 * And the answer is the same answer twice: read while a widget tree is built and again
+		 * while the panel is placed. A size that moved between calls would be a panel anchored to
+		 * a corner it is not the size of.
 		 */
 		TestEqual(
 			FString::Printf(
@@ -201,9 +197,9 @@ bool FPieceMenuPanelSizeTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE FULL PANEL IS THE SIZE THE GAME ALREADY DRAWS, TO THE PIXEL. This is the characterisation
-	 * half: the behaviour being added is COMPACT, and Full moving with it would silently retune a
-	 * width that was measured against the longest sentence this readout can compose.
+	 * The full panel is the size the game already draws, to the pixel — the characterisation
+	 * half: the behaviour being added is Compact, and Full moving with it would silently retune a
+	 * width measured against the longest sentence this readout can compose.
 	 */
 	TestEqual(
 		FString::Printf(
@@ -218,10 +214,10 @@ bool FPieceMenuPanelSizeTest::RunTest(const FString& Parameters)
 		PieceMenuPanelSizePx(UnknownDetail), Full);
 
 	/*
-	 * THE TWO CLAIMS THE WHOLE FILE IS FOR, ONE PER AXIS AND SEPARATELY, BECAUSE THE TWO FAILURES
-	 * LOOK DIFFERENT ON SCREEN. A panel that only narrowed leaves a full-height ribbon down the
+	 * The two claims the whole file is for, one per axis and separately, because the two failures
+	 * look different on screen: a panel that only narrowed leaves a full-height ribbon down the
 	 * side of the viewport; one that only shortened leaves a full-width band across it. Either is
-	 * a mode that dropped the joint table and kept the room the table was taking.
+	 * a mode that dropped the joint table and kept the room it was taking.
 	 */
 	TestTrue(
 		*FString::Printf(
@@ -236,10 +232,10 @@ bool FPieceMenuPanelSizeTest::RunTest(const FString& Parameters)
 		Compact.Y < Full.Y);
 
 	/*
-	 * AND IT MUST GIVE BACK ENOUGH TO BE WORTH ASKING FOR. See CompactPanelAreaBudget: the model's
-	 * own description of this mode is that it buys back a third, and "strictly smaller" on its own
-	 * is satisfied by a pixel. Reported as a percentage either way, because the number a retune
-	 * needs is how much room is left rather than whether it passed.
+	 * And it must give back enough to be worth asking for (see CompactPanelAreaBudget): the
+	 * model's own description is that it buys back a third, and "strictly smaller" alone is
+	 * satisfied by a pixel. Reported as a percentage, since a retune needs how much room is
+	 * left, not whether it passed.
 	 */
 	const double FullAreaSqPx = Full.X * Full.Y;
 	const double CompactAreaSqPx = Compact.X * Compact.Y;

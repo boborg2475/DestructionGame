@@ -8,32 +8,29 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, not anonymous, and named differently from every other one in this
- * directory. An anonymous namespace is private to a TRANSLATION UNIT rather than to a file,
- * and a unity build merges many files into one — at which point two file-local names that
- * collide are a hard compile error between files that never refer to each other. See
- * CURRENT_STATE.md; the `using namespace` lives inside each RunTest body for the same reason.
+ * Named namespace, not anonymous, and named differently from every other one in this directory.
+ * An anonymous namespace is private to a translation unit rather than to a file, and a unity
+ * build merges many files into one — at which point two file-local names that collide are a hard
+ * compile error between files that never refer to each other. See CURRENT_STATE.md; the `using
+ * namespace` lives inside each RunTest body for the same reason.
  */
 namespace PieceInspectionTestSupport
 {
 	using namespace DestructionProfiles;
 
 	/**
-	 * Unreal's gravity, transcribed rather than imported.
-	 *
-	 * The 1 N = 100 uu conversion is ALREADY INSIDE THIS NUMBER — a 2 kg piece weighs
-	 * 2 x 980 = 1960 uu, which is 19.6 N x 100 — so applying a factor of 100 anywhere
-	 * downstream is the standard way to be wrong by exactly 100x here.
+	 * Unreal's gravity, transcribed rather than imported. The 1 N = 100 uu conversion is already
+	 * inside this number — a 2 kg piece weighs 2 x 980 = 1960 uu, which is 19.6 N x 100 — so
+	 * applying a factor of 100 anywhere downstream is the standard way to be wrong by exactly
+	 * 100x here.
 	 */
 	constexpr double InspectionGravityCmPerSecondSquared = 980.0;
 
 	/**
-	 * SPELLED OUT INDEPENDENTLY, NEVER IMPORTED FROM PRODUCTION.
-	 *
-	 * 1 N = 100 uu of force and 1 cm2 = 100 mm2, so one megapascal — one newton per square
-	 * millimetre — across one square centimetre is 100 x 100 uu. If
-	 * DestructionForce::ForceUnitsPerMPaSqCm is ever wrong, this file fails rather than
-	 * agreeing with it, which is the entire reason it is not simply used here.
+	 * Spelled out independently, never imported from production. 1 N = 100 uu of force and
+	 * 1 cm2 = 100 mm2, so one megapascal — one newton per square millimetre — across one square
+	 * centimetre is 100 x 100 uu. If DestructionForce::ForceUnitsPerMPaSqCm is ever wrong, this
+	 * file fails rather than agreeing with it.
 	 */
 	constexpr double InspectionForceUnitsPerMPaSqCm = 100.0 * 100.0;
 
@@ -116,12 +113,12 @@ namespace PieceInspectionTestSupport
 	}
 
 	/**
-	 * The diagram above, built. Solved only if asked, because "nobody has solved yet" is
-	 * itself one of the states a readout has to be able to tell apart from a collapse.
+	 * The diagram above, built. Solved only if asked, because "nobody has solved yet" is itself
+	 * one of the states a readout has to be able to tell apart from a collapse.
 	 *
-	 * A NULL ACTOR IS FINE HERE. Nothing in this file releases, resolves or destroys one —
-	 * the breakout is arithmetic over a graph — and spawning stand-in UObjects for a slice
-	 * that never looks at them would be testing the next one by accident.
+	 * A null actor is fine here: nothing in this file releases, resolves or destroys one — the
+	 * breakout is arithmetic over a graph — and spawning stand-in UObjects for a slice that never
+	 * looks at them would be testing the next one by accident.
 	 */
 	void BuildWorkedFixture(FStructureBinding& Out, bool bPullThePad, bool bSolve)
 	{
@@ -320,13 +317,13 @@ namespace PieceInspectionTestSupport
 					&& FMath::IsFinite(Joint.ForceUu.Z));
 
 			/*
-			 * AND THE MOMENT, WHICH HAS NO Max() ESCAPE OF ITS OWN. A moment is a solver
-			 * output rather than a verdict, so unlike the utilisation below there is no
-			 * sentinel it is entitled to come back as — every component is a real number or
-			 * the row is not describing anything. A NaN here is the worse half of the pair:
-			 * ComputeUtilisation branches on `moment != 0.0`, which is TRUE of a NaN, so it
-			 * would be carried into the stress rather than waved through, and the row would
-			 * print a utilisation of Max beside a moment nothing can read.
+			 * And the moment, which has no Max() escape of its own. A moment is a solver output
+			 * rather than a verdict, so unlike the utilisation below there is no sentinel it is
+			 * entitled to come back as — every component is a real number or the row is not
+			 * describing anything. A NaN here is the worse half of the pair: ComputeUtilisation
+			 * branches on `moment != 0.0`, which is true of a NaN, so it would be carried into
+			 * the stress rather than waved through, printing a utilisation of Max beside a
+			 * moment nothing can read.
 			 */
 			Test.TestTrue(
 				FString::Printf(
@@ -354,13 +351,13 @@ namespace PieceInspectionTestSupport
 	}
 
 	/**
-	 * THE ASSERTION THAT STOPS A SECOND COPY OF THE SOLVER GROWING BEHIND THE READOUT.
+	 * The assertion that stops a second copy of the solver growing behind the readout.
 	 *
-	 * Every number on a row is compared EXACTLY — not nearly — against the accessor it must
-	 * have come from. Exactness is the whole point: a re-derivation agrees to nine decimal
-	 * places forever and differs in the last bit, and CURRENT_STATE.md records that this
-	 * project has already paid for exactly that drift twice. A tolerance here would let the
-	 * second copy in and then let it disagree quietly.
+	 * Every number on a row is compared exactly — not nearly — against the accessor it must have
+	 * come from. Exactness is the point: a re-derivation agrees to nine decimal places forever
+	 * and differs in the last bit, and CURRENT_STATE.md records that this project has already
+	 * paid for exactly that drift twice. A tolerance here would let the second copy in and then
+	 * let it disagree quietly.
 	 */
 	void CheckInspectionAgreesWithTheGraph(
 		FAutomationTestBase& Test,

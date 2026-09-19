@@ -10,11 +10,11 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges many
- * files into one. This is NOT SessionControllerTestSupport, which is the file this one is a sibling
- * of, and every name here carries a Shortcut prefix so none of them can be ambiguous against its.
- * See CURRENT_STATE.md; the `using namespace` lives inside each RunTest for the same reason.
+ * Named namespace, and named differently from every other one in this module — an anonymous
+ * namespace is private to a translation unit, not a file, and a unity build merges many files
+ * into one. This is NOT SessionControllerTestSupport, its sibling file, and every name here
+ * carries a Shortcut prefix so none of them can be ambiguous against its. `using namespace`
+ * lives inside each RunTest for the same reason.
  */
 namespace SessionShortcutTestSupport
 {
@@ -88,59 +88,40 @@ namespace SessionShortcutTestSupport
 }
 
 /**
- * S6 — A KEYBOARD SHORTCUT IS A TOOLBAR CLICK: THE TWO TOGGLES READ THE SESSION, DISPATCH THE
- * BUTTON THE STRIP WOULD HAVE DRAWN, AND ARE REFUSED WHEREVER THAT BUTTON IS.
+ * S6 — a keyboard shortcut is a toolbar click: the two toggles read the session, dispatch the
+ * button the strip would have drawn, and are refused wherever that button is.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
+ * THE BEHAVIOUR. `ToggleSessionMode()` dispatches `ModeDestroy` when the session is in Build and
+ * `ModeBuild` otherwise; `ToggleSessionPlacement()` dispatches `PlacementFree` when Snap and
+ * `PlacementSnap` otherwise; both go through `OnToolbarButton`, so toggling a control the current
+ * mode does not draw changes nothing and says so.
  *
- * `ToggleSessionMode()` dispatches `ModeDestroy` when the session is in Build and `ModeBuild`
- * otherwise, `ToggleSessionPlacement()` dispatches `PlacementFree` when the placement is Snap and
- * `PlacementSnap` otherwise, and both go through `OnToolbarButton` — so a toggle of a control the
- * current mode does not draw changes nothing at all and says so.
+ * WHY A SEAM PER TOGGLE, AND ONLY FOR THE TWO. Six of the eight shortcuts are a constant: `1` is
+ * `PieceBrick`, `]` is `CourseUp`, `Enter` is `RunStructure`. Their handlers are just
+ * `OnToolbarButton(Id)`, and `World.Session.ToolbarDrivesTheSession` already pins what that door
+ * does with each id, refusals included — a forwarder wired through it needs no second test.
+ * `Tab` and `G` differ: SESSION_UI_DESIGN §b makes each ONE binding standing for TWO buttons, so
+ * each carries a READ of the current state and a choice between two ids — the only decision in
+ * the whole keyboard, and the one thing that can be wrong in a way a player would notice (a
+ * `Tab` that always dispatched `ModeBuild` is a key that takes you into Build mode and then
+ * appears to jam).
  *
- * =====================================================================================
- * WHY A SEAM PER TOGGLE, AND ONLY FOR THE TWO
- * =====================================================================================
+ * THE REFUSAL IS THE HALF THAT CANNOT BE GOT RIGHT BY ACCIDENT. Snap/Free is not on the Destroy
+ * strip. A toggle implemented as `State.Placement = Other` — shorter than the right shape — would
+ * silently flip a setting in a mode that does not draw it, and the player would come back to
+ * Build mode to find the ghost dropping bricks wherever the cursor is. `Core/SessionToolbar.h`
+ * states the rule enforced here one layer up: the model consults `SessionToolbarButtons` for
+ * whether a click can happen at all, so the CONTROLLER must route every input through
+ * `ApplyToolbarButton` and never set fields beside it — a keyboard is an input too. So the
+ * refusal is read three ways, each catching a different mistake: the returned bool (a silent
+ * no-op reads as a dropped keypress), the state bitwise (a field written beside the model), and
+ * the build COMPONENT (a side effect that ran anyway — the failure `OnToolbarButton`'s own header
+ * describes, where a greyed `Course down` still lowers the build plane).
  *
- * Six of the eight shortcuts are a constant: `1` is `PieceBrick`, `]` is `CourseUp`, `Enter` is
- * `RunStructure`. Their handlers are `OnToolbarButton(Id)` and there is nothing in them to be
- * wrong, which is why they have no seam here — `World.Session.ToolbarDrivesTheSession` already
- * pins what that door does with each id, refusals included, and a second copy of those claims wired
- * through a one-line forwarder would be the same test twice.
- *
- * `Tab` and `G` are different: SESSION_UI_DESIGN §b makes each of them ONE binding standing for TWO
- * buttons, so each carries a READ of the current state and a choice between two ids. That read is
- * the decision, it is the only decision in the whole keyboard, and it is the one thing here that
- * can be wrong in a way a player would notice — a `Tab` that always dispatched `ModeBuild` is a key
- * that takes you into Build mode and then appears to jam.
- *
- * =====================================================================================
- * THE REFUSAL IS THE HALF THAT CANNOT BE GOT RIGHT BY ACCIDENT
- * =====================================================================================
- *
- * Snap/Free is not on the Destroy strip. A toggle implemented as `State.Placement = Other` — the
- * obvious shape, and shorter than the right one — would silently flip a setting in a mode that does
- * not draw it, and the player would come back to Build mode to find the ghost dropping bricks
- * wherever the cursor is. `Core/SessionToolbar.h` states the rule this file is enforcing one layer
- * up: the model consults `SessionToolbarButtons` for whether a click can happen at all, so the
- * CONTROLLER must route every input through `ApplyToolbarButton` and never set fields beside it —
- * and a keyboard is an input.
- *
- * So the refusal is read three ways, because each catches a different mistake: the returned bool
- * (a silent no-op reads as a dropped keypress), the state bitwise (a field written beside the
- * model), and the build COMPONENT (a side effect that ran anyway — the failure `OnToolbarButton`'s
- * own header describes, where a greyed `Course down` still lowers the build plane).
- *
- * =====================================================================================
- * AND THE MODE TOGGLE IS ASSERTED ON WHAT IT DID, NOT ONLY ON WHERE IT LANDED
- * =====================================================================================
- *
- * Entering Build mode OPENS a build, which is `OnToolbarButton(ModeBuild)`'s side effect and
- * nothing a field write would do. The component naming a real structure afterwards is therefore
- * what says the toggle went through the door rather than around it — the mode field alone would
- * read identically either way.
+ * AND THE MODE TOGGLE IS ASSERTED ON WHAT IT DID, NOT ONLY WHERE IT LANDED. Entering Build mode
+ * OPENS a build, `OnToolbarButton(ModeBuild)`'s side effect and nothing a field write would do —
+ * the component naming a real structure afterwards is what says the toggle went through the
+ * door rather than around it.
  *
  * NEEDS A TICKING WORLD: a world, because the build component spawns a real structure and a real
  * ghost actor, and a real local player so the controller is the one the engine set input up for.
@@ -209,7 +190,7 @@ bool FSessionShortcutsGoThroughTheOneDoorTest::RunTest(const FString& Parameters
 			Controller->GetSessionToolbarState().Mode == ESessionMode::Build);
 
 		/*
-		 * AND IT WENT THROUGH THE DOOR. Opening a build is ModeBuild's SIDE EFFECT, so a shortcut
+		 * And it went through the door: opening a build is ModeBuild's side effect, so a shortcut
 		 * that set the mode field beside the model would leave the player in Build mode with no
 		 * structure behind it — a mode in which every click fails closed and nothing says why.
 		 */
@@ -246,7 +227,7 @@ bool FSessionShortcutsGoThroughTheOneDoorTest::RunTest(const FString& Parameters
 
 		TestTrue(
 			FString::Printf(
-				TEXT("AND THE COMPONENT MUST HAVE BEEN TOLD — it is the field the subsystem reads to "
+				TEXT("and the component must have been told — it is the field the subsystem reads to "
 					 "honour the cursor verbatim; it reads %s"),
 				ShortcutPlacementName(Build->PlacementMode)),
 			Build->PlacementMode == EPlacementMode::Free);
@@ -280,7 +261,7 @@ bool FSessionShortcutsGoThroughTheOneDoorTest::RunTest(const FString& Parameters
 
 		TestTrue(
 			*FString::Printf(
-				TEXT("TAB IS A TOGGLE, SO IT MUST COME BACK: the state is %s"),
+				TEXT("Tab is a toggle, so it must come back: the state is %s"),
 				*ShortcutStateBits(Controller->GetSessionToolbarState())),
 			Controller->GetSessionToolbarState().Mode == ESessionMode::Destroy);
 
@@ -291,7 +272,7 @@ bool FSessionShortcutsGoThroughTheOneDoorTest::RunTest(const FString& Parameters
 
 		TestTrue(
 			FString::Printf(
-				TEXT("SNAP/FREE IS NOT ON THE DESTROY STRIP, so G there must report that it did "
+				TEXT("Snap/Free is not on the Destroy strip, so G there must report that it did "
 					 "nothing — a silent no-op on a key reads as a dropped press; it reported %d"),
 				bToggled ? 1 : 0),
 			!bToggled);
@@ -306,7 +287,7 @@ bool FSessionShortcutsGoThroughTheOneDoorTest::RunTest(const FString& Parameters
 
 		TestTrue(
 			FString::Printf(
-				TEXT("AND THE COMPONENT UNTOUCHED: a refused click that still pushed its own side "
+				TEXT("and the component untouched: a refused click that still pushed its own side "
 					 "effect is the failure OnToolbarButton's header describes. It reads %s against %s"),
 				ShortcutPlacementName(Build->PlacementMode), ShortcutPlacementName(ComponentBefore)),
 			Build->PlacementMode == ComponentBefore);
@@ -326,17 +307,17 @@ bool FSessionShortcutsGoThroughTheOneDoorTest::RunTest(const FString& Parameters
 		const FSessionToolbarState Before = Controller->GetSessionToolbarState();
 
 		/*
-		 * THE `[` HANDLER IS THIS CALL — there is no seam of its own, because the shortcut and the
-		 * chip dispatch the same constant id. What is asserted here is that the keyboard gets the
-		 * same refusal the greyed chip does: a course key wired straight at the component, or at
-		 * the state field, is the shape that puts the build plane under the ground with the readout
+		 * The `[` handler is this call — no seam of its own, since the shortcut and the chip
+		 * dispatch the same constant id. What is asserted is that the keyboard gets the same
+		 * refusal the greyed chip does: a course key wired straight at the component, or at the
+		 * state field, is the shape that puts the build plane under the ground with the readout
 		 * still saying course 0.
 		 */
 		const bool bSteppedBelow = Controller->OnToolbarButton(EToolbarButtonId::CourseDown);
 
 		TestTrue(
 			FString::Printf(
-				TEXT("THERE IS NO COURSE BELOW THE ONE WITH THE EARTH UNDER IT, whichever input asks: "
+				TEXT("there is no course below the one with the earth under it, whichever input asks: "
 					 "the key must report that it did nothing; it reported %d"),
 				bSteppedBelow ? 1 : 0),
 			!bSteppedBelow);

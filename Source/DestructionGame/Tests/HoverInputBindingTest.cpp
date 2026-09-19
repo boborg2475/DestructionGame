@@ -13,12 +13,11 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges
- * many files into one. Note in particular that this is NOT InspectInputBindingTestSupport or
- * InspectPieceBindingTestSupport, which are the two files this one is modelled on, and every
- * helper here carries a Hover prefix so no name in it can be ambiguous against theirs. See
- * CURRENT_STATE.md; the `using namespace` lives inside each RunTest for the same reason.
+ * Named namespace, and named differently from every other one in this module — an
+ * anonymous namespace is private to a translation unit rather than to a file, and a
+ * unity build merges many files into one. Every helper here carries a Hover prefix so
+ * no name can be ambiguous against the two files (InspectInputBindingTestSupport,
+ * InspectPieceBindingTestSupport) this one is modelled on.
  */
 namespace HoverInputBindingTestSupport
 {
@@ -73,53 +72,43 @@ namespace HoverInputBindingTestSupport
 	}
 
 	/**
-	 * A FLOOR ON WHAT THE TWO CONTEXTS ALREADY MAP, so a sweep over nothing fails rather than
-	 * passing in silence. Measured off the assets: IMC_Default carries eight mappings and
-	 * IMC_MouseLook one (Mouse2D for IA_MouseLook). Six is comfortably under that and well over
-	 * zero, which is all this number has to be — the same floor, and the same reasoning, as
-	 * Tests/InspectPieceBindingTest.cpp's.
+	 * A floor on what the two contexts already map, so a sweep over nothing fails rather
+	 * than passing in silence. Measured off the assets (IMC_Default: eight mappings,
+	 * IMC_MouseLook: one); six is comfortably under that and well over zero, which is all
+	 * this needs to be — same floor and reasoning as InspectPieceBindingTest.cpp's.
 	 */
 	constexpr int32 HoverExistingMappingFloor = 6;
 }
 
 /**
- * THE PLAYER CONTROLLER BINDS A HOVER INPUT ACTION TO A HANDLER WHEN IT SETS ITS INPUT UP,
- * EXACTLY ONCE, AND ON Triggered RATHER THAN ON Started.
+ * The player controller binds a hover input action to a handler when it sets its input
+ * up, exactly once, and on Triggered rather than on Started.
  *
- * WHAT IS BROKEN TODAY. HoverAlongRay is written, covered end to end by World.Select, and
- * called by NOBODY. There is no mouse-move binding anywhere, so hovering is unreachable to a
- * player: every brick in the game reads EBrickHighlight::None forever unless it is clicked.
- * This is the wire, and it is the whole of what is missing on this side.
+ * What is broken today: HoverAlongRay is written, covered end to end by World.Select, and
+ * called by nobody. There is no mouse-move binding anywhere, so every brick reads
+ * EBrickHighlight::None forever unless clicked. This is the missing wire.
  *
- * THE TRIGGER EVENT IS THE DECISION THIS TEST EXISTS TO PIN, AND IT IS THE OPPOSITE OF
- * IA_InspectPiece'S. Inspecting is a one-shot press, so it binds Started — Triggered would
- * re-open the menu every frame LMB was held. Hover is not a press at all: it is a continuous
- * axis, and with no explicit trigger asset Enhanced Input actuates an axis action on every
- * frame its value is non-zero, i.e. on every frame the mouse is actually moving.
+ * The trigger event is the opposite of IA_InspectPiece's. Inspecting is a one-shot press,
+ * so it binds Started — Triggered would re-open the menu every frame LMB was held. Hover
+ * is a continuous axis instead, and with no explicit trigger asset Enhanced Input actuates
+ * an axis action on every frame its value is non-zero (every frame the mouse moves):
  *
- *   - Started fires on the FIRST frame of a movement gesture and not again until the mouse has
- *     stopped and started moving again. Hover would update once at the beginning of each drag
- *     and then be stale for the entire rest of it — which is precisely the frames in which what
- *     is under the cursor changes. THIS IS THE OBVIOUS WRONG ANSWER, because it is the one the
- *     file next door already uses.
- *   - Completed fires when the mouse STOPS. Hover would update one frame after the player
- *     finished pointing, so the brick called out would always be the previous one.
- *   - Triggered fires on every actuated frame and only on those, so a still mouse costs no
- *     traces at all. The property that made Triggered wrong for a held button — it fires on
- *     frames where nothing changed — is exactly what makes it right for an axis, where an
- *     actuated frame IS a frame where something changed.
+ *   - Started fires on the first frame of a movement gesture only, so hover would update
+ *     once at the start of each drag and stay stale for the rest of it — the file next
+ *     door's binding, and the obvious wrong answer here.
+ *   - Completed fires when the mouse stops, so hover would always name the previous brick.
+ *   - Triggered fires on every actuated frame and only those — a still mouse costs no
+ *     traces, and a moving one updates every frame it should.
  *
- * EXACTLY ONE BINDING, NOT AT LEAST ONE. Two bindings on the same action trace and re-highlight
- * twice per mouse-move frame; at 30 x 40 bricks that is a doubled line trace on every frame the
- * player moves the mouse, for an answer that was already correct. A count is the only thing that
- * sees it and "at least one" never would.
+ * Exactly one binding, not at least one: two bindings on the same action trace and
+ * re-highlight twice per mouse-move frame, doubling every line trace at 30x40 bricks for an
+ * answer that was already correct. Only a count catches that.
  *
- * THE ACTION IS LOADED BY PATH RATHER THAN READ OFF THE CONTROLLER, so a controller that bound
- * some other action asset fails here rather than agreeing with itself.
+ * The action is loaded by path rather than read off the controller, so a controller that
+ * bound some other action asset fails here rather than agreeing with itself.
  *
- * NEEDS A TICKING WORLD: it needs a WORLD — the engine only runs SetupInputComponent for a
- * controller with a real ULocalPlayer behind it — but it never ticks one, spawns no wall and
- * touches no physics.
+ * Needs a world — SetupInputComponent only runs for a controller with a real ULocalPlayer
+ * behind it — but never ticks one, spawns no wall, touches no physics.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHoverInputBindingTest,
@@ -161,10 +150,9 @@ bool FHoverInputBindingTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * FIXTURE PRECONDITION: THE ENGINE REALLY DID RUN SetupInputComponent, and it made an
-	 * ENHANCED one. DefaultInput.ini names UEnhancedInputComponent as the default input
-	 * component class; if that ever changes, this is where it says so rather than reporting an
-	 * absent binding.
+	 * Fixture precondition: the engine really did run SetupInputComponent, and made an
+	 * Enhanced one. DefaultInput.ini names UEnhancedInputComponent as the default; if that
+	 * ever changes, this is where it says so rather than reporting an absent binding.
 	 */
 	UEnhancedInputComponent* const Input = Cast<UEnhancedInputComponent>(Controller->InputComponent);
 
@@ -220,31 +208,27 @@ bool FHoverInputBindingTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE HOVER INPUT EXISTS, IS MAPPED IN IMC_Default, AND DOES NOT SWALLOW THE AXIS FREE-LOOK
- * NEEDS.
+ * The hover input exists, is mapped in IMC_Default, and does not swallow the axis
+ * free-look needs.
  *
- * IMC_Default RATHER THAN IMC_MouseLook, AND THAT IS THE LOAD-BEARING HALF. Both actions read
- * the same Mouse2D axis, so hanging hover off the existing IA_MouseLook looks like it saves an
- * asset — but free-look has never been continuously live. It used to be TAKEN AWAY:
- * SetPieceMenuControls removed IMC_MouseLook for as long as a menu was up, so a hover hung off it
- * would have stopped updating at exactly the moment the cursor appeared and the player started
- * moving it across bricks. S6 deleted that function and CHORDED free-look on a held right mouse
- * button instead, which leaves the same hole by a different route: a hover in that context would
- * only update while the player was holding RMB to spin the camera, which is the one moment they
- * are not looking for a brick. IMC_Default is applied for the whole session and gated on nothing,
- * for the same reason IA_InspectPiece lives in it: it is how a player interacts with a menu that
- * is already open.
+ * IMC_Default rather than IMC_MouseLook is the load-bearing half. Both actions read the
+ * same Mouse2D axis, so hanging hover off the existing IA_MouseLook looks like it saves
+ * an asset — but free-look has never been continuously live. SetPieceMenuControls used to
+ * remove IMC_MouseLook while a menu was up, which would have stalled a hover hung off it
+ * the moment the cursor appeared; S6 deleted that function and chorded free-look on a held
+ * right mouse button instead, leaving the same hole by a different route (a hover there
+ * would only update while the player is holding RMB, the one moment they are not pointing
+ * at a brick). IMC_Default is applied for the whole session and gated on nothing, the same
+ * reason IA_InspectPiece lives in it.
  *
- * AND THEREFORE THE KEY IS SHARED, WHICH IS THE HAZARD. UInputAction::bConsumeInput defaults to
- * TRUE, and a consumed key is withheld from every mapping below it in the applied stack — so a
- * hover action on Mouse2D that consumes it takes the mouse away from IA_MouseLook and the camera
- * simply stops turning, with nothing logged and no test naming the cause. The assertion is
- * therefore conditional on the sharing rather than on the key: whatever key hover ends up on, if
- * something else in either context also wants it, hover must not eat it.
+ * The key is therefore shared, which is the hazard: UInputAction::bConsumeInput defaults
+ * to true, and a consumed key is withheld from every mapping below it in the applied stack
+ * — so a hover action on Mouse2D that consumes it takes the mouse away from IA_MouseLook
+ * and the camera silently stops turning. The assertion is conditional on the sharing
+ * rather than on the key, so it holds whatever key hover ends up on.
  *
- * NEEDS A TICKING WORLD: no. Two assets and an action, loaded by path — no world, no player,
- * no input subsystem. Whether SetupInputComponent BINDS the action is the separate question
- * next door.
+ * No ticking world needed: two assets and an action, loaded by path. Whether
+ * SetupInputComponent binds the action is the separate question next door.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHoverPieceIsBoundTest,
@@ -300,8 +284,8 @@ bool FHoverPieceIsBoundTest::RunTest(const FString& Parameters)
 		AllMappings.Num() >= HoverExistingMappingFloor);
 
 	/*
-	 * ONE: IMC_Default MAPS IT AT ALL. An action asset that exists, is bound in C++ and is
-	 * mapped to no key is the exact shape of a wire that looks finished and never fires.
+	 * One: IMC_Default maps it at all. An asset bound in C++ but mapped to no key is a
+	 * wire that looks finished and never fires.
 	 */
 	TArray<FKey> HoverKeys;
 
@@ -320,20 +304,19 @@ bool FHoverPieceIsBoundTest::RunTest(const FString& Parameters)
 		HoverKeys.Num() >= 1);
 
 	/*
-	 * TWO: AND NOT IN THE FREE-LOOK CONTEXT. That context used to be taken away while a menu was
-	 * up; since S6 its one mapping is CHORDED on a held right mouse button. Either way a hover
-	 * mapping placed there is dead at the moment it is wanted — once because the context was gone,
-	 * now because the player is not holding RMB while they point at a brick.
+	 * Two: and not in the free-look context. That context used to be taken away while a
+	 * menu was up; since S6 its one mapping is chorded on a held right mouse button.
+	 * Either way a hover mapping placed there is dead at the moment it is wanted.
 	 */
 	TestTrue(
 		TEXT("the hover action belongs in IMC_Default, not in IMC_MouseLook — that context's one mapping is chorded on a held right mouse button, and the player is not holding it while moving the cursor over bricks"),
 		!MouseLookContext->HasMappingForInputAction(HoverAction));
 
 	/*
-	 * THREE: IT MUST NOT EAT AN AXIS SOMETHING ELSE IS USING. Sharing Mouse2D with IA_MouseLook
-	 * is expected and fine; consuming it is not, and the symptom is a camera that silently
-	 * stops turning. Written over whatever the contexts contain rather than against a key
-	 * somebody wrote down, so it keeps meaning the same thing if hover moves key.
+	 * Three: it must not eat an axis something else is using. Sharing Mouse2D with
+	 * IA_MouseLook is fine; consuming it is not — the symptom is a camera that silently
+	 * stops turning. Checked against whatever the contexts contain, so it still holds if
+	 * hover moves key.
 	 */
 	for (const FKey& HoverKey : HoverKeys)
 	{
