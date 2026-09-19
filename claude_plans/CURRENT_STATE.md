@@ -61,6 +61,27 @@ Last updated: **2026-09-16** — the interactive build/destroy SESSION is DELIVE
   region) rather than re-flooding cold from the seed each pass; the larger structural win, and the
   soundness bar is real (a carried region must never drop a piece a newly-severed joint would move —
   that is the red to write first). Re-price it against the fresh L-cut decision time now #2 has landed.
+  **#3 PROVER-CARRY SUB-SLICE ATTEMPTED AND PARKED 2026-09-18 (branch `wip/prover-region-carry-slice1`,
+  commit 60bd58e — NOT merged).** Carrying the PROVER's region across passes was built green on an
+  L-cut differential but REJECTED by review as NOT answer-transparent, and the attempt taught two things
+  worth keeping: (a) post-#2 the prover poses are already mechanism-sized, so carrying the region changes
+  the starting set but not the LP size and gives NO standalone prover speedup — the prover carry was only
+  ever scaffolding for the load-solve seeding; (b) a carried region diverges from cold re-flood in two
+  regimes the L-cut cannot reach — carry fells FEWER when a carried region exceeds the speculative ceiling
+  min(cap,48) and starves a non-falling pass's speculative search, and carry fells MORE because
+  `DeriveRegionalSeed` seeds non-first passes only from the PREVIOUS pass's severed joints (an accepted
+  miss) while carry retains the whole prior region and certifies late-activating cross-pass mechanisms.
+  So "carry == cold" is the WRONG invariant: cold only re-floods from the last pass's joints, never "every
+  joint severed so far". **The real #3 lever is the LOAD SOLVE, not the prover:** after #2 the L-cut
+  decision is ~441 ms of which the load solve is ~290 ms (~66%, ~95 ms × 3 whole-structure passes), the
+  prover only ~140 ms (~32%). Region-seeding the load solve (re-solve keyed to the disturbance instead of
+  the whole 5,612-piece building each pass) is where the time is — but its soundness bar is HARDER and
+  GLOBAL: reachability/load distribution propagate structure-wide, so a region-seeded solve must reach the
+  SAME fixpoint (same Grounded/Supported answer for EVERY piece) as the whole-structure solve. Answer-
+  transparency is mandatory — the prover carry failed exactly this. Cheaper, zero-soundness-risk fallback
+  still open: `SolveLoads` rebuilds per-piece joint adjacency (~3,600 small allocs) every call, replaceable
+  by count-then-fill (the code comment names it) — no verdict change, smaller win. Next step: PLAN the
+  region-seeded load solve to judge whether sound answer-transparency is achievable before building.
   Also landed 2026-09-18: per-joint `FStructure::GetBreakAuthority()` (1 gate / 2 sweep /
   3 prover; `INDEX_NONE` for intact or went-with-a-removed-piece), a `severedBy` column in the harness's
   `joints.csv`, both observability-only. **FOLLOW-UP (review, non-blocking):** on the rare mid-loop
