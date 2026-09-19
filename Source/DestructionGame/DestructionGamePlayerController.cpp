@@ -32,10 +32,10 @@
 #include "World/DestructionStructureSubsystem.h"
 
 /*
- * File-local names carry a PieceMenu prefix. An anonymous namespace is private to a
- * TRANSLATION UNIT rather than to a file, and a unity build merges many files into one —
- * so two file-local names that collide are a hard compile error between files that never
- * refer to each other. See CURRENT_STATE.md.
+ * File-local names carry a PieceMenu prefix: an anonymous namespace is private to a
+ * translation unit, not a file, and a unity build merges files into one, so two colliding
+ * file-local names are a hard compile error between files that never refer to each other.
+ * See CURRENT_STATE.md.
  */
 namespace
 {
@@ -50,10 +50,10 @@ namespace
 	/**
 	 * The brick standing for this ref, or null.
 	 *
-	 * THE REF IS RESOLVED RATHER THAN INDEXED, so a ref naming a piece that has gone — which
-	 * is what every ref becomes the moment a commit runs — answers null instead of reaching
-	 * a tombstoned slot. GetActor already answers null for INDEX_NONE, for a removed piece
-	 * and for an actor destroyed by any route, so the cast is the only check left.
+	 * Resolved rather than indexed, so a ref naming a piece that has gone (what every ref
+	 * becomes once a commit runs) answers null instead of reaching a tombstoned slot;
+	 * GetActor already handles INDEX_NONE and any other kind of gone, so the cast is the
+	 * only check left.
 	 */
 	ABrickActor* PieceMenuBrickForRef(UDestructionStructureSubsystem* Subsystem, const FPieceRef& Ref)
 	{
@@ -73,17 +73,13 @@ namespace
 	}
 
 	/**
-	 * WHETHER A STRUCTURE HAS ANYTHING IN IT WORTH COMMANDING — ONE READING, USED TWICE.
+	 * Whether a structure has anything in it worth commanding — one reading, used twice.
 	 *
-	 * LIVE PIECES RATHER THAN PIECES, because RemovePiece TOMBSTONES instead of compacting: a plot
-	 * whose every brick has been deleted still answers a piece count. Which structure the session
-	 * names and whether that structure has anything in it are the same question asked from two
-	 * places — GetSessionStructureId choosing between the player's build and the level's wall, and
-	 * RefreshSessionHasStructure setting the flag both commands are greyed on — and they agree for
-	 * every state except exactly one: a build that has had pieces and has none left. Asked two ways
-	 * there, the choice picks the emptied build and the flag then reads zero off it, so one deleted
-	 * brick greys Run over a wall standing in front of the player. One function, so they cannot
-	 * drift again.
+	 * Live pieces rather than piece count, since RemovePiece tombstones instead of compacting
+	 * and an emptied plot still answers a nonzero count. GetSessionStructureId and
+	 * RefreshSessionHasStructure ask this from two places; without one shared answer, a build
+	 * that has had pieces and has none left could get picked by the first and read as empty by
+	 * the second, greying Run over a wall standing in front of the player.
 	 */
 	bool SessionStructureIsLive(const FStructureBinding* Binding)
 	{
@@ -92,92 +88,78 @@ namespace
 }
 
 /*
- * THE PRIORITY THE CONTEXTS ARE APPLIED AT, NAMED BECAUSE IT IS NOW USED TWICE. The menu
- * removes IMC_MouseLook and puts it back, and a restore at a different priority would change
- * which context wins a shared key without changing anything visible at the call site.
- *
- * The name is deliberately not a bare `MappingContextPriority`: a unity build merges many
- * .cpp files into one translation unit, so a file-scope constant here shares a namespace with
- * every other file in the module. See CURRENT_STATE.md.
+ * The priority the contexts are applied at, named because it is now used twice: a restore at a
+ * different priority would silently change which context wins a shared key. Not a bare
+ * `MappingContextPriority` because a unity build shares this file-scope name with every other
+ * file in the module — see CURRENT_STATE.md.
  */
 static constexpr int32 PieceMenuMappingContextPriority = 0;
 
 /*
- * AND THE SESSION'S CONTEXT GOES ABOVE THEM, WHICH IS WHAT MAKES THE CAMERA TURN AT ALL.
+ * The session's context goes above the other two, which is what makes the camera turn at all.
  *
- * IMC_MouseLook's one Mouse2D mapping is CHORDED on IA_LookModifier, and IMC_Session is where the
- * modifier is mapped to the right mouse button. UInputTriggerChordAction::UpdateState answers by
- * reading the chord action's TriggerStateTracker off the player input, and
- * UEnhancedPlayerInput::EvaluateInputImpl resets every mapping's trigger state at the END of the
- * frame rather than the start — its own comment says why: "Delay MappingTriggerState reset until
- * here to allow dependent triggers (e.g. chords) access to this tick's values". So the modifier's
- * mapping has to be evaluated EARLIER IN THE SAME FRAME than the mapping that chords off it, or the
- * chord reads a state cleared last frame, answers "not held", and free-look never triggers however
- * hard the button is held.
+ * IMC_MouseLook's Mouse2D mapping is chorded on IA_LookModifier, which IMC_Session maps to the
+ * right mouse button. A chord reads the modifier's trigger state, and
+ * UEnhancedPlayerInput::EvaluateInputImpl resets that state at the end of the frame (its own
+ * comment: "Delay ... reset ... to allow dependent triggers (e.g. chords) access to this tick's
+ * values"), so the modifier must be evaluated earlier in the same frame than the mapping that
+ * chords off it, or the chord reads last frame's cleared state and free-look never triggers.
  *
- * A PRIORITY IS THE ONLY LEVER THAT REACHES ACROSS TWO CONTEXTS.
- * IEnhancedInputSubsystemInterface::ReorderMappings puts chording mappings before chorded ones
- * WITHIN ONE CONTEXT, and these two are in different assets, so that reorder never sees the pair.
- * Across contexts RebuildControlMappings orders by a priority-descending ValueSort, which decides
- * nothing between equals — at one shared priority the list came out with the chorded axis first and
- * a probe measured 0° of yaw. One above is what puts IMC_Session's mappings in front.
+ * A priority is the only lever that reaches across two contexts — ReorderMappings only orders
+ * chording-before-chorded within one context, and across contexts the sort decides nothing
+ * between equals; at one shared priority a probe measured 0° of yaw. One priority above fixes it.
  */
 static constexpr int32 SessionMappingContextPriority = PieceMenuMappingContextPriority + 1;
 
 /*
  * How far a ray cast from the cursor reaches, in cm (1 uu = 1 cm), i.e. 100 m.
  *
- * ONE REACH FOR BOTH HANDLERS, because they are the same ray: what a click would hit and what
- * the cursor is pointing at must be the same brick, and two constants is two ways for them to
- * stop being.
- *
- * IT LIVES IN THE HANDLERS' HALF, WHICH IS THE UNTESTED ONE, so it is a reach rather than a
- * tuned threshold: the game mode's wall is about 6.6 m across and 3 m tall, and a flying
- * observer is expected to be tens of metres off it. Nothing downstream depends on the value —
- * the trace either hits a brick or it does not, and a miss dismisses.
+ * One reach for both handlers, because they are the same ray: what a click would hit and what
+ * the cursor is pointing at must be the same brick. It lives in the untested handlers' half, so
+ * it is a reach rather than a tuned threshold — the game mode's wall is about 6.6 m across and
+ * 3 m tall, and a flying observer is expected to be tens of metres off it. Nothing downstream
+ * depends on the value: the trace either hits a brick or it does not, and a miss dismisses.
  */
 static constexpr double PieceMenuCursorReachCm = 10000.0;
 
 /*
- * WHAT AN ENTRY ROW IS DRAWN IN, ACCORDING TO THE ONE BOOL THE MODEL ALREADY DECIDED.
+ * What an entry row is drawn in, keyed on the one bool the model already decided.
  *
- * FInspectorPieceEntry::bIsLivePiece exists so that a brick a cascade removed and a perfectly
- * live one do not present identically — and it exists ON THE MODEL so that nothing here has to
- * resolve a ref to find out. Reading it into a colour is the whole use of it: no filtering, no
- * dropping the entry, and no second opinion about what the menu may then do about it, which is
- * PieceActionsFor's intersection and is already said by the action rows going empty.
+ * FInspectorPieceEntry::bIsLivePiece exists so a brick a cascade removed and a live one do not
+ * present identically, and it lives on the model so nothing here has to resolve a ref to find
+ * out. Reading it into a colour is the whole use of it — no filtering, no dropping the entry;
+ * whether the menu can still act on it is PieceActionsFor's intersection, already said by the
+ * action rows going empty.
  *
- * These are file-scope names in a unity build, hence the prefix; see the note above.
+ * File-scope names carry the prefix for the unity-build reason noted above.
  */
 static const FLinearColor PieceMenuLivePieceColour(1.0f, 1.0f, 1.0f, 1.0f);
 static const FLinearColor PieceMenuDeadPieceColour(0.5f, 0.5f, 0.5f, 0.6f);
 
 /*
- * THE PANEL'S SIZE IS NOT HERE ANY MORE, AND ITS ABSENCE IS THE POINT.
+ * The panel's size is not here any more, and its absence is the point.
  *
- * A PANEL THAT CANNOT CHANGE SIZE CANNOT MOVE ANYTHING, which is still the single property every
- * stillness claim about this menu rests on: whatever the readout is showing and however many bricks
- * are picked, every row is where it was, so a click aimed at one commits that one. What changed is
- * that the size is now a function of the DETAIL MODE — EPieceMenuDetail::Compact drops the joint
- * table and the headroom scale, and a mode that drew the lines it has left into the same rectangle
- * gave the player back no screen at all, which was their complaint.
+ * A panel that cannot change size cannot move anything, which every stillness claim about this
+ * menu rests on: whatever is showing, every row stays where it was, so a click aimed at one
+ * commits that one. The size is now a function of the detail mode — EPieceMenuDetail::Compact
+ * drops the joint table and the headroom scale, and a mode that drew its remaining lines into
+ * the same rectangle gave the player back no screen at all, which was their complaint.
  *
- * PieceMenuPanelSizePx IS WHERE IT LIVES, IN Core, BESIDE THE DERIVATION OF BOTH FIGURES.
- * Presenter.PieceMenuPanelSize holds the orderings and the area budget, and
- * World.Menu.TheReadoutFitsInsideThePanel arranges this very panel in both modes and holds the
- * rectangle it lands in against what that function said. Two constants here would be a second copy
- * of the answer with no test between them.
+ * It lives in Core now, as PieceMenuPanelSizePx, beside the derivation of both figures:
+ * Presenter.PieceMenuPanelSize holds the orderings and area budget, and
+ * World.Menu.TheReadoutFitsInsideThePanel checks the rectangle it lands in against that answer.
+ * Two constants here would be a second copy with no test between them.
  */
 
 /**
- * HOW FAR IN FROM THE VIEWPORT'S RIGHT EDGE THE PANEL OPENS.
+ * How far in from the viewport's right edge the panel opens.
  *
- * THE OLD FIGURE, COMING BACK AS AN ARGUMENT. The panel used to be an SBox at HAlign_Right /
- * VAlign_Center with a 24 px margin, argued on the record as keeping the readout off the wall the
- * player is pointing at; making it draggable replaced the alignment with an offset and the home
- * defaulted to the origin. PieceMenuHomeOffset takes this as a parameter rather than spelling it,
- * which is what lets Presenter.PanelHomeOffset sweep no margin, this one, one wider than the screen
- * and a negative one — a value passed in is a value a test can vary.
+ * The old figure, coming back as an argument. The panel used to be an SBox at HAlign_Right /
+ * VAlign_Center with a 24 px margin, kept there to hold the readout off the wall the player is
+ * pointing at; making it draggable replaced the alignment with an offset defaulting to the
+ * origin. PieceMenuHomeOffset takes this as a parameter rather than a spelled-out constant, so
+ * Presenter.PanelHomeOffset can sweep no margin, this one, one wider than the screen, and a
+ * negative one — a value passed in is a value a test can vary.
  */
 static constexpr double PieceMenuPanelHomeMarginPx = 24.0;
 
@@ -185,66 +167,59 @@ static constexpr double PieceMenuPanelHomeMarginPx = 24.0;
 static constexpr float PieceMenuPanelPaddingPx = 10.0f;
 
 /**
- * HOW TALL THE BRICK LIST MAY GET, WHICH IS WHAT MAKES A LONG SELECTION SURVIVABLE.
+ * How tall the brick list may get, which is what makes a long selection survivable.
  *
- * About eight rows. Past that the list scrolls INSIDE this height rather than growing, so forty
+ * About eight rows. Past that the list scrolls inside this height rather than growing, so forty
  * picked bricks push nothing off the bottom of the screen and move neither the readout nor the
  * row that deletes them.
  *
- * A CAP RATHER THAN A HEIGHT, AND THE DIFFERENCE IS WHAT A SHORT SELECTION LOOKS LIKE. Stated as a
- * fixed height this reserved all eight rows for three bricks, stranding about 140 px of empty
- * panel between the last brick and the readout — a fifth of the panel, reading as a menu that had
- * failed to finish drawing. Capping does the same job for the long selection, because the hazard
- * there is the list growing PAST this figure, and lets a short one take only the room it needs.
+ * A cap rather than a fixed height, because a fixed height reserved all eight rows for three
+ * bricks, stranding about 140 px of empty panel between the last brick and the readout — a fifth
+ * of the panel, reading as a menu that had failed to finish drawing. Capping stops the list
+ * growing past this figure while letting a short selection take only the room it needs.
  */
 static constexpr float PieceMenuBrickListMaxHeightPx = 190.0f;
 
 /*
- * THE HEADROOM BAR'S TRACK: ONE SIZE FOR EVERY JOINT, SO THE BARS READ AS A COLUMN — AND THE
- * WIDTH IS SET BY THE SCALE UNDER IT RATHER THAN BY THE BAR.
+ * The headroom bar's track: one size for every joint, so the bars read as a column — and the
+ * width is set by the scale under it rather than the bar.
  *
- * The decade labels are placed along this same width, each straddling its own fraction of it, so
- * the four of them have to fit side by side with air between them: "1×", "10×", "100×" and
- * "1000×" measure 70 px between them at the scale's font, and the two crowded ones at the top end
- * left a third of a pixel between them on the 96 px track this replaces — "100×1000×" rendered as
- * one string on the axis whose entire job is to say which decade a fill means.
+ * The decade labels sit along this width, each straddling its own fraction of it, so the four
+ * must fit side by side with air between them: at the scale's font, the two crowded ones at the
+ * top end left a third of a pixel between them on the 96 px track this replaces — "100×1000×"
+ * rendered as one string on the axis whose entire job is to say which decade a fill means.
  *
- * 140 px LEAVES 15 px BETWEEN THE TIGHTEST PAIR, against the 4 px World.Menu.HeadroomTicksStay-
- * InsideTheBarTheyLabel asks for, and it is bounded from the other side: every pixel here pushes
- * the joint sentence beside it further right, and the bar and the swatch column below together
- * take 166 px off the front of every one of those.
- *
- * WHAT IS LEFT TO SPEND IS 22 px, not the 112 this once read. That earlier figure was taken on a
- * flush wall, which bends nowhere and so never prints the bending clause; World.Menu.TheReadout-
- * FitsInsideThePanel now sweeps a wall with a corbel in it too, and the longest sentence that one
- * produces clears the column by 22 px at the panel's present width. A wider bar has to come out
- * of that, or out of PieceMenuPanelSizePx's full width alongside it.
+ * 140 px leaves 15 px between the tightest pair, against the 4 px
+ * World.Menu.HeadroomTicksStayInsideTheBarTheyLabel asks for. It is bounded from the other side
+ * too: the bar and swatch column together take 166 px off the front of the joint sentence beside
+ * them, leaving only 22 px once World.Menu.TheReadoutFitsInsideThePanel sweeps a wall with a
+ * corbel in it. A wider bar has to come out of that.
  */
 static constexpr float PieceMenuHeadroomBarWidthPx = 140.0f;
 static constexpr float PieceMenuHeadroomBarHeightPx = 8.0f;
 
 /*
- * THE SWATCH THAT TIES A JOINT ROW TO THE BRICK ON THE FAR END OF IT.
+ * The swatch that ties a joint row to the brick on the far end of it.
  *
  * A joint row already names its neighbour in words — "course 2 · #4" — and in a wall of 1,220
  * identical bricks a word is not enough to find one by. FInspectorJointRow::ColourSlot is the
- * model's answer to WHICH colour each row takes; this is the size of the block it is painted in,
- * and the gap between it and the bar. The scale row below the bars carries the same total as a
- * left padding, so the ticks stay under the fills they label rather than under the swatches.
+ * model's answer to which colour each row takes; this is the size of the block it is painted
+ * in, and the gap to the bar. The scale row below carries the same total as a left padding, so
+ * the ticks stay under the fills they label rather than under the swatches.
  */
 static constexpr float PieceMenuJointSwatchWidthPx = 10.0f;
 static constexpr float PieceMenuJointSwatchHeightPx = 10.0f;
 static constexpr float PieceMenuJointSwatchGapPx = 6.0f;
 
 /*
- * HOW WIDE THE COLUMN OF SUPPORT WORDS ON THE BRICK ROWS IS.
+ * How wide the column of support words on the brick rows is.
  *
- * Wide enough for the longest of them — "not in this wall" — with room to spare, so the words line
- * up in a column instead of ragging off the ends of labels of different lengths. It is deliberately
- * generous: the entry rows are swept by World.Menu.TheReadoutFitsInsideThePanel along with
- * everything else the model supplies, and a column that just fitted would make an entry row the
- * tightest line on the panel and quietly retarget that test's reported budget away from the joint
- * sentences it exists to measure.
+ * Wide enough for the longest of them — "not in this wall" — with room to spare, so the words
+ * line up in a column instead of ragging off the ends of labels of different lengths. It is
+ * deliberately generous: the entry rows are swept by World.Menu.TheReadoutFitsInsideThePanel
+ * along with everything else the model supplies, and a column that just fitted would make an
+ * entry row the tightest line on the panel, quietly retargeting that test's reported budget away
+ * from the joint sentences it exists to measure.
  */
 static constexpr float PieceMenuEntrySupportWidthPx = 150.0f;
 
@@ -255,10 +230,10 @@ static constexpr float PieceMenuHeadroomScaleHeightPx = 14.0f;
 static constexpr float PieceMenuRuleHeightPx = 1.0f;
 
 /*
- * HOW WIDE THE SCENARIO BANNER IS, AND HOW FAR OFF THE TOP OF THE SCREEN IT SITS.
+ * How wide the scenario banner is, and how far off the top of the screen it sits.
  *
  * A stated width rather than a fit to the text, because the expectation lines run to two full
- * sentences and a banner sized to its content would stretch to the width of the viewport and put a
+ * sentences and a banner sized to its content would stretch to viewport width and put a
  * two-hundred-character line across the top of the wall. Wrapped inside a fixed width, the same
  * text is three or four readable lines. Centred at the top is the one region the piece-menu panel
  * never opens into — it homes against the right edge — so the two readouts cannot overlap.
@@ -267,7 +242,7 @@ static constexpr float ScenarioBannerWidthPx = 760.0f;
 static constexpr float ScenarioBannerTopMarginPx = 24.0f;
 
 /*
- * WHAT THE PANEL IS DRAWN IN, AND THE BACKGROUND IS THE ONE THAT IS NOT DECORATION.
+ * What the panel is drawn in, and the background is the one colour that is not decoration.
  *
  * Every line below the brick rows used to be a bare STextBlock over whatever the camera was
  * pointing at — legible against a wall, invisible against the sky, and no headless test can see
@@ -283,45 +258,44 @@ static const FLinearColor PieceMenuRuleColour(1.0f, 1.0f, 1.0f, 0.16f);
 static const FLinearColor PieceMenuHeadroomTrackColour(0.0f, 0.0f, 0.0f, 0.55f);
 
 /*
- * WHAT THE TITLE STRIP IS TINTED, WHICH IS THE ONLY THING SAYING THE PANEL CAN BE MOVED.
+ * What the title strip is tinted, which is the only thing saying the panel can be moved.
  *
- * A lift off the panel's own background rather than a colour of its own: it has to read as part of
- * the panel and as a separate strip at the same time, which is what a title bar is. The other half
- * of the affordance is the grab cursor, and between them there is no word — a word would be a word
- * chosen in the one place no test can read it, and FPieceMenuInspector is where the panel's words
- * are decided.
+ * A lift off the panel's own background rather than a colour of its own: it has to read as part
+ * of the panel and as a separate strip at the same time, which is what a title bar is. The other
+ * half of the affordance is the grab cursor; there is deliberately no word for it, since a word
+ * would be chosen in the one place no test can read it, and FPieceMenuInspector is where the
+ * panel's words are decided.
  */
 static const FLinearColor PieceMenuGrabStripColour(0.16f, 0.18f, 0.24f, 0.75f);
 
 /*
- * THE THREE BAND COLOURS ARE NOT HERE ANY MORE, AND THEIR ABSENCE IS THE POINT — the same move the
- * neighbour palette made, for the same reason and one slice later.
+ * The three band colours are not here any more, and their absence is the point — the same move
+ * the neighbour palette made, for the same reason, one slice later.
  *
- * EJointMarginBand says WHERE the colour changes — which side of 10x and of 2x margin a joint falls
- * on — because that is a decision about what this game calls dangerous, and it belongs where a test
- * can read it. What was left here was the hue; the load overlay then needed the SAME three hues in
- * three MATERIALS, which are content and cannot reach a file-static in a widget. Two copies of green
- * would have been a brick tinted one green beside a bar drawn another, two inches apart.
+ * EJointMarginBand says where the colour changes — which side of 10x and of 2x margin a joint
+ * falls on — because that is a decision about what this game calls dangerous, and belongs where
+ * a test can read it. What was left here was the hue; the load overlay then needed the same three
+ * hues in three materials, which are content and cannot reach a file-static in a widget. Two
+ * copies of green would have been a brick tinted one green beside a bar drawn another.
  *
- * DestructionContent::BrickLoadSwatchColours now sits beside the three material paths it has to
- * agree with, one row per band, and there is deliberately no colour literal left in this file for a
- * bar to drift back to.
+ * DestructionContent::BrickLoadSwatchColours now sits beside the three material paths it must
+ * agree with, one row per band, with deliberately no colour literal left here for a bar to drift
+ * back to.
  */
 
 /*
- * AND WHAT EACH SUPPORT BUCKET'S DOT IS DRAWN IN, ON THE SAME TERMS AS THE BAR ABOVE.
+ * And what each support bucket's dot is drawn in, on the same terms as the bar above.
  *
- * EPieceSupportBand says WHICH bucket a brick is in — the model's decision, swept against the
- * word beside it — and this is the hue, which is the half nothing headless can judge. Forty
- * picked bricks are forty lines of small text without it, and the one that is falling reads
- * exactly like the thirty-nine that are not until somebody reads every word.
+ * EPieceSupportBand says which bucket a brick is in — the model's decision, swept against the
+ * word beside it — and this is the hue, the half nothing headless can judge. Forty picked bricks
+ * are forty lines of small text without it, and the one that is falling reads exactly like the
+ * thirty-nine that are not until somebody reads every word.
  *
- * THE ALARM COLOURS ARE THE BAR'S OWN, DELIBERATELY. A falling brick takes the same red a joint
- * past its limit does and a stranded one the same amber as a joint running out of room, because
- * one panel wants one vocabulary: a colour that means "look at this" in the top half and
- * something else in the bottom half is two vocabularies to learn. The other three are outside
- * that vocabulary on purpose — resting, held, and the two that are not claims about a brick at
- * all — so nothing calm can be mistaken for an alarm.
+ * The alarm colours are the bar's own, deliberately: a falling brick takes the same red a joint
+ * past its limit does, and a stranded one the same amber as a joint running out of room, because
+ * one panel wants one vocabulary rather than two. The other three — resting, held, and the two
+ * that are not claims about a brick at all — sit outside that vocabulary, so nothing calm can be
+ * mistaken for an alarm.
  */
 static const FLinearColor PieceMenuSupportNotAPieceColour(0.36f, 0.37f, 0.40f, 1.0f);
 static const FLinearColor PieceMenuSupportNotSolvedColour(0.45f, 0.55f, 0.78f, 1.0f);
@@ -335,47 +309,44 @@ static constexpr float PieceMenuSupportDotSizePx = 8.0f;
 static constexpr float PieceMenuSupportDotGapPx = 6.0f;
 
 /*
- * THE NEIGHBOUR PALETTE IS NOT HERE ANY MORE, AND ITS ABSENCE IS THE POINT.
+ * The neighbour palette is not here any more, and its absence is the point.
  *
- * It used to be a file-static array of six colours in this file, with a comment claiming they were
- * "exactly" the emissives of Content/Materials/M_BrickNeighbour0..5 — a second copy of six numbers
- * whose only tie to the first was that sentence. A palette repick changed three of the assets and
- * left the sentence, so the swatch column drew amber, chartreuse and teal beside bricks lit green,
- * clay and sage, with the whole suite green.
+ * It used to be a file-static array of six colours here, with a comment claiming they were
+ * "exactly" the emissives of Content/Materials/M_BrickNeighbour0..5 — a second copy with only
+ * that sentence tying it to the first. A palette repick changed three of the assets and left
+ * the sentence, so the swatch column drew amber, chartreuse and teal beside bricks lit green,
+ * clay and sage. DestructionContent::BrickNeighbourSwatchColours now sits beside the material
+ * paths it must agree with, one row per slot, held together by
+ * Content.NeighbourSwatchesMatchTheirMaterials, with no colour literal left here to drift back to.
  *
- * DestructionContent::BrickNeighbourSwatchColours now sits beside the material paths it must agree
- * with, one row per slot, and Content.NeighbourSwatchesMatchTheirMaterials holds the two together.
- * There is deliberately no colour literal left in this file for a swatch to drift back to.
- *
- * SIX, WHICH IS THE MODEL'S NUMBER: a brick inside a running bond has six joints. A row past the
- * end carries INDEX_NONE and gets the transparent entry below, so the swatch is ABSENT rather
- * than repeated — a repeated swatch is a wrong answer about which brick is which, and an absent
- * one is merely an absence.
+ * Six is the model's number: a brick inside a running bond has six joints. A row past the end
+ * carries INDEX_NONE and gets the transparent entry below, so the swatch is absent rather than
+ * repeated — a repeated swatch would be a wrong answer about which brick is which.
  */
 
 /** What a row past the end of the palette is painted in: nothing at all. */
 static const FLinearColor PieceMenuNoSwatchColour(0.0f, 0.0f, 0.0f, 0.0f);
 
 /*
- * AND WHAT A ROW THAT DESTROYS SOMETHING IS DRAWN IN, TAKEN FROM FPieceMenuRow::bIsDestructive.
+ * And what a row that destroys something is drawn in, taken from FPieceMenuRow::bIsDestructive.
  *
- * The flag is the ACTION'S OWN, carried across by the presenter, so this is a colour keyed on
- * data rather than a widget comparing a caption against the word "Delete" — which is the policy
- * in a string literal that FPieceAction::bIsDestructive exists to make unnecessary.
+ * The flag is the action's own, carried across by the presenter, so this is a colour keyed on
+ * data rather than a widget comparing a caption against the word "Delete" — the policy-in-a-
+ * string-literal that FPieceAction::bIsDestructive exists to make unnecessary.
  */
 static const FLinearColor PieceMenuDestructiveRowColour(0.72f, 0.16f, 0.14f, 1.0f);
 static const FLinearColor PieceMenuOrdinaryRowColour(1.0f, 1.0f, 1.0f, 1.0f);
 
 /*
- * THE SESSION STRIP'S OWN MEASUREMENTS, FROM SESSION_UI_DESIGN.md §e.
+ * The session strip's own measurements, from SESSION_UI_DESIGN.md §e.
  *
- * 48 px TALL IS AN OWNER RULING RATHER THAN A FIT: the first cut was 72 and was "way too big". A
- * 34 px chip inside it leaves 7 px of air above and below, which is what makes the strip read as a
- * bar with buttons on it rather than as a row of buttons.
+ * 48 px tall is an owner ruling rather than a fit: the first cut was 72 and was "way too big". A
+ * 34 px chip inside it leaves 7 px of air above and below, which is what makes the strip read as
+ * a bar with buttons on it rather than a row of buttons.
  *
- * NOTHING HERE IS MEASURED BY ANY TEST, and that is the division of labour the panel tests already
- * draw: which buttons, in what order, greyed or live, focusable or not is the model's and is
- * asserted; every pixel below is this file's and is looked at by a human on the screenshot proof.
+ * Nothing here is measured by any test — the panel tests already draw that division of labour:
+ * which buttons, in what order, greyed or live, focusable or not is the model's and is asserted;
+ * every pixel below is this file's and is checked by a human against the screenshot proof.
  */
 static constexpr float SessionToolbarHeightPx = 48.0f;
 static constexpr float SessionToolbarChipHeightPx = 34.0f;
@@ -385,18 +356,18 @@ static constexpr float SessionToolbarEdgePaddingPx = 10.0f;
 static constexpr float SessionToolbarReadoutPaddingPx = 6.0f;
 
 /*
- * THE HAIRLINE BETWEEN TWO GROUPS, AND THE AIR EITHER SIDE OF IT. §e's 10 px between groups, spent
- * as the chip gap on the left of the rule and the rest on its right.
+ * The hairline between two groups, and the air either side of it. §e's 10 px between groups,
+ * spent as the chip gap on the left of the rule and the rest on its right.
  */
 static constexpr float SessionToolbarRuleWidthPx = 1.0f;
 static constexpr float SessionToolbarRuleGapPx = 10.0f;
 
 /*
- * AND THE TWO PIECE SWATCHES, WHICH ARE TWO SHAPES AS WELL AS TWO COLOURS.
+ * And the two piece swatches, which are two shapes as well as two colours.
  *
- * THE PLANK IS LONGER AND THINNER THAN THE BLOCK, and that is what makes the three piece chips
- * readable from each other without reading the words — which is the whole of why §e draws a swatch
- * "in place of a size caption". The proportions are the pieces' own, roughly: a brick is about twice
+ * The plank is longer and thinner than the block, which is what makes the three piece chips
+ * readable from each other without reading the words — the whole reason §e draws a swatch "in
+ * place of a size caption". The proportions are roughly the pieces' own: a brick is about twice
  * as long as it is tall in elevation and a board is three times that.
  */
 static constexpr float SessionToolbarBrickSwatchWidthPx = 18.0f;
@@ -406,36 +377,36 @@ static constexpr float SessionToolbarTimberSwatchHeightPx = 8.0f;
 static constexpr float SessionToolbarSwatchGapPx = 7.0f;
 
 /*
- * WHAT THE STRIP IS DRAWN IN, AND THE FILL IS ONE STEP LIGHTER THAN THE PANEL'S ON PURPOSE.
+ * What the strip is drawn in, and the fill is one step lighter than the panel's on purpose.
  *
- * The details window sits on PieceMenuPanelBackgroundColour and the strip sits on this, so the two
- * read as separate objects rather than as one dark shape with a seam in it. Both are the design's
- * LINEAR triples, which is the number Slate takes — the sRGB hexes in §e are what the eye checks
+ * The details window sits on PieceMenuPanelBackgroundColour and the strip sits on this, so the
+ * two read as separate objects rather than one dark shape with a seam in it. Both are the
+ * design's linear triples, the form Slate takes — the sRGB hexes in §e are what the eye checks
  * them against, and confusing the two is how a palette drifts.
  *
- * THE ACCENTS AND THE CHIP FILLS ARE NOT HERE ANY MORE, AND THEIR ABSENCE IS THE POINT. They were
- * two file-static colours and a pair of ternaries in the panel builder, which made "how a chip is
- * drawn" a decision in the one place no test can reach — and the multiply through FCoreStyle's grey
- * button brush meant the amber this project chose was never the amber a player saw. The whole look
- * is DestructionSession::ChipLookFor's answer now, swept by Core.SessionToolbar.ChipLook, and this
+ * The accents and chip fills are not here any more, and their absence is the point. They used to
+ * be two file-static colours and a pair of ternaries in the panel builder — "how a chip is drawn"
+ * decided in the one place no test can reach — and the multiply through FCoreStyle's grey button
+ * brush meant the amber this project chose was never the amber a player saw. The whole look is
+ * DestructionSession::ChipLookFor's answer now, swept by Core.SessionToolbar.ChipLook, and this
  * file turns it into a brush.
  */
 static const FLinearColor SessionToolbarFillColour(0.020f, 0.023f, 0.030f, 0.96f);
 
 /*
- * A SECOND FILE-LOCAL NAMESPACE, BELOW THE CONSTANTS IT READS RATHER THAN BESIDE THE ONE AT THE
- * TOP OF THE FILE. Everything in here draws the panel and every one of them needs a size or a
- * colour declared above, so the split is declaration order rather than a second grouping. The
- * PieceMenu prefix is the same unity-build rule the note above states.
+ * A second file-local namespace, below the constants it reads rather than beside the one at the
+ * top of the file. Everything here draws the panel and needs a size or colour declared above, so
+ * the split is declaration order rather than a second grouping. The PieceMenu prefix is the same
+ * unity-build rule noted above.
  */
 namespace
 {
 	/*
-	 * THE STYLE COMES FROM FCoreStyle RATHER THAN FAppStyle, AND THAT IS DELIBERATE. FAppStyle
-	 * resolves to whichever style the running application registered — the editor's, in an editor
-	 * binary, and the core one in a cooked game — so a panel styled through it looks different in
-	 * the two places this menu is looked at. FCoreStyle is the same in both and needs no content
-	 * asset, which is what keeps the background off RequiredContent's table.
+	 * The style comes from FCoreStyle rather than FAppStyle, deliberately. FAppStyle resolves to
+	 * whichever style the running application registered — the editor's in an editor binary, the
+	 * core one in a cooked game — so a panel styled through it would look different in the two
+	 * places this menu is seen. FCoreStyle is the same in both and needs no content asset, which
+	 * keeps the background off RequiredContent's table.
 	 */
 	const FSlateBrush* PieceMenuFillBrush()
 	{
@@ -458,13 +429,13 @@ namespace
 	}
 
 	/**
-	 * THE TWO CAPTION FACES, AND WHICH ONE A CHIP WEARS IS THE MODEL'S ANSWER.
+	 * The two caption faces; which one a chip wears is the model's answer.
 	 *
-	 * The chip says `bActive` twice — in the caption's weight and in the chip's fill — because they
-	 * are two readings of one decision, and either alone is fragile: a player reading the strip from
-	 * peripheral vision sees the fill, and a player looking straight at it reads the word. Which of
-	 * the two a chip gets is FChipLook::bBoldCaption rather than a ternary here, for the reason the
-	 * fill is FChipLook::Fill.
+	 * The chip says `bActive` twice — in the caption's weight and in the chip's fill — because
+	 * they are two readings of one decision, and either alone is fragile: a player reading the
+	 * strip from peripheral vision sees the fill, and one looking straight at it reads the word.
+	 * Which face a chip gets is FChipLook::bBoldCaption rather than a ternary here, for the same
+	 * reason the fill is FChipLook::Fill.
 	 */
 	FSlateFontInfo SessionToolbarBoldFont()
 	{
@@ -479,11 +450,11 @@ namespace
 	/**
 	 * The same fill one step toward white, which is how a chip answers the cursor.
 	 *
-	 * CLAMPED AT WHITE RATHER THAN LERPED, so a channel already at full stays put instead of the
-	 * whole colour drifting. The clamp is FMath::Min, which REPLACES a NaN rather than discarding it
-	 * — the right direction here: a look that is not a number must stay not a number rather than
-	 * becoming a plausible colour, and Core.SessionToolbar.ChipLook sweeps every look for finiteness
-	 * so one can never arrive.
+	 * Clamped at white rather than lerped, so a channel already at full stays put instead of the
+	 * whole colour drifting. The clamp is FMath::Min, which replaces a NaN rather than discarding
+	 * it — the right direction here, since a look that is not a number must stay not a number
+	 * rather than become a plausible colour; Core.SessionToolbar.ChipLook sweeps every look for
+	 * finiteness so one can never arrive.
 	 */
 	FLinearColor SessionToolbarLiftedFill(const FLinearColor& Fill)
 	{
@@ -505,20 +476,19 @@ namespace
 	}
 
 	/**
-	 * A CHIP'S WHOLE STYLE, BUILT FROM THE LOOK THE MODEL DECIDED.
+	 * A chip's whole style, built from the look the model decided.
 	 *
-	 * A ROUNDED BOX BRUSH RATHER THAN FCoreStyle'S BUTTON BRUSH WITH A COLOUR MULTIPLIED THROUGH IT,
-	 * and this is the defect the slice exists to close: the stock brush is GREY, so multiplying the
-	 * design's amber into it produces dark mustard — the accent this project chose was never the
-	 * accent on screen, and no retune of the constant could fix it because the thing being multiplied
-	 * into is grey. The brush has to be the chip's own.
+	 * A rounded box brush rather than FCoreStyle's button brush with a colour multiplied through
+	 * it — this is the defect the slice exists to close: the stock brush is grey, so multiplying
+	 * the design's amber into it produces dark mustard, and no retune of the constant could fix
+	 * that because the thing being multiplied into is grey. The brush has to be the chip's own.
 	 *
-	 * ALL FOUR STATES ARE ROUNDED. SButton swaps its border brush for the state it is in, so a square
-	 * disabled or pressed brush would be a chip that changed shape under the cursor.
+	 * All four states are rounded. SButton swaps its border brush for the state it is in, so a
+	 * square disabled or pressed brush would be a chip that changed shape under the cursor.
 	 */
 	FButtonStyle SessionToolbarChipStyle(const DestructionSession::FChipLook& Look)
 	{
-		/* All four corners the same. FVector4 rather than FVector4f: FSlateBrushOutlineSettings' own. */
+		/* All four corners the same; FVector4 rather than FVector4f is FSlateBrushOutlineSettings' own type. */
 		const FVector4 Radii(
 			Look.CornerRadiusPx, Look.CornerRadiusPx, Look.CornerRadiusPx, Look.CornerRadiusPx);
 
@@ -550,16 +520,16 @@ namespace
 	}
 
 	/**
-	 * THE LITTLE BLOCK OF COLOUR THAT MAKES A PIECE CHIP LOOK LIKE THE THING IT LAYS.
+	 * The little block of colour that makes a piece chip look like the thing it lays.
 	 *
-	 * ONE WIDGET, AND ITS SIZE IS ITS OWN PADDING. A border with nothing inside it is a filled
-	 * rectangle whose desired size is exactly the padding around the nothing, which is what lets the
-	 * swatch be a single widget rather than a sizing box wrapped around an image — and a single
+	 * One widget, and its size is its own padding. A border with nothing inside it is a filled
+	 * rectangle whose desired size is exactly the padding around the nothing, which lets the
+	 * swatch be a single widget rather than a sizing box wrapped around an image — a single
 	 * widget is what a reader, human or test, can point at and call "the swatch".
 	 *
-	 * THE COLOUR IS THE MODEL'S. SwatchColour(Kind) is the shed material's own base colour, so the
-	 * palette chip and the brick that lands are one decision rather than two people picking the same
-	 * red.
+	 * The colour is the model's: SwatchColour(Kind) is the shed material's own base colour, so the
+	 * palette chip and the brick that lands are one decision rather than two people picking the
+	 * same red.
 	 */
 	TSharedRef<SWidget> SessionToolbarSwatchBlock(DestructionSession::EToolbarSwatch Swatch)
 	{
@@ -572,11 +542,11 @@ namespace
 	}
 
 	/**
-	 * THE 1 px RULE THAT SEPARATES TWO REGIONS OF THE STRIP.
+	 * The 1 px rule that separates two regions of the strip.
 	 *
-	 * IT IS DRAWN WHERE THE MODEL'S GROUP CHANGES AND NOWHERE ELSE, which is §b's reason rather than
-	 * a decoration: the commands sit past a rule "so that a destructive click is never adjacent to a
-	 * setting click". Full chip height, so it reads as a division of the bar rather than as a tick.
+	 * Drawn where the model's group changes and nowhere else, per §b: the commands sit past a rule
+	 * "so that a destructive click is never adjacent to a setting click". Full chip height, so it
+	 * reads as a division of the bar rather than a tick.
 	 */
 	TSharedRef<SWidget> SessionToolbarGroupRule()
 	{
@@ -588,17 +558,16 @@ namespace
 	}
 
 	/**
-	 * What a bar in this band is filled in — A LOOKUP, WHICH IS ALL A WIDGET MAY DO WITH IT.
+	 * What a bar in this band is filled in — a lookup, which is all a widget may do with it.
 	 *
 	 * The band arrived decided: Presenter.PieceMenuJointMarginBand pins which side of each edge
-	 * every joint falls on, including the two boundary rows a hand-picked example never contains.
-	 * Nothing here compares a number against anything, so there is no second copy of that rule to
-	 * drift — and the arm past the end of the enumeration answers with the most severe colour,
-	 * because a bar that is wrong about its own band must not look calm.
+	 * every joint falls on. Nothing here compares a number against anything, so there is no
+	 * second copy of that rule to drift, and the arm past the end of the enumeration answers
+	 * with the most severe colour, since a bar wrong about its own band must not look calm.
 	 *
-	 * THE TABLE IS THE OVERLAY'S, AND THAT IS WHAT MAKES THE BAR AND THE BRICK ONE DECISION. The
-	 * three colours live beside the three load-overlay material paths in RequiredContent.h, indexed
-	 * by the band itself, so this is a subscript rather than a second palette.
+	 * The table is the overlay's, which is what makes the bar and the brick one decision: the
+	 * three colours live beside the three load-overlay material paths in RequiredContent.h,
+	 * indexed by the band itself, a subscript rather than a second palette.
 	 */
 	FLinearColor PieceMenuBandColour(EJointMarginBand Band)
 	{
@@ -612,14 +581,14 @@ namespace
 	}
 
 	/**
-	 * What a brick row's support dot is painted in — THE SAME SHAPE OF LOOKUP, ON THE SAME TERMS.
+	 * What a brick row's support dot is painted in — the same shape of lookup, on the same terms.
 	 *
 	 * The bucket arrived decided: Presenter.PieceMenuSupportBand pins which bucket every state of
-	 * every brick falls in, and CheckInspectorInvariants holds each row's bucket against that row's
-	 * own word over every readout the suite builds. Nothing here compares a string, a support
-	 * enumerator or a live-piece flag against anything, so there is no second copy of that rule to
-	 * drift — and the arm past the end of the enumeration answers with the grey that claims nothing,
-	 * because a dot that is wrong about its own bucket must not assert a physical state.
+	 * every brick falls in, and CheckInspectorInvariants holds each row's bucket against that
+	 * row's own word over every readout the suite builds. Nothing here compares a string, a
+	 * support enumerator or a live-piece flag against anything, so there is no second copy of that
+	 * rule to drift, and the arm past the end of the enumeration answers with the grey that claims
+	 * nothing, because a dot that is wrong about its own bucket must not assert a physical state.
 	 */
 	FLinearColor PieceMenuSupportColour(EPieceSupportBand Band)
 	{
@@ -637,13 +606,13 @@ namespace
 	}
 
 	/**
-	 * THE DOT THAT SAYS WHETHER A PICKED BRICK IS STANDING UP, WITHOUT ITS ROW BEING READ.
+	 * The dot that says whether a picked brick is standing up, without its row being read.
 	 *
-	 * IT SITS INSIDE THE SUPPORT COLUMN RATHER THAN AT THE HEAD OF THE ROW, which is a layout
-	 * decision with a measured reason: the column is a fixed-width box, so a dot placed inside it
-	 * takes its space out of that box's own slack and moves nothing else on the row — while a dot
-	 * ahead of the entry button would push every label and every word right by its width, out of
-	 * the budget World.Menu.TheReadoutFitsInsideThePanel measures.
+	 * It sits inside the support column rather than at the head of the row, a layout decision
+	 * with a measured reason: the column is a fixed-width box, so a dot placed inside it takes its
+	 * space out of that box's own slack and moves nothing else on the row — a dot ahead of the
+	 * entry button would instead push every label and word right by its width, out of the budget
+	 * World.Menu.TheReadoutFitsInsideThePanel measures.
 	 */
 	TSharedRef<SWidget> PieceMenuSupportDot(EPieceSupportBand Band)
 	{
@@ -660,7 +629,7 @@ namespace
 	/**
 	 * What a joint row's swatch is painted in — the same shape of lookup, on the same terms.
 	 *
-	 * WHICH slot a row takes is the model's answer and is swept over every readout in the suite;
+	 * Which slot a row takes is the model's answer and is swept over every readout in the suite;
 	 * a slot outside the palette is INDEX_NONE by that answer's own rule, and the bounds check
 	 * here is the lookup's rather than a policy of its own. It fails to the transparent entry, so
 	 * an unknown slot draws no swatch instead of borrowing somebody else's colour.
@@ -673,12 +642,12 @@ namespace
 	}
 
 	/**
-	 * THE BLOCK OF COLOUR THAT TIES A JOINT ROW TO ITS NEIGHBOURING BRICK.
+	 * The block of colour that ties a joint row to its neighbouring brick.
 	 *
-	 * IT IS DRAWN EVEN WHEN IT IS INVISIBLE, which is why the transparent colour goes through the
-	 * same widget rather than through a slot that is not added. The bars have to line up in a
-	 * column for the decade scale under them to mean anything, and a row that skipped its swatch
-	 * would slide its bar 16 px left of every other one.
+	 * It is drawn even when invisible, which is why the transparent colour goes through the same
+	 * widget rather than a slot that is not added. The bars must line up in a column for the
+	 * decade scale under them to mean anything, and a row that skipped its swatch would slide its
+	 * bar 16 px left of every other one.
 	 */
 	TSharedRef<SWidget> PieceMenuJointSwatch(int32 ColourSlot)
 	{
@@ -693,24 +662,20 @@ namespace
 	}
 
 	/**
-	 * ONE JOINT'S HEADROOM BAR, FILLED TO THE FRACTION THE MODEL WORKED OUT.
+	 * One joint's headroom bar, filled to the fraction the model worked out.
 	 *
-	 * THE FILL IS A LAID-OUT CHILD RATHER THAN A PAINTED RECTANGLE, WHICH IS THE WHOLE REASON
-	 * THIS IS NOT AN SProgressBar. A bar is the one thing on this panel that can be wrong while
-	 * every word beside it is right — a constant fill under a correct caption looks entirely
-	 * plausible — and SProgressBar keeps its Percent in a private slate attribute with no getter,
-	 * so nothing could ever read back what it drew. An anchored child's ARRANGED WIDTH is
-	 * `HeadroomFraction` times the track's, exactly, and ArrangeChildren hands that to a headless
-	 * test with no renderer and no accessor at all.
+	 * The fill is a laid-out child rather than a painted rectangle, the whole reason this is not
+	 * an SProgressBar: SProgressBar keeps its Percent in a private slate attribute with no
+	 * getter, so nothing could read back what it drew, while an anchored child's arranged width
+	 * is `HeadroomFraction` times the track's, exactly, readable by a headless test with no
+	 * renderer. The model's number goes straight into the anchor with no arithmetic and no
+	 * clamp: FInspectorJointRow::HeadroomFraction is already a fraction, log-scaled over three
+	 * decades, and swept for finiteness by Presenter.PieceMenuJointHeadroom.
 	 *
-	 * THE MODEL'S NUMBER GOES STRAIGHT INTO THE ANCHOR. There is no arithmetic here and no clamp:
-	 * FInspectorJointRow::HeadroomFraction is already a fraction, already log-scaled over three
-	 * decades, and already swept for finiteness by Presenter.PieceMenuJointHeadroom.
-	 *
-	 * AND THE COLOUR COMES FROM THE BAND RATHER THAN FROM THE FRACTION, which is the same rule one
-	 * field over: how full the bar is and how alarmed to be about it are two answers, and only the
-	 * first is a length. Thresholding the fraction here would be the second answer written where
-	 * nothing can read it.
+	 * The colour comes from the band rather than the fraction, the same rule one field over: how
+	 * full the bar is and how alarmed to be about it are two answers, and only the first is a
+	 * length. Thresholding the fraction here would be the second answer written where nothing
+	 * can read it.
 	 */
 	TSharedRef<SWidget> PieceMenuHeadroomBar(double HeadroomFraction, EJointMarginBand Band)
 	{
@@ -738,27 +703,23 @@ namespace
 	}
 
 	/**
-	 * THE BAR'S DECADE TICKS, EACH STANDING WHERE THE MODEL PUT IT.
+	 * The bar's decade ticks, each standing where the model put it.
 	 *
-	 * A LOG AXIS WITH NO DECADES ON IT IS UNREADABLE BY CONSTRUCTION — the same visible fill means
-	 * 1000x on one panel and 3x on another. FHeadroomScaleTick carries a Fraction as well as a
-	 * label precisely so this can place each one by the same curve the fill is drawn by, rather
-	 * than spreading four labels evenly and quietly promising a linear scale.
+	 * A log axis with no decades on it is unreadable by construction — the same visible fill
+	 * means 1000x on one panel and 3x on another. FHeadroomScaleTick carries a Fraction as well
+	 * as a label so this can place each one by the same curve the fill is drawn by, rather than
+	 * spreading four labels evenly and promising a linear scale it does not have.
 	 *
-	 * THE ANCHOR IS THE SAME ARITHMETIC THE FILL IS DRAWN BY, AND THAT IS THE POINT OF PLACING THE
-	 * TICKS ON A CANVAS AT ALL. PieceMenuHeadroomBar anchors its fill to Fraction of a track this
-	 * wide; a tick anchors its label to Fraction of a canvas the same width, so the joint whose
-	 * margin IS 10x has its fill end under the 10x label because both came out of one expression,
-	 * not because two constants happen to agree.
+	 * The anchor is that same arithmetic: PieceMenuHeadroomBar anchors its fill to Fraction of a
+	 * track this wide, and a tick anchors its label to Fraction of a canvas the same width, so
+	 * the joint whose margin is 10x has its fill end under the 10x label because both came out
+	 * of one expression, not because two constants happen to agree.
 	 *
-	 * ALIGNMENT IS THE FRACTION RATHER THAN A HALF, WHICH IS WHAT KEEPS THE END LABELS ON THE BAR.
-	 * SConstraintCanvas reads Alignment as the pivot INSIDE the child, so an alignment of 0.5 puts
-	 * the label's middle on the anchor — and for the ticks at 0.0 and 1.0 that centres them on the
-	 * track's two EDGES, with half of each hanging off and clipped away by the scroll box. Setting
-	 * the pivot to the tick's own Fraction pins the label's left edge at the low end, its right
-	 * edge at the high end and its middle in the middle: the label always straddles the point it
-	 * names, and it lies wholly within the track for any label no wider than the track, because its
-	 * left edge lands at Fraction * (TrackWidth - LabelWidth).
+	 * Alignment is the fraction rather than a half, which keeps the end labels on the bar.
+	 * SConstraintCanvas reads Alignment as the pivot inside the child, so alignment 0.5 would
+	 * centre the ticks at 0.0 and 1.0 on the track's two edges, half of each clipped off; the
+	 * tick's own Fraction as pivot instead pins each label's near edge at its own end, so the
+	 * label always straddles the point it names and stays within the track.
 	 */
 	TSharedRef<SWidget> PieceMenuHeadroomScale(const TArray<FHeadroomScaleTick>& Scale)
 	{
@@ -794,16 +755,16 @@ ADestructionGamePlayerController::ADestructionGamePlayerController()
 	PlayerCameraManagerClass = ADestructionGameCameraManager::StaticClass();
 
 	/*
-	 * wire up the mapping contexts here rather than in a Blueprint, so the sandbox
-	 * runs from C++ defaults alone — by the paths RequiredContent.h names, so this
-	 * constructor and the required-content table cannot become two lists that disagree
+	 * Wire up the mapping contexts here rather than in a Blueprint, so the sandbox runs from C++
+	 * defaults alone — by the paths RequiredContent.h names, so this constructor and the
+	 * required-content table cannot become two lists that disagree.
 	 */
 	static ConstructorHelpers::FObjectFinder<UInputMappingContext> DefaultContext(DestructionContent::DefaultMappingContextPath);
 	static ConstructorHelpers::FObjectFinder<UInputMappingContext> MouseLookContext(DestructionContent::MouseLookMappingContextPath);
 
 	/*
-	 * the look context is remembered by name as well as applied — the SAME pointer in both
-	 * places, so there is nothing to drift; its header says why it still has a name of its own
+	 * The look context is remembered by name as well as applied — the same pointer in both
+	 * places, so there is nothing to drift; its header says why it still has a name of its own.
 	 */
 	MouseLookMappingContext = MouseLookContext.Object;
 
@@ -811,18 +772,12 @@ ADestructionGamePlayerController::ADestructionGamePlayerController()
 	DefaultMappingContexts.Add(MouseLookMappingContext);
 
 	/*
-	 * AND THE SESSION'S OWN KEYBOARD, PUSHED IN BESIDE THEM RATHER THAN APPLIED SEPARATELY.
-	 *
-	 * SetupInputComponent adds every context in this list, so a third one here is applied for the
-	 * whole session by the code that already applies the other two — and an apply written a second
-	 * way is an apply that can be forgotten on a route somebody adds later. Nine mappings in a
-	 * context nothing applies is nine dead keys, and from the player's chair that looks exactly like
-	 * eight missing BindAction calls.
-	 *
-	 * IT IS NAMED AS WELL AS LISTED, THE SAME POINTER IN BOTH PLACES, for the same reason
-	 * MouseLookMappingContext is — and here the name carries a second job: it is what the one apply
-	 * loop asks "is this the session's?" to give it SessionMappingContextPriority rather than the
-	 * shared one. The priority's own header says why it cannot be the shared one.
+	 * And the session's own keyboard, pushed in beside them rather than applied separately, so
+	 * the code that already applies the other two applies this one too — an apply written a
+	 * second way is an apply a later route can forget. Named as well as listed, for the reason
+	 * MouseLookMappingContext is, and here the name carries a second job: it is what the apply
+	 * loop asks "is this the session's?" to give it SessionMappingContextPriority instead of the
+	 * shared one (see that priority's own header for why it cannot be the shared one).
 	 */
 	static ConstructorHelpers::FObjectFinder<UInputMappingContext> SessionContext(DestructionContent::SessionMappingContextPath);
 
@@ -830,22 +785,22 @@ ADestructionGamePlayerController::ADestructionGamePlayerController()
 
 	DefaultMappingContexts.Add(SessionMappingContext);
 
-	/* the piece menu's own input, by the same one spelling of its path */
+	/* The piece menu's own input, by the same one spelling of its path. */
 	static ConstructorHelpers::FObjectFinder<UInputAction> InspectPieceActionAsset(DestructionContent::InspectPieceActionPath);
 
 	InspectPieceAction = InspectPieceActionAsset.Object;
 
-	/* and the one that keeps the highlight under the cursor, mapped in IMC_Default beside it */
+	/* And the one that keeps the highlight under the cursor, mapped in IMC_Default beside it. */
 	static ConstructorHelpers::FObjectFinder<UInputAction> HoverPieceActionAsset(DestructionContent::HoverPieceActionPath);
 
 	HoverPieceAction = HoverPieceActionAsset.Object;
 
 	/*
-	 * AND THE EIGHT SESSION SHORTCUTS, BY THE SAME ONE SPELLING OF EACH PATH.
+	 * And the eight session shortcuts, by the same one spelling of each path.
 	 *
-	 * IA_LookModifier IS NOT AMONG THEM, DELIBERATELY. It does nothing on its own: it exists only
-	 * to be the action IMC_MouseLook's chord watches, so there is no handler for it to reach and
-	 * a reference here would be a UPROPERTY nothing ever reads.
+	 * IA_LookModifier is not among them, deliberately: it does nothing on its own, existing only
+	 * to be the action IMC_MouseLook's chord watches, so there is no handler for it to reach and a
+	 * reference here would be a UPROPERTY nothing ever reads.
 	 */
 	static ConstructorHelpers::FObjectFinder<UInputAction> SessionToggleModeAsset(DestructionContent::SessionToggleModeActionPath);
 	static ConstructorHelpers::FObjectFinder<UInputAction> SessionPieceBrickAsset(DestructionContent::SessionPieceBrickActionPath);
@@ -866,21 +821,19 @@ ADestructionGamePlayerController::ADestructionGamePlayerController()
 	SessionRunAction = SessionRunAsset.Object;
 
 	/*
-	 * THE BUILD LOOP IS PART OF WHAT A CONTROLLER IS, so it is a default subobject rather than
-	 * something a level or a Blueprint attaches. A session whose Build tab found no component would
-	 * put the player in a mode where every click fails closed and nothing on screen says why.
+	 * The build loop is part of what a controller is, so it is a default subobject rather than
+	 * something a level or a Blueprint attaches. A session whose Build tab found no component
+	 * would put the player in a mode where every click fails closed and nothing on screen says why.
 	 */
 	BuildComponent = CreateDefaultSubobject<UBuildModeComponent>(TEXT("BuildComponent"));
 
 	/*
-	 * AND THE SESSION OPENS IN DESTROY, WHICH IS DELIBERATELY NOT THE MODEL'S OWN DEFAULT.
-	 *
-	 * FSessionToolbarState::Mode defaults to Build and Core/SessionToolbar.h argues for it: a
-	 * default-constructed session must be the one that cannot destroy anything. A CONTROLLER is a
-	 * different question. Twenty-eight of the twenty-nine playable levels lay a structure and invite
-	 * the player to pull it apart, and opening those in Build mode would hang a gold ghost over
-	 * somebody else's wall and swallow the first click on it. The one build plot is put into Build
-	 * mode by the game mode, through the same single door every other click goes through.
+	 * And the session opens in Destroy, deliberately not the model's own default:
+	 * FSessionToolbarState::Mode defaults to Build because a default-constructed session must be
+	 * the one that cannot destroy anything, but a controller is a different question — most
+	 * playable levels lay a structure and invite the player to pull it apart, and opening those
+	 * in Build mode would hang a gold ghost over somebody else's wall. The one build plot is put
+	 * into Build mode by the game mode, through the same single door every other click goes through.
 	 */
 	SessionToolbarState.Mode = DestructionSession::ESessionMode::Destroy;
 }
@@ -906,14 +859,14 @@ int32 ADestructionGamePlayerController::GetSessionStructureId() const
 	}
 
 	/*
-	 * THE PLAYER'S OWN BUILD WINS, BUT ONLY ONCE THERE IS SOMETHING LIVE IN IT.
+	 * The player's own build wins, but only once there is something live in it.
 	 *
-	 * BeginBuild spends an id on an EMPTY binding the moment Build mode is entered, so "the
-	 * component names a structure" is true long before there is anything to command. An empty build
-	 * that won here would shadow the level's own wall with nothing — Run would solve an empty graph
-	 * and report success, on a level with a wall standing in front of the player. A build whose
-	 * every brick has been DELETED is the same emptiness wearing a piece count, which is why the
-	 * question goes through SessionStructureIsLive rather than being asked a second way here.
+	 * BeginBuild spends an id on an empty binding the moment Build mode is entered, so "the
+	 * component names a structure" is true long before there is anything to command. An empty
+	 * build that won here would shadow the level's own wall with nothing — Run would solve an
+	 * empty graph and report success on a level with a wall standing in front of the player. A
+	 * build whose every brick has been deleted is the same emptiness wearing a piece count, which
+	 * is why the question goes through SessionStructureIsLive rather than a second way here.
 	 */
 	if (BuildComponent != nullptr)
 	{
@@ -926,8 +879,8 @@ int32 ADestructionGamePlayerController::GetSessionStructureId() const
 	}
 
 	/*
-	 * OTHERWISE THE LEVEL'S OWN WALL, WHICH IS WHAT MAKES A DESTROY SESSION ON A SCENARIO LEVEL
-	 * ANYTHING BUT INERT. A row that built nothing — the build plot — leaves INDEX_NONE here, and
+	 * Otherwise the level's own wall, which is what makes a Destroy session on a scenario level
+	 * anything but inert. A row that built nothing — the build plot — leaves INDEX_NONE here, and
 	 * the strip greys both commands until the player's first brick lands.
 	 */
 	const UWorld* const World = GetWorld();
@@ -951,11 +904,11 @@ void ADestructionGamePlayerController::RefreshSessionHasStructure()
 void ADestructionGamePlayerController::RefreshLoadOverlay()
 {
 	/*
-	 * WHAT WAS TINTED IS REMEMBERED BEFORE ANYTHING IS RECOMPUTED, and it is the half that has to be:
-	 * a brick stops wearing a band without being touched at all — the overlay goes off, the session
-	 * moves to another structure, a piece is pulled out — so a refresh that told only the NEW set
-	 * would leave the old one coloured by a solve nobody can date. Same obligation, same shape, as
-	 * RefreshNeighbourHighlights' "were neighbours" argument.
+	 * What was tinted is remembered before anything is recomputed, and it is the half that has to
+	 * be: a brick stops wearing a band without being touched at all — the overlay goes off, the
+	 * session moves to another structure, a piece is pulled out — so a refresh that told only the
+	 * new set would leave the old one coloured by a solve nobody can date. Same obligation, same
+	 * shape, as RefreshNeighbourHighlights' "were neighbours" argument.
 	 */
 	const int32 WasStructureId = LoadOverlayStructureId;
 	const int32 WasCount = LoadOverlayStates.Num();
@@ -973,25 +926,19 @@ void ADestructionGamePlayerController::RefreshLoadOverlay()
 	if (Binding != nullptr)
 	{
 		/*
-		 * A STRUCTURE THAT ALREADY HOLDS AN ANSWER IS READ, NEVER RE-SOLVED, AND THE SECOND SOLVE
-		 * WOULD BE HARMFUL RATHER THAN MERELY WASTEFUL.
+		 * A structure that already holds an answer is read, never re-solved — the second solve
+		 * would be harmful, not merely wasteful. A settle runs SolveAndBreak, whose equilibrium
+		 * gate makes the LP the support authority below the block cap; a bare SolveLoads has no
+		 * gate and rebuilds weaker per-piece arrays from the router's flood alone, so an
+		 * unconditional refresh would overwrite the settle's verdict — looking at a wall would
+		 * change what it does next.
 		 *
-		 * A settle runs SolveAndBreak, whose equilibrium gate calls ApplyLimitAnalysisSupport and
-		 * makes the LP the support authority below the block cap. A bare SolveLoads has no gate: it
-		 * rebuilds the same per-piece arrays from the router's downward flood alone. So a refresh
-		 * that solved unconditionally would overwrite the settle's verdict with a worse one on the
-		 * very array ApplyResults releases from — looking at a wall would change what it does next.
-		 *
-		 * SO THE RULE IS "SOLVE WHEN THERE IS NO ANSWER", NOT "NEVER SOLVE". A freshly built plot has
-		 * never been solved at all (laying a brick deliberately does not solve), and so has a
-		 * structure that HAS been settled and then had a piece placed on it — the old pieces carry
-		 * the settle's answer and the new one carries none. Asking per LIVE piece catches both:
-		 * HasSupportAnswer is false for a handle added since the last solve, and a removed or
-		 * released piece is not part of what the overlay is describing.
-		 *
-		 * AND WHEN IT DOES SOLVE IT IS NON-DESTRUCTIVE, which is the first thing in this game to lean
-		 * on that sentence in anger. SolveLoads is documented as leaving every connection exactly as
-		 * intact as it found it; SolveAndBreak is the deliberate step and is never reached from here.
+		 * So the rule is "solve when there is no answer", not "never solve": a freshly built plot
+		 * has never been solved, and neither has a piece placed after a settle, since the old
+		 * pieces carry the settle's answer and the new one carries none. Asking per live piece
+		 * catches both, and it is non-destructive when it does solve — SolveLoads leaves every
+		 * connection as intact as it found it; SolveAndBreak is the deliberate step, never
+		 * reached from here.
 		 */
 		bool bAnyPieceWithoutAnAnswer = false;
 
@@ -1020,16 +967,16 @@ void ADestructionGamePlayerController::RefreshLoadOverlay()
 		for (int32 Index = 0; Index < Binding->NumPieces(); ++Index)
 		{
 			/*
-			 * A HOLE WEARS NOTHING, AND NEITHER DOES A BRICK THAT HAS ALREADY GONE. A removed piece
-			 * has no actor to tint and WorstJointBandForPiece fails it closed to Critical, which is
-			 * the right answer for a READING of a handle and the wrong one to paint: the brick is
-			 * gone, so there is nothing there to be in trouble.
+			 * A hole wears nothing, and neither does a brick that has already gone. A removed piece
+			 * has no actor to tint and WorstJointBandForPiece fails it closed to Critical, the right
+			 * answer for a reading of a handle and the wrong one to paint: the brick is gone, so
+			 * there is nothing there to be in trouble.
 			 *
-			 * A RELEASED PIECE IS THE SAME FACT ONE STEP EARLIER — it is a rigid body falling through
-			 * the air under Chaos, its joints say nothing about it any more, and it too reads
-			 * Critical for want of support. Painting that is the instrument spending its loudest
-			 * signal on a brick the player can already see moving, when the whole point of the red is
-			 * to pick out the one that has not moved yet.
+			 * A released piece is the same fact one step earlier — a rigid body falling through the
+			 * air under Chaos, its joints saying nothing about it any more, so it too reads Critical
+			 * for want of support. Painting that would spend the instrument's loudest signal on a
+			 * brick the player can already see moving, when the whole point of the red is to pick out
+			 * the one that has not moved yet.
 			 */
 			LoadOverlayStates.Add(
 				Binding->IsPieceRemoved(Index) || Binding->IsReleased(Index)
@@ -1040,15 +987,15 @@ void ADestructionGamePlayerController::RefreshLoadOverlay()
 	}
 
 	/*
-	 * THEN THE UNION OF THE OLD SET AND THE NEW ONE IS PUT BACK THROUGH THE PRECEDENCE. Nothing here
-	 * paints: every brick is asked afresh what state it should be in, so a hovered or selected brick
-	 * keeps what it had and an unclaimed one falls to its band — or to None, which is what taking the
-	 * overlay off means.
+	 * Then the union of the old set and the new one is put back through the precedence. Nothing
+	 * here paints: every brick is asked afresh what state it should be in, so a hovered or
+	 * selected brick keeps what it had and an unclaimed one falls to its band — or to None, which
+	 * is what taking the overlay off means.
 	 *
-	 * THE OLD SET FIRST AND THE NEW SET SECOND, AND THE BRICKS IN BOTH ARE SIMPLY TOLD TWICE. That is
-	 * harmless for the same reason RefreshNeighbourHighlights' overlap is: SetHighlighted is
-	 * idempotent and HighlightForPiece is asked afresh each time, so a second telling cannot say
-	 * anything different from the first.
+	 * The old set first and the new set second, and the bricks in both are simply told twice.
+	 * That is harmless for the same reason RefreshNeighbourHighlights' overlap is: SetHighlighted
+	 * is idempotent and HighlightForPiece is asked afresh each time, so a second telling cannot
+	 * say anything different from the first.
 	 */
 	for (int32 Index = 0; Index < WasCount; ++Index)
 	{
@@ -1074,20 +1021,18 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 	using namespace DestructionSession;
 
 	/*
-	 * WHAT THERE IS TO COMMAND IS ASKED FIRST, BEFORE THE STRIP IS ASKED WHAT IS LIVE.
-	 *
-	 * `bHasStructure` is the precondition on both commands, and it is a fact about the world rather
-	 * than a choice the player made — the brick they just laid, the cascade that just took six, the
-	 * wall the level built. Asked after the greying check, Run would be refused on the first click
-	 * after the build became real and accepted on the second, which reads as a dropped click.
+	 * What there is to command is asked first, before the strip is asked what is live: `bHasStructure`
+	 * is a fact about the world, not a player choice, and asked after the greying check, Run would
+	 * be refused on the first click after the build became real and accepted on the second — a
+	 * dropped click.
 	 */
 	RefreshSessionHasStructure();
 
 	/*
-	 * AND THE REFUSAL IS THE MODEL'S, ASKED RATHER THAN RE-DECIDED. ApplyToolbarButton consults the
-	 * same list for the same answer, so the only thing left to decide here is whether the SIDE
-	 * EFFECT runs — and it must not. A greyed `Course down` that still pushed its own decrement onto
-	 * the component would put the build plane under the earth with the readout saying course 0.
+	 * And the refusal is the model's, asked rather than re-decided: ApplyToolbarButton consults
+	 * the same list for the same answer, so the only thing left to decide is whether the side
+	 * effect runs, and it must not — a greyed `Course down` that still decremented would put the
+	 * build plane under the earth with the readout saying course 0.
 	 */
 	const TArray<FToolbarButton> Buttons = SessionToolbarButtons(SessionToolbarState);
 
@@ -1102,26 +1047,22 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 	SessionToolbarState = ApplyToolbarButton(SessionToolbarState, Id);
 
 	/*
-	 * THE SETTINGS ARE PUSHED FROM THE STATE THE TRANSITION PRODUCED, NEVER FROM THE BUTTON.
-	 *
+	 * The settings are pushed from the state the transition produced, never from the button:
 	 * `CourseUp` means "one more than whatever the course was", and the state is where that sum
-	 * already lives — the component is told the number, not the gesture. It is also the only reading
-	 * that stays right when a transition starts refusing or clamping something: whatever the model
-	 * decided the course is, that is the course the build plane is derived from.
-	 *
-	 * AND THE COMPONENT DERIVES THE REST ITSELF. SetPieceKind takes the kind and works out the
-	 * material, the half extent and the plane; grounded is never pushed at all — it is derived from
-	 * the snapped pose inside the subsystem (DESIGN §8, 2026-09-15), and IsCourseGrounded is only
-	 * what the readout intends.
+	 * already lives, so the component is told the number, not the gesture — the only reading
+	 * that stays right if a transition starts refusing or clamping something. The component
+	 * derives the rest itself: SetPieceKind works out the material, half extent and plane;
+	 * grounded is derived from the snapped pose inside the subsystem (DESIGN §8, 2026-09-15)
+	 * rather than pushed.
 	 */
 	switch (Id)
 	{
 	case EToolbarButtonId::ModeBuild:
 		/*
-		 * A BUILD IS OPENED IF ONE IS NOT ALREADY. Build mode with no structure behind it is a mode
-		 * in which every click fails closed against an unknown id — and opening one unconditionally
-		 * would be worse, because BeginBuild cancels: a player who looked at a brick in Destroy mode
-		 * and came back would find their plot swept.
+		 * A build is opened if one is not already. Build mode with no structure behind it is a
+		 * mode in which every click fails closed against an unknown id — and opening one
+		 * unconditionally would be worse, because BeginBuild cancels: a player who looked at a
+		 * brick in Destroy mode and came back would find their plot swept.
 		 */
 		if (BuildComponent != nullptr && BuildComponent->GetStructureId() == INDEX_NONE)
 		{
@@ -1129,19 +1070,19 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 		}
 
 		/*
-		 * AND NOTHING IS DONE ABOUT THE CURSOR, WHICH IS A CHANGE AND NOT AN OMISSION. This used
-		 * to raise it, because there is no aiming a ghost without a pointer. The pointer is the
-		 * SESSION's now — SetSessionControls raises it once in BeginPlay and nothing lowers it —
-		 * so a mode that raised it would be a mode that owned it, and the mode that did not would
-		 * take it away again (SESSION_UI_DESIGN §d, S6).
+		 * And nothing is done about the cursor, a change and not an omission. This used to raise
+		 * it, since there is no aiming a ghost without a pointer. The pointer is the session's
+		 * now — SetSessionControls raises it once in BeginPlay and nothing lowers it — so a mode
+		 * that raised it would be a mode that owned it, and the mode that did not would take it
+		 * away again (SESSION_UI_DESIGN §d, S6).
 		 */
 		break;
 
 	case EToolbarButtonId::ModeDestroy:
 		/*
-		 * NO GHOST SURVIVES INTO DESTROY MODE. A gold brick hanging in the air over a wall the
-		 * player is demolishing is the most confusing thing this UI can do. The BUILD survives —
-		 * CancelBuild is one call away and "leaving Build mode" reads like a reason to make it,
+		 * No ghost survives into Destroy mode: a gold brick hanging in the air over a wall the
+		 * player is demolishing is the most confusing thing this UI can do. The build survives —
+		 * CancelBuild is one call away, and "leaving Build mode" reads like a reason to make it,
 		 * which would hand the player a fresh empty plot every time they looked at a brick.
 		 */
 		if (BuildComponent != nullptr)
@@ -1149,7 +1090,7 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 			BuildComponent->HidePreview();
 		}
 
-		/* And the cursor stays where it is: the strip is on screen in Destroy mode too. */
+		/* The cursor stays where it is: the strip is on screen in Destroy mode too. */
 		break;
 
 	case EToolbarButtonId::PieceBrick:
@@ -1163,10 +1104,10 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 
 	case EToolbarButtonId::RotatePiece:
 		/*
-		 * THE STATE'S FLAG, READ AFTER THE TRANSITION, exactly as the piece and the course are. The
-		 * chip is a toggle and the model is where that flip already happened, so the component is
-		 * told WHICH WAY the next piece lies rather than that a chip was clicked — and it derives
-		 * the swapped footprint itself, which is what keeps the rotation and the palette one answer.
+		 * The state's flag, read after the transition, exactly as the piece and the course are.
+		 * The chip is a toggle and the model is where that flip already happened, so the component
+		 * is told which way the next piece lies rather than that a chip was clicked — and it
+		 * derives the swapped footprint itself, keeping the rotation and the palette one answer.
 		 */
 		if (BuildComponent != nullptr)
 		{
@@ -1189,8 +1130,8 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 	case EToolbarButtonId::JointScrew:
 	case EToolbarButtonId::JointBolt:
 		/*
-		 * THE STATE'S CHOICE, READ AFTER THE TRANSITION, exactly as the piece and the course are.
-		 * The component is told WHICH joint, never which chip — and the profile is looked up at the
+		 * The state's choice, read after the transition, exactly as the piece and the course are.
+		 * The component is told which joint, never which chip — the profile is looked up at the
 		 * door rather than here, so nothing between the strip and the placement holds a library
 		 * address it could get wrong.
 		 */
@@ -1210,7 +1151,7 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 
 	case EToolbarButtonId::ClearBuild:
 		/*
-		 * CLEAR IS "START AGAIN" RATHER THAN "STOP BUILDING", so a fresh plot is left open behind
+		 * Clear is "start again" rather than "stop building", so a fresh plot is left open behind
 		 * it. BeginBuild cancels whatever is open first — bricks, binding and all — so the two
 		 * halves are one call rather than a cancel this function could forget to follow.
 		 */
@@ -1227,8 +1168,8 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 		}
 
 		/*
-		 * AND THE OVERLAY IS RECOMPUTED AGAINST WHAT IS LEFT. A settle breaks joints and releases
-		 * pieces, so every band on screen is a reading of a structure that no longer exists — and a
+		 * And the overlay is recomputed against what is left. A settle breaks joints and releases
+		 * pieces, so every band on screen is a reading of a structure that no longer exists — a
 		 * green brick over a gap is worse advice than none.
 		 */
 		RefreshLoadOverlay();
@@ -1236,7 +1177,7 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 
 	case EToolbarButtonId::ToggleLoadOverlay:
 		/*
-		 * THE FLAG IS ALREADY THE TRANSITION'S; this is the world catching up with it, in both
+		 * The flag is already the transition's; this is the world catching up with it, in both
 		 * directions — the tint goes on, or it comes off every brick that was wearing one.
 		 */
 		RefreshLoadOverlay();
@@ -1244,9 +1185,9 @@ bool ADestructionGamePlayerController::OnToolbarButton(DestructionSession::ETool
 	}
 
 	/*
-	 * AND WHAT THERE IS TO COMMAND IS ASKED AGAIN, BECAUSE A COMMAND CHANGES IT. Clear leaves an
-	 * empty plot, so the strip has to grey Clear and Run again on the way out of the very click that
-	 * emptied it — a strip still offering them would be offering a command over nothing.
+	 * And what there is to command is asked again, because a command changes it. Clear leaves an
+	 * empty plot, so the strip has to grey Clear and Run again on the way out of the very click
+	 * that emptied it — a strip still offering them would be offering a command over nothing.
 	 */
 	RefreshSessionHasStructure();
 	RefreshSessionToolbar();
@@ -1259,7 +1200,7 @@ bool ADestructionGamePlayerController::ToggleSessionMode()
 	using namespace DestructionSession;
 
 	/*
-	 * THE READ IS THE WHOLE FUNCTION, AND IT IS THE ONLY DECISION IN THE SESSION'S KEYBOARD. A
+	 * The read is the whole function, and it is the only decision in the session's keyboard. A
 	 * toggle that always dispatched one id is a key that takes the player into whichever mode it
 	 * favours and then appears to jam. Everything else — whether the button is drawn, whether it
 	 * is greyed, what it does to the build component — is already the one door's.
@@ -1275,8 +1216,8 @@ bool ADestructionGamePlayerController::ToggleSessionPlacement()
 	using namespace DestructionSession;
 
 	/*
-	 * AND THE SAME SHAPE FOR Snap/Free, WHERE THE DOOR EARNS ITS KEEP. Neither placement chip is
-	 * on the Destroy strip, so this must be REFUSED there — written as "set the other value" it
+	 * And the same shape for Snap/Free, where the door earns its keep. Neither placement chip is
+	 * on the Destroy strip, so this must be refused there — written as "set the other value" it
 	 * would flip a setting in a mode that does not draw it, and the player would come back to
 	 * Build to find bricks landing wherever the cursor is. OnToolbarButton consults the same list
 	 * the strip greys from, so the key and the chip refuse together.
@@ -1292,7 +1233,7 @@ void ADestructionGamePlayerController::PointerAlongRay(const FVector& StartCm, c
 	if (SessionToolbarState.Mode == DestructionSession::ESessionMode::Build)
 	{
 		/*
-		 * THE COMPONENT IS GIVEN A DIRECTION, NOT AN END POINT, and it intersects that with the
+		 * The component is given a direction, not an end point, and it intersects that with the
 		 * build plane itself. Handing it the end point would place the ghost wherever the ray was
 		 * cut off rather than where it meets the course the player is laying on.
 		 */
@@ -1321,10 +1262,10 @@ bool ADestructionGamePlayerController::PrimaryAlongRay(const FVector& StartCm, c
 	}
 
 	/*
-	 * THE POSE IS TAKEN AGAIN FROM THIS RAY BEFORE IT IS COMMITTED, rather than trusting whatever
-	 * the last pointer move held. A preview predicts the commit only while the binding is unchanged,
-	 * and the previous click changed it — so a click that reused a stale preview would lay the
-	 * second brick at the pose the first one was going to take.
+	 * The pose is taken again from this ray before it is committed, rather than trusting whatever
+	 * the last pointer move held. A preview predicts the commit only while the binding is
+	 * unchanged, and the previous click changed it — so a click that reused a stale preview would
+	 * lay the second brick at the pose the first one was going to take.
 	 */
 	const FVector Direction = (EndCm - StartCm).GetSafeNormal();
 
@@ -1333,12 +1274,12 @@ bool ADestructionGamePlayerController::PrimaryAlongRay(const FVector& StartCm, c
 	const FPieceRef Placed = BuildComponent->ConfirmPlace();
 
 	/*
-	 * AND AGAIN AFTERWARDS, ALONG THE SAME RAY, BECAUSE THE COMMIT SPENT THE ONE IT JUST USED. With
-	 * the mouse still there is no pointer event to re-drive it — the tick's refresh is throttled on
-	 * the cursor's pixel position and skips until the player jogs the mouse — so without this the
-	 * gold ghost stands inside the red brick it just laid with no preview behind it. Asked again on
-	 * the changed binding, the solver drops the pose now occupied and answers the next one, which is
-	 * what "show where the brick is going to go" means during a run of clicks.
+	 * And again afterwards, along the same ray, because the commit spent the one it just used.
+	 * With the mouse still there is no pointer event to re-drive it — the tick's refresh is
+	 * throttled on the cursor's pixel position and skips until the player jogs the mouse — so
+	 * without this the gold ghost stands inside the red brick it just laid with no preview behind
+	 * it. Asked again on the changed binding, the solver drops the pose now occupied and answers
+	 * the next one, which is what "show where the brick is going to go" means during a run of clicks.
 	 */
 	BuildComponent->UpdatePreviewFromRay(StartCm, Direction);
 
@@ -1347,9 +1288,9 @@ bool ADestructionGamePlayerController::PrimaryAlongRay(const FVector& StartCm, c
 	RefreshSessionToolbar();
 
 	/*
-	 * AND A NEW BRICK IS A NEW LOAD PATH. The overlay survives a trip through Build mode, so a piece
-	 * laid while it is on has to be given a band of its own — and the pieces it now stands on have to
-	 * be read again, because that is the whole of what laying a brick does to a structure.
+	 * And a new brick is a new load path. The overlay survives a trip through Build mode, so a
+	 * piece laid while it is on has to be given a band of its own, and the pieces it now stands on
+	 * have to be read again — that is the whole of what laying a brick does to a structure.
 	 */
 	RefreshLoadOverlay();
 
@@ -1361,11 +1302,11 @@ bool ADestructionGamePlayerController::RefreshBuildPreviewFromRay(
 	const FVector& Direction)
 {
 	/*
-	 * DESTROY MODE IS A NO-OP, AND IT IS CHECKED FIRST. This runs every frame the cursor moves, so a
-	 * refresh that leaked the mode would hang a gold ghost over the wall the player is demolishing and
+	 * Destroy mode is a no-op, checked first. This runs every frame the cursor moves, so a refresh
+	 * that leaked the mode would hang a gold ghost over the wall the player is demolishing and
 	 * re-arm a preview a stray confirm could commit — exactly the ghost that switching to Destroy
-	 * hides. Reporting false rather than falling through to the hover keeps the two cursor jobs apart:
-	 * pointing in Destroy mode is IA_HoverPiece's, through PointerAlongRay.
+	 * hides. Reporting false rather than falling through to the hover keeps the two cursor jobs
+	 * apart: pointing in Destroy mode is IA_HoverPiece's, through PointerAlongRay.
 	 */
 	if (SessionToolbarState.Mode != DestructionSession::ESessionMode::Build)
 	{
@@ -1378,9 +1319,9 @@ bool ADestructionGamePlayerController::RefreshBuildPreviewFromRay(
 	}
 
 	/*
-	 * AND THE SAME SEAM A POINTER MOVE USES, so a refreshed ghost and a hovered one cannot come to
-	 * different answers about where the click would land. The component intersects the ray with the
-	 * build plane itself and fails closed on a miss, which is what makes the return value honest.
+	 * And the same seam a pointer move uses, so a refreshed ghost and a hovered one cannot come to
+	 * different answers about where the click would land. The component intersects the ray with
+	 * the build plane itself and fails closed on a miss, which is what makes the return value honest.
 	 */
 	return BuildComponent->UpdatePreviewFromRay(OriginCm, Direction).bValid;
 }
@@ -1392,7 +1333,7 @@ TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
 	TArray<FPieceMenuRow> Rows;
 
 	/*
-	 * WHICH BRICKS THE READOUT IS POINTING AT, BEFORE A CLICK MOVES ANYTHING. Toggling a brick
+	 * Which bricks the readout is pointing at, before a click moves anything. Toggling a brick
 	 * out of the selection can stop another brick being singled out — so the readout empties and
 	 * every colour it handed out has to come back, and none of those bricks is otherwise touched
 	 * by anything below.
@@ -1402,28 +1343,28 @@ TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
 	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
 
 	/*
-	 * THE WHOLE CHAIN IS ALREADY WRITTEN AND NONE OF IT IS REPEATED HERE. TracePiece fails
-	 * closed on every step from the trace to the re-resolve, so a miss arrives as a default
-	 * ref; PieceActionsFor resolves every ref again against the binding and answers an empty
-	 * menu for one that names nothing. This is the wire between them, not a third opinion.
+	 * The whole chain is already written and none of it is repeated here. TracePiece fails
+	 * closed on every step from the trace to the re-resolve, so a miss arrives as a default ref;
+	 * PieceActionsFor resolves every ref again against the binding and answers an empty menu for
+	 * one that names nothing. This is the wire between them, not a third opinion.
 	 */
 	if (Subsystem != nullptr)
 	{
 		const FPieceHit Hit = Subsystem->TracePiece(StartCm, EndCm);
 
 		/*
-		 * A CLICK HAPPENS AT THE CURSOR, so this ray is also the answer to what is under it.
+		 * A click happens at the cursor, so this ray is also the answer to what is under it.
 		 * Saying so here rather than waiting for the next mouse-move is what stops a brick
-		 * staying lit after it has been clicked away from, or a cleared selection leaving
-		 * the last brick pointed at still called out.
+		 * staying lit after it has been clicked away from, or a cleared selection leaving the
+		 * last brick pointed at still called out.
 		 */
 		SetHoveredPiece(Hit.Ref);
 
 		/*
-		 * CLICKING A BRICK TOGGLES IT, AND CLICKING PAST EVERYTHING CLEARS THE LOT. The
-		 * selection is the durable state and the menu is a projection of it rebuilt below,
-		 * which is why there is no branch here that shows or dismisses anything: an empty
-		 * selection builds no rows, and an empty row list is already how a menu comes down.
+		 * Clicking a brick toggles it, and clicking past everything clears the lot. The
+		 * selection is the durable state and the menu is a projection of it rebuilt below, which
+		 * is why there is no branch here that shows or dismisses anything: an empty selection
+		 * builds no rows, and an empty row list is already how a menu comes down.
 		 */
 		if (Hit.PieceHandle != INDEX_NONE)
 		{
@@ -1437,9 +1378,9 @@ TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
 		}
 
 		/*
-		 * ONE MENU FOR THE WHOLE SELECTION, AGAINST THE STRUCTURE ITS REFS NAME. A selection
-		 * is built by clicking one wall, so the first ref names it and PieceActionsFor
-		 * refuses the rest piece by piece if it ever does not.
+		 * One menu for the whole selection, against the structure its refs name. A selection is
+		 * built by clicking one wall, so the first ref names it and PieceActionsFor refuses the
+		 * rest piece by piece if it ever does not.
 		 */
 		const TArrayView<const FPieceRef> Selected = PieceSelection.Refs();
 
@@ -1453,16 +1394,16 @@ TArray<FPieceMenuRow> ADestructionGamePlayerController::InspectAlongRay(
 	}
 
 	/*
-	 * EVERY ROUTE OUT OF HERE PRESENTS, INCLUDING THE ONES THAT FOUND NOTHING — no world, no
+	 * Every route out of here presents, including the ones that found nothing — no world, no
 	 * subsystem, a ray that hit the floor, a brick standing for a piece that has gone. That is
 	 * what makes "the ray hit nothing" and "take the menu down" the same call rather than two,
-	 * and it is the whole reason this is one ShowPieceMenu at the end instead of an early
-	 * return per guard: a route that simply returned would leave the previous brick's menu on
-	 * screen naming a brick the player is no longer pointing at, and a Delete on it removes it.
+	 * and it is the whole reason this is one ShowPieceMenu at the end instead of an early return
+	 * per guard: a route that simply returned would leave the previous brick's menu on screen
+	 * naming a brick the player is no longer pointing at.
 	 */
 	ShowPieceMenu(Rows);
 
-	/* AFTER the menu has been shown, so the state this leaves the wall in is the final one. */
+	/* After the menu has been shown, so the state this leaves the wall in is the final one. */
 	RefreshNeighbourHighlights(WereNeighbours);
 
 	return Rows;
@@ -1475,10 +1416,10 @@ FPieceRef ADestructionGamePlayerController::HoverAlongRay(
 	UDestructionStructureSubsystem* const Subsystem = PieceMenuSubsystemOf(*this);
 
 	/*
-	 * POINTING AT A BRICK IS NOT CHOOSING IT, so nothing here touches the selection, opens
-	 * a menu or closes one — the only thing that changes is which brick is called out. No
-	 * world and no subsystem is the same answer as a ray that hit nothing: a default ref,
-	 * which lets go of whatever was called out before.
+	 * Pointing at a brick is not choosing it, so nothing here touches the selection, opens a menu
+	 * or closes one — the only thing that changes is which brick is called out. No world and no
+	 * subsystem is the same answer as a ray that hit nothing: a default ref, which lets go of
+	 * whatever was called out before.
 	 */
 	const FPieceHit Hit = Subsystem != nullptr ? Subsystem->TracePiece(StartCm, EndCm) : FPieceHit();
 
@@ -1495,25 +1436,22 @@ const FPieceSelection& ADestructionGamePlayerController::GetPieceSelection() con
 EBrickHighlight ADestructionGamePlayerController::HighlightForPiece(const FPieceRef& Ref) const
 {
 	/*
-	 * THE STRONGER STATE WINS WHERE THEY COINCIDE, AND THE ORDER IS Inspected > Selected >
-	 * Hovered. A selected brick under the cursor stays Selected: a hover that overwrote it
-	 * would make a chosen brick read as unchosen exactly when the player is looking at it,
-	 * which is indistinguishable from having lost the selection. And the one brick whose
-	 * joint forces are on screen beats the rest of the selection, because a breakout of one
-	 * brick's numbers drawn beside five bricks that look identical to it is ambiguous about
-	 * which brick it is the breakout OF.
+	 * The stronger state wins where they coincide, in the order Inspected > Selected > Hovered.
+	 * A selected brick under the cursor stays Selected: a hover that overwrote it would make a
+	 * chosen brick read as unchosen exactly when the player is looking at it. The one brick
+	 * whose joint forces are on screen beats the rest of the selection, since a breakout of its
+	 * numbers drawn beside five identical-looking bricks would otherwise be ambiguous about
+	 * which one it is the breakout of.
 	 *
-	 * A BRICK THAT IS NOT SELECTED CANNOT BE THE ONE BEING READ, which is why this asks the
-	 * selection as well as the ref. It is the same rule BuildPieceMenuInspector applies — an
-	 * anchor outside the set it anchors is a readout of somebody else's brick — and it has to
-	 * be the same rule, or the panel and the wall disagree about which brick the numbers are
-	 * about.
+	 * A brick that is not selected cannot be the one being read, so this asks the selection as
+	 * well as the ref — the same rule BuildPieceMenuInspector applies, since an anchor outside
+	 * the set it anchors is a readout of somebody else's brick, and the panel and the wall must
+	 * agree which brick the numbers are about.
 	 *
-	 * IT IS NOT A SUBSTITUTE FOR CLEARING THE REF, AND THAT DISTINCTION COST A ROUND. The
-	 * conjunct makes a stale InspectedPiece inert only for as long as the brick is out of the
-	 * selection; the ref itself survives, so picking that brick again springs the readout back
-	 * open on it for no reason the player can see. DismissPieceMenu is where it is actually
-	 * let go of, because the panel is the only thing that can ever single a brick out.
+	 * It is not a substitute for clearing the ref: the conjunct makes a stale InspectedPiece
+	 * inert only while the brick is out of the selection, and the ref itself survives, so
+	 * picking that brick again would spring the readout back open on it for no visible reason.
+	 * DismissPieceMenu is where it is actually let go of.
 	 */
 	if (InspectedPiece == Ref && PieceSelection.Contains(Ref))
 	{
@@ -1526,22 +1464,18 @@ EBrickHighlight ADestructionGamePlayerController::HighlightForPiece(const FPiece
 	}
 
 	/*
-	 * THEN THE READOUT'S OWN COLOURS, WHICH SIT BETWEEN THE SELECTION AND THE CURSOR — AND BOTH
-	 * SIDES OF THAT ARE JUDGEMENTS RATHER THAN DEDUCTIONS.
+	 * Then the readout's own colours, between the selection and the cursor.
 	 *
-	 * SELECTED BEATS NEIGHBOUR. A picked brick that is also on the far end of a joint row keeps
-	 * its selection colour, and the argument the other way is real: the neighbour hue is the only
-	 * thing tying a row of numbers to a brick in a wall of identical bricks, so a picked neighbour
-	 * weakens that tie. It loses to the rule this project has already stated three times — the one
-	 * thing a player must be able to check before pressing Delete is which bricks are going, and a
-	 * brick that quietly stops looking picked while the cursor runs down a list is that check being
-	 * taken away at the worst possible moment. Deleting is irreversible; losing a hue is not, and
-	 * the row still names the brick in words either way.
+	 * Selected beats neighbour: a picked brick on the far end of a joint row keeps its selection
+	 * colour, even though the neighbour hue is the only thing tying a row of numbers to a brick
+	 * in a wall of identical bricks. It loses because the one thing a player must be able to
+	 * check before pressing Delete is which bricks are going, and a brick that quietly stops
+	 * looking picked while the cursor runs down a list is that check taken away at the worst
+	 * possible moment — deleting is irreversible, losing a hue is not.
 	 *
-	 * NEIGHBOUR BEATS HOVERED, FOR THE OPPOSITE REASON. While the readout is open the cursor is on
-	 * the PANEL, so HoveredPiece is whatever the last ray into the world happened to hit and is
-	 * STALE BY CONSTRUCTION. A stale answer overwriting a live one would turn the brick a row is
-	 * pointing at back to the hover colour the moment the player last looked at it.
+	 * Neighbour beats hovered for the opposite reason: while the readout is open the cursor is
+	 * on the panel, so HoveredPiece is stale by construction, and a stale answer overwriting a
+	 * live one would turn the brick a row is pointing at back to the hover colour.
 	 */
 	const EBrickHighlight Neighbour = NeighbourHighlightForPiece(Ref);
 
@@ -1556,18 +1490,15 @@ EBrickHighlight ADestructionGamePlayerController::HighlightForPiece(const FPiece
 	}
 
 	/*
-	 * AND THE LOAD OVERLAY LAST, WHICH IS WHERE A STATE THAT COVERS EVERY PIECE AT ONCE HAS TO SIT.
+	 * And the load overlay last, where a state that covers every piece at once has to sit.
+	 * Everything above says "this one" and the overlay says something about all of them, so an
+	 * overlay that beat any of those would take away the one check a player must be able to make
+	 * before pressing Delete.
 	 *
-	 * Everything above says "this one" — the brick being read, the bricks picked, the bricks a row
-	 * points at, the brick under the cursor — and the overlay says something about all of them. An
-	 * overlay that beat any of those would take away the reading the player is actually making,
-	 * which for the selection is the one thing they must be able to check before pressing Delete.
-	 *
-	 * IT IS ASKED HERE RATHER THAN PAINTED ON, and that is the whole shape of the feature. A refresh
-	 * that called SetHighlighted on every brick would be in a fight with the cursor it wins: the next
-	 * refresh repaints over the hover and the selection, and the hover's own refresh would leave a
-	 * brick plain forever afterwards. One function decides where states coincide; the overlay is one
-	 * more question it asks, at the bottom of the order.
+	 * It is asked here rather than painted on: a refresh that called SetHighlighted on every
+	 * brick would fight the cursor and lose — the next refresh would repaint over the hover and
+	 * selection, and the hover's own refresh would leave a brick plain forever after. One
+	 * function decides where states coincide; the overlay is one more question it asks, last.
 	 */
 	return LoadHighlightForPiece(Ref);
 }
@@ -1575,8 +1506,8 @@ EBrickHighlight ADestructionGamePlayerController::HighlightForPiece(const FPiece
 EBrickHighlight ADestructionGamePlayerController::LoadHighlightForPiece(const FPieceRef& Ref) const
 {
 	/*
-	 * THE STRUCTURE IS CHECKED AS WELL AS THE INDEX, for the reason NeighbourHighlightForPiece checks
-	 * it: piece 4 of every wall on screen is not piece 4 of the one the overlay solved.
+	 * The structure is checked as well as the index, for the reason NeighbourHighlightForPiece
+	 * checks it: piece 4 of every wall on screen is not piece 4 of the one the overlay solved.
 	 */
 	if (Ref.StructureId != LoadOverlayStructureId || !LoadOverlayStates.IsValidIndex(Ref.PieceIndex))
 	{
@@ -1592,10 +1523,10 @@ EBrickHighlight ADestructionGamePlayerController::NeighbourHighlightForPiece(
 	const FPieceMenuInspector Inspector = PieceMenuInspectorForSelection();
 
 	/*
-	 * THE ROWS BELONG TO THE INSPECTED BRICK, SO THE FAR END BELONGS TO ITS STRUCTURE. Comparing
+	 * The rows belong to the inspected brick, so the far end belongs to its structure. Comparing
 	 * the piece index alone would light brick 4 of every wall on screen the moment brick 4 of this
-	 * one became a neighbour, which is the same fail-open shape FStructureBinding::ResolvePiece
-	 * refuses a foreign ref for.
+	 * one became a neighbour, the same fail-open shape FStructureBinding::ResolvePiece refuses a
+	 * foreign ref for.
 	 */
 	if (Ref.StructureId != Inspector.InspectedRef.StructureId)
 	{
@@ -1617,8 +1548,8 @@ void ADestructionGamePlayerController::RefreshNeighbourHighlights(
 	TArrayView<const FPieceRef> WereNeighbours)
 {
 	/*
-	 * THE OLD SET FIRST AND THE NEW SET SECOND, WHICH MATTERS FOR THE BRICKS IN BOTH. A brick
-	 * that is a neighbour before and after may have changed SLOT, and refreshing it twice is
+	 * The old set first and the new set second, which matters for the bricks in both. A brick
+	 * that is a neighbour before and after may have changed slot, and refreshing it twice is
 	 * harmless only because SetHighlighted is idempotent and HighlightForPiece is asked afresh
 	 * each time — the same property SetHoveredPiece's pair of refreshes already leans on.
 	 */
@@ -1661,10 +1592,10 @@ void ADestructionGamePlayerController::RefreshPieceHighlight(const FPieceRef& Re
 void ADestructionGamePlayerController::SetHoveredPiece(const FPieceRef& Ref)
 {
 	/*
-	 * THE BRICK BEING LEFT IS REFRESHED AS WELL AS THE ONE BEING POINTED AT, and it is
-	 * refreshed rather than simply cleared — it may be selected, in which case it stays
-	 * called out. Without the first of the two, every brick the cursor has ever crossed
-	 * stays lit and the wall ends up entirely highlighted.
+	 * The brick being left is refreshed as well as the one being pointed at, and refreshed
+	 * rather than simply cleared — it may be selected, in which case it stays called out.
+	 * Without the first of the two, every brick the cursor has ever crossed stays lit and the
+	 * wall ends up entirely highlighted.
 	 */
 	const FPieceRef Previous = HoveredPiece;
 
@@ -1680,10 +1611,10 @@ void ADestructionGamePlayerController::ClearPieceSelection()
 	const TArray<FPieceRef> WasSelected(PieceSelection.Refs());
 
 	/*
-	 * AND THE READOUT'S OWN BRICKS, WHICH ARE NOT IN THAT LIST. A brick that leaves the selection
-	 * stops being singled out, so the whole neighbour set goes with it — and those bricks are
-	 * precisely the ones that were never picked, so the loop below would not reach them. Asked
-	 * before the clear, because afterwards there is no readout left to ask.
+	 * And the readout's own bricks, not in that list: a brick that leaves the selection stops
+	 * being singled out, so the whole neighbour set goes too, and those bricks were never picked
+	 * so the loop below would not reach them. Asked before the clear, since afterwards there is
+	 * no readout left to ask.
 	 */
 	const TArray<FPieceRef> WereNeighbours = NeighbourPieces();
 
@@ -1700,26 +1631,19 @@ void ADestructionGamePlayerController::ClearPieceSelection()
 void ADestructionGamePlayerController::SetInspectedPiece(const FPieceRef& Ref)
 {
 	/*
-	 * THE BRICK BEING LEFT IS REFRESHED AS WELL AS THE ONE BEING TAKEN UP, AND IT IS
-	 * REFRESHED RATHER THAN CLEARED — it is almost always still selected, so it goes back to
-	 * Selected rather than to None. This is exactly the bug class already recorded against
-	 * SetHoveredPiece, and here it is sharper in both directions: a brick left Inspected means
-	 * two bricks claim the one breakout, and a brick dropped to None means running the cursor
-	 * down the menu silently empties the selection on screen while the commit still deletes
-	 * every one of them.
-	 *
-	 * NOTHING ELSE MOVES. Reading a brick is not choosing it, exactly as pointing at one is
-	 * not: the selection and the presented rows come through untouched, or hovering down a
-	 * list of six entries would rewrite the very list being hovered.
+	 * The brick being left is refreshed as well as the one being taken up, and refreshed rather
+	 * than cleared — it is almost always still selected, so it goes back to Selected rather than
+	 * None. Same bug class as SetHoveredPiece, sharper here: a brick left Inspected means two
+	 * bricks claim the one breakout, and a brick dropped to None would silently empty the
+	 * selection on screen while the commit still deletes every one of them. Nothing else moves:
+	 * reading a brick is not choosing it, so the selection and presented rows come through untouched.
 	 */
 	const FPieceRef Previous = InspectedPiece;
 
 	/*
-	 * AND THE BRICKS THE READOUT WAS POINTING AT ARE COLLECTED BEFORE THE REF MOVES, BECAUSE
-	 * AFTERWARDS THERE IS NOTHING LEFT TO ASK. The neighbour set changes wholesale when the
-	 * readout does, so a refresh that told only the NEW neighbours would leave the old ones lit
-	 * and running the cursor down a list of six entries would colour the whole wall — the same
-	 * left-behind-state bug this function's own Previous ref exists to close, one field out.
+	 * And the bricks the readout was pointing at are collected before the ref moves, since
+	 * afterwards there is nothing left to ask — the neighbour set changes wholesale when the
+	 * readout does, the same left-behind-state bug Previous exists to close, one field out.
 	 */
 	const TArray<FPieceRef> WereNeighbours = NeighbourPieces();
 
@@ -1731,7 +1655,7 @@ void ADestructionGamePlayerController::SetInspectedPiece(const FPieceRef& Ref)
 	RefreshNeighbourHighlights(WereNeighbours);
 
 	/*
-	 * AND THE READOUT FOLLOWS THE BRICK IT DESCRIBES. The panel breaks out ONE brick's joints,
+	 * And the readout follows the brick it describes. The panel breaks out one brick's joints,
 	 * so which brick that is changing is the whole of what a player asked for by running the
 	 * cursor down the list.
 	 */
@@ -1741,15 +1665,14 @@ void ADestructionGamePlayerController::SetInspectedPiece(const FPieceRef& Ref)
 bool ADestructionGamePlayerController::ShowPieceMenu(TArrayView<const FPieceMenuRow> Rows)
 {
 	/*
-	 * SHOWING IS DEFINED AS DISMISSING AND THEN BUILDING, WHICH IS THE POINT RATHER THAN AN
-	 * IMPLEMENTATION DETAIL. There is exactly one route out of "a menu is up", so replacing a
-	 * menu, showing an empty one and closing one outright all take it — which is what makes the
-	 * inspected brick let go of on every one of them without three copies of that. It is also
-	 * what keeps the widget half honest, which is why the build below sits here and the removal
-	 * sits beside the Reset in DismissPieceMenu: a second add with no matching remove leaks the
-	 * previous menu on screen forever and no headless assertion can see that, but the
-	 * model-level version of the same bug — holding two menus' rows — is asserted, and the two
-	 * are only the same code path while show is written this way.
+	 * Showing is defined as dismissing and then building, which is the point rather than an
+	 * implementation detail. There is exactly one route out of "a menu is up", so replacing a
+	 * menu, showing an empty one and closing one outright all take it — which lets go of the
+	 * inspected brick on every one of them without three copies of that. It also keeps the
+	 * widget half honest: the build below sits here and the removal sits beside the Reset in
+	 * DismissPieceMenu, so a second add with no matching remove — invisible to any headless
+	 * assertion — cannot happen while the model-level version of the same bug (holding two
+	 * menus' rows) stays asserted.
 	 *
 	 * Rows must not alias ShownPieceMenuRows: the dismiss below empties it. No caller does that
 	 * today and nothing guards it; see CURRENT_STATE.md.
@@ -1766,10 +1689,10 @@ bool ADestructionGamePlayerController::ShowPieceMenu(TArrayView<const FPieceMenu
 	BuildPieceMenuWidget();
 
 	/*
-	 * AND THE CONTROLS ARE NOT TOUCHED. A menu used to raise the cursor and remove the free-look
-	 * context here, and give both back on the way out; the cursor is the session's now and the
-	 * camera is chorded to a held right mouse button, so there is nothing to take away and nothing
-	 * a route out of "a menu is up" could forget to restore (SESSION_UI_DESIGN §d, S6).
+	 * And the controls are not touched: a menu used to raise the cursor and remove the free-look
+	 * context, giving both back on the way out, but the cursor is the session's now and the
+	 * camera is chorded to a held right mouse button, so there is nothing left to restore
+	 * (SESSION_UI_DESIGN §d, S6).
 	 */
 	return true;
 }
@@ -1786,19 +1709,16 @@ bool ADestructionGamePlayerController::DismissPieceMenu()
 	RemovePieceMenuWidget();
 
 	/*
-	 * AND NOTHING IS BEING READ OUT ANY MORE, WHICH IS A CLEAR RATHER THAN A DISABLE. The only
-	 * thing that ever singles a brick out is the cursor resting on an entry row of this panel,
-	 * and Slate delivers no OnMouseLeave to a widget that has left the tree — so a panel taken
-	 * down under the cursor left InspectedPiece set. HighlightForPiece made that ref merely
-	 * INERT, by also asking whether the brick is still in the selection, and inert is not
-	 * cleared: deselecting the brick and picking it again brought the readout straight back on
-	 * it, joint breakout and all, with the player's cursor nowhere near the menu.
+	 * And nothing is being read out any more, a clear rather than a disable. Slate delivers no
+	 * OnMouseLeave to a widget that has left the tree, so a panel taken down under the cursor
+	 * left InspectedPiece set; HighlightForPiece made that ref merely inert rather than cleared,
+	 * so deselecting the brick and picking it again brought the readout straight back on it with
+	 * the player's cursor nowhere near the menu.
 	 *
-	 * It goes through SetInspectedPiece rather than assigning the field, because the brick being
-	 * let go of has to be told: it is almost always still selected, so it drops back to Selected
-	 * rather than being left wearing the readout's own colour. And it sits AFTER
-	 * RemovePieceMenuWidget so the readout refresh it triggers finds no box and does nothing —
-	 * there is no panel left to draw into by this point.
+	 * It goes through SetInspectedPiece rather than assigning the field, since the brick being
+	 * let go of has to be told — it is almost always still selected, so it drops back to
+	 * Selected rather than being left wearing the readout's colour. It sits after
+	 * RemovePieceMenuWidget so the readout refresh it triggers finds no box to draw into.
 	 */
 	SetInspectedPiece(FPieceRef());
 
@@ -1808,7 +1728,7 @@ bool ADestructionGamePlayerController::DismissPieceMenu()
 bool ADestructionGamePlayerController::IsPieceMenuShown() const
 {
 	/*
-	 * THE ROWS ARE THE RECORD, AND THERE IS NO SECOND FLAG. An empty list dismisses, so
+	 * The rows are the record, and there is no second flag. An empty list dismisses, so
 	 * "holding rows" and "a menu is up" are the same fact; a bool beside them would be a
 	 * second copy of it, free to disagree.
 	 */
@@ -1823,7 +1743,7 @@ TArrayView<const FPieceMenuRow> ADestructionGamePlayerController::GetShownPieceM
 bool ADestructionGamePlayerController::ChoosePieceMenuRow(int32 RowIndex)
 {
 	/*
-	 * AN INDEX THAT NAMES NO ROW COMMITS NOTHING, AND IT IS REFUSED RATHER THAN CLAMPED. A
+	 * An index that names no row commits nothing, and is refused rather than clamped. A
 	 * FMath::Clamp here would turn every out-of-range choice into a commit of row 0 — the
 	 * first entry of a menu run against a brick nobody clicked — which is the obvious wrong
 	 * fix and is exactly what the refusal rows of World.Choose count entries into Run to
@@ -1836,30 +1756,28 @@ bool ADestructionGamePlayerController::ChoosePieceMenuRow(int32 RowIndex)
 	}
 
 	/*
-	 * THE CHOSEN ROW IS COPIED OUT BEFORE THE DISMISS, and that is load-bearing rather than
-	 * tidy: DismissPieceMenu Reset()s the very array the rows live in, so a reference into
-	 * ShownPieceMenuRows would be reading destroyed elements by the time it was committed.
-	 * Both halves come from the ROW rather than from anything this controller remembered
-	 * separately — Core/PieceMenu.h says why the row carries its own targets, and a
-	 * presenter that committed the chosen row's action against a remembered selection would
-	 * act on the wrong bricks with everything else looking perfect.
+	 * The chosen row is copied out before the dismiss, load-bearing rather than tidy:
+	 * DismissPieceMenu Reset()s the very array the rows live in, so a reference into
+	 * ShownPieceMenuRows would read destroyed elements by commit time. Both halves come from
+	 * the row rather than anything this controller remembered separately — Core/PieceMenu.h
+	 * says why, and a presenter that committed against a remembered selection would act on the
+	 * wrong bricks with everything else looking perfect.
 	 */
 	const TArray<FPieceRef> Refs = ShownPieceMenuRows[RowIndex].Refs;
 	const FPieceAction* const Action = ShownPieceMenuRows[RowIndex].Action;
 
 	/*
-	 * IT COMES DOWN FIRST, BY THE ONE ROUTE OUT OF "A MENU IS UP" — so the brick it was
-	 * reading out is let go of by the same call every other route makes, and the commit below
-	 * runs with nothing on screen naming the bricks it is about to remove.
+	 * It comes down first, by the one route out of "a menu is up", so the brick it was reading
+	 * out is let go of before the commit below runs with nothing on screen naming the bricks it
+	 * is about to remove.
 	 */
 	DismissPieceMenu();
 
 	/*
-	 * AND THE PICK GOES WITH IT, BEFORE THE COMMIT RATHER THAN AFTER. These bricks have just
-	 * been acted on, so leaving them selected would carry them into the next click's menu —
-	 * where they no longer resolve, and the intersection then offers nothing at all. Before,
-	 * because the commit is what destroys them, and a brick has to still exist to be told it
-	 * is no longer called out.
+	 * And the pick goes with it, before the commit rather than after: these bricks have just
+	 * been acted on, so leaving them selected would carry them into the next click's menu where
+	 * they no longer resolve. Before, because the commit is what destroys them, and a brick has
+	 * to still exist to be told it is no longer called out.
 	 */
 	ClearPieceSelection();
 
@@ -1871,24 +1789,19 @@ bool ADestructionGamePlayerController::ChoosePieceMenuRow(int32 RowIndex)
 	}
 
 	/*
-	 * ONE COMMIT FOR THE WHOLE SELECTION, WHICH IS WHAT MAKES IT ONE SOLVE. Looping the
-	 * single-piece commit here would reach the same wall at N times the price — and would
-	 * push N times, each against an answer that had seen only part of the batch.
+	 * One commit for the whole selection, which is what makes it one solve. Looping the
+	 * single-piece commit here would reach the same wall at N times the price, pushing N
+	 * times, each against an answer that had seen only part of the batch.
 	 */
 	const bool bCommitted = Subsystem->CommitPieceActionForAll(Refs, *Action) > 0;
 
 	/*
-	 * AND THE SESSION IS ASKED AGAIN WHETHER THERE IS ANYTHING LEFT TO COMMAND.
-	 *
-	 * THIS IS THE ONLY DOOR THAT CHANGES THE WORLD WITHOUT BEING A TOOLBAR CLICK. OnToolbarButton
-	 * refreshes `bHasStructure` at its own door, so every route through the strip keeps the chips
-	 * honest; a delete arrives here instead, and without this the state — which is what the strip
-	 * on screen is drawn from — goes on carrying the answer from the click that LAID the brick.
-	 * The player would be offered Run and Clear over an empty plot until they happened to press
-	 * something else, and pressing Run would solve an empty graph and report success.
-	 *
-	 * ONLY WHEN SOMETHING ACTUALLY COMMITTED, because a refused action changed nothing and a
-	 * refresh is a solve-free question with a widget rebuild behind it.
+	 * And the session is asked again whether there is anything left to command — the only door
+	 * that changes the world without being a toolbar click. OnToolbarButton refreshes
+	 * `bHasStructure` at its own door, but a delete arrives here instead, and without this the
+	 * strip would go on drawing from the answer of the click that laid the brick, offering Run
+	 * and Clear over an empty plot, with Run then solving an empty graph and reporting success.
+	 * Only when something actually committed, since a refused action changed nothing.
 	 */
 	if (bCommitted)
 	{
@@ -1896,10 +1809,9 @@ bool ADestructionGamePlayerController::ChoosePieceMenuRow(int32 RowIndex)
 		RefreshSessionToolbar();
 
 		/*
-		 * AND THE OVERLAY IS RECOMPUTED, WHICH IS THE CLAIM THE WHOLE FEATURE IS FOR. "See where the
-		 * load is, then pull THAT one" is worth nothing if the picture does not move when the player
-		 * pulls: a refresh that ran only on the toggle would leave the wall coloured by the structure
-		 * as it stood before the delete. It costs nothing while the overlay is off.
+		 * And the overlay is recomputed, the claim the whole feature is for: a refresh that ran
+		 * only on the toggle would leave the wall coloured by the structure as it stood before
+		 * the delete. It costs nothing while the overlay is off.
 		 */
 		RefreshLoadOverlay();
 	}
@@ -1914,10 +1826,9 @@ void ADestructionGamePlayerController::BuildPieceMenuWidget()
 	UGameViewportClient* const Viewport = World != nullptr ? World->GetGameViewport() : nullptr;
 
 	/*
-	 * NO VIEWPORT MEANS NO WIDGET, AND THAT IS THE ORDINARY CASE IN A TEST rather than an
-	 * error: a world built in code has no UGameViewportClient at all, so the presented rows —
-	 * which are the record, not this — stand alone and everything asserted about a menu still
-	 * holds with nothing drawn.
+	 * No viewport means no widget, the ordinary case in a test rather than an error: a world
+	 * built in code has no UGameViewportClient at all, so the presented rows — the record, not
+	 * this — stand alone and everything asserted about a menu still holds with nothing drawn.
 	 */
 	if (Viewport == nullptr)
 	{
@@ -1925,19 +1836,15 @@ void ADestructionGamePlayerController::BuildPieceMenuWidget()
 	}
 
 	/*
-	 * THE PANEL TAKES ITS HOME THE FIRST TIME IT IS SHOWN, AND NEVER AGAIN.
+	 * The panel takes its home the first time it is shown, and never again — the menu is rebuilt
+	 * on every click, and PieceMenuPanelOffsetPx is controller state precisely so a corner the
+	 * player chose survives that; a home taken on every build would overwrite it and snap the
+	 * panel back across the screen the next time they picked a brick.
 	 *
-	 * ONCE, BECAUSE THE MENU IS REBUILT ON EVERY CLICK. PieceMenuPanelOffsetPx is controller state
-	 * precisely so a corner the player chose survives the panel being torn down and put back; a home
-	 * taken on every build would overwrite it, and the panel would snap back across the screen the
-	 * next time they picked a brick — which is the complaint this whole seam answers, arrived at
-	 * from the other direction.
-	 *
-	 * WHERE it opens is Core's decision and not this function's, for the reason ClampPanelOffset is:
-	 * it is arithmetic on two sizes and a margin, the failure is a panel that opens somewhere
-	 * unusable, and a widget cannot be asked whether it got it right. Presenter.PanelHomeOffset holds
-	 * it, including the rows where the answer is the origin — and it composes with the clamp rather
-	 * than restating it, so nothing here has to clamp what it hands back.
+	 * Where it opens is Core's decision, not this function's: it is arithmetic on two sizes and
+	 * a margin, and a widget cannot be asked whether it got it right. Presenter.PanelHomeOffset
+	 * holds it and composes with the clamp rather than restating it, so nothing here has to
+	 * clamp what it hands back.
 	 */
 	if (!bPieceMenuPanelHasOpened)
 	{
@@ -1958,23 +1865,19 @@ FVector2D ADestructionGamePlayerController::PieceMenuViewportSizeAtOpenPx(
 	const UGameViewportClient& Viewport) const
 {
 	/*
-	 * THE SCREEN, IN THE UNITS THE PANEL'S OFFSET IS STATED IN, BEFORE THERE IS A PANEL TO ASK.
+	 * The screen, in the units the panel's offset is stated in, before there is a panel to ask.
+	 * PieceMenuViewportSizePx reads the panel's own laid-out root and is the right answer, but a
+	 * widget built this frame has no cached geometry yet, so a home worked out from it would be
+	 * the origin for the whole of the first menu. The viewport client knows its size up front.
 	 *
-	 * PieceMenuViewportSizePx READS THE PANEL'S OWN LAID-OUT ROOT AND IS THE RIGHT ANSWER, and it is
-	 * not available yet: a widget built this frame has no cached geometry, so a home worked out from
-	 * it would be the origin for the whole of the first menu — which is exactly the corner nobody
-	 * chose that this is here to stop. The viewport client knows its size before anything is laid
-	 * out.
+	 * In screen pixels, the wrong unit by exactly the DPI scale: the constraint canvas lays out
+	 * under Slate's scaler, so a home measured in screen pixels and applied in scaled ones would
+	 * open the panel past the right edge by that factor, invisibly, since the clamp would then
+	 * quietly pull it back. Dividing by the scale is the whole conversion.
 	 *
-	 * IN SCREEN PIXELS, WHICH IS THE WRONG UNIT BY EXACTLY THE DPI SCALE. The constraint canvas is
-	 * viewport content and so lays out under Slate's scaler; a home measured in screen pixels and
-	 * applied in scaled ones would open the panel past the right edge by that factor, and the clamp
-	 * would then quietly pull it back — a fault that is invisible rather than absent, and the same
-	 * one PieceMenuViewportSizePx's own comment names. Dividing by the scale is the whole conversion.
-	 *
-	 * A SCALE THAT IS NOT A POSITIVE NUMBER FAILS TO NO SCREEN AT ALL, AND THE GUARD IS WRITTEN
-	 * `!(X > 0)` SO A NaN LANDS INSIDE IT. A viewport of no size puts the home at the origin, which
-	 * is the corner that is on screen at every size and every scale.
+	 * A scale that is not a positive number fails to no screen at all; the guard is written
+	 * `!(X > 0)` so a NaN lands inside it, putting the home at the origin — the corner that is on
+	 * screen at every size and every scale.
 	 */
 	const double ScaleFactor = Viewport.GetDPIScale();
 
@@ -1992,36 +1895,34 @@ FVector2D ADestructionGamePlayerController::PieceMenuViewportSizeAtOpenPx(
 TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 {
 	/*
-	 * THE READOUT IS ASKED FOR ONCE AND EVERY STRING IN IT IS TAKEN AS GIVEN. Nothing below
+	 * The readout is asked for once and every string in it is taken as given. Nothing below
 	 * counts, formats, pluralises, filters or resolves anything — Core/PieceMenu.h says at
-	 * length why each of those decisions is already made in the model, and the short version
-	 * is that this function is the one place no test can reach.
+	 * length why each of those decisions is already made in the model, and the short version is
+	 * that this function is the one place no test can reach.
 	 *
-	 * AND THE DETAIL IS THE PANEL'S OWN RATHER THAN THE ACCESSOR'S DEFAULT, which is the one
-	 * argument on this line and the one place the compact request is allowed to reach. The joint
-	 * table is also the index NeighbourHighlightForPiece colours the wall from, so a compact
-	 * answer handed to the shared accessor would darken every neighbour highlight along with the
-	 * table — see PieceMenuInspectorForSelection.
+	 * The detail is the panel's own rather than the accessor's default, the one argument on this
+	 * line and the one place the compact request is allowed to reach. The joint table is also the
+	 * index NeighbourHighlightForPiece colours the wall from, so a compact answer handed to the
+	 * shared accessor would darken every neighbour highlight along with the table — see
+	 * PieceMenuInspectorForSelection.
 	 */
 	const FPieceMenuInspector Inspector = PieceMenuInspectorForSelection(PieceMenuPanelDetail);
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
 	/*
-	 * THE HEADING AND THE COUNT SHARE A ROW, because they are one sentence about one thing and a
-	 * count wrapped onto its own line spends a row of a fixed panel on nothing. Both strings are
-	 * the model's; which of them is bold is the only thing decided here.
+	 * The heading and the count share a row — one sentence about one thing, and a count wrapped
+	 * onto its own line would spend a row of a fixed panel on nothing. Both strings are the
+	 * model's; which is bold is the only thing decided here.
 	 *
-	 * AND THAT ROW IS THE HANDLE THE PANEL IS MOVED BY. A title bar is where every desktop already
-	 * puts one, it is the widest thing on the panel that holds nothing clickable, and it is the one
-	 * strip that is there in every state — a grab affordance that vanished when nothing was
-	 * selected would strand a panel with nothing in it.
+	 * That row is also the handle the panel is moved by: the widest thing on the panel that
+	 * holds nothing clickable, and the one strip there in every state — a grab affordance that
+	 * vanished when nothing was selected would strand a panel with nothing in it.
 	 *
-	 * THE BORDER TAKES NO PADDING OF ITS OWN, WHICH IS LOAD-BEARING RATHER THAN TIDY. Six layout
-	 * tests measure where the rows below this one land; a border that inset its content would push
-	 * every one of them down by however much it took, so the strip is a background and four event
-	 * bindings and changes no geometry at all. The grab cursor is what says it can be dragged,
-	 * because a word saying so would be a word chosen in the one place no test can read it.
+	 * The border takes no padding of its own, load-bearing rather than tidy: six layout tests
+	 * measure where the rows below this one land, so the strip is a background and four event
+	 * bindings that change no geometry. The grab cursor is what says it can be dragged, since a
+	 * word saying so would be chosen in the one place no test can read it.
 	 */
 	Panel->AddSlot()
 		.AutoHeight()
@@ -2065,20 +1966,17 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 		];
 
 	/*
-	 * ONE ROW PER SELECTED BRICK, AND HOVERING ONE IS WHAT SINGLES IT OUT. A button is used
-	 * for the hover events rather than for a click: an entry names a brick, and naming one is
-	 * not choosing to do anything to it, so it carries no OnClicked at all.
+	 * One row per selected brick, and hovering one is what singles it out. A button is used for
+	 * the hover events rather than a click: naming a brick is not choosing to do anything to it,
+	 * so it carries no OnClicked at all. Every row says why its brick is standing up, in the
+	 * model's own word — FInspectorPieceEntry::SupportText — since eleven picked bricks used to
+	 * be eleven identical strings, forcing a hover of each to find the falling one.
 	 *
-	 * AND EVERY ROW SAYS WHY ITS BRICK IS STANDING UP, IN THE MODEL'S OWN WORD. Eleven picked
-	 * bricks were eleven identical strings until now, so finding the falling one meant hovering
-	 * each of them in turn while FInspectorPieceEntry::SupportText held the answer for all of
-	 * them at once.
-	 *
-	 * THE WORD SITS BESIDE THE BUTTON RATHER THAN INSIDE IT, WHICH IS NOT COSMETIC. Four layout
+	 * The word sits beside the button rather than inside it, which is not cosmetic: four layout
 	 * tests find an entry row by the text under its button and match it against the model's
 	 * Label, so a second text block in there would rename every row to "course 2 · #1supported"
-	 * and take those assertions with it. The button still fills the row, so the whole width of it
-	 * is hover target.
+	 * and take those assertions with it. The button still fills the row, so the whole width of
+	 * it is hover target.
 	 */
 	TSharedRef<SScrollBox> BrickList = SNew(SScrollBox);
 
@@ -2091,12 +1989,10 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 				.FillWidth(1.0f)
 				[
 					/*
-					 * NOT FOCUSABLE, FOR THE SAME REASON THE TOOLBAR'S CHIPS ARE NOT. Slate gives user
-					 * focus to a focusable widget on click and SButton::OnKeyDown then handles Enter
-					 * and Space itself, so clicking a brick row costs the player Run (Enter) and the
-					 * pawn's jump (Space) until they click the viewport again — with the cursor now
-					 * permanent this menu is one clickable surface among several, so that stolen focus
-					 * outlives whatever they opened it for.
+					 * Not focusable, for the same reason the toolbar's chips are not. Slate gives
+					 * user focus to a focusable widget on click and SButton::OnKeyDown then handles
+					 * Enter and Space itself, so clicking a brick row would cost the player Run
+					 * (Enter) and the pawn's jump (Space) until they click the viewport again.
 					 */
 					SNew(SButton)
 					.IsFocusable(false)
@@ -2144,15 +2040,14 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 	}
 
 	/*
-	 * AND THE LIST IS CAPPED IN HEIGHT WITH THE SCROLLING INSIDE IT. Forty picked bricks is an
-	 * ordinary selection in this game, and a list that grew with it would run the action rows off
-	 * the bottom of the screen — measured at y 1005 in a 1080 viewport, i.e. unreachable. A
-	 * scroll box in a box that will not exceed a stated height cannot do that whatever it holds.
+	 * And the list is capped in height with the scrolling inside it. Forty picked bricks is an
+	 * ordinary selection, and a list that grew with it would run the action rows off the bottom
+	 * of the screen — a scroll box in a box that will not exceed a stated height cannot do that.
 	 *
-	 * THE CAP DOES NOT GIVE UP THE PANEL'S FIXED SIZE, WHICH IS THE PROPERTY EVERY STILLNESS CLAIM
-	 * RESTS ON. The readout below is a fill slot, so it absorbs exactly what a short list leaves,
-	 * and the panel's own height is overridden outright — three bricks and forty-five measure the
-	 * same 560 px and lay the action rows from the same bottom edge.
+	 * The cap does not give up the panel's fixed size, the property every stillness claim rests
+	 * on: the readout below is a fill slot absorbing whatever a short list leaves, and three
+	 * bricks or forty-five measure the same 560 px and lay the action rows from the same bottom
+	 * edge.
 	 */
 	Panel->AddSlot()
 		.AutoHeight()
@@ -2165,16 +2060,14 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 		];
 
 	/*
-	 * THE JOINT BREAKOUT GETS THE SPACE THAT IS LEFT, AND IT GETS THE SAME SPACE WHATEVER IS IN
-	 * IT. A fill slot's height comes from the panel's own size minus the auto-height rows above
-	 * and below it, so the readout's CONTENT cannot move anything: not the entry rows over it,
-	 * not the action rows under it, and not the panel. That is what retired both halves of the
-	 * old geometry workaround — the readout no longer has to be the last slot, and the top anchor
-	 * is no longer load-bearing.
+	 * The joint breakout gets the space that is left, and the same space whatever is in it: a
+	 * fill slot's height comes from the panel's size minus the auto-height rows above and below
+	 * it, so the readout's content cannot move the entry rows, the action rows, or the panel —
+	 * retiring the old geometry workaround where the readout had to be the last slot.
 	 *
-	 * IT IS STILL A BOX WHOSE CONTENT IS SWAPPED RATHER THAN A PANEL REBUILT, AND THAT PART DOES
-	 * NOT RELAX. Rebuilding on hover destroys the very button the cursor is on, so Slate fires
-	 * OnHovered on its replacement next frame and again on the one after that.
+	 * It is still a box whose content is swapped rather than a panel rebuilt: rebuilding on
+	 * hover would destroy the very button the cursor is on, and Slate would fire OnHovered on
+	 * its replacement next frame and again on the one after that.
 	 */
 	Panel->AddSlot()
 		.FillHeight(1.0f)
@@ -2184,9 +2077,9 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 		];
 
 	/*
-	 * AND THE DESTRUCTIVE ROW IS LAST, BEHIND A RULE. Releasing a brick is irreversible here, and
+	 * And the destructive row is last, behind a rule. Releasing a brick is irreversible here, and
 	 * the standing rule is that the commit door is never wider than the menu door; a button
-	 * reached by reading PAST everything that describes what it will destroy is that rule stated
+	 * reached by reading past everything that describes what it will destroy is that rule stated
 	 * as geometry, and nothing a player might click on the way to reading the panel is below it.
 	 */
 	Panel->AddSlot()
@@ -2203,21 +2096,16 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 		];
 
 	/*
-	 * AND A ROW THAT DESTROYS SOMETHING LOOKS LIKE ONE, AND SAYS HOW MUCH OF IT.
+	 * And a row that destroys something looks like one, and says how much of it — both facts the
+	 * model's. bIsDestructive is the action's own flag, so the colour is keyed on data rather
+	 * than a caption compared against the word "Delete"; TargetText comes from the very refs the
+	 * row commits against, so a button cannot promise to act on a different count than it will.
 	 *
-	 * BOTH FACTS ARE THE MODEL'S. bIsDestructive is the ACTION'S own flag carried across by the
-	 * presenter, so the colour below is keyed on data rather than on a caption compared against
-	 * the word "Delete"; TargetText is derived from the very refs the row commits against, so a
-	 * button cannot promise to act on a different number of bricks than it will.
-	 *
-	 * THE COUNT IS OVERLAID ON THE BUTTON RATHER THAN SET AS PART OF IT, AND BOTH HALVES OF THAT
-	 * ARE LOAD-BEARING. Four layout tests find an action row by the text under its button and
-	 * match it against the model's Label, so a second text block INSIDE it renames the row they
-	 * are looking for to "Delete3 bricks" — and a second SLOT beside it narrows the button, which
-	 * is the span World.Menu.TheReadoutFitsInsideThePanel measures the whole panel's content
-	 * column by. An overlay leaves the button full width and the caption alone, and the count is
-	 * HitTestInvisible so a click on it still lands on the button underneath rather than dying
-	 * quietly two pixels from the thing the player aimed at.
+	 * The count is overlaid on the button rather than set as part of it: four layout tests find
+	 * an action row by the text under its button and match it against the model's Label, so a
+	 * text block inside would rename the row to "Delete3 bricks", and a slot beside it would
+	 * narrow the span World.Menu.TheReadoutFitsInsideThePanel measures. The count is
+	 * HitTestInvisible so a click on it still lands on the button underneath.
 	 */
 	for (int32 RowIndex = 0; RowIndex < ShownPieceMenuRows.Num(); ++RowIndex)
 	{
@@ -2231,11 +2119,10 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 				+ SOverlay::Slot()
 				[
 					/*
-					 * NOT FOCUSABLE, AND THIS SITE NEEDS ITS OWN SAY BECAUSE IT IS A SECOND ONE. An
+					 * Not focusable, and this site needs its own say because it is a second one: an
 					 * action row is built here and an entry row is built above, so the fix applied to
-					 * one leaves the other taking the keyboard: a focused SButton's OnKeyDown handles
-					 * Enter and Space, which in this session are Run and the pawn's jump, and the only
-					 * way back is a click on the viewport.
+					 * one leaves the other taking the keyboard — a focused SButton's OnKeyDown handles
+					 * Enter and Space, which in this session are Run and the pawn's jump.
 					 */
 					SNew(SButton)
 					.IsFocusable(false)
@@ -2260,33 +2147,26 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 	}
 
 	/*
-	 * A FIXED SIZE ON A REAL BACKGROUND, PLACED WHEREVER THE PLAYER LAST PUT IT.
+	 * A fixed size on a real background, placed wherever the player last put it.
 	 *
-	 * THE SIZE IS THE MECHANISM AND THE BACKGROUND IS THE DEFECT NO TEST COULD SEE. A panel that
-	 * cannot change size cannot move a row out from under a cursor, whatever it is anchored to
-	 * and whatever order its slots are in — which is strictly stronger than the top anchor and
-	 * the last-slot readout it replaces, and it is asserted directly rather than argued. And
-	 * every line under the brick rows used to be a bare text block over the sky: legible against
-	 * a wall, invisible against anything bright, and unreachable by a headless suite that paints
-	 * no pixels. A near-opaque fill behind the whole panel is what makes the readout readable.
+	 * A panel that cannot change size cannot move a row out from under a cursor, strictly
+	 * stronger than the top anchor and last-slot readout it replaces. Every line under the brick
+	 * rows used to be a bare text block over the sky, invisible against anything bright and
+	 * unreachable by a headless suite that paints no pixels; a near-opaque fill is what makes the
+	 * readout readable.
 	 *
-	 * A POSITION RATHER THAN AN ALIGNMENT, WHICH IS WHAT THE PLAYER ASKED FOR. This used to be an
-	 * SBox pinned to the right edge and centred down it — a placement nobody could argue with, and
-	 * being unable to argue with it is the complaint. A constraint canvas takes the corner as a
-	 * value, so the same tree draws wherever PieceMenuPanelOffsetPx says, and a drag is then a new
-	 * value rather than a new layout.
+	 * A position rather than an alignment, what the player asked for: this used to be an SBox
+	 * pinned to the right edge and centred down it, a placement nobody could argue with — being
+	 * unable to argue with it was the complaint. A constraint canvas takes the corner as a value,
+	 * so the same tree draws wherever PieceMenuPanelOffsetPx says, and a drag is then a new value
+	 * rather than a new layout.
 	 *
-	 * ANCHORED AND ALIGNED TO THE TOP-LEFT SO THE OFFSET MEANS WHAT ClampPanelOffset SAYS IT MEANS.
-	 * The clamp reasons about the panel's top-left corner in viewport pixels and about nothing
-	 * else; an anchor anywhere but the origin would make the stored number a distance from
-	 * somewhere the clamp has never heard of, which is the correct-layer-joined-wrongly defect this
-	 * codebase keeps paying for. AutoSize takes the size from the child, so the panel's dimensions
-	 * are stated once, on the box that overrides them, instead of again in the slot's margin.
-	 *
-	 * AND THE SIZE IS THE PRESENTER'S ANSWER FOR THIS MODE, NOT A CONSTANT BESIDE THIS SLATE. The
-	 * override is a DESIRED size and a filling slot would hand its child whatever width it liked
-	 * regardless, so the join is measured rather than argued: World.Menu.TheReadoutFitsInsideThe-
-	 * Panel arranges this tree in both modes and reads the rectangle back.
+	 * Anchored and aligned to the top-left so the offset means what ClampPanelOffset says: the
+	 * clamp reasons about the panel's top-left corner in viewport pixels, so an anchor anywhere
+	 * else would make the stored number a distance from somewhere the clamp never heard of.
+	 * AutoSize takes the size from the child, stated once rather than again in the slot's margin,
+	 * and that size is the presenter's answer for this mode, measured by
+	 * World.Menu.TheReadoutFitsInsideThePanel rather than argued.
 	 */
 	const FVector2D PanelSizePx = PieceMenuPanelSizePx(PieceMenuPanelDetail);
 
@@ -2321,9 +2201,9 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildPieceMenuPanel()
 FMargin ADestructionGamePlayerController::PieceMenuPanelSlotOffset() const
 {
 	/*
-	 * THE CORNER, AND NOTHING ELSE. The slot is AutoSize, so the last two components of the margin
-	 * are the size the canvas ignores in favour of the child's own — stating the panel's dimensions
-	 * here as well would be the second copy that eventually disagrees with the first.
+	 * The corner, and nothing else. The slot is AutoSize, so the last two components of the
+	 * margin are the size the canvas ignores in favour of the child's own — stating the panel's
+	 * dimensions here as well would be the second copy that eventually disagrees with the first.
 	 */
 	return FMargin(PieceMenuPanelOffsetPx.X, PieceMenuPanelOffsetPx.Y, 0.0f, 0.0f);
 }
@@ -2331,10 +2211,10 @@ FMargin ADestructionGamePlayerController::PieceMenuPanelSlotOffset() const
 FVector2D ADestructionGamePlayerController::PieceMenuViewportSizePx() const
 {
 	/*
-	 * THE ROOT OF THE PANEL IS THE VIEWPORT, so its own local size is the screen in the units the
+	 * The root of the panel is the viewport, so its own local size is the screen in the units the
 	 * offset above is stated in — see the header for why UGameViewportClient::GetViewportSize is
 	 * the wrong answer by exactly the DPI scale. Zero with no panel up clamps every offset to the
-	 * origin, which is the fail-closed corner rather than a case needing its own handling.
+	 * origin, the fail-closed corner rather than a case needing its own handling.
 	 */
 	return PieceMenuWidget.IsValid()
 		? FVector2D(PieceMenuWidget->GetTickSpaceGeometry().GetLocalSize())
@@ -2346,16 +2226,14 @@ FReply ADestructionGamePlayerController::OnPieceMenuPanelGrabbed(
 	const FPointerEvent& Event)
 {
 	/*
-	 * WHERE BOTH THINGS WERE WHEN THE PRESS LANDED, AND THE CAPTURE THAT KEEPS THEM COMING. Slate
-	 * stops sending moves the moment the pointer leaves a widget, so without the capture a drag
-	 * faster than the strip is wide drops the panel wherever the cursor crossed the edge.
-	 */
-	/*
-	 * THE CORNER IS RE-CLAMPED AS IT IS PICKED UP, WHICH IS WHAT SURVIVES A VIEWPORT RESIZE. A
-	 * corner that was inside a 1920 px screen is outside a 1280 px one, and nothing tells this
-	 * class the window changed — so the stored value is held against the screen as it is NOW
-	 * before a drag is measured from it. Clamping is idempotent, which is what makes doing this on
-	 * every press free: an offset already in range comes back untouched.
+	 * Where both things were when the press landed, and the capture that keeps them coming: Slate
+	 * stops sending moves once the pointer leaves a widget, so without the capture a fast drag
+	 * drops the panel wherever the cursor crossed the strip's edge.
+	 *
+	 * The corner is re-clamped as it is picked up, which is what survives a viewport resize: a
+	 * corner inside a 1920 px screen is outside a 1280 px one, and nothing tells this class the
+	 * window changed, so the stored value is held against the screen as it is now before a drag
+	 * is measured from it. Clamping is idempotent, so doing this on every press is free.
 	 */
 	PieceMenuPanelOffsetPx = ClampPanelOffset(
 		PieceMenuPanelOffsetPx,
@@ -2376,9 +2254,9 @@ FReply ADestructionGamePlayerController::OnPieceMenuPanelDragged(
 	const FPointerEvent& Event)
 {
 	/*
-	 * A MOVE THAT IS NOT A DRAG IS SOMEBODY'S CURSOR CROSSING THE STRIP. Slate sends moves whether
-	 * or not a button is down, and a panel that followed the pointer without being picked up would
-	 * be unusable rather than draggable.
+	 * A move that is not a drag is somebody's cursor crossing the strip. Slate sends moves
+	 * whether or not a button is down, and a panel that followed the pointer without being picked
+	 * up would be unusable rather than draggable.
 	 */
 	if (!bPieceMenuPanelIsHeld)
 	{
@@ -2386,18 +2264,18 @@ FReply ADestructionGamePlayerController::OnPieceMenuPanelDragged(
 	}
 
 	/*
-	 * THE DRAG IS MEASURED FROM THE PRESS RATHER THAN FROM THE LAST FRAME, so the corner tracks the
-	 * cursor exactly instead of accumulating a rounding per move — and so that dragging into a
-	 * corner and back out returns to where it started rather than to wherever the clamp pinned it
-	 * on the way through. AbsoluteToLocal on both ends puts the delta in the canvas's own units
-	 * whatever the DPI scale; the translation cancels in the subtraction.
+	 * The drag is measured from the press rather than the last frame, so the corner tracks the
+	 * cursor exactly instead of accumulating a rounding per move, and dragging into a corner and
+	 * back out returns to where it started rather than wherever the clamp pinned it on the way
+	 * through. AbsoluteToLocal on both ends puts the delta in the canvas's own units whatever the
+	 * DPI scale; the translation cancels in the subtraction.
 	 */
 	const FVector2D DraggedToPx = PieceMenuPanelGrabbedFromPx
 		+ FVector2D(Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition()))
 		- PieceMenuCursorGrabbedAtPx;
 
 	/*
-	 * AND WHERE THAT IS ALLOWED TO LEAVE THE PANEL IS Core'S DECISION, NOT THIS FUNCTION'S. It is
+	 * And where that is allowed to leave the panel is Core's decision, not this function's. It is
 	 * the half that can strand the panel — a corner off the top of the screen leaves nothing to
 	 * grab — and it is arithmetic on six doubles, so Presenter.PanelOffsetClamp holds it.
 	 */
@@ -2423,25 +2301,26 @@ FReply ADestructionGamePlayerController::OnPieceMenuPanelDetailToggled(
 	const FPointerEvent& Event)
 {
 	/*
-	 * THE PANEL'S MODE ONLY, WHICH IS THE WHOLE CARE HERE. NeighbourHighlightForPiece and
+	 * The panel's mode only, which is the whole care here. NeighbourHighlightForPiece and
 	 * NeighbourPieces read the joint table to colour bricks in the wall, and they ask
-	 * PieceMenuInspectorForSelection for themselves with no argument — so rolling the readout up
+	 * PieceMenuInspectorForSelection for themselves with no argument, so rolling the readout up
 	 * cannot take the neighbour colours with it. See the header.
 	 *
-	 * THE WHOLE PANEL IS REBUILT RATHER THAN THE READOUT SWAPPED, because a mode change moves the
+	 * The whole panel is rebuilt rather than the readout swapped, because a mode change moves the
 	 * action rows: the readout is a fill slot, so what is in it decides nothing, but the mode is
-	 * read while the heading, the brick list and every row is composed. It is safe to rebuild here
-	 * for the reason RefreshPieceMenuInspectorWidget is not — the cursor is on the title strip, not
-	 * on an entry button, so nothing being destroyed can fire a hover at its own replacement.
+	 * read while the heading, the brick list and every row is composed. It is safe to rebuild
+	 * here for the reason RefreshPieceMenuInspectorWidget is not — the cursor is on the title
+	 * strip, not on an entry button, so nothing being destroyed can fire a hover at its own
+	 * replacement.
 	 */
 	PieceMenuPanelDetail = PieceMenuPanelDetail == EPieceMenuDetail::Compact
 		? EPieceMenuDetail::Full
 		: EPieceMenuDetail::Compact;
 
 	/*
-	 * AND THE DRAG IS OVER, WHICH THE DOUBLE-CLICK'S OWN PRESS TURNED ON. Slate sends a press
-	 * before a double-click, so the strip is holding a grab that will never see a release once the
-	 * widget under the cursor is torn down and replaced.
+	 * And the drag is over, which the double-click's own press turned on. Slate sends a press
+	 * before a double-click, so the strip would otherwise hold a grab that never sees a release
+	 * once the widget under the cursor is torn down and replaced.
 	 */
 	bPieceMenuPanelIsHeld = false;
 
@@ -2466,10 +2345,10 @@ void ADestructionGamePlayerController::RemovePieceMenuWidget()
 	}
 
 	/*
-	 * BOTH HANDLES LIVE INSIDE THE PANEL, SO THEY GO WITH IT AND NEVER OUTLIVE IT. The grab strip
-	 * is released beside the readout box for the same reason it was taken beside it: it is a
-	 * pointer into the tree rather than a second viewport widget, and a stale one would keep a torn
-	 * down panel alive to be captured to.
+	 * Both handles live inside the panel, so they go with it and never outlive it. The grab strip
+	 * is released beside the readout box for the reason it was taken beside it: it is a pointer
+	 * into the tree rather than a second viewport widget, and a stale one would keep a torn down
+	 * panel alive to be captured to.
 	 */
 	PieceMenuInspectorBox.Reset();
 	PieceMenuGrabStrip.Reset();
@@ -2490,8 +2369,8 @@ void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
 	TSharedRef<SVerticalBox> Readout = SNew(SVerticalBox);
 
 	/*
-	 * THE READOUT NAMES THE BRICK IT IS ABOUT, OR SAYS WHY IT HAS NOTHING TO SAY — AND THE TWO
-	 * SHARE A ROW BECAUSE THE MODEL GUARANTEES AT MOST ONE OF THEM IS THERE.
+	 * The readout names the brick it is about, or says why it has nothing to say — the two
+	 * share a row because the model guarantees at most one of them is there.
 	 *
 	 * InspectedLabel is empty exactly when no brick is singled out and InspectedHintText is
 	 * empty exactly when one is, so laying them side by side draws whichever exists with no
@@ -2523,11 +2402,11 @@ void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
 		];
 
 	/*
-	 * AND WHAT THAT BRICK IS, DIRECTLY UNDER ITS NAME, BECAUSE THE TWO ARE ONE THOUGHT — which
+	 * And what that brick is, directly under its name, because the two are one thought — which
 	 * brick, and what is it. The identity line below the joint table would be the brick's weight
 	 * printed where a player who has read the heading has already stopped looking.
 	 *
-	 * NO EMPTINESS CHECK, EXACTLY AS THE ROW ABOVE HAS NONE. The model leaves IdentityText empty
+	 * No emptiness check, exactly as the row above has none. The model leaves IdentityText empty
 	 * in the same state it leaves InspectedLabel empty, so an unsingled-out panel draws an empty
 	 * text block here and the branch stays where a test can read it.
 	 */
@@ -2541,8 +2420,8 @@ void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
 		];
 
 	/*
-	 * THE SUPPORT WORD AND THE JOINT LIST'S SENTENCE, WHICH IS THERE WHETHER OR NOT THERE ARE
-	 * ANY JOINTS. That is why there is no emptiness check here: an isolated grounded pad reads
+	 * The support word and the joint list's sentence, which is there whether or not there are
+	 * any joints. That is why there is no emptiness check here: an isolated grounded pad reads
 	 * "No joints", and the model is what says so. A widget noticing Joints.Num() == 0 for itself
 	 * would be the branch this whole arrangement exists to keep out.
 	 */
@@ -2573,10 +2452,10 @@ void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
 		];
 
 	/*
-	 * ONE ROW PER JOINT: ITS SWATCH, ITS BAR, THEN ITS LINE. The bar goes before the words so the
-	 * bars form a column the decade scale below can be read against — a log axis with the ticks
-	 * nowhere near the fills is the same as no ticks at all — and the swatch goes before the bar
-	 * so the colours form a column of their own down the left edge of the readout, which is where
+	 * One row per joint: its swatch, its bar, then its line. The bar goes before the words so
+	 * the bars form a column the decade scale below can be read against — a log axis with the
+	 * ticks nowhere near the fills is the same as no ticks at all — and the swatch goes before
+	 * the bar so the colours form a column of their own down the left edge of the readout, where
 	 * an eye scanning for one neighbour will look.
 	 */
 	for (const FInspectorJointRow& Joint : Inspector.Joints)
@@ -2613,19 +2492,17 @@ void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
 	}
 
 	/*
-	 * THE SCALE THE BARS ABOVE ARE READ AGAINST, AND THE LEFT ALIGNMENT IS LOAD-BEARING.
+	 * The scale the bars above are read against, and the left alignment is load-bearing.
 	 *
-	 * WidthOverride states a DESIRED width, not an arranged one. A vertical box's slot fills by
-	 * default, so the scale's box was being stretched to the readout's full width while the bars
-	 * above kept their auto-width 96 px — and a canvas five times as wide as the bars does not
-	 * merely clip its end labels, it annotates nothing: the 10x tick stood where no fill could ever
-	 * reach, so every bar read as far emptier than it was. Aligning the slot left hands the box the
-	 * width it asked for, which is the bar's, so the tick strip and the column of bars are one span.
+	 * WidthOverride states a desired width, not an arranged one, and a vertical box's slot fills
+	 * by default — so the scale's box was being stretched to the readout's full width while the
+	 * bars kept their auto-width 96 px, and a canvas five times as wide annotates nothing: the
+	 * 10x tick stood where no fill could ever reach. Aligning the slot left hands the box the
+	 * bar's own width, so the tick strip and the column of bars are one span.
 	 *
-	 * AND THE LEFT PADDING IS THE SWATCH COLUMN, FOR THE SAME REASON. The bars start one swatch and
-	 * one gap in from the readout's edge, so a scale flush with that edge would stand one swatch to
-	 * the left of everything it labels — the same "annotates nothing" defect the alignment above
-	 * closed, wearing a smaller coat.
+	 * The left padding is the swatch column, for the same reason: the bars start one swatch and
+	 * one gap in from the readout's edge, so a scale flush with that edge would stand one swatch
+	 * to the left of everything it labels.
 	 */
 	Readout->AddSlot()
 		.AutoHeight()
@@ -2646,9 +2523,9 @@ void ADestructionGamePlayerController::RefreshPieceMenuInspectorWidget()
 		];
 
 	/*
-	 * AND THE WHOLE READOUT SCROLLS INSIDE THE SPACE IT WAS GIVEN. A brick with more joints than
+	 * And the whole readout scrolls inside the space it was given. A brick with more joints than
 	 * fit would otherwise run its last lines out past the rule and under the row that deletes it
-	 * — which is the same hazard the brick list's cap closes, one region down.
+	 * — the same hazard the brick list's cap closes, one region down.
 	 */
 	PieceMenuInspectorBox->SetContent(
 		SNew(SScrollBox)
@@ -2662,7 +2539,7 @@ FPieceMenuInspector ADestructionGamePlayerController::PieceMenuInspectorForSelec
 	EPieceMenuDetail Detail) const
 {
 	/*
-	 * ONE READOUT FOR THE WHOLE SELECTION, AGAINST THE STRUCTURE ITS REFS NAME — the same
+	 * One readout for the whole selection, against the structure its refs name — the same
 	 * plumbing InspectAlongRay does for the rows, and for the same reason: a selection is built
 	 * by clicking one wall, so the first ref names it, and BuildPieceMenuInspector answers for
 	 * every ref that turns out not to belong to it.
@@ -2676,14 +2553,14 @@ FPieceMenuInspector ADestructionGamePlayerController::PieceMenuInspectorForSelec
 		: nullptr;
 
 	/*
-	 * NO BINDING IS AN EMPTY BINDING RATHER THAN AN EARLY RETURN, AND THAT IS WHAT KEEPS THE
-	 * MODEL THE ONLY AUTHOR OF THE READOUT. A default-constructed FPieceMenuInspector is not the
-	 * same object BuildPieceMenuInspector answers for the same inputs: nothing picked has its own
-	 * sentence, "No bricks selected", decided in the model precisely so that no widget has to
-	 * choose one — and a returned default carries an empty CountText instead, which draws as a
-	 * blank line where a sentence belongs. Handing over an empty structure says the same thing by
-	 * the one route that words it, and it makes SelectedCount answer the selection's own size on
-	 * the fail-closed paths too, which is the promise Core/PieceMenu.h makes for it.
+	 * No binding is an empty binding rather than an early return, which keeps the model the only
+	 * author of the readout. A default-constructed FPieceMenuInspector is not the same object
+	 * BuildPieceMenuInspector answers for the same inputs: nothing picked has its own sentence,
+	 * "No bricks selected", decided in the model so no widget has to choose one, and a returned
+	 * default would carry an empty CountText instead, drawing as a blank line where a sentence
+	 * belongs. Handing over an empty structure says the same thing by the one route that words
+	 * it, and makes SelectedCount answer the selection's own size on the fail-closed paths too,
+	 * the promise Core/PieceMenu.h makes for it.
 	 */
 	const FStructureBinding NoStructure;
 
@@ -2693,7 +2570,7 @@ FPieceMenuInspector ADestructionGamePlayerController::PieceMenuInspectorForSelec
 
 void ADestructionGamePlayerController::SetPieceMenuDetail(EPieceMenuDetail Detail)
 {
-	/* A FIELD, AND NOTHING ELSE. See the header: this is a seam, not a behaviour. */
+	/* A field, and nothing else. See the header: this is a seam, not a behaviour. */
 	PieceMenuPanelDetail = Detail;
 }
 
@@ -2711,7 +2588,7 @@ void ADestructionGamePlayerController::OnPieceMenuEntryHovered(FPieceRef Ref)
 
 void ADestructionGamePlayerController::OnPieceMenuEntryUnhovered()
 {
-	/* A default ref singles out nothing, which is how the cursor leaving the list is said. */
+	/* A default ref singles out nothing, how the cursor leaving the list is said. */
 	SetInspectedPiece(FPieceRef());
 }
 
@@ -2720,19 +2597,16 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 	using namespace DestructionSession;
 
 	/*
-	 * THE STRIP IS THE MODEL'S LIST, DRAWN IN ITS OWN ORDER, AND NOTHING BELOW DECIDES ANYTHING
-	 * ELSE. Which buttons exist in this mode, what each reads, which one is lit and which are greyed
-	 * are all SessionToolbarButtons' answers — Core/SessionToolbar.h says at length why a strip of
-	 * buttons spelled as a run of AddSlot calls is a list of decisions in the one place no test can
-	 * reach. What is left here is the chip: a size, two fonts and two fills.
+	 * The strip is the model's list, drawn in its own order — which buttons exist, what each
+	 * reads, which is lit or greyed are all SessionToolbarButtons' answers (Core/SessionToolbar.h
+	 * says why). What is left here is the chip: a size, two fonts and two fills.
 	 */
 	const TArray<FToolbarButton> Buttons = SessionToolbarButtons(SessionToolbarState);
 
 	/*
-	 * THE STYLES ARE REBUILT HERE, BEFORE A SINGLE CHIP IS MADE, BECAUSE THE LOOK FOLLOWS THE STATE.
-	 * Every chip's fill, edge and caption weight is ChipLookFor's answer for the state the strip is
-	 * being drawn for, and this function is called afresh on every click that changes it — so the
-	 * styles are written in place first and the chips are then pointed at them.
+	 * The styles are rebuilt here, before a single chip is made, since the look follows the
+	 * state: every chip's fill, edge and caption weight is ChipLookFor's answer, and this
+	 * function is called afresh on every click that changes it.
 	 */
 	RebuildSessionChipStyles(Buttons);
 
@@ -2743,12 +2617,12 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 		const FToolbarButton& Button = Buttons[Index];
 
 		/*
-		 * A HAIRLINE WHERE THE REGION CHANGES, AND NOWHERE ELSE.
+		 * A hairline where the region changes, and nowhere else.
 		 *
-		 * COMPARED AGAINST THE NEIGHBOUR RATHER THAN COUNTED OUT IN SLOTS, which is the whole reason
-		 * EToolbarGroup is on the row: the model says the three regions are contiguous and in order,
-		 * so "the group changed" is all this needs to know, and a strip whose buttons are retuned
-		 * keeps its rules without anything here being touched.
+		 * Compared against the neighbour rather than counted out in slots, the whole reason
+		 * EToolbarGroup is on the row: the model says the three regions are contiguous and in
+		 * order, so "the group changed" is all this needs to know, and a strip whose buttons are
+		 * retuned keeps its rules without anything here being touched.
 		 */
 		if (Index > 0 && Buttons[Index - 1].Group != Button.Group)
 		{
@@ -2764,9 +2638,9 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 		const FChipLook Look = ChipLookFor(Button, SessionToolbarState.Mode);
 
 		/*
-		 * A CHIP'S CONTENT IS ITS SWATCH AND ITS CAPTION, and the swatch comes FIRST. §e puts it "in
-		 * place of a size caption" on the piece chips, and a block of brick red drawn after the word
-		 * would read as a status light rather than as the thing about to be laid.
+		 * A chip's content is its swatch and its caption, and the swatch comes first. §e puts it
+		 * "in place of a size caption" on the piece chips, and a block of brick red drawn after
+		 * the word would read as a status light rather than the thing about to be laid.
 		 */
 		TSharedRef<SHorizontalBox> Content = SNew(SHorizontalBox);
 
@@ -2800,14 +2674,14 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 				.HeightOverride(SessionToolbarChipHeightPx)
 				[
 					/*
-					 * NOT FOCUSABLE, AND IT IS THE ONE LINE ON THIS CHIP THAT IS NOT COSMETIC. A
+					 * Not focusable, and it is the one line on this chip that is not cosmetic: a
 					 * focusable SButton takes user focus when it is clicked, and the flying pawn
 					 * then stops answering W — a player reports that as the game freezing, and
 					 * nothing but a headless arrange of this tree can see it.
 					 *
-					 * THE STYLE IS A POINTER INTO THE CONTROLLER'S OWN STORAGE, and it has to be:
+					 * The style is a pointer into the controller's own storage, and has to be:
 					 * SButton keeps what it is given and never copies it. There is no tint on the
-					 * button any more — the fill IS the style's brush, because a colour multiplied
+					 * button any more — the fill is the style's brush, since a colour multiplied
 					 * through FCoreStyle's grey brush could never be the design's amber.
 					 */
 					SNew(SButton)
@@ -2833,18 +2707,12 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 		}
 
 		/*
-		 * THE COURSE READS OUT BETWEEN ITS OWN TWO ARROWS, AND IT IS NOT A CHIP.
-		 *
-		 * ARROW, VALUE, ARROW IS WHAT A STEPPER IS — a value tacked onto the end of the strip would
-		 * be a different control, and the two arrows would go on reading as acting on nothing. So it
-		 * is hung off the DOWN arrow's own slot rather than off the mode, which also makes it
-		 * Build-only for free: SessionToolbarButtons draws the course pair in Build mode and nowhere
-		 * else, and there is no build plane in Destroy mode for a number to be about.
-		 *
-		 * AND A TEXT SLOT RATHER THAN AN ELEVENTH BUTTON, because the model has no row for it: a
-		 * chip here would be a lit control that does nothing when it is pressed, and would put the
-		 * drawn strip out of step with the list that is supposed to be its single source of truth.
-		 * The wording is CourseLabel's, which Core.SessionToolbar.* already owns.
+		 * The course reads out between its own two arrows, and it is not a chip: arrow, value,
+		 * arrow is what a stepper is, so it is hung off the down arrow's own slot rather than
+		 * the mode — which also makes it Build-only for free, since SessionToolbarButtons draws
+		 * the course pair only in Build mode. A text slot rather than an eleventh button, because
+		 * the model has no row for it: a chip here would be a lit control that does nothing when
+		 * pressed. The wording is CourseLabel's, already owned by Core.SessionToolbar.*.
 		 */
 		Strip->AddSlot()
 			.AutoWidth()
@@ -2859,30 +2727,23 @@ TSharedRef<SWidget> ADestructionGamePlayerController::BuildSessionToolbarPanel()
 	}
 
 	/*
-	 * A BAR ACROSS THE BOTTOM, AND THE REST OF THE SCREEN IS NOT THE TOOLBAR'S.
+	 * A bar across the bottom, and the rest of the screen is not the toolbar's.
 	 *
-	 * The widget the viewport is handed fills the viewport, so everything above the bar is a fill
-	 * slot holding nothing — and the root is SelfHitTestInvisible so that the empty part of it does
-	 * not swallow the click the player is aiming at a brick.
+	 * The widget the viewport is handed fills the viewport, so everything above the bar is a
+	 * fill slot holding nothing, and the root is SelfHitTestInvisible so the empty part does not
+	 * swallow the click the player is aiming at a brick.
 	 *
-	 * HIT-TESTABLE IS NOT ENOUGH, AND BELIEVING IT WAS IS THE DEFECT. Slate routes a press to a
-	 * hit-testable widget and then, finding NOTHING BOUND, bubbles it on — to the SViewport, into
-	 * the input stack, into IA_InspectPiece, and in Build mode into PrimaryAlongRay. So missing a
-	 * chip by three pixels LAYS A BRICK where that pixel's ray meets the build plane. The two
-	 * handlers below are what actually stops the fall-through: being routed to is the precondition,
-	 * answering Handled is the act.
+	 * Hit-testable is not enough: Slate routes a press to a hit-testable widget and then, finding
+	 * nothing bound, bubbles it on into the input stack and, in Build mode, into
+	 * PrimaryAlongRay — so missing a chip by three pixels lays a brick. The two handlers below
+	 * stop that fall-through, on the release too (a swallowed press with a leaked release is
+	 * half a click), and on the left button only: the right button is the look chord
+	 * (SESSION_UI_DESIGN §d, S6), and swallowing it would make the strip a dead patch a player
+	 * cannot drag their view across.
 	 *
-	 * THE RELEASE TOO, BECAUSE A SWALLOWED PRESS WITH A LEAKED RELEASE IS HALF A CLICK. Enhanced
-	 * Input reads key-up as well as key-down, so a bar that ate only the press would deliver the end
-	 * of a gesture to the world with nothing having started it.
-	 *
-	 * AND THE LEFT BUTTON ONLY. The right button is the look chord (SESSION_UI_DESIGN §d, S6):
-	 * held-RMB turns the camera, and a bar that swallowed it would make the strip a dead patch a
-	 * player cannot drag their view across.
-	 *
-	 * THE MIDDLE THIRD OF THE SCREEN IS WHERE THE WALL IS (SESSION_UI_DESIGN §a): the strip is at
-	 * the bottom edge and the details window homes against the right, so neither is ever over the
-	 * thing the player is pointing at.
+	 * The middle third of the screen is where the wall is (SESSION_UI_DESIGN §a): the strip is
+	 * at the bottom edge and the details window homes against the right, so neither is ever over
+	 * the thing the player is pointing at.
 	 */
 	const auto SwallowLeftButton =
 		[](const FGeometry& /*Geometry*/, const FPointerEvent& Event)
@@ -2925,10 +2786,10 @@ const FButtonStyle& ADestructionGamePlayerController::SessionChipStyleFor(
 	const int32 Index = static_cast<int32>(Button.Id);
 
 	/*
-	 * THE LAST SLOT IS THE ONE NOBODY'S BUTTON OWNS, and an id outside the enumeration lands there
-	 * rather than on somebody else's chip. EToolbarButtonId is a uint8 and a cast is all it takes to
-	 * make one; RebuildSessionChipStyles fills that slot with the GREYED look, so an undeclared
-	 * button reads as one that cannot be clicked instead of borrowing a live chip's amber.
+	 * The last slot is the one nobody's button owns, and an id outside the enumeration lands
+	 * there rather than on somebody else's chip. EToolbarButtonId is a uint8 and a cast is all it
+	 * takes to make one; RebuildSessionChipStyles fills that slot with the greyed look, so an
+	 * undeclared button reads as one that cannot be clicked instead of borrowing a live chip's amber.
 	 */
 	const bool bKnown = Index >= 0 && Index < SessionChipStyleCount - 1;
 
@@ -2941,11 +2802,11 @@ void ADestructionGamePlayerController::RebuildSessionChipStyles(
 	using namespace DestructionSession;
 
 	/*
-	 * EVERY SLOT IS WRITTEN, STARTING FROM THE GREYED LOOK.
+	 * Every slot is written, starting from the greyed look.
 	 *
-	 * A DEFAULT FToolbarButton IS bEnabled == false, so this IS the greyed answer rather than a
-	 * second spelling of it — which is what the unknown slot needs, and what a button that is not on
-	 * THIS mode's strip should keep so that a stale amber cannot survive a mode switch.
+	 * A default FToolbarButton has bEnabled == false, so this is the greyed answer rather than a
+	 * second spelling of it — what the unknown slot needs, and what a button not on this mode's
+	 * strip should keep so a stale amber cannot survive a mode switch.
 	 */
 	const FButtonStyle GreyedStyle =
 		SessionToolbarChipStyle(ChipLookFor(FToolbarButton(), SessionToolbarState.Mode));
@@ -2956,9 +2817,9 @@ void ADestructionGamePlayerController::RebuildSessionChipStyles(
 	}
 
 	/*
-	 * THEN THE STRIP'S OWN, IN PLACE. The array's slots do not move, so a chip already on screen
-	 * holding a pointer into one of them goes on reading a valid style — it simply starts reading the
-	 * new look, which is what a rebuilt strip wants.
+	 * Then the strip's own, in place. The array's slots do not move, so a chip already on screen
+	 * holding a pointer into one of them goes on reading a valid style — it simply starts reading
+	 * the new look, which is what a rebuilt strip wants.
 	 */
 	for (const FToolbarButton& Button : Buttons)
 	{
@@ -2980,8 +2841,8 @@ void ADestructionGamePlayerController::ShowSessionToolbar()
 	UGameViewportClient* const Viewport = World != nullptr ? World->GetGameViewport() : nullptr;
 
 	/*
-	 * NO VIEWPORT MEANS NO STRIP, AND THAT IS THE ORDINARY CASE IN A TEST rather than an error — a
-	 * world built in code has no UGameViewportClient at all. The session state is the record and it
+	 * No viewport means no strip, the ordinary case in a test rather than an error — a world
+	 * built in code has no UGameViewportClient at all. The session state is the record and
 	 * stands alone, exactly as the presented rows do for the piece menu.
 	 */
 	if (Viewport == nullptr)
@@ -2990,9 +2851,9 @@ void ADestructionGamePlayerController::ShowSessionToolbar()
 	}
 
 	/*
-	 * REMOVE THEN ADD, WHICH IS WHAT KEEPS THE ADDS AND THE REMOVES PAIRED. This is also the redraw
-	 * path, so a second add with no matching remove — the one leak that would go unseen — is on the
-	 * same code path as the first show rather than on a branch of its own.
+	 * Remove then add, which keeps the adds and the removes paired. This is also the redraw
+	 * path, so a second add with no matching remove — the one leak that would go unseen — is on
+	 * the same code path as the first show rather than a branch of its own.
 	 */
 	RemoveSessionToolbarWidget();
 
@@ -3004,9 +2865,9 @@ void ADestructionGamePlayerController::ShowSessionToolbar()
 void ADestructionGamePlayerController::RefreshSessionToolbar()
 {
 	/*
-	 * NOTHING ON SCREEN IS NOTHING TO REDRAW. Every accepted click calls this, including the ones a
-	 * headless test makes before any strip has been shown — and a refresh that put one up would
-	 * make a redraw into a show, which is a different thing and belongs to the game mode.
+	 * Nothing on screen is nothing to redraw. Every accepted click calls this, including the ones
+	 * a headless test makes before any strip has been shown, and a refresh that put one up would
+	 * make a redraw into a show, a different thing that belongs to the game mode.
 	 */
 	if (!SessionToolbarWidget.IsValid())
 	{
@@ -3046,7 +2907,7 @@ void ADestructionGamePlayerController::SetSessionControls()
 	bShowMouseCursor = true;
 
 	/*
-	 * A CONTROLLER WITH NO LOCAL PLAYER HAS NO VIEWPORT TO SET AN INPUT MODE AGAINST, and a
+	 * A controller with no local player has no viewport to set an input mode against, and a
 	 * session must still work rather than merely not crash — so this fails closed after the
 	 * cursor flag, which needs nothing and is what every headless assertion reads.
 	 */
@@ -3056,13 +2917,13 @@ void ADestructionGamePlayerController::SetSessionControls()
 	}
 
 	/*
-	 * GameAndUI, BECAUSE BOTH HALVES ARE LIVE AT ONCE AND NEITHER MAY WIN OUTRIGHT. The strip and
+	 * GameAndUI, because both halves are live at once and neither may win outright. The strip and
 	 * the piece menu are clicked with the same pointer the ghost is aimed with, so a UI-only mode
 	 * would stop the pawn flying and a game-only mode would put the cursor away.
 	 *
-	 * HIDDEN DURING CAPTURE, WHICH IS THE RIGHT-DRAG: the look chord takes capture, the pointer
+	 * Hidden during capture, which is the right-drag: the look chord takes capture, the pointer
 	 * vanishes for the length of the drag and comes back where it was on release — §d's "cursor
-	 * hidden, recentred on release". NOT LOCKED to the viewport, because a session is played in a
+	 * hidden, recentred on release". Not locked to the viewport, since a session is played in a
 	 * window as often as not and a lock the player did not ask for reads as the game hanging.
 	 */
 	SetInputMode(
@@ -3096,18 +2957,10 @@ void ADestructionGamePlayerController::SetupInputComponent()
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
 		{
 			/*
-			 * ONE LOOP, TWO PRIORITIES: THE SESSION'S CONTEXT IS APPLIED ABOVE THE OTHER TWO.
-			 *
-			 * IMC_MouseLook's Mouse2D mapping is chorded on IA_LookModifier, and IA_LookModifier is
-			 * mapped in IMC_Session. A chord reads the modifier's TriggerStateTracker, which
-			 * EvaluateInputImpl resets at the END of the frame, so the modifier's mapping must be
-			 * evaluated EARLIER in the same frame or the chord reads last frame's cleared state and
-			 * the camera never turns. ReorderMappings only orders chording-before-chorded within ONE
-			 * context; across contexts the order is a priority-descending sort that decides nothing
-			 * between equals. Hence the priority — see SessionMappingContextPriority's header.
-			 *
-			 * The special case is here rather than in a second AddMappingContext call because an
-			 * apply written a second way is an apply a later route can forget.
+			 * One loop, two priorities: the session's context is applied above the other two, for
+			 * the chord-ordering reason SessionMappingContextPriority's header gives. The special
+			 * case is here rather than in a second AddMappingContext call because an apply written
+			 * a second way is an apply a later route can forget.
 			 */
 			for (UInputMappingContext* CurrentContext : DefaultMappingContexts)
 			{
@@ -3121,11 +2974,11 @@ void ADestructionGamePlayerController::SetupInputComponent()
 	}
 
 	/*
-	 * ON Started, AND EXACTLY ONCE. With no explicit trigger on the action, Triggered fires
+	 * On Started, and exactly once. With no explicit trigger on the action, Triggered fires
 	 * every frame the button is held, so holding LMB would re-trace and re-present the menu
-	 * sixty times a second; Completed is the release, which opens a menu on let-go. Opening a
-	 * menu is a one-shot press. And a second binding for the same action runs the handler twice
-	 * per click — which, now that a miss dismisses, is open-then-immediately-close.
+	 * sixty times a second; Completed is the release, so opening a menu on let-go is a one-shot
+	 * press. A second binding for the same action would run the handler twice per click, which,
+	 * now that a miss dismisses, is open-then-immediately-close.
 	 */
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent))
 	{
@@ -3139,18 +2992,14 @@ void ADestructionGamePlayerController::SetupInputComponent()
 		}
 
 		/*
-		 * HOVER BINDS ON Triggered, WHICH IS THE OPPOSITE OF THE LINE ABOVE AND IS THE POINT.
-		 * Inspecting is a one-shot press; hovering is a continuous axis, and with no explicit
-		 * trigger asset Enhanced Input actuates an axis action on every frame its value is
-		 * non-zero — i.e. on exactly the frames the mouse moved, which are exactly the frames
-		 * on which what is under the cursor can have changed. Started fires on the first frame
-		 * of a gesture and not again until the mouse stops and restarts, so the highlight would
-		 * update once per drag and be stale for the rest of it; Completed fires when the mouse
-		 * STOPS, so the brick called out would always be the previous one. A still mouse costs
-		 * no traces at all, because an unactuated axis fires nothing.
-		 *
-		 * AND EXACTLY ONCE, for the same reason as above: a second binding traces and
-		 * re-highlights twice on every moved frame for an answer that was already correct.
+		 * Hover binds on Triggered, the opposite of the line above and the point: hovering is a
+		 * continuous axis, and with no explicit trigger asset Enhanced Input actuates it on every
+		 * frame its value is non-zero — exactly the frames the mouse moved, when what is under
+		 * the cursor can have changed. Started would fire only on the first frame of a gesture,
+		 * leaving the highlight stale for the rest of a drag; Completed only when the mouse
+		 * stops, always one brick behind. A still mouse costs no traces, since an unactuated axis
+		 * fires nothing, and exactly once — a second binding would trace and re-highlight twice
+		 * on every moved frame for an answer already correct.
 		 */
 		if (HoverPieceAction != nullptr)
 		{
@@ -3162,21 +3011,16 @@ void ADestructionGamePlayerController::SetupInputComponent()
 		}
 
 		/*
-		 * THE SESSION'S EIGHT SHORTCUTS, ON Started, EXACTLY ONCE EACH.
+		 * The session's eight shortcuts, on Started, exactly once each — one-shot presses of
+		 * digital keys. Triggered would fire on every frame held, walking the build plane up the
+		 * wall at sixty courses a second on `]` or re-settling (releasing pieces irreversibly) on
+		 * a held `Enter`; Completed would run the command on let-go. Exactly once, not at least
+		 * once: two bindings on `Tab` would toggle the mode twice per press, appearing to do
+		 * nothing at all.
 		 *
-		 * Started FOR THE REASON IA_InspectPiece USES IT AND IA_HoverPiece DOES NOT: these are
-		 * one-shot presses of digital keys. With no explicit trigger asset, Triggered fires on
-		 * every frame the key is HELD — holding `]` would walk the build plane up the wall at
-		 * sixty courses a second, and holding `Enter` would re-settle the structure on every
-		 * frame, which releases pieces irreversibly. Completed is the release, which would run
-		 * the command on let-go.
-		 *
-		 * AND EXACTLY ONCE, NOT AT LEAST ONCE. Two bindings on `Tab` toggle the mode twice per
-		 * press, which is a mode switch that appears to do nothing at all.
-		 *
-		 * SIX OF THEM CARRY THEIR ID AS A BOUND PAYLOAD, because a shortcut IS a toolbar click:
+		 * Six of them carry their id as a bound payload, since a shortcut is a toolbar click and
 		 * the model's greying and refusals are consulted at the one door either way. The mode and
-		 * placement keys stand for a PAIR of chips each, so they go through the toggles, which
+		 * placement keys stand for a pair of chips each, so they go through the toggles, which
 		 * read the session before they choose.
 		 */
 		const auto BindSessionShortcut =
@@ -3236,10 +3080,10 @@ void ADestructionGamePlayerController::OnInspectPiece()
 	}
 
 	/*
-	 * THROUGH THE SESSION'S DISPATCH RATHER THAN STRAIGHT AT THE INSPECT, because what a click means
-	 * now depends on the mode: in Build it lays a piece and in Destroy it is the inspect this
-	 * handler has always made. The deprojection and the reach are unchanged — the untestable inch
-	 * stays exactly as long as it was.
+	 * Through the session's dispatch rather than straight at the inspect, because what a click
+	 * means now depends on the mode: in Build it lays a piece, and in Destroy it is the inspect
+	 * this handler has always made. The deprojection and the reach are unchanged — the untestable
+	 * inch stays exactly as long as it was.
 	 */
 	PrimaryAlongRay(StartCm, StartCm + Direction * PieceMenuCursorReachCm);
 }
@@ -3259,7 +3103,7 @@ void ADestructionGamePlayerController::OnHoverPiece()
 		return;
 	}
 
-	/* The same dispatch as OnInspectPiece, for the same reason: pointing means two things now. */
+	/* The same dispatch as OnInspectPiece, for the same reason — pointing means two things now. */
 	PointerAlongRay(StartCm, StartCm + Direction * PieceMenuCursorReachCm);
 }
 
@@ -3273,11 +3117,12 @@ void ADestructionGamePlayerController::PlayerTick(float DeltaTime)
 void ADestructionGamePlayerController::RefreshBuildPreviewFromCursor()
 {
 	/*
-	 * NOT WHILE THE LOOK CHORD IS HELD. The right button turns the camera and the cursor is hidden
-	 * for the length of the drag, so there is nothing on screen for the ghost to follow — and
-	 * re-previewing every frame would drag it across the plot behind the player's back. The button is
-	 * read directly rather than through IA_LookModifier because the action has no handler to reach;
-	 * the two are the same press, and IMC_MouseLook's chord is what makes it mean "look".
+	 * Not while the look chord is held. The right button turns the camera and the cursor is
+	 * hidden for the length of the drag, so there is nothing on screen for the ghost to follow,
+	 * and re-previewing every frame would drag it across the plot behind the player's back. The
+	 * button is read directly rather than through IA_LookModifier because the action has no
+	 * handler to reach; the two are the same press, and IMC_MouseLook's chord is what makes it
+	 * mean "look".
 	 */
 	if (IsInputKeyDown(EKeys::RightMouseButton))
 	{
@@ -3285,9 +3130,9 @@ void ADestructionGamePlayerController::RefreshBuildPreviewFromCursor()
 	}
 
 	/*
-	 * NO VIEWPORT, NO CURSOR. GetMousePosition answers false when there is no local player or no
-	 * viewport to read one from — a headless run, exactly — leaving its out-params untouched, so this
-	 * returns rather than deprojecting whatever was on the stack.
+	 * No viewport, no cursor. GetMousePosition answers false when there is no local player or no
+	 * viewport to read one from — a headless run, exactly — leaving its out-params untouched, so
+	 * this returns rather than deprojecting whatever was on the stack.
 	 */
 	float CursorXPx = 0.0f;
 	float CursorYPx = 0.0f;
@@ -3298,9 +3143,10 @@ void ADestructionGamePlayerController::RefreshBuildPreviewFromCursor()
 	}
 
 	/*
-	 * AND A STILL MOUSE COSTS NOTHING. A cursor that has not moved names the same point on the same
-	 * plane and re-solves the same snap; the settings half of this slice is already carried by the
-	 * component's own setters, so nothing needs the pointer re-read on a frame it did not move.
+	 * And a still mouse costs nothing. A cursor that has not moved names the same point on the
+	 * same plane and re-solves the same snap; the settings half of this slice is already carried
+	 * by the component's own setters, so nothing needs the pointer re-read on a frame it did not
+	 * move.
 	 */
 	const FVector2D CursorPx(CursorXPx, CursorYPx);
 
@@ -3313,9 +3159,9 @@ void ADestructionGamePlayerController::RefreshBuildPreviewFromCursor()
 	bHasBuildCursorPx = true;
 
 	/*
-	 * The same untestable inch as OnHoverPiece, and the same failure closed. Everything that can be
-	 * wrong in a way a player would notice — which mode this may run in, where the ghost lands,
-	 * whether it shows — is behind RefreshBuildPreviewFromRay.
+	 * The same untestable inch as OnHoverPiece, and the same failure closed. Everything that can
+	 * be wrong in a way a player would notice — which mode this may run in, where the ghost
+	 * lands, whether it shows — is behind RefreshBuildPreviewFromRay.
 	 */
 	FVector StartCm;
 	FVector Direction;
@@ -3333,10 +3179,10 @@ void ADestructionGamePlayerController::BeginPlay()
 	Super::BeginPlay();
 
 	/*
-	 * THE CURSOR COMES UP ONCE, HERE, AND FOR THE WHOLE SESSION. A toolbar that is on screen in
-	 * both modes has to be clickable in both, and the alternative this replaced — raising the
-	 * pointer only while a piece menu was up — made the strip reachable only by first opening a
-	 * menu over a brick.
+	 * The cursor comes up once, here, for the whole session. A toolbar that is on screen in both
+	 * modes has to be clickable in both, and the alternative this replaced — raising the pointer
+	 * only while a piece menu was up — made the strip reachable only by first opening a menu over
+	 * a brick.
 	 */
 	SetSessionControls();
 
@@ -3357,21 +3203,21 @@ void ADestructionGamePlayerController::BuildScenarioLabelWidget()
 
 	UGameViewportClient* const Viewport = World != nullptr ? World->GetGameViewport() : nullptr;
 
-	/* No viewport means no banner, which is the ordinary case in a test rather than an error. */
+	/* No viewport means no banner, the ordinary case in a test rather than an error. */
 	if (Viewport == nullptr)
 	{
 		return;
 	}
 
 	/*
-	 * EVERY STRING IS AN ATTRIBUTE AND NOT A VALUE, so the countdown runs. Slate asks an attribute
-	 * again on every paint, which is what turns "4.0 s" into a clock without anything here holding
-	 * a timer, a tick or a copy of the label.
+	 * Every string is an attribute and not a value, so the countdown runs. Slate asks an
+	 * attribute again on every paint, which is what turns "4.0 s" into a clock without anything
+	 * here holding a timer, a tick or a copy of the label.
 	 *
-	 * BOUND THROUGH MakeAttributeUObject RATHER THAN A LAMBDA CAPTURING `this`. The banner is handed to
-	 * the viewport, which holds a shared reference to it; a UObject delegate is not invoked once
-	 * its object has gone, so a controller destroyed before its remove ran cannot be read through
-	 * a widget the viewport is still painting.
+	 * Bound through MakeAttributeUObject rather than a lambda capturing `this`. The banner is
+	 * handed to the viewport, which holds a shared reference to it; a UObject delegate is not
+	 * invoked once its object has gone, so a controller destroyed before its remove ran cannot be
+	 * read through a widget the viewport is still painting.
 	 */
 	ScenarioLabelWidget = SNew(SBox)
 		.HAlign(HAlign_Center)
