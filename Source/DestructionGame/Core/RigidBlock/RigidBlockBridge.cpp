@@ -13,49 +13,47 @@ namespace
 	constexpr double PlanarTolerance = 1.0e-9;
 
 	/**
-	 * DOES THE POSED PROBLEM LEAVE THE X-Z PLANE — the question that decides which pose is SOUND.
+	 * DOES THE POSED PROBLEM LEAVE THE X-Z PLANE — the question that decides which pose is sound.
 	 *
-	 * It is asked over what the bridge actually POSES, never over NumConnections(). A joint that has
-	 * GIVEN is out of the structure, a joint with two grounded ends constrains nothing the earth does
-	 * not already absorb, and a GROUNDED block writes no equilibrium rows at all — none of them
-	 * reaches the LP, so none of them can make it three dimensional. An L laid entirely on the earth
-	 * is the case that makes the distinction pay: every one of its Y-normal head joints is
+	 * Asked over what the bridge actually poses, never over NumConnections(). A joint that has
+	 * given is out of the structure, a joint with two grounded ends constrains nothing the earth
+	 * does not already absorb, and a grounded block writes no equilibrium rows — none of them
+	 * reaches the LP, so none of them can make it three dimensional. An L laid entirely on the
+	 * earth is the case that makes the distinction pay: every one of its Y-normal head joints is
 	 * earth-to-earth, so the problem it poses is planar.
 	 *
-	 * TWO CONDITIONS, AND THE SECOND IS THE ONE THAT IS EASY TO MISS. In-plane normals alone are NOT
-	 * enough. Moments are taken about each block's own centroid with lever arms to its contacts, so a
-	 * posed row whose Y differs from its neighbours' generates a genuine out-of-plane moment demand
-	 * even when every normal lies in X-Z — a roof bearing on walls at two different Y values is
-	 * exactly that, and projecting it onto one plane makes an overhang that topples read as standing.
-	 * So the problem is planar only when every Y that enters an equilibrium row — each UNGROUNDED
-	 * block's centroid and each POSED joint's patch centre — is the SAME Y. Under that condition the
-	 * out-of-plane force row and the two out-of-plane moment rows are linear combinations of the
-	 * in-plane ones (M_x = y0 * SumFz, M_z = -y0 * SumFx) and so carry no information, and the
-	 * patch's own Y half-extent is symmetric about that plane. The bridge poses no applied forces,
-	 * so gravity — in-plane by definition — is the only load.
+	 * TWO CONDITIONS, AND THE SECOND IS EASY TO MISS: in-plane normals alone are not enough.
+	 * Moments are taken about each block's own centroid with lever arms to its contacts, so a
+	 * posed row whose Y differs from its neighbours' generates a genuine out-of-plane moment
+	 * demand even when every normal lies in X-Z — a roof bearing on walls at two different Y
+	 * values is exactly that, and projecting it onto one plane makes a toppling overhang read as
+	 * standing. So the problem is planar only when every Y that enters an equilibrium row — each
+	 * ungrounded block's centroid and each posed joint's patch centre — is the same Y. Under that
+	 * condition the out-of-plane force row and the two out-of-plane moment rows are linear
+	 * combinations of the in-plane ones (M_x = y0 * SumFz, M_z = -y0 * SumFx) and carry no
+	 * information, and the patch's own Y half-extent is symmetric about that plane. The bridge
+	 * poses no applied forces, so gravity — in-plane by definition — is the only load.
 	 *
-	 * WHAT "SOUND" DOES AND DOES NOT MEAN HERE. The two poses are NOT the same feasible set. Every
-	 * 3D-feasible force system projects to a 2D-feasible one (drop each corner's Y shear, sum the Y
-	 * pairs; every 3D row implies its 2D twin), but the converse fails: the 3D friction pyramid and
-	 * shear ceiling are an INSCRIBED k=8 octagon (ThreeDPyramidInscribeFactor, cos(pi/8) = 0.924),
-	 * so pure in-plane shear is capped at 0.924x the exact Coulomb cone the 2D rows carry. Posing
-	 * a planar problem in 2D therefore chooses the EXACT cone — the physics every sweep pin is
-	 * anchored on — and can only ever move a verdict toward STANDING, by at most that 7.6% shear
-	 * band. That is a ruling with a cost (DESIGN §8, 2026-09-16), not a no-op.
+	 * "Sound" does not mean the same feasible set. Every 3D-feasible force system projects to a
+	 * 2D-feasible one (drop each corner's Y shear, sum the Y pairs), but the converse fails: the
+	 * 3D friction pyramid and shear ceiling are an inscribed k=8 octagon
+	 * (ThreeDPyramidInscribeFactor, cos(pi/8) = 0.924), so pure in-plane shear is capped at 0.924x
+	 * the exact Coulomb cone the 2D rows carry. Posing a planar problem in 2D therefore chooses the
+	 * exact cone every sweep pin is anchored on, and can only move a verdict toward standing, by at
+	 * most that 7.6% shear band — a ruling with a cost (DESIGN §8, 2026-09-16), not a no-op.
 	 *
-	 * The common-Y test is GLOBAL — one plane for the whole problem — which is sufficient but
-	 * stronger than the rows need: the moment rows are per block, so the sound condition is per
-	 * ungrounded block (its centroid Y equals every posed patch centre it touches). Two independent
-	 * straight walls at different Y in one flagged structure pose 3D under this test though each is
-	 * planar; CURRENT_STATE carries the refinement.
+	 * The common-Y test is global (one plane for the whole problem), which is sufficient but
+	 * stronger than the rows need: the sound condition is really per ungrounded block (its
+	 * centroid Y equals every posed patch centre it touches). Two independent straight walls at
+	 * different Y in one flagged structure pose 3D under this test though each is planar;
+	 * CURRENT_STATE carries the refinement.
 	 *
-	 * A joint the caller's own loop will FAULT on — an endpoint with no block, a normal Normalize()
-	 * refuses — is skipped here rather than answered: that bridge call returns false with an emptied
-	 * problem, so the dimension it would have chosen never reaches anybody.
-	 *
-	 * Both tests are written !(x <= tol) rather than x > tol so a non-finite normal or centre answers
-	 * OUT OF PLANE, the expensive-and-sound side: posing something the 2D X-Z oracle cannot express
-	 * would be a plausible number with wrong statics, where paying for the 3D pose is only slow.
+	 * A joint the caller's own loop will fault on — an endpoint with no block, a normal
+	 * Normalize() refuses — is skipped here rather than answered, since that bridge call returns
+	 * false with an emptied problem. Both tests are written !(x <= tol) rather than x > tol so a
+	 * non-finite normal or centre answers out of plane, the expensive-and-sound side: posing
+	 * something the 2D oracle cannot express would be a plausible number with wrong statics, where
+	 * paying for the 3D pose is only slow.
 	 */
 	bool PosedProblemLeavesThePlane(
 		const FStructure& Structure,
@@ -164,14 +162,12 @@ namespace RigidBlockOracle
 
 		/*
 		 * THE FLAG IS THE PERMISSION TO POSE 3D, NOT THE POSE (THREED_DESIGN E3). A 3D-flagged
-		 * structure MAY be posed with its full Y geometry — the block's plan-Y, the joint's
+		 * structure may be posed with its full Y geometry — the block's plan-Y, the joint's
 		 * out-of-plane normal, its two in-plane half-extents — and the Y-normal refusal below is
-		 * lifted for it. Every 2D structure (the default) takes the unchanged path: the Y is dropped
-		 * and a stray Y-normal is still refused rather than projected, so a 2D pose stays
-		 * byte-for-byte what it was, and a 2D-flagged structure that has acquired an out-of-plane
-		 * joint stays loudly refused rather than quietly promoted to the pose that would carry it.
-		 *
-		 * Which pose is actually built is decided below, from the joints this bridge POSES.
+		 * lifted for it. Every 2D structure (the default) takes the unchanged path: Y is dropped
+		 * and a stray Y-normal is still refused rather than projected, so a 2D-flagged structure
+		 * that has acquired an out-of-plane joint stays loudly refused rather than quietly
+		 * promoted. Which pose is actually built is decided below, from the joints this bridge poses.
 		 */
 		const bool bThreeDimensionalPermitted = Structure.IsThreeDimensional();
 
@@ -228,20 +224,19 @@ namespace RigidBlockOracle
 
 		/*
 		 * THE CHEAPEST SOUND POSE. Permitted to pose 3D, this bridge does so only when the problem
-		 * needs it: when everything it poses lies in ONE X-Z plane (see the predicate for both halves
-		 * of that test), the 3D pose's out-of-plane force row and its two out-of-plane moment rows
-		 * carry no information the in-plane rows do not already carry, and the 2D pose answers ~37x
-		 * faster (a 100-brick wall's cold Run: 2.5 s against 94 s).
+		 * needs it: when everything it poses lies in one X-Z plane (see the predicate above), the
+		 * 3D pose's out-of-plane force row and its two out-of-plane moment rows carry no information
+		 * the in-plane rows do not already carry, and the 2D pose answers ~37x faster (a 100-brick
+		 * wall's cold Run: 2.5 s against 94 s).
 		 *
-		 * The two poses are NOT interchangeable, and the predicate's header says exactly how they
-		 * differ: the 3D friction and shear-ceiling rows are an inscribed octagon, 0.924x the exact
-		 * Coulomb cone the 2D rows carry, so the 2D pose is the MORE ACCURATE one and can only move a
-		 * shear-critical verdict toward standing. One consequence is visible in the mechanism reader:
-		 * measured 2026-09-16, the two formulations agreed on the verdict of a free-falling wall and
-		 * disagreed on WHICH joints opened — the 3D reader severed eight joints inside a body the 2D
-		 * reader dropped whole. Choosing one pose per problem makes a planar build's break sequence
-		 * the 2D one by construction; what the 3D reader does inside a free-falling body is an open
-		 * question about the 3D extraction (THREED_DESIGN E2b), which genuinely 3D builds still run.
+		 * The two poses are not interchangeable: the 3D friction and shear-ceiling rows are an
+		 * inscribed octagon, 0.924x the exact Coulomb cone the 2D rows carry, so the 2D pose is the
+		 * more accurate one and can only move a shear-critical verdict toward standing. One
+		 * consequence is visible in the mechanism reader: measured 2026-09-16, the two formulations
+		 * agreed on the verdict of a free-falling wall and disagreed on which joints opened — the 3D
+		 * reader severed eight joints inside a body the 2D reader dropped whole. Choosing one pose
+		 * per problem makes a planar build's break sequence the 2D one by construction; what the 3D
+		 * reader does inside a free-falling body remains an open question (THREED_DESIGN E2b).
 		 */
 		const bool bThreeDimensional =
 			bThreeDimensionalPermitted
@@ -310,12 +305,10 @@ namespace RigidBlockOracle
 			}
 
 			/*
-			 * REFUSED RATHER THAN PROJECTED, read against the POSE — which for a 2D-flagged structure
-			 * is the flag itself, so a stray out-of-plane normal is refused exactly as before. A
-			 * PLANAR pose chosen under the 3D permission cannot reach this line, because the pose
-			 * decision scanned these same joints; keeping the test on the pose means that if the two
-			 * ever disagreed about which joints are posed, the answer is a loud refusal rather than a
-			 * Y-normal joint flattened into an X-Z problem.
+			 * Refused rather than projected, read against the POSE (bThreeDimensional) rather than
+			 * the flag alone, so a planar pose chosen under 3D permission still refuses a Y-normal
+			 * here — if the pose decision and this test ever disagreed about which joints are
+			 * posed, the answer is a loud refusal rather than a Y-normal joint flattened into X-Z.
 			 */
 			if (!bThreeDimensional && FMath::Abs(Normal.Y) > 1.0e-9)
 			{
@@ -338,13 +331,12 @@ namespace RigidBlockOracle
 			{
 				/*
 				 * THE 3D POSE: carry the out-of-plane parts the 2D pose has no place for — the
-				 * normal's Y component, the patch centre's plan-Y, and BOTH in-plane half-extents.
-				 * The pair must be measured in the oracle's OWN frame, so derive the same (U, V) the
-				 * assembler will read the patch against and project the interface's per-axis
-				 * half-extents onto each: HalfUCm along U, HalfVCm along V. The interface is an
-				 * axis-aligned rectangle (AddConnection enforces it) with zero extent on the normal
-				 * axis, so each projection picks out exactly one in-plane extent and the posed
-				 * rectangle is the real face in the frame the solver measures it in.
+				 * normal's Y component, the patch centre's plan-Y, and both in-plane half-extents,
+				 * measured in the oracle's own (U, V) frame (the same one the assembler reads the
+				 * patch against): project the interface's per-axis half-extents onto each, HalfUCm
+				 * along U and HalfVCm along V. The interface is an axis-aligned rectangle
+				 * (AddConnection enforces it) with zero extent on the normal axis, so each
+				 * projection picks out exactly one in-plane extent.
 				 */
 				Out.NormalY = Normal.Y;
 				Out.CentreYCm = Joint.InterfaceCentreCm.Y;
@@ -373,13 +365,12 @@ namespace RigidBlockOracle
 			Out.AreaSqCm = Joint.InterfaceAreaSqCm;
 
 			/*
-			 * THE LP SOLVES AGAINST THE WEAKEST-LINK MATERIAL PAIRING, not the bare
-			 * connection. FStructure::EffectiveJointStrength is the single point that pairs a
-			 * joint's connection with its two faces' materials (SHED_PATH.md B3), and it is the
-			 * same one the router's GetConnectionUtilisation reads — so the LP row and the
-			 * router readout can never disagree about a cross-material joint's capacity. Where a
-			 * face names no material it returns the bare connection, so a single-material or
-			 * unlabelled joint bridges bit for bit as it did before.
+			 * THE LP SOLVES AGAINST THE WEAKEST-LINK MATERIAL PAIRING, not the bare connection.
+			 * FStructure::EffectiveJointStrength pairs a joint's connection with its two faces'
+			 * materials (SHED_PATH.md B3) and is the same call the router's
+			 * GetConnectionUtilisation reads, so the LP row and the router readout can never
+			 * disagree about a cross-material joint's capacity. Where a face names no material it
+			 * returns the bare connection.
 			 */
 			Out.Strength = Structure.EffectiveJointStrength(Index);
 
@@ -402,10 +393,10 @@ namespace RigidBlockOracle
 		OutWhyNot.Empty();
 
 		/*
-		 * SAME SIGNAL, SAME REFUSALS as the whole-structure bridge (THREED_DESIGN E3): the flag is
-		 * the PERMISSION to pose 3D, and a 2D structure drops the Y and still refuses a stray
-		 * Y-normal rather than projecting it. The region pose changes only WHICH pieces are included
-		 * and which are earth — never how a joint is measured.
+		 * Same signal, same refusals as the whole-structure bridge (THREED_DESIGN E3): the flag
+		 * is the permission to pose 3D, and a 2D structure drops the Y and still refuses a stray
+		 * Y-normal rather than projecting it. The region pose changes only which pieces are
+		 * included and which are earth — never how a joint is measured.
 		 */
 		const bool bThreeDimensionalPermitted = Structure.IsThreeDimensional();
 
@@ -458,9 +449,9 @@ namespace RigidBlockOracle
 			Block.CentroidZCm = Data.CentreOfMassCm.Z;
 
 			/*
-			 * THE ONE DELTA FROM THE EXCLUDED-PIECES FORM: a boundary piece is earth. It is pinned
-			 * grounded so it writes no equilibrium rows and never moves; interior region pieces keep
-			 * their own grounding, so a real foundation block inside the region stays grounded too.
+			 * The one delta from the excluded-pieces form: a boundary piece is pinned grounded, so
+			 * it writes no equilibrium rows and never moves; interior region pieces keep their own
+			 * grounding, so a real foundation block inside the region stays grounded too.
 			 */
 			Block.bGrounded = BoundaryPieces.Contains(Piece) || Data.bIsGrounded;
 			OutProblem.Blocks.Add(Block);
@@ -470,12 +461,11 @@ namespace RigidBlockOracle
 		 * THE CHEAPEST SOUND POSE, on the same rule as the whole-structure bridge and for the same
 		 * reason: a region whose posed rows all sit in one X-Z plane is a planar LP however the
 		 * structure around it is flagged, and the 2D pose carries the exact Coulomb cone where the
-		 * 3D pose carries its inscribed octagon (the predicate's header). Kept in lock-step
-		 * deliberately — a prover posing a region one way while the gate poses the whole structure
-		 * the other would be two authorities on one collapse, judging the same joint 7.6% apart.
-		 *
-		 * The boundary ring is already pinned grounded above, so a boundary-to-boundary joint is
-		 * skipped here exactly as it is in the emit loop below.
+		 * 3D pose carries its inscribed octagon. Kept in lock-step deliberately — a prover posing a
+		 * region one way while the gate poses the whole structure the other would be two
+		 * authorities on one collapse, judging the same joint 7.6% apart. The boundary ring is
+		 * already pinned grounded above, so a boundary-to-boundary joint is skipped in the emit
+		 * loop below exactly like any other doubly-grounded joint.
 		 */
 		const bool bThreeDimensional =
 			bThreeDimensionalPermitted
@@ -548,12 +538,10 @@ namespace RigidBlockOracle
 			}
 
 			/*
-			 * REFUSED RATHER THAN PROJECTED, read against the POSE — which for a 2D-flagged structure
-			 * is the flag itself, so a stray out-of-plane normal is refused exactly as before. A
-			 * PLANAR pose chosen under the 3D permission cannot reach this line, because the pose
-			 * decision scanned these same joints; keeping the test on the pose means that if the two
-			 * ever disagreed about which joints are posed, the answer is a loud refusal rather than a
-			 * Y-normal joint flattened into an X-Z problem.
+			 * Refused rather than projected, read against the POSE (bThreeDimensional) rather than
+			 * the flag alone, so a planar pose chosen under 3D permission still refuses a Y-normal
+			 * here — if the pose decision and this test ever disagreed about which joints are
+			 * posed, the answer is a loud refusal rather than a Y-normal joint flattened into X-Z.
 			 */
 			if (!bThreeDimensional && FMath::Abs(Normal.Y) > 1.0e-9)
 			{

@@ -5,13 +5,11 @@
 #include "CoreMinimal.h"
 
 /*
- * THE SPARSE LU + PRODUCT-FORM ETA FACTORISATION AND THE REVISED-SIMPLEX WORKING
- * STATE, LIFTED OUT OF RigidBlockOracle.cpp VERBATIM so the factorisation the solver
- * now ships (PROMOTION_DESIGN Slice 1) can be fuzzed from a separate translation unit
- * against an independent oracle. Nothing here changed in the move; the assembly,
- * pricing, warm-start and SolveRigidBlock entry points stay in the .cpp. These are
- * OracleDetail internals, not a public API: the only non-test consumer is the .cpp
- * that used to define them inline.
+ * THE SPARSE LU + PRODUCT-FORM ETA FACTORISATION AND THE REVISED-SIMPLEX WORKING STATE,
+ * lifted out of RigidBlockOracle.cpp verbatim (PROMOTION_DESIGN Slice 1) so it can be
+ * fuzzed from a separate translation unit. Nothing here changed in the move; assembly,
+ * pricing, warm-start and SolveRigidBlock stay in the .cpp. OracleDetail internals, not
+ * a public API — the only non-test consumer is the .cpp that used to define them inline.
  */
 namespace RigidBlockOracle
 {
@@ -55,15 +53,13 @@ namespace RigidBlockOracle
 			TArray<double> Rhs;
 
 			/**
-			 * Per row, the signed factor the ASSEMBLY row was multiplied by to build this
-			 * standard-form row: the equilibration scale times the orientation flip's sign
-			 * (Scale, or -Scale where the row was flipped to make its right-hand side
-			 * non-negative). A dual y in this standard form acts on the SCALED rows, so the
-			 * PHYSICAL certificate on the original assembly rows is y[r] * RowScaleSigned[r] —
-			 * which is what the mechanism extraction needs to read a block's equilibrium duals
-			 * back as an unscaled virtual-motion triple (RigidBlockOracle.cpp's ExtractMechanism,
-			 * PROMOTION_DESIGN §3.3). Nothing in the solve reads it; it is bookkeeping for the
-			 * infeasible arm alone.
+			 * Per row, the signed factor the assembly row was multiplied by to build this
+			 * standard-form row (the equilibration scale times the orientation flip's sign).
+			 * A dual y in this standard form acts on the scaled rows, so the physical
+			 * certificate on the original assembly rows is y[r] * RowScaleSigned[r] — what
+			 * mechanism extraction needs to read a block's equilibrium duals back as an
+			 * unscaled virtual-motion triple (ExtractMechanism, PROMOTION_DESIGN §3.3).
+			 * Nothing in the solve itself reads it; bookkeeping for the infeasible arm alone.
 			 */
 			TArray<double> RowScaleSigned;
 
@@ -88,14 +84,14 @@ namespace RigidBlockOracle
 		 * A sparse LU factorisation of the basis with row partial pivoting: left-looking
 		 * column-at-a-time (Gilbert-Peierls shape — a depth-first reach per column over
 		 * L's pattern, then a scatter/eliminate/split on a dense workspace), pivot row
-		 * chosen by LARGEST MAGNITUDE with LOWEST ORIGINAL INDEX on exact ties, which is
-		 * what keeps the whole factorisation a pure function of the input arrays. The
-		 * reached positions are processed in ascending pivot order — a valid elimination
-		 * order because L is lower triangular in position space — rather than the
-		 * classic topological order, trading a sort for simplicity at validation scale.
+		 * chosen by largest magnitude with lowest original index on exact ties, keeping
+		 * the whole factorisation a pure function of the input arrays. Reached positions
+		 * are processed in ascending pivot order — valid because L is lower triangular in
+		 * position space — rather than the classic topological order, trading a sort for
+		 * simplicity at validation scale.
 		 *
-		 * During factorisation L's row indices are ORIGINAL row numbers (the rows below
-		 * the diagonal have no position yet); a single remap after the last column turns
+		 * During factorisation L's row indices are original row numbers (rows below the
+		 * diagonal have no position yet); a single remap after the last column turns
 		 * everything into position space, where both triangular solves are ordinary.
 		 */
 		struct FBasisFactor
@@ -172,15 +168,14 @@ namespace RigidBlockOracle
 			}
 
 			/**
-			 * bRepairSingular IS FOR A WARM START AND NOTHING ELSE, and it is false on every
-			 * cold path, so the arithmetic below is untouched by its existence. A caller's
-			 * basis is a HINT: its columns were independent in the problem it came from, and
-			 * dropping some of that problem's rows and columns does not inherit independence.
-			 * With the flag set, a column that cannot pivot is REPLACED by the cold default of
-			 * an unassigned row and the position retried, so a hint that has gone singular
-			 * costs the caller the rows it named rather than the whole answer — a warm start
-			 * that failed closed would measure nothing. Basis is written in place, which is
-			 * how the caller learns what survived.
+			 * bRepairSingular is for a warm start and nothing else, false on every cold
+			 * path so the arithmetic below is untouched by its existence. A caller's basis
+			 * is a hint: its columns were independent in the problem it came from, and
+			 * dropping some of that problem's rows and columns does not inherit
+			 * independence. With the flag set, a column that cannot pivot is replaced by
+			 * the cold default of an unassigned row and the position retried, so a hint
+			 * that has gone singular costs the caller the rows it named rather than the
+			 * whole answer. Basis is written in place, so the caller learns what survived.
 			 */
 			bool Factorise(
 				const FStandardForm& Form, TArray<int32>& Basis, bool bRepairSingular = false)
@@ -418,16 +413,15 @@ namespace RigidBlockOracle
 		};
 
 		/**
-		 * THE BASIC VALUES OF A BASIS, x_B = B^-1 b, WITH ONE PASS OF ITERATIVE REFINEMENT:
+		 * The basic values of a basis, x_B = B^-1 b, with one pass of iterative refinement:
 		 * the residual b - B*x is formed against the original columns and a correction
-		 * solved, which knocks the solve noise of an ill-conditioned basis (the lambda cap's
+		 * solved, knocking the solve noise of an ill-conditioned basis (the lambda cap's
 		 * 1e6 right-hand side amplifies it) from ~1e-6 down to rounding.
 		 *
-		 * It is a free function rather than part of Refactorise because TWO places need it —
-		 * the refactorisation, which clamps the tiny negatives it leaves, and the warm-start
-		 * seeding, which must read them UNCLAMPED because on a warm basis a negative basic
-		 * value is not rounding at a degenerate vertex but a real infeasibility to repair.
-		 * Two transcriptions of one arithmetic is how the two quietly stop agreeing.
+		 * A free function rather than part of Refactorise because two places need it —
+		 * the refactorisation, which clamps the tiny negatives it leaves, and the
+		 * warm-start seeding, which must read them unclamped because on a warm basis a
+		 * negative basic value is a real infeasibility to repair, not rounding.
 		 */
 		inline void SolveBasicValues(
 			const FStandardForm& Form,
@@ -535,11 +529,10 @@ namespace RigidBlockOracle
 			int32 BlandDegenerateEntries = 0;
 
 			/*
-			 * Instrumentation only — nothing branches on it, AND THAT IS THE CONTRACT OF
-			 * THIS SLICE. The pivot at which phase 1's basic-artificial infeasibility sum
-			 * first came inside tolerance, which is the first moment an early exit COULD
-			 * have fired; the solver keeps going to optimality exactly as before, because
-			 * an early exit returns a feasible point rather than an optimal one and that is
+			 * Instrumentation only — nothing branches on it. The pivot at which phase 1's
+			 * basic-artificial infeasibility sum first came inside tolerance, the first
+			 * moment an early exit could have fired; the solver keeps going to optimality
+			 * regardless, since an early exit would return a feasible, not optimal, point —
 			 * a different contract nobody has taken. INDEX_NONE means the sum never came
 			 * inside tolerance — an infeasible problem has no such pivot.
 			 */
@@ -566,21 +559,21 @@ namespace RigidBlockOracle
 			}
 
 			/**
-			 * THE ERROR RESET: refactorise the basis from the original sparse columns
-			 * and recompute the basic values from the original right-hand side, one pass
-			 * of iterative refinement included (SolveBasicValues), so the verification
-			 * gate judges the basis itself and not the solver's arithmetic. Tiny negative
-			 * basic values after that are rounding at degenerate vertices and are clamped
-			 * to zero; a genuinely infeasible basis cannot hide behind the clamp because
-			 * the final answer is verified against the original unscaled rows.
+			 * THE ERROR RESET: refactorise the basis from the original sparse columns and
+			 * recompute the basic values from the original right-hand side, one pass of
+			 * iterative refinement included (SolveBasicValues), so the verification gate
+			 * judges the basis itself and not the solver's arithmetic. Tiny negative basic
+			 * values after that are rounding at degenerate vertices and are clamped to
+			 * zero; a genuinely infeasible basis cannot hide behind the clamp because the
+			 * final answer is verified against the original unscaled rows.
 			 *
-			 * THAT JUSTIFICATION IS ABOUT A BASIS THE SIMPLEX ITSELF BUILT, and it is
-			 * exactly false of one handed in from outside. A warm start is normally PRIMAL
-			 * INFEASIBLE — the deleted joints were carrying force — and there a negative
-			 * basic value is not rounding at all but the infeasibility phase 1 exists to
-			 * repair, which the clamp would launder into a plausible feasible-looking
-			 * point. That is why SeedWarmStartBasis reads the values BEFORE this function
-			 * ever runs on them, and turns each one into phase-1 work that can be seen.
+			 * That justification is about a basis the simplex itself built, and is exactly
+			 * false of one handed in from outside: a warm start is normally primal
+			 * infeasible (the deleted joints were carrying force), so a negative basic
+			 * value there is the infeasibility phase 1 exists to repair, not rounding —
+			 * which the clamp would launder into a plausible feasible-looking point. That
+			 * is why SeedWarmStartBasis reads the values before this function ever runs on
+			 * them, turning each one into phase-1 work that can be seen.
 			 */
 			bool Refactorise()
 			{
