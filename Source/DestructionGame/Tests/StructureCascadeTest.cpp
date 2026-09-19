@@ -7,25 +7,23 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, not anonymous, and named differently from every other one in this
- * directory. An anonymous namespace is private to a TRANSLATION UNIT rather than to a
+ * Named, not anonymous, and named differently from every other namespace in this
+ * directory. An anonymous namespace is private to a translation unit rather than to a
  * file, and a unity build merges many files into one — at which point two anonymous
- * BedJointNormal declarations are the same declaration twice. See CURRENT_STATE.md;
- * the `using namespace` for this one lives inside each RunTest body for the same
- * reason.
+ * BedJointNormal declarations are the same declaration twice. See CURRENT_STATE.md; the
+ * `using namespace` lives inside each RunTest body for the same reason.
  */
 namespace StructureCascadeSupport
 {
 	using namespace DestructionProfiles;
 
 	/**
-	 * Unreal's gravity, 980 cm/s2, spelled out here rather than imported from
-	 * production so this file fails if production gets it wrong instead of agreeing
-	 * with it.
+	 * Unreal's gravity, 980 cm/s2, spelled out rather than imported from production so
+	 * this file fails if production gets it wrong instead of agreeing with it.
 	 *
-	 * THE UNIT TRAP, stated once. Mass is already kilograms and length already
-	 * centimetres, so MassKg * 980 IS a force in Unreal units — the 1 N = 100 uu
-	 * conversion is baked into the 980 rather than applied on top of it.
+	 * The unit trap: mass is already kg and length already cm, so MassKg * 980 IS a
+	 * force in Unreal units — the 1 N = 100 uu conversion is baked into the 980, not
+	 * applied on top of it.
 	 */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
@@ -35,12 +33,10 @@ namespace StructureCascadeSupport
 	}
 
 	/**
-	 * Force, in Unreal units, that loads the given area to the given stress.
-	 *
-	 * Spelled out from the SI definitions rather than reusing ForceUnitsPerMPaSqCm, so
-	 * a wrong conversion constant in production shows up here as a failure instead of
-	 * as an agreement: 1 N = 100 uu, 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2, so one MPa over
-	 * one cm2 is 10000 uu.
+	 * Force, in Unreal units, that loads the given area to the given stress. Spelled
+	 * from the SI definitions rather than reusing ForceUnitsPerMPaSqCm, so a wrong
+	 * conversion constant in production fails here instead of agreeing: 1 N = 100 uu,
+	 * 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2, so one MPa over one cm2 is 10000 uu.
 	 */
 	constexpr double ForceForMPa(double MPa, double AreaSqCm)
 	{
@@ -55,11 +51,9 @@ namespace StructureCascadeSupport
 
 	/**
 	 * Mass of a piece whose whole weight loads the given area to the given stress.
-	 *
-	 * Fixtures are written in terms of STRESS rather than of mass, because stress is
-	 * what decides whether a joint gives and it is the only number a reader can check
-	 * against a published strength by eye. "MassForStress(6.0, 400.0)" says exactly
-	 * what the fixture is for; 24489.795918 kg says nothing at all.
+	 * Fixtures are written in stress because that is what decides whether a joint gives
+	 * and the only number checkable against a published strength by eye:
+	 * MassForStress(6.0, 400.0) says what the fixture is for, 24489.795918 kg does not.
 	 */
 	constexpr double MassForStress(double MPa, double AreaSqCm)
 	{
@@ -67,9 +61,9 @@ namespace StructureCascadeSupport
 	}
 
 	/**
-	 * A standard clay brick, 2.72 kg, used only for the GROUNDED pads and piers in
-	 * these fixtures — their own weight terminates at the earth and never reaches a
-	 * joint, so the value is immaterial and a real one is less distracting than zero.
+	 * A standard clay brick, 2.72 kg, used only for the grounded pads and piers — their
+	 * weight terminates at the earth and never reaches a joint, so the value is
+	 * immaterial and a real one is less distracting than zero.
 	 */
 	constexpr double BrickMassKg = 2.72;
 
@@ -80,17 +74,15 @@ namespace StructureCascadeSupport
 	const FVector HeadJointNormal(1.0, 0.0, 0.0);
 
 	/**
-	 * What a joint does with the load it is handed, and therefore WHICH CAPACITY the
+	 * What a joint does with the load it is handed, and therefore which capacity the
 	 * break decision is measured against.
 	 *
-	 * This is the axis-governance guard, and it is not decoration. ComputeUtilisation
-	 * returns the WORST of three axes, so a fixture aimed at compression that happens to
-	 * be governed by shear breaks for a reason the test did not intend and proves
-	 * nothing about the one it did. Every fixture in this file loads its joints on
-	 * EXACTLY ONE non-zero axis — a vertical force on an axis-aligned bed joint is pure
-	 * compression, on an axis-aligned head joint pure shear — so the governing axis is
-	 * not merely dominant, it is the only one carrying anything. That is asserted
-	 * per joint below rather than assumed.
+	 * The axis-governance guard. ComputeUtilisation returns the worst of three axes, so
+	 * a fixture aimed at compression that is actually governed by shear breaks for a
+	 * reason the test did not intend. Every fixture here loads exactly one non-zero axis
+	 * — a vertical force on an axis-aligned bed joint is pure compression, on an
+	 * axis-aligned head joint pure shear — and that is asserted per joint below rather
+	 * than assumed.
 	 */
 	enum class EJointKind : uint8
 	{
@@ -108,16 +100,14 @@ namespace StructureCascadeSupport
 	};
 
 	/**
-	 * A joint as data, INCLUDING ITS OWN STRENGTH.
+	 * A joint as data, including its own strength.
 	 *
-	 * StructureTest.cpp's builder gives every joint in a structure the same profile,
-	 * which is right there — it measures routing and wants nothing to break. Cascade
-	 * is the opposite: the ORDER joints give in is the thing under test, and with the
-	 * area-weighted split every parallel support of one piece carries the same STRESS
-	 * whatever its area (share is proportional to area, so stress is total over total
-	 * area and the area cancels). Identical profiles would therefore give identical
-	 * utilisations and every joint would break in the same pass. Differing strengths
-	 * are what make the sequence exist at all.
+	 * StructureTest.cpp's builder gives every joint the same profile, which is right
+	 * there — it measures routing and wants nothing to break. Here the order joints give
+	 * in is the thing under test, and with the area-weighted split every parallel support
+	 * of one piece carries the same stress whatever its area (share is proportional to
+	 * area, so the area cancels). Identical profiles would give identical utilisations
+	 * and break everything in one pass; differing strengths make the sequence exist.
 	 */
 	struct FConnectionSpec
 	{
@@ -138,12 +128,10 @@ namespace StructureCascadeSupport
 	struct FExpectedJoint
 	{
 		/**
-		 * SIGNED Z of the force the joint carries in the SETTLED structure, uu.
-		 *
-		 * Zero for a joint that has given: a broken joint is out of the structure and
-		 * carries nothing, which is the zero redistribution is built on. Per
-		 * ConnectionLoad.h the force belongs to PieceB, so a joint that names the
-		 * loaded piece first stores the equal-and-opposite reaction and is positive.
+		 * Signed Z of the force the joint carries in the settled structure, uu. Zero for
+		 * a joint that has given, since a broken joint is out of the structure. Per
+		 * ConnectionLoad.h the force belongs to PieceB, so a joint that names the loaded
+		 * piece first stores the equal-and-opposite reaction and is positive.
 		 */
 		double FinalForceZUU = 0.0;
 
@@ -153,20 +141,17 @@ namespace StructureCascadeSupport
 		 * The breaking pass that gave this joint, counted from 1, or INDEX_NONE if it
 		 * must still be intact when everything settles.
 		 *
-		 * ORDER WITHIN A PASS IS NOT ASSERTED ANYWHERE and must not be: every joint
-		 * over capacity in the same pass gives together, so two joints that share a
-		 * number are unordered with respect to each other. Order BETWEEN passes is
-		 * real, and it is what a collapse looks like when it is played back.
+		 * Order within a pass is not asserted anywhere and must not be: every joint over
+		 * capacity gives together, so two joints sharing a number are unordered. Order
+		 * between passes is real, and it is what a collapse looks like played back.
 		 */
 		int32 BreakPass = INDEX_NONE;
 
 		/**
 		 * Utilisation of the settled load, hand-derived from the published strength in
-		 * each case's comment.
-		 *
-		 * Zero for a broken joint, because it carries nothing. For an intact one this
-		 * is the MARGIN: it records how far the survivor is from giving, so a fixture
-		 * that only just held cannot drift into only just failing unnoticed.
+		 * each case's comment. Zero for a broken joint. For an intact one it is the
+		 * margin — how far the survivor is from giving — so a fixture that only just
+		 * held cannot drift into only just failing unnoticed.
 		 */
 		double FinalUtilisation = 0.0;
 	};
@@ -191,12 +176,9 @@ namespace StructureCascadeSupport
 	};
 
 	/**
-	 * Build a structure in place.
-	 *
-	 * BY REFERENCE, AND THAT IS THE POINT OF THIS WHOLE FILE'S CARE AROUND COPIES.
-	 * FConnection is copyable and its "has given" latch is per-copy, so anything that
-	 * evaluates connections by value latches a temporary and leaves the real joint
-	 * untouched — see the trap described on CheckCascadeCase.
+	 * Build a structure in place. By reference: FConnection is copyable and its
+	 * "has given" latch is per-copy, so anything evaluating connections by value latches
+	 * a temporary and leaves the real joint untouched — see CheckCascadeCase.
 	 */
 	void BuildStructure(FStructure& Out, const FStructureSpec& Spec)
 	{
@@ -218,51 +200,36 @@ namespace StructureCascadeSupport
 	}
 
 	/**
-	 * Build, cascade, and check one case against its table AND against the properties
+	 * Build, cascade, and check one case against its table and against the properties
 	 * that must hold for any structure at all.
 	 *
-	 * THE COPYABLE-LATCH TRAP, and the assertion that closes it. FConnection is
-	 * copyable and the latch is a private bool on the object, so
+	 * The copyable-latch trap, and the assertion that closes it: FConnection is copyable
+	 * and the latch is a private bool on the object, so
 	 *
 	 *     for (FConnection C : Connections) { C.ApplyForce(...); }
 	 *
-	 * — one missing ampersand — compiles clean, evaluates every joint, latches every
-	 * overloaded one ON THE TEMPORARY, and leaves the real connections untouched. The
-	 * structure then reports ZERO broken joints under any load whatsoever and never
-	 * comes apart. Nothing in the type prevents it and no test before this one could
-	 * see it, because phase 2a never latched anything. Every assertion below is made
-	 * AFTER SolveAndBreak has returned, through GetConnection, which hands back a
-	 * reference to the connection the structure actually owns — so a cascade that
-	 * happened only to copies reads as a structure where nothing broke.
+	 * — one missing ampersand — compiles clean, latches every overloaded joint on the
+	 * temporary, and leaves the real connections untouched, so the structure reports zero
+	 * broken joints under any load and never comes apart. Every assertion below is made
+	 * after SolveAndBreak returns, through GetConnection, which hands back a reference to
+	 * the connection the structure owns — so a cascade that happened only to copies reads
+	 * as a structure where nothing broke.
 	 *
-	 * ASSERTED FROM THE TABLE:
+	 * From the table: the number of passes; which joints gave and in which pass; what
+	 * each carries once settled, and on which axis; how hard each survivor is working;
+	 * which pieces are still held up.
 	 *
-	 *  - the number of breaking passes;
-	 *  - which joints have given, and IN WHICH PASS;
-	 *  - what each joint carries once it has settled, and on which axis;
-	 *  - how hard each surviving joint is working, so a margin cannot silently erode;
-	 *  - which pieces are still held up.
+	 * Universally, whatever the table says:
 	 *
-	 * ASSERTED UNIVERSALLY, whatever the table says:
-	 *
-	 *  - IT TERMINATES, and within the only bound the latch allows. Joints never heal,
-	 *    so a pass that breaks nothing ends the process and no pass can break nothing
-	 *    and still continue: the count is therefore at most the connection count. (This
-	 *    is NOT SolveLoads' own internal pass bound, which CURRENT_STATE.md records as
-	 *    provably 2 — a different and much smaller thing, nested inside each pass here.)
-	 *  - EVERY PASS BROKE SOMETHING. A gap in the numbering would mean a pass that broke
-	 *    nothing and then carried on, which is the shape of a loop that does not settle.
-	 *  - A BROKEN JOINT CARRIES NOTHING and an intact one has no pass stamp. Two
-	 *    accessors on the same object have to tell one story.
-	 *  - NOTHING SURVIVES OVER CAPACITY. The whole point of settling: recompute each
-	 *    intact joint's utilisation from the force the structure reports and its own
-	 *    profile, and if one is above 1 the cascade stopped early.
-	 *  - GROUND-REACTION CONSERVATION against the solver's own final claim. Everything
-	 *    still held up has to arrive at the earth — short means load was stranded on the
-	 *    way down, long means a share was counted twice.
-	 *  - CALLING IT AGAIN CHANGES NOTHING. A settled structure breaks nothing more, no
-	 *    joint un-breaks, and no pass stamp is rewritten. That is the latch being total,
-	 *    observed from outside.
+	 *  - it terminates within one pass per joint — joints never heal and a pass that
+	 *    breaks nothing is the last. (Not SolveLoads' own internal bound, provably 2 per
+	 *    CURRENT_STATE.md, which nests inside each pass here.)
+	 *  - every pass broke something; a gap in the numbering is a loop that does not settle;
+	 *  - a broken joint carries nothing and an intact one has no pass stamp;
+	 *  - nothing survives over capacity, recomputed from the reported force and profile;
+	 *  - ground-reaction conservation against the solver's own final claim — short means
+	 *    load was stranded, long means a share was counted twice;
+	 *  - calling it again changes nothing: the latch being total, observed from outside.
 	 *
 	 * (The classification below calls ClassifyForce directly, which DESIGN.md warns
 	 * re-opens the degenerate-normal hole. Safe here: it makes no break decision, and
@@ -276,10 +243,9 @@ namespace StructureCascadeSupport
 		constexpr double UtilisationTolerance = 1.0e-12;
 
 		/**
-		 * And a relative allowance for everything else. The fixtures are written as
-		 * MassForStress, which divides by 980 and is then multiplied by 980 again inside
-		 * the solver, so the settled loads carry a rounding error proportional to their
-		 * own size rather than a fixed one.
+		 * A relative allowance for everything else: MassForStress divides by 980 and the
+		 * solver multiplies by 980 again, so the settled loads carry a rounding error
+		 * proportional to their own size rather than a fixed one.
 		 */
 		constexpr double RelativeUtilisationTolerance = 1.0e-9;
 
@@ -287,7 +253,7 @@ namespace StructureCascadeSupport
 		BuildStructure(Structure, Case.Spec);
 
 		/*
-		 * The fixture itself, first. A spec rejected at the door would make every
+		 * The fixture itself, first: a spec rejected at the door would make every
 		 * assertion below a statement about a structure that was never built.
 		 */
 		Test.TestTrue(
@@ -296,12 +262,10 @@ namespace StructureCascadeSupport
 			Structure.NumPieces() == Case.Spec.Pieces.Num());
 
 		/*
-		 * THE TABLE, NOT THE SPEC, IS THE AUTHORITY ON WHAT SHOULD HAVE BEEN ACCEPTED.
-		 * For every case that describes real joints these are the same number, so this is
-		 * exactly as strong as comparing against the spec: a joint AddConnection rejected
-		 * where the table expected one still fails here. The difference is that a fixture
-		 * which MEANS to describe a rejected joint can now say so, by giving it no
-		 * expectation row — inexpressible while the spec count was the reference.
+		 * The table, not the spec, is the authority on what should have been accepted.
+		 * For real joints the two counts agree, so this is exactly as strong; the
+		 * difference is that a fixture meaning to describe a rejected joint can say so by
+		 * giving it no expectation row, which the spec count could not express.
 		 */
 		Test.TestTrue(
 			FString::Printf(TEXT("%s: the table describes %d connections and the structure accepted %d of the %d specified"),
@@ -322,9 +286,9 @@ namespace StructureCascadeSupport
 			Passes == Case.ExpectedPasses);
 
 		/*
-		 * TERMINATION, as a bound rather than as a hope. Every pass that is not the last
-		 * breaks at least one joint, joints never heal, so the process cannot run longer
-		 * than there are joints to break.
+		 * Termination as a bound rather than a hope: every pass but the last breaks at
+		 * least one joint and joints never heal, so the process cannot run longer than
+		 * there are joints to break.
 		 */
 		Test.TestTrue(
 			FString::Printf(TEXT("%s: %d passes over %d connections; the cascade must terminate within one pass per joint"),
@@ -348,10 +312,7 @@ namespace StructureCascadeSupport
 		{
 			const FExpectedJoint& Expected = Case.ExpectedJoints[Index];
 
-			/*
-			 * GetConnection hands back a reference to the connection the STRUCTURE owns,
-			 * so this is the real latch and not a copy of it.
-			 */
+			// GetConnection returns a reference the structure owns: the real latch, not a copy.
 			const FConnection& Connection = Structure.GetConnection(Index);
 			const FVector Force = Structure.GetConnectionForce(Index);
 
@@ -370,9 +331,9 @@ namespace StructureCascadeSupport
 				Structure.GetBreakPass(Index) == Expected.BreakPass);
 
 			/*
-			 * The two answers have to be one answer. A joint stamped with a pass and
-			 * reporting itself intact — or the reverse — is the copyable-latch defect
-			 * with a bookkeeping array papered over the top of it.
+			 * The two answers have to be one answer: a joint stamped with a pass yet
+			 * reporting itself intact — or the reverse — is the copyable-latch defect with
+			 * a bookkeeping array papered over the top of it.
 			 */
 			Test.TestTrue(
 				FString::Printf(TEXT("%s: connection %d reports HasGiven %d but break pass %d"),
@@ -401,7 +362,7 @@ namespace StructureCascadeSupport
 
 			/*
 			 * Gravity does not change direction because a joint happens to be vertical,
-			 * and it does not acquire one because a neighbouring joint gave.
+			 * nor acquire one because a neighbouring joint gave.
 			 */
 			Test.TestTrue(
 				FString::Printf(TEXT("%s: connection %d load must be vertical and finite, got (%f, %f, %f)"),
@@ -411,10 +372,8 @@ namespace StructureCascadeSupport
 					&& FMath::IsNearlyZero(Force.X, Tolerance) && FMath::IsNearlyZero(Force.Y, Tolerance));
 
 			/*
-			 * A BROKEN JOINT IS OUT OF THE STRUCTURE AND CARRIES NOTHING. That zero is
-			 * what redistribution means: the load it used to hold has to be somewhere
-			 * else now, and a broken joint still reporting a share is a wall that sheds
-			 * a joint and keeps standing on it.
+			 * A broken joint carries nothing — that zero is what redistribution means. One
+			 * still reporting a share is a wall standing on a joint it has already shed.
 			 */
 			if (Connection.HasGiven())
 			{
@@ -432,10 +391,8 @@ namespace StructureCascadeSupport
 			const double ExpectedShear = Expected.Kind == EJointKind::Bed ? 0.0 : Magnitude;
 
 			/*
-			 * THE AXIS-GOVERNANCE GUARD. Exactly one axis carries anything, so the
-			 * utilisation below can only have come from the capacity this fixture was
-			 * aimed at. Without this a case aimed at compression that was silently
-			 * governed by shear would still break at the right moment and prove nothing.
+			 * The axis-governance guard: exactly one axis carries anything, so the
+			 * utilisation below can only have come from the capacity this fixture aimed at.
 			 */
 			Test.TestTrue(
 				FString::Printf(
@@ -450,14 +407,12 @@ namespace StructureCascadeSupport
 				Load, Connection.Strength, Connection.InterfaceAreaSqCm);
 
 			/*
-			 * RELATIVE, WITH A FLOOR FAR BELOW THE SMALLEST EXPECTATION IN ANY TABLE.
-			 * A flat absolute 1e-9 was wide enough to swallow whole expectations: the
-			 * Unbreakable fixture settles at 1.96e-11, so every value in [-1e-9, 1e-9]
-			 * passed — INCLUDING EXACTLY ZERO, which is precisely the answer a joint
-			 * dropped out of the load path would give. The floor exists for the rows
-			 * expecting exactly 0 (a broken joint carries nothing, and that zero is
-			 * exact), and must stay well under the smallest non-zero expectation
-			 * anywhere in this file or that row stops being able to fail.
+			 * Relative, with a floor far below the smallest expectation in any table. A
+			 * flat absolute 1e-9 swallowed whole expectations: the Unbreakable fixture
+			 * settles at 1.96e-11, so everything in [-1e-9, 1e-9] passed — including exactly
+			 * zero, the answer a joint dropped out of the load path gives. The floor serves
+			 * the rows expecting an exact 0 and must stay well under the smallest non-zero
+			 * expectation in this file, or that row stops being able to fail.
 			 */
 			const double UtilisationSlack = FMath::Max(
 				UtilisationTolerance, RelativeUtilisationTolerance * FMath::Abs(Expected.FinalUtilisation));
@@ -468,7 +423,7 @@ namespace StructureCascadeSupport
 				FMath::IsNearlyEqual(Utilisation, Expected.FinalUtilisation, UtilisationSlack));
 
 			/*
-			 * NOTHING SURVIVES OVER CAPACITY — the definition of "settled". Written
+			 * Nothing survives over capacity — the definition of "settled". Written
 			 * !(x <= 1) rather than x > 1 so a NaN utilisation fails here instead of
 			 * slipping through as a joint that is comfortably fine.
 			 */
@@ -490,8 +445,8 @@ namespace StructureCascadeSupport
 		}
 
 		/*
-		 * GROUND-REACTION CONSERVATION, against the solver's OWN final claim about what
-		 * it is holding up rather than against the table, so it keeps its force if the
+		 * Ground-reaction conservation, against the solver's own final claim about what it
+		 * holds up rather than against the table, so it keeps its force if the
 		 * expectations above are ever revisited.
 		 */
 		double ReportedSupportedWeightUU = 0.0;
@@ -507,20 +462,15 @@ namespace StructureCascadeSupport
 		for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
 		{
 			/*
-			 * OVER THE JOINTS THE STRUCTURE ACTUALLY HOLDS, and taking their piece
-			 * handles from it rather than assuming spec row N is structure joint N.
+			 * Over the joints the structure actually holds, taking piece handles from it
+			 * rather than assuming spec row N is structure joint N. Walking the spec instead
+			 * crashed on the first row naming a piece that does not exist: AddConnection
+			 * rejects the row, but the harness still read Pieces[INDEX_NONE] — and the arity
+			 * assertions above are non-fatal TestTrue, so execution ran straight into it.
+			 * AddConnection validates both handles, so the ones read here are in range.
 			 *
-			 * This used to walk the SPEC and index Case.Spec.Pieces by the spec's own
-			 * handles, which is a crash waiting for the first row that names a piece
-			 * that does not exist: AddConnection rejects such a row, but the harness
-			 * still read Pieces[INDEX_NONE] — Pieces[-1] — and took the whole process
-			 * down. The arity assertions above are TestTrue and therefore non-fatal, so
-			 * execution runs straight past them into it, and a harness that crashes
-			 * instead of failing is worse than no harness. AddConnection validates both
-			 * handles at the door, so the ones read here cannot be out of range.
-			 *
-			 * Grounded-ness still comes from the SPEC, so this stays a statement about
-			 * the fixture rather than about what production chose to store.
+			 * Grounded-ness still comes from the spec, so this stays a statement about the
+			 * fixture rather than about what production chose to store.
 			 */
 			const FConnection& Connection = Structure.GetConnection(Index);
 
@@ -558,11 +508,9 @@ namespace StructureCascadeSupport
 			Structure.GetBreakPass(INDEX_NONE) == INDEX_NONE);
 
 		/*
-		 * IT HAS SETTLED, which is a claim about the second call and not only about the
-		 * first. Nothing more gives, nothing un-gives, no stamp is rewritten and no load
-		 * moves. Joints never heal (the latch in FConnection is total), so a structure
-		 * that changed here would either be re-breaking what it already broke or
-		 * recovering a joint mid-collapse.
+		 * Settled is a claim about the second call, not only the first: nothing more gives,
+		 * nothing un-gives, no stamp is rewritten and no load moves. A structure that
+		 * changed here is either re-breaking what it broke or recovering a joint mid-collapse.
 		 */
 		TArray<FVector> SettledForces;
 		TArray<int32> SettledPasses;
@@ -589,9 +537,8 @@ namespace StructureCascadeSupport
 		for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
 		{
 			/*
-			 * Bit for bit, not nearly-equal: the second run repeats the identical
-			 * arithmetic on identical inputs, so any difference at all is state carried
-			 * between runs rather than rounding.
+			 * Bit for bit, not nearly-equal: the second run repeats identical arithmetic on
+			 * identical inputs, so any difference is carried state rather than rounding.
 			 */
 			Test.TestTrue(
 				FString::Printf(TEXT("%s: connection %d carried %f and now carries %f"),
@@ -621,50 +568,40 @@ namespace StructureCascadeSupport
 }
 
 /**
- * A structure breaks every joint that is over capacity, moves their load onto the
- * neighbours, and repeats until it either settles or has come apart — recording WHICH
- * PASS each joint gave in.
+ * A structure breaks every joint over capacity, moves their load onto the neighbours, and
+ * repeats until it settles or has come apart — recording which pass each joint gave in.
  *
- * THE POLICY, decided here and encoded by these cases: break EVERY joint over capacity
- * in the same pass, stamp each with the pass number that broke it, re-solve, repeat.
- * Ordering WITHIN a pass is arbitrary and is deliberately not asserted anywhere; two
- * joints that give together carry the same number and nothing distinguishes them.
- * Ordering BETWEEN passes is real, and it is what makes a collapse watchable — it is
- * the sequence phase 5's visualisation and the planned piece-creation timestamps will
- * play back. Chosen over strict worst-joint-first, which costs a solve per joint for the
- * same end state, and over unordered all-at-once, which loses the sequence entirely.
+ * The policy these cases encode: break every joint over capacity in the same pass, stamp
+ * each with that pass number, re-solve, repeat. Order within a pass is arbitrary and
+ * deliberately never asserted; order between passes is real, and it is the sequence a
+ * collapse plays back as. Chosen over strict worst-joint-first, which costs a solve per
+ * joint for the same end state, and over unordered all-at-once, which loses the sequence.
  *
- * NO WORLD, NO POSITIONS, NOTHING MOVES. As in StructureTest.cpp, gravity is an input to
- * the arithmetic rather than something a simulation applies, and every assertion is on
- * the MECHANISM: which joints report themselves given, in which pass, what the survivors
- * carry, which pieces are still held up. DESIGN.md §4 is emphatic that displacement is
- * never a valid break assertion — two pieces can sever and stay resting exactly in
- * place — and here there is no displacement to be tempted by.
+ * No world, no positions, nothing moves. As in StructureTest.cpp gravity is an input to
+ * the arithmetic rather than something a simulation applies, and every assertion is on the
+ * mechanism: which joints report themselves given, in which pass, what the survivors carry,
+ * which pieces are still held up. DESIGN.md §4 is emphatic that displacement is never a
+ * valid break assertion — two pieces can sever and stay resting exactly in place.
  *
- * WHY THE FIXTURES LOOK THE WAY THEY DO. Every case hangs one heavy piece off several
- * grounded pads through pure bed joints, because with the area-weighted split every
- * parallel support of one piece carries the SAME STRESS regardless of its area: the
- * share is proportional to area, so the area cancels and the stress is simply the total
- * load over the total supporting area. Three consequences make it the right shape here:
+ * Every case hangs one heavy piece off several grounded pads through pure bed joints,
+ * because with the area-weighted split every parallel support carries the same stress
+ * whatever its area (the share is proportional to area, so the area cancels). That shape
+ * buys three things:
  *
- *  - a joint gives or holds on its PROFILE alone, so the sequence is read directly off
- *    published compressive strengths — lime mortar 2 MPa, cement mortar 10, dry stone 30;
- *  - removing one support shrinks the total area, so the stress on every survivor rises
- *    by a factor this test can compute exactly, which is redistribution in its most
- *    checkable form;
- *  - a vertical load on an axis-aligned bed joint is PURE COMPRESSION — shear and tension
- *    are exactly zero — so no other axis can be quietly governing the break.
+ *  - a joint gives or holds on its profile alone, so the sequence reads straight off
+ *    published compressive strengths — lime mortar 2 MPa, cement 10, dry stone 30;
+ *  - removing one support shrinks the total area, so every survivor's stress rises by a
+ *    factor this test computes exactly: redistribution in its most checkable form;
+ *  - a vertical load on an axis-aligned bed joint is pure compression, so no other axis
+ *    can be quietly governing the break.
  *
- * The masses are large because the fixtures are: putting 6 MPa across 400 cm2 takes 24
- * tonnes. They are written as MassForStress so the stress, which is the number that
- * matters, is the number in the source.
+ * The masses are large because the fixtures are — 6 MPa across 400 cm2 takes 24 tonnes —
+ * and are written as MassForStress so the stress is the number in the source.
  *
- * THE LAST TWO CASES DELIBERATELY BREAK THAT SHAPE, because it has a hidden property:
- * every one of the fixtures above is a TREE, so a break can only ever shorten a load
- * path. The two-tier fallback makes the opposite possible — losing a bed joint promotes
- * a piece's head joints, so breaking a joint ADDS edges to the support relation — and
- * those two cases are the only ones here where a survivor's load rises through a path
- * the break itself created. One settles; one closes a cycle and strands both pieces.
+ * The last two cases deliberately break that shape: every fixture above is a tree, so a
+ * break can only shorten a load path. The two-tier fallback makes the opposite possible —
+ * losing a bed joint promotes a piece's head joints, so breaking a joint adds edges to the
+ * support relation. One settles; one closes a cycle and strands both pieces.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureCascadeTest,
@@ -677,12 +614,9 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 
 	const TArray<FCascadeCase> Cases = {
 		/*
-		 * THE CONTROL, and it has to come first: a genuinely loaded structure where
-		 * nothing gives. 5 MPa on cement mortar's 10 is half capacity — comfortably
-		 * loaded, comfortably standing.
-		 *
-		 * Without it every case below could be satisfied by an implementation that
-		 * breaks whatever it is shown.
+		 * The control, and it has to come first: a genuinely loaded structure where
+		 * nothing gives — 5 MPa on cement mortar's 10 is half capacity. Without it every
+		 * case below could be satisfied by an implementation that breaks whatever it sees.
 		 */
 		{
 			TEXT("a joint at half capacity breaks nothing and keeps carrying its load"),
@@ -696,18 +630,16 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * EVERY JOINT OVER CAPACITY GIVES IN THE SAME PASS, in the form where nothing
-		 * can be confused with redistribution: three separate pieces, each on its own
-		 * pad, no interaction between them at all.
+		 * Every joint over capacity gives in the same pass, in the form where nothing can
+		 * be confused with redistribution: three separate pieces, each on its own pad.
 		 *
 		 *   [p1]      [p3]      [p5]
 		 *    |         |         |     lime mortar, 100 cm2, 3 MPa on a 2 MPa bond
 		 *   ===       ===       ===
 		 *
-		 * 3 / 2 = 1.5x on every one of them. Under the policy under test all three
-		 * carry pass 1. Under strict worst-joint-first they would carry 1, 2 and 3 —
-		 * same final state, three times the solves, and a collapse that reads as a
-		 * sequence where there is none. That is the whole discrimination.
+		 * 3 / 2 = 1.5x on all three, so all three carry pass 1. Worst-joint-first would
+		 * stamp them 1, 2 and 3 — same end state, three times the solves, and a collapse
+		 * that reads as a sequence where there is none.
 		 */
 		{
 			TEXT("three independently overloaded joints all give in the same pass"),
@@ -733,10 +665,9 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE CONTROL THAT SETTLES, and the case a cascade test is worthless without: a
-		 * joint gives, its load moves onto the neighbour, and the structure then STANDS.
-		 * A test that cannot tell "collapsed" from "shed one joint and stabilised" is not
-		 * testing redistribution at all.
+		 * The control that settles: a joint gives, its load moves onto the neighbour, and
+		 * the structure stands. A test that cannot tell "collapsed" from "shed one joint
+		 * and stabilised" is not testing redistribution at all.
 		 *
 		 *        [ P ]           one piece, two pads
 		 *        /   \
@@ -747,9 +678,8 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		 * Settled:   the cement joint alone carries the lot over 100 cm2 -> 6 MPa,
 		 *            6/10 = 0.60, and it holds with 40% to spare.
 		 *
-		 * The load genuinely MOVED: the survivor carried half the weight before the
-		 * break and all of it after. An implementation that broke the lime joint and
-		 * left its share stranded would report 3 MPa here and the piece falling.
+		 * An implementation that broke the lime joint and left its share stranded would
+		 * report 3 MPa here and the piece falling.
 		 */
 		{
 			TEXT("a joint gives, its share moves to the neighbour, and the structure stands"),
@@ -772,9 +702,8 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * A PASS THAT BREAKS TWO, THEN A PASS THAT BREAKS ONE. The same shape as above
-		 * with the weak bed doubled, so the first pass is plural and the second is a
-		 * consequence of it.
+		 * A pass that breaks two, then a pass that breaks one — the shape above with the
+		 * weak bed doubled, so the first pass is plural and the second follows from it.
 		 *
 		 *   lime 150 + lime 150 + cement 100 = 400 cm2, loaded to 6 MPa
 		 *
@@ -783,9 +712,8 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		 * Pass 2:  100 cm2 left, so 24 MPa; 24/10 = 2.4x -> the cement joint gives.
 		 * Pass 3:  nothing left to break, so the cascade ends after two passes.
 		 *
-		 * The load-bearing assertion is that the two lime joints share pass 1. Worst-
-		 * first would separate them (1 and 2, then 3) even though they are identical and
-		 * their utilisations are equal to the last bit.
+		 * The load-bearing assertion is that the two lime joints share pass 1; worst-first
+		 * would separate them though their utilisations are equal to the last bit.
 		 */
 		{
 			TEXT("two joints give together, and the survivor gives on the next pass"),
@@ -810,12 +738,11 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * REDISTRIBUTION ROUTED SIDEWAYS, AND THEN BACK DOWN. Every other cascade fixture
-		 * in this file is a tree, and the deepest post-break load path in any of them is
-		 * one hop. This is the direction the fallback rule makes possible and nothing
-		 * else covers: BREAKING A JOINT CAN ADD EDGES TO THE SUPPORT RELATION. A piece
-		 * with one bed joint and two head joints has exactly ONE support while the bed
-		 * joint holds, and TWO the moment it gives.
+		 * Redistribution routed sideways, and then back down. Every other fixture here is
+		 * a tree whose deepest post-break path is one hop; this is the direction the
+		 * fallback rule makes possible and nothing else covers — breaking a joint can add
+		 * edges to the support relation. A piece with one bed joint and two head joints
+		 * has one support while the bed joint holds, and two the moment it gives.
 		 *
 		 *   [pier p0] ==bolt 500== [ A p3 ] ==bolt 500== [ B p4 ]
 		 *                              |                     |
@@ -823,41 +750,36 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		 *                         ==========           ===========
 		 *                             p1                    p2
 		 *
-		 * AS BUILT each of A and B stands on its own pad, and both bolted plates carry
-		 * EXACTLY ZERO — a bed joint beneath wins the tier outright over any number of
-		 * head joints, so the plates are not in the support relation at all.
+		 * As built, A and B each stand on their own pad and both bolted plates carry
+		 * exactly zero: a bed joint beneath wins the tier outright over any number of head
+		 * joints, so the plates are not in the support relation at all.
 		 *
 		 *   pad c0   3 MPa against lime mortar's 2  -> 1.50x, GIVES in pass 1
 		 *   pad c1   3 MPa against cement's 10      -> 0.30, holds
 		 *
-		 * ONCE c0 HAS GONE A has no bed joint and falls back to BOTH plates. They are
-		 * 500 cm2 each so the split is even and each takes 1.5e6 uu, as PURE SHEAR — a
-		 * vertical load on a vertical face has no component along the normal.
+		 * Once c0 has gone A has no bed joint and falls back to both plates, 500 cm2 each,
+		 * so the split is even and each takes 1.5e6 uu as pure shear — a vertical load on
+		 * a vertical face has no component along the normal.
 		 *
 		 *   c2  1.5e6 over 500 cm2 = 0.30 MPa; the bolt's cohesion is 1.1 (mean basis,
 		 *       re-anchor 2026-08-13) and its mu is exactly 0, so capacity is a flat
 		 *       1.1                                       -> 0.2727, holds
-		 *   c3  the same 0.2727 — but this half of A goes SIDEWAYS INTO B, and B then
+		 *   c3  the same 0.2727 — but this half of A goes sideways into B, and B then
 		 *       pushes it on down its own pad
-		 *   c1  now carries B's own 3e6 PLUS A's 1.5e6 = 4.5e6 over 100 cm2 = 4.5 MPa
+		 *   c1  now carries B's own 3e6 plus A's 1.5e6 = 4.5e6 over 100 cm2 = 4.5 MPa
 		 *                                               -> 0.45, and it still holds
 		 *
-		 * TWO THINGS ONLY THIS CASE COVERS.
+		 * Two things only this case covers. c3 names the loaded piece first, so it stores
+		 * the equal-and-opposite reaction and its force is positive: this is the only
+		 * positively-signed force in the suite that the break sweep then evaluates, and the
+		 * axis guard insists it still resolves to pure shear with zero tension. Get the
+		 * sign wrong on a bed joint and mortar's 0.7 MPa tensile limit gives at a fraction
+		 * of the real capacity.
 		 *
-		 * c3 NAMES THE LOADED PIECE FIRST, so what it stores is the equal-and-opposite
-		 * reaction and its force is POSITIVE. StructureTest.cpp pins that sign convention
-		 * for load VALUES, but nothing before this composes sign -> classify -> break:
-		 * this is the only positively-signed force in the suite that the break sweep then
-		 * evaluates, and the axis guard above insists it still resolves to pure shear
-		 * with zero tension. Get the sign wrong on a bed joint and mortar's 0.7 MPa
-		 * tensile limit gives at a fraction of the real capacity, so the composition is
-		 * worth stating once.
-		 *
-		 * AND c1's LOAD RISES THROUGH A TWO-HOP PATH THE BREAK ITSELF CREATED. It is
-		 * conservation that makes that bite rather than the table alone: 6e6 of supported
-		 * weight has to reach the earth, and here it arrives as 4.5e6 + 1.5e6. An
-		 * implementation that let the broken pad keep winning A's tier leaves both plates
-		 * reading zero, c1 still at 3e6, and 3e6 of held-up weight arriving nowhere.
+		 * And c1's load rises through a two-hop path the break itself created, which
+		 * conservation makes bite: 6e6 of supported weight has to reach the earth, and here
+		 * it arrives as 4.5e6 + 1.5e6. Letting the broken pad keep winning A's tier leaves
+		 * both plates at zero, c1 still at 3e6, and 3e6 of held-up weight arriving nowhere.
 		 */
 		{
 			TEXT("a break routes a share sideways through a head joint and down the neighbour's pad"),
@@ -887,8 +809,8 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE FALLBACK THAT MAKES A KNOT — the same rule as above reaching the opposite
-		 * outcome, because edges added to the support relation can close a CYCLE in it.
+		 * The fallback that makes a knot — the same rule reaching the opposite outcome,
+		 * because edges added to the support relation can close a cycle in it.
 		 *
 		 *   [pier p0] ==bolt== [ A p4 ] ==bolt== [ B p5 ] ==bolt== [pier p1]
 		 *                          |                 |
@@ -896,25 +818,21 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		 *                     ==========        ==========
 		 *                         p2                p3
 		 *
-		 * Both pads sit at 3/2 = 1.50x and GIVE TOGETHER in pass 1. In pass 2 A has no
-		 * bed joint and falls back to {c2, c3}; B falls back to {c3, c4}. They now SHARE
-		 * c3, so each is the other's support through it, LoadReturnsToPiece fires on
-		 * both, and both are stranded — a knot the break itself created, in a structure
-		 * that had no cycle in it when it was built.
+		 * Both pads sit at 3/2 = 1.50x and give together in pass 1. In pass 2 A falls back
+		 * to {c2, c3} and B to {c3, c4}: they now share c3, so each is the other's support
+		 * through it, LoadReturnsToPiece fires on both, and both are stranded — a knot the
+		 * break created in a structure that had no cycle when it was built.
 		 *
-		 * A and B are therefore reported UNSUPPORTED and every joint carries nothing —
-		 * the three intact bolts included, which is the honest static answer (nothing is
-		 * holding that pair up, so there is no static load path) and also why nothing
-		 * more can break: an unloaded joint never gives, so the cascade stops at ONE
-		 * pass. It is not a claim the loop was solved; dividing load round a cycle needs
-		 * a rule DESIGN.md §3 says does not exist.
+		 * A and B are therefore unsupported and every joint carries nothing, the three
+		 * intact bolts included: nothing is holding that pair up, so there is no static
+		 * load path, and an unloaded joint never gives — which is why the cascade stops at
+		 * one pass. It is not a claim the loop was solved; dividing load round a cycle
+		 * needs a rule DESIGN.md §3 says does not exist.
 		 *
-		 * THE SUPPORT FLAGS AND THE PASS COUNT ARE THE LOAD-BEARING ASSERTIONS HERE, and
-		 * both are asserted directly rather than left to the universal properties.
-		 * Conservation reads 0 = 0 on this shape — nothing claimed held up, nothing
-		 * arriving at the earth — so it is structurally blind to everything this case
-		 * exists for, exactly as CURRENT_STATE.md records. Read the four pieces still
-		 * standing and the two that are not; do not read the sum.
+		 * The support flags and the pass count are the load-bearing assertions, and both
+		 * are stated directly rather than left to the universal properties: conservation
+		 * reads 0 = 0 on this shape and is blind to everything the case exists for, as
+		 * CURRENT_STATE.md records. Read the pieces standing, not the sum.
 		 */
 		{
 			TEXT("falling back to head joints can strand two pieces in a knot the break created"),
@@ -947,10 +865,9 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE CASCADE PROPER, and the termination case: three joints, three profiles,
-		 * three passes, and nothing left standing. Each break is caused by the one
-		 * before it — the structure holds after pass 1 and after pass 2, and only the
-		 * third takes the piece down.
+		 * The cascade proper, and the termination case: three joints, three profiles,
+		 * three passes, nothing left standing. Each break is caused by the one before it —
+		 * the structure holds after passes 1 and 2, and only the third takes the piece down.
 		 *
 		 *   lime 250 + cement 100 + dry stone 50 = 400 cm2, loaded to 6 MPa
 		 *
@@ -958,14 +875,13 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 		 * Pass 2:    150 cm2 left -> 16 MPa         | cement 1.60x GIVES | dry 0.53
 		 * Pass 3:     50 cm2 left -> 48 MPa                              | dry 1.60x GIVES
 		 *
-		 * Every survivor holds with at least 40% to spare and every break is at least
-		 * 60% over, so no row here is a near miss that a retune could flip quietly.
+		 * Every survivor holds with at least 40% to spare and every break is at least 60%
+		 * over, so no row is a near miss a retune could flip quietly.
 		 *
-		 * TERMINATION IS THE POINT AS MUCH AS THE ORDER. Three passes over three
-		 * connections is the bound exactly — one joint per pass is the slowest a cascade
-		 * can possibly go, because a pass that breaks nothing is the last one. Note this
-		 * is a DIFFERENT bound from the one inside SolveLoads, which CURRENT_STATE.md
-		 * records as provably 2 and which runs nested inside each of these passes.
+		 * Termination is the point as much as the order: three passes over three
+		 * connections is the bound exactly, one joint per pass being the slowest a cascade
+		 * can go. A different bound from the one inside SolveLoads, which CURRENT_STATE.md
+		 * records as provably 2 and which nests inside each of these passes.
 		 */
 		{
 			TEXT("a three-stage cascade takes the piece down and stops of its own accord"),
@@ -999,32 +915,24 @@ bool FStructureCascadeTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A JOINT THAT HAS GIVEN STOPS CONDUCTING SUPPORT — out of the load path, out of the
- * reachability walk, and out of the TIER DECISION.
+ * A joint that has given stops conducting support — out of the load path, out of the
+ * reachability walk, and out of the tier decision.
  *
- * This is the first of phase 2a's deliberate omissions and it is the heart of
- * redistribution. SolveLoads builds each piece's support list from every connection
- * touching it and never consults HasGiven, which is exactly correct while nothing can
- * break and exactly wrong the moment something does.
+ * The tier decision is the part that produces plausible-looking wrong numbers, which is
+ * why this test is separate from the cascade cases. Support is two-tiered (DESIGN.md §3):
+ * a piece rests on the bed joints beneath it, and only a piece with none falls back to its
+ * head joints. An implementation that filters broken joints out of the load path but still
+ * lets them win the tier hands a piece whose bed joint has gone an empty support list, and
+ * reports it falling with its intact head joint at zero — self-consistent, and a wall that
+ * collapses when it should have leaned. The right answer is fallback to the head joint,
+ * which takes the whole load in shear.
  *
- * THE TIER DECISION IS THE PART THAT PRODUCES PLAUSIBLE-LOOKING WRONG NUMBERS, and it is
- * why this test exists separately from the cascade cases. Support is two-tiered
- * (DESIGN.md §3): a piece rests on the bed joints BENEATH it, and only a piece with NONE
- * falls back to its head joints. An implementation that filters broken joints out of the
- * load path but still lets them win the tier gives a piece whose bed joint has gone an
- * empty support list — so it reports the piece FALLING and its intact head joint
- * carrying ZERO, which is a perfectly self-consistent answer and a wall that collapses
- * when it should have leaned. The right answer is that the piece falls back to the head
- * joint and the joint takes the whole load in shear.
+ * Both directions are covered: case 1 is the fallback, case 2 the opposite outcome from
+ * the same rule — a piece whose only support has gone has no path to the ground, so it and
+ * everything resting on it are unsupported and their joints carry nothing.
  *
- * BOTH DIRECTIONS ARE COVERED. Case 1 is the fallback: losing the bed joint must promote
- * the head joint. Case 2 is the opposite outcome from the same rule: a piece whose ONLY
- * support has gone has no path to the ground at all, so it and everything resting on it
- * are reported unsupported and their joints carry nothing.
- *
- * TWO DISSIMILAR PROFILES IN CASE 1, DELIBERATELY. The bed joint is lime mortar and the
- * head joint is a bolted plate, so the break and the survival are decided by different
- * numbers from different code sections and neither can be explained by the other being
+ * Case 1 mixes lime mortar with a bolted plate deliberately, so the break and the survival
+ * are decided by different numbers and neither can be explained by the other being
  * mistuned. It is not a claim that anybody builds walls this way.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -1038,31 +946,29 @@ bool FStructureCascadeStopsConductingTest::RunTest(const FString& Parameters)
 
 	const TArray<FCascadeCase> Cases = {
 		/*
-		 * THE TIER FALLBACK.
+		 * The tier fallback.
 		 *
 		 *                  [ P ]  —— bolted plate, 500 cm2 ——  [ pier ]
 		 *                    |                                  ======
 		 *               lime pad, 100 cm2
 		 *              ==============
 		 *
-		 * As built P has a bed joint beneath it, so that joint wins the tier outright and
-		 * is P's ONLY support: the head joint carries exactly zero and cannot break.
+		 * As built the bed joint wins the tier outright and is P's only support, so the
+		 * head joint carries exactly zero and cannot break.
 		 *
 		 *   pad   3 MPa of compression against lime mortar's 2 MPa -> 1.50x, GIVES
 		 *   plate carries nothing, so its utilisation is 0 and it survives pass 1
 		 *
-		 * Once the pad has gone P has no bed joint beneath it at all and falls back to
-		 * its head joint, which then takes the WHOLE 3e6 uu — as pure shear, because a
-		 * vertical load on a vertical face has no component along the normal.
+		 * Once the pad has gone P falls back to its head joint, which takes the whole 3e6
+		 * uu as pure shear — a vertical load on a vertical face has no normal component.
 		 *
 		 *   plate 3e6 uu over 500 cm2 = 0.60 MPa of shear
 		 *         bolt cohesion is 1.1 MPa (mean basis, re-anchor 2026-08-13) and mu is
 		 *         exactly 0, so friction adds nothing and the capacity is 1.1 flat
 		 *         -> 0.5455, holds with 45% spare
 		 *
-		 * A broken joint still winning the tier reports P FALLING with 0 on the plate.
-		 * A broken joint still conducting reports the pad carrying 3e6 and nothing
-		 * broken downstream. Both are excluded here by the same table.
+		 * A broken joint still winning the tier reports P falling with 0 on the plate; one
+		 * still conducting reports the pad carrying 3e6. The same table excludes both.
 		 */
 		{
 			TEXT("a piece whose only bed joint has given falls back to its head joint"),
@@ -1086,7 +992,7 @@ bool FStructureCascadeStopsConductingTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE OTHER HALF OF THE SAME RULE: a broken joint conducts nothing to the
+		 * The other half of the same rule: a broken joint conducts nothing to the
 		 * reachability walk either, so what rested on it is falling too.
 		 *
 		 *        [ B ]     1 MPa on cement mortar -> 0.10, nowhere near giving
@@ -1095,14 +1001,13 @@ bool FStructureCascadeStopsConductingTest::RunTest(const FString& Parameters)
 		 *          |       lime pad carrying B and M together: 3 MPa -> 1.50x, GIVES
 		 *        =====
 		 *
-		 * After pass 1 M has no support left, so M and B both come out unsupported and
-		 * BOTH joints carry zero — including the intact one, which is right for a static
-		 * solver: nothing is holding that island up, so there is no static load path to
-		 * report. It is also why the cascade stops here rather than running on: an intact
-		 * joint on a falling island is unloaded, and an unloaded joint never gives.
+		 * After pass 1 M has no support left, so M and B come out unsupported and both
+		 * joints carry zero — the intact one included, which is right for a static solver
+		 * with no load path to report, and also why the cascade stops here: an unloaded
+		 * joint never gives.
 		 *
-		 * An implementation that let the broken pad keep conducting reports M and B
-		 * standing on a joint that is no longer there.
+		 * Letting the broken pad keep conducting reports M and B standing on a joint that
+		 * is no longer there.
 		 */
 		{
 			TEXT("a piece supported only through a broken joint is reported unsupported"),
@@ -1138,26 +1043,21 @@ bool FStructureCascadeStopsConductingTest::RunTest(const FString& Parameters)
  * The shapes where a cascade could quietly do something indefensible, and the
  * fail-closed answers it has to give instead.
  *
- * Every case here runs the same universal properties as the cascade cases — it
- * terminates, no pass is empty, a broken joint carries nothing, an intact one is within
- * capacity, conservation holds, and a second run changes nothing — over structures
- * chosen so that a plausible implementation could get each one wrong in a different way:
+ * Every case runs the same universal properties as the cascade cases — it terminates, no
+ * pass is empty, a broken joint carries nothing, an intact one is within capacity,
+ * conservation holds, a second run changes nothing — over structures a plausible
+ * implementation could get wrong in a different way each time:
  *
- *  - NOTHING TO DO AT ALL. An empty structure and a structure with no joints. A cascade
- *    that indexed a parallel array by pass number would be at its most fragile here.
- *  - A JOINT THAT MUST NOT BE ALLOWED TO GIVE. The shared Unbreakable fixture under
- *    twenty tonnes: 19.6 MPa against a strength of 1e12, so the utilisation is 2e-11 and
- *    an implementation that breaks on "loaded a lot" rather than on "over ITS capacity"
- *    fails here and nowhere else.
- *  - AN ISLAND IN FREEFALL. Two ungrounded pieces stacked: nothing holds them up, so the
- *    static load path is empty, every joint carries zero and NOTHING BREAKS. That is the
- *    honest answer for a static solver and it is worth stating, because "carries nothing"
- *    is ambiguous between given, grounded on both sides, and falling.
- *  - A JOINT THAT BEARS NOTHING. A piece glued UNDER a grounded slab: the bed joint is
- *    the wrong way round to hold it up, so the piece is unsupported and the joint is
- *    unloaded whatever the slab weighs.
- *  - A JOINT BETWEEN TWO GROUNDED PIECES. The earth terminates the flow on both sides,
- *    so there is nothing here to break however the pieces are loaded.
+ *  - nothing to do at all: an empty structure, and one with no joints — where a cascade
+ *    indexing a parallel array by pass number is at its most fragile;
+ *  - a joint that must not give: Unbreakable under twenty tonnes is 19.6 MPa against 1e12,
+ *    so anything breaking on "loaded a lot" rather than "over its capacity" fails here;
+ *  - an island in freefall: two ungrounded pieces, so the static load path is empty, every
+ *    joint carries zero and nothing breaks. Worth stating, because "carries nothing" is
+ *    ambiguous between given, grounded on both sides, and falling;
+ *  - a joint that bears nothing: a piece glued under a grounded slab, so the bed joint is
+ *    the wrong way round and is unloaded whatever the slab weighs;
+ *  - a joint between two grounded pieces: the earth terminates the flow on both sides.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureCascadeDegenerateInputTest,
@@ -1169,9 +1069,9 @@ bool FStructureCascadeDegenerateInputTest::RunTest(const FString& Parameters)
 	using namespace StructureCascadeSupport;
 
 	/*
-	 * 20 tonnes over 100 cm2 is 19.6 MPa, which is past every real profile in the
-	 * library and nowhere near the test fixture's 1e12. Spelled from the SI definitions
-	 * so the expectation does not inherit a wrong conversion constant.
+	 * 20 tonnes over 100 cm2 is 19.6 MPa: past every real profile in the library and
+	 * nowhere near the fixture's 1e12. Spelled from the SI definitions so the expectation
+	 * does not inherit a wrong conversion constant.
 	 */
 	constexpr double AbsurdMassKg = 20000.0;
 	const double UnbreakableUtilisation =
@@ -1234,22 +1134,19 @@ bool FStructureCascadeDegenerateInputTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * A JOINT NAMING A PIECE THAT DOES NOT EXIST. AddConnection rejects it at the
-		 * door, so the structure holds no connections at all and the piece it was meant
-		 * to hold up is simply unsupported — which is the fail-closed answer.
+		 * A joint naming a piece that does not exist. AddConnection rejects it at the door,
+		 * so the structure holds no connections and the piece it was meant to hold up is
+		 * unsupported — the fail-closed answer.
 		 *
-		 * IT IS HERE FOR THE HARNESS AS MUCH AS FOR THE SOLVER. The checker has to reach
-		 * that conclusion by reporting a failure, not by taking the process down: the
-		 * conservation sum below used to read Case.Spec.Pieces[Spec.PieceB] straight off
-		 * the spec, and INDEX_NONE there indexes Pieces[-1]. The arity assertions above
-		 * are TestTrue, which is non-fatal, so execution runs straight on past them into
-		 * it. A harness that crashes instead of failing is worse than no harness.
+		 * It is here for the harness as much as the solver: the conservation sum used to
+		 * read Case.Spec.Pieces[Spec.PieceB] straight off the spec, where INDEX_NONE
+		 * indexes Pieces[-1], and the arity assertions above are non-fatal TestTrue, so
+		 * execution ran straight into it. A harness that crashes is worse than none.
 		 *
-		 * THE UNGROUNDED PIECE COMES FIRST, AND THAT IS NOT COSMETIC. The sum's test was
-		 * `Pieces[PieceA].bIsGrounded || Pieces[PieceB].bIsGrounded`, and || short-
-		 * circuits — so a row naming a GROUNDED piece first never evaluates the second
-		 * handle and sails past the defect it was written to catch. Piece 1 is the
-		 * ungrounded one, so the first operand is false and the bad index is reached.
+		 * The ungrounded piece comes first, and that is not cosmetic: the sum's test was
+		 * `Pieces[PieceA].bIsGrounded || Pieces[PieceB].bIsGrounded`, and || short-circuits,
+		 * so a row naming a grounded piece first never evaluates the second handle. Piece 1
+		 * is ungrounded, so the first operand is false and the bad index is reached.
 		 */
 		{
 			TEXT("a joint naming a piece that does not exist is rejected at the door"),

@@ -43,18 +43,18 @@ namespace DestructionProfiles
 		double BondFactor = 1.0;
 
 		/**
-		 * Whether this material carries load overwhelmingly in compression, so that
-		 * its own tensile strength is a small fraction of its crushing strength.
+		 * Whether this material carries load overwhelmingly in compression, so its own
+		 * tensile strength is a small fraction of its crushing strength.
 		 *
 		 * Masonry and concrete are compression members: they crush at many times the
-		 * stress that pulls them apart, and a masonry profile whose tensile figure
-		 * crept up near its compressive one is almost certainly mis-specified. Wood is
-		 * the counter-example — genuinely tension-capable parallel to the grain, its
-		 * tensile strength within a small factor of its compressive — and steel later
-		 * will be another. The library sweep keys its "compressive >= 5x tensile"
-		 * sanity check off this flag so it still bites for a bad MASONRY profile
-		 * without condemning a legitimately tension-capable one. Defaults to true, the
-		 * compression-member case that every structural masonry unit satisfies.
+		 * stress that pulls them apart, so a masonry profile whose tensile figure
+		 * creeps up near its compressive one is almost certainly mis-specified. Wood is
+		 * the counter-example — tension-capable parallel to grain, within a small
+		 * factor of its compressive strength — and steel will be another. The library
+		 * sweep keys its "compressive >= 5x tensile" check off this flag so it still
+		 * bites a bad masonry profile without condemning a legitimately tension-capable
+		 * one. Defaults to true, the compression-member case every structural masonry
+		 * unit satisfies.
 		 */
 		bool bCompressionDominant = true;
 	};
@@ -62,13 +62,12 @@ namespace DestructionProfiles
 	/**
 	 * One row of the library. Adding a material is adding one of these.
 	 *
-	 * THE PROFILE IS A REFERENCE TO THE SHIPPED CONSTANT, NEVER A COPY OF IT, so `&Row.Profile`
-	 * IS the address a piece carrying that material stores. It was a copy, and a copy makes the
-	 * obvious lookup — walk the library, compare the pointer a piece holds against the row's
-	 * profile — answer "no such row" for every piece in the game, quietly and without a cast to
-	 * warn anybody. A material is named by WHICH ROW it is rather than by what its numbers
-	 * currently are (`BuildPieceMaterial` hands out references for exactly that reason: a retune
-	 * of ClayBrick must reach every brick), so the library has to be askable by address.
+	 * The profile is a reference to the shipped constant, never a copy — `&Row.Profile`
+	 * is the address a piece carrying that material stores. A copy would make the
+	 * obvious lookup (walk the library, compare the pointer a piece holds against the
+	 * row's profile) silently answer "no such row" for every piece. A material is named
+	 * by WHICH ROW it is, not by its current numbers (`BuildPieceMaterial` hands out
+	 * references for exactly that reason), so the library must be askable by address.
 	 */
 	struct FNamedMaterialProfile
 	{
@@ -92,21 +91,17 @@ namespace DestructionForce
 	/*
 	 * The connection x material weakest-link pairing (SHED_PATH.md B2).
 	 *
-	 * A joint between two pieces has a CONNECTION (its own directional strengths) and
-	 * TWO material faces (each an FMaterialProfile, carrying its own strengths and a
-	 * BondFactor). The joint fails at the WEAKEST link, per axis: the connection's own
-	 * capacity, the BOND to each face (connection capacity derated by that face's
-	 * BondFactor, which peels in tension and shear cohesion but not in compression
-	 * bearing), and each material's OWN capacity. Effective per-axis capacity is
-	 * min(ConnectionCap x min(BondFactor_A, BondFactor_B), MatCap_A, MatCap_B) on the
-	 * tensile and shear-cohesion (bond) axes, and min(ConnectionCap, MatCap_A, MatCap_B)
-	 * on the compression (bearing) axis, which BondFactor never touches. Friction and
-	 * the shear ceiling are carried from the connection unchanged.
+	 * A joint has a connection (its own directional strengths) and two material faces
+	 * (each an FMaterialProfile with its own strengths and a BondFactor). It fails at
+	 * the weakest link per axis: effective capacity is min(ConnectionCap x
+	 * min(BondFactor_A, BondFactor_B), MatCap_A, MatCap_B) on the tensile and
+	 * shear-cohesion (bond) axes, and min(ConnectionCap, MatCap_A, MatCap_B) on
+	 * compression (bearing), which BondFactor never touches. Friction and the shear
+	 * ceiling carry from the connection unchanged.
 	 *
-	 * STANDALONE FOR THIS SLICE — nothing in production calls it yet; the joint / LP
-	 * strength path still reads the bare connection. Because every shipped material
-	 * carries BondFactor 1.0, a single-material joint would read bit-identically through
-	 * this function anyway, so wiring it in is a later slice's concern.
+	 * Standalone for this slice — nothing in production calls it yet; every shipped
+	 * material carries BondFactor 1.0, so a single-material joint reads bit-identically
+	 * through this function anyway.
 	 */
 	FConnectionStrength EffectiveBondedStrength(
 		const FConnectionStrength& Connection,

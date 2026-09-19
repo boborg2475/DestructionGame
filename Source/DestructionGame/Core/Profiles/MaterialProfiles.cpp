@@ -3,54 +3,43 @@
 #include "Core/Profiles/MaterialProfiles.h"
 
 /**
- * THE MATERIAL PROFILE LIBRARY — what a piece is made of, as opposed to what holds
- * it on.
+ * The material profile library — what a piece is made of, as opposed to what holds it on.
  *
  * Same rule as ConnectionProfiles.cpp: every value carries its source.
  *
- * DESIGN.md §4 asks for one well-characterised reference material, calibrated to
- * feel right, with everything else expressed as a ratio of it. STRUCTURAL CONCRETE
- * C30/37 is that reference, and it is already the baseline the rest of the suite
- * uses.
+ * DESIGN.md §4 asks for one well-characterised reference material, calibrated to feel right,
+ * with everything else expressed as a ratio of it. Structural concrete C30/37 is that
+ * reference, and already the baseline the rest of the suite uses.
  *
- * DENSITY IS THE UNITS TRAP. It is g/cm3 because that is what
- * UPhysicalMaterial::Density takes, so published values go in unconverted. The same
- * brick expressed in kg/m3 is 1900 — a thousand times heavier and still a
- * plausible-looking number.
+ * Density is the units trap: it's g/cm3 because that's what UPhysicalMaterial::Density takes,
+ * so published values go in unconverted. The same brick in kg/m3 is 1900 — a thousand times
+ * heavier and still a plausible-looking number.
  */
 namespace DestructionProfiles
 {
 	/**
-	 * STRUCTURAL CONCRETE C30/37 — the calibration baseline.
+	 * Structural concrete C30/37 — the calibration baseline.
 	 *
-	 * Density 2.4 g/cm3 — EN 1991-1-1 Table A.1 gives 24 kN/m3 for plain concrete
-	 * (25 for reinforced), i.e. 2.4 t/m3. Matches the figure DESIGN.md §3's unit
-	 * table already names.
+	 * Density 2.4 g/cm3 — EN 1991-1-1 Table A.1 gives 24 kN/m3 for plain concrete, i.e.
+	 * 2.4 t/m3. Matches DESIGN.md §3's unit table.
 	 *
-	 * MEAN-BASIS STRENGTHS (DESIGN.md §3, re-anchored 2026-08-13), and for this
-	 * material the code publishes the means itself.
+	 * Mean-basis strengths (DESIGN.md §3, re-anchored 2026-08-13); for this material the code
+	 * publishes the means itself.
 	 *
-	 * Compressive 38 MPa — EN 1992-1-1 Table 3.1's f_cm = f_ck + 8, the MEAN
-	 * cylinder strength of the C30/37 whose characteristic f_ck = 30 gives the
-	 * class its name. (The 37 is the equivalent cube strength.)
+	 * Compressive 38 MPa — EN 1992-1-1's f_cm = f_ck + 8, the mean cylinder strength of the
+	 * C30/37 whose characteristic f_ck = 30 gives the class its name.
 	 *
-	 * Shear 7.6 MPa — concrete has no single published shear strength, so this is
-	 * the widely used 0.2 coefficient applied to the mean, 0.2 * f_cm; push-off
-	 * tests on 30 MPa concrete report 6-8 MPa, so the figure lands inside the
-	 * measured band.
+	 * Shear 7.6 MPa — concrete has no single published shear strength, so this is the widely
+	 * used 0.2 * f_cm; push-off tests on 30 MPa concrete report 6-8 MPa, inside the band.
 	 *
-	 * Tensile 3 MPa — EN 1992-1-1 Table 3.1 gives f_ctm = 2.9 MPa for C30/37,
-	 * ROUNDED UP TO 3.0 as the baseline anchor. UNCHANGED at the re-anchor: the
-	 * "m" in f_ctm is "mean", so this row was mean-basis from the start and
-	 * uplifting it would apply the conversion twice. The rounding is inside the
-	 * material's own scatter, not a fudge: the same table's characteristic
-	 * fractiles for C30/37 are f_ctk,0.05 = 2.0 and f_ctk,0.95 = 3.8, so 3.0 sits
-	 * comfortably within the band, and every document that names this baseline
-	 * says "~3 MPa".
+	 * Tensile 3 MPa — EN 1992-1-1 gives f_ctm = 2.9 MPa for C30/37, rounded up to 3.0.
+	 * Unchanged at the re-anchor: the "m" in f_ctm is "mean", so this row was mean-basis from
+	 * the start, and the rounding sits inside the material's own scatter (characteristic
+	 * fractiles run 2.0-3.8).
 	 *
-	 * FrictionCoefficient is zero and MaxShear is left unbounded. A material is not
-	 * a sliding interface — the Mohr-Coulomb coupling belongs to joints — so running
-	 * a material through ComputeUtilisation gives three strictly independent axes.
+	 * FrictionCoefficient is zero and MaxShear unbounded: a material is not a sliding
+	 * interface — Mohr-Coulomb coupling belongs to joints — so ComputeUtilisation gives three
+	 * strictly independent axes.
 	 */
 	const FMaterialProfile StructuralConcrete{
 		/*DensityGramsPerCubicCm*/ 2.4,
@@ -65,35 +54,26 @@ namespace DestructionProfiles
 	};
 
 	/**
-	 * FIRED CLAY BRICK — a standard UK metric unit, 215 x 102.5 x 65 mm.
+	 * Fired clay brick — a standard UK metric unit, 215 x 102.5 x 65 mm.
 	 *
-	 * Density 1.9 g/cm3 — bulk density of fired clay brick runs 1.7-2.1 g/cm3. The
-	 * cross-check that makes this the right end of that range: 1.9 over the standard
-	 * unit's 1432 cm3 is 2.72 kg, which is what a brick weighs in the hand and
-	 * exactly the mass the structure tests hand-set. THIS FIELD EXISTS TO REPLACE
-	 * THAT HAND-SETTING, so it had better reproduce it.
+	 * Density 1.9 g/cm3 — bulk density of fired clay brick runs 1.7-2.1 g/cm3. Cross-check:
+	 * 1.9 over the standard unit's 1432 cm3 is 2.72 kg, matching what a brick weighs in the
+	 * hand and the mass the structure tests hand-set — this field replaces that hand-setting.
 	 *
-	 * Compressive 20 MPa — the declared compressive strength of an ordinary clay
-	 * facing unit to BS EN 771-1. The range is wide (engineering brick class B is
-	 * >= 75 MPa, class A >= 125), but 20 N/mm2 is the standard figure for a general
-	 * facing brick and the one Eurocode 6 worked examples use for f_b. UNCHANGED
-	 * at the 2026-08-14 mean re-anchor flip, and load-bearingly so: EN 771-1 / EN 772-1
-	 * declare a normalised MEAN compressive strength, so this row was mean-basis
-	 * from the start, and it is why a mean-basis shear ceiling may key off it.
-	 * Everything masonry-related does: GeneralPurposeMortar's cap is 0.1 x this.
+	 * Compressive 20 MPa — declared compressive strength of an ordinary clay facing unit to
+	 * BS EN 771-1, and what Eurocode 6 worked examples use for f_b. Unchanged at the
+	 * re-anchor: EN 771-1 / EN 772-1 already declare a normalised mean strength — and it's why
+	 * a mean-basis shear ceiling may key off it (GeneralPurposeMortar's cap is 0.1 x this).
 	 *
-	 * Tensile 2 MPa — roughly 0.10 * f_b. Direct tensile strength of clay units is
-	 * usually quoted at 3-10% of compressive, and modulus of rupture at 2-5 MPa.
+	 * Tensile 2 MPa — roughly 0.10 * f_b, in the usual 3-10% of compressive for clay units.
 	 *
-	 * Shear 3 MPa — roughly 0.15 * f_b, and above the tensile figure as it must be
-	 * for a brittle ceramic. This is the UNIT shearing through, a different failure
-	 * from the bed joint sliding, which is the mortar profile's business.
+	 * Shear 3 MPa — roughly 0.15 * f_b, above tensile as it must be for a brittle ceramic. This
+	 * is the unit shearing through, a different failure from the bed joint sliding (the
+	 * mortar's business).
 	 *
-	 * A brick is a compression member and the numbers say so: 20 against 2 in
-	 * tension. That order is what makes "the brick crushes" a genuinely different
-	 * failure mode from "the mortar gives", and mortar is weaker than this on BOTH
-	 * of those axes — 10 against 20, and 0.7 against 2 — which is DESIGN.md §2's
-	 * premise for connections being first-class objects.
+	 * A brick is a compression member: 20 against 2 in tension, which is what makes "the brick
+	 * crushes" different from "the mortar gives" — mortar is weaker than this on both axes (10
+	 * against 20, 0.7 against 2), DESIGN.md §2's premise for connections being first-class.
 	 */
 	const FMaterialProfile ClayBrick{
 		/*DensityGramsPerCubicCm*/ 1.9,
@@ -108,64 +88,47 @@ namespace DestructionProfiles
 	};
 
 	/**
-	 * STRUCTURAL TIMBER, STRENGTH CLASS C24 — the deliberate second structural
-	 * material, and the softwood the shed's roof and posts are cut from.
+	 * Structural timber, strength class C24 — the deliberate second structural material, and
+	 * the softwood the shed's roof and posts are cut from.
 	 *
-	 * Density 0.42 g/cm3 — EN 338 gives C24 a mean density rho_mean of 420 kg/m3,
-	 * i.e. 0.42 g/cm3 in UPhysicalMaterial's own unit. Weight is the only thing
-	 * density does and what a member weighs is its mean, so the mean is the figure
-	 * that goes in — not the 350 kg/m3 characteristic density the same table lists
-	 * for connection design. UNITS TRAP: 0.42, never 420.
+	 * Density 0.42 g/cm3 — EN 338's C24 mean density rho_mean = 420 kg/m3, i.e. 0.42 g/cm3 in
+	 * UPhysicalMaterial's own unit — not the 350 kg/m3 characteristic density the same table
+	 * lists for connection design. Units trap: 0.42, never 420.
 	 *
-	 * THE STRENGTHS ARE THE MEAN AXIAL PARALLEL-TO-GRAIN CAPACITIES, mapped onto
-	 * FConnectionStrength the same way concrete and brick map their own directional
-	 * strengths:
+	 * The strengths are mean axial parallel-to-grain capacities, mapped onto FConnectionStrength
+	 * the same way concrete and brick map theirs:
 	 *
-	 * Compressive 29 MPa — f_c,0 mean, compression parallel to grain.
+	 * Compressive 29 MPa — f_c,0 mean.
 	 *
-	 * Tensile 23 MPa — f_t,0 mean, tension parallel to grain. THIS IS WHY TIMBER IS NOT
-	 * COMPRESSION-DOMINANT: wood genuinely carries tension along the grain at a large
-	 * fraction of its crushing strength (23 against 29), where masonry pulls apart at a
-	 * fraction of a tenth of it. That is the whole point of adding a second, dissimilar
-	 * material — it proves the directional code reads the profile rather than having
-	 * masonry's ratios baked in.
+	 * Tensile 23 MPa — f_t,0 mean. This is why timber is NOT compression-dominant: wood
+	 * genuinely carries tension along the grain at a large fraction of its crushing strength
+	 * (23 against 29), where masonry pulls apart at a tenth of it — the whole point of a
+	 * second, dissimilar material proving the directional code reads the profile rather than
+	 * having masonry's ratios baked in.
 	 *
-	 * Shear 6.0 MPa — f_v mean. Stored in ShearCohesionMPa, the material's own shear
-	 * capacity, the same convention concrete's 7.6 and brick's 3.0 follow.
+	 * Shear 6.0 MPa — f_v mean, stored in ShearCohesionMPa, the same convention concrete's 7.6
+	 * and brick's 3.0 follow.
 	 *
-	 * MEAN BASIS — the 2026-09-02 re-anchor (item 6a), bringing the last profile row
-	 * onto the same footing every masonry row was flipped to on 2026-08-13/14
-	 * (DESIGN.md §3): the library carries MEASURED MEANS, not code characteristics,
-	 * because verdicts ruled at 5-percentile design values are 3-8x pessimistic against
-	 * real members. The retired figures were EN 338 C24's CHARACTERISTIC (5-percentile)
+	 * Mean basis — the 2026-09-02 re-anchor (item 6a), the last profile row onto the same
+	 * footing the masonry rows were flipped to on 2026-08-13/14 (DESIGN.md §3): measured means,
+	 * not code characteristics, because verdicts ruled at 5-percentile design values are 3-8x
+	 * pessimistic against real members. Retired figures were EN 338 C24's characteristic
 	 * f_c,0,k 21 / f_t,0,k 14 / f_v,k 4.0.
 	 *
-	 * THE CHAR -> MEAN FACTOR IS PER-PROPERTY, NOT A BLANKET SCALE (exactly as the
-	 * masonry re-anchor was), because the coefficient of variation differs by property.
-	 * EN 384 / EN 1990 define the characteristic as the 5-percentile of a lognormal
-	 * fit, so mean = char x exp(1.645 x sqrt(ln(1 + CoV^2))). JCSS PMC Part 3.5 Table 2
-	 * gives European softwood its per-property CoVs:
+	 * The char -> mean factor is per-property, not a blanket scale, since CoV differs by
+	 * property (EN 384/EN 1990: mean = char x exp(1.645 x sqrt(ln(1 + CoV^2)))). JCSS PMC
+	 * Part 3.5's per-property CoVs give f_c,0 (0.20) -> 29, f_t,0 (0.30) -> 23, f_v (0.25) ->
+	 * 6.0. The shear factor cross-checks against BeamAcceptanceTest: EN 338's f_m,k 24 through
+	 * the same factor is 36.0, exactly that fixture's independently derived C24 mean bending
+	 * and its C24ShearMPa 6.0 — two files landing on the same shear mean by the same JCSS CoV,
+	 * derived apart, anchors it.
 	 *
-	 *     f_c,0 : CoV 0.20 -> factor 1.385 -> 21 x 1.385 = 29.1, pinned 29
-	 *     f_t,0 : CoV 0.30 -> factor 1.621 -> 14 x 1.621 = 22.7, pinned 23
-	 *     f_v   : CoV 0.25 -> factor 1.499 ->  4 x 1.499 =  6.0, pinned 6.0
+	 * Not the member-bending 36/6 the beam-acceptance fixtures use for the axial fields —
+	 * that's a whole-stress-block derivation for a different limit state; this profile is the
+	 * axial/shear joint-field convention.
 	 *
-	 * The shear CoV 0.25 and its factor 1.499 cross-check against the bending row the
-	 * beam fixtures already trust: EN 338's f_m,k 24 through the same factor is
-	 * 24 x 1.499 = 36.0, exactly BeamAcceptanceTest's independently derived C24 mean
-	 * bending, and exactly its C24ShearMPa 6.0. That the two files land on the same
-	 * shear mean by the same JCSS CoV, derived apart, is the anchor for the factor.
-	 *
-	 * NOT THE MEMBER-BENDING 36/6 the beam-acceptance fixtures use for the axial
-	 * fields: those are a whole-stress-block bending derivation for a different limit
-	 * state and are deliberately kept out of any joint field. This profile is the
-	 * axial/shear joint-field convention, so the axial MEAN strengths are the right
-	 * numbers.
-	 *
-	 * FrictionCoefficient zero and MaxShear unbounded, like the other materials — a
-	 * material is not a sliding interface, so ComputeUtilisation gives three
-	 * independent axes. BondFactor 1.0 until the connection-to-material pairing rule
-	 * (SHED_PATH.md B2) makes it live.
+	 * FrictionCoefficient zero and MaxShear unbounded, like the other materials. BondFactor 1.0
+	 * until the connection-to-material pairing rule (SHED_PATH.md B2) makes it live.
 	 */
 	const FMaterialProfile Timber{
 		/*DensityGramsPerCubicCm*/ 0.42,
@@ -182,23 +145,19 @@ namespace DestructionProfiles
 	namespace
 	{
 		/**
-		 * The library. Adding a material is adding a row, and each row references
-		 * its named constant rather than repeating the values.
+		 * The library. Adding a material is adding a row, referencing its named constant rather than
+		 * repeating the values.
 		 *
-		 * NAMED FOR ITS CONTENTS rather than just "Library" — see the matching note
-		 * in ConnectionProfiles.cpp. An anonymous namespace is private to a
-		 * translation unit, not to a file, and a unity build merges files; two
-		 * anonymous `Library` arrays of different types in `DestructionProfiles`
-		 * would be a redefinition error.
+		 * Named for its contents rather than just "Library" — see the matching note in
+		 * ConnectionProfiles.cpp; an anonymous namespace is private to a translation unit, not a file,
+		 * and a unity build merges files, so two anonymous `Library` arrays of different types in
+		 * `DestructionProfiles` would redefine each other.
 		 *
-		 * TIMBER IS THE SECOND, DISSIMILAR MATERIAL DESIGN.md §4 asks for, added
-		 * exactly ONCE (SHED_PATH.md B1). It proves the directional code genuinely
-		 * reads the profile rather than having masonry's numbers baked in — wood is
-		 * tension-capable parallel to grain where masonry is not, and the sweep's
-		 * compression-member invariant now keys off bCompressionDominant so it still
-		 * bites for a bad masonry profile without condemning this one. The
-		 * connection-to-material pairing rule BondFactor is reserved for stays
-		 * deferred to B2.
+		 * Timber is the second, dissimilar material DESIGN.md §4 asks for, added exactly once
+		 * (SHED_PATH.md B1): it proves the directional code reads the profile rather than having
+		 * masonry's numbers baked in, and the sweep's compression-member invariant keys off
+		 * bCompressionDominant so it still bites a bad masonry profile without condemning this one.
+		 * The BondFactor pairing rule stays deferred to B2.
 		 */
 		const FNamedMaterialProfile MaterialProfileLibrary[] = {
 			{ TEXT("StructuralConcrete"), StructuralConcrete },
@@ -217,23 +176,19 @@ namespace DestructionProfiles
 namespace DestructionForce
 {
 	/*
-	 * THE CONNECTION x MATERIAL WEAKEST-LINK PAIRING (SHED_PATH.md B2).
+	 * The connection x material weakest-link pairing (SHED_PATH.md B2).
 	 *
-	 * A bonded joint carries load through its connection against two material faces, and
-	 * it gives at whichever link is weakest. The split across axes is physical rather
-	 * than uniform: a bond PEELS in tension and SLIDES in shear-cohesion, so those two
-	 * axes are the connection's own bond capacity DERATED by the weaker of the two faces'
-	 * BondFactor (the bond is only as good as the poorer face it grips), then further
-	 * CAPPED by either material's own tensile / shear capacity — the block itself can
-	 * tear or shear through before the bond does. Compression is different: it BEARS
-	 * through the face whatever the bond does, so it is NEVER derated by BondFactor, only
-	 * capped by the crushing strength of the connection or of either material.
+	 * A bonded joint carries load through its connection against two material faces and gives at
+	 * whichever link is weakest. The split across axes is physical, not uniform: tension and
+	 * shear-cohesion are a bond that peels/slides, so those axes are the connection's bond capacity
+	 * derated by the weaker face's BondFactor, then capped by either material's own tensile/shear
+	 * capacity — the block itself can tear or shear through before the bond does. Compression bears
+	 * through the face regardless of the bond, so it's never derated, only capped by crushing
+	 * strength.
 	 *
-	 * Friction and the shear ceiling are carried from the connection unchanged: friction
-	 * is bearing-driven rather than a bond, and MaxShearStrengthMPa is out of scope for
-	 * this slice. Copying the connection first also carries any field this rule does not
-	 * touch verbatim, which is why the construction is by assignment rather than a
-	 * positional aggregate — no risk of transposing tensile and shear.
+	 * Friction and the shear ceiling carry from the connection unchanged. Copying the connection
+	 * first carries any field this rule doesn't touch verbatim, which is why construction is by
+	 * assignment rather than a positional aggregate — no risk of transposing tensile and shear.
 	 */
 	FConnectionStrength EffectiveBondedStrength(
 		const FConnectionStrength& Connection,

@@ -9,85 +9,60 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE BEAM ACCEPTANCE SET — a simply supported beam with a heavy weight on it, where the MEMBER
- * is what should fail and no joint should.
+ * The beam acceptance set — a simply supported beam under a heavy weight, where the member is what
+ * should fail and no joint should.
  *
- * The user asked for this on 2026-08-08, and it is deliberately outside what the solver can do
- * today. PROJECT_REVIEW.md §2 ranks two gaps that meet exactly here: item 3, a piece on two or
- * more supports has its bending moment zeroed by the area split, so "a lintel or floor slab on
- * two walls can never fail in midspan bending"; and item 7, pieces never fail — only joints do —
- * "masked today because mortar is weaker than brick by data; fatal for wood, where the MEMBER
- * bending failure is the primary mode". This file is the acceptance anchor for both, i.e. for
- * evolution steps 5 and 6.
+ * The acceptance anchor for two PROJECT_REVIEW.md §2 gaps that meet here: item 3, a piece on two or
+ * more supports has its bending moment zeroed by the area split, so "a lintel or floor slab on two
+ * walls can never fail in midspan bending"; and item 7, pieces never fail, only joints do — fatal
+ * for wood, whose primary mode is member bending. Evolution steps 5 and 6.
  *
- * HOW A MEMBER FAILURE IS EXPRESSIBLE AT ALL, GIVEN THAT FStructure PIECES CARRY ONLY MASS. A
- * piece's own material strength never enters the solve, so there is no direct code path for "the
- * beam snapped". What there IS is a joint carrying a strength profile — so the beam is modelled
- * as TWO COLLINEAR SEGMENTS meeting at midspan, and the joint between them carries the MEMBER
- * MATERIAL's own published strengths rather than any mortar's. A beam snapping in midspan bending
- * is then exactly that glue line parting under the bending tension the solver computes for it.
- * Everything else in the fixture — the two bearings and the two contacts under the weight — is
- * resting contact with no bond at all, which is what a beam sitting on a pier actually is.
+ * FStructure pieces carry only mass, so a member's own strength never enters the solve and there is
+ * no path for "the beam snapped". A joint does carry a strength profile, so the beam is two
+ * collinear segments meeting at midspan whose joint carries the member material's own published
+ * strengths rather than a mortar's; snapping in midspan bending is that glue line parting.
+ * Everything else — two bearings, two contacts under the weight — is bond-free resting contact,
+ * which is what a beam sitting on a pier is.
  *
- * WHY TWO SEGMENTS AND NOT THREE OR FIVE, WHICH IS A FIXTURE DECISION THE SOLVER FORCED. An EVEN
- * segment count is what puts a glue line at EXACT midspan; an odd one puts a segment centre there
- * and the glue lines either side of it. More than two segments leaves the middle ones with no bed
- * joint at all, which is the SEATLESS case: FStructure::ReseatSpannedGroups forms them into a
- * spanning group, re-seats them onto the end segments, and ApplyArchingThrust then pushes the two
- * bearings apart with H = 3W/(8 d_e/L). Measured on a five-segment draft of this fixture the
- * thrust ratio H/V = 3L/(4 d_e) came out at 7.2 against dry stone's friction coefficient of 0.7,
- * so the beam sheared off both its bearings — a collapse, at the right load, for entirely the
- * wrong reason, and one that would have made the "wood falls" row PASS while saying nothing about
- * members. Two segments have a seat each, form no group, and take no phantom thrust. That is the
- * adjustment, and it is recorded so nobody re-derives the five-segment version.
+ * Two segments, not three or five, and the solver forced it: an even count puts a glue line at
+ * exact midspan, and more than two leaves the middle ones seatless, so ReseatSpannedGroups forms
+ * them into a spanning group and ApplyArchingThrust pushes the bearings apart with
+ * H = 3W/(8 d_e/L). Measured on a five-segment draft, H/V = 3L/(4 d_e) came out at 7.2 against dry
+ * stone's friction coefficient of 0.7 — the beam sheared off both bearings, a collapse at the right
+ * load for entirely the wrong reason, which would have made the "wood falls" row pass while saying
+ * nothing about members. Two segments have a seat each and take no phantom thrust.
  *
- * WHAT THE SOLVER ACTUALLY DOES WITH THIS FIXTURE, MEASURED. Each half-beam is seated on its own
- * pier, so SupportConnections for each is its own bearing and NEITHER of them uses the midspan
- * joint. The glue line is therefore the support of nobody, and ConnectionForces leaves it at
- * exactly zero — the beam's whole bending action is invisible. The two bearings do carry the load
- * correctly (they sum to the total weight, asserted below), and each reads a large eccentric
- * moment.
+ * What the solver does with this fixture, measured: each half-beam is seated on its own pier, so
+ * neither one's SupportConnections uses the midspan joint and ConnectionForces leaves the glue line
+ * at exactly zero. So the red is that the member carries nothing — a beam under three and a half
+ * times its published bending capacity whose midspan section reads a bending moment of exactly 0.0.
+ * The bearings do carry the load (they sum to the total weight, asserted below), each eccentrically.
  *
- * HOW THE BEARINGS READ CHANGED ON 2026-08-09 (the one-cell thrust gate, commit 08abcfd), and
- * this header's original "nothing anywhere is close to failing, at any load" is no longer true.
- * Before the gate, FConnection::ArchingMomentScale capped each bearing's eccentric moment to the
- * kern edge and the light rows stood at ~0.31/~0.34. The gate now grants that cap only where the
- * springing can carry the implied thrust — and these DRY bearings cannot — so the uncapped
- * eccentric moment on a zero-tension joint reads Max(), and ALL THREE rows unzip at the bearings
- * in one pass (3 fallen, including the light rows whose real-world verdict is STANDS). The rigid-
- * block LP oracle stands all three (lambda* 1.76 / 19.2 / 17.4 — RigidBlockOracleSweepTest), so
- * the falling is production's missing global equilibrium, not the fixture's physics.
+ * Those bearing readings changed on 2026-08-09 (the one-cell thrust gate, commit 08abcfd). Before
+ * it, FConnection::ArchingMomentScale capped each bearing's eccentric moment to the kern edge and
+ * the light rows stood at ~0.31/~0.34; the gate grants that cap only where the springing can carry
+ * the implied thrust, which these dry bearings cannot, so the uncapped moment on a zero-tension
+ * joint reads Max() and all three rows unzip in one pass (3 fallen, including the light rows whose
+ * real-world verdict is STANDS). The rigid-block LP oracle stands all three (lambda* 1.76 / 19.2 /
+ * 17.4 — RigidBlockOracleSweepTest), so this is production's missing global equilibrium, not the
+ * fixture's physics — accepted as a known cost until evolution step 4 promotes equilibrium to the
+ * cascade authority (DESIGN.md §8, 2026-08-11), and pinned per row by `FBeamCase::DropsToday`.
  *
- * THE RULING IS NOW MADE (DESIGN.md §8, 2026-08-11): beams-unzip-on-dry-bearings is ACCEPTED AS
- * A KNOWN COST until evolution step 4 promotes equilibrium to the cascade authority. What the
- * oracle sweep pinned externally is now pinned IN THIS FILE — every `FBeamCase::DropsToday` /
- * `PassesToday` (measured 3 fallen, 1 breaking pass, all three rows) — so a further regression
- * inside this already-known failure cannot hide the way this one did for two days.
+ * Displacement is never the break assertion (DESIGN.md §4). What is read is whether a piece still
+ * has a path to the earth after the cascade, plus — for the row that must fail — the mechanism,
+ * that the glue line itself gave: a beam that came down by sliding off its bearings is a wrong
+ * answer an outcome-only assertion would pass.
  *
- * SO THE RED IS: THE MEMBER CARRIES NOTHING. Not a stranded fixture, not a refused route, not a
- * joint failing early — a beam under three and a half times its published bending capacity whose
- * midspan section reads a bending moment of exactly 0.0.
+ * Needs a ticking world: no. Gravity is on and the assertions are on outcome and solver state; the
+ * only thing a world adds is the wire to Chaos, which Tests/StructureIntegrationTest.cpp covers
+ * identically for all three rows. Named, not anonymous, namespace: an anonymous namespace is
+ * private to a translation unit, and a unity build merges many files into one.
  *
- * DISPLACEMENT IS NOT USED AS A BREAK ASSERTION, per DESIGN.md §4. What is read is whether a
- * piece still has a path to the earth after the cascade, plus — for the row that must fail — the
- * MECHANISM, that the midspan glue line itself gave. Both halves are needed: a beam that came
- * down by sliding off its bearings is a different and wrong answer, and an outcome-only assertion
- * would call it a pass.
- *
- * NEEDS A TICKING WORLD: NO. Gravity is on (weight is mass x 980 and there is no way to switch it
- * off), everything is connected and the assertions are on outcome and on solver state. The one
- * thing a world would add is the wire from the solver's answer to Chaos, which
- * Tests/StructureIntegrationTest.cpp already covers and which is identical for all three rows.
- *
- * NAMED NAMESPACE, not anonymous: an anonymous namespace is private to a TRANSLATION UNIT rather
- * than to a file, and a unity build merges many files into one.
- *
- * NOTHING IS IMPORTED FROM THE CODE UNDER TEST EXCEPT THE PRODUCER. The section modulus, the
- * statics, the newton-to-Unreal conversion and every published strength are re-derived below, so
- * a wrong constant in production makes this file DISAGREE with it rather than agree with it. The
- * one deliberate exception is Layout::MakeInterface, which decides whether two boxes share a face
- * — re-implementing that would be re-implementing part of the thing under test — and even that is
- * checked, joint by joint, against interface areas this file computes for itself.
+ * Nothing is imported from the code under test except the producer — section modulus, statics, the
+ * newton-to-Unreal conversion and every published strength are re-derived below, so a wrong
+ * constant in production makes this file disagree with it rather than agree. The one exception is
+ * Layout::MakeInterface, since re-implementing it would re-implement part of the thing under test,
+ * and even that is checked joint by joint against interface areas computed here.
  */
 namespace BeamAcceptanceTestSupport
 {
@@ -99,17 +74,16 @@ namespace BeamAcceptanceTestSupport
 	 * ================================================================================ */
 
 	/**
-	 * A 100 x 100 mm sawn section, which is a real timber size and a real steel bar size.
+	 * A 100 x 100 mm sawn section, a real timber size and a real steel bar size.
 	 *
-	 * WIDTH IS ACROSS THE BEAM (Y) AND DEPTH IS VERTICAL (Z), which is the pairing the section
-	 * modulus below depends on: bending about the Y axis is resisted across the DEPTH, so the
-	 * depth is the term that gets squared. Swapping the two would be a plausible number against
-	 * the wrong section.
+	 * Width is across the beam (Y), depth is vertical (Z) — the pairing the section modulus below
+	 * depends on, since bending about Y is resisted across the depth and the depth is what gets
+	 * squared. Swapping them gives a plausible number against the wrong section.
 	 */
 	constexpr double SectionWidthCm = 10.0;
 	constexpr double SectionDepthCm = 10.0;
 
-	/** Two segments meeting at x = 0, so the glue line sits at EXACT midspan. */
+	/** Two segments meeting at x = 0, so the glue line sits at exact midspan. */
 	constexpr double SegmentLengthCm = 220.0;
 	constexpr double BeamLengthCm = SegmentLengthCm * 2.0;
 
@@ -120,14 +94,12 @@ namespace BeamAcceptanceTestSupport
 	constexpr double BearingLengthCm = 40.0;
 
 	/*
-	 * The piers run PAST the beam's end on the outside — a shape chosen to sidestep a
-	 * MakeInterface defect that has since been FIXED (2026-08-08): it used to compute an axis
-	 * overlap as `extentA + extentB - distance`, which over-reported whenever one box's span
-	 * wholly CONTAINED the other's; it now takes the true interval intersection, and
-	 * Layout.Interface's contained-pier rows pin exactly the case this fixture used to avoid.
-	 * The oversailing piers are kept because the readings below are anchored to this geometry —
-	 * moving them inboard would be the suite's only contained bearing exercised through a real
-	 * solve, which is worth doing as its own slice with re-derived numbers, not as a drive-by.
+	 * The piers run past the beam's end on the outside — a shape chosen to sidestep a MakeInterface
+	 * defect since fixed (2026-08-08): it computed axis overlap as `extentA + extentB - distance`,
+	 * which over-reported under containment, and now takes the true interval intersection, with
+	 * Layout.Interface's contained-pier rows pinning that case. The oversailing piers stay because
+	 * the readings below are anchored to this geometry; moving them inboard needs re-derived
+	 * numbers as its own slice, not a drive-by.
 	 */
 	constexpr double PierLengthCm = 60.0;
 	constexpr double PierHeightCm = 40.0;
@@ -135,9 +107,8 @@ namespace BeamAcceptanceTestSupport
 	/**
 	 * The weight: a steel plate laid along the beam, its thickness matching the beam's width.
 	 *
-	 * MATCHING THE BEAM'S WIDTH IS THE SAME CONTAINMENT RULE ONE AXIS OVER. A block wider than
-	 * the beam would contain the beam on Y, and its two contact patches would be emitted 50 cm
-	 * wide instead of 10.
+	 * Matching the beam's width is the same containment rule one axis over: a wider block would
+	 * contain the beam on Y, and its two contact patches would be emitted 50 cm wide, not 10.
 	 */
 	constexpr double BlockLengthCm = 200.0;
 	constexpr double BlockWidthCm = SectionWidthCm;
@@ -147,41 +118,35 @@ namespace BeamAcceptanceTestSupport
 	 * ================================================================================ */
 
 	/**
-	 * 980 cm/s2. With 1 uu = 1 cm and mass in kilograms, MassKg * 980 IS a weight in Unreal force
-	 * units — DESIGN.md §3's 1 N = 100 uu is already inside that number, and applying it a second
-	 * time is the 100x error the units section exists to prevent.
+	 * 980 cm/s2. With 1 uu = 1 cm and mass in kilograms, MassKg * 980 is already a weight in Unreal
+	 * force units — DESIGN.md §3's 1 N = 100 uu is inside that number, and applying it a second time
+	 * is the 100x error the units section exists to prevent.
 	 */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
 	/**
 	 * Unreal force units that load one square centimetre to one megapascal.
 	 *
-	 * 1 N = 100 uu and 1 cm2 = 100 mm2, so 1 MPa (= 1 N/mm2) over 1 cm2 is 10000 uu. DELIBERATELY
-	 * NOT DestructionForce::ForceUnitsPerMPaSqCm: this file has to fail if that constant is wrong
-	 * rather than agree with it.
+	 * 1 N = 100 uu and 1 cm2 = 100 mm2, so 1 MPa (= 1 N/mm2) over 1 cm2 is 10000 uu. Deliberately
+	 * not DestructionForce::ForceUnitsPerMPaSqCm: this file has to fail if that constant is wrong.
 	 */
 	constexpr double ForceUnitsPerMPaSqCmHere = 100.0 * 100.0;
 
 	/* --- C24 softwood, EN 338 (strength class table) ------------------------------------- */
 
 	/**
-	 * f_m,k = 24 N/mm2 — the CHARACTERISTIC BENDING STRENGTH, and the capacity this whole file
-	 * turns on.
+	 * The bending capacity this whole file turns on, applied to both extreme fibres.
 	 *
-	 * IT IS APPLIED TO BOTH EXTREME FIBRES, WHICH IS A DECISION AND NOT AN OVERSIGHT. EN 338 also
-	 * publishes f_t,0,k = 14 N/mm2 (tension parallel) and f_c,0,k = 21 N/mm2 (compression
-	 * parallel), and it is tempting to hand those to the joint's tensile and compressive fields.
-	 * They are AXIAL capacities. A section in pure bending is checked in EN 1995-1-1 §6.1.6 by the
-	 * single ratio sigma_m,d / f_m,d, which covers the whole bending stress block — both edges —
-	 * and this section carries no axial force at all, since a simply supported beam under gravity
-	 * develops none. Using f_c,0,k = 21 against a bending compression edge would make every timber
-	 * beam fail about 14% earlier than the code says, and would move the governing axis off the
-	 * tension face, which is where a timber beam actually splinters. Both figures are quoted here
-	 * rather than declared, because neither is used and a constant nobody reads is a constant that
-	 * can drift.
+	 * Both fibres is a decision, not an oversight. EN 338 also publishes f_t,0,k = 14 N/mm2 and
+	 * f_c,0,k = 21 N/mm2, but those are axial capacities; a section in pure bending is checked in
+	 * EN 1995-1-1 §6.1.6 by the single ratio sigma_m,d / f_m,d over the whole stress block, and a
+	 * simply supported beam under gravity develops no axial force. Using f_c,0,k = 21 against the
+	 * bending compression edge would fail every timber beam about 14% early and move the governing
+	 * axis off the tension face, where timber actually splinters. Both figures are quoted rather
+	 * than declared because neither is used, and a constant nobody reads can drift.
 	 */
 	/*
-	 * MEAN BASIS since the 2026-08-13 re-anchor: 24.0 was EN 338's characteristic f_m,k, and
+	 * Mean basis since the 2026-08-13 re-anchor: 24.0 was EN 338's characteristic f_m,k, and
 	 * JCSS PMC Part 3.5 Table 2 gives bending for European softwood as Lognormal with COV 0.25,
 	 * so mean / 5%-fractile = exp(1.645 x 0.2462) = 1.4993 and the mean is 24 x 1.50 = 36.0.
 	 */
@@ -197,9 +162,9 @@ namespace BeamAcceptanceTestSupport
 	/**
 	 * EN 338: rho_mean = 420 kg/m3 for C24, which is 0.42 g/cm3.
 	 *
-	 * MEAN AND NOT CHARACTERISTIC. rho_k = 350 kg/m3 is the 5-percentile used for fastener design;
-	 * what a beam actually WEIGHS is the mean, and weight is the only thing density does here.
-	 * Density is g/cm3 in Unreal, which is the published unit divided by 1000 and nothing else.
+	 * Mean, not characteristic: rho_k = 350 kg/m3 is the 5-percentile used for fastener design, but
+	 * what a beam weighs is the mean, and weight is all density does here. Unreal's g/cm3 is the
+	 * published unit divided by 1000.
 	 */
 	constexpr double C24DensityGramsPerCubicCm = 0.42;
 
@@ -211,13 +176,11 @@ namespace BeamAcceptanceTestSupport
 	 * EN 1993-1-1 Table 3.1 steps the design value down for thick product — 255 N/mm2 for
 	 * 40 < t <= 80 mm — and this fixture's section is 100 mm. Taking 255 instead moves the steel
 	 * row from 0.335 to 0.362 of capacity and changes no verdict, so the nominal grade figure is
-	 * used and the reduction is recorded rather than applied.
-	 *
-	 * BOTH FIBRES AGAIN, AND HERE IT NEEDS NO ARGUMENT: steel yields at f_y in tension and in
-	 * compression alike.
+	 * used and the reduction is recorded rather than applied. Both fibres again, needing no
+	 * argument here: steel yields at f_y in tension and compression alike.
 	 */
 	/*
-	 * MEAN (static) yield since the 2026-08-13 re-anchor: JCSS PMC Part 3 Table A,
+	 * Mean (static) yield since the 2026-08-13 re-anchor: JCSS PMC Part 3 Table A,
 	 * E[f_y] = f_y,sp * alpha * exp(-u v) - C with v = 0.07, u in [-1.5, -2.0], alpha = 1.0
 	 * for flanges and C = 20 MPa (the mill-test to static-yield correction): 285-296 MPa for
 	 * S275. 290 is the centre. (The old 275.0 was EN 10025-2's nominal.)
@@ -225,9 +188,8 @@ namespace BeamAcceptanceTestSupport
 	constexpr double S275YieldMPa = 290.0;
 
 	/**
-	 * f_y / sqrt(3) = 158.771 N/mm2 — the von Mises shear yield, EN 1993-1-1 §6.2.6.
-	 *
-	 * Written as the division rather than as 158.771 so it moves with f_y and cannot drift from it.
+	 * f_y / sqrt(3) = 158.771 N/mm2 — the von Mises shear yield, EN 1993-1-1 §6.2.6. Written as the
+	 * division so it moves with f_y and cannot drift from it.
 	 */
 	const double S275ShearMPa = S275YieldMPa / FMath::Sqrt(3.0);
 
@@ -241,10 +203,9 @@ namespace BeamAcceptanceTestSupport
 	 * THE INDEPENDENT ORACLE: elastic beam statics, worked here from first principles.
 	 * ================================================================================
 	 *
-	 * NONE OF THIS MIRRORS PRODUCTION, WHICH IS THE ONLY REASON IT IS WORTH HAVING. The solver
-	 * accumulates weight down a support graph; this is the free-body diagram of a simply supported
-	 * beam, which is where the expected verdicts come from. The two are derived differently and
-	 * are meant to be compared.
+	 * None of this mirrors production, which is the only reason it is worth having: the solver
+	 * accumulates weight down a support graph, while this is the free-body diagram of a simply
+	 * supported beam. The two are derived differently and are meant to be compared.
 	 */
 
 	/** W = b d^2 / 6 for a rectangle. b is the width across the beam; d is the depth being bent. */
@@ -255,11 +216,9 @@ namespace BeamAcceptanceTestSupport
 	constexpr double SectionAreaSqCm = SectionWidthCm * SectionDepthCm;
 
 	/**
-	 * Where the weight of the block actually lands on each half of the beam.
-	 *
-	 * The block spans -BlockLengthCm/2 .. +BlockLengthCm/2 and the beam parts at x = 0, so each
-	 * half takes half the block over a contact whose centroid is a quarter of the block's length
-	 * from midspan.
+	 * Where the block's weight lands on each half of the beam: the block spans
+	 * -BlockLengthCm/2 .. +BlockLengthCm/2 and the beam parts at x = 0, so each half takes half the
+	 * block over a contact whose centroid is a quarter of the block's length from midspan.
 	 */
 	constexpr double BlockContactOffsetCm = BlockLengthCm / 4.0;
 
@@ -282,10 +241,8 @@ namespace BeamAcceptanceTestSupport
 	}
 
 	/**
-	 * The reaction at each bearing, uu.
-	 *
-	 * Symmetric load on a symmetric span, so each pier takes half of everything. The piers'
-	 * own weight is not in it: they are grounded, and the earth takes what reaches them.
+	 * The reaction at each bearing, uu. Symmetric load on a symmetric span, so each pier takes half
+	 * of everything. The piers' own weight is not in it: they are grounded, and the earth takes it.
 	 */
 	double BearingReactionUu(double BlockHeightCm, double BeamDensityGramsPerCubicCm)
 	{
@@ -300,8 +257,8 @@ namespace BeamAcceptanceTestSupport
 	 *       - (P/2) * (a/4)                half the block, at its contact centroid
 	 *       - (W/2) * (l/2)                the left half of the beam, at its own centre
 	 *
-	 * ORDINARY STATICS AND NOTHING ELSE. This is what a beam's midspan section carries, and it is
-	 * the number the model has no way to produce.
+	 * Ordinary statics: what a beam's midspan section carries, and the number the model has no way
+	 * to produce.
 	 */
 	double MidspanMomentUuCm(double BlockHeightCm, double BeamDensityGramsPerCubicCm)
 	{
@@ -325,9 +282,8 @@ namespace BeamAcceptanceTestSupport
 	/**
 	 * Peak shear stress just inside a bearing as a fraction of the member's shear strength.
 	 *
-	 * THIS EXISTS SO THAT "BENDING GOVERNS" IS MEASURED RATHER THAN ASSERTED. The whole point of
-	 * the fixture is a MEMBER BENDING failure, and a fixture whose shear happened to be worse
-	 * would be testing something else entirely while still going red. 1.5 * V / A is the peak of
+	 * Exists so "bending governs" is measured rather than asserted: a fixture whose shear happened
+	 * to be worse would be testing something else while still going red. 1.5 * V / A is the peak of
 	 * the parabolic shear distribution over a rectangle.
 	 */
 	double BearingShearUtilisation(
@@ -378,55 +334,47 @@ namespace BeamAcceptanceTestSupport
 		EVerdict Verdict = EVerdict::Stands;
 
 		/**
-		 * HOW MANY LIVE PIECES THE MODEL DROPS HERE TODAY — a CHARACTERISATION OF A WRONG ANSWER,
-		 * set on ALL THREE ROWS and INDEX_NONE nowhere in this file.
+		 * How many live pieces the model drops here today: a characterisation of a wrong answer, not
+		 * an expectation, and it endorses nothing (exactly per FWallCase::DropsToday in
+		 * WallAcceptanceTest.cpp, which this mirrors). `Verdict` above is what a real beam does;
+		 * this is what the solver does instead, measured off a run and written down.
 		 *
-		 * IT IS NOT AN EXPECTATION AND IT ENDORSES NOTHING, exactly per FWallCase::DropsToday in
-		 * WallAcceptanceTest.cpp, which this mirrors. `Verdict` above is what a real beam does;
-		 * this is what the solver does instead, measured off a run and written down. Set on every
-		 * row rather than only the PartsAtMidspan one, because the wrong answer is not particular
-		 * to case 1: since the one-cell thrust gate (08abcfd, 2026-08-09) refused the kern cap to
-		 * this fixture's DRY bearings, the uncapped eccentric moment on a zero-tension joint reads
-		 * Max() on every bearing, and the two STANDS rows unzip exactly as case 1 does. The
-		 * rigid-block LP oracle stands all three (lambda* 1.76 / 19.2 / 17.4 —
+		 * It is set on every row rather than only the PartsAtMidspan one, because the wrong answer
+		 * is not particular to case 1: since the one-cell thrust gate (08abcfd, 2026-08-09) refused
+		 * the kern cap to this fixture's dry bearings, the uncapped eccentric moment on a
+		 * zero-tension joint reads Max() on every bearing and the two STANDS rows unzip exactly as
+		 * case 1 does. The rigid-block LP oracle stands all three (lambda* 1.76 / 19.2 / 17.4 —
 		 * RigidBlockOracleSweepTest), so this is production's missing global equilibrium (DESIGN.md
 		 * §7 gap 1 / evolution step 4), never the fixture's physics.
 		 *
-		 * THIS IS WHY THE PIN EXISTS AT ALL: the 2026-08-09 gate flipped every row's bearing
-		 * reading and nobody saw it until the 2026-08-11 oracle sweep, because nothing in this file
-		 * pinned what production does today. The ruling and its costs: DESIGN.md §8.
-		 *
-		 * ACCEPTED AS A KNOWN COST until evolution step 4 promotes equilibrium to the cascade
-		 * authority (the beam user ruling, DESIGN.md §8, decided 2026-08-11). WHEN THAT ROW LANDS,
-		 * DELETE DropsToday AND PassesToday IN THE SAME EDIT — they will fail, and that failure is
-		 * the reminder, never "updated" to a new wrong number without saying why the answer moved.
+		 * The pin exists because that gate flipped every row's bearing reading and nobody saw it
+		 * until the 2026-08-11 oracle sweep, since nothing here pinned what production does today.
+		 * Accepted as a known cost until evolution step 4 promotes equilibrium to the cascade
+		 * authority (DESIGN.md §8, decided 2026-08-11). When that lands, delete DropsToday and
+		 * PassesToday in the same edit — they will fail, and that failure is the reminder; never
+		 * "update" them to a new wrong number without saying why the answer moved.
 		 */
 		int32 DropsToday = INDEX_NONE;
 
 		/**
-		 * HOW MANY BREAKING PASSES THE CASCADE RAN HERE TODAY — the same characterisation as
-		 * DropsToday, and read the same way. Kept separate so a change to the SHAPE of the known-
-		 * wrong answer (the same piece count reached over a different number of passes) is visible
-		 * too, rather than hiding behind an unchanged piece count. See DropsToday for what this is
-		 * not and the delete-when-fixed instruction, which covers this field as well.
+		 * How many breaking passes the cascade ran here today — the same characterisation as
+		 * DropsToday, read the same way and covered by its delete-when-fixed rule. Kept separate so
+		 * a change in the shape of the known-wrong answer (the same piece count over a different
+		 * number of passes) is visible rather than hidden by an unchanged count.
 		 */
 		int32 PassesToday = INDEX_NONE;
 	};
 
 	/**
-	 * THE MEMBER'S GLUE LINE, AS A CONNECTION PROFILE.
+	 * The member's glue line, as a connection profile.
 	 *
-	 * FRICTION IS EXACTLY ZERO, and that is load-bearing rather than tidy. Mohr-Coulomb's
-	 * `cohesion + mu * compressive stress` describes an INTERFACE whose resistance to sliding
-	 * grows as you squeeze it. A cross-section through a solid member is not an interface; its
-	 * shear strength is a material property and does not care what the axial stress is. mu = 0
-	 * reduces the envelope to three independent axes EXACTLY (DESIGN.md §3), which is the same
-	 * reason the fastener profiles carry it — and it also keeps the shear axis from being quietly
-	 * inflated by the compression that shares the section, which would flatter the shear check
-	 * this file uses to prove bending governs.
-	 *
-	 * NO SHEAR CEILING, for the same reason: with mu = 0 there is nothing for a truncation to
-	 * truncate.
+	 * Friction is exactly zero, and that is load-bearing rather than tidy. Mohr-Coulomb's
+	 * `cohesion + mu * compressive stress` describes an interface whose resistance to sliding grows
+	 * as you squeeze it; a cross-section through a solid member is not an interface, and its shear
+	 * strength is a material property indifferent to axial stress. mu = 0 reduces the envelope to
+	 * three independent axes exactly (DESIGN.md §3), and it keeps the shear axis from being inflated
+	 * by the compression sharing the section, which would flatter the shear check this file uses to
+	 * prove bending governs. No shear ceiling for the same reason: nothing left to truncate.
 	 */
 	FConnectionStrength MemberStrength(double BendingMPa, double ShearMPa)
 	{
@@ -442,27 +390,24 @@ namespace BeamAcceptanceTestSupport
 	TArray<FBeamCase> AllBeamCases()
 	{
 		/*
-		 * THE DropsToday / PassesToday PINS ARE GONE SINCE SLICE 3b/4 (2026-08-27). All three rows
-		 * used to drop 3 in 1 pass because the one-cell thrust gate let their DRY bearings read
+		 * The DropsToday / PassesToday pins are gone since slice 3b/4 (2026-08-27). All three rows
+		 * used to drop 3 in 1 pass because the one-cell thrust gate let their dry bearings read
 		 * Max() outside the kern. Below the 200-block cap the equilibrium LP is now the sole break
-		 * authority, it stands all three bearings (the oracle sweep reads lambda* 2.65 / 28.80 /
-		 * 18.30, all >= 1), and production drops 0 in 0 passes — so the known-red characterisation
-		 * has nothing left to characterise and is deleted per FBeamCase::DropsToday's own rule.
-		 * Rows 2 and 3 (Stands) are now GREEN. Row 1 stays RED, but on its MEMBER-FAILURE
-		 * assertions alone (|M| = 0 at midspan, the beam does not part) — evolution step 6, not this
-		 * slice; the bearings being fixed does not give the solver a way to fail the member.
+		 * authority and stands all three bearings (the oracle sweep reads lambda* 2.65 / 28.80 /
+		 * 18.30, all >= 1), so production drops 0 in 0 passes and the characterisation is deleted
+		 * per FBeamCase::DropsToday's own rule. Rows 2 and 3 (Stands) are green. Row 1 stays red on
+		 * its member-failure assertions alone (|M| = 0 at midspan, the beam does not part): fixing
+		 * the bearings gives the solver no way to fail the member, which is evolution step 6.
 		 */
 		TArray<FBeamCase> Cases;
 
 		/*
-		 * ROW 1 — THE MEMBER-FAILURE CASE, and the reason the file exists.
-		 *
-		 * A 1884 kg steel plate on a 100 x 100 mm C24 joist over a 4 m span. Midspan moment is
-		 * 139,288,968 uu.cm = 13,928.9 N.m against a section modulus of 166.67 cm3, so the
-		 * extreme fibre sits at 83.57 MPa against the mean 36 MPa: 2.32 times capacity (3.48x
-		 * the retired characteristic 24 — the 2026-08-14 re-anchor flip moved the margin, not the
-		 * verdict). The beam breaks. Nothing else in the fixture is within two orders of
-		 * magnitude of its own limit.
+		 * Row 1 — the member-failure case, and the reason the file exists. A 1884 kg steel plate on
+		 * a 100 x 100 mm C24 joist over a 4 m span: midspan moment 139,288,968 uu.cm = 13,928.9 N.m
+		 * against a section modulus of 166.67 cm3, so the extreme fibre sits at 83.57 MPa against
+		 * the mean 36 MPa — 2.32 times capacity (3.48x the retired characteristic 24; the
+		 * 2026-08-14 re-anchor moved the margin, not the verdict). The beam breaks, and nothing else
+		 * in the fixture is within two orders of magnitude of its own limit.
 		 */
 		Cases.Add({
 			1, TEXT("C24 timber beam, heavy load"), TEXT("member material (vs case 3)"),
@@ -471,10 +416,9 @@ namespace BeamAcceptanceTestSupport
 			/*DropsToday*/ INDEX_NONE, /*PassesToday*/ INDEX_NONE });
 
 		/*
-		 * ROW 2 — THE SAME BEAM WELL INSIDE CAPACITY, differing from row 1 in the block's height
-		 * and in nothing else. 157 kg, midspan moment 12,354,468 uu.cm, extreme fibre 7.41 MPa,
-		 * 0.206 of the mean 36 (0.309 of the retired characteristic 24). A joist carrying a
-		 * sensible load, and it must simply stand.
+		 * Row 2 — the same beam well inside capacity, differing from row 1 only in block height.
+		 * 157 kg, midspan moment 12,354,468 uu.cm, extreme fibre 7.41 MPa, 0.206 of the mean 36
+		 * (0.309 of the retired characteristic 24). A joist under a sensible load: it must stand.
 		 */
 		Cases.Add({
 			2, TEXT("C24 timber beam, light load"), TEXT("load magnitude (vs case 1)"),
@@ -483,12 +427,11 @@ namespace BeamAcceptanceTestSupport
 			/*DropsToday*/ INDEX_NONE, /*PassesToday*/ INDEX_NONE });
 
 		/*
-		 * ROW 3 — THE STEEL TWIN. Identical geometry, identical block, only the member material
-		 * changes. The heavier beam raises the midspan moment to 153,706,140 uu.cm and the extreme
-		 * fibre to 92.22 MPa, but S275's mean static yield is 290, so it reads 0.318 and holds
-		 * (0.335 against the old nominal 275). Wood fails where steel holds under the same load:
-		 * that is the whole of the data-drivenness claim, and today the model answers both
-		 * identically. The material discrimination is 290/36 = 8.1x (was 9.8x on the
+		 * Row 3 — the steel twin: identical geometry and block, only the member material changes.
+		 * The heavier beam raises the midspan moment to 153,706,140 uu.cm and the extreme fibre to
+		 * 92.22 MPa, but S275's mean static yield is 290, so it reads 0.318 and holds (0.335 against
+		 * the old nominal 275). Wood failing where steel holds under the same load is the whole
+		 * data-drivenness claim. Material discrimination is 290/36 = 8.1x (was 9.8x on the
 		 * characteristic/nominal pair) — the sweep's pinned figure moves with it.
 		 */
 		Cases.Add({
@@ -542,15 +485,13 @@ namespace BeamAcceptanceTestSupport
 	/*
 	 * The true area two boxes share, computed the way an interval intersection actually works.
 	 *
-	 * WHAT THIS GUARDS CHANGED ON 2026-08-08. When it was written, production computed
-	 * `extentA + extentB - distance`, which is wrong under containment, so this check was a
-	 * tripwire: a dimension edited into a containment read as a FIXTURE failure instead of a
-	 * silently oversized bearing. MakeInterface now uses this same interval intersection, so the
-	 * two agree on every topology and the tripwire is gone — what remains is a plain consistency
-	 * check that the fixture's own bookkeeping matches what the producer emitted. An independent
-	 * re-derivation of production's arithmetic now needs a DIFFERENT expression for the same set:
-	 * `min(2·extentA, 2·extentB, extentA + extentB - |centre difference|)` per axis, which is the
-	 * oracle Layout.InterfaceFuzz is specified to use (see CURRENT_STATE.md, Layout producer).
+	 * What this guards changed on 2026-08-08: production used to compute
+	 * `extentA + extentB - distance`, wrong under containment, so this was a tripwire. MakeInterface
+	 * now uses the same interval intersection, so what remains is a plain consistency check that the
+	 * fixture's bookkeeping matches what the producer emitted. An independent re-derivation of
+	 * production's arithmetic therefore needs a different expression for the same set:
+	 * `min(2·extentA, 2·extentB, extentA + extentB - |centre difference|)` per axis, the oracle
+	 * Layout.InterfaceFuzz is specified to use (see CURRENT_STATE.md, Layout producer).
 	 */
 	double SharedFaceAreaSqCm(const FPieceBox& A, const FPieceBox& B, int32 SeparationAxis)
 	{
@@ -577,11 +518,10 @@ namespace BeamAcceptanceTestSupport
 	/**
 	 * Lay one row's beam.
 	 *
-	 * JOINT THICKNESS IS ZERO EVERYWHERE, because every joint here is dry contact: the beam sits
-	 * on the piers, the block sits on the beam, and the two halves of the member butt against each
-	 * other. Layout::MakeInterface accepts a zero-thickness face deliberately — dry stone has
-	 * faces touching with no gap — and it keeps every centroid in this fixture an exact binary
-	 * number, which is what lets the expected values above be quoted to the last digit.
+	 * Joint thickness is zero everywhere, because every joint here is dry contact: beam on piers,
+	 * block on beam, the two member halves butting. MakeInterface accepts a zero-thickness face
+	 * deliberately — dry stone has faces touching with no gap — and it keeps every centroid an exact
+	 * binary number, which is what lets the expected values above be quoted to the last digit.
 	 */
 	void LayBeam(const FBeamCase& Case, FBeam& OutBeam)
 	{
@@ -590,9 +530,9 @@ namespace BeamAcceptanceTestSupport
 		const double BeamTopZCm = BeamBottomZCm + SectionDepthCm;
 
 		/*
-		 * The pier reaches from outside the beam's end to BearingLengthCm inboard of it, so the
-		 * bearing patch is centred exactly SpanCm/2 from midspan and the two boxes overlap
-		 * partially rather than one containing the other. See PierLengthCm.
+		 * The pier reaches from outside the beam's end to BearingLengthCm inboard, so the bearing
+		 * patch is centred exactly SpanCm/2 from midspan and the boxes overlap partially rather than
+		 * one containing the other. See PierLengthCm.
 		 */
 		const double BeamEndCm = BeamLengthCm / 2.0;
 		const double PierInnerCm = BeamEndCm - BearingLengthCm;
@@ -602,11 +542,10 @@ namespace BeamAcceptanceTestSupport
 			const FString& Name, const FPieceBox& Box, double DensityGramsPerCubicCm, bool bGrounded)
 		{
 			/*
-			 * THE BOX'S CENTRE IS THE CENTRE OF MASS, because every piece here is a homogeneous
-			 * solid and its mass came off the same box. Without it there is no eccentricity
-			 * anywhere and the bearings read a centred load they are not carrying — which is
-			 * exactly the state HasCompleteGeometry exists to make askable, and it is asserted as
-			 * a fixture precondition.
+			 * The box's centre is the centre of mass: every piece here is a homogeneous solid whose
+			 * mass came off the same box. Without it there is no eccentricity anywhere and the
+			 * bearings read a centred load they are not carrying — the state HasCompleteGeometry
+			 * exists to make askable, asserted below as a fixture precondition.
 			 */
 			const double MassKg = BoxMassKg(
 				Box.ExtentCm.X * 2.0, Box.ExtentCm.Y * 2.0, Box.ExtentCm.Z * 2.0,
@@ -648,13 +587,10 @@ namespace BeamAcceptanceTestSupport
 		OutBeam.Block = AddBox(TEXT("block"), BlockBox, SteelDensityGramsPerCubicCm, false);
 
 		/*
-		 * EVERY PAIR IS OFFERED AND MakeInterface REFUSES THE ONES THAT ARE NOT FACES — the piers
-		 * to each other, the block to the piers, each half-beam to the far pier. Deciding which
-		 * pairs touch is the producer's job and this fixture does not second-guess it; what it
-		 * does check, below, is the AREA of everything the producer accepted.
-		 *
-		 * ONLY THE SEGMENT-TO-SEGMENT JOINT CARRIES THE MEMBER'S OWN STRENGTHS. Everything else is
-		 * dry contact.
+		 * Every pair is offered and MakeInterface refuses the ones that are not faces — pier to
+		 * pier, block to pier, half-beam to far pier. Deciding which pairs touch is the producer's
+		 * job; what this fixture checks below is the area of everything it accepted. Only the
+		 * segment-to-segment joint carries the member's own strengths; everything else is dry.
 		 */
 		const FConnectionStrength Member = MemberStrength(Case.MemberBendingMPa, Case.MemberShearMPa);
 
@@ -765,10 +701,9 @@ namespace BeamAcceptanceTestSupport
 	/**
 	 * Lay it, read it, then let the cascade run.
 	 *
-	 * THE READINGS COME FROM SolveLoads AND THE VERDICT FROM SolveAndBreak, in that order.
-	 * Solving is non-destructive by contract, so the readings describe the beam AS BUILT rather
-	 * than whatever is left of it — which matters the day a row starts breaking things, because a
-	 * report of the surviving joints would not explain what broke.
+	 * The readings come from SolveLoads and the verdict from SolveAndBreak, in that order. Solving
+	 * is non-destructive by contract, so the readings describe the beam as built rather than what is
+	 * left of it — a report of the surviving joints would not explain what broke.
 	 */
 	void RunBeamCase(
 		FAutomationTestBase& Test, const FBeamCase& Case, FBeam& OutBeam, FBeamResult& OutResult)
@@ -858,11 +793,10 @@ namespace BeamAcceptanceTestSupport
 	}
 
 	/**
-	 * Everything a row must satisfy before its verdict means anything.
-	 *
-	 * A beam the solver could not route, or one whose joints were emitted at the wrong size, would
-	 * produce a verdict that is about the fixture rather than about the physics — and a red for
-	 * that reason sends whoever reads it chasing a bug that is not there.
+	 * Everything a row must satisfy before its verdict means anything. A beam the solver could not
+	 * route, or whose joints were emitted at the wrong size, gives a verdict about the fixture
+	 * rather than the physics — and a red for that reason sends a reader chasing a bug that is not
+	 * there.
 	 */
 	void CheckFixture(
 		FAutomationTestBase& Test, const FBeamCase& Case, const FBeam& Beam, const FBeamResult& Result)
@@ -884,9 +818,8 @@ namespace BeamAcceptanceTestSupport
 			Beam.Structure.HasCompleteGeometry());
 
 		/*
-		 * EVERY EMITTED AREA AGAINST ONE COMPUTED HERE. See SharedFaceAreaSqCm: the two
-		 * arithmetics agree only while neither box's span contains the other's, so this is what
-		 * pins the fixture's dimensions to the shape it claims to be.
+		 * Every emitted area against one computed here. See SharedFaceAreaSqCm: this pins the
+		 * fixture's dimensions to the shape it claims to be.
 		 */
 		for (int32 Index = 0; Index < Beam.Structure.NumConnections(); ++Index)
 		{
@@ -920,8 +853,8 @@ namespace BeamAcceptanceTestSupport
 			Result.Stranded, 0);
 
 		/*
-		 * BENDING HAS TO BE THE AXIS THAT DECIDES, or this fixture is measuring something other
-		 * than what it claims. Worked for all three rows: the ratio is 9.96, 9.58 and 32.5.
+		 * Bending has to be the axis that decides, or this fixture measures something other than
+		 * what it claims. Worked for all three rows: the ratio is 9.96, 9.58 and 32.5.
 		 */
 		const double DerivedBending = MidspanBendingUtilisation(
 			Case.BlockHeightCm, Case.MemberDensityGramsPerCubicCm, Case.MemberBendingMPa);
@@ -938,33 +871,28 @@ namespace BeamAcceptanceTestSupport
 }
 
 /**
- * THE CATALOGUE: three configurations, each with the verdict a real beam gives.
+ * The catalogue: three configurations, each with the verdict a real beam gives.
  *
- * ALL THREE ROWS ARE RED TODAY, AND NOT FOR THE SAME REASON. Case 1 was always the red the file
- * was written for: it must PartsAtMidspan and the mechanism half never fires (the file header's
- * "SO THE RED IS" paragraph). Cases 2 and 3 were green on arrival until the one-cell thrust gate
- * (08abcfd, 2026-08-09) — see the file header's "HOW THE BEARINGS READ CHANGED" paragraph — and
- * now fail their STANDS assertion the same way case 1 fails its PartsAtMidspan one: the dry
- * bearings unzip regardless of the member's own capacity. What the three rows are for is still the
- * PAIRS: case 1 versus case 2 varies only the block's height; case 1 versus case 3 varies only the
- * member material. Each row's `DropsToday`/`PassesToday` pins today's wrong answer so a further
- * regression cannot hide inside an already-red row (see `FBeamCase::DropsToday`).
+ * What the three rows are for is the pairs: case 1 versus case 2 varies only the block's height,
+ * case 1 versus case 3 only the member material. Case 1 is the red the file was written for — it
+ * must PartsAtMidspan and the mechanism half never fires. Each row's `DropsToday`/`PassesToday`
+ * pins whatever wrong answer production gives so a further regression cannot hide inside an
+ * already-red row; see `FBeamCase::DropsToday` for what those pins are and are not.
  *
- * ROW 1'S ASSERTION IS TWO-SIDED AND IT NEEDS BOTH SIDES. The mechanism half — the glue line at
- * midspan must have GIVEN — is what makes this a member-failure test rather than a collapse test:
- * a beam that came down by sliding off its bearings, or by the block punching through its
- * contact, is a different and wrong answer that an outcome-only assertion would pass. The outcome
- * half — the beam and its load lose the earth while the piers keep it — is what stops a single
- * severed joint being mistaken for a failure, per DESIGN.md §4.
+ * Row 1's assertion is two-sided and needs both sides. The mechanism half — the midspan glue line
+ * must have given — is what makes this a member-failure test rather than a collapse test: a beam
+ * that came down by sliding off its bearings, or by the block punching through its contact, is a
+ * wrong answer an outcome-only assertion would pass. The outcome half — the beam and its load lose
+ * the earth while the piers keep it — stops a single severed joint being read as a failure
+ * (DESIGN.md §4).
  *
- * AND THE OUTCOME HALF NEEDS MORE THAN MEMBER FAILURE. Once the glue line parts, each half-beam
- * is still sitting on its own pier and this solver has no way to say that a half-beam pivots off
- * its bearing and falls — that is PROJECT_REVIEW.md §2 item 1, the missing global equilibrium
- * check. So row 1 is anchored on step 6 as a whole rather than on member failure alone, and it is
- * written that way deliberately: it is the real-world verdict, which is what an acceptance test
- * is for.
+ * That outcome half needs more than member failure: once the glue line parts, each half-beam still
+ * sits on its own pier and this solver cannot say that a half-beam pivots off its bearing and
+ * falls (PROJECT_REVIEW.md §2 item 1, missing global equilibrium). Row 1 is therefore anchored on
+ * step 6 as a whole, deliberately, because the real-world verdict is what an acceptance test is
+ * for.
  *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * Needs a ticking world: no. See the file header.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBeamAcceptanceCatalogueTest,
@@ -977,11 +905,10 @@ bool FBeamAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 	using namespace BeamAcceptanceTestSupport;
 
 	/*
-	 * THE CONTACT PROFILE THIS FIXTURE ASSUMES, CHECKED RATHER THAN TAKEN ON TRUST. A beam resting
-	 * on a pier has NO BOND: everything it has against sliding is friction bought by its own
-	 * weight, which is the one thing DryStone is in the library to express. Both numbers are read
-	 * by the fixture's behaviour, so a retune of either should turn this row red rather than
-	 * silently move every case below.
+	 * The contact profile this fixture assumes, checked rather than trusted. A beam resting on a
+	 * pier has no bond: all it has against sliding is friction bought by its own weight, which is
+	 * what DryStone is in the library to express. Both numbers are read by the fixture's behaviour,
+	 * so a retune of either should turn this row red rather than silently move every case below.
 	 */
 	TestEqual(TEXT("FIXTURE: dry contact has no cohesion at all"),
 		DryStone.ShearCohesionMPa, 0.0);
@@ -1016,10 +943,9 @@ bool FBeamAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 			TEXT("case %d (%s) [isolates %s]"), Case.Number, Case.Title, Case.Isolates);
 
 		/*
-		 * THE REACTIONS HAVE TO ADD UP, whatever else does or does not happen. This is the half of
-		 * the force transfer the model genuinely does — the two bearings between them carry the
-		 * block and the beam, and nothing else is holding either up — and it is asserted for every
-		 * row so that a beam whose load went somewhere else cannot reach a verdict at all.
+		 * The reactions have to add up, whatever else happens: the two bearings between them carry
+		 * the block and the beam and nothing else holds either up. Asserted on every row so a beam
+		 * whose load went somewhere else cannot reach a verdict at all.
 		 */
 		const double TotalWeightUu =
 			(BlockMassKg(Case.BlockHeightCm) + BeamMassKg(Case.MemberDensityGramsPerCubicCm))
@@ -1034,17 +960,11 @@ bool FBeamAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 			TotalWeightUu * 1.0e-9);
 
 		/*
-		 * ALL THREE ROWS ARE PINNED TO THE WRONG ANSWER THE MODEL GIVES TODAY, BEFORE the
-		 * verdict-specific assertions below — this must run whether the row's own catalogue verdict
-		 * is Stands or PartsAtMidspan, because since the one-cell thrust gate the wrong answer is
-		 * the SAME shape on every row (see `FBeamCase::DropsToday`).
-		 *
-		 * THIS ASSERTS NOTHING ABOUT PHYSICS AND ENDORSES NOTHING, exactly as the wall catalogue's
-		 * `DropsToday` pin does not. What it adds is that the KNOWN-WRONG failure has a FIXED SHAPE:
-		 * a row that is already red (case 1) or about to go red for the first time here (cases 2
-		 * and 3) is otherwise a hole in the net, free to drop a different count or run a different
-		 * number of passes without anybody noticing, in exactly the way the 2026-08-09 gate change
-		 * hid for two days before the 2026-08-11 oracle sweep found it.
+		 * The known-wrong-answer pin, run before the verdict-specific assertions below and on every
+		 * row whatever its catalogue verdict, because the wrong answer has the same shape on all
+		 * three. What it adds is that the shape is fixed: an already-red row is otherwise free to
+		 * drop a different count or run a different number of passes unnoticed. See
+		 * `FBeamCase::DropsToday`.
 		 */
 		if (Case.DropsToday != INDEX_NONE)
 		{
@@ -1075,9 +995,9 @@ bool FBeamAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 		if (Case.Verdict == EVerdict::Stands)
 		{
 			/*
-			 * BOTH HALVES. "Nothing fell" alone passes for a beam that severed its glue line and
-			 * sat there in two pieces; "no joint gave" alone passes for a beam whose load never
-			 * reached anything.
+			 * Both halves: "nothing fell" alone passes a beam that severed its glue line and sat
+			 * there in two pieces, and "no joint gave" alone passes a beam whose load never reached
+			 * anything.
 			 */
 			TestEqual(
 				*FString::Printf(
@@ -1095,9 +1015,9 @@ bool FBeamAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * THE MECHANISM: the MEMBER is what must fail, and the glue line at midspan IS the member's
-		 * critical section. A red here says the beam is over its published bending capacity and
-		 * the model has nothing that can express it.
+		 * The mechanism: the member is what must fail, and the midspan glue line is the member's
+		 * critical section. A red here says the beam is over its published bending capacity and the
+		 * model has nothing that can express it.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -1109,8 +1029,8 @@ bool FBeamAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 			Result.bMidspanGave);
 
 		/*
-		 * THE OUTCOME, TWO-SIDED: the beam and what it was carrying come down, and the piers do
-		 * not. A one-sided assertion would be satisfied by a model that simply drops everything.
+		 * The outcome, two-sided: the beam and what it carried come down and the piers do not. A
+		 * one-sided assertion would be satisfied by a model that simply drops everything.
 		 */
 		const TArray<int32> MustFall{ Beam.LeftSegment, Beam.RightSegment, Beam.Block };
 		const TArray<int32> MustStand{ Beam.LeftPier, Beam.RightPier };
@@ -1150,29 +1070,27 @@ bool FBeamAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE MIDSPAN SECTION MUST CARRY THE BEAM'S BENDING MOMENT.
+ * The midspan section must carry the beam's bending moment.
  *
- * The sharpest single statement of the gap, and the most actionable: PROJECT_REVIEW.md §2 item 3
- * says a piece on two or more supports has its moment zeroed by the area split, and this is that
- * sentence turned into a number. Each half-beam is seated on its own pier, so the midspan glue
- * line is the support of nobody and carries exactly nothing — the beam's entire bending action is
- * missing, not merely under-reported.
+ * The sharpest and most actionable statement of the gap: PROJECT_REVIEW.md §2 item 3 says a piece
+ * on two or more supports has its moment zeroed by the area split, and this is that sentence turned
+ * into a number. Each half-beam is seated on its own pier, so the midspan glue line supports nobody
+ * and carries exactly nothing — the bending action is missing, not merely under-reported.
  *
- * ASSERTED AGAINST THE STATICS RATHER THAN AGAINST "NON-ZERO", because "non-zero" would be
- * satisfied by any accident. The expected value is the free-body moment about x = 0, worked in
- * MidspanMomentUuCm from the reaction, the block's two contact patches and the half-beam's own
- * weight — none of which is how the solver computes anything.
+ * Asserted against the statics rather than against "non-zero", which any accident would satisfy:
+ * the expected value is the free-body moment about x = 0, worked in MidspanMomentUuCm from the
+ * reaction, the block's two contact patches and the half-beam's own weight, none of which is how
+ * the solver computes anything.
  *
- * TEN PERCENT, WHICH IS NOT A TOLERANCE ON ARITHMETIC. Both numbers are exact; the band exists
- * because a solver that computed internal member actions might legitimately place the load's
- * resultant slightly differently across a 200 cm contact, and this file should not be the thing
- * that dictates that. It is nowhere near wide enough to admit the answer today, which is zero.
+ * The ten percent is not a tolerance on arithmetic — both numbers are exact. The band exists
+ * because a solver computing internal member actions might legitimately place the load's resultant
+ * slightly differently across a 200 cm contact, and this file should not dictate that. It is
+ * nowhere near wide enough to admit today's answer, which is zero.
  *
- * ALL THREE ROWS, because the gap is a property of the ROUTING and has nothing to do with which
- * material the member is made of. A fix that closed it for the timber rows only would be reading
- * the material somewhere it must not.
+ * All three rows, because the gap is a property of the routing, not of the member material: a fix
+ * that closed it for the timber rows only would be reading material somewhere it must not.
  *
- * NEEDS A TICKING WORLD: NO.
+ * Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBeamAcceptanceMidspanMomentTest,
@@ -1212,33 +1130,27 @@ bool FBeamAcceptanceMidspanMomentTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE MEMBER MATERIAL HAS TO DECIDE THE OUTCOME.
+ * The member material has to decide the outcome.
  *
- * Cases 1 and 3 are the same geometry under the same block; the only thing that differs is what
- * the beam is made of, and steel is eleven times stronger in bending than C24. Timber at 3.48 of
- * capacity must fail and steel at 0.34 must not.
+ * Cases 1 and 3 are the same geometry under the same block and differ only in what the beam is made
+ * of: timber at 3.48 of capacity must fail and steel at 0.34 must not. Worth its own test because
+ * the catalogue can be passed by a model that always answers "falls" for a heavy load and "stands"
+ * for a light one — load magnitude is a variable it already reads. This row says the answer must
+ * change when the load does not, the one form of the data-drivenness claim a model with no concept
+ * of member strength cannot fake. DESIGN.md §4: "run the same scenario on wood and confirm it
+ * survives where brick failed. If that passes, the system is proven data-driven."
  *
- * WHY IT IS WORTH A TEST OF ITS OWN RATHER THAN BEING IMPLIED BY THE CATALOGUE. The catalogue can
- * be made to pass by a model that always answers "falls" for a heavy load and "stands" for a
- * light one — load magnitude is a variable it already reads. This row says the answer must change
- * when the LOAD DOES NOT, which is the only form of the data-drivenness claim a model with no
- * concept of member strength cannot fake. DESIGN.md §4: "run the same scenario on wood and
- * confirm it survives where brick failed. If that passes, the system is proven data-driven."
+ * Green since the first-crack promotion (2026-08-28), by the glue-line route, and the verdict moved
+ * twice on the way. Until slice 3b/4 both rows fell (3 pieces each) because the dry bearings read
+ * Max(); slice 3b/4 made the equilibrium LP the break authority below the cap, which stood the
+ * bearings, so both rows stood (0 each) and the material still changed nothing. First-crack (D1,
+ * 2026-08-28) breaks that tie: a bonded joint cracks at first crack, so the weaker C24 glue line
+ * parts and the beam falls (3, lambda* 0.883) while the stronger S275 one holds (0, lambda* 6.10).
+ * The route is the joint cracking, not the member snapping — the true member-bending mechanism is
+ * still evolution step 6, and its driving red
+ * (`Beam.MidspanCarriesTheMembersBendingMoment`, |M| = 0) is intact.
  *
- * GREEN SINCE THE FIRST-CRACK PROMOTION (2026-08-28): the material now decides the OUTCOME, by
- * the glue-line route. The history is worth keeping because the verdict moved twice. Until Slice
- * 3b/4 both rows FELL (3 pieces each) because the dry bearings read Max(); Slice 3b/4 made the
- * equilibrium LP the break authority below the cap, which stood the bearings, so both rows STOOD
- * (0 each) — the finding then was that the material still changed nothing. Turning first-crack on
- * (D1, promoted 2026-08-28) breaks that tie: a bonded joint cracks at first crack, so the weaker
- * C24 TIMBER glue line parts and the beam FALLS (3, lambda* 0.883) while the stronger S275 STEEL
- * glue line HOLDS and stands (0, lambda* 6.10). Timber falls where steel does not — the
- * data-drivenness claim, delivered. The route is the JOINT (glue line) cracking, not the member
- * itself snapping; the true member-bending mechanism is still evolution step 6, and its driving
- * red (`Beam.MidspanCarriesTheMembersBendingMoment`, |M| = 0) is INTACT — this OUTCOME test
- * greening early did not steal it. The counts in the message are dynamic (now 3 timber, 0 steel).
- *
- * NEEDS A TICKING WORLD: NO.
+ * Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBeamAcceptanceMemberMaterialTest,
@@ -1252,10 +1164,9 @@ bool FBeamAcceptanceMemberMaterialTest::RunTest(const FString& Parameters)
 	const TArray<FBeamCase> Cases = AllBeamCases();
 
 	/*
-	 * TimberCase, not Timber: a block-local named `Timber` shadows the global material profile
-	 * DestructionProfiles::Timber (added in Phase B1), which trips C4459 (warning-as-error) whenever
-	 * this file's transitive using-directives bring that global into scope — a latent shadow the
-	 * shed-builder slice's unity re-grouping surfaced. The rename is behaviour-neutral.
+	 * TimberCase, not Timber: a block-local `Timber` shadows the global profile
+	 * DestructionProfiles::Timber, tripping C4459 (warning-as-error) whenever this file's transitive
+	 * using-directives bring that global into scope. The rename is behaviour-neutral.
 	 */
 	const FBeamCase& TimberCase = Cases[0];
 	const FBeamCase& Steel = Cases[2];
