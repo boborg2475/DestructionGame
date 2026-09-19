@@ -8,26 +8,23 @@
 #include "Core/Structure.h"
 
 /*
- * EVERY NAME IN HERE CARRIES A Presenter PREFIX, for the reason Structure.cpp's header
- * comment sets out at length: an anonymous namespace is private to a TRANSLATION UNIT
- * rather than to a file, a unity build merges many files into one, and two file-local
- * names that collide are then a hard compile error between files that never refer to
- * each other.
+ * Every name in here carries a Presenter prefix: an anonymous namespace is private to a
+ * translation unit rather than to a file, a unity build merges many files into one, and
+ * two file-local names that collide become a hard compile error between files that never
+ * refer to each other (see Structure.cpp's header comment).
  */
 namespace
 {
 	/**
 	 * A joint's tier, in the words a player reads.
 	 *
-	 * THE WORDING LIVES HERE BECAUSE THE WIDGET MAY NOT HAVE IT. Choosing a word for a
-	 * tier is a decision, and the menu widget was landed under a recorded exception to
-	 * the TDD gate on the condition that it holds no decisions at all.
+	 * The wording lives here because the widget may not have it: it was landed under a
+	 * recorded exception to the TDD gate on the condition it holds no decisions at all.
 	 *
-	 * None has a word of its own rather than sharing one. InspectPiece only ever lists
-	 * real joints on a real piece and AddConnection refuses a normal that will not
-	 * normalise, so no row can carry it today — but a tier that reads as one of the
-	 * three real ones would be the fail-open direction the whole GetJointRole contract
-	 * is written against.
+	 * None has a word of its own rather than sharing one. No row can carry it today —
+	 * InspectPiece only ever lists real joints on a real piece and AddConnection refuses
+	 * a normal that will not normalise — but a tier reading as one of the three real ones
+	 * would be the fail-open direction the whole GetJointRole contract is written against.
 	 */
 	const TCHAR* PresenterWordForJointRole(EJointRole Role)
 	{
@@ -43,31 +40,26 @@ namespace
 	}
 
 	/**
-	 * WHAT FASTENS A JOINT, NAMED BY WHICH LIBRARY ROW IT IS — AND "custom" FOR ONE THAT IS NONE.
+	 * What fastens a joint, named by which library row it is — and "custom" for one that is none.
 	 *
-	 * THE ROLE IS NOT ENOUGH, WHICH IS THE WHOLE REASON THIS EXISTS. "bed below" is the same
-	 * sentence for a screwed plate and a dry-bedded one, and those two structures behave nothing
-	 * alike the moment either is run — the choice changes COMMITTED PHYSICS and nothing on screen
-	 * moves when it does, so the details window is the only place a player can find out what they
-	 * built.
+	 * The role is not enough, which is the whole reason this exists: "bed below" is the same
+	 * sentence for a screwed plate and a dry-bedded one, and those two structures behave
+	 * nothing alike the moment either is run — the choice changes committed physics and
+	 * nothing on screen moves when it does, so this is the only place a player can find out
+	 * what they built.
 	 *
-	 * THE LOOKUP IS BY VALUE BECAUSE THE IDENTITY IS ALREADY GONE. An FConnection stores a COPY of
-	 * the profile it was made with, so there is no address left to compare by the time a joint is in
-	 * a wall;
-	 * FindConnectionProfileRow matches the five fields back to the shipped row. That is a lookup into
-	 * DATA rather than a branch per profile, which is what keeps connection types data — a row added
-	 * to the library is named here without touching this file.
+	 * The lookup is by value because the identity is already gone: an FConnection stores a
+	 * copy of the profile it was made with, so there is no address left to compare by the
+	 * time a joint is in a wall. FindConnectionProfileRow matches the five fields back to the
+	 * shipped row — a lookup into data rather than a branch per profile, which is what keeps
+	 * connection types data. Lower case because it sits mid-sentence: the library spells its
+	 * rows GeneralPurposeMortar, and a capitalised name in the middle of "#2  course 1 · #3
+	 * head ..." reads as the start of a new clause.
 	 *
-	 * LOWER CASE BECAUSE IT SITS MID-SENTENCE. The library spells its rows GeneralPurposeMortar; the
-	 * line it lands in reads "#2  course 1 · #3  head  ...", and a capitalised name in the middle of
-	 * that reads as the start of a new clause.
-	 *
-	 * AND A STRENGTH THIS LIBRARY NEVER SHIPPED READS "custom" RATHER THAN GOING QUIET OR GUESSING.
-	 * Nothing in the game builds one today — every joint is made from a library row — but a hand-made
-	 * profile in a fixture, a future authored joint, or a connection index that names nothing would
-	 * all land here, and a row that silently dropped the word would read exactly like the ROLE-only
-	 * sentence this was written to end. Naming the nearest row instead would be worse: this library
-	 * is siblings by construction, so "nearest" is a plausible lie.
+	 * A strength this library never shipped reads "custom" rather than going quiet or
+	 * guessing. Nothing in the game builds one today, but a hand-made profile in a fixture or
+	 * a future authored joint would land here, and naming the nearest row instead would be a
+	 * plausible lie — this library is siblings by construction.
 	 */
 	FString PresenterWordForJointProfile(const FStructure& Structure, int32 ConnectionIndex)
 	{
@@ -87,48 +79,41 @@ namespace
 	}
 
 	/**
-	 * WHAT THE PANEL CALLS ITSELF, IN EVERY STATE THERE IS.
+	 * What the panel calls itself, in every state there is.
 	 *
-	 * A CONSTANT STRING IS STILL A STRING THE WIDGET MAY NOT SPELL, for the reason every other
-	 * word on this struct lives here: choosing it is a decision, and a decision taken in Slate
-	 * is taken where nothing can read it. The branch count happens to be zero today; the day it
-	 * gains one — a word that changes with the mode, a count folded into it — the decision is
-	 * already on the testable side of the seam rather than needing to be moved there.
+	 * A constant string is still a string the widget may not spell, for the reason every
+	 * other word on this struct lives here: choosing it is a decision, and Slate is where
+	 * nothing can read it. The branch count is zero today; the day it gains one, the
+	 * decision is already on the testable side of the seam.
 	 */
 	const TCHAR* const PresenterPanelHeader = TEXT("Selection");
 
 	/**
-	 * WHAT THE READOUT REGION SAYS WHEN THERE IS NO BRICK TO BREAK OUT.
+	 * What the readout region says when there is no brick to break out.
 	 *
-	 * A FIXED PANEL RESERVES THE READOUT'S SPACE WHETHER OR NOT IT HAS ONE, so the alternative
-	 * is a hole in the middle of the panel that reads as a readout that failed rather than as
-	 * one waiting to be asked. It is the same rule "No bricks selected" and "No joints" already
-	 * follow: an absence is a fact to be stated.
+	 * A fixed panel reserves the readout's space whether or not it has one, so the
+	 * alternative is a hole in the panel that reads as a readout that failed rather than
+	 * one waiting to be asked — the same rule "No bricks selected" and "No joints" follow.
 	 */
 	const TCHAR* const PresenterInspectedHint = TEXT("Hover a brick in the list to see its joints");
 
 	/**
 	 * Why a brick is or is not being held up, as the BUCKET everything else about it is read off.
 	 *
-	 * "THIS REF NAMES NO BRICK" IS ASKED FIRST AND "NOBODY HAS SOLVED YET" SECOND, AND BOTH
-	 * ORDERINGS ARE THE WHOLE POINT OF THE FUNCTION.
+	 * "This ref names no brick" is asked first and "nobody has solved yet" second, and both
+	 * orderings are the whole point of the function. A brick a removal took, a ref naming
+	 * another wall and a ref missing a half all come back bIsPiece false — and the bucket
+	 * that falls out of the guard below for one of those is NotSolved, which promises the
+	 * brick is there and indistinguishable from every live row on a freshly built wall. So a
+	 * ref naming nothing says exactly that, before anything is read off the enumerators.
 	 *
-	 * A brick a removal took, a ref naming another wall and a ref missing a half all come
-	 * back bIsPiece false with a default support answer — and the bucket that falls out of
-	 * the guard below for one of those is NotSolved, which promises the brick is there and
-	 * that a solve is all it is waiting for. On a freshly built wall it is also
-	 * indistinguishable from every live row on the panel. So a ref that names nothing says
-	 * exactly that, and says it before anything is read off the enumerators.
+	 * EPieceSupport::Falling is then both a real collapse and an absent answer, deliberately,
+	 * because enumerator zero has to promise least — so a readout going straight to the
+	 * enumerator would draw a freshly built, never-solved wall as a column of falling bricks.
 	 *
-	 * EPieceSupport::Falling is then both a real collapse and an absent answer —
-	 * deliberately, because enumerator zero has to promise least — so a readout that went
-	 * straight to the enumerator would draw a freshly built, never-solved wall as a column
-	 * of falling bricks: a catastrophe reported that has not happened.
-	 *
-	 * ONE FUNCTION FOR THE ENTRY ROW AND FOR THE READOUT UNDER IT, WHICH IS WHY THE FIRST
-	 * GUARD LIVES HERE RATHER THAN AT THE ONE CALL SITE THAT CAN REACH IT. Two inches apart
-	 * on one panel, one brick may not read "supported" in the list and something else over
-	 * its joints, and two derivations of one question are how that happens.
+	 * One function for the entry row and the readout under it, which is why the first guard
+	 * lives here rather than at the one call site that can reach it: two inches apart on one
+	 * panel, one brick may not read "supported" in the list and something else over its joints.
 	 */
 	EPieceSupportBand PresenterSupportBand(const FPieceInspection& Inspection)
 	{
@@ -154,18 +139,17 @@ namespace
 	}
 
 	/**
-	 * That bucket in the words a player reads — AND THE BUCKET IS THE ONLY THING IT ASKS.
+	 * That bucket in the words a player reads — and the bucket is the only thing it asks.
 	 *
-	 * THE WORD IS DERIVED FROM THE BUCKET RATHER THAN BESIDE IT, WHICH IS WHAT MAKES THE TWO
-	 * UNABLE TO DISAGREE. The dot on a row and the word beside it answer one question, and a
-	 * model that decided each from the inspection separately would be two derivations of that
-	 * question sitting a few pixels apart — a row reading "grounded" next to the colour this
-	 * game uses for a brick that is coming down. Core/PieceMenu.h says at length why the bucket
-	 * exists at all; this is the half that keeps it honest.
+	 * The word is derived from the bucket rather than beside it, which is what makes the two
+	 * unable to disagree: a model that decided each from the inspection separately would be
+	 * two derivations of one question sitting a few pixels apart — a row reading "grounded"
+	 * next to the colour this game uses for a brick that is coming down (Core/PieceMenu.h
+	 * says at length why the bucket exists at all).
 	 *
-	 * ONE SENTENCE PER BUCKET, INCLUDING THE TWO THAT ARE NOT PHYSICAL STATES. Two buckets
+	 * One sentence per bucket, including the two that are not physical states: two buckets
 	 * sharing a sentence would make them indistinguishable to a reader while still being two
-	 * colours, which is the worst of both.
+	 * colours, the worst of both.
 	 */
 	FString PresenterWordForSupportBand(EPieceSupportBand Band)
 	{
@@ -183,14 +167,12 @@ namespace
 	}
 
 	/**
-	 * How many joints a brick has, in words — INCLUDING WHEN IT HAS NONE.
+	 * How many joints a brick has, in words — including when it has none.
 	 *
-	 * AN EMPTY LIST GETS A SENTENCE, exactly as CountText's "No bricks selected" does, and
-	 * for the same reason: a widget left to notice Joints.Num() == 0 for itself would hold
-	 * a decision in the one place no test can reach. An isolated grounded pad is a real
-	 * brick with nothing joined to it, and that is a fact about the brick rather than an
-	 * absence of data. Singular and plural are decided here too — "1 joints" is the same
-	 * branch wearing a smaller coat.
+	 * An empty list gets a sentence, exactly as CountText's "No bricks selected" does: an
+	 * isolated grounded pad is a real brick with nothing joined to it, a fact about the
+	 * brick rather than an absence of data. Singular and plural are decided here too —
+	 * "1 joints" is the same branch wearing a smaller coat.
 	 */
 	FString PresenterWordForJointCount(int32 JointCount)
 	{
@@ -210,10 +192,10 @@ namespace
 	/**
 	 * How many bricks a row will act on, as a noun phrase — "1 brick", "11 bricks".
 	 *
-	 * SINGULAR AND PLURAL ARE DECIDED HERE FOR THE REASON CountText'S ARE: "1 bricks" is a
+	 * Singular and plural are decided here for the reason CountText's are: "1 bricks" is a
 	 * branch, and a branch in Slate is untested by construction. There is no wording for
-	 * nothing at all, and that is not an omission — a row that exists always carries at
-	 * least one ref, because a menu with no target is a button with nothing behind it.
+	 * nothing at all — a row that exists always carries at least one ref, since a menu
+	 * with no target is a button with nothing behind it.
 	 */
 	FString PresenterWordForTargetCount(int32 BrickCount)
 	{
@@ -223,27 +205,24 @@ namespace
 	}
 
 	/**
-	 * WHAT A PIECE IS MADE OF, NAMED BY WHICH LIBRARY ROW IT IS AND NEVER BY ITS NUMBERS.
+	 * What a piece is made of, named by which library row it is and never by its numbers.
 	 *
-	 * IDENTITY, NOT EQUALITY, AND THE TWO ARE NOT THE SAME QUESTION. "What shipped profile is
-	 * this piece built from" is a question about which row: a profile field-for-field equal to
-	 * ClayBrick is still a different row the moment one of the two is retuned, and a lookup that
-	 * compared numbers would confidently call it a clay brick until the day that happened. The
-	 * address is what BuildMode::PlacePiece stores — BuildPieceMaterial hands out a reference to
-	 * the shipped constant precisely so a retune reaches every brick — so the address is what
-	 * this asks.
+	 * Identity, not equality: "what shipped profile is this piece built from" is a question
+	 * about which row, and a profile field-for-field equal to ClayBrick is still a different
+	 * row the moment one of the two is retuned. The address is what BuildMode::PlacePiece
+	 * stores — BuildPieceMaterial hands out a reference to the shipped constant precisely so
+	 * a retune reaches every brick — so the address is what this asks.
 	 *
-	 * THE LIBRARY IS WALKED RATHER THAN THE THREE EXTERNS COMPARED, so a material stays DATA.
-	 * A chain of `== &DestructionProfiles::ClayBrick` tests here would be a branch per material
-	 * in a presenter, which is DESIGN §2's drift stated exactly — and its failure mode is quiet:
-	 * a fourth profile would read "Unknown material" with nothing to say why. Adding a row to
-	 * MaterialProfileLibrary is what names it here too.
+	 * The library is walked rather than the three externs compared, so a material stays
+	 * data: a chain of `== &DestructionProfiles::ClayBrick` tests would be a branch per
+	 * material in a presenter, and its failure mode is quiet — a fourth profile would read
+	 * "Unknown material" with nothing to say why.
 	 *
-	 * A PIECE NOBODY SAID WHAT IT IS MADE OF IS THE COMMON CASE RATHER THAN THE EXOTIC ONE.
-	 * DestructionLayout::RunningBond lays every wall in this game off a bare density and sets no
-	 * material at all, so the null arm is most of the pieces in the project; it reads as an
-	 * undescribed material rather than as a blank, because the size and the mass beside it are
-	 * still known and a readout that went silent would hide the two facts it has.
+	 * A piece nobody said what it is made of is the common case rather than the exotic one:
+	 * DestructionLayout::RunningBond lays every wall in this game off a bare density and sets
+	 * no material at all, so the null arm is most of the pieces in the project. It reads as
+	 * an undescribed material rather than a blank, since the size and mass beside it are
+	 * still known.
 	 */
 	FString PresenterWordForMaterial(const DestructionProfiles::FMaterialProfile* Material)
 	{
@@ -263,21 +242,19 @@ namespace
 	}
 
 	/**
-	 * A LENGTH IN CENTIMETRES, TO AT MOST TWO DECIMALS AND WITH NO TRAILING ZEROS.
+	 * A length in centimetres, to at most two decimals and with no trailing zeros.
 	 *
-	 * THE PRECISION IS A DECISION AND SO IS THE TRIMMING. A bare "%.2f" reads "67.50 × 10.25 ×
-	 * 10.00" for a wall plate, which is three numbers written to a precision nothing in this game
-	 * measures to, and a "%g" is right for these dimensions and wrong the first time one of them
-	 * needs three decimals — it would drop to scientific notation instead. Two decimals is the
-	 * coordinating grid's own resolution (the brick is 10.25 cm deep), and a whole number of
-	 * centimetres reads as one.
+	 * The precision is a decision and so is the trimming: a bare "%.2f" reads "67.50 ×
+	 * 10.25 × 10.00" for a wall plate, three numbers written to a precision nothing in this
+	 * game measures to, while "%g" is right for these dimensions and wrong the first time
+	 * one needs three decimals, dropping to scientific notation instead. Two decimals is
+	 * the coordinating grid's own resolution (the brick is 10.25 cm deep).
 	 *
-	 * THE TRIM STOPS AT THE POINT, WHICH IS WHY IT NEEDS NO GUARD AGAINST EATING A NUMBER'S OWN
-	 * ZEROS. "1000.00" loses two zeros and then meets the '.', which is not a '0', so the loop
-	 * ends and the point is chopped once — leaving "1000" rather than "1". The same property is
-	 * what lets a non-finite length through untouched: "%.2f" of a NaN is a word with no trailing
-	 * zeros and no point at all, so it stays visibly a word instead of being chopped into a
-	 * plausible number.
+	 * The trim stops at the point, which is why it needs no guard against eating a number's
+	 * own zeros: "1000.00" loses two zeros and then meets the '.', not a '0', so the loop
+	 * ends and the point is chopped once, leaving "1000" rather than "1". The same property
+	 * lets a non-finite length through untouched — "%.2f" of a NaN has no trailing zeros and
+	 * no point, so it stays visibly a word instead of being chopped into a plausible number.
 	 */
 	FString PresenterCentimetreText(double LengthCm)
 	{
@@ -297,23 +274,22 @@ namespace
 	}
 
 	/**
-	 * WHAT THE INSPECTED BRICK IS: its material, its size and its mass, as one composed line.
+	 * What the inspected brick is: its material, its size and its mass, as one composed line.
 	 *
-	 * THE SIZE IS THE BOX'S FULL DIMENSIONS, WHICH IS TWICE WHAT THE BINDING STORES.
-	 * FPieceBox::ExtentCm is a HALF size, matching FBox::GetExtent, so a readout printing it raw
-	 * presents a standard brick as 10.75 × 5.125 × 3.25 — a plausible-looking set of numbers for
-	 * a brick half the size of every brick in the game.
+	 * The size is the box's full dimensions, twice what the binding stores:
+	 * FPieceBox::ExtentCm is a half size, matching FBox::GetExtent, so a readout printing it
+	 * raw would present a standard brick as 10.75 × 5.125 × 3.25 — half the size of every
+	 * brick in the game.
 	 *
-	 * AND THE MASS IS THE PIECE'S OWN RATHER THAN A SECOND DERIVATION FROM THAT BOX.
-	 * FStructurePiece::MassKg is the number the solver routes as load; a readout that multiplied
-	 * the dimensions by a density again would be a third copy of DestructionLayout::PieceMassKg,
-	 * free to disagree with the physics it is describing. It is the same discipline
+	 * The mass is the piece's own rather than a second derivation from that box:
+	 * FStructurePiece::MassKg is the number the solver routes as load, and multiplying the
+	 * dimensions by a density again would be a third copy of DestructionLayout::PieceMassKg,
+	 * free to disagree with the physics it describes — the same discipline
 	 * Core/PieceInspection.h states about utilisation, one layer further out.
 	 *
-	 * ONE DECIMAL ON THE KILOGRAMS, which is a hundredth of the lightest piece this game lays and
-	 * the precision anybody would weigh a brick to. The unit conversion that catches everything
-	 * else in this project is nowhere near this line: density is g/cm3 and length is cm, both of
-	 * them Unreal's own units, and no force is computed here at all.
+	 * One decimal on the kilograms, a hundredth of the lightest piece this game lays and the
+	 * precision anybody would weigh a brick to. No conversion boundary here: density is
+	 * g/cm3 and length is cm, both Unreal's own units, and no force is computed here at all.
 	 */
 	FString PresenterIdentityLine(const FStructureBinding& Binding, int32 PieceIndex)
 	{
@@ -330,26 +306,22 @@ namespace
 	}
 
 	/**
-	 * HOW FAR APART TWO CENTRES MAY SIT IN Z AND STILL BE ONE COURSE.
+	 * How far apart two centres may sit in Z and still be one course.
 	 *
 	 * Half a centimetre, against a course pitch of 7.5 cm — the 6.5 cm brick this game lays
-	 * plus one mortar joint, which DestructionLayout::RunningBond computes. The band is
-	 * therefore a fifteenth of the smallest real gap between two courses: room enough for
-	 * float noise and a brick modelled a couple of millimetres off nominal, nowhere near
-	 * enough to swallow a course.
+	 * plus one mortar joint (DestructionLayout::RunningBond). A fifteenth of the smallest
+	 * real gap between two courses: room for float noise and a brick a couple of millimetres
+	 * off nominal, nowhere near enough to swallow a course.
 	 *
-	 * THE TWO FAILURE DIRECTIONS ARE NOT SYMMETRIC, which is why this is a band rather than
-	 * an equality and why it sits far closer to the tight end than the middle. Too tight and
-	 * a wall reads as eighty courses of one brick each — useless, and obviously useless. Too
-	 * loose and two real courses merge, at which point two DIFFERENT bricks compete for one
-	 * position number: the readout goes on looking perfectly ordinary while naming the wrong
-	 * brick, which is the whole failure the label rule exists to prevent.
+	 * The two failure directions are not symmetric, which is why this sits far closer to the
+	 * tight end than the middle: too tight and a wall reads as eighty courses of one brick
+	 * each, obviously useless; too loose and two real courses merge, so two DIFFERENT bricks
+	 * compete for one position number while the readout goes on looking ordinary.
 	 *
-	 * KNOWN SCALE ASSUMPTION, RECORDED RATHER THAN SOLVED: it is an absolute distance, so a
+	 * Known scale assumption, recorded rather than solved: it is an absolute distance, so a
 	 * structure built of pieces under about a centimetre tall would band its courses
 	 * together. Nothing in the game builds one, and the adaptive alternative — a fraction of
-	 * each piece's own height — makes "same course as" non-transitive across mixed sizes,
-	 * which would leave the banding depending on visiting order.
+	 * each piece's own height — makes "same course as" non-transitive across mixed sizes.
 	 */
 	constexpr double PresenterCourseToleranceCm = 0.5;
 
@@ -364,12 +336,11 @@ namespace
 	/**
 	 * Whether a centre can be banded and ordered at all.
 	 *
-	 * A NaN DOES NOT MERELY GET THE WRONG COURSE. Every comparison against one is false, so
+	 * A NaN does not merely get the wrong course: every comparison against one is false, so
 	 * it breaks the strict weak ordering the sort below is entitled to assume — undefined
-	 * behaviour rather than a bad label. An infinity orders perfectly well and then bands
-	 * into a course of its own whose NUMBER depends on where the sort happened to put it,
-	 * which is unstable as well as meaningless. Both are excluded here, so a piece nobody
-	 * can place neither takes a position nor disturbs anybody else's.
+	 * behaviour rather than a bad label. An infinity orders fine and then bands into a course
+	 * of its own whose number depends on where the sort put it, unstable as well as
+	 * meaningless. Both are excluded, so a piece nobody can place disturbs nobody else's.
 	 */
 	bool PresenterHasUsableCentre(const FVector& CentreCm)
 	{
@@ -381,12 +352,11 @@ namespace
 	/**
 	 * Along one course: X, then Y, then the piece handle.
 	 *
-	 * X ALONE IS NOT ENOUGH, and the case that breaks it is ordinary masonry rather than a
+	 * X alone is not enough, and the case that breaks it is ordinary masonry rather than a
 	 * pathological input: a wall two leaves thick puts two bricks of one course at the same
-	 * X, differing only in depth, and they would then share a position number — two
-	 * different bricks presenting as one string. Y settles those, and the handle settles two
-	 * pieces at exactly the same point, which no wall produces but a caller can hand in. The
-	 * result is a TOTAL order over a course's pieces, so no two of them can share an ordinal.
+	 * X, differing only in depth, so they would share a position number. Y settles those, and
+	 * the handle settles two pieces at exactly the same point — a total order, so no two
+	 * pieces of a course can share an ordinal.
 	 */
 	bool PresenterIsEarlierAlongCourse(
 		const FPresenterPlacedPiece& A,
@@ -408,13 +378,13 @@ namespace
 	/**
 	 * Every piece of a binding named by WHERE IT IS — "course 2 · #1" — in handle order.
 	 *
-	 * A POSITION, BECAUSE AN ARRAY SUBSCRIPT IS NOT A PLACE. "brick 4:282" says which slot
-	 * of which array a brick is in, which is exactly the thing a person standing in front of
-	 * a wall does not have and cannot check; a course and a place along it is how the wall
-	 * was built and how anybody would point at it. It is derivable HERE and only here —
-	 * FStructure is position-free on purpose, and the binding is the layer holding the boxes.
+	 * A position, because an array subscript is not a place: "brick 4:282" says which slot
+	 * of which array a brick is in, which a person standing in front of a wall cannot check,
+	 * while a course and a place along it is how the wall was built. Derivable here and only
+	 * here — FStructure is position-free on purpose, and the binding is the layer holding
+	 * the boxes.
 	 *
-	 * A HANDLE THIS BINDING CANNOT PLACE GETS AN EMPTY STRING, and the caller falls back to
+	 * A handle this binding cannot place gets an empty string, and the caller falls back to
 	 * the old ref-shaped label rather than inventing a position.
 	 */
 	TArray<FString> PresenterPositionLabels(const FStructureBinding& Binding)
@@ -426,11 +396,9 @@ namespace
 		Placed.Reserve(Binding.NumPieces());
 
 		/*
-		 * A REMOVED PIECE IS STILL PLACED, and FPieceBinding keeping the box of a piece that
-		 * has gone is exactly what that is for. A course that renumbered itself when a brick
-		 * was pulled out of it would change the name of every brick to that brick's right,
-		 * at the very moment a player is looking at them — a label may never depend on what
-		 * has been done to a neighbour.
+		 * A removed piece is still placed — FPieceBinding keeps its box for exactly this. A
+		 * course that renumbered itself when a brick was pulled out would rename every brick
+		 * to its right at the very moment a player is looking at them.
 		 */
 		for (int32 Handle = 0; Handle < Binding.NumPieces(); ++Handle)
 		{
@@ -454,14 +422,11 @@ namespace
 			});
 
 		/*
-		 * BANDED AGAINST THE COURSE'S OWN FLOOR, NEVER AGAINST THE PIECE BEFORE IT.
-		 *
-		 * Comparing each piece to its predecessor is the obvious loop and it is wrong in a
-		 * way nothing would notice: a run of pieces each a few millimetres above the last
-		 * CHAINS, so forty of them merge into one "course" spanning sixteen centimetres —
-		 * two real courses of a wall presented as one, with their position numbers
-		 * interleaved. Anchoring to the floor bounds a course's total spread at the
-		 * tolerance however many pieces arrive.
+		 * Banded against the course's own floor, never against the piece before it.
+		 * Comparing each piece to its predecessor is the obvious loop and wrong in a way
+		 * nothing would notice: a run of pieces each a few millimetres above the last CHAINS,
+		 * so forty of them merge into one "course" spanning sixteen centimetres. Anchoring to
+		 * the floor bounds a course's total spread at the tolerance however many pieces arrive.
 		 */
 		int32 Course = 0;
 		double CourseFloorZCm = 0.0;
@@ -488,9 +453,9 @@ namespace
 			});
 
 		/*
-		 * BOTH NUMBERS COUNT FROM ONE, because a person counting courses of brick starts at
-		 * one and always has. A zero-based course is the array subscript this label exists
-		 * to stop printing, wearing a different name.
+		 * Both numbers count from one, as a person counting courses of brick always does. A
+		 * zero-based course is the array subscript this label exists to stop printing,
+		 * wearing a different name.
 		 */
 		int32 PositionInCourse = 0;
 		int32 CurrentCourse = INDEX_NONE;
@@ -510,11 +475,10 @@ namespace
 	/**
 	 * How many newtons make one kilonewton.
 	 *
-	 * NOT A CONVERSION BOUNDARY, AND DELIBERATELY NOT NAMED LIKE ONE. Turning Unreal force
-	 * units into newtons is the boundary, it is DestructionPresenter::ForceUnitsPerNewton,
-	 * and it has already happened by the time anything here runs. A kilonewton is a thousand
-	 * newtons by definition of the prefix, so this is a choice of how to PRINT a number
-	 * rather than a change of what it means — which is why it lives beside the formatting.
+	 * Not a conversion boundary, deliberately not named like one: turning Unreal force units
+	 * into newtons is the boundary (DestructionPresenter::ForceUnitsPerNewton) and has
+	 * already happened by the time anything here runs. A kilonewton is a thousand newtons by
+	 * definition of the prefix, so this is a choice of how to print a number.
 	 */
 	constexpr double PresenterNewtonsPerKilonewton = 1000.0;
 
@@ -534,26 +498,24 @@ namespace
 
 	/**
 	 * What is levering this joint open, as a clause to hang off the end of its line — and
-	 * NOTHING AT ALL on a joint nothing is levering.
+	 * nothing at all on a joint nothing is levering.
 	 *
-	 * THE ABSENCE IS THE HALF THAT BITES. A settled wall bends nowhere: a brick on two
+	 * The absence is the half that bites: a settled wall bends nowhere, since a brick on two
 	 * symmetric bed patches has its centre of mass at the area-weighted centroid of its
-	 * supports, so the eccentricity is zero EXACTLY rather than nearly. Almost every joint a
-	 * player ever looks at therefore has nothing to say here, and a clause appended anyway
-	 * would make the common case worse to read for the sake of the rare one.
+	 * supports, so the eccentricity is zero exactly rather than nearly. Almost every joint a
+	 * player looks at has nothing to say here, so a clause appended anyway would make the
+	 * common case worse to read for the sake of the rare one.
 	 *
-	 * SO THE TEST IS AGAINST EXACT ZERO, WHICH IS A STATEMENT RATHER THAN A TOLERANCE — see
-	 * FStructure::GetConnectionMoment. A centred load, a piece nobody placed and a joint whose
-	 * rectangle nobody measured all produce it exactly. And the polarity is the one that keeps
-	 * a fault visible: a moment that is not a number is not equal to zero, so it prints its
-	 * clause rather than going quiet, which is the same direction the force and the per cent
-	 * beside it already take.
+	 * The test is against exact zero, a statement rather than a tolerance (see
+	 * FStructure::GetConnectionMoment) — a centred load, an unplaced piece and an unmeasured
+	 * rectangle all produce it exactly. The polarity keeps a fault visible: a moment that is
+	 * not a number is not equal to zero, so it prints its clause rather than going quiet, the
+	 * same direction the force and per cent beside it already take.
 	 *
-	 * N·cm, AND NO NEW CONVERSION BOUNDARY. The number arrives already converted by
-	 * DestructionPresenter::ForceUnitsPerNewton, applied once where ForceN is; a moment is
-	 * uu.cm and this game's length unit is the centimetre, so the centimetre rides through
-	 * untouched. Metres would collapse the interesting range — 313.6 N·cm is 3.136 N·m, where
-	 * one step of the last printed digit is a whole 10 N·cm.
+	 * N·cm, and no new conversion boundary: the number arrives already converted by
+	 * DestructionPresenter::ForceUnitsPerNewton, and a moment is uu.cm with length already in
+	 * centimetres, so the centimetre rides through untouched. Metres would collapse the
+	 * interesting range — 313.6 N·cm is 3.136 N·m, where one printed digit is a whole 10 N·cm.
 	 */
 	FString PresenterBendingText(double MomentNCm)
 	{
@@ -571,31 +533,27 @@ namespace
 	/**
 	 * How many times its load this joint could take, in words.
 	 *
-	 * WHY MARGIN AT ALL, WHEN THE PERCENTAGE IS ALREADY ON THE ROW. "0.049 %" means
-	 * something only to a reader who already knows that 100 % is failure and that masonry in
-	 * compression sits three or four orders of magnitude under it, and nothing on the panel
-	 * says either. "2041× margin" says the whole thing in a phrase. It is the RECIPROCAL of
-	 * a number already on the row rather than a second derivation, so the exact-equality
-	 * sweep the readout test holds ForceN and UtilisationPercent to keeps holding untouched.
+	 * Why margin at all, when the percentage is already on the row: "0.049 %" means
+	 * something only to a reader who already knows 100 % is failure and that masonry in
+	 * compression sits three or four orders of magnitude under it, while "2041× margin" says
+	 * the whole thing in a phrase. It is the reciprocal of a number already on the row rather
+	 * than a second derivation, so the exact-equality sweep the readout test holds ForceN and
+	 * UtilisationPercent to keeps holding.
 	 *
-	 * THE THREE READINGS THAT ARE NOT A NUMBER ARE THE POINT, because each is a state where
+	 * The three readings that are not a number are the point, since each is a state where
 	 * the plain reciprocal produces something plausible and wrong:
 	 *
-	 *   - A JOINT THAT HAS GIVEN carries nothing, so the arithmetic files it under "no
-	 *     load" — an intact unloaded joint and a hole in the wall reading identically, which
-	 *     is the exact defect FJointInspection::bHasGiven exists to prevent, reappearing one
-	 *     layer out in a new field.
-	 *   - A JOINT AT OR PAST ITS LIMIT divides into something no bigger than one, so the
-	 *     formula goes on answering: a joint at twice capacity reads "0.5× margin", which is
-	 *     the word MARGIN beside a joint that has none. At and past the limit are one
-	 *     sentence deliberately — both have nothing left, and a second wording would be a
-	 *     branch whose only purpose is decoration.
-	 *   - AN UNLOADED JOINT divides by zero. Infinite margin is true and useless.
+	 *   - A joint that has given carries nothing, so the arithmetic files it under "no
+	 *     load" — an intact unloaded joint and a hole in the wall reading identically, the
+	 *     defect FJointInspection::bHasGiven exists to prevent, reappearing one layer out.
+	 *   - A joint at or past its limit divides into something no bigger than one, so a
+	 *     joint at twice capacity would read "0.5× margin" — the word MARGIN beside a joint
+	 *     that has none. At and past the limit are one sentence deliberately.
+	 *   - An unloaded joint divides by zero. Infinite margin is true and useless.
 	 *
-	 * THE ORDER OF THE GUARDS IS THE FAIL-CLOSED ONE AND IS NOT FREE. Every comparison
-	 * against a NaN is false, so `!(Percent < Full)` is the branch a NaN falls into: a
-	 * degenerate utilisation reads as a joint with nothing left rather than as a healthy
-	 * one, which is the direction that is cheap to be wrong in.
+	 * The order of the guards is the fail-closed one and is not free: every comparison
+	 * against a NaN is false, so `!(Percent < Full)` is the branch a NaN falls into, reading
+	 * as a joint with nothing left rather than a healthy one — cheap to be wrong in.
 	 */
 	FString PresenterMarginText(double UtilisationPercent, bool bHasGiven)
 	{
@@ -628,12 +586,11 @@ namespace
 	/**
 	 * How many decades of margin the headroom bar spans.
 	 *
-	 * A LINEAR BAR IS EMPTY FOREVER, which is the whole reason the scale is logarithmic. A
-	 * settled brick wall sits near 0.0005 of capacity, so a bar drawn on utilisation
-	 * directly is a flat zero at every joint of every structure the game currently builds.
-	 * Full is 1000× margin, empty is the joint giving, and each decade is a third of the
-	 * bar. The consequence is that most joints peg it full, and that is honest: they
-	 * genuinely are three orders of magnitude from failing.
+	 * A linear bar is empty forever, the whole reason the scale is logarithmic: a settled
+	 * brick wall sits near 0.0005 of capacity, so a bar drawn on utilisation directly is a
+	 * flat zero at every joint of every structure the game builds today. Full is 1000×
+	 * margin, empty is the joint giving, and each decade is a third of the bar — so most
+	 * joints peg it full, honestly, since they genuinely are that far from failing.
 	 */
 	constexpr int32 PresenterHeadroomDecades = 3;
 
@@ -649,15 +606,13 @@ namespace
 	/**
 	 * How full one joint's headroom bar is, 0 to 1.
 	 *
-	 * UNLOADED IS FULL AND GIVEN IS EMPTY, which is the bar's copy of the rule bHasGiven
-	 * exists for: both read 0 N at 0 %, and one of them is a hole in the wall. Drawing a
-	 * full bar beside a hole is the single worst thing this panel could do, so the two ends
-	 * of the bar are exactly where the two states land.
+	 * Unloaded is full and given is empty — the bar's copy of the rule bHasGiven exists for:
+	 * both read 0 N at 0 %, and one is a hole in the wall, the single worst thing this panel
+	 * could draw as full.
 	 *
-	 * THE GUARDS RUN IN THE SAME ORDER AS PresenterMarginText'S, and for the same reason: a
-	 * NaN utilisation falls into `!(Percent < Full)` and empties the bar rather than filling
-	 * it. Asking "is it unloaded" first would fill it instead, because every comparison
-	 * against a NaN is false.
+	 * The guards run in the same order as PresenterMarginText's and for the same reason: a
+	 * NaN utilisation falls into `!(Percent < Full)` and empties the bar. Asking "is it
+	 * unloaded" first would fill it instead, since every comparison against a NaN is false.
 	 */
 	double PresenterHeadroomFraction(double UtilisationPercent, bool bHasGiven)
 	{
@@ -680,13 +635,13 @@ namespace
 	}
 
 	/**
-	 * WHERE A BAR STOPS BEING COMFORTABLE, AND WHERE IT BECOMES CRITICAL — as utilisations,
+	 * Where a bar stops being comfortable, and where it becomes critical — as utilisations,
 	 * because that is the number already on the row.
 	 *
-	 * Ten per cent of capacity is 10x margin and fifty per cent is 2x. They are stated in per
-	 * cent rather than in multiples so the guards below compare against UtilisationPercent
-	 * directly: a reciprocal taken first would divide by zero for the unloaded joint that is
-	 * the most comfortable one there is, and would then need a guard of its own to say so.
+	 * Ten per cent of capacity is 10x margin and fifty per cent is 2x, stated in per cent
+	 * rather than in multiples so the guards below compare against UtilisationPercent
+	 * directly — a reciprocal taken first would divide by zero for the unloaded joint that
+	 * is the most comfortable one there is.
 	 */
 	constexpr double PresenterCautionAtPercent = 10.0;
 	constexpr double PresenterCriticalAtPercent = 50.0;
@@ -694,20 +649,19 @@ namespace
 	/**
 	 * Which band a joint's bar is drawn in.
 	 *
-	 * A BUCKET RATHER THAN A COLOUR. Which side of 10x a joint sits on is a decision about
+	 * A bucket rather than a colour: which side of 10x a joint sits on is a decision about
 	 * what this game calls dangerous, and a widget comparing a fraction against two constants
-	 * would be holding that decision where nothing can read it. The hue stays the widget's.
+	 * would hold that decision where nothing can read it. The hue stays the widget's.
 	 *
-	 * AT AN EDGE THE JOINT TAKES THE WORSE BAND, WHICH IS WHY THE GUARDS RUN WORST FIRST AND
-	 * ARE WRITTEN NEGATED. It is the same shape as PresenterMarginText's "no margin left" at
-	 * exactly 1.0: over-promising is the expensive direction on a panel whose whole job is to
-	 * say what is about to fall down. And every comparison against a NaN is false, so a
-	 * degenerate utilisation falls into the FIRST guard and is drawn as critical rather than
-	 * as a joint three orders of magnitude from failing.
+	 * At an edge the joint takes the worse band, which is why the guards run worst first and
+	 * are written negated — the same shape as PresenterMarginText's "no margin left" at
+	 * exactly 1.0, since over-promising is the expensive direction on a panel whose job is to
+	 * say what is about to fall down. Every comparison against a NaN is false, so a
+	 * degenerate utilisation falls into the first guard and is drawn critical.
 	 *
-	 * A JOINT THAT HAS GIVEN IS CRITICAL WHATEVER ITS NUMBER SAYS. It carries nothing, so the
-	 * arithmetic alone files a hole in the wall under "the most comfortable state there is" —
-	 * which is exactly the defect bHasGiven exists to prevent, one field further out.
+	 * A joint that has given is critical whatever its number says: it carries nothing, so the
+	 * arithmetic alone would file a hole in the wall under the most comfortable state there
+	 * is — the defect bHasGiven exists to prevent, one field further out.
 	 */
 	EJointMarginBand PresenterMarginBand(double UtilisationPercent, bool bHasGiven)
 	{
@@ -730,10 +684,10 @@ namespace
 	}
 
 	/**
-	 * HOW MANY JOINT ROWS CAN CARRY A COLOUR AT ALL.
+	 * How many joint rows can carry a colour at all.
 	 *
-	 * SIX, AND IT IS THE WALL'S NUMBER RATHER THAN A ROUND ONE: a brick inside a running bond
-	 * is spanned by two above, rests on two below and has a head joint either side. A palette
+	 * Six, the wall's number rather than a round one: a brick inside a running bond is
+	 * spanned by two above, rests on two below and has a head joint either side. A palette
 	 * that ran out before then would leave the ordinary case half-coloured.
 	 */
 	constexpr int32 PresenterColourSlots = 6;
@@ -741,16 +695,15 @@ namespace
 	/**
 	 * Which colour slot a joint row takes, or nothing once the palette has run out.
 	 *
-	 * PER SLOT, NOT PER BRICK. Keyed on the far-end brick is what a reader assumes, and it
-	 * cannot be built: a wall is over a thousand bricks and a palette is a handful of legible
-	 * hues, so it must collide — and two rows in one colour is a lie about the single thing a
-	 * swatch says. Keyed on the ROW it never collides, at the price that one brick is the
-	 * first colour in one readout and the second in another.
+	 * Per slot, not per brick: keyed on the far-end brick is what a reader assumes, but a
+	 * wall is over a thousand bricks against a handful of legible hues, so it must collide —
+	 * two rows in one colour is a lie about the single thing a swatch says. Keyed on the row
+	 * it never collides, at the price that one brick is the first colour in one readout and
+	 * the second in another.
 	 *
-	 * AND PAST THE END, NOTHING RATHER THAN A WRAP. Wrapping is the tidy answer and it
-	 * reintroduces the collision this was chosen to avoid, on the brick with the most joints —
-	 * which is the brick being read hardest. An absent swatch is an absence; a repeated one is
-	 * a wrong answer.
+	 * Past the end, nothing rather than a wrap: wrapping reintroduces the collision on the
+	 * brick with the most joints, the one being read hardest. An absent swatch is an absence;
+	 * a repeated one is a wrong answer.
 	 */
 	int32 PresenterColourSlotFor(int32 RowIndex)
 	{
@@ -760,20 +713,18 @@ namespace
 	/**
 	 * The bar's decade ticks, low to high.
 	 *
-	 * A LOG AXIS WITH NO TICKS IS UNREADABLE BY CONSTRUCTION — the same visible fill means
-	 * 1000× on one panel and 3× on another, and nothing on screen says which. So they are
-	 * not decoration, and they are placed by the SAME curve the fill is, rather than by four
-	 * hand-written fractions: a caption promising a scale the arithmetic does not follow is
-	 * a plausible-looking picture over a wrong number.
+	 * A log axis with no ticks is unreadable by construction — the same visible fill means
+	 * 1000× on one panel and 3× on another. They are placed by the same curve the fill is,
+	 * rather than four hand-written fractions, so a caption cannot promise a scale the
+	 * arithmetic does not follow.
 	 */
 	/**
 	 * Whether both halves of a pixel measurement are numbers at all.
 	 *
-	 * WRITTEN SO A NaN ANSWERS false RATHER THAN SLIPPING THROUGH. FMath::IsFinite already rejects
-	 * both a NaN and an infinity, which is the pair that has to be caught before any comparison
-	 * runs: every comparison against a NaN is false, so FMath::Max DISCARDS one and FMath::Min
-	 * REPLACES it — either way a fault becomes a plausible offset a hundred pixels in, and nothing
-	 * on screen says the screen's own size was never known.
+	 * Written so a NaN answers false rather than slipping through. FMath::IsFinite rejects
+	 * both a NaN and an infinity — every comparison against a NaN is false, so FMath::Max
+	 * discards one and FMath::Min replaces it, either way turning a fault into a plausible
+	 * offset a hundred pixels in.
 	 */
 	bool PresenterPanelPixelsAreFinite(const FVector2D& ValuePx)
 	{
@@ -781,20 +732,17 @@ namespace
 	}
 
 	/**
-	 * Whether a size is a size — AND A NEGATIVE ONE IS NOT A SMALL PANEL.
+	 * Whether a size is a size — and a negative one is not a small panel.
 	 *
-	 * The permitted range is Viewport - Panel, so a negative subtrahend WIDENS it: a viewport of
-	 * -1080 px would let the corner be dragged further out than any real screen allows, which is
-	 * the fail-OPEN direction reached by arithmetic that reads perfectly reasonably on its own line.
+	 * The permitted range is Viewport - Panel, so a negative subtrahend WIDENS it: a
+	 * viewport of -1080 px would let the corner be dragged further out than any real screen
+	 * allows, the fail-open direction reached by arithmetic that reads reasonably on its own.
 	 *
-	 * STATED AS `>= 0.0` RATHER THAN AS `!(< 0.0)`, WHICH IS THE SAME RULE THE NEGATED GUARDS
-	 * ELSEWHERE IN THIS FILE FOLLOW AND NOT AN EXCEPTION TO IT. Both spellings exist to put a NaN
-	 * on the FAULT side; this one answers a question whose false is the fault, so the comparison is
-	 * the one a NaN fails. `!(X < 0.0)` would call a NaN a usable size.
-	 *
-	 * ZERO IS USABLE. A viewport of no size at all and a panel exactly as big as its screen both
-	 * leave a range of zero, which pins the corner to the origin — a real answer rather than a
-	 * degenerate one.
+	 * Stated as `>= 0.0` rather than `!(< 0.0)`, the same rule the negated guards elsewhere
+	 * in this file follow: this answers a question whose false is the fault, so the
+	 * comparison has to be the one a NaN fails. Zero is usable — a viewport of no size and a
+	 * panel exactly as big as its screen both leave a range of zero, pinning the corner to
+	 * the origin rather than a degenerate one.
 	 */
 	bool PresenterPanelSizeIsUsable(const FVector2D& SizePx)
 	{
@@ -804,19 +752,15 @@ namespace
 	/**
 	 * Whether a margin is a distance the panel can be stood off an edge by.
 	 *
-	 * A NEGATIVE MARGIN IS NOT A SMALLER MARGIN, WHICH IS THE WHOLE OF WHY THIS IS SEPARATE FROM
-	 * "is it finite". It is a distance that pushes the panel PAST the edge it was measured from —
-	 * a 640 px panel on a 1920 px screen at -24 px opens at 1304, twenty-four pixels of it hanging
-	 * off the right — and ClampPanelOffset would then quietly pull it back to 1280, so the fault
-	 * would be INVISIBLE rather than absent. It arrives from exactly the arithmetic a negative
-	 * viewport does, and it is refused for the same reason.
+	 * A negative margin is not a smaller margin, the whole reason this is separate from "is
+	 * it finite": it pushes the panel PAST the edge it was measured from — a 640 px panel on
+	 * a 1920 px screen at -24 px opens at 1304, hanging 24 px off the right — and
+	 * ClampPanelOffset would then quietly pull it back, so the fault would be invisible
+	 * rather than absent.
 	 *
-	 * ZERO IS USABLE: the panel's right edge flush against the viewport's is a real placement, and
-	 * it is the boundary the clamp already calls inside its own range.
-	 *
-	 * STATED AS `>= 0.0` RATHER THAN AS `!(< 0.0)`, exactly as PresenterPanelSizeIsUsable is and
-	 * for the same reason: this answers a question whose false is the fault, so the comparison has
-	 * to be the one a NaN fails.
+	 * Zero is usable: the panel's right edge flush against the viewport's is a real
+	 * placement. Stated as `>= 0.0` rather than `!(< 0.0)`, for the same reason
+	 * PresenterPanelSizeIsUsable is.
 	 */
 	bool PresenterPanelMarginIsUsable(double MarginPx)
 	{
@@ -826,15 +770,14 @@ namespace
 	/**
 	 * One axis of the panel's corner, pinned inside the room that axis has.
 	 *
-	 * THE NESTING IS THE WHOLE FUNCTION, AND IT IS Max(Min(...)) BECAUSE THE OTHER ORDER HANDS BACK
-	 * A NEGATIVE OFFSET. A panel wider than its screen makes LargestPx negative, and an inverted
-	 * range does not fail loudly: Min(Max(X, 0), Largest) returns Largest — the panel's own heading
-	 * off the left edge of the screen, the one corner that has to stay grabbable — while this order
-	 * returns 0. The two read identically at a glance, which is why the case is pinned by
-	 * Presenter.PanelOffsetClamp rather than left to whichever spelling somebody reaches for.
+	 * The nesting is the whole function, and it is Max(Min(...)) because the other order
+	 * hands back a negative offset: a panel wider than its screen makes LargestPx negative,
+	 * and Min(Max(X, 0), Largest) would return Largest — the panel's own heading off the
+	 * left edge of the screen — while this order returns 0. The two read identically at a
+	 * glance, which is why the case is pinned by Presenter.PanelOffsetClamp.
 	 *
-	 * SPELLED OUT RATHER THAN DEFERRED TO FMath::Clamp, WHICH HAPPENS TO BE THIS ORDER TODAY. That
-	 * is luck rather than a promise, and it is a promise this function needs.
+	 * Spelled out rather than deferred to FMath::Clamp, which happens to be this order
+	 * today — luck rather than a promise this function needs.
 	 */
 	double PresenterPanelAxisPinned(double DesiredPx, double LargestPx)
 	{
@@ -842,56 +785,48 @@ namespace
 	}
 
 	/*
-	 * HOW MUCH SCREEN THE FULL PANEL TAKES, AND NEITHER FIGURE IS PICKED.
+	 * How much screen the full panel takes, and neither figure is picked.
 	 *
-	 * THE WIDTH IS A MEASURED FLOOR PLUS A STATED CLEARANCE, AND THE FLOOR MOVED WHEN THE JOINT ROW
-	 * LEARNED TO NAME ITS PROFILE. The longest line this readout can compose is the bending clause
-	 * on the ragged corbel wall — the only wall shape that bends at all, and so the only one from
-	 * which this number is visible — which now reads "#4  course 3 · #1  bed above
-	 * generalpurposemortar  40.0 N  0.650 %  154× margin  150.0 N·cm bending" and overran the old
-	 * 640 px panel by 101 px. World.Menu.TheReadoutFitsInsideThePanel measures it.
+	 * The width is a measured floor plus a stated clearance. The longest line this readout
+	 * can compose is the bending clause on the ragged corbel wall (the only shape that bends
+	 * at all): "#4  course 3 · #1  bed above generalpurposemortar  40.0 N  0.650 %  154×
+	 * margin  150.0 N·cm bending", which overran the old 640 px panel by 101 px, measured by
+	 * World.Menu.TheReadoutFitsInsideThePanel.
 	 *
-	 * AND THE FLOOR IS SIZED FOR THE LONGEST *LIBRARY ROW*, NOT FOR THE FIXTURE'S. The measured
-	 * overrun is a line carrying `generalpurposemortar`; `generalpurposemortarperpend` is seven
-	 * characters longer and is in every bonded wall in the game, so the floor takes those seven
-	 * (about 39 px at this font) as well — otherwise the panel would fit the wall the test happens
-	 * to lay and clip the head joints of every other one. 640 + 101 + 39 = 780 is the floor. At 800
-	 * px the sweep MEASURES 59 px of spare on the mortar line, which is the perpend's 39 plus about
-	 * 20 px of real clearance: the same few characters of room the old figure kept.
+	 * The floor is sized for the longest *library row*, not the fixture's:
+	 * `generalpurposemortarperpend` is seven characters (about 39 px) longer than the
+	 * measured line's `generalpurposemortar` and is in every bonded wall in the game, so the
+	 * floor takes those seven too — otherwise the panel would clip every wall but the one the
+	 * test happens to lay. 640 + 101 + 39 = 780 is the floor; 800 px leaves a little real
+	 * clearance on top.
 	 *
-	 * THE HEIGHT IS A FIT RATHER THAN A MEASUREMENT: 560 px is about half a 1080 viewport, so the
-	 * brick list, the readout and the action rows are all on screen at once. It did not move —
-	 * naming the profile makes lines longer, never more numerous.
+	 * The height is a fit rather than a measurement: 560 px is about half a 1080 viewport, so
+	 * the brick list, readout and action rows are all on screen at once — it did not move,
+	 * since naming the profile makes lines longer, never more numerous.
 	 *
-	 * PINNED TO THE PIXEL BY Presenter.PieceMenuPanelSize, as characterisation rather than as a
-	 * claim it can check: a Full arm that quietly drifted would take the measured floor with it,
-	 * and the wall that can see that floor is expensive to build.
+	 * Pinned to the pixel by Presenter.PieceMenuPanelSize, as characterisation rather than a
+	 * claim it can check: a Full arm that quietly drifted would take the measured floor with it.
 	 */
 	constexpr double PresenterFullPanelWidthPx = 800.0;
 	constexpr double PresenterFullPanelHeightPx = 560.0;
 
 	/*
-	 * AND HOW MUCH THE COMPACT PANEL TAKES, WHICH IS A FLOOR OF ITS OWN RATHER THAN A FRACTION OF
-	 * THE FULL ONE. It was 0.7 of each axis of a 640 px panel; the full width has since moved to fit
-	 * a line COMPACT DOES NOT DRAW, so following it would spend screen on the one complaint this
-	 * mode exists to answer. The figures below are unchanged and their own measurement stands.
+	 * How much the compact panel takes, a floor of its own rather than a fraction of the full
+	 * one — it was 0.7 of a 640 px panel, but the full width has since moved to fit a line
+	 * COMPACT does not draw, so following it would spend screen on the complaint this mode
+	 * exists to answer ("it takes up so much of the screen"). Compact drops the joint table
+	 * and the headroom scale, leaving the brick list, whose widest row is a position label and
+	 * a support word in a fixed 150 px column anchored to the panel's right edge.
 	 *
-	 * THE PLAYER'S COMPLAINT, VERBATIM: "it takes up so much of the screen." Compact already drops
-	 * the joint table and the headroom scale, so the sentences that set the full width are gone;
-	 * what remains is the brick list, whose widest row is a position label and a support word set in
-	 * a fixed 150 px column anchored to the panel's right edge.
+	 * The binding constraint is not line containment but two lines on one row printing over
+	 * each other: the support word's own slack is a constant 71 px however narrow the panel
+	 * gets, and what runs out is the gap between "course 12 · #3" and the column walking left
+	 * toward it. Swept in World.Menu.TheReadoutFitsInsideThePanel, that gap closes at about
+	 * 231 px and is still 74 px clear at 380 px — 448 px is comfortably outside it.
 	 *
-	 * THE BINDING CONSTRAINT IS NOT LINE CONTAINMENT — IT IS TWO LINES ON ONE ROW PRINTING OVER EACH
-	 * OTHER, and that is the measurement this figure comes from. The support word's own slack is a
-	 * constant 71 px however narrow the panel gets, because it is measured against a right edge the
-	 * word is pinned to; what runs out is the gap between "course 12 · #3" and the column walking
-	 * left towards it. Swept in World.Menu.TheReadoutFitsInsideThePanel, that gap closes at about
-	 * 231 px of panel and is still 74 px clear at 380 px. 448 px is comfortably outside it.
-	 *
-	 * THE HEIGHT IS 0.7 OF THE FULL PANEL'S so the panel keeps a sensible shape rather than becoming
-	 * a band across the screen — EPieceMenuDetail::Compact has to be strictly smaller on BOTH axes,
-	 * and 448 x 392 against 800 x 560 leaves 39 % of the area, well inside the two thirds the mode's
-	 * own description of itself promises.
+	 * The height is 0.7 of the full panel's, so the panel keeps a sensible shape rather than
+	 * a band across the screen; 448 x 392 against 800 x 560 leaves 39 % of the area, well
+	 * inside the two thirds the mode promises.
 	 */
 	constexpr double PresenterCompactPanelWidthPx = 448.0;
 	constexpr double PresenterCompactPanelHeightPx = 392.0;
@@ -921,9 +856,8 @@ TArray<FPieceMenuRow> BuildPieceMenuRows(
 	const FPieceRef& Ref)
 {
 	/*
-	 * A MENU FOR ONE BRICK IS A MENU FOR A SELECTION OF ONE, spelled that way rather than
-	 * duplicated: a menu for one brick is not a different kind of menu, and a second copy
-	 * of the fail-closed rule below is a second policy free to drift from it.
+	 * A menu for one brick is a menu for a selection of one, spelled that way rather than
+	 * duplicated, so a second copy of the fail-closed rule below cannot drift from it.
 	 */
 	return BuildPieceMenuRows(Actions, TArrayView<const FPieceRef>(&Ref, 1));
 }
@@ -935,9 +869,9 @@ TArray<FPieceMenuRow> BuildPieceMenuRows(
 	TArray<FPieceMenuRow> Rows;
 
 	/*
-	 * NO SELECTION BUILDS NO ROWS. A menu with no target is a button with nothing behind
-	 * it, and a row that exists must always carry at least one piece to commit against —
-	 * which is also what lets everything below take Refs.Last() without a second guard.
+	 * No selection builds no rows. A menu with no target is a button with nothing behind it,
+	 * and a row that exists must always carry at least one piece — which also lets
+	 * everything below take Refs.Last() without a second guard.
 	 */
 	if (Refs.Num() == 0)
 	{
@@ -945,18 +879,16 @@ TArray<FPieceMenuRow> BuildPieceMenuRows(
 	}
 
 	/*
-	 * AND A REF MISSING EITHER HALF BUILDS NOTHING, however good the menu handed in was,
-	 * and however many of the other refs were perfect.
+	 * A ref missing either half builds nothing, however good the rest of the menu was. A
+	 * row is a COMMAND rather than a readout, and a default FPieceRef is both what a click
+	 * on the floor arrives as and what "we have no answer" looks like; offering the full
+	 * menu against one would put a Delete button on screen with nothing behind it. (Zero is
+	 * a real structure and piece — the first the game mode builds — so the sentinel is
+	 * tested by name rather than truthiness.)
 	 *
-	 * A row is a COMMAND waiting to be chosen rather than a readout, and a default FPieceRef
-	 * is both what a click on the floor arrives as and what "we have no answer" looks like.
-	 * Offering the full menu against one would put a Delete button on screen with nothing
-	 * behind it. Zero is a real structure and a real piece — the first one the game mode
-	 * builds — so the sentinel is tested for by name rather than by truthiness.
-	 *
-	 * The whole list goes rather than the bad entry, for the reason PieceActionsFor gives:
-	 * dropping one would put a button on screen that acts on fewer bricks than the player
-	 * picked, and nothing about that reads as a bug.
+	 * The whole list goes rather than the bad entry — dropping one would put a button on
+	 * screen that acts on fewer bricks than the player picked, and nothing about that reads
+	 * as a bug.
 	 */
 	for (const FPieceRef& Ref : Refs)
 	{
@@ -969,14 +901,14 @@ TArray<FPieceMenuRow> BuildPieceMenuRows(
 	Rows.Reserve(Actions.Num());
 
 	/*
-	 * ONE ROW PER ACTION, IN THE ORDER THEY WERE OFFERED, AND CanRun IS NOT CONSULTED.
-	 * PieceActionsFor is what decides which actions a piece may offer and it has already
-	 * run; asking again here would be a second, quieter copy of that policy.
+	 * One row per action, in the order offered, and CanRun is not consulted: PieceActionsFor
+	 * already decided which actions a piece may offer, and asking again would be a second,
+	 * quieter copy of that policy.
 	 */
 	for (const FPieceAction* const Action : Actions)
 	{
 		/*
-		 * A MALFORMED ROW IS SKIPPED RATHER THAN DEREFERENCED. AllPieceActions() cannot hold
+		 * A malformed row is skipped rather than dereferenced. AllPieceActions() cannot hold
 		 * one, but this takes an array from anywhere, and dereferencing a null row would
 		 * abort the whole run rather than dropping one entry.
 		 */
@@ -988,34 +920,31 @@ TArray<FPieceMenuRow> BuildPieceMenuRows(
 		FPieceMenuRow& Row = Rows.AddDefaulted_GetRef();
 
 		/*
-		 * THE ACTION IS CARRIED BY POINTER AND THE LABEL IS TAKEN FROM IT, never spelled
-		 * here: "which entry did they choose" is a pointer comparison against the shipped
-		 * table, which a copied row would break while keeping every label right.
+		 * The action is carried by pointer and the label taken from it, never spelled here:
+		 * "which entry did they choose" is a pointer comparison against the shipped table,
+		 * which a copied row would break while keeping every label right.
 		 */
 		Row.Label = FString(Action->Label);
 		Row.Action = Action;
 		Row.Refs.Append(Refs.GetData(), Refs.Num());
 
 		/*
-		 * AND WHETHER CHOOSING IT DESTROYS SOMETHING IS THE ACTION'S OWN FLAG, COPIED LIKE
-		 * Label IS AND NEVER RE-DECIDED. A widget styling a button by reading its caption
-		 * would be a policy written in string literals where no test can reach it, and it
-		 * would stop styling the day the caption is retuned.
+		 * Whether choosing it destroys something is the action's own flag, copied like Label
+		 * is and never re-decided — a widget styling a button by reading its caption would
+		 * be a policy no test can reach.
 		 */
 		Row.bIsDestructive = Action->bIsDestructive;
 
 		/*
-		 * AND WHAT IT WILL ACT ON, IN WORDS, DERIVED FROM THE SET IT COMMITS AGAINST. Taken
-		 * from Refs rather than from the selection the caller happens to remember, so a
-		 * button cannot promise to act on a different number of bricks than it will.
+		 * Taken from Refs rather than the selection the caller remembers, so a button
+		 * cannot promise to act on a different number of bricks than it will.
 		 */
 		Row.TargetText = PresenterWordForTargetCount(Row.Refs.Num());
 
 		/*
-		 * THE ANCHOR IS DERIVED FROM THE SET, NEVER STORED BESIDE IT — the same shape as
-		 * Label, which is a copy of the action's own text. A field naming a piece that is
-		 * not in the selection would be worse than no field, because it is what a per-brick
-		 * readout hangs off.
+		 * The anchor is derived from the set, never stored beside it — a field naming a
+		 * piece outside the selection would be worse than no field, since it is what a
+		 * per-brick readout hangs off.
 		 */
 		Row.Ref = Row.Refs.Last();
 	}
@@ -1032,26 +961,23 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	FPieceMenuInspector Inspector;
 
 	/*
-	 * THE HEADING IS SET BEFORE ANY OF THE FAIL-CLOSED ROUTES BELOW CAN TAKE, because it is the
-	 * one line that may not go quiet. A fixed panel is on screen while the selection is empty,
-	 * while a ref names another wall and while nothing has been solved, and a bare count over a
-	 * blank box reads as a readout that broke rather than as one with nothing to say.
+	 * The heading is set before any of the fail-closed routes below can take, since it is
+	 * the one line that may not go quiet: a fixed panel is on screen while the selection is
+	 * empty, while a ref names another wall and while nothing has been solved.
 	 */
 	Inspector.HeaderText = FString(PresenterPanelHeader);
 
 	/*
-	 * THE COUNT IS THE SELECTION'S OWN AND IT NEVER SHRINKS TO WHAT RESOLVES. A ref
-	 * naming another wall, one whose piece a cascade took and one missing a half all
-	 * still count: the player picked that many bricks and the highlights on screen are
-	 * drawn off the same set, so a count that quietly disagreed with them would be the
-	 * presenter contradicting itself.
+	 * The count is the selection's own and never shrinks to what resolves. A ref naming
+	 * another wall, one whose piece a cascade took, one missing a half — all still count,
+	 * since the highlights on screen are drawn off the same set and a count that quietly
+	 * disagreed with them would be the presenter contradicting itself.
 	 */
 	Inspector.SelectedCount = Selected.Num();
 
 	/*
-	 * SINGULAR AND PLURAL ARE DECIDED HERE, because "1 brick" against "1 bricks" is a
-	 * branch and a branch in the widget is untested by construction. Nothing picked is
-	 * its own sentence rather than "0 bricks selected", which reads as a fault.
+	 * Singular and plural are decided here, since "1 brick" against "1 bricks" is a branch
+	 * and a branch in the widget is untested by construction.
 	 */
 	if (Inspector.SelectedCount == 0)
 	{
@@ -1068,42 +994,36 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	}
 
 	/*
-	 * ONE ENTRY PER SELECTED BRICK, IN PICK ORDER, NEVER REORDERED AND NEVER
-	 * DEDUPLICATED. This is a PROJECTION of a list rather than a second implementation
-	 * of set semantics: FPieceSelection is what guarantees the set, and a presenter that
-	 * sorted or de-duped would look perfectly tidy while ceasing to agree with the order
-	 * the batched commit runs in.
+	 * One entry per selected brick, in pick order, never reordered and never deduplicated.
+	 * A projection of a list rather than a second implementation of set semantics:
+	 * FPieceSelection guarantees the set, and a presenter that sorted or de-duped would look
+	 * tidy while ceasing to agree with the order the batched commit runs in.
 	 */
 	Inspector.Pieces.Reserve(Selected.Num());
 
 	/*
-	 * AND EVERY LABEL NAMES WHERE THE BRICK IS — "course 2 · #1" — WHEN THIS BINDING CAN
-	 * PLACE IT.
-	 *
-	 * The table is built ONCE for the whole binding rather than per entry, because a
+	 * Every label names where the brick is — "course 2 · #1" — when this binding can place
+	 * it. The table is built once for the whole binding rather than per entry, since a
 	 * position is a fact about a piece's neighbours: naming one brick needs every brick.
 	 */
 	const TArray<FString> PositionLabels = PresenterPositionLabels(Binding);
 
 	/*
-	 * AND WHERE IT CANNOT, THE LABEL NAMES BOTH HALVES OF THE REF — "brick 9:1". A piece
-	 * index on its own is not an identity: two walls both have a brick 1, and a selection
-	 * can hold refs from more than one of them, so an unqualified label presents two
-	 * different bricks as one string — one of which singles out nothing when it is clicked.
+	 * Where it cannot, the label names both halves of the ref — "brick 9:1". A piece index
+	 * alone is not an identity: two walls both have a brick 1, and a selection can hold refs
+	 * from more than one, so an unqualified label would present two different bricks as one
+	 * string.
 	 *
-	 * THE FALLBACK IS THE OLD RULE KEPT WORD FOR WORD, AND THAT IS THE POINT RATHER THAN A
-	 * LEFTOVER. The rule it replaced was justified entirely by TOTALITY — two selected
-	 * bricks must never present as the same string — so the replacement has to keep that
-	 * promise for the refs that have no position here at all: one naming another wall, one
-	 * missing a half, and one whose box is a NaN. "brick 4:-1" prints an absent half as what
-	 * it is, which is not a piece index any wall can have, and no positioned brick can
-	 * collide with either shape. It is a debugger; unambiguous beats friendly.
+	 * The fallback is the old rule kept word for word, justified entirely by totality — two
+	 * selected bricks must never present as the same string — kept for refs with no position
+	 * here at all: one naming another wall, one missing a half, one whose box is a NaN.
+	 * "brick 4:-1" prints an absent half as what it is, not a piece index any wall can have,
+	 * so no positioned brick can collide with it.
 	 *
-	 * THE STRUCTURE IS CHECKED BEFORE THE HANDLE, for the reason FStructureBinding::Resolve-
-	 * Piece checks it first: an unidentified binding must match nothing, or a ref that never
-	 * learned who it belonged to would find it and be handed somebody's position. This
-	 * deliberately does NOT go through ResolvePiece, which fails closed on a REMOVED piece —
-	 * a hole in a wall is still somewhere, and its box is still there to say where.
+	 * The structure is checked before the handle, for the reason
+	 * FStructureBinding::ResolvePiece checks it first: an unidentified binding must match
+	 * nothing. This deliberately does not go through ResolvePiece, which fails closed on a
+	 * REMOVED piece — a hole in a wall is still somewhere, and its box still says where.
 	 */
 	const bool bLabelsAreThisStructure = Binding.StructureId != INDEX_NONE;
 
@@ -1122,51 +1042,40 @@ FPieceMenuInspector BuildPieceMenuInspector(
 			: FString::Printf(TEXT("brick %d:%d"), Ref.StructureId, Ref.PieceIndex);
 
 		/*
-		 * AND WHETHER IT STILL NAMES A BRICK IS InspectPiece'S QUESTION, ASKED OF EVERY
-		 * ENTRY RATHER THAN ONLY OF THE SINGLED-OUT ONE. It is deliberately not a
-		 * ResolvePiece call spelled out here: that would be a second, quieter copy of the
-		 * rule the breakout below already asks, and the two would eventually disagree about
-		 * which bricks exist. A RELEASED brick reads LIVE — it is still a piece in the graph
-		 * with a support state and a joint list, and what the MENU may do about it is
-		 * PieceActionsFor's intersection, already said by the rows going empty.
+		 * Whether it still names a brick is InspectPiece's question, asked of every entry
+		 * rather than only the singled-out one — a ResolvePiece call spelled out here would
+		 * be a second, quieter copy of the rule the breakout below already asks. A RELEASED
+		 * brick reads LIVE — still a piece in the graph — and what the menu may do about it
+		 * is PieceActionsFor's intersection, already said by the rows going empty.
 		 */
 		const FPieceInspection EntryInspection = InspectPiece(Binding, Ref);
 
 		Entry.bIsLivePiece = EntryInspection.bIsPiece;
 
 		/*
-		 * AND WHY THAT BRICK IS OR IS NOT STANDING UP, ON EVERY ROW RATHER THAN ONLY ON THE
-		 * ONE SINGLED OUT — OFF THE SAME INSPECTION, WHICH IS THE POINT OF TAKING IT AS A
-		 * LOCAL.
-		 *
-		 * Eleven picked bricks are eleven identical rows without it, and finding the falling
-		 * one means hovering each in turn while the model has the answer for all of them
-		 * already. A second InspectPiece call for the word would be a second scan of the
-		 * whole connection array per row for a question this one has answered.
-		 *
-		 * AND THE DOT BESIDE THE WORD IS THE SAME ANSWER RATHER THAN A SECOND ONE. The bucket is
-		 * asked once and the word is read off the bucket, so a row cannot say "grounded" in text
-		 * and draw the colour of a brick that is falling.
+		 * Why that brick is or is not standing up, on every row rather than only the one
+		 * singled out — off the same inspection, the point of taking it as a local. Eleven
+		 * picked bricks are eleven identical rows without it, and a second InspectPiece call
+		 * would be a second scan of the whole connection array for a question already
+		 * answered. The dot beside the word is the same answer rather than a second one, so
+		 * a row cannot say "grounded" in text and draw the colour of a brick that is falling.
 		 */
 		Entry.SupportBand = PresenterSupportBand(EntryInspection);
 		Entry.SupportText = PresenterWordForSupportBand(Entry.SupportBand);
 	}
 
 	/*
-	 * THE INSPECTED BRICK MUST BE A MEMBER OF THE SELECTION, AND THE MEMBERSHIP IS FOUND
-	 * AS AN INDEX RATHER THAN AS A BOOL. Marking by index marks exactly one entry however
-	 * many times the same brick was picked, so "at most one entry reads as inspected"
-	 * holds by construction instead of by a guard somebody has to remember. An anchor
-	 * outside the set it anchors is a readout of somebody else's brick — Core/PieceMenu.h
-	 * says why on FPieceMenuRow::Ref, and it does not weaken here.
+	 * The inspected brick must be a member of the selection, found as an index rather than
+	 * a bool: marking by index marks exactly one entry however many times the same brick
+	 * was picked, so "at most one entry reads as inspected" holds by construction. An
+	 * anchor outside the set it anchors is a readout of somebody else's brick.
 	 */
 	const int32 InspectedEntry = Selected.IndexOfByKey(InspectedRef);
 
 	/*
-	 * AND IT MUST BE A LIVE PIECE, WHICH IS InspectPiece'S QUESTION AND NOT A SECOND ONE.
-	 * A ref naming another structure, a ref missing a half and a piece a removal took all
-	 * come back bIsPiece false, so the default-constructed inspection below IS the
-	 * fail-closed answer: nothing singled out, nothing broken out, and no support word.
+	 * And it must be a live piece, InspectPiece's question and not a second one. A ref
+	 * naming another structure, one missing a half and a piece a removal took all come back
+	 * bIsPiece false, so the default-constructed inspection below IS the fail-closed answer.
 	 */
 	FPieceInspection Inspection;
 
@@ -1178,13 +1087,10 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	Inspector.bHasInspectedPiece = Inspection.bIsPiece;
 
 	/*
-	 * AND THE HINT BELONGS TO EXACTLY ONE OF THE THREE STATES A PANEL CAN BE IN, WHICH IS WHY
-	 * IT IS DECIDED HERE RATHER THAN BY A WIDGET NOTICING AN EMPTY BREAKOUT.
-	 *
-	 * Bricks picked and none pointed at is the state that needs it. A brick pointed at must NOT
-	 * carry it — a hint standing beside a live breakout is the stale-field defect this whole
-	 * struct is shaped against — and neither must an empty selection, where a player would be
-	 * sent to hunt a list with nothing in it and CountText already speaks for the state.
+	 * The hint belongs to exactly one of the three states a panel can be in. Bricks picked
+	 * and none pointed at is the state that needs it; a brick pointed at must NOT carry it
+	 * (the stale-field defect this struct is shaped against), and neither must an empty
+	 * selection, where CountText already speaks for the state.
 	 */
 	if (Inspector.SelectedCount > 0 && !Inspector.bHasInspectedPiece)
 	{
@@ -1200,70 +1106,56 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	Inspector.InspectedRef = InspectedRef;
 
 	/*
-	 * AND THE READOUT NAMES ITS OWN SUBJECT, IN THE ENTRY LIST'S OWN WORDS RATHER THAN BY A
-	 * SECOND DERIVATION OF THE SAME QUESTION. Two inches apart on one panel, one brick may not
-	 * be "course 2 · #1" in the list and something else over its joints — and the list scrolls,
-	 * so the entry a breakout belongs to can be out of sight entirely while the breakout stays.
-	 * Copied off the marked entry, so the two halves of the panel cannot drift apart.
+	 * The readout names its own subject, in the entry list's own words rather than a second
+	 * derivation: the list scrolls, so the entry a breakout belongs to can be out of sight
+	 * while the breakout stays. Copied off the marked entry, so the two halves cannot drift.
 	 */
 	Inspector.InspectedLabel = Inspector.Pieces[InspectedEntry].Label;
 
 	/*
-	 * AND WHAT THAT BRICK IS, BESIDE WHERE IT IS. The label above says which brick the readout is
-	 * about and has never said what it is made of, how big it is or what it weighs — so two pieces
-	 * of one wall differing by a whole material and a factor of four in weight present identically,
-	 * and a player asking why the timber held and the brick crushed has every number except the
-	 * ones that answer it.
+	 * What that brick is, beside where it is. The label above never says what it is made
+	 * of, how big it is or what it weighs, so two pieces of one wall differing by a whole
+	 * material and a factor of four in weight present identically.
 	 *
-	 * IT IS COMPOSED HERE FOR THE REASON EVERY OTHER STRING ON THIS STRUCT IS. Choosing a unit, a
-	 * precision and a separator is logic, and the menu widget was landed under a recorded exception
-	 * to the TDD gate on the condition that it holds none: a widget printing "2.72163125 kg" would
-	 * be the same defect as a widget picking its own colours.
+	 * Composed here for the reason every other string on this struct is: choosing a unit, a
+	 * precision and a separator is logic, and the menu widget was landed under a recorded
+	 * exception to the TDD gate on the condition it holds none.
 	 *
-	 * REACHED ONLY PAST THE bHasInspectedPiece RETURN ABOVE, so it is empty exactly when no brick
-	 * is singled out — the state SupportText and JointsText are already empty in, rather than a
-	 * fourth one — and the handle it reads is InspectPiece's own resolved answer, never the ref.
+	 * Reached only past the bHasInspectedPiece return above, so empty exactly when no brick
+	 * is singled out, and the handle it reads is InspectPiece's own resolved answer, never
+	 * the ref.
 	 */
 	Inspector.IdentityText = PresenterIdentityLine(Binding, Inspection.PieceIndex);
 
 	/*
-	 * AND THE READOUT'S OWN DOT AND WORD, OFF ONE BUCKET FOR THE REASON EVERY ENTRY ROW'S ARE.
-	 * This is reached only past the bHasInspectedPiece return above, so a panel with nothing
-	 * singled out keeps the field's default — NotAPiece, the one value claiming nothing — beside
-	 * the empty word, rather than a colour left over from the brick the cursor has left.
+	 * The readout's own dot and word, off one bucket for the reason every entry row's are:
+	 * a panel with nothing singled out keeps the field's default — NotAPiece — rather than
+	 * a colour left over from the brick the cursor has left.
 	 */
 	Inspector.SupportBand = PresenterSupportBand(Inspection);
 	Inspector.SupportText = PresenterWordForSupportBand(Inspector.SupportBand);
 
 	/*
-	 * THE JOINT LIST IS SUMMED UP BEFORE IT IS BROKEN OUT, AND IT IS A FACT ABOUT THE GRAPH
-	 * RATHER THAN ABOUT THE SOLVE. A brick nobody has solved for still has exactly the joints
-	 * it was built with, so this sentence must not go quiet with the support word — and a
-	 * brick with none still gets one, because "no joints" is the truth about an isolated pad
-	 * and a widget left to notice an empty array would be holding the branch.
+	 * The joint list is summed up before it is broken out, and it is a fact about the graph
+	 * rather than the solve: a brick nobody has solved for still has exactly the joints it
+	 * was built with, and a brick with none still gets a sentence, since "no joints" is the
+	 * truth about an isolated pad.
 	 */
 	Inspector.JointsText = PresenterWordForJointCount(Inspection.Joints.Num());
 
 	/*
-	 * AND A COMPACT READOUT STOPS HERE, WHICH IS EVERYTHING BELOW AND NOTHING ABOVE IT.
+	 * A compact readout stops here: everything below is exactly the per-joint table and the
+	 * scale that gives its bars meaning, so the cut is a placement rather than a filter.
 	 *
-	 * WHAT IS LEFT UNDER THIS LINE IS EXACTLY THE PER-JOINT TABLE AND THE SCALE THAT GIVES ITS BARS
-	 * A MEANING, so the cut is a placement rather than a filter — there is no second list to keep in
-	 * step with the first, and no field that could be trimmed here and left standing there.
+	 * It is after JointsText deliberately: "3 joints" is a sentence about the BRICK rather
+	 * than a row of the table, counted off InspectPiece's list rather than Inspector.Joints
+	 * — so a compact readout says the brick has three neighbours while showing none of them,
+	 * rather than reporting a trimmed list's count as a fact.
 	 *
-	 * IT IS AFTER JointsText DELIBERATELY. "3 joints" is a sentence about the BRICK rather than a
-	 * row of the table, it is the one line that says the table exists to be opened, and it is
-	 * counted off InspectPiece's list rather than off Inspector.Joints — so a compact readout says
-	 * the brick has three neighbours while showing none of them. Counting the trimmed list instead
-	 * would report a brick with three neighbours as having none, which reads as a fact rather than
-	 * as an absence.
-	 *
-	 * AND RETURNING BEFORE THE LOOP IS WHAT MAKES IT A SAVING. A mode that built every row and then
-	 * hid it would pay the whole price of the table for a panel that never draws it, which is the
-	 * argument for the mode being on the model at all rather than a collapsed slot in the widget.
-	 *
-	 * THE CAPTION AND THE TICKS NEED NO GUARD OF THEIR OWN: both are set only inside the "there is a
-	 * bar to label" block below, so a table that was never built cannot be labelled.
+	 * Returning before the loop is what makes it a saving: a mode that built every row and
+	 * then hid it would pay the whole price of the table for a panel that never draws it.
+	 * The caption and ticks need no guard of their own, since both are set only inside the
+	 * "there is a bar to label" block below.
 	 */
 	if (Detail == EPieceMenuDetail::Compact)
 	{
@@ -1271,15 +1163,12 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	}
 
 	/*
-	 * THE BREAKOUT IS InspectPiece'S ANSWER CONVERTED AND WORDED, ROW FOR ROW, IN ITS
-	 * ORDER. Nothing here re-derives a NUMBER: the tier, the force, the ratio and the two
-	 * break fields are read straight off the model, because a second derivation agrees to
-	 * nine decimal places forever and still differs in the last bit. (The one thing read
-	 * off the graph is the joint's PROFILE, which the inspection does not carry and which
-	 * is a fact about the wall rather than about the solve.) That includes the ADJACENCY —
-	 * a joint that has given is dropped
-	 * from the solver's support lists before the tier is even decided, and it is exactly
-	 * the row a player who just pulled a brick is looking for.
+	 * The breakout is InspectPiece's answer converted and worded, row for row, in its
+	 * order. Nothing here re-derives a number: the tier, force, ratio and the two break
+	 * fields are read straight off the model. (The one thing read off the graph is the
+	 * joint's PROFILE, which the inspection does not carry.) That includes the adjacency —
+	 * a joint that has given is dropped from the solver's support lists before the tier is
+	 * even decided, and it is exactly the row a player who just pulled a brick is looking for.
 	 */
 	Inspector.Joints.Reserve(Inspection.Joints.Num());
 
@@ -1290,9 +1179,9 @@ FPieceMenuInspector BuildPieceMenuInspector(
 		FInspectorJointRow& Row = Inspector.Joints.AddDefaulted_GetRef();
 
 		/*
-		 * THE SWATCH IS THE ROW'S OWN NUMBER, WHICH IS WHY IT IS TAKEN FROM THE LOOP RATHER
-		 * THAN FROM ANYTHING ABOUT THE JOINT. A colour keyed on the connection or on the brick
-		 * at the far end runs out at the first wall; keyed on the row it never can.
+		 * The swatch is the row's own number, taken from the loop rather than from anything
+		 * about the joint: a colour keyed on the connection or the far brick runs out at the
+		 * first wall; keyed on the row it never can.
 		 */
 		Row.ColourSlot = PresenterColourSlotFor(JointIndex);
 
@@ -1303,60 +1192,48 @@ FPieceMenuInspector BuildPieceMenuInspector(
 		Row.BreakPass = Joint.BreakPass;
 
 		/*
-		 * THE ONE UNIT CHANGE, AND THE ONLY PLACE ENTITLED TO IT. 1 N = 100 uu, named
-		 * once as DestructionPresenter::ForceUnitsPerNewton — NOT ForceUnitsPerMPaSqCm,
-		 * which is 10,000, this factor times cm2-to-mm2, and reaching for it would be a
-		 * clean 100x that a tuned-looking readout hides perfectly. Divided rather than
-		 * multiplied by 0.01, because 0.01 is not representable and the quotient is what
-		 * a decimal reading of the model's own number gives.
+		 * The one unit change, and the only place entitled to it: 1 N = 100 uu, named once as
+		 * DestructionPresenter::ForceUnitsPerNewton — not ForceUnitsPerMPaSqCm, which is
+		 * 10,000 (this factor times cm2-to-mm2), a clean 100x a tuned-looking readout would
+		 * hide perfectly. Divided rather than multiplied by 0.01, since 0.01 is not
+		 * representable and the quotient is what a decimal reading of the model gives.
 		 */
 		Row.ForceN = Joint.ForceUu.Size() / DestructionPresenter::ForceUnitsPerNewton;
 
 		/*
-		 * AND THE BEND THROUGH THE SAME CONSTANT, WHICH IS NOT A SECOND BOUNDARY. A moment is
-		 * uu.cm and length is already centimetres, so turning it into newton-centimetres is the
-		 * identical unit change the line above makes — "moments" merely sounds like it should
-		 * introduce one. The MAGNITUDE, for the reason ForceN takes one: which way a joint is
-		 * being levered open is not a thing a line of text says, and the worst corner is the
-		 * worst corner either way.
+		 * The bend through the same constant, not a second boundary: a moment is uu.cm and
+		 * length is already centimetres, so this is the identical unit change the line above
+		 * makes. The magnitude, for the reason ForceN takes one — which way a joint is being
+		 * levered open is not a thing a line of text says.
 		 */
 		Row.MomentNCm = Joint.MomentUuCm.Size() / DestructionPresenter::ForceUnitsPerNewton;
 
 		Row.UtilisationPercent = Joint.Utilisation * 100.0;
 
 		/*
-		 * AND THE MARGIN AND THE BAR ARE TRANSFORMS OF THE TWO NUMBERS ABOVE, NOT A THIRD
-		 * TRIP TO THE GRAPH. The reciprocal of a utilisation already on the row cannot
-		 * disagree with the per cent beside it, which is what keeps the exact-equality
-		 * sweep the readout test runs against InspectPiece holding unchanged.
+		 * The margin and the bar are transforms of the two numbers above, not a third trip
+		 * to the graph: the reciprocal of a utilisation already on the row cannot disagree
+		 * with the per cent beside it, which keeps the exact-equality sweep the readout test
+		 * runs against InspectPiece holding.
 		 */
 		Row.MarginText = PresenterMarginText(Row.UtilisationPercent, Row.bHasGiven);
 		Row.HeadroomFraction = PresenterHeadroomFraction(Row.UtilisationPercent, Row.bHasGiven);
 		Row.MarginBand = PresenterMarginBand(Row.UtilisationPercent, Row.bHasGiven);
 
 		/*
-		 * AND THE FAR END IS NAMED WHERE IT IS, OUT OF THE TABLE THE ENTRY LIST WAS NAMED
-		 * FROM RATHER THAN OFF A SECOND DERIVATION OF THE SAME QUESTION.
+		 * The far end is named where it is, out of the table the entry list was named from
+		 * rather than a second derivation. The row exists so a player can find the brick on
+		 * the OTHER side of the joint, and printing one two inches under "course 2 · #1" by
+		 * a different scheme would name bricks in one wall two ways; PositionLabels is a
+		 * lookup, so the two halves of the panel cannot disagree.
 		 *
-		 * The row exists so a player can find the brick on the OTHER side of the joint,
-		 * which is the one thing an index into FStructure's piece array cannot help anybody
-		 * do — and printing one two inches under "course 2 · #1" names bricks in a single
-		 * wall by two incompatible schemes. Working the course out again here would agree
-		 * with the entry list for as long as nobody touched either, which is the drift this
-		 * project has already paid for; PositionLabels is a lookup, so the two halves of the
-		 * panel cannot disagree.
+		 * A removed far end still names a place: FPieceBinding keeps the box of a piece
+		 * that has gone on purpose, so a severed joint says where the hole is.
 		 *
-		 * A REMOVED FAR END STILL NAMES A PLACE. FPieceBinding keeps the box of a piece that
-		 * has gone on purpose, so a severed joint says where the hole is instead of falling
-		 * back — which is the single most useful thing to say about a hole.
-		 *
-		 * AND THE FALLBACK IS THE ENTRY LABEL'S, WORD FOR WORD, down to the structure id: a
-		 * player reading "brick 21:13" in a joint row and in the list above has to be able to
-		 * tell it is one brick. That id is the BINDING'S because a far end is a bare handle in
-		 * the inspected brick's own structure — a joint row can never name another wall, and
-		 * can never be missing a half, so a box that says nowhere is the only route here at
-		 * all. The binding is identified by construction: an unidentified one resolves no ref,
-		 * so nothing would have been inspected and this loop would not be running.
+		 * The fallback is the entry label's, word for word, down to the structure id: a
+		 * player reading "brick 21:13" in a joint row and in the list above has to be able
+		 * to tell it is one brick. That id is the BINDING'S, since a far end is a bare
+		 * handle in the inspected brick's own structure and can never name another wall.
 		 */
 		const bool bFarEndIsPlaced = PositionLabels.IsValidIndex(Row.OtherPieceIndex)
 			&& !PositionLabels[Row.OtherPieceIndex].IsEmpty();
@@ -1366,30 +1243,23 @@ FPieceMenuInspector BuildPieceMenuInspector(
 			: FString::Printf(TEXT("brick %d:%d"), Binding.StructureId, Row.OtherPieceIndex);
 
 		/*
-		 * AND A JOINT THAT HAS GIVEN IS A DIFFERENT SENTENCE, NOT A DIFFERENT NUMBER. It
-		 * carries nothing, so it reads 0 N at 0 % — identical to an intact joint with
-		 * nothing on it, and one of those is a hole in the wall. Deciding that here is
-		 * what keeps the widget free of the branch.
+		 * A joint that has given is a different sentence, not a different number: it
+		 * carries nothing, so it reads 0 N at 0 %, identical to an intact unloaded joint.
+		 * Deciding that here keeps the widget free of the branch.
 		 *
-		 * AND THE BENDING CLAUSE TRAILS ITS NUMBER LIKE EVERY OTHER CLAUSE ON THE LINE —
-		 * "78.4 N", "49.000 %", "2.0× margin" are all <number> <word> — and it is EMPTY on
-		 * the joints that are not being levered open, which is almost all of them. Without it
-		 * a bent joint prints a force and a percentage with no arithmetic between them: 78.4 N
-		 * at 49 % of capacity beside 490.0 N at 1 %, and the term that reconciles them named
-		 * nowhere on the line.
+		 * The bending clause trails its number like every other clause on the line —
+		 * "78.4 N", "49.000 %", "2.0× margin" are all <number> <word> — and is empty on the
+		 * joints not being levered open, almost all of them. Without it a bent joint prints
+		 * a force and a percentage with no arithmetic between them.
 		 */
 		/*
-		 * AND WHAT HOLDS IT, BESIDE WHERE IT IS. The role says which face of the brick the joint is
-		 * on; this says what is IN it, which is the fact that decides whether the joint gives —
-		 * "bed below" is one sentence for a screwed plate and a dry-bedded one. It sits next to the
-		 * role because the two are one description of the joint, ahead of the three numbers that
-		 * describe its LOAD.
+		 * What holds it, beside where it is: the role says which face the joint is on, this
+		 * says what is IN it, the fact that decides whether the joint gives.
 		 *
-		 * READ OFF THE GRAPH RATHER THAN OFF THE INSPECTION, which is the one thing in this loop
-		 * that is. A profile is not a reading of the solve — a brick nobody has solved for is
-		 * fastened with exactly what it was built with — so there is no second derivation to drift
-		 * from: FJointInspection does not carry it, and giving it one would be adding a field to the
-		 * model so that the presenter could avoid a lookup.
+		 * Read off the graph rather than off the inspection, the one thing in this loop
+		 * that is: a profile is not a reading of the solve — a brick nobody has solved for
+		 * is fastened with exactly what it was built with — so there is no second
+		 * derivation to drift from. FJointInspection does not carry it.
 		 */
 		const FString ProfileWord =
 			PresenterWordForJointProfile(Binding.GetStructure(), Row.ConnectionIndex);
@@ -1408,13 +1278,10 @@ FPieceMenuInspector BuildPieceMenuInspector(
 	}
 
 	/*
-	 * AND THE BAR IS LABELLED EXACTLY WHEN THERE IS A BAR TO LABEL. A brick with no joints
-	 * draws none, so a caption beside it is a label on nothing — the same stale-field defect
-	 * as a joint breakout left over from the brick the player just deselected, wearing the
-	 * tidiest possible face.
-	 *
-	 * THE CAPTION QUOTES THE TOP OF THE SCALE RATHER THAN SPELLING IT AGAIN, so a bar
-	 * redrawn over a different number of decades cannot go on promising three.
+	 * The bar is labelled exactly when there is a bar to label: a brick with no joints
+	 * draws none, so a caption beside it would be a label on nothing. The caption quotes
+	 * the top of the scale rather than spelling it again, so a bar redrawn over a different
+	 * number of decades cannot go on promising three.
 	 */
 	if (Inspector.Joints.Num() > 0)
 	{
@@ -1431,15 +1298,12 @@ FPieceMenuInspector BuildPieceMenuInspector(
 FVector2D PieceMenuPanelSizePx(EPieceMenuDetail Detail)
 {
 	/*
-	 * COMPACT IS THE ONLY ARM THAT WITHHOLDS ANYTHING, AND EVERY OTHER ANSWER IS Full — INCLUDING
-	 * AN ENUMERATOR NOBODY DECLARED.
-	 *
-	 * EPieceMenuDetail is a uint8 and a cast is all it takes to produce one, so which arm an
-	 * unknown value falls into is a decision rather than an impossibility. Answering it with the
-	 * compact size would SUPPRESS numbers somebody asked for, which is the failure the enum's own
-	 * comment names as the reason Full is enumerator zero; answering it with the full size only
-	 * spends screen. So Full is the fall-through rather than a case, and the switch is left
-	 * exhaustive so that a mode added later is a compiler warning here instead of a silent Full.
+	 * Compact is the only arm that withholds anything, and every other answer is Full,
+	 * including an enumerator nobody declared: EPieceMenuDetail is a uint8 and a cast is all
+	 * it takes to produce one. Answering an unknown value with the compact size would
+	 * suppress numbers somebody asked for (the reason Full is enumerator zero); the full
+	 * size only spends screen. Full is the fall-through rather than a case, and the switch
+	 * is left exhaustive so a mode added later is a compiler warning here.
 	 */
 	switch (Detail)
 	{
@@ -1459,11 +1323,11 @@ FVector2D PieceMenuHomeOffset(
 	double MarginPx)
 {
 	/*
-	 * ANYTHING THAT IS NOT A NUMBER FAILS THE WHOLE VECTOR TO THE ORIGIN, RATHER THAN ONLY THE AXIS
-	 * IT ARRIVED ON — the same rule ClampPanelOffset states, and stated the same way because it is
-	 * the same fault: a screen whose edges are not known is one where half an answer looks
-	 * deliberate. FMath::Max DISCARDS a NaN and FMath::Min REPLACES it, so an unguarded version of
-	 * the subtraction below hands back a perfectly plausible corner.
+	 * Anything that is not a number fails the whole vector to the origin, rather than only
+	 * the axis it arrived on — the same rule ClampPanelOffset states, and the same fault: a
+	 * screen whose edges are not known is one where half an answer looks deliberate.
+	 * FMath::Max discards a NaN and FMath::Min replaces it, so an unguarded subtraction
+	 * below would hand back a plausible corner.
 	 */
 	if (!PresenterPanelPixelsAreFinite(PanelSizePx)
 		|| !PresenterPanelPixelsAreFinite(ViewportSizePx)
@@ -1473,9 +1337,9 @@ FVector2D PieceMenuHomeOffset(
 	}
 
 	/*
-	 * AND A NEGATIVE SIZE IS NOT A SMALL PANEL, NOR A NEGATIVE MARGIN A SMALL MARGIN. Both WIDEN
-	 * the room the subtraction thinks it has — the fail-OPEN direction, reached by arithmetic that
-	 * reads perfectly reasonably on the line it is written.
+	 * A negative size is not a small panel, nor a negative margin a small margin — both
+	 * WIDEN the room the subtraction thinks it has, the fail-open direction reached by
+	 * arithmetic that reads reasonably on its own line.
 	 */
 	if (!PresenterPanelSizeIsUsable(PanelSizePx)
 		|| !PresenterPanelSizeIsUsable(ViewportSizePx)
@@ -1485,20 +1349,17 @@ FVector2D PieceMenuHomeOffset(
 	}
 
 	/*
-	 * THE HOME ITSELF: the panel's right edge stands MarginPx in from the viewport's, and its
-	 * height is centred down the screen. The margin is horizontal only, because "centred" already
-	 * answers the vertical question and a margin applied to a centred axis does nothing.
+	 * The home itself: the panel's right edge stands MarginPx in from the viewport's, and
+	 * its height is centred down the screen. The margin is horizontal only, since "centred"
+	 * already answers the vertical question.
 	 *
-	 * PINNED AT ZERO ON EACH AXIS INDEPENDENTLY, WHICH IS WHY THIS IS NOT MERELY A SUBTRACTION. A
-	 * viewport narrower than the panel, or a margin wider than the room left over, makes the
-	 * subtraction NEGATIVE — the panel's own heading off the top-left of the screen, which is the
-	 * one corner that has to stay grabbable. Per axis rather than per vector because a panel too
-	 * wide for its screen is still centred down it.
+	 * Pinned at zero on each axis independently: a viewport narrower than the panel, or a
+	 * margin wider than the room left over, makes the subtraction NEGATIVE — the panel's
+	 * heading off the top-left of the screen, the one corner that has to stay grabbable.
 	 *
-	 * IT NEEDS NO UPPER PIN AND SO COMPOSES WITH ClampPanelOffset RATHER THAN RESTATING IT: the
-	 * margin is non-negative, so the X answer is never past Viewport - Panel, and half of a
-	 * non-negative gap is never past the whole of it. Clamping this again changes nothing, which is
-	 * what stops the panel jumping the first time it is picked up.
+	 * Needs no upper pin and so composes with ClampPanelOffset rather than restating it:
+	 * the margin is non-negative, so the X answer is never past Viewport - Panel, and half
+	 * of a non-negative gap is never past the whole of it.
 	 */
 	return FVector2D(
 		FMath::Max(ViewportSizePx.X - PanelSizePx.X - MarginPx, 0.0),
@@ -1511,13 +1372,10 @@ FVector2D ClampPanelOffset(
 	FVector2D ViewportSizePx)
 {
 	/*
-	 * ANYTHING THAT IS NOT A NUMBER FAILS THE WHOLE VECTOR TO THE ORIGIN, RATHER THAN ONLY THE AXIS
-	 * IT ARRIVED ON.
-	 *
-	 * A viewport whose height is not a number is a screen whose edges are not known, and half an
-	 * answer against a screen of unknown size is worse than the default position — it looks
-	 * deliberate. Zero is a corner that is always on screen and is always grabbable, which is the
-	 * only property the fallback has to have.
+	 * Anything that is not a number fails the whole vector to the origin, rather than only
+	 * the axis it arrived on: a viewport whose height is not a number is a screen whose
+	 * edges are not known, and half an answer against it looks deliberate. Zero is a corner
+	 * that is always on screen and always grabbable.
 	 */
 	if (!PresenterPanelPixelsAreFinite(DesiredOffsetPx)
 		|| !PresenterPanelPixelsAreFinite(PanelSizePx)
@@ -1532,8 +1390,9 @@ FVector2D ClampPanelOffset(
 	}
 
 	/*
-	 * AND THE TWO AXES ARE PINNED INDEPENDENTLY. A drag past the right edge must not also reset the
-	 * vertical position, or a player dragging along one edge would see the panel jump on the other.
+	 * The two axes are pinned independently: a drag past the right edge must not also
+	 * reset the vertical position, or a player dragging along one edge would see the panel
+	 * jump on the other.
 	 */
 	return FVector2D(
 		PresenterPanelAxisPinned(DesiredOffsetPx.X, ViewportSizePx.X - PanelSizePx.X),
@@ -1543,10 +1402,9 @@ FVector2D ClampPanelOffset(
 EJointMarginBand WorstJointBandForPiece(const FStructure& Structure, int32 PieceIndex)
 {
 	/*
-	 * ONE QUESTION CLOSES EVERY HANDLE THAT NAMES NOTHING, exactly as InspectPiece's does:
-	 * IsPieceRemoved already answers true for a negative handle, INDEX_NONE, a handle past the end
-	 * and a piece the player pulled out, so a second, weaker copy of that rule here would be one
-	 * more place for the four to come apart.
+	 * One question closes every handle that names nothing, exactly as InspectPiece's does:
+	 * IsPieceRemoved already answers true for a negative handle, INDEX_NONE, a handle past
+	 * the end and a piece the player pulled out.
 	 */
 	if (Structure.IsPieceRemoved(PieceIndex))
 	{
@@ -1554,14 +1412,12 @@ EJointMarginBand WorstJointBandForPiece(const FStructure& Structure, int32 Piece
 	}
 
 	/*
-	 * AND A STRUCTURE NOTHING HAS SOLVED IS NOT A COMFORTABLE ONE.
-	 *
-	 * GetConnectionUtilisation answers ZERO before any load has been routed — its contract says so —
-	 * so reading it straight would paint an untouched wall green from end to end, drawing "no data"
-	 * as "three orders of magnitude of headroom". HasSupportAnswer is the one accessor that can tell
-	 * the two apart: the support array is sized by SolveLoads and by nothing else, so its extent IS
-	 * the set of handles the last solve answered for. A piece added since that solve reads false and
-	 * lands here too, which is the same fail-closed direction.
+	 * A structure nothing has solved is not a comfortable one: GetConnectionUtilisation
+	 * answers ZERO before any load has been routed, so reading it straight would paint an
+	 * untouched wall green end to end, drawing "no data" as headroom. HasSupportAnswer is
+	 * the one accessor that can tell the two apart — the support array is sized by
+	 * SolveLoads and nothing else, so its extent IS the set of handles the last solve
+	 * answered for.
 	 */
 	if (!Structure.HasSupportAnswer(PieceIndex))
 	{
@@ -1569,14 +1425,11 @@ EJointMarginBand WorstJointBandForPiece(const FStructure& Structure, int32 Piece
 	}
 
 	/*
-	 * AND THE SOLVE IS ASKED WHETHER ANYTHING IS HOLDING THIS PIECE UP BEFORE ITS JOINTS ARE ASKED
-	 * ANYTHING AT ALL.
-	 *
-	 * A piece with no path to the earth is Critical whatever its joints read, and that is the
-	 * ordinary shape of a wall coming down rather than a degenerate case: the load path is severed,
-	 * so what is left hanging off the piece is an unloaded joint reading a fraction of a per cent —
-	 * a brick in mid-air drawn as the safest thing on the wall. The support array costs nothing
-	 * extra, because the solve the overlay already reads writes it on the way past.
+	 * The solve is asked whether anything is holding this piece up before its joints are
+	 * asked anything at all. A piece with no path to the earth is Critical whatever its
+	 * joints read — the ordinary shape of a wall coming down, where what's left hanging off
+	 * the piece is an unloaded joint reading a fraction of a per cent: a brick in mid-air
+	 * drawn as the safest thing on the wall.
 	 */
 	if (!Structure.IsPieceSupported(PieceIndex))
 	{
@@ -1584,22 +1437,15 @@ EJointMarginBand WorstJointBandForPiece(const FStructure& Structure, int32 Piece
 	}
 
 	/*
-	 * THE WORST OF THE PIECE'S OWN JOINTS, BUCKETED ONE AT A TIME BY THE FUNCTION THE ROWS USE.
+	 * The worst of the piece's own joints, bucketed one at a time by the function the rows
+	 * use. Written this way round so that PresenterMarginBand is the only thing that ever
+	 * compares a number against the two edges: an FMath::Max taken over utilisations
+	 * instead would discard a NaN (DESIGN §4), letting a degenerate joint vanish rather
+	 * than reading Critical through PresenterMarginBand.
 	 *
-	 * Banding each joint and taking the worst is the same answer as banding the worst utilisation —
-	 * the bucketing is monotone — and it is written this way round so that PresenterMarginBand is
-	 * the only thing that ever compares a number against the two edges. A max taken here would be
-	 * an FMath::Max over a utilisation that may be a NaN, and DESIGN §4 is explicit that Max
-	 * DISCARDS a NaN: the degenerate joint would vanish and the piece would come out of this
-	 * function wearing whatever the other joints said. Through PresenterMarginBand a NaN falls into
-	 * the first negated guard and the piece reads Critical, which is the direction that costs
-	 * nothing but a red brick.
-	 *
-	 * A JOINT THAT HAS GIVEN IS SKIPPED, WHICH IS THE ONE PLACE THIS RULE DIFFERS FROM THE ROW'S.
-	 * The row says "this joint is gone" and draws it Critical, which is right for a row. Carried
-	 * into a PIECE aggregate the same rule paints every neighbour of every deleted brick red, and a
-	 * wall that turns red wherever the player has already pulled is an instrument reporting its own
-	 * history instead of the load.
+	 * A joint that has given is skipped, the one place this rule differs from the row's: a
+	 * row says "this joint is gone" and Critical is right for it, but carried into a PIECE
+	 * aggregate the same rule would paint every neighbour of every deleted brick red.
 	 */
 	EJointMarginBand Worst = EJointMarginBand::Comfortable;
 	bool bAnyLiveJoint = false;
@@ -1620,10 +1466,7 @@ EJointMarginBand WorstJointBandForPiece(const FStructure& Structure, int32 Piece
 
 		bAnyLiveJoint = true;
 
-		/*
-		 * bHasGiven is false BECAUSE THE GIVEN ONES ARE ALREADY GONE, not because it is being
-		 * ignored — the skip above is the whole of that decision and this argument only restates it.
-		 */
+		// bHasGiven is false because the given ones are already gone (skipped above).
 		const EJointMarginBand Band = PresenterMarginBand(
 			100.0 * Structure.GetConnectionUtilisation(Index), /*bHasGiven*/ false);
 
@@ -1634,11 +1477,11 @@ EJointMarginBand WorstJointBandForPiece(const FStructure& Structure, int32 Piece
 	}
 
 	/*
-	 * AND A SUPPORTED PIECE WITH NOTHING LEFT TO READ IS NOT A PIECE IN TROUBLE. A brick with no
-	 * joints at all — the first one a player lays on the earth — and one whose every joint has given
-	 * both arrive here, and the guard above has already established that something is holding this
-	 * one up. There is simply nothing to report about how hard it is working, and Critical would
-	 * paint the single brick on an empty plot bright red the moment it landed.
+	 * A supported piece with nothing left to read is not a piece in trouble: a brick with
+	 * no joints at all — the first one a player lays on the earth — and one whose every
+	 * joint has given both arrive here, with the guard above already establishing something
+	 * holds this one up. Critical would paint the single brick on an empty plot red the
+	 * moment it landed.
 	 */
 	return bAnyLiveJoint ? Worst : EJointMarginBand::Comfortable;
 }
