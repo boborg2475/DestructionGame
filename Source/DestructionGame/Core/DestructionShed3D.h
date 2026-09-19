@@ -6,37 +6,31 @@
 #include "Core/Layout.h"
 
 /**
- * THE 3D SHED BUILDER — SHED_PATH.md Phase F on top of THREED_DESIGN.md E1-E3: the first
- * GENUINELY-THREE-DIMENSIONAL authored shed, and the payoff of the 3D LP work. Where
- * DestructionShed::Build lays a flat X-Z CROSS-SECTION through the doorway, this lays a CLOSED
- * BOX — four brick walls in two orthogonal planes that brace each other at the corners, the one
- * structural fact a 2D section can never capture — a wood roof bearing on the wall heads, and the
- * front-door overhang on a wood post (the C2 mechanism, now posed out of the X-Z plane).
+ * The 3D shed builder: the first genuinely-three-dimensional authored shed. Where
+ * DestructionShed::Build lays a flat X-Z cross-section, this lays a closed box — four brick walls
+ * in two orthogonal planes that brace each other at the corners, the one structural fact a 2D
+ * section can never capture — a wood roof on the wall heads, and a front-door overhang on a wood
+ * post, now posed out of the X-Z plane.
  *
- * IT EMITS AN FBrickLayout AND FLAGS THE STRUCTURE 3D (FStructure::SetThreeDimensional), so a shed
- * reaches a world and the rigid-block LP through the same AdoptLayout door a wall and the 2D shed
- * do — and the bridge (E3) poses its out-of-plane (Y-normal) corner joints to the 3D LP rather than
- * refusing them.
+ * Emits an FBrickLayout and flags the structure 3D (FStructure::SetThreeDimensional), reaching a
+ * world and the rigid-block LP through the same AdoptLayout door a wall and the 2D shed do; the 3D
+ * bridge poses the out-of-plane (Y-normal) corner joints instead of refusing them.
  *
- * WORLD-FREE, like Core/Layout and Core/DestructionShed: boxes and doubles, no UWorld and no
- * UObject. One direction of inclusion — a test may include this; nothing from Tests/ may be
- * included here.
+ * World-free, like Core/Layout and Core/DestructionShed: boxes and doubles, no UWorld and no
+ * UObject. One direction of inclusion — a test may include this; nothing from Tests/ may be here.
  */
 namespace DestructionShed3D
 {
 	/**
-	 * The toy 3D shed, as data — a closed axis-aligned box, kept COARSE (a handful of blocks) so the
+	 * The toy 3D shed, as data — a closed axis-aligned box, kept coarse (a handful of blocks) so the
 	 * 3D LP stays in the tractable few-dozen-block band (THREED_DESIGN.md R-Scale) and every collapse
 	 * is hand-derivable.
 	 *
-	 * X is width, Y is depth (into the door), Z is height. Every wall is ONE grounded block, not a
-	 * course stack: four single blocks close the box and let the corner joints — the walls' shared,
-	 * out-of-plane (Y-facing) faces — be laid without a base/head split. Full-resolution walls are a
-	 * later, coarser-block slice (E4).
-	 *
-	 * Defaults describe the canonical toy shed the test builds. The side (left/right) walls fit
-	 * BETWEEN the back and front walls with a JointThicknessCm gap on the Y axis, so each corner is a
-	 * genuine face-sharing joint whose normal points along +/-Y.
+	 * X is width, Y is depth (into the door), Z is height. Every wall is one grounded block, not a
+	 * course stack, so the corner joints — the walls' shared, out-of-plane (Y-facing) faces — lay
+	 * without a base/head split. The side (left/right) walls fit between the back and front walls
+	 * with a JointThicknessCm gap on Y, so each corner is a genuine face-sharing joint whose normal
+	 * points along +/-Y. Defaults describe the canonical toy shed the test builds.
 	 */
 	struct FShed3DSpec
 	{
@@ -89,9 +83,9 @@ namespace DestructionShed3D
 		double PostWidthYCm = 12.0;
 
 		/**
-		 * Y of the post's centre, cm — OUTBOARD of the fixing so the overhang's weight wants to
-		 * rotate about the post with its back end lifting, forcing the fixing into TENSION. Neither
-		 * the post alone nor the fixing alone holds it; both together do (R-Overhang), now in 3D.
+		 * Y of the post's centre, cm — outboard of the fixing, so the overhang's weight rotates the
+		 * post with its back end lifting, forcing the fixing into tension. Neither the post alone
+		 * nor the fixing alone holds it; both together do (R-Overhang), now in 3D.
 		 */
 		double PostCentreYCm = 280.0;
 	};
@@ -106,36 +100,28 @@ namespace DestructionShed3D
 	bool Build(const FShed3DSpec& Spec, DestructionLayout::FBrickLayout& OutLayout);
 
 	/**
-	 * THE RECOGNIZABLE 3D SHED — the v2 geometry that reads as a shed rather than four grey blocks
-	 * and a plank. All axis-aligned (the 3D bridge requires axis-aligned contact normals): four brick
-	 * walls closing a box, a DOOR opening in the front wall (two piers carrying a Timber lintel), a
-	 * WINDOW opening in the left wall (a sill course, two jambs, a Timber lintel), STEPPED brick gables
-	 * on the front and back walls rising in symmetric centred courses to a ridge, a Timber roof of
-	 * stepped purlins and a ridge beam bearing on the gable shoulders, and a Timber porch overhang over
-	 * the door carried on two grounded Timber posts and a wall fixing. Flagged SetThreeDimensional.
-	 *
-	 * The canonical dimensions live inside the builder (the test pins them as local constants and reads
-	 * the laid layout back), so there is no spec to pass — a later slice may parameterise it.
+	 * The recognizable 3D shed — the v2 geometry that reads as a shed rather than four grey blocks
+	 * and a plank. All axis-aligned (the 3D bridge requires axis-aligned contact normals): four
+	 * brick walls closing a box, a door and a window opening (each with piers/jambs and a Timber
+	 * lintel), stepped brick gables rising to a ridge, a Timber roof of stepped purlins and a ridge
+	 * beam on the gable shoulders, and a Timber porch overhang on two grounded posts and a wall
+	 * fixing. Flagged SetThreeDimensional. Canonical dimensions live inside the builder as local
+	 * constants the test pins, so there is no spec to pass.
 	 *
 	 * Refuses by writing an empty layout; returns true when the shed was laid.
 	 */
 	bool BuildRecognizable(DestructionLayout::FBrickLayout& OutLayout);
 
 	/**
-	 * THE REALISTIC-BRICK SHED SHELL — the v3 rebuild at TRUE MASONRY RESOLUTION (the user's
-	 * "rebuild with bricks that are the size of actual bricks ... realistic size and build").
-	 * Where BuildRecognizable lays one coarse block per wall face, this lays four running-bond
-	 * walls of REAL 21.5 x 10.25 x 6.5 cm clay bricks on 1 cm mortar joints, single-brick-thick,
-	 * closing a box, with a DOOR opening in the front wall and a WINDOW opening in a side wall,
-	 * each a genuine gap carrying a real Timber-board lintel. Flagged SetThreeDimensional.
+	 * The realistic-brick shed shell — a rebuild at true masonry resolution: four running-bond
+	 * walls of real 21.5 x 10.25 x 6.5 cm clay bricks on 1 cm mortar joints, single-brick-thick,
+	 * closing a box, with a door and a window opening (each a genuine gap with a real Timber-board
+	 * lintel), stepped brick gables rising to a Timber roof of stepped purlins and a ridge, and a
+	 * Timber porch overhang on two grounded posts. Flagged SetThreeDimensional.
 	 *
 	 * At this resolution the shed is hundreds of blocks — above the equilibrium gate's block cap —
-	 * so the per-joint capacity sweep (the router), not the LP, is the break authority, exactly as
-	 * the flagship ~1200-block wall is handled. The canonical dimensions live inside the builder;
-	 * the test pins the sizing and reads the laid layout back.
-	 *
-	 * The stepped brick gables, the timber gable roof and the porch on two posts are a LATER slice
-	 * (see the test report); this first slice is the realistic-brick shell that stands.
+	 * so the per-joint capacity sweep (the router), not the LP, is the break authority, as with the
+	 * flagship ~1200-block wall. Canonical dimensions live inside the builder as local constants.
 	 *
 	 * Refuses by writing an empty layout; returns true when the shed was laid.
 	 */

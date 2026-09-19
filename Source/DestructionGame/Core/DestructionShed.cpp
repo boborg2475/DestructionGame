@@ -6,9 +6,9 @@
 #include "Core/Profiles/MaterialProfiles.h"
 
 /*
- * File-local names sit in the NAMED namespace, like Core/Corbel: an anonymous namespace is
- * private to a TRANSLATION UNIT rather than to a file, and a unity build merges many files
- * into one, so two file-local names that collide are a hard compile error between files that
+ * File-local names sit in the named namespace, like Core/Corbel: an anonymous namespace is
+ * private to a translation unit rather than to a file, and a unity build merges many files
+ * into one, so two colliding file-local names are a hard compile error between files that
  * never refer to each other. See CURRENT_STATE.md.
  */
 namespace DestructionShed
@@ -18,14 +18,10 @@ namespace DestructionShed
 	bool Build(const FShedSpec& Spec, DestructionLayout::FBrickLayout& OutLayout)
 	{
 		/*
-		 * EMPTIED FIRST AND FILLED LAST, exactly as the corbel and the wall producers do. A refused
-		 * spec must leave a caller who ignored the return value with nothing, rather than with
-		 * whatever was laid before the builder gave up.
-		 *
-		 * THE GUARDS ARE WRITTEN `!(x > 0.0)`, NEVER `x <= 0.0`, because every comparison against a
-		 * NaN is false: a NaN dimension would slip PAST the second spelling and be laid as a shed of
-		 * NaN-sized boxes whose every joint reads as intact. The wythe and the joint thickness are
-		 * the two lengths every piece and every bed share, so a bad one poisons the whole section.
+		 * Emptied first and filled last: a refused spec must leave a caller who ignored the return
+		 * value with nothing, not a partial lay. Guards are written `!(x > 0.0)`, never `x <= 0.0`
+		 * — every comparison against NaN is false, so `<= 0.0` would let a NaN dimension slip
+		 * through and lay a shed of NaN-sized boxes whose every joint reads intact.
 		 */
 		OutLayout = FBrickLayout();
 
@@ -39,11 +35,9 @@ namespace DestructionShed
 		}
 
 		/*
-		 * THE COORDINATES, WORKED FROM THE SPEC ONCE. X is depth (back pier toward front pier toward
-		 * the door, increasing X); Z is height; Y is the single wythe, centred on 0. Every Z boundary
-		 * carries a joint thickness of mortar or bearing gap above the piece below it, so the roof and
-		 * the overhang bottoms sit one JointThicknessCm clear of the heads and the post they land on —
-		 * which is exactly the separation MakeInterface reads as a bed joint.
+		 * Coordinates, worked from the spec once. X is depth (back pier toward front); Z is height;
+		 * Y is the single wythe, centred on 0. Every Z boundary carries a joint thickness above the
+		 * piece below it — the separation MakeInterface reads as a bed.
 		 */
 		const double HalfWytheCm = Spec.WytheCm / 2.0;
 
@@ -61,11 +55,9 @@ namespace DestructionShed
 		FBrickLayout Laid;
 
 		/*
-		 * ONE DOOR FOR EVERY PIECE: a box from its X and Z spans (Y is always the full wythe), the
-		 * mass derived from that same box via the shared PieceMassKg so a piece cannot weigh a
-		 * different size than it sits, and the authored material recorded so the cross-material
-		 * physics survives into play. The handle IS the box index — FBrickLayout's parallel-array
-		 * contract — so the box is appended in the same breath the piece is added.
+		 * One door for every piece: a box from its X and Z spans (Y is the full wythe), mass via the
+		 * shared PieceMassKg, and the material recorded so cross-material physics survives into
+		 * play. The handle is the box index (FBrickLayout's parallel-array contract).
 		 */
 		const auto AddPiece =
 			[&](double LeftXCm, double RightXCm, double BottomZCm, double TopZCm,
@@ -92,9 +84,8 @@ namespace DestructionShed
 		};
 
 		/*
-		 * A masonry pier is a grounded BASE (its fused lower courses) plus one removable HEAD course;
-		 * the roof and the overhang are the two timber beams; the post is the grounded timber under
-		 * the overhang's front. Seven pieces, laid back-to-front so the picture and the code agree.
+		 * A masonry pier is a grounded base (fused lower courses) plus one removable head course.
+		 * Seven pieces, laid back-to-front so the picture and the code agree.
 		 */
 		const int32 BackBase = AddPiece(
 			Spec.BackPierLeftCm, Spec.BackPierLeftCm + Spec.PierWidthCm,
@@ -129,12 +120,10 @@ namespace DestructionShed
 		}
 
 		/*
-		 * THE SIX BED JOINTS, EACH THROUGH MakeInterface — the same door the wall and the corbel use,
-		 * so the areas, the normals and the rectangles are that producer's rather than this one's.
-		 * The brick beds are bonded mortar; the roof and post bearings are compression-only DryStone;
-		 * the fixing is a tension-capable Screw. That per-contact connection choice IS the shed's
-		 * cross-material authoring, and MakeInterface refuses any pair that does not actually share a
-		 * bed face — so a mis-sized piece is caught here rather than solved as a healthy joint.
+		 * Six bed joints through MakeInterface. Brick beds are bonded mortar; roof and post bearings
+		 * are compression-only DryStone; the fixing is a tension-capable Screw — that per-contact
+		 * choice is the shed's cross-material authoring. MakeInterface refuses any pair that does
+		 * not share a bed face, so a mis-sized piece is caught here rather than solved as healthy.
 		 */
 		const auto Join =
 			[&](int32 A, int32 B, const FConnectionStrength& Strength) -> bool
