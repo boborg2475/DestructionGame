@@ -10,15 +10,17 @@
 /**
  * BUILD MODE — the placement API.
  *
- * The layer above the snap-candidate solver: it turns a snap into a LIVE piece in a
- * growing DestructionLayout::FBrickLayout. Given a requested pose it runs the solver
- * against the pieces already there, adopts the piece at the best-ranked snapped pose
- * (mass derived from geometry + density), and forms that candidate's joints as real
- * FConnections via DestructionLayout::MakeInterface — so the structure grows by one
- * live, jointed piece and is immediately subject to the integrity/collapse system.
+ * The layer above the snap-candidate solver: turns a snap into a live piece
+ * in a growing DestructionLayout::FBrickLayout. Given a requested pose it
+ * runs the solver against the pieces already there, adopts the piece at the
+ * best-ranked snapped pose (mass derived from geometry + density), and forms
+ * that candidate's joints as real FConnections via MakeInterface — so the
+ * structure grows by one live, jointed piece, immediately subject to the
+ * integrity/collapse system.
  *
- * WORLD-FREE, styled like Core/Layout and SnapSolver: FPieceBox + doubles, no
- * UWorld/UObject. Includes SnapSolver.h, Layout.h and Profiles; nothing under Tests/.
+ * World-free, styled like Core/Layout and SnapSolver: FPieceBox + doubles, no
+ * UWorld/UObject. Includes SnapSolver.h, Layout.h and Profiles; nothing under
+ * Tests/.
  */
 namespace BuildMode
 {
@@ -33,15 +35,17 @@ namespace BuildMode
 	/**
 	 * Place one piece into a growing layout at its best-ranked snapped pose.
 	 *
-	 * DELIBERATELY DOES NOT CALL SetThreeDimensional. Whether a build is planar or 3D is a
-	 * structure-level intent the caller/harness owns, not a per-placement decision — so a
-	 * build that forms out-of-plane (Y-normal) joints must SetThreeDimensional(true) on the
-	 * structure BEFORE the break gate runs, or `SolveAndBreak`'s below-cap LP gate refuses
-	 * the whole problem on the first Y normal and falls back to the router. `SolveLoads` is
-	 * unaffected either way — the router reads normals directly and is dimension-agnostic.
-	 * In a corner the Y normals are the Y leg's HEAD joints; the quoin itself is X-normal,
-	 * so a single-leg wall needs no such call. The world path states it at the door instead
-	 * (UDestructionStructureSubsystem::BeginBuild); this layout path leaves it to its caller.
+	 * Deliberately does not call SetThreeDimensional: whether a build is planar
+	 * or 3D is a structure-level intent the caller/harness owns, not a
+	 * per-placement decision. A build that forms out-of-plane (Y-normal) joints
+	 * must SetThreeDimensional(true) on the structure before the break gate
+	 * runs, or `SolveAndBreak`'s below-cap LP gate refuses the whole problem on
+	 * the first Y normal and falls back to the router (`SolveLoads` is
+	 * unaffected either way — dimension-agnostic). In a corner the Y normals are
+	 * the Y leg's head joints; the quoin itself is X-normal, so a single-leg
+	 * wall needs no such call. The world path states it at the door instead
+	 * (UDestructionStructureSubsystem::BeginBuild); this layout path leaves it
+	 * to its caller.
 	 *
 	 * @param InOutLayout        The structure + parallel Boxes to grow. Handles index both.
 	 * @param RequestedCentreCm  Where the caller asked to put the piece.

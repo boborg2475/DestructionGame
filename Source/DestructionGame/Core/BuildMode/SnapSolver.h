@@ -10,34 +10,30 @@
 /**
  * BUILD MODE — the snap-candidate solver.
  *
- * The logical-building brain: given a piece being placed at a requested pose and
- * the nearby already-placed pieces (boxes + materials), return ranked candidate
- * poses. Each snap candidate carries the joints it would AUTO-FORM, whose profiles
- * are inferred (never hardcoded) via BuildMode::JointForContact from the two
- * faces' materials and the contact normal.
+ * Given a piece being placed at a requested pose and the nearby already-placed
+ * pieces (boxes + materials), return ranked candidate poses. Each candidate
+ * carries the joints it would auto-form, profiles inferred (never hardcoded)
+ * via JointForContact from the two faces' materials and the contact normal.
  *
- * WORLD-FREE, styled like Core/Layout: FPieceBox + doubles, no UWorld/UObject. One
- * direction of inclusion — this includes JointInference.h and Layout.h; nothing
- * under Tests/ is included by it.
+ * World-free, styled like Core/Layout: FPieceBox + doubles, no UWorld/UObject.
+ * Includes JointInference.h and Layout.h; nothing under Tests/ includes it.
  *
- * BEHAVIORS 2a/2b/2d/2e implement four snap kinds: brick RUNNING-BOND NEXT COURSE
- * (bed joint), brick SAME-COURSE END-TO-END (head joint), TIMBER CENTERED-ON a brick
- * and TIMBER EDGE-FLUSH to a brick face (both DryStone bearings). CR-2a adds the fifth,
- * brick CORNER RETURN — the quoin of DESIGN §8's 2026-09-15 ruling.
+ * Five snap kinds: brick running-bond next course (bed joint), brick
+ * same-course end-to-end (head joint), brick corner return (the quoin of
+ * DESIGN §8's 2026-09-15 ruling), timber centered-on a brick, and timber
+ * edge-flush to a brick face (both DryStone bearings).
  *
- * THE BRICK GRID IS LONG-AXIS-AWARE, NOT X-AXIS-AWARE. Bed and head poses step along the
- * NEIGHBOUR'S long axis and are offered only when the placed brick is laid the SAME way,
- * so a wall running along Y grows exactly as one running along X does, reflected. A
- * placed brick laid ACROSS a brick-sized neighbour takes neither, and is offered the four
- * corner returns instead — one at each of the neighbour's ends, finishing flush with each
- * of its two width faces.
+ * The brick grid is long-axis-aware, not X-axis-aware: bed and head poses step
+ * along the neighbour's long axis, offered only when the placed brick is laid
+ * the same way, so a wall along Y grows like one along X, reflected. A brick
+ * laid across a brick-sized neighbour takes neither and is offered the four
+ * corner returns instead, one at each neighbour end, flush with each width face.
  *
- * ORIENTATION DECIDES THE POSE, CONTACT DECIDES THE JOINTS. Once a next-course pose is
- * offered, the brick BEDS ON EVERY brick-sized piece its underside has come to rest on —
- * a joint gap above that piece's top face, overlapping it in plan — whichever way that
- * piece runs. That is what bonds the course-1 stretcher a bricklayer laps OVER a corner
- * return to the return itself, and it is the same contact sweep a timber lintel uses to
- * find every support it spans.
+ * Orientation decides the pose, contact decides the joints: once a next-course
+ * pose is offered, the brick beds on every brick-sized piece its underside has
+ * come to rest on, whichever way that piece runs — the same contact sweep that
+ * bonds a lapped stretcher to a corner return, or finds every support a lintel
+ * spans.
  */
 namespace BuildMode
 {

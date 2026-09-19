@@ -9,10 +9,10 @@ namespace BuildMode
 	/*
 	 * Turn the best-ranked snap into a live, jointed piece of the layout.
 	 *
-	 * NearbyBoxes IS THE WHOLE Boxes array, so a candidate's OtherPieceIndex — an index
-	 * into NearbyBoxes — is exactly the existing piece's handle: Boxes is kept parallel
-	 * to the structure's piece array, so index and handle are the same number. That is
-	 * what lets a formed joint name real endpoints without a lookup table.
+	 * NearbyBoxes is the whole Boxes array, so a candidate's OtherPieceIndex is
+	 * exactly the existing piece's handle: Boxes stays parallel to the
+	 * structure's piece array, so index and handle are the same number — what
+	 * lets a formed joint name real endpoints without a lookup table.
 	 */
 	FPlacementResult PlacePiece(
 		DestructionLayout::FBrickLayout& InOutLayout,
@@ -25,9 +25,9 @@ namespace BuildMode
 		using namespace DestructionLayout;
 
 		/*
-		 * Read each existing piece's material back for the solver's joint inference, so
-		 * the profile of every joint this placement forms is derived from the two faces'
-		 * materials — which requires those materials to have been STORED on placement.
+		 * Read each existing piece's material back for the solver's joint inference,
+		 * so every joint this placement forms derives from the two faces' materials
+		 * — which requires those materials to have been stored on placement.
 		 * SetPieceMaterial below is what keeps that readable for the next placement.
 		 */
 		TArray<DestructionProfiles::FMaterialProfile> NearbyMaterials;
@@ -50,12 +50,12 @@ namespace BuildMode
 		const double MassKg = PieceMassKg(Box, Material.DensityGramsPerCubicCm);
 
 		/*
-		 * Add the piece FIRST so its handle exists before joints reference it. AddPiece
-		 * FAILS CLOSED — a degenerate box gives a NaN mass, which it refuses with
-		 * INDEX_NONE — and on refusal NOTHING must touch the layout: no orphan box, no
-		 * material, no joint. Boxes is kept strictly parallel to the piece array, so a
-		 * single stray push would desync every later placement, which resolves a box
-		 * index as a piece handle.
+		 * Add the piece first so its handle exists before joints reference it.
+		 * AddPiece fails closed — a degenerate box gives a NaN mass, refused with
+		 * INDEX_NONE — and on refusal nothing must touch the layout: no orphan box,
+		 * no material, no joint. Boxes stays strictly parallel to the piece array,
+		 * so a single stray push would desync every later placement that resolves a
+		 * box index as a piece handle.
 		 */
 		const int32 Handle = InOutLayout.Structure.AddPiece(MassKg, bGrounded, Box.CentreCm);
 		if (Handle == INDEX_NONE)
@@ -70,9 +70,9 @@ namespace BuildMode
 		for (const FFormedJoint& Joint : Chosen.Joints)
 		{
 			/*
-			 * Count only a joint the STRUCTURE accepted. AddConnection fails closed the
-			 * same way AddPiece does, and the returned count is the caller's only evidence
-			 * the joint is live — a refused one must not inflate it.
+			 * Count only a joint the structure accepted. AddConnection fails closed the
+			 * same way AddPiece does, and the returned count is the caller's only
+			 * evidence the joint is live — a refused one must not inflate it.
 			 */
 			FConnection Conn;
 			if (MakeInterface(

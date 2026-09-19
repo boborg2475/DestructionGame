@@ -6,15 +6,14 @@
 namespace BuildMode
 {
 	/*
-	 * A PROOF-OF-CONCEPT SCRIPTED BUILD. Nothing here is special to a "demo": it is an
-	 * ordinary sequence of PlacePiece calls, the exact same call the interactive render
-	 * and a later build-mode UI drive one piece at a time. The table below is only a
-	 * convenient way to list the sequence; a player pointing and clicking produces the
-	 * same placements.
+	 * A proof-of-concept scripted build. Nothing here is special to a "demo": it
+	 * is an ordinary sequence of PlacePiece calls, the same call the interactive
+	 * render and a later build-mode UI drive one piece at a time. The table
+	 * below is just a convenient way to list the sequence.
 	 *
-	 * The wall is a two-course running-bond course (grounded course 0, staggered course
-	 * 1) with a Timber wall-plate bearing across the top. Every joint is X/Z-normal, so
-	 * the structure is planar and needs no SetThreeDimensional before SolveLoads.
+	 * The wall is two running-bond courses (grounded course 0, staggered course
+	 * 1) with a timber wall-plate bearing across the top. Every joint is
+	 * X/Z-normal, so the structure is planar and needs no SetThreeDimensional.
 	 */
 	TArray<FPlacementResult> BuildDemoBuilding(
 		DestructionLayout::FBrickLayout& OutLayout,

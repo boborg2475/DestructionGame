@@ -8,18 +8,19 @@
 #include "Core/Layout.h"
 
 /**
- * BUILD MODE — a scripted demo building (BUILD_MODE_PLAN.md slice 2, behavior 2c).
+ * BUILD MODE — a scripted demo building.
  *
  * The proof that the placement brain composes: a small, recognizable building
- * assembled ENTIRELY through BuildMode::PlacePiece and returned as a live
- * DestructionLayout::FBrickLayout that STANDS under SolveLoads. It lays a
- * running-bond brick wall (grounded bottom course, one staggered course above) with
- * a TIMBER wall-plate bearing across the top, and returns the per-step placement
- * results so a caller can verify each snap.
+ * assembled entirely through BuildMode::PlacePiece and returned as a live
+ * DestructionLayout::FBrickLayout that stands under SolveLoads. It lays a
+ * running-bond brick wall (grounded bottom course, one staggered course
+ * above) with a timber wall-plate bearing across the top, and returns the
+ * per-step placement results so a caller can verify each snap.
  *
- * WORLD-FREE, like the rest of Core/BuildMode: it drives PlacePiece against FPieceBox
- * + doubles and never touches a UWorld. Every joint it forms is X/Z-normal (no corner
- * returns), so the built structure is planar and needs no SetThreeDimensional.
+ * World-free, like the rest of Core/BuildMode: drives PlacePiece against
+ * FPieceBox + doubles, never touches a UWorld. Every joint it forms is
+ * X/Z-normal (no corner returns), so the structure is planar and needs no
+ * SetThreeDimensional.
  */
 namespace BuildMode
 {
