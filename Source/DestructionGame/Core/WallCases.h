@@ -11,33 +11,27 @@
  *
  * WHY IT IS NOT RunningBond. Six of the twenty acceptance walls are not running-bond rectangles:
  * two corbel out, two carry a projecting header, and two are stack bond. RunningBond lays one
- * shape, so either there is a second producer or six of the configurations the user drew cannot be
- * laid at all — and the six include two of the matched pairs the acceptance set exists for.
+ * shape, so either there is a second producer or six of the configurations the user drew, including
+ * two matched pairs the acceptance set exists for, cannot be laid at all.
  *
  * IT IS ONE RULE, NOT SIX SPECIAL CASES. Every course is described by two numbers — where its
  * right face is, and how long its rightmost piece is — and then laid RIGHT TO LEFT on the
  * coordinating pitch, closing with whatever is left at the wall's left face. Running bond, stack
  * bond, a corbel and a projecting header are all values of those two numbers. Laying right-to-left
- * is what keeps the cut closing piece at the LEFT end, away from every corbel and header under
- * test, rather than in the middle of what is being measured.
+ * keeps the cut closing piece at the LEFT end, away from every corbel and header under test.
  *
- * IT EMITS AN FBrickLayout, so one of these walls goes into a world through the same
- * UDestructionStructureSubsystem::BuildLayout door a wall and a corbel already do.
+ * It emits an FBrickLayout, so one of these walls goes into a world through the same
+ * UDestructionStructureSubsystem::BuildLayout door a wall and a corbel already do. World-free like
+ * Core/Layout: boxes and doubles, no UWorld and no UObject. One direction of inclusion — nothing
+ * from Tests/ may be included here; a test may include this.
  *
- * WORLD-FREE, like Core/Layout: boxes and doubles, no UWorld and no UObject.
- *
- * ONE DIRECTION OF INCLUSION. Nothing from Tests/ may be included here; a test may include this.
- *
- * THE ACCEPTANCE FIXTURE'S BRICKLAYER WAS COPIED, NOT MOVED, AND COMMIT 1c763c5 SAYS "MOVES". That
- * commit message is wrong and cannot be rewritten, so the correction lives here. `LayWall` in
- * Tests/WallAcceptanceTest.cpp still lays its own bricks and calls nothing in this namespace; the
- * commit is 853 insertions and ZERO deletions in that file. Two consequences are worth knowing.
- * First, it is why not one reading in the acceptance file moved across the commit — nothing it
- * measures went through here. Second, `Acceptance.Wall.TheProducerLaysTheWallTheFixtureLays` is
- * therefore STILL LIVE rather than tautological: it holds this producer against a genuinely
- * independent bricklayer, including handle order, and it is the only test that does. Do not delete
- * it, and do not "finish the move" by making the fixture call this — that would spend the one
- * comparison keeping the two honest.
+ * `LayWall` in Tests/WallAcceptanceTest.cpp lays its own bricks independently and calls nothing in
+ * this namespace, despite commit 1c763c5's message saying the fixture's bricklayer was "moved"
+ * here — it was copied, and the message cannot be rewritten. That independence is what keeps
+ * `Acceptance.Wall.TheProducerLaysTheWallTheFixtureLays` a real test rather than a tautology: it
+ * holds this producer against a genuinely independent bricklayer, including handle order. Do not
+ * "finish the move" by making the fixture call this — that would spend the one comparison keeping
+ * the two honest.
  */
 namespace DestructionWallCases
 {

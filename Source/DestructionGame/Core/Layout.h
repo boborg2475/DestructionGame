@@ -10,32 +10,27 @@
 /**
  * The connection graph PRODUCER: the bridge from a brick layout to an FStructure.
  *
- * Everything downstream of here CONSUMES interface areas and normals — ClassifyForce
- * needs a normal, ComputeUtilisation needs an area, and the two-tier support rule
- * reads the normal to decide whether a joint bears or hangs. Nothing until now
- * PRODUCED any of them: every fixture in the suite hand-wrote its own. A scenario
- * places bricks, and something has to decide which pairs touch, how big the shared
- * face is, and which way the interface faces.
+ * Everything downstream consumes interface areas and normals — ClassifyForce needs a
+ * normal, ComputeUtilisation needs an area — and nothing produced them before this;
+ * a scenario places bricks, and something has to decide which pairs touch, how big
+ * the shared face is, and which way it faces.
  *
- * IT IS SPLIT IN TWO ON PURPOSE. MakeInterface owns areas, normals, orientation and
- * validation, and is the ONLY way to build a joint. RunningBond supplies the pairs,
- * and is the only part that would be replaced by a general contact-finding producer;
- * being generative it emits the pairs it knows it laid rather than searching for
- * them, so there is no proximity tolerance in the pair discovery at all.
+ * Split in two on purpose: MakeInterface owns areas, normals, orientation and
+ * validation and is the only way to build a joint. RunningBond supplies the pairs and
+ * is the only part a general contact-finding producer would replace — being
+ * generative it emits the pairs it knows it laid, so pair discovery has no proximity
+ * tolerance at all.
  *
- * ONE DIRECTION OF INCLUSION. This header includes Structure.h; Structure.h must
- * never include this one. FStructure stays position-free — a piece is a mass and an
- * identity — which is exactly why the solver needs no world and the suite runs in
- * under a second. Geometry lives above the solver and hands down handles.
+ * One direction of inclusion: this header includes Structure.h, never the reverse.
+ * FStructure stays position-free — a piece is a mass and an identity — which is why
+ * the solver needs no world and the suite runs in under a second.
  */
 namespace DestructionLayout
 {
 	/**
-	 * An axis-aligned box, in centimetres. The whole geometric vocabulary of the
-	 * producer.
-	 *
-	 * ExtentCm is HALF the size on each axis, matching FBox::GetExtent, so a box
-	 * spans CentreCm - ExtentCm to CentreCm + ExtentCm.
+	 * An axis-aligned box, cm — the producer's whole geometric vocabulary. ExtentCm is
+	 * HALF the size on each axis (matching FBox::GetExtent), so a box spans
+	 * CentreCm - ExtentCm to CentreCm + ExtentCm.
 	 */
 	struct FPieceBox
 	{
@@ -44,61 +39,41 @@ namespace DestructionLayout
 	};
 
 	/**
-	 * What one piece of the given box weighs, in kilograms.
+	 * What one piece of the given box weighs, in kilograms — the one derivation of
+	 * mass from geometry. Density is g/cm3 and dimensions are cm, so volume in cm3 /
+	 * 1000 is kilograms; no force conversion belongs here (DESIGN.md §3's 1 N = 100 uu
+	 * is a property of forces, and mass goes into Unreal unconverted).
 	 *
-	 * THE ONE DERIVATION OF MASS FROM GEOMETRY. Density is g/cm3 and dimensions are cm,
-	 * so the volume in cm3 divided by 1000 is kilograms; no force conversion belongs
-	 * here, since DESIGN.md §3's 1 N = 100 uu is a property of forces and mass goes into
-	 * Unreal unconverted.
-	 *
-	 * Degenerate boxes and densities fail closed. See Tests/LayoutTest.cpp,
-	 * DestructionGame.Core.Layout.PieceMass, for what "closed" means for a mass.
+	 * Degenerate boxes and densities fail closed; see DestructionGame.Core.Layout.PieceMass.
 	 */
 	double PieceMassKg(const FPieceBox& Box, double DensityGramsPerCubicCm);
 
 	/**
 	 * Build the one joint between two boxes, or refuse.
 	 *
-	 * THE INTERFACE NORMAL IS THE AXIS OF SEPARATION, ORIENTED BY WHICH HANDLE IS B.
-	 * It is never the direction between the two centroids, and that distinction is
-	 * the whole reason this function exists rather than being open-coded at the call
-	 * site. A running-bond bed joint has a centroid difference of (11.25, 0, 7.5) cm;
-	 * normalised, its Z is 0.5547, which is BELOW cos 45 degrees — so a centroid
-	 * normal makes every bed joint in the wall classify as a HEAD joint. The head
-	 * tier is sign-blind, so each brick would then treat the joints above it as
-	 * supports too, and gravity would resolve as shear against mortar's 0.2 MPa
-	 * cohesion instead of compression against its 10 MPa. 41.5x the utilisation, an
-	 * entirely wrong support graph, and nothing crashes: the wall stands there being
-	 * wrong.
+	 * THE INTERFACE NORMAL IS THE AXIS OF SEPARATION, ORIENTED BY WHICH HANDLE IS B —
+	 * never the direction between the two centroids. A running-bond bed joint's
+	 * centroid difference is (11.25, 0, 7.5) cm, whose normalised Z of 0.5547 is below
+	 * cos 45 degrees, so a centroid normal would classify every bed joint as a
+	 * sign-blind HEAD joint: gravity then resolves as shear against mortar's 0.2 MPa
+	 * cohesion instead of compression against its 10 MPa — 41.5x the utilisation, an
+	 * entirely wrong support graph, and nothing crashes. (Worked on the spanning
+	 * brick: the axis-of-separation normal gives 1.269339e-4 of capacity; the
+	 * centroid normal splits the same force into a shear stress of 1.056154e-3 MPa
+	 * against a Mohr-Coulomb capacity of 0.20042246 MPa, 5.269638e-3 — the 41.5x.)
 	 *
-	 * THE 41.5 IS WORKED THROUGH, because an earlier draft of this comment said 79
-	 * and that figure does not reproduce. On the spanning brick — 1333.5993125 uu
-	 * over a 105.0625 cm2 bed joint — the axis-of-separation normal gives pure
-	 * compression at 1.269339e-4 of capacity. The centroid normal (0.8320503, 0,
-	 * 0.5547002) splits that same force into 739.7478 uu of compression and
-	 * 1109.6217 uu of shear, so the shear stress is 1.056154e-3 MPa against a
-	 * Mohr-Coulomb capacity of 0.2 + 0.6 x 7.041026e-4 = 0.20042246 MPa, and the
-	 * worst axis comes out at 5.269638e-3. That is 41.5x. (74.8 is obtainable, but
-	 * only as shear over compression BOTH read under the wrong normal, which is not
-	 * the comparison this sentence makes.)
+	 * The failure that matters is a normal INCONSISTENT WITH ITS A/B PAIRING, not a
+	 * flipped one: GetJointRole turns the normal toward whichever piece it is asked
+	 * about, so a consistently flipped joint reports identical loads. Emitting the
+	 * pair and the normal together is what makes the inconsistent state inexpressible.
 	 *
-	 * The failure mode that matters is not a flipped normal but a normal
-	 * INCONSISTENT WITH ITS A/B PAIRING. FStructure::GetJointRole turns the normal
-	 * toward the piece it is asked about and the accumulation signs the force by which
-	 * end is loaded, so a consistently flipped joint reports identical loads. Emitting
-	 * the pair and the normal as one atomic value is what makes the inconsistent state
-	 * inexpressible.
+	 * Two boxes form a joint when they are separated on exactly one axis, by the joint
+	 * thickness, and overlap positively on the other two; the interface area is the
+	 * product of those two overlaps. Separation on two axes is an edge or corner, not
+	 * a face — a spurious diagonal that would change a joint's TIER.
 	 *
-	 * Two boxes form a joint when they are separated on EXACTLY ONE axis, by the
-	 * joint thickness, and overlap positively on the other two. The interface area is
-	 * the product of those two overlaps. Anything else is not a face: boxes
-	 * separated on two axes meet at an edge or a corner, which is the spurious
-	 * diagonal pair that would change a joint's TIER and therefore where load ends
-	 * up.
-	 *
-	 * FAILS CLOSED. On refusal the out connection is left with a zero interface area,
-	 * so a caller that ignores the return value gets a joint that reads as failed
-	 * rather than one that reads as fine.
+	 * Fails closed: on refusal the out connection is left with a zero interface area,
+	 * so a caller that ignores the return value gets a joint that reads as failed.
 	 *
 	 * @return true if the boxes form a face and a joint was written.
 	 */
@@ -120,11 +95,9 @@ namespace DestructionLayout
 		/**
 		 * Half-length bricks at alternating course ends, so both faces finish flush.
 		 *
-		 * This is the one that makes a MIXED-SIZE structure: a producer that only ever
-		 * emits identical pieces is not being tested very hard. The joint AREAS are the
-		 * same as the ragged wall's — a half bat's bed overlap is still 105.0625 cm2
-		 * and its end face is still 66.625 cm2 — so the difference is the second brick
-		 * size and mass, not the geometry of any joint.
+		 * The one that makes a mixed-size structure. Joint AREAS match the ragged
+		 * wall's — a half bat's bed overlap is still 105.0625 cm2 — so the difference
+		 * is the second brick's size and mass, not the geometry of any joint.
 		 */
 		Flush,
 	};
@@ -137,8 +110,7 @@ namespace DestructionLayout
 
 		/**
 		 * Mortar joint, cm. 1.0 with a standard brick gives the 22.5 x 11.25 x 7.5
-		 * coordinating grid, which is what makes the half-brick offset land where it
-		 * does.
+		 * coordinating grid, which is what makes the half-brick offset land correctly.
 		 */
 		double JointThicknessCm = 1.0;
 

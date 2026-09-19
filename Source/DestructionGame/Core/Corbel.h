@@ -9,14 +9,12 @@
  * THE STEPPED CORBEL PRODUCER — the second thing in this project that lays bricks, beside
  * DestructionLayout::RunningBond.
  *
- * IT EMITS AN FBrickLayout AND NOTHING ELSE, so a corbel goes into a world through the same
- * UDestructionStructureSubsystem::BuildLayout door a wall does. A second spawn loop is a second
- * answer to where a brick goes and what it weighs, and this project has paid for two answers to
- * one question before.
+ * It emits an FBrickLayout and nothing else, so a corbel goes into a world through the same
+ * UDestructionStructureSubsystem::BuildLayout door a wall does — a second spawn loop is a second
+ * answer to where a brick goes and what it weighs, and this project has paid for two before.
  *
- * WORLD-FREE, like Core/Layout: boxes and doubles, no UWorld and no UObject.
- *
- * ONE DIRECTION OF INCLUSION. Nothing from Tests/ may be included here; a test may include this.
+ * World-free, like Core/Layout: boxes and doubles, no UWorld and no UObject. One direction of
+ * inclusion — nothing from Tests/ may be included here; a test may include this.
  */
 namespace DestructionCorbel
 {

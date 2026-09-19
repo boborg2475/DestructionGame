@@ -9,36 +9,26 @@ namespace DestructionLayout
 	namespace
 	{
 		/**
-		 * How near two faces have to be to count as the same plane, cm.
-		 *
-		 * A picometre, and deliberately not a tuning knob: the producer is GENERATIVE, so
-		 * this is not the radius of a proximity search. It only has to absorb rounding in
-		 * the coordinating grid's own arithmetic, which is exact for a brick whose
-		 * dimensions are binary quarters and lands within an ulp or two of 20 cm for one
-		 * that is not. Everything refused here sits whole millimetres outside it — the
-		 * closest near miss in the suite is a face a quarter of a joint too close — so
-		 * nothing depends on where between those two scales the line is drawn.
+		 * How near two faces have to be to count as the same plane, cm — a picometre,
+		 * deliberately not a tuning knob. The producer is generative, so this only has
+		 * to absorb rounding in the coordinating grid's own arithmetic; everything
+		 * refused here sits whole millimetres outside it, so nothing depends on exactly
+		 * where the line is drawn.
 		 */
 		constexpr double ContactToleranceCm = 1.0e-9;
 
 		/**
 		 * Whether a box describes a volume at all.
 		 *
-		 * Written !(x > 0.0) rather than x <= 0.0 so a NaN lands INSIDE the guard instead
-		 * of slipping past it — every comparison against NaN is false. That direction
-		 * matters more here than usual: a NaN that got through would make every gap and
-		 * overlap below NaN, all of which compare false, so the pair would be refused by
-		 * accident rather than on purpose and would start being accepted the day a
-		 * comparison was written the other way round.
+		 * Written !(x > 0.0) rather than x <= 0.0 so a NaN lands inside the guard instead
+		 * of slipping past it — every comparison against NaN is false, so an unguarded
+		 * NaN would make every gap and overlap compare false and refuse the pair by
+		 * accident.
 		 *
-		 * The extent is checked for finiteness as well as for sign, because +inf > 0.0 is
-		 * TRUE and the sign test alone therefore lets it through — and unlike a NaN it is
-		 * not refused by accident downstream either. An infinite extent overlaps
-		 * infinitely, so that axis is never the axis of separation, and a pair whose other
-		 * two axes form a face is ACCEPTED with an infinite interface area. That is
-		 * fail-open in the one function whose documented job is to fail closed, so the
-		 * extent half of this guard has to match the centre half rather than merely rhyme
-		 * with it.
+		 * The extent is also checked for finiteness, because +inf > 0.0 is true and the
+		 * sign test alone would let it through: an infinite extent overlaps infinitely,
+		 * so that axis is never the separation axis and a pair could be ACCEPTED with an
+		 * infinite interface area — fail-open in the one function whose job is fail-closed.
 		 */
 		bool IsUsableBox(const FPieceBox& Box)
 		{
@@ -59,13 +49,10 @@ namespace DestructionLayout
 		 * Place one brick: a box, and the piece that carries its mass.
 		 *
 		 * The two go in together because the handle IS the box index — FBrickLayout's
-		 * whole contract is that the two arrays are parallel — and the mass is derived
-		 * from the box that was just built rather than from the spec, so a half bat
-		 * cannot end up weighing a full brick.
-		 *
-		 * The derivation itself is PieceMassKg's and not this function's, because the
-		 * brick actor needs the same number for the same piece and a second derivation is
-		 * a second place for it to drift.
+		 * arrays are parallel — and mass is derived from the box just built rather than
+		 * from the spec, so a half bat cannot end up weighing a full brick. The
+		 * derivation itself is PieceMassKg's, not this function's, so the brick actor
+		 * never has a second, driftable route to the same number.
 		 */
 		int32 LayBrick(
 			FBrickLayout& Layout,
@@ -80,17 +67,13 @@ namespace DestructionLayout
 			Box.ExtentCm = FVector(LengthCm, Spec.BrickSizeCm.Y, Spec.BrickSizeCm.Z) * 0.5;
 
 			/*
-			 * THE BOX'S CENTRE IS THE CENTRE OF MASS, because a brick is a homogeneous
-			 * rectangular solid and its mass was derived from that same box a line above.
-			 * Deriving the two from one value is what stops a piece weighing one brick and
+			 * The box's centre is the centre of mass — a brick is homogeneous and its mass
+			 * came off this same box a line above — so a piece never weighs one brick while
 			 * levering its joint from where a different one sits.
 			 *
-			 * WITHOUT THIS THE WALL HAS NO ECCENTRICITY AT ALL, and the difference is
-			 * invisible: an unplaced piece loads its joints exactly as a centred one does,
-			 * so a producer that forgot to place its bricks would lay a wall that reads
-			 * perfectly healthy while every corbel in it is answered as though its weight
-			 * acted through the middle of its support. FStructure::HasCompleteGeometry is
-			 * what makes that state askable rather than silent.
+			 * Without this the wall has no eccentricity at all and reads perfectly healthy
+			 * while every corbel in it is answered as though its weight acted through the
+			 * middle of its support. FStructure::HasCompleteGeometry makes that state askable.
 			 */
 			const int32 Handle = Layout.Structure.AddPiece(
 				PieceMassKg(Box, Spec.DensityGramsPerCubicCm), bIsGrounded, Box.CentreCm);
@@ -102,11 +85,9 @@ namespace DestructionLayout
 		/**
 		 * Offer a pair the wall laid, and keep the joint if the two really share a face.
 		 *
-		 * The producer knows what it laid, so the pairs it offers are its own neighbours
-		 * rather than the result of a search — but whether a given neighbour shares a
-		 * FACE is MakeInterface's decision and only its decision. A course end offers a
-		 * pair that turns out to be a diagonal, and that pair has to be refused by the
-		 * same rule that refuses one anywhere else, not by a second opinion written here.
+		 * The producer offers its own neighbours rather than the result of a search, but
+		 * whether one shares a FACE is MakeInterface's decision alone — a course end can
+		 * offer a diagonal, and it must be refused by the same rule that refuses any other.
 		 */
 		void JoinIfTouching(
 			FBrickLayout& Layout,
@@ -133,26 +114,20 @@ namespace DestructionLayout
 	double PieceMassKg(const FPieceBox& Box, double DensityGramsPerCubicCm)
 	{
 		/*
-		 * FAIL CLOSED IS NaN HERE, AND ZERO WOULD BE FAIL-OPEN. FStructure::AddPiece
-		 * deliberately ACCEPTS a mass of zero — a massless piece is meaningful — so a zero
-		 * returned for a degenerate box is laundered into a real piece that weighs nothing,
-		 * sits in the graph, routes load and never breaks anything. NaN is refused by the
-		 * guard AddPiece already has, !(MassKg >= 0.0) || !IsFinite, and so needs no second
-		 * check written anywhere.
+		 * FAIL CLOSED IS NaN HERE; ZERO WOULD BE FAIL-OPEN. AddPiece deliberately accepts a
+		 * mass of zero — a massless piece is meaningful — so a zero returned for a
+		 * degenerate box would be laundered into a real piece that routes load and never
+		 * breaks anything. NaN is refused by AddPiece's own guard, so nothing else needs
+		 * to check for it.
 		 *
-		 * IsUsableBox is the SAME notion of a usable box MakeInterface refuses on, rather
-		 * than a narrower one written here: there is one definition of a box this producer
-		 * can do anything with, and a mass function with its own weaker opinion would be a
-		 * second. It is also what catches the box that is inside out — two negative extents
-		 * whose signs CANCEL in the product and would otherwise hand back a perfectly
-		 * plausible 2.72163125 kg.
+		 * IsUsableBox is the same notion MakeInterface refuses on, not a narrower one
+		 * written here — it also catches a box that is inside out, where two negative
+		 * extents cancel in the product and would otherwise hand back a plausible mass.
 		 *
-		 * The density guard is written !(x > 0.0) so a NaN lands inside it, and checked for
-		 * finiteness separately because +inf > 0.0 is TRUE. An infinite density would in
-		 * fact overflow to an infinite mass and be refused at the door anyway, but refused
-		 * BY ACCIDENT is one comparison away from accepted, and RunningBond already rejects
-		 * all four degenerate densities in its own spec — a mass function that accepted any
-		 * of them would be the more permissive of the two.
+		 * The density guard is !(x > 0.0) so a NaN lands inside it, checked for
+		 * finiteness separately since +inf > 0.0 is true; an infinite density would
+		 * overflow to an infinite mass anyway, but refused by accident is one comparison
+		 * from accepted.
 		 */
 		if (!IsUsableBox(Box)
 			|| !(DensityGramsPerCubicCm > 0.0)
@@ -162,16 +137,14 @@ namespace DestructionLayout
 		}
 
 		/*
-		 * DENSITY FIRST, AND THE ORDER IS PART OF THE CONTRACT. Density is g/cm3 and
-		 * dimensions are cm, so the volume in cm3 divided by 1000 is kilograms — but only
-		 * one association of that product is exact for a standard brick. 1.9 x 21.5 x 10.25
-		 * x 6.5 / 1000 lands exactly on 2.72163125; (21.5 x 10.25 x 6.5) x 1.9 / 1000 lands
-		 * one ulp low at 2.7216312499999997, which would move every full brick in every
-		 * wall in the suite. Layout.PieceMass asserts the exact decimal with ==, so the
-		 * order is the assertion.
+		 * DENSITY FIRST, AND THE ORDER IS PART OF THE CONTRACT. Only one association of
+		 * the product is exact for a standard brick: 1.9 x 21.5 x 10.25 x 6.5 / 1000 lands
+		 * exactly on 2.72163125, while (21.5 x 10.25 x 6.5) x 1.9 / 1000 lands one ulp low
+		 * at 2.7216312499999997 — enough to move every full brick in the suite.
+		 * Layout.PieceMass asserts the exact decimal with ==, so the order is the assertion.
 		 *
 		 * No force conversion belongs here: DESIGN.md §3's 1 N = 100 uu is a property of
-		 * forces, not of masses, and mass goes into Unreal unconverted.
+		 * forces, not masses, and mass goes into Unreal unconverted.
 		 */
 		const FVector SizeCm = Box.ExtentCm * 2.0;
 
@@ -189,16 +162,13 @@ namespace DestructionLayout
 	{
 		/*
 		 * FAIL CLOSED BEFORE ANYTHING CAN REFUSE. Zeroing the area first means every
-		 * return false below leaves a joint that reads as failed rather than one that
-		 * reads as fine, which routes a caller who ignored the return value through
-		 * ComputeUtilisation's existing area guard instead of handing it a healthy-looking
-		 * connection. It is the one thing a refusal must actively do.
+		 * return false below leaves a joint reading as failed, routing an ignored return
+		 * value through ComputeUtilisation's existing area guard.
 		 *
-		 * THE RECTANGLE IS ZEROED FOR THE OPPOSITE REASON, which is why it is a second
-		 * statement rather than the same one. A zero area reads as FAILED; zero extents
-		 * read as HEALTHY — "no bending capacity was ever measured" — so a refusal that
-		 * left them alone would hand back a joint claiming a lever arm on a face that does
-		 * not exist. Both halves have to be cleared, and neither substitutes for the other.
+		 * The rectangle is zeroed for the OPPOSITE reason: a zero area reads as failed,
+		 * but zero extents read as healthy ("no bending capacity was ever measured"), so
+		 * a refusal that left them alone would claim a lever arm on a face that isn't
+		 * there. Both halves must be cleared; neither substitutes for the other.
 		 */
 		OutConnection.InterfaceAreaSqCm = 0.0;
 		OutConnection.InterfaceCentreCm = FVector::ZeroVector;
@@ -226,42 +196,30 @@ namespace DestructionLayout
 		}
 
 		/*
-		 * THE FACE TEST. Two boxes share a face when they fail to overlap on EXACTLY ONE
-		 * axis and overlap positively on the other two; the shared face is then the
-		 * product of those two overlaps.
+		 * THE FACE TEST. Two boxes share a face when they fail to overlap on exactly one
+		 * axis and overlap positively on the other two; the shared face is the product of
+		 * those two overlaps.
 		 *
-		 * AN OVERLAP IS THE INTERSECTION OF THE TWO SPANS, min(highs) - max(lows), AND NOT
-		 * reach minus distance. The two are the same number whenever the centres are at
-		 * least |eA - eB| apart — order the near faces that way and (cA + eA) - (cB - eB)
-		 * IS eA + eB - d — which covers every pair of equal boxes and, because both
-		 * extents are positive, every axis a pair is SEPARATED on. So the separation axis
-		 * and the joint thickness measured across it read identically either way.
+		 * AN OVERLAP IS THE INTERSECTION OF THE TWO SPANS, min(highs) - max(lows), and NOT
+		 * reach minus distance — the two agree whenever the centres are separated, but
+		 * part company the moment one span wholly contains the other. Reach minus distance
+		 * grows as the smaller piece slides inboard, so a 40 cm pier standing 20 cm in from
+		 * the end of a 220 cm beam would be reported bearing over 60 cm, ten of it hanging
+		 * in mid air at each end on an area that divides a force. The intersection reports
+		 * the pier's own 40 cm wherever it stands, the only answer a bearing can have — true
+		 * of a padstone, a bearing plate or a lintel on a wide pier, never of a same-sized wall.
 		 *
-		 * They part company the moment one span wholly CONTAINS the other. Reach minus
-		 * distance goes on growing as the smaller piece slides inboard, so a 40 cm pier
-		 * standing 20 cm in from the end of the 220 cm beam it carries is reported bearing
-		 * over 60 cm — ten centimetres of bearing face hanging in mid air at each end, on
-		 * an area that divides a force. The intersection reports the pier's own 40 cm
-		 * wherever it stands under the beam, which is the only answer a bearing can have.
-		 * A padstone, a bearing plate and a lintel on a wide pier are all this shape; a
-		 * wall of same-sized bricks never is, which is why it stood so long.
+		 * The bounds are computed once here and the rectangle below reads the same ones, so
+		 * the emitted centre and width can never disagree about which face they describe.
+		 * Max and Min are safe only because IsUsableBox already refused every non-finite
+		 * bound; both DISCARD a NaN operand rather than propagate it, so nothing may be
+		 * inserted between that guard and this loop.
 		 *
-		 * THE BOUNDS ARE COMPUTED ONCE HERE AND THE RECTANGLE BELOW READS THE SAME ONES.
-		 * The face's centre was always the midpoint of this intersection, so deriving the
-		 * width from anything else was the one place the emitted rectangle could disagree
-		 * with the emitted centre about which face it described.
-		 *
-		 * Max and Min are safe only because IsUsableBox has already refused every
-		 * non-finite bound above; both DISCARD a NaN operand rather than propagating it,
-		 * which in a test whose job is to fail closed would turn a NaN into a plausible
-		 * overlap. Nothing may be inserted between that guard and this loop.
-		 *
-		 * Counting the axes that do NOT overlap, rather than the axes that are separated,
-		 * is what lets a zero-thickness joint be a real joint — dry stone has faces
-		 * touching with no gap at all, and an axis whose gap is exactly zero has to fall
-		 * on the same side of this count as one whose gap is a centimetre. Two such axes
-		 * is an edge, three is a corner, and either emitted as a joint would be a spurious
-		 * diagonal whose normal is a coin flip between the bed tier and the head tier.
+		 * Counting axes that do NOT overlap, rather than axes that are separated, is what
+		 * lets a zero-thickness joint be real — dry stone has faces touching with no gap,
+		 * and a zero gap must count the same as a centimetre one. Two such axes is an edge,
+		 * three a corner, and either emitted as a joint would be a spurious diagonal whose
+		 * normal is a coin flip between the bed tier and the head tier.
 		 */
 		double LowCm[3];
 		double HighCm[3];
@@ -308,54 +266,37 @@ namespace DestructionLayout
 
 		/*
 		 * THE NORMAL IS THE AXIS OF SEPARATION, SIGNED BY WHICH HANDLE IS B — never the
-		 * direction between the two centroids, and the sign is read on THAT AXIS ALONE.
-		 * Taking it from the whole centre difference is exactly how the centroid normal
-		 * gets in: a running-bond bed joint's centre difference is (11.25, 0, 7.5) cm,
-		 * whose normalised Z is 0.5547, below cos 45 degrees, so every bed joint in the
-		 * wall would classify as a head joint and gravity would resolve as shear against
-		 * mortar's cohesion rather than compression against its compressive strength.
+		 * centroid direction, and the sign is read on that axis alone (see the class doc
+		 * for why a centroid normal misclassifies every bed joint as a head joint).
 		 *
-		 * Writing the pair and the normal in the same breath is what makes a normal
-		 * inconsistent with its pairing inexpressible. A consistently flipped joint is
-		 * harmless — FStructure::GetJointRole turns the normal toward whichever piece it
-		 * is asked about, and the accumulation signs the force by which end is loaded —
-		 * so the pairing is the only thing that can go wrong here undetected.
+		 * Writing the pair and the normal together is what makes a normal inconsistent
+		 * with its pairing inexpressible; a consistently flipped joint is harmless since
+		 * GetJointRole turns the normal toward whichever piece it is asked about.
 		 */
 		FVector InterfaceNormal = FVector::ZeroVector;
 		InterfaceNormal[SeparationAxis] =
 			BoxB.CentreCm[SeparationAxis] > BoxA.CentreCm[SeparationAxis] ? 1.0 : -1.0;
 
 		/*
-		 * THE FACE'S OWN RECTANGLE, EMITTED WITH THE AREA IT IS THE SHAPE OF. The area is
-		 * already the product of the two in-plane overlaps, so the half-extents are those
-		 * same overlaps halved and 4 x h_u x h_v reproduces the area EXACTLY — halving and
-		 * quadrupling are exact in binary, so both round to one double. Deriving them from
-		 * the box bounds instead would be a second, differently-rounded route to the same
-		 * face, and a rectangle that disagrees with its own area is precisely the state
-		 * emitting the two together exists to make inexpressible.
+		 * THE FACE'S OWN RECTANGLE, EMITTED WITH THE AREA IT IS THE SHAPE OF. Half-extents
+		 * are the same in-plane overlaps halved, and 4 x h_u x h_v reproduces the area
+		 * exactly (halving and quadrupling are exact in binary). Deriving them from the box
+		 * bounds instead would be a second, differently-rounded route to the same face —
+		 * exactly the disagreement emitting the two together exists to make inexpressible.
+		 * Exactly zero on the separation axis, as a branch rather than fallen into: a face
+		 * is a rectangle, not a box.
 		 *
-		 * EXACTLY ZERO ON THE SEPARATION AXIS, written as a branch rather than fallen into.
-		 * A face is a rectangle, not a box, and the in-plane frame the section modulus is
-		 * built on is defined as "the two world axes that are NOT the separation axis" —
-		 * which only names a frame if the third has no extent at all.
+		 * THE CENTRE IS THE MID-PLANE OF THE MORTAR, NOT EITHER BRICK'S FACE — a 1 cm bed
+		 * has two contact planes, so "the contact plane" is ambiguous for a mortared joint.
+		 * Taking either brick's face would make the geometry depend on WHICH HANDLE IS A,
+		 * when swapping the handles should swap the normal and nothing else. The mid-plane
+		 * also degenerates continuously: at zero thickness the two faces coincide on it.
 		 *
-		 * THE CENTRE IS THE MID-PLANE OF THE MORTAR ON THAT AXIS, NOT EITHER BRICK'S FACE,
-		 * and that is a decision. A 1 cm bed has TWO contact planes, so "the contact plane"
-		 * is ambiguous for every mortared joint in a wall and unambiguous only for a
-		 * dry-stacked one. Taking either brick's face would make the emitted geometry
-		 * depend on WHICH HANDLE IS A, and this function's whole argument is that swapping
-		 * the handles swaps the normal AND NOTHING ELSE — a lever arm that moved half a
-		 * joint according to declaration order is a silent asymmetry in a quantity that
-		 * multiplies a force. The mid-plane also degenerates continuously: at zero
-		 * thickness the two faces coincide and it lands on them.
-		 *
-		 * It is the midpoint of the SAME interval the overlaps above are the widths of,
-		 * which is why there is one bound and not two. On an in-plane axis [Low, High] is
-		 * the shared span, so its midpoint is the centre of the face and its width is the
-		 * face. On the separation axis the intersection is EMPTY — Low is the near face of
-		 * the further box and High the near face of the nearer one, the joint thickness
-		 * apart — and the midpoint of that empty interval is exactly the mid-plane of the
-		 * mortar.
+		 * It is the midpoint of the same interval the overlaps above are the widths of. On
+		 * an in-plane axis [Low, High] is the shared span; on the separation axis the
+		 * intersection is EMPTY — Low the near face of the further box, High the near face
+		 * of the nearer one — and the midpoint of that empty interval is the mortar's
+		 * mid-plane.
 		 */
 		FVector InterfaceCentreCm = FVector::ZeroVector;
 		FVector InterfaceHalfExtentCm = FVector::ZeroVector;
@@ -381,10 +322,9 @@ namespace DestructionLayout
 	bool RunningBond(const FRunningBondSpec& Spec, FBrickLayout& OutLayout)
 	{
 		/*
-		 * A COURSE ONE BRICK WIDE IS NOT A BOND. There is nothing for the course above to
-		 * span, so a ragged wall would leave every odd course empty and stack disconnected
-		 * bricks with a gap where a course should be — which still solves, and still looks
-		 * plausible.
+		 * A course one brick wide is not a bond: there is nothing for the course above to
+		 * span, so a ragged wall would stack disconnected bricks with a gap where a course
+		 * should be — which still solves, and still looks plausible.
 		 */
 		if (Spec.CoursesHigh < 1 || Spec.BricksPerCourse < 2)
 		{
@@ -405,10 +345,9 @@ namespace DestructionLayout
 		}
 
 		/*
-		 * A joint as long as the brick leaves a half bat of zero length or less, and the
-		 * half-brick offset stops landing inside the brick below. Written as the strict
-		 * inequality it needs rather than as its negation, so a NaN thickness is refused
-		 * here as well.
+		 * A joint as long as the brick leaves a half bat of zero length or less, so the
+		 * half-brick offset no longer lands inside the brick below. Written as the strict
+		 * inequality it needs, not its negation, so a NaN thickness is refused too.
 		 */
 		if (!(Spec.JointThicknessCm < Spec.BrickSizeCm.X))
 		{
@@ -422,11 +361,10 @@ namespace DestructionLayout
 
 		/*
 		 * THE COORDINATING GRID. A brick plus a joint is one cell along the wall and one
-		 * course up, and running bond offsets alternate courses by half a cell — which is
-		 * what makes a brick span two below it and gives the bed joint its 105.0625 cm2
-		 * rather than a whole bed face. A half bat is what is left of a brick when a joint
-		 * is taken out of it and the remainder halved, so a half bat plus a joint is
-		 * exactly the half cell a flush end has to make up.
+		 * course up; running bond offsets alternate courses by half a cell, which is what
+		 * gives the bed joint its 105.0625 cm2 rather than a whole bed face. A half bat is
+		 * a brick minus a joint, halved, so a half bat plus a joint is exactly the half
+		 * cell a flush end has to make up.
 		 */
 		const double BrickPitchCm = Spec.BrickSizeCm.X + Spec.JointThicknessCm;
 		const double CoursePitchCm = Spec.BrickSizeCm.Z + Spec.JointThicknessCm;
@@ -457,10 +395,9 @@ namespace DestructionLayout
 			else
 			{
 				/*
-				 * AN ODD COURSE IS OFFSET HALF A CELL, and the two end treatments differ only
-				 * in what fills the half cell that leaves at each end: a ragged wall leaves it
-				 * empty and steps in, a flush wall fills it with a half bat. The full bricks
-				 * between them are in the same places either way.
+				 * An odd course is offset half a cell; the two end treatments differ only in
+				 * what fills the half cell left at each end — empty for ragged, a half bat for
+				 * flush. The full bricks between them are in the same places either way.
 				 */
 				if (Spec.End == EWallEnd::Flush)
 				{
@@ -489,11 +426,9 @@ namespace DestructionLayout
 
 		/*
 		 * THE PAIRS THE WALL LAID: neighbours along a course, and everything in the course
-		 * below a piece lands on. Offering the whole course below rather than working out
-		 * which two bricks a piece spans keeps the mixed-size case honest — a half bat at
-		 * a course end spans one brick, a full brick spans two — and MakeInterface refuses
-		 * the pairs that turn out to be diagonals, which is the one place that decision
-		 * belongs.
+		 * below a piece lands on. Offering the whole course below, rather than working out
+		 * which bricks a piece spans, keeps the mixed-size case honest; MakeInterface
+		 * refuses the pairs that turn out to be diagonals.
 		 */
 		for (int32 Course = 0; Course < HandlesInCourse.Num(); ++Course)
 		{

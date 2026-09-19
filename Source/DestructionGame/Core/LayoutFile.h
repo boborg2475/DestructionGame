@@ -8,10 +8,10 @@
 /**
  * A STRUCTURE AS A FILE — the owner's ruling of 2026-09-18 that an authored building is DATA, not
  * C++ ("users will be able to build on a level in the game at some point and that won't need c++
- * code"; "Pivot to data driven"). A level's building is a JSON file of boxes and materials under
- * Content/Layouts/; the joints are not in the file, they are found on load by SweepContacts, the
- * same rule the interactive build uses. So an authored level, a script-generated one and a saved
- * player build are the same thing read back through the same door.
+ * code"). A level's building is a JSON file of boxes and materials under Content/Layouts/; the
+ * joints are not in the file, they are found on load by SweepContacts, the same rule the
+ * interactive build uses — so an authored level, a script-generated one and a saved player build
+ * are the same thing read back through the same door.
  *
  * THE FORMAT, version 1:
  *
@@ -32,9 +32,8 @@
  * weigh a different size than it sits. Serialize writes one piece per line so a file diffs.
  *
  * FAILS CLOSED: any refusal (unknown format, unknown material, a degenerate box, a piece with no
- * box) leaves the out layout EMPTY and, when asked, says why.
- *
- * WORLD-FREE: strings and boxes; the file functions touch the disk and nothing else.
+ * box) leaves the out layout EMPTY and, when asked, says why. WORLD-FREE: strings and boxes; the
+ * file functions touch the disk and nothing else.
  */
 namespace DestructionLayoutFile
 {

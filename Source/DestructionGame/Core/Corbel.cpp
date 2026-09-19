@@ -15,10 +15,10 @@ namespace DestructionCorbel
 	/*
 	 * --- the brick, spelled out from first principles --------------------------------------
 	 *
-	 * DESIGN.md's standard UK metric clay brick and the standard 1 cm mortar joint that makes
-	 * the coordinating grid 22.5 x 11.25 x 7.5. Every reading the solver suite has taken of a
-	 * corbel is a reading of THESE numbers, so they are written out rather than derived from a
-	 * running-bond spec that shares none of this producer's stepping.
+	 * DESIGN.md's standard UK metric clay brick and 1 cm mortar joint, giving the coordinating
+	 * grid 22.5 x 11.25 x 7.5. Every corbel reading in the solver suite is a reading of THESE
+	 * numbers, written out rather than derived from a running-bond spec that shares none of
+	 * this producer's stepping.
 	 */
 	constexpr double CorbelBrickLengthCm = 21.5;
 	constexpr double CorbelBrickWidthCm = 10.25;
@@ -28,10 +28,10 @@ namespace DestructionCorbel
 	/**
 	 * A HALF-OPEN CELL COUNT, AND THE EPSILON IS NOT A TOLERANCE ON GEOMETRY.
 	 *
-	 * Several step sizes divide the cell pitch exactly — 7.5 goes into 22.5 three times, 11.25
-	 * twice — so the quotient below lands on a whole number and a floor of it is one cell either
-	 * way depending on the last bit. Nudging up rather than down keeps the leftmost brick inboard
-	 * of the base's own left edge, which is the direction that never invents masonry.
+	 * Several step sizes divide the cell pitch exactly — 7.5 goes into 22.5 three times — so the
+	 * quotient below lands on a whole number and a floor of it is one cell either way depending
+	 * on the last bit. Nudging up rather than down keeps the leftmost brick inboard of the base's
+	 * own left edge, the direction that never invents masonry.
 	 */
 	constexpr double CorbelCellCountEpsilon = 1.0e-9;
 
@@ -40,12 +40,11 @@ namespace DestructionCorbel
 		using namespace DestructionLayout;
 
 		/*
-		 * EMPTIED FIRST AND FILLED LAST. A refused spec must leave a caller who ignored the
-		 * return value with nothing, rather than with whatever it laid before it gave up.
-		 *
-		 * THE GUARDS ARE WRITTEN AS `!(x > 0)` AND NEVER AS `x <= 0`, because every comparison
-		 * against a NaN is false: a NaN scale would slip PAST the second spelling and be laid as
-		 * a structure of NaN-sized bricks whose every joint reads as intact.
+		 * EMPTIED FIRST AND FILLED LAST, so a refused spec leaves a caller who ignored the
+		 * return value with nothing rather than whatever it laid before giving up. Guards are
+		 * written as `!(x > 0)` and never as `x <= 0`, because every comparison against a NaN
+		 * is false: a NaN scale would slip PAST the second spelling and be laid as a structure
+		 * of NaN-sized bricks whose every joint reads as intact.
 		 */
 		OutLayout = FBrickLayout();
 
@@ -108,9 +107,8 @@ namespace DestructionCorbel
 
 		/*
 		 * THE BASE IS IMMOVABLE, WHICH IS `bIsGrounded` ON EVERY ONE OF ITS PIECES. A grounded
-		 * piece terminates the flow of load and is a root of the reachability walk on its own
-		 * account, so nothing here can topple as a body and the root joint really is the only
-		 * failure available.
+		 * piece terminates the flow of load and is a root of the reachability walk on its own,
+		 * so nothing here can topple as a body and the root joint is the only failure available.
 		 */
 		for (int32 Course = 0; Course < Spec.BaseCourses; ++Course)
 		{
@@ -130,15 +128,14 @@ namespace DestructionCorbel
 
 		/*
 		 * THE GEOMETRY, WRITTEN AS THE GENERALISATION OF THE PICTURE RATHER THAN AS THE PICTURE.
-		 * `claude_plans/CORBEL_CASES.html` builds its fill from an alternating half-cell bond and
-		 * a cell count that grows every second course, which is a half-cell step spelled two ways
-		 * at once and cannot express any other step size. The equivalent statement that does
-		 * generalise is: the arm's OUTERMOST brick advances by exactly `StepCm` per course, and
-		 * each course carries as many whole cells inboard of it as fit before the base's left
-		 * edge. At StepCm = half a cell the two constructions agree brick for brick.
+		 * `claude_plans/CORBEL_CASES.html` builds its fill from an alternating half-cell bond,
+		 * which cannot express any other step size. The statement that does generalise: the
+		 * arm's OUTERMOST brick advances by exactly `StepCm` per course, and each course carries
+		 * as many whole cells inboard of it as fit before the base's left edge. At StepCm = half
+		 * a cell the two constructions agree brick for brick.
 		 *
-		 * A BARE ARM IS ONE BRICK PER COURSE, and that single word is the whole of `bFilled`. It
-		 * is a different load path rather than a thinner version of the same one.
+		 * A BARE ARM IS ONE BRICK PER COURSE, and that single word is the whole of `bFilled` — a
+		 * different load path rather than a thinner version of the same one.
 		 */
 		for (int32 StepIndex = 1; StepIndex <= Spec.Steps; ++StepIndex)
 		{
@@ -157,11 +154,11 @@ namespace DestructionCorbel
 		}
 
 		/*
-		 * JOINTS ARE DISCOVERED WITHIN A COURSE AND BETWEEN ADJACENT COURSES ONLY, and every one
-		 * of them goes through `MakeInterface` — the same door `RunningBond` uses, so the areas,
-		 * the normals and the rectangles are that producer's rather than this one's. Pieces two
-		 * courses apart or two cells apart are separated by more than the joint thickness and
-		 * `MakeInterface` refuses them, so the restriction is a cost bound and not a second rule.
+		 * JOINTS ARE DISCOVERED WITHIN A COURSE AND BETWEEN ADJACENT COURSES ONLY, every one
+		 * through `MakeInterface` — the same door `RunningBond` uses, so the areas, normals and
+		 * rectangles are that producer's rather than this one's. Pieces two courses or two cells
+		 * apart are separated by more than the joint thickness and `MakeInterface` refuses them,
+		 * so the restriction is a cost bound, not a second rule.
 		 */
 		for (int32 Course = 0; Course < TotalCourses; ++Course)
 		{
