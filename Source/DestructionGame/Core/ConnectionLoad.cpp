@@ -11,18 +11,14 @@ namespace DestructionForce
 		FVector UnitNormal = InterfaceNormal;
 		if (!UnitNormal.Normalize())
 		{
-			/*
-			 * Degenerate normal: there is no interface plane to resolve against,
-			 * so report no load rather than dividing through by zero.
-			 */
+			// Degenerate normal: no interface plane to resolve against, so report no load rather than dividing by zero.
 			return Load;
 		}
 
 		/*
-		 * Split the force into the part along the interface normal and the part
-		 * lying in the interface plane. Everything below follows from that split,
-		 * which is why orientation of the joint decides the load type and world
-		 * axes never enter into it.
+		 * Split the force into the part along the interface normal and the part in
+		 * the interface plane; everything below follows from that split, which is
+		 * why the joint's orientation decides the load type, not world axes.
 		 */
 		const double NormalComponent = FVector::DotProduct(Force, UnitNormal);
 		const FVector ShearForce = Force - (NormalComponent * UnitNormal);
