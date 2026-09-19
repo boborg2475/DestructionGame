@@ -9,23 +9,17 @@
 /**
  * Every content path this module hard-references from C++.
  *
- * WHY A TABLE AT ALL. ConstructorHelpers::FObjectFinder resolves a path AT CONSTRUCTION,
- * not at compile time, so deleting or renaming an asset leaves the reference null and
- * nothing says so — the pawn simply stops responding to input, or a brick spawns with no
- * mesh. CURRENT_STATE.md records that hazard against ADestructionGameFlyingPawn,
- * ADestructionGamePlayerController and ABrickActor. A table turns "content deletion
- * silently breaks the game" into "a test goes red", which is the whole point of it.
+ * Why a table at all: ConstructorHelpers::FObjectFinder resolves a path at construction, not
+ * compile time, so a deleted or renamed asset leaves the reference null with nothing saying
+ * so — the pawn stops responding, or a brick spawns with no mesh. A table turns that silent
+ * break into a red test (CURRENT_STATE.md has the history).
  *
- * ADDING A HARD REFERENCE IS ADDING A ROW, the same shape as the profile libraries in
- * Core/Profiles: the sweep in Tests/RequiredContentTest.cpp picks a new row up for free,
- * and cross-checks in the other direction too, so a reference resolved on a CDO that is
- * NOT in this table fails as well.
+ * Adding a hard reference is adding a row, the same shape as the profile libraries in
+ * Core/Profiles: Tests/RequiredContentTest.cpp's sweep picks it up for free, and cross-checks
+ * the other direction too, so a reference resolved on a CDO not in this table fails as well.
  *
- * THE PATHS ARE NAMED CONSTANTS AND THE CONSTRUCTORS USE THESE, NOT LITERALS OF THEIR
- * OWN. A table of paths that all load is worth nothing if it is not the list the game
- * actually resolves — the test's cross-check is what catches that drift after the fact,
- * and one spelling of each path is what stops it happening. There is no second copy of
- * these strings anywhere in the module.
+ * The constructors use these named constants, not literals of their own, so there is no
+ * second copy of a path anywhere in the module for the cross-check to disagree with.
  */
 namespace DestructionContent
 {
@@ -36,63 +30,50 @@ namespace DestructionContent
 	inline constexpr const TCHAR* AscendActionPath = TEXT("/Game/Input/Actions/IA_Jump.IA_Jump");
 
 	/**
-	 * The input action that opens the piece context menu, bound on the PLAYER CONTROLLER.
+	 * The input action that opens the piece context menu, bound on the player controller.
 	 *
-	 * ON THE CONTROLLER RATHER THAN THE PAWN, deliberately: the controller already owns the
-	 * mapping contexts, it outlives any pawn, and it is what carries the cursor and the
-	 * deprojection this action needs. A pawn-side binding would go away with the pawn.
+	 * On the controller, not the pawn: it already owns the mapping contexts, outlives any pawn,
+	 * and carries the cursor and deprojection this action needs.
 	 */
 	inline constexpr const TCHAR* InspectPieceActionPath =
 		TEXT("/Game/Input/Actions/IA_InspectPiece.IA_InspectPiece");
 
 	/**
-	 * The input action that keeps the highlight following the cursor, bound on the CONTROLLER
-	 * beside IA_InspectPiece.
+	 * The input action that keeps the highlight following the cursor, bound beside IA_InspectPiece.
 	 *
-	 * A SECOND ACTION RATHER THAN IA_MouseLook, EVEN THOUGH BOTH READ THE SAME Mouse2D AXIS.
-	 * IA_MouseLook lived in a context the piece menu REMOVED for as long as it was up, so hover
-	 * hung off it would have stopped updating at exactly the moment the cursor appeared and the
-	 * player started moving it over bricks. Nothing removes a context any more — IMC_MouseLook's
-	 * mapping is chorded to IA_LookModifier below, which is what made the removal unnecessary —
-	 * so what keeps the two actions apart now is the CHORD: hover must fire while no button is
-	 * held, and IA_MouseLook by definition does not. Folding them back together is logged in
-	 * CURRENT_STATE as a later content change, and Content.SessionInput.LookNeedsTheModifierHeld
-	 * is what insists the chord has not been copied onto this one in the meantime.
+	 * A second action rather than IA_MouseLook, though both read the same Mouse2D axis: IMC_MouseLook
+	 * is now chorded to IA_LookModifier below, so what keeps the two apart is the chord — hover
+	 * must fire while no button is held, and IA_MouseLook by definition does not.
+	 * Content.SessionInput.LookNeedsTheModifierHeld pins that the chord stays off this one.
 	 */
 	inline constexpr const TCHAR* HoverPieceActionPath =
 		TEXT("/Game/Input/Actions/IA_HoverPiece.IA_HoverPiece");
 
 	/**
-	 * THE ONE ACTION NOTHING BINDS, AND THE REASON THE CAMERA CAN BE POINTED AT ALL.
+	 * The one action nothing binds, and the reason the camera can be pointed at all.
 	 *
-	 * IA_LookModifier has no handler and must not get one. It exists to be the action
-	 * IMC_MouseLook's Chorded Action trigger WATCHES: free-look used to read the raw Mouse2D
-	 * axis with no held button, so the camera followed the mouse all the time and the only
-	 * cursor this game had came from REMOVING that whole context while a piece menu was up —
-	 * which a toolbar that is on screen for the whole session cannot live with. Gating look on
-	 * a held right mouse button leaves a panel nothing to take away.
+	 * IA_LookModifier has no handler and must not get one: it exists only for IMC_MouseLook's
+	 * Chorded Action trigger to watch, gating look on a held right mouse button so the cursor
+	 * has something to hold off — free-look used to read the raw Mouse2D axis unconditionally.
 	 *
-	 * IT IS RESOLVED ONTO NO CDO, WHICH IS WHY THE TABLE ROW MATTERS MORE HERE THAN ANYWHERE.
-	 * Every other path below is also held by a constructor, so a missing asset shows up twice.
-	 * This one is referenced only by the IMC_Session mapping and by IMC_MouseLook's chord, so
-	 * the table sweep is the only thing that would say it had gone.
+	 * Resolved onto no CDO, so the table row matters more here than anywhere: every other path
+	 * is also held by a constructor and a missing asset shows up twice, but this one is
+	 * referenced only by IMC_Session and IMC_MouseLook's chord — only the sweep would notice it gone.
 	 */
 	inline constexpr const TCHAR* LookModifierActionPath =
 		TEXT("/Game/Input/Actions/IA_LookModifier.IA_LookModifier");
 
 	/**
-	 * THE EIGHT SESSION SHORTCUTS, ONE ACTION PER CONTROL THE TOOLBAR DRAWS.
+	 * The eight session shortcuts, one action per control the toolbar draws.
 	 *
-	 * ONE ACTION PER CHIP RATHER THAN ONE PER KEY, because a keyboard shortcut in this design
-	 * IS a toolbar click: every one of these is bound to a single OnToolbarButton dispatch, so
-	 * the model's refusals apply to the keyboard exactly as they apply to the strip. Two of them
-	 * stand for a PAIR of buttons — Tab toggles the mode tabs and G toggles Snap/Free — which is
-	 * a read of the current state rather than a second id, and is why those two go through
-	 * ToggleSessionMode and ToggleSessionPlacement instead of straight at the door.
+	 * One action per chip rather than per key: a keyboard shortcut in this design IS a toolbar
+	 * click, each bound to a single OnToolbarButton dispatch, so the model's refusals apply to
+	 * the keyboard exactly as to the strip. Two stand for a pair of buttons — Tab toggles the
+	 * mode tabs, G toggles Snap/Free — which is why those two go through ToggleSessionMode and
+	 * ToggleSessionPlacement instead of straight at the door.
 	 *
-	 * The keys themselves live in IMC_Session and are pinned by
-	 * Content.SessionInput.SessionContextMapsTheShortcuts; that none of them is a key IMC_Default
-	 * already flies the pawn with is the separate claim of Content.SessionInput.SessionKeysAreFree.
+	 * Pinned by Content.SessionInput.SessionContextMapsTheShortcuts; that none collides with a
+	 * key IMC_Default already flies the pawn with is Content.SessionInput.SessionKeysAreFree.
 	 */
 	inline constexpr const TCHAR* SessionToggleModeActionPath =
 		TEXT("/Game/Input/Actions/IA_SessionToggleMode.IA_SessionToggleMode");
@@ -114,16 +95,13 @@ namespace DestructionContent
 	/**
 	 * What a called-out brick wears, one asset per state that is not None.
 	 *
-	 * THREE ASSETS RATHER THAN ONE, because the four highlight states have to be four
-	 * DISTINGUISHABLE looks or the enum is decoration: the one thing a player must be able to
-	 * check before pressing Delete is which bricks are going, and a hovered brick that draws
-	 * like a selected one takes that away. They are overlays, so a brick keeps its own material
-	 * underneath and nothing has to remember what it replaced.
+	 * Three assets rather than one: the four highlight states must be four distinguishable
+	 * looks or the enum is decoration — a player must be able to check which bricks are going
+	 * before pressing Delete, and a hovered brick drawn like a selected one hides that. They
+	 * are overlays, so a brick keeps its own material underneath.
 	 *
-	 * AND THE INSPECTED ONE IS THE STRONGEST OF THE THREE, deliberately. It marks the single
-	 * brick whose joint forces are on screen, so it has to be tellable apart from the other
-	 * bricks the player also picked — a breakout drawn beside five bricks that look identical
-	 * to its subject is ambiguous about which brick it is the breakout OF.
+	 * The inspected one is the strongest, deliberately: it marks the single brick whose joint
+	 * forces are on screen, so it must be tellable apart from other picked bricks.
 	 */
 	inline constexpr const TCHAR* BrickHoverMaterialPath =
 		TEXT("/Game/Materials/M_BrickHover.M_BrickHover");
@@ -133,23 +111,18 @@ namespace DestructionContent
 		TEXT("/Game/Materials/M_BrickInspected.M_BrickInspected");
 
 	/**
-	 * WHAT A PIECE WEARS UNDER THE LOAD OVERLAY, one asset per band of EJointMarginBand.
+	 * What a piece wears under the load overlay, one asset per band of EJointMarginBand.
 	 *
-	 * THREE ASSETS BECAUSE THERE ARE THREE BANDS, AND THE BANDS ARE THE MODEL'S. The presenter
-	 * already decides which side of 10x and of 2x margin a joint sits on — SESSION_UI_DESIGN §a
-	 * principle 6's "the colour of a thing is the model's decision; the hue is the widget's" — so
-	 * these three are the hue half of a decision made in Core/PieceMenu.cpp, and a fourth asset
-	 * would be a band nothing can produce.
+	 * Three assets because there are three bands, and the bands are the model's: the presenter
+	 * already decides which side of 10x and 2x margin a joint sits on (SESSION_UI_DESIGN §a
+	 * principle 6, "the colour of a thing is the model's decision; the hue is the widget's").
 	 *
-	 * THE SAME KIND OF OVERLAY AS M_BrickHover, which matters more here than anywhere: the overlay
-	 * covers EVERY LIVE PIECE at once rather than one or six, so anything that replaced the brick's
-	 * own material would repaint the whole wall and anything opaque would hide the bond. They are
-	 * additive overlays on a non-Nanite mesh, exactly as the highlight family above is.
+	 * The same kind of overlay as M_BrickHover, which matters more here: it covers every live
+	 * piece at once, so anything opaque or replacing the brick's own material would hide the
+	 * bond or repaint the whole wall.
 	 *
-	 * GREEN, AMBER, RED — AND THEY ARE THE HEADROOM BAR'S OWN THREE. The bar in the details window
-	 * already paints the three bands; the overlay saying amber for a joint the panel beside it draws
-	 * gold would be two answers to one question. The three colours are the array directly below,
-	 * which the panel now reads as well.
+	 * Green, amber, red — the headroom bar's own three, so the overlay and the panel beside it
+	 * never disagree. The colours are the array directly below, which the panel now reads too.
 	 */
 	inline constexpr const TCHAR* BrickLoadComfortableMaterialPath =
 		TEXT("/Game/Materials/M_BrickLoadComfortable.M_BrickLoadComfortable");
@@ -159,27 +132,17 @@ namespace DestructionContent
 		TEXT("/Game/Materials/M_BrickLoadCritical.M_BrickLoadCritical");
 
 	/**
-	 * AND WHAT EACH BAND IS PAINTED IN — the emissive constant of the three materials above, the
-	 * fill of the details window's headroom bar, and the dot beside a falling brick, ALL ONE HOME.
+	 * And what each band is painted in — the emissive constant of the three materials above, the
+	 * fill of the details window's headroom bar, and the dot beside a falling brick, all one home.
+	 * Beside the paths so a fourth band arriving with a path and no colour is visible to the
+	 * person adding it (see BrickNeighbourSwatchColours below for why that matters in practice).
 	 *
-	 * BESIDE THE PATHS FOR THE REASON BrickNeighbourSwatchColours IS: the colour and the asset are
-	 * one row, and adjacency is what makes a fourth band arriving with a path and no colour visible
-	 * to the person adding it. These three lived as file-statics inside
-	 * DestructionGamePlayerController.cpp, where the three new MATERIALS could not reach them — and
-	 * a brick tinted one green beside a bar drawn another is two answers to one question, drawn two
-	 * inches apart. That is exactly how the neighbour palette drifted before it was moved here.
+	 * Indexed by EJointMarginBand's own enumerators — Critical zero, Caution one, Comfortable two
+	 * — so a call site needs no switch to turn the model's number back into a colour. The enum
+	 * lives in Core/PieceMenu.h and this header deliberately does not include it: this is a
+	 * table of content, not presentation logic.
 	 *
-	 * INDEXED BY EJointMarginBand'S OWN ENUMERATORS, so Critical is zero, Caution is one and
-	 * Comfortable is two. The band is a number the model computed — the same shape the neighbour
-	 * slots have — and an array keyed on it needs no switch at the call site to turn the answer back
-	 * into a name. The enum lives in Core/PieceMenu.h and this header deliberately does not include
-	 * it: this is a table of content, not of presentation logic, and the ordering is asserted where
-	 * the two meet rather than by a dependency in this direction.
-	 *
-	 * EQUALITY HERE IS NOT EQUALITY ON SCREEN, exactly as the neighbour palette's comment says at
-	 * length: the bar is a flat Slate fill over a near-black panel and the brick is a translucent
-	 * unlit overlay composited over a lit surface. The two are one DECISION, not one pixel, and
-	 * nobody may retune either to match a screenshot.
+	 * Equality here is not equality on screen — see BrickNeighbourSwatchColours.
 	 */
 	inline constexpr FLinearColor BrickLoadSwatchColours[] = {
 		FLinearColor(0.95f, 0.24f, 0.20f, 1.0f),
@@ -188,17 +151,13 @@ namespace DestructionContent
 	};
 
 	/**
-	 * ONE MATERIAL PER COLOUR SLOT OF THE JOINT READOUT, so a row of numbers and a brick in the
+	 * One material per colour slot of the joint readout, so a row of numbers and a brick in the
 	 * world are the same colour.
 	 *
-	 * SIX, WHICH IS THE MODEL'S NUMBER RATHER THAN A ROUND ONE: a brick inside a running bond has
-	 * six joints, and FInspectorJointRow::ColourSlot hands out slot i to row i until it runs out.
-	 * The emissive constants are the same six the panel paints its swatches in, so the pairing is
-	 * by construction rather than by somebody picking amber twice.
-	 *
-	 * AN ARRAY RATHER THAN SIX NAMED CONSTANTS, and it is the one place that shape is right: these
-	 * are indexed BY A SLOT NUMBER the model computed, so a name per slot would need a switch at
-	 * every call site to turn the number back into the name.
+	 * Six, the model's number rather than a round one: a brick inside a running bond has six
+	 * joints, and FInspectorJointRow::ColourSlot hands out slot i to row i until it runs out.
+	 * An array rather than six named constants, since these are indexed by a slot number the
+	 * model computed, and a name per slot would need a switch at every call site.
 	 */
 	inline constexpr const TCHAR* BrickNeighbourMaterialPaths[] = {
 		TEXT("/Game/Materials/M_BrickNeighbour0.M_BrickNeighbour0"),
@@ -210,34 +169,29 @@ namespace DestructionContent
 	};
 
 	/**
-	 * AND WHAT THE PANEL PAINTS SLOT i'S SWATCH IN — BESIDE THE PATH RATHER THAN INSIDE THE WIDGET.
+	 * And what the panel paints slot i's swatch in — beside the path rather than inside the widget.
 	 *
-	 * THESE ARE THE EMISSIVE CONSTANTS OF THE SIX MATERIALS DIRECTLY ABOVE, INDEX FOR INDEX, and
-	 * that agreement is the entire feature: a joint row draws this colour, the brick on the far end
-	 * of that joint wears the material on the same row, and the player finds one from the other. A
-	 * swatch that disagrees with its material is not a cosmetic fault — it points the player at the
-	 * wrong brick in a wall of 1,220 identical ones, which is worse than drawing no swatch at all.
+	 * These are the emissive constants of the six materials above, index for index: a joint row
+	 * draws this colour, the brick on the far end wears the material on the same row, and the
+	 * player finds one from the other. A swatch that disagrees with its material points the
+	 * player at the wrong brick in a wall of 1,220 identical ones.
 	 *
-	 * BESIDE THE PATHS BECAUSE THE TWO ARRAYS ARE ONE ROW PER SLOT. They lived in
-	 * DestructionGamePlayerController.cpp as a file-static palette whose comment claimed to be
-	 * "exactly" these emissives, and a palette repick changed three of the assets without it —
-	 * amber, chartreuse and teal against a green, a clay and a sage, drawn side by side, with the
-	 * whole suite green because nothing held them together. Adjacency is not a proof, but it is what
-	 * makes a seventh slot arriving with a path and no colour visible to the person adding it.
+	 * Beside the paths because the two arrays are one row per slot — they used to live as a
+	 * file-static palette in DestructionGamePlayerController.cpp whose comment claimed to be
+	 * "exactly" these emissives, and a palette repick changed three of the assets without it.
+	 * Adjacency is not a proof, but it makes a seventh slot arriving with a path and no colour
+	 * visible to whoever adds it.
 	 *
-	 * THIS DUPLICATION CANNOT BE DELETED FROM C++ ALONE, AND SAYING SO IS THE HONEST THING TO DO.
-	 * The shader needs the colour in the asset and the swatch needs it at runtime; a Constant3Vector
-	 * is editor-only data, so nothing can read it in a cooked build. The design that would make the
-	 * drift UNSAYABLE is re-authoring each emissive as a named VectorParameter, at which point the
-	 * swatch reads GetVectorParameterValue and this array goes away entirely. Until then the
+	 * This duplication cannot be deleted from C++ alone: the shader needs the colour in the asset
+	 * and the swatch needs it at runtime, and a Constant3Vector is editor-only data, unreadable
+	 * in a cooked build. Re-authoring each emissive as a named VectorParameter would let the
+	 * swatch read GetVectorParameterValue and remove this array entirely; until then the
 	 * agreement is asserted rather than structural — Content.NeighbourSwatchesMatchTheirMaterials.
 	 *
-	 * EQUALITY HERE IS NOT EQUALITY ON SCREEN, and nobody may "fix" one of these to match a
-	 * screenshot. The swatch is a Slate fill drawn at full strength over the panel's near-black
-	 * background; the brick is an ADDITIVE overlay composited over a lit surface, so the same linear
-	 * triple lands at a different display value on the brick than it does in the panel. The two are
-	 * meant to be the same DECISION, not the same pixel, and matching them by eye would put a third
-	 * number in the system rather than removing one.
+	 * Equality here is not equality on screen, and nobody may "fix" one of these to match a
+	 * screenshot: the swatch is a flat Slate fill, the brick an additive overlay over a lit
+	 * surface, so the same linear triple lands at a different display value on each. The two are
+	 * meant to be the same decision, not the same pixel.
 	 */
 	inline constexpr FLinearColor BrickNeighbourSwatchColours[] = {
 		FLinearColor(0.00f, 0.80f, 0.00f, 1.0f),
@@ -249,13 +203,11 @@ namespace DestructionContent
 	};
 
 	/**
-	 * WHAT A BRICK WEARS AS ITS BASE COLOUR, ONE ASSET PER STRUCTURAL MATERIAL THE SHED IS MADE OF.
+	 * What a brick wears as its base colour, one asset per structural material the shed is made of.
 	 *
-	 * THE BASE MATERIAL (element 0), NOT AN OVERLAY. The highlight assets above sit on top of a
-	 * brick so it keeps its own look underneath; these ARE that look underneath, so a wall reads
-	 * brick-red and a roof timber-tan before a cursor ever crosses either. A brick whose material
-	 * maps to neither keeps the mesh's grey default, which is why only the two the shed uses are
-	 * named here.
+	 * The base material (element 0), not an overlay: the highlight assets above sit on top of a
+	 * brick so it keeps its own look underneath, and these ARE that look. A brick whose material
+	 * maps to neither keeps the mesh's grey default, hence only these two are named.
 	 */
 	inline constexpr const TCHAR* ShedBrickMaterialPath =
 		TEXT("/Game/Materials/M_Shed_Brick.M_Shed_Brick");
@@ -269,19 +221,18 @@ namespace DestructionContent
 	/**
 	 * The session's own keyboard, applied alongside the other two for the whole session.
 	 *
-	 * A THIRD CONTEXT RATHER THAN NINE MORE MAPPINGS IN IMC_Default, because these are the
-	 * SESSION's keys rather than the pawn's: what they do is decided by the toolbar model, they
-	 * arrive and change together, and keeping them in one asset is what lets
-	 * Content.SessionInput.SessionKeysAreFree diff them against the flying pawn's keys and say
-	 * that none of them has been stolen. bConsumeInput defaults to true, so a collision would
-	 * not double up — it would WITHHOLD the key and the pawn would silently stop answering.
+	 * A third context rather than nine more mappings in IMC_Default: these are the session's
+	 * keys, decided by the toolbar model, and keeping them in one asset lets
+	 * Content.SessionInput.SessionKeysAreFree diff them against the flying pawn's. bConsumeInput
+	 * defaults to true, so a collision would withhold the key rather than double it up — the
+	 * pawn would silently stop answering.
 	 */
 	inline constexpr const TCHAR* SessionMappingContextPath = TEXT("/Game/Input/IMC_Session.IMC_Session");
 
 	/**
 	 * ABrickActor's placeholder mesh, and the one reference reflection cannot see: it is
-	 * set onto a mesh component's own asset pointer rather than being a UPROPERTY of the
-	 * actor, so Tests/RequiredContentTest.cpp reads it back by hand.
+	 * set onto a mesh component's own asset pointer rather than a UPROPERTY of the actor, so
+	 * Tests/RequiredContentTest.cpp reads it back by hand.
 	 */
 	inline constexpr const TCHAR* BrickPlaceholderMeshPath = TEXT("/Game/LevelPrototyping/Meshes/SM_Cube.SM_Cube");
 

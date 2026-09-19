@@ -25,22 +25,17 @@ public:
 	/**
 	 * The structure this game mode built when play began, or INDEX_NONE if it built none.
 	 *
-	 * THE ID RATHER THAN THE BINDING, because the subsystem owns the structures and Find is
-	 * the one route to one. Handing back a binding here would make the game mode a second
-	 * owner of something whose lifetime it does not control.
+	 * The id rather than the binding: the subsystem owns the structures and Find is the one
+	 * route to one, so returning a binding would make this a second owner of its lifetime.
 	 */
 	int32 GetBuiltStructureId() const { return BuiltStructureId; }
 
 	/**
-	 * WHICH CATALOGUE ROW THIS LEVEL CHOSE, and HOW it came to choose it.
+	 * Which catalogue row this level chose, and how it came to choose it.
 	 *
-	 * STATE RATHER THAN A LOG LINE. A warning and an on-screen label are both thin reads of
-	 * these two, and matching on log TEXT is fragile — so this pair is the assertable shape
-	 * and whatever is printed is downstream of it.
-	 *
-	 * THE PAIR, NEVER THE INDEX ALONE. A URL naming a scenario that does not exist and a URL
-	 * naming nothing at all both land on the same row, and a player who mistyped has to be
-	 * able to tell those apart from outside.
+	 * State rather than a log line, since matching on log text is fragile — and the pair, never
+	 * the index alone, since a URL naming a nonexistent scenario and one naming nothing at all
+	 * land on the same row and must still be tellable apart.
 	 */
 	int32 GetSelectedScenarioRow() const { return SelectedScenarioRow; }
 
@@ -50,13 +45,11 @@ public:
 	}
 
 	/**
-	 * WHAT THE PLAYER IS TOLD THEY ARE LOOKING AT, right now.
+	 * What the player is told they are looking at, right now.
 	 *
-	 * COMPUTED ON DEMAND RATHER THAN STORED, because half of it is a clock: the countdown to an
-	 * armed cut changes every frame, and a stored copy would need something to refresh it. The
-	 * game mode owns the two facts a label cannot derive — which row it RECORDED building, and
-	 * how much of the cut's delay is left — and DestructionScenarios::BuildScenarioLabel turns
-	 * those into the words, world-free, where a test can read them.
+	 * Computed on demand rather than stored: half of it is a clock, the countdown to an armed
+	 * cut, which changes every frame. DestructionScenarios::BuildScenarioLabel turns the row
+	 * and the cut's remaining delay into words, world-free and testable.
 	 */
 	DestructionScenarios::FScenarioLabel GetScenarioLabel() const;
 
@@ -68,16 +61,12 @@ protected:
 private:
 
 	/**
-	 * RUN THE LEVEL: take out the bricks the scenario names, and settle what is left.
+	 * Run the level: take out the bricks the scenario names, and settle what is left.
 	 *
-	 * ONCE, WHEN THE HOLD EXPIRES, AND ON EVERY ROW RATHER THAN ONLY ON A CUTTING ONE. Seven of
-	 * the nine rows cut nothing at all — a corbel is condemned by its own geometry — so a moment
-	 * that only ever fired for a cut left those levels with nothing to happen at, which is why
-	 * they used to settle on the frame they were built and be over before the player's first
-	 * frame was drawn.
-	 *
-	 * THROUGH THE COMMIT PATH THE PLAYER'S OWN DELETE TAKES, so what a level shows is
-	 * reproducible by clicking: one settle, one push, and the orphaned bricks destroyed.
+	 * Fires once, when the hold expires, on every row rather than only a cutting one — seven of
+	 * nine rows cut nothing and are condemned by their own geometry, and used to settle on the
+	 * frame they were built. Goes through the same commit path the player's own delete takes, so
+	 * what a level shows is reproducible by clicking.
 	 */
 	void RunScenario();
 
@@ -94,36 +83,29 @@ private:
 	/**
 	 * The bricks the armed cut will take, resolved when the wall was laid.
 	 *
-	 * REFS RATHER THAN HANDLES, because a handle is a momentary answer and this one is held
-	 * across seconds of play in which the player may have deleted the very brick — which is
-	 * exactly what the commit path's re-resolve refuses on. Plain ints, no UObject, so there
-	 * is nothing here for the garbage collector to keep alive.
+	 * Refs rather than handles: this is held across seconds of play in which the player may
+	 * have deleted the brick, which the commit path's re-resolve refuses on.
 	 */
 	TArray<FPieceRef> ScenarioCutRefs;
 
 	/**
 	 * The hold: how long the structure is left exactly as laid before the level runs.
 	 *
-	 * ONE CLOCK, NOT TWO. It is what the cut is armed on AND what a no-cut row settles on, so
-	 * there is a single answer to "when does this level do its thing" — and the label's
-	 * countdown, which reads this handle's own remainder, can never announce one moment while
-	 * another one fires.
+	 * One clock, not two: it is what the cut is armed on and what a no-cut row settles on, so
+	 * the label's countdown can never announce one moment while another fires.
 	 *
-	 * A TIMER RATHER THAN A TICK, and a game mode torn down mid-hold takes it with it:
-	 * UWorld::DestroyActor clears every timer for the actor being destroyed, and the timer
-	 * manager itself dies with the world. The world tests build and tear down worlds
-	 * repeatedly, so a callback that outlived its game mode would show up as a crash rather
-	 * than as a failure.
+	 * A timer rather than a tick — a game mode torn down mid-hold takes it with it, since
+	 * UWorld::DestroyActor clears every timer for the actor and the timer manager dies with the
+	 * world. Repeated world tests would otherwise crash on an outliving callback.
 	 */
 	FTimerHandle ScenarioHoldTimer;
 
 	/**
-	 * Whether that cut has already run, which is what turns the label's countdown into a report.
+	 * Whether that cut has already run, which turns the label's countdown into a report.
 	 *
-	 * A FLAG RATHER THAN A DEAD TIMER HANDLE READ BACKWARDS. The handle is invalid both after the
-	 * cut has fired and before anything armed it, so a level whose timer never started — a row
-	 * with no cut, or a delay the timer manager refused — would read as one that had already cut,
-	 * and the player would be told the brick was out while looking straight at it.
+	 * A flag rather than a dead timer handle read backwards: the handle is invalid both after
+	 * the cut fires and before anything armed it, so a never-started timer would otherwise read
+	 * as already cut, telling the player the brick was out while they looked straight at it.
 	 */
 	bool bScenarioCutHasFired = false;
 };
