@@ -18,47 +18,33 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-/**
- * NAMED NAMESPACE, not anonymous, and named differently from every other one in this directory.
- * An anonymous namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build
- * merges many files into one — at which point two file-local names that collide are a hard compile
- * error between files that never refer to each other. See CURRENT_STATE.md; the `using namespace`
- * lives inside each RunTest for the same reason.
- */
+/** Uniquely named namespace: unity builds merge files, so anonymous namespaces can collide. */
 namespace SessionJointChoiceTestSupport
 {
 	/*
-	 * THE GRID AND THE RESTS-ON-THE-GROUND CONVENTION, TRANSCRIBED RATHER THAN IMPORTED (DESIGN §8,
-	 * 2026-09-15). A 21.5 x 10.25 x 6.5 cm brick on a 1 cm joint gives the 22.5 x 11.25 x 7.5
-	 * coordinating grid; course 0 centres a brick at its own half height, 3.25, so its underside is
-	 * ON the earth. A plate is 10 cm thick, so course 1 centres it at 7.5 + 5.0 = 12.5 — which is
-	 * exactly one joint above the top of a course-0 brick (6.5 + 1.0 + 5.0), and that is what makes
-	 * the plate BEAR rather than intersect.
-	 *
-	 * Calling DestructionSession::CoursePlaneZCm here would make this test agree with the plane
-	 * function however wrong it is, which is one of the things it exists to catch.
+	 * Course heights, transcribed rather than taken from DestructionSession::CoursePlaneZCm so a
+	 * wrong plane function can't agree with itself (DESIGN §8). Course 0 brick centre = half its
+	 * 6.5 cm height. Course 1 plate (10 cm thick) = 7.5 + 5.0 = 12.5, one 1 cm joint above the
+	 * brick top, so it bears rather than intersects.
 	 */
 	constexpr double JointChoiceBrickCourse0ZCm = 3.25;
 	constexpr double JointChoicePlateCourse1ZCm = 12.5;
 
-	/** The seed brick and its same-course neighbour, one 22.5 cm pitch along. */
+	/** The seed brick and its neighbour one 22.5 cm pitch along. */
 	const FVector JointChoiceSeedCentreCm(0.0, 0.0, JointChoiceBrickCourse0ZCm);
 	const FVector JointChoiceSecondCentreCm(22.5, 0.0, JointChoiceBrickCourse0ZCm);
 
-	/** Where the plate lands: centred on the seed brick, bearing across both. */
+	/** The plate: centred on the seed brick, bearing on both. */
 	const FVector JointChoicePlateCentreCm(0.0, 0.0, JointChoicePlateCourse1ZCm);
 
-	/**
-	 * The cursor X for the second brick — 0.5 cm off the bond, so the assertion that it lands at
-	 * 22.5 reads the SOLVER rather than the request.
-	 */
+	/** Cursor X for the second brick, 0.5 cm off the bond, so landing at 22.5 proves the snap. */
 	constexpr double JointChoiceSecondCursorXCm = 22.0;
 
-	/** A pointing ray is a DIRECTION: it starts well above the build plane and aims at the floor. */
+	/** Build rays start well above the plane and aim at the floor. */
 	constexpr double JointChoiceRayStartZCm = 300.0;
 	constexpr double JointChoiceRayEndZCm = 0.0;
 
-	/** A brick is 10.25 cm deep on Y, so +/- 100 cm crosses it entirely with nothing else in the way. */
+	/** Inspect-ray half-length along Y; well beyond the 10.25 cm brick depth. */
 	constexpr double JointChoiceInspectReachCm = 100.0;
 
 	FVector JointChoiceRayStart(double XCm)
@@ -71,7 +57,7 @@ namespace SessionJointChoiceTestSupport
 		return FVector(XCm, 0.0, JointChoiceRayEndZCm);
 	}
 
-	/** Full-field profile identity — FConnectionStrength has no operator==, and siblings differ by one axis. */
+	/** Compare all five fields: FConnectionStrength has no operator==, and siblings differ by one field. */
 	void CheckSessionProfile(
 		FAutomationTestBase& Test,
 		const FString& Prefix,
@@ -90,13 +76,13 @@ namespace SessionJointChoiceTestSupport
 			Got.MaxShearStrengthMPa, Want.MaxShearStrengthMPa);
 	}
 
-	/** Case-insensitive "does this sentence contain that word", so the wording may be retuned. */
+	/** Case-insensitive substring check, so wording can change without breaking tests. */
 	bool SaysWord(const FString& Text, const TCHAR* Word)
 	{
 		return Text.Contains(FString(Word), ESearchCase::IgnoreCase);
 	}
 
-	/** Every joint row on one line, so a failure reads without a debugger. */
+	/** Joint rows on one line, for failure messages. */
 	FString DescribeJointRows(TArrayView<const FInspectorJointRow> Rows)
 	{
 		if (Rows.Num() == 0)
@@ -123,24 +109,18 @@ namespace SessionJointChoiceTestSupport
 		return Ref;
 	}
 
-	/* --- THE PRESENTER FIXTURE'S OWN GEOMETRY ------------------------------------------------ */
+	// Presenter fixture geometry.
 
-	/** The structure the presenter fixture identifies itself as. Any id will do; it has to be one. */
+	/** Arbitrary structure id for the presenter fixture. */
 	constexpr int32 JointChoicePresenterStructure = 7;
 
-	/** One brick, halved, and the six neighbour offsets that abut it across a 1 cm joint. */
+	/** Brick half-extents and joint thickness, cm. */
 	const FVector JointChoicePresenterHalfBrickCm(10.75, 5.125, 3.25);
 	constexpr double JointChoicePresenterJointCm = 1.0;
 
 	/**
-	 * SIX NEIGHBOURS, ONE PER FACE, SO ONE BRICK CAN WEAR SIX DIFFERENT PROFILES AT ONCE.
-	 *
-	 * A box has exactly six faces and the library has exactly six profiles a player can choose, so
-	 * the fixture is one subject surrounded on every side. That is what makes the claim a sweep over
-	 * the whole vocabulary rather than one row about screws: a presenter that printed a constant, or
-	 * that named the profile off the joint's ROLE instead of its strengths, fails on the pairs that
-	 * share a role — the two head joints on +X and -X carry different profiles and must read
-	 * differently.
+	 * One neighbour per face, so the subject carries six different profiles at once. The two head
+	 * joints (+X, -X) share a role but not a profile, which catches a presenter naming the role.
 	 */
 	const FVector JointChoicePresenterOffsetsCm[6] = {
 		FVector(22.5, 0.0, 0.0),
@@ -153,54 +133,20 @@ namespace SessionJointChoiceTestSupport
 }
 
 /**
- * UI-6, THE SESSION HALF — THE JOINT CHIP THE PLAYER CLICKS IS WHAT FASTENS THE PIECE THEY THEN
- * LAY, AND THE DETAILS WINDOW SAYS SO AFTERWARDS.
+ * UI-6, session half: OnToolbarButton(JointScrew) reaches both the session state and the
+ * UBuildModeComponent, the next Build-mode placement puts that profile on every joint of the new
+ * piece, and inspecting it in Destroy mode names the profile in the joint rows.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
+ * World.BuildMode.JointOverrideRidesThroughPlacement covers the subsystem door; this covers the
+ * wire from chip to component to door, which the model tests in Core.SessionToolbar.* cannot see.
+ * The inspector is part of the claim because a screwed and a dry-bedded plate look identical;
+ * the joint row naming the profile is the only way a player can tell.
  *
- * `OnToolbarButton(JointScrew)` puts the choice on the controller's session state AND on its
- * `UBuildModeComponent`; the next `PrimaryAlongRay` in Build mode lays a piece every one of whose
- * joints carries that profile; and inspecting that piece in Destroy mode reads the profile's own
- * name back out of the joint rows.
+ * Joints store a copy of the strength, so the name comes back via FindConnectionProfileRow's
+ * five-field match (Core/Profiles/ConnectionProfiles.h), and the claim is on the row text.
  *
- * =====================================================================================
- * WHY THIS IS A SEPARATE TEST FROM THE SUBSYSTEM'S
- * =====================================================================================
- *
- * `World.BuildMode.JointOverrideRidesThroughPlacement` pins that a `const FConnectionStrength*`
- * handed to the door replaces every joint's profile. What it cannot see is the WIRE: that the chip
- * reaches the component, that the component hands it to the door, and that nothing in between
- * drops it. CURRENT_STATE records the component's kind, course and placement as a parallel copy of
- * three state fields precisely because that wire is where a session falls apart — a chip that lit
- * correctly and laid mortar anyway would pass every model sweep in `Core.SessionToolbar.*`.
- *
- * =====================================================================================
- * AND WHY THE INSPECTOR IS PART OF THE SAME CLAIM
- * =====================================================================================
- *
- * The choice changes COMMITTED PHYSICS and nothing on screen moves when it does: a screwed plate
- * and a dry-bedded one sit in exactly the same place and look identical until the structure is
- * run. So the only way a player can tell what they built is the details window, and a joint row
- * that names only its ROLE — "bed below", "head" — is the same sentence for both. Naming the
- * profile is what makes the setting observable at all, which is the same argument the support
- * words and the margin bands were built under.
- *
- * THE IDENTITY TRAP THIS SLICE CLOSED, AND WHY THE CLAIM IS STILL ON THE TEXT.
- * `FNamedConnectionProfile::Strength` (Core/Profiles/ConnectionProfiles.h) is now a REFERENCE to the
- * shipped extern — it was held BY VALUE, exactly as `FNamedMaterialProfile::Profile` was until S7,
- * and a name lookup written the obvious way (comparing a joint's strength against
- * `AllConnectionProfiles()` BY ADDRESS) answered "no such row" for every joint in the game. A joint
- * in a built wall has no address left to compare in any case — `FStructure::AddConnection` stores a
- * COPY — so the route back to the name is `FindConnectionProfileRow`'s five-field match, and the
- * reference is what makes ITS answer the library's own row. Which is why the claim here is on the
- * ROW TEXT a player reads rather than on a field somebody could fill in from the override alone.
- *
- * NEEDS A TICKING WORLD: a real world — the controller spawns bricks, the ghost is an actor and the
- * Destroy ray is a genuine line trace — but it never ticks one. Every assertion is a mechanism
- * reading: the returned bool, the component's field, the structure's connection strengths, and the
- * presenter's own strings. Never a displacement; nothing here is released and nothing moves.
+ * Needs a world (spawned bricks, a real line trace) but no ticking. All assertions are mechanism
+ * readings; nothing moves.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionJointChoiceRidesThroughTheSessionTest,
@@ -253,7 +199,7 @@ bool FSessionJointChoiceRidesThroughTheSessionTest::RunTest(const FString& Param
 
 	const int32 StructureId = Build->GetStructureId();
 
-	/* --- ONE: the session opens on Auto, and the component agrees ---------------------------- */
+	// 1. The session opens on Auto, and the component agrees.
 
 	TestTrue(
 		*FString::Printf(
@@ -269,7 +215,7 @@ bool FSessionJointChoiceRidesThroughTheSessionTest::RunTest(const FString& Param
 			static_cast<int32>(Build->JointChoice)),
 		Build->JointChoice == EJointChoice::Auto);
 
-	/* --- TWO: two bricks laid on Auto, bonded by the INFERRED perpend ------------------------ */
+	// 2. Two bricks laid on Auto are bonded by the inferred perpend.
 
 	{
 		TestTrue(
@@ -309,7 +255,7 @@ bool FSessionJointChoiceRidesThroughTheSessionTest::RunTest(const FString& Param
 			GeneralPurposeMortarPerpend);
 	}
 
-	/* --- THREE: the player picks Screw, and the chip reaches the component ------------------- */
+	// 3. Picking Screw reaches the component.
 
 	TestTrue(
 		TEXT("the Screw chip must be clickable — a joint choice has no precondition"),
@@ -321,19 +267,14 @@ bool FSessionJointChoiceRidesThroughTheSessionTest::RunTest(const FString& Param
 			static_cast<int32>(Controller->GetSessionToolbarState().Joint)),
 		Controller->GetSessionToolbarState().Joint == EJointChoice::Screw);
 
-	/*
-	 * AND THE COMPONENT, WHICH IS THE HALF NO MODEL TEST CAN SEE. The state is what the strip
-	 * draws; the component is what the next click lays. A controller that applied the transition
-	 * and forgot the push would light the Screw chip over a plate that lands dry-bedded, and there
-	 * is nothing on screen that would say so.
-	 */
+	// The state drives the strip; the component drives the next placement. Both must change.
 	TestTrue(
 		*FString::Printf(
 			TEXT("and it must PUSH that choice onto the build component; the component reads %d"),
 			static_cast<int32>(Build->JointChoice)),
 		Build->JointChoice == EJointChoice::Screw);
 
-	/* --- FOUR: a plate laid on that course is SCREWED to both bricks ------------------------- */
+	// 4. A plate laid on that course is screwed to both bricks.
 
 	FPieceRef PlateRef;
 
@@ -373,11 +314,7 @@ bool FSessionJointChoiceRidesThroughTheSessionTest::RunTest(const FString& Param
 				PlateCentreCm.X, PlateCentreCm.Y, PlateCentreCm.Z),
 			PlateCentreCm.Equals(JointChoicePlateCentreCm, KINDA_SMALL_NUMBER));
 
-		/*
-		 * THREE JOINTS: the course's own head joint, and ONE BEARING PER BRICK. The second bearing
-		 * is the whole point — an override written onto the first joint alone leaves the far end of
-		 * a plate the player screwed down resting on friction.
-		 */
+		// Three joints: the head joint plus one bearing per brick. Both bearings must get the override.
 		TestEqual(
 			FString::Printf(
 				TEXT("the plate spans both bricks, so the build must hold 3 joints — one head and "
@@ -397,11 +334,7 @@ bool FSessionJointChoiceRidesThroughTheSessionTest::RunTest(const FString& Param
 					Screw);
 			}
 
-			/*
-			 * AND THE WALL THE PLAYER ALREADY BUILT IS UNTOUCHED. The choice applies to the NEXT
-			 * placement; a session that re-priced the existing joints would let a chip change a
-			 * structure the player finished minutes ago, invisibly.
-			 */
+			// The choice applies only to new placements; existing joints keep their profile.
 			CheckSessionProfile(
 				*this,
 				TEXT("the course's existing head joint is NOT re-priced by the later choice: "),
@@ -410,7 +343,7 @@ bool FSessionJointChoiceRidesThroughTheSessionTest::RunTest(const FString& Param
 		}
 	}
 
-	/* --- FIVE: in Destroy mode, the details window NAMES what fastened it -------------------- */
+	// 5. In Destroy mode, the joint rows name the profile.
 
 	{
 		TestTrue(
@@ -446,13 +379,7 @@ bool FSessionJointChoiceRidesThroughTheSessionTest::RunTest(const FString& Param
 
 		for (int32 Index = 0; Index < Inspector.Joints.Num(); ++Index)
 		{
-			/*
-			 * THE ROW SAYS "SCREW", AND THE REST OF THE SENTENCE IS THE PRESENTER'S. "screw",
-			 * "Screw", "screwed", "screw joint" are all the answer a player needs; what may not
-			 * happen is a row that names only its ROLE, because "bed below" is the same sentence
-			 * for a screwed plate and a dry-bedded one — and those two structures behave nothing
-			 * alike the moment either is run.
-			 */
+			// The row must contain "screw"; the rest of the wording is the presenter's.
 			TestTrue(
 				*FString::Printf(
 					TEXT("the screwed plate's joint row %d must NAME the profile that fastens it — it "
@@ -462,15 +389,9 @@ bool FSessionJointChoiceRidesThroughTheSessionTest::RunTest(const FString& Param
 		}
 
 		/*
-		 * AND THE DISCRIMINATION, WHICH IS WHAT STOPS "NAME THE PROFILE" BEING SATISFIED BY A
-		 * CONSTANT. Brick 0 wears BOTH joints at once — the mortared head joint into its neighbour
-		 * and the screwed bearing under the plate — so its two rows have to read differently. A
-		 * presenter that printed "screw" on every row would pass the loop above and fail here.
-		 *
-		 * IT IS CLICKED INTO THE SELECTION FIRST, because BuildPieceMenuInspector singles out
-		 * NOTHING for a ref that is not a member of the selection — deliberately, so a readout can
-		 * never show somebody else's joints. Measured: without this click the rows came back empty
-		 * and the two claims below failed for a fixture reason rather than a real one.
+		 * Discrimination: brick 0 has a mortared head joint and a screwed bearing, so exactly one
+		 * row each must say mortar and screw (catches a presenter printing a constant). It is
+		 * clicked into the selection first, because BuildPieceMenuInspector ignores a ref outside it.
 		 */
 		const FVector BrickInspectStart(
 			JointChoiceSeedCentreCm.X,
@@ -527,48 +448,16 @@ bool FSessionJointChoiceRidesThroughTheSessionTest::RunTest(const FString& Param
 }
 
 /**
- * A JOINT ROW NAMES THE PROFILE THAT HOLDS IT, AND TWO JOINTS OF THE SAME ROLE CARRYING DIFFERENT
- * PROFILES READ DIFFERENTLY.
+ * Each joint row names its profile, and same-role joints with different profiles read
+ * differently. World-free: BuildPieceMenuInspector takes a binding and returns strings.
  *
- * =====================================================================================
- * WHY THIS IS SEPARABLE FROM THE SESSION TEST ABOVE
- * =====================================================================================
+ * One subject with six neighbours, one per face, each joint a different library row
+ * (GeneralPurposeMortar, GeneralPurposeMortarPerpend, DryStone, Nail, Screw, Bolt). This catches a
+ * constant string, naming by role (the two head joints differ), and confusing bed mortar with its
+ * weaker perpend. A second fixture checks an unshipped strength reads "custom".
  *
- * `BuildPieceMenuInspector` is world-free — a binding in, strings out — so the claim about what a
- * row SAYS needs no controller, no actor and no trace. The session test proves the wire; this one
- * sweeps the whole vocabulary, which a session test cannot do without laying six differently
- * fastened pieces through a UI.
- *
- * =====================================================================================
- * SIX NEIGHBOURS, ONE PER FACE, AND WHY IT IS A SWEEP RATHER THAN A ROW ABOUT SCREWS
- * =====================================================================================
- *
- * A box has six faces and the toolbar offers six profiles, so the fixture is one brick surrounded
- * on every side, each joint carrying a different library row. That shape kills three ways of
- * passing without doing the work: a presenter printing a constant fails the distinctness claims; a
- * presenter naming the profile off the joint's ROLE fails on the two head joints, which share a
- * role and carry different profiles; and a presenter that only knows about the six choices the
- * override can produce still has to tell the strong bed mortar from its own weak perpend, which no
- * chip can select and every bonded wall in the game is full of.
- *
- * AND A SEVENTH CASE THE VOCABULARY CANNOT REACH: a strength this library never shipped, which must
- * read "custom" and must NOT be given the name of the shipped row it is nearest to. It gets a
- * fixture of its own below because a box has six faces and the sweep has taken all of them.
- *
- * THE WORDS ARE BOUNDED, NOT PINNED. The claim is that the row CONTAINS the fastener's word, not
- * that it reads any particular sentence — "screw", "Screw", "screwed" all say the same thing to a
- * player, and pinning the whole line would make every future retune a red test with nothing wrong
- * behind it. The library's own names are `GeneralPurposeMortar`, `GeneralPurposeMortarPerpend`,
- * `DryStone`, `Nail`, `Screw` and `Bolt`, and each row's required word is the distinguishing part
- * of its own name.
- *
- * THE PERPEND IS THE ONE ROW ALLOWED TO SAY "MORTAR" TOO, because its own library name contains
- * the word — it IS mortar, in a vertical joint, with its bond axes knocked down. What it may not
- * do is read as the FULL bed mortar, which is 4.5x its bond and the difference between a corner
- * that stands and one that does not.
- *
- * NEEDS A TICKING WORLD: no. Nothing is spawned and nothing is solved — a joint's profile is a fact
- * about the graph, not about a load, and the rows are built before anything has been settled.
+ * Rows must contain the profile's word, not match a full sentence. The perpend alone may also say
+ * "mortar". Needs no world and no solve.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FJointRowNamesTheProfileTest,
@@ -589,14 +478,7 @@ bool FJointRowNamesTheProfileTest::RunTest(const FString& Parameters)
 		/** The word this row MUST contain. */
 		const TCHAR* Word;
 
-		/**
-		 * A word from another row that this row is nonetheless allowed to contain, or null.
-		 *
-		 * EXACTLY ONE EXEMPTION EXISTS AND IT IS NAMED RATHER THAN IMPLIED. A perpend is general
-		 * purpose mortar in a vertical joint, so a row reading "mortar (perpend)" is honest; every
-		 * other pair in this table names two genuinely different materials and a row that contained
-		 * both would be lying about one of them.
-		 */
+		/** Another row's word this row may also contain, or null. Only the perpend has one ("mortar"). */
 		const TCHAR* AlsoAllowed;
 	};
 
@@ -627,11 +509,7 @@ bool FJointRowNamesTheProfileTest::RunTest(const FString& Parameters)
 		},
 	};
 
-	/*
-	 * THE SUBJECT, THEN ONE NEIGHBOUR PER FACE. Handle 0 is the brick every row below belongs to;
-	 * handles 1..6 are its neighbours in the order of the offsets, so case N's joint is the Nth
-	 * connection and the mapping needs no searching.
-	 */
+	// Handle 0 is the subject; handles 1..6 are neighbours in offset order, so case N is connection N.
 	FStructureBinding Binding;
 	Binding.StructureId = JointChoicePresenterStructure;
 
@@ -647,12 +525,7 @@ bool FJointRowNamesTheProfileTest::RunTest(const FString& Parameters)
 		const FPieceBox NeighbourBox{
 			JointChoicePresenterOffsetsCm[Index], JointChoicePresenterHalfBrickCm };
 
-		/*
-		 * THE BOTTOM NEIGHBOUR IS THE GROUNDED ONE, so the fixture is a brick standing on something
-		 * rather than a knot floating in space. Nothing here is solved, so it changes no number —
-		 * it is what stops the fixture being a shape the solver would call stranded if anything
-		 * ever did solve it.
-		 */
+		// Ground the bottom neighbour so the fixture is not stranded (nothing is solved here anyway).
 		const bool bGrounded = Index == 5;
 
 		const int32 Neighbour = Binding.AddPiece(
@@ -724,11 +597,7 @@ bool FJointRowNamesTheProfileTest::RunTest(const FString& Parameters)
 				Case.Description, Row.ConnectionIndex, Case.Word, *Row.Text),
 			SaysWord(Row.Text, Case.Word));
 
-		/*
-		 * AND IT NAMES ONE PROFILE, NOT SEVERAL. A row that listed every word would contain its own
-		 * and say nothing; a row that named the wrong sibling is worse than one that named none,
-		 * because the number beside it is then the only thing that disagrees.
-		 */
+		// It names only its own profile, not any other row's word.
 		for (int32 OtherIndex = 0; OtherIndex < CaseCount; ++OtherIndex)
 		{
 			if (OtherIndex == Row.ConnectionIndex)
@@ -754,25 +623,11 @@ bool FJointRowNamesTheProfileTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* --- AND A STRENGTH THIS LIBRARY NEVER SHIPPED READS "custom", NOT A PLAUSIBLE NEIGHBOUR --- */
-
 	/*
-	 * A SECOND FIXTURE RATHER THAN A SEVENTH FACE, and the reason is geometry: a box has six faces
-	 * and the sweep above has taken all six. So the unshipped profile gets its own subject and one
-	 * neighbour, which is the same claim on a smaller stage.
-	 *
-	 * WHY THE WORD MATTERS OVER A CASE NOTHING IN THE GAME BUILDS TODAY. Every joint the game makes
-	 * comes from a library row, so this arm is unreachable through the UI — but it is exactly one
-	 * authored joint, one retuned library or one save file away, and its failure mode is the quiet
-	 * one: `FindConnectionProfileRow` answers null, and a presenter that dropped the word on null
-	 * would print the ROLE-ONLY sentence this whole feature exists to end, with nothing to say a
-	 * reading was missing. Naming the NEAREST row would be worse still — this library is siblings by
-	 * construction, and a hundredth of a megapascal off a Screw is not a screw.
-	 *
-	 * 0.01 MPa OFF SCREW'S WITHDRAWAL, DELIBERATELY. It is as close to a shipped row as a value can
-	 * be while not being it, so a lookup with any tolerance at all in it — or one that compares four
-	 * of the five fields — names Screw here and this row catches it. A wildly different set of
-	 * numbers would be found by nothing whatever the lookup did.
+	 * An unshipped strength reads "custom", not the nearest shipped name. Its own fixture because
+	 * the six faces are used. Unreachable via the UI today, but one authored joint or save file away.
+	 * 0.01 MPa off Screw's tensile, so a lookup with any tolerance, or one comparing only four
+	 * fields, would wrongly say Screw.
 	 */
 	{
 		FConnectionStrength Unshipped = Screw;

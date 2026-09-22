@@ -16,132 +16,53 @@
 #include "Materials/MaterialInterface.h"
 #include "RequiredContent.h"
 
-/*
- * WITH_EDITOR as well as WITH_DEV_AUTOMATION_TESTS, and the whole test. A material's node graph lives
- * in editor-only data, so a cooked build has nothing to read; a reduced version there would be green
- * because it stopped asking, not because the assets are right.
- */
+// Editor-only: the material graph lives in editor-only data, so a cooked build has nothing to read.
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
-/** Named namespace, named differently from every other in this module: a unity build merges files. */
+// Uniquely named: unity builds merge files.
 namespace HighlightMaterialPaintTestSupport
 {
 	/**
-	 * What an unconnected input compiles to, from the engine's own table not imported.
-	 * FMaterialAttributeDefinitionMap registers EmissiveColor default (0,0,0) and Opacity default 1.
-	 * The asymmetry is why the defaults are modelled: a blank unlit translucent material is black at
-	 * full opacity, not invisible, so assuming a disconnected opacity meant zero would be right about
-	 * the symptom for the wrong reason.
+	 * Engine defaults for unconnected inputs (FMaterialAttributeDefinitionMap): emissive black,
+	 * opacity 1. So a blank unlit translucent material draws black at full opacity, not invisible.
 	 */
 	constexpr float EngineDefaultOpacity = 1.0f;
 	const FLinearColor EngineDefaultEmissive(0.0f, 0.0f, 0.0f, 0.0f);
 
 	/**
-	 * A highlight colour has to be a colour. The intended looks are amber for hover and
-	 * cyan for selected; both have a channel at or near 1, so 0.05 is two orders of
-	 * magnitude of headroom below anything anybody would pick on purpose and still firmly
-	 * above "somebody left this at black". Deliberately not an epsilon: a highlight at
-	 * 0.001 is a highlight nobody can see, and passing it would be the same bug wearing a
-	 * smaller number.
+	 * Minimum brightest emissive channel. Intended colours have a channel near 1; 0.05 only catches
+	 * "left at black". Not an epsilon: a 0.001 highlight is invisible.
 	 */
 	constexpr float MinHighlightChannel = 0.05f;
 
 	/**
-	 * And the two highlights have to be tellable apart, the property the player actually
-	 * depends on.
+	 * Minimum widest-channel difference between any two highlights on the same brick. Under the
+	 * additive model min(1, E + B) the background cancels until a channel clips at white, which is
+	 * why two backgrounds are modelled.
 	 *
-	 * Under additive, composite is min(1, E + B) per channel, so an unclamped pair
-	 * difference is (E1 + B) - (E2 + B) = E1 - E2 exactly: the background cancels
-	 * completely and opacity never enters, until a channel reaches white — at which point
-	 * the clamp stops being an identity and the background decides the answer again. That
-	 * is why two backgrounds are modelled below rather than one.
-	 *
-	 * What 0.25 buys, in display terms: a linear separation converts to display levels
-	 * worst at the top of the range, since sRGB compresses highlights — the minimum over
-	 * x in [0, 0.75] of sRGB(x + 0.25) - sRGB(x) is 30.4 of 255 levels, at x = 0.75. From
-	 * the 0.18 stand-in it is 57.6 levels and from the lit brick's blue at 0.304 it is
-	 * 46.5. So 0.25 linear floors at about thirty display levels wherever the pair sits —
-	 * roughly thirty times a just-noticeable difference, the margin two bricks metres
-	 * apart, at different angles, on a moving camera actually need.
-	 *
-	 * Today's tightest pair passes by 1.32x: Neighbour0 against Neighbour5 sits at 0.3300
-	 * on green over the lit brick, where green washes to white (0.80 plus the brick's
-	 * 0.220 clamps to 1.0), costing the pair the 0.0200 it has over the stand-in. Nothing
-	 * else in the table comes under 1.40x. Swept over uniform grey backgrounds this is the
-	 * worst pair at every brightness from 0.18 up and the first to go under, at a grey
-	 * just past 0.30 — the pair a measured sunlit brick would be expected to break.
-	 *
-	 * This constant is about the pair and nothing else: two overlays can differ from each
-	 * other by half a channel and both be invisible on a brick — `MinChannelChangeOverBareBrick`
-	 * below is the separate claim, argued separately, and neither number may be reused for
-	 * the other.
+	 * 0.25 linear is at least ~30 of 255 sRGB display levels anywhere in range. Tightest pair today:
+	 * Neighbour0 vs Neighbour5 at 0.3300 over the lit brick (green clips), 1.32x the threshold; over
+	 * uniform grey it fails just past 0.30. This is the pair claim only; do not reuse it for
+	 * MinChannelChangeOverBareBrick.
 	 */
 	constexpr float MinDistinguishableChannel = 0.25f;
 
 	/**
-	 * And each highlight has to differ from an unhighlighted brick, the claim the two
-	 * above both leave out: "it paints a colour" is about the emissive alone and "they are
-	 * tellable apart" is about the two overlays against each other, but a pair can satisfy
-	 * both and still leave the wall looking exactly as it did — the entire point of a
-	 * highlight.
-	 *
-	 * Composite minus background is min(1, E + B) - B = min(E, 1 - B) per channel: the
-	 * emissive itself, capped by the headroom the background leaves. So this row is very
-	 * nearly a restatement of `MinHighlightChannel`, and saying so is honest: the only
-	 * independent content left is "the background leaves room", which bites only against a
-	 * background whose every channel sits at or above 0.90 — a brick already within 0.10
-	 * of white, on which no additive overlay of any colour can show at all. Neither
-	 * background modelled below is remotely that bright, so this row currently catches
-	 * nothing `MinHighlightChannel` would not; it is kept because the ceiling is the shape
-	 * of the failure a sunlit scene will actually produce.
-	 *
-	 * Why the value is 0.10: argued at the display rather than in linear, since 0.10
-	 * linear is 26.6 of 255 display levels up from the 0.18 stand-in, 25.6 from the lit
-	 * brick's red at 0.195, 24.2 from its green at 0.220 and 20.6 from its blue at 0.304 —
-	 * unmistakable at a glance on a moving camera, and deliberately far above a
-	 * just-noticeable difference, since a highlight the player has to hunt for has already
-	 * failed the one job it has: answering "which bricks am I about to delete" before
-	 * Delete is pressed. The per-level figures fall as the background rises, the general
-	 * rule under additive and why the assertion runs against every modelled background
-	 * rather than the darkest.
+	 * Minimum widest-channel change a highlight makes to a bare brick: min(E, 1 - B) per channel.
+	 * Nearly a restatement of MinHighlightChannel; it only bites on a background within 0.10 of
+	 * white, which neither modelled background is. Kept because that ceiling is how a sunlit scene
+	 * would fail. 0.10 linear is ~21-27 display levels over the modelled backgrounds.
 	 */
 	constexpr float MinChannelChangeOverBareBrick = 0.10f;
 
 	/**
-	 * THE BRICK UNDERNEATH IS MODELLED TWICE, AND THE SECOND ONE IS LOAD-BEARING.
+	 * Stand-in backgrounds (not the brick material, so a brick re-tint can't fail this test): the
+	 * conventional 0.18 grey, and a lit brick measured from a sandbox render. The second matters
+	 * because a brighter background clips more channels to white and pulls hues together; it once
+	 * turned a passing pair (0.3700) into a failing one (0.2460). Today it changes no verdict.
 	 *
-	 * IT IS A STAND-IN RATHER THAN THE REAL BRICK MATERIAL, because reading the brick's own
-	 * material would make every assertion here depend on a third asset — a re-tint of the brick
-	 * would then fail the HIGHLIGHT test.
-	 *
-	 * THE FIRST ROW IS THE CONVENTIONAL 0.18 MID-GREY, AND IT IS THE OPTIMISTIC END OF THE RANGE.
-	 * The second is a MEASURED lit brick from the sandbox, (0.195, 0.220, 0.304) linear, read off
-	 * a render rather than chosen. It is barely brighter than the stand-in in red and green and
-	 * noticeably brighter in blue, and that difference alone is enough to change a verdict.
-	 *
-	 * WHY A SECOND ONE IS NEEDED AT ALL, WHICH IS AN ARGUMENT THAT ONLY WORKS UNDER ADDITIVE.
-	 * A pair difference is (E1 + B) - (E2 + B) = E1 - E2, so the background cancels exactly and
-	 * any single background would do — RIGHT UP TO THE CLAMP. Once a channel of E + B reaches
-	 * white the subtraction stops being an identity, and a brighter background pushes more
-	 * channels into the ceiling: hues do not merely shift, they WASH TOWARD WHITE and toward each
-	 * other. On the palette this row was added for, Selected against Neighbour5 separated by 0.3700
-	 * over the stand-in and by 0.2460 over the lit brick, which was the difference between passing
-	 * and failing — modelling one background is what let that palette read as fine while washing out
-	 * on screen.
-	 *
-	 * THAT PAIR HAS SINCE BEEN REPICKED, AND THE SECOND ROW STILL CHANGES AN ANSWER RATHER THAN
-	 * MERELY A NUMBER — but by less, and saying so is the honest thing to do. Today's tightest pair,
-	 * Neighbour0 against Neighbour5, separates by 0.3500 over the stand-in and by 0.3300 over the lit
-	 * brick, because Neighbour0's green plus the brick's 0.220 clamps to white. That is 1.40x against
-	 * 1.32x: both pass, so the second background currently changes no verdict in the suite. It is the
-	 * shape of the failure rather than a live catch, which is the same standing this file gives
-	 * MinChannelChangeOverBareBrick.
-	 *
-	 * WHAT IS MISSING IS A THIRD, SUNLIT ROW, and it is missing because nobody has measured one —
-	 * inventing a number here would be exactly the kind of agreeable arithmetic this file exists
-	 * to prevent. The prediction it would test is written beside MinDistinguishableChannel:
-	 * Neighbour0 against Neighbour5 goes under first, and over uniform grey it does so just past
-	 * 0.30.
+	 * A sunlit row is missing because none has been measured; the prediction is beside
+	 * MinDistinguishableChannel.
 	 */
 	struct FBackgroundRow
 	{
@@ -154,7 +75,7 @@ namespace HighlightMaterialPaintTestSupport
 		{ TEXT("a measured lit brick"),   FLinearColor(0.195f, 0.220f, 0.304f, 1.0f) }
 	};
 
-	/** The two assets, by the constants the GAME resolves — never a re-typed literal. */
+	/** A highlight asset, by the path constant the game resolves, never a re-typed literal. */
 	struct FHighlightMaterialRow
 	{
 		const TCHAR* State;
@@ -162,15 +83,8 @@ namespace HighlightMaterialPaintTestSupport
 	};
 
 	/*
-	 * ALL NINE, AND THE SIX NEIGHBOURS ARE HERE FOR THE PAIRWISE CLAIM RATHER THAN FOR THEIR OWN.
-	 *
-	 * Each of them individually only has to paint something and to differ from a bare brick, which
-	 * is the same claim the first three make. What is new with six is that they must differ from
-	 * EACH OTHER: the neighbour colours exist so a player can tell joint row 2's brick from joint
-	 * row 4's, and two rows that draw the same hue are a lie about the one thing the swatch says.
-	 * Because the loop below is pairwise over the whole table, adding them checks all 36 pairs —
-	 * including each neighbour against hover, selected and inspected, which is the collision a
-	 * palette chosen in isolation walks straight into.
+	 * All nine highlight assets. The loop is pairwise, so all 36 pairs are checked, including each
+	 * neighbour colour against hover, selected and inspected.
 	 */
 	const FHighlightMaterialRow HighlightMaterials[] = {
 		{ TEXT("Hovered"),    DestructionContent::BrickHoverMaterialPath },
@@ -184,7 +98,7 @@ namespace HighlightMaterialPaintTestSupport
 		{ TEXT("Neighbour5"), DestructionContent::BrickNeighbourMaterialPaths[5] }
 	};
 
-	/** What one material input folded down to, plus where the value came from for a message. */
+	/** A material input's folded value, and where it came from (for messages). */
 	struct FResolvedInput
 	{
 		FLinearColor Value = FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -192,10 +106,7 @@ namespace HighlightMaterialPaintTestSupport
 		FString Source;
 	};
 
-	/**
-	 * The component mask an input may carry, applied the way HLSL swizzles do: the selected
-	 * channels pack down from .R, and a single selected channel replicates.
-	 */
+	/** Apply an input's component mask like an HLSL swizzle: selected channels pack from .R; a single one replicates. */
 	FLinearColor ApplyChannelMask(const FExpressionInput& Input, const FLinearColor& Value)
 	{
 		if (Input.Mask == 0)
@@ -241,18 +152,9 @@ namespace HighlightMaterialPaintTestSupport
 	bool FoldInput(const FExpressionInput& Input, int32 Depth, FLinearColor& Out, FString& OutWhere);
 
 	/**
-	 * FOLD ONE NODE DOWN TO A COLOUR, OR REFUSE.
-	 *
-	 * AN INDEPENDENT ORACLE RATHER THAN A CALL INTO THE ENGINE'S COMPILER. Nothing in this
-	 * project evaluates a material graph, so there is no production algorithm to mirror; this
-	 * is derived from the node classes' own declared value properties, and it agrees with the
-	 * shader only if the asset really does carry the colour it claims to.
-	 *
-	 * IT FAILS CLOSED ON ANYTHING IT DOES NOT UNDERSTAND. A node type not listed here is
-	 * reported as unresolvable and the test goes red naming the class, rather than being
-	 * quietly treated as black or as visible. A highlight overlay is two constants; if it ever
-	 * legitimately needs a texture or a time-varying node, this evaluator is the thing to
-	 * extend, and the failure message says so.
+	 * Fold one node to a colour from the node classes' value properties (an independent oracle, not
+	 * the engine compiler). Fails closed: an unlisted node type is unresolvable and the test names
+	 * its class. Extend this if a highlight ever legitimately needs another node type.
 	 */
 	bool FoldExpression(const UMaterialExpression* Expression, int32 Depth, FLinearColor& Out, FString& OutWhere)
 	{
@@ -262,7 +164,7 @@ namespace HighlightMaterialPaintTestSupport
 			return false;
 		}
 
-		/* Bounded rather than cycle-detected: the editor refuses a cyclic graph, and this is belt and braces. */
+		// Depth bound as a safety net; the editor already refuses cyclic graphs.
 		if (Depth > 16)
 		{
 			OutWhere = TEXT("a graph deeper than this test will walk");
@@ -292,7 +194,7 @@ namespace HighlightMaterialPaintTestSupport
 
 		if (const UMaterialExpressionConstant* const Scalar = Cast<UMaterialExpressionConstant>(Expression))
 		{
-			/* A scalar feeding a float3 replicates, which is what the shader compiler does too. */
+			// A scalar feeding a float3 replicates, as in the shader compiler.
 			Out = FLinearColor(Scalar->R, Scalar->R, Scalar->R, Scalar->R);
 			OutWhere = TEXT("a Constant");
 			return true;
@@ -362,7 +264,7 @@ namespace HighlightMaterialPaintTestSupport
 
 	bool FoldInput(const FExpressionInput& Input, int32 Depth, FLinearColor& Out, FString& OutWhere)
 	{
-		/* GetTracedInput steps through reroute nodes, which carry no value of their own. */
+		// Step through reroute nodes.
 		const FExpressionInput Traced = Input.GetTracedInput();
 
 		FLinearColor Value(0.0f, 0.0f, 0.0f, 0.0f);
@@ -376,14 +278,13 @@ namespace HighlightMaterialPaintTestSupport
 		return true;
 	}
 
-	/* FLinearColor has no scalar constructor; these two adapt the colour and scalar input types. */
+	// Adapt colour and scalar input types (FLinearColor has no scalar constructor).
 	FLinearColor AsColour(const FLinearColor& Value) { return Value; }
 	FLinearColor AsColour(float Value) { return FLinearColor(Value, Value, Value, Value); }
 
 	/**
-	 * The order here is the compiler's own, from FColorMaterialInput::CompileWithDefault /
-	 * FScalarMaterialInput::CompileWithDefault: an inline constant wins, then the connected
-	 * expression, then the property's registered default.
+	 * Resolve an input in the compiler's order (F*MaterialInput::CompileWithDefault): inline
+	 * constant, then connected expression, then the property default.
 	 */
 	template <typename InputType>
 	FResolvedInput ResolveInput(const InputType& Input, const FLinearColor& PropertyDefault)
@@ -391,14 +292,9 @@ namespace HighlightMaterialPaintTestSupport
 		FResolvedInput Resolved;
 
 		/*
-		 * RECORDED RATHER THAN FIXED, BECAUSE IT IS DEAD AND A BLIND FIX WOULD BE UNTESTED EITHER
-		 * WAY. FColorMaterialInput::Constant is an FColor, so this line reaches AsColour through
-		 * FLinearColor's FColor constructor — which is FromSRGBColor, an sRGB->LINEAR DECODE — and
-		 * an inline (255, 140, 13) would be reported as roughly (1.0, 0.26, 0.005) rather than as
-		 * the 8-bit value divided by 255. Both shipped assets fold from a Constant3Vector, so
-		 * UseConstant is false on every input this test reads and nothing exercises this branch at
-		 * all. If anyone ever ticks the inline constant on an input, check this against
-		 * FColorMaterialInput::CompileWithDefault before believing the number it prints.
+		 * Unexercised branch, left unfixed: FColorMaterialInput::Constant is an FColor, and its
+		 * FLinearColor conversion is an sRGB decode, not /255. No shipped asset uses an inline
+		 * constant; if one does, check this against CompileWithDefault first.
 		 */
 		if (Input.UseConstant)
 		{
@@ -449,22 +345,12 @@ namespace HighlightMaterialPaintTestSupport
 	}
 
 	/**
-	 * WHAT THE OVERLAY PASS LEAVES ON THE SCREEN OVER A GIVEN BACKGROUND: THE BRICK PLUS THE
-	 * EMISSIVE, CLAMPED AT WHITE. This is the measured model, not the documented one — see the
-	 * header for the two independent lines that establish it, and for what the measurement does
-	 * and does not settle.
+	 * On-screen overlay colour: brick plus emissive, clamped at white (the measured additive model;
+	 * see the test's comment). Opacity is deliberately not a parameter. The clamp models the
+	 * tonemapper's white ceiling; a real one rolls off earlier, so this is optimistic about bright hues.
 	 *
-	 * OPACITY IS NOT A PARAMETER, AND ITS ABSENCE IS THE POINT rather than an omission. It is not
-	 * passed in at all, so nobody reading this can believe a term is being applied that is not.
-	 *
-	 * THE CLAMP IS THE DISPLAY'S WHITE CEILING and it is the only place the background survives a
-	 * pair comparison. The framebuffer is float and does not clip at 1.0, so this is a model of
-	 * the tonemapper rather than of the buffer — a conservative one, since a real tonemapper rolls
-	 * off below 1.0 and therefore squeezes two bright hues together SOONER than this does.
-	 *
-	 * FMath::Min DISCARDS A NaN RATHER THAN PROPAGATING IT, so a NaN emissive would come out of
-	 * here as a plausible colour. The caller asserts finiteness and skips the row BEFORE reaching
-	 * this, which is what keeps that from mattering; do not reorder those two.
+	 * FMath::Min discards NaN, so a NaN emissive would come out plausible. The caller rejects
+	 * non-finite rows before calling this; keep that order.
 	 */
 	FLinearColor CompositeOverBackground(const FLinearColor& Emissive, const FLinearColor& Background)
 	{
@@ -497,126 +383,29 @@ namespace HighlightMaterialPaintTestSupport
 }
 
 /**
- * THE HIGHLIGHT MATERIALS ACTUALLY PAINT SOMETHING, EACH PAIR PAINTS TWO DIFFERENT THINGS, AND
- * EACH PAINTS SOMETHING DIFFERENT FROM A BARE BRICK.
+ * Each highlight material paints a visible colour, changes a bare brick, and differs from every
+ * other highlight. World.Brick.HighlightWearsAMaterial only checks the brick picks the right asset,
+ * not that the asset draws.
  *
- * THE OVERLAYS COMPOSITE ADDITIVELY, WHICH IS A MEASUREMENT AND NOT WHAT THE BLEND MODE SAYS.
- * The whole of this file used to derive from Emissive*Opacity + Dst*(1 - Opacity), which is what
- * BLEND_Translucent + MSM_Unlit is documented to do and is not what the renderer does to these
- * overlays. Measured as the mean of a 25x25 px patch at the centre of a tinted brick in a
- * 1920x1080 render, sRGB 0-255, for M_BrickNeighbour3 (emissive (1.00, 0.00, 0.12), opacity 0.95),
- * over a bare brick reading (122, 130, 150):
+ * The overlays composite additively, min(1, Emissive + Background), which was measured rather than
+ * taken from the blend mode. M_BrickNeighbour3 (emissive (1.00, 0.00, 0.12), opacity 0.95) over a
+ * bare brick (122, 130, 150) sRGB read (255, 121, 208) as Translucent, nearly the same as Additive,
+ * and (126, 135, 154) as Opaque. Alpha blending would have crushed green to ~29; it stayed at the
+ * brick's own 121.
  *
- *     BLEND_TRANSLUCENT (shipped)   (255, 121, 208)   hot pink
- *     BLEND_ADDITIVE                (255, 156, 213)   hot pink, essentially unchanged
- *     BLEND_OPAQUE                  (126, 135, 154)   nothing; the overlay vanishes
+ * Consequences:
+ * - Opacity is not in the model; it is only checked as a sane authoring value. The 0.35/0.95/0.95
+ *   hover/selected/inspected "opacity ladder" has no visible effect. The measurement cannot
+ *   distinguish B + E from B + E*O at 0.95; M_BrickHover at 0.35 versus itself at 0.95 would.
+ * - No overlay can darken a brick, so negative emissive channels are rejected rather than clamped.
+ * - Translucent is still required because Opaque was measured to draw nothing.
  *
- * TWO INDEPENDENT LINES AGREE. ARITHMETIC: with the brick at linear (0.195, 0.220, 0.304), alpha
- * blending at 0.95 predicts sRGB (252, 29, 99) — the green channel would be all but obliterated,
- * since the emissive's green is 0 — while the measured green sits at 121, which is the BRICK'S OWN
- * green. An overlay that leaves a channel where it found it is adding, not blending. SUBSTITUTION:
- * switching the material to literal BLEND_ADDITIVE changed the image almost not at all, which
- * under genuine alpha blending at 0.95 would have been dramatic.
+ * The palette failed two pairs under this model; slots 0, 2 and 5 were repicked and no threshold
+ * moved. If a future palette fails, change the palette.
  *
- * SO THE MODEL HERE IS min(1, Emissive + Background) PER CHANNEL, and three consequences run
- * through every constant below.
- *
- * OPACITY IS NOT A BLEND FACTOR, SO IT IS NOT IN THE MODEL AT ALL. It is still read, still
- * required finite and inside (0, 1], and that is now an AUTHORING sanity check with no claimed
- * effect on the screen — not a term in any arithmetic. THE HOVER / SELECTED / INSPECTED "OPACITY
- * LADDER" AT 0.35 / 0.95 / 0.95 IS THEREFORE A FICTION: hover is not dimmer than selected, it is
- * the same brightness, and every place in this project that describes the ladder as a strength
- * ordering is describing something that does not happen.
- *
- * WHAT THE MEASUREMENT DOES NOT SETTLE, AND THE EXPERIMENT THAT WOULD. It does not discriminate
- * B + E from B + E*O, because it was taken on ONE material at opacity 0.95, whose green emissive
- * is 0 (so the opacity factor multiplies nothing) and whose red is clipped. At 0.95 the two models
- * differ by 5% of the emissive, which is inside the residual. THE DISCRIMINATING MEASUREMENT IS
- * M_BrickHover, the only asset at 0.35, and the convenient form of it has lapsed: it used to be
- * "patch it beside M_BrickNeighbour0, which is very nearly the same amber at 0.95", and the repick
- * made that slot a green — two hues cannot be compared for brightness by eye. What remains, and
- * holds the hue exactly fixed rather than nearly, is M_BrickHover against ITSELF with its opacity
- * set to 0.95 and nothing else touched. Equal brightness means opacity is inert; a visibly dimmer
- * 0.35 means it scales. Until that is taken, dropping opacity is the CONSERVATIVE reading for the
- * pair claim —
- * a pair "distinguished" only by brightness of one hue is precisely the copy-paste fix the pair
- * constant exists to catch — and the OPTIMISTIC one for the bare-brick claim, which is argued
- * beside MinChannelChangeOverBareBrick and is nearly vacuous under either reading.
- *
- * AND NO OVERLAY CAN EVER DARKEN A BRICK, WHICH IS A STANDING CONSTRAINT ON FUTURE PALETTES
- * RATHER THAN AN OBSERVATION ABOUT THIS ONE. Under addition every composite is the brick PLUS
- * something, so a "dark" highlight — a deep red, a near-black outline, anything that reads as a
- * shadow — is unreachable by any emissive whatsoever, and every hue on offer is a brightening. A
- * negative emissive channel is the only way to express one, and it is rejected below rather than
- * silently clamped away, because a clamp would turn "this palette cannot be drawn" into "this
- * palette is fine".
- *
- * IT ARRIVED RED AND THE PALETTE IS WHAT MOVED, WHICH IS THE ORDER THAT MATTERS. Under the
- * corrected model the shipped palette failed two of its thirty-six pairs; neither threshold was
- * moved to produce that and neither was moved to remove it — slots 0, 2 and 5 were repicked
- * instead, and every pair now clears at both backgrounds. The rule stands for the next palette: if
- * one cannot satisfy an honest additive model, the palette is what changes. The old failures, the
- * repick and today's tightest pair are all beside MinDistinguishableChannel.
- *
- * ALL NINE ASSETS ARE OTHERWISE CORRECT: two expression nodes each, a Constant3Vector emissive and
- * a Constant opacity, unlit and translucent. An earlier version of this comment asserted as
- * present-tense fact that they were saved with an EMPTY graph and a black emissive; that was never
- * true, and where the belief came from is written down at the node-count comment further down —
- * UMaterial has no reflected `Expressions` property in 5.8, so a Python dump reports zero nodes
- * for a graph that is plainly full.
- *
- * WHY World.Brick.HighlightWearsAMaterial IS NOT ENOUGH, and it is the same gap shape as the
- * missing-world-push bug: every link is asserted individually, and what can still be wrong lives
- * one step past the last assertion. That test asserts the brick asks for the right ASSET per
- * state, including that Hovered and Selected are different assets. It says nothing at all about
- * whether either asset draws.
- *
- * NOT A NODE COUNT, DELIBERATELY. "The graph is not empty" is satisfied by one stray node wired
- * to nothing, which draws exactly as much as no nodes at all. What is asserted here is the VALUE
- * the inputs fold down to, walked from the material property inputs themselves — so a
- * disconnected input is not a missing node, it is the engine's registered default, and it is
- * judged as the colour it will actually be.
- *
- * FIVE CLAIMS, IN THE ORDER THEY DEPEND ON EACH OTHER.
- *
- * THE PAIRING IS PINNED FIRST, AND ITS REASON HAS CHANGED WITH THE MODEL. Unlit is what makes
- * EmissiveColor the whole of the overlay's colour, and that argument is untouched — change to
- * Default Lit and the colour comes from BaseColor under a light. Translucent is no longer required
- * "so that Opacity governs", because opacity governs nothing; it is required because BLEND_OPAQUE
- * WAS MEASURED TO DRAW NOTHING AT ALL — the patch read (126, 135, 154) against a bare (122, 130,
- * 150), i.e. the overlay vanished. The overlay pass emits a draw only for a translucent material,
- * so opaque is not available as a fix for anything, and a material switched to it silently stops
- * being a highlight while every value in it stays correct.
- *
- * THE OVERLAY DRAWS A COLOUR. Emissive folds to something that is not black, and it is finite and
- * non-negative in every channel — the second half is the never-darken constraint made assertable,
- * since a negative channel is the only expressible way to ask for a highlight that cannot exist.
- *
- * AND THE OVERLAY CHANGES THE BRICK IT IS DRAWN ON, against every modelled background. This is
- * kept and its teeth are honestly reported as gone: under additive it no longer catches the
- * invisible-highlight bug it was written for, because opacity cannot dim an overlay. What it now
- * watches is the CEILING — a brick close enough to white that nothing can be added to it — and the
- * argument for keeping it despite catching nothing today is beside MinChannelChangeOverBareBrick.
- *
- * AND THE TWO ARE TELLABLE APART ON THE SAME BRICK. This is the property the player depends on and
- * the one this file caught the palette out on: it held two ambers whose only distinction was an
- * opacity that does not reach the screen. Composited over each modelled background, two looks must
- * differ by a quarter of a channel; the arithmetic, the two failures that repick answered and the
- * 1.32x pair that is now the tightest are worked through beside the constant.
- *
- * PARAMETERISED OVER THE MATERIALS AND OVER THE BACKGROUNDS, so a further highlight state is a row
- * rather than a test — and Inspected arrived as exactly that row — and a measured sunlit brick is
- * likewise one row rather than a second set of assertions. The pair comparison is PAIRWISE over the
- * rows rather than one hardcoded comparison, because "each differs from the one before it" is
- * satisfied by a third overlay that draws exactly like the first.
- *
- * THE PATHS COME FROM DestructionContent, never a re-typed literal — a test that hardcodes the
- * path stops testing the asset the game actually loads the moment the constant moves.
- *
- * NEEDS A TICKING WORLD: no, and no world at all. This reads nine assets off disk; it costs a
- * load and some arithmetic. It also renders no pixel — the compositing model it folds against is
- * a written-down MEASUREMENT of the renderer, not an observation this process can make, so the
- * day the model changes again it changes here by hand.
+ * Asserts on folded input values, not node counts (a stray unconnected node proves nothing).
+ * Paths come from DestructionContent. Needs no world; renders nothing, so if the renderer's
+ * compositing changes, update the model by hand.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHighlightMaterialPaintTest,
@@ -650,12 +439,7 @@ bool FHighlightMaterialPaintTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/*
-		 * A BASE MATERIAL, because the graph is what is being read. A material instance carries
-		 * parameter overrides this evaluator would not see, so accepting one would mean reading
-		 * the parent's defaults and reporting them as the instance's colour. Both assets are
-		 * base materials today; if one ever becomes an instance this refuses rather than lies.
-		 */
+		// Must be a base material: this evaluator would not see an instance's parameter overrides.
 		UMaterial* const Material = Cast<UMaterial>(Loaded);
 
 		TestNotNull(
@@ -670,12 +454,8 @@ bool FHighlightMaterialPaintTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * THE PRECONDITION, AND ITS REASON IS MEASURED RATHER THAN DOCUMENTED. The overlay pass
-		 * emits a draw only for a translucent material: switching this material to BLEND_OPAQUE
-		 * was measured to make the highlight VANISH, with every value in the asset unchanged. So
-		 * this is not "Opacity governs" — nothing governs but the emissive — it is "there is a
-		 * draw at all". If this row fails, do not delete it; rewrite the rest of the test for
-		 * whatever pairing replaced it.
+		 * Translucent is required because the overlay pass only draws translucent materials (Opaque
+		 * was measured to vanish). If this fails deliberately, rewrite the test; don't delete this.
 		 */
 		const EBlendMode BlendMode = Material->GetBlendMode();
 
@@ -709,12 +489,8 @@ bool FHighlightMaterialPaintTest::RunTest(const FString& Parameters)
 		const FResolvedInput Opacity = ResolveInput(Graph->Opacity, AsColour(EngineDefaultOpacity));
 
 		/*
-		 * THE NODE COUNT IS REPORTED AND NOTHING IS ASSERTED ABOUT IT, deliberately, and it is
-		 * here because reading it from the wrong place is a live trap. UMaterial has no reflected
-		 * `Expressions` property in 5.8 — the graph moved to GetEditorOnlyData()->ExpressionCollection
-		 * — so a Python dump asking a material for `expressions` reports zero for a graph that is
-		 * plainly full. That reading is what these two assets were once believed blank on. It is
-		 * printed so the next person comparing the two readings sees them side by side.
+		 * Node count is reported, not asserted. In 5.8 UMaterial has no reflected `Expressions`
+		 * property, so a Python dump reports zero nodes for a full graph; this shows the real count.
 		 */
 		AddInfo(FString::Printf(
 			TEXT("%s ('%s'): %d expression node(s); emissive %s from %s; opacity %.4f from %s"),
@@ -740,7 +516,7 @@ bool FHighlightMaterialPaintTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/* Fail closed on a degenerate value rather than letting a NaN read as a plausible colour. */
+		// Fail closed on NaN/inf rather than letting it read as a plausible colour.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: '%s' must fold to finite values; emissive is %s and opacity is %.4f"),
@@ -753,11 +529,7 @@ bool FHighlightMaterialPaintTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/*
-		 * THE DIRECT STATEMENT OF THE BUG. An unlit overlay adds its emissive to the brick, so a
-		 * black emissive is a highlight with no colour in it and there is no opacity that rescues
-		 * it — under addition, nothing multiplies the emissive back up either.
-		 */
+		// A black emissive adds nothing to the brick, whatever the opacity.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: '%s' must paint a colour — its brightest emissive channel must reach %.2f, it is %s (from %s)"),
@@ -766,11 +538,8 @@ bool FHighlightMaterialPaintTest::RunTest(const FString& Parameters)
 			LargestChannel(Emissive.Value) >= MinHighlightChannel);
 
 		/*
-		 * THE NEVER-DARKEN CONSTRAINT, MADE ASSERTABLE. A composite is the brick PLUS the emissive,
-		 * so no highlight can be darker than the brick it is on — a negative channel is the only
-		 * way to write one down, and the clamp in CompositeOverBackground would quietly turn it
-		 * into zero and report a perfectly ordinary colour. Checked here rather than left to the
-		 * model, because "this palette cannot be drawn" must not read as "this palette is fine".
+		 * An additive overlay cannot darken. Reject negative channels here, since the model's clamp
+		 * would otherwise hide them.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -779,12 +548,7 @@ bool FHighlightMaterialPaintTest::RunTest(const FString& Parameters)
 				*DescribeColour(Emissive.Value), *Emissive.Source),
 			Emissive.Value.R >= 0.0f && Emissive.Value.G >= 0.0f && Emissive.Value.B >= 0.0f);
 
-		/*
-		 * OPACITY IS AN AUTHORING SANITY CHECK AND NOTHING MORE, and the message says so rather
-		 * than claiming an effect the renderer was measured not to have. It is deliberately kept:
-		 * a zero or a 1.5 is still a sign somebody meant something by it, and the day the
-		 * discriminating hover measurement in the header is taken, this is where the answer lands.
-		 */
+		// Opacity is an authoring sanity check only; it has no measured effect on screen.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: '%s' opacity must be a sane authoring value, above 0 and at most 1, it is %.4f (from %s). It does NOT dim the overlay — the composite was measured to be additive and opacity is not a factor in it"),
@@ -794,11 +558,8 @@ bool FHighlightMaterialPaintTest::RunTest(const FString& Parameters)
 		bUsable[Row] = true;
 
 		/*
-		 * AND IT HAS TO CHANGE THE BRICK, AGAINST EVERY MODELLED BACKGROUND. The quantity is
-		 * min(Emissive, 1 - Background) per channel — the emissive capped by the headroom — so the
-		 * background can only ever take this DOWN, and the darkest background is the one that would
-		 * flatter the palette. Asserted per background for that reason, and because a failure that
-		 * names which brick it washed out against is the one worth reading.
+		 * The change is min(Emissive, 1 - Background) per channel, so brighter backgrounds only
+		 * reduce it. Asserted per background so a failure names the one it washed out on.
 		 */
 		for (int32 Background = 0; Background < BackgroundCount; ++Background)
 		{
@@ -821,19 +582,9 @@ bool FHighlightMaterialPaintTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND EVERY PAIR OF LOOKS DIFFERS, PAIRWISE RATHER THAN IN A CHAIN. Held back until all the
-	 * materials have been read so a failure names both composites at once; guarded rather than
-	 * assumed, because a row that could not be read has already failed above and a second failure
-	 * about a colour it never had would point at the wrong thing.
-	 *
-	 * PAIRWISE IS THE WHOLE POINT WITH MORE THAN TWO ROWS. "Each differs from the one before it"
-	 * is satisfied by a third highlight that draws exactly like the FIRST, which is the shape the
-	 * copy-paste fix takes as soon as there is something older than the previous asset to copy.
-	 *
-	 * AND ONCE PER BACKGROUND, WHICH IS NOT REDUNDANT UNDER ADDITION EVEN THOUGH THE BACKGROUND
-	 * CANCELS. It cancels from the subtraction and not from the clamp, so a pair that separates
-	 * cleanly on a dark brick can wash together on a bright one; Selected against Neighbour5 is
-	 * exactly that case and it is why both rows are checked rather than the darker one.
+	 * Every pair must differ, pairwise rather than in a chain (a chain misses a third row copied
+	 * from the first). Checked per background because the white clamp can wash a pair together on
+	 * a brighter brick. Unreadable rows already failed above, so they are reported, not compared.
 	 */
 	for (int32 Left = 0; Left < RowCount; ++Left)
 	{

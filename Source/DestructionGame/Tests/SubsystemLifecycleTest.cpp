@@ -8,19 +8,13 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The world-layer lifecycle guards. Two defects live where the subsystem turns a layout into
- * actors and where it should turn them back: a refused build that leaves its bricks standing,
- * and the absence of any teardown at all. Both need a world that can spawn actors — a world-free
- * FStructureBinding test cannot see a leaked AActor — so both ride the shared FBrickTestWorld
- * harness under AGameModeBase (no scenario, so the world starts brick-empty).
- *
- * The count is of live ABrickActors in the world, not of binding handles: a leak is an actor the
- * binding no longer (or never did) name, invisible to a handle count. A TActorIterator over the
- * test world is the only place it is visible.
+ * Subsystem lifecycle: a refused build must not leak bricks, and Destroy must tear a structure
+ * down. Uses FBrickTestWorld under AGameModeBase (starts brick-empty). Counts live ABrickActors
+ * in the world, since a leaked actor is invisible to binding handles.
  */
 namespace SubsystemLifecycleTestSupport
 {
-	/** How many ABrickActors are alive in the world right now. */
+	/** Live ABrickActors in the world. */
 	inline int32 CountBricks(UWorld* World)
 	{
 		int32 Count = 0;
@@ -38,26 +32,14 @@ namespace SubsystemLifecycleTestSupport
 }
 
 /**
- * A refused BuildLayout must leave no bricks in the world.
+ * A refused BuildLayout leaves no bricks in the world. AdoptLayout refuses a layout whose Boxes
+ * are not one per piece; the bricks must not be spawned (or must be cleaned up) when it does.
  *
- * BuildLayout spawns one ABrickActor per piece and only then hands the lot to AdoptLayout, which
- * refuses a layout whose Boxes array is not one-per-piece (StructureBinding.cpp's door). On that
- * refusal BuildLayout returns INDEX_NONE — but the actors it already spawned are never destroyed,
- * so a refused build silently litters the world with bricks that name no structure.
+ * The fixture has one extra box rather than one too few: too few would read past the array in
+ * the spawn loop, a fatal range check. Validating Boxes.Num() == PieceCount before spawning fixes
+ * both. The brick count is the real assertion; the INDEX_NONE return alone would not catch the leak.
  *
- * THE FIXTURE IS A VALID WALL WITH ONE EXTRA BOX — the refusal that does not crash. Fewer boxes
- * than pieces makes BuildLayout read Layout.Boxes past its end in the spawn loop before
- * AdoptLayout can refuse it, and TArray's range check is fatal there rather than merely failing
- * an assertion. An extra box keeps every spawn-loop index in bounds, so all seven actors spawn
- * cleanly and AdoptLayout then refuses on Boxes.Num() != PieceCount — exercising the
- * orphan-on-refusal path without the crash. The same top-of-BuildLayout guard that fixes this
- * (validate Boxes.Num() == PieceCount before spawning anything) also closes the fatal
- * short-boxes read, so one test drives both halves of the hole.
- *
- * The assertion is on the count, not displacement: zero ABrickActor in the world after the
- * refused build. BuildLayout returning INDEX_NONE already passes today — the brick count bites.
- *
- * NEEDS A TICKING WORLD: yes for the spawn, though it never ticks.
+ * Needs a world to spawn into; never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSubsystemBuildLayoutRefusalLeavesNoBricksTest,
@@ -77,13 +59,13 @@ bool FSubsystemBuildLayoutRefusalLeavesNoBricksTest::RunTest(const FString& Para
 		return true;
 	}
 
-	/* A brick-empty world under a plain game mode: the baseline the leak is measured against. */
+	// Baseline: no bricks.
 	TestEqual(
 		FString::Printf(TEXT("fixture: the world should start with no bricks, got %d"),
 			CountBricks(TestWorld.World)),
 		CountBricks(TestWorld.World), 0);
 
-	/* A well-formed wall, then one extra box so its arrays no longer match one-per-piece. */
+	// A valid wall, then one extra box.
 	FBrickLayout Layout;
 	TestTrue(TEXT("fixture: RunningBond should lay the wall"), RunningBond(WallSpec(), Layout));
 
@@ -97,10 +79,7 @@ bool FSubsystemBuildLayoutRefusalLeavesNoBricksTest::RunTest(const FString& Para
 			Layout.Boxes.Num(), Layout.Structure.NumPieces()),
 		Layout.Boxes.Num(), Layout.Structure.NumPieces());
 
-	/*
-	 * ONE EXTRA BOX, a duplicate of the last so it is a well-formed FPieceBox and the ONLY
-	 * thing wrong with the layout is its length. Now Boxes.Num() == PieceCount + 1.
-	 */
+	// Duplicate the last box, so the only defect is the array length.
 	const FPieceBox ExtraBox = Layout.Boxes.Last();
 	Layout.Boxes.Add(ExtraBox);
 
@@ -111,15 +90,12 @@ bool FSubsystemBuildLayoutRefusalLeavesNoBricksTest::RunTest(const FString& Para
 
 	const int32 StructureId = TestWorld.Subsystem->BuildLayout(Layout);
 
-	/* The refusal itself: an out-of-step layout builds nothing and spends no id. */
+	// Refused: no id.
 	TestEqual(
 		FString::Printf(TEXT("a layout with a box too many must be refused, got id %d"), StructureId),
 		StructureId, static_cast<int32>(INDEX_NONE));
 
-	/*
-	 * THE BITE: no bricks left standing. Today BuildLayout has already spawned all seven
-	 * actors before AdoptLayout refuses, and nothing destroys them — so this reads 7.
-	 */
+	// No bricks left behind (without the guard, all seven spawned bricks remain).
 	TestEqual(
 		FString::Printf(
 			TEXT("a refused BuildLayout must leave no bricks orphaned in the world, got %d"),
@@ -131,19 +107,13 @@ bool FSubsystemBuildLayoutRefusalLeavesNoBricksTest::RunTest(const FString& Para
 }
 
 /**
- * Destroying a structure must remove its bricks from the world and forget the binding.
+ * Destroy(StructureId) removes the structure's bricks from the world and forgets the binding, so
+ * a scenario switch leaves nothing clickable behind.
  *
- * The subsystem's Structures map only ever grows: there is no teardown, so the planned scenario
- * switcher's second build would leave the first structure's bricks standing and clickable.
- * Destroy(StructureId) is the missing half — it must destroy every actor the binding names, drop
- * the map entry so Find returns null, and leave a ray along a former piece hitting nothing.
+ * Checked three ways: Find returns null, the brick count returns to the measured baseline (a
+ * leaked actor is invisible to Find), and a trace that hit piece 0 before now hits nothing.
  *
- * THREE INDEPENDENT WITNESSES so a partial implementation cannot pass by accident: the return
- * value, the count of live ABrickActors (a leaked actor is invisible to Find), and a TracePiece
- * that must now hit nothing — the clickability the switcher must not leave behind. The count is
- * against a measured baseline, so it cannot pass vacuously in an already-empty world.
- *
- * NEEDS A TICKING WORLD: yes, for the spawn and the trace; it never ticks.
+ * Needs a world for the spawn and trace; never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSubsystemDestroyRemovesTheStructureTest,
@@ -169,11 +139,7 @@ bool FSubsystemDestroyRemovesTheStructureTest::RunTest(const FString& Parameters
 		FString::Printf(TEXT("fixture: the world should start with no bricks, got %d"), BaselineBricks),
 		BaselineBricks, 0);
 
-	/*
-	 * A REFERENCE LAYOUT, laid separately, so there is a box centre to fire a trace through
-	 * that did not come out of the subsystem. The subsystem lays its own copy from the same
-	 * spec, so piece 0's actor sits at Reference.Boxes[0].CentreCm.
-	 */
+	// A separately laid reference layout, so the trace target doesn't come from the subsystem.
 	FBrickLayout Reference;
 	TestTrue(TEXT("fixture: RunningBond should lay the reference wall"), RunningBond(WallSpec(), Reference));
 
@@ -192,10 +158,7 @@ bool FSubsystemDestroyRemovesTheStructureTest::RunTest(const FString& Parameters
 			WallPieceCount, CountBricks(TestWorld.World)),
 		CountBricks(TestWorld.World), BaselineBricks + WallPieceCount);
 
-	/*
-	 * A TRACE THROUGH PIECE 0 HITS IT WHILE IT STANDS, so the same trace hitting nothing
-	 * after Destroy is a real change and not a ray that always missed.
-	 */
+	// Positive control: the trace hits piece 0 before Destroy.
 	const FPieceBox& Box0 = Reference.Boxes[0];
 	const FVector TraceStart(Box0.CentreCm.X, Box0.CentreCm.Y - 200.0, Box0.CentreCm.Z);
 	const FVector TraceEnd(Box0.CentreCm.X, Box0.CentreCm.Y + 200.0, Box0.CentreCm.Z);
@@ -207,26 +170,25 @@ bool FSubsystemDestroyRemovesTheStructureTest::RunTest(const FString& Parameters
 			Before.PieceHandle),
 		Before.PieceHandle, 0);
 
-	/* THE ACT UNDER TEST. */
 	const bool bDestroyed = TestWorld.Subsystem->Destroy(StructureId);
 
 	TestTrue(
 		TEXT("Destroy should report it tore down a structure it was holding"),
 		bDestroyed);
 
-	/* ONE: the binding is forgotten. */
+	// 1. The binding is forgotten.
 	TestNull(
 		TEXT("after Destroy, Find must no longer hand back the binding"),
 		TestWorld.Subsystem->Find(StructureId));
 
-	/* TWO: the bricks are gone from the world, back to the baseline. */
+	// 2. The bricks are gone.
 	TestEqual(
 		FString::Printf(
 			TEXT("after Destroy, the world should be back to %d bricks, got %d"),
 			BaselineBricks, CountBricks(TestWorld.World)),
 		CountBricks(TestWorld.World), BaselineBricks);
 
-	/* THREE: the old ray hits nothing — nothing left to click where the wall stood. */
+	// 3. The same trace now hits nothing.
 	const FPieceHit After = TestWorld.Subsystem->TracePiece(TraceStart, TraceEnd);
 
 	TestEqual(
