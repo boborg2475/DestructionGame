@@ -23,77 +23,26 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * SESSION S4 — THE STRIP ON SCREEN DRAWS THE MODEL, HONOURS bActive AND bEnabled, KEEPS ITS HANDS
- * OFF THE KEYBOARD, AND ROUTES A CLICK BACK THROUGH THE ONE DOOR.
+ * Session S4: the on-screen toolbar strip draws the model, honours bActive and bEnabled, never
+ * takes keyboard focus, and routes a click to OnToolbarButton.
  *
- * =====================================================================================
- * WHY A HEADLESS SLATE TEST IS POSSIBLE AT ALL
- * =====================================================================================
+ * Slate layout is arithmetic on desired sizes, so the tree can be prepassed and arranged with no
+ * window or RHI (as in PieceMenuPanelLayoutTest). Asserted:
+ *   - Captions match SessionToolbarButtons in order (the mode pair must not move under a still cursor).
+ *   - IsEnabled() matches bEnabled; a lit button that does nothing is a defect.
+ *   - SupportsKeyboardFocus() is false on every button. A focusable SButton takes focus on click and
+ *     the pawn stops answering W (design §d item 5).
+ *   - bActive changes the caption font or the chip fill (either; the visual design is not pinned).
+ *   - SimulateClick reaches OnToolbarButton.
+ * No pixel sizes are pinned. Needs a world (the controller is an actor) but never ticks it.
  *
- * `BuildPieceMenuPanel`'s header already sets this out and `Tests/PieceMenuPanelLayoutTest.cpp`
- * already relies on it: Slate layout is arithmetic on desired sizes and alignments, so a widget tree
- * can be prepassed and arranged with no window, no renderer and no RHI. The whole value of making
- * `BuildSessionToolbarPanel()` PUBLIC is that the strip's wiring — which buttons, in what order,
- * greyed or not, focusable or not, and what a click calls — becomes reachable. Kept private behind
- * `AddViewportWidgetContent` it would be the one surface nothing can see, which is exactly where the
- * two most likely defects in this design live.
- *
- * =====================================================================================
- * WHAT IS ASSERTED, AND WHY EACH ROW IS THE ONE THAT BITES
- * =====================================================================================
- *
- *   - THE CAPTIONS, IN ORDER, AGAINST `SessionToolbarButtons`. Not against literals: the model owns
- *     the wording and `Core.SessionToolbar.*` owns whether the wording is right. What this owns is
- *     that the widget draws THAT list, in THAT order — the ordering rule is a player-facing promise
- *     (the mode pair may not move under a stationary cursor) and a run of `AddSlot` calls is exactly
- *     where it would quietly stop being true.
- *
- *   - `IsEnabled()` AGAINST `bEnabled`. The model already refuses a greyed button, so a strip that
- *     drew everything live would still be SAFE — and would tell the player that clicking Run on an
- *     empty plot is going to do something. A lit button that does nothing is the failure
- *     `FToolbarButton::bEnabled`'s own header names.
- *
- *   - `SupportsKeyboardFocus() == false` ON EVERY BUTTON. This is the design's own nomination for
- *     the most likely thing to get wrong (§d, item 5), and it is invisible in every other kind of
- *     test: a focusable `SButton` takes user focus on click and the flying pawn stops answering `W`.
- *     A human would report it as "the game froze". It is one line per button and nothing else in the
- *     suite can see it.
- *
- *   - `bActive` IS HONOURED BY SOMETHING A WIDGET CAN READ. Which green, which glow and which
- *     gradient are the widget's business, so the claim is deliberately a DISJUNCTION: the caption's
- *     font or the chip's background colour must differ between the lit button and an idle one. What
- *     it is not free to do is draw them identically, which would make the mode the player is in
- *     unreadable — and `EBrickHighlight`'s ten enumerators are the precedent for why `bActive` and
- *     `bEnabled` must not be drawn alike either.
- *
- *   - AND A REAL CLICK REACHES `OnToolbarButton`. `SButton::SimulateClick` runs the actual OnClicked
- *     delegate, so this is the widget→controller wire itself rather than a second call to the
- *     controller's own method. Without it every claim in this file is about a tree nobody can press.
- *
- * WHAT IS DELIBERATELY NOT PINNED: any pixel. Sizes, paddings, the 48 px height, the group rules and
- * the accent hues are all the widget's, and `Presenter.SessionSafeArea` is where the one layout
- * number that matters to another surface will live.
- *
- * NEEDS A TICKING WORLD: a world, because the controller is an actor and `OnToolbarButton(ModeBuild)`
- * opens a real structure on the subsystem. It never ticks one, and it never needs an RHI — this runs
- * green under `-nullrhi` like every other test in the suite.
- *
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges many
- * files into one. See CURRENT_STATE.md.
+ * Namespace is named uniquely because unity builds merge files into one translation unit.
  */
 namespace SessionToolbarPanelTestSupport
 {
 	using namespace DestructionSession;
 
-	/**
-	 * The space the strip is laid out in, in pixels.
-	 *
-	 * 1920 x 1080 is an ordinary viewport, and NOTHING HERE DEPENDS ON THE NUMBERS. No claim in this
-	 * file is about where anything landed — the geometry exists only because `ArrangeChildren` needs
-	 * one to hand its children, and it is `ArrangeChildren` that walks the tree in SLOT ORDER, which
-	 * is the order claim.
-	 */
+	/** Layout space in pixels. No claim depends on these values; ArrangeChildren just needs a geometry. */
 	constexpr float SessionPanelWidthPx = 1920.0f;
 	constexpr float SessionPanelHeightPx = 1080.0f;
 
@@ -103,7 +52,7 @@ namespace SessionToolbarPanelTestSupport
 			FVector2f(SessionPanelWidthPx, SessionPanelHeightPx), FSlateLayoutTransform());
 	}
 
-	/** Every STextBlock under a widget, run together — which for a button is its caption. */
+	/** All STextBlock text under a widget, concatenated. For a button, its caption. */
 	FString SessionWidgetText(const TSharedRef<SWidget>& Widget)
 	{
 		FString Text;
@@ -123,7 +72,7 @@ namespace SessionToolbarPanelTestSupport
 		return Text;
 	}
 
-	/** The first STextBlock under a widget, which for a button is the widget its caption is set on. */
+	/** The first STextBlock under a widget (a button's caption widget). */
 	TSharedPtr<STextBlock> SessionFirstText(const TSharedRef<SWidget>& Widget)
 	{
 		if (Widget->GetType() == TEXT("STextBlock"))
@@ -144,13 +93,7 @@ namespace SessionToolbarPanelTestSupport
 		return nullptr;
 	}
 
-	/**
-	 * A font, as a string nothing can accidentally compare equal across two different fonts.
-	 *
-	 * THE FACE, THE TYPEFACE NAME AND THE SIZE, because the design's own distinction between an
-	 * active caption and an idle one is a WEIGHT (`Bold` against `Regular`), which lives in the
-	 * typeface name rather than in the size.
-	 */
+	/** A font as a comparable string. Includes the typeface name because active vs idle is a weight (Bold/Regular). */
 	FString SessionFontBits(const FSlateFontInfo& Font)
 	{
 		return FString::Printf(
@@ -162,20 +105,9 @@ namespace SessionToolbarPanelTestSupport
 	}
 
 	/**
-	 * A chip's fill, as a string — READ OFF THE BRUSH THE CHIP IS ACTUALLY WEARING.
-	 *
-	 * IT USED TO READ `SButton::GetBorderBackgroundColor`, AND THAT READING WENT BLIND. While the
-	 * strip tinted a stock grey brush through `ButtonColorAndOpacity`, the background colour WAS the
-	 * chip's fill and the lit-versus-idle rows below were about a colour. The chip-styling slice moved
-	 * the fill into the button's own rounded-box brush and left the tint at its default white — so
-	 * every chip on the strip now answers that getter with the same white, and a comparison built on
-	 * it would report "these two look identical" for a strip drawn in two different colours, or worse,
-	 * pass forever on the font alone.
-	 *
-	 * THE BRUSH IS WHAT SButton PAINTS, so it is what the claim should be about. A brush with no
-	 * specified tint is still its own answer, for the reason the old one gave: two chips deferring to
-	 * something unreadable look the same, and if that is how the strip says `bActive` then the font
-	 * had better be doing the work instead.
+	 * A chip's fill as a string, read from the brush SButton paints. GetBorderBackgroundColor no longer
+	 * works: the fill moved into the brush and the tint stays white on every chip. An unspecified tint
+	 * reads the same for every chip, so the font must then carry bActive.
 	 */
 	FString SessionChipFillBits(const FSlateBrush* Brush)
 	{
@@ -196,24 +128,11 @@ namespace SessionToolbarPanelTestSupport
 		bool bEnabled = false;
 		bool bFocusable = true;
 
-		/**
-		 * EVERYTHING A TEST CAN READ ABOUT HOW IT IS DRAWN, in one string.
-		 *
-		 * THE FONT AND THE FILL TOGETHER, because the claim is a DISJUNCTION — the widget may draw
-		 * `bActive` with either, and pinning one would be choosing its visual design for it. Joined
-		 * rather than compared field by field so "these two look different" is one comparison.
-		 */
+		/** Font and fill joined, so "looks different" is one comparison; bActive may use either. */
 		FString Look;
 	};
 
-	/**
-	 * Lay the tree out and record every button in SLOT ORDER.
-	 *
-	 * ARRANGED RATHER THAN PAINTED, exactly as `Tests/PieceMenuPanelLayoutTest.cpp` does it:
-	 * `ArrangeChildren` is the call the renderer makes to decide where a child goes, it is const, and
-	 * it needs no device. Walking it depth-first visits an `SHorizontalBox`'s slots in the order they
-	 * were added, which is the left-to-right order a player sees.
-	 */
+	/** Arrange the tree (no device needed) and record every button depth-first, i.e. left to right. */
 	void SessionCollectChips(
 		const TSharedRef<SWidget>& Widget,
 		const FGeometry& Geometry,
@@ -246,7 +165,7 @@ namespace SessionToolbarPanelTestSupport
 		}
 	}
 
-	/** Build the strip for the controller's CURRENT state and read every chip off it. */
+	/** Build the strip for the controller's current state and read every chip. */
 	TArray<FSessionChip> SessionMeasureStrip(ADestructionGamePlayerController& Controller)
 	{
 		const TSharedRef<SWidget> Panel = Controller.BuildSessionToolbarPanel();
@@ -314,10 +233,7 @@ namespace SessionToolbarPanelTestSupport
 			[Id](const FToolbarButton& Button) { return Button.Id == Id; });
 	}
 
-	/**
-	 * Hold the drawn strip against the model that produced it: same buttons, same order, same greying,
-	 * and none of them stealing the keyboard.
-	 */
+	/** Check the drawn strip matches the model: same buttons, order and greying, none focusable. */
 	void SessionCheckStripMatchesModel(
 		FAutomationTestBase& Test,
 		const TCHAR* Where,
@@ -367,15 +283,7 @@ namespace SessionToolbarPanelTestSupport
 		}
 	}
 
-	/**
-	 * EVERY WIDGET IN THE TREE, DEPTH FIRST, EACH WITH THE GEOMETRY IT WAS LAID OUT IN.
-	 *
-	 * THE GEOMETRY IS THE HALF SessionCollectChips THROWS AWAY, and two of the claims below need it:
-	 * a mouse event has to be handed the geometry of the widget it is being delivered to, and "a
-	 * point on the bar that is not on any chip" is a question about where the chips actually landed.
-	 * Pre-order is the same walk, so the order of this list is still the left-to-right order a
-	 * player sees.
-	 */
+	/** Every widget in the tree, pre-order (left to right), with its geometry. Mouse events need the geometry. */
 	void SessionCollectArranged(
 		const TSharedRef<SWidget>& Widget,
 		const FGeometry& Geometry,
@@ -407,7 +315,7 @@ namespace SessionToolbarPanelTestSupport
 		return Arranged;
 	}
 
-	/** Whether any SButton lives under this widget — which is what makes a border THE BAR. */
+	/** Whether any SButton is under this widget. */
 	bool SessionHasButtonDescendant(const TSharedRef<SWidget>& Widget)
 	{
 		if (Widget->GetType() == TEXT("SButton"))
@@ -428,15 +336,7 @@ namespace SessionToolbarPanelTestSupport
 		return false;
 	}
 
-	/**
-	 * THE BAR ITSELF: the outermost SBorder that has the chips inside it.
-	 *
-	 * FOUND BY THE TREE RATHER THAN BY A PIXEL. The bar is the border filling the strip's box at the
-	 * bottom of the screen, and this file pins no sizes — so "the border the buttons are inside" is
-	 * the description that stays true when the height, the padding or the accent changes. Pre-order
-	 * makes the first match the OUTERMOST one, which is the bar rather than any decorative border
-	 * that might one day sit around a group of chips inside it.
-	 */
+	/** The bar: the outermost SBorder containing the chips. Found by tree, not pixels; pre-order gives the outermost. */
 	const FArrangedWidget* SessionFindBar(const TArray<FArrangedWidget>& Arranged)
 	{
 		return Arranged.FindByPredicate(
@@ -447,14 +347,7 @@ namespace SessionToolbarPanelTestSupport
 			});
 	}
 
-	/**
-	 * A LEFT-BUTTON EVENT AT AN ABSOLUTE SCREEN POINT.
-	 *
-	 * THE PRESSED SET CARRIES THE BUTTON ON THE WAY DOWN AND IS EMPTY ON THE WAY UP, which is what
-	 * Slate itself delivers: the set is the buttons held AFTER the transition. Nothing under test
-	 * reads it, and it is spelled correctly anyway so that a handler which ever does starts from a
-	 * real event rather than from a convenient one.
-	 */
+	/** A left-button event at an absolute point. The pressed set is the buttons held after the transition, as Slate sends it. */
 	FPointerEvent SessionMouseEvent(const FVector2f& AbsolutePositionPx, bool bIsDown)
 	{
 		TSet<FKey> Pressed;
@@ -474,7 +367,7 @@ namespace SessionToolbarPanelTestSupport
 			FModifierKeysState());
 	}
 
-	/** Every STextBlock in the strip, in slot order — captions AND anything that is not one. */
+	/** Every STextBlock in the strip in slot order, captions and non-captions. */
 	TArray<FString> SessionStripTexts(const TArray<FArrangedWidget>& Arranged)
 	{
 		TArray<FString> Texts;
@@ -508,14 +401,7 @@ namespace SessionToolbarPanelTestSupport
 		return Line;
 	}
 
-	/**
-	 * ONE ENTRY OF THE STRIP'S TOP-LEVEL RUN: a chip, or something between two chips.
-	 *
-	 * THE WALK STOPS AT A CHIP, WHICH IS THE WHOLE POINT OF THIS LIST. The claim below is about what
-	 * sits BETWEEN the chips — a 1 px rule where the group changes and nothing where it does not —
-	 * and a chip's own insides (its caption, and the piece swatch this slice adds) are not between
-	 * anything. Descending into them would count the swatch as a divider.
-	 */
+	/** One item of the strip: a chip or something between chips. The walk stops at chips so a swatch is not counted as a divider. */
 	struct FSessionStripItem
 	{
 		FString Type;
@@ -556,20 +442,13 @@ namespace SessionToolbarPanelTestSupport
 		}
 	}
 
-	/**
-	 * WHETHER AN ITEM IS A DIVIDER: a hairline of something that is not a chip.
-	 *
-	 * MEASURED RATHER THAN NAMED, because the widget class is the widget's business — an SBorder, an
-	 * SImage or an SSeparator all draw the same line. What makes it a rule is that it is under 3 px
-	 * wide and tall enough to be seen, which nothing else on a 48 px strip is: the chips are dozens of
-	 * pixels wide, the course readout is a word, and the padding is empty space rather than a widget.
-	 */
+	/** Whether an item is a divider: a non-chip under 3 px wide and at least 2 px tall. Measured, not matched by class. */
 	bool SessionItemIsARule(const FSessionStripItem& Item)
 	{
 		return !Item.bIsChip && Item.WidthPx > 0.0f && Item.WidthPx < 3.0f && Item.HeightPx >= 2.0f;
 	}
 
-	/** Whether any STextBlock lives under this widget — which is what makes a box a swatch and not a caption. */
+	/** Whether any STextBlock is under this widget. */
 	bool SessionHasTextDescendant(const TSharedRef<SWidget>& Widget)
 	{
 		if (Widget->GetType() == TEXT("STextBlock"))
@@ -590,7 +469,7 @@ namespace SessionToolbarPanelTestSupport
 		return false;
 	}
 
-	/** One little block of colour drawn on a chip, before its caption. */
+	/** A colour block drawn on a chip before its caption. */
 	struct FSessionSwatch
 	{
 		FString Type;
@@ -601,15 +480,8 @@ namespace SessionToolbarPanelTestSupport
 	};
 
 	/**
-	 * THE SWATCHES DRAWN INSIDE ONE CHIP, BEFORE ITS CAPTION.
-	 *
-	 * BEFORE THE CAPTION IS PART OF THE CLAIM. §e puts the swatch "in place of a size caption" on the
-	 * piece chips, and a block of brick red drawn AFTER the word reads as a status light rather than
-	 * as the thing about to be laid. Pre-order arrangement is left-to-right, so "before" is an index.
-	 *
-	 * A SWATCH IS A COLOURED BOX WITH NO WORDS IN IT AND IT IS SHORTER THAN THE CHIP. The height bound
-	 * is what separates it from the wrappers a chip's content sits in, which are the chip's own full
-	 * 34 px; nothing about its exact size is claimed here beyond that.
+	 * Swatches inside one chip, before its caption (§e; after the word it reads as a status light).
+	 * A swatch is a text-free box at most 20 px tall, which excludes the chip's full-height wrappers.
 	 */
 	TArray<FSessionSwatch> SessionChipSwatches(const FSessionStripItem& Chip)
 	{
@@ -675,7 +547,7 @@ namespace SessionToolbarPanelTestSupport
 		return FString::Printf(TEXT("(%g, %g, %g, a %g)"), C.R, C.G, C.B, C.A);
 	}
 
-	/** A brush's tint, or a sentence saying it has none — never a silent zero. */
+	/** A brush's tint, or a note that it has none. */
 	FString SessionDescribeTint(const FSlateBrush& Brush)
 	{
 		return Brush.TintColor.IsColorSpecified()
@@ -683,7 +555,7 @@ namespace SessionToolbarPanelTestSupport
 			: FString(TEXT("<from the style, unreadable>"));
 	}
 
-	/** The SButton reading exactly this caption, found in the live tree so it can be pressed. */
+	/** The SButton with exactly this caption, from the live tree so it can be pressed. */
 	TSharedPtr<SButton> SessionFindButtonWidget(
 		const TSharedRef<SWidget>& Widget, const FString& Caption)
 	{
@@ -736,7 +608,7 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* --- ONE: the Destroy strip, which is what every scenario level opens with ------------- */
+	// One: the Destroy strip, which every scenario level opens with.
 
 	TArray<FSessionChip> DestroyChips;
 
@@ -757,12 +629,7 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 
 		SessionCheckStripMatchesModel(*this, TEXT("Destroy mode"), DestroyChips, Model);
 
-		/*
-		 * AND THE GREYING IS NOT VACUOUS. The sweep above compares the strip against the model, which
-		 * is satisfied by a model with nothing greyed and a strip with nothing greyed. With nothing
-		 * built, Run structure must be one of the greyed ones — asserted of the MODEL so that a
-		 * failure says which of the two halves is wrong.
-		 */
+		// Guard against a vacuous match: with nothing built, the model must grey Run structure.
 		const FToolbarButton* const Run =
 			SessionFindModelButton(Model, EToolbarButtonId::RunStructure);
 
@@ -783,7 +650,7 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 			RunChip != nullptr && !RunChip->bEnabled);
 	}
 
-	/* --- TWO: the Build strip, which is the ten-chip configuration ------------------------- */
+	// Two: the Build strip.
 
 	TArray<FSessionChip> BuildChips;
 
@@ -801,11 +668,7 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 		AddInfo(FString::Printf(
 			TEXT("the Build strip drew [%s]"), *SessionDescribeChips(BuildChips)));
 
-		/*
-		 * THE COUNT IS ASSERTED AGAINST A LITERAL AS WELL AS AGAINST THE MODEL, because the two
-		 * configurations differing at all is the claim: a strip rebuilt from a state it never re-read
-		 * would draw the same three buttons in both modes and match the model in neither.
-		 */
+		// Also checked against a literal, so a strip that never re-reads state cannot match in both modes.
 		TestTrue(
 			*FString::Printf(
 				TEXT("fixture: the Build strip is the seventeen-chip configuration; the model offers %d "
@@ -816,7 +679,7 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 		SessionCheckStripMatchesModel(*this, TEXT("Build mode"), BuildChips, Model);
 	}
 
-	/* --- THREE: bActive is honoured by something a widget can read ------------------------- */
+	// Three: bActive is visible in the widget.
 
 	{
 		const FSessionChip* const BuildTabIdle = SessionFindChip(DestroyChips, TEXT("Build"));
@@ -837,10 +700,7 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 			return true;
 		}
 
-		/*
-		 * WITHIN ONE STRIP: the mode you are in must not look like the mode you are not in. This is
-		 * the whole of what "which mode am I in" means from peripheral vision.
-		 */
+		// Within one strip, the active mode tab must look different from the inactive one.
 		TestTrue(
 			*FString::Printf(
 				TEXT("IN DESTROY MODE THE DESTROY TAB IS LIT AND THE BUILD TAB IS NOT, and they must "
@@ -856,16 +716,8 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 			BuildTabLit->Look != DestroyTabIdle->Look);
 
 		/*
-		 * ACROSS THE TWO STRIPS: each tab's own appearance CHANGED when it became the active one.
-		 *
-		 * THIS IS THE ROW THAT MAKES THE TWO ABOVE ABOUT bActive RATHER THAN ABOUT POSITION. A strip
-		 * that drew its FIRST chip one way and its second another — a decorative alternation, or a
-		 * "first slot is special" style — would satisfy both of them forever while telling the player
-		 * nothing about which mode they are in.
-		 *
-		 * IT IS DELIBERATELY NOT A SWAP. The design gives each mode its own accent (build amber,
-		 * destroy red), so the Build tab's lit look is not required to equal the Destroy tab's lit
-		 * look; insisting on that would be choosing the palette here.
+		 * Across the two strips, each tab's look must change when it becomes active. This ties the
+		 * checks above to bActive rather than slot position. Not a swap: each mode has its own accent.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -881,7 +733,7 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 			DestroyTabLit->Look != DestroyTabIdle->Look);
 	}
 
-	/* --- FOUR: and a real click on the widget reaches the one door ------------------------- */
+	// Four: a real click on the widget reaches OnToolbarButton.
 
 	{
 		const TSharedRef<SWidget> Panel = Controller->BuildSessionToolbarPanel();
@@ -906,11 +758,6 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 		{
 			DestroyButton->SimulateClick();
 
-			/*
-			 * THE WIRE ITSELF. Every other claim in this file is about a tree nobody pressed; this is
-			 * the one that says pressing it does anything at all — and that what it does goes through
-			 * the controller's single door rather than setting a field beside it.
-			 */
 			TestTrue(
 				*FString::Printf(
 					TEXT("CLICKING THE DESTROY TAB MUST SWITCH THE SESSION TO DESTROY MODE. The strip "
@@ -927,60 +774,19 @@ bool FSessionToolbarPanelDrawsTheModelTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE BAR SWALLOWS THE CLICK. A press on the strip's own background, three pixels beside a chip, is
- * the toolbar's — not the world's.
+ * The bar handles a left press and release on its own background, so a click beside a chip does not
+ * reach the world.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
+ * An unbound SBorder returns Unhandled, so the press bubbles to the SViewport and fires
+ * IA_InspectPiece; in Build mode PrimaryAlongRay then lays a brick. SButtons handle their own
+ * presses; the gaps and the bar past the last chip leak.
  *
- * The border that carries the chips must report a left-button press and release on itself as
- * HANDLED, so that a click landing on the strip's background goes no further.
+ * Left button only: right-drag is the look chord (IMC_MouseLook, S6 permanent cursor) and must still
+ * work over the bar.
  *
- * =====================================================================================
- * WHY THIS IS A DEFECT AND NOT A NICETY
- * =====================================================================================
- *
- * An SBorder with nothing bound answers `FReply::Unhandled()` — SWidget::OnMouseButtonDown returns
- * exactly that unless a handler has been set on it. Slate then bubbles the press on up to the
- * `SViewport`, which is where the game's input stack lives, and `IA_InspectPiece` fires. In Destroy
- * mode that is a ray at a brick the player did not mean to select; in BUILD mode the same click
- * reaches `PrimaryAlongRay`, which LAYS A BRICK wherever that pixel's ray happens to meet the build
- * plane — a piece of masonry appearing on the far side of the plot because the player missed
- * `Course up` by three pixels.
- *
- * The chips themselves are already safe: `SButton` handles its own press. It is the GAPS that leak —
- * the 5 px between every pair of chips, the 10 px edge padding, and the whole right-hand run of the
- * bar past the last chip, which on a 1920-wide viewport is most of its width.
- *
- * =====================================================================================
- * LEFT BUTTON ONLY, DELIBERATELY
- * =====================================================================================
- *
- * The right button is NOT asserted, and that is a decision rather than an omission. Right-drag is
- * the look chord: `IMC_MouseLook` is what the camera is flown with, and SESSION_UI_DESIGN's S6
- * permanent-cursor scheme keeps the cursor up for the whole session — so a player who starts a
- * look-drag with the pointer resting over the bar must still get their camera. A bar that swallowed
- * every button would take that away, and "the strip ate my mouse look" is a worse bug than the one
- * this test is about. Left is the click that commits things, and left is what is claimed.
- *
- * =====================================================================================
- * THE POINT IS CHOSEN, THEN PROVED TO BE THE RIGHT KIND OF POINT
- * =====================================================================================
- *
- * Four pixels inside the bar's right edge, vertically centred. That is inside the bar (asserted
- * against the bar's own geometry) and over NO chip (asserted against every arranged SButton), which
- * is what makes the claim about the BACKGROUND rather than about a button that would have handled it
- * anyway. Both are fixture preconditions rather than the claim, so a strip that one day filled its
- * whole width with chips fails here — saying "pick a different point" — instead of going green for
- * the wrong reason.
- *
- * AND THE BAR MUST STILL BE HIT-TESTABLE, which is the other half of the same promise: a handler
- * bound to a widget Slate never routes to swallows nothing at all. That row passes today and is
- * here so the pair cannot drift apart.
- *
- * NEEDS A TICKING WORLD: a world, because the controller is an actor. It never ticks one, and the
- * events are delivered by calling the widget directly — no SlateApplication, no window, no RHI.
+ * The press point is 4 px inside the bar's right edge. Fixture checks confirm it is on the bar, on no
+ * chip, and that the bar is hit-testable. Needs a world (the controller is an actor); events are
+ * delivered directly to the widget.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarBarSwallowsClicksTest,
@@ -1011,10 +817,7 @@ bool FSessionToolbarBarSwallowsClicksTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * IN BUILD MODE, BECAUSE BUILD IS WHERE THE LEAK COSTS THE MOST — a stray click lays a brick
-	 * rather than merely selecting one. It is also the ten-chip strip, so there is more bar to miss.
-	 */
+	// Build mode, where a leaked click lays a brick rather than selecting one.
 	TestTrue(
 		TEXT("fixture: the Build tab must be clickable"),
 		Controller->OnToolbarButton(EToolbarButtonId::ModeBuild));
@@ -1036,7 +839,7 @@ bool FSessionToolbarBarSwallowsClicksTest::RunTest(const FString& Parameters)
 
 	const FVector2f BarSizePx = FVector2f(Bar->Geometry.GetLocalSize());
 
-	/* Four pixels inside the right edge, vertically centred: bar, and no chip. */
+	// Four pixels inside the right edge, vertically centred: on the bar, on no chip.
 	const FVector2f PressAtPx =
 		FVector2f(Bar->Geometry.LocalToAbsolute(FVector2f(BarSizePx.X - 4.0f, BarSizePx.Y * 0.5f)));
 
@@ -1046,7 +849,7 @@ bool FSessionToolbarBarSwallowsClicksTest::RunTest(const FString& Parameters)
 		Bar->Geometry.GetAbsolutePosition().X, Bar->Geometry.GetAbsolutePosition().Y,
 		PressAtPx.X, PressAtPx.Y));
 
-	/* --- THE FIXTURE PRECONDITIONS: on the bar, and on none of its chips ------------------- */
+	// Fixture: on the bar, and on none of its chips.
 
 	TestTrue(
 		*FString::Printf(
@@ -1089,7 +892,7 @@ bool FSessionToolbarBarSwallowsClicksTest::RunTest(const FString& Parameters)
 			ChipsUnderThePress, 0);
 	}
 
-	/* --- AND THE BAR IS SOMETHING SLATE WOULD ROUTE TO AT ALL ------------------------------ */
+	// The bar must be hit-testable, or Slate never routes to it.
 
 	TestTrue(
 		*FString::Printf(
@@ -1098,7 +901,7 @@ bool FSessionToolbarBarSwallowsClicksTest::RunTest(const FString& Parameters)
 			*Bar->Widget->GetVisibility().ToString()),
 		Bar->Widget->GetVisibility().IsHitTestVisible());
 
-	/* --- THE CLAIM: press and release on the background are the toolbar's ------------------ */
+	// The claim: press and release on the background are handled.
 
 	{
 		const FPointerEvent Down = SessionMouseEvent(PressAtPx, true);
@@ -1118,12 +921,7 @@ bool FSessionToolbarBarSwallowsClicksTest::RunTest(const FString& Parameters)
 
 		const FReply UpReply = Bar->Widget->OnMouseButtonUp(Bar->Geometry, Up);
 
-		/*
-		 * AND THE RELEASE TOO, BECAUSE A SWALLOWED PRESS IS ONLY HALF A CLICK. Enhanced Input reads
-		 * key-up as well as key-down — a released action, a chord ending — so a bar that ate the press
-		 * and let the release through would deliver half a click to the world with nothing having
-		 * started it.
-		 */
+		// The release too: Enhanced Input reads key-up, so a leaked release is half a click.
 		TestTrue(
 			*FString::Printf(
 				TEXT("AND SO MUST THE RELEASE: a swallowed press with a leaked release delivers half a "
@@ -1138,50 +936,13 @@ bool FSessionToolbarBarSwallowsClicksTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE COURSE STEPPER SAYS WHICH COURSE YOU ARE ON — a readout between the two arrows, in Build mode
- * only, that follows the clicks.
+ * The Build strip draws CourseLabel(State.Course) as text between the Course down and Course up
+ * captions; the Destroy strip draws none; two CourseUp clicks make it read "Course 2". Nothing else
+ * on screen shows the build plane's height.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
- *
- * The Build strip draws `DestructionSession::CourseLabel(State.Course)` as its own text, positioned
- * between the `Course down` and `Course up` captions; the Destroy strip draws no such thing; and two
- * accepted `CourseUp` clicks make it read "Course 2".
- *
- * =====================================================================================
- * WHY A PAIR OF UNLABELLED ARROWS IS A DEFECT
- * =====================================================================================
- *
- * The course is the build plane's height, and NOTHING ELSE ON SCREEN SAYS WHAT IT IS. The ghost
- * moves, but a brick at course 4 and a brick at course 5 look identical from a flying camera at any
- * distance, and `Course down` greys out only at the very bottom — so a player who has stepped up
- * five times and lost count has no way to get back except to click down until the button dies. The
- * model already words it: `CourseLabel` exists, is swept by `Core.SessionToolbar.*`, and is drawn
- * by nobody.
- *
- * =====================================================================================
- * THE ORDER IS THE CLAIM, NOT MERELY THE PRESENCE
- * =====================================================================================
- *
- * A readout tacked onto the end of the strip would satisfy "the text is there" and would be a
- * different control: a stepper is an arrow, a value and an arrow, and the value belongs BETWEEN its
- * two arrows because that is what makes the two arrows read as acting on it. So the assertion is on
- * the readout's INDEX in the strip's text list, strictly between the two captions'.
- *
- * =====================================================================================
- * AND IT IS NOT A BUTTON
- * =====================================================================================
- *
- * `ToolbarPanelDrawsTheModel` holds the drawn chips against `SessionToolbarButtons` one for one, and
- * the model has no row for a readout — so a readout drawn as an eleventh SButton would break that
- * test AND would be a lit control that does nothing when pressed. This test pins the other side of
- * that: the chip list is still exactly the model's, and none of the chips reads the readout. The
- * caption walk already reads text only from under an SButton, so a text slot of its own is invisible
- * to it, which is exactly the design the readout wants.
- *
- * NEEDS A TICKING WORLD: a world, because the controller is an actor and entering Build mode opens a
- * structure on the subsystem. It never ticks one.
+ * The position is asserted by index in the strip's text list, strictly between the two arrows. The
+ * readout must not be an SButton: the chip list must still match the model exactly. Needs a world
+ * (the controller is an actor) but never ticks it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarShowsTheCourseReadoutTest,
@@ -1212,19 +973,11 @@ bool FSessionToolbarShowsTheCourseReadoutTest::RunTest(const FString& Parameters
 		return true;
 	}
 
-	/*
-	 * THE WORDS COME OFF THE MODEL, NEVER OFF A LITERAL. Core.SessionToolbar.* owns whether "Course 0"
-	 * is the right wording; what this file owns is that the strip draws THAT string.
-	 */
+	// Wording comes from the model, not literals; Core.SessionToolbar.* owns the wording.
 	const FString CourseZero = CourseLabel(0);
 	const FString CourseTwo = CourseLabel(2);
 
-	/*
-	 * AND SO DO THE TWO ARROWS' CAPTIONS, asked of a Build-mode state rather than transcribed — the
-	 * strip this file is about is the model's list, so the two ends of the "between" claim have to be
-	 * the model's words too or a retune of either caption would leave this test looking for a button
-	 * that no longer exists.
-	 */
+	// The arrow captions also come from the model, so a caption retune does not break this test.
 	FSessionToolbarState BuildState;
 	BuildState.Mode = ESessionMode::Build;
 
@@ -1249,7 +1002,7 @@ bool FSessionToolbarShowsTheCourseReadoutTest::RunTest(const FString& Parameters
 	const FString DownCaption = DownButton->Label;
 	const FString UpCaption = UpButton->Label;
 
-	/* --- ONE: the Destroy strip has no course readout on it ------------------------------- */
+	// One: the Destroy strip has no course readout.
 
 	{
 		TestTrue(
@@ -1261,11 +1014,7 @@ bool FSessionToolbarShowsTheCourseReadoutTest::RunTest(const FString& Parameters
 
 		AddInfo(FString::Printf(TEXT("the Destroy strip reads [%s]"), *SessionDescribeTexts(Texts)));
 
-		/*
-		 * A READOUT IN DESTROY MODE WOULD BE A LIE ABOUT WHAT THE SESSION IS DOING. There is no build
-		 * plane in Destroy mode and no arrows to move it, so a number reading "Course 0" beside a Run
-		 * button describes a thing the player cannot see or change.
-		 */
+		// Destroy mode has no build plane, so a course readout would describe nothing.
 		TestEqual(
 			FString::Printf(
 				TEXT("THE DESTROY STRIP MUST NOT CARRY THE COURSE READOUT: it has no course stepper to "
@@ -1274,7 +1023,7 @@ bool FSessionToolbarShowsTheCourseReadoutTest::RunTest(const FString& Parameters
 			Texts.IndexOfByKey(CourseZero), static_cast<int32>(INDEX_NONE));
 	}
 
-	/* --- TWO: the Build strip carries it, BETWEEN the two arrows --------------------------- */
+	// Two: the Build strip draws it between the two arrows.
 
 	{
 		TestTrue(
@@ -1315,10 +1064,6 @@ bool FSessionToolbarShowsTheCourseReadoutTest::RunTest(const FString& Parameters
 
 		if (ReadoutIndex != INDEX_NONE && DownIndex != INDEX_NONE && UpIndex != INDEX_NONE)
 		{
-			/*
-			 * BETWEEN THE ARROWS, WHICH IS WHAT MAKES THEM READ AS ACTING ON IT. A value at the end of
-			 * the strip is a different control altogether.
-			 */
 			TestTrue(
 				*FString::Printf(
 					TEXT("AND IT MUST SIT BETWEEN THE TWO ARROWS — arrow, value, arrow is what a stepper "
@@ -1328,12 +1073,7 @@ bool FSessionToolbarShowsTheCourseReadoutTest::RunTest(const FString& Parameters
 				DownIndex < ReadoutIndex && ReadoutIndex < UpIndex);
 		}
 
-		/*
-		 * AND IT IS A TEXT SLOT OF ITS OWN RATHER THAN AN ELEVENTH CHIP. The model has no row for it,
-		 * so a readout drawn as a button is a lit control that does nothing when it is pressed — and it
-		 * would put the drawn strip out of step with SessionToolbarButtons, which is the one-for-one
-		 * claim ToolbarPanelDrawsTheModel makes.
-		 */
+		// The readout is a text slot, not a chip: the model has no row for it.
 		const TArray<FSessionChip> Chips = SessionMeasureStrip(*Controller);
 
 		const TArray<FToolbarButton> Model =
@@ -1354,7 +1094,7 @@ bool FSessionToolbarShowsTheCourseReadoutTest::RunTest(const FString& Parameters
 			SessionFindChip(Chips, CourseZero));
 	}
 
-	/* --- THREE: and it FOLLOWS the clicks -------------------------------------------------- */
+	// Three: the readout follows the clicks.
 
 	{
 		TestTrue(
@@ -1376,12 +1116,7 @@ bool FSessionToolbarShowsTheCourseReadoutTest::RunTest(const FString& Parameters
 		AddInfo(FString::Printf(
 			TEXT("after two steps up the Build strip reads [%s]"), *SessionDescribeTexts(Texts)));
 
-		/*
-		 * A READOUT BUILT ONCE AND NEVER REBUILT IS WORSE THAN NONE — it would tell the player they are
-		 * on course 0 while the build plane sat two courses up, and the brick would land somewhere they
-		 * were told it would not. Both halves are asserted: the new reading is there AND the old one
-		 * is gone.
-		 */
+		// A stale readout is worse than none. Assert the new reading is present and the old one gone.
 		TestTrue(
 			*FString::Printf(
 				TEXT("TWO STEPS UP MUST READ '%s'. A readout that never changes is worse than no "
@@ -1402,67 +1137,18 @@ bool FSessionToolbarShowsTheCourseReadoutTest::RunTest(const FString& Parameters
 }
 
 /**
- * THE CHIPS ARE ROUNDED, EDGED, GROUPED BY A HAIRLINE RULE, AND THE PIECE CHIPS CARRY THE COLOUR OF
- * THE THING THEY LAY.
+ * Chips are rounded boxes at the look model's radius, edge width and fill; hover brightens and press
+ * darkens; a 1 px rule sits between chips whose EToolbarGroup differs and nowhere else; each piece
+ * chip carries one swatch of its material's colour before its caption.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
+ * Multiplying a colour into FCoreStyle's grey brush cannot produce the design's amber, so each chip
+ * needs its own brush. The §b regions keep destructive clicks away from setting clicks.
  *
- * Every chip is drawn with a rounded-box brush at the look model's own corner radius and edge width
- * and the look model's own fill, hover lifts that fill and a press pushes it down; a 1 px vertical
- * rule sits between two chips whose `EToolbarGroup` differs and nowhere else; and each of the three
- * piece chips carries one small block of its material's colour before its caption.
- *
- * =====================================================================================
- * WHY THIS IS A DEFECT AND NOT A NICETY
- * =====================================================================================
- *
- * The owner's words, 2026-09-15: "make the toolbar and the buttons look more fun". What is on screen
- * today is `FCoreStyle`'s grey button brush with a colour multiplied through it — CURRENT_STATE
- * records what that produces: "the lit accent is multiplied into FCoreStyle's grey button brush and
- * reads as dark mustard / maroon; greyed chips differ mainly by caption dimming". A multiply cannot
- * produce the design's amber, because the thing it is multiplying into is grey. So the accent this
- * project chose is not the accent a player sees, and no amount of retuning the constant fixes it —
- * the brush has to be the chip's own.
- *
- * AND THE STRIP HAS NO REGIONS. §b's three regions exist so that "a destructive click is never
- * adjacent to a setting click": today `Clear build` sits one 5 px gap from `Course up`, drawn
- * identically, and the only thing between a player and clearing their building is reading the word.
- *
- * =====================================================================================
- * WHAT IS PINNED, AND WHY EACH ROW IS THE ONE THAT BITES
- * =====================================================================================
- *
- *   - THE STYLE IS READ THROUGH `SessionChipStyleFor`, because `SButton` exposes no style getter.
- *     A seam invented for a test is a smell, so it is welded to the widget in the same block: the
- *     chip's own border brush must BE one of the four brushes of the style this function hands back,
- *     by ADDRESS. That is not pedantry — `SButton` stores a raw `const FButtonStyle*` and never
- *     copies it, so the storage behind this reference has to outlive the widget and not move. A
- *     per-call temporary or a rehashing `TMap` value would be a dangling pointer on the next
- *     placement, and this row is what says so before it is a crash.
- *
- *   - HOVER IS BRIGHTER AND A PRESS IS DARKER, as a RELATION rather than as two more triples. §e
- *     asks for a chip that lifts on hover and presses down on click; the hues are the widget's.
- *
- *   - THE RULES ARE COUNTED BETWEEN EVERY PAIR OF NEIGHBOURING CHIPS, both ways round. "There is a
- *     divider where the group changes" alone would be satisfied by a strip that drew a divider
- *     between every pair, which is a different and much noisier design; "and none where it does not"
- *     is the half that makes the three regions three.
- *
- *   - THE SWATCH IS ASSERTED BY COLOUR AND BY SHAPE. The colour is the model's `SwatchColour`, which
- *     `Core.SessionToolbar.ChipLook` pins to the two shed materials' own base colours — so the chip
- *     and the brick are one colour by construction rather than by two people picking the same red.
- *     The shape claim is a relation: the timber plank is longer and thinner than the brick block,
- *     which is what makes the three piece chips readable from each other without reading the words.
- *
- * WHAT IS DELIBERATELY NOT PINNED: the idle fill, the hover and press hues, the rule's own colour,
- * the swatches' exact pixels, and every padding. Those are the widget's, and `Core.SessionToolbar.*`
- * owns the decisions that are not.
- *
- * NEEDS A TICKING WORLD: a world, because the controller is an actor and entering Build mode opens a
- * structure on the subsystem. It never ticks one and it never needs an RHI — layout is arithmetic on
- * desired sizes, exactly as the three tests above it rely on.
+ * SButton has no style getter, so the style is read via SessionChipStyleFor and the chip's border
+ * brush must be one of that style's four by address. SButton stores a raw const FButtonStyle*, so
+ * that storage must outlive the widget and never move. Swatch colour is the model's SwatchColour;
+ * the plank swatch must be longer and thinner than the brick. Hues and paddings are not pinned.
+ * Needs a world but never ticks it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarChipsAreRoundedAndGroupedTest,
@@ -1493,11 +1179,7 @@ bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parame
 		return true;
 	}
 
-	/*
-	 * IN BUILD MODE, BECAUSE IT IS THE ONLY STRIP THAT DRAWS ALL THREE REGIONS AND ALL THREE
-	 * SWATCHES. The Destroy strip is mode-pair plus one command, which would exercise one rule and
-	 * no swatch at all.
-	 */
+	// Build mode: the only strip with all three regions and all swatches.
 	TestTrue(
 		TEXT("fixture: the Build tab must be clickable"),
 		Controller->OnToolbarButton(EToolbarButtonId::ModeBuild));
@@ -1505,11 +1187,7 @@ bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parame
 	const FSessionToolbarState& State = Controller->GetSessionToolbarState();
 	const TArray<FToolbarButton> Model = SessionToolbarButtons(State);
 
-	/*
-	 * ONE PANEL, BUILT ONCE AND USED FOR EVERY CLAIM. The style rows compare the widget's own brush
-	 * pointer against the controller's storage, so a second panel built halfway through would be
-	 * comparing one tree's pointers against another tree's styles.
-	 */
+	// One panel for every claim: the style rows compare brush pointers against this tree.
 	const TSharedRef<SWidget> Panel = Controller->BuildSessionToolbarPanel();
 
 	Panel->SlatePrepass(1.0f);
@@ -1558,7 +1236,7 @@ bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parame
 		return true;
 	}
 
-	/* --- ONE: every chip is a rounded box, and it is the style the model asked for ---------- */
+	// One: every chip is a rounded box in the model's style.
 
 	for (int32 Index = 0; Index < Model.Num(); ++Index)
 	{
@@ -1625,11 +1303,7 @@ bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parame
 					&& (Pressed.R < Normal.R || Pressed.G < Normal.G || Pressed.B < Normal.B));
 		}
 
-		/*
-		 * AND THE CHIP ON SCREEN IS WEARING THAT STYLE OBJECT, BY ADDRESS. Without this row
-		 * SessionChipStyleFor is a function only a test calls, and the strip could go on drawing
-		 * FCoreStyle's grey while every claim above passed.
-		 */
+		// The chip must wear that style object by address, or the checks above prove nothing about the widget.
 		const TSharedRef<SButton> Chip = StaticCastSharedRef<SButton>(Item.Widget.ToSharedRef());
 
 		const FSlateBrush* const Worn = Chip->GetBorderImage();
@@ -1652,7 +1326,7 @@ bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parame
 			Worn != nullptr && Worn->DrawAs == ESlateBrushDrawType::RoundedBox);
 	}
 
-	/* --- TWO: a hairline rule where the group changes, and nowhere else --------------------- */
+	// Two: a hairline rule where the group changes, and nowhere else.
 
 	for (int32 Index = 0; Index + 1 < Model.Num(); ++Index)
 	{
@@ -1687,7 +1361,7 @@ bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parame
 		}
 	}
 
-	/* --- THREE: the piece chips carry the colour of the thing they lay ---------------------- */
+	// Three: piece chips carry their material's colour.
 
 	{
 		FSessionSwatch BrickSwatch;
@@ -1746,11 +1420,7 @@ bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parame
 			}
 		}
 
-		/*
-		 * AND THE TWO ARE DIFFERENT SHAPES, NOT JUST DIFFERENT COLOURS. A plank is longer and thinner
-		 * than a brick, which is what lets the three piece chips be told apart at a glance — and it
-		 * is a relation rather than a pixel count, so the design is free to retune both.
-		 */
+		// Different shapes too: the plank is longer and thinner than the brick (a relation, not pixels).
 		if (bHaveBrick && bHaveTimber)
 		{
 			TestTrue(
@@ -1777,65 +1447,18 @@ bool FSessionToolbarChipsAreRoundedAndGroupedTest::RunTest(const FString& Parame
 }
 
 /**
- * THE STRIP FITS THE SCREEN IT IS DESIGNED FOR. Every chip of the longest configuration lands inside
- * a 1280 px viewport, and none of them is blank.
+ * At Slate scale 1, the last chip of the Build strip (17 chips, the widest configuration) and of the
+ * Destroy strip ends within the §b reference width of 1280 px less the bar's 10 px padding, and
+ * every chip still has a caption.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
+ * §b: the strip never scrolls or wraps. AutoWidth slots simply run off the bar; the 16-chip strip
+ * once spanned x = 10..1439, putting the course stepper and Clear build off a 1280 px screen. The
+ * fix is shorter captions in the model; no caption is pinned here. The non-empty caption check
+ * blocks the cheap fix of blanking them.
  *
- * Laid out at Slate scale 1, the RIGHT EDGE of the last chip on the Build strip — the SEVENTEEN-chip
- * configuration since CR-2b added `Rotate` to the palette, the widest the model ever produces — sits
- * within the design's 1280 px reference width less the bar's own 10 px edge padding, and so does the
- * Destroy strip's.
- *
- * =====================================================================================
- * WHY THIS IS A DEFECT AND NOT A NICETY
- * =====================================================================================
- *
- * SESSION_UI_DESIGN §b: the strip "never scrolls and never wraps". An `SHorizontalBox` of
- * `AutoWidth` slots does exactly what it is told — it lays every chip out at its desired width and
- * runs off the end of the bar, drawing nothing to say it has. MEASURED on the sixteen-chip Build
- * strip: the run spans x = 10 .. 1439, so on a 1280-wide viewport the last three chips — the course
- * stepper and `Clear build` — are simply NOT ON SCREEN, and the player has no way to reach a control
- * that the model reports as live and that a keyboard shortcut still fires. A greyed chip at least
- * says why it cannot be clicked; a chip past the right edge says nothing at all.
- *
- * The strip only got this wide when UI-6 added six joint chips to a row that already carried two
- * eleven-character piece captions and two eleven-character course captions. §b's own answer is
- * SHORTER CAPTIONS — `-`/`+` for the arrows, "Plate"/"Lintel" for the timber pieces.
- *
- * =====================================================================================
- * WHY THE WIDTH AND NOT THE WORDS
- * =====================================================================================
- *
- * This test deliberately pins NO caption. The captions are the model's, `Core.SessionToolbar.Labels`
- * owns which words they are, and a test that demanded "-" here would forbid the icon §e eventually
- * wants, or a two-chip stepper, or a narrower font — every one of which fixes the actual problem.
- * What is not negotiable is that the sixteenth chip is on the screen.
- *
- * AND THE SECOND ROW IS WHAT STOPS THE CHEAPEST FIX. A strip whose captions were all blanked would
- * measure beautifully and be unusable, so every chip must still READ something. Between the two
- * rows, the only way through is captions that are shorter AND present.
- *
- * =====================================================================================
- * THE MEASUREMENT, AND WHY 1920 IS STILL THE SURFACE
- * =====================================================================================
- *
- * The chips sit in `AutoWidth` slots, so each takes its DESIRED width and the arrangement is the
- * same whatever surface it is handed — 1920 is used only because it is wide enough that nothing is
- * clipped or squeezed, which is what makes the reading a measurement of the strip rather than of the
- * viewport. The fixture asserts that the run really did fit inside the measuring surface, so a strip
- * that one day overflowed 1920 as well fails saying "measure it somewhere wider" rather than going
- * quietly green on a clamped number.
- *
- * THE REFERENCE WIDTH AND THE PADDING ARE TRANSCRIBED FROM §b RATHER THAN IMPORTED, for the reason
- * every other number in this suite is: a test that asked the widget for its own padding would agree
- * with it however wrong it was.
- *
- * NEEDS A TICKING WORLD: a world, because the controller is an actor and entering Build mode opens a
- * structure on the subsystem. It never ticks one and it never needs an RHI — layout is arithmetic on
- * desired sizes, exactly as its three siblings above rely on.
+ * Measured on a 1920 px surface so nothing is clamped (a fixture check confirms the run fits it).
+ * The width and padding are transcribed from §b, not read from the widget. Needs a world but never
+ * ticks it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarBuildStripFitsTheReferenceWidthTest,
@@ -1848,10 +1471,7 @@ bool FSessionToolbarBuildStripFitsTheReferenceWidthTest::RunTest(const FString& 
 	using namespace DestructionSession;
 	using namespace SessionToolbarPanelTestSupport;
 
-	/*
-	 * THE DESIGN'S OWN REFERENCE WIDTH (§b), and the bar's own edge padding with it. A chip whose
-	 * right edge is past 1280 - 10 is a chip a 1280-wide player cannot click.
-	 */
+	// §b reference width and bar edge padding.
 	constexpr float ReferenceViewportWidthPx = 1280.0f;
 	constexpr float BarEdgePaddingPx = 10.0f;
 	constexpr float RightmostAllowedEdgePx = ReferenceViewportWidthPx - BarEdgePaddingPx;
@@ -1874,7 +1494,7 @@ bool FSessionToolbarBuildStripFitsTheReferenceWidthTest::RunTest(const FString& 
 		return true;
 	}
 
-	/** One strip measured: every chip's caption and the span it occupies. */
+	/** A chip's caption and horizontal span. */
 	struct FMeasuredChip
 	{
 		FString Caption;
@@ -1925,7 +1545,7 @@ bool FSessionToolbarBuildStripFitsTheReferenceWidthTest::RunTest(const FString& 
 		return Line;
 	};
 
-	/* Both strips, because the claim is about the widget's layout and not about one mode's list. */
+	// Both strips: the claim is about the widget's layout, not one mode's list.
 	struct FStripCase
 	{
 		const TCHAR* Description;
@@ -1981,10 +1601,7 @@ bool FSessionToolbarBuildStripFitsTheReferenceWidthTest::RunTest(const FString& 
 
 		const FMeasuredChip& Last = Measured.Last();
 
-		/*
-		 * THE MEASURING SURFACE HAS TO BE BIGGER THAN THE THING BEING MEASURED, or the number read
-		 * back is a clamp rather than a width.
-		 */
+		// The surface must exceed the run, or the reading is a clamp rather than a width.
 		TestTrue(
 			*FString::Printf(
 				TEXT("fixture: %s — the run must fit inside the %g px arrange surface for its width to "
@@ -1992,11 +1609,6 @@ bool FSessionToolbarBuildStripFitsTheReferenceWidthTest::RunTest(const FString& 
 				Case.Description, SessionPanelWidthPx, Last.RightPx),
 			Last.RightPx < SessionPanelWidthPx - BarEdgePaddingPx);
 
-		/*
-		 * THE CLAIM. §b: the strip never scrolls and never wraps, so every chip has to be ON the
-		 * reference screen — a control drawn past the right edge is one the player cannot reach while
-		 * the model goes on reporting it live.
-		 */
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: THE LAST CHIP ('%s') MUST END BY %g px — the design's %g px reference width "
@@ -2009,10 +1621,7 @@ bool FSessionToolbarBuildStripFitsTheReferenceWidthTest::RunTest(const FString& 
 				ReferenceViewportWidthPx, *DescribeMeasured(Measured)),
 			Last.RightPx <= RightmostAllowedEdgePx);
 
-		/*
-		 * AND EVERY CHIP STILL SAYS SOMETHING. This is the row that stops the cheap fix: a strip with
-		 * every caption blanked measures perfectly and is a row of identical dark lozenges.
-		 */
+		// Every chip must still have a caption; blanking them all would pass the width check.
 		for (int32 Index = 0; Index < Measured.Num(); ++Index)
 		{
 			TestFalse(

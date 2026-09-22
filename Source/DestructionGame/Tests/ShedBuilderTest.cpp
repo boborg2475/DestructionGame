@@ -14,28 +14,16 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The shed builder (SHED_PATH.md Phase F, slice F1): the first authored, catalogue-buildable
- * shed, and the point where the shed stops being a pile of proven mechanisms and becomes a
- * thing built through the scenario/binding pipeline.
+ * Shed builder (SHED_PATH.md Phase F, slice F1). DestructionShed::Build lays a 2D X-Z shed
+ * section: two grounded ClayBrick piers, a Timber roof on both heads, and a Timber overhang
+ * screwed to the front pier and carried on a grounded Timber post, each piece and contact with
+ * its authored material and connection. Assembled it stands under the rigid-block LP; pulling the
+ * post drops the overhang, the back head drops the roof, the front head drops both.
  *
- * DestructionShed::Build lays a minimal 2D X-Z shed cross-section — two grounded ClayBrick
- * piers, a Timber roof beam bearing on both wall heads, and a Timber overhang screwed to the
- * front pier and carried on a grounded Timber post — as an FBrickLayout where every piece
- * carries its authored material and every contact its authored connection. Assembled it
- * stands under the rigid-block LP; pulling the post drops the overhang, pulling the back head
- * drops the roof, pulling the front head drops both.
+ * No new physics: the overhang is C2's mechanism verbatim and the roof is a simply-supported beam
+ * on two compression bearings.
  *
- * Everything the physics needs is already proven and dimension-independent (2D LP): the
- * Timber C24 material (B1), the connection x material weakest-link bearing (B2/B3), fastener
- * withdrawal tension (C1), and the posts-plus-fixing overhang mechanism (C2,
- * Acceptance.Overhang.CarriedByPostsInCompressionAndAWallFixingInTension). This slice adds no
- * physics; it authors a builder that composes those mechanisms into one structure, so the red
- * is "the builder lays nothing yet" (the F1 stub is a bare `return false`), never a physics
- * gap. Every arm below is either the C2 overhang mechanism verbatim or a simply-supported beam
- * on two compression bearings, both already proven elsewhere.
- *
- * The fixture — a 2D X-Z cross-section through the doorway. X is depth (back -> front ->
- * door), Z is height. Seven pieces, six bed joints.
+ * X is depth (back -> front -> door), Z is height. Seven pieces, six bed joints.
  *
  *                                                          overhang centroid c = X 296
  *                              roof beam (Timber)                 |
@@ -52,7 +40,7 @@
  *   +========+                     +========+
  *      earth                          earth
  *
- * Seven pieces (a masonry pier is a grounded base, several fused courses, plus one removable head):
+ * Pieces (a pier is a grounded base plus one removable head):
  *   - BackBase  : ClayBrick, GROUNDED. X in [0,40],   Z in [0,170].
  *   - BackHead  : ClayBrick.           X in [0,40],   Z in [171,181]. Carries the roof's back end.
  *   - FrontBase : ClayBrick, GROUNDED. X in [160,200],Z in [0,170].
@@ -64,7 +52,7 @@
  *                 (the fixing patch) and cantilevers out over the door. Centroid X 296.
  *   - Post      : Timber, GROUNDED.    X in [254,266],Z in [0,181]. Under the front of the overhang.
  *
- * Six bed joints (all normal +Z, single wythe in X-Z — the 2D LP's domain; no head/Y-normal joints):
+ * Bed joints (all normal +Z, single wythe, the 2D LP's domain):
  *   - BackBed   : BackBase  - BackHead,  GeneralPurposeMortar (a brick mortar bed).
  *   - FrontBed  : FrontBase - FrontHead, GeneralPurposeMortar.
  *   - RoofBack  : BackHead  - Roof,      DRYSTONE (wood-on-brick frictional bearing, compression).
@@ -72,44 +60,19 @@
  *   - Fixing    : FrontHead - Overhang,  SCREW (the 4 cm x 20 cm = 80 cm2 tension tie).
  *   - PostBrg   : Post      - Overhang,  DRYSTONE (12 cm x 20 cm = 240 cm2 bearing, compression).
  *
- * The roof (X in [0,190]) and the overhang (X in [196,396]) leave a 6 cm gap between their ends, so
- * they never form a joint with each other — the roof spans the shed, the overhang cantilevers the
- * door, and the front head is what they share.
+ * A 6 cm gap separates the roof and overhang, so they share no joint.
  *
- * The statics are hand-derived (never mirrored from the LP; the bridged LP is the second,
- * independently-derived confirmation).
+ * Statics, hand-derived (the bridged LP is the independent check). Overhang, as C2:
+ *   (a) Assembled: fixing tension T = W*(c-Xp)/(Xp-Xf), withdrawal capacity ~37x over -> stands.
+ *   (b) Post removed: fixing's plastic couple is ~2.1x short of W*(c-Xf) -> falls.
+ *   (c) Fixing anchor removed: topple moment W*(c-Xp) is ~6x the post's compression-only couple -> falls.
+ * Roof, on two DryStone bearings:
+ *   (d) Assembled: centroid X 95 lies between bearing centres 20 and 175 -> stands.
+ *   (e) Either head removed: topple moment exceeds the remaining bearing's halfWidth*W -> falls
+ *       (back gone ~5.3x, front gone ~3.8x).
  *
- * The overhang is C2 verbatim — same length 200, same 4 cm fixing lap, same post 62 cm
- * outboard of the fixing and 36 cm inboard of the centroid — so its three arms come out
- * exactly as C2's:
- *   (a) Assembled: the fixing carries a comfortable tension T = W*(c-Xp)/(Xp-Xf), its
- *       withdrawal capacity ~37x over -> stands.
- *   (b) Post removed: the 4 cm fixing alone must cantilever the beam; its plastic couple is
- *       ~2.1x short of the cantilever moment W*(c-Xf) -> falls.
- *   (c) Fixing anchor removed: the post alone (DryStone, no tension) cannot stop the beam
- *       toppling off it; the topple moment W*(c-Xp) is ~6x the post's compression-only
- *       couple -> falls.
- *
- * The roof is a simply-supported beam on two compression-only (DryStone) bearings:
- *   (d) Assembled: centroid X 95 lies between the back bearing (centre 20) and the front
- *       bearing (centre 175), so both vertical reactions are positive -> stands.
- *   (e) Either head removed: the roof is left on one compression-only bearing with its
- *       centroid well outboard, so the toppling moment W*(centre - centroid) far exceeds
- *       the bearing's compression-only couple halfWidth*W -> falls (back head gone: ~5.3x;
- *       front head gone: ~3.8x).
- *
- * Units, spelled out locally (DESIGN.md §3): 1 N = 100 uu, 1 cm2 = 100 mm2, so 1 MPa over
- * 1 cm2 is 100*100 = 10000 uu — deliberately not the production constant, so a wrong
- * conversion fails here. Weight is MassKg * 980 (the 1 N = 100 uu factor is already inside
- * the 980); masses come from the published densities (Timber 0.42, ClayBrick 1.9) times
- * the true volumes.
- *
- * No ticking world needed: the builder is arithmetic over boxes, the structure is
- * arithmetic over a graph, gravity is on (weight = mass*980), and every assertion is on the
- * laid layout, the oracle, or the solved outcome — same footing as the overhang (C2),
- * cross-material bearing (B3) and F0 tests.
- *
- * Named namespace, not anonymous: a unity build merges files into one translation unit.
+ * Units written out locally (DESIGN.md §3): 1 MPa over 1 cm2 = 10000 uu, not the production
+ * constant. Weight is MassKg * 980. No world needed. Named namespace: unity builds merge files.
  */
 namespace ShedBuilderTestSupport
 {
@@ -124,18 +87,13 @@ namespace ShedBuilderTestSupport
 	/** Fired clay, the figure every wall fixture uses. */
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
 
-	/** MassKg * 980 is a weight in uu — the 1 N = 100 uu conversion is already inside it. */
+	/** MassKg * 980 is a weight in uu (includes 1 N = 100 uu). */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
 	/** 1 MPa over 1 cm2 is 10000 uu. Deliberately a local literal, not the production constant. */
 	constexpr double ForceUnitsPerMPaSqCmHere = 100.0 * 100.0;
 
-	/*
-	 * The spec — the canonical shed, spelled out here so the hand-derivation below reads
-	 * from the same numbers the builder is handed. The builder's contract is to honour this
-	 * spec; the sizing is derived from it independently, and the bridged LP is called
-	 * against whatever the builder actually lays.
-	 */
+	// The canonical shed spec; the hand derivation and the builder read the same numbers.
 
 	constexpr double WytheCm = 20.0;
 	constexpr double JointThicknessCm = 1.0;
@@ -156,7 +114,7 @@ namespace ShedBuilderTestSupport
 	constexpr double PostWidthCm = 12.0;
 	constexpr double PostCentreCm = 260.0;
 
-	/* --- coordinates the above imply, worked once so the derivation and the picture agree -------- */
+	// Derived coordinates.
 
 	constexpr double FrontPierLeftCm = BackPierLeftCm + PierSeparationCm;             // 160
 	constexpr double FrontPierRightCm = FrontPierLeftCm + PierWidthCm;                // 200
@@ -167,14 +125,14 @@ namespace ShedBuilderTestSupport
 	constexpr double OverhangRightCm = OverhangBackCm + OverhangLengthCm;             // 396
 	constexpr double OverhangCentroidXCm = (OverhangBackCm + OverhangRightCm) / 2.0;  // 296
 
-	/* The fixing patch is the overhang's lap onto the front head: [OverhangBackCm, FrontPierRightCm]. */
+	// The fixing patch is the overhang's lap onto the front head.
 	constexpr double FixingWidthCm = FrontPierRightCm - OverhangBackCm;               // 4
 	constexpr double FixingCentreXCm = (OverhangBackCm + FrontPierRightCm) / 2.0;     // 198
 	constexpr double FixingAreaSqCm = FixingWidthCm * WytheCm;                        // 80
 
 	constexpr double PostBearingAreaSqCm = PostWidthCm * WytheCm;                     // 240
 
-	/* Roof bearings: full back head, and the front head as far as the roof reaches. */
+	// Roof bearings: the full back head, and the front head as far as the roof reaches.
 	constexpr double RoofBackBearingCentreXCm = (BackPierLeftCm + PierWidthCm) / 2.0; // 20
 	constexpr double RoofFrontBearingCentreXCm = (FrontPierLeftCm + RoofFrontCm) / 2.0; // 175
 	constexpr double RoofFrontBearingWidthCm = RoofFrontCm - FrontPierLeftCm;         // 30
@@ -220,20 +178,20 @@ namespace ShedBuilderTestSupport
 		return ScrewTensileMPa * ForceUnitsPerMPaSqCmHere * FixingAreaSqCm;
 	}
 
-	/** (a) ASSEMBLED overhang: the net TENSION the fixing must carry, weight outboard of the post. */
+	/** (a) Assembled: the tension the fixing carries. */
 	double AssembledFixingTensionUu()
 	{
 		return OverhangWeightUu()
 			* (OverhangCentroidXCm - PostCentreCm) / (PostCentreCm - FixingCentreXCm);
 	}
 
-	/** (b) POST REMOVED: the cantilever moment the fixing alone must resist, about its centre. */
+	/** (b) Post removed: cantilever moment about the fixing centre. */
 	double CantileverDemandUuCm()
 	{
 		return OverhangWeightUu() * (OverhangCentroidXCm - FixingCentreXCm);
 	}
 
-	/** (b) The MOST the 4 cm fixing patch can restore — its fully-plastic couple (C2's derivation). */
+	/** (b) The fixing patch's fully plastic couple (C2's derivation). */
 	double CantileverCapacityUuCm(double ScrewTensileMPa)
 	{
 		const double HalfWidthCm = FixingWidthCm / 2.0;
@@ -241,35 +199,31 @@ namespace ShedBuilderTestSupport
 		return HalfWidthCm * (OverhangWeightUu() + 2.0 * CapHalfUu);
 	}
 
-	/** (c) FIXING ANCHOR REMOVED: the overhang's toppling moment about the post centre. */
+	/** (c) Fixing anchor removed: toppling moment about the post centre. */
 	double OverhangToppleDemandUuCm()
 	{
 		return OverhangWeightUu() * (OverhangCentroidXCm - PostCentreCm);
 	}
 
-	/** (c) The MOST the post bearing can restore: DryStone is compression-only, one outboard edge. */
+	/** (c) The post bearing's compression-only restoring couple. */
 	double OverhangToppleCapacityUuCm()
 	{
 		return (PostWidthCm / 2.0) * OverhangWeightUu();
 	}
 
-	/** (e) ONE HEAD REMOVED: the roof's toppling moment about the remaining bearing's centre. */
+	/** (e) One head removed: roof toppling moment about the remaining bearing. */
 	double RoofToppleDemandUuCm(double RemainingBearingCentreXCm)
 	{
 		return RoofWeightUu() * FMath::Abs(RemainingBearingCentreXCm - RoofCentroidXCm);
 	}
 
-	/** (e) The MOST that bearing can restore: DryStone compression-only, one edge at halfWidth. */
+	/** (e) That bearing's compression-only restoring couple. */
 	double RoofToppleCapacityUuCm(double BearingWidthCm)
 	{
 		return (BearingWidthCm / 2.0) * RoofWeightUu();
 	}
 
-	/*
-	 * The laid shed — identified by material, grounding and relative X, never by a handle
-	 * the builder happened to hand back in a particular order, so these assertions are
-	 * about the shed's shape rather than the builder's internal piece numbering.
-	 */
+	// Pieces identified by material, grounding and X order, not by the builder's handle order.
 
 	struct FShed
 	{
@@ -282,10 +236,7 @@ namespace ShedBuilderTestSupport
 		int32 Post = INDEX_NONE;
 	};
 
-	/**
-	 * Sort a handle list by piece centroid X, ascending. Back pier is smaller X than front; the
-	 * roof (centroid 95) is smaller than the overhang (centroid 296).
-	 */
+	/** Sort handles by centroid X, ascending. */
 	void SortByCentroidX(const FStructure& S, TArray<int32>& Handles)
 	{
 		Handles.Sort([&S](const int32& A, const int32& B)
@@ -294,11 +245,7 @@ namespace ShedBuilderTestSupport
 		});
 	}
 
-	/**
-	 * Name the seven pieces from a laid layout, or fail. Two grounded bricks (bases), two free
-	 * bricks (heads), one grounded timber (post) and two free timbers (roof, overhang) is the only
-	 * shape that identifies; anything else is a wrongly-built shed and the caller reports it.
-	 */
+	/** Name the seven pieces, or return false if the layout is not 2 + 2 bricks and 1 + 2 timbers. */
 	bool Identify(const FBrickLayout& Layout, FShed& Out)
 	{
 		const FStructure& S = Layout.Structure;
@@ -379,7 +326,7 @@ namespace ShedBuilderTestSupport
 		return Support == EPieceSupport::Grounded || Support == EPieceSupport::Supported;
 	}
 
-	/** True when a live piece has lost every path to the earth — the outcome a dropped piece shows. */
+	/** Whether a live piece has lost every path to the ground. */
 	bool HasLostTheEarth(const FStructure& S, int32 Piece)
 	{
 		if (S.IsPieceRemoved(Piece))
@@ -389,7 +336,7 @@ namespace ShedBuilderTestSupport
 		return !IsStanding(S.GetPieceSupport(Piece));
 	}
 
-	/** The oracle block that came from a given FStructure piece, via the bridge provenance. */
+	/** The oracle block for a structure piece, via bridge provenance. */
 	int32 OracleBlockOfPiece(const RigidBlockOracle::FOracleProblem& Problem, int32 Piece)
 	{
 		for (int32 B = 0; B < Problem.PieceOfBlock.Num(); ++B)
@@ -403,11 +350,7 @@ namespace ShedBuilderTestSupport
 	}
 }
 
-/**
- * The builder lays a multi-material shed that stands as built and drops when the post or a
- * pier is pulled — "pull the posts, it drops; pull the wall, it drops." No ticking world
- * needed; see the file header.
- */
+/** The built shed stands, and drops when the post or a pier head is pulled. See the file header. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FShedBuilderTest,
 	"DestructionGame.Acceptance.Shed.BuildsAMultiMaterialShedThatStandsAndCollapsesCorrectly",
@@ -418,11 +361,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 	using namespace DestructionProfiles;
 	using namespace ShedBuilderTestSupport;
 
-	/*
-	 * Preconditions on the strength basis — the verdicts turn on these, so they are pinned
-	 * to the published figures the sizing was derived against rather than read from the
-	 * profiles.
-	 */
+	// Strength preconditions, pinned to the published figures the sizing was derived from.
 
 	TestEqual(TEXT("FIXTURE: the fixing is a Screw, withdrawal 0.54 MPa (EN 1995-1-1 8.7.2)"),
 		Screw.TensileStrengthMPa, 0.54);
@@ -435,12 +374,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FIXTURE: clay brick crushes at 20 MPa"),
 		ClayBrick.Strength.CompressiveStrengthMPa, 20.0);
 
-	/*
-	 * The "neither alone sufficient" sizing, hand-derived. The overhang is C2 verbatim; the
-	 * roof is a two-support beam whose centroid sits between its bearings. Independent of
-	 * the builder — a guard that these chosen dimensions actually produce the intended
-	 * regimes.
-	 */
+	// Hand-derived sizing check, independent of the builder: the dimensions give the intended regimes.
 
 	const double Wover = OverhangWeightUu();
 	const double AssembledTension = AssembledFixingTensionUu();
@@ -482,11 +416,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("SIZING (e): with the front head gone the roof's topple moment must outrun its bearing"),
 		RoofTopFrontGone > 1.5 * RoofCapFrontGone);
 
-	/*
-	 * Arm 0 — the builder lays the shed. Piece counts, per-piece material and grounding,
-	 * and the six authored joints with their connection profiles. This is where the F1 stub
-	 * is red: it lays nothing, so Build returns false and Identify fails.
-	 */
+	// The builder lays the shed: counts, materials, grounding and the six authored joints.
 
 	FBrickLayout Layout;
 	const bool bBuilt = DestructionShed::Build(CanonicalSpec(), Layout);
@@ -511,7 +441,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	/* --- MATERIALS: the shed is multi-material as authored ------------------------------------ */
+	// Materials.
 
 	TestTrue(TEXT("F1: the back base is ClayBrick"), Layout.Structure.GetPiece(S.BackBase).Material == &ClayBrick);
 	TestTrue(TEXT("F1: the back head is ClayBrick"), Layout.Structure.GetPiece(S.BackHead).Material == &ClayBrick);
@@ -521,7 +451,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("F1: the overhang is Timber"), Layout.Structure.GetPiece(S.Overhang).Material == &Timber);
 	TestTrue(TEXT("F1: the post is Timber"), Layout.Structure.GetPiece(S.Post).Material == &Timber);
 
-	/* --- GROUNDING: the two pier bases and the post stand on the earth; nothing else does ----- */
+	// Grounding: only the two pier bases and the post.
 
 	TestTrue(TEXT("F1: the back base is grounded"), Layout.Structure.GetPiece(S.BackBase).bIsGrounded);
 	TestTrue(TEXT("F1: the front base is grounded"), Layout.Structure.GetPiece(S.FrontBase).bIsGrounded);
@@ -534,7 +464,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("F1: the laid shed knows where every piece and joint is, or every moment is silently zero"),
 		Layout.Structure.HasCompleteGeometry());
 
-	/* --- JOINTS: the six contacts exist, each with its authored connection ------------------- */
+	// Joints: the six contacts with their authored connections.
 
 	const int32 BackBed = JointBetween(Layout.Structure, S.BackBase, S.BackHead);
 	const int32 FrontBed = JointBetween(Layout.Structure, S.FrontBase, S.FrontHead);
@@ -557,8 +487,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	/* The brick beds are bonded mortar; the roof/post bearings are compression-only DryStone; the
-	 * fixing is a tension-capable screw. That distinction is the whole cross-material authoring. */
+	// Brick beds are mortar, bearings are compression-only DryStone, the fixing is a screw.
 	TestEqual(TEXT("F1: the back bed is GeneralPurposeMortar"),
 		Layout.Structure.GetConnection(BackBed).Strength.CompressiveStrengthMPa,
 		GeneralPurposeMortar.CompressiveStrengthMPa);
@@ -574,7 +503,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("F1: the fixing is a Screw — a tension tie"),
 		Layout.Structure.GetConnection(Fixing).Strength.TensileStrengthMPa, Screw.TensileStrengthMPa);
 
-	/* The roof and overhang bear/hang through BED joints beneath them (not head joints). */
+	// The roof and overhang sit on bed joints beneath them.
 	TestTrue(TEXT("F1: the roof bears on the front head through a bed joint"),
 		Layout.Structure.GetJointRole(RoofFront, S.Roof) == EJointRole::BedBeneath);
 	TestTrue(TEXT("F1: the fixing is a bed joint under the overhang's back end"),
@@ -588,9 +517,8 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 		Layout.Structure.GetConnection(PostBrg).InterfaceAreaSqCm, PostBearingAreaSqCm);
 
 	/*
-	 * The stands-and-falls arms. Each rebuilds a fresh shed, pulls the arm's piece, then
-	 * reads the oracle mechanism and the production outcome — mechanism (feasibility, the
-	 * moving blocks) and outcome (Supported vs Falling, Stranded == 0), never displacement.
+	 * Each arm builds a fresh shed, removes a piece, and checks the oracle mechanism (feasibility,
+	 * moving blocks) and the production outcome (support, no stranding). Never displacement.
 	 */
 
 	enum class EArm : uint8 { Assembled, PostRemoved, BackHeadRemoved, FrontHeadRemoved };
@@ -625,7 +553,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
-		/* The pieces this arm expects to lose the earth, and the standing survivors we check. */
+		// Pieces expected to fall, and survivors expected to stand.
 		TArray<int32> ExpectedFalling;
 		TArray<int32> ExpectedStanding;
 
@@ -650,7 +578,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 			break;
 		}
 
-		/* ---- THE MECHANISM, VIA THE ORACLE. ---- */
+		// Mechanism, via the oracle.
 		RigidBlockOracle::FOracleProblem Problem;
 		FString BridgeWhy;
 		const bool bBridged = RigidBlockOracle::BuildRigidBlockProblem(Fresh.Structure, Problem, BridgeWhy);
@@ -690,8 +618,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 					*FString::Printf(TEXT("%s: lambda* %.10g must sit clearly below 1"), A.Label, Live.Lambda),
 					Live.bAnswered && Live.Lambda < 0.9);
 
-				/* The collapse mechanism (phase-1 dual, gravity dead) must NAME each falling piece as a
-				 * moving block, so the fall is a genuine loss of equilibrium and not a routing artefact. */
+				// The collapse mechanism (gravity dead) must name each falling piece as a moving block.
 				RigidBlockOracle::FOracleProblem Dead = Problem;
 				Dead.bGravityIsLive = false;
 				const RigidBlockOracle::FOracleResult DeadR = RigidBlockOracle::SolveRigidBlock(Dead);
@@ -718,7 +645,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		/* ---- THE OUTCOME, VIA PRODUCTION. Below the 200-block cap, the LP is the break authority. ---- */
+		// Outcome, via production. Below the 200-block cap the LP is the break authority.
 		const int32 Passes = Fresh.Structure.SolveAndBreak();
 		const int32 Stranded = StrandedCount(Fresh.Structure);
 
@@ -729,7 +656,7 @@ bool FShedBuilderTest::RunTest(const FString& Parameters)
 				"solver declining to route"), A.Label),
 			Stranded, 0);
 
-		/* The grounded survivors keep the earth in every arm. */
+		// The grounded bases stay grounded in every arm.
 		TestTrue(*FString::Printf(TEXT("%s: the back base keeps the earth"), A.Label),
 			Fresh.Structure.GetPieceSupport(F.BackBase) == EPieceSupport::Grounded);
 		TestTrue(*FString::Printf(TEXT("%s: the front base keeps the earth"), A.Label),

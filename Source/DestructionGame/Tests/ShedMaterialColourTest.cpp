@@ -16,33 +16,20 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-/**
- * Named namespace, and named differently from every other one in this module — an anonymous
- * namespace is private to a translation unit rather than a file, and a unity build merges many
- * files into one. See CURRENT_STATE.md.
- */
+/** Uniquely named namespace: unity builds merge files (see CURRENT_STATE.md). */
 namespace ShedMaterialColourTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
 	/**
-	 * The two colours a shed is made of, and which structural material each belongs to.
-	 *
-	 * Written out here rather than imported from a production constant, on purpose: this test's
-	 * whole claim is "a brick actor must wear this asset for this material", so naming the asset
-	 * itself is what makes the test fail if the wiring points somewhere else — importing
-	 * DestructionContent::... would make the assertion agree with whatever the game happened to
-	 * resolve. Dev declares these same two paths in RequiredContent.h in the green step; this
-	 * file is the independent statement they must match.
-	 *
-	 * The `.M_Shed_Brick` suffix is the object name inside the package, the same shape every
-	 * other material path in RequiredContent.h takes.
+	 * The shed's two colour materials. Written out rather than imported from RequiredContent.h so the
+	 * test fails if the wiring points at a different asset.
 	 */
 	const TCHAR* const ShedBrickMaterialPath = TEXT("/Game/Materials/M_Shed_Brick.M_Shed_Brick");
 	const TCHAR* const ShedTimberMaterialPath = TEXT("/Game/Materials/M_Shed_Timber.M_Shed_Timber");
 
-	/** Every piece is this deep on Y; the value is immaterial to a material readout. */
+	/** Piece depth on Y; irrelevant to the material readout. */
 	constexpr double WytheWidthCm = 9.8;
 	constexpr double FaceLengthCm = 10.0;
 	constexpr double JointThicknessCm = 1.0;
@@ -58,15 +45,7 @@ namespace ShedMaterialColourTestSupport
 		return Box;
 	}
 
-	/**
-	 * Whether a material IS a given asset, or is an instance of it however deep.
-	 *
-	 * Not an equality, deliberately — the same choice Tests/BrickHighlightMaterialTest.cpp makes.
-	 * What has to be true is that the brick asked for the right asset for its material; whether
-	 * the thing it hands the renderer is that material or an instance of it is an implementation
-	 * choice, and an equality here would outlaw the instance for no reason. The walk is bounded
-	 * because a material-instance chain cannot contain a cycle.
-	 */
+	/** Whether a material is the asset or an instance of it at any depth (as BrickHighlightMaterialTest). */
 	bool DerivesFrom(const UMaterialInterface* Candidate, const UMaterialInterface* Asset)
 	{
 		if (Candidate == nullptr || Asset == nullptr)
@@ -97,12 +76,8 @@ namespace ShedMaterialColourTestSupport
 	}
 
 	/**
-	 * Lay a grounded ClayBrick footing and a grounded Timber post bearing on it, tag each with its
-	 * material, and append one box per piece so the layout's two arrays stay in step (AdoptLayout
-	 * refuses a desynced one). Returns false if the interface could not be formed.
-	 *
-	 * Both grounded so nothing solves or falls — BuildLayout spawns and adopts but never solves,
-	 * so grounding is belt and braces; the material an actor wears at spawn is what this reads.
+	 * Lay a grounded ClayBrick footing and a grounded Timber post on it, with materials and one box
+	 * per piece (AdoptLayout needs them in step). Returns false if the interface cannot be formed.
 	 */
 	bool BuildTwoMaterialLayout(FBrickLayout& OutLayout, int32& OutBrickPiece, int32& OutTimberPiece)
 	{
@@ -129,43 +104,14 @@ namespace ShedMaterialColourTestSupport
 }
 
 /**
- * A brick actor wears its piece's structural material as its base colour: a ClayBrick piece's
- * actor draws M_Shed_Brick on mesh element 0, a Timber piece's actor draws M_Shed_Timber.
+ * A brick actor wears its piece's structural material on mesh element 0: M_Shed_Brick for
+ * ClayBrick, M_Shed_Timber for Timber.
  *
- * WHAT IS BROKEN TODAY. SpawnBrickForPiece (World/DestructionStructureSubsystem.cpp) sizes,
- * places, weighs and names each brick, but never sets element 0 from the piece's material — so
- * every brick keeps the grey SM_Cube default whatever it is made of, and a shed of brick walls
- * and timber roof reads as one undifferentiated grey box. The user showed a photo of a real
- * brick shed and asked for the basic colour; this is the "colour by structural material" half.
- *
- * THE SEAM IS THE REAL SPAWN PATH, NOT A HELPER. This drives UDestructionStructureSubsystem::
- * BuildLayout, the general door the scenario builders go through, so it fails if the mapping is
- * missing or if the mapping exists and nothing calls it at spawn. That second gap is the exact
- * "green in the world-free halves, wrong at the live join" class the render step keeps catching
- * (CURRENT_STATE.md records AdoptLayout silently dropping bThreeDimensional the same way); a
- * test that only exercised an ABrickActor seam by hand could not see it.
- *
- * WHY BASE MATERIAL, NOT THE OVERLAY. The highlight machinery (hover / selected / neighbour) uses
- * the overlay material — Mesh->SetOverlayMaterial — precisely so a brick keeps its own look
- * underneath. Colour by material is that look underneath: element 0, read with GetMaterial(0). A
- * wiring that painted the overlay instead would leave the wall grey until the cursor crossed it.
- *
- * ASSERTED ON THE ASSET, NOT ON PIXELS. The claim is which material the actor handed the
- * component, checked with GetMaterial(0) and a derives-from walk (so a material instance is
- * allowed), against the two assets loaded by their own paths. "Does it look brick-red" needs a
- * renderer a code-built world has none of; "which asset did the brick ask for" needs nothing but
- * the component.
- *
- * TWO DIFFERENT MATERIALS ON TWO ACTORS IS THE DISCRIMINATOR. A wiring that set every brick to
- * one colour, or that read the wrong piece's material, passes a single-material check and fails
- * this: the brick actor wears M_Shed_Brick, the timber actor wears M_Shed_Timber, and the two are
- * asserted to differ so neither can be the other by accident.
- *
- * Other materials are out of scope: only ClayBrick and Timber matter for the shed; a piece of
- * some third material may keep the default, and no case here pins that.
- *
- * Needs a ticking world: no. It needs a world, because a brick is an actor and this drives the
- * real spawn path — but it lays no wall it must watch fall, solves nothing and ticks nothing.
+ * Drives the real spawn path (UDestructionStructureSubsystem::BuildLayout), so it also fails if
+ * the mapping exists but is not called at spawn. Base material, not the overlay, which highlights
+ * use. Asserted on the asset via GetMaterial(0) and a derives-from walk, not pixels. Two actors
+ * with different materials rule out a single-colour or wrong-piece wiring. Other materials are
+ * out of scope. Needs a world (bricks are actors) but never ticks it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBrickWearsItsStructuralMaterialColourTest,
@@ -178,7 +124,7 @@ bool FBrickWearsItsStructuralMaterialColourTest::RunTest(const FString& Paramete
 	using namespace ShedMaterialColourTestSupport;
 	using namespace DestructionProfiles;
 
-	/* ---- The two colour assets must exist and be loadable, or nothing below means anything. ---- */
+	// Both colour assets must load.
 	UMaterialInterface* const ShedBrickMaterial = LoadObject<UMaterialInterface>(nullptr, ShedBrickMaterialPath);
 	UMaterialInterface* const ShedTimberMaterial = LoadObject<UMaterialInterface>(nullptr, ShedTimberMaterialPath);
 
@@ -198,7 +144,7 @@ bool FBrickWearsItsStructuralMaterialColourTest::RunTest(const FString& Paramete
 		TEXT("fixture: the two shed colours must be different assets or the discriminator is meaningless"),
 		ShedBrickMaterial != ShedTimberMaterial);
 
-	/* ---- Build a two-piece layout: a grounded ClayBrick footing and a grounded Timber post. ---- */
+	// Two-piece layout: ClayBrick footing and Timber post.
 	FBrickLayout Layout;
 	int32 BrickPiece = INDEX_NONE;
 	int32 TimberPiece = INDEX_NONE;
@@ -214,13 +160,13 @@ bool FBrickWearsItsStructuralMaterialColourTest::RunTest(const FString& Paramete
 	TestEqual(TEXT("FIXTURE: one box per piece, or BuildLayout/AdoptLayout refuses the layout"),
 		Layout.Boxes.Num(), Layout.Structure.NumPieces());
 
-	/* Positive control: the layout carries the materials before it is ever stood up. */
+	// Control: the layout carries the materials before spawning.
 	TestTrue(TEXT("CONTROL: the layout's footing must carry ClayBrick"),
 		Layout.Structure.GetPiece(BrickPiece).Material == &ClayBrick);
 	TestTrue(TEXT("CONTROL: the layout's post must carry Timber"),
 		Layout.Structure.GetPiece(TimberPiece).Material == &Timber);
 
-	/* ---- Stand it up through the real production spawn path. ---- */
+	// Spawn through the real production path.
 	FBrickTestWorld TestWorld;
 
 	if (!TestWorld.Begin(*this))
@@ -261,9 +207,6 @@ bool FBrickWearsItsStructuralMaterialColourTest::RunTest(const FString& Paramete
 		TEXT("the ClayBrick actor wears '%s' on element 0; the Timber actor wears '%s'"),
 		*DescribeMaterial(BrickBase), *DescribeMaterial(TimberBase)));
 
-	/* The behaviour: each actor's base material (element 0) is its piece's structural colour.
-	 * Today both read the SM_Cube default, so both of these fail as "wears the grey default, not
-	 * the shed colour" — the missing wiring, not a broken fixture. */
 	TestTrue(
 		*FString::Printf(
 			TEXT("a ClayBrick piece's actor must wear '%s' (or an instance of it) on element 0; it wears '%s'"),
@@ -276,9 +219,7 @@ bool FBrickWearsItsStructuralMaterialColourTest::RunTest(const FString& Paramete
 			ShedTimberMaterialPath, *DescribeMaterial(TimberBase)),
 		DerivesFrom(TimberBase, ShedTimberMaterial));
 
-	/* And the two are different on the two actors: a wiring that painted every brick one colour,
-	 * or read the wrong piece's material, passes each check above against that one colour and
-	 * fails here. */
+	// The two actors must differ, ruling out a single-colour wiring.
 	TestTrue(
 		*FString::Printf(
 			TEXT("the brick and timber actors must wear DIFFERENT base materials; brick wears '%s', timber '%s'"),

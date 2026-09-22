@@ -5,38 +5,25 @@
 #include "CoreMinimal.h"
 
 /**
- * A force resolved into the three load types a connection can experience,
- * measured relative to the connection's interface plane.
- *
- * At most one of Compression and Tension is non-zero (opposite signs of the
- * same axis), and all values are magnitudes, never negative. That invariant
- * is about the RESULTANT only — the resulting STRESS can carry both peak
- * tension and peak compression at once once moments bend the joint.
- * ComputeUtilisation does that split downstream, from these fields plus the
- * section geometry.
+ * A force resolved into compression, tension and shear relative to the interface plane. At most
+ * one of Compression and Tension is non-zero; all are magnitudes. That holds for the resultant
+ * only: with bending, the stress can have both peaks, which ComputeUtilisation splits out.
  */
 struct FConnectionLoad
 {
-	/** Force squeezing the two faces together, perpendicular to the interface. */
+	/** Normal force pushing the faces together. */
 	double Compression = 0.0;
 
-	/** Force pulling the two faces apart, perpendicular to the interface. */
+	/** Normal force pulling the faces apart. */
 	double Tension = 0.0;
 
-	/** Force sliding the two faces past each other, parallel to the interface. */
+	/** In-plane force sliding the faces. */
 	double Shear = 0.0;
 
 	/**
-	 * Bending moment about the two in-plane axes of the interface, uu.cm.
-	 *
-	 * Signed, unlike the three forces above: the sign says which edge is being
-	 * opened, though only the magnitude reaches the stress. No new conversion
-	 * boundary — length is cm, so M/W with W in cm3 is uu/cm2, the same quantity
-	 * a force over an area already is, divided by the same ForceUnitsPerMPaSqCm.
-	 *
-	 * Zero is not a special case; it is a load path with no eccentricity, so the
-	 * bending term vanishes and the joint reads exactly what it read before
-	 * moments existed.
+	 * Bending moment about the interface's two in-plane axes, uu.cm. Signed (which edge opens);
+	 * only the magnitude reaches the stress. M/W is uu/cm2 like F/A, so the same
+	 * ForceUnitsPerMPaSqCm applies. Zero means no eccentricity.
 	 */
 	double BendingMomentUUuCm = 0.0;
 	double BendingMomentVUuCm = 0.0;
@@ -45,30 +32,15 @@ struct FConnectionLoad
 namespace DestructionForce
 {
 	/**
-	 * Resolve a force into compression, tension and shear relative to a connection.
+	 * Resolve a force into compression, tension and shear relative to the interface plane (so
+	 * gravity is compression on a horizontal joint and shear on a vertical one).
 	 *
-	 * Classification is relative to the interface plane, not to world axes: the
-	 * same downward gravity is compression on a horizontal joint and shear on a
-	 * vertical one, depending entirely on InterfaceNormal.
+	 * Pass the force acting on the piece the normal points toward: a component along +Normal is
+	 * tension, against it compression. Viewing from the other piece means flipping the normal and
+	 * negating the force. Flipping only the normal silently swaps compression and tension.
 	 *
-	 * ORIENTATION CONVENTION. A connection owns one interface normal, fixed when
-	 * made and pointing from one piece toward the other; pass the force acting on
-	 * the piece the normal points TOWARD. Under that pairing a force component
-	 * along +Normal is tension, against it is compression — unambiguous. Compression
-	 * or tension is a fact about the joint, not about which piece you look from:
-	 * describing it from the other piece means flipping the normal AND taking the
-	 * equal-and-opposite reaction force, and doing both gives the identical answer.
-	 *
-	 * Flipping the normal WITHOUT negating the force silently swaps compression and
-	 * tension — a misuse, not a second opinion, and the likeliest way to get
-	 * structures failing in tension where they should be crushing.
-	 *
-	 * @param Force            The applied force vector, world space, Unreal force
-	 *                         units (1 N = 100 uu — see DESIGN.md §3).
-	 * @param InterfaceNormal  Normal of the plane where the two pieces meet,
-	 *                         pointing toward the piece Force acts on. Need not be
-	 *                         unit length; normalised internally.
-	 * @return The force split into its three load types.
+	 * @param Force            World-space force, Unreal units (1 N = 100 uu, DESIGN.md §3).
+	 * @param InterfaceNormal  Points toward the piece Force acts on; normalised internally.
 	 */
 	FConnectionLoad ClassifyForce(const FVector& Force, const FVector& InterfaceNormal);
 }
