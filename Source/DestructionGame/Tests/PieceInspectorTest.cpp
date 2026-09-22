@@ -10,40 +10,29 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * A named namespace, not anonymous, and named differently from every other one in this
- * directory: an anonymous namespace is private to a translation unit rather than a file, and
- * a unity build merges many files into one, so two file-local names that collide become a
- * hard compile error between files that never refer to each other. See CURRENT_STATE.md; the
- * `using namespace` lives inside each RunTest body for the same reason.
+ * Named, not anonymous, and unique across this directory: a unity build merges files, so two
+ * file-local names that collide are a hard compile error. See CURRENT_STATE.md.
  */
 namespace PieceInspectorTestSupport
 {
 	using namespace DestructionProfiles;
 
 	/**
-	 * Unreal's gravity, transcribed rather than imported.
-	 *
-	 * The 1 N = 100 uu conversion is ALREADY INSIDE THIS NUMBER — a 5 kg load weighs
-	 * 5 x 980 = 4900 uu, which is 49 N x 100 — so applying a factor of 100 on top of it
-	 * is the standard way to be wrong by exactly 100x here.
+	 * Unreal's gravity. The 1 N = 100 uu conversion is already inside it (5 kg weighs
+	 * 5 x 980 = 4900 uu = 49 N x 100), so applying 100 again is a 100x error.
 	 */
 	constexpr double InspectorGravityCmPerSecondSquared = 980.0;
 
 	/**
-	 * Spelled out independently, never imported from production: DestructionPresenter::
-	 * ForceUnitsPerNewton is the constant under test, so writing "1 N is 100 uu" here from the
-	 * units table is what makes this file fail if the production constant is wrong, instead of
-	 * agreeing with it. Deliberately not DestructionForce::ForceUnitsPerMPaSqCm (10,000, this
-	 * factor times cm2-to-mm2) — confusing the two is a 100x error a tuned-looking readout
-	 * would hide perfectly.
+	 * 1 N = 100 uu, spelled out independently so this file fails if the production constant
+	 * (DestructionPresenter::ForceUnitsPerNewton, under test) is wrong. Not
+	 * ForceUnitsPerMPaSqCm (10,000); confusing the two is a 100x error.
 	 */
 	constexpr double InspectorForceUnitsPerNewton = 100.0;
 
 	/**
-	 * And the strength boundary, also spelled out: 1 MPa (1 N/mm2) over 1 cm2 is
-	 * 100 x 100 uu. Used only by the fixture preconditions, which check that the graph's
-	 * own numbers are what this file thinks they are before anything is asserted about how
-	 * they are presented.
+	 * The strength boundary: 1 MPa (1 N/mm2) over 1 cm2 is 100 x 100 uu. Used only by the
+	 * fixture preconditions.
 	 */
 	constexpr double InspectorForceUnitsPerMPaSqCm = 100.0 * 100.0;
 
@@ -55,8 +44,8 @@ namespace PieceInspectorTestSupport
 	constexpr int32 InspectorOtherStructure = 9;
 
 	/*
-	 * THE WORKED FIXTURE: five pieces around one subject, so the brick being inspected wears
-	 * all three joint roles at once and one of its joints has gone.
+	 * The worked fixture: five pieces around one subject, so the subject wears all three joint
+	 * roles at once and one of its joints has gone.
 	 *
 	 *                        [2] Rider  3 kg
 	 *                         |  conn 1   bed joint above the subject
@@ -65,28 +54,23 @@ namespace PieceInspectorTestSupport
 	 *                         |  conn 0   bed joint beneath the subject
 	 *                        [0] Pad    grounded, 10 kg
 	 *
-	 *      [4] Floater 4 kg — no joints at all, so ApplyResults releases it; that is what
-	 *                         empties the menu (Delete's CanRun says no) while the debugger
-	 *                         stays full.
+	 *      [4] Floater 4 kg — no joints, so ApplyResults releases it; that empties the menu
+	 *                         (Delete's CanRun says no) while the debugger stays full.
 	 *
-	 * Piece 3 is pulled out before the solve, which severs conn 2 without it failing —
-	 * HasGiven true with no break pass, DESIGN.md's "went with a removed piece". That joint
-	 * is the one a readout must not draw like an intact one; it is also the discriminator for
-	 * "the breakout came from InspectPiece", since the solver's support lists drop a given
-	 * joint before the tier is decided, and a presenter walking those instead would show two
-	 * rows where three are due.
+	 * Piece 3 is pulled before the solve, severing conn 2 without it failing (HasGiven true, no
+	 * break pass; DESIGN.md's "went with a removed piece"). That severed joint is also the
+	 * discriminator for "the breakout came from InspectPiece": the solver drops a given joint
+	 * from its support lists before the tier is decided, so a presenter walking those would show
+	 * two rows where three are due.
 	 *
-	 * A second, disjoint component — the stranding knot — is the only way to reach
-	 * EPieceSupport::Stranded at all:
+	 * A second, disjoint component, the only way to reach EPieceSupport::Stranded:
 	 *
 	 *      [5] Knot ground —head— [6] Knot X —head— [7] Knot Y
 	 *          (grounded)
 	 *
-	 * Transcribed from Structure.PieceSupportReason's own minimum repro: neither X nor Y has
-	 * a bed joint, so each falls back to its head joints — X's supports are {ground, Y} and
-	 * Y's are {X}, so each is its own support and both are in the knot. The solver reports
-	 * them Stranded rather than merely falling: "the solver gave up on this", not "the earth
-	 * is not under it". A separate component on purpose — nothing here touches pieces 0-4.
+	 * Neither X nor Y has a bed joint, so each falls back to head joints: X's supports are
+	 * {ground, Y} and Y's are {X}, a cycle that never reaches earth, so the solver reports both
+	 * Stranded. Nothing here touches pieces 0-4.
 	 */
 	constexpr int32 PadPiece = 0;
 	constexpr int32 SubjectPiece = 1;
@@ -123,18 +107,16 @@ namespace PieceInspectorTestSupport
 	}
 
 	/*
-	 * The wall's own grid, transcribed from DestructionLayout::RunningBond rather than
-	 * invented: a 21.5 x 10.25 x 6.5 cm brick on a 1.0 cm joint gives a 22.5 cm brick pitch
-	 * and a 7.5 cm course pitch, with the bottom course centred at half a brick height. It
-	 * matters that these are the real numbers: every course tolerance argued in this file is
-	 * argued against the 7.5 cm a course actually rises, so a fixture on a made-up grid would
-	 * make the tolerance look either absurdly tight or dangerously loose.
+	 * The wall's real grid, from DestructionLayout::RunningBond: a 21.5 x 10.25 x 6.5 cm brick
+	 * on a 1.0 cm joint gives a 22.5 cm brick pitch and a 7.5 cm course pitch, bottom course
+	 * centred at half a brick height. Real numbers matter because the course tolerances below
+	 * are argued against the 7.5 cm a course actually rises.
 	 */
 	constexpr double InspectorCoursePitchCm = 7.5;
 	constexpr double InspectorFirstCourseZCm = 3.25;
 	constexpr double InspectorBrickPitchCm = 22.5;
 
-	/** Course c (0-based here; the READOUT counts from one) at brick position b. */
+	/** Course c (0-based here; the readout counts from one) at brick position b. */
 	DestructionLayout::FPieceBox InspectorBoxAt(double CentreXCm, double CentreZCm)
 	{
 		DestructionLayout::FPieceBox Box;
@@ -149,8 +131,7 @@ namespace PieceInspectorTestSupport
 	}
 
 	/*
-	 * Where each handle of the worked fixture actually sits — a real arrangement rather than
-	 * one box per handle strung out along X.
+	 * Where each handle of the worked fixture sits.
 	 *
 	 *   course 4 (Z 25.75)                                    [4] Floater
 	 *   course 3 (Z 18.25)   [2] Rider
@@ -158,12 +139,9 @@ namespace PieceInspectorTestSupport
 	 *   course 1 (Z  3.25)   [0] Pad       [6] Knot X   [5] Knot ground   [7] Knot Y
 	 *                        X=0           X=22.5       X=45             X=67.5
 	 *
-	 * The bottom course is laid out so X order and handle order disagree: handles 5, 6 and 7
-	 * run left to right as 6, 5, 7, so a derivation that numbered along a course by piece
-	 * handle would agree with this table everywhere else and be wrong about exactly these two.
-	 * A wall is built bottom-up and left-to-right, so handle order is very nearly position
-	 * order almost everywhere, which is precisely what makes the confusion survivable until
-	 * somebody looks at a brick.
+	 * The bottom course puts X order and handle order out of step (handles 5, 6, 7 run left to
+	 * right as 6, 5, 7), so a derivation that numbered along a course by handle would agree with
+	 * this table everywhere else and be wrong about exactly these two.
 	 */
 	DestructionLayout::FPieceBox InspectorBoxFor(int32 Index)
 	{
@@ -198,16 +176,9 @@ namespace PieceInspectorTestSupport
 	}
 
 	/**
-	 * The diagram above, built.
-	 *
-	 * bSettle drives the whole "has anybody asked yet" axis: solving and pushing gives the
-	 * subject a support answer and releases the floater, while leaving it false is the
-	 * freshly-built wall that must not read as a column of falling bricks.
-	 *
-	 * A NULL ACTOR IS FINE HERE. Nothing in this file releases through an actor, resolves
-	 * one or destroys one — ApplyResults latches a flag on the binding and needs no UObject
-	 * — and spawning stand-ins for a slice that never looks at them would be testing the
-	 * next one by accident.
+	 * The diagram above, built. bSettle drives the "has anybody solved yet" axis: true gives
+	 * the subject a support answer and releases the floater, false is the freshly-built wall
+	 * that must not read as falling. A null actor is fine: nothing here acts through one.
 	 */
 	void BuildWorkedFixture(FStructureBinding& Out, bool bSettle)
 	{
@@ -226,10 +197,7 @@ namespace PieceInspectorTestSupport
 		AddJoint(Out, SubjectPiece, RiderPiece, InspectorBedNormal);
 		AddJoint(Out, SubjectPiece, SparePiece, InspectorHeadNormal);
 
-		/*
-		 * The knot, appended AFTER the three joints above so no existing connection index
-		 * moves — the pinned joint lines name #0, #1 and #2 by number.
-		 */
+		/* The knot, appended after the three joints so no connection index moves (#0, #1, #2). */
 		AddJoint(Out, KnotGroundPiece, KnotXPiece, InspectorHeadNormal);
 		AddJoint(Out, KnotXPiece, KnotYPiece, InspectorHeadNormal);
 
@@ -243,13 +211,9 @@ namespace PieceInspectorTestSupport
 	}
 
 	/**
-	 * Utilisation of a joint whose only loaded axis is compression.
-	 *
-	 * Which axis governs is not free, and getting it wrong is how a test aimed at one thing
-	 * silently measures another. Here the force is exactly antiparallel to an exactly
-	 * vertical normal, so shear and tension are exactly zero and their ratios are exactly
-	 * zero whatever their capacities are — compression is the only axis that can be the
-	 * worst of the three, so ComputeUtilisation's "worst axis" answer is this one.
+	 * Utilisation of a joint whose only loaded axis is compression. The force is exactly
+	 * antiparallel to an exactly vertical normal, so shear and tension are exactly zero and
+	 * compression is necessarily ComputeUtilisation's worst axis.
 	 */
 	double CompressionOnlyUtilisation(double ForceMagnitudeUu)
 	{
@@ -285,18 +249,9 @@ namespace PieceInspectorTestSupport
 	}
 
 	/**
-	 * What an entry's support column reads when the ref names no brick at all, spelled out
-	 * here rather than imported from the model.
-	 *
-	 * A brick a removal took, a ref naming another wall and a ref missing a half all come back
-	 * bIsPiece false, and the truthful union of the three is that the ref names nothing in the
-	 * structure this panel is reading.
-	 *
-	 * The obvious implementation produces "not solved yet", which is the fail-open answer:
-	 * PresenterWordForSupport asked of a default FPieceInspection sees bHasSupportAnswer false
-	 * and says so — a sentence promising the brick is there and nobody has solved yet, beside
-	 * a brick that is not there, and indistinguishable on a freshly built wall from every live
-	 * row on the panel.
+	 * What an entry's support column reads when the ref names no brick (removed, foreign, or
+	 * malformed all come back bIsPiece false). Spelled out here, not imported. The fail-open
+	 * mistake is "not solved yet", which reads identically to a live row on an unsolved wall.
 	 */
 	const TCHAR* const InspectorNoBrickSupportWord = TEXT("not in this wall");
 
@@ -326,21 +281,10 @@ namespace PieceInspectorTestSupport
 	};
 
 	/**
-	 * What each bucket must read as, spelled out here rather than asked of the model.
-	 *
-	 * This is the pairing, and the pairing is the whole claim: the word is what a player reads
-	 * and the bucket is what a dot beside it is coloured from, and the one thing that must
-	 * never happen is a row saying "grounded" next to the colour this game uses for "falling".
-	 * Two derivations of one question is exactly how that happens, so the two are held together
-	 * everywhere rather than each checked against its own column.
-	 *
-	 * Written out independently, so a model that derived the bucket from the word by comparing
-	 * strings — the very policy the bucket exists to abolish — is not thereby endorsed: the
-	 * words are pinned per row against a hand-worked diagram by the table in PieceMenuInspector,
-	 * so this pins the bucket against those, not against production's own idea of either.
-	 * Asserted injective too: if two buckets ever shared a word, this sweep would stop
-	 * distinguishing them and the per-row expectations would be the only thing left holding
-	 * them apart.
+	 * What each bucket must read as, spelled out here, not asked of the model. The bucket colours
+	 * a dot and the word sits beside it; a row must never say "grounded" next to the "falling"
+	 * colour, so the two are pinned together. Asserted injective too: if two buckets shared a
+	 * word the sweep could no longer tell them apart.
 	 */
 	FString InspectorWordForBand(EPieceSupportBand Band)
 	{
@@ -358,12 +302,8 @@ namespace PieceInspectorTestSupport
 	}
 
 	/**
-	 * How severe a band is, ordered here rather than by the enumerator's own value.
-	 *
-	 * The numeric order of the enumerators is production's choice — zero has to be the one that
-	 * promises least, a fail-closed argument and not a scale — so a sweep comparing the
-	 * enumerators directly would assert against whatever order somebody happened to declare.
-	 * This is the order a player reads: more load can never mean a calmer colour.
+	 * How severe a band is, ordered here rather than by the enumerator's value (which is a
+	 * fail-closed choice, not a scale). More load can never mean a calmer colour.
 	 */
 	int32 SeverityOfBand(EJointMarginBand Band)
 	{
@@ -377,22 +317,12 @@ namespace PieceInspectorTestSupport
 		return 3;
 	}
 
-	/**
-	 * The one word the panel calls itself, spelled here rather than read off the model.
-	 *
-	 * A header that is a constant in production is a constant a test may not import, for the
-	 * reason every other expectation in this file is written out: a check that took the word
-	 * from the thing it is checking agrees with it whatever it says, including nothing at all.
-	 */
+	/** The word the panel calls itself, spelled here rather than imported from the model. */
 	const TCHAR* const InspectorHeaderWord = TEXT("Selection");
 
 	/**
-	 * And the line that stands in for a readout there is not one, also spelled out.
-	 *
-	 * It is a sentence rather than a blank because a fixed-size panel reserves the readout's
-	 * space whether or not it has one, and an empty reserved region reads as a readout that
-	 * failed. Which STATE it belongs to is the assertion — bricks listed, none singled out —
-	 * and that is swept below rather than written per row.
+	 * The line that stands in when there is no readout. A sentence, not a blank, because the
+	 * fixed panel reserves the space and an empty region reads as a readout that failed.
 	 */
 	const TCHAR* const InspectorHintLine = TEXT("Hover a brick in the list to see its joints");
 
@@ -476,19 +406,13 @@ namespace PieceInspectorTestSupport
 		/** One entry per selected brick, in the same order, whatever the refs resolve to. */
 		TArray<FPieceRef> ExpectedEntries;
 
-		/**
-		 * What each of those entries READS, in the same order. Same length as ExpectedEntries,
-		 * and the table-integrity check below says so rather than letting a short row skip.
-		 */
+		/** What each entry reads, in order. Same length as ExpectedEntries (checked below). */
 		TArray<FString> ExpectedLabels;
 
 		/**
-		 * Whether each of those entries still names a piece in the graph, in the same order.
-		 *
-		 * Written out per row from the diagram rather than derived from the binding here — a
-		 * check derived the same way the production code derives it agrees with it whatever it
-		 * does. Pieces 0, 1, 2 and 4-7 are live, piece 3 was pulled out, structure 9 does not
-		 * exist, and a ref missing a half names nothing anywhere.
+		 * Whether each entry still names a live piece, in order. Hand-written from the diagram,
+		 * not derived from the binding. Pieces 0, 1, 2 and 4-7 are live, piece 3 was pulled out,
+		 * structure 9 does not exist, and a ref missing a half names nothing.
 		 */
 		TArray<bool> ExpectedLive;
 
@@ -504,31 +428,23 @@ namespace PieceInspectorTestSupport
 		const TCHAR* ExpectedSupportText = TEXT("");
 
 		/**
-		 * The joint list as a sentence. Empty when nothing is being inspected, and the whole
-		 * point of the field is that an inspected brick with NO joints still gets one.
+		 * The joint list as a sentence. Empty when nothing is inspected; the point of the field
+		 * is that an inspected brick with no joints still gets one.
 		 */
 		const TCHAR* ExpectedJointsText = TEXT("");
 
 		/**
-		 * What each entry's own support column reads, in the same order as ExpectedEntries.
-		 *
-		 * One per row, which is the whole point of the field: eleven picked bricks are eleven
-		 * identical strings today, so finding the one that is falling means hovering each in
-		 * turn — the panel holds the answer for exactly one brick at a time while the model has
-		 * it for all of them. Written out from the fixture diagram rather than read back off
-		 * the binding, for the reason ExpectedLive is: a check derived the way the presenter
-		 * derives it agrees with the presenter however wrong it is.
+		 * What each entry's support column reads, in order. One per row so the list can show
+		 * every brick's state at once instead of one at a time. Hand-written from the diagram,
+		 * not read back off the binding.
 		 */
 		TArray<const TCHAR*> ExpectedEntrySupport;
 	};
 
 	/**
-	 * The properties every answer must have, whatever the case.
-	 *
-	 * Written once and swept over every row, because these are the ones that fail quietly: a
-	 * second brick reading as inspected draws two joint lists over one breakout, a NaN
-	 * utilisation renders as a plausible "nan %", and joints left behind from a previous brick
-	 * are the readout of somebody else's wall.
+	 * The properties every answer must have, whatever the case. Swept over every row because
+	 * these fail quietly: a second inspected brick draws two joint lists, a NaN utilisation
+	 * renders as "nan %", and stale joints are the readout of somebody else's wall.
 	 */
 	void CheckInspectorInvariants(
 		FAutomationTestBase& Test,
@@ -543,10 +459,9 @@ namespace PieceInspectorTestSupport
 			Inspector.Pieces.Num(), Inspector.SelectedCount);
 
 		/*
-		 * The panel says what it is, in every state there is — the only line that cannot go
-		 * quiet: a fixed panel is on screen while the selection is empty, and a heading that
-		 * disappeared with the last brick would leave a bare count over a blank box. Swept
-		 * rather than tabled because it is the same word in every row.
+		 * The panel names itself in every state: a fixed panel is on screen even when the
+		 * selection is empty, so the heading must not vanish with the last brick. Swept rather
+		 * than tabled because it is the same word in every row.
 		 */
 		Test.TestEqual(
 			FString::Printf(
@@ -560,22 +475,16 @@ namespace PieceInspectorTestSupport
 		int32 MarkedEntry = INDEX_NONE;
 
 		/**
-		 * How many rows said nothing about whether their brick is standing up.
-		 *
-		 * Counted and asserted once rather than row by row, because a field nothing fills is
-		 * empty on every row at once and forty copies of one failure is a log nobody reads.
+		 * How many rows said nothing about whether their brick is standing up. Counted and
+		 * asserted once, because a field nothing fills is empty on every row at once.
 		 */
 		int32 SilentEntries = 0;
 
 		/**
-		 * How many rows' dot disagreed with their own word, and the first one that did.
-		 *
-		 * The bucket exists so a widget can colour a dot without comparing SupportText against
-		 * string literals — a policy in the one place no test can reach, in the one file this
-		 * project has a written no-logic exception for. The moment the two can disagree there
-		 * are two answers to "is this brick standing up": a perfectly ordinary word beside the
-		 * wrong colour, counted and asserted once for the same reason the silent entries are.
-		 * The first offender is carried so the message still names one.
+		 * How many rows' dot disagreed with their own word, and the first that did. The bucket
+		 * lets a widget colour a dot without comparing SupportText against literals; if the two
+		 * disagree, a row has an ordinary word beside the wrong colour. The first offender is
+		 * carried so the message can name one.
 		 */
 		int32 MismatchedBands = 0;
 		FString FirstBandMismatch;
@@ -607,11 +516,9 @@ namespace PieceInspectorTestSupport
 			InspectedEntries += Entry.bIsInspected ? 1 : 0;
 
 			/*
-			 * The singled-out entry is always a live one. bHasInspectedPiece is
-			 * FPieceInspection::bIsPiece and bIsLivePiece must be the same question asked of
-			 * the same ref, so an entry reading inspected while reading dead would be the model
-			 * contradicting itself in two fields a widget draws side by side — a greyed-out row
-			 * with a joint breakout under it.
+			 * The singled-out entry is always live. bHasInspectedPiece and bIsLivePiece are the
+			 * same question on the same ref, so an inspected-but-dead entry would be a greyed-out
+			 * row with a joint breakout under it.
 			 */
 			if (Entry.bIsInspected)
 			{
@@ -630,13 +537,10 @@ namespace PieceInspectorTestSupport
 			InspectedEntries, Inspector.bHasInspectedPiece ? 1 : 0);
 
 		/*
-		 * Every row says whether its brick is standing up — in every state, including for a ref
-		 * that names nothing and on a wall nobody has solved. A column blank on some rows and
-		 * full on others is the absence this whole struct is shaped against, one field further
-		 * out: "No bricks selected" is a sentence rather than a blank for exactly this reason,
-		 * and a widget left to notice an empty string and draw something else would be holding
-		 * the branch where nothing can read it. Which word each state gets is the tables' job;
-		 * that there is always one is swept here.
+		 * Every row says whether its brick is standing up, in every state, including a ref that
+		 * names nothing and a wall nobody has solved. A column blank on some rows is the absence
+		 * this struct is shaped against. Which word each state gets is the tables' job; that
+		 * there is always one is swept here.
 		 */
 		Test.TestEqual(
 			FString::Printf(
@@ -645,10 +549,9 @@ namespace PieceInspectorTestSupport
 			SilentEntries, 0);
 
 		/*
-		 * Every row's dot and every row's word are one fact. Which bucket each state gets is the
-		 * tables' job; that the two halves of one row cannot contradict each other is swept
-		 * here, over every readout this file builds — the knot, the unsolved wall, the position
-		 * fixtures and the ladders included.
+		 * Every row's dot and word are one fact. Which bucket each state gets is the tables' job;
+		 * that the two halves of a row cannot contradict each other is swept here, over every
+		 * readout this file builds.
 		 */
 		Test.TestEqual(
 			FString::Printf(
@@ -659,12 +562,9 @@ namespace PieceInspectorTestSupport
 			MismatchedBands, 0);
 
 		/*
-		 * The row and the readout under it may not disagree. Two inches apart on one panel, one
-		 * brick must not read "supported" in the list and "stranded" over its joints — the same
-		 * argument that already ties InspectedLabel to the marked entry's Label, and exactly the
-		 * drift two independent derivations of one question produce. Held against the model's
-		 * own other field rather than a string written here, on top of the tables that pin what
-		 * that word actually is.
+		 * The row and the readout under it may not disagree: one brick must not read "supported"
+		 * in the list and "stranded" over its joints. Held against the model's own other field,
+		 * on top of the tables that pin what the word is.
 		 */
 		if (Inspector.bHasInspectedPiece && Inspector.Pieces.IsValidIndex(MarkedEntry))
 		{
@@ -676,12 +576,9 @@ namespace PieceInspectorTestSupport
 				Inspector.Pieces[MarkedEntry].SupportText, Inspector.SupportText);
 
 			/*
-			 * The same for the bucket, which is the assertion the whole coloured-dot slice turns
-			 * on: the row and the readout are drawn from two different fields, and a green dot on
-			 * the row above an amber one over the joints is the panel contradicting itself about
-			 * one brick — the direct analogue of the InspectedLabel check three rows down. Held
-			 * against the model's other field rather than a value written here, the same shape as
-			 * the word check immediately above.
+			 * The same for the bucket, the assertion the coloured-dot slice turns on: a green dot
+			 * on the row above an amber one over the joints is the panel contradicting itself
+			 * about one brick. Held against the model's other field, like the word check above.
 			 */
 			Test.TestTrue(
 				*FString::Printf(
@@ -700,9 +597,8 @@ namespace PieceInspectorTestSupport
 		}
 
 		/*
-		 * Nothing inspected means nothing drawn about one. A breakout left over from the brick
-		 * the player just deselected is the stale-field defect FPieceMenuRow was shaped to
-		 * prevent, one layer out.
+		 * Nothing inspected means nothing drawn about one. A breakout left over from a
+		 * deselected brick is the stale-field defect FPieceMenuRow was shaped to prevent.
 		 */
 		if (!Inspector.bHasInspectedPiece)
 		{
@@ -717,11 +613,9 @@ namespace PieceInspectorTestSupport
 				Inspector.SupportText, FString());
 
 			/*
-			 * The bucket goes with it, to the one value that claims nothing: an empty word beside
-			 * a bucket still saying "grounded" is a dot drawn in the colour of a brick the readout
-			 * is no longer about — the stale-field defect in the field a widget reads without
-			 * reading any text at all. NotAPiece is the zero enumerator precisely so this is also
-			 * what a default-constructed readout answers.
+			 * The bucket goes with it, to the value that claims nothing: an empty word beside a
+			 * bucket still saying "grounded" is a dot in the colour of a brick the readout is no
+			 * longer about. NotAPiece is the zero enumerator, so a default readout answers this too.
 			 */
 			Test.TestTrue(
 				*FString::Printf(
@@ -741,22 +635,14 @@ namespace PieceInspectorTestSupport
 					Where, *Inspector.JointsText),
 				Inspector.JointsText, FString());
 
-			/*
-			 * It must not head the readout with a brick either: a brick named over an empty
-			 * breakout is the stale-field defect in the one field a player reads first — the
-			 * name of the brick the numbers under it are about.
-			 */
+			/* It must not head the readout with a brick either: a name over an empty breakout is stale. */
 			Test.TestEqual(
 				FString::Printf(
 					TEXT("%s: nothing inspected must name no brick over the readout, it names '%s'"),
 					Where, *Inspector.InspectedLabel),
 				Inspector.InspectedLabel, FString());
 
-			/*
-			 * And no scale, for the reason there is no support word: the headroom caption and
-			 * its ticks label a bar, and a caption left standing over a breakout that has gone
-			 * is the stale-field defect wearing the tidiest possible face.
-			 */
+			/* And no scale: a caption and ticks label a bar, and a caption over a gone breakout is stale. */
 			Test.TestEqual(
 				FString::Printf(
 					TEXT("%s: nothing inspected must caption no bar, it says '%s'"),
@@ -771,11 +657,9 @@ namespace PieceInspectorTestSupport
 		}
 
 		/*
-		 * AND A BRICK THAT IS INSPECTED ALWAYS GETS A SENTENCE ABOUT ITS JOINTS, INCLUDING
-		 * WHEN IT HAS NONE. That is the whole reason the field exists: "no joints" is a fact
-		 * about the brick, and a widget left to notice an empty array for itself would be
-		 * holding a branch in the one place nothing can test. CountText's "No bricks selected"
-		 * is the same rule one level up.
+		 * An inspected brick always gets a sentence about its joints, even with none: "no joints"
+		 * is a fact about the brick, and a widget noticing an empty array for itself is a branch
+		 * nothing can test. CountText's "No bricks selected" is the same rule one level up.
 		 */
 		if (Inspector.bHasInspectedPiece)
 		{
@@ -786,16 +670,10 @@ namespace PieceInspectorTestSupport
 				Inspector.JointsText.IsEmpty());
 
 			/*
-			 * And the breakout names the brick it is about, in the list's own words.
-			 *
-			 * Held against the marked entry's Label rather than a string written out here, and
-			 * that is not circular: the tables below pin every entry label character for
-			 * character against a hand-worked diagram, so this pins the two halves of one panel
-			 * to each other on top of that. Two inches apart, one brick may not be "course 2 ·
-			 * #1" in the list and something else over the joints — the same argument
-			 * CheckFarEndsReadAsPositions makes for the far ends, one field up. List scrolling is
-			 * what turns this from tidy into necessary: the entry a breakout belongs to can be
-			 * scrolled out of sight while the breakout stays.
+			 * And the breakout names the brick it is about, in the list's own words. Held against
+			 * the marked entry's Label, not a string here: the tables pin every label against the
+			 * diagram, so this ties the two halves of the panel to each other on top of that.
+			 * Necessary because the entry can be scrolled out of sight while the breakout stays.
 			 */
 			if (Inspector.Pieces.IsValidIndex(MarkedEntry))
 			{
@@ -815,15 +693,10 @@ namespace PieceInspectorTestSupport
 		}
 
 		/*
-		 * The readout region says something in exactly one of the three states a panel can be
-		 * in, which is why this is one assertion rather than a guard per state.
-		 *
-		 * Bricks picked and none pointed at is the state a fixed panel has to fill: the space is
-		 * reserved whether or not there is a breakout to put in it, and a blank region under a
-		 * full list reads as a readout that failed rather than one waiting. A brick pointed at
-		 * must not carry it — a hint standing over a live breakout is the stale-field defect
-		 * this whole struct is shaped against — and neither must an empty selection, where the
-		 * player would be told to hover a list with nothing in it and CountText already speaks.
+		 * The readout region carries the hint in exactly one state: bricks picked and none
+		 * pointed at, where the fixed panel would otherwise show a blank that reads as failed. A
+		 * brick pointed at must not carry it (a hint over a live breakout is stale), and neither
+		 * must an empty selection, where CountText already speaks.
 		 */
 		const bool bShouldOfferTheHint =
 			Inspector.SelectedCount > 0 && !Inspector.bHasInspectedPiece;
@@ -839,15 +712,13 @@ namespace PieceInspectorTestSupport
 			bShouldOfferTheHint ? FString(InspectorHintLine) : FString());
 
 		/*
-		 * Every number a human will read is finite. GetConnectionUtilisation fails closed to
-		 * TNumericLimits<double>::Max() for a connection that does not exist, which times 100 is
-		 * an infinity, and FMath::Max discards a NaN rather than propagating it — so "it looked
-		 * like a number" is exactly how a degenerate answer reaches a screen.
+		 * Every number a human reads is finite. GetConnectionUtilisation fails closed to
+		 * TNumericLimits<double>::Max() for a missing connection, which times 100 is an infinity,
+		 * and FMath::Max discards a NaN, so a degenerate answer can reach a screen looking real.
 		 */
 		/**
-		 * How many rows took a colour slot that is not their own row number, and how many took
-		 * one after a row that had already run out. Counted rather than asserted per row, for
-		 * the reason the silent entries are: one broken rule breaks every row at once.
+		 * How many rows took a colour slot other than their own row number, and how many took one
+		 * after the palette ran out. Counted, not asserted per row: one broken rule breaks all.
 		 */
 		int32 MisplacedSlots = 0;
 		int32 SlotsAfterTheEnd = 0;
@@ -858,21 +729,11 @@ namespace PieceInspectorTestSupport
 			const FInspectorJointRow& Joint = Inspector.Joints[Index];
 
 			/*
-			 * The swatch is the row's number, in a fixed order, until the palette runs out and
-			 * then it is nothing at all.
-			 *
-			 * Row i takes slot i is what makes the colours stable while a player scans: the first
-			 * joint row is the first colour on every brick they point at. The alternative — a
-			 * colour keyed on the brick at the far end — is what a reader assumes is happening,
-			 * and it is unimplementable at this scale: a wall is 1,220 bricks and a palette is a
-			 * handful of hues, so it must collide, and two rows in one colour is a lie about the
-			 * one thing the swatch is for.
-			 *
-			 * Past the end it is INDEX_NONE, never a wrap — wrapping reintroduces the collision
-			 * on the brick with the most joints, the one being read hardest. No swatch is an
-			 * absence; a repeated swatch is a wrong answer. Once out, out: a palette that resumed
-			 * further down the list would put the same colour twice on one readout with rows in
-			 * between.
+			 * The swatch is the row's number (row i takes slot i), which keeps colours stable
+			 * while a player scans. Keying on the far-end brick would collide, since a wall has
+			 * 1,220 bricks and a palette a handful of hues. Past the end it is INDEX_NONE, never a
+			 * wrap: wrapping reintroduces that collision on the brick with the most joints, and
+			 * once out the palette stays out.
 			 */
 			if (Joint.ColourSlot != Index && Joint.ColourSlot != INDEX_NONE)
 			{
@@ -904,11 +765,9 @@ namespace PieceInspectorTestSupport
 				Joint.Text.IsEmpty());
 
 			/*
-			 * And so is the margin, the field most likely to be silently absent. It is a
-			 * reciprocal, so its degenerate inputs are the two ends of the range rather than
-			 * something exotic: an unloaded joint divides by zero and a joint past its limit
-			 * divides into less than one. Every state has to have a sentence, because the widget
-			 * may not decide which one it is.
+			 * And the margin, the field most likely to be silently absent. It is a reciprocal, so
+			 * its degenerate inputs are the ends of the range: an unloaded joint divides by zero, a
+			 * joint past its limit divides into less than one. Every state needs a sentence.
 			 */
 			Test.TestFalse(
 				*FString::Printf(
@@ -917,11 +776,9 @@ namespace PieceInspectorTestSupport
 				Joint.MarginText.IsEmpty());
 
 			/*
-			 * And the bar's fill is a fraction, always. A log of a reciprocal is exactly the
-			 * shape that produces an infinity for an unloaded joint and a NaN for a negative
-			 * one, and both would draw as some bar — a Slate progress bar clamps internally, so
-			 * a wrong number here looks entirely plausible on screen. This is the assertion that
-			 * makes the bar's arithmetic falsifiable at all.
+			 * And the bar's fill is always a fraction. A log of a reciprocal produces an infinity
+			 * for an unloaded joint and a NaN for a negative one, both of which a Slate progress
+			 * bar clamps and draws plausibly. This makes the bar's arithmetic falsifiable.
 			 */
 			Test.TestTrue(
 				*FString::Printf(
@@ -932,11 +789,9 @@ namespace PieceInspectorTestSupport
 					&& Joint.HeadroomFraction <= 1.0);
 
 			/*
-			 * A joint that has given has no headroom at all — the bar's copy of the rule the
-			 * whole readout is built on: a given joint carries 0 N at 0%, identical to an intact
-			 * joint with nothing on it, and an intact unloaded joint has the most headroom there
-			 * is. Drawing a full bar beside a hole in the wall is the single worst thing this
-			 * panel could do.
+			 * A given joint has no headroom: it carries 0 N at 0%, identical to an intact unloaded
+			 * joint, which has the most headroom there is. Drawing a full bar beside a hole in the
+			 * wall is the worst thing this panel could do.
 			 */
 			if (Joint.bHasGiven)
 			{
@@ -947,11 +802,9 @@ namespace PieceInspectorTestSupport
 					Joint.HeadroomFraction, 0.0);
 
 				/*
-				 * And it is coloured like the hole it is. A given joint is 0 N at 0%, the
-				 * arithmetic of a joint with nothing on it — the most comfortable state there is
-				 * — so a band computed from the number alone would paint a hole in the wall the
-				 * same colour as a healthy bed joint on a pad. That is bHasGiven's whole reason
-				 * for existing, reappearing one field further out.
+				 * And it is coloured like the hole it is. A given joint reads 0 N at 0%, the most
+				 * comfortable state there is, so a band from the number alone would paint a hole the
+				 * colour of a healthy joint. This is bHasGiven's whole reason to exist.
 				 */
 				Test.TestTrue(
 					*FString::Printf(
@@ -974,13 +827,10 @@ namespace PieceInspectorTestSupport
 			SlotsAfterTheEnd, 0);
 
 		/*
-		 * The scale is drawn exactly when there is a bar to label — the user's own instruction,
-		 * "if it is log, then it needs labels". A log bar without its decades is unreadable by
-		 * construction: the same visible fill means 1000x on one panel and 3x on another, and
-		 * nothing on screen says which. So the ticks are supplied here rather than composed by
-		 * the widget, for the reason every other string on this struct is. The other direction
-		 * matters too: a brick with no joints draws no bar, so a caption beside it is a label on
-		 * nothing.
+		 * The scale is drawn exactly when there is a bar to label. A log bar without its decades
+		 * is unreadable: the same fill means 1000x on one panel and 3x on another. So the ticks
+		 * are supplied here, not composed by the widget. And a brick with no joints draws no bar,
+		 * so a caption beside it would label nothing.
 		 */
 		const int32 ExpectedTicks = Inspector.Joints.Num() > 0 ? 4 : 0;
 
@@ -1001,10 +851,9 @@ namespace PieceInspectorTestSupport
 			Inspector.HeadroomCaption.IsEmpty() == (Inspector.Joints.Num() == 0));
 
 		/*
-		 * And the ticks are a scale: strictly ascending fractions inside the bar, each with
-		 * something written on it. A tick outside [0,1] is off the end of the bar it labels, and
-		 * two ticks at one fraction are two numbers claiming the same place — both draw
-		 * perfectly and are simply lies about what the fill means.
+		 * And the ticks are a scale: strictly ascending fractions inside the bar, each labelled. A
+		 * tick outside [0,1] is off the end of the bar, and two ticks at one fraction claim the
+		 * same place while drawing perfectly.
 		 */
 		double PreviousFraction = -1.0;
 
@@ -1031,15 +880,9 @@ namespace PieceInspectorTestSupport
 	}
 
 	/**
-	 * What the entry list calls one handle of this binding.
-	 *
-	 * Asked of the presenter's other entry point rather than derived here: a second copy of
-	 * "which course is this brick in" written in the test file would agree with a production
-	 * derivation that had drifted, and this project has already paid twice for a duplicated
-	 * derivation. The entry label itself is pinned against hand-written expectations by
-	 * DestructionGame.Presenter.PieceMenuPositionLabel, so this is a known-good answer read
-	 * back rather than a circular one — the numbers a joint line must contain are still spelled
-	 * out by hand in the tables below.
+	 * What the entry list calls one handle of this binding. Asked of the presenter's other entry
+	 * point, not re-derived here: the label is pinned against hand-written expectations by
+	 * PieceMenuPositionLabel, so this reads back a known-good answer rather than a circular one.
 	 */
 	FString InspectorEntryLabelFor(const FStructureBinding& Binding, int32 Handle)
 	{
@@ -1052,19 +895,10 @@ namespace PieceInspectorTestSupport
 	}
 
 	/**
-	 * Every joint line names its far end the way the entry list names that brick.
-	 *
-	 * The two lists are one panel, which is the whole point: a joint row exists so a player can
-	 * find the brick on the other side of the joint, and an array subscript cannot help them do
-	 * that — the same defect the entry labels already shed, sitting two inches below them,
-	 * where "course 2 · #1" and "brick 12" would appear in one screenshot naming bricks in the
-	 * same wall by two incompatible schemes.
-	 *
-	 * Swept rather than argued, and separately from the pinned lines: the tables pin what each
-	 * line reads, character for character, from a hand-worked diagram; this says the two panels
-	 * cannot drift apart afterwards, including for the far ends no table happens to name.
-	 * Containment rather than equality because the far end is one field of a line that also
-	 * carries the connection, the tier and the load — the exact wording is the tables' job.
+	 * Every joint line names its far end the way the entry list names that brick. The two are one
+	 * panel: a joint row exists so a player can find the brick on the other side, which an array
+	 * subscript cannot help them do. Swept, not tabled, so the far ends no table names are covered
+	 * too. Containment rather than equality, because the line also carries connection, tier and load.
 	 */
 	void CheckFarEndsReadAsPositions(
 		FAutomationTestBase& Test,
@@ -1078,9 +912,8 @@ namespace PieceInspectorTestSupport
 			const FString FarEndLabel = InspectorEntryLabelFor(Binding, Row.OtherPieceIndex);
 
 			/*
-			 * A far end with no name at all would make the sweep below vacuous — an empty
-			 * string is contained in every line there is. The entry list is total, so this can
-			 * only fire if the far end is not a handle of this binding at all.
+			 * A nameless far end would make the sweep vacuous, since an empty string is contained
+			 * in every line. The entry list is total, so this fires only for a non-handle.
 			 */
 			Test.TestFalse(
 				*FString::Printf(
@@ -1098,58 +931,31 @@ namespace PieceInspectorTestSupport
 }
 
 /**
- * The presented menu is two things: the actions, and a debugger that says how many bricks are
- * selected, lists every one in pick order, and breaks out the joints of the one brick being
- * singled out — or of none.
+ * The presented menu is two things: the actions, and a debugger that counts the selection, lists
+ * every brick in pick order, and breaks out the joints of the one singled out, or none.
  *
- * Why a sibling of FPieceMenuRow rather than more fields on it, and why that is tested rather
- * than argued: a row is a command waiting to be chosen and an inspector is a readout, and the
- * two have opposite fail-closed polarities. BuildPieceMenuRows refuses the whole list when one
- * ref names nothing, because an offer with a hole in it is a lie about what the button will
- * do, whereas a readout with a hole in it must still report the hole. The case that settles it
- * is in the table below — a selection holding a released brick, where PieceActionsFor's
- * intersection empties, BuildPieceMenuRows builds nothing at all, and the debugger must still
- * list both bricks and break out the live one. An inspector carried on a row would go dark at
- * exactly the moment the player is asking why.
+ * A sibling of FPieceMenuRow, not more fields on it, because the two have opposite fail-closed
+ * polarities: a row is an offer, so BuildPieceMenuRows refuses the whole list when one ref names
+ * nothing, while a readout must still report the hole. The settling case is below: a selection
+ * holding a released brick empties the menu but must still list both bricks and break out the
+ * live one.
  *
- * The count is asserted on the presented model, not the selection. FPieceMenuRow::Refs has
- * carried the whole selection for weeks while the screen showed one word, so a test reading
- * Refs.Num() back would have passed throughout and proved nothing about what a player can see.
- * Every assertion here is on the thing the widget draws from, and the count never shrinks to
- * what resolves — a ref naming another structure, a ref whose piece a cascade removed and a
- * malformed ref all still count, because the player picked that many bricks and the highlights
- * on screen are drawn off the same set.
+ * The count is asserted on the presented model, not the selection, and never shrinks to what
+ * resolves: a foreign ref, a removed piece and a malformed ref all still count, because the
+ * player picked that many and the highlights are drawn off the same set.
  *
- * Every entry also says whether it still names a brick. Without that, a removed brick, a ref
- * naming another structure and a live brick present identically, so a widget wanting to grey
- * the dead one out would have to resolve the ref against the binding itself — model logic in
- * the one place the recorded widget exception says there may be none. It is the same question
- * FPieceInspection::bIsPiece answers, asked once per entry rather than only for the singled-out
- * one, and a released brick reads live: what the menu may do about it is PieceActionsFor's
- * intersection, already said by the rows going empty.
+ * Every entry also says whether it still names a brick (FPieceInspection::bIsPiece per entry), so
+ * a widget can grey the dead ones out without resolving refs itself. A released brick reads live:
+ * what the menu may do about it is PieceActionsFor's intersection, said by the rows going empty.
  *
- * An inspected brick with no joints gets its own sentence, for the reason "No bricks selected"
- * is a sentence rather than "0 bricks selected": an empty list is a fact about the brick, and a
- * widget left to notice Joints.Num() == 0 for itself is a branch nothing can test.
+ * Every label is a position ("course 2 · #1"), not an array index: "brick 4:282" is a structure
+ * id and a subscript, and with one structure in the game the "4:" is always noise. A course and
+ * place along it is derivable here and only here, since FStructureBinding has the boxes and
+ * FStructure does not. The old label survives as the fallback for refs with no position (another
+ * wall, a missing half), which read "brick 9:1" and "brick 4:-1", shapes no position collides
+ * with. PieceMenuPositionLabel pins the derivation.
  *
- * Every entry's label is a position — "course 2 · #1" — rather than an array index. "brick
- * 4:282" is unambiguous to the code and means nothing to a person: it is a structure id and a
- * subscript into a piece array, and there is only ever one structure in the game today, so the
- * "4:" half is noise a hundred per cent of the time. A course and a place along it is the same
- * brick named the way a bricklayer would name it, and it is derivable here and only here:
- * FStructure is position-free on purpose, and FStructureBinding is the layer that has the
- * boxes.
- *
- * The old label survives as the fallback, and that is the point rather than a leftover: the
- * rule it replaced was justified entirely by totality — two selected bricks must never present
- * as the same string — so the new one has to keep that promise, including for refs with no
- * position in this binding at all: one naming another wall, one missing a half. Those still
- * read "brick 9:1" and "brick 4:-1", a shape no positioned brick can collide with.
- * DestructionGame.Presenter.PieceMenuPositionLabel is where the derivation itself is pinned.
- *
- * Needs a ticking world: no, and not even a world. FStructureBinding is a plain struct and the
- * whole answer is arithmetic and formatting over it, which is exactly why the presenter is
- * allowed to own every decision the untested widget must not.
+ * Needs a ticking world: no, and not even a world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuInspectorTest,
@@ -1164,9 +970,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 	BuildWorkedFixture(Binding, /*bSettle*/ true);
 
 	/*
-	 * Fixture preconditions, asked of the graph directly. Every claim below about what is
-	 * presented is worthless if the wall underneath it is not the wall in the diagram, and
-	 * these are green on arrival by construction — they check the fixture, not the feature.
+	 * Fixture preconditions, asked of the graph. Every claim below is worthless if the wall is
+	 * not the diagram's; green on arrival, they check the fixture, not the feature.
 	 */
 	TestTrue(
 		TEXT("fixture: the spare should be out of the graph, so its joint is severed"),
@@ -1189,11 +994,9 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		Binding.GetStructure().GetPieceSupport(PadPiece) == EPieceSupport::Grounded);
 
 	/*
-	 * The knot must actually be a knot, asked of the solver rather than assumed from the
-	 * diagram. Stranded is the one support state with no other way in — it needs a cycle in
-	 * the support relation that never reaches the earth — so if this fixture ever stops
-	 * producing one, the "stranded" row below would quietly retarget onto whatever state the
-	 * solver gives instead and go on passing while covering nothing.
+	 * The knot must actually be a knot, asked of the solver. Stranded has no other way in (a
+	 * support cycle that never reaches earth), so if this fixture stopped producing one the
+	 * "stranded" row below would retarget onto whatever came instead and pass while covering nothing.
 	 */
 	TestTrue(
 		TEXT("fixture: knot X should be Stranded — the solver could not route it"),
@@ -1204,10 +1007,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		Binding.GetStructure().GetPieceSupport(KnotYPiece) == EPieceSupport::Stranded);
 
 	/*
-	 * And the menu for a selection holding the released floater is empty. This is the whole
-	 * sibling argument, stated as a fact about the other half of the presenter before the
-	 * inspector is asked anything: Delete's CanRun is !IsPieceRemoved && !IsReleased, the menu
-	 * is the intersection, so one released brick empties it.
+	 * And the menu for a selection holding the released floater is empty: Delete's CanRun is
+	 * !IsPieceRemoved && !IsReleased, the menu is the intersection, so one released brick empties it.
 	 */
 	const TArray<FPieceRef> SubjectAndFloater = {
 		MakeRef(InspectorStructure, SubjectPiece), MakeRef(InspectorStructure, FloaterPiece) };
@@ -1255,9 +1056,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * Pick order, not handle order. FPieceSelection guarantees insertion order and
-			 * asserts it; a presenter that sorted would look perfectly tidy and would stop the
-			 * list agreeing with the order the batch commits in.
+			 * Pick order, not handle order. FPieceSelection guarantees insertion order; a
+			 * presenter that sorted would look tidy and stop matching the commit order.
 			 */
 			TEXT("three bricks in pick order, singling out the second"),
 			{ MakeRef(InspectorStructure, RiderPiece),
@@ -1297,10 +1097,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * The inspected brick was deselected. It is still a perfectly live piece, so the
-			 * only thing that disqualifies it is that it is no longer in the set — an anchor
-			 * outside the set it anchors is a readout of somebody else's brick, and this is the
-			 * row that stops "just call InspectPiece on it".
+			 * The inspected brick was deselected. Still a live piece, so the only disqualifier is
+			 * that it is no longer in the set. This is the row that stops "just call InspectPiece".
 			 */
 			TEXT("the brick being inspected has been deselected"),
 			{ MakeRef(InspectorStructure, RiderPiece), MakeRef(InspectorStructure, PadPiece) },
@@ -1317,11 +1115,9 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * The inspected brick went with a removal — the state a cascade or the player's own
-			 * Delete leaves behind. It is still counted and listed, that is what the player
-			 * picked, but InspectPiece fails closed on it, so nothing is singled out or broken
-			 * out. FStructure legitimately keeps the last solve's answer for a removed piece;
-			 * drawing that beside a brick that is gone is a confident answer about nothing.
+			 * The inspected brick went with a removal. Still counted and listed, but InspectPiece
+			 * fails closed on it, so nothing is singled out or broken out. FStructure keeps a
+			 * removed piece's last answer, and drawing that beside a gone brick claims nothing.
 			 */
 			TEXT("the brick being inspected has been removed"),
 			{ MakeRef(InspectorStructure, SubjectPiece), MakeRef(InspectorStructure, SparePiece) },
@@ -1335,21 +1131,16 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			TEXT(""),
 			TEXT(""),
 			/*
-			 * And the brick that is gone says so rather than quoting the last solve. FStructure
-			 * keeps a removed piece's support answer until something re-solves (this one would
-			 * still read "supported"), and drawing that beside a hole in the wall is a confident
-			 * answer about nothing. InspectPiece fails closed on it, and this column is where
-			 * that has to survive being turned into a word.
+			 * And the gone brick says so rather than quoting the last solve (which still reads
+			 * "supported"). This column is where InspectPiece's fail-closed answer becomes a word.
 			 */
 			{ TEXT("supported"), InspectorNoBrickSupportWord }
 		},
 		{
 			/*
-			 * A ref naming another wall entirely: well-formed, resolves to nothing. And the row
-			 * the label rule exists for — both refs carry piece index 1, so a label built from
-			 * the piece index alone would present two different bricks (one in a structure that
-			 * is not this one, which singles out nothing when clicked) as the identical string.
-			 * Qualified by structure they read apart.
+			 * A ref naming another wall: well-formed, resolves to nothing. Both refs carry piece
+			 * index 1, so a label from the piece index alone would present two bricks as one
+			 * string; qualified by structure they read apart.
 			 */
 			TEXT("the brick being inspected belongs to another structure"),
 			{ MakeRef(InspectorStructure, SubjectPiece),
@@ -1368,19 +1159,13 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A REF MISSING ONE HALF. FPieceSelection refuses to store one, so this is not
-			 * reachable through the controller today — it is here because a readout takes
-			 * its list from wherever it is handed, and the fail-closed answer must be
-			 * "counted, listed, never singled out" rather than a breakout of piece nothing.
-			 * Zero is a real structure and a real piece, so the sentinel is named rather
-			 * than tested for truthiness.
+			 * A ref missing one half. FPieceSelection refuses to store one, so it is unreachable
+			 * through the controller, but a readout takes its list from wherever it is handed, and
+			 * the fail-closed answer is "counted, listed, never singled out". Zero is a real
+			 * structure and piece, so the sentinel is named rather than tested for truthiness.
 			 *
-			 * ITS LABEL IS PINNED RATHER THAN LEFT TO FALL OUT — "brick 4:-1". The rule is
-			 * TOTAL, so the missing half is printed as what it is: -1 is not a piece index
-			 * any wall can have, so it reads as absent to anyone who can read the other rows,
-			 * and it is a debugger. Anything friendlier — an empty half, a word — would be a
-			 * BRANCH here, and the fail-open direction of that branch is a label that reads
-			 * like a brick beside one that is not.
+			 * Its label is pinned rather than left to fall out: "brick 4:-1". The rule is total, so
+			 * -1 is printed as what it is, a piece index no wall can have, reading as absent.
 			 */
 			TEXT("a ref missing its piece index"),
 			{ MakeRef(InspectorStructure, SubjectPiece), MakeRef(InspectorStructure, INDEX_NONE) },
@@ -1397,9 +1182,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * The case that decides sibling-versus-row. The menu for this selection is empty —
-			 * asserted above — and the debugger must be full: both bricks listed, the live one
-			 * singled out, all three of its joints broken out.
+			 * The case that decides sibling-versus-row. The menu is empty (asserted above) and the
+			 * debugger must be full: both bricks listed, the live one singled out, three joints broken out.
 			 */
 			TEXT("the menu is empty because one brick is released, and the debugger is not"),
 			{ MakeRef(InspectorStructure, SubjectPiece), MakeRef(InspectorStructure, FloaterPiece) },
@@ -1407,12 +1191,9 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			{ MakeRef(InspectorStructure, SubjectPiece), MakeRef(InspectorStructure, FloaterPiece) },
 			{ TEXT("course 2 · #1"), TEXT("course 4 · #1") },
 			/*
-			 * And both entries are live, including the released one. This is the row that pins
-			 * what bIsLivePiece means: the floater has been handed to physics and Delete refuses
-			 * it, which is why the menu above came back empty — but it is still a piece in the
-			 * graph with a support state and a joint list, so a readout that greyed it out would
-			 * be reporting it as gone. "What the menu may do" is PieceActionsFor's intersection,
-			 * answered by the rows, not here.
+			 * Both entries are live, including the released one. This pins what bIsLivePiece means:
+			 * the floater is handed to physics and Delete refuses it (so the menu is empty), but it
+			 * is still a piece with a support state and joints, so greying it out would report it gone.
 			 */
 			{ true, true },
 			TEXT("2 bricks selected"),
@@ -1421,25 +1202,18 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			TEXT("supported"),
 			TEXT("3 joints"),
 			/*
-			 * And the released brick reads "falling" while reading live — two fields saying two
-			 * different true things about one brick: it is still a piece in the graph (so the
-			 * list must not grey it out) and nothing is holding it up (so the list must say so).
-			 * This is also the row where the support column earns its place — the menu is empty
-			 * here, so the panel's only explanation of why is this word.
+			 * And the released brick reads "falling" while reading live: two true things at once,
+			 * still a piece (do not grey it out) and unsupported (say so). The menu is empty here,
+			 * so this word is the panel's only explanation of why.
 			 */
 			{ TEXT("supported"), TEXT("falling") }
 		},
 		{
 			/*
-			 * A brick with no joints is still a brick. The floater is a live piece nothing is
-			 * joined to, so an empty breakout is the truth about it — exactly why "is one
-			 * inspected" is a field and not Joints.Num() > 0. It is also the one row that needs
-			 * the empty sentence, and the reason the sentence has to be in the model at all:
-			 * everything else here is a brick with joints, so a widget could print one line per
-			 * row and look complete, but on this brick it would print nothing under a heading
-			 * and a support word — a readout that failed rather than a brick standing alone. The
-			 * only way to say "no joints" without a branch up there is for the model to hand
-			 * over the words, exactly as CountText does for an empty selection.
+			 * A brick with no joints is still a brick. The floater is live and joined to nothing,
+			 * so an empty breakout is the truth about it, which is why "is one inspected" is a
+			 * field and not Joints.Num() > 0. It is the row that needs the empty sentence: the model
+			 * hands over the words so the widget needs no branch, exactly as CountText does.
 			 */
 			TEXT("a released brick with no joints at all"),
 			{ MakeRef(InspectorStructure, FloaterPiece) },
@@ -1456,10 +1230,9 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A duplicate is presented twice. FPieceSelection is a set and cannot produce this,
-			 * so the point is what the presenter is: a projection of a list, not a second
-			 * implementation of set semantics. A presenter built on a TSet would pass every
-			 * other row here and lose both the order and this.
+			 * A duplicate is presented twice. FPieceSelection is a set and cannot produce this;
+			 * the point is that the presenter is a projection of a list, not a second set. A
+			 * presenter built on a TSet would pass every other row and lose the order and this.
 			 */
 			TEXT("the same brick twice"),
 			{ MakeRef(InspectorStructure, PadPiece), MakeRef(InspectorStructure, PadPiece) },
@@ -1476,18 +1249,10 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * The duplicate, pointed at — the row the "by construction" claim rests on.
-			 * BuildPieceMenuInspector finds membership as an index and marks that one entry, and
-			 * Core/PieceMenu.cpp says in as many words that this is what survives a duplicate
-			 * ref. The row above cannot check it: it inspects nothing, so the invariant sweep
-			 * compares 0 against 0, and every other row holds a duplicate-free selection where 1
-			 * against 1 is true of a per-entry comparison too.
-			 *
-			 * The discriminating implementation is the obvious one —
-			 * `Entry.bIsInspected = (Entry.Ref == InspectedRef)` — which passes every other row
-			 * in this file and marks both entries here, drawing one joint breakout under two
-			 * headings. So the assertion is two facts at once: exactly one entry reads as
-			 * inspected, and it is the first occurrence.
+			 * The duplicate, pointed at. BuildPieceMenuInspector marks membership by index, so the
+			 * first occurrence is inspected. The obvious `Entry.bIsInspected = (Entry.Ref ==
+			 * InspectedRef)` marks both, drawing one breakout under two headings. So the assertion
+			 * is two facts: exactly one entry reads inspected, and it is the first occurrence.
 			 */
 			TEXT("the same brick twice, and it is the one being inspected"),
 			{ MakeRef(InspectorStructure, PadPiece), MakeRef(InspectorStructure, PadPiece) },
@@ -1504,17 +1269,10 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A brick the solver gave up on reads as "stranded", and must not read as
-			 * "grounded" — the two words in PresenterWordForSupport furthest apart in meaning:
-			 * grounded is "this is resting on the earth", stranded is "this is in a knot the
-			 * solver could not route, the answer beside it is not a physical claim". Swapping
-			 * the two arms is invisible to every other row here, and makes a solver limitation
-			 * wear a foundation's clothes. Integration.PullingSupportBringsTheWallDown asserts no
-			 * piece is Stranded at the moment of collapse for exactly this reason.
-			 *
-			 * The knot is a live piece with two real head joints, so this is a full readout
-			 * rather than a fail-closed one — the support word is the only thing unusual about
-			 * it.
+			 * A brick the solver gave up on reads "stranded", not "grounded", the two words in
+			 * PresenterWordForSupport furthest apart: grounded rests on earth, stranded is in a
+			 * knot the solver could not route. Swapping the arms is invisible to every other row
+			 * here. The knot is a live piece with two real head joints, so this is a full readout.
 			 */
 			TEXT("a brick the solver stranded in a knot"),
 			{ MakeRef(InspectorStructure, KnotXPiece) },
@@ -1528,10 +1286,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			TEXT("stranded"),
 			TEXT("2 joints"),
 			/*
-			 * And the row says "stranded" too, the word the list cannot afford to lose: a
-			 * stranded brick is one the solver could not route rather than one that is falling,
-			 * and in a list of eleven picked bricks it is the only thing that would tell a
-			 * player the numbers under the others may be worth doubting.
+			 * And the row says "stranded" too, the word the list cannot lose: it tells the player
+			 * the solver could not route this brick, so the numbers may be worth doubting.
 			 */
 			{ TEXT("stranded") }
 		},
@@ -1545,18 +1301,15 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		CheckInspectorInvariants(*this, Inspector, Case.Description);
 
 		/*
-		 * And the two halves of the panel name bricks the same way. The rows above assert what
-		 * the entry labels read; this asserts that the joint lines under them call the far end
-		 * the same thing, on every case that breaks any joints out at all — including the knot,
-		 * whose two head joints no line-by-line table in this file pins.
+		 * And the two halves of the panel name bricks the same way: the joint lines call the far
+		 * end what the entry labels do, on every case that breaks joints out, including the knot.
 		 */
 		CheckFarEndsReadAsPositions(*this, Binding, Inspector, Case.Description);
 
 		/*
-		 * The count, the first thing a player reads. Asserted twice on purpose — as a number,
-		 * which anything downstream can colour or threshold, and as the sentence the widget
-		 * prints, because "1 brick" against "1 bricks" is a branch and a branch in the widget
-		 * is untested by construction.
+		 * The count, the first thing a player reads. Asserted twice: as a number anything can
+		 * threshold, and as the sentence the widget prints, since "1 brick" vs "1 bricks" is an
+		 * untestable branch in the widget.
 		 */
 		TestEqual(
 			FString::Printf(TEXT("%s: should report %d selected, it reports %d %s"),
@@ -1575,10 +1328,7 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 				*DescribeInspector(Inspector)),
 			Inspector.Pieces.Num(), Case.ExpectedEntries.Num());
 
-		/*
-		 * TABLE INTEGRITY, not a claim about the presenter: a row whose label list is short
-		 * would silently skip the label assertion for the entries past its end.
-		 */
+		/* Table integrity: a short label list would silently skip entries past its end. */
 		TestEqual(
 			FString::Printf(TEXT("%s: the table row must name one label per expected entry"),
 				Case.Description),
@@ -1601,30 +1351,14 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 				const FInspectorPieceEntry& Entry = Inspector.Pieces[Index];
 
 				/*
-				 * The label is "course <C> · #<N>" for a brick this binding can place, and
-				 * "brick <StructureId>:<PieceIndex>" for one it cannot — both total, neither
-				 * shape mistakable for the other.
-				 *
-				 * A position, because an array subscript is not a place: "brick 4:282" tells a
-				 * reader which slot of which array a brick is in, exactly the information a
-				 * person standing in front of a wall does not have and cannot check. The course
-				 * and the position along it is how the wall was built and how anybody would
-				 * point at it.
-				 *
-				 * The fallback is the old rule, kept word for word, because its whole
-				 * justification was that two selected bricks must never present as one string —
-				 * and a ref naming another wall, or one missing a half, has no position here to
-				 * be named by. Qualifying those by structure is what tells "{4,1}" and "{9,1}"
-				 * apart; the row above builds exactly that pair.
-				 *
-				 * Note which bricks get a position: piece 3 was removed and still reads "course
-				 * 2 · #2", because FPieceBinding keeps the box of a piece that has gone
-				 * deliberately — a record of where the brick was, the single most useful thing
-				 * to say about a hole in a wall.
-				 *
-				 * Asserted per entry rather than through DescribeInspector, which prints the
-				 * label in failure messages only — that is what made this string look covered
-				 * while being the one string in the model nothing read back.
+				 * The label is "course <C> · #<N>" for a placeable brick and "brick
+				 * <StructureId>:<PieceIndex>" for one this binding cannot place, both total and
+				 * neither mistakable for the other. A position, because "brick 4:282" is an array
+				 * subscript a person at a wall cannot check. The fallback is kept word for word
+				 * because a ref naming another wall or missing a half has no position; qualifying
+				 * by structure tells "{4,1}" and "{9,1}" apart. Removed piece 3 still reads "course
+				 * 2 · #2", since FPieceBinding keeps its box. Asserted per entry, not through
+				 * DescribeInspector, which prints the label in failure messages only.
 				 */
 				if (Case.ExpectedLabels.IsValidIndex(Index))
 				{
@@ -1647,18 +1381,10 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 					Entry.Ref == Case.ExpectedEntries[Index]);
 
 				/*
-				 * Whether the entry still names a brick you can act on, decided here rather than
-				 * by whoever draws it. Without this field a brick a cascade removed, a ref
-				 * naming another wall and a perfectly live brick present identically — same
-				 * label shape, same ref, same nothing — so a widget wanting to grey the dead one
-				 * out would have to resolve the ref against the binding itself. That is model
-				 * logic in the one place the recorded widget exception says there may be none,
-				 * at exactly the surface CURRENT_STATE.md's rank-0 product decision has to
-				 * become legible on: a selection that outlived the bricks in it.
-				 *
-				 * Expectations come from the fixture diagram, written out per row, not read back
-				 * off the binding: deriving them here the way the presenter derives them would
-				 * agree with it however wrong it was.
+				 * Whether the entry still names a brick you can act on, decided here, not by
+				 * whoever draws it. Without this field a removed brick, a foreign ref and a live
+				 * brick present identically, so greying the dead one out would need the widget to
+				 * resolve refs itself. Expectations come from the diagram per row, not the binding.
 				 */
 				if (Case.ExpectedLive.IsValidIndex(Index))
 				{
@@ -1675,19 +1401,13 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 				}
 
 				/*
-				 * And why that brick is or is not standing up, on its own row. The panel shows
-				 * eleven identical strings without it: every fact the list currently carries —
-				 * position, liveness — is about identity, so a selection of eleven bricks says
-				 * nothing about what the wall is doing until the player hovers each row in turn
-				 * and reads the breakout. The model already has the answer for all of them:
-				 * BuildPieceMenuInspector calls InspectPiece once per entry to decide
-				 * bIsLivePiece, and the support state comes back on the same struct.
-				 *
-				 * Read back, not re-derived, which is why the words are the readout's own:
-				 * "grounded", "supported", "stranded", "falling" and "not solved yet" are what
-				 * PresenterWordForSupport already says for the singled-out brick, and a second
-				 * vocabulary for the same five states would be two panels in one. Expected
-				 * values come from the fixture diagram, per row, never from the graph.
+				 * And why that brick is or is not standing up, on its own row. Position and
+				 * liveness are about identity, so without this a selection says nothing about what
+				 * the wall is doing until the player hovers each row. The model already has the
+				 * answer: InspectPiece runs once per entry to decide bIsLivePiece and the support
+				 * state comes back on the same struct. Read back, so the words are the readout's own
+				 * ("grounded", "supported", "stranded", "falling", "not solved yet"); a second
+				 * vocabulary would be two panels in one.
 				 */
 				if (Case.ExpectedEntrySupport.IsValidIndex(Index))
 				{
@@ -1744,11 +1464,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			Inspector.SupportText, FString(Case.ExpectedSupportText));
 
 		/*
-		 * And the joint list gets a sentence, the same rule as CountText one level down:
-		 * singular and plural are decided here, and an empty list is its own wording rather
-		 * than an absence. "No joints" against "0 joints" is the same choice as "No bricks
-		 * selected" against "0 bricks selected", and both are branches that belong where a test
-		 * can read them rather than in the widget.
+		 * And the joint list gets a sentence, the same rule as CountText: singular, plural and
+		 * the empty case are decided here, not left as a branch in the widget.
 		 */
 		TestEqual(
 			FString::Printf(TEXT("%s: the joint list should read '%s', it reads '%s' %s"),
@@ -1758,12 +1475,10 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * "Nobody has solved yet" is its own sentence, on its own fixture. EPieceSupport::Falling
-	 * is both a real collapse and an absent answer, deliberately, since enumerator zero has to
-	 * be the one that promises least. Up here the polarity inverts: a freshly built wall drawn
-	 * as a column of falling bricks is a catastrophe reported that has not happened. The joints
-	 * are still listed — they exist and carry nothing yet — which keeps this different from "no
-	 * brick inspected".
+	 * "Nobody has solved yet" is its own sentence, on its own fixture. EPieceSupport::Falling is
+	 * both a real collapse and an absent answer (enumerator zero promises least), so a freshly
+	 * built wall drawn as falling bricks reports a catastrophe that has not happened. The joints
+	 * are still listed, which keeps this different from "no brick inspected".
 	 */
 	{
 		FStructureBinding Unsolved;
@@ -1777,9 +1492,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 		CheckInspectorInvariants(*this, Inspector, TEXT("a wall nobody has solved"));
 
 		/*
-		 * And a brick's neighbours are named by where they are whether or not anybody has
-		 * solved: a position is a fact about the boxes, so it must not go quiet with the
-		 * support word the way the loads legitimately do.
+		 * And a brick's neighbours are named by position whether or not anybody has solved: a
+		 * position is a fact about the boxes, so it must not go quiet the way the loads do.
 		 */
 		CheckFarEndsReadAsPositions(*this, Unsolved, Inspector, TEXT("a wall nobody has solved"));
 
@@ -1802,9 +1516,8 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			Inspector.Joints.Num(), 3);
 
 		/*
-		 * And the joint count is a fact about the graph, not the solve. Nobody has asked what
-		 * the wall is carrying, but the joints are there and there are three of them — so this
-		 * sentence must not go quiet with the support word.
+		 * And the joint count is a fact about the graph, not the solve: three joints exist
+		 * whether or not the wall has been solved, so this sentence must not go quiet.
 		 */
 		TestEqual(
 			FString::Printf(
@@ -1819,12 +1532,9 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 			Inspector.Pieces.Num() == 1 && Inspector.Pieces[0].bIsLivePiece);
 
 		/*
-		 * And the entry's own column says the same thing the readout does — the state the
-		 * column is most likely to get wrong. "not solved yet" exists because
-		 * EPieceSupport::Falling is both a real collapse and an absent answer, and a per-row
-		 * column taking the enumerator at face value would draw a freshly built wall as a list
-		 * of falling bricks, the same catastrophe-that-has-not-happened one field out, and far
-		 * louder in a list of forty rows than in one readout.
+		 * And the entry's column says the same as the readout, the state it is most likely to get
+		 * wrong: a column taking the enumerator at face value would draw a freshly built wall as a
+		 * list of falling bricks, far louder across forty rows than in one readout.
 		 */
 		TestEqual(
 			FString::Printf(
@@ -1839,34 +1549,25 @@ bool FPieceMenuInspectorTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE JOINT BREAKOUT IS InspectPiece'S ANSWER IN A HUMAN'S UNITS AND WORDS — SAME ROWS, SAME
- * ORDER, NEWTONS INSTEAD OF UNREAL FORCE UNITS, PER CENT INSTEAD OF A RATIO — AND NOTHING IN
- * IT IS RECOMPUTED.
+ * The joint breakout is InspectPiece's answer in a human's units and words: same rows, same
+ * order, newtons instead of uu, per cent instead of a ratio, nothing recomputed.
  *
- * Why exact equality against a live InspectPiece call rather than against constants: this
- * project has paid twice for a second derivation of one number (the half-bat mass, and the
- * break decision that needed GetConnectionUtilisation written specifically to stop a third
- * hand-copy), and a re-derivation agrees to nine decimal places forever and still differs in
- * the last bit. So the passthrough fields are held against the model's own answer with ==, and
- * the two converted ones against that answer times a factor this file spells out for itself.
- * Hand-derived physical values appear as fixture preconditions on the graph, so a wrong
- * fixture says so instead of being absorbed into a wrong expectation.
+ * Exact equality against a live InspectPiece call, not constants, because this project has paid
+ * twice for a re-derivation that agrees to nine places and differs in the last bit. Passthrough
+ * fields are held with ==; the two converted ones against that answer times a factor spelled out
+ * here. Hand-derived physical values are fixture preconditions, so a wrong fixture says so.
  *
- * The severed joint is the discriminator, and it is why the fixture pulls a brick out. A joint
- * that has given is dropped from the solver's support lists before the tier is even decided,
- * so a presenter that built its own adjacency by walking those would show two rows where three
- * are due — every number on the two rows correct — and look entirely reasonable. Only a brick
- * with a gone joint separates "read InspectPiece" from "did it again".
+ * The severed joint is the discriminator, which is why the fixture pulls a brick out: a given
+ * joint is dropped from the solver's support lists before the tier is decided, so a presenter
+ * building its own adjacency would show two rows where three are due, every number correct. Only
+ * a brick with a gone joint separates "read InspectPiece" from "did it again".
  *
- * And a given joint must not read like an intact unloaded one: it carries nothing, so it is
- * 0 N at 0% — identical to a healthy joint with nothing on it, and one of those is a hole in
- * the wall. bHasGiven is carried for anything that wants to colour it, and the line the widget
- * prints says so in words, because a widget that had to branch on the flag would be logic in
- * the one place no test can reach.
+ * A given joint must not read like an intact unloaded one: both are 0 N at 0%, but one is a hole
+ * in the wall. bHasGiven is carried for colour and the line says so in words, so the widget needs
+ * no branch.
  *
- * The unit is the point of half this test: 1 N = 100 uu, and the only named factor in Core is
- * ForceUnitsPerMPaSqCm = 10,000 (this factor times cm2-to-mm2), so reaching for the wrong one
- * is a clean 100x that a tuned-looking readout hides perfectly.
+ * Units: 1 N = 100 uu, and the only named Core factor is ForceUnitsPerMPaSqCm = 10,000, so
+ * reaching for the wrong one is a clean 100x a tuned readout hides.
  *
  * Needs a ticking world: no, and not even a world.
  */
@@ -1883,14 +1584,10 @@ bool FPieceMenuJointReadoutTest::RunTest(const FString& Parameters)
 	BuildWorkedFixture(Binding, /*bSettle*/ true);
 
 	/*
-	 * Fixture preconditions, hand-derived and asked of the graph. The rider weighs 3 kg, so
-	 * conn 1 carries 3 x 980 = 2940 uu; the subject carries its own 2 kg plus the rider's 3, so
-	 * conn 0 carries 5 x 980 = 4900 uu. Both are exactly antiparallel to an exactly vertical
-	 * normal, so shear and tension are exactly zero and compression is necessarily the worst
-	 * axis — which is what makes the utilisation below a compression figure rather than
-	 * whichever axis happened to win. Conn 2 was severed with the spare and carries nothing.
-	 * These are green on arrival and drive nothing; they exist so a fixture that stopped being
-	 * the diagram fails here rather than silently redefining what is being presented.
+	 * Fixture preconditions, hand-derived and asked of the graph. Conn 1 carries the rider's
+	 * 3 x 980 = 2940 uu; conn 0 carries the subject's 2 kg plus the rider's 3, 5 x 980 = 4900 uu.
+	 * Both antiparallel to a vertical normal, so shear and tension are zero and compression
+	 * governs. Conn 2 was severed with the spare and carries nothing. Green on arrival, driving nothing.
 	 */
 	const double PadJointUu = (SubjectMassKg + RiderMassKg) * InspectorGravityCmPerSecondSquared;
 	const double RiderJointUu = RiderMassKg * InspectorGravityCmPerSecondSquared;
@@ -1921,10 +1618,7 @@ bool FPieceMenuJointReadoutTest::RunTest(const FString& Parameters)
 		CompressionOnlyUtilisation(RiderJointUu),
 		1e-15);
 
-	/*
-	 * The model's own answer, taken once. Everything below is asserted against this rather
-	 * than a constant, which is what makes "not recomputed" the claim under test.
-	 */
+	/* The model's own answer, taken once; asserting against it is what tests "not recomputed". */
 	const FPieceRef SubjectRef = MakeRef(InspectorStructure, SubjectPiece);
 	const FPieceInspection Inspection = InspectPiece(Binding, SubjectRef);
 
@@ -1962,9 +1656,8 @@ bool FPieceMenuJointReadoutTest::RunTest(const FString& Parameters)
 		const FInspectorJointRow& Row = Inspector.Joints[Index];
 
 		/*
-		 * Ascending connection order, passed through. A debugger's list must not reshuffle
-		 * between two looks at the same brick, and connection order is the only stable order
-		 * there is — so this is one comparison for identity and ordering together.
+		 * Ascending connection order, passed through: the list must not reshuffle between two
+		 * looks, and connection order is the only stable one. Identity and ordering in one check.
 		 */
 		TestEqual(
 			FString::Printf(TEXT("row %d should be connection %d, it is %d %s"),
@@ -1994,14 +1687,11 @@ bool FPieceMenuJointReadoutTest::RunTest(const FString& Parameters)
 			Row.BreakPass, Model.BreakPass);
 
 		/*
-		 * The two converted fields, held with exact equality against the model's own number.
-		 * Exact rather than nearly-equal because that is the whole discipline: a presenter that
-		 * recomputed the utilisation from the connection and the force would agree to about
-		 * fifteen decimal places and differ in the last bit, and a tolerance is precisely what
-		 * would let that through. The spelling this requires is `Force.Size() /
-		 * ForceUnitsPerNewton` and `Utilisation * 100.0`; a multiply by 0.01 for the first would
-		 * be an ulp out, because 0.01 is not representable while the correctly-rounded quotient
-		 * is what a decimal reading of the answer gives.
+		 * The two converted fields, held with exact equality against the model's number. Exact,
+		 * not near, because a recomputed utilisation would agree to fifteen places and differ in
+		 * the last bit, which a tolerance lets through. The spelling must be `Force.Size() /
+		 * ForceUnitsPerNewton` and `Utilisation * 100.0`; a multiply by 0.01 would be an ulp out,
+		 * 0.01 not being representable while the rounded quotient is the decimal reading.
 		 */
 		const double ExpectedForceN = Model.ForceUu.Size() / InspectorForceUnitsPerNewton;
 
@@ -2012,12 +1702,9 @@ bool FPieceMenuJointReadoutTest::RunTest(const FString& Parameters)
 			Row.ForceN == ExpectedForceN);
 
 		/*
-		 * And the moment, on the same terms and through the same constant. A moment is uu.cm
-		 * and length is already centimetres, so this is the identical unit change ForceN makes
-		 * rather than a second boundary — MOMENTS_DESIGN.md says so loudly because "moments"
-		 * sounds like it should introduce one. The magnitude, for the reason ForceN takes a
-		 * magnitude: which way a joint is being levered open is not a thing a line of text says,
-		 * and the worst corner is the worst corner either way.
+		 * And the moment, through the same constant. A moment is uu.cm and length is already
+		 * centimetres, so this is ForceN's unit change, not a second boundary (MOMENTS_DESIGN.md).
+		 * The magnitude, since which way a joint is levered open is not something a line of text says.
 		 */
 		const double ExpectedMomentNCm = Model.MomentUuCm.Size() / InspectorForceUnitsPerNewton;
 
@@ -2037,52 +1724,25 @@ bool FPieceMenuJointReadoutTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * And the lines themselves, which are what a player actually reads.
+	 * And the lines themselves, which are what a player reads. Wording is pinned exactly, since
+	 * the widget landed under a recorded exception that every string be decided where a test can
+	 * reach it. Each line names the joint, neighbour and tier, then either the load or the reason
+	 * there is none: an intact and a gone joint are both 0 N at 0%, so they must be different
+	 * sentences, not a widget branch. Numbers render at 1 decimal for newtons and 3 for per cent.
 	 *
-	 * The wording is pinned exactly, and that cost is deliberate: every string a widget prints
-	 * has to be decided where a test can reach it — the widget was landed under a recorded
-	 * exception on precisely that condition — so retuning the wording is a test edit rather
-	 * than an untested change. What each line must contain is not free: which joint, which
-	 * neighbour, which tier, and then either the load or the reason there is none — an intact
-	 * joint and a gone one are 0 N at 0% alike, so the two must be different sentences rather
-	 * than a branch in the widget. The block below this one says why the third state of
-	 * DESIGN.md's table is not pinned here.
+	 * Each intact line carries its margin, the half a player can read: "2041x margin" says
+	 * "0.049%" as a sentence (1 / 0.00049 = 2040.8), an integer at or above 100x because a tenth
+	 * of a multiple that large is noise. Other states are pinned in PieceMenuJointHeadroom.
 	 *
-	 * The numbers inside are the ones asserted above, rendered at 1 decimal place for newtons
-	 * and 3 for per cent — 49 N reads as 49.0 N, and 0.049% keeps a figure at the scale a
-	 * settled wall actually sits at.
+	 * A given joint carries no margin, because it carries nothing. Its margin reading is still
+	 * asserted as a field in the headroom test, so it cannot become the intact-unloaded sentence.
 	 *
-	 * Each intact line now carries its margin, the half a player can read: "0.049%" is only
-	 * meaningful to somebody who already knows that 100% is failure and that masonry sits four
-	 * orders of magnitude below it; "2041x margin" says the same number as a sentence — this
-	 * joint could take two thousand times what it is carrying. 1 / 0.00049 is 2040.8, and the
-	 * format is an integer at or above 100x because a tenth of a multiple that large is noise.
-	 * The rest of the states are pinned on their own fixture in
-	 * DestructionGame.Presenter.PieceMenuJointHeadroom.
-	 *
-	 * A given joint's line is unchanged and carries no margin at all, because it is not
-	 * carrying anything and never will again. Its margin reading is still asserted — as a
-	 * field, in the headroom test — precisely so it cannot quietly become the same sentence as
-	 * an intact joint with nothing on it.
-	 *
-	 * The far end is named by where it is, exactly as the entry list names it. "brick 0" was an
-	 * array subscript in a panel whose other half already reads "course 2 · #1", and a joint
-	 * row is the one place a subscript is least defensible: the row exists so a player can find
-	 * the brick on the other side of the joint, which an index into FStructure's piece array
-	 * cannot help anybody do. The three far ends here are the pad (course 1 · #1), the rider
-	 * (course 3 · #1) and the spare (course 2 · #2), read off the fixture diagram above.
-	 *
-	 * And the severed joint's far end is still a position, which is not an accident: the spare
-	 * was removed, and FPieceBinding keeps the box of a piece that has gone deliberately — where
-	 * a hole in the wall was is the single most useful thing to say about it. A far end falling
-	 * back to a subscript the moment its brick was pulled would lose the name exactly when a
-	 * player is asking what just happened.
-	 *
-	 * What is not changed is the "#<n>" prefix — the connection index, not the same defect: a
-	 * joint has no position of its own, no course, no place along one, so there is nothing else
-	 * to call it, and it is the handle anybody would use to take a failure back to the graph
-	 * (GetConnectionForce(11)). Naming a brick by subscript is useless because the brick is a
-	 * thing a player can see; naming a joint by its connection index is the only name it has.
+	 * The far end is named by position, exactly as the entry list names it: the row exists so a
+	 * player can find the brick across the joint, which a subscript cannot help. The three far
+	 * ends are the pad (course 1 · #1), rider (course 3 · #1) and spare (course 2 · #2). The
+	 * severed joint's far end is still a position, since FPieceBinding keeps the removed brick's
+	 * box. The "#<n>" prefix stays: a joint has no position, and the connection index is its only
+	 * name and the handle for GetConnectionForce.
 	 */
 	const TArray<FString> ExpectedLines = {
 		TEXT("#0  course 1 · #1  bed below  generalpurposemortar  49.0 N  0.049 %  2041× margin"),
@@ -2099,28 +1759,17 @@ bool FPieceMenuJointReadoutTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * The third sentence — "broke in pass N" — is deliberately not asserted here, because it is
-	 * not reachable through a binding today. DESIGN.md's table has three states and this file
-	 * only reaches two: breaking a joint under load needs FStructure::SolveAndBreak, which
-	 * FStructureBinding does not expose (the cascade is not on the world wire yet,
-	 * CURRENT_STATE.md's item 1), so a binding cannot be brought into the state where a joint
-	 * carries a pass number, and asserting the wording of a sentence nothing can produce would
-	 * be writing the test for a later slice against a fixture that cannot exist.
-	 *
-	 * What is still covered is the field: BreakPass is asserted above to be InspectPiece's own
-	 * answer on every row, so when the cascade does reach a binding the number is already
-	 * arriving at the presenter, and only the sentence is left to write. The distinction itself
-	 * is pinned one layer down, by PieceInspection.JointBreakout.
+	 * The third sentence, "broke in pass N", is not asserted here: it needs
+	 * FStructure::SolveAndBreak, which FStructureBinding does not expose yet (CURRENT_STATE.md's
+	 * item 1), so no binding can reach that state. The field is still covered: BreakPass is
+	 * asserted above as InspectPiece's own answer, so only the sentence is left to write. The
+	 * distinction is pinned one layer down by PieceInspection.JointBreakout.
 	 */
 
 	return true;
 }
 
-/**
- * Named, and named differently again — see the note on PieceInspectorTestSupport. A unity
- * build merges translation units, so two file-local names that collide are a hard compile
- * error between files that never refer to each other.
- */
+/** Named and unique again; see the note on PieceInspectorTestSupport. */
 namespace PiecePositionTestSupport
 {
 	using namespace PieceInspectorTestSupport;
@@ -2129,38 +1778,20 @@ namespace PiecePositionTestSupport
 	constexpr int32 PositionStructure = 12;
 
 	/**
-	 * How far apart two bricks' centres may sit and still be one course — spelled out here
-	 * rather than imported, so a production constant that moves fails this file instead of
-	 * agreeing with it.
-	 *
-	 * Half a centimetre, and the argument is the grid: a course rises by the brick's height
-	 * plus one mortar joint — 7.5 cm for the standard 21.5 x 10.25 x 6.5 unit this game lays,
-	 * and DestructionLayout::RunningBond computes exactly that. So 0.5 cm is one fifteenth of
-	 * the smallest real gap between two courses, leaving an enormous amount of room to be wrong
-	 * in without ever merging two courses into one, while still absorbing float noise and a
-	 * brick modelled a couple of millimetres off nominal.
-	 *
-	 * The failure directions are not symmetric, which is why it is not simply equality: too
-	 * tight and one wall reads as eighty courses of one brick each — useless, but obviously
-	 * useless. Too loose and two real courses merge, and then two different bricks compete for
-	 * one position number — the readout looks perfectly ordinary while silently naming the
-	 * wrong brick, the whole failure the label rule exists to prevent. So the tolerance is set
-	 * far closer to the tight end than the middle.
-	 *
-	 * Known scale assumption, recorded rather than solved: this is an absolute distance, so a
-	 * structure built of pieces under about a centimetre tall would band its courses together.
-	 * Nothing in the game builds one. The adaptive alternative — a fraction of each piece's own
-	 * height — is not obviously better, because a mixed-size structure makes "same course as"
-	 * non-transitive and the banding then depends on visiting order.
+	 * How far apart two bricks' centres may sit and still be one course. Spelled out here, not
+	 * imported. Half a centimetre: a course rises 7.5 cm (the 21.5 x 10.25 x 6.5 brick plus a
+	 * mortar joint), so 0.5 cm is a fifteenth of that, leaving room for float noise without
+	 * merging courses. Set near the tight end because the directions are asymmetric: too tight
+	 * gives one course per brick, too loose merges courses and two bricks share a position
+	 * number, the failure the label rule exists to prevent. Absolute distance, so pieces under
+	 * ~1 cm tall would band together; nothing in the game builds one.
 	 */
 	constexpr double PositionCourseToleranceCm = 0.5;
 
 	/**
-	 * A real IEEE NaN and a real +infinity, produced the way LayoutTest.cpp produces theirs —
-	 * through a volatile so no constant folding turns them into anything else. They must be the
-	 * genuine articles rather than merely enormous numbers, because the two are caught by
-	 * different guards: an IsFinite check rejects both of these and lets
-	 * TNumericLimits<double>::Max() straight through.
+	 * A real IEEE NaN and +infinity, made through a volatile so nothing folds them away. They
+	 * must be genuine, not merely enormous: IsFinite rejects both but passes
+	 * TNumericLimits<double>::Max().
 	 */
 	double PositionNaN()
 	{
@@ -2229,46 +1860,33 @@ namespace PiecePositionTestSupport
 }
 
 /**
- * A brick is named by where it is — "course 2 · #1" — and two different bricks are never
- * named the same thing.
+ * A brick is named by where it is ("course 2 · #1"), and two different bricks are never named
+ * the same thing.
  *
- * The derivation, stated once: sort every piece the binding holds a usable box for by the Z
- * of its centre. Band them — a piece joins the course whose lowest member it is within half a
- * centimetre of, otherwise it starts a new one. Number the courses from the bottom starting at
- * one, because a person counting courses of brick starts at one and always has. Within a
- * course, order by X, then Y, then piece handle, and number from one again. A piece the
- * binding cannot place keeps the old "brick <StructureId>:<PieceIndex>".
+ * The derivation: sort placeable pieces by centre Z. Band them (a piece joins the course whose
+ * lowest member it is within half a centimetre of, else it starts a new one). Number courses
+ * from the bottom, from one. Within a course, order by X, then Y, then handle, and number from
+ * one. An unplaceable piece keeps the old "brick <StructureId>:<PieceIndex>".
  *
- * Why band against the course's floor rather than the previous piece: comparing each piece to
- * the one before it is the obvious loop and wrong in a way nothing would notice — a run of
- * pieces each 0.4 cm above the last chains, so forty of them merge into a single "course"
- * spanning sixteen centimetres, two real courses presented as one with their position numbers
- * interleaved. Anchoring to the band's own floor bounds a course's total spread at the
- * tolerance, so the property holds however many pieces arrive. "Near misses must not chain
- * into one course" below is the only row that separates the two.
+ * Band against the course's floor, not the previous piece: chaining each piece to the last lets
+ * a run of 0.4 cm steps merge two real courses into one. Anchoring to the floor bounds a course's
+ * spread at the tolerance. "Near misses must not chain into one course" below is the only row
+ * that separates the two.
  *
- * Why (X, Y, handle) and not just X: the label replaced one whose entire justification was
- * that two selected bricks must never present as the same string, so the replacement has to
- * keep that promise totally rather than usually. X alone does not: a wall two leaves thick
- * puts two bricks of one course at the same X, differing only in depth — an ordinary piece of
- * masonry, not a pathological input. Y settles that; the handle settles the genuinely
- * degenerate case of two pieces at exactly the same point, which a wall does not produce but a
- * caller can hand in. The result is an ordinal in a total order over one course's pieces, so no
- * two members can share one, and the sweep at the end of this test asserts that over every case
- * rather than trusting the argument.
+ * Order by (X, Y, handle), not just X: two selected bricks must never share a string, and X
+ * alone fails on a two-leaf wall (two bricks of one course at one X, differing in depth). Y
+ * settles that; the handle settles two pieces at exactly one point. The result is a total order,
+ * so no two share an ordinal, swept at the end of the test.
  *
- * Why removed pieces are still placed: FPieceBinding keeps the box of a piece that has gone
- * deliberately, and this is what that is for — a hole in a wall is worth naming, and a course
- * that renumbered itself when a brick was pulled would change the name of every brick to its
- * right at the exact moment a player is looking at them. A brick's label must not depend on
- * what has been done to its neighbours.
+ * Removed pieces are still placed: FPieceBinding keeps their box, and a course that renumbered
+ * when a brick was pulled would rename every brick to its right. A label must not depend on what
+ * happened to its neighbours.
  *
  * Degenerate positions fail closed to the old label: a NaN or infinite centre cannot be banded
- * — every comparison against NaN is false, so it would form a course of its own whose number
- * depends on where the sort happened to put it. It is excluded from banding entirely, so it
- * neither gets a position nor disturbs anybody else's.
+ * (every comparison against NaN is false), so it is excluded entirely, taking no position and
+ * disturbing no one else's.
  *
- * Needs a ticking world: no, and not even a world — this is arithmetic over a plain struct.
+ * Needs a ticking world: no, and not even a world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuPositionLabelTest,
@@ -2289,10 +1907,9 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 	const TArray<FPositionCase> Cases = {
 		{
 			/*
-			 * The ordinary case, and the one that separates position order from handle order.
-			 * The boxes are added deliberately scrambled — handle 0 is in the upper course at
-			 * the right — so a derivation that numbered along a course by handle would agree
-			 * with a bottom-up left-to-right fixture forever and disagree here.
+			 * The ordinary case, and the one separating position order from handle order. The
+			 * boxes are scrambled (handle 0 is upper-right), so numbering along a course by handle
+			 * would agree with a bottom-up left-to-right fixture and disagree here.
 			 */
 			TEXT("two courses, numbered from the bottom and along by X rather than by handle"),
 			{
@@ -2311,9 +1928,8 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A course is a band, not a plane: real bed joints are not identical thicknesses,
-			 * so bricks a few millimetres apart in Z are one course. A bit-exact rule would
-			 * present a wall as one course per brick the first time anything jittered a centre.
+			 * A course is a band, not a plane: bed joints vary, so bricks a few millimetres apart
+			 * in Z are one course. A bit-exact rule would give one course per brick on any jitter.
 			 */
 			TEXT("a course that is not perfectly level is still one course"),
 			{
@@ -2330,9 +1946,8 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * And the band has an edge: without one every brick in a forty-course wall is in
-			 * course 1, which also destroys the uniqueness promise as forty bricks compete for
-			 * one set of position numbers.
+			 * And the band has an edge: without one every brick in a forty-course wall is course
+			 * 1, which also breaks uniqueness as forty bricks compete for one set of numbers.
 			 */
 			TEXT("a piece further than the tolerance above a course is a course of its own"),
 			{
@@ -2347,13 +1962,10 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * The row that pins which piece the tolerance is measured from, and the only one in
-			 * the file that does. Four pieces, each 0.4 cm above the last — every consecutive
-			 * gap is inside the tolerance, and the total span is 1.2 cm, well over twice it.
-			 * Measured against the course's own floor they are two courses of two; measured
-			 * against the previous piece they chain into one course of four, which passes every
-			 * other row in this file and renumbers half the wall. The two implementations
-			 * differ on exactly this shape.
+			 * The only row that pins which piece the tolerance is measured from. Four pieces, each
+			 * 0.4 cm above the last: every gap is inside the tolerance but the total span is 1.2 cm.
+			 * Against the floor they are two courses of two; against the previous piece they chain
+			 * into one course of four. The two implementations differ on exactly this shape.
 			 */
 			TEXT("near misses must not chain into one course"),
 			{
@@ -2372,9 +1984,8 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * Two leaves: an entirely ordinary wall, and the one that breaks an X-only
-			 * ordering. Both bricks are in course 1 at X 0 and differ only in depth, so an
-			 * ordering that stopped at X would hand them the same position number.
+			 * Two leaves: an ordinary wall that breaks an X-only ordering. Both bricks are course
+			 * 1 at X 0, differing only in depth, so ordering by X alone gives them one number.
 			 */
 			TEXT("two leaves of one course share an X and are still told apart"),
 			{
@@ -2391,10 +2002,8 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * And the degenerate one: two pieces at exactly the same point. No wall produces
-			 * this, but a caller can hand it in, and "unambiguous" that stops being true for
-			 * inputs nobody expected is the same as not being true. The piece handle is the
-			 * last resort and is unique by construction.
+			 * The degenerate one: two pieces at exactly the same point. No wall produces it, but a
+			 * caller can hand it in. The piece handle is the last resort, unique by construction.
 			 */
 			TEXT("two pieces in exactly the same place still read apart"),
 			{
@@ -2411,11 +2020,9 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A position nobody can compute falls back, and disturbs nothing: the two good
-			 * bricks must still read #1 and #2, so the unplaceable ones take no position number
-			 * at all rather than being sorted somewhere and consuming one. A NaN let through
-			 * would band into a course of its own whose number then depends on where the sort
-			 * put a value that compares false against everything.
+			 * An uncomputable position falls back and disturbs nothing: the two good bricks still
+			 * read #1 and #2, so the unplaceable ones take no number rather than consuming one. A
+			 * NaN let through would band into its own course wherever the sort left it.
 			 */
 			TEXT("a piece with no usable position falls back to its ref and takes no place"),
 			{
@@ -2434,11 +2041,9 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * And pulling a brick out renames nothing — not the brick, not its neighbours. The
-			 * middle brick is removed and everything reads exactly as it did; an implementation
-			 * that skipped removed pieces would slide the third brick from #3 to #2, so the
-			 * brick a player is looking at would change its name because something happened to
-			 * a different brick. That is the one thing a label may never do.
+			 * And pulling a brick out renames nothing, not the brick nor its neighbours. Removing
+			 * the middle brick leaves everything reading as it did; skipping removed pieces would
+			 * slide the third from #3 to #2, renaming a brick because a different one changed.
 			 */
 			TEXT("removing a brick renames neither it nor the ones beside it"),
 			{
@@ -2457,7 +2062,7 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 
 	for (const FPositionCase& Case : Cases)
 	{
-		/* TABLE INTEGRITY: a short expectation list would silently skip the tail. */
+		/* Table integrity: a short expectation list would silently skip the tail. */
 		TestEqual(
 			FString::Printf(TEXT("%s: the table row must name one label per box"), Case.Description),
 			Case.ExpectedLabels.Num(), Case.Boxes.Num());
@@ -2490,10 +2095,8 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * And the promise itself, swept over every row rather than argued once — the property
-		 * the whole label rule exists for, and the one an example cannot establish: every case
-		 * above is checked for a collision, including where a collision is not being
-		 * demonstrated.
+		 * And the promise itself, swept over every row: the property the label rule exists for,
+		 * checked for a collision on every case, including where none is being demonstrated.
 		 */
 		for (int32 Left = 0; Left < Inspector.Pieces.Num(); ++Left)
 		{
@@ -2512,7 +2115,7 @@ bool FPieceMenuPositionLabelTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-/** Named again, and named apart again — see the note on PieceInspectorTestSupport. */
+/** Named and unique again; see the note on PieceInspectorTestSupport. */
 namespace PieceHeadroomTestSupport
 {
 	using namespace PieceInspectorTestSupport;
@@ -2520,24 +2123,11 @@ namespace PieceHeadroomTestSupport
 	constexpr int32 HeadroomStructure = 21;
 
 	/**
-	 * The ladder's one joint size, chosen so the arithmetic is doable in the head.
-	 *
-	 * General purpose mortar takes 10 MPa in compression, so 49 cm2 of it holds 10 N/mm2 x
-	 * 4900 mm2 = 49,000 N, which is 4,900,000 Unreal force units. A brick of M kilograms weighs
-	 * M x 980 uu, so a brick of M kg resting squarely on 49 cm2 of this mortar loads the joint
-	 * to exactly
-	 *
-	 *     980 M / 4,900,000  =  M / 5000
-	 *
-	 * of its capacity, and its margin is 5000 / M. Five kilograms is a thousandth, fifty is a
-	 * hundredth, five hundred is a tenth, and five thousand is exactly the limit — four decades
-	 * from four masses, with no rounding anywhere in the chain. Every expected number below is
-	 * read off that one line.
-	 *
-	 * Which axis governs is not left to chance, for the reason CompressionOnlyUtilisation
-	 * states: every load here is exactly antiparallel to an exactly vertical normal, so shear
-	 * and tension are exactly zero whatever their capacities are, and compression is
-	 * necessarily the worst of the three.
+	 * The ladder's one joint size, chosen so the arithmetic is doable in the head. Mortar takes
+	 * 10 MPa in compression, so 49 cm2 holds 49,000 N = 4,900,000 uu, and a brick of M kg
+	 * (M x 980 uu) loads the joint to 980 M / 4,900,000 = M / 5000 of capacity, margin 5000 / M.
+	 * 5 kg is a thousandth, 50 a hundredth, 500 a tenth, 5000 the limit: four decades, no
+	 * rounding. Every load is antiparallel to a vertical normal, so compression governs.
 	 */
 	constexpr double LadderJointAreaSqCm = 49.0;
 	constexpr double LadderMassPerFullLoadKg = 5000.0;
@@ -2549,21 +2139,12 @@ namespace PieceHeadroomTestSupport
 	}
 
 	/*
-	 * The load ladder: one grounded pad with a row of bricks sat on it, each on its own bed
-	 * joint, each a different weight.
-	 *
-	 * It is a ladder rather than a column on purpose: a column's joints carry the accumulated
-	 * weight above them, so the loads are tied together and cannot be placed where a readout
-	 * needs them, whereas bricks side by side on one pad each send their whole weight down
-	 * their own joint and nothing else, so each rung is an independent dial. The pad is
-	 * grounded, which terminates the flow — a grounded piece pushes nothing on — so the pad's
-	 * own weight never appears on any of them. Inspecting the pad therefore breaks out the
-	 * whole ladder in one readout, in ascending connection order, which is what makes this one
-	 * table rather than twelve fixtures.
-	 *
-	 * It is not a wall and does not pretend to be: the geometry is synthetic, the joints are
-	 * hand-written with explicit normals and areas exactly as the worked fixture's are, and no
-	 * box here decides anything. What is real is the load path and the strengths.
+	 * The load ladder: one grounded pad with a row of bricks on it, each on its own bed joint,
+	 * each a different weight. A ladder, not a column, so each rung is an independent dial:
+	 * bricks side by side send their whole weight down their own joint, where a column ties the
+	 * loads together. The pad is grounded, so its own weight never appears. Inspecting the pad
+	 * breaks out the whole ladder in one readout, in ascending connection order. Not a wall: the
+	 * geometry is synthetic and no box decides anything; the load path and strengths are real.
 	 */
 	constexpr int32 LadderPadPiece = 0;
 
@@ -2574,23 +2155,13 @@ namespace PieceHeadroomTestSupport
 	constexpr int32 LadderRemovedPiece = 12;
 
 	/**
-	 * Handle 13: a real piece, carrying a real load, that no binding can place.
-	 *
-	 * Its centre is a NaN, so it takes no course and no position along one — the same
-	 * exclusion the entry labels already make, for the same reason: every comparison against a
-	 * NaN is false, so banding it would put it in a course of its own whose number depends on
-	 * where the sort happened to leave a value that orders against nothing.
-	 *
-	 * It is not a degenerate piece anywhere else: FStructure is position-free on purpose, so the
-	 * box never reaches the solver — this brick has a mass, a joint, a tier and a perfectly
-	 * ordinary load, and the only thing wrong with it is that nobody can say where it is. That
-	 * makes it a clean test of the fallback rather than of the arithmetic: it carries exactly
-	 * what rung 0 carries, so the two rows differ in one field.
-	 *
-	 * Why it is worth a row at all: the entry label's fallback exists because a ref can name
-	 * another wall or be missing a half; a far end is a bare handle in the inspected brick's own
-	 * structure, so neither of those can happen to it, and an unplaceable box is the only way
-	 * the fallback is reachable here.
+	 * Handle 13: a real piece carrying a real load that no binding can place. Its centre is a
+	 * NaN, so it takes no position (every comparison against NaN is false). FStructure is
+	 * position-free, so the box never reaches the solver: it has a mass, joint, tier and an
+	 * ordinary load, and only its location is unknown. That makes it a clean test of the
+	 * fallback, carrying exactly what rung 0 does so the two rows differ in one field. A far end
+	 * is a bare handle in the inspected brick's own structure, so an unplaceable box is the only
+	 * way a joint row reaches the fallback.
 	 */
 	constexpr int32 LadderUnplaceablePiece = 13;
 
@@ -2598,14 +2169,11 @@ namespace PieceHeadroomTestSupport
 	constexpr double LadderUnplaceableMassKg = 5.0;
 
 	/**
-	 * Handle 14: the rung whose load does not come down the middle of its joint.
-	 *
-	 * Every other rung is geometry-free and therefore unbent, which is exactly why this one has
-	 * to exist. A line that printed the force and the percentage and nothing else agrees with
-	 * all twelve of them forever, and it is precisely on a bent joint that the two stop
-	 * explaining each other: this rung carries 548.8 N — barely more than rung 2's 490 N — and
-	 * sits at 49% of capacity where rung 2 sits at 1%. Nothing a reader can do with the two
-	 * numbers printed beside each other gets from one to the other.
+	 * Handle 14: the rung whose load does not come down the middle of its joint. Every other rung
+	 * is geometry-free and unbent, which is why this one exists: a line printing only force and
+	 * per cent agrees with all twelve, and only on a bent joint do the two stop explaining each
+	 * other. This rung carries 548.8 N, barely more than rung 2's 490 N, but sits at 49% where
+	 * rung 2 sits at 1%.
 	 *
 	 * The arithmetic, derived here rather than read back:
 	 *
@@ -2620,10 +2188,8 @@ namespace PieceHeadroomTestSupport
 	 *                edge 219,520 / (48 x 10,000) = 0.4573333 MPa
 	 *   peak tension 0.343 MPa against mortar's mean 0.7, so 0.49 of capacity
 	 *
-	 * Which axis governs is not left to chance, and here it is a different axis from every
-	 * other rung on the ladder: peak compression is the sum of the two stresses, 0.5716667
-	 * against 10 MPa (0.057 of capacity), and shear is exactly zero because the load is exactly
-	 * antiparallel to an exactly vertical normal. Tension governs, by 8.6 times.
+	 * Tension governs by 8.6x: peak compression is the sum, 0.5716667 against 10 MPa, and shear
+	 * is zero (load antiparallel to a vertical normal).
 	 */
 	constexpr int32 LadderEccentricPiece = 14;
 	constexpr double LadderEccentricMassKg = 56.0;
@@ -2639,11 +2205,9 @@ namespace PieceHeadroomTestSupport
 			* (2.0 * LadderEccentricHalfXCm) * (2.0 * LadderEccentricHalfXCm) / 6.0;
 
 	/**
-	 * Every rung's mass, in handle order from handle 1. The four decades come first.
-	 *
-	 * Handles 9 and 10 are the kilonewton boundary pair and the only two masses here that are
-	 * not round: 100000/980 kg weighs exactly 100,000 uu (1000.0 N), and 99990/980 kg weighs
-	 * exactly 999.9 N — pinning which side of one thousand newtons switches unit.
+	 * Every rung's mass, in handle order from handle 1, four decades first. Handles 9 and 10 are
+	 * the kilonewton boundary pair: 100000/980 kg is exactly 1000.0 N and 99990/980 kg exactly
+	 * 999.9 N, pinning which side of a thousand newtons switches unit.
 	 */
 	const TArray<double> LadderMassesKg = {
 		5.0,                 // handle 1  — a thousandth of capacity, 1000x margin
@@ -2670,12 +2234,9 @@ namespace PieceHeadroomTestSupport
 	}
 
 	/**
-	 * The one rung that knows the shape of its own face, and therefore the one that bends.
-	 *
-	 * A separate helper rather than an argument on the one above, because a rectangle and an
-	 * area have to agree — AddConnection refuses them otherwise — and the twelve joints above
-	 * are 49 cm2 with no rectangle at all. Giving them one would put a lever arm on every rung
-	 * of a ladder whose entire point is that each dial moves independently.
+	 * The one rung that knows the shape of its own face, so the one that bends. A separate helper
+	 * because a rectangle and area must agree (AddConnection refuses otherwise), and the twelve
+	 * joints above are 49 cm2 with no rectangle; giving them one would bend every rung.
 	 *
 	 * @return the connection index, or INDEX_NONE if the door refused it.
 	 */
@@ -2717,11 +2278,7 @@ namespace PieceHeadroomTestSupport
 			5.0, false, nullptr,
 			InspectorBoxAt(InspectorBrickPitchCm * 11.0, InspectorCourseZ(1)));
 
-		/*
-		 * And the one nobody can place. Its X is ordinary and its Z is a NaN — the centre as
-		 * a whole is unusable, which is the state the position table excludes, and one
-		 * unusable component is enough to reach it.
-		 */
+		/* And the one nobody can place: ordinary X, NaN Z, so the whole centre is unusable. */
 		{
 			DestructionLayout::FPieceBox Nowhere =
 				InspectorBoxAt(InspectorBrickPitchCm * 12.0, InspectorCourseZ(1));
@@ -2732,14 +2289,10 @@ namespace PieceHeadroomTestSupport
 		}
 
 		/*
-		 * AND THE RUNG THAT LEANS. Its box centre is what the binding hands the solver as a
-		 * centre of mass, so the four centimetres between it and the joint's centroid below
-		 * are the whole lever arm — there is nothing else in the fixture that could produce
-		 * one, and no other rung has a centroid to measure against at all.
-		 *
-		 * Placed a full pitch past the pulled brick so its POSITION is the twelfth of course
-		 * two: the unplaceable rung between them takes no position, which is what makes
-		 * "course 2 · #12" a real count of placeable bricks rather than a handle in a hat.
+		 * And the rung that leans. Its box centre is the centre of mass the binding hands the
+		 * solver, so the 4 cm to the joint's centroid is the whole lever arm. Placed a full pitch
+		 * past the pulled brick so its position is course 2 · #12, the unplaceable rung between
+		 * them taking no position.
 		 */
 		Out.AddPiece(
 			LadderEccentricMassKg, false, nullptr,
@@ -2753,7 +2306,7 @@ namespace PieceHeadroomTestSupport
 		AddLadderJoint(Out, LadderNoLoadPiece, InspectorHeadNormal);
 		AddLadderJoint(Out, LadderRemovedPiece, InspectorBedNormal);
 
-		/* Appended LAST, so every connection index the table below names stays where it was. */
+		/* Appended last, so every connection index the table below names stays put. */
 		AddLadderJoint(Out, LadderUnplaceablePiece, InspectorBedNormal);
 
 		const int32 EccentricJoint = AddEccentricLadderJoint(
@@ -2791,89 +2344,54 @@ namespace PieceHeadroomTestSupport
 		const TCHAR* ExpectedLine = nullptr;
 
 		/**
-		 * Which band the bar is drawn in — comfortable above 10x margin, cautious below it,
-		 * critical at or below 2x and for a joint that has gone.
-		 *
-		 * A column here rather than a table of its own, because the band is a transform of the
-		 * utilisation two columns to the left and this ladder is where those numbers already
-		 * live. What this ladder cannot say is where the amber/red edge is — it holds nothing
-		 * between 1x and 10x — so the two edge rows either side of 2x are a fixture of their own
-		 * in Presenter.PieceMenuJointMarginBand.
+		 * Which band the bar is drawn in: comfortable above 10x margin, cautious below, critical
+		 * at or below 2x and for a gone joint. A column here because the band is a transform of
+		 * the utilisation two columns left. This ladder holds nothing between 1x and 10x, so the
+		 * amber/red edge at 2x is pinned in Presenter.PieceMenuJointMarginBand.
 		 */
 		EJointMarginBand ExpectedBand = EJointMarginBand::Critical;
 
 		/**
-		 * What the joint is being bent by, in newton-centimetres — and zero on twelve of the
-		 * thirteen rows, the half of this column that actually bites.
-		 *
-		 * A settled wall bends nowhere: a brick on two symmetric bed patches has its centre of
-		 * mass at the area-weighted centroid of its supports, so the eccentricity is zero
-		 * exactly rather than nearly. Most joints a player ever looks at therefore have nothing
-		 * to say here, and a line that carried a bending clause anyway would make the common
-		 * case worse to read for the sake of the rare one. The twelve zeroes below assert that
-		 * the sentence does not grow, held by their ExpectedLine being the line this panel
-		 * already printed, word for word.
+		 * What the joint is being bent by, in newton-centimetres, and zero on twelve of the
+		 * thirteen rows. A settled wall bends nowhere (centre of mass at the supports' centroid,
+		 * eccentricity exactly zero), so a line carrying a bending clause anyway would burden the
+		 * common case. The twelve zeroes assert the sentence does not grow.
 		 */
 		double ExpectedMomentNCm = 0.0;
 	};
 }
 
 /**
- * A joint says how many times its load it could take, in newtons or kilonewtons, and hands
- * over a log-scaled bar fraction and the scale that makes it readable.
+ * A joint says how many times its load it could take, in newtons or kilonewtons, plus a
+ * log-scaled bar fraction and the scale that makes it readable.
  *
- * Why margin at all, when the percentage is already there: "0.470%" is only meaningful to a
- * reader who already knows that 100% is failure and that masonry in compression sits three or
- * four orders of magnitude under it. "213x margin" says the whole thing in one phrase — this
- * joint could take two hundred times what it is carrying — and it is the reciprocal of a
- * number already on the row, so nothing is recomputed and the exact-equality sweep on ForceN
- * and UtilisationPercent in PieceMenuJointReadout keeps holding unchanged.
+ * Margin, because "0.470%" means nothing without knowing 100% is failure and masonry sits orders
+ * of magnitude under it. "213x margin" says it in a phrase, and it is the reciprocal of a number
+ * already on the row, so nothing is recomputed.
  *
- * The three readings that are not a number are the point of the table, because each is a state
- * where the obvious formula produces something plausible and wrong:
+ * The three non-number readings are the point of the table, each a state where the obvious
+ * formula is plausible and wrong:
  *
- *   - An unloaded joint divides by zero: infinite margin is true and useless, and printed it is
- *     either "inf x margin" or a large fabricated number once something clamps it. It reads
- *     "no load".
- *   - A joint at or past its limit divides into something no bigger than one, so the formula
- *     goes on producing a well-formed answer: a joint at twice its capacity reads "0.5x
- *     margin", the word margin beside a joint that has none — the fail-open direction and the
- *     single most misleading line this panel could print. It reads "no margin left", true at
- *     exactly 1.0 and above it.
- *   - A joint that has given carries nothing, so the formula puts it in the first of those
- *     states: an unloaded joint and a hole in the wall reading identically, the exact defect
- *     FJointInspection::bHasGiven exists to prevent, reappearing one layer out. It reads "gone".
+ *   - An unloaded joint divides by zero: infinite margin, printed as junk. It reads "no load".
+ *   - A joint at or past its limit reads "0.5x margin", the word margin beside a joint that has
+ *     none, the fail-open direction. It reads "no margin left", at 1.0 and above.
+ *   - A given joint carries nothing, so the formula reads it like an unloaded one. It reads "gone".
  *
- * The bar is log-scaled over three decades because a linear one is empty forever: a settled
- * brick wall sits near 0.0005 of capacity (CURRENT_STATE.md records the worst joint of a
- * 30 x 40 wall at 0.00495), so a bar drawn on utilisation directly is a flat zero at every
- * joint of every structure the game currently builds. Full is 1000x margin, empty is the joint
- * giving, and everything between is a decade of the log — most joints peg the bar full, and
- * that is honest: they genuinely are three orders of magnitude from failing.
+ * The bar is log-scaled over three decades because a linear one is empty forever: a settled wall
+ * sits near 0.0005 of capacity. Full is 1000x margin, empty is the joint giving, most joints peg
+ * full and honestly so.
  *
- * So it needs labels, and the model supplies them: a log axis with no ticks is unreadable by
- * construction, and composing them in the widget would put four strings and four numbers in
- * the one place no test can reach. They are asserted here both as text and as positions, and
- * cross-checked against the curve — the joint whose margin is exactly 10x must fill the bar to
- * exactly where the "10x" tick is drawn.
+ * So it needs labels, and the model supplies them, asserted as text and position and cross-checked
+ * against the curve: the joint whose margin is exactly 10x must fill the bar to the "10x" tick.
  *
- * Every far end is named by where it is. The ladder is the fixture that can say what the
- * worked one cannot: twelve far ends across two courses, one a brick that has been pulled out
- * and one a brick whose box says nowhere — the only way a joint row reaches the ref-shaped
- * fallback, since a far end is a bare handle in the inspected brick's own structure and can
- * therefore be neither foreign nor half-missing.
+ * Every far end is named by position. The ladder says what the worked fixture cannot: twelve far
+ * ends across two courses, one pulled out and one whose box says nowhere, the only way a joint row
+ * reaches the ref-shaped fallback.
  *
- * And the force picks its unit: 91200.0 N is a number a reader has to count the digits of;
- * 91.2 kN is not. The switch is at a thousand newtons, and the pair of rungs at exactly
- * 1000.0 N and exactly 999.9 N pins which side of it changes unit.
- *
- * A joint being levered open says so, while the twelve that are not say nothing extra: the
- * last rung carries 548.8 N and sits at 49% of capacity, barely more than rung 2's load at
- * fifty times its utilisation, and no arithmetic on the two numbers printed beside each other
- * closes that gap — the term joining them is a 2,195.2 N.cm bend the line never mentions
- * (MOMENTS_DESIGN.md). The other twelve rows are the other half of the claim: a settled wall
- * bends nowhere, so a line that carried a bending clause anyway would make the common case
- * worse to read for the sake of the rare one.
+ * The force picks its unit at a thousand newtons; the rungs at exactly 1000.0 N and 999.9 N pin
+ * which side switches. A joint being levered open says so while the twelve unbent ones say nothing
+ * extra: the last rung carries 548.8 N at 49% where rung 2 is at 1%, the missing term a 2,195.2
+ * N.cm bend (MOMENTS_DESIGN.md).
  *
  * Needs a ticking world: no, and not even a world.
  */
@@ -2890,10 +2408,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 	const int32 EccentricJoint = BuildLoadLadder(Binding);
 
 	/*
-	 * Fixture precondition, and this one is a door rather than a number: AddConnection refuses
-	 * a rectangle that disagrees with its area and one on a normal that names no separation
-	 * axis, answering INDEX_NONE — at which point the ladder is one rung short and every index
-	 * the table names past it is wrong.
+	 * Fixture precondition, a door not a number: AddConnection refuses a rectangle that
+	 * disagrees with its area and answers INDEX_NONE, leaving the ladder a rung short.
 	 */
 	TestEqual(
 		FString::Printf(
@@ -2902,10 +2418,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		EccentricJoint, 13);
 
 	/*
-	 * Fixture preconditions, hand-derived and asked of the graph. Every reading below is
-	 * worthless if the ladder underneath it is not carrying what this file thinks. These drive
-	 * nothing and are green on arrival; they exist so a ladder that stopped being a ladder says
-	 * so, rather than silently redefining what is being presented.
+	 * Fixture preconditions, hand-derived and asked of the graph. Green on arrival, driving
+	 * nothing; they exist so a ladder that stopped being a ladder says so.
 	 */
 	for (int32 Rung = 0; Rung < LadderMassesKg.Num(); ++Rung)
 	{
@@ -2934,9 +2448,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		Binding.GetStructure().GetConnection(LadderMassesKg.Num() + 1).HasGiven());
 
 	/*
-	 * And the unplaceable brick's joint is an entirely ordinary one. FStructure never sees a
-	 * box, so a NaN centre never reaches the solve — this precondition says so, and makes the
-	 * row below a test of the label rather than of the arithmetic.
+	 * And the unplaceable brick's joint is ordinary: FStructure never sees a box, so the NaN
+	 * centre never reaches the solve, making the row below a test of the label, not the arithmetic.
 	 */
 	TestEqual(
 		FString::Printf(
@@ -2951,10 +2464,9 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		Binding.GetStructure().GetConnection(LadderMassesKg.Num() + 2).HasGiven());
 
 	/*
-	 * And the bent rung, asked of the graph directly and derived in this file. Green on
-	 * arrival and driving nothing; what they buy is that the presented row below is held
-	 * against a joint that genuinely bends — a ladder whose eccentricity quietly went to zero
-	 * would otherwise agree with a presenter that never fetched a moment at all.
+	 * And the bent rung, asked of the graph and derived here. Green on arrival; they buy that
+	 * the row below is held against a joint that genuinely bends, so a ladder whose eccentricity
+	 * went to zero would not agree with a presenter that never fetched a moment.
 	 */
 	{
 		const double EccentricForceUu =
@@ -2994,14 +2506,10 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			1e-15);
 
 		/*
-		 * AND IT IS TENSION THAT GOVERNS RATHER THAN COMPRESSION, WHICH IS NOT FREE AND IS THE
-		 * ONE THING THAT WOULD MAKE THIS ROW MEASURE SOMETHING ELSE. ComputeUtilisation returns
-		 * the WORST of three axes: peak compression here is the SUM of the two stresses over
-		 * mortar's 10 MPa, and peak tension is their DIFFERENCE over its 0.1 MPa. Shear is
-		 * exactly zero — the load is exactly antiparallel to an exactly vertical normal — so
-		 * this comparison is the whole of the remaining question, and a retuned profile that
-		 * flipped it would leave every number above unchanged while the row stopped being about
-		 * a joint being peeled open.
+		 * And tension governs, not compression, which is what makes this row about a joint being
+		 * peeled open. ComputeUtilisation returns the worst of three axes: peak compression is the
+		 * sum of the two stresses over 10 MPa, peak tension their difference over 0.1 MPa, and
+		 * shear is zero. A retuned profile that flipped it would leave every number above unchanged.
 		 */
 		const double PeakCompressionUtilisation =
 			(EdgeStressMPa + MeanStressMPa) / GeneralPurposeMortar.CompressiveStrengthMPa;
@@ -3022,21 +2530,16 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 	CheckFarEndsReadAsPositions(*this, Binding, Inspector, TEXT("the load ladder"));
 
 	/*
-	 * The ladder, rung by rung. Force and per cent are restated here rather than taken on trust
-	 * — PieceMenuJointReadout holds them against InspectPiece with exact equality, and this
-	 * table says which numbers those are, so the two together fail differently if the
-	 * passthrough breaks than if the arithmetic does.
+	 * The ladder, rung by rung. Force and per cent are restated here, not taken on trust:
+	 * PieceMenuJointReadout holds them against InspectPiece with exact equality, so the two fail
+	 * differently for a passthrough break than an arithmetic one.
 	 *
-	 * Every far end is named by where it is, read off the ladder's own boxes rather than out of
-	 * the code. The bottom course holds the two grounded pads — handle 11 at X -22.5 is
-	 * course 1 · #1 and the inspected pad at X 0 is course 1 · #2 — and the course above holds
-	 * the ten rungs left to right as #1 to #10, with the pulled brick past the end at #11.
-	 *
-	 * Note which rows would survive a lazy derivation: nine of the twelve far ends are "course 2
-	 * · #<handle>", so a presenter that printed the handle in a position's clothes would pass
-	 * those and fail exactly three: the head joint to the second pad (in the other course), the
-	 * severed joint to handle 12 (#11 of its course rather than #12), and the unplaceable
-	 * brick (no position at all).
+	 * Far ends are named by position, off the ladder's boxes. The bottom course holds the two
+	 * grounded pads (handle 11 at X -22.5 is course 1 · #1, the inspected pad at X 0 is #2); the
+	 * course above holds the ten rungs #1 to #10, the pulled brick at #11. Nine of the twelve far
+	 * ends are "course 2 · #<handle>", so a handle in a position's clothes passes those and fails
+	 * three: the head joint to the second pad, the severed joint to handle 12, and the unplaceable
+	 * brick.
 	 */
 	const TArray<FHeadroomCase> Cases = {
 		{
@@ -3046,10 +2549,7 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			EJointMarginBand::Comfortable
 		},
 		{
-			/*
-			 * A hundredth — and the row that pins the format boundary from above: 100x is an
-			 * integer, the 98.04x rung below it keeps a decimal.
-			 */
+			/* A hundredth, pinning the format boundary from above: 100x is an integer, 98.04x below keeps a decimal. */
 			TEXT("a hundredth of capacity: two decades of bar, and a whole-number margin"),
 			1, 490.0, 1.0, TEXT("100× margin"), 2.0 / 3.0,
 			TEXT("#1  course 2 · #2  bed above  generalpurposemortar  490.0 N  1.000 %  100× margin"),
@@ -3063,10 +2563,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * Exactly at the limit. FConnection's break rule holds that 1.0 is fully loaded but
-			 * still holding, so this joint is intact, is carrying 49 kN, and has precisely
-			 * nothing spare. The naive reading is "1.0x margin", arithmetically true and
-			 * reading like a joint with room in it.
+			 * Exactly at the limit. FConnection holds 1.0 as fully loaded but still holding, so
+			 * this joint is intact at 49 kN with nothing spare. The naive "1.0x margin" reads like room.
 			 */
 			TEXT("exactly at the limit: the bar is empty and there is no margin to quote"),
 			3, 49000.0, 100.0, TEXT("no margin left"), 0.0,
@@ -3075,10 +2573,9 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * OFF THE TOP OF THE BAR. Ten thousand times is four decades and the bar has
-			 * three, so the fraction clamps at full — but the MARGIN is still quoted in
-			 * full, because clamping a bar is a drawing decision and rounding the number
-			 * beside it would be losing information the reader asked for.
+			 * Off the top of the bar. Four decades against the bar's three, so the fraction clamps
+			 * full, but the margin is quoted in full: clamping the bar is drawing, rounding the
+			 * number would lose information.
 			 */
 			TEXT("four decades of margin: the bar pegs full and the number does not"),
 			4, 4.9, 0.01, TEXT("10000× margin"), 1.0,
@@ -3087,9 +2584,8 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * JUST UNDER THE FORMAT BOUNDARY: 5000/51 is 98.0392..., which keeps its
-			 * decimal where the 100× rung above loses it. Pairing the two is the only way
-			 * the "at or above 100×" half of the rule is falsifiable.
+			 * Just under the format boundary: 5000/51 is 98.0392..., which keeps its decimal
+			 * where the 100× rung loses it. The pair makes the "at or above 100×" rule falsifiable.
 			 */
 			TEXT("just under a hundred times: still a decimal"),
 			5, 499.8, 1.02, TEXT("98.0× margin"), 0.66379994274602749,
@@ -3098,12 +2594,9 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * TWICE THE LIMIT, WHICH IS THE FAIL-OPEN ROW. The reciprocal is 0.5, so the
-			 * naive line reads "0.5× margin" — a number, next to the word margin, beside a
-			 * joint that is at two hundred per cent and gone the moment anything asks it to
-			 * break. A joint past its capacity and a joint at exactly its capacity are the
-			 * same sentence deliberately: both have nothing left, and inventing a second
-			 * wording would be a branch whose only purpose is decoration.
+			 * Twice the limit, the fail-open row. The reciprocal is 0.5, so the naive line reads
+			 * "0.5× margin" beside a joint at 200%. Past capacity and at capacity are the same
+			 * sentence: both have nothing left, and a second wording would be a decorative branch.
 			 */
 			TEXT("past the limit: still no margin, never a fraction of one"),
 			6, 98000.0, 200.0, TEXT("no margin left"), 0.0,
@@ -3118,11 +2611,9 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * EXACTLY ONE THOUSAND NEWTONS — the unit switch, from above. 100000 uu over
-			 * 100 uu per newton is 1000.0 N with no rounding anywhere, so this row pins the
-			 * boundary itself rather than a value near it. At the boundary the reading is
-			 * KILONEWTONS: "1.0 kN" is what a reader wants, and "1000.0 N" is the digit
-			 * counting the switch exists to stop.
+			 * Exactly one thousand newtons, the unit switch from above: 100000 uu / 100 = 1000.0 N
+			 * with no rounding, so this pins the boundary itself. At the boundary it reads
+			 * kilonewtons: "1.0 kN", not the digit-counting "1000.0 N".
 			 */
 			TEXT("exactly one thousand newtons reads in kilonewtons"),
 			8, 1000.0, 2.0408163265306123, TEXT("49.0× margin"), 0.56339869334283788,
@@ -3138,16 +2629,11 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * NOTHING ON IT. Two grounded pads share a head joint, and a grounded piece
-			 * terminates the load flow, so this joint genuinely carries zero — an intact,
-			 * healthy joint with no load, which is a completely ordinary thing for a wall
-			 * to contain. Its margin is a division by zero and its bar is FULL, because
-			 * unloaded is the most headroom there is.
-			 *
-			 * IT IS ALSO THE ONE ROW WHOSE FAR END IS IN A DIFFERENT COURSE FROM EVERY OTHER.
-			 * The second pad sits beside the first, at the BOTTOM of the ladder, so this is
-			 * "course 1 · #1" where its nine neighbours read course 2 — which is what separates
-			 * a real position from a handle dressed up as one.
+			 * Nothing on it. Two grounded pads share a head joint, and grounded terminates the
+			 * flow, so this joint carries zero: intact and unloaded, an ordinary thing. Margin
+			 * divides by zero and the bar is full, unloaded being the most headroom there is. It
+			 * is also the one row whose far end is in a different course, "course 1 · #1" where its
+			 * neighbours read course 2, separating a real position from a handle dressed as one.
 			 */
 			TEXT("an intact joint carrying nothing has no margin figure and a full bar"),
 			10, 0.0, 0.0, TEXT("no load"), 1.0,
@@ -3156,19 +2642,13 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * AND THE JOINT THAT IS NOT THERE ANY MORE. It reads 0 N at 0 % — bit for bit
-			 * identical to the rung above it — and one of them is a hole in the wall. Its
-			 * bar is EMPTY where the unloaded joint's is full, which is the whole distinction
-			 * expressed in the one field a player actually looks at, and its margin reading
-			 * is a different word rather than a different number.
-			 *
-			 * AND ITS FAR END IS STILL A PLACE, WHICH IS THE ROW THAT SAYS SO. The brick was
-			 * pulled out and FPieceBinding kept its box deliberately, so the joint that went
-			 * with it can still say WHERE the hole is — which is the single most useful thing
-			 * to say about a hole, and exactly the sentence a player who just pulled a brick
-			 * is reading. Note the number: handle 12 is the ELEVENTH brick of its course,
-			 * because the ten rungs come first, so a handle printed as a position would read
-			 * "#12" here and be wrong by one in the one row nobody would check.
+			 * And the joint that is not there any more. It reads 0 N at 0%, bit for bit identical
+			 * to the rung above, but one is a hole in the wall. Its bar is empty where the unloaded
+			 * joint's is full, the distinction in the one field a player looks at, and its margin
+			 * is a different word, not number. Its far end is still a place: the brick was pulled
+			 * out and FPieceBinding kept its box, so the joint says where the hole is. Handle 12 is
+			 * the eleventh brick of its course (the ten rungs come first), so a handle printed as a
+			 * position would read "#12" and be wrong by one.
 			 */
 			TEXT("a joint that has given reads apart from an intact joint with nothing on it"),
 			11, 0.0, 0.0, TEXT("gone"), 0.0,
@@ -3177,30 +2657,14 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * AND THE FAR END NOBODY CAN PLACE, WHICH IS THE ONLY WAY A JOINT ROW REACHES THE
-			 * FALLBACK AT ALL.
-			 *
-			 * A far end is a bare HANDLE in the inspected brick's own structure, so the two
-			 * things that send an ENTRY label to the fallback — a ref naming another wall, and
-			 * a ref missing a half — cannot happen to one. What is left is a brick whose box
-			 * says nowhere, and this row is it.
-			 *
-			 * WHAT IT SPELLS IS THE ENTRY LABEL'S FALLBACK, WORD FOR WORD: "brick 21:13", the
-			 * binding's own structure id and the handle. Two properties decide that rather than
-			 * taste. It cannot COLLIDE with a positioned far end, because no position contains
-			 * a colon and none begins with "brick". And it is the SAME STRING the entry list
-			 * would print for that brick, so a player reading "brick 21:13" in a joint row and
-			 * "brick 21:13" in the list above knows they are looking at one brick — which the
-			 * unqualified "brick 13" would leave them to work out, in the one panel that is
-			 * supposed to have stopped naming bricks two different ways.
-			 *
-			 * The structure id is the BINDING'S because a far end is always in it: a joint row
-			 * can never name another wall, which is the one way this fallback is narrower than
-			 * the entry list's.
-			 *
-			 * ITS LOAD IS RUNG 0'S EXACTLY, so the two rows differ in one field and nothing
-			 * else. A NaN centre is invisible to the solver — FStructure has no positions —
-			 * so this is a perfectly healthy joint with an unnameable brick on the end of it.
+			 * And the far end nobody can place, the only way a joint row reaches the fallback. A
+			 * far end is a bare handle in the inspected brick's own structure, so it can be neither
+			 * foreign nor half-missing; what is left is a brick whose box says nowhere. It spells
+			 * the entry label's fallback word for word: "brick 21:13", the binding's structure id
+			 * and the handle. That cannot collide with a positioned far end (no colon, no "brick"),
+			 * and it is the same string the entry list prints, so the two panels agree on one brick.
+			 * Its load is rung 0's exactly, so the rows differ in one field: a NaN centre is
+			 * invisible to the solver, so this is a healthy joint with an unnameable brick on it.
 			 */
 			TEXT("a far end nobody can place falls back to the ref-shaped label"),
 			12, 49.0, 0.1, TEXT("1000× margin"), 1.0,
@@ -3209,42 +2673,22 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * AND THE ONE JOINT ON THE LADDER THAT IS BEING LEVERED OPEN, WHICH IS THE ROW THE
-			 * OTHER TWELVE CANNOT WRITE.
+			 * And the one joint being levered open, the row the other twelve cannot write. It
+			 * carries 548.8 N, barely more than rung 2's 490, yet sits at 49% where rung 2 is at
+			 * 1%. Both numbers are true and there is no arithmetic between them: the missing term is
+			 * a 2,195.2 N·cm bend nothing on the line mentions (MOMENTS_DESIGN.md).
 			 *
-			 * PUT THE NUMBERS SIDE BY SIDE AND THE PROBLEM IS THE WHOLE POINT. This joint
-			 * carries 548.8 N — barely more than rung 2's 490, a ninth of rung 3 — and it
-			 * sits at 49 % of capacity where rung 2 sits at 1 %. Force and percentage are both
-			 * true, both printed, and there is no arithmetic between them: the missing term is
-			 * a 2,195.2 N·cm bend that nothing on the line mentions. That is this subsystem's
-			 * recurring signature — a plausible number that does not describe what is
-			 * happening — and MOMENTS_DESIGN.md names closing it as part of the moment work
-			 * rather than as a follow-up, for exactly this reason.
+			 * The moment, not the eccentricity: M / F is a lever arm, but it is derived (the
+			 * second-copy shape PieceInspection.h is written against), it divides by a force free to
+			 * be small, and MOMENTS_DESIGN.md slice 5 makes a joint receive moment from above, at
+			 * which point M / F describes nothing. The moment is also what ComputeUtilisation
+			 * consumes, so the line names both inputs to the percentage.
 			 *
-			 * WHY THE MOMENT AND NOT THE ECCENTRICITY. M / F is a lever arm in centimetres and
-			 * "4.0 cm off centre" is arguably friendlier than "313.6 N·cm". It is rejected on
-			 * three grounds, and the third is decisive. It is DERIVED — a quotient of two
-			 * numbers, computed in the presenter, which is precisely the second-copy shape
-			 * Core/PieceInspection.h's whole discipline is written against. It divides by a
-			 * force, and the force on a bent joint is free to be small. And MOMENTS_DESIGN.md
-			 * slice 5 makes a joint RECEIVE moment along the load path from the wall above it,
-			 * at which point M / F stops being that joint's lever arm and becomes a length in
-			 * centimetres that describes nothing — a wrong answer wearing the units of a right
-			 * one, which is the failure mode this line exists to remove rather than relocate.
-			 * The moment is also the quantity ComputeUtilisation actually consumes, so printing
-			 * it means the line names both inputs to the percentage beside it.
-			 *
-			 * AND N·cm RATHER THAN N·m, pinned once beside the formatting exactly as the
-			 * kilonewton switch is. Centimetres are this game's length unit everywhere else —
-			 * the brick is 21.5 cm, the kern of a bed patch is ±1.708 cm — and the interesting
-			 * range collapses in metres: a 313.6 N·cm bend is 3.136 N·m, where one step of the
-			 * last printed digit is a whole 10 N·cm. There is NO new conversion boundary either
-			 * way: a moment is uu.cm, length is already centimetres, so this is
-			 * DestructionPresenter::ForceUnitsPerNewton applied once and nothing else.
-			 *
-			 * THE CLAUSE TRAILS ITS NUMBER, matching every other clause on the line — "548.8 N",
-			 * "49.000 %", "2.0× margin" are all <number> <word> — and it appears ONLY on a
-			 * joint that has one. Twelve rows above assert the absence.
+			 * And N·cm, not N·m, pinned like the kilonewton switch: centimetres are this game's
+			 * length unit, and the range collapses in metres (a 313.6 N·cm bend is 3.136 N·m). No
+			 * new boundary: a moment is uu.cm, so this is ForceUnitsPerNewton applied once. The
+			 * clause trails its number like every other and appears only on a bent joint; the
+			 * twelve rows above assert the absence.
 			 */
 			TEXT("a joint levered open by an off-centre load says what is bending it"),
 			13, 548.8, 49.0, TEXT("2.0× margin"), 0.1032679733238288,
@@ -3266,13 +2710,10 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * And the moment on every row is the model's own number, exactly, held on the one fixture
-	 * in this file that has something to be wrong about. Presenter.PieceMenuJointReadout sweeps
-	 * the whole row against InspectPiece with exact equality, but its fixture supplies no joint
-	 * geometry, so every moment there is zero on both sides and 0 == 0 forever. The ladder bends
-	 * on exactly one rung, so the same claim is worth something here — a presenter that
-	 * recomputed the moment from a lever arm rather than reading it back would agree to about
-	 * fifteen places and differ in the last bit, precisely the drift a tolerance lets through.
+	 * And the moment on every row is the model's own number, exactly. PieceMenuJointReadout
+	 * sweeps against InspectPiece too, but its fixture has no joint geometry, so every moment
+	 * there is 0 == 0. The ladder bends on one rung, so the claim is worth something here: a
+	 * recomputed moment would agree to fifteen places and differ in the last bit.
 	 */
 	{
 		const FPieceInspection PadModel = InspectPiece(Binding, PadRef);
@@ -3325,12 +2766,10 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			Row.MarginText, FString(Case.ExpectedMarginText));
 
 		/*
-		 * THE BAR'S FRACTION, TO TWELVE PLACES, AGAINST A NUMBER WORKED OUT BY HAND. A log
-		 * curve is the shape where a wrong answer stays a plausible answer — a bar drawn on
-		 * a natural log instead of a base-ten one, or over two decades instead of three, is
-		 * still a bar that moves in the right direction and fills up for healthy joints. The
-		 * decade rows are what separate those: 1000x, 100x, 10x and 1x must land on exactly
-		 * 1, two thirds, one third and zero, and nothing but clamp(log10(margin)/3) does.
+		 * The bar's fraction, to twelve places, against a hand-worked number. A log curve keeps a
+		 * wrong answer plausible: a natural log, or two decades instead of three, still moves the
+		 * right way. The decade rows separate those: 1000x, 100x, 10x and 1x must land on 1, two
+		 * thirds, one third and zero, and only clamp(log10(margin)/3) does.
 		 */
 		TestEqual(
 			FString::Printf(TEXT("%s: the bar should fill to %.12f, it fills to %.12f %s"),
@@ -3344,10 +2783,9 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 			Row.Text, FString(Case.ExpectedLine));
 
 		/*
-		 * AND THE BAND THE BAR IS DRAWN IN. Every bar on the panel is the same green today, so
-		 * the joint at 200 % of capacity and the joint at a ten-thousandth of it are the same
-		 * colour and differ only in a length nobody has a reference for. Which side of an edge a
-		 * joint falls on is a decision, so it is the model's; the hue it maps to is the widget's.
+		 * And the band the bar is drawn in. Every bar is the same green today, so a joint at 200%
+		 * and one at a ten-thousandth differ only in a length nobody has a reference for. Which
+		 * side of an edge a joint falls on is the model's decision; the hue is the widget's.
 		 */
 		TestTrue(
 			*FString::Printf(TEXT("%s: should be in the %s band, it is %s %s"),
@@ -3357,12 +2795,10 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * The scale, pinned as text and as position — and then tied to the curve. The ticks
-	 * matching the four decade rungs is what makes the labels true rather than merely present:
-	 * a caption saying "1000x" over a bar that actually fills at a hundred would draw perfectly
-	 * and mislead completely. So each tick's fraction is held against the headroom of the rung
-	 * whose margin is that tick's number — a fact about the two halves agreeing rather than
-	 * either one alone.
+	 * The scale, pinned as text and position and tied to the curve. Ticks matching the four
+	 * decade rungs is what makes the labels true, not merely present: "1000x" over a bar that
+	 * fills at a hundred draws perfectly and misleads. So each tick's fraction is held against
+	 * the headroom of the rung whose margin is that tick's number.
 	 */
 	TestEqual(
 		FString::Printf(TEXT("the bar should be captioned, it says '%s'"),
@@ -3415,11 +2851,9 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * And the curve only ever goes one way. Swept over every pair of intact rungs rather than
-	 * checked at the four decades, because a sign slip or a reciprocal taken twice produces a
-	 * bar that is smooth, bounded, correct at the ends and backwards in the middle — which no
-	 * individual expected value in the table above would catch. More load can never mean more
-	 * headroom.
+	 * And the curve only goes one way, swept over every pair of intact rungs. A sign slip or a
+	 * doubled reciprocal gives a bar smooth, bounded, correct at the ends and backwards in the
+	 * middle, which no single expected value catches. More load can never mean more headroom.
 	 */
 	for (int32 Left = 0; Left < Inspector.Joints.Num(); ++Left)
 	{
@@ -3450,12 +2884,10 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * And the band is monotone in the load, swept over every pair of intact rungs rather than
-	 * checked at the boundaries — the same argument the headroom sweep above makes, catching
-	 * the same class of defect: a comparison written the wrong way round, or a band chain whose
-	 * guards are in the wrong order, produces a colouring correct at the ends and backwards in
-	 * the middle. Compared through SeverityOfBand rather than the enumerators' own values,
-	 * because their numeric order is a fail-closed decision rather than a scale.
+	 * And the band is monotone in the load, swept over every pair of intact rungs like the
+	 * headroom sweep: a reversed comparison or a mis-ordered guard chain colours correctly at the
+	 * ends and backwards in the middle. Compared through SeverityOfBand, not the enumerators'
+	 * values, whose order is fail-closed rather than a scale.
 	 */
 	for (int32 Left = 0; Left < Inspector.Joints.Num(); ++Left)
 	{
@@ -3488,7 +2920,7 @@ bool FPieceMenuJointHeadroomTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-/** Named again, and named apart again — see the note on PieceInspectorTestSupport. */
+/** Named and unique again; see the note on PieceInspectorTestSupport. */
 namespace PieceBandBoundaryTestSupport
 {
 	using namespace PieceInspectorTestSupport;
@@ -3496,25 +2928,18 @@ namespace PieceBandBoundaryTestSupport
 	constexpr int32 BandStructure = 33;
 
 	/**
-	 * The same 49 cm2 of general purpose mortar the headroom ladder uses, so the one line of
-	 * arithmetic carries over unchanged: a brick of M kilograms on this joint loads it to
-	 * exactly M / 5000 of capacity, and its margin is 5000 / M.
-	 *
-	 * A second, shorter ladder rather than four more rungs on the first, and the reason is
-	 * arithmetic rather than taste: every expected line in the headroom table names its far end
-	 * by position — "course 2 · #11" — and its joint by connection index, so inserting rungs
-	 * renumbers rows that are pinned character for character.
+	 * The same 49 cm2 of mortar the headroom ladder uses, so a brick of M kg loads the joint to
+	 * M / 5000 of capacity, margin 5000 / M. A second, shorter ladder rather than more rungs on
+	 * the first, because the headroom table pins each line by position and connection index, so
+	 * inserting rungs renumbers rows pinned character for character.
 	 */
 	constexpr double BandJointAreaSqCm = 49.0;
 	constexpr double BandMassPerFullLoadKg = 5000.0;
 
 	/**
-	 * The four masses the boundaries need, and the main ladder cannot supply.
-	 *
-	 * The load ladder holds 10x margin (exactly the green/amber edge) and 12.5x, and then
-	 * nothing at all between 1x and 10x — so the amber/red edge at 2x is unpinned everywhere in
-	 * the suite, and an implementation splitting amber from red at 3x, or at 5x, would pass
-	 * every existing row. These four are the two rungs either side of each edge:
+	 * The four masses the boundaries need, which the main ladder cannot supply: it holds nothing
+	 * between 1x and 10x, so the amber/red edge at 2x is unpinned and a split at 3x or 5x would
+	 * pass every existing row. These are the two rungs either side of each edge:
 	 *
 	 *     499 kg   9.98 %   10.02x margin   the last comfortable joint
 	 *     500 kg  10.00 %   10.00x margin   EXACTLY the green/amber edge
@@ -3554,31 +2979,24 @@ namespace PieceBandBoundaryTestSupport
 
 /**
  * A joint's bar is coloured by how much room it has left, and which side of each edge it falls
- * on is decided here rather than by a widget comparing numbers.
+ * on is decided here, not by a widget comparing numbers.
  *
- * Why this is a model field and not a Slate ternary: every bar on the panel is the same green
- * today, which makes the one joint that is nearly gone look exactly like the five that are
- * three orders of magnitude from failing — a fill is a length, and a length has to be compared
- * against its neighbours to mean anything, but a colour does not. Choosing where the colour
- * changes is a decision about what the game considers dangerous, and a widget holding
- * `Fraction > 0.5f ? Green : Red` is that decision written where no test can read it.
+ * A model field, not a Slate ternary, because a fill is a length that means nothing without its
+ * neighbours while a colour does not, and `Fraction > 0.5f ? Green : Red` writes what the game
+ * considers dangerous where no test can read it.
  *
- * The edges are 10x and 2x margin, and the boundary rows are why this test exists at all: any
- * two implementations agree about a joint at 1000x and a joint at 200%; they differ at exactly
- * ten times and exactly twice, rows a hand-picked example never contains.
+ * The edges are 10x and 2x margin, and the boundary rows are why this test exists: any two
+ * implementations agree at 1000x and 200% and differ at exactly ten times and twice, rows a
+ * hand-picked example never contains.
  *
- * At an edge the joint takes the worse band, uniformly, the fail-closed direction: a joint at
- * exactly 10x is amber and a joint at exactly 2x is red, never the other way, for the same
- * reason PresenterMarginText says "no margin left" at exactly 1.0 rather than "1.0x margin" —
- * over-promising is the expensive direction on a panel whose whole job is to say what is about
- * to fall down. Written as a chain of guards on the utilisation already on the row (comfortable
- * below 10%, cautious below 50%, critical otherwise), which puts a NaN in the critical band by
- * the same mechanism the margin text and the bar fill already use.
+ * At an edge the joint takes the worse band, the fail-closed direction (10x is amber, 2x is red),
+ * for the same reason margin text says "no margin left" at 1.0: over-promising is the expensive
+ * direction. Written as guards on the utilisation (comfortable below 10%, cautious below 50%,
+ * critical otherwise), so a NaN lands in critical.
  *
- * And it is a transform of UtilisationPercent, never a third trip to the graph: the percentage
- * on the row is the number PieceMenuJointReadout holds against InspectPiece with exact
- * equality, and a band derived from the connection again would be a fourth copy of the break
- * decision.
+ * And it is a transform of UtilisationPercent, never a third trip to the graph: that percentage
+ * is held against InspectPiece with exact equality, and a band from the connection again would
+ * be a fourth copy of the break decision.
  *
  * Needs a ticking world: no, and not even a world.
  */
@@ -3612,9 +3030,8 @@ bool FPieceMenuJointMarginBandTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * Exactly ten times, the row the whole "worse band at the edge" rule turns on.
-			 * `Margin >= 10 ? green : amber` is the coin-flip alternative and differs from the
-			 * rule on exactly this joint and nowhere else in the suite.
+			 * Exactly ten times, the row the "worse band at the edge" rule turns on. `Margin >= 10
+			 * ? green : amber` is the coin-flip alternative and differs only on this joint.
 			 */
 			TEXT("exactly ten times its load: the edge, and the edge is cautious"),
 			1, 10.0, EJointMarginBand::Caution
@@ -3625,8 +3042,8 @@ bool FPieceMenuJointMarginBandTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * And exactly twice, the other edge, worked the same way: a joint that could take
-			 * exactly one more of itself is not a joint to describe as having room.
+			 * And exactly twice, the other edge: a joint that could take one more of itself is
+			 * not one to describe as having room.
 			 */
 			TEXT("exactly twice its load: the edge, and the edge is critical"),
 			3, 50.0, EJointMarginBand::Critical
@@ -3656,9 +3073,9 @@ bool FPieceMenuJointMarginBandTest::RunTest(const FString& Parameters)
 		const FInspectorJointRow& Row = Inspector.Joints[Case.ConnectionIndex];
 
 		/*
-		 * FIXTURE PRECONDITION, HAND-DERIVED: the rung is carrying what this file thinks it is.
-		 * Green on arrival and driving nothing — but without it a fixture that stopped loading
-		 * its joints would quietly retarget every band expectation onto some other number.
+		 * Fixture precondition, hand-derived: the rung carries what this file thinks. Green on
+		 * arrival, but without it a fixture that stopped loading its joints would retarget every
+		 * band expectation.
 		 */
 		TestEqual(
 			FString::Printf(TEXT("%s: should sit at %.6f %% of capacity, it sits at %.6f"),
@@ -3676,30 +3093,22 @@ bool FPieceMenuJointMarginBandTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Every joint row carries the colour slot of its own position in the list — row 0 is always the
- * first colour — and the palette runs out rather than repeating.
+ * Every joint row carries the colour slot of its position in the list (row 0 is always the first
+ * colour), and the palette runs out rather than repeating.
  *
- * What the swatch is for: a joint row names the brick at the far end in words ("course 2 ·
- * #4"), and in a wall of 1,220 identical bricks a word is not enough to find one by, so the
- * design ties each row to its brick by colour. This slice is the model deciding which slot each
- * row is; lighting the brick is the world half and is not here.
+ * The swatch ties each row to its brick by colour, since a word ("course 2 · #4") is not enough
+ * to find one in a wall of 1,220. This slice decides the slot; lighting the brick is the world half.
  *
- * Per slot, not per brick, and the cost is accepted rather than hidden: keying the colour on
- * the far-end brick is what a reader assumes is happening and it cannot be built, since a
- * palette is a handful of legible hues and a wall is over a thousand bricks, so it must
- * collide. Keyed on the row it never collides and stays stable while a player scans down a
- * readout, at the price that one brick is the first colour in one readout and the second in
- * another — asserted here, on the one joint that appears in two readouts.
+ * Per slot, not per brick: keying on the far-end brick is what a reader assumes but cannot be
+ * built, a palette being a handful of hues against a thousand bricks. Keyed on the row it never
+ * collides and stays stable while scanning, at the price that one brick is the first colour in one
+ * readout and the second in another, asserted here on the joint in two readouts.
  *
- * And past the end of the palette, nothing: wrapping reintroduces exactly the collision
- * per-slot was chosen to avoid, on the brick with the most joints, the one being looked at
- * hardest. An absent swatch is an absence; a repeated swatch is a wrong answer. The load ladder
- * is what reaches that end: thirteen joints on one pad, more than any wall a player builds will
- * produce.
+ * Past the end, nothing: wrapping reintroduces the collision on the brick with the most joints.
+ * The load ladder reaches that end with thirteen joints on one pad.
  *
- * The structural properties — row i takes slot i, and once out the palette stays out — are
- * swept over every readout in this file by CheckInspectorInvariants rather than checked here,
- * because they must hold of the knot, the unsolved wall and the position fixtures too.
+ * The structural properties (row i takes slot i, once out stays out) are swept over every readout
+ * by CheckInspectorInvariants, since they must hold of the knot, unsolved wall and position fixtures too.
  *
  * Needs a ticking world: no, and not even a world.
  */
@@ -3748,9 +3157,8 @@ bool FPieceMenuJointColourSlotTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * An ordinary brick's joints all get a colour, in list order: three rows, three slots, first
-	 * to last — including the severed one, the row a player who just pulled a brick is looking
-	 * for and would be the cheapest one to quietly drop.
+	 * An ordinary brick's joints all get a colour, in list order: three rows, three slots,
+	 * including the severed one, the row that would be cheapest to quietly drop.
 	 */
 	for (int32 Index = 0; Index < Subject.Joints.Num(); ++Index)
 	{
@@ -3762,12 +3170,9 @@ bool FPieceMenuJointColourSlotTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * The same joint, in two readouts, in two different slots — the whole per-slot decision
-	 * stated as a fact rather than a comment. Connection 1 joins the subject and the rider: it
-	 * is the second row of the subject's breakout and the first of the rider's, so per-slot
-	 * means slot 1 there and slot 0 here. Any implementation keying the colour on the
-	 * connection, the far-end handle, or anything else about the brick would give it the same
-	 * slot twice and fail exactly one of these two assertions.
+	 * The same joint, in two readouts, in two slots: the per-slot decision as a fact. Connection 1
+	 * joins subject and rider, the subject's second row and the rider's first, so slot 1 there and
+	 * slot 0 here. Keying on the connection or far-end handle would give it one slot twice.
 	 */
 	TestEqual(
 		FString::Printf(
@@ -3789,10 +3194,7 @@ bool FPieceMenuJointColourSlotTest::RunTest(const FString& Parameters)
 			Subject.Joints[1].ConnectionIndex, Rider.Joints[0].ConnectionIndex),
 		Rider.Joints[0].ConnectionIndex, Subject.Joints[1].ConnectionIndex);
 
-	/*
-	 * And the ladder, the only fixture with more joints on one piece than a palette is likely to
-	 * hold: fourteen rows off one pad.
-	 */
+	/* And the ladder, the only fixture with more joints on one piece than a palette holds: fourteen off one pad. */
 	FStructureBinding Ladder;
 	BuildLoadLadder(Ladder);
 
@@ -3810,10 +3212,9 @@ bool FPieceMenuJointColourSlotTest::RunTest(const FString& Parameters)
 		Long.Joints.Num() >= 13);
 
 	/*
-	 * Six rows is the floor, and it is the wall's number rather than a round one: a brick inside
-	 * a running bond is spanned by two above, rests on two below and has a head joint either
-	 * side — six, exactly what the panel showed on the capture this work came from. A palette
-	 * that ran out before then would leave the ordinary case half-coloured.
+	 * Six rows is the floor, the wall's number: a brick in a running bond is spanned by two
+	 * above, rests on two below and has a head joint either side. A palette running out sooner
+	 * would leave the ordinary case half-coloured.
 	 */
 	const int32 ColouredRows = Long.Joints.IndexOfByPredicate(
 		[](const FInspectorJointRow& Row) { return Row.ColourSlot == INDEX_NONE; });
@@ -3826,10 +3227,9 @@ bool FPieceMenuJointColourSlotTest::RunTest(const FString& Parameters)
 		ColouredRows == INDEX_NONE || ColouredRows >= 6);
 
 	/*
-	 * And no two rows of one readout share a colour, the property wrapping breaks. Implied by
-	 * "row i takes slot i" on a list this length, and asserted anyway because it is the claim
-	 * itself: a modulo that made rows 0 and 6 the same colour would be a readout that quietly
-	 * points at two bricks with one hue, on the brick with the most joints.
+	 * And no two rows of one readout share a colour, the property wrapping breaks. Implied by "row
+	 * i takes slot i" but asserted anyway: a modulo making rows 0 and 6 one colour points at two
+	 * bricks with one hue.
 	 */
 	for (int32 Left = 0; Left < Long.Joints.Num(); ++Left)
 	{
@@ -3855,36 +3255,21 @@ bool FPieceMenuJointColourSlotTest::RunTest(const FString& Parameters)
  * Every brick row carries its support state as a bucket as well as a word, so a coloured dot is
  * the model's decision and only the hue is the widget's.
  *
- * What is broken today, and why it is a model problem rather than a drawing one:
- * FInspectorPieceEntry carries SupportText and nothing else about support, so a widget asked
- * for a dot per row has exactly one way to choose its colour: compare that string against
- * literals. That is a policy written in the one place this project has a recorded exception
- * saying there may be no logic at all, and it fails silently in both directions — it stops
- * colouring the day the wording is retuned, and it colours the wrong dot the day a sixth word
- * is added.
+ * Today FInspectorPieceEntry carries only SupportText, so a widget wanting a dot per row must
+ * compare the string against literals: logic in the one place a recorded exception says there may
+ * be none, failing silently both ways (stops colouring when the wording changes, colours wrong
+ * when a word is added). The split is EJointMarginBand's: the bucket is the decision, the hue is taste.
  *
- * The split is the one EJointMarginBand already made, made here for the same reason: which
- * side of a line a value falls on is a decision, and the palette is taste. The bucket is the
- * decision; which green, which amber, which grey stays out in the widget where nothing
- * headless can judge it anyway.
+ * Six buckets, and the two extra are the argument. Grounded, supported, stranded and falling are
+ * the four physical states. "not in this wall" is a fifth, a bucket not an absence, because the
+ * alternatives are a second bool free to disagree or reusing Falling. "not solved yet" is a sixth,
+ * because merging it into the fifth is a one-way door: two enumerators can share a colour by
+ * lookup, one can never be split again.
  *
- * Six buckets, not four and not five, and the two extra ones are the argument. Grounded,
- * supported, stranded and falling are the four physical states. "not in this wall" is a fifth,
- * and it is a bucket rather than an absence because the alternative is either a second bool for
- * "has a bucket" — free to disagree with the one beside it — or reusing Falling, exactly the
- * fail-open conflation PresenterWordForSupport exists to undo. "not solved yet" is a sixth,
- * because collapsing it into the fifth is a one-way door: a widget handed two enumerators can
- * paint them one colour with a lookup, and a widget handed one can never tell them apart again.
- *
- * The cross-check is where the value is, and it is swept rather than tabled: CheckInspectorInvariants
- * now holds every row's bucket against that row's own word, and the marked row's bucket against
- * the readout's — the same pair of claims SupportText already carries. A panel saying
- * "grounded" in the list and drawing the falling colour two inches below it would be the drift
- * this project keeps paying for, in the one field a player reads without reading any text.
- *
- * The table below is what drives it red: the sweep alone is satisfied by a model that never
- * fills the field at all, but the per-case expectations say which bucket each of the six states
- * is, hand-written from the fixture diagram rather than read back off the binding.
+ * The cross-check is swept by CheckInspectorInvariants (every row's bucket against its word, the
+ * marked row's against the readout's). The table below drives it red: the sweep alone passes a
+ * model that never fills the field, but the per-case expectations say which bucket each state is,
+ * hand-written from the diagram.
  *
  * Needs a ticking world: no, and not even a world.
  */
@@ -3898,9 +3283,8 @@ bool FPieceMenuSupportBandTest::RunTest(const FString& Parameters)
 	using namespace PieceInspectorTestSupport;
 
 	/*
-	 * Table integrity first, and it is not bookkeeping: the whole sweep in
-	 * CheckInspectorInvariants is "the bucket determines the word", and if two buckets shared a
-	 * word it would stop separating them and go on passing over a model that had merged the two.
+	 * Table integrity first, and not bookkeeping: the sweep is "the bucket determines the word",
+	 * so if two buckets shared a word it would stop separating them and pass over a merged model.
 	 */
 	for (int32 Left = 0; Left < UE_ARRAY_COUNT(AllSupportBands); ++Left)
 	{
@@ -3926,9 +3310,9 @@ bool FPieceMenuSupportBandTest::RunTest(const FString& Parameters)
 	BuildWorkedFixture(Binding, /*bSettle*/ true);
 
 	/*
-	 * Fixture preconditions, asked of the solver. Four of the six buckets are only reachable if
-	 * the graph really is in the four states the diagram claims, and a fixture that stopped
-	 * producing one of them would quietly retarget its row onto whatever state came instead.
+	 * Fixture preconditions, asked of the solver. Four of the six buckets are reachable only if
+	 * the graph is in the four states the diagram claims; a fixture that stopped producing one
+	 * would retarget its row.
 	 */
 	TestTrue(
 		TEXT("fixture: the pad should be Grounded"),
@@ -3978,11 +3362,9 @@ bool FPieceMenuSupportBandTest::RunTest(const FString& Parameters)
 	const TArray<FBandCase> Cases = {
 		{
 			/*
-			 * Every bucket the solved wall can produce, in one list, with nothing singled out —
-			 * the row the column exists for. Seven picked bricks are seven identical rows
-			 * without it, so the one that is falling and the one the solver gave up on can only
-			 * be found by hovering each in turn, and the three refs that name nothing at all
-			 * present exactly like the four that do.
+			 * Every bucket the solved wall can produce, in one list, nothing singled out: the row
+			 * the column exists for. Without it seven picked bricks are seven identical rows, and
+			 * the three refs that name nothing present exactly like the four that do.
 			 */
 			TEXT("seven bricks in every state there is, none singled out"),
 			{ Pad, Subject, Floater, KnotX, Removed, Foreign, Malformed },
@@ -4012,9 +3394,8 @@ bool FPieceMenuSupportBandTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A released brick is a live piece nothing is holding up, and this is the row where
-			 * the dot earns its place: the menu for this selection is empty, so the only thing
-			 * on the panel explaining why is this row's word and colour.
+			 * A released brick is a live piece nothing holds up, the row where the dot earns its
+			 * place: the menu is empty, so this row's word and colour are the only explanation.
 			 */
 			TEXT("the released floater, singled out"),
 			{ Floater }, Floater,
@@ -4023,10 +3404,9 @@ bool FPieceMenuSupportBandTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * And the one bucket that is not a physical claim at all: Stranded means the solver
-			 * could not route this brick, so the numbers beside it are worth doubting. Painting
-			 * it as grounded is the same fail-open direction
-			 * Integration.PullingSupportBringsTheWallDown polices.
+			 * The one bucket that is not a physical claim: Stranded means the solver could not
+			 * route this brick, so the numbers are worth doubting. Painting it grounded is the
+			 * fail-open direction Integration.PullingSupportBringsTheWallDown polices.
 			 */
 			TEXT("a brick the solver stranded in a knot, singled out"),
 			{ KnotX }, KnotX,
@@ -4035,8 +3415,8 @@ bool FPieceMenuSupportBandTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * And a ref that names nothing never becomes the readout's subject, so the readout
-			 * buckets as the value that claims nothing while the row still says what it is.
+			 * And a ref naming nothing never becomes the readout's subject, so the readout buckets
+			 * as the value that claims nothing while the row still says what it is.
 			 */
 			TEXT("a removed brick beside a live one, the removed one pointed at"),
 			{ Subject, Removed }, Removed,
@@ -4090,12 +3470,10 @@ bool FPieceMenuSupportBandTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * And the sixth bucket, on its own fixture, because it is the one a solved wall cannot
-	 * reach. "Nobody has solved yet" is its own bucket for exactly the reason it is its own
-	 * sentence: EPieceSupport::Falling is both a real collapse and an absent answer, so a
-	 * bucket taken straight off the enumerator would paint a freshly built wall in the colour
-	 * of a wall coming down — a catastrophe drawn that has not happened, far louder in a column
-	 * of forty dots than in one line of text.
+	 * And the sixth bucket, on its own fixture, the one a solved wall cannot reach.
+	 * EPieceSupport::Falling is both a real collapse and an absent answer, so a bucket from the
+	 * enumerator would paint a freshly built wall as one coming down, far louder across forty
+	 * dots than one line of text.
 	 */
 	{
 		FStructureBinding Unsolved;
