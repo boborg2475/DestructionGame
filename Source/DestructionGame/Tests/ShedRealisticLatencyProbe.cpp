@@ -11,20 +11,12 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * A diagnostic probe, not a permanent red. This measures the router solve time at the realistic
- * shed's ~442 blocks and prints what the router does when a porch post is pulled (case B) and
- * when the door piers are pulled (case A) — the fast half of the slice-4 authority decision. It
- * asserts nothing about wall-clock (that would flake on a shared machine); it exists to be read.
- * The name deliberately omits "DestructionGame" so the full suite never runs it; invoke it with
- * `Automation RunTests ShedRealisticLatency`.
+ * Diagnostic probe: router solve time on the ~442-block realistic shed, and what it does when a
+ * porch post (case B) or the door piers (case A) are pulled. Prints only; wall-clock asserts would
+ * flake. Omitted from the full suite by name; run `Automation RunTests ShedRealisticLatency`.
  *
- * THE LP HALF WAS RETIRED. A single LP feasibility solve at 442 blocks ran for over twenty
- * minutes (measured, still unfinished — the LP is super-linear and the promotable band was
- * ~84-104 blocks), the recorded number that rules the LP out and puts the router in charge at
- * this scale; a >20-minute opt-in test is dead weight, so the LpSolveAt442 probe that produced
- * it was deleted.
- *
- * NEEDS A TICKING WORLD: NO. Boxes, doubles and the router; gravity on. No Chaos, no tick.
+ * The LP probe was removed: one LP solve at 442 blocks ran over 20 minutes without finishing,
+ * which is why the router is the authority at this scale. No world.
  */
 namespace ShedRealisticLatencyProbeSupport
 {
@@ -147,12 +139,8 @@ namespace ShedRealisticLatencyProbeSupport
 	}
 
 	/*
-	 * Collect the back-wall bricks of a low course band inside an X window. The back wall runs
-	 * along X in the Y band centred on 128.875; course c has centre Z = c * 7.5 + 3.25. Courses 6
-	 * (even, 8 bricks) and 7 (odd, 9 bricks) sit at Z 48.25 and 55.75 — below the wall's
-	 * mid-height (course 15 eaves top Z 119, so halfway is course 7-8). A brick is taken if it is
-	 * ClayBrick, sits in the back-wall Y band, falls in one of the two course bands, and its X
-	 * centre is inside [XLoCm, XHiCm].
+	 * Back-wall bricks (Y = 128.875) in courses CourseLo..CourseHi with X centre in [XLoCm, XHiCm].
+	 * Course c is centred at Z = c * 7.5 + 3.25.
 	 */
 	void CollectBackWallBand(
 		const FBrickLayout& L, int32 CourseLo, int32 CourseHi, double XLoCm, double XHiCm, TArray<int32>& Out)
@@ -195,7 +183,7 @@ bool FShedRealisticRouterProbe::RunTest(const FString& Parameters)
 	using namespace DestructionLayout;
 	using namespace ShedRealisticLatencyProbeSupport;
 
-	/* -------- STEP 1a: ROUTER solve time at 442 (the default path, cap 200 < 442). -------- */
+	// Router solve time at 442 blocks (above the 200-block cap, so the router path).
 	{
 		FBrickLayout L;
 		if (!DestructionShed3D::BuildRealistic(L))
@@ -217,7 +205,7 @@ bool FShedRealisticRouterProbe::RunTest(const FString& Parameters)
 			StrandedCount(L.Structure), LostEarthCount(L.Structure)));
 	}
 
-	/* -------- STEP 2, CASE B: pull a porch POST, router authority — does the overhang strand/fall? -------- */
+	// Case B: pull a porch post; does the overhang lose support?
 	{
 		FBrickLayout L;
 		DestructionShed3D::BuildRealistic(L);
@@ -246,8 +234,7 @@ bool FShedRealisticRouterProbe::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* -------- STEP 2, CASE A: pull the door PIERS, router authority — does the door head lose the earth?
-	 * Two candidate cuts, each measured precisely with the exact filter the collapse test will use. -------- */
+	// Case A: pull the door piers (two candidate cuts); does the door lintel lose support?
 	for (int32 Candidate = 0; Candidate < 2; ++Candidate)
 	{
 		FBrickLayout L;
@@ -266,7 +253,7 @@ bool FShedRealisticRouterProbe::RunTest(const FString& Parameters)
 			bool bTake = false;
 			if (Candidate == 0)
 			{
-				/* (0) The whole door piers below the lintel: both flanks of the door, courses 0..11. */
+				// (0) Both door piers below the lintel, courses 0..11.
 				const bool bLowCourses = C.Z < 89.5;
 				const bool bLeftPier = C.X < 57.5;
 				const bool bRightPier = C.X > 122.5;
@@ -274,8 +261,7 @@ bool FShedRealisticRouterProbe::RunTest(const FString& Parameters)
 			}
 			else
 			{
-				/* (1) Only the two course-11 pier tops the lintel bears on: Z centre ~85.25, edges at
-				 * the door (left brick [33.75,55.25], right [123.75,145.25]). */
+				// (1) Only the two course-11 bricks the lintel bears on (Z ~85.25).
 				const bool bCourse11 = FMath::Abs(C.Z - 85.25) < 1.0;
 				const bool bLeftBearing = C.X > 33.0 && C.X < 56.0;
 				const bool bRightBearing = C.X > 123.0 && C.X < 146.0;
@@ -308,14 +294,8 @@ bool FShedRealisticRouterProbe::RunTest(const FString& Parameters)
 }
 
 /**
- * Arch-vs-collapse of a low 2-course band cut in the back wall body — the experiment that
- * measures whether a bonded running-bond wall deep-beams over a low gap and stands, or drops the
- * masonry above. Removes courses 6 and 7 (Z 48.25 / 55.75, below the wall's mid-height) from the
- * +Y back wall the ThreeQuarter camera faces, at three widths, and prints the router's
- * lost-earth / stranded verdict for each. Diagnostic only — asserts nothing about wall-clock or
- * verdict; it exists to be read. Invoke with `Automation RunTests ShedRealisticLatency`.
- *
- * NEEDS A TICKING WORLD: NO. Boxes, doubles and the router; gravity on.
+ * Diagnostic: cut a 2-course band from the back wall at several widths and print whether the
+ * router arches over the gap or drops the masonry above. Asserts nothing. No world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FShedRealisticLowBandProbe,
@@ -328,12 +308,7 @@ bool FShedRealisticLowBandProbe::RunTest(const FString& Parameters)
 	using namespace DestructionLayout;
 	using namespace ShedRealisticLatencyProbeSupport;
 
-	/*
-	 * Three widths of the same low 2-course band. Narrow takes the central ~3 columns (X
-	 * 78..101); wide takes most of the width leaving the two ends (X 22..158); full-width takes
-	 * the whole back-wall low band (X 0..180). Each is measured on a fresh build through the
-	 * production router SolveAndBreak.
-	 */
+	// Each case runs on a fresh build.
 	struct FCase { const TCHAR* Name; int32 CourseLo; int32 CourseHi; double XLo; double XHi; };
 	const FCase Cases[] = {
 		{ TEXT("LOW  NARROW (c6-7, central ~3 cols, X 78..101)"), 6, 7, 78.0, 101.0 },

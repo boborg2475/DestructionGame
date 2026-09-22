@@ -27,89 +27,22 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE CORBEL FAMILY, PHOTOGRAPHED: ONE FRAME AS LAID AND ONE AFTER THE CASCADE HAS SETTLED.
+ * Photographs the corbel family: one frame as laid, one after the cascade settles.
  *
- * =========================================================================================
- * WHY THIS FILE EXISTS AT ALL
- * =========================================================================================
+ * The corbel tests (E to J) are world-free, so this builds each FStructure as ABrickActors and
+ * reuses Tests/StaircaseScreenshotTest.cpp's plumbing (Shot via the game viewport client, delete-
+ * first, hand-read PNG header).
  *
- * TESTS E TO J ARE WORLD-FREE. They are arithmetic over `FStructure` and `Layout` — no actors, no
- * RHI, no viewport — which is exactly why the whole solver suite runs in about a second. They
- * therefore CANNOT PRODUCE A PICTURE as written, and the user asked for pictures.
+ * Structures spawn at StageOriginYCm, 15 m off the scenario wall, to avoid interpenetrating it. The
+ * offset is applied only to actors, so the FStructure is identical to what the world-free tests
+ * solve. The scenario wall is left intact because Visual.StaircaseScreenshot shares the world.
  *
- * `Tests/StaircaseScreenshotTest.cpp` is the project's rendering harness and its plumbing is
- * reused here rather than reinvented: the `Shot showui` exec routed through the GAME VIEWPORT
- * CLIENT, the latent-command timings, the delete-first-so-existence-means-something rule, the
- * PNG signature and IHDR read by hand. What could NOT be reused is the subject — every constant in
- * that file is the 36-brick staircase cut into the game mode's own wall — so what this adds is a
- * builder that takes any `FStructure` plus its boxes, stands it up in the world as `ABrickActor`s,
- * and photographs it either side of the settle.
+ * Before = as laid (bricks spawn kinematic, so nothing can move; still asserted). After = after
+ * SolveAndBreak, with unsupported pieces released and given 3 s to fall. Case J also deletes one
+ * brick first. Asserts build, actor count, stillness, release count and real PNGs; not what the
+ * images look like, which is for a human.
  *
- * =========================================================================================
- * IT BUILDS ON ITS OWN PATCH OF GROUND, FIFTEEN METRES OFF THE SCENARIO WALL
- * =========================================================================================
- *
- * `ADestructionGameGameMode::BeginPlay` lays a 30 x 40 wall from x = -10.75 upward at y = 0, and
- * every corbel in `CorbelCaseTestSupport.h` is laid from x = 0 upward at y = 0 as well. A corbel
- * built into the running sandbox would therefore be laid INSIDE that wall, brick through brick,
- * and every frame would be a picture of the interference rather than of the corbel.
- *
- * THE FIX IS A SPAWN OFFSET AND NOT A FIXTURE CHANGE, and the difference is the whole point.
- * `StageOriginYCm` is applied when the ACTOR is placed and nowhere else: the `FStructure` the
- * pictures are of is bit-identical to the one `Core.Structure.*` solves, because a constant
- * translation along Y changes no mass, no interface, no lever arm and no reading — gravity is along
- * Z. Giving `FCorbelSpec` a world origin instead would be production-shaped arithmetic with no
- * failing test behind it, and it would make every world-free reading a reading about a different
- * fixture until somebody proved otherwise.
- *
- * AND THE SCENARIO WALL IS LEFT STANDING, WHICH IS NOT MERELY POLITENESS. Automation tests share
- * one process and one world, so a harness that destroyed those 1,220 actors would leave
- * `Visual.StaircaseScreenshot` — which photographs that exact wall — looking at a structure whose
- * every actor is null, and it would fail for a reason nothing in its own file mentions. The
- * offset costs nothing and keeps `RunTests DestructionGame.Visual` meaningful as a whole.
- *
- * =========================================================================================
- * WHAT "BEFORE" AND "AFTER" MEAN HERE, WHICH IS NOT WHAT THEY MEAN IN THE STAIRCASE FILE
- * =========================================================================================
- *
- * The staircase harness photographs a CUT: the wall is standing, the player deletes 36 bricks, and
- * the question is what the remainder does. Most of this family has no cut at all. A corbel is
- * condemned BY ITS OWN GEOMETRY — it is laid reaching too far and the root joint is over capacity
- * the moment it exists — so the honest pair is:
- *
- *   - BEFORE: the structure AS LAID. Every brick is kinematic, nothing has been released, and no
- *     verdict has been pushed onto the world. This frame is what the player built.
- *   - AFTER: the same structure once `SolveAndBreak` has settled it and every piece the solver is
- *     no longer holding up has been handed to physics and given three seconds to fall.
- *
- * NOTHING IS FROZEN BETWEEN THE TWO, and nothing needs to be: a brick spawns KINEMATIC and only
- * `ABrickActor::Release` makes it dynamic, so before the cascade command runs there is nothing in
- * the world that COULD move. The staircase file's time-dilation pin exists because its cascade
- * runs inside the player's commit; here the cascade is a separate latent command and the before
- * frame is written frames earlier. The stillness is asserted anyway rather than argued.
- *
- * CASE J IS THE EXCEPTION AND IT DOES CUT. It is the user's originally reported case — one brick
- * deleted at a free end of a forty-course wall — so its before frame is the intact wall and its
- * cascade command removes the brick, destroys its actor, and settles.
- *
- * =========================================================================================
- * WHAT IT ASSERTS BEYOND THE FILES
- * =========================================================================================
- *
- * A harness that only takes a picture is green whatever is in the picture. So each case asserts
- * that it built, that the piece count is the one the world-free fixture reports, that an actor was
- * spawned for every live piece, that nothing had moved when the before-frame was written, that the
- * cascade released exactly the pieces the solver condemned, and that both files landed as real
- * PNGs of real size. It deliberately asserts NOTHING about what the images LOOK like — judging
- * that is a human's job, which is the entire point of the exercise.
- *
- * =========================================================================================
- * IT NEEDS A TICKING WORLD *AND* A REAL RHI, hence EAutomationTestFlags::NonNullRHI
- * =========================================================================================
- *
- * Without that flag the ordinary `-nullrhi` suite would run this, find no viewport, write no file
- * and GO GREEN. With it, the ordinary suite never mentions this test exists — which is how
- * `Visual.StaircaseScreenshot` rotted red for five slices. RUN IT EXPLICITLY:
+ * Needs a real RHI (NonNullRHI), so the -nullrhi suite skips it. Run explicitly, without -nullrhi:
  *
  *   & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
  *     "<project>\DestructionGame.uproject" /Game/Maps/Lvl_Sandbox
@@ -117,10 +50,6 @@
  *     -nosplash -NoSound -unattended -nopause -log
  *     -ExecCmds="Automation RunTests DestructionGame.Visual.CorbelScreenshots"
  *     -TestExit="Automation Test Queue Empty"
- *
- * `-nullrhi` MUST BE ABSENT: `FApp::CanEverRender()` is false with it and `UGameEngine::Init` only
- * builds a window and a viewport under that, so there would be nothing to screenshot even if the
- * filter let the test through.
  */
 namespace CorbelScreenshotSupport
 {
@@ -140,17 +69,13 @@ namespace CorbelScreenshotSupport
 			FPaths::ScreenShotDir() / BaseName + TEXT(".png"));
 	}
 
-	/** Debug overlays off, so nothing is burned over the thing a human is being asked to judge. */
+	/** Debug overlays off. */
 	const TCHAR* const DisableScreenMessagesCommand = TEXT("DisableAllScreenMessages");
 
-	/**
-	 * WHICH STRUCTURE A ROW OF THE TABLE WANTS. Not every row is a corbel: J is a running-bond wall
-	 * with a brick deleted out of it, and A is a bare stepped arm the corbel fixture deliberately
-	 * does not build.
-	 */
+	/** Which structure a row builds. */
 	enum class ECorbelShotKind : uint8
 	{
-		/** A bare stepped arm of SINGLE bricks off the standard base. */
+		/** A bare stepped arm of single bricks off the standard base. */
 		BareArm,
 
 		/** `CorbelCaseC(Steps)` — the two-cell base, filled. */
@@ -163,7 +88,7 @@ namespace CorbelScreenshotSupport
 		FreeEndCut
 	};
 
-	/** One picture pair: what to build, what to call the files, and what a human is looking for. */
+	/** One picture pair: what to build, file name, and a description. */
 	struct FCorbelShotCase
 	{
 		const TCHAR* Label;
@@ -177,18 +102,8 @@ namespace CorbelScreenshotSupport
 	};
 
 	/**
-	 * THE FAMILY, AND WHAT IS DELIBERATELY ABSENT FROM IT.
-	 *
-	 * A to F are the six structures the user approved, with E rendered as a PAIR either side of its
-	 * crossover because "where it tips" is the whole point of that row and one frame cannot show a
-	 * tipping point. J is here because it is the user's originally reported case and it now stands,
-	 * which is a thing a picture can actually show.
-	 *
-	 * G, H AND I ARE NOT HERE, AND THAT IS A JUDGEMENT RATHER THAN AN OVERSIGHT. G is a claim about
-	 * a RATIO between three scales, H about a ratio between three materials, I about an ordering
-	 * across five step sizes. A pair of frames of any one row of those says nothing about the
-	 * property, and a folder of twenty near-identical corbels would look like evidence without
-	 * being any. Their deliverable is the printed number, which the world-free suite already gives.
+	 * A to F, with E shot either side of its crossover, plus J (the user's reported case). G, H and I
+	 * are omitted on purpose: they are claims about ratios and orderings a single picture cannot show.
 	 */
 	const FCorbelShotCase ShotCases[] =
 	{
@@ -222,18 +137,9 @@ namespace CorbelScreenshotSupport
 	constexpr int32 NumShotCases = UE_ARRAY_COUNT(ShotCases);
 
 	/**
-	 * THE TIMINGS, and they are the staircase harness's with one change.
-	 *
-	 * `SettleFrames` covers TSR's temporal history and auto-exposure; `SlateFrames` is the layout
-	 * pass a rebuilt view needs; `WriteFrames` is because `ProcessScreenShots` writes at END OF
-	 * DRAW, so moving on in the same frame as the request loses the file.
-	 *
-	 * `FallFrames` IS 180 RATHER THAN THE STAIRCASE'S 300, AND THE REASON IS CASE F. That structure
-	 * is 3,015 bricks and all but a handful of them are released at once; every frame of the fall is
-	 * a frame of Chaos solving three thousand bodies, eight times over for the eight cases. Three
-	 * seconds is still nine times the 0.32 s a released brick needs to fall the 50 cm that would be
-	 * unmistakable in the photograph, and the arm of case F is eleven metres long — what it does, it
-	 * does immediately.
+	 * Staircase harness timings. SettleFrames covers TSR history and auto-exposure; WriteFrames
+	 * because screenshots write at end of draw. FallFrames is 180, not 300, because case F releases
+	 * ~3,000 bricks; 3 s is still far more than a visible fall needs.
 	 */
 	constexpr int32 WarmUpFrames = 120;
 	constexpr int32 SettleFrames = 60;
@@ -241,64 +147,35 @@ namespace CorbelScreenshotSupport
 	constexpr int32 WriteFrames = 5;
 	constexpr int32 FallFrames = 180;
 
-	/** See Tests/PieceMenuScreenshotTest.cpp: derived as a floor, not picked as a judgement. */
+	/** Floors derived in Tests/PieceMenuScreenshotTest.cpp. */
 	constexpr int64 MinimumScreenshotBytes = 32 * 1024;
 	constexpr int32 MinimumScreenshotWidth = 640;
 	constexpr int32 MinimumScreenshotHeight = 480;
 
-	/** A millimetre, which no frame of real falling can hide inside. */
+	/** One millimetre. */
 	constexpr double BeforeStillnessToleranceCm = 0.1;
 
 	/**
-	 * HOW THE CAMERA IS PLACED, AND WHY IT IS COMPUTED RATHER THAN NAMED.
-	 *
-	 * The eight structures here span from a 4-brick arm about 60 cm across to an eleven-metre one,
-	 * so a standoff that frames any of them frames none of the others. The default
-	 * `UCameraComponent` field of view is 90 degrees HORIZONTALLY, so at a standoff `s` the visible
-	 * width is `2s` and the visible height at 16:9 is `2s * 1080/1920`. Inverting that for a
-	 * bounding box gives the standoff below, and the margin is what keeps the structure off the
-	 * edges of the frame and leaves some ground and sky for a human to read it against.
+	 * Camera standoff is computed per structure (60 cm to 11 m). With a 90 degree horizontal FOV, at
+	 * standoff s the view is 2s wide and 2s * 1080/1920 tall.
 	 */
 	constexpr double FrameMargin = 1.25;
 	constexpr double ViewportAspectHeightOverWidth = 1080.0 / 1920.0;
 
-	/**
-	 * THE CAMERA LOOKS ALONG -Y, WHICH IS THE OPPOSITE OF `Tests/StaircaseScreenshotTest.cpp`, AND
-	 * THE REASON IS LEGIBILITY RATHER THAN TASTE.
-	 *
-	 * At yaw 90 the view direction is +Y and the camera's right vector is -X, so increasing X is
-	 * drawn to the LEFT and every corbel comes out MIRRORED against `claude_plans/CORBEL_CASES.html`
-	 * — which draws the base at the left and the arm reaching right. Nobody comparing a photograph
-	 * to that drawing should have to hold it up to a mirror first. Yaw -90 puts the view along -Y
-	 * and +X to the right, so the pictures read the same way round as the drawings and as every
-	 * elevation in the design documents.
-	 */
+	/** Looks along -Y so +X is drawn to the right, matching claude_plans/CORBEL_CASES.html. */
 	constexpr double CameraYawDegrees = -90.0;
 
-	/** Nothing is framed closer than this, or a four-brick arm fills the screen with one brick. */
 	constexpr double MinimumStandoffCm = 120.0;
 
 	/**
-	 * FIFTEEN METRES DOWN THE Y AXIS FROM THE SCENARIO WALL, applied to the SPAWN and to nothing
-	 * else. See the file header: it is a constant translation along an axis gravity does not act
-	 * on, so the structure being photographed is arithmetically the structure the world-free tests
-	 * read. The scenario wall is 10.25 cm thick and centred on y = 0, and the camera stands between
-	 * the two looking AWAY from it, so the wall is never in a corbel's frame.
-	 *
-	 * NEGATIVE, AND THAT IS WHAT KEEPS THE WALL OUT OF SHOT. The camera stands off along +Y and
-	 * looks along -Y (see CameraYawDegrees), so everything at a HIGHER y than the camera is behind
-	 * it. The largest standoff any case here asks for is about 860 cm, comfortably inside the 1500,
-	 * so the scenario wall is behind the lens in every frame rather than a smudge on the horizon.
+	 * Spawn offset along Y, applied to actors only (gravity is along Z, so readings are unchanged).
+	 * Negative so the scenario wall is behind the camera; the largest standoff is ~860 cm.
 	 */
 	constexpr double StageOriginYCm = -1500.0;
 
 	/**
-	 * WHERE THE BRICKS WERE BEFORE ANYTHING HAPPENED TO THEM, AND WHAT THE CASE READS.
-	 *
-	 * FILE-SCOPE STATE, for the reason the staircase harness gives: a latent command carries only
-	 * what its parameters carry, and the four that matter run frames apart. The one that builds is
-	 * the only one that sees the structure intact, and the two that judge the shots need what it
-	 * saw. Reset at the top of every case so one case cannot inherit the last one's world.
+	 * Per-case state shared across latent commands, which run frames apart. Reset at the start of
+	 * each case.
 	 */
 	struct FCorbelShotRecord
 	{
@@ -307,13 +184,12 @@ namespace CorbelScreenshotSupport
 		FStructure Structure;
 		TArray<FPieceBox> Boxes;
 
-		/** One entry per piece handle. Null for a piece that was never spawned or has gone. */
+		/** One per piece handle; null if never spawned or gone. */
 		TArray<TWeakObjectPtr<ABrickActor>> Actors;
 
-		/** Where each actor stood when it was laid, so a claim of stillness can be measured. */
+		/** Laid position of each actor, to measure stillness. */
 		TArray<FVector> LaidAtCm;
 
-		/** The arm's pieces, for the "how much of it lost the ground" count. */
 		TArray<int32> ArmPieces;
 
 		int32 RootJoint = INDEX_NONE;
@@ -343,20 +219,9 @@ namespace CorbelScreenshotSupport
 	}
 
 	/**
-	 * WHERE TO PUT A BRICK ACTOR AND HOW BIG TO MAKE IT, so that its MESH fills the box.
-	 *
-	 * THIS IS THE SUBSYSTEM'S OWN RECIPE AND IT IS COPIED RATHER THAN CALLED, because
-	 * `BrickSpawnTransform` and `SpawnBrickForPiece` are file-local to
-	 * `World/DestructionStructureSubsystem.cpp` and there is no header to reach them through. Both
-	 * halves are read off the MESH: the scale is the box's size over the mesh's own local size and
-	 * never over 100, and the pivot is not assumed to be the centre — SM_Cube's local bounds run
-	 * from (0,0,0) to (100,100,100), so its origin is a CORNER and placing the actor at the box's
-	 * centre would put every brick a half-size out on all three axes.
-	 *
-	 * EXPOSING THE SUBSYSTEM'S VERSION INSTEAD WOULD BE PRODUCTION CODE WITH NO FAILING TEST BEHIND
-	 * IT, which this project's rules forbid. The duplication is confined to a test file, it is
-	 * arithmetic rather than policy, and `Tests/BrickActorTest.cpp` already pins the property both
-	 * copies have to satisfy — that the mesh's BOUNDS end up where the box is.
+	 * Transform that makes the brick mesh fill the box. Copied from the subsystem's file-local
+	 * BrickSpawnTransform. Reads scale and pivot off the mesh bounds: SM_Cube's origin is a corner,
+	 * not its centre.
 	 */
 	inline FTransform CorbelBrickSpawnTransform(const UStaticMesh& BrickMesh, const FPieceBox& Box)
 	{
@@ -384,11 +249,7 @@ namespace CorbelScreenshotSupport
 		UStaticMeshComponent* const Mesh = Brick->GetMesh();
 		UStaticMesh* const BrickMesh = Mesh != nullptr ? Mesh->GetStaticMesh() : nullptr;
 
-		/*
-		 * NO MESH, NO BRICK. The mesh is a hard content reference resolved on the CDO, so deleting
-		 * the asset leaves it null rather than failing to compile — and the sizing above divides by
-		 * its bounds, which would make an infinite scale out of a missing asset.
-		 */
+		// A missing mesh asset would make the sizing divide by zero bounds.
 		if (BrickMesh == nullptr)
 		{
 			Brick->Destroy();
@@ -420,13 +281,7 @@ namespace CorbelScreenshotSupport
 		return Controller;
 	}
 
-	/**
-	 * Ask for a screenshot, THROUGH THE VIEWPORT CLIENT AND NOT THROUGH GEngine.
-	 *
-	 * MEASURED, NOT PREFERRED — see `Tests/StaircaseScreenshotTest.cpp`, whose first run asserted
-	 * everything correctly and wrote no PNG at all because the request went to `UEngine::Exec`,
-	 * which has no SHOT handler. `HandleScreenshotCommand` lives on `UGameViewportClient`.
-	 */
+	/** Request a screenshot via the game viewport client; UEngine::Exec has no Shot handler. */
 	inline void RequestScreenshot(FAutomationTestBase& Test, const FString& Command)
 	{
 		UGameViewportClient* const Viewport = GEngine != nullptr ? GEngine->GameViewport : nullptr;
@@ -443,7 +298,7 @@ namespace CorbelScreenshotSupport
 		Viewport->Exec(nullptr, *Command, *GLog);
 	}
 
-	/** Where a piece's brick actually is right now, or the zero vector if it has gone. */
+	/** Current brick location, or zero if gone. */
 	inline FVector ActorLocationOf(const FCorbelShotRecord& Record, int32 Piece)
 	{
 		const ABrickActor* const Actor =
@@ -452,7 +307,7 @@ namespace CorbelScreenshotSupport
 		return Actor != nullptr ? Actor->GetActorLocation() : FVector::ZeroVector;
 	}
 
-	/** The worst distance any surviving brick has travelled since it was laid. */
+	/** Largest distance any surviving brick has moved since it was laid. */
 	inline double WorstMovementCm(const FCorbelShotRecord& Record)
 	{
 		double Worst = 0.0;
@@ -472,14 +327,7 @@ namespace CorbelScreenshotSupport
 	}
 }
 
-/**
- * Open the stage: check there is a world and a viewport to photograph into, and record that the
- * scenario wall is standing — because THE POINT IS THAT IT IS STILL STANDING AFTERWARDS.
- *
- * NOTHING HERE DESTROYS ANYTHING. The corbels are spawned fifteen metres away instead, so this
- * harness leaves the world exactly as it found it and `Visual.StaircaseScreenshot` can run in the
- * same process. See the file header.
- */
+/** Check for a world and viewport, and log the scenario wall's brick count. Destroys nothing. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FCorbelOpenStageCommand, FAutomationTestBase*, Test);
 
@@ -497,11 +345,7 @@ bool FCorbelOpenStageCommand::Update()
 
 	Test->AddInfo(FString::Printf(TEXT("game world is %s"), *World->GetMapName()));
 
-	/*
-	 * THE VIEWPORT IS ASSERTED HERE RATHER THAN LEFT TO SHOW UP AS A MISSING FILE, because without
-	 * one `HandleScreenshotCommand` returns having done nothing at all and the only symptom
-	 * downstream reads identically to a renderer that failed.
-	 */
+	// Assert the viewport now; otherwise its absence looks like a render failure later.
 	UGameViewportClient* const Viewport = GEngine != nullptr ? GEngine->GameViewport : nullptr;
 
 	Test->TestNotNull(
@@ -523,14 +367,7 @@ bool FCorbelOpenStageCommand::Update()
 	return true;
 }
 
-/**
- * Build one case, stand it up in the world, and aim the camera at the whole of it.
- *
- * THE STRUCTURE IS BUILT WORLD-FREE FIRST AND THEN SPAWNED, in that order and never the other way
- * round, because it is the world-free half that the entire E-to-J suite already measures. The
- * pictures are of the same arithmetic those tests print, not of a second construction that happens
- * to look similar.
- */
+/** Build one case world-free (as the E-to-J tests do), spawn it, and frame the camera on it. */
 DEFINE_LATENT_AUTOMATION_COMMAND_TWO_PARAMETER(
 	FCorbelBuildCommand, FAutomationTestBase*, Test, int32, CaseIndex);
 
@@ -553,7 +390,7 @@ bool FCorbelBuildCommand::Update()
 		return true;
 	}
 
-	/* --- the world-free half ------------------------------------------------------------- */
+	// World-free half.
 
 	if (Case.Kind == ECorbelShotKind::FreeEndCut)
 	{
@@ -577,15 +414,9 @@ bool FCorbelBuildCommand::Update()
 			: CorbelCaseC(Case.Count);
 
 		/*
-		 * `bFilled` IS THE WHOLE OF CASE A, and it is one flag on the SAME producer rather than a
-		 * second builder here. A bare arm on a different pedestal would be two changes at once and
-		 * the pair of pictures would not be a comparison of anything; this way A and B differ in
-		 * exactly one thing — whether a stepped course is filled inboard or is a single brick.
-		 *
-		 * `COMPOSITE_DEPTH_DESIGN.md` works the bare arm through by hand: bottom rung `F = 4`,
-		 * `M = 90`, so `e = 22.5 cm` against a bearing whose outer edge is 5.125 cm from its own
-		 * centroid — the resultant is 17.375 cm OUTSIDE the bearing, there is no equilibrium stress
-		 * block on that joint at all, and `ComputeUtilisation` returns a confident 0.15613.
+		 * Case A is the same producer with bFilled off, so A and B differ in one thing. Its bottom
+		 * rung has e = 22.5 cm against a 5.125 cm half-bearing, so the resultant is outside the
+		 * bearing (COMPOSITE_DEPTH_DESIGN.md), yet ComputeUtilisation reads 0.15613.
 		 */
 		Spec.bFilled = Case.Kind != ECorbelShotKind::BareArm;
 
@@ -606,11 +437,7 @@ bool FCorbelBuildCommand::Update()
 		Record.ProjectionCm = Built.ProjectionCm;
 	}
 
-	/*
-	 * SOLVED BUT NOT SETTLED. `SolveLoads` is non-destructive, so the reading printed beside the
-	 * BEFORE frame is what the structure reads AS LAID — which is the number every world-free test
-	 * in this family reports. The settling is a separate act, and it is the after-frame's.
-	 */
+	// Non-destructive solve: the as-laid reading the world-free tests report.
 	Record.Structure.SolveLoads();
 
 	if (Record.RootJoint != INDEX_NONE)
@@ -624,7 +451,7 @@ bool FCorbelBuildCommand::Update()
 		Record.EffectiveArmCm = ForceUu.Size() > 0.0 ? MomentUuCm.Size() / ForceUu.Size() : 0.0;
 	}
 
-	/* --- and the world half ------------------------------------------------------------- */
+	// World half.
 
 	Record.Actors.SetNum(Record.Structure.NumPieces());
 	Record.LaidAtCm.SetNum(Record.Structure.NumPieces());
@@ -638,7 +465,7 @@ bool FCorbelBuildCommand::Update()
 			continue;
 		}
 
-		/* THE OFFSET LIVES HERE AND NOWHERE ELSE — see StageOriginYCm and the file header. */
+		// The only place the stage offset is applied.
 		FPieceBox StageBox = Record.Boxes[Piece];
 		StageBox.CentreCm.Y += StageOriginYCm;
 
@@ -669,7 +496,7 @@ bool FCorbelBuildCommand::Update()
 			Case.Label, Record.Structure.NumLivePieces()),
 		Record.SpawnedActors, Record.Structure.NumLivePieces());
 
-	/* --- and the camera ------------------------------------------------------------------ */
+	// Camera.
 
 	const FVector CentreCm = Bounds.GetCenter();
 	const FVector HalfSizeCm = Bounds.GetExtent();
@@ -715,14 +542,7 @@ bool FCorbelBuildCommand::Update()
 	return true;
 }
 
-/**
- * The structure is standing exactly as it was laid, and this is the picture of it.
- *
- * THE STILLNESS IS MEASURED RATHER THAN ARGUED. A brick spawns kinematic and only `Release` makes
- * it dynamic, so nothing here CAN have moved — but "nothing can have moved" is precisely the kind
- * of claim that stops being true when somebody changes the spawn path, and the whole value of a
- * before-frame is that it is a picture of the intact structure.
- */
+/** Assert nothing has moved since laying, then shoot the before frame. */
 DEFINE_LATENT_AUTOMATION_COMMAND_TWO_PARAMETER(
 	FCorbelShootBeforeCommand, FAutomationTestBase*, Test, int32, CaseIndex);
 
@@ -753,15 +573,9 @@ bool FCorbelShootBeforeCommand::Update()
 }
 
 /**
- * Settle the structure and push the answer onto the world: every piece the solver is no longer
- * holding up is handed to physics.
- *
- * THIS IS `FStructureBinding::ApplyResults`' RULE, WRITTEN OUT RATHER THAN CALLED, and the reason
- * is that a binding cannot be built from a hand-laid corbel — `AdoptLayout` takes an `FBrickLayout`
- * and the corbel fixture is not one. The rule it reproduces is the one that matters: a piece is
- * released only if the LAST SOLVE ANSWERED FOR IT and that answer is not Grounded or Supported.
- * `HasSupportAnswer` is what stops "not yet asked" being read as "not held up", which with a
- * one-way release would drop the foundation as well.
+ * Settle and release every unsupported piece. Reproduces FStructureBinding::ApplyResults' rule
+ * (a corbel is not an FBrickLayout, so no binding): release only pieces the last solve answered for
+ * as unsupported. HasSupportAnswer keeps "not yet asked" from dropping the foundation.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_TWO_PARAMETER(
 	FCorbelCascadeCommand, FAutomationTestBase*, Test, int32, CaseIndex);
@@ -780,11 +594,7 @@ bool FCorbelCascadeCommand::Update()
 		return true;
 	}
 
-	/*
-	 * CASE J CUTS FIRST, because it is the only row here whose failure is a PLAYER'S ACTION rather
-	 * than the geometry it was laid with. The outermost full brick of the grounded course, which is
-	 * the brick the user deleted when they reported the bug.
-	 */
+	// Case J deletes the outermost full brick of the grounded course, as the user did.
 	if (Case.Kind == ECorbelShotKind::FreeEndCut)
 	{
 		const int32 EndBrick = StaircaseWallTestSupport::StaircasePieceAt(
@@ -806,12 +616,7 @@ bool FCorbelCascadeCommand::Update()
 
 		Record.Actors[EndBrick] = nullptr;
 
-		/*
-		 * AND THE SEAT THE CUT LEFT, READ BEFORE ANYTHING IS ALLOWED TO GIVE. `SolveLoads` is
-		 * non-destructive, so this is the AS-CUT reading — the number
-		 * `Core.Structure.AFreeEndDeletionInATallWall` reports — rather than whatever the joint
-		 * carries once the cascade has finished moving load around it.
-		 */
+		// As-cut reading of the remaining seat (Core.Structure.AFreeEndDeletionInATallWall).
 		Record.Structure.SolveLoads();
 
 		const int32 HalfSeated = StaircaseWallTestSupport::StaircasePieceAt(
@@ -880,7 +685,7 @@ bool FCorbelCascadeCommand::Update()
 	return true;
 }
 
-/** Whatever was going to happen has happened, and this is the picture of it. */
+/** Shoot the after frame. */
 DEFINE_LATENT_AUTOMATION_COMMAND_TWO_PARAMETER(
 	FCorbelShootAfterCommand, FAutomationTestBase*, Test, int32, CaseIndex);
 
@@ -898,13 +703,7 @@ bool FCorbelShootAfterCommand::Update()
 
 	Record.WorstAfterMovementCm = WorstMovementCm(Record);
 
-	/*
-	 * THE MOVEMENT IS REPORTED, NOT ASSERTED ON, AND THAT IS DELIBERATE. DESIGN.md §4 bans reading a
-	 * displacement as evidence that a joint BROKE — two pieces can sever and rest exactly where they
-	 * were — so what is asserted is the RELEASE COUNT against the solver's own answer, above. This
-	 * number is here so a reader can tell a picture of a collapse from a picture of a structure
-	 * that was condemned and did not visibly move.
-	 */
+	// Reported, not asserted: displacement is never break evidence (DESIGN.md §4).
 	Test->AddInfo(FString::Printf(
 		TEXT("CASE %s: %d frames after the cascade the worst-moved surviving brick had travelled ")
 		TEXT("%.3f cm (it had travelled %.9f cm when the before-frame was written)"),
@@ -915,13 +714,7 @@ bool FCorbelShootAfterCommand::Update()
 	return true;
 }
 
-/**
- * Take THIS CASE'S bricks off the stage so the next one is photographed on its own.
- *
- * THE RECORD'S OWN ACTORS AND NEVER A SWEEP OF THE WORLD, because a sweep would take the scenario
- * wall with it — see the file header. Debris that has fallen out of the level is already gone and
- * reads as null here, which needs no special case.
- */
+/** Destroy this case's own actors only; a world sweep would take the scenario wall too. */
 DEFINE_LATENT_AUTOMATION_COMMAND_TWO_PARAMETER(
 	FCorbelTearDownCommand, FAutomationTestBase*, Test, int32, CaseIndex);
 
@@ -951,7 +744,7 @@ bool FCorbelTearDownCommand::Update()
 	return true;
 }
 
-/** The files landed and they are real PNGs. Both were deleted before the run. */
+/** Every file landed and is a real PNG. All were deleted before the run. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FCorbelCheckFilesCommand, FAutomationTestBase*, Test);
 
@@ -991,10 +784,8 @@ bool FCorbelCheckFilesCommand::Update()
 			}
 
 			/*
-			 * THE SIGNATURE AND THE IHDR, READ BY HAND. Eight signature bytes, then a four-byte
-			 * chunk length, then "IHDR", then width and height as big-endian 32-bit integers. A
-			 * byte count alone passes for a file of random bytes, and a decoder would be a
-			 * dependency on the very rendering stack under test.
+			 * Hand-read PNG header: 8-byte signature, 4-byte length, "IHDR", then big-endian width
+			 * and height.
 			 */
 			static const uint8 PngSignature[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
 
@@ -1047,11 +838,7 @@ bool FCorbelScreenshotTest::RunTest(const FString& Parameters)
 
 	CorbelShotRecord().Reset();
 
-	/*
-	 * THE OLD FILES GO FIRST, SYNCHRONOUSLY, BEFORE ANY LATENT COMMAND IS QUEUED. Everything
-	 * downstream reads "the file exists" as "this run rendered a frame", and that reading is only
-	 * true if the file cannot have survived from an earlier run.
-	 */
+	// Delete old files first, so a file's existence proves this run rendered it.
 	for (const FCorbelShotCase& Case : ShotCases)
 	{
 		for (const TCHAR* const Suffix : { TEXT("_Before"), TEXT("_After") })

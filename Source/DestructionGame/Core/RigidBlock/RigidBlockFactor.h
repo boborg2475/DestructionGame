@@ -5,30 +5,23 @@
 #include "CoreMinimal.h"
 
 /*
- * THE SPARSE LU + PRODUCT-FORM ETA FACTORISATION AND THE REVISED-SIMPLEX WORKING STATE,
- * lifted out of RigidBlockOracle.cpp verbatim (PROMOTION_DESIGN Slice 1) so it can be
- * fuzzed from a separate translation unit. Nothing here changed in the move; assembly,
- * pricing, warm-start and SolveRigidBlock stay in the .cpp. OracleDetail internals, not
- * a public API — the only non-test consumer is the .cpp that used to define them inline.
+ * Sparse LU with product-form eta updates, and the revised-simplex working state. Split out of
+ * RigidBlockOracle.cpp (PROMOTION_DESIGN Slice 1) so tests can fuzz it. Internal, not a public API.
  */
 namespace RigidBlockOracle
 {
 	namespace OracleDetail
 	{
 		/*
-		 * An LU pivot at or below this is a singular basis, refused rather than divided
-		 * by. Absolute, because rows are equilibrated to max |coefficient| = 1 before
-		 * anything reaches the factorisation.
+		 * An LU pivot at or below this means a singular basis. Absolute, since rows are
+		 * equilibrated to max |coefficient| = 1.
 		 */
 		constexpr double SingularPivotTol = 1.0e-11;
 
 		/**
-		 * The LP in standard form, held as an UNCHANGING sparse column matrix: rows
-		 * equilibrated to max |coefficient| = 1 and oriented to a non-negative
-		 * right-hand side, columns [structural | slacks | one artificial per row].
-		 * Nothing here is ever written after construction — the revised simplex reads
-		 * columns out of it and represents the basis separately, which is what makes
-		 * refactorisation a genuine reset to clean data.
+		 * The LP in standard form, as an immutable sparse column matrix: rows equilibrated to
+		 * max |coefficient| = 1 with non-negative RHS; columns [structural | slacks | one
+		 * artificial per row]. Immutability makes refactorisation a clean reset.
 		 */
 		struct FStandardForm
 		{
@@ -37,33 +30,25 @@ namespace RigidBlockOracle
 			int32 NumStructCols = 0;
 			int32 ArtificialStart = 0;
 
-			/* Compressed sparse columns. Row indices ascend within each column. */
+			// Compressed sparse columns; row indices ascend within each column.
 			TArray<int32> ColStart;
 			TArray<int32> ColRow;
 			TArray<double> ColVal;
 
-			/**
-			 * Per column, sqrt(1 + sum of its squared coefficients) — the static
-			 * steepest-edge weight the entering choice ranks by. Constant data like
-			 * everything else here: computed once from the untouched matrix.
-			 */
+			/** Per column, sqrt(1 + sum of squared coefficients): static steepest-edge weight. */
 			TArray<double> ColNorm;
 
-			/** Oriented right-hand side, non-negative by construction. */
+			/** Oriented right-hand side, non-negative. */
 			TArray<double> Rhs;
 
 			/**
-			 * Per row, the signed factor the assembly row was multiplied by to build this
-			 * standard-form row (the equilibration scale times the orientation flip's sign).
-			 * A dual y in this standard form acts on the scaled rows, so the physical
-			 * certificate on the original assembly rows is y[r] * RowScaleSigned[r] — what
-			 * mechanism extraction needs to read a block's equilibrium duals back as an
-			 * unscaled virtual-motion triple (ExtractMechanism, PROMOTION_DESIGN §3.3).
-			 * Nothing in the solve itself reads it; bookkeeping for the infeasible arm alone.
+			 * Per row, the signed scale applied to the assembly row (equilibration times
+			 * orientation sign). The unscaled dual is y[r] * RowScaleSigned[r]; used only by
+			 * ExtractMechanism (PROMOTION_DESIGN §3.3), not by the solve.
 			 */
 			TArray<double> RowScaleSigned;
 
-			/** Per row: the slack column where feasible as a start, else the artificial. */
+			/** Per row: the slack column if feasible as a start, else the artificial. */
 			TArray<int32> InitialBasis;
 		};
 
@@ -81,18 +66,14 @@ namespace RigidBlockOracle
 		};
 
 		/**
-		 * A sparse LU factorisation of the basis with row partial pivoting: left-looking
-		 * column-at-a-time (Gilbert-Peierls shape — a depth-first reach per column over
-		 * L's pattern, then a scatter/eliminate/split on a dense workspace), pivot row
-		 * chosen by largest magnitude with lowest original index on exact ties, keeping
-		 * the whole factorisation a pure function of the input arrays. Reached positions
-		 * are processed in ascending pivot order — valid because L is lower triangular in
-		 * position space — rather than the classic topological order, trading a sort for
-		 * simplicity at validation scale.
+		 * Sparse LU of the basis with row partial pivoting, left-looking (Gilbert-Peierls: DFS
+		 * reach over L's pattern, then eliminate on a dense workspace). Pivot is the largest
+		 * magnitude, lowest row index on ties, so the result is deterministic. Reached positions
+		 * are processed in sorted order rather than topological order, which is valid since L is
+		 * lower triangular in position space.
 		 *
-		 * During factorisation L's row indices are original row numbers (rows below the
-		 * diagonal have no position yet); a single remap after the last column turns
-		 * everything into position space, where both triangular solves are ordinary.
+		 * L's row indices are original rows during factorisation and remapped to positions at
+		 * the end.
 		 */
 		struct FBasisFactor
 		{
@@ -105,7 +86,7 @@ namespace RigidBlockOracle
 			TArray<int32> Perm;
 			TArray<int32> Pinv;
 
-			/* Workspaces, reused across columns and across refactorisations. */
+			// Workspaces, reused across columns and refactorisations.
 			TArray<double> Work;
 			TArray<int32> VisitStamp;
 			int32 Stamp = 0;
@@ -148,11 +129,8 @@ namespace RigidBlockOracle
 			}
 
 			/**
-			 * The cold-start column of the LOWEST row that has no pivot yet — the slack or
-			 * artificial FStandardForm::InitialBasis gave it, which is a unit column in that
-			 * row alone. That is what makes it a repair the factorisation can always take: an
-			 * unassigned row's unit column pivots at magnitude 1 whatever else the basis
-			 * holds, so a substitution never needs a second substitution.
+			 * The initial-basis unit column of the lowest unpivoted row. It always pivots at
+			 * magnitude 1, so one substitution always repairs.
 			 */
 			int32 ColdColumnForAnUnassignedRow(const FStandardForm& Form) const
 			{
@@ -168,14 +146,9 @@ namespace RigidBlockOracle
 			}
 
 			/**
-			 * bRepairSingular is for a warm start and nothing else, false on every cold
-			 * path so the arithmetic below is untouched by its existence. A caller's basis
-			 * is a hint: its columns were independent in the problem it came from, and
-			 * dropping some of that problem's rows and columns does not inherit
-			 * independence. With the flag set, a column that cannot pivot is replaced by
-			 * the cold default of an unassigned row and the position retried, so a hint
-			 * that has gone singular costs the caller the rows it named rather than the
-			 * whole answer. Basis is written in place, so the caller learns what survived.
+			 * bRepairSingular is for warm starts only. A warm basis may have gone singular in
+			 * the reduced problem; with the flag set, a column that cannot pivot is replaced by
+			 * an unassigned row's cold column and retried. Basis is updated in place.
 			 */
 			bool Factorise(
 				const FStandardForm& Form, TArray<int32>& Basis, bool bRepairSingular = false)
@@ -231,7 +204,7 @@ namespace RigidBlockOracle
 						}
 					}
 
-					/* Pivot: largest magnitude among unassigned rows, lowest index tied. */
+					// Largest magnitude among unassigned rows, lowest index on ties.
 					int32 PivotRow = INDEX_NONE;
 					double PivotAbs = 0.0;
 
@@ -266,17 +239,13 @@ namespace RigidBlockOracle
 
 						const int32 Replacement = ColdColumnForAnUnassignedRow(Form);
 
-						/*
-						 * A replacement that is the column which just failed, or no unassigned
-						 * row at all, would repair nothing and loop forever; both are refused
-						 * rather than retried, which drops the caller back to a cold start.
-						 */
+						// No replacement, or the same column, would loop forever; fall back to cold start.
 						if (Replacement == INDEX_NONE || Replacement == Col)
 						{
 							return false;
 						}
 
-						/* Retry THIS position with the replacement: the for's ++ undoes the --. */
+						// Retry this position; the loop's ++ undoes the --.
 						Basis[Position] = Replacement;
 						--Position;
 						continue;
@@ -316,7 +285,7 @@ namespace RigidBlockOracle
 					}
 				}
 
-				/* Everything has a position now: move L into position space. */
+				// Remap L into position space.
 				for (int32 Position = 0; Position < M; ++Position)
 				{
 					for (int32& RowIndex : LCols[Position].Row)
@@ -371,10 +340,7 @@ namespace RigidBlockOracle
 				}
 			}
 
-			/**
-			 * Solve yT B = c: input indexed by basis slot (CONSUMED as scratch), output
-			 * by original row — the shape pricing needs to dot against original columns.
-			 */
+			/** Solve yT B = c: input by basis slot (overwritten as scratch), output by original row. */
 			void BTranFactor(TArray<double>& SlotVec, TArray<double>& OutOrig) const
 			{
 				for (int32 Position = 0; Position < M; ++Position)
@@ -413,15 +379,9 @@ namespace RigidBlockOracle
 		};
 
 		/**
-		 * The basic values of a basis, x_B = B^-1 b, with one pass of iterative refinement:
-		 * the residual b - B*x is formed against the original columns and a correction
-		 * solved, knocking the solve noise of an ill-conditioned basis (the lambda cap's
-		 * 1e6 right-hand side amplifies it) from ~1e-6 down to rounding.
-		 *
-		 * A free function rather than part of Refactorise because two places need it —
-		 * the refactorisation, which clamps the tiny negatives it leaves, and the
-		 * warm-start seeding, which must read them unclamped because on a warm basis a
-		 * negative basic value is a real infeasibility to repair, not rounding.
+		 * x_B = B^-1 b with one pass of iterative refinement, which cuts ill-conditioned solve
+		 * noise from ~1e-6 to rounding. Separate from Refactorise because warm-start seeding
+		 * needs the values unclamped: there a negative is a real infeasibility.
 		 */
 		inline void SolveBasicValues(
 			const FStandardForm& Form,
@@ -433,7 +393,7 @@ namespace RigidBlockOracle
 		{
 			Factor.FTranFactor(Form.Rhs, OutXB);
 
-			/* One refinement pass: r = b - B*x, x += B^-1 r. */
+			// r = b - B*x, x += B^-1 r.
 			ScratchOrig.Init(0.0, Form.NumRows);
 
 			for (int32 Slot = 0; Slot < Form.NumRows; ++Slot)
@@ -463,10 +423,7 @@ namespace RigidBlockOracle
 			}
 		}
 
-		/**
-		 * One product-form update: the basis column at Slot was replaced by a column
-		 * whose FTRAN image was w, held as its pivot element and off-pivot nonzeros.
-		 */
+		/** One product-form update: column at Slot replaced by one with FTRAN image w. */
 		struct FEta
 		{
 			int32 Slot = 0;
@@ -515,30 +472,18 @@ namespace RigidBlockOracle
 			int32 PivotsSinceRefactor = 0;
 
 			/*
-			 * Instrumentation only — nothing branches on it. One count per column priced
-			 * against a dual vector, wherever that happens; FOracleResult's field carries
-			 * the reasoning about why the number is worth reporting.
+			 * Instrumentation only (see FOracleResult). Columns priced against a dual vector;
+			 * iterations entered under the Bland fallback; and the first pivot at which phase 1
+			 * was feasible within tolerance (INDEX_NONE if never). The solver always continues
+			 * to optimality.
 			 */
 			int64 PricingColumnScans = 0;
 
-			/*
-			 * Instrumentation only — nothing branches on it. One count per iteration
-			 * entered with the Bland fallback in force; FOracleResult's field carries the
-			 * reasoning about why an unfired branch is worth counting.
-			 */
 			int32 BlandDegenerateEntries = 0;
 
-			/*
-			 * Instrumentation only — nothing branches on it. The pivot at which phase 1's
-			 * basic-artificial infeasibility sum first came inside tolerance, the first
-			 * moment an early exit could have fired; the solver keeps going to optimality
-			 * regardless, since an early exit would return a feasible, not optimal, point —
-			 * a different contract nobody has taken. INDEX_NONE means the sum never came
-			 * inside tolerance — an infeasible problem has no such pivot.
-			 */
 			int32 PivotsToFirstFeasible = INDEX_NONE;
 
-			/* Scratch buffers, reused so the hot loops never allocate. */
+			// Scratch buffers, reused so hot loops do not allocate.
 			TArray<double> ScratchOrig;
 			TArray<double> ScratchSlot;
 			TArray<double> YRow;
@@ -559,21 +504,10 @@ namespace RigidBlockOracle
 			}
 
 			/**
-			 * THE ERROR RESET: refactorise the basis from the original sparse columns and
-			 * recompute the basic values from the original right-hand side, one pass of
-			 * iterative refinement included (SolveBasicValues), so the verification gate
-			 * judges the basis itself and not the solver's arithmetic. Tiny negative basic
-			 * values after that are rounding at degenerate vertices and are clamped to
-			 * zero; a genuinely infeasible basis cannot hide behind the clamp because the
-			 * final answer is verified against the original unscaled rows.
-			 *
-			 * That justification is about a basis the simplex itself built, and is exactly
-			 * false of one handed in from outside: a warm start is normally primal
-			 * infeasible (the deleted joints were carrying force), so a negative basic
-			 * value there is the infeasibility phase 1 exists to repair, not rounding —
-			 * which the clamp would launder into a plausible feasible-looking point. That
-			 * is why SeedWarmStartBasis reads the values before this function ever runs on
-			 * them, turning each one into phase-1 work that can be seen.
+			 * Error reset: refactorise from the original columns and recompute basic values
+			 * (with refinement). Tiny negatives are rounding and are clamped; the final answer is
+			 * verified against the unscaled rows anyway. Not valid for a warm-start basis, where
+			 * negatives are real infeasibility, so SeedWarmStartBasis reads them first.
 			 */
 			bool Refactorise()
 			{
