@@ -11,27 +11,19 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-/**
- * Named, and uniquely: an anonymous namespace is private to a translation unit, not a file, and a
- * unity build merges files. See Tests/ConnectionLoadTest.cpp. The `using namespace` inside each
- * RunTest is for the same reason.
- */
+// Named, not anonymous, so it cannot collide under a unity build.
 namespace SessionToolbarTestSupport
 {
-	/** Brick course pitch, 7.5 cm (6.5 brick + 1.0 joint), transcribed not imported so a retune of the brick or joint fails here rather than agreeing with the plane function. */
+	/** Brick course pitch, 7.5 cm (6.5 brick + 1.0 joint), transcribed rather than imported. */
 	constexpr double BrickCoursePitchCm = 7.5;
 
-	/** The brick's half height — half of FSnapSettings::BrickSizeCm.Z, the standard 6.5 cm unit. */
+	/** Half of the 6.5 cm brick height. */
 	constexpr double BrickHalfHeightCm = 3.25;
 
-	/** The wall plate's half height, from the demo building's own plate extent (33.75, 5.125, 5.0). */
+	/** The demo wall plate's half height. */
 	constexpr double PlateHalfHeightCm = 5.0;
 
-	/**
-	 * Placement indices into the demo building's layout; heights are read off it, not transcribed,
-	 * so the comparison stays live when the demo moves. Builder's order (Tests/DemoBuildingTest.cpp):
-	 * 0-3 grounded course, 4-6 staggered course above, 7 the timber wall plate.
-	 */
+	/** Demo layout indices: 0-3 grounded course, 4-6 the course above, 7 the wall plate. */
 	constexpr int32 DemoCourseZeroPieceIndex = 0;
 	constexpr int32 DemoCourseOnePieceIndex = 4;
 	constexpr int32 DemoPlatePieceIndex = 7;
@@ -141,10 +133,7 @@ namespace SessionToolbarTestSupport
 		return TEXT("<not a toolbar swatch>");
 	}
 
-	/**
-	 * Which region of the strip each button belongs to, transcribed from SESSION_UI_DESIGN §b (mode
-	 * tabs, settings, command) rather than read off the model it checks.
-	 */
+	/** Each button's strip region, transcribed from SESSION_UI_DESIGN §b. */
 	DestructionSession::EToolbarGroup ExpectedGroupOf(DestructionSession::EToolbarButtonId Id)
 	{
 		using namespace DestructionSession;
@@ -158,14 +147,11 @@ namespace SessionToolbarTestSupport
 		case EToolbarButtonId::PieceBrick:
 		case EToolbarButtonId::PieceTimberPlate:
 		case EToolbarButtonId::PieceTimberLintel:
-
-		/* Rotate is a Setting: a property of the next placement, so it latches and sits before the command rule. */
 		case EToolbarButtonId::RotatePiece:
 
 		case EToolbarButtonId::PlacementSnap:
 		case EToolbarButtonId::PlacementFree:
 
-		/* The six joint chips are Settings too: a property of the next placement, so they latch. */
 		case EToolbarButtonId::JointAuto:
 		case EToolbarButtonId::JointMortar:
 		case EToolbarButtonId::JointDry:
@@ -176,7 +162,7 @@ namespace SessionToolbarTestSupport
 		case EToolbarButtonId::CourseDown:
 		case EToolbarButtonId::CourseUp:
 
-		/* The load overlay is a Setting, not a Command: it changes how the session looks, not the structure, so it sits before the command rule. */
+		// The load overlay changes how the session looks, not the structure.
 		case EToolbarButtonId::ToggleLoadOverlay:
 			return EToolbarGroup::Settings;
 
@@ -188,7 +174,7 @@ namespace SessionToolbarTestSupport
 		return EToolbarGroup::Command;
 	}
 
-	/** Which swatch a chip carries: the piece it lays, or none. */
+	/** The swatch a chip carries, or none. */
 	DestructionSession::EToolbarSwatch ExpectedSwatchOf(DestructionSession::EToolbarButtonId Id)
 	{
 		using namespace DestructionSession;
@@ -202,25 +188,17 @@ namespace SessionToolbarTestSupport
 		}
 	}
 
-	/**
-	 * The design's linear colours, transcribed from SESSION_UI_DESIGN §e (which gives each twice,
-	 * linear and sRGB) so a production constant retuned away from the design fails here. Build amber
-	 * and destroy red are the Caution and destructive colours; the two swatches are M_Shed_Brick and
-	 * M_Shed_Timber's base colours (Scripts/Author-ShedMaterials.py).
-	 */
+	/** Linear design colours transcribed from SESSION_UI_DESIGN §e; swatches match the shed materials. */
 	const FLinearColor DesignBuildAccent(0.95f, 0.66f, 0.13f, 1.0f);
 	const FLinearColor DesignDestroyAccent(0.72f, 0.16f, 0.14f, 1.0f);
 	const FLinearColor DesignBrickSwatch(0.35f, 0.06f, 0.04f, 1.0f);
 	const FLinearColor DesignTimberSwatch(0.45f, 0.22f, 0.09f, 1.0f);
 
-	/** Rounded chips with a drop edge — §a principle 1, "chunky rounded chips with a 2 px drop edge". */
+	/** Rounded chips with a 2 px edge (§a). */
 	constexpr float DesignChipCornerRadiusPx = 10.0f;
 	constexpr float DesignChipOutlineWidthPx = 2.0f;
 
-	/**
-	 * Alpha ceilings for a faded chip's fill and caption (§e). The number is loose; what matters is
-	 * that a greyed chip reads as visibly not live.
-	 */
+	/** Loose alpha ceilings for a greyed chip's fill and caption (§e). */
 	constexpr float DisabledFillAlphaCeiling = 0.35f;
 	constexpr float DisabledCaptionAlphaCeiling = 0.5f;
 
@@ -239,7 +217,7 @@ namespace SessionToolbarTestSupport
 		return FString::Printf(TEXT("(%g, %g, %g, a %g)"), C.R, C.G, C.B, C.A);
 	}
 
-	/** Linear luminance of a colour. Captions are asserted as "dark" or "readable" bands, not exact triples, so a nudge to the ink is not a failure. */
+	/** Linear luminance, so captions are checked by band rather than exact colour. */
 	double LinearLuminance(const FLinearColor& C)
 	{
 		return 0.2126 * C.R + 0.7152 * C.G + 0.0722 * C.B;
@@ -260,7 +238,7 @@ namespace SessionToolbarTestSupport
 			&& FMath::IsFinite(C.A);
 	}
 
-	/** Every button the model knows, so a sweep covers the whole vocabulary. */
+	/** Every button id. */
 	TArray<DestructionSession::EToolbarButtonId> AllButtonIds()
 	{
 		using namespace DestructionSession;
@@ -288,7 +266,7 @@ namespace SessionToolbarTestSupport
 		};
 	}
 
-	/** Which choice each joint chip stands for, transcribed rather than read off the model it checks. */
+	/** The joint choice each chip stands for, transcribed. */
 	DestructionSession::EJointChoice JointChoiceOfButton(DestructionSession::EToolbarButtonId Id)
 	{
 		using namespace DestructionSession;
@@ -304,7 +282,7 @@ namespace SessionToolbarTestSupport
 		}
 	}
 
-	/** Every joint choice the model knows, so a sweep covers the whole segmented control. */
+	/** Every joint choice. */
 	TArray<DestructionSession::EJointChoice> AllJointChoices()
 	{
 		using namespace DestructionSession;
@@ -319,7 +297,7 @@ namespace SessionToolbarTestSupport
 		};
 	}
 
-	/** Which shipped connection profile an override points at, by address, never by value: equal-field profiles differ only in which library row a retune moves. */
+	/** The shipped connection profile an override points at, by address, not value. */
 	const TCHAR* NameOfConnectionProfileByAddress(const FConnectionStrength* Profile)
 	{
 		using namespace DestructionProfiles;
@@ -338,7 +316,7 @@ namespace SessionToolbarTestSupport
 		return TEXT("<not a shipped library row>");
 	}
 
-	/** Whether an override points at a row of the shipped library at all, or at nothing. */
+	/** Whether an override is null or a shipped library row. */
 	bool IsAShippedConnectionProfileOrNull(const FConnectionStrength* Profile)
 	{
 		using namespace DestructionProfiles;
@@ -391,11 +369,7 @@ namespace SessionToolbarTestSupport
 		return Line;
 	}
 
-	/**
-	 * Compares field by field, not memcmp: padding is not required to be copied, so a memcmp would
-	 * report differences intermittently. Adding a field without extending this helper is the only
-	 * way a change can hide.
-	 */
+	/** Field by field, not memcmp (padding). Extend it when a field is added. */
 	bool StatesEqual(
 		const DestructionSession::FSessionToolbarState& A,
 		const DestructionSession::FSessionToolbarState& B)
@@ -448,20 +422,9 @@ namespace SessionToolbarTestSupport
 	}
 
 	/**
-	 * The whole state space the flag rules are claimed over, not a hand-picked handful (DESIGN §4:
-	 * an invariant over fixtures sharing a hidden property is not an invariant). 2 modes x 3 pieces
-	 * x 2 placements x 3 courses x 2 structure flags x 2 overlay flags x 6 joint choices = 864
-	 * states, milliseconds to sweep.
-	 *
-	 * Courses are 0 (grounded, CourseDown refused), 1 (first course it is offered) and 5 (clear of
-	 * the boundary). The load overlay and joint choice are dimensions because each is drawn in one
-	 * mode alone yet must survive a trip through the other: a model that reset either on the mode it
-	 * is not drawn in would pass a sweep that only set it in the drawing mode. Six joint values, not
-	 * two, because "exactly one of six is lit" cannot be checked on a control a boolean can light.
-	 *
-	 * bRotated is deliberately NOT a dimension: it would double 864 to 1728 for a flag that changes
-	 * exactly one chip's bActive. Every state carries bRotated == false; the both-ways sweep lives in
-	 * Core.SessionToolbar.RotateChip. Anybody adding a flag that moves the strip's shape adds it here.
+	 * The whole state space the rules are claimed over (DESIGN §4): 864 states. Courses 0, 1 and 5
+	 * straddle the CourseDown floor. bRotated is left false; Core.SessionToolbar.RotateChip sweeps
+	 * it. Add any new flag that changes the strip's shape here.
 	 */
 	TArray<DestructionSession::FSessionToolbarState> AllStates()
 	{
@@ -515,7 +478,7 @@ namespace SessionToolbarTestSupport
 		return FString::Printf(TEXT("(%g, %g, %g)"), V.X, V.Y, V.Z);
 	}
 
-	/** Which shipped profile a returned reference IS, by address. Never a value comparison. */
+	/** The shipped material profile a reference is, by address. */
 	const TCHAR* NameOfMaterialByAddress(const DestructionProfiles::FMaterialProfile& Material)
 	{
 		if (&Material == &DestructionProfiles::ClayBrick)         { return TEXT("ClayBrick"); }
@@ -534,15 +497,8 @@ namespace SessionToolbarTestSupport
 }
 
 /**
- * The toolbar draws one fixed list per mode, in one fixed order, mode pair always first.
- *
- * The list is a model answer, not a Slate layout: asserting widgets appeared needs a viewport and
- * cannot see a button offered in the wrong mode, a missing button, or the strip reordering under
- * the cursor. The mode pair being first is the one ordering claim with a player-facing reason — a
- * strip whose first slots shifted would move a button under a stationary cursor. Swept over the
- * whole state space because the list's content depends on the mode alone.
- *
- * Needs a ticking world: no.
+ * One fixed button list per mode, in a fixed order with the mode pair first, so no button
+ * moves under a still cursor. Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarButtonsByModeTest,
@@ -561,17 +517,12 @@ bool FSessionToolbarButtonsByModeTest::RunTest(const FString& Parameters)
 		EToolbarButtonId::PieceTimberPlate,
 		EToolbarButtonId::PieceTimberLintel,
 
-		/* Rotate sits with the palette, after the three pieces and before Snap/Free: a modifier on the lit piece, not a fourth piece, and clear of the irreversible Clear build. */
 		EToolbarButtonId::RotatePiece,
 
 		EToolbarButtonId::PlacementSnap,
 		EToolbarButtonId::PlacementFree,
 
-		/*
-		 * The joint chips sit after the placement pair and before the course stepper: both are
-		 * segmented controls over the next placement. Auto is first because it is the default the
-		 * session opens on.
-		 */
+		// Auto first: it is the default.
 		EToolbarButtonId::JointAuto,
 		EToolbarButtonId::JointMortar,
 		EToolbarButtonId::JointDry,
@@ -584,11 +535,7 @@ bool FSessionToolbarButtonsByModeTest::RunTest(const FString& Parameters)
 		EToolbarButtonId::ClearBuild,
 	};
 
-	/*
-	 * The Destroy strip's order (§b): the mode pair, then the load overlay setting, then Run
-	 * structure past a rule. The toggle sits between the pair and Run, not beside it. It is drawn
-	 * in Destroy alone; bLoadOverlay is swept both ways over both modes below.
-	 */
+	// Destroy strip (§b): mode pair, load overlay, then Run past a rule.
 	const TArray<EToolbarButtonId> ExpectedInDestroy = {
 		EToolbarButtonId::ModeBuild,
 		EToolbarButtonId::ModeDestroy,
@@ -620,7 +567,7 @@ bool FSessionToolbarButtonsByModeTest::RunTest(const FString& Parameters)
 				static_cast<int32>(Buttons[Index].Id), static_cast<int32>(Expected[Index]));
 		}
 
-		/* No button appears twice: two slots with one id is a click that cannot be attributed, which the ordered comparison above can miss. */
+		// No button appears twice.
 		TSet<EToolbarButtonId> Seen;
 
 		for (const FToolbarButton& Button : Buttons)
@@ -640,13 +587,7 @@ bool FSessionToolbarButtonsByModeTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Exactly one button in each setting group is lit, the one the state names; a command button is
- * never lit.
- *
- * bActive is "this is what you chose", not bEnabled: two lit piece buttons say the ghost is two
- * pieces, none lit says the last click did nothing. Commands are never active — a latched Clear
- * reads as a mode the player is stuck in.
- *
+ * Exactly one button per setting group is lit, the one the state names; commands are never lit.
  * Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -746,7 +687,6 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 			case EToolbarButtonId::JointScrew:
 			case EToolbarButtonId::JointBolt:
 			{
-				/* Exactly one of six is lit, the one the state names: this choice commits the physics of the next piece's joints, so it is not cosmetic. */
 				++JointButtonsSeen;
 				ActiveJointButtons += Button.bActive ? 1 : 0;
 
@@ -762,11 +702,7 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 			}
 
 			case EToolbarButtonId::RotatePiece:
-				/*
-				 * Rotate latches: which way the next piece lies is a setting that stays until
-				 * changed, so the chip must say so. Swept only at bRotated == false here (AllStates
-				 * says why); Core.SessionToolbar.RotateChip sweeps both.
-				 */
+				// Only bRotated == false here; Core.SessionToolbar.RotateChip sweeps both.
 				++RotateButtonsSeen;
 				TestEqual(
 					*FString::Printf(
@@ -776,7 +712,6 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 				break;
 
 			case EToolbarButtonId::ToggleLoadOverlay:
-				/* The overlay latches: it is a way of looking at the wall that stays on until turned off, so the chip must show its state. */
 				++LoadOverlayButtonsSeen;
 				TestEqual(
 					*FString::Printf(
@@ -801,7 +736,7 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 				*DescribeState(State), *DescribeButtons(Buttons)),
 			ActiveModeButtons, 1);
 
-		/* Piece and placement are not drawn in Destroy, so "exactly one lit" is a claim about the buttons that exist. */
+		// Piece and placement are not drawn in Destroy.
 		TestEqual(
 			FString::Printf(
 				TEXT("%s: exactly one Piece button must be lit when the group is drawn — [%s]"),
@@ -814,7 +749,7 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 				*DescribeState(State), *DescribeButtons(Buttons)),
 			ActivePlacementButtons, bBuilding ? 1 : 0);
 
-		/* All six joint chips or none, exactly one lit when drawn. The count floor stops this passing on a strip that drew Auto alone. */
+		// All six joint chips or none.
 		TestEqual(
 			FString::Printf(
 				TEXT("%s: the six joint chips must be drawn in Build mode and nowhere else — [%s]"),
@@ -827,7 +762,7 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 				*DescribeState(State), *DescribeButtons(Buttons)),
 			ActiveJointButtons, bBuilding ? 1 : 0);
 
-		/* The toggle was actually on the strip: the claim above loops over the buttons returned, so a strip that omitted the chip would satisfy it with nothing to check. */
+		// Presence floors, since the checks above loop only over buttons returned.
 		TestEqual(
 			FString::Printf(
 				TEXT("%s: the load overlay toggle must be on the strip in Destroy mode and nowhere else "
@@ -835,7 +770,6 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 				*DescribeState(State), *DescribeButtons(Buttons)),
 			LoadOverlayButtonsSeen, bBuilding ? 0 : 1);
 
-		/* The rotate chip was actually there: drawn in Build alone, since Destroy lays no next piece. */
 		TestEqual(
 			FString::Printf(
 				TEXT("%s: the rotate chip must be on the strip in Build mode and nowhere else — [%s]"),
@@ -847,15 +781,8 @@ bool FSessionToolbarActiveFlagsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A button is greyed exactly when the thing behind it cannot happen: CourseDown on the ground
- * course, Clear and Run with nothing built.
- *
- * The model owns the greying because it owns the refusal — if the widget decided separately, the
- * two copies would disagree the day the floor moves and leave a lit button that does nothing.
- * bHasStructure is the only precondition either command has; everything else is always enabled,
- * asserted rather than assumed (a greyed mode button traps the player in a mode).
- *
- * Needs a ticking world: no.
+ * A button is greyed exactly when its action can't happen: CourseDown on course 0, and Clear,
+ * Run and the load overlay with nothing built. Everything else is enabled. Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarEnabledFlagsTest,
@@ -871,11 +798,7 @@ bool FSessionToolbarEnabledFlagsTest::RunTest(const FString& Parameters)
 	{
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
 
-		/*
-		 * The floor: everything below sweeps over the buttons returned, so a model returning nothing
-		 * passes every claim with nothing to check (measured: a stub returning {} reported Success
-		 * until this block was added). The named buttons are the only ones with a precondition.
-		 */
+		// Floor: the sweep below loops over returned buttons, so an empty list would pass it.
 		const bool bBuilding = State.Mode == ESessionMode::Build;
 
 		TestTrue(
@@ -916,7 +839,6 @@ bool FSessionToolbarEnabledFlagsTest::RunTest(const FString& Parameters)
 				break;
 
 			case EToolbarButtonId::ToggleLoadOverlay:
-				/* Same precondition: the overlay solves and tints the structure, so with nothing built a live chip would latch on and colour nothing. */
 				bExpectedEnabled = State.bHasStructure;
 				Why = TEXT("it tints a live structure and there must be one");
 				break;
@@ -939,16 +861,8 @@ bool FSessionToolbarEnabledFlagsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Every button carries a caption, no two on one strip read the same, and the five a player
- * navigates by contain the word they navigate by.
- *
- * The caption is data on the row (as FPieceMenuRow::Label is), because a widget spelling its own
- * text holds load-bearing wording where no test can reach — Snap vs Free is the difference between
- * a piece on the bond and one at the cursor. Wording is bounded, not pinned: what may not drift is
- * that a button contains the word a player hunts by, and that no two on a strip match. Distinctness
- * is within one strip (ModeBuild and ClearBuild may both say "Build").
- *
- * Needs a ticking world: no.
+ * Every button has a caption, captions are distinct within a strip, and key buttons contain
+ * the word a player looks for. Wording is bounded, not pinned. Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarLabelsTest,
@@ -973,14 +887,8 @@ bool FSessionToolbarLabelsTest::RunTest(const FString& Parameters)
 		{ EToolbarButtonId::PlacementFree, TEXT("Free") },
 		{ EToolbarButtonId::RunStructure,  TEXT("Run") },
 
-		/* The word is "Load"; the rest is the widget's. Pinning the whole caption would fail on a harmless retune. */
 		{ EToolbarButtonId::ToggleLoadOverlay, TEXT("Load") },
 
-		/*
-		 * The six joint chips name their fastener; the word is the claim, the rest the widget's. This
-		 * control commits physics, so a chip must be identifiable without clicking. "Dry" not
-		 * "DryStone": one slot of six on a 48 px bar, and both spellings contain the word.
-		 */
 		{ EToolbarButtonId::JointAuto,   TEXT("Auto") },
 		{ EToolbarButtonId::JointMortar, TEXT("Mortar") },
 		{ EToolbarButtonId::JointDry,    TEXT("Dry") },
@@ -988,15 +896,10 @@ bool FSessionToolbarLabelsTest::RunTest(const FString& Parameters)
 		{ EToolbarButtonId::JointScrew,  TEXT("Screw") },
 		{ EToolbarButtonId::JointBolt,   TEXT("Bolt") },
 
-		/* The rotate chip says "Rotate"; the word is the claim, the rest the widget's. It is the only way to lay a header. */
 		{ EToolbarButtonId::RotatePiece, TEXT("Rotate") },
 	};
 
-	/*
-	 * How many word checks the sweep owes, accumulated from the mode and settled at the end — the
-	 * same floor EnabledFlags carries: every claim below loops over the buttons returned, so a model
-	 * returning nothing passes them all. Accumulated, not a literal, so it tracks AllStates().
-	 */
+	// Floor on word checks, so a strip drawing nothing cannot pass.
 	int32 WordChecksOwed = 0;
 	int32 WordChecksMade = 0;
 
@@ -1004,13 +907,9 @@ bool FSessionToolbarLabelsTest::RunTest(const FString& Parameters)
 	{
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
 
-		/*
-		 * Eleven in Build (mode pair, Snap, Free, six joint chips, Rotate), four in Destroy (mode
-		 * pair, Run, Load). The mode pair is the only rows both strips share.
-		 */
 		WordChecksOwed += State.Mode == ESessionMode::Build
-			? 2 + 2 + 6 + 1   /* the mode pair, Snap and Free, the six joint chips, then Rotate */
-			: 2 + 2;          /* the mode pair, then Run structure and Load overlay */
+			? 2 + 2 + 6 + 1   // mode pair, Snap/Free, six joints, Rotate
+			: 2 + 2;          // mode pair, Run, Load
 
 		TestTrue(
 			*FString::Printf(
@@ -1068,19 +967,9 @@ bool FSessionToolbarLabelsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * One click changes one thing and leaves everything else alone; a click on a greyed or off-screen
- * button changes nothing.
- *
- * The transition is a pure function because that is the only way it is assertable — a controller
- * mutating its own fields from a Slate callback puts the behaviour behind a click only a human can
- * perform. The rows start from non-default piece, placement and course so a transition that
- * rebuilt the state from scratch fails rather than agreeing with a default expectation. The course
- * floor is the fail-closed row: a negative course is a plane under the ground, so greyed CourseDown
- * is a bitwise no-op, not a clamp that lands on the same number. The last block holds the two
- * functions against each other: whatever SessionToolbarButtons will not draw or draws greyed,
- * ApplyToolbarButton must refuse to act on.
- *
- * Needs a ticking world: no.
+ * One click changes one thing; a greyed or undrawn button changes nothing. Rows start from
+ * non-default settings so a transition that rebuilds the state fails. The last block checks
+ * ApplyToolbarButton refuses whatever SessionToolbarButtons greys or omits. Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarTransitionsTest,
@@ -1222,7 +1111,7 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 3, true),
 		},
 
-		/* --- The load overlay: a setting, so it latches and survives a mode change ------------- */
+		// The load overlay: a setting that survives a mode change.
 
 		{
 			TEXT("the load overlay goes on, and changes nothing else about the session"),
@@ -1255,7 +1144,6 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Snap, 2, true, false),
 		},
 		{
-			/* The preservation row: Build takes the chip off the strip, but the player's choice must survive, as the piece, placement and course do. */
 			TEXT("switching to Build does NOT clear a load overlay the player turned on"),
 			MakeState(ESessionMode::Destroy, EBuildPieceKind::TimberLintel, EPlacementMode::Free, 3, true, true),
 			EToolbarButtonId::ModeBuild,
@@ -1280,7 +1168,7 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 			MakeState(ESessionMode::Destroy, EBuildPieceKind::Brick, EPlacementMode::Snap, 1, true, true),
 		},
 
-		/* --- The joint choice: a segmented setting, so it latches and survives a mode change ---- */
+		// The joint choice: a setting that survives a mode change.
 
 		{
 			TEXT("choosing Screw changes the joint and nothing else"),
@@ -1323,7 +1211,6 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 				false, EJointChoice::Bolt),
 		},
 		{
-			/* Back to Auto, which must be reachable: it hands the joint back to BuildMode::JointForContact, the only way to get an ordinary bedded brick after screwing one. */
 			TEXT("and back to Auto, which hands the joint back to the inference"),
 			MakeState(ESessionMode::Build, EBuildPieceKind::Brick, EPlacementMode::Free, 4, true,
 				true, EJointChoice::Bolt),
@@ -1348,7 +1235,6 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 				false, EJointChoice::Screw),
 		},
 		{
-			/* The preservation pair: Destroy takes the six chips off the strip, but a reset to Auto would dry-bed the next plate the player asked to screw, invisible until the structure runs. */
 			TEXT("switching to Destroy does NOT clear the joint the player chose"),
 			MakeState(ESessionMode::Build, EBuildPieceKind::TimberPlate, EPlacementMode::Free, 3, true,
 				false, EJointChoice::Screw),
@@ -1394,11 +1280,7 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 			StatesEqual(After, Case.Expected));
 	}
 
-	/*
-	 * The two functions held against each other, over every state and button (864 x 18 = 15,552
-	 * clicks). One-directional: an absent or greyed button must leave the state alone; the table
-	 * above owns the lit-and-enabled ones.
-	 */
+	// Over every state and button: an absent or greyed button must leave the state alone.
 	for (const FSessionToolbarState& State : AllStates())
 	{
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
@@ -1420,7 +1302,7 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 					StatesEqual(After, State));
 			}
 
-			/* No click may produce a negative course: this is the only door into the state, and a below-ground plane is nonsense. */
+			// No click may produce a negative course.
 			TestTrue(
 				*FString::Printf(
 					TEXT("%s: %s must never leave the course negative, it gave %s"),
@@ -1433,15 +1315,8 @@ bool FSessionToolbarTransitionsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Each piece kind is one half-extent and one material, both the ones the already-built demo uses.
- *
- * The sizes are not new geometry: the brick is the standard 21.5 x 10.25 x 6.5 unit halved, the
- * plate is DemoBuilding.cpp's wall plate (33.75, 5.125, 5.0), the lintel its 90 cm sibling.
- * Pinning them here stops the toolbar being a third place brick dimensions live. The material is
- * compared by address, never value: a by-value match would pass against a stale private copy of
- * Timber. The unknown-kind row is fail-closed: whatever an undeclared kind gets, it must be a
- * real extent (no NaN or negative mass) and a real library row, not which one.
- *
+ * Each piece kind has the demo building's half-extent and a library material, compared by
+ * address. An unknown kind must still get a finite extent and a real library row.
  * Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -1504,7 +1379,7 @@ bool FSessionToolbarPaletteTest::RunTest(const FString& Parameters)
 			&Material == Case.ExpectedMaterial);
 	}
 
-	/* An undeclared kind: neither answer may be garbage — a NaN extent becomes a NaN mass, and a non-library reference is a dangling read. */
+	// Fail closed: a NaN extent becomes a NaN mass.
 	const EBuildPieceKind UnknownKind = static_cast<EBuildPieceKind>(200);
 	const FVector UnknownExtentCm = BuildPieceHalfExtentCm(UnknownKind);
 
@@ -1526,18 +1401,8 @@ bool FSessionToolbarPaletteTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A course's build plane puts the piece on top of the ground, not half in it: course N's bottom
- * is N brick courses up, and the plane is the piece's own half-height above that.
- *
- * This is a convention change: earlier harnesses centre course 0 at Z = 0, half below the ground.
- * A player's first brick must sit ON the ground, so a brick on course 0 answers 3.25, not 0. The
- * structure is unchanged — the solver reads relative positions, so this is the same building
- * lifted one brick half-height. The pitch is the brick's whatever the piece is: 7.5 cm is 6.5
- * brick plus a 1 cm bed, and a course is a property of the wall, not the thing laid into it. The
- * test spells 7.5 out and also derives it from a default FSnapSettings, so a retune fails on a row
- * that names it (DESIGN §3). A negative course is treated as course 0, fail-closed.
- *
- * Needs a ticking world: no.
+ * Course N's plane is N brick pitches (7.5 cm) up plus the piece's half-height, so course 0
+ * rests on the ground. Negative courses act as course 0. Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarCoursePlaneZTest,
@@ -1549,7 +1414,7 @@ bool FSessionToolbarCoursePlaneZTest::RunTest(const FString& Parameters)
 	using namespace SessionToolbarTestSupport;
 	using namespace DestructionSession;
 
-	/* The pitch, from the snap settings the solver uses. Asserted before the heights below, which are stale if the brick or joint was retuned. */
+	// Check the transcribed pitch against the solver's settings first.
 	const BuildMode::FSnapSettings Settings;
 
 	TestEqual(
@@ -1611,7 +1476,7 @@ bool FSessionToolbarCoursePlaneZTest::RunTest(const FString& Parameters)
 			ZCm, Case.ExpectedZCm);
 	}
 
-	/* The ladder climbs exactly one pitch per course, for both half-heights: the rows above pin three points, this pins every step, so a 6.5-not-7.5 pitch fails on the step. */
+	// Every step climbs exactly one pitch.
 	const double HalfHeights[] = { BrickHalfHeightCm, PlateHalfHeightCm };
 
 	for (double HalfHeightCm : HalfHeights)
@@ -1639,20 +1504,8 @@ bool FSessionToolbarCoursePlaneZTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Course 0 is the one that touches the earth, and the course readout names the course it shows.
- *
- * Grounded is the flag FStructure routes load to, so which course is grounded is not cosmetic — a
- * building marked grounded cannot fall. One course has earth under it, course 0; everything above
- * is held by what is below. The label is the model's, bounded the same way as every caption: it
- * contains the course number, is never blank, and no two courses read alike.
- *
- * The printed number counts from ONE, which is not the stored index (owner-delegated ruling
- * 2026-09-15, P1): the piece menu already counts from one, and the two surfaces disagreed. Course
- * stays zero-based; only the label function changes, so grounding and plane arithmetic are
- * untouched. A negative course answers as course 0 throughout, so the two functions cannot
- * disagree about a state that should not exist.
- *
- * Needs a ticking world: no.
+ * Only course 0 is grounded. The label counts from one (ruling 2026-09-15), though Course
+ * stays zero-based. Negative courses act as course 0. Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarCourseGroundingAndLabelTest,
@@ -1680,7 +1533,7 @@ bool FSessionToolbarCourseGroundingAndLabelTest::RunTest(const FString& Paramete
 		TEXT("FAIL CLOSED: a negative course answers as course 0 does — grounded"),
 		IsCourseGrounded(-1));
 
-	/* Two exact pins: "contains its number" is satisfied by either convention on most courses, so the rows separating them are spelled out in full. */
+	// Exact pins, since "contains its number" can't tell zero- from one-based on most courses.
 	TestEqual(
 		FString::Printf(
 			TEXT("the GROUNDED course is the player's FIRST course: CourseLabel(0) must read 'Course 1', it reads '%s'"),
@@ -1701,7 +1554,7 @@ bool FSessionToolbarCourseGroundingAndLabelTest::RunTest(const FString& Paramete
 			*LabelForThree),
 		LabelForThree.Contains(TEXT("4")));
 
-	/* And must not still print the index: without this, "Course 3 (index 3)" would satisfy the row above and put two numbers on one course again. */
+	// And must not also print the zero-based index.
 	TestFalse(
 		*FString::Printf(
 			TEXT("and must NOT print the zero-based index beside it: CourseLabel(3) reads '%s' and must not contain '3'"),
@@ -1750,21 +1603,9 @@ bool FSessionToolbarCourseGroundingAndLabelTest::RunTest(const FString& Paramete
 }
 
 /**
- * Walking the demo building through the model reproduces it exactly, lifted by one brick
- * half-height: the same building, resting on the ground instead of straddling it.
- *
- * This is the integration claim, still world-free. The toolbar model is a presenter over the snap
- * solver and placement API DemoBuilding.cpp already drives; pointing it at the one building this
- * project has pinned is how we know it invented no geometry. Every demo-side number is read out of
- * the built FBrickLayout, not transcribed, so a drift in the palette or plane fails here rather
- * than in a screenshot — and it goes red AT the demo's migration onto this convention, not before.
- *
- * The assertion is a CONSTANT offset on every course, not any one height: a constant offset is the
- * whole ruling ("same relative geometry, shifted to rest on the ground") and guarantees the solver
- * reads the identical structure. And the offset must equal the brick's own half-height, or it is a
- * pinned coincidence.
- *
- * Needs a ticking world: no.
+ * The model reproduces the demo building's heights, all lifted by exactly one brick
+ * half-height. Demo numbers are read from the built layout, not transcribed. A constant
+ * offset means the solver sees the same structure. Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarDemoBuildingHeightsTest,
@@ -1779,7 +1620,6 @@ bool FSessionToolbarDemoBuildingHeightsTest::RunTest(const FString& Parameters)
 	const FVector PlateHalfExtentCm = BuildPieceHalfExtentCm(EBuildPieceKind::TimberPlate);
 	const FVector BrickHalfExtentCm = BuildPieceHalfExtentCm(EBuildPieceKind::Brick);
 
-	/* The demo building, built: BuildDemoBuilding grows an FBrickLayout through PlacePiece, so the boxes are the poses the solver committed, not a description. */
 	DestructionLayout::FBrickLayout DemoLayout;
 	BuildMode::BuildDemoBuilding(DemoLayout, BuildMode::FSnapSettings{});
 
@@ -1793,7 +1633,7 @@ bool FSessionToolbarDemoBuildingHeightsTest::RunTest(const FString& Parameters)
 
 	const DestructionLayout::FPieceBox& DemoPlateBox = DemoLayout.Boxes[DemoPlatePieceIndex];
 
-	/* The palette's plate IS the demo's plate, or the heights below are about a different board. */
+	// The palette's plate must be the demo's plate.
 	TestTrue(
 		*FString::Printf(
 			TEXT("the palette's plate must be the board the demo actually lays, which is %s cm; the palette's is %s cm"),
@@ -1836,7 +1676,7 @@ bool FSessionToolbarDemoBuildingHeightsTest::RunTest(const FString& Parameters)
 			LiftCm, BrickHalfHeightCm);
 	}
 
-	/* And that lift is the brick's own half-height rather than a number that happens to be 3.25. */
+	// The lift must be the brick's own half-height, not a coincidental 3.25.
 	TestEqual(
 		FString::Printf(
 			TEXT("the ground offset must BE the palette brick's half height, which is %g cm"),
@@ -1847,20 +1687,9 @@ bool FSessionToolbarDemoBuildingHeightsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Every chip knows which region of the strip it is in and which piece it lays, the three regions
- * are contiguous and in order, and the mode pair is exactly the first region.
- *
- * SessionToolbarButtons answers, per button, its region (Mode, Settings, Command) and swatch
- * (Brick, Timber, None), and returns those regions in order with no interleaving.
- *
- * The group is a model answer, not a run of AddSlot calls: §b separates the regions by rules so a
- * destructive click is never adjacent to a setting click, and a widget counting slots would hold
- * that decision where no test can reach. Contiguity is what makes a divider drawable — a group
- * appearing twice would grow a rule inside a region. The mode pair being exactly first restates
- * the ordering promise. The swatch is a KIND, not a colour: the model says brick, the widget says
- * which red. Swept over all states.
- *
- * Needs a ticking world: no.
+ * Each button reports its group (Mode, Settings, Command) and swatch kind. Groups are
+ * contiguous and in order (§b), so dividers can be drawn between them, and the mode pair is
+ * exactly the first group. Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarGroupsAndSwatchesTest,
@@ -1872,7 +1701,7 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
 	using namespace SessionToolbarTestSupport;
 	using namespace DestructionSession;
 
-	/* The groups as a rank, not the enumerator's value, so the claim is "tabs then settings then command" rather than "declared in that order". */
+	// An explicit rank, independent of enumerator order.
 	const auto RankOf = [](EToolbarGroup Group)
 	{
 		switch (Group)
@@ -1885,7 +1714,7 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
 		return 3;
 	};
 
-	/* How many buttons the sweep owes, accumulated from the mode — the same floor Labels carries: a model returning nothing satisfies every claim below with nothing to check. */
+	// Floor on buttons checked, as in Labels.
 	int32 ButtonsOwed = 0;
 	int32 ButtonsSeen = 0;
 
@@ -1894,7 +1723,6 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
 		const bool bBuilding = State.Mode == ESessionMode::Build;
 
-		/* Seventeen in Build since the rotate chip joined the palette; four in Destroy. */
 		ButtonsOwed += bBuilding ? 17 : 4;
 
 		int32 ModeGroupButtons = 0;
@@ -1929,7 +1757,7 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
 			BrickSwatches += Button.Swatch == EToolbarSwatch::Brick ? 1 : 0;
 			TimberSwatches += Button.Swatch == EToolbarSwatch::Timber ? 1 : 0;
 
-			/* Non-decreasing rank is contiguity and order in one comparison: a repeat or a reorder both step down here. */
+			// Non-decreasing rank checks both contiguity and order.
 			if (Index > 0)
 			{
 				TestTrue(
@@ -1944,7 +1772,7 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		/* The mode pair is exactly the first group. With the non-decreasing claim above, "exactly two are Mode" places them; the two slots are also asserted directly, to fail by name. */
+		// The mode pair is exactly the first group.
 		TestEqual(
 			FString::Printf(
 				TEXT("%s: exactly two buttons are mode tabs — [%s]"),
@@ -1963,7 +1791,7 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
 				Buttons[0].Group == EToolbarGroup::Mode && Buttons[1].Group == EToolbarGroup::Mode);
 		}
 
-		/* The palette carries one brick and two planks, counted as well as checked per button so a model answering None everywhere fails on a row naming the missing swatches. */
+		// One brick swatch and two timber swatches in Build.
 		TestEqual(
 			FString::Printf(
 				TEXT("%s: the strip must carry %d brick swatch(es) — [%s]"),
@@ -1988,29 +1816,11 @@ bool FSessionToolbarGroupsAndSwatchesTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A chip's look is a model answer: rounded and edged always, the mode's accent when chosen, faded
- * when it cannot be clicked, and the "go" chip lit without being latched.
- *
- * ChipLookFor(Button, Mode) turns bActive and bEnabled plus the button's identity into fill,
- * caption colour, caption weight and geometry, so three visual states are three and a lit chip's
- * accent is the mode's.
- *
- * The look is decided here, not in Slate: §e wants three distinct states because bActive and
- * bEnabled are different questions, and a widget drawing them alike makes a lit-but-dead chip look
- * like a greyed-but-live one — today two ternaries in BuildSessionToolbarPanel that no test can
- * read. What is pinned exactly vs as a relation, deliberately:
- *   - The accent is exact: the design's build amber and destroy red, reused not re-picked.
- *   - The idle fill is not: what may not drift is that it is neither accent nor faded.
- *   - The caption is a luminance band, not a triple.
- *
- * The "go" chip is the row that is not a restatement: Run structure is a command, never bActive,
- * yet §e fills it in the destroy accent — only possible if the fill is a function of the BUTTON,
- * not bActive. And the Destroy tab and Run may not be the same chip (C2): both come out destroy
- * accent, so the claim is an inequality in fill or outline. Clear build is danger in the caption,
- * not the fill: a red fill on an amber strip reads as the mode. Every look is finite (fail-closed:
- * DESIGN §4, FMath::Max discards a NaN).
- *
- * Needs a ticking world: no. World.Session.ToolbarChipsAreRoundedAndGrouped holds the widget to it.
+ * ChipLookFor decides each chip's look: always rounded and edged, the mode's accent when
+ * active, faded when disabled (§e). Accents are pinned exactly; idle fill and caption only by
+ * relation. Run is filled with the destroy accent though never active, and must still differ
+ * from the Destroy tab. Clear signals danger in its caption, not its fill. Every look is
+ * finite. Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarChipLookTest,
@@ -2022,7 +1832,7 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 	using namespace SessionToolbarTestSupport;
 	using namespace DestructionSession;
 
-	/* --- ONE: the two accents and the two swatches are the design's own colours ------------- */
+	// ONE: the accents and swatches are the design's colours.
 
 	TestTrue(
 		*FString::Printf(
@@ -2037,7 +1847,7 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 			*DescribeColour(DesignDestroyAccent), *DescribeColour(ModeAccent(ESessionMode::Destroy))),
 		ColoursExactlyEqual(ModeAccent(ESessionMode::Destroy), DesignDestroyAccent));
 
-	/* And they are different colours: "the lit chip is the mode's accent" says nothing if the two modes share one. */
+	// The two accents must differ.
 	TestFalse(
 		*FString::Printf(
 			TEXT("the two modes must not share an accent — which mode you are in is the highest-order "
@@ -2067,7 +1877,7 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 			SwatchColour(EToolbarSwatch::None).A),
 		SwatchColour(EToolbarSwatch::None).A, 0.0f);
 
-	/* Fail closed on an undeclared value (both enums are uint8): an unknown swatch draws nothing, an unknown mode's accent is still a drawable colour. */
+	// Fail closed on undeclared enum values.
 	TestEqual(
 		FString::Printf(
 			TEXT("FAIL CLOSED: a swatch kind this build has never heard of must draw nothing; its "
@@ -2082,16 +1892,9 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 			*DescribeColour(ModeAccent(static_cast<ESessionMode>(200)))),
 		ColourIsFinite(ModeAccent(static_cast<ESessionMode>(200))));
 
-	/* --- ONE-B: A LATCHED TAB AND A VERB MAY NOT BE THE SAME CHIP ---------------------------- */
-
 	/*
-	 * The C2 row, a legibility defect. On today's Destroy strip the lit Destroy tab and Run structure
-	 * come out identical — both destroy accent, edged, bold dark ink — two slots apart; one says
-	 * where you are, the other settles the wall irreversibly. Asserted as an inequality, not a look,
-	 * since there are two honest fixes (outlined go, or a tab treatment) and picking one is the
-	 * design's call: they must differ in fill or outline, RGB-exactly. Fill or outline, not caption,
-	 * because the failure is the glance that does not read the words. Alpha is excluded, as in every
-	 * "must differ" row. Swept over Destroy states with something to run (else Run is greyed anyway).
+	 * ONE-B (C2): the lit Destroy tab and the irreversible Run chip must differ in fill or
+	 * outline RGB, since a glance doesn't read captions. Either fix is the design's call.
 	 */
 	int32 DestroyPairsCompared = 0;
 
@@ -2137,7 +1940,7 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 			DestroyPairsCompared),
 		DestroyPairsCompared > 0);
 
-	/* --- TWO: the three visual states, over every chip of every strip ----------------------- */
+	// TWO: the visual states, over every chip of every strip.
 
 	int32 IdleChips = 0;
 	int32 ActiveChips = 0;
@@ -2162,7 +1965,6 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 				TEXT("%s: %s reads [%s]"),
 				*DescribeState(State), NameOfButton(Button.Id), *DescribeLook(Look));
 
-			/* Every chip is a number: the fail-closed row. */
 			TestTrue(
 				*FString::Printf(
 					TEXT("%s — every channel of every colour must be finite; a NaN becomes whatever "
@@ -2172,7 +1974,6 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 					&& ColourIsFinite(Look.Caption)
 					&& FMath::IsFinite(Look.CornerRadiusPx) && FMath::IsFinite(Look.OutlineWidthPx));
 
-			/* Rounded and edged, always — §a principle 1's chip with its 2 px drop edge. */
 			TestEqual(
 				FString::Printf(
 					TEXT("%s — every chip is rounded at %g px"), *Where, DesignChipCornerRadiusPx),
@@ -2187,7 +1988,6 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 			{
 				++DisabledChips;
 
-				/* Disabled is faded and not accented: the model refuses the click, so the strip must not say otherwise. */
 				TestTrue(
 					*FString::Printf(
 						TEXT("%s — A GREYED CHIP MUST BE FADED: its fill alpha must be at or under "
@@ -2246,7 +2046,7 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 			{
 				++GoChips;
 
-				/* The "go" chip: a command is never bActive, so a widget filling on bActive alone could never draw this, yet §e asks for it. */
+				// Filled though never bActive, so the fill must depend on the button.
 				TestTrue(
 					*FString::Printf(
 						TEXT("%s — RUN STRUCTURE IS THE 'GO' CHIP and is filled in the destroy accent "
@@ -2259,7 +2059,7 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 			{
 				++IdleChips;
 
-				/* Idle: not chosen and not greyed, and must look like neither. The exact fill is the widget's; these two may not drift. */
+				// Idle must look neither chosen nor greyed.
 				TestFalse(
 					*FString::Printf(
 						TEXT("%s — an idle chip must NOT wear the mode's accent %s, or the player "
@@ -2291,7 +2091,7 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 				{
 					++DangerChips;
 
-					/* Danger in the caption, not the fill: a red fill on an amber strip reads as the mode; a warm caption reads as a warning. */
+					// Danger in the caption: a red fill on an amber strip would read as the mode.
 					TestTrue(
 						*FString::Printf(
 							TEXT("%s — CLEAR BUILD IS THE ONE IRREVERSIBLE CONTROL IN THE BUILD GROUP "
@@ -2311,7 +2111,6 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 				}
 			}
 
-			/* No Build-strip chip may wear the destroy accent: a red chip on an amber strip makes "which mode am I in" unreadable at a glance. */
 			if (State.Mode == ESessionMode::Build)
 			{
 				TestFalse(
@@ -2334,7 +2133,7 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		/* Exactly one lit chip per setting group, counted through the fill: ActiveFlags counts bActive, this counts the accented chips, so a look ignoring bActive is caught here. */
+		// One accented chip per group, counted by fill rather than bActive.
 		const bool bBuilding = State.Mode == ESessionMode::Build;
 
 		TestEqual(
@@ -2358,7 +2157,7 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 			AccentLitPlacementChips, bBuilding ? 1 : 0);
 	}
 
-	/* Every one of the five shapes was actually reached: four arms sit inside an if/else, so a model that never greyed anything would leave them unentered. */
+	// Every branch above must have been reached.
 	AddInfo(FString::Printf(
 		TEXT("the sweep read %d idle chips, %d lit, %d greyed, %d 'go' and %d danger-captioned"),
 		IdleChips, ActiveChips, DisabledChips, GoChips, DangerChips));
@@ -2374,26 +2173,9 @@ bool FSessionToolbarChipLookTest::RunTest(const FString& Parameters)
 }
 
 /**
- * UI-6 — the player chooses what fastens the next piece: six chips, one lit, each naming the
- * shipped library row every joint the next placement forms will carry.
- *
- * FSessionToolbarState carries an EJointChoice; the Build strip draws it as a six-chip segmented
- * control in Settings between the placement pair and the course stepper, the chosen one lit and
- * all six live; and JointOverrideFor turns the choice into nothing (Auto — the inference decides)
- * or the ADDRESS of one shipped connection profile.
- *
- * The override is a pointer and nullptr is a real answer: UI-6 rides it through
- * Preview/PlaceBuildPiece as an optional const FConnectionStrength*, and a sentinel "infer" profile
- * would be a seventh row every consumer must special-case — the first to forget would bond a joint
- * with it. The address is the claim, never the fields: this library is siblings by construction, so
- * a by-value answer passes against a stale copy. It is why FNamedConnectionProfile::Strength became
- * a reference to the extern this slice, the same trap the material lookup once hit.
- *
- * AllStates now carries the joint choice, so the sweeps above cover which chips exist, one lit, all
- * live, the captions and the transitions. Left here: the chips' position in the strip and the
- * choice-to-profile map.
- *
- * Needs a ticking world: no.
+ * UI-6: six joint chips sit between Free and Course down, and JointOverrideFor maps each choice
+ * to nullptr (Auto, inference decides) or a shipped profile, compared by address. nullptr is
+ * a real answer, avoiding a sentinel profile. Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarJointChoiceTest,
@@ -2405,7 +2187,7 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 	using namespace SessionToolbarTestSupport;
 	using namespace DestructionSession;
 
-	/* --- ONE: the six chips are a contiguous run between Free and Course down ---------------- */
+	// ONE: the six chips are a contiguous run between Free and Course down.
 
 	const TArray<EToolbarButtonId> JointIds = {
 		EToolbarButtonId::JointAuto,
@@ -2424,7 +2206,6 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 
 		if (State.Mode != ESessionMode::Build)
 		{
-			/* The Destroy strip draws none of them; ButtonsByMode owns that list. */
 			continue;
 		}
 
@@ -2463,7 +2244,7 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 				bRightChipInRightSlot);
 		}
 
-		/* --- TWO: every one of them is a Settings chip with no swatch, and always live ------- */
+		// TWO: each is a live Settings chip with no swatch.
 
 		for (EToolbarButtonId Id : JointIds)
 		{
@@ -2471,7 +2252,6 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 
 			if (Button == nullptr)
 			{
-				/* The bracket claim above has already failed; nothing further to read. */
 				continue;
 			}
 
@@ -2482,7 +2262,6 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 					NameOfGroup(Button->Group), *DescribeButtons(Buttons)),
 				static_cast<int32>(Button->Group), static_cast<int32>(EToolbarGroup::Settings));
 
-			/* No swatch, and that is a claim: a swatch names the piece a chip lays, and a joint chip lays none. */
 			TestEqual(
 				*FString::Printf(
 					TEXT("%s: %s must carry no swatch, it carries %s — [%s]"),
@@ -2490,7 +2269,6 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 					*DescribeButtons(Buttons)),
 				static_cast<int32>(Button->Swatch), static_cast<int32>(EToolbarSwatch::None));
 
-			/* All six are live in every Build state: a joint choice describes the next placement, so it has no precondition. */
 			TestTrue(
 				*FString::Printf(
 					TEXT("%s: %s must be live — a joint choice has no precondition, it describes the "
@@ -2507,7 +2285,7 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 			StatesRead),
 		StatesRead > 0);
 
-	/* --- THREE: the choice-to-profile map, by address --------------------------------------- */
+	// THREE: the choice-to-profile map, by address.
 
 	struct FOverrideCase
 	{
@@ -2566,7 +2344,7 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 			Got == Case.Expected);
 	}
 
-	/* No two choices may answer with the same row: six chips all overriding with mortar look fine and commit one physics until the structure runs. This pins six distinct answers. */
+	// Six distinct answers.
 	for (int32 A = 0; A < AllJointChoices().Num(); ++A)
 	{
 		for (int32 B = A + 1; B < AllJointChoices().Num(); ++B)
@@ -2584,11 +2362,8 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * An undeclared choice (EJointChoice is a uint8) overrides NOTHING, and the stricter claim is
-	 * now the honest one: JointOverrideFor's header commits to it, and SessionToolbarIsActive derives
-	 * the Auto chip's lit state from JointOverrideFor(State.Joint) == nullptr — so a row here would
-	 * draw a six-chip control with none lit over a session the inference is deciding. The shipped-row
-	 * check is kept as the second half, so a garbage pointer fails as garbage, not merely "not null".
+	 * An undeclared choice overrides nothing: the Auto chip's lit state is derived from a null
+	 * override, so anything else would leave no chip lit.
 	 */
 	const EJointChoice UnknownChoice = static_cast<EJointChoice>(200);
 
@@ -2612,27 +2387,9 @@ bool FSessionToolbarJointChoiceTest::RunTest(const FString& Parameters)
 }
 
 /**
- * CR-2b — the player turns the next piece ninety degrees: one latching chip at the end of the
- * palette, and it survives a trip through Destroy mode.
- *
- * FSessionToolbarState carries a bRotated flag; the Build strip draws a single latching RotatePiece
- * chip in Settings, after the three piece chips and before the placement pair, lit when the flag is
- * set, live in every Build state; and ApplyToolbarButton toggles the flag and touches nothing else.
- *
- * A flag, not a fourth piece kind: a rotated brick is the same brick. EBuildPieceKind names an
- * extent and a library row; BrickRotated etc. would triple a table whose whole point is that brick
- * dimensions live in one place. Rotation is orthogonal — one bit beside the kind, one chip beside
- * the three, the palette's tail.
- *
- * It latches rather than being a verb: a chip drawn unlit while every ghost lands turned would
- * leave the player with a rotated wall and no control admitting it (the ToggleLoadOverlay failure).
- * And it survives a round trip through Destroy, which draws no chip — a model that rebuilt state on
- * a mode change would lose the rotation and lay a stretcher across the corner being built.
- *
- * AllStates deliberately omits bRotated (864 would become 1728 for a flag that moves one chip's
- * bActive), so the sweeps see the chip only at bRotated == false. Left here: every claim that needs
- * the flag set — chip lit, toggle both ways, the round trip through Destroy, refusal in Destroy.
- *
+ * CR-2b: a latching RotatePiece chip after the piece chips toggles bRotated and nothing else,
+ * and the flag survives a trip through Destroy. A flag, not extra piece kinds, so brick
+ * dimensions stay in one table. Covers the bRotated == true cases AllStates omits.
  * Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -2645,7 +2402,7 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 	using namespace SessionToolbarTestSupport;
 	using namespace DestructionSession;
 
-	/* The whole matrix, each state both ways round: the one test that pays for the doubling AllStates refuses, over its own claims alone. */
+	// Every state, both rotated and not.
 	TArray<FSessionToolbarState> RotatedBothWays;
 
 	for (const FSessionToolbarState& State : AllStates())
@@ -2659,9 +2416,7 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 		RotatedBothWays.Add(Turned);
 	}
 
-	/* --- ZERO: a session opens upright ------------------------------------------------------ */
-
-	/* The default decides least, as Mode's is Build: a session opening rotated would lay its first brick turned across the grid. */
+	// ZERO: a session opens upright.
 	{
 		const FSessionToolbarState Fresh;
 
@@ -2673,7 +2428,7 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 			Fresh.bRotated);
 	}
 
-	/* --- ONE: the slot, the group, the swatch, the greying and the latch ---------------------- */
+	// ONE: slot, group, swatch, enablement and latch.
 
 	int32 BuildStripsRead = 0;
 	int32 LitChipsSeen = 0;
@@ -2685,7 +2440,7 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 
 		if (State.Mode != ESessionMode::Build)
 		{
-			/* The Destroy strip draws no rotate chip, even with the flag set: Destroy lays no next piece. ButtonsByMode sweeps at bRotated == false; this is the other half. */
+			// No rotate chip in Destroy, even with the flag set.
 			TestNull(
 				*FString::Printf(
 					TEXT("%s: the DESTROY strip must not draw the rotate chip, not even with the flag "
@@ -2707,7 +2462,7 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 		const int32 SnapAt = Buttons.IndexOfByPredicate(
 			[](const FToolbarButton& B) { return B.Id == EToolbarButtonId::PlacementSnap; });
 
-		/* The slot as a relation to its neighbours, not an index: pinning "slot 5" would fail on any chip added before it. What may not drift is that rotation reads as the palette's tail. */
+		// Position relative to neighbours, not an absolute index.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: the rotate chip must sit IMMEDIATELY after the three piece chips (Lintel at "
@@ -2720,7 +2475,6 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 
 		if (Rotate == nullptr)
 		{
-			/* The slot claim has already failed; there is nothing further to read. */
 			continue;
 		}
 
@@ -2733,7 +2487,6 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 				NameOfGroup(Rotate->Group), *DescribeButtons(Buttons)),
 			static_cast<int32>(Rotate->Group), static_cast<int32>(EToolbarGroup::Settings));
 
-		/* No swatch, and that is a claim: a swatch would make the rotate chip read as a fourth piece, the model this slice rejected. */
 		TestEqual(
 			*FString::Printf(
 				TEXT("%s: RotatePiece must carry no swatch, it carries %s — a swatch would make it "
@@ -2741,7 +2494,6 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 				*DescribeState(State), NameOfSwatch(Rotate->Swatch), *DescribeButtons(Buttons)),
 			static_cast<int32>(Rotate->Swatch), static_cast<int32>(EToolbarSwatch::None));
 
-		/* Always live: rotation describes the next placement, so it has no precondition. */
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: RotatePiece must be live — rotation has no precondition, it describes the "
@@ -2749,7 +2501,6 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 				*DescribeState(State), *DescribeButtons(Buttons)),
 			Rotate->bEnabled);
 
-		/* The latch, both ways round — the claim AllStates cannot make. */
 		TestEqual(
 			*FString::Printf(
 				TEXT("%s: RotatePiece is lit exactly when the next piece is rotated; it reads %s — "
@@ -2762,7 +2513,7 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 		UnlitChipsSeen += Rotate->bActive ? 0 : 1;
 	}
 
-	/* Both shapes were actually reached: the latch claim is an equality inside a loop, so a chip only ever seen unlit would satisfy it. */
+	// The chip must have been seen both lit and unlit.
 	TestTrue(
 		*FString::Printf(
 			TEXT("the sweep must have read some Build strips (%d) and must have seen the chip BOTH "
@@ -2770,7 +2521,7 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 			BuildStripsRead, LitChipsSeen, UnlitChipsSeen),
 		BuildStripsRead > 0 && LitChipsSeen > 0 && UnlitChipsSeen > 0);
 
-	/* --- TWO: the click toggles the flag, and moves nothing else ----------------------------- */
+	// TWO: the click toggles the flag and nothing else.
 
 	int32 TogglesMade = 0;
 
@@ -2778,7 +2529,7 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 	{
 		if (State.Mode != ESessionMode::Build)
 		{
-			/* A click in a mode that does not draw the chip is a bitwise no-op. Transitions sweeps this at bRotated == false only, so a model toggling regardless of the strip would un-rotate on a Destroy click. */
+			// A no-op in Destroy, including when rotated.
 			TestTrue(
 				*FString::Printf(
 					TEXT("%s: clicking RotatePiece in a mode that does not draw it must change nothing "
@@ -2802,7 +2553,7 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 				*DescribeState(State), *DescribeState(After)),
 			After.bRotated, !State.bRotated);
 
-		/* And nothing else moved: built by flipping the one field the transition names, compared whole, so a transition that also reset the piece or course fails here. */
+		// Nothing else moved.
 		FSessionToolbarState OnlyRotationMoved = State;
 		OnlyRotationMoved.bRotated = !State.bRotated;
 
@@ -2813,7 +2564,6 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 				*DescribeState(State), *DescribeState(After)),
 			StatesEqual(After, OnlyRotationMoved));
 
-		/* Two clicks land where you started: the honest reading of "toggle". */
 		const FSessionToolbarState Back =
 			ApplyToolbarButton(After, EToolbarButtonId::RotatePiece);
 
@@ -2830,14 +2580,7 @@ bool FSessionToolbarRotateChipTest::RunTest(const FString& Parameters)
 			TogglesMade),
 		TogglesMade > 0);
 
-	/* --- THREE: the round trip through Destroy brings the rotation back ----------------------- */
-
-	/*
-	 * The failure this row exists for: a player turns a piece for the second leg of an L, checks it
-	 * in Destroy, and comes back — a model that rebuilt state on the mode change hands back an
-	 * upright ghost and their next click lays a stretcher across the corner. The whole state is
-	 * compared, not just the flag, since fields a transition does not name must survive it.
-	 */
+	// THREE: a round trip through Destroy returns the whole state, rotation included.
 	{
 		FSessionToolbarState Turned =
 			MakeState(ESessionMode::Build, EBuildPieceKind::TimberLintel, EPlacementMode::Free,

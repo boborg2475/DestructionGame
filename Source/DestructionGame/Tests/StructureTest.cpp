@@ -7,21 +7,15 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-/*
- * Named, not anonymous: anonymous namespaces collapse under a unity build, and
- * this file's Mortar/Unbreakable/MakeNaN once collided with three other files.
- */
+// Named, not anonymous: anonymous namespaces collide under a unity build.
 namespace StructureTestSupport
 {
 	using namespace DestructionProfiles;
 
 	/*
-	 * Unreal's default gravity, 980 cm/s2, spelled out so the test fails if
-	 * production gets it wrong rather than agreeing with it.
-	 *
-	 * Unit trap: mass is already kg and length cm, so MassKg * 980 IS a force in
-	 * uu — the 1 N = 100 uu conversion is baked into the 980, not applied on top.
-	 * Multiplying by 100 again here would be wrong by exactly 100x.
+	 * Unreal's default gravity, 980 cm/s2, spelled out independently of production.
+	 * MassKg * 980 is already a force in uu; the 1 N = 100 uu factor is baked in.
+	 * Multiplying by 100 again would be wrong by exactly 100x.
 	 */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
@@ -30,58 +24,42 @@ namespace StructureTestSupport
 		return MassKg * GravityCmPerSecondSquared;
 	}
 
-	/** A standard UK metric brick, 215 x 102.5 x 65 mm, so 1432.44 cm3. A material owns density, not dimensions. */
+	/** A standard UK metric brick, 215 x 102.5 x 65 mm = 1432.44 cm3. */
 	constexpr double BrickVolumeCubicCm = 21.5 * 10.25 * 6.5;
 
 	/*
-	 * A standard clay brick derived from the profile, not hand-set: 1432.44 cm3
-	 * at 1.9 g/cm3 is 2.7216 kg (DESIGN.md §3). Deriving rather than respelling is
-	 * safe because MaterialInvariants already anchors density x volume to a real
-	 * brick; a hand-set value here once drifted 1.6 g from the library.
-	 *
-	 * Safe at namespace scope only because ClayBrick is an aggregate of literals,
-	 * so constant-initialised. A computed ratio would be dynamically initialised
-	 * and cross-TU init order is unspecified — this could read zero, zeroing every
-	 * force expectation while the suite stays green. LoadPath's opening guard checks it.
+	 * Clay brick mass derived from the profile: 1432.44 cm3 at 1.9 g/cm3 = 2.7216 kg
+	 * (DESIGN.md §3). Safe at namespace scope only because ClayBrick is
+	 * constant-initialised; otherwise cross-TU init order could make this zero.
+	 * LoadPath's opening guard checks it.
 	 */
 	const double BrickMassKg = ClayBrick.DensityGramsPerCubicCm * BrickVolumeCubicCm / 1000.0;
 
-	/** 2667.2 uu. The number the whole load model is checked against. */
+	/** 2667.2 uu. */
 	const double BrickWeightUU = WeightOf(BrickMassKg);
 
-	/** A 10 cm x 10 cm interface, kept round so the area split stays checkable by eye. */
+	/** A 10 cm x 10 cm interface. */
 	constexpr double JointAreaSqCm = 100.0;
 
-	/** Horizontal interface, normal up at the piece above: a bed joint. Normal points toward PieceB (ConnectionLoad.h), so PieceB sits on PieceA. */
+	/** Bed joint: normal up, toward PieceB (ConnectionLoad.h), so PieceB sits on PieceA. */
 	const FVector BedJointNormal(0.0, 0.0, 1.0);
 
-	/** Vertical interface, normal pointing sideways at the neighbour: a head joint. */
+	/** Head joint: vertical interface, normal sideways. */
 	const FVector HeadJointNormal(1.0, 0.0, 0.0);
 	const FVector OpposingHeadJointNormal(-1.0, 0.0, 0.0);
 
-	/** A bed joint pointing DOWN: the same horizontal interface declared upper piece first. */
+	/** A bed joint declared upper piece first, so the normal points down. */
 	const FVector InvertedBedJointNormal(0.0, 0.0, -1.0);
 
-	/*
-	 * Rectangles agreeing with JointAreaSqCm, one per axis a normal can lie on:
-	 * the 10 x 10 cm face gives halves of 5, and 4 x 5 x 5 = 100. Zero sits on the
-	 * normal's own axis; an extent on the third axis would describe a solid.
-	 */
+	// Half-extents matching JointAreaSqCm (4 x 5 x 5 = 100), zero on the normal's axis.
 	const FVector BedJointHalfExtentCm(5.0, 5.0, 0.0);
 	const FVector HeadJointHalfExtentCm(0.0, 5.0, 5.0);
 	const FVector DepthwiseHalfExtentCm(5.0, 0.0, 5.0);
 
 	/*
-	 * The bed/head threshold: 45 degrees from vertical, a bed joint being nearer
-	 * vertical than horizontal (DESIGN.md §3). It needs no material data, which
-	 * matters since the tier decision precedes any strength profile.
-	 * SupportTierThreshold pins it from both sides at 40 and 50 degrees; exactly
-	 * 45 is a knife-edge tie not worth locking down in floating point.
-	 *
-	 * Spelled as the same literal production uses, bit for bit: written
-	 * 1.0/FMath::Sqrt(2.0) it lands an ulp away from Structure.cpp's constexpr,
-	 * invisible on an axis-aligned normal but not on the first tilted one. If the
-	 * production constant changes, match it; don't re-derive it.
+	 * The bed/head threshold, 45 degrees from vertical (DESIGN.md §3).
+	 * Same literal as Structure.cpp, bit for bit: 1.0/Sqrt(2.0) lands an ulp away.
+	 * If production changes, match it rather than re-deriving it.
 	 */
 	constexpr double BedJointCosine = 0.70710678118654752440;
 
@@ -92,24 +70,18 @@ namespace StructureTestSupport
 		return FVector(FMath::Sin(Radians), 0.0, FMath::Cos(Radians));
 	}
 
-	/*
-	 * Load-path tests use the shared DestructionProfiles::Unbreakable: they
-	 * measure routing and accumulation, not whether a joint gives. It's
-	 * TestFixture-classified so ConnectionInvariants would catch an escaped copy.
-	 * Genuinely-overloaded joints use GeneralPurposeMortar directly.
-	 */
+	// Load-path tests use DestructionProfiles::Unbreakable: they measure routing, not breaking.
 
 	/*
-	 * Force, in uu, that loads the given area to the given stress. Spelled out
-	 * rather than reusing ForceUnitsPerMPaSqCm: 1 N = 100 uu, 1 cm2 = 100 mm2,
-	 * 1 MPa = 1 N/mm2 -> 10000 uu per MPa per cm2.
+	 * Force in uu that loads the area to the stress. Spelled out independently of
+	 * ForceUnitsPerMPaSqCm: 1 N = 100 uu, 1 cm2 = 100 mm2, so 10000 uu per MPa per cm2.
 	 */
 	constexpr double ForceForMPa(double MPa, double AreaSqCm)
 	{
 		return MPa * 100.0 * 100.0 * AreaSqCm;
 	}
 
-	/** The same boundary the other way: stress in MPa a force puts on an area. */
+	/** Stress in MPa a force puts on an area. */
 	constexpr double MPaForForce(double ForceUnits, double AreaSqCm)
 	{
 		return ForceUnits / (100.0 * 100.0 * AreaSqCm);
@@ -140,41 +112,33 @@ namespace StructureTestSupport
 		FVector Normal = FVector::ZAxisVector;
 		double AreaSqCm = JointAreaSqCm;
 
-		/*
-		 * The joint's rectangle, zero by default on purpose. Zero extents are not
-		 * a degenerate joint but an unmeasured lever arm; with no moment the area
-		 * alone answers a centred load bit for bit, which keeps every geometry-free
-		 * fixture in this file valid.
-		 */
+		// Zero by default: an unmeasured lever arm, so geometry-free fixtures see no moment.
 		FVector CentreCm = FVector::ZeroVector;
 		FVector HalfExtentCm = FVector::ZeroVector;
 	};
 
-	/** A whole structure as data, so topologies are a table rather than code. */
+	/** A whole structure as data. */
 	struct FStructureSpec
 	{
 		TArray<FPieceSpec> Pieces;
 		TArray<FConnectionSpec> Connections;
 	};
 
-	/** What a joint does with the load it is handed: the directional model a magnitude alone cannot show. */
+	/** How a joint resolves its load. */
 	enum class EJointKind : uint8
 	{
-		/** Substantially vertical normal: bears the load in pure compression. */
+		/** Vertical normal: pure compression. */
 		Bed,
 
-		/** Substantially horizontal normal: can only carry it in pure shear. */
+		/** Horizontal normal: pure shear. */
 		Head,
 	};
 
 	struct FExpectedJoint
 	{
 		/*
-		 * Signed Z of the force the solver must store, in uu. The stored force acts
-		 * on PieceB (ConnectionLoad.h): when the supported piece is PieceB that is
-		 * its weight, straight down; declared the other way round the stored Z is
-		 * positive. Getting the sign backwards turns compression into tension, and
-		 * mortar's tensile limit is a hundredth of its compressive one.
+		 * Signed Z of the stored force in uu. It acts on PieceB (ConnectionLoad.h), so
+		 * it is negative when the supported piece is PieceB and positive otherwise.
 		 */
 		double ForceZUU = 0.0;
 
@@ -194,11 +158,7 @@ namespace StructureTestSupport
 		return Connection;
 	}
 
-	/*
-	 * Build a structure in place. By reference on purpose: FConnection's has-given
-	 * latch is per-copy, so passing connections by value risks latching a
-	 * temporary and leaving the real joint untouched (CURRENT_STATE.md).
-	 */
+	// Builds in place: FConnection's has-given latch is per-copy, so a by-value copy could latch a temporary.
 	void BuildStructure(FStructure& Out, const FStructureSpec& Spec, const FConnectionStrength& Strength)
 	{
 		for (const FPieceSpec& Piece : Spec.Pieces)
@@ -213,24 +173,10 @@ namespace StructureTestSupport
 	}
 
 	/*
-	 * Assert what one connection carries AND how the joint resolves it: two claims.
-	 * The vector's sign depends on which end was declared first, so a solver that
-	 * always writes (0, 0, -Share) is only right when the supported piece is named
-	 * second. Classification is the payoff of the directional model: the same
-	 * downward load is compression on a bed joint and shear on a head joint, which
-	 * magnitude alone can't tell apart, and it decides which strength the load is
-	 * later compared against.
-	 *
-	 * Tension reads zero here as a property of the fixtures, not the model: every
-	 * spec routed through this helper is axis-aligned and geometry-free, so every
-	 * lever arm is zero. An eccentric load can pull a joint open, but that tension
-	 * is carried as a moment downstream, never reaching this struct (a brick on one
-	 * head joint reads zero here but 0.4157 in HangingBrickPeelsRatherThanShears).
-	 * Tilted normals don't generalise: the sign-blind head tier holds a piece by
-	 * pulling it open, characterised in Structure.TiltedJointClassification.
-	 *
-	 * Calls ClassifyForce directly (DESIGN.md's degenerate-normal hole) — safe
-	 * here: no break decision, and every normal is a real plane.
+	 * Asserts the signed force one connection carries and how it classifies: the
+	 * same downward load is compression on a bed joint and shear on a head joint.
+	 * Tension is zero only because these fixtures are axis-aligned and geometry-free;
+	 * tilted joints are covered by Structure.TiltedJointClassification.
 	 */
 	void CheckJointLoad(
 		FAutomationTestBase& Test,
@@ -247,7 +193,7 @@ namespace StructureTestSupport
 				Description, Index, Expected.ForceZUU, Force.Z),
 			FMath::IsNearlyEqual(Force.Z, Expected.ForceZUU, Tolerance));
 
-		// Gravity stays vertical however the joint is oriented; a solver pushing load along the normal gets the keystone magnitudes right and the direction wrong.
+		// Gravity stays vertical whatever the joint's orientation.
 		Test.TestTrue(
 			FString::Printf(TEXT("%s: connection %d load must be vertical, got (%f, %f, %f)"),
 				Description, Index, Force.X, Force.Y, Force.Z),
@@ -271,23 +217,10 @@ namespace StructureTestSupport
 	}
 
 	/*
-	 * The pieces that hold PieceIndex up, per DESIGN.md §3's two-tier rule. A
-	 * line-for-line transcription of FStructure::GetJointRole, threshold included,
-	 * so it catches transcription slips (a flipped sign, a dropped case) rather
-	 * than being a second opinion on the rule. SpecReachesGround builds the
-	 * stronger, genuinely-different reachability check on top.
-	 *
-	 * This has no opinion on unroutable knots: DESIGN.md §3 reports knotted pieces
-	 * as falling even though they reach earth through the support relation, and
-	 * this walk would call them supported. Any spec with a knot needs an explicit
-	 * expectation table, not the DegenerateInputs matrix — every spec there
-	 * strands nothing; check that before adding one.
-	 *
-	 * The normal is turned to point at this piece: substantially up is a bed joint
-	 * beneath that bears it; down is a bed joint above that doesn't; between is a
-	 * head joint, a support only with no bed joint at all. The relation being
-	 * directed is the correction — raw connectivity let a sideways path exclude the
-	 * bed joint carrying the wall.
+	 * The pieces that hold PieceIndex up, per DESIGN.md §3's two-tier rule: bed
+	 * joints beneath, else head joints. A transcription of FStructure::GetJointRole.
+	 * It does not model knots (DESIGN.md §3 strands them), so a knotted spec needs
+	 * an explicit expectation table.
 	 */
 	TArray<int32> SpecSupportsOf(const FStructureSpec& Spec, int32 PieceIndex)
 	{
@@ -336,11 +269,7 @@ namespace StructureTestSupport
 		return BedSupports.Num() > 0 ? BedSupports : HeadNeighbours;
 	}
 
-	/*
-	 * Does this piece reach the ground through supports, not mere connections?
-	 * Being joined to a neighbour isn't support; two pieces can each hang from the
-	 * other and reach nothing, so this walk is directed and tracks what it visited.
-	 */
+	// Whether the piece reaches ground through supports; directed and cycle-safe.
 	bool SpecReachesGround(const FStructureSpec& Spec, int32 PieceIndex)
 	{
 		TSet<int32> Visited;
@@ -371,28 +300,23 @@ namespace StructureTestSupport
 		return false;
 	}
 
-	/** A structure, what every joint must carry, and which pieces must be held up. */
+	/** A structure and its expected joint loads and support states. */
 	struct FSolveCase
 	{
 		const TCHAR* Description;
 		FStructureSpec Spec;
 
-		/** What each connection carries and how it resolves, in connection-array order. */
+		/** In connection-array order. */
 		TArray<FExpectedJoint> ExpectedJoints;
 
-		/** Whether each piece is held up, in piece-array order. */
+		/** In piece-array order. */
 		TArray<bool> ExpectedSupported;
 	};
 
 	/*
-	 * Build, solve, and check one case against its explicit expectation table.
-	 * Explicit rather than derived from SpecReachesGround, which doesn't model
-	 * stranding for knot cases and can't produce the load figures.
-	 *
-	 * The conservation sum is a cross-check, not the main assertion: over-stranding
-	 * preserves conservation exactly, so it's blind to the knot defect class. It
-	 * catches the rest of the arithmetic, which is why LoadPath runs through here
-	 * rather than keeping its own near-identical loop.
+	 * Builds, solves and checks one case against its expectation table. The
+	 * ground-reaction conservation sum is a cross-check only; it is blind to
+	 * over-stranding.
 	 */
 	void CheckSolveCase(FAutomationTestBase& Test, const FSolveCase& Case)
 	{
@@ -413,7 +337,7 @@ namespace StructureTestSupport
 
 		Structure.SolveLoads();
 
-		// The loops below are bounded by the expectation arrays, so a case that gained a piece or joint and forgot its row asserts nothing about it.
+		// The loops below are bounded by the expectation arrays, so row counts must match.
 		Test.TestTrue(
 			FString::Printf(TEXT("%s: expected a row for each of %d connections, got %d rows"),
 				Case.Description, Structure.NumConnections(), Case.ExpectedJoints.Num()),
@@ -479,11 +403,7 @@ namespace StructureTestSupport
 				FMath::Max(Tolerance, 1.0e-9 * ExpectedGroundReactionUU)));
 	}
 
-	/*
-	 * A support state as text, so a failure names the answer, not a number. The
-	 * default arm is not a fifth name: it fires if the enum grows a value nobody
-	 * wired in, and "an unknown state" beats a plausible-looking label.
-	 */
+	// A support state as text for failure messages.
 	const TCHAR* NameOfSupport(EPieceSupport State)
 	{
 		switch (State)
@@ -496,7 +416,7 @@ namespace StructureTestSupport
 		}
 	}
 
-	/* A joint role as text, same reasoning as NameOfSupport; the default arm reads as unknown rather than a plausible tier. */
+	// A joint role as text for failure messages.
 	const TCHAR* NameOfJointRole(EJointRole Role)
 	{
 		switch (Role)
@@ -509,12 +429,7 @@ namespace StructureTestSupport
 		}
 	}
 
-	/*
-	 * Ties GetPieceSupport (the reason) to IsPieceSupported (the composite answer),
-	 * checked on every piece of every case: computed apart they would drift
-	 * silently, both still plausible. Also pins the enum shape — exactly two of the
-	 * four states mean "held up", so a fifth must be classified here on purpose.
-	 */
+	// Checks GetPieceSupport agrees with IsPieceSupported: Grounded and Supported mean held up.
 	void CheckSupportAgreesWithReason(
 		FAutomationTestBase& Test,
 		const TCHAR* Description,
@@ -541,20 +456,10 @@ namespace StructureTestSupport
 }
 
 /*
- * A structure accumulates weight downward and hands each connection the share it
- * supports. Pure arithmetic over a graph (no world, no positions), so the
- * assertion is on the mechanism, the force each joint carries, never on movement.
- *
- * Support is two-tiered (DESIGN.md §3): a piece's supports are the bed joints
- * beneath it, and only a piece with none falls back to head joints. Routing by
- * graph distance is wrong in the case the game is about: a brick spanning a gap
- * is the same distance from earth as the brick on it, so the bed joint between
- * them would carry nothing.
- *
- * Each case changes an answer on its own: accumulation vs. piece count (unequal
- * masses), area vs. even split (unequal areas), grounding vs. connection (the
- * ungrounded stack), bed-beneath vs. bed-above (the hanging case), tier rule vs.
- * graph distance (the running-bond wall).
+ * Weight accumulates downward and each connection carries the share it supports.
+ * Support is two-tiered (DESIGN.md §3): bed joints beneath, else head joints.
+ * Graph-distance routing is wrong: a brick spanning a gap is as far from earth
+ * as the brick on it, so the bed joint between them would carry nothing.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureLoadPathTest,
@@ -565,18 +470,13 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 {
 	using namespace StructureTestSupport;
 
-	// Guards the derivation: if ClayBrick ever stops being constant-initialised BrickMassKg reads zero, zeroing every force expectation while the suite stays green. MaterialInvariants owns the real anchor.
+	// If ClayBrick stops being constant-initialised BrickMassKg reads zero and every expectation with it.
 	TestTrue(
 		FString::Printf(TEXT("the brick mass must derive to something positive, got %f kg"), BrickMassKg),
 		BrickMassKg > 0.0);
 
-	/*
-	 * FSolveCase and CheckSolveCase, shared with the stranding tests. Every case
-	 * below strands nothing, so the ground-reaction-conservation cross-check is
-	 * exact and catches a share written to the wrong joint.
-	 */
+	// No case strands anything, so the conservation cross-check is exact.
 	const TArray<FSolveCase> Cases = {
-		// Base case: nothing above, nowhere to pass load. Stops a solver inventing load from a lone grounded brick.
 		{
 			TEXT("a lone grounded piece carries nothing"),
 			{ { { BrickMassKg, true } }, {} },
@@ -584,7 +484,7 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true }
 		},
 
-		// One brick on a grounded brick: the joint carries one brick, 2.7216 kg x 980 = 2667.2 uu (DESIGN.md §3).
+		// 2.7216 kg x 980 = 2667.2 uu (DESIGN.md §3).
 		{
 			TEXT("a piece resting on a grounded piece loads the joint with its own weight"),
 			{
@@ -595,13 +495,7 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true, true }
 		},
 
-		/*
-		 * The same joint declared upper piece first: piece 1 is still the top brick
-		 * but now PieceA with the normal pointing down, which ConnectionLoad.h
-		 * allows. The stored force acts on PieceB, so it negates to +2666, up. Store
-		 * -2666 and dot((0,0,-W),(0,0,-1)) is positive — reads as tension, and
-		 * mortar's tensile limit is a hundredth of its compressive one.
-		 */
+		// Declared upper piece first: the force on PieceB is +W; storing -W would read as tension.
 		{
 			TEXT("a bed joint declared upper piece first still resolves as compression"),
 			{
@@ -612,7 +506,6 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true, true }
 		},
 
-		// Three high: the lower joint carries two bricks and the upper one. A solver loading each joint with only the piece directly above gets the lower half wrong.
 		{
 			TEXT("a stack of three accumulates: the lower joint carries two pieces, the upper one"),
 			{
@@ -629,7 +522,6 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true, true, true }
 		},
 
-		// Accumulation is by weight, not piece count: lopsided masses, since counting pieces can't produce 3920 and 2940.
 		{
 			TEXT("accumulation sums mass, not piece count"),
 			{
@@ -646,7 +538,6 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true, true, true }
 		},
 
-		// Two supports of equal area split evenly: the defensible default, and the one that must degenerate correctly.
 		{
 			TEXT("two supports of equal area split the load evenly"),
 			{
@@ -663,7 +554,6 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true, true, true }
 		},
 
-		// Unequal areas split in proportion: 100 and 300 cm2 take a quarter and three quarters, distinguishing "weighted by area" from an even "shared" split.
 		{
 			TEXT("unequal supports split in proportion to interface area"),
 			{
@@ -681,12 +571,8 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * DESIGN.md §2's worked example. Piece 2 spans a gap like a keystone: its
-		 * only path to ground runs sideways through two head joints, so it and the
-		 * brick on top push their combined weight through those. The force is
-		 * straight down regardless — FConnection turns it into shear here and
-		 * compression above, so the solver must never orient force along the normal.
-		 * Piece 2 passes two bricks' weight down, split evenly across the two joints.
+		 * DESIGN.md §2's worked example: keystone piece 2 reaches ground only through
+		 * two head joints, which split the two bricks' weight evenly as shear.
 		 */
 		{
 			TEXT("a piece supported only by head joints routes its whole weight sideways"),
@@ -703,7 +589,7 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 					{ 2, 3, BedJointNormal, JointAreaSqCm }
 				}
 			},
-			// Three identical magnitudes, told apart only by classification: two head joints in pure shear (the weak axis), the bed joint above in pure compression.
+			// Equal magnitudes; only classification differs.
 			{
 				{ -BrickWeightUU, EJointKind::Head },
 				{ -BrickWeightUU, EJointKind::Head },
@@ -712,12 +598,7 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true, true, true, true }
 		},
 
-		/*
-		 * The same keystone, every joint declared supported-piece-first: only which
-		 * end is PieceA changes, so every force flips sign but every classification
-		 * stays identical. That invariance (ConnectionLoad.h's orientation
-		 * convention) is what makes per-piece bookkeeping safe.
-		 */
+		// The same keystone declared the other way round: signs flip, classifications don't.
 		{
 			TEXT("declaration order flips the stored force but not the classification"),
 			{
@@ -741,13 +622,7 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true, true, true, true }
 		},
 
-		/*
-		 * A bed joint above a piece does not hold it up. Piece 1 hangs under
-		 * grounded slab 2 and touches grounded piece 0 sideways; the bed joint is
-		 * the wrong way round to bear anything, so piece 1 falls back to its one head
-		 * joint, which takes the whole brick. Routing by graph distance would split
-		 * it evenly instead.
-		 */
+		// Piece 1 hangs under slab 2; that bed joint bears nothing, so the head joint takes it all.
 		{
 			TEXT("a bed joint above a piece does not support it; the head joint takes it all"),
 			{
@@ -765,22 +640,15 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * The case the two-tier rule was written for: a running-bond wall with the
-		 * middle of the bottom course spanning a gap, two courses stacked above.
+		 * A running-bond wall whose bottom middle brick spans a gap:
 		 *
 		 *        E1          course E   piece 5
 		 *     D1    D2       course D   pieces 3, 4
 		 *   Cx  Cy  Cz       course C   pieces 0, 1, 2   (Cy spans the gap)
 		 *   ==      ==       earth, missing under Cy
 		 *
-		 * Cx and Cz rest on earth; Cy reaches it only sideways through two head
-		 * joints. Every bed joint is equal area, so every split is even. Under the
-		 * tier rule Cy is load-bearing: it receives 1.5 bricks from above, adds its
-		 * own, and pushes 2.5 out sideways — 1.25 per head joint; 0.75 per bed joint
-		 * above; 2 bricks each into Cx and Cz. Graph-distance routing gives Cy the
-		 * same depth as D1/D2, so the bed joints onto it carry zero and DESIGN.md
-		 * §4's shear test can't fire. Connection 1 is declared keystone-first, so the
-		 * sign convention is under test in the case that matters.
+		 * Cy takes 1.5 bricks from above plus its own and pushes 1.25 out through
+		 * each head joint. Graph-distance routing would load its bed joints with zero.
 		 */
 		{
 			TEXT("a running-bond wall routes two courses through a spanning brick's head joints"),
@@ -817,7 +685,6 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true, true, true, true, true, true }
 		},
 
-		// A grounded piece terminates the flow: a joint between two grounded pieces carries nothing, stopping load circulating along a foundation course.
 		{
 			TEXT("a joint between two grounded pieces carries nothing"),
 			{
@@ -828,7 +695,6 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true, true }
 		},
 
-		// Connected but to nothing that reaches earth: joining a neighbour is not support, so nothing holds this stack up and the joint carries zero.
 		{
 			TEXT("a stack with nothing grounded is unsupported and carries no static load"),
 			{
@@ -839,7 +705,6 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ false, false }
 		},
 
-		// A grounded piece elsewhere doesn't help an island that can't reach it: support is a path, not the mere presence of ground.
 		{
 			TEXT("an island cannot borrow support from a grounded piece it does not touch"),
 			{
@@ -858,15 +723,8 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 		 *   G  —   C  —  F    pieces 0, 1, 2, joined sideways
 		 *   ==                earth, under G only
 		 *
-		 * C has no bed joint, so it falls back to both head joints: to grounded G
-		 * and to F. F has a bed joint beneath it (D), so the tier rule discards C—F
-		 * from F's supports — not the cycle case; the walk correctly reports F and D
-		 * unsupported. The question is where C's weight goes. Splitting evenly
-		 * credits half to falling F and loses it, failing conservation by 2x and
-		 * leaving G—C reading half its true load. So a support with no path to ground
-		 * drops out of the area total and the share, and G—C takes the whole 2666.
-		 * Dropping it is safe: a piece marked supported was reached through a
-		 * supported support, so at least one always survives the filter.
+		 * F and D are unsupported, so F drops out of C's share and G—C takes the
+		 * whole brick. An even split would lose half the weight.
 		 */
 		{
 			TEXT("a support that does not itself reach the ground takes none of the load"),
@@ -891,7 +749,7 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 			{ true, true, false, false }
 		},
 
-		// Mutual lateral support: neither has a bed joint, so both name the other as their head-joint support (a two-cycle). Both unsupported; an untracked walk loops here forever.
+		// A two-cycle of head-joint supports; an untracked walk loops forever.
 		{
 			TEXT("two pieces hanging from each other support neither"),
 			{
@@ -912,20 +770,9 @@ bool FStructureLoadPathTest::RunTest(const FString& Parameters)
 }
 
 /*
- * Where the line between a bed joint and a head joint sits. The two-tier rule
- * turns on "substantially vertical", so that phrase needs a number: 45 degrees
- * from vertical (BedJointCosine). These cases pin it from both sides rather than
- * asserting the exact tie.
- *
- * One piece held by two equal-area joints, so area can't explain the answer: one
- * at a varying tilt, the other flat vertical. A tilted bed joint is the only
- * support and takes the whole brick; a tilted head joint means the piece falls
- * back to both and splits evenly — 2666 against 1333. The 0-degree row also
- * states that a bed joint beneath wins outright over a head joint.
- *
- * Magnitudes only: it never calls ClassifyForce, and its tilted joint is declared
- * { 0, 2, tilted }, the one orientation that can't produce tension.
- * Structure.TiltedJointClassification covers the other orientation and the split.
+ * Pins the 45-degree bed/head threshold from both sides. One piece on two
+ * equal-area joints, one tilted: as a bed joint it takes the whole brick; as a
+ * head joint the two split evenly. Magnitudes only; see TiltedJointClassification.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureSupportTierThresholdTest,
@@ -940,10 +787,9 @@ bool FStructureSupportTierThresholdTest::RunTest(const FString& Parameters)
 	{
 		const TCHAR* Description;
 
-		/** Tilt of the first joint's normal away from straight up, degrees. */
 		double DegreesFromVertical;
 
-		/** Fraction of the piece's weight each joint should end up carrying. */
+		/** Fraction of the piece's weight each joint carries. */
 		double ExpectedTiltedShare;
 		double ExpectedFlatShare;
 	};
@@ -987,7 +833,6 @@ bool FStructureSupportTierThresholdTest::RunTest(const FString& Parameters)
 				Case.Description, ExpectedFlatZ, FlatForce.Z),
 			FMath::IsNearlyEqual(FlatForce.Z, ExpectedFlatZ, Tolerance));
 
-		// Whichever tier it lands in, the load is still gravity, straight down; only what the joint does with it changes.
 		TestTrue(
 			FString::Printf(TEXT("%s: loads must be vertical, got (%f, %f, %f) and (%f, %f, %f)"),
 				Case.Description,
@@ -1001,38 +846,19 @@ bool FStructureSupportTierThresholdTest::RunTest(const FString& Parameters)
 }
 
 /*
- * What an inclined joint does with its load, including pulling the piece open, an
- * accepted outcome of the model. A characterisation test: every assertion already
- * passes, and exists because the behaviour is pinned nowhere else and reads as a
- * bug on first encounter. Every other normal in this file is axis-aligned, so two
- * comments elsewhere ("tension is always zero", "gravity never pulls a joint
- * open") are properties of the fixtures, not the model; this scopes them. (An
- * eccentric load pulls a square joint open too, but that is a stress carried as a
- * moment, invisible here — see Structure.HangingBrickPeelsRatherThanShears.)
- *
- * The shape: one brick, one earthed anchor, one inclined joint, varying the tilt
- * and which side of the piece the face is on:
+ * Characterises inclined joints, including one that holds a piece in tension
+ * (accepted by DESIGN.md §3). One brick, one grounded anchor, one inclined joint:
  *
  *     joint BENEATH               joint ABOVE
- *     anchor is PieceA            LOADED PIECE IS PieceA
- *     normal points up at         normal points up at the anchor, so it points
- *     the loaded piece            DOWN at the loaded piece
- *
  *          [brick]                    \  <- anchor above
  *         /                            \
  *        / <- face                      [brick]  hangs off the face
  *     [anchor]                       =========
  *     ========
  *
- * Both carry the same magnitude; the axis differs. GetJointRole is sign-blind
- * above 45 degrees (|NormalZTowardPiece| > cos45, then reads the sign), so a joint
- * past 45 sitting above a piece is Head, a fallback support, and the piece hangs
- * in tension (DESIGN.md §3 accepts this). Under 45 it's BedAbove, bears nothing,
- * and the piece falls — same outcome, different route, so 45 only looks like a
- * cliff. Numbers for load W through a face tilted T: normal W cos T, in-plane
- * W sin T. Expected magnitudes come from trigonometry, production from a dot
- * product — they agree on values, not method; the assertion is which axis the
- * normal component lands on.
+ * Past 45 degrees the head tier is sign-blind, so a face above the piece
+ * supports it in tension; under 45 it is BedAbove and the piece falls. For load
+ * W on a face tilted T: normal W cos T, in-plane W sin T.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureTiltedJointClassificationTest,
@@ -1046,13 +872,11 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 	/** Which axis the component normal to the interface ends up on. */
 	enum class ENormalAxis : uint8
 	{
-		/** The piece is not held up at all, so there is no load to resolve. */
+		/** The piece is not held up. */
 		Unloaded,
 
-		/** The face is being squeezed. */
 		Compression,
 
-		/** The face is being pulled open. */
 		Tension,
 	};
 
@@ -1060,14 +884,9 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 	{
 		const TCHAR* Description;
 
-		/** Tilt of the interface normal away from straight up, degrees. */
 		double DegreesFromVertical;
 
-		/*
-		 * Whether the inclined face sits above the loaded piece, the same as
-		 * declaring it loaded-piece-first: the normal points toward PieceB, so
-		 * naming the loaded piece PieceA puts the face over its head.
-		 */
+		/** Face above the loaded piece, i.e. declared loaded-piece-first. */
 		bool bJointAbovePiece;
 
 		bool bExpectedSupported;
@@ -1075,7 +894,7 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 	};
 
 	const TArray<FTiltCase> Cases = {
-		// Beneath the piece: the control. Whichever tier it lands in the face is under the brick and squeezed (bed at 40, head still pressed at 50+), which makes the above rows the interesting ones.
+		// Beneath the piece: always compressed.
 		{ TEXT("a bed joint 40 degrees beneath a piece is compressed, and sheared too"),
 			40.0, false, true, ENormalAxis::Compression },
 		{ TEXT("a head joint 46 degrees beneath a piece is compressed"),
@@ -1084,11 +903,10 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 			50.0, false, true, ENormalAxis::Compression },
 		{ TEXT("a head joint 60 degrees beneath a piece is compressed"),
 			60.0, false, true, ENormalAxis::Compression },
-		// The anchor row: at 90 the face is vertical, cos is zero, and the normal axis carries nothing. Still asserted, since it's the sign of the dot product.
 		{ TEXT("a vertical head joint beneath a piece is pure shear, with nothing on the normal axis"),
 			90.0, false, true, ENormalAxis::Compression },
 
-		// Above the piece, the finding: under 45 it's BedAbove, bears nothing, brick falls; over 45 the sign-blind head tier makes the same face a support, pulling it open.
+		// Above the piece: under 45 the brick falls; over 45 it hangs in tension.
 		{ TEXT("a bed joint 40 degrees above a piece bears nothing and the piece falls"),
 			40.0, true, false, ENormalAxis::Unloaded },
 		{ TEXT("a head joint 46 degrees above a piece supports it IN TENSION"),
@@ -1105,7 +923,7 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 
 	for (const FTiltCase& Case : Cases)
 	{
-		// Piece 0 is the held-up brick, piece 1 the grounded anchor. Same normal in both arrangements; only which end is named first changes.
+		// Piece 0 is the brick, piece 1 the grounded anchor.
 		const FVector Normal = NormalTiltedFromVertical(Case.DegreesFromVertical);
 
 		const FConnectionSpec JointSpec = Case.bJointAbovePiece
@@ -1134,7 +952,6 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 				Structure.IsPieceSupported(0) ? 1 : 0),
 			Structure.IsPieceSupported(0) == Case.bExpectedSupported);
 
-		// The anchor is grounded and never in question; an unsupported anchor would make every load figure below meaningless.
 		TestTrue(
 			FString::Printf(TEXT("%s: the grounded anchor must stay supported"), Case.Description),
 			Structure.IsPieceSupported(1));
@@ -1145,7 +962,7 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 		const double ShearMagnitude =
 			Case.ExpectedNormalAxis == ENormalAxis::Unloaded ? 0.0 : BrickWeightUU * FMath::Sin(Radians);
 
-		// The sign distinguishes the two arrangements: the stored force acts on PieceB, so naming the loaded piece first stores the reaction pointing up, landing the load on tension rather than compression.
+		// The stored force acts on PieceB, so declaring the loaded piece first stores it pointing up.
 		double ExpectedForceZ = 0.0;
 		if (Case.bExpectedSupported)
 		{
@@ -1159,7 +976,6 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 				Case.Description, ExpectedForceZ, Force.Z),
 			FMath::IsNearlyEqual(Force.Z, ExpectedForceZ, Tolerance));
 
-		// Still gravity, straight down, however the face is angled; a solver pushing load along the normal gets the magnitudes right and the direction wrong.
 		TestTrue(
 			FString::Printf(TEXT("%s: the load must be vertical, got (%f, %f, %f)"),
 				Case.Description, Force.X, Force.Y, Force.Z),
@@ -1182,7 +998,7 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 				&& FMath::IsNearlyEqual(Load.Shear, ShearMagnitude, Tolerance)
 				&& FMath::IsNearlyEqual(Load.Tension, ExpectedTension, Tolerance));
 
-		// Legs of a right triangle on hypotenuse W: they can't both be wrong and still square up, stopping a solver that put the whole load on one axis.
+		// The two axes must recompose to W.
 		const double Resolved = FMath::Sqrt(
 			FMath::Square(Load.Compression + Load.Tension) + FMath::Square(Load.Shear));
 
@@ -1197,23 +1013,13 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * Why the axis is worth its own test: the same brick on the same face is
-	 * measured against a different strength depending on which side it sits, two
-	 * orders of magnitude apart for mortar. One brick on 100 cm2 through a face at
-	 * 50 degrees, all three axes worked since ComputeUtilisation returns the worst:
-	 *
-	 *   normal  W cos50 = 1714.44 uu -> 0.00171444 MPa
-	 *   shear   W sin50 = 2043.20 uu -> 0.00204320 MPa
+	 * The same brick on the same 50-degree face is measured against a different
+	 * strength depending on which side it sits:
 	 *
 	 *   FACE BENEATH  shear governs:   0.00204320 / (0.2 + 0.6 x 0.00171444) = 0.010164
 	 *   FACE ABOVE    tension governs: 0.00171444 / 0.1                      = 0.017144
 	 *
-	 * The two faces' shear figures are within 0.5%, so a test asserting only "the
-	 * hanging joint is worse off" could pass on shear alone. Each is pinned to its
-	 * axis, computed from SI definitions rather than ForceUnitsPerMPaSqCm so a wrong
-	 * conversion fails here. Neither joint gives: one brick is 1.7% of the tensile
-	 * limit, so DESIGN.md §3's "fails almost at once" is about the strength ratio,
-	 * not this load.
+	 * Each is pinned to its axis. Neither joint gives.
 	 */
 	{
 		constexpr double UtilisationTolerance = 1.0e-9;
@@ -1226,11 +1032,7 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 		const double NormalStressMPa = MPaForForce(NormalUU, JointAreaSqCm);
 		const double ShearStressMPa = MPaForForce(ShearUU, JointAreaSqCm);
 
-		/*
-		 * Identical joints (ApplyForce ignores piece handles); only the sign of the
-		 * stored force differs. Two objects, not one, because ApplyForce latches and
-		 * a shared one would make the second HasGiven check depend on the first.
-		 */
+		// Two identical joints, since ApplyForce latches; only the force's sign differs.
 		FConnection Beneath;
 		Beneath.InterfaceNormal = NormalTiltedFromVertical(DegreesFromVertical);
 		Beneath.InterfaceAreaSqCm = JointAreaSqCm;
@@ -1277,23 +1079,11 @@ bool FStructureTiltedJointClassificationTest::RunTest(const FString& Parameters)
 }
 
 /*
- * The structure owns the graph, so nonsense handles and impossible interfaces are
- * rejected here rather than carried as healthy-looking joints. A connection with
- * PieceA == PieceB or both handles INDEX_NONE once read as a fine joint under any
- * load; rejection means it is not added, not stored and skipped.
- *
- * It also validates the piece's centre of mass (Structure.h refuses a non-finite
- * one): a NaN centre launders through two cross products into a NaN moment, which
- * reads as intact at the break decision, so the wall stands rather than falls, the
- * wrong direction. And the joint's rectangle, for the same reason: a rectangle
- * that disagrees with its area is a plausible number with the wrong lever arm, the
- * same fault class as a normal inconsistent with its A/B pairing (Layout.h).
- *
- * Zero extents are not degenerate but unmeasured bending capacity, so the
- * consistency rule applies only when a rectangle was supplied. Every tilted
- * fixture relies on that: a tilted normal may carry no rectangle and stay a good
- * geometry-free joint, keeping TiltedJointClassification and SupportTierThreshold
- * buildable.
+ * The structure rejects nonsense handles, masses, centres of mass and interfaces
+ * at the door rather than storing them. A NaN centre or rectangle becomes a NaN
+ * moment, which reads as intact, so the wall stands when it should fall. Zero
+ * extents mean unmeasured bending capacity, so the rectangle rule applies only
+ * when one is supplied.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureGraphValidationTest,
@@ -1307,7 +1097,6 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 	const double NaNValue = MakeNaN();
 	const double InfinityValue = MakeInfinity();
 
-	// Pieces first: a nonsense mass must not enter the structure, since NaN launders into plausible-looking numbers once it's in the array.
 	{
 		struct FPieceCase
 		{
@@ -1343,19 +1132,8 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * The same door with a centre of mass, which no row above covers. A NaN
-		 * centre is worse than a NaN mass: it becomes a lever arm the moment a joint
-		 * centroid is subtracted from it, feeding the moment's cross product, and
-		 * since every NaN comparison is false the break decision reads the joint as
-		 * intact — the wall stands rather than falls (Structure.h).
-		 *
-		 * Checked one axis at a time as well as all three: a guard written as a
-		 * length test, or on X alone, passes a vector whose Y is broken, and Y is the
-		 * axis every bed joint here bends about.
-		 *
-		 * An accepted centre must survive intact, so a door that refused everything
-		 * can't pass, nor one that "fixes" a bad centre by zeroing it — a zeroed
-		 * centre invents a lever arm of metres on a wall laid off-origin.
+		 * Centre of mass, one axis at a time: a guard on X alone misses a broken Y.
+		 * An accepted centre must be stored unchanged, not zeroed.
 		 */
 		struct FCentreCase
 		{
@@ -1415,7 +1193,7 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 			}
 			else
 			{
-				// Refused outright, not stored with the flag cleared: that would read as "nobody said where it is", a healthy state, so the refusal must be an absent piece.
+				// Refused outright; storing it with the flag cleared would look healthy.
 				TestTrue(
 					FString::Printf(
 						TEXT("%s: nothing may have been stored, the structure holds %d live pieces"),
@@ -1425,7 +1203,7 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// Handles are sequential and are what a connection refers to: without this the rejection cases above could be satisfied by an AddPiece that never accepts anything.
+	// Handles are sequential; also stops an AddPiece that accepts nothing passing the rows above.
 	{
 		FStructure Structure;
 
@@ -1492,10 +1270,7 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				{ -5, 1, BedJointNormal, JointAreaSqCm }, false
 			},
 
-			/*
-			 * Area is rejected at construction, not solve time: the load split
-			 * divides by total supporting area, and zero or NaN gives nothing sensible.
-			 */
+			// The load split divides by area.
 			{
 				TEXT("a zero interface area"),
 				{ 0, 1, BedJointNormal, 0.0 }, false
@@ -1513,7 +1288,6 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				{ 0, 1, BedJointNormal, InfinityValue }, false
 			},
 
-			// A normal that will not normalise describes no interface plane, so there is no joint here to load.
 			{
 				TEXT("a zero-length interface normal"),
 				{ 0, 1, FVector::ZeroVector, JointAreaSqCm }, false
@@ -1529,27 +1303,14 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				{ 0, 1, FVector(0.0, 0.0, 5.0), JointAreaSqCm }, true
 			},
 
-			/*
-			 * The joint's rectangle, and the state this door makes inexpressible: an
-			 * extent disagreeing with its area is the same fault class as a normal
-			 * disagreeing with its A/B pairing (Layout.h). Area governs the load split,
-			 * the rectangle the lever arm, and mortar's tensile strength is a hundredth
-			 * of its compressive one, so a lever arm out by a factor moves the governing
-			 * axis. Area is 100 cm2 throughout, so a consistent rectangle is 4 x 5 x 5.
-			 */
+			// The rectangle must agree with the area (4 x 5 x 5 = 100): area splits load, the rectangle sets the lever arm.
 			{
 				TEXT("a bed joint whose rectangle agrees with its area"),
 				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, BedJointHalfExtentCm },
 				true
 			},
 
-			/*
-			 * No rectangle at all is not a broken one: zero extents mean unmeasured
-			 * bending capacity, a healthy joint the area alone answers exactly. So the
-			 * consistency rule is conditional on a rectangle being supplied;
-			 * unconditional, it rejects 4 x 0 x 0 against 100 and takes every
-			 * geometry-free fixture with it.
-			 */
+			// No rectangle is not a broken one; the rule applies only when one is supplied.
 			{
 				TEXT("no rectangle at all is a joint with no bending capacity known, not a broken one"),
 				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, FVector::ZeroVector },
@@ -1567,50 +1328,28 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				false
 			},
 
-			/*
-			 * Partially filled in, a value assembled by hand and stopped halfway. One
-			 * extent at zero collapses the rectangle to a line, and 4 x 5 x 0 = 0
-			 * against 100 is a disagreement. "Is a rectangle supplied" must be answered
-			 * as "any component non-zero", not per-axis, or this row sails through as no
-			 * geometry.
-			 */
+			// "Rectangle supplied" means any component non-zero, so a half-filled one is refused.
 			{
 				TEXT("a rectangle with one extent left at zero is a line, not a face"),
 				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, FVector(5.0, 0.0, 0.0) },
 				false
 			},
 
-			/*
-			 * The one that fails open: two negative halves multiply into a plausible
-			 * 4 x -5 x -5 = 100, so a guard comparing only the product against area
-			 * accepts an inside-out rectangle. Its section modulus would be negative and
-			 * every downstream stress would flip sign.
-			 */
+			// 4 x -5 x -5 = 100: a product-only guard would accept this and flip every stress sign.
 			{
 				TEXT("two negative half-extents multiply into a plausible area and are still not a face"),
 				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, FVector(-5.0, -5.0, 0.0) },
 				false
 			},
 
-			/*
-			 * Area-consistent and still not a face: 4 x 5 x 5 is exactly 100, but the Z
-			 * extent is on the normal's own axis, making it a box. The in-plane frame is
-			 * the two world axes that aren't the separation axis; a third extent means a
-			 * different idea of which axes those are.
-			 */
+			// Area-consistent, but an extent on the normal's axis makes a box.
 			{
 				TEXT("an extent on the normal's own axis is a box, not a face"),
 				{ 0, 1, BedJointNormal, JointAreaSqCm, FVector::ZeroVector, FVector(5.0, 5.0, 3.25) },
 				false
 			},
 
-			/*
-			 * The tolerance, bracketed from both sides. Two derivations of one face can
-			 * disagree in the last few bits, so the rule can't be exact equality, but
-			 * can't be slack or it misses a rectangle describing a different face. A
-			 * relative 1e-12 is re-derivation noise and is accepted; 1e-6 isn't
-			 * reachable by rounding and is refused.
-			 */
+			// The tolerance, bracketed: relative 1e-12 is rounding noise, 1e-6 is a different face.
 			{
 				TEXT("a rectangle off by a relative 1e-12 is two derivations of one face"),
 				{ 0, 1, BedJointNormal, JointAreaSqCm,
@@ -1624,13 +1363,7 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				false
 			},
 
-			/*
-			 * Degenerate geometry fails closed, same as a degenerate area. A NaN
-			 * half-extent divides into a NaN section modulus, and NaN compares false
-			 * against "> 1.0", so the joint reports itself fine forever. The centre is
-			 * checked too: subtracted from a centre of mass for a lever arm, a NaN there
-			 * launders into a NaN moment.
-			 */
+			// Fails closed: a NaN extent or centre gives a NaN moment, which compares false against "> 1.0".
 			{
 				TEXT("a NaN half-extent"),
 				{ 0, 1, BedJointNormal, JointAreaSqCm,
@@ -1656,7 +1389,7 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				false
 			},
 
-			// A centroid is a world position with no sensible bound: a wall laid off the origin puts every joint far from zero, so only finiteness is a rule.
+			// A centroid has no sensible bound; only finiteness is checked.
 			{
 				TEXT("a joint a long way from the origin is still a joint"),
 				{ 0, 1, BedJointNormal, JointAreaSqCm,
@@ -1664,10 +1397,7 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				true
 			},
 
-			/*
-			 * The other two axes a normal can lie on: a guard hard-coding X and Y as
-			 * in-plane would pass every bed-joint row above and refuse both of these.
-			 */
+			// The other normal axes: a guard hard-coding X and Y as in-plane would refuse these.
 			{
 				TEXT("a rectangle on a head joint's normal"),
 				{ 0, 1, HeadJointNormal, JointAreaSqCm,
@@ -1694,13 +1424,8 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 			},
 
 			/*
-			 * A tilted normal may not carry a rectangle: the in-plane frame is only
-			 * defined when there's a separation axis, and a normal 40 degrees off
-			 * vertical has two candidates, so choosing would silently pick a section
-			 * modulus. MakeInterface only emits axis-aligned normals, so nothing the
-			 * producer builds is refused. The 1e-6 row keeps the line bright: a normal a
-			 * millionth off an axis wasn't rounded off an exact one, it meant something
-			 * else.
+			 * A tilted normal may not carry a rectangle: its in-plane frame is ambiguous.
+			 * MakeInterface only emits axis-aligned normals, so nothing real is refused.
 			 */
 			{
 				TEXT("a rectangle on a normal tilted 40 degrees"),
@@ -1721,14 +1446,7 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 				false
 			},
 
-			/*
-			 * And every tilted fixture keeps working, the other half of the rule.
-			 * TiltedJointClassification builds joints at 40, 46, 50, 60 and 90 degrees;
-			 * refusing a tilted normal outright would delete its fixture and
-			 * SupportTierThreshold's. The 90-degree row isn't incidental: cos(90) is
-			 * 6.1e-17, not 0, so that normal isn't axis-aligned by any exact test and
-			 * must still be a good geometry-free joint.
-			 */
+			// Tilted normals without a rectangle stay valid; cos(90) is 6.1e-17, not 0.
 			{
 				TEXT("a tilted normal with no rectangle is still a joint, at 40 degrees"),
 				{ 0, 1, NormalTiltedFromVertical(40.0), JointAreaSqCm },
@@ -1766,22 +1484,13 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 					Case.Description, ExpectedCount, Structure.NumConnections()),
 				Structure.NumConnections() == ExpectedCount);
 
-			/*
-			 * Scoped to rows supposed to be accepted, not merely rows that were: a row
-			 * wrongly let through already said so twice above, and an equality check on
-			 * its degenerate value only reports that a NaN isn't equal to itself.
-			 */
+			// Only rows meant to be accepted; a wrongly accepted row has already failed above.
 			if (Handle == INDEX_NONE || !Case.bIsAccepted)
 			{
 				continue;
 			}
 
-			/*
-			 * An accepted joint keeps its rectangle bit for bit. The door validates and
-			 * doesn't normalise: zeroing a slightly-off rectangle would turn every
-			 * refusal above into silent acceptance of a joint with no bending capacity.
-			 * Refuse or store; nothing else.
-			 */
+			// An accepted joint keeps its geometry bit for bit; the door validates, never normalises.
 			const FConnection& Stored = Structure.GetConnection(Handle);
 
 			TestTrue(
@@ -1812,13 +1521,8 @@ bool FStructureGraphValidationTest::RunTest(const FString& Parameters)
 }
 
 /*
- * Solving is not destructive, however overloaded the structure. Loads are
- * computed; breaking is a separate step. Solving via ApplyForce would break
- * joints as a side effect: it latches, so the solve couldn't be re-run and a
- * joint that gave mid-solve reports zero, making the computed load a lie. This
- * test only pins that solving must not commit. The masses are absurd so the load
- * is past every axis of a real mortar joint, worked below so the test can't be
- * satisfied by a load that was never over the limit.
+ * Solving never breaks a joint, however overloaded; breaking is a separate step.
+ * The masses are far past mortar's limits, checked below so the overload is real.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureSolveIsNonDestructiveTest,
@@ -1833,24 +1537,13 @@ bool FStructureSolveIsNonDestructiveTest::RunTest(const FString& Parameters)
 	constexpr double AbsurdMassKg = 20000.0;
 	const double ExpectedPerJointUU = WeightOf(AbsurdMassKg);
 
-	/*
-	 * Compressive limit is 10 MPa over 100 cm2 = 1e7 uu, so the bed joint is at
-	 * 1.96x; the head joint sees the same force as shear against at most 1.3e6 uu,
-	 * fifteen times over. Both axes are past limit. Capacities come from the
-	 * profile, so no plausible retune stops these being an overload.
-	 */
+	// Compressive capacity 10 MPa x 100 cm2 = 1e7 uu, so the bed joint is at 1.96x.
 	const double CompressiveCapacityUU =
 		ForceForMPa(GeneralPurposeMortar.CompressiveStrengthMPa, JointAreaSqCm);
 	const double MaxShearCapacityUU =
 		ForceForMPa(GeneralPurposeMortar.MaxShearStrengthMPa, JointAreaSqCm);
 
-	/*
-	 * Two separate overloaded pieces, one per joint, forced by the two-tier rule
-	 * (DESIGN.md §3): a piece with a bed joint beneath doesn't fall back to head
-	 * joints, so one piece can't load both. Piece 2 rests on grounded piece 0
-	 * through a bed joint; piece 3 hangs sideways off grounded piece 1 through its
-	 * one head joint. Each carries its whole 20 tonnes.
-	 */
+	// One overloaded piece per joint: piece 2 on a bed joint, piece 3 on a head joint.
 	const FStructureSpec Spec = {
 		{
 			{ BrickMassKg, true },
@@ -1880,13 +1573,7 @@ bool FStructureSolveIsNonDestructiveTest::RunTest(const FString& Parameters)
 				Index, ExpectedPerJointUU, Force.Z),
 			FMath::IsNearlyEqual(Force.Z, -ExpectedPerJointUU, Tolerance));
 
-		/*
-		 * Without this a solver that computed nothing would pass, a zero load leaving
-		 * every joint intact for the wrong reason. Each joint against the capacity it
-		 * uses: connection 0 (bed) is pure compression, connection 1 (head) pure
-		 * shear. Checking both bounds against both would assert the bed joint past a
-		 * shear capacity it carries none of, silent on the governing axis.
-		 */
+		// Each load must exceed the capacity on its own axis: compression for the bed, shear for the head.
 		if (Index == 0)
 		{
 			TestTrue(
@@ -1907,7 +1594,7 @@ bool FStructureSolveIsNonDestructiveTest::RunTest(const FString& Parameters)
 			Structure.GetConnection(Index).HasGiven());
 	}
 
-	// Solving twice must give the same answer; a destructive solve would report a smaller load the second time.
+	// Solving twice must give the same answer.
 	Structure.SolveLoads();
 
 	for (int32 Index = 0; Index < Spec.Connections.Num(); ++Index)
@@ -1928,25 +1615,9 @@ bool FStructureSolveIsNonDestructiveTest::RunTest(const FString& Parameters)
 }
 
 /*
- * Properties that must hold across every structure, not particular numbers
- * (LoadPath's job). Five invariants, each guarding a silent failure:
- *
- *  - Every load is finite and never NaN. FMath::Max/Min launder a NaN mass or
- *    area into a plausible number; the door guard is in GraphValidation, but this
- *    asserts the consequence.
- *  - Support is checked against SpecReachesGround, an independent walk — a second
- *    opinion. "Support", not "connectivity": a piece under a grounded slab is
- *    joined to the ground and not held up by it.
- *  - Ground-reaction conservation: loads touching a grounded piece sum to exactly
- *    the weight of the supported ungrounded pieces. The weaker "no joint carries
- *    more than the total" had 2x slack on the triangle.
- *  - No joint is ever in tension. Static gravity presses a bed joint and slides a
- *    head joint; non-zero tension means the force was stored against the wrong end.
- *  - Solving never breaks a joint, over the whole matrix.
- *
- * Shapes include the pathological: a twenty-high chain, a cycle a naive walk could
- * loop or double-count, a structure with no ground, and the two-tier cases where
- * attachment to earth isn't resting on it.
+ * Invariants over many shapes, including chains, cycles and ungrounded structures:
+ * loads are finite; support matches SpecReachesGround; ground reaction equals
+ * supported weight; no axis-aligned joint is in tension; solving breaks nothing.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureDegenerateInputTest,
@@ -1988,7 +1659,6 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 		}
 	});
 
-	// The same two bricks declared upper piece first (ConnectionLoad.h allows it): the stored force must flip sign, or a compressed joint reads as tensile.
 	Specs.Add({
 		TEXT("a bed joint declared upper piece first"),
 		{
@@ -1997,7 +1667,6 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 		}
 	});
 
-	// Attached to earth but not held up by it: the piece hangs under a grounded slab, so its one bed joint is above it and bears nothing.
 	Specs.Add({
 		TEXT("a piece hanging beneath a grounded piece"),
 		{
@@ -2006,7 +1675,6 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 		}
 	});
 
-	// Mutual lateral support: each names the other as its head-joint support, neither reaching earth. An untracked support walk loops here.
 	Specs.Add({
 		TEXT("two pieces hanging from each other"),
 		{
@@ -2026,12 +1694,7 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 		}
 	});
 
-	/*
-	 * A piece held sideways by one grounded and one falling neighbour. Piece 2
-	 * rests on floating piece 3 and reaches nothing, so piece 1's whole weight goes
-	 * through the joint to piece 0; splitting evenly credits half to a falling piece
-	 * and loses it, visible only to the conservation invariant.
-	 */
+	// Piece 1's whole weight must go to piece 0; an even split would fail conservation.
 	Specs.Add({
 		TEXT("a piece held by one grounded and one falling neighbour"),
 		{
@@ -2047,7 +1710,6 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 		}
 	});
 
-	// A cycle: everything connected, one piece grounded. An untracked downward walk can loop here or double-count the same weight.
 	Specs.Add({
 		TEXT("a fully connected triangle with one grounded piece"),
 		{
@@ -2060,7 +1722,6 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 		}
 	});
 
-	// A cycle with nothing grounded at all: the same trap with no exit.
 	Specs.Add({
 		TEXT("a fully connected triangle with nothing grounded"),
 		{
@@ -2073,7 +1734,6 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 		}
 	});
 
-	// A twenty-high chain, so the base joint carries nineteen bricks: long enough that an accumulation error compounds visibly rather than hiding in tolerance.
 	{
 		FStructureSpec Chain;
 		constexpr int32 ChainHeight = 20;
@@ -2088,7 +1748,6 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 		Specs.Add({ TEXT("a twenty-high chain"), Chain });
 	}
 
-	// The running-bond wall from LoadPath, here for conservation: all four ungrounded bricks must reach the two grounded ones, whatever route the solver takes through the keystone.
 	Specs.Add({
 		TEXT("a running-bond wall spanning a gap"),
 		{
@@ -2109,7 +1768,6 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 		}
 	});
 
-	// Two grounded islands and one floating island, all in one structure.
 	Specs.Add({
 		TEXT("two grounded islands and one floating island"),
 		{
@@ -2181,24 +1839,15 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 					Named.Description, Index, Force.X, Force.Y, Force.Z),
 				FMath::IsFinite(Force.X) && FMath::IsFinite(Force.Y) && FMath::IsFinite(Force.Z));
 
-			// Never sideways: gravity does not change direction because a joint happens to be vertical.
 			TestTrue(
 				FString::Printf(TEXT("%s: connection %d load must be vertical, got (%f, %f, %f)"),
 					Named.Description, Index, Force.X, Force.Y, Force.Z),
 				FMath::IsNearlyZero(Force.X, Tolerance) && FMath::IsNearlyZero(Force.Y, Tolerance));
 
 			/*
-			 * And never upward, but "upward" is about the joint, not world Z: the
-			 * stored force acts on PieceB, so the sign flips with declaration order
-			 * while the classification doesn't. Non-zero tension is the
-			 * declaration-independent way to say the load runs the wrong way.
-			 *
-			 * Scoped to these fixtures: every normal here is axis-aligned, so this is
-			 * a property of the specs. The sign-blind head tier supports a piece in
-			 * tension past 45 degrees (DESIGN.md §3), and a fuzz with tilted normals
-			 * produced tension in 337 of 6000 structures. So the first tilted normal
-			 * added here turns this row red as a discovery — characterise it, then
-			 * scope this assertion to the axis-aligned rows rather than deleting it.
+			 * Tension means the force was stored against the wrong end. Holds only
+			 * because every normal here is axis-aligned; a tilted normal can legitimately
+			 * produce tension (DESIGN.md §3), so scope this rather than delete it.
 			 */
 			const FConnectionLoad Load = DestructionForce::ClassifyForce(
 				Force, Structure.GetConnection(Index).InterfaceNormal);
@@ -2222,13 +1871,7 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		/*
-		 * Ground-reaction conservation: joints touching a grounded piece carry
-		 * exactly the weight of the supported ungrounded pieces. The weaker "no joint
-		 * carries more than the total" left 2x slack on the triangle. Relative
-		 * tolerance, since one spec weighs 9.8e8 uu and another splits across areas
-		 * twelve orders of magnitude apart.
-		 */
+		// Relative tolerance: one spec weighs 9.8e8 uu.
 		const double ConservationTolerance = FMath::Max(Tolerance, 1.0e-9 * TotalSupportedWeightUU);
 
 		TestTrue(
@@ -2237,7 +1880,7 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 				Named.Description, TotalSupportedWeightUU, GroundReactionUU),
 			FMath::IsNearlyEqual(GroundReactionUU, TotalSupportedWeightUU, ConservationTolerance));
 
-		// Out-of-range handles fail closed rather than reading as a healthy, unloaded, grounded piece.
+		// Out-of-range handles fail closed.
 		const int32 PastTheEnd = Named.Spec.Pieces.Num();
 
 		TestFalse(
@@ -2254,12 +1897,7 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 			FString::Printf(TEXT("%s: connection INDEX_NONE carries nothing"), Named.Description),
 			Structure.GetConnectionForce(INDEX_NONE).IsNearlyZero());
 
-		/*
-		 * The accessors themselves, documented to return a placeholder for an unknown
-		 * handle. The failure they guard is silent: a placeholder reading as a real
-		 * massless grounded piece, or a real zero-area joint, would let a caller walk
-		 * off the array end and get a plausible answer instead of an obvious one.
-		 */
+		// Unknown handles return an obviously-empty placeholder, not a plausible piece or joint.
 		{
 			const FStructurePiece& UnknownPiece = Structure.GetPiece(PastTheEnd);
 			const FStructurePiece& NonePiece = Structure.GetPiece(INDEX_NONE);
@@ -2283,7 +1921,7 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 			const FConnection& UnknownJoint = Structure.GetConnection(Named.Spec.Connections.Num());
 			const FConnection& NoneJoint = Structure.GetConnection(INDEX_NONE);
 
-			// Zero area matters as much as the unset handles: it makes the placeholder read as a failed joint, not an intact one, if a load goes through it.
+			// Zero area makes a loaded placeholder read as failed, not intact.
 			TestTrue(
 				FString::Printf(TEXT("%s: an unknown connection joins nothing, got %d -> %d over %f cm2"),
 					Named.Description, UnknownJoint.PieceA, UnknownJoint.PieceB,
@@ -2301,7 +1939,7 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 					&& !NoneJoint.HasGiven());
 		}
 
-		// Nothing supported means nothing carried, and vice versa: stops the matrix being satisfied by a solver that returns zero everywhere.
+		// Stops a solver that returns zero everywhere passing the matrix.
 		TestTrue(
 			FString::Printf(TEXT("%s: %f of weight is held up but the joints carry %f in total"),
 				Named.Description, TotalSupportedWeightUU, TotalCarriedUU),
@@ -2312,32 +1950,11 @@ bool FStructureDegenerateInputTest::RunTest(const FString& Parameters)
 }
 
 /*
- * A cycle in the support relation must not strand load silently.
- *
- * Accumulation orders pieces by Kahn's algorithm over "who rests on me". Pieces
- * in a cycle never become ready, so their joints keep a zero load and the weight
- * never reaches earth, while the reachability walk reports them supported: two
- * accessors on one solve, contradicting each other with no signal. The shape is a
- * bottom course of three bricks with the ground missing under two of them, the
- * cycle appearing once the gap is two bricks wide.
- *
- * The decision: pieces whose load the solver can't route to earth are reported
- * unsupported. This needs no new API, makes the two accessors agree (matching
- * Structure.h's "a connection with no path to ground reports zero"), and is the
- * fail-closed direction (DESIGN.md §3). It does not claim the cycle is solved —
- * dividing load round a loop needs a rule we don't have (CURRENT_STATE.md) — only
- * that the stall is visible from outside.
- *
- * Because that could change, the invariants below are written against what the
- * solver reports, not the expectation table:
- *
- *  - Every ungrounded piece called supported has at least its own weight on the
- *    joints touching it. Summing over every touching joint keeps this free of any
- *    tier-rule transcription — a lower bound whichever joints are the supports.
- *  - Ground reaction equals the weight of exactly the pieces the solver holds up.
- *    This also pins Structure.cpp writing ConnectionForces by assignment: seeding
- *    the cycle would turn that into an overwrite, the second piece's share
- *    clobbering the first's, which conservation notices.
+ * A cycle in the support relation must not strand load silently. Kahn ordering
+ * never readies pieces in a cycle, so their weight never reaches earth. Such
+ * pieces are reported unsupported, the fail-closed direction (DESIGN.md §3).
+ * Dividing load round a loop is still unsolved (CURRENT_STATE.md). The
+ * invariants are checked against what the solver reports, not the table.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureSupportCycleTest,
@@ -2353,18 +1970,12 @@ bool FStructureSupportCycleTest::RunTest(const FString& Parameters)
 		const TCHAR* Description;
 		FStructureSpec Spec;
 
-		/** Whether each piece is held up, in piece-array order. */
+		/** In piece-array order. */
 		TArray<bool> ExpectedSupported;
 	};
 
 	const TArray<FCycleCase> Cases = {
-		/*
-		 * The control, minimum repro minus one brick: two bricks, the left grounded.
-		 * Piece 1 has no bed joint and falls back to its one head joint onto earth —
-		 * no cycle, since grounded pieces never enter the ordering. A fix that
-		 * distrusted head joints would take this with it, and DESIGN.md §3's worked
-		 * example rests on it.
-		 */
+		// Control: a head joint onto a grounded piece is a valid support, no cycle.
 		{
 			TEXT("a brick held sideways by a grounded neighbour is supported and loads the joint"),
 			{
@@ -2375,15 +1986,12 @@ bool FStructureSupportCycleTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * The minimum repro. Add one brick to that course:
+		 * The minimum repro:
 		 *
 		 *   G  —  X  —  Y      pieces 0, 1, 2
 		 *   ==                 earth, under G only
 		 *
-		 * Neither X nor Y has a bed joint, so X's supports are {G, Y} and Y's are {X}.
-		 * Each waits for the other, the ready set seeds empty, and no force is written
-		 * — yet the reachability walk reports both supported. 5333 uu held up per one
-		 * accessor, 0 uu reaching ground per the other.
+		 * X's supports are {G, Y} and Y's are {X}, so each waits for the other.
 		 */
 		{
 			TEXT("a two-brick gap strands the course, and the stall is visible from outside"),
@@ -2397,7 +2005,6 @@ bool FStructureSupportCycleTest::RunTest(const FString& Parameters)
 			{ true, false, false }
 		},
 
-		// The same stall at a longer stride, so a fix can't special-case adjacent pairs: a three-brick gap makes a cycle of three.
 		{
 			TEXT("a three-brick gap strands the course the same way"),
 			{
@@ -2414,12 +2021,7 @@ bool FStructureSupportCycleTest::RunTest(const FString& Parameters)
 			{ true, false, false, false }
 		},
 
-		/*
-		 * The second control: a cycle that isn't stranded and must stay solved.
-		 * Pieces 0 and 2 name each other, a genuine two-cycle, but piece 0 is grounded
-		 * and never enters the ordering, so piece 2 becomes ready immediately.
-		 * "Contains a cycle" is not "cannot be ordered".
-		 */
+		// Control: a cycle through a grounded piece still orders, since grounded pieces are never in the ordering.
 		{
 			TEXT("a cycle through a grounded piece still resolves"),
 			{
@@ -2458,7 +2060,6 @@ bool FStructureSupportCycleTest::RunTest(const FString& Parameters)
 
 		Structure.SolveLoads();
 
-		// The decision, asserted directly: a piece the solver cannot route to earth is not held up.
 		for (int32 Index = 0; Index < Case.ExpectedSupported.Num(); ++Index)
 		{
 			TestTrue(
@@ -2469,7 +2070,7 @@ bool FStructureSupportCycleTest::RunTest(const FString& Parameters)
 				Structure.IsPieceSupported(Index) == Case.ExpectedSupported[Index]);
 		}
 
-		// From here on, everything is measured against what the solver reports, so it survives the decision above being revisited.
+		// From here on, measured against what the solver reports.
 		double ReportedSupportedWeightUU = 0.0;
 
 		for (int32 PieceIndex = 0; PieceIndex < Case.Spec.Pieces.Num(); ++PieceIndex)
@@ -2482,7 +2083,7 @@ bool FStructureSupportCycleTest::RunTest(const FString& Parameters)
 			const double OwnWeightUU = WeightOf(Case.Spec.Pieces[PieceIndex].MassKg);
 			ReportedSupportedWeightUU += OwnWeightUU;
 
-			// Every joint touching this piece, not just the tier rule's supports: a lower bound whichever subset is the real supports, needing no copy of the tier rule.
+			// Every touching joint: a lower bound that needs no copy of the tier rule.
 			double TouchingUU = 0.0;
 			for (int32 Index = 0; Index < Case.Spec.Connections.Num(); ++Index)
 			{
@@ -2522,11 +2123,7 @@ bool FStructureSupportCycleTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		/*
-		 * Ground reaction against the solver's own claim: short means stranded, long
-		 * means double-counted, and an assignment gone overwrite shows up as short by
-		 * the clobbered share.
-		 */
+		// Short means stranded or overwritten; long means double-counted.
 		TestTrue(
 			FString::Printf(
 				TEXT("%s: the solver reports holding up %f but only %f reaches the ground"),
@@ -2539,26 +2136,10 @@ bool FStructureSupportCycleTest::RunTest(const FString& Parameters)
 }
 
 /*
- * Stranding does not propagate downward. A brick resting on the earth stands up
- * whatever is happening above it. Un-orderability is a solver artefact (DESIGN.md
- * §3): load that can't be routed is reported as falling only for the pieces caught
- * in the knot; pieces beneath keep their support and carry everything except the
- * unroutable contribution.
- *
- * The defect: the Kahn ordering runs top-down, so a piece comes out unordered when
- * a knot sits anywhere above it, not only when it's in one. Stranding every
- * unordered piece walks down to the first grounded piece and the next pass back up,
- * so one unroutable pair takes down four of five pieces. No existing test sees it
- * because over-stranding preserves conservation exactly (a 4000-case fuzz found 0
- * conservation violations but 14 wrongly-falling pieces), and every SupportCycle
- * and DegenerateInputs invariant is measured against what the solver reports. So
- * the missing control is an ungrounded piece bed-jointed to ground and
- * head-jointed to an unroutable pair, its support and bed-joint load asserted directly.
- *
- * The knot must also not shed weight downward: every case states the load beneath
- * it exactly, so pushing X and Y's weight into the pier reads 4 or 5 bricks where
- * the table says 2. The other-direction controls live in SupportCycle — narrowing
- * the stranded set must not widen it elsewhere.
+ * Stranding does not propagate downward: only pieces in the knot are stranded
+ * (DESIGN.md §3), and pieces beneath keep their support and load. Kahn ordering
+ * runs top-down, so stranding every unordered piece would take down pieces below
+ * a knot. Conservation can't see that, so support and loads are asserted directly.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureStrandingIsLocalTest,
@@ -2571,18 +2152,12 @@ bool FStructureStrandingIsLocalTest::RunTest(const FString& Parameters)
 
 	const TArray<FSolveCase> Cases = {
 		/*
-		 * The repro, minimal.
-		 *
 		 *         Z  —  X  —  Y      pieces 1, 2, 3, joined sideways
 		 *         |                  bed joint, Z on the pier
 		 *      [ pier ]              piece 0, on the earth
 		 *      =======
 		 *
-		 * X and Y have no bed joint: X's supports are {Z, Y}, Y's are {X}, the
-		 * unroutable knot. Z is not in it — bed-jointed onto a grounded pier — but
-		 * because X names Z, Z's pending-loader count never reaches zero, so
-		 * un-orderability stranding strands Z and then anything resting on it. The
-		 * pier joint carries Z's own weight only: X and Y are falling and hand nothing down.
+		 * X and Y form the knot. Z is not in it, but X names Z, so Z is never ordered.
 		 */
 		{
 			TEXT("a piece bed-jointed to the ground is supported however unroutable the course above it"),
@@ -2608,8 +2183,6 @@ bool FStructureStrandingIsLocalTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * The same knot with a brick on the piece beneath it, where the cascade shows.
-		 *
 		 *               B                piece 4, resting on Z
 		 *               |
 		 *         Z  —  X  —  Y          pieces 1, 2, 3
@@ -2617,8 +2190,7 @@ bool FStructureStrandingIsLocalTest::RunTest(const FString& Parameters)
 		 *      [ pier ]                  piece 0
 		 *      =======
 		 *
-		 * B is held up by Z, Z reaches earth, so B stands and the pier joint carries
-		 * two bricks, not three or four — X and Y are falling and hand nothing down.
+		 * B stands on Z, so the pier joint carries two bricks.
 		 */
 		{
 			TEXT("a brick resting on a grounded-through piece stands, and its weight reaches the earth"),
@@ -2647,9 +2219,7 @@ bool FStructureStrandingIsLocalTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * Two courses beneath the knot, so a fix can't special-case the piece directly
-		 * under it: stranding would walk down to the first grounded piece, two joints
-		 * away here.
+		 * Two courses beneath the knot:
 		 *
 		 *        Zhigh — X — Y      pieces 2, 3, 4
 		 *          |
@@ -2657,9 +2227,6 @@ bool FStructureStrandingIsLocalTest::RunTest(const FString& Parameters)
 		 *          |
 		 *      [ pier ]             piece 0
 		 *      =======
-		 *
-		 * Neither Zlow nor Zhigh is in the knot. The lower joint carries both, the
-		 * upper carries Zhigh alone.
 		 */
 		{
 			TEXT("stranding does not walk down two courses to the earth"),
@@ -2697,15 +2264,8 @@ bool FStructureStrandingIsLocalTest::RunTest(const FString& Parameters)
 }
 
 /*
- * Stranding does propagate upward. A piece whose only support is falling is
- * falling too, and its joint carries nothing.
- *
- * The other half of the rule, and the one thing needing the solve to iterate:
- * stranding a knot changes who reaches ground, which can strand a piece that
- * rested only on what was just stranded. Every other case settles in one pass, and
- * a single-pass solver was verified to reproduce every flag and force on all 26
- * structures the suite solves — so the loop could be deleted and stay green unless
- * a case like this exists.
+ * Stranding does propagate upward: a piece whose only support is falling is
+ * falling too. This is the only case that needs the solve to iterate.
  *
  *                       B          piece 3, resting on Y through a bed joint
  *                       |
@@ -2714,14 +2274,6 @@ bool FStructureStrandingIsLocalTest::RunTest(const FString& Parameters)
  *
  *   ITERATING     supported = [T,F,F,F]   forces = [0, 0, 0]
  *   SINGLE-PASS   supported = [T,F,F,T]   forces = [0, 0, -2667.2]
- *
- * The single-pass answer is self-contradictory: it calls B held up while writing
- * B's weight onto a joint whose far end it calls falling. B is ordered first (the
- * only leaf), so the case needs something above the knot to see this. Case 2 adds
- * the second claim — Z, beneath the knot, keeps its support and pier-joint weight
- * while B loses both — failing a single-pass solver and an over-eager stranding
- * rule in opposite directions. Run these two with the loop removed before doubting
- * they discriminate it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureStrandingPropagatesUpwardTest,
@@ -2733,7 +2285,6 @@ bool FStructureStrandingPropagatesUpwardTest::RunTest(const FString& Parameters)
 	using namespace StructureTestSupport;
 
 	const TArray<FSolveCase> Cases = {
-		// Nothing beneath the knot: G is grounded, so the whole course goes. B rests on Y in the knot with no other support, so B falls and its joint reports zero, not a brick on its way down.
 		{
 			TEXT("a brick resting on a stranded piece is itself falling and its joint carries nothing"),
 			{
@@ -2758,8 +2309,7 @@ bool FStructureStrandingPropagatesUpwardTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * Both rules at once, the only case stating them separately: Z beneath the
-		 * knot keeps its support; B above it loses its own.
+		 * Both rules at once: Z beneath the knot stands; B above it falls.
 		 *
 		 *                         B      piece 4, resting on Y
 		 *                         |
@@ -2767,10 +2317,6 @@ bool FStructureStrandingPropagatesUpwardTest::RunTest(const FString& Parameters)
 		 *         |
 		 *      [ pier ]                  piece 0
 		 *      =======
-		 *
-		 * Downward: the pier joint carries Z's one brick. Upward: B is held up only by
-		 * Y, so it falls and the Y-B joint is unloaded — worse to get wrong than the
-		 * case above, since this structure has a standing part to confuse it with.
 		 */
 		{
 			TEXT("stranding travels up to what rests on the knot and not down to what carries it"),
@@ -2808,25 +2354,10 @@ bool FStructureStrandingPropagatesUpwardTest::RunTest(const FString& Parameters)
 }
 
 /*
- * Why a piece has no support, not merely whether. IsPieceSupported answers
- * "whether", and two things produce the same false:
- *
- *   - Physics: nothing holds the piece up; its supports are gone or falling.
- *   - A solver limitation: the piece is in an unroutable knot, where there's no
- *     rule for dividing load round a loop, so the solver conservatively calls it
- *     falling (DESIGN.md §3) — not physics.
- *
- * Why an accessor: DESIGN.md §4's collapse test ("pull bricks until it topples,
- * confirm it falls at the predicted number") reads identically in both cases, so
- * it could be calibrated against the removal count that makes a cycle rather than
- * overloads a joint. It needs a precondition it can't express — no piece was
- * stranded when it fell — and this is that seam.
- *
- * Stranded is only for pieces in the knot: a piece resting only on a knot comes out
- * Falling, having simply lost what carried it. Production already computes this set
- * (the fixpoint strands on "does my load come back to me"), so the distinction
- * falls out. Every case mirrors an existing fixture and must agree with it on
- * IsPieceSupported (CheckSupportAgreesWithReason); only the reason column is new.
+ * Why a piece is unsupported: Falling (physics) or Stranded (in an unroutable
+ * knot, a solver limitation; DESIGN.md §3). DESIGN.md §4's collapse test needs to
+ * know no piece was stranded. A piece resting only on a knot is Falling, not
+ * Stranded. Each case mirrors an existing fixture.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructurePieceSupportReasonTest,
@@ -2842,12 +2373,11 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 		const TCHAR* Description;
 		FStructureSpec Spec;
 
-		/** Why each piece is or is not held up, in piece-array order. */
+		/** In piece-array order. */
 		TArray<EPieceSupport> ExpectedSupport;
 	};
 
 	const TArray<FSupportReasonCase> Cases = {
-		// SupportCycle's first control. Piece 1 has no bed joint and falls back to its one head joint onto earth; nothing is in a knot, so the fallback reads as ordinary support.
 		{
 			TEXT("a brick held sideways by a grounded neighbour is SUPPORTED, not stranded"),
 			{
@@ -2858,13 +2388,10 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * SupportCycle's minimum repro, the case this accessor exists for:
+		 * SupportCycle's minimum repro; X and Y are in the knot.
 		 *
 		 *   G  —  X  —  Y      pieces 0, 1, 2
 		 *   ==                 earth, under G only
-		 *
-		 * X's supports are {G, Y}, Y's are {X}, so both are in the knot.
-		 * IsPieceSupported reports them falling but can't say the reason is the solver.
 		 */
 		{
 			TEXT("both bricks over a two-brick gap are STRANDED — they are in the knot"),
@@ -2878,7 +2405,6 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 			{ EPieceSupport::Grounded, EPieceSupport::Stranded, EPieceSupport::Stranded }
 		},
 
-		// The same stall at a longer stride, so the reason can't special-case adjacent pairs: all three pieces of a three-cycle are in it.
 		{
 			TEXT("all three bricks over a three-brick gap are STRANDED"),
 			{
@@ -2898,7 +2424,6 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 			}
 		},
 
-		// SupportCycle's second control: a genuine cycle (pieces 0 and 2), but piece 0 is grounded and never enters the ordering, so everything resolves. "Contains a cycle" is not "is stranded".
 		{
 			TEXT("a cycle through a grounded piece resolves, so nothing in it is stranded"),
 			{
@@ -2913,8 +2438,7 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * StrandingIsLocal's repro. Z is beneath the knot, keeping its support; the
-		 * knot above it is X and Y and nothing else.
+		 * StrandingIsLocal's repro: Z keeps its support; only X and Y are stranded.
 		 *
 		 *         Z  —  X  —  Y      pieces 1, 2, 3
 		 *         |
@@ -2942,7 +2466,6 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 			}
 		},
 
-		// The same knot with a brick on the piece beneath it. B is held up by Z, which reaches earth, so B is Supported while X and Y are stranded two joints away: the reason must be per piece.
 		{
 			TEXT("a brick on the standing part is SUPPORTED while the knot beside it is stranded"),
 			{
@@ -2966,7 +2489,6 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 			}
 		},
 
-		// Two courses beneath the knot: a reason walking down to the first grounded piece would report Zlow and Zhigh stranded, though both are standing.
 		{
 			TEXT("two courses beneath a knot are both SUPPORTED"),
 			{
@@ -2991,17 +2513,12 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * Stranded versus Falling, the distinction IsPieceSupported can't make.
-		 * StrandingPropagatesUpward's first case:
+		 * Stranded versus Falling: X and Y are in the knot; B is not.
 		 *
 		 *                       B          piece 3, resting on Y through a bed joint
 		 *                       |
 		 *      [ G ]  —  X  —   Y          pieces 0, 1, 2
 		 *      =====
-		 *
-		 * X and Y are in the knot; B is not, having simply lost the only thing holding
-		 * it up. IsPieceSupported says false for all three; only this accessor says two
-		 * are the solver's answer and one the structure's.
 		 */
 		{
 			TEXT("a brick resting only on a knot is FALLING, not stranded — it is not in the knot"),
@@ -3024,7 +2541,6 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 			}
 		},
 
-		// All four states in one structure, stopping any two of them being conflated: pier Grounded, Z beneath the knot Supported, X/Y Stranded, B on top Falling.
 		{
 			TEXT("one structure showing all four states at once"),
 			{
@@ -3049,7 +2565,7 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 		},
 	};
 
-	// A floor on the table itself, so a case list that lost its only Falling row fails rather than passing in silence.
+	// Checks the table itself still covers every state.
 	TMap<EPieceSupport, int32> StatesExpected;
 
 	for (const FSupportReasonCase& Case : Cases)
@@ -3088,7 +2604,7 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 			CheckSupportAgreesWithReason(*this, Case.Description, Structure, Index);
 		}
 
-		// A grounded piece is never merely Supported, and nothing off the earth reads Grounded. Asserted against the spec, not the expectation column, so a row with the two swapped is caught by the fixture.
+		// Grounded matches the spec's grounding exactly, checked against the spec rather than the table.
 		for (int32 Index = 0; Index < Case.Spec.Pieces.Num(); ++Index)
 		{
 			TestTrue(
@@ -3120,25 +2636,14 @@ bool FStructurePieceSupportReasonTest::RunTest(const FString& Parameters)
 }
 
 /*
- * The reason has the same scope as the answer it explains, and fails closed
- * everywhere else. GetPieceSupport reads solver output as IsPieceSupported does, so
- * it inherits that contract. RemovedPieceSupportNeedsASolve pins these same three
- * rows for the boolean, and the reason must not disagree with it for an instant:
+ * GetPieceSupport has the same scope as IsPieceSupported and fails closed:
  *
- *     never solved      Falling, for every handle — there is no answer yet
+ *     never solved      Falling, for every handle
  *     removed           the last solve's answer, unchanged, until the next solve
  *     after that solve  Falling, and a removed grounded piece is no longer earth
  *
- * No fifth "removed" enumerator: it would have to be produced before the re-solve,
- * contradicting a stale Supported from IsPieceSupported in the same instant —
- * exactly the two-accessors-one-solve defect the stranding rule closes. A removed
- * piece folds into Falling (nothing holds it up), and IsPieceRemoved stays the
- * accessor for whether it's a piece at all. An out-of-range handle is Falling for
- * the same fail-closed reason; Stranded would be a positive claim about a knot in a
- * structure that doesn't exist.
- *
- * A matrix, because the property is that none of these read Supported or Grounded
- * for something that isn't there, indistinguishable downstream from a fine piece.
+ * No separate "removed" state: it would contradict IsPieceSupported until the
+ * re-solve. Out-of-range handles are Falling too.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructurePieceSupportDegenerateInputTest,
@@ -3149,13 +2654,13 @@ bool FStructurePieceSupportDegenerateInputTest::RunTest(const FString& Parameter
 {
 	using namespace StructureTestSupport;
 
-	/** A grounded pad with a brick resting on it: the smallest structure that holds. */
+	/** A grounded pad with a brick resting on it. */
 	const FStructureSpec PadAndBrick = {
 		{ { BrickMassKg, true }, { BrickMassKg, false } },
 		{ { 0, 1, BedJointNormal, JointAreaSqCm } }
 	};
 
-	// Before any solve there is no answer, and Falling is the fail-closed one. The state array is sized by a solve, so an early caller is told nothing is held up rather than handed a default that reads as resting on earth.
+	// Before any solve everything reads Falling.
 	{
 		FStructure Structure;
 		BuildStructure(Structure, PadAndBrick, Unbreakable);
@@ -3171,7 +2676,7 @@ bool FStructurePieceSupportDegenerateInputTest::RunTest(const FString& Parameter
 		}
 	}
 
-	// Out-of-range handles against a solved, standing structure: an accessor running off the end of a populated array would have real Grounded/Supported entries next to it to pick up.
+	// Out-of-range handles against a solved, standing structure.
 	{
 		struct FBadHandleCase
 		{
@@ -3205,7 +2710,7 @@ bool FStructurePieceSupportDegenerateInputTest::RunTest(const FString& Parameter
 		}
 	}
 
-	// Removing the brick. The gone piece's reason doesn't move until a re-solve, then it's Falling, like an unknown handle: it's not a piece any more.
+	// A removed brick keeps its reason until a re-solve, then reads Falling.
 	{
 		FStructure Structure;
 		BuildStructure(Structure, PadAndBrick, Unbreakable);
@@ -3219,7 +2724,6 @@ bool FStructurePieceSupportDegenerateInputTest::RunTest(const FString& Parameter
 		TestTrue(TEXT("removing the brick should report that it removed a live piece"),
 			Structure.RemovePiece(1));
 
-		// The stale row, deciding against a fifth enumerator: the piece is provably gone (IsPieceRemoved), yet the reason still reads the last solve's Supported, in lockstep with IsPieceSupported.
 		TestTrue(TEXT("the brick reads as removed IMMEDIATELY — that accessor needs no solve"),
 			Structure.IsPieceRemoved(1));
 
@@ -3247,12 +2751,7 @@ bool FStructurePieceSupportDegenerateInputTest::RunTest(const FString& Parameter
 		CheckSupportAgreesWithReason(*this, TEXT("the pad under a removed brick"), Structure, 0);
 	}
 
-	/*
-	 * Removing the ground, the removal with the furthest reach: a grounded piece
-	 * seeds the reachability walk on its own account, so a removed one still reading
-	 * Grounded would claim an earth it isn't touching, and unlike a bare false the
-	 * reason states that claim out loud.
-	 */
+	// A removed grounded piece must stop reading Grounded after the re-solve.
 	{
 		FStructure Structure;
 		BuildStructure(Structure, PadAndBrick, Unbreakable);
@@ -3286,7 +2785,7 @@ bool FStructurePieceSupportDegenerateInputTest::RunTest(const FString& Parameter
 		}
 	}
 
-	// A removed piece inside a knot is Falling, not Stranded, where the two decisions above meet. Pull X out of a two-brick knot and Y is left head-jointed to a gone piece: the knot is dissolved.
+	// Removing X from a two-brick knot dissolves it: both X and Y read Falling, not Stranded.
 	{
 		const FStructureSpec Knot = {
 			{ { BrickMassKg, true }, { BrickMassKg, false }, { BrickMassKg, false } },
@@ -3337,36 +2836,14 @@ bool FStructurePieceSupportDegenerateInputTest::RunTest(const FString& Parameter
 }
 
 /*
- * A solved structure can be asked how loaded each joint is, without the question
- * damaging anything. The companion to Connection.UtilisationQuery: FConnection owns
- * the non-mutating evaluator, and this applies it to the force the last solve
- * routed through each joint — a colour per connection, every frame, phase 5 needs.
+ * GetConnectionUtilisation reports each joint's load ratio from the last solve
+ * without breaking anything. It must equal, bitwise,
  *
- * The number is already obtainable by composing ClassifyForce and
- * ComputeUtilisation over GetConnectionForce, so this accessor exists to stop a
- * renderer becoming a third hand-copy of the break decision. The identity
+ *     GetConnection(I).UtilisationUnder(GetConnectionForce(I), GetConnectionMoment(I))
  *
- *     GetConnectionUtilisation(I)
- *         == GetConnection(I).UtilisationUnder(GetConnectionForce(I), GetConnectionMoment(I))
- *
- * is asserted bitwise for every joint, alongside expectations derived from stress
- * and strength — the identity alone would pass on two consistent wrong answers, the
- * derived numbers alone wouldn't catch a private copy drifting an ulp away. The
- * moment argument is why there's an eccentric fixture at the end: it's defaulted,
- * so an identity written with the force alone supplies zero, and on a geometry-free
- * fixture the accessor's moment is zero too — coincidence, not agreement.
- *
- * Gravity only, no world, so this is a unit test on the mechanism (a ratio). Which
- * axis governs, worked since ComputeUtilisation returns the worst of three:
- *
- *   - The two bed joints take a vertical load through a normal exactly +Z, so
- *     compression is the only non-zero axis.
- *   - The head joint takes the same load through a normal exactly +X, so its shear
- *     capacity is bare cohesion (0.2 MPa, compressive stress being zero).
- *
- * The head joint and upper bed joint carry one brick each, and their expectations
- * differ by exactly a hundred: fifty from mortar resisting crushing fifty times
- * better than sliding (10 MPa against 0.2), two from the bed joint's double area.
+ * and also match values derived from stress and strength. The eccentric fixture
+ * at the end is needed because geometry-free joints have zero moment, so the
+ * identity would hold trivially without it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureConnectionUtilisationTest,
@@ -3377,7 +2854,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 {
 	using namespace StructureTestSupport;
 
-	/** The bit pattern of a double, for the assertions that compare EXACTLY. */
+	/** A double with its bit pattern, for exact comparisons. */
 	const auto Bits = [](double Value)
 	{
 		uint64 Raw = 0;
@@ -3388,24 +2865,20 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 	const double MortarCompressiveMPa = GeneralPurposeMortar.CompressiveStrengthMPa;
 	const double MortarCohesionMPa = GeneralPurposeMortar.ShearCohesionMPa;
 
-	// Relative, with an absolute floor for exact-zero rows. Non-zero expectations are around 1e-4, so a joint dropped from the load path (exactly zero) is still distinguishable from a lightly loaded one.
+	// Relative, with a floor well below the ~1e-4 expectations so zero stays distinguishable.
 	const auto IsClose = [](double Actual, double Expected)
 	{
 		return FMath::IsNearlyEqual(Actual, Expected, FMath::Max(1.0e-15, FMath::Abs(Expected) * 1.0e-9));
 	};
 
 	/*
-	 * A standing structure, three joints, three different answers.
+	 * Three joints, three different utilisations:
 	 *
 	 *        [2]                  piece 2 rests on 1 through a 200 cm2 bed joint
 	 *         |
 	 *        [1]---[3]            piece 3 has no bed joint at all, so it hangs off
 	 *         |                   piece 1's 100 cm2 HEAD joint and loads it in shear
 	 *        [0] grounded         piece 1 rests on 0 through a 100 cm2 bed joint
-	 *
-	 * Three distinct utilisations, spanning two governing axes and a factor of a
-	 * hundred, so an accessor returning one number per joint (or per joint kind)
-	 * cannot pass.
 	 */
 	{
 		const FStructureSpec Spec = {
@@ -3420,7 +2893,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 		FStructure Structure;
 		BuildStructure(Structure, Spec, GeneralPurposeMortar);
 
-		// Before any solve there is no routed load, so every joint reads zero: the same scope GetConnectionForce documents, since this is that force evaluated.
+		// Before any solve every joint reads zero.
 		for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
 		{
 			const double Unsolved = Structure.GetConnectionUtilisation(Index);
@@ -3440,7 +2913,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 			double Utilisation;
 		};
 
-		// Derived from stress against strength, with MPaForForce spelling out the conversion rather than importing it, so a wrong ForceUnitsPerMPaSqCm fails here. At 2667.168 uu a brick over 100 cm2 is 2.667168e-3 MPa.
+		// Stress over strength, via MPaForForce so a wrong ForceUnitsPerMPaSqCm fails here.
 		const TArray<FExpectedUtilisation> Expected = {
 			{
 				TEXT("the bottom bed joint carries three bricks in compression"),
@@ -3467,7 +2940,6 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 			const FConnection& Connection = Structure.GetConnection(Index);
 			const FVector Force = Structure.GetConnectionForce(Index);
 
-			// Precondition: the solve routed what this case assumes it routed.
 			TestTrue(
 				FString::Printf(TEXT("%s: joint %d should carry Z = %f, got %f"),
 					Expected[Index].Description, Index, Expected[Index].ForceZUU, Force.Z),
@@ -3480,17 +2952,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 					Expected[Index].Description, Index, Expected[Index].Utilisation, *Bits(Utilisation)),
 				IsClose(Utilisation, Expected[Index].Utilisation));
 
-			/*
-			 * The seam. Bitwise, because this accessor must not be a second
-			 * evaluation of the same arithmetic. The moment is passed explicitly:
-			 * UtilisationUnder's moment parameter is defaulted, so an assertion
-			 * without it supplies zero, and on this geometry-free fixture the
-			 * accessor's moment is zero too, so the identity would hold trivially
-			 * however far the two had drifted. Bitten on below, where a joint carries a
-			 * real one. Composite depth likewise, opposite polarity: it's a relief, so
-			 * dropping it reads too pessimistic where dropping the moment reads too
-			 * optimistic.
-			 */
+			// Bitwise identity. Moment and composite depth are passed explicitly since both parameters default.
 			const FVector Moment = Structure.GetConnectionMoment(Index);
 			const double CompositeDepthCm = Structure.GetConnectionCompositeDepthCm(Index);
 
@@ -3509,7 +2971,6 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 					*Bits(Connection.UtilisationUnder(Force, Moment, CompositeDepthCm))),
 				Utilisation == Connection.UtilisationUnder(Force, Moment, CompositeDepthCm));
 
-			// Asking must not have broken anything: solving is non-destructive and so is reading.
 			TestFalse(
 				FString::Printf(TEXT("%s: joint %d must still be intact after being asked"),
 					Expected[Index].Description, Index),
@@ -3518,13 +2979,11 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * A broken joint reads zero, and the zero comes from the load, not the latch.
-	 * UtilisationUnder is pure arithmetic, so the zero here means "no force goes
-	 * through this joint any more". A renderer must consult HasGiven and GetBreakPass
-	 * to draw a broken joint as broken; a low ratio never means intact.
+	 * A broken joint reads zero because it carries no force, not because of the
+	 * latch. A renderer must use HasGiven to draw it as broken.
 	 */
 	{
-		// 20 tonnes on a 100 cm2 mortar bed joint: 1.96e7 uu is 19.6 MPa against mortar's 10 MPa, so utilisation 1.96 and the joint gives in pass 1.
+		// 20 tonnes on 100 cm2: 19.6 MPa against mortar's 10 MPa, utilisation 1.96.
 		constexpr double CrushingMassKg = 20000.0;
 
 		const FStructureSpec Spec = {
@@ -3548,11 +3007,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 				BreakingUtilisation, *Bits(BeforeBreaking)),
 			IsClose(BeforeBreaking, BreakingUtilisation) && BreakingUtilisation > 1.0);
 
-		/*
-		 * Solving and reading break nothing. If asking for the utilisation
-		 * had latched, this cascade would find the joint already given and
-		 * report zero passes — the fail-open direction, a wall that never falls.
-		 */
+		// Reading must not latch, or the cascade below would report zero passes.
 		TestFalse(TEXT("reading a utilisation must not break the joint"),
 			Structure.GetConnection(0).HasGiven());
 
@@ -3575,7 +3030,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 				*Bits(Broken)),
 			Broken == 0.0);
 
-		// The discriminator between the two readings of that zero: the joint still answers what the crushing load would do. If the latch suppressed the arithmetic this would be zero too, and the two designs would be indistinguishable.
+		// The given joint still evaluates a load, so the zero above came from the load, not the latch.
 		const double WhatWouldHaveBrokenIt = Structure.GetConnection(0).UtilisationUnder(BreakingForce);
 
 		TestTrue(
@@ -3586,50 +3041,22 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * A joint under a moment, the only fixture that makes the seam above mean
-	 * anything: every fixture above is geometry-free, so its moment is zero and the
-	 * identity holds even if the moment were deleted from Structure.cpp. A joint
-	 * carrying a real one is the only thing that can tell those apart.
+	 * A joint under a real moment, so the identity above is not trivially true.
 	 *
 	 *     [1]  a brick, its weight acting 2 cm along +X of the joint's own centroid
 	 *      |
 	 *     [0]  grounded pad, one 10 x 10 cm bed joint between them
 	 *
-	 * Exactly one support, the only determinate case: a piece on several supports
-	 * keeps the area split and carries no moment (MOMENTS_DESIGN.md's N >= 2 rule).
-	 *
-	 * The arithmetic, from brick dimensions and published strengths:
-	 *
-	 *   W       = 1.9 g/cm3 x 21.5 x 10.25 x 6.5 cm / 1000 x 980 cm/s2 = 2667.198625 uu
-	 *   M       = (p - c) x F, so |M| = 2 cm x W                       = 5334.39725 uu.cm
-	 *   W_sec   = (4/3) x 5 x 5^2                                      = 166.666... cm3
-	 *   sigma_b = |M| / W_sec                                          = 32.0063835 uu/cm2
-	 *   sigma_n = W / 100 cm2, in COMPRESSION so it closes the joint    = 26.67198625 uu/cm2
-	 *   opened edge   = sigma_b - sigma_n = 5.33439725 uu/cm2 = 5.33439725e-4 MPa
-	 *   squeezed edge = sigma_b + sigma_n = 58.678369  uu/cm2 = 5.8678369e-3 MPa
-	 *
-	 * where 10,000 uu per MPa.cm2 comes from MPaForForce spelling out 1 N = 100 uu
-	 * and 1 cm2 = 100 mm2 rather than reading production's constant.
-	 *
-	 * Which axis governs, worked for all three since ComputeUtilisation returns the
-	 * worst:
-	 *
-	 *   tension     5.33439725e-4 / 0.10 MPa = 5.33439725e-3   <- governs
-	 *   compression 5.8678369e-3  / 10.0 MPa = 5.8678369e-4
-	 *   shear       exactly zero: the load is vertical and the normal is exactly +Z
-	 *
-	 * So the moment moves this joint from 2.6671986250e-4 to 5.33439725e-3, a factor
-	 * of exactly 20. That gap makes the seam assertion bite: an accessor without the
-	 * moment lands on the first number, the break decision on the second.
+	 * One support, so the moment is determinate (MOMENTS_DESIGN.md). Bending stress
+	 * |M| / W_sec = 2W / 166.67 exceeds the compressive W / 100, so the opened edge
+	 * governs in tension: 5.334e-3, twenty times the moment-free 2.667e-4.
 	 */
 	{
-		/** Half of a 10 x 10 cm face, so 4 x 5 x 5 = 100 cm2 exactly matches the area. */
 		constexpr double JointHalfCm = 5.0;
 
-		/** How far the brick's weight acts from the centroid of the face carrying it. */
 		constexpr double EccentricityCm = 2.0;
 
-		/** (4/3) x h_u x h_v^2 for that face — beam theory, not a code figure. */
+		/** (4/3) x h_u x h_v^2, from beam theory. */
 		constexpr double SectionModulusCm3 =
 			(4.0 / 3.0) * JointHalfCm * JointHalfCm * JointHalfCm;
 
@@ -3663,7 +3090,6 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 
 		const FVector Force = Structure.GetConnectionForce(Joint);
 
-		// Precondition: the solve routed one brick straight down. PieceB is the loaded brick, so the stored force acts on it, downward (ConnectionLoad.h).
 		TestTrue(
 			FString::Printf(TEXT("fixture: the joint should carry one brick downward, got (%f, %f, %f)"),
 				Force.X, Force.Y, Force.Z),
@@ -3671,7 +3097,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 				&& FMath::IsNearlyEqual(Force.X, 0.0, 1.0e-9)
 				&& FMath::IsNearlyEqual(Force.Y, 0.0, 1.0e-9));
 
-		// (p - c) x F, derived here: p - c is (2, 0, 10), F is (0, 0, -W), so the cross product is (0, 2W, 0), a moment about world Y bending the face across X. No torsion (the component about the normal) here.
+		// (p - c) x F = (2, 0, 10) x (0, 0, -W) = (0, 2W, 0).
 		const FVector ExpectedMoment =
 			FVector::CrossProduct(BrickCentreOfMassCm - JointCentreCm, Force);
 
@@ -3690,7 +3116,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 				ExpectedMoment.X, ExpectedMoment.Y, ExpectedMoment.Z),
 			!ExpectedMoment.IsNearlyZero());
 
-		/* The opened edge, against mortar's flexural bond strength. Tension governs. */
+		// The opened edge, against mortar's tensile strength.
 		const double BendingMPa =
 			MPaForForce(BrickWeightUU * EccentricityCm / SectionModulusCm3, 1.0);
 		const double NormalMPa = MPaForForce(BrickWeightUU, JointAreaSqCm);
@@ -3713,13 +3139,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 				ExpectedTension, *Bits(Utilisation)),
 			IsClose(Utilisation, ExpectedTension));
 
-		/*
-		 * The seam, in full: bitwise against the evaluator handed all three parts of
-		 * what the solve routed. This joint has no composite depth, asserted rather
-		 * than assumed (nothing rests on the brick), which also keeps the factor of
-		 * twenty below intact — a deep beam here would relieve the moment the row
-		 * exists to show being carried.
-		 */
+		// Nothing rests on the brick, so composite depth must be zero; otherwise it would relieve the moment.
 		const double CompositeDepthCm = Structure.GetConnectionCompositeDepthCm(Joint);
 
 		TestTrue(
@@ -3736,7 +3156,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 			Utilisation
 				== Structure.GetConnection(Joint).UtilisationUnder(Force, Moment, CompositeDepthCm));
 
-		// The half that proves the seam isn't vacuous: on the force alone the same joint reads a twentieth of the break-decision number. Were they equal, the assertion above would pass on an accessor ignoring the moment.
+		// Without the moment the joint reads a twentieth, so the identity above is not vacuous.
 		const double WithoutTheMoment = Structure.GetConnection(Joint).UtilisationUnder(Force);
 
 		TestTrue(
@@ -3751,18 +3171,13 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 				Utilisation, WithoutTheMoment),
 			IsClose(WithoutTheMoment, NormalMPa / GeneralPurposeMortar.CompressiveStrengthMPa));
 
-		// Asking must not have broken it: reading stays non-destructive here too.
 		TestFalse(TEXT("reading an eccentric joint's moment must not break it"),
 			Structure.GetConnection(Joint).HasGiven());
 	}
 
 	/*
-	 * A handle that names no joint fails closed: TNumericLimits<double>::Max(), not
-	 * zero. Zero is "unloaded and healthy", the answer that must never come back for
-	 * something that isn't a joint (the DESIGN.md §2 degenerate-normal hole). A
-	 * renderer handed a stale handle paints it failing, not the healthiest joint on
-	 * screen. Falls out of the composition: GetConnection returns a placeholder whose
-	 * zero interface area routes through the guard that already fails closed.
+	 * An unknown handle fails closed at TNumericLimits<double>::Max(), not zero,
+	 * which would read as healthy (DESIGN.md §2).
 	 */
 	{
 		const FStructureSpec Spec = {
@@ -3785,12 +3200,7 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 					Handle, *Bits(Utilisation)),
 				Utilisation == TNumericLimits<double>::Max());
 
-			/*
-			 * The moment fails closed the other way, not inconsistently: a moment is a
-			 * load, not a verdict, so zero says "nothing levers this", the conservative
-			 * answer for a non-joint — the utilisation above is what must read failed. A
-			 * Max() moment would be an invented load, NaN everywhere downstream.
-			 */
+			// The moment is a load, not a verdict, so zero is the safe answer; Max() would spread NaN.
 			const FVector Moment = Structure.GetConnectionMoment(Handle);
 
 			TestTrue(
@@ -3804,32 +3214,11 @@ bool FStructureConnectionUtilisationTest::RunTest(const FString& Parameters)
 }
 
 /*
- * A pair that doesn't name a real joint on a real piece has no tier and reads
- * None. The oracle is Structure.h's contract, word for word: "None for a handle
- * naming no connection, for a piece not on this connection, and for a normal that
- * won't normalise." This matrix walks the first two clauses, separately.
- *
- * The third is unreachable through this door, and saying so is the point:
- * AddConnection refuses a connection whose normal won't normalise, so no stored
- * connection has one. Nor does any row trip two clauses at once — INDEX_NONE
- * against INDEX_NONE looks like it should, but the unknown-handle guard is first
- * and returns before the piece is compared, which makes it the sharp row: an
- * implementation reaching for a placeholder connection finds one whose PieceB is
- * also INDEX_NONE and lets the two unidentified things agree.
- *
- * No caller reaches this today (SolveLoads iterates real indices), but the
- * presenter is being written in a shape that can: FJointInspection and FPieceRef
- * both default their indices to INDEX_NONE, so GetJointRole against a default row
- * and an unresolved ref is a call somebody will write without noticing.
- *
- * Failing open here fails to the strongest answer: BedBeneath is the top support
- * tier (DESIGN.md §3), so a degenerate pair answered BedBeneath reports a brick
- * held up by a joint that doesn't exist — the one answer a readout must never draw
- * as reassuring. The last two rows are load-bearing: returning None unconditionally
- * passes every other row, so without a real joint asked from both ends (BedAbove
- * from below, BedBeneath from above) the cheapest wrong fix would pass.
- *
- * Pure geometry, no solve: GetJointRole reads a normal and two handles.
+ * GetJointRole reads None for an unknown connection handle or a piece not on the
+ * connection (Structure.h). The unnormalisable-normal clause is unreachable, since
+ * AddConnection refuses such joints. INDEX_NONE against INDEX_NONE is the sharp
+ * row: a placeholder connection's PieceB is also INDEX_NONE. The last two rows
+ * stop a fix that returns None unconditionally.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureJointRoleDegenerateInputTest,
@@ -3840,12 +3229,7 @@ bool FStructureJointRoleDegenerateInputTest::RunTest(const FString& Parameters)
 {
 	using namespace StructureTestSupport;
 
-	/*
-	 * A grounded pad with a brick on it, one bed joint at index 0: the smallest
-	 * structure with a real joint to be wrong about. A matrix against an empty
-	 * structure couldn't tell "None because degenerate" from "None because there's
-	 * nothing here", and the last two rows would have nothing to assert.
-	 */
+	// A grounded pad with a brick on it: one real joint to be wrong about.
 	const FStructureSpec PadAndBrick = {
 		{ { BrickMassKg, true }, { BrickMassKg, false } },
 		{ { 0, 1, BedJointNormal, JointAreaSqCm } }
@@ -3866,28 +3250,21 @@ bool FStructureJointRoleDegenerateInputTest::RunTest(const FString& Parameters)
 	};
 
 	const TArray<FRoleCase> Cases = {
-		/*
-		 * The pair the presenter will produce, and the sharpest row: a default
-		 * FJointInspection's connection index against a default FPieceRef's piece
-		 * index. Both are INDEX_NONE, so an implementation reaching for a placeholder
-		 * connection finds one whose PieceB is also INDEX_NONE, the fail-open
-		 * direction (the hazard FStructureBinding::ResolvePiece is named after).
-		 */
+		// Default FJointInspection against default FPieceRef: both INDEX_NONE.
 		{ TEXT("INDEX_NONE against INDEX_NONE"), INDEX_NONE, INDEX_NONE, EJointRole::None },
 
-		// The same trap via the other two shapes of unknown handle, so a guard written only against INDEX_NONE doesn't close the matrix.
 		{ TEXT("a handle past the last joint, against INDEX_NONE"), 99, INDEX_NONE, EJointRole::None },
 		{ TEXT("a negative handle, against INDEX_NONE"), -5, INDEX_NONE, EJointRole::None },
 
-		// An unknown joint asked about a real piece: clause one stands alone here.
+		// Unknown joint, real piece.
 		{ TEXT("a handle past the last joint, against a real piece"), 99, 0, EJointRole::None },
 		{ TEXT("INDEX_NONE, against a real piece"), INDEX_NONE, 0, EJointRole::None },
 
-		// Clause two alone: a real, well-formed joint asked about a piece it doesn't touch.
+		// Real joint, piece not on it.
 		{ TEXT("a real joint, against a piece that is not on it"), 0, 99, EJointRole::None },
 		{ TEXT("a real joint, against INDEX_NONE"), 0, INDEX_NONE, EJointRole::None },
 
-		// The two rows that stop the lazy fix: the same joint from both ends. The normal points at the brick, so it's bed-beneath the brick and bed-above the pad; answering None unconditionally fails both.
+		// The same real joint from both ends.
 		{ TEXT("the real joint, from the pad it sits on"), 0, 0, EJointRole::BedAbove },
 		{ TEXT("the real joint, from the brick it holds up"), 0, 1, EJointRole::BedBeneath },
 	};
