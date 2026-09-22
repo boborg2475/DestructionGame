@@ -13,11 +13,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges
- * many files into one. See CURRENT_STATE.md; the `using namespace` lives inside RunTest for the
- * same reason. The world harness is NOT redeclared here: it lives in
- * Tests/BrickWorldTestSupport.h and every World.* test shares it.
+ * Named, and uniquely: an anonymous namespace is per-translation-unit, and a unity build merges
+ * files into one (CURRENT_STATE.md). The `using namespace` sits inside RunTest for the same
+ * reason. The world harness lives in Tests/BrickWorldTestSupport.h, shared by every World.* test.
  */
 namespace PieceMenuPanelLayoutTestSupport
 {
@@ -25,45 +23,29 @@ namespace PieceMenuPanelLayoutTestSupport
 	using namespace DestructionLayout;
 
 	/**
-	 * How far along Y a ray starts and ends, either side of the wall.
-	 *
-	 * A brick is 10.25 cm deep and a wall is centred on Y = 0, so +/- 100 cm is far outside it
-	 * on both sides and the ray crosses the whole thickness. Along Y rather than X or Z so
-	 * nothing else in the wall is in the way and the answer is unambiguous.
+	 * Y reach of the pick ray, either side of the wall. A brick is 10.25 cm deep and the wall is
+	 * centred on Y = 0, so +/-100 cm clears it both sides. Along Y so nothing else is in the way.
 	 */
 	constexpr double PanelRayReachCm = 100.0;
 
 	/**
-	 * The size of the space the panel is laid out in, in pixels.
-	 *
-	 * A ROOT GEOMETRY RATHER THAN A REAL VIEWPORT, WHICH IS THE WHOLE POINT OF THIS FILE. Slate
-	 * layout is arithmetic on desired sizes and alignments; it needs no renderer, no window and
-	 * no RHI, so the one inch of the piece menu that used to be unreachable — where on screen
-	 * each button ends up — can be measured headlessly by prepassing the tree and arranging it
-	 * in a geometry of a stated size.
-	 *
-	 * 1920 x 1080 is an ordinary viewport. NOTHING BELOW DEPENDS ON THE NUMBERS: the assertion
-	 * is that a row does not MOVE between two states laid out in the same space, so a different
-	 * size moves both measurements together.
+	 * The space the panel is laid out in, px. A root geometry, not a real viewport: Slate layout is
+	 * arithmetic on desired sizes, needing no renderer, so button positions are measurable headlessly.
+	 * 1920x1080 is arbitrary; the assertions compare two states in the same space, so the size cancels.
 	 */
 	constexpr float PanelViewportWidthPx = 1920.0f;
 	constexpr float PanelViewportHeightPx = 1080.0f;
 
 	/**
-	 * How far a menu entry is allowed to move when the readout beside it changes. It is slack
-	 * on an exact equality rather than a threshold: two layouts of the same tree in the same
-	 * geometry produce bit-identical offsets, and the defect this file is about moves an entry
-	 * by half the readout's growth — tens of pixels against a row about 20 px tall.
+	 * How far a menu entry may move when the readout changes. Slack on an exact equality, not a
+	 * tolerance: two layouts of one tree in one geometry are bit-identical, and the defect moves a
+	 * row tens of pixels.
 	 */
 	constexpr double PanelRowMustNotMovePx = 0.5;
 
 	/**
-	 * Slack on the horizontal containment claim, in pixels.
-	 *
-	 * Same reasoning as the vertical slack above and not a measurement tolerance: two layouts of
-	 * one tree in one geometry are bit-identical, and the shape this would catch — a row that
-	 * shrink-wraps or re-anchors and slides out from under the cursor sideways — is tens of
-	 * pixels wide.
+	 * Slack on the horizontal containment claim, px. Same reasoning as the vertical slack: layouts
+	 * are bit-identical, and the defect it catches is tens of pixels wide.
 	 */
 	constexpr double PanelSpanContainmentSlackPx = 0.5;
 
@@ -87,12 +69,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * One button of the drawn panel: what it reads, where it ended up, and how big it is.
-	 *
-	 * THE SIZE IS HERE FOR THE HORIZONTAL CLAIM, WHICH IS ABOUT SPANS RATHER THAN ABOUT ORIGINS.
-	 * The panel is centred horizontally, so a row's left edge moves whenever the readout widens;
-	 * that is harmless only for as long as the narrower span stays INSIDE the wider one, because
-	 * then the cursor is still over the same button. An origin on its own cannot say that.
+	 * One drawn button: its text, position and size. The size is kept for the horizontal claim:
+	 * the panel is centred, so a row's left edge moves as the readout widens, harmless only while
+	 * the narrower span stays inside the wider one. An origin alone cannot say that.
 	 */
 	struct FPanelButton
 	{
@@ -101,23 +80,16 @@ namespace PieceMenuPanelLayoutTestSupport
 		FVector2D SizePx = FVector2D::ZeroVector;
 
 		/**
-		 * Whether clicking it takes USER FOCUS, which is a property of the row rather than of where
-		 * it landed — and the one thing about this panel no other kind of test can see.
-		 *
-		 * DEFAULTED TRUE, which is `SButton`'s own default and therefore the unsafe answer: a
-		 * collector that failed to fill this in must report the hazard rather than clear it.
+		 * Whether clicking it takes user focus. Defaulted true, matching SButton's own default so a
+		 * collector that failed to fill it in reports the hazard rather than clears it.
 		 */
 		bool bFocusable = true;
 	};
 
 	/**
-	 * One drawn line of the panel: what it reads, and the rectangle it occupies.
-	 *
-	 * SEPARATE FROM FPanelButton BECAUSE MOST OF THE PANEL IS NOT CLICKABLE. The readout is all
-	 * text — the support word, the joint lines, the headroom caption and its decade ticks — and
-	 * every claim about the panel's ORDER is a claim about where those sit relative to the one
-	 * row that deletes bricks. A collector that only saw buttons could say nothing about it,
-	 * which is exactly why the readout's position was argued rather than measured until now.
+	 * One drawn line of text and its rectangle. Separate from FPanelButton because most of the
+	 * panel is not clickable: the readout is all text, and ordering claims are about where it sits
+	 * relative to the Delete row.
 	 */
 	struct FPanelText
 	{
@@ -127,12 +99,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	};
 
 	/**
-	 * Every STextBlock under a widget, run together — which for a button is its caption.
-	 *
-	 * THE BUTTON IS IDENTIFIED BY WHAT IT SAYS RATHER THAN BY ITS SLOT INDEX, because a slot
-	 * index is a claim about the panel's structure and the fix under test is allowed to change
-	 * that structure. What must not change is where the row a player's cursor is resting on
-	 * ends up, and the row a cursor rests on is the one they can read.
+	 * Every STextBlock under a widget, concatenated — for a button, its caption. Buttons are
+	 * identified by text, not slot index: the fix under test may change the structure, but not
+	 * where a readable row lands.
 	 */
 	FString PanelWidgetText(const TSharedRef<SWidget>& Widget)
 	{
@@ -154,12 +123,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * Lay the tree out in this geometry and record where every button landed.
-	 *
-	 * ARRANGED RATHER THAN PAINTED. ArrangeChildren is the same call the renderer makes to
-	 * decide where a child goes, and it is const and free of any device — so walking it gives
-	 * the absolute position of every button with no window and no RHI. Cached geometry would
-	 * not do: nothing caches until something paints.
+	 * Arrange the tree in this geometry and record where every button landed. Arranged, not
+	 * painted: ArrangeChildren is the renderer's own placement call, const and device-free, so it
+	 * gives absolute positions with no RHI. Cached geometry would not do; nothing caches until paint.
 	 */
 	void CollectPanelButtons(
 		const TSharedRef<SWidget>& Widget,
@@ -174,9 +140,8 @@ namespace PieceMenuPanelLayoutTestSupport
 			Button.SizePx = FVector2D(Geometry.GetAbsoluteSize());
 
 			/*
-			 * ASKED OF THE WIDGET RATHER THAN OF AN SButton CAST, because SupportsKeyboardFocus is
-			 * SWidget's own virtual and SButton's override is what answers it — the same answer Slate
-			 * itself gets when it decides where a click puts focus.
+			 * Asked of the widget, not an SButton cast: SupportsKeyboardFocus is SWidget's virtual and
+			 * SButton's override answers it — the same answer Slate gets when a click puts focus.
 			 */
 			Button.bFocusable = Widget->SupportsKeyboardFocus();
 		}
@@ -192,11 +157,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * Lay the tree out and record every line of text in it, with where it landed.
-	 *
-	 * THE SAME ARRANGE THE BUTTON COLLECTOR USES, for the same reason and with the same absence
-	 * of any renderer. A text block that is arranged but never painted still has a position, and
-	 * a position is the whole of what "the readout sits above Delete" means.
+	 * Arrange the tree and record every line of text and where it landed. The same arrange the
+	 * button collector uses: an arranged-but-unpainted text block still has a position, which is
+	 * all "the readout sits above Delete" means.
 	 */
 	void CollectPanelTexts(
 		const TSharedRef<SWidget>& Widget,
@@ -293,11 +256,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * How many joints touch a piece, counted straight off the graph.
-	 *
-	 * A FIXTURE PRECONDITION, NOT AN ASSERTION ABOUT THE PANEL. The readout grows by one line
-	 * per joint, so a brick with too few joints would make the growth too small to move a row
-	 * out from under a cursor — and the test would pass while the defect stood.
+	 * How many joints touch a piece, counted off the graph. A fixture precondition, not a panel
+	 * assertion: the readout grows one line per joint, so too few joints make the growth too small
+	 * to move a row and the test passes over the defect.
 	 */
 	int32 JointsTouchingPiece(const FStructure& Structure, int32 Handle)
 	{
@@ -317,12 +278,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * THE FIXTURE BOTH TESTS IN THIS FILE MEASURE, BUILT IN ONE PLACE RATHER THAN IN TWO RunTest
-	 * BODIES. The pair differs only in WHICH rows it holds still, and the pair is only evidence
-	 * about that difference for as long as everything else is the same wall, the same three
-	 * bricks picked and the same answer to "does the brick singled out have enough joints to
-	 * grow the readout by". Two copies of that setup are two chances for one of them to drift
-	 * into being a wall the defect cannot show up in.
+	 * The shared fixture the tests measure, built once rather than in each RunTest. They differ only
+	 * in which rows they hold still, which is only evidence while the wall, the three picked bricks
+	 * and the singled-out brick's joint count stay identical; two copies could drift apart.
 	 */
 	struct FPanelFixture
 	{
@@ -388,9 +346,8 @@ namespace PieceMenuPanelLayoutTestSupport
 			}
 
 			/*
-			 * THREE BRICKS PICKED, WHICH IS THREE ENTRY ROWS. One row cannot show the defect: it
-			 * is the rows ABOVE the readout that move, and with a single entry there is barely a
-			 * stack to shift.
+			 * Three bricks picked, so three entry rows. One row cannot show the defect: it is the rows
+			 * above the readout that move, and one entry is barely a stack to shift.
 			 */
 			for (int32 Piece = 0; Piece <= 2; ++Piece)
 			{
@@ -405,11 +362,9 @@ namespace PieceMenuPanelLayoutTestSupport
 				Controller->GetPieceSelection().Num(), 3);
 
 			/*
-			 * THE BRICK SINGLED OUT HAS TO HAVE ENOUGH JOINTS TO MAKE THE READOUT GROW. Brick 1 of
-			 * this flush wall is spanned by two bricks above and has a neighbour either side, so
-			 * the count is asserted rather than assumed — a wall shape that changed it would
-			 * otherwise quietly make the growth too small to move a row and both tests would pass
-			 * over a live defect.
+			 * The singled-out brick needs enough joints to grow the readout. Brick 1 here is spanned by
+			 * two above and has a neighbour each side; the count is asserted, not assumed, so a wall
+			 * shape that changed it cannot make the growth too small and pass over the defect.
 			 */
 			InspectedRef = PanelRef(StructureId, 1);
 
@@ -464,44 +419,33 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * THE SAME PANEL, OVER A WALL THAT ACTUALLY BENDS SOMEWHERE — AND A SIBLING OF FPanelFixture
-	 * RATHER THAN A WIDENING OF IT.
+	 * The same panel over a wall that actually bends, a sibling of FPanelFixture rather than a
+	 * widening of it.
 	 *
-	 * WHY THE SHARED ONE COULD NEVER SHOW THIS. FPanelFixture is a FLUSH running bond, and every
-	 * joint in one is either a brick on two symmetric bed patches — statically indeterminate, so
-	 * FStructure's moment rule leaves it at exactly zero — or a half bat sitting squarely on the
-	 * one brick below it, whose patch centre lands exactly under its centre of mass. Neither can
-	 * produce an eccentricity, so no line the fit sweep measures there ever carries the bending
-	 * clause, and the sweep would report a bigger budget and pass identically at 560 px or 680 px.
-	 * It cannot observe the panel's width either way.
+	 * Why the shared fixture cannot show this: FPanelFixture is a flush bond, where every joint is
+	 * either a brick on two symmetric bed patches (indeterminate, so the moment rule leaves it at
+	 * zero) or a half bat centred on the brick below. Neither is eccentric, so no line carries the
+	 * bending clause and the sweep passes identically at 560 px or 680 px, blind to the panel's width.
 	 *
-	 * WHY A SIBLING AND NOT A WIDER SHARED FIXTURE. Five tests measure FPanelFixture — the two
-	 * stillness claims, the no-growth cap, the Delete-is-last ordering and the tick containment —
-	 * and every one of them is a number taken on that flush wall. Putting a bending joint into the
-	 * shared fixture changes the readout's content, and so its width and its height, in all five
-	 * at once: they would all move for a reason that has nothing to do with what any of them
-	 * asserts. The cost of the sibling is one more world and one more panel build, inside one test.
+	 * Why a sibling and not a wider shared fixture: five tests measure FPanelFixture, and a bending
+	 * joint in it would change the readout's width and height in all five for a reason unrelated to
+	 * what any of them asserts. The sibling costs one more world and panel build, in one test.
 	 *
-	 * THE SHAPE IS THE PRODUCER'S OWN, NOT A HAND-WRITTEN JOINT. NarrowWaistWallSpec is a RAGGED
-	 * running bond, so the courses above the waist step back OUT over it:
+	 * The shape is the producer's own. NarrowWaistWallSpec is a ragged bond, so the courses above
+	 * the waist step back out over it:
 	 *
 	 *      course 4            [ 5 ]
-	 *      course 3         [ 3 ][ 4 ]      EACH ON ONE PATCH, AND OFF-CENTRE
-	 *      course 2            [ 2 ]        THE WAIST — the brick singled out
+	 *      course 3         [ 3 ][ 4 ]      each on one patch, off-centre
+	 *      course 2            [ 2 ]        the waist — the brick singled out
 	 *      course 1         [ 0 ][ 1 ]      grounded
 	 *
-	 * Brick 3 spans x -10.75..10.75 and the waist below it spans 0.5..22.0, so their bed patch
-	 * runs 0.5..10.75 and is centred at x 5.625 — HALF THE BOND OFFSET from brick 3's own centre
-	 * of mass at x 0. One support and a real lever arm is exactly the determinate case the moment
-	 * rule answers, so that joint carries a bend and the line describing it grows the clause.
-	 * Brick 4 is its mirror. The waist's two joints to the ground are unbent, so this fixture
-	 * prints both kinds of line rather than only the interesting one.
-	 *
-	 * THE LEVER ARM IS ASSERTED FROM THE LAID BOXES rather than taken on trust, and the moment is
-	 * then asked of the graph. A producer retuned so that the bond offset vanished would leave a
-	 * wall that still stands, still draws, and quietly stops having anything to say about bending
-	 * — at which point this fixture would be a second copy of the flush one and the sweep would go
-	 * green over a panel that still cannot fit its own sentences.
+	 * Brick 3 spans x -10.75..10.75 and the waist below spans 0.5..22.0, so their bed patch runs
+	 * 0.5..10.75, centred at x 5.625 — half the bond offset from brick 3's centre of mass at x 0.
+	 * One off-centre support is the determinate case the moment rule answers, so that joint bends
+	 * and its line grows the clause; brick 4 mirrors it. The waist's two joints to the ground are
+	 * unbent, so this fixture prints both kinds of line. The lever arm is asserted from the laid
+	 * boxes and the moment from the graph, so a producer retuned to lose the offset fails here
+	 * rather than silently becoming a second flush fixture.
 	 */
 	struct FBendingPanelFixture
 	{
@@ -524,13 +468,9 @@ namespace PieceMenuPanelLayoutTestSupport
 		static constexpr int32 BendingWallPieceCount = 6;
 
 		/**
-		 * Half the coordinating grid's brick pitch, which is what a running bond offsets by.
-		 *
-		 * 21.5 cm of brick plus a 1 cm joint is a 22.5 cm cell, a bond offsets alternate courses
-		 * by half of one, and the patch a stepped-out brick lands on is the half of its bed that
-		 * overhangs — so its centre sits a quarter cell, 5.625 cm, from the brick's own middle.
-		 * Spelled out here from the spec's own dimensions so that a wall laid to a different
-		 * brick still states its own arm rather than inheriting this one.
+		 * A quarter of the grid's brick pitch. A 21.5 cm brick plus a 1 cm joint is a 22.5 cm cell;
+		 * a stepped-out brick's overhanging patch centre sits a quarter cell, 5.625 cm, from its
+		 * own middle. Computed from the spec so a different brick states its own arm.
 		 */
 		double ExpectedLeverArmCm = 0.0;
 
@@ -554,11 +494,9 @@ namespace PieceMenuPanelLayoutTestSupport
 			}
 
 			/*
-			 * THE ECCENTRICITY, MEASURED OFF THE LAID BOXES AND NOT OFF THE SOLVER. This is the
-			 * whole reason the wall bends: the corbel's bed patch is the overlap between it and
-			 * the waist, and that overlap's middle is a quarter cell from the corbel's centre of
-			 * mass. Asked of the geometry rather than of GetConnectionMoment so it says which of
-			 * the two is wrong when they disagree.
+			 * The eccentricity, measured off the laid boxes not the solver: the corbel's bed patch
+			 * is its overlap with the waist, whose middle is a quarter cell from the corbel's centre
+			 * of mass. Off the geometry, not GetConnectionMoment, so a disagreement names the culprit.
 			 */
 			const double PatchCentreXCm = PanelOverlapCentreCm(
 				Reference.Boxes[WaistPiece], Reference.Boxes[CorbelPiece], /*Axis*/ 0);
@@ -631,9 +569,9 @@ namespace PieceMenuPanelLayoutTestSupport
 				InspectedJoints >= 3);
 
 			/*
-			 * AND THE JOINT THE WHOLE FIXTURE EXISTS FOR IS CARRYING A BEND. The lever arm above
-			 * says the geometry is eccentric; this says the solver answered it, which is the only
-			 * state in which a line of the readout grows a clause at all.
+			 * And the joint this fixture exists for is carrying a bend. The lever arm says the
+			 * geometry is eccentric; this says the solver answered it — the only state where a
+			 * readout line grows a clause.
 			 */
 			const int32 BendingJoint =
 				FindJointBetween(Binding->GetStructure(), InspectedHandle, CorbelPiece);
@@ -667,17 +605,10 @@ namespace PieceMenuPanelLayoutTestSupport
 	};
 
 	/**
-	 * A WALL WITH MORE BRICKS IN IT THAN A LIST CAN SENSIBLY SHOW, which is the fixture the cap
-	 * needs and the shared 7-brick WallSpec cannot be.
-	 *
-	 * TEN COURSES OF FOUR, FLUSH, so a flush course carries an extra half bat and the wall comes
-	 * out around 45 pieces — the "40-brick selection" the panel is being rebuilt to survive. The
-	 * count is ASSERTED rather than assumed below, because a layout change to RunningBond that
-	 * quietly halved it would leave this test measuring a list short enough to fit and passing
-	 * over the very thing it exists for.
-	 *
-	 * It stays well inside the floor the shared harness lays: four bricks reach X 78.25 against
-	 * a slab that covers +/- 700, and ten courses stand 75 cm tall.
+	 * A wall with more bricks than a list can sensibly show, which the shared 7-brick WallSpec is
+	 * not. Ten flush courses of four is about 45 pieces — the 40-brick selection the rebuild must
+	 * survive; the count is asserted below so a halved RunningBond cannot pass over the defect. It
+	 * stays inside the harness floor: four bricks reach X 78.25 on a +/-700 slab, ten courses 75 cm.
 	 */
 	FRunningBondSpec TallWallSpec()
 	{
@@ -764,15 +695,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	};
 
 	/**
-	 * ONE ARRANGED WIDGET OF ANY KIND, AND WHOEVER ARRANGED IT.
-	 *
-	 * THE PARENT LINK IS THE POINT, AND IT IS THERE SO A REGION CAN BE NAMED WITHOUT NAMING A
-	 * SLOT. "The tick labels must lie inside the strip the bar is drawn in" needs that strip's
-	 * arranged rectangle, and the strip is not a button and not a line of text — it is whatever
-	 * widget the labels were placed on. Walking up from the labels to their nearest common
-	 * ancestor finds it whatever it happens to be built from, so the claim survives a fix that
-	 * wraps each label in a box to align it and still fails a fix that lifts them out of the
-	 * bar's strip altogether.
+	 * One arranged widget of any kind, plus its parent. The parent link lets a region be named
+	 * without naming a slot: "the ticks lie inside the bar's strip" needs that strip's rectangle,
+	 * found by walking the ticks up to their common ancestor whatever it is built from.
 	 */
 	struct FPanelWidget
 	{
@@ -785,17 +710,11 @@ namespace PieceMenuPanelLayoutTestSupport
 		FVector2D SizePx = FVector2D::ZeroVector;
 
 		/**
-		 * How big it ASKED to be, which for a line of text is how much room the glyphs need.
-		 *
-		 * ARRANGED SIZE CANNOT ANSWER "IS THIS TEXT CUT OFF". A slot that fills hands its child
-		 * the whole column whatever the child asked for, so a text block in one is arranged at
-		 * the panel's width whether it holds four characters or four hundred — measuring that
-		 * rectangle against the panel is a comparison of the panel with itself. The desired size
-		 * is the measurement the renderer would have to honour to draw every glyph, and the gap
-		 * between it and the space the line was given is exactly the room a wider bar could take.
-		 *
-		 * VALID BECAUSE THE PREPASS HAS RUN: SlatePrepass is what computes it, and MeasurePanel
-		 * calls that before any of this walks the tree.
+		 * How big it asked to be; for text, the room the glyphs need. Arranged size cannot tell if
+		 * text is cut off: a filling slot arranges its child at the whole column width whatever it
+		 * asked for, so measuring that against the panel compares the panel with itself. Desired size
+		 * is what the renderer must honour to draw every glyph. Valid because MeasurePanel's
+		 * SlatePrepass runs before this walk.
 		 */
 		FVector2D DesiredSizePx = FVector2D::ZeroVector;
 
@@ -803,11 +722,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	};
 
 	/**
-	 * The same prepass-and-arrange walk the button and text collectors do, keeping everything.
-	 *
-	 * ARRANGED RATHER THAN PAINTED, for the reason the collectors above give: ArrangeChildren is
-	 * the call the renderer makes to decide where a child goes, it is const, and it needs no
-	 * device — so a whole tree's absolute geometry is reachable with no window and no RHI.
+	 * The same arrange walk the button and text collectors do, keeping every widget. Arranged, not
+	 * painted, for the reason they give: ArrangeChildren is the renderer's const, device-free
+	 * placement call, so the whole tree's absolute geometry is reachable with no RHI.
 	 */
 	void CollectPanelWidgets(
 		const TSharedRef<SWidget>& Widget,
@@ -896,18 +813,10 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * THE PANEL'S OWN RECTANGLE ON SCREEN: the constraint canvas's one child, arranged.
-	 *
-	 * NOT THE CANVAS AND NOT GetDesiredSize(). The canvas is arranged at the whole root geometry —
-	 * it is the viewport — so its rectangle says nothing about the panel; and its DESIRED size is
-	 * the child's plus the drag offset baked in (SConstraintCanvas::ComputeDesiredSize adds
-	 * |Offset.Left| for a slot docked at anchor 0), so it moves when the player drags and again if
-	 * the panel ever opens anywhere but the origin. The child's arranged rectangle is the panel
-	 * itself, corner and size, independent of both.
-	 *
-	 * FOUND BY PARENTAGE RATHER THAN BY INDEX so it survives a wrapper being added around the box
-	 * that overrides the size — what it depends on is that the canvas places one panel, which is
-	 * what a canvas placing the piece menu means.
+	 * The panel's own rectangle: the constraint canvas's one child, arranged. Not the canvas (which
+	 * is arranged at the whole viewport) and not GetDesiredSize (which bakes in the drag offset, so
+	 * it moves when the player drags). The child's arranged rectangle is the panel itself. Found by
+	 * parentage, not index, so it survives a wrapper being added around the box.
 	 */
 	const FPanelWidget* PanelRectangle(const TArray<FPanelWidget>& Widgets)
 	{
@@ -935,11 +844,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	};
 
 	/**
-	 * Prepass the tree and arrange it, which is the whole measurement.
-	 *
-	 * THE PANEL IS BUILT ONCE AND MEASURED TWICE BY CALLING THIS TWICE. SetInspectedPiece swaps
-	 * only the readout box's content, so both states are the very same widget tree — which is
-	 * what makes "the row moved" a claim about layout rather than about two different panels.
+	 * Prepass and arrange the tree, which is the whole measurement. The panel is built once and
+	 * measured twice by calling this twice: SetInspectedPiece swaps only the readout's content, so
+	 * both states are the same tree, which makes "the row moved" a layout claim, not two panels.
 	 */
 	FPanelLayoutState MeasurePanel(const TSharedRef<SWidget>& Panel, const FGeometry& Root)
 	{
@@ -962,12 +869,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * THE PANEL PRINTS THIS LINE, AND THE MODEL HAD ONE TO PRINT.
-	 *
-	 * THE EMPTINESS CHECK IS THE HALF THAT MATTERS. An empty expected string would be looked for
-	 * and found nowhere, or worse, matched against some other empty text block — either way the
-	 * assertion would say nothing about a widget while appearing to. A string the model does not
-	 * supply is a fault in the model, and it is reported as one rather than as a missing widget.
+	 * The panel prints this line, and the model had one to print. The emptiness check matters: an
+	 * empty expected string matches nothing, or some other empty block, asserting nothing while
+	 * looking like it does — so a missing model string is reported as a model fault.
 	 */
 	void CheckPanelDrawsLine(
 		FAutomationTestBase& Test,
@@ -1014,11 +918,9 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * How far apart two texts' vertical centres may be and still be "on one line".
-	 *
-	 * A ROW IS ABOUT 22 px TALL, so 8 px is comfortably under half a row: two texts this close
-	 * cannot be in adjacent rows, and a header whose count was pushed onto its own line lands a
-	 * whole row away. It is slack on a claim about ROWS rather than a measurement tolerance.
+	 * How far apart two texts' vertical centres may be and still count as one line. A row is about
+	 * 22 px, so 8 px is under half a row: texts this close cannot be in adjacent rows. Slack on a
+	 * claim about rows, not a measurement tolerance.
 	 */
 	constexpr double PanelSameLineSlackPx = 8.0;
 
@@ -1028,30 +930,18 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * HOW MUCH CLEAR SPACE TWO ADJACENT DECADE LABELS NEED BETWEEN THEM.
-	 *
-	 * NOT A TOLERANCE — IT IS THE CLAIM. Two layouts of one tree in one geometry are
-	 * bit-identical, so this is not slack on a measurement; it is the smallest gap at which
-	 * "100×" and "1000×" read as two numbers rather than as "100×1000×". Four pixels is over
-	 * half a digit at the scale's own font, which is the size of the space between words in the
-	 * same run of text.
-	 *
-	 * THE MEASURED FAILURE IS 0.33 px, so the test is nowhere near its own boundary: the labels
-	 * were placed on a track narrowed to the bar's own column without the labels being remeasured
-	 * against it, and the two crowded ends of a decade scale are exactly the numbers a reader
-	 * needs most. It is deliberately NOT expressed as a fraction of the track, because the thing
-	 * that has to be readable is the glyphs, and glyphs do not scale with the bar.
+	 * Clear space two adjacent decade labels need between them. Not a tolerance but the claim: the
+	 * smallest gap at which "100×" and "1000×" read as two numbers, not "100×1000×". 4 px is over
+	 * half a digit at the scale's font. The measured failure is 0.33 px, so the test is far from
+	 * its boundary. In pixels, not a fraction of the track: the glyphs must be readable and glyphs
+	 * do not scale with the bar.
 	 */
 	constexpr double PanelTickLabelGapPx = 4.0;
 
 	/**
-	 * WHAT ONE SWEEP MEASURED, so the two DETAIL MODES can be held against each other afterwards.
-	 *
-	 * THE PANEL'S OWN RECTANGLE IS HERE BECAUSE THE PLAYER'S COMPLAINT IS ABOUT IT AND NOT ABOUT
-	 * THE COLUMN INSIDE IT. "It takes up so much of the screen" is a claim about how much viewport
-	 * the panel covers; whether its sentences fit is the separate claim the line sweep makes. Both
-	 * come off one arrangement, and neither is worth much without the other — a panel that shrank
-	 * and clipped its own text is a worse answer than one that never shrank.
+	 * What one sweep measured, so the two detail modes can be compared. The panel's own rectangle
+	 * is here because the player's complaint is about how much screen it covers, a separate claim
+	 * from whether its sentences fit; a panel that shrank and clipped its text is the worse answer.
 	 */
 	struct FPanelFitMeasurement
 	{
@@ -1071,22 +961,14 @@ namespace PieceMenuPanelLayoutTestSupport
 	};
 
 	/**
-	 * SWEEP EVERY LINE THIS SELECTION'S READOUT SUPPLIES AND HOLD IT INSIDE THE PANEL'S COLUMN.
+	 * Sweep every line the selection's readout supplies and hold it inside the panel's column.
 	 *
-	 * A FUNCTION RATHER THAN A RunTest BODY BECAUSE THE CLAIM NOW HAS TWO WALLS AND TWO DETAIL
-	 * MODES TO MAKE IT ABOUT, and it is one claim. A flush running bond bends nowhere, so its
-	 * readout never grows the bending clause and the sweep over it cannot see the panel's width at
-	 * all; a wall with a corbel on it prints the longest line this panel can produce. Four copies of
-	 * this body would be four chances for one of them to drift into measuring something else.
-	 *
-	 * THE MODE CHANGES WHICH LINES EXIST AND THEREFORE WHICH LINE IS LONGEST, WHICH IS THE WHOLE
-	 * REASON COMPACT NEEDS ITS OWN SWEEP RATHER THAN INHERITING FULL'S ANSWER. The full panel's
-	 * width was derived from the longest JOINT line — 617.5 px on the ragged wall — and compact
-	 * drops exactly those, so its width has to be derived from the longest line it still shows. That
-	 * is an ENTRY ROW: a support dot, a brick's position label, and the fixed column the support
-	 * word is set in. Entry rows are therefore swept in both modes, which they were not before —
-	 * without them a compact panel could be narrowed to the width of "3 bricks selected" and every
-	 * assertion here would still pass while the brick list ran off the edge.
+	 * A function, not a RunTest body, because the one claim now spans two walls and two detail modes:
+	 * a flush bond bends nowhere so its sweep cannot see the panel's width, a corbel wall prints the
+	 * longest line. The mode changes which line is longest, so compact needs its own sweep: full's
+	 * width came from the longest joint line (617.5 px on the ragged wall), which compact drops,
+	 * leaving an entry row widest — so entry rows are swept in both modes, or a compact panel could
+	 * be narrowed to "3 bricks selected" while the brick list ran off the edge.
 	 *
 	 * @param WallDescription names which wall a failure came off, since both run in one test.
 	 * @param Detail which mode to build and measure. The controller is left in it.
@@ -1103,7 +985,7 @@ namespace PieceMenuPanelLayoutTestSupport
 
 		FPanelFitMeasurement Measured;
 
-		/* THE MODE IS SET BEFORE THE BUILD, because the build is what reads it. */
+		/* The mode is set before the build, because the build reads it. */
 		Controller->SetPieceMenuDetail(Detail);
 
 		const TSharedRef<SWidget> Panel = Controller->BuildPieceMenuPanel();
@@ -1124,9 +1006,8 @@ namespace PieceMenuPanelLayoutTestSupport
 			Rows.Num() >= 1);
 
 		/*
-		 * FIXTURE: THE FULL READOUT HAS A TABLE, AND THE COMPACT ONE HAS DROPPED IT. Asked of the
-		 * same controller in the same state, so a compact sweep over a brick that never had joints
-		 * says so instead of quietly reporting that compact drops nothing.
+		 * Fixture: the full readout has a joint table, the compact one has dropped it. Asked of the
+		 * same controller in the same state, so a compact sweep over a jointless brick says so.
 		 */
 		const int32 FullJointCount =
 			Controller->PieceMenuInspectorForSelection(EPieceMenuDetail::Full).Joints.Num();
@@ -1163,9 +1044,8 @@ namespace PieceMenuPanelLayoutTestSupport
 		const double ContentRightPx = ContentLeftPx + ActionRow->SizePx.X;
 
 		/*
-		 * FIXTURE: THE COLUMN IS A REAL ONE. A zero-width action row would make every containment
-		 * claim below impossible for a reason that has nothing to do with the readout, and a row
-		 * wider than the viewport would make them free.
+		 * Fixture: the column is real. A zero-width action row would make every containment claim
+		 * below impossible for no readout reason; one wider than the viewport would make them free.
 		 */
 		Test.TestTrue(
 			*FString::Printf(
@@ -1179,14 +1059,11 @@ namespace PieceMenuPanelLayoutTestSupport
 		}
 
 		/*
-		 * THE PANEL'S OWN RECTANGLE, AND THE CLAIM THAT IT IS THE PRESENTER'S ANSWER.
-		 *
-		 * THIS IS THE JOIN, AND IT IS THE ONE THIS PROJECT HAS ALREADY GOT WRONG. PieceMenuPanelSizePx
-		 * decides how much screen a mode may take; an SBox override only states a DESIRED size, and a
-		 * slot that fills hands its child whatever width it likes regardless — a 540 px canvas once
-		 * sat over 96 px bars on exactly that. Reading the ARRANGED rectangle back and holding it
-		 * against what the presenter said is what makes "the widget honours the model" a measurement
-		 * rather than a reading of the source.
+		 * The panel's rectangle, and the claim it is the presenter's answer. This join has been got
+		 * wrong before: PieceMenuPanelSizePx sets how much screen a mode may take, but an SBox
+		 * override is only a desired size and a filling slot hands its child any width — a 540 px
+		 * canvas once sat over 96 px bars. Reading the arranged rectangle back makes "the widget
+		 * honours the model" a measurement, not a reading of the source.
 		 */
 		const FPanelWidget* const PanelRect = PanelRectangle(State.Widgets);
 
@@ -1222,9 +1099,8 @@ namespace PieceMenuPanelLayoutTestSupport
 		Measured.ContentRightPx = ContentRightPx;
 
 		/*
-		 * EVERY LINE THE MODEL SUPPLIED FOR THIS STATE, taken from the model rather than read back
-		 * off the panel: a line the panel failed to draw is then a missing widget rather than an
-		 * assertion that quietly skipped itself.
+		 * Every line the model supplied, taken from the model not read back off the panel: a line the
+		 * panel failed to draw is then a missing widget, not a silently skipped assertion.
 		 */
 		TArray<FString> ReadoutLines;
 		ReadoutLines.AddUnique(Inspector.InspectedLabel);
@@ -1232,18 +1108,11 @@ namespace PieceMenuPanelLayoutTestSupport
 		ReadoutLines.AddUnique(Inspector.JointsText);
 
 		/*
-		 * AND THE BRICK LIST, WHICH IS WHAT SETS A COMPACT PANEL'S WIDTH.
-		 *
-		 * An entry row is a dot, a position label and the support word set in a fixed column beside
-		 * it, and with the joint table gone it is the widest thing left on the panel. Swept in BOTH
-		 * modes rather than only in compact, because a claim that changes shape with the mode is two
-		 * claims — and because the entry rows were already believed to be swept here: the comment on
-		 * PieceMenuEntrySupportWidthPx in the controller says so, and until now it was not true.
-		 *
-		 * AddUnique THROUGHOUT, because the inspected brick's label is drawn twice by construction —
-		 * once as its own entry row and once as the readout's heading — and two bricks can share a
-		 * support word. FindPanelWidgetsByText already holds every widget that reads a line, so a
-		 * duplicate entry here would only assert the same widgets twice and print them twice.
+		 * And the brick list, which sets a compact panel's width: with the joint table gone, an entry
+		 * row (dot, position label, support word in a fixed column) is the widest thing left. Swept in
+		 * both modes because a claim that changes shape with the mode is two claims. AddUnique
+		 * throughout: the inspected brick's label is drawn twice (its entry row and the heading) and
+		 * two bricks can share a support word, so duplicates would only assert the same widgets twice.
 		 */
 		for (const FInspectorPieceEntry& Entry : Inspector.Pieces)
 		{
@@ -1257,10 +1126,9 @@ namespace PieceMenuPanelLayoutTestSupport
 		}
 
 		/*
-		 * THE BAR'S CAPTION AND ITS TICKS ARE ASKED FOR EXACTLY WHEN THERE IS A BAR. The model
-		 * promises both are empty when no bar is drawn, which is precisely the compact state — and
-		 * the loop below reports an empty line as a fault in the model, correctly, so asking for
-		 * them unconditionally would turn the model keeping its own promise into an error.
+		 * The caption and ticks are asked for only when there is a bar. The model leaves both empty
+		 * with no bar (the compact state), and the loop below reports an empty line as a fault, so
+		 * asking unconditionally would turn the model keeping its promise into an error.
 		 */
 		if (Inspector.Joints.Num() > 0)
 		{
@@ -1284,9 +1152,8 @@ namespace PieceMenuPanelLayoutTestSupport
 			}
 
 			/*
-			 * EVERY WIDGET THAT READS THIS, not the first one found: the brick a readout is about is
-			 * drawn twice by construction — once as its entry row and once as the readout's own
-			 * heading — and both of them have to fit.
+			 * Every widget that reads this, not the first: the readout's brick is drawn twice, as
+			 * its entry row and as the heading, and both have to fit.
 			 */
 			const TArray<int32> Drawn = FindPanelWidgetsByText(State.Widgets, Line);
 
@@ -1306,10 +1173,9 @@ namespace PieceMenuPanelLayoutTestSupport
 				const double LineLeftPx = Text.TopLeftPx.X;
 
 				/*
-				 * WHERE THE GLYPHS END, WHICH IS NOT WHERE THE SLOT ENDS. A text block in a filling
-				 * slot is arranged at the whole column's width however short its text is, so its
-				 * arranged rectangle says nothing at all about whether the words fit; the width it
-				 * ASKED for does.
+				 * Where the glyphs end, not where the slot ends: a text block in a filling slot is
+				 * arranged at the whole column width however short its text, so the arranged rectangle
+				 * says nothing about fit; the width it asked for does.
 				 */
 				const double LineRightPx = LineLeftPx + Text.DesiredSizePx.X;
 				const double SlackPx = ContentRightPx - LineRightPx;
@@ -1321,10 +1187,9 @@ namespace PieceMenuPanelLayoutTestSupport
 				}
 
 				/*
-				 * THE ASSERTION, BOTH EDGES. Past the right edge is the sentence running off the
-				 * panel's own background and being cut; past the left is the same thing lying down,
-				 * and it is what a bar wide enough to push its sentence out would produce if the row
-				 * ever centred itself instead of overflowing.
+				 * The assertion, both edges. Past the right edge the sentence runs off the panel and
+				 * is cut; past the left is the same, what a bar wide enough to push its sentence out
+				 * would produce if the row centred itself.
 				 */
 				Test.TestTrue(
 					*FString::Printf(
@@ -1337,17 +1202,11 @@ namespace PieceMenuPanelLayoutTestSupport
 		}
 
 		/*
-		 * AND THE NUMBER THE NEXT CHANGE NEEDS. This is how many pixels of the panel's width are
-		 * spare beside the longest thing the readout prints, which is the budget a wider headroom bar
-		 * has to come out of — reported rather than asserted, because how it is SPENT is a layout
-		 * decision and this test has no business pinning one. When it is negative it is the other
-		 * number the next change needs: how many pixels wider the panel has to be before the
-		 * sentence it already prints fits inside it.
-		 *
-		 * IN COMPACT IT IS THE OTHER HALF OF THE SIZE DERIVATION. The full panel's width came from
-		 * this number on the ragged wall; the compact panel's has to come from this number in this
-		 * mode, and a compact width chosen without reading it is a panel that clips its own brick
-		 * list — which is a worse answer than the one the player is complaining about.
+		 * And the number the next change needs: the spare pixels beside the longest readout line, the
+		 * budget a wider bar comes out of. Reported not asserted, because how it is spent is a layout
+		 * decision. Negative, it is how much wider the panel must be to fit its own sentence. In
+		 * compact it is half the size derivation: a compact width chosen without reading it clips its
+		 * own brick list.
 		 */
 		Test.AddInfo(FString::Printf(
 			TEXT("%s, %s detail: the readout's tightest line is '%s', %s %.2f px inside a %.2f px content column"),
@@ -1356,25 +1215,14 @@ namespace PieceMenuPanelLayoutTestSupport
 			FMath::Abs(TightestSlackPx), ContentRightPx - ContentLeftPx));
 
 		/*
-		 * AND NO TWO LINES SHARING A ROW MAY PRINT ON TOP OF EACH OTHER, WHICH IS THE CLIPPING MODE
-		 * THE CONTAINMENT SWEEP ABOVE CANNOT SEE — AND IS THE ONE A NARROWER PANEL ACTUALLY HITS.
-		 *
-		 * A brick row is a position label at the left and a support word set in a FIXED 150 px column
-		 * anchored to the right. Narrow the panel and the column's left edge walks TOWARDS the label
-		 * while both stay comfortably inside the panel, so every span claim above goes on passing —
-		 * the support word's spare is a constant 71 px however narrow the panel gets, because it is
-		 * measured against a right edge the word is pinned to. What breaks first is "course 12 · #3"
-		 * running into "not in this wall", and two sentences rendered over one another is a worse
-		 * outcome than a sentence that is merely cut off, because it looks like neither.
-		 *
-		 * SAME ROW IS DECIDED BY VERTICAL CENTRE, not by walking the tree, for the reason the button
-		 * finder reads captions rather than slot indices: which widget holds a row together is a
-		 * structural claim the layout is allowed to change, and two texts within 8 px of each other's
-		 * centres are on one line at any font this panel uses.
-		 *
-		 * GLYPH SPANS RATHER THAN ARRANGED ONES, for the reason the containment claim uses them: a
-		 * text block in a filling slot is arranged at the whole column's width whatever it says, so
-		 * every pair of lines in a column would "overlap" and the claim would be about nothing.
+		 * And no two lines sharing a row may print on top of each other — the clipping the containment
+		 * sweep cannot see, and the one a narrower panel actually hits. A brick row is a position label
+		 * at the left and a support word in a fixed 150 px column pinned to the right; narrowing the
+		 * panel walks the column towards the label while both stay inside it, so the span claims keep
+		 * passing (the word's spare is a constant 71 px). What breaks first is one sentence running
+		 * into another, which looks like neither. Same row is decided by vertical centre (within 8 px),
+		 * not by walking the tree, and glyph spans not arranged ones — a filling slot arranges every
+		 * line at the whole column width, so arranged spans would all "overlap".
 		 */
 		double TightestGapPx = TNumericLimits<double>::Max();
 		FString TightestPair;
@@ -1430,10 +1278,9 @@ namespace PieceMenuPanelLayoutTestSupport
 		}
 
 		/*
-		 * AND THE OTHER NUMBER THE COMPACT WIDTH HAS TO BE DERIVED FROM. The containment budget above
-		 * is the room beside the longest line; this is the room between two lines that share a row,
-		 * and in compact it is the one that runs out first. Whichever of the two is smaller is how
-		 * many pixels narrower the panel may be made.
+		 * And the other number the compact width derives from. The containment budget is the room
+		 * beside the longest line; this is the room between two lines sharing a row, which runs out
+		 * first in compact. The smaller of the two is how much narrower the panel may be made.
 		 */
 		if (TightestGapPx < TNumericLimits<double>::Max())
 		{
@@ -1451,19 +1298,12 @@ namespace PieceMenuPanelLayoutTestSupport
 	}
 
 	/**
-	 * AND THE COMPACT PANEL ACTUALLY GAVE SCREEN BACK, WHICH IS THE PLAYER'S OWN WORDS MEASURED.
-	 *
-	 * TWO ARRANGEMENTS OF THE SAME PANEL OVER THE SAME WALL WITH THE SAME BRICKS PICKED, differing
-	 * only in the mode — so every difference between them is the mode's doing. The claim is per
-	 * axis and it is STRICT: narrower alone leaves a full-height ribbon down the side of the
-	 * viewport and shorter alone leaves a full-width band across it, and either is a mode that
-	 * dropped the joint table and kept the room the table was taking.
-	 *
-	 * THE HEIGHT IS THE HALF THAT NEEDED MEASURING RATHER THAN ARGUING. The readout sits in a
-	 * FillHeight slot, so it takes whatever the panel has left over: a compact readout with a third
-	 * fewer lines has a shorter DESIRED size and changes the arranged panel by exactly nothing. The
-	 * only thing that shrinks the panel is the override the panel is built with, and the only way to
-	 * see whether it did is to arrange it and read the rectangle back.
+	 * And the compact panel actually gave screen back, the player's complaint measured. Two
+	 * arrangements of one panel over one wall with the same bricks, differing only in mode, so every
+	 * difference is the mode's. Strict per axis: narrower alone leaves a ribbon down the side,
+	 * shorter alone a band across, either a mode that dropped the table but kept its room. Height
+	 * needed measuring: the readout is in a FillHeight slot, so fewer lines shrink its desired size
+	 * but change the arranged panel by nothing — only the panel's own override shrinks it.
 	 */
 	void CheckCompactPanelGivesScreenBack(
 		FAutomationTestBase& Test,
@@ -1495,10 +1335,9 @@ namespace PieceMenuPanelLayoutTestSupport
 			Compact.PanelSizePx.Y < Full.PanelSizePx.Y);
 
 		/*
-		 * AND THE COLUMN INSIDE IT SHRANK WITH IT, BY THE SAME AMOUNT. A panel that narrowed while
-		 * its content column did not is a panel whose sentences now hang off its own background —
-		 * the chrome is the same in both modes, so the two differences are one number seen twice,
-		 * and if they disagree the readout is not inside the rectangle that shrank.
+		 * And the column inside shrank with it, by the same amount. A panel that narrowed while its
+		 * column did not has sentences hanging off its background; the chrome is equal in both modes,
+		 * so the two differences are one number, and a mismatch means the readout is outside it.
 		 */
 		const double FullColumnPx = Full.ContentRightPx - Full.ContentLeftPx;
 		const double CompactColumnPx = Compact.ContentRightPx - Compact.ContentLeftPx;
@@ -1516,36 +1355,24 @@ namespace PieceMenuPanelLayoutTestSupport
 }
 
 /**
- * SINGLING OUT A BRICK MUST NOT MOVE THE MENU ENTRY THE CURSOR IS SITTING ON.
+ * Singling out a brick must not move the menu entry the cursor is on.
  *
- * THE BUG THIS IS ABOUT IS A TWO-FRAME OSCILLATION, AND IT NEEDS NO MOUSE MOVEMENT AT ALL.
- * Hovering an entry row calls SetInspectedPiece, which swaps a joint breakout into the readout
- * box — three to six extra lines for a running-bond brick. The panel is wrapped in a
- * vertically-CENTRED box, so it grows about its centre and every entry row above the readout
- * moves UP by half the growth: tens of pixels, against a default SButton row about 20 px tall.
- * The cursor, which has not moved, is now off the row. Slate then routes an OnMouseLeave — it
- * synthesises a cursor move every non-sleeping tick precisely because "the UI can change even
- * if the mouse doesn't move" — the readout empties, the panel re-centres, the row comes back
- * under the cursor, and the next tick starts again. The readout strobes and the brick strobes
- * Inspected <-> Selected at 60 Hz.
+ * The bug is a two-frame oscillation needing no mouse movement. Hovering an entry calls
+ * SetInspectedPiece, which swaps a joint breakout (3-6 lines) into the readout; the panel is in a
+ * vertically-centred box, so it grows about its centre and every entry above the readout moves up
+ * by half the growth, tens of pixels against a ~20 px row. The cursor, unmoved, is now off the
+ * row; Slate synthesises a cursor move each tick, so OnMouseLeave empties the readout, the panel
+ * re-centres, and the brick strobes Inspected<->Selected at 60 Hz. Swapping the readout's content
+ * rather than rebuilding the panel defends the wrong half: the loop needs the button moved, not
+ * destroyed.
  *
- * SWAPPING THE READOUT'S CONTENT RATHER THAN REBUILDING THE PANEL DEFENDS THE WRONG HALF. That
- * defence stops the hovered BUTTON being destroyed; the loop does not need it destroyed, only
- * moved.
+ * The assertion is the entry row's arranged offset, not the panel's desired height: a top-aligning
+ * fix leaves the height growing yet stops every entry moving, so pinning height would rule it out
+ * for no visible reason. Nor the action rows, which sit below the readout and cannot feed back. The
+ * property is the one the loop turns on: the row that changed the readout is still where it was.
  *
- * THE ASSERTION IS THE ENTRY ROW'S ARRANGED OFFSET, NOT THE PANEL'S DESIRED HEIGHT. Desired
- * height is deliberately NOT asserted: a fix that top-aligns the panel leaves the height growing
- * and still stops every entry moving, and a test that demanded a constant height would rule that
- * fix out for no reason a player could see. Nor is it the ACTION rows: those sit below the
- * readout, nothing about hovering one changes the readout, and a row that moves without feeding
- * back into what moved it cannot oscillate. The property is exactly the one the loop turns on —
- * THE ROW THAT CHANGED THE READOUT IS STILL WHERE IT WAS.
- *
- * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI. The world is there for a wall to point at
- * and a subsystem to read a binding out of, which is what makes the readout have any content to
- * grow by. The layout itself is arithmetic: SlatePrepass computes desired sizes and
- * ArrangeChildren places them, neither of which touches a renderer, a window or a viewport —
- * which is why extracting BuildPieceMenuPanel makes the whole surface reachable.
+ * Needs a world (a wall to point at, a binding to read), never ticks one, needs no RHI: SlatePrepass
+ * and ArrangeChildren are arithmetic, which is why extracting BuildPieceMenuPanel makes it reachable.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuPanelKeepsItsEntriesStillTest,
@@ -1583,9 +1410,8 @@ bool FPieceMenuPanelKeepsItsEntriesStillTest::RunTest(const FString& Parameters)
 		SizeBeforePx.X, SizeBeforePx.Y, *DescribePanelButtons(Before)));
 
 	/*
-	 * FIXTURE: THE LAYOUT ACTUALLY HAPPENED. A tree that measured to nothing would put every
-	 * button at the same place in both states and pass while asserting nothing, which is
-	 * indistinguishable from the panel being correct.
+	 * Fixture: the layout actually happened. A tree that measured to nothing would put every button
+	 * at the same place in both states and pass while asserting nothing.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("fixture: the panel should measure to a real height, it measured %.2f px"),
@@ -1611,8 +1437,8 @@ bool FPieceMenuPanelKeepsItsEntriesStillTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND THE ROWS ARE AT DISTINCT HEIGHTS. If every button stacked at one Y the comparison
-	 * below would be free, which is the other way a zero-sized layout passes for nothing.
+	 * And the rows are at distinct heights. If every button stacked at one Y the comparison below
+	 * would be free — the other way a zero-sized layout passes for nothing.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("fixture: the entry rows should sit at different heights, they sit at %s"),
@@ -1639,8 +1465,8 @@ bool FPieceMenuPanelKeepsItsEntriesStillTest::RunTest(const FString& Parameters)
 		After.Num(), Before.Num());
 
 	/*
-	 * THE ASSERTION. Every entry row is where it was, so the cursor that caused the readout to
-	 * change is still on the row that caused it.
+	 * The assertion. Every entry row is where it was, so the cursor that changed the readout is
+	 * still on the row that caused it.
 	 */
 	for (const FInspectorPieceEntry& Entry : Inspector.Pieces)
 	{
@@ -1670,43 +1496,29 @@ bool FPieceMenuPanelKeepsItsEntriesStillTest::RunTest(const FString& Parameters)
 }
 
 /**
- * NO ROW A PLAYER CAN CLICK MOVES WHEN THE READOUT CHANGES — ENTRY ROWS *AND* ACTION ROWS.
+ * No row a player can click moves when the readout changes — entry rows and action rows.
  *
- * THE SISTER TEST ABOVE IS ABOUT AN OSCILLATION; THIS ONE IS ABOUT AN IRREVERSIBLE COMMIT, AND
- * THE ACTION ROWS ARE ONLY SAFE UNDER THE FIRST ARGUMENT. Hovering an action row changes nothing
- * that moves it, so it cannot feed back and cannot strobe — all true, and not enough. Walk the
- * cursor down off the last entry row toward Delete: leaving the entries fires OnUnhovered, the
- * readout collapses on the next tick, and Delete slides UP 60 px, toward a cursor already on its
- * way down. A click landing in that frame commits a deletion the player did not aim at, and this
- * project treats releasing a brick as irreversible — the standing rule is that the COMMIT door is
- * never wider than the menu door, and a button that moves under the cursor between aim and click
- * is that same hazard expressed in geometry rather than in a guard.
+ * The sister test above is about an oscillation; this is about an irreversible commit. Action rows
+ * cannot strobe, but walk the cursor down off the last entry toward Delete: OnUnhovered collapses
+ * the readout next tick and Delete slides up 60 px, toward a cursor on its way down. A click in
+ * that frame deletes a brick the player did not aim at, and releasing a brick is irreversible here.
+ * The standing rule is that the commit door is never wider than the menu door; a button moving
+ * between aim and click is that hazard in geometry.
  *
- * THE PROPERTY IS OVER EVERY PRESENTED ROW, TAKEN FROM THE MODEL AND MATCHED BY CAPTION. Slot
- * index is deliberately not used: where a row sits in the panel is exactly what a fix is allowed
- * to change, and a player finds a row by reading it. Both halves of the list come from what the
- * presenter says it is showing — Inspector.Pieces and GetShownPieceMenuRows — so a fix that drew
- * a row and then failed to place it is a missing button rather than a silently skipped assertion.
+ * The property is over every presented row, taken from the model and matched by caption, not slot
+ * index: where a row sits is what a fix may change, and a player finds a row by reading it. Both
+ * halves come from the presenter (Inspector.Pieces and GetShownPieceMenuRows), so a drawn-but-
+ * unplaced row is a missing button, not a skipped assertion.
  *
- * AND THE PANEL'S OWN SIZE IS NOW PINNED TOO, WHICH IT DELIBERATELY WAS NOT BEFORE. The earlier
- * version allowed the panel to grow and asserted the growth as a fixture precondition, because
- * top-anchoring was a legal fix and top-anchoring leaves the height moving. The agreed rebuild
- * makes the panel a fixed size with the brick list scrolling inside it, and that is a strictly
- * stronger statement of the same property: a panel that cannot change size cannot move anything,
- * whatever it is anchored to and whatever order its slots are in. So the precondition that the
- * readout really did change is now made on the READOUT'S OWN TEXT rather than on the panel's
- * height — a joint line that is drawn in one state and not the other — which is the fact the
- * old height comparison was standing in for and cannot be satisfied by a panel that resizes.
+ * The panel's size is now pinned too. The rebuild makes it fixed with the brick list scrolling
+ * inside, a strictly stronger statement: a panel that cannot resize cannot move anything. So the
+ * precondition that the readout changed is now made on its own text — a joint line drawn in one
+ * state and not the other — which the old height comparison stood in for. It also pins the
+ * horizontal argument: the panel is centred, so a row's left edge moves ~59 px as the readout
+ * widens, harmless only while the narrow span is contained in the wide one, which fails if a row
+ * shrink-wraps. One comparison per row, so asserted not argued.
  *
- * AND IT PINS THE HORIZONTAL ARGUMENT, WHICH UNTIL NOW WAS REASONING RATHER THAN MEASUREMENT. The
- * panel is centred, so every row's left edge moves ~59 px left as the readout widens, and the
- * claim that this is harmless is that the narrow span is CONTAINED in the wide one — the cursor
- * is over the same button either way. That holds for a full-width row under a centred panel and
- * fails the moment a row shrink-wraps or re-anchors, which is a real thing a layout fix might do
- * on its way past. It costs one comparison per row, so it is asserted rather than argued.
- *
- * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI — same fixture, same two-state prepass and
- * arrange as the test above, and for the same reasons.
+ * Needs a world, never ticks one, needs no RHI — same fixture and two-state arrange as above.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuPanelKeepsEveryClickableRowStillTest,
@@ -1741,9 +1553,9 @@ bool FPieceMenuPanelKeepsEveryClickableRowStillTest::RunTest(const FString& Para
 		*DescribePanelButtons(BeforeState.Buttons)));
 
 	/*
-	 * THE ROWS THE PLAYER CAN PUT A CURSOR ON, ASKED OF THE PRESENTER RATHER THAN READ BACK OFF
-	 * THE PANEL. Reading the captions out of the drawn buttons would make the list agree with
-	 * whatever was drawn, so a row that went missing would take its own assertion with it.
+	 * The clickable rows, asked of the presenter not read back off the panel: reading captions off
+	 * the drawn buttons would make the list agree with whatever was drawn, so a missing row would
+	 * take its own assertion with it.
 	 */
 	struct FClickableRow
 	{
@@ -1777,9 +1589,8 @@ bool FPieceMenuPanelKeepsEveryClickableRowStillTest::RunTest(const FString& Para
 		Controller->GetShownPieceMenuRows().Num() >= 1);
 
 	/*
-	 * EVERY PRESENTED ROW IS A DRAWN BUTTON AND EVERY DRAWN BUTTON IS A PRESENTED ROW. An equality
-	 * rather than a floor, because a panel with an extra unaccounted button is a row this property
-	 * says nothing about — and an unwatched clickable row is exactly the hazard.
+	 * Every presented row is a drawn button and vice versa. An equality, not a floor: an extra
+	 * unaccounted button is an unwatched clickable row, exactly the hazard.
 	 */
 	TestEqual(
 		FString::Printf(
@@ -1794,8 +1605,8 @@ bool FPieceMenuPanelKeepsEveryClickableRowStillTest::RunTest(const FString& Para
 	}
 
 	/*
-	 * AND THE ROWS ARE AT DISTINCT HEIGHTS. If every button stacked at one Y the comparison below
-	 * would be free, which is how a zero-sized layout passes while asserting nothing.
+	 * And the rows are at distinct heights. If every button stacked at one Y the comparison below
+	 * would be free — how a zero-sized layout passes while asserting nothing.
 	 */
 	for (int32 Index = 1; Index < BeforeState.Buttons.Num(); ++Index)
 	{
@@ -1821,11 +1632,9 @@ bool FPieceMenuPanelKeepsEveryClickableRowStillTest::RunTest(const FString& Para
 		*DescribePanelButtons(AfterState.Buttons)));
 
 	/*
-	 * FIXTURE: THE READOUT ACTUALLY CHANGED. A panel that drew the same thing in both states
-	 * would hold every row still for free, which is indistinguishable from the panel being
-	 * right. It is asserted on the READOUT'S TEXT rather than on the panel's height because the
-	 * height is now pinned STILL — see the header comment — and a joint line appearing where
-	 * there was none is the change the height comparison was standing in for.
+	 * Fixture: the readout actually changed. A panel that drew the same thing in both states would
+	 * hold every row still for free. Asserted on the readout's text, not the panel's height, because
+	 * the height is now pinned still (see the header): a joint line appearing is what height stood in for.
 	 */
 	const FPieceMenuInspector Inspected = Controller->PieceMenuInspectorForSelection();
 
@@ -1855,12 +1664,10 @@ bool FPieceMenuPanelKeepsEveryClickableRowStillTest::RunTest(const FString& Para
 	}
 
 	/*
-	 * AND THE PANEL ITSELF IS THE SAME SIZE, WHICH IS THE PROPERTY THE WHOLE REBUILD TURNS ON.
-	 * Every row-by-row assertion below is a consequence of this one; it is asserted separately
-	 * because it is the mechanism, and because a panel that resizes can satisfy the row
-	 * assertions today by an arrangement of slots that the next change quietly invalidates.
-	 * Both axes: a panel that widens with the longest joint line drags every row's left edge
-	 * with it, which is the same hazard lying down.
+	 * And the panel itself is the same size, the property the rebuild turns on. Every row assertion
+	 * below follows from it; asserted separately because it is the mechanism, and a resizing panel
+	 * can satisfy the rows today by a slot arrangement the next change invalidates. Both axes: a
+	 * panel that widens with the longest joint line drags every row's left edge with it.
 	 */
 	TestTrue(
 		*FString::Printf(
@@ -1877,8 +1684,7 @@ bool FPieceMenuPanelKeepsEveryClickableRowStillTest::RunTest(const FString& Para
 		AfterState.Buttons.Num(), BeforeState.Buttons.Num());
 
 	/*
-	 * THE ASSERTION. Every row the player can click is exactly where it was, so a click aimed at
-	 * one commits that one.
+	 * The assertion. Every clickable row is exactly where it was, so a click aimed at one commits it.
 	 */
 	for (const FClickableRow& Row : Clickable)
 	{
@@ -1904,10 +1710,9 @@ bool FPieceMenuPanelKeepsEveryClickableRowStillTest::RunTest(const FString& Para
 			FMath::IsNearlyEqual(WasAt->TopLeftPx.Y, IsAt->TopLeftPx.Y, PanelRowMustNotMovePx));
 
 		/*
-		 * AND SIDEWAYS, WHERE THE CLAIM IS CONTAINMENT RATHER THAN STILLNESS. The panel is
-		 * centred, so a row's left edge moves as the readout widens; that is harmless exactly
-		 * while the narrower span lies inside the wider one, because the cursor is then over the
-		 * same button in both states. Either direction counts — the readout may grow or collapse.
+		 * And sideways, where the claim is containment not stillness. The panel is centred, so a
+		 * row's left edge moves as the readout widens, harmless while the narrower span lies inside
+		 * the wider one. Either direction counts — the readout may grow or collapse.
 		 */
 		const double WasLeftPx = WasAt->TopLeftPx.X;
 		const double WasRightPx = WasLeftPx + WasAt->SizePx.X;
@@ -1933,36 +1738,29 @@ bool FPieceMenuPanelKeepsEveryClickableRowStillTest::RunTest(const FString& Para
 }
 
 /**
- * THE PANEL PRINTS EVERY LINE THE MODEL SUPPLIES FOR THE STATE IT IS IN, AND NOTHING FROM THE
- * STATE IT IS NOT IN.
+ * The panel prints every line the model supplies for the state it is in, and nothing from the
+ * state it is not in.
  *
- * THIS IS THE TEST THE SCREENSHOT WOULD HAVE FAILED. HeadroomFraction, HeadroomCaption and
- * HeadroomScale have been on the model, worded, scaled and swept for finiteness by
- * Presenter.PieceMenuJointHeadroom for as long as the bar has existed, and NOTHING HAS EVER
- * CONSUMED THEM — the panel drew joint lines and stopped. A model field with no reader is
- * indistinguishable from a model field that is wrong, and every test that could see it was
- * looking at the model rather than at the widget. So the claim here is deliberately at the seam:
- * the strings the model decided are the strings the arranged widget tree contains.
+ * The test the screenshot would have failed. HeadroomFraction, HeadroomCaption and HeadroomScale
+ * have been on the model, worded and swept, since the bar existed, and nothing ever consumed them —
+ * the panel drew joint lines and stopped. A field with no reader is indistinguishable from a wrong
+ * field, and every other test looked at the model, not the widget. So the claim is at the seam: the
+ * strings the model decided are the strings the arranged tree contains.
  *
- * IT IS PRESENCE, NOT APPEARANCE. Colour, opacity, font and anchoring are what the screenshot is
- * for and are asserted nowhere: a headless world has no UGameViewportClient and nothing here
- * paints a pixel. What can be checked is that the text exists in the tree at all, which is
- * exactly the difference between a caption the model composed and a caption a player can read.
+ * Presence, not appearance. Colour, font and anchoring are the screenshot's job and asserted
+ * nowhere: a headless world paints no pixel. That the text exists in the tree is the difference
+ * between a caption the model composed and one a player can read.
  *
- * THE ABSENT HALF IS THE OTHER HALF, AND IT IS TAKEN FROM THE OTHER STATE'S MODEL RATHER THAN
- * SPELLED HERE. The hint line that fills the readout region while no brick is singled out must
- * NOT be standing beside a live breakout — that is the stale-field defect the whole inspector is
- * shaped against — and a joint line must not survive the brick it describes being let go of.
- * Both strings come from whichever state supplies them, so this file pins no wording of its own
- * and Presenter.PieceMenuInspector remains the one place the words are decided.
+ * The absent half is taken from the other state's model, not spelled here: the hint line shown with
+ * no brick singled out must not stand beside a live breakout (the stale-field defect), and a joint
+ * line must not survive its brick being let go. So this file pins no wording; Presenter.PieceMenuInspector
+ * decides the words.
  *
- * THE IDENTITY LINE (SESSION_UI_DESIGN §c, S7) JOINS THE SAME SWEEP, AND WITH A POSITION. It is a
- * model field with no reader on the day it lands, which is the exact shape of the headroom scale
- * above — so it is drawn, it is absent with nothing singled out, and it sits between the name of
- * the brick and its joint summary, because "which brick, and what is it" is one thought and a
- * panel that split them across a joint table would have satisfied the presenter's own test.
+ * The identity line (SESSION_UI_DESIGN §c, S7) joins the same sweep, with a position: a reader-less
+ * field like the headroom scale, so it is drawn, absent with nothing singled out, and between the
+ * brick's name and its joint summary, because "which brick, and what is it" is one thought.
  *
- * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI, like every test in this file.
+ * Needs a world, never ticks one, needs no RHI, like every test here.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuPanelPrintsTheModelTest,
@@ -2029,28 +1827,21 @@ bool FPieceMenuPanelPrintsTheModelTest::RunTest(const FString& Parameters)
 	CheckPanelDrawsLine(*this, InspectedState, Inspected.CountText, TEXT("the selection count"));
 
 	/*
-	 * THE READOUT NAMES THE BRICK IT IS ABOUT. It reads the same as that brick's entry row by
-	 * construction — Presenter.PieceMenuInspector pins the two to each other — so this cannot
-	 * distinguish the heading from the row above it, and does not try to. What it says is that
-	 * the model's InspectedLabel is a string the panel has, which is the whole seam claim.
+	 * The readout names its brick. It reads the same as that brick's entry row by construction, so
+	 * this cannot distinguish the heading from the row and does not try: it says the model's
+	 * InspectedLabel is a string the panel has, the whole seam claim.
 	 */
 	CheckPanelDrawsLine(
 		*this, InspectedState, Inspected.InspectedLabel,
 		TEXT("the name of the brick the readout is about"));
 
 	/*
-	 * AND WHAT THAT BRICK IS — ITS MATERIAL, ITS SIZE AND ITS MASS — DIRECTLY UNDER THE NAME.
-	 *
-	 * SESSION_UI_DESIGN §c puts the identity line second for a reason a layout test is entitled to
-	 * hold: the two lines are one thought, "which brick, and what is it". A model that composed the
-	 * line while the panel drew it anywhere else would pass the presenter's own test and put the
-	 * brick's weight below its joint table, where the player reading the heading has already
-	 * stopped looking.
-	 *
-	 * THE FIXTURE'S WALL IS A RunningBond ONE AND ITS BRICKS CARRY NO MATERIAL, so the line here
-	 * reads "Unknown material · …". That is deliberate rather than a weakness: what this file owns
-	 * is that the panel draws the string the model supplies, whatever it says, and
-	 * Presenter.PieceIdentityText is what owns which string that is.
+	 * And what that brick is — material, size, mass — directly under the name. SESSION_UI_DESIGN §c
+	 * puts the identity line second because the two lines are one thought; a model that drew it
+	 * elsewhere would put the weight below the joint table, where a reader has stopped looking. The
+	 * fixture's RunningBond bricks carry no material, so the line reads "Unknown material · …" — fine,
+	 * because this file owns only that the panel draws the model's string; Presenter.PieceIdentityText
+	 * owns which string.
 	 */
 	TestFalse(
 		TEXT("fixture: the singled-out brick must have an identity line for the panel to draw"),
@@ -2061,10 +1852,9 @@ bool FPieceMenuPanelPrintsTheModelTest::RunTest(const FString& Parameters)
 		TEXT("what the brick is made of, how big it is and what it weighs"));
 
 	/*
-	 * THE LOWEST OCCURRENCE OF THE NAME, NOT THE FIRST. The readout's heading reads exactly the
-	 * same as that brick's ENTRY ROW — the model pins the two to each other on purpose — so the
-	 * first match is the row up in the list, and measuring against it would only say the identity
-	 * line is somewhere below the brick list, which every line of the readout already is.
+	 * The lowest occurrence of the name, not the first. The heading reads the same as the brick's
+	 * entry row, so the first match is the row up in the list; measuring against it would only say
+	 * the identity line is below the brick list, which every readout line already is.
 	 */
 	const FPanelText* NameLine = nullptr;
 	const FPanelText* IdentityLine = FindPanelLine(InspectedState.Texts, Inspected.IdentityText);
@@ -2114,10 +1904,9 @@ bool FPieceMenuPanelPrintsTheModelTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND THE HEADROOM BAR'S WORDS, WHICH ARE THE ONES NOTHING HAS EVER DRAWN. A log axis with
-	 * no decades on it is unreadable by construction — the same visible fill means 1000x on one
-	 * panel and 3x on another — so the caption and the ticks are not decoration and the model
-	 * has been supplying them to nobody.
+	 * And the headroom bar's words, which nothing has ever drawn. A log axis with no decades is
+	 * unreadable — the same fill means 1000x on one panel and 3x on another — so the caption and
+	 * ticks are not decoration, and the model has supplied them to nobody.
 	 */
 	CheckPanelDrawsLine(
 		*this, InspectedState, Inspected.HeadroomCaption, TEXT("the headroom bar's caption"));
@@ -2136,9 +1925,8 @@ bool FPieceMenuPanelPrintsTheModelTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND NEITHER STATE CARRIES THE OTHER'S LINES. A hint to point at a brick, drawn beside the
-	 * breakout of the brick being pointed at, is the panel contradicting itself; a joint line
-	 * left standing after the cursor leaves the list is somebody else's brick's numbers.
+	 * And neither state carries the other's lines. A "point at a brick" hint beside a live breakout
+	 * is the panel contradicting itself; a joint line left standing is another brick's numbers.
 	 */
 	CheckPanelDrawsNoLine(
 		*this, InspectedState, Idle.InspectedHintText,
@@ -2165,30 +1953,23 @@ bool FPieceMenuPanelPrintsTheModelTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE PANEL READS TOP TO BOTTOM IN THE AGREED ORDER, AND THE ROW THAT DESTROYS BRICKS IS LAST.
+ * The panel reads top to bottom in the agreed order, and the row that destroys bricks is last.
  *
- * WHY ORDER IS A TEST AND NOT A TASTE. The rebuild puts the readout BETWEEN the brick list and
- * Delete, which is the opposite of where it sits today — today's panel has the readout last
- * precisely because it was the only slot that could resize, and everything clickable had to be
- * above it. Once the panel is a fixed size that constraint is gone, and the ordering becomes a
- * legibility decision: a player reads what they picked, then what the singled-out brick is
- * doing, and only then meets the button that removes it. An implementation that quietly kept
- * the readout last would satisfy every stillness assertion in this file and would be the old
- * panel wearing the new one's clothes.
+ * Why order is a test, not a taste. The rebuild puts the readout between the brick list and Delete,
+ * the opposite of today — today the readout is last only because it was the one slot that could
+ * resize. Once the panel is fixed-size, ordering is a legibility decision: read what you picked,
+ * then what the brick is doing, then the button that removes it. Keeping the readout last would
+ * pass every stillness assertion here and be the old panel in new clothes.
  *
- * AND DELETE BEING LAST IS THE SAFETY HALF OF IT. Releasing a brick is irreversible here, and
- * the standing rule is that the commit door is never wider than the menu door. A destructive
- * button reached by walking the cursor down PAST everything that describes what will be
- * destroyed is that rule expressed as geometry: nothing a player might click on the way to
- * reading the panel sits below it, so nothing can be committed by overshooting.
+ * Delete being last is the safety half. Releasing a brick is irreversible, and the commit door is
+ * never wider than the menu door: a destructive button reached only by walking past everything that
+ * describes what will be destroyed cannot be hit by overshooting.
  *
- * THE HEADER IS ONE LINE, WHICH IS ASSERTED AS A LINE RATHER THAN AS TWO SLOTS. The word and
- * the count are two texts and belong on one row; a count that wrapped onto its own line is the
- * panel spending a row on nothing, and it is exactly the kind of thing that reads fine in code
- * and wrong on screen. Their vertical CENTRES are compared, because two texts on a row can be
- * different heights and still be on the row.
+ * The header is one line, asserted as a line not two slots: the word and count belong on one row,
+ * and a wrapped count spends a row on nothing. Vertical centres are compared, since two texts on a
+ * row can differ in height.
  *
- * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI.
+ * Needs a world, never ticks one, needs no RHI.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuPanelOrdersItsRowsTest,
@@ -2247,9 +2028,9 @@ bool FPieceMenuPanelOrdersItsRowsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE LAST ACTION THE PRESENTER OFFERS IS THE ONE THAT MUST BE LAST ON SCREEN, asked of the
-	 * presenter rather than spelled "Delete" here: the action table is data, and a second action
-	 * landing beside Delete must not silently retarget this test onto whichever one it names.
+	 * The presenter's last action is the one that must be last on screen, asked of the presenter
+	 * not spelled "Delete": the action table is data, and a second action must not silently
+	 * retarget this test.
 	 */
 	const FString& LastActionLabel = Rows.Last().Label;
 
@@ -2288,10 +2069,9 @@ bool FPieceMenuPanelOrdersItsRowsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE ORDER, ROW BY ROW: the heading over the list, the list over the readout, the readout
-	 * over the button that deletes. Each entry row is checked against both ends rather than only
-	 * against the next one, so a list that landed in the wrong region entirely cannot pass by
-	 * being internally consistent.
+	 * The order, row by row: heading over list, list over readout, readout over Delete. Each entry
+	 * is checked against both ends, not just the next one, so a list in the wrong region cannot pass
+	 * by being internally consistent.
 	 */
 	for (const FInspectorPieceEntry& Entry : Inspector.Pieces)
 	{
@@ -2323,9 +2103,8 @@ bool FPieceMenuPanelOrdersItsRowsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND EVERY LINE OF THE READOUT SITS BETWEEN THEM. The support word, the joint summary, each
-	 * joint line and the bar's caption are what a player is reading when they decide whether to
-	 * delete, so all of them are above the button that does it.
+	 * And every readout line sits between them. The support word, joint summary, joint lines and bar
+	 * caption are what a player reads before deleting, so all are above the button that does it.
 	 */
 	TArray<FString> ReadoutLines;
 	ReadoutLines.Add(Inspector.SupportText);
@@ -2365,9 +2144,8 @@ bool FPieceMenuPanelOrdersItsRowsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND NOTHING CLICKABLE IS BELOW IT AT ALL, which is the claim in its strongest form: the
-	 * per-row comparisons above are over the rows the presenter knows about, and this is over
-	 * every button the panel actually drew, including one nothing accounted for.
+	 * And nothing clickable is below it at all, the claim at its strongest: the comparisons above
+	 * are over the presenter's rows, this is over every button drawn, including an unaccounted one.
 	 */
 	for (const FPanelButton& Button : State.Buttons)
 	{
@@ -2390,27 +2168,21 @@ bool FPieceMenuPanelOrdersItsRowsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * PICKING FORTY BRICKS MUST NOT MAKE THE PANEL ANY BIGGER, AND MUST NOT MOVE DELETE.
+ * Picking forty bricks must not grow the panel or move Delete.
  *
- * THIS IS THE CAP, STATED WITHOUT A MAGIC NUMBER. The agreed design gives the brick list a fixed
- * height and scrolls inside it, and the number of pixels that is belongs to whoever writes the
- * Slate. What a test can say is the CONSEQUENCE: the panel is the same panel with three bricks
- * picked and with forty, so a long selection cannot push anything off the bottom of the screen
- * and cannot move the row that deletes them. A test that asserted "the list is 300 px tall"
- * would break on every tuning pass and would still not say that.
+ * The cap, without a magic number. The design gives the brick list a fixed height and scrolls
+ * inside it; the pixel count is the Slate's business. The test states the consequence: the panel is
+ * the same with three bricks and with forty, so a long selection cannot push anything off screen or
+ * move Delete. "The list is 300 px tall" would break on every tuning pass and not say that.
  *
- * IT IS TWO ASSERTIONS BECAUSE THEY CAN FAIL SEPARATELY. The panel's own measured size is the
- * mechanism — a fixed panel cannot move anything — and Delete's arranged position is the
- * outcome a player's cursor experiences. A panel that grew but happened to keep Delete still
- * would be one slot rearrangement away from not doing so.
+ * Two assertions because they fail separately: the panel's measured size is the mechanism (a fixed
+ * panel moves nothing), Delete's position is the outcome a cursor feels. A panel that grew but kept
+ * Delete still is one rearrangement from not doing so.
  *
- * WHY NOT THE SHARED 7-BRICK WALL. Seven entries fit anywhere, so it can distinguish nothing
- * about a list that has to scroll; this builds ten courses of four for about forty-five pieces
- * and asserts the count before believing the measurement.
+ * Not the shared 7-brick wall: seven entries fit anywhere. This builds ten courses of four (~45
+ * pieces) and asserts the count before believing the measurement.
  *
- * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI. The world is there for a wall to point at
- * and forty bricks to pick out of; the panel is prepassed and arranged, which touches no
- * renderer.
+ * Needs a world, never ticks one, needs no RHI.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuPanelCapsItsBrickListTest,
@@ -2444,9 +2216,9 @@ bool FPieceMenuPanelCapsItsBrickListTest::RunTest(const FString& Parameters)
 		Controller->GetPieceSelection().Num(), 3);
 
 	/*
-	 * THE SHORT PANEL IS BUILT AND MEASURED BEFORE THE LONG ONE IS BUILT AT ALL. BuildPieceMenuPanel
-	 * assigns the controller's readout box, so a second panel takes it over — measuring the first
-	 * one afterwards would be measuring a panel the controller has stopped feeding.
+	 * The short panel is built and measured before the long one exists. BuildPieceMenuPanel assigns
+	 * the controller's readout box, so a second panel takes it over — measuring the first afterwards
+	 * would be measuring a panel the controller has stopped feeding.
 	 */
 	const TSharedRef<SWidget> ShortPanel = Controller->BuildPieceMenuPanel();
 	const FPanelLayoutState ShortState = MeasurePanel(ShortPanel, Root);
@@ -2493,9 +2265,8 @@ bool FPieceMenuPanelCapsItsBrickListTest::RunTest(const FString& Parameters)
 		LongCount, LongState.DesiredSizePx.X, LongState.DesiredSizePx.Y, LongState.Buttons.Num()));
 
 	/*
-	 * FIXTURE: THE MODEL REALLY IS LISTING THEM ALL. The cap is about what the panel DRAWS; a
-	 * presenter that had quietly dropped entries would satisfy every size claim below by having
-	 * nothing to fit in.
+	 * Fixture: the model really is listing them all. The cap is about what the panel draws; a
+	 * presenter that dropped entries would satisfy every size claim by having nothing to fit in.
 	 */
 	const FPieceMenuInspector LongInspector = Controller->PieceMenuInspectorForSelection();
 
@@ -2511,7 +2282,7 @@ bool FPieceMenuPanelCapsItsBrickListTest::RunTest(const FString& Parameters)
 			LongCount, PanelLongSelectionAtLeast),
 		LongCount >= PanelLongSelectionAtLeast);
 
-	/* THE MECHANISM: one panel, one size, however many bricks are in the list inside it. */
+	/* The mechanism: one panel, one size, however many bricks in the list inside it. */
 	TestTrue(
 		*FString::Printf(
 			TEXT("the panel must be the same size whatever is picked: %.2f x %.2f px with 3 bricks, %.2f x %.2f px with %d"),
@@ -2520,7 +2291,7 @@ bool FPieceMenuPanelCapsItsBrickListTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(ShortState.DesiredSizePx.X, LongState.DesiredSizePx.X, PanelRowMustNotMovePx)
 			&& FMath::IsNearlyEqual(ShortState.DesiredSizePx.Y, LongState.DesiredSizePx.Y, PanelRowMustNotMovePx));
 
-	/* AND THE OUTCOME: the row that deletes bricks is exactly where it was. */
+	/* And the outcome: the row that deletes bricks is exactly where it was. */
 	const FPanelButton* const LongLastAction = FindPanelButton(LongState.Buttons, LastActionLabel);
 
 	if (ShortLastAction == nullptr || LongLastAction == nullptr)
@@ -2543,8 +2314,8 @@ bool FPieceMenuPanelCapsItsBrickListTest::RunTest(const FString& Parameters)
 			ShortLastAction->TopLeftPx.Y, LongLastAction->TopLeftPx.Y, PanelRowMustNotMovePx));
 
 	/*
-	 * AND IT IS STILL ON SCREEN, which is the thing the player actually loses when a list runs
-	 * away: a Delete button at y 1400 in a 1080-tall viewport is not reachable at all.
+	 * And it is still on screen, which is what the player loses when a list runs away: a Delete
+	 * button at y 1400 in a 1080-tall viewport is not reachable.
 	 */
 	TestTrue(
 		*FString::Printf(
@@ -2558,37 +2329,26 @@ bool FPieceMenuPanelCapsItsBrickListTest::RunTest(const FString& Parameters)
 }
 
 /**
- * EVERY DECADE TICK IS WHOLLY INSIDE THE BAR IT LABELS, AND STILL MARKS ITS OWN PLACE ON IT.
+ * Every decade tick is wholly inside the bar it labels, and still marks its own place on it.
  *
- * WHAT A CAPTURE SHOWED. The tick row reads `×` at the left end and a broken `10(` at the right:
- * each label is placed on a canvas the width of the bar, anchored at its own Fraction and aligned
- * on its own centre, so the labels for 0.0 and 1.0 are centred on the track's two EDGES and half
- * of each falls outside and is clipped away. A log axis with no readable decades on it is
- * unreadable by construction — the same visible fill means 1000× on one panel and 3× on another —
- * so a clipped label is worse than no label at all: it is a number the player half-reads.
+ * What a capture showed: the tick row read `×` at the left and a broken `10(` at the right. Each
+ * label is placed on a canvas the width of the bar, anchored at its Fraction and centred, so the
+ * 0.0 and 1.0 labels are centred on the track's edges and half of each is clipped. A log axis with
+ * unreadable decades is unreadable, so a clipped label is worse than none — a half-read number.
  *
- * THE STRIP IS FOUND BY WALKING UP FROM THE LABELS RATHER THAN BY NAMING A SLOT. The nearest
- * widget that has all four ticks beneath it IS the region they were placed in, whatever it is
- * built out of, so a fix that wraps each label in a box to align it is still measured against the
- * same strip. Naming the canvas, or importing the width constant, would make the test agree with
- * the layout instead of checking it.
+ * The strip is found by walking up from the labels, not by naming a slot: the nearest widget with
+ * all four ticks beneath it is the region they were placed in, whatever it is built from. Naming
+ * the canvas or importing the width constant would make the test agree with the layout.
  *
- * AND THE SECOND HALF IS WHAT STOPS THE OBVIOUS WRONG FIX. Spacing four labels evenly across the
- * strip — four equal slots, each label centred in its own — removes the clipping and silently
- * breaks the single property the scale exists for: that the joint whose margin IS 10× lines its
- * fill up with the `10×` tick. The fill and the ticks are placed by the same curve today, on
- * purpose. So each label must COVER the point Fraction along the strip, which is exactly where
- * that decade's fill ends: centred labels cover it, an end label pushed inward to stop the
- * clipping still covers it, and a label sitting at 1/8 of the strip while its fraction is 0 does
- * not. The ordering claim rides along for the same money.
+ * The second half stops the obvious wrong fix. Spacing four labels evenly removes the clipping and
+ * breaks the one property the scale exists for: that the joint whose margin is 10× lines its fill
+ * up with the `10×` tick. Fill and ticks share one curve, so each label must cover the point
+ * Fraction along the strip; a label at 1/8 while its fraction is 0 does not. Ordering rides along.
  *
- * WHICH OF THESE IS THE RED ONE. Containment is: the ticks hang off both ends today. Covering the
- * fraction and staying in order both hold today and are here as the guard rail the fix has to get
- * past — see the report accompanying this change for the mutation that shows they bite.
+ * Which is the red one: containment (the ticks hang off both ends today). Covering the fraction and
+ * ordering both hold today, here as guard rails — see the accompanying report for the mutation.
  *
- * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI, like every test in this file. The world is
- * there for a wall to point at so the readout has joints to draw bars for; SlatePrepass and
- * ArrangeChildren are arithmetic.
+ * Needs a world (a wall to point at so the readout has joints), never ticks one, needs no RHI.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuPanelKeepsItsTicksOnTheBarTest,
@@ -2635,9 +2395,8 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
 	}
 
 	/*
-	 * FIXTURE: THE SCALE REALLY DOES REACH BOTH ENDS. Every tick sitting somewhere in the middle
-	 * would make containment free, and the two labels this defect clips are precisely the ones at
-	 * 0.0 and 1.0 — so the ends are asserted rather than assumed.
+	 * Fixture: the scale really reaches both ends. Ticks all in the middle would make containment
+	 * free, and the clipped labels are exactly those at 0.0 and 1.0, so the ends are asserted.
 	 */
 	TestEqual(
 		FString::Printf(
@@ -2683,8 +2442,8 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
 	}
 
 	/*
-	 * THE STRIP THE TICKS WERE PLACED IN, which is the bar's track: the lowest widget that has all
-	 * four of them beneath it. See the header — this is deliberately not a named slot.
+	 * The strip the ticks were placed in, the bar's track: the lowest widget with all four beneath
+	 * it. See the header — deliberately not a named slot.
 	 */
 	const int32 TrackIndex = PanelCommonAncestor(State.Widgets, TickWidgets);
 
@@ -2713,9 +2472,8 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
 	}
 
 	/*
-	 * FIXTURE: THE STRIP IS SOMETHING SMALLER THAN THE PANEL. A common ancestor that had walked all
-	 * the way to the root would make every claim below a claim about the panel rather than about
-	 * the bar, and it would be free.
+	 * Fixture: the strip is smaller than the panel. A common ancestor that walked to the root would
+	 * make every claim below about the panel rather than the bar, and free.
 	 */
 	TestTrue(
 		*FString::Printf(
@@ -2730,16 +2488,11 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
 	}
 
 	/*
-	 * AND THE STRIP IS THE BAR'S COLUMN RATHER THAN THE WHOLE READOUT, WHICH IS THE OTHER HALF OF
-	 * BEING READABLE AND IS MEASURED OFF THE JOINT LINES THEMSELVES.
-	 *
-	 * A joint row is a bar and then its sentence, so the bars end where the sentences begin, and
-	 * the leftmost sentence is the right-hand edge of the column of bars without this test having
-	 * to know how wide a bar is or how much padding sits between the two. A scale wider than that
-	 * column is not a scale for those bars at all: its 10× tick stands where no bar's fill can ever
-	 * reach, so every bar reads as far emptier than it is. It is stated as an inequality rather
-	 * than an equality because the gap between a bar and its sentence is a spacing decision and
-	 * this test has no business pinning it.
+	 * And the strip is the bar's column, not the whole readout — the other half of being readable,
+	 * measured off the joint lines. A joint row is a bar then its sentence, so the leftmost sentence
+	 * is the right edge of the column of bars without knowing a bar's width. A scale wider than that
+	 * column has its 10× tick where no fill can reach, so every bar reads emptier than it is. An
+	 * inequality, not an equality, because the bar-to-sentence gap is a spacing decision.
 	 */
 	double JointTextLeftPx = TNumericLimits<double>::Max();
 
@@ -2780,9 +2533,8 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
 			Label.SizePx.X > 0.0);
 
 		/*
-		 * THE ASSERTION THIS TEST IS FOR. A label whose rectangle leaves the strip is a label the
-		 * player reads half of, which on a decade scale is a different number rather than a
-		 * smaller one.
+		 * The assertion this test is for. A label whose rectangle leaves the strip is half-read,
+		 * which on a decade scale is a different number, not a smaller one.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -2793,9 +2545,9 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
 				&& LabelRightPx <= TrackRightPx + PanelSpanContainmentSlackPx);
 
 		/*
-		 * AND IT STILL MARKS THE PLACE IT IS THE NAME OF. Fraction along the strip is exactly where
-		 * a joint with that much margin fills the bar to, so a label that no longer covers that
-		 * point is pointing at a different decade — which is what evenly spacing them does.
+		 * And it still marks the place it names. Fraction along the strip is where a joint with
+		 * that margin fills to, so a label that no longer covers that point names a different
+		 * decade — what evenly spacing them does.
 		 */
 		const double MarkedPx = TrackLeftPx + Scale[Index].Fraction * TrackWidthPx;
 
@@ -2807,8 +2559,8 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
 				&& LabelRightPx >= MarkedPx - PanelSpanContainmentSlackPx);
 
 		/*
-		 * AND THE LABELS READ LOW TO HIGH ACROSS THE BAR. Cheap, and it is the claim that a fix
-		 * which shuffles the ends inward has not shuffled one past its neighbour.
+		 * And the labels read low to high across the bar. Cheap, and it catches a fix that shuffled
+		 * an end past its neighbour.
 		 */
 		if (Index > 0)
 		{
@@ -2824,20 +2576,15 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
 				CentrePx > PreviousCentrePx);
 
 			/*
-			 * AND THEY MUST NOT TOUCH, WHICH IS A DIFFERENT CLAIM FROM READING IN ORDER AND FROM
-			 * LYING INSIDE THE TRACK — AND IS THE ONE THE CAPTURE FAILS.
+			 * And they must not touch — a different claim from ordering and from lying inside the
+			 * track, and the one the capture fails. "100×" ends at x 1416.67 and "1000×" begins at
+			 * x 1417.00, a third of a pixel apart on a 96 px track, in order and wholly inside the
+			 * bar. So every assertion above passes a row reading "…100×1000×", two numbers as one
+			 * string on the axis meant to say which decade a fill means.
 			 *
-			 * "100×" ends at x 1416.67 and "1000×" begins at x 1417.00: a third of a pixel apart,
-			 * on a 96 px track, both of them in order and both of them wholly inside the bar. So
-			 * every assertion above is satisfied by a row that reads "…100×1000×" — two numbers
-			 * rendered as one string, on the axis whose entire purpose is to say which decade a
-			 * fill means. A log bar with an unreadable scale is a log bar with no scale.
-			 *
-			 * IT IS ALSO WHAT BOUNDS THE FIX. The strip was narrowed to the bar's own column so
-			 * that the ticks annotate the fills rather than empty panel — right, and it left the
-			 * labels no room. Widening the bar is the obvious way out and it costs the joint
-			 * sentences their width, which is why World.Menu.TheReadoutFitsInsideThePanel measures
-			 * how much room those have: the two together say what a fix may spend.
+			 * It also bounds the fix. Narrowing the strip to the bar's column left the labels no
+			 * room; widening the bar costs the joint sentences their width, which is why
+			 * World.Menu.TheReadoutFitsInsideThePanel measures how much room they have.
 			 */
 			const double PreviousRightPx = Previous.TopLeftPx.X + Previous.SizePx.X;
 			const double GapPx = LabelLeftPx - PreviousRightPx;
@@ -2857,53 +2604,39 @@ bool FPieceMenuPanelKeepsItsTicksOnTheBarTest::RunTest(const FString& Parameters
 }
 
 /**
- * EVERY LINE OF THE READOUT IS DRAWN INSIDE THE PANEL, AND THE SLACK IS REPORTED.
+ * Every line of the readout is drawn inside the panel, and the slack is reported.
  *
- * WHY THIS EXISTS NOW, AND WHAT IT IS FOR. The decade ticks collide because their strip was
- * narrowed to the column of bars, and the obvious fix is to widen the bar — which nobody could
- * safely do, because the panel is a fixed 560 px and NOTHING MEASURED WHAT THAT COSTS the joint
- * sentences beside it. A joint line is a bar and then a sentence laid out at its own natural
- * width in a box that will not shrink it, so a sentence with no room does not wrap and does not
- * shrink: it runs out past the panel's own background and is cut off by whatever clips first.
- * "#3  course 2 · #4  bed above  49.0 kN  100.0" is the worst thing this panel could print,
- * because it is the joint that is about to fail and the reader cannot see that it is.
+ * Why now. The decade ticks collide because their strip was narrowed to the column of bars, and the
+ * obvious fix is to widen the bar — which nobody could safely do, because the panel is a fixed 560 px
+ * and nothing measured what that costs the joint sentences. A joint line is a bar then a sentence at
+ * its natural width in a box that will not shrink it, so a sentence with no room runs off the panel
+ * and is clipped. "#3  course 2 · #4  bed above  49.0 kN  100.0" is the worst case: the joint about
+ * to fail, and the reader cannot see it.
  *
- * THE PANEL'S CONTENT WIDTH IS MEASURED OFF THE ACTION ROW RATHER THAN IMPORTED. The row that
- * deletes bricks is a full-width slot of the same vertical box the readout is in, so its span IS
- * the column everything else has to fit in — no constant is read out of the controller, and a
- * panel retuned to a different width moves the claim with it rather than breaking it.
+ * The content width is measured off the action row, not imported: Delete is a full-width slot of the
+ * readout's own box, so its span is the column everything must fit in, and a retuned width moves the
+ * claim with it. It sweeps every line the model supplies, not just the long ones, because which is
+ * longest depends on the wall and the units (999.9 N and 1.0 kN differ by a tenth of a newton).
  *
- * IT SWEEPS EVERY LINE THE MODEL SUPPLIES, not just the long ones. Which line is longest depends
- * on the wall, the course numbers and the units a force happens to print in — 999.9 N and 1.0 kN
- * are different widths for a tenth of a newton — so naming one would be pinning today's fixture.
+ * And it sweeps two walls, because one cannot see the panel's width. The flush bond bends nowhere —
+ * every brick sits on two symmetric patches (moment zero, indeterminate) or squarely on the one
+ * below — so its sweep reports a comfortable budget at 560 px or 680 px alike. The waist wall's
+ * corbels land on one patch, half a bond offset off centre (determinate, exact moment), giving the
+ * longest line this panel prints. Both run through one sweep so the claim stays one claim.
  *
- * AND IT SWEEPS TWO WALLS, BECAUSE ONE OF THEM CANNOT SEE THE PANEL'S WIDTH AT ALL. The flush
- * running bond every other test in this file measures bends NOWHERE: each of its bricks sits
- * either on two symmetric bed patches, which the moment rule leaves at exactly zero because the
- * statics is indeterminate, or squarely on the one brick below it. So no line of its readout ever
- * carries the bending clause, and the sweep over it reports a comfortable budget and would go on
- * reporting one at 560 px or at 680 px. The waist wall's corbels each land on ONE patch, half a
- * bond offset off their own centre of mass — the determinate case, where the moment is exact —
- * and the line describing such a joint is the longest thing this panel can print. Both walls run
- * through the same sweep so the claim stays one claim.
+ * The slack is logged, half the point: the narrowest gap between a line and the panel edge is how
+ * many pixels a wider bar may take, printed pass or fail — as an overrun when negative, the amount a
+ * too-narrow panel must be widened by.
  *
- * AND THE SLACK IS LOGGED, WHICH IS HALF THE POINT OF THE TEST. The narrowest gap between a line
- * and the panel's edge is exactly how many pixels a wider bar may take, and it appears in the
- * run's output whether the test passes or fails — as an OVERRUN when it is negative, which is the
- * number a panel too narrow for its own sentence has to be widened by.
+ * And it now sweeps both detail modes, where the player's second complaint lives. Compact drops the
+ * joint table and headroom scale, but the panel is overridden to the same 640x560 px, so it gives
+ * back no screen. Held together deliberately: the compact panel must cover strictly less viewport on
+ * both axes, and every line it still shows must fit, since a compact panel that clips its brick list
+ * is worse than one merely too big. The longest line changes with the mode — full's width came from
+ * the longest joint line (617.5 px), which compact drops, leaving an entry row widest — so entry
+ * rows are swept too and the compact budget logged the same way.
  *
- * AND IT NOW SWEEPS BOTH DETAIL MODES, WHICH IS WHERE THE PLAYER'S SECOND COMPLAINT IS MEASURED.
- * EPieceMenuDetail::Compact drops the joint table and the headroom scale, and the panel it draws
- * them into is overridden to the same 640 x 560 px whatever the mode — so a compact panel is a
- * full-sized panel with fewer words in it and the player gets back no screen at all. The two
- * halves are held together deliberately: the compact panel must cover STRICTLY less viewport on
- * both axes, AND every line it still shows must fit inside it, because a compact panel that clips
- * its own brick list is a worse answer than one that is merely too big. Which line is longest
- * changes with the mode — the full width was derived from the longest JOINT line at 617.5 px, and
- * compact drops exactly those, leaving an ENTRY ROW as the widest thing on the panel — which is
- * why entry rows are now swept too, and why the compact budget is logged the same way.
- *
- * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI, like every test in this file.
+ * Needs a world, never ticks one, needs no RHI.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuPanelFitsItsReadoutTest,
@@ -2917,9 +2650,8 @@ bool FPieceMenuPanelFitsItsReadoutTest::RunTest(const FString& Parameters)
 	using namespace PieceMenuPanelLayoutTestSupport;
 
 	/*
-	 * THE FLUSH WALL FIRST, WHICH IS THE PANEL AS FIVE OTHER TESTS IN THIS FILE MEASURE IT. It
-	 * bends nowhere, so what it establishes is the budget the ORDINARY readout leaves — and it is
-	 * kept rather than replaced precisely because it is the common case a player looks at.
+	 * The flush wall first, the panel as five other tests measure it. It bends nowhere, so it
+	 * establishes the budget the ordinary readout leaves — kept because it is the common case.
 	 */
 	{
 		FPanelFixture Fixture;
@@ -2941,10 +2673,9 @@ bool FPieceMenuPanelFitsItsReadoutTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND THEN THE WALL WITH A CORBEL ON IT, WHICH IS THE ONE THAT CAN SEE THE PANEL'S WIDTH. A
-	 * brick on a single off-centre patch is statically determinate, so its joint carries a real
-	 * moment and its line grows the bending clause — the longest sentence this readout produces,
-	 * and the only one against which "560 px" is a claim rather than an unexamined number.
+	 * And then the wall with a corbel, the one that can see the panel's width. A brick on a single
+	 * off-centre patch is determinate, so its joint carries a real moment and its line grows the
+	 * bending clause — the longest sentence, the only one against which "560 px" is a claim.
 	 */
 	{
 		FBendingPanelFixture Fixture;
@@ -2970,36 +2701,27 @@ bool FPieceMenuPanelFitsItsReadoutTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A SHORT SELECTION MUST NOT LEAVE A BAND OF EMPTY PANEL ABOVE THE READOUT.
+ * A short selection must not leave a band of empty panel above the readout.
  *
- * WHAT A CAPTURE SHOWED. Three picked bricks draw three rows into a list that reserves a fixed
- * height whatever it holds, so about 145 px of nothing stands between the last brick and the first
- * line of the readout — a fifth of the panel, reading as a menu that failed to finish drawing
- * rather than as a menu with room to spare. The height was made fixed to stop a forty-brick
- * selection running the action rows off the bottom of the screen, which is a real hazard and is
- * held by World.Menu.PanelDoesNotGrowWithTheSelection; a CAP does that job as well as a fixed
- * height does, and a short list then takes only the room it needs.
+ * What a capture showed: three picked bricks draw three rows into a list that reserves a fixed
+ * height, so ~145 px of nothing stands between the last brick and the readout — a fifth of the
+ * panel, reading as a menu that failed to finish drawing. The height was fixed to stop a forty-brick
+ * selection running the action rows off screen (World.Menu.PanelDoesNotGrowWithTheSelection); a cap
+ * does that job too, and a short list then takes only the room it needs.
  *
- * THE MEASUREMENT IS THE DEAD SPACE, NOT THE LIST'S HEIGHT, AND THAT IS THE WHOLE CARE HERE. A
- * test that said "the list is 66 px tall with three bricks in it" would pin an implementation, be
- * wrong the moment the font changed, and still not say the thing a player sees. The gap between
- * the bottom of the last brick row and the top of the readout's first line is what they see, and
- * it is compared against ONE ROW'S OWN HEIGHT — measured from the row, not written down here — so
- * it stays true at any font and any panel size. A gap under a row is spacing; a gap of six rows
- * is a hole.
+ * The measurement is the dead space, not the list's height. "The list is 66 px tall" would pin an
+ * implementation, break on a font change, and not say what a player sees. The gap between the last
+ * brick row and the readout's first line is compared against one row's own height (measured, not
+ * written here), so it holds at any font and panel size. A gap under a row is spacing; six rows is a hole.
  *
- * THE PANEL'S FIXED SIZE IS NOT RELAXED BY THIS. The three stillness tests in this file and the
- * forty-brick cap all continue to hold with a natural-height-up-to-a-cap list, because the readout
- * takes the space the list does not — FillHeight(1.0) absorbs the difference — and the action rows
- * are laid from a panel bottom that has not moved. What DOES move as the selection count changes
- * is the readout's first line, and that is deliberately left unpinned: the readout carries nothing
- * clickable, so nothing can be committed by it moving, and the selection count only ever changes
- * on a click at a brick in the world with the cursor nowhere near the panel — there is no feedback
- * path and so no oscillation to catch. The brick rows themselves do not move at all, because the
- * list is the second slot from the top of a top-down box and its top is not a function of what is
- * below it.
+ * The panel's fixed size is not relaxed. The stillness tests and the cap still hold with a
+ * natural-height-up-to-a-cap list: the readout absorbs the difference via FillHeight(1.0) and the
+ * action rows lay from an unmoved bottom. The readout's first line does move with the count, left
+ * unpinned deliberately: it carries nothing clickable, and the count changes only on a click in the
+ * world with the cursor off the panel, so there is no feedback path. The brick rows do not move, the
+ * list being the second slot of a top-down box.
  *
- * NEEDS A WORLD, NEVER TICKS ONE, AND NEEDS NO RHI.
+ * Needs a world, never ticks one, needs no RHI.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuPanelFitsItsBrickListTest,
@@ -3026,11 +2748,10 @@ bool FPieceMenuPanelFitsItsBrickListTest::RunTest(const FString& Parameters)
 	const FGeometry Root = PanelRootGeometry();
 
 	/*
-	 * NOTHING SINGLED OUT, WHICH IS THE STATE THE HOLE IS WORST IN. With no brick pointed at the
-	 * readout is one hint line, so the band of nothing above it is the only thing between the
-	 * bricks and the rule. It is also the state whose first readout line has a text of its own:
-	 * once a brick IS singled out the readout's first line reads the same as that brick's entry
-	 * row, by construction, and could not be told apart from it by what it says.
+	 * Nothing singled out, the state the hole is worst in: the readout is one hint line, so the band
+	 * of nothing is the only thing between the bricks and the rule. It is also the only state whose
+	 * first readout line has its own text — once a brick is singled out that line reads the same as
+	 * its entry row and could not be told apart.
 	 */
 	const FPieceMenuInspector Inspector = Controller->PieceMenuInspectorForSelection();
 	const FPanelLayoutState State = MeasurePanel(Panel, Root);
@@ -3051,9 +2772,8 @@ bool FPieceMenuPanelFitsItsBrickListTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE LOWEST ENTRY ROW, FOUND BY WHERE IT LANDED RATHER THAN BY WHICH BRICK IT NAMES. The
-	 * order the presenter lists bricks in is its business; the row nearest the readout is whichever
-	 * one the layout put there.
+	 * The lowest entry row, found by where it landed not which brick it names. The presenter's order
+	 * is its business; the row nearest the readout is whichever the layout put there.
 	 */
 	const FPanelButton* Last = nullptr;
 
@@ -3090,10 +2810,9 @@ bool FPieceMenuPanelFitsItsBrickListTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * FIXTURE: A ROW HAS A HEIGHT, AND THE READOUT IS BELOW THE LIST. A zero-height row would make
-	 * the comparison below impossible to satisfy for a reason that has nothing to do with the
-	 * defect, and a readout that had landed above the list would make the gap a negative number
-	 * that passes while the panel is upside down.
+	 * Fixture: a row has a height, and the readout is below the list. A zero-height row would make
+	 * the comparison unsatisfiable for no defect reason, and a readout above the list would make the
+	 * gap negative and pass while the panel is upside down.
 	 */
 	const double RowHeightPx = Last->SizePx.Y;
 
@@ -3118,8 +2837,8 @@ bool FPieceMenuPanelFitsItsBrickListTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE ASSERTION. Whatever the list is doing with the space it was given, what is between the
-	 * bricks and the readout is a gap rather than a hole.
+	 * The assertion. Whatever the list does with its space, what is between the bricks and the
+	 * readout is a gap, not a hole.
 	 */
 	const double DeadSpacePx = ReadoutTopPx - LastRowBottomPx;
 
@@ -3135,51 +2854,28 @@ bool FPieceMenuPanelFitsItsBrickListTest::RunTest(const FString& Parameters)
 }
 
 /**
- * NO BUTTON IN THE PIECE MENU MAY TAKE KEYBOARD FOCUS.
+ * No button in the piece menu may take keyboard focus.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
+ * Every SButton the panel draws — entry rows and action rows — reports SupportsKeyboardFocus()
+ * false, so clicking one leaves the keyboard where it was.
  *
- * Every `SButton` the piece menu draws — the per-brick entry rows and the action rows alike —
- * reports `SupportsKeyboardFocus() == false`, so clicking one leaves the keyboard where it was.
+ * Why it is a defect, and why only since S6. SButton is focusable by default and Slate focuses it
+ * on click; SButton::OnKeyDown then handles Enter and Space itself, so both stop reaching the game
+ * while focus is held — Enter (Run structure) and Space (IA_Jump). A player who deletes a brick then
+ * presses Space finds the pawn does not rise, with nothing in the log and no way back but clicking
+ * the viewport. Before S6 the cursor existed only while a menu was up; with the permanent cursor the
+ * menu is one surface among many and stolen focus outlives the click. BuildSessionToolbarPanel
+ * already sets .IsFocusable(false) on every chip for this reason; this is the same hazard on the
+ * older panel.
  *
- * =====================================================================================
- * WHY THIS IS A DEFECT, AND WHY IT ONLY BECAME ONE IN S6
- * =====================================================================================
+ * Why the walk is over every button, and the count asserted. Buttons are built at two sites — one
+ * per brick, one per action row — not the same code, so a fix to one leaves the other stealing the
+ * keyboard; a sweep covers both, and a third site added later. And a sweep over an empty list passes,
+ * so the count is asserted at two or more (the fixture's three bricks plus action rows exceed it).
+ * Two, not tighter, because the exact count is the presenter's business and World.Menu.* owns it.
  *
- * `SButton` is focusable by default, and Slate gives user focus to a focusable widget on click.
- * `SButton::OnKeyDown` then HANDLES `Enter` and `Space` itself — it treats them as presses of the
- * focused button — so both keys stop reaching the game while that focus is held. In this session
- * that is `Enter` (Run structure) and `Space` (`IA_Jump` on the flying pawn): a player who deletes a
- * brick and then presses Space finds the pawn does not rise, and pressing Enter re-clicks the menu
- * row instead of settling the structure. Nothing in the log says so, and the only way back is to
- * click the viewport.
- *
- * Before S6 there was a cursor only while a menu was up, and the menu was dismissed by the next
- * click; with the permanent cursor the menu is one surface among several the player clicks all
- * session long, and stolen focus outlives whatever they clicked it for. `BuildSessionToolbarPanel`
- * already sets `.IsFocusable(false)` on every chip for exactly this reason and says so at the site —
- * this is the same hazard on the older panel, which never got the same treatment.
- *
- * =====================================================================================
- * WHY THE WALK IS OVER EVERY BUTTON, AND WHY THE COUNT IS ASSERTED
- * =====================================================================================
- *
- * The panel builds buttons at two sites — one per selected brick, and one per action row — and they
- * are not the same code, so a fix applied to one is a menu that still steals the keyboard from the
- * other. A sweep over whatever the tree actually holds covers both, and covers a third site added
- * later.
- *
- * AND A SWEEP OVER AN EMPTY LIST PASSES. A panel that failed to build its rows, or a walk that
- * stopped finding them, would satisfy "every button is unfocusable" while saying nothing — so the
- * count is asserted at two or more, which the fixture's three picked bricks plus its action rows
- * comfortably exceed. Two rather than a tighter number because the exact row count is the
- * presenter's business and `World.Menu.*` next door already owns it.
- *
- * NEEDS A TICKING WORLD: a world, because the controller is an actor and the selection comes from a
- * real ray at a real wall. It never ticks one, and it needs no RHI — focusability is a property of
- * the widget, read off the same arranged tree every other test in this file measures.
+ * Needs a ticking world (the controller is an actor, the selection a real ray at a real wall), never
+ * ticks one, needs no RHI: focusability is read off the same arranged tree.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuButtonsNeverTakeFocusTest,
@@ -3203,9 +2899,8 @@ bool FPieceMenuButtonsNeverTakeFocusTest::RunTest(const FString& Parameters)
 	ADestructionGamePlayerController* const Controller = Fixture.Controller;
 
 	/*
-	 * A BRICK IS SINGLED OUT, WHICH IS THE STATE A PLAYER IS IN WHEN THEY CLICK A ROW. It changes
-	 * nothing about focusability — the rows are built the same way either way — and it means the
-	 * panel is drawn in its fullest configuration rather than its emptiest.
+	 * A brick is singled out, the state a player is in when they click a row. It changes nothing
+	 * about focusability, and draws the panel in its fullest configuration rather than its emptiest.
 	 */
 	Controller->SetInspectedPiece(Fixture.InspectedRef);
 
@@ -3216,7 +2911,7 @@ bool FPieceMenuButtonsNeverTakeFocusTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(
 		TEXT("the panel drew: %s"), *DescribePanelButtons(State.Buttons)));
 
-	/* --- ANTI-VACUITY: there are buttons to make a claim about ----------------------------- */
+	/* Anti-vacuity: there are buttons to make a claim about. */
 
 	TestTrue(
 		*FString::Printf(
@@ -3225,7 +2920,7 @@ bool FPieceMenuButtonsNeverTakeFocusTest::RunTest(const FString& Parameters)
 			State.Buttons.Num(), *DescribePanelButtons(State.Buttons)),
 		State.Buttons.Num() >= 2);
 
-	/* --- THE CLAIM: not one of them takes the keyboard -------------------------------------- */
+	/* The claim: not one of them takes the keyboard. */
 
 	int32 Focusable = 0;
 
