@@ -6,14 +6,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Unit test for directional force classification.
- *
- * Gravity is irrelevant here by design: this is pure geometry on a force vector,
- * with no world, no solver and no ticking. Per DESIGN.md these assertions are on
- * the mechanism (which load type, what magnitude), never on displacement.
- *
- * One parameterised test over a table of cases, so adding a case is data rather
- * than code.
+ * Directional force classification over a table of cases. Pure geometry: no world, solver or
+ * gravity. Asserts load type and magnitude, never displacement (DESIGN.md).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionLoadClassificationTest,
@@ -21,16 +15,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges many
- * files into one. See CURRENT_STATE.md; the `using namespace` lives inside each RunTest for the
- * same reason.
- *
- * THIS FILE IS WHERE THAT RULE WAS PAID FOR. `F` sat at anonymous-namespace scope here, which put
- * it in front of every OTHER file the unity blob happened to merge in — and Chaos/Utilities.h
- * declares locals called `F` inside its own functions, so the day the blobs repacked, four
- * shadowing errors appeared in ENGINE code with this file named as the culprit and the whole module
- * stopped building. Nothing about the test changed; only which files it was compiled beside.
+ * Uniquely named namespace, with `using namespace` inside RunTest, for unity builds. When `F` was at
+ * anonymous-namespace scope it shadowed locals named `F` in Chaos/Utilities.h once the unity blobs
+ * repacked, breaking the module build.
  */
 namespace ConnectionLoadTestSupport
 {
@@ -56,10 +43,7 @@ bool FConnectionLoadClassificationTest::RunTest(const FString& Parameters)
 	using namespace ConnectionLoadTestSupport;
 
 	const TArray<FClassificationCase> Cases = {
-		/*
-		 * The two cases DESIGN.md calls out explicitly. Same downward gravity,
-		 * opposite classification, decided purely by the joint's orientation.
-		 */
+		// DESIGN.md's two cases: same gravity, classification decided by joint orientation.
 		{
 			TEXT("gravity on a horizontal joint is pure compression"),
 			FVector(0.0, 0.0, -F), FVector(0.0, 0.0, 1.0),
@@ -87,10 +71,7 @@ bool FConnectionLoadClassificationTest::RunTest(const FString& Parameters)
 			/*Compression*/ 0.0, /*Tension*/ FDiagonal, /*Shear*/ FDiagonal
 		},
 
-		/*
-		 * A non-unit normal must be normalised, not used raw. Skipping this
-		 * scales every load by the normal's length and silently inflates strain.
-		 */
+		// A raw non-unit normal would scale every load by its length.
 		{
 			TEXT("a non-unit normal is normalised before use"),
 			FVector(0.0, 0.0, -F), FVector(0.0, 0.0, 5.0),
@@ -132,10 +113,7 @@ bool FConnectionLoadClassificationTest::RunTest(const FString& Parameters)
 				Case.Description, Case.ExpectedShear, Load.Shear),
 			FMath::IsNearlyEqual(Load.Shear, Case.ExpectedShear, Tolerance));
 
-		/*
-		 * Compression and tension are opposite signs of one axis; both being
-		 * live at once means the sign convention has broken down.
-		 */
+		// Compression and tension are opposite signs of one axis; never both non-zero.
 		TestFalse(
 			FString::Printf(TEXT("%s: compression and tension are both non-zero"), Case.Description),
 			Load.Compression > Tolerance && Load.Tension > Tolerance);
@@ -145,16 +123,8 @@ bool FConnectionLoadClassificationTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Pins down the interface normal's orientation convention.
- *
- * A connection joins two pieces, and each of them sees the interface normal
- * pointing the opposite way. The same physical force must therefore read as
- * compression from one side and tension from the other, with identical
- * magnitudes, and shear — which lies in the interface plane — must not care
- * about the flip at all.
- *
- * Stated as a property over each case rather than hand-written flipped
- * expectations, so it holds for any input rather than the ones picked here.
+ * Normal orientation convention: flipping the normal swaps compression and tension with equal
+ * magnitudes and leaves shear unchanged. Checked as a property over each case.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionLoadNormalOrientationTest,
@@ -203,12 +173,8 @@ bool FConnectionLoadNormalOrientationTest::RunTest(const FString& Parameters)
 			FMath::IsNearlyEqual(Far.Shear, Near.Shear, Tolerance));
 
 		/*
-		 * Newton's third law. Describing the joint from the other piece means
-		 * flipping the normal AND taking the equal-and-opposite reaction force.
-		 * Do both and the joint must classify identically — a joint is in
-		 * compression or tension as a fact about itself, not about which side
-		 * you happen to be standing on. This is the invariant callers rely on;
-		 * flipping the normal alone (above) is a misuse, not a second opinion.
+		 * Newton's third law: flipping both the normal and the force (the reaction) must classify
+		 * identically. This is the invariant callers rely on; flipping the normal alone is a misuse.
 		 */
 		const FConnectionLoad Reaction = DestructionForce::ClassifyForce(-Case.Force, -Case.InterfaceNormal);
 

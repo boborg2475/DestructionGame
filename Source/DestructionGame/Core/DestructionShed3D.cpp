@@ -5,12 +5,7 @@
 #include "Core/Profiles/ConnectionProfiles.h"
 #include "Core/Profiles/MaterialProfiles.h"
 
-/*
- * File-local names sit in the named namespace, like Core/DestructionShed and Core/Corbel: an
- * anonymous namespace is private to a translation unit rather than to a file, and a unity build
- * merges many files into one, so two colliding file-local names are a hard compile error
- * between files that never refer to each other. See CURRENT_STATE.md.
- */
+// Helpers live in the named namespace, not an anonymous one, to avoid unity-build name collisions.
 namespace DestructionShed3D
 {
 	using namespace DestructionLayout;
@@ -18,10 +13,8 @@ namespace DestructionShed3D
 	bool Build(const FShed3DSpec& Spec, DestructionLayout::FBrickLayout& OutLayout)
 	{
 		/*
-		 * Emptied first and filled last: a refused spec must leave a caller who ignored the return
-		 * value with nothing, not a partial lay. Guards are written `!(x > 0.0)`, never `x <= 0.0`
-		 * — every comparison against NaN is false, so `<= 0.0` would let a NaN dimension slip
-		 * through and lay a shed of NaN-sized boxes whose every joint reads intact.
+		 * Emptied first and filled last, so a refusal leaves nothing. Guards use `!(x > 0.0)` so a
+		 * NaN dimension is rejected; `x <= 0.0` is false for NaN.
 		 */
 		OutLayout = FBrickLayout();
 
@@ -36,11 +29,8 @@ namespace DestructionShed3D
 		}
 
 		/*
-		 * Coordinates, worked from the spec once. X is width, Y is depth (into the door), Z is
-		 * height. The side walls fit between the back and front walls with a JointThicknessCm gap
-		 * on Y, so each corner is a genuine face-sharing joint whose normal points along +/-Y. The
-		 * roof, overhang and post leave the same Z gap under the beam they carry — the separation
-		 * MakeInterface reads as a bed joint.
+		 * X is width, Y depth, Z height. Side walls sit between back and front with a joint gap on
+		 * Y, so each corner is a Y-normal joint; beams leave the same gap in Z for their bed joints.
 		 */
 		const double WallTopZCm = Spec.WallHeightCm;
 		const double BeamBottomZCm = Spec.WallHeightCm + Spec.JointThicknessCm;
@@ -65,9 +55,7 @@ namespace DestructionShed3D
 
 		FBrickLayout Laid;
 
-		/* One door for every piece: a box from its spans, mass via the shared PieceMassKg, and the
-		 * material recorded so cross-material physics survives into play. The handle is the box
-		 * index (FBrickLayout's parallel-array contract), appended in the same breath as the piece. */
+		// Adds a box, its mass and material; the piece handle equals the box index.
 		const auto AddPiece =
 			[&](double LeftXCm, double RightXCm, double BackYCm, double FrontYCm,
 				double BottomZCm, double TopZCm,
@@ -93,10 +81,7 @@ namespace DestructionShed3D
 			return Piece;
 		};
 
-		/*
-		 * Seven pieces: four grounded ClayBrick walls, a free Timber roof beam and overhang, and a
-		 * grounded Timber post under the overhang's front.
-		 */
+		// Four grounded brick walls, free timber roof and overhang, grounded timber post.
 		const int32 BackWall = AddPiece(
 			0.0, Spec.BoxWidthXCm, 0.0, Spec.WallThicknessCm,
 			0.0, WallTopZCm, DestructionProfiles::ClayBrick, true);
@@ -129,11 +114,8 @@ namespace DestructionShed3D
 		}
 
 		/*
-		 * Eight joints through MakeInterface. The four corners are bonded GeneralPurposeMortar across
-		 * the walls' shared out-of-plane (Y-normal) faces; the roof and post bearings are
-		 * compression-only DryStone; the fixing is a tension-capable Screw. Each bearing names the
-		 * lower piece as A so the normal orients as a bed beneath the piece it carries; a mis-sized
-		 * piece is caught here rather than solved as a healthy joint.
+		 * Eight joints: mortar corners (Y-normal), DryStone bearings, a Screw fixing. The lower piece
+		 * is A so the normal is a bed under the piece carried. MakeInterface rejects mis-sized pieces.
 		 */
 		const auto Join =
 			[&](int32 A, int32 B, const FConnectionStrength& Strength) -> bool
@@ -161,10 +143,7 @@ namespace DestructionShed3D
 			return false;
 		}
 
-		/*
-		 * The 3D flag routes this structure to the Dim3D pose and lifts the bridge's Y-normal
-		 * refusal, so the four out-of-plane corner joints reach the 3D LP rather than being rejected.
-		 */
+		// 3D: use the Dim3D pose and accept the Y-normal corner joints.
 		Laid.Structure.SetThreeDimensional(true);
 
 		OutLayout = MoveTemp(Laid);
@@ -175,10 +154,8 @@ namespace DestructionShed3D
 	bool BuildRecognizable(DestructionLayout::FBrickLayout& OutLayout)
 	{
 		/*
-		 * Emptied first and filled last: a path that gives up partway must leave a caller who
-		 * ignored the return value with nothing, not a half-built shed. There is no spec to guard —
-		 * dimensions are canonical, hardcoded and pinned by the test's local constants — so the
-		 * fail-closed points are AddPiece and Join, which refuse a degenerate box or a non-face pair.
+		 * Emptied first and filled last. Dimensions are hardcoded, so the fail-closed points are
+		 * AddPiece and Join.
 		 */
 		OutLayout = FBrickLayout();
 
@@ -186,7 +163,7 @@ namespace DestructionShed3D
 
 		FBrickLayout Laid;
 
-		// One door for every piece — the same lambda Build uses. See Build's AddPiece above.
+		// Same as Build's AddPiece.
 		const auto AddPiece =
 			[&](double LeftXCm, double RightXCm, double BackYCm, double FrontYCm,
 				double BottomZCm, double TopZCm,
@@ -213,11 +190,8 @@ namespace DestructionShed3D
 		};
 
 		/*
-		 * The 24 pieces: walls and door base (Z < 200), the window course in the left wall, the two
-		 * stepped gable ends, the timber roof of purlins and a ridge, and the porch — two posts, an
-		 * overhang, and the narrow central Cleat tying the overhang's back down to the wall. ClayBrick
-		 * masonry, Timber lintels/roof/porch. Grounded: the four walls' feet, both door piers, the
-		 * sill, and the two posts; the cleat is not grounded — the wall holds it.
+		 * 24 pieces: walls, door and window, stepped gables, purlin-and-ridge roof, and a porch (two
+		 * posts, overhang, cleat). Brick masonry, timber lintels/roof/porch. The cleat is not grounded.
 		 */
 		const int32 BackWall = AddPiece(
 			0.0, 300.0, 0.0, 25.0, 0.0, 200.0, DestructionProfiles::ClayBrick, true);
@@ -271,12 +245,9 @@ namespace DestructionShed3D
 			40.0, 260.0, 301.0, 451.0, 201.0, 221.0, DestructionProfiles::Timber, false);
 
 		/*
-		 * The cleat: a narrow central Timber bracket, X[140,160] (20 cm wide), bonded to the
-		 * DoorHeader's front face across a 1 cm mortar joint and projecting 10 cm past the wall. The
-		 * overhang laps only this cleat — a Z-normal screwed tie of 180 cm2 — so the withdrawal
-		 * reaction holding the cantilever's back down acts on just a 10 cm half-width in X. That
-		 * narrow couple arm cannot answer the X-torsion a lost post throws at the overhang, which is
-		 * why pulling either post drops the porch.
+		 * The cleat: 20 cm wide, mortared to the DoorHeader and screwed to the overhang (180 cm2).
+		 * Its narrow couple arm cannot resist the torsion from a lost post, so pulling either post
+		 * drops the porch.
 		 */
 		const int32 Cleat = AddPiece(
 			140.0, 160.0, 301.0, 310.0, 176.0, 200.0, DestructionProfiles::Timber, false);
@@ -294,12 +265,7 @@ namespace DestructionShed3D
 			}
 		}
 
-		/*
-		 * The joints, each through MakeInterface — the same door the wall and 2D shed use. Every
-		 * bearing names the lower piece as A and the upper as B, so the normal orients as a bed
-		 * beneath the piece it carries. MakeInterface refuses any pair that does not share a face on
-		 * exactly one axis, so a mis-sized piece is caught here.
-		 */
+		// Lower piece is A. MakeInterface rejects any pair not sharing a face on one axis.
 		const auto Join =
 			[&](int32 A, int32 B, const FConnectionStrength& Strength) -> bool
 		{
@@ -315,13 +281,9 @@ namespace DestructionShed3D
 		};
 
 		/*
-		 * Door (2) and window (4): lintels bear on piers/jambs through DryStone. Corners (4) close
-		 * the box across the walls' out-of-plane (Y-normal) faces with bonded mortar; all four are
-		 * grounded-grounded, so the oracle skips them as closure, not structure. Gables (6) stack on
-		 * bonded mortar beds. Roof (10) rests each purlin on its gable shoulders through DryStone.
-		 * Porch (4): the overhang is carried primarily by its two posts; the Cleat withdrawal tie and
-		 * wall anchor are the mechanism described above, carrying no shear since the overhang's
-		 * weight sits forward of the post line.
+		 * Door (2) and window (4) lintels on DryStone. Corners (4) mortared; all grounded-grounded, so
+		 * the oracle skips them. Gables (6) on mortar beds. Roof (10) purlins on DryStone. Porch (4):
+		 * posts carry the overhang, the cleat ties its back down.
 		 */
 		if (!Join(LeftPier, DoorHeader, DestructionProfiles::DryStone)
 			|| !Join(RightPier, DoorHeader, DestructionProfiles::DryStone)
@@ -357,10 +319,7 @@ namespace DestructionShed3D
 			return false;
 		}
 
-		/*
-		 * The 3D flag routes this structure to the Dim3D pose and lifts the bridge's Y-normal
-		 * refusal, so the four out-of-plane corner joints reach the 3D LP rather than being rejected.
-		 */
+		// 3D: use the Dim3D pose and accept the Y-normal corner joints.
 		Laid.Structure.SetThreeDimensional(true);
 
 		OutLayout = MoveTemp(Laid);
@@ -369,12 +328,9 @@ namespace DestructionShed3D
 	}
 
 	/*
-	 * One opening in a wall panel, as the coordinates the panel lays around. A brick is omitted in
-	 * the clear gap over the opening's course band, and separately in the lintel band — the one
-	 * course the timber lintel occupies, cleared so the lintel can bear on the flanking piers/jambs
-	 * and the course above can bed back onto it. The two are kept apart because the lintel footprint
-	 * is wider than the clear gap. A default-constructed opening omits nothing: its course ranges
-	 * are empty (`Hi < Lo`), so a windowless / doorless wall passes it unchanged.
+	 * An opening in a wall panel: bricks are omitted in the clear gap, and separately in the wider
+	 * lintel band (one course) so the lintel bears on the flanking bricks. A default opening omits
+	 * nothing, since its ranges are empty (Hi < Lo).
 	 */
 	struct FWallOpening
 	{
@@ -393,19 +349,14 @@ namespace DestructionShed3D
 		using namespace DestructionProfiles;
 
 		/*
-		 * Emptied first and filled last, as Build and BuildRecognizable do. There is no spec to
-		 * guard: dimensions are canonical, hardcoded and pinned by the test; the fail-closed points
-		 * are AddPiece (a degenerate box) and MakeInterface (a non-face pair), with bLayoutValid
-		 * carrying either refusal out to a single closing check.
+		 * Emptied first and filled last. Dimensions are hardcoded; AddPiece refusals set bLayoutValid,
+		 * checked once at the end.
 		 */
 		OutLayout = FBrickLayout();
 
 		/*
-		 * The real brick and its coordinating grid. A 21.5 x 10.25 x 6.5 cm brick on a 1 cm mortar
-		 * joint sits on a 22.5 (pitch along a course) x 7.5 (course pitch up) grid, and a running
-		 * bond offsets alternate courses by half a cell, 11.25. A half bat — what is left of a brick
-		 * when a joint is taken out and the remainder halved — fills the half cell a flush end
-		 * leaves, so every course finishes flush without any brick but a full one or a half bat.
+		 * 21.5 x 10.25 x 6.5 cm brick, 1 cm joint: 22.5 cm pitch, 7.5 cm course pitch, alternate
+		 * courses offset 11.25. A half bat closes each odd course flush.
 		 */
 		const double BrickLenCm = 21.5;
 		const double WytheCm = 10.25;
@@ -418,12 +369,9 @@ namespace DestructionShed3D
 		const int32 NumCourses = 16;
 
 		/*
-		 * The footprint. Outer box X[0,180], Y[0,134]; every wall one wythe thick. Front and back
-		 * walls run along X; side walls run along Y, fitting between them one bond offset in. A
-		 * five-brick side run ends at 122.75, so the back corner closes on the same 1 cm Y-normal
-		 * mortar joint the front corner makes, giving a depth of 134 — the only whole coordinating
-		 * run that lets the side bricks meet both end walls on a genuine joint out of the X-Z plane a
-		 * 2D section cannot hold. An outer 140 leaves a 7 cm gap and the box never closes.
+		 * Footprint X[0,180], Y[0,134], walls one wythe thick. Side walls run along Y between the
+		 * front and back walls. Depth 134 makes a five-brick side run close both corners on a 1 cm
+		 * joint; 140 would leave a 7 cm gap.
 		 */
 		const double SideRunStartCm = BondOffsetCm;
 		const int32 FrontBackBricks = 8;
@@ -434,10 +382,7 @@ namespace DestructionShed3D
 		FBrickLayout Laid;
 		bool bLayoutValid = true;
 
-		/*
-		 * One door for every piece, as above, but a refused piece trips bLayoutValid rather than
-		 * returning early, so the closing check is the single fail-closed exit.
-		 */
+		// As above, but a refusal sets bLayoutValid false instead of returning.
 		const auto AddPiece =
 			[&](double LeftXCm, double RightXCm, double BackYCm, double FrontYCm,
 				double BottomZCm, double TopZCm,
@@ -464,11 +409,7 @@ namespace DestructionShed3D
 			return Piece;
 		};
 
-		/*
-		 * A half-open overlap with a hair of tolerance, so a brick whose end sits exactly on an
-		 * opening edge stays as the jamb rather than being cleared with the gap — giving the lintel
-		 * a pier to bear on.
-		 */
+		// Strict overlap, so a brick ending exactly on an opening edge stays as a jamb.
 		const auto StrictlyOverlaps =
 			[](double LoA, double HiA, double LoB, double HiB) -> bool
 		{
@@ -477,11 +418,8 @@ namespace DestructionShed3D
 		};
 
 		/*
-		 * Lay one running-bond wall panel. bRunsX chooses whether courses run along X (front/back
-		 * walls) or Y (side walls); the thin span is the wythe on the other horizontal axis. Even
-		 * courses are full bricks from RunStart; odd courses are the same bond offset in, with a half
-		 * bat closing each end flush, so a full brick above always laps two below. A brick is skipped
-		 * where the opening clears it. Course 0 is grounded; joints are formed once, below.
+		 * Lay one running-bond panel along X or Y. Odd courses are offset with half bats at each end.
+		 * Bricks in the opening are skipped. Course 0 is grounded; joints are formed later.
 		 */
 		const auto LayWall =
 			[&](bool bRunsX, double ThinLoCm, double ThinHiCm, double RunStartCm, int32 FullPerEven,
@@ -543,12 +481,8 @@ namespace DestructionShed3D
 		};
 
 		/*
-		 * The door, in the front wall: a clear gap X[57.5,122.5] over the bottom twelve courses
-		 * (Z[0,90]); the lintel occupies course 12 (Z[90,96.5]) with footprint X[50,130] lapping a
-		 * pier either side. The gap edges sit on the coordinating grid so a course-11 pier brick
-		 * reaches X=55.25 / X=123.75 — the bearing the lintel drops onto. The window, in the left
-		 * wall: a sill of six courses, a clear gap Y[66.5,90] over courses 6-11, its lintel on course
-		 * 12 with footprint Y[61.5,95] lapping a jamb brick either side.
+		 * Door (front wall): gap X[57.5,122.5] over courses 0-11, lintel X[50,130] on course 12.
+		 * Window (left wall): gap Y[66.5,90] over courses 6-11, lintel Y[61.5,95] on course 12.
 		 */
 		FWallOpening DoorOpening;
 		DoorOpening.GapCourseLo = 0;
@@ -570,33 +504,21 @@ namespace DestructionShed3D
 
 		const FWallOpening NoOpening;
 
-		/*
-		 * Four walls closing the box. Front (door) and back run along X; left (window) and right run
-		 * along Y between them, starting one bond offset in from the front wall so their front-end
-		 * bricks stand a JointCm clear of it — the corner mortar joint.
-		 */
+		// Side walls start one bond offset in, leaving a joint gap at each corner.
 		LayWall(true, 0.0, WytheCm, 0.0, FrontBackBricks, DoorOpening);
 		LayWall(true, BackWallY0Cm, BackWallY0Cm + WytheCm, 0.0, FrontBackBricks, NoOpening);
 		LayWall(false, 0.0, WytheCm, SideRunStartCm, SideBricks, WindowOpening);
 		LayWall(false, RightWallX0Cm, RightWallX0Cm + WytheCm, SideRunStartCm, SideBricks, NoOpening);
 
-		/*
-		 * The two Timber lintels, each a real board section (smallest half-extent the 3.25 cm course
-		 * height) spanning its opening on course 12, bearing on the pier/jamb tops one JointCm below
-		 * and carrying the courses that bed back onto it — both formed as bed joints by the sweep
-		 * below, so a lintel that failed to overlap a bearing would read unsupported rather than fine.
-		 */
+		// Timber lintels on course 12; their bed joints come from the sweep below.
 		const int32 DoorLintel = AddPiece(
 			DoorOpening.LintelRunLoCm, DoorOpening.LintelRunHiCm, 0.0, WytheCm, 90.0, 96.5, Timber, false);
 		const int32 WindowLintel = AddPiece(
 			0.0, WytheCm, WindowOpening.LintelRunLoCm, WindowOpening.LintelRunHiCm, 90.0, 96.5, Timber, false);
 
 		/*
-		 * The stepped gables. Both gable ends — front (door side) and back wall — continue ClayBrick
-		 * courses above the eaves (course 15 top Z = 119), each higher course stepping in one brick
-		 * pitch (22.5) per side toward the box centre, narrowing symmetrically from an 8-brick course
-		 * 16 to a 2-brick apex on course 19 — keeping every course's centroid over the one below so
-		 * the corbel cannot overturn. The gables are free; the eaves course beneath is the grounded path.
+		 * Stepped gables on front and back walls: courses 16-19 step in one pitch per side, 8 bricks
+		 * down to 2. Symmetric, so each course's centroid stays over the one below.
 		 */
 		const int32 GableBaseCourse = NumCourses;
 		const int32 GableSteps = 4;
@@ -624,17 +546,13 @@ namespace DestructionShed3D
 		LayGable(BackWallY0Cm, BackWallY0Cm + WytheCm);
 
 		/*
-		 * The timber gable roof. Five board members span the full depth and bear on both gable ends
-		 * as a simply-supported beam — centroid between the two bearings, so it cannot overturn —
-		 * stepping up onto successively higher gable shoulders (eaves purlins on course-16, mid
-		 * purlins on course-18, ridge on the apex course-19). The ~8.5 cm gap over the low side walls
-		 * is far more than a joint, so no spurious bearing forms there. Load path: roof member ->
-		 * gable shoulder -> gable courses -> eaves wall -> ground.
+		 * Five timber members span front to back, simply supported on the gable shoulders (eaves on
+		 * course 16, mid on 18, ridge on 19). The ~8.5 cm gap over the side walls forms no joint.
 		 */
 		const double RoofDepthFrontYCm = BackWallY0Cm + WytheCm;
 		const double RoofThicknessCm = 5.0;
 
-		/* The top Z of a gable course, and the bottom Z of a board bearing one JointCm above it. */
+		// Bottom Z of a board bearing one joint above a gable course.
 		const auto ShoulderBottomZ =
 			[&](int32 Course) -> double
 		{
@@ -673,14 +591,9 @@ namespace DestructionShed3D
 		}
 
 		/*
-		 * The joints, each through MakeInterface — the one door that owns areas, normals and
-		 * rectangles, and refuses any pair that does not share a face on exactly one axis by exactly
-		 * the joint thickness. Because it refuses everything else, the graph forms by offering every
-		 * pair once and keeping what MakeInterface accepts: bed joints, perpends, corner joints and
-		 * lintel bearings all fall out, while diagonals, edge-touches and far walls are rejected. The
-		 * lower piece is named A so a bed joint's normal reads as a bed beneath the piece it carries;
-		 * brick-to-brick is bonded mortar, a joint touching timber is compression-only dry bearing —
-		 * the same per-contact authoring the coarser sheds do, decided from the materials.
+		 * Offer every pair to MakeInterface and keep what it accepts (pairs sharing a face across
+		 * one joint thickness). Lower piece is A. Brick-brick is mortar; anything touching timber is
+		 * compression-only DryStone.
 		 */
 		const int32 NumPieces = Laid.Structure.NumPieces();
 		for (int32 A = 0; A < NumPieces; ++A)
@@ -705,12 +618,8 @@ namespace DestructionShed3D
 						Lower, Laid.Boxes[Lower], Upper, Laid.Boxes[Upper], JointCm, Strength, Connection))
 				{
 					/*
-					 * A brick-brick joint whose normal is not vertical is a perpend — an in-course head
-					 * joint or a wall-corner joint — which real masonry treats as the weak link
-					 * (owner-approved item 6b), authored with the knocked-down bond row while horizontal
-					 * beds keep the strong GeneralPurposeMortar. MakeInterface emits only axis-aligned
-					 * normals, so |Z| is exactly 1 for a bed and 0 for a perpend or corner; timber
-					 * bearings authored DryStone above are left untouched.
+					 * Non-vertical brick-brick joints (perpends and corners) get the weaker perpend
+					 * mortar (owner item 6b). Normals are axis-aligned, so |Z| is 1 or 0.
 					 */
 					if (!bTimberBearing
 						&& FMath::Abs(Connection.InterfaceNormal.GetSafeNormal().Z) < 0.5)
@@ -724,35 +633,20 @@ namespace DestructionShed3D
 		}
 
 		/*
-		 * The porch — a door canopy on two Timber posts, laid after the shell sweep so its four
-		 * joints are authored explicitly: a swept timber pair would get compression-only DryStone,
-		 * but the overhang fixing and wall anchor must be tension-capable Screw fasteners (mortar
-		 * does not bond to a timber cleat), so these pieces go past NumPieces and are joined by hand.
+		 * The porch, laid after the sweep so its joints can be Screw (tension-capable) where the
+		 * sweep would give DryStone.
 		 *
-		 * Geometry: the front wall's outer face is Y = 0, so the porch cantilevers out in negative Y.
-		 * Two grounded posts (Y[-25,-15]) flank the door gap. A free plank overhang (Y[-70,-2],
-		 * Z[105,110]) bears on both post tops, cantilevering 70 cm; its weight centroid (Y = -36)
-		 * sits outboard of the post line (Y = -20), tipping it back-up, which a narrow central Timber
-		 * cleat (X[85,95], Z[97.5,104]) holds down with a Z-normal Screw withdrawal tie, itself
-		 * anchored to a course-13 front-wall brick by a Y-normal Screw withdrawal joint.
-		 *
-		 * Above the block cap the router splits the overhang's weight among the two posts and the
-		 * cleat, but the cleat is only 10 cm wide on purpose: its restoring couple is too small to
-		 * answer the X-torsion a lost post throws at the now-asymmetric overhang, so the posts are
-		 * the genuine support and pulling one drops the porch.
+		 * It cantilevers in -Y from the front wall (Y = 0). Two grounded posts at Y[-25,-15] carry a
+		 * plank overhang (Y[-70,-2]); its centroid (Y = -36) is outboard of the posts, so its back
+		 * lifts and a 10 cm cleat screwed to a course-13 wall brick holds it down. The cleat is too
+		 * narrow to resist the torsion from a lost post, so pulling one drops the porch.
 		 */
 		const int32 PostL = AddPiece(50.0, 60.0, -25.0, -15.0, 0.0, 104.0, Timber, true);
 		const int32 PostR = AddPiece(120.0, 130.0, -25.0, -15.0, 0.0, 104.0, Timber, true);
 		const int32 PorchOverhang = AddPiece(50.0, 130.0, -70.0, -2.0, 105.0, 110.0, Timber, false);
 		const int32 Cleat = AddPiece(85.0, 95.0, -11.0, -1.0, 97.5, 104.0, Timber, false);
 
-		/*
-		 * The front-wall brick the cleat anchors to — the course-13 stretcher over the door
-		 * (Z[97.5,104], the first full-masonry course above the door lintel band), found by the point
-		 * at the door centre on that course rather than by handle, so the exact bond the wall producer
-		 * chose does not matter. Its outer face stands one JointCm off the cleat's back, so
-		 * MakeInterface reads a Y-normal Screw anchor fixing the cleat to real, load-bearing masonry.
-		 */
+		// The course-13 brick over the door centre, found by point so the bond layout doesn't matter.
 		int32 CleatWallBrick = INDEX_NONE;
 		{
 			const FVector AnchorPtCm(90.0, 5.125, 100.75);
@@ -781,10 +675,8 @@ namespace DestructionShed3D
 		}
 
 		/*
-		 * The four porch joints, each through MakeInterface with the lower piece named A so a bed
-		 * normal reads as a bed beneath the piece it carries. Two Z-normal DryStone bearings carry
-		 * the overhang on the post tops (~100 cm2 each); a Z-normal Screw tie (~90 cm2) holds its
-		 * back down in withdrawal; a Y-normal Screw anchor (~65 cm2) fixes the cleat to the wall.
+		 * Two DryStone post bearings (~100 cm2 each), a Screw tie from cleat to overhang (~90 cm2),
+		 * and a Y-normal Screw anchor from cleat to wall (~65 cm2). Lower piece is A.
 		 */
 		const auto PorchJoin =
 			[&](int32 A, int32 B, const FConnectionStrength& Strength) -> bool
@@ -808,10 +700,8 @@ namespace DestructionShed3D
 		}
 
 		/*
-		 * The 3D flag routes this structure to the Dim3D pose and lifts the bridge's Y-normal
-		 * refusal, so the Y-normal perpends and out-of-plane corner joints are honoured rather than
-		 * rejected. Above the block cap the router, not the LP, is the break authority — but the flag
-		 * still selects the genuinely-3D geometry every reader downstream sees.
+		 * 3D: use the Dim3D pose and accept Y-normal joints. Above the block cap the router decides
+		 * breaks, but the flag still sets the geometry readers see.
 		 */
 		Laid.Structure.SetThreeDimensional(true);
 

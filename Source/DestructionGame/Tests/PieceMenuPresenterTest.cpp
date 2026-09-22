@@ -9,22 +9,10 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-/**
- * Named namespace, named differently from every other one in this module — an anonymous
- * namespace is private to a translation unit rather than to a file, and a unity build merges
- * many files into one. See CURRENT_STATE.md; the `using namespace` lives inside RunTest for
- * the same reason.
- */
+/** Uniquely named namespace (not anonymous) to avoid unity-build collisions. */
 namespace PieceMenuPresenterTestSupport
 {
-	/**
-	 * Rows for a piece, built by the PRODUCTION producer rather than assembled by hand.
-	 *
-	 * BuildPieceMenuRows is what the presenter will actually be handed, and it is what keeps
-	 * the action pointers identical to rows of AllPieceActions() — which is the whole basis of
-	 * "which entry did they choose" being a pointer comparison. A hand-built FPieceMenuRow
-	 * would let this test agree with itself about identity it never established.
-	 */
+	/** Rows for a piece from the production BuildPieceMenuRows, so action pointers are real table rows. */
 	TArray<FPieceMenuRow> RowsForPiece(int32 StructureId, int32 PieceIndex)
 	{
 		TArray<const FPieceAction*> Menu;
@@ -65,13 +53,8 @@ namespace PieceMenuPresenterTestSupport
 	}
 
 	/**
-	 * The whole presented state, asserted in one place: is a menu up, and is it exactly these
-	 * rows — same count, same action rows, same refs, same order.
-	 *
-	 * The count is the anti-stack assertion: a presenter that appends instead of replacing still
-	 * looks right on the row added last, and on a one-row action table the only observable
-	 * difference is two rows instead of one, the first naming the previous brick. So the count and
-	 * the per-row ref are checked together.
+	 * Assert whether a menu is up and that it shows exactly these rows in order. The count catches
+	 * a presenter that appends instead of replacing.
 	 */
 	void CheckShown(
 		FAutomationTestBase& Test,
@@ -116,22 +99,8 @@ namespace PieceMenuPresenterTestSupport
 	}
 
 	/**
-	 * The cursor and the two contexts, asserted together because they are one decision with the
-	 * same answer in every state — which is why there are no parameters left.
-	 *
-	 * This used to take bExpectCursor and bExpectLook, and the menu flipped both. SESSION_UI_DESIGN
-	 * §d (S6) replaces that scheme: IMC_MouseLook used to bind the raw Mouse2D axis with no held
-	 * button, so a cursor drawn over a camera that follows every mouse movement was unusable, and
-	 * taking the context away was the cheapest fix. What changed is not the hazard but what closes
-	 * it — IA_MouseLook's mapping now carries a Chorded Action trigger on IA_LookModifier (the
-	 * right mouse button), so the camera only turns while RMB is held. There is nothing left for a
-	 * menu to take away, so the apply/restore pair that could fall out of step stops existing.
-	 *
-	 * The function's job is inverted rather than deleted: it used to say "the menu flips the
-	 * controls", it now says nothing flips them — the cursor is up for the whole session and both
-	 * contexts stay applied through every route a menu comes and goes by. That is strictly
-	 * stronger than the old restore: a restore can be forgotten by a new route; nothing to restore
-	 * cannot be.
+	 * The cursor is shown and both input contexts stay applied, in every menu state. Look is now
+	 * chorded to a held RMB (SESSION_UI_DESIGN §d, S6), so a menu no longer removes anything.
 	 */
 	void CheckControls(
 		FAutomationTestBase& Test,
@@ -141,32 +110,19 @@ namespace PieceMenuPresenterTestSupport
 		const UInputMappingContext& MouseLookContext,
 		const TCHAR* After)
 	{
-		/*
-		 * The cursor is the session's, not the menu's. SetSessionControls raises it once in
-		 * BeginPlay because the toolbar is on screen for the whole session — a strip a player can
-		 * only click by first opening a piece menu is not a toolbar.
-		 */
+		// The cursor is raised once in BeginPlay for the session-long toolbar.
 		Test.TestTrue(
 			*FString::Printf(TEXT("%s: the mouse cursor must be shown — it is up for the whole "
 								  "session, not only while a menu is"), After),
 			Controller.bShowMouseCursor);
 
-		/*
-		 * IMC_MouseLook stays applied. With look chorded to a held RMB there is nothing for a menu
-		 * to take away; taking it away anyway would be the old bug's mirror image — the camera dead
-		 * for as long as a panel is up, restored only by a route somebody remembered.
-		 */
+		// Removing IMC_MouseLook would leave the camera dead while a panel is up.
 		Test.TestTrue(
 			*FString::Printf(TEXT("%s: IMC_MouseLook must stay applied — camera look is gated by the "
 								  "RMB chord now, so a menu has nothing to remove"), After),
 			Input.HasMappingContext(&MouseLookContext));
 
-		/*
-		 * IMC_Default stays too, and it is not a freebie row: it carries IA_InspectPiece, how the
-		 * player dismisses the menu by clicking elsewhere. A presenter that cleared every context
-		 * to stop the camera spinning would leave a menu nothing can close and a player who can no
-		 * longer look around.
-		 */
+		// IMC_Default carries IA_InspectPiece, which is how a click elsewhere dismisses the menu.
 		Test.TestTrue(
 			*FString::Printf(TEXT("%s: IMC_Default must stay applied whatever the menu is doing"),
 				After),
@@ -175,51 +131,18 @@ namespace PieceMenuPresenterTestSupport
 }
 
 /**
- * The piece menu is a presented state with one menu in it: showing replaces, showing nothing
- * dismisses, dismissing twice is harmless — and it takes nothing away from the player's controls,
- * because the cursor and the camera are the session's rather than the menu's.
+ * The presenter holds one menu: showing replaces, showing nothing dismisses, dismissing twice is
+ * harmless, and no menu state changes the cursor or input contexts.
  *
- * WHAT THIS COVERS. The presenter's state, not that a Slate widget appeared on screen, has one
- * button per row, or that clicking a button commits — a code-built test world has no
- * UGameViewportClient, so AddViewportWidgetContent has nothing to add to. Core/PieceMenu.h and
- * Tests/PieceMenuTest.cpp own what the rows are; this owns which of them are up.
+ * Covers presenter state only; a code-built world has no viewport, so no Slate widget is checked.
+ * A leaked widget from a second AddViewportWidgetContent is invisible here, so ShowPieceMenu should
+ * be written as DismissPieceMenu followed by a build, making the model-level check cover it.
  *
- * THE ONE REAL GAP THAT LEAVES: a second AddViewportWidgetContent without a matching remove leaks
- * the previous widget forever, invisible to a headless assertion. What can be seen is the
- * model-level version of the same bug — the presenter holding two menus' rows — and the two are
- * only the same code path if ShowPieceMenu is defined as DismissPieceMenu followed by a build.
- * Write it that way; it is the only removal path, and it also makes the cursor/context restore
- * correct for free.
+ * Look is chorded to a held RMB (SESSION_UI_DESIGN §d, S6) and the cursor is raised once in
+ * BeginPlay, so nothing needs restoring when a menu closes by any route.
  *
- * WHY THESE FOUR TRANSITIONS. They are where a menu actually goes wrong: showing an empty box
- * (a piece with no actions), stacking (clicking brick after brick without closing anything), a
- * non-idempotent dismiss (closed by two routes at once), and a menu that moves the controls
- * around, leaving the player unable to look — unrecoverable rather than merely untidy.
- *
- * THE CURSOR DECISION, REVERSED HONESTLY RATHER THAN QUIETLY. IMC_MouseLook used to bind the raw
- * Mouse2D axis with no held button, so the camera followed the mouse and there was no pointer; a
- * menu drawn over that is unusable, and removing the whole context while a menu was up was the
- * cheapest fix. The toolbar has since made the alternative necessary (SESSION_UI_DESIGN §d, S6):
- * a strip on screen for the whole session cannot be clickable only while a piece menu is up.
- *
- * So the claim is inverted rather than dropped. IA_MouseLook's mapping now carries a Chorded
- * Action trigger on IA_LookModifier (the right mouse button), the cursor is raised once in
- * BeginPlay by SetSessionControls, and nothing removes a context: while a menu is up, after it is
- * dismissed, and after the empty-list route every miss takes, bShowMouseCursor is true and both
- * contexts stay applied. The hazard the removal guarded — a cursor over a camera nobody can stop
- * spinning — is closed by the chord, at the asset, for every panel this game will draw.
- *
- * That is strictly stronger than the old restore: a restore is something a new route can forget
- * (`World.Choose.ChoosingARowCommitsThatRow` had to be told about it separately). With nothing to
- * restore, a route that forgets has nothing to forget.
- *
- * TWO CONTROLLERS, AND THE PLAIN ONE IS NOT AN OVERSIGHT. A controller with no ULocalPlayer has no
- * Enhanced Input subsystem to remove a context from, and Tests/PieceInspectTest.cpp spawns exactly
- * that, so the state half is asserted on a controller with no local player too.
- *
- * NEEDS A TICKING WORLD: it needs a world, because a player controller is an actor and only a real
- * ULocalPlayer makes the engine run SetupInputComponent. It never ticks one, lays no wall and
- * touches no physics.
+ * Two controllers: one with no local player (as Tests/PieceInspectTest.cpp spawns) for state, one
+ * with a local player for input. Needs a world for the actors but never ticks it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuPresenterStateTest,
@@ -237,8 +160,7 @@ bool FPieceMenuPresenterStateTest::RunTest(const FString& Parameters)
 	const TArray<FPieceMenuRow> RowsForFive = RowsForPiece(StructureId, 5);
 	const TArray<FPieceMenuRow> NoRows;
 
-	/* Fixture precondition: every assertion below about replacing rather than stacking reads the
-	 * row count, so a producer that handed back nothing would make all of them vacuous. */
+	// Precondition: with no rows, the replace-vs-stack checks would be vacuous.
 	TestTrue(
 		FString::Printf(
 			TEXT("fixture: the shipped table should build at least one row per piece, it built %d and %d"),
@@ -257,7 +179,7 @@ bool FPieceMenuPresenterStateTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* One: the state machine, on a controller with no local player. */
+	// State machine, on a controller with no local player.
 	ADestructionGamePlayerController* const Plain =
 		TestWorld.World->SpawnActor<ADestructionGamePlayerController>();
 
@@ -277,23 +199,21 @@ bool FPieceMenuPresenterStateTest::RunTest(const FString& Parameters)
 
 	CheckShown(*this, *Plain, TEXT("after showing piece 3's menu"), true, RowsForThree);
 
-	/* A second show replaces. If it appended, the count doubles and row 0 still names piece 3 —
-	 * on screen that is two menus, and a Delete on the stale one removes the wrong brick. */
+	// A second show replaces; appending would leave a stale Delete for the wrong brick.
 	TestTrue(
 		TEXT("showing a second menu should report that one is up"),
 		Plain->ShowPieceMenu(RowsForFive));
 
 	CheckShown(*this, *Plain, TEXT("after showing piece 5's menu over piece 3's"), true, RowsForFive);
 
-	/* An empty list dismisses rather than showing an empty box — the route InspectAlongRay takes
-	 * on every miss, so it is the common case rather than a corner one. */
+	// An empty list dismisses; InspectAlongRay takes this route on every miss.
 	TestTrue(
 		TEXT("showing an empty menu must report that NO menu is up"),
 		!Plain->ShowPieceMenu(NoRows));
 
 	CheckShown(*this, *Plain, TEXT("after showing an empty menu"), false, NoRows);
 
-	/* Dismiss is idempotent, and answers whether it actually took anything down. */
+	// Dismiss is idempotent and reports whether it closed anything.
 	Plain->ShowPieceMenu(RowsForThree);
 
 	TestTrue(
@@ -308,7 +228,7 @@ bool FPieceMenuPresenterStateTest::RunTest(const FString& Parameters)
 
 	CheckShown(*this, *Plain, TEXT("after dismissing twice"), false, NoRows);
 
-	/* Two: the cursor and the look context, which need a real local player. */
+	// Cursor and input contexts, which need a real local player.
 	const UInputMappingContext* const DefaultContext = LoadObject<UInputMappingContext>(
 		nullptr, DestructionContent::DefaultMappingContextPath);
 
@@ -339,8 +259,7 @@ bool FPieceMenuPresenterStateTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* Fixture precondition: SetupInputComponent really did apply both contexts. Without this,
-	 * "IMC_MouseLook is gone" would pass on a controller that never applied it. */
+	// Precondition: SetupInputComponent applied both contexts.
 	CheckControls(
 		*this, *Local, *Input, *DefaultContext, *MouseLookContext,
 		TEXT("fixture, before any menu"));
@@ -357,13 +276,7 @@ bool FPieceMenuPresenterStateTest::RunTest(const FString& Parameters)
 		*this, *Local, *Input, *DefaultContext, *MouseLookContext,
 		TEXT("after the menu is dismissed"));
 
-	/*
-	 * The empty-list route leaves them alone too. It is a second way out of "a menu is up", the
-	 * one every miss takes, and the one that used to get forgotten — a player who clicked a brick
-	 * and then clicked the sky was left with a cursor and no camera. Kept here because a presenter
-	 * that reached for SetPieceMenuControls out of habit would take the look context away on
-	 * exactly this path.
-	 */
+	// The empty-list route (every miss) must also leave the controls alone; it was once forgotten.
 	Local->ShowPieceMenu(RowsForFive);
 	Local->ShowPieceMenu(NoRows);
 

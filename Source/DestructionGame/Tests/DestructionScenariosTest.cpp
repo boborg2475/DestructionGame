@@ -12,44 +12,21 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE SCENARIO CATALOGUE: the fixtures this suite has been proving headlessly, named so they
- * can be joined as levels and watched.
+ * Scenario catalogue: the headless fixtures, named so they can be joined as levels. World-free
+ * (specs, brick centres, camera positions), so it runs in the fast suite.
  *
- * WORLD-FREE, AND THAT IS THE POINT OF TESTING IT HERE. DestructionScenarios is boxes and
- * doubles — a spec, a list of brick centres, a camera position — so everything below runs in
- * the fast suite. Nothing here builds a world, spawns an actor or ticks a solver; the game
- * mode's own wiring is a later slice and will need one.
- *
- * =====================================================================================
- * WHY THE SPECS ARE PINNED FIELD FOR FIELD RATHER THAN JUST BUILT
- * =====================================================================================
- *
- * Two rows, and both of them exist to be THE SAME WALL as something that already exists:
- *
- *   - `sandbox` is the wall ADestructionGameGameMode::BeginPlay hardcodes today, so moving
- *     the default into the catalogue must change nothing about what Play gives you.
- *   - `free-end-40` is `StructureArchingTestSupport::ArchWallSpecOfHeight(40)`, the wall
- *     `Core.Structure.AFreeEndDeletionInATallWall` reads. A level that is a LOOKALIKE of
- *     that wall — one course taller, one brick wider — proves nothing about the number that
- *     test prints, and nothing about it would look wrong on screen.
- *
- * So each row's spec is compared against an independently written expectation, field by
- * field, with exact equality. The sandbox expectation is TRANSCRIBED from
- * `GameModeScenarioWallSpec()` in DestructionGameGameMode.cpp rather than imported, because
- * that function is file-local to a translation unit this test cannot reach — and because a
- * test that reaches for production's own constant agrees with it instead of disagreeing when
- * it is wrong.
- *
- * THE TEST INCLUDES Tests/ArchingWallTestSupport.h AND PRODUCTION MUST NOT. That direction
- * is the drift check; the reverse would make the level and the fixture one definition that
- * cannot be caught disagreeing, which is the same thing as not checking.
+ * `sandbox` must equal the game mode's default wall and `free-end-40` must equal
+ * ArchWallSpecOfHeight(40), so each spec is compared field by field against an independently
+ * written expectation. The sandbox one is transcribed, not imported, so a wrong production
+ * constant is caught. Only the test includes ArchingWallTestSupport.h; production must not,
+ * or the drift check disappears.
  */
 namespace ScenariosTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/** Print a double so a comparison that failed in the last bit is readable as one. */
+	/** Print a double at full precision so a last-bit mismatch is visible. */
 	inline FString ScenariosTestBits(double Value)
 	{
 		return FString::Printf(TEXT("%.17g"), Value);
@@ -62,11 +39,8 @@ namespace ScenariosTestSupport
 	}
 
 	/*
-	 * --- the brick, restated ---------------------------------------------------------
-	 *
-	 * DESIGN.md's standard UK metric clay brick, and the 1 cm mortar joint that makes the
-	 * coordinating grid 22.5 x 11.25 x 7.5. Written out here rather than imported, so a
-	 * catalogue row that quietly changed brick format would fail rather than agree.
+	 * DESIGN.md's standard brick and 1 cm joint (grid 22.5 x 11.25 x 7.5). Restated rather than
+	 * imported so a row that changed brick format fails.
 	 */
 	constexpr double ScenariosTestBrickLengthCm = 21.5;
 	constexpr double ScenariosTestBrickWidthCm = 10.25;
@@ -74,25 +48,13 @@ namespace ScenariosTestSupport
 	constexpr double ScenariosTestMortarCm = 1.0;
 
 	/**
-	 * THE ONE BRICK `free-end-40` CUTS: the outermost full brick of the grounded course.
-	 *
-	 * Course 0 is an even course, so its full bricks run from x = 0 at one brick pitch each
-	 * and the outermost is at x = 0 exactly. Its centre height is half a brick above the
-	 * ground, 3.25 cm. Both are derived here from the brick above rather than copied from
-	 * the fixture header; the fixture's own `ArchWallEvenBrickXCm(0)` and
-	 * `ArchWallCourseZCm(0)` are asserted to agree, which is a cross-check rather than a
-	 * definition.
+	 * The brick `free-end-40` cuts: outermost full brick of course 0, at x = 0, z = 3.25. Derived
+	 * from the brick size; the fixture's own helpers are cross-checked against it.
 	 */
 	constexpr double ScenariosTestFreeEndCutXCm = 0.0;
 	constexpr double ScenariosTestFreeEndCutZCm = ScenariosTestBrickHeightCm / 2.0;
 
-	/**
-	 * THE WALL THE GAME MODE HARDCODES TODAY, TRANSCRIBED FROM `GameModeScenarioWallSpec()`.
-	 *
-	 * 30 bricks across, 40 courses, flush ends, standard brick, 1 cm general-purpose mortar
-	 * and clay brick's own density. If this and the catalogue's `sandbox` row ever disagree,
-	 * the default a player gets on Play has drifted and one of the two is wrong.
-	 */
+	/** The game mode's default wall, transcribed from GameModeScenarioWallSpec(): 30 x 40, flush, general-purpose mortar. */
 	inline FRunningBondSpec ScenariosTestSandboxWallSpec()
 	{
 		FRunningBondSpec Spec;
@@ -111,12 +73,8 @@ namespace ScenariosTestSupport
 	}
 
 	/**
-	 * EVERY FIELD OF A WALL SPEC, COMPARED EXACTLY.
-	 *
-	 * `FRunningBondSpec` has no operator==, and writing one in production for a test's
-	 * benefit would be production code with no failing test behind it. Spelling the fields
-	 * out here also means a field ADDED to the spec later is a visible omission in this
-	 * function rather than a silent hole in the comparison.
+	 * Every field of a wall spec, compared exactly. FRunningBondSpec has no operator==; listing
+	 * fields here makes a newly added field a visible omission.
 	 */
 	inline void ScenariosTestCheckSpecsEqual(
 		FAutomationTestBase& Test,
@@ -212,25 +170,19 @@ namespace ScenariosTestSupport
 	}
 
 	/*
-	 * --- the viewpoint, derived from the field of view rather than imported -----------
-	 *
-	 * UCameraComponent's default FOV is 90 degrees HORIZONTALLY, so at a standoff s the
-	 * visible half-width is s exactly and the visible half-height is s * aspect, where the
-	 * aspect is the viewport's height over its width. Framing a bounding box therefore needs
-	 *
-	 *     s >= halfX          and          s * aspect >= halfZ
-	 *
-	 * and the margin is what keeps the structure off the edges of the frame. The floor stops
-	 * a four-brick arm filling the screen with one brick.
+	 * Viewpoint constants. Default FOV is 90 degrees horizontal, so at standoff s the visible
+	 * half-width is s and half-height is s * aspect (height/width). Framing needs s >= halfX and
+	 * s * aspect >= halfZ; the margin keeps edges clear, the floor stops tiny structures filling
+	 * the screen.
 	 */
 	constexpr double ScenariosTestAspectHeightOverWidth = 1080.0 / 1920.0;
 	constexpr double ScenariosTestFrameMargin = 1.25;
 	constexpr double ScenariosTestMinimumStandoffCm = 120.0;
 
-	/** Yaw -90 looks along -Y with +X to the right — see the Viewpoint test's header. */
+	/** Yaw -90 looks along -Y with +X to the right. */
 	constexpr double ScenariosTestCameraYawDegrees = -90.0;
 
-	/** A real IEEE NaN, produced the way Tests/LayoutTest.cpp produces one. */
+	/** A real IEEE NaN. */
 	inline double ScenariosTestMakeNaN()
 	{
 		volatile double Zero = 0.0;
@@ -239,13 +191,9 @@ namespace ScenariosTestSupport
 }
 
 /**
- * SLICE A'S TWO ROWS, AND WHAT MAKES EACH OF THEM THE WALL IT CLAIMS TO BE.
- *
- * The count is a FLOOR rather than an equality: later slices add the corbel family and the
- * twenty acceptance walls, and adding a scenario should be adding a row rather than editing
- * this test. What is pinned instead is every property that must hold of EVERY row — a name,
- * a map, a title, a line telling a human what to look for, a wall that could actually be
- * laid, and a lookup that finds it — plus the exact contents of the two rows that exist now.
+ * Properties every catalogue row must have (name, map, title, expectation, buildable wall,
+ * lookups), plus the exact contents of `sandbox` and `free-end-40`. The row count is a floor so
+ * adding a scenario does not mean editing this test.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FDestructionScenariosCatalogueTest,
@@ -268,7 +216,7 @@ bool FDestructionScenariosCatalogueTest::RunTest(const FString& Parameters)
 			Rows.Num()),
 		Rows.Num() >= 2);
 
-	/* --- what must be true of every row, however many there are ---------------------- */
+	// Every row.
 
 	for (int32 Index = 0; Index < Rows.Num(); ++Index)
 	{
@@ -288,31 +236,16 @@ bool FDestructionScenariosCatalogueTest::RunTest(const FString& Parameters)
 			*FString::Printf(TEXT("%s must carry a title"), *Label),
 			Row.Title != nullptr && FCString::Strlen(Row.Title) > 0);
 
-		/*
-		 * THE EXPECTATION IS NOT DECORATION. The whole request was to be able to WATCH the
-		 * fixtures, and a level with nothing saying what should happen leaves a human unable
-		 * to tell a correct wall from a broken one.
-		 */
+		// Without an expectation line a viewer cannot tell a correct result from a broken one.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s must say in one line what a human should see happen"), *Label),
 			Row.Expectation != nullptr && FCString::Strlen(Row.Expectation) > 0);
 
 		/*
-		 * EVERY ROW HOLDS, INCLUDING — ESPECIALLY — THE ONES THAT CUT NOTHING.
-		 *
-		 * ONE CLOCK, AND IT IS NOT THE CUT'S. `HoldSeconds` is how long the level leaves the
-		 * structure exactly as laid before it runs: it applies whatever cuts the row names, and it
-		 * settles. Seven of the nine rows name no cut at all, so a field that only meant "when the
-		 * brick goes" would have nothing to say about them — and a corbel with nothing holding it
-		 * is a level that has already collapsed before the player's first frame is drawn, which is
-		 * exactly the one thing those levels exist to let a human watch.
-		 *
-		 * A SECOND OF SLACK IS NOT ENOUGH FOR A HUMAN, so the floor is a whole second rather than
-		 * merely positive. A hold of a few frames satisfies "greater than zero" and shows a player
-		 * nothing; the assertion is about someone having time to look, so it is written against
-		 * that rather than against the degenerate value alone. Non-finite fails the same test,
-		 * because every comparison against a NaN is false.
+		 * HoldSeconds is how long the structure stays as laid before cuts apply and it settles.
+		 * It applies to every row, including those with no cut, or a corbel collapses before the
+		 * first frame. The floor is over a second so a human has time to look; NaN fails too.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -323,13 +256,8 @@ bool FDestructionScenariosCatalogueTest::RunTest(const FString& Parameters)
 			Row.HoldSeconds > 1.0 && FMath::IsFinite(Row.HoldSeconds));
 
 		/*
-		 * A ROW THAT CARRIES A RUNNING-BOND SPEC MUST CARRY A COMPLETE ONE.
-		 *
-		 * NOT EVERY ROW DOES, AND THAT IS THE POINT OF THE GUARD RATHER THAN A HOLE IN THE
-		 * CHECK. A corbel is not a running bond — it steps half a cell per course and stands on
-		 * an immovable base — so its row is laid by a different producer and leaves `Wall`
-		 * untouched. What must hold of EVERY row whatever laid it is that it BUILDS, and
-		 * `World.Scenarios.Build` asserts exactly that by building all of them.
+		 * A row with a running-bond spec must have a complete one. Corbel rows use another
+		 * producer and leave `Wall` empty; World.Scenarios.Build checks every row builds.
 		 */
 		if (Row.Wall.CoursesHigh > 0 || Row.Wall.BricksPerCourse > 0)
 		{
@@ -348,11 +276,7 @@ bool FDestructionScenariosCatalogueTest::RunTest(const FString& Parameters)
 			*FString::Printf(TEXT("%s must be found by its own name"), *Label),
 			IndexOfName(Row.Name) == Index);
 
-		/*
-		 * THE MAP LOOKUP IS CASE-INSENSITIVE, and it is asserted in both directions rather
-		 * than at the one spelling the row happens to use: a map name arrives from a URL or
-		 * from UWorld::GetMapName, and neither guarantees the case the catalogue was typed in.
-		 */
+		// Map lookup is case-insensitive: names from a URL or GetMapName may differ in case.
 		const FString MapName(Row.MapName);
 
 		TestTrue(
@@ -388,7 +312,7 @@ bool FDestructionScenariosCatalogueTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* --- the lookups fail closed ----------------------------------------------------- */
+	// Lookups fail closed.
 
 	TestTrue(
 		TEXT("an unnamed lookup names no scenario"),
@@ -406,7 +330,7 @@ bool FDestructionScenariosCatalogueTest::RunTest(const FString& Parameters)
 		TEXT("a map no row carries names no scenario"),
 		IndexOfMapName(TEXT("Lvl_NoSuchMap")) == INDEX_NONE);
 
-	/* --- row 1: the sandbox, which must be the wall Play already gives you ------------ */
+	// Sandbox: the wall Play gives you.
 
 	if (const FScenario* const Sandbox = ScenariosTestRowNamed(*this, TEXT("sandbox")))
 	{
@@ -420,13 +344,7 @@ bool FDestructionScenariosCatalogueTest::RunTest(const FString& Parameters)
 			Sandbox->Wall,
 			ScenariosTestSandboxWallSpec());
 
-		/*
-		 * AND AGAINST THE WORLD-FREE FIXTURE THAT CLAIMS TO BE THE SAME WALL.
-		 * ArchingWallTestSupport's ScenarioWallSpec is documented as "the game mode's own
-		 * scenario wall" and every figure in ARCHING_DESIGN's span table was worked against
-		 * it, so the three definitions have to be one wall or the design table is about a
-		 * wall nobody can join.
-		 */
+		// Also against the fixture ARCHING_DESIGN's span table was worked on; all three must agree.
 		ScenariosTestCheckSpecsEqual(
 			*this,
 			TEXT("sandbox (against StructureArchingTestSupport::ScenarioWallSpec)"),
@@ -441,7 +359,7 @@ bool FDestructionScenariosCatalogueTest::RunTest(const FString& Parameters)
 			Sandbox->CutCentresCm.Num() == 0);
 	}
 
-	/* --- row 2: the free end, which must be the wall the solver suite reads ----------- */
+	// Free end: the wall the solver suite reads.
 
 	if (const FScenario* const FreeEnd = ScenariosTestRowNamed(*this, TEXT("free-end-40")))
 	{
@@ -477,11 +395,7 @@ bool FDestructionScenariosCatalogueTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * THE CROSS-CHECK, and it is a cross-check rather than the definition: the cut centre
-	 * above is derived from the brick's own dimensions, and this says the fixture header the
-	 * solver suite reads agrees about where that brick is.
-	 */
+	// Cross-check: the fixture header agrees with the cut centre derived from the brick size.
 	TestTrue(
 		*FString::Printf(
 			TEXT("fixture: the outermost even-course brick sits at x = %s and z = %s; the ")
@@ -497,39 +411,15 @@ bool FDestructionScenariosCatalogueTest::RunTest(const FString& Parameters)
 }
 
 /**
- * BUILDING A ROW LAYS ITS WALL THROUGH RunningBond AND RESOLVES ITS CUT — OR REFUSES OUTRIGHT.
+ * Build lays a row's wall through RunningBond and resolves its cuts, or refuses.
  *
- * =====================================================================================
- * THE WALL IS RunningBond'S AND NOBODY ELSE'S
- * =====================================================================================
+ * The wall is compared bit for bit against RunningBond's own layout (boxes, masses, joints).
+ * Cuts are resolved to handles, not applied: the game mode removes them later so the player
+ * sees it, so the wall returned is whole. The handle index is not asserted, only the resolved
+ * piece's box and grounding.
  *
- * Asserted by laying the same spec here and comparing the two layouts bit for bit: every
- * box, every mass, every joint. A catalogue that placed its own bricks — even correctly —
- * would be a second opinion about where a brick goes, and the level would stop being the
- * fixture the solver suite measures the moment the two drifted.
- *
- * =====================================================================================
- * THE CUT IS RESOLVED, NOT APPLIED
- * =====================================================================================
- *
- * Build hands back HANDLES and removes nothing: the whole point is that the player watches
- * the brick go, so the removal belongs to the game mode and its delay. So the wall that comes
- * back must be whole — every piece live — and the handles must name real bricks.
- *
- * AND THE HANDLE NUMBER IS NEVER ASSERTED. Which index RunningBond gives a brick is its own
- * business; what the level cares about is that the piece it is about to delete is the
- * outermost full brick of the grounded course. So the assertion is on the resolved piece's
- * BOX — its centre, its full-brick extent — and on its being grounded.
- *
- * =====================================================================================
- * A CUT CENTRE THAT NAMES NO BRICK IS A REFUSED BUILD, AND THIS IS THE ASSERTION THAT MATTERS
- * =====================================================================================
- *
- * A silently dropped cut gives a level that looks intact, never does anything, and reads
- * EXACTLY like a level whose wall correctly stood — which is the one thing this whole
- * exercise exists to let a human tell apart. So a miss refuses, and refusing means writing
- * nothing: the outputs are pre-poisoned here, so a refusal that left a usable-looking wall
- * and a stale cut list behind it fails.
+ * A cut centre that names no brick must refuse the build: a dropped cut gives a level that
+ * looks like a wall that correctly stood. Outputs are pre-poisoned so a refusal must clear them.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FDestructionScenariosBuildTest,
@@ -542,7 +432,7 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 	using namespace DestructionScenarios;
 	using namespace DestructionLayout;
 
-	/* --- every row builds, and builds exactly the wall RunningBond lays --------------- */
+	// Every row builds exactly the wall RunningBond lays.
 
 	for (const FScenario& Row : Catalogue())
 	{
@@ -552,21 +442,9 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 		TArray<int32> Cut;
 
 		/*
-		 * A BUILD SANDBOX IS THE ONE ROW THAT LAYS NOTHING, AND Build MUST REFUSE IT RATHER THAN
-		 * HAND BACK AN EMPTY WALL.
-		 *
-		 * The sweep below asserts of every other row that it builds and that it lays SOMETHING,
-		 * which is exactly the right claim for a row describing a structure — a level showing an
-		 * empty world is the failure it exists to stop. A build sandbox is deliberately that empty
-		 * world, because the player is the one who fills it, so it cannot be swept with the rest:
-		 * it carries no `LayStructure` and a default `Wall`, and `RunningBond` refuses a spec of
-		 * zero courses.
-		 *
-		 * SO THE CLAIM IS INVERTED RATHER THAN SKIPPED, and it is the claim that makes the game
-		 * mode's branch NECESSARY: `Build` writes nothing and says so, so a game mode that fell
-		 * through to `Build` on this row would return before it framed anything. Pre-poisoned for
-		 * the same reason the refusal rows below are — "wrote nothing" is only a claim with teeth
-		 * if there was something there to overwrite.
+		 * A build sandbox lays nothing (the player fills it), so Build must refuse it and write
+		 * nothing. That makes the game mode's separate branch for it necessary. Pre-poisoned so
+		 * "wrote nothing" is checkable.
 		 */
 		if (Row.bBuildSandbox)
 		{
@@ -616,14 +494,8 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 			Built.Boxes.Num() == Built.Structure.NumPieces());
 
 		/*
-		 * AND A ROW LAID FROM A RUNNING-BOND SPEC MUST BE RunningBond'S WALL AND NOBODY ELSE'S.
-		 *
-		 * GUARDED, BECAUSE NOT EVERY ROW IS A WALL. A corbel steps half a cell per course off an
-		 * immovable base, which `RunningBond` cannot express at all — so the comparison applies
-		 * to the rows that carry a spec, and `World.Scenarios.CorbelRows` holds the corbel rows
-		 * against the world-free fixture the solver suite measures instead. What is asserted of
-		 * every row regardless is above: it builds, it lays something, and its boxes match its
-		 * pieces.
+		 * Rows with a running-bond spec must be exactly RunningBond's wall. Corbels cannot be
+		 * expressed by RunningBond; World.Scenarios.CorbelRows covers them.
 		 */
 		if (Row.Wall.CoursesHigh > 0 && Row.Wall.BricksPerCourse > 0)
 		{
@@ -646,11 +518,7 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 				Built.Structure.NumPieces() == Reference.Structure.NumPieces()
 					&& Built.Structure.NumConnections() == Reference.Structure.NumConnections());
 
-			/*
-			 * BIT FOR BIT, AND THE FIRST DISAGREEMENT IS REPORTED RATHER THAN ALL OF THEM. A wall
-			 * is 1,220 pieces; a producer that moved every brick would otherwise print 1,220
-			 * failures and bury everything else in this file.
-			 */
+			// Bit for bit; report only the first difference so 1,220 failures don't bury the log.
 			int32 FirstDifferentPiece = INDEX_NONE;
 
 			const int32 Common = FMath::Min(Built.Boxes.Num(), Reference.Boxes.Num());
@@ -693,7 +561,7 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 				FirstDifferentPiece == INDEX_NONE);
 		}
 
-		/* --- the cut is resolved, and nothing has been removed ------------------------ */
+		// Cuts resolved, nothing removed.
 
 		TestTrue(
 			*FString::Printf(
@@ -741,7 +609,7 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* --- the free-end cut is genuinely the grounded free-end brick -------------------- */
+	// The free-end cut is the grounded end brick.
 
 	if (const FScenario* const FreeEnd = ScenariosTestRowNamed(*this, TEXT("free-end-40")))
 	{
@@ -768,11 +636,7 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 					*ScenariosTestVectorBits(Box.CentreCm)),
 				Box.CentreCm == ExpectedCentre);
 
-			/*
-			 * A FULL BRICK AND NOT A HALF BAT. A flush wall's odd courses start with a half
-			 * bat, so "the outermost brick of a course" is ambiguous by position alone —
-			 * and half a brick coming out of the end of a wall is a different experiment.
-			 */
+			// A full brick, not a half bat (odd courses of a flush wall start with one).
 			TestTrue(
 				*FString::Printf(
 					TEXT("free-end-40 cuts a FULL brick, half-extent %s; it cut one of %s"),
@@ -787,7 +651,7 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* --- and a cut that names no brick refuses, writing nothing ----------------------- */
+	// A cut that names no brick refuses and writes nothing.
 
 	if (const FScenario* const FreeEnd = ScenariosTestRowNamed(*this, TEXT("free-end-40")))
 	{
@@ -799,12 +663,7 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 			TArray<FVector> CutCentresCm;
 		};
 
-		/*
-		 * THE MISSES ARE CHOSEN TO LOOK PLAUSIBLE, not to look wrong. A number nobody would
-		 * type is caught by any guard at all; the head-joint gap and the bed-joint plane are
-		 * the two a person actually mistypes, and both would produce a level that stands
-		 * there being correct-looking forever.
-		 */
+		// Plausible misses: the head-joint gap and bed-joint plane are the realistic typos.
 		const FScenariosTestMissRow MissRows[] =
 		{
 			{ TEXT("nowhere near the wall"),
@@ -832,11 +691,7 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 			FScenario Bad = *FreeEnd;
 			Bad.CutCentresCm = Miss.CutCentresCm;
 
-			/*
-			 * PRE-POISONED, so that "wrote nothing" is a claim with teeth. A caller that
-			 * ignores the return value must not be handed a wall that looks buildable and a
-			 * cut list left over from whatever it did last.
-			 */
+			// Pre-poisoned so a refusal must clear stale outputs.
 			FBrickLayout Built;
 			Built.Boxes.Add(FPieceBox());
 
@@ -866,45 +721,15 @@ bool FDestructionScenariosBuildTest::RunTest(const FString& Parameters)
 }
 
 /**
- * WHERE THE PLAYER STANDS SO THE WHOLE STRUCTURE IS IN FRONT OF THEM.
- *
- * =====================================================================================
- * THE ARITHMETIC, DERIVED FROM THE FIELD OF VIEW RATHER THAN FROM PRODUCTION
- * =====================================================================================
- *
- * UCameraComponent's default FOV is 90 degrees HORIZONTALLY, so at a standoff s the visible
- * half-width is s and the visible half-height is s * aspect. Framing a box therefore needs
- * s >= halfX and s >= halfZ / aspect, and the margin keeps it off the edges:
+ * Where the camera stands so the whole structure is in view:
  *
  *     standoff = max(120, 1.25 * max(halfX, halfZ / aspect))
  *     location = (centre.X, centre.Y + standoff, centre.Z)
  *     rotation = (0, -90, 0)
  *
- * THE THREE NAMED ROWS PICK THE THREE BRANCHES DELIBERATELY, and each is worked through in
- * its own comment, because a row where the wrong term governs would still print a perfectly
- * plausible number.
- *
- * =====================================================================================
- * WHY YAW -90 IS ASSERTED AS A DIRECTION AND NOT ONLY AS A NUMBER
- * =====================================================================================
- *
- * Yaw -90 puts the view along -Y with +X to the RIGHT, so a level reads the same way round
- * as claude_plans/CORBEL_CASES.html and every elevation in the design documents. At yaw +90
- * the camera also faces the wall — the picture is not obviously broken — but +X is drawn to
- * the left and every structure comes out mirrored. So the rotation is checked both as the
- * number and as the two axes it produces.
- *
- * =====================================================================================
- * AND THE PROPERTY IS WORTH MORE THAN THE ROWS
- * =====================================================================================
- *
- * What a human cares about is "I can see all of it", which is a relation between the returned
- * standoff and the box rather than a literal. The sweep asserts it over a deterministic grid
- * of shapes, so it keeps holding if somebody retunes the margin or the floor.
- *
- * THE SWEEP ASSERTS TWO SEPARATE PROPERTIES, AND THEY ARE SEPARATE BECAUSE ONE OF THEM CANNOT
- * CARRY THE OTHER'S ROUNDING — see the sweep's own comment for why reading the standoff back
- * out of the stored location is not the number the function returned.
+ * Three worked rows exercise each branch. Yaw is also checked as axes: yaw +90 faces the wall
+ * too but mirrors +X against the design elevations (CORBEL_CASES.html). A sweep then checks
+ * framing and placement as separate properties over a grid of shapes.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FDestructionScenariosViewpointTest,
@@ -924,7 +749,7 @@ bool FDestructionScenariosViewpointTest::RunTest(const FString& Parameters)
 			*ScenariosTestBits(Aspect)),
 		Aspect == 0.5625);
 
-	/* --- the three worked rows -------------------------------------------------------- */
+	// The three worked rows.
 
 	struct FScenariosTestViewRow
 	{
@@ -936,26 +761,18 @@ bool FDestructionScenariosViewpointTest::RunTest(const FString& Parameters)
 
 	const FScenariosTestViewRow ViewRows[] =
 	{
-		/*
-		 * WIDTH GOVERNS. halfZ / aspect is 150 / 0.5625 = 266.666..., which is less than the
-		 * 350 of half-width, so the standoff is 1.25 * 350 = 437.5 exactly.
-		 */
+		// Width governs: 150 / 0.5625 = 266.7 < 350, so 1.25 * 350 = 437.5.
 		{ TEXT("a wide wall, where half-width governs"),
 			FVector(350.0, 0.0, 150.0), FVector(350.0, 5.125, 150.0), 437.5 },
 
 		/*
-		 * HEIGHT GOVERNS, and it governs BECAUSE OF THE ASPECT rather than because it is the
-		 * larger extent: 200 / 0.5625 = 355.555..., which beats the 10 of half-width, and
-		 * 1.25 x that is 444.44444444444446. An implementation that compared halfZ against
-		 * halfX without dividing would pick 10 here and frame a sliver of a tall wall.
+		 * Height over aspect governs: 200 / 0.5625 = 355.6 > 10, times 1.25. Catches an
+		 * implementation that forgets to divide by the aspect.
 		 */
 		{ TEXT("a tall thin wall, where half-height over aspect governs"),
 			FVector(0.0, 0.0, 200.0), FVector(10.0, 5.125, 200.0), 444.44444444444446 },
 
-		/*
-		 * THE FLOOR GOVERNS. 1.25 * (10 / 0.5625) = 22.22..., far below 120, so a four-brick
-		 * arm is framed at the floor rather than filling the screen with one brick.
-		 */
+		// Floor governs: 1.25 * (10 / 0.5625) = 22.2 < 120.
 		{ TEXT("a tiny structure, where the 120 cm floor governs"),
 			FVector(0.0, 0.0, 10.0), FVector(10.0, 5.125, 10.0), 120.0 },
 	};
@@ -988,11 +805,7 @@ bool FDestructionScenariosViewpointTest::RunTest(const FString& Parameters)
 			Viewpoint.Rotation.Pitch == 0.0 && Viewpoint.Rotation.Roll == 0.0
 				&& Viewpoint.Rotation.Yaw == ScenariosTestCameraYawDegrees);
 
-		/*
-		 * THE YAW AS A DIRECTION. Looking along -Y is what puts the camera in front of a wall
-		 * standing at y = 0 when the camera stands at +y; +X to the right is what stops every
-		 * level coming out mirrored against the design drawings.
-		 */
+		// Yaw as axes: look along -Y, +X to the right, so levels are not mirrored.
 		const FRotationMatrix Frame(Viewpoint.Rotation);
 
 		const FVector Forward = Frame.GetScaledAxis(EAxis::X);
@@ -1012,7 +825,7 @@ bool FDestructionScenariosViewpointTest::RunTest(const FString& Parameters)
 			Right.X > 0.999);
 	}
 
-	/* --- the property: all of it is inside the frustum, with the margin to spare ------- */
+	// Property sweep: all of it inside the frustum with the margin.
 
 	const double SweptHalfWidthsCm[] =
 		{ 0.1, 1.0, 5.125, 10.0, 50.0, 137.5, 350.0, 1000.0, 5000.0 };
@@ -1032,35 +845,14 @@ bool FDestructionScenariosViewpointTest::RunTest(const FString& Parameters)
 	int32 PlacementFailures = 0;
 
 	/*
-	 * FRAMING AND PLACEMENT ARE TWO DIFFERENT CLAIMS, AND ONLY ONE OF THEM IS ALLOWED TO CARRY
-	 * THE ROUNDING OF A LARGE CENTRE.
+	 * Framing (inside the frustum with margin) depends only on standoff and extents; placement
+	 * (camera at centre + standoff) owns the rounding of that sum. So the standoff is read from
+	 * the same box centred at the origin, where LocationCm.Y is exactly the standoff.
 	 *
-	 *   - FRAMING says the structure is wholly inside the frustum with the margin to spare. It
-	 *     is a statement about the STANDOFF and the extents, and it does not stop being true
-	 *     when the structure is translated across the world.
-	 *   - PLACEMENT says the camera sits directly in front of the centre at that standoff. That
-	 *     is the statement about LocationCm, and it is the one that legitimately owns whatever
-	 *     the store of centre.Y + standoff rounded to.
-	 *
-	 * SO THE STANDOFF IS READ FROM A BOX OF THE SAME HALF-SIZE CENTRED AT THE ORIGIN, WHERE IT
-	 * IS EXACT. The standoff depends only on the extents, and at the origin the returned Y is
-	 * 0 + standoff, which is standoff itself in every rounding mode — so LocationCm.Y there IS
-	 * the number the function computed, with nothing lost.
-	 *
-	 * Reading it back out of the TRANSLATED viewpoint instead, as LocationCm.Y - CentreCm.Y,
-	 * does lose something, and the loss is not small in the units that matter: storing
-	 * -1500 + 133.33333333333334 rounds to -1366.6666666666667, and subtracting the centre back
-	 * out is exact by Sterbenz — so it faithfully recovers 133.33333333333326, three ulps below
-	 * what was returned. That is enough to put a 60 cm half-height outside a 75 cm half-frustum
-	 * by 4e-14 cm. The error is bounded by half an ulp of |centre.Y + standoff|, so it grows
-	 * without bound as the structure moves away from the origin while the standoff does not:
-	 * framing asserted that way fails for a reason that is purely about where in the world the
-	 * structure sits, which is exactly the thing framing is not about.
-	 *
-	 * NOTHING IS LOOSENED BY THE SPLIT. Placement is still exact equality against
-	 * centre + standoff, and because that standoff came from the origin call it also pins the
-	 * standoff as a function of the SHAPE ALONE — a viewpoint that framed a translated
-	 * structure differently from the same structure at the origin fails here.
+	 * Recovering it as LocationCm.Y - CentreCm.Y loses bits: at centre.Y = -1500 it comes back
+	 * three ulps low, enough to push a 60 cm half-height outside a 75 cm half-frustum, and the
+	 * error grows with distance from the origin. Placement is still exact equality, and it also
+	 * pins the standoff as a function of shape alone.
 	 */
 	for (const FVector& CentreCm : SweptCentresCm)
 	{
@@ -1091,12 +883,7 @@ bool FDestructionScenariosViewpointTest::RunTest(const FString& Parameters)
 					&& Viewpoint.Rotation.Yaw == ScenariosTestCameraYawDegrees
 					&& Viewpoint.Rotation.Pitch == 0.0 && Viewpoint.Rotation.Roll == 0.0;
 
-				/*
-				 * STRICTLY INSIDE, AND WITH THE MARGIN TO SPARE. The first pair is what a
-				 * human means by "I can see all of it"; the second is the margin that keeps
-				 * the structure off the very edge of the frame, and it is written as the
-				 * inequality rather than as the constant so it survives a retune.
-				 */
+				// Strictly inside, then the margin, written as inequalities so a retune survives.
 				const bool bFramed = HalfWidthCm < StandoffCm
 					&& HalfHeightCm < StandoffCm * Aspect
 					&& StandoffCm >= ScenariosTestFrameMargin * HalfWidthCm
@@ -1161,7 +948,7 @@ bool FDestructionScenariosViewpointTest::RunTest(const FString& Parameters)
 			SweptCases, PlacementFailures),
 		PlacementFailures == 0);
 
-	/* --- degenerate bounds fail closed to the floor ----------------------------------- */
+	// Degenerate bounds fail closed to the floor.
 
 	const FViewpoint OfNothing = ViewpointFor(FBox(ForceInit), Aspect);
 
@@ -1175,12 +962,7 @@ bool FDestructionScenariosViewpointTest::RunTest(const FString& Parameters)
 			&& FMath::IsFinite(OfNothing.LocationCm.Z)
 			&& OfNothing.LocationCm.Y >= ScenariosTestMinimumStandoffCm);
 
-	/*
-	 * AN INVERTED BOX IS THE ONE THAT FAILS OPEN IF NOBODY THOUGHT ABOUT IT. Its extents are
-	 * NEGATIVE, so a standoff computed from them alone is negative — the camera would stand
-	 * BEHIND the structure looking away from it, which is a level that renders perfectly and
-	 * shows nothing at all.
-	 */
+	// An inverted box has negative extents; unguarded, the camera would stand behind the structure.
 	const FViewpoint OfInverted = ViewpointFor(
 		FBox(FVector(10.0, 10.0, 10.0), FVector(-10.0, -10.0, -10.0)), Aspect);
 
@@ -1197,47 +979,17 @@ bool FDestructionScenariosViewpointTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE OPTIONAL THREE-QUARTER FRAMING OVERRIDE — so a genuinely 3D structure is not photographed
- * as a flat front wall.
+ * Optional three-quarter framing, so a 3D structure (shed3d) is not shot as a flat front wall
+ * with its depth foreshortened away.
  *
- * The head-on viewpoint stands the camera on the box's front axis (+Y from the centre) looking
- * along -Y, level. That is exactly right for a flat wall and exactly wrong for a 3D box: the
- * front face fills the frame and the box's DEPTH (its Y extent) and an overhang DROPPING off the
- * front are foreshortened to nothing. `shed3d` is that box, and it opts into ThreeQuarter framing.
+ * Three claims: (1) regression pin, an unset row gets the bit-identical head-on view through
+ * both the defaulted call and an explicit HeadOn; (2) the shed3d row opts into ThreeQuarter;
+ * (3) the angled camera is orbited off X, elevated, pitched down, off the -90 yaw, aimed at the
+ * centre, and far enough to frame the whole 3D box.
  *
- * =====================================================================================
- * THREE SEPARATE CLAIMS, AND WHY EACH IS HERE
- * =====================================================================================
- *
- *   1. THE REGRESSION PIN. The override is OPTIONAL, so every existing row — which sets nothing —
- *      must still get the byte-identical head-on viewpoint it gets today. A refactor that threads
- *      the override through but nudges HeadOn by a bit has moved thirty levels' cameras. So a
- *      worked head-on row is asserted bit-identical BOTH through the defaulted call (no third
- *      argument, the way every production caller still spells it) AND through an explicit HeadOn.
- *
- *   2. THE ROW OPTS IN. The behaviour is "the shed3d row sets it": the catalogue's shed3d row must
- *      carry Framing == ThreeQuarter, or the 3D level is still framed head-on however clever
- *      ViewpointFor becomes. This is the data pin.
- *
- *   3. THE ANGLED VIEW. Given ThreeQuarter, the camera must be OFF the centre's X (orbited in
- *      azimuth), ABOVE the centre's Z (elevated), pitched DOWN and yawed OFF the head-on -90, still
- *      pointing AT the centre, and standing far enough that the WHOLE 3D box is in frame — and the
- *      framing test is applied to the box's full 3D extent, not just X and Z. Today's standoff
- *      ignores the Y (depth) extent entirely; the override must not.
- *
- * =====================================================================================
- * WHY FRAMING IS ASSERTED AGAINST THE BOUNDING SPHERE
- * =====================================================================================
- *
- * The head-on test proves framing per axis: halfX < standoff and halfZ < standoff * aspect. Off a
- * three-quarter angle the on-screen silhouette is no longer the X-Z face — the depth Y rotates
- * into both the horizontal and vertical extent — so the honest generalisation of "the whole of it
- * is in frame, at ANY view orientation" is that a sphere enclosing the box is in frame. Its radius
- * is the box's 3D half-diagonal, which is strictly larger than any single half-extent whenever the
- * box has depth, so the VERTICAL inequality (the binding one, aspect < 1) is what the current
- * head-on standoff cannot satisfy for a 3D box: it sizes the distance from halfZ alone and leaves
- * the sphere poking out top and bottom. That is the Y-blindness this override exists to fix,
- * expressed as an inequality that survives whatever exact standoff dev-expert chooses.
+ * Framing is asserted against the bounding sphere (radius = 3D half-diagonal), since at an angle
+ * depth rotates into both screen axes. The vertical inequality is the binding one and is what a
+ * standoff sized from halfZ alone fails for a box with depth.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FDestructionScenariosViewpointFramingTest,
@@ -1251,12 +1003,9 @@ bool FDestructionScenariosViewpointFramingTest::RunTest(const FString& Parameter
 
 	const double Aspect = ScenariosTestAspectHeightOverWidth;
 
-	/* --- 1. the regression pin: an unset row is byte-identical to today's head-on view ---- */
-
 	/*
-	 * THE WIDE WALL FROM THE HEAD-ON TEST, worked there: half-width governs, standoff 1.25 * 350
-	 * = 437.5 exactly, camera straight in front at (350, 437.5, 150), level and facing -Y. If the
-	 * override refactor moves this by one bit, this row fails.
+	 * 1. Regression pin: the wide wall from the head-on test, standoff 1.25 * 350 = 437.5,
+	 * camera at (350, 437.5, 150), level, facing -Y. Must match to the bit.
 	 */
 	const FVector HeadOnCentreCm(350.0, 0.0, 150.0);
 	const FVector HeadOnHalfSizeCm(350.0, 5.125, 150.0);
@@ -1292,7 +1041,7 @@ bool FDestructionScenariosViewpointFramingTest::RunTest(const FString& Parameter
 				&& Which.Value.Rotation.Roll == 0.0);
 	}
 
-	/* --- 2. the data pin: the shed3d row opts into three-quarter framing ------------------ */
+	// 2. Data pin: the shed3d row opts into three-quarter framing.
 
 	const int32 Shed3DIndex = IndexOfName(FName(TEXT("shed3d")));
 
@@ -1314,13 +1063,9 @@ bool FDestructionScenariosViewpointFramingTest::RunTest(const FString& Parameter
 			Shed3D.Framing == EScenarioFraming::ThreeQuarter);
 	}
 
-	/* --- 3. the angled view: off-axis, elevated, pitched down, aimed at centre, fully framed */
-
 	/*
-	 * A GENUINELY 3D BOX — every half-extent meaningfully non-zero, so its depth Y is not a
-	 * rounding artefact and the bounding sphere is strictly larger than any face. Not the shed's
-	 * exact bounds (that would couple this to the builder's dimensions); any 3D box exercises the
-	 * same override.
+	 * 3. The angled view, on a generic 3D box (every half-extent non-zero). Not the shed's
+	 * bounds, to avoid coupling to the builder.
 	 */
 	const FVector Box3DCentreCm(300.0, 200.0, 150.0);
 	const FVector Box3DHalfSizeCm(300.0, 200.0, 150.0);
@@ -1366,11 +1111,7 @@ bool FDestructionScenariosViewpointFramingTest::RunTest(const FString& Parameter
 		Angled.Rotation.Yaw != ScenariosTestCameraYawDegrees
 			&& FMath::Abs(Forward.X) > 0.05);
 
-	/*
-	 * STILL LOOKING AT THE CENTRE. Off-axis and elevated is only useful if the camera is aimed
-	 * back at the structure; a forward that points near the centre-ward direction is what makes
-	 * the box the subject rather than something off the edge of the frame.
-	 */
+	// Still aimed at the centre.
 	const FVector ToCentre = (Box3DCentreCm - Angled.LocationCm).GetSafeNormal();
 	const double AimDot = FVector::DotProduct(Forward, ToCentre);
 
@@ -1382,11 +1123,7 @@ bool FDestructionScenariosViewpointFramingTest::RunTest(const FString& Parameter
 			*ScenariosTestBits(AimDot)),
 		AimDot > 0.99);
 
-	/*
-	 * THE WHOLE 3D BOX IN FRAME — the bounding-sphere framing that today's Y-blind standoff cannot
-	 * satisfy. Distance is the true 3D distance to the centre; the radius is the box's half-
-	 * diagonal, strictly larger than halfZ, so the vertical inequality bites on any box with depth.
-	 */
+	// Bounding sphere in frame: 3D distance to centre vs the box's half-diagonal.
 	const double DistanceCm = (Angled.LocationCm - Box3DCentreCm).Size();
 	const double RadiusCm = Box3DHalfSizeCm.Size();
 
@@ -1415,36 +1152,13 @@ bool FDestructionScenariosViewpointFramingTest::RunTest(const FString& Parameter
 }
 
 /**
- * THE PLAYABLE BUILD LEVEL: A CATALOGUE ROW THAT LAYS NOTHING, BECAUSE THE PLAYER LAYS IT.
+ * The build level: a catalogue row that lays nothing, reached by `?Scenario=build` or map
+ * `Lvl_Build` through the same IndexForOptionsAndMap as every other row.
  *
- * =====================================================================================
- * WHAT MAKES THIS A ROW RATHER THAN A FLAG SOMEWHERE ELSE
- * =====================================================================================
- *
- * Every other level in this catalogue is a structure somebody else built and a question about what
- * it does. The build sandbox is the opposite: an empty plot, a toolbar, and whatever the player
- * decides to stand up on it — and it is a CATALOGUE ROW so that joining it is the same act as
- * joining any other level. `?Scenario=build` and the map `Lvl_Build` both select it, through the
- * same `IndexForOptionsAndMap` every other row is reached by, so the build level is not a second
- * way of starting the game.
- *
- * =====================================================================================
- * THE ROW IS PINNED BY WHAT IT MUST NOT CARRY, WHICH IS THE UNUSUAL PART
- * =====================================================================================
- *
- * A row that lays nothing is describable only by absences: no `LayStructure`, a `Wall` left exactly
- * as default-constructed, and no `CutCentresCm`. Each absence is asserted on its own rather than as
- * "Build produces no pieces", because a row that quietly carried, say, a one-course wall would
- * still fail to build and would still look like this one from the outside.
- *
- * AND `Build` REFUSES IT, which is asserted here as well as in `World.Scenarios.Build` because it
- * is the fact the game mode's branch exists for. `RunningBond` rejects a spec of zero courses, so
- * `Build` writes nothing and returns false — which means a game mode that reached `Build` on this
- * row would take its refusal path, frame nobody, and leave the player staring at the inside of the
- * world origin. The branch must come FIRST.
- *
- * NEEDS A TICKING WORLD: NO. The catalogue is boxes and doubles; the game mode's half of this
- * behaviour is `World.Scenario.GameModeOpensAnEmptyBuildSandbox`, which does.
+ * Pinned by absences, each asserted separately: no LayStructure, a default Wall, no cuts. Build
+ * must refuse it and write nothing, which is why the game mode must branch on bBuildSandbox
+ * before calling Build. World-free; the game-mode half is
+ * World.Scenario.GameModeOpensAnEmptyBuildSandbox.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FDestructionScenariosBuildSandboxRowTest,
@@ -1471,7 +1185,7 @@ bool FDestructionScenariosBuildSandboxRowTest::RunTest(const FString& Parameters
 
 	const FScenario& Row = Catalogue()[Index];
 
-	/* --- ONE: it is the level Lvl_Build, reachable both ways a level is ever reached ------ */
+	// Reachable by option and by map.
 
 	TestEqual(
 		TEXT("the build row is selected by its own map"),
@@ -1495,11 +1209,7 @@ bool FDestructionScenariosBuildSandboxRowTest::RunTest(const FString& Parameters
 	{
 		EScenarioSelection How = EScenarioSelection::Default;
 
-		/*
-		 * AND BY THE MAP, IN THE DECORATED FORM PIE HANDS OVER. `Lvl_Build` is the name on disk;
-		 * `UEDPIE_0_Lvl_Build` is what `UWorld::GetMapName` answers in the editor, and a row only
-		 * reachable by the undecorated spelling works for whoever typed it and for nobody else.
-		 */
+		// By map, using the PIE-decorated name GetMapName returns in the editor.
 		const int32 ByMap = IndexForOptionsAndMap(FString(), TEXT("UEDPIE_0_Lvl_Build"), How);
 
 		TestTrue(
@@ -1511,7 +1221,7 @@ bool FDestructionScenariosBuildSandboxRowTest::RunTest(const FString& Parameters
 			ByMap == Index && How == EScenarioSelection::ByMapName);
 	}
 
-	/* --- TWO: it says it is a build sandbox, and it carries nothing to lay --------------- */
+	// Flagged a build sandbox, with nothing to lay.
 
 	TestTrue(
 		*FString::Printf(
@@ -1527,12 +1237,7 @@ bool FDestructionScenariosBuildSandboxRowTest::RunTest(const FString& Parameters
 			static_cast<bool>(Row.LayStructure) ? TEXT("carries") : TEXT("carries no")),
 		!static_cast<bool>(Row.LayStructure));
 
-	/*
-	 * AND ITS `Wall` IS EXACTLY THE DEFAULT ONE. Asserted on the two fields that decide whether a
-	 * wall exists at all rather than on the whole spec, because those are the two `RunningBond`
-	 * refuses on and the two the catalogue sweep's "carries a running-bond spec" guard reads: a row
-	 * with either of them set is a row claiming to describe a wall.
-	 */
+	// Empty wall: the two fields RunningBond and the catalogue sweep use to decide a wall exists.
 	TestTrue(
 		*FString::Printf(
 			TEXT("the build row must carry an EMPTY wall spec — no courses and no bricks per ")
@@ -1546,7 +1251,7 @@ bool FDestructionScenariosBuildSandboxRowTest::RunTest(const FString& Parameters
 			Row.CutCentresCm.Num()),
 		Row.CutCentresCm.Num() == 0);
 
-	/* --- THREE: a human is told what this level is for ----------------------------------- */
+	// Title and expectation.
 
 	const FString Title(Row.Title != nullptr ? Row.Title : TEXT(""));
 	const FString Expectation(Row.Expectation != nullptr ? Row.Expectation : TEXT(""));
@@ -1565,7 +1270,7 @@ bool FDestructionScenariosBuildSandboxRowTest::RunTest(const FString& Parameters
 			*Expectation),
 		Expectation.Len() > 0);
 
-	/* --- FOUR: Build REFUSES it, writing nothing — which is why the game mode must branch - */
+	// Build refuses it and writes nothing.
 
 	{
 		FBrickLayout Built;
@@ -1594,20 +1299,9 @@ bool FDestructionScenariosBuildSandboxRowTest::RunTest(const FString& Parameters
 }
 
 /**
- * EXACTLY ONE ROW IS A BUILD SANDBOX, SWEPT OVER THE WHOLE CATALOGUE.
- *
- * `bBuildSandbox` turns a level from "watch this structure" into "there is no structure". Set by
- * accident on one of the thirty-odd real scenarios — a copied row, a field left behind by an edit —
- * it silently deletes that level's wall, and the level still loads, still names itself, still
- * carries its title and its expectation, and shows a player an empty plot where a corbel should be.
- * Nothing else in the suite would say so: every acceptance and hold test looks up its row by NAME
- * and measures the structure the fixture lays, not the one the level would.
- *
- * SO THE FLAG IS PINNED AS A CARDINALITY OVER THE TABLE rather than as a property of one row, which
- * is the same shape as the catalogue's own duplicate-name sweep and for the same reason: it is
- * adding a row that must stay cheap, and adding one must not be able to quietly claim this.
- *
- * NEEDS A TICKING WORLD: NO.
+ * Exactly one catalogue row is a build sandbox. The flag set by accident (e.g. a copied row)
+ * silently empties a real level, and no other test would notice since they measure the fixture,
+ * not the level. World-free.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FDestructionScenariosOneBuildSandboxTest,
@@ -1621,12 +1315,7 @@ bool FDestructionScenariosOneBuildSandboxTest::RunTest(const FString& Parameters
 
 	const TArray<FScenario>& Rows = Catalogue();
 
-	/*
-	 * A FLOOR ON THE SWEEP, so a catalogue that emptied fails here rather than turning "exactly one"
-	 * into a loop over no rows that cannot count to one anyway. Thirty-five is the thirty-four
-	 * levels LEVELS.md indexes plus this one, and a floor rather than an equality because adding a
-	 * scenario is meant to be adding a row.
-	 */
+	// Floor so an emptied catalogue fails: 34 levels in LEVELS.md plus the build level.
 	constexpr int32 ScenariosTestRowFloor = 35;
 
 	TestTrue(
@@ -1649,11 +1338,7 @@ bool FDestructionScenariosOneBuildSandboxTest::RunTest(const FString& Parameters
 
 		SandboxRowNames.Add(FString::Printf(TEXT("row %d ('%s')"), Index, *Row.Name.ToString()));
 
-		/*
-		 * AND A ROW THAT CLAIMS IT MUST MEAN IT. The flag and the emptiness are two facts that can
-		 * disagree, and the dangerous direction is a row that carries a real structure AND the flag:
-		 * the level would lay nothing and a human would be told the builder was broken.
-		 */
+		// A flagged row must also be empty; a flagged row with a real structure would lay nothing.
 		TestTrue(
 			*FString::Printf(
 				TEXT("row %d ('%s') is flagged a build sandbox, so it must describe NO structure: ")
