@@ -13,23 +13,14 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The fixture-catalogue sweep (DESIGN.md §7). Every affordable acceptance fixture is laid
- * through production's producers, bridged through BuildRigidBlockProblem, solved by the
- * rigid-block LP, and diffed against the production cascade on the identical structure. Each
- * row pins lambda* and the agree/disagree classification.
+ * Fixture-catalogue sweep (DESIGN.md §7): each affordable fixture is built by production's
+ * producers, bridged, solved by the rigid-block LP and diffed against the production cascade
+ * on the same structure. Each row pins lambda* and the relation.
  *
- * A classification is not a verdict on which method is right: the oracle is finite-tension
- * rigid-plastic limit analysis, production an uncracked-elastic routing solver plus an
- * overturning guard. lambda* runs high (plastic limit plus redistribution). Strengths are the
- * profile's mean-basis values post the 2026-08-14 re-anchor (TRAPS.md); the old /6 discount
- * lives in the data now and must not double up.
- *
- * Production's verdict is SolveAndBreak to a standstill (stranded pieces count as fallen but
- * are reported separately); the oracle's is global, one lambda* for the whole structure, so a
- * local loss reads Falls.
- *
- * Slow rows live in the opt-in OracleSweepFull tier. Excluded as too large: 30-course walls
- * (cases 1-5), corbels E35/E36 and F. Named namespace because unity builds merge TUs.
+ * A relation is not a verdict on which is right: the oracle is rigid-plastic limit analysis
+ * with one global lambda* (a local loss reads Falls), production an elastic router run to a
+ * standstill. Strengths are mean-basis (TRAPS.md 2026-08-14); do not re-apply the old /6.
+ * Slow rows live in OracleSweepFull. Named namespace because unity builds merge TUs.
  */
 namespace RigidBlockSweepTestSupport
 {
@@ -37,8 +28,7 @@ namespace RigidBlockSweepTestSupport
 	using namespace DestructionProfiles;
 	using namespace RigidBlockOracle;
 
-	/* Brick and units, derived here and imported from nowhere: a wrong production constant
-	 * must disagree with this file. */
+	// Brick constants defined locally so a wrong production constant disagrees with this file.
 
 	constexpr double SweepBrickLengthCm = 21.5;
 	constexpr double SweepBrickWidthCm = 10.25;
@@ -51,25 +41,14 @@ namespace RigidBlockSweepTestSupport
 	constexpr double SweepBrickMassKg = SweepClayDensityGramsPerCubicCm
 		* SweepBrickLengthCm * SweepBrickWidthCm * SweepBrickHeightCm / 1000.0;
 
-	/**
-	 * Tolerance for "the LP prices two fixtures identically", three orders tighter than any
-	 * row window. Measured 2026-08-12: both pairs agree to ~1 ulp (2.21e-16, 1.31e-16); 1e-15
-	 * allows a different pivot path to the same optimum, not a different optimum.
-	 */
+	/** Tolerance for "the LP prices two fixtures identically". Pairs agree to ~1 ulp (2026-08-12). */
 	constexpr double SameNumberRelativeTolerance = 1.0e-15;
 
-	/*
-	 * Production's wall-16 / wall-15 worst-joint ratio, measured 4.5082330043756453 on the
-	 * mean basis (was 31.5576 at characteristic data). Not strength-invariant: the bare side
-	 * is tension-governed and moved /7, the loaded side is compression-governed and did not.
-	 */
+	// Production's wall-16 / wall-15 worst-joint ratio, measured 4.5082330043756453 (mean basis).
 	constexpr double SuperimposedReadingRatioLo = 4.5081;
 	constexpr double SuperimposedReadingRatioHi = 4.5084;
 
-	/**
-	 * Production's 20-course / 10-course free-end ratio, measured 2.11985065259119.
-	 * Height-linear, a shade over 2 because the removed brick's own course does not double.
-	 */
+	/** Production's 20-course / 10-course free-end ratio, measured 2.11985065259119. */
 	constexpr double FreeEndReadingRatioLo = 2.119;
 	constexpr double FreeEndReadingRatioHi = 2.121;
 
@@ -90,19 +69,10 @@ namespace RigidBlockSweepTestSupport
 		/** Production holds up a structure the limit theorem says has no equilibrium. */
 		OracleFallsProductionStands,
 
-		/**
-		 * Post-solve verification fails at this scale. A canary: if the solver answers here the
-		 * row fails and must be promoted to a measured relation. Unused today (dense-era canary
-		 * promoted 2026-08-12); kept for future refusal pins.
-		 */
+		/** Post-solve verification fails at this scale. Canary; unused today. */
 		OracleRefusesAtThisScale,
 
-		/**
-		 * Phase-2 simplex fails, never reaching an answer to reject. Separate from the
-		 * verification refusal above: the two mean opposite things about how far the solve got.
-		 * Unreachable today (since Slice 0a, 2026-08-15 the lambda-cap tower terminates
-		 * Optimal); kept for the next refusal.
-		 */
+		/** Phase-2 simplex fails before any answer exists. Canary; unused today. */
 		OracleRefusesPhaseTwo,
 	};
 
@@ -132,29 +102,20 @@ namespace RigidBlockSweepTestSupport
 
 		ERelation Expected = ERelation::Unmeasured;
 
-		/**
-		 * The lambda* pin, inclusive. The solver is deterministic, so these are tight windows
-		 * around the measured value; a negative low bound means unmeasured and must fail.
-		 */
+		/** Inclusive lambda* window around the measured value; negative means unmeasured. */
 		double LambdaLo = -1.0;
 		double LambdaHi = -1.0;
 
-		/** Production's drop count, pinned exactly (the DropsToday pattern). */
+		/** Production's drop count, pinned exactly. */
 		int32 ProductionFallen = INDEX_NONE;
 
-		/**
-		 * Production's stranded count, pinned separately: a stranded piece is one the router
-		 * could not route, not one the wall could not hold (DESIGN.md §5.1), so part of a
-		 * "collapse" can be a routing limitation. INDEX_NONE leaves it unasserted.
-		 */
+		/** Production's stranded count (a routing limit, DESIGN.md §5.1). INDEX_NONE: unasserted. */
 		int32 ProductionStranded = INDEX_NONE;
 
 		/**
-		 * Pricing experiment: rewrite the oracle's problem between bridge and solve, returning
-		 * how many joints it changed. Editing Joints[i].Strength moves the oracle only (a
-		 * bit-identical production control); editing FStructure would move both. The count
-		 * matters because "lambda* did not move" is a valid answer, so an override that touched
-		 * zero joints must be distinguishable from a real negative result.
+		 * Pricing experiment: rewrites the oracle's problem only (production stays the control)
+		 * and returns how many joints it changed, so a no-op override is not mistaken for a
+		 * negative result.
 		 */
 		TFunction<int32(FOracleProblem&)> AdjustProblem;
 
@@ -175,17 +136,16 @@ namespace RigidBlockSweepTestSupport
 		FOracleResult Oracle;
 		double OracleSeconds = 0.0;
 
-		/** Joints the row's AdjustProblem rewrote; zero on every row that has none. */
 		int32 JointsOverridden = 0;
 
-		/** Production, on the identical structure: reading first, then the cascade. */
+		// Production, on the same structure.
 		double WorstUtilisation = 0.0;
 		int32 Passes = 0;
 		int32 Fallen = 0;
 		int32 Stranded = 0;
 	};
 
-	/** Live pieces with no path to the earth after the cascade. Stranded counts. */
+	/** Live pieces with no path to ground; stranded ones are also counted separately. */
 	void CountFallen(const FStructure& Structure, int32& OutFallen, int32& OutStranded)
 	{
 		OutFallen = 0;
@@ -212,10 +172,7 @@ namespace RigidBlockSweepTestSupport
 		}
 	}
 
-	/**
-	 * Run one fixture both ways. The oracle goes first because BuildRigidBlockProblem reads a
-	 * const structure and SolveAndBreak mutates it; both must judge the identical post-cut graph.
-	 */
+	/** Run one fixture both ways. Oracle first, because SolveAndBreak mutates the structure. */
 	void MeasureRow(const FSweepRow& Row, FSweepReading& Out)
 	{
 		FStructure Structure;
@@ -235,10 +192,6 @@ namespace RigidBlockSweepTestSupport
 			Out.Blocks = Problem.Blocks.Num();
 			Out.Joints = Problem.Joints.Num();
 
-			/*
-			 * The pricing edit, after the block and joint counts are taken so those still
-			 * describe the fixture: an override changes strengths, never geometry.
-			 */
 			if (Row.AdjustProblem)
 			{
 				Out.JointsOverridden = Row.AdjustProblem(Problem);
@@ -249,7 +202,6 @@ namespace RigidBlockSweepTestSupport
 			Out.OracleSeconds = FPlatformTime::Seconds() - Started;
 		}
 
-		/* The production reading (non-destructive), then the cascade to a standstill. */
 		Structure.SolveLoads();
 
 		for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
@@ -266,14 +218,10 @@ namespace RigidBlockSweepTestSupport
 		CountFallen(Structure, Out.Fallen, Out.Stranded);
 	}
 
-	/**
-	 * One line per fixture, logged immediately as well as to the report: the slow sweep runs
-	 * for minutes per row, and a measurement that only appears at the end is lost if the run is killed.
-	 */
+	/** One line per fixture, logged immediately so a killed slow run keeps its readings. */
 	void ReportRow(FAutomationTestBase& Test, const FSweepRow& Row, const FSweepReading& R)
 	{
-		/* 17 digits, not 9: the cross-row same-number pins assert agreement far tighter than
-		 * any single row's window, so the log line must carry enough digits to re-derive by hand. */
+		// 17 digits so the tight cross-row pins can be re-derived from the log.
 		const FString Line = FString::Printf(
 			TEXT("SWEEP %s: lambda=%.17g answered=%d pivots=%d secs=%.3f blocks=%d joints=%d ")
 			TEXT("overridden=%d ")
@@ -288,10 +236,7 @@ namespace RigidBlockSweepTestSupport
 		Test.AddInfo(Line);
 	}
 
-	/**
-	 * Production's half of the diff, pinned exactly (the DropsToday pattern), in both the
-	 * measured and the refusal branch so a refusal row watches production just as closely.
-	 */
+	/** Production's half of the diff, pinned exactly; also run on refusal rows. */
 	void CheckProductionCounts(
 		FAutomationTestBase& Test, const FSweepRow& Row, const FSweepReading& R)
 	{
@@ -328,8 +273,7 @@ namespace RigidBlockSweepTestSupport
 			return;
 		}
 
-		/* The bridge must represent every swept fixture; also the watch that no fixture
-		 * smuggles in a Y-normal joint the 2D oracle would refuse. */
+		// Also catches a Y-normal joint the 2D oracle would refuse.
 		if (!Test.TestTrue(
 				*FString::Printf(
 					TEXT("%s: the bridge must represent this fixture (it said: %s)"),
@@ -339,11 +283,7 @@ namespace RigidBlockSweepTestSupport
 			return;
 		}
 
-		/*
-		 * A pricing experiment must have priced something, checked ahead of the relation: a
-		 * probe whose selector matched nothing reproduces the control's lambda* and looks like
-		 * "the strength does not bind" without having varied it.
-		 */
+		// Checked first: an override that matched nothing looks like a negative result.
 		if (Row.OverriddenJoints != INDEX_NONE)
 		{
 			Test.TestEqual(
@@ -355,11 +295,7 @@ namespace RigidBlockSweepTestSupport
 				R.JointsOverridden, Row.OverriddenJoints);
 		}
 
-		/*
-		 * A pinned refusal asserts the refusal itself: not answered, for the recorded reason,
-		 * with production's side still pinned. An answer here means the solver's envelope
-		 * moved: promote the row, don't delete the failure. Unreachable today; kept for future pins.
-		 */
+		// A pinned refusal asserts the refusal and its reason. An answer here means: promote the row.
 		if (Row.Expected == ERelation::OracleRefusesAtThisScale)
 		{
 			Test.TestTrue(
@@ -385,11 +321,7 @@ namespace RigidBlockSweepTestSupport
 			return;
 		}
 
-		/*
-		 * Same canary shape for the other refusal, where the solver never reaches an answer to
-		 * reject. A separate branch, not a widened substring test, because the two refusals mean
-		 * opposite things about how far the solve got.
-		 */
+		// Separate branch: the two refusals mean opposite things about how far the solve got.
 		if (Row.Expected == ERelation::OracleRefusesPhaseTwo)
 		{
 			Test.TestTrue(
@@ -479,12 +411,7 @@ namespace RigidBlockSweepTestSupport
 		CheckProductionCounts(Test, Row, R);
 	}
 
-	/**
-	 * Run every row, keeping the readings, because some findings live between two rows: two
-	 * fixtures the LP prices identically while production separates them, or the reverse. A
-	 * cross-row pin asserts two numbers are the same number, which a same-sized drift on both
-	 * sides cannot satisfy.
-	 */
+	/** Run every row, keeping the readings for cross-row pins. */
 	void RunRows(
 		FAutomationTestBase& Test,
 		const TArray<FSweepRow>& Rows,
@@ -507,7 +434,7 @@ namespace RigidBlockSweepTestSupport
 		RunRows(Test, Rows, Unread);
 	}
 
-	/** A reading by row name; a cross-row pin names its rows rather than indexing them. */
+	/** A reading by row name. */
 	const FSweepReading* ReadingNamed(
 		FAutomationTestBase& Test,
 		const TArray<FSweepRow>& Rows,
@@ -530,10 +457,7 @@ namespace RigidBlockSweepTestSupport
 		return nullptr;
 	}
 
-	/**
-	 * The same-number pin: two fixtures whose lambda* the LP reads identically, at a tolerance
-	 * orders tighter than either row's window. The identity is the finding, not the magnitude.
-	 */
+	/** Asserts two rows' lambda* are the same number, far tighter than either row's window. */
 	void CheckSameLambda(
 		FAutomationTestBase& Test,
 		const TCHAR* What,
@@ -560,9 +484,8 @@ namespace RigidBlockSweepTestSupport
 	}
 
 	/**
-	 * The other half of a pair pin: production's readings on the same two fixtures must stay
-	 * apart by the measured ratio. Stops a same-number pin passing vacuously, since two rows
-	 * accidentally built from one fixture would read identical lambda* and utilisations.
+	 * Production's readings on a same-number pair must stay apart by the measured ratio, so
+	 * two rows accidentally built from one fixture cannot pass the pin vacuously.
 	 */
 	void CheckReadingRatio(
 		FAutomationTestBase& Test,
@@ -589,10 +512,9 @@ namespace RigidBlockSweepTestSupport
 			Ratio >= RatioLo && Ratio <= RatioHi);
 	}
 
-	/* Fixture builders. Producers are production's; hand-laid geometry is transcribed from the
-	 * acceptance fixture it mirrors, with preconditions pinning the shape. */
+	// Fixture builders. Hand-laid geometry is transcribed from the acceptance fixture it mirrors.
 
-	/** Lay a scenario row's structure and apply its cut; production data end to end. */
+	/** Lay a scenario row's structure and apply its cut. */
 	bool BuildScenarioStructure(const TCHAR* ScenarioName, FStructure& Out, FString& OutWhy)
 	{
 		using namespace DestructionScenarios;
@@ -628,12 +550,7 @@ namespace RigidBlockSweepTestSupport
 		return true;
 	}
 
-	/**
-	 * The leaning-stack acceptance fixture, transcribed from LeaningStackAcceptanceTest:
-	 * course i at (10*i, 0, 3.25 + 7.5*i), base grounded, mortared through MakeInterface
-	 * with a 1 cm bed. The slice-1 bridge test proved this layout and the hand-built oracle
-	 * problem are the same problem bit for bit.
-	 */
+	/** LeaningStackAcceptanceTest's fixture: course i at (10*i, 0, 3.25 + 7.5*i), base grounded. */
 	bool BuildLeaningStack(int32 Courses, FStructure& Out, FString& OutWhy)
 	{
 		TArray<FPieceBox> Boxes;
@@ -675,7 +592,7 @@ namespace RigidBlockSweepTestSupport
 		return true;
 	}
 
-	/* --- The beam pair, transcribed from BeamAcceptanceTest. ------------------------- */
+	// The beam pair, transcribed from BeamAcceptanceTest.
 
 	constexpr double BeamSectionCm = 10.0;
 	constexpr double BeamSegmentLengthCm = 220.0;
@@ -686,11 +603,7 @@ namespace RigidBlockSweepTestSupport
 
 	constexpr double BeamC24DensityGramsPerCubicCm = 0.42;
 
-	/*
-	 * Mean basis, re-transcribed 2026-08-14 in step with BeamAcceptanceTest's 2026-08-13
-	 * move (JCSS x1.50 on EN 338's f_m,k and f_v,k; JCSS Table A static yield for S275).
-	 * Characteristic strengths would measure a different fixture from the catalogue row.
-	 */
+	// Mean basis, matching BeamAcceptanceTest (JCSS x1.50 on EN 338; JCSS static yield for S275).
 	constexpr double BeamC24BendingMPa = 36.0;
 	constexpr double BeamC24ShearMPa = 6.0;
 	constexpr double BeamS275YieldMPa = 290.0;
@@ -786,11 +699,7 @@ namespace RigidBlockSweepTestSupport
 		return true;
 	}
 
-	/**
-	 * The one-cell dry jamming pair, transcribed from the slice-1 bridge test: grounded
-	 * seat G, half-seated P (centroid 5.625 cm outboard of its 10.25 cm seat), abutting
-	 * neighbour N on its own grounded G2, everything dry stone.
-	 */
+	/** One-cell dry jamming pair: grounded seat, half-seated brick, abutting neighbour on its own seat. */
 	bool BuildOneCellDryPair(FStructure& Out, FString& OutWhy)
 	{
 		const FVector Extent =
@@ -840,10 +749,7 @@ namespace RigidBlockSweepTestSupport
 		return true;
 	}
 
-	/**
-	 * The free-end family: a 7-cell running-bond wall of N courses through the acceptance-wall
-	 * producer, outermost full brick of the grounded course removed. StructureFreeEndHeightTest's fixture.
-	 */
+	/** StructureFreeEndHeightTest's fixture: 7-cell wall, outermost grounded brick removed. */
 	bool BuildFreeEnd(int32 Courses, FStructure& Out, FString& OutWhy)
 	{
 		using namespace DestructionWallCases;
@@ -865,7 +771,6 @@ namespace RigidBlockSweepTestSupport
 			return false;
 		}
 
-		/* The cell-0 brick of course 0: centre x = 0 exactly, the wall's free left end. */
 		const FWallRegion Cut[] = { { 0, 0, -0.25, 0.25 } };
 
 		TArray<int32> CutPieces;
@@ -888,24 +793,13 @@ namespace RigidBlockSweepTestSupport
 		return true;
 	}
 
-	/* --- The case-21 opening family, parameterised for the two mechanism ladders. ----- */
+	// The case-21 opening family. Opening width is a per-rung parameter (case 21 is 18 cells).
 
-	/* No OpeningCells constant: the matched-span experiment made opening width a rung
-	 * parameter, so every rung passes its own count and case 21's 18 lives at the call sites. */
-
-	/** Courses the opening is cut through. Held at case 21's three. */
 	constexpr int32 LadderOpeningCourses = 3;
 
-	/** Courses of masonry over the opening. Held at the user's two-course minimum. */
 	constexpr int32 LadderCoverCourses = 2;
 
-	/**
-	 * Z of the cover's underside for a rung with this much masonry below the opening. Below
-	 * this line every bed joint is a jamb bed joint (between the reveals there is nothing to
-	 * bed); above it the cover is continuous. So "bed joint below the cover" means "jamb bed
-	 * joint", from geometry rather than a per-jamb-width X window. Clearance 0.5 cm below, 7
-	 * above, so it never clips a joint it must separate.
-	 */
+	/** Z of the cover's underside. Every bed joint below it is a jamb bed joint. */
 	constexpr double LadderCoverUndersideZCm(int32 CoursesBelow)
 	{
 		return double(CoursesBelow + LadderOpeningCourses) * SweepCoursePitchCm;
@@ -923,12 +817,9 @@ namespace RigidBlockSweepTestSupport
 	}
 
 	/**
-	 * Experiment one: zero the cohesion in the jamb's bed joints, leaving friction, tension and
-	 * every other joint as built. The case-21 hypothesis is that the LP bleeds its thrust into
-	 * the jamb bed joints as Coulomb shear to ground; cohesion dominates that capacity (0.2 MPa
-	 * vs mu x precompression ~0.6 x 0.018 MPa, ~18x), so removing it removes the mechanism.
-	 *
-	 * @return how many joints were rewritten, pinned by the row.
+	 * Zero cohesion in the jamb bed joints only. Tests case 21's hypothesis that the LP bleeds
+	 * thrust to ground as bed-joint shear, where cohesion dominates (0.2 MPa vs ~0.011 MPa of
+	 * friction). Returns the joints rewritten.
 	 */
 	int32 ZeroJambBedCohesion(int32 CoursesBelow, FOracleProblem& Problem)
 	{
@@ -947,11 +838,8 @@ namespace RigidBlockSweepTestSupport
 	}
 
 	/**
-	 * Second probe: scale the tensile strength of the cover's head joints only. A cover
-	 * spanning as a deep bending panel is linear in this number, while head-joint compression
-	 * (what an arch uses) is untouched, so the two mechanisms separate. Predicted not to track
-	 * (5.511 is 66x what a tension-bond panel holds here); the joint-count pin keeps that
-	 * negative result distinct from an override matching nothing.
+	 * Scale tension in the cover's head joints only. A bending panel is linear in it; an arch
+	 * (head-joint compression) ignores it, so this separates the two mechanisms.
 	 */
 	int32 ScaleCoverHeadTension(int32 CoursesBelow, double Factor, FOracleProblem& Problem)
 	{
@@ -970,34 +858,20 @@ namespace RigidBlockSweepTestSupport
 	}
 
 	/**
-	 * Slice 0c's crushing-relax value. Relaxing the crushing cap means raising the compressive
-	 * limit, not zeroing it (zero would forbid the joint carrying compression and collapse the
-	 * wall for a non-crushing reason). 1e6 MPa is 1e5x the profile's 10 MPa, enough to make the
-	 * crushing row non-binding without a NaN or infinity the oracle would refuse.
+	 * Relaxed crushing cap: raised, not zeroed (zero forbids compression entirely). Finite
+	 * because the oracle refuses infinity.
 	 */
 	constexpr double ResidualUncappedCrushingMPa = 1.0e6;
 
-	/**
-	 * Height line splitting the jamb chain into its top two bearing courses and its run to
-	 * ground. For case 21 the cover underside is at 4x pitch (CoursesBelow=1,
-	 * LadderOpeningCourses=3); two pitches up puts the bearing courses on one side and the run
-	 * to ground on the other, with a full course of clearance either side.
-	 */
+	/** Splits the jamb chain into its top two bearing courses and its run to ground. */
 	constexpr double LadderChainBearingSplitZCm(int32 CoursesBelow)
 	{
 		return double(CoursesBelow + LadderOpeningCourses - 2) * SweepCoursePitchCm;
 	}
 
 	/**
-	 * Slice 0c's residual-attribution knob: from case 21's residual state (jamb bed cohesion
-	 * gone, lambda* 4.768), remove one more mechanism from a chosen band of the jamb chain and
-	 * re-solve to see whether it held the residual up. Same per-joint override shape as
-	 * ZeroJambBedCohesion, extended two ways: which mechanism (cohesion, friction, crushing cap
-	 * relaxed per ResidualUncappedCrushingMPa, tensile bond zeroed) in any combination, and
-	 * where (a Z band [BandLo, BandHi)).
-	 *
-	 * @return how many jamb bed joints were rewritten, pinned by the row (a band matching
-	 *         nothing measures nothing).
+	 * Slice 0c's residual-attribution knob: remove chosen mechanisms from jamb bed joints in a
+	 * Z band [BandLo, BandHi) and re-solve. Returns the joints rewritten.
 	 */
 	int32 AdjustJambBedResidual(
 		int32 CoursesBelow,
@@ -1046,28 +920,12 @@ namespace RigidBlockSweepTestSupport
 	}
 
 	/**
-	 * One rung of either ladder: case 21's wall with exactly one dimension moved. `CoursesBelow`
-	 * is the masonry under the opening (rise-ladder variable, case 21 = 1); `JambCells` the
-	 * masonry either side (abutment-ladder variable, = 2); `OpeningCells` the cut's width in
-	 * bricks (matched-span variable, = 18). `CoverTailCells` is the disambiguating rung's
-	 * variable, INDEX_NONE elsewhere (see the trim block below).
+	 * One ladder rung: case 21's wall (OpeningCells 18, CoursesBelow 1, JambCells 2) with one
+	 * dimension moved. CoverTailCells is used only by the disambiguating rung (else INDEX_NONE).
+	 * The ladder test pins the s=1/j=2 rung equal to Scenario("wall-21").
 	 *
-	 * The reveal the cover bears on is not OpeningCells x cell pitch: an even course loses
-	 * OpeningCells whole bricks, an odd one loses one fewer and bears a cell narrower. So an
-	 * 18-cell odd-top cut and a 17-cell even-top cut present the same 383.50 cm on opposite
-	 * bond parities.
-	 *
-	 * Production's own bricklayer driven by this file's constants; the ladder test pins the
-	 * s=1/j=2 rung equal to Scenario("wall-21"), so the arithmetic is checked against the
-	 * shipped catalogue rather than trusted.
-	 *
-	 * The cut, in (course, cell) vocabulary (piece in when its course is in the inclusive range
-	 * and its cell strictly between the bounds): courses s..s+2, cells j..j+OpeningCells-1 of
-	 * the even courses. At 18 cells, s=1, j=2 that is case 21's { 1, 3, 1.75, 19.25 }.
-	 *
-	 * Parity caveat: an opening starting odd takes 17+18+17=52 bricks, one starting even
-	 * 18+17+18=53 — real and small. A ladder driven by this alternates; one driven by the
-	 * intended variable moves by a factor.
+	 * Parity: an odd course loses one brick fewer than an even one, so an opening starting odd
+	 * takes 52 bricks and one starting even 53.
 	 */
 	bool BuildOpeningLadderWall(
 		int32 OpeningCells, int32 CoursesBelow, int32 JambCells, int32 CoverTailCells,
@@ -1111,12 +969,8 @@ namespace RigidBlockSweepTestSupport
 			double(JambCells + OpeningCells - 1) + 0.25 });
 
 		/*
-		 * The cover tail, used only by the disambiguating rung. Widening the jamb widens both
-		 * the bearing under the cover and the cover length over it, so the abutment ladder alone
-		 * cannot say which bought the margin. Trimming the cover to a two-cell tail over a
-		 * three-cell jamb separates them: the reaction keeps the wider bearing, the panel loses
-		 * the tail. The trim is symmetric but not exactly one cell (odd cover courses close with
-		 * half bats), so "overhangs by about two cells", not an exact tail.
+		 * Cover tail trim: separates wider bearing from longer cover, which widening the jamb
+		 * changes together. Approximate by a half bat on odd courses.
 		 */
 		if (CoverTailCells > 0 && CoverTailCells < JambCells)
 		{
@@ -1132,8 +986,7 @@ namespace RigidBlockSweepTestSupport
 		TArray<int32> CutPieces;
 		DestructionWallCases::PiecesInRegions(Laid, Cut, CutPieces);
 
-		/* A rung's cut is 52 or 53 bricks (parity note above); anything else means the region
-		 * arithmetic and the bricklayer have stopped agreeing. */
+		// Any other count means the region arithmetic and the bricklayer disagree.
 		const int32 WholeCourses = LadderOpeningCourses / 2 + 1;
 		const int32 HalfCourses = LadderOpeningCourses - WholeCourses;
 
@@ -1144,8 +997,7 @@ namespace RigidBlockSweepTestSupport
 
 		int32 Wanted = (CoursesBelow % 2 == 0) ? EvenFirst : OddFirst;
 
-		/* Trim: the two cover courses are one even and one odd, so each end loses TrimCells off
-		 * the even course and TrimCells + 1 off the odd (the half bat). */
+		// Each end loses TrimCells off the even cover course and TrimCells + 1 off the odd.
 		if (CoverTailCells > 0 && CoverTailCells < JambCells)
 		{
 			Wanted += 2 * (2 * (JambCells - CoverTailCells) + 1);
@@ -1178,18 +1030,8 @@ namespace RigidBlockSweepTestSupport
 	}
 
 	/**
-	 * The eight-course-cover family: acceptance case 22's shape, parameterised on width. Separate
-	 * from BuildOpeningLadderWall because that fixes LadderCoverCourses; this family varies the
-	 * courses of cover, and its cut is one course band whatever the width.
-	 *
-	 * Case 22's shape: one grounded course, a three-course opening through courses 1..3, jambs of
-	 * JambCells either side, CoverCourses over it, so CoursesHigh = 1 + 3 + CoverCourses and
-	 * Cells = OpeningCells + 2*JambCells. At eight cover courses and a 35-cell opening between
-	 * two-cell jambs that is case 22's { 1, 3, 1.75, 36.25 }.
-	 *
-	 * Cut-count pin (parity check): the cut starts on course 1 (odd), so it loses
-	 * (OpeningCells-1) + OpeningCells + (OpeningCells-1) bricks; anything else means the builder
-	 * and bricklayer disagree.
+	 * Case 22's shape with variable cover depth: one grounded course, a three-course opening,
+	 * CoverCourses above. Case 22 itself is 8 cover courses, 35 opening cells, 2-cell jambs.
 	 */
 	bool BuildCoveredOpeningWall(
 		int32 CoverCourses, int32 OpeningCells, int32 JambCells,
@@ -1260,13 +1102,8 @@ namespace RigidBlockSweepTestSupport
 	}
 
 	/**
-	 * A ladder relation, pinned as a ratio of two lambda*, both competing predictions printed
-	 * beside the measurement and quoted in the failure.
-	 *
-	 * A ratio rather than two windows because the ladder's content is how the rungs move
-	 * relative to one another, which neither window states. A solver change shifting every rung
-	 * by one factor keeps the relation and breaks both windows: the relation is the physics, the
-	 * windows the arithmetic.
+	 * Pins a ladder relation as a ratio of two lambda*, with the competing predictions printed.
+	 * The ratio carries the physics; the per-rung windows only the arithmetic.
 	 */
 	void CheckLambdaLadderRatio(
 		FAutomationTestBase& Test,
@@ -1297,11 +1134,8 @@ namespace RigidBlockSweepTestSupport
 	}
 
 	/**
-	 * A rung must be the fixture its name claims, checked by block count (every rung of both
-	 * ladders has a different one), so a builder that ignored its parameter collides here rather
-	 * than reporting a plausible lambda* for a wall nobody asked for. The only net that catches
-	 * it: under the recorded rung-flip (s=3 secretly built as s=1) the lambda window and the
-	 * depth-ratio pin both passed, so window, ratio and size pins work as a set (TRAPS).
+	 * Checks a rung is the fixture its name claims, by block count. A recorded rung-flip passed
+	 * both the window and the ratio pin; only this caught it (TRAPS).
 	 */
 	void CheckRungSize(
 		FAutomationTestBase& Test,
@@ -1317,12 +1151,7 @@ namespace RigidBlockSweepTestSupport
 			Reading.Blocks, WantedBlocks);
 	}
 
-	/**
-	 * Slice 0d's flag-on AdjustProblem hook: turn the first-crack rows on and return the bonded
-	 * joint count (f_t > 0). Pinning that through OverriddenJoints makes "a row for every bonded
-	 * joint, none for a dry one" a contract. Uses the same f_t > 0 predicate the oracle keys on,
-	 * so agreement is the check, not a copy.
-	 */
+	/** Turns first-crack rows on and returns the bonded joint count (f_t > 0) for the row to pin. */
 	int32 TurnOnFirstCrackRows(FOracleProblem& Problem)
 	{
 		Problem.bFirstCrackRows = true;
@@ -1342,16 +1171,9 @@ namespace RigidBlockSweepTestSupport
 }
 
 /**
- * The leaning stack through the real fixture and bridge (sweep item (b)), and the
- * composite-depth measurement of item (e) on the fixture where composite depth is the whole
- * defect. Production's worst joint reading is height-invariant (0.138781067): the deep beam's
- * m^2 cancels the demand's m^2, so at 30 courses the joint reading overstates the true margin
- * ~115x. Verdicts agree only because BreakOverturnedBodies exists, which DESIGN.md §7 step 4
- * replaces.
- *
- * Mean re-anchor (2026-08-14): every rung is tension-governed and moved x7 with the bond
- * (lambda* 31.2074 / 8.6878 / 0.44049 / 0.24101 at 5/8/30/40 courses); drop counts (0/0/29/39)
- * held.
+ * Leaning stack (sweep items (b), (e)). Production's worst joint reading is height-invariant
+ * (0.138781067), overstating the 30-course margin ~115x; verdicts agree only because of
+ * BreakOverturnedBodies (DESIGN.md §7 step 4).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSweepLeaningStackTest,
@@ -1390,17 +1212,10 @@ bool FRigidBlockSweepLeaningStackTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The beam pair (sweep item (c)): the first measurement of the beam rows by a method with
- * global equilibrium that can express member failure (the glue line's tension bound is the
- * member's bending strength at the plastic stress block). Production drops all three beams,
- * light load included, because the dry no-tension bearings are refused arching relief and read
- * Max outside the kern. The oracle stands all three, discriminating the member material 6.9x
- * where production answers identically. The heavy-timber stand does not contradict the
- * catalogue's first-crack figure: the oracle reads the plastic stress block (3x first-crack)
- * plus redistribution, and for brittle timber first-crack stays the honest criterion.
- *
- * Mean re-anchor (2026-08-14): C24 36/6, S275 290; lambda* moved by the member factor to 2.6461
- * (heavy timber), 28.801 (light), 18.299 (steel).
+ * Beam pair (sweep item (c)). The glue line's tension bound is the member's bending strength,
+ * so the oracle can express member failure; it discriminates steel from timber 6.9x. The
+ * oracle reads the plastic stress block (3x first crack); for brittle timber first crack
+ * remains the honest criterion.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSweepBeamPairTest,
@@ -1414,11 +1229,8 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
 	TArray<FSweepRow> Rows;
 
 	/*
-	 * Row 1 re-pinned at the first-crack promotion (2026-08-28). The oracle is default-off, so
-	 * its window stays 2.64610374. Production's half moved: below the 200-block cap it solves
-	 * with first-crack rows live, and the heavy C24 beam's midspan glue line binds at first-crack
-	 * lambda* = 0.88258 < 1, so production fells it (drops 3). Rows 2/3 keep agree-stands: light
-	 * timber (28.80) and steel (18.30) clear 1.0 even at first crack's /3.
+	 * Production solves with first-crack rows below the 200-block cap, so the heavy C24 glue
+	 * line binds at 0.88258 and falls; the oracle (flag off) still stands it.
 	 */
 	Rows.Add({ TEXT("C24 timber beam, heavy load"),
 		TEXT("oracle (default-off, plastic) stands at 2.65; production now fells the beam ")
@@ -1456,16 +1268,9 @@ bool FRigidBlockSweepBeamPairTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The corbel family (sweep item (a)). A and B here; C and D in the slow test on cost; E35/E36
- * and F excluded (file header). The oracle agrees with every §8 corbel ruling, so the limit
- * theorem does not condemn the corbels the user ruled must stand. Two findings the verdicts
- * cannot carry: filling buys margin (bare arm hangs on its bond ladder, filled corbel jams as a
- * block), and the counterweight buys 22.6x in the LP where production (downward-only routing)
- * reads C and D within 0.4% and gains nothing.
- *
- * Mean re-anchor (2026-08-14): the two rungs moved by different factors (proof no window here
- * may be re-pinned by scaling) — A tension-bound x7 (20.333), B's Mohr-Coulomb jamming x1.506
- * (333.40) — so filling now buys 16.4x.
+ * Corbel family (sweep item (a)): A and B here, C and D in the slow test. The oracle agrees
+ * with every §8 corbel ruling; filling buys 16.4x (the filled corbel jams as a block). A and B
+ * are governed differently, so no window here may be re-pinned by scaling.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSweepCorbelFamilyTest,
@@ -1488,16 +1293,9 @@ bool FRigidBlockSweepCorbelFamilyTest::RunTest(const FString& Parameters)
 		ERelation::AgreeStands, 20.3328, 20.3331, 0 });
 
 	/*
-	 * Slice 0d mover: the bare arm with first-crack rows on. All four bonded joints reach first
-	 * crack and the ladder cuts to 0.2786 of control (5.6639); it still stands. The flag touches
-	 * only the oracle, so production's relation and zero drops carry over. OverriddenJoints = 4.
-	 *
-	 * Why 0.2786 is below the 1/3 floor and is not per-joint net tension (review 2026-08-21): a
-	 * single joint at eccentricity k has first-crack/plastic ratio (1+k)/(1+3k) in (1/3, 1],
-	 * reaching 1/3 only in pure bending. The sub-1/3 result is a multi-joint effect: first crack
-	 * binds all four joints at once, so the LP can no longer trade eccentricity between them to
-	 * stay in each kern. A mechanism finding, not a bug; the beams landing at /3 prove the
-	 * per-joint floor holds.
+	 * First crack cuts the bare arm to 0.2786 of control. That is below the single-joint 1/3
+	 * floor because all four joints bind at once and the LP can no longer trade eccentricity
+	 * between them. A mechanism finding, not a bug.
 	 */
 	Rows.Add({ TEXT("corbel A, bare arm of four — first crack"),
 		TEXT("bonded bending across the four-joint arm, cut to 0.279 of control — below the ")
@@ -1519,10 +1317,8 @@ bool FRigidBlockSweepCorbelFamilyTest::RunTest(const FString& Parameters)
 		ERelation::AgreeStands, 333.402, 333.405, 0 });
 
 	/*
-	 * Slice 0d compression control, pinned as a characterisation because the invariance is
-	 * approximate. Corbel B jams as a block (Mohr-Coulomb), so PROMOTION_DESIGN Sec 4.5 predicted
-	 * first crack ~unchanged; measured it moves 8% (0.9205 of control) because some bonded joints
-	 * reach net tension in bending. Only the dry set (0 bonded joints) is truly bit-identical.
+	 * Compression control, pinned as a characterisation: first crack moves corbel B by 8% because
+	 * some bonded joints still reach net tension in bending.
 	 */
 	Rows.Add({ TEXT("corbel B, filled four steps — first crack"),
 		TEXT("compression/jamming governs, so first crack moves it only 8% (0.9205 of ")
@@ -1549,11 +1345,6 @@ bool FRigidBlockSweepCorbelFamilyTest::RunTest(const FString& Parameters)
 
 	if (AOff != nullptr && AOn != nullptr && BOff != nullptr && BOn != nullptr)
 	{
-		/*
-		 * The move is the finding, not either rung's window. A single pure-bending joint reads
-		 * /3 = 0.3333 and none below; corbel A's four-joint arm reads 0.2786 below the floor
-		 * because first crack binds all four at once (see the mover comment above).
-		 */
 		CheckLambdaLadderRatio(*this,
 			TEXT("SLICE 0d: corbel A's four-joint arm under first crack"),
 			TEXT("a single pure-bending joint reads /3 = 0.3333 and none reads below it; the ")
@@ -1561,11 +1352,6 @@ bool FRigidBlockSweepCorbelFamilyTest::RunTest(const FString& Parameters)
 			TEXT("either rung, is the finding"),
 			*AOn, *AOff, 0.27854, 0.27858);
 
-		/*
-		 * The control's small move, pinned so "approximate invariance" is a number: a
-		 * compression-governed block still writes rows that bind by 8% (0.9205). A change moving
-		 * corbel B more (or bit-identical) fails here.
-		 */
 		CheckLambdaLadderRatio(*this,
 			TEXT("SLICE 0d: corbel B's jamming block under first crack (approximate invariance)"),
 			TEXT("compression governs so the prediction was ~none; measured 0.9205 — a bonded ")
@@ -1576,12 +1362,7 @@ bool FRigidBlockSweepCorbelFamilyTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-/**
- * The one-cell dry half seat with abutment. The oracle stands it by edge-contact jamming (the
- * head joint's top contact supplies the couple at a 7 cm arm); production once refused the
- * arching relief at 1.4921 of sliding capacity and the dry joint read Max. Limit theorem vs
- * uncracked-section convention, neither wrong, both pinned.
- */
+/** One-cell dry half seat with abutment: stands by edge-contact jamming at a 7 cm arm. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSweepOneCellTest,
 	"DestructionGame.Oracle.RigidBlock.Sweep.OneCellDisagreement",
@@ -1593,13 +1374,7 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
 
 	TArray<FSweepRow> Rows;
 
-	/*
-	 * Moved from oracle-stands/production-falls to agree-stands at slice 3b/4 (2026-08-27); the
-	 * oracle lambda* is unchanged at 9592.68. Production once dropped both non-grounded bricks
-	 * (missing no-tension rocking model). Below the 200-block cap the equilibrium LP is now the
-	 * break authority and finds the edge-contact jamming, so production stands both (drops 0,
-	 * was 2).
-	 */
+	// Agree-stands since slice 3b/4: below the 200-block cap production's LP finds the jamming too.
 	Rows.Add({ TEXT("one-cell dry half seat, with abutment"),
 		TEXT("edge-contact jamming (limit theorem); production now stands both bricks below the ")
 		TEXT("cap where the LP replaced the kern-and-centroid refusal"),
@@ -1612,23 +1387,9 @@ bool FRigidBlockSweepOneCellTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Slice 0d: the first-crack rows bite bonded bending and spare dry joints. With
- * FOracleProblem::bFirstCrackRows set, the LP carries -(n1+n2) + 3|n1-n2| <= f_t*A for every
- * joint with a real tensile bond and only those, cutting a bonded section's plastic bending
- * capacity to a third while every dry-stone joint returns bit-identical. Table in
- * PROMOTION_DESIGN Sec 4.3/4.5.
- *
- * The assertions:
- *   - Mechanism not outcome: the beam rows assert lambda* moved, never a verdict. Row 1's 0.882
- *     crosses 1.0 and would move a catalogue relation, a user ruling reported not encoded.
- *   - Window near control/3: BuildBeam lays one bonded joint and a simply-supported span carries
- *     N~=0 at midspan, so first crack is at full /3. Window 0.28-0.42 of control; 1.0 (no-op) is
- *     nowhere near.
- *   - Bit-identity for the dry pair is the keyed-on-data invariant. Its bite-prover (key on
- *     material/always, dry lambda* moves) is recorded, not run here.
- *
- * Tier: default suite (beam microseconds, dry one-cell fast). The full-sweep re-measurement is
- * OracleSweepFull work. No ticking world.
+ * Slice 0d: with bFirstCrackRows set, the LP adds -(n1+n2) + 3|n1-n2| <= f_t*A for every bonded
+ * joint only, cutting plastic bending capacity to a third (PROMOTION_DESIGN Sec 4.3/4.5).
+ * Beam rows assert lambda* moves to ~control/3 (midspan N~=0); dry joints stay bit-identical.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockFirstCrackBitesTest,
@@ -1639,7 +1400,7 @@ bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
 {
 	using namespace RigidBlockSweepTestSupport;
 
-	/** Joints the first-crack rule keys on: a real tensile bond, exactly bCanTension's set. */
+	// Joints the first-crack rule keys on: a real tensile bond.
 	const auto CountBonded = [](const FOracleProblem& Problem)
 	{
 		int32 Bonded = 0;
@@ -1655,11 +1416,7 @@ bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
 		return Bonded;
 	};
 
-	/*
-	 * Solve one built structure twice on the identical bridged problem: control (flag off) then
-	 * first-crack (flag on). Reports why if fixture, bridge or either solve fails, so a red never
-	 * hides behind a broken fixture.
-	 */
+	// Solve one bridged problem with the flag off, then on.
 	struct FPair
 	{
 		bool bOk = false;
@@ -1721,7 +1478,7 @@ bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
 		return Out;
 	};
 
-	/* ---- The three beam rows: one bonded glue line each, bending governs cleanly. -------- */
+	// Beam rows: one bonded glue line each, bending governs.
 	struct FBeamRow
 	{
 		const TCHAR* Name;
@@ -1756,16 +1513,12 @@ bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/* Exactly one bonded joint (the glue line). If not 1 the fixture changed and every
-		 * prediction below is about a different wall. */
 		TestEqual(
 			*FString::Printf(
 				TEXT("%s: exactly one bonded joint (the glue line) carries a first-crack row"),
 				Beam.Name),
 			P.Bonded, 1);
 
-		/* The control must still read its pinned window, or the flag-off path is not the wall the
-		 * prediction was made against and the ratio below is meaningless. */
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: control lambda* %.9g must sit at the pinned %.9g (flag off is the ")
@@ -1773,9 +1526,7 @@ bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
 				Beam.Name, P.Off.Lambda, Beam.ControlLambda),
 			FMath::Abs(P.Off.Lambda - Beam.ControlLambda) <= 1.0e-4 * Beam.ControlLambda);
 
-		/* The bite (the red's must-pass): adding first crack can only shrink lambda* (monotone),
-		 * and where bonded bending governs it shrinks past half. Rows absent => lambda*(on) ==
-		 * lambda*(off) and this fails, the whole red. */
+		// Absent rows leave lambda*(on) == lambda*(off), which fails here.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: FIRST-CRACK ROWS MUST BITE — lambda*(on)=%.9g must fall below ")
@@ -1784,8 +1535,7 @@ bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
 				Beam.Name, P.On.Lambda, P.Off.Lambda, Beam.ControlLambda / 3.0),
 			P.On.Lambda < 0.5 * P.Off.Lambda);
 
-		/* N~=0 at midspan puts first crack at full /3 severity, so lambda*(on) lands near
-		 * control/3. The window allows arching/shear wobble; 1.0 (no-op) is nowhere near. */
+		// N~=0 at midspan puts first crack at the full /3; the window allows arching/shear wobble.
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s: lambda*(on)=%.9g must land near control/3=%.9g (window 0.28-0.42 of ")
@@ -1794,31 +1544,25 @@ bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
 			P.On.Lambda >= 0.28 * P.Off.Lambda && P.On.Lambda <= 0.42 * P.Off.Lambda);
 	}
 
-	/* User-decision item, reported not asserted: beam row 1's 0.882 (2.6461/3) crosses 1.0,
-	 * moving its catalogue relation toward AGREE(falls) — right verdict (member fails in bending)
-	 * by a slightly wrong route (glue line cracks). The test asserts the drop, not the flip. */
+	// Reported, not asserted: the verdict flip on beam row 1 is a user decision.
 	AddInfo(TEXT(
 		"USER DECISION (do not bank): first-crack takes beam row 1 (C24 heavy) to ~0.882 "
 		"< 1.0, an oracle verdict flip to Falls — correct verdict, glue-line-cracking route "
 		"rather than member bending. Measure and REPORT for the user's ruling; do not encode "
 		"it as settled (PROMOTION_DESIGN Sec 4.3, Sec 8)."));
 
-	/* ---- The dry one-cell pair: no bond, must return bit-identical. ---------------------- */
+	// Dry one-cell pair: no bond, so it must return bit-identical.
 	{
 		const FPair P = SolveBothWays(*this, TEXT("one-cell dry half seat"),
 			[](FStructure& Out, FString& Why) { return BuildOneCellDryPair(Out, Why); });
 
 		if (P.bOk)
 		{
-			/* Keyed on data: a dry fixture offers the first-crack rule nothing to key on. */
 			TestEqual(
 				TEXT("one-cell dry half seat: zero bonded joints (nothing to carry a "
 					 "first-crack row)"),
 				P.Bonded, 0);
 
-			/* No bonded joint => no rows => lambda* and pivot count bit-identical with the flag
-			 * on. Green on arrival; its bite-prover (key on material/always, dry lambda* moves) is
-			 * recorded, not run here. */
 			TestEqual(
 				TEXT("one-cell dry half seat: lambda* is BIT-IDENTICAL with the flag on — dry "
 					 "stone has no bond to crack, so the rule keyed on f_t > 0 writes no row"),
@@ -1834,61 +1578,19 @@ bool FRigidBlockFirstCrackBitesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-/* ====================================================================================
- * The opt-in oracle sweep, in two tiers. Neither name contains "DestructionGame", so the
- * full-suite command never runs either tier. Both substring-match one filter:
+/*
+ * The opt-in oracle sweep: OracleSweepFast (iteration) and OracleSweepFull (verification).
+ * Neither name contains "DestructionGame", so the default suite never runs them; see CLAUDE.md
+ * for commands and counts. Placement is by cost alone.
  *
- *     -ExecCmds="Automation RunTests OracleSweepFast"  10 tests,   ~2 min
- *     -ExecCmds="Automation RunTests OracleSweepFull"   6 tests,  ~24 min
- *     -ExecCmds="Automation RunTests OracleSweep"      16 tests,  ~26 min (both)
- *
- * Counts re-checked 2026-09-03. The filter is a substring match, so the shared OracleSweep stem
- * is the union and neither tier is reachable by the default DestructionGame filter (TRAPS).
- *
- * Placement is cost alone; every row carries pinned expectations. Per-test seconds, measured
- * 2026-08-16 (this machine varies ~5%):
- *
- *     FULL   WallsAndLadders                              478 s
- *     FULL   PhaseTwoMustNotRefuseTheCoveredOpeningFamily  455 s
- *     FULL   FeasibilityReformulationCost (other file)     313 s
- *     fast   OpeningMechanismLadders                      22.4 s
- *     fast   PhaseTwoMustNotRefuseABoundedProblem         19.6 s
- *     fast   FreeEndHeightLadder                          16.1 s
- *     fast   Case21ResidualAttribution                    ~7.0 s
- *     fast   OpeningStrengthProbes                         4.1 s
- *     fast   RefusalNamesItsReason                         1.0 s
- *
- * The fast tier is iteration, not verification: three tests are 94% of the cost and the three
- * that watch the solver at scale. OracleSweepFull is mandatory before any commit touching the LP
- * oracle, and before any commit if the solver changed; a green fast tier says nothing about that.
- *
- * An opt-in tier rots (the NonNullRHI test rotted five slices, twelve errors when finally run,
- * TRAPS); the rule above plus the cost table is the mitigation. Whole-group cost ~490-530 s
- * against a ~30 s default budget; every run so far returned bit-identical lambda* and worst
- * readings. Keep the figure current: it is the argument for the group existing.
- * ==================================================================================== */
+ * OracleSweepFull is mandatory before any commit touching the LP oracle or the solver; a green
+ * fast tier verifies nothing at scale. An opt-in tier rots if not run (TRAPS).
+ */
 
 /**
- * The wall catalogue (sweep item (d)). Since the 2026-08-12 sparse rewrite every wall except the
- * 30-course five answers, and fifteen of the twenty acceptance cases carry a load factor, pinned
- * below. Rows are laid through the scenario catalogue, removed, bridged and diffed, ordered cheap
- * to expensive so a killed run leaves its measurements. The free-end ladder (item (e)) has its
- * own test below.
- *
- * What the measurements said once classified:
- *   - The oracle's ordering agreed with the catalogue's verdicts even where its threshold did
- *     not: the four fixtures the catalogue found hardest are the four the LP prices lowest.
- *   - The four rows needing a user ruling were all ruled 2026-08-12 (9/10/19 collapse -> stands,
- *     20 confirmed); each ruling is in its own row's mechanism text.
- *   - Two pairs are pinned as cross-row identities, not two windows: 15/16 and the free-end
- *     height ladder (CheckSameLambda: why an identity is the stronger pin).
- *   - Two "collapses" break no joint: wall-10 (12 down) and wall-19 (34 down) cascade in zero
- *     passes at readings under 0.32, so unrouted not overloaded. wall-20 is the opposite (a joint
- *     genuinely 42x over), which is why its verdict was confirmed not moved.
- *   - The stack-bond pair separates 36.75x in production vs 1.41x in the LP, not pinned as a
- *     ratio because the family carries a deliberate red (StackBondColumnShearIsHeightIndependent).
- *
- * The 30-course walls (cases 1-5) remain beyond the practical envelope on pricing cost.
+ * Wall catalogue (sweep item (d)): every acceptance wall except the 30-course cases 1-5 (too
+ * costly), ordered cheap to expensive so a killed run keeps its readings. Each row's ruling is
+ * in its mechanism text. 15/16 is pinned as a cross-row identity.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowWallSweepTest,
@@ -1909,15 +1611,7 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 
 	TArray<FSweepRow> Rows;
 
-	/* --- cheap first, everything measured 2026-08-11 --------------------------------- */
-
-	/*
-	 * The row that settled a ruling rather than recording one. Until 2026-08-11 wall-08 was
-	 * flagged: the catalogue ruled it a local loss, production dropped nothing, this measurement
-	 * stood it at 325x. The user re-ruled it stands (DESIGN §8), so the three methods now agree.
-	 * The relation enum never moved (AgreeStands is oracle-vs-production by construction); only
-	 * the mechanism text changed.
-	 */
+	// This measurement moved the catalogue ruling for wall-08 to stands (DESIGN §8).
 	Rows.Add({ TEXT("wall-08 four-cell opening, one course over"),
 		TEXT("the flat-arch row: the four-cell coverless course jams against its ")
 		TEXT("abutments through head-joint compression, so cover is not what carries it ")
@@ -1963,14 +1657,9 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		Scenario(TEXT("corbel-d-10-counterweight")),
 		ERelation::AgreeStands, 161.1375, 161.1439, 0 });
 
-	/* --- the twelve the sparse rewrite unblocked, pinned 2026-08-12, cheap first ------ */
-
 	/*
-	 * The bond pair, and case 17's first number of any kind. As an outcome row case 17 has zero
-	 * discriminating power (both halves stand), but the LP separates the pair 1.41x. Production's
-	 * readings are printed but not pinned as a ratio, because the stack-bond family is
-	 * deliberately red (StackBondColumnShearIsHeightIndependent) and a ratio over a known-wrong
-	 * reading would dress the defect as a discrimination.
+	 * Stack-bond pair. Production's ratio is not pinned: the family is deliberately red
+	 * (StackBondColumnShearIsHeightIndependent), so it would pin a known defect.
 	 */
 	Rows.Add({ TEXT("wall-18 stack bond, one brick out"),
 		TEXT("stack bond has no bond to spread a loss, so the column over the hole hangs ")
@@ -1989,42 +1678,12 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		ERelation::AgreeStands, 918.04511, 918.04695, 0, 0 });
 
 	/*
-	 * The four flagged rows, all ruled on 2026-08-12. Rows 10, 19, 9 and 20 were flagged for a
-	 * ruling until the user ruled the same day. No measurement or relation enum moves (all are
-	 * oracle-vs-production by construction); only the mechanism texts changed, as wall-08 did:
+	 * Rows 9, 10, 19 and 20 were ruled 2026-08-12 (see each mechanism text). The hand figures
+	 * are elastic tension-plane checks; lambda* finds the best compression path and runs 14-32x
+	 * above them.
 	 *
-	 *     wall-09   collapse -> stands   model agrees, the acceptance row went green
-	 *     wall-10   collapse -> stands   model does not agree; both stay red in a new
-	 *     wall-19   collapse -> stands   direction (expected to stand, 12 and 34 dropped)
-	 *     wall-20   local loss, kept     confirmed not moved; lambda* has no local vocabulary
-	 *
-	 * Hand figures vs lambda*, which the rulings weighed: the hand arithmetic is a tension-plane
-	 * elastic check (bending stress on a vertical crack plane vs flexural strength), what
-	 * production computes, so the two agree. Lambda* is a different question: the limit theorem
-	 * finds the best admissible compression path, needing almost no tension, so it runs 14-32x
-	 * above the hand figures. On 9, 10 and 19 the hand check also acquitted the fixture, so
-	 * lambda* was confirming not outvoting.
-	 */
-
-	/*
-	 * The partial-pricing re-pin (2026-08-12). An uncommitted partial-pricing slice changed the
-	 * simplex's pivot path; lambda* stays bit-identical on every validation fixture, but five
-	 * sweep fixtures at 120-150 blocks land a different distance from the unique optimum:
-	 *
-	 *     wall-10   35.8172298   -> 35.817113279469787    3.25e-6 relative
-	 *     wall-19   12.3824832   -> 12.382629959455667    1.19e-5 relative  (the worst)
-	 *     wall-06  622.031942    -> 622.03383039924574    3.04e-6 relative
-	 *     wall-12   89.1151243   ->  89.115041750073942   9.26e-7 relative
-	 *     wall-09   36.5639285   ->  36.563909109648513   5.30e-7 relative
-	 *
-	 * Both readings are certified (each passes post-solve verification at 1e-6 relative), so the
-	 * old +/-1e-6 windows were pinning the pivot path, not the optimum: at this scale the spread
-	 * across pivot paths is ~1e-5 relative, worst 1.19e-5 (wall-19). All five are re-centred on the
-	 * midpoint with a +/-2e-5 half-width. A window tighter than ~1e-5 here pins the algorithm.
-	 *
-	 * wall-12 and wall-09 are re-pinned though they passed with little clearance: the next
-	 * same-direction change would fail as a phantom masonry regression. Where exactness matters
-	 * (15/16 and the free-end pair) CheckSameLambda's identity is the right tool instead.
+	 * At 120-150 blocks the certified optimum varies ~1e-5 relative across pivot paths, so these
+	 * windows are +/-2e-5. Anything tighter pins the algorithm, not the answer.
 	 */
 
 	Rows.Add({ TEXT("wall-10 opening at a free end, no abutment"),
@@ -2047,9 +1706,6 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("the row agrees with the oracle. The lambda* window is UNCHANGED; only production's ")
 		TEXT("half of the diff moved"),
 		Scenario(TEXT("wall-10")),
-		/* Re-pinned 2026-08-12 for the partial-pricing spread (note above): midpoint of 35.8172298
-		 * and 35.817113279469787, +/-2e-5. Untouched by Slice 4; only ProductionFallen/Stranded
-		 * went 12/3 -> 0. */
 		ERelation::AgreeStands, 111.4952, 111.4997, 0, 0 });
 
 	Rows.Add({ TEXT("wall-19 bottom course out under half the wall"),
@@ -2074,42 +1730,20 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("below the cap the LP carries the wedge the base-less router could only strand, so ")
 		TEXT("production drops 0 (was 34) and strands 0 (was 6). The lambda* window is UNCHANGED"),
 		Scenario(TEXT("wall-19")),
-		/*
-		 * Re-pinned 2026-08-12 for the partial-pricing pivot-path spread (note above wall-10):
-		 * midpoint of 12.3824832 and 12.382629959455667, +/-2e-5 relative — this fixture carries
-		 * the worst measured spread (1.19e-5), which the +/-2e-5 half-width is built from. Window
-		 * untouched by Slice 4; only ProductionFallen/Stranded went 34/6 -> 0.
-		 */
 		ERelation::AgreeStands, 47.96274, 47.96466, 0, 0 });
 
-	/*
-	 * The pier pair, whose discrimination DESIGN §8 explicitly handed to this oracle. The
-	 * 2026-08-09 case-12 ruling recorded that rewriting case 12 left the pier-width pair (11 vs
-	 * 12) with no measurable discrimination — production reads them 0.03% apart, carrying thrust
-	 * as springing shear with no pier-width term. The LP now measures it: 128.12 on three cells
-	 * of bearing against 89.12 on one, 1.44x, in the physically right direction.
-	 */
+	// Pier pair (11 vs 12): DESIGN §8 handed this discrimination to the oracle.
 	Rows.Add({ TEXT("wall-12 the same span on a one-brick pier"),
 		TEXT("the pier pair's narrow half: 89.12x, 1.44x less margin than wall-11's ")
 		TEXT("three cells of bearing, where production reads the two 0.03% apart ")
 		TEXT("(0.362067 vs 0.362193) because springing shear carries no pier-width term"),
 		Scenario(TEXT("wall-12")),
-		/*
-		 * Re-pinned 2026-08-12 for the partial-pricing pivot-path spread (note above wall-10):
-		 * midpoint of 89.1151243 and 89.115041750073942, +/-2e-5 relative. Re-pinned though it
-		 * did not fail, so the next pivot-path change cannot arrive as a phantom masonry regression.
-		 */
 		ERelation::AgreeStands, 206.8525, 206.8608, 0, 0 });
 
 	/*
-	 * The superimposed-load pair reads as one number, a statement about the problem shape not a
-	 * coincidence. Gravity is the LP's single live load (FOracleProblem::bGravityIsLive), so
-	 * piling six courses on the header's tail scales both the demand and the pre-compression that
-	 * steadies it by the same lambda, and a multiplier-on-own-weight measure cannot see the
-	 * difference. Production does (31.6x at the header's own joint), so the pair is pinned from
-	 * both sides below: the lambda* identity and production's reading ratio, the second also
-	 * stopping the identity passing vacuously if the two rows ever built one fixture. Wanted
-	 * (CURRENT_STATE): the honest LP-side version marks the six courses live and the rest dead.
+	 * The superimposed-load pair reads one lambda*: gravity is the LP's only live load, so the
+	 * surcharge scales demand and pre-compression together. Production separates them, so both
+	 * sides are pinned below. A dead/live split is wanted (CURRENT_STATE).
 	 */
 	Rows.Add({ TEXT("wall-16 header at the top, nothing on it"),
 		TEXT("the superimposed-load pair's bare half; the LP prices it identically to ")
@@ -2174,20 +1808,11 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("verdict that gate has lost after cases 11 and 8: the set now has no case ")
 		TEXT("refusing a span for want of rise"),
 		Scenario(TEXT("wall-09")),
-		/* Re-pinned 2026-08-12 for the partial-pricing spread (note above wall-10): midpoint of
-		 * 36.5639285 and 36.563909109648513, +/-2e-5. Re-pinned though it passed, so the next
-		 * pivot-path change cannot arrive dressed as a regression on the least stable relation. */
 		ERelation::AgreeStands, 105.6457, 105.6499, 0, 0 });
 
 	/*
-	 * The cover pair's honest measurement, owed since 2026-08-11. DESIGN §8 declined to pin
-	 * 7-vs-8 on readings because production reads case 7 worse than case 8 (1.23x) and a downward
-	 * router reads cover as load. The LP, with no router, reads the same direction: 296.22 with
-	 * eight courses of cover vs 324.73 with one, 1.10x worse. Lambda* is a multiplier on own
-	 * weight, so added cover raises demand and capacity together; the walls also differ in size,
-	 * so the comparison is ordinal. The useful part: a routerless method reproduces the direction,
-	 * so the direction is uninformative about the router defect. Whether §8 should move is an open
-	 * user call. The MatchedPairs row it mentions retired 2026-08-12 when 9 and 10 were re-ruled.
+	 * Cover pair (7 vs 8). The routerless LP reads the same direction as production, so that
+	 * direction says nothing about the router. Whether DESIGN §8 should move is an open user call.
 	 */
 	Rows.Add({ TEXT("wall-07 four-cell opening, eight courses over"),
 		TEXT("296.22x against wall-08's 324.73x: the LP prices eight courses of cover ")
@@ -2202,40 +1827,12 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 		TEXT("prices 2.10x its margin (622.03 vs 296.22), which is the discrimination the ")
 		TEXT("outcome column never had — 06, 07 and 08 all stand and always did"),
 		Scenario(TEXT("wall-06")),
-		/* Re-pinned 2026-08-12 for the partial-pricing spread (note above wall-10): midpoint of
-		 * 622.031942 and 622.03383039924574, +/-2e-5. */
 		ERelation::AgreeStands, 634.570, 634.596, 0, 0 });
 
 	/*
-	 * The first row where the oracle is the outlier, and the first whose acceptance verdict is
-	 * Collapse. Hand statics and production both condemn the wall; the LP stood it at 5.51x
-	 * (characteristic era). Pinned as a measurement of the disagreement, not a verdict. 5.511 is
-	 * 66x the mechanism the verdict condemns (a 15 cm panel on flexural bond fails at
-	 * 0.10/1.2014 = 0.0832), so something other than the bond carries it.
-	 *
-	 * Two measured ladders, 2026-08-13 (mean span L = 394.75 + (cells-22) x 22.5 cm):
-	 *   cover at 22 cells   2 crs 5.511   4 crs 7.683   6 crs 9.183   8 crs refused
-	 *   span at 2 courses   18 c 10.408   22 c 5.511   27 c 3.102   32 c 1.985  40 c 1.143  45 c 0.863
-	 *
-	 * The priced hypothesis, still only a hypothesis: a full-height arch whose thrust dives through
-	 * the jambs prices at 22 cells to 5.48 (one rung) but along the cover ladder gives 5.48/4.11/3.65,
-	 * falling where the measurement rises, so it is wrong in direction. It may be a third charity
-	 * (the oracle's immovable ground gives free foundation restraint) or a real load path the router
-	 * cannot see. Open user call in CURRENT_STATE, with two discriminating ladders.
-	 *
-	 * Laid through Scenario(...) since the wall-21 level landed 2026-08-13 (the window is unchanged
-	 * across the swap from the now-deleted hand-rolled builder).
-	 */
-	/*
-	 * Mean re-anchor (2026-08-14): production now stands the wall (worst reading 0.9354, not the
-	 * scaled 0.549, so the governing axis moved and cannot be re-derived by scaling). Which axis
-	 * is unverified: the "squeezed-edge compression" first written here proved wrong for cases 9
-	 * and 22 (Mohr-Coulomb shear), so decompose over GetConnectionForce before believing any
-	 * attribution (CURRENT_STATE; TRAPS). Zero passes, zero dropped, so AgreeStands: both models
-	 * now disagree with the ruled Collapse. The LP's stand moved x3.128 to 17.2389, not the x4.5
-	 * pure jamb-cohesion predicts, so the 2026-08-13 attribution is incomplete (the zeroed-cohesion
-	 * probe keeps 27.7%, see OpeningStrengthProbes); the split is open. The prose above is the
-	 * characteristic era's.
+	 * Wall-21: both models stand what the catalogue rules Collapse. Which mechanism carries it
+	 * is open (CURRENT_STATE); decompose over GetConnectionForce before trusting any attribution
+	 * (TRAPS).
 	 */
 	Rows.Add({ TEXT("wall-21 eighteen-cell opening, two courses over"),
 		TEXT("the COVER counter-case: two courses (15 cm) over a 4.06 m opening is ")
@@ -2250,8 +1847,6 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 	TArray<FSweepReading> Readings;
 	RunRows(*this, Rows, Readings);
 
-	/* --- the cross-row pins, which no single row's window can make ------------------- */
-
 	const FSweepReading* Loaded =
 		ReadingNamed(*this, Rows, Readings, TEXT("wall-15 header with six courses on top"));
 	const FSweepReading* Bare =
@@ -2264,8 +1859,6 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 			TEXT("the superimposed-load pair (wall-15 vs wall-16) under one live load"),
 			*Loaded, *Bare, SameNumberRelativeTolerance);
 
-		/* The production side must stay apart: the ratio is pinned wide enough to be a ratio, narrow
-		 * enough that the pair collapsing to one fixture (which would satisfy the identity) cannot pass. */
 		CheckReadingRatio(
 			*this,
 			TEXT("production separates the superimposed-load pair where the LP does not"),
@@ -2277,25 +1870,8 @@ bool FRigidBlockSlowWallSweepTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The free-end height ladder: the first real measurement of the lambda = 3.464 ruling (DESIGN.md
- * §7 gap 5), its own test because the finding lives between the two heights. The fixture is
- * StructureFreeEndHeightTest's (a 7-cell running-bond wall with the grounded course's outermost
- * full brick removed) at 10 and 20 courses. The dense solver refused the 10-course wall (this
- * file's pinned canary) until the 2026-08-12 sparse rewrite answered it.
- *
- * Characteristic-era finding: the LP read the same number at both heights (a shared local feature
- * binds, not the half seat, which would halve lambda*), pinned as an identity; production was
- * height-linear and crossed 1.0 between the two, so the 20-course wall dropped a piece.
- *
- * Mean re-anchor (2026-08-14): both halves are now history.
- *   - The LP's height-identity died: 629.19922 at ten courses vs 297.99734 at twenty, ratio 2.1114,
- *     within 0.4% of production's 2.1198. The binding constraint is now strength-governed and scales
- *     with load; re-deriving it belongs with the step-4 promotion.
- *   - Production's crossing died: same /7-anchor multiples, ratio untouched, but both now under 1.0
- *     with the crossing past ~412 courses. The 20-course wall no longer drops, so both rows read
- *     AgreeStands and the ladder keeps trend + agreement only.
- *
- * No ticking world.
+ * Free-end height ladder (DESIGN.md §7 gap 5): StructureFreeEndHeightTest's fixture at 10 and
+ * 20 courses. Both models scale with height (LP 2.1114x, production 2.1198x) and both stand.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowFreeEndLadderTest,
@@ -2336,18 +1912,12 @@ bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* The LP's height scaling as a ratio, replacing the retired height-identity (header):
-	 * 629.19922 / 297.99734 = 2.1114, within 0.4% of production's 2.1198 and pinned separately so
-	 * the two models' agreement about height stays a measured fact. */
 	CheckReadingRatio(
 		*this,
 		TEXT("the LP's free-end lambda* now scales with height (7x10 over 7x20)"),
 		Short->Oracle.Lambda, Tall->Oracle.Lambda,
 		2.11122, 2.11163);
 
-	/* Production's side as a ratio. The characteristic-era crossing between these heights is gone
-	 * (moved past ~412 courses, CURRENT_STATE); what remains is that the reading is height-linear
-	 * and both heights stand clear, which AgreeStands already demands. */
 	CheckReadingRatio(
 		*this,
 		TEXT("production's free-end reading is height-linear"),
@@ -2367,49 +1937,14 @@ bool FRigidBlockSlowFreeEndLadderTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The case-21 mechanism ladders: the two discriminating experiments DESIGN §8's 2026-08-13 entry
- * specified, and the gate on evolution step 4. The LP stands case 21 (two courses of cover over a
- * 4.06 m opening) at lambda* = 5.511 where hand statics read 1.2014 MPa of bending and production
- * drops the cover; 5.511 is 66x what a tension-bond panel holds, so the LP prices something
- * unidentified. The first attribution (an arch springing from the grounded course) was refuted:
- * it predicts lambda* falling as cover grows where the measurement rises. Two ladders vary its two
- * terms one at a time.
+ * Case-21 mechanism ladders (DESIGN §8, 2026-08-13). The rise ladder varies courses below the
+ * opening (an arch predicts growth, a cover-carried mechanism flat); the abutment ladder varies
+ * jamb width (a jamb-reacting mechanism predicts ~2x). Measured: depth does nothing, so the arch
+ * is refuted; the mechanism is span-dominated and nearly abutment-blind.
  *
- *   Rise ladder: courses below the opening s=1..4, span and cover held. An arch gains rise per
- *   course (predicts 1.75x across the ladder); a cover-carried mechanism predicts flat.
- *   Abutment ladder: jambs 2 -> 4 cells, all else held. A jamb-reacting mechanism predicts ~2x;
- *   a cover-carried one flat.
- *
- * Characteristic-era measurements (2026-08-13; the 2026-08-14 re-anchor moved every lambda* and
- * killed the abutment sensitivity, see the note above the rows):
- *
- *     rung                       blocks  joints  lambda*              production
- *     rise s=1 / abutment j=2      83     133    5.5110095421575718   45 fall, 3 passes
- *     rise s=2                    104     193    4.8119163296983674   45 fall, 3 passes
- *     rise s=3                    128     264    5.5110085114812968   45 fall, 3 passes
- *     rise s=4                    149     324    4.8119026252913413   45 fall, 3 passes
- *     abutment j=3                 95     163    7.3790076229482224   49 fall, 4 passes
- *     abutment j=4                107     193    9.3587305816217992   53 fall, 5 passes
- *     abutment j=3, tail trimmed   89     147    6.2895385246488216   43 fall, 3 passes
- *     matched span 17 cells s=1    80     129    6.3681142090745144   43 fall, 3 passes
- *     matched span 17 cells s=2   100     186    5.4541091235793511   43 fall, 3 passes
- *
- * Findings. The rise ladder refutes the arch: held at one parity, depth does nothing (s=3/s=1 =
- * 0.99999981 against 1.50 predicted), so the LP does not know the wall under the opening is there.
- * The abutment ladder shows sensitivity (j=3/j=2 = 1.339, j=4/j=2 = 1.698, between flat and
- * bearing-proportional). The tail-trimmed j=3 rung shows both bearing and cover-tail are live
- * (1.339 -> 1.141 with the tail cut). The ~13% "parity" step is the bearing span, not a third
- * criterion: the matched-span pair collapses it to 0.98968 while flipping the cover parity, so
- * ~11/12 is span. The mechanism is still unidentified; the ladders bought a smaller search space.
- *
- * What is pinned is the measurement, never the hypothesis: each rung a lambda* window and drop
- * count, each ladder a ratio, predictions printed beside each. The control (first row) is asserted
- * the same number as Scenario("wall-21"); if the parameterisation drifted one brick the control
- * fails and every rung is void. Windows are +/-2e-5 (pivot-path-honest, see WallsAndLadders);
- * ratio windows ~1e-4. The j=4 rung, once a phase-2 refusal canary, is centred on two certified
- * readings 5.3e-7 apart after the 2026-08-13 relative pivot floor flipped it.
- *
- * Cost: ten solves, ~28 s. No ticking world.
+ * Pins the measurements, never the hypotheses: each rung a lambda* window (+/-2e-5), each ladder
+ * a ratio with both predictions printed. The first row must equal Scenario("wall-21"), or every
+ * rung is void.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowOpeningLaddersTest,
@@ -2433,16 +1968,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 
 	TArray<FSweepRow> Rows;
 
-	/*
-	 * Mean re-anchor (2026-08-14); two things moved at once. (1) Production stands the whole family
-	 * (the approved case-21 fallout): every drop pin is 0 and every relation AgreeStands. The
-	 * even-parity rungs (s=2, s=4) newly break one joint in one pass and still drop nothing (worst
-	 * reading 1.0433 vs the odd rungs' 0.9354; see wall-21 above). (2) The characteristic-era
-	 * findings are history: parity step 0.8875, matched-span identity 1.00088, pure span step
-	 * 1.1385, abutment sensitivity collapsed (j=3/j=2 = 1.0378, j=4/j=2 = 1.0514), depth-flatness
-	 * held. So on the mean basis the mechanism is span-dominated and nearly abutment-blind, an open
-	 * split in CURRENT_STATE. The pins below hold the mean-basis measurements.
-	 */
+	// Production stands every rung; even-parity rungs break one joint but drop nothing.
 	Rows.Add({ TEXT("wall-21 through the scenario catalogue"),
 		TEXT("the equivalence control: the shipped case-21 fixture, laid the way every ")
 		TEXT("verdict row in this file is laid, so the hand-parameterised rung below can be ")
@@ -2509,17 +2035,9 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		ERelation::AgreeStands, 17.65379, 17.65449, 0, 0 });
 
 	/*
-	 * The matched-span pair: the experiment separating the two things the rise ladder's 13%
-	 * "parity" step confounds. s=2 reads 0.873 of s=1, but the two rungs differ two ways: the cover
-	 * bears on a reveal a full cell wider (406.00 vs 383.50 cm) and its two courses are on the
-	 * opposite bond parity. A 17-cell even-first cut presents the cover with case 21's own 383.50 cm,
-	 * so against the 18-cell s=1 rung the span is matched and the parity opposite: ratio 1.00 means
-	 * parity buys nothing, 0.873 means the step survives. The fourth rung (17 cells s=1, 361.00 cm
-	 * on the odd parity) makes it a 2x2, pricing pure span (span-squared predicts 1.128).
-	 *
-	 * Both rungs are 21 cells wide, so block counts (80, 100) differ from every 22-cell rung; the
-	 * size pins refuse a rung that quietly built its partner's wall (TRAPS: window and ratio pins
-	 * both passed under the recorded rung-flip; only the size pin caught it).
+	 * Matched-span pair: separates the rise ladder's "parity" step into reveal span and cover
+	 * bond parity. A 17-cell even-first cut bears on case 21's own 383.50 cm reveal with the
+	 * opposite parity; the 17-cell odd-first cut prices pure span.
 	 */
 	Rows.Add({ TEXT("matched span: 17 cells, s=1"),
 		TEXT("the pure SPAN step at fixed odd-first parity — one cell of opening off case ")
@@ -2581,18 +2099,8 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 	CheckRungSize(*this, TEXT("matched span: 17 cells, s=2"), *W17S2, 100);
 
 	/*
-	 * The rise ladder's finding, in two pins that separate its two effects. The four rungs are not
-	 * one series (parity note in BuildOpeningLadderWall: s=1/s=3 start odd, s=2/s=4 even, toothing
-	 * the reveal differently), so it reads as two pins:
-	 *
-	 *   depth, at fixed parity   s=3 / s=1 = 0.99999981   s=4 / s=2 = 0.99999715
-	 *   parity, at fixed depth   s=2 / s=1 = 0.87314607   s=4 / s=3 = 0.87314375
-	 *
-	 * The depth pins refute the arch: it predicts 1.50 and 1.40 where they measure 1.000000 to
-	 * seven figures, so the mechanism does not know the wall below the opening is there. This
-	 * refutes rise-priced mechanisms, not every jamb path (a jamb bed-joint reaction is
-	 * area-governed and predicts flat too, separated by the abutment ladder). The parity pins are
-	 * the only movement in the rise ladder, so a flat-ladder claim must survive them.
+	 * Rise ladder: depth at fixed parity (s=3/s=1, s=4/s=2) and parity at fixed depth. Flat depth
+	 * refutes rise-priced mechanisms, not every jamb path.
 	 */
 	CheckLambdaLadderRatio(
 		*this,
@@ -2619,35 +2127,8 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		*S2, *S1, 0.88748, 0.88758);
 
 	/*
-	 * What the parity step turned out to be: the span, measured 2026-08-13. The two 17-cell rungs
-	 * answer the question the parity pins above could only pose (predictions printed beside each):
-	 *
-	 *     matched span (17,s=2)/(18,s=1)   span 1.00   parity 0.873   measured 0.98968
-	 *     pure span    (17,s=1)/(18,s=1)   span^2 1.128               measured 1.15553
-	 *
-	 * The step collapses when the spans match: two rungs on opposite cover parities but the same
-	 * 383.50 cm reveal read within 1.03%, against the 12.7% the parity flip is worth when the span
-	 * moves with it. So the reveal span carries ~11/12 of the step, and the 0.081 residue is an
-	 * upper bound on the cover's bond parity (the matched pair also differs by one course of height
-	 * and one cell of width, but the depth ladder prices the course term at nothing).
-	 *
-	 * Production says it independently and more sharply, which is why the reading pins below are
-	 * part of the finding: its worst joint on the matched-span rung is case 21's to the last bit
-	 * while the 361.00 cm rung reads 0.8949 of it. A downward router and a limit-analysis LP agree
-	 * the family is priced by the clear reveal and nothing else the parity carries.
-	 *
-	 * The span exponent is ~2.39, not 2, and the two steps agree to two figures (L^-2.391 and
-	 * L^-2.378), both steeper than the span-squared a plain bending panel gives — recorded as a
-	 * measurement, not attributed to a mechanism here.
-	 *
-	 * The third ratio a 2x2 suggests, (17,s=2)/(17,s=1) = 0.85647, is not pinned: it is exactly the
-	 * quotient of the two pins below, so it can only fail when one of them already has.
-	 *
-	 * Proven to bite by the recorded rung-flip (2026-08-13): the matched-span rung built secretly
-	 * as case 21 fires four assertions (lambda window, drop count, block count, matched-span
-	 * ratio). It does not fire production's matched-span reading identity below, which passes under
-	 * the flip because production reads the two fixtures identically on purpose. The LP-side pins
-	 * carry this finding; the production one corroborates and cannot police it.
+	 * With spans matched the parity step vanishes, so the step is the reveal span. Production
+	 * agrees independently (reading pins below), but only these LP-side pins catch a rung-flip.
 	 */
 	CheckLambdaLadderRatio(
 		*this,
@@ -2672,19 +2153,8 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		*S4, *S3, 0.88747, 0.88757);
 
 	/*
-	 * The abutment ladder's finding, and the half the oracle refused to answer. j=3 reads 1.339
-	 * against j=2, not flat, so a cover-confined mechanism is refuted; short of the 1.50 a
-	 * bearing-proportional reaction predicts, what a cohesion-plus-friction mix does.
-	 *
-	 * j=4 (the 2.00 test) refused in phase 2 at 107 blocks and was a canary until 2026-08-13. The
-	 * refusal was the solver, not the fixture: the ratio test accepted pivots ~1e-16 of their column
-	 * scale and read an unusable column as an unbounded ray. The fix is the relative pivot floor in
-	 * RigidBlockOracle.cpp, and the canary flipped. j=4/j=2 = 1.698, between flat and
-	 * bearing-proportional and decelerating. The four answering rungs came back bit-identical across
-	 * the repair, so only the readings that could not be taken moved.
-	 *
-	 * The trimmed rung makes j=3 mean something: widening the jamb widens the bearing and lengthens
-	 * the cover tail at once, two mechanisms with one prediction the ladder cannot separate.
+	 * Abutment ladder. The trimmed rung separates wider bearing from longer cover tail, which
+	 * widening the jamb changes together.
 	 */
 	CheckLambdaLadderRatio(
 		*this,
@@ -2710,12 +2180,8 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		*J3Trimmed, *S1, 1.02404, 1.02414);
 
 	/*
-	 * The same measurement the other way round: the trimmed rung against the untrimmed j=3 states
-	 * how much of the wider jamb's gain the trim gives back (0.339 over j=2 falls to 0.141, so about
-	 * half went with the cover tail). Caveat: trimming the tail also removes precompression from the
-	 * jamb bed joints, so it understates the bearing's share by whatever friction contributes;
-	 * cohesion dominates the mix, so the understatement is small but not zero, hence "comparable
-	 * halves" not a number.
+	 * How much of the wider jamb's gain the trim gives back. Trimming also removes jamb
+	 * precompression, so this slightly understates the bearing's share.
 	 */
 	CheckLambdaLadderRatio(
 		*this,
@@ -2724,12 +2190,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("0.747 (the whole gain given back)"),
 		*J3Trimmed, *J3, 0.98670, 0.98680);
 
-	/*
-	 * Production's reading on the same two splits, because a ladder only the LP sees is a ladder
-	 * about the LP. Production is indifferent to depth to the last bit (its worst joint is in the
-	 * cover) and sees the reveal parity as the LP does, so the parity step is a fixture property,
-	 * not the simplex's.
-	 */
+	// Production sees the same depth and parity effects, so they are fixture properties, not the LP's.
 	CheckReadingRatio(
 		*this,
 		TEXT("production's worst reading does not move with depth either (s=3 / s=1)"),
@@ -2741,18 +2202,8 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		S2->WorstUtilisation, S1->WorstUtilisation, 1.11531, 1.11543);
 
 	/*
-	 * Production is blind to the jamb, the one net the six lambda pins cannot cast. Every pin above
-	 * watches the LP; production's drop counts move only because a wider wall has a wider cover.
-	 * Where the LP moves 34% per cell of jamb and refuses the next, production's worst joint does
-	 * not move in any digit, because that reading is in the cover and the masonry the load reacts
-	 * into is not a term in it. The two methods disagree about whether an abutment exists at all,
-	 * which DESIGN §7 step 4 must resolve; until then this fires if production's side changes while
-	 * every lambda pin stays green.
-	 *
-	 * Pinned at 1e-9 as ratios (four readings are one number, stronger than four windows). The
-	 * trimmed rung is included deliberately: it changes what falls without changing what is read.
-	 * Proven to bite 2026-08-13 by scaling production's utilisation by (1 + 1e-6 x NumPieces()): it
-	 * fired exactly five assertions while every window, ratio and count stayed green.
+	 * Production's worst reading is in the cover, so it is blind to the jamb (DESIGN §7 step 4).
+	 * Pinned at 1e-9 so a production-side change fires even while every lambda pin stays green.
 	 */
 	CheckReadingRatio(
 		*this,
@@ -2769,13 +2220,7 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 		TEXT("production is blind to the cover tail as well (trimmed j=3 / j=2)"),
 		J3Trimmed->WorstUtilisation, S1->WorstUtilisation, 0.999999999, 1.000000001);
 
-	/*
-	 * Production's half of the matched-span finding, the sharpest number here: two rungs one brick
-	 * different in width, one course in height and on opposite cover parities read the same worst
-	 * joint to the last bit because both bear on 383.50 cm, while the 361.00 cm rung reads 0.8949 of
-	 * it. Pinned as an identity plus a stay-apart ratio (TRAPS: an identity alone passes when two
-	 * rows have quietly become one fixture).
-	 */
+	// Identity plus a stay-apart ratio: an identity alone passes if two rows became one fixture (TRAPS).
 	CheckReadingRatio(
 		*this,
 		TEXT("production prices the matched-span pair identically (17@s=2 / case 21)"),
@@ -2790,46 +2235,10 @@ bool FRigidBlockSlowOpeningLaddersTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The case-21 pricing experiments: the first probes to vary a strength rather than the geometry,
- * the closing experiment CURRENT_STATE specified after the mechanism ladders refuted both candidate
- * mechanisms. The ladders narrowed the search to a mechanism flat below the opening and sensitive
- * to jamb bearing and cover tail, but two candidates still fit (thrust confined to the cover bled
- * into the jamb bed joints as Coulomb shear, and a sill-springing arch), which no geometry rung
- * distinguishes. A strength probe reaches which capacity is binding: hold the fixture still and
- * take one strength away at a time. FOracleProblem carries per-joint strengths, so nothing in the
- * oracle changed. Production is the control, asserted at 1e-9 identical to the control's reading.
- *
- * Predictions, written before the run:
- *   Probe 1, jamb bed cohesion to zero. If the shear chain binds, lambda* collapses (cohesion
- *   0.2 MPa vs mu x precompression ~0.6 x 0.018, ~18x). It does not separate the two shapes: a sill
- *   arch's reaction is also horizontal thrust into these same joints (a review correction).
- *   Probes 2/3, cover head-joint tension halved and doubled. A bending panel reads 4.00x apart;
- *   expected flat (5.511 is 66x the panel's capacity), so the joint-count pin is load-bearing.
- *
- * Measured 2026-08-13 (characteristic era; the mean re-anchor changed probe 1, see the row note):
- *     row                            joints  lambda*              vs control
- *     control (as built)                 0   5.5110095421575718     1.00000
- *     jamb bed cohesion zeroed          36   0.78511681229249863    0.14246
- *     cover head tension x0.5           43   5.2459912546514023     0.95191
- *     cover head tension x2             43   6.0401281381456675     1.09601
- *
- * Probe 1 took lambda* below 1 (5.511 -> 0.785): with jamb bed cohesion gone the wall falls, so
- * the whole case-21 disagreement is bought by one capacity (this row is AgreeFalls where every
- * other case-21 row is oracle-stands/production-falls). This is about a wall the other methods
- * never judged, not a three-method agreement on case 21. Bed cohesion is horizontal shear, so the
- * mechanism delivers thrust into the jamb bed joints priced by their cohesion, consistent with all
- * three ladders; it still does not pick between the two thrust-line shapes. Probes 2/3 came out
- * flat (4x change moves lambda* 15%), so the cover's tensile bond is minor; the 43-joint pin makes
- * the flat answer trustworthy.
- *
- * Both probes proven to bite, failing differently (count pin and ratio pins are not one net): a
- * neutered selector fails the count/relation/window/ratio with lambda* bit-identical to control; a
- * neutered factor fails both windows and ratios while the count passes. One limit of probe 1: it
- * zeroes all 36 joints at once, so it cannot say whether bearing or run to ground is tighter (a
- * split left for CURRENT_STATE). Slice 0d added a fifth row (first-crack on: lambda* falls 12.3% to
- * 15.117 and stands, the §4 confirmation that bond bending is minor), with the same guards.
- *
- * Cost: five solves at 83 blocks, ~6 s. No ticking world.
+ * Case-21 strength probes: hold the fixture fixed and change one strength at a time in the
+ * oracle's problem only, so production stays a bit-identical control. Measured: jamb bed
+ * cohesion is the dominant single term (72%) but not the whole capacity; the cover's tensile
+ * bond and first-crack bending are minor.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowOpeningProbesTest,
@@ -2840,7 +2249,7 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 {
 	using namespace RigidBlockSweepTestSupport;
 
-	/** Every row is case 21's own wall — s = 1, j = 2, 18 cells, untrimmed cover. */
+	// Every row is case 21's own wall.
 	const auto CaseTwentyOne = [](FStructure& Out, FString& Why)
 	{
 		return BuildOpeningLadderWall(18, 1, 2, INDEX_NONE, Out, Why);
@@ -2856,14 +2265,6 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 		CaseTwentyOne,
 		ERelation::AgreeStands, 17.23854, 17.23923, 0, 0, nullptr, 0 });
 
-	/*
-	 * Mean re-anchor (2026-08-14). The characteristic-era finding (jamb bed cohesion is the whole
-	 * capacity, its removal collapses lambda* past 1.0 to 0.785) does not survive: zeroing the same
-	 * 36 joints now leaves lambda* at 4.768 (0.277 of control) and the wall stands, because the bond
-	 * tension (0.70) the probe leaves carries it. So cohesion is the dominant single term (72%) but
-	 * not the whole capacity, the AgreeFalls arm is dead, and the split is open in CURRENT_STATE.
-	 * The 2026-08-13 ruling is unchanged.
-	 */
 	Rows.Add({ TEXT("probe: jamb bed joints, cohesion zeroed"),
 		TEXT("THE CLOSING EXPERIMENT, re-derived at the mean basis. Every bed joint below ")
 		TEXT("the cover loses its cohesion and keeps its friction and its tension. At the ")
@@ -2899,14 +2300,6 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 			return ScaleCoverHeadTension(1, 2.0, Problem);
 		}, 43 });
 
-	/*
-	 * Slice 0d: the first-crack flag-on window for case 21, the §4 confirmation. With first-crack
-	 * rows on every bonded joint (133, the whole wall), lambda* falls only 12.3% to 15.117 and the
-	 * wall stands. The brittleness rule does not close the case-21 disagreement: the residual is the
-	 * friction+compression mechanism Slice 0c attributed, which first crack does not touch. Predicted
-	 * up to 3x; measured 12.3%, so bond tension is even more minor than estimated.
-	 * OverriddenJoints = 133. Window ~+/-2e-5, matching the sibling probes.
-	 */
 	Rows.Add({ TEXT("probe: first-crack rows on"),
 		TEXT("Slice 0d's flag-on window: the whole wall re-solved with uncracked first-crack ")
 		TEXT("rows on every bonded joint. lambda* falls only 12.3% (0.8769) to 15.117 and the ")
@@ -2936,11 +2329,6 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * The first-crack row is the same 83-block wall and touched the LP only, so it takes the same
-	 * two guards as the strength probes: same rung size, and a bit-identical production reading
-	 * against the control.
-	 */
 	CheckRungSize(*this, TEXT("probe: first-crack on"), *FirstCrack, 83);
 
 	CheckReadingRatio(
@@ -2948,12 +2336,6 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 		TEXT("the first-crack flag changed the LP only (production reading vs control)"),
 		FirstCrack->WorstUtilisation, Control->WorstUtilisation, 0.999999999, 1.000000001);
 
-	/*
-	 * The §4 confirmation as a ratio: case 21 with first crack on falls to 0.8769 of the control
-	 * and stays above 1.0. A panel spanning in brittle bond bending would third (0.3333); case 21
-	 * barely moves, so bond bending is a minor term and the residual is friction+compression
-	 * (Slice 0c), not brittle bond. The finding PROMOTION_DESIGN Sec 4 set this fixture up to make.
-	 */
 	CheckLambdaLadderRatio(
 		*this,
 		TEXT("SLICE 0d: case 21 under first crack STANDS and does not flip"),
@@ -2961,22 +2343,12 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 		TEXT("above 1.0 — bond bending is minor, the residual is friction+compression"),
 		*FirstCrack, *Control, 0.87689, 0.87692);
 
-	/*
-	 * All four rows are one wall, so all four bridge to the same 83 blocks. A probe row
-	 * that quietly built a different fixture would otherwise report a moved lambda* and be
-	 * read as a strength finding.
-	 */
+	// Same wall and same production reading on every row, so a moved lambda* is a strength finding.
 	CheckRungSize(*this, TEXT("probe control"), *Control, 83);
 	CheckRungSize(*this, TEXT("probe: cohesion zeroed"), *NoCohesion, 83);
 	CheckRungSize(*this, TEXT("probe: tension x0.5"), *HalfTension, 83);
 	CheckRungSize(*this, TEXT("probe: tension x2"), *DoubleTension, 83);
 
-	/*
-	 * And all four production readings are one number, because the override never touches
-	 * the structure. This is the control that makes a moved lambda* attributable: if a
-	 * probe row's cascade reading moves, the fixture moved and the LP's number means
-	 * nothing.
-	 */
 	CheckReadingRatio(
 		*this,
 		TEXT("the cohesion probe changed the LP only (production reading vs control)"),
@@ -2992,12 +2364,6 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 		TEXT("the x2 tension probe changed the LP only (production reading vs control)"),
 		DoubleTension->WorstUtilisation, Control->WorstUtilisation, 0.999999999, 1.000000001);
 
-	/*
-	 * The two findings, as ratios: each row's window pins where a number is, only a ratio pins what
-	 * the experiment measured. A solver change moving every lambda* by one factor breaks four
-	 * windows and leaves both statements below intact — the windows are the arithmetic, the ratios
-	 * the physics.
-	 */
 	CheckLambdaLadderRatio(
 		*this,
 		TEXT("THE CLOSING EXPERIMENT: case 21 with its jamb bed cohesion taken away"),
@@ -3016,11 +2382,7 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 		TEXT("would require"),
 		*DoubleTension, *HalfTension, 1.06757, 1.06767);
 
-	/*
-	 * The low half of the lever alone. The four-fold ratio above would also pass for a solver that
-	 * had stopped responding to strengths; this says the x0.5 rung sits 2.7% under control, so the
-	 * knob is connected. Its partner (x2 / control) is the quotient of these two, not pinned again.
-	 */
+	// Proves the knob is connected; the four-fold ratio alone would pass for an unresponsive solver.
 	CheckLambdaLadderRatio(
 		*this,
 		TEXT("the low half of the tension lever (tension x0.5 / control)"),
@@ -3032,42 +2394,10 @@ bool FRigidBlockSlowOpeningProbesTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Slice 0c: attribute case 21's residual lambda* = 4.768 to its physical cause. The residual (the
- * lambda* that survives when jamb bed cohesion is zeroed, pinned by OpeningStrengthProbes) is
- * re-solved with the jamb's friction zeroed, its crushing cap relaxed, both, and with the cohesion
- * removal split into the top bearing courses vs the run to ground, so the readings say which
- * mechanism holds it up.
- *
- * PROMOTION_DESIGN §4.4 makes attributing the 4.768 a precondition on promoting the LP to cascade
- * authority. The mean re-anchor refuted the 2026-08-13 cohesion-chain account (zeroing cohesion
- * still stands at 4.768), and §4.2 asserts the residual is friction and compression, both
- * non-brittle. This measures that in the shape §4.4 names: three probes plus the split.
- *
- * Predictions kept beside what was measured (mean GeneralPurposeMortar: mu=0.75, cap=2.0,
- * crushing=10, tension=0.7 MPa; self-weight bed compression ~0.018 MPa):
- *
- *   Probe 1 (friction also zeroed). Predicted falls; measured rises to 9.935 and stands. mu=0 with
- *     cohesion already gone forbids all bed-joint shear and lifts the n+ >= n- compression coupling,
- *     so the 0.70 MPa tensile bond (left intact) becomes usable and the wall re-forms on a distinct
- *     bond-tension mechanism 2.08x higher. Provable: a net-compression mu=0 optimum would be bounded
- *     by 4.768, so 9.935 needs net tension; probe 5 removes that bond and collapses it.
- *   Probe 2 (crushing relaxed). Unchanged (4.768, bit-identical to control): crushing sits ~500x
- *     clear. Asserted as an identity against control (a binding cap relaxed could only raise lambda*).
- *   Probe 3 (both). Equal to probe 1: once friction is gone the crushing cap changes nothing.
- *     Asserted as an identity against probe 1.
- *   Chain-vs-bearing split (cohesion zeroed one band at a time). Predicted the run to ground is the
- *     tighter link; measured the opposite: bearing courses only reads 4.76816 (the whole residual),
- *     run to ground only 5.96237, so bearing cohesion is the tighter link.
- *   Probe 5 (friction and jamb-bed tension both zeroed). Proves the 9.935 is bond tension: with
- *     shear and tension both forbidden lambda* collapses to 3.747, below even the control (a
- *     compression-only bed joint is a strict subset of the mu=0.75 control).
- *
- * Every window is a measured pin at the file's bit-window discipline (~2e-5). The two identities
- * prove crushing inert; the friction-raises-lambda headline is asserted as a mechanism inequality,
- * not two floats. No new oracle seam (every probe rewrites FOracleProblem after the bridge), so the
- * chain-vs-bearing split is measured by spatial strength probes rather than a per-joint force seam.
- *
- * Cost: seven solves at 83 blocks, ~8 s. No ticking world.
+ * Slice 0c: attribute case 21's residual lambda* = 4.768 (jamb bed cohesion zeroed), a
+ * precondition on promoting the LP (PROMOTION_DESIGN §4.4). Measured: crushing is inert (~500x
+ * clear); zeroing friction raises lambda* to 9.935 because mu=0 unlocks the tensile bond, and
+ * zeroing that too collapses it to 3.747; bearing-course cohesion is the tighter link.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockSlowCase21ResidualTest,
@@ -3078,24 +2408,20 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 {
 	using namespace RigidBlockSweepTestSupport;
 
-	/** Every row is case 21's own wall — s = 1, j = 2, 18 cells, untrimmed cover. */
+	// Every row is case 21's own wall.
 	const auto CaseTwentyOne = [](FStructure& Out, FString& Why)
 	{
 		return BuildOpeningLadderWall(18, 1, 2, INDEX_NONE, Out, Why);
 	};
 
-	/** The full below-cover band: every jamb bed joint, the 36 the cohesion probe touches. */
+	// The full below-cover band: all 36 jamb bed joints.
 	const double WholeChainLoZCm = -1.0e9;
 	const double WholeChainHiZCm = 1.0e9;
 	const double BearingSplitZCm = LadderChainBearingSplitZCm(1);
 
 	TArray<FSweepRow> Rows;
 
-	/*
-	 * The residual control: not the as-built wall (17.24) but case 21 with its jamb bed cohesion
-	 * gone, the 4.768 state this test attributes. Every probe is read against it. Its value is the
-	 * one OpeningStrengthProbes pins, so this is a known anchor, not a prediction.
-	 */
+	// Residual control: case 21 with jamb bed cohesion gone (4.768). Every probe is read against it.
 	Rows.Add({ TEXT("residual control: case 21 with jamb bed cohesion zeroed"),
 		TEXT("the 4.768 residual itself — jamb bed cohesion gone, everything else as built. ")
 		TEXT("The state the three probes strip further and the two split rows re-pose; its ")
@@ -3108,13 +2434,6 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 				1, true, false, false, false, WholeChainLoZCm, WholeChainHiZCm, Problem);
 		}, 36 });
 
-	/*
-	 * Probe 1, friction also zeroed. The headline. Predicted falls; measured it rises to 9.935 and
-	 * stands, not because friction capped a compression arch: mu=0 with cohesion gone forbids all
-	 * bed-joint shear and lifts the compression coupling, so the 0.70 MPa tensile bond (left intact)
-	 * becomes usable and the wall re-forms on a distinct bond-tension mechanism (2.08x). The
-	 * mechanism inequality is asserted below; probe 5 names the higher mechanism as bond tension.
-	 */
 	Rows.Add({ TEXT("probe 1: friction also zeroed on the whole jamb chain"),
 		TEXT("cohesion AND the Coulomb mu gone from every jamb bed joint. lambda* RISES from ")
 		TEXT("4.768 to 9.935: disallowing bed-joint shear lifts the compression coupling and ")
@@ -3130,11 +2449,6 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 				1, true, true, false, false, WholeChainLoZCm, WholeChainHiZCm, Problem);
 		}, 36 });
 
-	/*
-	 * Probe 2, crushing relaxed. Measured unchanged, bit-identical to the control. Crushing (10 MPa)
-	 * is ~500x clear of demand. The same-number identity below is the real claim (it fails if
-	 * crushing binds, since relaxing a binding cap raises lambda*).
-	 */
 	Rows.Add({ TEXT("probe 2: crushing cap relaxed on the whole jamb chain"),
 		TEXT("cohesion gone and the crushing cap lifted to effectively infinite, friction ")
 		TEXT("left in place. If compression bearing is what the residual runs on and the ")
@@ -3148,11 +2462,6 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 				1, true, false, true, false, WholeChainLoZCm, WholeChainHiZCm, Problem);
 		}, 36 });
 
-	/*
-	 * Probe 3, both. Measured equal to probe 1. With friction gone the bed joints carry no shear
-	 * whatever the cap, so relaxing crushing changes nothing. The real claim is the same-number
-	 * identity against probe 1 below.
-	 */
 	Rows.Add({ TEXT("probe 3: friction zeroed AND crushing relaxed on the whole jamb chain"),
 		TEXT("both non-cohesive mechanisms removed at once. Reads probe 1's 9.935 value — a ")
 		TEXT("friction-freed arch does not care how high the crushing cap is; the identity ")
@@ -3165,13 +2474,7 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 				1, true, true, true, false, WholeChainLoZCm, WholeChainHiZCm, Problem);
 		}, 36 });
 
-	/*
-	 * The chain-vs-bearing split: cohesion zeroed only in the top two bearing courses, then only in
-	 * the run to ground. Each band touches 18 of the chain's 36 joints (a pinned partition). The
-	 * bearing band drops lambda* to 4.76816 (the whole residual) while run-to-ground only reaches
-	 * 5.96237, so the bearing courses are the tighter link for cohesion, refuting "thrust runs to
-	 * ground" for the cohesion term (friction localises differently; the attributions stay distinct).
-	 */
+	// Chain-vs-bearing split: cohesion zeroed in each half of the 36-joint chain (18 each).
 	Rows.Add({ TEXT("split: cohesion zeroed in the bearing courses only"),
 		TEXT("cohesion removed only from the top of the jamb, where the cover bears. Reads ")
 		TEXT("4.76816 — essentially the whole 4.768 residual — so the bearing courses are ")
@@ -3198,13 +2501,6 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 				1, true, false, false, false, WholeChainLoZCm, BearingSplitZCm, Problem);
 		}, 18 });
 
-	/*
-	 * Probe 5, friction and the jamb-bed tensile bond both zeroed. The empirical proof that 9.935 is
-	 * bond tension. Probe 1 left the 0.70 MPa bond intact and the wall re-formed on it; this zeroes
-	 * both, so the bed joints carry compression only and the bond-tension mechanism cannot form.
-	 * Predicted lambda* <= 4.768; measured 3.747, below even the control (which kept its
-	 * friction-shear). Asserted as a bit-window and a strict inequality against probe 1 (finding 5).
-	 */
 	Rows.Add({ TEXT("probe 5: friction AND jamb-bed tension both zeroed on the whole jamb chain"),
 		TEXT("cohesion, the Coulomb mu AND the 0.70 MPa tensile bond all gone from every jamb ")
 		TEXT("bed joint — compression only. The bond-tension mechanism probe 1 unlocked cannot ")
@@ -3250,7 +2546,6 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* All seven rows are one wall — all must bridge to the same 83 blocks. */
 	CheckRungSize(*this, TEXT("residual control"), *Control, 83);
 	CheckRungSize(*this, TEXT("probe 1 friction off"), *FrictionOff, 83);
 	CheckRungSize(*this, TEXT("probe 2 crushing relaxed"), *CrushingOff, 83);
@@ -3259,10 +2554,6 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 	CheckRungSize(*this, TEXT("split run to ground"), *RunToGround, 83);
 	CheckRungSize(*this, TEXT("probe 5 friction and tension off"), *FrictionAndTensionOff, 83);
 
-	/*
-	 * The override touches the LP only, so every production reading must equal the control's; a
-	 * moved reading would mean the fixture moved and the LP's number is uninterpretable.
-	 */
 	CheckReadingRatio(
 		*this, TEXT("probe 1 changed the LP only (production vs control)"),
 		FrictionOff->WorstUtilisation, Control->WorstUtilisation, 0.999999999, 1.000000001);
@@ -3277,11 +2568,6 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 		*this, TEXT("the split rows changed the LP only (bearing vs run-to-ground reading)"),
 		Bearing->WorstUtilisation, RunToGround->WorstUtilisation, 0.999999999, 1.000000001);
 
-	/*
-	 * The split selector is honest: the two bands partition the chain (counts sum to the control's
-	 * 36, neither empty). Each band's own count (18) is pinned in its row; this is the complementary
-	 * partition check, catching a band that matched nothing or a pair that overlapped.
-	 */
 	TestEqual(
 		TEXT("the two split bands must partition the whole jamb chain: bearing + run == 36"),
 		Bearing->JointsOverridden + RunToGround->JointsOverridden, 36);
@@ -3292,33 +2578,21 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 		TEXT("the run-to-ground band must have matched at least one jamb bed joint"),
 		RunToGround->JointsOverridden > 0);
 
-	/*
-	 * Finding 1: crushing does not bind the residual. The identity is tighter than probe 2's window:
-	 * relaxing a non-binding cap leaves lambda* bit-stable, a binding one raises it.
-	 */
+	// Finding 1: crushing does not bind (relaxing a binding cap would raise lambda*).
 	CheckSameLambda(
 		*this,
 		TEXT("crushing relaxed vs the residual control"),
 		*CrushingOff, *Control, 1.0e-6);
 
-	/*
-	 * Finding 2: crushing cannot revive a friction-killed residual. Probe 3 must read probe 1
-	 * (once friction is gone the bed joints carry no shear whatever the cap). A break would say the
-	 * two mechanisms interact, which nothing predicts.
-	 */
+	// Finding 2: with friction gone, the crushing cap changes nothing.
 	CheckSameLambda(
 		*this,
 		TEXT("both (friction off + crushing relaxed) vs friction off alone"),
 		*Both, *FrictionOff, 1.0e-6);
 
 	/*
-	 * Finding 3: zeroing friction unlocks a distinct, higher bond-tension mechanism. The headline,
-	 * asserted as a mechanism inequality not two floats: zeroing friction on the cohesionless chain
-	 * raises lambda* (4.768 -> 9.935), not because friction capped an arch but because mu=0 forbids
-	 * bed-joint shear and lifts the compression coupling, so the 0.70 MPa tensile bond becomes
-	 * usable. Provable: a net-compression mu=0 optimum would be bounded by the control, so 9.935 >
-	 * 4.768 means net tension is mobilised. Confirms PROMOTION_DESIGN §4.2; probe 5 measures that
-	 * the higher mechanism is the brittle bond.
+	 * Finding 3: zeroing friction raises lambda*. A net-compression mu=0 optimum is bounded by the
+	 * control, so a rise proves the tensile bond is mobilised (PROMOTION_DESIGN §4.2).
 	 */
 	AddInfo(FString::Printf(
 		TEXT("FRICTION-OFF-UNLOCKS-BOND: residual control lambda* %.17g, friction-off %.17g, ")
@@ -3339,11 +2613,8 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 		FrictionOff->Oracle.Lambda > Control->Oracle.Lambda);
 
 	/*
-	 * Finding 5: the 9.935 is bond tension, remove the bond and it collapses. The empirical
-	 * companion to finding 3. With shear (mu=0) and tension (bond=0) both forbidden the joints carry
-	 * compression only (a strict subset of the mu=0.75 control), so lambda* must fall from 9.935 to
-	 * at-or-below 4.768. Asserted strictly below probe 1 and within a small margin at-or-below the
-	 * control. Info line first so the value is logged regardless of verdict.
+	 * Finding 5: remove the bond too and the joints are compression-only, a subset of the control,
+	 * so lambda* must fall to at or below it.
 	 */
 	AddInfo(FString::Printf(
 		TEXT("BOND-TENSION-COLLAPSE: friction-off (bond intact) lambda* %.17g, friction+tension ")
@@ -3366,13 +2637,7 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 			FrictionAndTensionOff->Oracle.Lambda, Control->Oracle.Lambda),
 		FrictionAndTensionOff->Oracle.Lambda <= Control->Oracle.Lambda + 1.0e-6);
 
-	/*
-	 * Finding 4: for cohesion, the bearing courses are the tighter link, not the run to ground.
-	 * Predicted the reverse; measured the opposite. Removing bearing cohesion collapses the residual
-	 * (4.76816) while removing it in the run to ground leaves more standing (5.96237), so bearing <
-	 * run-to-ground. Refutes "thrust runs to ground" for the cohesion term. Info line first so both
-	 * band values are logged regardless of verdict.
-	 */
+	// Finding 4: for cohesion, the bearing courses are the tighter link, not the run to ground.
 	AddInfo(FString::Printf(
 		TEXT("CHAIN-VS-BEARING: cohesion-off bearing lambda* %.17g, run-to-ground %.17g ")
 		TEXT("(control 17.24 as built, residual 4.768 whole-chain)"),
@@ -3390,47 +2655,15 @@ bool FRigidBlockSlowCase21ResidualTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The phase-2 refusal is a solver defect: a bounded, feasible problem must not come back "phase-2
- * simplex failed". Two opening-ladder rungs of 99 and 107 blocks (each smaller than answering rungs
- * measured beside them, each bounded by the lambda-cap row) must answer, and land between their
- * bracketing neighbours. Not fail-closed correctness: both were solved to a verified optimum (the
- * 1e-6 gate passed) once the anti-cycling fallback was stood down, so an admissible system exists
- * and the solver can find it.
+ * A bounded, feasible problem must not come back "phase-2 simplex failed". The 99- and 107-block
+ * rungs once refused because the ratio test had no sense of scale (it accepted a pivot 1.6e-16 of
+ * its column); RelativePivotTol in RigidBlockOracle.cpp fixes it, and reverting it reproduces the
+ * red.
  *
- * Diagnosis (2026-08-13). One refusal string hides two failures:
- *   (a) Spurious unboundedness (107-block j=4 rung). The LP splits each shear into p-q; the two
- *       columns are exact bitwise negations, so when one is basic the other's reduced cost is zero
- *       and 1.12e-9 of drift enters against CostTol 1e-9. Its FTRAN is -e_91, no positive ratio-test
- *       entry, so Unbounded on a capped problem.
- *   (b) A basis pivoted into singularity (99-block rung, and a 218-block wall). A near-dependent
- *       column is accepted on a ratio-test pivot barely over PivotTol 1e-9; the next refactorisation
- *       finds an LU pivot below SingularPivotTol 1e-11 and Factorise refuses.
- *
- * The first attribution (the Bland fallback's entering rule letting 1e-9 win) was refuted: a
- * relative tolerance changed nothing, the drift is inherited from the dual solve (||y||inf = 6.7e6),
- * and three of four noise pivots were on the ranked path. The real cause: the ratio test had no
- * sense of scale, accepting a 4.7e-9 coefficient from a 3e7 column (relative pivot 1.6e-16). Both
- * modes are that defect downstream, closed by one change: RelativePivotTol (RigidBlockOracle.cpp),
- * a floor of 1e-11 of the entering column's largest magnitude. Reverting it reproduces the original
- * red (both refusals), the recorded bite-prover.
- *
- * Not needed: a repair for the no-entry seam itself was written and removed (with the floor in
- * place, reverting the seam leaves both fixtures answering bit-identically, so no test drove it).
- * The seam still refuses a bounded problem if reached; CURRENT_STATE books it as the residual mode,
- * and Slice 0a showed nothing reaches it. The 218-block rung is not asserted (143-275 s). The fix
- * must not loosen the verification gate, remove the iteration cap, or scale the optimality tolerance
- * by ||y|| (a simplex stopping early reports a too-low lambda* the admissibility check certifies
- * happily), which is why the brackets below are load-bearing.
- *
- * Why brackets, not pinned numbers: lambda* at 100+ blocks reproduces only to ~1e-5 across pivot
- * paths, so a pin on an unsolved fixture would pin the algorithm. Each refuser is bracketed by its
- * two ladder neighbours measured in the same run. The neighbours carry loose +/-1% sanity windows;
- * the 99-block rung also carries a real +/-2e-5 window now that two pivot paths solved it two ulps
- * apart. Every rung carries a block-count pin (TRAPS: only a size pin caught the recorded
- * rung-flip), which also shows scale is not the cause (99/107 refuse while 104/119 answer).
- *
- * Cost: six solves, ~28 s (the j=3/j=4 rungs duplicate OpeningMechanismLadders deliberately, since a
- * bracket must be closed by neighbours from the same binary). No ticking world; no production cascade.
+ * Each refuser must answer and land between its two ladder neighbours from the same run. Brackets,
+ * not pinned numbers, because lambda* at 100+ blocks reproduces only to ~1e-5. Do not fix this by
+ * loosening the verification gate, the iteration cap or the optimality tolerance: an early stop
+ * reports a too-low lambda* that verification still certifies.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockPhaseTwoBoundedTest,
@@ -3456,21 +2689,12 @@ bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
 		double SanityLo = 0.0;
 		double SanityHi = 0.0;
 
-		/**
-		 * The midpoint-of-two-certified-readings window, +/-2e-5 relative, on a rung solved by two
-		 * pivot paths. Both zero where no such pair exists (the j=4 rung's pair is in
-		 * OpeningMechanismLadders, not duplicated here).
-		 */
+		/** A +/-2e-5 window around a certified reading; both zero where none exists. */
 		double CertifiedLo = 0.0;
 		double CertifiedHi = 0.0;
 	};
 
-	/*
-	 * Mean re-anchor re-pins (2026-08-14): every window re-measured. Sanity windows keep their ~±1%
-	 * looseness; the 99er's certified window is one reading at ±2e-5 (89.898933555823774; a re-pair
-	 * is owed with the next pivot-path change). The must-answer halves and the bracket (107er below
-	 * the 5-cell neighbour: 18.1243 < 18.1419) held.
-	 */
+	// The 99er's certified window rests on one reading; a second is owed with the next pivot-path change.
 	const FRung Rungs[] =
 	{
 		{ TEXT("span ladder, 8-cell opening (the wide-lambda neighbour)"),
@@ -3512,8 +2736,7 @@ bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
 		FOracleProblem Problem;
 		FString BridgeWhy;
 
-		/* Read the bridge's reason into a local first: argument evaluation is unsequenced, so
-		 * folding it into the Printf could build the message from the pre-call empty string (TRAPS). */
+		// Call first: Printf argument order is unsequenced and could read the empty reason (TRAPS).
 		const bool bBridged = BuildRigidBlockProblem(Structure, Problem, BridgeWhy);
 
 		if (!TestTrue(
@@ -3556,10 +2779,7 @@ bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
 			Problem.Joints.Num(), Rung.WantJoints);
 	}
 
-	/*
-	 * The neighbours first: they are answering rows today, and their sanity windows are
-	 * what stops the brackets below being satisfiable by four pieces of garbage.
-	 */
+	// Neighbour sanity windows stop the brackets being satisfiable by garbage.
 	for (int32 Index = 0; Index < NumRungs; ++Index)
 	{
 		const FRung& Rung = Rungs[Index];
@@ -3588,12 +2808,7 @@ bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
 			Results[Index].Lambda >= Rung.SanityLo && Results[Index].Lambda <= Rung.SanityHi);
 	}
 
-	/*
-	 * The one rung with two certified readings gets a real window, sitting beside the bracket rather
-	 * than instead of it: the bracket states a physical relation the number must respect, this
-	 * states the number. See the header for why two readings two ulps apart license a +/-2e-5 window
-	 * where an unsolved fixture licensed none.
-	 */
+	// A certified window sits beside the bracket: the bracket states the physics, this the number.
 	for (int32 Index = 0; Index < NumRungs; ++Index)
 	{
 		const FRung& Rung = Rungs[Index];
@@ -3615,10 +2830,7 @@ bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
 				&& Results[Index].Lambda <= Rung.CertifiedHi);
 	}
 
-	/*
-	 * The defect itself. Each refuser must answer, and between its two ladder neighbours (named in
-	 * the message so a failure says which reading it fell outside).
-	 */
+	// Each refuser must answer, and land between its two ladder neighbours.
 	const auto CheckBracketed =
 		[&](int32 Under, int32 Low, int32 High, const TCHAR* Why)
 	{
@@ -3670,40 +2882,11 @@ bool FRigidBlockPhaseTwoBoundedTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A refusal must name which termination produced it (slice 0a's first red). When SolveRigidBlock
- * refuses, the result must carry a machine-readable reason distinguishing its terminations
- * (iteration cap, spurious unbounded ray, numerical failure — three events with three fixes) rather
- * than collapsing them into "phase-2 simplex failed". That collapse cost two instrumented builds in
- * a week and blocks the promotion design's risk experiment (§11 R4, §5.6 count by reason), so the
- * reason is an enumerator and the sentence is derived from it.
- *
- * The assertion. Distinctness is asserted over the whole taxonomy and needs no fixture (only one of
- * six refusing arms is reachable from a fixture this project owns). The pairwise-distinct sweep
- * costs nothing and a constant string cannot satisfy it. The taxonomy is tied to reality by fixtures
- * beside it: the answering rung reports None with an empty sentence, the poisoned problem
- * InvalidProblem and prints its phrase.
- *
- * The phase-2 canary fired the day it was written and is gone (2026-08-15). It pinned the 8-cell
- * 128-block wall refusing with PhaseTwoNumericalFailure, to be re-pointed or deleted once the solver
- * answered. Its sibling PhaseTwoMustNotRefuseTheCoveredOpeningFamily was made green the same day and
- * no fixture reaches a phase-2 arm now, so the row was deleted rather than kept as a 75 s no-op. The
- * three PhaseTwo enumerators plus PhaseOneFailure and VerificationFailure are proven distinct but
- * reported by no fixture, so a wrong-reason site would go uncaught; CURRENT_STATE carries the owed
- * replacement.
- *
- * What was measured 2026-08-15: CURRENT_STATE proposed the lambda-cap tower as a refuser, but the
- * cap row bounds it so it terminates Optimal; it reaches an unbounded ray only under mutation M5.
- * The covered-opening family instead returned NumericalFailure from the periodic refactorisation
- * (Factorise found an LU pivot under SingularPivotTol):
- *
- *     8-cell opening (128 blocks) : position 4018/4021, col 6119, pivot 4.3758616521949456e-12
- *     16-cell opening (200 blocks): position 6322/6325, col 9639, pivot 4.928959752317684e-12
- *
- * Not the spurious-unbounded arm and not NB-7; both suspects refuted, the repair in
- * PhaseTwoMustNotRefuseTheCoveredOpeningFamily's header. This test's 8-cell pin reported
- * PhaseTwoNumericalFailure, the shipped taxonomy reproducing the instrumented finding.
- *
- * Cost: two solves under a second, plus the taxonomy sweep. No ticking world.
+ * A refusal must name which termination produced it (slice 0a). Each reason is an enumerator with
+ * its own phrase, so iteration cap, unbounded ray and numerical failure are distinguishable. The
+ * taxonomy is checked pairwise-distinct; fixtures tie None and InvalidProblem to real solves.
+ * No fixture reaches the phase-2 arms today, so a wrong-reason site there would go uncaught
+ * (CURRENT_STATE).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockRefusalReasonTest,
@@ -3714,7 +2897,7 @@ bool FRigidBlockRefusalReasonTest::RunTest(const FString& Parameters)
 {
 	using namespace RigidBlockSweepTestSupport;
 
-	/* --- 1. The taxonomy: every refusing reason reads differently from every other. --- */
+	// 1. Every refusing reason reads differently from every other.
 
 	struct FReason
 	{
@@ -3767,13 +2950,12 @@ bool FRigidBlockRefusalReasonTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* --- 2. An answered fixture reports no reason at all. ---------------------------- */
+	// 2. An answered fixture reports no reason.
 
 	FStructure Standing;
 	FString StandingWhy;
 
-	/* Read the builder's reason into a local before building the message: the Printf argument list
-	 * is unsequenced and would use the pre-call empty string (TRAPS). */
+	// Call first: Printf argument order is unsequenced and could read the empty reason (TRAPS).
 	const bool bStandingLaid = BuildCoveredOpeningWall(2, 18, 2, Standing, StandingWhy);
 
 	if (TestTrue(
@@ -3815,7 +2997,7 @@ bool FRigidBlockRefusalReasonTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* --- 3. A refusal BEFORE the simplex names validation, not a simplex arm. --------- */
+	// 3. A refusal before the simplex names validation, not a simplex arm.
 
 	{
 		FStructure Poisonable;
@@ -3835,7 +3017,7 @@ bool FRigidBlockRefusalReasonTest::RunTest(const FString& Parameters)
 			if (BuildRigidBlockProblem(Poisonable, Problem, BridgeWhy)
 				&& Problem.Joints.Num() > 0)
 			{
-				/* A non-unit normal: refused by ValidateProblem, so nothing is solved. */
+				// A non-unit normal: refused by ValidateProblem.
 				Problem.Joints[0].NormalX = 0.5;
 				Problem.Joints[0].NormalZ = 0.5;
 
@@ -3868,64 +3050,14 @@ bool FRigidBlockRefusalReasonTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The eight-course-cover family still refuses a bounded, feasible problem, and it is not the wall
- * the record names. An 8-cell opening under eight courses of cover (128 blocks, smaller than the
- * 137- and 218-block members that answer beside it) must answer rather than "phase-2 simplex
- * failed", and land between its ladder neighbours. Same defect as
- * PhaseTwoMustNotRefuseABoundedProblem (read that header first), one notch downstream: the
- * 2026-08-13 RelativePivotTol fix (floor 1e-11) closed the 99/107-block rungs but is not enough here.
+ * The covered-opening family (case 22's shape) once refused at 128 and 200 blocks, isolated holes
+ * in a smooth curve whose neighbours answer. Cause: the basis was driven LU-singular by the
+ * solver's arithmetic (Factorise pivot ~4e-12). Same rules as PhaseTwoMustNotRefuseABoundedProblem:
+ * do not fix by loosening the gate, the cap or the tolerance.
  *
- * The record was stale (2026-08-15). CURRENT_STATE, PROMOTION_DESIGN §6/§10 and WallAcceptanceTest
- * named the 218/290/371-block members as the refusers, measured at characteristic strengths one day
- * before the mean re-anchor. Re-measured (opening cells between two-cell jambs, eight courses cover):
- *
- *     opening   blocks  joints   lambda*                 pivots   secs
- *        2        74     174     537.60206692224722       6,578    4.9
- *        4        92     218     384.91922849080379      10,455   15.7
- *        5       101     240     298.0111013112051       13,997   26.1
- *        6       110     262     236.97383758407059      16,353   39.5
- *        7       119     284     190.53602223331399      17,983   52.3
- *        8       128     306     REFUSED                 17,316   40.1
- *        9       137     328     127.7264657209236       22,753   89.7
- *       10       146     350     105.64778136561756      24,635  106.9
- *       12       164     394      75.120451403407529     29,261  157.5
- *       14       182     438      55.975345056998457     30,848  166.0
- *       16       200     482     REFUSED                  6,244   18.3
- *       18       218     526      33.651690962702006     37,705  254.9
- *       26       290     702      15.622461777098057     60,721  555.1
- *       35       371     900       8.4149459982219277    88,810 1196.9
- *
- * So all three record-named walls answer today (including case 22 at 371 blocks). The blockers are
- * two isolated holes at 128 and 200 blocks inside a smooth monotone curve their neighbours certify
- * both sides — a stronger defect than the stale record: 128 blocks is a third of the size the
- * refusal was thought to start at. Case 22 answers at 88,810 of 100,000 pivots, so a pivot-path
- * change could push it over the cap (CURRENT_STATE). The problem is bounded (the cap row) and
- * feasible (lambda=0 satisfies the equalities, and the neighbours answer).
- *
- * The arm, measured 2026-08-15 and reverted: phase 2 returns NumericalFailure from the periodic
- * refactorisation (Factorise finds an LU pivot <= SingularPivotTol 1e-11 in the last few columns):
- *
- *     8-cell opening (128 blocks) : position 4018 of 4021, col 6119, pivot 4.3758616521949456e-12
- *    16-cell opening (200 blocks) : position 6322 of 6325, col 9639, pivot 4.928959752317684e-12
- *
- * Both recorded suspects refuted: the spurious-unbounded arm fired on no solve, and NB-7's pivot-out
- * pass printed nothing. Two one-constant experiments both reach the answer, proving it exists:
- * RelativePivotTol 1e-11 -> 1e-9 gives 155.632 (128) and 43.133 (200); RefactoriseEvery 64 -> 16
- * gives 155.632 and 43.133. The pairs agree to 1.4e-8 and 8.2e-6 on different pivot paths and both
- * clear the 1e-6 gate, which licenses the windows below. Both levers attack LU-singularity from
- * opposite ends, so the basis is driven singular by the solver's arithmetic, not the wall; the right
- * fix (possibly the factorisation's fixed column order, the roadmap's Markowitz ordering) is open.
- * The fix must not loosen the verification gate, remove the iteration cap, or scale the optimality
- * tolerance by ||y||.
- *
- * A window and a bracket. The window is +/-1e-4 (ten times the usual 2e-5) because the certified
- * readings came from diagnostic variants, not the fixed solver; tighten to 2e-5 once the fixed
- * solver produces its own reading. The bracket states the physics the window cannot (lambda* falls
- * monotonically with the opening, closed by neighbours in this run). Every rung carries a
- * block-and-joint pin (TRAPS). The 200-block refuser carries a window but no bracket (its neighbours
- * cost 166/255 s), and is here so the defect is not one wall's accident.
- *
- * Cost: four solves, ~200 s (expect ~420 s once they answer). No ticking world.
+ * Window +/-1e-4 (not the usual 2e-5) because the certified readings came from diagnostic solver
+ * variants; the bracket states that lambda* falls with the opening. Case 22 answers at 88,810 of
+ * 100,000 pivots, close to the cap (CURRENT_STATE).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockCoveredOpeningRefusalTest,
@@ -3948,10 +3080,7 @@ bool FRigidBlockCoveredOpeningRefusalTest::RunTest(const FString& Parameters)
 		double SanityLo = 0.0;
 		double SanityHi = 0.0;
 
-		/**
-		 * The midpoint of two certified readings from different pivot paths, +/-1e-4 relative. Both
-		 * zero where no such pair exists. The header says why the window is 10x the usual 2e-5.
-		 */
+		/** +/-1e-4 around two certified readings; both zero where none exists. */
 		double CertifiedLo = 0.0;
 		double CertifiedHi = 0.0;
 	};
@@ -3991,7 +3120,7 @@ bool FRigidBlockCoveredOpeningRefusalTest::RunTest(const FString& Parameters)
 		FOracleProblem Problem;
 		FString BridgeWhy;
 
-		/* The bridge's reason is read into a local first — argument order is unsequenced. */
+		// Call first: Printf argument order is unsequenced (TRAPS).
 		const bool bBridged = BuildRigidBlockProblem(Structure, Problem, BridgeWhy);
 
 		if (!TestTrue(
@@ -4034,8 +3163,7 @@ bool FRigidBlockCoveredOpeningRefusalTest::RunTest(const FString& Parameters)
 			Problem.Joints.Num(), Rung.WantJoints);
 	}
 
-	/* The neighbours first: they answer today, and their loose sanity windows stop the bracket
-	 * below being satisfiable by three pieces of garbage. */
+	// Neighbour sanity windows stop the bracket being satisfiable by garbage.
 	for (int32 Index = 0; Index < NumRungs; ++Index)
 	{
 		const FRung& Rung = Rungs[Index];
@@ -4064,12 +3192,7 @@ bool FRigidBlockCoveredOpeningRefusalTest::RunTest(const FString& Parameters)
 			Results[Index].Lambda >= Rung.SanityLo && Results[Index].Lambda <= Rung.SanityHi);
 	}
 
-	/* --- The defect itself ------------------------------------------------------------ */
-
-	/*
-	 * Every refuser must answer, and answer the number two independent pivot paths agreed on. The
-	 * window stops a "fix" that merely stops refusing: a solver reaching a different optimum fails it.
-	 */
+	// Each refuser must answer, and with the certified number, not merely stop refusing.
 	for (int32 Index = 0; Index < NumRungs; ++Index)
 	{
 		const FRung& Rung = Rungs[Index];
@@ -4104,10 +3227,7 @@ bool FRigidBlockCoveredOpeningRefusalTest::RunTest(const FString& Parameters)
 				&& Results[Index].Lambda <= Rung.CertifiedHi);
 	}
 
-	/*
-	 * The bracket beside the window: the window says what the number is, the bracket what the
-	 * physics allows, closed by two neighbours measured in this run rather than carried in.
-	 */
+	// The bracket: what the physics allows, closed by neighbours measured in this run.
 	if (bMeasured[0] && bMeasured[1] && bMeasured[2])
 	{
 		if (Results[1].bAnswered && Results[0].bAnswered && Results[2].bAnswered)
