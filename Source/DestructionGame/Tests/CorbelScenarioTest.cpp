@@ -13,67 +13,23 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE CORBEL FAMILY AS PLAYABLE SCENARIOS — the seven structures the user reviewed, addressable
- * as levels a human can join and watch.
+ * The seven corbel structures as joinable catalogue levels.
  *
- * =====================================================================================
- * WHY THESE ROWS CUT NOTHING, WHICH IS THE WHOLE DIFFERENCE FROM `free-end-40`
- * =====================================================================================
+ * No row cuts anything: unlike free-end-40 (before/after a cut), a corbel is condemned by its own
+ * geometry, so its level is as-laid versus settled. The empty cut list is asserted.
  *
- * `Tests/CorbelScreenshotTest.cpp` draws the distinction and it is worth restating, because a
- * catalogue row that copied `free-end-40`'s shape would be a level that shows the wrong thing:
+ * Pinned: the piece count (against a closed form and against the world-free fixture), and the
+ * root joint utilisation, compared with == against the fixture's so a lookalike row fails.
+ * corbel-f-100 (3,015 bricks) is only built and counted; AHundredStepCorbelMustComeDown solves it.
  *
- *   - `free-end-40` is BEFORE AND AFTER A CUT. The wall stands, the player watches a brick go,
- *     and the question is what the remainder does about it.
- *   - A CORBEL IS CONDEMNED BY ITS OWN GEOMETRY. It is laid reaching too far and its root joint
- *     is over capacity the moment it exists, so the honest pair is AS LAID versus SETTLED. There
- *     is no cut to wait for and nothing for a delay to do.
- *
- * So every row here names an empty cut list, and that is asserted rather than left implied: a
- * corbel row that quietly deleted a brick would be showing a human a different experiment from
- * the one its own expectation line describes.
- *
- * =====================================================================================
- * WHAT IS PINNED, AND WHERE EACH NUMBER COMES FROM
- * =====================================================================================
- *
- *   - THE PIECE COUNT, twice over: against a closed form derived here from the coordinating
- *     grid, and against what the world-free fixture actually lays. A level that is a LOOKALIKE
- *     of the fixture — one step taller, one cell wider — proves nothing about any number the
- *     solver suite prints, and nothing about it would look wrong on screen.
- *
- *   - E35 AND E36 STRADDLE THE CROSSOVER, and that is the entire reason those two rows exist as
- *     a PAIR. `Core.Structure.CorbelStepsBeforeTensionWins` locates it by bisection at 36 steps:
- *     the smallest step count whose root joint reads over 1.0, with the step below at or under
- *     capacity. Those numbers are READ OUT OF THAT TEST rather than re-derived here — its own
- *     header records the closed-form check, 0.99029 at 35 against 1.01625 at 36 — so if the
- *     crossover ever moves, that test is where the argument happens and this one follows.
- *
- *   - AND THE LEVEL READS WHAT THE FIXTURE READS, EXACTLY. The scenario's root joint utilisation
- *     is compared with `==` against the same joint of the world-free structure. This is the drift
- *     check that keeps a level and a headless reading about ONE structure: a row with the wrong
- *     base cell count or the wrong step would still build, still look like a corbel, and read a
- *     completely different number.
- *
- * `corbel-f-100` IS DELIBERATELY CHEAP. It is 3,015 bricks — the largest structure in the suite —
- * and `Core.Structure.AHundredStepCorbelMustComeDown` already lays it, solves it and cascades it.
- * Here it is only built and counted; nothing is solved.
- *
- * NEEDS A TICKING WORLD: NO. The catalogue is world-free by construction, which is what keeps
- * this in the fast suite.
+ * World-free; runs in the fast suite.
  */
 namespace CorbelScenarioTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/*
-	 * --- the grid, restated ---------------------------------------------------------------
-	 *
-	 * DESIGN.md's standard UK metric clay brick and the 1 cm joint that makes the coordinating
-	 * grid 22.5 x 11.25 x 7.5. Written out rather than imported, so a catalogue row that quietly
-	 * changed brick format fails here rather than agreeing with itself.
-	 */
+	// The DESIGN.md brick and 1 cm joint, written out so a changed brick format fails here.
 	constexpr double CorbelScenarioBrickLengthCm = 21.5;
 	constexpr double CorbelScenarioBrickHeightCm = 6.5;
 	constexpr double CorbelScenarioMortarCm = 1.0;
@@ -84,10 +40,10 @@ namespace CorbelScenarioTestSupport
 	constexpr double CorbelScenarioCoursePitchCm =
 		CorbelScenarioBrickHeightCm + CorbelScenarioMortarCm;
 
-	/** The half-cell step every corbel fixture in this project uses. */
+	/** The half-cell corbel step. */
 	constexpr double CorbelScenarioStepCm = CorbelScenarioCellPitchCm / 2.0;
 
-	/** Three courses of immovable base under every case in the family. */
+	/** Courses of immovable base under every case. */
 	constexpr int32 CorbelScenarioBaseCourses = 3;
 
 	inline FString CorbelScenarioBits(double Value)
@@ -150,17 +106,10 @@ namespace CorbelScenarioTestSupport
 	}
 
 	/**
-	 * THE ROOT JOINT OF A LAID CORBEL, FOUND BY GEOMETRY.
-	 *
-	 * The bed joint under the arm's lowest outermost brick — the one place a corbel on an
-	 * immovable base can fail, because a rigid body cannot rotate about a fixed base without
-	 * separating from it. Located by CENTRES worked out from the grid rather than by a handle
-	 * anything handed back, so the same joint can be read out of the scenario's layout and out of
-	 * the world-free fixture without either having to agree about handle numbering first.
-	 *
-	 * The base's top course is even-indexed (three courses), so it is unshifted and its outermost
-	 * brick sits at `LeftOrigin + (BaseCells - 1) x 22.5`; the arm's first step lands one step
-	 * outboard of that, one course up.
+	 * The corbel's root joint: the bed under the arm's lowest outermost brick, the only place a
+	 * corbel on an immovable base can fail. Found by grid centres, not handles, so the scenario and
+	 * the fixture can be compared. The seat is at LeftOrigin + (BaseCells - 1) x 22.5 on the top
+	 * base course; the arm brick is one step outboard, one course up.
 	 */
 	inline int32 CorbelScenarioRootJoint(
 		const FStructure& Structure,
@@ -204,15 +153,12 @@ namespace CorbelScenarioTestSupport
 
 		int32 Steps;
 
-		/** False is the bare stepped arm of single bricks — case A, and only case A. */
+		/** False only for case A, the bare arm of single bricks. */
 		bool bFilled;
 
 		int32 ExpectedPieces;
 
-		/**
-		 * Whether to solve it and read its root joint. E35 and E36 straddle the crossover and are
-		 * the reason the pair exists; F is 3,015 bricks and is counted only.
-		 */
+		/** Whether to solve and read the root joint. F (3,015 bricks) is counted only. */
 		bool bReadTheRootJoint;
 	};
 
@@ -225,12 +171,9 @@ namespace CorbelScenarioTestSupport
 	}
 
 	/**
-	 * THE SEVEN ROWS, AND THEY ARE EXACTLY `Tests/CorbelScreenshotTest.cpp`'s `ShotCases` FAMILY.
-	 *
-	 * THE PIECE COUNTS ARE DERIVED, NOT RECORDED. The base is `3 x BaseCells`. A bare arm adds one
-	 * brick per step. A filled arm at the half-cell step adds `BaseCells + floor(i/2)` on step i —
-	 * the outer face advances half a cell per course, so a whole new cell appears every second one
-	 * — and summing from 1 to k gives `k x BaseCells + floor(k^2 / 4)`:
+	 * The seven rows, matching CorbelScreenshotTest.cpp's ShotCases. Piece counts are derived: base
+	 * 3 x BaseCells; a bare arm adds one per step; a filled arm adds BaseCells + floor(i/2) on step
+	 * i, summing to k x BaseCells + floor(k^2 / 4):
 	 *
 	 *     A   6 + 4                        = 10
 	 *     B   6 + 4x2 + floor(16/4)        = 18
@@ -240,8 +183,7 @@ namespace CorbelScenarioTestSupport
 	 *     E36 15 + 36x5 + floor(1296/4)    = 519
 	 *     F   15 + 100x5 + floor(10000/4)  = 3015
 	 *
-	 * The last agrees with the 3,015 `Core.Structure.AHundredStepCorbelMustComeDown` reports, which
-	 * is the cross-check on the closed form rather than its source.
+	 * F cross-checks against AHundredStepCorbelMustComeDown's 3,015.
 	 */
 	const FCorbelScenarioRow CorbelScenarioRows[] =
 	{
@@ -254,7 +196,7 @@ namespace CorbelScenarioTestSupport
 		{ TEXT("corbel-f-100"), TEXT("Lvl_CorbelF100"), 5, 100, true, 3015, false },
 	};
 
-	/** The world-free fixture's spec for a row. Filled rows only; the fixture builds no bare arm. */
+	/** The world-free fixture's spec for a filled row. */
 	inline CorbelCaseTestSupport::FCorbelSpec CorbelScenarioFixtureSpecOf(
 		const FCorbelScenarioRow& Row)
 	{
@@ -272,22 +214,14 @@ namespace CorbelScenarioTestSupport
 	}
 
 	/**
-	 * THE STEP COUNTS THE E35/E36 LEVELS WERE BUILT AT — the CHARACTERISTIC-basis crossover's
-	 * straddle (0.99029 at 35, 1.01625 at 36, from `F(s) = 1 + s + s(s+1)/4` and
-	 * `M(s) = 5.625(s+1) + 11.25 x SUM F` against f_xk1 = 0.10).
-	 *
-	 * SINCE THE 2026-08-14 MEAN RE-ANCHOR FLIP THIS IS A CONTENT PIN, NOT A CROSSOVER: at
-	 * f_x1 = 0.70 the worst-axis crossover moves to ~124 steps (compression), so 35/36 no
-	 * longer straddle anything. The pair's replacement is owed (CURRENT_STATE); these rows
-	 * stay pinned so the shipped levels do not drift while the replacement is designed.
+	 * E35/E36 were built to straddle the characteristic-basis crossover (0.99029 / 1.01625). On the
+	 * mean basis the crossover is ~124 steps, so this is now only a content pin; a replacement pair
+	 * is owed (CURRENT_STATE).
 	 */
 	constexpr int32 CorbelScenarioCrossoverSteps = 36;
 }
 
-/**
- * THE SEVEN CORBEL ROWS ARE IN THE CATALOGUE, THEY BUILD, AND THEY ARE THE FIXTURES THE SOLVER
- * SUITE HAS BEEN MEASURING.
- */
+/** The seven corbel rows are in the catalogue, build, and match the solver suite's fixtures. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCorbelScenarioCatalogueTest,
 	"DestructionGame.World.Scenarios.CorbelRows",
@@ -308,17 +242,9 @@ bool FCorbelScenarioCatalogueTest::RunTest(const FString& Parameters)
 			&& CorbelScenarioRows[5].Steps == CorbelScenarioCrossoverSteps);
 
 	/*
-	 * --- the piece counts are arbitrated BEFORE they are used as expectations --------------
-	 *
-	 * The closed form in the table's own comment is a second reading of the family, written in
-	 * this file. A wrong expectation is worse than no test, because a level that laid the right
-	 * corbel would then be reported as laying the wrong one and whoever went looking would find
-	 * nothing. So each literal is held against what the world-free fixture actually lays, which
-	 * costs one build per row — 0.06 s even for the hundred-step case — and is GREEN BEFORE THE
-	 * CATALOGUE ROWS EXIST. That is what says the red below is red for the right reason.
-	 *
-	 * The bare arm is skipped: the fixture header deliberately builds no bare arm, and
-	 * `Core.Corbel.LaysTheFamilyOnItsGrid` is what arbitrates case A.
+	 * Check the expected piece counts against the world-free fixture before using them, so a wrong
+	 * expectation cannot blame a correct level. The bare arm is covered by
+	 * Core.Corbel.LaysTheFamilyOnItsGrid instead.
 	 */
 	for (const FCorbelScenarioRow& Row : CorbelScenarioRows)
 	{
@@ -349,7 +275,7 @@ bool FCorbelScenarioCatalogueTest::RunTest(const FString& Parameters)
 			Fixture.Structure.NumPieces() == Row.ExpectedPieces);
 	}
 
-	/** Filled in as the sweep goes, so the straddle can be asserted as a PAIR at the end. */
+	/** E35 and E36 root readings, compared as a pair at the end. */
 	double RootReadingAtSteps[2] = { -1.0, -1.0 };
 
 	for (const FCorbelScenarioRow& Row : CorbelScenarioRows)
@@ -365,11 +291,6 @@ bool FCorbelScenarioCatalogueTest::RunTest(const FString& Parameters)
 			*FString::Printf(TEXT("'%s' must be joinable by its own map"), Row.Name),
 			FString(Scenario->MapName), FString(Row.MapName));
 
-		/*
-		 * A CORBEL IS CONDEMNED BY ITS OWN GEOMETRY, so the level's whole story is the settle.
-		 * A row here that named a cut would be showing a human a different experiment from the
-		 * one its expectation line describes.
-		 */
 		TestTrue(
 			*FString::Printf(
 				TEXT("'%s' must cut NOTHING — a corbel is condemned by its own geometry and the ")
@@ -420,17 +341,13 @@ bool FCorbelScenarioCatalogueTest::RunTest(const FString& Parameters)
 			Row.Name, Laid.Structure.NumPieces(), Laid.Structure.NumConnections(),
 			LaidSeconds * 1000.0));
 
-		/*
-		 * `corbel-f-100` STOPS HERE, DELIBERATELY. 3,015 bricks is the largest structure in the
-		 * suite and Core.Structure.AHundredStepCorbelMustComeDown already solves and cascades it;
-		 * nothing this file asserts would be truer for doing it twice.
-		 */
+		// corbel-f-100 stops here; AHundredStepCorbelMustComeDown already solves it.
 		if (!Row.bReadTheRootJoint)
 		{
 			continue;
 		}
 
-		/* --- and it is the fixture's own structure, not a lookalike ------------------------- */
+		/* --- the fixture's own structure, not a lookalike ----------------------------------- */
 
 		CorbelCaseTestSupport::FCorbelStructure Fixture;
 
@@ -513,18 +430,9 @@ bool FCorbelScenarioCatalogueTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE STRADDLE IS DEAD — THE 2026-08-13 MEAN RE-ANCHOR KILLED IT, AND SAYING SO IS THE
-	 * HONEST FORM. On the characteristic basis E35/E36 sat either side of the 36-step tension
-	 * crossover (0.990 / 1.016); at the mean f_x1 = 0.70 both read a seventh of that (~0.142 /
-	 * ~0.145) and the worst-axis crossover moves to ~124 steps, where COMPRESSION crushes the
-	 * root (F(k)/A against the unmoved 10 MPa — see CorbelStepsBeforeTensionWins' re-derived
-	 * header). The two levels stay in the catalogue as content; what they can no longer do is
-	 * discriminate the crossover, and the REPLACEMENT PAIR IS OWED — levels either side of the
-	 * measured mean-basis crossover, specified in CURRENT_STATE, laid and MEASURED in the
-	 * green phase.
-	 *
-	 * What still separates the pair is the monotone step term, pinned as an ordering so the
-	 * two rows are not two pictures of the same thing.
+	 * On the mean basis E35/E36 no longer straddle the crossover (~0.142 / ~0.145; the crossover is
+	 * ~124 steps, in compression; see CorbelStepsBeforeTensionWins). A replacement pair is owed
+	 * (CURRENT_STATE). Meanwhile the pair is pinned as an ordering, both under capacity.
 	 */
 	TestTrue(
 		*FString::Printf(

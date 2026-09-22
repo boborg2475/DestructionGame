@@ -10,16 +10,10 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE BREAK-DECISION REPORT IS A FAITHFUL RECORD OF THE CASCADE IT DESCRIBES.
- *
- * `FStructure::GetLastSolveAndBreakReport` exists so an experiment can say how long a break decision
- * took and where the time went. A report is only worth reading if its counts agree with the cascade's
- * own answers, so this pins the agreement rather than any number: the passes it lists are the passes
- * SolveAndBreak returned plus the terminal one, its joint counts are the structure's, and a settle
- * that breaks nothing reports exactly one pass with no breaks. Wall-clock is asserted only to be
- * finite and non-negative — a threshold would flake on a shared machine.
- *
- * NEEDS A TICKING WORLD: NO.
+ * GetLastSolveAndBreakReport's counts agree with the cascade: its passes are SolveAndBreak's
+ * return plus the terminal one, its joint counts are the structure's, and a settle that breaks
+ * nothing reports one pass. Wall-clock is only checked finite and non-negative, since a threshold
+ * would flake. World-free.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSolveAndBreakReportTest,
@@ -48,7 +42,7 @@ bool FSolveAndBreakReportTest::RunTest(const FString& Parameters)
 
 	FStructure& S = Layout.Structure;
 
-	/* AS BUILT: one solve, nothing gives, and the report says exactly that. */
+	/* As built: one solve, nothing gives. */
 	const int32 PassesAsBuilt = S.SolveAndBreak();
 	const FStructure::FSolveAndBreakReport& AsBuilt = S.GetLastSolveAndBreakReport();
 
@@ -78,11 +72,7 @@ bool FSolveAndBreakReportTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the last SolveLoads profile is the terminal pass's"),
 		S.GetLastSolveLoadsProfile().FixpointIterations == AsBuilt.Passes.Last().Solve.FixpointIterations);
 
-	/*
-	 * A CUT THAT MAKES SOMETHING GIVE. Pull the whole bottom course out but its two end bricks, so
-	 * the courses above span a hole wider than any of them can bridge; whatever the cascade decides,
-	 * the report must count it the same way the structure does.
-	 */
+	// Remove the bottom course except its end bricks, so something must give.
 	int32 Removed = 0;
 	for (int32 Piece = 0; Piece < S.NumPieces(); ++Piece)
 	{
@@ -122,10 +112,8 @@ bool FSolveAndBreakReportTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("intact joints after the cascade"), AfterCut.IntactJointsAfter, IntactNow);
 
 	/*
-	 * PASS NUMBERS ARE GLOBAL STAMPS: this call continues from the highest stamp already written.
-	 * Nothing gave as built, so this call's first pass is 1, and every pass after it is the next
-	 * integer. A joint gives to exactly one of the three authorities — the gate below the cap, the
-	 * sweep or the prover above it — so the three counts sum to the joints the structure severed.
+	 * Pass numbers are global stamps; nothing gave as built, so this call starts at 1. Each joint
+	 * gives to exactly one authority (gate, sweep or prover), so the three counts sum to the total.
 	 */
 	int32 SeveredPerReport = 0;
 	for (int32 Index = 0; Index < AfterCut.Passes.Num(); ++Index)
@@ -150,10 +138,8 @@ bool FSolveAndBreakReportTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE CUT ITSELF SEVERS TOO, AND IS NOT THE CASCADE'S. RemovePiece severs every joint of the
-	 * piece it tombstones before SolveAndBreak is ever called, so those show up in the structure's
-	 * severed count and in IntactJointsBefore, never in a pass. What the passes must account for is
-	 * exactly the difference between the intact count the cascade started from and the one it ended on.
+	 * RemovePiece severs its joints before SolveAndBreak runs, so they appear in the structure's
+	 * count but in no pass. The passes account for IntactJointsBefore - IntactJointsAfter.
 	 */
 	TestEqual(TEXT("the report's severed joints sum to the joints the cascade severed"),
 		SeveredPerReport, AfterCut.IntactJointsBefore - AfterCut.IntactJointsAfter);
@@ -161,11 +147,8 @@ bool FSolveAndBreakReportTest::RunTest(const FString& Parameters)
 		SeveredPerReport + (S.NumConnections() - AfterCut.IntactJointsBefore), SeveredNow);
 
 	/*
-	 * THE PER-JOINT AUTHORITY STAMP AGREES WITH THE CASCADE. This 48-piece wall is below the 200-block
-	 * equilibrium-gate cap, so every joint the cascade gave was given by the gate (code 1) — no sweep,
-	 * no prover. GetBreakAuthority is INDEX_NONE for an intact joint and for one that went with the
-	 * cut (severed without an authority), so counting the code-1 stamps must reproduce the cascade's
-	 * own severed count, and no joint may carry a sweep or prover stamp on a below-cap structure.
+	 * Below the 200-block gate cap, every cascade sever is stamped by the gate (code 1). Intact and
+	 * cut-severed joints are unstamped (INDEX_NONE).
 	 */
 	int32 GateStamped = 0;
 	int32 SweepStamped = 0;
@@ -191,11 +174,8 @@ bool FSolveAndBreakReportTest::RunTest(const FString& Parameters)
 		Unstamped, IntactNow + CutSevered);
 
 	/*
-	 * THE PER-POSE BREAKDOWN IS EMPTY WHEN THE PROVER NEVER RUNS. This 48-piece wall is below the
-	 * 200-block gate cap, so the equilibrium gate answers and the regional prover is never posed:
-	 * every pass reports RegionalPoses == 0, and its RegionalPoseBreakdown decomposes that into an
-	 * empty array. This is the other direction of the "one entry per pose" invariant the cascade-seam
-	 * test pins on the felling side.
+	 * Below the cap the prover never runs, so every pass has zero regional poses and an empty
+	 * breakdown (the converse of the cascade-seam test's one-entry-per-pose check).
 	 */
 	for (int32 Index = 0; Index < AfterCut.Passes.Num(); ++Index)
 	{

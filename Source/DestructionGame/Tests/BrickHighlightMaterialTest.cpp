@@ -12,34 +12,22 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges
- * many files into one. Every helper carries a BrickHighlight prefix so nothing here can be
- * ambiguous against Tests/PieceMultiSelectTest.cpp's highlight helpers, which are about the
- * same enum from the controller's side. See CURRENT_STATE.md.
+ * Named namespace with BrickHighlight-prefixed helpers, so unity builds do not collide with
+ * PieceMultiSelectTest.cpp's highlight helpers.
  */
 namespace BrickHighlightMaterialTestSupport
 {
 	/**
-	 * EVERY STATE A BRICK CAN BE IN, AND THE ASSET IT MUST REACH FOR — ONE ROW PER STATE.
-	 *
-	 * A TABLE RATHER THAN THREE HAND-WRITTEN SWITCHES, AND THAT CHANGE IS WHAT THE SIX NEIGHBOUR
-	 * STATES FORCED. With four states a name switch, a slot switch and a hand-written transition
-	 * script were readable; with ten they are three lists that have to be kept in step by hand,
-	 * and the one that gets forgotten is the script — which is the list whose omissions are
-	 * INVISIBLE, because SetHighlighted has a `default:` arm and a state nobody exercised draws
-	 * plain rather than failing. Adding a state is now adding a row here, exactly as adding a
-	 * material profile is adding a row.
-	 *
-	 * None CARRIES NO PATH, DELIBERATELY: it wears nothing at all, which is a different claim from
-	 * "wears the wrong thing" and is asserted as such below.
+	 * Every highlight state and the asset it must wear, one row each. One table drives the names,
+	 * slots and transition walk, so a new state cannot be silently skipped (SetHighlighted's
+	 * default arm would draw it plain). None has no path: it wears nothing.
 	 */
 	struct FBrickHighlightRow
 	{
 		EBrickHighlight State = EBrickHighlight::None;
 		const TCHAR* Name = nullptr;
 
-		/** The asset this state must wear, or null for the state that wears nothing. */
+		/** The asset this state must wear, or null for None. */
 		const TCHAR* Path = nullptr;
 	};
 
@@ -56,22 +44,17 @@ namespace BrickHighlightMaterialTestSupport
 		{ EBrickHighlight::Neighbour5, TEXT("Neighbour5"), DestructionContent::BrickNeighbourMaterialPaths[5] },
 
 		/*
-		 * AND THE LOAD OVERLAY'S THREE BANDS. These matter more to this sweep than any state above
-		 * them, because they are the states the player sees on EVERY live piece at once: a band that
-		 * fell through `SetHighlighted`'s `default:` arm would set a null overlay and draw the piece
-		 * PLAIN, so an overlay that silently covered two bands out of three would look like a wall
-		 * with a green base and nothing wrong anywhere else. That is precisely a plausible picture,
-		 * which is the failure mode this project keeps closing.
+		 * The load overlay's bands, shown on every live piece at once. A band that fell through to
+		 * the default arm would draw plain and look plausible.
 		 */
 		{ EBrickHighlight::LoadComfortable, TEXT("LoadComfortable"), DestructionContent::BrickLoadComfortableMaterialPath },
 		{ EBrickHighlight::LoadCaution,     TEXT("LoadCaution"),     DestructionContent::BrickLoadCautionMaterialPath },
 		{ EBrickHighlight::LoadCritical,    TEXT("LoadCritical"),    DestructionContent::BrickLoadCriticalMaterialPath }
 	};
 
-	/** How many states there are, which is how wide the expectation table has to be. */
 	constexpr int32 BrickHighlightStateCount = UE_ARRAY_COUNT(BrickHighlightRows);
 
-	/** Index into the table above, found in it rather than kept as a second copy of it. */
+	/** Row index for a state, or INDEX_NONE. */
 	int32 BrickHighlightSlot(EBrickHighlight Highlight)
 	{
 		for (int32 Slot = 0; Slot < BrickHighlightStateCount; ++Slot)
@@ -94,15 +77,8 @@ namespace BrickHighlightMaterialTestSupport
 	}
 
 	/**
-	 * Whether a material IS a given asset, or is an instance of it however deep.
-	 *
-	 * NOT AN EQUALITY, DELIBERATELY. What has to be true is that the brick asked for the right
-	 * ASSET for its state; whether the thing it hands the renderer is that material, a material
-	 * instance of it, or a dynamic instance created so a colour can be animated later is an
-	 * implementation choice, and an equality here would outlaw two of the three for no reason.
-	 * The parent walk is bounded because a material instance chain cannot contain a cycle — the
-	 * editor refuses one — and the depth cap is belt and braces against a cooked asset that
-	 * somehow does.
+	 * Whether a material is the asset or an instance of it at any depth. Not equality, so a
+	 * material instance or dynamic instance also passes. The depth cap guards against a cycle.
 	 */
 	bool BrickHighlightDerivesFrom(const UMaterialInterface* Candidate, const UMaterialInterface* Asset)
 	{
@@ -128,7 +104,7 @@ namespace BrickHighlightMaterialTestSupport
 		return false;
 	}
 
-	/** The overlay a brick is currently wearing, named for a failure message. */
+	/** The brick's current overlay path, for failure messages. */
 	FString BrickHighlightDescribeOverlay(const ABrickActor* Brick)
 	{
 		if (Brick == nullptr || Brick->GetMesh() == nullptr)
@@ -142,20 +118,8 @@ namespace BrickHighlightMaterialTestSupport
 	}
 
 	/**
-	 * THE TRANSITION SCRIPT, AND IT STILL COVERS EVERY ORDERED PAIR OF STATES — NOW ALL HUNDRED.
-	 *
-	 * A SCRIPT RATHER THAN TEN INDEPENDENT CHECKS because every bug in this area is a state left
-	 * behind by the previous step: an overlay that is set on the way in and never cleared on the
-	 * way out leaves the whole wall lit, and one-shot assertions would each pass on their own.
-	 *
-	 * GENERATED RATHER THAN WRITTEN OUT, AND THAT IS THE CHANGE THE SIX NEIGHBOURS FORCED. Four
-	 * states made a sixteen-step Eulerian circuit that a person could read and check; ten states
-	 * make a hundred-step one that nobody can check by eye, so a hand-written script would quietly
-	 * become a script that covers MOST pairs — and the pairs it dropped would be invisible, because
-	 * SetHighlighted has a `default:` arm and a state nobody exercised sets a NULL overlay and
-	 * draws PLAIN. For the strongest states in the scene that is exactly backwards, and it is what
-	 * this sweep exists to catch. Setting From and then To makes every ordered pair explicit, and
-	 * the step between one pair and the next is a transition too, so the walk stays continuous.
+	 * A transition walk covering every ordered pair of states, generated from the table. A walk,
+	 * not independent checks, because the bugs here are state left behind by the previous step.
 	 */
 	TArray<EBrickHighlight> BrickHighlightWalk()
 	{
@@ -175,52 +139,17 @@ namespace BrickHighlightMaterialTestSupport
 }
 
 /**
- * A BRICK WEARS A MATERIAL FOR THE STATE IT IS IN, ONE PER STATE, AND TAKES IT OFF AGAIN.
+ * A brick wears a distinct overlay material per highlight state and removes it at None.
  *
- * WHAT IS BROKEN TODAY. EBrickHighlight is decided correctly by the controller, stored correctly
- * by the brick, and READ BY NOBODY — SetHighlighted assigns a field and stops. So selecting six
- * bricks looks exactly like selecting none, and the one thing a player must be able to check
- * before pressing Delete is which bricks are actually going.
+ * The renderer cannot be checked headless, but the material the brick asks for can: the seam is
+ * UMeshComponent::SetOverlayMaterial. An overlay, not a slot-0 swap, so clearing is a single null;
+ * the final assertion holds slot 0 unchanged.
  *
- * WHY THIS IS TESTABLE AT ALL, AND WHERE THE UNTESTED INCH MOVES TO. "Does the brick look
- * different" needs a renderer and a code-built world has none. But "which material did the brick
- * ASK FOR for this state" needs nothing but the component it set it on, and that is the half
- * where the bugs are: the wrong state drawing the wrong asset, a hover overlay never cleared, the
- * two states collapsing onto one look. Putting the seam at UMeshComponent::SetOverlayMaterial
- * shrinks what nothing can check from "the whole feature" to "does the shader look nice".
+ * Every non-None state must wear a different asset, each derived from a required-content path
+ * (so deleting the asset fails the test). The neighbour states tie the joint readout's colour
+ * swatches to bricks in the world (FInspectorJointRow::ColourSlot; World.Select checks the pair).
  *
- * AN OVERLAY RATHER THAN A MATERIAL SWAP, and the last assertion is what holds that. Replacing
- * slot 0 means remembering what was there and putting it back, which is a second record of the
- * brick's own appearance and one more thing to leave behind; an overlay is additive and clearing
- * it is a single null.
- *
- * TEN STATES MUST BE TEN DISTINGUISHABLE ANSWERS. None is nothing at all, and the other nine are
- * nine different materials — if any two shared one the enumerator that shared it would be
- * decoration, and a brick would read as chosen the moment the cursor crossed it, or the joint
- * numbers on screen would belong to any of the lit bricks.
- *
- * THE SIX NEIGHBOUR STATES ARE THE OTHER HALF OF THE JOINT READOUT, AND WITHOUT THEM THE PANEL IS
- * ONLY HALF BUILT. A joint row already draws a coloured swatch and names its far end in words, and
- * in a wall of 1,220 identical bricks a word is not enough to find one by — the colour is the tie,
- * and today nothing in the world wears it, so the tie does not exist. FInspectorJointRow::ColourSlot
- * decides WHICH colour each row is; this is the brick end of the same decision, and World.Select is
- * where the two are held against each other.
- *
- * AND THE `default:` ARM IS WHY THE SWEEP HAS TO NAME EVERY STATE RATHER THAN THE ONES SOMEBODY
- * REMEMBERED. SetHighlighted maps a state to an overlay with a switch that has a default arm, so
- * a state with no case of its own sets a NULL overlay and the brick draws PLAIN — which for the
- * STRONGEST state is exactly backwards, and is invisible to a sweep that stops at three. Six new
- * states arriving at once is precisely when a sweep stops at the ones somebody remembered, which
- * is why the state list, the asset per state and the transition walk are now ONE table.
- *
- * DERIVED FROM A NAMED ASSET, NOT MERELY NON-NULL. A brick that highlighted itself with a
- * transient material nobody shipped would satisfy "something is set" and would silently stop
- * working the day the real asset was deleted. Anchoring each state to a required-content path is
- * what turns that deletion into a red test.
- *
- * NEEDS A TICKING WORLD: it needs a WORLD, because a brick is an actor and this drives the real
- * spawn path rather than a bare NewObject — but it never ticks one, lays no wall and touches no
- * physics.
+ * Needs a world to spawn the brick, but never ticks it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBrickHighlightMaterialTest,
@@ -232,10 +161,7 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 	using namespace BrickWorldTestSupport;
 	using namespace BrickHighlightMaterialTestSupport;
 
-	/*
-	 * THE ASSETS ARE LOADED BY PATH RATHER THAN READ BACK OFF THE BRICK, so a brick that
-	 * resolved some other material agrees with nothing but itself and fails here.
-	 */
+	// Loaded by path, not read off the brick, so a brick using the wrong material fails.
 	UMaterialInterface* Assets[BrickHighlightStateCount] = {};
 
 	for (int32 Slot = 0; Slot < BrickHighlightStateCount; ++Slot)
@@ -255,17 +181,7 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 			Assets[Slot]);
 	}
 
-	/*
-	 * THE NINE MUST BE NINE DIFFERENT ASSETS, PAIRWISE. Two of them collapsing onto one look makes
-	 * the enumerator that shares it decoration, and which pair collapses decides which lie the
-	 * player is told: hover onto selected says a brick is chosen the moment the cursor crosses it,
-	 * inspected onto selected says the joint numbers on screen belong to any of the bricks that are
-	 * lit, and two neighbours onto one says two rows of the readout point at the same brick.
-	 *
-	 * PAIRWISE OVER THE WHOLE TABLE RATHER THAN THREE NAMED COMPARISONS, which is what makes adding
-	 * a state a row: six neighbours arriving at once is 36 pairs, and the copy-paste that ships two
-	 * of them identical is exactly the mistake a hand-written list of comparisons does not catch.
-	 */
+	// The assets must be pairwise distinct, or two states look the same.
 	for (int32 Left = 0; Left < BrickHighlightStateCount; ++Left)
 	{
 		if (BrickHighlightRows[Left].Path == nullptr)
@@ -308,11 +224,7 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 
 	UStaticMeshComponent* const Mesh = Brick->GetMesh();
 
-	/*
-	 * A BRICK NOBODY HAS CALLED OUT WEARS NOTHING. None is the zero enumerator precisely so a
-	 * freshly spawned brick is a plain one, and an overlay present before anything asked for it
-	 * would light the whole wall from the moment it was built.
-	 */
+	// A freshly spawned brick reads None and wears no overlay.
 	TestTrue(
 		*FString::Printf(
 			TEXT("as spawned, a brick should read None and wear no overlay; it reads %s wearing %s"),
@@ -320,19 +232,12 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 			*BrickHighlightDescribeOverlay(Brick)),
 		Brick->GetHighlight() == EBrickHighlight::None && Mesh->GetOverlayMaterial() == nullptr);
 
-	/*
-	 * THE BRICK'S OWN MATERIAL IS RECORDED SO IT CAN BE CHECKED AGAINST AT THE END. Highlighting
-	 * must be additive: a swap of slot 0 would mean remembering and restoring what was there,
-	 * which is a second record of the brick's appearance and one more thing to get out of step.
-	 */
+	// Recorded to check at the end that highlighting never touched slot 0.
 	UMaterialInterface* const OwnMaterial = Mesh->GetMaterial(0);
 
 	/*
-	 * THE PER-STATE EXPECTATION, CAPTURED ON FIRST SIGHT RATHER THAN WRITTEN DOWN. Every later
-	 * visit to the same state must produce the SAME answer, which is what makes SetHighlighted's
-	 * documented idempotence and order-freedom falsifiable: an implementation that toggled, or
-	 * that only cleared when coming from one particular state, passes a per-state check and
-	 * fails this one.
+	 * Each state's overlay is captured on first visit; every later visit must match, which tests
+	 * idempotence and order-independence.
 	 */
 	UMaterialInterface* Expected[BrickHighlightStateCount] = {};
 	bool bSeen[BrickHighlightStateCount] = {};
@@ -369,11 +274,7 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 				*BrickHighlightDescribeOverlay(Brick)),
 			Overlay == Expected[Slot]);
 
-		/*
-		 * AND THE STORED STATE STILL AGREES WITH THE MATERIAL. The flag is what the controller
-		 * and World.Select read; the overlay is what the renderer reads. The moment they can
-		 * disagree there are two answers to "is this brick called out".
-		 */
+		// The stored state (read by the controller) must agree with the overlay (read by the renderer).
 		TestTrue(
 			*FString::Printf(
 				TEXT("%s -> %s: GetHighlight should read %s, it reads %s"),
@@ -385,19 +286,8 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * NONE IS NOTHING AT ALL, AND THAT IS THE ASSERTION THE TRAIL DEPENDS ON. Setting the state
-	 * back to None has to remove the overlay rather than swap it for a neutral one — anything
-	 * non-null there is a brick still drawing an effect, and every brick the cursor has crossed
-	 * would keep it.
-	 *
-	 * SET EXPLICITLY RATHER THAN RELYING ON WHERE THE WALK STOPPED, AND THAT IS WHAT GENERATING
-	 * THE SCRIPT CHANGED. The hand-written circuit happened to END on None, so reading the live
-	 * overlay here said something; the generated sweep ends on whatever the last row of the table
-	 * is, which today is Neighbour5 and tomorrow is whatever gets appended. Asserting on that is
-	 * asserting on the GENERATOR. The claim worth keeping is the brick's, so it is driven to None
-	 * on purpose and then read — and it is read off the live component AFTER the whole hundred-step
-	 * sweep, which is the one thing the per-state table below cannot say: that table reports what
-	 * None recorded on its FIRST visit, when the brick had barely been touched.
+	 * After the full sweep, None must remove the overlay entirely, or every brick the cursor
+	 * crossed stays lit. Set explicitly, since the generated walk does not end on None.
 	 */
 	Brick->SetHighlighted(EBrickHighlight::None);
 
@@ -408,17 +298,8 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 		Mesh->GetOverlayMaterial());
 
 	/*
-	 * EVERY STATE THAT IS NOT None WEARS AN OVERLAY, AND IT IS THE ONE ITS ROW NAMES.
-	 *
-	 * THIS IS THE ROW THE `default:` ARM SWALLOWS, SIX TIMES OVER. A state SetHighlighted has no
-	 * case for takes the default and sets a NULL overlay, so the brick draws PLAIN — for Inspected
-	 * that is weaker than merely selected, which is backwards, and for a Neighbour it is the
-	 * readout pointing at a brick that never lights, which is the whole tie the panel is drawn to
-	 * make. It fails here as "wears no overlay at all" rather than as a wrong asset.
-	 *
-	 * DERIVED FROM A NAMED ASSET, NOT MERELY NON-NULL. A brick that highlighted itself with a
-	 * transient material nobody shipped would satisfy "something is set" and would silently stop
-	 * working the day the real asset was deleted.
+	 * Every non-None state wears the overlay its row names. A state missing from SetHighlighted's
+	 * switch falls to the default arm and fails here as "no overlay".
 	 */
 	for (int32 Slot = 0; Slot < BrickHighlightStateCount; ++Slot)
 	{
@@ -451,10 +332,8 @@ bool FBrickHighlightMaterialTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND THE NINE OVERLAYS ARE NINE DIFFERENT ANSWERS, PAIRWISE. Different ASSETS is asserted at
-	 * the top of this test; this is the separate claim that the brick actually reached for a
-	 * different one per state, which is what a switch with a shared arm gets wrong — and with six
-	 * near-identical new arms, sharing one by copy-paste is the likeliest mistake there is.
+	 * The worn overlays are pairwise distinct too (distinct assets were checked above); this
+	 * catches a switch with a shared or copy-pasted arm.
 	 */
 	for (int32 Left = 0; Left < BrickHighlightStateCount; ++Left)
 	{

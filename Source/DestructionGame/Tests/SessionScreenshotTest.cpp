@@ -26,129 +26,32 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE INTERACTIVE SESSION, PHOTOGRAPHED: BUILD A WALL, INSPECT A BRICK, DELETE IT, RUN THE PLOT.
+ * Screenshots of the interactive session on Lvl_Build. SessionControllerTest proves the mechanism
+ * under -nullrhi; this proves the strip, ghost and details window are actually drawn. Every action
+ * goes through the controller's own seams (OnToolbarButton, PointerAlongRay, PrimaryAlongRay,
+ * SetInspectedPiece, ChoosePieceMenuRow); the component and subsystem are only read.
  *
- * =========================================================================================
- * WHY THIS FILE EXISTS
- * =========================================================================================
+ * Frames:
+ *   1 Session_Build: a 5-brick wall with a timber plate on top, laid with the Screw chip (then back
+ *     to Auto), and a ghost hovering past the wall.
+ *   2 Session_Destroy: details window open on the course-1 brick under the plate; its rows show
+ *     mortar, perpend and screw. Readouts say "not solved yet" because laying never solves.
+ *   3 Session_Deleted: that brick deleted and the cascade settled.
+ *   4 Session_LoadOverlay: the load overlay on over the settled wall (after the delete, which solves).
+ *   5 Session_Run: a jointless Free brick in mid-air, released by Run and fallen.
+ *   6 Session_Corner: plot cleared, an L-wall laid with the Rotate chip, rotated ghost at the end.
+ *   7 Session_Ghost: one seed brick and a ghost shown with no click, turned by the Rotate chip.
  *
- * `Tests/SessionControllerTest.cpp` proves the session's MECHANISM — one door into the state, the
- * mode dispatching a ray, Run releasing what cannot stand — and every one of its runs is `-nullrhi`,
- * so not one of them has ever caused a pixel to exist. CURRENT_STATE.md records the project shipping
- * a fully green suite over something invisible on screen twice (the Nanite bug, the commit-path push
- * bug), and the session's whole subject is a SCREEN: a toolbar strip, a gold ghost, a details window
- * over a brick. This is the committed proof that those four things are actually drawn, on the level a
- * player opens to build on.
+ * Frames 1-5 share one camera, placed once through the game mode's own framing (ViewpointFor,
+ * ThreeQuarter) but moved in, since the plot's default framing makes the wall ~7% of the frame.
+ * Frames 6 and 7 each reframe once for their own subject.
  *
- * IT DRIVES THE REAL CONTROLLER THROUGH ITS OWN SEAMS, AND THAT IS THE POINT RATHER THAN A STYLE.
- * `World->GetFirstPlayerController()` cast to `ADestructionGamePlayerController` is the controller the
- * game mode opened the session on, and every action here is `OnToolbarButton`, `PointerAlongRay`,
- * `PrimaryAlongRay`, `SetInspectedPiece` or `ChoosePieceMenuRow` — the same calls the mouse handlers
- * and the strip's chips make. Nothing touches `UBuildModeComponent` or the subsystem to CHANGE
- * anything; they are read (the ghost's visibility, the binding's pieces) because a picture has to be
- * asserted to be a picture of the state it claims. A harness that drove the component directly would
- * photograph a loop the player cannot reach.
+ * Each frame asserts the state it depicts (mode, piece count, menu, ghost visibility, plus one
+ * mechanism reading). Never displacement: the fallen brick's travel is only reported. Nothing is
+ * asserted about pixels; that is for a human.
  *
- * =========================================================================================
- * THE SEVEN FRAMES
- * =========================================================================================
- *
- *   FRAME 1 "Session_Build": the plot as the level opens — Build mode, the strip up — with a small
- *   wall laid through `PrimaryAlongRay`: three bricks on course 0, two staggered onto them on course
- *   1, and a timber plate bearing across the top on course 2. THE PLATE IS SCREWED DOWN: the `Screw`
- *   joint chip is clicked before it is laid and put back to `Auto` afterwards, so the bricks keep
- *   their inferred mortar and the plate's two bearings carry the fastener the player picked — the
- *   UI-6 choice, committed. A gold GHOST hovers at the cursor, one plate-length past the wall. The
- *   strip reads Build lit, Plate lit, Auto lit again, Course 3 (index 2 — the readout is
- *   one-based), Clear build live.
- *
- *   FRAME 2 "Session_Destroy": Destroy mode (ghost gone), a real trace into the COURSE-1 BRICK UNDER
- *   THE PLATE, hovered then clicked, so the piece menu / details window is open on it with its
- *   Delete row and its joint readout, and the strip's Run structure is live. THAT BRICK IS THE ONE
- *   WORTH PHOTOGRAPHING BECAUSE ITS ROWS NAME THREE DIFFERENT PROFILES: two mortared beds under it,
- *   a perpend head joint beside it, and the SCREWED bearing the plate is fastened to it with — which
- *   is the only place in the game a player can see which joint they chose. THE READOUT SAYS "not
- *   solved yet" AND 0.0 N ON EVERY JOINT, AND THAT IS THE TRUTH RATHER THAN A BROKEN PICTURE: laying
- *   a piece never solves (the live-feedback-off default this build was laid under), so the numbers
- *   arrive only once something asks for them — Run, or a delete.
- *
- *   FRAME 3 "Session_Deleted": the Delete row chosen. That brick is gone and whatever the delete's
- *   own solve condemns has settled.
- *
- *   FRAME 4 "Session_LoadOverlay": the Destroy strip's `Load overlay` chip clicked ON over that same
- *   settled wall — every piece wearing the band of its worst joint, and the chip lit. TAKEN AFTER THE
- *   DELETE RATHER THAN BEFORE IT, because the delete is what SOLVES: laying never does, so the same
- *   click made one frame earlier would be photographing the overlay's own first solve rather than a
- *   settled wall's. The chip is clicked OFF again immediately afterwards, and that is asserted, so
- *   frame 5 is the picture it has always been.
- *
- *   FRAME 5 "Session_Run": back in Build for one FREE brick three courses up in mid-air with no
- *   joints, then Destroy and Run structure — the brick is released and has fallen to the ground.
- *
- *   FRAME 6 "Session_Corner" (CR-2b): the plot CLEARED and an L-WALL laid on it — a three-brick leg
- *   along X, a ROTATED brick returning at its end, a leg along Y, and a staggered course lapped over
- *   all three — every rotation made with the strip's own `Rotate` chip, with a rotated ghost left
- *   hovering at the end of the second leg. It is the only picture in this project of a building that
- *   turns a corner, and it exists because until that chip landed a player could not hand the game a
- *   turned box at all: CR-2a's whole corner vocabulary was code nobody could reach.
- *
- *   FRAME 7 "Session_Ghost" (the cursor-driven ghost): the plot CLEARED again and ONE seed brick laid
- *   on the earth, then — WITH NO PRIMARY CLICK OF ANY KIND — a gold ghost standing beside it at the
- *   running-bond snap, TURNED HEADER-ON by the `Rotate` chip. It is the owner's 2026-09-16 playtest
- *   ask photographed ("it should show where the brick is going to go without clicking anything"): in
- *   the session they played, the ghost appeared only after a click, so there was no way to see where
- *   a brick would land before committing it. The ghost is driven through
- *   `RefreshBuildPreviewFromRay`, which is the testable half of the per-tick cursor refresh — the
- *   deprojection the tick really starts from needs a viewport and cannot run headless — and then the
- *   chip is pressed, so BOTH halves of the ask are in one picture: a ghost that is up without a click,
- *   and a ghost that answers a setting immediately rather than at the next mouse move.
- *
- * THE CAMERA DOES NOT MOVE BETWEEN FRAMES 1 AND 5. It is placed ONCE, before the first frame, so the
- * five pictures can be laid side by side and read against each other in the same pixels. FRAMES 6 AND
- * 7 EACH REFRAME ONCE, and their own commands say why: the L is a different building in a different
- * footprint — 61 cm along Y where the wall was 10 cm deep — and the frame-1 camera would show the
- * corner edge-on, which is the one thing a picture of a corner may not be; and frame 7's subject is
- * ONE brick and ONE ghost, which at the wall's standoff would be a pair of specks.
- *
- * =========================================================================================
- * THE CAMERA IS THE GAME MODE'S FRAMING, MOVED IN ONCE
- * =========================================================================================
- *
- * `ADestructionGameGameMode::BeginPlay` frames the build plot on an INVENTED 3 m x 3 m x 1 m box,
- * because an empty plot has no bounds — which stands the player 484 cm off the origin and puts a
- * 66 cm wall across about 7% of the frame, far too small to judge a ghost's colour or a bearing joint
- * by. So the pawn is moved in ONCE, before frame 1, through the SAME production framing function the
- * game mode uses (`DestructionScenarios::ViewpointFor`, `ThreeQuarter`: azimuth 40 degrees, elevation
- * 30 degrees, margin 1.25) over the union of every pose that will appear in any of the four frames.
- * The angle a player sees the plot from is therefore unchanged; only the distance is.
- *
- * =========================================================================================
- * WHAT IT ASSERTS — DELIBERATELY MODEST, BECAUSE THE POINT IS THE IMAGE
- * =========================================================================================
- *
- * A harness that only takes a picture is green whatever is in the picture, so each frame asserts the
- * invariants that make it a picture of the thing it claims: the session's mode, the build's piece
- * count, whether a menu is up, whether the ghost is visible, and the one mechanism reading that frame
- * is about — 6 pieces and at least 8 connections for the laid wall, `IsPieceMenuShown` for the
- * inspector, `IsPieceRemoved` for the delete, `IsReleased` for the Run, and for the corner the
- * profile MIX (12 mortar, 7 perpend) plus every piece Grounded or Supported, and for the ghost its own
- * BOUNDS SIZE beside a piece count that never moved. NEVER DISPLACEMENT: the
- * fallen brick's travel is REPORTED so a human can read it beside the picture, and the claim that Run
- * did its job is `IsReleased`, exactly as `World.Session.RunStructureSettlesTheBuild` has it.
- *
- * It asserts NOTHING about what the images look like. Whether the strip is legible, whether the ghost
- * reads as gold against clay-red, whether the details window is over the right brick — that is a
- * human's job, and this exists to give that human something to look at.
- *
- * =========================================================================================
- * IT NEEDS A TICKING WORLD *AND* A REAL RHI, hence EAutomationTestFlags::NonNullRHI
- * =========================================================================================
- *
- * A ticking world, because the delete's cascade and the Run's release are handed to Chaos and the
- * frames are taken after they have fallen. A real RHI, because there is otherwise nothing to
- * screenshot: without the flag the ordinary `-nullrhi` suite would run this, find no viewport, write
- * no file and GO GREEN. With it, the ordinary suite never mentions this test exists, so it must be
- * RUN EXPLICITLY. From PowerShell (Git Bash mangles the map path):
+ * NonNullRHI: without it the -nullrhi suite would find no viewport, write nothing and pass. Run it
+ * explicitly from PowerShell (Git Bash mangles the map path):
  *
  *   & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
  *     "C:\Users\bobby\Documents\Unreal Projects\DestructionGame\DestructionGame.uproject"
@@ -158,10 +61,8 @@
  *     -ExecCmds="Automation RunTests DestructionGame.Visual.SessionScreenshots"
  *     -TestExit="Automation Test Queue Empty"
  *
- * `-nullrhi` MUST BE ABSENT: `FApp::CanEverRender()` is false with it and `UGameEngine::Init` only
- * builds a window and a viewport under that, so there would be nothing to screenshot even if the
- * filter let the test through. THE MAP MUST BE ON THE COMMAND LINE: `Lvl_Build` is what selects the
- * `build` catalogue row, which is what opens the session in Build mode on an empty plot.
+ * -nullrhi must be absent (no viewport is built under it), and the map must be on the command line
+ * (Lvl_Build selects the build catalogue row).
  */
 namespace SessionScreenshotSupport
 {
@@ -176,22 +77,14 @@ namespace SessionScreenshotSupport
 	const TCHAR* const CornerBaseName = TEXT("Session_Corner");
 	const TCHAR* const GhostBaseName = TEXT("Session_Ghost");
 
-	/**
-	 * ALL SEVEN IN ONE LIST, because every claim made about one is made about the other six — the
-	 * deletion before the run and the PNG check after it are the same two statements seven times over,
-	 * and a list is what stops the newest shot quietly acquiring a weaker version of either.
-	 */
+	/** All seven, so the pre-run deletion and post-run PNG check apply to each alike. */
 	const TCHAR* const ScreenshotBaseNames[] = {
 		BuildBaseName, DestroyBaseName, DeletedBaseName, LoadOverlayBaseName, RunBaseName,
 		CornerBaseName, GhostBaseName };
 
 	/**
-	 * `Shot` and not `HighResShot`, and `showui` with it.
-	 *
-	 * HighResShot renders SCENE-ONLY through an FDummyViewport, and this whole test is about Slate:
-	 * the toolbar strip and the piece menu are `AddViewportWidgetContent` widgets, so HighResShot
-	 * would photograph the bricks with NO UI ON THEM — the one thing being proved would be the one
-	 * thing missing. See Tests/PieceMenuScreenshotTest.cpp, which measured it.
+	 * `Shot showui`, not HighResShot: HighResShot renders scene-only and would omit the Slate strip
+	 * and menu this test is about. See Tests/PieceMenuScreenshotTest.cpp.
 	 */
 	inline FString ShotCommandFor(const FString& BaseName)
 	{
@@ -204,18 +97,13 @@ namespace SessionScreenshotSupport
 			FPaths::ScreenShotDir() / BaseName + TEXT(".png"));
 	}
 
-	/** Debug overlays off, so nothing is burned over the UI a human is being asked to judge. */
+	/** Debug overlays off, so nothing covers the UI being judged. */
 	const TCHAR* const DisableScreenMessagesCommand = TEXT("DisableAllScreenMessages");
 
 	/**
-	 * THE TIMINGS, WHICH ARE THE SIBLING HARNESSES'.
-	 *
-	 * `WarmUpFrames` and `SettleFrames` cover TSR's temporal history and auto-exposure; `SlateFrames`
-	 * is the layout pass a rebuilt strip or a newly built menu panel needs before it has a size and a
-	 * position; `WriteFrames` is because `ProcessScreenShots` writes at END OF DRAW, so moving on in
-	 * the same frame as the request loses the file. `FallFrames` is Tests/CorbelScreenshotTest.cpp's
-	 * 180 — three seconds, against the 0.28 s the freed brick needs to fall its 37.5 cm — and it is
-	 * waited out after BOTH mutations that hand bodies to physics: the delete's cascade and the Run.
+	 * Timings, shared with the sibling harnesses. Warm-up/settle cover TSR history and auto-exposure;
+	 * SlateFrames lets a rebuilt widget get laid out; WriteFrames because the PNG is written at end of
+	 * draw. FallFrames (3 s, vs 0.28 s for a 37.5 cm fall) is waited after the delete and after Run.
 	 */
 	constexpr int32 WarmUpFrames = 120;
 	constexpr int32 SettleFrames = 60;
@@ -229,100 +117,55 @@ namespace SessionScreenshotSupport
 	constexpr int32 MinimumScreenshotHeight = 480;
 
 	/*
-	 * =====================================================================================
-	 * THE GRID, SPELLED OUT RATHER THAN IMPORTED (the rule Tests/SessionControllerTest.cpp keeps).
-	 * =====================================================================================
-	 *
-	 * A brick is 21.5 x 10.25 x 6.5 cm on a 1 cm joint, so the coordinating grid is 22.5 across,
-	 * 11.25 for the half stagger and 7.5 up. Course 0 rests a brick ON the earth, centred at 3.25;
-	 * course n centres it at n * 7.5 + 3.25. A timber plate is 5.0 cm half-height, so the same course
-	 * puts a plate at n * 7.5 + 5.0 — which is why the build plane is derived from the piece as well
-	 * as from the course.
+	 * The grid, spelled out rather than imported. A brick is 21.5 x 10.25 x 6.5 cm on a 1 cm joint:
+	 * 22.5 across, 11.25 half stagger, 7.5 up. A brick on course n centres at n * 7.5 + 3.25; a plate
+	 * (5.0 cm half-height) at n * 7.5 + 5.0.
 	 */
 
-	/** Course 0's plane for a brick: 0 * 7.5 + 3.25. */
 	constexpr double BrickPlaneCourse0Cm = 3.25;
-
-	/** Course 1's plane for a brick: 1 * 7.5 + 3.25. */
 	constexpr double BrickPlaneCourse1Cm = 10.75;
 
-	/** Course 2's plane for a PLATE: 2 * 7.5 + 5.0. */
+	/** Course 2's plane for a plate. */
 	constexpr double PlatePlaneCourse2Cm = 20.0;
 
-	/** Course 5's plane for a brick: 5 * 7.5 + 3.25 = 40.75, so its underside is 37.5 cm up. */
+	/** Course 5 for a brick; its underside is 37.5 cm up. */
 	constexpr int32 FloatingCourse = 5;
 	constexpr double FloatingPlaneZCm = 40.75;
 
-	/** The half extents the palette derives, written out because the framing box is built from them. */
+	/** Palette half extents, written out because the framing box is built from them. */
 	const FVector HalfBrickCm(10.75, 5.125, 3.25);
 	const FVector HalfPlateCm(33.75, 5.125, 5.0);
 
 	/**
-	 * THE CURSORS THE WALL IS LAID AT, all on Y = 0.
-	 *
-	 * Course 0 at 0, 22.5 and 45: the first lands verbatim (an empty plot offers only the Free
-	 * fallback) and the next two are exactly one brick plus one head joint along, so each takes the
-	 * same-course snap at zero offset. Course 1 at 11.25 and 33.75: the running bond's half stagger,
-	 * so each straddles the two below it and beds onto both. The plate is asked for at 22.5, the
-	 * middle of the wall.
+	 * Wall cursors, all on Y = 0. Course 0 steps one pitch so each takes the same-course snap at zero
+	 * offset; course 1 sits on the half stagger, bedding onto two bricks. The plate is centred.
 	 */
 	constexpr double Course0CursorsXCm[] = { 0.0, 22.5, 45.0 };
 	constexpr double Course1CursorsXCm[] = { 11.25, 33.75 };
 	constexpr double PlateCursorXCm = 22.5;
 
 	/**
-	 * THE BRICK THE DETAILS WINDOW IS OPENED ON, AND THE ONE THEN DELETED: the FIRST COURSE-1 BRICK,
-	 * the fourth piece laid, so index 3 — at x = 11.25, one course up.
-	 *
-	 * CHOSEN BECAUSE IT CARRIES A SCREWED BEARING, which is the whole point of the frame. The plate
-	 * is laid with the `Joint screw` chip down, and it bears on BOTH course-1 bricks whichever of
-	 * the two tied centred snaps it takes (see GhostCursorXCm: centred at 11.25 it spans -22.5..45,
-	 * centred at 33.75 it spans 0..67.5, and both bricks sit inside either span). So this brick's
-	 * readout shows its two mortared beds, its perpend head joint and ONE SCREW — four rows that
-	 * name three different profiles, which is a picture of the joint-choice feature rather than of a
-	 * readout that prints the same word four times.
-	 *
-	 * IT USED TO BE THE MIDDLE BOTTOM BRICK (index 1, x = 22.5), whose four joints are all mortar.
+	 * The brick inspected and then deleted: the first course-1 brick (index 3). Chosen because the
+	 * plate bears on it with a screw whichever tied snap the plate takes, so its readout names three
+	 * profiles (mortar beds, perpend, screw) rather than one.
 	 */
 	constexpr int32 InspectedPieceIndex = 3;
 	constexpr double InspectedCentreXCm = 11.25;
 
 	/**
-	 * WHERE THE GHOST HOVERS IN FRAME 1, AND WHY IT IS THIS FAR OUT.
-	 *
-	 * A plate is selected and the wall's whole top is already taken, so EVERY plate snap in range is
-	 * dropped for occupancy — the centred pose over either course-1 brick, and both edge-flush poses,
-	 * all interpenetrate the plate just laid. What is left is the solver's Free fallback: the cursor
-	 * honoured verbatim. That is a true picture of today's behaviour (and of the logged
-	 * `bRequestedPoseOccupied` deferral — the UI cannot yet say "Free won because everything was
-	 * occupied"), but it means the ghost is drawn exactly where the ray meets the plane, so the cursor
-	 * has to be put somewhere the gold ghost does not INTERSECT the real plate.
-	 *
-	 * 112.5 cm clears it whichever centred snap the plate took. The plate is asked for at 22.5, which
-	 * is equidistant from the two course-1 bricks at 11.25 and 33.75, so the tie falls to whichever
-	 * the solver emitted first — the plate lands at one of those two and its right end is therefore at
-	 * 45 or 67.5. A ghost centred at 112.5 starts at 112.5 - 33.75 = 78.75, clear of the further of
-	 * the two by 11.25 cm.
+	 * Frame 1's ghost cursor. Every plate snap is occupied, so the ghost falls back to Free at the
+	 * cursor and must not overlap the real plate. The plate's right end is at 45 or 67.5 depending on
+	 * which tied snap it took; a ghost at 112.5 starts at 78.75, clear by 11.25 cm.
 	 */
 	constexpr double GhostCursorXCm = 112.5;
 
 	/**
-	 * AND WHERE THE FREE BRICK FLOATS IN FRAME 4: 120 cm along, five courses up.
-	 *
-	 * Free placement honours the cursor verbatim and forms no joint at all, and 120 cm is in any case
-	 * 75 cm from the nearest brick — well outside the 30 cm snap radius — so it is jointless for two
-	 * independent reasons. Its underside at 37.5 cm is thirty-seven times the 1 cm joint the grounded
-	 * rule allows, so it cannot read grounded by rounding either.
+	 * The floating Free brick (frame 5). Free forms no joints, and 120 cm is 75 cm from the nearest
+	 * brick, outside the 30 cm snap radius. Its 37.5 cm underside cannot read grounded.
 	 */
 	constexpr double FloatingCursorXCm = 120.0;
 
-	/**
-	 * How far above the build plane a laying ray starts.
-	 *
-	 * The ray END is aimed AT the plane point and the ORIGIN put 200 cm above it, so the direction is
-	 * straight down and the intersection is unambiguous. 200 cm is well inside the component's 1 km
-	 * maximum pick distance.
-	 */
+	/** Laying rays start this far above the plane point and point straight down (pick limit is 1 km). */
 	constexpr double RayHeightCm = 200.0;
 
 	inline FVector LayRayStart(double XCm, double PlaneZCm)
@@ -335,7 +178,7 @@ namespace SessionScreenshotSupport
 		return FVector(XCm, 0.0, PlaneZCm);
 	}
 
-	/** The same ray, off the Y = 0 line — the L-wall's second leg runs along Y. */
+	/** The same ray off Y = 0, for the L-wall's Y leg. */
 	inline FVector LayRayStartXY(double XCm, double YCm, double PlaneZCm)
 	{
 		return FVector(XCm, YCm, PlaneZCm + RayHeightCm);
@@ -347,61 +190,47 @@ namespace SessionScreenshotSupport
 	}
 
 	/*
-	 * =====================================================================================
-	 * FRAME 6 — THE L-WALL, AND WHERE ITS ELEVEN CURSORS COME FROM
-	 * =====================================================================================
+	 * Frame 6's L-wall: the cursors and expected counts from Core.BuildMode.CornerWallStands, whose
+	 * header derives each one, laid here through the player's click.
 	 *
-	 * The cursors and the expected answers are `Core.BuildMode.CornerWallStands`' own table, laid
-	 * here through the PLAYER's click instead of through `BuildMode::PlacePiece`. That test's header
-	 * works every one of them against the solver — the return asked for 0.625 cm off its pose so the
-	 * one flush choice that turns the corner wins outright, the two Y-leg bricks asked for 0.125 cm
-	 * short of the pitch so the same-course pose beats the next-course one, and course 1 asked for
-	 * AT the running bond where nothing can outrank an offset of zero.
-	 *
-	 * THE ORDER IS CornerWallStands' ORDER AND THAT IS LOAD-BEARING, NOT COSMETIC. CURRENT_STATE's
-	 * CR-2a finding (ix) records that joints come only from candidates the PLACED piece emits, so a
-	 * brick laid after a neighbour it should bond to forms no joint to it. The course-1 corner brick
-	 * at (56.25, 0) takes its quoin from a corner-return pose of the Y leg's course-1 brick at
-	 * (61.875, 16.875) — which therefore has to be standing FIRST. Laid the other way round the L is
-	 * still a wall, but it is an eighteen-connection wall, and the twelve-mortar count below would be
-	 * eleven.
+	 * The order matters: joints come only from candidates the placed piece emits (CR-2a finding ix),
+	 * so the corner brick at (56.25, 0) must be laid after the Y leg's brick at (61.875, 16.875).
+	 * Reversed, the wall has 18 connections and 11 mortar instead of 19 and 12.
 	 */
 	struct FCornerStep
 	{
 		double XCm;
 		double YCm;
 
-		/** 0 or 1 — the only two courses this wall has. */
 		int32 Course;
 
-		/** Whether the piece lies along Y: the `Rotate` chip's own flag. */
+		/** Whether the piece lies along Y (the Rotate chip). */
 		bool bRotated;
 	};
 
 	const FCornerStep CornerSteps[] = {
-		/* Course 0, the X leg — three stretchers on the earth. */
+		/* Course 0, X leg. */
 		{  0.000,  0.000, 0, false },
 		{ 22.500,  0.000, 0, false },
 		{ 45.000,  0.000, 0, false },
 
-		/* The corner: a ROTATED brick returning off the X leg's +X end. This is the chip's reason. */
+		/* The rotated return off the X leg's +X end. */
 		{ 61.875,  5.000, 0, true },
 
-		/* Course 0, the Y leg — the same running bond, stepping along Y. */
+		/* Course 0, Y leg. */
 		{ 61.875, 28.000, 0, true },
 		{ 61.875, 50.500, 0, true },
 
-		/* Course 1, staggered over the X leg. */
+		/* Course 1, over the X leg. */
 		{ 11.250,  0.000, 1, false },
 		{ 33.750,  0.000, 1, false },
 
-		/* The Y leg's first course-1 brick — BEFORE the lap, see the order note above. */
+		/* Y leg's first course-1 brick, before the lap (see order note above). */
 		{ 61.875, 16.875, 1, true },
 
-		/* The corner brick: the stretcher a bricklayer laps OVER the return, bonding both legs. */
+		/* The corner brick lapping over the return, bonding both legs. */
 		{ 56.250,  0.000, 1, false },
 
-		/* And the Y leg's second. */
 		{ 61.875, 39.375, 1, true },
 	};
 
@@ -410,28 +239,15 @@ namespace SessionScreenshotSupport
 	constexpr int32 CornerExpectedMortar = 12;
 	constexpr int32 CornerExpectedPerpend = 7;
 
-	/** The six laid on the earth; everything after index 5 reaches it only through its beds. */
+	/** Indices 0-5 are on the earth; later pieces reach it only through their beds. */
 	constexpr int32 CornerLastGroundedPiece = 5;
 
-	/**
-	 * WHERE THE GHOST HOVERS IN FRAME 6: the next brick along the Y leg, still rotated.
-	 *
-	 * The leg's course-1 bricks step 22.5 cm along Y, so 39.375 + 22.5 = 61.875 is where the next one
-	 * goes. A rotated ghost there is the picture the frame is for — a header-on brick, visibly turned
-	 * ninety degrees to the three stretchers in the same shot.
-	 */
+	/** Frame 6's ghost: the next Y-leg course-1 brick, rotated (39.375 + 22.5). */
 	constexpr double CornerGhostXCm = 61.875;
 	constexpr double CornerGhostYCm = 61.875;
 
 	/**
-	 * THE L'S OWN BOUNDS, and the ONE reframe in this harness.
-	 *
-	 * The other five frames share a camera on purpose — they are five readings of one plot and are
-	 * meant to be laid side by side. This one is a different building in a different footprint: the
-	 * L reaches 61 cm along Y where the wall was 10 cm deep, so the frame-1 camera would show it
-	 * edge-on and foreshortened, which is the one thing a picture of a CORNER may not be. Framed
-	 * through the same production function (`ViewpointFor`, `ThreeQuarter`), so the angle is still
-	 * the one the game puts a player at.
+	 * The L's bounds for frame 6's reframe; the frame-1 camera would show the corner edge-on.
 	 *
 	 *   the X leg           X -10.75 .. 55.75,  Y  -5.125 ..  5.125
 	 *   the course-1 lap    X  45.50 .. 67.00,  Y  -5.125 ..  5.125
@@ -445,29 +261,16 @@ namespace SessionScreenshotSupport
 	}
 
 	/*
-	 * =====================================================================================
-	 * FRAME 7 — THE CURSOR-DRIVEN GHOST, AND WHY IT IS ONE BRICK AND ONE RAY
-	 * =====================================================================================
-	 *
-	 * The numbers are `World.Session.CursorRefreshDrivesTheGhostFromARay`'s own, laid here through the
-	 * PLAYER's seam instead of against a bare fixture: a seed brick clicked onto the earth at the
-	 * origin (centre (0, 0, 3.25)), then a ray dropped straight down through (11.25, 3) — the running
-	 * bond's half stagger, three centimetres off the wall line so the picked point is NOT the snap
-	 * itself and the ghost has to have been SOLVED rather than parroted back.
-	 *
-	 * ONE SEED AND NOT A WALL, because the subject is the GHOST. Two bricks either side of it would
-	 * make the one gold box in the frame harder to find, and every extra piece is another pose the
-	 * solver could have picked for the turn.
+	 * Frame 7, numbers from World.Session.CursorRefreshDrivesTheGhostFromARay: a seed brick at the
+	 * origin, then a ray through (11.25, 3), 3 cm off the wall line so the ghost must be solved, not
+	 * echoed. One seed only, so the ghost is easy to find and has few poses to pick from.
 	 */
 
-	/** The seed brick's cursor: the empty plot's Free fallback honours it verbatim. */
 	constexpr double GhostSeedCursorXCm = 0.0;
 
-	/** Where the "cursor" points: the half stagger, 3 cm off the wall line. */
 	constexpr double GhostRayXCm = 11.25;
 	constexpr double GhostRayYCm = 3.0;
 
-	/** Straight down, from well above the course-0 plane — the same shape every laying ray has. */
 	inline FVector GhostRayOriginCm()
 	{
 		return FVector(GhostRayXCm, GhostRayYCm, BrickPlaneCourse0Cm + RayHeightCm);
@@ -479,49 +282,27 @@ namespace SessionScreenshotSupport
 	}
 
 	/**
-	 * THE TWO FOOTPRINTS, WRITTEN OUT RATHER THAN IMPORTED, and they are this frame's whole claim.
-	 *
-	 * A brick is 21.5 x 10.25 x 6.5 cm, and the `Rotate` chip is a quarter turn about Z — X and Y
-	 * swapped, Z untouched, because a turn about Z cannot change how tall a piece is. So the ghost's
-	 * BOUNDS SIZE is the one reading that says the chip reached the ghost: a turn that lit the chip and
-	 * left the ghost's footprint alone is the exact defect the owner reported (a click that looks
-	 * dropped), and it is invisible in a photograph of a symmetrical box.
+	 * Ghost footprints before and after Rotate (a quarter turn about Z swaps X and Y). The bounds
+	 * size is the reading that proves the chip reached the ghost, not just lit.
 	 */
 	const FVector UprightGhostSizeCm(21.5, 10.25, 6.5);
 	const FVector RotatedGhostSizeCm(10.25, 21.5, 6.5);
 
-	/**
-	 * WHERE THE UPRIGHT GHOST STANDS BEFORE THE CHIP: the running-bond next-course snap beside the
-	 * seed. Asserted as this frame's FIXTURE — the claim being photographed is that the chip TURNED a
-	 * ghost, which is only a claim if a ghost was standing somewhere known first.
-	 */
+	/** The upright ghost before Rotate: the next-course running-bond snap. Asserted as a fixture. */
 	const FVector UprightGhostCentreCm(11.25, 0.0, 10.75);
 
-	/** A pose read off an actor's bounds; the sibling session tests use the same 0.05 cm. */
+	/** Same tolerance as the sibling session tests. */
 	constexpr double GhostBoundsToleranceCm = 0.05;
 
 	/**
-	 * THE GHOST FRAME'S BOX — the seed, and room around it for wherever the turned ghost lands.
-	 *
-	 * WITH SLACK RATHER THAN PINNED TO THE POSE, on purpose. The rotated pose is the SOLVER's answer
-	 * and this frame does not assert it (the size is the claim, the centre is reported), so a box drawn
-	 * tightly around one predicted centre would turn a legitimate change of snap policy into a picture
-	 * of an empty plot rather than into a red assertion. What it has to cover, measured:
+	 * Frame 7's box: the seed plus slack for the turned ghost. The rotated pose is the solver's and is
+	 * only reported, so the box is not pinned to it. Measured:
 	 *
 	 *   the seed brick      X -10.75 .. 10.75,  Y  -5.125 ..  5.125,  Z 0 .. 6.5
 	 *   the turned ghost    X  11.75 .. 22.00,  Y  -5.125 .. 16.375,  Z 0 .. 6.5
 	 *
-	 * The ghost's centre (16.875, 5.625, 3.25) is the corner return off the seed's +X face on a 1 cm
-	 * joint — 10.75 + 1 + 5.125 — flush with its -Y face at -5.125 + 10.75. A couple of centimetres
-	 * either side of that is enough that a near-miss still photographs; the three-quarter framing sizes
-	 * its standoff off the bounding SPHERE, so slack costs a little distance and nothing else.
-	 *
-	 * AND ON THIS SUBJECT IT COSTS NOTHING AT ALL, WHICH IS WORTH KNOWING BEFORE ANYBODY SHRINKS IT.
-	 * `ViewpointFor` floors its standoff at the production `ScenariosMinimumStandoffCm` (120 cm), and
-	 * a 38 cm box is far under it — so this camera sits at the floor and would sit there for any box
-	 * this small. Two bricks are therefore as large in the frame as the game's own framing will ever
-	 * draw them, and making the box tighter changes the picture by nothing. Standing closer than a
-	 * player's own camera ever does is what this harness may not do.
+	 * Shrinking it changes nothing: ViewpointFor floors the standoff at ScenariosMinimumStandoffCm
+	 * (120 cm), and this camera already sits at that floor.
 	 */
 	inline FBox GhostStageBoundsCm()
 	{
@@ -529,24 +310,14 @@ namespace SessionScreenshotSupport
 	}
 
 	/**
-	 * THE DESTROY RAY GOES ALONG Y, NOT DOWN FROM ABOVE, AND THAT IS A CORRECTNESS CHOICE.
-	 *
-	 * It is a REAL line trace against real collision, and by frame 2 the timber plate spans the whole
-	 * top of the wall — so a ray dropped from above onto the middle bottom brick's centre would hit
-	 * the PLATE first and the menu would come up on the wrong piece. A brick is 10.25 cm deep centred
-	 * on Y = 0, so +/- 100 cm along Y is far outside it on both sides and the ray crosses the whole
-	 * thickness with nothing else in the way. Same reach, for the same reason, as the piece-menu and
-	 * session tests.
+	 * The destroy ray runs along Y, not down: a real trace from above would hit the plate first.
+	 * +/- 100 cm clears the 10.25 cm-deep wall on both sides.
 	 */
 	constexpr double InspectReachCm = 100.0;
 
 	/**
-	 * THE ONE BOX EVERY FRAME IS FRAMED OVER, and it is stated rather than measured.
-	 *
-	 * The camera is placed BEFORE anything is laid — so the warm-up frames are spent on the view the
-	 * first picture is taken of rather than on the game mode's — which means the bounds cannot be read
-	 * off the structure. They are written out instead, as the union of every pose that will ever
-	 * appear in any of the four frames:
+	 * The box frames 1-5 are framed over. Stated, not measured, because the camera is placed before
+	 * anything is laid. The union of every pose those frames show:
 	 *
 	 *   the wall            X -10.75 .. 55.75,  Z 0 .. 14
 	 *   the timber plate    X -22.50 .. 67.50,  Z 15 .. 25   (either centred snap, see GhostCursorXCm)
@@ -554,8 +325,7 @@ namespace SessionScreenshotSupport
 	 *   the floating brick  X 109.25 .. 130.75, Z 37.5 .. 44
 	 *   and where it lands  X 109.25 .. 130.75, Z 0 .. 6.5
 	 *
-	 * Y is the bricks' own 10.25 cm depth. The three-quarter framing sizes its standoff from the
-	 * bounding SPHERE of this box, so a little slack costs a little distance and nothing else.
+	 * Y is the bricks' 10.25 cm depth.
 	 */
 	inline FBox SessionStageBoundsCm()
 	{
@@ -564,15 +334,10 @@ namespace SessionScreenshotSupport
 			FVector(GhostCursorXCm + HalfPlateCm.X, 5.125, FloatingPlaneZCm + HalfBrickCm.Z));
 	}
 
-	/** The aspect the game mode frames with: the viewport's height over its width at 1920 x 1080. */
+	/** Height over width at 1920 x 1080, as the game mode frames. */
 	constexpr double FrameAspectHeightOverWidth = 1080.0 / 1920.0;
 
-	/**
-	 * WHAT THE RUN BUILT, CARRIED BETWEEN LATENT COMMANDS.
-	 *
-	 * FILE-SCOPE STATE, for the reason the sibling harnesses give: a latent command carries only what
-	 * its parameters carry, and the build, the four shots and the file check run frames apart.
-	 */
+	/** State carried between latent commands, which run frames apart. */
 	struct FSessionShotRecord
 	{
 		bool bStaged = false;
@@ -582,11 +347,8 @@ namespace SessionScreenshotSupport
 		int32 StructureId = INDEX_NONE;
 
 		/**
-		 * The index the Free brick took, and where its ACTOR stood when Run let go of it.
-		 *
-		 * THE ACTOR'S LOCATION AND NOT THE PIECE'S BOX CENTRE, because the travel below is measured
-		 * against the same actor afterwards and a brick actor's pivot is its CORNER — comparing the
-		 * two would report a fall 11 cm longer than the brick actually made.
+		 * The Free brick's index and its actor's location at release. Actor, not box centre: the
+		 * actor's pivot is its corner, and mixing the two would misreport the fall by 11 cm.
 		 */
 		int32 FloatingPieceIndex = INDEX_NONE;
 		FVector FloatingActorAtReleaseCm = FVector::ZeroVector;
@@ -622,11 +384,8 @@ namespace SessionScreenshotSupport
 	}
 
 	/**
-	 * Ask for a screenshot, THROUGH THE VIEWPORT CLIENT AND NOT THROUGH GEngine.
-	 *
-	 * MEASURED, NOT PREFERRED — see Tests/CorbelScreenshotTest.cpp: a request routed through
-	 * `UEngine::Exec` asserts everything correctly and writes no PNG, because there is no SHOT handler
-	 * there. `HandleScreenshotCommand` lives on `UGameViewportClient`.
+	 * Request a screenshot through the viewport client. UEngine::Exec has no Shot handler and silently
+	 * writes nothing (see Tests/CorbelScreenshotTest.cpp).
 	 */
 	inline void RequestScreenshot(FAutomationTestBase& Test, const FString& Command)
 	{
@@ -644,7 +403,7 @@ namespace SessionScreenshotSupport
 		Viewport->Exec(nullptr, *Command, *GLog);
 	}
 
-	/** The player's live build, or null. Read, never driven — the controller is what is driven. */
+	/** The player's live build, or null. Read only. */
 	inline FStructureBinding* FindBuild(UWorld* World, int32 StructureId)
 	{
 		UDestructionStructureSubsystem* const Subsystem =
@@ -686,7 +445,7 @@ namespace SessionScreenshotSupport
 			State.Course, State.bHasStructure ? 1 : 0);
 	}
 
-	/** Whether the strip this state draws offers this button LIVE. Asked of the production model. */
+	/** Whether the strip for this state offers the button enabled. */
 	bool ButtonIsEnabled(const FSessionToolbarState& State, EToolbarButtonId Id)
 	{
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
@@ -731,16 +490,7 @@ namespace SessionScreenshotSupport
 		return Line;
 	}
 
-	/**
-	 * What every frame claims about the state it is a picture of, asserted at the moment the shot is
-	 * queued.
-	 *
-	 * FOUR READINGS, EACH BINARY OR A COUNT. The mode decides which strip is drawn; the piece count
-	 * says the build is the one the frame describes; the menu says whether a details window should be
-	 * in the picture; the ghost's visibility says whether a gold brick should be. None of them is a
-	 * judgement about pixels — they are what makes the file a picture of the right thing rather than a
-	 * valid PNG of the wrong one.
-	 */
+	/** Asserts the state a frame depicts (mode, piece count, menu, ghost visibility) as the shot is queued. */
 	inline void CheckStageBeforeShot(
 		FAutomationTestBase& Test,
 		const TCHAR* Stage,
@@ -787,11 +537,7 @@ namespace SessionScreenshotSupport
 				*DescribeMenuRows(Controller->GetShownPieceMenuRows())),
 			Controller->IsPieceMenuShown() == bExpectMenu);
 
-		/*
-		 * THE GHOST IS READ OFF THE COMPONENT BECAUSE THERE IS NO OTHER WAY TO SEE IT. It is the one
-		 * thing in these pictures with no controller-level accessor, and "a gold brick is or is not in
-		 * this frame" is exactly the claim a picture can be wrong about.
-		 */
+		// The ghost has no controller-level accessor, so it is read off the component.
 		const UBuildModeComponent* const Build = Controller->GetBuildComponent();
 
 		const AActor* const Ghost = Build != nullptr ? Build->GetGhostActor() : nullptr;
@@ -823,10 +569,7 @@ namespace SessionScreenshotSupport
 	}
 }
 
-/**
- * Open the stage: a world, a viewport, the controller the game mode opened the session on — and the
- * camera, moved in once and never again.
- */
+/** Find the world, viewport and controller, and place the frames 1-5 camera. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotOpenStageCommand, FAutomationTestBase*, Test);
 
@@ -849,11 +592,7 @@ bool FSessionShotOpenStageCommand::Update()
 
 	Test->AddInfo(FString::Printf(TEXT("game world is %s"), *World->GetMapName()));
 
-	/*
-	 * THE VIEWPORT IS ASSERTED HERE rather than left to show up as a missing file, because without one
-	 * `HandleScreenshotCommand` returns having done nothing at all and the only symptom downstream
-	 * reads identically to a renderer that failed.
-	 */
+	// Asserted here: without a viewport the shot silently does nothing, which reads like a render failure.
 	UGameViewportClient* const Viewport = GEngine != nullptr ? GEngine->GameViewport : nullptr;
 
 	Test->TestNotNull(
@@ -869,12 +608,7 @@ bool FSessionShotOpenStageCommand::Update()
 
 	Record.Controller = Controller;
 
-	/*
-	 * THE LEVEL MUST HAVE OPENED IN BUILD MODE, AND IT IS A FIXTURE CLAIM RATHER THAN A SETUP STEP.
-	 * `ADestructionGameGameMode::BeginPlay` puts the build plot's player in Build mode through the
-	 * controller's own door; if it has not, the map on the command line is not the build plot and
-	 * every frame below would be a picture of somebody else's level.
-	 */
+	// Fixture: the game mode opens Lvl_Build in Build mode; anything else means the wrong map.
 	const DestructionSession::FSessionToolbarState& State = Controller->GetSessionToolbarState();
 
 	Test->TestTrue(
@@ -884,7 +618,7 @@ bool FSessionShotOpenStageCommand::Update()
 			*StateBits(State)),
 		State.Mode == DestructionSession::ESessionMode::Build);
 
-	/* --- the camera, moved in once, in the game mode's own framing ---------------------------- */
+	/* --- the camera, in the game mode's own framing -------------------------------------------- */
 
 	APawn* const Pawn = Controller->GetPawn();
 
@@ -915,14 +649,7 @@ bool FSessionShotOpenStageCommand::Update()
 	return true;
 }
 
-/**
- * Lay the wall a click at a time, bear a plate across it, and leave the ghost hovering.
- *
- * EVERY PLACEMENT IS `PrimaryAlongRay`, WHICH IS THE PLAYER'S CLICK. The three course-0 cursors are
- * exactly on the bond so each takes its same-course snap; the two course-1 cursors are exactly on the
- * half stagger so each straddles the two below it; the plate is asked for at the middle of the wall
- * and the solver's centred snap pulls it onto whichever course-1 brick it ties on.
- */
+/** Lay the wall and plate through PrimaryAlongRay (the player's click), and leave the ghost hovering. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotBuildCommand, FAutomationTestBase*, Test);
 
@@ -997,13 +724,8 @@ bool FSessionShotBuildCommand::Update()
 		Controller->OnToolbarButton(EToolbarButtonId::CourseUp));
 
 	/*
-	 * AND THE PLATE IS SCREWED DOWN — the joint chip clicked BEFORE the piece it applies to.
-	 *
-	 * THE BRICKS ARE LEFT ON AUTO ON PURPOSE. The choice applies to the NEXT placement only, so a
-	 * wall laid under Auto and a plate laid under Screw is one structure carrying three different
-	 * profiles — mortared beds, the inferred weak perpends, and two screwed bearings — which is what
-	 * makes frame 2's readout show the setting rather than one word repeated. A session that screwed
-	 * everything would photograph the same picture whether the chip worked or not.
+	 * Screw only the plate; the bricks stay on Auto. Three profiles in one structure is what lets
+	 * frame 2 show that the chip worked.
 	 */
 	Test->TestTrue(
 		TEXT("the Screw chip must be clickable — a joint choice has no precondition"),
@@ -1027,10 +749,7 @@ bool FSessionShotBuildCommand::Update()
 			bPlaced);
 	}
 
-	/*
-	 * BACK TO AUTO, so the strip in frame 1 is the one a player sees by default and the Free brick
-	 * frame 5 lays is not photographed under a setting this frame happened to leave down.
-	 */
+	// Back to Auto, so frame 1 shows the default strip and frame 5's brick is laid under Auto.
 	Test->TestTrue(
 		TEXT("the Auto chip must be clickable"),
 		Controller->OnToolbarButton(EToolbarButtonId::JointAuto));
@@ -1060,15 +779,9 @@ bool FSessionShotBuildCommand::Update()
 		Binding->NumPieces(), 6);
 
 	/*
-	 * THE CONNECTION COUNT IS THE MECHANISM READING OF "IT IS A WALL AND THE PLATE BEARS ON IT".
-	 *
-	 * Six boxes stacked with no joints between them look identical in a photograph and behave nothing
-	 * like a structure, so the picture is worth nothing without this. The bond gives 2 head joints on
-	 * course 0, 2 beds under the first course-1 brick, 2 beds and a head under the second, and 2
-	 * bearings under the plate: 9. The floor is 8 rather than 9 because which of the two tied centred
-	 * snaps the plate takes is an ordering detail (see GhostCursorXCm) and a floor is the honest claim
-	 * — but it is a floor well above the 6 or 7 a wall with a plate merely resting on one brick would
-	 * read, so it cannot go green over a plate that bears on nothing.
+	 * Connections prove the pieces are bonded, not just stacked. Expected 9 (2 heads on course 0,
+	 * 2 + 3 into course 1, 2 plate bearings); asserted as >= 8 because the plate's tied snap is an
+	 * ordering detail. An unbonded plate would read 6 or 7.
 	 */
 	Test->TestTrue(
 		*FString::Printf(
@@ -1078,17 +791,9 @@ bool FSessionShotBuildCommand::Update()
 		Binding->GetStructure().NumConnections() >= 8);
 
 	/*
-	 * AND THE PLATE'S BEARINGS ARE SCREWS — BOTH OF THEM, READ OFF THE GRAPH.
-	 *
-	 * THE MECHANISM READING BEHIND FRAME 2'S WORDS. The details window is a presenter over these
-	 * connections, so if the chip never reached the door the readout would name mortar and the frame
-	 * would be a perfectly sharp picture of the wrong structure. TWO of them because one override
-	 * written onto the first joint leaves the far end of a screwed plate resting on friction, which
-	 * is `World.BuildMode.JointOverrideRidesThroughPlacement`'s own claim and is worth a sentence
-	 * here because this is the only place the whole click-to-committed-physics path runs at once.
-	 *
-	 * ALL FIVE FIELDS, because the library is siblings by construction and one field would admit a
-	 * neighbour.
+	 * Both plate bearings must be screws, read off the graph that frame 2's readout presents. Both,
+	 * because an override on only the first joint is the defect JointOverrideRidesThroughPlacement
+	 * covers. All five fields, since sibling profiles share some.
 	 */
 	{
 		const int32 PlatePiece = Binding->NumPieces() - 1;
@@ -1156,7 +861,7 @@ bool FSessionShotBuildCommand::Update()
 		TEXT("the laid build holds %d piece(s) and %d connection(s)"),
 		Binding->NumPieces(), Binding->GetStructure().NumConnections()));
 
-	/* --- and the ghost, left hovering where the next click would land -------------------------- */
+	/* --- the ghost, where the next click would land -------------------------------------------- */
 
 	Controller->PointerAlongRay(
 		LayRayStart(GhostCursorXCm, PlatePlaneCourse2Cm),
@@ -1196,7 +901,7 @@ bool FSessionShotBuildCommand::Update()
 	return true;
 }
 
-/** FRAME 1: Build mode, the wall laid, the ghost hovering. */
+/** Frame 1: Build mode, the wall laid, the ghost hovering. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShootBuildCommand, FAutomationTestBase*, Test);
 
@@ -1219,13 +924,8 @@ bool FSessionShootBuildCommand::Update()
 }
 
 /**
- * Switch to Destroy, point at the middle bottom brick and click it, so its details window is up.
- *
- * THE HOVER AND THE CLICK ARE BOTH MADE, in that order, because they are two different seams and a
- * player makes both: `PointerAlongRay` calls the brick out under the cursor and `PrimaryAlongRay` is
- * what opens the menu on it. `SetInspectedPiece` is the third — it is what hovering an entry in the
- * menu does, and it is what makes the readout draw the support line and the per-joint breakout rather
- * than a count and a label. Without it the details window in the picture would be the empty one.
+ * Switch to Destroy, hover and click the inspected brick, then SetInspectedPiece (what hovering its
+ * menu entry does) so the readout draws the per-joint breakout rather than a bare count.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotInspectCommand, FAutomationTestBase*, Test);
@@ -1257,7 +957,6 @@ bool FSessionShotInspectCommand::Update()
 	const FVector InspectStart(InspectedCentreXCm, -InspectReachCm, BrickPlaneCourse1Cm);
 	const FVector InspectEnd(InspectedCentreXCm, InspectReachCm, BrickPlaneCourse1Cm);
 
-	/* Pointing first, which is what a player's cursor does on its way to the click. */
 	Controller->PointerAlongRay(InspectStart, InspectEnd);
 
 	Controller->PrimaryAlongRay(InspectStart, InspectEnd);
@@ -1289,10 +988,6 @@ bool FSessionShotInspectCommand::Update()
 		return true;
 	}
 
-	/*
-	 * SINGLE THE BRICK OUT, which is what hovering its entry in the menu does — and it is what puts
-	 * the joint readout into the picture instead of a bare count.
-	 */
 	Controller->SetInspectedPiece(Rows[DeleteRow].Ref);
 
 	const FPieceMenuInspector Inspector = Controller->PieceMenuInspectorForSelection();
@@ -1311,15 +1006,8 @@ bool FSessionShotInspectCommand::Update()
 		*Inspector.CountText, *Inspector.SupportText, *Inspector.JointsText, Inspector.Joints.Num()));
 
 	/*
-	 * THE ROWS IN THIS PICTURE NAME THREE DIFFERENT PROFILES, AND THAT IS WHAT MAKES IT A PICTURE OF
-	 * THE JOINT CHOICE.
-	 *
-	 * The brick under the plate wears mortared beds, a perpend head joint and the ONE SCREW the
-	 * player chose when they laid the plate — so a human looking at the frame can read the setting
-	 * they clicked back off the window, which is the only place the choice is ever visible (a screwed
-	 * plate and a dry-bedded one sit in exactly the same pixels). Asserted as COUNTS rather than as a
-	 * sentence: `Presenter.JointRowNamesTheProfile` owns the wording, and what this frame needs is
-	 * that both words are in the picture at once.
+	 * The rows must name both the screw and mortar, since the window is the only place the joint
+	 * choice is visible. Counted, not matched: Presenter.JointRowNamesTheProfile owns the wording.
 	 */
 	{
 		const auto RowSays = [](const FString& Text, const TCHAR* Word)
@@ -1354,7 +1042,6 @@ bool FSessionShotInspectCommand::Update()
 			MortarRows >= 1);
 	}
 
-	/* And the Destroy strip's own command, which this frame claims to be showing live. */
 	const FSessionToolbarState& State = Controller->GetSessionToolbarState();
 
 	Test->TestTrue(
@@ -1367,7 +1054,7 @@ bool FSessionShotInspectCommand::Update()
 	return true;
 }
 
-/** FRAME 2: Destroy mode, the details window open on the middle bottom brick. */
+/** Frame 2: Destroy mode, the details window open on the inspected brick. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShootDestroyCommand, FAutomationTestBase*, Test);
 
@@ -1389,10 +1076,7 @@ bool FSessionShootDestroyCommand::Update()
 	return true;
 }
 
-/**
- * Choose the Delete row: the brick leaves the wall, and the delete path's own solve settles whatever
- * that condemns.
- */
+/** Choose Delete; the delete's own solve settles whatever it condemns. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotDeleteCommand, FAutomationTestBase*, Test);
 
@@ -1448,11 +1132,7 @@ bool FSessionShotDeleteCommand::Update()
 			InspectedPieceIndex, Binding->IsPieceRemoved(InspectedPieceIndex) ? 1 : 0),
 		Binding->IsPieceRemoved(InspectedPieceIndex));
 
-	/*
-	 * AND ONLY THAT ONE IS REMOVED. The cascade RELEASES pieces it condemns rather than removing them,
-	 * so a delete that took half the wall out of the graph would read here — and "whatever settles
-	 * settles" is about bodies falling, not about pieces vanishing.
-	 */
+	// The cascade releases condemned pieces rather than removing them, so exactly one is removed.
 	Test->TestEqual(
 		FString::Printf(
 			TEXT("and only that one: five of the six pieces must still be live; %d are"),
@@ -1473,7 +1153,7 @@ bool FSessionShotDeleteCommand::Update()
 	return true;
 }
 
-/** FRAME 3: the hole where the middle bottom brick was, and whatever settled. */
+/** Frame 3: the hole where the inspected brick was, and whatever settled. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShootDeletedCommand, FAutomationTestBase*, Test);
 
@@ -1496,19 +1176,10 @@ bool FSessionShootDeletedCommand::Update()
 }
 
 /**
- * Switch the load overlay ON over the settled wall, and check the world actually wears the bands.
- *
- * THE PICTURE IS THE POINT AND THE ASSERTION IS WHAT MAKES IT A PICTURE OF THE RIGHT THING. Every
- * headless test of this feature runs `-nullrhi`, so not one of them has ever caused a coloured brick to
- * exist; what this adds is the frame. The claim made beside it is the one the frame cannot make for
- * itself — that each brick wears exactly `BrickHighlightForLoadBand(WorstJointBandForPiece(...))`,
- * composed here from the two production functions rather than written down as a literal, because which
- * band a given brick of this wall lands in is a solver answer this harness has no business pinning.
- *
- * A RELEASED PIECE IS SKIPPED. The delete's own settle may have let go of bodies, and a brick handed to
- * physics is no longer part of the structure the overlay describes — `World.Session`'s own
- * `LoadOverlayIgnoresReleasedPieces` is where that rule lives, and repeating it here would make this
- * harness fail for that test's reason.
+ * Turn the load overlay on and check each standing brick wears
+ * BrickHighlightForLoadBand(WorstJointBandForPiece(...)), composed from production rather than pinned,
+ * since the band is the solver's answer. Released pieces are skipped; that rule is
+ * LoadOverlayIgnoresReleasedPieces' to test.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotLoadOverlayCommand, FAutomationTestBase*, Test);
@@ -1610,7 +1281,7 @@ bool FSessionShotLoadOverlayCommand::Update()
 	return true;
 }
 
-/** FRAME 4: the settled wall tinted by where its load is, with the chip lit. */
+/** Frame 4: the settled wall tinted by load, with the chip lit. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShootLoadOverlayCommand, FAutomationTestBase*, Test);
 
@@ -1633,13 +1304,8 @@ bool FSessionShootLoadOverlayCommand::Update()
 }
 
 /**
- * And the overlay OFF again, so the frames after it are the pictures they have always been.
- *
- * THE CLAIM IS "NO LOAD STATE ANYWHERE" RATHER THAN "EVERY BRICK IS None", DELIBERATELY. The hover and
- * the selection are the overlay's superiors in `HighlightForPiece`, and a brick that happens to be
- * claimed by one of them is not evidence of a stale tint — asserting `None` here would be asserting
- * that taking the overlay off also drops the hover, which is the opposite of the precedence
- * `World.Session.LoadOverlayYieldsToHover` pins.
+ * Turn the overlay off again. Asserts no load state anywhere rather than every brick None, because
+ * hover and selection outrank the overlay (World.Session.LoadOverlayYieldsToHover).
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotLoadOverlayOffCommand, FAutomationTestBase*, Test);
@@ -1710,13 +1376,8 @@ bool FSessionShotLoadOverlayOffCommand::Update()
 }
 
 /**
- * Lay one FREE brick in mid-air with nothing under it, then Run the plot so it is let go.
- *
- * THE FLOATING BRICK IS THE WHOLE FIXTURE, for the reason `World.Session.RunStructureSettlesTheBuild`
- * gives: a Run over a build that already stands releases nothing, and "nothing happened" is exactly
- * what a Run button wired to no solver produces. A piece that CANNOT stand is the one observable
- * difference between a Run that ran and a Run that did not — and in a photograph it is the difference
- * between a brick in the air and a brick on the ground.
+ * Lay a Free brick in mid-air, then Run. A piece that cannot stand is needed: over a standing build,
+ * Run releases nothing, which is indistinguishable from a Run wired to nothing.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotRunCommand, FAutomationTestBase*, Test);
@@ -1754,7 +1415,6 @@ bool FSessionShotRunCommand::Update()
 		TEXT("Free placement is always live in Build mode"),
 		Controller->OnToolbarButton(EToolbarButtonId::PlacementFree));
 
-	/* Course 2 up to course 5: three steps, each of which must land. */
 	for (int32 Step = 2; Step < FloatingCourse; ++Step)
 	{
 		Test->TestTrue(
@@ -1807,11 +1467,7 @@ bool FSessionShotRunCommand::Update()
 		Record.FloatingActorAtReleaseCm = Actor->GetActorLocation();
 	}
 
-	/*
-	 * THE TWO FIXTURE PRECONDITIONS, AND BOTH ARE NEEDED. A brick that turned out to be grounded, or
-	 * bonded to something, would STAND — and the frame would be a picture of a brick in the air with a
-	 * green test underneath it saying Run worked.
-	 */
+	// Fixture: a grounded or bonded brick would stand, and Run would prove nothing.
 	Test->TestTrue(
 		*FString::Printf(
 			TEXT("fixture: the Free brick's underside is at %g cm, so it must NOT read grounded, or "
@@ -1839,7 +1495,7 @@ bool FSessionShotRunCommand::Update()
 		Record.FloatingActorAtReleaseCm.X, Record.FloatingActorAtReleaseCm.Y,
 		Record.FloatingActorAtReleaseCm.Z, Binding->GetStructure().NumConnections()));
 
-	/* --- and Run it, from Destroy mode, through the one door ---------------------------------- */
+	/* --- Run it from Destroy mode ------------------------------------------------------------- */
 
 	Test->TestTrue(
 		TEXT("the Destroy tab is always live"),
@@ -1861,11 +1517,7 @@ bool FSessionShotRunCommand::Update()
 		return true;
 	}
 
-	/*
-	 * `IsReleased`, NEVER DISPLACEMENT. DESIGN §4 is explicit, and it bites here: the brick is about
-	 * to be photographed on the ground, so the temptation to read its Z is exactly the mistake. Where
-	 * it ends up is Chaos's business; whether Run handed it over is the binding's own record.
-	 */
+	// IsReleased, never displacement (DESIGN §4).
 	Test->TestTrue(
 		*FString::Printf(
 			TEXT("RUN MUST SETTLE THE BUILD: the brick with nothing under it has to be handed to "
@@ -1876,13 +1528,7 @@ bool FSessionShotRunCommand::Update()
 	return true;
 }
 
-/**
- * FRAME 5: the freed brick, after three seconds of falling.
- *
- * HOW FAR IT TRAVELLED IS REPORTED AND NOT ASSERTED. It is the number a reader needs to tell a
- * picture of a brick that fell from a picture of a brick that was released and did not move — and it
- * is an observation, not the claim, because the claim is `IsReleased` and was made before the wait.
- */
+/** Frame 5: the freed brick after three seconds. Its travel is reported, not asserted. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShootRunCommand, FAutomationTestBase*, Test);
 
@@ -1931,48 +1577,16 @@ bool FSessionShootRunCommand::Update()
 }
 
 /**
- * FRAME 6's BUILD: clear the plot, reframe the camera, and lay an L-WALL with the rotate chip.
+ * Frame 6's build: clear the plot, reframe, and lay an L-wall with the Rotate chip. Players can only
+ * turn a piece through that chip, so a probe click gates the build with one named error if it is
+ * missing.
  *
- * =====================================================================================
- * WHY THIS FRAME EXISTS AND WHY IT IS RED UNTIL THE CHIP DOES
- * =====================================================================================
+ * Asserts CornerWallStands' readings through the binding: 11 pieces, 19 connections, 12 mortar
+ * (10 beds, 2 quoins) and 7 perpends, then every piece Grounded or Supported. The profile mix is what
+ * distinguishes a real corner from one whose quoins came back as perpends.
  *
- * CR-2a taught the solver a corner return and `Core.BuildMode.CornerWallStands` proves the wall it
- * builds — but through `BuildMode::PlacePiece`, which takes an extent as an argument. A PLAYER has
- * no way to hand the game a turned box: every placement's footprint comes from the palette, so
- * until there is a chip that swaps X and Y the whole corner vocabulary is code nobody can reach.
- * This frame is the proof that they can, and it is the only picture in this project of a building
- * that turns a corner.
- *
- * SO IT IS GATED ON THE CHIP, AT THE TOP, AND SAYS SO. `PrimaryAlongRay` with a rotated ghost is
- * impossible before `EToolbarButtonId::RotatePiece` exists — the model refuses a button it does not
- * draw — so a probe click is made first and the whole build is abandoned with one named error if it
- * comes back false. That keeps the failure readable as "the control is missing" rather than as
- * eleven snap poses landing in the wrong places.
- *
- * =====================================================================================
- * WHAT IT ASSERTS BESIDE THE PICTURE
- * =====================================================================================
- *
- * The same mechanism readings `CornerWallStands` makes, taken through the binding: eleven pieces,
- * nineteen connections, twelve full-mortar joints (ten beds and two quoins) and seven weak perpend
- * heads, then every piece Grounded or Supported after a solve. The profile MIX is what makes the
- * picture a picture of a CORNER — a wall whose quoins came back as perpends looks identical in every
- * pixel and is a different building.
- *
- * `SolveLoads` IS NON-DESTRUCTIVE AND IS THE RIGHT CALL HERE. It is re-runnable by contract
- * (`FStructureBinding::SolveLoads`, "ApplyResults is what turns the answer into work on the world"),
- * so reading support kinds off it changes nothing in the frame — unlike `SolveAndBreak`, which the
- * Run command uses and which would settle the wall before it is photographed.
- *
- * THE 3D FLAG IS NO LONGER SET BY HAND HERE. `UDestructionStructureSubsystem::BeginBuild` states it
- * for every player's build, so the L this frame photographs arrives flagged and the harness has
- * nothing to state. It changed nothing this frame reads in any case — `SolveLoads` does not read the
- * flag at all (the router is dimension-agnostic, routing load down bed joints and reading each normal
- * directly), and the one reader, the LP bridge, is consulted only by the below-cap break gate inside
- * `SolveAndBreak`, which this frame deliberately never runs. What the flag really buys is the
- * player's `Run structure`, which is `World.Session.CornerBuildIsJudgedByTheLP`'s business rather
- * than this picture's.
+ * Uses SolveLoads, which is non-destructive; SolveAndBreak would settle the wall before the shot.
+ * The 3D flag is set by BeginBuild, and SolveLoads does not read it anyway.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotCornerCommand, FAutomationTestBase*, Test);
@@ -2001,7 +1615,7 @@ bool FSessionShotCornerCommand::Update()
 		TEXT("the Build tab is always live"),
 		Controller->OnToolbarButton(EToolbarButtonId::ModeBuild));
 
-	/* --- THE GATE: is there a rotate chip at all? --------------------------------------------- */
+	/* --- gate: is there a rotate chip? ------------------------------------------------------- */
 
 	if (!Controller->OnToolbarButton(EToolbarButtonId::RotatePiece))
 	{
@@ -2014,7 +1628,7 @@ bool FSessionShotCornerCommand::Update()
 		return true;
 	}
 
-	/* And straight back, so the table below owns every rotation from a known upright start. */
+	/* Toggle back, so the table below starts from upright. */
 	Test->TestTrue(
 		TEXT("and the same chip must turn it off again — a setting the player cannot unset is not a "
 			 "setting"),
@@ -2026,7 +1640,7 @@ bool FSessionShotCornerCommand::Update()
 			*StateBits(Controller->GetSessionToolbarState())),
 		Controller->GetSessionToolbarState().bRotated);
 
-	/* --- a fresh plot: the five frames before this one leave a wall and a fallen brick on it --- */
+	/* --- a fresh plot ------------------------------------------------------------------------ */
 
 	Test->TestTrue(
 		TEXT("Clear build must be live over the settled plot"),
@@ -2063,7 +1677,7 @@ bool FSessionShotCornerCommand::Update()
 			Controller->GetSessionToolbarState().Course),
 		Controller->GetSessionToolbarState().Course, 0);
 
-	/* --- the camera, moved ONCE for this frame ------------------------------------------------ */
+	/* --- reframe for this frame -------------------------------------------------------------- */
 
 	if (APawn* const Pawn = Controller->GetPawn())
 	{
@@ -2093,7 +1707,6 @@ bool FSessionShotCornerCommand::Update()
 	{
 		const FCornerStep& Step = CornerSteps[Index];
 
-		/* The course, stepped one chip click at a time — this wall only ever goes up. */
 		while (Controller->GetSessionToolbarState().Course < Step.Course)
 		{
 			Test->TestTrue(
@@ -2101,7 +1714,6 @@ bool FSessionShotCornerCommand::Update()
 				Controller->OnToolbarButton(EToolbarButtonId::CourseUp));
 		}
 
-		/* And the rotation, which is one click whenever the next piece lies the other way. */
 		if (Controller->GetSessionToolbarState().bRotated != Step.bRotated)
 		{
 			Test->TestTrue(
@@ -2118,11 +1730,6 @@ bool FSessionShotCornerCommand::Update()
 				Controller->GetSessionToolbarState().bRotated, Step.bRotated);
 		}
 
-		/*
-		 * The brick's own course plane: course 0 rests it on the earth at 3.25, course 1 one pitch
-		 * above at 10.75. Spelled from the two named constants rather than multiplied out, so the
-		 * arithmetic stays where the file's own grid note put it.
-		 */
 		const double PlaneZCm = Step.Course == 0 ? BrickPlaneCourse0Cm : BrickPlaneCourse1Cm;
 
 		const bool bPlaced = Controller->PrimaryAlongRay(
@@ -2138,7 +1745,7 @@ bool FSessionShotCornerCommand::Update()
 
 		if (Index == 0)
 		{
-			/* The cleared plot opened a NEW binding; the first brick is what gives it an id. */
+			/* The cleared plot opened a new binding; the first brick gives it an id. */
 			Record.StructureId = Controller->GetSessionStructureId();
 
 			Test->TestTrue(
@@ -2150,7 +1757,7 @@ bool FSessionShotCornerCommand::Update()
 		}
 	}
 
-	/* --- what the L actually is, before it is photographed ------------------------------------ */
+	/* --- what the L is, before the shot ------------------------------------------------------ */
 
 	FStructureBinding* const Binding = FindBuild(Controller->GetWorld(), Record.StructureId);
 
@@ -2187,10 +1794,8 @@ bool FSessionShotCornerCommand::Update()
 		Binding->GetStructure().NumConnections(), CornerExpectedConnections);
 
 	/*
-	 * THE PROFILE MIX, COUNTED — and it is what makes this a picture of a CORNER rather than of a
-	 * wall that happens to bend. The quoin is a mortar joint across a HORIZONTAL normal, which is
-	 * exactly the contact the pre-CR-2a inference called a weak perpend; counted both ways so a
-	 * wrong profile somewhere cannot cancel against a right one elsewhere.
+	 * The profile mix. A quoin is full mortar across a horizontal normal, the contact pre-CR-2a
+	 * inference called a perpend. Counted both ways so errors cannot cancel.
 	 */
 	{
 		const auto Matches = [](const FConnectionStrength& Got, const FConnectionStrength& Want)
@@ -2247,10 +1852,8 @@ bool FSessionShotCornerCommand::Update()
 	}
 
 	/*
-	 * AND IT STANDS, NOT BY BEING PINNED TO THE EARTH. The exact support kind per piece: the six laid
-	 * on the ground read Grounded and the five above them reach the earth ONLY through the beds the
-	 * player's own clicks formed, so a bed that never formed reads Falling or Stranded here rather
-	 * than quietly making a prettier picture.
+	 * Exact support per piece: the six on the earth read Grounded, the five above Supported through
+	 * their beds. A missing bed reads Falling or Stranded.
 	 */
 	Binding->SolveLoads();
 
@@ -2270,7 +1873,7 @@ bool FSessionShotCornerCommand::Update()
 			static_cast<int32>(Want));
 	}
 
-	/* --- and the ghost, still rotated, where the next brick of the Y leg would go -------------- */
+	/* --- the rotated ghost at the next Y-leg brick ------------------------------------------- */
 
 	Controller->PointerAlongRay(
 		LayRayStartXY(CornerGhostXCm, CornerGhostYCm, BrickPlaneCourse1Cm),
@@ -2297,7 +1900,7 @@ bool FSessionShotCornerCommand::Update()
 	return true;
 }
 
-/** FRAME 6: the L-wall, turned corner and all, with a rotated ghost at the end of its second leg. */
+/** Frame 6: the L-wall with a rotated ghost at the end of its second leg. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShootCornerCommand, FAutomationTestBase*, Test);
 
@@ -2321,44 +1924,15 @@ bool FSessionShootCornerCommand::Update()
 }
 
 /**
- * FRAME 7's STAGE: clear the plot, lay ONE seed brick, and put a ghost up WITHOUT CLICKING ANYTHING.
+ * Frame 7's stage: clear the plot, lay one seed brick, and show a ghost without clicking (the owner's
+ * 2026-09-16 playtest ask).
  *
- * =====================================================================================
- * WHAT THIS FRAME IS A PICTURE OF
- * =====================================================================================
+ * The ghost is driven through RefreshBuildPreviewFromRay, the testable half of the per-tick cursor
+ * refresh (deprojection needs a viewport). PointerAlongRay would exercise the old path instead. No
+ * PrimaryAlongRay after the seed, so the piece count is asserted unchanged at the end.
  *
- * The owner's 2026-09-16 playtest ask, photographed: "it should show where the brick is going to go
- * without clicking anything". In the session they played the ghost was driven by the hover action
- * alone, so it appeared only after a click had already committed a brick — a player could not see
- * where a piece would land before landing it. Two things fix that and both are in this one frame: a
- * ghost that is UP from the cursor with no click behind it, and a ghost that answers a SETTING at
- * once rather than at the next mouse move.
- *
- * =====================================================================================
- * THE RAY IS THE SEAM, AND THE SEAM IS THE POINT
- * =====================================================================================
- *
- * The real per-tick refresh starts at `DeprojectMousePositionToWorld`, which needs a viewport and
- * cannot run in a harness — the same inch `OnHoverPiece` and `OnInspectPiece` are kept down to. So
- * the ghost here is driven through `RefreshBuildPreviewFromRay`, the half of that refresh a test can
- * reach and the half everything a player would notice lives behind. `PointerAlongRay` would have put
- * the same ghost up, and using it instead would photograph the OLD path — the one the owner reported
- * — rather than the new one.
- *
- * NO `PrimaryAlongRay` AFTER THE SEED, ANYWHERE IN THIS COMMAND. That is the claim, so the piece
- * count is asserted unchanged at the end: a frame with a gold brick in it and a second brick in the
- * structure would be a picture of a click, which is exactly what this denies.
- *
- * =====================================================================================
- * AND THE CHIP, WHICH IS WHY THE GHOST IS TURNED
- * =====================================================================================
- *
- * `Rotate` is pressed with the ghost already standing, and the ghost's BOUNDS SIZE is read again
- * afterwards. That reading is the one that cannot be got right by accident: a chip that lights while
- * the ghost keeps its old footprint is the defect the owner described as a dropped click, and in a
- * photograph of a rectangular box a wrong footprint is perfectly plausible. The CENTRE is reported
- * and not asserted — which pose the solver picks for a turned brick beside a stretcher is its
- * business and `Core.BuildMode`'s to pin, not this picture's.
+ * Rotate is then pressed with the ghost standing, and its bounds size is re-read to prove the turn
+ * reached it. The rotated centre is reported, not asserted; Core.BuildMode pins it.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotGhostCommand, FAutomationTestBase*, Test);
@@ -2387,7 +1961,7 @@ bool FSessionShotGhostCommand::Update()
 		TEXT("the Build tab is always live"),
 		Controller->OnToolbarButton(EToolbarButtonId::ModeBuild));
 
-	/* --- a fresh plot: frame 6 leaves an eleven-piece L standing on this one ------------------ */
+	/* --- a fresh plot ------------------------------------------------------------------------ */
 
 	Test->TestTrue(
 		TEXT("Clear build must be live over the L"),
@@ -2439,7 +2013,7 @@ bool FSessionShotGhostCommand::Update()
 			Controller->GetSessionToolbarState().Course),
 		Controller->GetSessionToolbarState().Course, 0);
 
-	/* --- the camera, moved once for this frame ------------------------------------------------ */
+	/* --- reframe for this frame -------------------------------------------------------------- */
 
 	if (APawn* const Pawn = Controller->GetPawn())
 	{
@@ -2463,7 +2037,7 @@ bool FSessionShotGhostCommand::Update()
 		Test->AddError(TEXT("the player controller has no pawn to reframe the ghost frame on"));
 	}
 
-	/* --- ONE: the seed brick, the only click in this whole frame ------------------------------ */
+	/* --- 1: the seed brick, the only click in this frame ------------------------------------- */
 
 	{
 		const bool bPlaced = Controller->PrimaryAlongRay(
@@ -2508,7 +2082,7 @@ bool FSessionShotGhostCommand::Update()
 		return true;
 	}
 
-	/* --- TWO: the cursor puts a ghost up, with NO click -------------------------------------- */
+	/* --- 2: the cursor puts a ghost up with no click ----------------------------------------- */
 
 	{
 		const bool bRefreshed = Controller->RefreshBuildPreviewFromRay(
@@ -2558,7 +2132,7 @@ bool FSessionShotGhostCommand::Update()
 			Bounds.GetSize().Equals(UprightGhostSizeCm, GhostBoundsToleranceCm));
 	}
 
-	/* --- THREE: the Rotate chip turns the ghost where it stands, still with no click --------- */
+	/* --- 3: Rotate turns the ghost where it stands ------------------------------------------- */
 
 	{
 		Test->TestTrue(
@@ -2602,7 +2176,7 @@ bool FSessionShotGhostCommand::Update()
 			Bounds.GetSize().Equals(RotatedGhostSizeCm, GhostBoundsToleranceCm));
 	}
 
-	/* --- FOUR: and NOTHING was committed by any of it ----------------------------------------- */
+	/* --- 4: nothing was committed ------------------------------------------------------------ */
 
 	{
 		const FStructureBinding* const After = FindBuild(Controller->GetWorld(), Record.StructureId);
@@ -2632,7 +2206,7 @@ bool FSessionShotGhostCommand::Update()
 	return true;
 }
 
-/** FRAME 7: one seed brick, and a turned gold ghost beside it that no click put there. */
+/** Frame 7: one seed brick and a turned ghost beside it, placed by no click. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShootGhostCommand, FAutomationTestBase*, Test);
 
@@ -2654,14 +2228,7 @@ bool FSessionShootGhostCommand::Update()
 	return true;
 }
 
-/**
- * Take the build off the plot, through the toolbar, and leave the level as the game mode left it.
- *
- * `Clear build` RATHER THAN A SWEEP OF THE WORLD, because it is the session's own command and it is
- * what a player would press: it cancels the binding, destroys its bricks and opens a fresh empty plot.
- * The level itself laid nothing — that is what a build sandbox is — so an empty plot in Build mode is
- * exactly the state begin-play produced.
- */
+/** Clear the build through the toolbar, leaving the empty plot begin-play produced. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FSessionShotTearDownCommand, FAutomationTestBase*, Test);
 
@@ -2728,10 +2295,8 @@ bool FSessionShotCheckFilesCommand::Update()
 		}
 
 		/*
-		 * THE SIGNATURE AND THE IHDR, READ BY HAND. Eight signature bytes, then a four-byte chunk
-		 * length, then "IHDR", then width and height as big-endian 32-bit integers. A byte count alone
-		 * passes for a file of random bytes, and a decoder would be a dependency on the very rendering
-		 * stack under test.
+		 * Signature and IHDR read by hand: 8 signature bytes, 4-byte length, "IHDR", then big-endian
+		 * width and height. A decoder would depend on the rendering stack under test.
 		 */
 		static const uint8 PngSignature[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
 
@@ -2783,11 +2348,7 @@ bool FSessionScreenshotsTest::RunTest(const FString& Parameters)
 
 	SessionShotRecord().Reset();
 
-	/*
-	 * THE OLD FILES GO FIRST, SYNCHRONOUSLY, BEFORE ANY LATENT COMMAND IS QUEUED. Everything
-	 * downstream reads "the file exists" as "this run rendered a frame", and that reading is only true
-	 * if the file cannot have survived from an earlier run.
-	 */
+	// Delete old files first, so an existing file afterwards means this run wrote it.
 	for (const TCHAR* const BaseName : ScreenshotBaseNames)
 	{
 		const FString Path = ScreenshotPathFor(FString(BaseName));
@@ -2809,11 +2370,8 @@ bool FSessionScreenshotsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE SEQUENCE: set the state up, let the view settle, shoot — seven times, off ONE camera placed
-	 * before the first warm-up and reframed once each for frames 6 and 7. Screen messages go off before
-	 * anything is waited on; each shot is
-	 * followed by its write wait because ProcessScreenShots writes at end of draw; and each of the two
-	 * mutations that hands bodies to physics is followed by a fall wait and a settle.
+	 * For each frame: set up, settle, shoot, wait for the write. The delete and Run are each followed
+	 * by a fall wait and a settle.
 	 */
 	ADD_LATENT_AUTOMATION_COMMAND(FExecStringLatentCommand(DisableScreenMessagesCommand));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForShadersToFinishCompilingInGame());
@@ -2859,10 +2417,7 @@ bool FSessionScreenshotsTest::RunTest(const FString& Parameters)
 	ADD_LATENT_AUTOMATION_COMMAND(FSessionShootRunCommand(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(WriteFrames));
 
-	/*
-	 * AND FRAME 6 LAST, because it is the one that CLEARS the plot: everything before it is five
-	 * readings of one wall, and an L laid on top of that wall would snap onto it.
-	 */
+	// Frames 6 and 7 come last because each clears the plot.
 	ADD_LATENT_AUTOMATION_COMMAND(FSessionShotCornerCommand(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SlateFrames));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SettleFrames));
@@ -2870,11 +2425,6 @@ bool FSessionScreenshotsTest::RunTest(const FString& Parameters)
 	ADD_LATENT_AUTOMATION_COMMAND(FSessionShootCornerCommand(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(WriteFrames));
 
-	/*
-	 * AND FRAME 7 AFTER IT, for frame 6's own reason: it CLEARS the plot too, and its whole subject is
-	 * one seed brick with one ghost beside it — laid on top of the L, the ghost would be solving
-	 * against eleven bricks instead of the one, and the gold box would be lost in the picture.
-	 */
 	ADD_LATENT_AUTOMATION_COMMAND(FSessionShotGhostCommand(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SlateFrames));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForEngineFramesCommand(SettleFrames));

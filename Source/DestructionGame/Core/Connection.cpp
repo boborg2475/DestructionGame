@@ -2,10 +2,7 @@
 
 #include "Core/Connection.h"
 
-/*
- * Names here carry a Joint prefix: a unity build merges files into one translation unit,
- * so two identically-named file-local helpers would collide (as in Structure.cpp).
- */
+// Joint-prefixed names, so unity builds do not collide with other file-local helpers.
 namespace
 {
 	/**
@@ -18,11 +15,7 @@ namespace
 		return (4.0 / 3.0) * HalfAlongCm * HalfAcrossCm * HalfAcrossCm;
 	}
 
-	/**
-	 * Elastic section modulus of the deep beam standing over the joint, cm3: W = width*depth^2/6
-	 * at the depth of masonry above, versus the sibling above at the joint's own face depth.
-	 * Same width half-extent, so the two differ only in depth. ARCHING_DESIGN.md slice 5.
-	 */
+	/** Section modulus of the deep beam of masonry over the joint, cm3: width*depth^2/6. ARCHING_DESIGN.md slice 5. */
 	double JointCompositeModulusCm3(double HalfAlongCm, double DepthCm)
 	{
 		return (2.0 * HalfAlongCm) * DepthCm * DepthCm / 6.0;
@@ -51,10 +44,8 @@ namespace
 	}
 
 	/**
-	 * The two in-plane axes of a joint and the section modulus resisting each. Shared by the
-	 * stress evaluation and the arching cap so the pairing cannot drift between them: a moment
-	 * about U is resisted by the depth on V, so the moduli read the extents in opposite orders.
-	 * Caller must already have a separation axis.
+	 * The joint's two in-plane axes and the modulus resisting each, shared by the stress and the
+	 * arching cap so the pairing cannot drift. Requires a valid separation axis.
 	 */
 	struct FJointBendingFrame
 	{
@@ -84,28 +75,19 @@ namespace
 double FConnection::ApplyForce(
 	const FVector& Force, const FVector& MomentUuCm, double CompositeDepthCm)
 {
-	/*
-	 * A given joint carries nothing and never revives: mortar does not re-bond, and a joint
-	 * that healed when the load dropped would make collapse non-monotonic.
-	 */
+	// A given joint never revives, so collapse stays monotonic.
 	if (bHasGiven)
 	{
 		return 0.0;
 	}
 
 	/*
-	 * One copy of the break arithmetic, in UtilisationUnder: a second copy differing in the
-	 * last bit could make a joint at exactly 1.0 read over capacity. Moment and depth pass
-	 * through so the break decision matches the readout — dropping either desyncs them (a
-	 * joint drawn at 0.37 the cascade then snaps at 22.9).
+	 * One copy of the arithmetic, so the break decision and the readout agree to the bit. Moment
+	 * and depth must pass through, or a joint shown at 0.37 breaks at 22.9.
 	 */
 	const double Utilisation = UtilisationUnder(Force, MomentUuCm, CompositeDepthCm);
 
-	/*
-	 * Above 1 the joint gives; exactly 1 holds. Written !(x <= 1.0) so a NaN latches as given
-	 * rather than reading intact — locally correct even though ComputeUtilisation never
-	 * returns NaN today. See CURRENT_STATE.md.
-	 */
+	// Exactly 1 holds. Written !(x <= 1.0) so a NaN latches as given (fail closed).
 	if (!(Utilisation <= 1.0))
 	{
 		bHasGiven = true;
@@ -117,16 +99,11 @@ double FConnection::ApplyForce(
 double FConnection::UtilisationUnder(
 	const FVector& Force, const FVector& MomentUuCm, double CompositeDepthCm) const
 {
-	/*
-	 * The latch is not consulted: pure arithmetic on geometry, profile and force, so a given
-	 * joint still answers what the force would have done. Latching stays in ApplyForce alone.
-	 */
+	// The latch is not consulted; a given joint still answers what the force would do.
 
 	/*
-	 * A normal that will not normalise is no interface plane and must read as failed.
-	 * ClassifyForce would return a clean zero load that ComputeUtilisation reads as healthy,
-	 * so a zero area is substituted to route it through the fail-closed guard. Normalize
-	 * returns false for zero-length and NaN alike (every NaN comparison is false).
+	 * A normal that will not normalise (zero or NaN) must read as failed, so a zero area is
+	 * substituted to hit the fail-closed guard; otherwise ClassifyForce would return a healthy zero.
 	 */
 	FVector UnitNormal = InterfaceNormal;
 	const double EffectiveAreaSqCm = UnitNormal.Normalize() ? InterfaceAreaSqCm : 0.0;
@@ -135,11 +112,8 @@ double FConnection::UtilisationUnder(
 	FJointSection Section(EffectiveAreaSqCm);
 
 	/*
-	 * The moment is resolved onto the face here, once. The component about the normal twists
-	 * the joint and needs a polar modulus this rectangle lacks (MOMENTS_DESIGN.md, out of
-	 * scope), so it is dropped; the two in-plane components pair with W_u and W_v, which read
-	 * the extents in opposite orders and are NOT interchangeable. A normal with no separation
-	 * axis fails closed: the whole moment goes onto U against a zero modulus.
+	 * Resolve the moment onto the face. Torsion is dropped (no polar modulus; MOMENTS_DESIGN.md).
+	 * With no separation axis the whole moment goes onto U against a zero modulus: fail closed.
 	 */
 	const int32 SeparationAxis = JointSeparationAxis(InterfaceNormal);
 
@@ -158,9 +132,8 @@ double FConnection::UtilisationUnder(
 		Section.SectionModulusVCm3 = Frame.ModulusVCm3;
 
 		/*
-		 * Masonry over the joint is a second section for the same moment. The caller supplies
-		 * the depth (a graph fact one joint cannot see); pairing it with the axes is done here.
-		 * Zero, negative or non-finite depth leaves the section at zero and withholds relief.
+		 * Masonry over the joint is a second section; the caller supplies its depth. Zero,
+		 * negative or non-finite depth withholds the relief.
 		 */
 		if (CompositeDepthCm > 0.0 && FMath::IsFinite(CompositeDepthCm))
 		{
@@ -176,16 +149,10 @@ double FConnection::UtilisationUnder(
 
 double FConnection::ArchingMomentScale(const FVector& Force, const FVector& MomentUuCm) const
 {
-	/*
-	 * Every exit is 1.0, the identity not a default: relief multiplies a moment, so "cannot
-	 * arch" and "nothing to relieve" coincide and a no-arch structure is bit-identical to before.
-	 */
+	// Every early exit is 1.0, the identity, so a no-arch structure is bit-identical.
 	constexpr double NoRelief = 1.0;
 
-	/*
-	 * No normalisable normal and no positive area both mean no kern for a thrust line.
-	 * Written !(x > 0.0) so a NaN area lands inside the guard.
-	 */
+	// No valid normal or area means no kern. Written !(x > 0.0) so a NaN area is caught.
 	FVector UnitNormal = InterfaceNormal;
 
 	if (!UnitNormal.Normalize() || !(InterfaceAreaSqCm > 0.0))
@@ -194,9 +161,8 @@ double FConnection::ArchingMomentScale(const FVector& Force, const FVector& Mome
 	}
 
 	/*
-	 * Second gate: the normal force must be compressive. A joint in tension or carrying
-	 * nothing has no thrust line, and this also keeps the arithmetic out of 0/0 (a massless
-	 * piece has sigma_n and sigma_b both zero, and min(1, 0/0) is a NaN reading as failed).
+	 * Only a compressed joint has a thrust line. This also avoids 0/0 for a massless piece,
+	 * which would give NaN.
 	 */
 	const FConnectionLoad Load = DestructionForce::ClassifyForce(Force, UnitNormal);
 
@@ -205,10 +171,7 @@ double FConnection::ArchingMomentScale(const FVector& Force, const FVector& Mome
 		return NoRelief;
 	}
 
-	/*
-	 * Frame and moduli resolved through the same helpers as UtilisationUnder, since k caps
-	 * the stress that call computes. No separation axis or non-positive modulus means no relief.
-	 */
+	// Same frame helpers as UtilisationUnder, since k caps the stress it computes.
 	const int32 SeparationAxis = JointSeparationAxis(InterfaceNormal);
 
 	if (SeparationAxis == INDEX_NONE)
@@ -223,10 +186,7 @@ double FConnection::ArchingMomentScale(const FVector& Force, const FVector& Mome
 		return NoRelief;
 	}
 
-	/*
-	 * Both in uu/cm2; the in-plane axes add because the worst corner is worst on both at
-	 * once — the same sigma_b ComputeUtilisation forms.
-	 */
+	// uu/cm2. The in-plane axes add at the worst corner, as in ComputeUtilisation.
 	const double BendingStress = FMath::Abs(MomentUuCm[Frame.AxisU]) / Frame.ModulusUCm3
 		+ FMath::Abs(MomentUuCm[Frame.AxisV]) / Frame.ModulusVCm3;
 
@@ -238,11 +198,9 @@ double FConnection::ArchingMomentScale(const FVector& Force, const FVector& Mome
 	}
 
 	/*
-	 * Third gate: the resultant is outside the kern. This comparison IS that statement:
-	 * |M_u|/W_u + |M_v|/W_v > |N|/A, the rhombic core of a rectangle. Inside the kern the
-	 * ratio would exceed one, so this is where min(1, ...) is enforced — dropping it inflates
-	 * an ordinary off-centre joint's bending stress by nearly seven. Written !(a > b) so a
-	 * surviving NaN lands here.
+	 * Resultant outside the kern: |M_u|/W_u + |M_v|/W_v > |N|/A (the rectangle's rhombic core).
+	 * This enforces min(1, ...); without it an in-kern joint's bending would be inflated.
+	 * Written !(a > b) so a NaN is caught.
 	 */
 	if (!(BendingStress > NormalStress))
 	{

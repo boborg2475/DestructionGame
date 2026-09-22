@@ -20,11 +20,7 @@ namespace StructureOneCellThrustTestSupport
 	using namespace DestructionProfiles;
 	using namespace StructureArchingTestSupport;
 
-	/**
-	 * One row of the table: the same wall, cut and one-cell arch, with a joint that either can or
-	 * cannot deliver the arch's sideways push. Only the profile moves, so this is a statement about
-	 * capacity, not shape.
-	 */
+	/** One row: the same wall, cut and arch; only the joint profile varies. */
 	struct FThrustCase
 	{
 		const TCHAR* Description;
@@ -34,18 +30,13 @@ namespace StructureOneCellThrustTestSupport
 		/** Whether the springing can carry the horizontal push the moment cap assumes. */
 		bool bCanCarryTheThrust;
 
-		/**
-		 * What fraction of its sliding capacity that push comes to, worked by hand at the 28 brick
-		 * weights this cut leaves on the seat. Held per row so the fixture and the arithmetic must agree.
-		 */
+		/** The push as a fraction of sliding capacity, worked by hand at 28 brick weights on the seat. */
 		double DemandOverCapacityAt28BrickWeights;
 	};
 
 	/**
-	 * How hard a joint may be pushed sideways, MPa — Mohr-Coulomb `c + mu * sigma`, truncated at the
-	 * profile's ceiling, written out rather than imported so it cannot agree with a wrong production
-	 * expression. Compression is a magnitude: ReadBedJoint signs sigma_n positive in tension, and
-	 * only a squeeze buys friction.
+	 * Sliding capacity, MPa: Mohr-Coulomb c + mu * |sigma|, capped; written out, not imported.
+	 * Callers pass compressive sigma_n (ReadBedJoint signs tension positive).
 	 */
 	inline double SlidingCapacityMPa(const FConnectionStrength& Strength, double NormalStressMPa)
 	{
@@ -56,51 +47,28 @@ namespace StructureOneCellThrustTestSupport
 }
 
 /**
- * The one-cell arching relief has to be earned: the springing must carry the sideways push the
- * moment cap assumes, and a joint that cannot must not be granted it.
+ * One-cell arching relief must be earned: the springing must carry the sideways push the moment cap
+ * assumes (DESIGN §5.4, §7 gap 4).
  *
- * What the cap assumes, derived from the cap itself. Delete one brick from a running-bond wall and
- * the brick above keeps one 10.25 x 10.25 seat, its load arriving e = 5.625 cm outside the patch
- * centroid. ArchingMomentScale caps the moment by k = |sigma_n| / sigma_b, i.e. M' = N * h/6 with
- * h/6 = 1.7083 cm — moving the thrust line from 5.625 cm out to the kern edge. That is what an arch
- * is, correct physics (DESIGN §5.4) when the abutments can take the thrust. Taking moments about
- * the seat centroid, the couple the cap deletes is dM = F*(e - h/6) = F * 3.9166667 cm, suppliable
- * only by a horizontal pair: a push H through the intact head joint and its reaction as shear in
- * the bed plane. With the measured arm z = 3.75 cm, H/V = (e - h/6)/z = 3.9166667/3.75 = 1.0444444,
- * load-independent — the one-cell analogue of the spanned case's H/V = 3L/(4*d_e).
+ * Delete one brick and the brick above keeps one 10.25 x 10.25 seat with its load e = 5.625 cm off
+ * centre. The cap moves the thrust line to the kern edge (h/6 = 1.7083 cm). The couple removed,
+ * F*(e - h/6), can only come from a horizontal push through the head joint, arm z = 3.75 cm, so
+ * H/V = (e - h/6)/z = 1.0444444 regardless of load.
  *
- * Today that push is neither applied nor checked: ApplyArchingThrust runs only over arches
- * ReseatSpannedGroups records, and a one-cell hole leaves nobody seatless, so the relief is granted
- * fail-open on topology alone (DESIGN §7 gap 4).
+ * Three profiles on the 7 x 30 flush wall, course-1 interior cut. At 28 brick weights the seat has
+ * sigma_n = 0.0710835 MPa, so the push is 0.0742428 MPa:
+ *   - General purpose mortar (c = 0.9, mu = 0.75): 0.0779 of capacity. Earned.
+ *   - Lime mortar (c = 0.27, mu = 0.75): 0.2296 of capacity. Earned.
+ *   - Dry stone (c = 0, mu = 0.7): sigma_n cancels, 1.0444444/0.7 = 1.4920635 at any load. Not earned.
  *
- * The table: one wall (the 7 x 30 flush wall StructureArchingTest anchors at 0.0141885) with one
- * interior brick cut from course 1, laid in three profiles. At 28 brick weights the surviving seat
- * carries sigma_n = 0.0710835 MPa, so the push is 1.0444444 * 0.0710835 = 0.0742428 MPa:
- *   - General purpose mortar (c = 0.9, mu = 0.75): capacity 0.9533 MPa, demand 0.0779 of it. Earned.
- *   - Lime mortar (c = 0.27, mu = 0.75): capacity 0.3233 MPa, demand 0.2296 of it. Earned. (Its old
- *     anti-over-withhold bite now lives in StructureArchingTest's kern-edge identity, see CURRENT_STATE.)
- *   - Dry stone (c = 0, mu = 0.7): cohesion zero, so sigma_n cancels — 1.0444444/0.7 = 1.4920635 of
- *     capacity at every load and height. Not earned, the same sentence DESIGN §5.4 writes for the
- *     spanned case (0.866/0.7 = 1.2372). The one-cell hole is the case that sentence does not reach.
+ * No zero-cohesion-with-tensile-bond row: it would also depend on gap 5 being closed.
  *
- * No zero-cohesion-with-tensile-bond row: CohesionlessBond entangles gap 5 (composite vertical
- * action re-sections the moment to 0.807) behind gap 4, so a row needing both closed would mislead.
+ * Asserts the seat reads over capacity when unearned and under when earned (on the worst axis, all
+ * axes printed); joints broken by load counted by break pass, not HasGiven (the deletion severs six
+ * joints itself); and unearned springings end Falling. Never displacement, and never which fix
+ * (applying the thrust or withholding the relief) closes the gap.
  *
- * What is asserted:
- *   - The mechanism, on the named seat: an unearned springing reads over capacity, an earned one
- *     under. Today the unearned rows read the arched compression answer 0.0047389 — the defect.
- *   - The outcome: joints that failed under load, counted by break pass (never HasGiven, since the
- *     player's deletion always takes six unsnapped joints with it), and the held-up bricks ending
- *     Falling rather than stranded or standing.
- *   - Never a displacement: two pieces can sever their bond and stay put.
- *   - Never which mechanism closes the gate: applying the thrust as a real shear demand and
- *     withholding the relief are both answers; the one thing forbidden is today's nothing.
- *
- * Which axis governs is worked for every row: ComputeUtilisation returns the worst of compression,
- * shear and tension. Earned rows are compression-governed (tension and shear zero at the cap); the
- * claim is written as "over capacity" not a figure on a nominated axis, and every axis is printed.
- *
- * No ticking world: FStructure is plain arithmetic over a graph; the 980 is the solver's constant.
+ * No ticking world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureOneCellThrustTest,
@@ -112,8 +80,7 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 	using namespace StructureOneCellThrustTestSupport;
 	using namespace StaircaseWallTestSupport;
 
-	/* Expected numbers are ratios of published strengths, asserted not imported: reading the profile
-	 * back would agree with a wrong profile. */
+	// Profile strengths asserted, not imported, so a wrong profile fails.
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against mean mortar cohesion 0.9 MPa (re-anchor 2026-08-13), the profile carries %g"),
 			GeneralPurposeMortar.ShearCohesionMPa),
@@ -140,9 +107,8 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 		DryStone.FrictionCoefficient == 0.7);
 
 	/*
-	 * Lime's mean-basis row (re-anchor 2026-08-13): tensile 0.20 is the NHL 2 bond-wrench mean at 6
-	 * months, cohesion 0.27 is the mean shear/flexural ratio 1.34 x 0.20 (Gooch et al. 2023), and
-	 * compressive 2.0 is a class-floor choice that does not move.
+	 * Lime, mean basis: tensile 0.20 (NHL 2 bond wrench, 6 months), cohesion 1.34 x 0.20 = 0.27
+	 * (Gooch et al. 2023), compressive 2.0 (class floor).
 	 */
 	TestTrue(
 		FString::Printf(
@@ -158,45 +124,25 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 			ClayBrick.DensityGramsPerCubicCm),
 		ClayBrick.DensityGramsPerCubicCm == 1.9);
 
-	/**
-	 * The arm the cap's couple acts over, a fixture expectation measured off each joint below. Half a
-	 * brick plus half a mortar joint is the rise from a bed plane to the head joint centroid above.
-	 */
+	/** Rise from the bed plane to the head joint centroid: half a brick plus half a joint. */
 	constexpr double ExpectedThrustArmCm = BrickHeightCm / 2.0 + MortarJointCm / 2.0;
 
-	/** (5.625 - 1.7083333) / 3.75, and the load has cancelled out of it. */
+	/** (5.625 - 1.7083333) / 3.75. */
 	constexpr double ExpectedThrustPerReaction = 1.0444444444444445;
 
 	const TArray<FThrustCase> Cases = {
-		/*
-		 * The anchor's own wall: a mortared springing asked for 0.0742 MPa against 0.9533 MPa of bond
-		 * plus friction — 0.0779 of capacity — so the relief is granted. The fixture StructureArchingTest
-		 * pins at 0.0141885, re-entered so a gate that closed on everything fails here too.
-		 */
+		// StructureArchingTest's anchor wall; catches a gate that refuses everything.
 		{ TEXT("EARNED: general purpose mortar, c = 0.9 + 0.75 sigma"), GeneralPurposeMortar,
 			true, 0.077879 },
 
-		/*
-		 * Lime: a third of the cohesion, so the push costs 0.0742 MPa against 0.3233 MPa — 0.2296 of
-		 * capacity, still earned. Its old anti-over-withhold bite now lives in StructureArchingTest's
-		 * kern-edge identity (see CURRENT_STATE).
-		 */
 		{ TEXT("EARNED: lime mortar, c = 0.27 + 0.75 sigma"), LimeMortar, true, 0.229632 },
 
-		/*
-		 * Dry stone, where the push is the only thing that can fail: cohesion is exactly zero, so
-		 * sigma cancels — 1.4921 of capacity at every load and height, the shape of the spanned case's
-		 * 0.866/0.7 = 1.2372 (DESIGN §5.4).
-		 */
+		// Zero cohesion: sigma cancels, so the ratio is the same at any load.
 		{ TEXT("UNEARNED: dry stone, c = 0, mu = 0.7"), DryStone, false, 1.4920634920634921 },
 	};
 
 	for (const FThrustCase& Case : Cases)
 	{
-		/*
-		 * The same wall and cut as the arching anchor — 7 x 30 flush, third full brick of course 1 —
-		 * profile the only difference; the spec comes from the shared header, not a second definition.
-		 */
 		FRunningBondSpec Spec = ArchWallSpec();
 		Spec.Strength = Case.Strength;
 
@@ -218,8 +164,7 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 				Case.Description),
 			Intact.Structure.HasCompleteGeometry());
 
-		/* The wall must stand before it is cut, or a deletion row measures the material instead.
-		 * Every seat of an intact running bond has e = 0, so nothing carries a moment here. */
+		// The intact wall must stand, or the cut rows would measure the material rather than the cut.
 		Intact.Structure.SolveLoads();
 
 		double IntactWorst = 0.0;
@@ -260,11 +205,7 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 
 		Cut.Structure.SolveLoads();
 
-		/**
-		 * The two bricks the deletion left on half a seat, each overhanging toward the other, so the
-		 * head joint between them is on each one's eccentric side and each is the other's abutment —
-		 * the one-cell arch.
-		 */
+		/** The two half-seated bricks, each the other's abutment: the one-cell arch. */
 		struct FSpringing
 		{
 			const TCHAR* Description;
@@ -308,8 +249,7 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 			const FConnection& Seat = Cut.Structure.GetConnection(SeatJoint);
 			const FConnection& Head = Cut.Structure.GetConnection(HeadJoint);
 
-			/* Gate four, as a precondition: the abutment reaches the ground on its own account.
-			 * Without that there is no arch to earn, and the row would measure a refused cap. */
+			// Precondition: the abutment stands on its own, or there is no arch to earn.
 			TestTrue(
 				FString::Printf(
 					TEXT("%s, %s: FIXTURE: the abutment must be Supported or Grounded on its own ")
@@ -319,8 +259,7 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 					|| Cut.Structure.GetPieceSupport(Abutment) == EPieceSupport::Grounded)
 					&& Cut.Structure.GetPieceSupport(Brick) == EPieceSupport::Supported);
 
-			/* The geometry the thrust is built from, all three lengths measured off the fixture: the
-			 * overhang, the seat's kern, and the arm up to the head joint the push arrives through. */
+			// Overhang, kern and thrust arm, measured off the fixture.
 			const double EccentricityCm = FMath::Abs(
 				Cut.Boxes[Brick].CentreCm.X - Seat.InterfaceCentreCm.X);
 
@@ -340,8 +279,7 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 					&& FMath::IsNearlyEqual(KernCm, BrickWidthCm / 6.0, 1.0e-9)
 					&& FMath::IsNearlyEqual(ThrustArmCm, ExpectedThrustArmCm, 1.0e-9));
 
-			/* And the push itself, load cancelled: dM = F*(e - h/6) is the couple the cap deletes and
-			 * H*z the only thing that can supply it, so H/V is a fact about the bond alone. */
+			// H*z must supply the removed couple F*(e - h/6), so H/V depends on geometry only.
 			const double ImpliedThrustPerReaction = (EccentricityCm - KernCm) / ThrustArmCm;
 
 			TestTrue(
@@ -363,8 +301,7 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 				ForceUu, MomentUuCm, Seat.InterfaceHalfExtentCm, Seat.InterfaceAreaSqCm,
 				Case.Strength);
 
-			/* What the springing is asked for against what it can give, in MPa, built from the
-			 * solver's reported force: only the force comes from production. */
+			// Demand and capacity, MPa; only the force comes from production.
 			const double DemandMPa =
 				ImpliedThrustPerReaction * FMath::Abs(Published.NormalStressMPa);
 
@@ -383,8 +320,7 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 				*Bits(Utilisation), *Bits(Published.TensionUtilisation),
 				*Bits(Published.CompressionUtilisation), *Bits(Published.ShearUtilisation)));
 
-			/* And what the head joint the cap leans on carries. Reported not asserted: whether the
-			 * thrust travels this joint or is only checked against capacity is the implementation's choice. */
+			// Head-joint force is reported, not asserted: routing the thrust through it is optional.
 			AddInfo(FString::Printf(
 				TEXT("%s, %s: the head joint %d the relief leans on carries %s uu"),
 				Case.Description, Springing.Description, HeadJoint,
@@ -398,10 +334,8 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 				Published.NormalStressMPa < 0.0);
 
 			/*
-			 * The row's arithmetic, asserted before its verdict, to 2% of the hand figure — slack
-			 * for the real load being 27.94 brick weights, not exactly 28; a wrong arm, kern or
-			 * friction is far outside it. The zero-cohesion row also gets a tighter identity check,
-			 * since sigma_n cancels and its answer is (e - h/6)/z/mu, load-independent.
+			 * The row's arithmetic, to 2% (the real load is 27.94 brick weights, not 28). The
+			 * zero-cohesion row also checks the exact identity (e - h/6)/z/mu.
 			 */
 			const double ExpectedDemandOverCapacity = Case.DemandOverCapacityAt28BrickWeights;
 
@@ -410,9 +344,7 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 				const double Identity =
 					ExpectedThrustPerReaction / Case.Strength.FrictionCoefficient;
 
-				/* To 1e-12, not ==: the hand figure, the identity from the fixture's lengths, and
-				 * the ratio off the solver's force are three orders of operation for one quantity
-				 * and land one ulp apart — still a bit-level claim, not licence to drift. */
+				// 1e-12, not ==: three orders of operation land one ulp apart.
 				TestTrue(
 					FString::Printf(
 						TEXT("%s, %s: with no cohesion the load cancels and the answer IS ")
@@ -443,8 +375,7 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 					*Bits(DemandOverCapacity)),
 				(DemandOverCapacity <= 1.0) == Case.bCanCarryTheThrust);
 
-			/* The claim: an arch whose springing cannot deliver the push is not an arch, so the
-			 * joint reads over capacity — on whichever axis, which is why this is a threshold. */
+			// The claim: an unearned springing reads over capacity on whichever axis.
 			if (Case.bCanCarryTheThrust)
 			{
 				TestTrue(
@@ -480,10 +411,8 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * And the outcome: joints that failed under load, counted by break pass not HasGiven. A joint
-		 * that went with a removed piece has HasGiven true and pass INDEX_NONE, so a HasGiven count
-		 * never reaches zero and would make the earned row unsatisfiable. SolveLoads is non-destructive,
-		 * so this runs on the same structure.
+		 * Outcome: joints broken by load, counted by break pass. Joints severed with the removed piece
+		 * have HasGiven true but pass INDEX_NONE, so a HasGiven count could never reach zero.
 		 */
 		const int32 BreakingPasses = Cut.Structure.SolveAndBreak();
 
@@ -541,11 +470,8 @@ bool FStructureOneCellThrustTest::RunTest(const FString& Parameters)
 				SpringingsLost, 2);
 
 			/*
-			 * And the piece comes down — outcome, not mechanism. The brick the unearned arch held
-			 * up ends with no path to the ground: Falling, not merely "not Supported", because
-			 * Stranded is a solver limitation and DESIGN §4 requires collapse claims to say which.
-			 * Measured reachable: a withhold-the-relief mutation loses 59 joints over 7 passes and
-			 * both bricks read Falling.
+			 * The held-up brick must read Falling, not just "not Supported" (Stranded is a solver
+			 * limitation; DESIGN §4). A withhold-the-relief mutation reaches this: 59 joints over 7 passes.
 			 */
 			for (const int32 Brick : SpringingBricks)
 			{
