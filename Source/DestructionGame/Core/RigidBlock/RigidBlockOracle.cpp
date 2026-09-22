@@ -4,22 +4,17 @@
 #include "Core/RigidBlock/RigidBlockFactor.h"
 
 /*
- * The formulation and every modelling decision are documented in RigidBlockOracle.h; this
- * file is the LP assembly and a sparse revised simplex (rewritten 2026-08-12 from the
- * original dense two-phase tableau, whose accumulated pivot error refused every fixture
- * past ~4,000 pivots — the measured envelope in RigidBlockOracleSweepTest.cpp's header). No
- * production arithmetic is called, the unit conversion is derived locally, and every
- * pivoting tie-break is index-based so results are bit-reproducible.
+ * Formulation and modelling decisions are in RigidBlockOracle.h. This file is the LP
+ * assembly and a sparse revised simplex (rewritten 2026-08-12 from a dense two-phase
+ * tableau whose accumulated pivot error refused every fixture past ~4,000 pivots). Every
+ * tie-break is index-based, so results are bit-reproducible.
  *
- * A dense tableau updates O(rows x columns) numbers per pivot and every one carries
- * rounding forward forever — cumulative, unrepairable error, which is what the post-solve
- * verification kept refusing. The revised method keeps the constraint matrix untouched in
- * sparse column form and represents only the basis (an LU factorisation plus a short
- * product-form eta file), refactorised from the original clean data every RefactoriseEvery
- * pivots: that bounds the per-iteration cost and discards all accumulated rounding, so the
- * only error in play after it is one clean factorisation and at most 64 eta applications,
- * however many pivots came before. One final refactorisation precedes extraction so
- * verification judges the cleanest solve the basis admits.
+ * A dense tableau carries rounding forward on every pivot forever, which is what post-solve
+ * verification kept refusing. The revised method keeps the constraint matrix in sparse
+ * column form and stores only the basis (LU plus a short eta file), refactorised from the
+ * original data every RefactoriseEvery pivots to discard accumulated rounding. One final
+ * refactorisation precedes extraction so verification judges the cleanest solve the basis
+ * admits.
  */
 namespace RigidBlockOracle
 {
@@ -30,128 +25,106 @@ namespace RigidBlockOracle
 		constexpr double CostTol = 1.0e-9;
 
 		/*
-		 * A ratio-test pivot must also stand up against the entering column's own scale; the
-		 * absolute tolerance above cannot express that. The rows are equilibrated but B^-1 is
-		 * not: the FTRAN image w = B^-1 A_j of an ordinary column was measured on the
-		 * opening-ladder family with |w| running to 3e7, and the ratio test accepted pivots
-		 * down to 4.7e-9 out of such columns — a relative pivot of ~1e-16, i.e. it pivoted on
-		 * the rounding of the solve that produced w, and the LU later found that basis
-		 * singular. A floor at a fixed fraction of the column's largest magnitude sits above
-		 * that noise and below any element carrying information: 1e-11 rejected the 4.7e-9
-		 * pivot (a floor of 3e-4) while admitting the genuine 0.01-0.03 pivots taken nearby.
+		 * A ratio-test pivot must also clear the entering column's own scale, which the absolute
+		 * tolerance above cannot express: rows are equilibrated but B^-1 is not, so an FTRAN image
+		 * w = B^-1 A_j runs to 3e7 and a 4.7e-9 pivot out of it is a relative ~1e-16 (the rounding
+		 * of the solve that produced w), and the LU later found that basis singular. A floor at a
+		 * fixed fraction of the column's largest magnitude sits above that noise and below any
+		 * informative element.
 		 *
-		 * 1e-11 was not enough (2026-08-15): the eight-course-cover family still refused two
-		 * walls with LU pivots of ~4.4e-12. Refactorise builds the LU from the original sparse
-		 * columns, never the eta file, so a singular LU says the basis column set itself is
-		 * numerically dependent — no elimination ordering repairs that; the fix is not to build
-		 * that basis. 1e-9 is still seven orders above double epsilon, and both refusers answer
-		 * with the change, confirmed to 1e-8 by an independent variant (RefactoriseEvery
-		 * 64 -> 16, a visibly different pivot path). The cadence lever was not taken instead:
-		 * refactorisation is already a third of runtime, so quadrupling it pays everywhere for
-		 * a defect in one place.
+		 * 1e-11 was not enough (2026-08-15): the eight-course-cover family still refused two walls
+		 * with LU pivots ~4.4e-12. A singular LU means the basis column set is itself numerically
+		 * dependent, which no elimination ordering repairs; the fix is not to build that basis.
+		 * 1e-9 is seven orders above double epsilon, both refusers answer, confirmed to 1e-8 by an
+		 * independent variant (RefactoriseEvery 64 -> 16). Quadrupling refactorisation instead was
+		 * rejected: it is already a third of runtime, so it would pay everywhere for one defect.
 		 *
-		 * Rejected alternatives: a relative candidacy tolerance in the Bland branch is inert
-		 * (the failing column's terms are already ~1.2e-9), and scaling the optimality
-		 * tolerance by ||y|| (~6.7e6 at the refusal) was rejected because it would let the
-		 * simplex stop with real improvements remaining and report a lambda* too low —
-		 * verification checks admissibility, not optimality, and under-reporting is the one
-		 * direction this oracle cannot catch.
+		 * Rejected: a relative candidacy tolerance in the Bland branch is inert (the failing
+		 * column's terms are already ~1.2e-9); scaling the optimality tolerance by ||y|| would let
+		 * the simplex stop early and report lambda* too low — verification checks admissibility,
+		 * not optimality, and under-reporting is the one direction this oracle cannot catch.
 		 *
-		 * One bounded cost of the floor: a coefficient in (PivotTol, PivotFloor] is skipped, so
-		 * the ratio test can take a longer step than that row allowed and drive its basic value
-		 * slightly negative. ApplyPivot clamps that to zero, bounded by theta * PivotFloor, and
-		 * the final refactorisation recomputes every basic value before the 1e-6 verification
-		 * judges it; raising the floor raises that bound, so the slow group is re-run against
-		 * the gate whenever this moves.
+		 * One bounded cost: a coefficient in (PivotTol, PivotFloor] is skipped, so the ratio test
+		 * can overstep and drive a basic value slightly negative. ApplyPivot clamps that to zero
+		 * (bounded by theta * PivotFloor) and the final refactorisation recomputes every basic
+		 * value before the 1e-6 gate; re-run the slow group whenever this floor moves.
 		 */
 		constexpr double RelativePivotTol = 1.0e-9;
 
 		/*
-		 * This cap IS the termination guarantee, not defence in depth: the pivoting is
-		 * Dantzig with an entering-only Bland fallback, whose leaving rule is not
-		 * Bland's, so the classical no-cycling theorem does not apply. Hitting the cap
-		 * reports failure rather than a number.
+		 * This cap IS the termination guarantee: the pivoting is Dantzig with an entering-only
+		 * Bland fallback, whose leaving rule is not Bland's, so the no-cycling theorem does not
+		 * apply. Hitting the cap reports failure rather than a number.
 		 */
 		constexpr int32 MaxPivots = 100000;
 
 		/*
-		 * The refactorisation cadence: how many eta updates accumulate before the basis
-		 * is refactorised from the original columns and the basic values recomputed
-		 * from the original right-hand side. Smaller resets error more often and keeps
-		 * FTRAN/BTRAN shorter; larger amortises the factorisation. 64 mirrors the dense
-		 * solver's reduced-cost rebuild cadence and measured comfortably inside every
-		 * validation tolerance.
+		 * Refactorisation cadence: eta updates accumulated before the basis is refactorised from
+		 * the original columns and basic values recomputed from the original RHS. Smaller resets
+		 * error more often; larger amortises the factorisation. 64 measured comfortably inside
+		 * every validation tolerance.
 		 */
 		constexpr int32 RefactoriseEvery = 64;
 
 
 		/*
-		 * The relative threshold tau that turns the non-unique degenerate dual into a stable
-		 * named set (PROMOTION_DESIGN §3.3, §12 D7). The Farkas certificate is defined only up
-		 * to a positive scale, so the mechanism is normalized — each block's virtual-motion
-		 * triple against the largest triple — and a block moves (a joint opens) iff its
-		 * normalized magnitude clears tau. Deliberately relative: a block's translation and
-		 * rotation duals differ by orders of magnitude (a rotation about a far fulcrum makes
-		 * |u| ~ omega * lever), so no absolute cut-off could separate "moves" from "still"
-		 * across fixtures of different sizes.
+		 * Relative threshold tau that turns the non-unique degenerate dual into a stable named
+		 * set (PROMOTION_DESIGN §3.3, §12 D7). The Farkas certificate is defined only up to a
+		 * positive scale, so the mechanism is normalized (each block's virtual-motion triple
+		 * against the largest) and a block moves iff its normalized magnitude clears tau. Relative
+		 * because a block's translation and rotation duals differ by orders of magnitude (a
+		 * rotation about a far fulcrum makes |u| ~ omega * lever), so no absolute cut-off separates
+		 * "moves" from "still" across fixture sizes.
 		 *
-		 * Why 1e-6: below it a block that does not participate reads a dual of pure rounding
-		 * bounded by the ~1e-9 relative floor the pivot tolerances are built on; above it a
-		 * participating block reads an O(1) fraction of the normaliser. The permutation fuzz
-		 * (OracleMechanismExtractionTest's IsPermutationDeterministic) measures that gap on
-		 * every fixture and seed, including a 24-course stack whose block velocities agree
-		 * across permutations to 1e-15, so 1e-6 sits three orders above the rounding floor and
-		 * well below any genuine motion. The joint set is read from the block kinematics, not
-		 * the raw plastic multipliers — those same 24 courses proved the multipliers are the
-		 * non-unique part of the degenerate dual, while the block velocities are unique, so a
-		 * joint gives iff its two blocks have a non-zero relative velocity at a contact (see
-		 * ExtractMechanism). That stability, not the exact value of tau, is the contract.
+		 * 1e-6: below it a non-participating block reads pure rounding bounded by the ~1e-9 pivot
+		 * floor; above it a participating block reads an O(1) fraction of the normaliser. The
+		 * permutation fuzz (IsPermutationDeterministic) measures that gap on a 24-course stack
+		 * whose block velocities agree to 1e-15, so 1e-6 sits three orders above the rounding floor
+		 * and well below any genuine motion. The joint set is read from the block kinematics, not
+		 * the raw plastic multipliers: those are the non-unique part of the degenerate dual while
+		 * block velocities are unique, so a joint gives iff its two blocks have a non-zero relative
+		 * velocity at a contact (see ExtractMechanism). That stability, not the exact tau, is the
+		 * contract.
 		 */
 		constexpr double MechanismRelativeTol = 1.0e-6;
 
 
 		/*
-		 * A strength at or beyond this is "no cap at all" (Unbreakable's 1e12, the
-		 * MaxShear default of DBL_MAX): the row is omitted rather than written with an
-		 * astronomically large right-hand side that would wreck the problem's scaling.
+		 * A strength at or beyond this is treated as uncapped (Unbreakable's 1e12, the MaxShear
+		 * default of DBL_MAX): the row is omitted rather than written with an astronomical RHS
+		 * that would wreck the problem's scaling.
 		 */
 		constexpr double UncappedStrengthMPa = 1.0e9;
 
 		/*
-		 * THE FRICTION PYRAMID'S FACET COUNT (THREED_DESIGN §"The 3D physics"). The true 3D
-		 * Coulomb limit is the cone sqrt(s_u^2 + s_v^2) <= c*A + mu*n, which is not LP-able; the
-		 * assembler replaces it with k linear facets inscribed in the cone, at angles theta_i =
-		 * i*(2*pi/k). k = 8 gives an octagon whose facets include the 45deg diagonals, so a
-		 * diagonal shear is capped at the same inscribed radius as an axis shear rather than the
-		 * sqrt(2)-larger circumscribed value — the safe, conservative direction for a demolition
-		 * gate. Exposed as one constant so the accuracy/cost trade is a single number.
+		 * Friction-pyramid facet count (THREED_DESIGN §"The 3D physics"). The true 3D Coulomb
+		 * limit is the cone sqrt(s_u^2 + s_v^2) <= c*A + mu*n, which is not LP-able, so the
+		 * assembler inscribes k linear facets in the cone at angles theta_i = i*(2*pi/k). k = 8
+		 * gives an octagon whose facets include the 45deg diagonals, so a diagonal shear is capped
+		 * at the inscribed radius, not the sqrt(2)-larger circumscribed value — the conservative
+		 * direction for a demolition gate.
 		 */
 		constexpr int32 ThreeDFrictionPyramidFacets = 8;
 
 		/*
-		 * The inscribe factor cos(pi/8), the apothem-to-circumradius ratio of a regular octagon.
-		 * A k=8 pyramid with its flat facets held at the true cone radius R circumscribes the
-		 * cone instead: its vertices bulge to R/cos(pi/8) ~ 1.082*R, admitting a shear aimed
-		 * between two facets up to 8.2% beyond the true Coulomb limit — a slide certified as
-		 * standing, the wrong direction for a demolition gate. Scaling every facet's capacity by
-		 * this factor pulls the facets in to the apothem, so the octagon's vertices land exactly
-		 * on the cone at R. A full-precision literal, not FMath::Cos(PI/8), so the inscribed
-		 * geometry does not ride on that intrinsic's precision.
+		 * cos(pi/8), the apothem-to-circumradius ratio of a regular octagon. Holding a k=8 pyramid's
+		 * flat facets at the true cone radius R would circumscribe the cone (vertices bulge to
+		 * R/cos(pi/8) ~ 1.082*R), admitting a shear aimed between two facets up to 8.2% past the
+		 * Coulomb limit — a slide certified standing, the wrong direction for a demolition gate.
+		 * Scaling every facet's capacity by this factor pulls the vertices onto the cone at R. A
+		 * full-precision literal, not FMath::Cos(PI/8), so the geometry does not ride on that
+		 * intrinsic's precision.
 		 */
 		constexpr double ThreeDPyramidInscribeFactor = 0.92387953251128674;
 
 		/*
-		 * PARTIAL PRICING: how many columns one refill window prices, and how many candidates
-		 * it keeps. Full Dantzig prices every non-basic column every iteration — pivots x
-		 * columns, which left the 30-course walls pivoting for tens of minutes — so the window
-		 * prices a bounded slice instead. Measured on the 8x10 wall row of
-		 * Oracle.RigidBlock.PricingCost, whose budget is the reason this exists:
-		 *
-		 *     384 -> 2,016 pivots, 538,200 scans      (chosen: budgets are 4,000/1,000,000)
-		 *     768 -> 1,836 pivots, 651,203 scans
-		 *
-		 * — a wider window shortens the pivot path but costs more in scans than it saves, which
-		 * is why the scan-heavy end of the trade is taken here. Both answers agree to the last bit.
+		 * Partial pricing: columns one refill window prices, and candidates it keeps. Full Dantzig
+		 * prices every non-basic column every iteration (pivots x columns), which left the 30-course
+		 * walls pivoting for tens of minutes, so the window prices a bounded slice instead. Measured
+		 * on the 8x10 wall row of Oracle.RigidBlock.PricingCost (budgets 4,000 pivots / 1,000,000
+		 * scans): 384 -> 2,016 pivots, 538,200 scans; 768 -> 1,836 pivots, 651,203 scans. A wider
+		 * window shortens the pivot path but costs more scans than it saves, so the scan-heavy end
+		 * is taken here. Both answers agree to the last bit.
 		 */
 		constexpr int32 PricingWindowCols = 384;
 		constexpr int32 PricingQueueDepth = 12;
@@ -176,7 +149,7 @@ namespace RigidBlockOracle
 
 		bool FiniteNonNegative(double Value)
 		{
-			/* IsFinite is what rejects NaN — the sign clause alone would pass it. */
+			// IsFinite rejects NaN; the sign clause alone would pass it.
 			return FMath::IsFinite(Value) && !(Value < 0.0);
 		}
 
@@ -214,11 +187,10 @@ namespace RigidBlockOracle
 				}
 
 				/*
-				 * The normal is measured in the dimension it lives in. A 2D joint's normal is a
-				 * unit vector in the X-Z plane and its Y component plays no part (the 2D
-				 * assembler never reads it), so a Dim2D problem is validated over X and Z alone —
-				 * which also refuses a stray Y-normal, since its X-Z length is not unit. A Dim3D
-				 * joint's normal is a genuine unit 3-vector, so Y enters both checks too.
+				 * The normal is checked in the dimension it lives in. A 2D joint's normal is a unit
+				 * vector in X-Z with no Y part, so Dim2D is validated over X and Z alone (which also
+				 * refuses a stray Y-normal, whose X-Z length is not unit). A Dim3D normal is a unit
+				 * 3-vector, so Y enters both checks.
 				 */
 				const bool bThreeDimensional = Problem.Dim == EOracleDim::Dim3D;
 
@@ -233,7 +205,7 @@ namespace RigidBlockOracle
 					+ (bThreeDimensional ? Joint.NormalY * Joint.NormalY : 0.0);
 				const double NormalLength = FMath::Sqrt(NormalLengthSq);
 
-				/* Validates, never normalises — same door policy as AddConnection. */
+				// Validates, never normalises; same door policy as AddConnection.
 				if (!(FMath::Abs(NormalLength - 1.0) <= 1.0e-9))
 				{
 					return FString::Printf(TEXT("joint %d: normal must be unit length"), Index);
@@ -258,9 +230,9 @@ namespace RigidBlockOracle
 				const FConnectionStrength& S = Joint.Strength;
 
 				/*
-				 * NaN anywhere in a strength is REFUSED — including the shear ceiling,
-				 * deliberately the opposite polarity to production's recorded
-				 * NaN-laundering hazard, where a NaN cap silently compares as uncapped.
+				 * NaN anywhere in a strength is refused, including the shear ceiling. Opposite
+				 * polarity to production's NaN-laundering hazard, where a NaN cap silently compares
+				 * as uncapped.
 				 */
 				if (!FiniteNonNegative(S.CompressiveStrengthMPa)
 					|| !FiniteNonNegative(S.ShearCohesionMPa)
@@ -297,13 +269,11 @@ namespace RigidBlockOracle
 
 
 		/**
-		 * Build the standard form from the assembly rows. Same conventions as the dense
-		 * solver, kept deliberately: equilibrate over the COEFFICIENTS ONLY, never the
-		 * right-hand side (scaling by the lambda cap's 1e6 shrinks a row's real
-		 * coefficients toward the pivot tolerance and an uncapped problem then reads
-		 * "unbounded" — measured before that comment was first written); flip any row
-		 * whose scaled right-hand side is negative; start from the slack where it
-		 * survives the flip at +1, else from an artificial.
+		 * Build the standard form from the assembly rows. Equilibrate over the coefficients only,
+		 * never the RHS (scaling by the lambda cap's 1e6 shrinks a row's real coefficients toward
+		 * the pivot tolerance, and an uncapped problem then reads "unbounded"); flip any row whose
+		 * scaled RHS is negative; start from the slack where it survives the flip at +1, else an
+		 * artificial.
 		 */
 		void BuildStandardForm(
 			const TArray<FAssemblyRow>& AssemblyRows, int32 NumStructCols, FStandardForm& Out)
@@ -362,7 +332,7 @@ namespace RigidBlockOracle
 					RowSlackCol[RowIndex] = NextSlack++;
 				}
 
-				/* Basis: the slack where it is still +1 after orientation, else artificial. */
+				// Basis: the slack where it is still +1 after orientation, else artificial.
 				if (RowSlackCol[RowIndex] != INDEX_NONE && !bFlip)
 				{
 					Out.InitialBasis[RowIndex] = RowSlackCol[RowIndex];
@@ -373,7 +343,7 @@ namespace RigidBlockOracle
 				}
 			}
 
-			/* Count nonzeros per column, then fill by ascending row for determinism. */
+			// Count nonzeros per column, then fill by ascending row for determinism.
 			TArray<int32> Count;
 			Count.SetNumZeroed(Out.NumCols);
 
@@ -437,7 +407,7 @@ namespace RigidBlockOracle
 				}
 			}
 
-			/* The static pricing weights, off the finished matrix and nothing else. */
+			// Static pricing weights, off the finished matrix.
 			Out.ColNorm.SetNum(Out.NumCols);
 
 			for (int32 Col = 0; Col < Out.NumCols; ++Col)
@@ -456,17 +426,15 @@ namespace RigidBlockOracle
 
 
 		/**
-		 * Append -A_Source to the matrix and return its index. It lands past every
-		 * artificial, so it is an artificial by index: phase 1 prices it and pays 1 per unit
-		 * of it, phase 2 (which prices only [0, ArtificialStart)) cannot enter it, the
-		 * pivot-out pass treats it as one to clear, and the answer extraction ignores it.
-		 * Negation preserves a column's sum of squares, so its pricing norm is the source's
-		 * own bits rather than a re-derivation.
+		 * Append -A_Source and return its index. It lands past every artificial, so it is an
+		 * artificial by index: phase 1 prices it and pays 1 per unit, phase 2 (pricing only
+		 * [0, ArtificialStart)) cannot enter it, the pivot-out pass clears it, and extraction
+		 * ignores it. Negation preserves the sum of squares, so its pricing norm is the source's
+		 * own bits.
 		 *
-		 * Only a warm start ever reaches here: appending moves nothing that already exists
-		 * (structural, slack and artificial blocks keep their indices), but a column the
-		 * cold pricer could see would move the window, the queue, and every pinned cold
-		 * pivot count in the sweep.
+		 * Only a warm start reaches here: appending moves no existing column, but a column the cold
+		 * pricer could see would move the window, the queue, and every pinned cold pivot count in
+		 * the sweep.
 		 */
 		int32 AppendNegatedColumn(FStandardForm& Form, int32 Source)
 		{
@@ -475,7 +443,7 @@ namespace RigidBlockOracle
 
 			for (int32 At = Form.ColStart[Source]; At < End; ++At)
 			{
-				/* Its own locals: Add(Array[At]) can alias its storage across a grow (TRAPS). */
+				// Own locals: Add(Array[At]) can alias its storage across a grow (TRAPS).
 				const int32 Row = Form.ColRow[At];
 				const double Value = Form.ColVal[At];
 
@@ -493,31 +461,26 @@ namespace RigidBlockOracle
 		}
 
 		/**
-		 * Seed the basis from a caller's warm start, and return how much of it survived
-		 * (PROMOTION_DESIGN.md §5.4's lever). The hint is one column per row; every entry that
-		 * cannot be used is repaired to that row's cold default rather than refused, because a
-		 * warm start that fails closed measures nothing (a hint thrown away and a hint that
-		 * saved nothing are opposite findings, and only the returned count tells them apart).
+		 * Seed the basis from a caller's warm start and return how much survived (PROMOTION_DESIGN
+		 * §5.4). The hint is one column per row; any entry that cannot be used is repaired to that
+		 * row's cold default rather than refused, so the returned count distinguishes a hint thrown
+		 * away from a hint that saved nothing.
 		 *
-		 * It cannot change the answer: everything below either chooses a starting basis, which
-		 * the simplex is free to choose anyway, or adds an artificial column. Artificials only
-		 * enlarge the phase-1 feasible set and are priced out of phase 2 entirely, so the
-		 * phase-1 optimum is still zero exactly when the original rows admit a solution, and
-		 * post-solve verification against the original assembly rows is unweakened.
+		 * It cannot change the answer: everything below either chooses a starting basis, which the
+		 * simplex is free to choose anyway, or adds an artificial column. Artificials only enlarge
+		 * the phase-1 feasible set and are priced out of phase 2, so the phase-1 optimum is still
+		 * zero exactly when the original rows admit a solution, and verification is unweakened.
 		 *
-		 * Three things go wrong with a hint, all repaired in place: it names a column that no
-		 * longer exists (refused by range, left cold); it is singular in the new matrix
-		 * (independence is not inherited across a changed problem, so Factorise swaps out what
-		 * cannot pivot — a duplicated column's second copy finds its pivot row already taken);
-		 * or it is primal infeasible, the normal and dangerous case. The deleted joints were
-		 * carrying force, so B^-1 b has genuinely negative entries that phase 1 would never look
-		 * at — it is skipped whenever the basic artificials sum to zero, which a warm basis
-		 * satisfies by construction, while Refactorise would clamp the evidence away as
-		 * rounding. So the repair is reached deliberately: for each negative slot, the basis
-		 * column there is replaced by its own negation, flipping exactly that component of x_B
-		 * (B' = B*D for a diagonal sign matrix D, so x' = D*x). The seed is then primal feasible
-		 * by construction, the flipped columns are artificials by index and carry phase-1 cost,
-		 * and phase 1 genuinely runs and drives them out.
+		 * Three ways a hint goes wrong, all repaired in place: it names a column that no longer
+		 * exists (refused by range, left cold); it is singular in the new matrix (Factorise swaps
+		 * out what cannot pivot — a duplicated column's second copy finds its pivot row taken); or
+		 * it is primal infeasible, the dangerous case. The deleted joints were carrying force, so
+		 * B^-1 b has genuinely negative entries that phase 1 skips whenever the basic artificials
+		 * sum to zero (which a warm basis satisfies by construction) and Refactorise would clamp
+		 * away as rounding. So for each negative slot the basis column is replaced by its own
+		 * negation, flipping that component of x_B (B' = B*D for a diagonal sign matrix D, x' =
+		 * D*x). The seed is then primal feasible, the flipped columns are artificials by index
+		 * carrying phase-1 cost, and phase 1 drives them out.
 		 */
 		int32 SeedWarmStartBasis(FStandardForm& Form, const FOracleBasis& Hint)
 		{
@@ -530,7 +493,7 @@ namespace RigidBlockOracle
 			{
 				const int32 Column = Hint.Columns[Row];
 
-				/* INDEX_NONE is "no hint for this row"; so is any index out of the matrix. */
+				// INDEX_NONE is "no hint for this row"; so is any index out of the matrix.
 				if (Column >= 0 && Column < Form.NumCols)
 				{
 					Seed[Row] = Column;
@@ -555,9 +518,9 @@ namespace RigidBlockOracle
 			for (const double Value : XB)
 			{
 				/*
-				 * A non-finite basic value means the seeded basis is arithmetic garbage:
-				 * abandon the whole warm start rather than repair around a NaN. Spelled as a
-				 * refused IsFinite because a magnitude test would wave a NaN through.
+				 * A non-finite basic value means the seeded basis is garbage: abandon the whole
+				 * warm start rather than repair around a NaN. Refused IsFinite because a magnitude
+				 * test would wave a NaN through.
 				 */
 				if (!FMath::IsFinite(Value))
 				{
@@ -568,10 +531,10 @@ namespace RigidBlockOracle
 			}
 
 			/*
-			 * What counts as genuinely negative, relative to the values in play — the same
-			 * shape of scale the phase-1 infeasibility test uses. Below it a negative value is
-			 * the rounding the cold path clamps, and flipping on that would cost a pivot on a
-			 * basis that is already optimal; above it, it is force the deletion took away.
+			 * What counts as genuinely negative, relative to the values in play (same scale as
+			 * the phase-1 infeasibility test). Below it a negative value is rounding the cold path
+			 * clamps, and flipping on it would cost a pivot on an already-optimal basis; above it,
+			 * it is force the deletion took away.
 			 */
 			const double NegativeTolerance = (1.0 + LargestValue) * 1.0e-9;
 
@@ -586,9 +549,9 @@ namespace RigidBlockOracle
 			Form.InitialBasis = Seed;
 
 			/*
-			 * Accepted means the solve started from that column — nothing weaker. A row whose
-			 * hint was repaired away, or negated to make the start feasible, is not accepted:
-			 * that slot holds a column the caller never named.
+			 * Accepted means the solve started from that column, nothing weaker. A row whose hint
+			 * was repaired away or negated to make the start feasible is not accepted: that slot
+			 * holds a column the caller never named.
 			 */
 			int32 Accepted = 0;
 
@@ -604,9 +567,9 @@ namespace RigidBlockOracle
 		}
 
 		/**
-		 * Report the basis the solve is standing on, with the shape it belongs to. A column
-		 * index means nothing without knowing where the structural columns end and the
-		 * artificials begin, so the two integers travel with it rather than beside it.
+		 * Report the basis the solve is standing on, carrying the two shape integers with it: a
+		 * column index means nothing without knowing where structural columns end and artificials
+		 * begin.
 		 */
 		void ReportBasis(
 			const FStandardForm& Form, const TArray<int32>& Basis, FOracleBasis& Out)
@@ -618,14 +581,12 @@ namespace RigidBlockOracle
 
 
 		/**
-		 * Phase 1's objective, read from the basis: the sum of the basic artificials'
-		 * values. Zero (within tolerance) is exactly the statement that the original rows
-		 * have an admissible solution.
+		 * Phase 1's objective, read from the basis: the sum of the basic artificials' values. Zero
+		 * (within tolerance) states that the original rows have an admissible solution.
 		 *
-		 * A free function rather than a lambda because two places need it — the solve,
-		 * which decides whether phase 1 runs at all and whether it succeeded, and the pivot
-		 * loop, which records where feasibility was first reached — and two transcriptions
-		 * of one sum is how a measurement quietly measures something else.
+		 * A free function, not a lambda, because two places need it (the solve, and the pivot loop
+		 * that records where feasibility was first reached) and two transcriptions of one sum could
+		 * silently diverge.
 		 */
 		double BasicArtificialInfeasibility(const FStandardForm& Form, const FRevisedState& State)
 		{
@@ -642,7 +603,7 @@ namespace RigidBlockOracle
 			return Infeasibility;
 		}
 
-		/** The scale the sum above is judged against: relative to the largest basic value. */
+		/** Scale the sum above is judged against: relative to the largest basic value. */
 		double InfeasibilityTolerance(const FStandardForm& Form, const FRevisedState& State)
 		{
 			double LargestRhs = 0.0;
@@ -664,10 +625,9 @@ namespace RigidBlockOracle
 		};
 
 		/**
-		 * A non-optimal phase-2 termination as the reason a caller can count. Optimal has
-		 * no reason and never reaches here; it is mapped to the numerical arm anyway
-		 * because a termination this function cannot name is a fault, and the fault-shaped
-		 * answer is the fail-closed one.
+		 * A non-optimal phase-2 termination mapped to the refusal a caller counts. Optimal never
+		 * reaches here; it maps to the numerical arm anyway, because a termination this function
+		 * cannot name is a fault and the fault-shaped answer is fail-closed.
 		 */
 		EOracleRefusal PhaseTwoRefusalFor(ESimplexEnd End)
 		{
@@ -681,34 +641,29 @@ namespace RigidBlockOracle
 		}
 
 		/**
-		 * THE ENTERING CHOICE: candidate-list partial pricing over a rotating window.
+		 * The entering choice: candidate-list partial pricing over a rotating window.
 		 *
-		 * A refill prices one window of PricingWindowCols consecutive columns — starting where
-		 * the last refill stopped and wrapping — and keeps the PricingQueueDepth best-ranked.
-		 * Later iterations re-price only what is queued: a dozen dot products instead of the
-		 * whole non-basic set. Every queued entry is re-priced against the current duals before
-		 * it can be chosen, and one whose reduced cost has risen to non-negative is discarded
-		 * rather than pivoted on. The choice among survivors is the best of them, never
-		 * first-past-the-tolerance — that shortcut was measured costing 44x the pivots.
+		 * A refill prices one window of PricingWindowCols consecutive columns (starting where the
+		 * last refill stopped, wrapping) and keeps the PricingQueueDepth best-ranked. Later
+		 * iterations re-price only the queue: a dozen dot products, not the whole non-basic set.
+		 * Each queued entry is re-priced against the current duals before it can be chosen, and one
+		 * whose reduced cost has risen non-negative is discarded. The choice is the best survivor,
+		 * never first-past-the-tolerance (that shortcut cost 44x the pivots).
 		 *
-		 * Best means the static steepest-edge ratio d_j / ||A_j||, not d_j alone: dividing by
-		 * the column's norm asks how fast the objective falls per unit of movement, which is
-		 * what actually shortens a pivot path (Forrest-Goldfarb; precomputed once, never
-		 * updated). Measured on the PricingCost wall row: ranked by raw reduced cost it took
-		 * 6,128 pivots and 1,030,437 scans against full Dantzig's 1,942 and 3,131,528; ranked by
-		 * the ratio it takes 2,016 pivots and 538,200 scans. The ratio is a ranking only —
-		 * candidacy stays the raw `d_j < -CostTol`.
+		 * Best is the static steepest-edge ratio d_j / ||A_j||, not d_j alone: dividing by the
+		 * column norm asks how fast the objective falls per unit of movement, which shortens the
+		 * pivot path (Forrest-Goldfarb; precomputed once). On the PricingCost wall row: raw reduced
+		 * cost took 6,128 pivots / 1,030,437 scans, full Dantzig 1,942 / 3,131,528, the ratio 2,016
+		 * / 538,200. The ratio is a ranking only; candidacy stays the raw `d_j < -CostTol`.
 		 *
-		 * The full scan is part of the answer, not a fallback for tidiness: a window has seen
-		 * only a slice, so a refill that finds nothing keeps taking windows until it has priced
-		 * every column, and only that exhausted sweep may return "optimal". With the Bland
-		 * fallback it stands aside entirely: after a long degenerate streak the entering rule
-		 * becomes lowest-index-negative — a window could offer the lowest index of a slice and
-		 * cycle happily — so the fallback prices the full set in index order instead, resuming
-		 * the window once the streak breaks.
+		 * The full scan is part of the answer: a window sees only a slice, so a refill that finds
+		 * nothing keeps taking windows until every column is priced, and only that exhausted sweep
+		 * may return "optimal". Under the Bland fallback the window stands aside: the entering rule
+		 * becomes lowest-index-negative, and lowest-index-of-a-slice would not stop cycling, so the
+		 * fallback prices the full set in index order and resumes the window once the streak breaks.
 		 *
-		 * Determinism: cursor and window are index arithmetic, and nothing here reads a hash, a
-		 * pointer or a clock.
+		 * Determinism: cursor and window are index arithmetic; nothing reads a hash, pointer or
+		 * clock.
 		 */
 		struct FPartialPricer
 		{
@@ -716,20 +671,19 @@ namespace RigidBlockOracle
 			{
 				int32 Col = INDEX_NONE;
 
-				/** The RANKING value: the reduced cost over the column's static norm. */
+				/** The ranking value: reduced cost over the column's static norm. */
 				double Weighted = 0.0;
 			};
 
-			/** Where the next refill starts. Advanced by exactly what it scanned. */
+			/** Where the next refill starts; advanced by exactly what it scanned. */
 			int32 Cursor = 0;
 
 			/** Best-weighted first, at most PricingQueueDepth deep. */
 			TArray<FCandidate> Queue;
 
 			/**
-			 * Offer a freshly priced column to the queue. The caller has already applied
-			 * the negativity test, which is written as `Reduced < -CostTol` so a NaN
-			 * reduced cost is never offered at all.
+			 * Offer a freshly priced column to the queue. The caller already applied the
+			 * negativity test as `Reduced < -CostTol`, so a NaN reduced cost is never offered.
 			 */
 			void Offer(int32 Col, double Weighted)
 			{
@@ -754,8 +708,8 @@ namespace RigidBlockOracle
 			}
 
 			/**
-			 * The entering column, or INDEX_NONE when every column in [0, AllowedCols)
-			 * has been priced against the current duals and none of them prices negative.
+			 * The entering column, or INDEX_NONE when every column in [0, AllowedCols) has been
+			 * priced against the current duals and none prices negative.
 			 */
 			int32 ChooseEntering(
 				FRevisedState& S, const TArray<double>& Cost, int32 AllowedCols, bool bBland)
@@ -788,7 +742,7 @@ namespace RigidBlockOracle
 					return INDEX_NONE;
 				}
 
-				/* Re-price what is queued; a candidate that went stale is dropped. */
+				// Re-price the queue; a stale candidate is dropped.
 				int32 Kept = 0;
 				int32 Best = INDEX_NONE;
 				double BestWeighted = 0.0;
@@ -830,7 +784,7 @@ namespace RigidBlockOracle
 					return Best;
 				}
 
-				/* The queue is spent: refill from the window, widening until it bites. */
+				// Queue spent: refill from the window, widening until it bites.
 				if (Cursor >= AllowedCols)
 				{
 					Cursor = 0;
@@ -885,29 +839,25 @@ namespace RigidBlockOracle
 		};
 
 		/**
-		 * Minimise the given objective. Every choice below is index-deterministic — no
-		 * randomness, no hashing — so the pivot path, and the last bit of lambda*, is a pure
-		 * function of the input arrays.
+		 * Minimise the given objective. Every choice is index-deterministic (no randomness, no
+		 * hashing), so the pivot path and the last bit of lambda* are a pure function of the input.
 		 *
-		 * The entering rule is candidate-list partial pricing (FPartialPricer above), priced
-		 * exactly each iteration from a fresh BTRAN rather than from a maintained row — the
-		 * maintained row's drift was the dense solver's disease. The ratio test breaks
-		 * near-ties by the largest pivot element, then lowest basic index: Bland's rule alone
-		 * was measured accepting a basis 0.98% outside the crushing envelope on the dry
-		 * 8-course stack, because it happily pivots on near-tolerance elements. Bland remains
-		 * as the anti-cycling fallback: after a long streak of zero-length steps the entering
-		 * rule drops to lowest-index over a full scan (the window stands aside, since
-		 * lowest-index-of-a-slice is not Bland's rule and would not stop cycling), restoring
-		 * the termination guarantee where needed.
+		 * The entering rule is candidate-list partial pricing (FPartialPricer above), priced each
+		 * iteration from a fresh BTRAN rather than a maintained row, whose drift was the dense
+		 * solver's disease. The ratio test breaks near-ties by the largest pivot element, then
+		 * lowest basic index: Bland's rule alone was measured accepting a basis 0.98% outside the
+		 * crushing envelope on the dry 8-course stack, because it pivots on near-tolerance elements.
+		 * Bland stays as the anti-cycling fallback: after a long streak of zero-length steps the
+		 * entering rule drops to lowest-index over a full scan (the window stands aside, since
+		 * lowest-index-of-a-slice would not stop cycling).
 		 *
 		 * A candidate pivot must also clear the entering column's own scale (RelativePivotTol),
-		 * because an absolute tolerance says nothing about a column whose FTRAN image runs to
-		 * 1e7 — that one change turned the two opening-ladder refusals into certified answers.
+		 * because an absolute tolerance says nothing about a column whose FTRAN image runs to 1e7;
+		 * that change turned the two opening-ladder refusals into certified answers.
 		 *
-		 * bWatchArtificialFeasibility is an observation and nothing else: phase 1 passes it
-		 * true so the loop can record the pivot at which the problem first read feasible, then
-		 * carries on to optimality exactly as it always has, so every pivot path, lambda* and
-		 * count in the suite is unchanged.
+		 * bWatchArtificialFeasibility is an observation only: phase 1 passes it true so the loop
+		 * records the pivot at which the problem first read feasible, then carries on to optimality
+		 * unchanged, so every pivot path, lambda* and count in the suite is untouched.
 		 */
 		ESimplexEnd RunRevisedSimplex(
 			FRevisedState& S, const TArray<double>& Cost, int32 AllowedCols,
@@ -939,7 +889,7 @@ namespace RigidBlockOracle
 					++S.BlandDegenerateEntries;
 				}
 
-				/* Price: y solves yT B = c_B, then d_j = c_j - y . A_j, exact. */
+				// Price: y solves yT B = c_B, then d_j = c_j - y . A_j.
 				S.ScratchSlot.SetNumUninitialized(Form.NumRows);
 
 				for (int32 Slot = 0; Slot < Form.NumRows; ++Slot)
@@ -964,11 +914,10 @@ namespace RigidBlockOracle
 				double LeavingMagnitude = 0.0;
 
 				/*
-				 * The floor under a believable pivot, taken from the entering column itself:
-				 * an element 1e-16 of the column's own largest is the rounding of the solve
-				 * that produced the column, and pivoting on it was measured driving the
-				 * basis singular. FMath::Max discards a NaN rather than propagating it,
-				 * harmless because the guard below fails a NaN coefficient regardless.
+				 * The floor under a believable pivot, from the entering column itself: an element
+				 * 1e-16 of the column's largest is the rounding of the solve that produced it, and
+				 * pivoting on it drives the basis singular. FMath::Max discards a NaN, harmless
+				 * because the guard below fails a NaN coefficient anyway.
 				 */
 				double LargestMagnitude = 0.0;
 
@@ -986,9 +935,9 @@ namespace RigidBlockOracle
 					const double Coefficient = S.EnteringW[Row];
 
 					/*
-					 * Written as a refused negation rather than `<=` so a NaN coefficient
-					 * lands INSIDE the guard: every comparison against NaN is false, so
-					 * `Coefficient <= PivotFloor` would wave it through into the ratio.
+					 * Refused negation rather than `<=` so a NaN coefficient lands inside the guard:
+					 * every comparison against NaN is false, so `Coefficient <= PivotFloor` would
+					 * wave it through into the ratio.
 					 */
 					if (!(Coefficient > PivotFloor))
 					{
@@ -1015,7 +964,7 @@ namespace RigidBlockOracle
 					}
 					else if (Ratio <= BestRatio + NearTie)
 					{
-						/* Same step length: prefer the numerically strongest pivot. */
+						// Same step length: prefer the numerically strongest pivot.
 						if (Coefficient > LeavingMagnitude
 							|| (Coefficient == LeavingMagnitude
 								&& S.Basis[Row] < S.Basis[Leaving]))
@@ -1032,16 +981,15 @@ namespace RigidBlockOracle
 					/*
 					 * With the cap row a real unbounded ray is impossible, so reaching here on a
 					 * bounded problem is a numerical event and refusing is fail-closed. It is
-					 * reachable: measured on the 107-block abutment rung before the pivot floor
-					 * existed, an entering column with exact reduced cost zero priced at -1.12e-9
-					 * of drift from a dual running to 6.7e6, FTRANned to a single -1.
+					 * reachable: on the 107-block abutment rung before the pivot floor existed, an
+					 * entering column with exact reduced cost zero priced at -1.12e-9 of drift from
+					 * a dual running to 6.7e6, FTRANned to a single -1.
 					 *
-					 * A repair for that seam (refactorise, re-price, set the column aside, take
-					 * the next candidate) was written, measured not to fire, and removed: with
-					 * the pivot floor in place both fixtures answer bit-identically whether the
-					 * seam is repaired or left to refuse. That does not close the mode in general
-					 * (CURRENT_STATE books it as a live candidate), and the repair is not
-					 * reinstated without a fixture that genuinely drives it.
+					 * A repair (refactorise, re-price, set the column aside, take the next
+					 * candidate) was written, measured not to fire, and removed: with the pivot floor
+					 * both fixtures answer bit-identically either way. That does not close the mode in
+					 * general (CURRENT_STATE books it as a live candidate); do not reinstate the
+					 * repair without a fixture that drives it.
 					 */
 					return ESimplexEnd::Unbounded;
 				}
@@ -1059,9 +1007,9 @@ namespace RigidBlockOracle
 				++InOutIterations;
 
 				/*
-				 * The comparison is spelled so a NaN sum records nothing: garbage arithmetic
-				 * leaves the field saying "feasibility was never reached" rather than
-				 * claiming an exit could have fired at this pivot.
+				 * Spelled so a NaN sum records nothing: garbage arithmetic
+				 * leaves the field saying "feasibility was never reached" rather than claiming an
+				 * exit at this pivot.
 				 */
 				if (bWatchArtificialFeasibility && S.PivotsToFirstFeasible == INDEX_NONE)
 				{
@@ -1075,15 +1023,13 @@ namespace RigidBlockOracle
 	}
 
 	/*
-	 * The three phase-2 phrases share their first five words on purpose: "phase-2 simplex
-	 * failed" is the sentence every phase-2 refusal has printed, and two branches of the
-	 * sweep test still recognise a refusal by that literal, so keeping it as the prefix
-	 * adds the arm's name rather than renaming the event. Distinctness comes from the
-	 * clause after the colon, asserted pairwise over the enumerators.
+	 * The three phase-2 phrases share their first five words on purpose: two branches of the
+	 * sweep test still recognise a refusal by the literal "phase-2 simplex failed", so keeping it
+	 * as the prefix adds the arm's name rather than renaming the event. Distinctness is the clause
+	 * after the colon, asserted pairwise over the enumerators.
 	 *
-	 * None is empty rather than "no reason": a caller checks the reason against bAnswered,
-	 * and a sentence on the answering path would have to be filtered out of every message
-	 * that prints WhyNot.
+	 * None is empty rather than "no reason": a caller checks the reason against bAnswered, and a
+	 * sentence on the answering path would have to be filtered out of every WhyNot message.
 	 */
 	FString RefusalText(EOracleRefusal Refusal)
 	{
@@ -1112,40 +1058,39 @@ namespace RigidBlockOracle
 		}
 
 		/*
-		 * An enumerator this function does not know is a refusal it cannot name, which is
-		 * the one thing this whole taxonomy exists to prevent — so it is reported as such
-		 * rather than answered with an empty string, which would read as "it answered".
+		 * An enumerator this function does not know is a refusal it cannot name, the one thing this
+		 * taxonomy exists to prevent, so it is reported as such rather than answered with an empty
+		 * string that would read as "it answered".
 		 */
 		return TEXT("the oracle refused for an unnamed reason");
 	}
 
 	/*
-	 * Forward-declared so the 3D mechanism extraction can derive a joint's in-plane frame with
-	 * the same deterministic rule the 3D assembler used to place the contact corners — the
-	 * definition lives with the other 3D assembly helpers further down.
+	 * Forward-declared so the 3D mechanism extraction can derive a joint's in-plane frame with the
+	 * same deterministic rule the 3D assembler used to place the contact corners. Definition lives
+	 * with the other 3D assembly helpers below.
 	 */
 	void DeriveInPlaneAxes(const double N[3], double U[3], double V[3]);
 
 	/**
-	 * Extract the collapse mechanism from phase 1's dual at the infeasible arm — the Farkas
-	 * certificate that IS the kinematic upper-bound mechanism (PROMOTION_DESIGN §3.3). Called
-	 * only when the dead loads admit no equilibrium, with State holding the phase-1 optimal
-	 * basis: no pivot happens between phase 1 returning and this call, so the dual recomputed
-	 * here is bit-for-bit the one the pricer proved optimal against.
+	 * Extract the collapse mechanism from phase 1's dual at the infeasible arm: the Farkas
+	 * certificate that is the kinematic upper-bound mechanism (PROMOTION_DESIGN §3.3). Called only
+	 * when the dead loads admit no equilibrium, with State holding the phase-1 optimal basis. No
+	 * pivot happens between phase 1 returning and this call, so the dual recomputed here is
+	 * bit-for-bit the one the pricer proved optimal against.
 	 *
-	 * One BTRAN. y = c_B B^-1 with the phase-1 cost (1 on a basic artificial, 0 else) is the
-	 * dual on the scaled standard-form rows; multiplied by RowScaleSigned it is the physical
-	 * certificate on the original assembly rows, whose per-block equilibrium-row triple (Fx, Fz,
-	 * moment) is that block's virtual (u_x, u_z, omega). The global sign is fixed so a
-	 * descending centroid reads VirtualUz < 0: with the dual negated, the virtual work of
-	 * gravity equals yb and is positive by construction, the yb > 0 half of Farkas.
+	 * One BTRAN. y = c_B B^-1 with the phase-1 cost (1 on a basic artificial, 0 else) is the dual
+	 * on the scaled rows; times RowScaleSigned it is the physical certificate on the original rows,
+	 * whose per-block equilibrium-row triple (Fx, Fz, moment) is that block's virtual (u_x, u_z,
+	 * omega). The global sign is fixed so a descending centroid reads VirtualUz < 0: with the dual
+	 * negated, the virtual work of gravity equals yb and is positive, the yb > 0 half of Farkas.
 	 *
-	 * Farkas, fail closed (§3.6): yb > 0 (infeasibility certified) and yA_j <= tol on every
-	 * structural column (already guaranteed by phase-1 optimality) and the named set is
-	 * non-empty. Any one failing returns false, and the caller refuses with VerificationFailure
-	 * rather than name bricks on a certificate it could not check.
+	 * Farkas, fail closed (§3.6): yb > 0, yA_j <= tol on every structural column (already
+	 * guaranteed by phase-1 optimality), and the named set non-empty. Any one failing returns
+	 * false, and the caller refuses with VerificationFailure rather than name bricks on a
+	 * certificate it could not check.
 	 *
-	 * Returns true and fills OutMechanism iff the certificate verifies; false otherwise.
+	 * Returns true and fills OutMechanism iff the certificate verifies.
 	 */
 	bool ExtractMechanism(
 		const FOracleProblem& Problem,
@@ -1160,7 +1105,7 @@ namespace RigidBlockOracle
 		const int32 NumBlocks = EqFxRowOfBlock.Num();
 		const int32 NumJoints = Problem.Joints.Num();
 
-		/* Phase-1 dual: y solves yT B = c_B with c_B the phase-1 cost. One BTRAN. */
+		// Phase-1 dual: y solves yT B = c_B with c_B the phase-1 cost. One BTRAN.
 		State.ScratchSlot.SetNumUninitialized(NumRows);
 		for (int32 Slot = 0; Slot < NumRows; ++Slot)
 		{
@@ -1168,7 +1113,7 @@ namespace RigidBlockOracle
 		}
 		State.BtranScratchSlot(State.YRow);
 
-		/* The physical certificate on the ORIGINAL assembly rows: undo the row equilibration. */
+		// The physical certificate on the original assembly rows: undo the row equilibration.
 		TArray<double> YPhys;
 		YPhys.SetNumUninitialized(NumRows);
 		for (int32 Row = 0; Row < NumRows; ++Row)
@@ -1177,9 +1122,9 @@ namespace RigidBlockOracle
 		}
 
 		/*
-		 * yb > 0, computed in the scaled space the problem was solved in (yb is scale-invariant:
-		 * y_scaled . b_scaled = y_phys . b_assembly). It equals the phase-1 objective, so it is
-		 * positive by construction here; the explicit strict check is the fail-closed guard.
+		 * yb > 0, in the scaled space the problem was solved in (yb is scale-invariant: y_scaled .
+		 * b_scaled = y_phys . b_assembly). It equals the phase-1 objective, so positive here; the
+		 * explicit strict check is the fail-closed guard.
 		 */
 		double Yb = 0.0;
 		double YbMagnitude = 0.0;
@@ -1196,9 +1141,9 @@ namespace RigidBlockOracle
 		}
 
 		/*
-		 * yA_j <= tol on every structural column. Phase 1's cost is zero on these columns, so
-		 * optimality already guarantees the reduced cost -yA_j >= -CostTol; the loose relative
-		 * tolerance here only refuses a certificate that is violated well past rounding.
+		 * yA_j <= tol on every structural column. Phase 1's cost is zero here, so optimality
+		 * already guarantees -yA_j >= -CostTol; the loose relative tolerance only refuses a
+		 * certificate violated well past rounding.
 		 */
 		for (int32 Col = 0; Col < Form.NumStructCols; ++Col)
 		{
@@ -1221,9 +1166,9 @@ namespace RigidBlockOracle
 		const bool bThreeD = Problem.Dim == EOracleDim::Dim3D;
 
 		/*
-		 * The L1 magnitude of a block's virtual motion over all six components. On the 2D path
-		 * the three out-of-plane components are identically zero and never written, so adding
-		 * them changes no bit — this reduces exactly to the 2D three-term sum.
+		 * L1 magnitude of a block's virtual motion over all six components. On the 2D path the
+		 * three out-of-plane components are identically zero and never written, so this reduces
+		 * exactly to the 2D three-term sum.
 		 */
 		auto BlockL1 = [](const FOracleMechanismBlock& T)
 		{
@@ -1231,7 +1176,7 @@ namespace RigidBlockOracle
 				+ FMath::Abs(T.VirtualOmegaX) + FMath::Abs(T.VirtualOmega) + FMath::Abs(T.VirtualOmegaZ);
 		};
 
-		/* ---- Block triples, negated so a descending centroid reads VirtualUz < 0. ---- */
+		// Block triples, negated so a descending centroid reads VirtualUz < 0.
 		OutMechanism.Blocks.SetNum(NumBlocks);
 		double LargestBlockMagnitude = 0.0;
 
@@ -1241,7 +1186,7 @@ namespace RigidBlockOracle
 
 			if (Fx == INDEX_NONE)
 			{
-				/* Grounded: writes no rows, so its triple is exactly zero and it never moves. */
+				// Grounded: writes no rows, so its triple is exactly zero and it never moves.
 				continue;
 			}
 
@@ -1250,10 +1195,10 @@ namespace RigidBlockOracle
 			if (bThreeD)
 			{
 				/*
-				 * The six equilibrium rows are (Fx, Fy, Fz, Mx, My, Mz) in that fixed order, so
-				 * the dual maps the three force rows to u = (u_x, u_y, u_z) and the three moment
-				 * rows to omega = (omega_x, omega_y, omega_z). Y-axis rotation stays in
-				 * VirtualOmega — the field the 2D scalar already carried.
+				 * The six equilibrium rows are (Fx, Fy, Fz, Mx, My, Mz) in fixed order, so the dual
+				 * maps the three force rows to u = (u_x, u_y, u_z) and the three moment rows to omega
+				 * = (omega_x, omega_y, omega_z). Y-axis rotation stays in VirtualOmega, the field the
+				 * 2D scalar already carried.
 				 */
 				Triple.VirtualUx = -YPhys[Fx + 0];
 				Triple.VirtualUy = -YPhys[Fx + 1];
@@ -1273,32 +1218,30 @@ namespace RigidBlockOracle
 		}
 
 		/*
-		 * ---- Joint give: the relative virtual velocity across the contact, kinematic. ----
+		 * Joint give: the relative virtual velocity across the contact, kinematic.
 		 *
-		 * The raw plastic multipliers on the strength rows are the wrong thing to read here:
-		 * they are the non-unique part of the degenerate dual (the permutation fuzz measures
-		 * block velocities agreeing to 1e-15 while the strength-row multipliers name 8 opening
-		 * joints on one column order and 13-16 on another — dual degeneracy spreads plastic
-		 * flow over redundant contacts differently each pivot path). Block velocity triples are
-		 * unique, so the joint set is derived from them instead: a joint gives iff its two
-		 * blocks have a non-zero relative velocity at a contact point, a pure function of the
-		 * stable triples and the fixed geometry — the canonical tie-break the degenerate dual
-		 * needs (PROMOTION_DESIGN §3.3, §12 D7).
+		 * The raw plastic multipliers on the strength rows are the wrong thing to read: they are
+		 * the non-unique part of the degenerate dual (the permutation fuzz measures block
+		 * velocities agreeing to 1e-15 while the strength-row multipliers name 8 opening joints on
+		 * one column order and 13-16 on another). Block velocity triples are unique, so the joint
+		 * set is derived from them instead: a joint gives iff its two blocks have a non-zero
+		 * relative velocity at a contact point, a pure function of the stable triples and fixed
+		 * geometry, the canonical tie-break the degenerate dual needs (PROMOTION_DESIGN §3.3, §12 D7).
 		 */
 		auto VelocityAt = [](
 			const FOracleMechanismBlock& Triple, double CentroidX, double CentroidZ,
 			double PointX, double PointZ, double& OutVx, double& OutVz)
 		{
-			/* Rigid-body velocity v = u + omega x r, in the moment convention r_x*F_z - r_z*F_x. */
+			// Rigid-body velocity v = u + omega x r, in the moment convention r_x*F_z - r_z*F_x.
 			OutVx = Triple.VirtualUx - Triple.VirtualOmega * (PointZ - CentroidZ);
 			OutVz = Triple.VirtualUz + Triple.VirtualOmega * (PointX - CentroidX);
 		};
 
 		/*
 		 * The 3D rigid-body velocity v = u + omega x r with the full 3-vector omega and the
-		 * textbook cross product. The 3D moment rows carry +(r x e) — the My row is +(r x e)_y,
-		 * the global negation of the 2D moment row's -(r x e)_y — so the dual omega is the
-		 * standard angular velocity here, not the sign-flipped 2D scalar form above.
+		 * textbook cross product. The 3D moment rows carry +(r x e) (the My row is +(r x e)_y, the
+		 * global negation of the 2D moment row's -(r x e)_y), so the dual omega is the standard
+		 * angular velocity here, not the sign-flipped 2D scalar above.
 		 */
 		auto VelocityAt3D = [](
 			const FOracleMechanismBlock& T,
@@ -1334,7 +1277,7 @@ namespace RigidBlockOracle
 			{
 				/*
 				 * The rectangular patch's four corners at Centre +/- h_u*U +/- h_v*V, the in-plane
-				 * frame (U, V) derived from the normal with the SAME rule the 3D assembler used to
+				 * frame (U, V) derived from the normal with the same rule the 3D assembler used to
 				 * place the contacts. A point patch (h_u = h_v = 0) collapses them onto the centre.
 				 * A joint gives iff the relative virtual velocity across a corner is non-negligible.
 				 */
@@ -1363,7 +1306,7 @@ namespace RigidBlockOracle
 			}
 			else
 			{
-				/* The two contact points sit at Centre -/+ HalfLength along the in-plane tangent. */
+				// The two contact points sit at Centre -/+ HalfLength along the in-plane tangent.
 				const double TangentX = -J.NormalZ;
 				const double TangentZ = J.NormalX;
 
@@ -1385,7 +1328,7 @@ namespace RigidBlockOracle
 			LargestJointRelativeVelocity = FMath::Max(LargestJointRelativeVelocity, Worst);
 		}
 
-		/* ---- Canonicalize: the named set is what clears the relative threshold. ---- */
+		// Canonicalize: the named set is what clears the relative threshold.
 		OutMechanism.JointOpensOrSlides.Init(false, NumJoints);
 		int32 MovingCount = 0;
 
@@ -1415,7 +1358,7 @@ namespace RigidBlockOracle
 			}
 		}
 
-		/* A mechanism that moves nothing is not a mechanism — fail closed. */
+		// A mechanism that moves nothing is not a mechanism; fail closed.
 		if (MovingCount == 0)
 		{
 			return false;
@@ -1428,14 +1371,14 @@ namespace RigidBlockOracle
 
 	/*
 	 * ================================================================================
-	 * THE 3D (Dim3D) ASSEMBLY — E1a. A second physics assembler, not a new solver.
+	 * The 3D (Dim3D) assembly — E1a. A second physics assembler, not a new solver.
 	 *
-	 * The 2D assembler poses the X-Z plane (three equilibrium rows per block, two contact
-	 * points per joint); this poses full 3D (six rows per block, four contact corners per
-	 * joint). BuildStandardForm and the revised simplex below are dimension-agnostic, so 3D
-	 * is only a different set of assembly rows fed to the same machine (THREED_DESIGN, "The
-	 * architecture"). The 2D path stays a literal separate branch so its NumRows-scaled
-	 * tolerance and pinned pivot paths cannot shift — 2D bit-identity is a theorem, not a hope.
+	 * The 2D assembler poses the X-Z plane (three equilibrium rows per block, two contact points
+	 * per joint); this poses full 3D (six rows per block, four contact corners per joint).
+	 * BuildStandardForm and the revised simplex are dimension-agnostic, so 3D is only a different
+	 * set of assembly rows fed to the same machine (THREED_DESIGN, "The architecture"). The 2D
+	 * path stays a separate branch so its NumRows-scaled tolerance and pinned pivot paths cannot
+	 * shift: 2D bit-identity is a theorem, not a hope.
 	 * ================================================================================
 	 */
 
@@ -1455,11 +1398,11 @@ namespace RigidBlockOracle
 	};
 
 	/**
-	 * Two in-plane axes (U, V) derived deterministically from the normal — the 3D analogue of
-	 * the 2D fixed tangent (-Nz, Nx). Take the world axis least aligned with N (lowest index on
-	 * a tie), project it off N and normalise for U, then V = N x U so the frame is right-handed.
-	 * For N = +Z the tie between X and Y resolves to X, giving U = +X and V = +Y. The bridge
-	 * (E3) will carry the real interface axes; this is the hand-built stand-in E1a needs.
+	 * Two in-plane axes (U, V) derived deterministically from the normal, the 3D analogue of the
+	 * 2D fixed tangent (-Nz, Nx). Take the world axis least aligned with N (lowest index on a tie),
+	 * project it off N and normalise for U, then V = N x U so the frame is right-handed. For N = +Z
+	 * the tie between X and Y resolves to X, giving U = +X and V = +Y. The bridge (E3) will carry
+	 * the real interface axes; this is the stand-in E1a needs.
 	 */
 	void DeriveInPlaneAxes(const double N[3], double U[3], double V[3])
 	{
@@ -1485,7 +1428,7 @@ namespace RigidBlockOracle
 
 		const double Length = FMath::Sqrt(Raw[0] * Raw[0] + Raw[1] * Raw[1] + Raw[2] * Raw[2]);
 
-		/* The guard is spelled > 0 so a NaN (whose every comparison is false) lands on the fallback. */
+		// Guard spelled > 0 so a NaN (every comparison false) lands on the fallback.
 		if (Length > 0.0)
 		{
 			U[0] = Raw[0] / Length;
@@ -1506,10 +1449,10 @@ namespace RigidBlockOracle
 
 	/**
 	 * Four contact corners per joint at C +/- h_u*U +/- h_v*V, in a fixed corner order so the
-	 * column layout is deterministic (THREED_DESIGN §2). A point patch (HalfUCm = HalfVCm = 0,
-	 * the tripod) collapses its four corners onto the centre — four coincident normal contacts
-	 * whose per-joint summed normal is the joint's reaction, exactly as the 2D HalfLengthCm = 0
-	 * collapses its two points into one. Tributary area is the face area split four ways.
+	 * column layout is deterministic (THREED_DESIGN §2). A point patch (HalfUCm = HalfVCm = 0, the
+	 * tripod) collapses its four corners onto the centre — four coincident normal contacts whose
+	 * summed normal is the joint's reaction, as the 2D HalfLengthCm = 0 collapses two points into
+	 * one. Tributary area is the face area split four ways.
 	 */
 	void BuildThreeDContacts(const FOracleProblem& Problem, TArray<FThreeDContact>& Out)
 	{
@@ -1556,13 +1499,12 @@ namespace RigidBlockOracle
 
 	/**
 	 * One contact's equilibrium coefficients into the six rows (Fx, Fy, Fz, Mx, My, Mz). The
-	 * contact owns six columns at Base: [n+, n-, p_u, q_u, p_v, q_v], with net normal n = n+ -
-	 * n- along N, and net shears s_u = p_u - q_u along U and s_v = p_v - q_v along V. The force
-	 * rows take the components of each unit direction; the moment rows take the components of
-	 * r x e (r = contact - centroid) for e in {N, U, V} — the 3D generalisation of the single 2D
-	 * moment row, whose Rx*Nz - Rz*Nx is exactly -(r x N)_y. The tension mirror (n-) negates the
-	 * normal's contribution across all three moment rows, emitted only when the joint bonds in
-	 * tension.
+	 * contact owns six columns at Base: [n+, n-, p_u, q_u, p_v, q_v], with net normal n = n+ - n-
+	 * along N and net shears s_u = p_u - q_u along U, s_v = p_v - q_v along V. The force rows take
+	 * the components of each unit direction; the moment rows take the components of r x e (r =
+	 * contact - centroid) for e in {N, U, V}, the 3D generalisation of the single 2D moment row
+	 * whose Rx*Nz - Rz*Nx is exactly -(r x N)_y. The tension mirror (n-) negates the normal across
+	 * all three moment rows, emitted only when the joint bonds in tension.
 	 */
 	void AppendThreeDContactCoeffs(
 		OracleDetail::FAssemblyRow& Fx, OracleDetail::FAssemblyRow& Fy, OracleDetail::FAssemblyRow& Fz,
@@ -1574,7 +1516,7 @@ namespace RigidBlockOracle
 		const double Ry = Contact.Pos[1] - CentroidYCm;
 		const double Rz = Contact.Pos[2] - CentroidZCm;
 
-		/* r x e, the moment about the centroid of a unit force along direction e. */
+		// r x e, the moment about the centroid of a unit force along direction e.
 		const double MnX = Ry * Contact.N[2] - Rz * Contact.N[1];
 		const double MnY = Rz * Contact.N[0] - Rx * Contact.N[2];
 		const double MnZ = Rx * Contact.N[1] - Ry * Contact.N[0];
@@ -1585,7 +1527,7 @@ namespace RigidBlockOracle
 		const double MvY = Rz * Contact.V[0] - Rx * Contact.V[2];
 		const double MvZ = Rx * Contact.V[1] - Ry * Contact.V[0];
 
-		/* n+ : the normal in compression. */
+		// n+ : the normal in compression.
 		Fx.Add(Base + 0, Sign * Contact.N[0]);
 		Fy.Add(Base + 0, Sign * Contact.N[1]);
 		Fz.Add(Base + 0, Sign * Contact.N[2]);
@@ -1593,7 +1535,7 @@ namespace RigidBlockOracle
 		My.Add(Base + 0, Sign * MnY);
 		Mz.Add(Base + 0, Sign * MnZ);
 
-		/* n- : the tension mirror, negating the normal across force AND all three moment rows. */
+		// n- : the tension mirror, negating the normal across force and all three moment rows.
 		if (Contact.bCanTension)
 		{
 			Fx.Add(Base + 1, -Sign * Contact.N[0]);
@@ -1604,7 +1546,7 @@ namespace RigidBlockOracle
 			Mz.Add(Base + 1, -Sign * MnZ);
 		}
 
-		/* p_u / q_u : the +/- shear along U. */
+		// p_u / q_u : the +/- shear along U.
 		Fx.Add(Base + 2, Sign * Contact.U[0]);
 		Fy.Add(Base + 2, Sign * Contact.U[1]);
 		Fz.Add(Base + 2, Sign * Contact.U[2]);
@@ -1619,7 +1561,7 @@ namespace RigidBlockOracle
 		My.Add(Base + 3, -Sign * MuY);
 		Mz.Add(Base + 3, -Sign * MuZ);
 
-		/* p_v / q_v : the +/- shear along V. */
+		// p_v / q_v : the +/- shear along V.
 		Fx.Add(Base + 4, Sign * Contact.V[0]);
 		Fy.Add(Base + 4, Sign * Contact.V[1]);
 		Fz.Add(Base + 4, Sign * Contact.V[2]);
@@ -1637,22 +1579,21 @@ namespace RigidBlockOracle
 
 	/**
 	 * Assemble the maximise-lambda 3D LP (THREED_DESIGN §"The 3D physics"). Structural columns:
-	 * lambda at 0, then per contact [n+, n-, p_u, q_u, p_v, q_v] (six each), so
-	 * NumStructCols = 1 + 6 * NumContacts with NumContacts = NumJoints * 4.
+	 * lambda at 0, then per contact [n+, n-, p_u, q_u, p_v, q_v] (six each), so NumStructCols =
+	 * 1 + 6 * NumContacts with NumContacts = NumJoints * 4.
 	 *
 	 * Six equilibrium equalities per non-grounded block; grounded blocks write none. Gravity is
-	 * -Mass*980 into Fz, live into the lambda column or dead into the right-hand side as 2D
-	 * routes it. Then the lambda cap, two strength rows per contact over the tributary A/4
-	 * (tension, tension-gated, and crushing), the k=8 inscribed friction pyramid (E1b, see
-	 * ThreeDPyramidInscribeFactor) and, where the profile truncates shear, the matching k=8
-	 * shear-cap ceiling octagon. Applied forces are posed (E1b): force + r_app x F into the six
-	 * rows, live/dead split. When bFirstCrackRows is set, each bonded joint (f_t > 0) also gets
-	 * its biaxial uncracked peak-fibre rows over the four corners — the 3D analogue of the 2D
-	 * two-point first-crack form.
+	 * -Mass*980 into Fz, live into the lambda column or dead into the RHS as 2D routes it. Then the
+	 * lambda cap, strength rows per contact over the tributary A/4 (tension, gated, and crushing),
+	 * the k=8 inscribed friction pyramid (E1b, see ThreeDPyramidInscribeFactor) and, where the
+	 * profile truncates shear, the matching k=8 shear-cap ceiling octagon. Applied forces are posed
+	 * (E1b): force + r_app x F into the six rows, live/dead split. When bFirstCrackRows is set, each
+	 * bonded joint (f_t > 0) also gets its biaxial uncracked peak-fibre rows over the four corners,
+	 * the 3D analogue of the 2D two-point first-crack form.
 	 *
-	 * OutEqFxRowOfBlock[b] is the assembly-row index of block b's Fx equilibrium row — its Fy,
-	 * Fz, Mx, My, Mz rows follow at +1..+5 — or INDEX_NONE for a grounded block. That is where
-	 * the infeasible arm reads block b's virtual-motion dual (E2a).
+	 * OutEqFxRowOfBlock[b] is the assembly-row index of block b's Fx equilibrium row (Fy, Fz, Mx,
+	 * My, Mz follow at +1..+5), or INDEX_NONE for a grounded block. That is where the infeasible
+	 * arm reads block b's virtual-motion dual (E2a).
 	 */
 	void AssembleThreeD(
 		const FOracleProblem& Problem, TArray<OracleDetail::FAssemblyRow>& AssemblyRows,
@@ -1669,7 +1610,7 @@ namespace RigidBlockOracle
 
 		OutEqFxRowOfBlock.Init(INDEX_NONE, Problem.Blocks.Num());
 
-		/* ---- Equilibrium: six equalities per non-grounded block. ---- */
+		// Equilibrium: six equalities per non-grounded block.
 		for (int32 BlockIndex = 0; BlockIndex < Problem.Blocks.Num(); ++BlockIndex)
 		{
 			const FOracleBlock& Block = Problem.Blocks[BlockIndex];
@@ -1679,7 +1620,7 @@ namespace RigidBlockOracle
 				continue;
 			}
 
-			/* Fx lands at the current end; Fy, Fz, Mx, My, Mz follow it in the five next slots. */
+			// Fx lands at the current end; Fy, Fz, Mx, My, Mz follow it in the five next slots.
 			OutEqFxRowOfBlock[BlockIndex] = AssemblyRows.Num();
 
 			FAssemblyRow Fx;
@@ -1692,10 +1633,10 @@ namespace RigidBlockOracle
 			const double WeightUu = Block.MassKg * OracleGravityCmPerSecondSquared;
 
 			/*
-			 * Loads split live (into the lambda column) from dead (into the right-hand side).
-			 * Gravity acts at the centroid in -Z (force only, no moment). Each applied force adds
-			 * its three components to the force rows and its moment r_app x F (r_app = point -
-			 * centroid) to the three moment rows, split live/dead by its own bLive.
+			 * Loads split live (lambda column) from dead (RHS). Gravity acts at the centroid in -Z
+			 * (force only, no moment). Each applied force adds its three components to the force
+			 * rows and its moment r_app x F (r_app = point - centroid) to the three moment rows,
+			 * split live/dead by its own bLive.
 			 */
 			double LiveFx = 0.0, LiveFy = 0.0, LiveFz = 0.0;
 			double LiveMx = 0.0, LiveMy = 0.0, LiveMz = 0.0;
@@ -1726,7 +1667,7 @@ namespace RigidBlockOracle
 				const double Fpy = Applied.ForceYUu;
 				const double Fpz = Applied.ForceZUu;
 
-				/* r_app x F, the moment about the centroid of the applied force. */
+				// r_app x F, the moment about the centroid of the applied force.
 				const double Tx = Ry * Fpz - Rz * Fpy;
 				const double Ty = Rz * Fpx - Rx * Fpz;
 				const double Tz = Rx * Fpy - Ry * Fpx;
@@ -1798,7 +1739,7 @@ namespace RigidBlockOracle
 			AssemblyRows.Add(MoveTemp(Mz));
 		}
 
-		/* ---- The lambda cap. ---- */
+		// The lambda cap.
 		{
 			FAssemblyRow Cap;
 			Cap.Add(0, 1.0);
@@ -1807,7 +1748,7 @@ namespace RigidBlockOracle
 			AssemblyRows.Add(MoveTemp(Cap));
 		}
 
-		/* ---- Strength rows per contact: tension (gated) and crushing. Friction OFF (E1a). ---- */
+		// Strength rows per contact: tension (gated) and crushing. Friction off (E1a).
 		for (int32 ContactIndex = 0; ContactIndex < Contacts.Num(); ++ContactIndex)
 		{
 			const FThreeDContact& Contact = Contacts[ContactIndex];
@@ -1829,10 +1770,9 @@ namespace RigidBlockOracle
 			/*
 			 * The k=8 inscribed friction pyramid: for each facet theta_i = i*(2*pi/k),
 			 * cos(theta_i)*(p_u - q_u) + sin(theta_i)*(p_v - q_v) - cos(pi/8)*mu*(n+ - n-) <=
-			 * cos(pi/8)*c*Conv*A/4 (see ThreeDPyramidInscribeFactor for the cos(pi/8) inscribe).
-			 * Gated on the cohesion exactly as the 2D Coulomb rows are, so a frictionless contact
-			 * (mu = c = 0) still writes k zero-RHS rows, pinning its shear to zero — a
-			 * frictionless roller is a pure link.
+			 * cos(pi/8)*c*Conv*A/4 (see ThreeDPyramidInscribeFactor). Gated on cohesion as the 2D
+			 * Coulomb rows are, so a frictionless contact (mu = c = 0) still writes k zero-RHS rows,
+			 * pinning its shear to zero: a frictionless roller is a pure link.
 			 */
 			if (S.ShearCohesionMPa < UncappedStrengthMPa)
 			{
@@ -1876,14 +1816,13 @@ namespace RigidBlockOracle
 			}
 
 			/*
-			 * The truncated-shear ceiling, the 3D analogue of the 2D `+-(p - q) <= f_v,max*Conv*A/2`
-			 * row. It caps the in-plane shear magnitude at f_v,max however hard the contact is
+			 * The truncated-shear ceiling, the 3D analogue of the 2D `+-(p - q) <=
+			 * f_v,max*Conv*A/2` row. It caps in-plane shear at f_v,max however hard the contact is
 			 * compressed, so above the Mohr-Coulomb bite sigma = (f_v,max - c)/mu the friction
-			 * pyramid no longer credits shear the profile forbids. Written as the same k=8 octagon
-			 * the friction pyramid uses, mu*(n+ - n-) dropped and cohesion c replaced by f_v,max —
-			 * the same inscribed octagon in shear-direction space, so a diagonal push is not
-			 * credited ~8% more shear than a pure-U one. Gated as the 2D ceiling is (MaxShear below
-			 * the uncapped sentinel), so a NaN cap fails closed inside the guard.
+			 * pyramid no longer credits shear the profile forbids. Same k=8 octagon as the friction
+			 * pyramid, mu*(n+ - n-) dropped and cohesion c replaced by f_v,max, so a diagonal push
+			 * is not credited ~8% more shear than a pure-U one. Gated as the 2D ceiling is (MaxShear
+			 * below the uncapped sentinel), so a NaN cap fails closed.
 			 */
 			if (S.MaxShearStrengthMPa < UncappedStrengthMPa)
 			{
@@ -1905,7 +1844,7 @@ namespace RigidBlockOracle
 			}
 		}
 
-		/* ---- First-crack rows: biaxial uncracked peak-fibre limit for bonded joints. ---- */
+		// First-crack rows: biaxial uncracked peak-fibre limit for bonded joints.
 		if (Problem.bFirstCrackRows)
 		{
 			for (int32 JointIndex = 0; JointIndex < NumJoints; ++JointIndex)
@@ -1914,12 +1853,11 @@ namespace RigidBlockOracle
 				const double FtMPa = Joint.Strength.TensileStrengthMPa;
 
 				/*
-				 * Keyed on data exactly as the 2D first-crack rows are: a joint with no tensile
-				 * bond has nothing to crack, so !(f_t > 0) leaves it in the plastic no-tension
-				 * form with no row written, and a NaN strength lands inside the guard and fails
-				 * closed. Unlike the 2D twin this also gates on f_t < UncappedStrengthMPa, so an
-				 * uncapped-yet-bonded joint fails closed here too instead of writing a trivially-
-				 * slack ~1e13*A row.
+				 * Keyed on data as the 2D first-crack rows are: a joint with no tensile bond has
+				 * nothing to crack, so !(f_t > 0) leaves it in the plastic no-tension form with no
+				 * row, and a NaN strength lands inside the guard and fails closed. Unlike the 2D
+				 * twin this also gates on f_t < UncappedStrengthMPa, so an uncapped-yet-bonded joint
+				 * fails closed here too instead of writing a trivially-slack ~1e13*A row.
 				 */
 				if (!(FtMPa > 0.0) || !(FtMPa < UncappedStrengthMPa))
 				{
@@ -1927,19 +1865,18 @@ namespace RigidBlockOracle
 				}
 
 				/*
-				 * The joint's four corners sit at contact indices 4J..4J+3 in the fixed corner
-				 * order (CornerU = {-1,+1,-1,+1}, CornerV = {-1,-1,+1,+1}), each with signed
-				 * normal n_c = n+ - n- in columns Base_c+0 and Base_c+1. Over a rectangular face
-				 * the fibre stress is planar, so the most-tensioned corner carries mean minus both
-				 * bending amplitudes: -(sum n_c) + 3*(|bend_U| + |bend_V|) <= f_t*Conv*A, over the
-				 * joint's full face area, bend_U = sum CornerU_c*n_c and bend_V = sum CornerV_c*n_c.
-				 * The factor 3 cuts the bonded section's plastic bending capacity to a third,
-				 * exactly as the 2D two-point form does. Max over signs of (su*bend_U + sv*bend_V)
-				 * equals |bend_U| + |bend_V|, so the |.| pair is posed as the four sign
-				 * combinations su, sv in {+1,-1}. Under uniaxial bending about V the V-corners
-				 * pair up (bend_V = 0) and this collapses exactly onto the 2D
-				 * `-(n1+n2) + 3|n1-n2| <= f_t*A` rows, and symmetrically about U — so the 3D gate
-				 * is no more permissive than the 2D one.
+				 * The joint's four corners sit at contact indices 4J..4J+3 in the fixed corner order
+				 * (CornerU = {-1,+1,-1,+1}, CornerV = {-1,-1,+1,+1}), each with signed normal n_c =
+				 * n+ - n- in columns Base_c+0 and Base_c+1. Over a rectangular face the fibre stress
+				 * is planar, so the most-tensioned corner carries mean minus both bending amplitudes:
+				 * -(sum n_c) + 3*(|bend_U| + |bend_V|) <= f_t*Conv*A over the full face area, bend_U =
+				 * sum CornerU_c*n_c, bend_V = sum CornerV_c*n_c. The factor 3 cuts the bonded
+				 * section's plastic bending capacity to a third, as the 2D two-point form does. Max
+				 * over signs of (su*bend_U + sv*bend_V) equals |bend_U| + |bend_V|, so the |.| pair is
+				 * posed as the four sign combinations su, sv in {+1,-1}. Under uniaxial bending about
+				 * V the V-corners pair up (bend_V = 0) and this collapses onto the 2D `-(n1+n2) +
+				 * 3|n1-n2| <= f_t*A` rows, symmetrically about U, so the 3D gate is no more permissive
+				 * than the 2D one.
 				 */
 				static const double CornerU[4] = { -1.0, 1.0, -1.0, 1.0 };
 				static const double CornerV[4] = { -1.0, -1.0, 1.0, 1.0 };
@@ -1984,9 +1921,8 @@ namespace RigidBlockOracle
 		Result.Lambda = 0.0;
 
 		/*
-		 * One statement sets both halves of a refusal — the reason and the sentence are two
-		 * spellings of one fact — so a site can never leave a result whose enumerator and
-		 * text disagree.
+		 * One statement sets both halves of a refusal (reason and sentence), so a site can never
+		 * leave a result whose enumerator and text disagree.
 		 */
 		const auto Refuse =
 			[&Result](EOracleRefusal Reason, const FString& Detail = FString()) -> FOracleResult&
@@ -2007,13 +1943,13 @@ namespace RigidBlockOracle
 		}
 
 		/*
-		 * The assembly branches on dimension, and only here: the 3D assembler is called for a
-		 * Dim3D problem, the 2D assembler (verbatim, in the else) for everything else. Downstream
-		 * — standard form, the two simplex phases, verification — is dimension-agnostic and reads
-		 * these three shared locals whichever branch filled them. EqFxRowOfBlock is the mechanism
-		 * seam: each arm records the assembly-row index of every non-grounded block's first
-		 * equilibrium row (Fx) — three rows per block in 2D, six in 3D — so the infeasible arm can
-		 * read each block's virtual-motion dual off that fixed run of rows (ExtractMechanism).
+		 * The assembly branches on dimension, and only here: 3D assembler for a Dim3D problem, 2D
+		 * assembler (verbatim, in the else) otherwise. Downstream (standard form, the two simplex
+		 * phases, verification) is dimension-agnostic and reads these three shared locals whichever
+		 * branch filled them. EqFxRowOfBlock is the mechanism seam: each arm records the
+		 * assembly-row index of every non-grounded block's Fx row (three rows per block in 2D, six
+		 * in 3D), so the infeasible arm can read each block's virtual-motion dual off that fixed run
+		 * (ExtractMechanism).
 		 */
 		TArray<FAssemblyRow> AssemblyRows;
 		int32 NumStructCols = 0;
@@ -2026,10 +1962,10 @@ namespace RigidBlockOracle
 		else
 		{
 		/*
-		 * STRUCTURAL COLUMNS: lambda, then per contact point [n+, n-, p, q] with
-		 * n = n+ - n- (compression positive) and v = p - q. Splitting n rather than
-		 * shifting it by the tension bound keeps huge bounds out of the right-hand
-		 * sides; the tension bound becomes its own row, n- <= f_t*Conv*A/2.
+		 * Structural columns: lambda, then per contact point [n+, n-, p, q] with n = n+ - n-
+		 * (compression positive) and v = p - q. Splitting n rather than shifting it by the tension
+		 * bound keeps huge bounds out of the RHS; the tension bound becomes its own row, n- <=
+		 * f_t*Conv*A/2.
 		 */
 		const int32 NumJoints = Problem.Joints.Num();
 		const int32 NumContacts = NumJoints * 2;
@@ -2043,11 +1979,11 @@ namespace RigidBlockOracle
 			double TributaryAreaSqCm = 0.0;
 
 			/*
-			 * An exactly-zero tensile strength means the n- variable does not exist, not that
-			 * it exists bounded by a zero-right-hand-side row: the two are the same feasible
-			 * set, but a dry-stone stack writes hundreds of those fully degenerate rows and
-			 * Bland's rule can grind on their zero-length pivots for the whole iteration
-			 * budget. Leaving the column identically zero makes it unenterable instead.
+			 * An exactly-zero tensile strength means the n- variable does not exist, not that it
+			 * exists bounded by a zero-RHS row: same feasible set, but a dry-stone stack writes
+			 * hundreds of those degenerate rows and Bland's rule can grind on their zero-length
+			 * pivots for the whole iteration budget. Leaving the column identically zero makes it
+			 * unenterable instead.
 			 */
 			bool bCanTension = false;
 		};
@@ -2059,7 +1995,7 @@ namespace RigidBlockOracle
 		{
 			const FOracleJoint& Joint = Problem.Joints[JointIndex];
 
-			/* In-plane tangent, fixed as (-Nz, Nx); contacts at centre -/+ h along it. */
+			// In-plane tangent, fixed as (-Nz, Nx); contacts at centre -/+ h along it.
 			const double TangentX = -Joint.NormalZ;
 			const double TangentZ = Joint.NormalX;
 
@@ -2079,13 +2015,13 @@ namespace RigidBlockOracle
 
 		/*
 		 * Row -> block bookkeeping for the mechanism extraction (PROMOTION_DESIGN §3.3, §12 D7).
-		 * EqFxRowOfBlock[b] is the assembly-row index of block b's Fx equilibrium row — its Fz
-		 * and moment rows follow at +1 and +2 — or INDEX_NONE for a grounded block. That triple
-		 * is where the infeasible arm reads block b's virtual-motion dual; nothing else reads it.
+		 * EqFxRowOfBlock[b] is the assembly-row index of block b's Fx equilibrium row (Fz and moment
+		 * follow at +1 and +2), or INDEX_NONE for a grounded block. That triple is where the
+		 * infeasible arm reads block b's virtual-motion dual; nothing else reads it.
 		 */
 		EqFxRowOfBlock.Init(INDEX_NONE, Problem.Blocks.Num());
 
-		/* ---- Equilibrium: three equalities per non-grounded block. -------------- */
+		// Equilibrium: three equalities per non-grounded block.
 		for (int32 BlockIndex = 0; BlockIndex < Problem.Blocks.Num(); ++BlockIndex)
 		{
 			const FOracleBlock& Block = Problem.Blocks[BlockIndex];
@@ -2095,25 +2031,25 @@ namespace RigidBlockOracle
 				continue;
 			}
 
-			/* Fx lands at the current end; Fz and M follow it in the two next slots. */
+			// Fx lands at the current end; Fz and M follow it in the two next slots.
 			EqFxRowOfBlock[BlockIndex] = AssemblyRows.Num();
 
 			FAssemblyRow RowFx;
 			FAssemblyRow RowFz;
 			FAssemblyRow RowM;
 
-			/* Loads: live into the lambda column, dead into the right-hand side. */
+			// Loads: live into the lambda column, dead into the RHS.
 			double LiveX = 0.0, LiveZ = 0.0, LiveM = 0.0;
 			double DeadX = 0.0, DeadZ = 0.0, DeadM = 0.0;
 
 			const double WeightUu = Block.MassKg * OracleGravityCmPerSecondSquared;
 
 			/*
-			 * Gravity acts at the centroid: force only, no moment about it. A block's weight is
-			 * live (scales with lambda) iff the global switch OR this block's own bLiveGravity
-			 * says so — the per-block flag can only add liveness, never remove it, so a
-			 * globally-dead pose still lets specific blocks be posed live (e.g. a surcharge live
-			 * while the rest of a structure's self-weight stays dead).
+			 * Gravity acts at the centroid: force only, no moment. A block's weight is live (scales
+			 * with lambda) iff the global switch or this block's bLiveGravity says so; the per-block
+			 * flag can only add liveness, never remove it, so a globally-dead pose still lets
+			 * specific blocks be posed live (e.g. a surcharge live while the rest of a structure's
+			 * self-weight stays dead).
 			 */
 			if (Problem.bGravityIsLive || Block.bLiveGravity)
 			{
@@ -2179,7 +2115,7 @@ namespace RigidBlockOracle
 				const double Rx = Contact.PosX - Block.CentroidXCm;
 				const double Rz = Contact.PosZ - Block.CentroidZCm;
 
-				/* Torque per unit force: r_x*F_z - r_z*F_x, one convention throughout. */
+				// Torque per unit force: r_x*F_z - r_z*F_x, one convention throughout.
 				const double TorquePerNormal = Rx * Joint.NormalZ - Rz * Joint.NormalX;
 				const double TorquePerShear = Rx * TangentZ - Rz * TangentX;
 
@@ -2214,7 +2150,7 @@ namespace RigidBlockOracle
 			AssemblyRows.Add(MoveTemp(RowM));
 		}
 
-		/* ---- The lambda cap. ---------------------------------------------------- */
+		// The lambda cap.
 		{
 			FAssemblyRow Cap;
 			Cap.Add(0, 1.0);
@@ -2223,7 +2159,7 @@ namespace RigidBlockOracle
 			AssemblyRows.Add(MoveTemp(Cap));
 		}
 
-		/* ---- Strength rows per contact point. ----------------------------------- */
+		// Strength rows per contact point.
 		for (int32 ContactIndex = 0; ContactIndex < Contacts.Num(); ++ContactIndex)
 		{
 			const FContact& Contact = Contacts[ContactIndex];
@@ -2234,8 +2170,8 @@ namespace RigidBlockOracle
 			const double AreaSqCm = Contact.TributaryAreaSqCm;
 
 			/*
-			 * Tension: n- <= f_t * Conv * A/2. At an exactly-zero strength the column
-			 * itself is absent (see FContact::bCanTension) and no row is written.
+			 * Tension: n- <= f_t * Conv * A/2. At an exactly-zero strength the column itself is
+			 * absent (see FContact::bCanTension) and no row is written.
 			 */
 			if (Contact.bCanTension && S.TensileStrengthMPa < UncappedStrengthMPa)
 			{
@@ -2246,7 +2182,7 @@ namespace RigidBlockOracle
 				AssemblyRows.Add(MoveTemp(Tension));
 			}
 
-			/* Coulomb: +-(p - q) - mu*(n+ - n-) <= c * Conv * A/2. */
+			// Coulomb: +-(p - q) - mu*(n+ - n-) <= c * Conv * A/2.
 			if (S.ShearCohesionMPa < UncappedStrengthMPa)
 			{
 				for (int32 Orientation = 0; Orientation < 2; ++Orientation)
@@ -2269,7 +2205,7 @@ namespace RigidBlockOracle
 				}
 			}
 
-			/* Crushing: n+ - n- <= f_c * Conv * A/2. */
+			// Crushing: n+ - n- <= f_c * Conv * A/2.
 			if (S.CompressiveStrengthMPa < UncappedStrengthMPa)
 			{
 				FAssemblyRow Crush;
@@ -2285,7 +2221,7 @@ namespace RigidBlockOracle
 				AssemblyRows.Add(MoveTemp(Crush));
 			}
 
-			/* The truncated envelope: +-(p - q) <= f_v,max * Conv * A/2. */
+			// The truncated envelope: +-(p - q) <= f_v,max * Conv * A/2.
 			if (S.MaxShearStrengthMPa < UncappedStrengthMPa)
 			{
 				for (int32 Orientation = 0; Orientation < 2; ++Orientation)
@@ -2302,7 +2238,7 @@ namespace RigidBlockOracle
 			}
 		}
 
-		/* ---- First-crack rows: uncracked peak-fibre limit for bonded joints. ---- */
+		// First-crack rows: uncracked peak-fibre limit for bonded joints.
 		if (Problem.bFirstCrackRows)
 		{
 			for (int32 JointIndex = 0; JointIndex < NumJoints; ++JointIndex)
@@ -2311,15 +2247,15 @@ namespace RigidBlockOracle
 				const double FtMPa = Joint.Strength.TensileStrengthMPa;
 
 				/*
-				 * Keyed on data, not material: a joint with no tensile bond has nothing to
-				 * crack, so it keeps the plastic no-tension form and no row is written — every
-				 * dry-stone (f_t = 0) joint is bit-identical whether the flag is on or off. The
-				 * guard is !(f_t > 0) so a NaN strength lands inside it.
+				 * Keyed on data, not material: a joint with no tensile bond has nothing to crack,
+				 * keeps the plastic no-tension form and gets no row, so every dry-stone (f_t = 0)
+				 * joint is bit-identical whether the flag is on or off. The guard is !(f_t > 0) so a
+				 * NaN strength lands inside it.
 				 *
-				 * Deferred, benign (review 2026-08-21): unlike the tension row this is NOT also
+				 * Deferred, benign (review 2026-08-21): unlike the tension row this is not also
 				 * gated on f_t < UncappedStrengthMPa, so an uncapped-yet-bonded joint gets a
-				 * trivially-slack RHS ~1e13*A row instead of being skipped; no sweep fixture
-				 * drives it. Add the same guard if one ever does (CURRENT_STATE).
+				 * trivially-slack ~1e13*A row instead of being skipped; no sweep fixture drives it.
+				 * Add the same guard if one ever does (CURRENT_STATE).
 				 */
 				if (!(FtMPa > 0.0))
 				{
@@ -2327,20 +2263,20 @@ namespace RigidBlockOracle
 				}
 
 				/*
-				 * The joint's two contacts sit at contact indices 2J and 2J+1, at -/+ h,
-				 * with signed normal (compression positive) n = n+ - n- in columns Base+0
-				 * and Base+1. The uncracked peak-fibre condition -(n1+n2) + 3|n1-n2| <=
-				 * f_t*A is two linear inequalities, one per sign of n1-n2, over the FULL
-				 * joint face area (Joint.AreaSqCm = 2 * tributary), cutting the bonded
-				 * section's plastic bending capacity to a third (PROMOTION_DESIGN Sec 4.3).
-				 * f_t > 0 makes bCanTension true for both contacts, so the n- columns exist.
+				 * The joint's two contacts sit at contact indices 2J and 2J+1, at -/+ h, with signed
+				 * normal (compression positive) n = n+ - n- in columns Base+0 and Base+1. The
+				 * uncracked peak-fibre condition -(n1+n2) + 3|n1-n2| <= f_t*A is two linear
+				 * inequalities, one per sign of n1-n2, over the full joint face area (Joint.AreaSqCm
+				 * = 2 * tributary), cutting the bonded section's plastic bending capacity to a third
+				 * (PROMOTION_DESIGN Sec 4.3). f_t > 0 makes bCanTension true for both contacts, so
+				 * the n- columns exist.
 				 */
 				const int32 Base1 = 1 + 4 * (2 * JointIndex);
 				const int32 Base2 = 1 + 4 * (2 * JointIndex + 1);
 				const double Rhs =
 					FtMPa * OracleForceUnitsPerMPaSqCm * Joint.AreaSqCm;
 
-				/* n1 >= n2 branch: -(n1+n2) + 3(n1-n2) = 2*n1 - 4*n2 <= f_t*A. */
+				// n1 >= n2 branch: -(n1+n2) + 3(n1-n2) = 2*n1 - 4*n2 <= f_t*A.
 				FAssemblyRow FirstCrackA;
 				FirstCrackA.Add(Base1 + 0, 2.0);
 				FirstCrackA.Add(Base1 + 1, -2.0);
@@ -2350,7 +2286,7 @@ namespace RigidBlockOracle
 				FirstCrackA.bEquality = false;
 				AssemblyRows.Add(MoveTemp(FirstCrackA));
 
-				/* n2 >= n1 branch: -(n1+n2) + 3(n2-n1) = -4*n1 + 2*n2 <= f_t*A. */
+				// n2 >= n1 branch: -(n1+n2) + 3(n2-n1) = -4*n1 + 2*n2 <= f_t*A.
 				FAssemblyRow FirstCrackB;
 				FirstCrackB.Add(Base1 + 0, -4.0);
 				FirstCrackB.Add(Base1 + 1, 4.0);
@@ -2363,14 +2299,14 @@ namespace RigidBlockOracle
 		}
 		} /* end of the 2D assembly branch */
 
-		/* ---- Standard form and the revised simplex's working state. ------------- */
+		// Standard form and the revised simplex's working state.
 		FStandardForm Form;
 		BuildStandardForm(AssemblyRows, NumStructCols, Form);
 
 		/*
-		 * The warm start is the whole of what a supplied basis does. An empty one touches
-		 * nothing — no column appended, no basis reseeded, no branch below taken — which is
-		 * what lets every pinned cold pivot count in the sweep assert this seam changed nothing.
+		 * The warm start is the whole of what a supplied basis does. An empty one touches nothing
+		 * (no column appended, no basis reseeded, no branch below taken), which lets every pinned
+		 * cold pivot count in the sweep assert this seam changed nothing.
 		 */
 		if (Problem.StartingBasis.Columns.Num() > 0)
 		{
@@ -2384,14 +2320,14 @@ namespace RigidBlockOracle
 			return Refuse(EOracleRefusal::PhaseOneFailure);
 		}
 
-		/* ---- Phase 1: drive the artificials to zero. ---------------------------- */
+		// Phase 1: drive the artificials to zero.
 		int32 Iterations = 0;
 
 		/*
-		 * A gravity-live problem starts feasible (every equality's right-hand side is
-		 * zero, so its artificial is basic AT ZERO): the phase-1 objective is already
-		 * optimal and running the simplex would only churn degenerate pivots. Dead
-		 * loads put real values on the artificials and phase 1 must genuinely run.
+		 * A gravity-live problem starts feasible (every equality's RHS is zero, so its artificial
+		 * is basic at zero): the phase-1 objective is already optimal and running the simplex would
+		 * only churn degenerate pivots. Dead loads put real values on the artificials and phase 1
+		 * must run.
 		 */
 		if (BasicArtificialInfeasibility(Form, State) > InfeasibilityTolerance(Form, State))
 		{
@@ -2414,9 +2350,8 @@ namespace RigidBlockOracle
 			if (PhaseOneEnd != ESimplexEnd::Optimal)
 			{
 				/*
-				 * Phase 1's three non-optimal ends are one reason rather than three: its
-				 * objective is bounded below by zero so it cannot be unbounded, and no
-				 * fixture has ever reached any of them.
+				 * Phase 1's three non-optimal ends collapse to one reason: its objective is bounded
+				 * below by zero so it cannot be unbounded, and no fixture has reached any of them.
 				 */
 				return Refuse(EOracleRefusal::PhaseOneFailure);
 			}
@@ -2424,15 +2359,14 @@ namespace RigidBlockOracle
 			if (BasicArtificialInfeasibility(Form, State) > InfeasibilityTolerance(Form, State))
 			{
 				/*
-				 * The dead loads alone admit no equilibrium (lambda = 0 is in the feasible
-				 * set of every gravity-live problem, so this is only reachable with dead
-				 * loads). That is an answer, not a failure: nothing stands, lambda* = 0.
+				 * The dead loads alone admit no equilibrium (lambda = 0 is feasible for every
+				 * gravity-live problem, so this is only reachable with dead loads). That is an
+				 * answer, not a failure: nothing stands, lambda* = 0.
 				 *
-				 * This is the mechanism seam (PROMOTION_DESIGN §3.3, §12 D7): the phase-1
-				 * dual here is the Farkas certificate = the kinematic collapse mechanism.
-				 * ExtractMechanism reads it (one BTRAN) and Farkas-verifies it; a certificate
-				 * that will not verify makes the solve refuse rather than name bricks it
-				 * could not check (fail-closed, §3.6).
+				 * The mechanism seam (PROMOTION_DESIGN §3.3, §12 D7): the phase-1 dual here is the
+				 * Farkas certificate = the kinematic collapse mechanism. ExtractMechanism reads it
+				 * (one BTRAN) and Farkas-verifies it; a certificate that will not verify makes the
+				 * solve refuse rather than name bricks it could not check (fail-closed, §3.6).
 				 */
 				if (!ExtractMechanism(Problem, Form, State, EqFxRowOfBlock, Result.Mechanism))
 				{
@@ -2448,10 +2382,9 @@ namespace RigidBlockOracle
 		else
 		{
 			/*
-			 * The problem was feasible before a single pivot, so phase 1 spent nothing. Set
-			 * in this branch rather than as an initialiser above it: a default of zero would
-			 * let a phase 1 that forgot to report read as "already feasible", where
-			 * INDEX_NONE is a loud one.
+			 * The problem was feasible before a single pivot, so phase 1 spent nothing. Set in this
+			 * branch, not as an initialiser above: a default of zero would let a phase 1 that forgot
+			 * to report read as "already feasible", where INDEX_NONE is loud.
 			 */
 			Result.PhaseOnePivots = 0;
 			Result.PivotsToFirstFeasible = 0;
@@ -2462,13 +2395,12 @@ namespace RigidBlockOracle
 		Result.BlandDegenerateEntries = State.BlandDegenerateEntries;
 
 		/*
-		 * Pivot lingering zero-value artificials out where a real column allows it: row r's
-		 * tableau entry for column j is (B^-1 A_j)[r] = rho . A_j with rho = B^-T e_r, so one
-		 * BTRAN prices the whole candidate scan. The entering column is the largest |alpha|
-		 * (lowest index on exact ties), not the dense solver's first-past-the-tolerance:
-		 * these pivots pick the basis every later phase-2 solve stands on, and a
-		 * near-tolerance choice here was measured leaving a basis so ill-conditioned that a
-		 * refactorised solve carried ~1e-6 of noise into the verification gate on a problem
+		 * Pivot lingering zero-value artificials out where a real column allows it: row r's tableau
+		 * entry for column j is (B^-1 A_j)[r] = rho . A_j with rho = B^-T e_r, so one BTRAN prices
+		 * the whole candidate scan. The entering column is the largest |alpha| (lowest index on
+		 * exact ties), not first-past-the-tolerance: these pivots pick the basis every later
+		 * phase-2 solve stands on, and a near-tolerance choice here left a basis so ill-conditioned
+		 * that a refactorised solve carried ~1e-6 of noise into the verification gate on a problem
 		 * whose answer was exact.
 		 */
 		for (int32 Row = 0; Row < Form.NumRows; ++Row)
@@ -2519,10 +2451,9 @@ namespace RigidBlockOracle
 			if (Entering == INDEX_NONE)
 			{
 				/*
-				 * A genuinely redundant row: no real column can pivot the artificial out. It
-				 * stays basic at zero — harmless, since complementary slackness certifies
-				 * phase 2's optimum regardless, and verification fails closed if that
-				 * certification is ever wrong.
+				 * A genuinely redundant row: no real column can pivot the artificial out. It stays
+				 * basic at zero, harmless: complementary slackness certifies phase 2's optimum
+				 * regardless, and verification fails closed if that is ever wrong.
 				 */
 				continue;
 			}
@@ -2533,7 +2464,7 @@ namespace RigidBlockOracle
 			State.ApplyPivot(Row, Entering, State.EnteringW, Theta);
 		}
 
-		/* ---- Phase 2: maximise lambda (minimise -lambda). ----------------------- */
+		// Phase 2: maximise lambda (minimise -lambda).
 		{
 			TArray<double> PhaseTwoCost;
 			PhaseTwoCost.SetNumZeroed(Form.NumCols);
@@ -2547,28 +2478,28 @@ namespace RigidBlockOracle
 
 			if (PhaseTwoEnd != ESimplexEnd::Optimal)
 			{
-				/* With the cap row a real unbounded ray is impossible; fail closed. */
+				// With the cap row a real unbounded ray is impossible; fail closed.
 				return Refuse(PhaseTwoRefusalFor(PhaseTwoEnd));
 			}
 		}
 
 		/*
-		 * One final refactorisation so the values verification judges are the cleanest
-		 * solve the final basis admits — factorised from original columns, basic values
-		 * from the original right-hand side, no eta in sight.
+		 * One final refactorisation so the values verification judges are the cleanest solve the
+		 * final basis admits: factorised from original columns, basic values from the original RHS,
+		 * no eta.
 		 */
 		if (!State.Refactorise())
 		{
-			/* The same event the pivot loop's periodic refactorisation reports: the basis. */
+			// The same event the pivot loop's periodic refactorisation reports: the basis.
 			return Refuse(EOracleRefusal::PhaseTwoNumericalFailure);
 		}
 
 		/*
-		 * Verify the answer against the original rows, because a simplex basis that drifted
-		 * through near-tolerance pivots can report "optimal" while standing outside the
-		 * feasible region — measured at 0.98% over a crushing bound before this existed. A
-		 * solution that is not admissible is not an answer, so a verification failure fails
-		 * closed rather than returning a plausible number.
+		 * Verify the answer against the original rows, because a basis that drifted through
+		 * near-tolerance pivots can report "optimal" while standing outside the feasible region
+		 * (measured at 0.98% over a crushing bound before this existed). A solution that is not
+		 * admissible is not an answer, so verification failure fails closed rather than returning a
+		 * plausible number.
 		 */
 		TArray<double> StructValues;
 		StructValues.SetNumZeroed(NumStructCols);
@@ -2616,12 +2547,11 @@ namespace RigidBlockOracle
 	}
 
 	/**
-	 * One min-violation sub-solve: minimise the given per-structural-column cost over the
-	 * assembly rows (equilibrium equalities hard, everything else as posed), and hand back the
-	 * structural primal. Factored out of SolveMinViolationReadout so the lexicographic-minimax
-	 * loop can pose one LP per overload level without transcribing the two-phase machinery each
-	 * time. Same machinery as the maximise arm; bOk is false with a refusal reason set on any
-	 * non-optimal termination.
+	 * One min-violation sub-solve: minimise the given per-structural-column cost over the assembly
+	 * rows (equilibrium equalities hard, everything else as posed) and return the structural
+	 * primal. Factored out of SolveMinViolationReadout so the lexicographic-minimax loop can pose
+	 * one LP per overload level without transcribing the two-phase machinery. Same machinery as the
+	 * maximise arm; bOk is false with a refusal reason set on any non-optimal termination.
 	 */
 	struct FSubSolve
 	{
@@ -2654,7 +2584,7 @@ namespace RigidBlockOracle
 
 		int32 Iterations = 0;
 
-		/* ---- Phase 1: drive the equilibrium artificials to zero. ---- */
+		// Phase 1: drive the equilibrium artificials to zero.
 		if (BasicArtificialInfeasibility(Form, State) > InfeasibilityTolerance(Form, State))
 		{
 			TArray<double> PhaseOneCost;
@@ -2676,8 +2606,8 @@ namespace RigidBlockOracle
 
 			/*
 			 * With the violations free the equilibrium equalities are always satisfiable, so a
-			 * residual infeasibility means a block no force system can balance (a floating block).
-			 * That is not a readout, it is a degenerate structure — fail closed.
+			 * residual infeasibility means a block no force system can balance (a floating block): a
+			 * degenerate structure, not a readout. Fail closed.
 			 */
 			if (BasicArtificialInfeasibility(Form, State) > InfeasibilityTolerance(Form, State))
 			{
@@ -2686,7 +2616,7 @@ namespace RigidBlockOracle
 			}
 		}
 
-		/* Pivot any zero-value artificial out where a real column can, exactly as the maximise arm does. */
+		// Pivot any zero-value artificial out where a real column can, as the maximise arm does.
 		for (int32 Row = 0; Row < Form.NumRows; ++Row)
 		{
 			if (State.Basis[Row] < Form.ArtificialStart)
@@ -2744,7 +2674,7 @@ namespace RigidBlockOracle
 			State.ApplyPivot(Row, Entering, State.EnteringW, Theta);
 		}
 
-		/* ---- Phase 2: minimise the supplied structural cost. ---- */
+		// Phase 2: minimise the supplied structural cost.
 		{
 			TArray<double> PhaseTwoCost;
 			PhaseTwoCost.SetNumZeroed(Form.NumCols);
@@ -2789,20 +2719,20 @@ namespace RigidBlockOracle
 
 	/**
 	 * The 3D (Dim3D) min-violation readout — E1a, arm (i). The 3D analogue of
-	 * SolveMinViolationReadout below, kept a separate function so the 2D readout (and every
-	 * sweep pin and readout test on it) stays byte-for-byte untouched: SolveMinViolationReadout
-	 * dispatches here on Dim3D and is otherwise verbatim.
+	 * SolveMinViolationReadout below, kept separate so the 2D readout (and every sweep pin and
+	 * readout test on it) stays byte-for-byte untouched: SolveMinViolationReadout dispatches here
+	 * on Dim3D and is otherwise verbatim.
 	 *
 	 * Six hard equilibrium equalities per non-grounded block (load fixed at lambda = 1, gravity a
-	 * dead constant into the RHS), four contact corners per joint, and the strength rows relaxed
-	 * by a per-row violation slack — tension (gated) and crushing, friction off for E1a exactly as
-	 * the maximise-lambda 3D assembler. NormalUu sums the joint's four contacts' net normals.
+	 * dead constant into the RHS), four contact corners per joint, strength rows relaxed by a
+	 * per-row violation slack (tension gated and crushing, friction off for E1a as the
+	 * maximise-lambda 3D assembler). NormalUu sums the joint's four contacts' net normals.
 	 *
-	 * A single min-sum-of-violations solve, not the per-group lexicographic minimax the 2D
-	 * readout runs: the E1a fixture (the tripod) is statically determinate — all three supports
-	 * share a height, so shear contributes no net moment and the per-joint normal sums are unique
-	 * across every admissible equilibrium. The lexicographic minimax is deferred to E2 (the
-	 * indeterminate E0-B four-corner case), recorded in CURRENT_STATE.
+	 * A single min-sum-of-violations solve, not the per-group lexicographic minimax the 2D readout
+	 * runs: the E1a fixture (the tripod) is statically determinate — all three supports share a
+	 * height, so shear contributes no net moment and the per-joint normal sums are unique across
+	 * every admissible equilibrium. The lexicographic minimax is deferred to E2 (the indeterminate
+	 * E0-B four-corner case), recorded in CURRENT_STATE.
 	 */
 	FOracleResult SolveMinViolationReadoutThreeD(const FOracleProblem& Problem)
 	{
@@ -2840,7 +2770,7 @@ namespace RigidBlockOracle
 
 		TArray<FAssemblyRow> AssemblyRows;
 
-		/* ---- Six HARD equilibrium equalities per non-grounded block; load fixed at lambda = 1. ---- */
+		// Six hard equilibrium equalities per non-grounded block; load fixed at lambda = 1.
 		for (int32 BlockIndex = 0; BlockIndex < Problem.Blocks.Num(); ++BlockIndex)
 		{
 			const FOracleBlock& Block = Problem.Blocks[BlockIndex];
@@ -2858,10 +2788,10 @@ namespace RigidBlockOracle
 			FAssemblyRow Mz;
 
 			/*
-			 * Every load is dead here (the readout holds lambda = 1) and enters the right-hand
-			 * side: gravity in -Z at the centroid, then each applied force's three components and
-			 * its moment r_app x F (r_app = application point - centroid), matching the
-			 * maximise-lambda 3D pose with everything routed dead.
+			 * Every load is dead here (the readout holds lambda = 1) and enters the RHS: gravity in
+			 * -Z at the centroid, then each applied force's three components and its moment r_app x F
+			 * (r_app = point - centroid), matching the maximise-lambda 3D pose with everything routed
+			 * dead.
 			 */
 			const double WeightUu = Block.MassKg * OracleGravityCmPerSecondSquared;
 			double LoadX = 0.0, LoadY = 0.0, LoadZ = 0.0;
@@ -2931,7 +2861,7 @@ namespace RigidBlockOracle
 			AssemblyRows.Add(MoveTemp(Mz));
 		}
 
-		/* ---- Strength rows, each RELAXED by its own violation variable: tension (gated) + crushing. ---- */
+		// Strength rows, each relaxed by its own violation variable: tension (gated) + crushing.
 		struct FStrengthRowInfo
 		{
 			int32 Joint = INDEX_NONE;
@@ -2980,7 +2910,7 @@ namespace RigidBlockOracle
 			 * The k=8 inscribed friction pyramid, each facet relaxed by its own violation
 			 * variable, mirroring the maximise-lambda assembler row for row (see
 			 * ThreeDPyramidInscribeFactor). A frictionless contact (mu = c = 0) still writes k
-			 * zero-capacity rows, pinning its shear to zero — the readout must see the same
+			 * zero-capacity rows, pinning its shear to zero: the readout must see the same
 			 * statics the maximise-lambda assembler does or its reactions differ.
 			 */
 			if (S.ShearCohesionMPa < UncappedStrengthMPa)
@@ -3026,7 +2956,7 @@ namespace RigidBlockOracle
 		const int32 NumStrengthRows = StrengthInfos.Num();
 		const int32 NumStructBase = NumForceCols + NumStrengthRows;
 
-		/* One min-sum-of-violations solve; the determinate fixture needs no per-group canonicalization. */
+		// One min-sum-of-violations solve; the determinate fixture needs no per-group canonicalization.
 		TArray<double> Cost;
 		Cost.Init(0.0, NumStructBase);
 
@@ -3048,7 +2978,7 @@ namespace RigidBlockOracle
 
 		const TArray<double>& StructValues = Solve.StructValues;
 
-		/* Verify the primal against the ORIGINAL physics — equilibrium HARD, strength relaxed. */
+		// Verify the primal against the original physics: equilibrium hard, strength relaxed.
 		for (int32 RowIndex = 0; RowIndex < AssemblyRows.Num(); ++RowIndex)
 		{
 			const FAssemblyRow& Assembly = AssemblyRows[RowIndex];
@@ -3078,12 +3008,12 @@ namespace RigidBlockOracle
 		}
 
 		/*
-		 * ---- The per-joint readout. ----
+		 * The per-joint readout.
 		 *
-		 * NormalUu sums the joint's FOUR contacts' net normals n = n+ - n- (compression positive).
-		 * MomentUuCm is left zero: the biaxial moment resultant (Mx AND My about the patch centre) is
-		 * an E-tail, and no E1a assertion reads it. ViolationUu totals the joint's slack and the
-		 * utilisation is the worst per-row demand / capacity, fail-closed exactly as the 2D readout.
+		 * NormalUu sums the joint's four contacts' net normals n = n+ - n- (compression positive).
+		 * MomentUuCm is left zero: the biaxial moment resultant (Mx and My about the patch centre)
+		 * is an E-tail, and no E1a assertion reads it. ViolationUu totals the joint's slack and the
+		 * utilisation is the worst per-row demand / capacity, fail-closed as the 2D readout.
 		 */
 		FOracleReadout& Readout = Result.Readout;
 		Readout.Joints.SetNum(NumJoints);
@@ -3159,46 +3089,44 @@ namespace RigidBlockOracle
 
 	/**
 	 * The min-violation (goal-programming) LP that sources the per-joint strain readout
-	 * (PROMOTION_DESIGN §3.1/§3.5/§3.6, Slice 6a). A different solve from the maximise-lambda
-	 * one above, deliberately separate so that path stays bit-identical: nothing here touches
-	 * SolveRigidBlockOnce, and SolveRigidBlock routes to one or the other on the flag alone.
+	 * (PROMOTION_DESIGN §3.1/§3.5/§3.6, Slice 6a). A different solve from the maximise-lambda one
+	 * above, kept separate so that path stays bit-identical: nothing here touches
+	 * SolveRigidBlockOnce, and SolveRigidBlock routes on the flag alone.
 	 *
 	 * Why a different solve: at lambda >= 1 the maximise-lambda primal only searches for a force
-	 * system in which no joint reads over 1.0, so feeding those forces through a utilisation
-	 * reads misleadingly comfortable for every joint (§3.1). The readout instead fixes the load
-	 * at lambda = 1, keeps the per-block equilibrium rows hard, and relaxes every strength
-	 * inequality a_k.x <= b_k to a_k.x - s_k <= b_k with a non-negative violation s_k. Because
-	 * only strength gives, a solution always exists — the least-infeasible force system — so a
-	 * standing structure reads every s_k zero and an over-capacity one reads positive s_k
-	 * exactly on the over joints.
+	 * system in which no joint reads over 1.0, so feeding those forces through a utilisation reads
+	 * misleadingly comfortable (§3.1). The readout instead fixes the load at lambda = 1, keeps the
+	 * per-block equilibrium rows hard, and relaxes every strength inequality a_k.x <= b_k to a_k.x
+	 * - s_k <= b_k with a non-negative violation s_k. Because only strength gives, a solution always
+	 * exists (the least-infeasible force system), so a standing structure reads every s_k zero and
+	 * an over-capacity one reads positive s_k exactly on the over joints.
 	 *
 	 * Why a single global minimax is wrong: a bare minimise-sum-of-slack is constant over a
-	 * statically indeterminate free family, so it lands on a permutation-dependent vertex and
-	 * the readout wobbles with column order (§3.5). A single global t with s_k <= t evens only
-	 * the globally-maximal group; an independent overload group at a lower level is a free
-	 * family the objective then ignores, so its slacks pile toward the global t instead of
-	 * evening at their own centroid — the counter-example the determinism gate carries.
+	 * statically indeterminate free family, so it lands on a permutation-dependent vertex and the
+	 * readout wobbles with column order (§3.5). A single global t with s_k <= t evens only the
+	 * globally-maximal group; an independent overload group at a lower level is a free family the
+	 * objective then ignores, so its slacks pile toward the global t instead of evening at their own
+	 * centroid — the counter-example the determinism gate carries.
 	 *
-	 * The fix is per-group canonicalization via lexicographic minimax: minimise the max slack;
-	 * fix the slacks critical at that max; minimise the next max over what remains; recurse
-	 * until every slack is pinned. Each independent free family is thereby evened at its own
-	 * level, a function of the geometry and not the column indices, hence permutation-stable —
-	 * the LP-compatible route to what a strictly-convex (min-L2) slack objective would give in
-	 * one solve: a bounded number of LPs, one pair per overload level, cached, not per frame.
+	 * The fix is per-group canonicalization via lexicographic minimax: minimise the max slack; fix
+	 * the slacks critical at that max; minimise the next max over what remains; recurse until every
+	 * slack is pinned. Each independent free family is evened at its own level, a function of the
+	 * geometry not the column indices, hence permutation-stable — the LP-compatible route to what a
+	 * min-L2 slack objective would give in one solve: a bounded number of LPs, one pair per overload
+	 * level, cached, not per frame.
 	 *
-	 * "Critical" is the crux: a bare "fix everything binding at t*" is wrong, because the level
-	 * solve can leave a lower group's slack sitting at t* on a whim of the pivot path. So each
-	 * level is two solves: a min-t to find t*, then a min-(sum of the candidates at t*) that
-	 * pushes every candidate that can come down off t*. Only those that survive are stuck in
-	 * every optimum, and those are pinned at the scalar t*, permutation-invariant by
-	 * construction. Termination is guaranteed: t* is achievable, so at least one slack is
-	 * critical at every level, and there are finitely many.
+	 * "Critical" is the crux: "fix everything binding at t*" is wrong, because the level solve can
+	 * leave a lower group's slack sitting at t* on a whim of the pivot path. So each level is two
+	 * solves: a min-t to find t*, then a min-(sum of the candidates at t*) that pushes every
+	 * candidate that can come down off t*. Only the survivors are stuck in every optimum, pinned at
+	 * the scalar t*, permutation-invariant by construction. Termination is guaranteed: t* is
+	 * achievable, so at least one slack is critical at every level, and there are finitely many.
 	 */
 	FOracleResult SolveMinViolationReadout(const FOracleProblem& Problem)
 	{
 		using namespace OracleDetail;
 
-		/* The 3D readout is a separate assembler; dispatch and leave the 2D path below verbatim. */
+		// The 3D readout is a separate assembler; dispatch and leave the 2D path below verbatim.
 		if (Problem.Dim == EOracleDim::Dim3D)
 		{
 			return SolveMinViolationReadoutThreeD(Problem);
@@ -3230,11 +3158,11 @@ namespace RigidBlockOracle
 		const int32 NumContacts = NumJoints * 2;
 
 		/*
-		 * Structural columns: per contact [n+, n-, p, q] with n = n+ - n- (compression
-		 * positive) and v = p - q, then one non-negative violation variable per strength row
-		 * (violation column k is NumForceCols + k), and — only while a level solve is posed —
-		 * one minimax variable t appended past them all. No lambda column and no cap row: the
-		 * load is fixed at lambda = 1, so gravity is a dead constant.
+		 * Structural columns: per contact [n+, n-, p, q] with n = n+ - n- (compression positive)
+		 * and v = p - q, then one non-negative violation variable per strength row (violation column
+		 * k is NumForceCols + k), and — only while a level solve is posed — one minimax variable t
+		 * appended past them all. No lambda column and no cap row: the load is fixed at lambda = 1,
+		 * so gravity is a dead constant.
 		 */
 		const int32 NumForceCols = 4 * NumContacts;
 
@@ -3273,7 +3201,7 @@ namespace RigidBlockOracle
 
 		TArray<FAssemblyRow> AssemblyRows;
 
-		/* ---- Equilibrium: three HARD equalities per non-grounded block, load fixed. ---- */
+		// Equilibrium: three hard equalities per non-grounded block, load fixed.
 		for (int32 BlockIndex = 0; BlockIndex < Problem.Blocks.Num(); ++BlockIndex)
 		{
 			const FOracleBlock& Block = Problem.Blocks[BlockIndex];
@@ -3287,7 +3215,7 @@ namespace RigidBlockOracle
 			FAssemblyRow RowFz;
 			FAssemblyRow RowM;
 
-			/* Every load enters the right-hand side: dead self-weight, live forces held at lambda = 1. */
+			// Every load enters the RHS: dead self-weight, live forces held at lambda = 1.
 			double LoadX = 0.0, LoadZ = 0.0, LoadM = 0.0;
 
 			const double WeightUu = Block.MassKg * OracleGravityCmPerSecondSquared;
@@ -3369,13 +3297,13 @@ namespace RigidBlockOracle
 		}
 
 		/*
-		 * ---- Strength rows, each RELAXED by its own violation variable. ----
+		 * Strength rows, each relaxed by its own violation variable.
 		 *
-		 * The coefficients are exactly the maximise-lambda solver's (the FINITE-TENSION
-		 * mapping, the linearised Coulomb pair, crushing and the shear ceiling); the only
-		 * change is that a_k.x <= b_k becomes a_k.x - s_k <= b_k. Each row records the joint it
-		 * belongs to, its violation column and its capacity, so the readout can total the slack
-		 * per joint and read a per-row utilisation demand / capacity back off the primal.
+		 * The coefficients are exactly the maximise-lambda solver's (the finite-tension mapping, the
+		 * linearised Coulomb pair, crushing and the shear ceiling); the only change is a_k.x <= b_k
+		 * becomes a_k.x - s_k <= b_k. Each row records its joint, violation column and capacity, so
+		 * the readout can total the slack per joint and read a per-row utilisation demand / capacity
+		 * back off the primal.
 		 */
 		struct FStrengthRowInfo
 		{
@@ -3469,24 +3397,23 @@ namespace RigidBlockOracle
 		}
 
 		/*
-		 * ---- First-crack rows, each relaxed by its own violation variable. ----
+		 * First-crack rows, each relaxed by its own violation variable.
 		 *
 		 * The maximise-lambda path writes the uncracked peak-fibre limit for every bonded joint
-		 * behind bFirstCrackRows (Structure.cpp poses it below the cap), so a bonded joint cracks
-		 * at three times the plastic no-tension bending stiffness. The readout must assemble the
-		 * same rows or its utilisation reports the plastic capacity a bonded bending joint is
-		 * never actually held to. Each sign branch of |n1 - n2| is one relaxed inequality
-		 * carrying its own violation slack through AddStrengthRow, so it joins the per-group
-		 * lexicographic-minimax canonicalization like every other strength row.
+		 * behind bFirstCrackRows, so a bonded joint cracks at three times the plastic no-tension
+		 * bending stiffness. The readout must assemble the same rows or its utilisation reports the
+		 * plastic capacity a bonded bending joint is never held to. Each sign branch of |n1 - n2| is
+		 * one relaxed inequality carrying its own violation slack through AddStrengthRow, so it joins
+		 * the per-group lexicographic-minimax canonicalization like every other strength row.
 		 *
-		 * Keyed on data (f_t > 0), not material: a dry joint has nothing to crack, gets no row
-		 * and stays bit-identical whether the flag is on or off; the guard !(f_t > 0) lands a NaN
-		 * strength inside it. Columns follow the min-violation layout (Base = 4 * ContactIndex,
-		 * no lambda column), the joint's two contacts sit at 2J and 2J+1, and the RHS is over the
-		 * full joint face (Joint.AreaSqCm = 2 * tributary), cutting the plastic bending capacity
-		 * to a third (PROMOTION_DESIGN Sec 4.3). Like the maximise-lambda path this is not gated
-		 * on f_t < UncappedStrengthMPa: an uncapped-yet-bonded joint's row is trivially slack, and
-		 * no fixture drives it (CURRENT_STATE 0d residue c).
+		 * Keyed on data (f_t > 0), not material: a dry joint has nothing to crack, gets no row and
+		 * stays bit-identical whether the flag is on or off; the guard !(f_t > 0) lands a NaN
+		 * strength inside it. Columns follow the min-violation layout (Base = 4 * ContactIndex, no
+		 * lambda column), the joint's two contacts sit at 2J and 2J+1, and the RHS is over the full
+		 * joint face (Joint.AreaSqCm = 2 * tributary), cutting the plastic bending capacity to a
+		 * third (PROMOTION_DESIGN Sec 4.3). Like the maximise-lambda path this is not gated on f_t <
+		 * UncappedStrengthMPa: an uncapped-yet-bonded joint's row is trivially slack, and no fixture
+		 * drives it (CURRENT_STATE 0d residue c).
 		 */
 		if (Problem.bFirstCrackRows)
 		{
@@ -3504,7 +3431,7 @@ namespace RigidBlockOracle
 				const int32 Base2 = 4 * (2 * JointIndex + 1);
 				const double Rhs = FtMPa * OracleForceUnitsPerMPaSqCm * Joint.AreaSqCm;
 
-				/* n1 >= n2 branch: -(n1+n2) + 3(n1-n2) = 2*n1 - 4*n2 <= f_t*A. */
+				// n1 >= n2 branch: -(n1+n2) + 3(n1-n2) = 2*n1 - 4*n2 <= f_t*A.
 				FAssemblyRow FirstCrackA;
 				FirstCrackA.Add(Base1 + 0, 2.0);
 				FirstCrackA.Add(Base1 + 1, -2.0);
@@ -3512,7 +3439,7 @@ namespace RigidBlockOracle
 				FirstCrackA.Add(Base2 + 1, 4.0);
 				AddStrengthRow(JointIndex, MoveTemp(FirstCrackA), Rhs);
 
-				/* n2 >= n1 branch: -(n1+n2) + 3(n2-n1) = -4*n1 + 2*n2 <= f_t*A. */
+				// n2 >= n1 branch: -(n1+n2) + 3(n2-n1) = -4*n1 + 2*n2 <= f_t*A.
 				FAssemblyRow FirstCrackB;
 				FirstCrackB.Add(Base1 + 0, -4.0);
 				FirstCrackB.Add(Base1 + 1, 4.0);
@@ -3526,11 +3453,11 @@ namespace RigidBlockOracle
 		const int32 NumStructBase = NumForceCols + NumStrengthRows;
 
 		/*
-		 * BaseRows holds the invariant physics — the per-block equilibrium equalities and the
-		 * relaxed strength rows. Every level of the lexicographic minimax below reuses these and
-		 * appends only its own per-slack rows (a minimax bound while a slack is free, an equality
-		 * once it is pinned), so the heavy assembly is built once. A level solve appends ONE
-		 * minimax column t at NumStructBase; a bound/final solve appends none.
+		 * BaseRows holds the invariant physics: the per-block equilibrium equalities and the relaxed
+		 * strength rows. Every level of the lexicographic minimax below reuses these and appends only
+		 * its own per-slack rows (a minimax bound while a slack is free, an equality once pinned), so
+		 * the heavy assembly is built once. A level solve appends one minimax column t at
+		 * NumStructBase; a bound/final solve appends none.
 		 */
 		const TArray<FAssemblyRow> BaseRows = MoveTemp(AssemblyRows);
 
@@ -3552,8 +3479,8 @@ namespace RigidBlockOracle
 
 		/*
 		 * Assemble BaseRows plus one row per strength slack: an equality s_k = pinned value once
-		 * the slack is pinned, otherwise a minimax bound s_k - t <= 0 (level mode) or a constant
-		 * bound s_k <= LevelBound (reduction / final mode).
+		 * pinned, otherwise a minimax bound s_k - t <= 0 (level mode) or a constant bound s_k <=
+		 * LevelBound (reduction / final mode).
 		 */
 		const auto AssembleWithSlackRows =
 			[&](bool bLevelMode, double LevelBound) -> TArray<FAssemblyRow>
@@ -3592,11 +3519,10 @@ namespace RigidBlockOracle
 
 		/*
 		 * How binding at t* is decided: a slack within BindingRelativeTol of t* (relative to t*,
-		 * floored at 1) counts as binding — chosen against the two-group fixture, whose level gap
-		 * is ~38000 uu while a reducible slack falls clear to its floor and a critical slack reads
-		 * t* to solver precision (~1e-9 of scale). 1e-6 sits three orders above the solve noise
-		 * and orders below the gap; the determinism gate is what forbids picking it by eye. It
-		 * never decides the pinned value — that is always the scalar t*, even by construction.
+		 * floored at 1) counts as binding. Chosen against the two-group fixture, whose level gap is
+		 * ~38000 uu while a reducible slack falls clear to its floor and a critical slack reads t* to
+		 * solver precision (~1e-9 of scale). 1e-6 sits three orders above the solve noise and orders
+		 * below the gap. It never decides the pinned value; that is always the scalar t*.
 		 */
 		constexpr double BindingRelativeTol = 1.0e-6;
 
@@ -3618,7 +3544,7 @@ namespace RigidBlockOracle
 				break;
 			}
 
-			/* ---- Level solve: minimise the max free slack t. ---- */
+			// Level solve: minimise the max free slack t.
 			const TArray<FAssemblyRow> LevelRows = AssembleWithSlackRows(true, 0.0);
 
 			TArray<double> LevelCost;
@@ -3647,25 +3573,23 @@ namespace RigidBlockOracle
 			}
 
 			/*
-			 * ---- Reduction to a fixed point: shrink the at-t* set until only the truly-critical
-			 * slacks remain. ----
+			 * Reduction to a fixed point: shrink the at-t* set until only the truly-critical slacks
+			 * remain.
 			 *
 			 * A single min-Sigma reduction pushes the candidate sum down but is indifferent to a
 			 * trade within a reducible sub-family sharing a fixed subtotal (two contacts of one
-			 * joint, or any pair whose net force equilibrium fixes): rebalancing one member down
-			 * and its partner up is net-zero in the sum, so the simplex can leave an arbitrary
-			 * (column-order-dependent) vertex with one member stranded at t*. Pinning that
-			 * stranded member is the false-critical the Degen fixture exposes — it is reducible,
-			 * not critical.
+			 * joint, or any pair whose net force equilibrium fixes): rebalancing one member down and
+			 * its partner up is net-zero in the sum, so the simplex can leave an arbitrary
+			 * (column-order-dependent) vertex with one member stranded at t*. Pinning that stranded
+			 * member is the false-critical the Degen fixture exposes: reducible, not critical.
 			 *
 			 * The cure is to re-minimise over only the slacks still reading t*. A member reducible
 			 * solely by rebalancing to a partner outside that shrunk set now has an unpenalised
 			 * partner, so the trade strictly cuts the objective and the member drops clear of t*. A
-			 * member that stays through this — reducing it would need another at-ceiling slack to
-			 * rise past t*, which the bound forbids — is genuinely stuck in every optimum. The
-			 * at-t* set is monotonically non-increasing, so the iteration reaches a stable set in
-			 * at most one LP per candidate: the critical set, a function of the physics rather than
-			 * column order.
+			 * member that stays (reducing it would need another at-ceiling slack to rise past t*,
+			 * which the bound forbids) is genuinely stuck in every optimum. The at-t* set is
+			 * monotonically non-increasing, so the iteration reaches a stable set in at most one LP
+			 * per candidate: the critical set, a function of the physics not column order.
 			 */
 			const TArray<FAssemblyRow> BoundRows = AssembleWithSlackRows(false, TStar);
 
@@ -3715,7 +3639,7 @@ namespace RigidBlockOracle
 			}
 
 			/*
-			 * At least one candidate is critical whenever a free slack remains — t* is achievable,
+			 * At least one candidate is critical whenever a free slack remains: t* is achievable,
 			 * so some slack is stuck at it in every optimum. If the arithmetic ever disagrees the
 			 * loop would not progress; fail closed rather than spin.
 			 */
@@ -3727,7 +3651,7 @@ namespace RigidBlockOracle
 			}
 		}
 
-		/* ---- Final solve: every slack pinned, read the canonical equilibrium force system back. ---- */
+		// Final solve: every slack pinned, read the canonical equilibrium force system back.
 		const TArray<FAssemblyRow> FinalRows = AssembleWithSlackRows(false, 0.0);
 
 		TArray<double> FinalCost;
@@ -3743,7 +3667,7 @@ namespace RigidBlockOracle
 
 		const TArray<double>& StructValues = Final.StructValues;
 
-		/* Verify the primal against the ORIGINAL physics — equilibrium HARD, strength relaxed. */
+		// Verify the primal against the original physics: equilibrium hard, strength relaxed.
 		for (int32 RowIndex = 0; RowIndex < BaseRows.Num(); ++RowIndex)
 		{
 			const FAssemblyRow& Assembly = BaseRows[RowIndex];
@@ -3777,18 +3701,18 @@ namespace RigidBlockOracle
 		Result.BlandDegenerateEntries = TotalBland;
 
 		/*
-		 * ---- The per-joint readout. ----
+		 * The per-joint readout.
 		 *
 		 * NormalUu = n1 + n2 (compression positive), MomentUuCm = HalfLength * (n1 - n2), read off
 		 * the two contacts' net normals n = n+ - n-. ViolationUu totals the joint's slack. The
-		 * utilisation is the worst per-row demand / capacity, matching FConnection's worst-axis
-		 * logic and equalling 1 + ViolationUu / capacity on the governing axis. Fail closed: a
-		 * non-positive, non-finite, or NaN-demand case reads over rather than comfortable.
+		 * utilisation is the worst per-row demand / capacity, matching FConnection's worst-axis logic
+		 * and equalling 1 + ViolationUu / capacity on the governing axis. Fail closed: a non-positive,
+		 * non-finite, or NaN-demand case reads over rather than comfortable.
 		 */
 		FOracleReadout& Readout = Result.Readout;
 		Readout.Joints.SetNum(NumJoints);
 
-		/* Capacities run to tens of thousands of force units; this only separates a real cap from zero. */
+		// Capacities run to tens of thousands of force units; this only separates a real cap from zero.
 		constexpr double CapacityFloorUu = 1.0e-6;
 		constexpr double FailClosedUtilisation = 1.0e12;
 
@@ -3817,7 +3741,7 @@ namespace RigidBlockOracle
 
 				Violation += StructValues[Info.ViolationCol];
 
-				/* The row's demand is its force-column terms alone, i.e. the LHS without the -s term. */
+				// The row's demand is its force-column terms alone, the LHS without the -s term.
 				double Demand = 0.0;
 
 				const FAssemblyRow& Row = BaseRows[Info.RowIndex];
@@ -3844,9 +3768,9 @@ namespace RigidBlockOracle
 				else
 				{
 					/*
-					 * Zero-capacity axis: any real demand is over. Written as a refused negation
-					 * so a NaN demand lands here too — !(Demand <= floor) is true for NaN (every
-					 * comparison against NaN is false), which is the fail-closed side.
+					 * Zero-capacity axis: any real demand is over. Refused negation so a NaN demand
+					 * lands here too: !(Demand <= floor) is true for NaN (every comparison against NaN
+					 * is false), the fail-closed side.
 					 */
 					RowUtilisation = !(Demand <= CapacityFloorUu) ? FailClosedUtilisation : 0.0;
 				}
@@ -3865,30 +3789,28 @@ namespace RigidBlockOracle
 	}
 
 	/**
-	 * A warm start that leads the solver into a dead end is thrown away, not believed, and not
-	 * allowed to cost an answer. A supplied basis is a hint; a hint that ends in a refusal (the
-	 * basis going singular under refactorisation, or an optimum that fails verification against
-	 * the original rows) says only that this starting point was bad, and the problem still has
-	 * the answer the cold start would have found. So a refused warm attempt is followed by one
-	 * cold solve, and that is the answer.
+	 * A warm start that leads the solver into a dead end is thrown away, not allowed to cost an
+	 * answer. A supplied basis is a hint; a hint that ends in a refusal (the basis going singular
+	 * under refactorisation, or an optimum that fails verification) says only that this starting
+	 * point was bad, and the problem still has the answer the cold start would have found. So a
+	 * refused warm attempt is followed by one cold solve, and that is the answer.
 	 *
-	 * Measured 2026-08-16, and this arm is reached: wall-01's mapped basis (12,459 of 13,362
-	 * columns carried) goes singular at the first periodic refactorisation, pivot 64, with and
-	 * without the infeasibility repair — so it is the mapped basis that is fragile, not
-	 * anything the repair adds.
+	 * This arm is reached (2026-08-16): wall-01's mapped basis (12,459 of 13,362 columns carried)
+	 * goes singular at the first periodic refactorisation, pivot 64, with and without the
+	 * infeasibility repair — so it is the mapped basis that is fragile, not the repair.
 	 *
-	 * Two things this must not do, both of which would make the fallback a place for a wrong
-	 * answer to hide: weaken the verification gate (the retry is a fresh solve of the original
-	 * problem that must pass the same gate), or report the discarded attempt as free (wasted
-	 * pivots and scans are added to the counts, and WarmStartColumnsAccepted is reported as
-	 * zero — a warm start that was abandoned is a cold start wearing a hat).
+	 * Two things this must not do, both of which would let a wrong answer hide in the fallback:
+	 * weaken the verification gate (the retry is a fresh solve that must pass the same gate), or
+	 * report the discarded attempt as free (wasted pivots and scans are added to the counts, and
+	 * WarmStartColumnsAccepted is reported as zero — an abandoned warm start is a cold start
+	 * wearing a hat).
 	 */
 	FOracleResult SolveRigidBlock(const FOracleProblem& Problem)
 	{
 		/*
 		 * The readout is a different solve, routed here and nowhere else, so the maximise-lambda
-		 * path below stays bit-identical with the flag off. The min-violation LP takes no warm
-		 * start; it always solves cold.
+		 * path below stays bit-identical with the flag off. The min-violation LP takes no warm start;
+		 * it always solves cold.
 		 */
 		if (Problem.bMinViolationReadout)
 		{
@@ -3915,7 +3837,7 @@ namespace RigidBlockOracle
 		Result.PricingColumnScans += Warm.PricingColumnScans;
 		Result.BlandDegenerateEntries += Warm.BlandDegenerateEntries;
 
-		/* INDEX_NONE is "not reported" and adding to it would make it a plausible number. */
+		// INDEX_NONE is "not reported" and adding to it would make it a plausible number.
 		if (Result.PhaseOnePivots >= 0 && Warm.PhaseOnePivots >= 0)
 		{
 			Result.PhaseOnePivots += Warm.PhaseOnePivots;

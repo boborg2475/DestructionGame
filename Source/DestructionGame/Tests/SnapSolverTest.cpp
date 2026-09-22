@@ -10,19 +10,14 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Unit tests for the snap-candidate solver — BUILD_MODE_PLAN.md behavior 2a, the
- * FIRST snap kind: brick-on-brick RUNNING-BOND NEXT COURSE.
+ * Unit tests for the snap-candidate solver (BUILD_MODE_PLAN.md behavior 2a).
  *
- * Pure and world-free by design: no gravity, no solver, no ticking. The mechanism
- * under test is deterministic geometry + material-pairing, so the assertions are
- * on the returned CANDIDATE POSES, their FORMED JOINTS and their ORDER — never on
- * any load, displacement or solve. (Displacement would be meaningless here anyway:
- * nothing moves.)
+ * World-free: no gravity, solver or ticking. Assertions are on the returned candidate
+ * poses, their joints and their order, never on load or displacement.
  *
- * THE RUNNING-BOND NUMBERS ARE READ, NOT RE-DERIVED. Core/Layout.h documents that
- * a 21.5 x 10.25 x 6.5 brick on 1 cm joints gives the 22.5 x 11.25 x 7.5
- * coordinating grid; the half-brick stagger is therefore +11.25 in X and one
- * course is +7.5 in Z.
+ * Running-bond numbers come from Core/Layout.h: a 21.5 x 10.25 x 6.5 brick on 1 cm
+ * joints gives the 22.5 x 11.25 x 7.5 grid, so the half-brick stagger is +11.25 in X
+ * and a course is +7.5 in Z.
  */
 
 /*

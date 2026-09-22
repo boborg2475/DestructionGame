@@ -8,23 +8,15 @@
 #include "Core/Structure.h"
 
 /*
- * Every name in here carries a Presenter prefix: an anonymous namespace is private to a
- * translation unit rather than to a file, a unity build merges many files into one, and
- * two file-local names that collide become a hard compile error between files that never
- * refer to each other (see Structure.cpp's header comment).
+ * Presenter prefix on every name: an anonymous namespace is private to a translation unit, and
+ * a unity build merges files, so two file-local names can collide (see Structure.cpp).
  */
 namespace
 {
 	/**
-	 * A joint's tier, in the words a player reads.
-	 *
-	 * The wording lives here because the widget may not have it: it was landed under a
-	 * recorded exception to the TDD gate on the condition it holds no decisions at all.
-	 *
-	 * None has a word of its own rather than sharing one. No row can carry it today —
-	 * InspectPiece only ever lists real joints on a real piece and AddConnection refuses
-	 * a normal that will not normalise — but a tier reading as one of the three real ones
-	 * would be the fail-open direction the whole GetJointRole contract is written against.
+	 * A joint's tier, in player-facing words. None gets its own word, not a shared one: no row
+	 * can carry None today, but reading it as one of the three real tiers is the fail-open
+	 * direction GetJointRole guards against.
 	 */
 	const TCHAR* PresenterWordForJointRole(EJointRole Role)
 	{
