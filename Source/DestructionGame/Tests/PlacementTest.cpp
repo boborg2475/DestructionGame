@@ -11,48 +11,23 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Unit test for the placement API — BUILD_MODE_PLAN.md slice 2, behavior 2a.
- *
- * The mechanism under test: BuildMode::PlacePiece turns a snap into a live,
- * jointed piece of a growing DestructionLayout::FBrickLayout. It runs the
- * snap-candidate solver against the pieces already there, adopts the piece
- * at the best-ranked snapped pose (mass from geometry + density), and forms
- * that candidate's joints as real FConnections via MakeInterface.
- *
- * World-free and on the mechanism, never displacement: nothing ticks and
- * nothing is solved here, so the assertions are on the live structure the
- * placement produced — piece count, grounded/material state, connection
- * count, the snapped box centre, the derived mass, and the formed joint's
- * profile/interface area/endpoints. A subsequent SolveLoads could run
- * against it; a later slice proves it stands.
- *
- * The running-bond pose is read, not re-derived: Core/Layout.h documents that
- * a 21.5 x 10.25 x 6.5 brick on 1 cm joints gives the 22.5 x 11.25 x 7.5
- * coordinating grid, so a next-course snap toward +X lands at
- * origin + (11.25, 0, 7.5). Matches SnapSolverTest's fixture geometry exactly.
+ * BuildMode::PlacePiece (BUILD_MODE_PLAN.md slice 2, 2a): snaps against existing pieces, adopts
+ * the best pose with mass from geometry and density, and forms the candidate's joints via
+ * MakeInterface. World-free; asserts on the resulting structure, never displacement. A
+ * next-course snap toward +X lands at origin + (11.25, 0, 7.5), as in SnapSolverTest.
  */
 
-/*
- * Named namespace, distinct from every other one in this module — an
- * anonymous namespace is private to a translation unit, not a file, and a
- * unity build merges files. See SnapSolverTest.cpp / JointInferenceTest.cpp
- * for the rule.
- */
+// Named namespace, unique in the module, for unity builds.
 namespace PlacementTestSupport
 {
 	const FVector HalfBrick(10.75, 5.125, 3.25);
 
-	// The same brick turned through 90 degrees — the return a corner is made of. A UK metric brick is 21.5 x 10.25 x 6.5, so running along Y it is (5.125, 10.75, 3.25).
+	// The same brick turned 90 degrees, running along Y.
 	const FVector HalfBrickRotated(5.125, 10.75, 3.25);
 
 	/*
-	 * Full-field profile identity. FConnectionStrength has no operator==, so
-	 * a joint profile is pinned by matching all five fields against the
-	 * named library constant — the same discipline SnapSolverTest /
-	 * JointInferenceTest use. Proves the auto-formed joint is the intended
-	 * strong bed mortar rather than a sibling profile (weak perpend or
-	 * dry-stone bearing), which differ on compression, friction and the
-	 * shear ceiling.
+	 * Full-field profile check (FConnectionStrength has no operator==), so the joint is shown to
+	 * be bed mortar rather than a sibling profile.
 	 */
 	void CheckProfileIdentity(
 		FAutomationTestBase& Test,
@@ -74,13 +49,8 @@ namespace PlacementTestSupport
 }
 
 /**
- * Two placements grow a live, jointed running-bond pair.
- *
- * First a grounded brick at the origin (a Free placement — nothing to snap to): one
- * piece, grounded, its material set, no connections. Then a second brick requested
- * just above and biased +X snaps to the running-bond next-course pose and forms one
- * live GeneralPurposeMortar bed joint back to the first — two pieces, one connection
- * with a positive interface area, linking handles 0 and 1.
+ * Two placements grow a jointed running-bond pair: a grounded Free seed with no joints, then a
+ * brick that snaps to the next-course pose with one GeneralPurposeMortar bed joint to the seed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPlacementGrowsLiveRunningBondPairTest,
@@ -97,9 +67,9 @@ bool FPlacementGrowsLiveRunningBondPairTest::RunTest(const FString& Parameters)
 	const FSnapSettings Settings; // BrickSize 21.5x10.25x6.5, joint 1.0, radius 30.
 	const double Tol = KINDA_SMALL_NUMBER;
 
-	FBrickLayout Layout; // empty: no pieces, no boxes.
+	FBrickLayout Layout;
 
-	// 1. First piece: a grounded ClayBrick at the origin. With nothing nearby the only candidate is the Free fallback, so it adopts at the requested pose and forms no joints.
+	// 1. A grounded seed at the origin; nothing to snap to, so Free with no joints.
 	const FPlacementResult First = PlacePiece(
 		Layout, FVector(0.0, 0.0, 0.0), HalfBrick, ClayBrick, /*bGrounded*/ true, Settings);
 
@@ -116,12 +86,12 @@ bool FPlacementGrowsLiveRunningBondPairTest::RunTest(const FString& Parameters)
 	{
 		const FStructurePiece& P0 = Layout.Structure.GetPiece(0);
 		TestTrue(TEXT("first piece is grounded"), P0.bIsGrounded);
-		// The stored material must be the exact library pointer passed, or later NearbyMaterials inference has nothing to read.
+		// The exact library pointer, which later joint inference reads.
 		TestTrue(TEXT("first piece material is &ClayBrick"),
 			P0.Material == &ClayBrick);
 	}
 
-	// 2. Second piece: a (non-grounded) ClayBrick requested just above the first and biased toward +X. It must snap to the running-bond next-course pose and form one live bed joint back to the first piece.
+	// 2. A brick requested above and toward +X snaps to the next course with one bed joint.
 	const FVector Requested(11.0, 0.0, 7.5);
 	const FPlacementResult Second = PlacePiece(
 		Layout, Requested, HalfBrick, ClayBrick, /*bGrounded*/ false, Settings);
@@ -137,12 +107,11 @@ bool FPlacementGrowsLiveRunningBondPairTest::RunTest(const FString& Parameters)
 
 	if (Layout.Boxes.Num() == 2)
 	{
-		// The adopted box sits at the running-bond half-stagger, one course up: origin + (11.25, 0, 7.5). Exact coordinate, tight tolerance.
 		const FVector ExpectedCentre(11.25, 0.0, 7.5);
 		TestTrue(TEXT("adopted box centre is the running-bond pose (11.25,0,7.5)"),
 			Layout.Boxes[1].CentreCm.Equals(ExpectedCentre, Tol));
 
-		// Mass is derived from the adopted box geometry and material density — computed here through the same call production uses, so the assertion is on the derivation being present, not a magic number.
+		// Mass via the same call production uses; this checks the derivation happens.
 		if (Layout.Structure.NumPieces() == 2)
 		{
 			const FPieceBox AdoptedBox{ Layout.Boxes[1].CentreCm, HalfBrick };
@@ -158,7 +127,7 @@ bool FPlacementGrowsLiveRunningBondPairTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// 3. The formed connection is a real, live joint: strong bed mortar, an interface area MakeInterface actually computed (positive), linking handles 0 and 1 in either order.
+	// 3. The connection is bed mortar with a real interface, linking handles 0 and 1.
 	if (Layout.Structure.NumConnections() == 1)
 	{
 		const FConnection& Conn = Layout.Structure.GetConnection(0);
@@ -172,14 +141,7 @@ bool FPlacementGrowsLiveRunningBondPairTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("MakeInterface accepted the solver pose (positive area)"),
 			Conn.InterfaceAreaSqCm > 0.0);
 
-		/*
-		 * A real bed joint, asserted not inferred. The running-bond bed
-		 * overlap is the in-plane product 10.25 * 10.25 = 105.0625 cm2
-		 * (Core/Layout.h), and a bed joint's normal is +/-Z. Pinning both
-		 * turns "not a degenerate joint" into an explicit fact — a face on
-		 * the wrong axis or a slivered overlap would slip past a bare > 0
-		 * area check.
-		 */
+		// Bed overlap 10.25 * 10.25 = 105.0625 cm2, normal +/-Z; stricter than area > 0.
 		TestEqual(TEXT("bed joint interface area is the running-bond overlap 105.0625 cm2"),
 			Conn.InterfaceAreaSqCm, 105.0625, 1.0e-6);
 		TestEqual(TEXT("bed joint normal is on the Z axis (|Z| == 1)"),
@@ -195,19 +157,9 @@ bool FPlacementGrowsLiveRunningBondPairTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A refused placement must not desync Boxes from the piece array.
- *
- * PlacePiece derives mass with PieceMassKg, which returns NaN for a
- * degenerate box (Core/Layout.cpp — fail-closed), and FStructure::AddPiece
- * then refuses a NaN mass with INDEX_NONE. If the placement pushes its box
- * regardless, Boxes.Num() runs one ahead of NumPieces() — and the next
- * placement, which walks Boxes and resolves each index as a piece handle,
- * reads off the end of the piece array.
- *
- * The invariant Boxes.Num() == Structure.NumPieces() is the mechanism: exact,
- * binary, immune to jitter. The follow-on valid placement is the outcome
- * control — it proves the layout wasn't corrupted, so the structure can
- * still grow.
+ * A refused placement keeps Boxes parallel to the pieces. A degenerate box gets NaN mass and
+ * AddPiece refuses it; pushing the box anyway would let the next placement read past the piece
+ * array. A follow-on valid placement proves the layout still grows.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPlacementRefusedDegeneratePieceKeepsBoxesParallelTest,
@@ -225,7 +177,7 @@ bool FPlacementRefusedDegeneratePieceKeepsBoxesParallelTest::RunTest(const FStri
 
 	FBrickLayout Layout;
 
-	// 1. A valid grounded seed brick. Succeeds and leaves the invariant intact.
+	// 1. A valid grounded seed.
 	const FPlacementResult Seed = PlacePiece(
 		Layout, FVector(0.0, 0.0, 0.0), HalfBrick, ClayBrick, /*bGrounded*/ true, Settings);
 	TestEqual(TEXT("seed placement returns handle 0"), Seed.PieceHandle, 0);
@@ -233,7 +185,7 @@ bool FPlacementRefusedDegeneratePieceKeepsBoxesParallelTest::RunTest(const FStri
 	TestEqual(TEXT("seed: boxes parallel to pieces"),
 		Layout.Boxes.Num(), Layout.Structure.NumPieces());
 
-	// 2. A degenerate piece: zero Z extent, so PieceMassKg returns NaN and AddPiece refuses it. Not brick-sized either, so it offers only a Free candidate that forms no joints. The placement must refuse cleanly and leave the layout untouched.
+	// 2. Zero Z extent: NaN mass, so AddPiece refuses it.
 	const FVector DegenerateExtent(10.75, 5.125, 0.0);
 	const FPlacementResult Refused = PlacePiece(
 		Layout, FVector(11.0, 0.0, 7.5), DegenerateExtent, ClayBrick, /*bGrounded*/ false, Settings);
@@ -242,13 +194,12 @@ bool FPlacementRefusedDegeneratePieceKeepsBoxesParallelTest::RunTest(const FStri
 		Refused.PieceHandle, static_cast<int32>(INDEX_NONE));
 	TestEqual(TEXT("refused placement forms no joints"), Refused.JointsFormed, 0);
 
-	// THE INVARIANT: no orphan box. Boxes must stay parallel to the piece array.
 	TestEqual(TEXT("refused placement keeps Boxes parallel to pieces"),
 		Layout.Boxes.Num(), Layout.Structure.NumPieces());
 	TestEqual(TEXT("refused placement adds no piece"), Layout.Structure.NumPieces(), 1);
 	TestEqual(TEXT("refused placement adds no connection"), Layout.Structure.NumConnections(), 0);
 
-	// 3. A valid next-course brick onto the seed still succeeds — proving the refused placement didn't corrupt the layout. If an orphan box had desynced the arrays, this placement's NearbyMaterials walk would read past the piece array.
+	// 3. A valid next-course brick still succeeds.
 	const FPlacementResult Valid = PlacePiece(
 		Layout, FVector(11.0, 0.0, 7.5), HalfBrick, ClayBrick, /*bGrounded*/ false, Settings);
 
@@ -264,34 +215,11 @@ bool FPlacementRefusedDegeneratePieceKeepsBoxesParallelTest::RunTest(const FStri
 }
 
 /**
- * CR-2a, placement forms the quoin — behaviour in one sentence: PlacePiece
- * laying a rotated brick against the end of a stretcher adopts the
- * corner-return snap and forms a live connection carrying the quoin's full
- * GeneralPurposeMortar over the brick's 66.625 cm2 end face, not the head
- * joint's weak perpend.
- *
- * Why this and not only the solver test: the solver decides the profile; the
- * placement path is where it becomes a joint the collapse system can read,
- * joined by Placement.cpp's loop handing the candidate's profile to
- * DestructionLayout::MakeInterface. This pins the whole chain: the pose
- * survives MakeInterface's face test (one axis separated by exactly the
- * joint, positive overlap on the other two), the area it computes is the end
- * face rather than a bed or a sliver, the normal it derives is horizontal —
- * precisely the contact the pre-refinement rule called a perpend — and the
- * profile riding on the connection is the corner's mortar.
- *
- * The area is derived, not copied: the shared face is the brick's width by
- * its height, 10.25 x 6.5 = 66.625 cm2, the same end-face figure
- * Core/Layout.h documents.
- *
- * Why the corner snap must win: the cursor at (16.5, 5.5, 3.25) is 0.395 cm
- * from the +X-end return that finishes flush with the stretcher's -Y face,
- * 11.1 cm from the other flush choice at that end, and past the 30 cm radius
- * from both -X-end returns. Ranking is raw distance, so the nearest return is
- * Candidates[0] and PlacePiece adopts it.
- *
- * Needs a ticking world: no. Nothing ticks and nothing is solved — the
- * assertions are on the live structure the placement produced.
+ * CR-2a: laying a rotated brick against a stretcher's end adopts the corner-return snap and forms
+ * a full GeneralPurposeMortar joint over the 10.25 x 6.5 = 66.625 cm2 end face, not a weak
+ * perpend. Checks the whole chain through MakeInterface: pose, area, X normal and profile. The
+ * cursor (16.5, 5.5, 3.25) is 0.395 cm from the chosen return and 11.1 cm from the next. No
+ * ticking world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPlacementFormsTheCornerReturnJointTest,
@@ -310,7 +238,7 @@ bool FPlacementFormsTheCornerReturnJointTest::RunTest(const FString& Parameters)
 
 	FBrickLayout Layout;
 
-	// 1. The stretcher: a grounded ClayBrick running along X, resting on the ground (centre Z = 3.25, bottom face at 0 — the 2026-09-15 course convention).
+	// 1. A grounded stretcher along X, resting on the ground (centre Z = 3.25).
 	const FPlacementResult Seed = PlacePiece(
 		Layout, FVector(0.0, 0.0, 3.25), HalfBrick, ClayBrick, /*bGrounded*/ true, Settings);
 
@@ -318,13 +246,7 @@ bool FPlacementFormsTheCornerReturnJointTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("seed placement is a Free placement"),
 		static_cast<int32>(Seed.Kind), static_cast<int32>(ESnapKind::Free));
 
-	/*
-	 * 2. The return: the same brick turned to run along Y, asked for just
-	 * off the stretcher's +X end. It must snap to (16.875, 5.625, 3.25) — the
-	 * stretcher's end face at 10.75, one 1 cm joint, then the return's own
-	 * half-width 5.125 — flush at Y = -5.125 against the stretcher's -Y
-	 * width face.
-	 */
+	// 2. The rotated return snaps to X = 10.75 + 1 + 5.125 = 16.875, flush with the stretcher's -Y face.
 	const FPlacementResult Return = PlacePiece(
 		Layout, FVector(16.5, 5.5, 3.25), HalfBrickRotated, ClayBrick, /*bGrounded*/ true, Settings);
 
@@ -348,12 +270,7 @@ bool FPlacementFormsTheCornerReturnJointTest::RunTest(const FString& Parameters)
 	{
 		const FConnection& Conn = Layout.Structure.GetConnection(0);
 
-		/*
-		 * The assertion the slice exists for. Full-field, because mortar and
-		 * perpend are separated only by cohesion (0.9 vs 0.2) and tension
-		 * (0.7 vs 0.1) — a partial comparison would accept the answer the
-		 * unmigrated three-argument inference gives for a horizontal normal.
-		 */
+		// Full-field: mortar and perpend differ only in cohesion (0.9 vs 0.2) and tension (0.7 vs 0.1).
 		CheckProfileIdentity(
 			*this,
 			TEXT("corner joint profile == GeneralPurposeMortar: "),

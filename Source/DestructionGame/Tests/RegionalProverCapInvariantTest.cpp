@@ -10,58 +10,17 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * REGIONAL COLLAPSE PROVER (REGIONAL_PROVER_PLAN.md §1, review item 12) — THE R-UNION-B CAP
- * INVARIANT, A PROPERTY / INVARIANT GUARD, GREEN ON ARRIVAL. Not a driver: it pins an arithmetic
- * contract that already holds on the slice-2 flood, so it earns its place by catching a future
- * regression rather than by driving a build. Its bite is proven by mutation in the test-expert
- * report (perturbing AdmitToRegion's prospective-boundary arithmetic turns it red).
+ * Regional prover cap invariant (REGIONAL_PROVER_PLAN.md §1, review item 12). A guard, green on
+ * arrival; mutating AdmitToRegion's prospective-boundary arithmetic turns it red.
  *
- * WHAT IT GUARDS. The flood in SolveAndBreak_WithRegionalProver bounds the WHOLE posed problem —
- * the interior region R PLUS the grounded frontier ring B — at RegionBlockCap (the plan's stopping
- * gate "region + grounded boundary <= region cap", §1 gate 1). A cap is chosen as a per-action
- * BLOCK BUDGET (D8, DESIGN §8), so the posed count is a latency-load promise, and an off-by-one in
- * AdmitToRegion's prospective-boundary arithmetic (the Boundary.Num() minus contains(candidate)
- * plus NewRing.Num() term) would silently overspend the budget by the ring, or underspend and
- * shrink the region below what the cap allows. RegionalProverRegionUnionBoundaryFitsTheCap pins ONE
- * (seed {29}, cap 15) point of this; this test pins the whole contract across a SWEEP of seeds and
- * caps so the arithmetic cannot drift at a point the single example does not touch.
+ * The flood bounds region R plus grounded boundary ring B at RegionBlockCap, a per-action block
+ * budget (D8, DESIGN §8). Across a sweep of seeds and caps: (1) any posed count is in [1, cap];
+ * (2) it equals a reference flood that uses the same BFS admission order but recomputes the
+ * boundary from scratch each time, where production maintains it incrementally. An off-by-one in
+ * the incremental arithmetic shows up as a mismatch even when the result still fits the cap.
  *
- * TWO PROPERTIES, ASSERTED FOR EVERY (SEED, CAP) IN THE TABLE:
- *   (1) THE POSED COUNT FITS THE CAP. Whenever a prove actually poses a problem
- *       (GetLastRegionalProblemBlockCount() >= 1), the posed union count is in [1, RegionBlockCap].
- *       A posed count above the cap is the overspend the latency budget forbids.
- *   (2) THE POSED COUNT EQUALS AN INDEPENDENT REFERENCE. The posed union count equals the block
- *       count a SEPARATELY-CODED flood computes from the same seed and cap. The reference is derived
- *       DIFFERENTLY from production on the axis that matters: production maintains its boundary ring
- *       INCREMENTALLY (Boundary.Add / Boundary.Remove as pieces are admitted, and a prospective
- *       count assembled from Boundary.Num() minus (Boundary.Contains(candidate) ? 1 : 0) plus
- *       NewRing.Num()), whereas the reference RECOMPUTES the induced one-hop frontier of R FROM
- *       SCRATCH as a set operation at every admit test. The two agree only if that incremental
- *       arithmetic is exactly right — so a +1 / -1 slip in it is caught here even though the final
- *       union still, wrongly, fit the cap.
- *
- * WHY THE REFERENCE IS NOT A WORTHLESS MIRROR. It shares production's ADMISSION ORDER (a greedy BFS
- * over joint-hops, seeds first) because on a non-chain the admitted SET — and thus the count —
- * depends on order, so a reference that ignored order would disagree for a reason unrelated to the
- * bug it guards. What it does NOT share is the thing under guard: the prospective-boundary SIZE
- * computation. That is recomputed independently (a fresh NeighboursOf(R) minus R union), which is
- * exactly the quantity an off-by-one would corrupt. The value is in those two being coded apart on
- * that axis, per the plan's "so an off-by-one in AdmitToRegion's prospective-boundary arithmetic is
- * caught".
- *
- * THE FIXTURE: the 30-course, 10 cm/course mortared leaning stack (the row-3 FALLS rung of
- * LeaningStackAcceptanceTest) — a linear chain, one bed joint per course. A chain is the honest
- * shape for a CAP-ARITHMETIC guard: the posed count is a clean function of seed and cap
- * (min(cap, reachable) once the seed's neighbourhood fits), so a divergence is unambiguously an
- * arithmetic fault rather than a topology accident.
- *
- * ASSERT ON MECHANISM, NEVER DISPLACEMENT. The only quantities read are the posed BLOCK COUNT (a
- * count the oracle was handed) and set sizes — mechanism-adjacent and immune to jitter. No
- * centimetre of movement is read.
- *
- * NEEDS A TICKING WORLD: NO. Each row is one in-process SolveAndBreak_WithRegionalProver call and a
- * state query; no Chaos, no world tick. UNITS ARE DERIVED HERE, never imported. NAMED NAMESPACE,
- * not anonymous: a unity build merges many files into one translation unit.
+ * Fixture: the 30-course leaning stack, a linear chain, so the count is a clean function of seed
+ * and cap. Asserts on block counts only. No ticking world. Named namespace for unity builds.
  */
 namespace RegionalProverCapInvariantSupport
 {
@@ -76,7 +35,7 @@ namespace RegionalProverCapInvariantSupport
 	constexpr double BedJointThicknessCm = 1.0;
 	constexpr double CoursePitchCm = BrickHeightCm + BedJointThicknessCm;
 
-	/** Density-first multiplication order — the PieceMassKg contract; 2.72163125 kg. */
+	/** Density first, matching PieceMassKg's order; 2.72163125 kg. */
 	constexpr double BrickMassKg =
 		ClayDensityGramsPerCubicCm * BrickLengthCm * BrickWidthCm * BrickHeightCm / 1000.0;
 
@@ -121,22 +80,14 @@ namespace RegionalProverCapInvariantSupport
 	}
 
 	/**
-	 * THE INDEPENDENT REFERENCE. Flood a region from the seed by joint-hops, greedily, in the same
-	 * BFS/piece order production admits, and return the union block count |R + B| — but recompute the
-	 * induced boundary ring FROM SCRATCH at every admit test (NeighboursOf(R) minus R), rather than
-	 * maintaining it incrementally as production does. Returns 0 when no piece is admitted (the
-	 * seed's neighbourhood does not fit the cap), matching production's "no pose" (block count 0 /
-	 * INDEX_NONE).
-	 *
-	 * The adjacency is read off the INTACT structure — the state the flood sees at the top of the
-	 * call, before any stitch severs a joint — via GetConnection, so the reference is computed on a
-	 * pristine copy of the fixture.
+	 * Reference flood: same BFS order as production, but the boundary is recomputed from scratch at
+	 * each admit. Returns |R| + |B|, or 0 if nothing is admitted. Run on a pristine structure.
 	 */
 	int32 ReferenceUnionCount(const FStructure& S, const TArray<int32>& Seed, int32 Cap)
 	{
 		const int32 N = S.NumPieces();
 
-		/* Undirected joint-hop adjacency over intact connections only. */
+		// Undirected adjacency over intact connections.
 		TArray<TArray<int32>> Adjacency;
 		Adjacency.SetNum(N);
 
@@ -166,7 +117,7 @@ namespace RegionalProverCapInvariantSupport
 
 		TSet<int32> Region;
 
-		/* The induced one-hop frontier of Region, recomputed as a set operation. */
+		// The one-hop frontier of R, recomputed.
 		auto InducedBoundary = [&](const TSet<int32>& R) -> TSet<int32>
 		{
 			TSet<int32> Ring;
@@ -185,7 +136,7 @@ namespace RegionalProverCapInvariantSupport
 			return Ring;
 		};
 
-		/* Admit the candidate iff |R + {c}| + |boundary(R + {c})| still fits the cap. */
+		// Admit iff |R + {c}| + |boundary(R + {c})| fits the cap.
 		TArray<int32> Frontier;
 
 		auto TryAdmit = [&](int32 Candidate) -> bool
@@ -239,12 +190,7 @@ namespace RegionalProverCapInvariantSupport
 	}
 }
 
-/**
- * The posed region+boundary block count fits the cap and equals an independently-coded flood's
- * count, across a sweep of seeds and caps.
- *
- * NEEDS A TICKING WORLD: NO. See the file header.
- */
+/** The posed region+boundary count fits the cap and matches the reference, across seeds and caps. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRegionalProverCapInvariantTest,
 	"DestructionGame.Core.Structure.RegionalProver.RegionUnionBoundaryCapInvariantHoldsAcrossSeedsAndCaps",
@@ -254,7 +200,7 @@ bool FRegionalProverCapInvariantTest::RunTest(const FString& Parameters)
 {
 	using namespace RegionalProverCapInvariantSupport;
 
-	/* FIXTURE PRECONDITION, ONCE: a 30-block chain, one bed joint per course above the base. */
+	// Fixture precondition: a 30-block chain.
 	{
 		FStack Precondition;
 		LayStack(Precondition);
@@ -266,10 +212,8 @@ bool FRegionalProverCapInvariantTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE SWEEP. Seeds at the top, base, and middle; caps spanning below the seed neighbourhood, at
-	 * cutting sizes, and above the structure. Each row is an independent fixture (the prove severs
-	 * joints, so it must not be reused). "At least one row poses" is asserted at the end so an
-	 * accidental all-decline sweep cannot pass vacuously.
+	 * Seeds at top, base and middle; caps from below the seed neighbourhood to above the structure.
+	 * Fresh fixtures per row, since the prove severs joints.
 	 */
 	struct FRow { int32 Seed; int32 Cap; };
 	const TArray<FRow> Rows = {
@@ -294,7 +238,7 @@ bool FRegionalProverCapInvariantTest::RunTest(const FString& Parameters)
 
 		const int32 PosedOrZero = (Posed == INDEX_NONE) ? 0 : Posed;
 
-		/* (2) The posed count equals the independent reference — the off-by-one net. */
+		// (2) Matches the reference.
 		TestEqual(
 			*FString::Printf(
 				TEXT("seed %d cap %d: posed union count (%d) must equal the independently-computed ")
@@ -302,7 +246,7 @@ bool FRegionalProverCapInvariantTest::RunTest(const FString& Parameters)
 				Row.Seed, Row.Cap, PosedOrZero, Reference),
 			PosedOrZero, Reference);
 
-		/* (1) When a prove poses, the posed count fits the cap and is at least one. */
+		// (1) A posed count is in [1, cap].
 		if (Reference >= 1)
 		{
 			++PosingRows;

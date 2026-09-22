@@ -7,29 +7,24 @@
 #include "Core/ConnectionStrength.h"
 
 /**
- * The shared connection profile library: one place a joint type's real-world
- * strengths live, so retuning mortar changes mortar everywhere. Values and
+ * The shared connection profile library, so retuning mortar changes it everywhere. Values and
  * citations are in ConnectionProfiles.cpp.
  */
 namespace DestructionProfiles
 {
 	/**
-	 * What kind of joint a profile is, which decides which physical invariants apply.
-	 *
-	 * Data, not code: the class is a field on the row, not a branch — and it lets
-	 * a test fixture be machine-recognisable, so an unbreakable joint can never
-	 * quietly reach a scenario.
+	 * A profile's joint kind, which decides which physical invariants apply. Also marks test
+	 * fixtures so an unbreakable joint can't reach a scenario.
 	 */
 	enum class EConnectionProfileClass : uint8
 	{
-		/** A bond that grips as well as rubs — mortar. Real cohesion, real friction. */
+		/** Mortar: cohesion and friction. */
 		Bonded,
 
-		/** No bond at all — dry stone. Carries shear purely by friction. */
+		/** Dry stone: shear by friction only. */
 		Frictional,
 
-		/** Nail, screw, bolt. A discrete fastener does not care how hard the faces
-		    are pressed together, so mu is exactly zero. */
+		/** Nail, screw, bolt: friction is zero, since a fastener ignores face pressure. */
 		MechanicalFastener,
 
 		/** TEST FIXTURE ONLY. Must never be used by a scenario. */
@@ -37,12 +32,8 @@ namespace DestructionProfiles
 	};
 
 	/**
-	 * One row of the library. Adding a profile is adding one of these.
-	 *
-	 * Strength is a reference to the shipped constant, never a copy — `&Row.Strength`
-	 * is the address a joint fastened with that row carries. A copy would make the
-	 * obvious lookup (walk the library, compare pointers) silently find "no such row"
-	 * for every joint. Same fix as FNamedMaterialProfile::Profile.
+	 * One library row. Strength is a reference to the shipped constant, not a copy, so a pointer
+	 * lookup finds the row (as FNamedMaterialProfile::Profile).
 	 */
 	struct FNamedConnectionProfile
 	{
@@ -53,10 +44,7 @@ namespace DestructionProfiles
 
 	extern const FConnectionStrength GeneralPurposeMortar;
 
-	/**
-	 * The weak-perpend row — general purpose mortar in a vertical head/corner joint, its two bond axes
-	 * knocked down (owner-approved item 6b). See ConnectionProfiles.cpp for why a perpend is the weak link.
-	 */
+	/** General purpose mortar in a vertical perpend, with weaker bond axes (item 6b; see the .cpp). */
 	extern const FConnectionStrength GeneralPurposeMortarPerpend;
 
 	extern const FConnectionStrength LimeMortar;
@@ -65,40 +53,20 @@ namespace DestructionProfiles
 	extern const FConnectionStrength Screw;
 	extern const FConnectionStrength Bolt;
 
-	/** TEST FIXTURE ONLY — a joint that never gives. Never ship it in a scenario. */
+	/** Test fixture only: a joint that never gives. Never ship it in a scenario. */
 	extern const FConnectionStrength Unbreakable;
 
-	/**
-	 * TEST FIXTURE ONLY — no cohesion at all, but a real tensile bond. Never ship it.
-	 *
-	 * Not a material. It exists because `DryStone` cannot answer the question the
-	 * composite-depth work needs answered; see ConnectionProfiles.cpp.
-	 */
+	/** Test fixture only: no cohesion but real tension, for the composite-depth tests (see the .cpp). */
 	extern const FConnectionStrength CohesionlessBond;
 
-	/**
-	 * Every connection profile, so a sweep can check the whole library rather
-	 * than whichever entries a test remembered to name.
-	 */
+	/** Every connection profile, for sweeps over the whole library. */
 	TArrayView<const FNamedConnectionProfile> AllConnectionProfiles();
 
 	/**
-	 * Which library row a joint's strength is, matched field for field — or null for one this
-	 * library never shipped.
-	 *
-	 * By value because identity is already gone by the time anyone can ask: FStructure::AddConnection
-	 * stores a copy of the profile, not a pointer to it, so a joint in a built wall has no address to
-	 * compare. Matching the five fields back to the row is the honest route to the name — the answer
-	 * is the extern itself, so `&FindConnectionProfileRow(S)->Strength` is the library's own address.
-	 *
-	 * Two rows with identical fields would be ambiguous; this returns the first. No two shipped rows
-	 * are identical today (the closest pair, DryStone and the CohesionlessBond fixture, differ on
-	 * tension), but a retune that collapsed two rows onto the same numbers would be a library bug,
-	 * not a bug here.
-	 *
-	 * An exact comparison, not a tolerance: the strength being looked up is a copy of a library row's
-	 * bits, not the result of arithmetic on one, so a near-match would answer a different question —
-	 * and a NaN field correctly finds no row at all.
+	 * The library row whose five fields exactly equal this strength, or null. By value because
+	 * AddConnection stores a copy, so a built joint has no address to compare. Exact, not a
+	 * tolerance: the input is a copy of a row's bits, and a NaN field finds nothing. Returns the
+	 * first of any identical rows (none ship today).
 	 */
 	const FNamedConnectionProfile* FindConnectionProfileRow(const FConnectionStrength& Strength);
 }

@@ -20,60 +20,40 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * BUILD-MODE UI-4a — the interactive build loop's TESTABLE CORE (BUILD_MODE_PLAN.md, UI-4).
+ * Build mode UI-4a: the build loop's testable core (BUILD_MODE_PLAN.md, UI-4). UBuildModeComponent
+ * holds the live StructureId, drives a ghost actor from the cursor via PreviewBuildPiece, and
+ * commits the last-previewed pose via PlaceBuildPiece.
  *
- * UBuildModeComponent is the logic real mouse/key input will call. It holds the live build's
- * StructureId, drives a translucent GHOST actor from the cursor via the subsystem's non-mutating
- * PreviewBuildPiece, and commits the last-previewed pose on confirm via PlaceBuildPiece. This
- * slice proves the DRIVE LOOP — begin, preview (ghost tracks the predicted snap and shows/hides),
- * confirm (the structure grows by one real piece at the previewed pose) — reusing the proven
- * seams rather than inventing physics.
- *
- * A WORLD TEST, NOT A CORE UNIT TEST, for the same reason its siblings in BuildPlacePieceTest.cpp
- * are: the component reaches the UDestructionStructureSubsystem, which spawns real ABrickActors
- * and binds them, and the ghost is itself a spawned actor. It rides the shared FBrickTestWorld
- * harness under AGameModeBase (brick-empty). It NEVER ticks physics: every assertion is on the
- * MECHANISM — the subsystem's piece count, the ghost actor's transform and visibility, the placed
- * piece's box, actor identity — never on displacement. Two severed pieces can rest exactly in
- * place, and nothing here is even released, so a displacement assertion would measure nothing.
- *
- * THE RUNNING-BOND NUMBERS ARE READ, NOT RE-DERIVED, matching BuildPlacePieceTest.cpp and
- * SnapSolverTest.cpp: a 21.5 x 10.25 x 6.5 brick on 1 cm joints gives the 22.5 x 11.25 x 7.5
- * coordinating grid, so a next-course brick requested at (11, 0, 7.5) snaps to (11.25, 0, 7.5).
+ * World tests, because the subsystem spawns real ABrickActors and the ghost is an actor. Physics
+ * never ticks; assertions are on mechanism (piece count, ghost transform/visibility, placed box,
+ * actor identity), never displacement. Running-bond numbers match SnapSolverTest.cpp: a request
+ * at (11, 0, 7.5) snaps to (11.25, 0, 7.5).
  */
 namespace BuildModeComponentTestSupport
 {
-	/* HALF-extent of a FULL 21.5 x 10.25 x 6.5 brick — the component's default CurrentExtentCm. */
+	// Half-extent of a full brick; the component's default CurrentExtentCm.
 	const FVector HalfBrick(10.75, 5.125, 3.25);
 
-	/* FULL size of that brick — what GetComponentsBoundingBox().GetSize() must read. */
+	// Full brick size, as GetComponentsBoundingBox().GetSize() reads it.
 	const FVector FullBrickSizeCm(21.5, 10.25, 6.5);
 
-	/* The running-bond half-stagger snap one course up from the origin brick, on its +X side. */
+	// Running-bond snap one course up from the origin brick, on its +X side.
 	const FVector ExpectedRunningBondCentre(11.25, 0.0, 7.5);
 
 	/*
-	 * THE RESTS-ON-THE-GROUND CONSTANTS, SPELLED OUT RATHER THAN IMPORTED (DESIGN §8, 2026-09-15).
-	 *
-	 * A brick is 6.5 cm deep on a 1 cm bed joint, so a course is 7.5 cm and the brick's own half
-	 * height is 3.25 cm. Course 0 therefore centres a brick at 3.25 with its underside on the earth,
-	 * and the next course up centres at 10.75. Every number below is that arithmetic written out —
-	 * calling DestructionSession::CoursePlaneZCm here would make these tests agree with the plane
-	 * function however wrong it was, which is the one thing they exist to catch.
+	 * Grounded-course constants, written out rather than imported (DESIGN §8, 2026-09-15). Course 0
+	 * centres a 6.5 cm brick at 3.25 so it rests on the ground. Calling CoursePlaneZCm here would make
+	 * these tests agree with the function they check.
 	 */
-	/** Course 0's plane for a brick: the piece rests ON the ground rather than straddling it. */
+	/** Course 0's plane for a brick. */
 	constexpr double GroundedBrickPlaneZCm = 3.25;
 
 	/** A seed brick's centre on the grounded course, at the world origin in X and Y. */
 	const FVector GroundedSeedCursorCm(0.0, 0.0, GroundedBrickPlaneZCm);
 
 	/**
-	 * An owner actor with a registered UBuildModeComponent on it, or null with the reason reported.
-	 *
-	 * The same six lines opened every test in this file, which CURRENT_STATE has been carrying as an
-	 * owed helper. RegisterComponent is what makes GetWorld() resolve, and every door on the
-	 * component fails closed without it — so a fixture that forgot it would turn every assertion
-	 * below into a silent no-op rather than a failure.
+	 * An owner actor with a registered UBuildModeComponent, or null with the reason reported.
+	 * RegisterComponent is required: without it GetWorld() is null and every call fails closed silently.
 	 */
 	UBuildModeComponent* MakeComponent(FAutomationTestBase& Test, UWorld* World)
 	{
@@ -118,24 +98,10 @@ namespace BuildModeComponentTestSupport
 
 /**
  * BeginBuild opens a live structure; UpdatePreviewAt drives the ghost to the predicted snap and
- * shows it; ConfirmPlace grows the structure by one real piece at the previewed pose.
- *
- * STEP BY STEP:
- *  1. A component attached to an actor in the world. BeginBuild registers a structure —
- *     GetStructureId names one and Subsystem.Find(id) is a non-null, empty binding.
- *  2. A preview at the origin then ConfirmPlace seeds a brick — Find(id) holds 1 piece, and it is
- *     recorded GROUNDED because its snapped pose puts its bottom face on the earth, not because
- *     any caller said so (the 2026-09-15 DESIGN §8 ruling; a seed centred at Z = 0 has its
- *     underside at -3.25, below the ground plane, so it is grounded by the pose rule).
- *  3. UpdatePreviewAt((11, 0, 7.5)) returns a valid BrickNextCourse
- *     preview centred at (11.25, 0, 7.5), AND the ghost actor is VISIBLE with its world BOUNDS
- *     centred there (not its corner-pivot origin), sized as a full brick, and NOT blocking a
- *     Visibility trace through itself — the "ghost shows where the click will land" proof.
- *  4. ConfirmPlace grows the structure to 2 pieces; the real brick's box centre is the previewed
- *     (11.25, 0, 7.5); its ABrickActor is DISTINCT from the ghost and its BOUNDS coincide with it.
- *
- * NEEDS A TICKING WORLD: a real world for the actor spawns (ghost and bricks), but it never ticks
- * — this is about what the structure and its actors ARE, not about anything moving.
+ * shows it; ConfirmPlace grows the structure by one piece at the previewed pose. The seed is
+ * grounded by the pose rule (DESIGN §8): centred at Z = 0 its underside is below ground. The ghost
+ * must be visible, bounds-centred on the snap, full-brick sized and not block a Visibility trace;
+ * the placed brick must be a distinct actor whose bounds match the ghost's. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeComponentDrivesGhostAndCommitsTest,
@@ -157,7 +123,6 @@ bool FBuildModeComponentDrivesGhostAndCommitsTest::RunTest(const FString& Parame
 
 	UDestructionStructureSubsystem& Subsystem = *TestWorld.Subsystem;
 
-	/* An owner actor in the world, and the component registered onto it so GetWorld() resolves. */
 	AActor* Owner = TestWorld.World->SpawnActor<AActor>();
 	if (Owner == nullptr)
 	{
@@ -173,7 +138,7 @@ bool FBuildModeComponentDrivesGhostAndCommitsTest::RunTest(const FString& Parame
 	}
 	Comp->RegisterComponent();
 
-	/* STEP 1: BeginBuild opens an empty, live structure. */
+	// Step 1: BeginBuild opens an empty, live structure.
 	Comp->BeginBuild();
 
 	const int32 StructureId = Comp->GetStructureId();
@@ -199,7 +164,7 @@ bool FBuildModeComponentDrivesGhostAndCommitsTest::RunTest(const FString& Parame
 			Binding->NumPieces()),
 		Binding->NumPieces(), 0);
 
-	/* STEP 2: a grounded seed brick, placed through the component's confirm at the origin. */
+	// Step 2: a grounded seed brick at the origin.
 	Comp->UpdatePreviewAt(FVector(0.0, 0.0, 0.0));
 	Comp->ConfirmPlace();
 
@@ -222,10 +187,7 @@ bool FBuildModeComponentDrivesGhostAndCommitsTest::RunTest(const FString& Parame
 			Binding->GetStructure().GetPiece(0).bIsGrounded);
 	}
 
-	/*
-	 * STEP 3: a next-course preview drives the ghost. The requested cursor is off-grid on
-	 * purpose — the snap must move it, and the ghost must follow the snap, not the cursor.
-	 */
+	// Step 3: an off-grid cursor, so the ghost must follow the snap, not the cursor.
 	const FBuildPreview Preview = Comp->UpdatePreviewAt(FVector(11.0, 0.0, 7.5));
 
 	TestTrue(
@@ -244,13 +206,9 @@ bool FBuildModeComponentDrivesGhostAndCommitsTest::RunTest(const FString& Parame
 		Preview.CentreCm.Equals(ExpectedRunningBondCentre, KINDA_SMALL_NUMBER));
 
 	/*
-	 * THE GHOST SHOWS WHERE THE CLICK WILL LAND: visible, and with its world BOUNDS — not its
-	 * actor origin — centred on the snapped centre. SM_Cube's pivot is a CORNER, so a ghost
-	 * placed by SetActorLocation(CentreCm) has its bounds a half-brick off on every axis while
-	 * GetActorLocation reads perfectly right (BrickWorldTestSupport.h and BrickActorTest.cpp warn
-	 * about exactly this). Production's BrickSpawnTransform subtracts the scaled local centre to
-	 * compensate; the ghost must do the same, and the only pivot-agnostic proof is on the bounds.
-	 * bNonColliding = true so the box is read even once the ghost's collision is disabled (below).
+	 * Assert on bounds, not actor location: SM_Cube's pivot is a corner, so a ghost placed by
+	 * SetActorLocation(CentreCm) is a half-brick off while GetActorLocation reads right.
+	 * bNonColliding = true so the box is read with the ghost's collision disabled.
 	 */
 	AActor* Ghost = Comp->GetGhostActor();
 
@@ -283,12 +241,9 @@ bool FBuildModeComponentDrivesGhostAndCommitsTest::RunTest(const FString& Parame
 			GhostBoundsSize.Equals(FullBrickSizeCm, BoundsToleranceCm));
 
 		/*
-		 * AND THE GHOST IS NOT A CLICK-BLOCKING COLLIDER. A Visibility trace driven straight
-		 * through the ghost's own bounds centre — so it cannot miss the ghost's volume — must not
-		 * come back holding the ghost. A stock ABrickActor blocks ECC_Visibility (BrickActorTest.cpp
-		 * traces on exactly this channel), which would eat the build raycast the real cursor casts
-		 * and let the ghost depenetrate against released bricks. Nothing else sits on this line: the
-		 * seed brick spans X -10.75..10.75, Z -3.25..3.25, and this ray is at X 11.25, Z 7.5.
+		 * The ghost must not block a Visibility trace through its own centre. A stock ABrickActor
+		 * blocks ECC_Visibility, which would eat the cursor's build raycast. The seed brick is clear
+		 * of this ray (it spans X up to 10.75, Z up to 3.25).
 		 */
 		const FVector TraceStart(GhostBoundsCentre.X, GhostBoundsCentre.Y - 100.0, GhostBoundsCentre.Z);
 		const FVector TraceEnd(GhostBoundsCentre.X, GhostBoundsCentre.Y + 100.0, GhostBoundsCentre.Z);
@@ -305,7 +260,7 @@ bool FBuildModeComponentDrivesGhostAndCommitsTest::RunTest(const FString& Parame
 			GhostHit.GetActor() != Ghost);
 	}
 
-	/* STEP 4: confirm the previewed pose grows the structure by one real, distinct piece. */
+	// Step 4: confirm grows the structure by one real, distinct piece.
 	const FPieceRef Placed = Comp->ConfirmPlace();
 
 	TestTrue(
@@ -334,7 +289,6 @@ bool FBuildModeComponentDrivesGhostAndCommitsTest::RunTest(const FString& Parame
 				PlacedCentre.X, PlacedCentre.Y, PlacedCentre.Z),
 			PlacedCentre.Equals(ExpectedRunningBondCentre, KINDA_SMALL_NUMBER));
 
-		/* The placed brick is a REAL bound ABrickActor, and it is NOT the ghost. */
 		ABrickActor* PlacedActor = Cast<ABrickActor>(Binding->GetActor(1));
 		TestNotNull(
 			FString::Printf(TEXT("piece 1 should be backed by a spawned ABrickActor, got %s"),
@@ -345,12 +299,7 @@ bool FBuildModeComponentDrivesGhostAndCommitsTest::RunTest(const FString& Parame
 			TEXT("the placed brick must be a DISTINCT actor from the ghost"),
 			PlacedActor != nullptr && static_cast<AActor*>(PlacedActor) != Ghost);
 
-		/*
-		 * AND THE REAL BRICK LANDS EXACTLY WHERE THE GHOST STOOD. The ghost previews the click;
-		 * the click must place the piece the ghost was showing, in the same world position. Both
-		 * are compared on BOUNDS so the corner-pivot offset cannot make one agree while the other
-		 * is a half-brick out — the whole point of bug 1.
-		 */
+		// The real brick lands where the ghost stood, compared on bounds so a pivot offset can't hide.
 		if (PlacedActor != nullptr)
 		{
 			const FVector PlacedBoundsCentre =
@@ -369,18 +318,9 @@ bool FBuildModeComponentDrivesGhostAndCommitsTest::RunTest(const FString& Parame
 }
 
 /**
- * A PREVIEW HIDES THE GHOST WHEN IT IS INVALID AND SHOWS IT WHEN IT IS VALID.
- *
- * bValid is false only for an unknown structure id (FBuildPreview's own contract), so a preview
- * BEFORE BeginBuild — when the component's StructureId is still INDEX_NONE — is invalid. The ghost
- * must exist (it is spawned on the first preview regardless) but be hidden. Then BeginBuild names
- * a known, empty structure, a preview against which is valid, and the same ghost must show.
- *
- * THIS GUARDS THE SetActorHiddenInGame(!bValid) BRANCH. It is green on arrival — the production
- * already hides on invalid — so it is a hardening/characterisation row, proved to bite by dropping
- * the `!`: hide-on-valid then fails the "must be VISIBLE" leg here.
- *
- * NEEDS A TICKING WORLD: a world for the ghost's spawn, but it never ticks.
+ * An invalid preview hides the ghost; a valid one shows it. Before BeginBuild the StructureId is
+ * INDEX_NONE, so the preview is invalid (the ghost still spawns, hidden). Characterisation test
+ * for SetActorHiddenInGame(!bValid); dropping the `!` fails it. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeComponentHidesInvalidPreviewTest,
@@ -408,7 +348,7 @@ bool FBuildModeComponentHidesInvalidPreviewTest::RunTest(const FString& Paramete
 	UBuildModeComponent* Comp = NewObject<UBuildModeComponent>(Owner);
 	Comp->RegisterComponent();
 
-	/* BEFORE BeginBuild: StructureId is INDEX_NONE, so the preview is invalid and the ghost hides. */
+	// Before BeginBuild: StructureId is INDEX_NONE, so the preview is invalid.
 	const FBuildPreview InvalidPreview = Comp->UpdatePreviewAt(FVector(11.0, 0.0, 7.5));
 
 	TestFalse(
@@ -428,7 +368,7 @@ bool FBuildModeComponentHidesInvalidPreviewTest::RunTest(const FString& Paramete
 			Ghost->IsHidden());
 	}
 
-	/* AFTER BeginBuild: the id is known (though the structure is empty), so a preview is valid. */
+	// After BeginBuild the id is known (structure empty), so a preview is valid.
 	Comp->BeginBuild();
 	const FBuildPreview ValidPreview = Comp->UpdatePreviewAt(FVector(11.0, 0.0, 7.5));
 
@@ -447,17 +387,9 @@ bool FBuildModeComponentHidesInvalidPreviewTest::RunTest(const FString& Paramete
 }
 
 /**
- * A CONFIRM WITH NO HELD VALID PREVIEW FAILS CLOSED — it places nothing.
- *
- * LastCursorCm defaults to the origin, so a ConfirmPlace with no prior UpdatePreviewAt currently
- * commits a brick at world (0, 0, 0) — a piece the player never previewed, at a pose they never
- * saw. ConfirmPlace must instead refuse when no valid preview is held: return a default
- * (INDEX_NONE) FPieceRef and grow the structure by nothing.
- *
- * THE ASSERTION IS ON THE MECHANISM — the returned ref and the piece count — not on any position,
- * because the bug is that a brick appears AT ALL. dev will add a bHasPreview / valid-preview guard.
- *
- * NEEDS A TICKING WORLD: a world for the subsystem and any spawn, but it never ticks.
+ * A confirm with no held valid preview fails closed: default ref, no new piece. Without the guard,
+ * LastCursorCm's origin default would commit an unpreviewed brick at (0, 0, 0). Asserts on the ref
+ * and piece count, since the bug is that a brick appears at all. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeComponentConfirmWithoutPreviewFailsClosedTest,
@@ -490,7 +422,7 @@ bool FBuildModeComponentConfirmWithoutPreviewFailsClosedTest::RunTest(const FStr
 	Comp->BeginBuild();
 	const int32 StructureId = Comp->GetStructureId();
 
-	/* NO UpdatePreviewAt — the component holds no previewed pose. */
+	// No UpdatePreviewAt, so no previewed pose is held.
 	const FPieceRef Placed = Comp->ConfirmPlace();
 
 	TestEqual(
@@ -518,23 +450,10 @@ bool FBuildModeComponentConfirmWithoutPreviewFailsClosedTest::RunTest(const FStr
 }
 
 /**
- * ONE PREVIEW, ONE COMMIT — a repeat confirm with no fresh preview places nothing.
- *
- * ConfirmPlace guards on bHasValidPreview but currently never CLEARS it after a successful commit,
- * so a SECOND ConfirmPlace with no intervening UpdatePreviewAt re-runs PlaceBuildPiece against the
- * now-mutated structure. The stale ghost pose the player last saw is gone: occupancy filters the
- * course cell the first commit just filled, so the re-solve either snaps a stray brick elsewhere or
- * falls to a Free placement that interpenetrates — a piece the player never previewed. ConfirmPlace
- * must instead treat a held valid preview as spent: consume it on a successful commit, so a repeat
- * confirm fails closed exactly as a confirm-before-any-preview does.
- *
- * THE ASSERTION IS ON THE MECHANISM — the returned ref and the piece count. The seed grows the
- * structure to 1, the one real placement to 2; the repeat confirm must return a default
- * (INDEX_NONE) ref and leave the count at 2. No position or displacement assertion: the bug is that
- * a piece is committed AT ALL, so counting is the exact and jitter-immune proof. dev will clear
- * bHasValidPreview after a successful ConfirmPlace (and reset it, with LastCursorCm, on BeginBuild).
- *
- * NEEDS A TICKING WORLD: a world for the subsystem and the actor spawns, but it never ticks.
+ * One preview, one commit: a repeat confirm with no fresh preview places nothing. A successful
+ * commit must spend the held preview; otherwise the re-solve against the grown structure places a
+ * stray, unpreviewed brick. Seed to 1, placement to 2, repeat returns a default ref and leaves 2.
+ * Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeComponentConfirmTwiceWithoutRepreviewPlacesOnceTest,
@@ -568,11 +487,11 @@ bool FBuildModeComponentConfirmTwiceWithoutRepreviewPlacesOnceTest::RunTest(cons
 	Comp->BeginBuild();
 	const int32 StructureId = Comp->GetStructureId();
 
-	/* A grounded seed brick at the origin: preview then confirm grows the structure to 1. */
+	// Grounded seed at the origin.
 	Comp->UpdatePreviewAt(FVector(0.0, 0.0, 0.0));
 	Comp->ConfirmPlace();
 
-	/* The one real next-course placement: a fresh valid preview, then confirm grows it to 2. */
+	// The one real next-course placement.
 	const FBuildPreview Preview = Comp->UpdatePreviewAt(FVector(11.0, 0.0, 7.5));
 
 	TestTrue(
@@ -598,10 +517,7 @@ bool FBuildModeComponentConfirmTwiceWithoutRepreviewPlacesOnceTest::RunTest(cons
 			Binding->NumPieces()),
 		Binding->NumPieces(), 2);
 
-	/*
-	 * THE REPEAT CONFIRM — no intervening UpdatePreviewAt. The held valid preview was spent on the
-	 * placement above, so this must fail closed: a default ref and no growth.
-	 */
+	// Repeat confirm with no fresh preview: the held preview is spent, so this fails closed.
 	const FPieceRef Repeat = Comp->ConfirmPlace();
 
 	TestEqual(
@@ -627,18 +543,9 @@ bool FBuildModeComponentConfirmTwiceWithoutRepreviewPlacesOnceTest::RunTest(cons
 }
 
 /**
- * TEARING THE COMPONENT DOWN DESTROYS ITS GHOST — no orphan brick left standing in the world.
- *
- * The ghost is the component's own actor and is never adopted into any binding, so nothing else
- * will ever destroy it. EndPlay must. A weak pointer to the ghost is held, the component destroyed,
- * and the weak pointer must go invalid — TWeakObjectPtr reports a destroyed actor as invalid
- * immediately (the idiom Tests/ScenarioLevelTest.cpp uses for "the actor is gone"), so this does
- * not depend on GC timing.
- *
- * A LEAK GUARD, likely green on arrival. Proved to bite by removing the GhostActor->Destroy() in
- * EndPlay: the ghost then survives the component and the weak pointer stays valid.
- *
- * NEEDS A TICKING WORLD: a world for the ghost's spawn, but it never ticks.
+ * Destroying the component destroys its ghost. No binding owns the ghost, so EndPlay must. A
+ * TWeakObjectPtr reads invalid immediately on destroy, so this doesn't depend on GC timing. Leak
+ * guard; removing GhostActor->Destroy() in EndPlay fails it. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeComponentDestroysGhostOnTeardownTest,
@@ -668,7 +575,6 @@ bool FBuildModeComponentDestroysGhostOnTeardownTest::RunTest(const FString& Para
 
 	Comp->BeginBuild();
 
-	/* Any preview spawns the ghost. */
 	Comp->UpdatePreviewAt(FVector(11.0, 0.0, 7.5));
 
 	const TWeakObjectPtr<AActor> Ghost(Comp->GetGhostActor());
@@ -692,26 +598,10 @@ bool FBuildModeComponentDestroysGhostOnTeardownTest::RunTest(const FString& Para
 }
 
 /**
- * BUILD-MODE UI-4b — a WORLD RAY drives the preview through a horizontal build plane.
- *
- * The real player controller deprojects the mouse into a world ray; that deprojection needs a
- * viewport and is untestable by construction. This slice is the pure, testable seam BETWEEN a ray
- * and the preview: UpdatePreviewFromRay intersects the ray with the horizontal plane Z ==
- * BuildPlaneZCm and, when it meets the plane IN FRONT of the origin, drives UpdatePreviewAt at the
- * intersection (X, Y, BuildPlaneZCm) — so the whole ray -> plane -> snap -> ghost -> confirm chain
- * is exercised with no simulated input.
- *
- * THE RAY-PLANE MATH, DERIVED HERE not imported. A ray P(t) = Origin + t * Direction meets the
- * plane Z == BuildPlaneZCm where Origin.Z + t * Direction.Z == BuildPlaneZCm, i.e.
- * t = (BuildPlaneZCm - Origin.Z) / Direction.Z, valid only when Direction.Z != 0 (else parallel)
- * and t >= 0 (else the plane is behind the origin). With BuildPlaneZCm = 7.5, a ray from
- * (11.25, 0, 1000) pointing straight down (0, 0, -1) gives t = (7.5 - 1000) / (-1) = 992.5 >= 0,
- * so the hit is Origin + 992.5 * Direction = (11.25, 0, 7.5). That XY on the plane is exactly the
- * running-bond next-course snap over the origin seed, so the preview centres on (11.25, 0, 7.5).
- *
- * NEEDS A TICKING WORLD: a real world for the actor spawns (ghost and bricks), but it never ticks —
- * every assertion is on the MECHANISM (the returned preview, the ghost's bounds and visibility, the
- * subsystem's piece count), never on displacement.
+ * Build mode UI-4b: a world ray drives the preview through the horizontal plane Z == BuildPlaneZCm.
+ * Mouse deprojection needs a viewport, so this tests the seam from ray to preview. The hit is at
+ * t = (BuildPlaneZCm - Origin.Z) / Direction.Z, valid only for Direction.Z != 0 and t >= 0. A ray
+ * from (11.25, 0, 1000) straight down hits (11.25, 0, 7.5), the running-bond snap. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeComponentRayDrivesPreviewAndGhostTest,
@@ -745,7 +635,7 @@ bool FBuildModeComponentRayDrivesPreviewAndGhostTest::RunTest(const FString& Par
 	Comp->BeginBuild();
 	const int32 StructureId = Comp->GetStructureId();
 
-	/* A grounded seed brick at the origin: preview then confirm grows the structure to 1. */
+	// Grounded seed at the origin.
 	Comp->UpdatePreviewAt(FVector(0.0, 0.0, 0.0));
 	Comp->ConfirmPlace();
 
@@ -761,11 +651,7 @@ bool FBuildModeComponentRayDrivesPreviewAndGhostTest::RunTest(const FString& Par
 			Binding->NumPieces()),
 		Binding->NumPieces(), 1);
 
-	/*
-	 * ONE COURSE UP, PICKED BY A RAY. The build plane is raised to the next course, and a ray fired
-	 * straight DOWN through the running-bond pose meets it at (11.25, 0, 7.5) — the ray hit and the
-	 * snapped centre coincide, which is what makes the numbers read cleanly.
-	 */
+	// Plane raised one course; a straight-down ray hits exactly the running-bond snap.
 	Comp->BuildPlaneZCm = 7.5;
 
 	const FVector RayOrigin(11.25, 0.0, 1000.0);
@@ -787,7 +673,6 @@ bool FBuildModeComponentRayDrivesPreviewAndGhostTest::RunTest(const FString& Par
 			Preview.CentreCm.X, Preview.CentreCm.Y, Preview.CentreCm.Z),
 		Preview.CentreCm.Equals(ExpectedRunningBondCentre, KINDA_SMALL_NUMBER));
 
-	/* The ghost must show where the click will land — visible, bounds centred on the snapped pose. */
 	AActor* Ghost = Comp->GetGhostActor();
 
 	TestNotNull(
@@ -817,7 +702,6 @@ bool FBuildModeComponentRayDrivesPreviewAndGhostTest::RunTest(const FString& Par
 			GhostBoundsSize.Equals(FullBrickSizeCm, BoundsToleranceCm));
 	}
 
-	/* Confirm lands the real piece at the ray-previewed pose, growing the structure to 2. */
 	const FPieceRef Placed = Comp->ConfirmPlace();
 
 	TestTrue(
@@ -851,18 +735,9 @@ bool FBuildModeComponentRayDrivesPreviewAndGhostTest::RunTest(const FString& Par
 }
 
 /**
- * BUILD-MODE UI-4b — a ray that never reaches the plane in front of the origin PLACES NOTHING.
- *
- * Two ways a ray misses: it points AWAY from the plane (the intersection is behind the origin,
- * t < 0), or it runs PARALLEL to the plane (Direction.Z == 0, no intersection at all). Both must
- * return an invalid preview and hide the ghost, exactly as an unknown-structure preview does, so a
- * cursor off the build plane never leaves a stale brick floating.
- *
- * A valid down-ray is fired first purely to SHOW the ghost, so the subsequent hide is a real state
- * change rather than a ghost that was hidden all along. Assertions are on the returned preview's
- * bValid and the ghost's IsHidden — the mechanism, never displacement.
- *
- * NEEDS A TICKING WORLD: a world for the ghost's spawn, but it never ticks.
+ * Build mode UI-4b: a ray that misses the plane places nothing. It misses when pointing away
+ * (t < 0) or parallel (Direction.Z == 0); both return an invalid preview and hide the ghost. A valid
+ * ray is fired first so each hide is a real state change. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeComponentRayMissingPlaneHidesGhostTest,
@@ -896,7 +771,7 @@ bool FBuildModeComponentRayMissingPlaneHidesGhostTest::RunTest(const FString& Pa
 	Comp->BeginBuild();
 	const int32 StructureId = Comp->GetStructureId();
 
-	/* A grounded seed so a next-course ray has something to snap against. */
+	// A grounded seed for the next-course ray to snap against.
 	Comp->UpdatePreviewAt(FVector(0.0, 0.0, 0.0));
 	Comp->ConfirmPlace();
 
@@ -904,7 +779,7 @@ bool FBuildModeComponentRayMissingPlaneHidesGhostTest::RunTest(const FString& Pa
 
 	const FVector RayOrigin(11.25, 0.0, 1000.0);
 
-	/* A valid down-ray first, to SHOW the ghost — so the later hide is a genuine transition. */
+	// A valid down-ray first, so the later hide is a real transition.
 	const FBuildPreview Shown = Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, -1.0));
 
 	TestTrue(
@@ -924,10 +799,7 @@ bool FBuildModeComponentRayMissingPlaneHidesGhostTest::RunTest(const FString& Pa
 			Ghost->IsHidden());
 	}
 
-	/*
-	 * RAY POINTING AWAY: (0, 0, +1) from Z = 1000 with the plane at Z = 7.5 gives
-	 * t = (7.5 - 1000) / (+1) = -992.5 < 0 — the plane is behind the origin, so no placement.
-	 */
+	// Ray pointing away: t = (7.5 - 1000) / 1 = -992.5 < 0, so the plane is behind the origin.
 	const FBuildPreview Away = Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, 1.0));
 
 	TestFalse(
@@ -942,11 +814,8 @@ bool FBuildModeComponentRayMissingPlaneHidesGhostTest::RunTest(const FString& Pa
 	}
 
 	/*
-	 * A CONFIRM RIGHT AFTER THE AWAY MISS FAILS CLOSED. The valid down-ray above HELD a preview;
-	 * the miss must have SPENT it (bHasValidPreview cleared), so this confirm commits nothing. If
-	 * the miss path failed to clear that flag, the STALE previewed pose would commit here — this is
-	 * the assertion that bites the missing clear, not the IsHidden legs (a hidden ghost with a live
-	 * preview still commits). A default ref AND an unchanged count are the mechanism, not position.
+	 * A confirm after the miss fails closed: the miss must clear the held preview. This, not the
+	 * IsHidden legs, catches a missing clear, since a hidden ghost with a live preview still commits.
 	 */
 	const FPieceRef AfterAway = Comp->ConfirmPlace();
 
@@ -965,7 +834,7 @@ bool FBuildModeComponentRayMissingPlaneHidesGhostTest::RunTest(const FString& Pa
 			AfterAwayBinding->NumPieces(), 1);
 	}
 
-	/* Re-show the ghost, so the parallel case is likewise a real hide rather than a no-op. */
+	// Re-show the ghost so the parallel case is also a real hide.
 	Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, -1.0));
 
 	if (Ghost != nullptr)
@@ -975,10 +844,7 @@ bool FBuildModeComponentRayMissingPlaneHidesGhostTest::RunTest(const FString& Pa
 			Ghost->IsHidden());
 	}
 
-	/*
-	 * RAY PARALLEL TO THE PLANE: Direction.Z == 0, so it never meets Z = 7.5 — no intersection,
-	 * no placement, regardless of how far along the ray runs.
-	 */
+	// Ray parallel to the plane: Direction.Z == 0, no intersection.
 	const FBuildPreview Parallel = Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 1.0, 0.0));
 
 	TestFalse(
@@ -992,7 +858,7 @@ bool FBuildModeComponentRayMissingPlaneHidesGhostTest::RunTest(const FString& Pa
 			Ghost->IsHidden());
 	}
 
-	/* Same fail-closed proof for the parallel miss: the re-shown preview must be spent by it. */
+	// The parallel miss must also spend the re-shown preview.
 	const FPieceRef AfterParallel = Comp->ConfirmPlace();
 
 	TestEqual(
@@ -1001,7 +867,6 @@ bool FBuildModeComponentRayMissingPlaneHidesGhostTest::RunTest(const FString& Pa
 			AfterParallel.PieceIndex),
 		AfterParallel.PieceIndex, static_cast<int32>(INDEX_NONE));
 
-	/* Nothing was placed by any miss: the structure still holds only the seed. */
 	FStructureBinding* Binding = Subsystem.Find(StructureId);
 
 	TestNotNull(
@@ -1020,29 +885,11 @@ bool FBuildModeComponentRayMissingPlaneHidesGhostTest::RunTest(const FString& Pa
 }
 
 /**
- * BUILD-MODE UI-4b — an OBLIQUE ray's intersection ARITHMETIC, pinned independently of the origin.
- *
- * The happy-path ray test above fires straight DOWN from (11.25, 0, 1000): its origin XY already
- * equals the plane hit XY, so the mutant `Hit = RayOriginCm` — dropping the t * Direction term
- * entirely — would still pass it. That test cannot tell "solve the intersection" from "take the
- * origin's XY". This one fires SLANTED rays whose origin XY is NOWHERE NEAR the hit, so only the
- * real intersection formula lands on the running-bond pose.
- *
- * DERIVED HERE, NOT IMPORTED. With the plane at Z = 7.5 and t = (7.5 - Origin.Z) / Direction.Z:
- *   Ray A: Origin (-30, 0, 107.5), Direction (41.25, 0, -100) -> t = (7.5 - 107.5)/(-100) = 1,
- *          Hit = Origin + 1 * Direction = (-30 + 41.25, 0, 107.5 - 100) = (11.25, 0, 7.5).
- *   Ray B: Origin (-30, 0, 207.5), Direction (20.625, 0, -100) -> t = (7.5 - 207.5)/(-100) = 2,
- *          Hit = Origin + 2 * Direction = (-30 + 41.25, 0, 7.5) = (11.25, 0, 7.5).
- * Ray B's SECOND, HALVED direction reaches the SAME point only at t = 2, so it pins the MAGNITUDE
- * of t, not merely its sign: the mutant `Hit = Origin + Direction` (t forced to 1) lands B at
- * (-30 + 20.625, 0, ...) = (-9.375, 0, 7.5) and fails.
- *
- * AN EMPTY STRUCTURE ON PURPOSE. With no neighbours the snap is Free, so the preview centre is the
- * requested pose EXACTLY — no running-bond tolerance to blur whether the ray math hit the point.
- * The assertion is on CentreCm, which for a Free placement IS the picked point.
- *
- * PROVED TO BITE: under the mutant `Hit = RayOriginCm` the centre reads (-30, 0, 7.5) for both
- * rays and both legs fail. NEEDS A TICKING WORLD for the ghost spawn, but never ticks.
+ * Build mode UI-4b: oblique-ray intersection arithmetic. The straight-down test can't tell solving
+ * the intersection from taking the origin's XY; these rays start far from the hit. Ray A from
+ * (-30, 0, 107.5) along (41.25, 0, -100) hits (11.25, 0, 7.5) at t = 1. Ray B, half the XY
+ * direction, reaches the same point only at t = 2, which pins t's magnitude. The structure is empty
+ * so the snap is Free and the centre is exactly the picked point. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeComponentObliqueRayHitsIntersectionTest,
@@ -1071,13 +918,13 @@ bool FBuildModeComponentObliqueRayHitsIntersectionTest::RunTest(const FString& P
 	UBuildModeComponent* Comp = NewObject<UBuildModeComponent>(Owner);
 	Comp->RegisterComponent();
 
-	/* EMPTY structure: no seed, so the snap is Free and the centre is the picked point exactly. */
+	// Empty structure: the snap is Free.
 	Comp->BeginBuild();
 	Comp->BuildPlaneZCm = 7.5;
 
 	const FVector ExpectedHit(11.25, 0.0, 7.5);
 
-	/* Ray A: t = 1. Origin XY (-30) is far from the hit XY (11.25); only the real solve lands it. */
+	// Ray A: t = 1.
 	const FBuildPreview PreviewA =
 		Comp->UpdatePreviewFromRay(FVector(-30.0, 0.0, 107.5), FVector(41.25, 0.0, -100.0));
 
@@ -1091,7 +938,7 @@ bool FBuildModeComponentObliqueRayHitsIntersectionTest::RunTest(const FString& P
 			PreviewA.CentreCm.X, PreviewA.CentreCm.Y, PreviewA.CentreCm.Z),
 		PreviewA.CentreCm.Equals(ExpectedHit, KINDA_SMALL_NUMBER));
 
-	/* Ray B: same hit, but only reached at t = 2 — this pins the magnitude of t, not just its sign. */
+	// Ray B: same hit at t = 2.
 	const FBuildPreview PreviewB =
 		Comp->UpdatePreviewFromRay(FVector(-30.0, 0.0, 207.5), FVector(20.625, 0.0, -100.0));
 
@@ -1109,24 +956,10 @@ bool FBuildModeComponentObliqueRayHitsIntersectionTest::RunTest(const FString& P
 }
 
 /**
- * BUILD-MODE UI-4b — a NON-FINITE ray FAILS CLOSED (RED until the guards reject NaN).
- *
- * The parallel guard is FMath::IsNearlyZero and the front-of-origin guard is t < 0. Every
- * comparison against NaN is FALSE, so a NaN slips BOTH: IsNearlyZero(NaN) is false (not parallel),
- * NaN < 0 is false (not behind), and the code proceeds to Hit = Origin + NaN * Direction — a NaN
- * point that PreviewBuildPiece reports valid (the id is known) and that the ghost is
- * SetActorTransform'd to. A garbage ray must instead be treated as a MISS: invalid preview, hidden
- * ghost, and a following confirm that places nothing.
- *
- * TWO NON-FINITE SHAPES, because the fix must guard BOTH operands: a NaN in the DIRECTION
- * (0, 0, NaN) and a NaN in the ORIGIN (NaN, 0, 1000) with an otherwise-finite downward direction.
- *
- * A VALID DOWN-RAY IS HELD FIRST so the confirm-places-nothing leg bites: if the NaN path leaves
- * the previously-held valid preview standing, the confirm would commit that stale pose. Assertions
- * are on the mechanism — bValid, IsHidden, the returned ref and the piece count — never position.
- *
- * RED TODAY. dev fixes with FVector::ContainsNaN / IsFinite guards on origin and direction (and
- * `!(HitT >= 0.0)` in place of `HitT < 0.0`). NEEDS A TICKING WORLD for the spawns, never ticks.
+ * Build mode UI-4b: a non-finite ray fails closed. Every comparison against NaN is false, so NaN
+ * slips both the IsNearlyZero parallel guard and the t < 0 guard and yields a NaN hit. It must be a
+ * miss: invalid preview, hidden ghost, confirm places nothing. Covers NaN in the direction and in
+ * the origin. A valid preview is held first so a stale commit would show. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeComponentNonFiniteRayFailsClosedTest,
@@ -1160,7 +993,7 @@ bool FBuildModeComponentNonFiniteRayFailsClosedTest::RunTest(const FString& Para
 	Comp->BeginBuild();
 	const int32 StructureId = Comp->GetStructureId();
 
-	/* A grounded seed so a next-course ray has something valid to snap against. */
+	// A grounded seed for the next-course ray to snap against.
 	Comp->UpdatePreviewAt(FVector(0.0, 0.0, 0.0));
 	Comp->ConfirmPlace();
 
@@ -1169,10 +1002,7 @@ bool FBuildModeComponentNonFiniteRayFailsClosedTest::RunTest(const FString& Para
 	const FVector RayOrigin(11.25, 0.0, 1000.0);
 	const double Nan = std::numeric_limits<double>::quiet_NaN();
 
-	/*
-	 * NaN IN THE DIRECTION. Hold a valid preview first so the confirm-nothing leg can bite a stale
-	 * commit, then fire the garbage ray.
-	 */
+	// NaN in the direction, after holding a valid preview.
 	const FBuildPreview Shown = Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, -1.0));
 	TestTrue(
 		TEXT("fixture: a valid down-ray must hold a preview before the NaN cases"),
@@ -1199,10 +1029,7 @@ bool FBuildModeComponentNonFiniteRayFailsClosedTest::RunTest(const FString& Para
 			AfterNanDir.PieceIndex),
 		AfterNanDir.PieceIndex, static_cast<int32>(INDEX_NONE));
 
-	/*
-	 * NaN IN THE ORIGIN, finite downward direction. Re-hold a valid preview first so this leg's
-	 * confirm-nothing is likewise a genuine fail-closed rather than an already-empty confirm.
-	 */
+	// NaN in the origin, after re-holding a valid preview.
 	Comp->UpdatePreviewFromRay(RayOrigin, FVector(0.0, 0.0, -1.0));
 
 	const FBuildPreview NanOrigin =
@@ -1226,7 +1053,6 @@ bool FBuildModeComponentNonFiniteRayFailsClosedTest::RunTest(const FString& Para
 			AfterNanOrigin.PieceIndex),
 		AfterNanOrigin.PieceIndex, static_cast<int32>(INDEX_NONE));
 
-	/* No non-finite ray may place a piece: the structure still holds only the seed. */
 	FStructureBinding* Binding = Subsystem.Find(StructureId);
 
 	TestNotNull(
@@ -1246,33 +1072,11 @@ bool FBuildModeComponentNonFiniteRayFailsClosedTest::RunTest(const FString& Para
 }
 
 /**
- * BUILD-MODE UI-4b hardening — a NEAR-GRAZING ray whose hit is BEYOND the pick clamp FAILS CLOSED.
- *
- * The parallel guard is FMath::IsNearlyZero(Direction.Z) at ~1e-8. A ray with a TINY but non-zero
- * Direction.Z passes that guard, yet t = (BuildPlaneZCm - Origin.Z) / Direction.Z is enormous, so
- * the solved hit sits thousands of kilometres out along the ray — a pose PreviewBuildPiece reports
- * VALID (the id is known, the snap is Free) and the ghost is teleported to, and a click would build
- * there. The fix clamps the pick: a hit farther than MaxPickDistanceCm from the origin is a MISS,
- * exactly like the parallel / behind-origin / non-finite branches.
- *
- * THE CONCRETE NUMBERS, derived here not imported (BuildPlaneZCm = 0):
- *   Origin (0, 0, 1000), Direction (1, 0, -1e-6).
- *   |Direction.Z| = 1e-6 > 1e-8, so this is NOT caught by the parallel guard — a genuine new case
- *   (the whole point; a Direction.Z the guard already rejected would prove nothing).
- *   t = (0 - 1000) / (-1e-6) = 1e9.
- *   Hit = Origin + t * Direction = (1e9, 0, 1000 - 1000) = (1e9, 0, 0); Z pinned to the plane.
- *   distance(Hit, Origin) = sqrt((1e9)^2 + 1000^2) ~= 1e9 cm = 10,000 km, FAR beyond the
- *   MaxPickDistanceCm = 100,000 cm (1 km) clamp.
- *
- * A VALID nearby down-ray is HELD FIRST so the confirm-places-nothing leg bites: if the far ray
- * leaves the previously-held valid preview standing, the confirm would commit that stale pose. The
- * held ray hits (11.25, 0, 0) at distance ~1000 cm — well WITHIN the clamp, so it also serves as
- * the control that a legitimate nearby pick is NOT rejected. Assertions are on the mechanism —
- * bValid, IsHidden, the returned ref and the piece count — never position.
- *
- * RED TODAY: the far ray currently previews a valid Free pose at (1e9, 0, 0), shows the ghost, and
- * a confirm commits a brick there. dev clamps on MaxPickDistanceCm. NEEDS A TICKING WORLD for the
- * spawns, but never ticks.
+ * Build mode UI-4b: a near-grazing ray whose hit is beyond MaxPickDistanceCm fails closed. With
+ * Direction (1, 0, -1e-6) from (0, 0, 1000), |Direction.Z| clears the ~1e-8 parallel guard but
+ * t = 1e9, so the hit is ~10,000 km out, far past the 1 km clamp. A nearby valid ray is held first;
+ * it is both the control (not rejected) and the stale preview a missing clear would commit.
+ * Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeComponentGrazingRayBeyondClampFailsClosedTest,
@@ -1303,26 +1107,18 @@ bool FBuildModeComponentGrazingRayBeyondClampFailsClosedTest::RunTest(const FStr
 	UBuildModeComponent* Comp = NewObject<UBuildModeComponent>(Owner);
 	Comp->RegisterComponent();
 
-	/*
-	 * EMPTY structure at the origin build plane: the snap is Free, so every hit previews as valid
-	 * and the only thing under test is the pick-distance clamp, not any running-bond geometry.
-	 */
+	// Empty structure: the snap is Free, so only the pick clamp is under test.
 	Comp->BeginBuild();
 	const int32 StructureId = Comp->GetStructureId();
 	Comp->BuildPlaneZCm = 0.0;
 
-	/* The clamp default is a concrete 1 km; pin it so the test breaks if that default moves. */
+	// Pin the 1 km default so the test breaks if it moves.
 	TestEqual(
 		FString::Printf(TEXT("the default pick clamp should be 100000 cm (1 km), got %g"),
 			Comp->MaxPickDistanceCm),
 		Comp->MaxPickDistanceCm, 100000.0);
 
-	/*
-	 * CONTROL: a nearby down-ray. Origin (11.25, 0, 1000), straight down -> t = 1000, hit
-	 * (11.25, 0, 0), distance ~1000 cm — WELL WITHIN the clamp. This both HOLDS a valid preview
-	 * (so the far ray's clear can bite below) and proves the clamp does not reject a legitimate
-	 * nearby pick.
-	 */
+	// Control: a down-ray hitting ~1000 cm away, well within the clamp.
 	const FVector NearOrigin(11.25, 0.0, 1000.0);
 	const FBuildPreview Near = Comp->UpdatePreviewFromRay(NearOrigin, FVector(0.0, 0.0, -1.0));
 
@@ -1343,10 +1139,7 @@ bool FBuildModeComponentGrazingRayBeyondClampFailsClosedTest::RunTest(const FStr
 			Ghost->IsHidden());
 	}
 
-	/*
-	 * THE NEAR-GRAZING FAR RAY. Direction.Z = -1e-6 clears the ~1e-8 parallel guard, t = 1e9, and
-	 * the hit lands ~1e9 cm (10,000 km) out — far beyond the 1 km clamp. It must fail closed.
-	 */
+	// The grazing ray: t = 1e9, hit ~1e9 cm out.
 	const FVector GrazingOrigin(0.0, 0.0, 1000.0);
 	const FVector GrazingDir(1.0, 0.0, -1e-6);
 	const FBuildPreview Grazing = Comp->UpdatePreviewFromRay(GrazingOrigin, GrazingDir);
@@ -1362,13 +1155,7 @@ bool FBuildModeComponentGrazingRayBeyondClampFailsClosedTest::RunTest(const FStr
 			Ghost->IsHidden());
 	}
 
-	/*
-	 * AND A CONFIRM AFTER THE FAR MISS PLACES NOTHING. The control ray HELD a valid preview; the
-	 * far ray must have SPENT it (bHasValidPreview cleared), so this confirm commits nothing. If
-	 * the clamp path failed to clear that flag, the stale (11.25, 0, 0) pose would commit here —
-	 * this is the leg that bites the missing clear, not the IsHidden legs. A default ref AND an
-	 * unchanged (zero) count are the mechanism, never position.
-	 */
+	// The far miss must clear the held preview, or the stale control pose commits here.
 	const FPieceRef AfterGrazing = Comp->ConfirmPlace();
 
 	TestEqual(
@@ -1396,37 +1183,12 @@ bool FBuildModeComponentGrazingRayBeyondClampFailsClosedTest::RunTest(const FStr
 }
 
 /**
- * BUILD-MODE SESSION SLICE 2 — THE COMMITTED PIECE'S GROUNDED FLAG COMES FROM THE SNAPPED POSE,
- * NEVER FROM THE TOOLBAR'S COURSE. The review-named hazard, and the first red of this slice.
- *
- * DESIGN §8's 2026-09-15 ruling says it in as many words: the course is the toolbar's INTENT for
- * the build plane, and the flag the piece carries is derived from where it actually landed. The two
- * genuinely disagree, and this fixture is the case where they do. The snap solver ranks candidates
- * by RAW EUCLIDEAN DISTANCE, so with the course left on 0 — plane 3.25, the grounded course — a
- * cursor placed beside a standing brick is pulled UP onto that brick's next-course bed, 7.5 cm into
- * the air. A piece put there and flagged grounded would terminate load at the earth: FStructure
- * routes to bIsGrounded, so a floating brick carrying it is a brick that CAN NEVER FALL, and every
- * piece stacked on it inherits the lie.
- *
- * THE ARITHMETIC, DERIVED HERE. Brick 21.5 x 10.25 x 6.5 on 1 cm joints: half extent
- * (10.75, 5.125, 3.25), coordinating grid 22.5 x 11.25 x 7.5. Against a seed centred at
- * (0, 0, 3.25) the solver offers two poses, and the CURSOR (11.25, 0, 3.25) is deliberately placed
- * where the further-looking one wins:
- *   next-course (0 + 11.25, 0, 3.25 + 7.5) = (11.25, 0, 10.75) — offset sqrt(0 + 7.5^2)  =  7.50
- *   same-course (0 + 22.50, 0, 3.25      ) = (22.50, 0,  3.25) — offset sqrt(11.25^2)    = 11.25
- * so the next-course pose outranks the same-course one and the cursor is lifted a course. Its
- * bottom face is 10.75 - 3.25 = 7.5 cm, well beyond one joint of the ground.
- *
- * THE CONTRAST IS ASSERTED, NOT IMPLIED. The course is checked to be STILL 0 and
- * DestructionSession::IsCourseGrounded(0) to be STILL true at the moment the lifted piece is
- * committed not-grounded. That is what makes this test about the two answers DIFFERING: a
- * production that derived the flag from the course would pass every other leg here and fail
- * exactly this one.
- *
- * THE ASSERTION IS THE FLAG AND THE POSE, NOT DISPLACEMENT. Nothing is released and nothing moves;
- * bIsGrounded and the box centre are binary and exact.
- *
- * NEEDS A TICKING WORLD: a real world for the ghost and brick spawns, but it never ticks.
+ * Build session slice 2: a committed piece's grounded flag comes from the snapped pose, never the
+ * toolbar course (DESIGN §8, 2026-09-15). The solver ranks by Euclidean distance, so on course 0 a
+ * cursor at (11.25, 0, 3.25) beside a seed at (0, 0, 3.25) snaps up to the next-course pose
+ * (11.25, 0, 10.75), offset 7.5, beating the same-course pose at 11.25. That piece floats 7.5 cm up;
+ * flagging it grounded would make it unable to fall. The test asserts the course is still 0 and
+ * IsCourseGrounded(0) is true, so a course-derived flag fails it. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeCommittedGroundedComesFromTheSnappedPoseNotTheCourseTest,
@@ -1461,7 +1223,7 @@ bool FBuildModeCommittedGroundedComesFromTheSnappedPoseNotTheCourseTest::RunTest
 			Comp->GetCourse()),
 		Comp->GetCourse(), 0);
 
-	/* THE SEED, on the grounded course: centre 3.25, underside exactly on the ground plane. */
+	// The seed on the grounded course: centre 3.25, underside on the ground.
 	const FBuildPreview SeedPreview = Comp->UpdatePreviewAt(GroundedSeedCursorCm);
 
 	TestTrue(
@@ -1485,11 +1247,7 @@ bool FBuildModeCommittedGroundedComesFromTheSnappedPoseNotTheCourseTest::RunTest
 		TEXT("the seed's snapped pose rests on the earth, so piece 0 must be committed GROUNDED"),
 		Binding->GetStructure().GetPiece(0).bIsGrounded);
 
-	/*
-	 * THE HAZARD. The course has NOT moved — the build plane is still the grounded 3.25 — but the
-	 * cursor beside the seed is nearer the next-course bed than the same-course head, so the solver
-	 * lifts it a whole course into the air.
-	 */
+	// The course is still 0, but the solver lifts the cursor a course.
 	TestEqual(
 		FString::Printf(TEXT("the course must still be 0 for this to be about the disagreement, it is %d"),
 			Comp->GetCourse()),
@@ -1544,23 +1302,10 @@ bool FBuildModeCommittedGroundedComesFromTheSnappedPoseNotTheCourseTest::RunTest
 }
 
 /**
- * THE SAME-COURSE SNAP ON THE GROUNDED COURSE COMMITS GROUNDED — the other half of the pose rule.
- *
- * ITS SIBLING ABOVE WOULD PASS ON ITS OWN FOR A PRODUCTION THAT NEVER GROUNDS ANYTHING. "Derive
- * grounded from the pose" is two claims, and a `bIsGrounded = false` everywhere satisfies the
- * lifted leg completely; the seed leg is the only counterweight there, and a seed is the one piece
- * a caller could plausibly special-case. So this lays a SECOND piece — snapped, not seeded, with a
- * real neighbour in the structure — that must still come out grounded because its pose is on the
- * earth.
- *
- * THE ARITHMETIC. Same seed at (0, 0, 3.25). The cursor (22, 0, 3.25) sits half a centimetre short
- * of the same-course head pose:
- *   same-course (22.50, 0,  3.25) — offset 0.50
- *   next-course (11.25, 0, 10.75) — offset sqrt(10.75^2 + 7.5^2) = 13.11
- * so the head snap wins by a wide margin, the piece stays on course 0, its bottom face is
- * 3.25 - 3.25 = 0, and it must read grounded.
- *
- * NEEDS A TICKING WORLD: a real world for the spawns, but it never ticks.
+ * A same-course snap on the grounded course commits grounded: the other half of the pose rule, so
+ * a never-grounds production can't pass by special-casing the seed. The cursor (22, 0, 3.25) snaps
+ * to the head pose (22.5, 0, 3.25) at offset 0.5 (next-course is 13.11 away); its underside is on
+ * the ground. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeSameCourseSnapOnTheGroundCommitsGroundedTest,
@@ -1630,39 +1375,11 @@ bool FBuildModeSameCourseSnapOnTheGroundCommitsGroundedTest::RunTest(const FStri
 }
 
 /**
- * THE PIECE KIND AND THE COURSE DRIVE THE MATERIAL, THE EXTENT AND THE BUILD PLANE — one setter
- * each, and no fourth place brick dimensions are written down.
- *
- * THE COMPONENT USED TO CARRY THE PALETTE AS TWO RAW PUBLIC FIELDS a caller set by hand, which is
- * how the plane and the extent get to disagree: a caller that switched CurrentExtentCm to a timber
- * plate and forgot BuildPlaneZCm would preview a 10 cm-thick board centred where a 6.5 cm brick
- * goes, half of it buried in the course below. Kind and course are the two things the player
- * actually chooses, so they are the two setters, and everything else is DERIVED on the way through.
- *
- * THE EXPECTED NUMBERS ARE WRITTEN OUT, NOT READ BACK FROM THE MODEL. Calling
- * DestructionSession::CoursePlaneZCm or BuildPieceHalfExtentCm to build the expectation would make
- * this test agree with the palette however wrong the palette was. So: a course is 6.5 + 1 = 7.5 cm,
- * a brick's half height is 3.25 and the demo's wall plate's is 5.0, and a piece of half height h on
- * course k is centred at k * 7.5 + h. Hence
- *     brick, course 0  ->  0 * 7.5 + 3.25  =  3.25
- *     plate, course 0  ->  0 * 7.5 + 5.00  =  5.00
- *     plate, course 2  ->  2 * 7.5 + 5.00  = 20.00
- *     brick, course 2  ->  2 * 7.5 + 3.25  = 18.25
- * The plate-on-course-2 row is the one the demo building already builds (its plate sits on two
- * brick courses), and 20.00 vs 18.25 at the SAME course is what proves the plane moved with the
- * PIECE as well as with the course — a plane derived from the course alone would give one answer
- * for both.
- *
- * MATERIAL IDENTITY, BY ADDRESS. Two profiles with equal fields are equal in every way except the
- * one that matters — which library row a future retune moves — so the assertion is that
- * CurrentMaterial IS &ClayBrick / &Timber, exactly as the palette's own test pins it.
- *
- * AND A NEGATIVE COURSE IS COURSE 0. The whole course vocabulary clamps rather than admitting a
- * build plane below the earth; the component stores the clamped course so its getter and its plane
- * cannot report different courses.
- *
- * NEEDS A TICKING WORLD: only to construct and register the component (GetWorld must resolve).
- * Nothing here previews, spawns or ticks.
+ * Piece kind and course drive the material, extent and build plane, so the plane and extent can't
+ * disagree. Expected values are written out, not read from CoursePlaneZCm: a piece of half height h
+ * on course k centres at k * 7.5 + h. A plate on course 2 planes at 20 and a brick at 18.25; the
+ * difference at the same course proves the plane follows the piece. Material is checked by address
+ * (&ClayBrick / &Timber). A negative course clamps to 0 on both getter and plane. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModePieceKindDrivesMaterialExtentAndPlaneTest,
@@ -1692,7 +1409,7 @@ bool FBuildModePieceKindDrivesMaterialExtentAndPlaneTest::RunTest(const FString&
 	const FVector BrickHalfExtentCm(10.75, 5.125, 3.25);
 	const FVector PlateHalfExtentCm(33.75, 5.125, 5.0);
 
-	/* A FRESH COMPONENT IS A BRICK ON THE GROUNDED COURSE — the default a player opens with. */
+	// A fresh component is a brick on the grounded course.
 	TestTrue(
 		FString::Printf(TEXT("a fresh component's piece kind must be Brick, it is %d"),
 			static_cast<int32>(Comp->GetPieceKind())),
@@ -1714,7 +1431,7 @@ bool FBuildModePieceKindDrivesMaterialExtentAndPlaneTest::RunTest(const FString&
 			Comp->BuildPlaneZCm),
 		Comp->BuildPlaneZCm, 3.25);
 
-	/* THE TIMBER PLATE: a different material, a different extent, and a plane that follows both. */
+	// Timber plate: material, extent and plane all change.
 	Comp->SetPieceKind(EBuildPieceKind::TimberPlate);
 
 	TestTrue(
@@ -1738,7 +1455,7 @@ bool FBuildModePieceKindDrivesMaterialExtentAndPlaneTest::RunTest(const FString&
 			Comp->BuildPlaneZCm),
 		Comp->BuildPlaneZCm, 5.0);
 
-	/* TWO COURSES UP, plate still selected: 2 * 7.5 + 5 = 20 — where the demo puts its plate. */
+	// Plate on course 2: 2 * 7.5 + 5 = 20.
 	Comp->SetCourse(2);
 
 	TestEqual(
@@ -1751,7 +1468,7 @@ bool FBuildModePieceKindDrivesMaterialExtentAndPlaneTest::RunTest(const FString&
 			Comp->BuildPlaneZCm),
 		Comp->BuildPlaneZCm, 20.0);
 
-	/* BACK TO A BRICK WITHOUT TOUCHING THE COURSE: 2 * 7.5 + 3.25 = 18.25, not 20. */
+	// Back to a brick, same course: 2 * 7.5 + 3.25 = 18.25.
 	Comp->SetPieceKind(EBuildPieceKind::Brick);
 
 	TestEqual(
@@ -1775,7 +1492,7 @@ bool FBuildModePieceKindDrivesMaterialExtentAndPlaneTest::RunTest(const FString&
 			Comp->BuildPlaneZCm),
 		Comp->BuildPlaneZCm, 18.25);
 
-	/* FAIL CLOSED: a below-ground course is course 0, on the getter and on the plane alike. */
+	// A below-ground course clamps to 0.
 	Comp->SetCourse(-1);
 
 	TestEqual(
@@ -1793,33 +1510,11 @@ bool FBuildModePieceKindDrivesMaterialExtentAndPlaneTest::RunTest(const FString&
 }
 
 /**
- * FREE PLACEMENT HONOURS THE CURSOR AND FORMS NO JOINTS — and the SAME cursor, against the SAME
- * structure, snaps when the mode says Snap.
- *
- * PlacementMode is the toolbar's Snap/Free pair arriving at the component. The proof that it is the
- * CAUSE is running one cursor through both modes against an unchanged structure: a production that
- * ignored the field would return the same answer twice and one of the two legs would fail whichever
- * way it ignored it. Preview is non-mutating, so both legs genuinely see the one-brick structure.
- *
- * THE ORDER IS SNAP FIRST, DELIBERATELY. Committing the Free piece first would change the answer to
- * the Snap leg — the free brick at (11, 0, 10) interpenetrates the next-course cell (11.25, 0,
- * 10.75), which the solver's occupancy filter then drops, and it also becomes a snap origin of its
- * own; the nearest surviving candidate would be the seed's same-course pose at 13.33 cm rather than
- * the next-course one. So the two previews are taken back to back against the one-piece structure,
- * and only then is the Free pose committed.
- *
- * THE NUMBERS. Seed at (0, 0, 3.25); cursor (11, 0, 10), off-grid on both axes on purpose.
- *   next-course (11.25, 0, 10.75) — offset sqrt(0.25^2 + 0.75^2) =  0.79
- *   same-course (22.50, 0,  3.25) — offset sqrt(11.5^2 + 6.75^2) = 13.33
- * so Snap must take the next-course pose and form its one bed joint, while Free must sit at
- * (11, 0, 10) exactly with none. The Free pose's bottom face is 10 - 3.25 = 6.75 cm, so it is not
- * grounded either.
- *
- * THE COMMIT IS ASSERTED ON COUNTS — pieces 2, connections still 0 — which is the mechanism reading
- * of "bonded to nothing", exact and countable. No displacement assertion: nothing is released, and
- * a jointless brick resting exactly where it was put moves not at all.
- *
- * NEEDS A TICKING WORLD: a real world for the spawns, but it never ticks.
+ * Free placement honours the cursor and forms no joints; the same cursor against the same structure
+ * snaps in Snap mode, proving PlacementMode is the cause. Seed at (0, 0, 3.25), cursor (11, 0, 10):
+ * Snap takes the next-course pose (11.25, 0, 10.75) at offset 0.79 with one bed joint; Free sits at
+ * the cursor with none, not grounded. Both previews run before the Free commit, since the committed
+ * Free brick would occupy the next-course cell. The commit is asserted on counts. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeFreePlacementHonoursTheCursorAndFormsNoJointsTest,
@@ -1868,7 +1563,7 @@ bool FBuildModeFreePlacementHonoursTheCursorAndFormsNoJointsTest::RunTest(const 
 	const FVector CursorCm(11.0, 0.0, 10.0);
 	const FVector NextCourseCm(11.25, 0.0, 10.75);
 
-	/* SNAP: the same cursor is pulled 0.79 cm onto the running-bond bed and offered one joint. */
+	// Snap: pulled 0.79 cm onto the running-bond bed, one joint.
 	const FBuildPreview Snapped = Comp->UpdatePreviewAt(CursorCm);
 
 	TestTrue(
@@ -1886,7 +1581,7 @@ bool FBuildModeFreePlacementHonoursTheCursorAndFormsNoJointsTest::RunTest(const 
 		FString::Printf(TEXT("the Snap preview would form one bed joint, got %d"), Snapped.JointCount),
 		Snapped.JointCount, 1);
 
-	/* FREE: the same cursor, the same structure, honoured verbatim and bonded to nothing. */
+	// Free: same cursor, honoured verbatim, no joints.
 	Comp->PlacementMode = EPlacementMode::Free;
 
 	const FBuildPreview Free = Comp->UpdatePreviewAt(CursorCm);
@@ -1910,7 +1605,6 @@ bool FBuildModeFreePlacementHonoursTheCursorAndFormsNoJointsTest::RunTest(const 
 		TEXT("the Free pose's bottom face is 6.75 cm up, so it must not read grounded"),
 		Free.bGrounded);
 
-	/* THE COMMIT: one more piece, and still not one connection in the structure. */
 	const FPieceRef Placed = Comp->ConfirmPlace();
 
 	TestTrue(
@@ -1950,28 +1644,9 @@ bool FBuildModeFreePlacementHonoursTheCursorAndFormsNoJointsTest::RunTest(const 
 }
 
 /**
- * A FREE PLACEMENT RESTING ON THE GROUND IS STILL GROUNDED — the pose rule does not care which mode
- * chose the pose.
- *
- * FREE IS THE MODE THAT MAKES THE HAZARD RUN THE OTHER WAY. Snap at least lands a piece on the
- * bond; Free lands it wherever the cursor was, so if grounded were ever inferred from "did a snap
- * bed me onto something" a Free brick laid on the earth would come out ungrounded and the player's
- * foundation would have nothing holding it up. It is the same one rule either way: bottom face
- * within one joint of Z = 0.
- *
- * THE TOLERANCE EDGE IS THE POINT, and the three rows straddle it with a brick half-height of 3.25
- * doing the arithmetic in plain sight:
- *   centre 3.25 -> bottom  0.00, on the ground plane           -> GROUNDED
- *   centre 4.25 -> bottom  1.00, exactly one joint up          -> GROUNDED (the inclusive edge)
- *   centre 4.50 -> bottom  1.25, a quarter centimetre past it  -> NOT grounded
- * The 1 cm is FSnapSettings::JointThicknessCm written out independently rather than imported, so a
- * retuned joint fails here instead of quietly agreeing. A `<` where the ruling says `<=` fails the
- * middle row; a tolerance widened to a course pitch fails the last.
- *
- * X = 50 KEEPS EVERY ROW CLEAR OF THE OTHERS' BOXES, which matters only for tidiness — Free is
- * honoured verbatim, overlaps and all — but it keeps the fixture readable.
- *
- * NEEDS A TICKING WORLD: a real world for the spawns, but it never ticks.
+ * A Free placement resting on the ground is grounded: same rule as Snap, bottom face within one
+ * joint (1 cm, written out) of Z = 0. The rows straddle the edge: bottom 0 and 1.00 are grounded
+ * (inclusive), 1.25 is not. A `<` for `<=` fails the middle row. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeFreePlacementRestingOnTheGroundIsGroundedTest,
@@ -2017,7 +1692,7 @@ bool FBuildModeFreePlacementRestingOnTheGroundIsGroundedTest::RunTest(const FStr
 		{ TEXT("a quarter centimetre past one joint"),  4.50, 1.25, false },
 	};
 
-	/* PREVIEW-ONLY ROWS: preview mutates nothing, so all three see the same empty structure. */
+	// Preview mutates nothing, so all three rows see the same empty structure.
 	for (const FFreeGroundedCase& Case : Cases)
 	{
 		const FBuildPreview Preview = Comp->UpdatePreviewAt(FVector(50.0, 0.0, Case.CentreZCm));
@@ -2039,7 +1714,7 @@ bool FBuildModeFreePlacementRestingOnTheGroundIsGroundedTest::RunTest(const FStr
 			Preview.bGrounded, Case.bExpectGrounded);
 	}
 
-	/* AND THE COMMIT CARRIES THE SAME ANSWER, one piece from each side of the edge. */
+	// Commit one piece from each side of the edge.
 	Comp->UpdatePreviewAt(FVector(50.0, 0.0, 3.25));
 	Comp->ConfirmPlace();
 
@@ -2065,31 +1740,10 @@ bool FBuildModeFreePlacementRestingOnTheGroundIsGroundedTest::RunTest(const FStr
 }
 
 /**
- * CANCEL TEARS THE BUILD DOWN — the structure, its bricks in the world, and the held pose all go.
- *
- * THE LEAK THIS CLOSES IS RECORDED IN TWO PLACES. PreviewBuildPiece's own header says "the caller
- * owns the cancel path: an abandoned build leaks an empty binding until Destroy", and
- * CURRENT_STATE's UI-4a deferral (d) says a second BeginBuild leaks the old structure. The
- * component is that caller, so CancelBuild is where the obligation is discharged: Destroy(id) —
- * which destroys the bricks' actors and drops the binding — then hide the ghost, clear the held
- * preview and forget the id.
- *
- * FOUR THINGS ARE ASSERTED, AND EVERY ONE IS A COUNT OR AN IDENTITY.
- *  - Find(id) is null: the binding is gone, not merely emptied.
- *  - GetStructureId() is INDEX_NONE: the component no longer names a build, so a stray confirm has
- *    nothing to grow.
- *  - NO ABrickActor from the build survives in the world — counted with TActorIterator before and
- *    after, EXCLUDING the ghost, which is the component's own actor and is hidden rather than
- *    destroyed (it is reused by the next build; EndPlay owns its destruction). A binding dropped
- *    while its actors stood would leave exactly this orphan, and it is invisible to a count of
- *    pieces.
- *  - A ConfirmPlace after the cancel FAILS CLOSED: a default ref and still no bricks. The held
- *    preview named a structure that no longer exists, so a component that kept it would try to
- *    commit into the void.
- *
- * NO DISPLACEMENT ANYWHERE: destruction is counted, never measured.
- *
- * NEEDS A TICKING WORLD: a real world for the spawns and destroys, but it never ticks.
+ * CancelBuild tears the build down: Destroy(id), hide the ghost, clear the held preview, forget the
+ * id. Asserts Find(id) is null, GetStructureId() is INDEX_NONE, no build brick actor survives
+ * (counted excluding the ghost, which is hidden and reused), and a following confirm fails closed.
+ * A binding dropped while its actors stood would leave orphans a piece count can't see. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeCancelBuildDestroysTheStructureAndHidesTheGhostTest,
@@ -2119,7 +1773,7 @@ bool FBuildModeCancelBuildDestroysTheStructureAndHidesTheGhostTest::RunTest(cons
 	Comp->BeginBuild();
 	const int32 StructureId = Comp->GetStructureId();
 
-	/* Two real placements: a grounded seed and its same-course neighbour. */
+	// A grounded seed and its same-course neighbour.
 	Comp->UpdatePreviewAt(GroundedSeedCursorCm);
 	Comp->ConfirmPlace();
 	Comp->UpdatePreviewAt(FVector(22.0, 0.0, GroundedBrickPlaneZCm));
@@ -2144,7 +1798,6 @@ bool FBuildModeCancelBuildDestroysTheStructureAndHidesTheGhostTest::RunTest(cons
 			BricksBefore),
 		BricksBefore, 2);
 
-	/* THE CANCEL. */
 	Comp->CancelBuild();
 
 	TestNull(
@@ -2157,11 +1810,7 @@ bool FBuildModeCancelBuildDestroysTheStructureAndHidesTheGhostTest::RunTest(cons
 			Comp->GetStructureId()),
 		Comp->GetStructureId(), static_cast<int32>(INDEX_NONE));
 
-	/*
-	 * THE GHOST MUST EXIST FOR THE HIDDEN ASSERTION TO MEAN ANYTHING. Two real placements have
-	 * previewed, so the component has spawned one; a null here is a regression that would
-	 * otherwise SKIP the hidden check silently, leaving the leg green by absence.
-	 */
+	// A null ghost would silently skip the hidden check, so require one.
 	TestNotNull(
 		TEXT("fixture: two previews must have spawned the ghost, so GetGhostActor cannot be null"),
 		Ghost);
@@ -2189,7 +1838,7 @@ bool FBuildModeCancelBuildDestroysTheStructureAndHidesTheGhostTest::RunTest(cons
 			BricksAfter),
 		BricksAfter, 0);
 
-	/* AND A CONFIRM AFTER THE CANCEL PLACES NOTHING — the held preview went with the build. */
+	// The held preview went with the build, so a confirm places nothing.
 	const FPieceRef AfterCancel = Comp->ConfirmPlace();
 
 	TestEqual(
@@ -2208,19 +1857,9 @@ bool FBuildModeCancelBuildDestroysTheStructureAndHidesTheGhostTest::RunTest(cons
 }
 
 /**
- * A SECOND BeginBuild CANCELS THE FIRST — the logged leak (CURRENT_STATE, UI-4a deferral (d)),
- * closed by routing the re-open through the same cancel path.
- *
- * TODAY THE COMPONENT SIMPLY ADOPTS A FRESH ID and the previous structure is left standing: its
- * binding stays in the subsystem's map forever and its bricks stay in the world, clickable, owned
- * by nobody. Opening a new build is the player saying "not that one", so it must cancel first.
- *
- * THE ASSERTION IS ON IDENTITY AND ABSENCE, not on any count of the new build: the OLD id must
- * resolve to nothing, the old brick's actor must be destroyed, and the new id must DIFFER (ids are
- * monotonic and never reused, so re-handing the same id would be its own bug). The new binding is
- * checked to exist and be empty, which is what a fresh build is.
- *
- * NEEDS A TICKING WORLD: a real world for the spawns and destroys, but it never ticks.
+ * A second BeginBuild cancels the first, so the old binding and its bricks don't leak. Asserts the
+ * old id resolves to nothing, its brick actor is destroyed, and the new id differs (ids are never
+ * reused) and names an empty binding. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeBeginBuildTwiceCancelsTheFirstTest,
@@ -2266,7 +1905,6 @@ bool FBuildModeBeginBuildTwiceCancelsTheFirstTest::RunTest(const FString& Parame
 		TEXT("fixture: the first build's piece must be backed by a live actor to tear down"),
 		FirstBrick.IsValid());
 
-	/* THE RE-OPEN. */
 	Comp->BeginBuild();
 	const int32 SecondId = Comp->GetStructureId();
 
@@ -2301,77 +1939,18 @@ bool FBuildModeBeginBuildTwiceCancelsTheFirstTest::RunTest(const FString& Parame
 }
 
 /**
- * CURSOR-DRIVEN GHOST — EVERY SETTINGS CHANGE RE-DRIVES THE HELD PREVIEW, AT THE SAME CURSOR, WITH
- * NO NEW POINTER EVENT.
+ * While a preview is held, every settings change (rotation, piece kind, placement mode, course,
+ * joint) re-runs it at the held cursor, so the ghost updates without a mouse move (owner playtest,
+ * 2026-09-16). Asserted on the ghost's bounds: size encodes kind and rotation, centre is where the
+ * click lands.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
+ * The held cursor (11.25, 3, 3.25) is off-grid in Y so the rotated brick's two corner-return poses
+ * aren't tied. Upright, it snaps to the next-course pose (11.25, 0, 10.75) at 8.08 cm, 3.5 cm ahead
+ * of the next rival.
  *
- * While a preview is HELD, every setting the player can change — rotation, piece kind, placement
- * mode, course — re-runs the preview at the cursor the component is already holding, so the ghost
- * shows where the brick is going to go the instant the setting changes rather than at the next
- * mouse move (the owner's playtest, 2026-09-16).
- *
- * =====================================================================================
- * WHY THE GHOST'S BOUNDS ARE THE THING ASSERTED
- * =====================================================================================
- *
- * The ghost IS the feature — the player's complaint is about what is on screen, not about what a
- * return value says — and the only pivot-agnostic reading of where an ABrickActor is drawn is its
- * world BOUNDS (SM_Cube's pivot is a corner; `GetActorLocation` reads right while the bounds sit a
- * half-brick out, which is the bug `BrickSpawnTransform` exists to close). So the mechanism read
- * here is the bounds' SIZE — which encodes the piece kind and the rotation exactly, since "rotated"
- * has no representation downstream but a swapped half extent — and the bounds' CENTRE, which is
- * where the click would land.
- *
- * NEVER A DISPLACEMENT: nothing is released, nothing is settled and nothing ticks. A ghost is moved
- * by an assignment, and the count of pieces in the binding never changes in this test at all.
- *
- * =====================================================================================
- * THE NUMBERS, WORKED OUT HERE RATHER THAN IMPORTED
- * =====================================================================================
- *
- * A brick is 21.5 x 10.25 x 6.5 cm on 1 cm joints, so the coordinating grid is 22.5 x 11.25 x 7.5
- * and a brick's own half height is 3.25. Course 0 rests it on the earth at Z = 3.25; course 1 at
- * 7.5 + 3.25 = 10.75 (DESIGN §8, 2026-09-15). The seed goes at (0, 0, 3.25), X-long.
- *
- * THE HELD CURSOR IS (11.25, 3.0, 3.25), AND ITS Y IS 3.0 ON PURPOSE. Off-grid in Y, so that the
- * two corner-return poses a ROTATED brick can take beside the seed — (16.875, +5.625) and
- * (16.875, -5.625) — are 6.21 cm and 10.30 cm from it rather than exactly tied, which is what keeps
- * the solver's answer a single well-separated pose rather than one decided by emission order
- * (CURRENT_STATE's merged-candidate item (vii)). Upright, from that cursor:
- *     next-course (11.25, 0, 10.75)  -> sqrt(0^2 + 3^2 + 7.5^2)       =  8.08 cm   WINNER
- *     same-course (22.50, 0,  3.25)  -> sqrt(11.25^2 + 3^2)           = 11.64 cm
- *     next-course (-11.25, 0, 10.75) -> sqrt(22.5^2 + 3^2 + 7.5^2)    = 23.90 cm
- *     same-course (-22.50, 0, 3.25)  -> 33.79 cm, outside the 30 cm snap radius, dropped
- * so the held preview is the running-bond next-course pose, by a 3.5 cm margin over its nearest
- * rival. The Free candidate is appended last and cannot outrank a snap in Snap mode.
- *
- * =====================================================================================
- * AND WHAT THE COURSE LEG DECIDES (READ THIS BEFORE CHANGING IT)
- * =====================================================================================
- *
- * A refresh that re-ran the preview at the held cursor VERBATIM would be a no-op for the course:
- * `UpdatePreviewAt` takes a world point, and the build plane only enters through a RAY. But the
- * course chip has to move the ghost — a player clicking `Course up` and seeing the ghost stay put
- * has been told the click was dropped. So the refresh must put the held cursor back ON THE CURRENT
- * BUILD PLANE: the refreshed pose is (LastCursor.X, LastCursor.Y, BuildPlaneZCm). Section SIX is
- * what pins that, in FREE placement, where the pose IS the cursor and the reading is exact:
- * course 0 -> 3.25, course 1 -> 10.75, one course of 7.5 cm apart. (An implementation that instead
- * remembered the last RAY and re-intersected it with the new plane satisfies every assertion here
- * too, and is the better answer for the controller's oblique camera ray; the component has no ray
- * to remember, so the projection is what it can do.)
- *
- * In SNAP placement the course cannot be read this way at all — a snapped pose is decided by the
- * neighbours, not by the cursor's height — which is why the Free legs come last and carry it.
- *
- * RED TODAY: `RefreshPreview`, `SetPlacementMode` and `SetJointChoice` do not exist, and no mutator
- * re-drives the preview — the ghost keeps the old footprint at the old pose until the next
- * `UpdatePreviewAt`.
- *
- * NEEDS A TICKING WORLD: a real world for the subsystem and the ghost actor's spawn. It never ticks
- * one; nothing here is about anything moving.
+ * The refresh re-projects the held cursor onto the current build plane, so a course change moves
+ * the ghost. Section six pins this in Free mode, where the pose is the cursor: course 1 lifts it
+ * from 3.25 to 10.75. Snap poses are set by neighbours, so the Free legs carry it. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeSettingsChangeRefreshesTheHeldPreviewTest,
@@ -2384,21 +1963,15 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 	using namespace BuildModeComponentTestSupport;
 	using namespace DestructionSession;
 
-	/*
-	 * THE FOUR FOOTPRINTS, SPELLED OUT RATHER THAN ASKED OF THE PALETTE. Deriving them from
-	 * BuildPieceHalfExtentCm and doubling would make this test agree with the palette however wrong
-	 * it is, and the swap itself is half of what is under test.
-	 */
+	// Footprints written out, not read from the palette, since the swap is under test.
 	const FVector UprightBrickSizeCm(21.5, 10.25, 6.5);
 	const FVector RotatedBrickSizeCm(10.25, 21.5, 6.5);
 	const FVector UprightPlateSizeCm(67.5, 10.25, 10.0);
 
-	/* The held cursor, and the two poses the Free legs read exactly. */
 	const FVector HeldCursorCm(11.25, 3.0, 3.25);
 	const FVector FreeAtCourse0Cm(11.25, 3.0, 3.25);
 	const FVector FreeAtCourse1Cm(11.25, 3.0, 10.75);
 
-	/* The running-bond next-course pose the held preview snaps to, upright. */
 	const FVector NextCourseCentreCm(11.25, 0.0, 10.75);
 
 	FBrickTestWorld TestWorld;
@@ -2419,7 +1992,7 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 	Comp->BeginBuild();
 	const int32 StructureId = Comp->GetStructureId();
 
-	/* --- ZERO: a grounded seed brick at the origin, X-long ---------------------------------- */
+	// Zero: a grounded seed brick at the origin, X-long.
 
 	Comp->UpdatePreviewAt(GroundedSeedCursorCm);
 	Comp->ConfirmPlace();
@@ -2434,11 +2007,7 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 		}
 	}
 
-	/*
-	 * READING THE GHOST. Both legs of every claim below come off this: the bounds are taken
-	 * bNonColliding because the ghost's collision is disabled, and a missing ghost is reported once
-	 * as a fixture error rather than as a silent zero box.
-	 */
+	// Ghost bounds (bNonColliding, as its collision is off); a missing ghost is an error, not a zero box.
 	const auto GhostBounds = [this, Comp]() -> FBox
 	{
 		AActor* const Ghost = Comp->GetGhostActor();
@@ -2452,7 +2021,7 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 		return Ghost->GetComponentsBoundingBox(/*bNonColliding*/ true);
 	};
 
-	/* --- ONE: the held preview, and a refresh that changes nothing --------------------------- */
+	// One: the held preview, and a refresh that changes nothing.
 
 	{
 		const FBuildPreview Held = Comp->UpdatePreviewAt(HeldCursorCm);
@@ -2476,10 +2045,7 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 				Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.GetCenter().Z),
 			Bounds.GetCenter().Equals(NextCourseCentreCm, BoundsToleranceCm));
 
-		/*
-		 * A REFRESH WITH NOTHING CHANGED CHANGES NOTHING, and it says so — the preview is still
-		 * held, so the answer is TRUE rather than the fail-closed false a spent preview gives.
-		 */
+		// The preview is still held, so the refresh returns true.
 		TestTrue(
 			TEXT("RefreshPreview must report the held preview still valid when nothing has changed"),
 			Comp->RefreshPreview());
@@ -2493,16 +2059,10 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 			Again.GetCenter().Equals(NextCourseCentreCm, BoundsToleranceCm));
 	}
 
-	/* --- TWO: SetRotated turns the GHOST, with no pointer call at all ------------------------ */
-
 	/*
-	 * THE POSE IS NOT PINNED BY HAND HERE, AND THE ORACLE IS WHY. A rotated brick beside an X-long
-	 * one takes a corner return, and which of the four the solver ranks first is the snap solver's
-	 * business rather than this test's. What IS this test's business is that the ghost is showing
-	 * the SAME thing a fresh pointer event at the same cursor would show — so the ghost's pose is
-	 * snapshotted FIRST, and only then is a fresh preview taken at the held cursor and compared
-	 * against the snapshot. Preview is non-mutating, so the oracle reading cannot disturb anything,
-	 * and the comparison is not circular: the snapshot predates the call it is measured against.
+	 * Two: SetRotated turns the ghost with no pointer call. Which corner return wins is the snap
+	 * solver's business, so the ghost is snapshotted first, then compared with a fresh
+	 * (non-mutating) preview at the held cursor.
 	 */
 	{
 		Comp->SetRotated(true);
@@ -2549,7 +2109,7 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 			RefreshedCentre.Equals(Oracle.CentreCm, BoundsToleranceCm));
 	}
 
-	/* --- THREE: and the same chip turns it back, onto the pose section ONE read -------------- */
+	// Three: un-rotating returns to section one's pose.
 
 	{
 		Comp->SetRotated(false);
@@ -2571,14 +2131,9 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 			Bounds.GetCenter().Equals(NextCourseCentreCm, BoundsToleranceCm));
 	}
 
-	/* --- FOUR: SetPieceKind re-draws the ghost as the new piece ------------------------------ */
-
 	/*
-	 * SIZE ONLY, DELIBERATELY. The plate's build plane is its own half height (5.0) rather than the
-	 * brick's 3.25, so the refreshed cursor legitimately moves in Z with the piece — and where a
-	 * 67.5 cm board snaps beside a single brick is the snap solver's answer, not this test's. The
-	 * footprint is the part that is the SETTING, and a ghost still wearing the brick's 21.5 cm is
-	 * the exact defect the owner reported.
+	 * Four: SetPieceKind redraws the ghost. Size only: the plate's plane and snap pose legitimately
+	 * differ from the brick's, and the footprint is what the owner reported stale.
 	 */
 	{
 		Comp->SetPieceKind(EBuildPieceKind::TimberPlate);
@@ -2599,7 +2154,7 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 			Bounds.GetSize().Equals(UprightPlateSizeCm, BoundsToleranceCm));
 	}
 
-	/* --- FIVE: SetPlacementMode(Free) drops the ghost onto the cursor ------------------------ */
+	// Five: SetPlacementMode(Free) drops the ghost onto the cursor.
 
 	{
 		Comp->SetPieceKind(EBuildPieceKind::Brick);
@@ -2628,7 +2183,7 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 			Bounds.GetSize().Equals(UprightBrickSizeCm, BoundsToleranceCm));
 	}
 
-	/* --- SIX: SetCourse lifts the ghost by exactly one course -------------------------------- */
+	// Six: SetCourse lifts the ghost by one course.
 
 	{
 		Comp->SetCourse(1);
@@ -2649,13 +2204,9 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 			Bounds.GetCenter().Equals(FreeAtCourse1Cm, BoundsToleranceCm));
 	}
 
-	/* --- SEVEN: the joint chip is a setter too, and it disturbs nothing ---------------------- */
-
 	/*
-	 * A JOINT CHOICE MOVES NO GHOST — it changes what the click FASTENS WITH, which lives on
-	 * FBuildPreview::JointProfile rather than in any bounds. So what is pinned here is that the
-	 * setter exists, that it and the public field are one thing, and that refreshing through it
-	 * leaves the held preview exactly where it was rather than dropping it.
+	 * Seven: SetJointChoice changes only the fastening (FBuildPreview::JointProfile), so the ghost
+	 * must stay put and the preview must not be dropped.
 	 */
 	{
 		Comp->SetJointChoice(EJointChoice::Screw);
@@ -2675,7 +2226,7 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 			Bounds.GetCenter().Equals(FreeAtCourse1Cm, BoundsToleranceCm));
 	}
 
-	/* Nothing in this test commits anything: the structure still holds only the seed. */
+	// No refresh commits anything.
 	if (FStructureBinding* const Binding = Subsystem.Find(StructureId))
 	{
 		TestEqual(
@@ -2689,41 +2240,11 @@ bool FBuildModeSettingsChangeRefreshesTheHeldPreviewTest::RunTest(const FString&
 }
 
 /**
- * CURSOR-DRIVEN GHOST — A REFRESH WITH NO HELD PREVIEW DOES NOTHING, AND SAYS SO.
- *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
- *
- * `RefreshPreview` re-drives only a preview that is actually HELD: with none — before any pointer
- * event, and after a `ConfirmPlace` has consumed the one there was — it returns false, spawns and
- * shows nothing, and leaves the component unable to commit until a fresh pointer event arrives.
- *
- * =====================================================================================
- * WHY THIS IS THE GUARD AND NOT A DETAIL
- * =====================================================================================
- *
- * Every settings mutator is about to call this, and the settings are clickable when no ghost is up
- * at all — a player opens Build mode, clicks `Rotate`, and has pointed at nothing. A refresh that
- * ran regardless would preview at `LastCursorCm`, which is the world ORIGIN on a fresh component,
- * spawn a ghost there and HOLD that preview — so the next click would commit a brick at a pose
- * nobody ever saw. That is exactly the defect `ComponentConfirmWithoutPreviewFailsClosed` closed on
- * the confirm door, arriving by a new route.
- *
- * AND THE POST-COMMIT LEG MIRRORS `ComponentConfirmTwiceWithoutRepreviewPlacesOnce`. One preview,
- * one commit: the commit SPENDS the held preview, so a refresh cannot hand it back and a second
- * confirm must still place nothing. A refresh that re-armed a spent preview would re-open the very
- * double-commit that test exists to prevent.
- *
- * THE ASSERTIONS ARE COUNTS AND A NULL — the returned bool, `GetGhostActor()` being null (the
- * component never spawns a ghost except to show one), the returned ref, and the binding's piece
- * count. Never a position: the bug would be that a piece exists AT ALL.
- *
- * RED TODAY only in the sense that `RefreshPreview` does not exist; it is a FAIL-CLOSED GUARD, so
- * it goes green the moment the member does, and it earns its runtime by refusing the refresh-on-
- * nothing that the mutators would otherwise let through.
- *
- * NEEDS A TICKING WORLD: a world for the subsystem and any spawn, but it never ticks one.
+ * RefreshPreview with no held preview returns false and spawns nothing, both before any pointer
+ * event and after ConfirmPlace spent the preview. Otherwise clicking Rotate on a fresh build would
+ * hold a preview at the origin default and the next click would commit an unseen brick; after a
+ * commit, re-arming would reopen the double commit. Asserted on the bool, a null ghost, the ref
+ * and the piece count. Never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBuildModeRefreshWithoutAHeldPreviewDoesNothingTest,
@@ -2753,7 +2274,7 @@ bool FBuildModeRefreshWithoutAHeldPreviewDoesNothingTest::RunTest(const FString&
 	Comp->BeginBuild();
 	const int32 StructureId = Comp->GetStructureId();
 
-	/* --- ONE: a fresh build, pointed at nothing ---------------------------------------------- */
+	// One: a fresh build, pointed at nothing.
 
 	{
 		TestFalse(
@@ -2784,7 +2305,7 @@ bool FBuildModeRefreshWithoutAHeldPreviewDoesNothingTest::RunTest(const FString&
 		}
 	}
 
-	/* --- TWO: a preview, then the commit that spends it -------------------------------------- */
+	// Two: a preview, then the commit that spends it.
 
 	Comp->UpdatePreviewAt(GroundedSeedCursorCm);
 
@@ -2795,7 +2316,7 @@ bool FBuildModeRefreshWithoutAHeldPreviewDoesNothingTest::RunTest(const FString&
 			StructureId, Seed.StructureId, Seed.PieceIndex),
 		Seed == FPieceRef{ StructureId, 0 });
 
-	/* --- THREE: the spent preview cannot be refreshed back into existence -------------------- */
+	// Three: a spent preview can't be refreshed back.
 
 	{
 		TestFalse(
