@@ -25,60 +25,33 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * SESSION S4/S5 — the controller is the session: the toolbar is the only door into its state, and
- * the mode decides what a ray does.
+ * Session tests: the controller is the session. The toolbar is the only door into its state
+ * (OnToolbarButton, which also pushes the change onto UBuildModeComponent and refuses whatever the
+ * model refuses), and the mode decides what a ray does — Build previews and places, Destroy hovers
+ * and inspects. SessionToolbar.h owns the pure state transition; this file pins the side effects the
+ * model cannot own, e.g. a refused Course down must not lower the build plane below the earth.
  *
- * `ADestructionGamePlayerController` holds one `FSessionToolbarState`, changes it only through
- * `OnToolbarButton` (which pushes the change onto its own `UBuildModeComponent` and refuses
- * whatever the model refuses, side effects included), and dispatches a world ray by mode — Build
- * previews and places, Destroy hovers and inspects.
+ * Every claim is a mechanism reading (returned bool, state fields, component/binding state,
+ * IsReleased), never a distance moved (DESIGN §4); nothing here ticks a world.
  *
- * `Core/SessionToolbar.h` already owns which buttons exist, which are greyed, and what one click
- * does to the state (`ApplyToolbarButton` is pure and `Core.SessionToolbar.*` sweeps it); what no
- * model can own is the side effects. A click that moves the course must move the component's build
- * plane, and a click the model refuses must move nothing — a controller that applied the
- * transition and then ran its side effect unconditionally would have a greyed `Course down`
- * quietly lowering the build plane below the earth while the readout still said course 0.
- * CURRENT_STATE records the component's kind, course and placement as a parallel copy of three
- * state fields for exactly this reason; this file pins who owns them.
- *
- * Every claim here is a mechanism reading: the returned bool, the state's own fields, the
- * component's structure id/piece kind/course/build plane, the binding's piece and connection
- * counts, `IsPieceMenuShown`, a brick's `GetHighlight`, and `IsReleased` — never a distance moved
- * (DESIGN §4). This bites hardest in `RunStructureSettlesTheBuild`, where the Free brick is
- * released 45 cm above the floor and would be measured falling by a physics tick nobody runs;
- * `IsReleased` answers "did Run do its job", not where the brick ends up.
- *
- * A world ticks in the sense that the subsystem spawns real `ABrickActor`s, the ghost is an actor,
- * and the Destroy ray is a real line trace against real collision — but no test here ticks one,
- * since nothing is about anything moving.
- *
- * Named namespace, deliberately different from every other one in this module: an anonymous
- * namespace is private to a translation unit rather than a file, and a unity build merges many
- * files into one (see CURRENT_STATE.md). The `using namespace` lives inside each RunTest body for
- * the same reason.
+ * Named namespace, not anonymous: a unity build merges files into one translation unit, so an
+ * anonymous namespace would not be file-private. The `using namespace` lives in each RunTest body.
  */
 namespace SessionControllerTestSupport
 {
 	using namespace DestructionSession;
 
 	/*
-	 * The rests-on-the-ground arithmetic, spelled out rather than imported (DESIGN §8, 2026-09-15).
-	 *
-	 * A brick is 21.5 x 10.25 x 6.5 cm on a 1 cm joint, so the coordinating grid is 22.5 x 11.25 x
-	 * 7.5 and the brick's own half height is 3.25. Course 0 therefore centres a brick at 3.25 with
-	 * its underside on the earth; course n centres it at n * 7.5 + 3.25. A timber plate is 5.0 cm
-	 * half-height, so the same course puts it at n * 7.5 + 5.0 — the reason the plane is derived
-	 * from the piece as well as the course.
-	 *
-	 * Calling DestructionSession::CoursePlaneZCm here would make these tests agree with the plane
-	 * function however wrong it is, which is the one thing they exist to catch.
+	 * The grid arithmetic, spelled out rather than imported so a wrong plane function cannot make
+	 * these tests agree with it (DESIGN §8). A brick is 21.5 x 10.25 x 6.5 cm on a 1 cm joint, so the
+	 * grid pitch is 7.5 and course n centres a brick at n * 7.5 + 3.25; a plate's half height is 5.0,
+	 * so its plane is n * 7.5 + 5.0 — which is why the plane depends on the piece, not just the course.
 	 */
 
 	/** Course 0's plane for a brick: 0 * 7.5 + 3.25. */
 	constexpr double SessionBrickPlaneCourse0Cm = 3.25;
 
-	/** Course 2's plane for a TIMBER PLATE: 2 * 7.5 + 5.0 — where the demo building puts its plate. */
+	/** Course 2's plane for a plate: 2 * 7.5 + 5.0, where the demo puts its plate. */
 	constexpr double SessionPlatePlaneCourse2Cm = 20.0;
 
 	/** Course 0's plane for a plate: 0 * 7.5 + 5.0. */
@@ -88,25 +61,19 @@ namespace SessionControllerTestSupport
 	const FVector SessionPlateHalfExtentCm(33.75, 5.125, 5.0);
 
 	/**
-	 * THE COURSE THE FLOATING BRICK IN THE RUN TEST IS LAID ON, and its plane.
-	 *
-	 * 6 * 7.5 + 3.25 = 48.25, so the brick's bottom face is at 45 cm — forty-five times the 1 cm
-	 * joint the grounded rule allows, so it cannot read grounded by accident. It is also five brick
-	 * lengths clear of the seed along X, which is well outside the 30 cm snap radius, so the Free
-	 * placement is jointless for two independent reasons rather than one.
+	 * The course the run test's floating brick sits on, and its plane. 6 * 7.5 + 3.25 = 48.25, so its
+	 * bottom face is at 45 cm — 45x the 1 cm joint the grounded rule allows, so it cannot read
+	 * grounded by accident. It is also far outside the 30 cm snap radius, so its Free placement is
+	 * jointless.
 	 */
 	constexpr int32 SessionFloatingCourse = 6;
 	constexpr double SessionFloatingPlaneZCm = 48.25;
 	constexpr double SessionFloatingXCm = 100.0;
 
 	/**
-	 * THE TWO POSES THE BUILD-THEN-DESTROY TEST LAYS, derived from the same grid.
-	 *
-	 * The seed goes at the origin on course 0. The second cursor is aimed at x = 22.0 — deliberately
-	 * OFF the grid — and the running bond's same-course pose beside the seed is one brick plus one
-	 * joint away at x = 22.5, which is 0.5 cm from the cursor. The nearest next-course pose is at
-	 * (11.25, 0, 10.75), which is sqrt(10.75^2 + 7.5^2) = 13.1 cm away, so the same-course snap wins
-	 * on distance by a factor of 26 and the fixture is nowhere near its own boundary.
+	 * The two poses the build-then-destroy test lays. The seed is at the origin on course 0; the
+	 * second cursor is aimed off-grid at x = 22.0, and the same-course pose at x = 22.5 is 0.5 cm away
+	 * against 13.1 cm for the nearest next-course pose, so the same-course snap wins outright.
 	 */
 	const FVector SessionSeedCentreCm(0.0, 0.0, SessionBrickPlaneCourse0Cm);
 	constexpr double SessionSecondCursorXCm = 22.0;
@@ -116,33 +83,25 @@ namespace SessionControllerTestSupport
 	constexpr double SessionThirdCursorXCm = 45.0;
 
 	/**
-	 * WHERE THE PLAYER LAYS THEIR ONE BRICK ON A LEVEL THAT ALREADY HAS A WALL ON IT, in cm along X.
-	 *
-	 * THIRTY METRES CLEAR OF THAT WALL, AND THAT IS A REQUIREMENT RATHER THAN TIDINESS. The sandbox
-	 * row lays 30 bricks per course on the 22.5 cm grid at Y = 0, so its courses span X -10.75 to
-	 * 663.25 and its 40 courses reach Z = 300. The Destroy ray in that test is a REAL LINE TRACE, so
-	 * a brick laid anywhere inside that span could put one of the level's own bricks under the cursor
-	 * instead of the player's — and the test would then delete a piece of the wall and prove nothing.
+	 * Where the player lays their one brick on a level that already has a wall, in cm along X. Thirty
+	 * metres clear of that wall is a requirement: the sandbox row spans X -10.75 to 663.25, and the
+	 * Destroy ray is a real line trace, so a brick inside that span could put the level's own brick
+	 * under the cursor and the test would delete the wall instead.
 	 */
 	constexpr double SessionClearOfTheWallXCm = 3000.0;
 
 	/**
-	 * How far above the build plane a pointing ray starts, and how far below it ends.
-	 *
-	 * THE RAY IS A DIRECTION, NOT A POINT. The controller turns (Start, End) into a direction and
-	 * lets the component intersect it with the build plane, so the END's own Z is irrelevant — which
-	 * is exactly why it is taken to Z = 0 rather than to the plane. A test that aimed the end AT the
-	 * plane would pass against a controller that ignored the plane entirely and used the end point.
+	 * How far above the build plane a pointing ray starts, and how far below it ends. The ray is a
+	 * direction: the controller intersects it with the build plane, so the end's Z is irrelevant and
+	 * is taken to 0, not to the plane — aiming the end at the plane would pass against a controller
+	 * that ignored the plane and used the end point.
 	 */
 	constexpr double SessionRayStartZCm = 300.0;
 	constexpr double SessionRayEndZCm = 0.0;
 
 	/**
-	 * How far along Y a DESTROY ray starts and ends, either side of the brick.
-	 *
-	 * A brick is 10.25 cm deep centred on Y = 0, so +/- 100 cm is far outside it on both sides and
-	 * the ray crosses the whole thickness. Along Y so nothing else in the build is in the way. Same
-	 * reach the piece-menu tests use.
+	 * How far along Y a Destroy ray starts and ends, either side of the brick. A brick is 10.25 cm
+	 * deep on Y = 0, so +/- 100 cm crosses the whole thickness with nothing else in the way.
 	 */
 	constexpr double SessionInspectReachCm = 100.0;
 
@@ -157,9 +116,8 @@ namespace SessionControllerTestSupport
 	}
 
 	/*
-	 * THE SAME RAY AIMED ANYWHERE IN PLAN, for the corner builds below — a leg that runs along Y
-	 * cannot be aimed at with a Y = 0 cursor. Straight down from 300 cm, so the component's
-	 * ray-vs-plane intersection lands on (XCm, YCm) whatever course the plane is on.
+	 * The same ray aimed anywhere in plan, for the corner builds — a leg running along Y cannot be
+	 * aimed at with a Y = 0 cursor. Straight down from 300 cm, so the plane hit is (XCm, YCm).
 	 */
 	FVector SessionPointerRayStartAt(double XCm, double YCm)
 	{
@@ -172,15 +130,10 @@ namespace SessionControllerTestSupport
 	}
 
 	/**
-	 * Whether the rigid-block bridge will pose this joint at all.
-	 *
-	 * A joint between two grounded pieces is skipped by the bridge, not posed and not refused:
-	 * `BuildRigidBlockProblem` drops it before it ever looks at the normal. That skip is why the
-	 * corner fixture below is six pieces rather than three — an L laid entirely on the earth has
-	 * every Y-normal head joint between two grounded pieces, so the 2D bridge never reaches the
-	 * refusal and a test built on it would be green for a reason that has nothing to do with the
-	 * flag. It is also why the readout assertions here run only over the joints this predicate
-	 * admits: a skipped joint has no provenance entry and therefore no readout, whatever the dimension.
+	 * Whether the rigid-block bridge poses this joint at all. It skips (does not refuse) a joint
+	 * between two grounded pieces before looking at the normal — which is why the corner fixture is
+	 * six pieces not three, and why the readout assertions run only over posed joints: a skipped joint
+	 * has no provenance entry and so no readout.
 	 */
 	bool SessionJointIsPosedByTheLP(const FStructure& Structure, int32 Connection)
 	{
@@ -265,11 +218,8 @@ namespace SessionControllerTestSupport
 	}
 
 	/**
-	 * Whether two states are the same state, field for field.
-	 *
-	 * Field by field rather than memcmp, because a struct with a bool in it carries padding and two
-	 * states that differ only in their padding are the same state. The model's own refusal contract
-	 * is a bitwise no-op, and this is the honest reading of it.
+	 * Whether two states are equal, field by field rather than memcmp — a struct with a bool carries
+	 * padding, and two states differing only in padding are the same state.
 	 */
 	bool SessionSameState(const FSessionToolbarState& A, const FSessionToolbarState& B)
 	{
@@ -282,11 +232,8 @@ namespace SessionControllerTestSupport
 	}
 
 	/**
-	 * Whether the strip this state draws offers this button live.
-	 *
-	 * Asked of the production model rather than re-decided here: the claim is that the controller's
-	 * state is one the strip can grey correctly, not that this file agrees with the model about
-	 * greying. A button the strip does not draw at all answers false.
+	 * Whether the strip this state draws offers this button live. Asked of the production model, not
+	 * re-decided here. A button the strip does not draw at all answers false.
 	 */
 	bool SessionButtonIsEnabled(const FSessionToolbarState& State, EToolbarButtonId Id)
 	{
@@ -349,14 +296,9 @@ namespace SessionControllerTestSupport
 	}
 
 	/**
-	 * A controller in the world with a real ULocalPlayer, and its build component, or nulls.
-	 *
-	 * The local player is not decoration: `bShowMouseCursor` is a plain field and would flip without
-	 * one, but `SetSessionControls` also sets the input mode and the session's mapping contexts are
-	 * applied through the Enhanced Input local-player subsystem — a controller with no local player
-	 * has none, so the engine never runs `SetupInputComponent` for it either. A fixture without one
-	 * would assert the cursor half of the session's controls while the input half silently failed
-	 * closed.
+	 * A controller in the world with a real ULocalPlayer, and its build component, or nulls. The local
+	 * player is needed because SetSessionControls applies the session's mapping contexts through the
+	 * Enhanced Input local-player subsystem; without one the input half fails closed.
 	 */
 	struct FSessionFixture
 	{
@@ -402,14 +344,10 @@ namespace SessionControllerTestSupport
 	};
 
 	/**
-	 * Spawn the controller and a pawn the way `UEngine::LoadMap` does, between actor init and
-	 * begin-play — so a game mode's begin-play runs with a player already in the world.
-	 *
-	 * No local player here, and the split from FSessionFixture is deliberate: this one is handed to
-	 * `FBrickTestWorldWrapper::BeforeBeginPlay`, which runs before the world has begun play at all,
-	 * and attaching one there drags in a viewport-less `UGameViewportClient` and an `ensure` this
-	 * project has been bitten by. The game-mode claims below read the session state and the build
-	 * component, neither of which needs a local player.
+	 * Spawn the controller and a pawn the way UEngine::LoadMap does, between actor init and begin-play,
+	 * so a game mode's begin-play runs with a player in the world. No local player: this runs in
+	 * BeforeBeginPlay, and attaching one there drags in a viewport-less UGameViewportClient and an
+	 * ensure. The game-mode claims below need only the session state and build component.
 	 */
 	void SessionSpawnPlayer(UWorld& World, ADestructionGamePlayerController*& OutController)
 	{
@@ -426,42 +364,23 @@ namespace SessionControllerTestSupport
 }
 
 /**
- * The toolbar is the only door: every accepted click moves the state and the component, and every
- * refused click moves neither.
+ * The toolbar is the only door: every accepted click moves both the state and the component, and
+ * every refused click moves neither.
  *
- * The default mode is Destroy, not the model's own default, because `FSessionToolbarState::Mode`
- * defaults to Build and `Core/SessionToolbar.h` argues for it — a default-constructed session must
- * be the one that cannot destroy anything. The controller is a different question: twenty-eight of
- * the twenty-nine playable levels lay a structure and invite the player to pull it apart, and a
- * controller that opened them in Build mode would put a gold ghost over somebody else's wall and
- * swallow the first click. So the controller seeds Destroy — today's behaviour, unchanged for every
- * scenario level — and `GameModeOpensBuildModeOnThePlot` below is what puts the one build level into
- * Build mode, through the same single door.
+ * The controller seeds Destroy, not the model's own default of Build: most levels lay a structure to
+ * pull apart, and opening in Build would put a ghost over the wall and swallow the first click.
+ * GameModeOpensBuildModeOnThePlot puts the one build level into Build mode through the same door.
  *
- * The refusals are the half that cannot be got right by accident. Three buttons are refused here,
- * each for a different reason:
+ * Three refused buttons, each catching a different mistake. Course down at course 0: the third
+ * refusal, after two accepted steps, catches a controller decrementing its own copy to -1 while the
+ * component clamps to 0. Run structure is not drawn in Build mode: catches switching on the id before
+ * asking the model. Clear build is greyed with nothing laid: its side effect changes the structure
+ * id, so an unchanged id proves it did not run (a stronger reading than the piece count).
  *
- *   - `Course down` at course 0 is drawn but greyed. The model already answers the state
- *     bit-for-bit unchanged; what this adds is that the component did not move either. A controller
- *     that pushed `SetCourse(state.Course)` unconditionally after the transition would pass every
- *     model test and still be correct here by luck, because the refused state's course is 0 — so
- *     the assertion that bites is the third `Course down`, taken after two accepted ones, where a
- *     controller decrementing its own copy would land on -1 while the component clamps to 0.
- *   - `Run structure` is not drawn at all in Build mode. The model's refusal is the FindByPredicate
- *     coming back null, and a controller that switched on the id before asking the model would run
- *     a solve on a build the player is still laying.
- *   - `Clear build` is drawn and greyed because nothing has been laid. Its side effect is
- *     cancel-then-begin, which changes the structure id — so the id being unchanged is what says
- *     the side effect did not run, a stronger reading than the piece count, which is zero either way.
- *
- * The accepted clicks are asserted in both currencies: the state is the presenter's record and the
- * component is what the world does. Asserting only the first passes against a controller that never
- * wired the component up at all; asserting only the second passes against one whose strip then greys
- * the wrong buttons. The piece click is the sharpest of the pair — the extent and the build plane are
- * derived by the component from the kind, so `(33.75, 5.125, 5)` and a plane of 20 cm on course 2 are
- * three facts one call has to get right.
- *
- * A world ticks for the component's structure and its ghost actor, but no test here ticks one.
+ * Accepted clicks are asserted in both currencies — the state (the presenter's record) and the
+ * component (what the world does) — since either alone admits a wrong controller. The piece click is
+ * sharpest: the component derives extent and plane from the kind, so (33.75, 5.125, 5) and a 20 cm
+ * plane on course 2 are three facts one call must get right.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarDrivesTheSessionTest,
@@ -546,9 +465,8 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Controller.GetSessionToolbarState().Mode == ESessionMode::Build);
 
 		/*
-		 * AND A BUILD IS OPEN. Build mode with no structure behind it is a mode in which every click
-		 * fails closed and nothing says why — the ghost would preview against an unknown id and
-		 * ConfirmPlace would refuse every commit.
+		 * And a build is open: Build mode with no structure behind it fails every click closed — the
+		 * ghost previews against an unknown id and ConfirmPlace refuses every commit.
 		 */
 		TestTrue(
 			FString::Printf(
@@ -563,11 +481,9 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Subsystem.Find(Build.GetStructureId()));
 
 		/*
-		 * THE CURSOR IS THE OTHER HALF OF "BUILD MODE IS USABLE". There is no aiming a ghost, and no
-		 * pressing a chip, without a pointer. S6 makes it permanent — SetSessionControls raises it
-		 * in BeginPlay and nothing lowers it — so this reads the same as it always did while meaning
-		 * something weaker than it used to: the mode switch no longer has to raise it, it only has
-		 * to leave it up. Section NINE is the half that bites.
+		 * The cursor is the other half of a usable Build mode. Since S6 SetSessionControls raises it
+		 * in BeginPlay and nothing lowers it, so the mode switch need only leave it up, not raise it.
+		 * Section NINE is the half that bites.
 		 */
 		TestTrue(
 			TEXT("Build mode must show the mouse cursor — there is no aiming a ghost with a camera "
@@ -660,9 +576,9 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Build.GetCourse(), 2);
 
 		/*
-		 * The plane is a claim with two facts: a plate is still selected, so it is the plate's plane
-		 * (2 * 7.5 + 5 = 20, not the brick's 18.25). Pushing the course without SetPieceKind's
-		 * derivation would leave a 10 cm board buried half in the course below (see its header).
+		 * Two facts in one plane: a plate is still selected, so it is the plate's plane (2 * 7.5 + 5 =
+		 * 20, not the brick's 18.25). Pushing the course without re-deriving would bury the board half
+		 * in the course below.
 		 */
 		TestEqual(
 			FString::Printf(
@@ -779,8 +695,8 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			SessionSameState(Controller.GetSessionToolbarState(), Before));
 
 		/*
-		 * The structure id is the assertion that bites: Clear's side effect is cancel-then-begin, so
-		 * running it anyway leaves a different id, while the piece count (zero either way) says nothing.
+		 * The structure id is the assertion that bites: Clear's side effect changes the id, while the
+		 * piece count (zero either way) says nothing.
 		 */
 		TestEqual(
 			FString::Printf(
@@ -798,15 +714,9 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Controller.OnToolbarButton(EToolbarButtonId::ModeDestroy));
 
 		/*
-		 * The cursor is the session's, not the mode's (SESSION_UI_DESIGN §d, S6).
-		 *
-		 * `OnToolbarButton(ModeDestroy)` used to hand controls back through the piece menu's own
-		 * apply, so switching mode hid the pointer — with the toolbar always on screen that made it
-		 * unclickable until a piece menu was first opened. Destroy hovers and inspects with the same
-		 * pointer Build aims a ghost with, and the camera is a held right-drag in both, so the cursor
-		 * cannot be something a mode raises and lowers; since S6 it is not — `SetSessionControls`
-		 * raises it once in BeginPlay and no mode switch touches it. Same reason the mode must not
-		 * change how the camera works: re-learning flying every switch would stop players switching.
+		 * The cursor is the session's, not the mode's (SESSION_UI_DESIGN §d, S6). Destroy hovers with
+		 * the same pointer Build aims a ghost with, so no mode may raise or lower it; since S6
+		 * SetSessionControls raises it once in BeginPlay and no mode switch touches it.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -829,35 +739,24 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 
 /**
  * The mode decides what a click is: in Build a ray lays a brick, in Destroy the same ray pulls one
- * out — and the build survives the round trip.
+ * out, and the build survives the round trip.
  *
- * One test, not three, because the product claim is a loop: lay something, switch mode, take it
- * apart, switch back and keep laying. Split by mode, every test would pass against a controller
- * that reset the build on every mode switch — the likeliest way to get this wrong, since
- * `CancelBuild` is right there and "leave Build mode" reads like a reason to call it. The id staying
- * unchanged across the round trip, and a third brick landing on the same structure the first two are
- * in, closes that.
+ * One test, not three, because the claim is a loop: lay, switch mode, take apart, switch back, keep
+ * laying. Split by mode, each would pass against a controller that reset the build on every mode
+ * switch. The id unchanged across the round trip, and a third brick joining the same structure,
+ * closes that.
  *
- * No piece menu in Build mode is asserted, not assumed: `InspectAlongRay` is wired to the same mouse
- * button as the Build click, so a controller that dispatched the preview by mode but left inspect on
- * the click would put a Delete menu over the brick just laid. Build asserts `IsPieceMenuShown()` is
- * false; Destroy asserts it is true — the same reading both ways is what makes either mean anything.
+ * No piece menu in Build mode is asserted, not assumed: inspect is wired to the same mouse button as
+ * the Build click, so Build asserts IsPieceMenuShown() false and Destroy asserts it true.
  *
- * The ghost is asserted on visibility, never position — position is already pinned to the centimetre
- * in `World.BuildMode.ComponentRayDrivesPreviewAndGhost`. New here is that a ray reaches it at all in
- * Build mode, and that leaving Build mode takes it off screen rather than leaving a gold brick
- * hanging over a wall being demolished.
+ * The ghost is asserted on visibility, never position (position is pinned in
+ * World.BuildMode.ComponentRayDrivesPreviewAndGhost). New here: a ray reaches it in Build mode, and
+ * leaving Build mode takes it off screen.
  *
- * The numbers: the build plane is course 0's, 3.25 cm, so a ray straight down lands on it. The
- * first click has an empty structure under it, so the snap solver's only candidate is Free at the
- * picked point — (0, 0, 3.25) exactly, bottom face on the earth, grounded by the pose rule. The
- * second cursor is at x = 22.0; the same-course pose beside the seed is at 22.5 (21.5 brick + 1.0
- * joint), 0.5 cm away against 13.1 cm for the nearest next-course pose, so the bond wins and forms
- * one head joint. The third is one bay further at x = 45.0: 0 cm from the same-course pose beside
- * the second brick, 45 cm from anything the deleted first brick leaves behind.
- *
- * A world ticks for the spawns and for the Destroy ray's real line trace against real brick
- * collision, but no test here ticks one — nothing is about anything falling.
+ * The numbers: the course-0 plane is 3.25. The first click's empty structure gives a Free pose at
+ * (0, 0, 3.25), grounded. The second cursor at x = 22.0 snaps to the same-course pose at 22.5 (0.5 cm
+ * away against 13.1 cm), forming one head joint. The third at x = 45.0 is on the pose beside the
+ * second brick, clear of the deleted first.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionPrimaryRayPlacesAndInspectsTest,
@@ -952,8 +851,8 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 				CentreCm.Equals(SessionSeedCentreCm, KINDA_SMALL_NUMBER));
 
 			/*
-			 * Grounded by the pose, the only thing that makes the first brick a foundation: its
-			 * bottom face is at Z = 0, within the 1 cm joint the rule allows.
+			 * Grounded by the pose: the bottom face is at Z = 0, within the 1 cm joint the rule
+			 * allows, which is what makes the first brick a foundation.
 			 */
 			TestTrue(
 				TEXT("the first brick rests ON the earth, so the structure must record it grounded — a "
@@ -1003,8 +902,8 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 			CentreCm.Equals(SessionSecondCentreCm, KINDA_SMALL_NUMBER));
 
 		/*
-		 * One connection is the mechanism reading of "it bonded" — two bricks sitting beside each
-		 * other with no joint between them look identical on screen but behave nothing like a wall.
+		 * One connection is the mechanism reading of "it bonded": two unbonded bricks look identical
+		 * on screen but behave nothing like a wall.
 		 */
 		TestEqual(
 			FString::Printf(
@@ -1198,9 +1097,8 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 			Controller.OnToolbarButton(EToolbarButtonId::ModeBuild));
 
 		/*
-		 * The id is the assertion this whole test is built around: `CancelBuild` is one call away
-		 * and "leaving Build mode" reads like a reason to make it, which would hand the player a
-		 * fresh empty plot every time they looked at a brick.
+		 * The id is the assertion this test is built around: CancelBuild is one call away and
+		 * "leaving Build mode" reads like a reason to call it, wiping the plot on every mode switch.
 		 */
 		TestEqual(
 			FString::Printf(
@@ -1242,30 +1140,20 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Run structure settles what the player built: the brick with nothing under it is released, and the
- * one on the ground is not.
+ * Run structure settles what the player built: the floating brick is released, the grounded one is
+ * not.
  *
- * The floating brick is the whole fixture: `SolveAndPush` on a build that already stands releases
- * nothing, and "nothing happened" is exactly what a Run button wired to no solver produces. So the
- * build deliberately contains one piece that cannot stand — a Free placement six courses up with no
- * joints and no ground under it — which the solver must read Falling, and releasing it is the one
- * observable difference between a Run that ran and one that did not. The seed is not decoration
- * either: a Run implemented as "release everything" satisfies the floating brick's row perfectly, so
- * the grounded seed staying kinematic is what says the solver was consulted rather than the
- * structure being pushed wholesale.
+ * The floating brick is the whole fixture — a Free placement six courses up with no joints and no
+ * ground, which the solver must read Falling; releasing it is the one difference between a Run that
+ * ran and one wired to no solver. The grounded seed staying kinematic is what rules out a Run
+ * implemented as "release everything".
  *
- * `IsReleased`, never displacement: nothing here ticks, so nothing has moved when the assertions
- * run, and even with a tick DESIGN §4 forbids reading displacement as evidence of a break.
- * `IsReleased` is the binding's own record of "this has been handed to Chaos", which is what Run does.
+ * IsReleased, never displacement (nothing ticks, and DESIGN §4 forbids it anyway): it is the
+ * binding's record of "handed to Chaos", which is what Run does.
  *
- * The numbers: six course steps put the brick's build plane at 6 * 7.5 + 3.25 = 48.25 cm, so its
- * bottom face is 45 cm up — forty-five times the 1 cm joint the grounded rule allows, so it cannot
- * read grounded by rounding. It is laid at x = 100, far outside the 30 cm snap radius, so it forms
- * no joint even in Snap mode; Free makes it jointless for a second, independent reason. Both are
- * asserted as fixture preconditions, since a floating brick that turned out jointed or grounded
- * would stand and the test would go green over a dead Run button.
- *
- * A world ticks for the spawns and the release, but no test here ticks one.
+ * The numbers: six courses put the brick's bottom face at 45 cm, 45x the 1 cm joint the rule allows,
+ * and x = 100 is outside the 30 cm snap radius — so it is jointless and off the ground, both asserted
+ * as preconditions, or a brick that stood would green the test over a dead Run button.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionRunStructureSettlesTheBuildTest,
@@ -1423,27 +1311,19 @@ bool FSessionRunStructureSettlesTheBuildTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Clear build empties the plot and leaves a fresh one open — no brick standing, no binding orphaned,
- * and the player still in Build mode.
+ * Clear build empties the plot and leaves a fresh one open: no brick standing, no binding orphaned,
+ * the player still in Build mode.
  *
- * Two currencies, again, because both are needed: `CancelBuild` destroys the structure and the
- * bricks it spawned. A clear that dropped the binding and left the bricks standing gives the player
- * a plot full of masonry nothing in the model knows about — colliders with no pieces behind them. A
- * clear that destroyed the bricks and kept the binding gives the opposite: a structure the solver
- * still reasons about with no bricks to show for it. So the world is counted (not one `ABrickActor`
- * that is not the ghost) and the id is read.
+ * Both currencies are needed. A clear that dropped the binding but left the bricks gives colliders
+ * with no pieces behind them; one that destroyed the bricks but kept the binding gives the opposite.
+ * So the world is counted and the id is read.
  *
- * "A fresh build is open" means a different id, not merely a valid one: `BeginBuild` spends an id on
- * an empty binding and the subsystem's ids are monotonic, so the new build cannot be the old one.
- * Asserting only `!= INDEX_NONE` would pass against a controller that cancelled nothing and kept the
- * same binding — precisely the bug where Clear appears to work and the next brick joins a wall that
- * is no longer on screen.
+ * "A fresh build is open" means a different id, not merely a valid one: ids are monotonic, so
+ * asserting only != INDEX_NONE would pass against a controller that cancelled nothing and kept the
+ * same binding — the bug where Clear looks to work and the next brick joins an off-screen wall.
  *
- * The mode is unchanged: Clear is a command, not a mode — `SessionToolbarIsActive`'s default arm
- * already says a latched Clear reads as a mode the player is stuck in, and a Clear that dropped the
- * player back into Destroy would be the same confusion one layer up.
- *
- * A world ticks for the spawns and destroys, but no test here ticks one.
+ * The mode is unchanged: Clear is a command, not a mode; dropping the player back into Destroy would
+ * be the same "stuck in a mode" confusion one layer up.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionClearBuildEmptiesThePlotTest,
@@ -1576,28 +1456,16 @@ bool FSessionClearBuildEmptiesThePlotTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Joining the build level puts the player in Build mode with a plot open — and joining any other
- * level does not.
+ * Joining the build level puts the player in Build mode with a plot open; joining any other level
+ * does not.
  *
- * Both rows in one test because "the build level opens in Build mode" is satisfied by a controller
- * that opens every level in Build mode, which is the regression this pairing stops: twenty-eight of
- * the twenty-nine levels lay a structure for the player to pull apart, and a ghost over the middle
- * of one of those walls would swallow the first click on it. So the sandbox row is asserted in the
- * same test, from the same fixture, reading the same two fields.
+ * Both rows in one test: "the build level opens in Build mode" is also satisfied by a controller that
+ * opens every level in Build mode, so the sandbox row is asserted from the same fixture.
  *
- * Run has something to act on a scenario level: `GetSessionStructureId` is what `Run structure`
- * solves, and its fallback is why a Destroy session on a scenario level is not inert — the player
- * has laid nothing, so the build component names no structure and the game mode's own wall is what
- * the button must reach. Asserting it equals `GetBuiltStructureId()` is what makes Run work on the
- * twenty-eight levels that come with a wall already built.
- *
- * On the build level the game mode builds nothing, so the fallback answers INDEX_NONE until the
- * player lays their first brick — correct, and why `Run structure` is greyed there until they do.
- * `GameModeOpensAnEmptyBuildSandbox` owns "nothing was laid"; this owns "the session opened in the
- * right mode".
- *
- * A world ticks with begin-play run under a URL, but no test here ticks one; the sandbox arm lays
- * the default wall, which is where its ~200 ms goes.
+ * On a scenario level Run must reach the level's own wall: with nothing laid, GetSessionStructureId
+ * falls back to the game mode's built structure, so it is asserted equal to GetBuiltStructureId(). On
+ * the build level nothing is built, so the fallback answers INDEX_NONE until the first brick, which
+ * is why Run structure is greyed there.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionGameModeOpensBuildModeTest,
@@ -1725,37 +1593,18 @@ bool FSessionGameModeOpensBuildModeTest::RunTest(const FString& Parameters)
  * The session's structure is the one with something live in it: a build whose only brick has been
  * deleted must not shadow the wall the level built.
  *
- * After the player lays one brick on a scenario level and then deletes it, `GetSessionStructureId`
- * must name the level's wall again — because the build now holds a tombstone and nothing else — and
- * the strip must therefore offer `Run structure` live.
+ * Two readings of "is there a structure" disagree only for an emptied-but-not-absent build:
+ * GetSessionStructureId picks the build on NumPieces() > 0 (one tombstone), while
+ * RefreshSessionHasStructure reads NumLivePieces() > 0 (zero) — so bHasStructure went false over a
+ * 1,220-brick wall standing there. The fix is one reading, used twice.
  *
- * Two readings of "is there a structure" disagree: `GetSessionStructureId` prefers the player's
- * build "once there is something in it" and asks `NumPieces() > 0`; `RefreshSessionHasStructure`
- * asks the chosen structure for `NumLivePieces() > 0`, because RemovePiece tombstones rather than
- * compacting, so an emptied plot still answers a piece count. The two readings agree everywhere
- * except a build that has had pieces and has none left: the first picks the build (one tombstone),
- * the second reads zero live pieces off it, so `bHasStructure` goes false and both commands grey
- * themselves over a 1,220-brick wall standing in front of the player. The fix is one reading, used
- * twice.
+ * The fixture is a real scenario level because the bug needs both structures at once: an empty build
+ * and a wall behind it for the fallback to reach. The brick is laid thirty metres clear so the
+ * Destroy line trace cannot hit the level's own wall instead.
  *
- * The fixture is a real scenario level because the bug needs both structures at once: a build that
- * is empty-but-not-absent, and a wall behind it for the fallback to reach. A bare world has no wall,
- * so the fallback answers INDEX_NONE and the two readings agree, asserting nothing. `?Scenario=sandbox`
- * is the same arm `GameModeOpensBuildModeOnThePlot` uses. The brick is laid thirty metres clear of
- * that wall because the Destroy click is a real line trace and a brick inside the wall's span could
- * put one of the level's own bricks under the cursor.
- *
- * The state is refreshed through a real door before it is read: the Destroy tab (always live, a
- * bitwise no-op on the state) is clicked before the flag is read, since `OnToolbarButton` refreshes
- * at the door so a command is never refused on a stale precondition. `GetSessionStructureId` itself
- * needs no such door. The refresh also happens on the delete path itself now
- * (`World.Session.DeleteRefreshesTheSessionFlag` covers that cold read with no intervening click);
- * the click here is belt and braces, kept because this test is about which structure the session
- * names, not when the flag is refreshed.
- *
- * A world ticks with begin-play run under a URL — the sandbox row lays its 1,220 bricks, which is
- * where the run time goes — and a real line trace against real collision, but no test here ticks
- * one; nothing is about anything moving.
+ * The state is refreshed through a real door before it is read (the Destroy tab, a no-op on the
+ * state), since OnToolbarButton refreshes at the door. The delete path refreshes too now
+ * (World.Session.DeleteRefreshesTheSessionFlag covers the cold read); this click is belt and braces.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionStructureIsTheLiveOneTest,
@@ -1993,36 +1842,22 @@ bool FSessionStructureIsTheLiveOneTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Deleting the last piece refreshes the strip's one precondition: `bHasStructure` reads false
+ * Deleting the last piece refreshes the strip's one precondition: bHasStructure reads false
  * immediately, without waiting for the next toolbar click.
  *
- * After the player lays one brick and then deletes it through the piece menu, the session state
- * read cold — with no intervening `OnToolbarButton` — says there is nothing to command, so the
- * strip on screen greys `Clear build` and `Run structure` instead of offering them over an empty
- * plot.
+ * The read is cold on purpose. OnToolbarButton refreshes at the door, but the delete path had no such
+ * door; ChoosePieceMenuRow now refreshes on a committed action, and this test holds it there. Its
+ * whole discipline is the absence of any toolbar click between the delete and the read — one click
+ * would make it pass without biting. (SessionStructureIsTheLiveOne reaches the same flag through a
+ * deliberate Destroy-tab click instead.)
  *
- * The read is cold on purpose: `OnToolbarButton` refreshes the precondition at the door, since a
- * command refused on a stale flag reads as a dropped click, but the delete path had no such door.
- * `ChoosePieceMenuRow` now refreshes both `RefreshSessionHasStructure` and `RefreshSessionToolbar` on
- * a committed action, and this is the test that holds it there — its discipline is the absence of
- * any toolbar click between the delete and the read; one click would make it pass without biting.
- * (`World.Session.SessionStructureIsTheLiveOne` reaches the same flag through a deliberate
- * Destroy-tab click instead.)
+ * A bare world with no level wall: GetSessionStructureId must genuinely answer INDEX_NONE, or the
+ * fallback to a wall would make bHasStructure correctly true and the claim unfalsifiable. That is
+ * asserted beside the flag, not assumed.
  *
- * A bare world, with no level wall behind the build: the sibling above needs a scenario level
- * because its bug is about which of two structures wins; this one must have only one, or
- * `GetSessionStructureId` would fall back to a wall and `bHasStructure` would be correctly true,
- * making the claim unfalsifiable. A bare `FBrickTestWorld` runs no game mode of this class, so the
- * fallback answers `INDEX_NONE` and "nothing to command" is simply the truth — asserted beside the
- * flag rather than assumed, so a failure says which of the two is wrong.
- *
- * What is asserted: the flag, the structure id it should derive from, and what the strip would draw
- * from it (`SessionToolbarButtons` asked for `RunStructure`). The last is the player-facing
- * statement and the reason the first two matter — a lit command over an empty plot is a button that
- * does nothing, which `Core/SessionToolbar.h` already argues is indistinguishable from a missed click.
- *
- * A world ticks for the spawns and for the Destroy ray's real line trace against real brick
- * collision, but no test here ticks one.
+ * Asserted: the flag, the structure id it derives from, and what the strip would draw
+ * (SessionToolbarButtons for RunStructure) — the player-facing statement and the reason the first two
+ * matter.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionDeleteRefreshesTheFlagTest,
@@ -2134,9 +1969,8 @@ bool FSessionDeleteRefreshesTheFlagTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * From here to the end of this test, nothing may touch the toolbar: `OnToolbarButton` refreshes
-	 * the precondition at its door, so a single click of any button — even one the strip refuses —
-	 * would make every claim below pass while the defect stands.
+	 * From here to the end, nothing may touch the toolbar: OnToolbarButton refreshes the precondition
+	 * at its door, so any click — even a refused one — would make every claim below pass over the bug.
 	 */
 
 	Binding = Subsystem.Find(BuildStructureId);
@@ -2201,45 +2035,24 @@ bool FSessionDeleteRefreshesTheFlagTest::RunTest(const FString& Parameters)
  * CR-2b — the rotate chip turns the ghost's footprint, and a turned brick beside a laid one snaps to
  * the corner return.
  *
- * `OnToolbarButton(RotatePiece)` pushes the session's `bRotated` onto the build component
- * (`SetRotated`), which re-derives `CurrentExtentCm` as the palette's half extent with X and Y
- * swapped and leaves `BuildPlaneZCm` alone — so the very next preview beside an X-long brick is a
- * `BrickCornerReturn`, and the click that follows bonds it with full mortar.
+ * OnToolbarButton(RotatePiece) pushes bRotated onto the component (SetRotated), which re-derives
+ * CurrentExtentCm as the palette half extent with X and Y swapped and leaves BuildPlaneZCm alone.
  *
- * The extent is what is asserted, not a rotation, because nothing downstream of the toolbar knows
- * what an angle is: `FPieceBox` is an axis-aligned centre and half extent, the snap solver reads a
- * long axis off those numbers, and the joint inference classifies a contact from the two boxes and a
- * normal — so "rotated" is the swapped extent, with no second representation to check. A component
- * that stored a flag and went on previewing a 21.5 cm stretcher would satisfy any claim phrased as
- * "is it rotated"; the half extent is the only reading that cannot be satisfied by remembering the
- * click.
+ * The swapped extent is asserted, not "rotated": FPieceBox is axis-aligned and nothing downstream
+ * knows what an angle is, so the extent is the only reading a component that merely stored a flag
+ * cannot satisfy. The plane must not move — Z is untouched by a rotation about it; a plane re-derived
+ * from the swapped X would bury a rotated brick 1.875 cm into the earth. The plate is in the table
+ * because its half height (5.0) is not one of the two numbers that swap, so the wrong-axis plane
+ * shows there.
  *
- * The plane must not move: Z is untouched by a rotation about it, so a brick on course 0 is still
- * centred at 3.25 whichever way it lies. A `SetRotated` that re-derived the plane from the swapped
- * extent would put a rotated brick's centre at its own half width (5.125), burying every rotated
- * piece 1.875 cm into the earth with no course readout ever mentioning it. The plate is in the table
- * for the same reason: its half height (5.0) is not one of the two numbers that swap, so a plate
- * laid rotated is where a plane derived from the wrong axis becomes visible at all.
+ * The proof ends in a corner return because the extents are the mechanism and the return is what they
+ * are for: until this chip exists no player can produce a crossed box, so CR-2a's corner vocabulary
+ * is unreachable. Pose, joint count and profile are CornerWallStands' step-3 numbers measured off the
+ * seed: a return flush with the seed's -Y face, one joint, full GeneralPurposeMortar rather than the
+ * weak perpend a pre-CR-2a inference gave every vertical face.
  *
- * The proof ends in a corner return rather than three numbers because the extents are the
- * mechanism; the corner return is what they are for. CR-2a taught the solver to offer a quoin when
- * two brick-sized boxes cross long axes, and `Core.BuildMode.CornerWallStands` proves that through
- * `PlacePiece` — but until this chip exists there is no way for a player to produce a crossed box at
- * all, so the whole corner vocabulary is unreachable from the game. The pose, joint count and
- * profile here are the same numbers `CornerWallStands` pins at its own step 3, measured off the seed
- * brick instead of brick 2: a return finishing flush with an X-long brick's -Y face, one joint, and
- * full `GeneralPurposeMortar` rather than the weak perpend a pre-CR-2a inference gave every vertical
- * face.
- *
- * The cursor is at Y = 5.0, not at the pose, because ranking is raw distance and four return poses
- * exist per crossed neighbour. The intended one is 0.625 cm from this cursor; its sibling at the
- * same end is 10.625 cm away, and the two off the seed's -X end are 33.75 cm away, outside the 30 cm
- * snap radius. Bed and head candidates need the same orientation and there are none, so the intended
- * pose wins outright rather than by a hair; the Free fallback — honouring the cursor verbatim at
- * (16.875, 5.0) — is appended last and cannot outrank a snap in Snap mode.
- *
- * A world ticks for the component's structure and its ghost actor, but no test here ticks one —
- * nothing here is about anything moving, and the placement is a graph mutation.
+ * The cursor is at Y = 5.0, not the pose: ranking is raw distance, and the intended one of the four
+ * return poses is 0.625 cm away against 10.625 cm for its nearest sibling, so it wins outright.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionRotateSwapsTheGhostFootprintTest,
@@ -2253,21 +2066,18 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 	using namespace SessionControllerTestSupport;
 
 	/*
-	 * THE FOUR FOOTPRINTS, SPELLED OUT RATHER THAN DERIVED FROM THE PALETTE. Asking
-	 * BuildPieceHalfExtentCm and swapping its X and Y here would make this test agree with the
-	 * palette however wrong it is, and the swap itself is the behaviour under test.
+	 * The footprints, spelled out rather than derived from the palette: swapping X and Y here would
+	 * make the test agree with the palette however wrong it is, and the swap is the behaviour tested.
 	 */
 	const FVector BrickUprightHalfCm(10.75, 5.125, 3.25);
 	const FVector BrickRotatedHalfCm(5.125, 10.75, 3.25);
 	const FVector PlateRotatedHalfCm(5.125, 33.75, 5.0);
 
 	/*
-	 * THE CORNER RETURN'S NUMBERS, WORKED OFF THE SEED BRICK AT THE ORIGIN.
-	 *
-	 * The seed is X-long, half (10.75, 5.125, 3.25). A rotated brick returning off its +X end stands
-	 * one joint clear of that end face: 10.75 + 1.0 + 5.125 = 16.875. Finishing FLUSH with the
-	 * seed's -Y face (y = -5.125) puts its centre at -5.125 + 10.75 = 5.625. Course 0 leaves Z at
-	 * 3.25. The quoin it forms is the seed's end face, 10.25 cm of width by 6.5 cm of course.
+	 * The corner return's numbers, worked off the seed brick at the origin (half (10.75, 5.125,
+	 * 3.25)). One joint clear of its +X end: 10.75 + 1.0 + 5.125 = 16.875. Flush with its -Y face:
+	 * -5.125 + 10.75 = 5.625. Course 0 leaves Z at 3.25. The quoin is the seed's end face, 10.25 by
+	 * 6.5 cm.
 	 */
 	const FVector CornerReturnCentreCm(16.875, 5.625, 3.25);
 	constexpr double CornerCursorXCm = 16.875;
@@ -2275,10 +2085,8 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 	constexpr double QuoinAreaSqCm = 66.625;
 
 	/*
-	 * A DOUBLE TOLERANCE, SPELLED OUT. Every number here is a sum of exact halves on the coordinating
-	 * grid, so the comparison is effectively exact and the tolerance is only there to keep a
-	 * floating-point equality honest. `KINDA_SMALL_NUMBER` is a FLOAT and makes TestEqual's double
-	 * overload ambiguous, which is a compile error rather than a looser test.
+	 * A double tolerance: the numbers are exact sums of grid halves, so this only keeps a float
+	 * equality honest. KINDA_SMALL_NUMBER is a float and makes TestEqual's double overload ambiguous.
 	 */
 	constexpr double SessionPlaneToleranceCm = 1.0e-6;
 
@@ -2372,12 +2180,10 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 	/* --- THREE: choosing another piece while rotated re-derives the SWAPPED extent ---------- */
 
 	/*
-	 * The plate is the case that tells a re-derivation from a remembered swap: `SetPieceKind` reads
-	 * the palette afresh, so it has to honour a rotation chosen before it — a component that swapped
-	 * the extent inside `SetRotated` alone would hand back an upright 67.5 cm board here and the
-	 * ghost would silently un-rotate itself on a palette click. Its half height, 5.0 rather than
-	 * 3.25, is what makes the plane assertion mean something: 5.0 is not one of the two numbers that
-	 * swap, so a plane derived off the wrong axis reads 5.125 here, visibly not the plate's own.
+	 * The plate tells a re-derivation from a remembered swap: SetPieceKind reads the palette afresh, so
+	 * it must honour a rotation chosen before it — a swap done only inside SetRotated would hand back
+	 * an upright board here. Its half height (5.0, not one of the swapped numbers) is why the plane
+	 * assertion bites: a wrong-axis plane would read 5.125, not the plate's own.
 	 */
 	{
 		TestTrue(
@@ -2466,10 +2272,9 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 	}
 
 	/*
-	 * The pose is read back through the component's non-mutating query, the only way to read what
-	 * the pointer just drove: `PointerAlongRay` returns nothing, and the ghost actor's transform is a
-	 * spawn transform whose pivot is the brick's corner rather than its centre. `UpdatePreviewFromRay`
-	 * is the very call `PointerAlongRay` makes, with the same arguments.
+	 * The pose is read back through the component's non-mutating query: PointerAlongRay returns
+	 * nothing, and the ghost's transform pivots on the brick's corner, not its centre.
+	 * UpdatePreviewFromRay is the very call PointerAlongRay makes, with the same arguments.
 	 */
 	{
 		const FBuildPreview Preview =
@@ -2560,10 +2365,8 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 			const FConnectionStrength& Want = DestructionProfiles::GeneralPurposeMortar;
 
 			/*
-			 * All five fields, because the mortar and its perpend sibling differ on two of them
-			 * (cohesion 0.9 vs 0.2, tension 0.7 vs 0.1) and nothing else — exactly the pair this
-			 * assertion has to tell apart. A one-field check would admit the weak perpend a
-			 * pre-CR-2a inference gave every vertical face.
+			 * All five fields: mortar and its perpend sibling differ only on cohesion (0.9 vs 0.2) and
+			 * tension (0.7 vs 0.1), so a one-field check would admit the weak perpend.
 			 */
 			const bool bIsFullMortar =
 				Got.CompressiveStrengthMPa == Want.CompressiveStrengthMPa
@@ -2594,9 +2397,8 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 				Quoin.InterfaceAreaSqCm, QuoinAreaSqCm, 1.0e-6);
 
 			/*
-			 * And the normal is horizontal, which is what makes the profile claim mean anything: a
-			 * mortar joint across a vertical normal is an ordinary bed and proves nothing about
-			 * corners; |X| == 1 says this is the end face of the seed.
+			 * The horizontal normal is what makes the profile claim mean anything: a mortar joint
+			 * across a vertical normal is an ordinary bed. |X| == 1 says this is the seed's end face.
 			 */
 			TestEqual(
 				TEXT("across a HORIZONTAL normal on the X axis (|X| == 1) — the seed's end face, not "
@@ -2613,67 +2415,35 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 /**
  * CR-2b (xiii) — a corner the player lays is judged by the LP, not silently demoted to the router.
  *
- * `UDestructionStructureSubsystem::BeginBuild` opens the player's build flagged three-dimensional,
- * so the Y-normal head joints a rotated leg forms are posed by the rigid-block bridge rather than
- * refused — and the whole build's break verdict on `Run structure` comes from the LP below the cap,
- * as it does for every other below-cap structure in the game.
+ * BeginBuild must open the player's build flagged three-dimensional, so the Y-normal head joints a
+ * rotated leg forms are posed by the rigid-block bridge rather than refused.
  *
- * The defect, and why it is invisible: nothing in the session ever calls `SetThreeDimensional`.
- * Only the scenario builders do, and `AdoptLayout` carries their flag across
- * (`Core/StructureBinding.cpp` ~386) — a player's build is adopted from nothing and starts false.
- * The router does not care: `SolveLoads` reads normals directly and is dimension-agnostic, so a
- * corner wall routes its load down its beds and reads perfectly healthy. The one reader of the flag
- * is `RigidBlockOracle::BuildRigidBlockProblem`, and with it unset that function refuses the whole
- * problem the moment it meets a joint whose normal has a Y component. `FStructure::BreakByEquilibrium`
- * turns that refusal into `EEquilibriumGateDisposition::DeclinedToRouter` and says nothing, so one
- * rotated brick anywhere in a build moves the break authority for the entire build — straight legs
- * included — off the LP and onto `BreakByCapacitySweep`. The LP stands knot and opening arrangements
- * the router strands, fells the leaning-stack class the router holds, and is the only thing that
- * applies first-crack; none of that reaches a build with a corner in it. Nothing on screen says so —
- * the wall stands either way, the "wrong answer that looks plausible" DESIGN §5 names as this
- * codebase's recurring enemy.
+ * The defect, and why it is invisible: nothing in the session calls SetThreeDimensional — only the
+ * scenario builders do — so a player's build starts false. The router is dimension-agnostic and
+ * routes a corner wall down its beds, reading healthy. But BuildRigidBlockProblem refuses the whole
+ * problem on the first Y-normal joint, and BreakByEquilibrium turns that into DeclinedToRouter
+ * silently — so one rotated brick moves the break authority for the entire build off the LP and onto
+ * BreakByCapacitySweep. The wall stands either way: the "wrong answer that looks plausible" of
+ * DESIGN §5.
  *
- * Two assertions, both needed. Mechanism: `IsThreeDimensional()` on the binding's structure,
- * asserted twice — once on the empty build the Build tab opens, once on the finished L. The empty
- * one is load-bearing: it forbids the cheap fix of flagging 3D when the first Y-normal joint forms,
- * which would be inference, ruled out by `FStructure::SetThreeDimensional`'s own contract (the E3
- * ruling, Structure.h ~490) — the intent to be 3D has to be stated, not guessed, or a cliff appears
- * mid-build where the authority deciding whether the wall stands changes as a brick lands. Outcome:
- * after `Run structure`, the LP's own per-joint readout is present (`GetConnectionReadout(k).bPresent`)
- * — the honest witness that the gate answered, since the cache is cleared every pass and refilled
- * only by an arm that reached a verdict, so absent means declined. `Released == 0` is asserted too
- * but proves nothing alone, since the router stands this wall perfectly well today, which is exactly
- * how the defect hides. Never displacement, in either direction: nothing here ticks, and DESIGN §4
- * forbids reading a distance as evidence of a break regardless.
+ * Two assertions. Mechanism: IsThreeDimensional() twice — on the empty build and the finished L. The
+ * empty one forbids the cheap fix of inferring 3D when the first Y-normal joint forms, which the E3
+ * ruling (Structure.h ~490) rules out: an inferred flag is a cliff mid-build. Outcome: after Run,
+ * every posed joint's readout is present (GetConnectionReadout(k).bPresent) — absent means the gate
+ * declined, since the cache refills only from an arm that reached a verdict. Released == 0 is asserted
+ * too but proves nothing alone (the router stands this wall), which is how the defect hides.
  *
- * Why the fixture is six pieces and not three — the grounded-pair skip. The obvious fixture is the
- * two-piece corner plus one more Y-leg brick, forming a genuine Y-normal head joint, but it does not
- * work: the bridge drops any joint whose two pieces are both grounded before it looks at the normal
- * (`RigidBlockBridge.cpp` ~133). Every piece on course 0 is grounded, so an L laid entirely on the
- * earth presents the bridge with no Y-normal joint at all, is not refused, and answers today for a
- * reason that has nothing to do with the flag. So the Y leg is carried up a course: 5-4 is a head
- * joint between two pieces that reach the earth only through their beds, it is posed, and it is what
- * the 2D bridge refuses. The same skip is why the readout assertions run over posed joints only — a
- * skipped joint has no provenance entry and therefore no readout however the structure is flagged.
+ * Why six pieces, not three: the bridge skips any joint between two grounded pieces before looking at
+ * the normal, so an L laid entirely on course 0 presents no posed Y-normal joint and answers for the
+ * wrong reason. The Y leg is carried up a course, so head 5-4 is between two pieces grounded only
+ * through their beds — posed, and what the 2D bridge refuses. Same skip is why the readout assertions
+ * run over posed joints only.
  *
- * The numbers, worked off the coordinating grid: the brick is 21.5 x 10.25 x 6.5 on a 1 cm joint, so
- * the grid is 22.5 x 11.25 x 7.5 and course n centres a brick at n * 7.5 + 3.25. The poses are
- * `Core.BuildMode.CornerWallStands`' own, measured off a one-brick X leg instead of three:
- *
- *   - the seed, upright at the origin, (0, 0, 3.25);
- *   - the return, rotated, one joint off the seed's +X end (10.75 + 1 + 5.125 = 16.875) and flush
- *     with its -Y face (-5.125 + 10.75 = 5.625), so the pair reads as an L;
- *   - the Y leg, same course, stepping 22.5 cm along Y: 28.125 and 50.625;
- *   - course 1, staggered half a pitch: 16.875 and 39.375, each bedded on the two below it.
- *
- * The cursors are offset deliberately, as the screenshot harness's table is: same-course bricks are
- * asked for 0.125 cm short of their pitch so the same-course pose beats the next-course one on raw
- * distance, and course-1 bricks are asked for at the running bond, where a zero offset cannot be
- * outranked. The return is asked for at (16.875, 5.0): the intended one of the four corner poses is
- * 0.625 cm away and its nearest sibling is 10.625 cm away.
- *
- * A world ticks for the binding's bricks and the ghost actor, but no test here ticks one — every
- * reading is a graph mechanism.
+ * The poses are CornerWallStands' own, measured off a one-brick X leg: the seed at (0, 0, 3.25); the
+ * rotated return one joint off its +X end (16.875) and flush with its -Y face (5.625); the Y leg
+ * along Y at 28.125 and 50.625; course 1 staggered at 16.875 and 39.375. Cursors are offset short of
+ * pitch so the same-course pose wins on raw distance; the return at (16.875, 5.0) is 0.625 cm from
+ * its intended pose against 10.625 cm for the next.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionCornerBuildIsJudgedByTheLPTest,
@@ -2709,9 +2479,8 @@ bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
 
 	/*
 	 * Five posed, three skipped. The three earth-to-earth joints are the quoin (1-0) and the two
-	 * course-0 heads (2-1, 3-2); the five the LP poses are the four beds (4-1, 4-2, 5-2, 5-3) and
-	 * the course-1 head 5-4 — the one out-of-plane joint the 2D bridge has to meet. Pinned as counts
-	 * so a fixture that quietly stopped forming one of them cannot make the readout sweep vacuous.
+	 * course-0 heads (2-1, 3-2); the five posed are the four beds and the course-1 head 5-4. Pinned as
+	 * counts so a fixture that stopped forming one cannot make the readout sweep vacuous.
 	 */
 	constexpr int32 CornerPosedJoints = 5;
 	constexpr int32 CornerSkippedJoints = 3;
@@ -2997,29 +2766,21 @@ bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
 /**
  * CR-2b (xiii), the control — a straight build is flagged 3D too, and still reads the LP.
  *
- * The same `BeginBuild` flag is unconditional — a build with no rotated piece in it is opened 3D as
- * well — and posing a planar running-bond wall three-dimensionally does not cost it its LP answer.
+ * The BeginBuild flag is unconditional: a build with no rotated piece is opened 3D as well, and
+ * posing a planar running-bond wall in 3D does not cost it its LP answer.
  *
- * A separate test rather than a section, because it is the pair to `CornerBuildIsJudgedByTheLP` and
- * is where "unconditional" is pinned. The corner test alone is satisfied by a fix that flags 3D when
- * a rotated piece is placed, or when a Y-normal joint appears — both inferences the E3 ruling
- * forbids, and both a cliff mid-build. This wall contains no rotated piece and no Y-normal joint at
- * all, so the flag assertion here can only be met by stating the intent at the door.
+ * A separate test, not a section, because it is where "unconditional" is pinned. The corner test
+ * alone is satisfied by a fix that flags 3D on a rotated piece or a Y-normal joint — both inferences
+ * the E3 ruling forbids. This wall has neither, so the flag assertion can only be met by stating the
+ * intent at the door.
  *
- * Its two halves arrive in different colours deliberately: the flag assertion is red today, exactly
- * as the corner's is; the readout assertion is green today, since this wall is 2D, the bridge poses
- * it happily and the LP answers. It is a regression net rather than a driver — the fix moves every
- * session build, including this one, onto the 3D pose, and a 3D pose that stopped answering for a
- * planar wall would take the LP off every straight wall a player lays. That assertion is proven to
- * bite by its twin in the corner test, the same line against the same accessor, which is red.
+ * Two halves in different colours: the flag assertion is red today, the readout assertion green (this
+ * wall is 2D and the LP answers). The readout half is a regression net — the fix must not take the LP
+ * off a planar wall — proven to bite by its red twin in the corner test.
  *
- * The three numbers: course 0 at (0, 0, 3.25) and (22.5, 0, 3.25) — one brick plus one head joint
- * apart, asked for at x = 22.0 so the same-course pose wins by 0.5 cm against a next-course pose
- * 13.1 cm away — then course 1 at (11.25, 0, 10.75), asked for exactly at the running bond, which
- * beds on both below it. Three pieces, three joints: the course-0 head is earth-to-earth and skipped
- * by the bridge, so the two beds are the posed pair the readout is asserted over.
- *
- * A world ticks for the bricks; no test here ticks one.
+ * The numbers: course 0 at (0, 0, 3.25) and (22.5, 0, 3.25), asked at x = 22.0 so the same-course
+ * pose wins by 0.5 cm against 13.1 cm; then course 1 at (11.25, 0, 10.75) at the running bond. The
+ * course-0 head is earth-to-earth and skipped, so the two beds are the posed pair asserted over.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionStraightBuildIsJudgedByTheLPTest,
@@ -3214,42 +2975,27 @@ bool FSessionStraightBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters
 /**
  * The planar pose, at the player's end — a straight build is flagged 3D and solved in 2D.
  *
- * A session build keeps the 3D flag `BeginBuild` states at the door, but the LP poses the cheapest
- * sound problem for what is actually in it — 2D for a straight wall, 3D for a build with a posed
- * out-of-plane joint — so a player who lays no corner never pays for one.
+ * A session build keeps the 3D flag BeginBuild states at the door, but the LP poses the cheapest
+ * sound problem for what is in it: 2D for a straight wall, 3D for one with a posed out-of-plane
+ * joint. So a player who lays no corner never pays for one.
  *
- * A world test even though the rule is world-free: `Core.Oracle.PlanarProblemUnderThe3DFlagPosesIn2D`
- * pins the rule on the bridge's own output and needs no world. This one pins the wire — that the
- * pose a player's `Run structure` actually builds is the cheap one, through the same clicks and
- * binding they use. The measurement that forced the slice was taken here, not at the bridge: a cold
- * `Run structure` on a 100-brick / 261-joint straight session wall went from 2.5 s to 94 s, ~37x,
- * when `BeginBuild` began flagging every build 3D (CURRENT_STATE, corner entry (xiii)). No timing is
- * asserted — a wall-clock threshold on a shared machine flakes, and `OracleSweepFull` is where
- * solver cost is verified.
+ * A world test though the rule is world-free (Core.Oracle.PlanarProblemUnderThe3DFlagPosesIn2D pins
+ * it at the bridge): this pins the wire, that a player's Run structure actually builds the cheap
+ * pose. The slice was forced by a cold Run on a 100-brick straight wall going 2.5 s -> 94 s (~37x)
+ * when BeginBuild began flagging every build 3D. No timing is asserted (it flakes; OracleSweepFull
+ * verifies cost).
  *
- * The observable is an accessor, `FStructure::GetLastEquilibriumProblemDim()` — 2 or 3 for the
- * dimension the last equilibrium-gate pose was built in, INDEX_NONE before any. The problem struct
- * never leaves `BreakByEquilibrium`, so there is nothing else a world test can read; the
- * alternatives are both proxies that would pin the wrong thing (a solve time is a flake, and readout
- * values differing is the item-8 residue rather than the pose). `BreakByEquilibrium` stamps it from
- * `Problem.Dim` the moment the bridge accepts — on the pose, not the call — see the contract in
- * Structure.h.
+ * The observable is GetLastEquilibriumProblemDim() — 2 or 3 for the last equilibrium-gate pose,
+ * INDEX_NONE before any. The problem never leaves BreakByEquilibrium, which stamps it from
+ * Problem.Dim when the bridge accepts (see Structure.h).
  *
- * The flag is asserted alongside, and that pairing is the point: `IsThreeDimensional()` must still
- * be true on the straight build, since the cheap fix of un-flagging a build with no corner in it
- * would satisfy the dimension assertion and re-open the hole the E3 ruling closed — a build whose
- * authority changes as a rotated brick lands. The flag is the stated permission to pose 3D; the
- * bridge decides whether it needs to.
+ * The flag is asserted alongside: IsThreeDimensional() must stay true on the straight build, or the
+ * cheap fix of un-flagging a corner-free build satisfies the dimension assertion and re-opens the E3
+ * hole. The flag is the stated permission to pose 3D; the bridge decides whether it needs to.
  *
- * Two builds, and the second is not optional: the straight wall is `StraightBuildIsJudgedByTheLP`'s
- * own three-piece fixture; the corner is `CornerBuildIsJudgedByTheLP`'s six-piece L, laid after a
- * `Clear build` so it gets a fresh binding with the same controller. Without the corner half,
- * "always pose 2D" passes — and that would pose the Y-facing head joint of every corner a player
- * lays onto an X-Z oracle that cannot express it, a plausible number with wrong statics rather than
- * a slow one.
- *
- * A world ticks for the binding's bricks and the ghost, but no test here ticks one. Every reading is
- * a posed dimension, a flag or a joint count — never a distance moved (DESIGN §4).
+ * Two builds, and the second is not optional: without a corner, "always pose 2D" passes — and that
+ * would pose every corner's Y-facing head joint onto an X-Z oracle that cannot express it, a
+ * plausible number with wrong statics.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionStraightBuildRunsInThePlanarPoseTest,
@@ -3401,10 +3147,8 @@ bool FSessionStraightBuildRunsInThePlanarPoseTest::RunTest(const FString& Parame
 		const int32 CornerId = Build.GetStructureId();
 
 		/*
-		 * The six-piece L of `CornerBuildIsJudgedByTheLP`, cursor for cursor — see that test's
-		 * header for where the numbers come from. Its copy of the table is left where it is
-		 * deliberately: that test pins the flag and this one pins the pose, and a shared table
-		 * would make one fixture's drift silently move both claims.
+		 * The six-piece L of CornerBuildIsJudgedByTheLP, cursor for cursor. The table is duplicated
+		 * deliberately: a shared one would let one fixture's drift silently move both tests' claims.
 		 */
 		struct FPlanarCornerStep
 		{
@@ -3539,42 +3283,26 @@ bool FSessionStraightBuildRunsInThePlanarPoseTest::RunTest(const FString& Parame
 /**
  * Cursor-driven ghost — a toolbar click moves the ghost at once, with no second pointer event.
  *
- * With a preview already held from a pointer move, `Rotate`, a piece chip, `Free` and `Course up`
- * each re-drive that preview through the build component, so the ghost on screen shows the new
- * setting immediately rather than at the player's next mouse movement (the owner's playtest,
- * 2026-09-16: "it should show where the brick is going to go without clicking anything").
+ * With a preview already held, Rotate, a piece chip, Free and Course up each re-drive it through the
+ * component, so the ghost shows the new setting immediately (owner's playtest, 2026-09-16: "it should
+ * show where the brick is going to go without clicking anything").
  *
- * A controller test as well as a component one: `World.BuildMode.SettingsChangeRefreshesTheHeldPreview`
- * pins the component's own doors. What that cannot see is the wiring — `OnToolbarButton` writes
- * `PlacementMode` as a bare field today, so a component that refreshed inside every setter would
- * still leave the ghost stale for the Snap/Free pair, since the click would never reach a setter at
- * all. This test drives the very door the strip's chips call, so it fails for the pair the
- * controller forgot as readily as for a setter that forgot to refresh.
+ * A controller test as well as a component one (World.BuildMode.SettingsChangeRefreshesTheHeldPreview
+ * pins the component's doors): OnToolbarButton writes PlacementMode as a bare field, so a component
+ * that refreshed inside every setter would still leave the ghost stale for Snap/Free. This drives the
+ * very door the chips call.
  *
- * What is asserted is the ghost actor's world bounds, and nothing else — the thing the player is
- * complaining about, and the only pivot-agnostic reading of where an `ABrickActor` is drawn. Its
- * size carries the piece kind and the rotation (nothing downstream knows what an angle is: "rotated"
- * is the swapped half extent), and its centre carries the pose. Never a displacement — nothing is
- * released and nothing ticks.
+ * Asserted: the ghost actor's world bounds, and nothing else — its size carries the piece kind and
+ * rotation ("rotated" is the swapped half extent), its centre the pose. Never a displacement.
  *
- * A brick is 21.5 x 10.25 x 6.5 on 1 cm joints, so the grid is 22.5 x 11.25 x 7.5 and a brick's half
- * height is 3.25: course 0 rests it at 3.25, course 1 at 10.75. The seed is laid at the origin,
- * X-long; the cursor ray is vertical at (11.25, 3.0), so it meets the course-0 plane at
- * (11.25, 3.0, 3.25) and the running-bond next-course pose (11.25, 0, 10.75) is the nearest snap
- * (8.08 cm, against 11.64 cm for the same-course pose beside the seed). Y = 3.0 is off-grid on
- * purpose: it keeps the two corner-return poses a rotated brick could take from being exactly
- * equidistant, so the rotated leg reads one well-separated answer rather than a tie broken by
- * emission order.
+ * The seed is at the origin, X-long; the cursor ray is vertical at (11.25, 3.0), meeting the course-0
+ * plane at (11.25, 3, 3.25), with the next-course pose (11.25, 0, 10.75) the nearest snap (8.08 cm vs
+ * 11.64). Y = 3.0 is off-grid on purpose, so the rotated leg's two corner poses are not equidistant.
  *
- * The Free legs carry the course, and they have to: a snapped pose is decided by the neighbours, so
- * a course change cannot be read through it at all, while in Free placement the pose is the cursor,
- * so `Course up` must lift the ghost by exactly one course of 7.5 cm — 3.25 to 10.75 — an exact
- * reading of "the refreshed cursor sits on the current build plane".
+ * The Free legs carry the course: a snapped pose is decided by neighbours, but in Free the pose is
+ * the cursor, so Course up must lift the ghost exactly one course (3.25 to 10.75).
  *
- * Red today: no settings click re-drives the preview, so the ghost keeps the footprint and pose it
- * had at the last pointer event.
- *
- * A world ticks for the component's structure and its ghost actor; no test here ticks one.
+ * Red today: no settings click re-drives the preview.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarChangesMoveTheGhostAtOnceTest,
@@ -3668,10 +3396,9 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 	/* --- TWO: the Rotate chip swaps the ghost's footprint where it stands -------------------- */
 
 	/*
-	 * The footprint, not the pose: a rotated brick beside an X-long one takes a corner return, and
-	 * which of the four the solver ranks first is the snap solver's business — what the chip owes
-	 * the player is that the thing on screen is the piece they just chose. The pose is logged for
-	 * the reader rather than asserted.
+	 * The footprint, not the pose: which corner return the solver ranks first is its business; the
+	 * chip only owes the player that the ghost is the piece they chose. The pose is logged, not
+	 * asserted.
 	 */
 	{
 		TestTrue(
@@ -3765,7 +3492,7 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 			Bounds.GetCenter().Equals(FreeAtCourse1Cm, BoundsToleranceCm));
 	}
 
-	/* No settings click may COMMIT anything: the plot still holds the one seed brick. */
+	/* No settings click may commit anything: the plot still holds the one seed brick. */
 	{
 		UDestructionStructureSubsystem& Subsystem = *Fixture.TestWorld.Subsystem;
 
@@ -3787,38 +3514,24 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 /**
  * Cursor-driven ghost — the per-tick cursor refresh drives the ghost from a ray, in Build mode only.
  *
- * `RefreshBuildPreviewFromRay` is the half of the per-tick cursor refresh that a test can reach: in
- * Build mode it previews along the given ray exactly as a pointer move does and reports that a ghost
- * is up; in Destroy mode it is a no-op that shows nothing and reports false.
+ * RefreshBuildPreviewFromRay is the half of the per-tick refresh a test can reach: in Build mode it
+ * previews along the ray as a pointer move does and reports a ghost is up; in Destroy it is a no-op
+ * that reports false.
  *
- * The seam is a ray, not a cursor, because the tick's real first step is
- * `DeprojectMousePositionToWorld`, which needs a viewport and is untestable by construction — the
- * same inch `OnHoverPiece` and `OnInspectPiece` are already kept down to. So the deprojection stays
- * in `RefreshBuildPreviewFromCursor` (and its use from `PlayerTick`, which needs the owner's
- * playtest), and everything that can be wrong in a way a player would notice — which mode this is
- * allowed to run in, whether the ghost ends up where the ray points, whether it shows at all — lives
- * behind this call, which needs only a world.
+ * The seam is a ray, not a cursor, because the tick's real first step is DeprojectMousePositionToWorld,
+ * which needs a viewport (the same inch OnHoverPiece keeps down to). The deprojection stays in
+ * RefreshBuildPreviewFromCursor; everything a player would notice lives behind this call, which needs
+ * only a world.
  *
- * The Destroy leg is the one that cannot be got right by accident: a tick handler is the easiest
- * place in this controller to leak a mode, and a refresh that ran regardless would put a gold ghost
- * over the wall the player is demolishing every frame, and re-arm a preview a stray confirm could
- * commit — precisely the ghost `OnToolbarButton(ModeDestroy)` hides on the way in.
+ * The Destroy leg cannot be got right by accident: a tick handler is the easiest place to leak a
+ * mode, and a refresh that ran regardless would put a gold ghost over the wall being demolished and
+ * re-arm a preview a stray confirm could commit. The look-chord guard is left to the owner's playtest
+ * — readable only through Enhanced Input with injected input, more fixture than it is worth.
  *
- * The look-chord guard is not pinned here, deliberately: "`IA_LookModifier` is held" is only
- * readable through the Enhanced Input local-player subsystem with injected input, an order of
- * magnitude more fixture than the claim is worth and nothing in this suite does today; it is left to
- * the owner's playtest.
+ * The numbers are the file's usual: a seed at the origin, a vertical ray at (11.25, 3.0) meeting the
+ * course-0 plane at (11.25, 3, 3.25), the next-course pose (11.25, 0, 10.75) the nearest snap.
  *
- * The numbers are the ones the file's other build tests use: a seed brick at the origin on course 0
- * (centre Z 3.25), a vertical ray at (11.25, 3.0) meeting the course-0 plane at (11.25, 3, 3.25),
- * and the running-bond next-course pose (11.25, 0, 10.75) as the nearest snap. Assertions are on the
- * returned bool, the ghost's bounds and its visibility, and the binding's piece count — never a
- * displacement.
- *
- * Red today: `RefreshBuildPreviewFromRay` does not exist.
- *
- * A world ticks for the structure and the ghost actor, but no test here ticks one — that is the
- * point of the seam: the tick's own call is what the playtest checks.
+ * Red today: RefreshBuildPreviewFromRay does not exist.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionCursorRefreshDrivesTheGhostFromARayTest,
@@ -3964,61 +3677,36 @@ bool FSessionCursorRefreshDrivesTheGhostFromARayTest::RunTest(const FString& Par
  * Cursor-driven ghost, the hole in it — a click must re-drive the ghost along the same ray, with no
  * second pointer event.
  *
- * After a click places a piece, the ghost must immediately show where the next one would go along
- * that same ray — visible, standing at the pose a fresh preview at that ray answers, out of the
- * brick just laid, and held, so the next confirm lays the piece the player can already see.
+ * After a click places a piece, the ghost must show where the next one would go along that same ray:
+ * visible, at the pose a fresh preview answers, out of the brick just laid, and held.
  *
- * This is the gap, not a restatement of its two siblings: `CursorRefreshDrivesTheGhostFromARay` pins
- * the per-tick refresh and `ToolbarChangesMoveTheGhostAtOnce` pins the settings doors. Between them
- * sits the one moment neither covers — the click itself, with a still mouse. `PrimaryAlongRay`
- * re-previews before `ConfirmPlace` and never after; `ConfirmPlace` spends the held preview but
- * leaves the ghost actor standing, unhidden, exactly where the brick it just committed now is; and
- * the per-tick refresh is throttled on the cursor's pixel position, so it skips every frame until the
- * pointer moves. The result the owner sees is a gold ghost z-fighting the red brick inside it until
- * they jog the mouse — the moment "show where the brick is going to go" matters most, since laying a
- * course is a sequence of clicks without much mouse between them. It cannot be reached through the
- * tick, which needs a viewport, so it is driven through the same ray seam: refresh at R, click at R,
- * then assert with no further call.
+ * This is the gap between its two siblings (CursorRefreshDrivesTheGhostFromARay pins the per-tick
+ * refresh, ToolbarChangesMoveTheGhostAtOnce the settings doors): the click itself, with a still
+ * mouse. PrimaryAlongRay re-previews before ConfirmPlace and never after; ConfirmPlace leaves the
+ * ghost standing where the committed brick now is; the per-tick refresh is throttled on pixel
+ * position and skips until the pointer moves. The owner sees the ghost z-fight the red brick until
+ * they jog the mouse. Driven through the ray seam: refresh at R, click at R, then assert.
  *
- * What is asserted, and why each is needed. All four claims are mechanism readings — the ghost
- * actor's world bounds, its hidden flag, the binding's piece count, and the committed piece's own
- * box centre. Never a displacement; nothing is released and nothing ticks.
+ * The four claims are mechanism readings (ghost bounds, hidden flag, piece count, committed centre),
+ * never a displacement:
  *
- *   - Visible. A cheap fix that hid the ghost on commit would answer the z-fight and leave the
- *     player with no preview at all until they moved the mouse, the same complaint.
- *   - Not the placed piece's centre. This is the z-fight itself, read as a mechanism rather than a
- *     distance moved: the ghost is not allowed to be standing inside the brick just laid.
- *   - Equal to a fresh ray preview at the same R, taken after the ghost's pose is snapshotted so the
- *     comparison is not circular — the snapshot is what production left behind, the oracle is what
- *     production, asked again, says the answer is. "Not the placed centre" alone would pass against
- *     a ghost parked at any arbitrary pose.
- *   - Held, not merely moved. `RefreshPreview()` returns whether a valid preview is held and refuses
- *     (false, touching nothing) when one is not, so it is the direct reading of the flag
- *     `ConfirmPlace` clears. A fix that only teleported the ghost actor would leave the next
- *     `ConfirmPlace` failing closed with a ghost on screen promising a brick, worse than the bug.
- *     Section SIX then spends it: a second click at the same R must lay a second piece at the pose
- *     the ghost had been showing all along.
- *   - The re-preview must not commit. A preview is a question, so the count is asserted at 2 before
- *     anything else in section FOUR — a re-drive implemented as "place and undo" is caught here
- *     rather than three sections later.
+ *   - Visible. Hiding the ghost on commit would leave no preview until the mouse moves, same
+ *     complaint.
+ *   - Not the placed piece's centre. The z-fight itself, read as a mechanism: not standing inside the
+ *     brick just laid.
+ *   - Equal to a fresh ray preview at R, snapshotted first so the comparison is not circular. "Not
+ *     the placed centre" alone would pass against a ghost parked anywhere.
+ *   - Held, not merely moved. RefreshPreview() reads the flag ConfirmPlace clears; a teleported ghost
+ *     with no preview would fail the next confirm closed. Section SIX spends it.
+ *   - The re-preview must not commit. Count asserted at 2 first, so a "place and undo" is caught here.
  *
- * The numbers, worked through. The file's usual grid: a brick is 21.5 x 10.25 x 6.5 on 1 cm joints,
- * so the coordinating grid is 22.5 x 11.25 x 7.5 and course 0 rests a brick at Z 3.25, course 1 at
- * 10.75. The seed goes at the origin. R is the vertical ray through (11.25, 3.0), meeting the
- * course-0 plane at (11.25, 3, 3.25). Before the click the nearest snap is the running-bond
- * next-course pose (11.25, 0, 10.75), 8.08 cm from that point against 11.64 cm for the same-course
- * pose beside the seed, and the click commits it. After the click that pose is occupied by the brick
- * that now stands there, so the solver drops it and the ranking's runner-up wins: the same-course
- * running-bond pose beside the seed, (22.5, 0, 3.25), at 11.64 cm — the other live poses are far
- * behind it (19.0 cm to 33.9 cm), so the answer is not a near-tie that emission order could flip.
- * That 11.25 cm gap in X between the ghost and the placed brick is comfortably outside the 0.05 cm
- * bounds tolerance, so "not inside the brick just laid" does not rest on float noise.
+ * The numbers: the seed at the origin, R the vertical ray through (11.25, 3.0). Before the click the
+ * nearest snap is the next-course pose (11.25, 0, 10.75), which the click commits. After, that pose
+ * is occupied and dropped, so the runner-up wins: the same-course pose (22.5, 0, 3.25) at 11.64 cm,
+ * with the rest 19 cm or further, so no emission-order tie. The 11.25 cm X gap is well outside the
+ * 0.05 cm tolerance.
  *
- * Red today: nothing re-previews after the commit, so the ghost is left standing at the placed
- * centre (11.25, 0, 10.75) with no preview held.
- *
- * A world ticks for the component's structure and its ghost actor, but no test here ticks one — the
- * tick's own call is what the owner's playtest checks.
+ * Red today: nothing re-previews after the commit, so the ghost is left at the placed centre.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionPlacingReDrivesTheGhostAlongTheSameRayTest,
@@ -4152,7 +3840,7 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 	FVector GhostCentreAfterClickCm = FVector::ZeroVector;
 
 	{
-		/* A preview is a question. Asserted FIRST, so a re-drive that placed and undid is caught. */
+		/* A preview is a question. Asserted first, so a re-drive that placed and undid is caught. */
 		if (const FStructureBinding* const Binding = Subsystem.Find(BuildStructureId))
 		{
 			TestEqual(
@@ -4199,10 +3887,8 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 			GhostCentreAfterClickCm.Equals(PlacedCentreCm, BoundsToleranceCm));
 
 		/*
-		 * And the preview must be held, not just the actor moved: `RefreshPreview` reports whether a
-		 * valid preview is held and refuses (false, touching nothing) when one is not, so it is the
-		 * direct reading of the flag `ConfirmPlace` clears. A ghost moved without one is a promise
-		 * the next click cannot keep — the confirm would fail closed with a brick on screen.
+		 * The preview must be held, not just the actor moved: RefreshPreview reads the flag
+		 * ConfirmPlace clears. A ghost moved without one is a promise the next confirm fails closed.
 		 */
 		TestTrue(
 			TEXT("AND A VALID PREVIEW MUST BE HELD: the ghost showing the next pose is only honest if "
@@ -4215,9 +3901,8 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 
 	/*
 	 * Snapshot first, oracle second, so the comparison is not circular: section FOUR read what
-	 * production left behind, this asks production, on the unchanged binding, what the answer at R
-	 * actually is. The expected value is also derived by hand in the header and pinned below, so an
-	 * oracle that agreed with a wrong ghost would still be caught.
+	 * production left behind, this asks production what the answer at R is. The expected value is also
+	 * pinned by hand below, so an oracle agreeing with a wrong ghost is still caught.
 	 */
 	{
 		const FBuildPreview Oracle = Build.UpdatePreviewFromRay(
