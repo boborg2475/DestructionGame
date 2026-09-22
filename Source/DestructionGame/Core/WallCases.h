@@ -6,32 +6,20 @@
 #include "Core/Layout.h"
 
 /**
- * THE ACCEPTANCE-WALL PRODUCER — the third thing in this project that lays bricks, beside
- * DestructionLayout::RunningBond and DestructionCorbel::Build.
+ * Producer for the acceptance walls, alongside RunningBond and DestructionCorbel::Build. Needed
+ * because six of the twenty walls are not running-bond rectangles (corbels, projecting headers,
+ * stack bond).
  *
- * WHY IT IS NOT RunningBond. Six of the twenty acceptance walls are not running-bond rectangles:
- * two corbel out, two carry a projecting header, and two are stack bond. RunningBond lays one
- * shape, so either there is a second producer or six of the configurations the user drew, including
- * two matched pairs the acceptance set exists for, cannot be laid at all.
+ * One rule: each course is described by its right face and its rightmost piece length, then laid
+ * right to left on the pitch, so the cut closing piece lands at the left end, away from any corbel
+ * or header under test.
  *
- * IT IS ONE RULE, NOT SIX SPECIAL CASES. Every course is described by two numbers — where its
- * right face is, and how long its rightmost piece is — and then laid RIGHT TO LEFT on the
- * coordinating pitch, closing with whatever is left at the wall's left face. Running bond, stack
- * bond, a corbel and a projecting header are all values of those two numbers. Laying right-to-left
- * keeps the cut closing piece at the LEFT end, away from every corbel and header under test.
+ * Emits an FBrickLayout for UDestructionStructureSubsystem::BuildLayout. World-free; must not
+ * include anything from Tests/.
  *
- * It emits an FBrickLayout, so one of these walls goes into a world through the same
- * UDestructionStructureSubsystem::BuildLayout door a wall and a corbel already do. World-free like
- * Core/Layout: boxes and doubles, no UWorld and no UObject. One direction of inclusion — nothing
- * from Tests/ may be included here; a test may include this.
- *
- * `LayWall` in Tests/WallAcceptanceTest.cpp lays its own bricks independently and calls nothing in
- * this namespace, despite commit 1c763c5's message saying the fixture's bricklayer was "moved"
- * here — it was copied, and the message cannot be rewritten. That independence is what keeps
- * `Acceptance.Wall.TheProducerLaysTheWallTheFixtureLays` a real test rather than a tautology: it
- * holds this producer against a genuinely independent bricklayer, including handle order. Do not
- * "finish the move" by making the fixture call this — that would spend the one comparison keeping
- * the two honest.
+ * Tests/WallAcceptanceTest.cpp's LayWall is an independent copy (commit 1c763c5 says "moved"; it
+ * was copied). Keep it independent: Acceptance.Wall.TheProducerLaysTheWallTheFixtureLays compares
+ * the two, including handle order.
  */
 namespace DestructionWallCases
 {
@@ -41,15 +29,13 @@ namespace DestructionWallCases
 		/** Alternate courses offset half a cell, half bats filling the ends flush. */
 		Running,
 
-		/** Every course identical, so every head joint lines up through the whole wall. */
+		/** Every course identical; head joints line up through the wall. */
 		Stack,
 	};
 
 	/**
-	 * A rectangle in (course, cell) space — the vocabulary a cut and a named outcome are written in.
-	 *
-	 * A piece is in the region when its course is within the inclusive course range and its cell
-	 * index is STRICTLY between the two cell bounds.
+	 * A rectangle in (course, cell) space, used for cuts and outcomes. Course range is inclusive;
+	 * cell bounds are strict.
 	 */
 	struct FWallRegion
 	{
@@ -62,12 +48,12 @@ namespace DestructionWallCases
 	/** One acceptance wall's geometry, as data. */
 	struct FWallSpec
 	{
-		/** FULL brick dimensions, cm. UK metric standard is 21.5 x 10.25 x 6.5. */
+		/** Full brick dimensions, cm (UK metric standard). */
 		FVector BrickSizeCm = FVector(21.5, 10.25, 6.5);
 
 		double JointThicknessCm = 1.0;
 
-		/** g/cm3, Unreal's own unit for density — published values go in unconverted. */
+		/** g/cm3; published values go in unconverted. */
 		double DensityGramsPerCubicCm = 0.0;
 
 		int32 CoursesHigh = 0;
@@ -82,24 +68,16 @@ namespace DestructionWallCases
 		double CorbelStepCm = 0.0;
 
 		/**
-		 * A course whose end brick is pushed half a cell past the face of the wall, or INDEX_NONE.
-		 *
-		 * A flush odd course normally closes with a half bat; pushing the face out half a cell and
-		 * closing with a FULL brick instead puts a whole brick where the bat was, half of it bearing
-		 * on the course below and half of it over air.
+		 * A course whose end is a full brick pushed half a cell past the wall face (instead of a
+		 * half bat), half over air, or INDEX_NONE.
 		 */
 		int32 ProjectingCourse = INDEX_NONE;
 
-		/** The joint profile every connection in the wall is built with. */
+		/** Joint profile for every connection. */
 		FConnectionStrength Strength;
 	};
 
-	/**
-	 * A laid acceptance wall: the graph and the boxes whoever spawns actors wants, plus where every
-	 * piece sits on the coordinating grid.
-	 *
-	 * The three arrays are parallel to the structure's piece array, indexed by the same handles.
-	 */
+	/** A laid wall, plus each piece's course and cell; arrays are indexed by piece handle. */
 	struct FWallLayout
 	{
 		DestructionLayout::FBrickLayout Layout;
@@ -108,13 +86,7 @@ namespace DestructionWallCases
 		TArray<double> CellOf;
 	};
 
-	/**
-	 * Lay one, bottom course grounded.
-	 *
-	 * Refuses a spec that could not describe a wall, writing nothing.
-	 *
-	 * @return true if a wall was laid.
-	 */
+	/** Lay a wall, bottom course grounded. Returns false, writing nothing, for an invalid spec. */
 	bool Build(const FWallSpec& Spec, FWallLayout& OutWall);
 
 	/** Every live piece the regions name, in handle order. */

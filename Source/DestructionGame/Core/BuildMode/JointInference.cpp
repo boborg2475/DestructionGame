@@ -6,19 +6,10 @@
 namespace BuildMode
 {
 	/*
-	 * The passive resting joint two faces make just by touching, with no fastener.
-	 *
-	 * Masonry on masonry is mortar: a bed joint (normal ~ vertical, |Z| dominant)
-	 * gets the strong GeneralPurposeMortar; a head joint or corner return (normal
-	 * ~ horizontal) gets the weak-perpend row, knocked down because a perpend is
-	 * the weak link in real masonry.
-	 *
-	 * If either face is not compression-dominant — timber today, anything else
-	 * that carries real tension later — the passive default is DryStone: a
-	 * bearing that carries compression and friction but no tension. This is the
-	 * fail-safe, least-committal choice: timber is held by explicit fasteners (a
-	 * later slice's override), and until one is placed, two timbers merely
-	 * resting on each other haven't earned a tensile bond.
+	 * The passive joint two touching faces make, with no fastener. Masonry on masonry is mortar:
+	 * full mortar for a bed joint (|Z| dominant), the weaker perpend row for a horizontal normal.
+	 * If either face is not compression-dominant (e.g. timber), the fail-safe is DryStone:
+	 * compression and friction, no tension, until an explicit fastener is placed.
 	 */
 	FConnectionStrength JointForContact(
 		const DestructionProfiles::FMaterialProfile& FaceA,
@@ -42,12 +33,7 @@ namespace BuildMode
 
 	namespace
 	{
-		/*
-		 * How much longer one in-plane half-extent must be than the other before the
-		 * piece counts as having a long axis, in cm. A square block has no
-		 * orientation, and a hair's difference in a hand-laid pose isn't one either —
-		 * so the tolerance is 0.5 cm, half the coordinating grid's mortar joint.
-		 */
+		// Half-extent difference, cm, before a piece has a long axis: half the grid's mortar joint.
 		constexpr double LongAxisToleranceCm = 0.5;
 
 		/** Which in-plane axis a piece runs along, if either does. */
@@ -59,15 +45,9 @@ namespace BuildMode
 		};
 
 		/*
-		 * A piece's long axis, or None.
-		 *
-		 * The guard is written `!(Difference > Tolerance)` rather than
-		 * `Difference <= Tolerance` on purpose: every comparison against NaN is
-		 * false, so a NaN extent falls into the guard and reads as no long axis —
-		 * fail-closed (no readable footprint is never a quoin). An infinite extent
-		 * isn't caught this way (Abs(inf - x) > Tolerance is true), but is
-		 * unreachable since AddPiece refuses non-finite half-extents; logged in
-		 * CURRENT_STATE with the row that would pin an explicit IsFinite guard.
+		 * A piece's long axis, or None. The guard is `!(Difference > Tolerance)` so a NaN extent
+		 * reads as None (fail-closed, never a quoin). An infinite extent is not caught, but
+		 * AddPiece refuses those; an explicit IsFinite guard is logged in CURRENT_STATE.
 		 */
 		ELongAxis ReadLongAxis(const DestructionLayout::FPieceBox& Box)
 		{
@@ -82,27 +62,16 @@ namespace BuildMode
 		}
 
 		/*
-		 * How many of a neighbour's two width-face planes the other piece properly
-		 * crosses.
-		 *
-		 * The neighbour's long axis is the wall's direction; the other in-plane axis
-		 * is its width, and its two faces are planes on that axis. A crossing is
-		 * strict — `low < plane < high` — so a span that merely ends on a plane
-		 * doesn't cross it: a quoin's return finishes flush with one width face and
-		 * earns its corner from the other, the one it genuinely passes. Loose
-		 * comparisons would let a flush return cross two planes and demote to a
-		 * closer.
-		 *
-		 * Both tests are written in the affirmative (the fail-closed direction, not
-		 * `!(x > y)`): every comparison against NaN is false, so a non-finite centre
-		 * or extent counts no crossings, and no crossings is Head, the weaker joint.
+		 * How many of the neighbour's two width-face planes (on the axis across its long axis) the
+		 * other piece strictly crosses. Strict so a quoin return flush with one face crosses only
+		 * the other. Comparisons are affirmative, so NaN counts no crossings, which gives Head.
 		 */
 		int32 CountWidthPlaneCrossings(
 			const DestructionLayout::FPieceBox& Neighbour,
 			ELongAxis NeighbourLongAxis,
 			const DestructionLayout::FPieceBox& Crossing)
 		{
-			// X-long means the width faces are the Y ones, and the other way round.
+			// X-long means the width faces are on Y, and vice versa.
 			const int32 WidthIndex = (NeighbourLongAxis == ELongAxis::X) ? 1 : 0;
 
 			const double LowPlane = Neighbour.CentreCm[WidthIndex] - Neighbour.ExtentCm[WidthIndex];
@@ -128,32 +97,17 @@ namespace BuildMode
 	}
 
 	/*
-	 * Bed, head or bonded corner, from the two footprints and the normal
-	 * (owner-ratified ruling, DESIGN §8 2026-09-15).
-	 *
-	 * Degenerate input fails closed to Head, diverging from the three-argument
-	 * JointForContact above on purpose: that function's bed test, `AbsZ >= |X| &&
-	 * AbsZ >= |Y|`, is satisfied by a zero normal, handing the strongest bond to
-	 * a contact nobody could measure (the fail-open recorded as CURRENT_STATE's
-	 * build-mode item (b)). This path guards the normal first and only then asks
-	 * which component dominates.
-	 *
-	 * Dominance is strict — `AbsZ > AbsX && AbsZ > AbsY`. A 45-degree tie between
-	 * vertical and horizontal reads as horizontal, the conservative choice: for a
-	 * collinear pair a tie yields the weak perpend rather than full mortar; for a
-	 * crossed pair it yields Corner, which carries the same profile a Bed would
-	 * — so no tie earns a joint more strength than dominance would have given it.
+	 * Bed, head or bonded corner, from the two footprints and the normal (DESIGN §8, 2026-09-15).
+	 * A degenerate normal fails closed to Head, unlike the three-argument JointForContact, whose
+	 * `>=` bed test passes a zero normal (CURRENT_STATE build-mode item (b)). Dominance is strict,
+	 * so a 45-degree tie reads as horizontal; that never gives more strength than a Bed would.
 	 */
 	EMasonryContact ClassifyMasonryContact(
 		const DestructionLayout::FPieceBox& A,
 		const DestructionLayout::FPieceBox& B,
 		const FVector& InterfaceNormalUnit)
 	{
-		/*
-		 * Both tests, deliberately: FVector::ContainsNaN also catches infinities
-		 * today, but the name only promises NaN — the explicit IsFinite sweep is
-		 * what actually pins the infinite normal the fixture feeds in.
-		 */
+		// ContainsNaN only promises NaN; the IsFinite checks pin infinities.
 		if (InterfaceNormalUnit.ContainsNaN()
 			|| !FMath::IsFinite(InterfaceNormalUnit.X)
 			|| !FMath::IsFinite(InterfaceNormalUnit.Y)
@@ -166,7 +120,7 @@ namespace BuildMode
 		const double AbsY = FMath::Abs(InterfaceNormalUnit.Y);
 		const double AbsZ = FMath::Abs(InterfaceNormalUnit.Z);
 
-		// A zero normal names no face, so it names no contact either.
+		// A zero normal names no face.
 		if (!(AbsX + AbsY + AbsZ > 0.0))
 		{
 			return EMasonryContact::Head;
@@ -177,11 +131,7 @@ namespace BuildMode
 			return EMasonryContact::Bed;
 		}
 
-		/*
-		 * A horizontal contact: the pieces' own orientations decide it. Crossed long
-		 * axes interlock into a quoin; parallel ones — or any pair where either piece
-		 * has no readable long axis — are a head joint.
-		 */
+		// Horizontal contact: crossed long axes may be a quoin; parallel or unreadable ones are Head.
 		const ELongAxis LongAxisA = ReadLongAxis(A);
 		const ELongAxis LongAxisB = ReadLongAxis(B);
 
@@ -196,30 +146,11 @@ namespace BuildMode
 		}
 
 		/*
-		 * Crossed long axes are necessary but not sufficient — this closes DESIGN
-		 * §8's known limit: a header laid beside a stretcher in the same wall line
-		 * (a Flemish-bond closer) also crosses and would be credited as a corner
-		 * without this refinement.
-		 *
-		 * The rule: the contact is a Corner exactly when one piece's span along the
-		 * other's width axis properly crosses exactly one of that other piece's two
-		 * width-face planes. A quoin turns a corner — the wall changes direction, so
-		 * the return leaves the neighbour's line on one side and stops at or inside
-		 * the other.
-		 *
-		 * Either piece may be the one that leaves the line, and the function can't
-		 * know which argument the caller thinks of as the wall (the snap solver
-		 * names the placed piece first, the shed sweep names the lower one), so the
-		 * rule is symmetric by OR: A's span against B's width planes, or B's against
-		 * A's. Not a convenience — the across-Y quoin (a return off a stretcher's
-		 * end whose own long face is flush with that end) crosses nothing in the
-		 * first direction and is a corner only by the second.
-		 *
-		 * Both failures are Head, the weaker answer — fail closed. Crossing both
-		 * planes is a closer laid through the wall line; crossing neither is a
-		 * header buried in a wall thicker than it is long. Neither turns a corner,
-		 * and crediting either overstates the bond by 4.5x on cohesion (0.9 against
-		 * the perpend's 0.2).
+		 * Crossed axes are not enough: a Flemish-bond closer also crosses (DESIGN §8). A Corner
+		 * needs one piece's span to cross exactly one of the other's width-face planes, i.e. the
+		 * wall turns. Checked both ways (OR), since callers order the arguments differently and the
+		 * across-Y quoin only qualifies in one direction. Crossing both planes (a closer) or neither
+		 * (a buried header) is Head; crediting either as a corner overstates cohesion 4.5x.
 		 */
 		const bool bTurnsACorner =
 			CountWidthPlaneCrossings(A, LongAxisA, B) == 1 ||
@@ -229,13 +160,8 @@ namespace BuildMode
 	}
 
 	/*
-	 * The passive resting joint with the pieces' geometry in hand.
-	 *
-	 * The material test still wins outright: mortar doesn't bond to a board, so
-	 * a timber face is a DryStone bearing at a corner exactly as anywhere else.
-	 * Only once both faces are masonry does orientation matter, and a bonded
-	 * corner is credited like the bed joint it structurally resembles (DESIGN
-	 * §8, 2026-09-15) while the collinear head joint keeps the weak perpend.
+	 * The passive joint using the pieces' geometry. Material wins first (a timber face is always
+	 * DryStone). For masonry, Bed and Corner get full mortar and Head the perpend (DESIGN §8).
 	 */
 	FConnectionStrength JointForContact(
 		const DestructionProfiles::FMaterialProfile& FaceA,

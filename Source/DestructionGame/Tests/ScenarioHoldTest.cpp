@@ -11,129 +11,60 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * A SCENARIO LEVEL HOLDS ITS STRUCTURE EXACTLY AS LAID UNTIL ITS HOLD EXPIRES, AND ONLY THEN
- * SETTLES IT.
+ * A scenario level holds its structure exactly as laid until HoldSeconds expires, then runs:
+ * applies the row's cuts and settles. Without the hold, a corbel condemned by its own geometry
+ * would collapse during begin-play, before the player sees it. One clock (HoldSeconds) governs
+ * both cuts and settling.
  *
- * =====================================================================================
- * THE DEFECT, WHICH IS THAT SEVEN OF THE NINE LEVELS ARE OVER BEFORE THEY BEGIN
- * =====================================================================================
+ * "Held" is asserted on IsReleased, not displacement (DESIGN.md §4): bricks spawn kinematic and
+ * only ABrickActor::Release makes them dynamic. The held structure must still be solved, since
+ * an absent support answer reads as Falling (see World.Scenario.GameModeBuildsTheWallOnBeginPlay).
+ * Held means solved but not settled.
  *
- * The user asked to "join the level, see the wall in front of the player start and be able to
- * observe what happens to the wall section". Slice B delivered half of that: a CUTTING row stands
- * whole, and the player watches a brick go after `HoldSeconds`.
+ * After the hold, the release count must exactly match the same row laid world-free through
+ * DestructionScenarios::Build and settled with SolveAndBreak. Not an independent solver; it is
+ * independent of the world wiring this slice changes.
  *
- * But `free-end-40` is the only row that cuts. Every corbel is condemned by its own GEOMETRY
- * rather than by anything removed from it — its root joint is over capacity the moment it exists —
- * and the game mode settles the structure on the frame it builds it. So on a corbel level the
- * collapse begins during begin-play, before the player's first frame is drawn, and the one thing
- * the level exists to show is the thing they miss. `Tests/CorbelScreenshotTest.cpp` already draws
- * the distinction the levels need: "before" is the structure AS LAID with every brick still
- * kinematic and nothing released, "after" is once it has been settled.
+ * Rows:
+ * - corbel-a-bare-4 (10 pieces): control, root reads 0.0223, must release nothing.
+ * - corbel-e36 (519 pieces): was condemned, but reads ~0.145 at mean strength since the
+ *   2026-08-14 re-anchor. A condemned replacement (~124 steps) is owed (CURRENT_STATE).
+ * - corbel-e35 (496 pieces): world-free only; a second world adds nothing.
+ * corbel-f-100 is omitted: too large, and covered by Core.Structure.AHundredStepCorbelMustComeDown.
  *
- * ONE CLOCK, NOT TWO, AND ITS NAME IS NO LONGER THE CUT'S. `HoldSeconds` is how long the level
- * leaves the structure as laid; at that moment it RUNS — applying whatever cuts the row names and
- * settling what is left. A separate per-row hold would be a second answer to "when does this level
- * do its thing", and the first thing to go wrong with two answers is a label counting one of them
- * down while the other fires.
- *
- * =====================================================================================
- * "HELD AS LAID" IS ASSERTED ON THE MECHANISM, AND IT IS NOT THE ABSENCE OF A SOLVE
- * =====================================================================================
- *
- * DESIGN.md §4 forbids reading movement as evidence, and it applies with full force here: two
- * pieces can sever and stay resting exactly where they were. So the observable is `IsReleased` —
- * a brick spawns KINEMATIC and only `ABrickActor::Release` makes it dynamic, so "nothing has been
- * handed to physics" is a countable, binary fact about the level rather than a measurement.
- *
- * AND THE HELD STRUCTURE IS STILL SOLVED. A level could hold by simply never solving, and every
- * release count would read zero because nothing ever asked — which is the wrong hold and a
- * regression the suite has already been bitten by from the other end: `EPieceSupport::Falling` is
- * what an ABSENT answer reads as, so an unsolved wall and a wall in free fall are one answer to
- * everything that looks. CURRENT_STATE.md records the mutation that proves it —
- * `World.Scenario.GameModeBuildsTheWallOnBeginPlay` reports every piece Falling "as the game mode
- * left it" the moment the begin-play solve is removed. So holding is SOLVED AND NOT SETTLED: the
- * loads are known, and no joint has been asked to give yet.
- *
- * =====================================================================================
- * THE COUNT AFTER THE HOLD COMES FROM AN INDEPENDENT WORLD-FREE READING, NOT FROM A LITERAL
- * =====================================================================================
- *
- * "Something fell" would pass against a level that dropped every brick it owns, so the AFTER
- * assertion is an EXACT count and the count is taken from the world-free catalogue: the same row
- * laid through `DestructionScenarios::Build`, settled with `FStructure::SolveAndBreak`, and the
- * pieces the settled solve stops holding up counted. That is the same drift check
- * `World.Scenarios.CorbelRows` already makes on the root joint's reading, pointed at the release
- * set instead — it says the LEVEL and the HEADLESS FIXTURE are about one structure. It is
- * explicitly not an independent solver, and the header says so rather than implying otherwise;
- * what it is independent of is the world wire, which is the thing this slice changes.
- *
- * =====================================================================================
- * WHY THESE ROWS, AND WHAT EACH COSTS
- * =====================================================================================
- *
- *   - `corbel-a-bare-4` (10 pieces) IS THE CONTROL, AND IT IS THE SMALLEST STRUCTURE THAT CAN
- *     CARRY THE CLAIM. Its root reads 0.0223 at the mean basis (0.15613 on the characteristic
- *     data `COMPOSITE_DEPTH_DESIGN.md` worked the bare arm through at) — so settling it must
- *     release NOTHING, ever. Without a row like this, every assertion in the file is satisfied
- *     by a level that hands its whole structure to physics the moment the hold expires.
- *
- *   - `corbel-e36` (519 pieces) WAS THE CONDEMNED ONE — the characteristic-era crossover's
- *     upper rung, root over 1.0 — and the 2026-08-14 mean re-anchor flip un-condemned it: at the
- *     mean f_x1 it reads ~0.145 and settling it must now break nothing. It stays joined as a
- *     level and as a standing row; the condemned exemplar this file needs is owed with the
- *     replacement crossover pair (~124 steps, crushing — CURRENT_STATE), and the condemned
- *     floor below is suspended until it lands.
- *
- *   - `corbel-e35` (496 pieces) IS ARBITRATED WORLD-FREE ONLY. It is E36's old straddle
- *     partner, one course shorter, so settling it must break nothing. It is not joined as a
- *     level because 496 more spawned actors buy nothing the ten-piece control does not already
- *     buy, and `World.Scenarios.CorbelRows` already holds the pair against each other.
- *
- * `corbel-f-100` IS DELIBERATELY ABSENT. 3,015 bricks is the largest structure in the suite and
- * `Core.Structure.AHundredStepCorbelMustComeDown` already lays, solves and cascades it; standing
- * it up in a world as well would be the most expensive thing here for a claim E36 already carries.
- *
- * NEEDS A TICKING WORLD: YES, and the ticking is the whole point — the hold is measured in world
- * seconds, and the claim is about what has NOT happened while it runs.
+ * Needs a ticking world: the hold is measured in world seconds.
  */
 namespace ScenarioHoldTestSupport
 {
 	using namespace DestructionLayout;
 
-	/** How near two release counts have to be to be the same count: they are integers. */
+	/** A double printed at full precision. */
 	inline FString ScenarioHoldBits(double Value)
 	{
 		return FString::Printf(TEXT("%.17g"), Value);
 	}
 
 	/**
-	 * One row this file arbitrates, and how far it is taken.
-	 *
-	 * `bCondemned` IS DECLARED HERE AND THEN HELD AGAINST THE WORLD-FREE READING rather than being
-	 * discovered from it. A table that read its own expectation off the fixture would agree with
-	 * whatever the fixture said, including the day every row started collapsing; declared, a row
-	 * whose status moved fails as a fixture error naming the row.
+	 * One row this file checks. bCondemned is declared, then checked against the world-free
+	 * reading, so a row whose status changes fails by name.
 	 */
 	struct FScenarioHoldCase
 	{
 		const TCHAR* Name;
 
-		/** Pieces the closed form in `World.Scenarios.CorbelRows` derives for this row. */
+		/** Piece count from World.Scenarios.CorbelRows' closed form. */
 		int32 ExpectedPieces;
 
-		/** Whether its root joint is over capacity as laid, so settling it must release something. */
+		/** Root joint over capacity as laid, so settling must release something. */
 		bool bCondemned;
 
-		/** False for a row arbitrated world-free only — see the header on E35. */
+		/** False for a world-free-only row (E35). */
 		bool bJoinAsLevel;
 	};
 
 	/*
-	 * MEAN RE-ANCHOR (2026-08-13): E36 is no longer condemned. Its root read 1.01625 against
-	 * the characteristic f_xk1 = 0.10 and reads ~0.145 against the mean 0.70, so settling it
-	 * must now break NOTHING — the condemned exemplar this file needs is owed with the
-	 * replacement crossover pair (~124 steps, compression-governed; CURRENT_STATE). Until it
-	 * lands, CondemnedCases legitimately counts zero and the floor below says so.
+	 * Since the mean re-anchor E36 reads ~0.145 (was 1.01625), so no row is condemned. A condemned
+	 * replacement (~124 steps) is owed (CURRENT_STATE); until then CondemnedCases is zero.
 	 */
 	const FScenarioHoldCase ScenarioHoldCases[] =
 	{
@@ -142,7 +73,7 @@ namespace ScenarioHoldTestSupport
 		{ TEXT("corbel-e36"), 519, false, true },
 	};
 
-	/** What settling a row does, read off the world-free catalogue. */
+	/** What settling a row does, world-free. */
 	struct FScenarioHoldOracle
 	{
 		bool bBuilt = false;
@@ -150,21 +81,17 @@ namespace ScenarioHoldTestSupport
 		int32 Pieces = 0;
 		int32 Joints = 0;
 
-		/** Passes `SolveAndBreak` broke at least one joint in. Zero for a structure that stands. */
+		/** SolveAndBreak passes that broke a joint. Zero for a standing structure. */
 		int32 BreakPasses = 0;
 
-		/** Pieces the SETTLED solve stops holding up — exactly what `ApplyResults` releases. */
+		/** Pieces the settled solve no longer holds up; what ApplyResults releases. */
 		int32 WouldRelease = 0;
 	};
 
 	/**
-	 * Lay this row world-free, settle it, and count what the settle leaves unheld.
-	 *
-	 * THE SAME PREDICATE `FStructureBinding::ApplyResults` USES, written out here rather than
-	 * called: Grounded and Supported stay put, Stranded and Falling both come down, and a piece the
-	 * last solve never answered for is never released. Written out because the point of the
-	 * comparison is that the LEVEL and the CATALOGUE agree — a helper shared with production would
-	 * agree with production however wrong production was.
+	 * Lay the row world-free, settle it, and count unheld pieces. Uses ApplyResults' predicate
+	 * (Stranded and Falling come down; unanswered pieces never do), written out rather than shared
+	 * so it cannot agree with a wrong production helper.
 	 */
 	inline FScenarioHoldOracle ScenarioHoldSettleWorldFree(
 		const DestructionScenarios::FScenario& Row)
@@ -270,21 +197,16 @@ namespace ScenarioHoldTestSupport
 	}
 
 	/**
-	 * HOW FAR THROUGH THE HOLD THE "STILL HELD" READING IS TAKEN, as a fraction of the row's own
-	 * hold, so a catalogue that retunes the hold retunes this with it. Seven eighths leaves half a
-	 * second of margin either side on today's four — thirty ticks, far more than the rounding in
-	 * `TickSeconds` and far less than the hold itself.
+	 * Fraction of the row's hold at which "still held" is read. Leaves about half a second of
+	 * margin on a 4 s hold, well above TickSeconds rounding.
 	 */
 	constexpr double ScenarioHoldMostOfTheHold = 0.875;
 
-	/** And enough past it that the level has certainly run: 1.25 holds in total. */
+	/** Further fraction to tick so the level has certainly run: 1.25 holds in total. */
 	constexpr double ScenarioHoldPastTheHold = 0.375;
 }
 
-/**
- * NOTHING IS RELEASED WHILE THE LEVEL HOLDS, AND EXACTLY WHAT THE CATALOGUE SAYS IS RELEASED WHEN
- * IT RUNS.
- */
+/** Nothing is released while the level holds; exactly the world-free count is released when it runs. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FScenarioHoldsAsLaidTest,
 	"DestructionGame.World.Scenario.GameModeHoldsTheStructureAsLaid",
@@ -308,7 +230,7 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/* --- what the world-free catalogue says settling this row does ---------------------- */
+		// World-free reading of this row.
 
 		const double OracleStart = FPlatformTime::Seconds();
 		const FScenarioHoldOracle Oracle = ScenarioHoldSettleWorldFree(*Row);
@@ -344,12 +266,7 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 				Case.Name, Row->CutCentresCm.Num()),
 			Row->CutCentresCm.Num() == 0);
 
-		/*
-		 * AND THE ROW IS THE KIND OF ROW THE TABLE SAYS IT IS, held BOTH ways round. A condemned
-		 * corbel must give at least one pass AND leave something unheld; a standing one must give
-		 * no pass at all and leave nothing. If a row's status ever moves, this fails naming the
-		 * row rather than silently turning the assertions below into a tautology.
-		 */
+		// The row's declared status must match the world-free reading, both ways.
 		if (Case.bCondemned)
 		{
 			++CondemnedCases;
@@ -381,7 +298,7 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/* --- and now the level itself ------------------------------------------------------- */
+		// The level itself.
 
 		FBrickTestWorld TestWorld;
 
@@ -428,7 +345,7 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 			Binding->NumPieces() == Oracle.Pieces
 				&& Binding->GetStructure().NumConnections() == Oracle.Joints);
 
-		/* --- AT BEGIN-PLAY: held exactly as laid, and already solved ---------------------- */
+		// At begin-play: held as laid, and already solved.
 
 		const int32 SolvesAtBeginPlay = Binding->GetStructure().NumSolves();
 
@@ -439,13 +356,7 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 			ScenarioHoldLiveBrickCount(*Binding), ScenarioHoldReleasedCount(*Binding),
 			ScenarioHoldUnansweredCount(*Binding), SolvesAtBeginPlay));
 
-		/*
-		 * THE ASSERTION THE WHOLE SLICE IS ABOUT. A brick spawns kinematic and only
-		 * ABrickActor::Release makes it dynamic, so "nothing has been handed to physics" is the
-		 * mechanism reading of "the structure is standing exactly as it was laid". NOT
-		 * displacement: DESIGN.md §4 is explicit, and a condemned corbel whose arm has been
-		 * released has moved nothing at all on the frame it was released.
-		 */
+		// Nothing released is the mechanism reading of "held as laid" (not displacement, DESIGN.md §4).
 		TestTrue(
 			*FString::Printf(
 				TEXT("AT BEGIN-PLAY '%s' MUST BE HELD EXACTLY AS LAID — not one of its %d pieces ")
@@ -467,13 +378,7 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 			Binding->GetStructure().NumLivePieces() == Binding->NumPieces()
 				&& ScenarioHoldLiveBrickCount(*Binding) == Binding->NumPieces());
 
-		/*
-		 * AND HELD IS SOLVED-AND-NOT-SETTLED RATHER THAN UNSOLVED. A level could hold by never
-		 * solving at all and the release count would read zero because nothing ever asked — the
-		 * wrong hold, and one the suite has been bitten by from the other end: an ABSENT support
-		 * answer reads as Falling, so an unsolved structure and one in free fall are one answer to
-		 * every readout, and the first click anywhere would push against an answer nobody computed.
-		 */
+		// Held must mean solved, not unsolved: an absent support answer reads as Falling.
 		TestTrue(
 			*FString::Printf(
 				TEXT("AT BEGIN-PLAY '%s' must already be SOLVED while it is held — every one of its ")
@@ -483,7 +388,7 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 				ScenarioHoldUnansweredCount(*Binding)),
 			ScenarioHoldUnansweredCount(*Binding) == 0);
 
-		/* --- MOST OF THE WAY THROUGH THE HOLD: still nothing ------------------------------ */
+		// Most of the way through the hold: still nothing.
 
 		const double MostOfTheHoldSeconds = Row->HoldSeconds * ScenarioHoldMostOfTheHold;
 
@@ -516,7 +421,7 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 			ScenarioHoldReleasedCount(*Binding) == 0
 				&& Binding->GetStructure().NumLivePieces() == Binding->NumPieces());
 
-		/* --- PAST IT: the level has run, and settled to exactly the catalogue's count ------ */
+		// Past the hold: the level has run and settled to the world-free count.
 
 		const double AfterStart = FPlatformTime::Seconds();
 		TestWorld.TickSeconds(Row->HoldSeconds * ScenarioHoldPastTheHold);
@@ -530,13 +435,7 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 			Case.Name, AfterSeconds * 1000.0, ReleasedAfter, Oracle.WouldRelease,
 			Binding->GetStructure().NumSolves(), SolvesAtBeginPlay));
 
-		/*
-		 * THE LEVEL RAN, which is a separate claim from anything having fallen — and it is the ONLY
-		 * claim available on a row that correctly releases nothing. A settle is a solve, so the
-		 * graph's own solve count going up is what says the hold expired and something happened;
-		 * without it, a level that simply never ran would be indistinguishable from one that ran
-		 * and correctly did nothing.
-		 */
+		// The solve count rising proves the level ran, even on a row that correctly releases nothing.
 		TestTrue(
 			*FString::Printf(
 				TEXT("'%s' MUST HAVE RUN once its %s s hold expired: settling is a solve, so the ")
@@ -546,11 +445,7 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 				Binding->GetStructure().NumSolves()),
 			Binding->GetStructure().NumSolves() > SolvesAtBeginPlay);
 
-		/*
-		 * AND IT SETTLED TO EXACTLY WHAT THE CATALOGUE SAYS. An inequality would pass against a
-		 * level that dropped everything it owns; the equality is what makes the control row mean
-		 * something and what makes the condemned row a statement about THIS structure.
-		 */
+		// Exact equality; an inequality would pass a level that dropped everything.
 		TestTrue(
 			*FString::Printf(
 				TEXT("'%s' MUST SETTLE TO EXACTLY THE %d PIECE(S) THE WORLD-FREE CATALOGUE SAYS THE ")
@@ -572,20 +467,10 @@ bool FScenarioHoldsAsLaidTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * --- and the sweep was not vacuous ---------------------------------------------------
-	 *
-	 * BOTH KINDS OR THE FILE PROVES NOTHING. With no condemned row nothing here would ever have
-	 * been released and "it settled to the catalogue's count" would be "zero equals zero" three
-	 * times over; with no standing row, a level that handed its entire structure to physics on the
-	 * frame the hold expired would pass every assertion above.
-	 */
-	/*
-	 * THE CONDEMNED FLOOR IS SUSPENDED BY THE 2026-08-14 MEAN RE-ANCHOR FLIP: E36 was the sweep's
-	 * one condemned-as-laid exemplar and reads ~0.145 at the mean f_x1, so no catalogue corbel
-	 * is condemned by its own geometry any more. The replacement condemned level (either side
-	 * of the ~124-step compression crossover) is recorded as owed in CURRENT_STATE; when it
-	 * lands, restore `CondemnedCases >= 1` here — the both-kinds floor is what makes this
-	 * sweep assert something, and running long without it is a known cost, not an oversight.
+	 * The sweep needs both kinds: without a condemned row every release count is zero equals
+	 * zero; without a standing row, dropping everything would pass. The condemned floor is
+	 * suspended until the replacement condemned row lands (CURRENT_STATE); then restore
+	 * CondemnedCases >= 1 here.
 	 */
 	TestTrue(
 		*FString::Printf(

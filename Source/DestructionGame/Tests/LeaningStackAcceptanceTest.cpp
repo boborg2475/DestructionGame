@@ -9,44 +9,21 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The leaning-stack acceptance set — the one self-weight fixture family that can demand the
- * missing stability check (DESIGN.md §7 gaps 1 and 6), and the red test for the interim
- * overturning guard (evolution step 2, disposable by design, deleted at step 4).
+ * Leaning-stack acceptance set: the self-weight fixture that demands a stability check
+ * (DESIGN.md §7 gaps 1 and 6), and the red test that drove the overturning guard.
  *
- * WHAT IT IS. A single column of standard bricks, each course mortared to the one below and
- * offset a fixed distance sideways, so the stack races out over its own base. The offset is
- * constant and only the height varies between rows: overturning demand at the bottom bed joint
- * grows as the square of the course count (m courses above it weigh m bricks and stand m/2
- * offsets further out), while the joint's restoring capacity — bond strength times a fixed
- * section — does not grow at all. Somewhere on that ladder a real stack stops being a lean and
- * becomes a fall, and the model today reads every rung identically.
+ * A single column of mortared bricks, each course offset 10 cm along the length. Overturning
+ * demand at the bottom bed joint grows as m^2 (m courses above), while its restoring capacity is
+ * fixed, so a tall enough stack must fall.
  *
- * WHY THE APPROVED SHAPE MOVED, WITH THE ARITHMETIC (the review-queue item said 2 cm/course at
- * 5/10/15/20 courses, "stands while the resultant is inside the base"). Worked per the case-12
- * corollary (DESIGN.md §8, 2026-08-09), the 2 cm ladder does not discriminate:
+ * Why not the originally approved 2 cm/course at 5/10/15/20 courses: at 2 cm the mean bond holds
+ * the stack to m >= 40-51, so every row honestly stands. Dry stone cannot be used either: zero
+ * tension makes the model condemn any joint outside the kern, while a real dry stack rocks and
+ * stands (the missing no-tension rocking model, a separate gap).
  *
- *   - At 2 cm/course the bottom joint's overlap is 19.5 cm (W = 649.59 cm3, A = 199.875 cm2)
- *     and the first-crack tension demand is 410.6*m^2 - 1334.4*m pascals, which reaches the mean
- *     bond bracket (0.6-1.0 MPa, see below) only at m >= 40-51. The approved 15- and 20-course
- *     rows sit past the rigid-block tipping point (m >= 10) but the bonded bed rescues them by
- *     ~9.7x and ~4.9x, exactly as it rescued case 12's pier: they honestly stand.
- *   - Dry stone cannot be the fixture either, for the opposite reason: its tensile strength is
- *     an exact zero, so the model condemns any joint outside the kern (e > overlap/6), while a
- *     real dry stack rocks on its edge and stands to e = overlap/2. A 5-course, 2 cm/course dry
- *     stack — e = 4 cm against a 9.75 cm half-overlap, standing comfortably in reality — reads
- *     utilisation = Max() today, wrong in the wrong direction for this red (standing reads as
- *     falling); that is the missing no-tension rocking model, a different gap, left alone.
- *
- *   So the family is mortared, at 10 cm/course — a lean the bond genuinely cannot hold once the
- *   stack is tall enough — with heights chosen so every verdict clears the whole mean bracket
- *   with margin, rather than 5/10/15/20 whose middle rungs land inside it.
- *
- * THE STRENGTH BASIS THE VERDICTS ARE RULED AGAINST, because the coded profile cannot be it.
- * GeneralPurposeMortar carries f_xk1 = 0.10 MPa, a characteristic design value; DESIGN.md §3
- * records the decision that verdicts are ruled at MEAN strength, re-anchor deferred until after
- * the LP oracle. UK NA Table NA.6 gives clay-unit characteristic bond of 0.3-0.5 MPa by water
- * absorption, and mean tested bond runs about twice characteristic, so the honest bracket is
- * roughly 0.6-1.0 MPa. Every verdict below clears both ends of it:
+ * Verdicts are ruled at MEAN bond (DESIGN.md §3): UK NA Table NA.6 gives characteristic
+ * 0.3-0.5 MPa for clay units, mean runs about 2x, so the bracket is 0.6-1.0 MPa. Every verdict
+ * clears both ends:
  *
  *     row  courses  m   first-crack demand      verdict     margin
  *      1      5      4   0.0854 MPa             STANDS      7.0x under the 0.6 floor
@@ -54,136 +31,80 @@
  *      3     30     29   4.899 MPa              FALLS       4.9x over the 1.0 ceiling
  *      4     40     39   8.890 MPa              FALLS       8.9x over the 1.0 ceiling
  *
- * demand(m) = (M/W - N/A) at the bottom bed joint: M = w*(d/2)*m^2 (w one brick's weight, d the
- * offset — the lever sum over m courses is d*(m^2)/2 exactly), W = t*(L-d)^2/6 the overlap
- * rectangle's modulus, N = m*w, A = t*(L-d). First-crack (uncracked elastic) is the honest
- * criterion for a brittle bond — the joint reaches its flexural strength before a crack
- * propagates, and once cracked it unzips. The falling rows are also checked against the most
- * forgiving defensible reading, a rigid-plastic stress block at the 1.0 ceiling (restoring =
- * f*A*overlap/2 about the bearing edge): row 3 overturns that too at 1.59x, row 4 at 2.90x. The
- * gap between 0.2734 and 4.899 MPa is the window the guard's effective bond figure must land in,
- * 18x wide — any honest mean figure fits, and no tuning can satisfy the rows without one.
+ * demand(m) = M/W - N/A at the bottom bed joint, with M = w*(d/2)*m^2, W = t*(L-d)^2/6,
+ * N = m*w, A = t*(L-d). First-crack (elastic) is the right criterion for a brittle bond. The
+ * falling rows also overturn under a generous rigid-plastic block at 1.0 MPa (1.59x and 2.90x).
+ * The guard's bond figure must land between 0.2734 and 4.899 MPa.
  *
- * WHAT THE JOINT CHECKS READ, AND WHY THE FALLING ROWS READ SAFE BEFORE THE GUARD. Every course
- * is seated on exactly one course, so the whole stack above any bed joint is one "corbelling
- * body" and CorbellingBodyDepthCm's floor credits the joint a composite section the full height
- * of the stack: D = 7.5*m, W_c = t*D^2/6. That grows as m^2 — precisely cancelling the m^2 in
- * the demand — so the composite tension reading is the same number at every height:
+ * Why joint checks alone read the falling rows as safe: each course sits on one course, so the
+ * whole stack is one corbelling body and gets a composite section D = 7.5*m. W_c grows as m^2,
+ * cancelling the demand's m^2, so every joint reads the same composite tension at any height
+ * (0.01388 MPa). Only ~2.15 courses actually cross any vertical plane (DESIGN.md §5.5, open).
+ * The equilibrium guard (DESIGN.md §7) brings the rows down, and it must use a mean-basis bond:
+ * at characteristic 0.10 MPa it would wrongly condemn corbel A, which survives 5.8x at 0.6.
  *
- *     sigma_c = [w*(d/2)*m^2] / [t*(7.5m)^2/6] = 0.01388 MPa,  utilisation 0.1388 against
- *     the coded 0.10, for every joint with two or more courses above, at 8 courses and at 40.
+ * Assertions (DESIGN.md §4): STANDS rows assert nothing fell and no pass broke anything. FALLS
+ * rows assert every course above the base lost the earth, the base kept it, and nothing is
+ * Stranded. No displacement and no specific joint's HasGiven. The FStackCase pin fields are
+ * unarmed machinery for the next known-wrong row.
  *
- * A height-independent reading of a fixture whose real risk grows quadratically is the whole
- * defect in one number. It is also the sharpest fixture yet for the open composite-depth
- * "courses crossing the plane" question (DESIGN.md §5.5): any vertical plane through this
- * staircase is crossed by only ~L/d ~= 2.15 courses, so the credited deep beam — 30 courses,
- * 225 cm — is masonry that is simply not there on the resisting plane. The two defects are one
- * failure here: credit only the ~16 cm of section that crosses the plane and the falling rows
- * read 3.6-45x. The fix that landed is the interim guard (FStructure::BreakOverturnedBodies,
- * DESIGN.md §7 evolution step 2); the plane rule remains open, and it alone at today's
- * characteristic 0.10 would also condemn row 2 (0.2734/0.10 = 2.7), which is why the guard
- * carries its own mean-basis bond term rather than reading the coded strength.
- *
- * AND THE GUARD'S BOND TERM MUST BE MEAN-BASIS OR IT BREAKS A STANDING RULING. The free-body
- * check of corbel A (four bricks, ~107 N, resultant ~17.4 cm past its bearing edge, ~18.5 N.m
- * of overturning) against its 179.48 cm3 root patch: at characteristic 0.10 MPa the bond
- * restores ~17.9 N.m and the guard would condemn a corbel ruled to stand; at the 0.6 mean floor
- * it restores ~108 N.m and the ruling survives 5.8x. The corbel family is the guard's regression
- * suite as much as this file is its driver.
- *
- * ASSERTIONS, per DESIGN.md §4. The STANDS rows assert both halves — nothing loses the earth and
- * no cascade pass broke anything. The FALLS rows assert the outcome: every course above the
- * grounded base loses its path to the earth and the base keeps its own, with zero pieces
- * Stranded so a routing limitation cannot wear the collapse's clothes. Displacement is never
- * read, and no mechanism assertion names a specific joint's HasGiven — the guard is a free-body
- * check and how it expresses "this body has no equilibrium" is implementation the outcome
- * assertion must not dictate.
- *
- * THE FALLING ROWS ONCE PINNED WHAT THE MODEL DID INSTEAD (WallAcceptanceTest's DropsToday
- * convention): drops nothing, worst joint ~0.1388. Those pins were deleted in the same edit
- * that landed the guard and turned the rows green. The FStackCase pin fields and their checking
- * block remain as unarmed machinery for the next known-wrong row.
- *
- * NEEDS A TICKING WORLD: NO. Gravity is on (weight is mass x 980), everything is connected, and
- * the assertions are on solver state and outcome. Same footing as BeamAcceptanceTest.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation unit.
- *
- * NOTHING IS IMPORTED FROM THE CODE UNDER TEST except the producer (Layout::MakeInterface,
- * whose emitted areas are checked against an interval intersection computed here) and the
- * mortar profile the stack is laid in (whose two figures the verdicts turn on are asserted as
- * fixture preconditions). The statics, section moduli, unit conversion and mean bond bracket
- * are derived in this file, so a wrong production constant disagrees with it rather than
- * agreeing.
+ * No world needed. Named namespace for unity builds. Only MakeInterface and the mortar profile
+ * are imported (the profile's figures are asserted); statics, moduli, units and the bond bracket
+ * are derived here so a wrong production constant disagrees.
  */
 namespace LeaningStackTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* THE GEOMETRY. Every length is centimetres, at Unreal's default 1 uu = 1 cm. */
+	// Geometry, cm (1 uu = 1 cm).
 
-	/** The standard brick every anchor in this project is derived from. */
+	/** The standard brick. */
 	constexpr double BrickLengthCm = 21.5;
 	constexpr double BrickWidthCm = 10.25;
 	constexpr double BrickHeightCm = 6.5;
 
-	/** Fired clay, 1.9 g/cm3 — the same figure the wall fixtures use. */
+	/** Fired clay, 1.9 g/cm3. */
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
 
 	/**
-	 * How far each course is laid past the one below, along the brick's length.
-	 *
-	 * 10 cm — just under half a brick per course, a lean nothing sane builds. Chosen so the
-	 * bond cannot rescue the tall rows: at the spec's original 2 cm the mean bond holds the
-	 * stack to ~41-52 courses (see the file header), so the offset had to grow until the
-	 * ladder's verdicts clear the whole mean bracket at fixture-sized heights. One offset for
-	 * the family: the rows isolate height and nothing else.
+	 * Offset of each course past the one below, along the length. Large enough that the bond
+	 * cannot rescue the tall rows at fixture-sized heights; one offset so rows vary only height.
 	 */
 	constexpr double OffsetPerCourseCm = 10.0;
 
-	/** A 1 cm mortar bed, so the course pitch is 7.5 cm — standard brickwork. */
+	/** 1 cm mortar bed, so the course pitch is 7.5 cm. */
 	constexpr double BedJointThicknessCm = 1.0;
 	constexpr double CoursePitchCm = BrickHeightCm + BedJointThicknessCm;
 
-	/* UNITS AND THE STRENGTH BASIS. Every figure cited; none imported. */
+	// Units and strength basis. Cited, not imported.
 
-	/** MassKg * 980 IS a weight in uu — the 1 N = 100 uu conversion is already inside it. */
+	/** MassKg * 980 is a weight in uu; the 1 N = 100 uu conversion is already inside it. */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
 	/**
 	 * 1 N = 100 uu and 1 cm2 = 100 mm2, so 1 MPa over 1 cm2 is 10000 uu. Deliberately not
-	 * DestructionForce::ForceUnitsPerMPaSqCm: this file must fail if that constant is wrong
-	 * rather than agree with it.
+	 * ForceUnitsPerMPaSqCm, so a wrong production constant fails here.
 	 */
 	constexpr double ForceUnitsPerMPaSqCmHere = 100.0 * 100.0;
 
 	/**
-	 * The MEAN bed-joint bond bracket the verdicts are ruled against, MPa.
-	 *
-	 * UK NA to BS EN 1996-1-1, Table NA.6: characteristic f_xk1 for clay units in M4/M6
-	 * general-purpose mortar is 0.5 / 0.4 / 0.3 by water absorption (<7% / 7-12% / >12%), and
-	 * mean tested bond strength runs about 2x characteristic (DESIGN.md §3's own bracket, the
-	 * basis of the 2026-08-09 case-12 ruling). So 0.6 is the mean for the weakest-bonding clay
-	 * and 1.0 for the strongest; a verdict is only written here if it holds at BOTH ends.
+	 * Mean bed-joint bond bracket, MPa. UK NA to BS EN 1996-1-1 Table NA.6 gives characteristic
+	 * f_xk1 of 0.3-0.5 for clay units; mean runs about 2x (DESIGN.md §3). Verdicts must hold at both ends.
 	 */
 	constexpr double MeanBondFloorMPa = 0.6;
 	constexpr double MeanBondCeilingMPa = 1.0;
 
-	/*
-	 * THE INDEPENDENT ORACLE: free-body statics of an offset column, from first principles.
-	 * None of it mirrors production — the solver accumulates down a support graph; this is
-	 * moments about one joint of one rigid body, which is where the verdicts come from.
-	 */
+	// Independent oracle: rigid-body moments about one joint, not the solver's support-graph method.
 
-	/** Every bed joint in the stack is the overlap rectangle two offset courses share. */
+	/** Each bed joint is the overlap rectangle of two offset courses. */
 	constexpr double OverlapCm = BrickLengthCm - OffsetPerCourseCm;
 	constexpr double BedAreaSqCm = OverlapCm * BrickWidthCm;
 
 	/** W = t * overlap^2 / 6, about the axis the stack leans over. */
 	constexpr double BedModulusCm3 = BrickWidthCm * OverlapCm * OverlapCm / 6.0;
 
-	/** Density-first multiplication order — the PieceMassKg contract; 2.72163125 kg. */
+	/** Density-first order, matching PieceMassKg; 2.72163125 kg. */
 	constexpr double BrickMassKg =
 		ClayDensityGramsPerCubicCm * BrickLengthCm * BrickWidthCm * BrickHeightCm / 1000.0;
 
@@ -191,13 +112,8 @@ namespace LeaningStackTestSupport
 	constexpr double BrickWeightUu = BrickMassKg * GravityCmPerSecondSquared;
 
 	/**
-	 * The overturning moment about the bottom bed joint's own centroid, uu.cm, with m courses
-	 * above it.
-	 *
-	 * Course i (base = 0) is centred at i*d. The joint between courses 0 and 1 is centred at
-	 * d/2, so the lever of course i about it is i*d - d/2, and the sum over i = 1..m is
-	 * d*(m^2)/2 exactly — the m*(m-1)/2 pair sum plus m half-offsets. That quadratic is the
-	 * whole fixture: weight grows with m and the centroid walks out with m.
+	 * Overturning moment about the bottom bed joint's centroid, uu.cm. Course i is at i*d and the
+	 * joint at d/2, so the levers sum to d*(m^2)/2 over i = 1..m.
 	 */
 	double BottomJointMomentUuCm(int32 CoursesAbove)
 	{
@@ -205,11 +121,7 @@ namespace LeaningStackTestSupport
 			* double(CoursesAbove) * double(CoursesAbove);
 	}
 
-	/**
-	 * The first-crack (uncracked elastic) bond tension demand at the bottom bed joint, MPa:
-	 * M/W minus the mean compression N/A that closes it. The honest criterion for a brittle
-	 * bond, and the number the verdicts compare against the mean bracket.
-	 */
+	/** First-crack bond tension demand at the bottom bed joint, MPa: M/W - N/A. */
 	double FirstCrackDemandMPa(int32 CoursesAbove)
 	{
 		const double BendingUuPerSqCm = BottomJointMomentUuCm(CoursesAbove) / BedModulusCm3;
@@ -220,17 +132,13 @@ namespace LeaningStackTestSupport
 	}
 
 	/**
-	 * The rigid-plastic cross-check for a FALLS verdict: overturning about the joint's leading
-	 * bearing edge against the most generous restoring a bonded joint can offer — the full bond
-	 * stress block, f * A * (overlap/2). Returned as demand/capacity, so > 1 overturns.
-	 *
-	 * More forgiving than first-crack by roughly the W-to-A*l/2 ratio of 3, and not the honest
-	 * criterion for a brittle bond — it exists so a falling row cannot be argued back up by the
-	 * most charitable reading available. Only the two FALLS rows are required to clear it.
+	 * Rigid-plastic cross-check for FALLS rows: overturning about the bearing edge against the
+	 * full bond block f * A * (overlap/2). Demand/capacity, so > 1 overturns. About 3x more
+	 * forgiving than first-crack; it proves a falling row falls even under the kindest reading.
 	 */
 	double PlasticOverturningRatio(int32 CoursesAbove, double BondMPa)
 	{
-		/* The body's centroid, d*(m+1)/2, less the leading edge of the bearing at L/2. */
+		// Body centroid d*(m+1)/2, less the bearing's leading edge at L/2.
 		const double EdgeLeverCm =
 			OffsetPerCourseCm * double(CoursesAbove + 1) / 2.0 - BrickLengthCm / 2.0;
 
@@ -243,14 +151,14 @@ namespace LeaningStackTestSupport
 		return OverturningUuCm / RestoringUuCm;
 	}
 
-	/* THE TABLE. */
+	// The table.
 
 	enum class EVerdict : uint8
 	{
-		/** The bond at the bottom joint cannot hold the lean: everything above the base goes. */
+		/** Everything above the base comes down. */
 		Falls,
 
-		/** The bond holds the lean with margin at the conservative end of the mean bracket. */
+		/** The bond holds with margin at the low end of the mean bracket. */
 		Stands,
 	};
 
@@ -264,18 +172,15 @@ namespace LeaningStackTestSupport
 		int32 Number = 0;
 		const TCHAR* Title = nullptr;
 
-		/** What this row's matched pair varies. Printed on failure. */
+		/** What this row's pair varies, for failure messages. */
 		const TCHAR* Isolates = nullptr;
 
 		int32 Courses = 0;
 		EVerdict Verdict = EVerdict::Stands;
 
 		/**
-		 * How the model reads this row today — a characterisation of a wrong answer, set on
-		 * the FALLS rows only. Not an expectation: what the solver does instead of the
-		 * physics, measured off a run so a regression inside the known failure fails loudly
-		 * rather than hiding behind the expected red. Delete these in the same edit that
-		 * fixes the row.
+		 * Known-wrong answer pins for a red row, so a regression within the failure is loud.
+		 * Delete in the edit that fixes the row. Currently unset.
 		 */
 		int32 DropsToday = INDEX_NONE;
 		double WorstUtilisationToday = 0.0;
@@ -285,62 +190,42 @@ namespace LeaningStackTestSupport
 	{
 		TArray<FStackCase> Cases;
 
-		/*
-		 * ROW 1 — the shallow control. Demand 0.0854 MPa: 7.0x inside the 0.6 mean floor, and
-		 * 26.8x inside the plastic reading. Any guard loose enough to let real corbels stand
-		 * must let this stand; a guard that condemns it is a rigid-block check with no bond
-		 * term, the corbel-A regression described in the file header.
-		 */
+		// Row 1, shallow control: 0.0854 MPa. A guard with no bond term would condemn it.
 		Cases.Add({ 1, TEXT("5 courses"), TEXT("height (vs case 4)"),
 			/*Courses*/ 5, EVerdict::Stands });
 
 		/*
-		 * ROW 2 — the deepest robust stand. Demand 0.2734 MPa: 2.2x inside the 0.6 mean
-		 * floor. One more course reads 0.359 (1.67x) and the next 0.458 (1.31x), so 8 is
-		 * where the STANDS ladder stops clearing the bracket with real margin — the lower
-		 * edge of the guard's window: its effective bond figure must exceed 0.2734 MPa or
-		 * this row goes red in the wrong direction.
+		 * Row 2, tallest robust stand: 0.2734 MPa, 2.2x under the floor (9 courses would be
+		 * only 1.67x). The guard's bond figure must exceed this.
 		 */
 		Cases.Add({ 2, TEXT("8 courses"), TEXT("height (vs case 3)"),
 			/*Courses*/ 8, EVerdict::Stands });
 
-		/*
-		 * ROW 3 — the shallowest robust fall. Demand 4.899 MPa: 4.9x over the 1.0 mean
-		 * ceiling at first crack, and 1.59x over even the rigid-plastic stress block at that
-		 * ceiling. The model today reads its worst joint at ~0.1388 and drops nothing.
-		 */
+		// Row 3, shortest robust fall: 4.899 MPa, 4.9x over the ceiling; 1.59x even rigid-plastic.
 		Cases.Add({ 3, TEXT("30 courses"), TEXT("height (vs case 2)"),
 			/*Courses*/ 30, EVerdict::Falls });
 
-		/*
-		 * ROW 4 — the anchor fall. Demand 8.890 MPa: 8.9x at first crack, 2.90x under the
-		 * plastic reading. The model reads the identical ~0.1388 it read at 8 courses — the
-		 * height-independence that is the defect in one number.
-		 */
+		// Row 4, anchor fall: 8.890 MPa, 8.9x at first crack, 2.90x rigid-plastic.
 		Cases.Add({ 4, TEXT("40 courses"), TEXT("height (vs case 1)"),
 			/*Courses*/ 40, EVerdict::Falls });
 
 		return Cases;
 	}
 
-	/* THE FIXTURE. */
+	// The fixture.
 
 	struct FStack
 	{
 		FStructure Structure;
 		TArray<FPieceBox> Boxes;
 
-		/** The joint between the grounded base and course 1 — the critical one, m = n-1. */
+		/** The joint between the grounded base and course 1 (the critical one, m = n-1). */
 		int32 BottomJoint = INDEX_NONE;
 	};
 
 	/**
-	 * Lay one row's stack: course i centred at (i*d, 0, 3.25 + i*7.5), course 0 grounded.
-	 *
-	 * Every pair is offered and MakeInterface refuses the non-faces: consecutive courses are
-	 * separated by exactly the 1 cm bed on Z and overlap 11.5 x 10.25 in plane, while courses
-	 * two apart are 8.5 cm of air apart and form nothing. Deciding which pairs touch is the
-	 * producer's job; what this file checks below is the area of everything it accepted.
+	 * Lay a stack: course i centred at (i*d, 0, 3.25 + i*7.5), course 0 grounded. Every pair is
+	 * offered to MakeInterface, which accepts only consecutive courses.
 	 */
 	void LayStack(int32 Courses, FStack& OutStack)
 	{
@@ -378,7 +263,7 @@ namespace LeaningStackTestSupport
 		}
 	}
 
-	/** Which live pieces have lost their path to the earth. Stranded counts as fallen. */
+	/** Live pieces with no path to the earth. Stranded counts as fallen. */
 	TArray<int32> FallenPieces(const FStack& Stack)
 	{
 		TArray<int32> Fallen;
@@ -401,7 +286,7 @@ namespace LeaningStackTestSupport
 		return Fallen;
 	}
 
-	/** How many live pieces the solver could not route at all. A precondition, never a verdict. */
+	/** Live pieces the solver could not route. A precondition, never a verdict. */
 	int32 StrandedCount(const FStack& Stack)
 	{
 		int32 Stranded = 0;
@@ -418,12 +303,12 @@ namespace LeaningStackTestSupport
 		return Stranded;
 	}
 
-	/** What one row's stack did, as built and then after the cascade. */
+	/** One row's readings as built, then after the cascade. */
 	struct FStackResult
 	{
 		bool bLaid = false;
 
-		/** Read from the non-destructive solve, before anything may break. */
+		/** From the non-destructive solve, before anything breaks. */
 		double WorstUtilisation = 0.0;
 		int32 WorstJoint = INDEX_NONE;
 		double BottomUtilisation = 0.0;
@@ -437,7 +322,7 @@ namespace LeaningStackTestSupport
 		int32 Stranded = 0;
 	};
 
-	/** Lay it, read it, then let the cascade run. Readings describe the stack AS BUILT. */
+	/** Lay, read, then cascade. Readings describe the stack as built. */
 	void RunStackCase(
 		FAutomationTestBase& Test, const FStackCase& Case, FStack& OutStack, FStackResult& OutResult)
 	{
@@ -481,7 +366,7 @@ namespace LeaningStackTestSupport
 		OutResult.Stranded = StrandedCount(OutStack);
 	}
 
-	/** Everything the solver read, printed whether the row passes or not. */
+	/** Log the derived and solver readings for a row. */
 	void ReportStackCase(
 		FAutomationTestBase& Test, const FStackCase& Case, const FStackResult& Result)
 	{
@@ -507,10 +392,8 @@ namespace LeaningStackTestSupport
 	}
 
 	/**
-	 * Everything a row must satisfy before its verdict means anything: the fixture is the
-	 * shape it claims, the solver could route it, and the ruling is robust — each verdict
-	 * clears the whole mean bracket, so nobody can later shift a height into the ambiguous
-	 * band (9-19 courses at this offset) without this failing.
+	 * Preconditions for a row's verdict: correct fixture shape, nothing Stranded, and a ruling
+	 * that clears the whole mean bracket (so no row drifts into the ambiguous 9-19 course band).
 	 */
 	void CheckFixture(
 		FAutomationTestBase& Test, const FStackCase& Case, const FStack& Stack,
@@ -586,12 +469,8 @@ namespace LeaningStackTestSupport
 		}
 
 		/*
-		 * Bond tension has to be the axis that decides, or the ladder measures something
-		 * else. The only competitor gravity offers this fixture is the squeezed edge — no
-		 * shear demand at all on a stack of horizontal beds — and at mean strengths (bond
-		 * 0.6-1.0 against mortar crushing of order 10) tension outruns it ~12x at every
-		 * height. Worked at the extreme row: M/W + N/A = 8.98 MPa of edge compression against
-		 * ~10 of crushing, while the tension edge is 8.9x over its own ceiling.
+		 * Bond tension must govern. The only competitor is edge compression (no shear on
+		 * horizontal beds); at row 4 that is 8.98 MPa against ~10, while tension is 8.9x over.
 		 */
 		const double EdgeCompressionMPa = DemandMPa
 			+ 2.0 * double(CoursesAbove) * BrickWeightUu / BedAreaSqCm / ForceUnitsPerMPaSqCmHere;
@@ -609,20 +488,10 @@ namespace LeaningStackTestSupport
 }
 
 /**
- * The catalogue: four heights of one lean, each with the verdict a real stack gives.
- *
- * Cases 1 and 2 are green on arrival and stay that way — the controls that stop the guard
- * being writable as "condemn every offset stack", proven to bite by mutation (zeroing the
- * composite depth in SolveLoads turns case 2 into a 2.7x tension failure and drops its seven
- * courses, recorded in the report that landed this file). Cases 3 and 4 were the red that
- * drove the interim guard: the joint checks still read their worst joint at ~0.1388 — the
- * same number as case 2, because the composite section credits the whole stack as a deep beam
- * over every bed joint — but the equilibrium gate (`BreakByEquilibrium`, Slice 2; the interim
- * `BreakOverturnedBodies` it replaced did the same here) finds the body those joints belong to
- * has no admissible equilibrium, severs the bearing, and brings the rows down. The 0.1388
- * reading is why an ordinary joint check cannot decide these rows; the equilibrium gate can.
- *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * The catalogue: four heights of one lean, each with its real verdict. Cases 1 and 2 are
+ * controls against a guard that condemns every offset stack. Cases 3 and 4 read ~0.1388 on the
+ * joint checks, like case 2, so only the equilibrium gate (BreakByEquilibrium) brings them
+ * down. No world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLeaningStackCatalogueTest,
@@ -635,13 +504,8 @@ bool FLeaningStackCatalogueTest::RunTest(const FString& Parameters)
 	using namespace LeaningStackTestSupport;
 
 	/*
-	 * The profile figures the verdicts turn on, checked rather than taken on trust. Since the
-	 * 2026-08-14 mean re-anchor flip the coded tensile strength IS a mean — 0.70, from the
-	 * Newcastle campaign's batch means bracketed with the UK NA inversion — and it sits strictly
-	 * inside this file's independent 0.6-1.0 mean bracket, so every verdict above survives
-	 * unchanged. Keep the bracket as the independent oracle rather than collapsing it onto the
-	 * profile: a retune of the profile moves every margin in this file and must land here first,
-	 * loudly.
+	 * Pin the profile figures. The coded bond is now a mean (0.70), inside this file's
+	 * independent 0.6-1.0 bracket. Keep the bracket independent so a profile retune fails here.
 	 */
 	TestEqual(TEXT("FIXTURE: the mortar's coded bond is the mean-basis 0.70 (re-anchor flip 2026-08-14)"),
 		GeneralPurposeMortar.TensileStrengthMPa, 0.7);
@@ -657,7 +521,7 @@ bool FLeaningStackCatalogueTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FIXTURE: the mortar's coded crushing strength is M10's 10 MPa"),
 		GeneralPurposeMortar.CompressiveStrengthMPa, 10.0);
 
-	/* The section every demand above divides by: 10.25 * 11.5^2 / 6 = 225.927 cm3. */
+	// 10.25 * 11.5^2 / 6 = 225.927 cm3.
 	TestEqual(TEXT("FIXTURE: the overlap rectangle's modulus is t * overlap^2 / 6"),
 		BedModulusCm3, 10.25 * 11.5 * 11.5 / 6.0);
 
@@ -685,11 +549,7 @@ bool FLeaningStackCatalogueTest::RunTest(const FString& Parameters)
 
 		if (Case.Verdict == EVerdict::Stands)
 		{
-			/*
-			 * Both halves: "nothing fell" alone passes for a stack that severed its bottom
-			 * bed and settled in place; "no pass broke" alone passes for a stack whose load
-			 * never reached anything.
-			 */
+			// Both halves: a severed bed can leave everything in place, so check breaks too.
 			TestEqual(
 				*FString::Printf(
 					TEXT("%s: STANDS means nothing lost the earth; %d piece(s) did"),
@@ -705,13 +565,7 @@ bool FLeaningStackCatalogueTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/*
-		 * The red: a stack whose bottom joint carries a bond tension demand of 4.9-8.9 MPa
-		 * against a mean bond of at most 1.0 has no equilibrium to find — everything above the
-		 * grounded base comes down. Today the model reads the same joint at ~0.1388 of its
-		 * coded strength (the composite deep beam credits the whole stack) and drops nothing,
-		 * DESIGN.md §7 gaps 1 and 6 in one fixture.
-		 */
+		// 4.9-8.9 MPa of demand against at most 1.0: everything above the base must come down.
 		TArray<int32> WronglyStanding;
 
 		for (int32 Course = 1; Course < Case.Courses; ++Course)
@@ -740,10 +594,7 @@ bool FLeaningStackCatalogueTest::RunTest(const FString& Parameters)
 				*Where),
 			Stack.Structure.GetPieceSupport(0) == EPieceSupport::Grounded);
 
-		/*
-		 * The pins: what the model does instead, so a regression inside the known failure
-		 * fails loudly. Delete both in the same edit that makes this row pass.
-		 */
+		// Known-red pins, armed only when a row sets DropsToday.
 		if (Case.DropsToday != INDEX_NONE)
 		{
 			TestEqual(
@@ -770,21 +621,9 @@ bool FLeaningStackCatalogueTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Height alone has to decide the outcome.
- *
- * Cases 2 and 4 are the same brick, the same mortar, the same 10 cm lean per course; the only
- * thing that differs is how many courses there are, and the overturning demand grows with the
- * square of that number while nothing on the restoring side grows at all. Eight courses at
- * 0.2734 MPa of bond demand must stand and forty at 8.890 must not.
- *
- * WHY IT IS WORTH A TEST BESIDE THE CATALOGUE. The catalogue could in principle be satisfied by
- * a model that condemns every offset stack (rows 1-2 would catch it, but as two separate row
- * failures). This states the discrimination as ONE relation — the answer must change between
- * two fixtures whose every per-course number is identical — the form a height-independent
- * reading cannot fake. Today both rows answer identically: zero pieces fall in either, and the
- * worst-joint readings agree to nine decimal places.
- *
- * NEEDS A TICKING WORLD: NO.
+ * Height alone decides the outcome: cases 2 and 4 differ only in course count, and 8 courses
+ * (0.2734 MPa) must stand while 40 (8.890 MPa) fall. States the discrimination as one relation
+ * that a height-independent reading cannot fake. No world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLeaningStackHeightTest,

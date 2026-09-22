@@ -11,137 +11,67 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * E3 — THE 3D BRIDGE, RED (THREED_DESIGN.md "E1 slice sequence" E3 bullet).
+ * E3: the 3D bridge (THREED_DESIGN.md, E1 slice sequence). Written red against a 2D-only
+ * RigidBlockBridge that refused any Y normal, kept only one in-plane half-extent, dropped the
+ * block's CentroidYCm and never set Dim3D. FStructure already holds the 3D geometry; the only
+ * addition is SetThreeDimensional, the flag the bridge keys its 3D pose on. A 2D structure's
+ * Y normal must still be refused.
  *
- * The oracle can already solve genuinely-3D problems (E1a-E2c: six equilibrium rows, four-corner
- * contacts, the k=8 inscribed friction pyramid, 3D applied forces, a permutation-deterministic 3D
- * mechanism), reachable by posing a hand-built FOracleProblem with Dim = Dim3D. What CANNOT reach
- * it is a production FStructure: RigidBlockBridge is still 2D-only. Two pieces of it are what E3
- * replaces, both quoted from RigidBlockBridge.cpp:
- *
- *   THE Y-NORMAL REFUSAL (~:126-133):
- *       if (FMath::Abs(Normal.Y) > 1.0e-9) { OutWhyNot = "... an out-of-plane (Y) normal, which a
- *       2D X-Z oracle must refuse rather than project"; OutProblem = FOracleProblem(); return false; }
- *
- *   THE HALF-EXTENT SHORTCUT (~:148-150):
- *       Out.HalfLengthCm = FMath::Abs(Normal.Z) >= FMath::Abs(Normal.X)
- *           ? Joint.InterfaceHalfExtentCm.X : Joint.InterfaceHalfExtentCm.Z;   // picks ONE in-plane extent
- *
- * The bridge also drops the block's plan-Y (it sets CentroidXCm/CentroidZCm but never CentroidYCm)
- * and never sets OutProblem.Dim (so every bridged problem is Dim2D).
- *
- * THE GEOMETRY IS ALREADY THERE. FConnection carries a full 3D InterfaceNormal, a 3D
- * InterfaceCentreCm and per-axis InterfaceHalfExtentCm, and FStructurePiece carries a 3D
- * CentreOfMassCm — so E3 is "pose the 3D geometry FStructure already holds", not "add 3D fields to
- * FStructure first". The ONE thing FStructure lacked is the SIGNAL that a structure is meant to be
- * posed in 3D; this test adds it as SetThreeDimensional (a bare 2D-default flag stub, see its
- * contract) and the bridge is meant to key its Dim3D pose and its Y-normal lift on that flag while a
- * 2D structure's Y-normal stays loudly refused.
- *
- * THE FIXTURE — A BLOCK BONDED TO A WALL ACROSS A VERTICAL, OUT-OF-PLANE (Y-FACING) JOINT.
+ * Fixture: a free block bonded to a grounded wall across a vertical joint whose normal is +Y.
  *
  *                          Z
  *                          ^        Wall (grounded)      Block (free, weight W = -Z)
  *                          |      +-----------+ | +-----------+
  *                          |      |           | | |           |
- *                          |      |   WALL    |=|=|  BLOCK    |   the "=" is the bed... no: the joint
- *                          |      |           | | |           |   is the VERTICAL face between them,
- *                          |      +-----------+ | +-----------+   whose normal points along +Y.
+ *                          |      |   WALL    |=|=|  BLOCK    |   the joint is the vertical
+ *                          |      |           | | |           |   face between them, normal +Y
+ *                          |      +-----------+ | +-----------+
  *                          +----------------------------------> Y
  *
- *   Wall A: grounded, box centre (0, 0, 15), half-extents (10, 5, 15)  -> spans Y[-5, 5], Z[0, 30].
- *   Block B: free,     box centre (0, 11, 15), half-extents (10, 5, 15) -> spans Y[6, 16], Z[0, 30].
- *   They are separated on EXACTLY the Y axis by a 1 cm joint and overlap fully on X (20 cm) and Z
- *   (30 cm), so MakeInterface builds ONE joint whose normal is +Y (the axis of separation, A->B),
- *   whose face is 20 x 30 = 600 cm2, whose in-plane half-extents are (X 10, Z 15) — DELIBERATELY
- *   UNEQUAL so a shortcut that keeps only one is caught — and whose centre is (0, 5.5, 15).
+ *   Wall: grounded, centre (0, 0, 15), half-extents (10, 5, 15).
+ *   Block: free, centre (0, 11, 15), same half-extents. 1 cm gap on Y.
+ *   Joint: normal +Y, 600 cm2, half-extents X 10 and Z 15 (unequal on purpose), centre (0, 5.5, 15).
  *
- * This is genuinely out of the X-Z plane: the joint normal is +Y, so gravity (-Z) is PERPENDICULAR
- * to it and can only be carried in SHEAR. The 2D X-Z oracle cannot express such a joint at all,
- * which is exactly why the bridge refuses it today.
+ * Gravity is perpendicular to the normal, so the joint carries it only in shear.
  *
- * WHAT IS ASSERTED.
+ * Asserted:
+ * - Geometry: bridge accepts, Dim3D, |NormalY| ~ 1, CentreYCm 5.5, area 600, half-extents {10, 15}
+ *   as a set, block CentroidYCm 11, bond carried.
+ * - Stands: an enormous bond stands.
+ * - Falls: a zero bond (no friction, cohesion or tension) falls, and the mechanism moves the free
+ *   block downward, not the wall. Mechanism, never displacement (DESIGN.md §4).
+ * The two bonds bracket the verdict, so the k=8 friction pyramid's facet/vertex orientation never
+ * matters.
  *
- *   POSED GEOMETRY (the bridge must accept the 3D structure and carry the real 3D joint):
- *     - the bridge ACCEPTS it (no refusal) and sets Problem.Dim = Dim3D;
- *     - the bridged joint has |NormalY| ~ 1 with NormalX ~ NormalZ ~ 0 (the out-of-plane normal
- *       LIFTED, not refused, not projected onto X-Z);
- *     - its CentreYCm ~ 5.5 and AreaSqCm ~ 600 are carried;
- *     - its two in-plane half-extents {HalfUCm, HalfVCm} are the real pair {10, 15} — the
- *       |Nz|-vs-|Nx| shortcut is GONE (it could only ever set one length);
- *     - the free block's CentroidYCm ~ 11 is carried (the dropped plan-Y);
- *     - the joint's strength (the cohesive bond) is carried through EffectiveJointStrength.
- *
- *   SOLVE OUTCOME (end-to-end, the bridged problem fed straight to SolveRigidBlock):
- *     - STANDS arm: a HUGE bond -> the shear joint carries the weight -> OutcomeOf == Stands.
- *     - FALLS arm: a ZERO bond (a frictionless, cohesionless, bondless Y-contact) -> the joint can
- *       carry NO shear (the k=8 pyramid pins shear to 0) and no peel -> no admissible equilibrium ->
- *       OutcomeOf == Falls, and on the feasibility pose the collapse MECHANISM moves the FREE block
- *       (descending, VirtualUz < 0) and not the grounded wall. Asserting the MECHANISM, never
- *       displacement (DESIGN.md §4: two pieces can sever and rest exactly in place).
- *
- * WHY THE SOLVE IS PYRAMID-INDEPENDENT. The exact shear capacity of the inscribed octagon depends on
- * whether -Z lands on a facet (cos(pi/8)*R) or a vertex (R) of the pyramid, which is the "wrong axis
- * governs" trap. This test never relies on that: the two arms BRACKET the verdict with a bond that
- * is either enormous (stands however the octagon is oriented) or exactly zero (falls however it is
- * oriented). No facet/vertex arithmetic is load-bearing.
- *
- * WHY THIS IS RED, AND FOR THE RIGHT REASON. BuildRigidBlockProblem hits the |Normal.Y| > 1e-9 guard
- * on the one joint, empties the problem and returns false with the "out-of-plane (Y) normal" reason.
- * So bBridged is false, the problem is empty, Dim is its Dim2D default, and every posed-geometry and
- * solve assertion below fails on the missing problem. That is the bridge REFUSING the out-of-plane
- * normal — not a compile error (the stub flag and the 3D oracle fields all exist), not a broken
- * fixture (the structure has complete geometry and one honest Y-facing joint).
- *
- * BITE (for dev, at green): the {HalfUCm, HalfVCm} == {10, 15} assertion cannot be satisfied by the
- * old single-length shortcut; the CentroidYCm ~ 11 assertion cannot be satisfied while the block's
- * plan-Y is dropped; and the FALLS mechanism moving the free block cannot be produced by a 2D
- * projection of a Y-normal joint (there is no such projection).
- *
- * UNITS derived here (mass * 980 already carries 1 N = 100 uu; 1 MPa over 1 cm2 = 10000 uu), NOT
- * imported, so a wrong production constant disagrees rather than agrees. The solve arms are binary
- * Stands/Falls and pure kinematics, so no strength/force comparison crosses the unit boundary; the
- * bonds only have to be "enormous" or "exactly zero".
- *
- * NEEDS A TICKING WORLD: NO. A hand-built FStructure bridged and fed to SolveRigidBlock — no Chaos,
- * no world tick, core-only, the same footing as the other 3D oracle tests and CrossMaterialBearing.
- *
- * NAMED NAMESPACE, not anonymous: the unity build merges many files into one translation unit.
+ * Units are derived here, not imported, though the binary verdicts never cross the unit boundary.
+ * No world needed. Named namespace for unity builds.
  */
 namespace ThreeDBridgeSupport
 {
 	using namespace DestructionLayout;
 	using namespace RigidBlockOracle;
 
-	/* ================================================================================
-	 * UNITS, derived here so a wrong production constant fails rather than agrees.
-	 * ================================================================================ */
-
-	/** MassKg * 980 is a weight in uu — the 1 N = 100 uu conversion is already inside it. */
+	/** MassKg * 980 is a weight in uu; the 1 N = 100 uu conversion is already inside it. */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
-	/* ================================================================================
-	 * THE BONDED-TO-A-WALL BLOCK, hand-built so the Y-facing geometry stays checkable.
-	 * ================================================================================ */
+	constexpr double MassKg = 10.0;              // W = 9800 uu
+	constexpr double JointThicknessCm = 1.0;     // the Y gap the joint spans
 
-	constexpr double MassKg = 10.0;              /* W = 9800 uu */
-	constexpr double JointThicknessCm = 1.0;     /* the 1 cm Y gap the joint is formed across */
-
-	/* The joint face, worked out from the boxes below (see the header diagram). */
-	constexpr double HalfXCm = 10.0;             /* X overlap 20 -> half 10 */
-	constexpr double HalfZCm = 15.0;             /* Z overlap 30 -> half 15 (deliberately != HalfXCm) */
-	constexpr double AreaSqCm = 4.0 * HalfXCm * HalfZCm;   /* 20 x 30 = 600 */
-	constexpr double JointCentreYCm = 5.5;       /* midpoint of the 1 cm gap between Y=5 and Y=6 */
+	// The joint face, from the boxes below.
+	constexpr double HalfXCm = 10.0;
+	constexpr double HalfZCm = 15.0;             // deliberately != HalfXCm
+	constexpr double AreaSqCm = 4.0 * HalfXCm * HalfZCm;   // 20 x 30 = 600
+	constexpr double JointCentreYCm = 5.5;       // midpoint of the gap between Y=5 and Y=6
 	constexpr double JointCentreXCm = 0.0;
 	constexpr double JointCentreZCm = 15.0;
-	constexpr double BlockComYCm = 11.0;         /* free block box centre Y — the dropped plan-Y */
+	constexpr double BlockComYCm = 11.0;         // free block centre Y
 
 	struct FBonded
 	{
 		FStructure Structure;
-		int32 Wall = INDEX_NONE;   /* grounded */
-		int32 Block = INDEX_NONE;  /* free, bonded to the wall across the Y-facing joint */
-		int32 Joint = INDEX_NONE;  /* Wall -> Block, normal +Y */
+		int32 Wall = INDEX_NONE;   // grounded
+		int32 Block = INDEX_NONE;  // free
+		int32 Joint = INDEX_NONE;  // Wall -> Block, normal +Y
 	};
 
 	FPieceBox Box(double CentreYCm)
@@ -152,10 +82,7 @@ namespace ThreeDBridgeSupport
 		return B;
 	}
 
-	/**
-	 * A bond that STANDS: enormous on every axis, so the Y-facing shear joint carries the weight
-	 * however the inscribed friction octagon happens to be oriented.
-	 */
+	/** Enormous on every axis, so the joint holds whatever the friction pyramid's orientation. */
 	FConnectionStrength StandingBond()
 	{
 		FConnectionStrength S;
@@ -166,28 +93,24 @@ namespace ThreeDBridgeSupport
 		return S;
 	}
 
-	/**
-	 * A bond that FALLS: a frictionless, cohesionless, bondless contact. With c = mu = f_t = 0 the
-	 * k=8 pyramid pins the joint's shear to exactly zero and there is no tension to resist a peel, so
-	 * a Y-facing joint can carry NONE of the block's -Z weight — no admissible equilibrium exists.
-	 */
+	/** c = mu = f_t = 0: the joint carries no shear or tension, so the block has no equilibrium. */
 	FConnectionStrength FallingBond()
 	{
 		FConnectionStrength S;
-		S.CompressiveStrengthMPa = 1.0e9;   /* compression is irrelevant: the load is pure shear */
+		S.CompressiveStrengthMPa = 1.0e9;   // irrelevant: the load is pure shear
 		S.TensileStrengthMPa = 0.0;
 		S.ShearCohesionMPa = 0.0;
 		S.FrictionCoefficient = 0.0;
 		return S;
 	}
 
-	/** Lay the grounded wall and the free block bonded to its +Y face with the given bond. */
+	/** Lay the wall and the block bonded to its +Y face. */
 	void Build(FBonded& Out, const FConnectionStrength& Bond)
 	{
 		const FPieceBox WallBox = Box(0.0);
 		const FPieceBox BlockBox = Box(BlockComYCm);
 
-		/* Wall mass is irrelevant (grounded -> its weight goes to earth, not through the joint). */
+		// Wall mass is irrelevant: it is grounded.
 		Out.Wall = Out.Structure.AddPiece(50.0, /*bIsGrounded*/ true, WallBox.CentreCm);
 		Out.Block = Out.Structure.AddPiece(MassKg, /*bIsGrounded*/ false, BlockBox.CentreCm);
 
@@ -197,7 +120,7 @@ namespace ThreeDBridgeSupport
 			Out.Joint = Out.Structure.AddConnection(Joint);
 		}
 
-		/* THE SIGNAL: this structure is meant to be posed in 3D (see SetThreeDimensional). */
+		// Pose this structure in 3D.
 		Out.Structure.SetThreeDimensional(true);
 	}
 
@@ -232,15 +155,7 @@ namespace ThreeDBridgeSupport
 	bool Near(double A, double B, double Tol) { return FMath::Abs(A - B) <= Tol; }
 }
 
-/* ================================================================================================
- * THE 3D BRIDGE POSES A Y-FACING JOINT — E3, RED.
- *
- * RED BECAUSE BuildRigidBlockProblem refuses the joint's out-of-plane (Y) normal (the |Normal.Y| >
- * 1e-9 guard), empties the problem and returns false — so nothing below can read a Dim3D problem, a
- * lifted Y-normal, both real half-extents, the block's plan-Y or a 3D verdict.
- *
- * NEEDS A TICKING WORLD: NO.
- * ================================================================================================ */
+/** The 3D bridge poses a Y-facing joint (E3). See the file header. No world needed. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FThreeDBridgeTest,
 	"DestructionGame.Oracle.RigidBlock.ThreeD.BridgePosesAnOutOfPlaneJoint",
@@ -251,23 +166,19 @@ bool FThreeDBridgeTest::RunTest(const FString& Parameters)
 	using namespace RigidBlockOracle;
 	using namespace ThreeDBridgeSupport;
 
-	/* ------------------------------------------------------------------ *
-	 * THE CONVERSION, DERIVED HERE. 1 N = 100 uu, 1 cm2 = 100 mm2, so
-	 * 1 MPa (= 1 N/mm2) over 1 cm2 is 100 * 100 = 10000 uu. Independent of
-	 * ForceUnitsPerMPaSqCm on purpose (nothing below actually needs it —
-	 * the solve is binary — but the derivation is kept for the record).
-	 * ------------------------------------------------------------------ */
+	/*
+	 * 1 N = 100 uu and 1 cm2 = 100 mm2, so 1 MPa over 1 cm2 is 10000 uu. Not imported from
+	 * ForceUnitsPerMPaSqCm. Unused (the solve is binary), kept for the record.
+	 */
 	constexpr double UuPerMPaSqCm = 100.0 * 100.0;
 	(void)UuPerMPaSqCm;
 
-	/* ================================================================================
-	 * POSE 1 — GEOMETRY: the bridge accepts the 3D structure and carries the real joint.
-	 * ================================================================================ */
+	// Pose 1, geometry: the bridge accepts the 3D structure and carries the real joint.
 	{
 		FBonded Fx;
 		Build(Fx, StandingBond());
 
-		/* ---- FIXTURE PRECONDITIONS — the structure is the one the header claims. ---- */
+		// Fixture preconditions.
 		if (Fx.Joint == INDEX_NONE)
 		{
 			AddError(TEXT("FIXTURE: MakeInterface must emit the Y-facing joint"));
@@ -291,7 +202,6 @@ bool FThreeDBridgeTest::RunTest(const FString& Parameters)
 			*FString::Printf(TEXT("FIXTURE: the joint face is 600 cm2, got %g"), Conn.InterfaceAreaSqCm),
 			FMath::IsNearlyEqual(Conn.InterfaceAreaSqCm, AreaSqCm, 1.0e-6));
 
-		/* ---- THE BRIDGE. ---- */
 		FOracleProblem Problem;
 		FString WhyNot;
 		const bool bBridged = BuildRigidBlockProblem(Fx.Structure, Problem, WhyNot);
@@ -327,7 +237,7 @@ bool FThreeDBridgeTest::RunTest(const FString& Parameters)
 				OJ.NormalX, OJ.NormalY, OJ.NormalZ, OJ.CentreYCm, OJ.HalfUCm, OJ.HalfVCm, OJ.AreaSqCm,
 				OJ.Strength.ShearCohesionMPa));
 
-			/* The out-of-plane normal is LIFTED (posed), not projected onto X-Z. */
+			// The Y normal is posed, not projected onto X-Z.
 			TestTrue(
 				*FString::Printf(TEXT("[RED]: NormalY is posed, |%.6g| ~ 1"), OJ.NormalY),
 				FMath::IsNearlyEqual(FMath::Abs(OJ.NormalY), 1.0, 1.0e-9));
@@ -345,12 +255,7 @@ bool FThreeDBridgeTest::RunTest(const FString& Parameters)
 				*FString::Printf(TEXT("[RED]: AreaSqCm carried, ~ %.6g (got %.6g)"), AreaSqCm, OJ.AreaSqCm),
 				Near(OJ.AreaSqCm, AreaSqCm, 1.0e-6));
 
-			/*
-			 * BOTH real in-plane half-extents, as a SET {10, 15}, so the old |Nz|-vs-|Nx| shortcut —
-			 * which could only ever set ONE length — cannot pass. Which of the two the deterministic
-			 * axis derivation calls U vs V is the oracle's own (DeriveInPlaneAxes) business and is not
-			 * asserted here; the bridge's job is to hand over BOTH real extents.
-			 */
+			// Both half-extents as a set; which is U vs V is DeriveInPlaneAxes' business.
 			const double HalfMin = FMath::Min(OJ.HalfUCm, OJ.HalfVCm);
 			const double HalfMax = FMath::Max(OJ.HalfUCm, OJ.HalfVCm);
 			TestTrue(
@@ -359,7 +264,7 @@ bool FThreeDBridgeTest::RunTest(const FString& Parameters)
 				Near(HalfMin, FMath::Min(HalfXCm, HalfZCm), 1.0e-6)
 					&& Near(HalfMax, FMath::Max(HalfXCm, HalfZCm), 1.0e-6));
 
-			/* The bond is carried through EffectiveJointStrength (single-material here => bare). */
+			// Via EffectiveJointStrength; single-material here, so the bare bond.
 			TestTrue(
 				*FString::Printf(TEXT("[RED]: the joint's cohesive bond is carried (%.6g MPa)"),
 					OJ.Strength.ShearCohesionMPa),
@@ -376,9 +281,7 @@ bool FThreeDBridgeTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* ================================================================================
-	 * POSE 2 — STANDS: a huge bond -> the Y-facing shear joint holds -> Stands.
-	 * ================================================================================ */
+	// Pose 2: an enormous bond stands.
 	{
 		FBonded Fx;
 		Build(Fx, StandingBond());
@@ -403,10 +306,7 @@ bool FThreeDBridgeTest::RunTest(const FString& Parameters)
 			OutcomeOf(R) == EOracleOutcome::Stands);
 	}
 
-	/* ================================================================================
-	 * POSE 3 — FALLS: a zero bond -> the Y-facing joint carries nothing -> Falls, and the
-	 * collapse mechanism moves the FREE block (descending), not the grounded wall.
-	 * ================================================================================ */
+	// Pose 3: a zero bond falls, and the mechanism moves the free block down, not the wall.
 	{
 		FBonded Fx;
 		Build(Fx, FallingBond());
@@ -415,7 +315,7 @@ bool FThreeDBridgeTest::RunTest(const FString& Parameters)
 		FString WhyNot;
 		const bool bBridged = BuildRigidBlockProblem(Fx.Structure, Problem, WhyNot);
 
-		/* ---- The Stands/Falls VERDICT, gravity live (lambda* = 0 => it falls). ---- */
+		// Verdict with gravity live (lambda* = 0 means it falls).
 		FOracleResult Verdict;
 		if (bBridged)
 		{
@@ -432,12 +332,8 @@ bool FThreeDBridgeTest::RunTest(const FString& Parameters)
 			OutcomeOf(Verdict) == EOracleOutcome::Falls);
 
 		/*
-		 * ---- The MECHANISM (never displacement): the free block moves and descends. ----
-		 *
-		 * The mechanism lives on the INFEASIBLE arm of the FEASIBILITY formulation (gravity DEAD), so
-		 * pose the same bridged problem with bGravityIsLive = false and read the Farkas dual. The free
-		 * block, unheld, descends (VirtualUz < 0 by the fixed global sign convention); the grounded
-		 * wall writes no rows and does not move.
+		 * The mechanism comes from the feasibility formulation (bGravityIsLive = false) via the
+		 * Farkas dual. The free block descends (VirtualUz < 0); the grounded wall does not move.
 		 */
 		if (bBridged)
 		{
