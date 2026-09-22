@@ -8,25 +8,18 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, not anonymous, and named differently from every other one in this
- * directory. An anonymous namespace is private to a TRANSLATION UNIT rather than to a
- * file, and a unity build merges many files into one — at which point two anonymous
- * BedJointNormal declarations are the same declaration twice. See CURRENT_STATE.md;
- * the `using namespace` for this one lives inside each RunTest body for the same
- * reason.
+ * Uniquely named, not anonymous: a unity build merges translation units, so two anonymous
+ * BedJointNormal declarations would collide. The `using namespace` stays inside each RunTest
+ * for the same reason.
  */
 namespace StructureRemovalSupport
 {
 	using namespace DestructionProfiles;
 
 	/**
-	 * Unreal's gravity, 980 cm/s2, spelled out here rather than imported from
-	 * production so this file fails if production gets it wrong instead of agreeing
-	 * with it.
-	 *
-	 * THE UNIT TRAP, stated once. Mass is already kilograms and length already
-	 * centimetres, so MassKg * 980 IS a force in Unreal units — the 1 N = 100 uu
-	 * conversion is baked into the 980 rather than applied on top of it.
+	 * Unreal's gravity, 980 cm/s2, spelled out rather than imported so a production error
+	 * fails here. MassKg * 980 is already a force in Unreal units: the 1 N = 100 uu
+	 * conversion is baked into the 980, not applied on top.
 	 */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
@@ -36,12 +29,9 @@ namespace StructureRemovalSupport
 	}
 
 	/**
-	 * Force, in Unreal units, that loads the given area to the given stress.
-	 *
-	 * Spelled out from the SI definitions rather than reusing ForceUnitsPerMPaSqCm, so
-	 * a wrong conversion constant in production shows up here as a failure instead of
-	 * as an agreement: 1 N = 100 uu, 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2, so one MPa over
-	 * one cm2 is 10000 uu.
+	 * Force, in Unreal units, that loads the given area to the given stress. Derived from SI
+	 * rather than ForceUnitsPerMPaSqCm so a wrong production constant fails here: 1 MPa over
+	 * 1 cm2 is 10000 uu.
 	 */
 	constexpr double ForceForMPa(double MPa, double AreaSqCm)
 	{
@@ -49,14 +39,9 @@ namespace StructureRemovalSupport
 	}
 
 	/**
-	 * Mass of a piece whose whole weight loads the given area to the given stress.
-	 *
-	 * Fixtures are written in terms of STRESS rather than of mass, because stress is
-	 * what decides whether a joint gives and it is the only number a reader can check
-	 * against a published strength by eye. Every expected utilisation below therefore
-	 * follows by construction and survives a retune of the profile it is measured
-	 * against — which is why the cascade fixtures rode out the mortar shear cap moving
-	 * from 1.4 to 1.3 without an edit.
+	 * Mass of a piece whose weight loads the given area to the given stress. Fixtures are
+	 * written in stress so expected utilisations follow by construction and survive profile
+	 * retunes.
 	 */
 	constexpr double MassForStress(double MPa, double AreaSqCm)
 	{
@@ -67,28 +52,13 @@ namespace StructureRemovalSupport
 	constexpr double BrickVolumeCubicCm = 21.5 * 10.25 * 6.5;
 
 	/**
-	 * A standard clay brick, DERIVED rather than hand-set: 1432.44 cm3 at 1.9 g/cm3
-	 * is 2.7216 kg.
+	 * A standard clay brick, derived rather than hand-set (1432.44 cm3 at 1.9 g/cm3 is
+	 * 2.7216 kg) so it cannot drift from the profile. No expectation here depends on it:
+	 * grounded pads never load a joint, and RemovalDegenerateInputs asserts no forces.
 	 *
-	 * NO EXPECTATION IN THIS FILE DEPENDS ON THE VALUE, which is a claim about two
-	 * different usages rather than one. Mostly it is the GROUNDED pads and piers, whose
-	 * own weight terminates at the earth and never reaches a joint. RemovalDegenerateInputs
-	 * also gives it to two UNGROUNDED pieces, and that block asserts support, liveness and
-	 * finiteness only — never a force — so a zero brick would change no answer there
-	 * either. A real number is simply less distracting than zero.
-	 *
-	 * IT IS DERIVED rather than hand-set because a copy is a second place for the number to
-	 * drift, which is exactly what happened to the 2.72 that used to sit in
-	 * StructureTest.cpp. Profiles.MaterialInvariants is the one external anchor: it checks
-	 * density x volume against what a brick weighs in the hand, and everything else hangs
-	 * off that single check.
-	 *
-	 * SAFE AT NAMESPACE SCOPE ONLY BECAUSE ClayBrick IS AN AGGREGATE OF LITERALS, so it is
-	 * constant-initialised and ready before any dynamic initialisation in any translation
-	 * unit. Make it a computed ratio of StructuralConcrete and static initialisation order
-	 * across translation units becomes unspecified, at which point this could silently read
-	 * ZERO. RemovalDegenerateInputs opens with a guard against exactly that, as
-	 * StructureTest.cpp's LoadPath does; it is not a second claim about what a brick weighs.
+	 * Safe at namespace scope only because ClayBrick is an aggregate of literals, so it is
+	 * constant-initialised. Derive ClayBrick from another profile and static-init order could
+	 * make this read zero; RemovalDegenerateInputs guards against that.
 	 */
 	const double BrickMassKg = ClayBrick.DensityGramsPerCubicCm * BrickVolumeCubicCm / 1000.0;
 
@@ -99,15 +69,9 @@ namespace StructureRemovalSupport
 	const FVector HeadJointNormal(1.0, 0.0, 0.0);
 
 	/**
-	 * What a joint does with the load it is handed, and therefore WHICH CAPACITY the
-	 * expected utilisation is measured against.
-	 *
-	 * The axis-governance guard, and it is not decoration. ComputeUtilisation returns
-	 * the WORST of three axes, so a fixture aimed at compression that happens to be
-	 * governed by shear proves nothing about the axis it was written for. Every joint in
-	 * this file is axis-aligned and carries a vertical load, so exactly one axis is
-	 * non-zero — pure compression on a bed joint, pure shear on a head joint — and that
-	 * is asserted per joint rather than assumed.
+	 * Which axis a joint carries its load on, and so which capacity its utilisation is
+	 * measured against. ComputeUtilisation returns the worst of three axes, so the governing
+	 * axis is asserted per joint: bed joints in pure compression, head joints in pure shear.
 	 */
 	enum class EJointKind : uint8
 	{
@@ -140,11 +104,8 @@ namespace StructureRemovalSupport
 	};
 
 	/**
-	 * Build a structure in place.
-	 *
-	 * BY REFERENCE. FConnection is copyable and its "has given" latch is per-copy, so
-	 * anything that moves connections around by value risks latching a temporary and
-	 * leaving the real joint untouched — a wall that never falls. See CURRENT_STATE.md.
+	 * Build a structure in place. By reference: FConnection's "has given" latch is per-copy,
+	 * so passing by value can latch a temporary and leave the real joint intact.
 	 */
 	void BuildStructure(FStructure& Out, const FStructureSpec& Spec)
 	{
@@ -169,60 +130,30 @@ namespace StructureRemovalSupport
 	struct FExpectedJoint
 	{
 		/**
-		 * SIGNED Z of the force the joint carries, in Unreal force units.
-		 *
-		 * Zero for a joint that has gone, whether it was overloaded or removed: a joint
-		 * out of the structure carries nothing, and that zero is what redistribution is
-		 * built on. Per ConnectionLoad.h the force belongs to PieceB, so a joint that
-		 * names the loaded piece first stores the reaction and is positive.
+		 * Signed Z of the joint's force, Unreal force units. Zero for a joint that has gone.
+		 * The force acts on PieceB (ConnectionLoad.h), so naming the loaded piece first stores
+		 * the positive reaction.
 		 */
 		double ForceZUU = 0.0;
 
 		EJointKind Kind = EJointKind::Bed;
 
-		/**
-		 * Whether the joint is out of the structure, HOWEVER it went.
-		 *
-		 * Separate from BreakPass on purpose — see the note below. HasGiven is the
-		 * liveness question and a removed joint answers it true while carrying no pass
-		 * number at all.
-		 */
+		/** Whether the joint is out of the structure, broken or removed. Separate from BreakPass. */
 		bool bGone = false;
 
 		/**
-		 * Which CASCADE PASS broke this joint, counted from 1, or INDEX_NONE if no pass
-		 * did — including for a joint that went because a piece it held was removed.
-		 *
-		 * NO SENTINEL, AND THAT IS THE DECISION THIS FILE ENCODES. ConnectionBreakPass is
-		 * the recorded order phase 5's visualisation plays back, and a joint that vanished
-		 * with its brick did not snap: stamping it makes the replay show a failure that
-		 * never happened, and a distinguishable-but-present stamp only moves the problem
-		 * to every consumer of the sequence, each of which then has to know to skip it.
-		 *
-		 * The obvious objection is that INDEX_NONE was documented as meaning "still
-		 * intact", so leaving a removal unstamped recreates the GetBreakPass / HasGiven
-		 * disagreement recorded in CURRENT_STATE.md. That is a defect in the CONTRACT
-		 * rather than in the value: GetBreakPass answers "which pass broke this", and a
-		 * removed joint has no answer. Liveness is a different question with its own
-		 * accessor, and the pair is a complete encoding with nothing ambiguous in it:
+		 * Which cascade pass broke this joint, from 1, or INDEX_NONE if none did, including a
+		 * joint that went with a removed piece. No sentinel: the break sequence is replayed by
+		 * phase 5, and a joint that vanished with its brick did not snap. With HasGiven the
+		 * encoding is complete:
 		 *
 		 *     intact              HasGiven false, INDEX_NONE
 		 *     went with a piece   HasGiven true,  INDEX_NONE
 		 *     broke in pass N     HasGiven true,  N >= 1
-		 *
-		 * CheckRemovalCase asserts all three are separable, and asserts the stronger
-		 * property that makes the middle row meaningful: a joint that has gone unstamped
-		 * is exactly a joint touching a removed piece.
 		 */
 		int32 BreakPass = INDEX_NONE;
 
-		/**
-		 * Utilisation of the load the joint settles at, derived from the stress the
-		 * fixture was written in rather than hand-computed from a mass.
-		 *
-		 * Zero for a joint that has gone. For a survivor this is the MARGIN, so a
-		 * fixture that only just held cannot drift into only just failing unnoticed.
-		 */
+		/** Settled utilisation; zero for a joint that has gone. Pins a survivor's margin. */
 		double Utilisation = 0.0;
 	};
 
@@ -243,38 +174,19 @@ namespace StructureRemovalSupport
 	};
 
 	/**
-	 * Build, remove, solve, and check one case against its table AND against the
-	 * properties that must hold after ANY removal.
+	 * Build, remove, solve, and check one case against its table and against properties
+	 * that hold after any removal:
 	 *
-	 * ASSERTED FROM THE TABLE: what each joint carries and on which axis, how hard each
-	 * survivor is working, which joints have gone and why, and which pieces are still
-	 * held up.
+	 *  - NumPieces and NumConnections do not change (handles are array indices);
+	 *    NumLivePieces drops by one per removal.
+	 *  - Every load is finite (FMath::Max would silently discard a NaN).
+	 *  - A joint gone without a pass stamp is exactly a joint touching a removed piece,
+	 *    so removal is never recorded as failure.
+	 *  - Any stamp other than INDEX_NONE is at least 1.
+	 *  - Ground reaction equals the weight the solver claims to hold up.
 	 *
-	 * ASSERTED UNIVERSALLY:
-	 *
-	 *  - REMOVAL DOES NOT MOVE ANY HANDLE. NumPieces stays the valid handle range and
-	 *    NumConnections stays the joint count, because both are array indices and three
-	 *    arrays are parallel to the connection one — including ConnectionBreakPass,
-	 *    which cannot be rebuilt from anything and so would be permanently wrong.
-	 *  - NUMLIVEPIECES IS THE OTHER QUESTION, and it does drop by one per removal. The
-	 *    two answers diverging is the whole point of the tombstone.
-	 *  - EVERY LOAD IS FINITE. A dead piece must not launder a NaN into the load path,
-	 *    and FMath::Max discards a NaN rather than propagating it, so a fault here would
-	 *    read as a plausible number rather than as an obvious one.
-	 *  - A JOINT THAT HAS GONE UNSTAMPED IS EXACTLY A JOINT TOUCHING A REMOVED PIECE.
-	 *    Both directions, derived from the case's removal list rather than from any
-	 *    magic value, and this is what makes "removal is not failure" a testable claim
-	 *    instead of a naming convention: a stamped joint must have failed under load, and
-	 *    a joint whose piece went must not be in the cascade's numbering.
-	 *  - A PASS NUMBER IS A PASS NUMBER. Anything not INDEX_NONE is at least 1, so no
-	 *    sentinel has crept into a domain phase 5 will iterate.
-	 *  - GROUND-REACTION CONSERVATION. Everything the solver still claims to hold up has
-	 *    to arrive at the earth: short means load was stranded on the way down, long
-	 *    means a share was counted twice.
-	 *
-	 * (ClassifyForce is called directly, which DESIGN.md warns re-opens the
-	 * degenerate-normal hole. Safe here: it makes no break decision, and every normal in
-	 * these specs is a real plane — AddConnection rejects the rest.)
+	 * ClassifyForce is called directly (DESIGN.md warns about degenerate normals); safe here
+	 * because it makes no break decision and AddConnection rejects degenerate normals.
 	 */
 	void CheckRemovalCase(FAutomationTestBase& Test, const FRemovalCase& Case)
 	{
@@ -283,12 +195,7 @@ namespace StructureRemovalSupport
 		/** Absolute floor, for the rows whose expectation is an exact zero. */
 		constexpr double UtilisationTolerance = 1.0e-12;
 
-		/**
-		 * And a relative allowance for everything else. The fixtures are written as
-		 * MassForStress, which divides by 980 and is then multiplied by 980 again inside
-		 * the solver, so the loads carry a rounding error proportional to their own size
-		 * rather than a fixed one.
-		 */
+		/** Relative allowance: MassForStress divides by 980 and the solver multiplies back, so rounding scales with load. */
 		constexpr double RelativeTolerance = 1.0e-9;
 
 		FStructure Structure;
@@ -321,12 +228,7 @@ namespace StructureRemovalSupport
 				Structure.RemovePiece(Handle));
 		}
 
-		/*
-		 * THE WHOLE POINT, and it is checked before anything is solved. NumPieces is the
-		 * valid handle range rather than a live count: callers iterate 0..NumPieces, so a
-		 * shrinking answer would silently skip real pieces, which is a catastrophic and
-		 * entirely quiet change. IsPieceRemoved is the separate question.
-		 */
+		// NumPieces is the handle range, not a live count; callers iterate 0..NumPieces.
 		Test.TestTrue(
 			FString::Printf(TEXT("%s: removal must not change the handle range, %d pieces before and %d after"),
 				Case.Description, PieceCountBefore, Structure.NumPieces()),
@@ -337,11 +239,6 @@ namespace StructureRemovalSupport
 				Case.Description, ConnectionCountBefore, Structure.NumConnections()),
 			Structure.NumConnections() == ConnectionCountBefore);
 
-		/*
-		 * AND THE COUNT THAT DOES MOVE. NumPieces answers "how far do the handles go" and
-		 * NumLivePieces answers "how much is left"; the two diverging by exactly the
-		 * number of removals is the tombstone, observed from outside.
-		 */
 		const int32 ExpectedLive = PieceCountBefore - Case.Removals.Num();
 
 		Test.TestTrue(
@@ -378,10 +275,7 @@ namespace StructureRemovalSupport
 		{
 			const FExpectedJoint& Expected = Case.ExpectedJoints[Index];
 
-			/*
-			 * GetConnection hands back a reference to the connection the STRUCTURE owns,
-			 * so this is the real latch and not a copy of it.
-			 */
+			// A reference to the structure's connection, so this reads the real latch.
 			const FConnection& Connection = Structure.GetConnection(Index);
 			const FVector Force = Structure.GetConnectionForce(Index);
 
@@ -397,20 +291,12 @@ namespace StructureRemovalSupport
 					Case.Description, Index, Expected.BreakPass, Structure.GetBreakPass(Index)),
 				Structure.GetBreakPass(Index) == Expected.BreakPass);
 
-			/*
-			 * A STAMP IS A CASCADE PASS, so anything that is not INDEX_NONE has to be a
-			 * pass number. This is what stops a sentinel being smuggled into the domain
-			 * phase 5 iterates.
-			 */
 			Test.TestTrue(
 				FString::Printf(TEXT("%s: connection %d carries break pass %d, which is neither INDEX_NONE nor a pass"),
 					Case.Description, Index, Structure.GetBreakPass(Index)),
 				Structure.GetBreakPass(Index) == INDEX_NONE || Structure.GetBreakPass(Index) >= 1);
 
-			/*
-			 * A joint the cascade stamped must be out of the structure. The reverse does
-			 * NOT hold, and the next assertion is what says why.
-			 */
+			// A stamped joint must be out of the structure; the reverse need not hold.
 			if (Structure.GetBreakPass(Index) != INDEX_NONE)
 			{
 				Test.TestTrue(
@@ -419,12 +305,7 @@ namespace StructureRemovalSupport
 					Connection.HasGiven());
 			}
 
-			/*
-			 * REMOVAL IS NOT FAILURE, in both directions and derived from the fixture
-			 * rather than from a magic value. A joint that has gone with no pass stamp is
-			 * exactly a joint one of whose pieces was removed — so a removal cannot hide
-			 * as a break, and a break cannot hide as a removal.
-			 */
+			// Removal is not failure: gone-and-unstamped is exactly "touches a removed piece".
 			const bool bTouchesRemovedPiece =
 				Case.Removals.Contains(Connection.PieceA) || Case.Removals.Contains(Connection.PieceB);
 
@@ -454,10 +335,6 @@ namespace StructureRemovalSupport
 				FMath::IsNearlyEqual(Force.Z, Expected.ForceZUU,
 					FMath::Max(Tolerance, RelativeTolerance * FMath::Abs(Expected.ForceZUU))));
 
-			/*
-			 * Gravity does not change direction because a joint happens to be vertical,
-			 * and it does not acquire one because a neighbouring piece was taken away.
-			 */
 			Test.TestTrue(
 				FString::Printf(TEXT("%s: connection %d load must be vertical and finite, got (%f, %f, %f)"),
 					Case.Description, Index, Force.X, Force.Y, Force.Z),
@@ -494,11 +371,8 @@ namespace StructureRemovalSupport
 		}
 
 		/*
-		 * GROUND-REACTION CONSERVATION, against the solver's OWN final claim about what it
-		 * is holding up rather than against the table, so it keeps its force if the
-		 * expectations above are ever revisited. A removed piece is grounded-in-the-spec
-		 * but out of the structure, so the joints touching it contribute the zero they are
-		 * asserted to carry above and the sum stays honest.
+		 * Ground-reaction conservation, against the solver's own claim of what it holds up.
+		 * Joints on a removed grounded piece carry zero (asserted above), so they add nothing.
 		 */
 		double ReportedSupportedWeightUU = 0.0;
 		for (int32 Index = 0; Index < Case.Spec.Pieces.Num(); ++Index)
@@ -535,20 +409,9 @@ namespace StructureRemovalSupport
 	}
 
 	/**
-	 * What a joint is carrying RIGHT NOW, on the axis it is carrying it on.
-	 *
-	 * Recomputed from outside rather than asked of the connection, because
-	 * FConnection::ApplyForce is the only evaluator there is and it LATCHES — asking a
-	 * joint how hard it is working would break it. Same shape the cascade tests already
-	 * use; see CURRENT_STATE.md on the missing non-mutating evaluator.
-	 *
-	 * THE AXIS GUARD, which is why this exists rather than a bare utilisation compare.
-	 * ComputeUtilisation returns the WORST of three axes, so an expectation derived from
-	 * a compressive strength proves nothing unless compression is what produced the
-	 * number. Every joint in the fixtures below is an axis-aligned BED joint under a
-	 * vertical load, so shear and tension are exactly zero, every shear and tensile
-	 * capacity in play is positive, and the compression axis is therefore the only one
-	 * that can govern. Asserted per call rather than assumed.
+	 * Check a joint's current utilisation, recomputed from outside because ApplyForce latches.
+	 * Also asserts the load is pure compression, since ComputeUtilisation returns the worst
+	 * of three axes and a compressive expectation means nothing unless compression governs.
 	 */
 	void CheckSettledCompression(
 		FAutomationTestBase& Test,
@@ -585,32 +448,16 @@ namespace StructureRemovalSupport
 }
 
 /**
- * A REMOVED PIECE LEAVES A HOLE. Its handle stays valid and every other handle keeps
- * meaning what it meant, because handles are array indices and three arrays hang off
- * them.
+ * A removed piece leaves a hole: its slot is tombstoned and never reused, so every handle
+ * keeps its meaning. Scenarios are small and rebuilt each run, so the leak is irrelevant.
  *
- * THE DECISION THIS ENCODES: tombstone the slot and never reuse it. Mark the piece
- * dead, leave the gap, indices stable forever. Scenarios are bounded — a wall is tens
- * to hundreds of pieces, rebuilt fresh each run — so the leak is irrelevant.
+ * Do not add a free list: a reused slot lets a stale handle name a different live piece
+ * undetectably. Slot reuse would need generational handles.
  *
- * DO NOT "TIDY" A FREE LIST ON TOP OF THIS. Reusing a slot without a generation counter
- * brings the bug back in a worse form: a stale handle then names a DIFFERENT LIVE piece,
- * which nothing can detect, where a dangling index can at least be range-checked. If
- * slots ever have to be reused, that needs generational handles (index plus a counter
- * bumped on reuse), not a free list.
- *
- * WHY THIS IS THE FIRST TEST OF THE SLICE. Compaction is the obvious implementation and
- * it fails silently: every connection above the hole re-points at the wrong piece, with
- * no crash and no assert, just a structure that holds itself up wrong. Phase 2b sharpened
- * it by adding ConnectionBreakPass, which is NEVER rebuilt because a pass stamp cannot be
- * recomputed from anything — so a re-indexing bug self-heals in ConnectionForces on the
- * next solve and is PERMANENT there, and phase 5 then plays back the wrong joints failing
- * in the wrong order while GetBreakPass and HasGiven agree perfectly.
- *
- * BOTH FIXTURES REMOVE FROM THE MIDDLE, which is the only place that can prove anything:
- * removing the last piece is indistinguishable from compacting it away. The masses are
- * deliberately all different, so a shifted array reads back the wrong piece rather than
- * an identical one.
+ * Compaction fails silently: connections re-point at the wrong pieces, and
+ * ConnectionBreakPass, which cannot be recomputed, stays wrong permanently. Both fixtures
+ * remove from the middle (removing the last piece looks like compaction) and use distinct
+ * masses so a shifted array reads back the wrong piece.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureRemovalKeepsIndicesStableTest,
@@ -622,18 +469,15 @@ bool FStructureRemovalKeepsIndicesStableTest::RunTest(const FString& Parameters)
 	using namespace StructureRemovalSupport;
 
 	/*
-	 * FIXTURE ONE: a five-piece structure with the hole in the middle of the array.
+	 * Fixture one: five pieces, the hole in the middle of the array.
 	 *
 	 *                [ block 4 ]
 	 *                [ beam 3  ]
 	 *   [pad 0]      [pad 1]      [pad 2]
 	 *   ======       ======       ======
 	 *
-	 * Pad 1 goes. Pads 0 and 2 and the two pieces above them keep their handles, and so
-	 * does every joint: connection 2 must still name pieces 2 and 3. Compact the piece
-	 * array and pieces 2, 3 and 4 slide down to 1, 2 and 3, at which point either the
-	 * connections are rewritten (and connection 2 reads {1, 2}) or they are not (and it
-	 * names two entirely different bricks). Both are caught here.
+	 * Pad 1 goes. Every other piece and joint keeps its handle: connection 2 must still name
+	 * pieces 2 and 3, which compaction would break either way.
 	 */
 	{
 		struct FLabelledPiece
@@ -697,10 +541,7 @@ bool FStructureRemovalKeepsIndicesStableTest::RunTest(const FString& Parameters)
 				continue;
 			}
 
-			/*
-			 * A SURVIVOR IS UNTOUCHED, and the distinct masses are what make that
-			 * checkable: under compaction handle 2 returns the 44 kg beam.
-			 */
+			// Distinct masses make this checkable: under compaction handle 2 returns the 44 kg beam.
 			TestTrue(
 				FString::Printf(TEXT("piece %d should still weigh %f kg, got %f"),
 					Index, Built[Index].MassKg, Structure.GetPiece(Index).MassKg),
@@ -711,10 +552,6 @@ bool FStructureRemovalKeepsIndicesStableTest::RunTest(const FString& Parameters)
 					Index, Built[Index].bIsGrounded ? TEXT("grounded") : TEXT("ungrounded")),
 				Structure.GetPiece(Index).bIsGrounded == Built[Index].bIsGrounded);
 
-			/*
-			 * A piece's own record of where it lives has to agree with the handle it
-			 * answers to, or a renumbering compaction would go unnoticed here.
-			 */
 			TestTrue(
 				FString::Printf(TEXT("piece %d should still record its own index as %d, got %d"),
 					Index, Index, Structure.GetPiece(Index).Index),
@@ -739,24 +576,17 @@ bool FStructureRemovalKeepsIndicesStableTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * FIXTURE TWO: THE BREAK-PASS ARRAY IS THE ONE THAT CANNOT HEAL.
-	 *
-	 * A cascade stamps a joint, THEN a piece is removed whose joint sits at a LOWER
-	 * connection index. An implementation that deletes the joints touching the dead piece
-	 * from the connection array shifts every later joint down one, and ConnectionForces
-	 * quietly recovers on the next solve while ConnectionBreakPass is wrong for ever: the
-	 * lime joint's pass-1 stamp lands on the cement joint, and phase 5 plays back a joint
-	 * failing that never did.
+	 * Fixture two: the break-pass array cannot heal. A cascade stamps a joint, then a piece
+	 * whose joint sits at a lower index is removed. Deleting that joint would shift the lime
+	 * joint's pass-1 stamp onto the cement joint permanently.
 	 *
 	 *   [ light 2 ]                    [ block 4 ]
 	 *   [ pad 1   ]  REMOVED       [pad 0]     [pad 3]
 	 *   ==========                 ======      ======
 	 *      c0                       c1 lime     c2 cement
 	 *
-	 * Pieces 0/3/4 are one loaded structure; pieces 1/2 are a separate stack that shares
-	 * nothing with it. The lime joint breaks in pass 1 under 3 MPa against its 2 MPa bond;
-	 * the cement joint then takes the whole 6e6 uu over 100 cm2 — 6 MPa against 10 — and
-	 * holds. Removing pad 1 afterwards must change neither of those answers.
+	 * Pieces 1/2 are a separate stack. The lime joint breaks in pass 1 (3 MPa against 2); the
+	 * cement joint then carries 6 MPa against 10 and holds. Removing pad 1 must change neither.
 	 */
 	{
 		const FStructureSpec Spec = {
@@ -796,11 +626,7 @@ bool FStructureRemovalKeepsIndicesStableTest::RunTest(const FString& Parameters)
 				Structure.NumConnections()),
 			Structure.NumConnections() == 3);
 
-		/*
-		 * HISTORY IS NOT REWRITTEN. The lime joint gave under load, in pass 1, and no
-		 * later removal may restamp it — the stamp is the only record of WHEN, and it is
-		 * what phase 5 replays.
-		 */
+		// A later removal must not restamp history.
 		TestTrue(
 			FString::Printf(TEXT("the lime joint should still be stamped pass 1 after the removal, got %d"),
 				Structure.GetBreakPass(1)),
@@ -813,10 +639,8 @@ bool FStructureRemovalKeepsIndicesStableTest::RunTest(const FString& Parameters)
 				&& !Structure.GetConnection(2).HasGiven());
 
 		/*
-		 * THE THREE STATES, ALL PRESENT AT ONCE AND ALL SEPARABLE, on one structure and
-		 * with no sentinel value anywhere: connection 0 went with its pad, connection 1
-		 * failed under load in pass 1, connection 2 is still holding. Nothing in the pair
-		 * (HasGiven, GetBreakPass) is ambiguous between them.
+		 * All three states at once, separable by (HasGiven, GetBreakPass): connection 0 went
+		 * with its pad, 1 broke in pass 1, 2 still holds.
 		 */
 		TestTrue(
 			FString::Printf(TEXT("the removed pad's joint should be out of the structure, HasGiven reports %d"),
@@ -854,19 +678,9 @@ bool FStructureRemovalKeepsIndicesStableTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A REMOVED PIECE IS OUT OF THE GRAPH: it supports nothing, nothing supports it, and
- * every joint that held it goes with it.
- *
- * Assertions are on the MECHANISM — which joints conduct, what they carry, which pieces
- * the solver still claims to be holding up. There is no world here and nothing moves;
- * DESIGN.md §4 is emphatic that displacement is never a valid break assertion anyway,
- * since two pieces can sever and stay resting exactly where they were.
- *
- * THE GROUNDED CASE IS THE SHARP ONE. Removal is naturally expressed as "take every
- * joint touching this piece out of the structure", and that alone leaves a removed
- * GROUNDED piece still seeding the reachability walk — it would report itself held up
- * while being nowhere in the graph. A piece that is not there cannot be resting on the
- * earth.
+ * A removed piece is out of the graph: it supports nothing, nothing supports it, and its
+ * joints go with it. Asserts on mechanism, not displacement (DESIGN.md §4). The sharp case
+ * is a removed grounded piece, which must not still seed the reachability walk.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureRemovedPieceLeavesTheGraphTest,
@@ -878,20 +692,13 @@ bool FStructureRemovedPieceLeavesTheGraphTest::RunTest(const FString& Parameters
 	using namespace StructureRemovalSupport;
 
 	/*
-	 * Cement mortar and stress-sized masses rather than an unbreakable fixture, because
-	 * the utilisation column has to be able to fail. An Unbreakable joint at brick loads
-	 * settles around 1e-18, which is far under CheckRemovalCase's 1e-12 absolute floor —
-	 * so that row would pass against an exact zero, which is precisely the answer a joint
-	 * dropped out of the load path gives. Every non-zero expectation here is a real
-	 * fraction of a published strength.
+	 * Cement mortar, not Unbreakable: an Unbreakable joint settles near 1e-18, under the
+	 * 1e-12 floor, so its utilisation row could not tell a loaded joint from a dropped one.
 	 */
 	const TArray<FRemovalCase> Cases = {
 		/*
-		 * THE CONTROL, and it has to come first: the same three-high stack with nothing
-		 * removed. Without it every case below could be satisfied by an implementation
-		 * that reports a structure of nothing but falling pieces. Each block is sized to
-		 * put 1 MPa on 100 cm2, so the lower joint carries both at 2 MPa (0.20 of cement
-		 * mortar's 10) and the upper carries one at 1 MPa (0.10).
+		 * Control: the stack with nothing removed. Each block puts 1 MPa on 100 cm2, so the
+		 * lower joint is at 2 MPa (0.20 of cement's 10) and the upper at 0.10.
 		 */
 		{
 			TEXT("a three-high stack with nothing removed stands and carries its weight"),
@@ -914,11 +721,7 @@ bool FStructureRemovedPieceLeavesTheGraphTest::RunTest(const FString& Parameters
 			{ true, true, true }
 		},
 
-		/*
-		 * THE MIDDLE PIECE GOES. Both of its joints leave with it, and the brick that was
-		 * resting on it has nothing left to rest on — which is precisely the MVP
-		 * interaction: pull one brick out and what it was carrying comes down.
-		 */
+		// The middle piece goes with both its joints, stranding the brick above.
 		{
 			TEXT("removing the middle of a stack takes both its joints and strands what was above"),
 			{
@@ -940,10 +743,7 @@ bool FStructureRemovedPieceLeavesTheGraphTest::RunTest(const FString& Parameters
 			{ true, false, false }
 		},
 
-		/*
-		 * A REMOVED GROUNDED PIECE IS NOT GROUND. It is out of the structure, so it is not
-		 * resting on the earth and it is not conducting the earth to anything else.
-		 */
+		// A removed grounded piece is not ground.
 		{
 			TEXT("removing the grounded piece leaves nothing held up"),
 			{
@@ -955,11 +755,7 @@ bool FStructureRemovedPieceLeavesTheGraphTest::RunTest(const FString& Parameters
 			{ false, false }
 		},
 
-		/*
-		 * REMOVAL IS LOCAL. A piece joined to nothing goes, and the loaded half of the
-		 * structure does not notice — the counterpart to the control above, and what stops
-		 * "a removal strands things" being satisfied by a removal that strands everything.
-		 */
+		// Removal is local: removing an unconnected piece strands nothing else.
 		{
 			TEXT("removing an unconnected piece changes nothing else"),
 			{
@@ -985,26 +781,13 @@ bool FStructureRemovedPieceLeavesTheGraphTest::RunTest(const FString& Parameters
 }
 
 /**
- * REMOVING A SUPPORT MOVES ITS SHARE ONTO THE SURVIVORS — the MVP interaction, in the
- * form where the arithmetic is checkable by eye.
+ * Removing a support moves its share onto the survivors. Fixtures hang a piece off parallel
+ * bed-joint pads: with the area-weighted split every pad carries the same stress (total load
+ * over total area), so removing one raises the survivors' stress by an exact factor. Each
+ * fixture runs as a control first, then with the removal.
  *
- * WHY THE FIXTURES LOOK LIKE THIS. Every case hangs one heavy piece off several grounded
- * pads through pure bed joints, because with the area-weighted split every parallel
- * support of one piece carries the SAME STRESS regardless of its area: the share is
- * proportional to area, so the area cancels and the stress is the total load over the
- * total supporting area. Removing one pad therefore shrinks the total area and raises the
- * stress on every survivor by a factor this test can state exactly, which is
- * redistribution in its most checkable form. A vertical load on an axis-aligned bed joint
- * is also PURE COMPRESSION, so no other axis can be quietly governing.
- *
- * THE CONTROL FIRST, THEN THE REMOVAL, on the same fixture: a test that cannot tell "the
- * load moved" from "the fixture always read that way" is not testing redistribution.
- *
- * THE LAST TWO CASES DELIBERATELY BREAK THAT SHAPE. Everything above is a tree, so a
- * removal can only ever shorten a load path. The two-tier fallback makes the opposite
- * possible — losing a bed joint PROMOTES a piece's head joints, so a removal can ADD
- * edges to the support relation — and that is the only place in this file where a
- * survivor's load arrives on a different AXIS than it left on.
+ * The last two cases exercise the two-tier fallback: losing a bed joint promotes the head
+ * joints, so a removal adds a support edge and the load moves from compression to shear.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureRemovalRedistributesLoadTest,
@@ -1016,9 +799,8 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 	using namespace StructureRemovalSupport;
 
 	/*
-	 * One block on two 100 cm2 cement pads, loaded so the pair sits at 3 MPa. Cement
-	 * mortar crushes at 10 MPa, so as built each joint is at 0.30 and after one pad goes
-	 * the survivor is at 0.60 — the load genuinely doubled and the block is still up.
+	 * One block on two 100 cm2 cement pads at 3 MPa each (0.30 of 10 MPa); with one pad gone
+	 * the survivor is at 0.60 and holds.
 	 */
 	const FStructureSpec TwoPads = {
 		{
@@ -1031,10 +813,7 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 		}
 	};
 
-	/*
-	 * A beam on two pads with a block on the beam. Removing a PAD is redistribution;
-	 * removing the BEAM strands the block, because the beam is its only support.
-	 */
+	// A beam on two pads with a block on it: removing a pad redistributes, removing the beam strands.
 	const FStructureSpec BeamAndBlock = {
 		{
 			{ BrickMassKg, true }, { BrickMassKg, true },
@@ -1049,10 +828,8 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 	};
 
 	/*
-	 * A piece with one bed joint beneath it and one head joint sideways. A bed joint wins
-	 * the tier outright, so the bolted plate carries EXACTLY ZERO while the pad is there
-	 * and takes the whole piece the moment it goes — as pure shear, because a vertical
-	 * load on a vertical face has no component along the normal.
+	 * One bed joint beneath, one bolted head joint beside. The bed joint wins the tier, so the
+	 * plate carries zero until the pad goes, then the whole piece in pure shear.
 	 */
 	const FStructureSpec PadAndPlate = {
 		{
@@ -1066,10 +843,7 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 	};
 
 	const TArray<FRemovalCase> Cases = {
-		/*
-		 * THE CONTROL. 3 MPa on each of two cement joints is 0.30 of capacity — properly
-		 * loaded, comfortably standing.
-		 */
+		// Control: 3 MPa on each cement joint, 0.30 of capacity.
 		{
 			TEXT("two pads at 3 MPa each share the block and both hold"),
 			TwoPads,
@@ -1081,12 +855,7 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 			{ true, true, true }
 		},
 
-		/*
-		 * THE REMOVAL. Half the bearing area goes, so the survivor takes the whole
-		 * 6e6 uu over 100 cm2 — 6 MPa, 0.60 of capacity, and the block stays up. An
-		 * implementation that removed the pad and left its share stranded would report
-		 * 3 MPa here and a falling block.
-		 */
+		// Half the bearing area goes; the survivor takes 6 MPa (0.60) and holds.
 		{
 			TEXT("removing one pad moves the whole block onto the survivor, which holds"),
 			TwoPads,
@@ -1098,10 +867,7 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 			{ false, true, true }
 		},
 
-		/*
-		 * BOTH SUPPORTS GO. Nothing is holding the block up, so there is no static load
-		 * path and both joints report zero rather than a plausible-looking weight.
-		 */
+		// Both supports go: no load path, so both joints report zero.
 		{
 			TEXT("removing both pads leaves the block with no load path at all"),
 			TwoPads,
@@ -1113,11 +879,7 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 			{ false, false, false }
 		},
 
-		/*
-		 * THE CONTROL FOR THE BEAM FIXTURE. The block puts 2e6 uu through the beam joint
-		 * (2 MPa, 0.20); the beam adds its own 2e6 and pushes 4e6 into 200 cm2 of pad, so
-		 * each pad joint carries 2e6 at 2 MPa.
-		 */
+		// Beam control: 2 MPa through the beam joint; 4e6 uu over 200 cm2 of pad is 2 MPa each.
 		{
 			TEXT("a beam on two pads carries the block above it and nothing gives"),
 			BeamAndBlock,
@@ -1130,11 +892,7 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 			{ true, true, true, true }
 		},
 
-		/*
-		 * REMOVE A PAD AND THE LOAD REROUTES BELOW WITHOUT CHANGING ANYTHING ABOVE. The
-		 * survivor doubles to 4 MPa; the beam-to-block joint is untouched at 2 MPa, which
-		 * is what says a removal is local rather than a global re-shuffle.
-		 */
+		// The surviving pad doubles to 4 MPa; the joint above stays at 2 MPa.
 		{
 			TEXT("removing one of the beam's pads doubles the survivor and leaves the joint above alone"),
 			BeamAndBlock,
@@ -1147,11 +905,7 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 			{ false, true, true, true }
 		},
 
-		/*
-		 * REMOVE THE BEAM AND THE BLOCK IS STRANDED. Its only support has gone, and there
-		 * is nowhere for its weight to route: everything reports zero and both pieces come
-		 * out unsupported. This is the shape of knocking a course out of a wall.
-		 */
+		// Removing the beam strands the block; every joint reports zero.
 		{
 			TEXT("removing the beam strands the block that rested on it"),
 			BeamAndBlock,
@@ -1164,10 +918,7 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 			{ true, true, false, false }
 		},
 
-		/*
-		 * THE CONTROL FOR THE FALLBACK: while the pad is there the bolted plate is not in
-		 * the support relation at all, so it carries exactly nothing.
-		 */
+		// Fallback control: with the pad present the plate is not a support and carries nothing.
 		{
 			TEXT("a bed joint beneath wins outright and the head joint carries nothing"),
 			PadAndPlate,
@@ -1180,13 +931,9 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * REMOVAL PROMOTES THE HEAD JOINT. With no bed joint left the piece falls back on
-		 * the plate, which takes the whole 5e5 uu as PURE SHEAR — 0.5 MPa against the
-		 * bolt's flat 1.1 MPa cohesion (mean basis, re-anchor 2026-08-13), so 0.4545 and
-		 * it holds. The load did not merely change size, it changed AXIS, and the axis
-		 * guard above is what says so: the bolt's friction coefficient is exactly zero, so
-		 * its shear capacity does not move with compression and 0.4545 can only have come
-		 * from the shear axis.
+		 * Removal promotes the head joint: the plate takes 0.5 MPa in pure shear against the
+		 * bolt's flat 1.1 MPa cohesion (mean basis), 0.4545, and holds. The bolt has zero
+		 * friction, so 0.4545 can only come from the shear axis.
 		 */
 		{
 			TEXT("removing the pad promotes the head joint, which takes the piece in shear"),
@@ -1209,19 +956,9 @@ bool FStructureRemovalRedistributesLoadTest::RunTest(const FString& Parameters)
 }
 
 /**
- * REMOVAL COMPOSES WITH THE CASCADE: taking a piece out can push a neighbour over
- * capacity, and what follows is an ordinary cascade over the joints that are left.
- *
- * This is the demo. A wall stands, a player pulls a brick, and the load that brick was
- * carrying arrives somewhere that cannot take it.
- *
- * THE PART THAT IS EASY TO GET WRONG: a joint that went with a removed piece must NOT
- * appear in the cascade's pass numbering. It did not fail under load — it was deleted —
- * and phase 5 replays these stamps as the sequence of a collapse. So it is left
- * UNSTAMPED, and INDEX_NONE does NOT mean "still intact": it means "no pass broke this",
- * which is equally true of an intact joint and of a deleted one. Liveness is the other
- * question and HasGiven is its accessor; the pair encodes all three states with no
- * sentinel, which is the decision this file exists to hold in place.
+ * Removal composes with the cascade: removing a piece can overload a neighbour, and an
+ * ordinary cascade follows over the remaining joints. A joint that went with a removed piece
+ * stays unstamped; INDEX_NONE means "no pass broke this", not "intact" (HasGiven answers that).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureRemovalCascadesTest,
@@ -1236,11 +973,8 @@ bool FStructureRemovalCascadesTest::RunTest(const FString& Parameters)
 	constexpr double UtilisationTolerance = 1.0e-9;
 
 	/*
-	 * THREE PADS, and a removal that breaks nothing. 6 MPa each as built; take one pad
-	 * away and the remaining two carry 9 MPa apiece against cement mortar's 10 — a
-	 * genuine, large redistribution that the structure absorbs. Without this control
-	 * every case below could be satisfied by an implementation that breaks whatever it is
-	 * shown.
+	 * Control: three pads at 6 MPa; remove one and the other two carry 9 MPa against cement's
+	 * 10, so nothing breaks.
 	 */
 	{
 		const FStructureSpec Spec = {
@@ -1258,12 +992,7 @@ bool FStructureRemovalCascadesTest::RunTest(const FString& Parameters)
 		FStructure Structure;
 		BuildStructure(Structure, Spec);
 
-		/*
-		 * Captured into a local before it is reported. Argument evaluation order is
-		 * unspecified in C++, so calling SolveAndBreak inside the message of a TestTrue
-		 * whose condition also reads the structure would be a coin toss over whether the
-		 * cascade ran before the assertion looked.
-		 */
+		// Captured first: C++ argument evaluation order is unspecified.
 		const int32 PassesAsBuilt = Structure.SolveAndBreak();
 
 		TestTrue(
@@ -1314,12 +1043,8 @@ bool FStructureRemovalCascadesTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE DEMO. Two pads at 6 MPa each — 0.60 of capacity, standing. Take one away and the
-	 * survivor inherits the whole 12e6 uu over 100 cm2: 12 MPa against 10, so 1.20, and it
-	 * gives on the first pass. The block then has nothing left and comes down.
-	 *
-	 * The removal itself broke nothing: the cascade did, in pass 1, and only the pad joint
-	 * that was actually overloaded carries that number.
+	 * Two pads at 6 MPa (0.60). Remove one and the survivor takes 12 MPa against 10 and gives
+	 * in pass 1; only that joint carries the stamp.
 	 */
 	{
 		const FStructureSpec Spec = {
@@ -1357,10 +1082,6 @@ bool FStructureRemovalCascadesTest::RunTest(const FString& Parameters)
 				Structure.GetBreakPass(1)),
 			Structure.GetBreakPass(1) == 1 && Structure.GetConnection(1).HasGiven());
 
-		/*
-		 * AND THE REMOVED JOINT IS NOT PART OF THAT PASS. It never failed under load, so
-		 * playing this collapse back must not show it giving alongside the joint that did.
-		 */
 		TestTrue(
 			FString::Printf(TEXT("the removed pad's joint must not be stamped by any pass, got %d"),
 				Structure.GetBreakPass(0)),
@@ -1380,12 +1101,7 @@ bool FStructureRemovalCascadesTest::RunTest(const FString& Parameters)
 				FMath::IsNearlyZero(Structure.GetConnectionForce(Index).Z, Tolerance));
 		}
 
-		/*
-		 * IT HAS SETTLED. Nothing more gives, nothing un-gives, and no stamp is rewritten
-		 * — and in particular the removed joint is not retroactively drawn into a pass. A
-		 * cascade that re-evaluated it would have to find it "over capacity" at zero load,
-		 * which is the shape of a loop that never terminates.
-		 */
+		// Settled: a second cascade breaks nothing and rewrites no stamp.
 		const int32 SecondPasses = Structure.SolveAndBreak();
 
 		TestTrue(
@@ -1401,10 +1117,8 @@ bool FStructureRemovalCascadesTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * A REMOVAL AFTER A CASCADE, rather than before one. The cement joint survived the
-	 * lime joint giving and settled at 0.60; removing the pad under it takes the block's
-	 * last support and the whole structure reads as falling — with the two stamps still
-	 * telling different stories about how each joint went.
+	 * A removal after a cascade. The cement joint settles at 0.60 after the lime joint gives;
+	 * removing its pad strands the block, and the two stamps still differ.
 	 */
 	{
 		const FStructureSpec Spec = {
@@ -1456,10 +1170,6 @@ bool FStructureRemovalCascadesTest::RunTest(const FString& Parameters)
 				Structure.GetBreakPass(0)),
 			Structure.GetBreakPass(0) == 1);
 
-		/*
-		 * THE TWO JOINTS WENT FOR DIFFERENT REASONS AND STILL SAY SO. Both are out of the
-		 * structure; only the one that failed under load is in the collapse sequence.
-		 */
 		TestTrue(
 			FString::Printf(TEXT("the cement joint went with its pad, so HasGiven %d and no pass, got %d"),
 				Structure.GetConnection(1).HasGiven() ? 1 : 0, Structure.GetBreakPass(1)),
@@ -1470,34 +1180,13 @@ bool FStructureRemovalCascadesTest::RunTest(const FString& Parameters)
 }
 
 /**
- * PASS NUMBERS ARE GLOBAL TO A STRUCTURE, NOT TO A CALL. A second SolveAndBreak numbers
- * its passes from the HIGH-WATER MARK of the stamps already written, so a joint that gave
- * after the player pulled a brick carries a strictly larger number than everything that
- * gave before it.
+ * Pass stamps are global to a structure: a second SolveAndBreak continues from the highest
+ * stamp already written. Consumers read a shared number as "gave simultaneously", so
+ * restarting at 1 would replay the collapse in the wrong order with no other check failing.
+ * Only removal between calls makes this observable.
  *
- * WHY THIS IS REACHABLE ONLY NOW. A second cascade on a settled structure provably breaks
- * nothing — RemovalCascades asserts exactly that — so before removal existed no two calls
- * could both stamp, and per-call numbering was indistinguishable from global numbering.
- * RemovePiece is the one operation that changes the graph between calls, so the removal
- * slice is what makes the distinction observable, and removal is the MVP's own interaction
- * rather than a corner case.
- *
- * WHAT GOES WRONG IF THEY RESTART. Every consumer of the sequence reads a shared number as
- * "these gave simultaneously" (CURRENT_STATE.md states that contract for phase 5's
- * visualisation). Restarting at 1 puts the joint that failed FIRST and the joint that
- * failed LATER — after a player pulled a brick out from under it — on the same number, so
- * the collapse replays in the wrong order with nothing anywhere reading as inconsistent:
- * no NaN, no crash, every liveness and conservation check still green.
- *
- * THE RETURN VALUE IS THE OTHER QUESTION AND STAYS PER-CALL. SolveAndBreak answers "how
- * many passes did THIS call break in", which is what a caller polls to know whether its
- * removal did anything; only the stamps are global. Conflating the two is the obvious
- * wrong fix, so every case below asserts both and they deliberately disagree.
- *
- * AXIS GOVERNANCE. Every joint here is an axis-aligned bed joint under a vertical load, so
- * the load is pure compression and each expectation below is a compressive stress against a
- * compressive strength — checked per joint by CheckSettledCompression rather than assumed,
- * because ComputeUtilisation returns the worst of three axes.
+ * SolveAndBreak's return value stays per-call (what a caller polls to see whether its removal
+ * did anything). Every case asserts both, and they deliberately disagree.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureBreakPassesContinueAcrossCallsTest,
@@ -1509,7 +1198,7 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 	using namespace StructureRemovalSupport;
 
 	/*
-	 * ONE BREAK BEFORE THE REMOVAL, ONE AFTER, and the two must not share a number.
+	 * One break before the removal and one after; they must not share a number.
 	 *
 	 *          [ block 3 ]                12 MPa.cm2 total, over three 100 cm2 pads
 	 *         /     |     \
@@ -1517,15 +1206,9 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 	 *   [pad 0]  [pad 1]  [pad 2]
 	 *   ======   ======   ======
 	 *
-	 * As built each joint takes 4.0 MPa. Lime crushes at 2.0, so it gives at 2.00 in pass
-	 * 1 and is stamped 1; the two cement joints are at 0.40 of their 10.0 and hold. The
-	 * re-solve moves the whole load onto 200 cm2 — 6.0 MPa, 0.60 — and the structure
-	 * settles, so that call reports ONE breaking pass.
-	 *
-	 * Then a player pulls pad 1. Its joint is severed and unstamped, and pad 2 inherits
-	 * everything: 12.0 MPa against 10.0, so 1.20 and it gives. That break happened strictly
-	 * LATER than the lime one and must say so — pass 2, not pass 1 — while the call itself
-	 * still reports the one breaking pass it ran.
+	 * As built each joint takes 4 MPa: lime (2.0) gives in pass 1, cement settles at 6 MPa
+	 * (0.60). Pulling pad 1 puts 12 MPa on pad 2, which gives: stamp 2, though the call
+	 * reports one pass.
 	 */
 	{
 		const FStructureSpec Spec = {
@@ -1543,12 +1226,7 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 		FStructure Structure;
 		BuildStructure(Structure, Spec);
 
-		/*
-		 * Captured into a local before it is reported. Argument evaluation order is
-		 * unspecified in C++, so calling SolveAndBreak inside the message of a TestTrue
-		 * whose condition also reads the structure would be a coin toss over whether the
-		 * cascade ran before the assertion looked.
-		 */
+		// Captured first: C++ argument evaluation order is unspecified.
 		const int32 PassesAsBuilt = Structure.SolveAndBreak();
 
 		TestTrue(
@@ -1561,11 +1239,7 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 				Structure.GetConnection(0).HasGiven() ? 1 : 0, Structure.GetBreakPass(0)),
 			Structure.GetConnection(0).HasGiven() && Structure.GetBreakPass(0) == 1);
 
-		/*
-		 * THE CONTROL, and without it the removal below proves nothing: the structure has
-		 * genuinely settled on the two cement joints at 0.60 apiece, so the break that
-		 * follows is caused by the removal rather than by a cascade that never stopped.
-		 */
+		// Control: settled at 0.60 each, so the next break is caused by the removal.
 		CheckSettledCompression(*this, Structure, 1, 0.6, TEXT("settled after the lime joint gave"));
 		CheckSettledCompression(*this, Structure, 2, 0.6, TEXT("settled after the lime joint gave"));
 
@@ -1574,21 +1248,12 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 
 		const int32 PassesAfterRemoval = Structure.SolveAndBreak();
 
-		/*
-		 * THE COUNT IS PER-CALL. This call ran one breaking pass, whatever number that pass
-		 * stamped — it is what a caller polls to find out whether its removal did anything,
-		 * and making it cumulative would be the obvious wrong way to fix the stamps.
-		 */
+		// The count is per-call; the stamp below is global.
 		TestTrue(
 			FString::Printf(TEXT("the survivor at 12 MPa should give in exactly one pass of THIS call, got %d"),
 				PassesAfterRemoval),
 			PassesAfterRemoval == 1);
 
-		/*
-		 * AND THE STAMP IS GLOBAL. The cement joint failed strictly after the lime one, so
-		 * it cannot carry the lime joint's number: phase 5 reads a shared number as
-		 * "these gave simultaneously", and these did not.
-		 */
 		TestTrue(
 			FString::Printf(TEXT("the cement joint gave after the lime one and must be stamped pass 2, got %d"),
 				Structure.GetBreakPass(2)),
@@ -1599,10 +1264,6 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 				Structure.GetBreakPass(0), Structure.GetBreakPass(2)),
 			Structure.GetBreakPass(2) > Structure.GetBreakPass(0));
 
-		/*
-		 * NOTHING EARLIER IS REWRITTEN. A stamp is history; a second cascade adds to the
-		 * sequence and never edits it.
-		 */
 		TestTrue(
 			FString::Printf(TEXT("the lime joint's stamp must survive the second cascade, got %d"),
 				Structure.GetBreakPass(0)),
@@ -1618,13 +1279,9 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 	}
 
 	/*
-	 * A MULTI-PASS SECOND CALL, which is what separates "continue from the high-water mark"
-	 * from "start at one" AND from "start at the last count". The second call runs two
-	 * passes and they must be stamped 2 and 3.
-	 *
-	 * TWO INDEPENDENT SUB-STRUCTURES in one graph, deliberately, so the arithmetic of each
-	 * stands alone — passes are a property of the whole structure, and nothing about the
-	 * numbering should depend on the two halves being connected.
+	 * A multi-pass second call, stamped 2 and 3: separates "continue from the high-water mark"
+	 * from "start at one" and "start at the last count". Two independent sub-structures in one
+	 * graph.
 	 *
 	 *   [ block 1 ]                        [ block 5 ]           4.8 MPa.cm2 over 3 pads
 	 *       |                             /     |     \
@@ -1632,27 +1289,15 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 	 *   [pad 0]                     [pad 2]  [pad 3]  [pad 4]
 	 *   ======                      ======   ======   ======
 	 *
-	 * CALL 1 breaks the left-hand lime joint only: 3.0 MPa against 2.0 is 1.50. The
-	 * right-hand three sit at 1.6 MPa apiece — lime 0.80, bolt 0.4706 (against the mean
-	 * f_c,90 of 3.4; re-anchor 2026-08-13), cement 0.16 — and all hold, so the call is one
-	 * pass and the high-water mark is 1.
+	 * Call 1 breaks only the left lime joint (3.0 MPa against 2.0). The right three sit at
+	 * 1.6 MPa: lime 0.80, bolt 0.4706 (mean f_c,90 of 3.4), cement 0.16.
 	 *
-	 * THEN PAD 4 IS PULLED. The cement joint is severed unstamped and the remaining two
-	 * share 200 cm2: 2.4 MPa. Lime is at 1.20 and gives (pass 2); the bolt is at 0.706 and
-	 * survives that pass by 29%, which is what makes the two passes genuinely sequential
-	 * rather than one pass breaking both. The re-solve then hands the bolt the whole load
-	 * over 100 cm2 — 4.8 MPa against 3.4, so 1.41 — and it gives in the next pass (pass 3).
+	 * Pulling pad 4 leaves 2.4 MPa on two joints: lime at 1.20 gives (pass 2), the bolt at
+	 * 0.706 survives that pass, then takes 4.8 MPa (1.41) and gives (pass 3).
 	 *
-	 * The call ran TWO breaking passes and stamped 2 and 3. Per-call numbering would stamp
-	 * 1 and 2; a cumulative count would still report two.
-	 *
-	 * THE CAPACITY LADDER IS THE CONSTRAINT HERE, so do not retune these masses casually.
-	 * Load splits weighted by area, so every joint under one piece carries the SAME STRESS
-	 * whatever its area — capacity is the only thing that can order the breaks. Dropping
-	 * one of N equal joints raises the stress by N/(N-1), at most 2x, so a two-pass cascade
-	 * needs two capacities less than a factor of two apart: lime's 2.0 and the fastener's
-	 * 3.4 are the only such pair in the profile library (1.7x — nearer the ceiling than
-	 * the characteristic era's 2.5 was, so mind this ladder if f_c,90 ever moves again).
+	 * Do not retune these masses casually. Parallel joints share one stress, so only capacity
+	 * orders the breaks, and dropping one of N raises stress by at most 2x. Two-pass needs two
+	 * capacities under 2x apart: lime 2.0 and the fastener's 3.4 (1.7x) are the only pair.
 	 */
 	{
 		const FStructureSpec Spec = {
@@ -1675,12 +1320,7 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 		FStructure Structure;
 		BuildStructure(Structure, Spec);
 
-		/*
-		 * THE RIGHT-HAND HALF IS INTACT AS BUILT, checked before anything breaks, because
-		 * every expectation after this point depends on all three of its joints surviving
-		 * call 1. Measured on the axis that governs, so a fixture that quietly started
-		 * failing in shear would say so rather than agreeing by coincidence.
-		 */
+		// Everything below depends on the right-hand joints surviving call 1.
 		Structure.SolveLoads();
 		CheckSettledCompression(*this, Structure, 1, 0.8, TEXT("as built"));
 		CheckSettledCompression(*this, Structure, 2, 1.6 / 3.4, TEXT("as built"));
@@ -1717,11 +1357,6 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 				PassesAfterRemoval),
 			PassesAfterRemoval == 2);
 
-		/*
-		 * THE TWO NEW BREAKS CONTINUE THE SEQUENCE. 2 then 3, because pass 1 is already
-		 * spent — and they are still one apart, so continuing from the high-water mark has
-		 * not been confused with adding the previous call's count onto every stamp.
-		 */
 		TestTrue(
 			FString::Printf(TEXT("the right-hand lime joint gave in the first pass of the second call and must be stamped 2, got %d"),
 				Structure.GetBreakPass(1)),
@@ -1732,11 +1367,6 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 				Structure.GetBreakPass(2)),
 			Structure.GetBreakPass(2) == 3);
 
-		/*
-		 * THE WHOLE SEQUENCE, read the way phase 5 will read it: three joints that gave in
-		 * three separate passes, strictly ordered, and a fourth that went with its pad and
-		 * is not in the sequence at all.
-		 */
 		TestTrue(
 			FString::Printf(TEXT("the collapse sequence should read 1 < 2 < 3, got %d, %d, %d"),
 				Structure.GetBreakPass(0), Structure.GetBreakPass(1), Structure.GetBreakPass(2)),
@@ -1748,10 +1378,6 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 				Structure.GetConnection(3).HasGiven() ? 1 : 0, Structure.GetBreakPass(3)),
 			Structure.GetConnection(3).HasGiven() && Structure.GetBreakPass(3) == INDEX_NONE);
 
-		/*
-		 * A STAMP IS STILL A PASS NUMBER. Nothing above may have smuggled a sentinel or a
-		 * zero into the domain phase 5 iterates.
-		 */
 		for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
 		{
 			TestTrue(
@@ -1765,32 +1391,16 @@ bool FStructureBreakPassesContinueAcrossCallsTest::RunTest(const FString& Parame
 }
 
 /**
- * IS PIECE SUPPORTED IS THE LAST SOLVE'S ANSWER, AND REMOVAL DOES NOT REWRITE IT.
+ * IsPieceSupported is the last solve's answer; removal does not rewrite it. A
+ * characterisation test (green on arrival) pinning the scoped contract:
  *
- * A CHARACTERISATION TEST. It pins behaviour that is already correct, so it is green from
- * the moment it compiles; what it is for is that the HEADER SAYS SOMETHING ELSE, and
- * nothing until now queried a piece between a removal and the next solve, so the two were
- * free to drift. GetPiece, IsPieceRemoved and GetBreakPass all answer a removed piece
- * immediately; IsPieceSupported reads PieceSupported[], which only SolveLoads writes, so it
- * answers a removed piece only once something has re-solved.
+ *     never solved     false, for every handle
+ *     removed          the last solve's answer, unchanged, until the next solve
+ *     after that solve false, and a removed grounded piece is no longer earth
  *
- * THE SCOPED CONTRACT, which is what Structure.h should say:
- *
- *     never solved     false, for every handle — there is no answer yet
- *     removed          the LAST SOLVE'S answer, unchanged, until the next solve
- *     after that solve false, and a removed GROUNDED piece is no longer earth
- *
- * The middle row is the one that bites, and it is stale rather than wrong: the piece is
- * gone and the array still says it was held up. The gameplay shape that reaches it is the
- * MVP's own — remove a piece on player interaction, then ask about its neighbours to decide
- * what to release to dynamics — and asking before re-solving reads the pre-removal world.
- *
- * WHY THE COMMENT AND NOT THE CODE. Clearing one entry of PieceSupported on removal would
- * leave a HALF-STALE array: that one piece current, every neighbour still describing a
- * structure that no longer exists, which is a worse thing to hand a caller than a uniformly
- * stale array with a documented scope. If that is ever reconsidered, the middle row below
- * goes red — that is the point of asserting it — and the header must change in the same
- * commit. Do not quietly relax the assertion to accommodate a code change.
+ * The middle row is stale by design: clearing one entry on removal would leave a half-stale
+ * array, worse than a uniformly stale one. If that changes, update Structure.h in the same
+ * commit; do not relax the assertion.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureRemovedPieceSupportNeedsASolveTest,
@@ -1807,12 +1417,7 @@ bool FStructureRemovedPieceSupportNeedsASolveTest::RunTest(const FString& Parame
 		{ { 0, 1, BedJointNormal, 100.0, Unbreakable } }
 	};
 
-	/*
-	 * BEFORE ANY SOLVE THERE IS NO ANSWER, and false is the fail-closed one. PieceSupported
-	 * is sized by a solve rather than by AddPiece, so this is the same range check an
-	 * unknown handle takes — a caller that asks too early is told nothing is held up rather
-	 * than being handed a default that reads as held up.
-	 */
+	// Before any solve the answer fails closed to false: PieceSupported is sized by a solve.
 	{
 		FStructure Structure;
 		BuildStructure(Structure, PadAndBrick);
@@ -1829,11 +1434,7 @@ bool FStructureRemovedPieceSupportNeedsASolveTest::RunTest(const FString& Parame
 		TestFalse(TEXT("and it is still not held up"), Structure.IsPieceSupported(1));
 	}
 
-	/*
-	 * REMOVING THE BRICK. The answer for the piece that has gone does not move until
-	 * something re-solves — and then it is false, for the same reason an unknown handle is
-	 * false: it is not a piece any more, so nothing is holding it up.
-	 */
+	// Removing the brick: its answer is unchanged until a re-solve, then false.
 	{
 		FStructure Structure;
 		BuildStructure(Structure, PadAndBrick);
@@ -1847,11 +1448,7 @@ bool FStructureRemovedPieceSupportNeedsASolveTest::RunTest(const FString& Parame
 		TestTrue(TEXT("the brick reads as removed IMMEDIATELY — that accessor needs no solve"),
 			Structure.IsPieceRemoved(1));
 
-		/*
-		 * THE STALE ROW. Support is the last solve's answer and removal did not touch it,
-		 * so a piece that is provably gone still reads as held up. This is the assertion
-		 * the header contradicts today.
-		 */
+		// The stale row: a removed piece still reads as held up until the next solve.
 		TestTrue(
 			FString::Printf(TEXT("between a removal and the next solve, support is the LAST SOLVE'S answer and still reads %d"),
 				Structure.IsPieceSupported(1) ? 1 : 0),
@@ -1866,12 +1463,7 @@ bool FStructureRemovedPieceSupportNeedsASolveTest::RunTest(const FString& Parame
 			Structure.IsPieceSupported(0));
 	}
 
-	/*
-	 * REMOVING THE GROUND. Same scoping, on the piece whose removal has the furthest reach:
-	 * a grounded piece seeds the reachability walk on its own account rather than through
-	 * any joint, so until the re-solve BOTH pieces still read as held up by an earth one of
-	 * them is no longer touching.
-	 */
+	// Removing the ground: until the re-solve both pieces still read as held up.
 	{
 		FStructure Structure;
 		BuildStructure(Structure, PadAndBrick);
@@ -1897,11 +1489,7 @@ bool FStructureRemovedPieceSupportNeedsASolveTest::RunTest(const FString& Parame
 			Structure.IsPieceSupported(1));
 	}
 
-	/*
-	 * SOLVEANDBREAK COUNTS AS THE SOLVE. It runs SolveLoads on every pass, so a caller that
-	 * cascades after a removal does not need a bare solve as well — which is why the
-	 * degenerate matrix, which cascades between its removals, never sees the stale row.
-	 */
+	// SolveAndBreak runs SolveLoads, so it clears the stale row too.
 	{
 		FStructure Structure;
 		BuildStructure(Structure, PadAndBrick);
@@ -1924,24 +1512,10 @@ bool FStructureRemovedPieceSupportNeedsASolveTest::RunTest(const FString& Parame
 }
 
 /**
- * DEGENERATE REMOVALS FAIL CLOSED, and a structure that has been picked apart still
- * answers finitely.
- *
- * A matrix rather than a case per shape, because the interesting property is that NONE of
- * them produce a plausible-looking wrong answer. FMath::Max discards a NaN and FMath::Min
- * replaces it, so a fault in this layer would surface as a confident number rather than as
- * an obvious fault — which is why "never NaN, always finite, never reads intact when
- * broken" is asserted over the whole matrix instead of being spot-checked.
- *
- * AN UNKNOWN HANDLE READS AS REMOVED. That is the fail-closed direction and it matches
- * the accessors either side of it: GetPiece answers a placeholder, IsPieceSupported
- * answers false, GetBreakPass answers INDEX_NONE. A caller filtering with
- * `if (IsPieceRemoved(H)) continue;` then skips a handle that names nothing, rather than
- * walking on into it as though it were a live piece.
- *
- * AND A REMOVED PIECE IS NOT HELD UP, GROUNDED OR NOT. Same answer as an unknown handle
- * and for the same reason rather than as a special case: it is not a piece, so nothing is
- * holding it up, and a removed grounded piece has stopped resting on the earth.
+ * Degenerate removals fail closed, and a picked-apart structure still answers finitely.
+ * FMath::Max/Min swallow NaN, so a fault would surface as a plausible number; finiteness is
+ * asserted over the whole matrix. An unknown handle reads as removed (fail-closed, matching
+ * GetPiece, IsPieceSupported and GetBreakPass), and a removed piece is never held up.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureRemovalDegenerateInputTest,
@@ -1954,20 +1528,12 @@ bool FStructureRemovalDegenerateInputTest::RunTest(const FString& Parameters)
 
 	constexpr double Tolerance = 1.0e-6;
 
-	/*
-	 * THE DERIVATION RAN. BrickMassKg is computed at namespace scope from ClayBrick, which
-	 * is safe only while ClayBrick is constant-initialised — see its comment. This block is
-	 * where the value reaches UNGROUNDED pieces, so it is where the guard belongs. Not a
-	 * second anchor on what a brick weighs; Profiles.MaterialInvariants owns that.
-	 */
+	// Guards BrickMassKg's static initialisation (see its comment); not a weight check.
 	TestTrue(
 		FString::Printf(TEXT("the brick mass must derive to something positive, got %f kg"), BrickMassKg),
 		BrickMassKg > 0.0);
 
-	/*
-	 * OUT-OF-RANGE HANDLES. Each is tried against a freshly built structure so one row
-	 * cannot mask the next, and the whole structure is asserted unchanged afterwards.
-	 */
+	// Out-of-range handles, each on a fresh structure so one row cannot mask the next.
 	{
 		struct FBadHandleCase
 		{
@@ -2029,10 +1595,7 @@ bool FStructureRemovalDegenerateInputTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * REMOVING THE SAME PIECE TWICE. The second call removes nothing and must not restamp
-	 * anything: a joint already accounted for does not go a second time.
-	 */
+	// Removing the same piece twice: the second call removes and restamps nothing.
 	{
 		const FStructureSpec Spec = {
 			{ { BrickMassKg, true }, { BrickMassKg, false } },
@@ -2055,10 +1618,7 @@ bool FStructureRemovalDegenerateInputTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("the grounded piece is untouched by either call"),
 			Structure.IsPieceRemoved(0));
 
-		/*
-		 * ONE REMOVAL, NOT TWO. The live count is what would betray a redundant call that
-		 * decremented anyway, which is the obvious way to implement this wrong.
-		 */
+		// The live count catches a redundant call that decremented anyway.
 		TestTrue(
 			FString::Printf(TEXT("two pieces less one removed twice should still leave 1 live, got %d"),
 				Structure.NumLivePieces()),
@@ -2070,10 +1630,7 @@ bool FStructureRemovalDegenerateInputTest::RunTest(const FString& Parameters)
 			Structure.GetConnection(0).HasGiven() && Structure.GetBreakPass(0) == INDEX_NONE);
 	}
 
-	/*
-	 * THE LAST PIECE. A structure emptied of everything still answers: the handle survives,
-	 * nothing is held up, and solving an empty graph is not an error.
-	 */
+	// An emptied structure still answers, and solving it is not an error.
 	{
 		FStructure Structure;
 		const int32 Handle = Structure.AddPiece(BrickMassKg, true);
@@ -2106,11 +1663,8 @@ bool FStructureRemovalDegenerateInputTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE WHOLE MATRIX AT ONCE: a four-piece structure taken apart one piece at a time, in
-	 * an order that includes a grounded piece, a middle piece and a piece already stranded
-	 * by an earlier removal. After every step the same properties must hold — finite
-	 * loads, a live count that tracks the removals, no joint reading intact while it has
-	 * plainly gone, and no removal ever appearing in the cascade's pass numbering.
+	 * Take four pieces apart one at a time (middle, unconnected, grounded, stranded). After
+	 * each step: finite loads, a correct live count, and no removal in the pass numbering.
 	 */
 	{
 		const FStructureSpec Spec = {
@@ -2171,11 +1725,7 @@ bool FStructureRemovalDegenerateInputTest::RunTest(const FString& Parameters)
 					!Force.ContainsNaN() && FMath::IsFinite(Force.X)
 						&& FMath::IsFinite(Force.Y) && FMath::IsFinite(Force.Z));
 
-				/*
-				 * NOTHING HERE FAILED UNDER LOAD, so nothing may be in a pass. Every
-				 * joint that goes in this block goes with a piece, and the collapse
-				 * sequence phase 5 replays must stay empty for all of it.
-				 */
+				// Every joint here goes with a piece, so none may carry a pass.
 				TestTrue(
 					FString::Printf(TEXT("step %d: connection %d went with a piece and must carry no pass, got %d"),
 						Step, Index, Structure.GetBreakPass(Index)),

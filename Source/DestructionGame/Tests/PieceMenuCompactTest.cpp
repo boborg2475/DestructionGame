@@ -10,10 +10,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Named namespace, unique to this module: a unity build merges files, so an anonymous namespace
- * would collide with another file's (see CURRENT_STATE.md). The `using namespace` lives inside
- * RunTest for the same reason. The worked fixture is deliberately not shared with
- * PieceInspectorTest.cpp, whose copy lives in a .cpp and would only be reachable by unity accident.
+ * Uniquely named, not anonymous: a unity build merges files. The fixture is not shared with
+ * PieceInspectorTest.cpp, whose copy would only be reachable by unity accident.
  */
 namespace PieceMenuCompactTestSupport
 {
@@ -38,10 +36,8 @@ namespace PieceMenuCompactTestSupport
 	 *
 	 *      [4] Floater 4 kg — no joints at all, so the solve finds nothing holding it up.
 	 *
-	 * The subject needs three joints: a compact mode differs from full only where full has a joint
-	 * table to drop, and that table carries the colour slots the highlights key on. And the five
-	 * entries must not all read the same, or a compact list filled with copies of one row would
-	 * satisfy every equality below — the bands are asserted plural as a precondition.
+	 * The subject has three joints so full mode has a joint table to drop, and the five entries read
+	 * differently so a list of copies cannot pass.
 	 */
 	constexpr int32 PadPiece = 0;
 	constexpr int32 SubjectPiece = 1;
@@ -62,10 +58,8 @@ namespace PieceMenuCompactTestSupport
 	const FVector CompactHeadNormal(1.0, 0.0, 0.0);
 
 	/*
-	 * The wall's own grid, from DestructionLayout::RunningBond: a 21.5 x 10.25 x 6.5 cm brick on a
-	 * 1.0 cm joint gives a 22.5 cm brick pitch and a 7.5 cm course pitch, bottom course centred at
-	 * half a brick height. The entry labels are composed from these boxes, so a made-up grid would
-	 * compare labels no wall produces.
+	 * RunningBond's grid (22.5 cm brick pitch, 7.5 cm course pitch), so the labels composed from
+	 * these boxes are ones a real wall produces.
 	 */
 	constexpr double CompactCoursePitchCm = 7.5;
 	constexpr double CompactFirstCourseZCm = 3.25;
@@ -117,10 +111,7 @@ namespace PieceMenuCompactTestSupport
 		Out.AddConnection(Connection);
 	}
 
-	/**
-	 * The diagram above, built and settled. A null actor is fine: nothing here releases through an
-	 * actor, resolves one or destroys one — ApplyResults latches a flag and needs no UObject.
-	 */
+	/** The diagram above, built and settled. Null actors suffice: ApplyResults only latches a flag. */
 	void BuildCompactFixture(FStructureBinding& Out)
 	{
 		Out.StructureId = CompactStructure;
@@ -135,7 +126,7 @@ namespace PieceMenuCompactTestSupport
 		AddJoint(Out, SubjectPiece, RiderPiece, CompactBedNormal);
 		AddJoint(Out, SubjectPiece, SparePiece, CompactHeadNormal);
 
-		// Pulled before the solve, which SEVERS conn 2 without it ever having failed.
+		// Pulled before the solve, severing conn 2 without it failing.
 		Out.RemovePiece(SparePiece);
 
 		Out.SolveLoads();
@@ -213,11 +204,8 @@ namespace PieceMenuCompactTestSupport
 	};
 
 	/**
-	 * Everything the compact panel still shows, held against the full one field by field. A function,
-	 * not a loop block, because the comparison runs twice: between the two detail modes, and between
-	 * two full builds either side of a compact one. The second says asking for compact does not
-	 * disturb what the rest of the game reads — NeighbourHighlightForPiece colours a brick from
-	 * Row.ColourSlot, so a renumbered slot or reordered row would move a highlight off its brick.
+	 * Everything the compact panel still shows, compared field by field. Also used between two full
+	 * builds either side of a compact one, since highlights key on the full readout.
 	 */
 	void CheckInspectorsAgree(
 		FAutomationTestBase& Test,
@@ -244,11 +232,7 @@ namespace PieceMenuCompactTestSupport
 				Description, What, *Expected.CountText, *Actual.CountText),
 			Actual.CountText, Expected.CountText);
 
-		/*
-		 * Which brick is singled out survives the mode: the entry marker, the readout heading and
-		 * the ref tie the panel to the highlighted brick, and dropping the table does not stop it
-		 * pointing at one.
-		 */
+		// Which brick is singled out survives the mode.
 		Test.TestEqual(
 			FString::Printf(
 				TEXT("%s: %s must still %s a brick singled out"),
@@ -290,11 +274,8 @@ namespace PieceMenuCompactTestSupport
 			NameOfSupportBand(Actual.SupportBand), NameOfSupportBand(Expected.SupportBand));
 
 		/*
-		 * And the one-line joint summary, which is not part of the table. "3 joints" is a sentence
-		 * about the brick and most of what a compact readout is for. It is counted off a joint list,
-		 * so a compact mode that trimmed the list the sentence counts from — not just the rows drawn
-		 * under it — would report a brick with three neighbours as having none. Proved to bite: it
-		 * turns this row red with "No joints".
+		 * The one-line joint summary is not part of the table. Trimming the list it counts from would
+		 * report "No joints" for a brick with three.
 		 */
 		Test.TestEqual(
 			FString::Printf(
@@ -319,11 +300,7 @@ namespace PieceMenuCompactTestSupport
 			const FInspectorPieceEntry& Want = Expected.Pieces[Index];
 			const FInspectorPieceEntry& Got = Actual.Pieces[Index];
 
-			/*
-			 * The ref at this index, the ordering claim. Entries are in selection order, never
-			 * reordered or deduplicated, and a player's cursor identifies a row by position — the
-			 * same members in a different order would hover a different brick.
-			 */
+			// Order matters: the cursor identifies a row by position.
 			Test.TestTrue(
 				*FString::Printf(
 					TEXT("%s: %s entry %d must still be {%d,%d}, it is {%d,%d} [%s]"),
@@ -357,11 +334,7 @@ namespace PieceMenuCompactTestSupport
 					Description, What, Index, *Want.SupportText, *Got.SupportText),
 				Got.SupportText, Want.SupportText);
 
-			/*
-			 * And the bucket beside the word. The row's dot is coloured from this, the word from the
-			 * field above; keeping one and defaulting the other would colour a grounded brick as
-			 * falling.
-			 */
+			// The band colours the row's dot; it must match the word above.
 			Test.TestEqual(
 				FString::Printf(
 					TEXT("%s: %s entry %d must keep the band %s, it is %s"),
@@ -424,30 +397,12 @@ namespace PieceMenuCompactTestSupport
 }
 
 /**
- * A compact readout drops the per-joint table and the headroom scale that labels it, and agrees
- * with the full readout on everything else it shows.
+ * A compact readout drops the per-joint table and its headroom scale, and agrees with the full
+ * readout on everything else. A presenter test: the joint table is most of the panel's width.
  *
- * A presenter test, not a layout one. The panel takes 640 px of a 1920 px viewport, almost all of
- * it the joint table: a joint line is the widest sentence the readout composes, one per joint,
- * while the entries are a fixed handful of short lines. So the cut is dropping the table, and which
- * fields are dropped is a decision — in Slate a collapsed slot no test can reach, still paying to
- * build every row it then hid.
- *
- * The assertion is the pair, not the absence. "Compact has no joint rows" alone is satisfied by a
- * default-constructed inspector, a blank panel rather than a smaller one. So each case builds both
- * modes off the same binding and holds them field by field; only the two arrays and their caption
- * may differ.
- *
- * And the full mode is measured either side of a compact build. NeighbourHighlightForPiece colours
- * a brick from Row.ColourSlot and NeighbourPieces turns the rows into refs, so the joint table is
- * the index the highlights are keyed on. A compact mode that renumbered a slot or shortened the
- * entry list would move a highlight onto a brick no row names.
- *
- * A table of selections, not one scenario, covering the states the panel sits in: a brick singled
- * out with a table, a brick with one joint, nothing singled out, nothing picked, and a singled-out
- * ref the player has deselected. Rows with no table in either mode still assert agreement.
- *
- * No ticking world, not even a world: a binding is a plain struct, no actor, viewport or solver tick.
+ * Both modes are built from the same binding and compared field by field, since "no joint rows"
+ * alone would pass on a blank inspector. The full mode is also rebuilt after a compact build, since
+ * highlights key on its joint rows and colour slots. No world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuCompactTest,
@@ -467,10 +422,7 @@ bool FPieceMenuCompactTest::RunTest(const FString& Parameters)
 	const FPieceRef FloaterRef = MakeRef(CompactStructure, FloaterPiece);
 	const FPieceRef ForeignRef = MakeRef(CompactOtherStructure, PadPiece);
 
-	/*
-	 * Five picked bricks that do not all read the same: the subject is held up, the pad is on the
-	 * earth, the floater is not held up, the spare was pulled out, and the last names another wall.
-	 */
+	// Five picks that read differently: supported, grounded, falling, removed, foreign.
 	const TArray<FPieceRef> WorkedSelection = {
 		SubjectRef, PadRef, FloaterRef, SpareRef, ForeignRef };
 
@@ -496,7 +448,7 @@ bool FPieceMenuCompactTest::RunTest(const FString& Parameters)
 			FPieceRef()
 		},
 		{
-			/* An anchor outside the set it anchors singles out nothing, in either mode. */
+			// An anchor outside the selection singles out nothing, in either mode.
 			TEXT("a singled-out brick the player has since deselected"),
 			TArray<FPieceRef>{ PadRef },
 			SubjectRef
@@ -518,10 +470,7 @@ bool FPieceMenuCompactTest::RunTest(const FString& Parameters)
 
 		WidestJointTable = FMath::Max(WidestJointTable, Full.Joints.Num());
 
-		/*
-		 * The cut itself. The table goes, and so do the two fields that only explain its bars —
-		 * a caption surviving a dropped table would label something no longer shown.
-		 */
+		// The table goes, and so do the scale and caption that only label it.
 		TestEqual(
 			FString::Printf(
 				TEXT("%s: the compact readout must break out no joint rows, it broke out %d [%s]"),
@@ -540,14 +489,10 @@ bool FPieceMenuCompactTest::RunTest(const FString& Parameters)
 				Case.Description, *Compact.HeadroomCaption),
 			Compact.HeadroomCaption.IsEmpty());
 
-		/* And everything compact still shows reads exactly as the full panel reads it. */
 		CheckInspectorsAgree(
 			*this, Full, Compact, Case.Description, TEXT("the compact readout"));
 
-		/*
-		 * And asking for compact changed nothing about the full answer. Both halves are checked,
-		 * because the highlight tie-in reads the entries and the joint rows.
-		 */
+		// Asking for compact changed nothing about the full answer.
 		CheckInspectorsAgree(
 			*this, Full, FullAgain, Case.Description, TEXT("the full readout, rebuilt"));
 
@@ -555,21 +500,14 @@ bool FPieceMenuCompactTest::RunTest(const FString& Parameters)
 			*this, Full, FullAgain, Case.Description, TEXT("the full readout, rebuilt"));
 	}
 
-	/*
-	 * FIXTURE: the full readout had a table to drop. Every "compact has no joint rows" claim is free
-	 * on a fixture whose bricks have no joints, so a subject that lost its neighbours would let this
-	 * file pass over a compact mode that does nothing.
-	 */
+	// Fixture: the full readout must have had a table to drop.
 	TestTrue(
 		*FString::Printf(
 			TEXT("fixture: some case must break out at least 3 joint rows in FULL detail for compact to be dropping anything, the most any case broke out is %d"),
 			WidestJointTable),
 		WidestJointTable >= 3);
 
-	/*
-	 * FIXTURE: and the entry rows do not all say the same thing. The sweep compares the lists entry
-	 * by entry; identical entries would let a compact list of copies satisfy all of it.
-	 */
+	// Fixture: the entries must differ, or a list of copies would pass.
 	{
 		const FPieceMenuInspector Full = BuildPieceMenuInspector(
 			Binding, WorkedSelection, SubjectRef, EPieceMenuDetail::Full);

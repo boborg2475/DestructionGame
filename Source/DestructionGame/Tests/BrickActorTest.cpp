@@ -24,30 +24,15 @@ static_assert(
 	"parameter, and it makes the bad call expressible again.");
 
 /**
- * A BUILT WALL EXISTS IN THE WORLD, AT THE SIZE AND PLACE THE LAYOUT SAID, AND EACH BRICK
- * CAN NAME ITS OWN PIECE FROM BOTH DIRECTIONS.
+ * A built wall exists in the world at the layout's size and place, and each brick names its own
+ * piece from both directions.
  *
- * THE ASSERTION IS GetComponentsBoundingBox, NOT GetActorLocation, and the choice is the
- * whole test. World bounds versus the layout's own box is pivot-agnostic — if SM_Cube's
- * origin is at its base rather than its centre, every brick sits half a height too high
- * and a location assertion passes happily — and it catches a 100x scale error in the same
- * comparison, because a brick scaled by dimension/1 instead of dimension/100 has bounds a
- * hundred times too big while its location is perfect. Deriving the scale as
- * DesiredSizeCm / MeshLocalSizeCm rather than DesiredSizeCm / 100 is what keeps that true
- * the day a real brick mesh replaces the cube.
+ * Asserts GetComponentsBoundingBox, not GetActorLocation: bounds are pivot-agnostic and catch a
+ * 100x scale error that a location check misses. The trace checks the reverse: whatever is at
+ * piece i's spot resolves back to piece i, which catches correctly placed actors with wrong refs.
  *
- * THE TRACE IS THE SAME CLAIM FROM THE OTHER SIDE. Bounds say "the brick for piece i is
- * where piece i is"; a trace into that spot says "whatever is there resolves back to piece
- * i". A wall whose actors were spawned in the right places but handed the wrong refs
- * passes the first and fails the second, and that is exactly the bug that makes the player
- * click one brick and a different one fall.
- *
- * THE MASS IS READ AS THE OVERRIDE, not as the solver's mass, because it is asserted AT
- * SPAWN and a kinematic body may have no mass in the solver at all. That the override
- * actually reaches the physics body is the other test's job, once the brick is dynamic.
- *
- * NEEDS A TICKING WORLD: yes, though this test never ticks it — spawning actors and
- * tracing needs a world with a physics scene, which is the same harness.
+ * Mass is read as the override because a kinematic body may have no solver mass; the other test
+ * checks it reaches the body once dynamic. Needs a world with a physics scene, though never ticked.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBrickActorSpawnedWallMatchesItsLayoutTest,
@@ -61,12 +46,7 @@ bool FBrickActorSpawnedWallMatchesItsLayoutTest::RunTest(const FString& Paramete
 
 	const FRunningBondSpec Spec = WallSpec();
 
-	/*
-	 * THE REFERENCE LAYOUT IS BUILT HERE, SEPARATELY. The subsystem is expected to call
-	 * RunningBond itself; laying the same wall a second time in the test gives something
-	 * to compare the spawned actors against that did not come out of the subsystem, so a
-	 * spawner that invented its own geometry has something to disagree with.
-	 */
+	// A reference layout built independently of the subsystem, to compare the spawned actors against.
 	FBrickLayout Reference;
 	TestTrue(TEXT("fixture: RunningBond should lay the reference wall"), RunningBond(Spec, Reference));
 
@@ -81,10 +61,8 @@ bool FBrickActorSpawnedWallMatchesItsLayoutTest::RunTest(const FString& Paramete
 		Reference.Boxes.Num(), Reference.Structure.NumPieces());
 
 	/*
-	 * BOTH MASSES HAVE TO BE PRESENT OR THE PER-PIECE MASS CHECK IS FREE, and both are
-	 * pinned to published figures rather than to whatever the producer said: 1.9 g/cm3
-	 * (ClayBrick, EN-cited in MaterialProfiles.cpp) over 21.5 x 10.25 x 6.5 cm and over
-	 * the 10.25-long half bat.
+	 * Both masses must be present or the per-piece mass check is free. Pinned to 1.9 g/cm3 over a
+	 * full brick and a half bat.
 	 */
 	{
 		TArray<double> MassesSeen;
@@ -99,13 +77,8 @@ bool FBrickActorSpawnedWallMatchesItsLayoutTest::RunTest(const FString& Paramete
 			MassesSeen.Num(), 2);
 
 		/*
-		 * COMPARED WITH A TOLERANCE, AND THE ULP IS THE REASON. CURRENT_STATE.md records
-		 * that density-first, `1.9 x 21.5 x 10.25 x 6.5 / 1000`, lands exactly on
-		 * 2.72163125 while volume-first lands one ulp low at 2.7216312499999997 — and
-		 * MassKgFromBox above is deliberately volume-first, so that it is not a
-		 * transcription of production's order. An exact Contains here therefore fails on
-		 * the full brick and passes on the half bat, which is a fixture artefact and not a
-		 * fact about any wall. (It really does: this was written with == first.)
+		 * With a tolerance: MassKgFromBox is deliberately volume-first, which lands one ulp below
+		 * production's density-first 2.72163125, so an exact compare fails on the full brick.
 		 */
 		auto SeenNear = [&MassesSeen](double ExpectedKg)
 		{
@@ -173,11 +146,7 @@ bool FBrickActorSpawnedWallMatchesItsLayoutTest::RunTest(const FString& Paramete
 			continue;
 		}
 
-		/*
-		 * THE SOLVER IS PUSHED, NEVER POLLED. A per-brick tick is what makes thousands of
-		 * actors expensive rather than merely numerous, and nothing about a brick needs to
-		 * run every frame — CURRENT_STATE.md's building-scale note is the arithmetic.
-		 */
+		// Bricks never tick: a per-brick tick is what makes thousands of actors expensive.
 		TestTrue(
 			FString::Printf(TEXT("brick %d must not tick: the solver is pushed, never polled"), Piece),
 			!Brick->PrimaryActorTick.bCanEverTick);
@@ -193,11 +162,7 @@ bool FBrickActorSpawnedWallMatchesItsLayoutTest::RunTest(const FString& Paramete
 			continue;
 		}
 
-		/*
-		 * MOVABLE FROM SPAWN. A Static-mobility component can never be made to simulate,
-		 * and changing mobility at release is an ordering trap — so the assertion is made
-		 * here, before anything has been released, rather than after.
-		 */
+		// Movable from spawn: Static mobility cannot simulate, and changing it at release is an ordering trap.
 		TestTrue(
 			FString::Printf(TEXT("brick %d must be Movable from spawn, mobility is %d"),
 				Piece, static_cast<int32>(Mesh->Mobility.GetValue())),
@@ -223,13 +188,7 @@ bool FBrickActorSpawnedWallMatchesItsLayoutTest::RunTest(const FString& Paramete
 				Bounds.GetExtent().X, Bounds.GetExtent().Y, Bounds.GetExtent().Z),
 			Bounds.GetExtent().Equals(Box.ExtentCm, BoundsToleranceCm));
 
-		/*
-		 * MASS AT SPAWN, READ AS THE CONFIGURED OVERRIDE. UPrimitiveComponent::GetMass
-		 * reads the solver, and a kinematic body may have no mass there at all — so a
-		 * GetMass assertion here risks being 0 == 0. The override is what
-		 * SetMassOverrideInKg wrote, it is readable while kinematic, and the other test
-		 * checks that it actually reaches the body once the brick is dynamic.
-		 */
+		// Read the override: GetMass reads the solver, where a kinematic body may have no mass (0 == 0).
 		const double ExpectedMassKg = MassKgFromBox(Box, Spec.DensityGramsPerCubicCm);
 		const FBodyInstance* Body = Mesh->GetBodyInstance();
 
@@ -250,11 +209,7 @@ bool FBrickActorSpawnedWallMatchesItsLayoutTest::RunTest(const FString& Paramete
 				FMath::Abs(static_cast<double>(Body->GetMassOverride()) - ExpectedMassKg) < 1.0e-4);
 		}
 
-		/*
-		 * THE BRICK CARRIES ITS OWN IDENTITY, and it resolves. FStructureBinding::ResolvePiece
-		 * already fails closed on a foreign, stale or out-of-range ref, so a ref that comes
-		 * back as the handle we asked about is a ref that named the right structure too.
-		 */
+		// ResolvePiece fails closed on foreign refs, so resolving to this handle also proves the structure id.
 		TestEqual(
 			FString::Printf(TEXT("brick %d should carry its own structure id, got %d"),
 				Piece, Brick->GetPieceRef().StructureId),
@@ -272,12 +227,8 @@ bool FBrickActorSpawnedWallMatchesItsLayoutTest::RunTest(const FString& Paramete
 	}
 
 	/*
-	 * AND A TRACE LANDS ON THE PIECE THAT IS THERE, for every brick in the wall.
-	 *
-	 * The trace runs along Y, across the wall's thickness, through each box's own centre —
-	 * so nothing else in the wall is in the way and the answer is unambiguous. This is the
-	 * query the piece context menu will make when the player clicks a brick, which is why
-	 * the channel is Visibility rather than something invented for the test.
+	 * A trace through each box's centre, along Y across the wall's thickness, resolves to that
+	 * piece. Visibility channel, as the piece context menu uses.
 	 */
 	for (int32 Piece = 0; Piece < Reference.Boxes.Num(); ++Piece)
 	{
@@ -316,35 +267,17 @@ bool FBrickActorSpawnedWallMatchesItsLayoutTest::RunTest(const FString& Paramete
 }
 
 /**
- * A BRICK IS KINEMATIC UNTIL IT IS RELEASED, AND RELEASE IS ONE WAY AND IDEMPOTENT.
+ * A brick is kinematic until released, and release is one way and idempotent.
  *
- * THREE CLAIMS, AND EACH HAS A NAMED WAY OF BEING GREEN FOR NOTHING:
+ * "Nothing moved" is shown to bite by spawning with physics on. "It fell" is a legitimate
+ * displacement assertion here (the claim is movement, not a break; DESIGN.md §4), with a
+ * threshold derived from the mortar gap and course pitch.
  *
- * "Nothing moved" is green because nothing was ever going to move — an assertion that a
- * pile of actors with no physics stayed still. It is proved to bite by spawning the wall
- * with SetSimulatePhysics(true), at which point the bricks fall and every row fails.
+ * Idempotence is asserted as velocity surviving a second Release: toggling simulation off and on
+ * would recreate the body at zero velocity. The fixture first checks the brick is moving.
  *
- * "It fell" is the outcome assertion, and it is the one that has to be an OUTCOME:
- * DESIGN.md §4 is explicit that displacement is never a valid BREAK assertion, because
- * two pieces can sever and stay resting exactly in place. This is the other direction —
- * the claim IS that the brick moved, and the threshold is derived from the mortar gap and
- * the course pitch rather than picked.
- *
- * "Release is idempotent" is UNFALSIFIABLE if the assertion is only "still simulating",
- * because a second SetSimulatePhysics(true) on an already-simulating body is harmless.
- * The assertion that bites is that the VELOCITY SURVIVES: mutate Release to
- * SetSimulatePhysics(false) followed by SetSimulatePhysics(true) and the body is recreated
- * with zero velocity, so a brick that had been falling for a quarter of a second is
- * suddenly hanging still. That mutation is the proof this row earns its runtime, and the
- * fixture asserts the brick is genuinely moving first so the comparison is not 0 against 0.
- *
- * WHY PIECE 0. It is in the bottom course, so there is nothing but clear air between it
- * and the floor 50 cm below. Releasing a brick higher up would land it on the kinematic
- * course beneath after about one mortar joint of travel, which is precisely the settle the
- * threshold exists to be distinguishable from.
- *
- * NEEDS A TICKING WORLD: yes, and it is the reason this file exists at all. Two seconds of
- * simulated time at 60 Hz, on a fixed step, never on a settle poll.
+ * Piece 0 is in the bottom course, with clear air to the floor 50 cm below; a higher brick would
+ * settle on the course beneath. Two seconds at a fixed 60 Hz step.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBrickActorKinematicUntilReleasedTest,
@@ -407,7 +340,7 @@ bool FBrickActorKinematicUntilReleasedTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* ONE SECOND OF PHYSICS WITH GRAVITY ON, AND NOTHING MAY MOVE. */
+	// One second with gravity on: nothing may move.
 	TestWorld.TickSeconds(1.0);
 
 	for (int32 Piece = 0; Piece < Bricks.Num(); ++Piece)
@@ -445,27 +378,18 @@ bool FBrickActorKinematicUntilReleasedTest::RunTest(const FString& Parameters)
 		TEXT("a released brick must be simulating physics"),
 		FallingMesh->IsSimulatingPhysics());
 
-	/*
-	 * AND THE MASS SET AT SPAWN REACHED THE SOLVER. This is the half the other test cannot
-	 * make: GetMass reads the physics body, which is only meaningful once the body is
-	 * dynamic. Reading it here rather than at spawn is deliberate; reading it at spawn and
-	 * finding 0 == 0 would be worse than not reading it.
-	 */
+	// The spawn-time mass reached the solver; GetMass is only meaningful once dynamic.
 	TestTrue(
 		FString::Printf(TEXT("the released brick should weigh %.9g kg in the solver, got %.9g"),
 			FullBrickMassKg, static_cast<double>(FallingMesh->GetMass())),
 		FMath::Abs(static_cast<double>(FallingMesh->GetMass()) - FullBrickMassKg) < 1.0e-3);
 
-	/* Long enough to be plainly moving, short enough not to have reached the floor. */
+	// Long enough to be moving, short enough not to reach the floor.
 	TestWorld.TickSeconds(0.25);
 
 	const FVector VelocityBefore = FallingMesh->GetPhysicsLinearVelocity();
 
-	/*
-	 * THE FIXTURE'S PRECONDITION FOR THE IDEMPOTENCE ROW. A quarter second of free fall is
-	 * about -245 cm/s; if the brick is not actually moving, comparing the velocity before
-	 * and after a second Release proves nothing at all.
-	 */
+	// Precondition for the idempotence row: a quarter second of free fall is about -245 cm/s.
 	TestTrue(
 		FString::Printf(TEXT("fixture: the released brick should be falling by now, velocity Z is %.3f cm/s"),
 			VelocityBefore.Z),
@@ -477,11 +401,7 @@ bool FBrickActorKinematicUntilReleasedTest::RunTest(const FString& Parameters)
 		TEXT("a second Release must leave the brick simulating"),
 		FallingMesh->IsSimulatingPhysics());
 
-	/*
-	 * THE ROW THE IDEMPOTENCE CLAIM ACTUALLY RESTS ON. Nothing ticked between the two
-	 * reads, so a Release that derives its state from the body and returns early leaves
-	 * this exactly equal; a Release that re-creates the body loses the velocity entirely.
-	 */
+	// No tick between reads: an idempotent Release leaves velocity equal; recreating the body zeroes it.
 	const FVector VelocityAfter = FallingMesh->GetPhysicsLinearVelocity();
 
 	TestTrue(
@@ -505,11 +425,7 @@ bool FBrickActorKinematicUntilReleasedTest::RunTest(const FString& Parameters)
 			FallenAtLeastCm, FellCm),
 		FellCm > FallenAtLeastCm);
 
-	/*
-	 * AND RELEASING ONE BRICK RELEASES ONLY THAT BRICK. Everything else is still kinematic
-	 * and still exactly where it was laid — the wall does not come down because one brick
-	 * was handed to physics, and Release must not be reaching anything it was not called on.
-	 */
+	// Releasing one brick releases only that brick.
 	for (int32 Piece = 0; Piece < Bricks.Num(); ++Piece)
 	{
 		if (Piece == Released)

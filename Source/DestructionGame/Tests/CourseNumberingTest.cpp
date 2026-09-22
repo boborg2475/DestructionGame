@@ -11,29 +11,18 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, not anonymous, and named differently from every other one in this directory.
- * An anonymous namespace is private to a TRANSLATION UNIT rather than to a file, and a unity
- * build merges many files into one — at which point two file-local names that collide are a hard
- * compile error between files that never refer to each other. See CURRENT_STATE.md; the
- * `using namespace` lives inside RunTest for the same reason.
+ * Uniquely named, not anonymous: a unity build merges translation units, so file-local names can
+ * collide. The `using namespace` stays inside RunTest for the same reason.
  */
 namespace CourseNumberingTestSupport
 {
-	/** The structure this fixture identifies itself as. Any id will do; it just has to be one. */
+	/** The structure id this fixture uses; any id will do. */
 	constexpr int32 CourseNumberingStructure = 11;
 
 	/**
-	 * The first integer printed after the word "course", or INDEX_NONE if there is not one.
-	 *
-	 * Case-insensitive and word-anchored, which is what makes this a comparison of CONVENTIONS
-	 * rather than of wording: the strip says "Course 1" and the entry row says "course 1 · #2",
-	 * and demanding one be a prefix of the other would pin capitalisation and punctuation neither
-	 * surface has an opinion about. Only the number may not differ.
-	 *
-	 * Fails closed to INDEX_NONE rather than zero — the callers assert both readings parsed
-	 * before comparing them, since zero would make two unparseable strings agree (and "brick
-	 * 11:0", the presenter's fallback label for a ref it cannot place, is a string this would
-	 * otherwise have an opinion about).
+	 * The first integer after the word "course" (case-insensitive), or INDEX_NONE. Compares only the
+	 * number, since "Course 1" and "course 1 · #2" differ in wording. Fails closed to INDEX_NONE, not
+	 * zero, so two unparseable strings cannot agree.
 	 */
 	int32 CourseNumberIn(const FString& Text)
 	{
@@ -47,7 +36,7 @@ namespace CourseNumberingTestSupport
 
 		int32 At = WordAt + 6;
 
-		/* Whatever separates the word from its number may be spaces and nothing else. */
+		// Only whitespace may separate the word from its number.
 		while (At < Lower.Len() && FChar::IsWhitespace(Lower[At]))
 		{
 			++At;
@@ -71,27 +60,12 @@ namespace CourseNumberingTestSupport
 }
 
 /**
- * THE TWO SURFACES THAT NAME A COURSE MUST NAME IT THE SAME.
+ * The toolbar and the piece menu must name a brick's course by the same number. The toolbar once
+ * printed a zero-based subscript ("Course 0") while the menu counted from one; the ruling moved the
+ * toolbar to one-based.
  *
- * Why this test exists: committed session screenshots show a player laying a brick while the
- * toolbar reads "Course 0", and the details window on that same brick a moment later calling it
- * "course 1 · #1". Both readouts were correct about their own convention — the toolbar printed
- * FSessionToolbarState::Course, an array subscript, while Core/PieceMenu.cpp has counted courses
- * from one since it was written — and that is what let it survive: neither presenter's own test
- * could see the other. The owner-delegated ruling is that the TOOLBAR moves to one-based.
- *
- * So the assertion is agreement, not a literal. Core.SessionToolbar.CourseGroundingAndLabel pins
- * what the strip reads and Presenter.PieceMenuInspector pins what an entry row reads; this pins
- * the one claim neither can make alone, and holds if both wordings are retuned together. A test
- * here that spelled "Course 1" would be a third place the convention is written down.
- *
- * THE BRICK IS LAID THROUGH THE REAL SEAM RATHER THAN POSITIONED BY HAND: its Z comes from
- * DestructionSession::CoursePlaneZCm(0, half height), the toolbar's own answer for where course 0
- * puts a brick, and it is placed by BuildMode::PlacePiece. A hand-written Z would be this test's
- * opinion about where course 0 is rather than the toolbar's.
- *
- * NEEDS A TICKING WORLD: no. Nothing is spawned or solved and nothing moves; both presenters are
- * pure functions over a binding, read before any solve.
+ * Asserts agreement, not a literal: each presenter's own test pins its wording. The brick is laid
+ * through CoursePlaneZCm and BuildMode::PlacePiece rather than at a hand-written Z. No world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCourseNumberingAgreesTest,
@@ -106,11 +80,7 @@ bool FCourseNumberingAgreesTest::RunTest(const FString& Parameters)
 
 	const FVector HalfBrickCm = BuildPieceHalfExtentCm(EBuildPieceKind::Brick);
 
-	/*
-	 * Course 0 is the grounded one, asked of the model rather than assumed: if the grounded
-	 * course ever stops being index 0, this fixture lays on the wrong plane and goes on comparing
-	 * two numbers that agree about a course nobody stands on.
-	 */
+	// Course 0 is the grounded one, asked of the model rather than assumed.
 	TestTrue(
 		TEXT("fixture: index 0 must be the course with the earth under it"),
 		IsCourseGrounded(0));
@@ -128,11 +98,7 @@ bool FCourseNumberingAgreesTest::RunTest(const FString& Parameters)
 		/*bGrounded*/ true,
 		Settings);
 
-	/*
-	 * A second brick beside it, on the same plane. One brick would exercise only "#1", and a
-	 * presenter that printed the position where the course goes would read "course 1" for a
-	 * single brick by coincidence.
-	 */
+	// A second brick on the same plane, so a presenter printing position instead of course cannot pass by coincidence.
 	const BuildMode::FPlacementResult Second = BuildMode::PlacePiece(
 		Layout,
 		FVector(22.5, 0.0, CourseZeroZCm),
@@ -152,11 +118,7 @@ bool FCourseNumberingAgreesTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * Both must be on one course, asked of the geometry: the snap solver ranks by distance and a
-	 * cursor 22.5 cm along could be pulled up a course, which would leave this test comparing the
-	 * toolbar's course 0 against whatever the second brick happened to land on.
-	 */
+	// Both on one course, checked from geometry: the snap solver could pull the second brick up a course.
 	TestEqual(
 		FString::Printf(
 			TEXT("fixture: both bricks must sit on the course-0 plane at Z %g, they sit at %g and %g"),
@@ -205,10 +167,7 @@ bool FCourseNumberingAgreesTest::RunTest(const FString& Parameters)
 	const int32 ToolbarCourse = CourseNumberIn(ToolbarWord);
 	const int32 MenuCourse = CourseNumberIn(MenuWord);
 
-	/*
-	 * Both readings must have parsed before comparison — two unparseable labels are equal to each
-	 * other, so without this a presenter that stopped naming courses at all would pass.
-	 */
+	// Both must parse first, or two unparseable labels would compare equal.
 	TestTrue(
 		*FString::Printf(
 			TEXT("the toolbar's course readout must name a course: it reads '%s'"), *ToolbarWord),

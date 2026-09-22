@@ -27,12 +27,7 @@ namespace StructureBindingTestSupport
 	/** A standard UK metric brick, 215 x 102.5 x 65 mm, in cm3. */
 	constexpr double BrickVolumeCubicCm = 21.5 * 10.25 * 6.5;
 
-	/**
-	 * A standard clay brick, derived rather than hand-set. No expectation here depends on the value
-	 * (every joint is Unbreakable and every assertion is about support, identity or the release
-	 * latch); a real number is just less distracting than zero, and deriving it avoids a second
-	 * place to drift.
-	 */
+	/** A standard clay brick, derived from the profile. No expectation here depends on the value. */
 	const double BrickMassKg = ClayBrick.DensityGramsPerCubicCm * BrickVolumeCubicCm / 1000.0;
 
 	/** Horizontal interface, normal pointing up at the piece above: a bed joint. */
@@ -44,12 +39,8 @@ namespace StructureBindingTestSupport
 	constexpr double JointAreaSqCm = 100.0;
 
 	/**
-	 * A stand-in for a brick actor. A transient-package UObject is enough: this slice is world-free,
-	 * and all the binding does with an actor is hold it, hand it back and let it die. Not
-	 * NewObject<UObject> — UObject is abstract, so instantiating it directly trips an engine ensure
-	 * the automation framework counts as an error; UStaticMeshComponent is the nearest concrete thing
-	 * a brick owns and needs no world. Rooted, so only a test can collect it (the GC case below
-	 * deliberately makes an unrooted one).
+	 * A rooted, world-free stand-in for a brick actor. UStaticMeshComponent, not UObject: UObject is
+	 * abstract and instantiating it trips an ensure the automation framework counts as an error.
 	 */
 	UObject* MakeStandIn()
 	{
@@ -96,10 +87,7 @@ namespace StructureBindingTestSupport
 		FVector Normal = FVector::ZAxisVector;
 	};
 
-	/**
-	 * Build a binding, one stand-in and one box per piece, handing the stand-ins back so the caller
-	 * can assert identity against them and un-root them afterwards.
-	 */
+	/** Build a binding with one stand-in and one box per piece; returns the stand-ins for identity checks and cleanup. */
 	void BuildBinding(
 		FStructureBinding& Out,
 		int32 StructureId,
@@ -142,10 +130,8 @@ namespace StructureBindingTestSupport
 	}
 
 	/**
-	 * The invariant the whole type exists for, asserted after every operation that could break it.
-	 * The binding array and the piece array are index-parallel or the type is worthless: one entry
-	 * out of step and every handle above the hole silently resolves to the wrong brick. Neither ever
-	 * compacts.
+	 * The type's core invariant: the binding and piece arrays are index-parallel. One entry out of
+	 * step and every handle above it resolves to the wrong brick.
 	 */
 	void CheckArraysAreParallel(
 		FAutomationTestBase& Test,
@@ -167,11 +153,9 @@ namespace StructureBindingTestSupport
 }
 
 /*
- * A mutable binding must not hand out a mutable structure, checked at compile time because that is
- * the only place it can be: the failure is somebody calling Binding.GetStructure().RemovePiece(2),
- * which leaves the binding's actor pointing at a brick no longer in the graph. A static_assert
- * stops the accessor that would allow it from existing. decltype on a non-const lvalue picks the
- * non-const overload if there is one, so adding a mutable GetStructure fails here.
+ * A mutable binding must not hand out a mutable structure: GetStructure().RemovePiece would desync
+ * the arrays. decltype on a non-const lvalue picks a non-const overload if one exists, so adding one
+ * fails here.
  */
 static_assert(
 	std::is_same_v<
@@ -182,13 +166,9 @@ static_assert(
 	"the binding array hearing about it, and the resulting desync is silent.");
 
 /**
- * Removal cannot dangle: one call takes the piece out of the graph and clears its actor, and every
- * other handle still resolves to its own stand-in. FStructure tombstones a removed slot so handles
- * stay stable, and the binding array is parallel to it — so the one way to get this wrong is to
- * remove from one and not the other, or by compacting, both of which leave the array off by one
- * above the hole (shoot brick 5, brick 6 falls, nothing logs). The removal is from the middle,
- * since removing the last piece is indistinguishable from compacting it away; the stand-ins and
- * boxes are distinct so a shifted array reads back wrong.
+ * Removal cannot dangle: one call removes the piece from the graph and clears its actor, and every
+ * other handle still resolves to its own stand-in. Removes from the middle (removing the last piece
+ * looks like compaction) with distinct stand-ins and boxes so a shifted array reads back wrong.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureBindingRemovalCannotDangleTest,
@@ -246,20 +226,13 @@ bool FStructureBindingRemovalCannotDangleTest::RunTest(const FString& Parameters
 	TestTrue(TEXT("removing a live middle piece should report that it removed one"),
 		Binding.RemovePiece(Removed));
 
-	/*
-	 * The handle range never shrinks, in either array. Callers iterate 0..NumPieces, so a shrinking
-	 * answer silently skips real pieces.
-	 */
+	// The handle range never shrinks; callers iterate 0..NumPieces.
 	CheckArraysAreParallel(*this, Binding, PieceSpecs.Num(), TEXT("after removing piece 1"));
 
 	for (int32 Index = 0; Index < PieceSpecs.Num(); ++Index)
 	{
 		const bool bShouldBeGone = Index == Removed;
 
-		/*
-		 * One function did both: the graph knows the piece is gone and the binding let go of the
-		 * actor, from one call — so the two halves cannot be separately forgotten.
-		 */
 		TestTrue(
 			FString::Printf(TEXT("piece %d should be %s in the graph, IsPieceRemoved reports %d"),
 				Index, bShouldBeGone ? TEXT("REMOVED") : TEXT("live"),
@@ -280,10 +253,7 @@ bool FStructureBindingRemovalCannotDangleTest::RunTest(const FString& Parameters
 		}
 		else
 		{
-			/*
-			 * A survivor is untouched, and pointer identity makes that checkable: under compaction
-			 * handle 2 would hand back the beam's stand-in.
-			 */
+			// Under compaction handle 2 would return the beam's stand-in.
 			TestTrue(
 				FString::Printf(TEXT("handle %d should still resolve to its own stand-in, got %s"),
 					Index, *GetNameSafe(Binding.GetActor(Index))),
@@ -291,9 +261,8 @@ bool FStructureBindingRemovalCannotDangleTest::RunTest(const FString& Parameters
 		}
 
 		/*
-		 * The box survives removal, including the removed piece's own: it records where the brick
-		 * was, which debris and a collapse replay want. A cleared box would read as real geometry at
-		 * the origin, not as absent. Only the actor pointer has a lifetime problem.
+		 * The box survives removal, even the removed piece's: debris and replay want it, and a
+		 * cleared box would read as real geometry at the origin.
 		 */
 		TestTrue(
 			FString::Printf(
@@ -308,7 +277,6 @@ bool FStructureBindingRemovalCannotDangleTest::RunTest(const FString& Parameters
 			BoxesMatch(Binding.GetBinding(Index).Box, BoxFor(Index)));
 	}
 
-	// Removing the same piece twice is not a second removal, and must not report one.
 	TestTrue(TEXT("removing an already-removed piece must report that it removed nothing"),
 		!Binding.RemovePiece(Removed));
 
@@ -318,11 +286,9 @@ bool FStructureBindingRemovalCannotDangleTest::RunTest(const FString& Parameters
 }
 
 /**
- * An actor destroyed by some other route reads as null, not a live pointer to freed memory. The
- * tombstone above covers the deliberate case (RemovePiece); this is the other — a level transition,
- * an expiring lifespan, anything else calling Destroy. Nothing tells the binding, so it must be
- * unable to be wrong, which TWeakObjectPtr buys and a raw UObject* does not. The piece stays live
- * in the graph throughout: a dead actor is not a removed piece, and only the actor lookup changes.
+ * An actor destroyed by another route (level transition, lifespan) reads as null, not a dangling
+ * pointer; TWeakObjectPtr guarantees that where a raw UObject* would not. The piece stays live in
+ * the graph: a dead actor is not a removed piece.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureBindingActorLifetimeIsWeakTest,
@@ -338,11 +304,7 @@ bool FStructureBindingActorLifetimeIsWeakTest::RunTest(const FString& Parameters
 
 	UObject* Kept = MakeStandIn();
 
-	/*
-	 * Unrooted on purpose, and the local pointer is cleared before the collect, so the binding's weak
-	 * pointer is the only reference and the object is genuinely collectable. A rooted stand-in would
-	 * make the second half vacuous.
-	 */
+	// Unrooted on purpose so the binding's weak pointer is the only reference and GC can collect it.
 	UObject* Doomed = NewObject<UStaticMeshComponent>(GetTransientPackage());
 
 	Binding.AddPiece(BrickMassKg, true, Kept, BoxFor(0));
@@ -360,7 +322,7 @@ bool FStructureBindingActorLifetimeIsWeakTest::RunTest(const FString& Parameters
 
 	CheckArraysAreParallel(*this, Binding, 2, TEXT("as built"));
 
-	// The positive control, without which every assertion below passes on a stub.
+	// Positive control; without it the assertions below pass on a stub.
 	TestTrue(
 		FString::Printf(TEXT("as built: handle 1 should resolve to the doomed stand-in, got %s"),
 			*GetNameSafe(Binding.GetActor(1))),
@@ -374,10 +336,7 @@ bool FStructureBindingActorLifetimeIsWeakTest::RunTest(const FString& Parameters
 			*GetNameSafe(Binding.GetActor(1))),
 		Binding.GetActor(1) == nullptr);
 
-	/*
-	 * And still null once the memory is reclaimed. Marking garbage is what a destroyed actor does
-	 * first; the collect is what turns a raw pointer into a dangle.
-	 */
+	// Still null after collection, which is what would turn a raw pointer into a dangle.
 	CollectGarbage(RF_NoFlags, true);
 
 	TestTrue(
@@ -385,10 +344,6 @@ bool FStructureBindingActorLifetimeIsWeakTest::RunTest(const FString& Parameters
 			*GetNameSafe(Binding.GetActor(1))),
 		Binding.GetActor(1) == nullptr);
 
-	/*
-	 * A dead actor is not a removed piece. The graph never heard about this, so the piece is still in
-	 * it, bound to a handle and carrying load — only the world's half of the pair went away.
-	 */
 	TestTrue(TEXT("losing the actor must not remove the piece from the graph"),
 		!Binding.IsPieceRemoved(1));
 
@@ -410,15 +365,9 @@ bool FStructureBindingActorLifetimeIsWeakTest::RunTest(const FString& Parameters
 }
 
 /**
- * Which pieces a solve releases: exactly the ones the solver is no longer holding up, and the
- * binding does not care why. GetPieceSupport draws four states, two of which bring the brick down:
- * Falling is physics, Stranded is the solver declining to divide load round a knot. That distinction
- * is a worthwhile diagnostic, but nothing about the brick differs — either way no load path reaches
- * the earth — so a binding that branched on the reason would claim a stranded brick hangs in the air.
- * Pieces 2 and 3 are Stranded, piece 4 Falling, and all three must release identically.
- *
- * The push is explicit, not a callback: solving releases nothing (a solve is re-runnable and
- * non-destructive), and releasing is what ApplyResults does when the caller says so.
+ * A push releases exactly the pieces the solver no longer holds up. Stranded and Falling differ
+ * only as diagnostics, so both release identically. Solving itself releases nothing; only an
+ * explicit ApplyResults does.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureBindingReleaseFollowsSupportTest,
@@ -430,8 +379,7 @@ bool FStructureBindingReleaseFollowsSupportTest::RunTest(const FString& Paramete
 	using namespace StructureBindingTestSupport;
 
 	/*
-	 * All four support states in one structure, lifted from Structure.PieceSupportReason so the
-	 * states are pinned elsewhere and this test is only about what the binding does with them.
+	 * All four support states, from Structure.PieceSupportReason (which pins them).
 	 *
 	 *                       B          piece 4, resting on Y through a bed joint
 	 *                       |
@@ -479,10 +427,7 @@ bool FStructureBindingReleaseFollowsSupportTest::RunTest(const FString& Paramete
 
 	Binding.SolveLoads();
 
-	/*
-	 * Solving releases nothing. If this fails, the push has become a callback from inside the solver,
-	 * dragging the world into the world-free layer and firing during a re-runnable solve.
-	 */
+	// Solving releases nothing; the push must not become a callback from inside the solver.
 	for (int32 Index = 0; Index < PieceSpecs.Num(); ++Index)
 	{
 		TestTrue(
@@ -490,7 +435,7 @@ bool FStructureBindingReleaseFollowsSupportTest::RunTest(const FString& Paramete
 			!Binding.IsReleased(Index));
 	}
 
-	// The fixture's own precondition: these are the states the expectations rest on.
+	// Fixture precondition.
 	for (int32 Index = 0; Index < ExpectedSupport.Num(); ++Index)
 	{
 		TestTrue(
@@ -516,11 +461,7 @@ bool FStructureBindingReleaseFollowsSupportTest::RunTest(const FString& Paramete
 				Binding.IsReleased(Index) ? 1 : 0),
 			Binding.IsReleased(Index) == ExpectedReleased[Index]);
 
-		/*
-		 * The rule itself, stated against the solver's answer rather than the expectation column, so
-		 * a wrong table row is caught by the structure. Released is exactly "not held up", with
-		 * Stranded and Falling on the same side.
-		 */
+		// The rule against the solver's own answer, so a wrong table row is caught too.
 		const EPieceSupport State = Binding.GetStructure().GetPieceSupport(Index);
 		const bool bHeldUp = State == EPieceSupport::Grounded || State == EPieceSupport::Supported;
 
@@ -529,16 +470,12 @@ bool FStructureBindingReleaseFollowsSupportTest::RunTest(const FString& Paramete
 				Index, NameOfSupport(State), Binding.IsReleased(Index) ? 1 : 0),
 			Binding.IsReleased(Index) == !bHeldUp);
 
-		// Releasing a piece does not take it out of the graph; it is still a brick.
 		TestTrue(
 			FString::Printf(TEXT("releasing piece %d must not remove it from the graph"), Index),
 			!Binding.IsPieceRemoved(Index));
 	}
 
-	/*
-	 * A removed piece is never released. Its actor was cleared on removal, so there is nothing to
-	 * hand to physics — releasing it would report work done on an actor it no longer has.
-	 */
+	// A removed piece is never released: its actor was cleared on removal.
 	{
 		FStructureBinding Removed;
 		TArray<UObject*> RemovedStandIns;
@@ -572,22 +509,16 @@ bool FStructureBindingReleaseFollowsSupportTest::RunTest(const FString& Paramete
 }
 
 /**
- * Release is one way. A second push does not re-release a brick that has already fallen, and — the
- * sharp half — it does not freeze one either, however the solver's answer has changed. Re-freezing
- * is the dangerous direction: a released brick has been handed to Chaos and moved, and nothing in
- * this layer knows where it went, so freezing it back to kinematic pins it wherever physics left it
- * while the structure claims to rest on a brick on the floor. Re-releasing is merely wasteful.
- *
- * The fixture makes the solver genuinely change its mind, so this is not an unreachable branch:
+ * Release is one way: a second push neither re-releases nor re-freezes a fallen brick. Re-freezing
+ * is the danger: Chaos has moved the brick and this layer does not know where it went. The solver
+ * genuinely changes its mind here:
  *
  *      [ G ] — X          pieces 0 and 2, head-jointed
  *      =====    |
  *               F         piece 1, floating beneath X on a bed joint
  *
- * A bed joint beneath outranks the head joint, so while F is there X rests only on F, F is held up
- * by nothing, and both are Falling and released. Remove F and X falls back to its head joint to the
- * earth, reading Supported on the next solve — the one move in this model that re-supports a piece,
- * and exactly the player's.
+ * The bed joint outranks the head joint, so X rests only on F and both are Falling and released.
+ * Remove F and X falls back to its head joint and reads Supported.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureBindingReleaseIsOneWayTest,
@@ -617,7 +548,7 @@ bool FStructureBindingReleaseIsOneWayTest::RunTest(const FString& Parameters)
 
 	Binding.SolveLoads();
 
-	// Fixture precondition: a bed joint beneath outranks the head joint to the earth.
+	// Fixture precondition.
 	TestTrue(
 		FString::Printf(TEXT("fixture: X should be Falling while the floating piece beneath it is its only support, got %s"),
 			NameOfSupport(Binding.GetStructure().GetPieceSupport(2))),
@@ -634,10 +565,7 @@ bool FStructureBindingReleaseIsOneWayTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("F should have been released by the first push"), Binding.IsReleased(1));
 	TestTrue(TEXT("the grounded pier must not have been released"), !Binding.IsReleased(0));
 
-	/*
-	 * A second push on an unchanged structure is a no-op: nothing has moved, so nothing may be
-	 * released again, and the count is the only way to see that since IsReleased reads true either way.
-	 */
+	// A second push on an unchanged structure is a no-op; only the count shows it.
 	const int32 SecondRelease = Binding.ApplyResults();
 
 	TestTrue(
@@ -647,7 +575,6 @@ bool FStructureBindingReleaseIsOneWayTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("X must still be released after the second push"), Binding.IsReleased(2));
 
-	// Now change the solver's mind: pull the floating piece out from under X.
 	TestTrue(TEXT("removing the floating piece should report that it removed one"),
 		Binding.RemovePiece(1));
 
@@ -660,11 +587,7 @@ bool FStructureBindingReleaseIsOneWayTest::RunTest(const FString& Parameters)
 
 	const int32 ThirdRelease = Binding.ApplyResults();
 
-	/*
-	 * The assertion this test exists for. The solver now says X is held up, and X has already fallen.
-	 * bReleased is a latch, not a mirror of current support: the push must leave it alone, release
-	 * nothing, and above all not put X back.
-	 */
+	// The solver now holds X up, but X has fallen: bReleased is a latch, so X stays released.
 	TestTrue(
 		FString::Printf(TEXT("a push after a piece has fallen must release nothing, got %d"),
 			ThirdRelease),
@@ -684,28 +607,14 @@ bool FStructureBindingReleaseIsOneWayTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A piece is released only if the last solve actually computed a support state for it.
+ * A piece is released only if the last solve computed a support state for it. Falling is the
+ * solver's fail-closed default, but at this seam it triggers an irreversible release, so the
+ * default becomes fail-open (DESIGN.md §2). Handles at or past the last solve's extent have no
+ * answer.
  *
- * The polarity inverts at this seam, and that is the bug. EPieceSupport::Falling sits at enumerator
- * zero so an absent solver answer reads "nothing holds this up" rather than "rests on the earth" —
- * fail-closed as an answer. One layer up, Falling triggers an irreversible action (hand the brick to
- * physics and latch it), so the same default is now fail-open: DESIGN.md §2's caller obligation at
- * the binding seam, and this layer's to meet.
- *
- * The oracle is the solve's own extent. PieceSupported is sized by SolveLoads alone, so NumPieces()
- * at the last solve bounds which handles have an answer; anything at or beyond reads Falling by the
- * same range check an unknown handle takes. "Not held up" and "not yet asked" are the same value out
- * of GetPieceSupport, and only this layer can tell them apart.
- *
- * Two rows, because there are two ways past the extent. Row 1: the array empty — nothing solved, so
- * every handle including the foundation reads Falling (pinned correct at the solver level by
- * Structure.PieceSupportDegenerateInputs). Row 2: the array short — a piece added after the last
- * solve, the case the game hits when a player lays a brick on a settled wall. A guard written "have
- * we ever solved?" closes row 1 and leaves row 2 open.
- *
- * The damage is permanent, so the count is not the only assertion: bReleased is a one-way latch
- * ApplyResults skips forever, so no later solve can put the foundation back. RemovePiece has this
- * right — it acts only if the graph says a live piece went; this acts on a default.
+ * Row 1: nothing solved, so every handle, the foundation included, reads Falling. Row 2: a piece
+ * added after the last solve. A "have we ever solved?" guard closes row 1 only. bReleased latches,
+ * so a wrong release is permanent.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureBindingReleaseNeedsASolveTest,
@@ -718,8 +627,8 @@ bool FStructureBindingReleaseNeedsASolveTest::RunTest(const FString& Parameters)
 
 	/*
 	 *   [ brick 1 ]
-	 *   [  pad 0  ]      a grounded pad and a brick on a bed joint: the smallest
-	 *   ==========       structure that stands, lifted from PieceSupportDegenerateInputs.
+	 *   [  pad 0  ]      the smallest structure that stands
+	 *   ==========
 	 */
 	const TArray<FPieceSpec> PieceSpecs = {
 		{ BrickMassKg, true },  // 0: pad, on the earth
@@ -738,11 +647,7 @@ bool FStructureBindingReleaseNeedsASolveTest::RunTest(const FString& Parameters)
 
 		CheckArraysAreParallel(*this, Binding, PieceSpecs.Num(), TEXT("as built"));
 
-		/*
-		 * The fixture's precondition and the reason the row exists: every handle reads Falling before
-		 * a solve, the grounded pad included, because the support array is not sized yet. That is the
-		 * solver being correct; what must not happen is this layer treating it as an instruction.
-		 */
+		// Precondition: before a solve every handle reads Falling, the grounded pad included.
 		for (int32 Index = 0; Index < Binding.NumPieces(); ++Index)
 		{
 			TestTrue(
@@ -760,10 +665,6 @@ bool FStructureBindingReleaseNeedsASolveTest::RunTest(const FString& Parameters)
 				Released),
 			Released == 0);
 
-		/*
-		 * The grounded piece is the sharp one: a wall whose foundation goes dynamic at spawn is not a
-		 * wall, and the latch means it never comes back.
-		 */
 		TestTrue(
 			FString::Printf(
 				TEXT("row 1: the GROUNDED pad must not be released by a push that had nothing to read, IsReleased reports %d"),
@@ -787,7 +688,6 @@ bool FStructureBindingReleaseNeedsASolveTest::RunTest(const FString& Parameters)
 
 		Binding.SolveLoads();
 
-		// The fixture stands, so a settled push is a no-op and the row starts from zero.
 		TestTrue(
 			FString::Printf(TEXT("row 2 fixture: the pad should solve as Grounded, got %s"),
 				NameOfSupport(Binding.GetStructure().GetPieceSupport(0))),
@@ -805,11 +705,7 @@ bool FStructureBindingReleaseNeedsASolveTest::RunTest(const FString& Parameters)
 				SettledRelease),
 			SettledRelease == 0);
 
-		/*
-		 * The player lays a brick on the settled wall and does not re-solve, since placing and solving
-		 * are separate calls. The new handle is one past the last solve's extent, so the solver has no
-		 * answer for it.
-		 */
+		// Lay a brick without re-solving: its handle is past the last solve's extent.
 		UObject* Placed = MakeStandIn();
 		StandIns.Add(Placed);
 
@@ -833,10 +729,6 @@ bool FStructureBindingReleaseNeedsASolveTest::RunTest(const FString& Parameters)
 
 		CheckArraysAreParallel(*this, Binding, 3, TEXT("after the brick was laid"));
 
-		/*
-		 * The oracle, stated as the fixture's precondition: two pieces had an answer computed; the
-		 * third is past that extent and reads Falling for want of an entry, not of support.
-		 */
 		TestTrue(
 			FString::Printf(
 				TEXT("row 2 fixture: handle 2 is past the last solve's extent of 2 pieces, so it reads %s with no answer behind it"),
@@ -865,11 +757,7 @@ bool FStructureBindingReleaseNeedsASolveTest::RunTest(const FString& Parameters)
 				!Binding.IsReleased(Index));
 		}
 
-		/*
-		 * And the latch is why the count alone is not enough. Once something solves, the laid brick is
-		 * plainly held up — but a push that released it already latched it, and ApplyResults skips a
-		 * released piece forever, so a wrong release cannot be undone by the next solve.
-		 */
+		// After a solve the brick is Supported; a wrong earlier release would still be latched.
 		Binding.SolveLoads();
 
 		TestTrue(
@@ -898,11 +786,8 @@ bool FStructureBindingReleaseNeedsASolveTest::RunTest(const FString& Parameters)
 
 /**
  * A piece ref fails closed: a stale, foreign or out-of-range {StructureId, PieceIndex} resolves to
- * nothing rather than a confident handle on somebody else's brick. This is the whole of
- * actor-to-piece — the bricks carry their own identity, so what is left is the validation on the
- * way back in. A stale ref is the normal case (the actor outlives the piece, and a removed piece's
- * slot stays a valid index), so a bounds check alone is not enough. A matrix rather than examples,
- * because the wrong answer is a plausible small integer and every rejection route closes separately.
+ * nothing. Stale refs are normal (a removed slot stays a valid index), so a bounds check alone is
+ * not enough.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureBindingPieceRefFailsClosedTest,
@@ -943,17 +828,11 @@ bool FStructureBindingPieceRefFailsClosedTest::RunTest(const FString& Parameters
 	};
 
 	const TArray<FRefCase> Cases = {
-		/*
-		 * The two accepting rows come first: without them every rejection below is satisfied by a
-		 * function that returns INDEX_NONE unconditionally.
-		 */
+		// Accepting rows first, so an always-INDEX_NONE stub fails.
 		{ TEXT("a live piece of this structure resolves"), { ThisStructure, 0 }, 0 },
 		{ TEXT("and so does the one above it"), { ThisStructure, 1 }, 1 },
 
-		/*
-		 * The sharp one: a tombstoned slot is still a valid array index, so a bounds check alone
-		 * accepts it and hands back a handle to a piece not in the graph.
-		 */
+		// A tombstoned slot is still a valid index; a bounds check alone would accept it.
 		{ TEXT("a piece that has been removed does not resolve"), { ThisStructure, 2 }, INDEX_NONE },
 
 		{ TEXT("a negative index does not resolve"), { ThisStructure, -1 }, INDEX_NONE },
@@ -962,16 +841,10 @@ bool FStructureBindingPieceRefFailsClosedTest::RunTest(const FString& Parameters
 		{ TEXT("a wildly out-of-range index does not resolve"), { ThisStructure, MAX_int32 }, INDEX_NONE },
 		{ TEXT("MIN_int32 does not resolve, and must not be negated into range"), { ThisStructure, MIN_int32 }, INDEX_NONE },
 
-		/*
-		 * A ref from another structure names a piece that exists — elsewhere. This is what the
-		 * StructureId is for, the failure a bare index cannot see.
-		 */
+		// A ref from another structure: what StructureId exists to catch.
 		{ TEXT("a valid index belonging to a DIFFERENT structure does not resolve"), { SomeOtherStructure, 0 }, INDEX_NONE },
 
-		/*
-		 * A default ref matches nothing, in either field: an actor never told who it is must not
-		 * resolve to piece zero of whoever asked.
-		 */
+		// A default ref matches nothing, so an unidentified actor cannot resolve to piece zero.
 		{ TEXT("a ref with no structure id does not resolve"), { INDEX_NONE, 0 }, INDEX_NONE },
 		{ TEXT("a wholly default ref does not resolve"), { }, INDEX_NONE },
 	};
@@ -986,11 +859,7 @@ bool FStructureBindingPieceRefFailsClosedTest::RunTest(const FString& Parameters
 				Case.Expected, Resolved),
 			Resolved == Case.Expected);
 
-		/*
-		 * And the answer is usable without a second check: whatever comes back is fed straight to
-		 * GetActor, which must hand back the right stand-in for an accepted ref and null for every
-		 * rejected one.
-		 */
+		// The result feeds GetActor directly: right stand-in if accepted, null if rejected.
 		UObject* const Expected = StandIns.IsValidIndex(Case.Expected) ? StandIns[Case.Expected] : nullptr;
 
 		TestTrue(
@@ -1000,11 +869,8 @@ bool FStructureBindingPieceRefFailsClosedTest::RunTest(const FString& Parameters
 	}
 
 	/*
-	 * IsReleased takes the same handles and must fail closed the same way. "Not released" is its
-	 * fail-closed answer — a true here says a brick has been handed to physics, which makes
-	 * ApplyResults skip it forever. The removed handle is included on purpose: its slot is still a
-	 * valid index. That IsReleased can return true at all is established by ReleaseFollowsSupport and
-	 * ReleaseIsOneWay, so these rows are not satisfied by a stub.
+	 * IsReleased fails closed to false on unknown handles, including the removed slot. Other tests
+	 * show it can return true, so a stub cannot pass these rows.
 	 */
 	{
 		struct FUnknownHandleCase
@@ -1032,11 +898,7 @@ bool FStructureBindingPieceRefFailsClosedTest::RunTest(const FString& Parameters
 		}
 	}
 
-	/*
-	 * A binding never given an id matches nothing, including a ref never given one either. Two
-	 * unidentified things must not find each other by both being INDEX_NONE — the fail-open direction
-	 * a thoughtless equality check produces.
-	 */
+	// An unidentified binding matches nothing, even a ref that is also INDEX_NONE.
 	{
 		FStructureBinding Anonymous;
 		TArray<UObject*> AnonymousStandIns;
@@ -1071,30 +933,15 @@ bool FStructureBindingPieceRefFailsClosedTest::RunTest(const FString& Parameters
 }
 
 /**
- * A built wall can enter a binding, and the two arrays come out parallel.
+ * AdoptLayout brings a built wall into a binding with parallel arrays, the one sanctioned way to do
+ * it. It replays the layout, correct only because layouts are append-only (handle i of the layout is
+ * handle i of the binding).
  *
- * There is no other route, which is the point. RunningBond produces a finished FStructure and a
- * parallel Boxes array; FStructureBinding owns its FStructure privately and hands out no mutable
- * reference. So a caller's only alternative is its own loop re-adding every piece and connection —
- * exactly the two-arrays-in-lockstep code the type exists to forbid, at a call site nothing checks.
- * AdoptLayout is that loop written once.
+ * Asserted per handle (mass, grounded, box, actor), not by count: a reversed actor list or an
+ * off-by-one box index keeps every count right.
  *
- * It is a replay, correct only because a layout is append-only: RunningBond never removes a piece,
- * so handle i of the layout is handle i of the binding. That fails the moment a producer removes or
- * reuses a slot.
- *
- * The assertions are the parallelism itself, per handle — mass, grounded, box and actor, not a
- * matching count. Two free test-side mutations prove they bite: reversing Actors fails the identity
- * check on every piece, and feeding Boxes[i + 1] fails the box check. Counts survive both.
- *
- * And it refuses a layout whose arrays are already out of step. RunningBond can produce one: an
- * infinite brick dimension passes the spec guard, AddPiece refuses the infinite mass, and the box is
- * appended anyway, leaving Boxes one longer. The queued binding-level guard would not close this,
- * since the mass it would be handed belongs to the wrong piece (or is a zero AddPiece accepts). A
- * type whose contract is that its arrays cannot desync must not launder a known-desynced input, so
- * the check is at the door and a refusal writes nothing.
- *
- * World-free: stand-in UObjects in the transient package, no world and no actors.
+ * It refuses a layout whose arrays are already out of step (an infinite brick dimension makes
+ * AddPiece refuse the mass while the box is still appended), and a refusal writes nothing.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureBindingAdoptLayoutTest,
@@ -1106,11 +953,7 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 	using namespace StructureBindingTestSupport;
 	using namespace DestructionLayout;
 
-	/*
-	 * A flush wall, the mixed-size case. Three courses of three gives 10 pieces, half the middle
-	 * course being half bats, so the per-piece mass check has two masses to tell apart — a ragged
-	 * wall of one repeated mass would let a replay handing every piece the same mass pass.
-	 */
+	// A flush 3 x 3 wall: 10 pieces with half bats, so there are two masses to tell apart.
 	FRunningBondSpec Spec;
 	Spec.BrickSizeCm = FVector(21.5, 10.25, 6.5);
 	Spec.JointThicknessCm = 1.0;
@@ -1124,10 +967,7 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("fixture: RunningBond should lay the wall"), RunningBond(Spec, Layout));
 
-	/*
-	 * Floor the fixture: a one-piece jointless layout would satisfy every assertion below while
-	 * proving nothing about parallelism, and an empty one would satisfy them vacuously.
-	 */
+	// Floor the fixture: a tiny or empty layout would pass vacuously.
 	TestEqual(
 		FString::Printf(TEXT("fixture: a flush 3 x 3 wall should be 10 pieces, got %d"),
 			Layout.Structure.NumPieces()),
@@ -1157,10 +997,7 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		/*
-		 * Both columns have to vary or their assertions are free: two piece sizes, and only the
-		 * bottom course on the earth, or a replay that hard-coded either field would go unnoticed.
-		 */
+		// Both columns must vary, or a replay that hard-coded either would pass.
 		TestEqual(
 			FString::Printf(TEXT("fixture: the flush wall should hold two distinct masses, got %d"),
 				MassesSeen.Num()),
@@ -1185,7 +1022,6 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("AdoptLayout should adopt a well-formed layout"), bAdopted);
 
-	// The identity is the caller's, not the layout's: adoption must leave it alone.
 	TestEqual(
 		FString::Printf(TEXT("adoption must not change the binding's structure id, got %d"),
 			Binding.StructureId),
@@ -1199,11 +1035,7 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 			Layout.Structure.NumConnections(), Binding.GetStructure().NumConnections()),
 		Binding.GetStructure().NumConnections(), Layout.Structure.NumConnections());
 
-	/*
-	 * Per handle, all four columns. This is where a shifted array shows up: the counts above are
-	 * identical under a reversed actor list or an off-by-one box index, and both are otherwise silent
-	 * — the wall stands, the loads are right, and the player shoots one brick and another falls.
-	 */
+	// Per handle, all four columns: where a shifted array shows up.
 	for (int32 Piece = 0; Piece < Layout.Structure.NumPieces(); ++Piece)
 	{
 		const FStructurePiece& Original = Layout.Structure.GetPiece(Piece);
@@ -1263,11 +1095,7 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 				Joint, Original.PieceA, Original.PieceB, Adopted.PieceA, Adopted.PieceB),
 			Adopted.PieceA == Original.PieceA && Adopted.PieceB == Original.PieceB);
 
-		/*
-		 * The normal is compared exactly: a flipped one is not caught by the loads, since GetJointRole
-		 * turns the normal toward whichever piece it is asked about, so a consistently flipped joint
-		 * reports identical numbers. The pairing and normal travel together or a replay can transpose them.
-		 */
+		// Compared exactly: GetJointRole reorients the normal, so a flipped one would not show in the loads.
 		TestTrue(
 			FString::Printf(
 				TEXT("joint %d normal should be exactly (%g, %g, %g), got (%g, %g, %g)"),
@@ -1294,11 +1122,7 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 				&& Adopted.Strength.MaxShearStrengthMPa == Original.Strength.MaxShearStrengthMPa);
 	}
 
-	/*
-	 * And the adopted graph solves to the same answer, the outcome-shaped check on top of the
-	 * column-by-column ones. Solving is deterministic, so agreement is bit-for-bit; a replay that got
-	 * the graph subtly wrong produces plausible numbers that differ here and nowhere else.
-	 */
+	// The adopted graph solves bit-for-bit the same as the layout (solving is deterministic).
 	Layout.Structure.SolveLoads();
 	Binding.SolveLoads();
 
@@ -1313,7 +1137,6 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 			Binding.GetStructure().GetPieceSupport(Piece)
 				== Layout.Structure.GetPieceSupport(Piece));
 
-		// The wall stands, so a support mismatch is a real difference and not both falling.
 		TestTrue(
 			FString::Printf(TEXT("fixture: the adopted wall should stand — piece %d must be held up"), Piece),
 			Binding.GetStructure().IsPieceSupported(Piece));
@@ -1334,10 +1157,7 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 
 	ReleaseStandIns(StandIns);
 
-	/*
-	 * What adoption refuses, and every refusal must write nothing — a half-adopted binding is worse
-	 * than none, because the pieces it took would look like a real wall.
-	 */
+	// Refusals must write nothing: a half-adopted binding would look like a real wall.
 	{
 		auto CheckRefused =
 			[this](const TCHAR* Description, const FBrickLayout& Refused, TArrayView<UObject* const> Actors)
@@ -1374,18 +1194,14 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * The desync RunningBond can already produce, reproduced by hand rather than by an infinite
-		 * brick dimension — that route also drives JoinIfTouching into Boxes[INDEX_NONE], aborting the
-		 * whole run. Only the state it reaches matters, so the state is what is built.
+		 * The desync RunningBond can produce, built by hand: the real route (an infinite brick
+		 * dimension) also indexes Boxes[INDEX_NONE] and aborts the run.
 		 */
 		{
 			FBrickLayout Extra;
 			TestTrue(TEXT("fixture: the desync wall should be laid"), RunningBond(Spec, Extra));
 
-			/*
-			 * Copied out first: TArray::Add asserts on an argument that aliases the array's own
-			 * storage, so Add(Boxes[0]) aborts the whole run rather than failing anything.
-			 */
+			// Copied first: TArray::Add asserts on an argument aliasing its own storage.
 			const FPieceBox Duplicate = Extra.Boxes[0];
 			Extra.Boxes.Add(Duplicate);
 
@@ -1410,11 +1226,7 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 				TArrayView<UObject* const>(Spares.GetData(), Extra.Structure.NumPieces()));
 		}
 
-		/*
-		 * The actor list is the third parallel array, from a different place again — whoever spawned
-		 * the bricks. Too few and a handle binds to nothing; too many and there are actors no piece
-		 * will name, the direction that looks fine.
-		 */
+		// The actor list is the third parallel array; too few or too many are both refused.
 		{
 			FBrickLayout Good;
 			TestTrue(TEXT("fixture: the short-actor wall should be laid"), RunningBond(Spec, Good));
@@ -1435,11 +1247,7 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 				TArrayView<UObject* const>());
 		}
 
-		/*
-		 * An empty layout is not a wall. RunningBond refuses every spec that would produce one, so
-		 * accepting it here would make AdoptLayout the more permissive of the two, handing a caller a
-		 * true it cannot tell from success over a binding that shows nothing.
-		 */
+		// An empty layout is not a wall; RunningBond never produces one either.
 		{
 			FBrickLayout Nothing;
 
@@ -1456,18 +1264,8 @@ bool FStructureBindingAdoptLayoutTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A piece the structure refuses must not land in the binding either, or the two arrays desync at
- * the refusal and stay desynced forever. FStructure::AddPiece returns INDEX_NONE for a negative or
- * non-finite mass; the binding forwards the mass and then appends its own FPieceBinding, so an
- * unconditional append grows the binding array while the structure's stays put, and from then on
- * GetActor(i) names a different actor than GetPiece(i) above the hole. Nothing crashes; the player
- * shoots one brick and another falls.
- *
- * World-free: the binding holds a UObject* it never dereferences, so a transient stand-in suffices.
- *
- * The assertion is on the mechanism twice over: the refused call returns INDEX_NONE (the structure's
- * own handle, not a fresh one), and the binding still spans exactly the handles it did, checked via
- * CheckArraysAreParallel. A good piece is added first and read back, so the guard cannot pass by
+ * A piece the structure refuses (negative or non-finite mass) must not land in the binding either,
+ * or the arrays desync permanently. A good piece is added first so the guard cannot pass by
  * refusing everything.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -1484,10 +1282,7 @@ bool FStructureBindingAddPieceHonoursRefusalTest::RunTest(const FString& Paramet
 
 	TArray<UObject*> StandIns;
 
-	/*
-	 * One good piece first, so the arrays are non-empty and the refusal has something to fail to
-	 * disturb. Its handle is 0 and stays 0 throughout.
-	 */
+	// One good piece first, handle 0 throughout.
 	UObject* const Good = MakeStandIn();
 	StandIns.Add(Good);
 
@@ -1499,11 +1294,7 @@ bool FStructureBindingAddPieceHonoursRefusalTest::RunTest(const FString& Paramet
 
 	CheckArraysAreParallel(*this, Binding, 1, TEXT("after one good piece"));
 
-	/*
-	 * The refused masses. A NaN and a negative both fail AddPiece's guard, and the binding must relay
-	 * the refusal. Each uses a fresh stand-in, so a mistaken append shows as an extra handle and
-	 * leaks an actor naming nothing in the graph.
-	 */
+	// Each refused mass uses a fresh stand-in, so a mistaken append shows as an extra handle.
 	struct FRefusedCase
 	{
 		const TCHAR* Description;
@@ -1529,19 +1320,10 @@ bool FStructureBindingAddPieceHonoursRefusalTest::RunTest(const FString& Paramet
 				Case.Description, Handle),
 			Handle, static_cast<int32>(INDEX_NONE));
 
-		/*
-		 * The arrays are still parallel and still span just the one good handle — the desync the type
-		 * forbids: an appended refusal would report 2 handles here while the structure reports 1.
-		 */
 		CheckArraysAreParallel(*this, Binding, 1,
 			*FString::Printf(TEXT("after refusing %s"), Case.Description));
 	}
 
-	/*
-	 * And the good piece is untouched. A refusal that grew the array would already have fired the
-	 * length checks above; this last read proves the survivor was not itself corrupted by the failed
-	 * appends.
-	 */
 	TestTrue(
 		TEXT("handle 0 must still be the good stand-in after every refusal"),
 		Binding.GetActor(0) == Good);
