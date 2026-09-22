@@ -10,15 +10,10 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * A LOAD-DUMP DIAGNOSTIC, NOT A PERMANENT RED. It builds the standing realistic brick shed
- * (~442 pieces), runs the ROUTER load solve (SolveLoads — nothing removed, nothing broken),
- * and LOGS the per-piece and per-joint load in a machine-parseable CSV so the orchestrator
- * can build a load heat-map. It ASSERTS almost nothing — it exists to be grepped out of
- * Saved/Logs/DestructionGame.log under the SHEDLOAD_ prefix. The name deliberately omits
- * "DestructionGame" so the full suite never runs it; invoke it with
- * `Automation RunTests ShedRealisticLoads`.
- *
- * NEEDS A TICKING WORLD: NO. Boxes, doubles and the router; gravity on. No Chaos, no tick.
+ * Load-dump diagnostic, not a test. Builds the realistic shed (~442 pieces), runs the router solve
+ * (SolveLoads, nothing broken) and logs per-piece and per-joint load as CSV under the SHEDLOAD_
+ * prefix for a heat-map. The name omits "DestructionGame" so the full suite skips it; run with
+ * `Automation RunTests ShedRealisticLoads`. No ticking world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FShedRealisticLoadDump,
@@ -39,21 +34,15 @@ bool FShedRealisticLoadDump::RunTest(const FString& Parameters)
 
 	FStructure& S = L.Structure;
 
-	/*
-	 * The ROUTER load solve, and ONLY that: nothing is removed and nothing breaks, so every
-	 * joint reports what the intact standing shed puts through it. GetConnectionForce /
-	 * GetConnectionMoment / GetConnectionUtilisation / GetPieceSupport all read this solve.
-	 */
+	// Router solve only: nothing breaks, so every joint reports the intact shed's load.
 	S.SolveLoads();
 
 	UE_LOG(LogTemp, Display, TEXT("SHEDLOAD_BEGIN,%d pieces,%d joints"),
 		S.NumPieces(), S.NumConnections());
 
 	/*
-	 * PER-PIECE ROWS. cx/cy/cz is the box centre and ex/ey/ez the box HALF-extent, both cm,
-	 * straight off the layout's parallel Boxes array. mat is 1 for Timber, 0 for ClayBrick,
-	 * -1 for a piece that names no material (none in this shed). grounded is 0/1 and support
-	 * is the EPieceSupport int (0 Falling, 1 Grounded, 2 Supported, 3 Stranded).
+	 * Piece rows: box centre and half-extent (cm); mat 1 Timber, 0 ClayBrick, -1 none; grounded 0/1;
+	 * support as EPieceSupport (0 Falling, 1 Grounded, 2 Supported, 3 Stranded).
 	 */
 	for (int32 P = 0; P < S.NumPieces(); ++P)
 	{
@@ -75,11 +64,8 @@ bool FShedRealisticLoadDump::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * PER-JOINT ROWS. jx/jy/jz is the joint's contact centre — the producer's overlap-rectangle
-	 * centre (FConnection::InterfaceCentreCm) — and nx/ny/nz its interface normal (pointing
-	 * toward PieceB). area is the contact area cm2. fmag is |GetConnectionForce| with its
-	 * components fx/fy/fz (Unreal force units, 1 N = 100 uu), moment is |GetConnectionMoment|,
-	 * and util is GetConnectionUtilisation on the 0 -> 1 -> >1 scale.
+	 * Joint rows: interface centre and normal (toward PieceB), area cm2, force magnitude and
+	 * components in uu (1 N = 100 uu), moment magnitude, and utilisation.
 	 */
 	double MaxForce = 0.0;
 	double MaxUtil = 0.0;
@@ -106,10 +92,8 @@ bool FShedRealisticLoadDump::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE GROUND REACTION IS THE STANDING STRUCTURE'S TOTAL WEIGHT. A structure in static
-	 * equilibrium pushes exactly its own weight into the earth, so summing MassKg * 980 over
-	 * every live piece is the total vertical reaction without having to attribute it joint by
-	 * joint — the 980 already IS the 1 N = 100 uu conversion (see Structure.h's UNITS note).
+	 * In equilibrium the ground reaction equals total weight, sum of MassKg * 980 in uu (980 already
+	 * includes the 1 N = 100 uu conversion; see Structure.h).
 	 */
 	double GroundReaction = 0.0;
 	for (int32 P = 0; P < S.NumPieces(); ++P)
@@ -128,17 +112,9 @@ bool FShedRealisticLoadDump::RunTest(const FString& Parameters)
 }
 
 /**
- * THE SAME LOAD DUMP AS ABOVE, BUT WITH THE LOW BACK-WALL BAND REMOVED FIRST — the "arching" state.
- * Courses 6 and 7 of the +Y back wall (Z centres 48.25 / 55.75, the full-width low band, 17 bricks)
- * are pulled before the solve, so the dump shows how load re-routes around a low gap the running-bond
- * wall deep-beams over. It mirrors ShedRealisticLoads.Dump.StandingShed byte-for-byte in log format so
- * the two dumps overlay: a REMOVED piece still prints its box centre/extent (so the slot's location is
- * known) but carries support=-9, a sentinel the heat-map draws as empty. Joints incident to a removed
- * piece read fmag 0 — expected. It ASSERTS almost nothing; grep it out under the SHEDLOAD_ prefix. The
- * name omits "DestructionGame" so the full suite never runs it; invoke with
- * `Automation RunTests ShedRealisticLoads`.
- *
- * NEEDS A TICKING WORLD: NO. Boxes, doubles and the router; gravity on. No Chaos, no tick.
+ * The same dump with the low back-wall band (courses 6 and 7, 17 bricks) removed first, showing how
+ * load re-routes around the gap. Same log format so the two dumps overlay; removed pieces print with
+ * support = -9. Not in the full suite; no ticking world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FShedRealisticLoadDumpLowBandRemoved,
@@ -160,11 +136,8 @@ bool FShedRealisticLoadDumpLowBandRemoved::RunTest(const FString& Parameters)
 	FStructure& S = L.Structure;
 
 	/*
-	 * PULL THE LOW BACK-WALL BAND: courses 6 and 7 of the +Y back wall, the full-width low band (17
-	 * bricks — 8 in the even course 6 at Z 48.25, 9 in the odd course 7 at Z 55.75). A brick is taken
-	 * if it is ClayBrick, sits in the back-wall Y band centred on 128.875, and its Z centre matches one
-	 * of the two course centres (c * 7.5 + 3.25). This is the same band the LowBandArchVsCollapse probe
-	 * found stands with 0 lost-earth.
+	 * The band: ClayBrick pieces at Y = 128.875 in courses 6 and 7 (Z = c * 7.5 + 3.25), 8 + 9 bricks.
+	 * LowBandArchVsCollapse found it stands with 0 lost-earth.
 	 */
 	const double BackWallYCm = 128.875;
 	TArray<int32> Band;
@@ -193,22 +166,12 @@ bool FShedRealisticLoadDumpLowBandRemoved::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * The ROUTER load solve on the arched structure. The shed still stands (the earlier finding was 0
-	 * lost-earth for this full-width low band), so every survivor should read Grounded or Supported and
-	 * the joints report how the load routes around the slot.
-	 */
 	S.SolveLoads();
 
 	UE_LOG(LogTemp, Display, TEXT("SHEDLOAD_BEGIN,%d pieces,%d joints,%d removed"),
 		S.NumPieces(), S.NumConnections(), Removed);
 
-	/*
-	 * PER-PIECE ROWS, identical columns to the standing dump. A REMOVED piece is NOT skipped: it still
-	 * prints its box centre/extent so the slot's location is known, but its support field is forced to
-	 * the -9 removed sentinel. Live pieces print the real EPieceSupport int (0 Falling, 1 Grounded,
-	 * 2 Supported, 3 Stranded).
-	 */
+	// Same columns as the standing dump; removed pieces still print, with support = -9.
 	for (int32 P = 0; P < S.NumPieces(); ++P)
 	{
 		if (!L.Boxes.IsValidIndex(P))
@@ -229,11 +192,7 @@ bool FShedRealisticLoadDumpLowBandRemoved::RunTest(const FString& Parameters)
 			P, C.X, C.Y, C.Z, E.X, E.Y, E.Z, MatCode, Grounded, Support);
 	}
 
-	/*
-	 * PER-JOINT ROWS, identical columns to the standing dump. Joints incident to a removed piece read
-	 * fmag 0 because the tombstoned piece carries no load — that is expected and left in so the two
-	 * dumps stay index-aligned.
-	 */
+	// Joints of removed pieces read zero force; kept so the two dumps stay index-aligned.
 	double MaxForce = 0.0;
 	double MaxUtil = 0.0;
 	for (int32 J = 0; J < S.NumConnections(); ++J)
@@ -258,10 +217,7 @@ bool FShedRealisticLoadDumpLowBandRemoved::RunTest(const FString& Parameters)
 			Conn.InterfaceAreaSqCm, FMag, F.X, F.Y, F.Z, Moment, Util);
 	}
 
-	/*
-	 * HOW MANY SURVIVORS LOST THE EARTH — a live piece reading anything other than Grounded or Supported
-	 * is one the arch failed to carry. The band arches iff this is 0.
-	 */
+	// Survivors neither Grounded nor Supported; the band arches iff this is 0.
 	int32 LostEarth = 0;
 	double GroundReaction = 0.0;
 	for (int32 P = 0; P < S.NumPieces(); ++P)

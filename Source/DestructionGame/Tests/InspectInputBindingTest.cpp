@@ -11,15 +11,12 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges
- * many files into one. Note in particular that this is NOT InspectPieceBindingTestSupport,
- * which is the ASSET-side test next door. See CURRENT_STATE.md; the `using namespace` lives
- * inside RunTest for the same reason.
+ * Named namespace because unity builds merge anonymous ones. Not InspectPieceBindingTestSupport,
+ * which belongs to the asset-side test.
  */
 namespace InspectInputBindingTestSupport
 {
-	/** Every action-event binding on a component, printed, so the log records what was bound. */
+	/** Every action-event binding on a component, as one line for the log. */
 	FString DescribeActionBindings(const UEnhancedInputComponent* Component)
 	{
 		if (Component == nullptr)
@@ -49,41 +46,16 @@ namespace InspectInputBindingTestSupport
 }
 
 /**
- * THE PLAYER CONTROLLER BINDS IA_InspectPiece TO A HANDLER WHEN IT SETS ITS INPUT UP, EXACTLY
- * ONCE, ON THE PRESS.
+ * SetupInputComponent binds IA_InspectPiece to exactly one handler, on Started.
  *
- * WHAT IS BROKEN TODAY. IA_InspectPiece exists, IMC_Default maps it to LeftMouseButton
- * (Content.InspectPieceIsBound asserts both), the controller holds the action as a UPROPERTY
- * resolved by path, and InspectAlongRay is written and covered — but SetupInputComponent only
- * adds the mapping contexts. Nothing calls UEnhancedInputComponent::BindAction, so the key
- * press reaches nothing at all and the whole chain behind it is dead code from a player's
- * point of view. This is the wire, and it is the last thing between LMB and a menu.
+ * Asserts the binding registry, not a simulated click: a real key press needs a viewport, and the
+ * handler's DeprojectMousePositionToWorld is viewport-bound. The deprojection is untested anywhere,
+ * so the handler should be only a deprojection plus one InspectAlongRay call.
  *
- * THE ASSERTION IS THE BINDING REGISTRY, NOT A SIMULATED CLICK, and that is the honest limit
- * rather than a shortcut. Delivering a real key press needs a viewport, a slate application
- * and a focused window; and the handler's first act is DeprojectMousePositionToWorld, which is
- * genuinely viewport-bound — which is precisely why the seam sits at the RAY and
- * InspectAlongRay takes one. So: is the action attached to something. That is binary, exact,
- * and it is the specific thing that is missing. THE DEPROJECTION ITSELF IS DELIBERATELY NOT
- * COVERED HERE OR ANYWHERE, and the handler should therefore be a deprojection plus one call
- * to InspectAlongRay with nothing else in it — anything more grows the untested surface.
- *
- * EXACTLY ONE BINDING, NOT AT LEAST ONE. Two bindings for the same action on the same trigger
- * is a handler that runs twice per click: the menu opens, and then opens again against a
- * second trace — or, once the menu also dismisses on a miss, opens and immediately closes.
- * A count is the only thing that sees that, and "at least one" never would.
- *
- * ON Started, NOT Triggered. With no explicit trigger on the action, Triggered fires EVERY
- * FRAME the button is held down, so holding LMB re-traces and re-presents the menu sixty times
- * a second; Completed is the release, which opens a menu on let-go. Started is the one-shot
- * press, and opening a menu is a one-shot event.
- *
- * THE ACTION IS LOADED BY PATH RATHER THAN READ OFF THE CONTROLLER, so a controller that
- * bound some other action asset fails here rather than agreeing with itself.
- *
- * NEEDS A TICKING WORLD: it needs a WORLD — a controller is an actor, and the engine only runs
- * SetupInputComponent for a controller with a real ULocalPlayer behind it — but it never ticks
- * one, spawns no wall and touches no physics.
+ * Exactly one binding, since two would run the handler twice per click. Started, since Triggered
+ * fires every frame the button is held and Completed fires on release. The action is loaded by
+ * path, not read off the controller, so binding the wrong asset fails. Needs a world with a real
+ * ULocalPlayer (for SetupInputComponent) but never ticks it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FInspectInputBindingTest,
@@ -124,13 +96,7 @@ bool FInspectInputBindingTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * FIXTURE PRECONDITION: THE ENGINE REALLY DID RUN SetupInputComponent, and it made an
-	 * ENHANCED one. DefaultInput.ini names UEnhancedInputComponent as the default input
-	 * component class; if that ever changes, every BindAction in the project stops compiling
-	 * against the enhanced overloads and this is where it says so rather than reporting an
-	 * absent binding.
-	 */
+	// Precondition: DefaultInput.ini makes the input component a UEnhancedInputComponent.
 	UEnhancedInputComponent* const Input = Cast<UEnhancedInputComponent>(Controller->InputComponent);
 
 	TestNotNull(
@@ -145,10 +111,6 @@ bool FInspectInputBindingTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * WHAT IS BOUND, REPORTED ON EVERY RUN, so a failure is readable from the log rather than
-	 * from a debugger — and so "bound to the wrong trigger event" reads as such.
-	 */
 	AddInfo(FString::Printf(TEXT("the controller bound: %s"), *DescribeActionBindings(Input)));
 
 	int32 InspectBindings = 0;

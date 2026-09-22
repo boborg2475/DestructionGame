@@ -6,33 +6,18 @@
 #include "Core/Layout.h"
 
 /**
- * The named catalogue of playable destruction scenarios — the fixtures the suite proves
- * headlessly, addressable as levels a human can join and watch.
- *
- * World-free, like Core/Layout: no UWorld, no actors, no UObject, which keeps the
- * catalogue's own tests in the fast suite and lets the game mode be the only thing that
- * knows a level exists.
- *
- * One direction of inclusion: this includes Core/Layout.h and the profile headers, nothing
- * from Tests/. A test may reach the other way — that drift check is what keeps a level
- * honest — but production may not.
+ * The catalogue of playable scenarios: the suite's fixtures, addressable as levels. World-free (no
+ * UWorld, actors or UObject) so its tests stay fast. Production includes nothing from Tests/.
  */
 namespace DestructionScenarios
 {
-	/**
-	 * How a row wants to be framed — data on the row, defaulting to the head-on view every
-	 * existing level was designed around.
-	 *
-	 * A flat wall reads perfectly from straight in front; a genuinely 3D structure reads as a
-	 * flat front face from there, so its row opts into a three-quarter view instead: orbited
-	 * off-axis and raised, so depth and fall are visible rather than foreshortened.
-	 */
+	/** How a row is framed. 3D structures opt into ThreeQuarter so depth is visible. */
 	enum class EScenarioFraming : uint8
 	{
-		/** Straight in front along -Y, level — the original view; the default for every row. */
+		/** Straight in front along -Y, level. The default. */
 		HeadOn,
 
-		/** Orbited off-axis and elevated, looking down at the centre, framing the full 3D box. */
+		/** Orbited off-axis and elevated, framing the full 3D box. */
 		ThreeQuarter,
 	};
 
@@ -53,48 +38,25 @@ namespace DestructionScenarios
 		DestructionLayout::FRunningBondSpec Wall;
 
 		/**
-		 * What lays this row, when a running bond cannot — the producer as data on the row.
-		 *
-		 * Unset means the `Wall` spec above, laid by `RunningBond`. A corbel steps half a cell
-		 * per course off an immovable base, which `RunningBond` cannot express, so its row
-		 * carries the call that lays it instead.
-		 *
-		 * A function, not an enum with a switch in `Build`: scenarios are data here for the
-		 * same reason materials and connection types are, so a row carrying its own producer
-		 * is one row of a table and `Build` never learns what a corbel is.
+		 * The producer, for rows a running bond cannot express (such as a corbel). Unset means `Wall`
+		 * laid by `RunningBond`. A function rather than an enum so `Build` stays table-driven.
 		 */
 		TFunction<bool(DestructionLayout::FBrickLayout&)> LayStructure;
 
-		/** Centres of the bricks removed AFTER the player has had a look, cm. */
+		/** Centres of the bricks removed after the hold, cm. */
 		TArray<FVector> CutCentresCm;
 
 		/**
-		 * This row lays nothing, because the player lays it — the build sandbox.
-		 *
-		 * A build sandbox is an empty plot: the game mode opens no layout, spawns no brick, and
-		 * arms no hold timer. `Build` refuses such a row outright (`RunningBond` refuses zero
-		 * courses), so the game mode must branch on this before it asks for a layout.
+		 * The build sandbox: an empty plot the player builds on. `Build` refuses such a row, so the
+		 * game mode must check this before asking for a layout.
 		 */
 		bool bBuildSandbox = false;
 
 		/**
-		 * How long the level holds this structure exactly as laid before it runs, seconds.
-		 *
-		 * One clock, on every row, named for what it does rather than for the cut:
-		 * `CutDelaySeconds` lied on seven of nine rows, since a corbel cuts nothing at all.
-		 *
-		 * "Hold" means as laid, not unsolved: every brick spawns kinematic and only
-		 * `ABrickActor::Release` makes it dynamic, so holding is simply not releasing
-		 * anything, while the structure is still solved — `EPieceSupport::Falling` is what an
-		 * absent answer reads as. Solved and not settled: no joint has been asked to give yet.
-		 *
-		 * At this moment the level runs: it applies whatever cuts the row names and settles —
-		 * every joint over capacity gives. A row with no cut still has a moment; that is the
-		 * whole point of a corbel level, whose story is as-laid versus settled.
+		 * Seconds the structure is held as laid before the level runs: solved but not settled, no
+		 * brick released. Then the row's cuts (if any) are applied and the structure settles.
 		 */
 		double HoldSeconds = 4.0;
-
-		/** How this row wants to be viewed. A 3D row sets ThreeQuarter to show its depth. */
 		EScenarioFraming Framing = EScenarioFraming::HeadOn;
 	};
 
@@ -108,12 +70,8 @@ namespace DestructionScenarios
 	int32 IndexOfMapName(const FString& MapName);
 
 	/**
-	 * How a scenario came to be chosen — so a fallback is never mistaken for a default.
-	 *
-	 * The index alone cannot carry this: a URL naming a nonexistent scenario and a URL naming
-	 * nothing at all both end up on `sandbox`, and the player must be told which happened —
-	 * a typo they can fix, or the game opening normally. Indistinguishable, they are a player
-	 * staring at the wrong wall wondering why.
+	 * How a scenario was chosen, so a fallback from a mistyped name is distinguishable from the
+	 * default; both land on `sandbox`.
 	 */
 	enum class EScenarioSelection : uint8
 	{
@@ -126,21 +84,15 @@ namespace DestructionScenarios
 		/** Nothing named anything, so the default row was taken deliberately. */
 		Default,
 
-		/** A `Scenario=` option named a row that does not exist. The default was a FALLBACK. */
+		/** A `Scenario=` option named a row that does not exist; the default is a fallback. */
 		OptionNamedNoScenario,
 	};
 
 	/**
-	 * Which scenario a level should build, from its URL options and its map name.
+	 * Which scenario a level should build. Always a valid row, never INDEX_NONE.
 	 *
-	 * Always a valid row, never INDEX_NONE: an empty world is a worse failure than the
-	 * default wall.
-	 *
-	 * @param Options  the URL options string, `?Key=Value?Key=Value`, as
-	 *                 `AGameModeBase::OptionsString` carries it.
-	 * @param MapName  the map, as `UWorld::GetMapName()` gives it — a `UEDPIE_0_`-prefixed
-	 *                 name in PIE, or a long package path elsewhere.
-	 * @param OutHow   how the answer was reached. See EScenarioSelection.
+	 * @param Options  URL options, `?Key=Value?Key=Value`, as in `AGameModeBase::OptionsString`.
+	 * @param MapName  `UWorld::GetMapName()`: `UEDPIE_0_`-prefixed in PIE, else a long package path.
 	 */
 	int32 IndexForOptionsAndMap(
 		const FString& Options,
@@ -148,12 +100,8 @@ namespace DestructionScenarios
 		EScenarioSelection& OutHow);
 
 	/**
-	 * Lay a row's wall and resolve the bricks its cut names.
-	 *
-	 * Refuses a cut centre that names no brick, writing nothing: a silently dropped cut is
-	 * indistinguishable from a level whose wall correctly stood.
-	 *
-	 * @return true if the wall was laid and every cut centre found its brick.
+	 * Lay a row's structure and resolve its cut bricks. Refuses, writing nothing, if a cut centre
+	 * names no brick; a dropped cut would look like a wall that correctly stood.
 	 */
 	bool Build(
 		const FScenario& Scenario,
@@ -167,12 +115,7 @@ namespace DestructionScenarios
 		FRotator Rotation = FRotator::ZeroRotator;
 	};
 
-	/**
-	 * Where to stand so the whole of a structure is in frame.
-	 *
-	 * `Framing` selects head-on or a three-quarter angle that orbits and elevates the camera
-	 * to frame the full 3D bounds including Y-depth.
-	 */
+	/** Where to stand so the whole structure is in frame, head-on or three-quarter. */
 	FViewpoint ViewpointFor(
 		const FBox& BoundsCm,
 		double AspectHeightOverWidth,
