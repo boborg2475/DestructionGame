@@ -10,47 +10,28 @@
 // Solver's own log: Log per cascade that broke something or ran long, Verbose per pass.
 DEFINE_LOG_CATEGORY_STATIC(LogDestructionSolve, Log, All);
 
-/*
- * Every name carries a Solver prefix: a unity build merges anonymous namespaces across the
- * TU, so an unprefixed constant collides with a test file's (it happened once).
- */
+// Solver prefix on every name: a unity build merges anonymous namespaces across files.
 namespace
 {
 	/*
-	 * Unreal gravity, 980 cm/s2. Mass kg, length cm, so MassKg * 980 is already a force in uu:
-	 * the 1 N = 100 uu conversion (DESIGN.md §3) is baked into the 980. Multiplying by 100
-	 * again is out by exactly 100x.
+	 * Gravity, 980 cm/s2. MassKg * 980 is already a force in uu; the 1 N = 100 uu conversion is
+	 * baked in (DESIGN.md §3). Multiplying by 100 again is out by 100x.
 	 */
 	constexpr double SolverGravityCmPerSecondSquared = 980.0;
 
-	/*
-	 * Bed vs head joint threshold: cos(45 degrees). DESIGN.md §3 splits on "substantially
-	 * vertical"; 45 degrees prefers neither tier and needs no material data (the tier is
-	 * decided before any profile).
-	 */
+	// Bed vs head joint threshold: cos(45 degrees), decided before any material profile.
 	constexpr double SolverBedJointCosine = 0.70710678118654752440;
 
-	/*
-	 * Max arch depth as a fraction of span: sqrt(3)/2. BS 5977-1's equilateral load triangle
-	 * over an opening. ARCHING_DESIGN.md uses the angle only as a depth cap, not to reduce load
-	 * (the harsher reading). Spelled 0.866, the published figure.
-	 */
+	// Max arch depth per span: sqrt(3)/2, BS 5977-1's equilateral triangle (ARCHING_DESIGN.md).
 	constexpr double SolverArchingDepthPerSpan = 0.866;
 
 	/*
-	 * Max deep-beam depth as a multiple of the joint's effective arm e = |M|/|F|. Provisional
-	 * ruling (COMPOSITE_DEPTH_DESIGN.md slice 3). Bracketed by two fixtures: a brick deleted at
-	 * a wall end must not fell it (>= 2.465), the one-sided corbel needs <= 3.822, and 3.464 is
-	 * the only value with margin on both. A literal, not 4 * SolverArchingDepthPerSpan; the
-	 * arching angle does not govern this.
+	 * Max deep-beam depth as a multiple of the effective arm |M|/|F| (COMPOSITE_DEPTH_DESIGN.md
+	 * slice 3). Fixtures need >= 2.465 (wall-end deletion stands) and <= 3.822 (one-sided corbel).
 	 */
 	constexpr double SolverCompositeDepthPerArm = 3.464;
 
-	/*
-	 * How far a joint's rectangle may disagree with its own area, relative. Bracketed, not
-	 * pinned: exact equality is too strict (two derivations differ in the last bits) but must
-	 * still catch a different face. 1e-12 noise, 1e-6 refused; this sits mid-band.
-	 */
+	// Relative tolerance between a joint's rectangle and its area: above 1e-12 noise, below 1e-6.
 	constexpr double SolverRectangleAreaToleranceRatio = 1.0e-9;
 
 	/** The piece at the far end of a connection, or INDEX_NONE if it is not on it. */
@@ -70,11 +51,8 @@ namespace
 	}
 
 	/*
-	 * Does the load leaving this piece come back round to it? That is a piece caught in an
-	 * unroutable knot: ultimately its own support, and DESIGN.md §3 has no rule to divide load
-	 * round a loop. Not mere un-orderability (Kahn is top-down, so any piece under a knot comes
-	 * out unordered). Stops at grounded pieces (earth passes nothing on), walks LoadPaths so it
-	 * sees the edges the accumulation does, and leaves the start unvisited to detect return.
+	 * Whether load leaving this piece returns to it, i.e. it is its own support (a knot DESIGN.md
+	 * §3 cannot split). Stops at grounded pieces; the start stays unvisited to detect the return.
 	 */
 	bool LoadReturnsToPiece(
 		int32 PieceIndex,
@@ -120,10 +98,7 @@ namespace
 
 int32 FStructure::AddPiece(double MassKg, bool bIsGrounded)
 {
-	/*
-	 * Written !(MassKg >= 0.0) so a NaN lands inside the guard (every comparison against NaN is
-	 * false); downstream arithmetic would launder it into plausible loads. Zero is allowed.
-	 */
+	// !(x >= 0) so NaN is rejected too. Zero is allowed.
 	if (!(MassKg >= 0.0) || !FMath::IsFinite(MassKg))
 	{
 		return INDEX_NONE;
@@ -134,10 +109,7 @@ int32 FStructure::AddPiece(double MassKg, bool bIsGrounded)
 	Piece.MassKg = MassKg;
 	Piece.bIsGrounded = bIsGrounded;
 
-	/*
-	 * A piece added to a structure is in it. The flag defaults false so GetPiece's placeholder
-	 * for an unknown handle reads as dead; this is the one place that turns it on.
-	 */
+	// Defaults false so GetPiece's placeholder reads as dead; this is the only place it turns on.
 	Piece.bIsInTheStructure = true;
 
 	return Pieces.Add(Piece);
@@ -146,17 +118,14 @@ int32 FStructure::AddPiece(double MassKg, bool bIsGrounded)
 int32 FStructure::AddPiece(double MassKg, bool bIsGrounded, const FVector& CentreOfMassCm)
 {
 	/*
-	 * Refuse a non-finite centre before adding anything, so "refused" stays distinct from "added
-	 * then removed". A NaN centre becomes a NaN lever arm once SolveLoads subtracts a joint
-	 * centroid, reads intact (every NaN comparison is false), and a wall with one unplaceable
-	 * brick stands. ContainsNaN is per-component !IsFinite, so infinities are caught too.
+	 * Refuse a non-finite centre before adding anything. A NaN centre becomes a NaN lever arm
+	 * that reads intact. ContainsNaN also catches infinities.
 	 */
 	if (CentreOfMassCm.ContainsNaN())
 	{
 		return INDEX_NONE;
 	}
 
-	// Call the two-argument form rather than restating its guards, which could drift apart.
 	const int32 Handle = AddPiece(MassKg, bIsGrounded);
 
 	if (Handle == INDEX_NONE)
@@ -164,10 +133,7 @@ int32 FStructure::AddPiece(double MassKg, bool bIsGrounded, const FVector& Centr
 		return INDEX_NONE;
 	}
 
-	/*
-	 * A centre only buys eccentric loading. The flag keeps "at the origin" and "nobody said"
-	 * apart: a defaulted zero on a wall laid off the origin is a lever arm of metres.
-	 */
+	// The flag separates "at the origin" from "not supplied".
 	Pieces[Handle].CentreOfMassCm = CentreOfMassCm;
 	Pieces[Handle].bHasCentreOfMass = true;
 
@@ -176,10 +142,6 @@ int32 FStructure::AddPiece(double MassKg, bool bIsGrounded, const FVector& Centr
 
 int32 FStructure::AddConnection(const FConnection& Connection)
 {
-	/*
-	 * The structure owns the graph, so it's the only place that can validate a piece handle. A
-	 * joint to itself or to a nonexistent piece is not a load path.
-	 */
 	if (!Pieces.IsValidIndex(Connection.PieceA) || !Pieces.IsValidIndex(Connection.PieceB))
 	{
 		return INDEX_NONE;
@@ -190,21 +152,13 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 		return INDEX_NONE;
 	}
 
-	/*
-	 * Area fails closed at construction: the load split divides by total supporting area, and a
-	 * zero, negative or NaN area leaves nothing to divide by. Guard !(x > 0.0) rejects NaN by
-	 * the same branch as zero. FConnection keeps its own area guard for callers that bypass this.
-	 */
+	// The load split divides by area; !(x > 0) rejects NaN along with zero and negative.
 	if (!(Connection.InterfaceAreaSqCm > 0.0) || !FMath::IsFinite(Connection.InterfaceAreaSqCm))
 	{
 		return INDEX_NONE;
 	}
 
-	/*
-	 * A normal that won't normalise describes no interface plane. Normalize returns false for
-	 * both a zero-length and a NaN normal, so one check covers both. A non-unit normal is a
-	 * valid description of the same plane and stored as given.
-	 */
+	// Normalize fails for both zero-length and NaN. A non-unit normal is stored as given.
 	FVector UnitNormal = Connection.InterfaceNormal;
 	if (!UnitNormal.Normalize())
 	{
@@ -212,16 +166,12 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 	}
 
 	/*
-	 * Joint geometry, all conditional on a rectangle having been supplied. Zero extents mean "no
-	 * bending capacity measured" (the area alone answers a centred load), not a degenerate joint.
-	 * Any component non-zero, so a half-filled rectangle reaches the consistency rule below.
+	 * Geometry checks apply only when a rectangle is supplied; zero extents mean no bending
+	 * capacity measured. A half-filled rectangle still reaches the consistency rule below.
 	 */
 	if (!Connection.InterfaceHalfExtentCm.IsZero())
 	{
-		/*
-		 * A centre has no sensible bound, so finiteness is its only rule. A NaN here launders
-		 * into a NaN lever arm the moment anything subtracts it from a piece's centre of mass.
-		 */
+		// A NaN centre would become a NaN lever arm.
 		for (int32 Axis = 0; Axis < 3; ++Axis)
 		{
 			if (!FMath::IsFinite(Connection.InterfaceCentreCm[Axis]))
@@ -231,10 +181,8 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 		}
 
 		/*
-		 * A rectangle may only be supplied on an axis-aligned normal: an off-axis normal has two
-		 * in-plane candidates and would silently pick a section modulus. MakeInterface sets exactly
-		 * one component to +/-1, so nothing the producer builds is refused. Raw normal read, not
-		 * normalised, so a non-unit (0, 0, 5) is the same plane.
+		 * A rectangle needs an axis-aligned normal; off-axis would have no defined section
+		 * modulus. MakeInterface always produces one.
 		 */
 		int32 SeparationAxis = INDEX_NONE;
 		int32 AxisCount = 0;
@@ -254,11 +202,8 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 		}
 
 		/*
-		 * Every half-extent must be non-negative and finite, which the area check doesn't imply:
-		 * two negative halves multiply into a plausible 4 x -5 x -5 = 100 and flip every stress
-		 * sign. !(x >= 0.0) lands NaN inside the guard; IsFinite is separate since +inf >= 0.0 is
-		 * true. Zero on the separation axis exactly: an extent there can match the area yet
-		 * describe a box.
+		 * Half-extents must be non-negative and finite: two negatives multiply to a plausible area
+		 * (4 x -5 x -5 = 100) and flip every stress sign. Exactly zero on the separation axis.
 		 */
 		double RectangleAreaSqCm = 4.0;
 
@@ -284,11 +229,7 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 			RectangleAreaSqCm *= HalfExtentCm;
 		}
 
-		/*
-		 * And the two must be the same face. Area governs the split, the rectangle the lever arm,
-		 * and mortar's tensile strength is a hundredth of compressive, so a lever arm out by a
-		 * factor moves the governing axis. !(diff <= tol) lands a NaN difference inside the guard.
-		 */
+		// Rectangle and area must describe the same face. !(diff <= tol) also rejects NaN.
 		const double DisagreementSqCm =
 			FMath::Abs(RectangleAreaSqCm - Connection.InterfaceAreaSqCm);
 
@@ -299,10 +240,7 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 		}
 	}
 
-	/*
-	 * The break-pass stamps grow with the connection, so the arrays stay parallel by
-	 * construction. A never-broken joint is INDEX_NONE, the same answer as an unknown handle.
-	 */
+	// Parallel arrays; INDEX_NONE means never broken.
 	ConnectionBreakPass.Add(INDEX_NONE);
 	ConnectionBreakAuthority.Add(INDEX_NONE);
 
@@ -311,28 +249,18 @@ int32 FStructure::AddConnection(const FConnection& Connection)
 
 bool FStructure::RemovePiece(int32 PieceIndex)
 {
-	/*
-	 * A handle naming no piece, or one already gone, removes nothing. The second matters:
-	 * removal severs joints, and a second call would re-sever a joint the cascade already
-	 * stamped, or decrement a live count already dropped.
-	 */
+	// Unknown or already-removed handles remove nothing, so joints are never severed twice.
 	if (IsPieceRemoved(PieceIndex))
 	{
 		return false;
 	}
 
-	/*
-	 * Tombstone, never compaction: every handle in the connection array indexes this one, so no
-	 * piece may move down into a freed slot. See the note on bIsInTheStructure.
-	 */
+	// Tombstone, never compact: connection handles index this array.
 	Pieces[PieceIndex].bIsInTheStructure = false;
 
 	/*
-	 * A joint holding a removed piece is severed — the whole of removal's effect on the load
-	 * model. SolveLoads drops a given joint before the tier decision, so this one line takes the
-	 * piece out of tier, walk, load paths, order and split at once. By reference: a missing
-	 * ampersand would sever a copy and leave the real joints holding a removed piece. Nothing is
-	 * stamped: ConnectionBreakPass records what failed under load, and this joint never snapped.
+	 * Severing the piece's joints is removal's whole effect on the load model. Not stamped in
+	 * ConnectionBreakPass: these joints did not fail under load.
 	 */
 	for (FConnection& Connection : Connections)
 	{
@@ -342,19 +270,13 @@ bool FStructure::RemovePiece(int32 PieceIndex)
 		}
 	}
 
-	/*
-	 * The last solve's forces are left as-is; removal is immediate, not a re-solve. A caller
-	 * removes what it means to and then asks; the next solve starts from zero.
-	 */
+	// No re-solve; the last solve's forces stand until the caller solves again.
 	return true;
 }
 
 bool FStructure::IsPieceRemoved(int32 PieceIndex) const
 {
-	/*
-	 * An unknown handle reads as removed — fail-closed, so `if (IsPieceRemoved(H)) continue;`
-	 * skips a handle naming nothing rather than walking into it as if live.
-	 */
+	// Fail-closed: an unknown handle reads as removed.
 	return !Pieces.IsValidIndex(PieceIndex) || !Pieces[PieceIndex].bIsInTheStructure;
 }
 
@@ -365,10 +287,7 @@ int32 FStructure::NumPieces() const
 
 int32 FStructure::NumLivePieces() const
 {
-	/*
-	 * Counted, not cached, so it can't drift from the tombstones. NumPieces is the handle range;
-	 * this is the live count, and the two diverging is the point of leaving the hole.
-	 */
+	// Counted, not cached, so it cannot drift from the tombstones.
 	int32 LivePieces = 0;
 	for (const FStructurePiece& Piece : Pieces)
 	{
@@ -393,11 +312,7 @@ int32 FStructure::NumSolves() const
 
 bool FStructure::HasCompleteGeometry() const
 {
-	/*
-	 * A conjunction over live pieces and joints: a moment needs a point to act at and a rectangle
-	 * to resist it, so either half missing is incomplete geometry. Removed pieces and given
-	 * joints are out of the graph. An empty structure reads true.
-	 */
+	// Live pieces need a centre and live joints a rectangle. An empty structure reads true.
 	for (const FStructurePiece& Piece : Pieces)
 	{
 		if (Piece.bIsInTheStructure && !Piece.bHasCentreOfMass)
@@ -406,10 +321,6 @@ bool FStructure::HasCompleteGeometry() const
 		}
 	}
 
-	/*
-	 * Zero extents are the absence of a rectangle, as AddConnection reads them: not degenerate,
-	 * but a joint whose bending capacity nobody measured, which this predicate surfaces.
-	 */
 	for (const FConnection& Connection : Connections)
 	{
 		if (!Connection.HasGiven() && Connection.InterfaceHalfExtentCm.IsZero())
@@ -442,22 +353,17 @@ FConnection& FStructure::GetConnectionMutable(int32 ConnectionIndex)
 
 void FStructure::SolveLoads()
 {
-	/*
-	 * Counted once per call; nothing reads it back. The fixpoint below is one solve, not several.
-	 * A count, never a budget.
-	 */
+	// Once per call; the fixpoint below counts as one solve.
 	++SolveCount;
 
-	// Profiled, not budgeted: the phase clocks feed GetLastSolveLoadsProfile and nothing else.
+	// Phase clocks feed GetLastSolveLoadsProfile only.
 	LastSolveLoadsProfile = FSolveLoadsProfile();
 	const double ProfileStartSeconds = FPlatformTime::Seconds();
 
 	/*
-	 * Which joints touch which piece, built once. The tier decision wants a piece's own joints;
-	 * asking every connection about every piece was pieces x connections GetJointRole calls
-	 * (4.3M per solve on the 1,220-piece wall). Ascending connection index is contract: it
-	 * reproduces the old connection-major sweep bit for bit, and reordering would move an
-	 * accumulation whose last bit decides breaks. The bounds check guards a write, not a read.
+	 * Each piece's joints, built once (pieces x connections was 4.3M calls on the 1,220-piece
+	 * wall). Ascending connection index is contract: reordering shifts the last bit of sums that
+	 * decide breaks.
 	 */
 	TArray<TArray<int32>> PieceJoints;
 	PieceJoints.SetNum(Pieces.Num());
@@ -478,19 +384,13 @@ void FStructure::SolveLoads()
 	}
 
 	/*
-	 * Step one: which connections hold each piece up? Two-tiered (DESIGN.md §3): a piece rests on
-	 * the bed joints beneath it, and one with none falls back to its head joints. A bed joint
-	 * above bears nothing. Routing by graph distance to ground was wrong — a spanning brick ends
-	 * the same distance from earth as the brick on it, so the joint between carried zero.
+	 * Step one: each piece's supports, two-tiered (DESIGN.md §3). Bed joints beneath; with none,
+	 * fall back to head joints.
 	 */
 	TArray<TArray<int32>> SupportConnections;
 	SupportConnections.SetNum(Pieces.Num());
 
-	/*
-	 * And which have no seat at all — the fallback firing, indistinguishable downstream from a
-	 * one-seat piece by the finished list. A wide hole leaves the middle bricks seatless, which
-	 * is what ReseatSpannedGroups is for. Grounded pieces and tombstones excluded.
-	 */
+	// Pieces that took the head-joint fallback, for ReseatSpannedGroups. Excludes grounded/removed.
 	TArray<bool> PieceHasNoSeat;
 	PieceHasNoSeat.Init(false, Pieces.Num());
 
@@ -501,11 +401,8 @@ void FStructure::SolveLoads()
 		for (const int32 Index : PieceJoints[PieceIndex])
 		{
 			/*
-			 * A given joint conducts nothing; dropping it before the tier is decided takes it out
-			 * of support lists, walk, load paths, order and split at once. It must leave the tier
-			 * decision, not just the load path: a broken bed joint that still won the tier would
-			 * leave an empty support list and wrongly report the piece falling instead of onto its
-			 * head joints in shear.
+			 * Drop given joints before the tier decision: a broken bed joint that still won the
+			 * tier would leave the piece falling instead of on its head joints.
 			 */
 			if (Connections[Index].HasGiven())
 			{
@@ -527,10 +424,7 @@ void FStructure::SolveLoads()
 			}
 		}
 
-		/*
-		 * The fallback only: one bed joint beneath wins over any number of head joints, because
-		 * a joint that can bear in compression is what actually carries the piece.
-		 */
+		// Fallback only: one bed joint beneath beats any number of head joints.
 		if (SupportConnections[PieceIndex].Num() == 0)
 		{
 			PieceHasNoSeat[PieceIndex] =
@@ -541,9 +435,8 @@ void FStructure::SolveLoads()
 	}
 
 	/*
-	 * Step 1.5: a run of seatless pieces spans the hole rather than hanging off its edges. The
-	 * only place the solver reads geometry to route, above the tier not inside it (GetJointRole
-	 * untouched). Last to touch SupportConnections, so no step below can miss the re-seat.
+	 * Step 1.5: a run of seatless pieces spans the hole. The only geometric routing; last to touch
+	 * SupportConnections.
 	 */
 	TArray<bool> PieceReseatedOnAnArch;
 	TArray<bool> PieceInRefusedArchGroup;
@@ -558,10 +451,7 @@ void FStructure::SolveLoads()
 
 	LastSolveLoadsProfile.ReseatMs = (FPlatformTime::Seconds() - ReseatStartSeconds) * 1000.0;
 
-	/*
-	 * The same relation the other way: who rests on each piece. Both remaining steps walk the
-	 * support relation backwards, so it's built once here.
-	 */
+	// The inverse relation: who rests on each piece.
 	TArray<TArray<int32>> Loaders;
 	Loaders.SetNum(Pieces.Num());
 
@@ -574,37 +464,28 @@ void FStructure::SolveLoads()
 	}
 
 	/*
-	 * Pieces caught in a knot the solver can't route, reported as not held up. Kahn never makes
-	 * cycle members ready, so their weight never reaches earth; reporting unsupported makes
-	 * IsPieceSupported and GetConnectionForce agree, the fail-closed direction (DESIGN.md §3). The
-	 * set only grows (so the fixpoint terminates) and is rebuilt each solve, so no stale claim.
+	 * Pieces in an unroutable knot, reported unsupported (fail-closed, DESIGN.md §3). The set only
+	 * grows, so the fixpoint terminates.
 	 */
 	PieceStranded.Init(false, Pieces.Num());
 
 	/*
-	 * And which pieces have overturned: a body on two or more compression-only bearings whose
-	 * centre of mass projects outside their union has no admissible equilibrium, yet each seat
-	 * reads a comfortable split. Detected during the accumulation, excluded from the next walk
-	 * like stranding. A local, not a member; an overturned piece falls through to Falling.
+	 * Pieces on 2+ compression-only bearings whose centre of mass lies outside them: no admissible
+	 * equilibrium. Excluded from the next walk; they come out Falling.
 	 */
 	TArray<bool> PieceOverturned;
 	PieceOverturned.Init(false, Pieces.Num());
 
 	/*
-	 * And which pieces a refused one-sided arch has released. When a spanning group's one-sided
-	 * abutment makes the opposition gate refuse the arch (PieceInRefusedArchGroup), the run keeps
-	 * its sign-blind head joints and a cycle among them would read Stranded — but the refused arch
-	 * was its only path to earth, so the honest answer is Falling (DESIGN §8 case-21). Released
-	 * here, not stranded, and excluded from the next walk. Gated on refused-group membership.
+	 * Pieces of a refused one-sided arch group. The refused arch was their only path to earth, so
+	 * they are Falling, not Stranded (DESIGN §8 case-21).
 	 */
 	TArray<bool> PieceReleasedFromRefusedArch;
 	PieceReleasedFromRefusedArch.Init(false, Pieces.Num());
 
 	/*
-	 * Reachability and the load split depend on each other, so the solve runs to a fixpoint. Each
-	 * pass strands at least one more piece or is the last, so at most NumPieces + 1 passes; each
-	 * is a complete solve from scratch, everything declared inside the loop, so no pass reads what
-	 * an earlier one wrote.
+	 * Reachability and the load split depend on each other, so iterate to a fixpoint: at most
+	 * NumPieces + 1 passes, each a full solve from scratch.
 	 */
 	const double FixpointStartSeconds = FPlatformTime::Seconds();
 
@@ -616,18 +497,14 @@ void FStructure::SolveLoads()
 		LastSolveLoadsProfile.StrandedPerIteration.Add(0);
 		LastSolveLoadsProfile.ReleasedPerIteration.Add(0);
 
-		// Recomputed from scratch every pass, so re-solving never accumulates onto the last one.
 		ConnectionForces.Init(FVector::ZeroVector, Connections.Num());
 		ConnectionMoments.Init(FVector::ZeroVector, Connections.Num());
 		ConnectionCompositeDepthCm.Init(0.0, Connections.Num());
 		PieceSupported.Init(false, Pieces.Num());
 
 		/*
-		 * Step two: which pieces reach the ground? A BFS outward from every grounded piece over
-		 * support, not raw connectivity. Marking each piece once makes a cycle safe. A stranded
-		 * piece conducts nothing: neither marked nor crossed, so a later pass sees what rested on
-		 * it lose its path to earth. The removed-piece conjunct stops a removed grounded piece
-		 * seeding itself.
+		 * Step two: BFS up the support relation from live grounded pieces. Excluded pieces are
+		 * neither marked nor crossed.
 		 */
 		TArray<int32> SupportedFrontier;
 		for (const FStructurePiece& Piece : Pieces)
@@ -643,13 +520,6 @@ void FStructure::SolveLoads()
 		{
 			for (const int32 Loader : Loaders[SupportedFrontier[Head]])
 			{
-				/*
-				 * An overturned body is excluded like a stranded one: neither marked nor crossed,
-				 * so a piece resting only on something toppled loses its path to earth next pass.
-				 * Empty on pass one, so the walk is bit-identical until a body past tipping is
-				 * found. A refused-arch release is excluded the same way, dropping a declined
-				 * one-sided run through to Falling.
-				 */
 				if (!PieceSupported[Loader] && !PieceStranded[Loader] && !PieceOverturned[Loader]
 					&& !PieceReleasedFromRefusedArch[Loader])
 				{
@@ -660,10 +530,8 @@ void FStructure::SolveLoads()
 		}
 
 		/*
-		 * Step three: a support that is itself falling is not a support. The split may only use
-		 * supports with their own path to earth, or a joint carrying 1.9x reads 0.95x and stands
-		 * forever. Always safe: a supported ungrounded piece was reached through a supported
-		 * support, so at least one survives.
+		 * Step three: split only over supports with their own path to earth, or a joint carrying
+		 * 1.9x reads 0.95x. A supported piece always keeps at least one.
 		 */
 		TArray<TArray<int32>> LoadPaths;
 		LoadPaths.SetNum(Pieces.Num());
@@ -680,9 +548,8 @@ void FStructure::SolveLoads()
 		}
 
 		/*
-		 * Step four: accumulate weight downward, in a topological sort of the support relation — a
-		 * piece is ready once everything resting on it is dealt with. Distance to ground is not
-		 * that order. Only supported ungrounded pieces push load: a grounded piece terminates flow.
+		 * Step four: accumulate weight downward in topological order (Kahn): a piece is ready once
+		 * everything on it is done. Grounded pieces terminate flow.
 		 */
 		TArray<int32> PendingLoaders;
 		PendingLoaders.Init(0, Pieces.Num());
@@ -700,7 +567,6 @@ void FStructure::SolveLoads()
 			}
 		}
 
-		// Accumulation order.
 		TArray<int32> Ready;
 
 		for (int32 PieceIndex = 0; PieceIndex < Pieces.Num(); ++PieceIndex)
@@ -716,19 +582,13 @@ void FStructure::SolveLoads()
 		ReceivedFromAboveUU.Init(0.0, Pieces.Num());
 
 		/*
-		 * What arrives from above is a force and a moment about a point: the receiving piece's own
-		 * centre of mass. Transfer is transitive, so joint-to-centre-to-joint equals joint-to-joint
-		 * bit for bit, and a per-piece accumulator needs one point each. Not the world origin, which
-		 * is numerically awful (every entry a wall's moment about a point a wall-length away).
+		 * Moment received from above, about the receiving piece's centre of mass (not the world
+		 * origin, which loses precision far from it).
 		 */
 		TArray<FVector> ReceivedMomentUuCm;
 		ReceivedMomentUuCm.Init(FVector::ZeroVector, Pieces.Num());
 
-		/*
-		 * Set when this pass finds a body past tipping, so the fixpoint runs once more with it
-		 * excluded — the role bStrandedThisPass plays for a knot. A pass that only overturns
-		 * isn't the last one.
-		 */
+		// A pass that overturns something is not the last.
 		bool bOverturnedThisPass = false;
 
 		for (int32 Order = 0; Order < Ready.Num(); ++Order)
@@ -744,37 +604,21 @@ void FStructure::SolveLoads()
 				TotalAreaSqCm += Connections[Index].InterfaceAreaSqCm;
 			}
 
-			/*
-			 * A supported ungrounded piece always has a ground-reaching support and AddConnection
-			 * rejects a bad area, so this can't be false. A positive test lands a NaN total on
-			 * "cannot split", and it stays inside the loop so pieces underneath still become ready.
-			 */
+			// Should always hold; a NaN total lands on "cannot split" and the loop still continues.
 			const bool bCanSplit = TotalAreaSqCm > 0.0;
 
 			/*
-			 * A piece on exactly one support is statically determinate; on several it isn't. That's
-			 * the whole moment rule. Every joint crossing its own share with its own lever arm is
-			 * wrong: on a symmetric running-bond brick the moments cancel across the pair, not on
-			 * either one, so every bed joint in a standing wall would report ~0.029 in tension.
-			 *
-			 * On one support the moment is exact. On several the reactions rearrange until
-			 * equilibrium holds and this design has no rule to divide that, so the moment stays
-			 * zero — exact where the centre of mass sits at the supports' area-weighted centroid,
-			 * unconservative otherwise (MOMENTS_DESIGN.md). An unplaced piece carries no moment. A
-			 * piece re-seated onto an arch is indeterminate however many edges it has left: its
-			 * weight is shared between two abutments and the one head joint is a bookkeeping route,
-			 * not a claim it hangs off that joint alone.
+			 * Moments only on a statically determinate piece: one support, a placed centre, not
+			 * re-seated on an arch. On several supports the moment is left zero, which is exact only
+			 * when the centre sits at their area-weighted centroid (MOMENTS_DESIGN.md). Per-joint
+			 * moments there would read ~0.029 tension on every bed joint of a standing wall.
 			 */
 			const bool bLoadPathIsDeterminate = LoadPaths[Current].Num() == 1
 				&& Pieces[Current].bHasCentreOfMass && !PieceReseatedOnAnArch[Current];
 
 			/*
-			 * Before zeroing the moment for two or more supports, ask whether the body overturns.
-			 * Zeroing is right for a centre of mass over the supports, but wrong for one that has
-			 * left the region its supports can push up through with no tension to hold it down: no
-			 * admissible equilibrium (the shed's ridge, once its back gable is gone). On yes the
-			 * piece is marked so the next walk drops it and it comes out Falling. Nothing else
-			 * changes this pass. Gated on N >= 2.
+			 * Zeroing the moment is wrong if the centre of mass has left the supports' region (the
+			 * shed's ridge without its back gable). Mark it; the next walk drops it to Falling.
 			 */
 			if (LoadPaths[Current].Num() >= 2 && !PieceOverturned[Current]
 				&& PieceOverturnsOffItsSupports(Current, LoadPaths[Current]))
@@ -791,47 +635,28 @@ void FStructure::SolveLoads()
 
 				if (bCanSplit)
 				{
-					// Split weighted by interface area, so equal areas split evenly.
 					const double ShareUU = TotalUU * (Connection.InterfaceAreaSqCm / TotalAreaSqCm);
 
 					/*
-					 * Straight down, at whichever end is held up. Gravity doesn't change direction
-					 * because a joint is vertical; FConnection resolves this vector as compression on
-					 * a bed joint and shear on a head joint. ApplyArchingThrust adds the horizontal
-					 * component at spanned openings later. The sign is not free: a connection's force
-					 * acts on PieceB (ConnectionLoad.h), so when the loaded piece is PieceA the stored
-					 * force is the reaction, pointing up. Wrong, and a compressed joint reads tension —
-					 * mortar gives at one percent (0.1 MPa tensile vs 10 MPa compressive).
+					 * Straight down. The stored force acts on PieceB (ConnectionLoad.h), so when the
+					 * loaded piece is PieceA it is the upward reaction. A wrong sign reads compression
+					 * as tension, which mortar resists at 1% of compressive strength.
 					 */
 					const double SignedZUU = Connection.PieceB == Current ? -ShareUU : ShareUU;
 
-					/*
-					 * Assignment, not accumulation: a connection supports at most one of its two
-					 * endpoints here (mutual support forms a cycle the ordering never makes ready,
-					 * and the pass below strands it).
-					 */
+					// Assignment: a connection supports at most one endpoint (mutual support strands).
 					ConnectionForces[Index] = FVector(0.0, 0.0, SignedZUU);
 
-					/*
-					 * The same share as a physical force, straight down. Every moment below is built
-					 * from this, not the stored vector, so the declaration-order sign is applied once.
-					 */
+					// Physical weight, straight down; moments use this, not the signed stored force.
 					const FVector ShareWeightUu(0.0, 0.0, -ShareUU);
 
-					/*
-					 * The joint also has to know where it is. A joint with no rectangle has no
-					 * centroid, and its zero means "nobody said", not the origin; subtracting it from a
-					 * placed piece would invent metres of eccentricity and read every joint of a
-					 * half-described structure as failed.
-					 */
+					// A joint without a rectangle has no centroid; its zero is not the origin.
 					const bool bJointKnowsItsFace = !Connection.InterfaceHalfExtentCm.IsZero();
 
 					/*
-					 * What this joint carries about its own centroid: everything from above,
-					 * re-referenced, plus this piece's weight about the same point. (c_from - c_to) x F
-					 * is ordinary Varignon: the received load keeps its own lever arm rather than being
-					 * placed on this piece's middle. The moment rides alongside the force without
-					 * changing it; the split stays area-weighted.
+					 * Moment about this joint's centroid: the received moment re-referenced
+					 * (Varignon, (c_from - c_to) x F) plus this piece's weight. The force split is
+					 * unchanged.
 					 */
 					FVector MomentAboutJointUuCm = FVector::ZeroVector;
 
@@ -843,13 +668,9 @@ void FStructure::SolveLoads()
 								ShareWeightUu);
 
 						/*
-						 * A seat with something to push against arches rather than cantilevers. Delete one
-						 * brick from a running-bond wall and the brick above overhangs its one seat by
-						 * 5.625 cm and reads 1.63 in tension; add the intact head joint back and the bricks
-						 * either side lean on each other, thrust line through the opening, and it reads
-						 * 0.0142 in compression (ARCHING_DESIGN.md). The gates split across two objects:
-						 * "compressive and outside the kern" is arithmetic on the joint's face; the graph
-						 * condition is here. Cheap test first — an intact wall has e = 0 at every seat.
+						 * A seat with something to push against arches rather than cantilevers: the
+						 * brick over a deleted one reads 1.63 tension as a cantilever, 0.0142 compression
+						 * as an arch (ARCHING_DESIGN.md). The joint checks the kern; the graph check is here.
 						 */
 						if (GetJointRole(Index, Current) == EJointRole::BedBeneath)
 						{
@@ -859,12 +680,8 @@ void FStructure::SolveLoads()
 							if (ArchingRelief < 1.0)
 							{
 								/*
-								 * The couple the cap deletes is what something else must supply, so it's
-								 * handed over with the gates. Capping the moment by k removes (1 - k) of it,
-								 * and an arch is only an arch if the replacing thrust can be delivered —
-								 * HasArchingAbutment measures that against the seat's sliding capacity
-								 * (DESIGN.md §7 gap 4). The whole vector's magnitude is conservative. Inside
-								 * the relief test, so an intact wall's seats never pay for the square root.
+								 * The (1 - k) of the moment removed must be supplied as thrust the abutment can
+								 * deliver without sliding (DESIGN.md §7 gap 4).
 								 */
 								const double DeletedCoupleUuCm =
 									(1.0 - ArchingRelief) * MomentAboutJointUuCm.Size();
@@ -879,19 +696,10 @@ void FStructure::SolveLoads()
 							}
 
 							/*
-							 * What resists the remaining moment isn't one bed patch. A stack of courses over
-							 * a lost support acts as a deep beam: a vertical section through the bonded masonry,
-							 * t*D^2/6, against the patch's 179.48 cm3 — eleven courses is a factor of
-							 * sixty-five, deciding whether a brick deleted at a free end takes the wall down
-							 * (ARCHING_DESIGN.md slice 5). The depth is measured and the moment untouched, so
-							 * only this joint's utilisation moves. Gated on a bed joint with a real moment and
-							 * on a stack existing.
-							 *
-							 * Two caps. First, the joint's effective arm e = |M|/|F| times lambda: the division
-							 * credits less, tested positively so a NaN arm lands outside the relief. Second, the
-							 * corbelling body's own depth is a floor, since the arm may only trim masonry above
-							 * the cut. Maxes and mins are written out (`greater than`/`less than`, not FMath) so
-							 * a NaN depth fails closed. COMPOSITE_DEPTH_DESIGN.md.
+							 * Masonry stacked over a lost support resists as a deep beam, t*D^2/6, not one bed
+							 * patch (eleven courses is 65x the patch's 179.48 cm3; ARCHING_DESIGN.md slice 5).
+							 * Depth is capped at lambda * |M|/|F|, floored at the corbelling body's own depth.
+							 * Comparisons are written out so a NaN depth fails closed (COMPOSITE_DEPTH_DESIGN.md).
 							 */
 							if (!MomentAboutJointUuCm.IsZero()
 								&& PieceRestingOn(Current, PieceJoints) != INDEX_NONE)
@@ -927,9 +735,8 @@ void FStructure::SolveLoads()
 					}
 
 					/*
-					 * Handed on as the pair it is: force through this joint, moment re-referenced to the
-					 * receiving piece's centre. An indeterminate joint transmits zero moment about
-					 * itself, not nothing. Both ends must be placed, or the origin enters a lever arm.
+					 * Pass the moment on, re-referenced to the support's centre. Both ends must be
+					 * placed, or the origin enters a lever arm.
 					 */
 					if (bJointKnowsItsFace && Pieces[Support].bHasCentreOfMass)
 					{
@@ -942,10 +749,7 @@ void FStructure::SolveLoads()
 					ReceivedFromAboveUU[Support] += ShareUU;
 				}
 
-				/*
-				 * Every load-path entry reaches the ground, so the only thing to exclude is the
-				 * earth: a grounded piece absorbs what arrives and passes nothing on.
-				 */
+				// A grounded piece absorbs load and passes nothing on.
 				if (--PendingLoaders[Support] == 0 && !Pieces[Support].bIsGrounded)
 				{
 					Ready.Add(Support);
@@ -954,11 +758,8 @@ void FStructure::SolveLoads()
 		}
 
 		/*
-		 * Step five: strand the pieces caught in an unroutable knot; the next pass runs without
-		 * them. A piece is in the knot when its own load comes back round to it, not merely when
-		 * the ordering failed to reach it (DESIGN.md §3). Stranding travels upward via the
-		 * fixpoint, not this loop. A stranded piece is never re-marked supported, so every
-		 * non-breaking pass shrinks the problem.
+		 * Step five: strand pieces whose own load returns to them (DESIGN.md §3); the next pass
+		 * runs without them.
 		 */
 		bool bStrandedThisPass = false;
 		bool bReleasedThisPass = false;
@@ -971,12 +772,7 @@ void FStructure::SolveLoads()
 
 			if (LoadReturnsToPiece(PieceIndex, Pieces, Connections, LoadPaths))
 			{
-				/*
-				 * A cycle on a refused-arch member is a fall, not a knot: it's in this head-joint
-				 * cycle only because its one-sided arch was refused, losing its only load path, so
-				 * it's released to Falling. A cycle on any other piece is a genuine knot and stays
-				 * Stranded.
-				 */
+				// A refused-arch member lost its only load path, so it falls rather than strands.
 				if (PieceInRefusedArchGroup[PieceIndex])
 				{
 					PieceReleasedFromRefusedArch[PieceIndex] = true;
@@ -1007,10 +803,8 @@ void FStructure::SolveLoads()
 	}
 
 	/*
-	 * Step six: an arch pushes sideways, and the springing carries that too. Outside the fixpoint
-	 * because it reads its answer: the thrust is a fraction of the load the seats already carry,
-	 * known only once the accumulation settles, and it feeds nothing back — so the vertical answer
-	 * stays bit-identical to one before arches existed.
+	 * Step six: arch thrust on the springings. Outside the fixpoint because it depends on the
+	 * settled seat loads and feeds nothing back.
 	 */
 	const double ArchingStartSeconds = FPlatformTime::Seconds();
 
@@ -1022,32 +816,20 @@ void FStructure::SolveLoads()
 	LastSolveLoadsProfile.ArchingMs = (ProfileEndSeconds - ArchingStartSeconds) * 1000.0;
 	LastSolveLoadsProfile.TotalMs = (ProfileEndSeconds - ProfileStartSeconds) * 1000.0;
 
-	/*
-	 * Nothing is evaluated against a strength here. Solving must leave every connection as intact
-	 * as it found it: ApplyForce latches, so calling it would break joints as a side effect and
-	 * make a solve unrepeatable.
-	 */
+	// No strength checks here: ApplyForce latches, so a solve must not call it.
 }
 
 bool FStructure::PieceOverturnsOffItsSupports(int32 PieceIndex, const TArray<int32>& LoadPath) const
 {
 	const FStructurePiece& Piece = Pieces[PieceIndex];
 
-	/*
-	 * No centre of mass, no point to project: fail closed and keep today's stand. An unplaced
-	 * piece carries no overturning and must read as it did before this gate existed.
-	 */
+	// No centre of mass: fail closed, does not overturn.
 	if (!Piece.bHasCentreOfMass)
 	{
 		return false;
 	}
 
-	/*
-	 * The tension clause, asked first off the strength data. Any support that can carry tension
-	 * holds the lifting side down, so the body has an admissible equilibrium however far its
-	 * centre of mass reaches (the porch overhang tied by a Screw). Reading TensileStrengthMPa
-	 * directly keeps the distinction in the material data.
-	 */
+	// A support that carries tension holds the lifting side down (the porch overhang's Screw).
 	for (const int32 Index : LoadPath)
 	{
 		if (Connections[Index].Strength.TensileStrengthMPa > 0.0)
@@ -1057,10 +839,8 @@ bool FStructure::PieceOverturnsOffItsSupports(int32 PieceIndex, const TArray<int
 	}
 
 	/*
-	 * All supports are compression-only: the body stands only while its centre of mass projects
-	 * onto the region its bearings can push up through, the convex hull of the contact rectangles.
-	 * This tests the axis-aligned bounding box, a superset of the hull, so felling on "outside the
-	 * box" is conservative: never fells a body inside the hull. Projected onto the bed plane (X,Y).
+	 * Compression-only: the body stands while its centre of mass projects (in X,Y) inside the
+	 * contacts' hull. Tests the bounding box, a superset, so it never fells a body inside the hull.
 	 */
 	double MinX = 0.0;
 	double MaxX = 0.0;
@@ -1072,10 +852,7 @@ bool FStructure::PieceOverturnsOffItsSupports(int32 PieceIndex, const TArray<int
 	{
 		const FConnection& Connection = Connections[Index];
 
-		/*
-		 * A joint with no rectangle leaves the box undefined, so the body keeps today's reading:
-		 * fail-closed, a body with no support geometry must not spuriously overturn.
-		 */
+		// No rectangle, no box: fail closed.
 		if (Connection.InterfaceHalfExtentCm.IsZero())
 		{
 			return false;
@@ -1103,17 +880,12 @@ bool FStructure::PieceOverturnsOffItsSupports(int32 PieceIndex, const TArray<int
 		}
 	}
 
-	// No usable rectangle anywhere — fail closed.
 	if (!bHaveBox)
 	{
 		return false;
 	}
 
-	/*
-	 * Outside the box, as four positive comparisons. A negated conjunction would let a non-finite
-	 * coordinate through as an overturn (every NaN comparison is false, so !inside reads true).
-	 * Four <,> tests each fail against a NaN, landing such a piece on "inside".
-	 */
+	// Four positive comparisons, so a NaN coordinate reads "inside" rather than overturned.
 	const FVector Com = Piece.CentreOfMassCm;
 	return Com.X < MinX || Com.X > MaxX || Com.Y < MinY || Com.Y > MaxY;
 }
@@ -1126,20 +898,14 @@ void FStructure::ReseatSpannedGroups(
 	TArray<bool>& PieceInRefusedArchGroup,
 	TArray<FSpannedArch>& Arches) const
 {
-	/*
-	 * Sized before the gate, so every caller may index it without asking whether this pass ran;
-	 * all-false means "no group formed". PieceInRefusedArchGroup stays all-false unless a group
-	 * forms and its opposition gate refuses it, so a geometry-free structure is untouched.
-	 */
+	// Sized before the gate so callers can always index them.
 	PieceReseatedOnAnArch.Init(false, Pieces.Num());
 	PieceInRefusedArchGroup.Init(false, Pieces.Num());
 	Arches.Reset();
 
 	/*
-	 * The geometry gate, load-bearing not defensive: deciding a run of bricks over a hole is an
-	 * arch needs to know where the hole is. With no positions no group forms, so the pass is a
-	 * no-op and a geometry-free structure routes as ever. Both fuzz generators emit no geometry, so
-	 * an arch firing without positions would go dark quietly against oracles that never heard of one.
+	 * Finding an arch needs positions; without them this is a no-op. The fuzz generators emit no
+	 * geometry, so an arch firing without it would diverge from their oracles unnoticed.
 	 */
 	if (!HasCompleteGeometry())
 	{
@@ -1149,18 +915,13 @@ void FStructure::ReseatSpannedGroups(
 	TArray<bool> Grouped;
 	Grouped.Init(false, Pieces.Num());
 
-	/*
-	 * Reused across groups: hops from the nearest abutment, INDEX_NONE for a piece this
-	 * pass hasn't reached. Only the group being worked is read, and each group writes its
-	 * own before reading.
-	 */
+	// Hops from the nearest abutment; INDEX_NONE if unreached. Reused across groups.
 	TArray<int32> HopsFromAbutment;
 	HopsFromAbutment.Init(INDEX_NONE, Pieces.Num());
 
 	/*
-	 * What "contiguous" means, asked four times: the piece across an intact head joint, or
-	 * INDEX_NONE. Head joints only — following a bed joint would fuse the courses above and below a
-	 * hole into one group. HasGiven is asked here since GetJointRole keeps answering a severed joint.
+	 * The piece across an intact head joint, or INDEX_NONE. Head joints only: following bed
+	 * joints would fuse the courses above and below a hole.
 	 */
 	const auto AcrossHeadJoint = [this](int32 PieceIndex, int32 Index) -> int32
 	{
@@ -1176,7 +937,7 @@ void FStructure::ReseatSpannedGroups(
 			continue;
 		}
 
-		/* The group: the connected run of seatless pieces this one belongs to. */
+		// The connected run of seatless pieces containing Seed.
 		TArray<int32> Group;
 		Group.Add(Seed);
 		Grouped[Seed] = true;
@@ -1195,7 +956,6 @@ void FStructure::ReseatSpannedGroups(
 			}
 		}
 
-		/* Where the group sits, which is the point its abutments are counted either side of. */
 		FVector GroupCentreCm = FVector::ZeroVector;
 		for (const int32 Member : Group)
 		{
@@ -1205,9 +965,8 @@ void FStructure::ReseatSpannedGroups(
 		GroupCentreCm /= static_cast<double>(Group.Num());
 
 		/*
-		 * The abutments: the seated pieces the group pushes against, one head joint away. A member
-		 * touching one is a hop from ground and seeds the walk inward. Each abutment once, or one
-		 * counted twice would take twice its share of the thrust.
+		 * Abutments: seated pieces one head joint from the group, each counted once (twice would
+		 * double its thrust share). Members touching one seed the walk inward.
 		 */
 		TArray<int32> Abutments;
 		TArray<FVector> TowardAbutmentCm;
@@ -1240,10 +999,8 @@ void FStructure::ReseatSpannedGroups(
 		}
 
 		/*
-		 * The group only spans if something seated stands on both sides. One abutment is a
-		 * cantilever however long (the permissive failure ARCHING_DESIGN names). Opposite sides is
-		 * a negative dot product about the group's centre; a positive test leaves a NaN direction
-		 * unabutted.
+		 * Spans only with abutments on opposite sides (negative dot product); one side is a
+		 * cantilever. A NaN direction fails the test.
 		 */
 		bool bAbutsOnBothSides = false;
 
@@ -1261,13 +1018,7 @@ void FStructure::ReseatSpannedGroups(
 
 		if (!bAbutsOnBothSides)
 		{
-			/*
-			 * The gate refuses a one-sided cantilever, but the declined run would become a
-			 * mutual-support chain and LoadReturnsToPiece would strand it — a solver artefact, since
-			 * a refused arch was its only load path, so the honest answer is Falling. Record every
-			 * member so SolveLoads excludes them from the walk. Gated on group membership, so a
-			 * geometry-free knot is untouched.
-			 */
+			// Recorded so SolveLoads reports the run Falling rather than Stranded.
 			for (const int32 Member : Group)
 			{
 				PieceInRefusedArchGroup[Member] = true;
@@ -1275,7 +1026,6 @@ void FStructure::ReseatSpannedGroups(
 			continue;
 		}
 
-		/* How far each member is from the nearest abutment, in head joints. */
 		for (int32 Head = 0; Head < Frontier.Num(); ++Head)
 		{
 			for (const int32 Index : PieceJoints[Frontier[Head]])
@@ -1292,10 +1042,8 @@ void FStructure::ReseatSpannedGroups(
 		}
 
 		/*
-		 * The re-seat is acyclic by construction: a member keeps only the head joints that take it
-		 * strictly closer to an abutment, so every edge runs long-path to short and no walk returns
-		 * to its start (ARCHING_DESIGN's trap 1). Ascending joint index survives, since this filters
-		 * PieceJoints in place; the downstream accumulation is a float sum in these lists' order.
+		 * Acyclic by construction: a member keeps only head joints one hop closer to an abutment
+		 * (ARCHING_DESIGN trap 1). Filtering in place keeps ascending joint order.
 		 */
 		for (const int32 Member : Group)
 		{
@@ -1315,7 +1063,7 @@ void FStructure::ReseatSpannedGroups(
 					continue;
 				}
 
-				/* An abutment is where the walk started, so it is a hop from nowhere: zero. */
+				// An abutment is zero hops.
 				const int32 NeighbourHops = PieceHasNoSeat[Neighbour]
 					? HopsFromAbutment[Neighbour]
 					: 0;
@@ -1334,10 +1082,8 @@ void FStructure::ReseatSpannedGroups(
 		}
 
 		/*
-		 * And the opening is recorded as an arch with its two ends told apart: H is one number
-		 * pushed out at both ends, so the thrust pass must know which abutments face each other. The
-		 * first abutment's direction is the axis; sides fall out as the sign of a projection. A
-		 * direction that won't normalise sits on the group's centre, describing no span.
+		 * Record the arch with abutments split into two ends by the sign of their projection on
+		 * the first abutment's direction.
 		 */
 		FSpannedArch Arch;
 		Arch.TowardEndZero = TowardAbutmentCm[0];
@@ -1366,29 +1112,18 @@ void FStructure::ReseatSpannedGroups(
 			}
 		}
 
-		/*
-		 * Both ends or neither. bAbutsOnBothSides already found a pair in opposition, so this
-		 * can't be false; asked so a later refactor can't smuggle a one-ended arch past (trap 2).
-		 */
+		// Always true after bAbutsOnBothSides; kept so a one-ended arch cannot slip through (trap 2).
 		if (Arch.Abutments[0].Num() > 0 && Arch.Abutments[1].Num() > 0)
 		{
-			/*
-			 * And L is how far the two ends stand apart, one mean abutment centre per end. Slice 3
-			 * never needed it (the span cancelled out); capping d_e by the cover puts it back, from
-			 * the abutment positions with no new query.
-			 */
+			// Span L: distance between the ends' mean abutment centres.
 			EndCentreCm[0] /= static_cast<double>(Arch.Abutments[0].Num());
 			EndCentreCm[1] /= static_cast<double>(Arch.Abutments[1].Num());
 
 			Arch.SpanCm = (EndCentreCm[0] - EndCentreCm[1]).Size();
 
 			/*
-			 * The thrust axis is the line between the two ends' mean abutment centres, not the
-			 * first abutment's direction: pushing along that would shove each springing out of the
-			 * wall plane at a corner. The end-to-end difference cancels the shared out-of-plane
-			 * offset; EndCentreCm[0] is the +TowardEndZero side. Zeroing Z projects onto the seat
-			 * plane. A difference that won't normalise means the ends coincide horizontally — no
-			 * span, no thrust.
+			 * Thrust axis: horizontal line between the end centres, not the first abutment's
+			 * direction, which would push out of the wall plane at a corner.
 			 */
 			FVector ThrustAxisCm = EndCentreCm[0] - EndCentreCm[1];
 			ThrustAxisCm.Z = 0.0;
@@ -1412,52 +1147,37 @@ void FStructure::ApplyArchingThrust(
 	for (const FSpannedArch& Arch : Arches)
 	{
 		/*
-		 * The seats the arch delivers through, and what they already carry. Thrust leaves through
-		 * the same patch the weight does. Each seat's sign is recorded here: a joint's force acts on
-		 * PieceB (ConnectionLoad), so a joint naming the abutment second stores the push as given,
-		 * one naming it first the reaction. Backwards, and the two ends pull together, not apart.
+		 * The seats the thrust leaves through. Sign per seat: the stored force acts on PieceB
+		 * (ConnectionLoad.h); backwards, the ends pull together instead of apart.
 		 */
 		TArray<int32> Seats[2];
 		TArray<double> SeatSign[2];
 		double SeatAreaSqCm[2] = { 0.0, 0.0 };
 
-		/*
-		 * How deep the arch may be if only the angle governed, and how far the cover walk
-		 * below must look: past this much masonry the angle governs and the cover changes
-		 * nothing.
-		 */
+		// Depth if only the angle governed; the cover walk need look no further.
 		const double AngleCappedDepthCm = SolverArchingDepthPerSpan * Arch.SpanCm;
 
 		/*
-		 * The thinnest cover either end stands under, one number for the whole arch. Per-abutment
-		 * cover is trap 2 again: the ends would push by different amounts and hand the structure a
-		 * net horizontal force. The thinnest, not the mean, because thin cover is the direction
-		 * that fails.
+		 * The thinnest cover at either end, one value for the arch: per-end values would leave a
+		 * net horizontal force (trap 2).
 		 */
 		double CoverCm = TNumericLimits<double>::Max();
 
-		/*
-		 * W is the whole load the arch puts on its abutments, springings' own columns included
-		 * (ARCHING_DESIGN: not a triangle). The re-seated group's load alone would under-report the
-		 * thrust by about a cell.
-		 */
+		// W: the whole load on the abutments, springings' columns included (ARCHING_DESIGN).
 		double TotalVerticalUu = 0.0;
 
 		for (int32 End = 0; End < 2; ++End)
 		{
 			for (const int32 Abutment : Arch.Abutments[End])
 			{
-				/* Whichever of this abutment's seats came first: the plane its cover stands on. */
+				// The first seat: the plane the cover is measured from.
 				int32 SpringingJointIndex = INDEX_NONE;
 
 				for (const int32 Index : PieceJoints[Abutment])
 				{
 					const FConnection& Connection = Connections[Index];
 
-					/*
-					 * A given joint conducts nothing, so takes no thrust either — the tier rule.
-					 * GetJointRole keeps answering for a severed joint, so HasGiven is asked here.
-					 */
+					// GetJointRole still answers for a severed joint, so check HasGiven.
 					if (Connection.HasGiven()
 						|| GetJointRole(Index, Abutment) != EJointRole::BedBeneath)
 					{
@@ -1481,11 +1201,7 @@ void FStructure::ApplyArchingThrust(
 					continue;
 				}
 
-				/*
-				 * Written `not at least as deep`, not Min, so a NaN cover is taken not discarded: Min
-				 * would keep the good end's depth, this way the NaN reaches the guard below and the
-				 * arch is left unthrust.
-				 */
+				// Not Min: a NaN cover must be taken so the guard below leaves the arch unthrust.
 				const double AtThisEndCm = MasonryDepthAboveCm(
 					Abutment, SpringingJointIndex, PieceJoints, AngleCappedDepthCm);
 
@@ -1497,9 +1213,8 @@ void FStructure::ApplyArchingThrust(
 		}
 
 		/*
-		 * Both ends must be able to take it, or neither is pushed: thrusting only one end gives a
-		 * net horizontal force out of nowhere (ARCHING_DESIGN's trap 2). Every guard is a positive
-		 * test so a NaN area or load leaves it unthrust.
+		 * Both ends or neither (trap 2). Positive tests throughout, so a NaN leaves the arch
+		 * unthrust.
 		 */
 		if (Seats[0].Num() == 0 || Seats[1].Num() == 0)
 		{
@@ -1512,10 +1227,6 @@ void FStructure::ApplyArchingThrust(
 			continue;
 		}
 
-		/*
-		 * A degenerate span or cover leaves the arch unthrust, as a degenerate area or load does
-		 * above. Positive tests, so a NaN lands inside; neither is reachable from a wall anyone laid.
-		 */
 		if (!(Arch.SpanCm > 0.0) || !FMath::IsFinite(Arch.SpanCm)
 			|| !(CoverCm > 0.0) || !FMath::IsFinite(CoverCm))
 		{
@@ -1523,10 +1234,8 @@ void FStructure::ApplyArchingThrust(
 		}
 
 		/*
-		 * The arching depth, a min not a replacement: the angle says how deep an arch may be, the
-		 * masonry over the opening how deep it can be, the smaller governs. Held as d_e/L, since the
-		 * thrust depends only on the ratio (H = 3W/(8*(d_e/L))). Written out, not FMath::Min, because
-		 * a NaN cover in Min's first argument is silently replaced by the angle's answer — permissive.
+		 * d_e/L: the smaller of the cover and the angle cap. Written out, not FMath::Min, which
+		 * would silently replace a NaN cover with the angle's answer.
 		 */
 		const double DepthPerSpan = CoverCm < AngleCappedDepthCm
 			? CoverCm / Arch.SpanCm
@@ -1538,29 +1247,21 @@ void FStructure::ApplyArchingThrust(
 		}
 
 		/*
-		 * H = W*L/(8r) with r = d_e/3, so H = 3W/(8*(d_e/L)). The rise is a fixed fraction of the
-		 * depth, not the span, so H climbs as 1/d_e while V doesn't and thin cover raises the
-		 * thrust. Where the angle governs, d_e/L is 0.866 and it settles at 3/(4*0.866) = 0.866. One
-		 * number for the whole arch, pushed at both ends.
+		 * H = W*L/(8r) with rise r = d_e/3, so H = 3W/(8*(d_e/L)); thin cover raises the thrust.
+		 * At the angle cap, d_e/L = 0.866.
 		 */
 		const double ThrustUu = 3.0 * TotalVerticalUu / (8.0 * DepthPerSpan);
 
 		for (int32 End = 0; End < 2; ++End)
 		{
-			/*
-			 * One direction, two signs, so the ends sum to exactly zero: +H*D and -H*D cancel bit
-			 * for bit.
-			 */
+			// +H and -H along one axis cancel exactly.
 			const FVector EndThrustUu = (End == 0 ? ThrustUu : -ThrustUu) * Arch.TowardEndZero;
 
 			for (int32 Which = 0; Which < Seats[End].Num(); ++Which)
 			{
 				const int32 Index = Seats[End][Which];
 
-				/*
-				 * Divided among an end's seats by interface area, the same rule the load split uses;
-				 * with one seat (a half-seated springing) it's the whole of it.
-				 */
+				// Split among an end's seats by area, as the load split is.
 				const double AreaShare =
 					Connections[Index].InterfaceAreaSqCm / SeatAreaSqCm[End];
 
@@ -1574,10 +1275,8 @@ int32 FStructure::PieceRestingOn(
 	int32 Piece, const TArray<TArray<int32>>& PieceJoints) const
 {
 	/*
-	 * What stands on this piece is whatever BedAbove says rests on it: a walk over the joints a
-	 * brick has. HasGiven is asked since GetJointRole keeps answering a severed joint. The first by
-	 * ascending joint index, a chain not a traversal; a stepped or gabled wall's answer would
-	 * depend on which column this took, untested. Callers: MasonryDepthAboveCm and SolveLoads.
+	 * The first live piece on an intact BedAbove joint, by ascending joint index. A chain, not a
+	 * traversal: untested on stepped or gabled walls.
 	 */
 	for (const int32 Index : PieceJoints[Piece])
 	{
@@ -1612,10 +1311,8 @@ double FStructure::MasonryDepthAboveCm(
 	}
 
 	/*
-	 * The course the joint is under counts and is the first, so the shallowest depth is one course,
-	 * never zero. Its depth is a course pitch, not a brick height (the wall works through the mortar
-	 * too): the rise from the piece below the joint to the piece on it. A brick height reads ~13%
-	 * shallow.
+	 * The first course always counts. Depth is measured as course pitch (centre to centre), not
+	 * brick height, which reads ~13% shallow.
 	 */
 	const double FirstCourseRiseCm =
 		Pieces[Piece].CentreOfMassCm.Z - Pieces[Seat].CentreOfMassCm.Z;
@@ -1626,10 +1323,8 @@ double FStructure::MasonryDepthAboveCm(
 	}
 
 	/*
-	 * The walk is bounded twice. Past EnoughDepthCm no further course changes the answer, at most
-	 * ceil(EnoughDepthCm / pitch) steps. The piece count is the second bound, defence against a
-	 * graph claiming A over B and B over A. Compared as a double, so a vanishing pitch gives an
-	 * enormous bound, not an undefined integer conversion.
+	 * Bounded by EnoughDepthCm and by the piece count (defence against a cyclic graph). Kept as a
+	 * double so a tiny pitch cannot overflow an integer conversion.
 	 */
 	const double MaxCourses = FMath::Min(
 		FMath::CeilToDouble(EnoughDepthCm / FirstCourseRiseCm),
@@ -1640,7 +1335,6 @@ double FStructure::MasonryDepthAboveCm(
 
 	for (int32 Course = 1; CoverCm < EnoughDepthCm && Course < MaxCourses; ++Course)
 	{
-		// One step up, over a bed joint and never through space. See PieceRestingOn.
 		const int32 Above = PieceRestingOn(Current, PieceJoints);
 
 		if (Above == INDEX_NONE)
@@ -1648,10 +1342,7 @@ double FStructure::MasonryDepthAboveCm(
 			break;
 		}
 
-		/*
-		 * Measured rise by rise, so unequal courses add up to what they are. A step that doesn't
-		 * rise isn't a course; stopping on it is fail-closed, since less cover is more thrust.
-		 */
+		// A step that does not rise ends the walk; less cover means more thrust, the safe side.
 		const double RiseCm =
 			Pieces[Above].CentreOfMassCm.Z - Pieces[Current].CentreOfMassCm.Z;
 
@@ -1679,11 +1370,7 @@ double FStructure::CorbellingBodyDepthCm(
 		return 0.0;
 	}
 
-	/*
-	 * The body's first course is the piece on the joint, not asked whether it's corbelling — it's
-	 * the cut by construction, whose overhang generated the moment. Measured as a course pitch from
-	 * the seat, for MasonryDepthAboveCm's reason.
-	 */
+	// The piece on the joint is the first course by construction; measured as a course pitch.
 	const double FirstCourseRiseCm =
 		Pieces[Piece].CentreOfMassCm.Z - Pieces[Seat].CentreOfMassCm.Z;
 
@@ -1692,10 +1379,7 @@ double FStructure::CorbellingBodyDepthCm(
 		return 0.0;
 	}
 
-	/*
-	 * Seated on exactly one course. Counted over the piece's own joints, excluding given joints and
-	 * pieces that left the structure — the same exclusions PieceRestingOn makes.
-	 */
+	// Seated on exactly one live piece through an intact bed joint.
 	auto IsCorbelling = [this, &PieceJoints](int32 Candidate)
 	{
 		int32 Seats = 0;
@@ -1722,10 +1406,7 @@ double FStructure::CorbellingBodyDepthCm(
 	double DepthCm = FirstCourseRiseCm;
 	int32 Current = Piece;
 
-	/*
-	 * The piece count bound is pure defence: every step rises so a consistent graph stops on its
-	 * own; this stops an inconsistent one walking forever.
-	 */
+	// The piece-count bound only guards against an inconsistent graph.
 	for (int32 Course = 1; Course < Pieces.Num(); ++Course)
 	{
 		int32 Above = INDEX_NONE;
@@ -1752,11 +1433,7 @@ double FStructure::CorbellingBodyDepthCm(
 			break;
 		}
 
-		/*
-		 * Measured rise by rise; a step that doesn't rise isn't a course. Written !(x > 0.0) so
-		 * unmeasured geometry leaves the body at the depth it earned rather than adding a NaN; a
-		 * shallower body credits less section, the safe direction.
-		 */
+		// !(x > 0) stops on a NaN too; a shallower body credits less section, the safe side.
 		const double RiseCm =
 			Pieces[Above].CentreOfMassCm.Z - Pieces[Current].CentreOfMassCm.Z;
 
@@ -1781,11 +1458,7 @@ bool FStructure::HasArchingAbutment(
 	const TArray<TArray<int32>>& SupportConnections,
 	const TArray<bool>& PieceReseatedOnAnArch) const
 {
-	/*
-	 * The seat's plane is what the sides are measured in, so a normal that won't normalise can't
-	 * abut anything. Nothing reaching here can fail this; it's here so the projections below get a
-	 * real direction.
-	 */
+	// Unreachable in practice; guards the projections below.
 	FVector UnitNormal = BedJoint.InterfaceNormal;
 
 	if (!UnitNormal.Normalize())
@@ -1793,19 +1466,13 @@ bool FStructure::HasArchingAbutment(
 		return false;
 	}
 
-	/*
-	 * Which way the piece overhangs: its centre of mass relative to the patch it left, flattened
-	 * into that patch's plane (5.625 cm for a half-seated running-bond brick). The projection drops
-	 * the height from a sideways-only comparison.
-	 */
+	// Overhang direction in the seat plane (5.625 cm for a half-seated running-bond brick).
 	const FVector EccentricCm = FVector::VectorPlaneProject(
 		Pieces[PieceIndex].CentreOfMassCm - BedJoint.InterfaceCentreCm, UnitNormal);
 
 	/*
-	 * How hard this seat may be pushed sideways, MPa, bought with its own squeeze. The deleted
-	 * couple leaves through this patch as shear, limited by the Mohr-Coulomb envelope (bond plus
-	 * friction on the mean compression). Read off the force, so a cohesionless joint earns only its
-	 * friction. One conversion, the named one: force uu, strengths MPa, the area carries the 10000.
+	 * The seat's sliding capacity, MPa: Mohr-Coulomb, cohesion plus friction on its compression.
+	 * Force is uu, strength MPa; ForceUnitsPerMPaSqCm is the one conversion.
 	 */
 	const FConnectionLoad SeatLoad = DestructionForce::ClassifyForce(SeatForceUu, UnitNormal);
 
@@ -1815,11 +1482,7 @@ bool FStructure::HasArchingAbutment(
 	const double CohesionAndFrictionMPa = BedJoint.Strength.ShearCohesionMPa
 		+ BedJoint.Strength.FrictionCoefficient * SeatCompressionMPa;
 
-	/*
-	 * The truncation is written out, not FMath::Min: Min is (A <= B) ? A : B, and a NaN capacity as
-	 * the first argument is replaced by the profile ceiling — an arch afforded by arithmetic nobody
-	 * can read. Asking whether the ceiling is smaller keeps a NaN, refusing the relief.
-	 */
+	// Not FMath::Min, which would replace a NaN capacity with the ceiling; this keeps the NaN.
 	const double SlidingCapacityMPa =
 		BedJoint.Strength.MaxShearStrengthMPa < CohesionAndFrictionMPa
 			? BedJoint.Strength.MaxShearStrengthMPa
@@ -1829,19 +1492,13 @@ bool FStructure::HasArchingAbutment(
 	{
 		const FConnection& Head = Connections[Index];
 
-		/*
-		 * A given joint conducts nothing, so can't deliver a thrust — the tier rule.
-		 * GetJointRole still answers for a severed joint, so HasGiven is asked here.
-		 */
+		// GetJointRole still answers for a severed joint, so check HasGiven.
 		if (Head.HasGiven() || GetJointRole(Index, PieceIndex) != EJointRole::Head)
 		{
 			continue;
 		}
 
-		/*
-		 * And the head joint must know where it is: its centroid says which side it's on, and
-		 * an unmeasured face's zero means "nobody said", not a plane through the world origin.
-		 */
+		// An unmeasured face has no centroid to take a side from.
 		if (Head.InterfaceHalfExtentCm.IsZero())
 		{
 			continue;
@@ -1850,10 +1507,7 @@ bool FStructure::HasArchingAbutment(
 		const FVector TowardAbutmentCm = FVector::VectorPlaneProject(
 			Head.InterfaceCentreCm - Pieces[PieceIndex].CentreOfMassCm, UnitNormal);
 
-		/*
-		 * On the eccentric side; a joint square on to the overhang is on neither. A positive
-		 * test drops an exact zero, and a NaN, here rather than counting it an abutment.
-		 */
+		// Must be on the overhang side; a positive test drops zero and NaN.
 		if (!(FVector::DotProduct(EccentricCm, TowardAbutmentCm) > 0.0))
 		{
 			continue;
@@ -1862,10 +1516,8 @@ bool FStructure::HasArchingAbutment(
 		const int32 Abutment = OtherEndOf(Head, PieceIndex);
 
 		/*
-		 * It must reach the ground on its own account, both halves matter. PieceSupported is the
-		 * walk from earth; the second test is trap 3, telling a real arch from two bricks propping
-		 * each other over open air — both Supported with an intact head joint, so only the support
-		 * relation separates them.
+		 * The abutment must reach the ground on its own account, not by leaning on this piece
+		 * (trap 3: two bricks propping each other over open air).
 		 */
 		if (!PieceSupported.IsValidIndex(Abutment) || !PieceSupported[Abutment])
 		{
@@ -1883,35 +1535,22 @@ bool FStructure::HasArchingAbutment(
 			}
 		}
 
-		/*
-		 * A neighbour re-seated onto a spanning group leans on us only because something beyond it
-		 * carries. That mark (set by ReseatSpannedGroups for a group abutted on both sides) means
-		 * the thrust line runs on to a reaction, not into mid-air — the one fact separating a
-		 * spanned opening from two propping bricks.
-		 */
+		// Leaning on us is fine only for a neighbour re-seated on a two-sided spanning group.
 		if (bAbutmentLeansOnUs && !PieceReseatedOnAnArch[Abutment])
 		{
 			continue;
 		}
 
-		/*
-		 * A spanned group is checked by being pushed, so not here: ApplyArchingThrust puts the real
-		 * horizontal force on both springings once the accumulation settles. Judging the same thrust
-		 * again by a different rule would answer one question twice. The one-cell hole has no thrust
-		 * pass of its own.
-		 */
+		// A spanned group's thrust is checked by ApplyArchingThrust instead, not twice.
 		if (PieceReseatedOnAnArch[Abutment])
 		{
 			return true;
 		}
 
 		/*
-		 * So the relief must be earned, by the seat's own sliding capacity. Moving the thrust line
-		 * to the kern edge deletes a couple of (1 - k)*|M|, which on a half-seated brick only a
-		 * horizontal pair supplies — a push through this head joint, its reaction as shear in the
-		 * bed plane. The arm is measured along the seat normal (3.75 cm for a standard brick),
-		 * putting demand at (e - h/6)/z = 1.0444 of the reaction. Withheld, not applied.
-		 * !(demand <= capacity) so a degenerate arm, area or capacity lands inside the refusal.
+		 * The deleted couple (1 - k)*|M| must be supplied by a horizontal push through this head
+		 * joint, reacted as shear in the seat, over an arm along the seat normal (3.75 cm for a
+		 * standard brick). !(demand <= capacity) refuses a NaN.
 		 */
 		const double ThrustArmCm = FMath::Abs(
 			FVector::DotProduct(Head.InterfaceCentreCm - BedJoint.InterfaceCentreCm, UnitNormal));
@@ -1932,38 +1571,24 @@ bool FStructure::HasArchingAbutment(
 
 FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pass)
 {
-	/*
-	 * Invalidate the readout per pass, not just per call. Only a pass reaching an answer refills
-	 * the cache, so clearing here means a declined pass can't serve a prior pass's below-cap
-	 * reading. The per-call Reset in SolveAndBreak stays as the coarser guard.
-	 */
+	// Cleared per pass so a declined pass cannot serve an earlier pass's reading.
 	ConnectionReadoutCache.Reset();
 
-	/*
-	 * Scope by size first, the fail-closed boundary keeping synchronous LP authority off the
-	 * flagship scenarios (PROMOTION_DESIGN.md §12 D6-c). Above the cap the gate declines to the
-	 * per-joint sweep. Written as a positive decline test (> cap) so a degenerate cap fails closed.
-	 */
+	// Size cap keeps synchronous LP authority off the flagship scenarios (PROMOTION_DESIGN.md §12 D6-c).
 	if (NumPieces() > EquilibriumGateBlockCap)
 	{
 		return EEquilibriumGateDisposition::DeclinedToRouter;
 	}
 
-	/*
-	 * A no-op without complete geometry: the LP takes moments of weights against bearing
-	 * rectangles, and with either missing there's nothing to take moments of. Both fuzz generators
-	 * emit no geometry, so they stay on the router.
-	 */
+	// The LP needs centres and rectangles; geometry-free structures (the fuzzers) stay on the router.
 	if (!HasCompleteGeometry())
 	{
 		return EEquilibriumGateDisposition::DeclinedToRouter;
 	}
 
 	/*
-	 * Ask the rigid-block LP whether the whole structure has an admissible equilibrium. The pose is
-	 * feasibility at lambda = 1 (PROMOTION_DESIGN §12 D6-b): same Stands/Falls as lambda* but 5-16x
-	 * cheaper, and on the infeasible arm the phase-1 dual is Farkas-verified as the collapse
-	 * mechanism. A refusal fails closed, arriving as Unanswerable and declining here.
+	 * Feasibility at lambda = 1 (PROMOTION_DESIGN §12 D6-b): same verdict as lambda*, 5-16x
+	 * cheaper, and the infeasible arm yields a Farkas-verified mechanism. Refusal declines.
 	 */
 	RigidBlockOracle::FOracleProblem Problem;
 	FString WhyNot;
@@ -1974,19 +1599,16 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 	}
 
 	/*
-	 * Record which physics this pose was built in: 2 for X-Z, 3 for volumetric. The bridge picks
-	 * the cheapest sound pose, so a 3D-flagged build whose posed rows are all in-plane reads 2.
-	 * Stamped on the pose, not the call, so a declining pass leaves the previous reading.
+	 * 2 for an X-Z pose, 3 for volumetric (the bridge may pose a 3D build in-plane). A declining
+	 * pass leaves the previous value.
 	 */
 	LastEquilibriumProblemDim = Problem.Dim == RigidBlockOracle::EOracleDim::Dim3D ? 3 : 2;
 
 	Problem.bGravityIsLive = false;
 
 	/*
-	 * First-crack promotion. Below the cap the break authority writes uncracked peak-fibre bending
-	 * rows for every bonded joint (f_t > 0), so it cracks at its elastic limit, 3x stricter than the
-	 * plastic no-tension form. Dry (f_t = 0) joints are bit-identical. The flag reaches only this
-	 * below-cap pose.
+	 * First-crack rows: bonded joints (f_t > 0) crack at their elastic limit, 3x stricter than the
+	 * plastic form. Dry joints are unchanged.
 	 */
 	Problem.bFirstCrackRows = true;
 
@@ -2001,21 +1623,15 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 	if (Outcome == RigidBlockOracle::EOracleOutcome::Stands)
 	{
 		/*
-		 * The LP stands the whole structure, so every piece is genuinely held — even one the router
-		 * could only strand for want of a rule to divide load round a knot (rows 10 and 19). The
-		 * mechanism is empty; writing the LP support is the sole effect, making GetPieceSupport
-		 * LP-authoritative below the cap.
+		 * Every piece is held, including ones the router would strand in a knot (rows 10 and 19).
+		 * The only effect is writing LP support.
 		 */
 		ApplyLimitAnalysisSupport(Problem, Result);
 		CacheMinViolationReadout(Problem);
 		return EEquilibriumGateDisposition::AuthoritativeNoBreak;
 	}
 
-	/*
-	 * The structure has no admissible equilibrium, and the mechanism names the loss. SolveRigidBlock
-	 * Farkas-verified the certificate or refused (handled above), so a Falls here carries a
-	 * certified mechanism; the guard below is fail-closed defence against an uncertified set.
-	 */
+	// Falls always carries a certified mechanism; the guard is fail-closed defence.
 	const RigidBlockOracle::FOracleMechanism& Mechanism = Result.Mechanism;
 
 	if (!Mechanism.bPresent || !Mechanism.bIsCertified)
@@ -2024,10 +1640,8 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 	}
 
 	/*
-	 * The mechanism is the sole break authority (PROMOTION_DESIGN.md §12 D7's 3b): a piece is
-	 * released iff the mechanism moves it, a joint severed iff it opens or slides. Write the LP
-	 * support first, then sever the intact joints it opens via ConnectionOfJoint, stamped with this
-	 * pass. A joint already gone is skipped, which makes the cascade terminate.
+	 * The mechanism is the sole break authority (PROMOTION_DESIGN.md §12 D7 3b): sever each intact
+	 * joint it opens or slides, stamped with this pass. Skipping given joints ends the cascade.
 	 */
 	ApplyLimitAnalysisSupport(Problem, Result);
 
@@ -2058,11 +1672,7 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 		bSeveredThisPass = true;
 	}
 
-	/*
-	 * Cache the readout once, on the settled pass. A pass that severs continues the cascade and
-	 * re-settles, so its readout would only be overwritten; guarding on !bSeveredThisPass runs the
-	 * min-violation LP solely on the terminal non-breaking pass.
-	 */
+	// Readout only on the settled (non-breaking) pass; a severing pass would be overwritten.
 	if (!bSeveredThisPass)
 	{
 		CacheMinViolationReadout(Problem);
@@ -2076,14 +1686,12 @@ FStructure::EEquilibriumGateDisposition FStructure::BreakByEquilibrium(int32 Pas
 void FStructure::CacheMinViolationReadout(const RigidBlockOracle::FOracleProblem& Problem)
 {
 	/*
-	 * The strain readout is a separate, additive solve (PROMOTION_DESIGN.md §3.5). The verdict is
-	 * settled; this poses the min-violation LP once on a copy (equilibrium rows hard, every strength
-	 * row a penalised slack) to read the closest-to-admissible force distribution. It writes only
-	 * this cache. First-crack rows on, matching the break authority, or a bonded bending joint would
-	 * report a plastic utilisation it's never held to. An absent readout leaves the cache all-absent.
+	 * Strain readout (PROMOTION_DESIGN.md §3.5): the min-violation LP on a copy, equilibrium hard and
+	 * strength rows as penalised slacks. Writes only this cache. First-crack rows match the break
+	 * authority.
 	 */
 
-	// Observability only: count each readout LP so a test can watch how many a cascade pays for.
+	// Test observable: readout LPs per cascade.
 	++MinViolationReadoutSolves;
 
 	ConnectionReadoutCache.Init(FConnectionReadout{}, Connections.Num());
@@ -2099,11 +1707,7 @@ void FStructure::CacheMinViolationReadout(const RigidBlockOracle::FOracleProblem
 		return;
 	}
 
-	/*
-	 * Key each oracle joint back to its production connection through ConnectionOfJoint (the same
-	 * map BreakByEquilibrium uses), so the cache carries the LP's per-joint N, M, violation and
-	 * utilisation. A joint with no provenance, or a connection out of range, is skipped.
-	 */
+	// Map each oracle joint back to its connection; skip any without provenance.
 	for (int32 Joint = 0; Joint < ReadoutResult.Readout.Joints.Num(); ++Joint)
 	{
 		if (!ReadoutProblem.ConnectionOfJoint.IsValidIndex(Joint))
@@ -2134,11 +1738,8 @@ void FStructure::ApplyLimitAnalysisSupport(
 	const RigidBlockOracle::FOracleResult& Result)
 {
 	/*
-	 * Make GetPieceSupport LP-authoritative below the cap (PROMOTION_DESIGN.md §12 D7's 3b). The
-	 * router strands a piece whose load returns round a cycle it can't divide; the LP has no routing
-	 * to fail. Overwrite each bridged piece's support with the LP verdict: a stand reads
-	 * Supported/Grounded, an infeasible pose reads the moved pieces Falling. Pieces the bridge
-	 * excluded keep the router's answer. PieceOfBlock and Mechanism.Blocks share block order.
+	 * Overwrite each bridged piece's support with the LP verdict (PROMOTION_DESIGN.md §12 D7 3b):
+	 * moved pieces fall, the rest are held. Unbridged pieces keep the router's answer.
 	 */
 	const RigidBlockOracle::FOracleMechanism& Mechanism = Result.Mechanism;
 
@@ -2163,38 +1764,25 @@ void FStructure::ApplyLimitAnalysisSupport(
 bool FStructure::BreakByCapacitySweep(int32 Pass)
 {
 	/*
-	 * The per-joint capacity sweep, the router's break authority, once per pass. Every joint over
-	 * capacity gives in the same pass (DESIGN.md §3), stamped with it. The sole authority above the
-	 * cap and on any LP refusal; below the cap the gate answers and this doesn't run.
+	 * Per-joint capacity sweep: every joint over capacity gives this pass (DESIGN.md §3). The break
+	 * authority whenever the equilibrium gate declines.
 	 */
 	bool bBroke = false;
 
 	for (int32 Index = 0; Index < Connections.Num(); ++Index)
 	{
-		/*
-		 * By reference, the one line where it matters: FConnection is copyable and its latch is a
-		 * member, so a missing ampersand would latch every overloaded joint on a temporary and
-		 * report a structure that breaks nothing.
-		 */
+		// By reference: a copy would latch on a temporary and nothing would break.
 		FConnection& Connection = Connections[Index];
 
-		/*
-		 * A joint already given is skipped, and this skip is what makes the loop terminate: without
-		 * it every earlier break would re-report and the cascade would never settle (deleting these
-		 * lines hangs the suite). Only the intact-to-given transition belongs to a pass.
-		 */
+		// Skipping given joints is what lets the cascade terminate.
 		if (Connection.HasGiven())
 		{
 			continue;
 		}
 
 		/*
-		 * The moment goes in beside the force, the same pair GetConnectionUtilisation evaluates:
-		 * break on the force alone and a joint drawn at 1.25 holds forever. The composite depth goes
-		 * in too, a relief, so omitting it snaps a corbel drawn at 0.37. The strength is the
-		 * weakest-link pairing (EffectiveJointStrength), so a wood-on-brick bearing reads its
-		 * material crush. The copy decides, the real connection severs. Where neither face names a
-		 * material it's bit-identical.
+		 * Same inputs as GetConnectionUtilisation (force, moment, composite depth) so break and
+		 * readout agree, with the weakest-link strength. The copy decides; the real joint severs.
 		 */
 		FConnection Paired = Connection;
 		Paired.Strength = EffectiveJointStrength(Index);
@@ -2217,28 +1805,18 @@ bool FStructure::BreakByCapacitySweep(int32 Pass)
 int32 FStructure::SolveAndBreak()
 {
 	/*
-	 * Every joint over capacity gives in the same pass (DESIGN.md §3): a solve plus one sweep,
-	 * stamped with the pass number. Ordering within a pass is arbitrary (simultaneous gives);
-	 * between passes it's real, each break following the load the previous shed — the sequence a
-	 * collapse plays back. Breaking only the worst joint per pass would invent a sequence.
+	 * Each pass is a solve plus one break step; everything over capacity gives together
+	 * (DESIGN.md §3). Order between passes is the collapse sequence.
 	 */
 	int32 BreakingPasses = 0;
 
-	/*
-	 * Invalidate the cached strain readout before this settle. Refilled solve-on-settle by
-	 * BreakByEquilibrium below the cap; clearing here means a re-solve can't return a previous
-	 * below-cap reading.
-	 */
 	ConnectionReadoutCache.Reset();
 
-	// Observability only: zero the readout-solve counter for this whole cascade (see the getter).
 	MinViolationReadoutSolves = 0;
 
 	/*
-	 * Pass numbers are global, so this call continues from the highest stamp already written, not
-	 * from 1: stamps record the order a collapse happened in (DESIGN.md §3), and a joint that gave
-	 * after a brick was pulled must carry a larger number. BreakingPasses is a different, per-call
-	 * question. INDEX_NONE is -1 and every real stamp >= 1, so an unstamped joint can't raise the mark.
+	 * Pass numbers are global: continue from the highest existing stamp so later breaks carry
+	 * larger numbers. Unstamped joints are -1 and cannot raise it.
 	 */
 	int32 PassesAlreadyStamped = 0;
 	for (const int32 Stamp : ConnectionBreakPass)
@@ -2252,10 +1830,8 @@ int32 FStructure::SolveAndBreak()
 	};
 
 	/*
-	 * The regional prover's seed, the disturbance the region grows from (REGIONAL_PROVER_PLAN.md
-	 * §1). First pass: the live neighbours of every tombstoned piece (a tombstone stamps no
-	 * pass). Later passes: the live endpoints of joints stamped Pass - 1, what shed its load
-	 * last pass.
+	 * Regional prover seed (REGIONAL_PROVER_PLAN.md §1). First pass: live neighbours of removed
+	 * pieces. Later: live endpoints of joints broken last pass.
 	 */
 	auto DeriveRegionalSeed = [this, &IsLiveInStructure](int32 Pass, bool bFirstPass) -> TArray<int32>
 	{
@@ -2303,8 +1879,7 @@ int32 FStructure::SolveAndBreak()
 		return SeedSet.Array();
 	};
 
-	/* Intact (not-yet-severed) joints — the regional prover's monotone progress witness: joints
-	 * only ever decrease, so a pass that severs one made progress and the cascade ends. */
+	// Intact joints only decrease, so this is the cascade's progress measure.
 	auto CountIntactJoints = [this]() -> int32
 	{
 		int32 Intact = 0;
@@ -2318,7 +1893,7 @@ int32 FStructure::SolveAndBreak()
 		return Intact;
 	};
 
-	/* Pieces the last solve is not holding up: Falling or Stranded, live and answered. */
+	// Live, answered pieces that are Falling or Stranded.
 	auto CountNotHeld = [this]() -> int32
 	{
 		int32 NotHeld = 0;
@@ -2337,10 +1912,7 @@ int32 FStructure::SolveAndBreak()
 		return NotHeld;
 	};
 
-	/*
-	 * The report is filled as the cascade runs and decides nothing: every clock and count
-	 * feeds GetLastSolveAndBreakReport, and the cascade reads none of it back.
-	 */
+	// Report only; the cascade never reads it back.
 	LastSolveAndBreakReport = FSolveAndBreakReport();
 	LastSolveAndBreakReport.LivePiecesBefore = NumLivePieces();
 	LastSolveAndBreakReport.IntactJointsBefore = CountIntactJoints();
@@ -2364,11 +1936,8 @@ int32 FStructure::SolveAndBreak()
 		const int32 IntactBeforeGate = CountIntactJoints();
 
 		/*
-		 * The equilibrium gate decides the pass, and below the block cap is the sole break authority
-		 * (DESIGN.md §7 step 4, PROMOTION_DESIGN.md §6 Slice 3). It asks the rigid-block LP whether
-		 * the structure has any admissible force system in equilibrium with self-weight, and severs
-		 * exactly the joints the mechanism opens. When it declines (over cap, no geometry, LP
-		 * refusal) the capacity sweep is the sole authority; when it answers, the sweep latches nothing.
+		 * Below the block cap the rigid-block LP is the sole break authority (DESIGN.md §7 step 4,
+		 * PROMOTION_DESIGN.md §6 Slice 3). When it declines, the capacity sweep decides.
 		 */
 		const EEquilibriumGateDisposition Gate = BreakByEquilibrium(Pass);
 
@@ -2391,21 +1960,14 @@ int32 FStructure::SolveAndBreak()
 			Report.JointsGivenToSweep = IntactBeforeSweep - CountIntactJoints();
 
 			/*
-			 * The regional prover's arm (REGIONAL_PROVER_PLAN.md §4). Above the cap the sweep is
-			 * blind to a global mechanism — a body with comfortable per-joint utilisation while the
-			 * assembly has no admissible equilibrium. A grounded-boundary LP over the disturbance
-			 * neighbourhood can prove that collapse and upgrade a stand to a fall, toward Falling
-			 * only. Gated on HasCompleteGeometry().
+			 * Regional prover (REGIONAL_PROVER_PLAN.md §4): the sweep cannot see a global mechanism,
+			 * so a local grounded-boundary LP may prove one. It only moves answers toward Falling.
 			 */
 			if (HasCompleteGeometry())
 			{
 				/*
-				 * Progress is a severed joint, never the prover's Falling count: the prover re-poses each
-				 * pass and a disconnected block trivially moves, so keying on "a piece went Falling" would
-				 * loop forever. Intact joints only decrease, so a severed joint is monotone and bounded at
-				 * one pass per connection. It's also a complete witness — a rigid joint between a moved and
-				 * a standing block can't stay closed (1e-6 mechanism tolerance), so a felled piece fully
-				 * disconnects and SolveLoads reads it Falling on its own. The override is re-applied every pass.
+				 * Progress is a severed joint, not a Falling count: a disconnected block moves in every
+				 * re-pose, so counting Falling would loop forever.
 				 */
 				const int32 IntactBefore = CountIntactJoints();
 				const double ProverStartSeconds = FPlatformTime::Seconds();
@@ -2444,11 +2006,7 @@ int32 FStructure::SolveAndBreak()
 			Report.JointsSeveredByProver, Report.PiecesFelledByProver, Report.LivePieces, Report.IntactJointsAfter,
 			Report.NotHeldAfter, Report.PassMs);
 
-		/*
-		 * A pass that breaks nothing is the last and isn't counted: its loads are the settled state.
-		 * Termination: joints never heal, so every counted pass removes at least one connection. (Not
-		 * SolveLoads' own inner fixpoint, nested inside each pass.)
-		 */
+		// A pass that breaks nothing is the settled state and is not counted. Joints never heal.
 		if (!bBrokeThisPass)
 		{
 			break;
@@ -2461,10 +2019,7 @@ int32 FStructure::SolveAndBreak()
 	LastSolveAndBreakReport.IntactJointsAfter = CountIntactJoints();
 	LastSolveAndBreakReport.TotalMs = (FPlatformTime::Seconds() - CascadeStartSeconds) * 1000.0;
 
-	/*
-	 * Logged at Log level only when it matters to a player: a cascade that broke something or cost
-	 * more than a frame. A settle that changed nothing in a few ms is Verbose.
-	 */
+	// Log level only when something broke or it took longer than a frame.
 	if (BreakingPasses > 0 || LastSolveAndBreakReport.TotalMs > 50.0)
 	{
 		UE_LOG(LogDestructionSolve, Log,
@@ -2489,11 +2044,7 @@ const FStructure::FSolveLoadsProfile& FStructure::GetLastSolveLoadsProfile() con
 
 int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, int32 RegionBlockCap)
 {
-	/*
-	 * The isolated test entry (REGIONAL_PROVER_PLAN.md slice 1). Settles the router baseline, then
-	 * defers the region flood, grounded-boundary pose and Falling-only stitch to the shared
-	 * ProveRegionalCollapse. BreakPass defaults to 1, the stamp this entry wrote before factoring.
-	 */
+	// Test entry (REGIONAL_PROVER_PLAN.md slice 1): settle the router, then run the prover.
 	SolveLoads();
 	return ProveRegionalCollapse(Seed, RegionBlockCap);
 }
@@ -2501,17 +2052,12 @@ int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, in
 int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionBlockCap, int32 BreakPass)
 {
 	/*
-	 * The regional collapse prover (REGIONAL_PROVER_PLAN.md §§1-4). A grounded-boundary LP over a
-	 * neighbourhood of the disturbance can upgrade a router stand to a proven fall, never the
-	 * reverse: a frontier pinned to earth only adds support, so it proves collapse but never
-	 * standing. The caller already settled the graph, so this does not SolveLoads.
+	 * Regional collapse prover (REGIONAL_PROVER_PLAN.md §§1-4). A grounded-boundary LP over the
+	 * disturbance's neighbourhood. Pinning the frontier only adds support, so it can prove a fall
+	 * but never a stand. The caller has already solved.
 	 */
 
-	/*
-	 * The joint-hop adjacency the flood walks, built as SolveLoads builds it: every intact
-	 * joint touching each piece, ascending connection index. A given joint is out of the
-	 * graph, so a severed neighbourhood doesn't re-reach across a break.
-	 */
+	// Intact joints per piece, ascending index, so the flood never crosses a break.
 	TArray<TArray<int32>> PieceJoints;
 	PieceJoints.SetNum(Pieces.Num());
 
@@ -2541,10 +2087,8 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 	};
 
 	/*
-	 * The region and its grounded frontier, grown in place. AdmitToRegion admits a live candidate
-	 * only if region plus induced grounded boundary still fits the block budget — bounding |R| alone
-	 * lets the one-hop ring push the pose past budget. Boundary is the region's exact one-hop
-	 * frontier; a rejected candidate stays in it, its grounded ring the region's tie to earth.
+	 * Region and its grounded one-hop boundary. A candidate is admitted only if region plus boundary
+	 * still fits the budget; bounding the region alone lets the ring overspend.
 	 */
 	TSet<int32> Region;
 	TSet<int32> Boundary;
@@ -2590,10 +2134,8 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 	};
 
 	/*
-	 * Grow the region by a BFS in joint-hops from a frontier seed set, up to Budget blocks,
-	 * returning the count admitted. A frontier seed that can't be admitted is dropped, not grounded
-	 * (that would pin the collapse it chases); a discovered neighbour that can't be admitted becomes
-	 * grounded boundary. BFS order is fixed by the sorted frontier and ascending adjacency.
+	 * BFS from the seeds up to Budget; returns the count admitted. An unadmitted seed is dropped
+	 * (grounding it would pin the collapse); an unadmitted neighbour becomes boundary.
 	 */
 	auto GrowFrom = [&](const TArray<int32>& FrontierSeeds, int32 Budget) -> int32
 	{
@@ -2635,7 +2177,7 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 		return Region.Num() - Before;
 	};
 
-	/* Set equality without an operator== on TSet: same size and one contained in the other. */
+	// TSet has no operator==.
 	auto RegionsMatch = [](const TSet<int32>& A, const TSet<int32>& B) -> bool
 	{
 		if (A.Num() != B.Num())
@@ -2655,10 +2197,8 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 	};
 
 	/*
-	 * Phase 1: a modest initial region flooded from the disturbance seed, far below RegionBlockCap
-	 * (REGIONAL_PROVER_PLAN.md §§1-3). Grow-on-contact poses an LP the size of the local mechanism,
-	 * not the cap: a cap-sized first pose made the flagship 3D scenarios impractical (~200-block LP
-	 * every above-cap pass). Budget is the seed's footprint plus a small ring, floored at 16.
+	 * Start small, well under the cap: a cap-sized first pose (~200 blocks every pass) made the
+	 * flagship 3D scenarios impractical. Seed footprint plus a ring, at least 16.
 	 */
 	const int32 InitialBudget = FMath::Min(RegionBlockCap, FMath::Max(16, Seed.Num() + 8));
 	int32 EffectiveBudget = InitialBudget;
@@ -2666,18 +2206,15 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 	GrowFrom(Seed, EffectiveBudget);
 
 	/*
-	 * Grow-on-contact (REGIONAL_PROVER_PLAN.md slice 3). After each solve: an interior certified
-	 * fall (every grounded neighbour a genuine foundation) is complete, so stitch it; a fall
-	 * touching a cut-artifact boundary re-floods from the moved set at a larger budget; a pose that
-	 * doesn't fall grows a bounded speculative search from the boundary. Growth is monotone and the
-	 * budget grows each pass, so it settles in a few solves. GetLastRegionalProblemBlockCount reports
-	 * the final |R ∪ B|.
+	 * Grow-on-contact (REGIONAL_PROVER_PLAN.md slice 3). An interior certified fall is stitched; a
+	 * fall touching an artificial boundary re-floods from the moved set; no fall widens a bounded
+	 * speculative search. The budget only grows, so this settles in a few solves.
 	 */
 	RigidBlockOracle::FOracleProblem Problem;
 	RigidBlockOracle::FOracleResult Result;
 	bool bLastPoseFell = false;
 
-	/* Observability for the pass report: reset per call, written per pose. */
+	// Pass-report observables.
 	LastProverPoses = 0;
 	LastProverLpPivots = 0;
 	LastProverLpMs = 0.0;
@@ -2689,11 +2226,7 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 
 	for (int32 Iteration = 0; Iteration < MaxGrowIterations; ++Iteration)
 	{
-		/*
-		 * Pose R + grounded boundary at feasibility (bGravityIsLive = false) with the below-cap
-		 * first-crack rows, the authority BreakByEquilibrium poses. A bridge refusal fails closed: no
-		 * region opinion, so the router baseline stands.
-		 */
+		// Same pose as BreakByEquilibrium. A bridge refusal fails closed to the router's answer.
 		Problem = RigidBlockOracle::FOracleProblem();
 		FString WhyNot;
 
@@ -2702,11 +2235,6 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 			return 0;
 		}
 
-		/*
-		 * Record the posed problem size (|R ∪ grounded boundary|) the moment the pose exists. Each
-		 * grow overwrites it, so GetLastRegionalProblemBlockCount reports the final pose and
-		 * witnesses the ring never overspends its RegionBlockCap budget.
-		 */
 		LastRegionalProblemBlockCount = Problem.Blocks.Num();
 
 		Problem.bGravityIsLive = false;
@@ -2716,10 +2244,7 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 
 		Result = RigidBlockOracle::SolveRigidBlock(Problem);
 
-		/*
-		 * Compute this pose's wall-clock once and feed both the aggregate and the per-pose
-		 * record, so the RegionalPoseBreakdown ms sum reconciles with LastProverLpMs.
-		 */
+		// Measured once so the per-pose times sum to LastProverLpMs.
 		const double PoseMs = (FPlatformTime::Seconds() - LpStartSeconds) * 1000.0;
 
 		++LastProverPoses;
@@ -2732,10 +2257,7 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 
 		bLastPoseFell = bCertifiedFall;
 
-		/*
-		 * One record per pose, appended where every iteration reaches it once, so the increment
-		 * above and this append stay in lockstep (RegionalPoseBreakdown.Num() == RegionalPoses).
-		 */
+		// One record per pose, in lockstep with LastProverPoses.
 		FProverPoseReport& Pose = LastProverPoseBreakdown.AddDefaulted_GetRef();
 		Pose.Blocks = Problem.Blocks.Num();
 		Pose.LpPivots = Result.SimplexIterations;
@@ -2743,11 +2265,9 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 		Pose.bFell = bCertifiedFall;
 
 		/*
-		 * The frontier the next grow pushes from, and its budget ceiling. A certified fall re-floods
-		 * from the moved set up to the full RegionBlockCap. A pose that doesn't fall grows a
-		 * speculative search from the whole boundary, capped at RegionSpeculativeCeiling far below
-		 * the cap: a blind flood must not balloon toward the cap. A mechanism reachable only past the
-		 * ceiling is an accepted miss the router already stands (REGIONAL_PROVER_PLAN.md §1).
+		 * A fall re-floods from the moved set up to RegionBlockCap. No fall searches from the whole
+		 * boundary up to a lower speculative ceiling; a mechanism beyond it is an accepted miss
+		 * (REGIONAL_PROVER_PLAN.md §1).
 		 */
 		const int32 RegionSpeculativeCeiling = FMath::Min(RegionBlockCap, 48);
 
@@ -2768,9 +2288,8 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 			}
 
 			/*
-			 * The contact test: does a moved block neighbour a cut-artifact grounded boundary block
-			 * (in Boundary but not a genuine foundation)? Only a flood-pinned block may hide collapse
-			 * behind it; no contact means the mechanism is interior, nothing more to reveal.
+			 * Does a moved block touch an artificially grounded boundary block (not a real
+			 * foundation)? If not, the mechanism is interior and complete.
 			 */
 			bool bContact = false;
 
@@ -2798,46 +2317,34 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 
 			if (!bContact)
 			{
-				/* Interior mechanism — bounded by genuine foundations. Done; stitch it below. */
 				break;
 			}
 
-			/* Re-flood from the moved set so a disconnected standing component is pruned as budget grows. */
+			// Re-flooding from the moved set prunes disconnected standing components.
 			GrowFrontier = MovedPieces.Array();
 			bReFloodFromMechanism = true;
 		}
 		else
 		{
-			/*
-			 * No fall yet — the modest region hasn't reached the mechanism. Grow a speculative search
-			 * from the whole boundary, bounded by the speculative ceiling. It runs only while nothing
-			 * has fallen, so it can't grow into a standing island beside a live collapse.
-			 */
 			GrowFrontier = Boundary.Array();
 			GrowCeiling = RegionSpeculativeCeiling;
 		}
 
-		/* Deterministic admission order regardless of TSet iteration order. */
+		// Deterministic admission order.
 		GrowFrontier.Sort();
 
+		// At the ceiling: stitch what fell (the router keeps the rest), or accept the miss.
 		if (EffectiveBudget >= GrowCeiling)
 		{
-			/*
-			 * At the applicable ceiling — cap-bound for a fall (stitch the sound partial, the
-			 * router keeps the rest), or the speculative ceiling with no fall (an accepted miss).
-			 */
 			break;
 		}
 
 		if (bReFloodFromMechanism)
 		{
 			/*
-			 * Re-flood sized to the mechanism plus one adjacency ring, not a blind doubling. Advancing
-			 * the movable region one ring costs two joint-hops: the moved set with its neighbours is
-			 * the region the pose must be free to move (MovableRing), one hop further is the grounded
-			 * boundary that pins it (PinnedRing). Sizing to the movable ring alone would pin it and
-			 * reproduce the same ring, hiding a deeper collapse. Rebuild from the moved seeds; a
-			 * rebuild reproducing the region is a fixpoint — stitch the current mechanism.
+			 * Budget = moved set plus two rings: one it must be free to move into, one to pin it.
+			 * Budgeting only the first would pin it and hide a deeper collapse. An unchanged region
+			 * is a fixpoint.
 			 */
 			TSet<int32> MovableRing(GrowFrontier);
 
@@ -2873,15 +2380,11 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 		}
 		else
 		{
-			/*
-			 * Speculative re-flood with no mechanism to size to: double the budget and search wider
-			 * from the whole boundary, bounded by the speculative ceiling.
-			 */
+			// No mechanism to size to: double the budget.
 			EffectiveBudget = FMath::Min(GrowCeiling, EffectiveBudget * 2);
 
 			if (GrowFrom(GrowFrontier, EffectiveBudget) == 0)
 			{
-				/* The speculative frontier admitted nothing even at the larger budget — a fixpoint. Stop. */
 				break;
 			}
 		}
@@ -2897,10 +2400,8 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 	const RigidBlockOracle::FOracleMechanism& Mechanism = Result.Mechanism;
 
 	/*
-	 * Falling-only stitch. A grounded boundary block never moves, so the moved blocks are interior;
-	 * map them back through PieceOfBlock and mark each Falling. Never Supported — a region LP is a
-	 * collapse prover only, and crediting a stand is the false-stand direction case-21 forbids.
-	 * Falling as SolveLoads writes it: not held up and not stranded.
+	 * Falling-only stitch: mark moved blocks Falling. Never Supported; a regional stand proves
+	 * nothing (case-21).
 	 */
 	int32 Released = 0;
 
@@ -2928,11 +2429,7 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 		++Released;
 	}
 
-	/*
-	 * Sever the intact joints the mechanism opens, mapped back through ConnectionOfJoint —
-	 * the same idiom BreakByEquilibrium uses. A joint already gone is skipped; this pass
-	 * stamps the ones it severs.
-	 */
+	// Sever the intact joints the mechanism opens, as BreakByEquilibrium does.
 	for (int32 Joint = 0; Joint < Mechanism.JointOpensOrSlides.Num(); ++Joint)
 	{
 		if (!Mechanism.JointOpensOrSlides[Joint])
@@ -2963,51 +2460,26 @@ int32 FStructure::ProveRegionalCollapse(const TArray<int32>& Seed, int32 RegionB
 
 int32 FStructure::GetLastRegionalProblemBlockCount() const
 {
-	/*
-	 * The oracle-block count the last regional prove posed (|region ∪ grounded boundary|),
-	 * or INDEX_NONE if none has. The flood bounds it at RegionBlockCap, so it's the plan's
-	 * stopping-gate witness.
-	 */
 	return LastRegionalProblemBlockCount;
 }
 
 int32 FStructure::GetLastEquilibriumProblemDim() const
 {
-	/*
-	 * The dimension the last equilibrium-gate pose was built in (2 for X-Z, 3 for
-	 * volumetric), or INDEX_NONE if none. Stamped from Problem.Dim when the bridge accepts,
-	 * so a declined pass reports the last pose. Test-only; no production code branches on it.
-	 */
 	return LastEquilibriumProblemDim;
 }
 
 void FStructure::SetEquilibriumGateBlockCap(int32 MaxBlocks)
 {
-	/*
-	 * Stores the cap the equilibrium gate consults: authoritative at or below it, fail-closed above
-	 * (PROMOTION_DESIGN.md §12 D6-c). Injectable so the scope-by-size tests can drive either side. A
-	 * bare assignment.
-	 */
 	EquilibriumGateBlockCap = MaxBlocks;
 }
 
 void FStructure::SetRegionBlockCap(int32 MaxBlocks)
 {
-	/*
-	 * Stores the cap the regional prover's flood consults (REGIONAL_PROVER_PLAN.md §4): the largest
-	 * |region ∪ grounded boundary| it may pose. Defaults to 200; affordable because grow-from-modest
-	 * poses a mechanism-sized region, so the cap is only the ceiling a large collapse extends toward.
-	 */
 	RegionalProverBlockCap = MaxBlocks;
 }
 
 void FStructure::SetPieceMaterial(int32 PieceIndex, const DestructionProfiles::FMaterialProfile* Material)
 {
-	/*
-	 * Records what a piece is made of so a cross-material joint can reach its two faces'
-	 * materials (via EffectiveBondedStrength). A bare store behind a range guard; an
-	 * out-of-range handle is ignored, the same fail-closed shape as the other accessors.
-	 */
 	if (Pieces.IsValidIndex(PieceIndex))
 	{
 		Pieces[PieceIndex].Material = Material;
@@ -3016,12 +2488,6 @@ void FStructure::SetPieceMaterial(int32 PieceIndex, const DestructionProfiles::F
 
 void FStructure::SetThreeDimensional(bool bIsThreeDimensional)
 {
-	/*
-	 * The 3D permission RigidBlockBridge branches on (THREED_DESIGN.md E3). When set,
-	 * BuildRigidBlockProblem may pose this as Dim3D (out-of-plane Y normal accepted), but only when
-	 * the posed problem actually leaves the X-Z plane. When unset (default), the 2D X-Z pose and its
-	 * Y-normal refusal stand.
-	 */
 	bThreeDimensional = bIsThreeDimensional;
 }
 
@@ -3032,10 +2498,6 @@ bool FStructure::IsThreeDimensional() const
 
 int32 FStructure::GetBreakPass(int32 ConnectionIndex) const
 {
-	/*
-	 * An unknown connection didn't break, so it fails closed to the same answer as a joint
-	 * that never gave.
-	 */
 	return ConnectionBreakPass.IsValidIndex(ConnectionIndex)
 		? ConnectionBreakPass[ConnectionIndex]
 		: INDEX_NONE;
@@ -3043,10 +2505,7 @@ int32 FStructure::GetBreakPass(int32 ConnectionIndex) const
 
 int32 FStructure::GetBreakAuthority(int32 ConnectionIndex) const
 {
-	/*
-	 * An unknown connection severed nothing, so it fails closed to INDEX_NONE. See the
-	 * header for the code meanings (1 gate, 2 sweep, 3 prover).
-	 */
+	// 1 gate, 2 sweep, 3 prover; INDEX_NONE if unknown or unbroken.
 	return ConnectionBreakAuthority.IsValidIndex(ConnectionIndex)
 		? ConnectionBreakAuthority[ConnectionIndex]
 		: INDEX_NONE;
@@ -3055,12 +2514,9 @@ int32 FStructure::GetBreakAuthority(int32 ConnectionIndex) const
 EJointRole FStructure::GetJointRole(int32 ConnectionIndex, int32 PieceIndex) const
 {
 	/*
-	 * The decision SolveLoads itself routes by, so a readout of a tier and the tier the load took
-	 * agree. A connection's normal points toward PieceB, turned to point at the asked piece:
-	 * substantially up, the interface is beneath and bears it; down, the bed joint is above and
-	 * holds nothing. A normal that won't normalise is answered None, not a tier (a NaN would fall
-	 * into Head). An unknown connection needs its own guard: the placeholder's (0,0,1) normalises
-	 * and once returned BedBeneath for a joint that doesn't exist.
+	 * The rule SolveLoads routes by. The normal, turned toward the asked piece: mostly up is
+	 * BedBeneath, mostly down BedAbove, else Head. An unknown connection needs its own guard: the
+	 * placeholder's (0,0,1) normal would read BedBeneath.
 	 */
 	if (!Connections.IsValidIndex(ConnectionIndex))
 	{
@@ -3099,10 +2555,7 @@ EJointRole FStructure::GetJointRole(int32 ConnectionIndex, int32 PieceIndex) con
 
 FVector FStructure::GetConnectionForce(int32 ConnectionIndex) const
 {
-	/*
-	 * Zero for an out-of-range handle, and for a connection no solve reached — nothing in
-	 * an ungrounded island is held up, so there's no static load path to report.
-	 */
+	// Zero for an unknown handle or a connection no solve reached.
 	return ConnectionForces.IsValidIndex(ConnectionIndex)
 		? ConnectionForces[ConnectionIndex]
 		: FVector::ZeroVector;
@@ -3110,11 +2563,6 @@ FVector FStructure::GetConnectionForce(int32 ConnectionIndex) const
 
 FVector FStructure::GetConnectionMoment(int32 ConnectionIndex) const
 {
-	/*
-	 * Zero for an out-of-range handle and for a connection no solve reached, as GetConnectionForce.
-	 * A moment is a load, not a verdict, so zero fails closed: nothing levers this, and an invented
-	 * moment would make a NaN of everything downstream.
-	 */
 	return ConnectionMoments.IsValidIndex(ConnectionIndex)
 		? ConnectionMoments[ConnectionIndex]
 		: FVector::ZeroVector;
@@ -3122,11 +2570,7 @@ FVector FStructure::GetConnectionMoment(int32 ConnectionIndex) const
 
 double FStructure::GetConnectionCompositeDepthCm(int32 ConnectionIndex) const
 {
-	/*
-	 * Zero for an out-of-range handle and for a connection no solve reached, as the accessors above.
-	 * A depth is a relief, so zero fails closed: no masonry credited means the joint reads its own
-	 * bed patch and reports heavily loaded, and an invented depth would quietly relieve one.
-	 */
+	// Zero fails closed: a depth is a relief, so none credited reads the joint as more loaded.
 	return ConnectionCompositeDepthCm.IsValidIndex(ConnectionIndex)
 		? ConnectionCompositeDepthCm[ConnectionIndex]
 		: 0.0;
@@ -3134,13 +2578,7 @@ double FStructure::GetConnectionCompositeDepthCm(int32 ConnectionIndex) const
 
 double FStructure::GetConnectionUtilisation(int32 ConnectionIndex) const
 {
-	/*
-	 * Delegated whole, never re-derived: FConnection::UtilisationUnder is the evaluator the break
-	 * decision is made on, so this inherits its degenerate-normal guard. Force, moment and depth come
-	 * off the accessors, making the identity Structure.h states true by construction. The strength is
-	 * the weakest-link pairing, so a wood-on-brick bearing reads its material crush; where neither
-	 * face names a material this is bit-identical to the bare connection.
-	 */
+	// Delegates to the same evaluator and inputs the break decision uses, with weakest-link strength.
 	FConnection Paired = GetConnection(ConnectionIndex);
 	Paired.Strength = EffectiveJointStrength(ConnectionIndex);
 
@@ -3152,11 +2590,7 @@ double FStructure::GetConnectionUtilisation(int32 ConnectionIndex) const
 
 FConnectionStrength FStructure::EffectiveJointStrength(int32 ConnectionIndex) const
 {
-	/*
-	 * Pair the connection with its two faces' materials, weakest-link, only when both name one (via
-	 * EffectiveBondedStrength: min(connection, matA, matB) per axis). When either is null the bare
-	 * connection governs, the fail-safe default every material-free fixture keeps reading.
-	 */
+	// Per axis min(connection, matA, matB) when both faces name a material; else the bare connection.
 	const FConnection& Connection = GetConnection(ConnectionIndex);
 
 	const DestructionProfiles::FMaterialProfile* MaterialA = GetPiece(Connection.PieceA).Material;
@@ -3172,11 +2606,7 @@ FConnectionStrength FStructure::EffectiveJointStrength(int32 ConnectionIndex) co
 
 FStructure::FConnectionReadout FStructure::GetConnectionReadout(int32 ConnectionIndex) const
 {
-	/*
-	 * The cached min-violation readout, or absent. BreakByEquilibrium fills it solve-on-settle below
-	 * the cap; above the cap nothing solves it and this reads absent, so the overlay falls back to
-	 * GetConnectionUtilisation. Absent too for an out-of-range handle and before any solve.
-	 */
+	// Absent above the cap, before any solve, or for an unknown handle.
 	return ConnectionReadoutCache.IsValidIndex(ConnectionIndex)
 		? ConnectionReadoutCache[ConnectionIndex]
 		: FConnectionReadout{};
@@ -3184,33 +2614,23 @@ FStructure::FConnectionReadout FStructure::GetConnectionReadout(int32 Connection
 
 int32 FStructure::GetMinViolationReadoutSolveCount() const
 {
-	// Observability only — see the header. Bare accessor, no logic.
 	return MinViolationReadoutSolves;
 }
 
 bool FStructure::IsPieceSupported(int32 PieceIndex) const
 {
-	// An unknown piece is not being held up.
 	return PieceSupported.IsValidIndex(PieceIndex) && PieceSupported[PieceIndex];
 }
 
 EPieceSupport FStructure::GetPieceSupport(int32 PieceIndex) const
 {
-	/*
-	 * Derived from IsPieceSupported, not computed beside it, so IsPieceSupported(H) == (GetPieceSupport
-	 * is Grounded or Supported) by construction, including for an unknown handle and before any solve.
-	 * Reading support first means a piece both stranded and supported still agrees with the boolean.
-	 */
+	// Derived from IsPieceSupported so the two always agree.
 	if (IsPieceSupported(PieceIndex))
 	{
 		return GetPiece(PieceIndex).bIsGrounded ? EPieceSupport::Grounded : EPieceSupport::Supported;
 	}
 
-	/*
-	 * Stranded is a claim about the solver, made only about a piece the last solve found in a
-	 * knot. Everything else is Falling: a piece resting only on a knot, one with nothing
-	 * beneath it, a removed piece once re-solved, and an unknown handle.
-	 */
+	// Stranded only for a piece the last solve found in a knot; everything else is Falling.
 	return PieceStranded.IsValidIndex(PieceIndex) && PieceStranded[PieceIndex]
 		? EPieceSupport::Stranded
 		: EPieceSupport::Falling;
@@ -3218,10 +2638,6 @@ EPieceSupport FStructure::GetPieceSupport(int32 PieceIndex) const
 
 bool FStructure::HasSupportAnswer(int32 PieceIndex) const
 {
-	/*
-	 * The array's own extent is the answer, so there's no "have we solved yet" flag: SolveLoads
-	 * sizes PieceSupported to the piece count and nothing else writes it, so a flag would be a second
-	 * copy answering the wrong question. The same range check IsPieceSupported makes.
-	 */
+	// SolveLoads sizes PieceSupported, so its extent says whether this piece has been solved.
 	return PieceSupported.IsValidIndex(PieceIndex);
 }
