@@ -13,87 +13,82 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * SLICE 0b — THE LATENCY SPIKE, AND IT IS A HARD GATE (PROMOTION_DESIGN.md §6, §11 R1/R2;
- * user ruling D2, 2026-08-14). This file measures two things and rules on one question.
- * It writes no production code and it is measurement only: under the project's convention
- * a measurement lands as a PINNED ROW whose UNMEASURED state is its red.
+ * SLICE 0b — THE LATENCY SPIKE, A HARD GATE (PROMOTION_DESIGN.md §6, §11 R1/R2; user
+ * ruling D2, 2026-08-14). Measures two things and rules on one question. Writes no
+ * production code — measurement only: under this project's convention a measurement
+ * lands as a pinned row whose unmeasured state is its red.
  *
- * THE QUESTION, and the criterion that is binding rather than advisory:
+ * THE QUESTION, binding rather than advisory:
  *
  *     Can an 84-block region answer in ~50 ms — two solves inside a 100 ms budget?
  *
- * If it cannot, synchronous LP authority at scenario scale is OFF THE TABLE and the
- * promotion design changes shape rather than proceeding. A fired kill criterion is a
- * successful measurement. Nothing in this file may be softened to make the gate pass; the
- * arithmetic that decides it is written out at the bottom of this header and re-stated
- * beside the measurement it rests on.
+ * If not, synchronous LP authority at scenario scale is off the table and the promotion
+ * design changes shape rather than proceeding. A fired kill criterion is a successful
+ * measurement; nothing here may be softened to make the gate pass.
  *
  * ================================================================================
  * MEASUREMENT 1 — DOES ABANDONING lambda* PAY, AND BY HOW MUCH?
  * ================================================================================
  *
- * THE REFORMULATION. Every fixture the project owns is posed with gravity LIVE, so the
- * LP maximises lambda and answers "how many times its own weight". That pose starts
- * TRIVIALLY FEASIBLE — every equality row's right-hand side is zero, lambda = 0 solves it
- * — so phase 1 never runs and the entire measured cost is phase 2 climbing lambda from 0
- * to lambda*. wall-01's 58,605 pivots and ~252 s are exactly that climb.
+ * THE REFORMULATION. Every fixture is posed with gravity live, so the LP maximises
+ * lambda and answers "how many times its own weight". That pose starts trivially
+ * feasible — every equality row's RHS is zero, lambda = 0 solves it — so phase 1 never
+ * runs and the entire measured cost is phase 2 climbing lambda from 0 to lambda*.
+ * wall-01's 58,605 pivots and ~252 s are exactly that climb.
  *
- * Production does not want lambda*. It wants: IS THERE AN ADMISSIBLE EQUILIBRIUM AT
- * lambda = 1, and if not what moves. That is a FEASIBILITY problem, and it is posed with
- * a field that already exists — FOracleProblem::bGravityIsLive = false — so gravity
- * enters the equality rows as a CONSTANT and phase 1 must genuinely run.
+ * Production doesn't want lambda*, it wants: is there an admissible equilibrium at
+ * lambda = 1, and if not what moves. That's a feasibility problem, posed with a field
+ * that already exists — FOracleProblem::bGravityIsLive = false — so gravity enters the
+ * equality rows as a constant and phase 1 must genuinely run.
  *
- * WHAT THE DEAD POSE MAKES THE SOLVER DO, worked from the assembly rather than assumed:
+ * What the dead pose makes the solver do, worked from the assembly rather than assumed:
  *
- *   - Gravity goes to DeadZ, so RowFz.Rhs = +W per block and phase 1 starts infeasible.
- *     Phase 1 must drive out one artificial per equality row (3 per non-grounded block).
- *   - The lambda column then has NO entry in any equilibrium row — its only constraint is
- *     the cap row lambda <= LambdaCap. So phase 2 has nothing to climb: a feasible problem
- *     reports lambda EXACTLY LambdaCap, and an infeasible one returns the oracle's
- *     dead-load arm, bAnswered = true with lambda EXACTLY 0.
- *   - Those two exact values are asserted per row and they are not decoration: if a live
- *     load ever leaked into a pose meant to be dead, lambda would land somewhere between
- *     and the pin would fire. A feasibility measurement taken on a problem that still has
- *     a live load is the whole slice being wrong quietly.
+ *   - Gravity goes to DeadZ, so RowFz.Rhs = +W per block and phase 1 starts infeasible,
+ *     driving out one artificial per equality row (3 per non-grounded block).
+ *   - The lambda column then has no entry in any equilibrium row — its only constraint
+ *     is the cap row lambda <= LambdaCap. So phase 2 has nothing to climb: a feasible
+ *     problem reports lambda exactly LambdaCap, and an infeasible one returns the
+ *     oracle's dead-load arm, bAnswered = true with lambda exactly 0.
+ *   - Those two exact values are asserted per row: if a live load ever leaked into a
+ *     pose meant to be dead, lambda would land somewhere between and the pin would fire.
  *
- * THE CROSS-VALIDATION, which is what makes this a measurement rather than a timing run.
- * The feasibility answer is a BOOLEAN and it must agree with the lambda* pose's own
- * verdict: feasible at lambda = 1 exactly when lambda* >= 1. Both poses are solved in the
- * same run on the same structure, so the agreement is measured and not inherited. The
- * fixture list deliberately carries BOTH ARMS — the 30-course leaning stack is
- * lambda* = 0.44 and MUST come back infeasible — because an "always feasible" list would
- * make the boolean vacuous, which is TRAPS' invariant-over-fixtures-that-share-a-hidden-
- * property trap in its exact form.
+ * THE CROSS-VALIDATION is what makes this a measurement rather than a timing run: the
+ * feasibility boolean must agree with the lambda* pose's own verdict — feasible at
+ * lambda = 1 exactly when lambda* >= 1 — both solved in the same run on the same
+ * structure, so the agreement is measured and not inherited. The fixture list
+ * deliberately carries both arms — the 30-course leaning stack is lambda* = 0.44 and
+ * must come back infeasible — because an "always feasible" list would make the boolean
+ * vacuous, TRAPS' invariant-over-fixtures-that-share-a-hidden-property trap exactly.
  *
- * THE EARLY EXIT WAS UNMEASURABLE FROM OUTSIDE AND IS NOT ANY MORE. §3.2 and §5.2 claim a
- * feasible problem is proved the moment phase 1's infeasibility sum reaches tolerance — no
- * optimality proof needed — and that most of a standing structure's saving lives there.
- * RunRevisedSimplex runs phase 1 to OPTIMALITY and reads the sum only after it returns, so
- * the pivots spent proving optimality AFTER feasibility was already reached were invisible.
- * The seam landed inside this slice: FOracleResult::PhaseOnePivots and
- * PivotsToFirstFeasible are set during the solve, as OBSERVATION ONLY — the solver still
- * runs to optimality, so every lambda*, pivot count and scan count in the suite came back
- * bit-identical. The rows below now carry both as EXACT PINS, per this file's own rule that
- * every deterministic integer it measures is pinned rather than printed.
+ * THE EARLY EXIT was unmeasurable from outside and is not any more. §3.2 and §5.2 claim
+ * a feasible problem is proved the moment phase 1's infeasibility sum reaches tolerance
+ * — no optimality proof needed — and that most of a standing structure's saving lives
+ * there. RunRevisedSimplex runs phase 1 to optimality and reads the sum only after it
+ * returns, so pivots spent proving optimality after feasibility was already reached were
+ * invisible. FOracleResult::PhaseOnePivots and PivotsToFirstFeasible are now set during
+ * the solve, as observation only — the solver still runs to optimality, so every
+ * lambda*, pivot count and scan count in the suite came back bit-identical. The rows
+ * below carry both as exact pins, per this file's rule that every deterministic integer
+ * it measures is pinned rather than printed.
  *
  * ================================================================================
- * MEASUREMENT 2 — THE REGIONAL SANDWICH, WHICH HAS NEVER BEEN RUN AT ALL
+ * MEASUREMENT 2 — THE REGIONAL SANDWICH, NEVER RUN AT ALL
  * ================================================================================
  *
- * The roadmap's "a deleted brick provably cannot affect masonry beyond a bonded distance"
- * is false in this model and PROMOTION_DESIGN §5.3 says so with counter-examples. What it
- * proposes instead is a two-sided sandwich, provable rather than hopeful:
+ * The roadmap's "a deleted brick provably cannot affect masonry beyond a bonded
+ * distance" is false in this model (PROMOTION_DESIGN §5.3 has counter-examples). The
+ * alternative is a two-sided sandwich, provable rather than hopeful:
  *
- *   - boundary blocks pinned GROUNDED — an artificial foundation, so the region is
- *     OPTIMISTIC: infeasible here means the whole structure is infeasible;
- *   - boundary blocks FREE — they carry their own weight and nothing holds them, so the
- *     region is PESSIMISTIC: feasible here means the whole structure is feasible;
+ *   - boundary blocks pinned grounded — an artificial foundation — makes the region
+ *     optimistic: infeasible here means the whole structure is infeasible;
+ *   - boundary blocks free — carrying their own weight, nothing holding them — makes it
+ *     pessimistic: feasible here means the whole structure is feasible;
  *   - agreement certifies; disagreement grows the region.
  *
- * THE REGION EXTRACTOR IS TEST-SIDE, exactly as the case-21 strength-override probes are:
- * FOracleProblem is a plain struct of public arrays, so a region is a filter over blocks
- * and joints plus one flag per boundary block. Nothing in RigidBlockOracle.h/.cpp is
- * needed to pose it, which is the property that keeps the oracle independently derived.
+ * The region extractor is test-side, exactly as the case-21 strength-override probes
+ * are: FOracleProblem is a plain struct of public arrays, so a region is a filter over
+ * blocks and joints plus one flag per boundary block, needing nothing from
+ * RigidBlockOracle.h/.cpp — the property that keeps the oracle independently derived.
  *
  * ================================================================================
  * PREDICTIONS — DERIVATION RECORD REVISION 1, WRITTEN BEFORE THE FIRST RUN
@@ -101,12 +96,12 @@
  *  measurement is not evidence, it is a transcription.)
  * ================================================================================
  *
- * MEASUREMENT 1. Phase 1 must pivot out one artificial per equality row, and there are
- * 3 rows per non-grounded block, so its pivot count has a FLOOR of ~3 x blocks and should
- * land within a small multiple of it. Phase 2's climb has no such floor and is set by how
- * many capacities bind on the way to lambda*. So the prediction is: the dead pose costs
- * ~O(rows) pivots on EVERY fixture, and the speedup is large exactly where the lambda*
- * climb was long.
+ * MEASUREMENT 1. Phase 1 must pivot out one artificial per equality row (3 rows per
+ * non-grounded block), so its pivot count has a floor of ~3 x blocks and should land
+ * within a small multiple of it. Phase 2's climb has no such floor and is set by how
+ * many capacities bind on the way to lambda*. Prediction: the dead pose costs ~O(rows)
+ * pivots on every fixture, and the speedup is large exactly where the lambda* climb was
+ * long.
  *
  *     fixture           blocks   lambda* pose (pinned)   PREDICTED dead-pose pivots
  *     leaning stack 5        5        (fast suite)                     10 -  40
@@ -118,52 +113,51 @@
  *     wall-06              146   8,819 pv / ~127 s (Dantzig era)      600 - 1,500
  *     wall-01              375  58,605 pv / ~252 s                  1,500 - 4,000
  *
- * PREDICTED SPEEDUP: ~3-5x on the 84-block wall, ~10-20x on corbel D, ABOUT 1x ON
- * WALL-18 (its lambda* climb is only 791 pivots, which is already near the phase-1 floor
- * — the design's 10-100x estimate cannot hold on a fixture whose climb is short), and
- * ~15-40x on wall-01. So the honest predicted headline is NOT the design's 10-100x: it is
- * "a few x on small standing structures, an order or more only where the climb was long".
+ * PREDICTED SPEEDUP: ~3-5x on the 84-block wall, ~10-20x on corbel D, about 1x on
+ * wall-18 (its lambda* climb is only 791 pivots, already near the phase-1 floor — the
+ * design's 10-100x estimate cannot hold on a fixture whose climb is short), and ~15-40x
+ * on wall-01. The honest predicted headline is not the design's 10-100x: it is "a few x
+ * on small standing structures, an order or more only where the climb was long".
  *
  * PREDICTED GATE ARITHMETIC: 0.61 s / 4 ~ 0.15 s for the 84-block wall, against a ~50 ms
- * target. THE KILL CRITERION IS PREDICTED TO FIRE on the feasibility lever alone, with
+ * target — the kill criterion is predicted to fire on the feasibility lever alone, with
  * ~3x still owed to warm starts and the per-iteration levers (PROMOTION_DESIGN §5.5
- * estimates ~1 order for all of those together, so the gate is predicted RECOVERABLE but
- * NOT MET TODAY).
+ * estimates ~1 order for all of those together), so the gate is predicted recoverable
+ * but not met today.
  *
- * MEASUREMENT 2, and this prediction is arithmetic rather than a guess. SUM THE VERTICAL
- * EQUILIBRIUM ROWS OF A FREE-BOUNDARY REGION: every internal contact force appears twice
+ * MEASUREMENT 2, and this prediction is arithmetic rather than a guess. Sum the vertical
+ * equilibrium rows of a free-boundary region: every internal contact force appears twice
  * with opposite signs (BlockA carries -1 where BlockB carries +1) and cancels, and every
  * joint leaving the region has been dropped. What is left is
  *
  *         0 = - (total weight of the region)
  *
- * which has no solution for any region of positive weight. UNLESS the region contains a
- * GROUNDED block — a grounded block writes no equilibrium row, so its contacts do not
- * cancel and it is the only thing that can supply the reaction. Therefore:
+ * which has no solution for any region of positive weight — unless the region contains a
+ * grounded block, which writes no equilibrium row, so its contacts do not cancel and it
+ * is the only thing that can supply the reaction. Therefore:
  *
- *     PREDICTED: the free-boundary (pessimistic) side is INFEASIBLE for every region that
- *     does not reach the ground, whatever the radius and whatever the wall. It can only
- *     certify a ground-connected region.
+ *     PREDICTED: the free-boundary (pessimistic) side is infeasible for every region
+ *     that does not reach the ground, whatever the radius and whatever the wall. It can
+ *     only certify a ground-connected region.
  *
  *     PREDICTED CONSEQUENCE: for a brick deleted k courses above the foundation, the
  *     sandwich closes at the first radius R >= k and at no smaller one.
  *
  *     PREDICTED R2 ANSWER: over ten deletions at courses 1..10 with radius fixed at 4,
- *     the two sides agree on FOUR of ten (courses 1-4) and disagree on six.
+ *     the two sides agree on four of ten (courses 1-4) and disagree on six.
  *
- * If that prediction holds, the sandwich does not degenerate to "always grow to the whole
- * structure" — it degenerates to "always grow to the ground", which for a 30-course wall
- * is a region of full height and is a materially different answer from the design's
- * "should agree at a small radius". Saying which of those it is, with a number, is this
- * measurement's whole job.
+ * If that prediction holds, the sandwich does not degenerate to "always grow to the
+ * whole structure" — it degenerates to "always grow to the ground", a full-height region
+ * for a 30-course wall, materially different from the design's "should agree at a small
+ * radius". Saying which of those it is, with a number, is this measurement's whole job.
  *
  * ================================================================================
  * WHAT WAS MEASURED — 2026-08-15, one run each, tree at HEAD 9dcbd76
  * ================================================================================
  *
  * MEASUREMENT 1. Every dead-pose pivot count landed inside its predicted range except
- * corbel D (1,022 against a 400-900 range) and wall-01 (5,407 against 1,500-4,000), both
- * HIGH. The speedups, live pose over dead pose:
+ * corbel D (1,022 against 400-900) and wall-01 (5,407 against 1,500-4,000), both high.
+ * The speedups, live pose over dead pose:
  *
  *     fixture           blocks   live pv / s     dead pv / s     pivots   seconds
  *     leaning stack 5        5        4 / 0.000      22 / 0.000    0.18x        —
@@ -175,40 +169,41 @@
  *     wall-06     (t)      146   14,209 / 16.10     876 / 0.314   16.22x    51.2x
  *     wall-01              375   58,806 / 280.5   5,407 / 25.99   10.88x    10.8x
  *
- * (t) = TRIMMED 2026-08-16. Those four rows no longer re-solve the LIVE pose — its lambda*
- * is pinned in OracleSweepFull.RigidBlock.WallsAndLadders and its solve was identical —
- * so their live columns above are the 2026-08-15 measurement of record and their speedup
- * is a CROSS-RUN reading from here on. Every DEAD column is still measured every run.
+ * (t) = trimmed 2026-08-16. Those four rows no longer re-solve the live pose — its
+ * lambda* is pinned in OracleSweepFull.RigidBlock.WallsAndLadders and its solve was
+ * identical — so their live columns above are the 2026-08-15 measurement of record and
+ * their speedup is a cross-run reading from here on. Every dead column is still measured
+ * every run.
  *
  * FOUR THINGS THE MEASUREMENT SAID THAT THE PREDICTION DID NOT:
  *
- *   - THE SECONDS RATIO BEATS THE PIVOT RATIO EVERYWHERE EXCEPT wall-01, by up to 5x
+ *   - The seconds ratio beats the pivot ratio everywhere except wall-01, by up to 5x
  *     (wall-18: 8.3x of pivots buying 44.6x of time). A phase-1 pivot is cheaper than a
- *     phase-2 pivot on the same problem — unexplained, and worth an attribution slice
- *     before anyone budgets on the pivot ratio alone.
- *   - THE LEVER WEAKENS WITH SCALE. Dead-pose pivots run 2.2x the equality-row count at
+ *     phase-2 pivot on the same problem — unexplained, worth an attribution slice before
+ *     anyone budgets on the pivot ratio alone.
+ *   - The lever weakens with scale. Dead-pose pivots run 2.2x the equality-row count at
  *     84 blocks and ~5x it at 375, so phase 1 is not O(rows) with a small constant and
- *     wall-01's 10.9x is the SMALLEST large-fixture speedup, not the largest.
- *   - THE SMALL FIXTURES GO THE OTHER WAY: the 5- and 30-course stacks cost 5.5x MORE
+ *     wall-01's 10.9x is the smallest large-fixture speedup, not the largest.
+ *   - The small fixtures go the other way: the 5- and 30-course stacks cost 5.5x more
  *     pivots in the dead pose (22 against 4, 163 against 29). Where the lambda* climb is
- *     genuinely short, phase 1 is the expensive half. The design's 10-100x estimate is
- *     refuted as a general figure in BOTH directions.
- *   - PROVING INFEASIBILITY IS NOT THE EXPENSIVE DIRECTION here. The 30-course stack, the
- *     one infeasible fixture, answers in 163 pivots and 0.006 s — the same time as its
- *     lambda* solve. §3.2's "standing is cheap and falling is expensive" is not what this
- *     measurement shows.
+ *     genuinely short, phase 1 is the expensive half — the design's 10-100x estimate is
+ *     refuted as a general figure in both directions.
+ *   - Proving infeasibility is not the expensive direction here. The 30-course stack,
+ *     the one infeasible fixture, answers in 163 pivots and 0.006 s — the same time as
+ *     its lambda* solve. §3.2's "standing is cheap and falling is expensive" is not what
+ *     this measurement shows.
  *
  * MEASUREMENT 1b — THE EARLY EXIT, AND §5.2's LARGEST REMAINING CLAIM IS REFUTED.
  *
- * THE PREDICTION ON THE TABLE was the design's, not this file's: §3.2 promised that
- * proving feasibility can stop the moment the infeasibility sum reaches zero while proving
- * INfeasibility needs phase 1 run to optimality, and §5.2 put "most of a standing
- * structure's saving" there. Revision 1 of this file's derivation record priced it at
- * nothing, because the two fields were unpopulated and it could not. So the honest
- * prediction of record is the design's qualitative one: LARGE.
+ * The prediction on the table was the design's, not this file's: §3.2 promised that
+ * proving feasibility can stop the moment the infeasibility sum reaches zero while
+ * proving infeasibility needs phase 1 run to optimality, and §5.2 put "most of a
+ * standing structure's saving" there. Revision 1 of this file's derivation record priced
+ * it at nothing, because the two fields were unpopulated. So the honest prediction of
+ * record is the design's qualitative one: large.
  *
- * MEASURED, dead pose, phase-1 pivots / the pivot at which the problem FIRST read feasible
- * (INDEX_NONE = never, which is what an infeasible problem must report):
+ * MEASURED, dead pose, phase-1 pivots / the pivot at which the problem first read
+ * feasible (INDEX_NONE = never, which is what an infeasible problem must report):
  *
  *     fixture           phase 1   first feasible   skipped   share
  *     leaning stack 5        21               21         0    0.00%
@@ -222,29 +217,29 @@
  *     ---------------------------------------------------------------
  *     POOLED              9,245                —        58    0.63%
  *
- * **0.63% POOLED, 3.85% ON THE WORST SINGLE FIXTURE.** And the reason is STRUCTURAL rather
- * than a bad fixture list, which is what makes it a refutation rather than a disappointing
- * number: phase 1's OBJECTIVE *is* the infeasibility sum, so "the sum reaches tolerance"
- * and "phase 1 is optimal" coincide by construction. There is no optimality-proof tail to
- * skip — only the handful of degenerate pivots after the last artificial reaches zero.
- * §3.2's "proving feasibility can stop the moment the sum reaches zero" is TRUE and worth
+ * **0.63% pooled, 3.85% on the worst single fixture.** The reason is structural rather
+ * than a bad fixture list, which makes it a refutation rather than a disappointing
+ * number: phase 1's objective *is* the infeasibility sum, so "the sum reaches tolerance"
+ * and "phase 1 is optimal" coincide by construction — no optimality-proof tail to skip,
+ * only the handful of degenerate pivots after the last artificial reaches zero. §3.2's
+ * "proving feasibility can stop the moment the sum reaches zero" is true and worth
  * nothing: the saving it names is already spent.
  *
  * TWO SUPPORTING FACTS, recorded beside the conclusion because each closes an escape:
  *
- *   - THE PHASE-1 GATE IS ALREADY LOOSE — InfeasibilityTolerance() is (1 + largest basic)
- *     x 1e-9 x rows, which is ~13 in absolute terms at wall-01 scale with the 1e6 cap RHS.
- *     A STRICTER gate can therefore only move first-feasibility LATER and make the saving
- *     SMALLER. The 0.63% is an upper bound on this lever, not a mid-point.
- *   - THE ONE RESIDUE THESE TWO COUNTERS CANNOT SEE is the pricer's closing FULL sweep,
- *     which costs column SCANS rather than pivots. It is bounded above by pricing's own
+ *   - The phase-1 gate is already loose — InfeasibilityTolerance() is (1 + largest
+ *     basic) x 1e-9 x rows, ~13 in absolute terms at wall-01 scale with the 1e6 cap RHS.
+ *     A stricter gate can only move first-feasibility later and make the saving smaller;
+ *     0.63% is an upper bound on this lever, not a mid-point.
+ *   - The one residue these two counters cannot see is the pricer's closing full sweep,
+ *     which costs column scans rather than pivots. It is bounded above by pricing's own
  *     measured share of runtime — 0.5% on wall-01 since partial pricing landed — so it
  *     cannot be hiding the lever either.
  *
- * ALL EIGHT GRAVITY-LIVE POSES REPORT 0/0, which confirms from the OUTSIDE what the
- * solver's comment claims from the inside: a live pose is feasible before a single pivot
- * and phase 1 never runs at all. That pair is asserted on every row for the same reason
- * the exact LambdaCap-or-0 pin exists — it is how a live load leaking into a pose posed as
+ * All eight gravity-live poses report 0/0, confirming from the outside what the solver's
+ * comment claims from the inside: a live pose is feasible before a single pivot and
+ * phase 1 never runs at all. That pair is asserted on every row for the same reason the
+ * exact LambdaCap-or-0 pin exists — it is how a live load leaking into a pose posed as
  * dead would be caught.
  *
  * MEASUREMENT 2. The conservation prediction held exactly, and everything downstream of
@@ -260,110 +255,110 @@
  *          6             149           feasible        feasible       yes
  *          8             149           feasible        feasible       yes
  *
- * THE CLOSING RADIUS IS 5, AND THE REGION THERE IS 142 OF 149 BLOCKS — 95% of the wall.
- * The free-boundary side read INFEASIBLE at every radius whose region contained no
- * grounded block and FEASIBLE at every radius whose region contained one, with no
+ * The closing radius is 5, and the region there is 142 of 149 blocks — 95% of the wall.
+ * The free-boundary side read infeasible at every radius whose region contained no
+ * grounded block and feasible at every radius whose region contained one, with no
  * exception, exactly as the vertical-equilibrium sum requires.
  *
- * R2's ANSWER: FIVE of ten deletions certify at radius 4 — courses 1-5, the ones whose
- * region reaches the foundation. Predicted four; the extra one is the SHELL reaching a
+ * R2's answer: five of ten deletions certify at radius 4 — courses 1-5, the ones whose
+ * region reaches the foundation. Predicted four; the extra one is the shell reaching a
  * course beyond the core, so the prediction was wrong by exactly one course for a named
  * reason. Courses 6-10 do not certify at any radius short of the ground.
  *
- * AND THE COST GOES THE WRONG WAY. At the closing radius the sandwich's two solves take
- * 753 + 872 = 1,625 pivots where solving the WHOLE WALL takes 965: the lever is 1.68x
+ * And the cost goes the wrong way: at the closing radius the sandwich's two solves take
+ * 753 + 872 = 1,625 pivots where solving the whole wall takes 965 — the lever is 1.68x
  * more expensive than the work it exists to avoid.
  *
- * THE COLLAPSE ARM IS WORSE. On the 30-course leaning stack the optimistic region is
+ * The collapse arm is worse. On the 30-course leaning stack the optimistic region is
  * still feasible at radius 13 (29 of 30 blocks) and only certifies at radius 14, where
- * the region is ALL THIRTY — the whole structure. No proper subset certifies.
+ * the region is all thirty — the whole structure. No proper subset certifies.
  *
- * AND THE PESSIMISTIC SIDE IS NOT A BOUND AT ALL (Part D). The stack's bottom band —
- * courses 0..5, grounded, twenty-four courses dropped — is FEASIBLE with a free boundary
- * AND with a grounded boundary, so the sandwich CLOSES and certifies "the full structure
+ * And the pessimistic side is not a bound at all (Part D). The stack's bottom band —
+ * courses 0..5, grounded, twenty-four courses dropped — is feasible with a free boundary
+ * and with a grounded boundary, so the sandwich closes and certifies "the full structure
  * is feasible" about a stack whose lambda* is 0.4405. Dropping the material outside a
- * region removes its WEIGHT along with its restraint, so §5.3's "the found force system
- * extends" does not hold and a closed sandwich can be a FALSE CERTIFICATE. This is not a
- * lever that under-delivers; as specified it is unsound.
+ * region removes its weight along with its restraint, so §5.3's "the found force system
+ * extends" does not hold and a closed sandwich can be a false certificate — not a lever
+ * that under-delivers; as specified it is unsound.
  *
- * AND IT IS NOT A KNIFE EDGE. The certified band's OWN lambda*, measured in the live pose,
- * is **18.481256459924058** against the whole stack's 0.44048 — the region the sandwich
- * certified stands at **41.96x** the load under which the structure it certified has no
- * equilibrium. That factor is what says no tightening of the extractor rescues the lever:
- * a boundary rule can move a marginal answer, it cannot move forty times. Only carrying
+ * And it is not a knife edge. The certified band's own lambda*, measured in the live
+ * pose, is **18.481256459924058** against the whole stack's 0.44048 — the region the
+ * sandwich certified stands at **41.96x** the load under which the structure it
+ * certified has no equilibrium. No tightening of the extractor rescues the lever: a
+ * boundary rule can move a marginal answer, it cannot move forty times. Only carrying
  * the omitted material's weight can, which is the repair §12 D2' rules for. (Independent
- * check: review priced the band at ~18.7 from a (N-1)^-2.29 fit to the pinned stack rungs,
- * 1.2% from the solve — a second derivation agreeing, not a transcription.)
+ * check: review priced the band at ~18.7 from a (N-1)^-2.29 fit to the pinned stack
+ * rungs, 1.2% from the solve — a second derivation agreeing, not a transcription.)
  *
  * PART B ALSO CHECKS ITS FIVE CERTIFICATES against the whole cut wall's own verdict, one
- * 149-block dead solve per deletion. It did not until 2026-08-15, which left the count of
- * five as a count of certificates nobody had checked — in the one test that demonstrates a
- * false certificate. All five hold on these ten fixtures.
+ * 149-block dead solve per deletion. It did not until 2026-08-15, which left the count
+ * of five unchecked — in the one test that demonstrates a false certificate. All five
+ * hold on these ten fixtures.
  *
  * ================================================================================
  * THE GATE VERDICT
  * ================================================================================
  *
  * R1 (latency of one solve): the 84-block fixture answers feasibility in 0.065 s against
- * a ~0.050 s target. The design's stated gap was 12x; the MEASURED gap is 1.3x, with warm
- * starts — the criterion's own named escape — unbuilt and unmeasured. **The kill criterion
- * does not fire on R1.**
+ * a ~0.050 s target. The design's stated gap was 12x; the measured gap is 1.3x, with warm
+ * starts — the criterion's own named escape — unbuilt and unmeasured. **The kill
+ * criterion does not fire on R1.**
  *
  * R2 (regional decomposition): **it fires.** The sandwich certifies only when its region
  * reaches the ground, its closing region is 95-100% of the structure, it costs 1.68x a
  * global solve on the fixture where it does close, and its pessimistic side can certify a
- * structure that has no equilibrium. Regional decomposition is REQUIRED for scenario scale
- * — wall-01's 375 blocks answer feasibility in 26 s and scenario scale is ~3.3x that — so
- * R2 firing is the one that changes the design's shape.
+ * structure that has no equilibrium. Regional decomposition is required for scenario
+ * scale — wall-01's 375 blocks answer feasibility in 26 s and scenario scale is ~3.3x
+ * that — so R2 firing is the one that changes the design's shape.
  *
  * ================================================================================
  * WHAT IS PINNED AND WHAT IS DELIBERATELY NOT
  * ================================================================================
  *
- * PINNED EXACTLY: block and joint counts per fixture (the N10 rung-flip lesson — a window
- * and a ratio cannot catch a row secretly solving the wrong problem), pivot counts (the
- * solver is bit-deterministic, so a pivot count is an exact quantity), the feasibility
- * verdict, the exact lambda values the pose implies (LambdaCap or 0), the early exit's two
- * pivot indices per pose and their pooled totals, region block counts, the sandwich's
- * closing radius, and the agreement count.
+ * PINNED EXACTLY: block and joint counts per fixture (the N10 rung-flip lesson — a
+ * window or ratio cannot catch a row secretly solving the wrong problem), pivot counts
+ * (the solver is bit-deterministic), the feasibility verdict, the exact lambda values
+ * the pose implies (LambdaCap or 0), the early exit's two pivot indices per pose and
+ * their pooled totals, region block counts, the sandwich's closing radius, and the
+ * agreement count.
  *
- * ALSO ASSERTED, ON EVERY SOLVE IN BOTH TESTS: that the solve ANSWERED. A REFUSAL IS NOT
- * AN INFEASIBILITY and SpikeIsFeasible cannot tell them apart — Refuse() returns
- * bAnswered = false with lambda = 0, which is bit-for-bit what the dead-load infeasibility
- * arm returns. Without that assertion a region solve that hit NumericalFailure — the arm
+ * ALSO ASSERTED, ON EVERY SOLVE IN BOTH TESTS: that the solve answered. A refusal is not
+ * an infeasibility and SpikeIsFeasible cannot tell them apart — Refuse() returns
+ * bAnswered = false with lambda = 0, bit-for-bit what the dead-load infeasibility arm
+ * returns. Without that assertion a region solve that hit NumericalFailure — the arm
  * that refused 128- and 200-block members one commit ago, against regions here of 44 to
- * 149 blocks — would read as "the free-boundary side is infeasible", which is the shape of
- * this file's headline finding. The verdict is not corrupted today (every region solve's
- * pivot count is 7-965, nowhere near MaxPivots, and every WhyNot is empty), and the point
- * of the assertion is that nothing was defending that.
+ * 149 blocks — would read as "the free-boundary side is infeasible", the shape of this
+ * file's headline finding. The verdict is not corrupted today (every region solve's
+ * pivot count is 7-965, nowhere near MaxPivots, and every WhyNot is empty); the point of
+ * the assertion is that nothing was defending that.
  *
  * PINNED IN A WINDOW: lambda* of the live pose, at the file-wide +/-2e-5 relative, so a
- * moved lambda* fails HERE too and the cross-validation cannot quietly rest on a number
+ * moved lambda* fails here too and the cross-validation cannot quietly rest on a number
  * that changed.
  *
  * **NOT PINNED: WALL-CLOCK TIME.** Timings are not bit-reproducible; they measure the
- * machine. Every second below is REPORTED and none is asserted, with one exception stated
- * at its assertion: a single order-of-magnitude ceiling on the gate fixture, set ~30x above
- * the measurement so it can only fire on a catastrophe. Ratios of pivots ARE pinned,
- * because pivot counts are deterministic; ratios of seconds are not.
+ * machine. Every second below is reported and none is asserted, with one exception
+ * stated at its assertion: a single order-of-magnitude ceiling on the gate fixture, set
+ * ~30x above the measurement so it can only fire on a catastrophe. Ratios of pivots are
+ * pinned, because pivot counts are deterministic; ratios of seconds are not.
  *
- * COST: this file's FOUR tests live in the OPT-IN sweep, and SINCE 2026-08-16 THAT SWEEP
- * HAS TWO TIERS — `OracleSweepFast` (80 s at the split, for iteration) and `OracleSweepFull`
- * (3 tests, 20.8 min, MANDATORY before any commit touching the LP oracle). The cost test is
- * FULL; both sandwiches and the sub-1.0 wall are FAST. `Automation RunTests OracleSweep` runs
- * both by substring (measured at the split: the three filters return 7 / 3 / 10 tests, and
- * the fast count moves as tests land).
+ * COST: this file's four tests live in the opt-in sweep, split since 2026-08-16 into two
+ * tiers — `OracleSweepFast` (80 s at the split, for iteration) and `OracleSweepFull`
+ * (3 tests, 20.8 min, mandatory before any commit touching the LP oracle). The cost test
+ * is full; both sandwiches and the sub-1.0 wall are fast. `Automation RunTests
+ * OracleSweep` runs both by substring (measured at the split: the three filters return
+ * 7 / 3 / 10 tests, and the fast count moves as tests land).
  * MEASURED: 344 s for the cost test, **313 s since the 2026-08-16 live-pose trim**, with
  * 7.2 s for the sandwich, 9.6 s for the repaired one and **8.0 s for the sub-1.0 wall**.
- * The group is 10 tests and 10 GREEN since the repaired sandwich landed (2026-08-15) — this
- * file adds NO deliberate red. It briefly did: the
- * early-exit seam was written here as a red hand-off and the seam landed inside the same
- * slice, so the two fields are now measured and pinned rather than demanded. The default
- * suite is untouched and re-run at 173 = 167 green + 6 deliberate reds.
+ * The group is 10 tests, all green since the repaired sandwich landed (2026-08-15) — this
+ * file adds no deliberate red today. It briefly did: the early-exit seam was a red
+ * hand-off here and landed inside the same slice, so the two fields are now measured and
+ * pinned rather than demanded. The default suite is untouched and re-runs at
+ * 173 = 167 green + 6 deliberate reds.
  *
  * GREEN ON ARRIVAL IS NOT THE SAME AS ASSERTING NOTHING, and §9.5 is explicit that a row
  * which invalidated a published design section may not rest on an argued bite. So every
- * conclusion here has a RECORDED MUTATION, listed in TRAPS' registry as X1-X10:
+ * conclusion here has a recorded mutation, listed in TRAPS' registry as X1-X10:
  *
  *     X1  the ladder deletes from course 5 instead of 6      ->  7 assertions
  *     X2  the gate fixture built 8x11 instead of 8x10        ->  5 assertions
@@ -403,8 +398,8 @@
  * verdict were the three places this file's conclusions rested on assertions that a
  * wrong-but-plausible answer would have walked straight through.
  *
- * NEEDS A TICKING WORLD: NO. Producers, the bridge and the LP — arithmetic on plain
- * structs, no world, no tick.
+ * NEEDS A TICKING WORLD: no. Producers, the bridge and the LP are arithmetic on plain
+ * structs — no world, no tick.
  *
  * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation
  * unit and every file-scope name in the blob shares it (TRAPS). Every constant here also
@@ -818,58 +813,58 @@ namespace OracleFeasibilitySpikeSupport
 	}
 
 	/* ================================================================================
-	 * REPAIR (1) — THE OMITTED MATERIAL'S WEIGHT, KEPT AS A DEAD SURCHARGE.
+	 * REPAIR (1) — the omitted material's weight, kept as a dead surcharge.
 	 *
-	 * The refuted form dropped an omitted block's RESTRAINT and its WEIGHT together, and
+	 * The refuted form dropped an omitted block's restraint and its weight together, and
 	 * the weight was the half that mattered: the leaning stack's twenty-four omitted
 	 * courses were carrying the destabilising moment, so deleting them turned a structure
-	 * with no equilibrium into a short stack that comfortably stands (lambda* 18.481 against
-	 * the whole stack's 0.44048 — wrong by 41.96x, PART D of the sandwich test).
+	 * with no equilibrium into a short stack that comfortably stands (lambda* 18.481
+	 * against the whole stack's 0.44048 — wrong by 41.96x, Part D of the sandwich test).
 	 *
 	 * The repair keeps the demand and still refuses the restraint: an omitted block that
-	 * BEARS ON THE REGION contributes its weight as a DEAD applied force, while writing no
+	 * bears on the region contributes its weight as a dead applied force, while writing no
 	 * equilibrium row, no joint row, and holding nothing down.
 	 *
-	 * WHAT "BEARS ON THE REGION" MEANS, and getting this wrong in either direction is the
-	 * whole slice. Charge too little and the false certificate survives; charge everything
-	 * and a strip cut out of a wall is asked to carry the entire building, so the
-	 * pessimistic side never certifies and the lever is dead by a second route.
+	 * What "bears on the region" means, and getting this wrong in either direction is the
+	 * whole slice — charge too little and the false certificate survives; charge
+	 * everything and a strip cut out of a wall is asked to carry the entire building, so
+	 * the pessimistic side never certifies and the lever is dead by a second route:
 	 *
-	 *   - MATERIAL ABOVE, whose only road to the ground runs through the region: the region
-	 *     genuinely carries it. CHARGED.
-	 *   - MATERIAL TO THE SIDE (and below) that stands on its own foundation: it reaches the
-	 *     earth without the region's help, so the region does not carry its weight.
-	 *     NOT CHARGED. This is the case the leaning stack does not have and every wall does,
-	 *     and it is why "the omitted weight" cannot mean "all of it".
+	 *   - material above, whose only road to the ground runs through the region: the
+	 *     region genuinely carries it. Charged.
+	 *   - material to the side (and below) that stands on its own foundation: it reaches
+	 *     the earth without the region's help, so the region does not carry its weight.
+	 *     Not charged. This is the case the leaning stack does not have and every wall
+	 *     does, which is why "the omitted weight" cannot mean "all of it".
 	 *
-	 * Stated as one rule with no geometry in it: DELETE THE REGION FROM THE JOINT GRAPH; an
-	 * omitted block whose remaining connected component contains no grounded block is
-	 * carried by the region, and every block in that component is charged. That is a
+	 * Stated as one rule with no geometry in it: delete the region from the joint graph;
+	 * an omitted block whose remaining connected component contains no grounded block is
+	 * carried by the region, and every block in that component is charged — a
 	 * reachability question on the graph, derived from nothing the LP knows.
 	 *
-	 * WHERE THE LOAD IS APPLIED, and this is the part the false certificate turns on. A
-	 * component's weight is delivered at its interface joints, shared by AREA — but on the
-	 * VERTICAL LINE THROUGH THE COMPONENT'S OWN CENTRE OF GRAVITY, not at the contact's X.
-	 * A vertical force's moment does not depend on the Z of its application point
+	 * WHERE THE LOAD IS APPLIED is the part the false certificate turns on. A component's
+	 * weight is delivered at its interface joints, shared by area — but on the vertical
+	 * line through the component's own centre of gravity, not at the contact's X. A
+	 * vertical force's moment does not depend on the Z of its application point
 	 * (torque = Rx*Fz - Rz*Fx, and Fx = 0), so applying every share on one vertical line
-	 * reproduces the component's total force AND its total moment about every point, exactly.
+	 * reproduces the component's total force and moment about every point, exactly.
 	 * Applying at the contact centre instead would throw away precisely the overturning
 	 * moment that produced the 41.96x error — the stack's omitted courses weigh on a line
 	 * at X = 175 cm while their contact with the band sits at X = 55.
 	 *
-	 * THE SURCHARGE GOES ON THE PESSIMISTIC SIDE ONLY. The optimistic side's soundness
+	 * The surcharge goes on the pessimistic side only. The optimistic side's soundness
 	 * argument is "restrict a full-structure admissible force system to a grounded-shell
 	 * region and it stays admissible" — a restriction satisfies no row that was not in the
-	 * original problem, so adding a surcharge row to the optimistic side would break the one
-	 * half of the sandwich that survived review.
+	 * original problem, so adding a surcharge row there would break the one half of the
+	 * sandwich that survived review.
 	 *
-	 * KNOWN SCOPE LIMIT, NAMED RATHER THAN HIDDEN: the rule is exact when omitted material
-	 * is either wholly carried by the region or wholly self-supporting. It UNDER-CHARGES
-	 * material that has its own ground path AND bears on the region — which is what a
-	 * PARTIAL-HEIGHT strip in a laterally-connected wall produces, since the courses above
+	 * KNOWN SCOPE LIMIT, named rather than hidden: the rule is exact when omitted material
+	 * is either wholly carried by the region or wholly self-supporting. It under-charges
+	 * material that has its own ground path and bears on the region — what a
+	 * partial-height strip in a laterally-connected wall produces, since the courses above
 	 * its top still reach the ground down the columns either side. That is why the wall
-	 * regions below are FULL HEIGHT by construction: full height is not a convenience, it is
-	 * the condition under which this rule is defensible on a wall.
+	 * regions below are full height by construction: not a convenience, but the condition
+	 * under which this rule is defensible on a wall.
 	 * ================================================================================ */
 
 	enum class ESpikeSurcharge : uint8
@@ -1102,21 +1097,21 @@ namespace OracleFeasibilitySpikeSupport
 	}
 
 	/* ================================================================================
-	 * REPAIR (2) — REGIONS THAT REACH THE GROUND BY CONSTRUCTION.
+	 * REPAIR (2) — regions that reach the ground by construction.
 	 *
 	 * The free-boundary side is provably infeasible for any region containing no grounded
 	 * block: sum its vertical equilibrium rows, every internal contact cancels pairwise,
 	 * every leaving joint has been dropped, and what remains is 0 = -W_region. So the
-	 * growth parameter cannot be a RADIUS around the deletion — a ball only reaches the
-	 * foundation by accident, which is exactly why the refuted form certified five of ten
+	 * growth parameter cannot be a radius around the deletion — a ball only reaches the
+	 * foundation by accident, which is why the refuted form certified five of ten
 	 * deletions and those five were the low ones.
 	 *
-	 * The parameter becomes the WIDTH of a full-height strip: every block within
-	 * (0.5 + w) cells of the deletion, at every height. The half cell is not slop — running
-	 * bond offsets alternate courses by half a cell, so a window written in whole cells
-	 * takes 2w+1 bricks from the aligned courses and NOTHING from the offset ones, and the
-	 * "strip" would be a ladder of disconnected rungs. With the half cell the aligned
-	 * courses give 2w+1 and the offset courses 2w+2, which is a connected strip at every w
+	 * The parameter becomes the width of a full-height strip: every block within
+	 * (0.5 + w) cells of the deletion, at every height. The half cell is not slop —
+	 * running bond offsets alternate courses by half a cell, so a window written in whole
+	 * cells takes 2w+1 bricks from the aligned courses and nothing from the offset ones,
+	 * making the "strip" a ladder of disconnected rungs. With the half cell the aligned
+	 * courses give 2w+1 and the offset courses 2w+2, a connected strip at every w
 	 * including w = 0.
 	 * ================================================================================ */
 
@@ -1185,9 +1180,9 @@ namespace OracleFeasibilitySpikeSupport
 		int32 DeadPivots = INDEX_NONE;
 
 		/**
-		 * THE EARLY EXIT, PINNED RATHER THAN PRINTED. How many of the dead pose's pivots
-		 * phase 1 spent, and at which pivot the problem FIRST read feasible — the two
-		 * numbers whose difference is the whole of what an early exit would buy.
+		 * The early exit, pinned rather than printed: how many of the dead pose's pivots
+		 * phase 1 spent, and at which pivot the problem first read feasible — their
+		 * difference is the whole of what an early exit would buy.
 		 */
 		int32 DeadPhaseOnePivots = INDEX_NONE;
 
@@ -1204,27 +1199,26 @@ namespace OracleFeasibilitySpikeSupport
 		int32 Feasible = INDEX_NONE;
 
 		/*
-		 * WHETHER THIS ROW RE-SOLVES THE GRAVITY-LIVE POSE, and the four rows that do not
-		 * are the point of the 2026-08-16 tier split. corbel D, wall-06, wall-15 and
-		 * wall-18 have their lambda* pinned — same producer, same cut, same bridge, same
-		 * solver, so bit-for-bit the same solve — in OracleSweepFull.RigidBlock.
-		 * WallsAndLadders, which runs in the SAME TIER as this test. Re-solving them here
-		 * bought a lambda* window that already exists and ~33 s per run.
+		 * Whether this row re-solves the gravity-live pose. The four rows that do not are
+		 * the point of the 2026-08-16 tier split: corbel D, wall-06, wall-15 and wall-18
+		 * have their lambda* pinned — same producer, cut, bridge and solver, so bit-for-bit
+		 * the same solve — in OracleSweepFull.RigidBlock.WallsAndLadders, which runs in the
+		 * same tier as this test. Re-solving them here bought a window that already exists
+		 * and ~33 s per run.
 		 *
-		 * WHAT IS DELIBERATELY KEPT LIVE, and each for a reason that is not duplication:
-		 * wall-01 (the ONLY pinned wall-01 lambda* in the project — the sweep excludes the
-		 * 30-course walls outright — and the 10.88x headline), the 84-block gate fixture
-		 * (the gate arithmetic and the 5.31x it rests on), and BOTH leaning stacks (the
-		 * 30-course one is the infeasible arm of the cross-validation, without which the
-		 * boolean is vacuous, and both are microseconds).
+		 * Kept live deliberately, each for a reason that is not duplication: wall-01 (the
+		 * only pinned wall-01 lambda* in the project — the sweep excludes 30-course walls
+		 * outright — and the 10.88x headline), the 84-block gate fixture (the gate
+		 * arithmetic and the 5.31x it rests on), and both leaning stacks (the 30-course one
+		 * is the infeasible arm of the cross-validation, without which the boolean is
+		 * vacuous, and both are microseconds).
 		 *
-		 * WHAT IT COSTS, stated rather than glossed: on those four rows the lambda* window,
-		 * the LIVE pivot pin, the within-run cross-validation and the LIVE 0/0 phase-1 pins
-		 * all go, so their pivot SPEEDUP ratio becomes a cross-run comparison against
-		 * WallsAndLadders instead of a within-run one. The DEAD pose is untouched on every
-		 * row — which is why the pooled early-exit totals (9,245 and 58), the eight-point
-		 * block spread behind "the lever weakens with scale", and every feasibility verdict
-		 * come back bit-identical.
+		 * The cost: on those four rows the lambda* window, the live pivot pin, the
+		 * within-run cross-validation and the live 0/0 phase-1 pins all go, so their pivot
+		 * speedup ratio becomes a cross-run comparison against WallsAndLadders instead of a
+		 * within-run one. The dead pose is untouched on every row, which is why the pooled
+		 * early-exit totals (9,245 and 58), the eight-point block spread behind "the lever
+		 * weakens with scale", and every feasibility verdict come back bit-identical.
 		 */
 		bool bSolveLivePose = true;
 	};
@@ -1497,51 +1491,48 @@ namespace OracleFeasibilitySpikeSupport
 	}
 
 	/* ================================================================================
-	 * THE SUB-1.0 WALL — A WALL CARRYING A LEANING CHIMNEY.
+	 * THE SUB-1.0 WALL — a wall carrying a leaning chimney.
 	 *
-	 * WHY THIS FIXTURE HAS TO EXIST, in one sentence: the repaired sandwich's pessimistic
-	 * side has never been shown to be a BOUND, and it cannot be, on any fixture the project
-	 * owns. PROMOTION_DESIGN §5.3's box and §11 R2 state the hole exactly — nineteen of the
-	 * twenty certificates the repaired test issues are about structures the LP already
-	 * prices feasible and the twentieth IS the whole structure, so not one is issued about a
-	 * PROPER SUBSET of an INFEASIBLE structure, which is the only shape a false certificate
-	 * can take. The 30-course leaning stack is the catalogue's only sub-1.0 fixture and it
-	 * never certifies short of all thirty blocks.
+	 * WHY IT HAS TO EXIST: the repaired sandwich's pessimistic side has never been shown
+	 * to be a bound, and it cannot be, on any fixture the project owns. PROMOTION_DESIGN
+	 * §5.3's box and §11 R2 state the hole exactly — nineteen of the twenty certificates
+	 * the repaired test issues are about structures the LP already prices feasible and
+	 * the twentieth is the whole structure, so none is issued about a proper subset of an
+	 * infeasible structure, the only shape a false certificate can take. The 30-course
+	 * leaning stack is the catalogue's only sub-1.0 fixture and it never certifies short
+	 * of all thirty blocks.
 	 *
-	 * WHAT THE FIXTURE NEEDS, and it is NOT merely lambda* < 1: the failure must live
-	 * OUTSIDE the strip. A wall that fails at its own foundation makes the strip infeasible
-	 * too, the sandwich opens, and that is the lever behaving correctly — it teaches nothing.
+	 * WHAT THE FIXTURE NEEDS, and it is not merely lambda* < 1: the failure must live
+	 * outside the strip. A wall that fails at its own foundation makes the strip
+	 * infeasible too, the sandwich opens, and that is the lever behaving correctly — it
+	 * teaches nothing.
 	 *
-	 * THE MECHANISM CHOSEN, and why it is this one. PROMOTION_DESIGN's second suggested
-	 * route: a projecting mass that overturns globally while any ground-anchored strip stays
-	 * locally stable. A 30-course leaning chimney — the leaning-stack geometry, 10 cm of lean
-	 * per course — is mortared onto the RIGHTMOST FULL BRICK of the wall's top course and
-	 * leans out past the wall's end into open air. Its own bed joints cannot carry the
-	 * eccentric load above them; that chain is exactly the fixture the LP already prices at
-	 * lambda* = 0.44048, and the wall underneath it cannot help, because the chain's internal
-	 * joints see the same loads whether the chain stands on the earth or on a wall.
+	 * THE MECHANISM CHOSEN: PROMOTION_DESIGN's second suggested route, a projecting mass
+	 * that overturns globally while any ground-anchored strip stays locally stable. A
+	 * 30-course leaning chimney — the leaning-stack geometry, 10 cm of lean per course —
+	 * is mortared onto the rightmost full brick of the wall's top course and leans out
+	 * past the wall's end into open air. Its own bed joints cannot carry the eccentric
+	 * load above them; that chain is exactly the fixture the LP already prices at
+	 * lambda* = 0.44048, and the wall underneath cannot help, because the chain's
+	 * internal joints see the same loads whether it stands on the earth or on a wall.
 	 *
-	 * THE THREE ROUTES NOT TAKEN, recorded so nobody re-derives them:
-	 *
-	 *   - WIDEN AN OPENING TO THE CROSSING. PROMOTION_DESIGN and DESIGN put case 21's family
-	 *     across lambda* = 1 somewhere near 40-45 cells — an eight-to-nine metre opening, so
-	 *     500+ blocks and tens of seconds per dead solve, several solves to bracket a knife
-	 *     edge. It is the right shape (a cover failure with jambs that stand) and it is
-	 *     minutes of runtime; the cost discipline says a cheaper mechanism, not a bigger slow
-	 *     tier.
-	 *   - A CORBEL. FWallSpec already has CorbelFromCourse / CorbelStepCm, but a stepped
+	 * THREE ROUTES NOT TAKEN, recorded so nobody re-derives them:
+	 *   - Widen an opening to the crossing. PROMOTION_DESIGN and DESIGN put case 21's
+	 *     family across lambda* = 1 near 40-45 cells (an eight-to-nine metre opening), so
+	 *     500+ blocks and tens of seconds per dead solve, several to bracket a knife edge
+	 *     — the right shape but minutes of runtime, against the cost discipline.
+	 *   - A corbel. FWallSpec already has CorbelFromCourse / CorbelStepCm, but a stepped
 	 *     course is a corbel with the whole wall behind it as counterweight, and the
-	 *     catalogue prices those at lambda* 17-161. Reaching 1.0 by corbelling is a search.
-	 *   - A WEAK COURSE HIGH UP. Zeroing a band's bond does not by itself make masonry fall
-	 *     — dry stone stands — so it needs a mechanism beside it, which is the opening again.
+	 *     catalogue prices those at lambda* 17-161 — reaching 1.0 by corbelling is a search.
+	 *   - A weak course high up. Zeroing a band's bond does not by itself make masonry
+	 *     fall (dry stone stands), so it needs a mechanism beside it — the opening again.
 	 *
-	 * THE HONEST LIMITATION, stated here rather than discovered in review: the chimney makes
-	 * the structure infeasible BEFORE the deletion, so this counterexample is not
-	 * deletion-caused. That is deliberate and it does not weaken it — the pessimistic side's
-	 * claim is unconditional ("if this problem is feasible, the full structure is feasible"),
-	 * so any counterexample refutes it. A deletion-CAUSED non-local failure needs the
-	 * wide-opening fixture above, and is a specified follow-up rather than something this
-	 * fixture pretends to.
+	 * THE HONEST LIMITATION: the chimney makes the structure infeasible before the
+	 * deletion, so this counterexample is not deletion-caused. That's deliberate and
+	 * doesn't weaken it — the pessimistic side's claim is unconditional ("if this problem
+	 * is feasible, the full structure is feasible"), so any counterexample refutes it. A
+	 * deletion-caused non-local failure needs the wide-opening fixture above, a specified
+	 * follow-up rather than something this fixture pretends to.
 	 * ================================================================================ */
 
 	constexpr int32 SpikeChimneyCourses = 30;
@@ -1821,28 +1812,28 @@ namespace OracleFeasibilitySpikeSupport
  *
  * COST OF THIS TEST: the lambda* pose is almost all of it — wall-01 alone is 280 s.
  * MEASURED 2026-08-15 in the whole group: **344 s (5 min 44 s)**, of which the cheap half
- * of the answer (the DEAD poses, which are what the slice measures) is 53 s. It lives in
- * the OPT-IN group's FULL tier for exactly that reason.
+ * of the answer (the dead poses, which are what the slice measures) is 53 s. It lives in
+ * the opt-in group's full tier for exactly that reason.
  *
- * THE TRIM IS TAKEN (2026-08-16), AND ONE ROW IS EXPLICITLY EXCLUDED FROM IT. Four rows —
- * corbel D, wall-06, wall-15 and wall-18 — no longer re-solve the gravity-live pose: it is
- * the same producer, the same cut, the same bridge and the same solver as
- * `OracleSweepFull.RigidBlock.WallsAndLadders`, which pins each of those four lambda* and
- * runs in the SAME TIER, so the solve was duplicated work and its window a duplicated pin.
- * MEASURED: 344 s -> 313 s, and WallsAndLadders' own log lines confirm the duplication was
- * exact (corbel D 9,490 pivots, wall-18 3,885, wall-15 6,076 — the very counts this test
- * used to pin). WALL-01 IS EXCLUDED AND STAYS LIVE: `RigidBlockOracleSweepTest` excludes the
- * 30-course walls (cases 1-5) outright on arithmetic, so THIS FILE HOLDS THE ONLY PINNED
- * WALL-01 lambda* IN THE PROJECT and dropping its live re-solve would delete that anchor
- * rather than relocate it. The gate fixture and both leaning stacks stay live too — see
- * FCostRow::bSolveLivePose for each reason and for what the trim costs.
+ * THE TRIM (2026-08-16), and one row is explicitly excluded from it. Four rows — corbel
+ * D, wall-06, wall-15 and wall-18 — no longer re-solve the gravity-live pose: same
+ * producer, cut, bridge and solver as `OracleSweepFull.RigidBlock.WallsAndLadders`, which
+ * pins each of those four lambda* and runs in the same tier, so the solve was duplicated
+ * work and its window a duplicated pin. Measured: 344 s -> 313 s, and WallsAndLadders'
+ * own log lines confirm the duplication was exact (corbel D 9,490 pivots, wall-18 3,885,
+ * wall-15 6,076 — the very counts this test used to pin). Wall-01 is excluded and stays
+ * live: `RigidBlockOracleSweepTest` excludes the 30-course walls (cases 1-5) outright on
+ * arithmetic, so this file holds the only pinned wall-01 lambda* in the project, and
+ * dropping its live re-solve would delete that anchor rather than relocate it. The gate
+ * fixture and both leaning stacks stay live too — see FCostRow::bSolveLivePose for each
+ * reason and for what the trim costs.
  *
- * WHAT THE TRIM DID NOT TOUCH, and it is the reason it was worth taking: every DEAD solve.
- * All eight fixtures still measure the reformulation, so the pooled early-exit totals
- * (9,245 and 58), the eight-point block spread from 5 to 375 behind "the lever weakens
- * with scale", the gate arithmetic and every feasibility verdict are bit-identical.
+ * WHAT THE TRIM DID NOT TOUCH, and why it was worth taking: every dead solve. All eight
+ * fixtures still measure the reformulation, so the pooled early-exit totals (9,245 and
+ * 58), the eight-point block spread from 5 to 375 behind "the lever weakens with scale",
+ * the gate arithmetic and every feasibility verdict are bit-identical.
  *
- * NEEDS A TICKING WORLD: NO.
+ * Needs a ticking world: no.
  * ==================================================================================== */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleFeasibilityCostTest,
@@ -2297,13 +2288,13 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 	}
 
 	/* ================================================================================
-	 * THE EARLY EXIT'S HEADLINE, ASSERTED AS ONE NUMBER.
+	 * THE EARLY EXIT'S HEADLINE, asserted as one number.
 	 *
 	 * 58 pivots out of 9,245 pooled — 0.63% — is the figure §5.2 and CURRENT_STATE both
-	 * record as refuting the lever. It is pinned here as a sum so that the CONCLUSION has
-	 * an assertion of its own and not merely eight ingredients: a future change that moves
-	 * two rows in opposite directions would leave the per-row pins red in a way that reads
-	 * like noise, where this line says what actually changed.
+	 * record as refuting the lever. Pinned here as a sum so the conclusion has an
+	 * assertion of its own and not merely eight ingredients: a future change that moves
+	 * two rows in opposite directions would leave the per-row pins red in a way that
+	 * reads like noise, where this line says what actually changed.
 	 * ================================================================================ */
 	{
 		AddInfo(FString::Printf(
@@ -2328,29 +2319,29 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 	}
 
 	/* ================================================================================
-	 * THE GATE ARITHMETIC, WRITTEN OUT WHERE IT IS MEASURED.
+	 * THE GATE ARITHMETIC, written out where it is measured.
 	 *
-	 * PROMOTION_DESIGN §5.3 states the target: "A region of that size needs to answer in
-	 * ~50 ms to fit two solves inside a 100 ms budget: 12x needed", against the 0.61 s the
-	 * 84-block wall cost as a lambda* solve.
+	 * PROMOTION_DESIGN §5.3 states the target: "a region of that size needs to answer in
+	 * ~50 ms to fit two solves inside a 100 ms budget: 12x needed", against the 0.61 s
+	 * the 84-block wall cost as a lambda* solve.
 	 *
-	 * MEASURED 2026-08-15: the same 84 blocks answer the FEASIBILITY question in 0.065 s.
-	 * So the design's 12x is REFUTED as the size of the gap — the measured gap is
+	 * Measured 2026-08-15: the same 84 blocks answer the feasibility question in 0.065 s,
+	 * refuting the design's 12x — the measured gap is
 	 *
 	 *     0.065 s / 0.050 s = 1.3x
 	 *
 	 * with the reformulation alone and no warm start of any kind. Two solves are 0.130 s
-	 * against a 0.100 s budget: NOT MET TODAY, and short by a factor smaller than any
-	 * single unmeasured lever in §5.4/§5.5. The kill criterion is conditioned on "cannot be
-	 * brought under ~50 ms by the feasibility reformulation PLUS WARM STARTS", and warm
+	 * against a 0.100 s budget: not met today, short by a factor smaller than any single
+	 * unmeasured lever in §5.4/§5.5. The kill criterion is conditioned on "cannot be
+	 * brought under ~50 ms by the feasibility reformulation plus warm starts", and warm
 	 * starts are unbuilt and unmeasured, so this measurement does not fire it.
 	 *
-	 * WHAT DOES NOT FOLLOW, and must not be read into the number: this says nothing about
-	 * whether a REGION of 84 blocks is a legitimate unit of work. The second test in this
-	 * file measures that separately and the answer there is much worse.
+	 * WHAT DOES NOT FOLLOW: this says nothing about whether a region of 84 blocks is a
+	 * legitimate unit of work. The second test in this file measures that separately, and
+	 * the answer there is much worse.
 	 *
-	 * NO TIMING IS PINNED AS A NUMBER — timings measure the machine. The single assertion
-	 * below is an ORDER-OF-MAGNITUDE ceiling ~30x above the measurement, which can only
+	 * No timing is pinned as a number — timings measure the machine. The single assertion
+	 * below is an order-of-magnitude ceiling ~30x above the measurement, which can only
 	 * fire on a catastrophe (a solver change that puts the gate fixture back into seconds)
 	 * and cannot flake on a busy machine.
 	 * ================================================================================ */
@@ -2374,24 +2365,23 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 	}
 
 	/* ================================================================================
-	 * THE EARLY EXIT — THE SEAM, RE-SOLVED, AND WHY THIS BLOCK SURVIVED ITS OWN RED.
+	 * THE EARLY EXIT — the seam, re-solved, and why this block survived its own red.
 	 *
-	 * PROMOTION_DESIGN §3.2 and §5.2: a feasible problem is PROVED the moment phase 1's
+	 * PROMOTION_DESIGN §3.2 and §5.2: a feasible problem is proved the moment phase 1's
 	 * infeasibility sum reaches tolerance, with no optimality proof needed, and that was
 	 * supposed to be where most of a standing structure's saving lives. It could not be
-	 * measured from outside the solver, so this block was written as this slice's ONE
-	 * DELIBERATE RED, asserting only that two unset fields became populated:
+	 * measured from outside the solver, so this block was written as this slice's one
+	 * deliberate red, asserting only that two unset fields became populated:
 	 *
 	 *     PhaseOnePivots        how many of SimplexIterations phase 1 spent
 	 *     PivotsToFirstFeasible the pivot at which the basic-artificial infeasibility sum
 	 *                           first fell to InfeasibilityTolerance()
 	 *
 	 * The seam landed inside the same slice, so the red is gone and the population
-	 * assertion with it — population is now the weakest of the things the rows above pin.
-	 * What is left here is the property the per-row pins CANNOT state, and it is worth its
-	 * 0.065 s: the SAME problem solved a SECOND time reports the SAME two numbers. The
-	 * fields are read out of solver state that no other field depends on, so an
-	 * accumulation left un-reset between solves would show up here and nowhere else.
+	 * assertion with it. What remains is a property the per-row pins cannot state, and
+	 * it is worth its 0.065 s: the same problem solved a second time reports the same
+	 * two numbers. The fields are read out of solver state no other field depends on, so
+	 * an accumulation left un-reset between solves would show up here and nowhere else.
 	 * ================================================================================ */
 	{
 		FStructure Wall;
@@ -2443,15 +2433,15 @@ bool FOracleFeasibilityCostTest::RunTest(const FString& Parameters)
 /* ====================================================================================
  * TEST 2 — THE REGIONAL SANDWICH.
  *
- * COST OF THIS TEST: one global feasibility solve plus two region solves per radius, THREE
- * per deletion for the ten-deletion agreement ladder (the third is the whole cut wall, so
- * that section's five certificates are checked against something rather than counted), the
- * leaning-stack arms, and Part D's band in both poses. MEASURED 2026-08-15: **7.2 s**, of
- * which the ten per-deletion global solves are about half — the whole regional question
- * still costs less than one lambda* solve of a mid-size wall, which is itself part of the
- * answer.
+ * COST OF THIS TEST: one global feasibility solve plus two region solves per radius,
+ * three per deletion for the ten-deletion agreement ladder (the third is the whole cut
+ * wall, so that section's five certificates are checked against something rather than
+ * counted), the leaning-stack arms, and Part D's band in both poses. Measured
+ * 2026-08-15: **7.2 s**, of which the ten per-deletion global solves are about half —
+ * the whole regional question still costs less than one lambda* solve of a mid-size
+ * wall, itself part of the answer.
  *
- * NEEDS A TICKING WORLD: NO.
+ * Needs a ticking world: no.
  * ==================================================================================== */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleRegionalSandwichTest,
@@ -2464,19 +2454,17 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
 	using namespace OracleFeasibilitySpikeSupport;
 
 	/*
-	 * A REFUSAL IS NOT AN INFEASIBILITY, AND NOTHING ELSE HERE CAN TELL THEM APART.
-	 * SpikeIsFeasible reads "answered AND lambda >= 1", and Refuse() returns bAnswered =
-	 * false with lambda = 0 — bit-for-bit what the dead-load infeasibility arm returns. So
-	 * a region solve that REFUSED reads as "this region has no admissible equilibrium",
-	 * which is precisely the finding this test reports, and every verdict pin, the
-	 * conservation lemma, the closing radius and the 5-of-10 count would all be computed
-	 * from it and all stay green.
-	 *
-	 * That is not a hypothetical arm: NumericalFailure from the periodic refactorisation
-	 * refused 128- and 200-block members ONE COMMIT AGO, and the regions here are 44 to
-	 * 149 blocks. Today's readings are clean (pivot counts 7-965, nowhere near MaxPivots,
-	 * every WhyNot empty), so this guard defends a verdict that is currently correct — it
-	 * is the defence that was missing, not the verdict.
+	 * A refusal is not an infeasibility, and nothing else here can tell them apart.
+	 * SpikeIsFeasible reads "answered and lambda >= 1", and Refuse() returns bAnswered =
+	 * false with lambda = 0 — bit-for-bit what the dead-load infeasibility arm returns. A
+	 * region solve that refused would read as "this region has no admissible
+	 * equilibrium" — precisely this test's finding — and every verdict pin, the
+	 * conservation lemma, the closing radius and the 5-of-10 count would stay green
+	 * regardless. Not hypothetical: NumericalFailure from the periodic refactorisation
+	 * refused 128- and 200-block members one commit ago, and the regions here are 44 to
+	 * 149 blocks. Today's readings are clean (pivots 7-965, nowhere near MaxPivots, every
+	 * WhyNot empty), so this guard defends a verdict that is currently correct — it is
+	 * the defence that was missing, not the verdict.
 	 */
 	const auto MustAnswer = [this](const FPoseReading& Read, const FString& Where)
 	{
@@ -2780,13 +2768,13 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
 	}
 
 	/* ================================================================================
-	 * PART B — R2's QUESTION: TEN DELETIONS, RADIUS FIXED AT 4.
+	 * PART B — R2's question: ten deletions, radius fixed at 4.
 	 *
 	 * "If the free-boundary side is so pessimistic it never certifies, the sandwich
 	 * degenerates to 'always grow to the whole structure' and the lever is worthless."
-	 * This is the count that answers it. The deletions are a FIXED LADDER over courses,
-	 * not a random sample: same ten bricks every run, each one printed, so a disagreeing
-	 * row can be lifted straight out into a named regression fixture.
+	 * This is the count that answers it. The deletions are a fixed ladder over courses,
+	 * not a random sample: same ten bricks every run, each one printed, so a
+	 * disagreeing row can be lifted straight out into a named regression fixture.
 	 * ================================================================================ */
 
 	constexpr int32 AgreementRadius = 4;
@@ -2844,11 +2832,11 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
 		SpikeExtractRegion(CutProblem, Mask, false, Pessimistic, PessimisticCounts);
 
 		/*
-		 * THE WHOLE CUT WALL, SOLVED PER DELETION, because a certificate is only worth
+		 * The whole cut wall, solved per deletion, because a certificate is only worth
 		 * anything against the answer it certifies. Part A checks its closed sandwich
-		 * against the global verdict and Part B did not — which left the five certificates
-		 * this section counts as certificates of nothing. It costs one 149-block dead solve
-		 * per course, and this test's whole budget is seconds.
+		 * against the global verdict and Part B did not — which left the five
+		 * certificates this section counts as certificates of nothing. Costs one
+		 * 149-block dead solve per course; this test's whole budget is seconds.
 		 */
 		FOracleProblem CutGlobal = CutProblem;
 		CutGlobal.bGravityIsLive = false;
@@ -2890,12 +2878,12 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
 			FString::Printf(TEXT("agreement course %d whole cut wall"), Course));
 
 		/*
-		 * AND WHERE THIS DELETION'S SANDWICH CLOSES, WHAT IT CERTIFIES MUST BE TRUE. Same
-		 * shape as Part A's line and the same deliberate scope: this is a characterisation
-		 * of these ten fixtures, not the law "closure implies correctness" — Part D
-		 * measures a closed sandwich whose certificate is wrong by ~40x. If one of these
-		 * five ever certifies the wrong verdict, this is the line that says so, and it
-		 * would be the second demonstrated false certificate rather than a test failure.
+		 * Where this deletion's sandwich closes, what it certifies must be true. Same
+		 * deliberate scope as Part A's line: a characterisation of these ten fixtures,
+		 * not the law "closure implies correctness" — Part D measures a closed sandwich
+		 * whose certificate is wrong by ~40x. If one of these five ever certifies the
+		 * wrong verdict, this is the line that says so — the second demonstrated false
+		 * certificate rather than a test failure.
 		 */
 		if (bAgree)
 		{
@@ -2923,15 +2911,15 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
 	}
 
 	/* ================================================================================
-	 * PART C — THE OTHER ARM: A STRUCTURE THAT GENUINELY HAS NO EQUILIBRIUM.
+	 * PART C — the other arm: a structure that genuinely has no equilibrium.
 	 *
 	 * Every wall fixture the project owns is LP-feasible, so Part A and Part B can only
-	 * ever exercise the sandwich's STANDING side. The 30-course leaning stack is the one
-	 * cheap fixture the LP prices below 1.0 (lambda* 0.4405), and it is a chain, so
+	 * ever exercise the sandwich's standing side. The 30-course leaning stack is the
+	 * one cheap fixture the LP prices below 1.0 (lambda* 0.4405), and it is a chain, so
 	 * "radius in courses" is exact rather than a box. What is measured is the smallest
-	 * radius at which the OPTIMISTIC side — boundary grounded, the region granted an
-	 * artificial foundation at both ends — is still infeasible, which is the radius at
-	 * which a region can certify a COLLAPSE.
+	 * radius at which the optimistic side — boundary grounded, the region granted an
+	 * artificial foundation at both ends — is still infeasible: the radius at which a
+	 * region can certify a collapse.
 	 * ================================================================================ */
 
 	FStructure Stack;
@@ -3000,7 +2988,7 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
 				AddInfo(Line);
 
 				/*
-				 * The certifying radius is read off the OPTIMISTIC side going infeasible,
+				 * The certifying radius is read off the optimistic side going infeasible,
 				 * so a refusal here would manufacture a certificate out of a solve that
 				 * failed — the single most misleading direction available in this test.
 				 */
@@ -3042,73 +3030,71 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
 			}
 
 			/* ========================================================================
-			 * PART D — THE FREE BOUNDARY IS NOT PESSIMISTIC, AND A CLOSED SANDWICH CAN
-			 * CERTIFY THE WRONG ANSWER.
+			 * PART D — the free boundary is not pessimistic, and a closed sandwich can
+			 * certify the wrong answer.
 			 *
 			 * PROMOTION_DESIGN §5.3 justifies the free-boundary side like this: "if this
-			 * problem is feasible, the full structure is feasible, because the found force
-			 * system extends." IT DOES NOT EXTEND, and the reason is one sentence:
-			 * dropping the material outside the region removes its RESTRAINT (pessimistic)
-			 * and its WEIGHT (optimistic) together, so the free-boundary region is not a
-			 * bound in either direction.
+			 * problem is feasible, the full structure is feasible, because the found
+			 * force system extends." It does not extend: dropping the material outside
+			 * the region removes its restraint (pessimistic) and its weight (optimistic)
+			 * together, so the free-boundary region is not a bound in either direction.
 			 *
 			 * The cheapest structure that shows it is the 30-course leaning stack, which
-			 * has NO admissible equilibrium as a whole (lambda* = 0.4405). Take its BOTTOM
-			 * BAND — courses 0..5, grounded, the twenty-four courses above simply dropped:
+			 * has no admissible equilibrium as a whole (lambda* = 0.4405). Take its
+			 * bottom band — courses 0..5, grounded, the twenty-four courses above simply
+			 * dropped:
 			 *
-			 *   - free boundary: a short leaning stack on the ground, comfortably feasible
-			 *     (the 5-course fixture reads lambda* = 31.2);
-			 *   - grounded boundary: the same band with its one shell course pinned, which
-			 *     can only be MORE feasible.
+			 *   - free boundary: a short leaning stack on the ground, comfortably
+			 *     feasible (the 5-course fixture reads lambda* = 31.2);
+			 *   - grounded boundary: the same band with its one shell course pinned,
+			 *     which can only be more feasible.
 			 *
-			 * Both feasible, so THE SANDWICH CLOSES and the design's rule certifies "the
-			 * full structure is feasible". The full structure is not.
+			 * Both feasible, so the sandwich closes and the design's rule certifies "the
+			 * full structure is feasible". The full structure is not. Asserted as the
+			 * three measured facts, not as a failure: the band is feasible both ways and
+			 * the whole stack is not. That trio is the refutation and it is green
+			 * because it is true.
 			 *
-			 * ASSERTED AS THE THREE MEASURED FACTS, not as a failure: the band is feasible
-			 * both ways and the whole stack is not. That trio IS the refutation and it is
-			 * green because it is true.
+			 * But a boolean trio only says "the certificate is wrong", and this is the
+			 * row that invalidated a published design section — §9.5 is explicit that
+			 * such a row may not rest on an argued bite. Two things were added:
 			 *
-			 * BUT A BOOLEAN TRIO ONLY SAYS "THE CERTIFICATE IS WRONG", AND THIS IS THE ROW
-			 * THAT INVALIDATED A PUBLISHED DESIGN SECTION — §9.5 is explicit that such a row
-			 * may not rest on an argued bite. Two things were added for that:
-			 *
-			 *   - THE BAND'S OWN lambda*, measured in the LIVE pose and pinned in the
+			 *   - The band's own lambda*, measured in the live pose and pinned in the
 			 *     file-wide window. It turns "wrong" into "wrong by a factor", and the
-			 *     factor is what says no tightening of the extractor rescues the lever: the
-			 *     certified band is not marginally feasible while the stack marginally
-			 *     falls, it is comfortably feasible while the stack falls. MEASURED BELOW —
-			 *     never scaled from the 5-course fixture's 31.2, because the band is a
-			 *     6-block region cut out of a 30-course problem and only the solve knows
-			 *     what that costs.
+			 *     factor is what says no tightening of the extractor rescues the lever:
+			 *     the certified band is not marginally feasible while the stack
+			 *     marginally falls, it is comfortably feasible while the stack falls.
+			 *     Measured below — never scaled from the 5-course fixture's 31.2,
+			 *     because the band is a 6-block region cut out of a 30-course problem
+			 *     and only the solve knows what that costs.
 			 *   - X6 in the mutation registry: an extractor that keeps the out-of-region
-			 *     blocks instead of dropping them. That is the repair's direction in its
+			 *     blocks instead of dropping them — the repair's direction in its
 			 *     crudest form, and it must turn the band infeasible.
 			 *
-			 * RE-AIMED 2026-08-15, WHEN THE REPAIR LANDED, AND HOW TO READ IT NOW. The rows
-			 * above still measure the UNREPAIRED extractor, because the 41.96x false
-			 * certificate is the evidence that no tightening of a boundary rule could have
-			 * rescued the old form, and it must stay executable rather than become a sentence
-			 * in a header. The rows BELOW measure the REPAIRED extractor on the IDENTICAL band
-			 * and carry the honest post-repair claim: the repaired band reads INFEASIBLE and
-			 * therefore AGREES with the whole stack, so the sandwich no longer closes on a
-			 * proper subset and no certificate is issued at all. Neither half may be tuned to
-			 * restore the other's green.
+			 * RE-AIMED 2026-08-15, when the repair landed. The rows above still measure
+			 * the unrepaired extractor, because the 41.96x false certificate is the
+			 * evidence that no tightening of a boundary rule could have rescued the old
+			 * form, and it must stay executable rather than become a sentence in a
+			 * header. The rows below measure the repaired extractor on the identical
+			 * band and carry the honest post-repair claim: the repaired band reads
+			 * infeasible and therefore agrees with the whole stack, so the sandwich no
+			 * longer closes on a proper subset and no certificate is issued at all.
+			 * Neither half may be tuned to restore the other's green.
 			 *
-			 * THE FORWARD HAZARD BELOW CAME HALF TRUE, AND THE HALF THAT DID NOT IS THE MORE
-			 * USEFUL LESSON. Its PHYSICS was right to the digit: the repaired band is
-			 * infeasible, so "the bottom band must be FEASIBLE" is a false statement about
-			 * the repaired extractor. Its claim about the SUITE was wrong. It promised this
-			 * pin would go "red BY CONSTRUCTION on the day the repair lands" and would be
-			 * "the only thing in the suite that would notice"; in fact the repair landed as a
-			 * NEW function — SpikeExtractRepairedRegion — beside an untouched
-			 * SpikeExtractRegion, so PART D went on calling the old one and stayed GREEN
-			 * throughout. Nothing in the suite noticed. The re-aim above was made deliberately
-			 * rather than forced by a failure.
+			 * THE FORWARD HAZARD BELOW CAME HALF TRUE, and the half that didn't is the
+			 * more useful lesson. Its physics was right to the digit: the repaired band
+			 * is infeasible. Its claim about the suite was wrong — it promised this pin
+			 * would go "red by construction on the day the repair lands" and be "the
+			 * only thing in the suite that would notice"; in fact the repair landed as a
+			 * new function (SpikeExtractRepairedRegion) beside an untouched
+			 * SpikeExtractRegion, so Part D kept calling the old one and stayed green
+			 * throughout. Nothing in the suite noticed, and the re-aim above was made
+			 * deliberately rather than forced by a failure.
 			 *
-			 * Generalised, because it will happen again and it is not specific to regions:
-			 * A PIN CAN ONLY NOTICE A CHANGE THAT GOES THROUGH THE CODE IT CALLS, AND A
-			 * REPAIR IMPLEMENTED BESIDE THE THING IT REPAIRS IS INVISIBLE TO EVERY PIN ON THE
-			 * ORIGINAL. A forward hazard that names a behaviour is sound; one that predicts a
+			 * Generalised, because it is not specific to regions: a pin can only notice
+			 * a change that goes through the code it calls, and a repair implemented
+			 * beside the thing it repairs is invisible to every pin on the original. A
+			 * forward hazard that names a behaviour is sound; one that predicts a
 			 * specific test will fail is a prediction about an implementation nobody has
 			 * chosen yet, and it should say so.
 			 *
@@ -3443,41 +3429,45 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
  * TEST 3 — THE REPAIRED REGIONAL SANDWICH (PROMOTION_DESIGN §12 D2', ruled 2026-08-15).
  *
  * WHAT WAS REFUTED, so nothing here rebuilds it. The two-sided sandwich as designed —
- * solve a region with its boundary pinned grounded, solve it again with the boundary free,
- * certify if the two agree — fails three ways. It closes only at 95-100% of the structure;
- * it costs 1.68x a global solve; and its pessimistic side IS NOT A BOUND. A closed sandwich
- * certified a leaning stack as standing whose real lambda* is 0.44048, while the certified
- * band's own lambda* is 18.481256459924058 — wrong by 41.96x. The cause is one sentence:
- * dropping material outside a region removed its WEIGHT along with its restraint, and in
- * that fixture the omitted twenty-four courses were carrying the destabilising moment.
+ * solve a region with its boundary pinned grounded, solve it again with the boundary
+ * free, certify if the two agree — fails three ways: it closes only at 95-100% of the
+ * structure, costs 1.68x a global solve, and its pessimistic side is not a bound. A
+ * closed sandwich certified a leaning stack as standing whose real lambda* is 0.44048,
+ * while the certified band's own lambda* is 18.481256459924058 — wrong by 41.96x. The
+ * cause is one sentence: dropping material outside a region removed its weight along
+ * with its restraint, and in that fixture the omitted twenty-four courses were carrying
+ * the destabilising moment.
  *
- * WHAT SURVIVES AND IS NOT REPAIRED HERE: the optimistic side. Restricting a full-structure
- * admissible force system to a grounded-shell region stays admissible (core blocks keep all
- * their joints; shell blocks write no rows), so OPTIMISTIC-INFEASIBLE => GLOBALLY INFEASIBLE
- * holds. It is used unchanged, and the surcharge is deliberately kept off it.
+ * WHAT SURVIVES AND IS NOT REPAIRED HERE: the optimistic side. Restricting a
+ * full-structure admissible force system to a grounded-shell region stays admissible
+ * (core blocks keep all their joints; shell blocks write no rows), so
+ * optimistic-infeasible => globally infeasible holds. Used unchanged, with the
+ * surcharge deliberately kept off it.
  *
  * THE TWO REPAIRS, both user-ruled, both defined at their code in the support namespace:
  *
- *   (1) The pessimistic side keeps the omitted material's weight as a DEAD SURCHARGE while
- *       removing its restraint. "Bears on the region" is settled by graph reachability with
- *       the region deleted, so material that stands on its own foundation is not charged and
- *       material whose only road to the ground runs through the region is charged in full.
- *       The load acts on the vertical line through the charged component's own centre of
- *       gravity, which is what carries the overturning moment the old form lost.
- *   (2) Regions grow GROUND-ANCHORED BY CONSTRUCTION. The growth parameter stops being a
- *       radius and becomes the WIDTH of a full-height strip, because the free-boundary side
- *       is provably infeasible for any region containing no grounded block.
+ *   (1) The pessimistic side keeps the omitted material's weight as a dead surcharge
+ *       while removing its restraint. "Bears on the region" is settled by graph
+ *       reachability with the region deleted, so material that stands on its own
+ *       foundation is not charged and material whose only road to the ground runs
+ *       through the region is charged in full. The load acts on the vertical line
+ *       through the charged component's own centre of gravity, which is what carries
+ *       the overturning moment the old form lost.
+ *   (2) Regions grow ground-anchored by construction. The growth parameter stops being
+ *       a radius and becomes the width of a full-height strip, because the
+ *       free-boundary side is provably infeasible for any region containing no
+ *       grounded block.
  *
  * THE QUESTION THIS TEST EXISTS TO ANSWER, stated so the measurement can fail honestly:
  *
  *     WITH BOTH REPAIRS IN PLACE, HOW SMALL CAN A CERTIFIED REGION BE?
  *
- * Success needs regions that are BOTH much smaller than the structure AND cheap enough that
- * two solves fit inside ~100 ms — the 84-block feasibility solve measures 0.0666 s, so a
- * certified region near that size is the target. If the repaired sandwich certifies only at
- * 90%+ of the structure, or costs more than a global solve, that is the same refutation in a
- * new coat and it points at the asynchronous / size-scoped fallbacks rather than at another
- * repair. This file must say so plainly if that is what it measures.
+ * Success needs regions both much smaller than the structure and cheap enough that two
+ * solves fit inside ~100 ms — the 84-block feasibility solve measures 0.0666 s, so a
+ * certified region near that size is the target. If the repaired sandwich certifies
+ * only at 90%+ of the structure, or costs more than a global solve, that is the same
+ * refutation in a new coat, pointing at the asynchronous / size-scoped fallbacks rather
+ * than at another repair. This file must say so plainly if that is what it measures.
  *
  * ================================================================================
  * PREDICTIONS — DERIVATION RECORD REVISION 1, WRITTEN BEFORE THE FIRST RUN
@@ -3485,43 +3475,44 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
  *  evidence, it is a transcription. Each one is repeated at the pin it decides.)
  * ================================================================================
  *
- *  P1  The carried set of a FULL-HEIGHT ground-anchored strip in a grounded wall is EMPTY
- *      at every width, because every omitted block's own column reaches the grounded bottom
- *      course. So repair (1) is a NO-OP on the wall arm and repair (2) does all the work
- *      there; repair (1) earns its keep on the collapse arm alone. If that holds it is a
- *      finding worth stating rather than a triviality — it says the two repairs are not
- *      alternatives, they answer different fixtures.
- *  P2  The optimistic side is FEASIBLE at every strip width (the cut wall stands globally,
- *      and grounding the shell can only help), so on the wall arm closure is decided
- *      entirely by the pessimistic side.
- *  P3  CLOSES AT HALF-WIDTH 0 — a two-cell zig-zag column, 41 of 149 blocks, 28%. Running
- *      bond gives the course above a one-brick hole a bearing on both sides inside the
- *      strip. Fallback if wrong: half-width 1, 65 blocks, 44%.
- *  P4  TEN of ten deletions certify at the closing width, against the refuted form's five.
- *  P5  COST 0.3-0.6x a global solve. The dead pose runs ~2.2 pivots per equality row at
+ *  P1  The carried set of a full-height ground-anchored strip in a grounded wall is
+ *      empty at every width, because every omitted block's own column reaches the
+ *      grounded bottom course. So repair (1) is a no-op on the wall arm and repair (2)
+ *      does all the work there; repair (1) earns its keep on the collapse arm alone. If
+ *      that holds it says the two repairs are not alternatives, they answer different
+ *      fixtures.
+ *  P2  The optimistic side is feasible at every strip width (the cut wall stands
+ *      globally, and grounding the shell can only help), so on the wall arm closure is
+ *      decided entirely by the pessimistic side.
+ *  P3  Closes at half-width 0 — a two-cell zig-zag column, 41 of 149 blocks, 28%.
+ *      Running bond gives the course above a one-brick hole a bearing on both sides
+ *      inside the strip. Fallback if wrong: half-width 1, 65 blocks, 44%.
+ *  P4  Ten of ten deletions certify at the closing width, against the refuted form's five.
+ *  P5  Cost 0.3-0.6x a global solve. The dead pose runs ~2.2 pivots per equality row at
  *      this scale and a 41-block region has ~35 ungrounded blocks = ~105 rows, so ~230
  *      pivots a side, ~460 for the pair, against the whole wall's 965. Point estimate
  *      0.48x, against the refuted form's 1.68x.
- *  P6  TIME: two region solves well inside 100 ms (84 blocks answer in 0.0666 s; 41 blocks
- *      should be ~0.02 s), so the VERDICT AT 12 COURSES IS PREDICTED YES.
- *  P7  HEIGHT SCALES THE REGION. An 18-course wall closes at the same half-width with ~62
- *      blocks — 1.5x the region for 1.5x the height. At the 30-course scenario height the
- *      same strip is ~100 blocks, at or past the 84-block / 0.0666 s figure, so the honest
- *      predicted answer is "small enough at 12 courses, marginal at 30".
- *  P8  The over-inclusive control (charge EVERY omitted block) is INFEASIBLE at the closing
- *      width and never certifies — the too-pessimistic failure mode, measured.
- *  P9  COLLAPSE ARM: the repaired pessimistic side is infeasible at every band, the
- *      optimistic side is unchanged, so the sandwich closes only with all thirty blocks.
- *      The repair withdraws the false certificate; it does not make collapse cheaper.
- * P10  NO FALSE CERTIFICATE ANYWHERE in this test: every closed sandwich agrees with the
- *      whole structure's own verdict. This is the assertion the slice would be worthless
- *      without, and it is counted rather than spot-checked.
+ *  P6  Time: two region solves well inside 100 ms (84 blocks answer in 0.0666 s; 41
+ *      blocks should be ~0.02 s), so the verdict at 12 courses is predicted yes.
+ *  P7  Height scales the region. An 18-course wall closes at the same half-width with
+ *      ~62 blocks — 1.5x the region for 1.5x the height. At the 30-course scenario
+ *      height the same strip is ~100 blocks, at or past the 84-block / 0.0666 s figure,
+ *      so the honest predicted answer is "small enough at 12 courses, marginal at 30".
+ *  P8  The over-inclusive control (charge every omitted block) is infeasible at the
+ *      closing width and never certifies — the too-pessimistic failure mode, measured.
+ *  P9  Collapse arm: the repaired pessimistic side is infeasible at every band, the
+ *      optimistic side is unchanged, so the sandwich closes only with all thirty
+ *      blocks. The repair withdraws the false certificate; it does not make collapse
+ *      cheaper.
+ * P10  No false certificate anywhere in this test: every closed sandwich agrees with
+ *      the whole structure's own verdict. This is the assertion the slice would be
+ *      worthless without, and it is counted rather than spot-checked.
  *
  * ================================================================================
  * WHAT WAS MEASURED — 2026-08-15, one run, tree at HEAD 0564bf5
  * ================================================================================
  *
- * THE WALL ARM. 12 courses x 12 cells, one brick out of course 6, 149 blocks / 385 joints,
+ * The wall arm. 12 courses x 12 cells, one brick out of course 6, 149 blocks / 385 joints,
  * whole-wall feasibility 965 pivots (the refuted form's own fixture and numbers):
  *
  *     half-width   blocks   % of wall   charged   optimistic   pessimistic   closes
@@ -3532,13 +3523,14 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
  *              4      137       91.9%         0     feasible      feasible      yes
  *              5      149      100.0%         0     feasible      feasible      yes
  *
- * **IT CLOSES AT THE FIRST RUNG: 41 OF 149 BLOCKS, 27.5%**, against the refuted form's 142
- * and 95%. Its two solves take 49 + 262 = 311 pivots against the whole wall's 965 —
+ * **It closes at the first rung: 41 of 149 blocks, 27.5%**, against the refuted form's
+ * 142 and 95%. Its two solves take 49 + 262 = 311 pivots against the whole wall's 965 —
  * **0.322x**, where the refuted form cost 1.68x — and 0.021 s for the pair against a
- * 0.100 s budget. Ten deletions at courses 1..10 certify **TEN of ten** (the refuted form:
- * five), every certificate checked against that deletion's own 149-block global solve.
+ * 0.100 s budget. Ten deletions at courses 1..10 certify **ten of ten** (the refuted
+ * form: five), every certificate checked against that deletion's own 149-block global
+ * solve.
  *
- * THE COLLAPSE ARM. Ground-anchored bands of the 30-course leaning stack:
+ * The collapse arm. Ground-anchored bands of the 30-course leaning stack:
  *
  *     band     blocks   charged   surcharge uu   optimistic   pessimistic   closes
  *     0..5          7        23      61,345.57     feasible    INFEASIBLE       no
@@ -3548,148 +3540,151 @@ bool FOracleRegionalSandwichTest::RunTest(const FString& Parameters)
  *     0..25        27         3       8,001.60     feasible    INFEASIBLE       no
  *     0..29        30         0              0   INFEASIBLE    INFEASIBLE      YES
  *
- * The repair does exactly what it was ruled to do and no more: **every false certificate is
- * withdrawn** (the bands now DISAGREE, which means grow the region), and **the collapse arm
- * is no cheaper than before** — it still certifies only with all thirty blocks, because the
- * optimistic side is the side that certifies a collapse and the repair deliberately does
- * not touch it. Across the whole test, 20 certificates issued and 0 of them false (and read
- * the caveat block below before treating that as evidence of anything).
+ * The repair does exactly what it was ruled to do and no more: **every false certificate
+ * is withdrawn** (the bands now disagree, which means grow the region), and **the
+ * collapse arm is no cheaper than before** — it still certifies only with all thirty
+ * blocks, because the optimistic side is the side that certifies a collapse and the
+ * repair deliberately does not touch it. Across the whole test, 20 certificates issued
+ * and 0 false (read the caveat block below before treating that as evidence of anything).
  *
- * **AND THE COLLAPSE ARM'S COST IS 2.0x, NOT 0.322x. QUOTE BOTH RATIOS OR NEITHER.** At
+ * **And the collapse arm's cost is 2.0x, not 0.322x — quote both ratios or neither.** At
  * closure the stack's two solves take 163 + 163 = 326 pivots against a 163-pivot global
- * solve, and the whole growth ladder — every band from 0..5 up — costs 1,300 pivots, **8x**
- * the global solve. So the standing arm's 0.322x and the collapse arm's 2.0x are the same
- * measurement's two halves, and the 2.0x is WORSE THAN THE 1.68x THE REFUTED FORM WAS
- * CONDEMNED FOR. The lever is cheap exactly where the answer is "it stands" and dear
- * exactly where the answer is "it falls", which is the arm a player's deletion cares about.
+ * solve, and the whole growth ladder — every band from 0..5 up — costs 1,300 pivots,
+ * **8x** the global solve. So the standing arm's 0.322x and the collapse arm's 2.0x are
+ * the same measurement's two halves, and the 2.0x is worse than the 1.68x the refuted
+ * form was condemned for. The lever is cheap exactly where the answer is "it stands" and
+ * dear exactly where the answer is "it falls" — the arm a player's deletion cares about.
  *
- * HEIGHT SCALES THE REGION, WHICH IS THE FINDING THAT PRICES SCENARIO SCALE. The same wall
- * at 18 courses is 224 blocks and closes at the same half-width with 62 blocks — 27.7% of
- * the structure, and 1.512x the 12-course region for 1.5x the height. The FRACTION is
- * height-invariant; the COUNT is not. Linear in height off those two points (ESTIMATE), a
- * 30-course scenario wall's certified strip is ~102 blocks, larger than the 84-block
- * fixture that answers in 0.0666 s — so the answer to "is a certified region small enough
- * for synchronous authority" is YES at 12 courses, MARGINAL at 30, and it is region SIZE
- * rather than the sandwich that decides it.
+ * HEIGHT SCALES THE REGION, the finding that prices scenario scale. The same wall at 18
+ * courses is 224 blocks and closes at the same half-width with 62 blocks — 27.7% of the
+ * structure, 1.512x the 12-course region for 1.5x the height. The fraction is
+ * height-invariant; the count is not. Linear in height off those two points (estimate),
+ * a 30-course scenario wall's certified strip is ~102 blocks, larger than the 84-block
+ * fixture that answers in 0.0666 s — so the answer to "is a certified region small
+ * enough for synchronous authority" is yes at 12 courses, marginal at 30, and it is
+ * region size rather than the sandwich that decides it.
  *
  * TWO PREDICTIONS MISSED, both recorded as misses at their pins:
  *
- *   - P5's point estimate (0.48x) against the measured 0.322x. The range held; the point
- *     estimate priced both sides as if they had the same row count, and the OPTIMISTIC side
- *     is nearly free (49 pivots for 41 blocks) because grounding the shell turns most of
- *     the region's boundary into earth and a grounded block writes no equilibrium row.
- *   - P8 outright. Charging EVERY omitted block — all 108, 271,309.925 uu — still leaves
- *     the 41-block strip FEASIBLE, so the predicted "too pessimistic to certify" failure
- *     mode is not demonstrated by this fixture and remains untested. The wall arm has so
- *     much margin that it cannot discriminate surcharge rules at all.
+ *   - P5's point estimate (0.48x) against the measured 0.322x. The range held; the
+ *     point estimate priced both sides as if they had the same row count, and the
+ *     optimistic side is nearly free (49 pivots for 41 blocks) because grounding the
+ *     shell turns most of the region's boundary into earth and a grounded block writes
+ *     no equilibrium row.
+ *   - P8 outright. Charging every omitted block — all 108, 271,309.925 uu — still
+ *     leaves the 41-block strip feasible, so the predicted "too pessimistic to certify"
+ *     failure mode is not demonstrated by this fixture and remains untested. The wall
+ *     arm has so much margin that it cannot discriminate surcharge rules at all.
  *
  * ================================================================================
  * THE CAVEAT THAT MATTERS MOST, AND IT IS NOT A FOOTNOTE
  * ================================================================================
  *
- * P1 held: the carried set of a full-height strip in a grounded wall is EMPTY at every
- * width. So on the wall arm THE REPAIRED PESSIMISTIC SIDE IS BIT-IDENTICAL TO THE REFUTED
- * ONE — same problem, no applied forces — and every wall certificate above rests on repair
- * (2) alone. What repair (1) removes is one specific unsoundness: omitted material whose
- * only road to the ground ran through the region, which is precisely the leaning stack's
- * mode and which a full-height ground-anchored strip cannot produce at all.
+ * P1 held: the carried set of a full-height strip in a grounded wall is empty at every
+ * width. So on the wall arm the repaired pessimistic side is bit-identical to the
+ * refuted one — same problem, no applied forces — and every wall certificate above
+ * rests on repair (2) alone. What repair (1) removes is one specific unsoundness:
+ * omitted material whose only road to the ground ran through the region, precisely the
+ * leaning stack's mode and something a full-height ground-anchored strip cannot
+ * produce at all.
  *
- * "20 CERTIFICATES, 0 FALSE" IS NO EVIDENCE OF SOUNDNESS, AND THE REASON IS MECHANICAL
- * RATHER THAN A MATTER OF SAMPLE SIZE. Nineteen of the twenty are issued about structures
- * the global solve reads FEASIBLE, and the twentieth is the whole leaning stack — so NOT
- * ONE certificate in this file is issued about a PROPER SUBSET of an INFEASIBLE structure,
- * which is the only shape a false certificate can take. CheckCertificate is therefore
- * re-testing the OPTIMISTIC side (already sound by restriction) on every row it runs. This
- * is TRAPS' "an invariant asserted over fixtures that all share a hidden property is not an
- * invariant", verbatim: the hidden property is that every fixture with a proper-subset
- * region stands. The honest split of the twenty is 18 proper-subset + 2 trivial
- * whole-structure closures (the wall at w = 5, 149 of 149, where the pessimistic side's 965
- * pivots ARE the global solve; and the stack at 0..29, 30 of 30).
+ * "20 CERTIFICATES, 0 FALSE" IS NO EVIDENCE OF SOUNDNESS, and the reason is mechanical
+ * rather than a matter of sample size. Nineteen of the twenty are issued about
+ * structures the global solve reads feasible, and the twentieth is the whole leaning
+ * stack — so not one certificate in this file is issued about a proper subset of an
+ * infeasible structure, the only shape a false certificate can take. CheckCertificate
+ * is therefore re-testing the optimistic side (already sound by restriction) on every
+ * row it runs. This is TRAPS' "an invariant asserted over fixtures that all share a
+ * hidden property is not an invariant", verbatim: the hidden property is that every
+ * fixture with a proper-subset region stands. The honest split of the twenty is 18
+ * proper-subset + 2 trivial whole-structure closures (the wall at w = 5, 149 of 149,
+ * where the pessimistic side's 965 pivots are the global solve; and the stack at
+ * 0..29, 30 of 30).
  *
- * AND AT LEAST THREE UNSOUNDNESSES REMAIN, not one. Each is a way a certificate could be
- * issued about a structure that falls, and none is exercised by any fixture here:
+ * AND AT LEAST THREE UNSOUNDNESSES REMAIN, not one. Each is a way a certificate could
+ * be issued about a structure that falls, and none is exercised by any fixture here:
  *
- *   1. THE OMITTED MATERIAL THAT HAS ITS OWN GROUND PATH AND ALSO BEARS ON THE REGION. The
- *      carried-set rule charges it nothing. No fixture can expose it, because every wall
- *      the LP prices is feasible — the only sub-1.0 fixture in the catalogue is the stack.
- *   2. THE INTERFACE JOINT IS NEVER CHECKED. SpikeExtractRegion drops every joint with an
- *      end outside the region, and SpikeAddSurcharge applies the load DIRECTLY to the
- *      region block — so the contact that would have to transmit it is not in the problem
- *      and its capacity is never asked about. Review worked the stack's case: joint 5-6
- *      would need T = 636,000 uu against a 412,562 uu cap, a demand the full structure
- *      cannot deliver and the region problem never poses. The surcharge is a rigid
- *      attachment where reality has a joint with a strength.
- *   3. THE CHARGED COMPONENT'S OWN INTERNAL JOINTS VANISH — courses 6..29's twenty-three
- *      bed joints are in no problem at all — so a hanging component that fails INTERNALLY
- *      leaves the region certifying happily. And where a component meets the region at
- *      SEVERAL joints, the area-proportional split is a fixed arbitrary choice where the
- *      real structure lets the LP choose the distribution.
+ *   1. The omitted material that has its own ground path and also bears on the region.
+ *      The carried-set rule charges it nothing. No fixture can expose it, because
+ *      every wall the LP prices is feasible — the only sub-1.0 fixture is the stack.
+ *   2. The interface joint is never checked. SpikeExtractRegion drops every joint with
+ *      an end outside the region, and SpikeAddSurcharge applies the load directly to
+ *      the region block, so the contact that would have to transmit it is not in the
+ *      problem and its capacity is never asked about. Review worked the stack's case:
+ *      joint 5-6 would need T = 636,000 uu against a 412,562 uu cap, a demand the full
+ *      structure cannot deliver and the region problem never poses. The surcharge is a
+ *      rigid attachment where reality has a joint with a strength.
+ *   3. The charged component's own internal joints vanish — courses 6..29's
+ *      twenty-three bed joints are in no problem at all — so a hanging component that
+ *      fails internally leaves the region certifying happily. And where a component
+ *      meets the region at several joints, the area-proportional split is a fixed
+ *      arbitrary choice where the real structure lets the LP choose the distribution.
  *
- * The concrete shape to watch for, worth writing down because it is not exotic: a wall
- * region carrying an omitted spandrel whose own bed joint sits at 1.01 of capacity. The
- * spandrel's weight is charged, the region carries it comfortably, the certificate is
- * issued, the spandrel drops, and nothing in this file notices.
+ * The concrete shape to watch for: a wall region carrying an omitted spandrel whose
+ * own bed joint sits at 1.01 of capacity. The spandrel's weight is charged, the region
+ * carries it comfortably, the certificate is issued, the spandrel drops, and nothing
+ * in this file notices.
  *
- * What would settle (1) is a wall the LP prices below 1.0 whose ground-anchored strip still
- * stands. What would settle (2) and (3) is a surcharge that keeps the interface joint and
- * the charged component's internal joints in the problem while still writing no equilibrium
- * row for the component — a different and larger repair. All three are specified follow-ups,
- * not findings this file may assume away.
+ * What would settle (1) is a wall the LP prices below 1.0 whose ground-anchored strip
+ * still stands. What would settle (2) and (3) is a surcharge that keeps the interface
+ * joint and the charged component's internal joints in the problem while still writing
+ * no equilibrium row for the component — a different and larger repair. All three are
+ * specified follow-ups, not findings this file may assume away.
  *
  * ================================================================================
  * GREEN ON ARRIVAL IS NOT THE SAME AS ASSERTING NOTHING — THE MUTATIONS
  * ================================================================================
  *
- * Every row here is green the day it lands, because the extractor and the measurement land
- * together. TRAPS' registry carries the proof, and two of the three are new:
+ * Every row here is green the day it lands, because the extractor and the measurement
+ * land together. TRAPS' registry carries the proof, and two of the three are new:
  *
- *   X8  the surcharge applied at the CONTACT's X instead of the charged component's centre
- *       of gravity  ->  4 assertions here + **3** in RegionalSandwich's PART D, and it
- *       **RE-CREATES THE FALSE CERTIFICATE**: band 0..5 certifies feasible=1 against a
- *       stack that reads infeasible. That is the sharpest evidence in the slice — it says
- *       the load-bearing half of repair (1) is WHERE the weight acts, not that it acts.
- *       The third PART D assertion is the LINE-OF-ACTION pin, added 2026-08-15 in review:
- *       "independently derived as 175 cm ... and it acted at 55 cm". It exists because the
- *       verdict rows alone would let a wrong-but-NEARER X through in silence — the contact
- *       is the extreme case, and a load misplaced onto the region block's own centroid
- *       might flip nothing.
+ *   X8  the surcharge applied at the contact's X instead of the charged component's
+ *       centre of gravity  ->  4 assertions here + 3 in RegionalSandwich's Part D, and
+ *       it **re-creates the false certificate**: band 0..5 certifies feasible=1 against
+ *       a stack that reads infeasible — the sharpest evidence in the slice, saying the
+ *       load-bearing half of repair (1) is where the weight acts, not that it acts. The
+ *       third Part D assertion is the line-of-action pin, added 2026-08-15 in review:
+ *       "independently derived as 175 cm ... and it acted at 55 cm". It exists because
+ *       the verdict rows alone would let a wrong-but-nearer X through in silence — the
+ *       contact is the extreme case, and a load misplaced onto the region block's own
+ *       centroid might flip nothing.
  *   X9  the carried set computed as empty (repair (1) removed, plumbing left in place)
- *       ->  8 assertions here + 5 in PART D, and THREE false certificates.
- *  X10  the Carried rule made to charge EVERY component, grounded or not (the rule
+ *       ->  8 assertions here + 5 in Part D, and three false certificates.
+ *  X10  the Carried rule made to charge every component, grounded or not (the rule
  *       selector inverted)  ->  7 here: five of the six wall Charged pins (0 -> 108, 84,
- *       60, 36, 12 as the strip widens and the omitted set shrinks; w = 5 stays 0 because
- *       nothing is omitted) plus BOTH pessimistic pivot pins (262 -> 514 and the tall
- *       arm's 474 -> 761, the surcharge rows costing pivots). The prover the Charged pins
- *       lacked, and the one that shows the RULE SELECTION is read and not only the total.
- *       No verdict moves under it, which re-states P8's miss from a second direction.
- *   X6  the extractor keeps the out-of-region blocks — re-measured against the repaired
- *       extractor  ->  12 here (five block counts, the closing region's size and both its
- *       pivot pins, the cost-ratio row, the under-half-the-wall row, the tall region and
- *       the stack's closing band) and still 14 in RegionalSandwich.
+ *       60, 36, 12 as the strip widens and the omitted set shrinks; w = 5 stays 0
+ *       because nothing is omitted) plus both pessimistic pivot pins (262 -> 514 and
+ *       the tall arm's 474 -> 761, the surcharge rows costing pivots) — the prover the
+ *       Charged pins lacked, showing the rule selection is read and not only the
+ *       total. No verdict moves under it, restating P8's miss from a second direction.
+ *   X6  the extractor keeps the out-of-region blocks — re-measured against the
+ *       repaired extractor  ->  12 here (five block counts, the closing region's size
+ *       and both its pivot pins, the cost-ratio row, the under-half-the-wall row, the
+ *       tall region and the stack's closing band) and still 14 in RegionalSandwich.
  *
- * WHAT STILL HAS NO BITE-PROVER, recorded rather than papered over, because a green row
- * nothing can fail is indistinguishable from a row that asserts nothing:
+ * WHAT STILL HAS NO BITE-PROVER, recorded rather than papered over, because a green
+ * row nothing can fail is indistinguishable from a row that asserts nothing:
  *
- *   - **Agreements == 10.** Its only failure mode is a deletion that stops certifying, and
- *     no mutation available moves it: X6 changes region sizes without changing verdicts,
- *     X9/X10 change the surcharge where the wall arm's carried set is empty either way, and
- *     an N6-style rung flip of the ten courses would leave the count at ten. It is a
- *     ceiling-shaped pin and should be read as one.
- *   - **The three surcharge-integrity guards in PoseSandwich** (no orphan component, none
- *     delivered onto a grounded block, applied == charged). They RUN on a live non-zero
- *     path — the EveryOmittedBlock control charges 108 blocks through 44 interface joints —
- *     so they are exercised, but no mutation makes one FAIL. The cheapest provers are
- *     recorded here rather than built: drop the interface search's "other end in region"
- *     test to manufacture an orphan; deliver every share to the joint's BlockA to
- *     manufacture a grounded delivery.
+ *   - **Agreements == 10.** Its only failure mode is a deletion that stops certifying,
+ *     and no mutation available moves it: X6 changes region sizes without changing
+ *     verdicts, X9/X10 change the surcharge where the wall arm's carried set is empty
+ *     either way, and an N6-style rung flip of the ten courses would leave the count at
+ *     ten. It is a ceiling-shaped pin and should be read as one.
+ *   - **The three surcharge-integrity guards in PoseSandwich** (no orphan component,
+ *     none delivered onto a grounded block, applied == charged). They run on a live
+ *     non-zero path — the EveryOmittedBlock control charges 108 blocks through 44
+ *     interface joints — so they are exercised, but no mutation makes one fail. The
+ *     cheapest provers, recorded rather than built: drop the interface search's "other
+ *     end in region" test to manufacture an orphan; deliver every share to the joint's
+ *     BlockA to manufacture a grounded delivery.
  *
- * COST OF THIS TEST: **9.4 s**, measured and printed at the bottom of the run, of which the
- * ten per-deletion global solves are about a third. It sits in the OPT-IN sweep's FAST
- * tier (7 tests, ~78 s — the tier is for iteration; `OracleSweepFull` is what verifies a
- * solver change), where it is one of the two most expensive rows; the default suite is
- * untouched at 173 = 167 green + the six standing deliberate reds.
+ * COST OF THIS TEST: **9.4 s**, measured and printed at the bottom of the run, of which
+ * the ten per-deletion global solves are about a third. It sits in the opt-in sweep's
+ * fast tier (7 tests, ~78 s — the tier is for iteration; `OracleSweepFull` is what
+ * verifies a solver change), one of the two most expensive rows there; the default
+ * suite is untouched at 173 = 167 green + the six standing deliberate reds.
  *
- * NEEDS A TICKING WORLD: NO.
+ * Needs a ticking world: no.
  * ==================================================================================== */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleRepairedSandwichTest,
@@ -4597,88 +4592,91 @@ bool FOracleRepairedSandwichTest::RunTest(const FString& Parameters)
 /* ====================================================================================
  * TEST 4 — THE SUB-1.0 WALL: IS THE REPAIRED PESSIMISTIC SIDE A BOUND, OR A HEURISTIC?
  *
- * THE GATING FOLLOW-UP OF PROMOTION_DESIGN §5.3's box and §11 R2, and the only fixture
- * shape that can answer it. The repaired sandwich reports "20 certificates, 0 false", and
- * that statistic CANNOT FIRE IN THE DIRECTION THAT MATTERS: nineteen of the twenty are
- * issued about structures the LP already prices feasible and the twentieth region IS the
- * whole structure, so not one is issued about a PROPER SUBSET of an INFEASIBLE structure —
- * the only shape a false certificate can take. The pessimistic side has had exactly one
- * counterexample removed (mutation X8's centre-of-gravity finding) and has never been shown
- * to be a bound.
+ * THE GATING FOLLOW-UP of PROMOTION_DESIGN §5.3's box and §11 R2, and the only fixture
+ * shape that can answer it. The repaired sandwich reports "20 certificates, 0 false",
+ * and that statistic cannot fire in the direction that matters: nineteen of the twenty
+ * are issued about structures the LP already prices feasible and the twentieth region
+ * is the whole structure, so not one is issued about a proper subset of an infeasible
+ * structure — the only shape a false certificate can take. The pessimistic side has had
+ * exactly one counterexample removed (mutation X8's centre-of-gravity finding) and has
+ * never been shown to be a bound.
  *
- * THE FIXTURE and the three routes not taken are documented at SpikeBuildChimneyWall. In
- * one line: the 12 x 12 wall RepairedRegionalSandwich already measures, with a 30-course
- * LEANING CHIMNEY mortared onto the rightmost full brick of its top course, leaning 10 cm
- * per course out past the wall's end. The chimney is the leaning stack's own chain, so the
- * structure has no admissible equilibrium; the failure lives at the wall's far end, which is
- * what makes a strip through a mid-wall deletion able to certify while the structure falls.
+ * THE FIXTURE and the three routes not taken are documented at SpikeBuildChimneyWall.
+ * In one line: the 12 x 12 wall RepairedRegionalSandwich already measures, with a
+ * 30-course leaning chimney mortared onto the rightmost full brick of its top course,
+ * leaning 10 cm per course out past the wall's end. The chimney is the leaning stack's
+ * own chain, so the structure has no admissible equilibrium; the failure lives at the
+ * wall's far end, which is what makes a strip through a mid-wall deletion able to
+ * certify while the structure falls.
  *
  * ================================================================================
  * PREDICTIONS — DERIVATION RECORD REVISION 1, WRITTEN BEFORE THE FIRST RUN
  * (PROMOTION_DESIGN §7.3, mandatory. Each is repeated at the pin it decides.)
  * ================================================================================
  *
- *  Q1  lambda* OF THE COMPOSITE IS THE BARE STACK'S, [0.440484, 0.440502]. The binding
+ *  Q1  lambda* of the composite is the bare stack's, [0.440484, 0.440502]. The binding
  *      joint is inside the chain, and the wall below changes none of the loads above it.
- *      Named fallback if that misses: the chimney's ROOT joint governs instead, hand-priced
- *      at ~1.5 — the thirty courses weigh 30 x 2.72163125 x 981 = 80,100 uu on a vertical
- *      line 145 cm outboard of a joint whose half-length is 10.75, so equilibrium needs
- *      T = (13.49 - 1)/2 x W = 500,000 uu of tension against 0.70 MPa x 110 cm2 = 770,000
- *      uu of bond. Either way lambda* < 1 and the fixture does its job; only the number
- *      moves, and which joint governs is the finding.
- *  Q2  THE COMPOSITE IS INFEASIBLE at lambda = 1 and THE SAME WALL WITHOUT THE CHIMNEY IS
- *      FEASIBLE. Both are measured here, in the same run, through the same builder, so the
- *      chimney is demonstrably the whole of the difference rather than assumed to be.
- *  Q3  SIZES: plain 149 blocks / 385 joints (RepairedRegionalSandwich's own fixture, and
- *      pinned there); composite 179 / 415 — thirty blocks and thirty joints more (the root
- *      bed joint plus twenty-nine chain beds).
- *  Q4  THE STRIP AT w = 0 CHARGES NOTHING. Delete the strip from the joint graph and what
- *      is left is ONE component containing the wall's grounded bottom course, with the
- *      chimney hanging off it — so the Carried rule, which charges only material with no
- *      ground path of its own, charges zero blocks. Repair (1) is a no-op here, exactly as
- *      P1 measured on the chimney-free wall.
- *  Q5  THE IDENTITY, and it is the mechanism stated as an equation: the w = 0 region problem
- *      is THE SAME PROBLEM whether or not the chimney is attached — same block count, same
- *      joint count, same verdicts, and the same pivot counts on both sides. The extractor
- *      drops every chimney block and every chimney joint and the surcharge adds nothing, so
- *      the region cannot see the chimney AT ALL. Predicted 49 optimistic / 262 pessimistic,
- *      which is RepairedRegionalSandwich's w = 0 rung.
- *  Q6  SO THE SANDWICH CLOSES AT w = 0 — both sides feasible — issuing a certificate about
- *      41 of 179 blocks (23%) of a structure with no equilibrium. **PREDICTED: THE
- *      CERTIFICATE IS FALSE, and the repaired pessimistic side is NOT a bound.**
- *  Q7  THE LADDER. A half-width w reaches 12.25 + 22.5w cm; the deletion sits at X = 135.0
- *      and the chimney root at X = 236.25, which is 101.25 cm away, so w = 4 is the first
- *      width whose strip contains the root. PREDICTED: false certificates at w = 0, 1, 2, 3
- *      — FOUR of them, the last covering 113 of 179 blocks — and NO closure at w = 4 or 5,
- *      where the chimney above the strip becomes a component with no ground path, is
- *      charged, and sinks the pessimistic side.
- *  Q8  HOW FALSE, AS A NUMBER. The certified strip's own lambda*: 41 blocks, twelve courses,
- *      two cells wide, predicted 400-1,100 (the 8-course 84-block wall reads 1128.4 and
- *      lambda* falls with height — wall-01's thirty courses read 272.2). Against the
- *      composite's 0.4405 that is a ratio of ~1,000-2,500x, an order of magnitude past PART
- *      D's 41.96x.
- *  Q9  THE CONTRAST STRIP, cut at the chimney's root instead of at the deletion: the chimney
- *      above it becomes a component with no ground path, is CHARGED (~27 blocks), and the
- *      pessimistic side reads INFEASIBLE while the optimistic side stays feasible — so it
- *      does NOT close and issues no certificate. The repair works where it can SEE the
- *      failing material and is blind where that material has a ground path of its own, which
- *      is unsoundness (1) of §5.3's box demonstrated rather than argued.
- * Q10  COST: under 10 s, FAST tier.
+ *      Named fallback if that misses: the chimney's root joint governs instead,
+ *      hand-priced at ~1.5 — the thirty courses weigh 30 x 2.72163125 x 981 = 80,100 uu
+ *      on a vertical line 145 cm outboard of a joint whose half-length is 10.75, so
+ *      equilibrium needs T = (13.49 - 1)/2 x W = 500,000 uu of tension against
+ *      0.70 MPa x 110 cm2 = 770,000 uu of bond. Either way lambda* < 1 and the fixture
+ *      does its job; only the number moves, and which joint governs is the finding.
+ *  Q2  The composite is infeasible at lambda = 1 and the same wall without the chimney
+ *      is feasible. Both are measured here, in the same run, through the same builder,
+ *      so the chimney is demonstrably the whole of the difference rather than assumed.
+ *  Q3  Sizes: plain 149 blocks / 385 joints (RepairedRegionalSandwich's own fixture, and
+ *      pinned there); composite 179 / 415 — thirty blocks and thirty joints more (the
+ *      root bed joint plus twenty-nine chain beds).
+ *  Q4  The strip at w = 0 charges nothing. Delete the strip from the joint graph and
+ *      what is left is one component containing the wall's grounded bottom course,
+ *      with the chimney hanging off it — so the Carried rule, which charges only
+ *      material with no ground path of its own, charges zero blocks. Repair (1) is a
+ *      no-op here, exactly as P1 measured on the chimney-free wall.
+ *  Q5  The identity, the mechanism stated as an equation: the w = 0 region problem is
+ *      the same problem whether or not the chimney is attached — same block count,
+ *      same joint count, same verdicts, same pivot counts on both sides. The extractor
+ *      drops every chimney block and joint and the surcharge adds nothing, so the
+ *      region cannot see the chimney at all. Predicted 49 optimistic / 262 pessimistic,
+ *      RepairedRegionalSandwich's own w = 0 rung.
+ *  Q6  So the sandwich closes at w = 0 — both sides feasible — issuing a certificate
+ *      about 41 of 179 blocks (23%) of a structure with no equilibrium. **Predicted:
+ *      the certificate is false, and the repaired pessimistic side is not a bound.**
+ *  Q7  The ladder. A half-width w reaches 12.25 + 22.5w cm; the deletion sits at
+ *      X = 135.0 and the chimney root at X = 236.25, 101.25 cm away, so w = 4 is the
+ *      first width whose strip contains the root. Predicted: false certificates at
+ *      w = 0, 1, 2, 3 — four of them, the last covering 113 of 179 blocks — and no
+ *      closure at w = 4 or 5, where the chimney above the strip becomes a component
+ *      with no ground path, is charged, and sinks the pessimistic side.
+ *  Q8  How false, as a number. The certified strip's own lambda*: 41 blocks, twelve
+ *      courses, two cells wide, predicted 400-1,100 (the 8-course 84-block wall reads
+ *      1128.4 and lambda* falls with height — wall-01's thirty courses read 272.2).
+ *      Against the composite's 0.4405 that is a ratio of ~1,000-2,500x, an order of
+ *      magnitude past Part D's 41.96x.
+ *  Q9  The contrast strip, cut at the chimney's root instead of at the deletion: the
+ *      chimney above it becomes a component with no ground path, is charged
+ *      (~27 blocks), and the pessimistic side reads infeasible while the optimistic
+ *      side stays feasible — so it does not close and issues no certificate. The
+ *      repair works where it can see the failing material and is blind where that
+ *      material has a ground path of its own, unsoundness (1) of §5.3's box
+ *      demonstrated rather than argued.
+ * Q10  Cost: under 10 s, fast tier.
  *
  * ================================================================================
  * WHAT IT MEANS IF Q6 MISSES, because a prediction with no other arm is a wish
  * ================================================================================
  *
- * If the strip does NOT certify — if the pessimistic side finds this strip infeasible — then
- * this is the first genuine evidence the repaired side works, on the only fixture shape that
- * could have caught it lying, and the honest statement is that ONE fixture is not a proof.
- * Either outcome is pinned as measured. Nothing here may be tuned to produce the other.
+ * If the strip does not certify — if the pessimistic side finds this strip infeasible
+ * — then this is the first genuine evidence the repaired side works, on the only
+ * fixture shape that could have caught it lying, and the honest statement is that one
+ * fixture is not a proof. Either outcome is pinned as measured; nothing here may be
+ * tuned to produce the other.
  *
  * ================================================================================
  * WHAT WAS MEASURED — 2026-08-16, one run, tree at HEAD 74bb081
  * ================================================================================
  *
- * **THE CERTIFICATE IS FALSE. THE REPAIRED PESSIMISTIC SIDE IS NOT A BOUND.**
+ * **The certificate is false. The repaired pessimistic side is not a bound.**
  *
  *     composite   179 blocks / 415 joints, lambda* = 0.44049301907204619, INFEASIBLE
  *     plain wall  149 blocks / 385 joints, FEASIBLE — so the chimney is the whole difference
@@ -4691,140 +4689,147 @@ bool FOracleRepairedSandwichTest::RunTest(const FString& Parameters)
  *     4      139      77.7%        28     feasible    INFEASIBLE       no       —
  *     5      153      85.5%        26     feasible    INFEASIBLE       no       —
  *
- * FOUR FALSE CERTIFICATES, the smallest issued about 41 of 179 blocks — 22.9% of a structure
- * that has no admissible equilibrium. Q1-Q9 all HIT, with ONE miss recorded below that is
- * more useful than any of the hits.
+ * Four false certificates, the smallest issued about 41 of 179 blocks — 22.9% of a
+ * structure with no admissible equilibrium. Q1-Q9 all hit, with one miss recorded below
+ * that is more useful than any of the hits.
  *
- *   - Q1 HIT: lambda* = 0.44049301907204619, inside the bare 30-course stack's pinned
- *     [0.440484, 0.440502]. The chain governs and the wall under it changes nothing, so the
- *     named fallback (the root joint at ~1.5) did not fire — and that hand price turns out to
- *     matter anyway; see the Q7 miss.
- *   - Q2 HIT: composite infeasible, the same wall without the chimney feasible.
- *   - Q3 HIT block for block: 179/415 and 149/385.
- *   - Q4/Q5 HIT EXACTLY, and Q5 is the finding stated as an equation: the w = 0 region is 41
- *     blocks / 66 joints / 0 charged and takes **49 + 262 pivots** with a collapsing chimney
- *     attached — the same three numbers and the same two pivot counts as the chimney-free
- *     wall, and the same two RepairedRegionalSandwich pins at its own w = 0. The region
- *     cannot see the chimney AT ALL.
- *   - Q6 HIT: the sandwich closes and the certificate is false.
- *   - Q8 HIT: the certified strip's own lambda* is **621.95652149729517** against the
- *     structure's 0.44049 — the region the sandwich certified stands at **1,412x** the load
- *     under which the structure it certified has no equilibrium. PART D's refuted-form
- *     certificate was wrong by 41.96x; this one is wrong by thirty-three times that.
- *   - Q9 HIT to the block: the contrast strip cut at the chimney's root charges 27, reads
- *     optimistic feasible / pessimistic INFEASIBLE, and issues no certificate.
+ *   - Q1 hit: lambda* = 0.44049301907204619, inside the bare 30-course stack's pinned
+ *     [0.440484, 0.440502]. The chain governs and the wall under it changes nothing, so
+ *     the named fallback (the root joint at ~1.5) did not fire — and that hand price
+ *     turns out to matter anyway; see the Q7 miss.
+ *   - Q2 hit: composite infeasible, the same wall without the chimney feasible.
+ *   - Q3 hit block for block: 179/415 and 149/385.
+ *   - Q4/Q5 hit exactly, and Q5 is the finding stated as an equation: the w = 0 region
+ *     is 41 blocks / 66 joints / 0 charged and takes **49 + 262 pivots** with a
+ *     collapsing chimney attached — the same three numbers and pivot counts as the
+ *     chimney-free wall, and the same two RepairedRegionalSandwich pins at its own
+ *     w = 0. The region cannot see the chimney at all.
+ *   - Q6 hit: the sandwich closes and the certificate is false.
+ *   - Q8 hit: the certified strip's own lambda* is **621.95652149729517** against the
+ *     structure's 0.44049 — the region the sandwich certified stands at **1,412x** the
+ *     load under which the structure it certified has no equilibrium. Part D's
+ *     refuted-form certificate was wrong by 41.96x; this one by thirty-three times that.
+ *   - Q9 hit to the block: the contrast strip cut at the chimney's root charges 27,
+ *     reads optimistic feasible / pessimistic infeasible, issues no certificate.
  *
- * **THE MISS, AND IT IS THE MOST USEFUL THING IN THE RUN. Q7 predicted `charged = 0` at every
- * closing width, i.e. that all four false certificates came from the carried-set rule being
- * BLIND. At w = 3 the rule is not blind — it charges all THIRTY chimney blocks, 80,100 uu on
- * the vertical through their own centre of gravity — AND THE STRIP STILL CERTIFIES.** The
- * arithmetic says why, and it is hole (3) of §5.3's box rather than hole (1):
+ * **THE MISS, AND THE MOST USEFUL THING IN THE RUN. Q7 predicted `charged = 0` at every
+ * closing width — that all four false certificates came from the carried-set rule being
+ * blind. At w = 3 the rule is not blind — it charges all thirty chimney blocks, 80,100
+ * uu on the vertical through their own centre of gravity — and the strip still
+ * certifies.** The arithmetic says why, and it is hole (3) of §5.3's box rather than
+ * hole (1):
  *
  *   - at w = 0..2 the chimney's root sits outside the region, so the omitted component
- *     reaches the ground down the wall's own columns and is charged NOTHING. Hole (1):
+ *     reaches the ground down the wall's own columns and is charged nothing. Hole (1):
  *     material with its own ground path that also bears on the region.
- *   - at w = 3 the root is pulled in as a SHELL block (it shares a head joint with a core
- *     brick), so the chimney above it becomes a component with no ground path and IS charged
- *     in full. **The load is applied DIRECTLY TO THE ROOT BRICK as an FOracleAppliedForce,
- *     and the interface joint - the root's own bed joint under the chimney - is ITSELF
- *     DROPPED**, because SpikeExtractRegion drops every joint with an end outside the region
- *     and the chimney's first course is outside it. That is hole (1) of §5.3's box, present
- *     here as well: the joint that must actually transmit the surcharge is never checked.
+ *   - at w = 3 the root is pulled in as a shell block (it shares a head joint with a
+ *     core brick), so the chimney above it becomes a component with no ground path and
+ *     is charged in full. **The load is applied directly to the root brick as an
+ *     FOracleAppliedForce, and the interface joint — the root's own bed joint under
+ *     the chimney — is itself dropped**, because SpikeExtractRegion drops every joint
+ *     with an end outside the region and the chimney's first course is outside it.
+ *     That is hole (1) of §5.3's box, present here as well: the joint that must
+ *     actually transmit the surcharge is never checked.
  *
- *     IT MAKES NO DIFFERENCE TO THE VERDICT, AND THAT IS THE POINT - hand statics say that
- *     joint would have STOOD anyway, so the false certificate rests on hole (3) alone. The
- *     model's own two-contact form, not a section modulus: the joint carries two contact
- *     points at +/- h = 10.75 cm with a tributary area of A/2 = 110.1875 cm2 each. Thirty
- *     courses weigh W = 30 x 2.72163125 kg x 980 = 80,015.96 uu on a vertical line
- *     e = 14.5 x 10 = 145 cm outboard of the joint's centre, so vertical equilibrium plus
- *     moment about that centre give the far contact
+ *     It makes no difference to the verdict, and that is the point — hand statics say
+ *     that joint would have stood anyway, so the false certificate rests on hole (3)
+ *     alone. The model's own two-contact form, not a section modulus: the joint
+ *     carries two contact points at +/- h = 10.75 cm with a tributary area of
+ *     A/2 = 110.1875 cm2 each. Thirty courses weigh
+ *     W = 30 x 2.72163125 kg x 980 = 80,015.96 uu on a vertical line e = 14.5 x 10
+ *     = 145 cm outboard of the joint's centre, so vertical equilibrium plus moment
+ *     about that centre give the far contact
  *
  *         T = W x (e/h - 1) / 2 = 80,015.96 x (13.4884 - 1)/2 = 499,634.5 uu of TENSION
  *
- *     against a bond capacity of f_t x A/2 = 0.70 MPa x 110.1875 cm2 x 1e4 = 771,312.5 uu -
- *     **a ratio of 1.5438, pinned below rather than left as prose.** The other two axes were
- *     worked before that was believed: the near contact carries W x (e/h + 1)/2 = 579,650 uu
- *     of compression, 0.053 of its 10 MPa crushing cap, and the surcharge is vertical so the
- *     joint sees no shear at all. Tension governs, and it governs at 0.648.
+ *     against a bond capacity of f_t x A/2 = 0.70 MPa x 110.1875 cm2 x 1e4 = 771,312.5
+ *     uu — **a ratio of 1.5438, pinned below rather than left as prose.** The other two
+ *     axes were worked before that was believed: the near contact carries
+ *     W x (e/h + 1)/2 = 579,650 uu of compression, 0.053 of its 10 MPa crushing cap,
+ *     and the surcharge is vertical so the joint sees no shear. Tension governs, at
+ *     0.648.
  *
- *     (The `f_t x A x h` moment capacity this comment quoted until 2026-08-18 is ~2x the
- *     model's two-contact value and landed near the right conclusion by luck; the number is
- *     carried into a design decision, so it is derived the way the LP actually rows it.)
+ *     (The `f_t x A x h` moment capacity this comment quoted until 2026-08-18 is ~2x
+ *     the model's two-contact value and landed near the right conclusion by luck; the
+ *     number feeds a design decision, so it is derived the way the LP actually rows it.)
  *
  *     **The chain's twenty-nine internal bed joints — the ones that actually fail, at
  *     lambda* 0.44 — are in no problem at all.** Hole (3): the charged component's own
- *     internal joints vanish, so a hanging component that fails INTERNALLY leaves the region
- *     certifying happily.
- *   - at w = 4 the region finally swallows two chimney courses, so one failing chain joint is
- *     posed for the first time, and the pessimistic side goes infeasible. **The region sees
- *     the failure only when it contains the failing JOINT** — not when it contains the
- *     failing material's weight.
+ *     internal joints vanish, so a hanging component that fails internally leaves the
+ *     region certifying happily.
+ *   - at w = 4 the region finally swallows two chimney courses, so one failing chain
+ *     joint is posed for the first time, and the pessimistic side goes infeasible.
+ *     **The region sees the failure only when it contains the failing joint** — not
+ *     when it contains the failing material's weight.
  *
- * So the fixture exercises TWO of the three named unsoundnesses rather than the one it was
- * built for, and the second is the sharper: a surcharge carries a force and a moment, and
- * carries no STRENGTH. "The spandrel whose own bed joint sits at 1.01 of capacity" that
- * §5.3's box writes down as a hypothetical is measured here.
+ * So the fixture exercises two of the three named unsoundnesses rather than the one it
+ * was built for, and the second is the sharper: a surcharge carries a force and a
+ * moment, and carries no strength. "The spandrel whose own bed joint sits at 1.01 of
+ * capacity" that §5.3's box writes down as a hypothetical is measured here.
  *
  * TWO SMALLER MISSES, recorded as misses:
  *
- *   - Q1's REASONING about cost. A small lambda* was expected to make the live pose cheap
- *     (the bare stack's live solve is 29 pivots); the composite's is **2,321 pivots / 4.2 s**,
- *     over half this test's runtime. A short climb in lambda is not a short climb in pivots.
- *   - Q7's WIDTHS were right and its MECHANISM was wrong, which is exactly the shape TRAPS
- *     warns about: the count (four) and the widths (0-3) came out as predicted for a reason
- *     the prediction did not contain. A count agreeing is not a mechanism agreeing.
+ *   - Q1's reasoning about cost. A small lambda* was expected to make the live pose
+ *     cheap (the bare stack's live solve is 29 pivots); the composite's is **2,321
+ *     pivots / 4.2 s**, over half this test's runtime. A short climb in lambda is not
+ *     a short climb in pivots.
+ *   - Q7's widths were right and its mechanism was wrong, exactly the shape TRAPS
+ *     warns about: the count (four) and the widths (0-3) came out as predicted for a
+ *     reason the prediction did not contain. A count agreeing is not a mechanism
+ *     agreeing.
  *
  * WHAT THIS SETTLES, and what it does not. It settles §11 R2's open half: **a closed
- * sandwich is a heuristic, not a certificate, and §5.6's fail-closed fallback is mandatory
- * on every region solve.** It does NOT settle how to repair it — and the w = 3 rung says the
- * obvious repair is bigger than it looks, because charging the weight correctly is not
- * enough; the region would have to carry the charged component's internal joints and the
- * interface joint too, which is §5.3's "different and larger repair".
+ * sandwich is a heuristic, not a certificate, and §5.6's fail-closed fallback is
+ * mandatory on every region solve.** It does not settle how to repair it — the w = 3
+ * rung says the obvious repair is bigger than it looks, because charging the weight
+ * correctly is not enough; the region would have to carry the charged component's
+ * internal joints and the interface joint too, §5.3's "different and larger repair".
  *
- * THE LIMITATION, restated where the numbers are: this structure is infeasible BEFORE the
- * deletion, so the counterexample is not deletion-caused. The claim it refutes is
- * unconditional, so that does not weaken it — but a deletion-CAUSED non-local failure (the
- * wide-opening cover, jambs standing) would be strictly stronger evidence and is a specified
- * follow-up in CURRENT_STATE.
+ * THE LIMITATION, restated where the numbers are: this structure is infeasible before
+ * the deletion, so the counterexample is not deletion-caused. The claim it refutes is
+ * unconditional, so that does not weaken it — but a deletion-caused non-local failure
+ * (the wide-opening cover, jambs standing) would be strictly stronger evidence and is a
+ * specified follow-up in CURRENT_STATE.
  *
  * COST: **8.0-10.3 s**, measured and printed at the bottom of the run, of which the
- * composite's gravity-live solve is ~4.2 s and the six-rung ladder ~2.4 s. QUOTED AS A RANGE
- * ON PURPOSE: 8.0 s is a serial run and 10.285 s the same test in a parallel bucket on the
- * same day, and CURRENT_STATE already records this machine varying by more under load than
- * several fast rows cost. A single reading here would be a number the next person measures
- * against and disbelieves. It sits in the OPT-IN sweep's FAST tier, taking it from ~80 s to
- * ~90 s. The default suite is untouched.
+ * composite's gravity-live solve is ~4.2 s and the six-rung ladder ~2.4 s. Quoted as a
+ * range on purpose: 8.0 s is a serial run and 10.285 s the same test in a parallel
+ * bucket on the same day, and CURRENT_STATE already records this machine varying by
+ * more under load than several fast rows cost — a single reading here would be a
+ * number the next person measures against and disbelieves. It sits in the opt-in
+ * sweep's fast tier, taking it from ~80 s to ~90 s. The default suite is untouched.
  *
- * GREEN ON ARRIVAL, AND ITS THREE BITE-PROVERS. Every row here is green the day it lands,
- * because the fixture and the measurement land together, and §9.5 is explicit that a row
- * which settles a published design question may not rest on an argued bite.
+ * GREEN ON ARRIVAL, and its three bite-provers. Every row here is green the day it
+ * lands, because the fixture and the measurement land together, and §9.5 is explicit
+ * that a row which settles a published design question may not rest on an argued bite.
  *
- *   X11  the chimney built with NO LEAN (`SpikeChimneyLeanCm` 10.0 -> 0.0), so the structure
- *        STANDS  ->  **14 assertions**: the composite-is-infeasible row, its lambda* window
- *        (0.44049 -> 275.414), its global pivot pin, the w = 4 and w = 5 rungs' block /
- *        charged / free-boundary pins, the FALSE-CERTIFICATE COUNT (4 -> 0), the
- *        charged-but-certifying row, and all three contrast pins. **The w = 0..3 rungs and
- *        the whole IDENTITY correctly stay green** — the certified region is the same region
- *        either way, which is the identity's own point. This mutation is also what found the
- *        silent-skip hole: with nothing closing falsely, Parts 3 and 4 would have been
- *        skipped without a word, so the loud-skip AddError above exists because of it.
+ *   X11  the chimney built with no lean (`SpikeChimneyLeanCm` 10.0 -> 0.0), so the
+ *        structure stands  ->  **14 assertions**: the composite-is-infeasible row, its
+ *        lambda* window (0.44049 -> 275.414), its global pivot pin, the w = 4 and w = 5
+ *        rungs' block / charged / free-boundary pins, the false-certificate count
+ *        (4 -> 0), the charged-but-certifying row, and all three contrast pins. **The
+ *        w = 0..3 rungs and the whole identity correctly stay green** — the certified
+ *        region is the same region either way, the identity's own point. This mutation
+ *        is also what found the silent-skip hole: with nothing closing falsely, Parts
+ *        3 and 4 would have been skipped without a word, so the loud-skip AddError
+ *        above exists because of it.
  *   X6   the extractor keeps the out-of-region blocks (the registry's existing entry,
- *        re-measured against this test)  ->  **26 assertions**, including ALL FIVE IDENTITY
- *        ROWS and the certified strip's lambda* window (621.957 -> 0.44049, the region having
- *        become the whole structure). The identity is this test's mechanism claim and X6 is
- *        what proves it is an assertion rather than a restatement.
- *   X13  the chimney built ONE COURSE SHORT (`SpikeChimneyCourses` 30 -> 29)  ->  **9
- *        assertions**: the composite's block and joint pins (179/415 -> 178/414), its lambda*
- *        window (0.44049 -> 0.47322), its global pivot pin, the w = 3/4/5 charged pins, the
- *        contrast strip's charged pin, and the bypassed-joint margin window (1.5438 ->
- *        1.6588). Added 2026-08-18 because the composite SIZE pins had no prover — X11 moves
- *        the fixture's falling-ness and X6 the extractor, and neither touches a count.
- *        **WHAT STILL HAS NO PROVER, said plainly rather than implied away: the PLAIN wall's
- *        149/385 pins and its FEASIBLE control.** No chimney mutation can reach them, which
- *        is the point of a control - it would take a wall-side rung flip, and one is not
- *        written.
+ *        re-measured against this test)  ->  **26 assertions**, including all five
+ *        identity rows and the certified strip's lambda* window (621.957 -> 0.44049,
+ *        the region having become the whole structure). The identity is this test's
+ *        mechanism claim and X6 is what proves it is an assertion, not a restatement.
+ *   X13  the chimney built one course short (`SpikeChimneyCourses` 30 -> 29)  ->  **9
+ *        assertions**: the composite's block and joint pins (179/415 -> 178/414), its
+ *        lambda* window (0.44049 -> 0.47322), its global pivot pin, the w = 3/4/5
+ *        charged pins, the contrast strip's charged pin, and the bypassed-joint margin
+ *        window (1.5438 -> 1.6588). Added 2026-08-18 because the composite size pins
+ *        had no prover — X11 moves the fixture's falling-ness and X6 the extractor,
+ *        neither touching a count. **What still has no prover, said plainly: the plain
+ *        wall's 149/385 pins and its feasible control.** No chimney mutation can reach
+ *        them — the point of a control — and it would take a wall-side rung flip, not
+ *        yet written.
  *
- * NEEDS A TICKING WORLD: NO.
+ * Needs a ticking world: no.
  * ==================================================================================== */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleSubUnityWallCertificateTest,
@@ -5124,14 +5129,14 @@ bool FOracleSubUnityWallCertificateTest::RunTest(const FString& Parameters)
 	}
 
 	/* ================================================================================
-	 * PART 2 — THE STRIP LADDER, AND WHAT EACH RUNG CERTIFIES.
+	 * PART 2 — the strip ladder, and what each rung certifies.
 	 *
-	 * A closed sandwich here claims "the whole structure is feasible" about a structure Part
-	 * 1 has just measured as having no equilibrium. Every closure is therefore a FALSE
-	 * CERTIFICATE by construction, and the count of them is this test's headline — pinned as
-	 * a MEASURED number rather than asserted to be zero, exactly as PART D pins the refuted
-	 * form's. A test that demanded zero here would be asserting the design's claim instead of
-	 * checking it.
+	 * A closed sandwich here claims "the whole structure is feasible" about a structure
+	 * Part 1 has just measured as having no equilibrium. Every closure is therefore a
+	 * false certificate by construction, and the count of them is this test's headline
+	 * — pinned as a measured number rather than asserted to be zero, exactly as Part D
+	 * pins the refuted form's. A test that demanded zero here would be asserting the
+	 * design's claim instead of checking it.
 	 * ================================================================================ */
 
 	int32 FalseCertificates = 0;
@@ -5381,23 +5386,23 @@ bool FOracleSubUnityWallCertificateTest::RunTest(const FString& Parameters)
 	}
 
 	/* ================================================================================
-	 * PART 3 — WHY IT HAPPENS, AS AN IDENTITY RATHER THAN AS A SENTENCE.
+	 * PART 3 — why it happens, as an identity rather than as a sentence.
 	 *
-	 * The certified region problem is THE SAME PROBLEM whether or not a collapsing chimney is
-	 * attached to the wall: the extractor drops every chimney block and every chimney joint,
-	 * and the Carried rule charges nothing because the chimney reaches the ground down the
-	 * wall's own columns. Same blocks, same joints, same verdicts, same pivot counts — and a
-	 * region whose answer cannot depend on the material it dropped cannot be a bound on a
-	 * structure that includes it. This is the mechanism of the false certificate, measured
-	 * within one run rather than argued.
+	 * The certified region problem is the same problem whether or not a collapsing
+	 * chimney is attached to the wall: the extractor drops every chimney block and
+	 * joint, and the Carried rule charges nothing because the chimney reaches the
+	 * ground down the wall's own columns. Same blocks, joints, verdicts, pivot counts —
+	 * and a region whose answer cannot depend on the material it dropped cannot be a
+	 * bound on a structure that includes it. This is the mechanism of the false
+	 * certificate, measured within one run rather than argued.
 	 * ================================================================================ */
 
 	/*
-	 * A SKIP MUST BE LOUD. Parts 3 and 4 both hang off a sandwich having closed, and a run in
-	 * which none does would otherwise pass with the identity and the "how false" number never
-	 * evaluated — a test asserting nothing, which is the failure mode this file's own header
-	 * calls the worst available outcome. Found by mutation X11, which does exactly that on
-	 * one arm.
+	 * A skip must be loud. Parts 3 and 4 both hang off a sandwich having closed, and a
+	 * run in which none does would otherwise pass with the identity and the "how
+	 * false" number never evaluated — a test asserting nothing, the failure mode this
+	 * file's own header calls the worst available outcome. Found by mutation X11,
+	 * which does exactly that on one arm.
 	 */
 	if (ClosingWidth == INDEX_NONE)
 	{
@@ -5464,12 +5469,12 @@ bool FOracleSubUnityWallCertificateTest::RunTest(const FString& Parameters)
 			ClosingStrip.bPessimistic ? 1 : 0, PlainStrip.bPessimistic ? 1 : 0);
 
 		/* ============================================================================
-		 * PART 4 — HOW FALSE, AS A NUMBER.
+		 * PART 4 — how false, as a number.
 		 *
-		 * PART D's precedent: a boolean trio says only that the certificate is on the wrong
-		 * side of 1.0, and would survive almost any perturbation of the fixture. The
-		 * certified region's OWN lambda* says whether the failure is a knife edge a tighter
-		 * extractor could tune away, or a gap no boundary rule can close.
+		 * Part D's precedent: a boolean trio says only that the certificate is on the
+		 * wrong side of 1.0, and would survive almost any perturbation of the fixture.
+		 * The certified region's own lambda* says whether the failure is a knife edge a
+		 * tighter extractor could tune away, or a gap no boundary rule can close.
 		 * ============================================================================ */
 
 		FOracleProblem CertifiedLive;
@@ -5521,17 +5526,19 @@ bool FOracleSubUnityWallCertificateTest::RunTest(const FString& Parameters)
 	}
 
 	/* ================================================================================
-	 * PART 5 — THE CONTRAST: THE SAME STRUCTURE, CUT WHERE THE FAILURE IS.
+	 * PART 5 — the contrast: the same structure, cut where the failure is.
 	 *
-	 * The repair is not useless and this is the row that says where it works. Cut the strip
-	 * at the CHIMNEY'S ROOT instead of at the deletion and the chimney above the strip becomes
-	 * a component with no ground path of its own, so the Carried rule charges it, its weight
-	 * acts on the vertical through its own centre of gravity, and the pessimistic side reads
-	 * INFEASIBLE. The sandwich opens and issues no certificate — correct behaviour.
+	 * The repair is not useless and this is the row that says where it works. Cut the
+	 * strip at the chimney's root instead of at the deletion and the chimney above the
+	 * strip becomes a component with no ground path of its own, so the Carried rule
+	 * charges it, its weight acts on the vertical through its own centre of gravity,
+	 * and the pessimistic side reads infeasible. The sandwich opens and issues no
+	 * certificate — correct behaviour.
 	 *
-	 * So the same structure produces a false certificate at one cut and a correct refusal at
-	 * another, and the difference is exactly whether the failing material has a ground path
-	 * the region does not provide. That is unsoundness (1) of §5.3's box, demonstrated.
+	 * So the same structure produces a false certificate at one cut and a correct
+	 * refusal at another, and the difference is exactly whether the failing material
+	 * has a ground path the region does not provide — unsoundness (1) of §5.3's box,
+	 * demonstrated.
 	 * ================================================================================ */
 
 	{

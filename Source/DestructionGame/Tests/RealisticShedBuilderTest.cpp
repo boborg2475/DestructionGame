@@ -11,88 +11,91 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE REALISTIC-BRICK SHED SHELL — the v3 rebuild at TRUE MASONRY RESOLUTION. The recognizable v2 shed
- * (24 pieces, one coarse block per wall face) is physics-valid but is built of 3-metre "bricks"; the
- * user's ask is "rebuild with bricks that are the size of actual bricks. Wood that is the size of boards
- * and joints to be a realistic size and build." This drives the builder that lays REAL 21.5 x 10.25 x 6.5
- * cm clay bricks in a running (stretcher) bond on 1 cm mortar joints, single-brick-thick, closing a box,
- * with a real Timber-board lintel over a door opening and over a window opening.
+ * The realistic-brick shed shell — the v3 rebuild at true masonry resolution. The recognizable
+ * v2 shed (24 pieces, one coarse block per wall face) is physics-valid but is built of 3-metre
+ * "bricks"; the user's ask was "rebuild with bricks that are the size of actual bricks, wood
+ * that is the size of boards, and joints to be a realistic size and build." This drives the
+ * builder that lays real 21.5 x 10.25 x 6.5 cm clay bricks in a running (stretcher) bond on
+ * 1 cm mortar joints, single-brick-thick, closing a box, with a real Timber-board lintel over a
+ * door opening and over a window opening.
  *
- * THE BEHAVIOUR, IN ONE SENTENCE. DestructionShed3D::BuildRealistic lays a realistic-brick shed SHELL —
- * four single-wythe running-bond ClayBrick walls of true-sized bricks on 1 cm joints closing a box, a
- * DOOR opening in the front wall and a WINDOW opening in the left wall, each a genuine gap spanned by a
- * real Timber-board lintel — as a SetThreeDimensional FBrickLayout whose hundreds of blocks put it above
- * the equilibrium gate's 200-block cap, so that (broken by the ROUTER, the per-joint capacity sweep that
- * is the authority above the cap) the assembled shell STANDS with nothing stranded.
+ * The behaviour, in one sentence: DestructionShed3D::BuildRealistic lays a realistic-brick shed
+ * shell — four single-wythe running-bond ClayBrick walls of true-sized bricks on 1 cm joints
+ * closing a box, a door opening in the front wall and a window opening in the left wall, each a
+ * genuine gap spanned by a real Timber-board lintel — as a SetThreeDimensional FBrickLayout
+ * whose hundreds of blocks put it above the equilibrium gate's 200-block cap, so that (broken by
+ * the router, the per-joint capacity sweep that is the authority above the cap) the assembled
+ * shell stands with nothing stranded.
  *
- * =========================================================================================
- * SCOPE — THIS SLICE IS THE REALISTIC-BRICK SHELL THAT STANDS. Deferred to later slices (see the report):
- *   - the stepped brick GABLES rising to a ridge, the timber gable ROOF (rafters / ridge / roof boards),
- *     and the PORCH overhang on two timber posts;
- *   - the COLLAPSE arms at scale (pull a pier / a post -> the right thing falls) — above the cap the
- *     router's per-joint sweep is the break authority, with its known limitations, so collapse gets its
- *     own slice with hand-derived expectations;
- *   - the scenario re-wire (a `shedrealistic` catalogue row + a Lvl_ map) and the in-engine render.
+ * Scope — this slice is the realistic-brick shell that stands. Deferred to later slices (see the
+ * report): the stepped brick gables rising to a ridge, the timber gable roof (rafters / ridge /
+ * roof boards), and the porch overhang on two timber posts; the collapse arms at scale (pull a
+ * pier / a post -> the right thing falls) — above the cap the router's per-joint sweep is the
+ * break authority, with its known limitations, so collapse gets its own slice with hand-derived
+ * expectations; and the scenario re-wire (a `shedrealistic` catalogue row + a Lvl_ map) and the
+ * in-engine render.
  *
- * =========================================================================================
- * THE CANONICAL SHELL — X IS WIDTH, Y IS DEPTH (INTO THE DOOR), Z IS HEIGHT. All dimensions cm at
- * Unreal's default 1 uu = 1 cm. The builder hardcodes these; the test PINS the sizing by searching the
- * laid layout (origin-independent) and reads the openings back at fixed points.
+ * The canonical shell — X is width, Y is depth (into the door), Z is height. All dimensions cm
+ * at Unreal's default 1 uu = 1 cm. The builder hardcodes these; the test pins the sizing by
+ * searching the laid layout (origin-independent) and reads the openings back at fixed points.
  *
  *   BRICK: 21.5 (X) x 10.25 (Y) x 6.5 (Z), ClayBrick 1.9 g/cm3. Half-extents (10.75, 5.125, 3.25).
- *   JOINT: 1.0 cm bed AND perpend, so the coordinating grid is 22.5 (pitch X) x 11.25 (half-cell bond
- *          offset) x 7.5 (course pitch Z). A brick + a perpend sit on a 22.5 cm pitch, so two bricks along
- *          a course whose centres are 22.5 apart prove a 1 cm perpend (22.5 - 21.5). Alternate courses are
- *          offset half a cell (11.25 cm) — a real running bond, so perpends do not line up.
+ *   JOINT: 1.0 cm bed AND perpend, so the coordinating grid is 22.5 (pitch X) x 11.25 (half-cell
+ *          bond offset) x 7.5 (course pitch Z). A brick + a perpend sit on a 22.5 cm pitch, so
+ *          two bricks along a course whose centres are 22.5 apart prove a 1 cm perpend
+ *          (22.5 - 21.5). Alternate courses are offset half a cell (11.25 cm) — a real running
+ *          bond, so perpends do not line up.
  *
- *   FOOTPRINT: outer box X[0,180], Y[0,140]; every wall ONE brick (10.25) thick; eaves at Z=120 (16
- *   courses of 7.5). FRONT wall Y[0,10.25], BACK wall Y[129.75,140], LEFT wall X[0,10.25], RIGHT wall
- *   X[169.75,180]; the side walls run between the front and back walls with a 1 cm gap at each corner, so
- *   each corner is a genuine Y-normal mortar joint out of the X-Z plane — the one fact a 2D section cannot
- *   hold, which is why the shell is flagged 3D.
+ *   FOOTPRINT: outer box X[0,180], Y[0,140]; every wall one brick (10.25) thick; eaves at Z=120
+ *   (16 courses of 7.5). Front wall Y[0,10.25], back wall Y[129.75,140], left wall X[0,10.25],
+ *   right wall X[169.75,180]; the side walls run between the front and back walls with a 1 cm
+ *   gap at each corner, so each corner is a genuine Y-normal mortar joint out of the X-Z plane —
+ *   the one fact a 2D section cannot hold, which is why the shell is flagged 3D.
  *
- *   DOOR (front wall): a gap X[57.5,122.5] (width 65, ~3 pitches), Z[0,90] (12 courses), flanked by brick
- *   piers; a Timber-board LINTEL X[50,130] Y[0,10.25] Z[90,97] (a 7 cm board) bears on the two piers.
- *   WINDOW (left wall): a gap Y[55,95] (width 40), Z[45,90], on a brick sill with brick jambs either side;
- *   a Timber-board LINTEL X[0,10.25] Y[50,100] Z[90,97] bears on the two jambs.
+ *   DOOR (front wall): a gap X[57.5,122.5] (width 65, ~3 pitches), Z[0,90] (12 courses), flanked
+ *   by brick piers; a Timber-board lintel X[50,130] Y[0,10.25] Z[90,97] (a 7 cm board) bears on
+ *   the two piers. WINDOW (left wall): a gap Y[55,95] (width 40), Z[45,90], on a brick sill with
+ *   brick jambs either side; a Timber-board lintel X[0,10.25] Y[50,100] Z[90,97] bears on the
+ *   two jambs.
  *
- * =========================================================================================
- * WHY THE ROUTER, NOT THE LP. At real brick resolution the shell is hundreds of blocks; the equilibrium
- * gate declines above its 200-block cap (FStructure::EquilibriumGateBlockCap, default 200) and the
- * per-joint capacity sweep breaks AND enumerates support — the same path the flagship ~1200-block wall
- * uses. The router is dimension-agnostic (it routes load down bed joints and reads joint normals
- * directly), so a genuinely-3D box is carried without ever reaching the 3D LP: every brick has a downward
- * bed-joint path to a grounded base course, the lintels bear on their piers/jambs, and a fully-intact
- * standing wall strands nothing. STANDS is therefore a router verdict here; the LP's 3D machinery is
- * bypassed until a below-cap (coarser) slice.
+ * Why the router, not the LP: at real brick resolution the shell is hundreds of blocks, so the
+ * equilibrium gate declines above its 200-block cap (FStructure::EquilibriumGateBlockCap,
+ * default 200), and the per-joint capacity sweep breaks and enumerates support — the same path
+ * the flagship ~1200-block wall uses. The router is dimension-agnostic (it routes load down bed
+ * joints and reads joint normals directly), so a genuinely-3D box is carried without ever
+ * reaching the 3D LP: every brick has a downward bed-joint path to a grounded base course, the
+ * lintels bear on their piers/jambs, and a fully-intact standing wall strands nothing. Stands is
+ * therefore a router verdict here; the LP's 3D machinery is bypassed until a below-cap (coarser)
+ * slice.
  *
- * =========================================================================================
- * UNITS — SPELLED OUT LOCALLY (DESIGN.md §3): 1 uu = 1 cm; mass (kg) and density (g/cm3) go in
- * unconverted; weight = MassKg * 980 already contains 1 N = 100 uu. No strength-vs-force comparison is
- * made in this slice (STANDS is a support-state question), so no MPa->uu factor is needed here.
+ * Units — spelled out locally (DESIGN.md §3): 1 uu = 1 cm; mass (kg) and density (g/cm3) go in
+ * unconverted; weight = MassKg * 980 already contains 1 N = 100 uu. No strength-vs-force
+ * comparison is made in this slice (Stands is a support-state question), so no MPa->uu factor is
+ * needed here.
  *
- * NEEDS A TICKING WORLD: NO. The builder is arithmetic over boxes; the structure over a graph; the router
- * over that; gravity is on (weight = mass*980); every assertion is on the laid layout or the solved
- * support state — no Chaos, no world tick. Same footing as the other shed builder tests.
+ * Needs a ticking world: no. The builder is arithmetic over boxes; the structure over a graph;
+ * the router over that; gravity is on (weight = mass*980); every assertion is on the laid layout
+ * or the solved support state — no Chaos, no world tick. Same footing as the other shed builder
+ * tests.
  *
- * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
+ * Named namespace, not anonymous: a unity build merges files into one translation unit.
  */
 namespace RealisticShedTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* ================================================================================
-	 * THE REAL BRICK, as half-extents, and the coordinating grid it sits on.
-	 * ================================================================================ */
+	/* The real brick, as half-extents, and the coordinating grid it sits on. */
 
 	constexpr double BrickHalfXCm = 21.5 / 2.0;    // 10.75
 	constexpr double BrickHalfYCm = 10.25 / 2.0;   // 5.125  — the single-wythe half-thickness
 	constexpr double BrickHalfZCm = 6.5 / 2.0;     // 3.25   — the one-course half-height
 
-	/* A half bat is (BrickX - joint)/2 = 10.25 long, so its long HALF-extent is 5.125. A brick's short
-	 * half-extents (5.125 wythe, 3.25 course) are shared by every piece; the long half-extent is 10.75 for
-	 * a full brick or 5.125 for a half bat. */
+	/*
+	 * A half bat is (BrickX - joint)/2 = 10.25 long, so its long half-extent is 5.125. A brick's
+	 * short half-extents (5.125 wythe, 3.25 course) are shared by every piece; the long
+	 * half-extent is 10.75 for a full brick or 5.125 for a half bat.
+	 */
 	constexpr double FullBrickLongHalfCm = 10.75;
 	constexpr double HalfBatLongHalfCm = (21.5 - 1.0) / 2.0 / 2.0;   // (20.5)/2 /2 = 5.125
 
@@ -102,11 +105,11 @@ namespace RealisticShedTestSupport
 
 	constexpr double Tol = 0.05;
 
-	/* ================================================================================
-	 * OPENING PROBE POINTS — fixed points the builder's canonical geometry places inside each gap, inside
-	 * the flanking piers/jambs, and inside each lintel. Interior to the openings with margin, so the
-	 * builder has latitude in exactly how it lays the running bond around them.
-	 * ================================================================================ */
+	/*
+	 * Opening probe points — fixed points the builder's canonical geometry places inside each
+	 * gap, inside the flanking piers/jambs, and inside each lintel. Interior to the openings with
+	 * margin, so the builder has latitude in exactly how it lays the running bond around them.
+	 */
 
 	const FVector DoorGap(90.0, 5.0, 45.0);        // mid-doorway, must be EMPTY
 	const FVector DoorPierLeft(30.0, 5.0, 45.0);   // brick pier left of the door
@@ -117,9 +120,7 @@ namespace RealisticShedTestSupport
 	const FVector WindowSillPt(5.0, 75.0, 20.0);   // brick sill below the window
 	const FVector WindowLintelPt(5.0, 75.0, 93.0); // inside the Timber window lintel
 
-	/* ================================================================================
-	 * SEARCH HELPERS — origin-independent identity by SIZE, MATERIAL and POSITION, never by handle order.
-	 * ================================================================================ */
+	/* Search helpers — origin-independent identity by size, material and position, never handle order. */
 
 	bool Near(double A, double B)
 	{
@@ -331,14 +332,14 @@ namespace RealisticShedTestSupport
 		return false;
 	}
 
-	/* ================================================================================
-	 * WHICH WALL A BRICK BELONGS TO, by the band its thin coordinate sits in. The canonical shell
-	 * closes on Y[10.25] (front inner face), Y[123.75] (back inner face), X[10.25] (left inner face)
-	 * and X[169.75] (right inner face), so the wall centres are Y=5.125 (front), Y=128.875 (back),
-	 * X=5.125 (left) and X=174.875 (right). The front/back test is tried FIRST so a corner half-bat —
-	 * which is square in plan (5.125 x 5.125) and so sits on both a front centre and a left centre — is
-	 * read as the front/back wall it is laid into, not mistaken for a side wall.
-	 * ================================================================================ */
+	/*
+	 * Which wall a brick belongs to, by the band its thin coordinate sits in. The canonical shell
+	 * closes on Y[10.25] (front inner face), Y[123.75] (back inner face), X[10.25] (left inner
+	 * face) and X[169.75] (right inner face), so the wall centres are Y=5.125 (front), Y=128.875
+	 * (back), X=5.125 (left) and X=174.875 (right). The front/back test is tried first so a
+	 * corner half-bat — square in plan (5.125 x 5.125), so it sits on both a front centre and a
+	 * left centre — is read as the front/back wall it is laid into, not mistaken for a side wall.
+	 */
 
 	enum class EWall { None, Front, Back, Left, Right };
 
@@ -397,14 +398,15 @@ namespace RealisticShedTestSupport
 		return false;
 	}
 
-	/* ================================================================================
-	 * GABLE + ROOF SCANNING (slice 2). The shell's 16 courses reach the eaves at Z = 119 (course 15 top,
-	 * 15 * 7.5 + 6.5). The stepped gables continue real-brick courses ABOVE that on the two GABLE-END
-	 * walls (front, Y-centre 5.125, which carries the door; back, Y-centre 128.875), each course stepping
-	 * IN toward the box centre X = 90 so the gable narrows to an apex under the ridge. The Timber roof
-	 * (stepped purlins + a ridge board) bears on the gable shoulders. Everything is found by scanning the
-	 * laid layout — origin-independent, robust to the exact bond the builder chooses inside each gable.
-	 * ================================================================================ */
+	/*
+	 * Gable + roof scanning (slice 2). The shell's 16 courses reach the eaves at Z = 119 (course
+	 * 15 top, 15 * 7.5 + 6.5). The stepped gables continue real-brick courses above that on the
+	 * two gable-end walls (front, Y-centre 5.125, which carries the door; back, Y-centre 128.875),
+	 * each course stepping in toward the box centre X = 90 so the gable narrows to an apex under
+	 * the ridge. The Timber roof (stepped purlins + a ridge board) bears on the gable shoulders.
+	 * Everything is found by scanning the laid layout — origin-independent, robust to the exact
+	 * bond the builder chooses inside each gable.
+	 */
 
 	constexpr double EavesTopZCm = 119.0;    // course 15 (0-based) top: 15 * 7.5 + 6.5
 	constexpr double GableFloorZCm = 119.5;  // a hair above the eaves — a gable brick sits above this
@@ -596,23 +598,23 @@ namespace RealisticShedTestSupport
 		return Best;
 	}
 
-	/* ================================================================================
-	 * PORCH SCANNING (slice 3). A canopy over the DOOR: two grounded Timber POSTS flanking the
-	 * doorway, a Timber OVERHANG board bearing on both posts and cantilevering OUT over the door,
-	 * and a narrow wall FIXING tying the overhang's back down — a tension-capable fastener (a Screw
-	 * WITHDRAWAL tie), the one joint a compression-only DryStone bearing cannot be.
+	/*
+	 * Porch scanning (slice 3). A canopy over the door: two grounded Timber posts flanking the
+	 * doorway, a Timber overhang board bearing on both posts and cantilevering out over the door,
+	 * and a narrow wall fixing tying the overhang's back down — a tension-capable fastener (a
+	 * Screw withdrawal tie), the one joint a compression-only DryStone bearing cannot be.
 	 *
-	 * WHICH WAY IS "OUT". The front wall (which carries the door) runs along X in the thin Y band
-	 * Y[0,10.25]; its OUTER face is Y = 0 and the box interior is +Y (toward the back wall at
-	 * Y[123.75,134]). So the porch cantilevers over the door in NEGATIVE Y, and every porch piece
+	 * Which way is "out": the front wall (which carries the door) runs along X in the thin Y band
+	 * Y[0,10.25]; its outer face is Y = 0 and the box interior is +Y (toward the back wall at
+	 * Y[123.75,134]). So the porch cantilevers over the door in negative Y, and every porch piece
 	 * has a centre at Y < 0. The door gap is X[57.5,122.5] (centre X = 90), so the two posts flank
 	 * it: one centre X < 90, one X > 90.
 	 *
-	 * A POST NEEDS NO COORDINATE TO FIND: the porch posts are the ONLY grounded Timber pieces in the
-	 * whole shed. Every shell / gable / roof Timber — the two lintels, the five roof members — is
-	 * free; only course-0 ClayBricks are grounded. So a grounded Timber piece IS a porch post,
+	 * A post needs no coordinate to find: the porch posts are the only grounded Timber pieces in
+	 * the whole shed. Every shell / gable / roof Timber — the two lintels, the five roof members —
+	 * is free; only course-0 ClayBricks are grounded. So a grounded Timber piece is a porch post,
 	 * identified by material and grounding alone, robust to the exact coordinates the builder picks.
-	 * ================================================================================ */
+	 */
 
 	constexpr double PostHalfSectionCm = 5.0;    // a 10 x 10 cm post section (a real 4x4 timber)
 
@@ -722,10 +724,11 @@ namespace RealisticShedTestSupport
 }
 
 /**
- * THE REALISTIC-BRICK SHED SHELL BUILDS FROM TRUE-SIZED BRICKS IN RUNNING BOND, CLOSES A BOX WITH A DOOR
- * AND A WINDOW OPENING UNDER TIMBER-BOARD LINTELS, AND STANDS THROUGH THE ROUTER AT SCALE.
+ * The realistic-brick shed shell builds from true-sized bricks in running bond, closes a box
+ * with a door and a window opening under Timber-board lintels, and stands through the router at
+ * scale.
  *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * Needs a ticking world: no. See the file header.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRealisticShedBuilderTest,
@@ -737,10 +740,11 @@ bool FRealisticShedBuilderTest::RunTest(const FString& Parameters)
 	using namespace DestructionProfiles;
 	using namespace RealisticShedTestSupport;
 
-	/* ------------------------------------------------------------------ *
-	 * FIXTURE PRECONDITIONS — the sizing is derived against the published real-brick dimensions and the
-	 * material identities, pinned here rather than read from a spec so a wrong constant fails visibly.
-	 * ------------------------------------------------------------------ */
+	/*
+	 * Fixture preconditions — the sizing is derived against the published real-brick dimensions
+	 * and the material identities, pinned here rather than read from a spec so a wrong constant
+	 * fails visibly.
+	 */
 
 	TestEqual(TEXT("FIXTURE: clay brick density is 1.9 g/cm3 (UK metric standard brick)"),
 		ClayBrick.DensityGramsPerCubicCm, 1.9);
@@ -749,10 +753,7 @@ bool FRealisticShedBuilderTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("FIXTURE: the real brick is 21.5 x 10.25 x 6.5 cm — half-extents (10.75, 5.125, 3.25)"),
 		Near(BrickHalfXCm, 10.75) && Near(BrickHalfYCm, 5.125) && Near(BrickHalfZCm, 3.25));
 
-	/* ================================================================================
-	 * ARM 0 — THE BUILDER LAYS THE REALISTIC-BRICK SHELL. This is where the stub is RED: it lays nothing,
-	 * so BuildRealistic returns false and the shell cannot be examined.
-	 * ================================================================================ */
+	/* Arm 0 — the builder lays the realistic-brick shell. */
 
 	FBrickLayout Layout;
 	const bool bBuilt = DestructionShed3D::BuildRealistic(Layout);
@@ -773,11 +774,11 @@ bool FRealisticShedBuilderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("BUILD: one box per piece, or AdoptLayout refuses the layout"),
 		Layout.Boxes.Num(), Layout.Structure.NumPieces());
 
-	/* ================================================================================
-	 * ARM 1 — REALISTIC SIZING (the heart of the goal). Real bricks, a running-bond half-cell offset, a
-	 * 1 cm perpend, single-wythe walls, and a real Timber board over each opening. A coarse build (one
-	 * 3-metre block per wall) fails every one of these.
-	 * ================================================================================ */
+	/*
+	 * Arm 1 — realistic sizing (the heart of the goal). Real bricks, a running-bond half-cell
+	 * offset, a 1 cm perpend, single-wythe walls, and a real Timber board over each opening. A
+	 * coarse build (one 3-metre block per wall) fails every one of these.
+	 */
 
 	int32 NumBricks = 0;
 	int32 NumFullBricks = 0;
@@ -815,7 +816,7 @@ bool FRealisticShedBuilderTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("SIZING: bricks sit on a 22.5 cm course pitch — a 1 cm perpend joint (22.5 - 21.5)"),
 		HasOneCentimetrePerpend(Layout));
 
-	/* --- TIMBER BOARD SECTIONS OVER THE OPENINGS ---------------------------------------------- */
+	/* Timber board sections over the openings. */
 
 	const int32 DoorLintel = PieceContaining(Layout, DoorLintelPt);
 	const int32 WindowLintel = PieceContaining(Layout, WindowLintelPt);
@@ -835,10 +836,10 @@ bool FRealisticShedBuilderTest::RunTest(const FString& Parameters)
 			Lo <= 5.0);
 	}
 
-	/* ================================================================================
-	 * ARM 2 — IT IS A SHED. Genuine door and window GAPS flanked by masonry, a multi-material box, and the
-	 * out-of-plane corner joints that make the closed box genuinely 3D.
-	 * ================================================================================ */
+	/*
+	 * Arm 2 — it is a shed. Genuine door and window gaps flanked by masonry, a multi-material
+	 * box, and the out-of-plane corner joints that make the closed box genuinely 3D.
+	 */
 
 	TestEqual(TEXT("OPENING: the doorway is a GAP — no piece fills it between the piers"),
 		PieceContaining(Layout, DoorGap), (int32)INDEX_NONE);
@@ -859,10 +860,11 @@ bool FRealisticShedBuilderTest::RunTest(const FString& Parameters)
 		HasYNormalCorner(Layout.Structure));
 
 	/*
-	 * THE BOX ACTUALLY CLOSES — all four corners bonded, not just the front pair. Each corner must be a
-	 * genuine Y-normal mortar joint between a front/back wall brick and a side wall brick (different
-	 * walls), so a detached back wall — whose bricks make no corner joint to either side wall — fails
-	 * the back-left and back-right assertions rather than passing on the side walls' own perpends.
+	 * The box actually closes — all four corners bonded, not just the front pair. Each corner
+	 * must be a genuine Y-normal mortar joint between a front/back wall brick and a side wall
+	 * brick (different walls), so a detached back wall — whose bricks make no corner joint to
+	 * either side wall — fails the back-left and back-right assertions rather than passing on the
+	 * side walls' own perpends.
 	 */
 	TestTrue(TEXT("SHED: the FRONT-LEFT corner is a genuine wall-to-wall Y-normal mortar joint"),
 		HasCornerJoint(Layout, EWall::Front, EWall::Left));
@@ -873,12 +875,12 @@ bool FRealisticShedBuilderTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("SHED: the BACK-RIGHT corner is a genuine wall-to-wall Y-normal mortar joint (open box fails here)"),
 		HasCornerJoint(Layout, EWall::Back, EWall::Right));
 
-	/* ================================================================================
-	 * ARM 3 — IT STANDS, THROUGH PRODUCTION (SolveAndBreak). At this resolution the shell is over the
-	 * 200-block cap, so the ROUTER (the per-joint capacity sweep) is the break authority — the same path
-	 * the flagship wall uses. A standing shell strands nothing and drops nothing; the lintels read
-	 * Supported. NEVER displacement — support state only (DESIGN §4).
-	 * ================================================================================ */
+	/*
+	 * Arm 3 — it stands, through production (SolveAndBreak). At this resolution the shell is
+	 * over the 200-block cap, so the router (the per-joint capacity sweep) is the break authority
+	 * — the same path the flagship wall uses. A standing shell strands nothing and drops nothing;
+	 * the lintels read Supported. Never displacement — support state only (DESIGN §4).
+	 */
 
 	const int32 PiecesBefore = Layout.Structure.NumPieces();
 
@@ -909,37 +911,41 @@ bool FRealisticShedBuilderTest::RunTest(const FString& Parameters)
 }
 
 /**
- * SLICE 2 — THE STEPPED BRICK GABLES AND THE TIMBER GABLE ROOF, on top of the standing realistic shell.
+ * Slice 2 — the stepped brick gables and the timber gable roof, on top of the standing realistic
+ * shell.
  *
- * THE BEHAVIOUR, IN ONE SENTENCE. On top of the real-brick shell, DestructionShed3D::BuildRealistic
- * continues real ClayBrick courses ABOVE the eaves on the two gable-end walls (front, which carries the
- * door, and back), each course stepping IN toward the box centre so the gable narrows symmetrically to an
- * apex under the ridge and beds on the course below, and lays a Timber roof of stepped board members
- * (purlins rising to a ridge) bearing on the gable shoulders — so that the whole shed (shell + gables +
- * roof) STANDS through production (SolveAndBreak / the router, above the 200-block cap) with nothing
- * stranded, the roof members and the gable apex reading Supported.
+ * The behaviour, in one sentence: on top of the real-brick shell, DestructionShed3D::BuildRealistic
+ * continues real ClayBrick courses above the eaves on the two gable-end walls (front, which
+ * carries the door, and back), each course stepping in toward the box centre so the gable
+ * narrows symmetrically to an apex under the ridge and beds on the course below, and lays a
+ * Timber roof of stepped board members (purlins rising to a ridge) bearing on the gable
+ * shoulders — so the whole shed (shell + gables + roof) stands through production
+ * (SolveAndBreak / the router, above the 200-block cap) with nothing stranded, the roof members
+ * and the gable apex reading Supported.
  *
- * THE GABLE, HAND-DERIVED. Eaves top Z = 119 (course 15). Continue courses 16..19 on each gable end, thin
- * Y band unchanged (front Y[0,10.25], back Y[123.75,134]), each course a band of real bricks centred on
- * the box's X centre (~89.5) and stepping IN one brick pitch (22.5) per side per course: course 16 spans
- * ~X[0,179] (8 bricks), 17 ~X[22.5,156.5] (6), 18 ~X[45,134] (4), 19 ~X[67.5,111.5] (2, the apex). The
- * symmetric narrowing keeps each course's centroid over the course below, so the corbelled gable cannot
- * overturn; each gable brick beds (1 cm) on a full-overlap brick below, so MakeInterface forms the beds.
+ * The gable, hand-derived: eaves top Z = 119 (course 15). Continue courses 16..19 on each gable
+ * end, thin Y band unchanged (front Y[0,10.25], back Y[123.75,134]), each course a band of real
+ * bricks centred on the box's X centre (~89.5) and stepping in one brick pitch (22.5) per side
+ * per course: course 16 spans ~X[0,179] (8 bricks), 17 ~X[22.5,156.5] (6), 18 ~X[45,134] (4), 19
+ * ~X[67.5,111.5] (2, the apex). The symmetric narrowing keeps each course's centroid over the
+ * course below, so the corbelled gable cannot overturn; each gable brick beds (1 cm) on a
+ * full-overlap brick below, so MakeInterface forms the beds.
  *
- * THE ROOF, HAND-DERIVED. Timber purlins run the full depth Y[0,134], bearing on BOTH gable shoulders
- * (a simply-supported beam between the two gable ends — its centroid sits between its two bearings, so it
- * cannot overturn). They step UP toward the centre onto successively higher shoulders — eaves purlins on
- * the course-16 shoulder (Z ~127.5), mid purlins on the course-18 shoulder (Z ~142.5) — and a ridge board
- * caps the apex course-19 shoulder (Z ~150). The stepped Z-levels read as a pitch; the ridge is the top.
- * Each member is a real board section (~5 cm thick). Load path: purlin -> gable shoulder -> gable courses
- * -> eaves wall -> ground. Symmetric, hand-derivably stable.
+ * The roof, hand-derived: Timber purlins run the full depth Y[0,134], bearing on both gable
+ * shoulders (a simply-supported beam between the two gable ends — its centroid sits between its
+ * two bearings, so it cannot overturn). They step up toward the centre onto successively higher
+ * shoulders — eaves purlins on the course-16 shoulder (Z ~127.5), mid purlins on the course-18
+ * shoulder (Z ~142.5) — and a ridge board caps the apex course-19 shoulder (Z ~150). The stepped
+ * Z-levels read as a pitch; the ridge is the top. Each member is a real board section (~5 cm
+ * thick). Load path: purlin -> gable shoulder -> gable courses -> eaves wall -> ground.
+ * Symmetric, hand-derivably stable.
  *
- * THE RED. The builder lays the shell but NO gables and NO roof yet (its top course is 15, Z 119; the only
- * Timber is the two lintels at Z ~93). So every gable and roof scan below finds nothing: no courses above
- * the eaves, no ridge, no roof bearing. That is the expected RED — dev lays the stepped gables and the
- * roof to the geometry above. The shell arm re-checks that slice 1 still holds.
+ * The shell (top course Z 119, only Timber the two lintels) has no gable courses or roof yet, so
+ * every scan below finds nothing until they are built; the shell arm re-checks that slice 1
+ * still holds.
  *
- * NEEDS A TICKING WORLD: NO. Same footing as the shell test — boxes, doubles, the router; gravity on.
+ * Needs a ticking world: no. Same footing as the shell test — boxes, doubles, the router;
+ * gravity on.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRealisticShedGablesAndRoofTest,
@@ -965,11 +971,10 @@ bool FRealisticShedGablesAndRoofTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("SCALE: %d pieces, %d joints total (shell + gables + roof)."),
 		Layout.Structure.NumPieces(), Layout.Structure.NumConnections()));
 
-	/* ================================================================================
-	 * ARM 1 — STEPPED BRICK GABLES. Real-brick courses climb above the eaves on BOTH gable ends, narrowing
-	 * strictly with height to an apex, each course bedded to the one below. The shell (top course Z 119)
-	 * has no such courses, so these scans are the RED.
-	 * ================================================================================ */
+	/*
+	 * Arm 1 — stepped brick gables. Real-brick courses climb above the eaves on both gable ends,
+	 * narrowing strictly with height to an apex, each course bedded to the one below.
+	 */
 
 	for (int32 End = 0; End < 2; ++End)
 	{
@@ -1013,10 +1018,10 @@ bool FRealisticShedGablesAndRoofTest::RunTest(const FString& Parameters)
 			"between two gable bricks)"), Name), HasGableStepBed(Layout, GableYCentre));
 	}
 
-	/* ================================================================================
-	 * ARM 2 — TIMBER GABLE ROOF. Real board members span/bear on the gables, step up to read as a pitch,
-	 * and are capped by a ridge at the top. All absent in the shell — the RED.
-	 * ================================================================================ */
+	/*
+	 * Arm 2 — timber gable roof. Real board members span/bear on the gables, step up to read as
+	 * a pitch, and are capped by a ridge at the top.
+	 */
 
 	int32 NumRoofMembers = 0;
 	for (int32 P = 0; P < Layout.Structure.NumPieces(); ++P)
@@ -1059,12 +1064,12 @@ bool FRealisticShedGablesAndRoofTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* ================================================================================
-	 * ARM 3 — IT STANDS, through production (SolveAndBreak / the router above the cap). Support-state only,
-	 * never displacement (DESIGN §4): 0 stranded, the roof members read Supported, the gable apex bricks
-	 * read Supported. The gable/apex/roof checks are guarded so that when they are ABSENT the RED lands on
-	 * ARM 1/2 rather than crashing here.
-	 * ================================================================================ */
+	/*
+	 * Arm 3 — it stands, through production (SolveAndBreak / the router above the cap).
+	 * Support-state only, never displacement (DESIGN §4): 0 stranded, the roof members and the
+	 * gable apex bricks read Supported. The gable/apex/roof checks are guarded so an absent
+	 * gable or roof fails on arm 1/2 rather than crashing here.
+	 */
 
 	TestTrue(*FString::Printf(TEXT("SCALE: %d blocks is above the 200-block cap, so the router is authority"),
 		Layout.Structure.NumPieces()), Layout.Structure.NumPieces() > 200);
@@ -1114,63 +1119,59 @@ bool FRealisticShedGablesAndRoofTest::RunTest(const FString& Parameters)
 }
 
 /**
- * SLICE 3 — THE PORCH: A DOOR CANOPY ON TWO REAL TIMBER POSTS, on top of the standing shell + gables
- * + roof. The SAME builder (DestructionShed3D::BuildRealistic) grows a porch over the door.
+ * Slice 3 — the porch: a door canopy on two real Timber posts, on top of the standing shell +
+ * gables + roof. The same builder (DestructionShed3D::BuildRealistic) grows a porch over the door.
  *
- * THE BEHAVIOUR, IN ONE SENTENCE. On top of the realistic shed, DestructionShed3D::BuildRealistic lays
- * a porch over the DOOR — two GROUNDED Timber posts of a real 10 x 10 cm (4x4) section standing in front
- * of the door and flanking it, a Timber OVERHANG board of a real ~5 cm plank section bearing on both
- * posts and cantilevering OUT over the door away from the box interior, and a minimal wall FIXING (a
- * Screw withdrawal tie) tying the overhang back to the front wall — so that the whole shed (shell +
- * gables + roof + porch) STANDS through production (SolveAndBreak / the router, above the 200-block cap)
- * with nothing stranded, and the overhang and both posts read Supported / Grounded.
+ * The behaviour, in one sentence: on top of the realistic shed, DestructionShed3D::BuildRealistic
+ * lays a porch over the door — two grounded Timber posts of a real 10 x 10 cm (4x4) section
+ * standing in front of the door and flanking it, a Timber overhang board of a real ~5 cm plank
+ * section bearing on both posts and cantilevering out over the door away from the box interior,
+ * and a minimal wall fixing (a Screw withdrawal tie) tying the overhang back to the front wall —
+ * so the whole shed (shell + gables + roof + porch) stands through production (SolveAndBreak /
+ * the router, above the 200-block cap) with nothing stranded, and the overhang and both posts
+ * read Supported / Grounded.
  *
- * =========================================================================================
- * THE PORCH, HAND-DERIVED — X IS WIDTH, Y IS DEPTH (INTO THE DOOR), Z IS HEIGHT, cm. The front wall's
- * OUTER face is Y = 0 and the box interior is +Y, so "OUT over the door" is NEGATIVE Y. The door gap is
- * X[57.5,122.5] (centre X = 90); the lintel footprint is X[50,130].
+ * The porch, hand-derived — X is width, Y is depth (into the door), Z is height, cm. The front
+ * wall's outer face is Y = 0 and the box interior is +Y, so "out over the door" is negative Y.
+ * The door gap is X[57.5,122.5] (centre X = 90); the lintel footprint is X[50,130].
  *
- *   POSTS (2), Timber, GROUNDED, a 10 x 10 cm section rising from the ground to just under the overhang:
- *     PostL X[50,60] (centre 55), PostR X[120,130] (centre 125) — flanking the door gap; both Y[-25,-15]
- *     (15-25 cm out in front of the wall); Z[0,104].
+ *   POSTS (2), Timber, grounded, a 10 x 10 cm section rising from the ground to just under the
+ *   overhang: PostL X[50,60] (centre 55), PostR X[120,130] (centre 125) — flanking the door gap;
+ *   both Y[-25,-15] (15-25 cm out in front of the wall); Z[0,104].
  *   OVERHANG (1), Timber, free, a real ~5 cm plank: X[50,130] (spans the whole door), Y[-70,-2]
- *     (cantilevers 70 cm out, its back a hair off the wall so no spurious wall bearing forms), Z[105,110].
- *     Bottom Z = 105 sits one 1 cm joint above the post tops (Z = 104) — MakeInterface reads a DryStone
- *     bed BEARING on each post. Centroid Y = -36.
- *   FIXING — a narrow central Timber CLEAT, X[85,95] (10 cm wide, centred on the door), Y[-11,-1]
- *     (its back one 1 cm joint off the wall face Y = 0), Z[97.5,104]: a Y-normal GeneralPurposeMortar
- *     ANCHOR bonds it to the front-wall masonry over the door, and a Z-normal SCREW tie (cleat top 104,
- *     overhang bottom 105) holds the overhang's back DOWN in WITHDRAWAL. The narrow 10 cm X-width is the
- *     whole point (below).
+ *   (cantilevers 70 cm out, its back a hair off the wall so no spurious wall bearing forms),
+ *   Z[105,110]. Bottom Z = 105 sits one 1 cm joint above the post tops (Z = 104) — MakeInterface
+ *   reads a DryStone bed bearing on each post. Centroid Y = -36.
+ *   FIXING — a narrow central Timber cleat, X[85,95] (10 cm wide, centred on the door), Y[-11,-1]
+ *   (its back one 1 cm joint off the wall face Y = 0), Z[97.5,104]: a Y-normal
+ *   GeneralPurposeMortar anchor bonds it to the front-wall masonry over the door, and a Z-normal
+ *   Screw tie (cleat top 104, overhang bottom 105) holds the overhang's back down in withdrawal.
+ *   The narrow 10 cm X-width is the whole point (below).
  *
- * WHY IT STANDS (both posts present). The overhang weighs 80 x 68 x 5 = 27,200 cm3 x 0.42 g/cm3 =
- * 11.424 kg, W = 11,196 uu. Its weight centroid Y = -36 sits OUTBOARD (more -Y) of the post line
- * Y = -20, so the board tips front-down / back-up about the posts; the back-up is held by the cleat's
- * Z-normal Screw in withdrawal at Y ~ -6. Two support lines (posts at Y = -20 pushing up, fixing at
- * Y ~ -6 pulling down) straddle the load, and the Screw's mean tensile strength 0.54 MPa over the
- * ~90 cm2 tie carries 0.54 x 90 x 100 = 4,860 N = far more than the modest withdrawal reaction. The
- * ROUTER (authority above the 200-block cap) is even gentler: it sees three bed joints BENEATH the
- * overhang (two posts + the cleat) and splits the weight in compression among them, so the assembled
- * porch strands nothing. STANDS is a router verdict here; the tension mechanism is DESIGN readiness.
+ * Why it stands (both posts present): the overhang weighs 80 x 68 x 5 = 27,200 cm3 x 0.42 g/cm3
+ * = 11.424 kg, W = 11,196 uu. Its weight centroid Y = -36 sits outboard (more -Y) of the post
+ * line Y = -20, so the board tips front-down / back-up about the posts; the back-up is held by
+ * the cleat's Z-normal Screw in withdrawal at Y ~ -6. Two support lines (posts at Y = -20
+ * pushing up, fixing at Y ~ -6 pulling down) straddle the load, and the Screw's mean tensile
+ * strength 0.54 MPa over the ~90 cm2 tie carries 0.54 x 90 x 100 = 4,860 N, far more than the
+ * modest withdrawal reaction. The router (authority above the 200-block cap) is even gentler: it
+ * sees three bed joints beneath the overhang (two posts + the cleat) and splits the weight in
+ * compression among them, so the assembled porch strands nothing. Stands is a router verdict
+ * here; the tension mechanism is design readiness.
  *
- * WHY A LOST POST DROPS IT (slice 4, NOT built here — the arithmetic for dev). Remove one post and the
- * overhang keeps only ONE post (on one X-side) plus the narrow central cleat. The cleat's tie resists
- * the Y-tip well (its 90 cm2 acts at the full Y lever), but its restoring couple about the Y axis is the
- * withdrawal force acting over a HALF-WIDTH of just 5 cm in X — far too small to answer the X-torsion the
- * now-asymmetric load throws at the overhang, which rotates about the surviving post toward the gap and
- * drops. A WIDE fixing would have held (its half-width supplies a large X-couple); the tie is a narrow
- * central cleat precisely so the POSTS are the genuine support and the porch is post-dependent under
- * either break authority. THIS SLICE ONLY ASSERTS STANDS; slice 4 pulls a post.
+ * Why a lost post drops it (slice 4, not built here — the arithmetic for dev): remove one post
+ * and the overhang keeps only one post (on one X-side) plus the narrow central cleat. The
+ * cleat's tie resists the Y-tip well (its 90 cm2 acts at the full Y lever), but its restoring
+ * couple about the Y axis is the withdrawal force acting over a half-width of just 5 cm in X —
+ * far too small to answer the X-torsion the now-asymmetric load throws at the overhang, which
+ * rotates about the surviving post toward the gap and drops. A wide fixing would have held (its
+ * half-width supplies a large X-couple); the tie is a narrow central cleat precisely so the
+ * posts are the genuine support and the porch is post-dependent under either break authority.
+ * This slice only asserts stands; slice 4 pulls a post.
  *
- * =========================================================================================
- * THE RED. BuildRealistic lays the shell + gables + roof but NO porch: there is no grounded Timber piece
- * (every Timber it lays is free), so FindPosts returns none, the overhang and fixing scans find nothing,
- * and the porch assertions fail. That is the expected RED — dev lays the posts, the overhang and the
- * fixing to the geometry above. The stands arm (0 stranded) already holds for the porch-less shed, so the
- * RED lands squarely on the missing porch and not on the solver.
- *
- * NEEDS A TICKING WORLD: NO. Same footing as the shell and gables tests — boxes, doubles, the router;
- * gravity on; every assertion on the laid layout or the solved support state, never on displacement.
+ * Needs a ticking world: no. Same footing as the shell and gables tests — boxes, doubles, the
+ * router; gravity on; every assertion on the laid layout or the solved support state, never on
+ * displacement.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRealisticShedPorchTest,
@@ -1198,11 +1199,10 @@ bool FRealisticShedPorchTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("PORCH: %d pieces, %d joints total (shell + gables + roof + porch)."),
 		S.NumPieces(), S.NumConnections()));
 
-	/* ================================================================================
-	 * ARM 1 — TWO GROUNDED TIMBER POSTS, 10 x 10 cm, FLANKING THE DOOR. The porch posts are the only
-	 * grounded Timber in the shed, so a coordinate-free material+grounding scan finds them. The shell
-	 * lays no grounded Timber, so this arm is the RED.
-	 * ================================================================================ */
+	/*
+	 * Arm 1 — two grounded Timber posts, 10 x 10 cm, flanking the door. The porch posts are the
+	 * only grounded Timber in the shed, so a coordinate-free material+grounding scan finds them.
+	 */
 
 	TArray<int32> Posts;
 	FindPosts(Layout, Posts);
@@ -1244,11 +1244,11 @@ bool FRealisticShedPorchTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("POST: the two posts FLANK the doorway — one left of the door centre X=90, one right"),
 		bFlankDoor);
 
-	/* ================================================================================
-	 * ARM 2 — THE TIMBER OVERHANG BOARD, OVER THE DOOR, BEARING ON BOTH POSTS, TIED BACK. Found by its
-	 * joints (bears on both posts), then checked for a board section, a door-spanning width, a porch-side
-	 * position, and a tension-capable withdrawal tie. All absent in the shell — the RED.
-	 * ================================================================================ */
+	/*
+	 * Arm 2 — the Timber overhang board, over the door, bearing on both posts, tied back. Found
+	 * by its joints (bears on both posts), then checked for a board section, a door-spanning
+	 * width, a porch-side position, and a tension-capable withdrawal tie.
+	 */
 
 	const int32 Overhang = FindOverhang(Layout, Posts);
 
@@ -1289,23 +1289,24 @@ bool FRealisticShedPorchTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("OVERHANG: the board BEARS on both posts (a joint to each)"), bBearsBoth);
 
 		/*
-		 * THE FIXING is a tension-capable Screw WITHDRAWAL tie incident to the overhang — the one joint a
-		 * compression-only DryStone post bearing cannot be. This is the design-intent assertion: the posts
-		 * are the genuine support and the narrow tie only holds the back down, so a lost post drops the
-		 * porch (slice 4). Above the cap the router stands it either way; the tie is future readiness, and
-		 * it is a STRUCTURAL fact this slice pins now.
+		 * The fixing is a tension-capable Screw withdrawal tie incident to the overhang — the one
+		 * joint a compression-only DryStone post bearing cannot be. This is the design-intent
+		 * assertion: the posts are the genuine support and the narrow tie only holds the back
+		 * down, so a lost post drops the porch (slice 4). Above the cap the router stands it
+		 * either way; the tie is a structural fact this slice pins now regardless.
 		 */
 		TestTrue(TEXT("FIXING: the overhang is tied back by a Screw-style WITHDRAWAL tie (Tensile>0, mu=0) — "
 			"a wall fixing a compression-only bearing could not be"),
 			HasWithdrawalTie(S, Overhang));
 	}
 
-	/* ================================================================================
-	 * ARM 3 — THE WHOLE SHED (shell + gables + roof + porch) STANDS, through production (SolveAndBreak /
-	 * the router above the cap). Support-state only, never displacement (DESIGN §4): 0 stranded, the
-	 * overhang and both posts read Supported / Grounded, and the shell's lintels and the ridge still read
-	 * Supported so the porch did not disturb what already stood.
-	 * ================================================================================ */
+	/*
+	 * Arm 3 — the whole shed (shell + gables + roof + porch) stands, through production
+	 * (SolveAndBreak / the router above the cap). Support-state only, never displacement
+	 * (DESIGN §4): 0 stranded, the overhang and both posts read Supported / Grounded, and the
+	 * shell's lintels and the ridge still read Supported so the porch did not disturb what
+	 * already stood.
+	 */
 
 	TestTrue(*FString::Printf(TEXT("SCALE: %d blocks is above the 200-block cap, so the router is authority"),
 		S.NumPieces()), S.NumPieces() > 200);
@@ -1347,40 +1348,35 @@ bool FRealisticShedPorchTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE AS-BUILT REALISTIC BRICK SHED SETTLES WITHOUT BREAKING A SINGLE BEARING —
- * zero breaking passes, no joint given.
+ * The as-built realistic brick shed settles without breaking a single bearing — zero breaking
+ * passes, no joint given.
  *
- * THE BEHAVIOUR, IN ONE SENTENCE. DestructionShed3D::BuildRealistic lays a shed
- * that is a valid, standing structure, so settling it through production
- * (FStructure::SolveAndBreak, the router above the 200-block cap) must break
- * NOTHING: SolveAndBreak returns 0 breaking passes and no connection has given.
+ * The behaviour, in one sentence: DestructionShed3D::BuildRealistic lays a shed that is a valid,
+ * standing structure, so settling it through production (FStructure::SolveAndBreak, the router
+ * above the 200-block cap) must break nothing — SolveAndBreak returns 0 breaking passes and no
+ * connection has given.
  *
- * WHY THIS IS SEPARATE FROM (AND STRICTER THAN) THE StandsAsBuilt TESTS ABOVE.
- * Those assert only Stranded == 0. That is TOO WEAK: the shed's timber lintels
- * bear on DryStone joints, and the router breaks five of them the instant it
- * settles (the door-lintel top bearing sits ~2.5% past its kern, reads
- * utilisation Max(), and severs on pass 1; its arch thrust then slides two more
- * dry springings on passes 2-3). None of those broken bearings STRAND a piece —
- * the timber lintel is left carrying only itself and the masonry arches over the
- * gap — so Stranded stays 0 and those tests stay green while the shed quietly
- * self-destructs five joints on the first settle. The pass count and HasGiven are
- * the mechanism that exposes it. Assert on those, NEVER on displacement
- * (DESIGN §4): a joint can sever and leave every piece resting exactly in place.
+ * Why this is separate from (and stricter than) the StandsAsBuilt tests above: those assert only
+ * Stranded == 0, which is too weak. The shed's timber lintels bear on DryStone joints, and the
+ * router breaks five of them the instant it settles (the door-lintel top bearing sits ~2.5% past
+ * its kern, reads utilisation Max(), and severs on pass 1; its arch thrust then slides two more
+ * dry springings on passes 2-3). None of those broken bearings strand a piece — the timber
+ * lintel is left carrying only itself and the masonry arches over the gap — so Stranded stays 0
+ * while the shed quietly self-destructs five joints on the first settle. The pass count and
+ * HasGiven are the mechanism that exposes it. Assert on those, never on displacement (DESIGN
+ * §4): a joint can sever and leave every piece resting exactly in place.
  *
- * THE DEFECT AND THE FIX IT DRIVES. A DryStone (no-tension) bearing whose
- * resultant crosses the kern reads infinite utilisation, because
- * ComputeUtilisation treats any positive peak tension against f_t = 0 as failure.
- * The correct masonry model is a partial-contact (no-tension) bearing — the bed
- * opens and carries the load on the reduced compressed contact, failing only off
- * the face or by crushing. The focused mechanism driver for that is
- * DestructionGame.Core.ConnectionStrength.DryJointBearsOnReducedContactPastTheKern.
- * This test is the acceptance-level outcome: teach the router that model and the
- * whole shed settles untouched.
+ * The defect and the fix it drives: a DryStone (no-tension) bearing whose resultant crosses the
+ * kern reads infinite utilisation, because ComputeUtilisation treats any positive peak tension
+ * against f_t = 0 as failure. The correct masonry model is a partial-contact (no-tension)
+ * bearing — the bed opens and carries the load on the reduced compressed contact, failing only
+ * off the face or by crushing. The focused mechanism driver for that is
+ * DestructionGame.Core.ConnectionStrength.DryJointBearsOnReducedContactPastTheKern. This test is
+ * the acceptance-level outcome: teach the router that model and the whole shed settles untouched.
  *
- * NEEDS A TICKING WORLD: NO. SolveAndBreak is the world-free settle on the
- * structure the builder returns — the same static solve the StandsAsBuilt tests
- * use — so there is no Chaos, no tick, and gravity is the solver's own self-weight
- * (an INTEGRATION-shaped outcome assertion on a world-free structure).
+ * Needs a ticking world: no. SolveAndBreak is the world-free settle on the structure the builder
+ * returns — the same static solve the StandsAsBuilt tests use — so there is no Chaos, no tick,
+ * and gravity is the solver's own self-weight.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRealisticShedSettlesUntouchedTest,
@@ -1403,20 +1399,16 @@ bool FRealisticShedSettlesUntouchedTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * FIXTURE PRECONDITION — this test only bites while the timber bearings are
-	 * DryStone (the no-tension joint whose kern break is the defect). If the
-	 * builder re-profiles them to a bonded joint the mechanism changes and this
-	 * fixture must be re-derived rather than silently still passing.
+	 * Fixture precondition — this test only bites while the timber bearings are DryStone (the
+	 * no-tension joint whose kern break is the defect). If the builder re-profiles them to a
+	 * bonded joint the mechanism changes and this fixture must be re-derived.
 	 */
 	TestTrue(TEXT("FIXTURE: DryStone bearings are the no-tension joint under test (f_t = 0)"),
 		DryStone.TensileStrengthMPa == 0.0);
 
 	const int32 Passes = Layout.Structure.SolveAndBreak();
 
-	/*
-	 * Count and name the joints that gave, so the RED prints the mechanism rather
-	 * than just a number: which joints severed and on which pass.
-	 */
+	/* Count and name the joints that gave, so a failure prints the mechanism rather than a number. */
 	int32 GivenJoints = 0;
 	FString GivenDetail;
 	for (int32 J = 0; J < Layout.Structure.NumConnections(); ++J)
@@ -1436,9 +1428,9 @@ bool FRealisticShedSettlesUntouchedTest::RunTest(const FString& Parameters)
 		Passes, GivenJoints, *GivenDetail));
 
 	/*
-	 * THE TWO NEW REDS. A valid standing shed settles in ZERO breaking passes with
-	 * NO joint given. Today the router severs the dry timber bearings at the kern,
-	 * so Passes == 3 and five joints have given.
+	 * A valid standing shed settles in zero breaking passes with no joint given. Today the
+	 * router severs the dry timber bearings at the kern, so Passes == 3 and five joints have
+	 * given.
 	 */
 	TestEqual(TEXT("SETTLE: a valid standing shed breaks nothing — zero breaking passes"),
 		Passes, 0);

@@ -25,135 +25,94 @@
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges
- * many files into one. See CURRENT_STATE.md.
+ * Named namespace, named differently from every other one in this module — an anonymous
+ * namespace is private to a translation unit rather than a file, and a unity build merges
+ * many files into one.
  */
 namespace HighlightMaterialPaintTestSupport
 {
 	/**
-	 * WHAT AN UNCONNECTED INPUT COMPILES TO, TAKEN FROM THE ENGINE'S OWN TABLE AND WRITTEN
-	 * DOWN HERE RATHER THAN IMPORTED.
+	 * What an unconnected input compiles to, taken from the engine's own table rather than
+	 * imported.
 	 *
-	 * FMaterialAttributeDefinitionMap (Engine/Private/Materials/MaterialAttributeDefinitionMap.cpp)
-	 * registers EmissiveColor with a default of (0,0,0) and Opacity with a default of 1. That
-	 * asymmetry is the whole reason the defaults are modelled at all: a blank unlit translucent
-	 * material is not "invisible", it is BLACK AT FULL OPACITY, and a test that assumed a
-	 * disconnected opacity meant zero would be right about the symptom for the wrong reason.
+	 * `FMaterialAttributeDefinitionMap` (Engine/Private/Materials/MaterialAttributeDefinitionMap.cpp)
+	 * registers EmissiveColor with a default of (0,0,0) and Opacity with a default of 1.
+	 * That asymmetry is the whole reason the defaults are modelled at all: a blank unlit
+	 * translucent material is not "invisible", it is black at full opacity, and a test that
+	 * assumed a disconnected opacity meant zero would be right about the symptom for the
+	 * wrong reason.
 	 */
 	constexpr float EngineDefaultOpacity = 1.0f;
 	const FLinearColor EngineDefaultEmissive(0.0f, 0.0f, 0.0f, 0.0f);
 
 	/**
-	 * A HIGHLIGHT COLOUR HAS TO BE A COLOUR. The intended looks are amber for hover and cyan
-	 * for selected; both have a channel at or near 1, so 0.05 is two orders of magnitude of
-	 * headroom below anything anybody would pick on purpose and still firmly above "somebody
-	 * left this at black". It is deliberately NOT an epsilon: a highlight at 0.001 is a
-	 * highlight nobody can see, and passing it would be the same bug wearing a smaller number.
+	 * A highlight colour has to be a colour. The intended looks are amber for hover and
+	 * cyan for selected; both have a channel at or near 1, so 0.05 is two orders of
+	 * magnitude of headroom below anything anybody would pick on purpose and still firmly
+	 * above "somebody left this at black". Deliberately not an epsilon: a highlight at
+	 * 0.001 is a highlight nobody can see, and passing it would be the same bug wearing a
+	 * smaller number.
 	 */
 	constexpr float MinHighlightChannel = 0.05f;
 
 	/**
-	 * AND THE TWO HIGHLIGHTS HAVE TO BE TELLABLE APART, WHICH IS THE PROPERTY THE PLAYER
-	 * ACTUALLY DEPENDS ON.
+	 * And the two highlights have to be tellable apart, the property the player actually
+	 * depends on.
 	 *
-	 * THE VALUE IS UNCHANGED AND ITS DERIVATION IS ENTIRELY REPLACED, which is worth stating
-	 * plainly so nobody reads the surviving 0.25 as evidence the old argument held. The old one
-	 * ran over Emissive*Opacity + B*(1 - Opacity) and was set by the margin between the shipped
-	 * pair (0.5375) and the copy-paste fix (0.205); both of those quantities are now wrong. See
-	 * the header for the measurement that replaced the model.
+	 * Under additive, composite is min(1, E + B) per channel, so an unclamped pair
+	 * difference is (E1 + B) - (E2 + B) = E1 - E2 exactly: the background cancels
+	 * completely and opacity never enters, until a channel reaches white — at which point
+	 * the clamp stops being an identity and the background decides the answer again. That
+	 * is why two backgrounds are modelled below rather than one.
 	 *
-	 * WHAT A PAIR DIFFERENCE IS UNDER ADDITIVE. Composite is min(1, E + B) per channel, so an
-	 * UNCLAMPED pair difference is (E1 + B) - (E2 + B) = E1 - E2 exactly: the background cancels
-	 * completely and opacity never enters. A pair comparison is therefore a statement about the
-	 * two EMISSIVES and nothing else — until a channel reaches white, at which point the clamp
-	 * stops being an identity and the background decides the answer again. That is the whole
-	 * reason two backgrounds are modelled below rather than one.
-	 *
-	 * WHAT 0.25 BUYS, in the units the claim is actually about. A linear separation converts to
-	 * display levels WORST at the top of the range, because sRGB compresses highlights: the
-	 * minimum over x in [0, 0.75] of sRGB(x + 0.25) - sRGB(x) is 30.4 of 255 levels, at x = 0.75.
-	 * From the 0.18 stand-in it is 57.6 levels and from the lit brick's blue at 0.304 it is 46.5.
-	 * So 0.25 linear is a floor of about THIRTY display levels wherever the pair happens to sit —
-	 * roughly thirty times a just-noticeable difference, which is the margin two bricks metres
+	 * What 0.25 buys, in display terms: a linear separation converts to display levels
+	 * worst at the top of the range, since sRGB compresses highlights — the minimum over
+	 * x in [0, 0.75] of sRGB(x + 0.25) - sRGB(x) is 30.4 of 255 levels, at x = 0.75. From
+	 * the 0.18 stand-in it is 57.6 levels and from the lit brick's blue at 0.304 it is
+	 * 46.5. So 0.25 linear floors at about thirty display levels wherever the pair sits —
+	 * roughly thirty times a just-noticeable difference, the margin two bricks metres
 	 * apart, at different angles, on a moving camera actually need.
 	 *
-	 *   THE COPY-PASTE FIX NO LONGER SETS THIS NUMBER, and cannot. Duplicating M_BrickHover,
-	 *             renaming it and changing only the alpha used to land at 0.205 and fail by a
-	 *             whisker. Under additive it lands at EXACTLY 0.0000 in every channel at every
-	 *             background, because opacity is not in the composite: two overlays sharing one
-	 *             emissive are one look. Any positive threshold catches it, so it is no longer
-	 *             the case this constant is calibrated against.
+	 * Today's tightest pair passes by 1.32x: Neighbour0 against Neighbour5 sits at 0.3300
+	 * on green over the lit brick, where green washes to white (0.80 plus the brick's
+	 * 0.220 clamps to 1.0), costing the pair the 0.0200 it has over the stand-in. Nothing
+	 * else in the table comes under 1.40x. Swept over uniform grey backgrounds this is the
+	 * worst pair at every brightness from 0.18 up and the first to go under, at a grey
+	 * just past 0.30 — the pair a measured sunlit brick would be expected to break.
 	 *
-	 *   THE SHIPPED PALETTE FAILED THIS TWICE AND NO LONGER DOES, AND WHAT MOVED WAS THE PALETTE.
-	 *             Neither threshold was touched, which is the order this file insists on: if a
-	 *             palette cannot satisfy an honest additive model, the palette is what changes.
-	 *             The two failures were Hovered (1.00, 0.55, 0.05) against a Neighbour0 that was
-	 *             then a second amber at (1.00, 0.62, 0.10), separating by 0.0700 on green at both
-	 *             backgrounds — about 9 display levels, with everything that used to distinguish
-	 *             them being the opacity ladder; and Selected (0.05, 0.80, 1.00) against a
-	 *             Neighbour5 that was then a teal at (0.00, 0.55, 0.45), separating by 0.3700 over
-	 *             the stand-in but only 0.2460 over the lit brick as cyan's blue clamped from
-	 *             1.304 to 1.0 and its green from 1.020 to 1.0. The repick answered both: slot 0
-	 *             is now a green (0.00, 0.80, 0.00), slot 2 a clay (0.45, 0.10, 0.00) and slot 5
-	 *             a sage (0.20, 0.45, 0.05), and all thirty-six pairs clear 0.25 at both
-	 *             backgrounds.
-	 *
-	 *   THE TIGHTEST PAIR TODAY PASSES BY 1.32x, which is close enough to be worth writing down
-	 *             rather than discovering later: Neighbour0 against Neighbour5 sits at 0.3300 on
-	 *             green over the lit brick, where the green channel is the wash again — 0.80 plus
-	 *             the brick's 0.220 clamps to 1.0, which is what costs the pair the 0.0200 it has
-	 *             over the stand-in. Nothing else in the table comes under 1.40x. Swept over
-	 *             uniform grey backgrounds this is the worst pair at every brightness from 0.18
-	 *             up and the FIRST to go under, at a grey just past 0.30; it is therefore the pair
-	 *             a measured sunlit brick would be expected to break.
-	 *
-	 * THIS CONSTANT IS ABOUT THE PAIR AND NOTHING ELSE. Two overlays can differ from each other
-	 * by half a channel and both be invisible on a brick — MinChannelChangeOverBareBrick below is
-	 * the separate claim, argued separately, and neither number may be reused for the other.
+	 * This constant is about the pair and nothing else: two overlays can differ from each
+	 * other by half a channel and both be invisible on a brick — `MinChannelChangeOverBareBrick`
+	 * below is the separate claim, argued separately, and neither number may be reused for
+	 * the other.
 	 */
 	constexpr float MinDistinguishableChannel = 0.25f;
 
 	/**
-	 * AND EACH HIGHLIGHT HAS TO DIFFER FROM AN UNHIGHLIGHTED BRICK, WHICH IS THE CLAIM THE TWO
-	 * ABOVE BOTH LEAVE OUT. "It paints a colour" is about the emissive alone and "they are
-	 * tellable apart" is about the two overlays against each other; a pair can satisfy both and
-	 * still leave the wall looking exactly as it did, which is the entire point of a highlight.
+	 * And each highlight has to differ from an unhighlighted brick, the claim the two
+	 * above both leave out: "it paints a colour" is about the emissive alone and "they are
+	 * tellable apart" is about the two overlays against each other, but a pair can satisfy
+	 * both and still leave the wall looking exactly as it did — the entire point of a
+	 * highlight.
 	 *
-	 * THE QUANTITY STILL SIMPLIFIES, TO SOMETHING MUCH WEAKER THAN IT USED TO. Composite minus
-	 * background is min(1, E + B) - B = min(E, 1 - B) per channel: the emissive itself, capped by
-	 * the HEADROOM the background leaves. The old form, O*(E - B), was read off alpha blending
-	 * and is wrong in both factors — opacity is not in the composite at all, and the background
-	 * enters as a ceiling rather than as contrast.
+	 * Composite minus background is min(1, E + B) - B = min(E, 1 - B) per channel: the
+	 * emissive itself, capped by the headroom the background leaves. So this row is very
+	 * nearly a restatement of `MinHighlightChannel`, and saying so is honest: the only
+	 * independent content left is "the background leaves room", which bites only against a
+	 * background whose every channel sits at or above 0.90 — a brick already within 0.10
+	 * of white, on which no additive overlay of any colour can show at all. Neither
+	 * background modelled below is remotely that bright, so this row currently catches
+	 * nothing `MinHighlightChannel` would not; it is kept because the ceiling is the shape
+	 * of the failure a sunlit scene will actually produce.
 	 *
-	 * SO THIS ROW IS NOW VERY NEARLY A RESTATEMENT OF MinHighlightChannel, AND SAYING SO IS THE
-	 * HONEST THING TO DO. min(E, 1 - B) >= 0.10 is "some emissive channel reaches 0.10" plus "the
-	 * background leaves it room". The second conjunct is the only independent content left, and it
-	 * bites only against a background whose EVERY channel sits at or above 0.90 — a brick already
-	 * within 0.10 of white, on which no additive overlay of any colour can show at all. Neither
-	 * background modelled below is remotely that bright, so AGAINST THE TWO BACKGROUNDS THIS FILE
-	 * CAN MODEL THIS ROW CATCHES NOTHING that MinHighlightChannel would not. It is kept because
-	 * the ceiling is the shape of the failure a sunlit scene will actually produce, and the row is
-	 * where that will be caught the day a bright measurement is available to add.
-	 *
-	 *   WHAT IT USED TO CATCH AND PROVABLY CANNOT ANY MORE: M_BrickHover's opacity nudged to 0.02
-	 *             during a look-and-feel pass. Under alpha blending that gave a 1.6% move, about
-	 *             five display levels, invisible in game — and this row was the only thing in the
-	 *             file that failed on it. Under additive an overlay at 0.02 draws exactly as
-	 *             brightly as one at 0.95, so there is no longer anything to catch: the bug that
-	 *             motivated this constant is not a bug the renderer can have. That loss is real
-	 *             and is not being papered over.
-	 *
-	 * WHY THE VALUE IS STILL 0.10. The perceptual claim is the one part of the old comment that
-	 * survives the model change intact, because it was always argued at the display rather than in
-	 * linear: 0.10 linear is 26.6 of 255 display levels up from the 0.18 stand-in, 25.6 from the
-	 * lit brick's red at 0.195, 24.2 from its green at 0.220 and 20.6 from its blue at 0.304 —
-	 * unmistakable at a glance on a moving camera, and deliberately far above a just-noticeable
-	 * difference, because a highlight the player has to hunt for has already failed at the one job
-	 * it has, which is answering "which bricks am I about to delete" BEFORE Delete is pressed. The
-	 * per-level figures fall as the background rises, which is the general rule under additive and
-	 * the reason the assertion is evaluated against every modelled background rather than the
-	 * darkest.
+	 * Why the value is 0.10: argued at the display rather than in linear, since 0.10
+	 * linear is 26.6 of 255 display levels up from the 0.18 stand-in, 25.6 from the lit
+	 * brick's red at 0.195, 24.2 from its green at 0.220 and 20.6 from its blue at 0.304 —
+	 * unmistakable at a glance on a moving camera, and deliberately far above a
+	 * just-noticeable difference, since a highlight the player has to hunt for has already
+	 * failed the one job it has: answering "which bricks am I about to delete" before
+	 * Delete is pressed. The per-level figures fall as the background rises, the general
+	 * rule under additive and why the assertion runs against every modelled background
+	 * rather than the darkest.
 	 */
 	constexpr float MinChannelChangeOverBareBrick = 0.10f;
 

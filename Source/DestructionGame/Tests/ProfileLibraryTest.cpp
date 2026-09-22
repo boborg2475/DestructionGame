@@ -11,34 +11,34 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE SHARED PROFILE LIBRARY.
+ * The shared profile library.
  *
  * Connection and material profiles currently exist only as constants copied into
  * three test files. Retune mortar in one and the other two silently keep the old
  * value while everything stays green. This suite specifies the shared library
  * that replaces them.
  *
- * WHAT IS DELIBERATELY NOT ASSERTED: the numbers themselves. A test that
+ * What is deliberately not asserted: the numbers themselves. A test that
  * transcribes 0.2 back out of the table is a change-detector that asserts
  * nothing and blocks retuning. What is asserted instead is
  *
- *   - RELATIONS that come from physics rather than from the table (compression
+ *   - relations that come from physics rather than the table (compression
  *     dominates a bonded joint; dry stone has no bond at all; a fastener's mu is
  *     exactly zero; a shear cap is never below the cohesion it truncates),
- *   - WELL-FORMEDNESS swept over the whole library, so adding a profile is
+ *   - well-formedness swept over the whole library, so adding a profile is
  *     adding a row and it gets checked for free, and
- *   - BEHAVIOUR through ComputeUtilisation and FConnection, so a profile is
+ *   - behaviour through ComputeUtilisation and FConnection, so a profile is
  *     proven wired into the real code path rather than merely typed.
  *
- * CALIBRATION BASELINE, per DESIGN.md §4 and §6: structural concrete C30/37 —
+ * Calibration baseline, per DESIGN.md §4 and §6: structural concrete C30/37 —
  * 30 MPa characteristic compressive strength, ~3 MPa mean tensile (EN 1992-1-1
  * f_ctm), ~6 MPa shear — which is what the existing three test files already use
  * as their baseline. Everything else is a ratio of it.
  *
- * NO WORLD, NO TICKING SOLVER. Every assertion is arithmetic over plain structs,
+ * No world, no ticking solver: every assertion is arithmetic over plain structs,
  * so gravity is irrelevant by construction rather than switched off.
  *
- * NAMED NAMESPACE, not anonymous: the other test files declare Mortar and
+ * Named namespace, not anonymous: the other test files declare Mortar and
  * MakeNaN in anonymous namespaces, which collide the moment a unity build merges
  * two of them. See CURRENT_STATE.md's unity-build gotcha.
  */
@@ -121,13 +121,13 @@ namespace ProfileLibraryTestSupport
 	constexpr double BrickVolumeCubicCm = 21.5 * 10.25 * 6.5;
 
 	/**
-	 * WHAT A BRICK WEIGHS IN THE HAND, in kg — and the only external anchor for it
+	 * What a brick weighs in the hand, in kg — the only external anchor for it
 	 * anywhere in the suite.
 	 *
-	 * The structure tests now DERIVE their brick mass from ClayBrick's density rather
-	 * than hand-setting it, precisely so this is the single place the number can be
-	 * wrong. Do not add a second literal elsewhere: two copies is how the old hand-set
-	 * 2.72 drifted 1.6 g from the 2.7216 the library actually states.
+	 * The structure tests now derive their brick mass from ClayBrick's density
+	 * rather than hand-setting it, precisely so this is the single place the number
+	 * can be wrong. Do not add a second literal elsewhere: two copies is how the
+	 * old hand-set 2.72 drifted 1.6 g from the 2.7216 the library actually states.
 	 */
 	constexpr double HandSetBrickMassKg = 2.72;
 }
@@ -239,12 +239,11 @@ bool FProfileLibraryConnectionInvariantsTest::RunTest(const FString& Parameters)
 			S.FrictionCoefficient >= 0.0 && S.FrictionCoefficient <= 1.5);
 
 		/*
-		 * THE CAP MUST NEVER TRUNCATE THE BOND ITSELF. Capacity is
+		 * The cap must never truncate the bond itself. Capacity is
 		 * min(cohesion + mu*sigma, cap), so a cap below cohesion silently gives
 		 * the joint less strength than its own stated cohesion — an unloaded
 		 * joint would then be weaker than the profile advertises, with nothing
-		 * in the numbers to show it. Flagged as an untested edge in
-		 * CURRENT_STATE.md; this is what closes it.
+		 * in the numbers to show it.
 		 */
 		TestTrue(
 			*FString::Printf(TEXT("%s: max shear %g must not be below cohesion %g — the cap would silently weaken the bond"),
@@ -263,7 +262,7 @@ bool FProfileLibraryConnectionInvariantsTest::RunTest(const FString& Parameters)
 				 * pulls apart at less again. If these come out close the directional
 				 * model has nothing to work with.
 				 *
-				 * 5x RATHER THAN THE OLD 10x SINCE THE 2026-08-14 MEAN RE-ANCHOR FLIP:
+				 * 5x rather than the old 10x since the 2026-08-14 mean re-anchor flip:
 				 * mean shear bond runs closer to mean compressive class than the
 				 * characteristic pair did (lime carries 2.0 / 0.27 = 7.4x; cement
 				 * 10 / 0.9 = 11.1x), so 10x stopped being a physics floor and became
@@ -305,9 +304,9 @@ bool FProfileLibraryConnectionInvariantsTest::RunTest(const FString& Parameters)
 			case EConnectionProfileClass::Frictional:
 			{
 				/*
-				 * THE PROFILE THAT DIFFERS IN KIND. Dry stone has no mortar, so
+				 * The profile that differs in kind: dry stone has no mortar, so
 				 * there is no bond to have cohesion or tensile strength. These are
-				 * exact zeroes, not small numbers: the whole reason Mohr-Coulomb
+				 * exact zeroes, not small numbers — the whole reason Mohr-Coulomb
 				 * coupling is in the model is that this wall cannot stand without it.
 				 */
 				TestTrue(
@@ -335,7 +334,7 @@ bool FProfileLibraryConnectionInvariantsTest::RunTest(const FString& Parameters)
 			case EConnectionProfileClass::MechanicalFastener:
 			{
 				/*
-				 * EXACTLY zero, not nearly. mu = 0 is what collapses Mohr-Coulomb
+				 * Exactly zero, not nearly: mu = 0 is what collapses Mohr-Coulomb
 				 * to three independent axes, which is how a bolt stays data rather
 				 * than a second code path. A small non-zero mu would leave a bolt
 				 * quietly gaining shear strength from the weight above it.
@@ -368,17 +367,16 @@ bool FProfileLibraryConnectionInvariantsTest::RunTest(const FString& Parameters)
 		if (Row.Class == EConnectionProfileClass::TestFixture)
 		{
 			/*
-			 * A FIXTURE IS EXEMPT FROM THE MUST-BREAK RULE. IT IS NOT REQUIRED TO SURVIVE, AND
-			 * IT USED TO BE — corrected 2026-08-07 when the second fixture row landed.
-			 *
-			 * The invariant this branch is here to protect is one-directional: nothing SHIPPABLE
-			 * may be accidentally indestructible. `Unbreakable` is the row that must never give
-			 * and it is asserted below BY NAME, which is where that claim belongs, because it is
-			 * a fact about one row rather than about the class. Keying it off the class instead
-			 * forbade the other useful kind of fixture — a perfectly breakable joint carrying a
-			 * combination no real material has — and `CohesionlessBond` is exactly that: zero
-			 * cohesion with a real tensile bond, which no material can have and which is the only
-			 * way to tell a bounded composite depth from `DryStone`'s blanket condemnation.
+			 * A fixture is exempt from the must-break rule (it is not required to
+			 * survive). The invariant this branch protects is one-directional:
+			 * nothing shippable may be accidentally indestructible. `Unbreakable`
+			 * is the row that must never give, asserted below by name, because
+			 * that is a fact about one row rather than the class — keying it off
+			 * the class would forbid the other useful kind of fixture, a
+			 * perfectly breakable joint carrying a combination no real material
+			 * has, and `CohesionlessBond` is exactly that: zero cohesion with a
+			 * real tensile bond, the only way to tell a bounded composite depth
+			 * from `DryStone`'s blanket condemnation.
 			 */
 		}
 		else
@@ -396,13 +394,12 @@ bool FProfileLibraryConnectionInvariantsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND `Unbreakable` IS THE ONE ROW THAT MUST SURVIVE THAT LOAD, ASSERTED BY NAME.
-	 *
-	 * It is what the whole `TestFixture` class was invented for — a joint no plausible
-	 * implementation can break mid-solve, so that a routing test measures routing. The claim
-	 * belongs to the row rather than to the class: a second fixture may legitimately be
-	 * breakable, and it is (`CohesionlessBond`), so a sweep keyed on the class would either
-	 * forbid that row or say nothing about this one.
+	 * And `Unbreakable` is the one row that must survive that load, asserted by name: it is
+	 * what the whole `TestFixture` class was invented for — a joint no plausible implementation
+	 * can break mid-solve, so a routing test measures routing. The claim belongs to the row
+	 * rather than the class: a second fixture may legitimately be breakable, and it is
+	 * (`CohesionlessBond`), so a sweep keyed on the class would either forbid that row or say
+	 * nothing about this one.
 	 */
 	TestTrue(
 		FString::Printf(
@@ -480,7 +477,7 @@ bool FProfileLibraryMaterialInvariantsTest::RunTest(const FString& Parameters)
 			FMath::IsFinite(M.DensityGramsPerCubicCm));
 
 		/*
-		 * UNITS TRAP, and the reason for the upper bound. Density is g/cm3 because
+		 * Units trap, and the reason for the upper bound: density is g/cm3 because
 		 * that is what UPhysicalMaterial::Density takes, so published values go in
 		 * unconverted. The same brick in kg/m3 is 1900 — a thousand times heavier
 		 * and still a plausible-looking number. Balsa is 0.16; osmium is 22.6.
@@ -510,19 +507,18 @@ bool FProfileLibraryMaterialInvariantsTest::RunTest(const FString& Parameters)
 			S.MaxShearStrengthMPa >= S.ShearCohesionMPa);
 
 		/*
-		 * COMPRESSION-MEMBER MATERIALS crush at many times the stress that pulls
-		 * them apart. This is the material-side counterpart of the bonded-joint rule,
-		 * and it is what makes "brick crushes" a different failure mode from "mortar
-		 * gives".
+		 * Compression-member materials crush at many times the stress that pulls
+		 * them apart — the material-side counterpart of the bonded-joint rule, and
+		 * what makes "brick crushes" a different failure mode from "mortar gives".
 		 *
-		 * SCOPED TO bCompressionDominant, not asserted over the whole library, because
-		 * it is a fact about masonry and concrete rather than about materials in
-		 * general. Timber is genuinely tension-capable parallel to the grain — C24 is
-		 * 21 MPa against 14, well under 5x — so applying this to it would be asserting
-		 * a masonry ratio of wood. Keying off the trait keeps the check biting for a
-		 * mis-specified MASONRY profile (a StructuralConcrete whose tensile crept above
-		 * compressive/5 stays flagged) while exempting the materials that legitimately
-		 * carry tension.
+		 * Scoped to bCompressionDominant, not asserted over the whole library,
+		 * because it is a fact about masonry and concrete rather than materials in
+		 * general. Timber is genuinely tension-capable parallel to the grain — C24
+		 * is 21 MPa against 14, well under 5x — so applying this to it would be
+		 * asserting a masonry ratio of wood. Keying off the trait keeps the check
+		 * biting for a mis-specified masonry profile (a StructuralConcrete whose
+		 * tensile crept above compressive/5 stays flagged) while exempting the
+		 * materials that legitimately carry tension.
 		 */
 		if (M.bCompressionDominant)
 		{
@@ -533,7 +529,7 @@ bool FProfileLibraryMaterialInvariantsTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * DECLARED AND UNUSED, but not therefore unconstrained: a bond factor is a
+		 * Declared and unused, but not therefore unconstrained: a bond factor is a
 		 * derating of a connection against this face, so it lives in (0, 1].
 		 */
 		TestTrue(
@@ -545,10 +541,11 @@ bool FProfileLibraryMaterialInvariantsTest::RunTest(const FString& Parameters)
 	 * A brick has to weigh what a brick weighs. 215 x 102.5 x 65 mm at the clay
 	 * brick's own density must reproduce the 2.72 kg a brick weighs in the hand.
 	 *
-	 * THIS IS THE ANCHOR THE WHOLE SUITE HANGS OFF. The structure tests derive their
-	 * brick mass from the same density rather than hand-setting it, so this row is the
-	 * one place the figure is checked against the outside world. The 3% band is what
-	 * makes it a physical claim rather than a restatement of the arithmetic.
+	 * This is the anchor the whole suite hangs off: the structure tests derive
+	 * their brick mass from the same density rather than hand-setting it, so this
+	 * row is the one place the figure is checked against the outside world. The 3%
+	 * band is what makes it a physical claim rather than a restatement of the
+	 * arithmetic.
 	 */
 	const double DerivedBrickMassKg = ClayBrick.DensityGramsPerCubicCm * BrickVolumeCubicCm / 1000.0;
 
@@ -589,14 +586,14 @@ bool FProfileLibraryMaterialInvariantsTest::RunTest(const FString& Parameters)
 	 * than the joint sliding, so mortar's cap must track the brick it is laid
 	 * with, not a number someone liked.
 	 *
-	 * MEAN BASIS (re-anchor 2026-08-13): the coefficient is 0.1, not Eurocode 6's
+	 * Mean basis (re-anchor 2026-08-13): the coefficient is 0.1, not Eurocode 6's
 	 * characteristic-basis 0.065 — forced by measurement, because the Newcastle
-	 * campaign's mean UNCONFINED shear bond reaches 1.81 MPa, above the old
+	 * campaign's mean unconfined shear bond reaches 1.81 MPa, above the old
 	 * 0.065 x 20 = 1.3 cap outright, so 0.065 f_b cannot be a mean-basis
 	 * truncation. 0.1 x f_b = 2.0 sits above mean cohesion plus the working
 	 * friction range and below the unit's own 3.0 MPa shear strength. Grade C,
-	 * and recorded as such: no published mean-basis equivalent of the EC6
-	 * truncation exists. Generous tolerance: the coefficient is a judgement.
+	 * recorded as such: no published mean-basis equivalent of the EC6 truncation
+	 * exists. Generous tolerance: the coefficient is a judgement.
 	 */
 	constexpr double MeanBasisShearCapCoefficient = 0.1;
 	const double MeanBasisCapMPa = MeanBasisShearCapCoefficient * ClayBrick.Strength.CompressiveStrengthMPa;
@@ -611,7 +608,7 @@ bool FProfileLibraryMaterialInvariantsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * DRY STONE IS THE PROFILE WHOSE BEHAVIOUR DIFFERS IN KIND, and this is the test
+ * Dry stone is the profile whose behaviour differs in kind, and this is the test
  * that proves the library is wired into the real code path rather than being a
  * struct someone typed.
  *
@@ -621,7 +618,7 @@ bool FProfileLibraryMaterialInvariantsTest::RunTest(const FString& Parameters)
  * goes with it. That is the behaviour Mohr-Coulomb coupling exists for, and no
  * amount of checking fields would demonstrate it.
  *
- * Every load below is expressed as a MULTIPLE OF THE PROFILE'S OWN NUMBERS, so
+ * Every load below is expressed as a multiple of the profile's own numbers, so
  * retuning dry stone leaves these expectations exactly where they are.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -638,9 +635,9 @@ bool FProfileLibraryDryStoneBehaviourTest::RunTest(const FString& Parameters)
 	/*
 	 * --- the fixture has to be capable of measuring what it claims to measure ---
 	 *
-	 * WHICH AXIS GOVERNS IS THE WHOLE RISK HERE. ComputeUtilisation returns the
+	 * Which axis governs is the whole risk here: ComputeUtilisation returns the
 	 * worst of three axes, so a shear assertion silently becomes a compression
-	 * assertion if the compression chosen to CREATE the friction happens to
+	 * assertion if the compression chosen to create the friction happens to
 	 * utilise more. Compression is therefore held at 0.2 of the crushing limit
 	 * and shear at 0.5 of the resulting capacity: 0.2 < 0.5, so shear governs by
 	 * construction. These preconditions fail loudly if a retune breaks that.
@@ -713,7 +710,7 @@ bool FProfileLibraryDryStoneBehaviourTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(SqueezedUtilisation, 0.5, Tolerance));
 
 	/*
-	 * THE MECHANISM BEHIND PROGRESSIVE COLLAPSE. Identical shear, weight removed:
+	 * The mechanism behind progressive collapse: identical shear, weight removed —
 	 * capacity was entirely borrowed and is now gone, so the joint parts. A model
 	 * with fixed per-axis strengths cannot produce this, and a dry-stone wall
 	 * cannot stand without it.
@@ -858,7 +855,7 @@ bool FProfileLibraryFastenerUncouplingTest::RunTest(const FString& Parameters)
 }
 
 /**
- * TIMBER IS THE DELIBERATE SECOND STRUCTURAL MATERIAL — C24 softwood, EN 338.
+ * Timber is the deliberate second structural material — C24 softwood, EN 338.
  *
  * SHED_PATH.md Phase B / slice B1: the multi-material shed needs a wood profile,
  * and it is the single data addition that proves the directional code genuinely
@@ -867,8 +864,8 @@ bool FProfileLibraryFastenerUncouplingTest::RunTest(const FString& Parameters)
  * that those values are wired into the real ComputeUtilisation path rather than
  * merely typed.
  *
- * WHY MEAN PARALLEL-TO-GRAIN STRENGTHS, AND WHICH FIELD EACH MAPS TO.
- * StructuralConcrete and ClayBrick store a material's OWN directional strengths in
+ * Why mean parallel-to-grain strengths, and which field each maps to:
+ * StructuralConcrete and ClayBrick store a material's own directional strengths in
  * FConnectionStrength's compressive / shear / tensile fields — 38/7.6/3.0 and
  * 20/3.0/2.0 respectively. The matching C24 quantities are its axial
  * parallel-to-grain capacities, so the convention maps cleanly:
@@ -877,14 +874,14 @@ bool FProfileLibraryFastenerUncouplingTest::RunTest(const FString& Parameters)
  *     TensileStrengthMPa     <- f_t,0,mean = 23   (tension parallel to grain)
  *     ShearCohesionMPa       <- f_v,mean   = 6.0  (shear)
  *
- * MEAN BASIS — the 2026-09-02 re-anchor (item 6a), bringing the last profile row
+ * Mean basis — the 2026-09-02 re-anchor (item 6a), bringing the last profile row
  * onto the same footing every masonry row was flipped to on 2026-08-13/14
- * (DESIGN.md §3): the library carries MEASURED MEANS, not code characteristics,
+ * (DESIGN.md §3): the library carries measured means, not code characteristics,
  * because verdicts ruled at 5-percentile design values are 3-8x pessimistic against
- * real members. The retired figures were EN 338 C24's CHARACTERISTIC (5-percentile)
+ * real members. The retired figures were EN 338 C24's characteristic (5-percentile)
  * f_c,0,k 21 / f_t,0,k 14 / f_v,k 4.0.
  *
- * THE CHAR -> MEAN FACTOR IS PER-PROPERTY, NOT A BLANKET SCALE (exactly as the
+ * The char -> mean factor is per-property, not a blanket scale (exactly as the
  * masonry re-anchor was), because the coefficient of variation differs by property.
  * EN 384 / EN 1990 define the characteristic as the 5-percentile of a lognormal
  * fit, so mean = char x exp(1.645 x sqrt(ln(1 + CoV^2))). JCSS PMC Part 3.5 Table 2
@@ -900,19 +897,19 @@ bool FProfileLibraryFastenerUncouplingTest::RunTest(const FString& Parameters)
  * bending, and exactly its C24ShearMPa 6.0. That the two files land on the same
  * shear mean by the same JCSS CoV, derived apart, is the anchor for the factor.
  *
- * NOT the member-BENDING derivation itself (36/6) for the axial fields: that is a
+ * Not the member-bending derivation itself (36/6) for the axial fields: that is a
  * whole-stress-block check for a different limit state and deliberately reaches no
- * joint field. This material profile IS the axial/shear joint-field convention, so
- * the axial MEAN strengths are the right numbers, and matching StructuralConcrete/
+ * joint field. This material profile is the axial/shear joint-field convention, so
+ * the axial mean strengths are the right numbers, and matching StructuralConcrete/
  * ClayBrick means these are the values that flow through ComputeUtilisation.
  * Density is unchanged — already the mean rho_mean = 420 kg/m3 = 0.42 g/cm3, because
  * weight is the only thing density does and what a beam weighs is the mean.
  *
- * UNITS TRAP (DESIGN.md §3): density is g/cm3 (0.42, never 420), strengths are SI
- * MPa, and ComputeUtilisation needs an AREA — ForceForMPa spells the 1 N = 100 uu,
+ * Units trap (DESIGN.md §3): density is g/cm3 (0.42, never 420), strengths are SI
+ * MPa, and ComputeUtilisation needs an area — ForceForMPa spells the 1 N = 100 uu,
  * 1 cm2 = 100 mm2 conversion out independently of the production constant.
  *
- * NO WORLD, NO TICKING SOLVER — arithmetic over plain structs, like its siblings.
+ * No world, no ticking solver — arithmetic over plain structs, like its siblings.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FProfileLibraryTimberProfileTest,

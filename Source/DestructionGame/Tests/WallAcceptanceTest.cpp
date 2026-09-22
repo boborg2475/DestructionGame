@@ -15,67 +15,54 @@
  * The wall acceptance set — twenty-two configurations with an expected outcome for each, drawn
  * from how real masonry behaves rather than from what the solver computes.
  *
- * The catalogue is claude_plans/WALL_CASES.html and the user agreed it on 2026-08-06. This file
- * is that catalogue as a parameterised table: adding a case is adding numbers, not code. Case 20
- * is written; case 20's own uncertainty is recorded beside it. Cases 21 and 22 were directed by
- * the user on 2026-08-12 and built on 2026-08-13 — see section G.
+ * The catalogue is claude_plans/WALL_CASES.html, agreed by the user 2026-08-06. This file is that
+ * catalogue as a parameterised table: adding a case is adding numbers, not code. Case 20's own
+ * uncertainty is recorded beside it. Cases 21 and 22 were user-directed 2026-08-12, built
+ * 2026-08-13 — see section G.
  *
- * WHY A SPREAD RATHER THAN ONE FIXTURE. The arching argument cannot be settled by one collapsing
- * wall. Five matched pairs differ by exactly one variable each — 7 vs 8 is depth of cover, 7 vs 9
- * is span, 7 vs 10 is the abutment, 13 vs 14 is corbel projection, 15 vs 16 is whether
- * superimposed compression suppresses bending tension — so a disagreement between the two halves
- * of a pair points at one term in the force calculation, which a single wall never can. A solver
- * that answers both halves of a pair the same way has no such term at all.
+ * WHY A SPREAD RATHER THAN ONE FIXTURE. Five matched pairs originally differed by exactly one
+ * variable each — 7 vs 8 depth of cover, 7 vs 9 span, 7 vs 10 abutment, 13 vs 14 corbel
+ * projection, 15 vs 16 whether superimposed compression suppresses bending tension — so a
+ * disagreement between the two halves points at one term in the force calculation, which a single
+ * wall never can.
  *
  * NONE OF THE FIVE IS AN OUTCOME PAIR ANY MORE; `Acceptance.Wall.MatchedPairs` retired with the
- * last of them on 2026-08-12. That test compared how many bricks each half dropped, and needed
- * the catalogue to rule the two halves differently; five re-rulings, none of them a solver fix,
- * have now made every half of every pair stand:
+ * last of them on 2026-08-12, once five re-rulings (none of them a solver fix) made every half of
+ * every pair stand:
  *
  *   13 vs 14   2026-08-07   a bonded corbel resists with its full depth
  *   15 vs 16   2026-08-07   a bonded header with nothing on it reads a sixth of f_xk1
- *   11 vs 12   2026-08-09   the one-cell pier takes the thrust (not one of the five, but the
- *                           same event: an outcome pair losing its separation)
+ *   11 vs 12   2026-08-09   the one-cell pier takes the thrust
  *    7 vs  8   2026-08-11   the coverless course jams into its abutments as a flat arch
- *    7 vs  9   2026-08-12   the ten-cell deep beam spans, so span stops separating on outcome
- *    7 vs 10   2026-08-12   the free-end panel cantilevers, so the abutment stops separating too
+ *    7 vs  9   2026-08-12   the deep beam spans
+ *    7 vs 10   2026-08-12   the free-end panel cantilevers
  *
- * An outcome pair whose halves answer identically separates nothing, and — this is what forced
- * the retirement rather than one more deleted row — 7 vs 10 had reached the state where it could
- * only pass while production was wrong: the catalogue now rules both halves STANDS, so the honest
- * answer is 0 against 0 and the assertion is unsatisfiable, while the model's 12 unrouted bricks
- * made it read as a discrimination. A test that goes green on a defect is worse than no test.
+ * 7 vs 10 forced the retirement rather than one more deleted row: both halves now rule STANDS, so
+ * the assertion (0 against 0) is unsatisfiable, while the model's 12 unrouted bricks on case 10
+ * made it read as a discrimination it no longer is.
  *
- * WHERE EACH DISCRIMINATION WENT, because deleting an assertion without saying is how a suite
- * quietly stops measuring something:
+ * WHERE EACH DISCRIMINATION WENT, so deleting the outcome assertion doesn't mean the suite
+ * quietly stopped measuring anything:
  *
  *   13 vs 14  Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome — doubling the step
- *             per course takes the worst joint from 0.070 to 0.195, a factor of 2.8.
- *   15 vs 16  Acceptance.Wall.SuperimposedLoadIsReadInTheJointNotInTheOutcome — the same joint of
- *             the same geometry reads 0.0018 with six courses on the header's tail and 0.0582
- *             with nothing on it, a factor of 32.
- *    7 vs  9  Acceptance.Wall.SpanIsReadInTheJointNotInTheOutcome — new on 2026-08-12, written in
- *             the same slice that cost the outcome pair its separation. The jamb beside the
- *             opening reads 0.269 under a four-cell span and 0.985 under a ten-cell one, 3.66x,
- *             and the header of that test argues at length why this is not the 7-vs-8 trap.
+ *             per course takes the worst joint from 0.070 to 0.195, 2.8x.
+ *   15 vs 16  Acceptance.Wall.SuperimposedLoadIsReadInTheJointNotInTheOutcome — 0.0018 with six
+ *             courses on the header's tail against 0.0582 with nothing on it, 32x.
+ *    7 vs  9  Acceptance.Wall.SpanIsReadInTheJointNotInTheOutcome — the jamb beside the opening
+ *             reads 0.269 under a four-cell span and 0.985 under a ten-cell one, 3.66x.
  *   11 vs 12  the LP oracle: 128.12 on three cells of bearing against 89.12 on one, pinned in
  *             OracleSweepFull.RigidBlock.WallsAndLadders.
- *    7 vs 10  the LP oracle likewise, deliberately not relocated onto a production reading — see
- *             the abutment paragraph in the span test's header. wall-07 prices at 296.22 and
- *             wall-10 at 35.82, 8.27x in the physically right direction.
- *    7 vs  8  nowhere, and the suite is poorer for it: the readings run the wrong way (0.269 with
- *             eight courses of cover against 0.219 with one), because a downward-routing solver
- *             reads cover as load rather than as arch capacity. The recorded cost is in the CASE 8
- *             block of section B — after that ruling no case in this set refuses arching for lack
- *             of cover.
+ *    7 vs 10  the LP oracle likewise, deliberately not relocated onto a production reading (see
+ *             the abutment paragraph in the span test's header): 296.22 against 35.82, 8.27x.
+ *    7 vs  8  nowhere — the readings run the wrong way (0.269 at eight courses of cover against
+ *             0.219 at one), because a downward-routing solver reads cover as load rather than
+ *             arch capacity. Recorded in the CASE 8 block of section B; after that ruling no case
+ *             in this set refuses arching for lack of cover.
  *
- * IF AN OUTCOME PAIR EVER COMES BACK — the wanted list has two candidates, a discriminator that
- * starves the abutment rather than the cover, and a lintel over case 7's opening — the shape to
- * rebuild is small and is recorded here so it need not be rediscovered: a table of
- * {variable, lesser case, greater case}, run both halves, and assert the greater loses strictly
- * more while the lesser loses nothing whenever its own catalogue verdict says so (read off
- * `EVerdict`, never listed in the test — that is what let case 11's two rulings in one day relax
- * and re-tighten the claim in the same edit instead of leaving a stale private copy behind).
+ * IF AN OUTCOME PAIR EVER COMES BACK — a discriminator that starves the abutment, or a lintel over
+ * case 7's opening — the shape is: a table of {variable, lesser case, greater case}, run both
+ * halves, assert the greater loses strictly more while the lesser loses nothing whenever its own
+ * `EVerdict` says so (read off the enum, never duplicated in the test).
  *
  * THREE VERDICTS, THREE ASSERTION SHAPES, per DESIGN.md §4's outcome-not-mechanism rule:
  *
@@ -90,35 +77,28 @@
  *               survivor region kept it. Two-sided, because a wall that comes down because
  *               everything comes down is not evidence that the span term works.
  *
- * BETWEEN 2026-08-12 AND 2026-08-13 THE CATALOGUE CONTAINED NO `Collapse` ROW AT ALL — nineteen
- * `Stands` and one `LocalLoss` — which made the third assertion shape above dead code: cases 9,
- * 10 and 19 were the last three, all re-ruled to STANDS on the same day, so `Acceptance.Wall.
- * Catalogue`'s collapse arm and the matching branch of `ModelAgreesWithVerdict` could not have
- * failed whatever they said. Both were kept rather than deleted because the wanted case 2b
- * (CURRENT_STATE, "new acceptance cases wanted") was already directed. Cases 21 and 22 are that
- * case, landed 2026-08-13, and are the set's first two `Collapse` rows ever — nineteen `Stands`,
- * one `LocalLoss`, two `Collapse`. Their bite was re-proven by mutation when they landed (a
- * widened survivor region on case 21, and the `ReseatSpannedGroups` early-return); both
- * signatures are rows in the TRAPS.md mutation registry, where every measured mutation in this
- * project lives — nothing of the kind is recorded in section G.
+ * Between 2026-08-12 and 2026-08-13 the catalogue held no `Collapse` row at all — the collapse arm
+ * of `Acceptance.Wall.Catalogue` and the matching branch of `ModelAgreesWithVerdict` were dead
+ * code until cases 21 and 22 landed 2026-08-13, the set's first two `Collapse` rows. Their bite
+ * was re-proven by mutation on arrival (a widened survivor region on case 21; the
+ * `ReseatSpannedGroups` early-return) — both are TRAPS.md registry rows.
  *
- * Displacement is not used as a break assertion anywhere here, and could not be: DESIGN.md §4 is
- * explicit that two pieces can sever and stay resting exactly in place. What is read instead is
- * whether a piece still has a path to the earth after the cascade — which is what the binding
- * pushes to physics, so it is the outcome and not the mechanism.
+ * Displacement is never used as a break assertion: DESIGN.md §4 is explicit that two pieces can
+ * sever and stay resting exactly in place. What is read is whether a piece still has a path to
+ * the earth after the cascade.
  *
- * NEEDS A TICKING WORLD: NO, DELIBERATELY. Everything DESIGN.md §4 asks of an integration test is
- * here — gravity is on (weight is mass x 980, no way to switch it off), everything is connected,
- * and the assertion is on outcome — and the one thing a world would add is the wire from the
- * solver's answer to Chaos, which Tests/StructureIntegrationTest.cpp already covers three times
- * over and which is identical for all twenty-two rows. Twenty-two worlds of up to 474 brick
- * actors would cost minutes to say nothing new. If a row ever needs to be watched falling,
- * promote that one row into the integration file rather than moving this table.
+ * NEEDS A TICKING WORLD: NO, DELIBERATELY. Gravity is on (weight is mass x 980, no way to switch
+ * it off), everything is connected, and the assertion is on outcome — everything DESIGN.md §4
+ * asks of an integration test. The one thing a world would add is the wire from the solver's
+ * answer to Chaos, which Tests/StructureIntegrationTest.cpp already covers three times over and
+ * which is identical for all twenty-two rows; twenty-two worlds of up to 474 brick actors would
+ * cost minutes to say nothing new. Promote a row into the integration file if it ever needs
+ * watching fall, rather than moving this table.
  *
  * Named namespace, and named differently from every other one in this module — an anonymous
  * namespace is private to a translation unit rather than a file, and a unity build merges many
- * files into one. See CURRENT_STATE.md; the `using namespace` lives inside each RunTest body for
- * the same reason.
+ * files into one (CURRENT_STATE.md). The `using namespace` lives inside each RunTest body for the
+ * same reason.
  *
  * Nothing here is imported from the code under test except the producer itself. The grid, the
  * brick weight, the newton-to-Unreal conversion and every strength are re-derived below, so a
@@ -157,12 +137,11 @@ namespace WallAcceptanceTestSupport
 	/**
 	 * The shortest closing piece the fixture will lay at a course's left end.
 	 *
-	 * A course laid right-to-left rarely divides exactly, and what is left at the left end is a
-	 * cut brick. Below this it is dropped instead, because a two-centimetre sliver is a piece with
-	 * a plausible mass and an implausible joint, and it would sit at the FAR end from everything
-	 * under test while being the first thing to break. 4 cm is comfortably under the 10.25 cm half
-	 * bat a flush wall really closes with and comfortably over anything that would be laid by
-	 * accident.
+	 * A course laid right-to-left rarely divides exactly, and what's left at the left end is a cut
+	 * brick; below this it's dropped instead, since a two-centimetre sliver has a plausible mass
+	 * and an implausible joint, and would sit far from everything under test while being the first
+	 * thing to break. 4 cm is comfortably under the 10.25 cm half bat a flush wall really closes
+	 * with, and comfortably over anything laid by accident.
 	 */
 	constexpr double MinClosingPieceCm = 4.0;
 
@@ -170,11 +149,10 @@ namespace WallAcceptanceTestSupport
 	constexpr double ClayBrickDensityGramsPerCubicCm = 1.9;
 
 	/**
-	 * Weight from mass, derived rather than imported. Unreal's gravity is 980 cm/s2 and mass is
-	 * in kilograms, so kg x 980 is the weight in Unreal force units — DESIGN.md §3's 1 N = 100 uu
-	 * is already inside that number, and applying it again is the 100x error the units section
-	 * exists to prevent. Density first, then dimensions, the one association that lands exactly
-	 * on 2.72163125 kg.
+	 * Weight from mass, derived rather than imported. Unreal's gravity is 980 cm/s2 and mass is in
+	 * kilograms, so kg x 980 is the weight in Unreal force units — DESIGN.md §3's 1 N = 100 uu is
+	 * already inside that number, and applying it again is the 100x error the units section exists
+	 * to prevent. Density first, then dimensions, landing exactly on 2.72163125 kg.
 	 */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
@@ -377,30 +355,26 @@ namespace WallAcceptanceTestSupport
 	/*
 	 * The fixture's own bricklayer.
 	 *
-	 * WHY NOT Layout::RunningBond. Six of the twenty-two cases are not running-bond rectangles:
-	 * two corbel out, two carry a projecting header, and two are stack bond. RunningBond lays one
-	 * shape, so either this file gets a second producer or six cases get dropped — and the six
-	 * dropped ones include two of the five matched pairs, which are the whole reason the set
+	 * Why not Layout::RunningBond: six of the twenty-two cases are not running-bond rectangles (two
+	 * corbel out, two carry a projecting header, two are stack bond), and RunningBond lays only one
+	 * shape — dropping those six would lose two of the five matched pairs, the whole reason the set
 	 * exists.
 	 *
-	 * THE BRICKLAYER IS ONE RULE, NOT SIX SPECIAL CASES. Every course is described by two numbers
-	 * — where its right face is, and how long its rightmost piece is — and then laid right to
-	 * LEFT on the 22.5 cm pitch, closing with whatever is left at the wall's left face. Running
-	 * bond, stack bond, a corbel and a projecting header are all values of those two numbers:
+	 * The bricklayer is one rule, not six special cases: every course is described by two numbers
+	 * (where its right face is, how long its rightmost piece is) and laid right to left on the
+	 * 22.5 cm pitch, closing with whatever is left at the wall's left face:
 	 *
 	 *      running bond    right face fixed; odd courses close with a half bat at the right
 	 *      stack bond      right face fixed; every course closes with a full brick
 	 *      corbel          right face steps out once per course from CorbelFromCourse
 	 *      header          one course's right face is half a cell further out
 	 *
-	 * Laying right-to-left rather than left-to-right is what keeps the cut piece at the LEFT end,
-	 * far from every corbel and header under test, instead of in the middle of what is being
-	 * measured.
+	 * Laying right-to-left keeps the cut piece at the left end, far from every corbel and header
+	 * under test, instead of in the middle of what's being measured.
 	 *
-	 * And it is checked against the real producer: a flush running-bond wall laid here must be
-	 * the same wall Layout::RunningBond lays, brick for brick — see
-	 * Acceptance.Wall.TheFixtureLaysTheWallTheProducerLays. Without that, this file is a second
-	 * definition of what a wall is and every number below is measured against the wrong one.
+	 * Checked against the real producer: a flush running-bond wall laid here must be the same wall
+	 * Layout::RunningBond lays, brick for brick (Acceptance.Wall.TheFixtureLaysTheWallTheProducerLays).
+	 * Without that, this file is a second definition of what a wall is.
 	 */
 
 	/** The right face of a flush wall of this many cells. */
@@ -1047,167 +1021,118 @@ namespace WallAcceptanceTestSupport
 	 * CASE 8, re-ruled 2026-08-11: the one course over the hole stands, and the catalogue loses
 	 * its last "no room to arch" row with it.
 	 *
-	 * The geometry is unchanged and is still walked off the bricklayer above, the same way case
-	 * 20's teeth are. Five courses, twelve cells, case 7's own four-cell cut through courses 1..3,
-	 * so one course of cover. The opening cuts cells 4.5, 5.5 and 6.5 out of odd course 3, and an
-	 * even-course brick at cell k sits on the odd course below at cells k - 0.5 and k + 0.5, so of
-	 * the four bricks of course 4 standing over the hole
+	 * Geometry, walked off the bricklayer above: five courses, twelve cells, case 7's own
+	 * four-cell cut through courses 1..3 (one course of cover). Of the four course-4 bricks over
+	 * the hole, cells 4 and 7 keep one bed patch each (a corbel); cells 5 and 6 have no bed patch
+	 * at all.
 	 *
-	 *     cell 4   over cut 4.5 and INTACT 3.5   one bed patch — a corbel
-	 *     cell 5   over cut 4.5 and cut 5.5      NO bed patch at all
-	 *     cell 6   over cut 5.5 and cut 6.5      NO bed patch at all
-	 *     cell 7   over cut 6.5 and INTACT 7.5   one bed patch — a corbel
+	 * What the row used to claim: LOCAL LOSS of the two seatless bricks (c4/5, c4/6), on the
+	 * reading that a single course cannot arch — it is a beam in flexure and mortar has 0.1 MPa to
+	 * offer. Red for its whole life because the model drops nothing here.
 	 *
-	 * What the row used to claim: LOCAL LOSS of the two seatless middle bricks — c4/5 and c4/6, the
-	 * region { 4, 4, 4.75, 6.25 } this block used to declare — on the catalogue's reading that "a
-	 * single course cannot arch: it is a beam in flexure over four bricks, and mortar has 0.1 MPa
-	 * to offer". (An earlier draft named all four and was corrected on case 20's reading: the two
-	 * over the jambs keep one patch each, and one patch is a corbel rather than a tooth. That
-	 * correction is not what moved now.) The row was red for its whole life because the model
-	 * drops nothing here: slice 2 took it from 2 dropped to 0 by re-seating the seatless pair
-	 * through the head joints of the bricks either side.
-	 *
-	 * The ruling, and why it is the catalogue that moved: as of the 2026-08-11 LP-oracle sweep
-	 * this row was the outlier of three independently derived methods, not of one:
+	 * The ruling: as of the 2026-08-11 LP-oracle sweep this row was the outlier of three
+	 * independently derived methods, not one:
 	 *
 	 *     catalogue   LOCAL LOSS — two bricks drop — on flexure of a single spanning course
-	 *     production  drops nothing, breaks nothing; worst joint 0.218869 at c2/8-c3/7.5, which is
-	 *                 in the jamb and not over the hole at all
-	 *     LP oracle   STANDS at lambda* = 324.732096 (52 blocks / 101 joints, 1,289 pivots, 4.7 s
-	 *                 — RigidBlockOracleSweepTest's opt-in wall sweep, measured 2026-08-11)
+	 *     production  drops nothing, breaks nothing; worst joint 0.218869 at c2/8-c3/7.5, in the
+	 *                 jamb, not over the hole
+	 *     LP oracle   STANDS at lambda* = 324.732096 (52 blocks / 101 joints, 1,289 pivots, 4.7 s —
+	 *                 RigidBlockOracleSweepTest's opt-in wall sweep, measured 2026-08-11)
 	 *
-	 * The user ruled STANDS on 2026-08-11, per the standing instruction of DESIGN §8 (cases 11 and
-	 * 12): a published gate and a prior ruling are both evidence, neither is gospel, and the physics
-	 * is what decides. Worked through:
+	 * The user ruled STANDS on 2026-08-11, per DESIGN §8's standing instruction (a published gate
+	 * and a prior ruling are both evidence, neither is gospel):
 	 *
 	 *     the mechanism   flexure is not the only path across a four-cell hole. The limit theorem
-	 *                     needs only ONE admissible equilibrium, and the one it finds puts the flat
-	 *                     course into its abutments in HEAD-JOINT COMPRESSION — a flat arch. That
-	 *                     needs abutments, not cover, which is exactly the term the "one course of
-	 *                     cover" reading assumed away.
-	 *     the margin      lambda* = 324.73 says the fixture is nowhere near strength-governed: this
-	 *                     profile's compressive capacity is 100x its tensile one (10.0 / 0.1 MPa)
-	 *                     and four bricks of self weight is a rounding error against it.
-	 *     the charity     even discounted by BOTH of the sweep header's slants at once — /3 for
-	 *                     plastic-vs-first-crack and /6 as a characteristic-vs-mean budget — the
-	 *                     verdict reads 18.0 and still stands. The /6 is a budget rather than a
-	 *                     correction, and in the honest direction: the oracle ran at the CODED
-	 *                     characteristic 0.10 while every §8 ruling is argued at mean 0.4-0.8, so
-	 *                     reading it against the ruling basis would MULTIPLY lambda*, not divide it.
-	 *     the abutment    "the jamb spreads and the flat arch lets go" is the one reading that could
-	 *                     still condemn it, and the LP was asked: its joint rows are no-tension plus
-	 *                     Mohr-Coulomb friction, so an abutment that could not receive the thrust
-	 *                     without sliding would have shown up as a low lambda*, not a high one.
+	 *                     needs only one admissible equilibrium, and the one it finds puts the flat
+	 *                     course into its abutments in head-joint compression — a flat arch, which
+	 *                     needs abutments, not cover.
+	 *     the margin      lambda* = 324.73 says the fixture is nowhere near strength-governed:
+	 *                     compressive capacity is 100x tensile (10.0 / 0.1 MPa) and four bricks of
+	 *                     self weight is a rounding error against it.
+	 *     the charity     discounted by both of the sweep header's slants at once (/3
+	 *                     plastic-vs-first-crack, /6 characteristic-vs-mean) it still reads 18.0.
+	 *                     The /6 runs the honest way: the oracle ran at coded characteristic 0.10
+	 *                     while every §8 ruling argues at mean 0.4-0.8, so the ruling basis would
+	 *                     multiply lambda*, not divide it.
+	 *     the abutment    "the jamb spreads and the flat arch lets go" is the one reading that
+	 *                     could still condemn it, and the LP's joint rows (no-tension plus
+	 *                     Mohr-Coulomb friction) would have shown a sliding abutment as a low
+	 *                     lambda*, not a high one.
 	 *
-	 * What the model's agreement is and is not worth: it reaches STANDS by re-seating the spanned
-	 * group through its head joints, which is the same jamming action in a cruder form — the
-	 * right family of mechanism, arrived at by a different route. Do not read it as confirmation:
-	 * at this wall's height the springing carries almost no pre-compression, and as sigma_n goes
-	 * to zero the Mohr-Coulomb cohesion term dominates and the thrust check goes toothless however
-	 * large H/V becomes (measured 2026-08-07, TestResults/2026-08-07_0230/RESULTS.md §6.2). The
-	 * weight of this verdict is carried by the LP, not by production agreeing with it.
+	 * The model's agreement (re-seating the spanned group through its head joints, the same
+	 * jamming action in cruder form) is not confirmation: at this wall's height the springing
+	 * carries almost no pre-compression, and as sigma_n goes to zero the Mohr-Coulomb cohesion term
+	 * dominates and the thrust check goes toothless however large H/V becomes (measured 2026-08-07,
+	 * TestResults/2026-08-07_0230/RESULTS.md §6.2). The verdict's weight is carried by the LP.
 	 *
-	 * The cost, recorded because it must stay visible: case 8 was the catalogue's last "no room to
-	 * arch" discriminator — DESIGN §8's case-11 entry names it as exactly that, twice, in the
-	 * sentence that let case 11 be re-ruled without losing the idea. After this ruling there is no
-	 * case anywhere in the set where arching is refused for lack of cover, and no row can fail if
-	 * a future solver grants cover-free arching everywhere. Two consequences to hand on:
+	 * The cost: case 8 was the catalogue's last "no room to arch" discriminator (DESIGN §8's
+	 * case-11 entry names it twice). After this ruling no case anywhere refuses arching for lack of
+	 * cover. Two consequences: the 7-vs-8 pair stops separating on outcome and left
+	 * Acceptance.Wall.MatchedPairs, since retired entirely (2026-08-12, the file header records
+	 * where every pair's discrimination went); and a replacement discriminator, if wanted, has to
+	 * starve the ABUTMENT rather than the cover — case 10's shape, though case 10 has itself since
+	 * been ruled to STAND.
 	 *
-	 *     - the 7-vs-8 pair stops separating on outcome and left Acceptance.Wall.MatchedPairs; that
-	 *       test has since retired entirely (2026-08-12, when the last of its pairs went the same
-	 *       way) and the FILE HEADER now records where every pair's discrimination went
-	 *     - a replacement discriminator, if the idea is wanted back, has to be a fixture where the
-	 *       ABUTMENT cannot receive the thrust — case 10's shape, not case 8's — since it is the
-	 *       abutment and not the cover that this ruling says a flat arch needs. NOTE, after
-	 *       2026-08-12: case 10 itself has since been ruled to STAND, so its shape is the model for
-	 *       such a fixture and not a fixture that does the job today
-	 *
-	 * And it supersedes the standing doubt, the other reason this went to the user: CURRENT_STATE
-	 * recorded that a bricklayer looking at a coverless course over 1.2 m would expect the whole
-	 * course to come down rather than two named bricks. That doubt was about which bricks the
-	 * LOCAL LOSS names; the ruling removes the local loss, so the doubt goes with it rather than
-	 * being answered. If physical evidence ever contradicts this row it will contradict the whole
-	 * verdict, not the naming — and it should come back through DESIGN §8 as a fourth ruling, not
-	 * as a quiet edit to the region this block just deleted.
+	 * It also supersedes the standing doubt that was the other reason this went to the user:
+	 * CURRENT_STATE recorded that a bricklayer would expect the whole course to come down rather
+	 * than two named bricks. That doubt was about which bricks the LOCAL LOSS names; removing the
+	 * local loss removes the doubt with it. If physical evidence ever contradicts this row it
+	 * should come back through DESIGN §8 as a fourth ruling, not a quiet edit.
 	 */
 
 	/*
 	 * CASE 9, re-ruled 2026-08-12: the ten-cell opening spans as a deep beam, and the third
 	 * arching-gate verdict retires with it.
 	 *
-	 * The geometry is unchanged, walked off the bricklayer above in centimetres:
+	 * Geometry, walked off the bricklayer above, cm: cut { 1, 3, 1.75, 11.25 } takes 28 of the 174
+	 * laid; jambs toothed (even courses stop at 33.25, resume at 259.25; odd stop at 44.50, resume
+	 * at 248.00); span 203.50 to 226.00 (~9.5 cells); head 60.00 cm of masonry (eight courses)
+	 * spans the hole.
 	 *
-	 *     the cut  { 1, 3, 1.75, 11.25 } takes cells 2..11 out of even course 2 and cells
-	 *              2.5..10.5 out of odd courses 1 and 3 — 28 of the 174 laid
-	 *     jambs    TOOTHED, so two faces per side: the even courses stop at 33.25 cm and resume
-	 *              at 259.25, the odd courses stop at 44.50 and resume at 248.00
-	 *     span     203.50 cm at its narrowest reveal and 226.00 at its widest — call it 9.5 cells
-	 *     head     the top of course 3 is 29.00 cm up; eight courses of cover stand over it and
-	 *              the wall's top is 89.00 cm, so 60.00 cm of masonry spans the hole
+	 * What the row used to claim: COLLAPSE of { 4, 11, 1.75, 11.25 } with both jamb regions
+	 * standing, on the published arching gate — BS 5977 wants 300 mm of masonry above the apex of a
+	 * 45-degree triangle on the clear span, and a 2.1 m span needs 1.07 m of rise; this fixture has
+	 * 0.60 m total. Red for its whole life because the model drops nothing here.
 	 *
-	 * What the row used to claim: COLLAPSE — the region { 4, 11, 1.75, 11.25 } this block used to
-	 * declare comes down, and the two jamb regions { 0, 3, -1.0, 1.75 } and { 0, 3, 11.25, 15.0 }
-	 * survive — on the published arching gate: BS 5977 wants 300 mm of masonry above the apex of a
-	 * 45 degree isosceles triangle raised on the clear span, and a 2.1 m span needs 1.07 m of rise
-	 * before the cover is even counted. This fixture has 0.60 m in total. The row was red for its
-	 * whole life because the model drops nothing here.
-	 *
-	 * The ruling, and why it is the catalogue that moved: as of the 2026-08-12 LP-oracle sweep
-	 * this row was the outlier of three independently derived methods, exactly as case 8 was:
+	 * The ruling: as of the 2026-08-12 sweep this row was the outlier of three independent methods,
+	 * as case 8 was:
 	 *
 	 *     catalogue   COLLAPSE, on the arching gate
 	 *     production  STANDS: drops nothing, breaks nothing, zero cascade passes; worst joint
-	 *                 0.98502040901419818 at c3/11.5-c4/11, the bed joint where the cover lands on
-	 *                 the right jamb
+	 *                 0.98502040901419818 at c3/11.5-c4/11, where the cover lands on the right jamb
 	 *     LP oracle   STANDS at lambda* = 36.5639285 (146 blocks / 350 joints — OracleSweepFull.
-	 *                 RigidBlock.WallsAndLadders. Its 4,885 pivots in 50.4 s were MEASURED
-	 *                 PRE-PARTIAL-PRICING on 2026-08-12 and the in-flight pricing slice has since
-	 *                 moved them; lambda* and the block/joint counts are the measurement, the cost
-	 *                 figures are history)
+	 *                 RigidBlock.WallsAndLadders; 4,885 pivots in 50.4 s, measured pre-partial-
+	 *                 pricing 2026-08-12, cost figures since moved but lambda* and counts did not)
 	 *
-	 * The user ruled STANDS on 2026-08-12, per the standing instruction of DESIGN §8 (cases 11, 12
-	 * and 8): a published design threshold is not a collapse predictor, and the physics decides.
-	 * Worked through, and the hand check is INDEPENDENT of both other methods:
+	 * The user ruled STANDS on 2026-08-12 per DESIGN §8's standing instruction. Worked through, and
+	 * the hand check is independent of both other methods:
 	 *
-	 *     the mechanism   60 cm of bonded masonry over a 213.75 cm span is a DEEP BEAM at span over
-	 *                     depth 3.6, not a triangle of loose bricks looking for somewhere to arch.
-	 *                     The gate assumes the masonry above the span is dead weight until it can
-	 *                     form an arch; a bonded section carries it in flexure whether or not there
-	 *                     is room for the triangle.
-	 *     the arithmetic  eight courses over 9.5 cells is 76 brick weights = 2027 N; simply
-	 *                     supported, W*L/8 = 542 N.m; the section is t*D^2/6 = 10.25 * 60^2/6 =
-	 *                     6150 cm^3; so the extreme fibre reads 0.088 MPa. That is 0.88x the
-	 *                     CONSERVATIVE characteristic f_xk1 (0.10) and about 0.15x the mean basis
-	 *                     (0.4-0.8) every §8 ruling is argued on. Under capacity on the strict
-	 *                     reading and comfortably under it on the honest one.
-	 *     the margin      lambda* = 36.56 survives both of the sweep header's charitable discounts
-	 *                     applied at once — /3 for plastic-vs-first-crack and /6 as a
-	 *                     characteristic-vs-mean budget — at 2.03, and the /6 runs the honest way
-	 *                     (the oracle ran at the coded characteristic 0.10).
-	 *     the agreement   production's 0.985 and the hand figure's 0.88 are the same answer to
-	 *                     within the routing. That is the cross-check that matters: two methods
-	 *                     that do not share an implementation both put this fixture just under
-	 *                     capacity, and the third stands it outright.
+	 *     the mechanism   60 cm of bonded masonry over a 213.75 cm span is a deep beam at
+	 *                     span/depth 3.6, not a triangle of loose bricks looking for an arch. A
+	 *                     bonded section carries it in flexure whether or not there is room for the
+	 *                     gate's triangle.
+	 *     the arithmetic  eight courses over 9.5 cells is 76 brick weights = 2027 N; W L/8 = 542
+	 *                     N.m; section t D^2/6 = 6150 cm^3; extreme fibre 0.088 MPa — 0.88x
+	 *                     characteristic f_xk1 (0.10), ~0.15x the mean basis (0.4-0.8).
+	 *     the margin      lambda* = 36.56 survives both sweep-header discounts at once (/3, /6) at
+	 *                     2.03; the /6 runs the honest way (the oracle ran at coded characteristic).
+	 *     the agreement   production's 0.985 and the hand figure's 0.88 are the same answer within
+	 *                     the routing — two independently-implemented methods both put this fixture
+	 *                     just under capacity, and the third stands it outright.
 	 *
-	 * The cost, recorded because it must stay visible: this is the third verdict to leave the set
-	 * on the retirement of the published arching gate — case 11 on 2026-08-08, case 8 on
-	 * 2026-08-11, case 9 now — and after it the set has no case that refuses a span for want of
-	 * rise. Nothing here can fail if a future solver grants deep-beam action over any span at any
-	 * cover. The wanted-list discriminator that would restore the idea is already recorded
-	 * (CURRENT_STATE, "new acceptance cases wanted"): it has to starve the abutment, since after
-	 * three rulings it is the abutment and not the cover or the rise that a spanning course needs.
+	 * The cost: the third verdict to leave the set on the retirement of the published arching gate
+	 * (case 11 on 2026-08-08, case 8 on 2026-08-11, case 9 now) — after it, no case refuses a span
+	 * for want of rise. The wanted-list discriminator that would restore the idea (CURRENT_STATE,
+	 * "new acceptance cases wanted") has to starve the abutment instead.
 	 *
-	 * And the row goes green, which is why its pins are deleted rather than moved: the model
-	 * already stands this wall, so `DropsToday` has nothing to characterise; case 9 leaves the
-	 * caption test's known-disagreement list in the same edit. Unlike cases 10 and 19 below, this
-	 * ruling hands the row to the model outright.
+	 * The row goes green, so its pins are deleted rather than moved: the model already stands this
+	 * wall, so `DropsToday` has nothing to characterise, and case 9 leaves the caption test's
+	 * known-disagreement list in the same edit.
 	 *
-	 * One thing to watch, recorded in CURRENT_STATE and repeated here: production's 0.98502040901
-	 * is one retune from 1.0. Nothing physical separates this wall from a wall that drops its
-	 * whole head, and the day that reading crosses over, this row and the sweep's `AgreeStands`
-	 * relation both flip with no change in the physics. The absolute reading is pinned by
-	 * Acceptance.Wall.SpanIsReadInTheJointNotInTheOutcome below so the crossing fails loudly
-	 * rather than quietly reclassifying the case.
+	 * Worth watching: production's 0.98502040901 is one retune from 1.0. Nothing physical separates
+	 * this wall from one that drops its whole head, and the day that reading crosses over, this row
+	 * and the sweep's `AgreeStands` relation both flip with no change in the physics. Pinned by
+	 * Acceptance.Wall.SpanIsReadInTheJointNotInTheOutcome so the crossing fails loudly.
 	 */
 	const FWallRegion Case9Cuts[] = { { 1, 3, 1.75, 11.25 } };
 
@@ -1215,73 +1140,55 @@ namespace WallAcceptanceTestSupport
 	 * CASE 10, re-ruled 2026-08-12: the free-end panel cantilevers, and production's "collapse" is
 	 * an absent mechanism rather than a strength verdict.
 	 *
-	 * The geometry: case 7's cut, extended through to the free right end —
-	 * { 1, 3, 7.75, 11.50 } takes cells 8..11 out of even course 2 and cells 8.5..11.25 (the
-	 * closing half bat included) out of odd courses 1 and 3, twelve of the 150 laid. So there is a
-	 * jamb on the left and nothing at all on the right — the panel of cover over the opening has
-	 * one support, not two, and 3.75 cells (84.4 cm) of it hangs past that support.
+	 * Geometry: case 7's cut extended through to the free right end — { 1, 3, 7.75, 11.50 }, twelve
+	 * of the 150 laid. A jamb on the left, nothing on the right: the panel of cover has one
+	 * support, not two, and 3.75 cells (84.4 cm) hangs past it.
 	 *
 	 * What the row used to claim: COLLAPSE of { 4, 11, 8.00, 11.50 } with { 0, 3, -1.0, 7.75 }
-	 * standing — the unsupported end of the wall comes down and the jambed half survives — on the
-	 * reading that an opening with no abutment cannot arch, which is true and is not the question.
-	 * The fall region died with the ruling; the survivor region did not, and the paragraph below
-	 * headed "what survives the ruling" says why it is still asserted.
+	 * standing, on the reading that an opening with no abutment cannot arch — true, but not the
+	 * question. The fall region died with the ruling; the survivor region did not (see below).
 	 *
 	 * The ruling. As of the 2026-08-12 sweep:
 	 *
 	 *     catalogue   COLLAPSE — the overhanging panel comes down
-	 *     production  drops 12, THREE OF THEM STRANDED, in ZERO cascade passes at a worst reading
-	 *                 of 0.299975 (at c2/7-c3/7.5, in the jamb). No joint anywhere is near
-	 *                 capacity; nothing broke
+	 *     production  drops 12, three stranded, in zero cascade passes at a worst reading of
+	 *                 0.299975 (c2/7-c3/7.5, in the jamb); nothing broke
 	 *     LP oracle   STANDS at lambda* = 35.8172298 (138 blocks / 349 joints; 2,640 pivots in
-	 *                 11.5 s, MEASURED PRE-PARTIAL-PRICING 2026-08-12 — the in-flight pricing slice
-	 *                 has already moved both, so treat the cost figures as history and lambda* and
-	 *                 the block/joint counts as the measurement)
+	 *                 11.5 s, measured pre-partial-pricing 2026-08-12 — cost figures since moved,
+	 *                 lambda* and counts did not)
 	 *
-	 * The user ruled STANDS on 2026-08-12. What decided it is the ZERO in "zero cascade passes":
+	 * The user ruled STANDS on 2026-08-12. What decided it is the zero in "zero cascade passes":
 	 *
-	 *     the finding     production is not saying this panel is too weak. It is saying its router
-	 *                     could not find a path for those twelve pieces, because load only ever
-	 *                     goes DOWN and there is nothing under them. Every one of the twelve is
-	 *                     unrouted, not overloaded — the sharpest statement of DESIGN §7's missing
-	 *                     mechanism anywhere in the suite, and NOT evidence about masonry.
-	 *     the mechanism   84.4 cm of bonded panel 60 cm deep off one jamb is a CANTILEVER, and a
-	 *                     bonded section cantilevers. This is the same composite action the
-	 *                     2026-08-06 free-end ruling credited when it ruled that one brick out at a
-	 *                     free end must not bring a wall down (case 3) — at 3.75 cells instead of
-	 *                     one, which is the only thing that is new.
-	 *     the arithmetic  8 courses x 3.75 cells is 30 brick weights = 800 N, acting at a 42.2 cm
-	 *                     lever, so M = 337 N.m; over the same t*D^2/6 = 6150 cm^3 that is
-	 *                     0.055 MPa — 0.55x the characteristic f_xk1 (0.10) and 0.14x of f_xk2
-	 *                     (0.40). And it is charitable to the COLLAPSE reading twice over: the
-	 *                     crack plane it assumes is a straight vertical cut, where a real one is a
-	 *                     toothed staircase picking up bed-joint cohesion the plane cannot see.
+	 *     the finding     production is not saying this panel is too weak — its router could not
+	 *                     find a path for those twelve pieces, because load only ever goes down and
+	 *                     there is nothing under them. Unrouted, not overloaded.
+	 *     the mechanism   84.4 cm of bonded panel 60 cm deep off one jamb is a cantilever, and a
+	 *                     bonded section cantilevers — the same composite action the 2026-08-06
+	 *                     free-end ruling credited for case 3, at 3.75 cells instead of one.
+	 *     the arithmetic  8 courses x 3.75 cells is 30 brick weights = 800 N at a 42.2 cm lever,
+	 *                     M = 337 N.m; over t D^2/6 = 6150 cm^3 that is 0.055 MPa — 0.55x
+	 *                     characteristic f_xk1, 0.14x f_xk2 — and charitable to COLLAPSE twice over
+	 *                     (the assumed crack plane is a straight vertical cut; a real one is a
+	 *                     toothed staircase picking up bed-joint cohesion).
 	 *     the margin      35.82 discounted by /3 and /6 together is 1.99, still standing.
 	 *
-	 * What this row becomes, a new shape for the catalogue: a STANDS row the model still disagrees
-	 * with. Every previous STANDS verdict here was one the model produced. This one is expected to
-	 * stand and measured to drop twelve, so it stays on the known-red list, stays on the caption's
-	 * disagreement marker, and keeps `DropsToday = 12` / `StrandsToday = 3` — the pins are what
-	 * stop the failure drifting inside its own red. The row goes green at DESIGN §7's evolution
-	 * step 4, when equilibrium becomes the cascade's authority and load can route sideways.
+	 * A new shape for the catalogue: a STANDS row the model still disagrees with (every previous
+	 * STANDS verdict here was one the model produced). Stays on the known-red list and the
+	 * caption's disagreement marker, keeps `DropsToday = 12` / `StrandsToday = 3` so the failure
+	 * doesn't drift inside its own red. Goes green at DESIGN §7's evolution step 4, when
+	 * equilibrium becomes the cascade's authority and load can route sideways.
 	 *
 	 * What survives the ruling: the survivor region, restored verbatim. A STANDS verdict says
-	 * nothing comes down anywhere, so { 0, 3, -1.0, 7.75 } — the jambed left half below the head,
-	 * which the old COLLAPSE row named as the masonry that must keep its footing — is still a true
-	 * claim and a strictly stronger one than "twelve fell". The three counts this row pins are
-	 * blind to which twelve: a routing change that dropped different pieces while dropping twelve
-	 * of them would satisfy `DropsToday`, `StrandsToday` and the STANDS failure line all three,
-	 * and only the region names the identity. It costs nothing to keep and it is asserted in the
-	 * inverted shape — no piece inside it may be among the fallen — so it characterises where
-	 * today's wrongness is not. Verified against the measured drop set: all twelve sit in courses
-	 * 4..9 at cells 9.0 and above, so the region is clear of every one of them and clear of the cut.
+	 * nothing comes down anywhere, so { 0, 3, -1.0, 7.75 } is still true and stronger than "twelve
+	 * fell" — the drop/strand counts are blind to WHICH twelve, only the region names the identity.
+	 * Asserted inverted (no piece inside may be among the fallen). Verified against the measured
+	 * drop set: all twelve sit in courses 4..9 at cells 9.0 and above, clear of the region and cut.
 	 *
 	 * The cost: the 7-vs-10 abutment pair stops separating on outcome and leaves with the retired
-	 * `Acceptance.Wall.MatchedPairs` (the file header lists all five pairs and where each went).
-	 * It was deliberately not relocated onto a production reading — case 10's 0.300 against case
-	 * 7's 0.269 is a real number measured on a wall the router could not route, and pinning it
-	 * would claim an abutment term the model demonstrably does not have. Its home is the LP:
-	 * 296.22 against 35.82, 8.27x, in the physically right direction.
+	 * `Acceptance.Wall.MatchedPairs` (file header lists all five pairs and where each went). Not
+	 * relocated onto a production reading — case 10's 0.300 against case 7's 0.269 is a real number
+	 * measured on a wall the router could not route, and pinning it would claim an abutment term
+	 * the model doesn't have. Its home is the LP: 296.22 against 35.82, 8.27x.
 	 */
 	const FWallRegion Case10Cuts[] = { { 1, 3, 7.75, 11.50 } };
 	const FWallRegion Case10Stands[] = { { 0, 3, -1.0, 7.75 } };
@@ -1292,74 +1199,46 @@ namespace WallAcceptanceTestSupport
 	 * CASE 11, ruled twice on 2026-08-08: a published design gate said LOCAL LOSS, the physics
 	 * says STANDS, and the physics is the keeper.
 	 *
-	 * The row was drafted "stands", ruled "local loss", and then re-ruled "stands" the same day,
-	 * and both rulings are recorded because which one is right is the whole content of this row.
+	 * Drafted "stands", ruled "local loss", re-ruled "stands" the same day — both rulings are
+	 * recorded because which one is right is the whole content of this row. The first rested on
+	 * the BS 5977 arching gate (an opening arches if it has an overlapping bond and 300 mm of
+	 * masonry above the apex of a 45-degree triangle on the clear span; this fixture fails it by
+	 * its whole height). The second is that a published design threshold is not a collapse
+	 * predictor: the 300 mm rule is a never-even-crack serviceability line carrying safety
+	 * factors, and the question here is what a real wall does. Worked honestly, the wall holds.
 	 *
-	 * The first ruling rested on the BS 5977 arching gate — an opening arches if it has an
-	 * overlapping bond and at least 300 mm of masonry above the apex of a 45 degree isosceles
-	 * triangle raised on the clear span — and claude_plans/PROJECT_REVIEW.md §3 checked all twenty
-	 * rows against it. This fixture fails it by its whole height. The second ruling is that a
-	 * published design threshold is not a collapse predictor and must not be treated as one: the
-	 * 300 mm rule is a never-even-crack serviceability line carrying design safety factors, and
-	 * the question this catalogue asks is what a real wall does, which has to be answered by
-	 * working the physics rather than quoting a code. Worked honestly, the wall holds — see below.
+	 * Geometry, walked off the bricklayer above, cm: cut { 0, 3, 2.75, 8.25 }, 22 of the 150 laid;
+	 * jambs toothed (even courses stop at 55.75, resume 191.75; odd stop 67.00, resume 180.50);
+	 * span 113.50 to 136.00 (1.2-1.4 m); head 60.00 cm of cover over the opening; piers three cells
+	 * (66.5 cm) of bearing each.
 	 *
-	 * The geometry is kept because it is the input to both readings, walked off the bricklayer
-	 * above rather than off the drawing, in centimetres:
+	 * So there is between 32 mm and nothing above the gate's apex, against the 300 mm it wants —
+	 * true as far as it goes: no thrust line fits, so the panel isn't held up by an arch.
 	 *
-	 *     the cut  { 0, 3, 2.75, 8.25 } takes cells 3..8 out of the even courses 0 and 2 and cells
-	 *              3.5..7.5 out of the odd courses 1 and 3 — six bricks and five bricks a course,
-	 *              22 of the 150 laid
-	 *     jambs    the reveal is TOOTHED, so it is two faces and not one: the even courses stop at
-	 *              55.75 cm and resume at 191.75, the odd courses stop at 67.00 and resume at 180.50
-	 *     span     113.50 cm at its narrowest and 136.00 cm at its widest — a 1.2-1.4 m opening
-	 *     head     the top of course 3 is 29.00 cm up; eight courses of cover stand over it and the
-	 *              wall's top is 89.00 cm, so there is 60.00 cm of masonry above the opening
-	 *     apex     half the span above the head: 56.75 cm at the narrowest reveal, 68.00 at the
-	 *              widest, i.e. 85.75 cm to 97.00 cm above the ground
-	 *     piers    three cells of bearing each — 66.5 cm of solid masonry carrying eight courses
-	 *
-	 * So there is between 32 mm and nothing at all above that apex, against the 300 mm the gate
-	 * wants, and at the wide reveal the apex stands 8 cm clear above the top of the wall. That is
-	 * what the first ruling read, and it is true as far as it goes: no thrust line fits above the
-	 * triangle, so this panel is not held up by an arch.
-	 *
-	 * It is held up by being a deep beam, which is the reading the gate never asks about. The
-	 * 60 cm of bonded masonry standing over the opening spans 136 cm at worst, so span/depth is
-	 * 2.3 — squarely deep-beam territory — and the load it carries is its own weight, the same 44
-	 * bricks the discarded fall region named:
+	 * It is held up by being a deep beam, which the gate never asks about. 60 cm of bonded masonry
+	 * spanning 136 cm at worst is span/depth 2.3 — deep-beam territory — carrying its own 44 bricks:
 	 *
 	 *     W   44 x 2.72163125 kg = 119.75 kg, x 980 = 1.1735e5 Unreal force units
 	 *     M   W L / 8 = 1.1735e5 x 136 / 8 = 1.995e6 uu.cm at midspan
 	 *     Z   t D^2 / 6 = 10.25 x 60^2 / 6 = 6150 cm3
-	 *     f   M / Z = 324 uu/cm2, i.e. 0.0324 MPa — call it 0.03 to 0.04 depending on which reveal
-	 *         governs and on how much surcharge beyond the span window is counted in
+	 *     f   M / Z = 324 uu/cm2, i.e. 0.0324 MPa
 	 *
-	 * Against what: the profiles carry the mean bond since the 2026-08-13 re-anchor — 0.70 MPa —
-	 * where 0.03-0.04 is around five per cent of capacity. Even against the retired conservative
-	 * characteristic 0.10 it was under a third, and the model's own reading agrees: its worst
-	 * joint in this wall is c3/8.5-c4/8 at 0.0517 of the mean f_x1 (0.362193 of the retired
-	 * f_xk1) — the toothed corner of the reveal, not the midspan — which is the same
-	 * "comfortable" answer from a completely different route. Real half-brick walls bridge 1.2 m
-	 * of missing masonry routinely; a rule that forbids it is a rule about cracking, not about
-	 * falling.
+	 * Against the mean bond carried since the 2026-08-13 re-anchor (0.70 MPa), that is ~5% of
+	 * capacity, and the model's own worst joint (c3/8.5-c4/8, the toothed corner, not the midspan)
+	 * agrees at 0.0517 of mean f_x1 — the same comfortable answer by a different route. Real
+	 * half-brick walls bridge 1.2 m of missing masonry routinely; a rule that forbids it is about
+	 * cracking, not falling.
 	 *
-	 * HENCE STANDS, WITH NO FALL REGION AND NO SURVIVOR REGION, because nothing comes down. Paired
-	 * against case 12 this row isolates PIER WIDTH — three cells of bearing against one — and on
-	 * 2026-08-09 the same honest-physics rule reached case 12 itself: the one-cell pier ALSO holds
-	 * (the arithmetic is above Case12Cuts), so the pair separates in the MARGIN rather than the
-	 * outcome, exactly as 13/14 and 15/16 came to.
+	 * Hence STANDS, no fall region, no survivor region. Paired against case 12 this row isolates
+	 * pier width (three cells of bearing against one); on 2026-08-09 the same honest-physics rule
+	 * reached case 12 too — the one-cell pier also holds (arithmetic above Case12Cuts) — so the
+	 * pair separates in the margin, not the outcome, as 13/14 and 15/16 came to.
 	 *
-	 * And the clause that used to end this block is now false, worth saying rather than deleting.
-	 * It read: "the genuine 'no room to arch' discriminator in this set remains case 8, one course
-	 * of cover over a four-cell hole, which stays red and stays local loss." That was the
-	 * consolation for re-ruling this row, and DESIGN §8 recorded it in the same words. On
-	 * 2026-08-11 the same standing instruction reached case 8 too — the LP oracle stands the
-	 * coverless course at lambda* = 324.73 through head-joint compression into its abutments —
-	 * and the user re-ruled it STANDS. So the set now has no case at all where arching is refused
-	 * for lack of cover, and the honest reading of these three rulings together is that cover was
-	 * never the gate: what a flat or deep arch needs is an abutment that can receive the thrust,
-	 * which is case 10's variable and the one row of the family still red.
+	 * This block used to end by naming case 8 as the set's one remaining "no room to arch"
+	 * discriminator; on 2026-08-11 the same standing instruction reached case 8 too (the LP oracle
+	 * stands the coverless course at lambda* = 324.73 through head-joint compression), so the set
+	 * now has no case where arching is refused for lack of cover — what a flat or deep arch needs
+	 * is an abutment that can receive the thrust, case 10's variable and the one row still red.
 	 */
 	const FWallRegion Case11Cuts[] = { { 0, 3, 2.75, 8.25 } };
 
@@ -1367,89 +1246,60 @@ namespace WallAcceptanceTestSupport
 	 * CASE 12, rewritten 2026-08-09: the same span on a one-cell pier — and, worked honestly, the
 	 * pier holds.
 	 *
-	 * What the old row was and why it went: as encoded until today, case 12 cut ten cells out of
-	 * twelve — { 0, 3, 0.75, 10.75 } — which varied span and pier at once against case 11 and
-	 * near-duplicated case 9's ten-cell collapse. The comment that stood here claimed the row
-	 * "passes today", which had stopped being true: it was one of the six known reds, pinned at 76
-	 * dropped and 11 stranded, and it named no survivors, so a model that always answered "falls"
-	 * would have passed it. The 2026-08-08 review approved rewriting it as case 11's own span on a
-	 * narrow pier, so that pier width is the one variable between the halves of the pair.
+	 * What the old row was: it cut ten cells out of twelve, varying span and pier at once against
+	 * case 11 and near-duplicating case 9's collapse. It was one of the six known reds (76 dropped,
+	 * 11 stranded) and named no survivors, so a model that always answered "falls" would have
+	 * passed it. The 2026-08-08 review approved rewriting it as case 11's own span on a narrow
+	 * pier, so pier width is the one variable between the halves of the pair.
 	 *
-	 * The new geometry, walked off the bricklayer above rather than off a drawing. The wall is
-	 * case 11's wall — twelve courses, twelve cells — and the cut is case 11's cut shifted to the
-	 * wall's left end:
+	 * The new geometry, walked off the bricklayer above. The wall is case 11's (twelve courses,
+	 * twelve cells) with case 11's cut shifted to the left end: cut { 0, 3, 0.75, 6.25 }, 22 of the
+	 * 150 laid, exactly case 11's count; pier is a bonded running-bond column 21.5-32.75 cm along
+	 * the wall, four courses to the springing; abutment (right) keeps five cells, 111.5 cm of
+	 * solid masonry — case 11's pier grown wider, so any failure is attributable to the narrow side
+	 * alone; span the same toothed 113.5-136.0 cm as case 11 under the same 60 cm of cover.
 	 *
-	 *     the cut  { 0, 3, 0.75, 6.25 } takes cells 1..6 out of even courses 0 and 2 and cells
-	 *              1.5..5.5 out of odd courses 1 and 3 — six and five bricks a course, 22 of the
-	 *              150 laid, exactly case 11's count
-	 *     pier     what is left at the left end: the cell-0 brick on even courses, the 9.25 cm
-	 *              closing piece and the cell-0.5 brick on odd — a bonded running-bond column
-	 *              21.5 to 32.75 cm along the wall, four courses (29 cm) up to the springing
-	 *     abutment the right side keeps five cells, 111.5 cm of solid masonry — case 11's pier
-	 *              grown wider, so any failure here is attributable to the narrow side alone
-	 *     span     the reveals are the same toothed 113.5 to 136.0 cm as case 11, under the same
-	 *              60 cm of bonded cover
+	 * One narrow pier rather than two symmetric ones, because two one-cell piers bound an
+	 * eight-cell wall in which a pier failure leaves nothing standing to name (old case 12's exact
+	 * weakness). Narrowing one pier keeps the wall, span and cover bit-identical to case 11 and
+	 * leaves the wide side able to survive anything the narrow does.
 	 *
-	 * Why one narrow pier rather than two: the approved sketch said "one-cell piers, with a
-	 * survivor region", and those two wishes cannot both be had symmetrically — two one-cell piers
-	 * bound an eight-cell wall, in which a pier failure leaves nothing standing to name (old case
-	 * 12's exact weakness). Narrowing one pier keeps the wall, the span and the cover
-	 * bit-identical to case 11 and leaves the wide side able to survive anything the narrow does.
+	 * The panel is not the question — case 11 settled it on identical numbers (span/depth 2.3,
+	 * M/Z ~= 0.033 MPa, a twentieth of mean bond strength). The pier is. The recorded expectation
+	 * was that thrust shoves it over; worked honestly:
 	 *
-	 * The panel is not the question — case 11 settled it on identical numbers: span/depth 2.3, a
-	 * ~44-brick panel (119.75 kg, 1.174e5 uu) at M/Z ≈ 0.033 MPa of bending, a twentieth of mean
-	 * bond strength. The pier is the question. The recorded expectation (DESIGN §8, made in
-	 * passing inside case 11's second ruling) was that the thrust shoves it over; worked honestly,
-	 * per the standing rule that neither a published gate nor the model is gospel:
+	 *     H       minimum thrust at r ~= 50 cm rise: H = W L/(8r) = 1174 N x 1.36 m / (8 x 0.50 m)
+	 *             ~= 400 N, a third of the panel's own weight. (The solver's kern-limited r = d_e/3
+	 *             = 20 cm reads H = 998 N, a deliberately 2.5x-harsher serviceability construction
+	 *             — DESIGN §5.4.)
+	 *     hinge   the course-0/1 bed joint, ~22 cm below the springing: overturning demand
+	 *             ~= 400 N x 0.22 m = 88 N.m (kern: 220).
+	 *     rigid   restoring is N x b/2. The pier's share of the upper wall plus its own courses is
+	 *             550-1,050 N over b/2 = 10.75 cm: 59-113 N.m — a rigid stack sits at the line,
+	 *             0.7 to 1.3.
+	 *     bonded  the joint's modulus is 790 cm3, so mean flexural bond (0.4-0.8 MPa) adds
+	 *             316-632 N.m of capacity: four to eight times the honest demand, still 1.7-3.4x
+	 *             the kern-limited thrust. Sliding never governs (cohesion alone is 4,400 N, ten
+	 *             times H).
 	 *
-	 *     H       the panel places its thrust line where it likes inside its own 60 cm depth, so
-	 *             the honest demand on an abutment is the MINIMUM thrust, at r ≈ 50 cm of rise:
-	 *             H = W·L/(8r) = 1174 N x 1.36 m / (8 x 0.50 m) ≈ 400 N — a third of the panel's
-	 *             own weight. (The solver's kern-limited r = d_e/3 = 20 cm reads H = 998 N; that
-	 *             is an uncracked-serviceability construction, deliberately 2.5x harsher than a
-	 *             collapse prediction — DESIGN §5.4 says so itself.)
-	 *     hinge   course 0 is ground, so the candidate hinge is the course-0/1 bed joint, ~22 cm
-	 *             below the springing: overturning demand ≈ 400 N x 0.22 m = 88 N·m (kern: 220).
-	 *     rigid   restoring is N x b/2. The pier's share of the ~95-brick upper wall plus its own
-	 *             courses is 550 to 1,050 N by where the abutment reaction lands, over b/2 =
-	 *             10.75 cm: 59 to 113 N·m. A RIGID stack is at the line — 0.7 to 1.3.
-	 *     bonded  the joint's own modulus is 10.25 x 21.5^2 / 6 = 790 cm3, so mean flexural bond
-	 *             — 0.4 to 0.8 MPa, the basis adopted 2026-08-08 — adds 316 to 632 N·m of
-	 *             capacity: FOUR TO EIGHT TIMES the honest demand, and still 1.7 to 3.4x against
-	 *             even the kern-limited thrust. Sliding never governs: cohesion alone is 0.2 MPa
-	 *             over ~220 cm2 = 4,400 N, ten times H.
+	 * So only the rigid-block / characteristic-vs-kern-thrust reading condemns this pier — the
+	 * never-even-crack design stack, already rejected three times in this catalogue (cases 14, 16,
+	 * the free-end ruling): an uncracked bonded section carries what a rigid block cannot. Verdict:
+	 * STANDS, no fall region, no survivor region.
 	 *
-	 * So the only readings that condemn this pier are the rigid block and the
-	 * characteristic-strength-against-kern-thrust stack — the never-even-crack design stack. The
-	 * rigid-block reading is the one this catalogue has already rejected three times (cases 14 and
-	 * 16 and the free-end ruling): an uncracked bonded section carries what a rigid block cannot.
-	 * A realistic scenario agrees — a 1.2-1.4 m garden-wall opening on a single 215 mm jamb under
-	 * 60 cm of bonded brickwork is common construction and it stands, cracked at worst. Verdict:
-	 * STANDS, with no fall region and no survivor region, because nothing comes down. The
-	 * "survivor region" of the approved sketch presupposed a collapse the arithmetic does not
-	 * support; what it was for — a collapse row that cannot be passed by a model that always says
-	 * "falls" — is moot on a row that expects nothing to fall.
+	 * The model agrees: measured 2026-08-09, it drops 0, breaks 0, strands 0, worst joint 0.362067
+	 * at c3/0.5-c4/1 — within 0.03% of case 11's 0.362193, the same half-seat eccentricity at a
+	 * reveal corner. The solver carries thrust as springing shear only, never as a moment down the
+	 * pier (DESIGN §7 item 6), so it reads no pier-width term at all — the margin separation exists
+	 * only in the arithmetic above, which is why the discrimination waits on the leaning stack and
+	 * the LP oracle.
 	 *
-	 * The model agrees, and for a reason worth pinning in prose: measured 2026-08-09, it drops 0,
-	 * breaks 0, strands 0, and its worst joint reads 0.362067 at the pier-side springing
-	 * c3/0.5-c4/1 — within 0.03% of case 11's 0.362193, because both are the same half-seat
-	 * eccentricity at a reveal corner. The solver carries the thrust as springing shear only and
-	 * never walks it down the pier as a moment (DESIGN §7 item 6), so it reads no pier-width term
-	 * at all: the margin separation between these two rows exists in the arithmetic above and in
-	 * no readout, which is why the pair has no reading test to move onto and the discrimination
-	 * waits on the leaning stack and the LP oracle.
-	 *
-	 * What the set gives up, said plainly: at self-weight there is no honest fixture in this
-	 * family where a pier fails while its span survives — the thrust scales with the panel's own
-	 * weight while the pier's capacity scales with the wall standing on it. The pier-overturning
-	 * discriminator DESIGN §7 items 1 and 6 want needs either a surcharge (no external-force
-	 * channel exists yet) or no thrust at all — the leaning-stack case, queue item 2, the
-	 * overturning guard's red test. The pair against case 11 accordingly separates in the margin —
-	 * the one-cell pier runs a few times from failure on the mean basis where every member of
-	 * case 11 sits an order of magnitude clear — rather than in the outcome, and the MatchedPairs
-	 * row that asserted the outcome half was removed with the same dating. The LP oracle has
-	 * since paid that debt: 128.12 on three cells of bearing against 89.12 on one, 1.44x in the
-	 * physically right direction, pinned in OracleSweepFull.RigidBlock.WallsAndLadders.
+	 * At self-weight there is no honest fixture in this family where a pier fails while its span
+	 * survives — thrust scales with the panel's weight while pier capacity scales with the wall on
+	 * it. The pair against case 11 separates in the margin rather than the outcome, and the
+	 * MatchedPairs row asserting the outcome half retired with the same dating. The LP oracle has
+	 * since paid that debt: 128.12 on three cells of bearing against 89.12 on one, 1.44x, pinned in
+	 * OracleSweepFull.RigidBlock.WallsAndLadders.
 	 */
 	const FWallRegion Case12Cuts[] = { { 0, 3, 0.75, 6.25 } };
 
@@ -1463,40 +1313,27 @@ namespace WallAcceptanceTestSupport
 	/*
 	 * CASE 14, re-derived: a bonded four-step corbel stands at 0.19516 and nothing comes down.
 	 *
-	 * The verdict on this row was COLLAPSE until 2026-08-07 and the user ruled it wrong. The
-	 * catalogue's reasoning was a rigid-body overturning reading — "the resultant walks outside
-	 * the bed below" — and that reading is geometrically true here and stated below because it is
-	 * worth knowing which claim was abandoned. What overrules it is that this project models an
-	 * uncracked bonded section, and the same user had already ruled, on 2026-08-06, that a brick
-	 * deleted at a free end must not bring a wall down. Any rule local enough to honour that also
-	 * honours this corbel: `Core.Structure.ACorbelResistsWithItsWholeDepth` asserts a five-step
-	 * raking corbel standing at 0.219, and a five-step corbel and a four-step one are the same
-	 * fixture with a different provenance — one cut that way, one laid that way. A threshold
-	 * sited between them would be a number tuned to make two contradictory statements both true.
+	 * The verdict was COLLAPSE until 2026-08-07, on a rigid-body overturning reading ("the
+	 * resultant walks outside the bed below") — geometrically true here, stated below for the
+	 * record. It is overruled because this project models an uncracked bonded section, and the
+	 * user had already ruled on 2026-08-06 that a brick deleted at a free end must not bring a
+	 * wall down. Any rule that honours that also honours this corbel:
+	 * `Core.Structure.ACorbelResistsWithItsWholeDepth` stands a five-step raking corbel at 0.219,
+	 * and a five-step and four-step corbel are the same fixture with different provenance — a
+	 * threshold between them would make two contradictory statements both true.
 	 *
-	 * What the fixture actually presents, walked off the bricklayer above rather than assumed.
-	 * CourseGeometry pushes each course from 6 upward one more half cell (11.25 cm) out and closes
-	 * it with a full brick, so the end brick of course c spans
+	 * What the fixture presents, walked off the bricklayer above. CourseGeometry pushes each
+	 * course from 6 upward one more half cell (11.25 cm) out, closing with a full brick, so every
+	 * one of the four end bricks overlaps exactly one piece below it over 10.25 cm — the same
+	 * square half seat the raking staircase corbel presents — with its centre of mass 5.625 cm
+	 * outboard of that patch's centroid: four steps of the staircase fixture instead of eleven.
+	 * (This is also the overturning claim: mass acts 5.625 cm out on a patch only 5.125 cm wide, so
+	 * the resultant is outside the bearing. Bond carries it.)
 	 *
-	 *     course 6   158.00 .. 179.50      course 8   180.50 .. 202.00
-	 *     course 7   169.25 .. 190.75      course 9   191.75 .. 213.25
-	 *
-	 * and the end brick of the flush course 5 below is the odd course's half bat at 158.00..168.25.
-	 * Every one of the four therefore overlaps exactly one piece below it, over exactly 10.25 cm —
-	 * the same square half seat the raking staircase corbel presents — with its centre of mass
-	 * 5.625 cm outboard of that patch's centroid. That is what makes this the staircase's fixture:
-	 * four steps of it instead of eleven. (It is also the overturning claim: the mass acts 5.625 cm
-	 * out on a patch only 5.125 cm wide, so the resultant is outside the bearing. Bond carries it.)
-	 *
-	 * The ladder, and it is the staircase ladder because it is the staircase topology: each step
-	 * takes its own weight, all of the step above (which has nowhere else to go) and half of the
-	 * next brick along, whose own share grows the same way; the moment carries across the 11.25 cm
-	 * the corbel has stepped out. Written for s steps below the top and asserted, not imported.
-	 *
-	 * And the section is the depth of bonded masonry standing over the joint, W = t*D^2/6, taken
-	 * at the lesser of that and the bed patch's own 179.4817708 cm3 — the top step has one course
-	 * over it, D = 7.5 cm, W = 96.09 cm3, shallower than the patch, so the patch governs there and
-	 * the step keeps the 0.058203838191552663 that `AdoptedWallLoadsItsWaistEccentrically` pins:
+	 * The ladder is the staircase topology: each step takes its own weight, all of the step above,
+	 * and half of the next brick along, whose share grows the same way. Section is the depth of
+	 * bonded masonry over the joint, W = t D^2/6, taken at the lesser of that and the bed patch's
+	 * own 179.4817708 cm3:
 	 *
 	 *     course   s   F (weights)   M (weight.cm)   courses over   reads
 	 *        9     0        1             5.625            1        0.058203838   (patch governs)
@@ -1504,18 +1341,14 @@ namespace WallAcceptanceTestSupport
 	 *        7     2        4.5          56.25             3        0.173476333
 	 *        6     3        7           112.5              4        0.195160875   <- the worst
 	 *
-	 * 0.195 of f_xk1 is a corbel standing at a fifth of what holds it, so the verdict follows the
-	 * number rather than the other way round: STANDS, with no fall region and no survivor region
-	 * to name, because nothing comes down. The arithmetic is asserted in its own test below rather
-	 * than left as a comment, since a verdict of "stands" is satisfied by 0.195 and by 0.0001
-	 * alike and only one of them is this fixture.
+	 * 0.195 of f_xk1 is a corbel standing at a fifth of what holds it: STANDS, no fall region, no
+	 * survivor region. Asserted in its own test below rather than left as a comment, since "stands"
+	 * is satisfied by 0.195 and by 0.0001 alike.
 	 *
-	 * Cross-checked against two figures this file did not produce: the same four lines of
-	 * arithmetic give 0.21858 for a five-step corbel and 0.36903147272727271 for the eleven-step
-	 * staircase — ARCHING_DESIGN.md's published 0.219 and the anchor
-	 * `Core.Structure.AStaircaseVoidCondemnsTheCorbel` pins to seventeen digits. Both are asserted
-	 * below as loose cross-checks, so a derivation that drifted fails here rather than agreeing
-	 * with itself.
+	 * Cross-checked against two figures this file did not produce: the same arithmetic gives
+	 * 0.21858 for a five-step corbel and 0.36903147272727271 for the eleven-step staircase —
+	 * ARCHING_DESIGN.md's published 0.219 and `Core.Structure.AStaircaseVoidCondemnsTheCorbel`'s
+	 * pin to seventeen digits. Both asserted below so a drifted derivation fails here.
 	 */
 
 	/** What one step of a raking corbel carries, in brick weights, s steps below the top. */
@@ -1579,41 +1412,35 @@ namespace WallAcceptanceTestSupport
 			CompositeTensionMPa(MomentBrickWeightCm, Steps)) / MortarFlexuralBondMPa;
 	}
 
-	/* ================================================================================
-	 * CASE 16, RE-DERIVED: A BONDED HEADER WITH NOTHING ON IT STANDS AT 0.058204.
-	 * ================================================================================
+	/*
+	 * CASE 16, re-derived: a bonded header with nothing on it stands at 0.058204.
 	 *
-	 * THE VERDICT ON THIS ROW WAS LOCAL LOSS UNTIL 2026-08-07 AND IT WAS REVISED IN THE CATALOGUE
-	 * WITHOUT THIS FILE FOLLOWING. That is the drift the catalogue exists to prevent, and it is
-	 * corrected here by re-deriving the number rather than by flipping the word.
+	 * The verdict was LOCAL LOSS until 2026-08-07 and was revised in the catalogue without this
+	 * file following — corrected here by re-deriving the number rather than flipping the word.
 	 *
-	 * The header projects half a cell (11.25 cm) past the face, so of its 21.5 cm it keeps
-	 * 21.5 - 11.25 = 10.25 cm of bearing on the brick below, and its centre of mass sits half the
-	 * unseated length — 5.625 cm — outboard of that patch's centroid. On a 10.25 x 10.25 cm patch,
-	 * whose section modulus about the bending axis is 10.25 x 10.25^2 / 6 = 179.4817708 cm3:
+	 * The header projects half a cell (11.25 cm) past the face, keeping 10.25 cm of bearing on the
+	 * brick below, centre of mass 5.625 cm outboard of that patch's centroid. On a 10.25 x 10.25 cm
+	 * patch (section modulus 179.4817708 cm3):
 	 *
 	 *     2667.198625 x 5.625 / 179.4817708 = 0.0083591 MPa   bending, opening the outer edge
 	 *     2667.198625 / 105.0625            = 0.0025387 MPa   its own weight, closing it
 	 *     tension 0.0058204 / 0.1 (f_xk1)   = 0.058204        of flexural bond capacity
 	 *
-	 * — a brick standing at six percent of what holds it, not a brick falling off. The abandoned
-	 * "local loss" was a RIGID-BODY OVERTURNING reading (the resultant is 5.625 cm out on a patch
-	 * only 5.125 cm wide, so it does lie outside the bearing) and it is the same error case 14 was
-	 * corrected for on the same day: this project models an UNCRACKED BONDED SECTION, where cured
-	 * mortar carries exactly that. The overturning claim is written down here because it is worth
-	 * knowing which reading was abandoned, not because it is still live.
+	 * — a brick standing at six percent of what holds it, not one falling off. The abandoned "local
+	 * loss" was a rigid-body overturning reading (the resultant is 5.625 cm out on a patch only
+	 * 5.125 cm wide, so it does lie outside the bearing) — the same error case 14 was corrected for
+	 * the same day: this project models an uncracked bonded section, which cured mortar carries.
 	 *
-	 * SO THERE IS NO FALL REGION TO NAME, and the row carries no MustFall and no MustStand.
+	 * No fall region to name; the row carries no MustFall and no MustStand.
 	 *
-	 * AND THE PAIR HAD TO MOVE WITH IT. 15 and 16 differ ONLY in what sits on the header's tail,
-	 * and both now stand — so as an OUTCOME pair they discriminate nothing, exactly as 13 and 14
-	 * stopped doing. WHAT STILL SEPARATES THEM IS THE READING ON ONE JOINT: the model reads
-	 * 0.00184 for case 15 against 0.05820 for case 16, a factor of 32 from superimposed load alone,
-	 * with case 15's tension driven to zero and compression left governing. That is asserted in
-	 * Acceptance.Wall.SuperimposedLoadIsReadInTheJointNotInTheOutcome below, and the row was removed
-	 * from the outcome-pair test rather than left there unsatisfiable. That test —
-	 * Acceptance.Wall.MatchedPairs — has since retired entirely, on 2026-08-12, when the last two of
-	 * its five pairs lost their separation the same way; see the file header.
+	 * The pair had to move with it: 15 and 16 differ only in what sits on the header's tail, and
+	 * both now stand, so as an outcome pair they discriminate nothing (as 13/14 stopped doing).
+	 * What still separates them is the reading on one joint — 0.00184 for case 15 against 0.05820
+	 * for case 16, 32x from superimposed load alone, case 15's tension driven to zero and
+	 * compression left governing — asserted in
+	 * Acceptance.Wall.SuperimposedLoadIsReadInTheJointNotInTheOutcome. The row was removed from the
+	 * outcome-pair test (Acceptance.Wall.MatchedPairs, since retired entirely 2026-08-12) rather
+	 * than left there unsatisfiable.
 	 */
 
 	/* --- E: bond pattern and head-joint shear. --------------------------------------- */
@@ -1622,146 +1449,111 @@ namespace WallAcceptanceTestSupport
 
 	/* --- F: losing the base, and the staircase void. --------------------------------- */
 
-	/* ================================================================================
-	 * CASE 19, RE-RULED 2026-08-12: THE UNDERPINNED HALF CANTILEVERS. THE CLOSEST CALL OF THE
-	 * THREE, AND RULED STANDS KNOWINGLY.
-	 * ================================================================================
+	/*
+	 * CASE 19, re-ruled 2026-08-12: the underpinned half cantilevers. The closest call of the
+	 * three, and ruled STANDS knowingly.
 	 *
-	 * THE GEOMETRY, AND IT IS SIX WHOLE CELLS RATHER THAN THE 5.75 AN EARLIER DRAFT OF THIS BLOCK
-	 * CLAIMED. { 0, 0, -0.50, 5.25 } cuts course 0, which is an EVEN course of twelve WHOLE bricks
-	 * — no half bat, since the fixture lays right to left and the short closing piece falls on the
-	 * ODD courses — so the region's open bounds take cells 0, 1, 2, 3, 4 and 5, six whole bricks,
-	 * and the run's own report prints `cut 6`. That is 6.0 x 22.5 = 135 cm of footing gone from
-	 * under a ten-course, twelve-cell wall, with nine courses standing over the void. The old
-	 * "5.75 cells (129 cm)" mixed a piece COUNT into a cell SPAN and read 4% light on the lever as
-	 * well as on the load; every figure below is re-derived from 6.0.
+	 * The geometry is six whole cells, not the 5.75 an earlier draft of this block claimed.
+	 * { 0, 0, -0.50, 5.25 } cuts course 0, an even course of twelve whole bricks (no half bat —
+	 * the fixture lays right to left, so the short closing piece falls on odd courses), so the
+	 * region takes cells 0..5, six whole bricks, matching the run's own `cut 6`. That is
+	 * 6.0 x 22.5 = 135 cm of footing gone under a ten-course, twelve-cell wall, nine courses
+	 * standing over the void. The old "5.75 cells (129 cm)" mixed a piece count into a cell span
+	 * and read 4% light; every figure below is re-derived from 6.0.
 	 *
-	 * WHAT THE ROW USED TO CLAIM. COLLAPSE of { 1, 9, -1.00, 4.60 } with { 0, 9, 7.75, 13.0 }
-	 * standing. The survivor region reached two and a half cells clear of the cut ON PURPOSE: a
-	 * failure there would have been the 33.69 degree spreading front walking further across the
-	 * wall than the missing support can account for, which is a defect and not a boundary quibble.
-	 * THE FALL REGION WENT WITH THE RULING AND THE SURVIVOR REGION DID NOT — see WHAT SURVIVES THE
-	 * RULING below, which is where that reasoning is now cashed rather than merely remembered.
+	 * What the row used to claim: COLLAPSE of { 1, 9, -1.00, 4.60 } with { 0, 9, 7.75, 13.0 }
+	 * standing. The survivor region reached two and a half cells clear of the cut on purpose: a
+	 * failure there would be the 33.69-degree spreading front walking further than the missing
+	 * support can account for. The fall region went with the ruling; the survivor region did not
+	 * (see below).
 	 *
-	 * THE RULING. As of the 2026-08-12 sweep:
+	 * The ruling. As of the 2026-08-12 sweep:
 	 *
 	 *     catalogue   COLLAPSE — the masonry over the void has no path to the earth
-	 *     production  drops 34, SIX OF THEM STRANDED, in ZERO cascade passes at a worst reading of
-	 *                 0.31804 (at c0/6-c1/5.5). As with case 10: nothing broke
-	 *     LP oracle   STANDS at lambda* = 12.3824832 — the LOWEST of the fifteen walls measured,
-	 *                 and still above 1 (119 blocks / 308 joints; 2,970 pivots in 16.1 s, MEASURED
-	 *                 PRE-PARTIAL-PRICING 2026-08-12 and since moved by the in-flight pricing
-	 *                 slice — lambda* and the block/joint counts are the measurement, the cost
-	 *                 figures are history)
+	 *     production  drops 34, six stranded, in zero cascade passes at a worst reading of 0.31804
+	 *                 (c0/6-c1/5.5). As with case 10: nothing broke
+	 *     LP oracle   STANDS at lambda* = 12.3824832 — the lowest of the fifteen walls measured,
+	 *                 still above 1 (119 blocks / 308 joints; 2,970 pivots in 16.1 s, measured
+	 *                 pre-partial-pricing 2026-08-12, cost figures since moved)
 	 *
-	 * THE USER RULED STANDS ON 2026-08-12 AND THE RULING IS RECORDED AS THE CLOSEST CALL IN THE
-	 * SET, because the hand check STRADDLES the verdict rather than settling it:
+	 * The user ruled STANDS on 2026-08-12, recorded as the closest call in the set — the hand
+	 * check straddles the verdict rather than settling it:
 	 *
-	 *     the arithmetic  nine courses over 6.0 cells is 9 x 6 = 54 brick weights = 1440 N at a
-	 *                     67.5 cm lever (half of the 135 cm of missing footing), so M = 972 N.m;
-	 *                     the section is t*D^2/6 = 10.25 * 67.5^2/6 = 7784 cm^3, giving 0.125 MPa.
-	 *     and it lands    1.25x the characteristic f_xk1 (0.10) — OVER capacity
-	 *                     0.31x of f_xk2 (0.40) — the strength a toothed vertical crack path
-	 *                     actually costs, and comfortably UNDER it
-	 *                     about 0.21x the mean basis (0.4-0.8) the §8 rulings are argued on
-	 *                     So one published number condemns it and two acquit it. This is a
-	 *                     judgement, not an arithmetic result, and it is written down as one. THE
-	 *                     CORRECTION FROM 5.75 CELLS TO 6.0 MOVED EVERY FIGURE AND NO CONCLUSION:
-	 *                     0.115 became 0.125 MPa and the straddle is 9% wider on the condemning
-	 *                     side, still one published number against two.
-	 *     the caveat      IT IS AN END CANTILEVER, not a span between two supports. A cantilever
-	 *                     has no second support to redistribute to, so of the three fixtures ruled
-	 *                     on 2026-08-12 this is the one where being wrong is most plausible.
-	 *     the anchor      real practice underpins in bays of roughly a metre and expects the wall
-	 *                     above to bridge them. 135 cm is longer than that and the ruling knows it;
-	 *                     what it rests on is that the wall is BONDED over nine courses, which a
-	 *                     bay of underpinning also relies on.
-	 *     the finding     and the same ZERO that decided case 10 applies here: production reaches
-	 *                     34 dropped without breaking a single joint. Its verdict is unroutability,
-	 *                     not strength, so it is not a third opinion — it is the same missing
-	 *                     mechanism reported twice.
+	 *     the arithmetic  nine courses over 6.0 cells is 54 brick weights = 1440 N at a 67.5 cm
+	 *                     lever, M = 972 N.m; section t D^2/6 = 7784 cm^3, giving 0.125 MPa.
+	 *     and it lands    1.25x characteristic f_xk1 (over capacity), 0.31x f_xk2 (comfortably
+	 *                     under), ~0.21x the mean basis (0.4-0.8). One published number condemns
+	 *                     it, two acquit it — a judgement, written down as one. The correction
+	 *                     from 5.75 to 6.0 cells moved every figure and no conclusion (0.115 became
+	 *                     0.125 MPa, the straddle 9% wider on the condemning side).
+	 *     the caveat      it is an end cantilever, not a span between two supports — no second
+	 *                     support to redistribute to, so of the three fixtures ruled 2026-08-12
+	 *                     this is the one most plausibly wrong.
+	 *     the anchor      real practice underpins in ~1 m bays and expects the wall above to
+	 *                     bridge them; 135 cm is longer, but rests on the wall being bonded over
+	 *                     nine courses, which a bay of underpinning also relies on.
+	 *     the finding     the same zero that decided case 10 applies: production reaches 34
+	 *                     dropped without breaking a joint — unroutability, not strength, so not a
+	 *                     third opinion but the same missing mechanism reported twice.
 	 *
-	 * IF PHYSICAL EVIDENCE EVER CONTRADICTS THIS ROW it will contradict the whole verdict, and it
-	 * should come back through DESIGN §8 as a further ruling rather than as a quiet edit restoring
-	 * the fall region this block deleted.
+	 * If physical evidence ever contradicts this row it should come back through DESIGN §8 as a
+	 * further ruling, not a quiet edit restoring the fall region this block deleted.
 	 *
-	 * WHAT SURVIVES THE RULING: THE SURVIVOR REGION, RESTORED VERBATIM AS { 0, 9, 7.75, 13.0 }, AND
-	 * ON THIS ROW IT IS THE SHARPEST ASSERTION THERE IS. A STANDS verdict says nothing comes down
-	 * anywhere, so naming the still-footed RIGHT half is a true claim and a strictly stronger one
-	 * than "thirty-four fell". The reason it matters here more than anywhere else is the shape of
-	 * the wrong answer: production's 34 are the spreading front walking left-to-right out of the
-	 * missing footing, and A ROUTING CHANGE THAT SHIFTED THAT FRONT THREE CELLS RIGHT — dropping
-	 * pieces in the still-footed half while sparing an equal number at the far left — WOULD KEEP
-	 * `DropsToday = 34` AND `StrandsToday = 6` AND EVERY OTHER PIN ON THIS ROW. Counts cannot see
-	 * a translation; the region can. It is asserted in the INVERTED shape — no piece inside it may
-	 * be among the fallen — so what it records is where today's wrongness is NOT, which is exactly
-	 * the old two-and-a-half-cells-clear reasoning surviving its verdict. Verified against the
-	 * measured drop set: all 34 sit at cell 4.5 and below, so the region is clear of every one of
-	 * them, and it is clear of the cut as well.
+	 * What survives the ruling: the survivor region, restored verbatim as { 0, 9, 7.75, 13.0 }. A
+	 * STANDS verdict says nothing comes down anywhere, so naming the still-footed right half is
+	 * true and stronger than "thirty-four fell". It matters more here than elsewhere because of the
+	 * shape of the wrong answer: production's 34 are the spreading front walking out of the missing
+	 * footing, and a routing change shifting that front three cells right would keep every count pin
+	 * on this row unchanged — counts cannot see a translation, the region can. Asserted inverted (no
+	 * piece inside may be among the fallen). Verified: all 34 sit at cell 4.5 and below, clear of
+	 * the region and the cut.
 	 *
-	 * THE ROW STAYS RED, IN THE INVERTED DIRECTION — expected STANDS, measured 34 dropped. Like
+	 * The row stays red, in the inverted direction — expected STANDS, measured 34 dropped. Like
 	 * case 10 it keeps its pins (`DropsToday = 34`, `StrandsToday = 6`) and its caption marker, and
-	 * it goes green at evolution step 4.
+	 * goes green at evolution step 4.
 	 */
 	const FWallRegion Case19Cuts[] = { { 0, 0, -0.50, 5.25 } };
 	const FWallRegion Case19Stands[] = { { 0, 9, 7.75, 13.0 } };
 
 	/*
-	 * CASE 20 — THE STAIRCASE VOID, and it is the one case in the set that was drafted with a
-	 * question mark. The user ruled on 2026-08-06: LOCAL LOSS, the loose toothed bricks at the cut
-	 * edge drop and the mass of the wall stands.
+	 * CASE 20 — the staircase void, the one case in the set drafted with a question mark. The user
+	 * ruled on 2026-08-06: LOCAL LOSS, the loose toothed bricks at the cut edge drop and the mass
+	 * of the wall stands.
 	 *
-	 * THE RAKING CUT, one region per course, reading up. Each course above the last is cut one
-	 * cell less far to the right, so the surviving masonry to the RIGHT of the void steps left
-	 * over the hole as it rises — that is the overhang in the screenshot.
+	 * The raking cut, one region per course, reading up: each course above the last is cut one
+	 * cell less far right, so the surviving masonry to the right steps left over the hole as it
+	 * rises — the overhang in the screenshot.
 	 *
-	 * WHICH BRICKS ARE THE TEETH, WORKED OUT FROM THE GEOMETRY RATHER THAN FROM THE DRAWING. A
-	 * brick in an even course at cell k sits on the odd course below at cells k - 0.5 and k + 0.5;
-	 * an odd-course brick at cell k + 0.5 sits on cells k and k + 1. Walking the surviving pieces
-	 * against the cuts, exactly TWO of them are left with NO bed patch at all:
+	 * Which bricks are the teeth, worked from the geometry. An even-course brick at cell k sits on
+	 * the odd course below at k - 0.5 and k + 0.5; an odd-course brick at k + 0.5 sits on k and
+	 * k + 1. Walking the surviving pieces against the cuts, exactly two are left with no bed patch
+	 * at all: course 3/cell 4.5 (over cut cells 4 and 5) and course 5/cell 2.5 (over cut cells 2
+	 * and 3). Everything else along the cut face keeps at least one patch — a corbel, not a tooth.
+	 * Naming those two by identity rather than count matters: a rule dropping the corbelled
+	 * half-seats instead would fall the same number of bricks and be completely wrong.
 	 *
-	 *     course 3, cell 4.5   sits over cut cells 4 and 5
-	 *     course 5, cell 2.5   sits over cut cells 2 and 3
+	 * The fall set drawn in WALL_CASES.html is not usable and deliberately not transcribed: its
+	 * region overlaps its own cut regions almost entirely, rendering one brick in course 7 that
+	 * nothing in the prose claims. The prose is what was agreed.
 	 *
-	 * Everything else along the cut face keeps at least one patch — course 2 cell 6, course 4
-	 * cell 4 and course 6 cell 2 are all half seated, which is a corbel and not a tooth. Those two
-	 * are the named set, and naming them by IDENTITY rather than by count is the point: a rule
-	 * that dropped the corbelled half-seats instead would fall the same NUMBER of bricks and be
-	 * completely wrong.
+	 * Re-examined and confirmed 2026-08-12 — a ruling that moved nothing, worth recording because
+	 * the other three rows examined beside it (9, 10, 19) all moved. What the measurement said:
 	 *
-	 * THE FALL SET DRAWN IN WALL_CASES.html IS NOT USABLE and this deliberately does not
-	 * transcribe it: its region overlaps its own cut regions almost entirely, so what it renders
-	 * is one brick in course 7 that nothing in the prose claims. The prose is what was agreed.
+	 *     production  unlike cases 10 and 19 this one is a strength verdict: one cascade pass, a
+	 *                 worst reading of 42.71, a joint genuinely 42x over capacity — the raking cut
+	 *                 leaves teeth hanging rather than pieces merely unrouted. 42.71 is the
+	 *                 pre-cascade peak; `ReportWallCase` reads `Result.Worst` after the cascade, by
+	 *                 which time that joint has given, and the survivors' worst is 0.296506 — one
+	 *                 structure, two instants.
+	 *     LP oracle   lambda* = 82.629597, but a global load factor has no local vocabulary: it
+	 *                 says every block including both teeth has some admissible equilibrium, and
+	 *                 cannot say whether nine bricks or two come down. By hand a tooth is cheap to
+	 *                 hang — 0.1 MPa over its head joints and bed patches is 3434 N against a
+	 *                 brick's 26.67 N, ~129x — so the named teeth are not what the LP is measuring.
 	 *
-	 * RE-EXAMINED AND CONFIRMED 2026-08-12 — A RULING THAT MOVED NOTHING, which is worth recording
-	 * precisely because the other three rows examined beside it all moved. Case 20 went to the user
-	 * with cases 9, 10 and 19 after the LP-oracle sweep, and it came back UNCHANGED: verdict, named
-	 * teeth, `DropsToday = 9` and the standing doubt all stay exactly as they are. What the
-	 * measurement said, and why none of it disturbed the row:
-	 *
-	 *     production  UNLIKE cases 10 and 19 this one IS a strength verdict: one cascade pass and a
-	 *                 worst reading of 42.71, a joint genuinely forty-two times over capacity. The
-	 *                 raking cut leaves teeth hanging where those two rows merely leave pieces
-	 *                 unrouted, so nothing here is an absent-mechanism artefact.
-	 *                 42.71 IS THE PRE-CASCADE PEAK and this row's own report prints something
-	 *                 else, so the two must not be reconciled by guesswork: the sweep reads every
-	 *                 joint after `SolveLoads` and BEFORE `SolveAndBreak`, which is where a joint
-	 *                 42x over capacity is still in the graph; `ReportWallCase` below reads
-	 *                 `Result.Worst` AFTER the cascade, by which time that joint has given and been
-	 *                 removed, and the survivors' worst is 0.296506. One structure, two instants —
-	 *                 not two measurements of the same thing
-	 *     LP oracle   lambda* = 82.629597 — but a GLOBAL load factor has no local vocabulary at
-	 *                 all. It says every block including both teeth has SOME admissible
-	 *                 equilibrium; it cannot say whether nine bricks or two come down, which is the
-	 *                 entire content of a LOCAL LOSS verdict. By hand a tooth is cheap to hang:
-	 *                 0.1 MPa over two head joints (2 x 66.625 cm^2) and the two bed patches above
-	 *                 it (2 x 105.0625 cm^2) is 3434 N against a brick's 26.67 N, about 129x — so
-	 *                 the named teeth are demonstrably not what 218.42 is measuring
-	 *
-	 * THE STANDING DOUBT SURVIVES THE MEASUREMENT UNTOUCHED: the true count is more than the two
-	 * named and fewer than the model's nine, and the LP could not narrow it because it does not
-	 * speak that language. It waits for equilibrium promotion (DESIGN §7 step 4), not for another
-	 * ruling.
+	 * The standing doubt survives the measurement untouched: the true count is more than the two
+	 * named and fewer than the model's nine, and the LP cannot narrow it — it waits for equilibrium
+	 * promotion (DESIGN §7 step 4), not another ruling.
 	 */
 	const FWallRegion Case20Cuts[] =
 	{
@@ -1781,212 +1573,154 @@ namespace WallAcceptanceTestSupport
 
 	/* --- G: the counter-cases — an opening that is genuinely too big for what covers it. ------ */
 
-	/* ================================================================================
-	 * SECTION G, USER-DIRECTED 2026-08-12 AND BUILT 2026-08-13: THE TWO ROWS THAT PUT A FALLING
-	 * VERDICT BACK IN THE SET, AND THE CATALOGUE'S FIRST TWO `Collapse` ROWS OF ANY KIND.
-	 * ================================================================================
+	/*
+	 * SECTION G, user-directed 2026-08-12, built 2026-08-13: the two rows that put a falling
+	 * verdict back in the set, the catalogue's first two `Collapse` rows of any kind.
 	 *
-	 * WHY THEY EXIST. Five re-rulings in five days took every falling verdict out of the catalogue:
-	 * case 11 (2026-08-08), case 8 (2026-08-11), cases 9, 10 and 19 (2026-08-12). Each was right on
-	 * its own numbers and each cost the set a discriminator; the two the section-B blocks name
-	 * explicitly are "no case refuses ARCHING FOR LACK OF COVER" (case 8's cost) and "no case
-	 * refuses A SPAN FOR WANT OF RISE" (case 9's). The user directed the replacement on 2026-08-12:
-	 * two counter-cases to case 9, one starving the COVER and one growing the SPAN, each sized so
-	 * that the verdict clears the MEAN-BASIS CEILING rather than sitting in the bracket where a
-	 * ruling would be a judgement call.
+	 * Why they exist. Five re-rulings in five days took every falling verdict out of the
+	 * catalogue: case 11 (2026-08-08), case 8 (2026-08-11), cases 9, 10 and 19 (2026-08-12). Each
+	 * was right on its own numbers and each cost the set a discriminator — "no case refuses
+	 * arching for lack of cover" (case 8's cost) and "no case refuses a span for want of rise"
+	 * (case 9's). The user directed the replacement on 2026-08-12: two counter-cases to case 9, one
+	 * starving the cover and one growing the span, each sized so the verdict clears the mean-basis
+	 * ceiling rather than sitting in the bracket where a ruling would be a judgement call.
 	 *
-	 * THE ONE CRITERION BOTH ROWS ARE SIZED ON, AND IT IS THE SAME THREE LINES EVERY §8 RULING
-	 * SINCE CASE 11 HAS BEEN ARGUED WITH. The masonry over an opening is a DEEP BEAM carrying its
-	 * own weight between the two jambs:
+	 * The one criterion both rows are sized on, the same three lines every §8 ruling since case 11
+	 * has argued with. The masonry over an opening is a deep beam carrying its own weight between
+	 * the two jambs:
 	 *
 	 *     w = (courses of cover) x (one brick weight) / (one cell pitch)     load per cm of span
 	 *     M = w L^2 / 8                                                      simply supported
 	 *     Z = t D^2 / 6                                                      t = 10.25, D = cover
 	 *     sigma = M / Z
 	 *
-	 * so sigma is proportional to L^2/D. The strengths it is read against, in the order the §8
-	 * rulings quote them: characteristic f_xk1 = 0.10 MPa (what the profiles carry today),
-	 * f_xk2 = 0.40 (the strength a toothed vertical crack path actually costs), and the MEAN BASIS
-	 * 0.4-0.8 MPa that DESIGN §3 adopted on 2026-08-08 and that every ruling in §8 is argued on.
-	 * A verdict CLEARS THE CEILING when sigma exceeds 0.8 — the top of the mean bracket — because
-	 * then no basis anyone in this project quotes can acquit it.
+	 * so sigma is proportional to L^2/D. Read against characteristic f_xk1 = 0.10 MPa (what the
+	 * profiles carry today), f_xk2 = 0.40 (a toothed vertical crack path's real strength), and the
+	 * mean basis 0.4-0.8 MPa DESIGN §3 adopted 2026-08-08. A verdict clears the ceiling when sigma
+	 * exceeds 0.8 — the top of the mean bracket — because then no basis this project quotes can
+	 * acquit it.
 	 *
-	 * THE LADDER, WITH A STOOD ROW AT THE BOTTOM OF IT SO THE CRITERION IS NOT SELF-SERVING. The
-	 * identical three lines applied to the rows already ruled read:
+	 * The ladder, with a stood row at the bottom so the criterion isn't self-serving:
 	 *
 	 *     case 8     one course over a 4-cell opening    L = 79.75   D = 7.5    0.098 MPa   0.12x
 	 *     case 9     eight courses over a 10-cell one    L = 214.75  D = 60     0.089 MPa   0.11x
 	 *     case 21    two courses over an 18-cell one     L = 394.75  D = 15     1.201 MPa   1.50x
 	 *     case 22    eight courses over a 35-cell one    L = 777.25  D = 60     1.164 MPa   1.46x
 	 *
-	 * (the last column is against the 0.8 MPa ceiling). The two stood rows sit at an eighth of the
-	 * ceiling and the two new rows at half again above it — a separation of TWELVE TIMES, not a
-	 * boundary anyone has to adjudicate.
+	 * (last column against the 0.8 MPa ceiling). The two stood rows sit at an eighth of the
+	 * ceiling, the two new rows at half again above it — 12x, not a boundary to adjudicate.
 	 *
-	 * AND EVERY FIGURE IN THAT LADDER IS DERIVED FROM THOSE THREE LINES, INCLUDING CASE 9'S. This
-	 * matters because both new blocks below reconcile their sigma against case 9's 0.089 MPa
-	 * through sigma ~ L^2/D and an earlier draft called that a CROSS-CHECK, which it is not: it is
-	 * THE SAME FORMULA RE-EXPRESSED, so it can only catch an arithmetic slip in the multiplication
-	 * — worth having, and worth not mistaking for a second method. Nothing about case 9 was
-	 * MEASURED at 0.089 MPa; what was measured on case 9 is production's worst joint reading of
-	 * 0.985 of capacity, which is a different quantity computed a different way and is pinned in
-	 * `Acceptance.Wall.SpanIsReadInTheJointNotInTheOutcome`. The three genuinely independent
-	 * methods in play on these rows are HAND STATICS (these lines), PRODUCTION (the solver's own
-	 * cascade) and THE LP ORACLE — and on case 21 the third one disagrees.
+	 * Every figure in that ladder derives from those three lines, including case 9's: both new
+	 * blocks below reconcile their sigma against case 9's 0.089 MPa through sigma ~ L^2/D, which is
+	 * the same formula re-expressed (catches an arithmetic slip, is not a second method). Nothing
+	 * about case 9 was measured at 0.089 MPa — what was measured is production's worst joint
+	 * reading of 0.985 of capacity, pinned in Acceptance.Wall.SpanIsReadInTheJointNotInTheOutcome.
+	 * The three genuinely independent methods on these rows are hand statics, production, and the
+	 * LP oracle — and on case 21 the third one disagrees.
 	 *
-	 * =====================================================================================
-	 * THE THIRD METHOD DISAGREES ON CASE 21, AND WHAT IT IS PRICING INSTEAD IS NOT KNOWN
-	 * =====================================================================================
+	 * THE THIRD METHOD DISAGREES ON CASE 21, AND WHAT IT PRICES INSTEAD IS NOT KNOWN.
 	 *
-	 * The rigid-block LP oracle STANDS case 21 at lambda* = 5.511 (measured 2026-08-13, 83 blocks /
-	 * 133 joints, 2,754 pivots, 1.3 s). It is the FIRST TIME IN THIS CATALOGUE THAT THE LP IS THE
-	 * OUTLIER — the last four rulings all moved the catalogue TOWARD it — so the row does not get
-	 * to wave it away, and the sweep pins it as a measured relation (`OracleStandsProductionFalls`
-	 * in OracleSweepFull.RigidBlock.WallsAndLadders) rather than as a footnote.
+	 * The rigid-block LP oracle stands case 21 at lambda* = 5.511 (measured 2026-08-13, 83 blocks /
+	 * 133 joints, 2,754 pivots, 1.3 s) — the first time in this catalogue the LP is the outlier
+	 * (the last four rulings all moved the catalogue toward it), pinned as a measured relation
+	 * (`OracleStandsProductionFalls` in OracleSweepFull.RigidBlock.WallsAndLadders).
 	 *
-	 *   WHAT IS ESTABLISHED, AND IT IS LESS THAN THE FIRST DRAFT OF THIS BLOCK CLAIMED. The LP is
-	 *   not pricing the mechanism this row's verdict is argued on. A 15 cm panel hanging on
-	 *   characteristic flexural bond fails at lambda = f_xk1 / sigma = 0.10 / 1.2014 = 0.0832, so
-	 *   the oracle's 5.511 is SIXTY-SIX TIMES stronger than the tension-bond panel the hand check
-	 *   condemns. Something else carries this wall in the LP's world. WHAT that something is HAS
-	 *   NOT BEEN IDENTIFIED — the paragraphs below are why the identification that used to stand
-	 *   here was withdrawn on 2026-08-13, and they are the honest state of it.
+	 *   What is established, and it is less than an earlier draft claimed: the LP is not pricing
+	 *   the mechanism this row's verdict is argued on. A 15 cm panel on characteristic flexural
+	 *   bond fails at lambda = 0.10/1.2014 = 0.0832, so the oracle's 5.511 is 66x stronger than the
+	 *   tension-bond panel the hand check condemns. What carries this wall in the LP's world has
+	 *   not been identified; the identification that used to stand here was withdrawn 2026-08-13.
 	 *
-	 *   THE TWO MEASURED LADDERS, both run 2026-08-13 on the case-21 family (the opening always
-	 *   four cells narrower than the wall, so the mean span is L = 394.75 + (cells - 22) x 22.5):
+	 *   Two measured ladders, both run 2026-08-13 on the case-21 family (span L = 394.75 +
+	 *   (cells - 22) x 22.5):
 	 *
 	 *     cover, held at 22 cells   2 crs 5.511   4 crs 7.683   6 crs 9.183   8 crs REFUSED
 	 *     span, held at 2 courses   18 c 10.408   22 c 5.511   27 c 3.102   32 c 1.985
 	 *                               40 c  1.143   45 c 0.863
 	 *
-	 *   THE HYPOTHESIS THAT WAS PRICED, AND WHY ONE AGREEING RUNG IS NOT AN IDENTIFICATION. A
-	 *   FULL-WALL-HEIGHT ARCH whose thrust dives through the jambs into the fixed course 0 prices,
-	 *   at 22 cells, to H = W L / (8 r) = 936 x 394.75 / (8 x 30) = 1,539 N — rise ~30 cm, the
-	 *   wall's own height less the stress blocks — against jamb bed joints onto the grounded course
-	 *   affording (0.2 + 0.6 x 0.018) MPa over ~400 cm2 = 8,440 N, i.e. 5.48 against the LP's
-	 *   5.511. That agreement is one point, and the same arithmetic WALKED ALONG THE COVER LADDER
-	 *   IT WAS FITTED ON CONTRADICTS THE MEASUREMENT: adding cover grows W in proportion while the
-	 *   rise grows only with the wall, so H/capacity worsens and the mechanism predicts roughly
-	 *   5.48 / 4.11 / 3.65 — lambda* FALLING BY A THIRD where the measurement RISES BY TWO THIRDS.
-	 *   Wrong direction, and out by 1.9x at the middle rung and 2.5x at the top. A mechanism that
-	 *   reproduces one point and mispredicts the ladder has been curve-fitted at a point, not
-	 *   identified.
+	 *   The hypothesis priced was a full-wall-height arch whose thrust dives through the jambs into
+	 *   the fixed course 0: at 22 cells, H = W L/(8r) = 936 x 394.75/(8 x 30) = 1,539 N against jamb
+	 *   bed joints affording 8,440 N, i.e. 5.48 against the LP's 5.511 — one agreeing point. Walked
+	 *   along the cover ladder it was fitted on, the same arithmetic contradicts the measurement:
+	 *   adding cover grows W in proportion while rise grows only with the wall, so the mechanism
+	 *   predicts lambda* falling by a third where the measurement rises by two thirds (wrong
+	 *   direction, out by 1.9-2.5x). A mechanism that reproduces one point and mispredicts the
+	 *   ladder has been curve-fitted, not identified.
 	 *
-	 *   AND THE TWO OBSERVATIONS THE WITHDRAWN READING LEANED ON DISCRIMINATE NOTHING. "lambda*
-	 *   rises with cover while sigma falls" is true of ANY mechanism that improves with depth,
-	 *   because a load factor and a stress move in opposite directions by construction — sigma is
-	 *   the demand at lambda = 1 and lambda* is how far that demand can be multiplied. And
-	 *   "lambda* x L^2 is roughly constant" is exactly what a BEAM does (sigma ~ L^2 at fixed D) as
-	 *   much as what an arch does, so it separates neither — and it is not even very constant:
-	 *   across the FULL span ladder it drifts 9.67e5 -> 7.18e5, TWENTY-SIX PER CENT. (The
-	 *   "9.67e5 -> 7.62e5" this block used to quote was the 32-cell rung, two rungs short of the
-	 *   end of the ladder it claimed to describe.)
+	 *   The two observations the withdrawn reading leaned on discriminate nothing: "lambda* rises
+	 *   with cover while sigma falls" is true of any mechanism that improves with depth (a load
+	 *   factor and a stress move oppositely by construction), and "lambda* x L^2 is roughly
+	 *   constant" is exactly what a beam does too (sigma ~ L^2 at fixed D) — and it isn't even very
+	 *   constant, drifting 26% across the full span ladder.
 	 *
-	 *   SO WHAT THE ROW RECORDS IS AN OPEN DISAGREEMENT RATHER THAN A DIAGNOSED ONE. The LP stands
-	 *   a wall that hand statics and production both condemn, by a mechanism at least 66x stronger
-	 *   than the bond, and nobody has named it. Whether that is A CHARITY OF THE ORACLE — its
-	 *   ground is immovable, so anything that can tie itself to the foundation gets that restraint
-	 *   for free, which would be a third charity beside the two the sweep header names (the plastic
-	 *   limit and full redistribution) — or A REAL LOAD PATH the downward-routing solver cannot
-	 *   see, is a USER CALL AND IT HAS NOT BEEN MADE. It is recorded in CURRENT_STATE. THIS
-	 *   CATALOGUE'S VERDICT DOES NOT WAIT ON IT and never did: the row is sized on the user's
-	 *   stated mean-basis criterion, and sizing it on the oracle was never available anyway —
-	 *   lambda* crosses 1.0 only between 40 and 45 cells, an 8-to-9 METRE opening under two courses
-	 *   of brick, and even there 0.863 multiplied by 6 for the characteristic-vs-mean basis is 5.2
-	 *   and STILL STANDS on the basis the rulings use. There is no span in this family reading
-	 *   lambda* x 6 < 1, let alone the lambda* x 3 x 6 < 1 that would make a falling verdict
-	 *   unambiguous on the oracle's own terms.
+	 *   So the row records an open disagreement, not a diagnosed one. The LP stands a wall hand
+	 *   statics and production both condemn, by a mechanism at least 66x stronger than the bond,
+	 *   and nobody has named it — a charity of the oracle (free foundation restraint, a third
+	 *   charity beside the sweep header's plastic limit and full redistribution) or a real load
+	 *   path the downward-routing solver can't see is a user call not yet made (CURRENT_STATE).
+	 *   This catalogue's verdict does not wait on it: the row is sized on the user's mean-basis
+	 *   criterion, and sizing on the oracle was never available anyway — lambda* crosses 1.0 only
+	 *   between 40 and 45 cells (an 8-9 m opening under two courses), and even there 0.863 x 6 is
+	 *   5.2 and still stands on the basis the rulings use.
 	 *
-	 *   TWO LADDERS WOULD DISCRIMINATE, AND NEITHER IS BUILT. Specified here and logged in
-	 *   CURRENT_STATE; ~1.3 s a rung, so both together are under a minute of oracle time. Deferred
-	 *   deliberately rather than forgotten — this slice's job was to stop claiming the answer, not
-	 *   to find it:
+	 *   Two ladders would discriminate and neither is built (~1.3 s a rung, both under a minute):
+	 *   the rise ladder (hold span/cover, vary courses below the opening 1..4 — an arch from ground
+	 *   predicts lambda* rising with it, a cover-carried mechanism predicts flat; settles the
+	 *   withdrawn reading directly) and the abutment ladder (widen jambs 2 to 4 cells — a
+	 *   jamb-reacting mechanism roughly doubles capacity, a cover-carried one barely moves).
+	 *   Specified and logged in CURRENT_STATE, deferred deliberately. Until one runs, every
+	 *   attribution here is a hypothesis.
 	 *
-	 *     THE RISE LADDER      hold the span at 22 cells and the cover at two courses, and vary the
-	 *                          courses BELOW the opening, s = 1..4. An arch springing from the
-	 *                          ground has more rise the more wall there is under the hole, so an
-	 *                          arch-from-ground predicts lambda* rising roughly linearly with s;
-	 *                          anything carried by the cover alone predicts it FLAT. This is the
-	 *                          one that would settle the withdrawn reading directly.
-	 *     THE ABUTMENT LADDER  widen the jambs from two cells to four with everything else fixed.
-	 *                          A mechanism reacting into the base of the jamb roughly DOUBLES its
-	 *                          capacity on twice the bearing; a cover-carried one barely moves.
+	 * Case 22 now has an oracle verdict (2026-08-15): the LP stands it at lambda* =
+	 * 8.4149459982219277 (see its own block). Production is unambiguous on both rows: 45 and 254
+	 * pieces down, three and two cascade passes, joints 3.8429 and 8.2241 over capacity before the
+	 * cascade starts — nothing here is the zero-pass unroutability that decided cases 10 and 19.
 	 *
-	 *   Until one of them runs, every attribution in this block is a hypothesis and is written as
-	 *   one.
+	 * Where the two pre-cascade readings come from, since neither is a figure this file computes.
+	 * `FWallResult::Worst` reads after the cascade, a different quantity; both readings below are a
+	 * one-off `SolveLoads` read — loads solved once, before any joint gives, worst finite
+	 * utilisation taken off the result:
 	 *
-	 * CASE 22 NOW HAS AN ORACLE VERDICT, AND THE REFUSAL THIS PARAGRAPH USED TO RECORD IS GONE
-	 * (2026-08-15): the LP stands it at lambda* = 8.4149459982219277 — see its own block for the
-	 * measurement and for what the row could carry because of it. Production is the same on both
-	 * rows and it is unambiguous: 45 and 254 pieces down, three and two cascade passes, joints
-	 * 3.8429 and 8.2241 over capacity before the cascade starts. Nothing here is the zero-pass
-	 * unroutability that decided cases 10 and 19.
+	 *   CASE 21 — the slow sweep's wall-21 row does this on every run: `SolveLoads`, scan, then
+	 *           cascade. Printed 3.842883954008586 at the characteristic data (2026-08-13) and
+	 *           0.93542327561664174 at the mean data (2026-08-14) — not the 3.8429/7 = 0.549 the
+	 *           fallout plan predicted, because the worst joint's governing axis flipped, leaving
+	 *           the wall a knife-edge 6.5% under the line. Reported, not asserted, so it drifts
+	 *           visibly. Which axis it flipped to is recorded as squeezed-edge compression and is
+	 *           unverified — the same attribution for case 9's jamb and case 22's worst joint both
+	 *           decomposed (2026-08-14) to Mohr-Coulomb shear instead, and case 21's joint is the
+	 *           same jamb-bed shape. Decomposing it is logged in CURRENT_STATE.
+	 *   CASE 22 — no sweep row (the oracle refuses the fixture), so its 8.2241 was taken by hand at
+	 *           the characteristic data on 2026-08-13. Computed here now, on every run:
+	 *           `SolveWallCase` solves loads once on the cut structure before the cascade, and
+	 *           `FWallResult`'s pre-cascade fields carry the reading, pinned at 2.9133264370386338
+	 *           (`FWallCase::PreCascadeWorstToday`). The fallout plan's re-base of 8.2241/7 = 1.1749
+	 *           was wrong by 2.5x, as it warned it might be (/7 is the tension-axis factor; the
+	 *           measured ratio between eras is 2.82). The collapse is three passes and 316 down
+	 *           (two passes, 254, at the characteristic data — the marginal cascade sheds more, not
+	 *           fewer; the region pins hold because Falls/Stands are containment claims).
 	 *
-	 * WHERE THE TWO PRE-CASCADE READINGS COME FROM, since neither is a figure this file computes.
-	 * `FWallResult::Worst` is read AFTER the cascade and is therefore a different quantity. Both of
-	 * these are a ONE-OFF `SolveLoads` READ — the loads solved once, before any joint is allowed to
-	 * give, and the worst finite utilisation taken off the result — and they differ in whether
-	 * anything still takes it:
-	 *
-	 *   CASE 21 — the slow sweep's wall-21 row does exactly this on every run: it calls
-	 *           `SolveLoads`, scans the utilisations, and only then cascades. It printed
-	 *           3.842883954008586 at the characteristic data (2026-08-13) and
-	 *           **0.93542327561664174 at the mean data (2026-08-14)** — NOT the 3.8429/7 = 0.549
-	 *           the fallout plan predicted, because the worst joint's governing axis FLIPPED,
-	 *           leaving the wall a knife-edge 6.5% under the line. REPORTED THERE, NOT
-	 *           ASSERTED, so it drifts visibly and silently. WHICH axis it flipped TO is
-	 *           recorded everywhere as the squeezed-edge compression and is UNVERIFIED: the
-	 *           same attribution was made for case 9's jamb and for case 22's worst joint, and
-	 *           decomposing those two on 2026-08-14 found both to be Mohr-Coulomb SHEAR with
-	 *           compression an order of magnitude under. Case 21's joint is the same jamb-bed
-	 *           shape as both. Decomposing it is logged in CURRENT_STATE and is three lines
-	 *           over `GetConnectionForce` once the sweep row carries the force.
-	 *   CASE 22 — no sweep row at all (the oracle refuses the fixture), so its 8.2241 was taken
-	 *           by hand at the characteristic data on 2026-08-13 and nothing recomputed it for a
-	 *           day. IT IS COMPUTED HERE NOW, on every run: `SolveWallCase` solves the loads once
-	 *           on the cut structure before handing it to the cascade, and `FWallResult`'s
-	 *           pre-cascade fields carry the reading — printed on every row and PINNED on this
-	 *           one at 2.9133264370386338 (`FWallCase::PreCascadeWorstToday`). The fallout plan's
-	 *           re-base of 8.2241/7 = 1.1749 was WRONG BY 2.5x, exactly the way it warned it
-	 *           might be: /7 is the tension-axis factor and the measured ratio between the eras
-	 *           is 2.82. The collapse itself is three passes and 316 down (two and 254 at the
-	 *           characteristic data — the marginal cascade sheds MORE, not the fewer the plan
-	 *           guessed; the region pins hold because Falls/Stands are containment claims, not
-	 *           exact counts).
-	 *
-	 * Case 21's is quoted as evidence about where the cascade starts and is asserted nowhere;
-	 * case 22's IS asserted, twice — that it is past 1.0 at all, and at its measured size. What
-	 * this file also asserts on these two rows is the drop/survivor sets and pass counts (case
-	 * 22), and the DropsToday/StrandsToday zeros of the inverted red (case 21).
+	 * Case 21's reading is quoted as evidence, asserted nowhere; case 22's is asserted twice — past
+	 * 1.0 at all, and at its measured size. This file also asserts the drop/survivor sets and pass
+	 * counts (case 22) and the DropsToday/StrandsToday zeros of the inverted red (case 21).
 	 */
 
-	/* ================================================================================
-	 * CASE 21 — TWO COURSES OVER AN EIGHTEEN-CELL OPENING: THE COVER COUNTER-CASE.
-	 * ================================================================================
+	/*
+	 * CASE 21 — two courses over an eighteen-cell opening: the cover counter-case.
 	 *
-	 * WHAT IT IS FOR. Case 8's ruling cost the set its last case where arching is refused for want
-	 * of cover, and recorded the replacement's requirement: it has to be a fixture where the cover
-	 * genuinely cannot carry what stands on it. THE USER'S CONSTRAINT IS A MINIMUM OF TWO COURSES
-	 * (2026-08-12) — one course is case 8 and was ruled to stand — so the cover is fixed at two and
-	 * the SPAN is what was moved until the verdict cleared the ceiling.
+	 * What it is for. Case 8's ruling cost the set its last case where arching is refused for want
+	 * of cover, and recorded the requirement: a fixture where the cover genuinely cannot carry what
+	 * stands on it. The user's constraint is a minimum of two courses (2026-08-12; one course is
+	 * case 8, ruled to stand), so cover is fixed at two and span is moved until the verdict clears
+	 * the ceiling.
 	 *
-	 * THE GEOMETRY, WALKED OFF THE BRICKLAYER ABOVE RATHER THAN OFF A DRAWING, in centimetres:
+	 * Geometry, walked off the bricklayer above, cm: wall six courses of 22 cells, 135 laid; cut
+	 * { 1, 3, 1.75, 19.25 }, 52 of the 135, 83 live; jambs two cells each side, case 9's jamb
+	 * exactly; reveals toothed (even courses stop at 33.25, resume 439.25; odd stop 44.50, resume
+	 * 428.00); span 383.50 to 406.00, mean 394.75; head 15.00 cm (two courses) of masonry over the
+	 * opening.
 	 *
-	 *     the wall six courses of twenty-two cells; even courses are 22 whole bricks at cells 0..21
-	 *              running -10.75 to 483.25, odd courses are 23 pieces — a 10.25 cm half bat at cell
-	 *              21.25, whole bricks at 20.5 down to 0.5, and a 10.25 cm closer at cell -0.25.
-	 *              135 laid
-	 *     the cut  { 1, 3, 1.75, 19.25 } takes cells 2..19 out of even course 2 (18 bricks) and
-	 *              cells 2.5..18.5 out of odd courses 1 and 3 (17 each) — 52 of the 135, 83 live
-	 *     jambs    TWO CELLS each side, which is case 9's jamb exactly, so nothing about this row
-	 *              varies the abutment
-	 *     reveals  TOOTHED: the even courses stop at 33.25 cm and resume at 439.25, the odd courses
-	 *              stop at 44.50 and resume at 428.00
-	 *     span     406.00 cm at its widest reveal and 383.50 at its narrowest, mean 394.75
-	 *     head     the top of course 3 is 30.00 cm up and the wall's top is 45.00, so there is
-	 *              15.00 cm — TWO COURSES — of masonry over the opening
-	 *
-	 * THE ARITHMETIC, ON THE THREE LINES SECTION G STATES:
+	 * The arithmetic, on section G's three lines:
 	 *
 	 *     w      2 courses x 26.67198625 N / 22.5 cm            = 2.3708432 N/cm
 	 *     W      w x 394.75                                     = 935.89 N  (35.1 brick weights)
@@ -1994,87 +1728,66 @@ namespace WallAcceptanceTestSupport
 	 *     Z      t D^2 / 6 = 10.25 x 15^2 / 6                   = 384.375 cm3
 	 *     sigma  M / Z = 46,180 N.cm / 384.375 cm3              = 120.14 N/cm2 = 1.2014 MPa
 	 *
-	 * AND IT LANDS: 1.50x the 0.8 MPa top of the mean bracket, 3.00x f_xk2, and 12.01x the
-	 * characteristic f_xk1 the profiles carry. Not a straddle like case 19's and not a judgement:
-	 * every basis this project quotes condemns it, which is what "clears the ceiling" was asked for.
+	 * And it lands: 1.50x the 0.8 MPa ceiling, 3.00x f_xk2, 12.01x characteristic f_xk1 — every
+	 * basis this project quotes condemns it, which is what "clears the ceiling" asked for.
 	 *
-	 * RECONCILED WITH CASE 9'S FIGURE, WHICH IS AN ARITHMETIC CHECK AND NOT A SECOND METHOD.
-	 * sigma ~ L^2/D, so from case 9's 0.0889 MPa at L = 214.75, D = 60: (394.75/214.75)^2 x
-	 * (60/15) = 3.3791 x 4 = 13.516, and 0.0889 x 13.516 = 1.2016 — the same number to 0.02%. What
-	 * that agreement demonstrates is that the multiplication above was done right, because case 9's
-	 * 0.0889 comes out of THE SAME THREE LINES and sigma ~ L^2/D is those lines re-expressed. It is
-	 * not a confirmation from elsewhere, and section G's ladder block says so at length.
+	 * Reconciled with case 9's figure, an arithmetic check rather than a second method: sigma ~
+	 * L^2/D, so from case 9's 0.0889 MPa at L = 214.75, D = 60: (394.75/214.75)^2 x (60/15) =
+	 * 13.516, and 0.0889 x 13.516 = 1.2016 — the same number to 0.02%. Case 9's 0.0889 comes out of
+	 * the same three lines, so this only confirms the multiplication, not the physics elsewhere
+	 * (section G's ladder block).
 	 *
-	 * WHY THE FLAT ARCH DOES NOT RESCUE IT, PRICED RATHER THAN ASSERTED — this is the reading that
-	 * stood case 8 and it has to be answered, not ignored. The solver's own kern-limited rise is
-	 * d_e/3 = 5 cm (d_e = min(cover 15, 0.866 L = 342) = 15), so H/V = 3L/(4 d_e) = 19.74; even at
-	 * the most generous rise 15 cm of section can offer, r = 7.5, H/V = L/(4r) = 13.2 and H = 6,159
-	 * N. The springing bed joints — the cover's first course landing on the jamb's top course, about
-	 * four half patches, ~400 cm2 — would carry that as 0.154 MPa of shear against Mohr-Coulomb
-	 * c + mu.sigma_n = 0.2 + 0.6 x 0.0144 = 0.209, of which FRICTION IS 4% AND COHESION IS THE REST.
-	 * Case 8's identical check reads 0.0125 against the same 0.209 — six per cent. So the flat arch
-	 * this fixture would need is TWELVE TIMES nearer its limit than the one the 2026-08-11 ruling
-	 * stood, and what is holding it is the bond term that DESIGN §5.2 says is gone the moment the
-	 * joint cracks: at c = 0 the demand/capacity is 18, the same shape as dry stone's 1.2372 in
-	 * StructureThrustTest. Production reaches exactly that conclusion by its own route and drops the
-	 * cover; the LP reaches the opposite one, and through something that is NOT this arch — 5.511
-	 * is 66x what the bond can hold — but what it IS has not been identified, which section G's
-	 * ladder block sets out along with the two ladders that would settle it.
+	 * Why the flat arch does not rescue it (the reading that stood case 8, priced rather than
+	 * ignored): the solver's kern-limited rise is d_e/3 = 5 cm, so H/V = 3L/(4 d_e) = 19.74; even
+	 * at the most generous rise (r = 7.5), H/V = 13.2 and H = 6,159 N. The springing bed joints
+	 * would carry that as 0.154 MPa of shear against Mohr-Coulomb capacity 0.209 (friction 4%,
+	 * cohesion the rest). Case 8's identical check reads 0.0125 against the same 0.209 — 6%. So
+	 * this fixture's flat arch is 12x nearer its limit than the one the 2026-08-11 ruling stood,
+	 * held by the bond term DESIGN §5.2 says is gone the moment the joint cracks (demand/capacity
+	 * 18 at c = 0, the same shape as dry stone's 1.2372 in StructureThrustTest). Production reaches
+	 * that conclusion and drops the cover; the LP stands it through something that is not this
+	 * arch (5.511 is 66x what the bond can hold) but has not been identified — section G's ladder
+	 * block.
 	 *
-	 * WHAT COMES DOWN, AND WHY THE REGION IS THE SEATLESS SET RATHER THAN A DRAWN WEDGE. A brick in
-	 * even course 4 at cell k sits on odd course 3 at cells k - 0.5 and k + 0.5, and the cut takes
-	 * 2.5..18.5 of that course, so every one of course 4's bricks from cell 2 to cell 19 has NO BED
-	 * PATCH AT ALL — the case-20 test, where one patch is a corbel and none is a tooth. Course 5
-	 * rides on course 4 and goes with it. `Case21Falls` is exactly that set, { 4, 5, 1.75, 19.25 },
-	 * 35 pieces, and it is a LOWER BOUND: the two courses standing over each jamb are deliberately
-	 * NOT claimed either way, because where a two-course panel tears as it drops is not something
-	 * this catalogue can rule. (Production drops those too — all 45 of courses 4 and 5.)
+	 * What comes down, and why the region is the seatless set rather than a drawn wedge: a brick in
+	 * even course 4 at cell k sits on odd course 3 at k - 0.5 and k + 0.5, and the cut takes
+	 * 2.5..18.5 of that course, so every course-4 brick from cell 2 to 19 has no bed patch at all
+	 * (the case-20 shape). Course 5 rides on course 4 and goes with it. `Case21Falls` is that set,
+	 * { 4, 5, 1.75, 19.25 }, 35 pieces, a lower bound: the two courses over each jamb are
+	 * deliberately not claimed either way, since where a two-course panel tears as it drops isn't
+	 * something this catalogue can rule. (Production drops those too — all 45 of courses 4 and 5.)
 	 *
-	 * AND WHAT MUST KEEP ITS FOOTING IS THE TWO JAMBS, which is what makes this a COLLAPSE and not
-	 * "everything falls". `Case21Stands` names courses 0..3 of both — twenty bricks, ten a side,
-	 * including the sill course that runs under the opening — so a model that answered "falls" to
-	 * everything could not pass this row. Verified against the measured drop set: production's 45
-	 * are all in courses 4 and 5, so every named survivor is clear of every one of them.
+	 * What must keep its footing is the two jambs, making this a COLLAPSE rather than "everything
+	 * falls": `Case21Stands` names courses 0..3 of both, twenty bricks, so a model answering
+	 * "falls" to everything could not pass this row. Verified: production's 45 are all in courses 4
+	 * and 5, clear of every named survivor.
 	 *
-	 * PRODUCTION, MEASURED 2026-08-13 AND AGREEING: 45 pieces down, ZERO stranded, in THREE cascade
-	 * passes, with the worst joint reading 3.8429 before the cascade starts (a one-off read — see
-	 * the provenance note at the end of section G's opening block). The zero and the three are what
-	 * separate this row from cases 10 and 19: those two reach their drop counts in ZERO passes with
-	 * nothing near capacity, which is a router with nowhere to send load; this is a strength
-	 * verdict, joints genuinely nearly four times over capacity, and every piece that comes down is
-	 * routed right up to the moment its seat gives. THE THREE IS ASSERTED, not merely recorded: the
-	 * collapse arm of `Acceptance.Wall.Catalogue` requires a `Collapse` row to have broken at least
-	 * one joint, so this row cannot quietly become an unroutability of the same shape.
+	 * Production, measured 2026-08-13 and agreeing: 45 down, zero stranded, three cascade passes,
+	 * worst joint 3.8429 before the cascade starts (a one-off read, see section G's provenance
+	 * note). The zero and the three separate this row from cases 10 and 19 (which reach their drop
+	 * counts in zero passes with nothing near capacity — a router with nowhere to send load); this
+	 * is a strength verdict, joints genuinely nearly four times over capacity. The three is
+	 * asserted: the collapse arm of `Acceptance.Wall.Catalogue` requires a broken joint, so this
+	 * row cannot quietly become an unroutability of the same shape.
 	 */
 	const FWallRegion Case21Cuts[] = { { 1, 3, 1.75, 19.25 } };
 	const FWallRegion Case21Falls[] = { { 4, 5, 1.75, 19.25 } };
 	const FWallRegion Case21Stands[] = { { 0, 3, -1.0, 1.75 }, { 0, 3, 19.25, 22.0 } };
 
-	/* ================================================================================
-	 * CASE 22 — CASE 9'S OWN COVER OVER A THIRTY-FIVE-CELL OPENING: THE SPAN COUNTER-CASE.
-	 * ================================================================================
+	/*
+	 * CASE 22 — case 9's own cover over a thirty-five-cell opening: the span counter-case.
 	 *
-	 * WHAT IT IS FOR. Case 9's ruling cost the set its last case that refuses a span for want of
-	 * rise. This is case 9's fixture with ONE VARIABLE MOVED — the span — so that what it isolates
-	 * cannot be argued about: same brick, same mortar, same running bond, same toothed reveal, the
-	 * same EIGHT COURSES (60.00 cm) of cover, the same two cells of jamb either side, the same cut
-	 * through courses 1..3 on the same sill. Only the opening is wider.
+	 * What it is for. Case 9's ruling cost the set its last case refusing a span for want of rise.
+	 * This is case 9's fixture with one variable moved — the span: same brick, mortar, bond,
+	 * toothed reveal, eight courses (60.00 cm) of cover, two-cell jambs, same cut through courses
+	 * 1..3. Only the opening is wider.
 	 *
-	 * THE GEOMETRY, WALKED OFF THE BRICKLAYER, in centimetres:
+	 * Geometry, walked off the bricklayer, cm: wall twelve courses of 39 cells, 474 laid; cut
+	 * { 1, 3, 1.75, 36.25 }, 103 of the 474, 371 live; reveals (even courses stop at 33.25, resume
+	 * 821.75; odd stop 44.50, resume 810.50); span 766.00 to 788.50, mean 777.25 — 3.62x case 9's
+	 * 214.75; head 60.00 cm of bonded masonry, case 9's cover to the millimetre.
 	 *
-	 *     the wall twelve courses of thirty-nine cells; even courses are 39 whole bricks at cells
-	 *              0..38, odd courses are 40 pieces (half bat at 38.25, wholes 37.5 down to 0.5,
-	 *              closer at -0.25). 474 laid
-	 *     the cut  { 1, 3, 1.75, 36.25 } takes cells 2..36 out of even course 2 (35 bricks) and
-	 *              2.5..35.5 out of odd courses 1 and 3 (34 each) — 103 of the 474, 371 live
-	 *     reveals  the even courses stop at 33.25 cm and resume at 821.75, the odd stop at 44.50
-	 *              and resume at 810.50
-	 *     span     788.50 cm at its widest reveal and 766.00 at its narrowest, mean 777.25 — 3.62x
-	 *              case 9's 214.75
-	 *     head     the top of course 3 is 30.00 cm up and the wall's top is 90.00, so 60.00 cm of
-	 *              bonded masonry spans the hole, which is case 9's cover to the millimetre
-	 *
-	 * THE ARITHMETIC:
+	 * The arithmetic:
 	 *
 	 *     w      8 courses x 26.67198625 N / 22.5 cm            = 9.4833730 N/cm
 	 *     W      w x 777.25                                     = 7,371.5 N  (276.4 brick weights)
@@ -2082,100 +1795,73 @@ namespace WallAcceptanceTestSupport
 	 *     Z      t D^2 / 6 = 10.25 x 60^2 / 6                   = 6,150 cm3
 	 *     sigma  M / Z = 716,133 N.cm / 6,150 cm3               = 116.44 N/cm2 = 1.1644 MPa
 	 *
-	 * AND IT LANDS: 1.46x the 0.8 MPa ceiling, 2.91x f_xk2, 11.64x characteristic f_xk1.
+	 * And it lands: 1.46x the 0.8 MPa ceiling, 2.91x f_xk2, 11.64x characteristic f_xk1.
 	 *
-	 * THE RECONCILIATION AGAINST CASE 9 IS EXACT HERE, WHICH IS THE POINT OF KEEPING THE COVER
-	 * FIXED. With D held, sigma ~ L^2 alone: (777.25/214.75)^2 = 13.098, and case 9's 0.0889 x
-	 * 13.098 = 1.1644 — the same number to five figures. Being exact rather than approximate is a
-	 * statement about the ARITHMETIC and not about the physics: case 9's 0.0889 is the same three
-	 * lines evaluated on case 9's geometry, so this only ever demonstrates that both evaluations
-	 * multiply correctly (section G's block spells that out). THE PAIR AGAINST CASE 9 IS A REAL
-	 * ONE-VARIABLE PAIR and it separates on OUTCOME, which no pair in this catalogue has done since
-	 * 2026-08-12: 0.089 MPa and standing against 1.164 MPa and falling, from a 3.62x span and
-	 * nothing else. That claim is about the two FIXTURES — same brick, same mortar, same bond, same
-	 * cover, same jambs — and it holds whatever one thinks of the formula.
+	 * The reconciliation against case 9 is exact here, the point of keeping cover fixed: with D
+	 * held, sigma ~ L^2 alone, (777.25/214.75)^2 = 13.098, and 0.0889 x 13.098 = 1.1644 to five
+	 * figures — this only confirms the arithmetic (section G's block), not the physics elsewhere.
+	 * The pair against case 9 is a real one-variable pair and separates on outcome — the first
+	 * since 2026-08-12 — 0.089 MPa standing against 1.164 MPa falling, from a 3.62x span alone.
 	 *
-	 * WHY DEEP-BEAM ACTION IS STILL THE RIGHT MODEL AT THIS SPAN, since case 9's ruling turned on
-	 * it: span/depth was 3.6 there and is 13.0 here, so this is no longer a deep beam at all — it
-	 * is an ORDINARY BEAM of brickwork, and an ordinary beam is exactly what the simply-supported
-	 * W L / 8 line prices. The reading is if anything charitable: a deep beam redistributes toward
-	 * an arch and a slender one cannot, so the same formula that was conservative at span/depth 3.6
-	 * is honest at 13.0.
+	 * Why deep-beam action is still the right model at this span: span/depth was 3.6 at case 9 and
+	 * is 13.0 here — no longer a deep beam but an ordinary beam, exactly what W L/8 prices, and if
+	 * anything charitable (a deep beam redistributes toward an arch, a slender one cannot).
 	 *
-	 * WHAT COMES DOWN. Course 4 is the seatless course — every brick from cell 2 to 36 sits on two
-	 * cut cells — and above it the loss narrows as masonry corbels in from each reveal. `Case22Falls`
-	 * is TWO regions and is a LOWER BOUND: { 4, 4, 1.75, 36.25 } is the whole seatless course, and
-	 * { 5, 11, 6.25, 31.75 } is the core of the seven courses over it, four and a half cells clear
-	 * of each reveal because that is where a stepping edge can hang on and this catalogue cannot
-	 * rule where the tear runs. 214 bricks named of the 254 production drops.
+	 * What comes down. Course 4 is the seatless course (every brick cell 2..36 sits on two cut
+	 * cells), narrowing above as masonry corbels in from each reveal. `Case22Falls` is two regions,
+	 * a lower bound: { 4, 4, 1.75, 36.25 } the whole seatless course, { 5, 11, 6.25, 31.75 } the
+	 * core of the seven courses over it, four and a half cells clear of each reveal (where a
+	 * stepping edge can hang on, which the catalogue cannot rule). 214 of the 254 production drops
+	 * named.
 	 *
-	 * THE SECOND REGION'S BOUND WAS MOVED IN ONE STEP ON 2026-08-13, AND THE MEASUREMENT THAT MOVED
-	 * IT IS WORTH RECORDING BECAUSE IT IS THE ONLY WAY TO SEE THE MARGIN. Production's drop set
-	 * narrows by EXACTLY half a cell a course, which is the running-bond corbel step and nothing
-	 * more — measured course by course: c4 2..36, c5 2.5..35.5, c6 3..35, c7 3.5..34.5, c8 4..34,
-	 * c9 4.5..33.5, c10 5..33, c11 5.5..32.5. The bound as first drawn was 5.25..32.75, whose
-	 * outermost claimed brick is 5.5 and 32.5 — the SAME BRICKS as the top course's outermost
-	 * fallen ones. Course 11 was therefore the exact last course at which the claim could hold: not
-	 * a lower bound with a margin but a line drawn along today's answer, and one more course of
-	 * wall would have made it an over-claim. 6.25..31.75 claims one brick fewer a side, which is
-	 * one whole cell of margin at the tightest course (the claim now holds through a hypothetical
-	 * course 13), and it costs fourteen named bricks out of 228. The looseness is deliberate: this
-	 * region says what MASONRY must lose, and near the reveal the catalogue has already said it
-	 * cannot rule that.
+	 * The second region's bound was tightened one step on 2026-08-13: production's drop set narrows
+	 * exactly half a cell a course (the running-bond corbel step), and the bound as first drawn
+	 * (5.25..32.75) claimed the same outermost bricks (5.5, 32.5) as the top course's actual fallen
+	 * ones — course 11 was the exact last course the claim could hold, an over-claim one course
+	 * further. 6.25..31.75 gives one whole cell of margin (holds through a hypothetical course 13)
+	 * at the cost of fourteen named bricks out of 228 — deliberately loose near the reveal, where
+	 * the catalogue has already said it cannot rule the tear.
 	 *
-	 * AND WHAT MUST KEEP ITS FOOTING: courses 0..3 of both jambs, sixteen bricks, { 0, 3, -1.0,
-	 * 1.25 } and { 0, 3, 36.75, 39.0 }. THE BOUNDS ARE TIGHTER THAN CASE 21'S BY ONE PIECE A SIDE
-	 * AND DELIBERATELY SO: the odd-course brick at the very top of each jamb (c3/1.5 and c3/36.5)
-	 * is HALF SEATED and carries the panel's reaction on one patch, and production drops both. That
-	 * is a believable thing to lose when 7.8 m of wall comes off a jamb, so the catalogue declines
-	 * to claim it either way rather than asserting a survival it is not sure of. Everything behind
-	 * it is claimed.
+	 * What must keep its footing: courses 0..3 of both jambs, sixteen bricks, { 0, 3, -1.0, 1.25 }
+	 * and { 0, 3, 36.75, 39.0 } — tighter than case 21's by one piece a side, because the odd-course
+	 * brick at the very top of each jamb is half seated and production drops both; believable when
+	 * 7.8 m of wall comes off a jamb, so the catalogue declines to claim it either way.
 	 *
-	 * PRODUCTION, MEASURED 2026-08-13 AND AGREEING: 254 pieces down, ZERO stranded, in TWO cascade
-	 * passes, worst joint 8.2241 before the cascade — a one-off read whose provenance is stated at
-	 * the end of section G's opening block, not a figure any test computes. A strength verdict
-	 * again, not unroutability, and the TWO is what `Acceptance.Wall.Catalogue`'s collapse arm
-	 * asserts on this row: at least one joint has to have given, or this is cases 10 and 19 again.
+	 * Production, measured 2026-08-13 and agreeing: 254 down, zero stranded, two cascade passes,
+	 * worst joint 8.2241 before the cascade (a one-off read, section G's provenance note). A
+	 * strength verdict, not unroutability; the two is what the collapse arm of
+	 * `Acceptance.Wall.Catalogue` requires — at least one joint given, or this is cases 10/19 again.
 	 *
-	 * THE ORACLE HAD NO VERDICT HERE UNTIL 2026-08-15, AND THE REFUSAL THAT KEPT IT SILENT WAS
-	 * STALE. What this block recorded — 371 blocks / 900 joints refused after 49,557 pivots and
-	 * 546 s with "phase-2 simplex failed", and two smaller members of the family refusing the same
-	 * way — was measured on 2026-08-13, at the CHARACTERISTIC strengths, one day before the mean
-	 * re-anchor changed every number the LP reads. Re-measured at today's profiles, this wall
-	 * ANSWERS: **lambda* = 8.4149459982219277, 371 blocks / 900 joints, 88,810 pivots, ~1,197 s,
-	 * `bAnswered` true**, unchanged to the last bit by slice 0a's solver fix (the family's two
-	 * genuine refusals were at 128 and 200 blocks, and closing them moved no pivot on this wall).
+	 * The oracle had no verdict here until 2026-08-15; the refusal this block used to record (371
+	 * blocks / 900 joints, 49,557 pivots, 546 s, "phase-2 simplex failed") was measured at the
+	 * characteristic strengths, one day before the mean re-anchor changed every number the LP
+	 * reads. Re-measured at today's profiles it answers: lambda* = 8.4149459982219277, 371 blocks /
+	 * 900 joints, 88,810 pivots, ~1,197 s, `bAnswered` true, unchanged by slice 0a's solver fix.
 	 *
-	 * SO THE ROW'S THIRD METHOD HAS ARRIVED, AND IT DISSENTS. The catalogue rules Collapse, hand
-	 * statics and production agree, and the LP stands the wall at 8.41x its own weight — the same
-	 * shape of disagreement as case 21's (which stands at 17.24), on the same kind of fixture, and
-	 * the rigid-plastic scope limit recorded for that row (DESIGN section 8, 2026-08-13) is the
-	 * standing explanation for this one too until somebody prices it. The verdict does not move:
-	 * PROMOTION_DESIGN section 4 measures why no brittleness treatment plausibly brings a reading
-	 * of this size under 1.0, and case 21's precedent is that the catalogue row stands.
+	 * So the row's third method has arrived, and dissents: catalogue rules Collapse, hand statics
+	 * and production agree, and the LP stands the wall at 8.41x its own weight — the same shape of
+	 * disagreement as case 21's (17.24), on the same kind of fixture, with the same rigid-plastic
+	 * scope limit (DESIGN §8, 2026-08-13) as the standing explanation until priced. The verdict
+	 * does not move: PROMOTION_DESIGN §4 measures why no brittleness treatment plausibly brings a
+	 * reading this size under 1.0, and case 21 is the precedent that the catalogue row stands.
 	 *
-	 * WHAT A SWEEP ROW WOULD COST AND WHAT IT WOULD SAY, specified rather than built. The row is
-	 * `ERelation::OracleStandsProductionFalls` — the enumerator case 21 already uses — with a
-	 * lambda window around 8.4149459982219277 and production's 254 drops / 0 strands / 2 passes
-	 * beside it, in `RigidBlockOracleSweepTest.cpp`'s wall table. **The price is TWENTY MINUTES a
-	 * run** on an opt-in group that is thirteen minutes today, which is why this is a specification
-	 * and not a row: it would more than double the slow group to add a second reading of a
-	 * disagreement case 21 already pins at a fifth of the cost. Two things must be true before it
-	 * is worth adding — a reason to watch this particular wall rather than case 21, and a solve
-	 * that fits (see below).
+	 * What a sweep row would cost: `ERelation::OracleStandsProductionFalls` (case 21's enumerator)
+	 * with a lambda window around 8.4149459982219277 beside production's 254/0/2, in
+	 * `RigidBlockOracleSweepTest.cpp`'s wall table. Twenty minutes a run on an opt-in group that is
+	 * thirteen minutes today — more than doubling it to add a second reading of a disagreement case
+	 * 21 already pins at a fifth of the cost — so this is a specification, not a row, pending a
+	 * reason to watch this wall specifically and a solve that fits.
 	 *
-	 * AND THE HAZARD THAT COMES WITH THE ANSWER: 88,810 pivots against a MaxPivots of 100,000 is
-	 * 89% of the termination cap. Any pivot-path change — a pricing tweak, another tolerance move —
-	 * could put this wall over it, and the answer would become a refusal by a different route.
-	 * Nothing in the suite watches that number; CURRENT_STATE carries it.
+	 * The hazard that comes with the answer: 88,810 pivots against MaxPivots 100,000 is 89% of the
+	 * termination cap — any pivot-path change could push this wall to a refusal by a different
+	 * route. Nothing in the suite watches that number; CURRENT_STATE carries it.
 	 *
-	 * WHAT THE OLD EXTRAPOLATION SAID, kept because it was written down before the measurement and
-	 * is now checkable: the cover ladder at 22 cells reads 5.511 / 7.683 / 9.183 at two / four /
-	 * six courses at the characteristic data, lambda* falls roughly as 1/L^2, and eight courses at
-	 * 777 cm "would land near 2.6 — the LP would probably stand this one too". The direction was
-	 * right and the number was not: the measured 8.41 is 3.2x the extrapolation, on data the
-	 * re-anchor moved underneath it. An extrapolation of a curve is not a prediction of a
-	 * mechanism, which is what that paragraph said about itself and what the measurement confirms.
+	 * What the old extrapolation said, kept because it predates the measurement and is now
+	 * checkable: the cover ladder at 22 cells (5.511/7.683/9.183 at two/four/six courses,
+	 * characteristic data) suggested lambda* falls roughly as 1/L^2 and eight courses at 777 cm
+	 * "would land near 2.6". Direction right, number wrong — the measured 8.41 is 3.2x the
+	 * extrapolation, on data the re-anchor moved underneath it. An extrapolation of a curve is not
+	 * a prediction of a mechanism.
 	 */
 	const FWallRegion Case22Cuts[] = { { 1, 3, 1.75, 36.25 } };
 	const FWallRegion Case22Falls[] = { { 4, 4, 1.75, 36.25 }, { 5, 11, 6.25, 31.75 } };
@@ -2227,11 +1913,11 @@ namespace WallAcceptanceTestSupport
 			TallCourses, StandardCells, Case2Cuts, {}, {}, TEXT("bond, against case 18"));
 
 		/*
-		 * CASE 3 IS THE ONE A PLAYER REPORTED, and the user ruled on 2026-08-06 that a brick
-		 * deleted at a free end must not bring the wall down. ARCHING_DESIGN.md's slices 1-4 do
-		 * not reach it — the surviving brick overhangs OUTWARD with nothing beyond it to abut
-		 * against, so the arch is correctly refused and the cantilever ladder starts — so this row
-		 * stays red until composite vertical action lands. It is not a defect in the row.
+		 * Case 3 is the one a player reported; the user ruled 2026-08-06 that a brick deleted at a
+		 * free end must not bring the wall down. ARCHING_DESIGN.md's slices 1-4 don't reach it — the
+		 * surviving brick overhangs outward with nothing to abut against, so the arch is correctly
+		 * refused and the cantilever ladder starts — so this row stays red until composite vertical
+		 * action lands. Not a defect in the row.
 		 */
 		Add(3, TEXT("One brick out at the free end"), EVerdict::Stands,
 			TallCourses, StandardCells, Case3Cuts, {}, {}, nullptr);
@@ -2248,77 +1934,50 @@ namespace WallAcceptanceTestSupport
 			CoveredCourses, StandardCells, TwoCellOpening, {}, {}, nullptr);
 
 		/*
-		 * The wall the other three rows of section B are each compared against, and as of
-		 * 2026-08-12 NOT ONE OF THE THREE PAIRS SEPARATES ON OUTCOME ANY MORE: cover went with case
-		 * 8's re-ruling on 2026-08-11, span and abutment with cases 9 and 10 on 2026-08-12. The
-		 * Isolates line says so rather than naming comparisons no pair test makes, and the file
-		 * header lists where each of the three discriminations went.
+		 * The wall the other three rows of section B compare against. As of 2026-08-12 none of the
+		 * three pairs separates on outcome any more (cover with case 8's re-ruling, span and
+		 * abutment with cases 9 and 10) — the file header lists where each discrimination went.
 		 */
 		Add(7, TEXT("Four-brick opening, eight courses over"), EVerdict::Stands,
 			CoveredCourses, StandardCells, FourCellOpening, {}, {},
 			TEXT("span vs 9 — NOW IN THE READING; cover vs 8 and abutment vs 10 NO LONGER SEPARATE"));
 
 		/*
-		 * STANDS — RE-RULED 2026-08-11, and the catalogue is what moved. This row asked for a LOCAL
-		 * LOSS of the two seatless middle bricks on the reading that one course of cover cannot
-		 * arch; the LP oracle stands the fixture at lambda* = 324.73 through head-joint compression
-		 * into the abutments, production drops nothing, and the user ruled STANDS on the physics per
-		 * DESIGN §8's standing instruction. The whole derivation, the discount arithmetic and THE
-		 * COST — this was the set's last "no room to arch" discriminator — are in the CASE 8 block
-		 * of section B, immediately above Case9Cuts. No fall region, because nothing comes down.
+		 * STANDS — re-ruled 2026-08-11, the catalogue is what moved. Asked for LOCAL LOSS of the two
+		 * seatless middle bricks on the reading that one course of cover cannot arch; the LP oracle
+		 * stands it at lambda* = 324.73 through head-joint compression, production drops nothing,
+		 * and the user ruled STANDS per DESIGN §8. Full derivation in the CASE 8 block above
+		 * Case9Cuts. No fall region.
 		 */
 		Add(8, TEXT("Four-brick opening, one course over"), EVerdict::Stands,
 			5, StandardCells, FourCellOpening, {}, {},
 			TEXT("depth of cover against case 7 — NO LONGER SEPARATES, on either outcome or reading"));
 
 		/*
-		 * STANDS — RE-RULED 2026-08-12, AND THE ROW GOES GREEN. The catalogue asked for a COLLAPSE
-		 * on the published arching gate; the LP oracle stands the fixture at lambda* = 36.56, a
-		 * hand deep-beam check reads 0.88x characteristic and ~0.15x mean, and production already
-		 * stood it at a worst joint of 0.985. Three methods, one outlier, and the outlier was the
-		 * catalogue. The whole derivation and THE COST — this was the third and last verdict
-		 * resting on the arching gate — are in the CASE 9 block of section B. No fall region and no
-		 * survivor region, because nothing comes down; and no `DropsToday`, because a row the model
-		 * agrees with has no wrong answer to characterise.
+		 * STANDS — re-ruled 2026-08-12, row goes green. Asked for COLLAPSE on the published arching
+		 * gate; the LP oracle stands it at lambda* = 36.56, hand deep-beam reads 0.88x characteristic
+		 * (~0.15x mean), production already stood it at 0.985. Three methods, one outlier — the
+		 * catalogue. Full derivation in the CASE 9 block above. No regions, no `DropsToday`.
 		 */
 		Add(9, TEXT("Ten-brick opening, eight courses over"), EVerdict::Stands,
 			CoveredCourses, 14, Case9Cuts, {}, {},
 			TEXT("span against case 7 — NOW IN THE READING, not the outcome"));
 
 		/*
-		 * THE THREE KNOWN REDS EACH CARRY A CHARACTERISATION OF TODAY'S WRONG ANSWER, measured off a
-		 * run and never guessed. See FWallCase::DropsToday: these numbers say what the model DOES,
-		 * never what it should do, and each is deleted by whichever slice fixes its row.
-		 *
-		 * AND SINCE 2026-08-12 THEY DO NOT ALL POINT THE SAME WAY, which is the thing to read
-		 * carefully before touching any of them. 20 is the shape this field was invented for: a
-		 * LOCAL LOSS of two named teeth where the model drops nine, i.e. too MANY. 10 and 19 are
-		 * the new shape — rows the catalogue rules STANDS while the model drops 12 and 34, so their
-		 * pins count pieces that should never have left the wall at all. Both are red in the
-		 * INVERTED direction and both go green at DESIGN §7's evolution step 4, when equilibrium
-		 * becomes the cascade's authority; 20 needs the same step for a different reason (its
-		 * over-count is a real strength verdict spreading too far, not an absent mechanism).
-		 *
-		 * THREE ROWS HAVE LEFT THIS SET BY AN EXPECTATION MOVING RATHER THAN BY A FIX: case 12 on
-		 * 2026-08-09, when its rewrite retired the ten-cell cut whose wrong answer was pinned at 76
-		 * dropped and 11 stranded; case 8 on 2026-08-11, whose pinned wrong answer was 0 dropped
-		 * against the two the catalogue named; and case 9 on 2026-08-12, whose pinned 0 likewise
-		 * had nothing left to characterise once the row was ruled to stand.
-		 *
-		 * AND TWO OF THE THREE ALSO STRAND, WHICH IS A SEPARATE AND SHARPER FINDING — see
-		 * FWallCase::StrandsToday. Of the twelve pieces case 10 drops, three are pieces the solver
-		 * could not route rather than pieces the wall could not hold, and the oracle sweep measured
-		 * that ALL twelve got there without a joint breaking.
+		 * The three known reds each carry a characterisation of today's wrong answer (see
+		 * FWallCase::DropsToday), and since 2026-08-12 they don't all point the same way: 20 is a
+		 * LOCAL LOSS of two named teeth where the model drops nine (too many); 10 and 19 are rows
+		 * the catalogue rules STANDS while the model drops 12 and 34 (inverted red) — both go green
+		 * at DESIGN §7's evolution step 4, as does 20 for a different reason (over-count, not an
+		 * absent mechanism). Cases 12, 8 and 9 left this set by their expectation moving rather than
+		 * a fix. Two of the three (10) also strand — see FWallCase::StrandsToday.
 		 */
 		/*
-		 * GREEN SINCE SLICE 3b/4 (2026-08-27). The pins are gone because the row is no longer
-		 * red: below the 200-block cap the equilibrium LP is the sole break authority, it stands
-		 * this wall (lambda* 111.5, measured in the oracle sweep) and carries the panel the router
-		 * could only strand, so production now drops 0 and strands 0 — it AGREES with the ruled
-		 * STANDS. The old `DropsToday = 12` / `StrandsToday = 3` characterised the router's wrong
-		 * answer (an absent loop-division rule, DESIGN §5.1), and per FWallCase::DropsToday's own
-		 * rule they are DELETED in the edit that greens the row rather than re-pinned to a new wrong
-		 * number. The survivor region stays as a now-tautological identity pin.
+		 * GREEN since slice 3b/4 (2026-08-27): below the 200-block cap the equilibrium LP is the
+		 * sole break authority, stands this wall (lambda* 111.5) and carries the panel the router
+		 * could only strand, so production now agrees with the ruled STANDS. The old
+		 * `DropsToday = 12` / `StrandsToday = 3` are deleted per FWallCase::DropsToday's own rule.
+		 * The survivor region stays as a now-tautological identity pin.
 		 */
 		Add(10, TEXT("Opening at a free end, no abutment"), EVerdict::Stands,
 			CoveredCourses, StandardCells, Case10Cuts, {}, Case10Stands,
@@ -2327,28 +1986,22 @@ namespace WallAcceptanceTestSupport
 		/* C — spanning between supports. */
 
 		/*
-		 * STANDS — RULED DOWN TO LOCAL LOSS ON 2026-08-08 AND RE-RULED BACK THE SAME DAY, and the
-		 * second ruling is the keeper. The local-loss reading was BS 5977's 300-mm-above-the-apex
-		 * arching gate, which this fixture fails by its whole height; the user then ruled that a
-		 * published DESIGN threshold is not a collapse predictor, and the honest physics puts the
-		 * 60 cm of bonded masonry over the span at span/depth 2.3 — a deep beam carrying its own
-		 * ~120 kg at roughly 0.03-0.04 MPa, five to ten per cent of mean bond strength and under a
-		 * third of even the conservative characteristic 0.10. See the block above Case11Cuts in
-		 * section C for both rulings and the whole derivation.
+		 * STANDS — ruled down to LOCAL LOSS on 2026-08-08 then re-ruled back the same day; the second
+		 * ruling is the keeper. The local-loss reading was BS 5977's 300-mm arching gate, which this
+		 * fixture fails by its whole height; honest physics puts the 60 cm of bonded masonry over
+		 * the span at span/depth 2.3, a deep beam at ~0.03-0.04 MPa, well under bond strength. Full
+		 * derivation above Case11Cuts.
 		 */
 		Add(11, TEXT("Wall on two piers, six-brick clear span"), EVerdict::Stands,
 			CoveredCourses, StandardCells, Case11Cuts, {}, {},
 			TEXT("pier width against case 12 — IN THE MARGIN, not the outcome"));
 
 		/*
-		 * STANDS — REWRITTEN AND RE-RULED 2026-08-09. The old row cut ten cells out of twelve,
-		 * varying span and pier at once and near-duplicating case 9; this is case 11's own span
-		 * and cover on a ONE-cell pier, and the arithmetic above Case12Cuts says the pier takes
-		 * the thrust — minimum thrust ~400 N against a bonded restoring capacity four to eight
-		 * times that on the adopted mean basis. The recorded expectation that the thrust shoves
-		 * the pier over was a rigid-body overturning reading, rejected here for the third time
-		 * (cases 14 and 16 are the others). No fall region and no survivor region, because
-		 * nothing comes down.
+		 * STANDS — rewritten and re-ruled 2026-08-09. The old row cut ten cells out of twelve,
+		 * varying span and pier at once; this is case 11's own span on a one-cell pier, and the
+		 * arithmetic above Case12Cuts says the pier takes the thrust — ~400 N demand against a
+		 * bonded restoring capacity four to eight times that. The rigid-body overturning reading
+		 * that expected it to fail is rejected here for the third time (cases 14, 16 the others).
 		 */
 		Add(12, TEXT("The same span on a one-brick pier"), EVerdict::Stands,
 			CoveredCourses, StandardCells, Case12Cuts, {}, {},
@@ -2366,11 +2019,9 @@ namespace WallAcceptanceTestSupport
 		}
 
 		/*
-		 * STANDS, ON THE USER'S RULING OF 2026-08-07 AND ON THE ARITHMETIC ABOVE. Drafted as a
-		 * collapse taking the four projecting bricks; the bottom rung reads 0.195160875 of f_xk1
-		 * and nothing in the ladder is near 1.0. No fall region and no survivor region, because
-		 * there is nothing to name — see the block above section D for the whole derivation and
-		 * for what the abandoned overturning reading claimed instead.
+		 * STANDS, per the user's 2026-08-07 ruling and the arithmetic above. Drafted as a collapse
+		 * taking the four projecting bricks; the bottom rung reads 0.195160875 of f_xk1 and nothing
+		 * in the ladder is near 1.0. Full derivation above section D.
 		 */
 		{
 			FWallCase& Case = Add(14, TEXT("Corbel, half brick per course"), EVerdict::Stands,
@@ -2390,11 +2041,9 @@ namespace WallAcceptanceTestSupport
 		}
 
 		/*
-		 * STANDS, ON THE CATALOGUE'S 2026-08-07 REVISION AND ON THE ARITHMETIC ABOVE. Drafted as a
-		 * local loss taking the projecting header; the header's own bed joint reads 0.058203838 of
-		 * f_xk1, which is a sixth of what holds it. No fall region and no survivor region, because
-		 * there is nothing to name — see the block above section E for the whole derivation and for
-		 * what the abandoned overturning reading claimed instead.
+		 * STANDS, per the catalogue's 2026-08-07 revision and the arithmetic above. Drafted as a
+		 * local loss taking the projecting header; its bed joint reads 0.058203838 of f_xk1, a sixth
+		 * of what holds it. Full derivation above section E.
 		 */
 		{
 			FWallCase& Case = Add(16, TEXT("The same header at the top, nothing on it"),
@@ -2423,45 +2072,35 @@ namespace WallAcceptanceTestSupport
 		/* F — losing the base, and the staircase void. */
 
 		/*
-		 * STANDS — RE-RULED 2026-08-12, AND THE ROW STAYS RED IN THE INVERTED DIRECTION. The
-		 * catalogue asked for a COLLAPSE of everything over 135 cm of missing footing; the LP
-		 * oracle stands it at lambda* = 12.38 (the lowest of the fifteen walls and still above 1),
-		 * and production drops 34 WITHOUT BREAKING A JOINT, which is unroutability rather than
-		 * strength. The hand check straddles — 1.25x characteristic f_xk1 against 0.31x f_xk2 and
-		 * ~0.21x mean — so this is the closest call of the three ruled that day and it is recorded
-		 * as one, END-cantilever caveat included, in the CASE 19 block above. NO FALL REGION, BUT
-		 * THE SURVIVOR REGION STAYS: a STANDS verdict implies nothing comes down anywhere, so
-		 * naming the still-footed right half is still true, and it is the only assertion on this
-		 * row that can see the spreading front MOVE rather than merely change size. The pins stay
-		 * because the model still disagrees.
+		 * STANDS — re-ruled 2026-08-12, row stays red in the inverted direction. Asked for COLLAPSE
+		 * of everything over 135 cm of missing footing; the LP oracle stands it at lambda* = 12.38
+		 * (lowest of the fifteen walls, still above 1), production drops 34 without breaking a
+		 * joint — unroutability, not strength. Closest call of the three ruled that day; full
+		 * derivation in the CASE 19 block above. No fall region; survivor region stays, since a
+		 * STANDS verdict makes it a strictly true claim and the pins record the model's disagreement.
 		 */
 		/*
-		 * GREEN SINCE SLICE 3b/4 (2026-08-27), exactly as case 10. Below the cap the equilibrium
-		 * LP stands this wall (lambda* 48.0) and carries the half the router could only strand, so
-		 * production drops 0 and strands 0 — it AGREES with the ruled STANDS. The old
-		 * `DropsToday = 34` / `StrandsToday = 6` characterised the router's unroutability and are
-		 * DELETED here rather than re-pinned. The survivor region stays as an identity pin.
+		 * GREEN since slice 3b/4 (2026-08-27), exactly as case 10: below the cap the equilibrium LP
+		 * stands this wall (lambda* 48.0) and carries the half the router could only strand, so
+		 * production now agrees with STANDS. Old `DropsToday = 34` / `StrandsToday = 6` deleted.
+		 * Survivor region stays as an identity pin.
 		 */
 		Add(19, TEXT("Bottom course out under half the wall"),
 			EVerdict::Stands, 10, StandardCells, Case19Cuts, {}, Case19Stands, nullptr);
 
 		/*
-		 * RE-RULED TO STANDS AT SLICE 4 (2026-08-27), the standing doubt settled by the LP. Through
+		 * Re-ruled to STANDS at slice 4 (2026-08-27), the standing doubt settled by the LP. Through
 		 * 2026-08-12 this was a LOCAL LOSS of two teeth that production over-answered by dropping
-		 * nine, and the recorded doubt was that the true count sat "above two and below the model's
-		 * nine". The equilibrium LP settled it in the STANDS direction: below the 200-block cap it
-		 * is the sole break authority, it stands the whole wall (lambda* 218.42) and holds the two
-		 * teeth ~129x clear, so the true count is ZERO — the old two-tooth local loss was the
-		 * per-joint heuristic's error, not the wall's. Production now drops 0 (was 9), so the
-		 * `DropsToday = 9` pin is deleted with the re-ruling.
+		 * nine; the equilibrium LP (sole break authority below the 200-block cap) stands the whole
+		 * wall (lambda* 218.42) and holds the two teeth ~129x clear, so the true count is zero — the
+		 * old two-tooth local loss was the per-joint heuristic's error. `DropsToday = 9` deleted.
 		 *
-		 * WHY STANDS AND NOT A ROW-21-STYLE INVERTED RED. The global feasibility LP is the honest
-		 * mechanism here and it is feasible with a wide margin, so the LP and production AGREE on
-		 * STANDS — there is no residual disagreement to pin red (unlike row 21, whose ruled
-		 * COLLAPSE the LP contradicts). A genuinely-local two-tooth mechanism, if one exists, needs
-		 * per-region interrogation the global solve cannot express (PROMOTION_DESIGN §3.5, §12 D7);
-		 * that is a later slice, not a reason to hold this row red. The teeth are named as the
-		 * SURVIVOR region so their identity is pinned: they must keep their footing.
+		 * Why STANDS and not a row-21-style inverted red: the global feasibility LP and production
+		 * agree here (unlike row 21, whose ruled COLLAPSE the LP contradicts), so there is no
+		 * residual disagreement to pin red. A genuinely-local two-tooth mechanism, if one exists,
+		 * needs per-region interrogation the global solve can't express (PROMOTION_DESIGN §3.5,
+		 * §12 D7) — a later slice, not a reason to hold this row red. The teeth are named as the
+		 * survivor region so their identity is pinned.
 		 */
 		Add(20, TEXT("Staircase void"), EVerdict::Stands,
 			CoveredCourses, 14, Case20Cuts, {}, Case20Falls, nullptr);
@@ -2469,43 +2108,28 @@ namespace WallAcceptanceTestSupport
 		/* G — openings too big for what covers them. The set's only two falling verdicts. */
 
 		/*
-		 * COLLAPSE — USER-DIRECTED 2026-08-12, BUILT 2026-08-13, AND SINCE THE 2026-08-14 MEAN
-		 * RE-ANCHOR FLIP A DELIBERATE RED IN THE INVERTED DIRECTION, joining rows 10 and 19: the RULED
-		 * verdict is Collapse and stands (user, 2026-08-13, with the pricing experiments in hand
-		 * — hand deep-beam 1.2014 MPa is 1.71x even the coded mean f_x1 of 0.70, production's
-		 * 3-pass collapse and the brittleness argument all point the same way), but at the mean
-		 * strengths the MODEL now STANDS the wall: its pre-cascade worst reading was 3.8429
-		 * against the characteristic 0.10 and MEASURED 0.93542327561664174 at the flip
-		 * (2026-08-14) — not the predicted /7 = 0.549, because the worst joint's axis flipped
-		 * (to WHAT is unverified and was written here as squeezed-edge compression; the same
-		 * attribution proved wrong for cases 9 and 22, both of which decomposed to Mohr-Coulomb
-		 * SHEAR — see the pre-cascade block above), leaving the model 6.5% under the line — so
-		 * no joint gives and the cover hangs on. THE CAUSE IS THE COMPOSITE-RELIEF GAP, not the data:
-		 * production's tension sigma sits 3.1x below the hand sigma because composite vertical
-		 * action re-sections the moment (DESIGN §5.5's f_x2 under-crediting is the recorded
-		 * flip side), so the honest hand verdict and the model's reading part company exactly
-		 * where §7's routing gaps say they must. Goes green when that gap closes — evolution
-		 * step 4's equilibrium promotion or the composite/f_x2 rework — never by weakening
-		 * this row.
+		 * COLLAPSE — user-directed 2026-08-12, built 2026-08-13, and since the 2026-08-14 mean
+		 * re-anchor a deliberate red in the inverted direction, joining rows 10 and 19: the ruled
+		 * verdict is Collapse and stands (hand deep-beam 1.2014 MPa is 1.71x the coded mean f_x1),
+		 * but at mean strengths the model now STANDS the wall — pre-cascade worst measured
+		 * 0.93542327561664174 at the flip (2026-08-14), not the predicted /7 = 0.549, because the
+		 * worst joint's governing axis flipped (to squeezed-edge compression, unverified — see the
+		 * pre-cascade block above), leaving the model 6.5% under the line. The cause is the
+		 * composite-relief gap, not the data: production's tension sigma sits 3.1x below the hand
+		 * sigma because composite vertical action re-sections the moment. Goes green when that gap
+		 * closes (evolution step 4 or the composite/f_x2 rework), never by weakening this row.
 		 *
-		 * THE PINS BELOW HOLD THE MODEL'S WRONG ANSWER AT ITS MEASURED SIZE, per the
-		 * rows-10/19 convention: `DropsToday = 0`, `StrandsToday = 0` — the model drops NOTHING
-		 * — and `Case21Stands` still names the jambs, so a regression inside the known failure
-		 * (dropping the jambs, say, or stranding pieces) fails loudly rather than hiding in an
-		 * already-red row. (In the pre-flip red phase these pins are the red: production still
-		 * collapses the wall at the old characteristic data, 45 down in 3 passes.)
+		 * The pins hold the model's wrong answer at its measured size, per the rows-10/19
+		 * convention: `DropsToday = 0`, `StrandsToday = 0`, and `Case21Stands` still names the
+		 * jambs, so a regression fails loudly rather than hiding in an already-red row. The LP
+		 * oracle's stand (17.24 at mean data, 5.511 at characteristic — a rigid-plastic scope limit)
+		 * agrees with production and both disagree with this row's ruled Collapse, which is exactly
+		 * what this inverted red records.
 		 *
-		 * The LP oracle's stand (17.24 at the mean data; 5.511 at the characteristic, booked
-		 * 2026-08-13 as a rigid-plastic scope limit) is pinned in the slow sweep, whose
-		 * case-21 rows re-measured to `AgreeStands` at the flip: LP and production now agree
-		 * with each other and both disagree with this row's ruled Collapse — which is exactly
-		 * what THIS row's inverted red records.
-		 *
-		 * AND THE `Isolates` LINE SAYS "NOT A PAIR", WHICH IS A DELIBERATE REFUSAL. Against case 9
-		 * this row moves the cover from 60 cm to 15 AND the span from 214.75 cm to 394.75 — 1.84x —
-		 * so it is not a one-variable pair however the title reads. What the row IS is a fixture
-		 * where thin cover is the DECISIVE term. Case 22 beside it is the genuine article — case
-		 * 9's own cover, only the span moved — and that is where the one-variable claim lives.
+		 * `Isolates` says "not a pair", deliberately: against case 9 this row moves both cover
+		 * (60 to 15 cm) and span (214.75 to 394.75, 1.84x), so it isn't a one-variable pair — it is
+		 * a fixture where thin cover is the decisive term. Case 22 beside it is the genuine
+		 * one-variable article (case 9's own cover, only the span moved).
 		 */
 		{
 			FWallCase& Case = Add(21, TEXT("Eighteen-brick opening, two courses over"),
@@ -2519,41 +2143,24 @@ namespace WallAcceptanceTestSupport
 		}
 
 		/*
-		 * COLLAPSE — USER-DIRECTED 2026-08-12, BUILT 2026-08-13, AND IT SURVIVES THE MEAN
-		 * RE-ANCHOR AS THE CATALOGUE'S ONE GREEN Collapse ROW. Case 9's own eight courses of
-		 * cover over a span grown 3.62x, so the pair against case 9 varies the span and NOTHING
-		 * else: 1.1644 MPa is 1.66x the coded mean f_x1 of 0.70 (it was quoted against the 0.8
-		 * bracket ceiling when the profiles carried the characteristic 0.10).
+		 * COLLAPSE — user-directed 2026-08-12, built 2026-08-13, survives the mean re-anchor as the
+		 * catalogue's one green Collapse row. Case 9's own eight courses of cover over a span grown
+		 * 3.62x, so the pair against case 9 varies span alone: 1.1644 MPa is 1.66x the coded mean
+		 * f_x1.
 		 *
-		 * THE MARGIN IS MEASURED AND PINNED, AND IT IS NOT THE ONE THE FALLOUT PLAN PREDICTED.
-		 * The plan re-based the model's characteristic-era pre-cascade worst of 8.2241 by
-		 * dividing by 7 — the tension-axis factor — and wrote ~1.175 with a caution that an axis
-		 * flip like case 21's would invalidate it. MEASURED AT THE FLIP (2026-08-14) the reading
-		 * is 2.9133264370386338, two and a half times the prediction, so the "one modest routing
-		 * change flips this verdict" alarm that figure raised was itself an artefact of the /7.
-		 * The wall still collapses in THREE passes shedding 316 pieces (two passes and 254 at the
-		 * characteristic data — the marginal cascade sheds MORE, not fewer; the region pins hold
-		 * because Falls and Stands are containment claims rather than counts). The pin below is
-		 * that measurement, and `FWallCase::PreCascadeWorstToday` says why a count could not have
-		 * caught this.
+		 * The margin is measured and pinned, and it is not what the fallout plan predicted: /7
+		 * re-basing the characteristic-era pre-cascade worst (8.2241) predicted ~1.175, but the
+		 * flip-measured (2026-08-14) reading is 2.9133264370386338, 2.5x the prediction — the worst
+		 * joint's axis flipped (decomposed to Mohr-Coulomb shear: 0.35540386 MPa compression,
+		 * 3.3985494 MPa in-plane, capacity 1.1665529 MPa — sliding under 35,706 N of arch thrust,
+		 * flexural tension exactly zero, so /7 could never have re-based it). The wall still
+		 * collapses in three passes shedding 316 pieces (two passes, 254, at characteristic data —
+		 * the marginal cascade sheds more, not fewer). Pinned at `FWallCase::PreCascadeWorstToday`.
 		 *
-		 * AND THE AXIS FLIPPED, WHICH IS WHY THE PREDICTION MISSED. Decomposed from that joint's
-		 * own force at the pre-cascade solve (c3/36.5-c4/36 — the same jamb-bed shape as case 9's
-		 * c3/11.5-c4/11): 0.35540386 MPa of compression across it and 3.3985494 MPa of in-plane
-		 * stress along it, against a Mohr-Coulomb capacity of 0.9 + 0.75 x 0.35540386 =
-		 * 1.1665529 MPa — which is 2.9133264370386338 to the last bit. The reading is the jamb
-		 * SLIDING under 35,706 N of arch thrust. Its flexural tension is EXACTLY ZERO (production
-		 * clamps that joint's moment at the kern, so bending and normal stress cancel bit for
-		 * bit) and its compression reads 0.0710808 — so /7 could never have re-based it. The
-		 * decomposition is measured here rather than asserted; asserting it wants the pre-cascade
-		 * force carried on `FWallResult` the way the reading itself now is (logged in
-		 * CURRENT_STATE).
-		 *
-		 * THE SET'S ONLY OUTCOME PAIR since the 2026-08-12 rulings retired the last of the old
-		 * five. The oracle answered this fixture for the first time on 2026-08-15 and STANDS it
-		 * at lambda* = 8.4149459982219277, so the row is a THIRD LP-vs-catalogue disagreement of
-		 * case 21's shape rather than a two-method verdict; the CASE 22 block carries the
-		 * measurement and says what a sweep row would cost.
+		 * The set's only outcome pair since the 2026-08-12 rulings retired the last of the old five.
+		 * The oracle answered this fixture for the first time 2026-08-15 and stands it at
+		 * lambda* = 8.4149459982219277 — a third LP-vs-catalogue disagreement of case 21's shape;
+		 * the CASE 22 block above carries the measurement and what a sweep row would cost.
 		 */
 		Add(22, TEXT("Thirty-five-brick opening, eight courses over"), EVerdict::Collapse,
 			CoveredCourses, 39, Case22Cuts, Case22Falls, Case22Stands,
@@ -2584,28 +2191,27 @@ namespace WallAcceptanceTestSupport
 		return Named;
 	}
 
-	/* ================================================================================
-	 * THE TWENTY-TWO AS PLAYABLE LEVELS — what a scenario row for one of these cases must be.
-	 * ================================================================================
+	/*
+	 * The twenty-two as playable levels — what a scenario row for one of these cases must be.
 	 *
-	 * These twenty configurations are the ones the user drew and reviewed, and until now the only
-	 * thing that could lay them was the fixture bricklayer above — which lives in a test file, so
-	 * no level could ever reach it. The three tests at the bottom of this file are the acceptance
-	 * criteria for moving the GEOMETRY into production and leaving the VERDICTS here.
+	 * These configurations are the ones the user drew and reviewed, and until now the only thing
+	 * that could lay them was the fixture bricklayer above — which lives in a test file, so no
+	 * level could ever reach it. The three tests at the bottom of this file are the acceptance
+	 * criteria for moving the geometry into production and leaving the verdicts here.
 	 *
-	 * THE VERDICTS DO NOT MOVE, and that is not a detail of the sequencing. `EVerdict`, `MustFall`,
-	 * `MustStand` and `Isolates` are claims about what the solver ought to conclude; they are
-	 * acceptance-test property. A level needs the geometry and the cuts and nothing else, and
-	 * moving an expected outcome into production would be putting an assertion there.
+	 * The verdicts do not move: `EVerdict`, `MustFall`, `MustStand` and `Isolates` are claims about
+	 * what the solver ought to conclude, an acceptance-test property. A level needs the geometry
+	 * and the cuts and nothing else; moving an expected outcome into production would be putting an
+	 * assertion there.
 	 */
 
 	/**
-	 * WHAT A CASE'S LEVEL IS CALLED, AND WHY IT IS THE NUMBER RATHER THAN THE TITLE.
+	 * What a case's level is called, and why it's the number rather than the title.
 	 *
 	 * A scenario name is typed on a URL and a map name becomes a filename on disk, so both want to
-	 * be short, stable and free of punctuation; a case title is prose with commas and hyphens in it
-	 * and is carried VERBATIM in the row's own `Title` instead. Two digits so `wall-2` cannot sort
-	 * or read as `wall-20`.
+	 * be short, stable and free of punctuation; a case title is prose with commas and hyphens and
+	 * is carried verbatim in the row's own `Title` instead. Two digits so `wall-2` cannot sort or
+	 * read as `wall-20`.
 	 */
 	FString LevelNameForCase(int32 Number)
 	{
@@ -2618,13 +2224,13 @@ namespace WallAcceptanceTestSupport
 	}
 
 	/**
-	 * THE ONE MACHINE-CHECKABLE CLAIM A LEVEL'S CAPTION MAKES.
+	 * The one machine-checkable claim a level's caption makes.
 	 *
-	 * A caption is prose and has to stay prose — it is the only thing telling a player what they
-	 * are looking at. What cannot be prose is the VERDICT it claims, because a level captioned with
-	 * an outcome the solver does not produce is a lie told to somebody standing in front of the
+	 * A caption is prose and stays prose — it's the only thing telling a player what they're
+	 * looking at. What can't be prose is the verdict it claims, since a level captioned with an
+	 * outcome the solver doesn't produce is a lie told to someone standing in front of the
 	 * counter-example. So the caption carries exactly one token naming its verdict, spelled the way
-	 * this file spells verdicts, and the rest of the sentence is the writer's.
+	 * this file spells verdicts, and the rest is the writer's.
 	 */
 	FString VerdictClaimFor(EVerdict Verdict)
 	{
@@ -2632,54 +2238,43 @@ namespace WallAcceptanceTestSupport
 	}
 
 	/**
-	 * AND THE TOKEN A CAPTION MUST CARRY WHEN THE MODEL DOES NOT AGREE WITH ITS OWN CLAIM.
+	 * The token a caption must carry when the model doesn't agree with its own claim.
 	 *
-	 * Three rows are red today. A caption that named only the expected verdict on one of those
-	 * would be worse than silence — so the honest ones say both, and the ones the model agrees with
-	 * must NOT say it, which is what stops the admission outliving the disagreement.
+	 * Three rows are red today. A caption naming only the expected verdict on one of those would be
+	 * worse than silence, so the honest ones say both, and the ones the model agrees with must not
+	 * say it, which stops the admission outliving the disagreement.
 	 *
-	 * AND SINCE 2026-08-12 THE MARKER NO LONGER IMPLIES "THE MODEL IS TOO OPTIMISTIC". Cases 10
-	 * and 19 are captioned `Expected: STANDS` AND carry this marker, because the wall is ruled to
-	 * stand and the model drops 12 and 34 bricks. A player reading either caption is being told the
-	 * wall in front of them should be intact and is not — which is exactly as honest as the older
-	 * direction and reads very differently.
+	 * Since 2026-08-12 the marker no longer implies "the model is too optimistic": cases 10 and 19
+	 * are captioned `Expected: STANDS` and carry this marker, because the wall is ruled to stand
+	 * and the model drops 12 and 34 bricks — telling a player the wall should be intact and isn't.
 	 */
 	const TCHAR* const ModelDisagreesMarker = TEXT("THE MODEL CURRENTLY DISAGREES");
 
 	/**
 	 * Whether the model produced the verdict this row claims.
 	 *
-	 * DELIBERATELY THE SAME THREE SHAPES `Acceptance.Wall.Catalogue` ASSERTS ONE AT A TIME, and it
-	 * is a second reading of them rather than a shared one because the catalogue's assertions are
-	 * SEPARATE on purpose — each prints its own diagnosis — and folding them into one predicate
-	 * would change three known-red failure messages. The cost is a copy, and the copy is held
-	 * against the catalogue by the known-red tripwire in the caption test: it must name exactly the
-	 * three rows that are red, so a predicate that drifted from the catalogue fails there rather
+	 * Deliberately the same three shapes `Acceptance.Wall.Catalogue` asserts one at a time, and a
+	 * second reading of them rather than a shared one — the catalogue's assertions stay separate so
+	 * each prints its own diagnosis. Held against the catalogue by the known-red tripwire in the
+	 * caption test, which must name exactly the red rows, so a drifted predicate fails there rather
 	 * than quietly captioning a level wrongly.
 	 *
-	 * THE `Stands` ARM IS WHAT DECIDES CASES 10 AND 19 SINCE THEIR 2026-08-12 RE-RULING, and it
-	 * needs no change to do it: both rows are ruled STANDS, both drop pieces, so `Fallen.Num() == 0`
-	 * is false and the predicate reports a disagreement. That is worth stating because it is the
-	 * first time this arm has ever returned false — every previous STANDS row was one the model
-	 * produced — and a reader might reasonably assume the arm was only ever exercised in the
-	 * agreeing direction.
+	 * The `Stands` arm is what decides cases 10 and 19 since their 2026-08-12 re-ruling: both rows
+	 * are ruled STANDS, both drop pieces, so `Fallen.Num() == 0` is false and the predicate reports
+	 * a disagreement — the first time this arm has ever returned false (every previous STANDS row
+	 * was one the model produced).
 	 *
-	 * AND THE `default` ARM — THE COLLAPSE ONE — RAN FOR THE FIRST TIME ON 2026-08-13, when cases 21
-	 * and 22 landed. Between 2026-08-12 and that day the catalogue had no `Collapse` row at all, so
-	 * this branch could not have failed whatever it said; it now decides two rows, in the AGREEING
-	 * direction (production drops the cover of both and keeps both sets of jambs, so `MustFall` is
-	 * contained in the fallen set and `MustStand` is disjoint from it). Its bite is proven by the
-	 * survivor-widening mutation on case 21 — a row of the TRAPS.md mutation registry, which is
-	 * where every measured mutation in this project lives; section G records none — rather than by
-	 * its presence.
+	 * The `default` (Collapse) arm ran for the first time 2026-08-13 when cases 21 and 22 landed;
+	 * between 2026-08-12 and then the catalogue held no `Collapse` row, so it was dead code. It now
+	 * decides two rows in the agreeing direction (`MustFall` contained in the fallen set, `MustStand`
+	 * disjoint from it). Its bite is proven by the survivor-widening mutation on case 21 (TRAPS.md
+	 * registry) rather than by its presence.
 	 *
-	 * AND IT CARRIES THE PASS-COUNT CLAIM ON BOTH FALLING SHAPES, matching the catalogue arm below
-	 * assertion for assertion: a `Collapse` row whose pieces reached the ground in ZERO breaking
-	 * passes is the unroutability of cases 10 and 19 wearing a collapse's outcome, and a caption
-	 * that called that agreement would be telling a player the wall failed on strength when the
-	 * solver never broke a joint. `CutPasses` is structurally 0 on a row that cuts nothing, so this
-	 * would also refuse to agree with a `Collapse` row that cut nothing — no such row exists and
-	 * none could mean anything.
+	 * It also carries the pass-count claim on both falling shapes: a `Collapse` row whose pieces
+	 * reached the ground in zero breaking passes is the unroutability of cases 10 and 19 wearing a
+	 * collapse's outcome, so a caption calling that agreement would tell a player the wall failed on
+	 * strength when no joint broke. `CutPasses` is structurally 0 on a row that cuts nothing, so
+	 * this also refuses to agree with a `Collapse` row that cuts nothing — no such row exists.
 	 */
 	bool ModelAgreesWithVerdict(const FWallCase& Case, const FWall& Wall, const FWallResult& Result)
 	{
@@ -2797,16 +2392,15 @@ namespace WallAcceptanceTestSupport
 	}
 
 	/**
-	 * Compare a laid layout against the fixture's wall, BRICK FOR BRICK AND IN HANDLE ORDER.
+	 * Compare a laid layout against the fixture's wall, brick for brick and in handle order.
 	 *
-	 * HANDLE ORDER IS PART OF THE CLAIM AND IT IS THE HALF THAT LOOKS FINE WHEN IT IS WRONG. A
-	 * builder that lays the same bricks in a different sequence renumbers every joint and every
-	 * break stamp while every geometric check still passes — and every reading in this file, in
-	 * `Core.Structure` and in the design documents is a statement about a particular joint index.
+	 * Handle order is part of the claim and the half that looks fine when wrong: a builder that
+	 * lays the same bricks in a different sequence renumbers every joint and break stamp while
+	 * every geometric check still passes, and every reading in this file, `Core.Structure` and the
+	 * design docs is a statement about a particular joint index.
 	 *
-	 * THE FIRST DISAGREEMENT IS REPORTED, NOT ALL OF THEM. A wall is up to 375 pieces and 1,000
-	 * joints; a producer that moved every brick would otherwise print thousands of failures and
-	 * bury everything else in the run.
+	 * Only the first disagreement is reported: a wall is up to 375 pieces and 1,000 joints, and a
+	 * producer that moved every brick would otherwise bury everything else in thousands of failures.
 	 *
 	 * @return true if they are the same wall.
 	 */
@@ -2919,44 +2513,38 @@ namespace WallAcceptanceTestSupport
 }
 
 /**
- * THE ACCEPTANCE SET ITSELF: every case in the catalogue, its own verdict, one row at a time.
+ * The acceptance set itself: every case in the catalogue, its own verdict, one row at a time.
  *
- * THE ASSERTION IS ON OUTCOME AND ITS SHAPE FOLLOWS THE VERDICT — see the file header for why the
- * middle verdict exists and why displacement is not used anywhere. A failure names the case, the
- * variable its matched pair isolates, and both the expected and the actual fallen set in
- * (course, cell) terms, so the log says which bricks came down rather than how many.
+ * The assertion is on outcome and its shape follows the verdict — see the file header for why the
+ * middle verdict exists and why displacement is never used. A failure names the case, the variable
+ * its matched pair isolates, and both the expected and actual fallen set in (course, cell) terms.
  *
- * MOST OF THIS IS EXPECTED TO BE RED, AND THAT IS CORRECT. These are the acceptance criteria for
- * the arching work described in claude_plans/ARCHING_DESIGN.md, not a regression net over
- * something finished. The signature to look for is the one CURRENT_STATE.md predicts: every
- * falling half of a pair passing while every standing half fails, which is what a model that can
- * only ever say "falls" looks like.
+ * Most of this is expected to be red, and that is correct: these are the acceptance criteria for
+ * the arching work in claude_plans/ARCHING_DESIGN.md, not a regression net over something
+ * finished. The signature to look for is the one CURRENT_STATE.md predicts: every falling half of
+ * a pair passing while every standing half fails — what a model that can only ever say "falls"
+ * looks like.
  *
- * SEVERAL ROWS ARE GREEN ON ARRIVAL AND EACH IS SAID TO BE, so nobody mistakes them for work this
- * suite drove. 1 and 17 are intact walls and are regression anchors. 18 is a stack-bond column
- * that really does sit at a few percent — its verdict passes and the property that made the case
- * interesting does NOT, which is why that property has a test of its own below. And 8, 9, 12, 13,
- * 14 and 16 all stand, which is a CORRECTION rather than an achievement: 14 was drafted as a
- * collapse and 16 as a local loss, revised on 2026-08-07 on the same reading — a bonded section
- * resists what a rigid block could not — 12 was rewritten and re-ruled on 2026-08-09 on that
- * reading's third outing (the one-cell pier holds the thrust; see the block above Case12Cuts), 8
- * was re-ruled on 2026-08-11 on its fourth (the coverless course jams into its abutments), and 9
- * on 2026-08-12 on its fifth (60 cm of bonded masonry spans 2.1 m as a deep beam). Each block in
- * section B carries its own arithmetic, cost and doubts.
+ * Several rows are green on arrival, each said to be so nobody mistakes them for work this suite
+ * drove. 1 and 17 are intact walls, regression anchors. 18 is a stack-bond column that really
+ * sits at a few percent — its verdict passes but the property that made the case interesting does
+ * not, which is why that property has its own test below. And 8, 9, 12, 13, 14 and 16 all stand,
+ * which is a correction rather than an achievement (14 and 16 revised 2026-08-07 on "a bonded
+ * section resists what a rigid block could not"; 12 on 2026-08-09; 8 on 2026-08-11; 9 on
+ * 2026-08-12 — each block in section B carries its own arithmetic, cost and doubts).
  *
- * AND SINCE 2026-08-12 TWO ROWS ARE RED IN A DIRECTION THIS TEST HAD NEVER SEEN BEFORE. Cases 10
- * and 19 were re-ruled from COLLAPSE to STANDS on the same day, and the model DOES NOT AGREE: it
- * drops 12 and 34 pieces respectively, in zero cascade passes, so what fails is the STANDS
- * verdict's "nothing left the structure" half. Until then every red row here asked for MORE loss
- * than the model produced. Reading one of those two failures as "the wall came down and the test
- * wanted it to come down harder" is exactly backwards: the wall is ruled to stand and the solver
- * dropped a third of it.
+ * Since 2026-08-12 two rows are red in a direction this test had never seen before: cases 10 and
+ * 19 were re-ruled from COLLAPSE to STANDS the same day, and the model does not agree — it drops
+ * 12 and 34 pieces in zero cascade passes, so what fails is the STANDS verdict's "nothing left the
+ * structure" half. Every red row before that asked for more loss than the model produced; reading
+ * one of these two as "wanted it to come down harder" is exactly backwards — the wall is ruled to
+ * stand and the solver dropped a third of it.
  *
  * The pairs those corrections stopped separating on outcome have each moved onto what still
  * separates them, except 7 vs 8 and 7 vs 10, which are losses rather than relocations; the file
  * header lists all five pairs and the fate of each.
  *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * Needs a ticking world: no. See the file header.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWallAcceptanceCatalogueTest,
@@ -2970,9 +2558,9 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 	using namespace WallAcceptanceTestSupport;
 
 	/*
-	 * THE PROFILE THIS FILE'S ARITHMETIC ASSUMES, CHECKED RATHER THAN IMPORTED. Every expected
-	 * value below is a consequence of these three published figures; a retune of any of them
-	 * should turn this row red rather than silently move every case in the catalogue.
+	 * The profile this file's arithmetic assumes, checked rather than imported: every expected
+	 * value below is a consequence of these three figures, so a retune of any should turn this
+	 * row red rather than silently move every case in the catalogue.
 	 */
 	TestEqual(TEXT("FIXTURE: general purpose mortar's cohesion is EN 1996-1-1 Table 3.4's f_vk0"),
 		GeneralPurposeMortar.ShearCohesionMPa, MortarShearCohesionMPa);
@@ -3012,9 +2600,9 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 		case EVerdict::Stands:
 		{
 			/*
-			 * BOTH HALVES, AND NEITHER IS DECORATION. "Nothing fell" alone passes for a wall that
-			 * severed every joint over the cut and stayed leaning together; "no joint gave" alone
-			 * passes for a wall whose pieces were never in the load path to begin with.
+			 * Both halves, neither decoration: "nothing fell" alone passes for a wall that severed
+			 * every joint over the cut and stayed leaning together; "no joint gave" alone passes for
+			 * a wall whose pieces were never in the load path to begin with.
 			 */
 			TestEqual(
 				*FString::Printf(
@@ -3037,40 +2625,27 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 				Wall.Structure.NumLivePieces(), Result.PiecesLaid - Result.PiecesCut);
 
 			/*
-			 * AND ON A ROW THAT CUTS NOTHING, THE INTACT SOLVE IS THE ONLY SOLVE THERE IS.
-			 *
-			 * `CutPasses` above is STRUCTURALLY ZERO on the six no-cut rows — 1, 13, 14, 15, 16 and
-			 * 17 — because the whole block that sets it is inside `if (Case.Cuts.Num() > 0)`, so
-			 * the "no joint over the cut gave" half of a STANDS verdict was asserting nothing at
-			 * all on exactly the rows whose as-built state IS the case under test. A corbel that
-			 * peeled every joint it stands on while nothing lost its footing would have read as a
-			 * clean pass.
-			 *
-			 * The cutting rows already make this claim, harder, in `CheckWallFixture`: an intact
-			 * wall that broke joints or dropped pieces before the player touched it fails the
-			 * precondition there. So this is the same claim on the rows that precondition skips,
-			 * and it is written here rather than there because on a no-cut row it is a VERDICT and
-			 * not a fixture check.
+			 * On a row that cuts nothing, the intact solve is the only solve there is. `CutPasses`
+			 * above is structurally zero on the six no-cut rows (1, 13-17) since the whole block
+			 * that sets it is inside `if (Case.Cuts.Num() > 0)`, so the "no joint over the cut gave"
+			 * half of a STANDS verdict asserted nothing on exactly the rows whose as-built state is
+			 * the case under test — a corbel that peeled every joint it stands on would have read as
+			 * a clean pass. `CheckWallFixture` already makes this claim, harder, on the cutting rows
+			 * (an intact wall that broke or dropped before the cut fails the precondition there);
+			 * this is the same claim on the rows that precondition skips, written here because on a
+			 * no-cut row it is a verdict, not a fixture check.
 			 */
 			/*
-			 * AND WHERE A STANDS ROW NAMES A SURVIVOR REGION, THAT REGION IS ASSERTED TOO — WHICH
-			 * IS ONLY EVER USEFUL WHILE THE ROW IS RED.
-			 *
-			 * A STANDS verdict already says nothing comes down anywhere, so this claim is IMPLIED
-			 * by the first assertion above and cannot fail on a row that passes. What it buys is on
-			 * the rows that FAIL: cases 10 and 19 are ruled to stand and drop 12 and 34 pieces, and
-			 * the failure line above reads the same for any twelve and any thirty-four. The pins
-			 * beside it hold the COUNT. Neither holds the IDENTITY — a routing change that shifted
-			 * case 19's spreading front three cells right, dropping pieces in the still-footed half
-			 * while sparing an equal number at the far left, would keep the count, keep the stranded
-			 * count, and keep every other assertion on the row green.
-			 *
-			 * SO IT IS ASSERTED INVERTED, as a characterisation of WHERE THE WRONGNESS IS NOT: the
-			 * named masonry must contain NO fallen piece. It is a true claim about the ruling and a
-			 * measured claim about today, and both blocks in section B record the drop sets the
-			 * regions were checked against. When the rows go green at evolution step 4 these become
-			 * tautologies alongside the rest of the STANDS shape, and they may be deleted with the
-			 * pins in the same edit.
+			 * Where a STANDS row names a survivor region, that region is asserted too — useful only
+			 * while the row is red. A STANDS verdict already implies nothing comes down anywhere, so
+			 * this is implied by the assertion above and can't fail on a passing row. What it buys is
+			 * on cases 10 and 19: ruled to stand, dropping 12 and 34, the failure line above reads
+			 * the same for any twelve or thirty-four — it holds the count, not the identity. A
+			 * routing change shifting case 19's spreading front three cells right would keep every
+			 * count-based assertion green. So it is asserted inverted, as a characterisation of where
+			 * the wrongness is NOT: the named masonry must contain no fallen piece. Both blocks in
+			 * section B record the drop sets the regions were checked against; these become
+			 * tautologies (deletable with the pins) when the rows go green at evolution step 4.
 			 */
 			if (Case.MustStand.Num() > 0)
 			{
@@ -3120,9 +2695,9 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 		case EVerdict::LocalLoss:
 		{
 			/*
-			 * IDENTITY, NOT A COUNT. The named set is what a bounded loss MEANS: the same number of
-			 * bricks falling from somewhere else is a completely different — and wrong — answer,
-			 * and a test that counted would call it a pass.
+			 * Identity, not a count: the named set is what a bounded loss means, so the same number
+			 * of bricks falling from somewhere else is a completely different, wrong answer that a
+			 * counting test would call a pass.
 			 */
 			const TArray<int32> Named = PiecesInRegions(Wall, Case.MustFall);
 
@@ -3152,11 +2727,10 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 		default:
 		{
 			/*
-			 * TWO-SIDED, because a wall that comes down because EVERYTHING comes down says nothing
-			 * about the term this row is meant to isolate. The named survivor region is what stops
-			 * a model that always answers "falls" from passing every collapse row for free. Every
-			 * collapse row names one: the last that could not — old case 12, whose picture had the
-			 * entire wall coming down — was rewritten out of the set on 2026-08-09.
+			 * Two-sided, because a wall down because everything is down says nothing about the term
+			 * this row isolates. The named survivor region stops a model that always answers "falls"
+			 * from passing every collapse row for free; the last row that couldn't name one — old
+			 * case 12, whose picture had the entire wall coming down — was rewritten out 2026-08-09.
 			 */
 			const TArray<int32> MustFall = PiecesInRegions(Wall, Case.MustFall);
 			const TArray<int32> MustStand = PiecesInRegions(Wall, Case.MustStand);
@@ -3203,32 +2777,24 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 				WronglyFallen.Num(), 0);
 
 			/*
-			 * AND THE COLLAPSE MUST HAVE BEEN A STRENGTH VERDICT, WHICH IS THE CLAIM BOTH SECTION-G
-			 * BLOCKS REST ON AND WHICH NOTHING ASSERTED UNTIL 2026-08-13.
+			 * And the collapse must have been a strength verdict — the claim both section-G blocks
+			 * rest on, unasserted until 2026-08-13. Cases 10 and 19 are why: both drop a third of a
+			 * wall in zero breaking passes with no joint near capacity — a router with nowhere to
+			 * send load, not masonry that failed — which is why the user re-ruled them to STANDS.
+			 * The two assertions above can't tell those apart ("every named brick came down and the
+			 * jambs did not" is satisfied just as neatly by unroutability), so the pass count is
+			 * asserted here rather than merely recited in the case blocks.
 			 *
-			 * Cases 10 and 19 are the reason this line exists. Both drop a third of a wall and both
-			 * do it in ZERO breaking passes with no joint near capacity — a router with nowhere to
-			 * send load, not masonry that failed — and that is precisely why the user re-ruled them
-			 * to STANDS. The two rows above cannot tell those apart: "every named brick came down
-			 * and the jambs did not" is satisfied just as neatly by an unroutability of the right
-			 * shape. So the pass count is asserted rather than merely recited in the case blocks,
-			 * because a row whose bricks fell for the wrong reason is a row that agrees with this
-			 * catalogue by accident.
+			 * One-sided on purpose: claims at least one joint gave, not how many passes it took (a
+			 * property of the cascade's scheduling). Today's actual counts are three (case 21) and
+			 * two (case 22), recorded in their blocks.
 			 *
-			 * ONE-SIDED ON PURPOSE. What is claimed is that at least one joint gave, not how many
-			 * passes it took: the pass count is a property of the cascade's scheduling and pinning
-			 * it here would break on a refactor that changed nothing physical. The two rows' actual
-			 * counts today are three (case 21) and two (case 22), recorded in their blocks.
-			 *
-			 * GREEN ON ARRIVAL AND PROVEN TO BITE, because a green-on-arrival assertion is
-			 * indistinguishable from one that asserts nothing. The mutation is the TRAPS registry's
-			 * `ReseatSpannedGroups` early-return, which takes a routing mechanism away: both rows go
-			 * to the stranded-heavy shape the registry records (case 21 to 31 fallen / 16 stranded,
-			 * case 22 to 236 / 33) and BOTH FIRE THIS LINE at "the cascade ran 0 breaking pass(es)"
-			 * — every piece that comes down under the mutation does so because nothing would route
-			 * it, which is exactly the reading this assertion exists to refuse. Measured 2026-08-13
-			 * under filter `DestructionGame.Acceptance.Wall`, counting `LogAutomationController:
-			 * Error` lines: 50 lines / 4 failing tests against a clean 8 / 2.
+			 * Proven to bite by the TRAPS registry's `ReseatSpannedGroups` early-return mutation,
+			 * which takes a routing mechanism away: both rows go stranded-heavy (case 21 to 31
+			 * fallen / 16 stranded, case 22 to 236 / 33) and both fire this line at "0 breaking
+			 * pass(es)" — every piece comes down because nothing would route it, exactly the reading
+			 * this assertion refuses. Measured 2026-08-13: 50 log-error lines / 4 failing tests
+			 * against a clean 8 / 2.
 			 */
 			TestTrue(
 				*FString::Printf(
@@ -3245,32 +2811,25 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * AND THE THREE KNOWN REDS ARE PINNED TO THE WRONG ANSWER THEY GIVE TODAY.
+		 * The three known reds are pinned to the wrong answer they give today. This asserts nothing
+		 * about physics — the row above has already failed; what this adds is that the failure has
+		 * a fixed size, since a red row is otherwise a hole in the net (case 20 fails in identical
+		 * words whether it drops nine bricks or ninety). Measured 2026-08-09, one number per red
+		 * row, never guessed.
 		 *
-		 * THIS ASSERTS NOTHING ABOUT PHYSICS AND ENDORSES NOTHING. The row above has already
-		 * failed; what this adds is that the failure has a FIXED SIZE. A red row is otherwise a
-		 * hole in the net — case 20 fails in identical words whether it drops nine bricks or
-		 * ninety, so a change that made the model twice as wrong would land inside a known failure
-		 * and never be seen. Measured on 2026-08-09, one number per red row, never guessed.
+		 * The pin is what keeps the 2026-08-12 re-rulings honest: cases 10 and 19 were re-ruled with
+		 * their pins rather than pinless, so their STANDS failure ("%d piece(s) left the structure")
+		 * holds the failure at 12 and 34 exactly rather than drifting while red.
 		 *
-		 * THE PIN IS WHAT KEEPS THE 2026-08-12 RE-RULINGS HONEST, and it is the reason cases 10 and
-		 * 19 were re-ruled WITH their pins rather than pinless. Their STANDS verdict now fails on
-		 * one line — "%d piece(s) left the structure" — and that line reads the same for 12 pieces
-		 * as for 120. The pins hold the failure at 12 and 34 EXACTLY, so its SIZE cannot drift while
-		 * the row sits red waiting for evolution step 4.
+		 * A count is not a shape, though: a routing change that moved the drop set without resizing
+		 * it passes this and every other count. Identity is held by the survivor region asserted in
+		 * the STANDS arm above — complementary, not a duplicate, since the pin sees a failure grow
+		 * or shrink and the region sees it move.
 		 *
-		 * A COUNT IS NOT A SHAPE, THOUGH, AND THE PIN MUST NOT BE READ AS ONE. Twelve different
-		 * bricks are still twelve, so a routing change that MOVED the drop set without resizing it
-		 * passes this assertion and every other count on the row. What holds the identity is the
-		 * survivor region asserted up in the STANDS arm — restored on both rows for exactly this
-		 * reason — and the two are complementary rather than duplicates: the pin sees a failure grow
-		 * or shrink, the region sees it move.
-		 *
-		 * A ROW THAT GETS FIXED FAILS HERE, AND THAT IS THE POINT: the slice that fixes it deletes
-		 * the row's `DropsToday` in the same edit, exactly as it must delete the level caption's
-		 * disagreement marker and the entry in the caption test's known-red list. Case 9's pin went
-		 * that way on 2026-08-12 — not fixed, but RE-RULED into agreement, which owes the same
-		 * paperwork.
+		 * A row that gets fixed fails here, and that is the point: the slice that fixes it deletes
+		 * `DropsToday` in the same edit, along with the caption's disagreement marker and the
+		 * known-red list entry. Case 9's pin went that way on 2026-08-12 — re-ruled into agreement
+		 * rather than fixed, owing the same paperwork.
 		 */
 		if (Case.DropsToday != INDEX_NONE)
 		{
@@ -3287,15 +2846,12 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * AND A ROW MAY PIN THE MARGIN THE CASCADE STARTED FROM, WHICH IS NOT A COUNT.
-		 *
-		 * Two assertions rather than one, because they fail in different words about different
-		 * things. The first says the wall really was past capacity when it went — a Collapse
-		 * verdict reached from UNDER 1.0 would be pieces the router lost rather than masonry
-		 * failing, which is the same trap `StrandsToday` exists for, one layer up. The second
-		 * holds the margin at its measured size, so a change that took case 22 from 1.17x of
-		 * capacity to 1.01x — still collapsing, still green, one retune from silently inverting
-		 * the catalogue's only green Collapse row — fails loudly instead.
+		 * A row may also pin the margin the cascade started from, which is not a count. Two
+		 * assertions: the first says the wall really was past capacity when it went (a Collapse
+		 * reached from under 1.0 would be pieces the router lost, the same trap `StrandsToday`
+		 * exists for one layer up); the second holds the margin at its measured size, so a change
+		 * that took case 22 from 1.17x capacity to 1.01x — still collapsing, still green, one
+		 * retune from silently inverting the catalogue's only green Collapse row — fails loudly.
 		 */
 		if (Case.PreCascadeWorstToday > 0.0)
 		{
@@ -3322,146 +2878,88 @@ bool FWallAcceptanceCatalogueTest::RunTest(const FString& Parameters)
 }
 
 /**
- * CASES 7 AND 9, THE PART A VERDICT CANNOT SAY: WIDENING AN OPENING CHANGES WHAT ITS JAMB IS DOING,
- * NOT MERELY HOW HARD — AND BOTH WALLS STAND ANYWAY.
+ * Cases 7 and 9, the part a verdict cannot say: widening an opening changes what its jamb is
+ * doing, not merely how hard — and both walls stand anyway.
  *
- * WHY THIS TEST EXISTS AT ALL, AND WHAT IT REPLACES. 7 vs 9 was an OUTCOME pair — a four-cell
- * opening stands, a ten-cell one brings the wall down — and it was the LAST outcome pair the
- * catalogue had. On 2026-08-12 the user re-ruled case 9 to STANDS (the CASE 9 block of section B
- * carries the derivation: 60 cm of bonded masonry spans 2.1 m as a deep beam, the LP oracle prices
- * it at lambda* = 36.56, and a hand check reads 0.88x characteristic bond and ~0.15x mean), and
- * with both halves standing the old claim — the greater half loses strictly more — became
- * unsatisfiable. `Acceptance.Wall.MatchedPairs` retired in the same edit because case 10 went the
- * same way on the same day and nothing was left in its table. This is where the span
- * discrimination went, and it is the stronger reading: an outcome pair could only ever have said
- * "these differ", while this says BY HOW MUCH AND IN WHICH DIRECTION.
+ * Why this test exists. 7 vs 9 was an outcome pair — a four-cell opening stands, a ten-cell one
+ * brings the wall down — and the last outcome pair the catalogue had. On 2026-08-12 the user
+ * re-ruled case 9 to STANDS (CASE 9 block: 60 cm of bonded masonry spans 2.1 m as a deep beam,
+ * LP oracle lambda* = 36.56, hand check 0.88x characteristic), and with both halves standing the
+ * old "greater half loses strictly more" claim became unsatisfiable. `Acceptance.Wall.MatchedPairs`
+ * retired in the same edit (case 10 went the same way the same day). This is where the span
+ * discrimination went, and it's the stronger reading: an outcome pair could only say "these
+ * differ"; this says by how much and in which direction.
  *
- * =====================================================================================
- * WHY THIS IS NOT THE 7-vs-8 TRAP, WHICH IS THE ONLY REASON THE RELOCATION WAS ALLOWED
- * =====================================================================================
+ * Why this is not the 7-vs-8 trap, the standard this relocation had to clear. The cover pair, 7 vs
+ * 8, was deleted rather than relocated when case 8 was re-ruled 2026-08-11: production reads case
+ * 7 at 0.269 (eight courses of cover) and case 8 at 0.219 (one), separating 1.23x in the WRONG
+ * direction — a downward-routing solver reads cover as load, never arch capacity, so pinning that
+ * would encode a defect as a discrimination. This row clears the same standard on three counts:
  *
- * The cover pair, 7 vs 8, was DELETED rather than relocated onto readings when case 8 was re-ruled
- * on 2026-08-11, and the reasoning is recorded in the CASE 8 block: production reads case 7 at
- * 0.269 with eight courses of cover and case 8 at 0.219 with one, so the halves separate by 1.23x
- * AND IN THE WRONG DIRECTION. A downward-routing solver reads cover as LOAD and never as arch
- * capacity, so more of it can only ever read worse; pinning that number would have encoded a defect
- * as a discrimination. That refusal is the standard this row has to clear, and it clears it on
- * three counts:
+ *   The direction is right. A longer span delivers a larger reaction into its abutment, and the
+ *   jamb beside the wider opening does carry more — the normal force through the governing joint
+ *   is 56,010.7 uu (68.5-91 cm clear) against 106,676.3 uu (203.5-226 cm), no strengths involved.
  *
- *   THE DIRECTION IS RIGHT. A longer span delivers a larger reaction into its abutment, so the
- *   jamb beside the wider opening MUST carry more. It does, and the cleanest way to see it carries
- *   no strengths at all: the NORMAL FORCE through the governing joint is 56,010.7 uu at 68.5-91 cm
- *   of clear opening against 106,676.3 uu at 203.5-226 cm. (Those are the brackets the assertion's
- *   own arithmetic computes below — a toothed reveal opens a different width on the even and the
- *   odd courses, so each wall has a narrow and a wide value, and quoting the CELL gaps instead
- *   would double-count the brick that closes each reveal.) Nothing has to be excused.
+ *   The joint is the same kind on both sides: both fixtures are the same deep beam (eight courses,
+ *   60 cm, bonded cover over a toothed opening, same brick/mortar/thickness), both worst joints are
+ *   bed joints in the right jamb at or just below the head — the reaction path. The pair varies
+ *   span and cell count (12 against 14, keeping two cells of jamb either side) and nothing else.
+ *   The failure mode at that joint is NOT the same on both sides since the 2026-08-14 re-anchor —
+ *   the pair's finding, not a caveat (see the axis section below).
  *
- *   THE JOINT IS THE SAME KIND OF JOINT ON BOTH SIDES. Both fixtures are the same deep beam —
- *   eight courses (60 cm) of bonded cover over a toothed opening in a running-bond wall, same
- *   brick, same mortar, same 10.25 cm thickness — and both worst joints are bed joints in the
- *   RIGHT JAMB at or just below the head of the opening, i.e. where that beam delivers its
- *   reaction. The pair varies the span and the wall's cell count (12 against 14, which is what
- *   keeps two cells of jamb either side) and nothing else. THE FAILURE MODE AT THAT JOINT IS NOT
- *   THE SAME ON BOTH SIDES, and since the 2026-08-14 re-anchor that is the pair's finding rather
- *   than a caveat — see the axis section below.
+ *   Neither reading is taken off a wall the router failed on: both cases drop, break and strand
+ *   nothing. This is what disqualified the abutment pair, 7 vs 10, from the same relocation: case
+ *   10 reads 0.300 against case 7's 0.269 (also the right direction) but gets there dropping twelve
+ *   pieces (three stranded) in zero cascade passes — not a measurement of the abutment term. That
+ *   discrimination went to the LP oracle instead (wall-07 296.22 against wall-10 35.82, 8.27x).
  *
- *   NEITHER READING IS TAKEN OFF A WALL THE ROUTER FAILED ON. Both cases drop NOTHING, break
- *   NOTHING and strand NOTHING, so both numbers are honest readings of a fully routed structure.
- *   THIS is what disqualified the abutment pair, 7 vs 10, from the same relocation on the same day:
- *   case 10 reads 0.300 against case 7's 0.269, which is also the right direction, but it gets
- *   there while dropping twelve pieces — three of them stranded — in ZERO cascade passes. A worst
- *   joint measured beside twelve bricks the router could not route at all is not a measurement of
- *   the abutment term, and pinning it would claim a term the model demonstrably does not have. The
- *   abutment discrimination therefore went to the LP oracle instead (wall-07 at 296.22 against
- *   wall-10 at 35.82, 8.27x) and NOT into this file.
+ * What is asserted, and which part is derived. The magnitudes are a characterisation: unlike the
+ * corbel/header reading tests, these two numbers are outputs of the composite-depth walk over a
+ * whole wall and can't be re-derived without re-implementing the thing under test, so they're
+ * pinned as measured — worth doing since today a 2x drift in either would move no verdict.
  *
- * =====================================================================================
- * WHAT IS ASSERTED, AND WHICH PART IS DERIVED
- * =====================================================================================
+ * The span-law arm is retired (measured 2026-08-14). This test used to assert `ReadingRatio >=
+ * SpanRatio` (6.84 against 2.6928), on the reasoning that a simply-supported deep beam's reaction
+ * grows at least linearly with span. That doesn't survive the axes parting: a utilisation ratio
+ * taken on different axes is a ratio of two reactions times two unrelated strengths, and the
+ * measured 3.66 -> 6.84 move at the mean re-anchor is exactly that (case 9's divisor moved from
+ * flexural bond to Mohr-Coulomb sliding capacity). Worked three ways and the span law holds on
+ * none: worst-axis stresses (0.0269441 MPa tension against 0.2570131 MPa shear, comparing two
+ * different quantities), same axis both walls (each ratio has a zero in it — case 9's tension is
+ * clamped to zero at the kern, case 7's jamb carries no horizontal force), and the honest reaction
+ * (56,010.69 -> 106,676.31 uu, 1.9046x for 2.6928x of span — sublinear, w.L/2 not satisfied here).
+ * So the arm is gone rather than restated (CURRENT_STATE). What replaced it needs no strength to
+ * be meaningful: the wider opening puts 270,024 uu of horizontal thrust through its jamb where the
+ * narrow one puts none — a span term the model demonstrably has.
  *
- * THE MAGNITUDES ARE A CHARACTERISATION AND ARE SAID TO BE. Unlike the corbel and header reading
- * tests, whose expected values are worked from the grid, the published density and the published
- * f_xk1, these two numbers are outputs of the composite-depth walk over a whole wall and this file
- * cannot re-derive them without re-implementing the thing under test. So they are PINNED AS
- * MEASURED, which is worth doing on its own account: today a 2x drift in either reading would move
- * no verdict and pass every test in the suite silently.
+ * The governing axes, named and derived — the other job this test does. Each wall's worst joint is
+ * asserted by (course, cell) before its magnitude is read, and the two are not the same joint:
+ * case 7's is c2/8-c3/7.5 (one course below the head), case 9's is c3/11.5-c4/11 (at the head).
+ * Both are in the right jamb within one course of the head. Since 2026-08-14 the axis is asserted
+ * too, because prose got it wrong: DESIGN.md §6, CURRENT_STATE and this file all recorded case 9's
+ * post-flip reading as squeezed-edge compression, but worked from the joint's own force and area
+ * that axis reads 0.0203072, 13x below what production reports. The reading is Mohr-Coulomb shear:
  *
- * =====================================================================================
- * THE SPAN-LAW ARM IS RETIRED, AND WHY — MEASURED 2026-08-14
- * =====================================================================================
+ *     case 7   |M_y| / (t.D^2/6) / f_x1, composite deep-beam section (D = 35.128 cm)
+ *              = 0.038491547555641249 exactly — tension
+ *     case 9   |F_xy| / A / (f_v0 + mu.|F_z|/A), bare Mohr-Coulomb on the joint's own patch
+ *              = 0.26329211195559277 exactly — shear, the jamb sliding under arch thrust
  *
- * THIS TEST USED TO ASSERT `ReadingRatio >= SpanRatio` (6.84 against 2.6928), justified by the
- * reaction a simply-supported deep beam delivers into its abutment being w.L/2 with w identical
- * in the two fixtures, so the jamb reading must grow at least linearly with the clear span. THE
- * JUSTIFICATION DOES NOT SURVIVE THE AXES PARTING. A utilisation is a stress DIVIDED BY THE
- * CAPACITY OF ITS OWN AXIS, so a ratio of two utilisations taken on different axes is a ratio of
- * two reactions multiplied by the ratio of two unrelated strengths. The measured 3.66 -> 6.84
- * move at the mean re-anchor is exactly that: the divisor under case 9 went from the flexural
- * bond to a Mohr-Coulomb sliding capacity. The row passed for a reason unconnected to span.
+ * Both asserted to 1e-9 below, each one formula over quantities production publishes plus the
+ * published strengths. Getting the axis wrong is what made the retired span-law arm look like a
+ * span term, and what made the old flap watch vacuous.
  *
- * WORKED THREE WAYS, AND THE SPAN LAW HOLDS ON NONE OF THEM (decomposition below; every figure
- * from the joint's own force, moment and geometry, none of it from a utilisation):
+ * The old flap watch is kept and said to be vacuous: production once read case 9's jamb at
+ * 0.98502040901419818, one retune from 1.0; at mean strengths the governing axis moved and the
+ * reading sits ~3.8x clear. It stays because the day it crosses, case 9's STANDS verdict becomes a
+ * catalogue red and the oracle sweep's `AgreeStands` relation flips — but it now watches a shear
+ * reading, not the flexural one the knife edge was about.
  *
- *     the WORST-AXIS stresses      0.0269441 MPa of tension against 0.2570131 MPa of shear —
- *                                  9.54x, and a comparison of two different physical quantities
- *                                  whether the inequality holds or not
- *     the SAME axis, both walls    tension 0.0269441 -> 0.0 (case 9's patch tension is clamped
- *                                  to exactly zero at the kern); shear 0.0 -> 0.2570131 (case 7's
- *                                  jamb carries no horizontal force at all). Each is a ratio with
- *                                  a zero in it
- *     the honest REACTION          the normal force through the joint, no strength anywhere in
- *                                  it: 56,010.69 -> 106,676.31 uu, a factor of 1.9046 for 2.6928
- *                                  of span. SUBLINEAR — the model does not satisfy w.L/2 here
+ * Green on arrival, said plainly: this pins behaviour the model already produces and drove
+ * nothing. It exists because the case 9 ruling deleted an assertion (and, via MatchedPairs'
+ * retirement, a whole test), and a deleted assertion without a replacement is a hole in the net.
  *
- * So the arm is gone rather than restated, and the loss is recorded in CURRENT_STATE beside the
- * other discriminations the re-anchor retired. WHAT REPLACED IT is stronger than the ratio ever
- * was, because it does not need a strength to be meaningful: the wider opening puts 270,024 uu
- * of HORIZONTAL THRUST through its jamb where the narrow one puts exactly none, and that is a
- * span term the model demonstrably does have. A solver with no span term reads both jambs with
- * no thrust and fails that row.
- *
- * =====================================================================================
- * THE GOVERNING AXES, NAMED AND DERIVED — WHICH IS THE OTHER JOB THIS TEST NOW DOES
- * =====================================================================================
- *
- * THE THING BEING MEASURED MUST BE THE THING GOVERNING, so each wall's worst joint is asserted by
- * (course, cell) before its magnitude is read. THE TWO ARE NOT THE SAME JOINT and this deliberately
- * does not pretend otherwise: case 7's is c2/8-c3/7.5, a bed joint one course BELOW the head, and
- * case 9's is c3/11.5-c4/11, the bed joint AT the head where the first course of cover lands on the
- * jamb. Both are in the right jamb within one course of the head — the reaction path. If a future
- * slice moves either maximum somewhere structurally different, this fails and the pair has to be
- * re-argued rather than re-tuned.
- *
- * AND SINCE 2026-08-14 THE AXIS IS ASSERTED TOO, not just the joint, because prose got it wrong.
- * `ComputeUtilisation` returns the worst of three axes and reports only the number, so which one
- * won is invisible unless a test computes it. DESIGN.md §6, CURRENT_STATE and this file's own
- * comment all recorded case 9's post-flip reading as "the squeezed edge's COMPRESSION against the
- * unmoved 10 MPa" — worked out here from the joint's own force and area, that axis reads
- * 0.0203072, THIRTEEN TIMES BELOW what production reports. The reading is Mohr-Coulomb SHEAR:
- *
- *     case 7   |M_y| / (t.D^2/6) / f_x1, the composite deep-beam section production reports for
- *              that joint (D = 35.128 cm), = 0.038491547555641249 EXACTLY — TENSION
- *     case 9   |F_xy| / A / (f_v0 + mu.|F_z|/A), bare Mohr-Coulomb on the joint's own patch,
- *              = 0.26329211195559277 EXACTLY — SHEAR, the jamb sliding under the arch thrust
- *
- * Both identities are asserted to 1e-9 below, and each is ONE formula over quantities production
- * publishes (force, moment, composite depth) plus the published strengths — not a transcription
- * of the composite walk. Getting the axis wrong is not cosmetic: it is what made the retired
- * span-law arm look like a span term, and it is what made the old flap watch vacuous.
- *
- * THE OLD FLAP WATCH IS KEPT AND IS SAID TO BE VACUOUS. Production once read case 9's jamb at
- * 0.98502040901419818, one retune from 1.0; at the mean strengths the governing axis moved and
- * the reading sits ~3.8x clear. The under-1.0 row stays because the day it crosses, this wall
- * drops its head, case 9's STANDS verdict becomes a catalogue red and the oracle sweep's pinned
- * `AgreeStands` relation flips — but it is watching a shear reading now, not the flexural one the
- * knife edge was about.
- *
- * GREEN ON ARRIVAL, AND SAID SO PLAINLY. This pins behaviour the model already produces; it drove
- * nothing. What it is for is that the case 9 ruling deleted an assertion — and, through
- * MatchedPairs' retirement, a whole test — and assertions deleted without ones put back in their
- * place are holes in the net.
- *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * Needs a ticking world: no. See the file header.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWallAcceptanceSpanTest,
@@ -3473,17 +2971,17 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 	using namespace WallAcceptanceTestSupport;
 
 	/*
-	 * SLACK AGAINST A RE-ASSOCIATION OF A HANDFUL OF DOUBLES AND NOTHING ELSE, exactly as the
-	 * corbel and header reading tests use it. The smallest difference either row is meant to be
-	 * able to see is in the second decimal place.
+	 * Slack against a re-association of a handful of doubles and nothing else, as the corbel and
+	 * header reading tests use it. The smallest difference either row should see is in the second
+	 * decimal place.
 	 */
 	constexpr double UtilisationTolerance = 1.0e-9;
 
 	/*
-	 * THE WHOLE MOHR-COULOMB TRIPLE, CHECKED RATHER THAN IMPORTED, because since 2026-08-14 this
-	 * test names each reading's AXIS and the naming is only as good as the strengths it divides
-	 * by. `Acceptance.Wall.Catalogue` pins the two this file already used; the other three are
-	 * pinned here, at the only place that reads them.
+	 * The whole Mohr-Coulomb triple, checked rather than imported: since 2026-08-14 this test
+	 * names each reading's axis, and the naming is only as good as the strengths it divides by.
+	 * `Acceptance.Wall.Catalogue` pins the two this file already used; the other three are pinned
+	 * here, the only place that reads them.
 	 */
 	TestEqual(TEXT("FIXTURE: general purpose mortar's friction coefficient is the profile's mu"),
 		DestructionProfiles::GeneralPurposeMortar.FrictionCoefficient, MortarFrictionCoefficient);
@@ -3555,14 +3053,12 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 		WideResult.Fallen.Num(), 0);
 
 	/*
-	 * AND NEITHER WALL BREAKS A JOINT EITHER, WHICH THE HEADER CLAIMS AND HAD NOT ASSERTED.
-	 *
-	 * "Both cases drop NOTHING, break NOTHING and strand NOTHING" is the argument that these two
-	 * readings are honest readings of a fully routed structure — the whole reason this pair was
-	 * allowed to relocate onto readings where 7-vs-10 was not. The dropped and stranded halves are
-	 * covered by the two rows above and by the catalogue's own zero-strand claim; the BROKEN half
-	 * was prose. A wall that severed joints over its opening and stayed leaning together would
-	 * still read a worst utilisation, and it would be a reading of a different structure.
+	 * Neither wall breaks a joint either, which the header claims and had not asserted. "Both cases
+	 * drop, break and strand nothing" is the argument that these readings are honest readings of a
+	 * fully routed structure — the whole reason this pair was allowed to relocate onto readings
+	 * where 7-vs-10 was not. Dropped and stranded are covered above; the broken half was prose. A
+	 * wall that severed joints over its opening and stayed leaning together would still read a
+	 * worst utilisation, of a different structure.
 	 */
 	TestEqual(
 		*FString::Printf(
@@ -3622,19 +3118,17 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 	/*
 	 * --- the magnitudes, pinned as measured ---------------------------------------------------
 	 *
-	 * MEAN RE-ANCHOR (2026-08-13), MEASURED AT THE FLIP (2026-08-14) — AND THE PAIR'S TWO
-	 * READINGS PARTED AXES, which is exactly what TRAPS' strength-basis entry warns about.
-	 * Case 7's jamb stayed tension-governed and reads the old pin / 7 to the bit (f_x1
-	 * 0.10 -> 0.70; the stress side is statics). Case 9's jamb did NOT: its tension fell to
-	 * 0.98502040901419818 / 7 = 0.14071720128774259 and then to EXACTLY ZERO — production
-	 * clamps that joint's moment at the kern, so sigma_b and |sigma_n| cancel to the last bit
-	 * — while the SHEAR axis, which the characteristic data left 5% behind the tension, came
-	 * forward to read the 0.26329211195559277 pinned below.
+	 * Mean re-anchor (2026-08-13), measured at the flip (2026-08-14) — the pair's two readings
+	 * parted axes, exactly what TRAPS' strength-basis entry warns about. Case 7's jamb stayed
+	 * tension-governed and reads the old pin / 7 to the bit. Case 9's did not: its tension fell to
+	 * 0.98502040901419818 / 7 and then to exactly zero (production clamps that joint's moment at
+	 * the kern), while the shear axis, 5% behind tension at the characteristic data, came forward
+	 * to read the 0.26329211195559277 pinned below.
 	 *
-	 * THE AXIS IS DERIVED AND ASSERTED BELOW RATHER THAN NAMED IN PROSE, because prose got it
-	 * wrong: this comment used to call it the squeezed edge's COMPRESSION against the unmoved
-	 * 10 MPa, and that axis reads 0.0203072 here — thirteen times under what production
-	 * reports. The governing JOINT did not move; the governing AXIS did, twice.
+	 * The axis is derived and asserted below rather than named in prose, because prose got it
+	 * wrong: this comment used to call it the squeezed edge's compression against the unmoved
+	 * 10 MPa, which reads 0.0203072 here, 13x under what production reports. The governing joint
+	 * did not move; the governing axis did, twice.
 	 */
 	constexpr double NarrowWorst = 0.26944083288948872 / 7.0;
 	constexpr double WideWorst = 0.26329211195559277;
@@ -3655,10 +3149,9 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(WideResult.Worst, WideWorst, UtilisationTolerance));
 
 	/*
-	 * AND THE CROSSING IS WATCHED SEPARATELY FROM THE VALUE. The pin above already fails if the
-	 * reading moves at all, but it fails in the words of a drift; this one fails in the words of the
-	 * event that matters, so whoever reads the log is told what it MEANS rather than only that a
-	 * number changed.
+	 * The crossing is watched separately from the value: the pin above already fails on any drift,
+	 * but this one fails in the words of the event that matters, so the log says what it means
+	 * rather than only that a number changed.
 	 */
 	TestTrue(
 		*FString::Printf(
@@ -3676,12 +3169,11 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 	/**
 	 * The two joints' loads, straight off production's published accessors.
 	 *
-	 * NOTHING HERE RE-IMPLEMENTS THE SOLVER. `GetConnectionForce`, `GetConnectionMoment` and
+	 * Nothing here re-implements the solver. `GetConnectionForce`, `GetConnectionMoment` and
 	 * `GetConnectionCompositeDepthCm` report what the routing layer decided the joint carries;
-	 * what this file does with them is ONE published formula per axis, against the published
-	 * strengths written out at the top of this namespace. That is enough to say which of the
-	 * three axes `ComputeUtilisation` returned, which is the one thing a bare utilisation
-	 * cannot tell anybody.
+	 * this file applies one published formula per axis against the published strengths at the
+	 * top of this namespace — enough to say which of the three axes `ComputeUtilisation` returned,
+	 * which a bare utilisation cannot.
 	 */
 	auto JointLoad = [](const FWall& Wall, const FWallResult& Result, int32& OutJoint)
 	{
@@ -3720,10 +3212,10 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 	const double WideAreaSqCm = WideWall.Structure.GetConnection(WideJoint).InterfaceAreaSqCm;
 
 	/*
-	 * CASE 7 IS FLEXURAL TENSION, AND ON THE COMPOSITE SECTION. A bed joint bends about Y here,
-	 * so the deep beam standing over it has section t.D^2/6 with t the wall's 10.25 cm thickness
-	 * and D the depth production reports for that joint; the stress is |M_y| over it, and the
-	 * capacity is the published mean flexural bond. One division and one section formula.
+	 * Case 7 is flexural tension, on the composite section: a bed joint bends about Y here, so the
+	 * deep beam over it has section t.D^2/6 (t the wall's 10.25 cm thickness, D the depth
+	 * production reports for that joint), stress is |M_y| over it, capacity is the published mean
+	 * flexural bond.
 	 */
 	const double NarrowCompositeModulusCm3 =
 		BrickDepthCm * NarrowDepthCm * NarrowDepthCm / 6.0;
@@ -3743,11 +3235,10 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(NarrowResult.Worst, NarrowTensionUtilisation, UtilisationTolerance));
 
 	/*
-	 * CASE 9 IS MOHR-COULOMB SHEAR, ON THE JOINT'S OWN PATCH AND NOTHING ELSE. The jamb is being
-	 * pushed sideways by the arch thrust: shear stress is the in-plane force over the area, and
-	 * the capacity is cohesion plus friction times the compression across the joint. No bending
-	 * term and no composite section appear in it at all, which is precisely why calling this
-	 * reading a bending or a compression one was wrong.
+	 * Case 9 is Mohr-Coulomb shear, on the joint's own patch and nothing else: the jamb is pushed
+	 * sideways by the arch thrust, shear stress is the in-plane force over the area, capacity is
+	 * cohesion plus friction times the compression across the joint. No bending term or composite
+	 * section — why calling this a bending or compression reading was wrong.
 	 */
 	const double WideNormalStressMPa =
 		FMath::Abs(WideForceUu.Z) / (WideAreaSqCm * ForceUnitsPerMPaSqCmHere);
@@ -3777,11 +3268,10 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 	/* --- the pair's own claim: the span is read in the joint ---------------------------------- */
 
 	/*
-	 * THE CLEAR SPANS, COMPUTED FROM THE CELL GRID RATHER THAN QUOTED. A gap of n cell pitches
+	 * The clear spans, computed from the cell grid rather than quoted: a gap of n cell pitches
 	 * between the centres of the surviving bricks either side of an opening leaves
-	 * n * CellPitch - BrickLength of open air. Each toothed reveal gives two values, since the even
-	 * and odd courses stop at different cells, and the mean of the two is what the beam spans on
-	 * average.
+	 * n * CellPitch - BrickLength of open air. Each toothed reveal gives two values (even and odd
+	 * courses stop at different cells); the mean is what the beam spans on average.
 	 */
 	auto MeanClearSpanCm = [](double EvenCellGap, double OddCellGap)
 	{
@@ -3798,12 +3288,11 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 	const double SpanRatio = WideSpanCm / NarrowSpanCm;
 
 	/*
-	 * THE SPAN TERM, ON A QUANTITY WITH NO STRENGTH IN IT. The narrow opening's jamb carries a
-	 * purely vertical force; the wide one's carries 270,024 uu — about 2,700 N — of HORIZONTAL
-	 * thrust as well. That is not a bigger number, it is a different mechanism arriving, and it
-	 * is what the retired `ReadingRatio >= SpanRatio` row was reaching for and could not express:
-	 * a solver with no span term delivers no thrust into either jamb and fails here, while no
-	 * choice of strengths anywhere can satisfy it, because no strength appears in it.
+	 * The span term, on a quantity with no strength in it. The narrow opening's jamb carries a
+	 * purely vertical force; the wide one carries ~2,700 N of horizontal thrust too — a different
+	 * mechanism arriving, not a bigger number. This is what the retired `ReadingRatio >= SpanRatio`
+	 * row was reaching for and couldn't express: a solver with no span term delivers no thrust into
+	 * either jamb and fails here, and no choice of strengths can satisfy it since none appears.
 	 */
 	const double NarrowThrustUu = FVector(NarrowForceUu.X, NarrowForceUu.Y, 0.0).Size();
 	const double WideThrustUu = FVector(WideForceUu.X, WideForceUu.Y, 0.0).Size();
@@ -3819,9 +3308,9 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 		WideThrustUu > 0.0 && NarrowThrustUu <= 0.0);
 
 	/*
-	 * AND THE REACTION GROWS, WHICH IS THE OTHER HALF AND IS ALSO STRENGTH-FREE. The normal force
-	 * through the joint IS the reaction the cover delivers into that jamb, so this is the closest
-	 * like-for-like the two walls have: one quantity, one unit, no capacity anywhere.
+	 * The reaction grows too, the other half and also strength-free: the normal force through the
+	 * joint is the reaction the cover delivers into that jamb, the closest like-for-like the two
+	 * walls have.
 	 */
 	const double NarrowReactionUu = FMath::Abs(NarrowForceUu.Z);
 	const double WideReactionUu = FMath::Abs(WideForceUu.Z);
@@ -3838,12 +3327,12 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 		NarrowReactionUu > 0.0 && WideReactionUu > NarrowReactionUu);
 
 	/*
-	 * THE SUBLINEARITY IS PINNED AS A FINDING, NOT ASSERTED AS PHYSICS. w.L/2 says the reaction
-	 * grows at least linearly with the clear span; the model grows it 1.9046x for 2.6928x of
-	 * span, so the published relation does NOT hold here and a row demanding it would be a
-	 * seventh deliberate red for a defect nothing else in the suite is waiting on. Pinned instead,
-	 * so the day equilibrium promotion (DESIGN §7 step 4) gives the reaction an honest span term
-	 * this fires and someone re-derives rather than re-tunes.
+	 * The sublinearity is pinned as a finding, not asserted as physics: w.L/2 says the reaction
+	 * grows at least linearly with span; the model grows it 1.9046x for 2.6928x of span, so the
+	 * published relation doesn't hold here and demanding it would be a deliberate red for a defect
+	 * nothing else is waiting on. Pinned instead, so the day equilibrium promotion (DESIGN §7 step
+	 * 4) gives the reaction an honest span term, this fires and someone re-derives rather than
+	 * re-tunes.
 	 */
 	constexpr double PinnedReactionRatio = 1.9045707413720012;
 
@@ -3860,40 +3349,37 @@ bool FWallAcceptanceSpanTest::RunTest(const FString& Parameters)
 }
 
 /**
- * CASES 13 AND 14, THE PART A VERDICT CANNOT SAY: DOUBLING THE CORBEL STEP DOUBLES THE JOINT
- * READING, AND BOTH CORBELS STAND ANYWAY.
+ * Cases 13 and 14, the part a verdict cannot say: doubling the corbel step doubles the joint
+ * reading, and both corbels stand anyway.
  *
- * WHY THIS TEST EXISTS AT ALL. 13 and 14 were an OUTCOME pair — one stands, one collapses — until
- * the user ruled on 2026-08-07 that a bonded corbel resists with its full depth and case 14's
- * collapse verdict was wrong. Both halves now stand. A pair whose two halves answer identically
- * discriminates NOTHING, and the honest options were to delete it or to move it onto a quantity
- * that still separates the two. This is that move, and it is the stronger of the two readings: an
- * outcome pair could only ever say "these differ", while this says BY HOW MUCH AND WHY.
+ * Why this test exists. 13 and 14 were an outcome pair — one stands, one collapses — until the
+ * user ruled 2026-08-07 that a bonded corbel resists with its full depth and case 14's collapse
+ * verdict was wrong. Both halves now stand, discriminating nothing, so this moves the pair onto a
+ * quantity that still separates them — stronger than an outcome pair, since it says by how much
+ * and why rather than just "these differ".
  *
- * THE EXPECTED VALUE IS DERIVED FROM THE FIXTURE, NOT READ BACK OFF THE SOLVER. Case 14's four
- * corbelled courses each keep one 10.25 x 10.25 bed patch with their mass 5.625 cm outboard of it,
- * so the load ladder, the moment ladder and the deep-beam section are all written above from the
- * grid, the published density and the published f_xk1 — none of them imported from production.
- * The whole point of the row is that a wrong constant makes this DISAGREE.
+ * The expected value is derived from the fixture, not read back off the solver: case 14's four
+ * corbelled courses each keep one 10.25 x 10.25 bed patch with mass 5.625 cm outboard of it, so
+ * the load ladder, moment ladder and deep-beam section are all written above from the grid, the
+ * published density and f_xk1 — none imported from production. The point is that a wrong constant
+ * makes this disagree.
  *
- * AND THE DERIVATION IS CROSS-CHECKED AGAINST TWO FIGURES THIS FILE DID NOT PRODUCE, which is what
- * stops it agreeing with itself. The same four lines give 0.21858 at five steps — ARCHING_DESIGN's
- * published 0.219 — and 0.36903147272727271 at eleven, which is the staircase anchor
- * `Core.Structure.AStaircaseVoidCondemnsTheCorbel` pins to seventeen digits. Those are held at 2%
- * and at 1e-9 respectively, IN THE TEST, so a re-derivation that drifted fails here rather than
- * being quietly tuned into agreement.
+ * Cross-checked against two figures this file did not produce, so it can't agree with itself: the
+ * same four lines give 0.21858 at five steps (ARCHING_DESIGN's published 0.219) and
+ * 0.36903147272727271 at eleven (the staircase anchor
+ * `Core.Structure.AStaircaseVoidCondemnsTheCorbel`'s pin to seventeen digits), held at 2% and
+ * 1e-9 respectively in the test.
  *
- * THE THING BEING MEASURED MUST BE THE THING GOVERNING, WHICH IS ASSERTED SEPARATELY. `Worst` is
- * the worst joint ANYWHERE in the wall, and a ten-course wall's base compression or a head joint
- * could in principle carry it; then the number would be right for the wrong joint. So the worst
- * joint is asserted to be the bed joint under the LOWEST corbelled course — course 5's half bat at
- * cell 7.25 carrying course 6's projecting brick at cell 7.5 — before its magnitude is read.
+ * The thing being measured must be the thing governing, asserted separately: `Worst` is the worst
+ * joint anywhere in the wall, so the worst joint is asserted to be the bed joint under the lowest
+ * corbelled course (course 5's half bat at cell 7.25 carrying course 6's projecting brick) before
+ * its magnitude is read.
  *
- * GREEN ON ARRIVAL, AND SAID SO PLAINLY. This pins behaviour arching slice 5 already produces; it
- * drove nothing. What it is for is that the ruling above deleted an assertion, and an assertion
- * deleted without one put back in its place is a hole in the net.
+ * Green on arrival, said plainly: this pins behaviour arching slice 5 already produces and drove
+ * nothing. It exists because the ruling above deleted an assertion, and a deleted assertion
+ * without a replacement is a hole in the net.
  *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * Needs a ticking world: no. See the file header.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWallAcceptanceCorbelProjectionTest,
@@ -3905,9 +3391,9 @@ bool FWallAcceptanceCorbelProjectionTest::RunTest(const FString& Parameters)
 	using namespace WallAcceptanceTestSupport;
 
 	/*
-	 * SLACK AGAINST A RE-ASSOCIATION OF A HANDFUL OF DOUBLES AND NOTHING ELSE. One course of depth
-	 * either way moves the four-step reading from 0.1735 to 0.2186, so this is seven orders of
-	 * magnitude below the smallest difference the row is meant to be able to see.
+	 * Slack against a re-association of a handful of doubles and nothing else. One course of depth
+	 * either way moves the four-step reading from 0.1735 to 0.2186 — seven orders of magnitude
+	 * above this tolerance.
 	 */
 	constexpr double UtilisationTolerance = 1.0e-9;
 
@@ -4018,20 +3504,15 @@ bool FWallAcceptanceCorbelProjectionTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(HalfResult.Worst, ExpectedHalf, UtilisationTolerance));
 
 	/*
-	 * AND THE OUTCOME FOLLOWS FROM THE NUMBER RATHER THAN THE OTHER WAY ROUND. 0.195 is a fifth of
-	 * capacity; the verdict in the catalogue is "stands" BECAUSE of this, not beside it.
+	 * The outcome follows from the number rather than the other way round: 0.195 is a fifth of
+	 * capacity, and the catalogue's "stands" verdict is because of this, not beside it.
 	 *
-	 * THE `Worst < 1.0` ROW THAT USED TO SAY SO WAS DELETED ON 2026-08-09 AS A TAUTOLOGY, and it is
-	 * worth writing down why so nobody puts it back thinking the claim went with it. `Worst` is
-	 * `WorstUtilisation`, which SKIPS every joint that has given and reads the rest through
-	 * `GetConnectionUtilisation`; `RunWallCase` gets it from `SolveAndBreak`, whose last pass is by
-	 * definition one that broke nothing — that pass evaluated every surviving joint through
-	 * `FConnection::ApplyForce`, on the same three solver arrays this accessor reads, and none of
-	 * them latched. Giving is spelled `!(u <= 1.0)`, so EVERY joint the maximum can be taken over
-	 * is already known to be at most 1.0 and the assertion could only ever have failed on a joint
-	 * sitting at exactly 1.0 — which the exact-value assertion above, pinning 0.195160875 to 1e-9,
-	 * would have failed on first and far more loudly. What makes the verdict follow from the number
-	 * is that assertion, not a bound the cascade already guarantees.
+	 * The `Worst < 1.0` row that used to say so was deleted 2026-08-09 as a tautology: `Worst`
+	 * skips every joint that has given, and `SolveAndBreak`'s last pass by definition broke
+	 * nothing, so every joint the maximum can be taken over is already at most 1.0 — the assertion
+	 * could only fail on a joint at exactly 1.0, which the exact-value assertion above (pinning
+	 * 0.195160875 to 1e-9) would already have caught, louder. The verdict follows from that
+	 * assertion, not a bound the cascade already guarantees.
 	 */
 
 	/* --- the pair's own claim: projection is still measured --------------------------------- */
@@ -4046,9 +3527,9 @@ bool FWallAcceptanceCorbelProjectionTest::RunTest(const FString& Parameters)
 		HalfResult.Worst > QuarterResult.Worst);
 
 	/*
-	 * TWICE, NOT MERELY MORE. A strict inequality alone is satisfiable by a last-bit difference,
-	 * which is not a projection term working; the step doubles, the arm doubles with it, and the
-	 * measured separation is a factor of 2.8. Two is the floor and it is a long way under that.
+	 * Twice, not merely more: a strict inequality alone is satisfiable by a last-bit difference,
+	 * which isn't a projection term working. The step doubles, the arm doubles with it, and the
+	 * measured separation is 2.8x — two is the floor, well under that.
 	 */
 	TestTrue(
 		*FString::Printf(
@@ -4062,57 +3543,48 @@ bool FWallAcceptanceCorbelProjectionTest::RunTest(const FString& Parameters)
 }
 
 /**
- * CASES 15 AND 16, THE PART A VERDICT CANNOT SAY: PUTTING SIX COURSES ON A HEADER'S TAIL DIVIDES
- * WHAT ITS OWN BED JOINT READS BY THIRTY, AND BOTH HEADERS STAND ANYWAY.
+ * Cases 15 and 16, the part a verdict cannot say: putting six courses on a header's tail divides
+ * what its own bed joint reads by thirty, and both headers stand anyway.
  *
- * WHY THIS TEST EXISTS AT ALL. 15 and 16 were an OUTCOME pair — one stands, one drops its header —
- * until the catalogue was revised on 2026-08-07 and case 16 became "stands" too: an uncracked
- * bonded bed joint carries a half-cell projection at 0.0582 of f_xk1, and the local-loss verdict it
- * replaced was a rigid-body overturning reading that ignored the bond. That is the same correction
- * case 14 got on the same day, and it has the same consequence — a pair whose two halves answer
- * identically discriminates NOTHING. The honest options were to delete the pair or to move it onto
- * a quantity that still separates the two. This is that move, and it is the stronger reading: an
- * outcome pair could only ever have said "these differ", while this says BY HOW MUCH AND WHY.
+ * Why this test exists. 15 and 16 were an outcome pair — one stands, one drops its header — until
+ * the catalogue was revised 2026-08-07 and case 16 became "stands" too: an uncracked bonded bed
+ * joint carries a half-cell projection at 0.0582 of f_xk1, and the local-loss verdict it replaced
+ * was a rigid-body overturning reading that ignored the bond (the same correction case 14 got the
+ * same day). Both halves now discriminate nothing, so this moves the pair onto a quantity that
+ * still separates them — stronger than an outcome pair, since it says by how much and why.
  *
- * THE TWO WALLS ARE THE SAME WALL WITH THE HEADER AT A DIFFERENT HEIGHT — ten courses, twelve
- * cells, one course pushed half a cell out and closed with a full brick instead of a half bat. In
- * case 15 that course is course 3, so six courses stand on the header's tail; in case 16 it is
- * course 9, the top, so nothing does. THE GEOMETRY OF THE HEADER'S OWN BED JOINT IS IDENTICAL in
- * the two, which is what makes this a one-variable comparison: same 10.25 x 10.25 cm bearing patch,
- * same 5.625 cm arm, same brick. Only the superimposed load differs.
+ * The two walls are the same wall with the header at a different height — ten courses, twelve
+ * cells, one course pushed half a cell out and closed with a full brick. In case 15 that's course
+ * 3 (six courses stand on the header's tail); in case 16 it's course 9, the top (nothing does).
+ * The header's own bed joint geometry is identical in both, making this a one-variable comparison.
  *
- * THE EXPECTED VALUE IS DERIVED FROM THE FIXTURE, NOT READ BACK OFF THE SOLVER. The seat length is
- * what is left of a 21.5 cm brick when half a 22.5 cm cell hangs over air; the arm is half of what
- * hangs over; the section is that patch's own t.L^2/6; the weight is the published density times
- * the published dimensions times Unreal's gravity; and the capacity is EN 1996-1-1's f_xk1. None of
- * them is imported from production, so a wrong constant there makes this DISAGREE.
+ * The expected value is derived from the fixture, not read back off the solver: seat length is
+ * what's left of a 21.5 cm brick when half a 22.5 cm cell hangs over air, the arm is half of what
+ * hangs over, the section is that patch's t.L^2/6, the weight is published density x dimensions x
+ * gravity, and capacity is EN 1996-1-1's f_xk1 — none imported from production.
  *
- * AND IT IS CROSS-CHECKED AGAINST TWO FIGURES THIS FILE DID NOT PRODUCE, which is what stops it
- * agreeing with itself: WALL_CASES.html's own quoted 0.058204 for this case, held at 1e-6 so the
- * catalogue's six figures are enough and a real error is not; and the waist anchor
- * 0.058203838191552663 that `Core.Structure.AdoptedWallLoadsItsWaistEccentrically` pins to
- * seventeen digits on a completely different fixture — one brick, half seated, by cut rather than
- * by laying. A re-derivation that drifted fails HERE rather than being tuned into agreement.
+ * Cross-checked against two figures this file did not produce: WALL_CASES.html's quoted 0.058204
+ * for this case (held at 1e-6) and the waist anchor 0.058203838191552663 that
+ * `Core.Structure.AdoptedWallLoadsItsWaistEccentrically` pins to seventeen digits on a completely
+ * different fixture (one brick, half seated, by cut rather than laying).
  *
- * THE THING BEING MEASURED MUST BE THE THING GOVERNING, WHICH IS ASSERTED SEPARATELY. `Worst` is
- * the worst joint ANYWHERE in the wall, and a ten-course wall's base compression could in principle
- * carry it — case 17's intact stack-bond wall of the same height reads 0.00109 at its foot — so the
- * number would then be right for the wrong joint. Case 16's worst joint is therefore asserted to BE
- * the header's own bed joint, by (course, cell), before its magnitude is read.
+ * The thing being measured must be the thing governing, asserted separately: `Worst` is the worst
+ * joint anywhere in the wall, and a ten-course wall's base compression could in principle carry it
+ * (case 17's intact stack-bond wall of the same height reads 0.00109 at its foot), so case 16's
+ * worst joint is asserted to be the header's own bed joint by (course, cell) before its magnitude
+ * is read.
  *
- * CASE 15's GOVERNING JOINT IS DELIBERATELY *NOT* PINNED, and that is not laziness. What is claimed
- * of case 15 is an UPPER bound — the worst joint anywhere in that wall is at most a tenth of case
- * 16's — and an upper bound over every joint says something strictly stronger about the header's
- * own joint than pinning where the maximum happens to sit. It also stays true if a later slice
- * drives the header's tension further down and the maximum migrates to the foot of the wall, which
- * pinning the identity would turn into a spurious failure. (It reads 0.00184 at c2/11-c3/11.5
- * today, which is the header's bed joint, and the failure message prints where it actually is.)
+ * Case 15's governing joint is deliberately not pinned — not laziness. What's claimed is an upper
+ * bound (the worst joint anywhere in that wall is at most a tenth of case 16's), which says
+ * something stronger than pinning identity and stays true if a later slice migrates the maximum
+ * elsewhere. (It reads 0.00184 at c2/11-c3/11.5 today, the header's bed joint, and the failure
+ * message prints where it actually is.)
  *
- * GREEN ON ARRIVAL, AND SAID SO PLAINLY. This pins behaviour the model already produces; it drove
- * nothing. What it is for is that the case 16 revision deleted an assertion, and an assertion
- * deleted without one put back in its place is a hole in the net.
+ * Green on arrival, said plainly: this pins behaviour the model already produces and drove
+ * nothing. It exists because the case 16 revision deleted an assertion, and a deleted assertion
+ * without a replacement is a hole in the net.
  *
- * NEEDS A TICKING WORLD: NO. See the file header.
+ * Needs a ticking world: no. See the file header.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWallAcceptanceSuperimposedLoadTest,
@@ -4124,21 +3596,19 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
 	using namespace WallAcceptanceTestSupport;
 
 	/*
-	 * SLACK AGAINST A RE-ASSOCIATION OF A HANDFUL OF DOUBLES AND NOTHING ELSE. The quantity is
-	 * 0.058, so this is seven orders of magnitude below it and eight below the factor of thirty the
-	 * row is meant to be able to see.
+	 * Slack against a re-association of a handful of doubles and nothing else. The quantity is
+	 * 0.058, seven orders of magnitude above this tolerance.
 	 */
 	constexpr double UtilisationTolerance = 1.0e-9;
 
 	/* --- the derivation, worked forward from the grid ---------------------------------------- */
 
 	/*
-	 * WHAT THE HEADER KEEPS AND WHAT HANGS OVER. CourseGeometry pushes the projecting course's
-	 * right face out by HALF A CELL and closes it with a FULL brick rather than the half bat a
+	 * What the header keeps and what hangs over. CourseGeometry pushes the projecting course's
+	 * right face out by half a cell and closes it with a full brick rather than the half bat a
 	 * flush odd course closes with, so of the brick's 21.5 cm exactly 11.25 cm is over air and
-	 * 10.25 cm is still bearing on the course below. (That it lands on the same 10.25 cm as the
-	 * wall's depth is a coincidence of this brick's proportions, not a relation — it is written as
-	 * a length along the wall because that is what it is.)
+	 * 10.25 cm still bears on the course below. (Landing on the same 10.25 cm as the wall's depth
+	 * is a coincidence of this brick's proportions, not a relation.)
 	 */
 	constexpr double HeaderSeatLengthCm = BrickLengthCm - HalfCellCm;
 
@@ -4238,10 +3708,10 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
 	/* --- and the reading is the header's own bed joint ---------------------------------------- */
 
 	/*
-	 * WHERE THE HEADER AND ITS SEAT ARE, IN CELLS, WALKED OFF THE BRICKLAYER RATHER THAN COUNTED
-	 * OFF THE LOG. The projecting course's rightmost brick is a full brick whose right face is half
-	 * a cell past the flush face; the course below it is flush and closes with a full brick too,
-	 * since it is even. Both centres are half a brick in from their own right faces.
+	 * Where the header and its seat are, in cells, walked off the bricklayer rather than counted
+	 * off the log. The projecting course's rightmost brick is a full brick whose right face is half
+	 * a cell past the flush face; the course below is flush and closes with a full brick too, since
+	 * it's even. Both centres are half a brick in from their own right faces.
 	 */
 	const double HeaderCentreCm =
 		FlushRightFaceCm(StandardCells) + HalfCellCm - BrickLengthCm * 0.5;
@@ -4283,15 +3753,11 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(BareResult.Worst, ExpectedUnloaded, UtilisationTolerance));
 
 	/*
-	 * AND THE OUTCOME FOLLOWS FROM THE NUMBER RATHER THAN THE OTHER WAY ROUND. 0.058 is a sixth of
-	 * capacity; the verdict in the catalogue is "stands" BECAUSE of this, not beside it.
-	 *
-	 * THE `Worst < 1.0` ROW THAT USED TO SAY SO WAS DELETED ON 2026-08-09 AS A TAUTOLOGY, for the
-	 * reason written out in full beside case 14's copy of it in
-	 * Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome: `SolveAndBreak` returns only
-	 * when a pass breaks nothing, so every joint `WorstUtilisation` is allowed to look at has
-	 * already been evaluated at most 1.0 by the break sweep itself. What makes the verdict follow
-	 * from the number is the exact-value assertion above, which pins 0.058203838191552663 to 1e-9.
+	 * The outcome follows from the number rather than the other way round: 0.058 is a sixth of
+	 * capacity, and the catalogue's "stands" verdict is because of this. The `Worst < 1.0` row that
+	 * used to say so was deleted 2026-08-09 as a tautology, for the reason written out beside case
+	 * 14's copy in Acceptance.Wall.CorbelProjectionIsReadInTheJointNotInTheOutcome. The verdict
+	 * follows from the exact-value assertion above, which pins 0.058203838191552663 to 1e-9.
 	 */
 
 	/* --- the pair's own claim: superimposed load is still measured ---------------------------- */
@@ -4316,21 +3782,18 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
 		BareResult.Worst > LoadedResult.Worst);
 
 	/*
-	 * THREE TIMES, NOT MERELY MORE. A strict inequality alone is satisfiable by a last-bit
-	 * difference, which is not a superimposed-load term working; the measured separation is a
-	 * factor of 4.51, with the loaded joint's tension driven to exactly zero and compression
-	 * left governing. THE FLOOR WAS TEN AGAINST A MEASURED 32 IN THE CHARACTERISTIC ERA and
-	 * the 2026-08-13 mean re-anchor shrank the separation by exactly the /7 the BARE reading
-	 * moved: the loaded side is compression-governed and did not move, so the ratio is NOT
-	 * axis-invariant — the two sides answer to different strengths (TRAPS, strength basis).
-	 * Three is the re-derived floor with 1.5x headroom below the measurement, and it is
-	 * headroom in BOTH directions, because the ceiling is the ten-course wall's own base
-	 * compression at 0.00109, which caps the achievable factor at about 7.6.
+	 * Three times, not merely more: a strict inequality alone is satisfiable by a last-bit
+	 * difference. The measured separation is 4.51x, with the loaded joint's tension driven to
+	 * exactly zero and compression left governing. The floor was ten against a measured 32 in the
+	 * characteristic era; the 2026-08-13 mean re-anchor shrank it by exactly the /7 the bare
+	 * reading moved, since the loaded side is compression-governed and didn't move (the ratio
+	 * isn't axis-invariant — TRAPS, strength basis). Three is the re-derived floor with 1.5x
+	 * headroom below the measurement, capped above by the ten-course wall's own base compression
+	 * (0.00109), which caps the achievable factor at about 7.6.
 	 *
-	 * NOTE WHAT THIS IS A BOUND ON. `Worst` for case 15 is the worst joint ANYWHERE in that wall,
-	 * so bounding it above bounds the header's own joint above by the same number, whichever joint
-	 * happens to be carrying the maximum. That is the direction that makes the claim safe against a
-	 * later slice relieving the header further.
+	 * Note what this bounds: `Worst` for case 15 is the worst joint anywhere in that wall, so
+	 * bounding it above bounds the header's own joint by the same number regardless of which joint
+	 * carries the maximum — safe against a later slice relieving the header further.
 	 */
 	constexpr double MinimumSeparation = 3.0;
 
@@ -4348,52 +3811,41 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
 
 /**
  * CASE 18, THE PART A VERDICT CANNOT SAY: A HANGING STACK-BOND COLUMN CARRIES THE SAME FRACTION OF
- * ITS HEAD JOINTS' SHEAR CAPACITY AT ANY HEIGHT.
+ * its head joints' shear capacity at any height.
  *
- * WHY THIS IS ITS OWN TEST. Case 18's verdict is "stands", and stands is easy — the column sits at
+ * Why this is its own test. Case 18's verdict is "stands", and stands is easy — the column sits at
  * a few percent of capacity, so a wall that got the load path completely wrong would still pass
- * the catalogue row. The finding that overturned this case's drafted verdict was ARITHMETIC, and
- * the property that makes it trustworthy is that the ratio does not move with height: every course
- * added to the column brings one brick of weight and two more head joints, and those cancel
- * exactly. TWO HEIGHTS SAYING THE SAME NUMBER IS A FAR STRONGER CLAIM THAN ONE HEIGHT SAYING IT,
- * because a model that simply piles the whole column onto the joints at its foot also reads a
- * plausible few percent — and grows linearly with height, which one height cannot see.
+ * the catalogue row. The finding that overturned this case's drafted verdict was arithmetic, and
+ * the property that makes it trustworthy is that the ratio doesn't move with height: every course
+ * added brings one brick of weight and two more head joints, which cancel exactly. Two heights
+ * saying the same number is a far stronger claim than one, since a model that simply piles the
+ * whole column onto the joints at its foot also reads a plausible few percent — and grows linearly
+ * with height, which one height can't see.
  *
- * THE ARITHMETIC, WORKED INDEPENDENTLY. A full brick weighs 1.9 x 21.5 x 10.25 x 6.5 / 1000 kg
- * x 980 cm/s2 = 2667.198625 Unreal force units. In stack bond a brick whose bed joint has been cut
- * away is bonded to a neighbour on each side over a head joint of 10.25 x 6.5 = 66.625 cm2, and
- * the load is parallel to both, so it is shear, split by area between two equal joints:
+ * The arithmetic, worked independently. A full brick weighs 2667.198625 Unreal force units. In
+ * stack bond a brick whose bed joint has been cut away is bonded to a neighbour on each side over
+ * a head joint of 10.25 x 6.5 = 66.625 cm2, load parallel to both, so it is shear, split by area
+ * between two equal joints:
  *
  *     2667.198625 / (2 x 66.625) / 10000 uu per MPa.cm2  =  0.00200165 MPa
  *     0.00200165 / 0.9 MPa (mean f_v0)                   =  0.0022240556
  *
- * (0.01000825 on the retired characteristic f_vk0 = 0.2 — the 2026-08-13 mean re-anchor is a
- * clean x2/9 on this figure because the capacity is bare cohesion and nothing else moved.)
+ * (0.01000825 on the retired characteristic f_vk0 = 0.2 — the mean re-anchor is a clean x2/9 here
+ * since the capacity is bare cohesion and nothing else moved.) No friction to add: a vertical load
+ * on a vertical joint puts no compression across it.
  *
- * There is no friction to add: a vertical load on a vertical joint puts no compression across it,
- * so the capacity is bare cohesion.
+ * This disagrees with the number in the brief: WALL_CASES and CURRENT_STATE both quoted 0.0200,
+ * reached by dividing the same load by the flexural bond — but the joint here is in shear against
+ * the shear bond. The value asserted here is what follows from the strengths this project ships.
  *
- * AND THE NUMBER DISAGREES WITH THE ONE IN THE BRIEF, WHICH IS WORTH SAYING OUT LOUD. WALL_CASES
- * and CURRENT_STATE both quoted 0.0200 for this case, reached by dividing the same load over the
- * same two joints by the flexural bond — but the joint here is in shear against the shear bond.
- * The value asserted here is the one that follows from the published strengths this project
- * actually ships.
+ * The heights are 12 and 20 because the head joint has to be the worst joint at both, and at the
+ * old 10 and 16 it was not (measured 2026-08-14). `FWallResult::Worst` is the worst joint anywhere
+ * in the wall, so this test is only about the hanging column while the hanging column reads worst.
+ * It stopped being that at the mean re-anchor: the head-joint reading (bare cohesion) moved x2/9
+ * with f_v0 while the bed joint beside the hole (c5/6-c6/6) didn't, so the two crossed over and the
+ * old pair's "factor of 2.465" compared two unrelated numbers on different axes.
  *
- * =====================================================================================
- * THE HEIGHTS ARE 12 AND 20 BECAUSE THE HEAD JOINT HAS TO BE THE WORST JOINT AT BOTH,
- * AND AT THE OLD 10 AND 16 IT WAS NOT. MEASURED 2026-08-14.
- * =====================================================================================
- *
- * `FWallResult::Worst` is the worst joint ANYWHERE in the wall, so this test is only about the
- * hanging column while the hanging column is what reads worst. It stopped being that at the
- * mean re-anchor: the head-joint reading is bare cohesion and moved x2/9 with f_v0, while the
- * bed joint beside the hole (c5/6-c6/6, the seat carrying the brick that half-overhangs the
- * cut) did not move with it — so the two crossed over and the taller of the old pair was
- * measuring one joint while the shorter measured a different one on a different axis. The
- * printed "factor of 2.465" over a 1.6x height ratio was then a comparison of two unrelated
- * numbers, which is worse than no assertion because it looks like one.
- *
- * THE LADDER, MEASURED RATHER THAN ARGUED (worst HEAD against worst BED, one wall per rung):
+ * The ladder, measured rather than argued (worst head against worst bed, one wall per rung):
  *
  *      courses   head joint    bed joint c5/6-c6/6   governs
  *          7     0.00222406    0.00906354            BED
@@ -4406,22 +3858,19 @@ bool FWallAcceptanceSuperimposedLoadTest::RunTest(const FString& Parameters)
  *         20     0.03113678    0.02395029            head, by 1.30x
  *         30     0.05337733    0.04045825            head, by 1.32x
  *
- * The head reading is (courses - 6) x the per-pair figure to the last bit at every rung — the
- * cut is in course 5, so a wall of n courses hangs n - 6 bricks over the hole and the model
- * puts EVERY ONE OF THEM on the pair of head joints at the column's foot. The bed competitor
- * bottoms out around 0.0090 and then grows sublinearly, so the head joint takes over at ELEVEN
- * courses and stays ahead by a widening margin. 12 and 20 are the pair: both clear of the
- * crossing, a 1.667x height ratio, and the margin over the bed competitor asserted below so
- * this cannot go quietly vacuous a second time.
+ * The head reading is (courses - 6) x the per-pair figure to the last bit at every rung — the cut
+ * is in course 5, so a wall of n courses hangs n - 6 bricks over the hole and the model puts every
+ * one of them on the pair of head joints at the column's foot. The bed competitor bottoms out
+ * around 0.0090 and grows sublinearly, so the head joint takes over at eleven courses. 12 and 20
+ * are the pair: both clear of the crossing, a 1.667x height ratio, margin asserted below so this
+ * can't go quietly vacuous again.
  *
- * WHAT IS RED AND WHAT IS NOT. The absolute rows and the height-independence row are the red —
- * the model reads 6x and 14x the correct per-pair figure. The row that PASSES is the
- * characterisation beside them, which pins the wrong answer at exactly (courses - 6) x that
- * figure: the defect is not "some larger number", it is the whole hanging column's weight
- * arriving at its foot, and a change that made the model differently wrong has to move that
- * row rather than hide inside an already-red test.
+ * What is red and what is not. The absolute rows and the height-independence row are the red — the
+ * model reads 6x and 14x the correct per-pair figure. The row that passes is the characterisation
+ * beside them, pinning the wrong answer at exactly (courses - 6) x that figure: the defect is the
+ * whole hanging column's weight arriving at its foot, not "some larger number".
  *
- * NEEDS A TICKING WORLD: NO.
+ * Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWallAcceptanceStackBondHeightTest,
@@ -4444,21 +3893,19 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 	constexpr double UtilisationTolerance = 1e-9;
 
 	/**
-	 * The course the cut is in, read off Case18Cuts rather than written twice.
-	 *
-	 * A wall of n courses therefore hangs n - (CutCourse + 1) bricks over the hole, and that
-	 * count is what the model multiplies the per-pair figure by. Deriving it from the cut is
-	 * what stops the characterisation below silently meaning something else if the cut moves.
+	 * The course the cut is in, read off Case18Cuts rather than written twice. A wall of n courses
+	 * hangs n - (CutCourse + 1) bricks over the hole, which is what the model multiplies the
+	 * per-pair figure by — deriving it from the cut stops the characterisation below silently
+	 * meaning something else if the cut moves.
 	 */
 	const int32 CutCourse = Case18Cuts[0].CourseLo;
 
 	/*
-	 * TWO HEIGHTS, THE SAME CUT. Twelve courses leaves six bricks hanging above the hole and
+	 * Two heights, the same cut. Twelve courses leaves six bricks hanging above the hole and
 	 * twenty leaves fourteen, so a model that concentrates the column on the joints at its foot
-	 * reads two and a third times as much at the taller wall while the correct answer does not
-	 * move at all. BOTH ARE PAST THE ELEVEN-COURSE CROSSING where the hanging column's head joint
-	 * overtakes the bed joint beside the hole — see the header's measured ladder, and do not
-	 * lower either rung without re-measuring it.
+	 * reads 2.33x as much at the taller wall while the correct answer doesn't move. Both are past
+	 * the eleven-course crossing where the head joint overtakes the bed joint beside the hole (the
+	 * header's measured ladder) — do not lower either rung without re-measuring it.
 	 */
 	const int32 Heights[] = { 12, 20 };
 
@@ -4494,11 +3941,10 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 		Measured[Index] = Result.Worst;
 
 		/*
-		 * THE COLUMN MUST ACTUALLY BE HANGING, or the number below is measuring an ordinary bed
-		 * joint and the whole test is vacuous. Two assertions rather than one, because the first
-		 * of them was true at the old heights and still let the test go vacuous: knowing that the
-		 * worst joint is a HEAD joint says the column governs, and knowing BY HOW MUCH is what
-		 * fails while the crossing is still one retune away rather than after it has happened.
+		 * The column must actually be hanging, or the number below measures an ordinary bed joint
+		 * and the test is vacuous. Two assertions rather than one, since the first was true at the
+		 * old heights and still let the test go vacuous: a head joint says the column governs, and
+		 * knowing by how much is what fails while the crossing is still one retune away.
 		 */
 		double WorstHead = 0.0;
 		double WorstBed = 0.0;
@@ -4546,11 +3992,10 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 				&& Wall.CourseOf[Result.WorstPieceA] == Wall.CourseOf[Result.WorstPieceB]);
 
 		/*
-		 * AND IT MUST GOVERN WITH ROOM TO SPARE. 1.15 is a tripwire, not a physical claim: the
-		 * measured margins are 1.285 at twelve courses and 1.300 at twenty, so this fires while
-		 * there is still a test here rather than after the bed joint has quietly taken over and
-		 * every number below has started describing a different joint. At the OLD ten-course rung
-		 * this ratio was 0.986 and the test was measuring the bed joint.
+		 * And it must govern with room to spare. 1.15 is a tripwire, not a physical claim: the
+		 * measured margins are 1.285 at twelve courses and 1.300 at twenty, so this fires before
+		 * the bed joint quietly takes over. At the old ten-course rung this ratio was 0.986 and the
+		 * test was measuring the bed joint.
 		 */
 		constexpr double MinimumHeadOverBed = 1.15;
 
@@ -4568,9 +4013,9 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 			WorstBed > 0.0 && WorstHead >= MinimumHeadOverBed * WorstBed);
 
 		/*
-		 * THE RED. Every course the column gains sheds its own weight into its own pair of head
-		 * joints, so the joints at the foot never see more than one brick — the same number at
-		 * any height.
+		 * The red: every course the column gains sheds its own weight into its own pair of head
+		 * joints, so the joints at the foot never see more than one brick — the same number at any
+		 * height.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -4580,12 +4025,11 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 			FMath::IsNearlyEqual(Result.Worst, HangingColumnShearUtilisation, UtilisationTolerance));
 
 		/*
-		 * AND THE WRONG ANSWER IS PINNED AT ITS MEASURED SIZE, exactly as the catalogue's
-		 * `DropsToday` pins a known-red row's drop count. This PASSES, and it is what turns "the
-		 * model reads some larger number" into a named defect: the reading is the per-pair figure
-		 * multiplied by the WHOLE HANGING COLUMN'S brick count, which is the entire content of
-		 * "the model routes a hanging column's load to its foot". A change that made the model
-		 * differently wrong fails here rather than hiding inside the already-red rows above.
+		 * And the wrong answer is pinned at its measured size, exactly as the catalogue's
+		 * `DropsToday` pins a known-red row's drop count. This passes, turning "the model reads
+		 * some larger number" into a named defect: the reading is the per-pair figure times the
+		 * whole hanging column's brick count. A change that made the model differently wrong fails
+		 * here rather than hiding inside the already-red rows above.
 		 */
 		const int32 HangingBricks = Heights[Index] - (CutCourse + 1);
 
@@ -4603,12 +4047,11 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 	if (bRan[0] && bRan[1])
 	{
 		/*
-		 * THE PROPERTY, ASSERTED WITHOUT REFERENCE TO EITHER VALUE. This holds even if the
-		 * absolute figure above is wrong, and it is the half that a model piling the column onto
-		 * its foot cannot satisfy however it is tuned. Both rungs are past the eleven-course
-		 * crossing asserted above, so the two numbers compared here are the same joint of the
-		 * same column on the same axis at two heights — which is exactly what the old 10-and-16
-		 * pair had stopped being.
+		 * The property, asserted without reference to either value. This holds even if the absolute
+		 * figure above is wrong, and is the half a model piling the column onto its foot cannot
+		 * satisfy however it's tuned. Both rungs are past the eleven-course crossing asserted above,
+		 * so this compares the same joint of the same column on the same axis at two heights — what
+		 * the old 10-and-16 pair had stopped being.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -4627,19 +4070,17 @@ bool FWallAcceptanceStackBondHeightTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE FIXTURE'S OWN BRICKLAYER LAYS THE WALL Layout::RunningBond LAYS.
+ * The fixture's own bricklayer lays the wall Layout::RunningBond lays.
  *
- * WITHOUT THIS THE WHOLE FILE IS A SECOND DEFINITION OF WHAT A WALL IS. Nineteen expected outcomes
- * measured against a wall that is subtly not the game's wall would all be measuring the wrong
- * thing, plausibly, and every one of them would still read as a number. The fixture exists only
- * because six cases are not running-bond rectangles; on the shape both producers CAN lay they have
- * to agree brick for brick.
+ * Without this the whole file is a second definition of what a wall is: nineteen expected outcomes
+ * measured against a wall that is subtly not the game's wall would all measure the wrong thing,
+ * plausibly, and still read as a number. The fixture exists only because six cases are not
+ * running-bond rectangles; on the shape both producers can lay, they have to agree brick for brick.
  *
- * ON BOXES RATHER THAN ON HANDLES, because the order a producer emits pieces in is its own
- * business and this makes no claim about it — the sets of boxes have to match, and each box has to
- * match somewhere.
+ * On boxes rather than handles, because the order a producer emits pieces in is its own business —
+ * the sets of boxes have to match, and each box has to match somewhere.
  *
- * NEEDS A TICKING WORLD: NO.
+ * Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWallAcceptanceFixtureAgreesWithProducerTest,
@@ -4743,26 +4184,20 @@ bool FWallAcceptanceFixtureAgreesWithProducerTest::RunTest(const FString& Parame
 }
 
 /**
- * THE PRODUCTION BRICKLAYER LAYS EXACTLY THE TWENTY WALLS THIS FILE HAS BEEN MEASURING.
+ * The production bricklayer lays exactly the twenty walls this file has been measuring.
  *
- * =====================================================================================
- * WHY THIS TEST EXISTS AT ALL
- * =====================================================================================
- *
- * The bricklayer above is TEST-ONLY, so no level can reach it — which is why the walls the
- * user drew and reviewed could not be catalogue rows until the same geometry existed in production.
- * Writing that producer was the cheap part. The expensive part is that every reading in this file is
- * a statement about a particular arrangement of particular bricks, worked to seventeen digits:
- * 0.195160875 at a four-step corbel's bottom rung, 0.058203838191552663 at a bare header's bed
- * joint, 0.01000825 of head-joint shear, and three known-red rows whose failure messages name bricks
- * by (course, cell). A producer that differs from the fixture by one ulp anywhere is not "a fixture
- * that moved", it is a dozen tests changing their answers at once for no visible reason — and
- * several are ALREADY RED, so a changed message there would hide a regression inside a known
+ * Why this test exists. The bricklayer above is test-only, so no level can reach it — which is why
+ * the walls the user drew and reviewed could not be catalogue rows until the same geometry existed
+ * in production. Writing that producer was the cheap part; the expensive part is that every
+ * reading in this file is a statement about a particular arrangement of particular bricks, worked
+ * to seventeen digits: 0.195160875 at a four-step corbel's bottom rung, 0.058203838191552663 at a
+ * bare header's bed joint, 0.01000825 of head-joint shear, and three known-red rows whose failure
+ * messages name bricks by (course, cell). A producer that differs from the fixture by one ulp
+ * anywhere is not "a fixture that moved" — it's a dozen tests changing their answers at once, and
+ * several are already red, so a changed message there would hide a regression inside a known
  * failure.
  *
- * =====================================================================================
- * WHAT IS COMPARED, AND WHY HANDLE ORDER IS IN THE LIST
- * =====================================================================================
+ * What is compared, and why handle order is in the list.
  *
  * The piece count, every box centre and extent, every mass, every grounded flag, and the whole
  * connection set IN ORDER — pairing, normal, area, centre and half-extent. Exact `==` throughout,
@@ -4770,40 +4205,28 @@ bool FWallAcceptanceFixtureAgreesWithProducerTest::RunTest(const FString& Parame
  * refuse through.
  *
  * A builder that laid the same bricks in a different sequence would renumber every joint and every
- * break stamp while every geometric check still passed. That is the failure that looks like
- * nothing, so it is asserted rather than assumed.
+ * break stamp while every geometric check still passed — the failure that looks like nothing, so
+ * it is asserted rather than assumed.
  *
- * AND THE GRID AND THE REGIONS MOVE WITH IT. `FWallRegion` is the vocabulary every cut and every
- * named outcome in this file is written in, and resolving one needs each piece's (course, cell) —
- * so production must hand those back and must name the same bricks the fixture names, or twenty
- * levels cut the wrong bricks while laying the right wall.
+ * The grid and the regions move with it: `FWallRegion` is the vocabulary every cut and named
+ * outcome is written in, and resolving one needs each piece's (course, cell), so production must
+ * hand those back and name the same bricks the fixture names, or twenty levels cut the wrong
+ * bricks while laying the right wall.
  *
- * =====================================================================================
- * IT IS STILL LIVE: THE BRICKLAYER WAS COPIED, NOT MOVED
- * =====================================================================================
+ * It is still live: the bricklayer was copied, not moved. This block used to say the test would go
+ * quiet once the producer landed (the fixture becoming a call to production, comparing a thing
+ * against itself — the state the corbel builder's fixture comparison reached and was deleted for).
+ * That never happened here: `LayWall` above still lays its own bricks and calls nothing in
+ * `DestructionWallCases` — the producer's landing commit was 853 insertions and zero deletions in
+ * this file. So this compares two independent bricklayers and is the only test that does; deleting
+ * it as spent would leave a change to the joint-discovery loop free to renumber every joint index
+ * and break stamp while every geometric check still passes.
  *
- * This block used to say the test went quiet the moment the producer landed, on the reasoning that
- * the fixture would by then be a call to production and the comparison would be a thing against
- * itself — the state the corbel builder's own fixture comparison reached, which was deleted for
- * exactly that reason and replaced by `Core.Corbel.LaysTheJointsTheGridImplies`.
+ * `Acceptance.Wall.TheFixtureLaysTheWallTheProducerLays` stands beside it rather than in place of
+ * it: that one claims this producer lays the wall `Layout::RunningBond` lays, on the shape both can
+ * lay, and is why this file cannot become a second definition of what a wall is.
  *
- * THAT NEVER HAPPENED HERE, AND THE NOTE WAS WRONG. `LayWall` above still lays its own bricks and
- * calls nothing in `DestructionWallCases`; the commit that landed the producer is 853 insertions
- * and ZERO deletions in this file. The bricklayer was COPIED into production rather than moved out
- * of the test, which is precisely why not one reading here moved across it.
- *
- * So this compares TWO INDEPENDENT BRICKLAYERS and it is the only test that does. Deleting it as
- * spent would leave one statement about `Core/WallCases`' handle order where there are currently
- * two — after which a change to the joint-discovery loop renumbers every joint index and every
- * break stamp while every geometric check still passes, which is the failure named above as the one
- * that looks like nothing.
- *
- * `Acceptance.Wall.TheFixtureLaysTheWallTheProducerLays` stands BESIDE it rather than in place of
- * it: that one is the claim that this producer lays the wall `Layout::RunningBond` lays on the
- * shape both can lay, and is the reason this file cannot become a second definition of what a wall
- * is.
- *
- * NEEDS A TICKING WORLD: NO. Boxes and doubles; no solve at all.
+ * Needs a ticking world: no. Boxes and doubles; no solve at all.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWallAcceptanceProducerMatchesFixtureTest,
@@ -4815,11 +4238,10 @@ bool FWallAcceptanceProducerMatchesFixtureTest::RunTest(const FString& Parameter
 	using namespace WallAcceptanceTestSupport;
 
 	/**
-	 * A CELL INDEX IS AN INDEX, NOT A READING, so it is held to a tolerance rather than to a bit.
-	 *
-	 * Every region bound in this file is at least an eighth of a cell — 0.125 — clear of any brick
-	 * centre, so this is eight orders of magnitude below anything that could change which region a
-	 * piece falls in. The course number is an integer and is held exactly.
+	 * A cell index is an index, not a reading, held to a tolerance rather than a bit. Every region
+	 * bound in this file is at least an eighth of a cell (0.125) clear of any brick centre, so this
+	 * is eight orders of magnitude below anything that could change which region a piece falls in.
+	 * The course number is an integer and is held exactly.
 	 */
 	constexpr double CellTolerance = 1.0e-9;
 
@@ -4945,43 +4367,34 @@ bool FWallAcceptanceProducerMatchesFixtureTest::RunTest(const FString& Parameter
 }
 
 /**
- * EVERY ONE OF THE TWENTY IS A LEVEL A HUMAN CAN JOIN, LAYING THE SAME WALL AND CUTTING THE SAME
- * BRICKS THE ACCEPTANCE ROW MEASURES.
+ * Every one of the twenty is a level a human can join, laying the same wall and cutting the same
+ * bricks the acceptance row measures.
  *
- * =====================================================================================
- * WHY THE CHECK LIVES HERE RATHER THAN BESIDE THE CATALOGUE
- * =====================================================================================
+ * Why the check lives here rather than beside the catalogue. The verdicts stay in this file, so
+ * the only place that knows what case 8 is, is this file. A test in
+ * `Tests/DestructionScenariosTest.cpp` could assert that a row called `wall-08` exists and builds,
+ * not that the wall it builds is the one case 8's outcome was measured against — the only claim
+ * worth making. The include direction stays test-includes-production: this reads
+ * `World/DestructionScenarios.h`, and nothing in production reads anything here.
  *
- * The verdicts stay in this file, so the only place that knows what case 8 IS, is this file. A
- * test living in `Tests/DestructionScenariosTest.cpp` could assert that a row called `wall-08`
- * exists and builds; it could not assert that the wall it builds is the wall case 8's expected
- * outcome was measured against, which is the only claim worth making. The include direction is
- * still test-includes-production: this reads `World/DestructionScenarios.h`, and nothing in
- * production reads anything here.
+ * What is asserted, and why the cut is the half that matters. Each case must have a row carrying
+ * the case's title verbatim, so a level and a catalogue entry can't describe different things; the
+ * wall it builds must be the fixture's wall brick for brick and in handle order; and the bricks it
+ * resolves to cut must be exactly the bricks the case's cut regions name.
  *
- * =====================================================================================
- * WHAT IS ASSERTED, AND WHY THE CUT IS THE HALF THAT MATTERS
- * =====================================================================================
+ * Most of these rows cut, and that is the point of the level: the wall stands, the player looks at
+ * it, then the bricks go and they watch what the wall does about it. A level that laid the right
+ * wall and cut a brick two cells over would show a plausible collapse unrelated to the case it's
+ * named after — the exact failure the whole acceptance set exists to make visible, relocated to
+ * where nobody is looking. Cases 1 and 17 are intact walls and must cut nothing, asserted from the
+ * case's own empty cut list rather than a list of numbers here.
  *
- * Each case must have a row; the row must carry the case's title VERBATIM, so a level and a
- * catalogue entry cannot describe different things; the wall it builds must be the fixture's wall
- * brick for brick AND in handle order; and the bricks it resolves to cut must be exactly the
- * bricks the case's cut regions name.
- *
- * MOST OF THESE ROWS CUT, AND THAT IS THE POINT OF THE LEVEL. The wall stands, the player looks at
- * it for the row's own hold, and then the bricks go and they watch what the wall does about it. A
- * level that laid the right wall and cut a brick two cells over would show a plausible collapse
- * that has nothing to do with the case it is named after — which is exactly the failure the whole
- * acceptance set exists to make visible, relocated to where nobody is looking for it. Cases 1 and
- * 17 are intact walls and must cut nothing, and that is asserted from the case's own empty cut
- * list rather than from a list of numbers here.
- *
- * THE SET IS COMPARED SORTED, BECAUSE THE ORDER OF A CUT IS THE ROW'S OWN BUSINESS: every cut
- * brick goes in one batch and one solve, so nothing downstream can see the sequence. WHICH bricks
+ * The set is compared sorted, because the order of a cut is the row's own business: every cut
+ * brick goes in one batch and one solve, so nothing downstream can see the sequence — which bricks
  * is the whole claim.
  *
- * NEEDS A TICKING WORLD: NO. The catalogue and the producer are both world-free; what a level does
- * with them is `World.Scenarios.*`'s business and is already covered.
+ * Needs a ticking world: no. The catalogue and producer are both world-free; what a level does with
+ * them is `World.Scenarios.*`'s business and is already covered.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWallAcceptanceLevelsTest,
@@ -5028,9 +4441,9 @@ bool FWallAcceptanceLevelsTest::RunTest(const FString& Parameters)
 			FString(Row.MapName), MapName);
 
 		/*
-		 * THE TITLE IS THE CASE'S, VERBATIM. The catalogue in WALL_CASES.html, the acceptance row
-		 * and the banner a player reads have to be three views of one case rather than three
-		 * descriptions that agree today.
+		 * The title is the case's, verbatim: the catalogue, the acceptance row and the banner a
+		 * player reads have to be three views of one case rather than three descriptions that
+		 * merely agree today.
 		 */
 		TestEqual(
 			*FString::Printf(TEXT("%s: must carry the case's own title"), *Where),
@@ -5082,8 +4495,8 @@ bool FWallAcceptanceLevelsTest::RunTest(const FString& Parameters)
 			Actual == Expected);
 
 		/*
-		 * AND THE INTACT ROWS CUT NOTHING, DERIVED FROM THE CASE RATHER THAN LISTED. Cases 1 and 17
-		 * are whole walls; a row that quietly took a brick out of one would turn a regression anchor
+		 * The intact rows cut nothing, derived from the case rather than listed: cases 1 and 17 are
+		 * whole walls, and a row that quietly took a brick out of one would turn a regression anchor
 		 * into a different case.
 		 */
 		if (Case.Cuts.Num() == 0)
@@ -5108,62 +4521,43 @@ bool FWallAcceptanceLevelsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * NO LEVEL PUTS A VERDICT ON SCREEN THAT THE SOLVER DOES NOT PRODUCE.
+ * No level puts a verdict on screen that the solver doesn't produce.
  *
- * =====================================================================================
- * WHY A CAPTION NEEDS A TEST AT ALL
- * =====================================================================================
+ * Why a caption needs a test at all. Three of these twenty-two rows are red today (10, 19, 20),
+ * and a level captioned "the course over the doorway drops and the wall stands" while the model
+ * drops nothing is a lie told to somebody standing in front of the counter-example — worse than
+ * silence, since the caption is the only thing telling the player what they're looking at. Since
+ * 2026-08-12 two of the three lie the other way: cases 10 and 19 are captioned `Expected: STANDS`
+ * and carry the disagreement marker, because they were re-ruled to stand while the model still
+ * drops 12 and 34 bricks. So a caption may say what's expected, may say the model disagrees, but
+ * may not claim a verdict the solver doesn't currently produce without admitting it.
  *
- * Three of these twenty-two rows are red today — 10, 19 and 20 — and a level captioned "the
- * course over the doorway drops and the wall stands" while the model drops nothing is a LIE TOLD TO
- * SOMEBODY STANDING IN FRONT OF THE COUNTER-EXAMPLE. That is worse than silence: the player can
- * see the wall, and the caption is the only thing telling them whether what they are looking at is
- * the answer or the bug.
+ * The convention, and why it's a token rather than prose matching. A caption is prose and has to
+ * stay prose; what's pinned is one token — `Expected: STANDS`, `Expected: LOCAL LOSS` or
+ * `Expected: COLLAPSE`, spelled the way `VerdictName` spells it — matching the verdict the
+ * acceptance row asserts. Matching whole sentences would make the caption unwritable; matching
+ * nothing would let it drift, which has already happened twice (cases 8 and 16 corrected in
+ * WALL_CASES.html, left stale here for a day).
  *
- * SINCE 2026-08-12 TWO OF THE THREE LIE IN THE OTHER DIRECTION, and the caption convention handles
- * it without changing: cases 10 and 19 are captioned `Expected: STANDS` AND carry the disagreement
- * marker, because they were re-ruled to stand while the model still drops 12 and 34 bricks. A
- * player standing in front of wall-10 sees a collapsed panel under a caption saying the wall should
- * be whole, which is exactly the shape of admission this test exists to force.
+ * Which rows must admit a disagreement is computed, never listed: the row is run, its verdict
+ * evaluated, and the marker required exactly when the model got it wrong — so a slice that fixes
+ * case 20 turns this red until the caption catches up, and so does a re-ruling that hands a row to
+ * the model (case 8's 2026-08-11 STANDS ruling did exactly this: wall-08's caption still claimed
+ * LOCAL LOSS with the marker, and this test held red until the caption moved in the same slice). A
+ * hardcoded list would have rotted silently the other way.
  *
- * So a caption may say what is expected, and it may say that the model disagrees, and it may say
- * only what the level does — but it may not claim a verdict the solver does not currently produce
- * without admitting it.
+ * The 2026-08-12 rulings exercised both directions at once: case 9 re-ruled STANDS with the model
+ * agreeing (caption drops the marker), cases 10 and 19 re-ruled STANDS with the model disagreeing
+ * (captions keep it) — three rows, one verdict change each, two opposite outcomes, none of it
+ * listed anywhere.
  *
- * =====================================================================================
- * THE CONVENTION, AND WHY IT IS A TOKEN RATHER THAN PROSE MATCHING
- * =====================================================================================
+ * The known-red set is a tripwire on this test's own predicate, not a second copy of the rule:
+ * `ModelAgreesWithVerdict` is a second reading of the three verdict shapes
+ * `Acceptance.Wall.Catalogue` asserts one at a time, and could drift from the catalogue while every
+ * catalogue row still failed identically. Requiring it to name precisely the known-red rows makes
+ * that drift visible.
  *
- * A caption is prose and has to stay prose. What is pinned is one token in it: `Expected: STANDS`,
- * `Expected: LOCAL LOSS` or `Expected: COLLAPSE`, spelled the way `VerdictName` spells it, exactly
- * one of the three, and matching the verdict the acceptance row asserts. Everything else in the
- * sentence is the writer's. Matching whole sentences would have made the caption unwritable;
- * matching nothing would have let it drift the day a verdict changed — which has already happened
- * twice in this project, when cases 8 and 16 were corrected in WALL_CASES.html and left stale in
- * this file for a day.
- *
- * AND WHICH ROWS MUST ADMIT A DISAGREEMENT IS COMPUTED, NEVER LISTED. The row is RUN, its verdict
- * is evaluated, and the marker is required exactly when the model got it wrong — so a slice that
- * fixes case 20 turns this red until the caption stops claiming a disagreement that no longer
- * exists, and so does a RE-RULING that hands a row to the model, which is precisely what case 8's
- * 2026-08-11 STANDS ruling did: production's wall-08 caption still claimed LOCAL LOSS and still
- * carried the marker, and this test held that red until the caption moved in the same slice. A
- * hardcoded list of numbers would have rotted silently in the other direction.
- *
- * THE 2026-08-12 RULINGS EXERCISED BOTH DIRECTIONS AT ONCE, which is the sharpest demonstration
- * this convention has had. Case 9 was re-ruled STANDS and the model agrees, so its caption must
- * stop claiming COLLAPSE and must DROP the marker; cases 10 and 19 were re-ruled STANDS and the
- * model does NOT agree, so their captions must stop claiming COLLAPSE and must KEEP the marker.
- * Three rows, one verdict change each, two opposite marker outcomes — and none of it is listed
- * anywhere, it falls out of running the wall.
- *
- * THE KNOWN-RED SET IS A TRIPWIRE ON THIS TEST'S OWN PREDICATE, not a second copy of the rule.
- * `ModelAgreesWithVerdict` is a second reading of the three verdict shapes `Acceptance.Wall.
- * Catalogue` asserts one at a time, so it could drift from the catalogue and caption a level
- * wrongly while every catalogue row still failed exactly as before. Requiring it to name precisely
- * the three rows the suite knows to be red is what makes that drift visible.
- *
- * NEEDS A TICKING WORLD: NO. It solves the same twenty walls the catalogue solves.
+ * Needs a ticking world: no. It solves the same twenty walls the catalogue solves.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWallAcceptanceCaptionTest,
@@ -5176,58 +4570,35 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	using namespace DestructionScenarios;
 
 	/**
-	 * THE THREE ROWS THE MODEL GETS WRONG TODAY.
+	 * The rows the model gets wrong today.
 	 *
-	 * This is NOT what decides which caption must admit a disagreement — that is computed per row
-	 * below. It is a check on the predicate that computes it: a second reading of the verdict rules
-	 * that drifted from the catalogue's would caption a level wrongly while every catalogue
-	 * failure stayed word for word identical, which is the one failure this file could not
-	 * otherwise see.
+	 * This is not what decides which caption must admit a disagreement — that's computed per row
+	 * below. It's a check on the predicate that computes it: a second reading of the verdict rules
+	 * that drifted from the catalogue's would caption a level wrongly while every catalogue failure
+	 * stayed word for word identical, the one failure this file couldn't otherwise see.
 	 *
-	 * IT BRIEFLY READ SEVEN ON 2026-08-08 AND CASE 11 HAS SINCE COME BACK OUT OF IT, both times
-	 * because an EXPECTATION moved rather than because anything regressed — ruled down on BS 5977's
-	 * arching gate, then re-ruled up when the user directed that a published design threshold is not
-	 * a collapse predictor and the physics was worked honestly. CASE 12 CAME OUT THE SAME WAY ON
-	 * 2026-08-09: its rewrite (see the block above Case12Cuts) replaced a geometry the model got
-	 * wrong with one it gets right, so the exit is an expectation moving again, not a solver fix.
-	 * AND CASE 8 ON 2026-08-11, the third of the same shape and the one that cost the most: the
-	 * catalogue's LOCAL LOSS was the outlier of three methods once the LP oracle stood the fixture
-	 * at lambda* = 324.73, and the user re-ruled it STANDS. CASE 9 IS THE FOURTH, ON 2026-08-12, on
-	 * exactly the same reading applied to a ten-cell span (the CASE 9 block of section B carries the
-	 * arithmetic and the cost).
+	 * Cases 11, 12, 8 and 9 all left this set by an expectation moving rather than a regression
+	 * (re-rulings on 2026-08-08, -09, -11 and -12 respectively — see their blocks in section B/C).
+	 * Cases 10 and 19 joined the same day but in the inverted direction: re-ruled STANDS while the
+	 * model still drops 12 and 34 pieces, so membership here no longer means "the catalogue expects
+	 * more damage than the model produces" — for these two it's the reverse.
 	 *
-	 * AND THE SAME DAY PRODUCED THE FIRST RE-RULINGS THAT DID *NOT* SHRINK THIS SET. Cases 10 and 19
-	 * were re-ruled from COLLAPSE to STANDS beside case 9, and they STAY here: the model drops 12
-	 * and 34 pieces where the catalogue now says nothing should come down, so the disagreement
-	 * survives the ruling with its sign reversed. Do not read membership of this list as "the
-	 * catalogue expects more damage than the model produces" — for two of the three it is now the
-	 * other way round.
-	 *
-	 * Worth leaving on the record here: this set moving is nearly always a verdict being corrected,
-	 * which is why the tripwire at the bottom of this test is TWO assertions rather than one — "the
-	 * set grew" and "the set changed shape" are opposite pieces of news and used to fail in
-	 * identical words.
-	 *
-	 * CASE 21 JOINED THE SET AT THE 2026-08-14 MEAN RE-ANCHOR FLIP, in the INVERTED direction
-	 * beside 10 and 19: the ruled verdict is COLLAPSE (the hand deep-beam statics at 1.71x the
-	 * mean bond, upheld with the pricing experiments in hand), and at the mean strengths the
-	 * model now STANDS the wall — measured worst 0.93542327561664174, a knife edge 6.5% under
-	 * the line, and on an axis other than the bending the hand check condemns (that tension
-	 * reads ~3.1x below the hand sigma; WHICH other axis is unverified — see the pre-cascade
-	 * block above the case-21 catalogue row) — so no joint gives. The
-	 * disagreement is the composite-relief gap, not the data; the caption admits it. CASE 22 IS DELIBERATELY STILL NOT ON IT: its collapse survived the re-anchor — on a
-	 * knife edge (~1.2x, was 8.2x) — and the model still produces the collapse of the shape the
-	 * row names, so the predicate agrees and the row is green.
+	 * Case 21 joined at the 2026-08-14 mean re-anchor flip, inverted alongside 10 and 19: ruled
+	 * COLLAPSE (hand deep-beam statics at 1.71x mean bond), but at mean strengths the model now
+	 * STANDS the wall — measured worst 0.93542327561664174, a knife edge 6.5% under the line, on an
+	 * axis other than the bending the hand check condemns (unverified — see the pre-cascade block
+	 * above the case-21 catalogue row). Case 22 is deliberately not on it: its collapse survived the
+	 * re-anchor on a knife edge (~1.2x, was 8.2x) and the model still produces it, so the row agrees
+	 * and is green.
 	 */
 	/*
-	 * SHRANK TO {21} AT SLICE 4 (2026-08-27). Cases 10, 19 and 20 left this set the day the
+	 * Shrank to {21} at slice 4 (2026-08-27). Cases 10, 19 and 20 left this set the day the
 	 * equilibrium LP became the break authority below the 200-block cap: it stands all three
 	 * (lambda* 111.5 / 48.0 / 218.42) where the router only stranded or over-dropped, so the model
-	 * now AGREES with their STANDS verdicts and their captions no longer admit a disagreement.
-	 * Case 21 stays — its ruled COLLAPSE the LP still contradicts (it stands the wall at 17.24),
-	 * the one surviving inverted red. This edit is the paperwork the tripwire below demands when
-	 * the set shrinks: the list, the three captions' disagreement markers, and the rows'
-	 * DropsToday/StrandsToday anchors in Acceptance.Wall.Catalogue all came off together.
+	 * now agrees with their STANDS verdicts. Case 21 stays — its ruled COLLAPSE the LP still
+	 * contradicts (stands the wall at 17.24), the one surviving inverted red. This edit is the
+	 * paperwork the tripwire below demands when the set shrinks: the list, the captions'
+	 * disagreement markers, and the rows' DropsToday/StrandsToday anchors all came off together.
 	 */
 	const int32 KnownDisagreements[] = { 21 };
 
@@ -5245,13 +4616,11 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 			FString::Printf(TEXT("case %d (%s) as '%s'"), Case.Number, Case.Title, *LevelName);
 
 		/*
-		 * WHAT THE MODEL ACTUALLY DOES WITH THIS WALL, READ BEFORE THE ROW IS LOOKED UP AND
-		 * DELIBERATELY NOT SKIPPED WHEN THERE IS NO ROW YET.
-		 *
-		 * The tripwire at the bottom is a check on the predicate rather than on the captions, and a
-		 * predicate that was only exercised once the levels existed would be unproven at exactly the
-		 * moment somebody was relying on it to caption all of them. Run this way it reproduces
-		 * the known reds on the day it is written.
+		 * What the model actually does with this wall, read before the row is looked up and
+		 * deliberately not skipped when there is no row yet. The tripwire at the bottom checks the
+		 * predicate rather than the captions, and a predicate only exercised once the levels existed
+		 * would be unproven exactly when it was needed. Run this way it reproduces the known reds on
+		 * the day it is written.
 		 */
 		const FSolvedWall& Solved = RunWallCase(*this, Case);
 
@@ -5355,26 +4724,24 @@ bool FWallAcceptanceCaptionTest::RunTest(const FString& Parameters)
 	const FString KnownText = NumberList(Known);
 
 	/*
-	 * TWO FAILURES, NOT ONE, BECAUSE THE TWO WAYS THIS SET CAN MOVE MEAN OPPOSITE THINGS.
+	 * Two failures, not one, because the two ways this set can move mean opposite things. The
+	 * single `Disagreed == Known` row this replaces said only "these differ":
 	 *
-	 * The single `Disagreed == Known` row this replaces said only "these differ", and the two
-	 * things it was reading are not the same event at all:
-	 *
-	 *   GREW    a row the model used to get RIGHT now reads wrong. Nothing about the expectations
+	 *   GREW    a row the model used to get right now reads wrong. Nothing about the expectations
 	 *           moved, so either the solver regressed or a verdict was just re-ruled and this list
-	 *           has not caught up. Read it as a REGRESSION until the diff proves otherwise.
-	 *   SHRANK  a row on the known-red list now reads right. A slice fixed it — or an expectation
-	 *           was corrected to what the model already did — and the paperwork is owed: this list,
-	 *           the caption's disagreement marker, and the row's `DropsToday` anchor in
-	 *           Acceptance.Wall.Catalogue all have to come off together.
+	 *           hasn't caught up. Read it as a regression until the diff proves otherwise.
+	 *   SHRANK  a row on the known-red list now reads right. A slice fixed it, or an expectation
+	 *           was corrected to what the model already did — the paperwork is owed: this list, the
+	 *           caption's disagreement marker, and the row's `DropsToday` anchor all come off
+	 *           together.
 	 *
-	 * CASE 11 IS WHY THIS DISTINCTION IS WORTH A SECOND ASSERTION. It was ruled down to a local
-	 * loss on 2026-08-08 and back to "stands" the same day; both edits moved this set while the
-	 * solver did not change by one line, and a message reading "these differ" made the good news
-	 * and the bad news look identical.
+	 * Case 11 is why this distinction is worth a second assertion: ruled down to a local loss on
+	 * 2026-08-08 and back to "stands" the same day, both edits moved this set while the solver
+	 * didn't change by one line, and "these differ" made the good news and the bad news look
+	 * identical.
 	 *
-	 * TOGETHER THEY ARE STILL EXACTLY SET EQUALITY — every number appears at most once on either
-	 * side, so mutual containment is the same claim the one row made, split by direction.
+	 * Together they are still exactly set equality — every number appears at most once on either
+	 * side, so mutual containment is the same claim split by direction.
 	 */
 	TArray<int32> Grew;
 

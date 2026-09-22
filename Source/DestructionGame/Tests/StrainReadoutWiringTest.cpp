@@ -11,30 +11,21 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Slice 6b of the step-4 promotion — the min-violation strain readout wired into production, red.
+ * Below the equilibrium gate's block cap, the LP is the break authority — but the strain
+ * overlay a player reads still comes from the router's per-joint sweep estimate
+ * (InspectPiece -> Structure.GetConnectionUtilisation -> FConnection::UtilisationUnder of
+ * the routed force), not the LP. This test pins the fix: when a structure settles below
+ * the cap, solving caches a per-joint min-violation readout
+ * (RigidBlockOracle::SolveMinViolationReadout, routed on
+ * FOracleProblem::bMinViolationReadout) keyed back to production connections through the
+ * bridge's ConnectionOfJoint provenance, and FStructure exposes it as
+ * GetConnectionReadout. Its value on the governing joint must match an independent hand
+ * oracle and must not be the router's per-joint estimate.
  *
- * Slice 6a built and reviewed the oracle-side min-violation readout
- * (RigidBlockOracle::SolveMinViolationReadout, routed on FOracleProblem::bMinViolationReadout) and
- * proved it sound, deterministic and permutation-invariant. But it is set nowhere in production:
- * FStructure never asks for it, and the strain overlay still reads the router's per-joint estimate
- * (InspectPiece -> Structure.GetConnectionUtilisation -> FConnection::UtilisationUnder of the
- * router's routed force). Structure.cpp's own comment at the cascade seam admits it — below the cap
- * "the forces it would read still sit in ConnectionForces from the solve above, so the utilisation
- * overlay is unchanged". Below the cap the LP is the break authority, but the overlay a player
- * reads is still the sweep. 6b re-bases the overlay onto the LP.
- *
- * 6b is: a solve-on-settle path that, when a structure settles below the block cap, solves the
- * min-violation readout once and caches the per-joint result, keyed back to production connections
- * through the bridge's ConnectionOfJoint provenance; and the overlay consuming that cached per-joint
- * Utilisation/ViolationUu below the cap. This test is the first red — the core wiring: a new
- * production-queryable per-connection strain readout on FStructure (GetConnectionReadout), sourced
- * from the cached min-violation LP and keyed by ConnectionOfJoint, whose value on the governing
- * joint matches an independent hand oracle and is not the router's per-joint estimate.
- *
- * THE FIXTURE — a determinate tension hang (the 6a hand-oracle shape, as a production FStructure).
- * A single free brick hangs below a grounded anchor from one bed joint whose only finite strength
- * axis is tension (compression / cohesion uncapped, friction zero — exactly 6a's WeakTensionOnly),
- * so the governing axis is unambiguous and the statics are determinate:
+ * THE FIXTURE — a determinate tension hang, as a production FStructure. A single free
+ * brick hangs below a grounded anchor from one bed joint whose only finite strength axis
+ * is tension (compression / cohesion uncapped, friction zero), so the governing axis is
+ * unambiguous and the statics are determinate:
  *
  *   HAND STATICS (independent of the LP, worked by hand here):
  *     N (compression positive)   = -W          (the whole weight crosses the joint in tension)
@@ -43,18 +34,17 @@
  *     ViolationUu                = 0            (bond holds W with margin => the structure stands)
  *     Utilisation                = W / (f_t*Conv*A)   (< 1, tension is the sole capped axis)
  *
- * WHY IT PROVES THE LP IS THE SOURCE, NOT THE SWEEP. A tension hang has nothing beneath it, so the
- * router's downward flood cannot route it — it is stranded, its routed joint force is ~0, and
- * GetConnectionUtilisation reads ~0. The LP carries the weight in tension and reads Utilisation
- * W/(f_t*Conv*A). So the cached readout matching the hand oracle while differing sharply from the
- * router estimate on the same connection is only possible if the readout is sourced from the LP.
+ * WHY IT PROVES THE LP IS THE SOURCE, NOT THE SWEEP. A tension hang has nothing beneath
+ * it, so the router's downward flood cannot route it — it is stranded, its routed joint
+ * force is ~0, and GetConnectionUtilisation reads ~0. The LP carries the weight in
+ * tension and reads Utilisation W/(f_t*Conv*A). So the cached readout matching the hand
+ * oracle while differing sharply from the router estimate on the same connection is only
+ * possible if the readout is sourced from the LP.
  *
- * WHY IT IS ADDITIVE (no verdict moves). The bond holds the hang with a comfortable margin, so the
- * below-cap equilibrium gate already stands it today (slice 3b/4 made the LP the break authority
- * below the cap). The readout is a separate cached solve; SolveAndBreak breaks nothing and the hang
- * reads Supported before and after. Because M = 0 the tension utilisation is the same whether or
- * not first-crack rows are assembled in the readout LP, so this red does not depend on that
- * follow-on decision.
+ * WHY IT IS ADDITIVE (no verdict moves). The bond holds the hang with a comfortable
+ * margin, so the below-cap equilibrium gate already stands it today. The readout is a
+ * separate cached solve; SolveAndBreak breaks nothing and the hang reads Supported
+ * before and after.
  *
  * Units are derived here (1 MPa over 1 cm2 = 100 * 100 = 10000 uu), never imported, so a wrong
  * production constant disagrees rather than agrees.
@@ -117,9 +107,9 @@ namespace StrainReadoutWiringSupport
 	}
 
 	/**
-	 * A joint with a WEAK finite TENSION bond and every other axis uncapped, so the ONLY strength
-	 * row that can carry demand is tension — which is what makes the hang's governing axis
-	 * unambiguous. Mirrors 6a's WeakTensionOnly exactly.
+	 * A joint with a weak finite tension bond and every other axis uncapped, so the only
+	 * strength row that can carry demand is tension — what makes the hang's governing
+	 * axis unambiguous.
 	 */
 	FConnectionStrength TensionHangBond()
 	{
@@ -271,11 +261,11 @@ bool FStrainReadoutWiringTest::RunTest(const FString& Parameters)
 		static_cast<int32>(EOracleOutcome::Stands));
 
 	/*
-	 * Cross-check 2 — the 6a oracle readout matches the hand oracle. Solving the min-violation LP
-	 * directly (bMinViolationReadout, built and reviewed in 6a) is the source 6b must cache.
-	 * Confirming it here proves the hand oracle is right and that the only thing missing is the
-	 * production caching/query wiring, plus that the provenance maps joint 0 to the bed connection —
-	 * the key the cached readout must use.
+	 * Cross-check 2 — the oracle's own min-violation readout matches the hand oracle.
+	 * Solving the min-violation LP directly (bMinViolationReadout) is the source the
+	 * cache must draw from. Confirming it here proves the hand oracle is right and that
+	 * the only thing missing is the production caching/query wiring, plus that the
+	 * provenance maps joint 0 to the bed connection — the key the cached readout must use.
 	 */
 
 	FOracleProblem ReadoutPose;

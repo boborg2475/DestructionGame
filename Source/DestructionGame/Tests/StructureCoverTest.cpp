@@ -99,7 +99,7 @@ namespace StructureCoverTestSupport
  * An arch needs masonry over it: the arching depth is capped by the cover actually found above
  * the span, so the same opening that stands under deep cover cannot arch with one course on top.
  *
- * THE RULE, FROM ARCHING_DESIGN.md:
+ * The rule, from ARCHING_DESIGN.md:
  *
  *     d_e = min( cover above the span , 0.866 * L )       arching depth
  *     r   = d_e / 3                                       thrust line rise, kern-limited
@@ -111,66 +111,59 @@ namespace StructureCoverTestSupport
  * joints — at most `ceil(0.866L / course pitch)` steps, never a spatial query — and capped with
  * the angle rather than replaced by it.
  *
- * WHY IT MATTERS, AND IT IS THE PERMISSIVE DIRECTION. With `r = d_e/3` and `d_e` capped by the
+ * Why it matters, and it is the permissive direction: with `r = d_e/3` and `d_e` capped by the
  * cover, `H` grows as `1/cover` while `V` falls with it, so the thrust ratio blows up as the
  * masonry over an opening thins. On this fixture the uncapped answer is 0.866051 whatever the
  * cover; the capped answer is 22.5 with one course over. A ten-cell hole under a single course of
  * brickwork stands today and cannot: one course is not an arch ring, it is a beam in flexure over
  * ten bricks, and ten bricks hang in mid-air.
  *
- * ONE SPAN, SIX DEPTHS, AND THE TABLE IS THE TEST. Every row cuts the same ten cells out of the
+ * One span, six depths, and the table is the test: every row cuts the same ten cells out of the
  * same 30 x 40 flush wall and differs only in which course the cut is made in, so `L` is identical
- * everywhere and any difference between two rows is a difference in `d_e`. Adding a depth of cover
- * is adding a row.
+ * everywhere and any difference between two rows is a difference in `d_e`. Adding a depth of
+ * cover is adding a row.
  *
- * WHAT IS ASSERTED, AND WHY EACH FORM WAS CHOSEN.
+ * What is asserted, and why each form was chosen:
  *
- *   - H/V = 3L/(4 d_e) on every row, at 2%. This is the mechanism a red run should be read
- *     against: W cancels out of the ratio, so it depends on no wall weight, no load distribution
- *     and no definition of which columns count — a statement about the geometry of the thrust
- *     line and nothing else. The four cover-governed rows want 22.5, 11.25, 5.625 and 2.25; the
- *     strengths cannot move any of them (and the 2026-08-13 mean re-anchor did not).
+ *   - H/V = 3L/(4 d_e) on every row, at 2% — the mechanism a red run should be read against. W
+ *     cancels out of the ratio, so it depends on no wall weight, no load distribution and no
+ *     definition of which columns count. The four cover-governed rows want 22.5, 11.25, 5.625
+ *     and 2.25; strengths cannot move any of them (and the 2026-08-13 mean re-anchor did not).
  *
- *   - THE TWO ANGLE-GOVERNED ROWS ARE GREEN ON ARRIVAL AND MUST STAY THAT WAY. 202.5 cm and
- *     285 cm of cover both exceed 0.866 * 225 = 194.85, so the angle caps the depth and the answer
- *     is 0.866051 in both — exactly what slice 3 already computes. They guard that the cover is a
- *     `min` and not a replacement: an implementation that took `d_e` as the cover outright would
- *     read 0.833 and 0.592 here and take both rows red. The 285 cm row is the identical fixture
- *     `StructureThrustTest` measures (shear ~0.27 at mean strengths), so it also states that
- *     slice 4 moves nothing slice 3 pinned.
+ *   - The two angle-governed rows are green on arrival and must stay that way. 202.5 cm and
+ *     285 cm of cover both exceed 0.866 * 225 = 194.85, so the angle caps the depth and the
+ *     answer is 0.866051 in both — exactly what slice 3 already computes. They guard that the
+ *     cover is a `min` and not a replacement: reading `d_e` as the cover outright gives 0.833
+ *     and 0.592 here. The 285 cm row is the identical fixture `StructureThrustTest` measures
+ *     (shear ~0.27 at mean strengths), so it also states slice 4 moves nothing slice 3 pinned.
  *
- *   - THE COVER IS COUNTED IN WHOLE COURSE PITCHES, AND THE SPANNING COURSE IS THE FIRST OF THEM.
- *     That is the definition behind ARCHING_DESIGN's own 285 cm — a 40-course wall cut at course 1
- *     leaves courses 2 through 39, and 38 * 7.5 = 285 — asserted here rather than derived, because
- *     the alternatives differ by more than the tolerance: counting 6.5 cm of brick instead of
- *     7.5 cm of pitch would read 25.96 where this expects 22.5, and excluding the spanning course
- *     would make the shallowest row's cover zero and its thrust infinite. Both alternatives are
- *     printed on every row so a red run says which one happened.
+ *   - The cover is counted in whole course pitches, and the spanning course is the first of
+ *     them — the definition behind ARCHING_DESIGN's own 285 cm (a 40-course wall cut at course 1
+ *     leaves courses 2-39, 38 * 7.5 = 285). Asserted rather than derived, because the
+ *     alternatives differ by more than the tolerance: brick height instead of pitch reads 25.96
+ *     against 22.5, and excluding the spanning course zeroes the shallowest row's cover. Both
+ *     alternatives are printed on every row so a red run says which one happened.
  *
- *   - THE SPAN IS THE DISTANCE BETWEEN THE TWO ABUTMENTS, ASSERTED AS A FIXTURE FACT. They are
+ *   - The span is the distance between the two abutments, asserted as a fixture fact: they are
  *     225 cm apart and the clear opening is 225 cm, so the hook ARCHING_DESIGN measured is real
  *     and no new query is needed to reintroduce `L`. Seat-centroid to seat-centroid is 236.25 —
- *     5% wider, outside the 2% tolerance — so a row that used it fails and says so.
+ *     5% wider, outside the 2% tolerance.
  *
- *   - THE SHEAR AXIS GOVERNS, ASSERTED BEFORE ANY NUMBER IS CLAIMED. ComputeUtilisation returns
- *     the worst of three, so a fixture aimed at the thrust would silently measure compression the
- *     moment compression happened to be higher — and an arched springing's compression axis reads
- *     2|sigma_n|/f_c, a plausible small number sitting right beside the one being asserted.
+ *   - The shear axis governs, asserted before any number is claimed: ComputeUtilisation returns
+ *     the worst of three, and an arched springing's compression axis reads 2|sigma_n|/f_c, a
+ *     plausible small number sitting right beside the one being asserted, so a fixture aimed at
+ *     the thrust would silently measure compression the moment it happened to be higher.
  *
- *   - THE OUTCOME ARM IS RETIRED AS OF THE 2026-08-13 MEAN RE-ANCHOR. On the characteristic basis
+ *   - The outcome arm is retired as of the 2026-08-13 mean re-anchor. On the characteristic basis
  *     the one-course row came down and carried the collapse claim; at mean strengths every
  *     springing of this ten-cell table affords its thrust (the shallowest at ~0.35) and the wall
  *     stands under every depth of cover here. The machinery (bMustComeDown, the attribution
- *     precondition) is kept for the owed replacement row — a 20-cell cut under one course, whose
- *     hand estimate is ~1.4x over capacity — specified in CURRENT_STATE and to be measured in the
- *     green phase.
+ *     precondition) is kept for the owed replacement row — a 20-cell cut under one course, hand
+ *     estimate ~1.4x over capacity — specified in CURRENT_STATE and to be measured in green.
  *
- * Never a displacement, anywhere: two pieces can sever and stay resting exactly where they were,
- * so how far anything moved would say nothing.
- *
- * Needs no ticking world: FStructure is plain arithmetic over a graph and Layout is plain
- * arithmetic over boxes; nothing here needs an actor, a tick or a renderer, and slices 1 to 3
- * needed none either.
+ * Never a displacement, anywhere: two pieces can sever and stay resting exactly where they were.
+ * Needs no ticking world: FStructure and Layout are plain arithmetic; nothing here needs an
+ * actor, a tick or a renderer.
  *
  * No reveal is being measured. Every cut here is one course tall. A multi-course opening has a
  * jamb brick one course below the spanning course which keeps a patch on the jamb and overhangs

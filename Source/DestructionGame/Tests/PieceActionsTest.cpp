@@ -11,11 +11,11 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, not anonymous, and named differently from every other one in this
- * directory. An anonymous namespace is private to a TRANSLATION UNIT rather than to a
- * file, and a unity build merges many files into one — at which point two anonymous
- * BedJointNormal declarations are the same declaration twice. See CURRENT_STATE.md; the
- * `using namespace` for this one lives inside each RunTest body for the same reason.
+ * Named namespace, not anonymous, and named differently from every other one in this
+ * directory: an anonymous namespace is private to a translation unit rather than a file,
+ * and a unity build merges many files into one — at which point two anonymous
+ * BedJointNormal declarations are the same declaration twice. The `using namespace` for
+ * this one lives inside each RunTest body for the same reason.
  */
 namespace PieceActionsTestSupport
 {
@@ -27,11 +27,11 @@ namespace PieceActionsTestSupport
 	/**
 	 * A standard clay brick, derived rather than hand-set.
 	 *
-	 * NO EXPECTATION IN THIS FILE DEPENDS ON THE VALUE. Every joint below is the
+	 * No expectation in this file depends on the value: every joint below is the
 	 * Unbreakable test fixture and every assertion is about a handle, an actor, a
-	 * removal flag or a support state — never about a force or a utilisation. A real
-	 * number is simply less distracting than zero, and deriving it keeps this file from
-	 * becoming a second place for the figure to drift.
+	 * removal flag or a support state, never a force or utilisation. A real number is
+	 * simply less distracting than zero, and deriving it keeps this file from becoming a
+	 * second place for the figure to drift.
 	 */
 	const double PieceActionBrickMassKg =
 		ClayBrick.DensityGramsPerCubicCm * PieceActionBrickVolumeCubicCm / 1000.0;
@@ -50,12 +50,11 @@ namespace PieceActionsTestSupport
 	/**
 	 * A stand-in for a brick actor.
 	 *
-	 * NOT `NewObject<UObject>`, WHICH DOES NOT WORK: UObject itself is flagged abstract,
-	 * so instantiating it directly trips an engine ensure and the automation framework
-	 * counts that ensure as a test error. UStaticMeshComponent is the nearest concrete
-	 * thing a brick will genuinely own and needs no world — and this whole slice is
-	 * world-free, so a test for it that spun up a world would be testing the next slice
-	 * by accident.
+	 * Not `NewObject<UObject>`, which does not work: UObject itself is flagged abstract,
+	 * so instantiating it directly trips an engine ensure that the automation framework
+	 * counts as a test error. UStaticMeshComponent is the nearest concrete thing a brick
+	 * will genuinely own and needs no world — and this whole slice is world-free, so a
+	 * test that spun up a world would be testing the next slice by accident.
 	 */
 	UObject* MakePieceActionStandIn()
 	{
@@ -100,14 +99,14 @@ namespace PieceActionsTestSupport
 	/**
 	 * Build a binding whose joints are made of something in particular.
 	 *
-	 * THE STRENGTH IS A PARAMETER BECAUSE THIS FILE'S DEFAULT HID A DEFECT FOR A WHOLE
-	 * SLICE. Every other fixture here uses Unbreakable, which is right for them — they
-	 * assert on handles, actors, removal flags and support states, never on a load — but
-	 * it also makes SolveLoads and SolveAndBreak PROVABLY INDISTINGUISHABLE inside this
-	 * file: a joint that cannot give behaves identically under both. The single-piece
-	 * commit door was written to cascade and could be reverted to a plain solve with the
-	 * whole suite still green. A fixture out of real mortar is the only thing that can
-	 * tell the two apart, so the strength is a parameter rather than a constant.
+	 * The strength is a parameter because this file's default hid a defect for a whole
+	 * slice. Every other fixture here uses Unbreakable, right for them — they assert on
+	 * handles, actors, removal flags and support states, never a load — but it also makes
+	 * SolveLoads and SolveAndBreak provably indistinguishable inside this file: a joint
+	 * that cannot give behaves identically under both. The single-piece commit door was
+	 * written to cascade and could be reverted to a plain solve with the whole suite
+	 * still green. A fixture out of real mortar is the only thing that can tell the two
+	 * apart, so the strength is a parameter rather than a constant.
 	 */
 	void BuildPieceActionBinding(
 		FStructureBinding& Out,
@@ -182,7 +181,7 @@ namespace PieceActionsTestSupport
 	 * Bail out loudly rather than dereferencing a null row.
 	 *
 	 * A crash inside a test does not fail that test — it aborts the whole automation run,
-	 * and every test queued after it silently never reports at all. See CURRENT_STATE.md.
+	 * and every test queued after it silently never reports at all.
 	 */
 	bool RequireAction(FAutomationTestBase& Test, const FPieceAction* Action, const TCHAR* Label)
 	{
@@ -208,9 +207,9 @@ namespace PieceActionsTestSupport
 	}
 
 	/**
-	 * A TEST-SIDE ACTION THAT RECORDS BEING RUN, and nothing else.
+	 * A test-side action that records being run, and nothing else.
 	 *
-	 * This is what makes "the commit path re-resolves the ref BEFORE it runs anything" a
+	 * This is what makes "the commit path re-resolves the ref before it runs anything" a
 	 * mechanism assertion rather than an inference. Against the Delete row a rejected ref
 	 * shows up only as an absence — nothing was removed — which a commit path that ran the
 	 * action and then reported false would also produce. The counter cannot be fooled that
@@ -232,14 +231,14 @@ namespace PieceActionsTestSupport
 	const FPieceAction TripwireAction{ TEXT("<tripwire>"), &TripwireCanRun, &TripwireRun };
 
 	/**
-	 * THE SAME TRIPWIRE WITH ITS CanRun SAYING NO, and it is the only thing that can see
-	 * whether the commit path consults CanRun at all.
+	 * The same tripwire with its CanRun saying no, the only thing that can see whether the
+	 * commit path consults CanRun at all.
 	 *
 	 * Against the shipped Delete row the two guards overlap almost everywhere: a ref that
-	 * ResolvePiece refuses is usually a piece CanRun would refuse too, so a commit path that
-	 * consults neither, one, or both looks identical. This row separates them — the ref is
-	 * live and resolves perfectly, and the ONLY reason to refuse is CanRun. The counter is
-	 * what says the refusal happened before Run rather than after it.
+	 * ResolvePiece refuses is usually a piece CanRun would refuse too, so a commit path
+	 * that consults neither, one, or both looks identical. This row separates them — the
+	 * ref is live and resolves perfectly, and the only reason to refuse is CanRun. The
+	 * counter says the refusal happened before Run rather than after it.
 	 */
 	int32 RefusedTripwireRunCount = 0;
 
@@ -310,22 +309,22 @@ namespace PieceActionsTestSupport
 }
 
 /**
- * EVERY ROW OF THE ACTION TABLE IS WELL-FORMED, whichever rows there turn out to be.
+ * Every row of the action table is well-formed, whichever rows there turn out to be.
  *
- * A sweep, modelled on Profiles.ConnectionInvariants, and for the same reason: the whole
- * requirement here is that adding the second and the tenth action is adding a ROW. A test
- * that named each action would have to be edited alongside every one of them, which is the
- * switch statement the design is trying not to have, relocated into the test suite.
+ * A sweep, modelled on Profiles.ConnectionInvariants and for the same reason: the whole
+ * requirement here is that adding the second and the tenth action is adding a row. A test
+ * that named each action would have to be edited alongside every one of them, which is
+ * the switch statement the design is trying not to have, relocated into the test suite.
  *
- * DELIBERATELY NO EXACT COUNT. A second action should be a row, not a test edit. What is
- * asserted is that the table is not EMPTY — a sweep over nothing checks nothing, and a
- * context menu with no entries is not a menu — and that every row carries a usable label
- * and both function pointers, with labels unique so a menu cannot show the same word twice
- * and a lookup cannot silently pick whichever came first.
+ * Deliberately no exact count — a second action should be a row, not a test edit. What is
+ * asserted is that the table is not empty (a sweep over nothing checks nothing, and a
+ * context menu with no entries is not a menu) and that every row carries a usable label
+ * and both function pointers, with labels unique so a menu cannot show the same word
+ * twice and a lookup cannot silently pick whichever came first.
  *
- * GREEN-ON-ARRIVAL WARNING: this goes green the moment one well-formed row exists, so it
+ * Green-on-arrival warning: this goes green the moment one well-formed row exists, so it
  * is not evidence of anything on its own. Prove it bites by temporarily adding a row with
- * a null Run — that is a test-side, free mutation.
+ * a null Run — a test-side, free mutation.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceActionsTableIsWellFormedTest,
@@ -365,9 +364,9 @@ bool FPieceActionsTableIsWellFormedTest::RunTest(const FString& Parameters)
 			TEXT("row %d (%s)"), Index, bHasLabel ? Action.Label : TEXT("<null label>"));
 
 		/*
-		 * BOTH POINTERS, ALWAYS. CanRun is what lets the menu filter itself without any
+		 * Both pointers, always: CanRun is what lets the menu filter itself without any
 		 * branch naming a specific action, so a row without one has no answer to give and
-		 * the menu has to special-case it — which is the switch again.
+		 * the menu has to special-case it — the switch again.
 		 */
 		TestTrue(
 			*FString::Printf(TEXT("%s must carry a CanRun, got null"), *Where),
@@ -378,9 +377,9 @@ bool FPieceActionsTableIsWellFormedTest::RunTest(const FString& Parameters)
 			Action.Run != nullptr);
 
 		/*
-		 * LABELS ARE UNIQUE. Two rows sharing a word show the player the same entry twice
-		 * and make a lookup by label answer whichever happens to come first — silently, and
-		 * differently after a reorder.
+		 * Labels are unique: two rows sharing a word show the player the same entry twice
+		 * and make a lookup by label answer whichever happens to come first — silently,
+		 * and differently after a reorder.
 		 */
 		for (int32 Earlier = 0; Earlier < Index; ++Earlier)
 		{
@@ -402,30 +401,29 @@ bool FPieceActionsTableIsWellFormedTest::RunTest(const FString& Parameters)
 }
 
 /**
- * DELETE TAKES THE BRICK OUT OF THE STRUCTURE, HANDS BACK ITS ORPHANED ACTOR, AND LEAVES
- * THE WALL RE-SOLVED.
+ * Delete takes the brick out of the structure, hands back its orphaned actor, and leaves
+ * the wall re-solved.
  *
- * FOUR THINGS ARE PINNED HERE AND EACH HAS ITS OWN FAILURE MODE.
+ * Four things are pinned here, each with its own failure mode.
  *
- * THE ACTOR IS CAPTURED BEFORE THE ACTION RUNS. GetActor answers null for a removed piece,
- * so a commit path that looks for the actor AFTERWARDS hands back nothing and the brick
+ * The actor is captured before the action runs: GetActor answers null for a removed piece,
+ * so a commit path that looks for the actor afterwards hands back nothing and the brick
  * mesh stays in the world forever with no piece naming it. The assertion is pointer
  * identity against the stand-in, taken at a point where GetActor itself is asserted null.
  *
- * THE HANDLE RANGE DOES NOT SHRINK. FStructure tombstones the slot, deliberately, because
- * handles are a model-level promise: renumbering would silently re-point every joint above
- * the hole and there is no recovering the break stamps afterwards. So NumPieces is
- * unchanged and NumLivePieces is one lower, which is exactly what distinguishes a
- * tombstone from a compaction.
+ * The handle range does not shrink: FStructure tombstones the slot, deliberately, because
+ * handles are a model-level promise — renumbering would silently re-point every joint
+ * above the hole with no recovering the break stamps afterwards. So NumPieces is unchanged
+ * and NumLivePieces is one lower, exactly what distinguishes a tombstone from a compaction.
  *
- * THE COMMIT PATH RE-SOLVES, AND NO ROW HAD TO REMEMBER TO. The piece above the deleted one
- * loses its only support, and this test never calls SolveLoads after the commit — so if the
- * re-solve is missing, the structure still reports the brick Supported by something that is
- * no longer there. That is the "the brick vanishes and the wall stands there" failure, and
- * it is invisible to every other assertion in this file.
+ * The commit path re-solves, and no row had to remember to: the piece above the deleted
+ * one loses its only support, and this test never calls SolveLoads after the commit, so if
+ * the re-solve is missing the structure still reports the brick Supported by something
+ * that is no longer there — "the brick vanishes and the wall stands there", invisible to
+ * every other assertion in this file.
  *
- * A SECOND DELETE DID NOTHING, AND SAYS SO. The ref is stale the instant the first one
- * commits; a silent no-op reporting success is the case this project keeps finding.
+ * A second delete did nothing, and says so: the ref is stale the instant the first one
+ * commits, and a silent no-op reporting success is the case this project keeps finding.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceActionsDeleteTest,
@@ -444,19 +442,18 @@ bool FPieceActionsDeleteTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND THE ROW SAYS OUT LOUD THAT IT DESTROYS SOMETHING.
+	 * And the row says out loud that it destroys something. The rest of this test proves it
+	 * is irreversible; this is the row admitting it. Delete releases a brick to physics and
+	 * takes it out of the graph, and nothing in this project puts it back — which is why the
+	 * commit door is never wider than the menu door. A panel has to be able to draw that
+	 * button differently from a harmless one, and the only place that fact can live without
+	 * a widget deciding it by comparing a caption against the word "Delete" is here, on the
+	 * row, as data.
 	 *
-	 * THE REST OF THIS TEST PROVES IT IS IRREVERSIBLE; THIS IS THE ROW ADMITTING IT. Delete
-	 * releases a brick to physics and takes it out of the graph, and nothing in this project puts
-	 * it back — which is why the commit door is never wider than the menu door. A panel has to be
-	 * able to draw that button differently from a harmless one, and the only place that fact can
-	 * live without a widget deciding it by comparing a caption against the word "Delete" is here,
-	 * on the row, as data.
-	 *
-	 * IT IS NOT A SWEEP OVER THE TABLE, because "every row is destructive" is false the moment a
-	 * second action lands and "some row is" says nothing about which. The flag defaults to false
-	 * so that adding an action is still adding a row; THIS action is the one that has to carry
-	 * it, and it is named here for the same reason its behaviour is.
+	 * It is not a sweep over the table, because "every row is destructive" is false the
+	 * moment a second action lands and "some row is" says nothing about which. The flag
+	 * defaults to false so that adding an action is still adding a row; this action is the
+	 * one that has to carry it, named here for the same reason its behaviour is.
 	 */
 	TestTrue(
 		TEXT("Delete removes a brick and nothing puts it back, so its row must declare itself destructive"),
@@ -544,7 +541,7 @@ bool FPieceActionsDeleteTest::RunTest(const FString& Parameters)
 		Binding.GetActor(1) == nullptr);
 
 	/*
-	 * THE TOMBSTONE IS THE WHOLE POINT. NumPieces is the handle RANGE and never a live
+	 * The tombstone is the whole point: NumPieces is the handle range and never a live
 	 * count; a shrinking answer means the slot was compacted away, at which point every
 	 * handle above the hole names a different brick and nothing says so.
 	 */
@@ -577,7 +574,7 @@ bool FPieceActionsDeleteTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE ASSERTION THE COMMIT PATH EXISTS FOR, and note that NOTHING between the
+	 * The assertion the commit path exists for — note that nothing between the
 	 * RunPieceAction above and this line called SolveLoads. The roof's only support went
 	 * with the column, so a re-solved structure says Falling; a structure nobody re-solved
 	 * still says Supported, held up by a brick that is not there any more.
@@ -594,7 +591,7 @@ bool FPieceActionsDeleteTest::RunTest(const FString& Parameters)
 		Binding.GetStructure().GetPieceSupport(0) == EPieceSupport::Grounded);
 
 	/*
-	 * A SECOND COMMIT ON THE SAME REF DID NOTHING AND MUST SAY SO. The ref went stale the
+	 * A second commit on the same ref did nothing and must say so: the ref went stale the
 	 * instant the first one committed, and handing back an actor a second time would have
 	 * the caller destroy something already destroyed.
 	 */
@@ -625,22 +622,22 @@ bool FPieceActionsDeleteTest::RunTest(const FString& Parameters)
 }
 
 /**
- * CanRun IS WHAT FILTERS THE MENU, and it says no to a brick that is not there and to one
+ * CanRun is what filters the menu, and it says no to a brick that is not there and to one
  * that has already fallen.
  *
- * WHY THE FILTER IS A COLUMN ON THE ROW rather than a check in the menu: the menu must be
- * able to decide what to show without any branch naming a specific action, or every new
+ * The filter is a column on the row rather than a check in the menu, because the menu must
+ * be able to decide what to show without any branch naming a specific action, or every new
  * action is an edit to the menu as well as a row in the table.
  *
- * A MATRIX, BECAUSE THE ROWS CLOSE DIFFERENT HOLES. Removed and released are separate
+ * A matrix, because the rows close different holes: removed and released are separate
  * states with separate records — a tombstone on the graph and a one-way latch on the
  * binding — and a filter written against one of them passes this test while leaving the
- * other wide open. The fixture asserts the released brick is NOT removed, precisely so its
+ * other wide open. The fixture asserts the released brick is not removed, precisely so its
  * row cannot be satisfied by the removal check.
  *
- * THE ACCEPTING ROWS COME FIRST, and without them every rejection here is satisfied by a
- * CanRun that returns false unconditionally — which would hide Delete from the menu
- * forever and pass.
+ * The accepting rows come first; without them every rejection here is satisfied by a
+ * CanRun that returns false unconditionally, which would hide Delete from the menu forever
+ * and pass.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceActionsCanRunFiltersTheMenuTest,
@@ -756,29 +753,29 @@ bool FPieceActionsCanRunFiltersTheMenuTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE MENU FOR A CLICKED BRICK IS THE ACTION TABLE FILTERED BY CanRun, AND A CLICK THAT
- * RESOLVED TO NOTHING GETS NO MENU AT ALL.
+ * The menu for a clicked brick is the action table filtered by CanRun, and a click that
+ * resolved to nothing gets no menu at all.
  *
- * THE INPUT IS A REF, NOT A HANDLE, AND THAT IS THE REQUIREMENT RATHER THAN A CONVENIENCE.
- * What a click produces is the {StructureId, PieceIndex} the brick actor carries; a handle
- * is what resolving that ref against THIS binding answers. A menu built from a ref that
- * names another structure, or a piece that has since been removed, would be a menu offering
- * to delete somebody else's brick — so an unresolvable ref must produce an EMPTY menu, and
+ * The input is a ref, not a handle, a requirement rather than a convenience: what a click
+ * produces is the {StructureId, PieceIndex} the brick actor carries, and a handle is what
+ * resolving that ref against this binding answers. A menu built from a ref that names
+ * another structure, or a piece that has since been removed, would be a menu offering to
+ * delete somebody else's brick — so an unresolvable ref must produce an empty menu, and
  * "the trace hit the floor" arrives here as a default ref and gets exactly that.
  *
- * THE PROPERTY IS ASSERTED AS A SET, NOT AS A LIST OF LABELS. What the menu offers is
- * "every row whose CanRun says yes, and no others" — expressed over AllPieceActions() so a
- * second action is a row and not an edit to this test. One explicit row names Delete, so the
- * sweep cannot be satisfied by an empty table agreeing with an empty menu.
+ * The property is asserted as a set, not a list of labels: what the menu offers is "every
+ * row whose CanRun says yes, and no others" — expressed over AllPieceActions() so a second
+ * action is a row and not an edit to this test. One explicit row names Delete, so the sweep
+ * cannot be satisfied by an empty table agreeing with an empty menu.
  *
- * AND THE POINTERS NAME ROWS OF THE SHIPPED TABLE. A menu of copies would compare unequal to
- * everything, and the caller's next step is to pass one of these straight to RunPieceAction —
- * so identity, not equality, is what has to hold. Asserted as pointer identity against
+ * The pointers name rows of the shipped table: a menu of copies would compare unequal to
+ * everything, and the caller's next step is to pass one of these straight to RunPieceAction,
+ * so identity, not equality, is what has to hold — asserted as pointer identity against
  * AllPieceActions(), which a copied row cannot satisfy.
  *
- * NEEDS A TICKING WORLD: no. This is the whole reason the menu question is asked of a
- * binding rather than of a world — it is arithmetic on a graph, and the world-needing half
- * of a click is only the trace.
+ * No ticking world needed: this is the whole reason the menu question is asked of a
+ * binding rather than a world — arithmetic on a graph, and the world-needing half of a
+ * click is only the trace.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceActionsMenuOffersWhatCanRunTest,
@@ -832,11 +829,11 @@ bool FPieceActionsMenuOffersWhatCanRunTest::RunTest(const FString& Parameters)
 		Binding.GetStructure().GetPieceSupport(2) == EPieceSupport::Falling);
 
 	/*
-	 * THE PUSH IS ITS OWN STATEMENT, and that is not a style point: folding it into the
-	 * Printf of the assertion it sets up makes the two argument evaluations UNSEQUENCED, and
-	 * MSVC evaluates the condition first — so the fixture read the flag before the call that
-	 * sets it and failed for a reason that had nothing to do with the code under test. (It
-	 * really did: this was written that way first.)
+	 * The push is its own statement, not a style point: folding it into the Printf of the
+	 * assertion it sets up makes the two argument evaluations unsequenced, and MSVC
+	 * evaluates the condition first — so the fixture read the flag before the call that
+	 * sets it and failed for a reason unrelated to the code under test. (It really did:
+	 * this was written that way first.)
 	 */
 	const int32 ReleasedCount = Binding.ApplyResults();
 
@@ -960,31 +957,31 @@ bool FPieceActionsMenuOffersWhatCanRunTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE COMMIT PATH CONSULTS CanRun, AND REFUSES BEFORE IT RUNS ANYTHING.
+ * The commit path consults CanRun, and refuses before it runs anything.
  *
- * THE DECISION THIS PINS, STATED SO IT IS DELIBERATE. RunPieceAction re-resolves the ref,
- * which refuses a REMOVED piece; CanRun additionally refuses a RELEASED one. Those two
- * guards do not overlap, so the commit path has been strictly MORE PERMISSIVE than the menu:
- * an action could be committed against a brick already tumbling through the air, by a route
- * the menu would never have offered. That is closed here, and the reasoning matters more than
- * the outcome: CanRun is the row's own statement of when it is meaningful, so running Run
- * outside it runs a row outside its stated domain. If deleting falling debris is wanted, the
- * answer is to widen Delete's CanRun — one statement of the rule, in one place, that the menu
- * and the commit path then agree on — rather than to leave the commit door wider than the
- * menu and depend on nobody using it. The window this closes is real and ordinary: the
- * cascade that releases a brick between the click that opens the menu and the click that
- * chooses an entry.
+ * The decision this pins, stated so it is deliberate: RunPieceAction re-resolves the ref,
+ * which refuses a removed piece; CanRun additionally refuses a released one. Those two
+ * guards do not overlap, so the commit path has been strictly more permissive than the
+ * menu — an action could be committed against a brick already tumbling through the air, by
+ * a route the menu would never have offered. That is closed here, and the reasoning
+ * matters more than the outcome: CanRun is the row's own statement of when it is
+ * meaningful, so running Run outside it runs a row outside its stated domain. If deleting
+ * falling debris is wanted, the answer is to widen Delete's CanRun — one statement of the
+ * rule, in one place, that the menu and the commit path then agree on — rather than leave
+ * the commit door wider than the menu and depend on nobody using it. The window this
+ * closes is real and ordinary: the cascade that releases a brick between the click that
+ * opens the menu and the click that chooses an entry.
  *
- * THE REFUSING TRIPWIRE IS THE ONLY THING THAT CAN SEE IT. Against Delete the two guards
- * agree on almost every ref, so a commit path consulting neither, one or both looks the same.
- * The refusing tripwire's ref resolves perfectly and its CanRun is the sole reason to refuse,
- * and its counter is what distinguishes "refused before running" from "ran, then reported
- * false" — different bugs, and the second leaves whatever the action did behind it.
+ * The refusing tripwire is the only thing that can see it: against Delete the two guards
+ * agree on almost every ref, so a commit path consulting neither, one or both looks the
+ * same. The refusing tripwire's ref resolves perfectly and its CanRun is the sole reason
+ * to refuse, and its counter distinguishes "refused before running" from "ran, then
+ * reported false" — different bugs, and the second leaves whatever the action did behind it.
  *
- * THE RELEASED-BRICK ROW IS THE SAME CLAIM AGAINST THE SHIPPED ROW, which is what says the
+ * The released-brick row is the same claim against the shipped row, which is what says the
  * guard reaches real actions and not just a test fixture.
  *
- * NEEDS A TICKING WORLD: no.
+ * No ticking world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceActionsCommitRespectsCanRunTest,
@@ -1147,28 +1144,28 @@ bool FPieceActionsCommitRespectsCanRunTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE COMMIT PATH FAILS CLOSED ON A REF THAT NO LONGER NAMES A LIVE PIECE OF THIS
- * STRUCTURE: nothing runs, nothing changes, and no actor is handed back to be destroyed.
+ * The commit path fails closed on a ref that no longer names a live piece of this
+ * structure: nothing runs, nothing changes, and no actor is handed back to be destroyed.
  *
- * WHY THE REF IS RE-RESOLVED AT COMMIT AT ALL. The ref is the durable identity and the
+ * Why the ref is re-resolved at commit at all: the ref is the durable identity and the
  * handle is a momentary answer. Between the click that opened the menu and the click that
  * chose an entry, the piece can have been removed by another route entirely — a cascade, a
  * second player, the previous entry on the same menu. A handle captured when the menu
  * opened is exactly the stale value this re-resolution exists to reject, and the wrong
  * answer is a confident handle to somebody else's brick.
  *
- * A MATRIX RATHER THAN AN EXAMPLE, because every rejection route has to be separately
+ * A matrix rather than an example, because every rejection route has to be separately
  * closed and the wrong answer in each case is a plausible small integer. The sharp row is
- * the REMOVED piece: its slot stays a valid array index forever, so a bounds check alone
+ * the removed piece: its slot stays a valid array index forever, so a bounds check alone
  * accepts it.
  *
- * TWO ACTIONS PER ROW, AND THE SECOND IS THE MECHANISM. Against Delete a rejected ref shows
- * up only as an absence — nothing was removed — which a commit path that ran the action and
- * THEN reported false would produce just as well. The tripwire counts entries into Run, so
- * it distinguishes "refused before running" from "ran and reported nothing", and those are
+ * Two actions per row, and the second is the mechanism: against Delete a rejected ref
+ * shows up only as an absence — nothing was removed — which a commit path that ran the
+ * action and then reported false would produce just as well. The tripwire counts entries
+ * into Run, distinguishing "refused before running" from "ran and reported nothing",
  * different bugs.
  *
- * AND THE POSITIVE CONTROLS ARE AT THE END, because without them a RunPieceAction that
+ * The positive controls are at the end, because without them a RunPieceAction that
  * returns a default-constructed result for everything passes the entire matrix.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -1342,31 +1339,34 @@ bool FPieceActionsCommitRefFailsClosedTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE MENU FOR A SELECTION IS THE INTERSECTION: AN ACTION IS OFFERED ONLY IF EVERY SELECTED
- * PIECE'S CanRun SAYS YES.
+ * The menu for a selection is the intersection: an action is offered only if every selected
+ * piece's CanRun says yes.
  *
- * THE WRONG ANSWER IS PLAUSIBLE AND THAT IS WHY THIS EXISTS. "Offered if ANY selected piece can
- * run it" is the union, it is a one-word difference in the implementation, and it produces a
- * menu that looks perfectly reasonable — the button is there, it says Delete, and choosing it
- * deletes some of the bricks and silently declines the rest. A player who selected six bricks
- * and got four holes has no way to tell that from a bug in the commit path. The intersection
- * makes the offer honest: if the button is there, it applies to everything the count claims.
+ * The wrong answer is plausible, and that is why this exists: "offered if any selected
+ * piece can run it" is the union, a one-word difference in the implementation, and it
+ * produces a menu that looks perfectly reasonable — the button is there, it says Delete,
+ * and choosing it deletes some of the bricks and silently declines the rest. A player who
+ * selected six bricks and got four holes has no way to tell that from a bug in the commit
+ * path. The intersection makes the offer honest: if the button is there, it applies to
+ * everything the count claims.
  *
- * THE ROW THAT SEPARATES THEM IS {live, RELEASED}. Delete's CanRun says yes to a live brick and
- * no to a released one, so intersection offers nothing and union offers Delete — the only
- * discriminating shape available on a one-row table, and it is a real one: a cascade can
- * release a selected brick between two clicks. Every other multi-piece row would pass under
- * either reading.
+ * The row that separates them is {live, released}: Delete's CanRun says yes to a live
+ * brick and no to a released one, so intersection offers nothing and union offers Delete —
+ * the only discriminating shape available on a one-row table, and a real one: a cascade
+ * can release a selected brick between two clicks. Every other multi-piece row would pass
+ * under either reading.
  *
- * AN EMPTY SELECTION OFFERS NOTHING, AND THAT IS NOT VACUOUS TRUTH. An intersection over an
- * empty set is mathematically everything, so a naive "no piece said no" implementation offers
- * the whole table for a selection of nothing — a menu with a Delete button and no target.
+ * An empty selection offers nothing, and that is not vacuous truth: an intersection over
+ * an empty set is mathematically everything, so a naive "no piece said no" implementation
+ * offers the whole table for a selection of nothing — a menu with a Delete button and no
+ * target.
  *
- * THE PROPERTY IS WRITTEN OVER AllPieceActions(), so a second action is a row in the table and
- * not an edit here, and the pointers are asserted to name rows of the shipped table rather than
- * copies — the caller's next move is to hand one straight to RunPieceActions.
+ * The property is written over AllPieceActions(), so a second action is a row in the
+ * table and not an edit here, and the pointers are asserted to name rows of the shipped
+ * table rather than copies — the caller's next move is to hand one straight to
+ * RunPieceActions.
  *
- * NEEDS A TICKING WORLD: no. Arithmetic on a graph, like the single-piece menu it generalises.
+ * No ticking world needed: arithmetic on a graph, like the single-piece menu it generalises.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceActionsMenuIntersectsTheSelectionTest,
@@ -1586,38 +1586,38 @@ bool FPieceActionsMenuIntersectsTheSelectionTest::RunTest(const FString& Paramet
 }
 
 /**
- * COMMITTING AN ACTION ACROSS A SELECTION RUNS IT AGAINST EVERY PIECE, HANDS BACK EVERY ORPHAN,
- * AND SOLVES EXACTLY ONCE — AFTER THE LAST ONE HAS RUN.
+ * Committing an action across a selection runs it against every piece, hands back every
+ * orphan, and solves exactly once — after the last one has run.
  *
- * THE ONE SOLVE IS THE WHOLE POINT OF THE SLICE, AND IT NEEDS A REAL ASSERTION RATHER THAN A
- * COMMENT. Solving is deterministic and non-destructive, so a path that solved five times to
- * reach the state one solve describes is invisible in every other reading of the graph — the
- * pieces are removed, the supports are right, the orphans come back, and it costs five times
- * what it should. FStructure::NumSolves exists so that claim can fail. At scenario scale a
- * solve is tens of milliseconds, so ten deletes done one at a time is a third of a second of
- * stutter for an answer one pass already had.
+ * The one solve is the whole point of the slice, and needs a real assertion rather than a
+ * comment. Solving is deterministic and non-destructive, so a path that solved five times
+ * to reach the state one solve describes is invisible in every other reading of the graph
+ * — the pieces are removed, the supports are right, the orphans come back, and it costs
+ * five times what it should. FStructure::NumSolves exists so that claim can fail. At
+ * scenario scale a solve is tens of milliseconds, so ten deletes done one at a time is a
+ * third of a second of stutter for an answer one pass already had.
  *
- * AND THE COST CLAIM IS MADE AS A CONTRAST, NOT AS AN ABSOLUTE. N single commits are asserted
- * to cost N solves, and one batched commit of N to cost 1 — so the numbers mean something even
+ * The cost claim is made as a contrast, not an absolute: N single commits are asserted to
+ * cost N solves, and one batched commit of N to cost 1, so the numbers mean something even
  * if the solve counter itself were miscounted, because the same counter reads both.
  *
- * THE ORDERING IS ASSERTED SEPARATELY FROM THE COUNT, and the fixture is built so that they are
- * different failures. Piece 2 spans TWO grounded pads, 1 and 4, and the roof 3 rests on it, so
- * removing either pad alone leaves everything Supported and removing both leaves 2 and 3 with
- * no path to the ground at all. A batch that solved once but did it in the middle — after the
- * first removal, say — passes the count and reports the roof Supported by a wall that is no
- * longer there. That is exactly the shape of the failure a player found in ten seconds, and
- * FStructureBinding::ApplyResults keying off the LAST solve is why it matters: a push behind a
- * mistimed solve refuses to release the very pieces the batch orphaned.
+ * The ordering is asserted separately from the count, and the fixture is built so they are
+ * different failures. Piece 2 spans two grounded pads, 1 and 4, and the roof 3 rests on
+ * it, so removing either pad alone leaves everything Supported and removing both leaves 2
+ * and 3 with no path to the ground at all. A batch that solved once but did it in the
+ * middle — after the first removal, say — passes the count and reports the roof Supported
+ * by a wall that is no longer there, exactly the shape of a failure a player found in ten
+ * seconds; `FStructureBinding::ApplyResults` keying off the last solve is why it matters —
+ * a push behind a mistimed solve refuses to release the very pieces the batch orphaned.
  *
- * A REF THAT RESOLVES TO NOTHING SKIPS THAT PIECE AND NOTHING ELSE. A selection is built by
- * clicking, and a brick can go between the click and the commit; one stale entry must not cost
- * the other five their delete. Which is the opposite polarity to the MENU, deliberately — an
- * offer with a hole in it is a lie about what the button will do, whereas a commit with a hole
- * in it has already been authorised for the pieces that are still there.
+ * A ref that resolves to nothing skips that piece and nothing else. A selection is built
+ * by clicking, and a brick can go between the click and the commit; one stale entry must
+ * not cost the other five their delete — the opposite polarity to the menu, deliberately:
+ * an offer with a hole in it is a lie about what the button will do, whereas a commit with
+ * a hole in it has already been authorised for the pieces that are still there.
  *
- * NEEDS A TICKING WORLD: no. Every actor here is a transient-package stand-in, because the
- * batch is world-free by design: it hands the orphans back rather than destroying them.
+ * No ticking world needed: every actor here is a transient-package stand-in, because the
+ * batch is world-free by design — it hands the orphans back rather than destroying them.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceActionsBatchSolvesOnceTest,
@@ -1912,28 +1912,25 @@ bool FPieceActionsBatchSolvesOnceTest::RunTest(const FString& Parameters)
 }
 
 /**
- * DELETING ONE BRICK SETTLES THE WALL EXACTLY AS DELETING TWO DOES — the same cascade,
+ * Deleting one brick settles the wall exactly as deleting two does — the same cascade,
  * through the door a player reaches by right-clicking a single brick.
  *
- * THE GAP THIS CLOSES, STATED PLAINLY. RunPieceAction and RunPieceActions both end in
+ * The gap this closes: RunPieceAction and RunPieceActions both end in
  * FStructureBinding::SolveAndBreak, and the singular one could be reverted to SolveLoads
- * with the entire suite still green. Every other fixture in this file builds its joints
- * out of the Unbreakable test profile, which is right for what those tests assert and
- * makes the two calls PROVABLY INDISTINGUISHABLE here: a joint that cannot give behaves
- * identically whether it was asked to or not. The only covering test enters through
- * ChoosePieceMenuRow and CommitPieceActionForAll — the BATCH door — so the single-piece
- * door had no test of its own at all. Live, that is: right-click one brick out from under
- * a corbel, the joint above computes 2.24 of what mortar holds, nothing asks it to give,
- * and the overhang stands.
+ * with the entire suite still green, since every other fixture in this file builds its
+ * joints out of the Unbreakable test profile, which makes the two calls provably
+ * indistinguishable here. The only covering test entered through ChoosePieceMenuRow and
+ * CommitPieceActionForAll — the batch door — so the single-piece door had no test of its
+ * own: right-click one brick out from under a corbel, the joint above computes 2.24 of
+ * what mortar holds, nothing asks it to give, and the overhang stands.
  *
- * BOTH DOORS, ON TWO IDENTICAL WALLS, AND THE ASSERTION IS THAT THEY AGREE. A test that
- * only checked the singular door would say it cascades; it would not say the two doors run
- * the SAME physics, which is the property that actually matters — a wall may not behave
- * differently for a player who happened to pick one brick rather than two. So the fixture
- * is built twice and the break stamps are compared handle for handle.
+ * Both doors, on two identical walls, and the assertion is that they agree — not merely
+ * that the singular door cascades, but that the two run the same physics, so a wall does
+ * not behave differently for a player who happened to pick one brick rather than two. The
+ * fixture is built twice and the break stamps are compared handle for handle.
  *
- * THE FIXTURE IS THE SIMPLEST THING THAT CAN CROSS CAPACITY, and every number in it is
- * spelled out here rather than imported:
+ * The fixture is the simplest thing that can cross capacity, worked out rather than
+ * imported:
  *
  *        [2]  15,000 kg slab            resting on two 100 cm2 bed joints
  *       /   \
@@ -1943,29 +1940,25 @@ bool FPieceActionsBatchSolvesOnceTest::RunTest(const FString& Parameters)
  *   as built     = 1.47e7 / 2 / 100 cm2 / 10000    = 7.35 MPa   -> 0.735 of mortar's 10
  *   one pad gone = 1.47e7     / 100 cm2 / 10000    = 14.7 MPa   -> 1.47, and it gives
  *
- * where 10,000 uu per MPa.cm2 is written out from 1 N = 100 uu and 1 cm2 = 100 mm2 rather
- * than read off DestructionForce::ForceUnitsPerMPaSqCm, so a wrong constant in production
- * fails here instead of being agreed with.
+ * where 10,000 uu per MPa.cm2 comes from 1 N = 100 uu and 1 cm2 = 100 mm2, written out
+ * rather than read off DestructionForce::ForceUnitsPerMPaSqCm, so a wrong constant in
+ * production fails here instead of being agreed with.
  *
- * WHICH AXIS GOVERNS, WORKED THROUGH, because ComputeUtilisation returns the WORST of the
- * three and a case aimed at compression silently measures something else otherwise. Both
- * joints have an interface normal of exactly +Z and the load is exactly vertical, so the
- * shear and tensile components are exactly zero and compression against mortar's 10 MPa is
- * the only axis carrying anything. Mohr-Coulomb never enters: there is no shear for the
- * friction term to add capacity to.
+ * Which axis governs is worked through because ComputeUtilisation returns the worst of
+ * the three: both joints have an interface normal of exactly +Z and the load is exactly
+ * vertical, so shear and tension are exactly zero and compression against mortar's 10 MPa
+ * is the only axis carrying anything (Mohr-Coulomb never enters — no shear for the
+ * friction term to add capacity to). No moment, deliberately, either: the joints carry no
+ * rectangle, so FStructure treats them as faces whose lever arm nobody measured and the
+ * bending term vanishes exactly — this test is about a door, not eccentricity, and
+ * dragging bending in would make the asserted number depend on two things at once.
  *
- * AND NO MOMENT, DELIBERATELY. The pieces are placed — FStructureBinding::AddPiece takes
- * each box's centre down as a centre of mass — but the joints carry no rectangle, so
- * FStructure treats them as faces whose lever arm nobody measured and the bending term
- * vanishes exactly. This test is about a DOOR, not about eccentricity, and a fixture that
- * dragged bending in would make the number it asserts depend on two things at once.
+ * Gravity is the only load and there is no world: FStructureBinding is plain arithmetic
+ * over a graph, so this is a unit test on the mechanism — a break stamp, per DESIGN.md
+ * §4 — rather than a utilisation, since a joint that has given carries nothing and reads
+ * zero, the same as a joint that was never loaded.
  *
- * GRAVITY IS THE ONLY LOAD AND THERE IS NO WORLD. FStructureBinding is plain arithmetic
- * over a graph, so this is a unit test on the mechanism — a break stamp — exactly as
- * DESIGN.md §4 asks. The stamp rather than a utilisation, because a joint that has given
- * carries nothing and reads zero, which is also what a joint that was never loaded reads.
- *
- * NEEDS A TICKING WORLD: no.
+ * No ticking world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceActionsSingleDeleteCascadesTest,
@@ -2023,9 +2016,9 @@ bool FPieceActionsSingleDeleteCascadesTest::RunTest(const FString& Parameters)
 	TArray<UObject*> StandIns;
 
 	/*
-	 * TWO IDENTICAL WALLS. One is deleted from through the single-piece door and one
-	 * through the batch door with a selection of one; the whole point is the comparison,
-	 * so they must differ in nothing but the call.
+	 * Two identical walls: one is deleted from through the single-piece door and one
+	 * through the batch door with a selection of one. The point is the comparison, so
+	 * they must differ in nothing but the call.
 	 */
 	FStructureBinding ThroughOneDoor;
 	FStructureBinding ThroughTheBatchDoor;
@@ -2034,7 +2027,7 @@ bool FPieceActionsSingleDeleteCascadesTest::RunTest(const FString& Parameters)
 	BuildPieceActionBinding(ThroughTheBatchDoor, Pieces, Joints, StandIns, GeneralPurposeMortar);
 
 	/*
-	 * FIXTURE PRECONDITION: THE WALL STANDS AS BUILT. Without this the cascade below could
+	 * Fixture precondition: the wall stands as built. Without this the cascade below could
 	 * be breaking a joint that was already over capacity before the player touched
 	 * anything, and the test would say nothing about the delete at all.
 	 */
@@ -2082,13 +2075,13 @@ bool FPieceActionsSingleDeleteCascadesTest::RunTest(const FString& Parameters)
 		SingleDoorPass));
 
 	/*
-	 * THE ASSERTION, AND IT IS THE BREAK STAMP RATHER THAN A UTILISATION. A joint that has
-	 * given carries exactly nothing, so its utilisation reads zero — which is also what a
-	 * joint nobody ever loaded reads, and what this joint would read if the door merely
-	 * solved and the whole structure had come down for some other reason. GetBreakPass
-	 * survives the breaking and distinguishes all three states with no sentinel: a joint
-	 * that went with a REMOVED piece carries no pass number at all, so a stamp here is a
-	 * joint that failed under load rather than one that was deleted.
+	 * The assertion is the break stamp rather than a utilisation: a joint that has given
+	 * carries exactly nothing, so its utilisation reads zero — also what a joint nobody
+	 * ever loaded reads, and what this joint would read if the door merely solved and the
+	 * whole structure had come down for some other reason. GetBreakPass survives the
+	 * breaking and distinguishes all three states with no sentinel: a joint that went with
+	 * a removed piece carries no pass number at all, so a stamp here is a joint that failed
+	 * under load rather than one that was deleted.
 	 */
 	TestEqual(
 		FString::Printf(
@@ -2101,9 +2094,9 @@ bool FPieceActionsSingleDeleteCascadesTest::RunTest(const FString& Parameters)
 		ThroughOneDoor.GetStructure().GetConnection(SurvivingJoint).HasGiven());
 
 	/*
-	 * AND THE JOINT THAT WENT WITH THE DELETED PAD IS NOT PART OF THE COLLAPSE SEQUENCE.
-	 * It never snapped, it was deleted, so it carries no pass number — the middle row of
-	 * FStructure::GetBreakPass's three-state encoding, and the half a sentinel would lose.
+	 * The joint that went with the deleted pad is not part of the collapse sequence: it
+	 * never snapped, it was deleted, so it carries no pass number — the middle row of
+	 * FStructure::GetBreakPass's three-state encoding, the half a sentinel would lose.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("the deleted pad's own joint %d must be out of the structure"), DeletedJoint),
@@ -2125,7 +2118,7 @@ bool FPieceActionsSingleDeleteCascadesTest::RunTest(const FString& Parameters)
 		ThroughOneDoor.GetStructure().IsPieceSupported(RightPad));
 
 	/*
-	 * THE SAME DELETE THROUGH THE BATCH DOOR, ON THE SAME WALL. Stamp for stamp: the two
+	 * The same delete through the batch door, on the same wall — stamp for stamp, the two
 	 * doors must not be able to disagree about what a wall does.
 	 */
 	const FPieceRef BatchRefs[] = { Ref };

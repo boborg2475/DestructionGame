@@ -32,23 +32,25 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * A REUSABLE CUT HARNESS FOR THE WAREHOUSE — one row per experiment, run by name, self-documenting.
+ * A reusable cut harness for the warehouse — one row per experiment, run by name, self-documenting.
  *
- * The owner asked (2026-09-18) to keep running experiments on `Lvl_Warehouse` cheaply. So the thing
- * that varies between experiments — WHICH pieces to pull — is a `FCutSpec` row in the table below,
- * and everything else (join the level as a player, select the named pieces by real clicks, hold,
- * delete through the player's own menu, time the break decision, track the fall, dump the data and
- * write a plain-English SUMMARY.txt) is shared. Adding an experiment is adding a row; running it is
- * `Automation RunTests Experiment.WarehouseCut.<RowName>`. Each run writes into its own folder,
- * `Experiments/WarehouseCut/<RowName>/`.
+ * The owner asked (2026-09-18) to keep running experiments on `Lvl_Warehouse` cheaply. So the
+ * thing that varies between experiments — which pieces to pull — is a `FCutSpec` row in the
+ * table below, and everything else (join the level as a player, select the named pieces by real
+ * clicks, hold, delete through the player's own menu, time the break decision, track the fall,
+ * dump the data and write a plain-English SUMMARY.txt) is shared. Adding an experiment is adding
+ * a row; running it is `Automation RunTests Experiment.WarehouseCut.<RowName>`. Each run writes
+ * into its own folder, `Experiments/WarehouseCut/<RowName>/`.
  *
- * TWO COMPLEX TESTS ENUMERATE THE SAME TABLE. `Experiment.WarehouseCut.<row>` is the LIVE capture
- * (needs a real RHI, no `-nullrhi`): it photographs the selection and the fall. `Experiment.
- * WarehouseCutTiming.<row>` is the HEADLESS timing spread (five fresh loads of the same cut through
- * the world-free layout + solver), for a decision-time number with a spread rather than one sample.
+ * Two complex tests enumerate the same table: `Experiment.WarehouseCut.<row>` is the live
+ * capture (needs a real RHI, no `-nullrhi`) that photographs the selection and the fall, and
+ * `Experiment.WarehouseCutTiming.<row>` is the headless timing spread (five fresh loads of the
+ * same cut through the world-free layout + solver), for a decision-time number with a spread
+ * rather than one sample.
  *
- * THE FIRST EXPERIMENT (`BackWallCourse37`) reproduces the committed 2026-09-18 run whose write-up is
- * `Experiments/WarehouseCourse37/REPORT.md`; it is kept as the reference the harness must still match.
+ * The first experiment (`BackWallCourse37`) reproduces the committed 2026-09-18 run whose
+ * write-up is `Experiments/WarehouseCourse37/REPORT.md`; it is kept as the reference the harness
+ * must still match.
  */
 namespace WarehouseCutExperiment
 {
@@ -59,21 +61,22 @@ namespace WarehouseCutExperiment
 	constexpr double GeometryToleranceCm = 0.01;
 
 	/*
-	 * THE TWO LONG WALLS, BY THEIR Y BANDS (WAREHOUSE_DESIGN.md). The FRONT wall's wythe is Y [0,
-	 * 10.25] and its pilasters project to Y -11.25; the BACK wall's wythe is Y [326.25, 336.5] and
-	 * its pilasters project to Y 347.75. A piece belongs to a face by which side of the building's
-	 * mid-Y (168.25) it sits on, which separates the two long walls cleanly and never claims an end
-	 * wall (those run along Y through the middle and are excluded by the course + face test together).
+	 * The two long walls, by their Y bands (WAREHOUSE_DESIGN.md). The front wall's wythe is Y [0,
+	 * 10.25] and its pilasters project to Y -11.25; the back wall's wythe is Y [326.25, 336.5]
+	 * and its pilasters project to Y 347.75. A piece belongs to a face by which side of the
+	 * building's mid-Y (168.25) it sits on, which separates the two long walls cleanly and never
+	 * claims an end wall (excluded by the course + face test together).
 	 */
 	constexpr double FrontWallWytheMaxYCm = 10.25;
 	constexpr double BackWallWytheMinYCm = 326.25;
 	constexpr double BuildingMidYCm = 168.25;
 
 	/*
-	 * THE CHIMNEY-SIDE END WALL runs along Y at the HIGH-X end, X [641.25, 651.5] — the door/gable end,
-	 * the two chimney stacks standing just beyond it at X [652.5, 674]. Its wythe spans the full depth
-	 * between the two long walls, Y (10.25, 326.25); a piece there on neither long wall is this end
-	 * wall. It has no pilasters (those are long-wall only), so every piece is reached the same way.
+	 * The chimney-side end wall runs along Y at the high-X end, X [641.25, 651.5] — the
+	 * door/gable end, the two chimney stacks standing just beyond it at X [652.5, 674]. Its
+	 * wythe spans the full depth between the two long walls, Y (10.25, 326.25); a piece there on
+	 * neither long wall is this end wall. It has no pilasters (long-wall only), so every piece
+	 * is reached the same way.
 	 */
 	constexpr double ChimneyEndWallXLoCm = 641.25;
 	constexpr double ChimneyEndWallXHiCm = 651.5;
@@ -111,8 +114,8 @@ namespace WarehouseCutExperiment
 	};
 
 	/**
-	 * THE TABLE. Add a row to add an experiment. `BackWallCourse37` is the committed reference; the
-	 * others extend the same course across the front, and across both long walls at once.
+	 * The table. Add a row to add an experiment. `BackWallCourse37` is the committed reference;
+	 * the others extend the same course across the front, and across both long walls at once.
 	 */
 	inline const TArray<FCutSpec>& Specs()
 	{
@@ -162,10 +165,10 @@ namespace WarehouseCutExperiment
 			return true;
 		}
 		/*
-		 * THE CHIMNEY-END WALL, checked AFTER the long walls so a back/front corner piece (which also
-		 * sits in the end's X band) is claimed by its long wall first. What is left in that X band with
-		 * an interior Y is the end wall itself. The chimney STACKS stand beyond it at X >= 652.5 and are
-		 * excluded by the upper X bound, so this never claims a chimney brick.
+		 * The chimney-end wall, checked after the long walls so a back/front corner piece (which
+		 * also sits in the end's X band) is claimed by its long wall first. What is left in that
+		 * X band with an interior Y is the end wall itself. The chimney stacks stand beyond it at
+		 * X >= 652.5 and are excluded by the upper X bound, so this never claims a chimney brick.
 		 */
 		if (Box.CentreCm.X > ChimneyEndWallXLoCm - GeometryToleranceCm
 			&& Box.CentreCm.X < ChimneyEndWallXHiCm + GeometryToleranceCm
@@ -215,9 +218,9 @@ namespace WarehouseCutExperiment
 		OutEnd = Box.CentreCm;
 
 		/*
-		 * THE END WALL IS CLICKED FROM INSIDE, along +X. Its outer face is at the +X end where the two
-		 * chimney stacks stand, so an outside ray would hit a chimney before the wall for the pieces
-		 * behind them; the hollow interior is clear straight to the inner face.
+		 * The end wall is clicked from inside, along +X: its outer face is at the +X end where
+		 * the two chimney stacks stand, so an outside ray would hit a chimney before the wall for
+		 * the pieces behind them, while the hollow interior is clear straight to the inner face.
 		 */
 		if (Face == EFace::ChimneyEnd)
 		{
@@ -453,10 +456,10 @@ namespace WarehouseCutExperiment
 	}
 
 	/**
-	 * A three-quarter viewpoint that FACES a chosen long wall. The level's own ThreeQuarter frames
-	 * from the +X/+Y/+Z octant, which looks at the back wall; a front-face cut needs the mirror, so
-	 * the Y component of the orbit direction is signed by the face. The standoff is taken from the
-	 * production `ViewpointFor` on the same box, so the framing distance is the tested one.
+	 * A three-quarter viewpoint that faces a chosen long wall. The level's own ThreeQuarter
+	 * frames from the +X/+Y/+Z octant, which looks at the back wall; a front-face cut needs the
+	 * mirror, so the Y component of the orbit direction is signed by the face. The standoff is
+	 * taken from the production `ViewpointFor` on the same box, so the framing distance matches.
 	 */
 	inline DestructionScenarios::FViewpoint FaceView(const FBox& BoxCm, EFace Face)
 	{
@@ -1037,7 +1040,7 @@ bool FWCutFinal::Update()
 		World->GetTimeSeconds() - R.CutAtSeconds, Fallen, Standing, MovedUnreleased));
 	Test->TestEqual(TEXT("a brick the solver still holds must not have moved"), MovedUnreleased, 0);
 
-	/* THE SELF-DOCUMENTING SUMMARY — the whole point of the harness: every run explains itself. */
+	/* The self-documenting summary — the whole point of the harness: every run explains itself. */
 	const FCutSpec& Spec = CurrentSpec();
 	const FStructure::FSolveAndBreakReport& Rep = R.CutReport;
 	const FStructure::FBreakPassReport* First = Rep.Passes.Num() > 0 ? &Rep.Passes[0] : nullptr;
@@ -1184,9 +1187,10 @@ bool FWarehouseCutTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE HEADLESS TIMING SPREAD — the same cut through the world-free layout and solver, five fresh
- * loads, no RHI. A decision-time number with a spread rather than the single sample the live capture
- * takes while a renderer draws beside it. Writes headless_timing.txt into the spec's folder.
+ * The headless timing spread — the same cut through the world-free layout and solver, five
+ * fresh loads, no RHI. A decision-time number with a spread rather than the single sample the
+ * live capture takes while a renderer draws beside it. Writes headless_timing.txt into the
+ * spec's folder.
  */
 IMPLEMENT_COMPLEX_AUTOMATION_TEST(
 	FWarehouseCutTimingTest, "Experiment.WarehouseCutTiming",
@@ -1283,42 +1287,44 @@ bool FWarehouseCutTimingTest::RunTest(const FString& Parameters)
 }
 
 /**
- * IMPROVEMENT #2 — "RIGHT-SIZE THE MECHANISM-DIRECTED RE-FLOOD" — RED DRIVER + GREEN GUARD.
+ * Right-sizing the mechanism-directed re-flood: a red driver plus a green guard.
  *
  * FStructure::ProveRegionalCollapse grows a flooded region and poses a rigid-block LP per grow
- * iteration. When a pose certifies a fall whose mechanism CONTACTS a cut-artifact grounded boundary
- * (a block the flood pinned grounded, not a genuine bIsGrounded foundation), the prover RE-FLOODS from
- * the moved set to reveal collapse hidden behind that pinned block. TODAY that re-flood simply DOUBLES
- * the budget (`EffectiveBudget = FMath::Min(GrowCeiling, EffectiveBudget * 2)` in Structure.cpp), and
- * the doubled budget grows the pose to swallow standing structure that is not part of the mechanism.
+ * iteration. When a pose certifies a fall whose mechanism contacts a cut-artifact grounded
+ * boundary (a block the flood pinned grounded, not a genuine bIsGrounded foundation), the prover
+ * re-floods from the moved set to reveal collapse hidden behind that pinned block. Today that
+ * re-flood simply doubles the budget (`EffectiveBudget = FMath::Min(GrowCeiling,
+ * EffectiveBudget * 2)` in Structure.cpp), which grows the pose to swallow standing structure
+ * that is not part of the mechanism.
  *
- * MEASURED ON THE L-CUT (BackWallAndChimneyEndCourse37), pass 2 poses TWICE:
- *   pose 1 = 35 blocks / 196 pivots (certified fall — the mechanism the re-flood grows FROM);
- *   pose 2 = 70 blocks / 617 pivots (certified fall — the DOUBLED re-flood, the oversized one).
- * The certified mechanism fells 4 pieces and severs 10 joints — ~14 moved blocks. The rigid-block LP
- * is strongly super-linear, so the 70-block pose is ~96% of the pass's prover cost. #2 sizes pose 2 to
+ * Measured on the L-cut (BackWallAndChimneyEndCourse37), pass 2 poses twice: pose 1 = 35 blocks
+ * / 196 pivots (certified fall, the mechanism the re-flood grows from); pose 2 = 70 blocks / 617
+ * pivots (certified fall, the doubled re-flood, the oversized one). The certified mechanism
+ * fells 4 pieces and severs 10 joints — ~14 moved blocks. The rigid-block LP is strongly
+ * super-linear, so the 70-block pose is ~96% of the pass's prover cost. The fix sizes pose 2 to
  * |moved-set u one adjacency ring| (~20 blocks) instead of the doubled budget.
  *
- * WHY THIS FIXTURE, AND NOT A SYNTHETIC ONE. The mechanism-directed re-flood only fires when a
- * certified fall's MOVED blocks reach the budget edge of a MODEST flood AND beyond that edge lies more
- * connected NON-grounded standing structure for the doubling to swallow — the compact-mechanism-in-a-
- * large-standing-shell topology. On a synthetic chain the mechanism grows ring-by-ring and even the
- * right-sized re-flood eventually reaches the same block count (the chain is the one case doubling is
- * already optimal for), so a chain fixture cannot separate red from green. The measured L-cut is the
- * topology that separates them, so the RED driver rides it directly (headless, world-free, no RHI,
- * no ticking world — DestructionLayoutFile::LoadFile builds the FStructure and SolveAndBreak decides).
+ * Why this fixture, and not a synthetic one: the mechanism-directed re-flood only fires when a
+ * certified fall's moved blocks reach the budget edge of a modest flood and beyond that edge
+ * lies more connected non-grounded standing structure for the doubling to swallow — the
+ * compact-mechanism-in-a-large-standing-shell topology. On a synthetic chain the mechanism grows
+ * ring-by-ring and even the right-sized re-flood eventually reaches the same block count (the
+ * chain is the one case doubling is already optimal for), so it cannot separate red from green.
+ * The measured L-cut is the topology that does, so the red driver rides it directly (headless,
+ * world-free, no RHI, no ticking world).
  *
- * ASSERT ON MECHANISM, NEVER WALL-CLOCK (DESIGN.md §4). The RED reads a pose's BLOCK COUNT; the GREEN
- * reads felled-piece / severed-joint / not-held COUNTS. No LpMs threshold is ever asserted.
+ * Assert on mechanism, never wall-clock (DESIGN.md §4): red reads a pose's block count, green
+ * reads felled-piece / severed-joint / not-held counts. No LpMs threshold is ever asserted.
  */
 namespace WarehouseReFloodSupport
 {
 	using namespace WarehouseCutExperiment;
 
 	/**
-	 * Load the warehouse world-free, apply the L-cut (BackWallAndChimneyEndCourse37), and run the real
-	 * SolveAndBreak. RegionBlockCap is left at the production default — exactly as the timing harness
-	 * runs it, which is where the 35/70 pose split was measured. Returns false only on a load failure.
+	 * Load the warehouse world-free, apply the L-cut (BackWallAndChimneyEndCourse37), and run
+	 * the real SolveAndBreak. RegionBlockCap is left at the production default — exactly as the
+	 * timing harness runs it, which is where the 35/70 pose split was measured. Returns false
+	 * only on a load failure.
 	 */
 	inline bool LoadLCutAndSolve(DestructionLayout::FBrickLayout& Cut, int32& OutRemoved, FString& OutWhy)
 	{
@@ -1361,16 +1367,17 @@ namespace WarehouseReFloodSupport
 }
 
 /**
- * RED DRIVER. The first mechanism-directed re-flood pose — a pose that immediately follows a CERTIFIED
- * FALL in the same pass (the only thing that follows a fall is the contact re-flood: an interior fall
- * STOPS, and a speculative grow only follows a NON-fall) — must be sized to the mechanism it grows
- * from, hence NO LARGER than the certified-fall pose that triggered it. The moved set is a subset of
- * that pose's posed blocks and one adjacency ring around it stays within them, so |moved u ring| <=
- * the trigger pose's block count. TODAY the code doubles the budget instead: the re-flood pose is 70
- * blocks against the 35-block pose it grew from — RED, and RED because the doubling is oversized, not
- * because the fixture or the report is malformed (both are asserted sound above the comparison).
+ * Red driver. The first mechanism-directed re-flood pose — a pose that immediately follows a
+ * certified fall in the same pass (the only thing that follows a fall is the contact re-flood:
+ * an interior fall stops, and a speculative grow only follows a non-fall) — must be sized to the
+ * mechanism it grows from, hence no larger than the certified-fall pose that triggered it. The
+ * moved set is a subset of that pose's posed blocks and one adjacency ring around it stays
+ * within them, so |moved u ring| <= the trigger pose's block count. Today the code doubles the
+ * budget instead: the re-flood pose is 70 blocks against the 35-block pose it grew from — red
+ * because the doubling is oversized, not because the fixture or the report is malformed (both
+ * are asserted sound above the comparison).
  *
- * NEEDS A TICKING WORLD: NO — world-free LoadFile + SolveAndBreak, every assertion a report read.
+ * Needs a ticking world: no — world-free LoadFile + SolveAndBreak, every assertion a report read.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWarehouseReFloodRightSizedTest,
@@ -1443,14 +1450,14 @@ bool FWarehouseReFloodRightSizedTest::RunTest(const FString& Parameters)
 }
 
 /**
- * GREEN GUARD (green today, must STAY green after #2 — the safety net, not the driver). #2 changes the
- * re-flood BUDGET only; it must not change WHAT collapses. This pins the L-cut's certified mechanism as
- * a reusable characterization: the pass that carries the mechanism-directed re-flood fells exactly 4
- * pieces and severs exactly 10 joints through the prover, and the whole cascade leaves exactly 974
- * pieces not held. If a right-sized re-flood UNDER-floods and misses a piece, these counts drop and the
- * guard bites. Improvement #3 ("carry the region across passes") reuses this same characterization.
+ * Green guard (green today, must stay green after the fix — the safety net, not the driver).
+ * The fix changes the re-flood budget only; it must not change what collapses. This pins the
+ * L-cut's certified mechanism as a reusable characterization: the pass that carries the
+ * mechanism-directed re-flood fells exactly 4 pieces and severs exactly 10 joints through the
+ * prover, and the whole cascade leaves exactly 974 pieces not held. If a right-sized re-flood
+ * under-floods and misses a piece, these counts drop and the guard bites.
  *
- * NEEDS A TICKING WORLD: NO.
+ * Needs a ticking world: no.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FWarehouseLCutMechanismCharacterizationTest,
@@ -1509,9 +1516,9 @@ bool FWarehouseLCutMechanismCharacterizationTest::RunTest(const FString& Paramet
 	}
 
 	/*
-	 * THE WHOLE OUTCOME. Recomputed from the structure with the timing harness's own predicate (a piece
-	 * with a support answer that is neither Grounded nor Supported), independent of the report's own
-	 * NotHeldAfter tally. 974 is the measured, deterministic count across five loads.
+	 * The whole outcome, recomputed from the structure with the timing harness's own predicate
+	 * (a piece with a support answer that is neither Grounded nor Supported), independent of the
+	 * report's own NotHeldAfter tally. 974 is the measured, deterministic count across five loads.
 	 */
 	int32 NotHeld = 0;
 	for (int32 Piece = 0; Piece < Cut.Structure.NumPieces(); ++Piece)

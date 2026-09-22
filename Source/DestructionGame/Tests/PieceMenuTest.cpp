@@ -7,24 +7,25 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges
- * many files into one. See CURRENT_STATE.md; the `using namespace` lives inside RunTest for
- * the same reason.
+ * Named namespace, and named differently from every other one in this module — an
+ * anonymous namespace is private to a translation unit rather than to a file, and a
+ * unity build merges many files into one. See CURRENT_STATE.md; the `using namespace`
+ * lives inside RunTest for the same reason.
  */
 namespace PieceMenuTestSupport
 {
 	/**
-	 * A TRIPWIRE ROW THAT MUST NEVER BE CALLED, and the counters are what say so.
+	 * A tripwire row that must never be called, and the counters are what say so.
 	 *
-	 * BuildPieceMenuRows takes a menu that PieceActionsFor has ALREADY filtered, so it has no
-	 * business asking CanRun again — a second, quieter copy of the policy is exactly what the
-	 * action table exists not to have. A presenter that re-filtered would look identical from
-	 * outside on today's one-row table, because Delete's CanRun happens to say yes for a live
-	 * piece; only a row whose CanRun says NO, offered anyway, can tell the two apart.
+	 * BuildPieceMenuRows takes a menu that PieceActionsFor has already filtered, so it
+	 * has no business asking CanRun again — a second, quieter copy of the policy is
+	 * exactly what the action table exists not to have. A presenter that re-filtered
+	 * would look identical from outside on today's one-row table, because Delete's
+	 * CanRun happens to say yes for a live piece; only a row whose CanRun says no,
+	 * offered anyway, can tell the two apart.
 	 *
-	 * Run is counted for the same reason in the other direction: building a menu must not run
-	 * anything, and "it showed the right labels" would not notice if it had.
+	 * Run is counted for the same reason in the other direction: building a menu must
+	 * not run anything, and "it showed the right labels" would not notice if it had.
 	 */
 	int32 MenuCanRunEntries = 0;
 	int32 MenuRunEntries = 0;
@@ -48,12 +49,13 @@ namespace PieceMenuTestSupport
 		TEXT("Second"), &PieceMenuTripwireCanRun, &PieceMenuTripwireRun };
 
 	/**
-	 * A ROW THAT DECLARES ITSELF DESTRUCTIVE, WHICH IS THE ONLY WAY THE PASSTHROUGH IS VISIBLE.
+	 * A row that declares itself destructive, the only way the passthrough is visible.
 	 *
-	 * Every shipped action could be marked one way and a presenter that dropped the flag would
-	 * still agree with the table on every row — a false that never became a true is
-	 * indistinguishable from a false that was carried across. So the fixture supplies both
-	 * polarities, and the sweep below compares each row against the action it came from.
+	 * Every shipped action could be marked one way and a presenter that dropped the
+	 * flag would still agree with the table on every row — a false that never became
+	 * a true is indistinguishable from a false that was carried across. So the fixture
+	 * supplies both polarities, and the sweep below compares each row against the
+	 * action it came from.
 	 */
 	const FPieceAction MenuDestructiveRow{
 		TEXT("Wreck"), &PieceMenuTripwireCanRun, &PieceMenuTripwireRun, /*bIsDestructive*/ true };
@@ -116,35 +118,36 @@ namespace PieceMenuTestSupport
 }
 
 /**
- * THE PRESENTER TURNS A MENU AND A REF INTO ROWS: ONE ROW PER ACTION, IN THE TABLE'S ORDER,
- * EACH CARRYING THE ACTION'S OWN LABEL, THE ACTION ITSELF BY POINTER, AND THE REF IT COMMITS
- * AGAINST — AND NOTHING AT ALL FOR A REF THAT NAMES NOTHING.
+ * The presenter turns a menu and a ref into rows: one row per action, in the table's
+ * order, each carrying the action's own label, the action itself by pointer, and the
+ * ref it commits against — and nothing at all for a ref that names nothing.
  *
- * WHY THIS IS THE TESTABLE HALF OF A PRESENTER. What a player sees is a stack of Slate
- * buttons, and asserting that a widget appeared on screen is high cost for very little: it
- * needs a viewport, it fails for reasons that have nothing to do with the menu, and it cannot
- * see the failure that actually matters. The failure that matters is which ROWS were built —
- * an entry the piece may not have, an entry missing, entries in a shuffled order, or a row
- * carrying somebody else's ref so that clicking Delete deletes the wrong brick. All four are
- * a pure function of the list and the ref, and none of them needs a world. So this test owns
- * that function, and the Slate half is deliberately untested; the report says so out loud
- * rather than skipping it quietly.
+ * WHY THIS IS THE TESTABLE HALF OF A PRESENTER. What a player sees is a stack of
+ * Slate buttons, and asserting that a widget appeared on screen is high cost for very
+ * little: it needs a viewport, it fails for reasons that have nothing to do with the
+ * menu, and it cannot see the failure that actually matters. The failure that matters
+ * is which rows were built — an entry the piece may not have, an entry missing,
+ * entries in a shuffled order, or a row carrying somebody else's ref so that clicking
+ * Delete deletes the wrong brick. All four are a pure function of the list and the
+ * ref, needing no world. So this test owns that function, and the Slate half is
+ * deliberately untested; the report says so out loud rather than skipping it quietly.
  *
- * A PARAMETERISED TABLE, NOT A TEST PER CASE, so a second action is a row here as it is a row
- * there. The expectation is written as the POINTERS that must come back, in order, which
- * checks identity and ordering in one comparison — and pointer identity is the whole promise
- * PieceActionsFor makes ("never copies"), so a presenter that copied a row would break the
- * "which entry did they choose" comparison and this is where that shows up.
+ * A parameterised table, not a test per case, so a second action is a row here as it
+ * is a row there. The expectation is written as the pointers that must come back, in
+ * order, which checks identity and ordering in one comparison — pointer identity is
+ * the whole promise PieceActionsFor makes ("never copies"), so a presenter that copied
+ * a row would break the "which entry did they choose" comparison, and this is where
+ * that shows up.
  *
- * FAIL-CLOSED HAS A DIFFERENT POLARITY HERE THAN IT DOES ONE LAYER DOWN, and CURRENT_STATE.md
- * names the trap. A row is a COMMAND waiting to be chosen, not a readout: a click that hit
- * the floor arrives as a default FPieceRef, and a default is also what "we have no answer"
- * looks like. A readout may take that at face value; a button may not. So a ref missing
- * either half produces no rows, however good the menu handed in was.
+ * FAIL-CLOSED HAS A DIFFERENT POLARITY HERE THAN ONE LAYER DOWN, and CURRENT_STATE.md
+ * names the trap. A row is a command waiting to be chosen, not a readout: a click that
+ * hit the floor arrives as a default FPieceRef, and a default is also what "we have no
+ * answer" looks like. A readout may take that at face value; a button may not. So a
+ * ref missing either half produces no rows, however good the menu handed in was.
  *
- * NEEDS A TICKING WORLD: no, and not even a world. No binding, no actor, no solver — the
- * menu is a list of pointers and the ref is two integers, so this runs at arithmetic speed
- * alongside the solver tests.
+ * Needs a ticking world: no, and not even a world. No binding, no actor, no solver —
+ * the menu is a list of pointers and the ref is two integers, so this runs at
+ * arithmetic speed alongside the solver tests.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceMenuRowsTest,
@@ -204,10 +207,10 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A ROW WHOSE CanRun SAYS NO IS STILL SHOWN. Filtering is PieceActionsFor's job
-			 * and it has already happened; a presenter that asked again would be a second
-			 * copy of the policy, and on today's one-row table it would be indistinguishable
-			 * from this one on every other case in this file.
+			 * A row whose CanRun says no is still shown. Filtering is PieceActionsFor's
+			 * job and has already happened; a presenter that asked again would be a
+			 * second copy of the policy, indistinguishable on today's one-row table
+			 * from every other case in this file.
 			 */
 			TEXT("a row this presenter has no business re-filtering"),
 			{ &MenuTripwire },
@@ -216,10 +219,10 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * A DESTRUCTIVE ROW BESIDE AN ORDINARY ONE, WHICH IS THE PAIR THE FLAG NEEDS. One
-			 * row of either polarity in one menu is what tells "carried across" apart from
-			 * "defaulted", and it is the shape the shipped table will have the moment a second
-			 * action lands beside Delete.
+			 * A destructive row beside an ordinary one, the pair the flag needs. One row
+			 * of either polarity in one menu is what tells "carried across" apart from
+			 * "defaulted", and it is the shape the shipped table will have the moment a
+			 * second action lands beside Delete.
 			 */
 			TEXT("a destructive row and an ordinary one in one menu"),
 			{ &MenuTripwire, &MenuDestructiveRow },
@@ -264,9 +267,9 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 		},
 		{
 			/*
-			 * STRUCTURE ZERO AND PIECE ZERO ARE REAL. INDEX_NONE is the sentinel and zero is
-			 * not, so a guard written as `if (!Ref.StructureId)` would silently eat the first
-			 * structure ever built — which is the one the game mode builds on Play.
+			 * Structure zero and piece zero are real. INDEX_NONE is the sentinel and
+			 * zero is not, so a guard written as `if (!Ref.StructureId)` would silently
+			 * eat the first structure ever built — the one the game mode builds on Play.
 			 */
 			TEXT("the first piece of the first structure"),
 			Shipped,
@@ -295,10 +298,10 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 			const FPieceAction* const Expected = Case.ExpectedRows[Index];
 
 			/*
-			 * THE POINTER, NOT THE LABEL. PieceActionsFor promises rows of the shipped table
-			 * rather than copies precisely so that "which entry did they choose" is a pointer
-			 * comparison; a presenter that copied the row would keep every label right and
-			 * break that promise silently.
+			 * The pointer, not the label. PieceActionsFor promises rows of the shipped
+			 * table rather than copies precisely so "which entry did they choose" is a
+			 * pointer comparison; a presenter that copied the row would keep every
+			 * label right and break that promise silently.
 			 */
 			TestTrue(
 				*FString::Printf(
@@ -316,9 +319,10 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 				Row.Label, FString(Expected->Label));
 
 			/*
-			 * AND EVERY ROW CARRIES THE REF IT WAS BUILT FOR. A presenter that dropped the ref
-			 * would show a perfect menu that committed against whatever the caller happened to
-			 * remember — which for a wall of 1,220 identical bricks is undetectable by eye.
+			 * And every row carries the ref it was built for. A presenter that dropped
+			 * the ref would show a perfect menu that committed against whatever the
+			 * caller happened to remember — undetectable by eye on a wall of 1,220
+			 * identical bricks.
 			 */
 			TestEqual(
 				FString::Printf(TEXT("%s: row %d should commit against structure %d, got %d"),
@@ -331,17 +335,18 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 				Row.Ref.PieceIndex, Case.Ref.PieceIndex);
 
 			/*
-			 * AND WHETHER CHOOSING IT DESTROYS SOMETHING, CARRIED ACROSS FROM THE ACTION AND
-			 * NEVER RE-DECIDED HERE.
+			 * And whether choosing it destroys something, carried across from the
+			 * action and never re-decided here.
 			 *
-			 * A DESTRUCTIVE BUTTON HAS TO LOOK LIKE ONE, and the only way a widget can know
-			 * which button that is without a decision of its own is a flag on the row. The
-			 * alternative anybody would actually write is `Label == TEXT("Delete")` in Slate:
-			 * a policy in a string literal, in the one place no test can read it, which stops
-			 * working the day the caption is retuned and does not start working when a second
-			 * irreversible action is added. Held against the action's OWN flag rather than
-			 * against a value written in this table, which is what makes it a passthrough
-			 * claim rather than a second copy of the data.
+			 * A destructive button has to look like one, and the only way a widget can
+			 * know which button that is without a decision of its own is a flag on the
+			 * row. The alternative anybody would actually write is
+			 * `Label == TEXT("Delete")` in Slate: a policy in a string literal, in the
+			 * one place no test can read it, which stops working the day the caption
+			 * is retuned and does not start working when a second irreversible action
+			 * is added. Held against the action's own flag rather than a value written
+			 * in this table, which is what makes it a passthrough claim rather than a
+			 * second copy of the data.
 			 */
 			TestEqual(
 				FString::Printf(
@@ -352,10 +357,11 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 				Row.bIsDestructive, Expected->bIsDestructive);
 
 			/*
-			 * AND WHAT IT WILL ACT ON, IN WORDS. A row committed against one brick says "1 brick"
-			 * — singular and plural decided here for the reason CountText's are, and derived from
-			 * Refs so a button cannot promise to act on a different number of bricks than it
-			 * will. The plural is exercised below, on a selection.
+			 * And what it will act on, in words. A row committed against one brick
+			 * says "1 brick" — singular and plural decided here for the reason
+			 * CountText's are, derived from Refs so a button cannot promise to act on
+			 * a different number of bricks than it will. The plural is exercised
+			 * below, on a selection.
 			 */
 			TestEqual(
 				FString::Printf(TEXT("%s: row %d should say what it acts on, it says '%s'"),
@@ -365,9 +371,10 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND THE PLURAL, WHICH ONLY THE SELECTION OVERLOAD CAN REACH. Three picked bricks make one
-	 * row that commits against three, and "3 bricks" is what the button has to be able to say —
-	 * a widget counting Refs and choosing a suffix is the same untestable branch as "1 bricks".
+	 * And the plural, which only the selection overload can reach. Three picked
+	 * bricks make one row that commits against three, and "3 bricks" is what the
+	 * button has to say — a widget counting Refs and choosing a suffix is the same
+	 * untestable branch as "1 bricks".
 	 */
 	{
 		const TArray<FPieceRef> ThreeBricks = { MakeRef(7, 3), MakeRef(7, 4), MakeRef(7, 5) };
@@ -391,9 +398,9 @@ bool FPieceMenuRowsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND BUILDING A MENU NEITHER FILTERS NOR RUNS ANYTHING. Both counters are the only thing
-	 * that can tell "showed the row" from "asked the row's CanRun and showed it anyway", and
-	 * the second is a different presenter with the same output on today's table.
+	 * And building a menu neither filters nor runs anything. Both counters are the
+	 * only thing that can tell "showed the row" from "asked the row's CanRun and
+	 * showed it anyway", a different presenter with the same output on today's table.
 	 */
 	TestEqual(
 		FString::Printf(TEXT("building rows must not consult CanRun; it was entered %d time(s)"),

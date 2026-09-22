@@ -17,30 +17,33 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges many
- * files into one. This is NOT HoverInputBindingTestSupport or InspectPieceBindingTestSupport, the
- * two files this one is modelled on, and every name in it carries a SessionAssets prefix so none of
- * them can be ambiguous against theirs. See CURRENT_STATE.md; the `using namespace` lives inside
- * each RunTest for the same reason.
+ * Named namespace, and named differently from every other one in this module — an
+ * anonymous namespace is private to a translation unit rather than to a file, and a
+ * unity build merges many files into one. This is not HoverInputBindingTestSupport or
+ * InspectPieceBindingTestSupport, the two files this one is modelled on, and every
+ * name in it carries a SessionAssets prefix so none can be ambiguous against theirs.
+ * See CURRENT_STATE.md; the `using namespace` lives inside each RunTest for the same
+ * reason.
  */
 namespace SessionAssetsTestSupport
 {
 	/*
-	 * THE PATHS ARE SPELLED HERE RATHER THAN IMPORTED FROM RequiredContent.h, AND THAT IS THE ONE
-	 * PLACE THIS FILE DELIBERATELY DUPLICATES A STRING.
+	 * The paths are spelled here rather than imported from RequiredContent.h, and
+	 * that is the one place this file deliberately duplicates a string.
 	 *
-	 * RequiredContent.h's own header says there is no second copy of these paths in the module, and
-	 * that rule is about PRODUCTION: one spelling is what stops a constructor and the table becoming
-	 * two lists that disagree. A test is the other side of that. These assertions have to be able to
-	 * go red because the ASSET is missing, and a test written against a constant that does not exist
-	 * yet fails to compile instead — which is a build break rather than a statement about content,
-	 * and it says nothing at all on the day somebody renames the asset and the constant together.
+	 * RequiredContent.h's own header says there is no second copy of these paths in
+	 * the module, and that rule is about production: one spelling is what stops a
+	 * constructor and the table becoming two lists that disagree. A test is the other
+	 * side of that — these assertions have to be able to go red because the asset is
+	 * missing, and a test written against a constant that does not exist yet fails to
+	 * compile instead, a build break rather than a statement about content, saying
+	 * nothing on the day somebody renames the asset and the constant together.
 	 *
-	 * WHAT KEEPS THE TWO SPELLINGS HONEST IS Content.RequiredAssetsResolve, which sweeps the table
-	 * and the CDOs in BOTH directions: a path constant that names nothing leaves the controller's
-	 * FObjectFinder holding null and fails there, and an asset resolved onto the CDO with no table
-	 * row fails there too. So this file does not duplicate that claim, and must not.
+	 * What keeps the two spellings honest is Content.RequiredAssetsResolve, which
+	 * sweeps the table and the CDOs in both directions: a path constant that names
+	 * nothing leaves the controller's FObjectFinder holding null and fails there, and
+	 * an asset resolved onto the CDO with no table row fails there too. So this file
+	 * does not duplicate that claim, and must not.
 	 */
 	constexpr const TCHAR* SessionLookModifierActionPath =
 		TEXT("/Game/Input/Actions/IA_LookModifier.IA_LookModifier");
@@ -81,14 +84,15 @@ namespace SessionAssetsTestSupport
 	};
 
 	/**
-	 * THE WHOLE SESSION KEYBOARD, AS DATA, so adding a shortcut is adding a row.
+	 * The whole session keyboard, as data, so adding a shortcut is adding a row.
 	 *
-	 * THE KEYS ARE SESSION_UI_DESIGN §b'S SHORTCUT COLUMNS TRANSCRIBED, and every one of them is a
-	 * decision with a reason recorded there: `Tab` toggles the mode pair because there are exactly
-	 * two of them and a toggle is one binding rather than two; `G` is grid rather than snap because
-	 * `S` is strafe-back on the flying pawn; `[` and `]` are the course stepper because they read as
-	 * a pair; `Enter` is the one command on the Destroy strip. The right mouse button is not a
-	 * shortcut at all — it is the MODIFIER the camera look is chorded to, which is the whole of §d.
+	 * The keys are SESSION_UI_DESIGN §b's Shortcut columns transcribed, and every one
+	 * is a decision with a reason recorded there: `Tab` toggles the mode pair because
+	 * there are exactly two of them and a toggle is one binding rather than two; `G`
+	 * is grid rather than snap because `S` is strafe-back on the flying pawn; `[` and
+	 * `]` are the course stepper because they read as a pair; `Enter` is the one
+	 * command on the Destroy strip. The right mouse button is not a shortcut at all —
+	 * it is the modifier the camera look is chorded to, the whole of §d.
 	 */
 	TArray<FSessionShortcutRow> SessionShortcutRows()
 	{
@@ -194,12 +198,14 @@ namespace SessionAssetsTestSupport
 	}
 
 	/**
-	 * THE EIGHT SHORTCUTS THAT REACH A HANDLER — the nine rows above minus the look modifier.
+	 * The eight shortcuts that reach a handler — the nine rows above minus the look
+	 * modifier.
 	 *
-	 * THE MODIFIER IS NOT ONE OF THEM, AND THAT IS THE POINT OF SPLITTING THE TABLE. IA_LookModifier
-	 * does nothing on its own: it exists only to be the thing IMC_MouseLook's chord watches, so
-	 * there is no handler for it to reach and a C++ binding on it would be dead code. Every other
-	 * row is one line onto OnToolbarButton.
+	 * The modifier is not one of them, the point of splitting the table.
+	 * IA_LookModifier does nothing on its own: it exists only to be the thing
+	 * IMC_MouseLook's chord watches, so there is no handler for it to reach and a C++
+	 * binding on it would be dead code. Every other row is one line onto
+	 * OnToolbarButton.
 	 */
 	TArray<FSessionShortcutRow> SessionBoundShortcutRows()
 	{
@@ -215,11 +221,11 @@ namespace SessionAssetsTestSupport
 	}
 
 	/**
-	 * THE REBUILT PER-PLAYER MAPPING LIST, IN THE ORDER A FRAME WILL EVALUATE IT.
+	 * The rebuilt per-player mapping list, in the order a frame will evaluate it.
 	 *
-	 * INDEXED, because the index IS the claim below — a list printed without them would record the
-	 * order and still make a reader count. The triggers come with it so a chord is visible in the log
-	 * beside the mapping it gates.
+	 * Indexed, because the index is the claim below — a list printed without them
+	 * would record the order and still make a reader count. The triggers come with
+	 * it so a chord is visible in the log beside the mapping it gates.
 	 */
 	FString DescribeSessionMappingOrder(TConstArrayView<const FEnhancedActionKeyMapping> Mappings)
 	{
@@ -264,10 +270,11 @@ namespace SessionAssetsTestSupport
 	}
 
 	/**
-	 * A FLOOR ON WHAT IMC_Default ALREADY MAPS, so the key-collision sweep below cannot pass by
-	 * sweeping over nothing. Measured off the asset: eight mappings before the piece menu's two
-	 * landed. Six is comfortably under that and well over zero, which is the only thing this number
-	 * has to be — the same floor and the same reasoning as Tests/InspectPieceBindingTest.cpp's.
+	 * A floor on what IMC_Default already maps, so the key-collision sweep below
+	 * cannot pass by sweeping over nothing. Measured off the asset: eight mappings
+	 * before the piece menu's two landed. Six is comfortably under that and well over
+	 * zero, the only thing this number has to be — the same floor and reasoning as
+	 * Tests/InspectPieceBindingTest.cpp's.
 	 */
 	constexpr int32 SessionDefaultMappingFloor = 6;
 
@@ -276,43 +283,38 @@ namespace SessionAssetsTestSupport
 }
 
 /**
- * S6 — THE SESSION'S OWN INPUT CONTEXT EXISTS, AND IT CARRIES ONE DIGITAL ACTION PER SHORTCUT THE
- * TOOLBAR DRAWS, ON THE KEY THE DESIGN NAMES.
+ * S6 — the session's own input context exists, and it carries one digital action per
+ * shortcut the toolbar draws, on the key the design names.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
+ * BEHAVIOUR: `/Game/Input/IMC_Session` maps nine boolean input actions — the look
+ * modifier, the mode toggle, three piece chips, the snap toggle, the two course steps
+ * and Run — each to exactly the key SESSION_UI_DESIGN §b's Shortcut columns name.
  *
- * `/Game/Input/IMC_Session` maps nine boolean input actions — the look modifier, the mode toggle,
- * three piece chips, the snap toggle, the two course steps and Run — each to exactly the key
- * SESSION_UI_DESIGN §b's Shortcut columns name.
+ * WHY THIS IS A TEST AND NOT JUST AN ASSET. The same argument
+ * Tests/InspectPieceBindingTest.cpp opens with, and it has grown teeth since: a
+ * mapping authored by hand and never asserted is a mapping that silently stops
+ * existing the next time the asset is re-saved, and the symptom here is not a crash
+ * but a key that does nothing. Nine of them at once is nine ways for a session to feel
+ * broken with nothing in the log.
  *
- * =====================================================================================
- * WHY THIS IS A TEST AND NOT JUST AN ASSET
- * =====================================================================================
+ * A table rather than nine assertions, for the reason this project prefers one
+ * parameterised test to a row per case everywhere else: adding `L`, `X` and `J` for
+ * the Destroy settings (§b) must be adding three rows, not writing three tests.
  *
- * The same argument Tests/InspectPieceBindingTest.cpp opens with, and it has grown teeth since: a
- * mapping authored by hand and never asserted is a mapping that silently stops existing the next
- * time the asset is re-saved, and the symptom here is not a crash but a key that does nothing. Nine
- * of them at once is nine ways for a session to feel broken with nothing in the log.
+ * THE VALUE TYPE IS PART OF THE CLAIM. Every one of these is a press — a bool the
+ * controller turns into one `OnToolbarButton` call. An action authored Axis1D or
+ * Axis2D actuates on a value rather than a press, and Enhanced Input would then fire
+ * the handler on frames the player is not asking for anything; the look modifier in
+ * particular has to be a bool because a chord asks "is that action triggering", a
+ * yes/no question.
  *
- * A TABLE RATHER THAN NINE ASSERTIONS, for the reason this project prefers one parameterised test
- * to a row per case everywhere else: adding `L`, `X` and `J` for the Destroy settings (§b) must be
- * adding three rows, not writing three tests.
+ * And the count is exact: nine, not "at least nine". A tenth mapping in this context
+ * is a key doing something the strip does not draw, the one input in the game with no
+ * on-screen affordance to explain it.
  *
- * THE VALUE TYPE IS PART OF THE CLAIM. Every one of these is a PRESS — a bool the controller turns
- * into one `OnToolbarButton` call. An action authored Axis1D or Axis2D actuates on a value rather
- * than on a press, and Enhanced Input would then fire the handler on frames the player is not
- * asking for anything; the look modifier in particular has to be a bool because a chord asks
- * "is that action triggering", which is a yes/no question.
- *
- * AND THE COUNT IS EXACT. Nine, not "at least nine": a tenth mapping in this context is a key doing
- * something the strip does not draw, which is the one input in the game with no on-screen affordance
- * to explain it.
- *
- * NEEDS A TICKING WORLD: no. Ten assets loaded by path — no world, no player, no input subsystem.
- * Whether SetupInputComponent BINDS these actions is the separate question in
- * Tests/SessionShortcutTest.cpp, and whether the CONTROLLER references them is
+ * Needs a ticking world: no. Ten assets loaded by path — no world, no player, no input
+ * subsystem. Whether SetupInputComponent binds these actions is the separate question
+ * in Tests/SessionShortcutTest.cpp, and whether the controller references them is
  * Content.RequiredAssetsResolve's.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -407,37 +409,31 @@ bool FSessionContextMapsTheShortcutsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * S6 — NO SESSION SHORTCUT STEALS A KEY THE PLAYER IS FLYING WITH.
+ * S6 — no session shortcut steals a key the player is flying with.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
+ * BEHAVIOUR: not one key IMC_Session maps is a key IMC_Default already maps, so
+ * applying the session's context alongside the flying pawn's takes nothing away from
+ * `W A S D Q E Space` or from the piece click.
  *
- * Not one key IMC_Session maps is a key IMC_Default already maps, so applying the session's context
- * alongside the flying pawn's takes nothing away from `W A S D Q E Space` or from the piece click.
+ * WHY A KEY-SET DIFF RATHER THAN A LIST OF FORBIDDEN KEYS. `UInputAction::bConsumeInput`
+ * defaults to true and a consumed key is withheld from every mapping below it in the
+ * applied stack — so a session shortcut that lands on a key the pawn is using does not
+ * merely double up, it takes the key away, and the symptom is a player who presses `S`
+ * and stops flying backwards with nothing logged and nothing on screen. The hazard is
+ * therefore about whatever IMC_Default happens to contain rather than about six
+ * letters somebody wrote down, so the two assets are read and their key sets diffed —
+ * it keeps meaning the same thing the day the pawn grows a sprint key.
  *
- * =====================================================================================
- * WHY A KEY-SET DIFF RATHER THAN A LIST OF FORBIDDEN KEYS
- * =====================================================================================
+ * (`Tests/HoverInputBindingTest.cpp` makes the neighbouring claim from the other side
+ * — hover shares Mouse2D with free-look deliberately, and so must not consume it. The
+ * session's keys are not shared at all, the stronger position and why this asserts
+ * disjointness rather than non-consumption.)
  *
- * `UInputAction::bConsumeInput` defaults to TRUE and a consumed key is withheld from every mapping
- * below it in the applied stack — so a session shortcut that lands on a key the pawn is using does
- * not merely double up, it TAKES THE KEY AWAY, and the symptom is a player who presses `S` and
- * stops flying backwards with nothing logged and nothing on screen. The hazard is therefore about
- * whatever IMC_Default happens to contain rather than about six letters somebody wrote down, and it
- * is written that way here: the two assets are read and their key sets are diffed. It keeps meaning
- * the same thing the day the pawn grows a sprint key.
+ * The floor is what stops this passing over nothing: a context that failed to load,
+ * or lost its mappings, would make a disjointness claim vacuously true — exactly the
+ * state this test is supposed to be loudest about.
  *
- * (`Tests/HoverInputBindingTest.cpp` makes the neighbouring claim from the other side — hover SHARES
- * Mouse2D with free-look deliberately, and so must not consume it. The session's keys are not
- * shared at all, which is the stronger position and is why this asserts disjointness rather than
- * non-consumption.)
- *
- * THE FLOOR IS WHAT STOPS THIS PASSING OVER NOTHING. A context that failed to load, or one that
- * lost its mappings, would make a disjointness claim vacuously true — which is exactly the state
- * this test is supposed to be loudest about.
- *
- * NEEDS A TICKING WORLD: no. Two assets, loaded by path.
+ * Needs a ticking world: no. Two assets, loaded by path.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionKeysAreFreeTest,
@@ -479,14 +475,14 @@ bool FSessionKeysAreFreeTest::RunTest(const FString& Parameters)
 		DefaultContext->GetMappings().Num() >= SessionDefaultMappingFloor);
 
 	/*
-	 * AND IMC_Session CARRIES ITS NINE — EXACTLY, NOT AT LEAST ONE.
-	 *
-	 * THE SENTENCE AND THE ASSERTION HAVE TO BE THE SAME CLAIM. This read `>= 1` while saying "its 9",
-	 * which is a diffing sweep that stays green over a context that lost eight of its nine mappings —
-	 * eight dead keys, and the one sweep positioned to notice reporting nothing. The count is a claim
-	 * SessionContextMapsTheShortcuts makes about the asset; here it is the FIXTURE that makes the
-	 * disjointness below worth anything, so it is spelled out rather than taken on trust from a test
-	 * that may or may not have run first.
+	 * And IMC_Session carries its nine — exactly, not at least one. The sentence and
+	 * the assertion have to be the same claim: reading `>= 1` while saying "its 9"
+	 * would be a diffing sweep that stays green over a context that lost eight of its
+	 * nine mappings — eight dead keys, and the one sweep positioned to notice
+	 * reporting nothing. The count is a claim SessionContextMapsTheShortcuts makes
+	 * about the asset; here it is the fixture that makes the disjointness below worth
+	 * anything, so it is spelled out rather than taken on trust from a test that may
+	 * or may not have run first.
 	 */
 	TestEqual(
 		FString::Printf(
@@ -549,27 +545,25 @@ bool FSessionKeysAreFreeTest::RunTest(const FString& Parameters)
  * OBJECT IDENTITY, NOT A NAME
  * =====================================================================================
  *
- * The chord is asserted to be the very `UInputAction` the path loads, by pointer. A chord pointing
- * at a DIFFERENT asset that happens to be called `IA_LookModifier` — a duplicate left in another
- * folder, which is exactly what a copy-paste authoring step produces — would satisfy any
- * name-shaped assertion and would leave the camera dead, because the action the mapping context
- * actuates is not the action the chord is watching. It is the same identity rule
- * `BuildPieceMaterial` keeps for material profiles, applied to content.
+ * The chord is asserted to be the very `UInputAction` the path loads, by pointer. A
+ * chord pointing at a different asset that happens to be called `IA_LookModifier` — a
+ * duplicate left in another folder, exactly what a copy-paste authoring step produces
+ * — would satisfy any name-shaped assertion and would leave the camera dead, because
+ * the action the mapping context actuates is not the action the chord is watching. The
+ * same identity rule `BuildPieceMaterial` keeps for material profiles, applied to content.
  *
- * =====================================================================================
- * AND THE HOVER MAPPING IS ASSERTED UNCHANGED, WHICH IS THE HALF THAT WOULD BE MISSED
- * =====================================================================================
- *
- * Hovering is how a player finds the brick they are about to delete, and it reads the same `Mouse2D`
- * axis through a second action precisely so that it survives whatever happens to free-look
- * (`RequiredContent.h` records that reasoning). A chord copied onto IA_HoverPiece's mapping — the
- * obvious slip, since both are mouse-move mappings and the editor's copy of a trigger list is one
- * click — would mean nothing highlights unless the player is already holding RMB to spin the
- * camera, which is the one moment they are not looking for a brick. CURRENT_STATE (i) logs folding
- * the two actions together as a LATER content change for this exact reason; until then they must
+ * AND THE HOVER MAPPING IS ASSERTED UNCHANGED, the half that would be missed. Hovering
+ * is how a player finds the brick they are about to delete, and it reads the same
+ * `Mouse2D` axis through a second action precisely so it survives whatever happens to
+ * free-look (`RequiredContent.h` records that reasoning). A chord copied onto
+ * IA_HoverPiece's mapping — the obvious slip, since both are mouse-move mappings and
+ * the editor's copy of a trigger list is one click — would mean nothing highlights
+ * unless the player is already holding RMB to spin the camera, the one moment they
+ * are not looking for a brick. CURRENT_STATE (i) logs folding the two actions
+ * together as a later content change for this exact reason; until then they must
  * differ here.
  *
- * NEEDS A TICKING WORLD: no. Three assets loaded by path.
+ * Needs a ticking world: no. Three assets loaded by path.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionLookNeedsTheModifierTest,
@@ -718,48 +712,37 @@ bool FSessionLookNeedsTheModifierTest::RunTest(const FString& Parameters)
 }
 
 /**
- * S6 — THE SESSION'S CONTEXT IS ACTUALLY APPLIED, AND EACH OF ITS EIGHT SHORTCUTS REACHES A HANDLER
- * EXACTLY ONCE, ON THE PRESS.
+ * S6 — the session's context is actually applied, and each of its eight shortcuts
+ * reaches a handler exactly once, on the press.
  *
- * =====================================================================================
- * THE BEHAVIOUR IN ONE SENTENCE
- * =====================================================================================
+ * BEHAVIOUR: a controller with a real local player applies `IMC_Session` alongside
+ * `IMC_Default` and `IMC_MouseLook`, and `SetupInputComponent` binds each of the eight
+ * session actions to exactly one handler on `Started`.
  *
- * A controller with a real local player applies `IMC_Session` alongside `IMC_Default` and
- * `IMC_MouseLook`, and `SetupInputComponent` binds each of the eight session actions to exactly one
- * handler on `Started`.
+ * THE CONTEXT AND THE BINDINGS ARE ONE CLAIM, because either alone is a dead key: an
+ * action mapped in a context that is never applied fires nothing; an applied context
+ * whose action nothing binds fires nothing. The two failures are indistinguishable
+ * from the player's chair — a key that does nothing — and they are fixed in different
+ * files, so a test that saw only one would send the reader to the wrong half.
+ * `Content.SessionInput.*` next door owns the shape of the assets; this owns the wire
+ * between them and the controller.
  *
- * =====================================================================================
- * THE CONTEXT AND THE BINDINGS ARE ONE CLAIM, BECAUSE EITHER ALONE IS A DEAD KEY
- * =====================================================================================
+ * Started, not Triggered, and exactly one binding. These are one-shot presses of
+ * digital keys: with no explicit trigger asset, Triggered fires on every frame the
+ * key is held, so holding `]` would walk the build plane up the wall at sixty courses
+ * a second and holding `Enter` would re-settle the structure on every frame —
+ * `SolveAndPush` releases pieces and its own header is emphatic that releasing is
+ * irreversible. Completed is the release, which would run the command on let-go.
+ * Started is the press. And exactly one, not at least one: two bindings on `Tab`
+ * toggle the mode twice per press, which appears to do nothing at all; two on `Enter`
+ * settle twice. A count is the only thing that sees that.
  *
- * An action mapped in a context that is never applied fires nothing; an applied context whose
- * action nothing binds fires nothing. The two failures are indistinguishable from the player's
- * chair — a key that does nothing — and they are fixed in different files, so a test that saw only
- * one of them would send the reader to the wrong half. `Content.SessionInput.*` next door owns the
- * shape of the ASSETS; this owns the wire between them and the controller.
+ * The actions are loaded by path rather than read off the controller, so a controller
+ * that bound some other asset fails here rather than agreeing with itself.
  *
- * =====================================================================================
- * Started, NOT Triggered, AND EXACTLY ONE BINDING
- * =====================================================================================
- *
- * This is IA_InspectPiece's argument, not IA_HoverPiece's, and the difference is what kind of input
- * it is. These are one-shot PRESSES of digital keys: with no explicit trigger asset, Triggered
- * fires on every frame the key is held, so holding `]` would walk the build plane up the wall at
- * sixty courses a second and holding `Enter` would re-settle the structure on every frame —
- * `SolveAndPush` releases pieces and its own header is emphatic that releasing is irreversible.
- * Completed is the release, which would run the command on let-go. Started is the press.
- *
- * AND EXACTLY ONE, NOT AT LEAST ONE. Two bindings on `Tab` toggle the mode twice per press, which
- * is a mode switch that appears to do nothing at all; two on `Enter` settle twice. A count is the
- * only thing that sees that and "at least one" never would.
- *
- * THE ACTIONS ARE LOADED BY PATH RATHER THAN READ OFF THE CONTROLLER, so a controller that bound
- * some other asset fails here rather than agreeing with itself.
- *
- * NEEDS A TICKING WORLD: it needs a WORLD — the engine only runs SetupInputComponent for a
- * controller with a real ULocalPlayer behind it — but it never ticks one, spawns no wall and
- * touches no physics.
+ * Needs a ticking world: it needs a world — the engine only runs SetupInputComponent
+ * for a controller with a real ULocalPlayer behind it — but it never ticks one,
+ * spawns no wall and touches no physics.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionShortcutsReachHandlersTest,
@@ -918,14 +901,14 @@ bool FSessionShortcutsReachHandlersTest::RunTest(const FString& Parameters)
 
 	{
 		/*
-		 * IA_LookModifier IS THE ROW SessionBoundShortcutRows REMOVES, AND NOTHING SAID SO UNTIL NOW.
-		 *
-		 * The sweep above is over eight rows because the ninth has no handler to reach — the modifier
-		 * exists only to be the action IMC_MouseLook's chord watches. But a table that DROPS a row
-		 * cannot fail on it: a stray `BindAction(SessionLookModifierAction, ...)` added by somebody
-		 * copying the eight would pass every assertion in this file while turning a held right button
-		 * into a toolbar command. The count is therefore asserted at zero, which is the only way the
-		 * removal above means anything.
+		 * IA_LookModifier is the row SessionBoundShortcutRows removes, and nothing
+		 * said so until now. The sweep above is over eight rows because the ninth has
+		 * no handler to reach — the modifier exists only to be the action
+		 * IMC_MouseLook's chord watches. But a table that drops a row cannot fail on
+		 * it: a stray `BindAction(SessionLookModifierAction, ...)` added by somebody
+		 * copying the eight would pass every assertion in this file while turning a
+		 * held right button into a toolbar command. The count is therefore asserted
+		 * at zero, the only way the removal above means anything.
 		 */
 		const UInputAction* const LookModifier = LoadObject<UInputAction>(
 			nullptr, SessionLookModifierActionPath);

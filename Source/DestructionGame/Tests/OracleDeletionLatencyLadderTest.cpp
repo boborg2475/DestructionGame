@@ -11,69 +11,63 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE BLOCK-SIZE THRESHOLD FOR SIZE-SCOPED LP AUTHORITY (PROMOTION_DESIGN §12 D2⁗/D2‴,
- * §5.6; DESIGN §8's 2026-08-18 "scope LP authority by structure size" ruling). This file
- * writes NO production code — it is a MEASUREMENT, and under this project's convention a
- * measurement lands as a PINNED ROW whose unmeasured state is its red (PROMOTION_DESIGN §6).
+ * The block-size threshold for size-scoped LP authority (PROMOTION_DESIGN §12 D2⁗/D2‴, §5.6;
+ * DESIGN §8's 2026-08-18 "scope LP authority by structure size" ruling). This file writes no
+ * production code — it is a measurement, and under this project's convention a measurement
+ * lands as a pinned row whose unmeasured state is its red (PROMOTION_DESIGN §6).
  *
- * THE QUESTION D2⁗ LEFT OPEN, and it is the last number the ruling rests on:
- *
- *     Below what structure size does the DELETION-CAUSED re-solve production actually runs
- *     — a piece deleted, the neighbourhood re-posed as FEASIBILITY at λ = 1 — answer inside
- *     the ~50 ms per-solve / ~100 ms per-action budget, so full cascade authority can be
- *     promoted below it and the two-tier router kept above it?
+ * The question D2⁗ left open, the last number the ruling rests on: below what structure size
+ * does the deletion-caused re-solve production actually runs — a piece deleted, the
+ * neighbourhood re-posed as feasibility at λ = 1 — answer inside the ~50 ms per-solve /
+ * ~100 ms per-action budget, so full cascade authority can be promoted below it and the
+ * two-tier router kept above it?
  *
  * D2⁗ cites "small structures already re-solve in ~51 ms" as the fact that makes the
- * promotion real where it lands. That 51 ms is one point; this file measures the CURVE it
+ * promotion real where it lands. That 51 ms is one point; this file measures the curve it
  * sits on and reads the crossings off it. The ruling is stated in wall-clock (100 ms), but
- * wall-clock is NOT bit-reproducible and this machine varies ~5% under load, so the
- * BITE-ABLE contract is the DETERMINISTIC pair §5.6 says a fail-closed budget is actually
- * expressed in — PIVOTS and PROBLEM SIZE (rows × columns) — with the ms table beside it as
- * the informative-but-unpinned reading, and the derived threshold stated in both.
+ * wall-clock is not bit-reproducible and this machine varies ~5% under load, so the bite-able
+ * contract is the deterministic pair §5.6 says a fail-closed budget is actually expressed in
+ * — pivots and problem size (rows × columns) — with the ms table beside it as the
+ * informative-but-unpinned reading, and the derived threshold stated in both.
  *
- * ================================================================================
- * WHAT IS MEASURED, AND WHY EACH CHOICE IS THE PRODUCTION-RELEVANT ONE
- * ================================================================================
+ * What is measured, and why each choice is the production-relevant one:
  *
- * THE DELETION-CAUSED RE-SOLVE, NOT THE INTACT SOLVE. §5.2 measured the intact λ* solve;
- * production, per player action, DELETES a piece and re-solves the neighbourhood, and R1
- * cites ~51 ms for exactly that. So every rung here lays an intact wall, removes ONE brick,
- * and times the solve that FOLLOWS the removal — the bridge skips the removed piece, so the
+ * The deletion-caused re-solve, not the intact solve. §5.2 measured the intact λ* solve;
+ * production, per player action, deletes a piece and re-solves the neighbourhood, and R1
+ * cites ~51 ms for exactly that. So every rung here lays an intact wall, removes one brick,
+ * and times the solve that follows the removal — the bridge skips the removed piece, so the
  * re-solve is genuinely the reduced problem.
  *
- * THE FEASIBILITY POSE (bGravityIsLive = false), NOT λ*. §5.2 is the crux of the whole
- * promotion: cascade authority asks "does it still stand", which is FEASIBILITY at λ = 1,
- * not the maximise. The dead pose is the 5–16× faster one production would actually run
- * (§5.2's table), so it is the production-relevant number. The λ* (gravity-live) pose is
- * NOT re-measured across this ladder — it is tens of seconds at these sizes (wall-06 at 146
- * blocks is 16.1 s live in the spike table) and its live-vs-dead contrast is already pinned
- * in OracleSweepFull.RigidBlock.FeasibilityReformulationCost. Re-measuring it here would
- * turn a ~15 s benchmark into a multi-minute one to re-establish a contrast already in hand.
+ * The feasibility pose (bGravityIsLive = false), not λ*. §5.2 is the crux of the whole
+ * promotion: cascade authority asks "does it still stand", which is feasibility at λ = 1, not
+ * the maximise. The dead pose is the 5–16× faster one production would actually run (§5.2's
+ * table). The λ* (gravity-live) pose is not re-measured across this ladder — it is tens of
+ * seconds at these sizes and its live-vs-dead contrast is already pinned in
+ * `OracleSweepFull.RigidBlock.FeasibilityReformulationCost`; re-measuring it here would turn a
+ * ~15 s benchmark into a multi-minute one to re-establish a contrast already in hand.
  *
- * A MID-SPAN, MID-HEIGHT LOAD-BEARING BRICK, AND WHICH BRICK IS CONTROLLED FOR. The rule is
+ * A mid-span, mid-height load-bearing brick, and which brick is controlled for. The rule is
  * stated and deterministic: over the intact wall's live pieces take the centroid bounding
- * box, and delete the NON-GROUNDED piece nearest its centre (lowest index breaks a tie).
- * That is the common, interesting case — an interior brick a standing wall arches over, so
- * the re-solve comes back FEASIBLE, which every rung asserts (a rung that came back
- * infeasible would mean the deletion COLLAPSED that wall, a different measurement). WHICH
- * brick can matter, so it is controlled rather than assumed: the anchor rung also deletes an
- * EDGE mid-height brick (nearest min-X) and pins its pivot count beside the mid-span one, so
- * the sensitivity is a measurement, not a hope. See the CONTRAST block at the bottom.
+ * box, and delete the non-grounded piece nearest its centre (lowest index breaks a tie). That
+ * is the common, interesting case — an interior brick a standing wall arches over, so the
+ * re-solve comes back feasible, which every rung asserts (an infeasible rung would mean the
+ * deletion collapsed that wall, a different measurement). Which brick can matter, so it is
+ * controlled rather than assumed: the anchor rung also deletes an edge mid-height brick
+ * (nearest min-X) and pins its pivot count beside the mid-span one, so the sensitivity is a
+ * measurement, not a hope (see the contrast block at the bottom).
  *
- * PROBLEM SIZE IS READ FROM THE SOLVER'S OWN OUTPUT, and cross-checked independently. An
+ * Problem size is read from the solver's own output, and cross-checked independently. An
  * answered FOracleResult reports FinalBasis, which carries one column index per standard-form
- * ROW (so Columns.Num() is the row count), NumStructCols and ArtificialStart. Total columns
- * = ArtificialStart + rows (one artificial per row). Structural columns are independently
+ * row (so Columns.Num() is the row count), NumStructCols and ArtificialStart. Total columns =
+ * ArtificialStart + rows (one artificial per row). Structural columns are independently
  * 1 + 8·joints (RigidBlockOracle.h: 1 λ column + 4 per contact × 2 contacts per joint), which
- * this file DERIVES and asserts against NumStructCols — two derivations of one number, so the
+ * this file derives and asserts against NumStructCols — two derivations of one number, so the
  * size pin cannot quietly agree with a wrong assembly.
  *
- * ================================================================================
- * PREDICTIONS — DERIVATION RECORD REVISION 1, WRITTEN BEFORE THE FIRST RUN
- * (PROMOTION_DESIGN §7.3: a prediction written after the measurement is a transcription.)
- * ================================================================================
+ * Predictions — derivation record revision 1, written before the first run (PROMOTION_DESIGN
+ * §7.3: a prediction written after the measurement is a transcription).
  *
- * THE LADDER. Running-bond C×Cells walls, bottom course grounded. An even course carries
+ * The ladder: running-bond C×Cells walls, bottom course grounded. An even course carries
  * `Cells` full bricks; an odd course carries Cells−1 full bricks + 2 half-bats = Cells+1
  * pieces, so a pair of courses is 2·Cells+1 and a C-course wall (C even) is C·Cells + C/2
  * blocks. The 8×10 gate fixture is 8·10 + 4 = 84, matching PricingCost. Post-deletion is one
@@ -89,18 +83,18 @@
  *    14×12         175             174
  *    16×12         200             199
  *
- * The far side above 375 blocks is NOT laddered here: the crossing is expected near 84
- * blocks (D2⁗'s own anchor), wall-01's 375-block feasibility answer is 26 s (§5.2, three
- * orders over budget), and re-measuring the far tail would cost minutes to re-state a number
- * already pinned. If measurement puts the crossing ABOVE 200 blocks the ladder is extended;
- * that would itself be a finding against D2⁗'s ~51 ms anchor.
+ * The far side above 375 blocks is not laddered here: the crossing is expected near 84 blocks
+ * (D2⁗'s own anchor), wall-01's 375-block feasibility answer is 26 s (§5.2, three orders over
+ * budget), and re-measuring the far tail would cost minutes to re-state a number already
+ * pinned. If measurement puts the crossing above 200 blocks the ladder is extended; that
+ * would itself be a finding against D2⁗'s ~51 ms anchor.
  *
- * PREDICTED PIVOTS. The dead pose starts INFEASIBLE (gravity is a constant RHS) and phase 1
+ * Predicted pivots: the dead pose starts infeasible (gravity is a constant RHS) and phase 1
  * must drive out one artificial per equality row — 3 rows per non-grounded block — so pivots
- * have a floor of ~3·(blocks − Cells). The spike measured the multiplier at 2.2× that floor
- * on the 84-block wall and ~5× at 375, i.e. it GROWS with scale, so the prediction interpolates
- * k from ~2.1 (small) to ~3.0 (200 blocks). PREDICTED PIVOTS, which the pins below assert and
- * which are therefore RED until measured (an exact 4-digit pivot count will not equal a guess):
+ * have a floor of ~3·(blocks − Cells). The spike measured the multiplier at 2.2× that floor on
+ * the 84-block wall and ~5× at 375, growing with scale, so the prediction interpolates k from
+ * ~2.1 (small) to ~3.0 (200 blocks). These predicted pivots are what the pins below assert and
+ * are therefore red until measured (an exact 4-digit pivot count will not equal a guess):
  *
  *     rung   post-del blocks   non-grounded   3·ng    k     PREDICTED pivots
  *     4×10        41               31           93    2.1        195
@@ -112,9 +106,9 @@
  *    14×12       174              162          486    2.8       1360
  *    16×12       199              187          561    3.0       1680
  *
- * PREDICTED WALL-CLOCK, anchored on D2⁗'s ~51 ms at 84 blocks and steepening because
- * per-pivot cost grows with basis size (BTRAN/refactorisation over a larger basis), so ms
- * climbs FASTER than pivots:
+ * Predicted wall-clock, anchored on D2⁗'s ~51 ms at 84 blocks and steepening because per-pivot
+ * cost grows with basis size (BTRAN/refactorisation over a larger basis), so ms climbs faster
+ * than pivots:
  *
  *     rung    PREDICTED ms
  *     4×10        13
@@ -126,15 +120,13 @@
  *    14×12       270
  *    16×12       370
  *
- * PREDICTED THRESHOLD: the 50 ms crossing sits at ~84 blocks / ~490 pivots (the gate fixture,
+ * Predicted threshold: the 50 ms crossing sits at ~84 blocks / ~490 pivots (the gate fixture,
  * by construction of D2⁗'s anchor); the 100 ms crossing at ~115 blocks / ~760 pivots. So the
  * predicted headline is: full LP authority is promotable below ~84–115 blocks, and the router
- * is kept above it — which is BELOW the 12×12 sub-1.0 fixture and far below wall-01.
+ * is kept above it — below the 12×12 sub-1.0 fixture and far below wall-01.
  *
- * ================================================================================
- * WHAT WAS MEASURED — 2026-08-21, one machine, unloaded. The deterministic columns are
- * now PINNED at these bits; the ms columns are REPORTED and unpinned (median of 7 samples).
- * ================================================================================
+ * What was measured — 2026-08-21, one machine, unloaded. The deterministic columns are now
+ * pinned at these bits; the ms columns are reported and unpinned (median of 7 samples).
  *
  *   rung   blocks  joints  PIVOTS   rows  structCols  totalCols   median ms
  *   4x10      41      83      122   1090       665        2752         5.2
@@ -146,84 +138,81 @@
  *  14x12     174     456     1274   5959      3649       15081       744.5
  *  16x12     199     527     1456   6886      4217       17428       904.8
  *
- * THE DERIVED THRESHOLD (reported deterministically, ms beside it as the flapping reading):
+ * The derived threshold (reported deterministically, ms beside it as the flapping reading):
  *
- *   - 50 ms PER-SOLVE (the design's target, so two solves fit a 100 ms action): the median
+ *   - 50 ms per-solve (the design's target, so two solves fit a 100 ms action): the median
  *     crosses between 83 blocks / 357 pivots (47.1 ms) and 104 blocks / 552 pivots (101.7 ms)
- *     -> ~84 blocks / ~367 pivots. So under the "two solves per action" budget, LP authority
- *     is promotable BELOW ~84 blocks — exactly the gate-fixture size D2⁗'s ~51 ms anchor names.
- *   - 100 ms PER-ACTION when an action is ONE re-solve: crosses in the SAME 83->104 interval
+ *     -> ~84 blocks / ~367 pivots. Under the "two solves per action" budget, LP authority is
+ *     promotable below ~84 blocks — exactly the gate-fixture size D2⁗'s ~51 ms anchor names.
+ *   - 100 ms per-action when an action is one re-solve: crosses in the same 83->104 interval
  *     -> ~103 blocks / ~546 pivots.
  *
- *   Both crossings land in one ladder interval because the ms curve is STEEP there (47 ms at
+ *   Both crossings land in one ladder interval because the ms curve is steep there (47 ms at
  *   83 blocks doubles to 102 ms by 104): the 50 ms and 100 ms thresholds are only ~20 blocks
  *   apart. The promotable band is therefore ~84–104 blocks / ~360–550 pivots — comfortably
- *   below the 12×12 sub-1.0 fixture (149) and three-plus fold below wall-01 (375) and
- *   scenario scale (1220). The crossing is INSIDE the ladder, so no rung had to be added.
+ *   below the 12×12 sub-1.0 fixture (149) and three-plus fold below wall-01 (375) and scenario
+ *   scale (1220). The crossing is inside the ladder, so no rung had to be added.
  *
- * FOUR DISAGREEMENTS AGAINST THE PREDICTIONS, which are the point of writing them first:
+ * Four disagreements against the predictions, which is the point of writing them first:
  *
- *   - PIVOTS CAME IN LOW EVERYWHERE (357 vs 482 predicted at 83 blocks; 1456 vs 1680 at 199).
- *     The prediction anchored the multiplier on the INTACT 84-block solve (491 pivots), but a
- *     mid-span deletion removes a brick AND its ~6 joints, so the reduced problem has fewer
- *     contacts, fewer rows and a lower phase-1 floor. The deletion re-solve is CHEAPER in
- *     pivots than the intact solve the estimate was built on — a real property of the thing
- *     production runs, not the thing §5.2 measured.
- *   - WALL-CLOCK CLIMBS FAR STEEPER THAN PIVOTS. Pivots grow 11.9× across the ladder
+ *   - Pivots came in low everywhere (357 vs 482 predicted at 83 blocks; 1456 vs 1680 at 199).
+ *     The prediction anchored the multiplier on the intact 84-block solve (491 pivots), but a
+ *     mid-span deletion removes a brick and its ~6 joints, so the reduced problem has fewer
+ *     contacts, fewer rows and a lower phase-1 floor — the deletion re-solve is cheaper in
+ *     pivots than the intact solve the estimate was built on.
+ *   - Wall-clock climbs far steeper than pivots: pivots grow 11.9× across the ladder
  *     (122 -> 1456) while ms grows 174× (5.2 -> 904.8). Per-pivot cost rises with basis size
  *     (rows grow 6.3×, and BTRAN/refactorisation over a denser basis is super-linear in rows),
- *     so a deterministic budget expressed in PIVOTS is not a fixed multiple of a ms budget —
- *     the pivot cap that holds 50 ms at 84 blocks (~360) would badly overshoot 50 ms at 150.
- *     A fail-closed deterministic budget (§5.6) is therefore safest stated as a BLOCK cap, or
- *     as a pivot cap re-derived per size band, not one global pivot number.
- *   - THE 100 ms CROSSING IS LOWER THAN PREDICTED (~103 blocks vs ~115), for the same reason:
+ *     so a deterministic budget expressed in pivots is not a fixed multiple of a ms budget —
+ *     the pivot cap that holds 50 ms at 84 blocks (~360) would badly overshoot 50 ms at 150. A
+ *     fail-closed deterministic budget (§5.6) is therefore safest stated as a block cap, or a
+ *     pivot cap re-derived per size band, not one global pivot number.
+ *   - The 100 ms crossing is lower than predicted (~103 blocks vs ~115), for the same reason:
  *     ms steepens faster than the prediction's per-pivot model assumed.
- *   - THE MID-SPAN 8×10 RE-SOLVE IS 47 ms, slightly UNDER D2⁗'s ~51 ms anchor and under the
- *     spike's 66 ms INTACT 84-block feasibility solve — consistent: the deletion makes the
- *     problem smaller, and this machine's ~5% variance covers the rest.
+ *   - The mid-span 8×10 re-solve is 47 ms, slightly under D2⁗'s ~51 ms anchor and under the
+ *     spike's 66 ms intact 84-block feasibility solve — consistent, since the deletion makes
+ *     the problem smaller and this machine's ~5% variance covers the rest.
  *
- * WHICH BRICK (the CONTRAST rung): deleting the EDGE mid-height brick of the 8×10 wall costs
- * 381 pivots against the mid-span brick's 357 — ~7% more, from a SMALLER graph change (204
+ * Which brick (the contrast rung): deleting the edge mid-height brick of the 8×10 wall costs
+ * 381 pivots against the mid-span brick's 357 — ~7% more, from a smaller graph change (204
  * joints survive vs 201). So which brick is deleted matters modestly and measurably; the
- * ladder controls for it by using one rule, so the size trend is not the which-brick effect
- * in disguise.
+ * ladder controls for it by using one rule, so the size trend is not the which-brick effect in
+ * disguise.
  *
- * ================================================================================
- * WHAT IS PINNED AND WHAT IS DELIBERATELY NOT
- * ================================================================================
+ * What is pinned and what is deliberately not.
  *
- * PINNED EXACTLY (deterministic, bit-reproducible, the fail-closed budget's own vocabulary):
- * per-rung post-deletion block count, joint count, feasibility-pose PIVOTS, rows, structural
+ * Pinned exactly (deterministic, bit-reproducible, the fail-closed budget's own vocabulary):
+ * per-rung post-deletion block count, joint count, feasibility-pose pivots, rows, structural
  * columns and total columns; the independent structural-column identity 1 + 8·joints; the
  * feasibility verdict (answered and λ ≥ 1). The edge-vs-mid-span contrast pivot counts are
  * pinned too.
  *
- * NOT PINNED: WALL-CLOCK MS. It is not bit-reproducible; it measures the machine, which
- * varies ~5% under load. Every millisecond is REPORTED with min/median across samples and
- * NONE is asserted, with one exception stated at its site: a single order-of-magnitude
+ * Not pinned: wall-clock ms. It is not bit-reproducible; it measures the machine, which
+ * varies ~5% under load. Every millisecond is reported with min/median across samples and
+ * none is asserted, with one exception stated at its site: a single order-of-magnitude
  * ceiling on the anchor rung set ~30× above the reading so it can only fire on a catastrophe.
- * The derived threshold is stated in DETERMINISTIC terms (block count / pivot count) with the
+ * The derived threshold is stated in deterministic terms (block count / pivot count) with the
  * ms table beside it as the unpinned reading — so a machine 20% slower moves the ms table and
- * the STATED crossing, never a pinned assertion.
+ * the stated crossing, never a pinned assertion.
  *
- * TIER: `OracleSweepFull` (folded in on review, 2026-08-21). Although this is a latency
- * benchmark and only its wall-clock ms is the headline reading, its PINNED quantities are the
- * deterministic pivots/rows/columns of the deletion re-solve at every ladder rung — those are
- * solver regression guards at scale (up to 199 blocks / 6,886 rows / 1,456 pivots), and a
- * pivot-count drift IS a solver change. OracleSweepFull is the tier CLAUDE.md makes mandatory
- * before any solver-touching commit, so it is the only bucket that guarantees these guards fire
- * on the exact change they exist to catch; an orphan stem in no bucket is the "opt-in tier
- * rots" footgun TRAPS records (it once silently skipped a solver-scale test). Not in the
- * default suite (the name contains no "DestructionGame"). Cost is ~15 s (feasibility pose,
- * <= 200 blocks, 7 timing samples per rung) — negligible against Full's ~22 min. The single ms
- * assertion is a loose 1.5 s catastrophe ceiling on a ~49 ms solve, so it cannot flake in CI;
- * every other reading is deterministic. The runner guard is Full = 5 / All = 15 with a
- * $FullBuckets entry; CLAUDE.md and TRAPS carry the same counts.
+ * Tier: `OracleSweepFull` (folded in on review, 2026-08-21). Although this is a latency
+ * benchmark and only its wall-clock ms is the headline reading, its pinned quantities are the
+ * deterministic pivots/rows/columns of the deletion re-solve at every ladder rung — solver
+ * regression guards at scale (up to 199 blocks / 6,886 rows / 1,456 pivots), and a
+ * pivot-count drift is a solver change. OracleSweepFull is the tier CLAUDE.md makes mandatory
+ * before any solver-touching commit, so it is the only bucket that guarantees these guards
+ * fire on the exact change they exist to catch; an orphan stem in no bucket is the "opt-in
+ * tier rots" footgun TRAPS records. Not in the default suite (the name contains no
+ * "DestructionGame"). Cost is ~15 s (feasibility pose, <= 200 blocks, 7 timing samples per
+ * rung) — negligible against Full's ~22 min. The single ms assertion is a loose 1.5 s
+ * catastrophe ceiling on a ~49 ms solve, so it cannot flake in CI; every other reading is
+ * deterministic. The runner guard is Full = 5 / All = 15 with a $FullBuckets entry; CLAUDE.md
+ * and TRAPS carry the same counts.
  *
- * NEEDS A TICKING WORLD: NO. Producers, the bridge and the LP are arithmetic on plain structs
- * — no UWorld, no tick.
+ * No ticking world needed: producers, the bridge and the LP are arithmetic on plain structs —
+ * no UWorld, no tick.
  *
- * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit and
+ * Named namespace, not anonymous: a unity build merges files into one translation unit and
  * every file-scope name shares it (TRAPS). Every constant here carries a Ladder prefix.
  */
 namespace OracleDeletionLatencySupport
@@ -231,10 +220,8 @@ namespace OracleDeletionLatencySupport
 	using namespace DestructionProfiles;
 	using namespace RigidBlockOracle;
 
-	/* ================================================================================
-	 * THE BRICK AND THE GRID — transcribed, imported from nowhere, so a wrong production
-	 * constant DISAGREES with this file instead of being echoed by it.
-	 * ================================================================================ */
+	/* The brick and the grid — transcribed, imported from nowhere, so a wrong production
+	 * constant disagrees with this file instead of being echoed by it. */
 
 	constexpr double LadderBrickLengthCm = 21.5;
 	constexpr double LadderBrickWidthCm = 10.25;
@@ -250,10 +237,8 @@ namespace OracleDeletionLatencySupport
 	 *  fills it. The solver can never emit a negative pivot/row/column count, so it is loud. */
 	constexpr int32 LadderUnmeasured = -2;
 
-	/* ================================================================================
-	 * FIXTURE BUILDER — the acceptance wall producer, transcribed (its helpers live in
-	 * another translation unit) with the gate fixture's own dimensions.
-	 * ================================================================================ */
+	/* Fixture builder — the acceptance wall producer, transcribed (its helpers live in
+	 * another translation unit) with the gate fixture's own dimensions. */
 
 	bool LadderBuildIntactWall(
 		int32 Courses, int32 Cells, DestructionWallCases::FWallLayout& Out, FString& OutWhy)
@@ -279,9 +264,7 @@ namespace OracleDeletionLatencySupport
 		return true;
 	}
 
-	/* ================================================================================
-	 * WHICH BRICK — a stated, deterministic rule, independent of running-bond parity.
-	 * ================================================================================ */
+	/* Which brick — a stated, deterministic rule, independent of running-bond parity. */
 
 	/**
 	 * The non-grounded live piece nearest a target point in the X-Z plane (Y is the wythe).
@@ -362,9 +345,7 @@ namespace OracleDeletionLatencySupport
 		return LadderNearestLoadBearing(S, MinX, 0.5 * (MinZ + MaxZ));
 	}
 
-	/* ================================================================================
-	 * ONE DELETION-CAUSED FEASIBILITY RE-SOLVE, TIMED.
-	 * ================================================================================ */
+	/* One deletion-caused feasibility re-solve, timed. */
 
 	struct FResolveReading
 	{
@@ -486,7 +467,7 @@ bool FOracleDeletionResolveLatencyLadderTest::RunTest(const FString& Parameters)
 		int32 WantBlocks = 0;
 
 		/*
-		 * PREDICTED pivots (red until measured) and the SENTINEL size pins. Every non-block
+		 * Predicted pivots (red until measured) and the sentinel size pins. Every non-block
 		 * Want is a prediction or a sentinel, so the red is "the number is wrong/unmeasured",
 		 * never a broken harness — the block pin and the feasibility verdict passing are the
 		 * evidence the harness reached the right reduced problem.
@@ -499,7 +480,7 @@ bool FOracleDeletionResolveLatencyLadderTest::RunTest(const FString& Parameters)
 	};
 
 	/*
-	 * MEASURED 2026-08-21, RED RUN's own numbers (this machine, unloaded). WantBlocks was
+	 * Measured 2026-08-21, the red run's own numbers (this machine, unloaded). WantBlocks was
 	 * derived and passed on the red run, proving the harness reached the right reduced
 	 * problem; every other Want was a prediction or a sentinel and is now the measured bit.
 	 *          {  name,    C, Cells, blocks, pivots, joints,  rows, structCols, totalCols }
@@ -550,7 +531,7 @@ bool FOracleDeletionResolveLatencyLadderTest::RunTest(const FString& Parameters)
 		UE_LOG(LogTemp, Display, TEXT("%s"), *Line);
 		AddInfo(Line);
 
-		/* THE DELETION MUST LEAVE THE WALL STANDING — the representative "survives" case. */
+		/* The deletion must leave the wall standing — the representative "survives" case. */
 		TestTrue(
 			*FString::Printf(TEXT("%s: the re-solve must ANSWER (a refusal is not an infeasibility)"),
 				Rung.Name),
@@ -564,7 +545,7 @@ bool FOracleDeletionResolveLatencyLadderTest::RunTest(const FString& Parameters)
 				Rung.Name, R.Lambda),
 			R.bAnswered && R.Lambda >= 1.0);
 
-		/* THE SIZE PIN: only this catches a rung quietly solving another's wall. */
+		/* The size pin: only this catches a rung quietly solving another's wall. */
 		TestEqual(
 			*FString::Printf(TEXT("%s: post-deletion block count"), Rung.Name),
 			R.Blocks, Rung.WantBlocks);
@@ -573,7 +554,7 @@ bool FOracleDeletionResolveLatencyLadderTest::RunTest(const FString& Parameters)
 			*FString::Printf(TEXT("%s: post-deletion joint count"), Rung.Name),
 			R.Joints, Rung.WantJoints);
 
-		/* INDEPENDENT SIZE CHECK: structural columns are 1 + 8*joints, derived two ways. */
+		/* Independent size check: structural columns are 1 + 8*joints, derived two ways. */
 		TestEqual(
 			*FString::Printf(
 				TEXT("%s: structural columns must be 1 + 8*joints = %d (an independent ")
@@ -581,7 +562,7 @@ bool FOracleDeletionResolveLatencyLadderTest::RunTest(const FString& Parameters)
 				Rung.Name, 1 + 8 * R.Joints),
 			R.StructCols, 1 + 8 * R.Joints);
 
-		/* THE DETERMINISTIC LATENCY VOCABULARY — pivots and problem size, pinned. */
+		/* The deterministic latency vocabulary — pivots and problem size, pinned. */
 		TestEqual(
 			*FString::Printf(TEXT("%s: feasibility-pose deletion re-solve PIVOTS"), Rung.Name),
 			R.Pivots, Rung.WantPivots);
@@ -606,10 +587,8 @@ bool FOracleDeletionResolveLatencyLadderTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* ================================================================================
-	 * THE DERIVED THRESHOLD — reported in DETERMINISTIC terms (block / pivot count) with
-	 * the ms table beside it. NOT a pinned assertion: it rests on wall-clock, which flaps.
-	 * ================================================================================ */
+	/* The derived threshold — reported in deterministic terms (block / pivot count) with
+	 * the ms table beside it. Not a pinned assertion: it rests on wall-clock, which flaps. */
 
 	auto ReportCrossing = [&](double BudgetMs)
 	{
@@ -663,11 +642,9 @@ bool FOracleDeletionResolveLatencyLadderTest::RunTest(const FString& Parameters)
 	ReportCrossing(50.0);
 	ReportCrossing(100.0);
 
-	/* ================================================================================
-	 * CONTRAST — WHICH BRICK MATTERS. Same 8×10 gate wall, an EDGE mid-height brick out
+	/* Contrast — which brick matters. Same 8×10 gate wall, an edge mid-height brick out
 	 * instead of the mid-span one. Pivots pinned; the difference (or its absence) is the
-	 * control on the mid-span rule the ladder is built on.
-	 * ================================================================================ */
+	 * control on the mid-span rule the ladder is built on. */
 	{
 		const FResolveReading Edge =
 			LadderResolveAfterDeletion(8, 10, /*bEdgeBrick*/ true);
@@ -704,10 +681,9 @@ bool FOracleDeletionResolveLatencyLadderTest::RunTest(const FString& Parameters)
 				Edge.Pivots, WantEdgePivots);
 
 			/*
-			 * A LOOSE CATASTROPHE CEILING, the file's ONE ms assertion and the only one,
-			 * set ~30x above D2⁗'s ~51 ms anchor so it fires only on a pathological slowdown,
-			 * never on the ~5% this machine varies. The gate rung's own ms is reported and
-			 * unpinned; THIS is a guard against the whole harness silently hanging.
+			 * A loose catastrophe ceiling, the file's one ms assertion, set ~30x above D2⁗'s
+			 * ~51 ms anchor so it fires only on a pathological slowdown, never on the ~5%
+			 * this machine varies — a guard against the whole harness silently hanging.
 			 */
 			TestTrue(
 				*FString::Printf(
