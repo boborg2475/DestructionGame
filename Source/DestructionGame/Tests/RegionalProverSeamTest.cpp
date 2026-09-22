@@ -12,74 +12,48 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * SLICE 1 OF THE REGIONAL COLLAPSE PROVER (REGIONAL_PROVER_PLAN.md slice 1, review item 12) — THE
- * SEAM, RED. The thinnest end-to-end proof that region extraction -> grounded-boundary pose ->
- * SolveRigidBlock -> Falling-only stitch WORKS, on a fixture the WHOLE-STRUCTURE ground-only LP
- * demonstrably fells. It is NOT a router-vs-LP disagreement (that is slice 4): the truth set here
- * is the whole-structure LP's own moving set, and the claim is that the regional prover — grown to
- * cover the entire structure so its grounded boundary is the earth alone (no cut) — releases
- * EXACTLY that set.
+ * Regional collapse prover, slice 1 (REGIONAL_PROVER_PLAN.md, review item 12) — the seam. The
+ * thinnest end-to-end proof that region extraction -> grounded-boundary pose -> SolveRigidBlock ->
+ * Falling-only stitch works, on a fixture the whole-structure ground-only LP demonstrably fells.
+ * Grown to cover the entire structure so its grounded boundary is the earth alone (no cut), the
+ * regional prover must release exactly the whole-structure LP's moving set.
  *
- * THE FIXTURE: a 30-course, 10 cm/course mortared leaning stack (the row-3 FALLS rung of
- * LeaningStackAcceptanceTest). Each course is offset a constant 10 cm past the one below, so the
- * bottom bed joint carries a first-crack bond-tension demand of ~4.9 MPa against a mean bond of at
- * most ~1.0 — the lean has no admissible equilibrium and the whole column above the grounded base
- * topples. At 30 blocks it is below the 200-block equilibrium-gate cap, so the rigid-block LP is a
- * genuine authority for it, and the whole-structure ground-only LP (bGravityIsLive = false,
- * bFirstCrackRows = true, matching the below-cap authority) certifies the fall and NAMES the moving
- * blocks. That named set is the INDEPENDENT TRUTH the regional prover is measured against — derived
- * through a DIFFERENT code path (the whole-structure bridge + oracle) than the region prover, so the
- * test has real teeth rather than mirroring the thing under test.
+ * The fixture: a 30-course, 10 cm/course mortared leaning stack (the row-3 FALLS rung of
+ * LeaningStackAcceptanceTest). The lean has no admissible equilibrium and the column above the base
+ * topples. At 30 blocks it is below the 200-block cap, so the rigid-block LP is a genuine authority,
+ * and the whole-structure ground-only LP (bGravityIsLive = false, bFirstCrackRows = true) certifies
+ * the fall and names the moving blocks. That set is the independent truth, derived through a
+ * different code path than the region prover, so the test has teeth rather than mirroring itself.
  *
- * ASSERT ON MECHANISM, NEVER DISPLACEMENT. The three regional-arm assertions are all on solver
- * state: every truth-set piece reads EPieceSupport::Falling, the released COUNT equals the truth
- * set's size, and NOTHING reads Stranded. No centimetre of movement is read — a severed lean can
- * rest exactly in place and still be genuinely released, so displacement would be the wrong witness.
+ * Assert on mechanism, never displacement: every truth-set piece reads Falling, the released count
+ * equals the truth size, and nothing reads Stranded. A severed lean can rest in place and still be
+ * released, so displacement is the wrong witness.
  *
- * NOW GREEN — THIS DROVE THE SLICE-1 BUILD, WHICH LANDED. FStructure::SolveAndBreak_WithRegionalProver
- * is FULLY IMPLEMENTED (commit 2fd6e1b): it runs the router baseline, floods a region from the seed,
- * pins the frontier ring grounded, poses R + boundary through BuildRegionalProblem, solves, and
- * stitches the moved interior pieces Falling. So the regional arm passes — every truth-set piece
- * reads Falling, the released count equals the truth size, and nothing is Stranded — alongside the
- * two truth-arm assertions (the whole-structure LP falls the lean and certifies a non-empty
- * mechanism). It began as the red that drove the slice-1 machinery; it stands now as the regression
- * net over that machinery on the no-cut (cap >= structure size) case. The cutting case — a small cap
- * whose frontier ring is interior structure — is pinned by RegionalProverGroundedCutTest (slice 2).
+ * Now green: it drove the slice-1 build (SolveAndBreak_WithRegionalProver, commit 2fd6e1b) and now
+ * guards the no-cut (cap >= structure size) case. The cutting case is pinned by
+ * RegionalProverGroundedCutTest (slice 2).
  *
- * THE PRODUCTION SURFACE THIS TEST SPECIFIES (what dev-expert builds to):
- *   - int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed,
- *         int32 RegionBlockCap):
- *       run the router baseline, then union a Falling-only regional-prover override — flood a region
- *       from Seed by joint-hops over PieceJoints up to RegionBlockCap, pin the one-hop frontier ring
- *       GROUNDED, pose R + boundary (bGravityIsLive = false, bFirstCrackRows = true) through the new
- *       grounded-boundary bridge overload, SolveRigidBlock, and on a CERTIFIED mechanism mark the
- *       moved INTERIOR pieces Falling (never Supported) and sever the intact joints it opens. Return
- *       the number of pieces released. With RegionBlockCap >= the block count the region floods the
- *       whole structure and the grounded boundary is the earth alone.
- *   - bool RigidBlockOracle::BuildRegionalProblem(const FStructure&, const TSet<int32>& RegionPieces,
- *         const TSet<int32>& BoundaryPieces, FOracleProblem&, FString&):
- *       the grounded-boundary bridge overload — interior region pieces bridged normally, boundary
- *       pieces forced bGrounded, only R + B included, two-grounded-end joints skipped, every other
- *       refusal as the excluded-pieces form. (Kept SEPARATE from BuildRigidBlockProblem so the shared
- *       bridge poses do not shift and OracleSweepFull stays byte-identical.) This test does not call
- *       it directly — it is the surface SolveAndBreak_WithRegionalProver is built on — but it is named
- *       here as part of the slice-1 spec.
+ * The production surface this specifies (for dev-expert):
+ *   - int32 FStructure::SolveAndBreak_WithRegionalProver(const TArray<int32>& Seed, int32
+ *     RegionBlockCap): run the router baseline, then union a Falling-only override — flood a region
+ *     from Seed by joint-hops up to RegionBlockCap, pin the one-hop frontier ring grounded, pose
+ *     R + boundary (bGravityIsLive = false, bFirstCrackRows = true) through the grounded-boundary
+ *     bridge, SolveRigidBlock, and on a certified mechanism mark the moved interior pieces Falling
+ *     and sever the joints it opens. Returns pieces released. Cap >= block count floods everything.
+ *   - bool RigidBlockOracle::BuildRegionalProblem(...): the grounded-boundary bridge overload —
+ *     interior pieces bridged normally, boundary pieces forced bGrounded, only R + B included,
+ *     two-grounded-end joints skipped. Kept separate from BuildRigidBlockProblem so shared poses do
+ *     not shift and OracleSweepFull stays byte-identical. Named here as spec, not called directly.
  *
- * NEEDS A TICKING WORLD: NO. Every solve is a pure FOracleProblem or an FStructure state query; no
- * Chaos, no world tick. Same footing as the leaning-stack acceptance and the oracle mechanism tests.
- *
- * UNITS ARE DERIVED HERE, never imported, so a wrong production constant disagrees rather than agrees.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation unit.
+ * No ticking world: pure FOracleProblem solves and FStructure state queries. Units derived here,
+ * never imported. Named namespace, not anonymous (a unity build merges files).
  */
 namespace RegionalProverSeamSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* ================================================================================
-	 * THE ROW-3 LEANING STACK. Centimetres at Unreal's default 1 uu = 1 cm; nothing imported.
-	 * ================================================================================ */
+	// The row-3 leaning stack. Centimetres at 1 uu = 1 cm; nothing imported.
 
 	constexpr double BrickLengthCm = 21.5;
 	constexpr double BrickWidthCm = 10.25;
@@ -159,17 +133,17 @@ bool FRegionalProverCoversWholeStructureTest::RunTest(const FString& Parameters)
 	FStack Stack;
 	LayStack(Stack);
 
-	/* FIXTURE PRECONDITION: one bed joint per course above the base, and honest geometry. */
+	// FIXTURE PRECONDITION: one bed joint per course above the base, and honest geometry.
 	TestEqual(TEXT("FIXTURE: exactly one bed joint per course above the base"),
 		Stack.Structure.NumConnections(), Courses - 1);
 	TestTrue(TEXT("FIXTURE: the stack has complete geometry"),
 		Stack.Structure.HasCompleteGeometry());
 
-	/* ================================================================================
-	 * (B) THE INDEPENDENT TRUTH SET — the whole-structure ground-only LP, a DIFFERENT code
-	 * path than the regional prover. Pose FEASIBILITY at self-weight (bGravityIsLive = false)
-	 * with the below-cap first-crack rows, exactly the authority BreakByEquilibrium poses.
-	 * ================================================================================ */
+	/*
+	 * (B) The independent truth set: the whole-structure ground-only LP, a different code path.
+	 * Pose feasibility at self-weight (bGravityIsLive = false) with below-cap first-crack rows,
+	 * exactly the authority BreakByEquilibrium poses.
+	 */
 	FOracleProblem WholeProblem;
 	FString WhyNot;
 
@@ -187,7 +161,7 @@ bool FRegionalProverCoversWholeStructureTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("TRUTH: the fall carries a present, Farkas-certified collapse mechanism"),
 		WholeResult.Mechanism.bPresent && WholeResult.Mechanism.bIsCertified);
 
-	/* The truth set: the FStructure pieces whose oracle blocks move, mapped through PieceOfBlock. */
+	// The truth set: the FStructure pieces whose oracle blocks move, mapped through PieceOfBlock.
 	TSet<int32> TruthMoving;
 
 	for (int32 Block = 0; Block < WholeResult.Mechanism.Blocks.Num(); ++Block)
@@ -208,14 +182,13 @@ bool FRegionalProverCoversWholeStructureTest::RunTest(const FString& Parameters)
 			TruthMoving.Num()),
 		TruthMoving.Num() > 0);
 
-	/* ================================================================================
-	 * (C) THE NEW BEHAVIOUR (RED UNTIL BUILT). Run the regional prover from the base course,
-	 * with a region cap far exceeding the 30-piece structure so the flood covers the whole
-	 * structure and the grounded boundary is the earth alone (no cut). It must release EXACTLY
-	 * the truth set: assert on MECHANISM (Falling / released count / 0 stranded), never movement.
-	 * ================================================================================ */
+	/*
+	 * (C) The regional prover from the base course, with a cap far exceeding the 30-piece structure
+	 * so the flood covers everything and the grounded boundary is the earth alone (no cut). It must
+	 * release exactly the truth set: assert on mechanism (Falling / count / 0 stranded), never movement.
+	 */
 	const TArray<int32> Seed = { 0 };
-	const int32 RegionBlockCap = 512; /* >= NumPieces (30): the region floods everything. */
+	const int32 RegionBlockCap = 512; // >= NumPieces (30): the region floods everything.
 
 	const int32 Released = Stack.Structure.SolveAndBreak_WithRegionalProver(Seed, RegionBlockCap);
 

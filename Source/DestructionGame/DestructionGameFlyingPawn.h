@@ -11,10 +11,8 @@ class UInputAction;
 struct FInputActionValue;
 
 /**
- *  Free-flying observer pawn.
- *  Movement is relative to the camera, so looking down and moving forward descends.
- *  There is no gravity and no ground contact: this exists to fly around a structure
- *  and watch it come apart, not to be a game character.
+ * Free-flying observer pawn. Movement is camera-relative, so looking down and moving forward
+ * descends. No gravity or ground contact: it flies around a structure to watch it come apart.
  */
 UCLASS()
 class DESTRUCTIONGAME_API ADestructionGameFlyingPawn : public ADefaultPawn

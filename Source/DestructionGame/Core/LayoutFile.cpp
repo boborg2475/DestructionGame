@@ -11,9 +11,8 @@
 #include "Serialization/JsonSerializer.h"
 
 /*
- * File-local names carry a LayoutFile prefix and sit in the NAMED namespace: an anonymous namespace
- * is private to a TRANSLATION UNIT, and a unity build merges files, so two file-local names that
- * collide are a hard compile error between files that never refer to each other.
+ * File-local names carry a LayoutFile prefix and sit in a named namespace: a unity build merges
+ * files, so two anonymous same-named symbols would collide as one hard compile error.
  */
 namespace DestructionLayoutFile
 {
@@ -204,9 +203,8 @@ namespace DestructionLayoutFile
 	FString Serialize(const FBrickLayout& Layout, double JointThicknessCm)
 	{
 		/*
-		 * Written by hand rather than through FJsonSerializer so the file is one piece per line: a
-		 * building of thousands of pieces then reads and diffs line by line instead of as one
-		 * half-megabyte line or a hundred thousand indented ones.
+		 * Written by hand, not via FJsonSerializer, so the file is one piece per line: a building of
+		 * thousands of pieces diffs line by line instead of as one giant line.
 		 */
 		FString Out;
 		Out.Reserve(Layout.Boxes.Num() * 96 + 256);

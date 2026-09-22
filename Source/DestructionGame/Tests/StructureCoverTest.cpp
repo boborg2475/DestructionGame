@@ -12,10 +12,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Named namespace, not anonymous, and named for what it holds. An anonymous namespace is private
- * to a translation unit rather than to a file, and a unity build merges many files into one — at
- * which point two anonymous namespaces in the blob are the same namespace and identically-named
- * helpers in files that never refer to each other are a hard compile error.
+ * Named namespace, not anonymous: a unity build merges files into one translation unit, so two
+ * anonymous namespaces would collide and identically-named helpers be a hard compile error.
  */
 namespace StructureCoverTestSupport
 {
@@ -24,26 +22,19 @@ namespace StructureCoverTestSupport
 	using namespace StructureArchingTestSupport;
 
 	/**
-	 * Ten cells, 225 cm — one span, six depths of cover, and nothing else varies.
-	 *
-	 * ARCHING_DESIGN works its cover table for exactly this opening in exactly this wall, and
-	 * holding the span fixed is what makes the file a statement about the cover alone: `L` appears
-	 * identically in every row of `H/V = 3L/(4 d_e)`, so any difference between two rows is a
-	 * difference in `d_e` and can be nothing else.
+	 * Ten cells, 225 cm — one span, six depths of cover, nothing else varies. Holding the span
+	 * fixed makes the table a statement about cover alone: `L` is identical in every row of
+	 * `H/V = 3L/(4 d_e)`, so any difference between rows is a difference in `d_e`.
 	 */
 	constexpr int32 CellCount = 10;
 	constexpr double ClearSpanCm = CellCount * BrickPitchCm;
 
 	/**
-	 * Where the cut starts, and why it depends on the parity of the course.
-	 *
-	 * Running bond alternates, so the bricks of an odd course sit half a cell along from those of
-	 * an even one. Index 9 of an odd course is x = 213.75 and index 10 of an even course is
-	 * x = 225 — the two nearest-to-centre starts available, leaving nine cells of jamb on the left
-	 * and ten on the right of a thirty-cell wall, so no row is anywhere near a free end.
-	 *
-	 * Everything downstream is written in X rather than in indices, which is what lets one table
-	 * cut course 1 and course 38 and mean the same thing by it.
+	 * Where the cut starts, and why it depends on course parity. Running bond alternates, so odd
+	 * courses sit half a cell along from even ones: index 9 of an odd course is x = 213.75 and
+	 * index 10 of an even is x = 225 — the two nearest-centre starts, leaving 9 cells of jamb left
+	 * and 10 right, so no row is near a free end. Downstream is written in X, not indices, so one
+	 * table cuts course 1 and course 38 alike.
 	 */
 	constexpr int32 FirstCutIndexForCourse(int32 Course)
 	{
@@ -61,17 +52,13 @@ namespace StructureCoverTestSupport
 	}
 
 	/**
-	 * The two springings, and they are exactly `L` apart.
-	 *
-	 * A one-course cut leaves the course above it with `CellCount - 1` bricks that have no seat at
-	 * all and two that keep half a bed patch each, half a cell outboard of the cut. Those two are
-	 * the springings, so the distance between their centres is
+	 * The two springings, exactly `L` apart. A one-course cut leaves the course above with
+	 * `CellCount - 1` seatless bricks and two keeping half a bed patch each, half a cell outboard.
+	 * Those two are the springings, so their centres are
 	 *
 	 *     (last cut brick + 11.25) - (first cut brick - 11.25)  =  9 * 22.5 + 22.5  =  225
 	 *
-	 * which is the clear opening to the centimetre. ARCHING_DESIGN records that measurement as the
-	 * hook slice 4 needs — the span is already available from the abutments' own positions — and
-	 * the fixture asserts it below rather than assuming it.
+	 * apart, the clear opening to the centimetre — the hook slice 4 needs, asserted below.
 	 */
 	constexpr double LeftSpringingXCm(int32 CutCourse)
 	{
@@ -96,8 +83,8 @@ namespace StructureCoverTestSupport
 }
 
 /**
- * An arch needs masonry over it: the arching depth is capped by the cover actually found above
- * the span, so the same opening that stands under deep cover cannot arch with one course on top.
+ * An arch needs masonry over it: the arching depth is capped by the cover above the span, so an
+ * opening that stands under deep cover cannot arch with one course on top.
  *
  * The rule, from ARCHING_DESIGN.md:
  *
@@ -105,70 +92,55 @@ namespace StructureCoverTestSupport
  *     r   = d_e / 3                                       thrust line rise, kern-limited
  *     H   = W * L / (8r)      V = W / 2                   per abutment
  *
- * so `H/V = 3L / (4 d_e)`, and W cancels. Slice 3 built that with `d_e` assumed to be `0.866*L`,
- * at which point `L` cancels too and the ratio is the constant 3/(4*0.866) = 0.866051 at every
- * span and depth. Slice 4 is the cover: `d_e` must be found by a bounded upward walk over bed
- * joints — at most `ceil(0.866L / course pitch)` steps, never a spatial query — and capped with
- * the angle rather than replaced by it.
+ * so `H/V = 3L / (4 d_e)`, W cancels. Slice 3 assumed `d_e = 0.866*L`, at which `L` cancels too
+ * and the ratio is the constant 3/(4*0.866) = 0.866051. Slice 4 is the cover: `d_e` is found by a
+ * bounded upward walk over bed joints (at most `ceil(0.866L / pitch)` steps, never a spatial
+ * query) and capped by the angle, not replaced by it.
  *
- * Why it matters, and it is the permissive direction: with `r = d_e/3` and `d_e` capped by the
- * cover, `H` grows as `1/cover` while `V` falls with it, so the thrust ratio blows up as the
- * masonry over an opening thins. On this fixture the uncapped answer is 0.866051 whatever the
- * cover; the capped answer is 22.5 with one course over. A ten-cell hole under a single course of
- * brickwork stands today and cannot: one course is not an arch ring, it is a beam in flexure over
- * ten bricks, and ten bricks hang in mid-air.
+ * It is the permissive direction: with `r = d_e/3`, `H` grows as `1/cover` while `V` falls, so the
+ * thrust ratio blows up as cover thins. Here the uncapped answer is 0.866051 at any cover; the
+ * capped answer is 22.5 with one course over. A ten-cell hole under one course stands today and
+ * cannot: one course is a beam in flexure over ten bricks, and they hang in mid-air.
  *
- * One span, six depths, and the table is the test: every row cuts the same ten cells out of the
- * same 30 x 40 flush wall and differs only in which course the cut is made in, so `L` is identical
- * everywhere and any difference between two rows is a difference in `d_e`. Adding a depth of
- * cover is adding a row.
+ * One span, six depths, table is the test: every row cuts the same ten cells of the same 30x40
+ * flush wall, differing only in which course, so `L` is identical and any difference is `d_e`.
  *
- * What is asserted, and why each form was chosen:
+ * What is asserted, and why:
  *
- *   - H/V = 3L/(4 d_e) on every row, at 2% — the mechanism a red run should be read against. W
- *     cancels out of the ratio, so it depends on no wall weight, no load distribution and no
- *     definition of which columns count. The four cover-governed rows want 22.5, 11.25, 5.625
- *     and 2.25; strengths cannot move any of them (and the 2026-08-13 mean re-anchor did not).
+ *   - H/V = 3L/(4 d_e) on every row, at 2% — the mechanism a red run reads against. W cancels, so
+ *     it depends on no wall weight or load distribution. The four cover-governed rows want 22.5,
+ *     11.25, 5.625, 2.25; strengths cannot move them (the 2026-08-13 mean re-anchor did not).
  *
- *   - The two angle-governed rows are green on arrival and must stay that way. 202.5 cm and
- *     285 cm of cover both exceed 0.866 * 225 = 194.85, so the angle caps the depth and the
- *     answer is 0.866051 in both — exactly what slice 3 already computes. They guard that the
- *     cover is a `min` and not a replacement: reading `d_e` as the cover outright gives 0.833
- *     and 0.592 here. The 285 cm row is the identical fixture `StructureThrustTest` measures
- *     (shear ~0.27 at mean strengths), so it also states slice 4 moves nothing slice 3 pinned.
+ *   - The two angle-governed rows are green on arrival and must stay so. 202.5 and 285 cm of cover
+ *     both exceed 0.866 * 225 = 194.85, so the angle caps and both read 0.866051 (slice 3's own
+ *     figure). They guard that cover is a `min`, not a replacement: `d_e = cover` gives 0.833 and
+ *     0.592 here. The 285 cm row is StructureThrustTest's fixture (shear ~0.27 at mean), so it
+ *     also states slice 4 moves nothing slice 3 pinned.
  *
- *   - The cover is counted in whole course pitches, and the spanning course is the first of
- *     them — the definition behind ARCHING_DESIGN's own 285 cm (a 40-course wall cut at course 1
- *     leaves courses 2-39, 38 * 7.5 = 285). Asserted rather than derived, because the
- *     alternatives differ by more than the tolerance: brick height instead of pitch reads 25.96
- *     against 22.5, and excluding the spanning course zeroes the shallowest row's cover. Both
- *     alternatives are printed on every row so a red run says which one happened.
+ *   - Cover is counted in whole course pitches, spanning course first — behind ARCHING_DESIGN's
+ *     285 cm (a 40-course wall cut at course 1 leaves 38 * 7.5). Asserted, not derived: brick
+ *     height reads 25.96 vs 22.5, excluding the spanning course zeroes the shallowest row. Both
+ *     alternatives are printed per row.
  *
- *   - The span is the distance between the two abutments, asserted as a fixture fact: they are
- *     225 cm apart and the clear opening is 225 cm, so the hook ARCHING_DESIGN measured is real
- *     and no new query is needed to reintroduce `L`. Seat-centroid to seat-centroid is 236.25 —
- *     5% wider, outside the 2% tolerance.
+ *   - The span is the abutment separation, a fixture fact: 225 cm apart, clear opening 225 cm, so
+ *     no new query reintroduces `L`. Seat-centroid to seat-centroid is 236.25, 5% wider.
  *
- *   - The shear axis governs, asserted before any number is claimed: ComputeUtilisation returns
- *     the worst of three, and an arched springing's compression axis reads 2|sigma_n|/f_c, a
- *     plausible small number sitting right beside the one being asserted, so a fixture aimed at
- *     the thrust would silently measure compression the moment it happened to be higher.
+ *   - The shear axis governs, asserted first: ComputeUtilisation returns the worst of three, and an
+ *     arched springing's compression axis reads 2|sigma_n|/f_c, a plausible number beside the one
+ *     asserted, so a thrust-aimed fixture would silently measure compression if it were higher.
  *
- *   - The outcome arm is retired as of the 2026-08-13 mean re-anchor. On the characteristic basis
- *     the one-course row came down and carried the collapse claim; at mean strengths every
- *     springing of this ten-cell table affords its thrust (the shallowest at ~0.35) and the wall
- *     stands under every depth of cover here. The machinery (bMustComeDown, the attribution
- *     precondition) is kept for the owed replacement row — a 20-cell cut under one course, hand
- *     estimate ~1.4x over capacity — specified in CURRENT_STATE and to be measured in green.
+ *   - The outcome arm is retired at the 2026-08-13 mean re-anchor. On the characteristic basis the
+ *     one-course row came down; at mean strengths every springing affords its thrust (shallowest
+ *     ~0.35) and the wall stands under every cover. The machinery (bMustComeDown, the attribution
+ *     precondition) is kept for the owed replacement — a 20-cell cut under one course, ~1.4x over,
+ *     specified in CURRENT_STATE, to be measured in green.
  *
- * Never a displacement, anywhere: two pieces can sever and stay resting exactly where they were.
- * Needs no ticking world: FStructure and Layout are plain arithmetic; nothing here needs an
- * actor, a tick or a renderer.
+ * Never a displacement: two pieces can sever and stay resting where they were. Needs no ticking
+ * world: FStructure and Layout are plain arithmetic.
  *
- * No reveal is being measured. Every cut here is one course tall. A multi-course opening has a
- * jamb brick one course below the spanning course which keeps a patch on the jamb and overhangs
- * into the opening with no head joint on its eccentric side — a genuine cantilever that peels and
- * takes the springing's seat with it. That is slice 5's, and a one-course cut has none.
+ * No reveal here — every cut is one course tall. A multi-course opening has a jamb brick that
+ * overhangs with no head joint on its eccentric side, a cantilever that peels and takes the
+ * springing's seat. That is slice 5's; a one-course cut has none.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureCoverTest,
@@ -182,9 +154,9 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 	using namespace StaircaseWallTestSupport;
 
 	/*
-	 * The expected numbers are ratios of published strengths, so they mean what they say only
-	 * while the profile still carries the figures they were derived against. Asserted rather than
-	 * imported: a test that read the profile would agree with a wrong profile.
+	 * The expected numbers are ratios of published strengths, so they hold only while the profile
+	 * carries the figures they were derived against. Asserted, not imported: a test that read the
+	 * profile would agree with a wrong one.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against the mean f_v0 = 0.9 MPa (re-anchor 2026-08-13), the profile carries %g"),
@@ -218,10 +190,8 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 		ArchingDepthPerSpan * ClearSpanCm));
 
 	/**
-	 * One depth of cover, and everything about it this file has an opinion on.
-	 *
-	 * The rows are ordered shallowest first, which is also worst-first: the thrust ratio falls
-	 * monotonically as the cover deepens until the angle takes over, and then it stops moving.
+	 * One depth of cover. Ordered shallowest first, which is worst-first: the thrust ratio falls
+	 * as cover deepens until the angle takes over, then stops moving.
 	 */
 	struct FCoverCase
 	{
@@ -231,9 +201,9 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 		int32 CutCourse;
 
 		/**
-		 * ARCHING_DESIGN's own figure for the springing's shear, or 0 where it published none —
-		 * a factor-of-two cross-check and nothing more, since the design calls its own span limit
-		 * the least trustworthy number it contains and asks only for the ordering to be pinned.
+		 * ARCHING_DESIGN's figure for the springing's shear, or 0 where it published none — a
+		 * factor-of-two cross-check only, since the design calls its span limit its least
+		 * trustworthy number and asks for the ordering to be pinned instead.
 		 */
 		double DesignUtilisation;
 
@@ -243,33 +213,26 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 	};
 
 	/*
-	 * MEAN RE-ANCHOR (2026-08-13), and the verdict layer of this table inverted with it. The
-	 * springing capacity moved from 0.2 + 0.6 sigma to 0.9 + 0.75 sigma, and the seat stress under
-	 * thin cover is tiny (the one-course springing carries ~0.014 MPa), so every row of this
-	 * ten-cell table now affords its thrust: even H/V = 22.5 costs only 22.5 x 0.014 = 0.315 MPa
-	 * against 0.91 of capacity. The four cover-governed rows flip from over- to under-capacity,
-	 * the one-course outcome arm is retired, and what this file still pins hard is the
-	 * H/V = 3L/(4 d_e) geometry, which no strength can move.
+	 * MEAN RE-ANCHOR (2026-08-13), which inverted this table's verdict layer. Springing capacity
+	 * moved from 0.2 + 0.6 sigma to 0.9 + 0.75 sigma, and the seat stress under thin cover is tiny
+	 * (~0.014 MPa), so every row now affords its thrust: even H/V = 22.5 costs 0.315 MPa against
+	 * 0.91. The four cover-governed rows flip to under-capacity, the one-course outcome arm is
+	 * retired, and the H/V = 3L/(4 d_e) geometry is what still pins hard.
 	 *
-	 * The lost falls-for-thin-cover discriminator is owed a replacement, specified in
-	 * CURRENT_STATE: the demand is linear in the spanned load while the capacity is nearly
-	 * constant at these stresses, so a wider opening under the same one course fails again — a
-	 * 20-cell cut at course 38 puts ~11 bricks on each springing (sigma ~ 0.028) under H/V = 45,
-	 * demand ~1.26 MPa against ~0.92: ~1.4x over. To be laid and measured in the green phase,
-	 * never tuned. (Same family as the case-21 inversion and StructureThrustTest's retired
-	 * twenty-cell arm.)
+	 * The lost falls-for-thin-cover discriminator is owed a replacement (CURRENT_STATE): demand is
+	 * linear in spanned load, capacity nearly constant, so a wider opening under one course fails
+	 * again — a 20-cell cut at course 38 puts ~11 bricks on each springing (sigma ~ 0.028) under
+	 * H/V = 45, ~1.26 MPa against ~0.92, ~1.4x over. Measured in the green phase, never tuned.
 	 *
-	 * The design cross-checks are re-derived through each row's implied seat stress, the same
-	 * propagation StructureThrustTest documents: 2.635 implies sigma = 0.0252 and re-reads as
-	 * 0.617; 0.763 implies sigma = 0.3738 and re-reads as 0.274.
+	 * The design cross-checks are re-derived through each row's implied seat stress: 2.635 implies
+	 * sigma = 0.0252, re-reads 0.617; 0.763 implies sigma = 0.3738, re-reads 0.274.
 	 */
 	const TArray<FCoverCase> Cases = {
 		/*
-		 * One course over — 7.5 cm — ARCHING_DESIGN's own worked case. d_e = 7.5, r = 2.5, so
-		 * H/V = 3*225/(4*7.5) = 22.5 against the 0.866051 an uncapped depth gives: a factor of
-		 * 25.98, which is 0.866*L/cover exactly. On the characteristic basis this fixture read
-		 * about 1.51 capped and was the outcome row; at mean strengths it reads about 0.35 and
-		 * stands.
+		 * One course over — 7.5 cm — ARCHING_DESIGN's worked case. d_e = 7.5, r = 2.5, so
+		 * H/V = 3*225/(4*7.5) = 22.5 against an uncapped 0.866051: a factor of 25.98 (= 0.866*L/
+		 * cover). Characteristic basis read ~1.51 capped and was the outcome row; at mean it reads
+		 * ~0.35 and stands.
 		 */
 		{ TEXT("ONE course of cover"), 38, 0.617, false },
 
@@ -280,28 +243,24 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 		{ TEXT("FOUR courses of cover"), 35, 0.0, false },
 
 		/*
-		 * Ten courses, 75 cm: H/V = 2.25, and this is the last row where the cover still governs
-		 * by a margin. 0.866 * 225 = 194.85, so the crossover is at 25.98 courses.
+		 * Ten courses, 75 cm: H/V = 2.25, the last row where cover still governs by a margin.
+		 * 0.866 * 225 = 194.85, so the crossover is at 25.98 courses.
 		 */
 		{ TEXT("TEN courses of cover"), 29, 0.0, false },
 
 		/*
 		 * Twenty-seven courses, 202.5 cm — just past the crossover, so the angle governs and the
-		 * answer is 0.866051. Green today and it must stay green: this is the row that says the
-		 * cover is a `min` rather than a replacement. An implementation that used the cover
-		 * outright reads 3*225/(4*202.5) = 0.833 here, 4% low, and fails.
-		 *
-		 * Deliberately not 26 courses (195 cm), which clears 194.85 by 0.15 cm — that is not a
-		 * margin, it is a coincidence.
+		 * answer is 0.866051. Must stay green: the row saying cover is a `min`, not a replacement.
+		 * `d_e = cover` reads 3*225/(4*202.5) = 0.833 here, 4% low. Not 26 courses (195 cm), which
+		 * clears 194.85 by 0.15 cm — a coincidence, not a margin.
 		 */
 		{ TEXT("TWENTY-SEVEN courses of cover, past the crossover"), 12, 0.0, false },
 
 		/*
-		 * Thirty-eight courses, 285 cm — the deepest this wall has, and the identical fixture
-		 * StructureThrustTest measures its ten-cell case on. The angle governs by 46%, so slice 4
-		 * may not move it at all: it reads 0.866051 of H/V before and after (the shear reading is
-		 * strength-governed and moved with the mean re-anchor, to ~0.27). An implementation that
-		 * used the cover outright reads 0.592, 32% low.
+		 * Thirty-eight courses, 285 cm — the deepest this wall has, StructureThrustTest's ten-cell
+		 * fixture. The angle governs by 46%, so slice 4 may not move it: 0.866051 of H/V before and
+		 * after (the shear reading moved with the mean re-anchor to ~0.27). `d_e = cover` reads
+		 * 0.592, 32% low.
 		 */
 		{ TEXT("THIRTY-EIGHT courses of cover, the deepest this wall has"), 1, 0.274, false },
 	};
@@ -403,10 +362,9 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 		};
 
 		/*
-		 * The hook ARCHING_DESIGN measured, asserted rather than taken on trust: the two abutment
-		 * centres are `L` apart to the centimetre, so slice 4 can reintroduce the span it needs
-		 * from the abutments' own positions and no new query is required. Seat-centroid to
-		 * seat-centroid is BondOffsetCm wider — 236.25 — and would read 5% high.
+		 * The hook ARCHING_DESIGN measured, asserted not trusted: the two abutment centres are `L`
+		 * apart to the centimetre, so slice 4 reintroduces the span from the abutments' positions,
+		 * no new query. Seat-centroid to seat-centroid is BondOffsetCm wider (236.25), 5% high.
 		 */
 		const double AbutmentSeparationCm =
 			Springings[1].BrickXCm - Springings[0].BrickXCm;
@@ -469,9 +427,8 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 			const FConnection& Bed = Cut.Structure.GetConnection(BedJoint);
 
 			/*
-			 * The springing is the same half seat slices 1 and 2 already arch — 10.25 x 10.25,
-			 * loaded 5.625 cm off its own centroid. Arbitrated against the producer rather than
-			 * assumed, so the number and the reason for it fail together.
+			 * The springing is the half seat slices 1 and 2 arch — 10.25 x 10.25, loaded 5.625 cm
+			 * off its centroid. Checked against the producer, not assumed.
 			 */
 			TestTrue(
 				FString::Printf(
@@ -495,10 +452,9 @@ bool FStructureCoverTest::RunTest(const FString& Parameters)
 					EccentricityCm, Springing.EccentricSign * HalfSeatEccentricityCm, 1.0e-9));
 
 			/*
-			 * And the opening is genuinely spanned, which is what makes this an arch at all. The
-			 * bricks in the middle of the hole have no seat whatever and are re-seated onto the
-			 * group's abutments by slice 2; if any were Stranded or Falling instead, this row
-			 * would be measuring a collapse rather than a thrust.
+			 * And the opening is genuinely spanned, which makes it an arch. The mid-hole bricks
+			 * have no seat and are re-seated onto the abutments by slice 2; if any were Stranded or
+			 * Falling, this row would measure a collapse, not a thrust.
 			 */
 			const int32 Neighbour = StaircasePieceAt(
 				Cut.Boxes,

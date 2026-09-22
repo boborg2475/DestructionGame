@@ -13,39 +13,32 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * ITEM 6b — TWO OWNER-APPROVED JOINT-AUTHORING CORRECTIONS to the realistic-brick shed, each pinned as a
- * DATA assertion on the connection profile the builder authors (never on a utilisation, so no "which axis
- * governs" ambiguity can creep in — a profile field is exact and binary):
+ * Item 6b: two owner-approved joint-authoring corrections to the realistic-brick shed, each pinned as a
+ * DATA assertion on the profile the builder authors (never a utilisation, so no "which axis governs"
+ * ambiguity):
  *
- *   (1) THE PORCH CLEAT'S WALL ANCHOR IS A SCREW, NOT A MORTAR BOND. The cleat is a TIMBER piece; mortar
- *       does not bond to wood, so authoring its wall anchor as GeneralPurposeMortar (tensile 0.7 MPa) is
- *       unphysical. A plugged/screwed cleat is a Screw fastener (withdrawal tensile 0.54 MPa). The cleat's
- *       OTHER joint (to the overhang) is already a Screw — this brings the wall anchor into line.
+ *   (1) The porch cleat's wall anchor is a Screw, not a mortar bond. The cleat is timber and mortar does
+ *       not bond to wood, so GeneralPurposeMortar (tensile 0.7) is unphysical; a screwed cleat is a Screw
+ *       (withdrawal 0.54). The cleat's other joint (to the overhang) is already a Screw.
  *
- *   (2) THE SHED'S VERTICAL BRICK-BRICK JOINTS ARE WEAK-PERPEND MORTAR. Real perpends (the vertical head
- *       joints inside a course, AND the vertical corner joints where perpendicular walls meet) are weak
- *       and often unfilled; EN 1996 declines to credit them. Today the builder's sweep authors ONE row —
- *       GeneralPurposeMortar (cohesion 0.9, tensile 0.7) — for every brick-brick joint, bed and vertical
- *       alike. The approved fix is a weaker head-joint row (ShearCohesion 0.2, Tensile 0.1; compressive
- *       10.0, friction 0.75, MaxShear 2.0 UNCHANGED from the bed row) authored for every VERTICAL
- *       brick-brick joint, while horizontal BED joints keep GeneralPurposeMortar and timber bearings keep
- *       DryStone.
+ *   (2) The shed's vertical brick-brick joints are weak-perpend mortar. Real perpends (in-course head
+ *       joints and corner joints) are weak and often unfilled; EN 1996 declines to credit them. The sweep
+ *       authors one row (GeneralPurposeMortar, 0.9 / 0.7) for every brick-brick joint; the fix authors a
+ *       weaker head-joint row (cohesion 0.2, tensile 0.1; compressive 10.0, friction 0.75, MaxShear 2.0
+ *       unchanged) for every vertical joint, beds keeping GeneralPurposeMortar and timber keeping DryStone.
  *
- * THE SELECTION PREDICATE (reported to dev). A brick-brick joint is a BED joint iff its interface normal
- * is substantially vertical (a Z-normal). MakeInterface only ever emits an axis-aligned normal (AddConnection
- * refuses anything else), so |normal.Z| is exactly 1 for a bed joint and exactly 0 for a perpend or a corner.
- * The clean rule is therefore:
+ * Selection predicate: a brick-brick joint is a bed joint iff its normal is substantially vertical.
+ * MakeInterface emits only axis-aligned normals, so |normal.Z| is exactly 1 for a bed and 0 for a perpend
+ * or corner:
  *
- *     for a brick-brick (both ClayBrick, non-timber) joint:
+ *     for a brick-brick (both ClayBrick) joint:
  *         weak-perpend row   iff   |InterfaceNormal.GetSafeNormal().Z| < 0.5   (normal is NOT Z-up)
  *         GeneralPurposeMortar otherwise (the bed joint beneath the piece)
  *
- * This catches in-course perpends (X- or Y-normal within a wall) AND the wall corners (Y- or X-normal at a
- * wall junction) — both vertical mortar — while leaving Z-normal beds and every timber bearing untouched.
+ * This catches in-course perpends and wall corners while leaving Z-normal beds and timber bearings alone.
  *
- * NEEDS A TICKING WORLD: NO. Boxes, doubles and the router; gravity on for the standing checks. No Chaos.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
+ * No ticking world: boxes, doubles and the router, gravity on for the standing checks. Named namespace,
+ * since a unity build merges files into one translation unit.
  */
 namespace RealisticShedPerpendAndCleatSupport
 {
@@ -138,13 +131,10 @@ namespace RealisticShedPerpendAndCleatSupport
 }
 
 /**
- * THE SHED'S VERTICAL BRICK-BRICK JOINTS (perpends + corners) ARE AUTHORED WITH THE WEAK-PERPEND ROW
- * (cohesion 0.2, tensile 0.1), WHILE ITS HORIZONTAL BED JOINTS KEEP GeneralPurposeMortar (0.9 / 0.7).
- *
- * RED TODAY: the builder authors GeneralPurposeMortar (0.9 / 0.7) for EVERY brick-brick joint, so the
- * vertical-joint tensile-0.1 / cohesion-0.2 assertions fail while every bed-joint pin passes unchanged.
- *
- * NEEDS A TICKING WORLD: NO.
+ * The shed's vertical brick-brick joints (perpends and corners) are authored with the weak-perpend row
+ * (0.2 / 0.1), while horizontal beds keep GeneralPurposeMortar (0.9 / 0.7). Red today: the builder authors
+ * GeneralPurposeMortar for every brick-brick joint, so the vertical-joint assertions fail while bed pins
+ * pass. No ticking world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRealisticShedWeakPerpendTest,
@@ -156,7 +146,7 @@ bool FRealisticShedWeakPerpendTest::RunTest(const FString& Parameters)
 	using namespace RealisticShedPerpendAndCleatSupport;
 	using namespace DestructionProfiles;
 
-	/* FIXTURE guards — the numbers this test pins trace to the two mortar rows, not to a coincidence. */
+	/* FIXTURE guards: the pinned numbers trace to the two mortar rows, not a coincidence. */
 	TestTrue(TEXT("FIXTURE: the bed row GeneralPurposeMortar is cohesion 0.9 / tensile 0.7"),
 		Near(GeneralPurposeMortar.ShearCohesionMPa, 0.9) && Near(GeneralPurposeMortar.TensileStrengthMPa, 0.7));
 
@@ -191,8 +181,8 @@ bool FRealisticShedWeakPerpendTest::RunTest(const FString& Parameters)
 		{
 			++BedCount;
 			/*
-			 * A BED joint must keep GeneralPurposeMortar — the perpend weakening must not leak into the
-			 * horizontal beds that actually carry the wall down. Anti-regression: passes today, must stay.
+			 * A bed joint must keep GeneralPurposeMortar: the perpend weakening must not leak into the beds
+			 * that carry the wall down. Anti-regression, passes today.
 			 */
 			if (!(Near(St.ShearCohesionMPa, 0.9) && Near(St.TensileStrengthMPa, 0.7)))
 			{
@@ -267,10 +257,9 @@ bool FRealisticShedWeakPerpendTest::RunTest(const FString& Parameters)
 		}
 		++TimberJoints;
 		/*
-		 * Every timber bearing the SWEEP authors is DryStone (compression-only, cohesion 0, tensile 0). The
-		 * porch's four EXPLICIT joints (two DryStone bearings, a Screw tie, and the cleat-wall anchor this
-		 * file's other test targets) are the only tension-capable timber joints, so a joint with f_t > 0 is
-		 * a porch explicit and excluded — this pin measures only the sweep's own compression-only bearings.
+		 * Every timber bearing the sweep authors is DryStone (compression-only). The porch's four explicit
+		 * joints are the only tension-capable timber joints, so a joint with f_t > 0 is a porch explicit
+		 * and excluded; this pin measures only the sweep's own bearings.
 		 */
 		if (Cn.Strength.TensileStrengthMPa > 0.0)
 		{
@@ -289,14 +278,11 @@ bool FRealisticShedWeakPerpendTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE PORCH CLEAT IS SCREW-FIXED TO THE WALL, NOT MORTAR-BONDED — a tension-capable fastener (Screw,
- * withdrawal 0.54 MPa), because mortar does not bond to a timber cleat.
- *
- * RED TODAY: the builder authors the cleat-wall anchor as GeneralPurposeMortar (tensile 0.7), so the
- * Screw-tensile-0.54 assertion fails. The porch still STANDS both ways (the item-3 tension clause spares a
- * body held by any f_t > 0 tie), so the standing assertion is an anti-regression pin, not the red.
- *
- * NEEDS A TICKING WORLD: NO.
+ * The porch cleat is screw-fixed to the wall, not mortar-bonded: a tension-capable fastener (Screw,
+ * withdrawal 0.54), since mortar does not bond to a timber cleat. Red today: the builder authors the
+ * anchor as GeneralPurposeMortar (tensile 0.7), so the Screw assertion fails. The porch stands both ways
+ * (the item-3 tension clause spares a body held by any f_t > 0 tie), so the standing assertion is an
+ * anti-regression pin, not the red. No ticking world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRealisticShedPorchCleatScrewedTest,
@@ -308,7 +294,7 @@ bool FRealisticShedPorchCleatScrewedTest::RunTest(const FString& Parameters)
 	using namespace RealisticShedPerpendAndCleatSupport;
 	using namespace DestructionProfiles;
 
-	/* FIXTURE guards — the Screw and mortar rows this test discriminates. */
+	/* FIXTURE guards: the Screw and mortar rows this test discriminates. */
 	TestTrue(TEXT("FIXTURE: Screw is the tension-capable fastener (withdrawal 0.54, cohesion 0.23, mu 0)"),
 		Near(Screw.TensileStrengthMPa, 0.54) && Near(Screw.ShearCohesionMPa, 0.23)
 			&& Near(Screw.FrictionCoefficient, 0.0));
@@ -325,10 +311,8 @@ bool FRealisticShedPorchCleatScrewedTest::RunTest(const FString& Parameters)
 
 	FStructure& S = Layout.Structure;
 
-	/*
-	 * THE CLEAT — the narrow central Timber piece over the door, box X[85,95], Y[-11,-1], Z[97.5,104]
-	 * (centre 90, -6, 100.75). Found by its box, so the exact handle order does not matter.
-	 */
+	/* The cleat: the narrow central Timber piece over the door, box X[85,95], Y[-11,-1], Z[97.5,104]
+	 * (centre 90, -6, 100.75). Found by its box, so handle order does not matter. */
 	const int32 Cleat = PieceContaining(Layout, FVector(90.0, -6.0, 100.75));
 	TestTrue(TEXT("FIXTURE: the porch cleat (Timber, centre ~ (90, -6, 100.75)) must exist"),
 		Cleat != INDEX_NONE && S.GetPiece(Cleat).Material == &Timber);
@@ -337,10 +321,8 @@ bool FRealisticShedPorchCleatScrewedTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	/*
-	 * THE WALL ANCHOR — the ONE joint from the cleat to a ClayBrick (the cleat's other joint is the
-	 * Timber-to-Timber Screw tie to the overhang, so the cleat-to-brick joint is unambiguously the anchor).
-	 */
+	/* The wall anchor: the one joint from the cleat to a ClayBrick (its other joint is the Timber Screw
+	 * tie to the overhang, so the cleat-to-brick joint is unambiguously the anchor). */
 	int32 AnchorJoint = INDEX_NONE;
 	for (int32 J = 0; J < S.NumConnections(); ++J)
 	{
@@ -382,9 +364,8 @@ bool FRealisticShedPorchCleatScrewedTest::RunTest(const FString& Parameters)
 		Anchor.TensileStrengthMPa > 0.0);
 
 	/*
-	 * ANTI-REGRESSION — THE PORCH STILL STANDS. Screw f_t > 0 keeps the item-3 tension clause sparing the
-	 * cantilevered overhang, so nothing is stranded and the porch pieces keep the earth. Passes today; the
-	 * point is that the mortar->Screw swap must not change that.
+	 * Anti-regression: the porch still stands. Screw f_t > 0 keeps the item-3 tension clause sparing the
+	 * cantilevered overhang, so nothing is stranded. Passes today; the mortar->Screw swap must not change it.
 	 */
 	const int32 PostL = PieceContaining(Layout, FVector(55.0, -20.0, 52.0));
 	const int32 PostR = PieceContaining(Layout, FVector(125.0, -20.0, 52.0));

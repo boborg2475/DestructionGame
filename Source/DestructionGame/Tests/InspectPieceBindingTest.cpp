@@ -10,23 +10,17 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges
- * many files into one. See CURRENT_STATE.md; the `using namespace` lives inside RunTest for
- * the same reason.
+ * Named namespace, unique to this file: a unity build merges files, so an anonymous namespace
+ * would collide with another file's (see CURRENT_STATE.md). The `using namespace` lives inside
+ * RunTest for the same reason.
  */
 namespace InspectPieceBindingTestSupport
 {
 	/**
-	 * A FLOOR ON WHAT THE TWO CONTEXTS ALREADY MAP, so a collision sweep over nothing fails
-	 * rather than passing in silence.
-	 *
-	 * Measured off the assets as they stand: IMC_Default carries eight mappings — four
-	 * keyboard directions plus Gamepad_Left2D for IA_Move, Gamepad_Right2D for IA_Look, and
-	 * SpaceBar plus Gamepad_FaceButton_Bottom for IA_Jump — and IMC_MouseLook carries one,
-	 * Mouse2D for IA_MouseLook. Six is comfortably under that and well over zero, which is
-	 * the only thing this number has to be: an equality would have to be edited every time a
-	 * binding is added, which is the edit that gets forgotten.
+	 * A floor on what the two contexts already map, so a collision sweep over nothing fails rather
+	 * than passing silently. IMC_Default carries eight mappings and IMC_MouseLook one; six is under
+	 * that and over zero, which is all it needs to be. An equality would need editing every time a
+	 * binding is added.
 	 */
 	constexpr int32 ExistingMappingFloor = 6;
 
@@ -54,34 +48,23 @@ namespace InspectPieceBindingTestSupport
 }
 
 /**
- * THE INPUT THAT OPENS THE PIECE MENU EXISTS, IS MAPPED IN IMC_Default, AND ITS KEY IS NOT
- * ALREADY DOING SOMETHING ELSE.
+ * The input that opens the piece menu exists, is mapped in IMC_Default, and its key is not
+ * already doing something else.
  *
- * WHY A TEST AND NOT JUST AN ASSET. CURRENT_STATE.md's instruction for this slice is "do not
- * hard-code the input that opens it — bind it through the existing Enhanced Input assets and
- * leave the binding checkable rather than assuming a mouse button". Checkable means exactly
- * this: something that reads the shipped context and says what is in it. A binding added by
- * hand in the editor and never asserted is a binding that silently stops existing the next
- * time somebody re-saves the asset.
+ * A test, not just an asset, because a binding added by hand and never asserted silently stops
+ * existing the next time the asset is re-saved. CURRENT_STATE.md's instruction is to bind it
+ * through the existing Enhanced Input assets and leave the binding checkable.
  *
- * THE COLLISION SWEEP IS THE HALF THAT NEEDED CHECKING FIRST. The obvious key for "click a
- * brick" is a mouse button, and the obvious hazard is that one is already held to look
- * around — so this asserts, generically, that no key mapped to the inspect action is mapped
- * to any OTHER action in either context. It is written over both contexts and over whatever
- * they contain rather than against a list of keys somebody wrote down, so it keeps working
- * when a binding is added. (What the assets actually carry today is printed on every run, so
- * the answer is in the log rather than in anyone's memory: IMC_MouseLook binds Mouse2D, the
- * mouse AXIS, and no mouse BUTTON is bound anywhere in either context.)
+ * The collision sweep is the half that needed checking first: the obvious key is a mouse button,
+ * and the hazard is that one is already held to look around. It asserts generically that no key
+ * mapped to the inspect action is mapped to any other action in either context, so it keeps
+ * working when a binding is added. What the assets carry is printed on every run.
  *
- * IMC_Default RATHER THAN A NEW CONTEXT. Both contexts are already hard-referenced by
- * ADestructionGamePlayerController's constructor and both are already rows of the
- * required-content table, so adding a mapping to one is the change with the least new
- * surface; a third context would be a third asset to add, to reference, to list and to
- * remember to push.
+ * IMC_Default rather than a new context: both contexts are already referenced and listed, so
+ * adding a mapping to one is the least new surface.
  *
- * NEEDS A TICKING WORLD: no. Two assets and an action, loaded by path — no world, no player,
- * no input subsystem. Whether a KEY PRESS reaches the handler is a different question and
- * needs a possessed local player; it is deliberately not asserted here.
+ * No ticking world: two assets and an action, loaded by path. Whether a key press reaches the
+ * handler needs a possessed local player and is deliberately not asserted here.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FInspectPieceBindingTest,
@@ -122,10 +105,7 @@ bool FInspectPieceBindingTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * WHAT IS ALREADY BOUND, REPORTED ON EVERY RUN. This is the "check before you choose a
-	 * mouse button" evidence, kept in the log rather than in a comment that goes stale.
-	 */
+	// What is already bound, reported on every run: evidence kept in the log, not a stale comment.
 	AddInfo(FString::Printf(TEXT("IMC_Default maps: %s"), *DescribeContext(DefaultContext)));
 	AddInfo(FString::Printf(TEXT("IMC_MouseLook maps: %s"), *DescribeContext(MouseLookContext)));
 
@@ -145,8 +125,8 @@ bool FInspectPieceBindingTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * ONE: IMC_Default MAPS IT AT ALL. An action asset that exists and is mapped nowhere is
-	 * the exact shape of a binding that looks done and does nothing.
+	 * One: IMC_Default maps it at all. An action that exists but is mapped nowhere looks done and
+	 * does nothing.
 	 */
 	TArray<FKey> InspectKeys;
 
@@ -165,9 +145,8 @@ bool FInspectPieceBindingTest::RunTest(const FString& Parameters)
 		InspectKeys.Num() >= 1);
 
 	/*
-	 * TWO: EVERY KEY IT USES IS FREE. Written over whatever the contexts contain rather than
-	 * against a hand-written list of taken keys, so the day IA_MouseLook grows a held mouse
-	 * button this fails instead of quietly overlapping it.
+	 * Two: every key it uses is free. Written over whatever the contexts contain, so the day
+	 * IA_MouseLook grows a held mouse button this fails instead of overlapping it.
 	 */
 	for (const FKey& InspectKey : InspectKeys)
 	{
@@ -186,8 +165,8 @@ bool FInspectPieceBindingTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THREE: AND NOT IN THE LOOK CONTEXT. IMC_MouseLook is the always-on free-look context;
-	 * putting a menu key in it would tie opening the menu to whether looking is active.
+	 * Three: and not in the look context. IMC_MouseLook is always-on free-look; a menu key there
+	 * would tie opening the menu to whether looking is active.
 	 */
 	TestTrue(
 		TEXT("the inspect-piece action belongs in IMC_Default, not in the free-look context"),

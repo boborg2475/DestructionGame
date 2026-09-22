@@ -11,57 +11,39 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Below the equilibrium gate's block cap, the LP is the break authority — but the strain
- * overlay a player reads still comes from the router's per-joint sweep estimate
- * (InspectPiece -> Structure.GetConnectionUtilisation -> FConnection::UtilisationUnder of
- * the routed force), not the LP. This test pins the fix: when a structure settles below
- * the cap, solving caches a per-joint min-violation readout
- * (RigidBlockOracle::SolveMinViolationReadout, routed on
- * FOracleProblem::bMinViolationReadout) keyed back to production connections through the
- * bridge's ConnectionOfJoint provenance, and FStructure exposes it as
- * GetConnectionReadout. Its value on the governing joint must match an independent hand
- * oracle and must not be the router's per-joint estimate.
+ * Below the equilibrium gate's block cap the LP is the break authority, but the strain overlay a
+ * player reads still comes from the router's per-joint sweep estimate
+ * (InspectPiece -> GetConnectionUtilisation -> FConnection::UtilisationUnder), not the LP. This
+ * pins the fix: settling below the cap caches a per-joint min-violation readout
+ * (RigidBlockOracle::SolveMinViolationReadout on FOracleProblem::bMinViolationReadout) keyed to
+ * production connections through the bridge's ConnectionOfJoint, exposed as GetConnectionReadout.
+ * Its value on the governing joint must match an independent hand oracle, not the router estimate.
  *
- * THE FIXTURE — a determinate tension hang, as a production FStructure. A single free
- * brick hangs below a grounded anchor from one bed joint whose only finite strength axis
- * is tension (compression / cohesion uncapped, friction zero), so the governing axis is
- * unambiguous and the statics are determinate:
+ * The fixture: a determinate tension hang. A free brick hangs below a grounded anchor from one bed
+ * joint whose only finite axis is tension (compression/cohesion uncapped, friction zero):
  *
- *   HAND STATICS (independent of the LP, worked by hand here):
- *     N (compression positive)   = -W          (the whole weight crosses the joint in tension)
- *     M                          = 0            (central load, central joint — symmetric)
+ *   Hand statics (independent of the LP):
+ *     N (compression positive)   = -W          (the whole weight crosses in tension)
+ *     M                          = 0            (central load, central joint)
  *     tension capacity           = f_t * Conv * A
- *     ViolationUu                = 0            (bond holds W with margin => the structure stands)
- *     Utilisation                = W / (f_t*Conv*A)   (< 1, tension is the sole capped axis)
+ *     ViolationUu                = 0            (bond holds W with margin => stands)
+ *     Utilisation                = W / (f_t*Conv*A)   (< 1, tension the sole capped axis)
  *
- * WHY IT PROVES THE LP IS THE SOURCE, NOT THE SWEEP. A tension hang has nothing beneath
- * it, so the router's downward flood cannot route it — it is stranded, its routed joint
- * force is ~0, and GetConnectionUtilisation reads ~0. The LP carries the weight in
- * tension and reads Utilisation W/(f_t*Conv*A). So the cached readout matching the hand
- * oracle while differing sharply from the router estimate on the same connection is only
- * possible if the readout is sourced from the LP.
+ * This proves the LP is the source: a tension hang has nothing beneath it, so the router strands it
+ * and GetConnectionUtilisation reads ~0, while the LP carries the weight and reads W/(f_t*Conv*A). So
+ * a readout matching the hand oracle while differing sharply from the router is only possible if
+ * sourced from the LP. It is additive: the bond holds with margin, the below-cap gate already stands
+ * the hang, and the readout is a separate cached solve that breaks nothing.
  *
- * WHY IT IS ADDITIVE (no verdict moves). The bond holds the hang with a comfortable
- * margin, so the below-cap equilibrium gate already stands it today. The readout is a
- * separate cached solve; SolveAndBreak breaks nothing and the hang reads Supported
- * before and after.
- *
- * Units are derived here (1 MPa over 1 cm2 = 100 * 100 = 10000 uu), never imported, so a wrong
- * production constant disagrees rather than agrees.
- *
- * Needs no ticking world: gravity is on the ordinary way (weight is MassKg * 980 inside
- * FStructure), everything is connected, and every assertion is on solver state, the oracle, or the
- * cached readout — the same footing as the support-authority and two-load-path acceptance tests.
- *
- * Named namespace, not anonymous: a unity build merges many files into one translation unit.
+ * Units are derived here (1 MPa over 1 cm2 = 10000 uu), never imported, so a wrong production constant
+ * disagrees. No ticking world: gravity is on the ordinary way (MassKg * 980) and every assertion is on
+ * solver state, the oracle, or the cached readout. Named namespace, since a unity build merges files.
  */
 namespace StrainReadoutWiringSupport
 {
 	using namespace DestructionLayout;
 
-	/* ================================================================================
-	 * UNITS AND GEOMETRY, derived here so a wrong production constant fails rather than agrees.
-	 * ================================================================================ */
+	/* Units and geometry, derived here so a wrong production constant fails rather than agrees. */
 
 	/** Fired clay, 1.9 g/cm3 — the same figure every wall fixture uses. */
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
@@ -86,9 +68,9 @@ namespace StrainReadoutWiringSupport
 	constexpr double HangHeightCm = 10.0;
 
 	/**
-	 * The tension bond, sized so Utilisation = W / (f_t*Conv*A) is a comfortable ~0.37: the hang
-	 * STANDS with a wide margin (so the gate never fells it — the readout stays additive) yet the
-	 * utilisation is a substantial, clearly-non-zero number the router's stranded ~0 cannot match.
+	 * The tension bond, sized so Utilisation = W / (f_t*Conv*A) is a comfortable ~0.37: the hang stands
+	 * with margin (the readout stays additive) yet the utilisation is a clearly-non-zero number the
+	 * router's stranded ~0 cannot match.
 	 */
 	constexpr double TensileMPa = 0.005;
 
@@ -107,9 +89,8 @@ namespace StrainReadoutWiringSupport
 	}
 
 	/**
-	 * A joint with a weak finite tension bond and every other axis uncapped, so the only
-	 * strength row that can carry demand is tension — what makes the hang's governing
-	 * axis unambiguous.
+	 * A joint with a weak finite tension bond and every other axis uncapped, so tension is the only
+	 * row that can carry demand, making the governing axis unambiguous.
 	 */
 	FConnectionStrength TensionHangBond()
 	{
@@ -134,8 +115,8 @@ namespace StrainReadoutWiringSupport
 
 	/**
 	 * Lay the two pieces and the one bed joint. The anchor sits directly above the hang with a 1 cm
-	 * gap; the hang has NOTHING beneath it, so the router can only strand it and the LP must carry
-	 * its weight across the bed joint in tension.
+	 * gap; the hang has nothing beneath it, so the router can only strand it and the LP must carry its
+	 * weight across the bed joint in tension.
 	 */
 	void Build(FTensionHang& Out)
 	{
@@ -155,10 +136,8 @@ namespace StrainReadoutWiringSupport
 		}
 	}
 
-	/* ================================================================================
-	 * THE INDEPENDENT HAND ORACLE — demand-minus-capacity statics, derived a DIFFERENT way
-	 * than the LP. Area, weight and capacity are all rebuilt from geometry and density here.
-	 * ================================================================================ */
+	/* The independent hand oracle: demand-minus-capacity statics, derived a different way than the
+	 * LP. Area, weight and capacity are rebuilt from geometry and density here. */
 
 	double HangMassKg()
 	{
@@ -205,8 +184,7 @@ bool FStrainReadoutWiringTest::RunTest(const FString& Parameters)
 	using namespace RigidBlockOracle;
 	using namespace StrainReadoutWiringSupport;
 
-	/* Build, and check the topology is the one claimed: two pieces, one bed joint, complete
-	 * geometry, the hang held only by the overhead joint. */
+	/* Build and check the topology: two pieces, one bed joint, complete geometry. */
 
 	FTensionHang Probe;
 	Build(Probe);
@@ -231,9 +209,8 @@ bool FStrainReadoutWiringTest::RunTest(const FString& Parameters)
 		ExpectedNormalUu(), ExpectedViolationUu(), ExpectedUtilisation()));
 
 	/*
-	 * Cross-check 1 — the fixture stands. The LP finds an admissible force system at self-weight
-	 * (Stands, lambda* >= 1), so the below-cap gate already stands it and the readout wiring is
-	 * purely additive.
+	 * Cross-check 1: the fixture stands. The LP finds an admissible force system at self-weight
+	 * (lambda* >= 1), so the below-cap gate already stands it and the readout wiring is additive.
 	 */
 
 	FOracleProblem Feasibility;
@@ -261,11 +238,10 @@ bool FStrainReadoutWiringTest::RunTest(const FString& Parameters)
 		static_cast<int32>(EOracleOutcome::Stands));
 
 	/*
-	 * Cross-check 2 — the oracle's own min-violation readout matches the hand oracle.
-	 * Solving the min-violation LP directly (bMinViolationReadout) is the source the
-	 * cache must draw from. Confirming it here proves the hand oracle is right and that
-	 * the only thing missing is the production caching/query wiring, plus that the
-	 * provenance maps joint 0 to the bed connection — the key the cached readout must use.
+	 * Cross-check 2: the oracle's min-violation readout matches the hand oracle. Solving the
+	 * min-violation LP directly (bMinViolationReadout) is the source the cache must draw from;
+	 * confirming it proves the hand oracle right, that only the caching/query wiring is missing, and
+	 * that provenance maps joint 0 to the bed connection.
 	 */
 
 	FOracleProblem ReadoutPose;
@@ -310,9 +286,9 @@ bool FStrainReadoutWiringTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * The red — settle below the cap, then query the cached readout. Fresh build so SolveAndBreak
-	 * stamps cleanly; the cap is well above 2 pieces, so the equilibrium gate is authoritative and
-	 * (per 6b) must solve and cache the min-violation readout keyed by ConnectionOfJoint.
+	 * The red: settle below the cap, then query the cached readout. Fresh build so SolveAndBreak stamps
+	 * cleanly; the cap is well above 2 pieces, so the gate is authoritative and (per 6b) must cache the
+	 * min-violation readout keyed by ConnectionOfJoint.
 	 */
 
 	FTensionHang Below;
@@ -353,18 +329,16 @@ bool FStrainReadoutWiringTest::RunTest(const FString& Parameters)
 			Readout.Utilisation, ExpectedUtilisation()),
 		Near(Readout.Utilisation, ExpectedUtilisation(), 2.0e-3));
 
-	/* Within capacity => zero violation. Green on arrival (0 ~ 0); bites once the cache is real
-	 * (a mutation charging a spurious slack would push this off zero). */
+	/* Within capacity => zero violation. Green on arrival; bites once the cache is real. */
 	TestTrue(
 		*FString::Printf(TEXT("BELOW CAP: cached violation %.6g ~ 0 (the hang stands)"), Readout.ViolationUu),
 		Near(Readout.ViolationUu, ExpectedViolationUu(), 1.0e-3));
 
 	/*
-	 * The source proof — the cached utilisation is the LP's, not the router's. The router cannot
-	 * route an upward tension hang: it strands the hang and reads ~0 on this joint, so a readout
-	 * matching the hand oracle while differing sharply from GetConnectionUtilisation on the same
-	 * connection is only possible if it is sourced from the LP. RED: on the empty stub the cached
-	 * util is 0, equal to the router's ~0, so this fails.
+	 * The source proof: the cached utilisation is the LP's, not the router's. The router cannot route
+	 * an upward tension hang, so it reads ~0 here; a readout matching the hand oracle while differing
+	 * sharply from GetConnectionUtilisation is only possible if sourced from the LP. RED: the empty
+	 * stub reads 0, equal to the router's ~0.
 	 */
 
 	TestTrue(
@@ -375,10 +349,9 @@ bool FStrainReadoutWiringTest::RunTest(const FString& Parameters)
 		FMath::Abs(Readout.Utilisation - RouterUtil) > 0.1);
 
 	/*
-	 * Scoping — above the cap there is no cached readout. The gate declines, nothing solves the
-	 * min-violation LP, and the overlay falls back to the router. Green on arrival (the stub is
-	 * always absent); it bites once dev solves the readout, guarding against solving it above the
-	 * cap too.
+	 * Scoping: above the cap there is no cached readout. The gate declines, nothing solves the
+	 * min-violation LP, and the overlay falls back to the router. Green on arrival; it bites once dev
+	 * solves the readout, guarding against solving it above the cap.
 	 */
 
 	FTensionHang Above;

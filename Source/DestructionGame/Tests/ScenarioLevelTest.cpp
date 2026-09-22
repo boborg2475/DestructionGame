@@ -15,48 +15,37 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * PRESSING PLAY ON A SCENARIO: THE GAME MODE BUILDS IT, PUTS THE PLAYER IN FRONT OF IT, AND
- * CUTS IT WHILE THEY WATCH.
+ * Pressing Play on a scenario: the game mode builds it, puts the player in front of it, and cuts it
+ * while they watch. The point of a scenario level, as opposed to the headless fixture it is made of,
+ * is that a human can watch it:
  *
- * WHAT WAS ASKED FOR, AND WHY EACH HALF IS ASSERTED THE WAY IT IS. The whole point of a scenario
- * LEVEL, as opposed to the headless fixture it is made of, is that a human can watch it:
+ *   - The wall is in front of the player the instant they join. Asserted on the pawn's real
+ *     transform and the controller's real control rotation, never a stored intent, since a game
+ *     mode that stashed a perfect viewpoint in a field would satisfy that and show the player the
+ *     inside of a brick. Asserted twice: the exact place the framing arithmetic names, and the
+ *     property that every corner of the structure is inside the frustum from where the pawn landed.
  *
- *   - THE WALL IS IN FRONT OF THE PLAYER THE INSTANT THEY JOIN. Asserted on the PAWN'S REAL
- *     TRANSFORM and the CONTROLLER'S REAL CONTROL ROTATION, never on a stored intent: a game
- *     mode that computed a perfect viewpoint and put it in a field would satisfy any assertion
- *     about the field and show the player the inside of a brick. Asserted twice over — the exact
- *     place the framing arithmetic names, and the geometric property a human means by "I can see
- *     all of it", every corner of the structure inside the frustum from where the pawn ended up.
+ *   - The cut happens after a delay, not at begin-play. This needs a before as well as an after: a
+ *     test checking only the end state would pass against a game mode that deleted the brick on the
+ *     frame it built the wall — the bug, since a player who joins to a hole has watched nothing.
  *
- *   - THE CUT HAPPENS AFTER A DELAY, NOT AT BEGIN-PLAY. This needs a BEFORE as well as an AFTER:
- *     a test that only checked the end state would pass, in full, against a game mode that
- *     deleted the brick on the frame it built the wall — the bug, because a player who joins and
- *     sees a hole already there has watched nothing.
+ * Displacement is never read as evidence (DESIGN.md §4): the assertions are the mechanism — the
+ * piece is tombstoned, its actor destroyed, the live count down by one, the solver has an answer for
+ * every piece left, and the release count says the wall stood.
  *
- * DISPLACEMENT IS NEVER READ AS EVIDENCE OF ANYTHING (DESIGN.md §4): the assertions are the
- * MECHANISM — the piece is tombstoned, its actor destroyed, the live count down by exactly one,
- * the solver has an answer for every piece left, and the release count says the wall stood.
+ * Selection in a code-built world: UWorld::GetMapName() answers with the test world's own package
+ * name, so the map branch is unreachable here (pinned separately by World.Scenarios.Selection). The
+ * option branch runs the real wire: BeginPlayURL puts ?Scenario=free-end-40 on the URL,
+ * InitializeActorsForPlay turns that into the OptionsString InitGame receives.
  *
- * HOW THE SCENARIO IS SELECTED IN A CODE-BUILT WORLD. `UWorld::GetMapName()` in a code-built
- * world answers with the test world's own package name, so the MAP branch of selection is
- * unreachable from here — which is why selection was pulled out as a world-free function and is
- * pinned, in every form a map name arrives in, by `World.Scenarios.Selection`. The OPTION branch
- * is reached through the real production wire: `FBrickTestWorldWrapper::BeginPlayURL` puts
- * `?Scenario=free-end-40` on the URL, `UWorld::InitializeActorsForPlay` turns the URL's options
- * into the string it hands `AGameModeBase::InitGame`, filling `OptionsString`.
+ * The pawn is spawned before begin-play because UEngine::LoadMap spawns each local player's
+ * controller and pawn between InitializeActorsForPlay and BeginPlay, so a real begin-play runs with
+ * a possessed pawn present. The BeforeBeginPlay hook is that gap. It is spawned somewhere absurd
+ * (five metres under the floor, fifty off) so "it was moved" is never "it happened to be there". One
+ * test has no pawn at all, since a level with nobody in it yet must still build and cut.
  *
- * WHY THE PAWN IS SPAWNED BEFORE BEGIN-PLAY. `UEngine::LoadMap` spawns each local player's
- * controller and pawn BETWEEN `InitializeActorsForPlay` and `UWorld::BeginPlay`, so in a real
- * game the game mode's begin-play runs with a possessed pawn already in the world. The harness's
- * `BeforeBeginPlay` hook is that gap, and putting the pawn there is what makes this a test of the
- * game mode rather than of the harness's ordering. It is spawned at a deliberately absurd place,
- * five metres below the floor and fifty metres off, so "it was moved" is never confusable with
- * "it happened to be there". One test deliberately has no pawn at all, because a level with
- * nobody in it yet must still build and still cut rather than failing closed on the framing step.
- *
- * NEEDS A TICKING WORLD: yes, and these are the only tests in the file that need the ticking
- * rather than merely the world — the delay is measured in world seconds. The framing test needs
- * a world with begin-play run and never ticks it.
+ * No ticking world except where the delay is measured in world seconds; the framing test runs
+ * begin-play and never ticks.
  */
 namespace ScenarioLevelTestSupport
 {
@@ -70,43 +59,33 @@ namespace ScenarioLevelTestSupport
 	const TCHAR* const ScenarioLevelBuildRowName = TEXT("build");
 
 	/**
-	 * How near the origin the player must stand on an empty plot, cm. Twenty metres is a ceiling
-	 * and not a target: the exact standoff is `ViewpointFor`'s to choose from whatever default
-	 * bounds the game mode hands it, already pinned by `World.Scenarios.Viewpoint` — pinning it a
-	 * second time here would only make this test fail when the framing is retuned. What must hold
-	 * is the thing a human would notice: the player is standing on the plot they are about to
-	 * build on, not half a kilometre away, and not where the harness spawned them.
+	 * How near the origin the player must stand on an empty plot, cm. Twenty metres is a ceiling, not
+	 * a target: the exact standoff is ViewpointFor's, pinned by World.Scenarios.Viewpoint, and
+	 * pinning it again here would only break when the framing is retuned. What must hold is that the
+	 * player stands on the plot, not half a kilometre away or where the harness spawned them.
 	 */
 	constexpr double ScenarioLevelBuildPlotReachCm = 2000.0;
 
 	/**
-	 * How nearly the view must point at the plot — the cosine of the angle between where the
-	 * camera looks and where the origin is from there. 0.9 is about twenty-five degrees, loose on
-	 * purpose: the game mode is free to aim at the centre of whatever default box it frames —
-	 * ground level, or half a structure's height up — and both are the plot. What it is not free
-	 * to do is look past it, which a camera carrying the previous scenario's yaw, or a default
-	 * rotation nobody set, would do.
+	 * How nearly the view must point at the plot — the cosine of the angle between the camera's look
+	 * and the origin. 0.9 is about twenty-five degrees, loose on purpose: the game mode may aim at
+	 * the centre of whatever default box it frames. What it may not do is look past it, which a
+	 * camera carrying the previous scenario's yaw, or an unset rotation, would.
 	 */
 	constexpr double ScenarioLevelBuildAimDot = 0.9;
 
 	/**
-	 * The aspect a level frames for when nothing can tell it the viewport's. Every run in this
-	 * suite is `-nullrhi` and every world in it is built in code, so there is no
-	 * `UGameViewportClient` to ask and no viewport to measure. 16:9 is the fallback, stated here
-	 * as a requirement rather than discovered: 1080 high per 1920 wide.
+	 * The aspect a level frames for when nothing can tell it the viewport's. Every run is -nullrhi
+	 * over a code-built world, so there is no UGameViewportClient to ask. 16:9 is the fallback,
+	 * stated as a requirement: 1080 high per 1920 wide.
 	 */
 	constexpr double ScenarioLevelAspectHeightOverWidth = 1080.0 / 1920.0;
 
 	/*
-	 * --- what the two walls measure, derived by hand from the coordinating grid -----------
-	 *
-	 * Both are flush running bonds on the 22.5 x 11.25 x 7.5 grid, so along X a course runs from
-	 * -10.75 to (N - 1) x 22.5 + 10.75, up Z the top course's top face is 3.25 + 39 x 7.5 + 3.25
-	 * = 299, and across Y the wall is one 10.25 cm brick centred on zero.
-	 *
-	 * PIECES. Even courses are N full bricks; odd courses fill the half cell at each end with a
-	 * half bat, so N - 1 + 2 = N + 1. Twenty of each: 20N + 20(N + 1) = 40N + 20. Seven wide is
-	 * 300 and thirty wide is 1,220.
+	 * What the two walls measure, derived by hand from the grid. Both are flush running bonds on the
+	 * 22.5 x 11.25 x 7.5 grid, so a course runs from X -10.75 to (N-1)*22.5 + 10.75, the top face is
+	 * at Z 299, and the wall is one 10.25 cm brick centred on Y zero. Pieces: even courses are N full
+	 * bricks, odd courses N+1 (a half bat at each end), 20 each = 40N + 20 — 300 at 7 wide, 1,220 at 30.
 	 */
 	constexpr double ScenarioLevelWallMinXCm = -10.75;
 	constexpr double ScenarioLevelWallMinZCm = 0.0;
@@ -122,23 +101,18 @@ namespace ScenarioLevelTestSupport
 	constexpr int32 ScenarioLevelDefaultWallPieceCount = 1220;
 
 	/**
-	 * Where the player must end up, worked through here rather than asked of ViewpointFor. A
-	 * 90-degree horizontal field of view makes the visible half-width at a standoff s equal to s,
-	 * and the visible half-height s x aspect, so framing a box needs s >= halfX and
-	 * s >= halfZ / aspect, with the 1.25 margin keeping the structure off the edges of the frame:
+	 * Where the player must end up, worked through here rather than asked of ViewpointFor. A 90-degree
+	 * horizontal FOV makes the visible half-width at standoff s equal to s and the half-height s*aspect,
+	 * so framing a box needs standoff = max(120, 1.25 * max(halfX, halfZ/aspect)), the 1.25 keeping the
+	 * structure off the edges.
 	 *
-	 *     standoff = max(120, 1.25 x max(halfX, halfZ / aspect))
+	 * The two walls pick different terms, the point of checking both. The 7-wide wall (156.5 across,
+	 * 299 tall) has halfZ/aspect = 265.78 beat half-width, giving standoff 332.2222222222222 — height
+	 * governs. The 30-wide wall (674 across) has 1.25 * 337 = 421.25 beat it — width governs. A game
+	 * mode framing on one extent only would put one wall off the screen.
 	 *
-	 * THE TWO WALLS PICK DIFFERENT TERMS, the point of checking both. The 7-wide wall is 156.5 cm
-	 * across and 299 tall, so halfZ / aspect = 149.5 / 0.5625 = 265.777... beats the 78.25 of
-	 * half-width and the standoff is 1.25 x 265.777... = 332.2222222222222 — HEIGHT governs. The
-	 * 30-wide wall is 674 across, so 1.25 x 337 = 421.25 beats the same 332.222 — WIDTH governs. A
-	 * game mode that framed on one extent only would put one wall off the sides of the screen
-	 * while printing a perfectly plausible number for the other.
-	 *
-	 * The camera stands on the +Y side of the wall's centre at that standoff, level, looking
-	 * along -Y with +X to the right — the way round every elevation in the design documents is
-	 * drawn, so a level reads the same as the drawings rather than mirrored.
+	 * The camera stands on the +Y side of the wall's centre at that standoff, level, looking along -Y
+	 * with +X to the right — the way every design elevation is drawn, so a level reads the same.
 	 */
 	constexpr double ScenarioLevelCutWallStandoffCm = 332.2222222222222;
 	constexpr double ScenarioLevelDefaultWallStandoffCm = 421.25;
@@ -207,16 +181,12 @@ namespace ScenarioLevelTestSupport
 	}
 
 	/**
-	 * Is all of it on screen from here — the property, checked corner by corner. Worth more than
-	 * the placement assertion and separate from it: placement pins where the arithmetic says to
-	 * stand, this pins what a human means by being able to see the thing, and it would still hold
-	 * if somebody retuned the margin or the floor. Written against the camera's OWN axes rather
-	 * than an assumed -Y, so a viewpoint that faced the wall from the wrong side, or came out
-	 * mirrored, fails here rather than passing on a yaw comparison that happened to be symmetric.
-	 *
-	 * A 90-degree horizontal field of view puts the frustum's half-width at the corner's own
-	 * depth and its half-height at that depth times the aspect. Every corner must be in front of
-	 * the camera and inside both.
+	 * Is all of it on screen from here — the property, checked corner by corner. Separate from
+	 * placement: that pins where the arithmetic says to stand, this pins what a human means by seeing
+	 * the thing, and it survives a retuned margin. Written against the camera's own axes, not an
+	 * assumed -Y, so a viewpoint facing from the wrong side or mirrored fails here. A 90-degree
+	 * horizontal FOV puts the frustum half-width at the corner's depth and its half-height at that
+	 * depth times aspect; every corner must be in front and inside both.
 	 */
 	inline bool ScenarioLevelIsWhollyInFrame(
 		const FVector& CameraCm,
@@ -265,14 +235,11 @@ namespace ScenarioLevelTestSupport
 	}
 
 	/**
-	 * The piece whose box is centred here, LIVE OR NOT, or INDEX_NONE.
-	 *
-	 * REMOVED PIECES ARE DELIBERATELY INCLUDED, and it matters: `FPieceBinding::Box` is kept when
-	 * a piece is removed precisely so that where a brick WAS is still answerable, and this is
-	 * the lookup that has to find the brick a game mode cut too early. Skipping tombstones
-	 * instead would turn "it cut at begin-play" — the exact bug this file exists to catch — into
-	 * a fixture error saying the wall does not contain the brick, which reads like a broken test
-	 * rather than like a broken level. (It really did: the mutation run said so.)
+	 * The piece whose box is centred here, live or not, or INDEX_NONE. Removed pieces are
+	 * deliberately included: FPieceBinding::Box is kept on removal so where a brick was stays
+	 * answerable, and this is the lookup that must find a brick a game mode cut too early. Skipping
+	 * tombstones would turn "it cut at begin-play" into a fixture error saying the wall lacks the
+	 * brick, reading like a broken test rather than a broken level.
 	 */
 	inline int32 ScenarioLevelPieceAtCentre(
 		const FStructureBinding& Binding, const FVector& CentreCm)
@@ -339,11 +306,10 @@ namespace ScenarioLevelTestSupport
 	}
 
 	/**
-	 * Every brick in the whole world, bound or not — the count that says whether anything was
-	 * laid. Asked of the world rather than a binding, because the claim for a build sandbox is
-	 * that there is no structure to ask: `UDestructionStructureSubsystem` exposes no count of the
-	 * structures it holds, so the honest outside measure of "nothing was built" is that no brick
-	 * exists anywhere — which also catches a wall laid, its actors spawned, and its id dropped.
+	 * Every brick in the whole world, bound or not — the count that says whether anything was laid.
+	 * Asked of the world, not a binding, because a build sandbox has no structure to ask: the honest
+	 * outside measure of "nothing was built" is that no brick exists anywhere, which also catches a
+	 * wall laid, spawned, and its id dropped.
 	 */
 	inline int32 ScenarioLevelBricksInWorld(UWorld& World)
 	{
@@ -361,14 +327,10 @@ namespace ScenarioLevelTestSupport
 	}
 
 	/**
-	 * Spawn the player the way LoadMap does — a controller possessing a pawn — before begin-play.
-	 *
-	 * No ULocalPlayer, deliberately: everything under test here reads the CONTROLLER and its
-	 * PAWN. `GetPlayerControllerIterator` lists a spawned controller whether or not a local
-	 * player is attached, and `SetControlRotation`/`GetControlRotation` need nothing else.
-	 * Attaching one would drag in Enhanced Input, a viewport-less `UGameViewportClient` and an
-	 * `ensure` this project has already been bitten by — see `SpawnControllerWithLocalPlayer`'s
-	 * own note — for no claim this file makes.
+	 * Spawn the player the way LoadMap does — a controller possessing a pawn — before begin-play. No
+	 * ULocalPlayer: everything here reads the controller and its pawn, and GetControlRotation needs
+	 * nothing else. Attaching one would drag in Enhanced Input and a viewport-less UGameViewportClient
+	 * ensure this project has been bitten by, for no claim this file makes.
 	 */
 	inline void ScenarioLevelSpawnPlayer(
 		UWorld& World, APlayerController*& OutController, APawn*& OutPawn)
@@ -386,22 +348,17 @@ namespace ScenarioLevelTestSupport
 }
 
 /**
- * THE PLAYER IS STANDING IN FRONT OF THE SCENARIO THE MOMENT THEY JOIN.
+ * The player is standing in front of the scenario the moment they join. On the pawn's real
+ * transform and the controller's real control rotation, so a game mode that stored a perfect
+ * viewpoint could not satisfy it while showing the inside of a brick.
  *
- * On the pawn's real transform and the controller's real control rotation: a game mode that
- * worked out a perfect viewpoint and stored it would satisfy any assertion about the stored
- * value while showing the player the inside of a brick, so nothing here reads anything the game
- * mode remembers — only where the pawn actually is and which way the controller actually points.
+ * Two assertions on the same placement. The arithmetic, worked from the 90-degree FOV rather than
+ * asked of ViewpointFor — height governs here at 332.2222222222222 cm of standoff, which reading
+ * half-extents instead of half-height-over-aspect would get wrong by nearly two while still
+ * producing a picture. And the property: every corner inside the frustum from where the pawn landed.
  *
- * Two independent assertions on the same placement. The first is the arithmetic, worked through
- * in this file's own support namespace from the 90-degree horizontal field of view rather than
- * asked of `ViewpointFor` — height governs on this wall, and the number is 332.2222222222222 cm
- * of standoff, which an implementation reading half-extents instead of half-height-over-aspect
- * would get wrong by a factor of nearly two while still producing a picture. The second is the
- * property: every corner of the structure inside the frustum from where the pawn ended up.
- *
- * NEEDS A TICKING WORLD: it needs a world with begin-play run, since that is when the game mode
- * acts, and it needs the pawn to exist before that. It never ticks one.
+ * Needs a world with begin-play run (when the game mode acts) and the pawn present before it; never
+ * ticks one.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FScenarioLevelFramesThePlayerTest,
@@ -483,7 +440,7 @@ bool FScenarioLevelFramesThePlayerTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* --- ONE: it built the scenario the OPTION named, not the default -------------------- */
+	// One: it built the scenario the option named, not the default.
 
 	TestTrue(
 		*FString::Printf(
@@ -515,7 +472,7 @@ bool FScenarioLevelFramesThePlayerTest::RunTest(const FString& Parameters)
 			&& FMath::IsNearlyEqual(BoundsCm.Max.Z, ScenarioLevelWallMaxZCm, BoundsToleranceCm)
 			&& FMath::IsNearlyEqual(BoundsCm.Max.Y, ScenarioLevelWallHalfYCm, BoundsToleranceCm));
 
-	/* --- TWO: the pawn is where the framing arithmetic says, and it MOVED to get there ---- */
+	// Two: the pawn is where the framing arithmetic says, and it moved to get there.
 
 	const FVector ExpectedPawnCm(
 		(ScenarioLevelWallMinXCm + ScenarioLevelCutWallMaxXCm) / 2.0,
@@ -555,7 +512,7 @@ bool FScenarioLevelFramesThePlayerTest::RunTest(const FString& Parameters)
 			FRotator(0.0, ScenarioLevelCameraYawDegrees, 0.0),
 			ScenarioLevelRotationToleranceDegrees));
 
-	/* --- THREE: and the property — all of it is actually on screen from there ------------- */
+	// Three: and the property — all of it is actually on screen from there.
 
 	{
 		FString WhyNot;
@@ -582,45 +539,31 @@ bool FScenarioLevelFramesThePlayerTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE CUT FIRES AFTER THE DELAY AND NOT BEFORE — THE PLAYER SEES THE WALL STAND, THEN SEES IT
- * REACT.
+ * The cut fires after the delay and not before — the player sees the wall stand, then react.
  *
- * THE BEFORE IS THE HALF THAT MATTERS. A test that only checked the end state would pass, in
- * full, against a game mode that removed the brick on the frame it built the wall — exactly the
- * bug this exists to stop, since a player who joins to find a hole already there has watched
- * nothing happen. So the cut brick is asserted LIVE at begin-play, asserted STILL LIVE after most
- * of the delay has elapsed, and only then asserted gone. Ticked through in simulated seconds
- * rather than waited out: the world is advanced in fixed 1/60 steps, making the delay a
- * deterministic number of frames rather than a wall-clock race; the catalogue's own
- * `HoldSeconds` is read rather than repeated here, so a row that retunes its delay retunes this
- * test with it.
+ * The before is the half that matters. A test checking only the end state would pass against a game
+ * mode that removed the brick on the frame it built the wall, the bug this exists to stop. So the
+ * cut brick is asserted live at begin-play, still live after most of the delay, and only then gone.
+ * Ticked in fixed 1/60 steps so the delay is a deterministic number of frames; the catalogue's own
+ * HoldSeconds is read, not repeated, so a retuned delay retunes this test.
  *
- * NOT ON DISPLACEMENT, AND NOT ON A SINGLE JOINT EITHER. DESIGN.md §4 forbids reading movement as
- * evidence that anything broke, and the same objection applies in reverse here: a brick can be
- * deleted and its neighbours not move a millimetre, the CORRECT outcome for this scenario. So the
- * assertions are the mechanism —
+ * Not on displacement, and not on one joint (DESIGN.md §4): a brick can be deleted and its
+ * neighbours not move, the correct outcome here. So the assertions are the mechanism —
  *
- *   - the piece is tombstoned and the live count is down by exactly one, so a cut that took a
- *     brick nobody asked for fails;
- *   - the brick's ACTOR has been destroyed, saying the orphan the commit handed back was
- *     consumed rather than left standing in the hole as a collider nothing in the model knows
- *     about;
- *   - the solver has an answer for every piece that is left, saying the wall was re-solved after
- *     the removal rather than merely emptied;
+ *   - the piece is tombstoned and the live count down by one, so a cut that took the wrong brick fails;
+ *   - the brick's actor has been destroyed, so the orphan the commit handed back was consumed rather
+ *     than left as a collider nothing in the model knows about;
+ *   - the solver has an answer for every piece left, so the wall was re-solved rather than emptied;
  *   - and at most one piece has been released.
  *
- * THE RELEASE BOUND IS DERIVED, NOT PICKED. `Core.Structure.AFreeEndDeletionInATallWall` rules
- * that this deletion must not bring the wall down, and works out that exactly one piece is
- * available to lose: course 1's flush half bat sat entirely on the deleted brick, so it has no
- * bed patch left and composite action has nothing to offer a piece not resting on anything.
- * Everything else keeps a seat, so one is the ceiling and zero is allowed.
+ * The release bound is derived, not picked: Core.Structure.AFreeEndDeletionInATallWall rules that
+ * exactly one piece is available to lose — course 1's flush half bat sat entirely on the deleted
+ * brick and has no bed patch left — so one is the ceiling and zero is allowed.
  *
- * NO PAWN IN THIS WORLD, DELIBERATELY: a level whose player has not arrived yet must still build
- * and still cut; a game mode that failed closed on the framing step and never armed the timer
- * would pass every assertion in the framing test and fail every one here.
+ * No pawn in this world: a level whose player has not arrived must still build and cut; a game mode
+ * that failed closed on framing and never armed the timer would pass the framing test and fail here.
  *
- * NEEDS A TICKING WORLD: yes, and the ticking is the point — the delay is measured in world
- * seconds.
+ * Needs a ticking world — the delay is measured in world seconds.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FScenarioLevelCutsAfterTheDelayTest,
@@ -683,7 +626,7 @@ bool FScenarioLevelCutsAfterTheDelayTest::RunTest(const FString& Parameters)
 			ScenarioLevelCutRowName, ScenarioLevelCutWallPieceCount, Binding->NumPieces()),
 		Binding->NumPieces() == ScenarioLevelCutWallPieceCount);
 
-	/* --- BEFORE: the wall is whole, and the brick the level will cut is standing ---------- */
+	// Before: the wall is whole, and the brick the level will cut is standing.
 
 	const int32 CutPiece = ScenarioLevelPieceAtCentre(*Binding, ScenarioLevelCutCentreCm);
 
@@ -717,19 +660,13 @@ bool FScenarioLevelCutsAfterTheDelayTest::RunTest(const FString& Parameters)
 			&& ScenarioLevelReleasedCount(*Binding) == 0);
 
 	/*
-	 * AND THE HELD WALL IS SOLVED, WHICH IS NOT THE SAME CLAIM AS "NOTHING WAS RELEASED".
-	 *
-	 * A LEVEL COULD HOLD ITS STRUCTURE BY SIMPLY NEVER SOLVING IT, and every assertion above
-	 * would still pass: nothing is released because nothing ever asked. That is the wrong hold.
-	 * `EPieceSupport::Falling` is what an ABSENT support answer reads as, so an unsolved wall and
-	 * a wall in free fall are one answer to everything that asks — the strain readout would colour
-	 * three hundred bricks as unsupported, `World.Scenario.GameModeBuildsTheWallOnBeginPlay` would
-	 * report every piece Falling "as the game mode left it", and the first click anywhere would
-	 * push against an answer nobody had computed.
-	 *
-	 * SO HOLDING IS SOLVED-AND-NOT-SETTLED: the loads are known and no joint has been asked to
-	 * give yet. This assertion is GREEN TODAY and is here as the fence around the fix — it is the
-	 * assertion that a hold implemented by deleting the begin-play solve would fail.
+	 * And the held wall is solved, which is not the same claim as "nothing was released". A level
+	 * could hold its structure by never solving it, and every assertion above would still pass —
+	 * nothing is released because nothing asked. That is the wrong hold: an absent support answer
+	 * reads as Falling, so an unsolved wall and one in free fall answer alike, the strain readout
+	 * would colour every brick unsupported, and the first click would push against an uncomputed
+	 * answer. So holding is solved-and-not-settled: loads known, no joint asked to give. Green today,
+	 * a fence around the fix — a hold that deleted the begin-play solve would fail it.
 	 */
 	TestTrue(
 		*FString::Printf(
@@ -741,12 +678,11 @@ bool FScenarioLevelCutsAfterTheDelayTest::RunTest(const FString& Parameters)
 
 	const int32 SolvesAtBeginPlay = Binding->GetStructure().NumSolves();
 
-	/* --- AND STILL NOT CUT WITH MOST OF THE DELAY GONE ------------------------------------ */
+	// And still not cut with most of the delay gone.
 
 	/*
-	 * SEVEN EIGHTHS OF THE DELAY, so this row stays true if the catalogue retunes it. The margin
-	 * either side is half a second on today's four, which is thirty ticks — far more than the
-	 * rounding in TickSeconds, and far less than the delay itself.
+	 * Seven eighths of the delay, so this stays true if the catalogue retunes it. The margin either
+	 * side is half a second on today's four (thirty ticks) — far more than TickSeconds' rounding.
 	 */
 	const double AlmostTheDelaySeconds = Row->HoldSeconds * 0.875;
 
@@ -770,7 +706,7 @@ bool FScenarioLevelCutsAfterTheDelayTest::RunTest(const FString& Parameters)
 		!Binding->IsPieceRemoved(CutPiece) && CutBrick.IsValid()
 			&& Binding->GetStructure().NumLivePieces() == Binding->NumPieces());
 
-	/* --- AFTER: the brick has gone, and the solver has answered for what is left ---------- */
+	// After: the brick has gone, and the solver has answered for what is left.
 
 	const double AfterStart = FPlatformTime::Seconds();
 	TestWorld.TickSeconds(Row->HoldSeconds * 0.375);
@@ -794,10 +730,9 @@ bool FScenarioLevelCutsAfterTheDelayTest::RunTest(const FString& Parameters)
 		Binding->IsPieceRemoved(CutPiece));
 
 	/*
-	 * AND ITS ACTOR IS GONE. RunPieceActions is world-free and hands the orphan BACK rather than
-	 * destroying it, so a cut that went through some other path would leave the brick's mesh
-	 * standing in the hole it was deleted from — not merely untidy, but a collider nothing in the
-	 * model knows about, and a brick the player can still click.
+	 * And its actor is gone. RunPieceActions is world-free and hands the orphan back, so a cut
+	 * through another path would leave the brick's mesh standing in the hole — a collider nothing in
+	 * the model knows about, and a brick the player can still click.
 	 */
 	TestTrue(
 		*FString::Printf(
@@ -816,10 +751,9 @@ bool FScenarioLevelCutsAfterTheDelayTest::RunTest(const FString& Parameters)
 			== Binding->NumPieces() - Row->CutCentresCm.Num());
 
 	/*
-	 * THE SOLVER HAS ANSWERED FOR WHAT IS LEFT, and this is the mechanism assertion that says the
-	 * wall was re-solved after the removal rather than merely emptied. FStructureBinding::
-	 * ApplyResults refuses to release a piece the last solve has no answer for, so an unanswered
-	 * piece is a brick nothing can ever hand to physics.
+	 * The solver has answered for what is left — the mechanism assertion that the wall was re-solved
+	 * after the removal, not merely emptied. ApplyResults refuses to release a piece the last solve
+	 * has no answer for, so an unanswered piece can never be handed to physics.
 	 */
 	TestTrue(
 		*FString::Printf(
@@ -835,11 +769,10 @@ bool FScenarioLevelCutsAfterTheDelayTest::RunTest(const FString& Parameters)
 		Binding->GetStructure().NumSolves() > SolvesAtBeginPlay);
 
 	/*
-	 * AND THE WALL DID NOT COME DOWN, which is what '%s' says a human should see.
-	 * Core.Structure.AFreeEndDeletionInATallWall rules that exactly one piece is available to
-	 * lose — course 1's flush half bat, which sat entirely on the deleted brick and has no bed
-	 * patch left — so one is the ceiling and zero is allowed. Three hundred pieces and at most
-	 * one released is the outcome assertion; a collapse would release scores.
+	 * And the wall did not come down. Core.Structure.AFreeEndDeletionInATallWall rules exactly one
+	 * piece is available to lose — course 1's flush half bat, entirely on the deleted brick with no
+	 * bed patch left — so one is the ceiling. Three hundred pieces, at most one released; a collapse
+	 * would release scores.
 	 */
 	TestTrue(
 		*FString::Printf(

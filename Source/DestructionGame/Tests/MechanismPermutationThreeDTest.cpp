@@ -9,73 +9,50 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * E2c — THE 3D MECHANISM PERMUTATION-DETERMINISM FUZZ. THE DECISION POINT ON THE TOP 3D RISK.
+ * E2c: the 3D mechanism permutation-determinism fuzz, the decision point on the top 3D risk.
  *
- * THREED_DESIGN's #1 risk: "Friction-pyramid degeneracy worsens R3 mechanism determinism." In
- * 3D a block has 6-DOF motion, each contact carries a k=8 friction pyramid, and REDUNDANT
- * supports (E0-B, four bearings under one block) admit MULTIPLE Farkas rays — so the raw dual
- * / plastic multipliers are non-unique. The OPEN question: does that force non-uniqueness leak
- * into the extracted MECHANISM (which blocks move, which joints open, each block's (u, omega)
- * 6-vector), or does the 3D extractor — like 2D Slice 3a — read the mechanism off the STABLE
- * BLOCK KINEMATICS and stay permutation-invariant regardless?
+ * THREED_DESIGN's #1 risk: "Friction-pyramid degeneracy worsens R3 mechanism determinism." In 3D a
+ * block has 6-DOF motion, each contact carries a k=8 friction pyramid, and redundant supports (four
+ * bearings under one block) admit multiple Farkas rays, so the raw dual is non-unique. The open
+ * question: does that leak into the extracted mechanism (which blocks move, which joints open, each
+ * block's (u, omega) 6-vector), or does the 3D extractor, like 2D Slice 3a, read the mechanism off
+ * the stable block kinematics and stay permutation-invariant?
  *
- *   - If BOTH fixtures below hold under permutation, the 3D block-kinematics mechanism is
- *     deterministic: E2 is complete and E2b (per-group canonicalisation / the D7 minimal-support
- *     tie-break) is NOT needed.
- *   - If the REDUNDANT fixture DRIFTS (names different blocks/joints or different velocities
- *     under different column orderings), that is the 3D non-determinism the design flagged, and
- *     E2b is the fix. This test CHARACTERISES it; it does not fix it.
+ *   - Both fixtures holding => the 3D block-kinematics mechanism is deterministic, E2 complete and
+ *     E2b (per-group canonicalisation) not needed.
+ *   - The redundant fixture drifting => the 3D non-determinism the design flagged, and E2b is the
+ *     fix. This test characterises it, it does not fix it.
  *
- * THE HARNESS mirrors the 2D gate DestructionGame.Oracle.RigidBlock.Mechanism.IsPermutationDeterministic
- * (OracleMechanismExtractionTest.cpp): a seeded Fisher-Yates permutation of block and joint
- * indices (reordering every downstream struct COLUMN), the physics re-posed in that order,
- * solved, and the extracted mechanism translated back through the permutation inverse and
- * compared to the base. Re-derived here (not linked across translation units), so it also
- * copies the Dim3D flag the 2D Permute helper never had to.
+ * The harness mirrors the 2D gate (OracleMechanismExtractionTest.cpp): a seeded Fisher-Yates
+ * permutation of block and joint indices, the physics re-posed and solved, and the mechanism
+ * translated back through the inverse and compared to the base. Re-derived here, so it also copies
+ * the Dim3D flag the 2D Permute helper never had to.
  *
- * TWO FIXTURES:
+ * Two fixtures:
  *
- *   1. DETERMINATE TIPPING (the E2a-review-recommended guard, expected GREEN). One free block
- *      on a single 20x20 rectangular patch, CoM 10 cm beyond the patch's +Y edge, tipping in a
- *      UNIQUE edge-rotation ray. A unique ray must be permutation-invariant; pins that the
- *      harness itself works and a determinate 3D mechanism is stable.
+ *   1. Determinate tipping (expected green). One free block on a 20x20 patch, CoM 10 cm beyond the
+ *      +Y edge, tipping in a unique edge-rotation ray. Pins that the harness works.
  *
- *   2. INDETERMINATE REDUNDANT-SUPPORT FALLING (the real E2c stressor). One free block bearing
- *      on FOUR grounded point supports at plan (+/-10, +/-10), each with a k=8 friction pyramid,
- *      CoM at plan (5, 30) — 20 cm beyond the +Y support line, X-offset so no symmetry pins the
- *      reactions. FOUR normal reactions balance three equations (SigmaFz, Mx, My) => 1x
- *      statically INDETERMINATE, and the pyramid adds shear/facet freedom: the FORCE certificate
- *      is genuinely non-unique. Yet the block tips about the +Y support line in a single rigid
- *      rotation, so its KINEMATICS should be unique — the "force non-unique, kinematics unique"
- *      case the 2D result predicts stays stable.
+ *   2. Indeterminate redundant-support falling (the real stressor). One free block bearing on four
+ *      grounded point supports at plan (+/-10, +/-10), each a k=8 pyramid, CoM at plan (5, 30),
+ *      X-offset so no symmetry pins the reactions. Four normal reactions balance three equations, 1x
+ *      indeterminate, and the pyramid adds facet freedom, so the force certificate is non-unique, yet
+ *      the block tips about the +Y line in one rotation, so its kinematics should be unique.
  *
- * WHY FIXTURE 2 FALLS, BY HAND. Moments about the +Y support line (Y = 10, Z = 10): gravity at
- * the CoM (Y = 30) gives overturning moment W*(30-10) = 20W. The two +Y supports sit on the
- * axis (zero restoring lever); the two -Y supports could only restore in tension, which dry
- * no-tension forbids, so they lift off. All contacts share one height, so in-plane shears have
- * zero lever about the axis. Hence Mx = 20W > 0 is unbalanceable: the block overturns. WHY
- * REDUNDANT: any vertical load admits infinitely many splits across four supports (four
- * unknowns, three equations), and each pyramid adds shear unknowns — the Farkas certificate is
- * non-unique even though the tip is one rotation.
+ * Fixture 2 falls, by hand: moments about the +Y line give overturning W*(30-10) = 20W; the +Y
+ * supports sit on the axis and the -Y supports could only restore in tension (forbidden), so
+ * Mx = 20W is unbalanceable. Redundant because any vertical load admits infinitely many splits across
+ * four supports. The hand-derived mechanism is a rotation about the +Y line: the two -Y joints open,
+ * the two +Y joints on the axis do not, a non-trivial opening subset (2 of 4).
  *
- * THE HAND-DERIVED MECHANISM (fixture 2). A rigid rotation about the +Y support line: omega
- * along X, the CoM beyond the edge DESCENDS. The two -Y joints OPEN (lift off); the two +Y
- * joints sit on the rotation axis and do NOT open — a NON-TRIVIAL opening subset (2 of 4), the
- * case a wobbling canonicalisation would get wrong.
+ * Asserted (the mechanism, never displacement): base falls and names a non-empty moving set (guarding
+ * the vacuity); under permutation the verdict stays Falls, the moving-block and opening-joint sets
+ * mapped back are identical, and each block's (u, omega) 6-vector, normalised to a unit ray (a Farkas
+ * ray is defined only up to positive scale), matches within tolerance.
  *
- * WHAT WE ASSERT — THE MECHANISM, NEVER DISPLACEMENT: (base) the fixture FALLS and names a
- * NON-EMPTY moving set, guarding the set-equality against the two-empty-sets-compare-equal
- * vacuity; (perm) the verdict stays Falls, the moving-block and opening-joint sets mapped back
- * through the permutation inverse are IDENTICAL to the base, and each block's (u, omega)
- * 6-vector, normalised to a unit ray (a Farkas ray is defined only up to positive scale),
- * matches the base within a tight tolerance.
- *
- * UNITS are derived here (MassKg*980 already carries 1 N = 100 uu), NOT imported — mechanism
- * assertions are pure kinematics, so no unit boundary is crossed.
- *
- * NEEDS A TICKING WORLD: NO. Pure hand-built FOracleProblems fed to SolveRigidBlock.
- *
- * NAMED NAMESPACE, not anonymous: the unity build merges many files into one translation unit.
+ * Units derived here (MassKg*980 carries 1 N = 100 uu), not imported; mechanism assertions are pure
+ * kinematics, so no unit boundary is crossed. No ticking world (hand-built FOracleProblems). Named
+ * namespace, since the unity build merges files.
  */
 namespace MechanismPermutationThreeDSupport
 {
@@ -85,11 +62,9 @@ namespace MechanismPermutationThreeDSupport
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
 	/*
-	 * FIXTURE 1 — THE DETERMINATE E2a TIPPING BLOCK (unique edge-rotation ray). Mirrors
-	 * DestructionGame.Oracle.RigidBlock.ThreeD.MechanismTipsAboutABaseEdge: one free block on a
-	 * single 20x20 patch (half-extents 10,10, normal +Z, top Z = 10), CoM at plan (0, 20) — 10cm
-	 * beyond the patch's +Y edge — at Z = 30. Dry no-tension, generous crush/friction. It tips
-	 * about the +Y edge (line || X at Y = +10): a UNIQUE rotation about X.
+	 * Fixture 1: the determinate tipping block (unique edge-rotation ray). One free block on a 20x20
+	 * patch (top Z = 10), CoM at plan (0, 20), 10 cm beyond the +Y edge, at Z = 30. Dry no-tension,
+	 * generous crush/friction. It tips about the +Y edge in a unique rotation about X.
 	 */
 
 	FConnectionStrength GenerousDryBond()
@@ -153,11 +128,10 @@ namespace MechanismPermutationThreeDSupport
 	}
 
 	/*
-	 * FIXTURE 2 — THE REDUNDANT FOUR-SUPPORT FALLING BLOCK (multiple Farkas rays). One free
-	 * block on FOUR grounded point supports (half-extents 0 -> a single normal contact each,
-	 * plus the k=8 friction pyramid) at plan (+/-10, +/-10), tops at Z = 10. CoM at plan (5, 30),
-	 * Z = 30 — beyond the +Y support line and X-offset so nothing symmetric pins the reactions.
-	 * FINITE friction (mu = 0.6, small cohesion) so the pyramid facets are real, participating.
+	 * Fixture 2: the redundant four-support falling block (multiple Farkas rays). One free block on
+	 * four grounded point supports (each a normal contact plus a k=8 pyramid) at plan (+/-10, +/-10),
+	 * tops at Z = 10. CoM at plan (5, 30), Z = 30, X-offset so nothing symmetric pins the reactions.
+	 * Finite friction (mu = 0.6, small cohesion) so the pyramid facets participate.
 	 */
 
 	FConnectionStrength FiniteFrictionDryBearing()
@@ -212,7 +186,7 @@ namespace MechanismPermutationThreeDSupport
 		return P;
 	}
 
-	/* THE PERMUTATION HARNESS — re-derived from the 2D gate, plus copying Dim3D. */
+	/* The permutation harness, re-derived from the 2D gate, plus copying Dim3D. */
 
 	/** A seeded Fisher-Yates permutation returning OldIndex -> NewIndex (the 2D harness's convention). */
 	TArray<int32> SeededPermutation(FRandomStream& Rng, int32 N)
@@ -238,9 +212,9 @@ namespace MechanismPermutationThreeDSupport
 	}
 
 	/**
-	 * Re-order an FOracleProblem's blocks and joints, remapping every block reference. Starts
-	 * from a whole-struct copy so Dim (and every other scalar flag) carries over — the ONE thing
-	 * the 2D Permute helper never needed and would silently drop, reverting to Dim2D.
+	 * Re-order an FOracleProblem's blocks and joints, remapping every block reference. Starts from a
+	 * whole-struct copy so Dim (and every scalar flag) carries over, the one thing the 2D Permute
+	 * helper never needed and would silently drop, reverting to Dim2D.
 	 */
 	FOracleProblem Permute(const FOracleProblem& In, const TArray<int32>& BlockPerm, const TArray<int32>& JointPerm)
 	{
@@ -268,7 +242,7 @@ namespace MechanismPermutationThreeDSupport
 		return Out;
 	}
 
-	/* MECHANISM INSPECTION — the named sets and the scale-invariant velocity fingerprint. */
+	/* Mechanism inspection: the named sets and the scale-invariant velocity fingerprint. */
 
 	TSet<int32> MovingBlocks(const FOracleMechanism& M)
 	{
@@ -319,9 +293,9 @@ namespace MechanismPermutationThreeDSupport
 
 	/**
 	 * The mechanism's L-infinity scale: the largest absolute component over all blocks' 6-vectors.
-	 * Dividing by it turns a Farkas ray (unique only up to POSITIVE scale) into a comparable unit
-	 * ray, so a genuinely-invariant DIRECTION reads identical even if the two solves scaled the ray
-	 * differently. Returns 0 for an empty/zero mechanism.
+	 * Dividing by it turns a Farkas ray (unique only up to positive scale) into a comparable unit ray,
+	 * so an invariant direction reads identical even if the solves scaled it differently. Returns 0
+	 * for an empty mechanism.
 	 */
 	double MechanismScale(const FOracleMechanism& M)
 	{
@@ -340,23 +314,20 @@ namespace MechanismPermutationThreeDSupport
 }
 
 /*
- * THE 3D PERMUTATION-DETERMINISM GATE — E2c, THE DECISION POINT ON THE TOP 3D RISK.
+ * The 3D permutation-determinism gate (E2c). For each fixture and several seeded block+joint
+ * permutations, asserts the extracted mechanism is permutation-invariant: the moving-block set, the
+ * opening-joint set, and every block's unit (u,omega) 6-vector unchanged once the permutation is
+ * inverted. The base is guarded non-empty so the set-equality isn't vacuously green.
  *
- * For each fixture and several seeded block+joint permutations, asserts the extracted mechanism
- * is permutation-invariant: the moving-block set, the opening-joint set, and every block's unit
- * (u,omega) 6-vector are unchanged once the permutation is inverted. The base is guarded
- * non-empty so the set-equality is not vacuously green.
+ * Outcome read from the run:
+ *   - Both green => the 3D block-kinematics mechanism is permutation-stable; E2 complete, E2b not
+ *     needed. Bite: mutate ExtractMechanism to derive the opening-joint set from the raw plastic
+ *     multipliers (the non-unique dual) instead of the block kinematics, and the redundant fixture's
+ *     opening set tracks column order and this goes red.
+ *   - Redundant red => the 3D non-determinism the design flagged is real; characterise the drift and
+ *     hand to E2b, do not fix it here.
  *
- * OUTCOME READ FROM THE RUN:
- *   - BOTH GREEN => the 3D block-kinematics mechanism is permutation-stable; E2 is complete; E2b
- *     canonicalisation is not needed. BITE: mutate ExtractMechanism to derive the opening-joint
- *     set from the raw plastic MULTIPLIERS (the non-unique strength-row dual) instead of the
- *     block kinematics, or name the moving set off a pivot-order-dependent quantity — the
- *     redundant fixture's opening set then tracks column order and this test goes red.
- *   - REDUNDANT RED => the 3D non-determinism the design flagged is real; characterise the drift
- *     and hand to E2b. Do NOT fix it here.
- *
- * NEEDS A TICKING WORLD: NO.
+ * No ticking world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FMechanismPermutationThreeDTest,
@@ -416,7 +387,7 @@ bool FMechanismPermutationThreeDTest::RunTest(const FString& Parameters)
 			*OpeningList, BaseOpening.Num(), BaseR.BlandDegenerateEntries, BaseR.SimplexIterations,
 			Base.Blocks.Num(), Base.Joints.Num(), BaseScale));
 
-		/* GUARD AGAINST VACUITY: two empty sets compare equal. The base MUST name something. */
+		/* Guard against vacuity: two empty sets compare equal, so the base must name something. */
 		TestTrue(*FString::Printf(TEXT("%s [GUARD]: the base names a NON-EMPTY moving set"), *Fixture.Label),
 			BaseMoving.Num() >= 1);
 		TestTrue(*FString::Printf(TEXT("%s [GUARD]: the base names a NON-EMPTY opening set"), *Fixture.Label),

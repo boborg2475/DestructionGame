@@ -12,10 +12,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, not anonymous, and named for what it holds. An anonymous namespace is private
- * to a TRANSLATION UNIT rather than to a file, and a unity build merges many files into one — at
- * which point two anonymous namespaces in the blob are the SAME namespace and identically-named
- * helpers in files that never refer to each other are a hard compile error.
+ * Named, not anonymous. An anonymous namespace is private to a translation unit, not a file,
+ * and a unity build merges files into one — at which point two anonymous namespaces are the
+ * same, and identically-named helpers in unrelated files are a hard compile error.
  */
 namespace StructureThrustTestSupport
 {
@@ -24,21 +23,16 @@ namespace StructureThrustTestSupport
 	using namespace StructureArchingTestSupport;
 
 	/*
-	 * THE WALL, THE 0.866 CONSTANT, THE H/V ORACLE AND THE TWO SEAT-COUNTING HELPERS ALL LIVE IN
-	 * ArchingWallTestSupport.h, because slice 4's cover test needs exactly the same 30 x 40 flush
-	 * wall and a second copy of a wall definition is two fixtures that drift.
+	 * The wall, the 0.866 constant, the H/V oracle and the two seat-counting helpers live in
+	 * ArchingWallTestSupport.h, since slice 4's cover test needs the same 30 x 40 flush wall and a
+	 * second copy would be two fixtures that drift.
 	 */
 
 	/**
-	 * THE OPENING IS ONE COURSE TALL, AND THAT IS A DELIBERATE CHOICE ABOUT WHAT ELSE IS IN SHOT.
-	 *
-	 * A multi-course opening has a REVEAL — a jamb brick one course below the spanning course,
-	 * keeping one patch on the jamb and overhanging 5.625 cm into the opening where its neighbour
-	 * was cut away. There is no head joint on its eccentric side, so the arch is correctly refused,
-	 * and it peels as a genuine cantilever taking the springing's seat with it. CURRENT_STATE
-	 * records that as what slice 2's closed load leak now lands on in acceptance cases 7, 9 and 11;
-	 * it is the same shape as the free-end wedge and it belongs to slice 5. A one-course cut has no
-	 * reveal at all, so nothing in this file is measuring it.
+	 * The opening is one course tall, deliberately. A multi-course opening has a reveal — a jamb
+	 * brick one course below the spanning course, overhanging 5.625 cm into the opening with no
+	 * head joint on its eccentric side, so the arch is refused and it peels as a genuine cantilever
+	 * (CURRENT_STATE; slice 5). A one-course cut has no reveal, so nothing here measures it.
 	 */
 	constexpr int32 CutCourse = 1;
 
@@ -46,12 +40,10 @@ namespace StructureThrustTestSupport
 	constexpr int32 SpannedCourse = CutCourse + 1;
 
 	/**
-	 * HOW MUCH MASONRY STANDS OVER THE OPENING, cm — courses 2 through 39, one pitch each.
-	 *
-	 * This is the quantity that caps the arching depth, and the reason the opening is cut at
-	 * course 1: 285 cm of cover is the deepest this wall has, so `d_e` is limited by the 0.866
-	 * angle on a narrow opening and by the cover on a wide one, and the two cases below sit one
-	 * either side of that crossover.
+	 * How much masonry stands over the opening, cm — courses 2 through 39, one pitch each. This
+	 * caps the arching depth, and is why the opening is cut at course 1: 285 cm is the deepest
+	 * cover this wall has, so d_e is angle-limited on a narrow opening and cover-limited on a wide
+	 * one, and the two cases below sit either side of that crossover.
 	 */
 	constexpr double CoverAboveTheCutCm = CoverAboveCutCm(ScenarioWallCourses, CutCourse);
 
@@ -73,7 +65,7 @@ namespace StructureThrustTestSupport
 	}
 
 	/*
-	 * THE THREE-CELL FIXTURE SLICE 2 LANDED, REBUILT HERE so the head joint it newly loads can be
+	 * The three-cell fixture slice 2 landed, rebuilt here so the head joint it newly loads can be
 	 * measured against the figure CURRENT_STATE records by hand. Same 7 x 30 wall, same cut.
 	 */
 	constexpr int32 SpannedHoleFirstCutBrickIndex = 1;
@@ -81,91 +73,30 @@ namespace StructureThrustTestSupport
 }
 
 /**
- * AN ARCH PUSHES SIDEWAYS, THAT THRUST IS REAL, AND THE SPRINGING HAS TO CARRY IT IN SHEAR ON ITS
- * OWN BED JOINT — SO AN OPENING TOO WIDE FOR ITS ABUTMENTS TO RESIST COMES DOWN.
+ * An arch pushes sideways, that thrust is real, and the springing carries it in shear on its
+ * own bed joint — so an opening too wide for its abutments comes down. Before this slice the
+ * solver spanned any width with no check the abutment can take the horizontal reaction, the
+ * indestructible failure ARCHING_DESIGN warns of, invisible because every bed joint carried a
+ * purely vertical force.
  *
- * WHY THIS SLICE IS URGENT RATHER THAN NEXT. After slice 2 and before slice 3 the solver spans an
- * opening of ANY width with no check whatever that the abutment can take the horizontal reaction.
- * That is the indestructible failure ARCHING_DESIGN warns about, it is worse than the behaviour
- * this work started from, and nothing in the suite can currently see it: every bed joint in the
- * model carries a purely vertical force, so the shear axis of a springing reads exactly zero
- * however wide the hole is.
+ * The physics (ARCHING_DESIGN.md): d_e = min(cover, 0.866*L); r = d_e/3; W is the load the
+ * solver accumulated (not a triangle); H = W*L/(8r), V = W/2 per abutment. The thrust is then
+ * shear on the abutment's bed joint against 0.2 + 0.6*sigma_n, truncated at the ceiling — no
+ * new axis, strength or profile data.
  *
- * THE PHYSICS, STRAIGHT FROM ARCHING_DESIGN.md:
+ * Asserted: the thrust exists (each springing's bed joint carries a non-zero horizontal force,
+ * the red claim); sigma H = 0 across the arch (trap 2, equal magnitudes and opposite signs,
+ * vacuous while both are zero so the non-zero row comes first); H/V = 3L/(4 d_e) at each
+ * springing (W cancels, and on the ten-cell case the angle governs d_e so L cancels too, giving
+ * the exact 3/(4*0.866) = 0.86605); the shear axis governs, asserted before any number; and dry
+ * stone never arches at any span (cohesion 0, so 0.866/0.7 = 1.237 at every width,
+ * load-independently, no per-material branch). The re-seat head joint is reported not asserted
+ * (no slice owns it).
  *
- *     d_e = min( cover above the span , 0.866 * L )       arching depth
- *     r   = d_e / 3                                       thrust line rise, kern-limited
- *     W   = the load the solver already accumulated       NOT a triangle
- *     H   = W * L / (8r)      V = W / 2                   per abutment
- *
- * and the horizontal thrust is then shear on the abutment's bed joint against `0.2 + 0.6*sigma_n`,
- * truncated at the profile's ceiling. NO NEW AXIS, NO NEW STRENGTH, NO NEW PROFILE DATA:
- * ClassifyForce already calls a horizontal force on a bed joint shear, and the Mohr-Coulomb
- * capacity that resists it is the one every joint in the model already has.
- *
- * WHAT IS ASSERTED, AND WHY EACH FORM WAS CHOSEN.
- *
- *   - THE THRUST EXISTS. Each springing's bed joint must carry a non-zero HORIZONTAL force. This
- *     is the red claim and everything else is downstream of it; today the vector is (0, 0, +/-F)
- *     exactly, so the whole file rests on this one row first.
- *
- *   - SIGMA H = 0 ACROSS THE ARCH, which is trap 2 and the one thing nothing else could catch.
- *     Every joint is evaluated independently, so applying +H at one springing and forgetting the
- *     other gives the structure a net horizontal force out of nowhere while every joint still
- *     reads plausibly. Asserted as two facts — equal magnitudes and opposite signs — rather than
- *     assumed. Note it is VACUOUSLY TRUE while both are zero, which is why the non-zero row above
- *     comes first and is what makes this one mean anything.
- *
- *   - H/V = 3L/(4 d_e) AT EACH SPRINGING. W cancels out of that ratio, so it is a statement about
- *     the geometry of the thrust line and nothing else — no wall weight, no load distribution, no
- *     definition of which columns count. On the TEN-CELL case it is tighter still: there the
- *     0.866 angle governs `d_e` rather than the cover, `L` cancels as well, and the ratio is
- *     3/(4*0.866) = 0.86605 whatever the span and whatever the cover-walk of slice 4 eventually
- *     measures. That is the anchor of this file.
- *
- *   - THE SHEAR AXIS GOVERNS, ASSERTED BEFORE ANY NUMBER IS CLAIMED. ComputeUtilisation returns
- *     the worst of three, so a fixture aimed at the thrust would silently measure compression if
- *     compression happened to be higher — and on an arched springing the compression axis reads
- *     2|sigma_n|/f_c, which is a perfectly plausible small number sitting right next to the one
- *     being asserted. Both are printed and the comparison is a row of its own.
- *
- *   - THE ORDERING CHANGED AT THE 2026-08-14 MEAN RE-ANCHOR FLIP: BOTH WIDTHS NOW STAND. Slidingat
- *     the springing still governs and compression is still a kilometre and a half away, but the
- *     capacity moved (c 0.20 -> 0.90, mu 0.6 -> 0.75) and at mean strengths this wall affords
- *     the thrust at any width that fits it — the algebra at the case table shows a ~33-cell
- *     opening would be needed against a 30-cell wall. Both rows now pin under-capacity readings
- *     and the re-derived design cross-checks (0.274 and 0.606, re-derived through the design's
- *     own implied seat stress); the too-wide-to-arch discriminator is OWED A REPLACEMENT
- *     FIXTURE (thin cover high in a tall wall — see CURRENT_STATE), measured in the green
- *     phase, never tuned.
- *
- *   - DRY STONE MUST NEVER ARCH, AT ANY SPAN. `ShearCohesionMPa` is exactly 0.0 and friction is
- *     0.7, against a thrust ratio that cannot fall below 0.866 — so the springing reads
- *     0.866/0.7 = 1.237 of capacity at every width, load-independently, and no dry-stone opening
- *     can ever stand. That is right: you cannot span a hole in a dry-stone wall with a flat arch,
- *     you need a curved ring or a lintel. It is the strongest row in this file because it needs
- *     NO new field and NO per-material branch to be correct — it falls straight out of the
- *     existing profile data — so an implementation that hard-coded mortar's numbers fails it.
- *
- *   - AND THE RE-SEAT HEAD JOINT, WHICH IS THE ONLY JOINT SLICE 2 NEWLY LOADED AND WHICH NOTHING
- *     ASSERTS. CURRENT_STATE records it by hand at "about 0.56" of shear on the three-cell
- *     fixture and says out loud that no test reads it. Slice 3's thrust arrives at exactly that
- *     joint, so an unasserted joint that two slices both load is where a factor of two hides.
- *     What is pinned is the CONSERVATION statement — the shear it carries is exactly the hanger's
- *     own column, measured off the intact wall — plus that it is still intact and still
- *     self-consistent with the force it reports. Deliberately NOT the 0.56 literal: if the thrust
- *     is carried through the arch ring the same joint gains normal compression and reads about
- *     0.35, which is a legitimate implementation and not a regression, so the row is written to
- *     survive it while still failing if the load through it moves.
- *
- * NEVER A DISPLACEMENT, ANYWHERE. Two pieces can sever and stay resting exactly where they were,
- * so how far anything moved would say nothing. The mechanism claims are utilisation ratios on
- * named joints; the outcome claim is a count of joints that FAILED UNDER LOAD and of pieces left
- * with no path to the ground.
- *
- * NEEDS A TICKING WORLD: NO. FStructure is plain arithmetic over a graph and Layout is plain
- * arithmetic over boxes; nothing here needs an actor, a tick or a renderer. Slices 1 and 2 needed
- * none either.
+ * At the 2026-08-14 mean re-anchor both widths now stand (capacity moved c 0.20->0.90, mu
+ * 0.6->0.75); the too-wide discriminator is owed a replacement fixture (CURRENT_STATE). Never a
+ * displacement anywhere; outcome is a count of joints failed under load and pieces with no path
+ * to ground. No ticking world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureThrustTest,
@@ -179,9 +110,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 	using namespace StaircaseWallTestSupport;
 
 	/*
-	 * THE EXPECTED NUMBERS ARE RATIOS OF PUBLISHED STRENGTHS, so they mean what they say only
-	 * while the profile still carries the figures they were derived against. Asserted rather than
-	 * imported: a test that read the profile would agree with a wrong profile.
+	 * The expected numbers are ratios of published strengths, so they mean what they say only while
+	 * the profile still carries the figures they were derived against. Asserted, not imported: a
+	 * test that read the profile would agree with a wrong profile.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against the mean f_v0 = 0.9 MPa (re-anchor 2026-08-13; Gooch et al. 2023/2025), the profile carries %g"),
@@ -226,18 +157,14 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 		ScenarioWallBricksPerCourse, ScenarioWallCourses, CutCourse, CoverAboveTheCutCm));
 
 	/*
-	 * ===================================================================================
-	 * PART 1 — TWO WIDTHS, AND THE THRUST IS WHAT THE SPRINGINGS MUST AFFORD.
-	 * (Both stand at mean strengths; the characteristic basis had twenty cells falling.)
-	 * ===================================================================================
+	 * PART 1 — two widths, and the thrust is what the springings must afford. Both stand at mean
+	 * strengths; the characteristic basis had twenty cells falling.
 	 */
 
 	/**
-	 * One opening, and everything about it this file has an opinion on.
-	 *
-	 * BOTH ARE CENTRED ON x = 315, one cell left of the wall's own centre, so the two differ in
-	 * WIDTH and in nothing else: same wall, same course, same cover, same distance from either
-	 * end. A comparison between them is therefore a comparison of span.
+	 * One opening, and everything this file has an opinion on. Both are centred on x = 315, one
+	 * cell left of the wall's centre, so the two differ in width and nothing else — a comparison
+	 * between them is a comparison of span.
 	 */
 	struct FThrustCase
 	{
@@ -256,45 +183,36 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 		bool bMustComeDown;
 
 		/**
-		 * Whether the COVER (rather than the 0.866 angle) governs d_e here. Decides the H/V
-		 * tolerance: the angle-governed ratio is the exact constant 3/(4 x 0.866) and gets 2%;
-		 * the cover-governed one moves with how span and cover are measured and gets 12%.
-		 * Used to ride on bMustComeDown, which stopped being the same question at the mean
-		 * re-anchor: H/V is geometry and does not move when strengths do.
+		 * Whether the cover (rather than the 0.866 angle) governs d_e here. Decides the H/V tolerance:
+		 * the angle-governed ratio is the exact 3/(4 x 0.866) and gets 2%; the cover-governed one moves
+		 * with how span and cover are measured and gets 12%. H/V is geometry and doesn't move when
+		 * strengths do.
 		 */
 		bool bCoverGoverns;
 	};
 
 	/*
-	 * MEAN RE-ANCHOR (2026-08-13). The springing capacity is c + mu sigma, and both moved
-	 * (0.20 -> 0.90, 0.6 -> 0.75), so the design cross-checks are re-derived through the
-	 * design's own implied seat stress: 0.763 at ten cells implies sigma = 0.3738 MPa
-	 * (0.86605 sigma / (0.2 + 0.6 sigma) = 0.763), which at the new capacity reads
-	 * 0.86605 x 0.3738 / (0.9 + 0.75 x 0.3738) = 0.274; 1.365 at twenty implies
-	 * sigma = 0.7475, which reads 1.18424 x 0.7475 / (0.9 + 0.5606) = 0.606.
-	 *
-	 * THE TWENTY-CELL COLLAPSE ARM IS THEREFORE GONE: at mean strengths this wall affords the
-	 * thrust at every width that fits it (the same algebra needs H/V >= 1.95, i.e. a ~33-cell
-	 * opening against a 30-cell wall). The file loses its "too wide for its abutments"
-	 * discriminator, and the REPLACEMENT IS OWED, specified in CURRENT_STATE: a wide opening
-	 * under thin cover high in a tall wall, where H/V = 3L/(4 cover) grows without the seat
-	 * stress growing with it — to be laid and MEASURED in the green phase, never tuned.
+	 * Mean re-anchor (2026-08-13). The springing capacity is c + mu sigma, and both moved (0.20 ->
+	 * 0.90, 0.6 -> 0.75), so the design cross-checks are re-derived through the design's own implied
+	 * seat stress: 0.763 at ten cells implies sigma = 0.3738, reading 0.274 at the new capacity;
+	 * 1.365 at twenty implies sigma = 0.7475, reading 0.606. The twenty-cell collapse arm is
+	 * therefore gone: at mean strengths this wall affords the thrust at every width that fits it (a
+	 * ~33-cell opening against a 30-cell wall would be needed). The replacement is owed
+	 * (CURRENT_STATE): a wide opening under thin cover high in a tall wall, measured in the green
+	 * phase, never tuned.
 	 */
 	const TArray<FThrustCase> Cases = {
 		/*
-		 * TEN CELLS, 225 cm. 0.866 * L is 194.85, which is less than the 285 cm of cover, so the
-		 * ANGLE governs the arching depth here and the cover cap never binds. That matters for
-		 * more than tidiness: it means this row reads the same whether or not the bounded upward
-		 * cover walk of slice 4 exists yet, so the tight ratio below is a fair thing to ask of
-		 * slice 3 on its own.
+		 * Ten cells, 225 cm. 0.866*L is 194.85, less than the 285 cm cover, so the angle governs the
+		 * depth and the cover cap never binds. So this row reads the same whether or not slice 4's cover
+		 * walk exists yet, and the tight ratio below is a fair thing to ask of slice 3 alone.
 		 */
 		{ TEXT("a 10-cell opening"), 10, 9, 0.274, false, false },
 
 		/*
-		 * TWENTY CELLS, 450 cm. 0.866 * L is 389.7, so here the COVER governs at 285 and the
-		 * thrust ratio climbs to 1.184. On the retired characteristic basis this was the
-		 * over-capacity row (design 1.365, measured ~1.29); at mean strengths it stands at
-		 * ~0.61 and what it pins is the cover-governed H/V and the springing reading.
+		 * Twenty cells, 450 cm. 0.866*L is 389.7, so the cover governs at 285 and the thrust ratio
+		 * climbs to 1.184. On the retired characteristic basis this was the over-capacity row (design
+		 * 1.365); at mean strengths it stands at ~0.61 and pins the cover-governed H/V and springing.
 		 */
 		{ TEXT("a 20-cell opening"), 20, 4, 0.606, false, true },
 	};
@@ -339,11 +257,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 		Cut.Structure.SolveLoads();
 
 		/*
-		 * THE SPAN, AND THE TWO REASONABLE READINGS OF IT. The CLEAR opening is the width of the
-		 * masonry that was taken out; measured seat centroid to seat centroid it is 11.25 cm
-		 * wider, because each springing keeps half a cell of bearing. The tolerances below are
-		 * loose enough to cover the difference and are documented as such — and on the ten-cell
-		 * case it does not arise at all, since L cancels out of the ratio there.
+		 * The span, and its two readings. The clear opening is the width taken out; seat centroid to
+		 * seat centroid it's 11.25 cm wider, since each springing keeps half a cell of bearing. The
+		 * tolerances below cover the difference, and on the ten-cell case it doesn't arise (L cancels).
 		 */
 		const double ClearSpanCm = Case.CellCount * BrickPitchCm;
 		const double SeatToSeatSpanCm = ClearSpanCm + BondOffsetCm;
@@ -363,8 +279,7 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 			*Bits(3.0 / (4.0 * ArchingDepthPerSpan))));
 
 		/**
-		 * One end of the arch: the half-seated brick the thrust is delivered to the ground
-		 * through.
+		 * One end of the arch: the half-seated brick the thrust is delivered to the ground through.
 		 */
 		struct FSpringingCase
 		{
@@ -439,10 +354,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 			const FConnection& Bed = Cut.Structure.GetConnection(BedJoint);
 
 			/*
-			 * THE SPRINGING IS THE SAME HALF SEAT SLICES 1 AND 2 ALREADY ARCH — 10.25 x 10.25,
-			 * loaded 5.625 cm off its own centroid, against a kern that reaches 1.7083 cm.
-			 * Arbitrated against the producer rather than assumed, so that the number and the
-			 * reason for it fail together.
+			 * The springing is the same half seat slices 1 and 2 arch — 10.25 x 10.25, loaded 5.625 cm off
+			 * its centroid, against a kern reaching 1.7083 cm. Arbitrated against the producer, so the number
+			 * and its reason fail together.
 			 */
 			TestTrue(
 				FString::Printf(
@@ -467,11 +381,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 					EccentricityCm, Springing.EccentricSign * HalfSeatEccentricityCm, 1.0e-9));
 
 			/*
-			 * AND THE OPENING IS GENUINELY SPANNED, WHICH IS WHAT MAKES THIS AN ARCH AT ALL. The
-			 * bricks in the middle of the hole have no seat whatever and are re-seated onto the
-			 * group's abutments by slice 2; if any of them were Stranded or Falling instead, this
-			 * fixture would be measuring a collapse rather than a thrust and every number below
-			 * would be about a different structure.
+			 * And the opening is genuinely spanned, which makes this an arch at all. The middle bricks have
+			 * no seat and are re-seated onto the group's abutments by slice 2; if any were Stranded or
+			 * Falling this would be measuring a collapse, not a thrust.
 			 */
 			const int32 Neighbour = StaircasePieceAt(
 				Cut.Boxes,
@@ -491,18 +403,12 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 					&& Cut.Structure.GetPieceSupport(Neighbour) == EPieceSupport::Supported);
 
 			/*
-			 * AND WHAT THE RE-SEAT HEAD JOINT BESIDE IT IS CARRYING — REPORTED, DELIBERATELY NOT
-			 * ASSERTED, BECAUSE NEITHER THIS SLICE NOR ANY PLANNED ONE OWNS IT.
-			 *
-			 * Slice 2 routes the whole group's load outward through these head joints, so the one
-			 * next to a springing carries roughly half the group: about (cells-1)/2 columns, in
-			 * PURE shear against 0.2 MPa of cohesion with no normal force to buy friction with. On
-			 * the three-cell fixture that is one column and 0.56; on a ten-cell opening it is four
-			 * and a half columns, and the joint is far past capacity long before the springing
-			 * this file is measuring is. That is why the ten-cell wall does not in fact stand
-			 * today, and it is a slice 2 consequence rather than a missing thrust — printed here
-			 * so whoever reads this file's red output is not left thinking the thrust check is
-			 * what decided it.
+			 * What the re-seat head joint beside it carries — reported, not asserted, since no slice owns
+			 * it. Slice 2 routes the group's load outward through these head joints, so the one by a
+			 * springing carries about half the group (~(cells-1)/2 columns) in pure shear against 0.2 MPa
+			 * cohesion with no normal force. On three cells that's one column and 0.56; on ten cells it's
+			 * far past capacity long before the springing is — a slice 2 consequence, not a missing thrust,
+			 * printed so red output isn't misread as the thrust check deciding it.
 			 */
 			if (Neighbour != INDEX_NONE)
 			{
@@ -534,14 +440,10 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 				GeneralPurposeMortar);
 
 			/*
-			 * THE HORIZONTAL COMPONENT IS SIGNED AS THE JOINT STORES IT, AND THAT IS DELIBERATE.
-			 * ConnectionLoad's convention is that the force belonging to a joint is the force
-			 * acting on PieceB; both springings name the brick below first and the springing brick
-			 * second, so the two entries are directly comparable and an arch that thrusts outward
-			 * gives them opposite signs. Which sign belongs to which end is under-determined by
-			 * anything the model checks, so it is PRINTED rather than asserted; what is asserted
-			 * is that they are equal and opposite, which is the claim ARCHING_DESIGN's trap 2
-			 * makes.
+			 * The horizontal component is signed as the joint stores it. Per ConnectionLoad the force is
+			 * the one acting on PieceB; both springings name the brick below first, so the two entries are
+			 * comparable and an outward-thrusting arch gives them opposite signs. Which sign is which end is
+			 * under-determined, so it's printed; what's asserted is equal and opposite (trap 2).
 			 */
 			HorizontalUu[End] = ForceUu.X;
 			VerticalUu[End] = FMath::Abs(ForceUu.Z);
@@ -570,9 +472,8 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 				Case.DesignUtilisation));
 
 			/*
-			 * THE SEAT IS IN COMPRESSION, which is the gate the whole thrust line depends on: no
-			 * compression, no thrust line, no arch. On a bed joint under gravity there had better
-			 * be some or the fixture is not describing a wall.
+			 * The seat is in compression, the gate the thrust line depends on: no compression, no thrust
+			 * line, no arch. On a bed joint under gravity there had better be some.
 			 */
 			TestTrue(
 				FString::Printf(TEXT("%s: FIXTURE: the seat must be in COMPRESSION, sigma_n is %s MPa"),
@@ -580,10 +481,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 				Published.NormalStressMPa < 0.0);
 
 			/*
-			 * AND THE MOHR-COULOMB CEILING IS NOT WHAT IS DECIDING. ARCHING_DESIGN says the 1.3 MPa
-			 * truncation is never reached in this regime — capacity is about 0.55 and 0.81 MPa on
-			 * the two cases — so if it ever were, the span limit would be governed by the cap
-			 * rather than by friction and both figures below would mean something else.
+			 * And the Mohr-Coulomb ceiling isn't deciding. ARCHING_DESIGN says the 1.3 MPa truncation is
+			 * never reached here (capacity ~0.55 and 0.81 MPa on the two cases); if it were, the span limit
+			 * would be governed by the cap, not friction, and both figures below would mean something else.
 			 */
 			const double UntruncatedCapacityMPa = GeneralPurposeMortar.ShearCohesionMPa
 				+ GeneralPurposeMortar.FrictionCoefficient * FMath::Abs(Published.NormalStressMPa);
@@ -605,17 +505,11 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 				FMath::Abs(ForceUu.X) > 0.0);
 
 			/*
-			 * H/V = 3L/(4 d_e), AND W CANCELS OUT OF IT. See ThrustPerReaction: the ratio is a
-			 * statement about the geometry of the thrust line alone, so it does not depend on what
-			 * the wall above weighs or on how the solver divided it.
-			 *
-			 * THE TOLERANCE IS 2% ON THE TEN-CELL CASE AND 12% ON THE TWENTY. On ten cells the
-			 * angle governs the depth, so L cancels as well and the answer is 3/(4*0.866) whatever
-			 * anyone measures — 2% is slack for 0.866 against sqrt(3)/2 and for nothing else. On
-			 * twenty cells the cover governs, so the answer moves with how the span and the cover
-			 * are measured (clear opening or seat to seat, 38 courses of cover or 39) and 12%
-			 * spans every reasonable reading of both. It does NOT span the 0.866 a deferred cover
-			 * cap would give, which is stated in the message rather than tolerated.
+			 * H/V = 3L/(4 d_e), and W cancels out (see ThrustPerReaction): a statement about the thrust
+			 * line's geometry alone, independent of the wall's weight or the split. Tolerance 2% on ten
+			 * cells (angle governs, L cancels, so it's 3/(4*0.866) whatever anyone measures) and 12% on
+			 * twenty (cover governs, so it moves with how span and cover are measured). 12% does not span
+			 * the 0.866 a deferred cover cap would give, which is stated in the message, not tolerated.
 			 */
 			const double ThrustRatioTolerance = Case.bCoverGoverns ? 0.12 : 0.02;
 
@@ -633,10 +527,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 					<= ThrustRatioTolerance * ExpectedThrustPerReaction);
 
 			/*
-			 * THE AXIS, BEFORE ANY CLAIM ABOUT THE NUMBER. On an arched springing the compression
-			 * axis reads 2|sigma_n|/f_c — a plausible small number sitting right beside the one
-			 * being asserted — so a fixture aimed at the thrust would measure compression instead
-			 * the moment compression happened to be higher, and would do it silently.
+			 * The axis, before any claim about the number. On an arched springing the compression axis reads
+			 * 2|sigma_n|/f_c — a plausible small number beside the one asserted — so a fixture aimed at the
+			 * thrust would silently measure compression the moment it happened to be higher.
 			 */
 			TestTrue(
 				FString::Printf(
@@ -648,10 +541,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 					&& Published.ShearUtilisation > Published.TensionUtilisation);
 
 			/*
-			 * AND THE JOINT'S OWN READING AGREES WITH MOHR-COULOMB ON THE FORCE AND MOMENT IT
-			 * REPORTS. This is what pins that the thrust is being evaluated AS SHEAR ON THE BED
-			 * JOINT against `c + mu*sigma_n` rather than through some second, private rule — the
-			 * whole design claim is that no new axis and no new strength are needed.
+			 * And the joint's own reading agrees with Mohr-Coulomb on the force and moment it reports. This
+			 * pins that the thrust is evaluated as shear on the bed joint against c + mu*sigma_n, not through
+			 * a second private rule — the design claim is that no new axis or strength is needed.
 			 */
 			TestTrue(
 				FString::Printf(
@@ -681,12 +573,10 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 			}
 
 			/*
-			 * AND LOOSELY AGAINST THE DESIGN'S OWN NUMBER — a factor of two either way, which is
-			 * an order-of-magnitude cross-check and nothing more. ARCHING_DESIGN says its 356.3 cm
-			 * critical span is the least trustworthy figure in the document and asks for the
-			 * ordering to be pinned instead; a factor of two still catches a missing 100x, a
-			 * missing division by three in the rise, or a thrust taken as W rather than as
-			 * W*L/(8r).
+			 * And loosely against the design's own number — a factor of two either way, an order-of-magnitude
+			 * cross-check. ARCHING_DESIGN calls its 356.3 cm critical span its least trustworthy figure and
+			 * asks for the ordering instead; a factor of two still catches a missing 100x, a missing
+			 * division by three in the rise, or a thrust taken as W rather than W*L/(8r).
 			 */
 			TestTrue(
 				FString::Printf(
@@ -703,14 +593,11 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * TRAP 2 — SIGMA H = 0 ACROSS THE ARCH, AND NOTHING IN THE MODEL WOULD NOTICE IF IT WERE
-		 * NOT. Every joint is evaluated independently, so applying +H at one springing and
-		 * forgetting the other gives the structure a net horizontal force out of nowhere while
-		 * every joint still reads perfectly plausibly. Asserted as two separate facts: the
-		 * magnitudes match, and the directions oppose.
-		 *
-		 * IT IS VACUOUS WHILE BOTH ARE ZERO, which is precisely today's state — so the non-zero
-		 * row above is what makes this one mean anything, and they have to be read together.
+		 * Trap 2 — sigma H = 0 across the arch, and nothing in the model would notice if it weren't.
+		 * Every joint is evaluated independently, so applying +H at one springing and forgetting the
+		 * other gives a net horizontal force out of nowhere while every joint reads plausibly. Asserted
+		 * as two facts: equal magnitudes and opposing directions. Vacuous while both are zero (today's
+		 * state), so the non-zero row above is what makes this mean anything.
 		 */
 		const double HorizontalSumUu = HorizontalUu[0] + HorizontalUu[1];
 		const double LargerThrustUu = FMath::Max(
@@ -737,20 +624,12 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 			FMath::Abs(HorizontalSumUu) <= 1.0e-9 * FMath::Max(LargerThrustUu, 1.0));
 
 		/*
-		 * ===========================================================================
-		 * AND THE OUTCOME, WHERE A ROW CLAIMS ONE.
-		 * (No mortared row claims a collapse since the mean re-anchor — the arm is
-		 * kept for the owed replacement fixture.)
-		 * ===========================================================================
-		 *
-		 * A SINGLE SEVERED JOINT IS NOT A COLLAPSE, so the outcome claim is a count of pieces left
-		 * with no path to the ground — and specifically that the two springings are among the
-		 * joints that FAILED UNDER LOAD, which is the mechanism this slice adds rather than any
-		 * old way of the wall falling over.
-		 *
-		 * COUNTED BY BREAK PASS AND NOT BY HasGiven. GetBreakPass's contract spells the encoding
-		 * out: a joint that went WITH A REMOVED PIECE has HasGiven true and a pass of INDEX_NONE,
-		 * because it never snapped. The player's own click always takes joints with it.
+		 * And the outcome, where a row claims one. (No mortared row claims a collapse since the mean
+		 * re-anchor; the arm is kept for the owed replacement fixture.) A single severed joint isn't a
+		 * collapse, so the claim is a count of pieces left with no path to ground — and that the two
+		 * springings are among the joints that failed under load, the mechanism this slice adds. Counted
+		 * by break pass, not HasGiven: a joint that went with a removed piece has HasGiven true and a
+		 * pass of INDEX_NONE, since it never snapped.
 		 */
 		const int32 BreakingPasses = Cut.Structure.SolveAndBreak();
 
@@ -786,10 +665,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 		if (Case.bMustComeDown)
 		{
 			/*
-			 * THE MASONRY OVER THE OPENING IS WHAT MUST LOSE ITS PATH TO THE GROUND — at minimum
-			 * the CellCount + 1 bricks of the spanned course itself, which is the span the arch
-			 * was carrying. Stated as a floor rather than an exact count because how far up the
-			 * wall the loss travels is not something this slice claims.
+			 * The masonry over the opening must lose its path to ground — at minimum the CellCount + 1
+			 * bricks of the spanned course, the span the arch carried. A floor, not an exact count, since
+			 * how far up the loss travels isn't claimed here.
 			 */
 			TestTrue(
 				FString::Printf(
@@ -812,22 +690,14 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * ===================================================================================
-	 * PART 2 — THE RE-SEAT HEAD JOINT, WHICH TWO SLICES LOAD AND NOTHING ASSERTS.
-	 * ===================================================================================
-	 *
-	 * Slice 2 re-seats a piece with no bed patch onto the head joints that take it closer to an
-	 * abutment, and that head joint is the ONLY joint the slice newly loads. CURRENT_STATE records
-	 * what it carries by hand — "about 0.56" of shear on the three-cell fixture — and says out
-	 * loud that no test reads it. Slice 3's thrust arrives at exactly this joint.
-	 *
-	 * WHAT IS PINNED IS CONSERVATION, NOT THE 0.56. The hanger has one route to the ground, so the
-	 * shear through that head joint is the hanger's whole column — and the column is measured off
-	 * the INTACT wall, where nothing above the spanned course has changed. That claim is tight and
-	 * it is independent of any modelling choice. The utilisation is asserted only to be under
-	 * capacity and self-consistent, because if slice 3 carries the thrust along the arch ring the
-	 * same joint gains normal compression and reads about 0.35 instead — a legitimate
-	 * implementation, not a regression, and a row written against the literal would forbid it.
+	 * PART 2 — the re-seat head joint, which two slices load and nothing asserts. Slice 2 re-seats a
+	 * seatless piece onto the head joints that take it closer to an abutment, the only joint it newly
+	 * loads (CURRENT_STATE records "about 0.56" of shear on the three-cell fixture and that no test
+	 * reads it). Slice 3's thrust arrives at exactly this joint. What's pinned is conservation, not
+	 * the 0.56: the hanger has one route to ground, so the shear is its whole column, measured off
+	 * the intact wall. The utilisation is only asserted under capacity and self-consistent, since if
+	 * slice 3 carries the thrust along the ring the joint gains compression and reads ~0.35 — a
+	 * legitimate implementation a literal row would forbid.
 	 */
 	{
 		FBrickLayout Intact;
@@ -864,9 +734,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 				Cut.Structure.SolveLoads();
 
 				/*
-				 * A three-cell cut leaves four bricks over the hole: two SPRINGINGS at the edges
-				 * with one seat each, and two HANGERS in the middle with none. Each hanger is one
-				 * head joint from its nearer springing, and that joint is the subject.
+				 * A three-cell cut leaves four bricks over the hole: two springings at the edges with one seat
+				 * each, two hangers in the middle with none. Each hanger is one head joint from its nearer
+				 * springing, and that joint is the subject.
 				 */
 				const int32 Springing = StaircasePieceAt(
 					Cut.Boxes, ArchWallEvenBrickXCm(SpannedHoleFirstCutBrickIndex),
@@ -936,10 +806,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 						*Bits(Published.ShearCapacityMPa), *Bits(Utilisation)));
 
 					/*
-					 * CONSERVATION, AND IT IS THE TIGHT CLAIM. The hanger has exactly one route to
-					 * the ground, so everything standing on it leaves through this joint — and
-					 * nothing above the spanned course changed when the hole was cut, so that
-					 * column is the same number in both walls to the last bit.
+					 * Conservation, the tight claim. The hanger has exactly one route to ground, so everything on it
+					 * leaves through this joint — and nothing above the spanned course changed when the hole was
+					 * cut, so that column is the same number in both walls to the last bit.
 					 */
 					TestTrue(
 						FString::Printf(
@@ -950,11 +819,10 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 							<= 1.0e-9 * IntactColumnUu);
 
 					/*
-					 * A RE-SEATED PIECE IS STATICALLY INDETERMINATE by slice 2's own rule — the
-					 * group only routes when something seated stands on both sides, so the single
-					 * head joint left in its load path is the bookkeeping route for a vertical
-					 * share and not a claim that the brick hangs off it. Treated as determinate it
-					 * would carry its whole column across 11.25 cm and snap.
+					 * A re-seated piece is statically indeterminate by slice 2's rule: the group only routes when
+					 * something seated stands on both sides, so the single head joint left is the bookkeeping route
+					 * for a vertical share, not a claim the brick hangs off it. Treated as determinate it would carry
+					 * its whole column across 11.25 cm and snap.
 					 */
 					TestTrue(
 						FString::Printf(
@@ -984,38 +852,17 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * ===================================================================================
-	 * PART 3 — DRY STONE CANNOT ARCH, AT ANY SPAN, AND NO NEW DATA SAYS SO.
-	 * ===================================================================================
-	 *
-	 * `ShearCohesionMPa` is EXACTLY 0.0 and friction is 0.7, so a dry joint's whole shear capacity
-	 * is 0.7 * sigma_n — and the thrust ratio 3L/(4 d_e) cannot fall below 3/(4*0.866) = 0.866,
-	 * because d_e is capped at 0.866*L. The springing therefore reads
-	 *
-	 *     (0.866 * sigma_n) / (0.7 * sigma_n)  =  1.2372
-	 *
-	 * at EVERY span and under EVERY load, since sigma_n cancels. That is why two widths are cut
-	 * rather than one: if the answer moved with the load or the span, the cancellation is not
-	 * happening and the implementation has a term in it that should not be there.
-	 *
-	 * TWO CELLS AND FIVE, NOT ONE AND FIVE, AND THE ONE-CELL ROW WAS THE TEST'S MISTAKE RATHER
-	 * THAN THE MODEL'S. A one-cell opening leaves NO piece without a seat — the two bricks over it
-	 * each keep half a bed patch — so there is no group, slice 2 never spans anything, and slice 3
-	 * develops no thrust there at all. That is not an omission: it is exactly the topology
-	 * `Structure.AMissingBrickIsBridgedNotCantilevered` pins at shear EXACTLY zero, reading
-	 * 2|sigma_n|/f_c to 1e-12, and one brick out of a wall is slice 1's moment restraint rather
-	 * than an arch. Asking the same topology for 1.2372 in one wall and 0.0 in another would be
-	 * satisfiable only by branching on the material, which is the regression DESIGN.md §2 names by
-	 * name. TWO cells is the narrowest opening that leaves a seatless brick, so it is the
-	 * narrowest thing in this model that is an arch at all — and against five cells it still
-	 * demonstrates the cancellation, which is the whole reason for cutting two widths.
-	 *
-	 * IT IS THE STRONGEST ROW IN THIS FILE because it needs no new field and no per-material
-	 * branch to be right — it falls out of the existing profile data — so an implementation that
-	 * hard-coded mortar's 0.2 and 0.6 passes everything above and fails here.
-	 *
-	 * PHYSICALLY IT IS ALSO THE RIGHT ANSWER. You cannot span a hole in a dry-stone wall with a
-	 * flat arch; you need a curved ring or a lintel.
+	 * PART 3 — dry stone cannot arch, at any span, and no new data says so. Cohesion is exactly 0
+	 * and friction 0.7, so a dry joint's shear capacity is 0.7*sigma_n, and the thrust ratio
+	 * 3L/(4 d_e) can't fall below 3/(4*0.866) = 0.866 (d_e capped at 0.866*L). The springing reads
+	 * (0.866*sigma_n)/(0.7*sigma_n) = 1.2372 at every span and load, sigma_n cancelling. Two widths
+	 * are cut so that if the answer moved with load or span the cancellation isn't happening. Two
+	 * cells and five, not one and five: a one-cell opening leaves no seatless piece, so no group,
+	 * no thrust (that topology is Structure.AMissingBrickIsBridgedNotCantilevered at shear exactly
+	 * zero); asking the same topology for 1.2372 in one wall and 0.0 in another needs a material
+	 * branch, the regression DESIGN.md §2 names. It's the strongest row here: it needs no new
+	 * field, so an implementation that hard-coded mortar's numbers fails it. And physically right —
+	 * you can't span a dry-stone hole with a flat arch; you need a curved ring or a lintel.
 	 */
 	{
 		FRunningBondSpec Spec;
@@ -1024,17 +871,12 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 		Spec.DensityGramsPerCubicCm = ClayBrick.DensityGramsPerCubicCm;
 
 		/**
-		 * TWENTY COURSES, AND THE FIGURE IS 0.866 * 112.5 = 97.425 cm.
-		 *
-		 * The five-cell opening spans 112.5 cm, so the ANGLE wants 97.425 cm of arching depth, and
-		 * `d_e = min(cover, 0.866 * L)` only leaves the angle governing while the wall actually has
-		 * that much masonry over the cut. Twelve courses have 75 cm and would hand the cover the
-		 * decision the moment slice 4's upward walk lands — at which point this row would read
-		 * 3*112.5/(4*75)/0.7 = 1.6071 rather than 1.2372, and the failure would look like a
-		 * regression in the thrust rather than a fixture that was always too short.
-		 *
-		 * Cut at course 1, the cover is (20 - 1 - 1) * 7.5 = 135 cm, which clears 97.425 by 39%.
-		 * Fifteen courses would clear it by 0.075 cm and that is not a margin, it is a coincidence.
+		 * Twenty courses; the figure is 0.866*112.5 = 97.425 cm. The five-cell opening spans 112.5 cm,
+		 * so the angle wants 97.425 cm of depth, and d_e = min(cover, 0.866*L) leaves the angle governing
+		 * only while the wall has that much cover. Twelve courses (75 cm) would hand the cover the
+		 * decision when slice 4's walk lands, reading 3*112.5/(4*75)/0.7 = 1.6071 not 1.2372 — looking
+		 * like a thrust regression rather than a too-short fixture. Cut at course 1 the cover is 135 cm,
+		 * clearing 97.425 by 39%; fifteen courses would clear it by 0.075 cm, a coincidence not a margin.
 		 */
 		Spec.CoursesHigh = 20;
 		Spec.BricksPerCourse = 12;
@@ -1042,11 +884,9 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 		Spec.Strength = DryStone;
 
 		/**
-		 * THE UNIT'S DENSITY IS DELIBERATELY THE CLAY BRICK'S, and it does not matter, which is
-		 * the row's own claim: the answer is a ratio of two stresses that are both linear in the
-		 * load, so it is load-independent and therefore density-independent. Cutting two widths
-		 * changes the load by a factor of several and the assertion is that the reading does not
-		 * move.
+		 * The unit's density is the clay brick's, and it doesn't matter — the row's own claim: the answer
+		 * is a ratio of two stresses both linear in the load, so it's load- and density-independent.
+		 * Cutting two widths changes the load by several and the assertion is the reading doesn't move.
 		 */
 		struct FDryStoneCase
 		{
@@ -1057,22 +897,19 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 
 		const TArray<FDryStoneCase> DryStoneCases = {
 			/*
-			 * TWO CELLS IS THE NARROWEST ARCH THIS MODEL HAS. It leaves exactly one brick with no
-			 * seat whatever, which is the smallest group slice 2 can span, and both its abutments
-			 * are half-seated bricks two cells apart. One cell leaves no seatless brick at all and
-			 * is therefore not an arch — see the header above.
+			 * Two cells is the narrowest arch this model has: it leaves exactly one seatless brick, the
+			 * smallest group slice 2 can span, with half-seated abutments two cells apart. One cell leaves no
+			 * seatless brick and is not an arch (see the header).
 			 */
 			{ TEXT("dry stone, a TWO-cell opening"), 2, 5 },
 			{ TEXT("dry stone, a FIVE-cell opening"), 5, 3 },
 		};
 
 		/*
-		 * 0.866 / 0.7 = 1.237215440448697, and sigma_n has cancelled out of it.
-		 *
-		 * MEAN RE-ANCHOR INVARIANT (2026-08-13): dry stone's row does not move — c and
-		 * tension stay exact zeros, mu stays 0.7 — so this identity and everything the
-		 * dry-stone cases read must come back BIT-IDENTICAL when the mortar rows flip.
-		 * If a dry row moves at the flip, the flip touched a row it must not have.
+		 * 0.866/0.7 = 1.237215440448697, sigma_n cancelled. Mean re-anchor invariant (2026-08-13): dry
+		 * stone's row doesn't move (c and tension stay exact zeros, mu stays 0.7), so this identity and
+		 * every dry-stone reading must come back bit-identical when the mortar rows flip. If a dry row
+		 * moves at the flip, the flip touched a row it must not have.
 		 */
 		const double DryStoneSpringingUtilisation =
 			(3.0 / (4.0 * ArchingDepthPerSpan)) / DryStone.FrictionCoefficient;
@@ -1133,11 +970,10 @@ bool FStructureThrustTest::RunTest(const FString& Parameters)
 			}
 
 			/*
-			 * AND THE OPENING IS GENUINELY SPANNED, WHICH IS WHAT MAKES IT AN ARCH AT ALL — the
-			 * brick over the hole beside the springing must have NO seat and still be Supported.
-			 * This is the row that would have caught the one-cell case the header above describes:
-			 * a one-cell opening leaves nothing seatless, so no group forms, no thrust is
-			 * developed, and the springing quietly reads zero shear instead of 1.2372.
+			 * And the opening is genuinely spanned, which makes it an arch at all — the brick over the hole
+			 * beside the springing must have no seat and still be Supported. This would catch the one-cell
+			 * case: nothing seatless, so no group forms, no thrust develops, and the springing reads zero
+			 * shear instead of 1.2372.
 			 */
 			const int32 Neighbour = StaircasePieceAt(
 				Cut.Boxes, ArchWallEvenBrickXCm(Case.FirstCutBrickIndex) + BrickPitchCm,

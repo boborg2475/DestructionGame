@@ -12,44 +12,30 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The corbel builder in production lays exactly the structure every corbel reading was taken on.
+ * The corbel builder lays exactly the structure every corbel reading was taken on. Several tests
+ * (CorbelStepsBeforeTensionWins, AHundredStepCorbelMustComeDown, ACorbelReadsLinearlyInScale and
+ * others) reach DestructionCorbel::Build through Tests/CorbelCaseTestSupport.h with expected values
+ * worked to fifteen digits, so a builder that shifted one brick by an ulp, or offered MakeInterface
+ * one pair fewer, would move all of them at once and look like a solver regression. This file pins
+ * the producer: same pieces, boxes, masses, grounded flags, connection set in order, and root number.
  *
- * WHY THIS FILE EXISTS. `Core.Structure.CorbelStepsBeforeTensionWins`, `AHundredStepCorbelMustComeDown`,
- * `ACorbelReadsLinearlyInScale`, `ACorbelOrdersByItsProfileNumbers` and `ACorbelReadsItsOwnStepSize`
- * all reach `DestructionCorbel::Build` through `Tests/CorbelCaseTestSupport.h`, and their expected
- * values are worked to fifteen digits. A builder that shifted one brick by an ulp — or that offered
- * `MakeInterface` one pair of bricks fewer — would move every one of those readings at once and
- * look like a solver regression rather than a producer edit. So this file pins the producer itself:
- * same piece count, same boxes, same masses, same grounded flags, same connection set in order, and
- * the same number at the root.
+ * Two tests, and the second is not a restatement. LaysTheFamilyOnItsGrid derives every brick from
+ * the coordinating grid. LaysTheJointsTheGridImplies derives every joint from those bricks by a rule
+ * production does not use (every pair offered to MakeInterface, versus production's within-course and
+ * adjacent-course pairs, which its comment calls a cost bound not a rule); the two agree iff that
+ * claim holds. A corbel whose bricks are all placed can still be joined wrongly, leaving the grid
+ * test and HasCompleteGeometry green while every reading moves. That is the second test's failure.
  *
- * TWO TESTS, AND THE SECOND IS NOT A RESTATEMENT OF THE FIRST. `LaysTheFamilyOnItsGrid` derives
- * every brick from the coordinating grid — where it goes, how big, what it weighs, whether it
- * stands on the earth — and holds production against that. `LaysTheJointsTheGridImplies` derives
- * every joint from those same derived bricks, by a rule production does not use: every pair of
- * bricks in the structure is offered to `MakeInterface`, and whatever it accepts is a joint;
- * production offers only pairs within a course and between adjacent courses, which its own comment
- * calls a cost bound rather than a second rule. The two agree exactly if and only if that claim
- * holds. A corbel whose bricks are all in the right place can still be joined wrongly — piece
- * geometry is untouched, so the grid test and `HasCompleteGeometry` stay green and the root is
- * still a bed joint, while every reading in the suite moves. That is the failure the second test
- * exists for.
+ * And one absolute number per case, because the rest of the suite's corbel claims are ordinal (a
+ * crossover at 36 steps, an increasing ladder, one profile above another), so a joint set that
+ * changed but kept its shape would move every absolute reading while every ordinal claim held. Each
+ * row carries its root utilisation, pinned exactly. Case A's is the one COMPOSITE_DEPTH_DESIGN.md
+ * works out by hand; the rest are the readings the levels catalogue and scenario reports publish.
  *
- * AND ONE ABSOLUTE NUMBER PER CASE, because the rest of the suite's corbel claims are ordinal — a
- * crossover at 36 steps, a strictly increasing ladder, one profile ordering above another. A joint
- * set that changed but kept its shape could move every absolute reading while every ordinal claim
- * still held. So each row carries the utilisation its root joint reads, pinned exactly. Case A's
- * 0.15612870000000001 is the one `COMPOSITE_DEPTH_DESIGN.md` works out by hand — bearing 10.25 cm,
- * `F = 4`, `M = 90`, `e = 22.5`, composite over four courses — and the rest are the readings the
- * levels catalogue and the scenario reports publish. They are anchors, not derivations.
+ * The bare arm (case A) is covered here and nowhere else but CorbelScreenshotTest.cpp. bFilled is
+ * the whole difference: one brick per stepped course versus every cell inboard, a different load path.
  *
- * THE BARE ARM IS COVERED HERE AND NOWHERE ELSE. Case A — a stepped arm of single bricks — is a
- * scenario row whose only other appearance is inside `Tests/CorbelScreenshotTest.cpp`, in a `.cpp`
- * no other test can include. `bFilled` is the whole of the difference: one brick per stepped course
- * instead of every cell inboard of it, a different load path rather than a thinner version of the
- * same one. Both tests below run it.
- *
- * Needs no ticking world: boxes, doubles and one arithmetic solve.
+ * No ticking world: boxes, doubles and one arithmetic solve.
  */
 namespace CorbelBuilderTestSupport
 {
@@ -57,10 +43,9 @@ namespace CorbelBuilderTestSupport
 	using namespace DestructionProfiles;
 
 	/*
-	 * The grid, spelled out here rather than imported: DESIGN.md's standard UK metric clay brick
-	 * and the 1 cm mortar joint that makes the coordinating grid 22.5 x 11.25 x 7.5. Written from
-	 * first principles so a test that reached for production's own constant does not agree with a
-	 * wrong one instead of failing.
+	 * The grid, spelled out rather than imported: DESIGN.md's standard clay brick and 1 cm joint that
+	 * make the coordinating grid 22.5 x 11.25 x 7.5. From first principles, so a test does not agree
+	 * with a wrong production constant instead of failing.
 	 */
 	constexpr double CorbelBuilderBrickLengthCm = 21.5;
 	constexpr double CorbelBuilderBrickWidthCm = 10.25;
@@ -91,10 +76,8 @@ namespace CorbelBuilderTestSupport
 	}
 
 	/**
-	 * What one brick weighs, multiplied in the other order on purpose: volume first and density
-	 * last, where `DestructionLayout::PieceMassKg` does it the other way round — an independent
-	 * computation rather than the same one twice, compared with a relative tolerance because that
-	 * order costs an ulp.
+	 * What one brick weighs, multiplied volume-first and density-last where PieceMassKg does the
+	 * reverse: an independent computation, compared with a relative tolerance because that order costs an ulp.
 	 */
 	inline double CorbelBuilderMassKg(const FVector& HalfExtentCm)
 	{
@@ -113,19 +96,14 @@ namespace CorbelBuilderTestSupport
 	};
 
 	/**
-	 * Every brick the spec describes, derived from the picture rather than from the builder.
+	 * Every brick the spec describes, derived from the drawing (CORBEL_CASES.html) rather than the
+	 * builder: the base is BaseCells cells per course with alternate courses shifted one step, and the
+	 * arm's outermost brick advances one step per course with as many whole cells inboard as fit. At
+	 * the half-cell step this agrees with the drawing's {2, 3, 3, 4, 4, 5, 5, 6, 6, 7}.
 	 *
-	 * `claude_plans/CORBEL_CASES.html` draws the family; the generalisation that expresses it for
-	 * any step size is: the base is `BaseCells` cells per course with alternate courses shifted one
-	 * step, and the arm's outermost brick advances one step per course with as many whole cells
-	 * inboard of it as fit before the base's left edge. At the half-cell step the two agree brick
-	 * for brick, which `Core.Structure.CorbelStepsBeforeTensionWins` already asserts against the
-	 * drawing's own `{2, 3, 3, 4, 4, 5, 5, 6, 6, 7}`.
-	 *
-	 * The order is part of the claim: base courses bottom-up, then arm courses bottom-up, each
-	 * course left to right — a piece handle is the identity joints, break stamps and every fixture
-	 * reading are expressed in, so a builder that laid the same bricks in a different order would
-	 * renumber all of them while every geometric assertion still passed.
+	 * The order is part of the claim (base courses bottom-up, then arm, each course left to right): a
+	 * piece handle is the identity joints, break stamps and readings use, so a different lay order
+	 * renumbers all of them while every geometric assertion still passes.
 	 */
 	inline TArray<FCorbelBuilderBrick> CorbelBuilderExpectedBricks(
 		const DestructionCorbel::FCorbelSpec& Spec)
@@ -181,11 +159,9 @@ namespace CorbelBuilderTestSupport
 			}
 
 			/*
-			 * A half-open cell count. Several step sizes divide the cell pitch exactly — 11.25
-			 * goes into 22.5 twice — so the quotient lands on a whole number and a bare floor is
-			 * one cell either way depending on the last bit. Nudging up keeps the leftmost brick
-			 * inboard of the base's own left edge, the direction that never invents masonry that
-			 * is not in the drawing.
+			 * A half-open cell count. Several step sizes divide the cell pitch exactly (11.25 into
+			 * 22.5 twice), so a bare floor is one cell either way on the last bit. The nudge keeps the
+			 * leftmost brick inboard of the base's left edge, never inventing masonry not in the drawing.
 			 */
 			const int32 Cells =
 				FMath::FloorToInt32((OuterCentreCm - LeftOrigin) / CellPitch + 1.0e-9) + 1;
@@ -200,27 +176,16 @@ namespace CorbelBuilderTestSupport
 	}
 
 	/**
-	 * Every joint those bricks imply, found by a rule production does not use.
+	 * Every joint those bricks imply, found by a rule production does not use: "any two bricks that
+	 * share a face are joined", every unordered pair offered to MakeInterface. Corbel.cpp instead
+	 * offers only within-course and adjacent-course pairs, its comment explicit that this is a cost
+	 * bound not a rule (farther bricks exceed the joint thickness and MakeInterface refuses them). If
+	 * that holds the two sets are identical; if the loop ever stops offering a course's beds they differ.
 	 *
-	 * The rule is "any two bricks that share a face are joined", spelled as every unordered pair in
-	 * the structure offered to `MakeInterface`. `Core/Corbel.cpp` instead offers only pairs within
-	 * one course and between adjacent courses, and its comment is explicit that this is a cost
-	 * bound and not a second rule — bricks two courses or two cells apart are separated by more
-	 * than the joint thickness and `MakeInterface` would refuse them anyway. That claim is exactly
-	 * what this derivation puts under test: if true the two sets are identical, and if the loop
-	 * ever stops offering a course's beds the sets differ by those beds.
-	 *
-	 * `MakeInterface` itself is shared on purpose, and is the one thing here that is not
-	 * independent: areas, normals, centres and rectangles are its answers, asserted in
-	 * `Core.Layout.*` against hand-worked faces. What is derived here is which pairs are joined and
-	 * in what order — the corbel producer's own decision, and the thing nothing else pins.
-	 *
-	 * The order is part of the claim, for the reason the brick order is: handles ascend
-	 * course-major and then by X — `CorbelBuilderExpectedBricks` derives that and
-	 * `LaysTheFamilyOnItsGrid` asserts it — so ascending A then ascending B is the same sequence
-	 * production's course-by-course walk emits. A joint handle is what a break stamp and every
-	 * cascade reading are expressed in, so a set that is right but renumbered is not the same
-	 * structure.
+	 * MakeInterface is shared on purpose, the one thing not independent here: its areas, normals,
+	 * centres and rectangles are asserted in Core.Layout.* against hand-worked faces. What is derived
+	 * here is which pairs are joined and in what order. The order is part of the claim (handles ascend
+	 * course-major then by X), so a set that is right but renumbered is not the same structure.
 	 */
 	inline TArray<FConnection> CorbelBuilderExpectedJoints(
 		const DestructionCorbel::FCorbelSpec& Spec, const TArray<FCorbelBuilderBrick>& Bricks)
@@ -259,12 +224,9 @@ namespace CorbelBuilderTestSupport
 	}
 
 	/**
-	 * The piece count in closed form, so a row's literal below is checkable rather than recorded.
-	 *
-	 * The base is `BaseCourses x BaseCells`. A bare arm adds one brick per step. A filled arm at
-	 * the half-cell step adds `BaseCells + floor(i/2)` on step i — the outer face advances half a
-	 * cell each course, so a whole new cell appears every second one — and summing that from 1 to
-	 * k gives `k x BaseCells + floor(k^2 / 4)`.
+	 * The piece count in closed form, so a row's literal is checkable. Base is BaseCourses x BaseCells;
+	 * a bare arm adds one per step; a filled arm at the half-cell step adds BaseCells + floor(i/2) on
+	 * step i, summing to k x BaseCells + floor(k^2 / 4).
 	 */
 	inline int32 CorbelBuilderExpectedPieces(const DestructionCorbel::FCorbelSpec& Spec)
 	{
@@ -279,13 +241,10 @@ namespace CorbelBuilderTestSupport
 	}
 
 	/**
-	 * The root joint, found by geometry and never by a handle the builder handed back.
-	 *
-	 * It is the bed joint under the arm's lowest outermost brick — the one place a corbel on an
-	 * immovable base can fail, because a rigid body cannot rotate about a fixed base without
-	 * separating from it. Both ends are located by their centres, worked out from the grid, so
-	 * this test can read the same joint out of two structures whose handle numbering it has not
-	 * yet proved identical.
+	 * The root joint, found by geometry and never by a builder handle: the bed joint under the arm's
+	 * lowest outermost brick, the one place a corbel on an immovable base can fail. Both ends are
+	 * located by their grid-derived centres, so the same joint reads out of two structures whose
+	 * handle numbering is not yet proved identical.
 	 */
 	inline int32 CorbelBuilderPieceAt(const TArray<FPieceBox>& Boxes, const FVector& CentreCm)
 	{
@@ -358,40 +317,29 @@ namespace CorbelBuilderTestSupport
 		int32 ExpectedPieces;
 
 		/**
-		 * The root joint's utilisation after a solve — an anchor, not a derivation.
-		 *
-		 * Every other corbel claim in the suite is ordinal: a crossover at 36 steps, a ladder that
-		 * increases, one profile above another. A joint set that changed while keeping the family's
-		 * shape would move all these absolute numbers and satisfy every ordinal claim on the way
-		 * down. So each is written out to seventeen digits and compared exactly. `LEVELS.md` and
-		 * the scenario reports publish the same figures to five, and case A's is the one
-		 * `COMPOSITE_DEPTH_DESIGN.md` derives by hand.
+		 * The root joint's utilisation after a solve, an anchor not a derivation. Every other corbel
+		 * claim is ordinal (a crossover at 36 steps, an increasing ladder, one profile above another),
+		 * so a joint set that changed while keeping the family's shape would satisfy them all and move
+		 * this. Written to seventeen digits, compared exactly. Case A's is COMPOSITE_DEPTH_DESIGN.md's
+		 * by-hand figure.
 		 */
 		double ExpectedRootUtilisation;
 	};
 
 	/**
-	 * The family, and it is the one the seven catalogue rows are made of.
-	 *
-	 * A to D are the structures the user reviewed; E35 and E36 straddle the crossover
-	 * `Core.Structure.CorbelStepsBeforeTensionWins` locates at 36 steps. F (a hundred steps,
-	 * 3,015 bricks) is deliberately absent: it is the largest structure in the suite,
-	 * `AHundredStepCorbelMustComeDown` already lays and cascades it, and the joint derivation below
-	 * is quadratic in the piece count — nine million candidate pairs for one row that would tell
-	 * this file nothing E36's five hundred bricks do not.
+	 * The family the seven catalogue rows are made of. A to D are the structures the user reviewed;
+	 * E35 and E36 straddle the crossover CorbelStepsBeforeTensionWins locates at 36 steps. F (a
+	 * hundred steps, 3,015 bricks) is absent: the joint derivation below is quadratic in piece count
+	 * (nine million pairs) and would tell this file nothing E36 does not.
 	 */
 	/*
-	 * MEAN RE-ANCHOR (2026-08-13): every root here is tension-governed, so each anchor is the old
-	 * characteristic-basis measurement divided by 7 (f_x1 0.10 -> 0.70; the stress side is statics).
-	 * The rows are pinned with exact ==, and production divides the stress by 0.7 directly, so the
-	 * red phase wrote each as `old / 7.0` and the green phase re-pinned the measured bits wherever
-	 * that landed an ulp off. MEASURED AT THE FLIP (2026-08-14): rows A, C and D each read one ulp
-	 * above their division (the literal below is the measured value; the trailing comment keeps
-	 * the old expression), while B, E35 and E36 came back bit-identical and keep the division form
-	 * — one ulp there is rounding-path, not physics. E35/E36 no longer straddle 1.0 (~0.1415 /
-	 * ~0.1452 at the mean basis; the crossover moved to ~124 steps in compression — see
-	 * CorbelStepsBeforeTensionWins and the owed replacement pair in CURRENT_STATE); their labels
-	 * keep the history.
+	 * Mean re-anchor (2026-08-13): every root here is tension-governed, so each anchor is the old
+	 * characteristic measurement / 7 (f_x1 0.10 -> 0.70). Rows are pinned with exact ==, so the red
+	 * phase wrote each as old / 7.0 and the green phase re-pinned measured bits an ulp off. At the
+	 * flip (2026-08-14) rows A, C and D read one ulp above their division (the literal is the measured
+	 * value, the trailing comment keeps the old expression); B, E35 and E36 came back bit-identical.
+	 * E35/E36 no longer straddle 1.0 (the crossover moved to ~124 steps in compression, CURRENT_STATE);
+	 * their labels keep the history.
 	 */
 	const FCorbelBuilderRow CorbelBuilderRows[] =
 	{

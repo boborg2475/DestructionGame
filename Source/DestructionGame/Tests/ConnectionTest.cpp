@@ -8,33 +8,20 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Named namespace, not anonymous — an anonymous namespace is shared with every other
- * anonymous namespace once a unity build merges two test files, and this one used to
- * declare a Mortar and a MakeNaN of its own.
- *
- * The strength profiles are gone from this file entirely: they now come from
- * Core/Profiles, so retuning mortar retunes it here too rather than leaving a stale
- * private copy that still passes.
+ * Named namespace, not anonymous: a unity build merges two test files' anonymous namespaces, and
+ * this one used to declare a Mortar and a MakeNaN of its own. The strength profiles now come from
+ * Core/Profiles, so retuning mortar retunes it here rather than leaving a stale copy that passes.
  */
 namespace ConnectionTestSupport
 {
 	using namespace DestructionProfiles;
 
 	/**
-	 * Structural concrete, the calibration baseline DESIGN.md §4 asks for, read from
-	 * the shared material library. Every other material is a ratio of it.
-	 *
-	 * Deliberately uncoupled: the material's friction coefficient is zero, so the
-	 * Mohr-Coulomb shear capacity collapses to plain cohesion, the three axes stay
-	 * strictly independent, and every expected number below can be traced to exactly
-	 * one strength. Coupling is already covered by ConnectionStrength.FrictionCoupling;
-	 * these tests are about the connection object composing the pipeline, not about
-	 * re-testing the strength maths.
-	 *
-	 * A reference rather than a copy of the fields, because the profile lives in
-	 * another translation unit: binding a reference to a static object is constant
-	 * initialisation and therefore order-independent, where copying its fields at
-	 * namespace scope would be a dynamic initialiser reading across TUs.
+	 * Structural concrete, the calibration baseline DESIGN.md §4 asks for, from the shared material
+	 * library. Uncoupled on purpose: zero friction, so shear collapses to plain cohesion, the three
+	 * axes stay independent, and every expected number traces to one strength (coupling is covered by
+	 * ConnectionStrength.FrictionCoupling). A reference, not a copy: binding to a static object is
+	 * constant initialisation, where copying its fields would be a dynamic initialiser across TUs.
 	 */
 	const FConnectionStrength& ConcreteUncoupled = StructuralConcrete.Strength;
 
@@ -42,11 +29,9 @@ namespace ConnectionTestSupport
 	constexpr double JointAreaSqCm = 100.0;
 
 	/**
-	 * Force, in Unreal units, that loads the given area to the given stress.
-	 *
-	 * Spelled out here rather than reusing ForceUnitsPerMPaSqCm so the test fails
-	 * if that constant is wrong instead of agreeing with it.
-	 * 1 N = 100 uu, 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2 -> 10000 uu per MPa per cm2.
+	 * Force, in Unreal units, that loads the given area to the given stress. Spelled out rather than
+	 * reusing ForceUnitsPerMPaSqCm so the test fails if that constant is wrong: 1 N = 100 uu,
+	 * 1 cm2 = 100 mm2, 1 MPa = 1 N/mm2 -> 10000 uu per MPa per cm2.
 	 */
 	constexpr double ForceForMPa(double MPa, double AreaSqCm)
 	{
@@ -54,16 +39,14 @@ namespace ConnectionTestSupport
 	}
 
 	/**
-	 * A bed joint: horizontal interface, normal pointing up at the piece above it.
-	 * The force passed in is therefore the force on the upper piece, so its weight
-	 * squeezes the joint (compression) per the convention in ConnectionLoad.h.
+	 * A bed joint: horizontal interface, normal pointing up at the piece above, so the force passed
+	 * in is on the upper piece and its weight squeezes the joint in compression (ConnectionLoad.h).
 	 */
 	const FVector BedJointNormal(0.0, 0.0, 1.0);
 
 	/**
-	 * A head joint: vertical interface, normal pointing sideways at the neighbour.
-	 * The same downward weight is pure shear here — which is the whole point of
-	 * the connection owning its own normal.
+	 * A head joint: vertical interface, normal pointing sideways at the neighbour. The same downward
+	 * weight is pure shear here — the whole point of the connection owning its own normal.
 	 */
 	const FVector HeadJointNormal(1.0, 0.0, 0.0);
 
@@ -95,11 +78,9 @@ namespace ConnectionTestSupport
 	}
 
 	/**
-	 * The bit pattern of a double, for assertions that compare EXACTLY.
-	 *
-	 * %f rounds two numbers an ulp apart into the same text, so a bitwise failure
-	 * printed that way reads as "expected 0.500000, got 0.500000" and tells whoever
-	 * is looking at it nothing at all.
+	 * The bit pattern of a double, for assertions that compare exactly. %f rounds two numbers an ulp
+	 * apart into the same text, so a bitwise failure printed that way reads "expected 0.500000, got
+	 * 0.500000" and says nothing.
 	 */
 	FString Bits(double Value)
 	{
@@ -109,12 +90,9 @@ namespace ConnectionTestSupport
 	}
 
 	/*
-	 * The sweep matrix, shared by Connection.DegenerateInputs and
-	 * Connection.UtilisationQuery rather than written out twice. The degenerate rows
-	 * are the point of sharing them: a non-mutating evaluator that agreed with
-	 * ApplyForce on well-formed joints and diverged on a joint with no interface plane
-	 * would reopen exactly the fail-open hole DESIGN.md §2's caller obligation
-	 * describes — a renderer painting a joint with no interface plane bright green.
+	 * The sweep matrix, shared by Connection.DegenerateInputs and Connection.UtilisationQuery. The
+	 * degenerate rows are the point: an evaluator agreeing with ApplyForce on well-formed joints but
+	 * diverging on a joint with no interface plane reopens the fail-open hole of DESIGN.md §2.
 	 */
 
 	struct FNamedNormal { const TCHAR* Description; FVector Normal; bool bIsUsable; };
@@ -148,10 +126,8 @@ namespace ConnectionTestSupport
 	}
 
 	/*
-	 * Chaos can produce a NaN velocity in a pathological contact, which arrives
-	 * here as a NaN force. Unguarded it poisons the result and the joint reports
-	 * itself intact during a physics blowup — the one moment it should certainly
-	 * be giving.
+	 * Chaos can produce a NaN velocity in a pathological contact, arriving here as a NaN force.
+	 * Unguarded it poisons the result and the joint reports itself intact during a physics blowup.
 	 */
 	TArray<FNamedForce> MatrixForces()
 	{
@@ -174,8 +150,8 @@ namespace ConnectionTestSupport
 	}
 
 	/*
-	 * Dry stone matters here: real zeroes in two of its three strengths, so it
-	 * reaches the degenerate paths without anything being misconfigured.
+	 * Dry stone matters here: real zeroes in two of its three strengths, so it reaches the
+	 * degenerate paths without anything being misconfigured.
 	 */
 	TArray<FNamedProfile> MatrixProfiles()
 	{
@@ -188,15 +164,10 @@ namespace ConnectionTestSupport
 }
 
 /**
- * A connection resolves a world-space force through its OWN normal, area and
- * strength profile, and reports the resulting utilisation.
- *
- * Pure arithmetic: no world, no solver, no ticking, so gravity is irrelevant by
- * design and the assertions are on the mechanism (the ratio) rather than on
- * anything moving. The cases are chosen so each of the three stored properties
- * changes the answer on its own — same force through a different normal, same
- * force through a different area — because a connection that quietly used a unit
- * normal or a unit area would still pass a single-case test.
+ * A connection resolves a world-space force through its own normal, area and strength profile, and
+ * reports the utilisation. Pure arithmetic: no world or solver, so the assertions are on the ratio,
+ * not on movement. Each case changes the answer through one stored property — same force, different
+ * normal or area — because a connection quietly using a unit normal or area would pass a single case.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionUtilisationTest,
@@ -231,9 +202,8 @@ bool FConnectionUtilisationTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * One axis at a time, each against its own strength. Compression 30 MPa,
-		 * shear 6 MPa, tension 3 MPa; the other two axes are exactly zero in each
-		 * case, so there is no question which one governs.
+		 * One axis at a time, each against its own strength: compression 30 MPa, shear 6 MPa, tension
+		 * 3 MPa. The other two axes are exactly zero, so which governs is unambiguous.
 		 */
 		{
 			TEXT("weight on a bed joint is compression, at its limit"),
@@ -255,9 +225,8 @@ bool FConnectionUtilisationTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * The pair that proves the connection applies its stored normal: the SAME
-		 * downward force, 6 MPa worth, reads 1.0 on the head joint above and only
-		 * 0.2 here. A connection ignoring its normal cannot produce both.
+		 * The pair that proves the connection applies its stored normal: the same 6 MPa downward
+		 * force reads 1.0 on the head joint above and 0.2 here. Ignoring the normal cannot produce both.
 		 */
 		{
 			TEXT("the same weight on a bed joint is comfortable compression"),
@@ -267,10 +236,9 @@ bool FConnectionUtilisationTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * And the pair that proves it applies its stored area: identical force to
-		 * the compression case, half the interface, twice the stress. NOTE this
-		 * one gives (2.0 > 1.0) — the breaking call still reports the ratio that
-		 * broke it, which the loop's HasGiven assertion below pins down.
+		 * And the pair that proves it applies its stored area: the compression case's force through
+		 * half the interface, twice the stress. This one gives (2.0 > 1.0) — the breaking call still
+		 * reports the ratio that broke it, pinned by the loop's HasGiven assertion below.
 		 */
 		{
 			TEXT("halving the interface area doubles the utilisation"),
@@ -280,10 +248,8 @@ bool FConnectionUtilisationTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * Oblique load: 3 MPa into the face and 3 MPa across it. Compression is at
-		 * 3/30 = 0.1 and shear at 3/6 = 0.5, so SHEAR governs. Worked through both
-		 * axes deliberately — pick the force carelessly and this measures whichever
-		 * axis happens to be worse, not the one the case is named for.
+		 * Oblique load: 3 MPa into the face and 3 across it. Compression is 3/30 = 0.1 and shear
+		 * 3/6 = 0.5, so shear governs. Worked through both axes so the force is not chosen carelessly.
 		 */
 		{
 			TEXT("the worst axis governs an oblique load, here shear over compression"),
@@ -334,16 +300,10 @@ bool FConnectionUtilisationTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Giving latches, and a joint that has given carries nothing.
- *
- * These two are the substance of the connection object; reporting a utilisation
- * is only composition of maths that already exists.
- *
- * Latching is not tidiness. Mortar does not re-bond, and a joint that healed
- * itself when the load dropped would make collapse non-monotonic — a wall could
- * shed a joint, redistribute, and then recover it mid-fall. Carrying nothing
- * afterwards is what phase 2 depends on: redistribution only works if a broken
- * joint transmits no load rather than continuing to report a share of it.
+ * Giving latches, and a joint that has given carries nothing — the substance of the connection
+ * object (reporting a utilisation is only composition of existing maths). Latching is not tidiness:
+ * mortar does not re-bond, and a joint that healed when the load dropped would make collapse
+ * non-monotonic. Carrying nothing afterwards is what phase 2's redistribution depends on.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionLatchingTest,
@@ -364,9 +324,8 @@ bool FConnectionLatchingTest::RunTest(const FString& Parameters)
 	const FVector Overload(0.0, 0.0, -ForceForMPa(ConcreteCompressiveMPa * 2.0, JointAreaSqCm));
 
 	/*
-	 * Pure compression throughout: shear and tension are exactly zero on a bed
-	 * joint under vertical load, so the compression axis is unambiguously the one
-	 * driving every number here.
+	 * Pure compression throughout: shear and tension are exactly zero on a bed joint under vertical
+	 * load, so the compression axis drives every number here.
 	 */
 
 	// A joint under half its limit does not give, however many times it is asked.
@@ -383,8 +342,8 @@ bool FConnectionLatchingTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * Exactly at the limit is fully utilised but still holding: the boundary is
-	 * "gives above 1", not "gives at 1".
+	 * Exactly at the limit is fully utilised but still holding: the boundary is "gives above 1", not
+	 * "gives at 1".
 	 */
 	{
 		FConnection Connection = MakeConnection(BedJointNormal, JointAreaSqCm, ConcreteUncoupled);
@@ -415,8 +374,8 @@ bool FConnectionLatchingTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("a given joint stays given when the load drops"), Connection.HasGiven());
 
 		/*
-		 * Point 4: and it is out of the structure, so it carries nothing. Zero
-		 * exactly, not "a smaller number" — phase 2 sums these to redistribute.
+		 * Point 4: out of the structure, so it carries nothing. Zero exactly, not "a smaller number"
+		 * — phase 2 sums these to redistribute.
 		 */
 		TestTrue(
 			FString::Printf(TEXT("a given joint carries nothing, expected 0.0, got %f"), AfterRelief),
@@ -431,8 +390,8 @@ bool FConnectionLatchingTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * Latching is not compression-specific. A head joint sheared apart must stay
-	 * apart too, or the latch lives on the wrong axis.
+	 * Latching is not compression-specific: a head joint sheared apart must stay apart too, or the
+	 * latch lives on the wrong axis.
 	 */
 	{
 		FConnection Connection = MakeConnection(HeadJointNormal, JointAreaSqCm, ConcreteUncoupled);
@@ -451,9 +410,8 @@ bool FConnectionLatchingTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * Stated as a property rather than a sequence of examples: given-ness only
-	 * ever goes one way. This is the invariant that makes collapse monotonic, so
-	 * it is asserted over a load history that rises and then decays away.
+	 * Stated as a property, not examples: given-ness only ever goes one way. This is what makes
+	 * collapse monotonic, so it is asserted over a load history that rises then decays away.
 	 */
 	{
 		FConnection Connection = MakeConnection(BedJointNormal, JointAreaSqCm, ConcreteUncoupled);
@@ -483,10 +441,9 @@ bool FConnectionLatchingTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * 39 MPa against the 38 MPa limit (the mean f_cm since the 2026-08-13
-		 * re-anchor; the characteristic-era history peaked at 31 against 30) is the
-		 * only entry that crosses, so the history must end broken. Without this the
-		 * loop above would be satisfied by a connection that never gives at all.
+		 * 39 MPa against the 38 MPa limit (the mean f_cm since the 2026-08-13 re-anchor) is the only
+		 * entry that crosses, so the history must end broken — else the loop above passes on a
+		 * connection that never gives.
 		 */
 		TestTrue(TEXT("the load history peaked past the limit, so the joint must have given"),
 			Connection.HasGiven());
@@ -496,27 +453,18 @@ bool FConnectionLatchingTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Degenerate configuration and degenerate loads must fail closed, and a broken
- * joint must never read as an intact one.
- *
- * A property test, not an example test: it sweeps normals, areas, loads and
- * profiles and asserts invariants across all of them. The particular numbers are
+ * Degenerate configuration and degenerate loads must fail closed, and a broken joint must never
+ * read as intact. A property test sweeping normals, areas, loads and profiles; the numbers are
  * covered above.
  *
- * Two traps this exists to keep shut. ComputeUtilisation already guards area and
- * stress, returning a huge finite number rather than a NaN — NaN compares false
- * against everything, so a joint that returned one would report itself intact, and
- * a structure quietly refusing to collapse is far harder to diagnose than one
- * falling apart. The connection must route through those guards rather than around
- * them. The normal is a new hole that only exists once the two halves are composed:
- * ClassifyForce answers a degenerate normal with a zero load, the right answer in
- * isolation but "utilisation 0.0, perfectly fine" here — a joint with no interface
- * plane reading as the healthiest in the structure. It has no interface, so it is
- * not a joint, so it must read as given.
+ * Two traps. ComputeUtilisation guards area and stress, returning a huge finite number rather than
+ * a NaN (NaN compares false against everything, so a joint returning one would report itself
+ * intact), and the connection must route through those guards. The normal is a new hole once the
+ * halves compose: ClassifyForce answers a degenerate normal with a zero load — right in isolation
+ * but "utilisation 0.0, fine" here — so a joint with no interface plane must read as given.
  *
- * Note the direction of the given-ness assertions: a joint that has given reports
- * zero utilisation, so "not broken" can never be inferred from the ratio alone.
- * HasGiven is the authoritative state and is what gets asserted.
+ * The given-ness assertions have a direction: a given joint reports zero utilisation, so "not
+ * broken" can never be inferred from the ratio. HasGiven is the authoritative state asserted.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionDegenerateInputTest,
@@ -558,8 +506,8 @@ bool FConnectionDegenerateInputTest::RunTest(const FString& Parameters)
 						FMath::IsFinite(Utilisation));
 
 					/*
-					 * On a joint's first evaluation the two answers must agree:
-					 * it has given exactly when the reported ratio exceeded 1.
+					 * On a joint's first evaluation the two answers agree: it has given exactly
+					 * when the reported ratio exceeded 1.
 					 */
 					TestTrue(
 						FString::Printf(TEXT("%s: utilisation %f gave %d, expected %d"),
@@ -573,10 +521,8 @@ bool FConnectionDegenerateInputTest::RunTest(const FString& Parameters)
 					if (!bIsRealJoint || !Force.bIsWellFormed)
 					{
 						/*
-						 * Fail closed: a joint with no interface plane, no area, or a
-						 * load nobody can make sense of must not read as intact —
-						 * the one answer that must never come back, since nothing
-						 * downstream can detect it.
+						 * Fail closed: a joint with no interface plane, no area, or an unmakeable
+						 * load must not read as intact — the one answer nothing downstream can detect.
 						 */
 						TestTrue(
 							FString::Printf(TEXT("%s: a degenerate joint must read as given, got utilisation %f"),
@@ -609,49 +555,33 @@ bool FConnectionDegenerateInputTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Asking a joint how loaded it is must not break it, and must give the same answer
- * the break decision itself would.
+ * Asking a joint how loaded it is must not break it, and must give the same answer the break
+ * decision would. The seam exists because ApplyForce is the only evaluator and it latches, so a
+ * phase-5 display colouring every joint by utilisation each frame would take the wall apart by
+ * drawing it.
  *
- * Why this seam exists: ApplyForce is the only evaluator and it latches. Phase 5's
- * visualisation draws connections coloured by utilisation, so a display asking every
- * joint how loaded it is, every frame, would take the wall apart by drawing it.
+ * The number is already obtainable (ClassifyForce then ComputeUtilisation), so what is missing is a
+ * single place that owns it. Every hand-composed route carries two hazards:
+ *   - DESIGN.md §2's caller obligation: ClassifyForce answers a degenerate normal with a zero load,
+ *     read downstream as "unloaded and healthy". ApplyForce closes that via ComputeUtilisation's
+ *     guard; a naive renderer would paint a joint with no interface plane bright green.
+ *   - The lockstep obligation: a transcription must track ApplyForce exactly. Five joints in
+ *     Structure.CascadeFuzz settle at exactly 1.0 and one at 1 - 1 ulp, so one ulp of drift is five
+ *     spurious failures.
  *
- * Why it is not merely a convenience: the number is already obtainable —
- * ClassifyForce then ComputeUtilisation, which is what StructureFuzzSupport does —
- * so what is missing is not the arithmetic but a single place that owns it. Every
- * hand-composed route carries two documented hazards:
+ * So the assertion is bitwise ==, not a tolerance: it is the only one that fails if UtilisationUnder
+ * reimplements the evaluation instead of ApplyForce being re-expressed in terms of it. Two versions
+ * can agree to 1e-9 and differ in the last bit. ApplyForce must become UtilisationUnder plus the latch.
  *
- *   - DESIGN.md §2's caller obligation. ClassifyForce answers a degenerate interface
- *     normal with a zero load, which downstream reads as "unloaded and perfectly
- *     healthy". ApplyForce closes that by substituting a zero interface area, routing
- *     the case through ComputeUtilisation's guard, which fails closed. A renderer
- *     built the naive way would paint a joint with no interface plane bright green.
- *   - The lockstep obligation. A transcription has to track ApplyForce exactly. Five
- *     joints in Structure.CascadeFuzz settle at utilisation exactly 1.0 and one more
- *     at 1 - 1 ulp, so a single ulp of upward drift is five spurious failures.
+ * Asserted over the shared sweep matrix, degenerate rows included, since the well-formed rows are
+ * the easy half.
  *
- * So the assertion is bitwise equality, ==, not a tolerance, and that is not
- * pedantry: it is the only assertion that fails if somebody reimplements the
- * evaluation inside UtilisationUnder instead of re-expressing ApplyForce in terms of
- * it. Two independently written versions of this arithmetic can agree to 1e-9
- * forever and still differ in the last bit, which is exactly the drift the lockstep
- * note quantifies. ApplyForce must become a call to UtilisationUnder plus the latch;
- * a second copy is the hazard moving somewhere less visible rather than being closed.
+ * What a given joint reports: the arithmetic, ignoring the latch. Pinned below because it drifts. It
+ * keeps one place knowing about latching and keeps the query a pure function of its inputs, and the
+ * renderer checks HasGiven anyway. So a given joint and a fresh one of the same shape answer
+ * identically, asserted directly.
  *
- * It is asserted over the shared sweep matrix — the same normals, areas, profiles and
- * forces Connection.DegenerateInputs walks, degenerate rows included — because
- * agreement on the well-formed rows is the easy half.
- *
- * What a given joint reports: the arithmetic, ignoring the latch. Decided
- * deliberately and pinned below, because it is the kind of thing that drifts. It
- * keeps exactly one place in the codebase knowing about latching, it keeps the query
- * a pure function of its inputs (so ApplyForce can be built out of it rather than
- * beside it), and the renderer checks HasGiven anyway — a broken joint draws as
- * broken, with its pass number, not as a colour on a strain ramp. The consequence is
- * that a given joint and a fresh one of the same shape answer identically, which is
- * asserted directly.
- *
- * No world, no solver, no gravity: pure arithmetic on one struct.
+ * No world, solver or gravity: pure arithmetic on one struct.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FConnectionUtilisationQueryTest,
@@ -670,13 +600,10 @@ bool FConnectionUtilisationQueryTest::RunTest(const FString& Parameters)
 	constexpr double Tolerance = 1e-9;
 
 	/*
-	 * The matrix. Each cell queries a fresh joint twice, checks it is still intact,
-	 * and then lets the same still-fresh joint take the force for real. The query
-	 * answers must agree with each other and with ApplyForce to the last bit.
-	 *
-	 * Querying before applying is what makes this test see a latching query: a
-	 * UtilisationUnder that quietly broke the joint would leave ApplyForce answering
-	 * zero, and every row with a non-zero utilisation would disagree.
+	 * The matrix. Each cell queries a fresh joint twice, checks it is still intact, then lets the
+	 * same joint take the force for real; the three answers must agree to the last bit. Querying
+	 * first is what catches a latching query — a UtilisationUnder that broke the joint would leave
+	 * ApplyForce answering zero, and every non-zero row would disagree.
 	 */
 	for (const FNamedNormal& Normal : Normals)
 	{
@@ -708,8 +635,7 @@ bool FConnectionUtilisationQueryTest::RunTest(const FString& Parameters)
 						FString::Printf(TEXT("%s: a second query must not break the joint either"), *Context),
 						Connection.HasGiven());
 
-					/* The joint is still fresh here, so this is the same evaluation
-					 * the query claimed to be reporting. */
+					// The joint is still fresh here, so this is the evaluation the query reported.
 					const double Applied = Connection.ApplyForce(Force.Force);
 
 					TestTrue(
@@ -719,12 +645,10 @@ bool FConnectionUtilisationQueryTest::RunTest(const FString& Parameters)
 						Queried == Applied);
 
 					/*
-					 * The query must fail closed on the same rows ApplyForce does.
-					 * Checked through HasGiven rather than the ratio because a given
-					 * joint reports zero, so "not broken" can never be inferred from
-					 * the number alone — the equality above has already tied the two
-					 * together, so what this adds is the direction: the shared answer
-					 * must be the failing one, not a shared zero.
+					 * The query fails closed on the same rows ApplyForce does. Checked through
+					 * HasGiven, not the ratio, since a given joint reports zero: the equality above
+					 * tied the two together, and this adds the direction — the shared answer must be
+					 * the failing one, not a shared zero.
 					 */
 					const bool bIsRealJoint = Normal.bIsUsable && Area.bIsUsable;
 
@@ -757,11 +681,9 @@ bool FConnectionUtilisationQueryTest::RunTest(const FString& Parameters)
 	const FVector HalfLoad(0.0, 0.0, -ForceForMPa(ConcreteCompressiveMPa / 2.0, JointAreaSqCm));
 
 	/*
-	 * Non-latching, asked hard. A query that quietly broke the joint would look
-	 * identical from the ratio alone — it reports the breaking number either way —
-	 * so the evidence has to be that the joint is still breakable afterwards. Pure
-	 * compression on a bed joint: shear and tension are exactly zero, so the
-	 * compression axis is unambiguously what these numbers measure.
+	 * Non-latching, asked hard. A query that broke the joint would look identical from the ratio, so
+	 * the evidence is that the joint is still breakable afterwards. Pure compression on a bed joint:
+	 * shear and tension are zero, so the compression axis is what these numbers measure.
 	 */
 	{
 		FConnection Connection = MakeConnection(BedJointNormal, JointAreaSqCm, ConcreteUncoupled);
@@ -803,9 +725,8 @@ bool FConnectionUtilisationQueryTest::RunTest(const FString& Parameters)
 			FMath::IsNearlyEqual(FirstAnswer, 2.0, Tolerance));
 
 		/*
-		 * And the joint is genuinely still loaded to breaking: a query that had
-		 * latched would answer this call with zero, from inside ApplyForce's own
-		 * early-out, and the structure would report a wall that never fell.
+		 * And the joint is genuinely still loaded to breaking: a query that had latched would answer
+		 * this call zero from ApplyForce's early-out, and the structure would report a wall that never fell.
 		 */
 		const double Applied = Connection.ApplyForce(Overload);
 
@@ -819,10 +740,9 @@ bool FConnectionUtilisationQueryTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * What a given joint reports — the decision, pinned from both sides. The query
-	 * answers the arithmetic and the live ApplyForce answers zero, so the two
-	 * deliberately disagree here — an implementation that mirrored ApplyForce's latch
-	 * would make both of these zero and look perfectly reasonable.
+	 * What a given joint reports — pinned from both sides. The query answers the arithmetic and the
+	 * live ApplyForce answers zero, so the two deliberately disagree; mirroring ApplyForce's latch
+	 * would make both zero and look reasonable.
 	 */
 	{
 		FConnection Given = MakeConnection(BedJointNormal, JointAreaSqCm, ConcreteUncoupled);
@@ -838,9 +758,8 @@ bool FConnectionUtilisationQueryTest::RunTest(const FString& Parameters)
 			FMath::IsNearlyEqual(Queried, 0.5, Tolerance));
 
 		/*
-		 * Stated as the property rather than as a number: the query is a pure
-		 * function of the joint's geometry, its profile and the force, so the latch
-		 * cannot be an input to it.
+		 * Stated as the property, not a number: the query is a pure function of the joint's geometry,
+		 * profile and force, so the latch cannot be an input to it.
 		 */
 		FConnection Fresh = MakeConnection(BedJointNormal, JointAreaSqCm, ConcreteUncoupled);
 		const double FreshAnswer = Fresh.ApplyForce(HalfLoad);
@@ -862,9 +781,8 @@ bool FConnectionUtilisationQueryTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * A severed joint is the other way into the latch — its piece was removed, it
-	 * never failed — and it must answer the same way, for the same reason. Nothing
-	 * about the query knows why a joint left the structure.
+	 * A severed joint is the other way into the latch — its piece was removed, it never failed — and
+	 * it must answer the same way. Nothing about the query knows why a joint left the structure.
 	 */
 	{
 		FConnection Severed = MakeConnection(BedJointNormal, JointAreaSqCm, ConcreteUncoupled);

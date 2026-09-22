@@ -17,30 +17,21 @@
 #include "RequiredContent.h"
 
 /*
- * WITH_EDITOR AS WELL AS WITH_DEV_AUTOMATION_TESTS, and the whole test rather than half of it.
- * A material's node graph lives in editor-only data, so a cooked build has nothing to read;
- * compiling a reduced version there would leave a test that is green because it stopped asking,
- * which is indistinguishable from one that is green because the assets are right.
+ * WITH_EDITOR as well as WITH_DEV_AUTOMATION_TESTS, and the whole test. A material's node graph lives
+ * in editor-only data, so a cooked build has nothing to read; a reduced version there would be green
+ * because it stopped asking, not because the assets are right.
  */
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
-/**
- * Named namespace, named differently from every other one in this module — an anonymous
- * namespace is private to a translation unit rather than a file, and a unity build merges
- * many files into one.
- */
+/** Named namespace, named differently from every other in this module: a unity build merges files. */
 namespace HighlightMaterialPaintTestSupport
 {
 	/**
-	 * What an unconnected input compiles to, taken from the engine's own table rather than
-	 * imported.
-	 *
-	 * `FMaterialAttributeDefinitionMap` (Engine/Private/Materials/MaterialAttributeDefinitionMap.cpp)
-	 * registers EmissiveColor with a default of (0,0,0) and Opacity with a default of 1.
-	 * That asymmetry is the whole reason the defaults are modelled at all: a blank unlit
-	 * translucent material is not "invisible", it is black at full opacity, and a test that
-	 * assumed a disconnected opacity meant zero would be right about the symptom for the
-	 * wrong reason.
+	 * What an unconnected input compiles to, from the engine's own table not imported.
+	 * FMaterialAttributeDefinitionMap registers EmissiveColor default (0,0,0) and Opacity default 1.
+	 * The asymmetry is why the defaults are modelled: a blank unlit translucent material is black at
+	 * full opacity, not invisible, so assuming a disconnected opacity meant zero would be right about
+	 * the symptom for the wrong reason.
 	 */
 	constexpr float EngineDefaultOpacity = 1.0f;
 	const FLinearColor EngineDefaultEmissive(0.0f, 0.0f, 0.0f, 0.0f);

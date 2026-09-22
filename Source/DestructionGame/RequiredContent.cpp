@@ -3,12 +3,9 @@
 #include "RequiredContent.h"
 
 /*
- * The required-content table — one row per path this module resolves from C++.
- *
- * File-local names carry a RequiredContent prefix. An anonymous namespace is private to a
- * translation unit rather than to a file, and a unity build merges many files into one, at
- * which point two file-local arrays of the same name are one declaration twice. See
- * CURRENT_STATE.md, where the collisions this has already caused are recorded.
+ * The required-content table: one row per path this module resolves from C++. File-local names
+ * carry a RequiredContent prefix because a unity build merges files, so two anonymous same-named
+ * arrays would collide (see CURRENT_STATE.md).
  */
 namespace
 {
@@ -23,10 +20,9 @@ namespace
 		DestructionContent::MouseLookMappingContextPath,
 
 		/*
-		 * The session's keyboard: the modifier the camera is chorded to, the eight shortcuts the
-		 * toolbar draws, and the context that maps them. The modifier earns its row on its own —
-		 * nothing resolves it onto a CDO, so this table is the only place that would notice it
-		 * had gone, and what breaks is the camera failing to turn at all, not one key misfiring.
+		 * The session's keyboard: camera modifier, the eight toolbar shortcuts, and their mapping
+		 * context. The modifier needs its own row — nothing else resolves it, so a missing one
+		 * stops the camera turning entirely.
 		 */
 		DestructionContent::LookModifierActionPath,
 		DestructionContent::SessionToggleModeActionPath,
@@ -44,15 +40,14 @@ namespace
 		DestructionContent::BrickSelectedMaterialPath,
 		DestructionContent::BrickInspectedMaterialPath,
 
-		/* The load overlay's three bands. See RequiredContent.h for why there are exactly three. */
+		// The load overlay's three bands. See RequiredContent.h for why there are exactly three.
 		DestructionContent::BrickLoadComfortableMaterialPath,
 		DestructionContent::BrickLoadCautionMaterialPath,
 		DestructionContent::BrickLoadCriticalMaterialPath,
 
 		/*
-		 * One row per colour slot, spelled out rather than spliced in from the array: this table
-		 * is a list of paths, and a loop appending six of them would make it unreadable at a
-		 * glance, the one thing it's for. The paths are still named once, in RequiredContent.h.
+		 * One row per colour slot, spelled out rather than looped: this table is a readable list of
+		 * paths. The paths are named once, in RequiredContent.h.
 		 */
 		DestructionContent::BrickNeighbourMaterialPaths[0],
 		DestructionContent::BrickNeighbourMaterialPaths[1],
