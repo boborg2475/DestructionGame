@@ -12,90 +12,58 @@
 #include "Kismet/GameplayStatics.h"
 
 /*
- * File-local names carry a Scenarios prefix and sit in the named namespace rather than an
- * anonymous one: an anonymous namespace is private to a translation unit, not a file, and a
- * unity build merges many files into one, so colliding file-local names become a hard compile
- * error between files that never refer to each other. See CURRENT_STATE.md.
+ * File-local names carry a Scenarios prefix inside the named namespace, not an anonymous
+ * one: unity builds merge translation units, so colliding file-local names break the build.
  */
 namespace DestructionScenarios
 {
-	/*
-	 * --- the brick every row is laid from -------------------------------------------------
-	 *
-	 * DESIGN.md's standard UK metric clay brick, with the standard 1 cm mortar joint that
-	 * makes the coordinating grid 22.5 x 11.25 x 7.5. Every row is this brick; what differs
-	 * is how many there are and what comes out.
-	 */
+	// UK metric clay brick on a 1 cm joint (22.5 x 11.25 x 7.5 grid). Every row uses it.
 	constexpr double ScenariosBrickLengthCm = 21.5;
 	constexpr double ScenariosBrickWidthCm = 10.25;
 	constexpr double ScenariosBrickHeightCm = 6.5;
 	constexpr double ScenariosMortarJointCm = 1.0;
 
 	/**
-	 * How near a cut centre has to be to a brick's centre to name that brick, cm.
-	 *
-	 * A hundredth of a micron, sized against the coordinating grid rather than tuned: the
-	 * closest two distinct brick centres ever come is half a cell (5.625 cm), so a
-	 * millimetre already makes a wrong match impossible and this is seven orders below that
-	 * — yet ten orders above the grid's own rounding (~1e-13 cm at 663 cm out), sitting in
-	 * the middle of a wide band rather than at either edge.
+	 * How near a cut centre must be to a brick's centre to name it, cm. Far below the
+	 * closest distinct centres (5.625 cm) and far above grid rounding (~1e-13 cm).
 	 */
 	constexpr double ScenariosCutMatchToleranceCm = 1.0e-6;
 
 	/**
-	 * What a URL names a scenario with — a key handed to the engine's own parser, not a
-	 * substring anybody searches for: `?MyScenario=`, `?Scenarios=` and `?ScenarioX=` all
-	 * contain this word, so `Contains(TEXT("Scenario="))` would match three keys that are
-	 * not this one. UGameplayStatics::ParseOption compares the key instead.
+	 * URL option key. Parsed with UGameplayStatics::ParseOption, which compares keys; a
+	 * substring search would also match `?MyScenario=` or `?Scenarios=`.
 	 */
 	const TCHAR* const ScenariosOptionKey = TEXT("Scenario");
 
-	/**
-	 * The row every miss falls back to — the first one, which ScenariosBuildCatalogue makes
-	 * `sandbox`. A level showing an empty world is a worse failure than one showing this.
-	 */
+	/** Fallback row for every miss: `sandbox`. Better than an empty world. */
 	constexpr int32 ScenariosDefaultRow = 0;
 
 	/*
-	 * --- where the player stands ----------------------------------------------------------
-	 *
-	 * UCameraComponent's default field of view is 90 degrees horizontally, so at a standoff s
-	 * the visible half-width is s and the visible half-height is s * aspect (viewport height
-	 * over width). Framing a box needs s >= halfX and s >= halfZ / aspect; the margin keeps
-	 * the structure off the edges of the frame.
+	 * The camera's default 90-degree horizontal FOV means at standoff s the visible half-width
+	 * is s and half-height is s * aspect. Framing needs s >= halfX and s >= halfZ / aspect;
+	 * the margin keeps the structure off the frame edges.
 	 */
 	constexpr double ScenariosFrameMargin = 1.25;
 
-	/** Nothing is framed closer than this, or a four-brick arm fills the screen with one brick. */
+	/** Minimum standoff, so a small structure does not fill the screen. */
 	constexpr double ScenariosMinimumStandoffCm = 120.0;
 
 	/**
-	 * The camera looks along -Y — legibility, not taste.
-	 *
-	 * At yaw +90 the camera's right vector is -X, so increasing X draws left and every
-	 * structure comes out mirrored against the design docs' elevations — not obviously
-	 * broken, which is what makes it worth pinning. Yaw -90 reads the same way round as the
-	 * drawings.
+	 * The camera looks along -Y. At yaw +90 increasing X draws to the left, so every
+	 * structure would be mirrored against the design docs' elevations.
 	 */
 	constexpr double ScenariosCameraYawDegrees = -90.0;
 
 	/*
-	 * The three-quarter angle, for the one row that is a genuine 3D box rather than a flat wall.
-	 * The azimuth orbits the camera off the head-on -Y axis toward +X so depth is seen in
-	 * perspective; the elevation looks down so a falling overhang reads as a fall. Pleasing
-	 * values rather than tuned ones — the framing that keeps the box on screen is sized from
-	 * the bounding sphere below, independent of the exact angle.
+	 * Three-quarter view for 3D rows: azimuth orbits toward +X to show depth, elevation looks
+	 * down. Chosen by eye; the standoff is sized from the bounding sphere, not the angle.
 	 */
 	constexpr double ScenariosThreeQuarterAzimuthDegrees = 40.0;
 	constexpr double ScenariosThreeQuarterElevationDegrees = 30.0;
 
 	/**
-	 * The wall every row is laid from, at whatever size that row wants.
-	 *
-	 * Flush rather than ragged, and not a style choice: a ragged wall's alternate courses
-	 * step in, so the end brick of every even course is already a half-seated cantilever
-	 * before anything is cut. A flush end gives every brick two seats and zero eccentricity —
-	 * the only baseline against which "one deletion did this" means anything.
+	 * The running-bond wall spec at a given size. Flush ends, because a ragged end starts with
+	 * half-seated cantilevers before anything is cut.
 	 */
 	static DestructionLayout::FRunningBondSpec ScenariosWallSpec(
 		int32 CoursesHigh, int32 BricksPerCourse)
@@ -116,13 +84,9 @@ namespace DestructionScenarios
 	}
 
 	/*
-	 * --- the corbel family -----------------------------------------------------------------
-	 *
-	 * Three courses of immovable base under every case, arm advancing half a coordinating cell
-	 * per course — 11.25 cm, 3.46x the per-course projection published corbelling practice
-	 * allows. The counterweight cases shift their left origin by the three cells the base
-	 * gains, so their root joint sits at the same absolute X as the bare-base cases', differing
-	 * only in the masonry standing opposite.
+	 * Corbel family: three base courses, arm advancing 11.25 cm per course (3.46x published
+	 * practice). Counterweight cases shift their origin by three cells so the root joint stays
+	 * at the same X; only the masonry opposite differs.
 	 */
 	constexpr int32 ScenariosCorbelBaseCourses = 3;
 
@@ -131,7 +95,7 @@ namespace DestructionScenarios
 
 	constexpr double ScenariosCorbelCounterweightOriginCm = -3.0 * ScenariosCorbelCellPitchCm;
 
-	/** One row of the corbel family, as data: everything that differs between the seven. */
+	/** One corbel row. */
 	struct FScenariosCorbelRow
 	{
 		const TCHAR* Name;
@@ -139,27 +103,22 @@ namespace DestructionScenarios
 		const TCHAR* Title;
 		const TCHAR* Expectation;
 
-		/** Cells wide the base is: two bare, five when three of them stand opposite. */
+		/** Base width in cells: two bare, five with a counterweight. */
 		int32 BaseCells;
 
-		/** Left-hand edge of the base, cm. Written out per row rather than inferred from the cells. */
+		/** Left edge of the base, cm. */
 		double LeftOriginCm;
 
 		int32 Steps;
 
-		/** False is the bare stepped arm of single bricks — case A, and only case A. */
+		/** False only for case A, the bare stepped arm of single bricks. */
 		bool bFilled;
 	};
 
 	/**
-	 * The seven, and none of them cuts anything: a corbel is condemned by its own geometry —
-	 * laid reaching too far, its root joint over capacity the moment it exists — so the
-	 * honest pair is as-laid versus settled, with no cut to wait for (unlike `free-end-40`,
-	 * a genuine before-and-after).
-	 *
-	 * E35 and E36 exist as a pair because `Core.Structure.CorbelStepsBeforeTensionWins`
-	 * locates the crossover at 36 steps — the smallest step count whose root joint reads
-	 * over 1.0. One row could not show a tipping point.
+	 * The seven corbels. None is cut: a corbel stands or falls by its own geometry.
+	 * E35/E36 were the pair either side of the old crossover in
+	 * `Core.Structure.CorbelStepsBeforeTensionWins`.
 	 */
 	const FScenariosCorbelRow ScenariosCorbelRows[] =
 	{
@@ -231,26 +190,14 @@ namespace DestructionScenarios
 	}
 
 	/*
-	 * --- the twenty acceptance walls ---------------------------------------------------------
-	 *
-	 * The configurations the user drew and reviewed, as levels a human can stand in front of.
-	 * Each is one row of claude_plans/WALL_CASES.html, measured headlessly by
-	 * `DestructionGame.Acceptance.Wall.Catalogue` against the same geometry laid by the same
-	 * producer, so a level and its acceptance row are two views of one wall, not two that
-	 * look alike.
-	 *
-	 * What is here is geometry and cuts and nothing else: the expected verdict of each case
-	 * is acceptance-test property and stays in that file. A level needs a wall, a cut, and a
-	 * sentence for the player.
+	 * The acceptance walls: one level per row of claude_plans/WALL_CASES.html, laid by the
+	 * same producer `Acceptance.Wall.Catalogue` measures. Geometry and cuts only; verdicts
+	 * belong to the acceptance test.
 	 */
 	constexpr double ScenariosWallCellPitchCm = ScenariosBrickLengthCm + ScenariosMortarJointCm;
 	constexpr double ScenariosWallHalfCellCm = ScenariosWallCellPitchCm * 0.5;
 
-	/*
-	 * Thirty courses for the one-brick cases, not the ten the drawing shows: a ten-course wall
-	 * reads well under capacity whatever the model does, so the level would show nothing.
-	 * Thirty puts the joint firmly past the line.
-	 */
+	// Thirty courses, not the drawing's ten: ten reads well under capacity and shows nothing.
 	constexpr int32 ScenariosWallTallCourses = 30;
 	constexpr int32 ScenariosWallStandardCells = 12;
 	constexpr int32 ScenariosWallCoveredCourses = 12;
@@ -260,7 +207,7 @@ namespace DestructionScenarios
 	constexpr double ScenariosWallQuarterBrickStepCm = ScenariosWallHalfCellCm * 0.5;
 	constexpr double ScenariosWallHalfBrickStepCm = ScenariosWallHalfCellCm;
 
-	/* --- A: one brick out. ------------------------------------------------------------------ */
+	// A: one brick out.
 
 	const DestructionWallCases::FWallRegion ScenariosWall02Cuts[] = { { 1, 1, 5.25, 5.75 } };
 	const DestructionWallCases::FWallRegion ScenariosWall03Cuts[] = { { 1, 1, 11.00, 11.50 } };
@@ -275,7 +222,7 @@ namespace DestructionScenarios
 		{ 1, 1, 9.25, 9.75 },
 	};
 
-	/* --- B: openings and depth of cover. ----------------------------------------------------- */
+	// B: openings and depth of cover.
 
 	const DestructionWallCases::FWallRegion ScenariosWallTwoCellOpening[] = { { 1, 3, 4.75, 6.25 } };
 	const DestructionWallCases::FWallRegion ScenariosWallFourCellOpening[] = { { 1, 3, 3.75, 7.25 } };
@@ -286,29 +233,25 @@ namespace DestructionScenarios
 	/** The same four cells of cover as case 7, cut through to the free right end. */
 	const DestructionWallCases::FWallRegion ScenariosWall10Cuts[] = { { 1, 3, 7.75, 11.50 } };
 
-	/* --- C: spanning between supports. ------------------------------------------------------- */
+	// C: spanning between supports.
 
 	const DestructionWallCases::FWallRegion ScenariosWall11Cuts[] = { { 0, 3, 2.75, 8.25 } };
 	const DestructionWallCases::FWallRegion ScenariosWall12Cuts[] = { { 0, 3, 0.75, 6.25 } };
 
-	/* --- E and F: the bond, the lost base, and the staircase void. ---------------------------- */
+	// E and F: the bond, the lost base, and the staircase void.
 
 	const DestructionWallCases::FWallRegion ScenariosWall18Cuts[] = { { 5, 5, 4.75, 5.25 } };
 	const DestructionWallCases::FWallRegion ScenariosWall19Cuts[] = { { 0, 0, -0.50, 5.25 } };
 
-	/* --- G: openings too big for what covers them. -------------------------------------------- */
+	// G: openings too big for what covers them.
 
-	/** Cells 2..19 out of an eighteen-cell opening, two courses of cover over it. */
+	/** An eighteen-cell opening (cells 2..19), two courses of cover. */
 	const DestructionWallCases::FWallRegion ScenariosWall21Cuts[] = { { 1, 3, 1.75, 19.25 } };
 
 	/** Case 9's own eight courses of cover, over a span grown to thirty-five cells. */
 	const DestructionWallCases::FWallRegion ScenariosWall22Cuts[] = { { 1, 3, 1.75, 36.25 } };
 
-	/**
-	 * The raking cut, one region per course, reading up: each course above the last is cut
-	 * one cell less far right, so the surviving masonry steps left over the hole as it rises —
-	 * the overhang a player sees, leaving two bricks along the cut face unbedded.
-	 */
+	/** The raking cut: each course up is cut one cell less far right, so the masonry steps out over the hole. */
 	const DestructionWallCases::FWallRegion ScenariosWall20Cuts[] =
 	{
 		{ 1, 1, 0.5, 6.5 },
@@ -319,7 +262,7 @@ namespace DestructionScenarios
 		{ 6, 6, 0.5, 1.5 },
 	};
 
-	/** One acceptance wall as a level: everything that differs between the twenty. */
+	/** One acceptance wall as a level. */
 	struct FScenariosWallRow
 	{
 		const TCHAR* Name;
@@ -340,15 +283,9 @@ namespace DestructionScenarios
 	};
 
 	/**
-	 * The twenty, and eighteen of them cut.
-	 *
-	 * A caption carries one machine-checked token and the rest is prose: `Expected: STANDS`,
-	 * `LOCAL LOSS` or `COLLAPSE` matching what the acceptance row asserts, plus "the model
-	 * currently disagrees" where the solver does not produce that verdict.
-	 * `Acceptance.Wall.EveryLevelsCaptionTellsTheTruth` runs each case and requires the
-	 * admission exactly where the model gets it wrong — a caption naming an outcome the
-	 * solver does not produce, or an admission left behind after a fix, is the same lie in
-	 * opposite directions.
+	 * The acceptance walls. Each caption carries `Expected: STANDS`, `LOCAL LOSS` or `COLLAPSE`
+	 * matching the acceptance row, plus "the model currently disagrees" exactly where the solver
+	 * differs. `Acceptance.Wall.EveryLevelsCaptionTellsTheTruth` checks both directions.
 	 */
 	const FScenariosWallRow ScenariosWallRows[] =
 	{
@@ -578,7 +515,7 @@ namespace DestructionScenarios
 	{
 		TArray<FScenario> Rows;
 
-		/* The wall Play already gives you: 30 bricks across, 40 courses, nothing taken out. */
+		// The default wall: 30 bricks across, 40 courses, nothing cut.
 		FScenario& Sandbox = Rows.AddDefaulted_GetRef();
 
 		Sandbox.Name = FName(TEXT("sandbox"));
@@ -592,19 +529,10 @@ namespace DestructionScenarios
 		Sandbox.Wall = ScenariosWallSpec(40, 30);
 
 		/*
-		 * The one row that lays nothing, because the player lays it: an empty plot, a
-		 * toolbar, and whatever the player stands up on it.
-		 *
-		 * A catalogue row so joining it is the same act as joining any other level —
-		 * `?Scenario=build` and the map `Lvl_Build` both reach it through the same
-		 * IndexForOptionsAndMap everything else uses.
-		 *
-		 * Carries nothing to lay: no LayStructure, a default Wall, no cut. `Build` therefore
-		 * refuses it (RunningBond refuses zero courses), so the game mode reads bBuildSandbox
-		 * before it asks for a layout — see BeginPlay.
-		 *
-		 * Framed three-quarter: with no bounds to frame, the game mode invents a plot box at
-		 * the origin, and head-on there is a level camera showing the horizon.
+		 * The build plot: lays nothing, the player builds. A catalogue row so `?Scenario=build`
+		 * and `Lvl_Build` resolve like any level. `Build` refuses it (zero courses), so the
+		 * game mode checks bBuildSandbox first (see BeginPlay). Three-quarter framing, since
+		 * head-on over an empty plot shows only the horizon.
 		 */
 		FScenario& BuildSandbox = Rows.AddDefaulted_GetRef();
 
@@ -619,12 +547,8 @@ namespace DestructionScenarios
 		BuildSandbox.Framing = EScenarioFraming::ThreeQuarter;
 
 		/*
-		 * The user's own reported case: one brick deleted at a free end, under forty courses.
-		 * It is the fixture Core.Structure.AFreeEndDeletionInATallWall reads, so the level and
-		 * the test are about one wall, not two that look alike.
-		 *
-		 * The point is watching it not happen: the brick above the hole keeps one seat and
-		 * carries across it, so a human joining should see the cut and nothing else move.
+		 * The user's reported case: one brick out at a free end under forty courses. Same
+		 * fixture as Core.Structure.AFreeEndDeletionInATallWall. Nothing else should move.
 		 */
 		FScenario& FreeEnd = Rows.AddDefaulted_GetRef();
 
@@ -638,14 +562,10 @@ namespace DestructionScenarios
 
 		FreeEnd.Wall = ScenariosWallSpec(40, 7);
 
-		/* The outermost full brick of the grounded (even) course: x = 0, half a brick above the ground. */
+		// The outermost brick of the grounded course.
 		FreeEnd.CutCentresCm.Add(FVector(0.0, 0.0, ScenariosBrickHeightCm / 2.0));
 
-		/*
-		 * The corbel family: each row carries the call that lays it, so the loop below knows
-		 * nothing about corbels beyond the table above. None names a cut — a corbel is
-		 * condemned by its own geometry.
-		 */
+		// Corbels carry the call that lays them, and no cut.
 		for (const FScenariosCorbelRow& Corbel : ScenariosCorbelRows)
 		{
 			FScenario& Row = Rows.AddDefaulted_GetRef();
@@ -664,15 +584,8 @@ namespace DestructionScenarios
 		}
 
 		/*
-		 * The twenty acceptance walls: each carries the call that lays it, since none is a
-		 * running-bond rectangle the `Wall` spec could describe, and two are not running bond
-		 * at all.
-		 *
-		 * The cut is named in (course, cell) and resolved to centres here, once. A centre
-		 * names one brick and cannot quietly name a different one when the wall changes, but
-		 * it is a hopeless vocabulary to write a doorway in — so the wall is laid, its regions
-		 * resolved against the acceptance file's own (course, cell) grid, and the centres of
-		 * those bricks go on the row.
+		 * Acceptance walls carry the call that lays them (none fits the `Wall` spec). Cuts are
+		 * written as (course, cell) regions and resolved to brick centres here, once.
 		 */
 		for (const FScenariosWallRow& Wall : ScenariosWallRows)
 		{
@@ -716,13 +629,9 @@ namespace DestructionScenarios
 		}
 
 		/*
-		 * The shed — SHED_PATH.md Phase F, the first multi-material level: two ClayBrick piers
-		 * carry a Timber roof, and a Timber overhang reaches out over the door on a grounded
-		 * post plus a screwed wall fixing. Laid by DestructionShed::Build, not the
-		 * running-bond fallback, so the per-piece materials survive into play.
-		 *
-		 * The one cut pulls the post: the overhang's screw fixing alone has too little lap to
-		 * cantilever it, so removing the post drops the overhang while the two piers keep the earth.
+		 * The shed (SHED_PATH.md Phase F): brick piers, Timber roof, and a Timber overhang on a
+		 * post plus a screwed fixing. The cut pulls the post; the screw alone cannot cantilever
+		 * the overhang, so it drops while the piers stand.
 		 */
 		FScenario& Shed = Rows.AddDefaulted_GetRef();
 
@@ -740,11 +649,7 @@ namespace DestructionScenarios
 			return DestructionShed::Build(DestructionShed::FShedSpec{}, OutLayout);
 		};
 
-		/*
-		 * The cut is the grounded post, named by its box centre: (PostCentreCm, 0, HeadTop / 2),
-		 * derived from the same default spec fields the builder reads, so the centre lands on
-		 * the post to the ulp.
-		 */
+		// The post's centre, from the same spec fields the builder reads.
 		const DestructionShed::FShedSpec ShedSpec;
 		const double ShedPostTopZCm =
 			ShedSpec.BaseHeightCm + ShedSpec.JointThicknessCm + ShedSpec.HeadHeightCm;
@@ -752,17 +657,9 @@ namespace DestructionScenarios
 		Shed.CutCentresCm.Add(FVector(ShedSpec.PostCentreCm, 0.0, ShedPostTopZCm / 2.0));
 
 		/*
-		 * The 3D shed — THREED_DESIGN.md Phase F, the first genuinely-three-dimensional level,
-		 * laid by DestructionShed3D::BuildRecognizable: four ClayBrick walls close a box with a
-		 * door and a window, stepped brick gables carry a Timber roof, and over the door a
-		 * Timber porch cantilevers on two grounded posts, tied back by a narrow cleat. The
-		 * builder flags the structure 3D (SetThreeDimensional) so the bridge poses its
-		 * out-of-plane corner joints to the 3D LP.
-		 *
-		 * The one cut pulls a porch post: the overhang's weight sits forward of the post
-		 * line, so the narrow cleat can only tie its back down in withdrawal, no X-couple
-		 * worth the name. Remove either post and the overhang tips toward the gap and drops,
-		 * while the walls, the far post and the roof keep the earth.
+		 * The 3D shed (THREED_DESIGN.md Phase F), laid by BuildRecognizable and flagged 3D.
+		 * The cut pulls a porch post: the narrow cleat has no useful X-couple, so the porch tips
+		 * toward the gap and drops while the rest stands.
 		 */
 		FScenario& Shed3D = Rows.AddDefaulted_GetRef();
 
@@ -780,41 +677,18 @@ namespace DestructionScenarios
 			return DestructionShed3D::BuildRecognizable(OutLayout);
 		};
 
-		/*
-		 * The one row viewed three-quarter: the 3D shed is a closed box with an overhang, and
-		 * head-on hides both its depth and its fall.
-		 */
+		// Head-on would hide both the depth and the fall.
 		Shed3D.Framing = EScenarioFraming::ThreeQuarter;
 
-		/*
-		 * The cut is the right-hand porch post: BuildRecognizable lays PostR over
-		 * X[215,245] Y[328,352] Z[0,200], box centre (230, 340, 100). Pulling it drops the
-		 * overhang — the load line's X-moment outruns the cleat tie's couple.
-		 */
+		// Right-hand porch post, X[215,245] Y[328,352] Z[0,200].
 		Shed3D.CutCentresCm.Add(FVector(230.0, 340.0, 100.0));
 
 		/*
-		 * The realistic-brick shed — the true-masonry counterpart of the recognizable 3D shed
-		 * above, laid by DestructionShed3D::BuildRealistic: real 21.5 x 10.25 x 6.5 cm brick
-		 * walls close a box with a door and window under Timber lintels, stepped gables carry
-		 * a Timber roof, and a porch on two posts cantilevers over the door — 442 pieces. The
-		 * builder flags it 3D so the bridge poses its out-of-plane corner joints.
-		 *
-		 * The cut removes the back wall's eaves course, and that is the collapse: the back
-		 * gable (stepped courses 16..19) is a free-standing triangle bedding on the eaves
-		 * course (15) with no lateral abutment to arch to. Knock that course out and the whole
-		 * gable end loses its downward path, while the wall body below (a bonded deep beam)
-		 * and the rest of the shed keep standing.
-		 *
-		 * Why the back wall: the row is framed ThreeQuarter, so ViewpointFor's camera most
-		 * directly faces the +Y back wall, whose stepped gable top is the most visible thing
-		 * in frame — a low band cut from the wall body would only deep-beam over the gap and
-		 * stand, as the acceptance walls do.
-		 *
-		 * At 442 blocks the shed is far above the 200-block equilibrium-gate cap, so the
-		 * router, not the 3D LP, is the break authority, and it routes load down bed joints —
-		 * measured, 24 pieces lose the earth (the gable end and the four purlins it bore) and
-		 * nothing is stranded: a clean, big collapse.
+		 * The real-brick shed (BuildRealistic, 442 pieces, flagged 3D). The cut removes the
+		 * back wall's eaves course (15), which the free-standing back gable (16..19) beds on;
+		 * the gable loses its path down while the wall body deep-beams and stands. The back
+		 * wall is the one the three-quarter camera faces. Above the 200-block cap, so the
+		 * router is the break authority; measured, 24 pieces lose the earth.
 		 */
 		FScenario& ShedRealistic = Rows.AddDefaulted_GetRef();
 
@@ -835,18 +709,11 @@ namespace DestructionScenarios
 			return DestructionShed3D::BuildRealistic(OutLayout);
 		};
 
-		/* Framed three-quarter, like the recognizable 3D shed: head-on hides its depth and ridge. */
 		ShedRealistic.Framing = EScenarioFraming::ThreeQuarter;
 
 		/*
-		 * The cut is the nine bricks of the back wall's eaves course (course 15), named by
-		 * their exact box centres. The back wall runs along X in the Y band [123.75, 134] (Y
-		 * centre 128.875) from RunStart 0, eight full bricks per even course, sixteen courses.
-		 * Course 15 is odd — a half bat, seven full bricks and a closing half bat — nine pieces
-		 * at X centres 5.125, 22.0, 44.5, 67.0, 89.5, 112.0, 134.5, 157.0, 173.875, all at
-		 * Z = 15 * 7.5 + 3.25 = 115.75. This whole course is the footing of the back gable
-		 * (courses 16..19); pull it and the gable comes down. Each centre lands on its brick to
-		 * the ulp, and ScenariosPieceAtCentre resolves it to that brick's handle.
+		 * The nine pieces of course 15 (odd: half bat, seven bricks, half bat) at
+		 * Z = 15 * 7.5 + 3.25 = 115.75, on the back wall's Y centre 128.875.
 		 */
 		const double ShedRealisticEavesYCm = 128.875;
 		const double ShedRealisticEavesZCm = 115.75;
@@ -860,18 +727,10 @@ namespace DestructionScenarios
 		}
 
 		/*
-		 * The warehouse — the large real-brick building the owner asked for on 2026-09-18, and
-		 * the first level that is data rather than code: its building is the layout file
-		 * Content/Layouts/Warehouse.json (Core/LayoutFile.h), written by
-		 * Scripts/New-WarehouseLayout.ps1 — a two-storey block of ClayBrick walls on a stone
-		 * plinth, pilasters, window bays under Timber lintels, stepped gables under a stepped
-		 * Timber roof, a doorway and two chimneys — 5,612 pieces, flagged 3D, far above the
-		 * block cap, so the router is its break authority. The owner's ruling: a building is
-		 * data, because players will build in the game without C++, so no builder was kept for it.
-		 *
-		 * Nothing is cut, and nothing is promised about what settling does. The owner ruled
-		 * "if it falls, that is ok, I just want it built"; the row holds it as laid and then
-		 * settles it, and the caption says exactly that rather than claiming an engineered verdict.
+		 * The warehouse: the first data-driven level, loaded from Content/Layouts/Warehouse.json
+		 * (Core/LayoutFile.h, written by Scripts/New-WarehouseLayout.ps1). 5,612 pieces, flagged
+		 * 3D, router is the break authority. Owner ruling: buildings are data, not C++. Nothing
+		 * is cut and no verdict is promised; it settles to whatever its joints carry.
 		 */
 		FScenario& Warehouse = Rows.AddDefaulted_GetRef();
 
@@ -900,22 +759,14 @@ namespace DestructionScenarios
 			return bLoaded;
 		};
 
-		/* A closed box with a roof and chimneys: framed three-quarter so the door end and a long wall show. */
-
 		Warehouse.Framing = EScenarioFraming::ThreeQuarter;
 
 		return Rows;
 	}
 
 	/**
-	 * The piece whose box is centred here, or INDEX_NONE.
-	 *
-	 * A genuine three-component proximity test: every plausible near miss differs from a real
-	 * brick on one axis only (a head joint in X, a bed joint in Z, a metre off the wall in
-	 * Y), so comparing on fewer than three axes would match a brick that is not there.
-	 *
-	 * A NaN centre matches nothing, the fail-closed direction: every comparison against NaN
-	 * is false, so a NaN falls out as a miss and the build that asked for it is refused.
+	 * The piece whose box is centred here, or INDEX_NONE. Compares all three axes, since near
+	 * misses usually differ on one. A NaN centre matches nothing, so its build is refused.
 	 */
 	static int32 ScenariosPieceAtCentre(
 		const DestructionLayout::FBrickLayout& Layout, const FVector& CentreCm)
@@ -932,19 +783,9 @@ namespace DestructionScenarios
 	}
 
 	/**
-	 * The bare asset name underneath every way a map arrives.
-	 *
-	 * `UWorld::GetMapName()` answers `Lvl_FreeEnd40` in a cooked game and
-	 * `UEDPIE_<instance>_Lvl_FreeEnd40` in PIE, while a URL or streamed level hands over a
-	 * package path or a full object path. All are the same map, and a catalogue matching
-	 * only one form would silently give the wrong wall to everyone else.
-	 *
-	 * The PIE prefix is stripped case-insensitively — `UWorld::RemovePIEPrefix` is not used
-	 * because it searches CaseSensitive, and neither a URL nor a config file guarantees the
-	 * case anything was typed in.
-	 *
-	 * A name that is all decoration and no map (`UEDPIE_0_`, or a path ending in a slash)
-	 * comes back empty, which no row's map name is, so it selects nothing.
+	 * The bare asset name from a map name, package path, object path or PIE name
+	 * (`UEDPIE_<n>_Lvl_X`). The PIE prefix is stripped case-insensitively;
+	 * UWorld::RemovePIEPrefix is case-sensitive. All decoration and no map returns empty.
 	 */
 	static FString ScenariosBareMapName(const FString& MapName)
 	{
@@ -952,7 +793,6 @@ namespace DestructionScenarios
 
 		int32 At = INDEX_NONE;
 
-		/* A package path, and then the `.AssetName` an object path adds after it. */
 		if (Bare.FindLastChar(TEXT('/'), At))
 		{
 			Bare.RightChopInline(At + 1);
@@ -967,7 +807,7 @@ namespace DestructionScenarios
 
 		if (Bare.StartsWith(PiePrefix, ESearchCase::IgnoreCase))
 		{
-			/* `UEDPIE_11_Lvl_X`: past the word, then past the instance number's own underscore. */
+			// Skip the instance number and its underscore.
 			const FString AfterPrefix = Bare.RightChop(PiePrefix.Len());
 
 			if (AfterPrefix.FindChar(TEXT('_'), At))
@@ -1006,10 +846,7 @@ namespace DestructionScenarios
 
 		for (int32 Index = 0; Index < Rows.Num(); ++Index)
 		{
-			/*
-			 * CASE-INSENSITIVELY, because a map name arrives from a URL or from
-			 * UWorld::GetMapName and neither guarantees the case the catalogue was typed in.
-			 */
+			// Case-insensitive: URLs and GetMapName do not guarantee case.
 			if (MapName.Equals(FString(Rows[Index].MapName), ESearchCase::IgnoreCase))
 			{
 				return Index;
@@ -1025,16 +862,9 @@ namespace DestructionScenarios
 		EScenarioSelection& OutHow)
 	{
 		/*
-		 * The option wins, read with the engine's own parser. HasOption and ParseOption walk
-		 * the `?Key=Value` pairs and compare the key, so a decoy key that merely contains the
-		 * word does not match, both key and value are matched case-insensitively for free, and
-		 * a repeated option resolves the way every other option on the URL does. A parser
-		 * written here would be a second answer to a question the engine already answers.
-		 *
-		 * Asked and then read, rather than read and tested for emptiness: `?Scenario=` with
-		 * nothing after it is a typo, not an absent option, and ParseOption answers an empty
-		 * string to both — an implementation that only looked at the value would fall through
-		 * to the map and quietly build whatever that names.
+		 * The option wins, parsed by the engine (key-compared, case-insensitive). HasOption is
+		 * checked first because ParseOption returns empty both for an absent option and for
+		 * `?Scenario=`, which is a typo and must not fall through to the map.
 		 */
 		if (UGameplayStatics::HasOption(Options, ScenariosOptionKey))
 		{
@@ -1048,11 +878,7 @@ namespace DestructionScenarios
 				return Named;
 			}
 
-			/*
-			 * A name not in the catalogue falls back while saying so: the index alone is
-			 * identical to the deliberate default below, which would leave a player who
-			 * mistyped staring at the wrong wall with nothing to tell them why.
-			 */
+			// Falls back, but reports it, so a mistyped name is distinguishable from the default.
 			OutHow = EScenarioSelection::OptionNamedNoScenario;
 
 			return ScenariosDefaultRow;
@@ -1077,17 +903,12 @@ namespace DestructionScenarios
 		DestructionLayout::FBrickLayout& OutLayout,
 		TArray<int32>& OutCutPieces)
 	{
-		/*
-		 * Emptied first and filled last, so every refusal below leaves a caller with nothing
-		 * rather than a stale cut list. Laid into a local and moved out at the end for the
-		 * same reason: a bad cut centre is only discovered after every piece has been placed.
-		 */
+		// Emptied first and filled last, so every refusal leaves the outputs empty.
 		OutLayout = DestructionLayout::FBrickLayout();
 		OutCutPieces.Reset();
 
 		DestructionLayout::FBrickLayout Laid;
 
-		/* The row says what lays it; a row that says nothing is a running bond. */
 		const bool bLaid = Scenario.LayStructure
 			? Scenario.LayStructure(Laid)
 			: DestructionLayout::RunningBond(Scenario.Wall, Laid);
@@ -1104,10 +925,7 @@ namespace DestructionScenarios
 		{
 			const int32 Piece = ScenariosPieceAtCentre(Laid, CentreCm);
 
-			/*
-			 * A cut centre that names no brick refuses the whole build: dropping it instead
-			 * would give a level that reads exactly like one whose wall correctly stood.
-			 */
+			// Refuse rather than drop: a silently skipped cut looks like a wall that stood.
 			if (Piece == INDEX_NONE)
 			{
 				return false;
@@ -1116,7 +934,7 @@ namespace DestructionScenarios
 			CutPieces.Add(Piece);
 		}
 
-		/* Resolved, not applied: the player watches the brick go, so removal belongs to whoever owns the delay. */
+		// Resolved, not applied: the caller removes the pieces after its on-screen delay.
 		OutLayout = MoveTemp(Laid);
 		OutCutPieces = MoveTemp(CutPieces);
 
@@ -1130,12 +948,9 @@ namespace DestructionScenarios
 		const FVector HalfSizeCm = BoundsCm.GetExtent();
 
 		/*
-		 * The three-quarter override frames the whole 3D box, not just its front face. Off an
-		 * angle depth Y rotates into both extents, so the honest "all of it is in frame" is a
-		 * sphere enclosing the box (radius = 3D half-diagonal) — strictly larger than any
-		 * single half-extent, so a standoff sized from halfZ alone would leave it poking out
-		 * top and bottom. The floor sits second in FMath::Max so a NaN radius lands on it
-		 * rather than escaping as the camera distance.
+		 * Three-quarter frames the box's bounding sphere (radius = half-diagonal), since at an
+		 * angle depth rotates into both extents. The floor is second in FMath::Max so a NaN
+		 * radius lands on the floor.
 		 */
 		if (Framing == EScenarioFraming::ThreeQuarter)
 		{
@@ -1147,11 +962,7 @@ namespace DestructionScenarios
 			const double StandoffCm = FMath::Max(
 				FMath::Max(FromWidthCm, FromHeightCm), ScenariosMinimumStandoffCm);
 
-			/*
-			 * The direction from the centre to the camera: a yaw of the azimuth about Z turns
-			 * head-on's +Y toward +X, and the elevation lifts it out of the horizontal, so the
-			 * camera sits off the centre's X and above its Z, looking back down at the box.
-			 */
+			// Centre-to-camera direction: +Y yawed toward +X by the azimuth, lifted by the elevation.
 			const double AzimuthRad = FMath::DegreesToRadians(ScenariosThreeQuarterAzimuthDegrees);
 			const double ElevationRad = FMath::DegreesToRadians(ScenariosThreeQuarterElevationDegrees);
 			const double CosElevation = FMath::Cos(ElevationRad);
@@ -1170,26 +981,16 @@ namespace DestructionScenarios
 		}
 
 		/*
-		 * The margin is applied to each requirement and the division comes last, not the same
-		 * arithmetic as scaling one maximum: algebraically 1.25 * (halfZ / aspect) and
-		 * (1.25 * halfZ) / aspect are one number, but in doubles they are not, and the
-		 * difference lands on the wrong side of the inequality. A 1500 cm half-height framed
-		 * the other way gives a visible half-height of 1874.9999999999998 against the 1875
-		 * asked for — a fifth of a nanometre outside the frame. Every swept case in
-		 * Scenarios.Viewpoint clears it written this way.
+		 * Multiply by the margin before dividing by aspect. The other order rounds wrong: a
+		 * 1500 cm half-height frames to 1874.9999999999998 against 1875 asked, just outside.
 		 */
 		const double FromWidthCm = ScenariosFrameMargin * HalfSizeCm.X;
 		const double FromHeightCm = (ScenariosFrameMargin * HalfSizeCm.Z) / AspectHeightOverWidth;
 
 		/*
-		 * The floor is the second argument, the fail-closed order: FMath::Max is
-		 * `(B < A) ? A : B`, and every comparison against NaN is false, so it discards a NaN
-		 * in A and returns one in B — the NaN candidate here is the box's own standoff, so
-		 * floor-first would hand back a NaN camera position instead.
-		 *
-		 * An empty box (zero extents) and an inverted one (negative extents) both land on the
-		 * floor by the same comparison; a negative standoff would put the camera behind the
-		 * structure, rendering perfectly and showing nothing.
+		 * Floor second, to fail closed: FMath::Max is `(B < A) ? A : B`, which discards a NaN
+		 * in A but returns one in B. Empty or inverted boxes also land on the floor, instead of
+		 * putting the camera behind the structure.
 		 */
 		const double StandoffCm = FMath::Max(
 			FMath::Max(FromWidthCm, FromHeightCm), ScenariosMinimumStandoffCm);

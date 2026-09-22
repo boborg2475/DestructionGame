@@ -10,56 +10,19 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE GAME MODE SAYS WHICH SCENARIO IT BUILT, AND WHETHER IT WAS ASKED FOR OR FALLEN BACK TO.
- *
- * =====================================================================================
- * THE GAP THIS CLOSES, AND WHY IT IS STATE RATHER THAN A LOG LINE
- * =====================================================================================
- *
- * `IndexForOptionsAndMap` already computes `EScenarioSelection` and `World.Scenarios.Selection`
- * already pins every branch of it — but the game mode THROWS IT AWAY. Its own source says so:
- * "nothing reads `How` yet, and that is a gap rather than a decision". A headless smoke run on a
- * real `Lvl_FreeEnd40` confirmed it from the other end: the map loads, the wall builds, and
- * nothing anywhere says which scenario was chosen. A player who mistypes `?Scenario=` gets a
- * silently different wall and the log gives them no way to tell.
- *
- * WHAT IS SPECIFIED HERE IS THE STATE, NOT THE MESSAGE. A warning naming the valid rows and an
- * on-screen label are both thin reads of the same two values, and asserting on log TEXT is
- * fragile — a reworded string breaks a test that was never about the wording. So the pair
- * (which row, how it was reached) is the assertable shape, and whatever is printed sits
- * downstream of it.
- *
- * =====================================================================================
- * THE ROW ALONE CANNOT CARRY IT, WHICH IS THE WHOLE POINT
- * =====================================================================================
- *
- * A URL naming a scenario that does not exist and a URL naming nothing at all BOTH land on
- * `sandbox`. Indistinguishable, they are a player staring at the wrong wall wondering why. So the
- * two cases are asserted as a PAIR: same row, different `EScenarioSelection`. A test that only
- * checked the index would pass in full against a game mode that swallowed every typo, and a test
- * that only checked the enum would pass against one that fell back to the wrong row.
- *
- * =====================================================================================
- * AND IT IS ASSERTED ALONGSIDE WHAT WAS ACTUALLY BUILT
- * =====================================================================================
- *
- * A recorded row that disagreed with the wall in front of the player would be worse than no
- * record at all — it is a readout that lies. So each case also checks the piece count of the
- * structure the game mode actually stood up: 300 for the flush 7 x 40 wall, 1,220 for the 30 x 40
- * sandbox (40N + 20 pieces, since odd courses fill a half cell at each end with a half bat).
- *
- * NEEDS A TICKING WORLD: it needs a WORLD with begin-play run, because that is when the game mode
- * selects. It never ticks one — nothing here is about elapsed time.
+ * The game mode records which scenario row it built and how it was selected
+ * (EScenarioSelection). State is asserted, not log text. A typo and no option both land on
+ * `sandbox`, so they are asserted as a pair: same row, different selection. Each case also
+ * checks the built piece count matches the recorded row. Needs begin-play; never ticks.
  */
 namespace ScenarioReportTestSupport
 {
 	using namespace DestructionScenarios;
 
-	/** The rows slice A put in the catalogue, named rather than indexed. */
 	const TCHAR* const ScenarioReportDefaultRowName = TEXT("sandbox");
 	const TCHAR* const ScenarioReportOptionRowName = TEXT("free-end-40");
 
-	/** 40N + 20: twenty even courses of N, twenty odd courses of N - 1 plus two half bats. */
+	/** 40N + 20 pieces for a flush 40-course wall N bricks wide (N = 30 and 7). */
 	constexpr int32 ScenarioReportDefaultWallPieceCount = 1220;
 	constexpr int32 ScenarioReportOptionWallPieceCount = 300;
 
@@ -82,7 +45,7 @@ namespace ScenarioReportTestSupport
 			: FString::Printf(TEXT("<no row: %d>"), Index);
 	}
 
-	/** What one begin-play left behind: the row it chose, how it chose it, and what it stood up. */
+	/** What one begin-play recorded and built. */
 	struct FScenarioReportOutcome
 	{
 		bool bRan = false;
@@ -94,12 +57,7 @@ namespace ScenarioReportTestSupport
 		int32 BuiltPieces = 0;
 	};
 
-	/**
-	 * Begin play once under the given URL options and read the game mode's own state back.
-	 *
-	 * NO PAWN, DELIBERATELY. Nothing here is about framing, and a level with nobody in it yet must
-	 * still select and still build.
-	 */
+	/** Begin play once under the given URL options and read back the game mode's state. No pawn. */
 	inline FScenarioReportOutcome ScenarioReportRun(
 		FAutomationTestBase& Test, const TCHAR* Label, const TCHAR* Options)
 	{
@@ -158,7 +116,7 @@ namespace ScenarioReportTestSupport
 		return Outcome;
 	}
 
-	/** The row that name looks up, or INDEX_NONE with the reason reported. */
+	/** The row with that name, or INDEX_NONE with an error. */
 	inline int32 ScenarioReportRowNamed(FAutomationTestBase& Test, const TCHAR* Name)
 	{
 		const int32 Index = IndexOfName(FName(Name));
@@ -198,7 +156,7 @@ bool FScenarioReportSelectionTest::RunTest(const FString& Parameters)
 			ScenarioReportDefaultRowName, DefaultRow, ScenarioReportOptionRowName, OptionRow),
 		DefaultRow != OptionRow);
 
-	/* --- ONE: a valid option records that row, and says it was asked for ------------------- */
+	// A valid option records that row, ByOption.
 
 	const FScenarioReportOutcome ByOption = ScenarioReportRun(
 		*this, TEXT("VALID OPTION"),
@@ -221,10 +179,7 @@ bool FScenarioReportSelectionTest::RunTest(const FString& Parameters)
 				*ScenarioReportHowName(ByOption.How)),
 			ByOption.How == EScenarioSelection::ByOption);
 
-		/*
-		 * AND THE RECORD MUST AGREE WITH THE WALL. A readout that named one row while the player
-		 * looked at another is worse than no readout at all.
-		 */
+		// The record must match the wall actually built.
 		TestTrue(
 			*FString::Printf(
 				TEXT("and the wall in front of the player must be that row's — a flush 7 x 40 ")
@@ -233,7 +188,7 @@ bool FScenarioReportSelectionTest::RunTest(const FString& Parameters)
 			ByOption.BuiltPieces == ScenarioReportOptionWallPieceCount);
 	}
 
-	/* --- TWO: nothing named anything, so the default was taken DELIBERATELY ---------------- */
+	// No option: the default row, recorded as Default.
 
 	const FScenarioReportOutcome ByDefault =
 		ScenarioReportRun(*this, TEXT("NO OPTION"), nullptr);
@@ -249,10 +204,8 @@ bool FScenarioReportSelectionTest::RunTest(const FString& Parameters)
 			ByDefault.Row == DefaultRow);
 
 		/*
-		 * `Default` AND NOT `ByMapName`. A code-built test world's GetMapName is the test world's
-		 * own package name, which no catalogue row carries, so the map branch cannot fire here —
-		 * which is exactly why selection was pulled out world-free and is pinned in every form a
-		 * map name arrives in by World.Scenarios.Selection.
+		 * Default, not ByMapName: a code-built world's map name matches no row. Map-name
+		 * selection is covered world-free by World.Scenarios.Selection.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -269,7 +222,7 @@ bool FScenarioReportSelectionTest::RunTest(const FString& Parameters)
 			ByDefault.BuiltPieces == ScenarioReportDefaultWallPieceCount);
 	}
 
-	/* --- THREE: a typo lands on the SAME row and must NOT read the same ------------------- */
+	// A typo falls back to the same row, recorded as OptionNamedNoScenario.
 
 	const FScenarioReportOutcome ByTypo = ScenarioReportRun(
 		*this, TEXT("MISTYPED OPTION"), TEXT("Scenario=free-end-4O"));
@@ -299,7 +252,7 @@ bool FScenarioReportSelectionTest::RunTest(const FString& Parameters)
 			ByTypo.BuiltPieces == ScenarioReportDefaultWallPieceCount);
 	}
 
-	/* --- AND THE PAIR, WHICH IS THE CLAIM THE OTHER TWO ONLY SET UP ----------------------- */
+	// The pair: same row, distinguishable selection.
 
 	if (ByDefault.bRan && ByTypo.bRan)
 	{
@@ -314,7 +267,7 @@ bool FScenarioReportSelectionTest::RunTest(const FString& Parameters)
 			ByDefault.Row == ByTypo.Row && ByDefault.How != ByTypo.How);
 	}
 
-	/* --- and no level ever records a row that does not exist ------------------------------ */
+	// Every run records a real row.
 
 	const FScenarioReportOutcome* const AllRuns[] = { &ByOption, &ByDefault, &ByTypo };
 

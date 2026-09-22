@@ -8,31 +8,15 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-/**
- * Named namespace, named differently from every other one in this module — an anonymous
- * namespace is private to a translation unit rather than to a file, and a unity build merges
- * many files into one. The world harness is not redeclared here: it lives in
- * Tests/BrickWorldTestSupport.h and is shared with four other files.
- */
+// Named, not anonymous: unity builds merge translation units. The harness is in BrickWorldTestSupport.h.
 namespace BrickWallScenarioTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
 	/**
-	 * The wall the game mode builds on Play: 30 bricks across, 40 courses.
-	 *
-	 * That is thirty to sixty times anything else in this suite, and the size is deliberate
-	 * rather than incidental — it is what the player asked to see, and it is the only thing in
-	 * the project that says whether the solver's known O(pieces x connections) shape is
-	 * affordable at scenario scale. CURRENT_STATE.md records the fix (an adjacency index built
-	 * once per solve instead of rescanning the connection array once per piece) as designed and
-	 * deliberately unbuilt, precisely because nothing measured slow. This is the measurement.
-	 *
-	 * Flush rather than ragged, so the wall the player sees has square ends and the scenario
-	 * exercises the mixed-size case: half bats at alternating course ends mean two piece sizes and
-	 * two masses, and a spawner that handed every brick the same one would otherwise pass at this
-	 * scale exactly as it would at seven pieces.
+	 * The wall the game mode builds on Play: 30 across, 40 courses, flush (so two piece sizes).
+	 * Its size also measures whether the solver's O(pieces x connections) cost is affordable.
 	 */
 	inline FRunningBondSpec ScenarioWallSpec()
 	{
@@ -48,34 +32,16 @@ namespace BrickWallScenarioTestSupport
 	}
 
 	/**
-	 * What that spec must come out as, derived by hand rather than read back off the producer.
-	 *
-	 * PIECES. Even courses (0, 2, ... 38) are 30 full bricks: 20 x 30 = 600. Odd courses are
-	 * offset half a cell, so a flush wall fills the half cell at each end with a half bat —
-	 * 1 + 29 + 1 = 31 pieces: 20 x 31 = 620. Total 1,220.
-	 *
-	 * JOINTS. Head joints run along a course, one fewer than its pieces: 20 x 29 + 20 x 30 =
-	 * 1,180. Bed joints run between adjacent courses, and both directions come to 60 per
-	 * transition. Odd on even: the left half bat spans [-10.75, -0.5] and lands on full brick
-	 * 0 alone (1); each of the 29 full bricks spans two below it (58); the right half bat
-	 * lands on the last full brick alone (1). Even on odd: brick 0 catches the left half bat
-	 * and full brick 0, bricks 1..28 catch two full bricks each, brick 29 catches the last
-	 * full brick and the right half bat — 30 x 2 = 60. Thirty-nine transitions, so 2,340.
-	 * Total 3,520.
-	 *
-	 * Every one of those overlaps is 10.25 cm, so every bed joint is 105.0625 cm2 and every
-	 * head joint 66.625 cm2, which is what Core/Layout's own tests already pin.
+	 * Counts by hand. Pieces: 20 even courses of 30 plus 20 odd courses of 31 (half bat each
+	 * end) = 1,220. Joints: heads 20 x 29 + 20 x 30 = 1,180; beds 60 per course transition
+	 * x 39 = 2,340; total 3,520.
 	 */
 	constexpr int32 ScenarioPieceCount = 1220;
 	constexpr int32 ScenarioJointCount = 3520;
 
 	/**
-	 * The wall's own extent, cm, from the same grid.
-	 *
-	 * Along X a course runs from -BrickSizeCm.X / 2 = -10.75 to 29 x 22.5 + 10.75 = 663.25,
-	 * so 6.74 m long. Up Z the top course's centre is 3.25 + 39 x 7.5 = 295.75 and its top is
-	 * 299, so just under 3 m tall. Asserted because a wall of the right piece count laid in
-	 * the wrong shape — every brick at the origin, say — would satisfy every other row here.
+	 * The wall's extent, cm: X from -10.75 to 29 x 22.5 + 10.75 = 663.25; top at
+	 * 3.25 + 39 x 7.5 + 3.25 = 299. Catches the right count laid in the wrong shape.
 	 */
 	constexpr double ScenarioWallMinXCm = -10.75;
 	constexpr double ScenarioWallMaxXCm = 663.25;
@@ -92,21 +58,12 @@ namespace BrickWallScenarioTestSupport
 		}
 	}
 
-	/** So a wall that is wrong everywhere does not print 1,220 failures. */
+	/** Caps per-piece error output. */
 	constexpr int32 ScenarioMaxReportedFailures = 8;
 
 	/**
-	 * Every piece of a wall nobody has touched is held up, and nothing has been released.
-	 *
-	 * "It is standing" is the outcome assertion for a structure, and it is two separate claims
-	 * that fail differently. The solver saying every piece reaches the ground is the mechanism;
-	 * nothing having been handed to physics is the outcome, and the two can disagree —
-	 * CURRENT_STATE.md records the polarity inversion where a structure nobody had solved
-	 * released entire, foundation included, because an absent answer reads as Falling.
-	 *
-	 * Neither Stranded nor Falling is acceptable here, and telling them apart matters: a
-	 * Stranded piece means the solver hit a knot it cannot route, which at this scale would be
-	 * a solver limitation wearing the clothes of a collapse. The message names which.
+	 * Every piece is held up (mechanism) and none is released (outcome); the two can disagree.
+	 * Errors name Stranded vs Falling, since Stranded means an unroutable knot, not a collapse.
 	 */
 	inline void CheckWallIsStanding(
 		FAutomationTestBase& Test,
@@ -151,31 +108,9 @@ namespace BrickWallScenarioTestSupport
 }
 
 /**
- * A 30-wide, 40-course wall lays, spawns, solves and stands — and how long each of those takes
- * is reported on every run.
- *
- * WHY MEASURE AT ALL, AND WHY HERE. Every structure this suite has built is between two and
- * twenty pieces. The scenario is 1,220 pieces and 3,520 joints, and the solver's documented
- * shape is O(pieces x connections) with a graph walk per piece on top: building the support
- * lists rescans the whole connection array once per piece, and the knot check is a fresh walk
- * with a fresh visited buffer per supported ungrounded piece. Every click runs a complete
- * SolveAndPush. So "is this affordable" is a real question with a real answer, and a measured
- * number is worth more than an opinion — CURRENT_STATE.md already carries the designed fix and
- * says it was left undone because nothing measured slow. The timings are reported rather than
- * asserted: a wall-clock budget in an automation test is a flake, and the size of the wall is a
- * decision for whoever reads the number, not for this file.
- *
- * THIS TEST IS GREEN ON ARRIVAL, AND SAYS SO. It exercises Core/Layout and
- * UDestructionStructureSubsystem::BuildRunningBond, both built and covered — at seven and twenty
- * pieces. What is new is the scale, and the claim is a characterisation: a wall this size lays
- * with the piece and joint counts the coordinating grid predicts, spawns one live brick per
- * piece, solves with every piece held up and no knot anywhere, and sits at a utilisation nowhere
- * near breaking. It is a scale regression net and a measuring instrument, not a driver of new
- * behaviour, and the report says which.
- *
- * NEEDS A TICKING WORLD: it needs a world, to spawn 1,220 actors into. It never ticks one;
- * nothing here is about anything falling, and ticking a wall of this size would be the most
- * expensive thing in the suite by a wide margin for no extra claim.
+ * A 30 x 40 wall lays, spawns, solves and stands, with each stage's time reported (not
+ * asserted: wall-clock budgets flake). A scale regression net and cost measurement for the
+ * O(pieces x connections) solve every click pays. Needs a world to spawn into; never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FBrickWallAtScenarioScaleTest,
@@ -190,11 +125,7 @@ bool FBrickWallAtScenarioScaleTest::RunTest(const FString& Parameters)
 
 	const FRunningBondSpec Spec = ScenarioWallSpec();
 
-	/*
-	 * The graph alone first, with no world in the way. RunningBond is the world-free half —
-	 * boxes, masses, pairs and joints — so timing it separately separates "laying the wall is
-	 * slow" from "spawning 1,220 actors is slow", which have entirely different fixes.
-	 */
+	// Time the world-free layout separately from spawning; they have different fixes.
 	FBrickLayout Reference;
 
 	const double LayoutStart = FPlatformTime::Seconds();
@@ -218,8 +149,7 @@ bool FBrickWallAtScenarioScaleTest::RunTest(const FString& Parameters)
 			ScenarioJointCount, Reference.Structure.NumConnections()),
 		Reference.Structure.NumConnections(), ScenarioJointCount);
 
-	/* And it is the right shape, not merely the right count. A producer that laid every brick
-	 * at the origin would satisfy both counts above and nothing else in this file. */
+	// The right shape, not just the right count.
 	{
 		FBox WallBoundsCm(ForceInit);
 
@@ -253,10 +183,7 @@ bool FBrickWallAtScenarioScaleTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * Now the whole build, world and all: lay it again, spawn one ABrickActor per box, adopt the
-	 * lot. This is the call the scenario makes, so it answers "how long does pressing Play take".
-	 */
+	// The full build the scenario runs: lay, spawn and adopt.
 	const double BuildStart = FPlatformTime::Seconds();
 	const int32 StructureId = TestWorld.Subsystem->BuildRunningBond(Spec);
 	const double BuildSeconds = FPlatformTime::Seconds() - BuildStart;
@@ -283,11 +210,7 @@ bool FBrickWallAtScenarioScaleTest::RunTest(const FString& Parameters)
 			ScenarioPieceCount, Binding->NumPieces()),
 		Binding->NumPieces(), ScenarioPieceCount);
 
-	/*
-	 * One live brick per piece. AdoptLayout refuses an actor list that is not one per piece, so a
-	 * count would be free; what is not free is every one of them being a real, valid ABrickActor,
-	 * which a spawner that quietly failed on brick 900 would not be.
-	 */
+	// Every piece has a valid ABrickActor (the count alone is guaranteed by AdoptLayout).
 	{
 		int32 MissingBricks = 0;
 
@@ -312,8 +235,7 @@ bool FBrickWallAtScenarioScaleTest::RunTest(const FString& Parameters)
 			MissingBricks, 0);
 	}
 
-	/* The solve, timed on its own — the figure the O(pieces x connections) note is about, and
-	 * what every click pays: SolveAndPush runs a complete solve per call. */
+	// The solve alone: what every click pays.
 	const double SolveStart = FPlatformTime::Seconds();
 	Binding->SolveLoads();
 	const double SolveSeconds = FPlatformTime::Seconds() - SolveStart;
@@ -324,12 +246,7 @@ bool FBrickWallAtScenarioScaleTest::RunTest(const FString& Parameters)
 
 	CheckWallIsStanding(*this, *Binding, TEXT("as built and solved"));
 
-	/*
-	 * And nothing is anywhere near breaking. Masonry is enormously overbuilt in compression —
-	 * CURRENT_STATE.md puts a four-course wall at about 0.0004 of capacity — so forty courses
-	 * should still be orders below 1. The number is reported because it says how much taller a
-	 * wall would have to be before gravity alone did anything.
-	 */
+	// No joint near capacity; the worst is reported as headroom under self-weight.
 	{
 		double WorstUtilisation = 0.0;
 		int32 WorstJoint = INDEX_NONE;
@@ -356,11 +273,7 @@ bool FBrickWallAtScenarioScaleTest::RunTest(const FString& Parameters)
 			WorstUtilisation < 1.0);
 	}
 
-	/*
-	 * The push, twice. The first is what a click costs; the second is what a click that changes
-	 * nothing costs, the common case, and it must not be cheaper by accident — SolveAndPush
-	 * deliberately re-solves rather than caching, so the two should be alike.
-	 */
+	// Pushed twice: SolveAndPush re-solves rather than caching, so both should cost about the same.
 	const double FirstPushStart = FPlatformTime::Seconds();
 	const int32 FirstReleased = TestWorld.Subsystem->SolveAndPush(StructureId);
 	const double FirstPushSeconds = FPlatformTime::Seconds() - FirstPushStart;
@@ -394,36 +307,10 @@ bool FBrickWallAtScenarioScaleTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Pressing Play builds the wall: the game mode puts a 30-wide, 40-course structure into the
- * world when Play begins, one live brick per piece, and it is standing before anything is
- * clicked.
- *
- * THE LAST PIECE OF THE MVP, AND THE ONLY ONE A PLAYER MEETS FIRST. Everything under it is
- * built and green: the producer lays the wall, the subsystem spawns and adopts it, the solver
- * decides what holds it up, the click chain deletes a brick and re-solves. What has never
- * existed is anything that runs any of it without a test calling it by hand — DESIGN.md §5's
- * "press Play on it and watch demos", the whole point of the scaffold.
- *
- * ON THE GAME MODE, AND THE GAME MODE IS NAMED EXPLICITLY. FTestWorldWrapper resolves
- * WorldSettings->DefaultGameMode before the project's GlobalDefaultGameMode, so the harness now
- * names one — which means this test exercises ADestructionGameGameMode because it says so, and
- * every other World.* test does not build a 1,220-brick wall it never asked for. That
- * interaction is real and was found here: without it, adding a scenario to begin-play would
- * silently multiply the cost of every world test in the suite.
- *
- * THREE CLAIMS, AND EACH FAILS ON ITS OWN. It built something — an id that names a binding the
- * subsystem holds, rather than a wall standing in the world with nothing owning it. It built
- * the right thing — the piece count the coordinating grid predicts, with a live brick per
- * piece, so a spec quietly halved is a failure rather than a smaller wall. And it is standing —
- * nothing released as built, and nothing released by a push either, the assertion that
- * separates a wall that holds itself up from one nobody has solved.
- *
- * NOT ASSERTED, DELIBERATELY: that a brick is visible, that the pawn can see it, or that the
- * level contains anything. Those need a viewport and a map, and none of them can be wrong in a
- * way this test's claims are right.
- *
- * NEEDS A TICKING WORLD: it needs a world with begin-play run, because that is when the game
- * mode acts. It never ticks one.
+ * Pressing Play builds the wall: ADestructionGameGameMode (named explicitly) builds a 30 x 40
+ * structure on begin-play that the subsystem owns, with the predicted counts and a live brick
+ * per piece, and it stands through a push. Visibility is not asserted (needs a viewport).
+ * Needs begin-play; never ticks.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FGameModeBuildsTheWallTest,
@@ -464,14 +351,7 @@ bool FGameModeBuildsTheWallTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * One: it built something, and the subsystem owns it.
-	 *
-	 * The id rather than a wall in the world, because a wall nothing names is a wall nothing can
-	 * click: TracePiece resolves the ref a brick carries against the binding the id names, so a
-	 * scenario that spawned actors without registering a structure produces a wall that looks
-	 * perfect and cannot be touched.
-	 */
+	// The subsystem must own it, or TracePiece cannot resolve a click on it.
 	const int32 StructureId = GameMode->GetBuiltStructureId();
 
 	TestTrue(
@@ -493,7 +373,6 @@ bool FGameModeBuildsTheWallTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* Two: it built the right thing. */
 	TestEqual(
 		FString::Printf(TEXT("the wall on Play should be a flush 30 x 40 running bond, %d pieces; it has %d"),
 			ScenarioPieceCount, Binding->NumPieces()),
@@ -530,13 +409,7 @@ bool FGameModeBuildsTheWallTest::RunTest(const FString& Parameters)
 			MissingBricks, 0);
 	}
 
-	/*
-	 * Three: it is standing, before anything is clicked.
-	 *
-	 * Nothing released as built is the first half, and on its own it is nearly free — a wall
-	 * nobody solved releases nothing either. The push is what makes it mean something: it solves
-	 * and then acts on the answer, so a wall that only looks built comes down here.
-	 */
+	// An unsolved wall also releases nothing, so the push is what makes "standing" meaningful.
 	CheckWallIsStanding(*this, *Binding, TEXT("as the game mode left it"));
 
 	const double PushStart = FPlatformTime::Seconds();

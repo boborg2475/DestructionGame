@@ -9,78 +9,34 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE MIN-VIOLATION STRAIN READOUT IS SOLVED ONCE PER BELOW-CAP SETTLE, NOT ONCE PER PASS.
+ * The min-violation strain readout is solved once per below-cap settle, not once per cascade
+ * pass. Solving it on every answered pass (keeping only the last) caused a 25x suite slowdown
+ * (default suite 3 min -> 70 min). The fix solves it only on the terminal AuthoritativeNoBreak
+ * pass; the kept readout is unchanged. GetMinViolationReadoutSolveCount is a test-only counter,
+ * reset per SolveAndBreak.
  *
- * THE DEFECT. FStructure::BreakByEquilibrium runs once per cascade pass, and on both its
- * answering arms (Stands, and certified-Falls) it calls CacheMinViolationReadout — a whole
- * separate min-violation LP (a per-group lexicographic-minimax loop, several simplex
- * solves). The Falls arm continues the cascade whenever it severs anything, so a below-cap
- * collapse that answers over N passes solves the readout N times and keeps only the last
- * (last-wins into ConnectionReadoutCache). Measured: a 25x suite slowdown (leaning-stack
- * fixtures 0.03s -> 11s; the corbel depth test 9s -> 55min; the default suite 3min -> 70min).
+ * A (control): a brick on a narrower seat, 4 cm eccentric, stands. One solve; measured
+ * M = 21375.76 uu.cm, utilisation 0.0007448.
+ * B (driver): a two-load-path overhanging body collapses in two passes; the readout must be
+ * solved once. Its settled readout is absent (the released body floats and the LP fails
+ * closed); a present one would mean the pre-sever pass was cached instead.
  *
- * THE FIX. Compute the readout exactly once, on the terminal (settled) pass — the one that
- * breaks nothing (disposition AuthoritativeNoBreak; the Stands arm always returns that, the
- * Falls arm only when nothing was severed this pass). This is bit-identical to today's kept
- * readout, since last-wins already keeps the terminal pass's result — only WHEN it is
- * computed changes.
- *
- * THE OBSERVABILITY HOOK (test scaffolding, no behaviour). GetMinViolationReadoutSolveCount
- * counts how many times CacheMinViolationReadout ran during the last SolveAndBreak — zeroed
- * once at the top of SolveAndBreak, so it accumulates across a cascade. Same shape as
- * PhaseOnePivots on the oracle: it drives no branch, it only lets the test watch cost.
- *
- * FIXTURE A — POSITIVE CONTROL: a standing eccentric bearing. A brick rests on a narrower
- * grounded seat so its centre of mass sits 4 cm out from the bearing's centre — a genuine
- * bending joint (M = N * 4cm != 0) that needs a little bond tension but stands well within
- * it. One AuthoritativeNoBreak pass, so the readout is solved once both today and after the
- * fix. Measured: solves=1, present=1, N=5343.94, M=21375.76 (= N*4.0cm), util=0.0007448,
- * Supported. Pins the WHAT with a real number and anchors the collapse's "2" as the anomaly.
- *
- * FIXTURE B — THE DRIVER: a two-load-path overhanging body (TwoLoadPathOverturning
- * topology) that collapses below the cap. Both grounded seats sit left of the body's centre
- * of mass, so it is past tipping with no admissible equilibrium. Genuine multi-pass cascade:
- * pass 1 severs both bed joints (AuthoritativeBroke), pass 2 breaks nothing (terminal).
- * Measured today: 1 breaking pass, but GetMinViolationReadoutSolveCount() == 2 — solved on
- * both answered passes. That 2 is the red; the fix makes it 1.
- *
- * WHY THE COLLAPSE'S TERMINAL READOUT IS ABSENT, AND WHY THAT IS THE RIGHT GUARD. A released
- * body stays in the structure (its joints are severed, not removed), so on the terminal pass
- * it is a floating block; the min-violation LP keeps equilibrium rows hard and fails closed
- * on a block no force system can balance — bPresent false. So the settled readout of a
- * genuine collapse is absent on every connection, both today and after the fix, and this
- * discriminates the correct fix (cache on the terminal AuthoritativeNoBreak pass) from one
- * that wrongly cached on the AuthoritativeBroke pass, which would leave the pre-sever,
- * feasible pass's readout — present with numbers — in the cache. (Measured today: both
- * severed bed joints read present = 0.)
- *
- * NEEDS A TICKING WORLD: NO. Gravity is on the ordinary way (weight is MassKg * 980 inside
- * FStructure); every assertion is on solver state, outcome, or the cached readout / its
- * solve counter.
- *
- * UNITS are derived here (weight is mass * 980), not imported from the code under test but
- * for MakeInterface and the mortar profile, so a wrong production constant disagrees rather
- * than agrees.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation unit.
+ * World-free. Named namespace for unity builds.
  */
 namespace ReadoutSolvedOnceTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* SHARED GEOMETRY. Every length is centimetres, at Unreal's default 1 uu = 1 cm. */
-
-	/** Fired clay, 1.9 g/cm3 — the same figure every wall fixture uses. */
+	// Lengths in cm (1 uu = 1 cm).
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
 
-	/** The single wythe: every piece is this deep on Y, so every joint's Y overlap is full. */
+	/** Every piece's Y depth, so every joint's Y overlap is full. */
 	constexpr double WytheWidthCm = 10.25;
 
-	/** A 1 cm mortar bed: the separation every bed joint is formed across. */
 	constexpr double BedJointThicknessCm = 1.0;
 
-	/** MassKg * 980 IS a weight in uu — the 1 N = 100 uu conversion is already inside it. */
+	/** MassKg * 980 is a weight in uu; the 1 N = 100 uu conversion is already inside it. */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
 	FPieceBox MakeBox(double CentreX, double WidthX, double CentreZ, double ThicknessZ)
@@ -98,11 +54,8 @@ namespace ReadoutSolvedOnceTestSupport
 	}
 
 	/*
-	 * FIXTURE A — THE STANDING ECCENTRIC BEARING. A brick (X in [0,28], centre X = 14) rests
-	 * on a narrower grounded seat (X in [0,20], centre X = 10). The bearing's contact is the
-	 * overlap X in [0,20], centre X = 10, so the bed joint carries M = N * (14-10) = N*4cm.
-	 * e = 4cm sits just outside the no-tension kern (overlap half-width / 3 = 3.33cm), so a
-	 * little bond tension is needed, well within GeneralPurposeMortar.
+	 * Fixture A: brick X [0,28] on seat X [0,20], so e = 4 cm, just outside the 3.33 cm kern.
+	 * Needs a little bond tension, well within GeneralPurposeMortar.
 	 */
 
 	struct FStandingBearing
@@ -128,15 +81,11 @@ namespace ReadoutSolvedOnceTestSupport
 		}
 	}
 
-	/* The measured settled readout on the bending bed joint (today's production, nullrhi). */
+	// Measured settled readout on the bending bed joint.
 	constexpr double ControlUtilisation = 0.0007448;
 	constexpr double ControlMomentUuCm = 21375.76;
 
-	/*
-	 * FIXTURE B — THE TWO-LOAD-PATH OVERHANGING BODY that collapses below the cap. Both
-	 * grounded seats sit left of the body's centre of mass, so it is past tipping with no
-	 * admissible equilibrium and the LP fells it in a multi-pass cascade.
-	 */
+	// Fixture B: both seats lie left of the body's centre of mass, so no equilibrium exists.
 
 	constexpr double SeatHeightCm = 20.0;
 	constexpr double AnchorCentreXCm = 0.0;
@@ -201,11 +150,7 @@ namespace ReadoutSolvedOnceTestSupport
 	}
 }
 
-/**
- * The min-violation strain readout is solved once per below-cap settle, not once per answered pass.
- *
- * NEEDS A TICKING WORLD: NO. See the file header.
- */
+/** The min-violation strain readout is solved once per below-cap settle. See the file header. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FReadoutSolvedOnceTest,
 	"DestructionGame.Acceptance.StrainReadout.ReadoutSolvedOncePerBelowCapCascade",
@@ -215,9 +160,7 @@ bool FReadoutSolvedOnceTest::RunTest(const FString& Parameters)
 {
 	using namespace ReadoutSolvedOnceTestSupport;
 
-	/* FIXTURE A — POSITIVE CONTROL: one settle, one readout, a present bending reading with
-	 * a specific utilisation — pins the WHAT the readout computes. */
-
+	// Fixture A: control.
 	FStandingBearing A;
 	BuildStandingBearing(A);
 
@@ -246,18 +189,15 @@ bool FReadoutSolvedOnceTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("CONTROL: the bending bed joint reads a PRESENT readout"),
 		ControlReadout.bPresent);
 
-	/* A genuine BENDING joint: the moment is the weight times the 4 cm eccentricity, not zero. */
 	TestTrue(*FString::Printf(TEXT("CONTROL: the joint bends (M = %.9g ~ measured %.9g, non-zero)"),
 			ControlReadout.MomentUuCm, ControlMomentUuCm),
 		FMath::Abs(ControlReadout.MomentUuCm - ControlMomentUuCm) <= 1.0 && ControlReadout.MomentUuCm > 1.0);
 
-	/* THE PINNED WHAT: the settled utilisation on the chosen bending joint equals today's value. */
 	TestTrue(*FString::Printf(TEXT("CONTROL: settled bending utilisation %.9g == today's %.9g"),
 			ControlReadout.Utilisation, ControlUtilisation),
 		FMath::Abs(ControlReadout.Utilisation - ControlUtilisation) <= 1.0e-6);
 
-	// FIXTURE B — THE DRIVER: a genuine multi-pass below-cap collapse.
-
+	// Fixture B: multi-pass below-cap collapse.
 	FTwoPathBody B;
 	BuildTwoPathBody(B);
 
@@ -279,9 +219,7 @@ bool FReadoutSolvedOnceTest::RunTest(const FString& Parameters)
 		B.Structure.GetConnectionReadout(B.AnchorJoint).bPresent ? 1 : 0,
 		B.Structure.GetConnectionReadout(B.PivotJoint).bPresent ? 1 : 0));
 
-	/* OUTCOME — a genuine multi-pass fall, not a router no-op: the body loses the earth, both
-	 * grounded seats keep it, and nothing is stranded. This only happens when the below-cap
-	 * equilibrium LP is the authority — the router alone reads the body as safe. */
+	// Only the below-cap LP fells this body; the router alone reads it as safe.
 	TestFalse(TEXT("COLLAPSE: the overhanging body has lost its path to the earth"),
 		HasEarth(B.Structure, B.Body));
 	TestTrue(TEXT("COLLAPSE: the anchor seat keeps the earth"),
@@ -291,15 +229,10 @@ bool FReadoutSolvedOnceTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("COLLAPSE: zero pieces stranded — a genuine fall, not a routing knot"),
 		StrandedCount(B.Structure), 0);
 
-	/* THE RED — the readout must be solved ONCE across the whole cascade, on the terminal settled
-	 * pass. The fix caches only on the AuthoritativeNoBreak pass, without changing the kept readout. */
 	TestEqual(TEXT("[RED] the min-violation readout is solved exactly once per below-cap settle"),
 		CollapseSolves, 1);
 
-	/* THE WHAT-UNCHANGED GUARD — the settled readout of a genuine collapse is ABSENT on every
-	 * connection: the released body floats, so the min-violation LP fails closed. A PRESENT reading
-	 * here would mean the fix cached on the AuthoritativeBroke (pre-sever, feasible) pass instead —
-	 * the exact wrong-pass mistake this pins against. */
+	// Absent, since the released body floats; present would mean the pre-sever pass was cached.
 	TestFalse(TEXT("WHAT: the settled readout on the severed anchor bed joint is absent"),
 		B.Structure.GetConnectionReadout(B.AnchorJoint).bPresent);
 	TestFalse(TEXT("WHAT: the settled readout on the severed pivot bed joint is absent"),
