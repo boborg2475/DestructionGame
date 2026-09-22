@@ -13,55 +13,35 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The realistic-brick shed as a playable scenario (slice (5) of the realistic-shed goal): where
- * DestructionShed3D::BuildRealistic stops being reachable only from a builder unit test and becomes
- * a level a human can join and watch hold.
+ * The realistic-brick shed as a playable scenario (realistic-shed slice 5). The `shedrealistic`
+ * row (Lvl_ShedRealistic, LayStructure BuildRealistic) lays the 442-piece shed: single-wythe
+ * ClayBrick walls, Timber lintels, stepped gables, a Timber roof and a porch. Flagged 3D; above the
+ * 200-block cap, so the router decides. The row's nine-brick back-eaves cut is resolved but not
+ * applied here (see ShedRealisticCollapseRow).
  *
- * The catalogue's `shedrealistic` row (MapName Lvl_ShedRealistic, LayStructure BuildRealistic) lays
- * the 442-piece real-brick shed: four single-wythe running-bond ClayBrick walls of true
- * 21.5 x 10.25 x 6.5 cm bricks on 1 cm joints, a door and window each under a Timber lintel, stepped
- * gables to a ridge, a Timber gable roof, and a porch of two posts over the door. Flagged 3D, and
- * standing through SolveAndBreak (442 blocks is above the 200-block cap, so the router, not the 3D
- * LP, is the authority). The row names a nine-brick back-eaves collapse cut; this test proves it
- * resolves without applying it (the collapse is ShedRealisticCollapseRow's).
- *
- * The catalogue/world-path counterpart of the RealisticBrickShed builder tests: it proves the row
- * exists, names the realistic builder, that Build routes through it, that the 3D flag and materials
- * survive into Layout.Structure, and that the shed travels the same production door. The row needs
- * its own map because IndexOfMapName returns the first row spelling a name, so a distinct
- * Lvl_ShedRealistic keeps it from colliding with the other sheds in the content sweeps.
- *
- * Assertions are on mechanism and outcome, never displacement: stands is SolveAndBreak leaving
- * Stranded == 0 and the spanning pieces (two lintels, ridge) reading Supported. No collapse arm (the
- * cut is not applied) and no LP arm (above the cap the router is the break authority).
- *
- * No ticking world. Named namespace because unity builds merge translation units.
+ * Needs its own map because IndexOfMapName returns the first matching row. Stands means
+ * SolveAndBreak leaves nothing Stranded and the lintels and ridge Supported; no displacement.
+ * World-free. Named namespace for unity builds.
  */
 namespace RealisticShedScenarioTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/** What `?Scenario=` names on a URL, and what IndexOfName looks up. */
+	/** The `?Scenario=` name. */
 	const TCHAR* const RealisticScenarioName = TEXT("shedrealistic");
 
-	/** The distinct map the row must select and be selected by. A content step for dev, not this test. */
 	const TCHAR* const RealisticScenarioMapName = TEXT("Lvl_ShedRealistic");
 
-	/*
-	 * The committed shed size, pinned so the row is proven to lay the real-brick shed and not the
-	 * 24-piece toy or the running-bond fallback: 442 pieces, above the 200-block cap that puts the
-	 * router in charge of the verdict.
-	 */
+	// 442 pieces (not the 24-piece toy or the fallback), above the 200-block cap.
 	constexpr int32 ExpectedPieces = 442;
 	constexpr int32 EquilibriumGateBlockCap = 200;
 
-	/* Fixed points inside each Timber lintel, the same probe points the RealisticBrickShed builder
-	 * test reads the openings back at. */
+	// Points inside each Timber lintel, as in the RealisticBrickShed builder test.
 	const FVector DoorLintelPt(90.0, 5.0, 93.0);
 	const FVector WindowLintelPt(5.0, 75.0, 93.0);
 
-	/** A hair above the eaves (course 15 top, Z 119) — a gable/roof piece sits above this, the shell does not. */
+	/** Just above the eaves (course 15 top, Z 119); only gable and roof pieces sit above it. */
 	constexpr double GableFloorZCm = 119.5;
 
 	int32 PieceContaining(const FBrickLayout& Layout, const FVector& P)
@@ -115,7 +95,7 @@ namespace RealisticShedScenarioTestSupport
 		return Support == EPieceSupport::Grounded || Support == EPieceSupport::Supported;
 	}
 
-	/** The Timber roof member with the greatest Z centre — the ridge — or INDEX_NONE if the roof is absent. */
+	/** The highest Timber roof piece (the ridge), or INDEX_NONE. */
 	int32 RidgePiece(const FBrickLayout& Layout)
 	{
 		const FStructure& S = Layout.Structure;
@@ -138,12 +118,7 @@ namespace RealisticShedScenarioTestSupport
 	}
 }
 
-/**
- * The realistic-brick shed row is in the catalogue, lays the 442-piece real-brick shed through
- * the build path flagged 3D, and stands through the production world path — the whole verdict
- * decided by the world break authority (the router, above the block cap), reached by joining a
- * level. No ticking world (see the file header).
- */
+/** The shed row exists, builds the 442-piece 3D shed, and stands through SolveAndBreak. See the file header. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRealisticShedScenarioCatalogueTest,
 	"DestructionGame.World.Scenarios.ShedRealisticRow",
@@ -156,7 +131,7 @@ bool FRealisticShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 	using namespace DestructionLayout;
 	using namespace DestructionScenarios;
 
-	/* ARM 0 — the row exists and names the realistic-brick shed. */
+	// The row exists and names the realistic shed.
 
 	const int32 Index = IndexOfName(FName(RealisticScenarioName));
 
@@ -174,22 +149,22 @@ bool FRealisticShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 
 	const FScenario& Scenario = Catalogue()[Index];
 
-	/* Its own distinct map, or it collides with the other sheds in both content guards. */
+	// Its own map, or it collides with the other sheds in the content guards.
 	TestEqual(
 		TEXT("the realistic shed row must name its own map 'Lvl_ShedRealistic' — it cannot ride another level"),
 		FString(Scenario.MapName ? Scenario.MapName : TEXT("")), FString(RealisticScenarioMapName));
 
-	/* A LayStructure producer, so Build routes the realistic builder, not the running-bond fallback. */
+	// A LayStructure producer, not the running-bond fallback.
 	TestTrue(
 		TEXT("the realistic shed row must carry a LayStructure producer (it is not a running-bond wall)"),
 		static_cast<bool>(Scenario.LayStructure));
 
-	/* Framed three-quarter, so the box's depth and gable roof are visible, not a flat front face. */
+	// Three-quarter framing, so the box's depth and roof are visible.
 	TestEqual(
 		TEXT("the realistic shed row is framed from a three-quarter angle (a closed box, not a flat wall)"),
 		static_cast<int32>(Scenario.Framing), static_cast<int32>(EScenarioFraming::ThreeQuarter));
 
-	/* ARM 0 (cont.) — Build lays the 442-piece shed, flagged 3D (surviving Build/AdoptLayout), multi-material. */
+	// Build lays the 442-piece multi-material shed, flagged 3D.
 
 	FBrickLayout Layout;
 	TArray<int32> Cut;
@@ -209,14 +184,11 @@ bool FRealisticShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 		Layout.Structure.NumPieces(), Layout.Structure.NumConnections(),
 		CountMaterial(Layout.Structure, &ClayBrick), CountMaterial(Layout.Structure, &Timber), Cut.Num()));
 
-	/* The 3D flag must survive the build path, or the world bridge poses the box in 2D and loses the
-	 * out-of-plane corners. Asserted on the built Layout.Structure, not the builder. */
+	// The 3D flag must survive the build path, or the bridge poses the box in 2D.
 	TestTrue(
 		TEXT("the built structure must be flagged 3D — the closed box's corners face out of the X-Z plane"),
 		Layout.Structure.IsThreeDimensional());
 
-	/* 442 pins the real-brick shed (not the 24-piece toy or the fallback), above the 200-block cap so
-	 * the router, not the LP, is the break authority below. */
 	TestEqual(TEXT("442 pieces — the committed real-brick shell + gables + roof + porch (not the 24-piece toy)"),
 		Layout.Structure.NumPieces(), ExpectedPieces);
 	TestEqual(TEXT("one box per piece, or AdoptLayout refuses the layout"),
@@ -226,18 +198,12 @@ bool FRealisticShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the shed knows where every piece and joint is (else every moment is silently zero)"),
 		Layout.Structure.HasCompleteGeometry());
 
-	/* The row names the nine-brick back-eaves cut (the footing under the back gable). Build resolves
-	 * it but leaves the level to remove it, so this proves it named without applying it; the collapse
-	 * is ShedRealisticCollapseRow. */
+	// The nine-brick back-eaves cut is resolved but not applied.
 	TestEqual(
 		TEXT("the realistic shed row names the nine-brick back-eaves cut — resolved but not applied here"),
 		Cut.Num(), 9);
 
-	/*
-	 * ARM 1 — the assembled shed stands through the production world path. Above the cap, SolveAndBreak's
-	 * authority is the router (the 3D LP is bypassed). A standing shed strands and drops nothing; the
-	 * lintels and ridge read Supported. Support state only, never displacement.
-	 */
+	// The assembled shed stands: nothing Stranded, lintels and ridge Supported.
 	{
 		FBrickLayout Assembled;
 		TArray<int32> AssembledCut;
@@ -252,7 +218,7 @@ bool FRealisticShedScenarioCatalogueTest::RunTest(const FString& Parameters)
 			"break authority (the 3D LP is bypassed)"), Assembled.Structure.NumPieces(), EquilibriumGateBlockCap),
 			Assembled.Structure.NumPieces() > EquilibriumGateBlockCap);
 
-		/* The production world door, the same call the game makes; above the cap its authority is the router. */
+		// The same call the game makes.
 		const int32 Passes = Assembled.Structure.SolveAndBreak();
 		const int32 Stranded = StrandedCount(Assembled.Structure);
 

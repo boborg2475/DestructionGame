@@ -11,76 +11,35 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE INTEGRATION SET. Three tests, and they exist because 71 correct tests did not stop a
- * player finding a broken wall in ten seconds.
+ * Integration tests: the player's click path end to end. Two rules for every test here:
+ *   1. Enter only through InspectAlongRay and ChoosePieceMenuRow, never an internal step such as
+ *      SolveAndPush or RemovePiece. The original bug lived in the join between two correct links.
+ *   2. Assert a physical outcome (a brick moved, or did not, after fixed simulated time), not
+ *      model state alone.
+ * Graph arithmetic belongs in the world-free suite; a missing call between correct halves belongs
+ * here. Group by world configuration, since each test pays for a world.
  *
- * EVERY TEST IN THIS FILE OBEYS TWO RULES, AND A TEST THAT BREAKS EITHER BELONGS SOMEWHERE ELSE.
- *
- *   1. IT ENTERS THROUGH THE CALL A PLAYER'S OWN ACTION ENTERS THROUGH — a ray into
- *      InspectAlongRay and an index into ChoosePieceMenuRow — and NEVER through an internal
- *      step such as SolveAndPush, ApplyResults, RemovePiece or Release. The defect this set was
- *      written for lived entirely in the JOIN between two links, both of which were themselves
- *      correct and separately tested; a test that calls the join's parts individually cannot see
- *      it however many assertions it makes.
- *
- *   2. IT ASSERTS A PHYSICAL OUTCOME — a brick moved, or provably did not, after a fixed number
- *      of simulated seconds — rather than a model state. IsPieceRemoved, GetPieceSupport and
- *      NumLivePieces are MECHANISM, and mechanism is exactly what stayed green while the wall
- *      stood still. Where the mechanism is already covered elsewhere it is deliberately not
- *      repeated here; what is repeated is only what a claim below would be unfalsifiable
- *      without.
- *
- * WHERE THE LINE IS, for whoever adds the fourth. If the thing that can be wrong is arithmetic
- * on a graph, it belongs in the fast world-free suite, which runs in milliseconds and can afford
- * twelve thousand cases. If the thing that can be wrong is A CALL THAT NOBODY MAKES — a result
- * computed and never pushed, a flag set and never read, a wire between two correct halves — no
- * amount of world-free testing can reach it, and it belongs here. The cost is a world per test,
- * so group by world CONFIGURATION rather than by assertion: one test running a long sequence
- * against one wall beats five tests paying for five worlds to say five things about it.
- *
- * NAMED NAMESPACE, and named differently from every other one in this module — an anonymous
- * namespace is private to a TRANSLATION UNIT rather than to a file, and a unity build merges
- * many files into one. See CURRENT_STATE.md; the `using namespace` lives inside each RunTest
- * body for the same reason. The world harness is NOT redeclared here: it lives in
- * Tests/BrickWorldTestSupport.h and every world test shares it, because a second copy of a floor
- * height, a fall threshold and a tick length is two fixtures that drift.
+ * Uniquely named namespace because unity builds merge translation units. The world harness lives
+ * in Tests/BrickWorldTestSupport.h.
  */
 namespace StructureIntegrationTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/**
-	 * How far along Y a ray starts and ends, either side of the wall.
-	 *
-	 * A brick is 10.25 cm deep and every wall here is centred on Y = 0, so +/- 100 cm is far
-	 * outside it on both sides and the ray crosses the whole thickness. Along Y rather than X or
-	 * Z, so nothing else in the wall is ever in the way and the answer is unambiguous.
-	 */
+	/** Ray half-length along Y; walls are centred on Y = 0 and 10.25 cm deep, so this crosses them. */
 	constexpr double IntegrationReachCm = 100.0;
 
 	/**
-	 * WEIGHT FROM MASS, DERIVED HERE RATHER THAN IMPORTED.
-	 *
-	 * Unreal's gravity is 980 cm/s2 and mass is in kilograms, so kg x 980 IS the weight in
-	 * Unreal force units — DESIGN.md §3's 1 N = 100 uu is already inside that number and applying
-	 * it again is the 100x error the whole units section exists to prevent. Spelled out here
-	 * rather than read off a production constant, so this file disagrees with a wrong constant
-	 * instead of agreeing with it.
+	 * kg x 980 cm/s2 is already the weight in Unreal force units; applying DESIGN.md §3's
+	 * 1 N = 100 uu again is the 100x error. Stated here rather than imported from production.
 	 */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
-	/** Bricks stop in the first third of a second; a full one is margin, not a settle poll. */
+	/** Bricks stop within a third of a second; a full second is margin, not a settle poll. */
 	constexpr double FallSeconds = 1.0;
 
-	/**
-	 * How long a wall that must NOT move is watched for.
-	 *
-	 * Half a second of free fall is 122.5 cm, more than a thousand times
-	 * BrickWorldTestSupport::DriftToleranceCm, so a brick that was wrongly handed to physics is
-	 * caught with an enormous margin. Shorter than the fall watch because nothing has to travel,
-	 * land and settle — only fail to start.
-	 */
+	/** Watch time for a wall that must not move. Half a second of free fall is 122.5 cm, far past DriftToleranceCm. */
 	constexpr double StandSeconds = 0.5;
 
 	const TCHAR* IntegrationSupportName(EPieceSupport Support)
@@ -94,7 +53,7 @@ namespace StructureIntegrationTestSupport
 		}
 	}
 
-	/** The Delete row, looked up by label so nothing hard-codes a position in the table. */
+	/** The action row with this label, so nothing hard-codes a table position. */
 	const FPieceAction* FindIntegrationAction(const TCHAR* Label)
 	{
 		for (const FPieceAction& Action : AllPieceActions())
@@ -108,26 +67,15 @@ namespace StructureIntegrationTestSupport
 		return nullptr;
 	}
 
-	/**
-	 * The joint between two named pieces, or INDEX_NONE.
-	 *
-	 * ONE IMPLEMENTATION, IN Tests/StaircaseWallTestSupport.h, because the world-free staircase
-	 * test needs the same lookup and this file's header drags in a world it does not want. The
-	 * reasoning for finding joints by PIECE PAIR rather than by index is written there.
-	 */
+	/** The joint between two pieces, or INDEX_NONE. Shared implementation in Tests/StaircaseWallTestSupport.h. */
 	int32 FindIntegrationJoint(const FStructure& Structure, int32 FirstPiece, int32 SecondPiece)
 	{
 		return StaircaseWallTestSupport::JointBetweenPieces(Structure, FirstPiece, SecondPiece);
 	}
 
 	/**
-	 * The whole structure's state in one log line: what the graph thinks, what the binding
-	 * recorded, and what the body is actually doing.
-	 *
-	 * PRINTING ALL THREE IS THE DIAGNOSTIC THIS SET EXISTS FOR. The failure that reached a player
-	 * reads as "Falling / held / kinematic" on every orphan — the graph knowing perfectly well
-	 * that a brick has lost the ground while nothing ever told the world — and no one of the
-	 * three columns says that on its own.
+	 * Logs each piece's graph support, binding release state and body physics state. The original
+	 * bug read "Falling / held / kinematic": the graph knew, the world was never told.
 	 */
 	void ReportIntegrationState(
 		FAutomationTestBase& Test,
@@ -156,7 +104,7 @@ namespace StructureIntegrationTestSupport
 		Test.AddInfo(FString::Printf(TEXT("state %s (support/binding/body): %s"), When, *Line));
 	}
 
-	/** What is on screen, so a failure reads without a debugger. */
+	/** The menu rows as text, for failure messages. */
 	FString DescribeIntegrationRows(TArrayView<const FPieceMenuRow> Rows)
 	{
 		if (Rows.Num() == 0)
@@ -180,25 +128,9 @@ namespace StructureIntegrationTestSupport
 	}
 
 	/**
-	 * WHAT A PLAYER DOES, IN ONE CALL: point at each brick they want, and choose Delete off the
-	 * menu that is up once they have picked them all.
-	 *
-	 * THIS IS THE ONLY ROUTE ANY TEST IN THIS FILE TAKES TO CHANGE A WALL, and that is the point
-	 * of the helper rather than a convenience: it is impossible to write a test in this file that
-	 * accidentally reaches past the presenter into RemovePiece, SolveAndPush or the batched commit
-	 * itself, because there is nothing here that does. The two inches in front of it that a
-	 * headless run cannot reach are the deprojection that turns a cursor into these rays, and the
-	 * button that supplies the index.
-	 *
-	 * A LIST OF PIECES RATHER THAN ONE, BECAUSE ONE IS THE ONE-ELEMENT CASE. A single-brick
-	 * delete is a selection of one taken through exactly the calls a six-brick delete takes, so
-	 * the three tests that predate multi-select keep entering through the same door — and a
-	 * second helper for "the multi one" would be a second door with its own way of being wrong.
-	 *
-	 * THE ROW IS FOUND BY ACTION POINTER, NOT ASSUMED TO BE ROW 0. PieceActionsFor hands back
-	 * pointers into the shipped table precisely so a presenter can compare identities, and the
-	 * day the table grows a second row this keeps choosing Delete instead of whatever sorted
-	 * first. It is looked up again after EVERY click, because the menu is rebuilt each time.
+	 * Points a ray at each listed brick, then chooses Delete once for the whole selection. The only
+	 * way tests here change a wall; untested in headless runs are cursor deprojection and the button.
+	 * The Delete row is found by action pointer after every click, since the menu is rebuilt.
 	 */
 	bool InspectAndChooseDelete(
 		FAutomationTestBase& Test,
@@ -239,12 +171,7 @@ namespace StructureIntegrationTestSupport
 				return false;
 			}
 
-			/*
-			 * THE ROW MUST NAME THE BRICK THAT WAS JUST POINTED AT. A chain wired to the wrong
-			 * brick puts up a perfect menu and deletes somebody else, and every count in the wall
-			 * still agrees. FPieceMenuRow::Ref is the last piece picked, so this holds for the
-			 * first click and for the sixth.
-			 */
+			// The row must name the brick just picked; otherwise the wrong brick is deleted with every count agreeing.
 			Test.TestTrue(
 				*FString::Printf(
 					TEXT("the Delete row offered after picking piece %d should name {%d,%d}, it names {%d,%d}"),
@@ -261,7 +188,7 @@ namespace StructureIntegrationTestSupport
 			return false;
 		}
 
-		/* ONE CHOICE FOR THE WHOLE SELECTION — one click of one button, however many are picked. */
+		// One choice for the whole selection.
 		const bool bChose = Controller.ChoosePieceMenuRow(DeleteRow);
 
 		Test.TestTrue(
@@ -272,27 +199,18 @@ namespace StructureIntegrationTestSupport
 		return bChose;
 	}
 
-	/*
-	 * THE WAIST WALL ITSELF LIVES IN Tests/BrickWorldTestSupport.h, as
-	 * NarrowWaistWallSpec(CoursesHigh) — four test files need one, and four copies of a fixture
-	 * is four things that drift. Why a waist at all, and why ragged and two bricks per course,
-	 * is written there.
-	 */
+	// The narrow-waist wall is NarrowWaistWallSpec in Tests/BrickWorldTestSupport.h.
 
 	/**
-	 * A WALL WIDE ENOUGH TO SURVIVE LOSING A BRICK, for the redistribution test.
-	 *
-	 * Five bricks per course and four courses, ragged, is 5 + 4 + 5 + 4 = 18 pieces:
+	 * A wall that survives losing a brick (redistribution control). 5 + 4 + 5 + 4 = 18 pieces:
 	 *
 	 *      course 3      [14][15][16][17]         X centres 11.25, 33.75, 56.25, 78.75
 	 *      course 2    [ 9][10][11][12][13]       X centres 0, 22.5, 45, 67.5, 90
 	 *      course 1      [ 5][ 6][ 7][ 8]         X centres 11.25, 33.75, 56.25, 78.75
 	 *      course 0    [ 0][ 1][ 2][ 3][ 4]       grounded
 	 *
-	 * Piece 6 is the one taken out, and it is interior on purpose: pieces 10 and 11 each rest on
-	 * it AND on one other course-1 brick, so both keep a bed joint and nothing loses its path to
-	 * the ground. That is what makes this the CONTROL — the same player action, the same commit
-	 * path, a wall that must not move.
+	 * Piece 6 is removed: 10 and 11 each keep a bed joint on another course-1 brick, so nothing
+	 * loses its path to the ground.
 	 */
 	FRunningBondSpec WideWallSpec()
 	{
@@ -317,78 +235,30 @@ namespace StructureIntegrationTestSupport
 	constexpr int32 WideWallRightCarrier = 11;
 
 	/**
-	 * TWO BRICKS THE WIDE WALL CAN SPARE AT THE SAME TIME, deleted in ONE batch.
-	 *
-	 * 6 is a course-1 brick and 12 is a course-2 brick, and they are chosen so that nothing loses
-	 * its last path to the ground when BOTH go — which is a stronger requirement than either
-	 * being survivable alone, and is what makes this the control for a BATCH rather than for a
-	 * removal. Reading the bond off the diagram above: 10 rests on 5 and 6 so it keeps 5; 11 rests
-	 * on 6 and 7 so it keeps 7; 16 rests on 11 and 12 so it keeps 11; 17 rests on 12 and 13 so it
-	 * keeps 13. Nothing else touches either of them.
+	 * Two bricks the wide wall can lose together in one batch. Each carrier keeps one support:
+	 * 10 keeps 5, 11 keeps 7, 16 keeps 11, 17 keeps 13.
 	 */
 	const TArray<int32> WideWallSurvivableBatch = { 6, 12 };
 
-	/**
-	 * THE WHOLE GROUNDED COURSE, DELETED IN ONE BATCH — five bricks, one click of one button.
-	 *
-	 * FIVE AT ONCE RATHER THAN A CLEVER SUBSET, deliberately: the outcome then needs no
-	 * hand-reading of the bond at all. Only course 0 is grounded, so with all five gone NOTHING
-	 * that is left has any path to the earth and the entire remainder of the wall must come down.
-	 * A fixture whose expected outcome is "everything" cannot be quietly wrong about which pieces
-	 * it named.
-	 */
+	/** The whole grounded course in one batch; everything left has no path to the ground and must fall. */
 	const TArray<int32> WideWallGroundCourse = { 0, 1, 2, 3, 4 };
 
-	/**
-	 * Slack on a joint force of a few thousand Unreal force units, not signal.
-	 *
-	 * The expected values below are exact — a handful of doubles added and halved — so this is
-	 * four decimal places of headroom on a quantity in the thousands, and it is loose enough that
-	 * a reassociation cannot fail it and tight enough that a wrong SHARE cannot pass it.
-	 */
+	/** Tolerance on joint forces of a few thousand uu; the expected values are exact. */
 	constexpr double JointForceToleranceUnrealUnits = 0.01;
 
-	/*
-	 * THE STAIRCASE WALL — the fixture for the fourth test, and it is a PHOTOGRAPH rather than a
-	 * shape somebody invented to break. Its geometry and its arithmetic live in
-	 * Tests/StaircaseWallTestSupport.h, because the world-free twin of that test and the visual
-	 * harness that photographs the same cut both need them and three copies of a void definition
-	 * is three fixtures that drift.
-	 */
+	// The staircase wall (from a real screenshot) lives in Tests/StaircaseWallTestSupport.h.
 }
 
 /**
- * ONE: THE PLAYER JOURNEY. POINTING AT A BRICK AND CHOOSING DELETE MAKES THE BRICKS IT WAS
- * HOLDING UP PHYSICALLY FALL, AND LEAVES THE ONES THAT ARE STILL HELD UP EXACTLY WHERE THEY WERE.
+ * Deleting a brick through the click path makes the bricks it held up fall, and leaves the rest
+ * exactly in place. Catches the bug where the commit re-solved the model but never pushed the
+ * result to the world: other tests covered the click path and the fall separately, never together
+ * (DESIGN.md §4, mechanism vs. outcome).
  *
- * THIS IS THE TEST THAT WOULD HAVE CAUGHT THE BUG A PLAYER FOUND. Every link of the click chain
- * was covered and green: the trace resolves, the menu filters, the commit removes the piece,
- * destroys the orphaned actor and re-solves the wall. The end-to-end tests over that chain assert
- * the MODEL — IsPieceRemoved, GetPieceSupport reading Falling, NumLivePieces — and
- * World.Choose.ChoosingDeleteTakesTheBrickOutOfTheWall asserts that the re-solve happened without
- * ever asserting that a brick MOVED. Meanwhile World.Push.LosingASupportDropsExactlyTheOrphans
- * does assert bricks fall, but reaches them by calling SolveAndPush directly rather than by going
- * through a commit. So the outcome assertion and the click path lived in different tests, and the
- * one line between them — the push that tells the world what the solver worked out — was never
- * composed by anything. That is DESIGN.md §4's mechanism-versus-outcome distinction reappearing
- * as a COMPOSITION gap rather than as a wrong assertion, and only a test that takes the real path
- * and then looks at where the bricks ended up can close it.
- *
- * BOTH HALVES OF THE MOVEMENT CLAIM, AND NEITHER IS DECORATION. "The orphans fell" alone passes in
- * a world that dropped through the floor, and "nothing else moved" alone passes in a world where
- * nothing moved at all. Both are read off the same second of the same simulation.
- *
- * AND THE WIRE IS ASSERTED BESIDE THE OUTCOME, because they are different failures with different
- * fixes: IsReleased is the binding's record that the solver's answer was APPLIED, and
- * IsSimulatingPhysics is the actor's own record that physics was TOLD. ABrickActor deliberately
- * keeps no second copy of that flag, so a commit that set every latch and called nothing is caught
- * on the body alone. Displacement is emphatically not being used as a break assertion anywhere
- * here: nothing in this test claims a JOINT gave, only that pieces with no remaining path to the
- * ground were handed to physics and then behaved like it.
- *
- * NEEDS A TICKING WORLD: YES, and that is the point of it. A fixed second of simulated time on a
- * fixed step, never a settle poll — settling is non-deterministic, and a poll turns a real failure
- * into a timeout, which reports far worse than an assertion.
+ * Both halves matter: "orphans fell" alone passes if everything fell through the floor, "nothing
+ * else moved" alone passes if nothing moved. IsReleased (binding) and IsSimulatingPhysics (body)
+ * are asserted alongside, as they fail for different reasons. No joint is claimed to break.
+ * Ticks a fixed second, never a settle poll.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureIntegrationPlayerJourneyTest,
@@ -410,12 +280,8 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THREE COURSES, SO THE WAIST IS PIECE 2 AND THE ORPHANS ARE 3 AND 4.
-	 *
-	 * 3 and 4 lose their only bed joint beneath and fall back on the head joint between them, so
-	 * each names the other as its support. That looks like a cycle and is not reported as one:
-	 * the walk considers only supports that themselves reach the ground, and neither of these
-	 * does, so both read plain Falling. 0 and 1 are grounded and stay where they were laid.
+	 * Three courses: the waist is piece 2, the orphans 3 and 4. They share a head joint but neither
+	 * reaches the ground, so both read Falling rather than a cycle. 0 and 1 are grounded.
 	 */
 	const FRunningBondSpec Spec = NarrowWaistWallSpec(3);
 
@@ -423,11 +289,7 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 	constexpr int32 WaistPiece = 2;
 	constexpr bool bOrphaned[PieceCount] = { false, false, false, true, true };
 
-	/*
-	 * THE REFERENCE LAYOUT IS LAID SEPARATELY, so the point pointed at comes from the producer
-	 * rather than from whatever the subsystem happened to spawn. A spawner that put every brick
-	 * at the origin would otherwise be pointed at the origin and agree with itself.
-	 */
+	// Aim points come from an independent layout, not from what the subsystem spawned.
 	FBrickLayout Reference;
 
 	TestTrue(TEXT("fixture: RunningBond should lay the reference wall"), RunningBond(Spec, Reference));
@@ -478,11 +340,7 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 		LaidAt.Add(Brick->GetActorLocation());
 	}
 
-	/*
-	 * THE WALL IS PUT INTO THE STATE THE GAME MODE PUTS IT IN ON BEGIN-PLAY, which is the state a
-	 * player's first click actually arrives at. It is also the fixture precondition: a wall that
-	 * came apart on its own would make everything below measure something else entirely.
-	 */
+	// Same state the game mode sets on BeginPlay; the wall must stand on its own.
 	TestEqual(
 		TEXT("fixture: the wall as built should stand, so starting it up releases nothing"),
 		TestWorld.Subsystem->SolveAndPush(StructureId), 0);
@@ -491,10 +349,7 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 
 	for (int32 Piece = 0; Piece < PieceCount; ++Piece)
 	{
-		/*
-		 * THE POSITIVE CONTROL. Pieces 3 and 4 have to be held up NOW for their falling later to
-		 * be something the deletion caused rather than something that was always true.
-		 */
+		// Positive control: every piece is held up before the deletion.
 		const EPieceSupport Support = Binding->GetStructure().GetPieceSupport(Piece);
 
 		TestTrue(
@@ -516,7 +371,6 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* THE PLAYER'S MOVE, AND THE ONLY THING BELOW THAT TOUCHES THE WALL AT ALL. */
 	ABrickActor* const WaistBrick = Bricks[WaistPiece];
 
 	if (!InspectAndChooseDelete(
@@ -536,10 +390,8 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 	ReportIntegrationState(*this, *Binding, Bricks, TEXT("straight after the choice"));
 
 	/*
-	 * THE WIRE: THE MODEL KNOWING IS NOT THE WORLD BEING TOLD, and these are the two records that
-	 * say which of the two happened. GetPieceSupport is read first because if IT is wrong the two
-	 * rows beneath are failing for a different reason entirely — a re-solve that did not happen
-	 * rather than a push that did not happen.
+	 * Model, binding, body in order: a wrong support means no re-solve; a wrong release or physics
+	 * flag means no push.
 	 */
 	for (int32 Piece = 0; Piece < PieceCount; ++Piece)
 	{
@@ -573,12 +425,8 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE OUTCOME. The course pitch is 6.5 cm of brick plus a 1 cm joint, so course centres sit
-	 * at Z = 3.25 + 7.5 x Course and course 1 spans Z 7.5..14. Deleting it leaves pieces 3 and 4
-	 * to drop from an underside of Z = 15 onto the top of course 0 at Z = 6.5 — A DROP OF 8.5 cm,
-	 * against a 5 cm threshold that is itself five times the 1 cm mortar joint a brick merely
-	 * settling into its own gap could move. Free fall over 8.5 cm takes 0.13 s, so a second of
-	 * simulated time lands and settles them with room to spare.
+	 * Course pitch is 7.5 cm, so pieces 3 and 4 drop from Z = 15 onto course 0's top at Z = 6.5:
+	 * 8.5 cm, against a 5 cm threshold. That fall takes 0.13 s.
 	 */
 	TestWorld.TickSeconds(FallSeconds);
 
@@ -608,7 +456,7 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 					Piece, FallenAtLeastCm, FellCm),
 				FellCm > FallenAtLeastCm);
 
-			/* And it landed on the wall rather than through the world. */
+			// Landed on the wall, not through the world.
 			TestTrue(
 				*FString::Printf(TEXT("orphaned brick %d should have come to rest above the floor at Z %g, it is at Z %.3f"),
 					Piece, FloorTopZCm, NowAt.Z),
@@ -616,10 +464,7 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 		}
 		else
 		{
-			/*
-			 * THE OTHER HALF, AND IT IS NOT DECORATION. Without it, a world in which everything
-			 * fell through the floor passes the rows above perfectly well.
-			 */
+			// Without this half, everything falling through the floor would pass.
 			TestTrue(
 				*FString::Printf(TEXT("brick %d is still held up and must not have moved, it drifted %.6f cm"),
 					Piece, MovedCm),
@@ -637,36 +482,13 @@ bool FStructureIntegrationPlayerJourneyTest::RunTest(const FString& Parameters)
 }
 
 /**
- * TWO: COLLAPSE. PULLING BRICKS OUT THROUGH THE REAL PATH LEAVES THE WALL STANDING UNTIL THE ONE
- * THAT TAKES ITS LAST PATH TO THE GROUND, AND THEN EVERYTHING ABOVE COMES DOWN.
+ * Pulling bricks through the click path: the wall stands after the first grounded brick goes and
+ * falls after the second (DESIGN.md §4, "falls at the predicted number"). Piece 2's course is one
+ * brick wide, so losing both 0 and 1 leaves it no joint at all. The standing half is the control.
  *
- * THIS IS DESIGN.md §4's HEADLINE INTEGRATION TEST — "pull bricks until it topples; confirm it
- * falls at the PREDICTED number" — and the prediction is what makes it more than the journey test
- * above. Piece 2 spans pieces 0 and 1, so taking 0 gives it a hole to span and nothing else: the
- * wall must stand, and be watched standing under real gravity rather than merely asserted about.
- * Taking 1 as well leaves piece 2 with no bed joint beneath it and no head joint at all, because
- * its course is one brick wide — and the whole remainder of the wall goes.
- *
- * STANDS AT 1 REMOVED, FALLS AT 2, AND BOTH HALVES ARE IN THE SAME WORLD. The standing half is the
- * control that stops "everything falls" being the passing answer, and it is also what proves the
- * floor is under the wall — a world that had dropped through it would fail there rather than
- * flattering the collapse.
- *
- * THE PRECONDITION THAT MAKES IT HONEST: NO PIECE MAY BE Stranded AT THE MOMENT IT GOES. Stranded
- * means the solver declined to divide load round a knot — a limitation of the model rather than a
- * statement that anything lost its support — and a collapse fixture calibrated on one comes down
- * looking exactly the same while measuring something else entirely. CURRENT_STATE.md records that
- * trap against this very test; three bricks with no load path at all is the shape that avoids it.
- *
- * AND NOTHING HERE ASSERTS THAT A JOINT GAVE, DELIBERATELY. A mortared brick wall this size sits
- * at roughly 0.005 of capacity, so gravity alone breaks nothing whatsoever — asserting HasGiven or
- * a break stamp would be asserting something the physics cannot produce, and any test that did
- * would be red for a reason no implementation should fix. THIS COLLAPSE IS LOSS OF SUPPORT. The
- * strength-driven collapse, where a joint is loaded past its own capacity and the cascade takes
- * over, is a different and later test with a different fixture.
- *
- * NEEDS A TICKING WORLD: YES. Half a second watching a wall not move, and a second watching it
- * come down, both on a fixed step.
+ * No piece may be Stranded (a solver limitation, not a lost support). No joint is claimed to
+ * break: this wall sits at about 0.005 of capacity, so this is loss of support, not strength.
+ * Fixed-step ticks: half a second standing, one second falling.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureIntegrationCollapseTest,
@@ -687,12 +509,12 @@ bool FStructureIntegrationCollapseTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* Four courses, so there is a piece above the pair that hangs off the waist. */
+	// Four courses, so a piece sits above the pair on the waist.
 	const FRunningBondSpec Spec = NarrowWaistWallSpec(4);
 
 	constexpr int32 PieceCount = 6;
 
-	/** The two grounded bricks, pulled in this order: the wall survives the first and not the second. */
+	// The wall survives the first pull and not the second.
 	constexpr int32 FirstPulled = 0;
 	constexpr int32 LastStraw = 1;
 
@@ -761,10 +583,7 @@ bool FStructureIntegrationCollapseTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * ONE BRICK OUT, AND THE WALL IS STILL A WALL. Piece 2 keeps its bed joint onto piece 1, so
-	 * everything above it keeps a path to the ground and NOTHING may move.
-	 */
+	// Piece 2 keeps its bed joint on piece 1, so nothing may move.
 	ABrickActor* const FirstBrick = Bricks[FirstPulled];
 
 	if (!InspectAndChooseDelete(
@@ -805,11 +624,7 @@ bool FStructureIntegrationCollapseTest::RunTest(const FString& Parameters)
 			Bricks[Piece]->GetMesh() != nullptr && !Bricks[Piece]->GetMesh()->IsSimulatingPhysics());
 	}
 
-	/*
-	 * AND THE SECOND ONE IS THE LAST STRAW. Piece 2's course is one brick wide, so with both
-	 * grounded bricks gone it has neither a bed joint beneath it nor a head joint to hang from,
-	 * and pieces 3, 4 and 5 lose the ground with it.
-	 */
+	// With both grounded bricks gone, piece 2 has no joint left; 3, 4 and 5 lose the ground with it.
 	ABrickActor* const LastBrick = Bricks[LastStraw];
 
 	if (!InspectAndChooseDelete(
@@ -837,11 +652,7 @@ bool FStructureIntegrationCollapseTest::RunTest(const FString& Parameters)
 
 		const EPieceSupport Support = Binding->GetStructure().GetPieceSupport(Piece);
 
-		/*
-		 * THE PRECONDITION THAT MAKES THE COLLAPSE HONEST. A Stranded piece is one the solver
-		 * declined to route load around; a wall that came down for that reason is a model
-		 * limitation wearing a collapse's clothes.
-		 */
+		// Stranded would mean a solver limitation, not a collapse.
 		TestTrue(
 			*FString::Printf(
 				TEXT("piece %d must not be Stranded: that would make this a solver limitation rather than a collapse"),
@@ -886,11 +697,7 @@ bool FStructureIntegrationCollapseTest::RunTest(const FString& Parameters)
 				Piece, FallenAtLeastCm, FellCm),
 			FellCm > FallenAtLeastCm);
 
-		/*
-		 * AND IT LANDED. The bottom course is gone, so the rubble comes to rest on the floor at
-		 * Z = -50 rather than continuing forever; a brick still below that has fallen THROUGH the
-		 * world, which the row above cannot tell from a collapse.
-		 */
+		// Rubble rests on the floor; below it means the brick fell through the world.
 		TestTrue(
 			*FString::Printf(TEXT("brick %d should have landed on the floor at Z %g, it is at Z %.3f"),
 				Piece, FloorTopZCm, NowAt.Z),
@@ -903,36 +710,13 @@ bool FStructureIntegrationCollapseTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THREE: REDISTRIBUTION. TAKING A BRICK OUT OF A WALL THAT CAN SPARE IT MOVES NOTHING AT ALL, AND
- * THE LOAD IT WAS CARRYING TURNS UP ON ITS NEIGHBOURS.
+ * Removing a brick the wall can spare moves nothing, and its load moves onto the neighbours
+ * (DESIGN.md §4: any brick drifting is a hard fail). The control for the two tests above: "release
+ * everything" passes their fall checks but fails this. Green on arrival; a regression net.
  *
- * THIS IS THE CONTROL, AND WITHOUT IT THE OTHER TWO ARE CHEAP. "Release everything the binding
- * knows about" satisfies every fall assertion in this file; only a wall that must NOT come apart,
- * reached by the same player action through the same commit path, can tell that implementation
- * from a correct one. It is DESIGN.md §4's second integration case — "remove one brick; read the
- * actual strain on surrounding connections; the wall doesn't move; ANY BRICK DRIFTING IS A HARD
- * FAIL" — and the kinematic model exists precisely so that "doesn't move" can mean zero rather
- * than "settles to within a few millimetres".
- *
- * GREEN ON ARRIVAL, AND SAID PLAINLY. Nothing loses its support here, so a commit path that never
- * pushed anything to the world passes this test — that is what makes it a control and a
- * regression net rather than a driver. It bites in the other direction: the mutation that makes
- * the two tests above pass for the wrong reason is exactly the one this fails.
- *
- * THE LOAD CLAIM IS EXACT, NOT AN INEQUALITY, and the arithmetic is worked out here rather than
- * read back off the solver. Pieces 10 and 11 each rest on two course-1 bricks; the bed joints are
- * the same 10.25 x 10.25 cm overlap either side, so DESIGN.md §3's area-weighted split is exactly
- * even and each joint carries half. Piece 10 carries its own weight plus half of piece 14's and
- * half of piece 15's, which is 2W for a wall of full bricks — so each of its two bed joints
- * carries exactly W before, and the survivor carries exactly 2W after. Same for piece 11 either
- * side of piece 7. W is 2.72163125 kg x 980 cm/s2 = 2667.198625 Unreal force units, and DESIGN.md
- * §3's 1 N = 100 uu is already inside that product and must not be applied again. An inequality
- * would pass for a joint that took on a THIRD of the load as happily as one that took all of it.
- *
- * NEEDS A TICKING WORLD: YES, and it is the half of the claim that a world-free test cannot make.
- * The redistribution arithmetic is already covered by Structure.RemovalRedistributesLoad; what is
- * here and nowhere else is that a real wall in a real physics scene, driven by a real click, sits
- * there afterwards.
+ * Exact load claim: 10 and 11 each rest on two equal-area bed joints and carry 2W (own weight plus
+ * half of each brick above), so each joint carries W before and the survivor 2W after.
+ * W = 2.72163125 kg x 980 = 2667.198625 uu; do not apply 1 N = 100 uu again.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureIntegrationRedistributionTest,
@@ -1009,12 +793,7 @@ bool FStructureIntegrationRedistributionTest::RunTest(const FString& Parameters)
 		TEXT("fixture: the wall as built should stand, so starting it up releases nothing"),
 		TestWorld.Subsystem->SolveAndPush(StructureId), 0);
 
-	/*
-	 * FIXTURE PRECONDITIONS ON THE TOPOLOGY, because every expected value below is derived from a
-	 * hand-read of which brick lands on which. If the producer ever lays this wall differently,
-	 * these say so in one line rather than letting the force assertions fail with a plausible
-	 * wrong number and send somebody looking at the solver.
-	 */
+	// Topology preconditions: the expected forces assume these joints exist.
 	const FStructure& Graph = Binding->GetStructure();
 
 	const int32 LeftJoint = FindIntegrationJoint(Graph, WideWallLeftNeighbour, WideWallLeftCarrier);
@@ -1037,11 +816,7 @@ bool FStructureIntegrationRedistributionTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * AND THE SPLIT IS EVEN, WHICH IS WHY THE EXPECTED FORCES ARE EXACTLY W AND 2W. Equal areas
-	 * either side is the whole basis of the arithmetic in this test's header; unequal ones would
-	 * make both expected values wrong without changing a single count.
-	 */
+	// Equal areas make the split even, hence exactly W and 2W.
 	TestTrue(
 		*FString::Printf(
 			TEXT("fixture: piece %d's two bed joints must have equal areas for the split to be even, they are %.6f and %.6f cm2"),
@@ -1089,7 +864,6 @@ bool FStructureIntegrationRedistributionTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* THE SAME PLAYER ACTION AS THE OTHER TWO, ON A BRICK THE WALL CAN SPARE. */
 	ABrickActor* const RemovedBrick = Bricks[WideWallRemovedPiece];
 
 	if (!InspectAndChooseDelete(
@@ -1109,10 +883,7 @@ bool FStructureIntegrationRedistributionTest::RunTest(const FString& Parameters)
 
 	ReportIntegrationState(*this, *Binding, Bricks, TEXT("after the removal the wall survives"));
 
-	/*
-	 * THE LOAD MOVED ONTO THE NEIGHBOURS. Each carrier's two bed joints split its 2W evenly, so
-	 * the survivor takes the lot: exactly twice what it carried, not merely more than it.
-	 */
+	// The surviving bed joint takes the carrier's whole 2W.
 	const double LeftAfterUnrealUnits = Graph.GetConnectionForce(LeftJoint).Size();
 	const double RightAfterUnrealUnits = Graph.GetConnectionForce(RightJoint).Size();
 
@@ -1137,11 +908,7 @@ bool FStructureIntegrationRedistributionTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(
 			RightAfterUnrealUnits, 2.0 * FullBrickWeightUnrealUnits, JointForceToleranceUnrealUnits));
 
-	/*
-	 * AND THE WALL DID NOT MOVE. A full second under real gravity, on a fixed step, and any brick
-	 * drifting is a hard fail — DESIGN.md §4's words, and the reason the kinematic model was
-	 * chosen over Chaos constraints in the first place (0.000000 cm against 0.62-0.70 cm).
-	 */
+	// No drift allowed; the kinematic model gives 0 cm where Chaos constraints gave 0.62-0.70 cm.
 	TestWorld.TickSeconds(FallSeconds);
 
 	ReportIntegrationState(*this, *Binding, Bricks, TEXT("a second after the removal"));
@@ -1172,46 +939,14 @@ bool FStructureIntegrationRedistributionTest::RunTest(const FString& Parameters)
 }
 
 /**
- * FOUR: THE BATCH. PICKING SEVERAL BRICKS AND CHOOSING DELETE ONCE TAKES ALL OF THEM OUT, DROPS
- * EVERYTHING THEY WERE HOLDING UP, MOVES NOTHING WHEN THE WALL CAN SPARE THEM — AND COSTS ONE
- * SOLVE RATHER THAN ONE PER BRICK.
+ * Deleting a multi-brick selection with one choice removes them all, drops what they held up,
+ * moves nothing when the wall can spare them, and costs one solve. The world-free test pins the
+ * single solve; this checks the result is pushed for every orphan (ApplyResults releases only
+ * pieces the last solve answered, so a mistimed solve leaves bricks hanging silently).
  *
- * WHY THIS IS IN THE INTEGRATION SET AND NOT BESIDE THE ARITHMETIC. What can be wrong here is a
- * CALL THAT NOBODY MAKES: Core.PieceActions.BatchRunsEveryPieceAndSolvesOnce already pins that
- * the batch runs every action and solves once, at the end — and that is a claim about a graph.
- * What no world-free test can reach is whether the answer that one solve produced is then PUSHED
- * onto the world, for every piece the batch orphaned rather than for the ones a mid-way solve
- * happened to know about. FStructureBinding::ApplyResults refuses to release any piece the LAST
- * solve has no answer for, so a batch that solved at the wrong moment does not crash, does not
- * fail a count, and leaves bricks hanging in the air exactly as the defect a player found in ten
- * seconds did. Only a real wall, entered through the player's own calls and then watched under
- * gravity, can tell that from a correct one.
- *
- * BOTH DIRECTIONS, IN ONE WORLD, IN THIS ORDER, AND NEITHER IS DECORATION. The first batch is one
- * the wall SURVIVES: two bricks that between them orphan nothing, so a full second of gravity
- * must move nothing at all — which is what stops "release everything the binding knows about"
- * being a passing implementation of the second half. The second batch is the whole grounded
- * course, after which nothing that is left touches the earth, so every remaining brick must
- * physically fall. Running them against the same wall is also what makes the first batch's
- * removals count: the second batch is solved on a wall with two holes already in it.
- *
- * THE ONE-SOLVE CLAIM IS ASSERTED HERE TOO, AND IT IS THE ONLY MECHANISM ROW IN IT. This set
- * asserts outcomes, but a cost cannot be an outcome: solving is deterministic, so five solves and
- * one produce identical bricks in identical places. FStructure::NumSolves is the seam, read
- * either side of the player's own click, and without it "the commit is batched" is a comment
- * rather than a requirement — which matters because the batched path is measurably the reason to
- * have multi-select at all: a full solve is tens of milliseconds at scenario scale, so five
- * deletes done one at a time is a visible stutter for an answer one pass already had.
- *
- * WHAT IS DELIBERATELY NOT ASSERTED. That the push happens exactly ONCE: a second push is
- * idempotent by construction (ApplyResults releases each piece once and ABrickActor::Release
- * returns early on an already-simulating body), so it is unobservable from outside, and an
- * assertion that cannot fail is worse than none. And no claim is made here about a joint GIVING —
- * a mortared wall this size sits at roughly 0.005 of capacity, so this collapse is loss of
- * support, exactly as the collapse test above.
- *
- * NEEDS A TICKING WORLD: YES. Half a second watching a wall not move and a second watching it
- * come down, both on a fixed step, never a settle poll.
+ * One world, two batches: first a survivable pair (nothing may move), then the grounded course
+ * (everything must fall). NumSolves is the one mechanism row, since a cost is not an outcome.
+ * Push count is not asserted (idempotent, unobservable), nor any joint break (loss of support).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureIntegrationBatchedDeleteTest,
@@ -1299,10 +1034,7 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/*
-	 * ONE: A BATCH THE WALL SURVIVES. Two bricks picked, one Delete chosen, and a second of real
-	 * gravity in which nothing may move a millimetre.
-	 */
+	// Batch one: survivable, nothing may move.
 	const int32 SolvesBeforeFirstBatch = Binding->GetStructure().NumSolves();
 
 	TArray<ABrickActor*> FirstBatchActors;
@@ -1326,18 +1058,14 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
 		TEXT("deleting %d bricks in one batch spent %d solve(s)"),
 		WideWallSurvivableBatch.Num(), SolvesSpentOnFirstBatch));
 
-	/*
-	 * THE COST CLAIM, AND IT IS WHY THE BATCH EXISTS. One click of one button against a selection
-	 * of N must re-solve the wall once, not N times — a per-piece commit reaches the same wall at
-	 * N times the price, and nothing else about the wall can tell you which happened.
-	 */
+	// One solve per batch, not per brick; nothing else observable distinguishes the two.
 	TestEqual(
 		FString::Printf(
 			TEXT("deleting %d bricks in ONE batch must cost exactly one solve, not one per brick; it cost %d"),
 			WideWallSurvivableBatch.Num(), SolvesSpentOnFirstBatch),
 		SolvesSpentOnFirstBatch, 1);
 
-	/* EVERY PICKED BRICK WENT, not just the last one picked. */
+	// Every picked brick went, not just the last.
 	for (int32 Index = 0; Index < WideWallSurvivableBatch.Num(); ++Index)
 	{
 		const int32 Piece = WideWallSurvivableBatch[Index];
@@ -1386,10 +1114,7 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
 			Bricks[Piece]->GetMesh() != nullptr && !Bricks[Piece]->GetMesh()->IsSimulatingPhysics());
 	}
 
-	/*
-	 * TWO: AND A BATCH THE WALL CANNOT SURVIVE. The whole grounded course, picked one brick at a
-	 * time and deleted with one choice — after which nothing left in the wall touches the earth.
-	 */
+	// Batch two: the whole grounded course, after which nothing touches the ground.
 	const int32 SolvesBeforeSecondBatch = Binding->GetStructure().NumSolves();
 
 	TArray<ABrickActor*> SecondBatchActors;
@@ -1434,15 +1159,8 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
 	ReportIntegrationState(*this, *Binding, Bricks, TEXT("straight after the grounded course went"));
 
 	/*
-	 * THE WIRE, BEFORE THE OUTCOME. The model knowing a brick has lost the ground is not the same
-	 * as the world having been told, and these are the two records that say which of the two
-	 * happened: IsReleased is the binding's record that the last solve's answer was APPLIED, and
-	 * IsSimulatingPhysics is the body's own record that physics was told. A push that ran behind
-	 * a mistimed solve fails exactly here, with every count in the wall still agreeing.
-	 *
-	 * The support row asks only whether the piece is HELD UP. Whether a mutually head-jointed pair
-	 * with no ground reads Falling or Stranded is a question about the solver rather than about
-	 * batching, and Integration.PullingSupportBringsTheWallDown is where it is pinned.
+	 * IsReleased (binding applied the solve) and IsSimulatingPhysics (body told) catch a push behind a
+	 * mistimed solve. Support only asks "not held up"; Falling vs. Stranded is pinned elsewhere.
 	 */
 	for (int32 Piece = 0; Piece < WideWallPieceCount; ++Piece)
 	{
@@ -1473,7 +1191,7 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
 			bSimulating);
 	}
 
-	/* AND THE OUTCOME: it actually comes down. */
+	// Outcome: it comes down.
 	TestWorld.TickSeconds(FallSeconds);
 
 	ReportIntegrationState(*this, *Binding, Bricks, TEXT("one second after the grounded course went"));
@@ -1498,11 +1216,7 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
 				Piece, FallenAtLeastCm, FellCm),
 			FellCm > FallenAtLeastCm);
 
-		/*
-		 * AND IT LANDED. The grounded course is gone, so the rubble comes to rest on the floor
-		 * rather than continuing forever; a brick below that has fallen THROUGH the world, which
-		 * the row above cannot tell from a collapse.
-		 */
+		// Rubble rests on the floor; below it means the brick fell through the world.
 		TestTrue(
 			*FString::Printf(TEXT("brick %d should have landed on the floor at Z %g, it is at Z %.3f"),
 				Piece, FloorTopZCm, NowAt.Z),
@@ -1515,67 +1229,18 @@ bool FStructureIntegrationBatchedDeleteTest::RunTest(const FString& Parameters)
 }
 
 /**
- * FOUR: THE STAIRCASE. CUTTING A STEPPED DIAGONAL VOID THROUGH A WALL LEAVES THE BRICKWORK ABOVE IT
- * CORBELLED OUT OVER NOTHING, AND IT MUST STAND THERE.
+ * Cutting a stepped diagonal void leaves the brickwork above corbelled over nothing, and it must
+ * stand. Inverted from "falls" by the user's ruling of 2026-08-06: a corbel is locally identical
+ * to a wall's free end, and the free end must not unzip, so composite vertical action saves both.
+ * The wall acts as a deep beam: 11,627 cm3 of section over eleven courses against one patch's
+ * 179.48, so the bottom rung reads 0.369 of capacity rather than 22.93. Derivation in
+ * Tests/StaircaseWallTestSupport.h; magnitudes pinned world-free in
+ * Core.Structure.AStaircaseVoidCondemnsTheCorbel. Consistent with acceptance case 20 (local loss).
  *
- * THIS TEST USED TO ASSERT THE OPPOSITE, AND THE INVERSION IS THE USER'S RULING OF 2026-08-06
- * RATHER THAN A CAPITULATION. It was named AStaircaseVoidBringsTheOverhangDown and it required all
- * eleven corbelled bricks to fall. The player was then shown what the same model does to a brick
- * deleted at the END of a wall — the failure walks up the wall in a stepping triangle and takes its
- * upper half — and ruled that this must not happen. The two are LOCALLY INDISTINGUISHABLE: a
- * half-seated brick overhanging outward with nothing to abut against is the same picture either
- * way, so any rule local enough to save the free end also saves this corbel. Composite vertical
- * action is that rule, and the ruling adopts it knowing exactly what it costs here.
- *
- * THE MECHANISM, so that "it stands" is a claim and not an absence of one. A stack of courses over
- * a raking cut does not resist its overturning moment as a sequence of independent bed patches: the
- * wall acts as a DEEP BEAM, and the plane taking the moment is a vertical section through the
- * bonded masonry standing over the joint — 11,627 cm3 through eleven courses against one patch's
- * 179.48. The bottom rung reads 0.369 of capacity rather than 22.93, and nothing in the ladder
- * reaches 1.0. Tests/StaircaseWallTestSupport.h works both readings out beside the geometry they
- * belong to, because three tests cut this same void and they must all read one derivation.
- *
- * THE RULING IS INTERNALLY CONSISTENT, WHICH IS EVIDENCE RATHER THAN PREFERENCE. The same user
- * independently agreed acceptance case 20 — this same staircase void — as LOCAL LOSS: the loose
- * teeth left with no bed patch at all drop, and the mass stands. Composite action produces exactly
- * that, and on THIS wall there are no such teeth, so nothing at all comes down.
- *
- * NON-DISPLACEMENT IS A LEGITIMATE ASSERTION WHERE DISPLACEMENT WOULD NOT BE. DESIGN.md §4 bans
- * displacement as evidence that a joint BROKE, because two pieces can sever and rest exactly where
- * they were. The converse is safe and is what is asserted here: a brick that has not moved has not
- * been released, whatever its joints did. The half that displacement cannot answer — that no joint
- * gave — is asserted separately off the break stamps.
- *
- * AND THAT IS READ OFF THE BREAK STAMPS RATHER THAN OFF THE UTILISATION, because the cascade runs
- * inside the commit and a given joint carries exactly nothing (DESIGN.md §3). Every one of the
- * eleven rungs must be unstamped; the ladder's MAGNITUDES are pinned world-free in
- * DestructionGame.Core.Structure.AStaircaseVoidCondemnsTheCorbel, which reads the same eleven
- * joints off SolveLoads, which breaks nothing. The long comment at that assertion says why.
- *
- * WHAT WOULD MAKE THIS TEST VACUOUS, AND WHAT STOPS IT. "Nothing fell" is also true of a wall that
- * was never in the load path, of a wall nobody cut, and of a subsystem that has stopped running at
- * all. So the cut is asserted to have removed its 36 bricks and their actors; the corbel joints are
- * asserted to exist and to be intact; and the world-free sibling asserts that those joints carry
- * the full eleven-rung ladder, 38.5 brick weights and 1608.75 brick-weight-centimetres at the
- * bottom. The mass is being carried, and it is being carried by the joints this test names.
- *
- * AND THE PRECONDITION THAT MAKES IT HONEST, EXACTLY AS THE COLLAPSE TEST ABOVE: NO SURVIVING PIECE
- * MAY BE Stranded. A staircase void is precisely the shape that produces unroutable knots — cut two
- * bricks in a row out from under a course and the pair above fall back on each other's head joints,
- * each naming the other as its support — and a wall that came down because the solver declined to
- * divide load round a loop is a model limitation wearing a collapse's clothes. The corbel is built
- * from single bed joints for that reason: every step of it is statically determinate.
- *
- * A FLUSH WALL, AND THAT IS LOAD-BEARING. A ragged wall's alternate courses step in, so the end
- * brick of every even course already rests on one brick instead of two — the same 5.625 cm
- * eccentricity, at the wall's own end, with nobody having done anything to it. A 13-course ragged
- * wall reads 0.058 of capacity as built, and a taller one reads something else again.
- * StaircaseWallSpec says the rest.
- *
- * NEEDS A TICKING WORLD: YES, and this one could not be anywhere else. That the corbel joint is at
- * 0.369 is arithmetic on a graph and belongs in the fast suite — and lives there; that a wall in a
- * real scene, cut by a real click, is then still standing a second later is the composition, and
- * the composition is what no world-free test can reach.
+ * Non-displacement is a valid assertion (an unmoved brick was not released); joint breaks are read
+ * off break stamps, since a given joint carries nothing (DESIGN.md §3). Against vacuity: the 36 cut
+ * bricks must be gone and the corbel joints must exist. No survivor may be Stranded. The wall is
+ * flush because a ragged end is already eccentric (see StaircaseWallSpec).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureIntegrationStaircaseVoidTest,
@@ -1612,9 +1277,7 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE STAIRCASE, READ OFF THE LAID WALL RATHER THAN LISTED. Course c keeps everything from
-	 * (12 - c) x 11.25 cm rightward, so the surviving left edge steps out half a brick pitch per
-	 * course and the void underneath it is the stepped diagonal in the picture:
+	 * The void, read off the laid wall. Course c keeps everything from (12 - c) x 11.25 cm rightward:
 	 *
 	 *     course 12  [][][][][][][][][][]              whole, and already corbelled
 	 *     course 11    ..[][][][][][][][][]
@@ -1624,8 +1287,7 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 	 *     course  1    ..........[][][][][]
 	 *     course  0  [][][][][][][][][][]              grounded, whole
 	 *
-	 * 36 bricks, taken out in ONE batch: one selection, one click of one button, which is both the
-	 * player's own move and the only route any test in this file takes to change a wall.
+	 * 36 bricks, deleted in one batch.
 	 */
 	const TArray<int32> VoidPieces = StaircaseVoidPieces(Reference.Boxes);
 
@@ -1637,7 +1299,7 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* The eleven corbelled bricks, and the eleven bed joints that are the only thing holding them. */
+	// The eleven corbelled bricks and their single supporting bricks.
 	TArray<int32> CorbelPieces;
 	TArray<int32> CorbelSupports;
 
@@ -1660,7 +1322,7 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 		CorbelSupports.Add(Support);
 	}
 
-	/* Three bricks up the far end of the wall, which the staircase never reaches. */
+	// Three bricks at the far end, which the staircase never reaches.
 	TArray<int32> FarSidePieces;
 
 	for (const int32 Course : { 0, 6, 12 })
@@ -1717,13 +1379,7 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 		LaidAt.Add(Brick->GetActorLocation());
 	}
 
-	/*
-	 * THE ONE FIXTURE CHECK WITHOUT WHICH THIS TEST MEASURES NOTHING. A piece nobody placed and a
-	 * joint that never measured its own face both answer a centred load — correctly, and bit for
-	 * bit as they did before moments existed — so a wall laid without geometry reads perfectly
-	 * healthy while every corbel in it is levering its joint open. HasCompleteGeometry is the only
-	 * thing that can tell "the load is centred" from "nobody said where it acts".
-	 */
+	// Without geometry every moment is silently zero and the corbels read healthy.
 	TestTrue(
 		TEXT("fixture: the laid wall must know where its pieces and its joints are, or every moment below is silently zero"),
 		Binding->GetStructure().HasCompleteGeometry());
@@ -1732,11 +1388,7 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 		TEXT("fixture: the wall as built should stand, so starting it up releases nothing"),
 		TestWorld.Subsystem->SolveAndPush(StructureId), 0);
 
-	/*
-	 * AND NOTHING IS OVERLOADED BEFORE THE CUT. This is the positive control for the whole test: a
-	 * wall that arrived with a joint past capacity would come down for a reason the staircase had
-	 * nothing to do with, and the flush end is what buys this — see StaircaseWallSpec.
-	 */
+	// Positive control: nothing is over capacity before the cut (the flush end ensures it).
 	double WorstAsBuilt = 0.0;
 	int32 WorstAsBuiltJoint = INDEX_NONE;
 
@@ -1770,7 +1422,6 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* THE PLAYER'S MOVE, AND THE ONLY THING BELOW THAT TOUCHES THE WALL AT ALL. */
 	if (!InspectAndChooseDelete(
 			*this, *Controller, *Delete, StructureId, Reference.Boxes, VoidPieces))
 	{
@@ -1789,41 +1440,12 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE LADDER, READ OFF THE BREAK STAMPS RATHER THAN OFF THE UTILISATION — AND THE REASON IS
-	 * THE CONTRACT RATHER THAN A WORKAROUND.
-	 *
-	 * This precondition used to read GetConnectionUtilisation on each corbel joint and require the
-	 * bottom rung to be past 1.0. It cannot any more, and nothing production does is wrong: the
-	 * cascade now runs INSIDE the commit, so by the time the click has returned those joints have
-	 * already given, and DESIGN.md §3 is explicit that a given joint carries exactly nothing and
-	 * that only the BREAKING call reports the ratio that broke it. The ladder therefore reads zero
-	 * all the way up, and it would read zero for a wall that was never loaded at all. Any wire
-	 * that makes the overhang fall breaks these joints before a test can look at them, so the
-	 * question has to be asked of a quantity that survives the breaking.
-	 *
-	 * GetBreakPass IS THAT QUANTITY, AND IT IS A STRONGER CLAIM THAN THE ONE IT REPLACES. It says
-	 * WHICH joints gave and IN WHAT ORDER, and it distinguishes all three states with no sentinel:
-	 * a joint that went with a removed piece carries no pass number at all, so a corbel joint
-	 * stamped with a pass is a joint that FAILED UNDER LOAD rather than one that was deleted.
-	 *
-	 * PASS 1 IS THE FIRST SWEEP AFTER THE CUT, so what it breaks is exactly what the first solve
-	 * found over capacity — which is exactly the ladder StaircaseWallTestSupport works out by
-	 * hand, and under composite action that ladder condemns NOTHING. The wall as built is asserted
-	 * above to have nothing over capacity and to release nothing, so no pass can have been stamped
-	 * before this one and the numbering starts at 1.
-	 *
-	 * THE LOOP IS WRITTEN AGAINST StaircaseCorbelIsCondemned RATHER THAN AGAINST "none of them",
-	 * DELIBERATELY, AND IT IS NOT DEAD CODE. It reads the same oracle the world-free sibling reads,
-	 * so the day that oracle condemns a rung again — a deeper wall, a shallower depth rule, a
-	 * strength change — this test starts requiring that rung to break instead of quietly continuing
-	 * to require that nothing does. A hard-coded zero would make the two files disagree in silence,
-	 * which is the exact failure the shared header exists to prevent.
-	 *
-	 * THE MAGNITUDE — 0.369 at the bottom rung and the whole eleven-rung ladder — is asserted in
-	 * DestructionGame.Core.Structure.AStaircaseVoidCondemnsTheCorbel, which cuts the same void into
-	 * the same wall with no world at all and reads the ladder off SolveLoads, which breaks nothing.
-	 * That is where the arithmetic belongs, and it is what stops "nothing broke" here from being
-	 * true of a wall carrying nothing.
+	 * Read break stamps, not utilisation: the cascade runs inside the commit and a given joint
+	 * carries nothing (DESIGN.md §3). A stamped corbel joint failed under load; a deleted one has no
+	 * stamp. Pass 1 is the first sweep after the cut (nothing was over capacity before it).
+	 * Checked against StaircaseCorbelIsCondemned rather than a hard-coded "none", so this follows
+	 * the shared oracle if it ever condemns a rung. Magnitudes are pinned world-free in
+	 * Core.Structure.AStaircaseVoidCondemnsTheCorbel.
 	 */
 	int32 CorbelJointsBrokenInFirstPass = 0;
 
@@ -1875,11 +1497,7 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * AND THE COUNT, WHICH IS THE HALF THE PER-RUNG ROWS CANNOT MAKE. None of eleven is the
-	 * fixture's own claim, and a ladder that crossed 1.0 somewhere else entirely would still
-	 * satisfy every row above if the rungs it broke happened to be the ones it predicted.
-	 */
+	// The count also catches breaks the per-rung rows cannot see.
 	AddInfo(FString::Printf(
 		TEXT("the staircase's first sweep broke %d of %d corbel joints (the arithmetic predicts %d, worst rung %.8f)"),
 		CorbelJointsBrokenInFirstPass, CorbelPieces.Num(),
@@ -1891,11 +1509,7 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 			StaircasePredictedCorbelJointsOverCapacity),
 		CorbelJointsBrokenInFirstPass, StaircasePredictedCorbelJointsOverCapacity);
 
-	/*
-	 * AND NO SURVIVOR IS Stranded. A staircase void is exactly the shape that makes unroutable
-	 * knots, and a wall that comes down because the solver declined to divide load round a loop is
-	 * a model limitation wearing a collapse's clothes.
-	 */
+	// No survivor may be Stranded; a staircase void is the shape that makes unroutable knots.
 	for (int32 Piece = 0; Piece < StaircaseWallPieceCount; ++Piece)
 	{
 		if (Bricks[Piece] == nullptr)
@@ -1912,17 +1526,7 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 			Support != EPieceSupport::Stranded);
 	}
 
-	/*
-	 * THE OUTCOME: the overhang is over open air, and a second later it must still be there.
-	 *
-	 * A SECOND OF REAL TIME IS THE POINT. The wall is ticked exactly as long as the version of this
-	 * test that required the overhang to FALL ticked it, and that duration was chosen to be several
-	 * times longer than the drop it was measuring — so a brick that has been released has ample
-	 * time to leave, and one that has not moved in that second was never released. Asserting
-	 * non-displacement is safe in the direction asserting displacement is not: DESIGN.md §4 bans
-	 * reading a movement as evidence a joint BROKE, because two pieces can sever and stay put; the
-	 * converse does not have that hole.
-	 */
+	// A second is ample for a released brick to leave, so an unmoved brick was never released.
 	TestWorld.TickSeconds(FallSeconds);
 
 	for (int32 Step = 0; Step < CorbelPieces.Num(); ++Step)
@@ -1941,23 +1545,13 @@ bool FStructureIntegrationStaircaseVoidTest::RunTest(const FString& Parameters)
 				Piece, MovedCm),
 			MovedCm < DriftToleranceCm);
 
-		/*
-		 * AND IT IS STILL BEING HELD UP RATHER THAN MERELY RESTING WHERE IT LANDED. A released
-		 * brick that happened to jam against its neighbours would satisfy the row above; a
-		 * kinematic mesh is one the subsystem never let go of.
-		 */
+		// Kinematic rules out a released brick that merely jammed in place.
 		TestTrue(
 			*FString::Printf(TEXT("corbelled brick %d is still held up and must still be kinematic"), Piece),
 			Bricks[Piece]->GetMesh() != nullptr && !Bricks[Piece]->GetMesh()->IsSimulatingPhysics());
 	}
 
-	/*
-	 * THE FAR END, AND IT IS NOT DECORATION EVEN NOW. It was the guard against an implementation
-	 * that released the WHOLE wall while the corbel rows only asked about the overhang; with those
-	 * rows inverted it is the guard against the opposite failure — a subsystem that has stopped
-	 * releasing anything at all would pass both halves, and only the cut's own 36 deleted actors
-	 * and the eleven intact-joint rows above say that anything happened.
-	 */
+	// The far end must be untouched too.
 	for (const int32 Piece : FarSidePieces)
 	{
 		const double MovedCm = FVector::Dist(Bricks[Piece]->GetActorLocation(), LaidAt[Piece]);

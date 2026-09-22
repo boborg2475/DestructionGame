@@ -11,55 +11,34 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE PRODUCT-PROMISE ACCEPTANCE SUITE — the player-facing safety net for the equilibrium-gate
- * promotion (DESIGN.md §7 step 4). These test PROMISES a believable structural sim makes to the
- * person pulling bricks out of a wall: a change far from the cut stays put, and a structure that
- * should stand does not eagerly collapse. The upcoming break-cascade change (delete
- * BreakOverturnedBodies, promote the LP to authority) must not break these.
+ * Product-promise acceptance tests (DESIGN.md §7 step 4): a change far from the cut stays put, and a
+ * structure that should stand does not collapse. Each enters through FStructureBinding with the
+ * player's sequence (RemovePiece, SolveAndBreak, ApplyResults) and reads support state and what was
+ * released, never displacement (DESIGN.md §4). World-free; gravity is inside FStructure.
  *
- * WHAT PIPELINE THESE DRIVE, AND WHY. Every test enters through FStructureBinding — the same door
- * PieceActions' commit and the spawn settle go through — and takes the player's own sequence:
- * RemovePiece, then SolveAndBreak, then ApplyResults (Core/StructureBinding.cpp). The verdict read
- * back is the settled SUPPORT STATE of every piece and what ApplyResults actually released — what
- * the game would hand to Chaos. It is NOT displacement: DESIGN.md §4 forbids reading distance
- * travelled, since two pieces can sever and rest exactly in place — nothing here reads a position.
- *
- * NEEDS A TICKING WORLD: NO, for all four. The break DECISION is headless — SolveAndBreak settles
- * the graph and ApplyResults is a pure push over support states. Gravity is on the ordinary way:
- * weight is MassKg * 980 inside FStructure (DESIGN.md §3), so structures are loaded by their own
- * mass with no world.
- *
- * NOTHING IS IMPORTED FROM THE CODE UNDER TEST EXCEPT THE PRODUCERS (RunningBond / MakeInterface)
- * and the mortar/dry-stone profiles the joints are laid in. Masses are derived here from density
- * and geometry, so a wrong production constant disagrees with this file rather than agreeing.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation unit.
+ * Only the producers (RunningBond, MakeInterface) and profiles are imported; masses are derived here.
+ * Named namespace because unity builds merge translation units.
  */
 namespace ProductPromiseSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* SHARED GEOMETRY. Every length is centimetres, at Unreal's default 1 uu = 1 cm. */
-
-	/** The standard brick every anchor in this project is derived from. */
+	// Standard brick, cm.
 	constexpr double BrickLengthCm = 21.5;
 	constexpr double BrickWidthCm = 10.25;
 	constexpr double BrickHeightCm = 6.5;
 
-	/** Fired clay, 1.9 g/cm3 — the same figure every wall fixture uses. */
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
 
-	/** A 1 cm mortar/contact bed. Course pitch is 7.5 cm; the coordinating grid on X is 22.5 cm. */
+	/** 1 cm bed; course pitch 7.5 cm. */
 	constexpr double BedJointThicknessCm = 1.0;
 	constexpr double CoursePitchCm = BrickHeightCm + BedJointThicknessCm;
 
-	/** MassKg * 980 IS a weight in uu — the 1 N = 100 uu conversion is already inside it. */
+	/** MassKg * 980 is already a weight in uu; do not apply 1 N = 100 uu again. */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
-	/* FIXTURE PLUMBING — build into an FBrickLayout, then adopt into a binding and drive the
-	 * player's own removal path. AdoptLayout is the only public route from a laid layout to
-	 * a binding (StructureBinding.h), so this is the production wall wire. */
+	// Fixture plumbing: lay into an FBrickLayout, then adopt via AdoptLayout (the only public route).
 
 	FPieceBox MakeBox(const FVector& CentreCm, const FVector& FullSizeCm)
 	{
@@ -75,7 +54,7 @@ namespace ProductPromiseSupport
 			* (Box.ExtentCm.X * 2.0) * (Box.ExtentCm.Y * 2.0) * (Box.ExtentCm.Z * 2.0) / 1000.0;
 	}
 
-	/** Hand-lay one box as a piece, keeping the box index-parallel to the piece array. */
+	/** Adds one box as a piece, keeping boxes parallel to pieces. */
 	int32 AddBrick(FBrickLayout& L, const FVector& CentreCm, const FVector& FullSizeCm, bool bGrounded)
 	{
 		const FPieceBox Box = MakeBox(CentreCm, FullSizeCm);
@@ -84,7 +63,7 @@ namespace ProductPromiseSupport
 		return Handle;
 	}
 
-	/** Join two already-laid boxes; MakeInterface owns the normal, area and orientation. */
+	/** Joins two laid boxes via MakeInterface. */
 	bool Join(FBrickLayout& L, int32 A, int32 B, const FConnectionStrength& Strength)
 	{
 		FConnection Joint;
@@ -96,11 +75,9 @@ namespace ProductPromiseSupport
 	}
 
 	/**
-	 * Lay a running-bond wall with the PRODUCER and copy it into a combined layout, shifted by
-	 * DxCm on X, re-basing every piece handle and translating every joint's own rectangle. The
-	 * area, extent and normal are translation-invariant, so AddConnection re-validates unchanged.
+	 * Lays a running-bond wall and appends it to Combined, shifted DxCm on X.
 	 *
-	 * @return the index the appended wall starts at (the region split point), or INDEX_NONE.
+	 * @return the first appended piece index (the region split point), or INDEX_NONE.
 	 */
 	int32 AppendRunningBond(FBrickLayout& Combined, const FRunningBondSpec& Spec, double DxCm)
 	{
@@ -134,7 +111,7 @@ namespace ProductPromiseSupport
 		return Base;
 	}
 
-	/** First piece whose box centre matches, within a tight epsilon. INDEX_NONE if none. */
+	/** First piece whose box centre matches, or INDEX_NONE. */
 	int32 FindPiece(const FBrickLayout& L, const FVector& CentreCm)
 	{
 		for (int32 i = 0; i < L.Boxes.Num(); ++i)
@@ -147,7 +124,7 @@ namespace ProductPromiseSupport
 		return INDEX_NONE;
 	}
 
-	/** Adopt a laid layout into a binding through the only public door there is. */
+	/** Adopts a laid layout into a binding. */
 	bool Adopt(const FBrickLayout& L, FStructureBinding& Out)
 	{
 		TArray<UObject*> Actors;
@@ -155,7 +132,7 @@ namespace ProductPromiseSupport
 		return AdoptLayout(L, Actors, Out);
 	}
 
-	/* READING THE PLAYER-FACING VERDICT off the settled binding. */
+	// Reading the verdict off the settled binding.
 
 	bool StillStanding(const FStructure& S, int32 Piece)
 	{
@@ -190,7 +167,7 @@ namespace ProductPromiseSupport
 		return Stranded;
 	}
 
-	/** A joint that FAILED UNDER LOAD in a cascade pass — not one merely severed by removal. */
+	/** A joint that failed under load, not one severed by removal. */
 	bool BrokeUnderLoad(const FStructure& S, int32 Joint)
 	{
 		return S.GetBreakPass(Joint) != INDEX_NONE;
@@ -198,39 +175,15 @@ namespace ProductPromiseSupport
 }
 
 /**
- * GROUP 1 — LOCALITY: A CHANGE FAR FROM THE CUT STAYS PUT.
+ * Locality: removing a piece affects only what shares a load path with it, not a radius.
  *
- * THE PROMISE. Removing a piece is a LOCAL event: its effect follows load paths, not a radius, and
- * cannot reach a region that shares no load path with the cut. This one tripwire guards three
- * vision statements at once — "one brick out of a large wall is a local event", "a failure does not
- * run further than its cause", and "redistribution is path-based, not radius-based".
+ * Region A is a six-brick mortared column at X = 0; pulling its base drops everything above.
+ * Region B is a 3 x 4 running-bond wall shifted +40 cm, 18.5 cm clear, with its own grounded base.
+ * No connection links them (asserted); they are close so a radius-based spread would reach across.
  *
- * THE FIXTURE — TWO GENUINELY INDEPENDENT REGIONS IN ONE STRUCTURE.
- *   Region A: a six-brick mortared COLUMN at X = 0, grounded at its foot. Pulling its base out is a
- *             real, vivid local collapse: every course above has only the one bed joint beneath it.
- *   Region B: a three-wide, four-course running-bond WALL laid by the PRODUCER (RunningBond),
- *             shifted +40 cm on X so it sits 18.5 cm clear of the column with its own grounded base.
- *
- * WHY THEY ARE INDEPENDENT. The two regions share NO connection: the solver routes load over the
- * SUPPORT GRAPH (its edges are the connections), so a region reachable from the cut only across an
- * edge that does not exist has no admissible way to be affected — the wall's subgraph is a separate
- * connected component from the column's. This test ASSERTS no A-B connection exists, so independence
- * is a checked precondition, not an accident of layout. They are deliberately CLOSE in space (18.5cm)
- * so a radius-based redistribution — the bug this guards — would reach across; only a path-based one
- * does not. (Ground is a load SINK, not a conductor, so "meeting at the ground" is not a shared path.)
- *
- * THE ASSERTION — MECHANISM, NOT DISPLACEMENT. Snapshot every wall piece's support state with the
- * structure intact, cut the column's base through the binding, run the production cascade, and
- * assert: (a) every wall piece has the IDENTICAL support state it had before; (b) no wall joint
- * broke under load and none was severed; (c) no wall piece was released to physics; and (d) the
- * whole affected set — pieces that lost the earth, joints that broke — lies entirely in the column.
- *
- * GREEN ON ARRIVAL, AND PROVEN TO BITE. Production routes by path, so this passes today. A
- * radius-based spread added to FStructure::RemovePiece (sever every joint within ~50cm of the cut)
- * reaches the wall 18.5cm away and changes it — the report accompanying this file records that
- * mutation firing assertions (a)-(d), reverting, and the suite returning to green.
- *
- * NEEDS A TICKING WORLD: NO.
+ * After cutting the column base: every wall piece keeps its support state, no wall joint gives,
+ * nothing in the wall is released, and everything affected lies in the column. Green on arrival;
+ * a radius-based sever in RemovePiece was confirmed to fail it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FLocalityChangeFarFromCutStaysPutTest,
@@ -282,8 +235,7 @@ bool FLocalityChangeFarFromCutStaysPutTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	/* PRECONDITION: the two regions genuinely share no load path — no connection links a
-	 * column piece (< Split) to a wall piece (>= Split). */
+	// Precondition: no connection links a column piece (< Split) to a wall piece.
 
 	bool bCrossJoint = false;
 	for (int32 j = 0; j < L.Structure.NumConnections(); ++j)
@@ -302,7 +254,7 @@ bool FLocalityChangeFarFromCutStaysPutTest::RunTest(const FString& Parameters)
 			 "load-path-independent regions and the whole test means nothing"),
 		bCrossJoint);
 
-	// Adopt into a binding and snapshot region B WHILE THE STRUCTURE IS INTACT.
+	// Snapshot region B while intact.
 
 	FStructureBinding Binding;
 	if (!Adopt(L, Binding))
@@ -321,7 +273,7 @@ bool FLocalityChangeFarFromCutStaysPutTest::RunTest(const FString& Parameters)
 		WallBefore.Add(S.GetPieceSupport(i));
 	}
 
-	// THE PLAYER'S MOVE: pull the column's base, run the cascade, push.
+	// Pull the column's base, run the cascade, push.
 
 	Binding.RemovePiece(ColumnBase);
 	const int32 Passes = Binding.SolveAndBreak();
@@ -340,7 +292,7 @@ bool FLocalityChangeFarFromCutStaysPutTest::RunTest(const FString& Parameters)
 			 "collapse's clothes"),
 		Stranded, 0);
 
-	// THE PROMISE: region B is untouched, bit for bit in support state.
+	// Region B is untouched.
 
 	for (int32 i = Split; i < S.NumPieces(); ++i)
 	{
@@ -357,7 +309,7 @@ bool FLocalityChangeFarFromCutStaysPutTest::RunTest(const FString& Parameters)
 			Binding.IsReleased(i));
 	}
 
-	/* Every wall joint: neither broke under load nor was severed. */
+	// No wall joint broke or was severed.
 	for (int32 j = 0; j < S.NumConnections(); ++j)
 	{
 		const FConnection& C = S.GetConnection(j);
@@ -372,7 +324,7 @@ bool FLocalityChangeFarFromCutStaysPutTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// CONFINEMENT: the whole affected set lives in region A.
+	// Everything affected lies in region A.
 
 	for (int32 Piece : LostEarth)
 	{
@@ -399,22 +351,9 @@ bool FLocalityChangeFarFromCutStaysPutTest::RunTest(const FString& Parameters)
 }
 
 /**
- * GROUP 2a — A CUT FAR FROM THE LOAD PATH LEAVES IT STANDING.
- *
- * THE PROMISE. A believable sim is as much about what STANDS as what falls. Removing a piece that
- * carries nothing must move nothing: a parapet, a top brick, a decoration is not structure.
- *
- * THE FIXTURE. A three-wide, three-course running-bond wall (the PRODUCER), plus ONE parapet brick
- * laid on top of a middle top-course brick. It is genuinely NON-load-bearing: nothing rests on it,
- * and its own weight rests DOWN onto the wall — removing it can only UNLOAD the joints below.
- *
- * THE ASSERTION — OUTCOME, gravity on. After the removal cascade: zero pieces released, zero broke,
- * zero lost the earth, and every wall piece still Grounded or Supported. Displacement is never read.
- *
- * GREEN ON ARRIVAL, PROVEN TO BITE. Passes today. Bite: a radius-based sever in RemovePiece drops
- * the top course when the parapet goes — recorded in the report.
- *
- * NEEDS A TICKING WORLD: NO.
+ * Removing a piece that carries nothing moves nothing. A parapet brick on a 3 x 3 wall carries no
+ * load, so removing it only unloads the joints below: nothing breaks, is released or loses the
+ * ground. Green on arrival; a radius-based sever in RemovePiece fails it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FMustNotFallCutFarFromLoadPathTest,
@@ -443,7 +382,7 @@ bool FMustNotFallCutFarFromLoadPathTest::RunTest(const FString& Parameters)
 
 	const int32 WallPieces = L.Structure.NumPieces();
 
-	/* The middle top-course brick: course 2 (Z = 3.25 + 2*7.5 = 18.25), X = 22.5. */
+	// Middle top-course brick: course 2 (Z = 18.25), X = 22.5.
 	const FVector TopMiddleCentre(22.5, 0.0, BrickHeightCm / 2.0 + 2.0 * CoursePitchCm);
 	const int32 Support = FindPiece(L, TopMiddleCentre);
 
@@ -453,7 +392,7 @@ bool FMustNotFallCutFarFromLoadPathTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	/* The parapet: a full brick one bed above that top brick, carrying nothing. */
+	// The parapet, one bed above it.
 	const FVector ParapetCentre(22.5, 0.0, TopMiddleCentre.Z + CoursePitchCm);
 	const int32 Parapet = AddBrick(
 		L, ParapetCentre, FVector(BrickLengthCm, BrickWidthCm, BrickHeightCm), /*bGrounded*/ false);
@@ -473,14 +412,12 @@ bool FMustNotFallCutFarFromLoadPathTest::RunTest(const FString& Parameters)
 
 	const FStructure& S = Binding.GetStructure();
 
-	/* PRECONDITION: the parapet is really non-load-bearing — its only joint is the one
-	 * BENEATH it that this test then removes. */
+	// Precondition: the parapet rests on the wall; its only joint is beneath it.
 	Binding.SolveLoads();
 	TestTrue(
 		TEXT("FIXTURE: the parapet must rest on the wall before removal (Supported)"),
 		S.GetPieceSupport(Parapet) == EPieceSupport::Supported);
 
-	/* THE PLAYER'S MOVE: pull the parapet. */
 	Binding.RemovePiece(Parapet);
 	const int32 Passes = Binding.SolveAndBreak();
 	const int32 Released = Binding.ApplyResults();
@@ -519,25 +456,10 @@ bool FMustNotFallCutFarFromLoadPathTest::RunTest(const FString& Parameters)
 }
 
 /**
- * GROUP 2b — REMOVING A GENUINELY REDUNDANT MEMBER LEAVES IT STANDING.
- *
- * THE PROMISE. A load with more than one path to the ground survives losing one of them: pull a
- * redundant support and the remaining paths carry it.
- *
- * THE FIXTURE. One heavy beam resting on THREE grounded piers, at X = -40, 0, +40 — three
- * independent bed-joint paths to the earth. The beam's centre of mass sits at X = 0, squarely
- * between the two END piers, so with the MIDDLE pier gone the two ends still bracket the load: the
- * beam is spanning, not overhanging, and the middle pier is genuinely REDUNDANT. (The middle, not
- * an end: removing an end would put the centre of mass outside the remaining pair — a real
- * overturn, a different promise.)
- *
- * THE ASSERTION — OUTCOME. After removing the middle pier: the beam is still Supported, both end
- * piers still Grounded, zero pieces released, zero broke, zero lost the earth. Displacement unread.
- *
- * GREEN ON ARRIVAL, PROVEN TO BITE. Passes today. Bite: a radius-based sever in RemovePiece cuts the
- * beam's other two bed joints when the middle pier goes, dropping the beam — recorded in the report.
- *
- * NEEDS A TICKING WORLD: NO.
+ * Removing a redundant support leaves the load standing. A beam on three grounded piers at
+ * X = -40, 0, +40 loses the middle one; its centre of mass at X = 0 stays between the end piers, so
+ * it is still Supported and nothing breaks or is released. (Removing an end pier would be a real
+ * overturn.) Green on arrival; a radius-based sever in RemovePiece fails it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FMustNotFallRedundantMemberTest,
@@ -551,7 +473,7 @@ bool FMustNotFallRedundantMemberTest::RunTest(const FString& Parameters)
 
 	FBrickLayout L;
 
-	/* Three grounded piers: 10 wide on X, full wythe on Y, 20 tall, tops at Z = 20. */
+	// Three grounded piers, 10 wide, 20 tall.
 	constexpr double PierWidthX = 10.0;
 	constexpr double PierHeightZ = 20.0;
 	const FVector PierSize(PierWidthX, BrickWidthCm, PierHeightZ);
@@ -560,7 +482,7 @@ bool FMustNotFallRedundantMemberTest::RunTest(const FString& Parameters)
 	const int32 PierMid = AddBrick(L, FVector(0.0, 0.0, PierHeightZ / 2.0), PierSize, /*bGrounded*/ true);
 	const int32 PierRight = AddBrick(L, FVector(40.0, 0.0, PierHeightZ / 2.0), PierSize, /*bGrounded*/ true);
 
-	/* The beam: 100 long on X, full wythe, 13 thick, its bottom one bed above the pier tops. */
+	// The beam, 100 long and 13 thick, one bed above the pier tops.
 	constexpr double BeamLengthX = 100.0;
 	constexpr double BeamThickZ = 13.0;
 	const double BeamBottomZ = PierHeightZ + BedJointThicknessCm;
@@ -588,13 +510,11 @@ bool FMustNotFallRedundantMemberTest::RunTest(const FString& Parameters)
 
 	const FStructure& S = Binding.GetStructure();
 
-	/* PRECONDITION: with all three paths present the beam is carried. */
 	Binding.SolveLoads();
 	TestTrue(
 		TEXT("FIXTURE: the beam must be Supported with all three piers present"),
 		S.GetPieceSupport(Beam) == EPieceSupport::Supported);
 
-	/* THE PLAYER'S MOVE: pull the redundant middle pier. */
 	Binding.RemovePiece(PierMid);
 	const int32 Passes = Binding.SolveAndBreak();
 	const int32 Released = Binding.ApplyResults();
@@ -634,32 +554,13 @@ bool FMustNotFallRedundantMemberTest::RunTest(const FString& Parameters)
 }
 
 /**
- * GROUP 2c — A PURE-COMPRESSION DRY STACK, STABLE BY GEOMETRY, MUST STAND (WITHOUT TENSION).
+ * A dry stack that is stable by geometry stands without tension. A DryStone brick (c = 0, f_t = 0)
+ * sits 8 cm off-centre on a grounded base; its centre of mass is 2.75 cm inside the bearing edge,
+ * so a rigid block neither tips nor slides.
  *
- * THE PROMISE. A dry-stacked assembly holds itself up by geometry and friction alone — no bond, no
- * tension. If its resultant sits within the bearing, it stands, exactly as a real dry-stone wall
- * does. Needing tension to stand a plainly-stable dry stack is the model getting statics wrong.
- *
- * THE FIXTURE. Two DryStone bricks: a grounded base at X = 0, and one brick resting on it OFFSET by
- * 8 cm on X. The bond has zero tensile and zero cohesive strength (DryStone: c = 0, f_t = 0, mu =
- * 0.7). The stack is STABLE BY GEOMETRY: the upper brick's centre of mass sits at X = 8, and the
- * base bearing extends to X = 10.75 — the resultant is 2.75 cm inside the bearing edge, well within
- * the contact, with no horizontal force to slide it. A rigid block on this bearing does not tip and
- * does not slide: it stands, and it needs no tension to do so.
- *
- * WHY IT MAY BE RED, AND WHY THAT IS A FINDING NOT A BUG IN THE TEST. DESIGN.md's own gap list
- * (CURRENT_STATE.md, "Deliberately left alone"): "Dry stone has no rocking model ... a dry stack
- * that plainly stands reads as falling." An 8 cm offset puts the joint's resultant OUTSIDE the kern
- * (e = 4.0 cm against a kern of 2.25 cm), and with f_t = 0 the uncracked check reports net edge
- * tension against a zero limit, so the one bed joint gives and the upper brick is released, though
- * rigid-block statics stands it comfortably. If production fells the upper brick for exactly that
- * reason, this is an ASPIRATIONAL / KNOWN-GAP red (the no-rocking-model gap), NOT a regression — but
- * checked to be red for the RIGHT reason: the base keeps the earth, nothing is Stranded, and it is
- * the upper brick's own bed joint that gives. The interim overturning guard is NOT the cause: the
- * upper brick's centre of mass sits inside the bearing edge, so no body has walked past its seat —
- * the fall is purely the joint's no-tension kern check.
- *
- * NEEDS A TICKING WORLD: NO.
+ * Can go red on the known no-rocking-model gap (CURRENT_STATE.md): e = 4.0 cm is outside the
+ * 2.25 cm kern, and with f_t = 0 the uncracked check gives the joint. A red is only valid if the
+ * base stays grounded and nothing is Stranded.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FMustNotFallDryStackStandsByGeometryTest,
@@ -671,7 +572,7 @@ bool FMustNotFallDryStackStandsByGeometryTest::RunTest(const FString& Parameters
 	using namespace DestructionProfiles;
 	using namespace ProductPromiseSupport;
 
-	/* PRECONDITION on the profile: this is genuinely a no-tension, no-cohesion joint. */
+	// Precondition: a no-tension, no-cohesion joint.
 	TestEqual(TEXT("FIXTURE: dry stone carries exactly zero tensile strength"),
 		DryStone.TensileStrengthMPa, 0.0);
 	TestEqual(TEXT("FIXTURE: dry stone carries exactly zero cohesion"),
@@ -680,7 +581,7 @@ bool FMustNotFallDryStackStandsByGeometryTest::RunTest(const FString& Parameters
 	constexpr double OffsetXCm = 8.0;
 	const FVector BrickSize(BrickLengthCm, BrickWidthCm, BrickHeightCm);
 
-	/* PRECONDITION: the resultant is inside the bearing — geometrically stable, no rocking needed. */
+	// Precondition: the resultant is inside the bearing.
 	const double BaseRightEdgeXCm = BrickLengthCm / 2.0;
 	TestTrue(
 		*FString::Printf(
@@ -709,7 +610,7 @@ bool FMustNotFallDryStackStandsByGeometryTest::RunTest(const FString& Parameters
 
 	const FStructure& S = Binding.GetStructure();
 
-	/* No removal — the action is simply settling under gravity. */
+	// No removal; just settle under gravity.
 	const int32 Passes = Binding.SolveAndBreak();
 	const int32 Released = Binding.ApplyResults();
 
@@ -724,7 +625,7 @@ bool FMustNotFallDryStackStandsByGeometryTest::RunTest(const FString& Parameters
 		static_cast<int32>(S.GetPieceSupport(Base)), static_cast<int32>(S.GetPieceSupport(Upper)),
 		S.GetConnection(0).HasGiven() ? 1 : 0));
 
-	/* PRECONDITION for an honest verdict either way: no routing limitation is involved. */
+	// No routing limitation involved, whichever way the verdict goes.
 	TestEqual(TEXT("PRECONDITION: no piece may be Stranded"), Stranded, 0);
 
 	TestTrue(
@@ -732,7 +633,7 @@ bool FMustNotFallDryStackStandsByGeometryTest::RunTest(const FString& Parameters
 			 "here must be the upper brick's no-tension joint, not a broken base"),
 		S.GetPieceSupport(Base) == EPieceSupport::Grounded);
 
-	/* THE PROMISE. Aspirational: production has no dry-stone rocking model, so this may be red. */
+	// Aspirational while there is no dry-stone rocking model.
 	TestEqual(
 		TEXT("MUST STAND: a geometrically-stable dry stack must break nothing under load"),
 		Passes, 0);

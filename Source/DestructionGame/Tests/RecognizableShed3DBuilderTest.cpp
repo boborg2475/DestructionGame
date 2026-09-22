@@ -14,43 +14,17 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE RECOGNIZABLE 3D SHED BUILDER — the v2 geometry rebuild. The 7-piece toy (four grey blocks and a
- * plank) is physics-valid but does not READ as a shed; this drives the builder that lays a shed with a
- * FORM someone recognises, while staying inside the axis-aligned envelope the 3D bridge requires.
+ * DestructionShed3D::BuildRecognizable lays an axis-aligned multi-material shed that reads as a shed:
+ * four walls, a door (brick piers, Timber lintel), a window (sill, jambs, Timber lintel), stepped brick
+ * gables to a ridge, a Timber purlin roof, and a Timber porch on two posts and a wall tie. As a 3D
+ * FBrickLayout bridged to the 3D LP, the assembled shed stands. This test covers shape and standing;
+ * the collapse test below covers pulling a porch post.
  *
- * THE BEHAVIOUR, IN ONE SENTENCE. DestructionShed3D::BuildRecognizable lays a recognizable axis-aligned
- * brick shed — four walls closing a box, a DOOR opening in the front wall (two brick piers carrying a
- * Timber lintel), a WINDOW opening in the left wall (a sill course, two brick jambs, a Timber lintel),
- * STEPPED brick gables on the front and back walls rising in symmetric centred courses to a ridge, a
- * Timber roof of stepped purlins plus a ridge beam bearing on the gable shoulders, and a Timber porch
- * overhang over the door carried on two grounded Timber posts and a wall fixing — as a
- * SetThreeDimensional FBrickLayout in which every piece carries its authored MATERIAL and every contact
- * its authored CONNECTION, so that (bridged to the 3D LP) the assembled shed STANDS, its door and window
- * lintels read as carried by their piers/jambs, and its roof reads as carried by the gables.
+ * The canonical shed, 24 pieces and 30 joints, cm. X width, Y depth (front is +Y), Z height.
+ * Footprint X[0,300] Y[0,300]; walls 25 thick; eaves at Z=200; joints 1 cm. Front and back walls
+ * are the gable ends; left and right are eaves walls. Door in the front wall, window in the left.
  *
- * THIS SLICE IS SHAPE + STANDS ONLY (the RED decomposition — see the report). It asserts the builder
- * lays the expected recognizable geometry (piece/joint counts, the door and window openings as genuine
- * GAPS, the gable rising in steps to the ridge, per-piece materials and grounding), that the structure
- * is flagged 3D and bridges to the 3D oracle, and that the assembled shed STANDS (lambda* >= 1, nothing
- * stranded, the lintels and roof read Supported). The COLLAPSE ARMS — pull a porch post -> the porch
- * falls; pull a door pier -> the door lintel falls; pull a window jamb -> the window lintel falls — are
- * the follow-up slice, each hand-derived there. Because the builder is a bare `return false` stub, the
- * expected RED is "the builder lays nothing yet": Build returns false and Identify fails.
- *
- * =========================================================================================
- * THE FIXTURE — A RECOGNIZABLE AXIS-ALIGNED SHED. X IS WIDTH, Y IS DEPTH (INTO THE DOOR), Z IS HEIGHT.
- * 24 PIECES, 30 JOINTS. All dimensions cm; the numbers below are the canonical shed the builder lays,
- * spelled out here so the hand-derivation reads from the SAME numbers.
- * =========================================================================================
- *
- * Outer footprint X[0,300], Y[0,300]; walls 25 thick, eaves (wall top) at Z=200; joints 1 cm.
- *
- * FRONT is large Y (Y[275,300], the door faces +Y, the porch cantilevers +Y over it). BACK is Y[0,25].
- * The gable roof's ridge runs along Y, so the FRONT and BACK walls are the triangular GABLE ENDS; the
- * LEFT (X[0,25]) and RIGHT (X[275,300]) walls are the eaves walls. The door is in the front gable wall,
- * the window in the left wall.
- *
- * THE 24 PIECES (box = X[lo,hi] Y[lo,hi] Z[lo,hi]; G = grounded):
+ * Pieces (X[lo,hi] Y[lo,hi] Z[lo,hi]; G = grounded):
  *
  *   WALLS / DOOR (front gable base, Z < 200):
  *     BackWall     ClayBrick G  X[0,300]   Y[0,25]    Z[0,200]     the back gable end, solid.
@@ -82,7 +56,7 @@
  *     MidPurlinR   Timber       X[175,225] Y[0,300]   Z[261,285]
  *     Ridge        Timber       X[125,175] Y[0,300]   Z[291,315]   on the Z=290 apex tops.
  *
- *   PORCH (Timber, over the door, +Y) — a CANTILEVER whose back is tied by a narrow central cleat:
+ *   PORCH (Timber, over the door, +Y), a cantilever tied at the back by a narrow central cleat:
  *     PostL        Timber    G  X[55,85]   Y[328,352] Z[0,200]     grounded porch post, left  (Xc 70).
  *     PostR        Timber    G  X[215,245] Y[328,352] Z[0,200]     grounded porch post, right (Xc 230).
  *     Overhang     Timber       X[40,260]  Y[301,451] Z[201,221]   porch roof; centroid (150,376,211),
@@ -91,12 +65,12 @@
  *                                                                  wall, projecting to Y=310; the overhang
  *                                                                  laps ONLY this (Z-normal tie, 180 cm2).
  *
- * THE 30 JOINTS (each through MakeInterface — one axis of separation, by the joint thickness):
+ * Joints (all via MakeInterface):
  *   DOOR     (2): LeftPier-DoorHeader, RightPier-DoorHeader                          bed, DryStone.
  *   WINDOW   (4): Sill-WinJambBack, Sill-WinJambFront, WinJambBack-WinLintel,
  *                 WinJambFront-WinLintel                                             bed, DryStone.
  *   CORNERS  (4): Sill-BackWall, Sill-LeftPier, RightWall-BackWall, RightWall-RightPier
- *                 (all grounded-grounded, so the oracle SKIPS them — closure, not structure).
+ *                 (grounded-grounded, so the oracle skips them).
  *   GABLES   (6): FGableBase-DoorHeader, FGableBase-FGableMid, FGableMid-FGableApex,
  *                 BGableBase-BackWall, BGableBase-BGableMid, BGableMid-BGableApex     bed, mortar.
  *   ROOF    (10): each of the five purlins to the BACK and FRONT gable shoulder it rests on
@@ -104,60 +78,34 @@
  *   PORCH    (4): PostL-Overhang, PostR-Overhang (bed, DryStone); Cleat-Overhang (the tie, Z-normal,
  *                 Screw, 180 cm2); DoorHeader-Cleat (the anchor, Y-normal, mortar, 480 cm2).
  *
- * =========================================================================================
- * THE ASSEMBLED STAND IS HAND-DERIVED (never mirrored from the LP). Every non-grounded piece has a
- * downward compression path to a grounded piece, and the two arrangements that could overturn are shown
- * not to:
- *   - THE STEPPED GABLE is a SYMMETRIC CENTRED stack: every course is centred at X=150 and narrows
- *     symmetrically (300 -> 150 -> 50 wide), so each course's centroid sits directly over the course
- *     below and the stack cannot overturn. The purlins load each gable symmetrically about X=150
- *     (EavesL/EavesR, MidL/MidR mirror; the Ridge is centred), so there is no net overturning moment.
- *   - THE DOOR LINTEL and WINDOW LINTEL are simply-supported beams whose centroid sits BETWEEN their
- *     two supports (door centroid X=150 between piers at X=55 and 245; window centroid Y=150 between
- *     jambs at Y=73 and 227), so both reactions are positive.
- *   - THE PORCH is a CANTILEVER: two posts (Y=340) carry the overhang, whose centroid (Y=376) sits
- *     FORWARD of them, so the narrow central cleat tie holds the back down in WITHDRAWAL (a small down
- *     force, comfortably within the Screw's 0.54 MPa over 180 cm2). Assembled the two posts are
- *     X-symmetric about the load line (X=150), so their X-moments cancel and no couple is demanded of
- *     the tie -> stands. The collapse arm (its own test) shows the mirror: remove a post and the load
- *     line's X-moment outruns everything the narrow tie's 10 cm-half-width couple can restore -> falls.
+ * Why it stands (hand-derived, not read from the LP):
+ *   - Gables are centred at X=150 and narrow symmetrically (300 -> 150 -> 50); purlins load them
+ *     symmetrically, so there is no net overturning moment.
+ *   - Door and window lintels have their centroid between their supports, so both reactions are positive.
+ *   - The porch overhang's centroid (Y=376) is forward of the posts (Y=340), so the cleat tie holds its
+ *     back down in withdrawal, well inside the Screw's 0.54 MPa over 180 cm2. The posts are symmetric
+ *     about X=150, so no couple is demanded of the tie.
  *
- * =========================================================================================
- * UNITS — SPELLED OUT LOCALLY (DESIGN.md §3). 1 N = 100 uu, 1 cm2 = 100 mm2, so 1 MPa over 1 cm2 is
- * 10000 uu. DELIBERATELY not the production constant. Weight is MassKg * 980; masses come from the
- * published densities (Timber 0.42, ClayBrick 1.9) times the true volumes.
- *
- * NEEDS A TICKING WORLD: NO. The builder is arithmetic over boxes; the structure over a graph; the LP
- * over that; gravity is on (weight = mass*980); every assertion is on the laid layout, the bridged
- * oracle, or the solved outcome — no Chaos, no world tick. Same footing as the 7-piece toy.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges files into one translation unit.
+ * Units spelled out locally (DESIGN.md §3): 1 MPa over 1 cm2 is 10000 uu; weight is MassKg * 980.
+ * World-free. Named namespace because unity builds merge translation units.
  */
 namespace RecognizableShed3DTestSupport
 {
 	using namespace DestructionLayout;
 	using namespace DestructionProfiles;
 
-	/* ================================================================================
-	 * UNITS AND DENSITIES. Lengths in cm at Unreal's default 1 uu = 1 cm.
-	 * ================================================================================ */
-
-	/** Structural timber C24, EN 338 mean density. UNITS TRAP: 0.42, never 420. */
+	/** Timber C24, EN 338 mean density. g/cm3: 0.42, never 420. */
 	constexpr double TimberDensityGramsPerCubicCm = 0.42;
 
-	/** Fired clay, the figure every wall fixture uses. */
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
 
-	/** MassKg * 980 IS a weight in uu — the 1 N = 100 uu conversion is already inside it. */
+	/** MassKg * 980 is already a weight in uu; do not apply 1 N = 100 uu again. */
 	constexpr double GravityCmPerSecondSquared = 980.0;
 
-	/** 1 MPa over 1 cm2 is 10000 uu. DELIBERATELY a local literal, not the production constant. */
+	/** 1 MPa over 1 cm2 is 10000 uu. A local literal, not the production constant. */
 	constexpr double ForceUnitsPerMPaSqCmHere = 100.0 * 100.0;
 
-	/* ================================================================================
-	 * THE CANONICAL SHED, spelled out so the derivation reads the SAME numbers the builder lays. The
-	 * builder hardcodes these; the test reads back the laid layout and identifies pieces by position.
-	 * ================================================================================ */
+	// The canonical shed's numbers; pieces are identified by position in the laid layout.
 
 	constexpr int32 ExpectedPieces = 24;
 	constexpr int32 ExpectedJoints = 30;
@@ -165,11 +113,11 @@ namespace RecognizableShed3DTestSupport
 	constexpr int32 ExpectedBrick = 13;
 	constexpr int32 ExpectedTimber = 11;     // + the Cleat (the wall tie); the cleat is NOT grounded
 
-	/* Door opening and window opening — the GAPS. A point in the middle of each must contain NO piece. */
+	// Points inside the door and window openings; no piece may contain them.
 	constexpr double DoorGapX = 150.0, DoorGapY = 287.5, DoorGapZ = 75.0;
 	constexpr double WindowGapX = 12.5, WindowGapY = 150.0, WindowGapZ = 130.0;
 
-	/* Centroids of the pieces the assertions name, so identification is by POSITION not by handle. */
+	// Centroids of the named pieces.
 	const FVector CBackWall(150.0, 12.5, 100.0);
 	const FVector CRightWall(287.5, 150.0, 100.0);
 	const FVector CLeftPier(55.0, 287.5, 87.5);
@@ -189,10 +137,7 @@ namespace RecognizableShed3DTestSupport
 	const FVector CPostR(230.0, 340.0, 100.0);
 	const FVector COverhang(150.0, 376.0, 211.0);
 
-	/* ================================================================================
-	 * THE HAND-DERIVED POSITIVE CONTROLS. Independent of the builder — they prove the CHOSEN dimensions
-	 * produce the intended supported regimes, so the LP's "stands" has real controls behind it.
-	 * ================================================================================ */
+	// Hand-derived controls, independent of the builder.
 
 	double BoxWeightUu(const FVector& Ext /*half extents cm*/, double DensityGramsPerCubicCm)
 	{
@@ -200,18 +145,17 @@ namespace RecognizableShed3DTestSupport
 		return DensityGramsPerCubicCm * VolumeCm3 / 1000.0 * GravityCmPerSecondSquared;
 	}
 
-	/* The door lintel: a simply-supported beam. Reactions of a point load w at position p on supports
-	 * at a and b are R_a = w*(b-p)/(b-a), R_b = w*(p-a)/(b-a) — both positive iff a < p < b. */
+	/*
+	 * Simply-supported beam: point load w at p on supports a and b gives R_a = w*(b-p)/(b-a),
+	 * R_b = w*(p-a)/(b-a), both positive iff a < p < b.
+	 */
 	void BeamReactions(double p, double a, double b, double w, double& OutRa, double& OutRb)
 	{
 		OutRa = w * (b - p) / (b - a);
 		OutRb = w * (p - a) / (b - a);
 	}
 
-	/* ================================================================================
-	 * THE LAID SHED — pieces identified by MATERIAL, GROUNDING and POSITION, never by a handle order.
-	 * ================================================================================ */
-
+	// Named pieces of the laid shed, found by position rather than handle order.
 	struct FShed
 	{
 		int32 BackWall = INDEX_NONE;
@@ -234,7 +178,7 @@ namespace RecognizableShed3DTestSupport
 		int32 Overhang = INDEX_NONE;
 	};
 
-	/** The live piece whose box contains the point, or INDEX_NONE. Robust identity by position. */
+	/** The live piece whose box contains the point, or INDEX_NONE. */
 	int32 PieceContaining(const FBrickLayout& Layout, const FVector& P)
 	{
 		const FStructure& S = Layout.Structure;
@@ -255,7 +199,7 @@ namespace RecognizableShed3DTestSupport
 		return INDEX_NONE;
 	}
 
-	/** Name every asserted piece from its centroid, or fail if any is missing or ambiguous. */
+	/** Finds every named piece by centroid; false if any is missing. */
 	bool Identify(const FBrickLayout& Layout, FShed& Out)
 	{
 		Out.BackWall = PieceContaining(Layout, CBackWall);
@@ -346,7 +290,7 @@ namespace RecognizableShed3DTestSupport
 		return N;
 	}
 
-	/** True when a live piece has lost every path to the earth — the outcome a dropped piece shows. */
+	/** True when a live piece has lost every path to the ground. */
 	bool HasLostTheEarth(const FStructure& S, int32 Piece)
 	{
 		if (S.IsPieceRemoved(Piece))
@@ -356,7 +300,7 @@ namespace RecognizableShed3DTestSupport
 		return !IsStanding(S.GetPieceSupport(Piece));
 	}
 
-	/** The oracle block that came from a given FStructure piece, via the bridge provenance. */
+	/** The oracle block built from a given FStructure piece. */
 	int32 OracleBlockOfPiece(const RigidBlockOracle::FOracleProblem& Problem, int32 Piece)
 	{
 		for (int32 B = 0; B < Problem.PieceOfBlock.Num(); ++B)
@@ -370,12 +314,7 @@ namespace RecognizableShed3DTestSupport
 	}
 }
 
-/**
- * THE RECOGNIZABLE 3D SHED BUILDER LAYS A SHED-SHAPED, MULTI-MATERIAL BOX WITH A DOOR, A WINDOW, STEPPED
- * GABLES AND A PORCH THAT STANDS AS BUILT — the shape-and-stands slice of the v2 rebuild.
- *
- * NEEDS A TICKING WORLD: NO. See the file header.
- */
+/** The recognizable shed lays with the expected shape and stands as built. See the file header. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRecognizableShed3DBuilderTest,
 	"DestructionGame.Acceptance.Shed.ThreeD.RecognizableShedStandsAsBuilt",
@@ -386,10 +325,7 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 	using namespace DestructionProfiles;
 	using namespace RecognizableShed3DTestSupport;
 
-	/* ------------------------------------------------------------------ *
-	 * PRECONDITIONS ON THE STRENGTH BASIS — pinned to the published figures rather than read from the
-	 * profiles, so the sizing is derived against known numbers.
-	 * ------------------------------------------------------------------ */
+	// Strength basis pinned to published figures, not read from the profiles.
 
 	TestEqual(TEXT("FIXTURE: the porch fixing is a Screw, withdrawal 0.54 MPa (EN 1995-1-1 8.7.2)"),
 		Screw.TensileStrengthMPa, 0.54);
@@ -402,18 +338,14 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FIXTURE: clay brick crushes at 20 MPa"),
 		ClayBrick.Strength.CompressiveStrengthMPa, 20.0);
 
-	/* ------------------------------------------------------------------ *
-	 * THE HAND-DERIVED POSITIVE CONTROLS — the door lintel's reactions, the window lintel's reactions,
-	 * and the porch's inboard centroid. Independent of the builder; a guard that the CHOSEN dimensions
-	 * produce the intended supported regimes so the LP's STANDS has real controls.
-	 * ------------------------------------------------------------------ */
+	// Hand-derived controls: lintel reactions and the porch centroid, independent of the builder.
 
-	/* Door lintel (Timber): X[0,300] Y[275,300] Z[176,200], on piers at X-centroid 55 and 245. */
+	// Door lintel (Timber): X[0,300] Y[275,300] Z[176,200], on piers at X-centroid 55 and 245.
 	const double WDoorHeader = BoxWeightUu(FVector(150.0, 12.5, 12.0), TimberDensityGramsPerCubicCm);
 	double DoorRa = 0.0, DoorRb = 0.0;
 	BeamReactions(150.0, 55.0, 245.0, WDoorHeader, DoorRa, DoorRb);
 
-	/* Window lintel (Timber): X[0,25] Y[26,274] Z[171,200], on jambs at Y-centroid 73 and 227. */
+	// Window lintel (Timber): X[0,25] Y[26,274] Z[171,200], on jambs at Y-centroid 73 and 227.
 	const double WWinLintel = BoxWeightUu(FVector(12.5, 124.0, 14.5), TimberDensityGramsPerCubicCm);
 	double WinRa = 0.0, WinRb = 0.0;
 	BeamReactions(150.0, 73.0, 227.0, WWinLintel, WinRa, WinRb);
@@ -431,11 +363,7 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 		"a cantilever whose Z-normal wall fixing holds its back down in withdrawal rather than a passenger"),
 		376.0 > 340.0);
 
-	/* ================================================================================
-	 * ARM 0 — THE BUILDER LAYS THE RECOGNIZABLE SHED. Counts, per-piece material and grounding, the 3D
-	 * flag, the door and window OPENINGS as gaps, the gable rising in steps to the ridge, and the
-	 * authored joints. This is where the stub is RED: it lays nothing, so Build returns false.
-	 * ================================================================================ */
+	// The builder lays the shed: counts, materials, grounding, 3D flag, openings, gables, joints.
 
 	FBrickLayout Layout;
 	const bool bBuilt = DestructionShed3D::BuildRecognizable(Layout);
@@ -471,15 +399,14 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	/* --- THE DOOR AND WINDOW OPENINGS ARE GENUINE GAPS ---------------------------------------- */
+	// The door and window openings are gaps.
 
 	TestEqual(TEXT("OPENING: the doorway is a GAP — no piece spans it at ground level between the piers"),
 		PieceContaining(Layout, FVector(DoorGapX, DoorGapY, DoorGapZ)), (int32)INDEX_NONE);
 	TestEqual(TEXT("OPENING: the window is a GAP — no piece fills it between the jambs and under the lintel"),
 		PieceContaining(Layout, FVector(WindowGapX, WindowGapY, WindowGapZ)), (int32)INDEX_NONE);
 
-	/* And the openings are genuinely FLANKED — piers either side of the door, jambs either side of the
-	 * window — so the gap is an opening in a wall, not just a missing wall. */
+	// Flanked by piers and jambs, so each gap is an opening in a wall, not a missing wall.
 	TestTrue(TEXT("OPENING: brick piers flank the doorway left and right"),
 		S.LeftPier != INDEX_NONE && S.RightPier != INDEX_NONE
 			&& S.LeftPier != S.RightPier);
@@ -487,7 +414,7 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 		S.WinJambBack != INDEX_NONE && S.WinJambFront != INDEX_NONE
 			&& S.WinJambBack != S.WinJambFront);
 
-	/* --- THE GABLE RISES IN SYMMETRIC CENTRED STEPS TO THE RIDGE ------------------------------- */
+	// The gable rises in centred steps to the ridge.
 
 	const FPieceBox& GBase = Layout.Boxes[S.FGableBase];
 	const FPieceBox& GMid = Layout.Boxes[S.FGableMid];
@@ -507,7 +434,7 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(Layout.Boxes[S.FGableApex].CentreCm.Z,
 			Layout.Boxes[S.BGableApex].CentreCm.Z, 1.0e-6));
 
-	/* --- MATERIALS: the shed is multi-material as authored ------------------------------------- */
+	// Materials as authored.
 
 	TestTrue(TEXT("BUILD: the back wall is ClayBrick"), Layout.Structure.GetPiece(S.BackWall).Material == &ClayBrick);
 	TestTrue(TEXT("BUILD: the right wall is ClayBrick"), Layout.Structure.GetPiece(S.RightWall).Material == &ClayBrick);
@@ -528,7 +455,7 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 			&& Layout.Structure.GetPiece(S.PostR).Material == &Timber);
 	TestTrue(TEXT("BUILD: the porch overhang is Timber"), Layout.Structure.GetPiece(S.Overhang).Material == &Timber);
 
-	/* --- GROUNDING: the walls' feet and the posts stand on the earth; the spanning pieces do not -- */
+	// Walls and posts are grounded; spanning pieces are not.
 
 	TestTrue(TEXT("BUILD: the back wall is grounded"), Layout.Structure.GetPiece(S.BackWall).bIsGrounded);
 	TestTrue(TEXT("BUILD: the right wall is grounded"), Layout.Structure.GetPiece(S.RightWall).bIsGrounded);
@@ -549,7 +476,7 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("BUILD: the shed knows where every piece and joint is, or every moment is silently zero"),
 		Layout.Structure.HasCompleteGeometry());
 
-	/* --- KEY JOINTS: the lintels are carried by their supports; the fixing is a tension tie ------ */
+	// Key joints: lintels on their supports; the porch fixing is a tension tie.
 
 	const int32 DoorOnLeft = JointBetween(Layout.Structure, S.LeftPier, S.DoorHeader);
 	const int32 DoorOnRight = JointBetween(Layout.Structure, S.RightPier, S.DoorHeader);
@@ -579,11 +506,10 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	/* The door lintel bears on the pier through a BED joint beneath it (+Z normal), and the porch fixing
-	 * is now a Z-normal withdrawal tie: the overhang laps the central cleat, so the tie reads as a bed
-	 * BENEATH the overhang. The cleat itself is anchored to the wall by a Y-normal mortar joint. The shed
-	 * stays genuinely 3D through its four Y-normal CORNER joints — a contact out of the X-Z plane that a 2D
-	 * oracle cannot express. */
+	/*
+	 * The porch tie is a Z-normal bed beneath the overhang (withdrawal); the cleat anchor and the
+	 * corners are Y-normal, out of the X-Z plane, which a 2D oracle cannot express.
+	 */
 	TestTrue(TEXT("JOINT: the door lintel bears on the left pier through a bed joint"),
 		Layout.Structure.GetJointRole(DoorOnLeft, S.DoorHeader) == EJointRole::BedBeneath);
 	TestTrue(TEXT("JOINT: the ridge bears on the apex through a bed joint"),
@@ -599,10 +525,10 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("JOINT: the fixing is a Screw — a tension-capable tie"),
 		Layout.Structure.GetConnection(Fixing).Strength.TensileStrengthMPa, Screw.TensileStrengthMPa);
 
-	/* ================================================================================
-	 * THE ASSEMBLED SHED STANDS. Mechanism via the 3D oracle (bridged, Dim3D, lambda* >= 1), outcome
-	 * via production (0 stranded, the lintels and roof read Supported). No displacement anywhere.
-	 * ================================================================================ */
+	/*
+	 * The assembled shed stands: mechanism via the 3D oracle (lambda* >= 1), outcome via production
+	 * (nothing Stranded, lintels and roof Supported). No displacement.
+	 */
 
 	RigidBlockOracle::FOracleProblem Problem;
 	FString BridgeWhy;
@@ -630,7 +556,7 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 			Live.bAnswered && Live.Lambda >= 1.0);
 	}
 
-	/* ---- THE OUTCOME, VIA PRODUCTION. Below the block cap the LP is the break authority. ---- */
+	// Outcome via production; below the block cap the LP is the break authority.
 	const int32 Passes = Layout.Structure.SolveAndBreak();
 	const int32 Stranded = StrandedCount(Layout.Structure);
 
@@ -639,8 +565,7 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("STANDS: nothing may be Stranded — the verdict is about the shed, not the solver declining"),
 		Stranded, 0);
 
-	/* The carried spanning pieces read Supported — the lintels by their piers/jambs, the roof by the
-	 * gables. This is the "genuinely supported, not floating" assertion for the openings and the roof. */
+	// The spanning pieces read Supported, not floating.
 	TestTrue(TEXT("STANDS: the door lintel reads Supported (carried by its piers)"),
 		IsStanding(Layout.Structure.GetPieceSupport(S.DoorHeader)));
 	TestTrue(TEXT("STANDS: the window lintel reads Supported (carried by its jambs)"),
@@ -654,91 +579,25 @@ bool FRecognizableShed3DBuilderTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE RECOGNIZABLE 3D SHED FALLS WHEN A PORCH POST IS PULLED — the collapse half of the goal (Slice 2).
- * Slice 1 proved BuildRecognizable STANDS; this proves the headline "take a post out and it falls":
- * remove EITHER porch post and the overhang drops, while the walls, the far post, the door lintel and the
- * roof all keep the earth. Read through the SAME production bridge + SolveAndBreak the toy 3D shed uses:
- * mechanism via the 3D oracle (Falls, lambda* < 1, the dead-load mechanism NAMES the overhang as a moving
- * block); outcome via production (the overhang loses the earth, the survivors keep it, nothing Stranded).
- * NEVER displacement — support state and the named mechanism only, per DESIGN §4.
+ * Pulling either porch post drops the overhang, while the walls, the other post, the door lintel and
+ * the roof keep the ground. Mechanism via the 3D oracle (Falls, lambda* < 1, the mechanism names the
+ * overhang); outcome via production SolveAndBreak. No displacement (DESIGN §4).
  *
- * =========================================================================================
- * WHY THERE IS NO DOOR-PIER ARM (lead decision, 2026-08-30). An earlier draft also pulled a door pier
- * and expected the Timber lintel to drop. Measurement showed it STANDS at lambda* = 42.08: the mortar
- * bond over the doorway plus the internally-bonded gable act as a DEEP BEAM (COMPOSITE VERTICAL ACTION,
- * ConnectionStrength.h) that spans the missing pier and stands on the surviving one. That is CORRECT
- * PHYSICS — masonry arches over an opening when a jamb is lost — and desirable, so we do NOT weaken it to
- * force a collapse. The door is not a single point of failure, by design; only the porch is.
+ * No door-pier arm (decision 2026-08-30): pulling a pier stands at lambda* = 42.08 because the masonry
+ * over the door acts as a deep beam (composite vertical action). That is correct physics.
  *
- * =========================================================================================
- * THE PORCH IS A CANTILEVER TIED BY A NARROW CENTRAL CLEAT (Slice-2 REQUIRED PRODUCTION CHANGE — full
- * builder spec in the report). Two evolutions got here:
- *   1) The Slice-1 TABLE porch (posts front at Y=382.5, wide Y-normal shear fixing, centroid between)
- *      OVER-HELD one post pulled at lambda* = 78.71 — a wall-fixed porch surviving one of two posts is
- *      defensible physics, so we re-topologised to a genuine CANTILEVER: the overhang is carried PRIMARILY
- *      by its two posts (Y=340) and its centroid sits FORWARD of them (Y=376), so a WITHDRAWAL tie must
- *      hold its back down.
- *   2) A first cantilever tied the back down with a WIDE Z-normal Screw bed (the full X[40,260] overhang
- *      width lapping the DoorHeader ledge). That still OVER-HELD, at lambda* = 13.31 — dev found why, and
- *      it is the SAME root cause as the wide Y-normal fixing: a rigid contact carries a PRESSURE
- *      DISTRIBUTION across its whole area, so a full-width bed forms a COMPRESSION/TENSION COUPLE about the
- *      X axis (compression far side, withdrawal near side) whose arm is the contact's HALF-WIDTH. At 110 cm
- *      half-width that couple is enormous and swamps the X-torsion the collapse depends on.
+ * The porch is a cantilever tied by a narrow central cleat. A wide tie forms a compression/tension
+ * couple about X with an arm of its half-width, which held one post pulled (lambda* = 13.31 for a
+ * full-width bed). MakeInterface uses the boxes' overlap, so a narrow tie needs its own piece: the
+ * 20 cm Cleat, X[140,160]. Tie is Z-normal Screw, 180 cm2, half-width 10 cm.
  *
- * THE FIX (lead-endorsed): make the wall tie NARROW in X and CENTRAL so its X-couple arm (its half-width)
- * is small. THE TIE THEREFORE NEEDS A DEDICATED NARROW CENTRAL PIECE. MakeInterface builds a joint from
- * the GEOMETRIC OVERLAP of the two boxes (Layout.cpp: min(highs) - max(lows)), so a contact between the
- * wide overhang (X[40,260]) and any wide wall piece (X[0,300]) is ALWAYS full width — a narrow central
- * contact cannot be had by "just narrowing the lap". A small central CLEAT bracket, bonded to the wall and
- * lapped by the overhang, is the only single-box way. THIS ADDS ONE PIECE AND ONE JOINT (23 -> 24 pieces,
- * 29 -> 30 joints); "only the fixing lap changes" cannot be honoured, and the report says why.
+ * Sizing: W = 0.42 * (220*150*20) / 1000 * 980 = 271,656 uu. Tie at Y 305.5, posts Y 340, centroid Y 376.
+ *   Assembled: tie withdrawal T = W*36/34.5 = 1.043 W, against 0.54 MPa * 180 cm2 = 972,000 uu
+ *     (3.4x margin). Posts are symmetric about X=150, so no couple is demanded. Stands.
+ *   One post removed: the other takes 2.043 W at 80 cm from the load line, demanding 163.4 W*cm; the
+ *     tie's couple is at most 972,000 * 10 = 35.8 W*cm. 4.6x short. Falls.
  *
- * THE TARGET PORCH GEOMETRY the builder must lay (X width, Y depth = +Y forward over the door, Z up):
- *   DoorHeader  Timber       X[0,300]   Y[275,300] Z[176,200]   plain lintel again (drop the ledge; the
- *                                                               cleat now provides the shelf).
- *   Cleat (NEW) Timber       X[140,160] Y[300,310] Z[176,200]   a 20 cm-wide central bracket projecting
- *                                                               10 cm past the wall; bonded to the DoorHeader.
- *   PostL       Timber   G   X[55,85]   Y[328,352] Z[0,200]     grounded, centroid (70,340).
- *   PostR       Timber   G   X[215,245] Y[328,352] Z[0,200]     grounded, centroid (230,340).
- *   Overhang    Timber       X[40,260]  Y[301,451] Z[201,221]   centroid (150,376,211); cantilevers +Y
- *                                                               PAST the posts (376 > 340). It laps ONLY the
- *                                                               cleat (it clears the plain DoorHeader in Y).
- *   Tie      Overhang-Cleat  Z-normal SCREW  lap X[140,160] x Y[301,310] = 180 cm2  (half-width 10 cm).
- *   Anchor   Cleat-DoorHeader  Y-normal GeneralPurposeMortar  X[140,160] x Z[176,200] = 480 cm2.
- *   Bearings PostL-Overhang, PostR-Overhang  Z-normal DryStone  X30 x Y24 = 720 cm2 each.
- * The overhang must NOT keep any full-width bed on the wall — that bed would re-form the X-couple — so the
- * DoorHeader loses its projection and the overhang (Y[301,451]) clears it (DoorHeader ends at Y=300).
- *
- * =========================================================================================
- * SIZED BOTH WAYS, HAND-DERIVED against the TARGET geometry, WITH THE X-COUPLE EXPLICIT (the term the
- * earlier derivation omitted). Overhang weight W = 0.42 g/cm3 * (220*150*20) cm3 /1000 * 980 = 271,656 uu.
- * Tie lap centre Yf~=305.5, post line Yp=340, centroid Yc=376. Tie X-half-width h = 10 cm.
- *
- *   ASSEMBLED -> STANDS. Weight FORWARD of the posts, so the tie holds the back down in WITHDRAWAL,
- *     T = W*(Yc-Yp)/(Yp-Yf) = W*36/34.5 = 1.043 W = 283,378 uu, against withdrawal capacity 0.54 MPa *
- *     180 cm2 = 972,000 uu (3.4x margin). The two posts are X-SYMMETRIC about the load (X=150), so their
- *     X-moments cancel and NO couple is demanded of the tie -> stands (lambda* >= 1).
- *   EITHER POST REMOVED -> FALLS by X-TORSION. Say PostR goes. The Y-Z plane still balances (PostL takes
- *     P = W*(Yc-Yf)/(Yp-Yf) = 2.043 W up; the tie pulls DOWN 1.043 W in withdrawal). But the load at X=150
- *     now has only PostL at X=70 to resist the X-moment, DEMANDING P*|70-150| = 2.043 W * 80 = 163.4 W*cm.
- *     The MOST the tie can restore is its COUPLE: the withdrawal force acting at its half-width,
- *     (0.54 MPa * 180 cm2) * h = 972,000 * 10 = 9.72e6 uu*cm = 35.8 W*cm. Demand 163.4 W*cm outruns it by
- *     4.6x -> the overhang tips toward the missing post and drops. (Removing PostL is the mirror.) The
- *     narrow tie's half-width is what starves the couple — the very couple a full-width bed supplied in
- *     abundance, which is why THIS falls where the wide bed (lambda* = 13.31) held.
- *
- * *** RED STATUS (measured 2026-08-30). This test FAILS today because the builder lays the WIDE Z-normal
- * fixing (full 880 cm2 bed to the DoorHeader ledge), whose X-couple OVER-HOLDS one post pulled at
- * lambda* = 13.31. The toy 3D shed FALLS on the identical code path (post removed lambda* = 0.456), and
- * the controls below pass and the build is clean — so this is a real "tie not yet narrowed to a central
- * cleat" red, NOT a test-construction defect. dev closes it by laying the cleat tie above. The assertions
- * here identify PostR/Overhang by position (via the shared centroid table), so they hold across the change:
- * red on the wide bed, green on the narrow cleat. ***
- *
- * =========================================================================================
- * UNITS — SPELLED OUT LOCALLY (DESIGN.md §3): 1 MPa over 1 cm2 is 10000 uu; weight = MassKg * 980.
- * NEEDS A TICKING WORLD: NO — boxes, a graph, the LP; gravity on; support state and the named mechanism,
- * no Chaos, no world tick. Same footing as the toy 3D shed's collapse arms.
+ * Units spelled out locally (DESIGN.md §3). World-free.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRecognizableShed3DCollapseTest,
@@ -750,11 +609,10 @@ bool FRecognizableShed3DCollapseTest::RunTest(const FString& Parameters)
 	using namespace DestructionProfiles;
 	using namespace RecognizableShed3DTestSupport;
 
-	/* ------------------------------------------------------------------ *
-	 * PRECONDITIONS ON THE STRENGTH BASIS — the verdict turns on these, so they are pinned to the
-	 * published figures rather than read from the profiles. The Screw is a mechanical fastener: mu = 0,
-	 * so its shear capacity is pure cohesion (no friction help), and a DryStone bed carries no tension.
-	 * ------------------------------------------------------------------ */
+	/*
+	 * Strength basis pinned to published figures. The Screw has mu = 0 (shear is pure cohesion); DryStone
+	 * carries no tension.
+	 */
 
 	TestEqual(TEXT("FIXTURE: the porch fixing is a Screw, withdrawal 0.54 MPa (EN 1995-1-1 8.7.2)"),
 		Screw.TensileStrengthMPa, 0.54);
@@ -765,13 +623,7 @@ bool FRecognizableShed3DCollapseTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FIXTURE: the bearings are DryStone frictional contacts with NO tension"),
 		DryStone.TensileStrengthMPa, 0.0);
 
-	/* ------------------------------------------------------------------ *
-	 * THE HAND-DERIVED POSITIVE CONTROLS — the TARGET cantilever porch, sized both ways, independent of
-	 * the builder and the LP. They prove the CHOSEN dimensions produce the intended regimes: assembled
-	 * the small withdrawal fixing comfortably holds the cantilever's back (stands), and with one post
-	 * pulled the remaining post's X-moment demand outruns everything the fixing can restore (falls). A
-	 * wrong dimension fails here rather than being mirrored from the solver.
-	 * ------------------------------------------------------------------ */
+	// Hand-derived controls for the porch, sized both ways, independent of the builder and the LP.
 
 	const double OverhangWeightUu =
 		TimberDensityGramsPerCubicCm * (220.0 * 150.0 * 20.0) / 1000.0 * GravityCmPerSecondSquared;
@@ -781,19 +633,18 @@ bool FRecognizableShed3DCollapseTest::RunTest(const FString& Parameters)
 	const double OverhangCentroidYCm = 376.0;   // overhang Y[301,451]
 
 	const double TieAreaSqCm = 20.0 * 9.0;      // narrow central cleat lap X[140,160] x Y[301,310]
-	const double TieHalfWidthXCm = 10.0;        // half of the cleat's 20 cm X-extent — the X-COUPLE ARM
+	const double TieHalfWidthXCm = 10.0;        // half the cleat's 20 cm X-extent; the X-couple arm
 	const double TieWithdrawalCapUu =
 		Screw.TensileStrengthMPa * ForceUnitsPerMPaSqCmHere * TieAreaSqCm;   // 0.54 MPa * 180 cm2
 
-	/* Assembled: the central tie holds the cantilever's back down in WITHDRAWAL; the two posts are
-	 * X-symmetric about the load, so no X-couple is demanded of the tie. */
+	// Assembled: the tie holds the back down in withdrawal; symmetric posts demand no X-couple.
 	const double TieTensionUu = OverhangWeightUu
 		* (OverhangCentroidYCm - PostLineYCm) / (PostLineYCm - TieLapCentreYCm);   // 1.043 W
 
-	/* One post removed: the surviving off-centre post's X-moment demand vs the MOST the tie's X-couple can
-	 * restore. THE COUPLE IS THE TERM THE EARLIER DERIVATION OMITTED: a Z-normal tie's restoring moment
-	 * about the X axis is its (withdrawal-limited) vertical force acting at its HALF-WIDTH, so a narrow
-	 * central tie starves it. A full-width bed's half-width (110 cm) is what over-held; 10 cm cannot. */
+	/*
+	 * One post removed: the surviving post's X-moment demand against the tie's maximum couple, its
+	 * withdrawal capacity at its half-width (10 cm here; a full-width bed's 110 cm over-held).
+	 */
 	const double RemainingPostReactionUu = OverhangWeightUu
 		* (OverhangCentroidYCm - TieLapCentreYCm) / (PostLineYCm - TieLapCentreYCm);  // 2.043 W up
 	const double RemainingPostCentreXCm = 70.0;      // PostL when PostR is removed
@@ -819,11 +670,7 @@ bool FRecognizableShed3DCollapseTest::RunTest(const FString& Parameters)
 		"X-couple (its withdrawal force at its half-width), so the overhang tips toward the gap -> falls"),
 		XMomentDemandUuCm > 2.0 * XCoupleRestoreMaxUuCm);
 
-	/* ================================================================================
-	 * THE COLLAPSE ARM: build a fresh shed, identify by position, pull PostR, read the 3D oracle mechanism
-	 * (Falls, lambda* < 1, the dead-load mechanism names the overhang) and the production outcome (the
-	 * overhang loses the earth, the grounded survivors keep it, 0 stranded). Removing PostL is the mirror.
-	 * ================================================================================ */
+	// Collapse arm: pull PostR (PostL is the mirror), then read the oracle mechanism and production outcome.
 
 	const TCHAR* const Label = TEXT("porch post pulled");
 
@@ -842,14 +689,13 @@ bool FRecognizableShed3DCollapseTest::RunTest(const FString& Parameters)
 	}
 
 	const int32 ExpectedFalling = F.Overhang;
-	/* Only the overhang hangs on the porch; the walls, the far post, the door lintel and the roof are all
-	 * independent of it and keep the earth. */
+	// Everything else is independent of the porch and keeps the ground.
 	const TArray<int32> ExpectedStanding = { F.BackWall, F.RightWall, F.LeftPier, F.RightPier, F.Sill,
 		F.PostL, F.DoorHeader, F.Ridge };
 
 	Fresh.Structure.RemovePiece(F.PostR);
 
-	/* ---- THE MECHANISM, VIA THE 3D ORACLE. ---- */
+	// Mechanism, via the 3D oracle.
 	RigidBlockOracle::FOracleProblem Problem;
 	FString BridgeWhy;
 	const bool bBridged = RigidBlockOracle::BuildRigidBlockProblem(Fresh.Structure, Problem, BridgeWhy);
@@ -881,8 +727,7 @@ bool FRecognizableShed3DCollapseTest::RunTest(const FString& Parameters)
 			*FString::Printf(TEXT("%s: lambda* %.10g must sit clearly below 1"), Label, Live.Lambda),
 			Live.bAnswered && Live.Lambda < 0.9);
 
-		/* The collapse mechanism (phase-1 dual, gravity dead) must NAME the overhang as a moving block, so
-		 * the fall is a genuine loss of equilibrium and not a routing artefact. */
+		// The dead-load mechanism must name the overhang as moving, so the fall is real, not a routing artefact.
 		RigidBlockOracle::FOracleProblem Dead = Problem;
 		Dead.bGravityIsLive = false;
 		const RigidBlockOracle::FOracleResult DeadR = RigidBlockOracle::SolveRigidBlock(Dead);
@@ -905,7 +750,7 @@ bool FRecognizableShed3DCollapseTest::RunTest(const FString& Parameters)
 			bMoves);
 	}
 
-	/* ---- THE OUTCOME, VIA PRODUCTION. Below the block cap, the LP is the break authority. ---- */
+	// Outcome via production; below the block cap the LP is the break authority.
 	const int32 Passes = Fresh.Structure.SolveAndBreak();
 	const int32 Stranded = StrandedCount(Fresh.Structure);
 
