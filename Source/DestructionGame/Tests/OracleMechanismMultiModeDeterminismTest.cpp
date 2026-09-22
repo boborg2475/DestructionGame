@@ -15,74 +15,32 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * The Slice-3b gate — is the canonical collapse mechanism permutation-deterministic on a
- * genuinely multi-mode, degenerate, infeasible structure?
+ * Slice-3b gate: is the canonical collapse mechanism permutation-deterministic on a multi-mode,
+ * degenerate, infeasible structure? Slice 3a proved it only on single-mode collapses; with several
+ * simultaneous modes there are multiple Farkas rays (CURRENT_STATE Slice 3a item (c)). A wobble
+ * here is the D7 design gate firing, not a bug to patch under this test.
  *
- * WHY THIS FILE EXISTS, AND WHY IT IS SEPARATE FROM OracleMechanismExtractionTest.cpp. Slice 3a
- * extracted the mechanism and proved it permutation-stable on single-mode collapses (fixtures
- * A/B/D there measure 0 Bland entries — their degeneracy is dual-multiplier non-uniqueness,
- * already tamed by the kinematic joint-set derivation). Review (2026-08-27, CURRENT_STATE "Slice
- * 3a deferred/owed items" (c)) found that block-velocity uniqueness is a property of single-mode
- * collapses, not a theorem: the dual is unique iff the primal optimum is non-degenerate, and a
- * marginally-infeasible structure with several simultaneous failure modes has multiple Farkas
- * rays whose velocity field may not be permutation-unique. Item (c) is a design gate that must
- * be answered before Slice 3b wires any wall to the mechanism: build a Bland-degenerate
- * multi-mode infeasible permutation fixture, prove it reaches the hard regime (print
- * BlandDegenerateEntries, non-trivial), and assert the canonical moving+opening sets are
- * identical across seeded permutations. A wobble here is the D7 design-gate firing — Slice 3
- * reshapes toward per-region interrogation and the minimal-support tie-break — not a bug to fix
- * under this test.
+ * Fixture E: two independent overhangs far apart. Tests that both modes are named. Fixture F: a
+ * dry wall with a wide opening, whose cover comes down as a coupled many-brick collapse. Tests
+ * determinism at scale.
  *
- * TWO MODES OF "MULTI-MODE" ARE BUILT, deliberately, because they fail differently:
+ * Tau pin (item (d)): the canonicalization is reimplemented here, checked against production's
+ * bMoves at tau = 1e-6, then required to give the same sets at 1e-5 and 1e-7 with >= 2 orders of
+ * separation around tau.
  *
- *   FIXTURE E — two independent collapsing bodies in one problem, far apart in X, sharing only
- *   the ground. The joint infeasibility can be certified by either body's Farkas ray or their
- *   sum, so the mechanism must name both modes — the sharpest correctness question (does the
- *   extractor name all modes). Because the two bodies are decoupled, each mode's dual is unique,
- *   so this should also be permutation-stable. Low degeneracy (0 Bland expected): it tests
- *   multi-mode naming and stability, not scale.
- *
- *   FIXTURE F — a large dry wall with a wide opening and cover, posed infeasible
- *   (bGravityIsLive = false). Dry stone (f_t = 0) cannot hang the cover panel over the void, so
- *   the whole cover comes down — many simultaneously-critical cover bricks, a genuinely coupled
- *   multi-mode collapse at ~100+ blocks / ~200+ contacts, the regime the sweep walls hit 170-358
- *   Bland entries in. This is the determinism-at-scale gate. Its Bland count is measured and
- *   asserted non-trivial so the fixture provably reaches the hard regime; a 0-Bland reading here
- *   would mean the fixture does not test what it claims.
- *
- * THE Q-ROBUSTNESS PIN (gate item (d)). The named set must not hinge on the exact
- * MechanismRelativeTol = 1e-6. The extractor's tau lives as a file constant in
- * RigidBlockOracle.cpp and cannot be re-run from here, so the canonicalization is reimplemented
- * independently in this file (the same normalize-then-threshold rule, derived from the exposed
- * block triples and the joint geometry, not imported) and applied at tau in {1e-5, 1e-6, 1e-7}.
- * The 1e-6 reimplementation is cross-checked against production's own bMoves flags so the
- * independent copy is proven faithful; then set-equality across the three taus, and the
- * separation of min-named from max-un-named by >= 2 orders of magnitude around tau, pin that the
- * answer sits on a plateau rather than a knife edge.
- *
- * INDEPENDENCE. Units are derived here (1 MPa over 1 cm2 = 10000 uu), never imported, so a wrong
- * production constant disagrees rather than agrees. The kinematic velocity-at-a-contact recompute
- * is standard rigid-body statics (v = u + omega x r), derived here, not lifted from the solver.
- *
- * NEEDS A TICKING WORLD: NO. Every fixture is a pure FOracleProblem (E built by hand, F bridged
- * from an FStructure) fed to SolveRigidBlock; no Chaos, no world tick.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation unit.
+ * Units and contact kinematics (v = u + omega x r) are derived here, not imported. Pure
+ * FOracleProblem fixtures; no world tick. Named namespace for unity builds.
  */
 namespace OracleMultiModeDeterminismSupport
 {
 	using namespace RigidBlockOracle;
 	using namespace DestructionProfiles;
 
-	/* UNITS, derived here so a wrong production constant fails rather than agrees. */
-
+	// Units, derived here so a wrong production constant fails rather than agrees.
 	constexpr double GravityCmPerSecondSquared = 980.0;
 	constexpr double ForceUnitsPerMPaSqCmHere = 100.0 * 100.0;
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
 	constexpr double WytheWidthCm = 10.25;
-
-	/* A hand-built FOracleProblem vocabulary (the same shapes the 3a file uses, kept local
-	 * so this file has no cross-TU dependency). */
 
 	FOracleBlock GroundedSeat(double CentreXCm, double CentreZCm)
 	{
@@ -122,10 +80,8 @@ namespace OracleMultiModeDeterminismSupport
 	}
 
 	/*
-	 * ONE OVERHANGING BAR PAST TIPPING — the A-equivalent building block. A long bar on a
-	 * narrow grounded seat near its left end, centre of mass far to the right of the seat, so
-	 * it rotates clockwise about the seat's right edge and the bed joint's left contact lifts.
-	 * Reused twice, far apart in X, to make the two-independent-body fixture.
+	 * An overhanging bar past tipping: a long bar on a narrow seat at its left end, so it rotates
+	 * about the seat's right edge and the joint's left contact lifts.
 	 */
 
 	constexpr double BarSeatHalfXCm = 5.0;
@@ -139,11 +95,7 @@ namespace OracleMultiModeDeterminismSupport
 			* (BarBodyRightXCm - BarBodyLeftXCm) * WytheWidthCm * BarBodyThicknessZCm / 1000.0;
 	}
 
-	/**
-	 * Append one overhanging bar (a grounded seat + a free bar + a bed joint) at world offset
-	 * OriginXCm, and report the added block indices. The bar's centroid ends up far to the
-	 * right of its seat, so it is past tipping exactly as fixture A is.
-	 */
+	/** Appends a seat, bar and bed joint at OriginXCm and returns their indices. */
 	void AppendOverhang(FOracleProblem& P, double OriginXCm, int32& OutSeat, int32& OutBody, int32& OutJoint)
 	{
 		const double SeatCentreXCm = OriginXCm;
@@ -177,20 +129,15 @@ namespace OracleMultiModeDeterminismSupport
 		FTwoIndependent Out;
 		Out.Problem.bGravityIsLive = false;
 
-		/* Two overhangs 1000 cm apart in X: no shared block, no shared joint — truly independent. */
+		// 1000 cm apart: no shared block or joint.
 		AppendOverhang(Out.Problem, 0.0, Out.SeatA, Out.BodyA, Out.JointA);
 		AppendOverhang(Out.Problem, 1000.0, Out.SeatB, Out.BodyB, Out.JointB);
 		return Out;
 	}
 
 	/*
-	 * FIXTURE F — a large dry wall with a wide opening and cover, posed infeasible.
-	 *
-	 * Laid by the acceptance-wall producer with dry-stone joints, a wide opening cut through
-	 * the lower courses, and several courses of cover over it. Dry stone carries no tension, so
-	 * the cover panel over the void has nothing to hang from and no admissible force system
-	 * exists at self-weight — the wall is infeasible and phase 1 runs, extracting the mechanism.
-	 * ~100+ blocks and ~200+ contacts put it in the degenerate regime the gate needs.
+	 * Fixture F: a dry wall with a wide opening. With no tension the cover cannot hang over the
+	 * void, so it is infeasible at self-weight. ~100+ blocks puts it in the degenerate regime.
 	 */
 
 	constexpr double WallBrickLengthCm = 21.5;
@@ -221,7 +168,7 @@ namespace OracleMultiModeDeterminismSupport
 			return false;
 		}
 
-		/* Cut the opening: courses 1..WallOpeningCourses, cells (JambCells .. JambCells+OpeningCells-1). */
+		// Courses 1..WallOpeningCourses, cells JambCells..JambCells+OpeningCells-1.
 		TArray<DestructionWallCases::FWallRegion> Cut;
 		Cut.Add({ 1, WallOpeningCourses,
 			double(JambCells) - 0.25,
@@ -248,8 +195,6 @@ namespace OracleMultiModeDeterminismSupport
 		Out = MoveTemp(Laid.Layout.Structure);
 		return true;
 	}
-
-	/* MECHANISM INSPECTION — the named sets and independent kinematics. */
 
 	TSet<int32> MovingBlocks(const FOracleMechanism& M)
 	{
@@ -304,11 +249,7 @@ namespace OracleMultiModeDeterminismSupport
 		return Work;
 	}
 
-	/**
-	 * The relative virtual velocity across joint J's worst contact, recomputed from the exposed
-	 * block triples and the joint geometry — the same associated-flow quantity the extractor
-	 * reads, derived here independently (standard rigid-body kinematics v = u + omega x r).
-	 */
+	/** Relative virtual velocity at the joint's worst contact, v = u + omega x r, derived independently. */
 	double JointRelativeVelocity(const FOracleProblem& P, const FOracleMechanism& M, int32 JointIndex)
 	{
 		const FOracleJoint& J = P.Joints[JointIndex];
@@ -342,8 +283,7 @@ namespace OracleMultiModeDeterminismSupport
 		return Worst;
 	}
 
-	/* Independent re-canonicalization at an arbitrary tau, from the triples. */
-
+	// Independent re-canonicalization at an arbitrary tau.
 	TSet<int32> NamedBlocksAtTau(const FOracleMechanism& M, double Tau)
 	{
 		double Largest = 0.0;
@@ -391,11 +331,7 @@ namespace OracleMultiModeDeterminismSupport
 		return Named;
 	}
 
-	/**
-	 * The min relative magnitude among named blocks and the max among un-named, both relative to
-	 * the largest — the two numbers that must straddle tau. Grounded/zero blocks push
-	 * max-unnamed toward zero, which is the point.
-	 */
+	/** Min relative magnitude among named blocks and max among un-named; they must straddle tau. */
 	void BlockSeparation(const FOracleMechanism& M, double& OutMinNamed, double& OutMaxUnnamed)
 	{
 		double Largest = 0.0;
@@ -468,9 +404,7 @@ namespace OracleMultiModeDeterminismSupport
 		}
 	}
 
-	/* PERMUTATION — reorder blocks and joints by a seeded permutation, remapping every
-	 * block reference. NewIndex = Perm[OldIndex]. */
-
+	// Seeded permutation of blocks and joints, remapping block references. NewIndex = Perm[OldIndex].
 	TArray<int32> SeededPermutation(FRandomStream& Rng, int32 N)
 	{
 		TArray<int32> Perm;
@@ -523,7 +457,7 @@ namespace OracleMultiModeDeterminismSupport
 		return Out;
 	}
 
-	/** A weakened copy: every joint's tensile bond scaled, to dial a standing wall to marginal. */
+	/** Copy with every joint's tensile strength scaled. */
 	FOracleProblem WithScaledTension(const FOracleProblem& In, double Factor)
 	{
 		FOracleProblem P = In;
@@ -535,11 +469,8 @@ namespace OracleMultiModeDeterminismSupport
 	}
 
 	/**
-	 * Solve Base, then re-solve under NumPermutations seeded block+joint permutations, and report
-	 * whether the canonical moving-block set and opening-joint set (mapped back through the known
-	 * permutation inverse) are identical every time. Captures per-permutation answered / outcome /
-	 * refusal / certified / set-sizes, so a wobble can be told from a fail-closed refusal, plus
-	 * the worst raw-dual VirtualUz drift so a caller can see the dual is genuinely non-unique.
+	 * Per-permutation record, so a wobble can be told from a fail-closed refusal. The report also
+	 * carries the worst raw-dual drift, showing whether the dual is genuinely non-unique.
 	 */
 	struct FPermRecord
 	{
@@ -561,11 +492,7 @@ namespace OracleMultiModeDeterminismSupport
 		int32 BaseMovingNum = 0;
 		int32 BaseOpeningNum = 0;
 
-		/*
-		 * Worst |BaseUz - PermUz| measured only over permutations that answered with a mechanism,
-		 * so it witnesses the dual being non-unique among valid solves rather than an artifact of
-		 * a refused permutation handing back an all-zero (empty) mechanism.
-		 */
+		// Worst |BaseUz - PermUz| over answered permutations only, so a refusal's empty mechanism cannot inflate it.
 		double WorstRawDualDriftAnswered = 0.0;
 		TArray<FPermRecord> Records;
 	};
@@ -643,15 +570,8 @@ namespace OracleMultiModeDeterminismSupport
 }
 
 /*
- * TEST 1 — multi-mode correctness and stability: two independent collapsing bodies.
- *
- * Two overhanging bars, 1000 cm apart, each past tipping on its own grounded seat. The mechanism
- * must name both bars moving and both bed joints opening (the multi-mode naming question), and
- * that named set must be identical under seeded block+joint permutation. Because the two bodies
- * are decoupled, each mode's dual is unique, so this should be stable — the control that says
- * "multi-mode alone does not break determinism"; fixture F adds the coupling and the scale.
- *
- * NEEDS A TICKING WORLD: NO.
+ * Test 1: two independent overhangs. Both bars must move and both joints open, identically under
+ * permutation. Decoupled modes have unique duals, so this is the control for fixture F.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleMechanismTwoIndependentModesTest,
@@ -680,7 +600,6 @@ bool FOracleMechanismTwoIndependentModesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("TWO-BODY: a mechanism is present and certified"),
 		R.Mechanism.bPresent && R.Mechanism.bIsCertified);
 
-	/* Both modes must be named — the whole point of a multi-mode problem. */
 	TestTrue(TEXT("TWO-BODY: body A (the left overhang) moves"), BlockMoves(R.Mechanism, Fx.BodyA));
 	TestTrue(TEXT("TWO-BODY: body B (the right overhang) moves"), BlockMoves(R.Mechanism, Fx.BodyB));
 	TestTrue(TEXT("TWO-BODY: joint A opens"), JointOpens(R.Mechanism, Fx.JointA));
@@ -689,12 +608,10 @@ bool FOracleMechanismTwoIndependentModesTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("TWO-BODY: grounded seat A does not move"), BlockMoves(R.Mechanism, Fx.SeatA));
 	TestFalse(TEXT("TWO-BODY: grounded seat B does not move"), BlockMoves(R.Mechanism, Fx.SeatB));
 
-	/* Both bars descend: positive collapse work over the whole (independent) mechanism. */
 	const double Work = GravityVirtualWork(Fx.Problem, R.Mechanism);
 	TestTrue(*FString::Printf(TEXT("TWO-BODY: gravity does positive work on the mechanism, %.6g > 0"), Work),
 		Work > 0.0);
 
-	/* The named set is identical across seeded permutations. */
 	const FPermutationReport Rep = SweepPermutations(Fx.Problem, 0x02B0D1CE, 8);
 
 	AddInfo(FString::Printf(
@@ -711,37 +628,11 @@ bool FOracleMechanismTwoIndependentModesTest::RunTest(const FString& Parameters)
 }
 
 /*
- * TEST 2 — the determinism-at-scale gate. A large dry wall with a wide opening, infeasible.
- *
- * THE HEADLINE. A dry running-bond wall with a wide opening cannot hang its cover panel (f_t = 0),
- * so the whole cover comes down as a coupled, many-brick, genuinely multi-mode collapse — the
- * regime the single-mode fixtures A/B/D never reach.
- *
- * WHY THE DEGENERACY WITNESS IS THE DUAL DRIFT, NOT THE BLAND COUNT. The review that mandated
- * this gate cited "170-358 Bland entries on an opening-ladder rung" as the marker of the hard
- * regime. Measured here, that marker does not transfer to the mechanism's own arm:
- * BlandDegenerateEntries is a phase-2 anti-cycling event (500 consecutive degenerate pivots while
- * optimising lambda on a standing wall), whereas the mechanism is extracted on the phase-1
- * infeasible arm, which terminates as soon as the infeasibility sum is minimised and never
- * reaches phase 2. Every infeasible fixture tried here reports Bland = 0 (this dry wall: 0 Bland
- * over ~5,800 phase-1 pivots; a mortared wall weakened to f_t x 0.08 stands by compression thrust
- * and never even goes infeasible). So Bland is printed as a measurement with that caveat, and the
- * regime is proven the right way for this arm: the worst raw-dual VirtualUz drift across
- * permutations. A drift near the normalization scale (~1) is a direct statement that the phase-1
- * dual is a genuinely non-unique Farkas ray — multiple mechanisms certify the same infeasibility —
- * exactly the multi-ray degeneracy the review warned block-velocity uniqueness would not survive.
- *
- * THE GATE. With the dual proven non-unique, the canonical moving-block and opening-joint sets
- * must still be identical across seeded block+joint permutations. Full per-permutation
- * diagnostics are captured (answered / outcome / refusal / certified / mapped-back set sizes) so
- * a wobble (the mechanism names a different set with confidence) is told apart from a fail-closed
- * refusal.
- *
- * If the sets are stable, the Slice-3b gate passes. If they wobble, the D7 design gate has fired —
- * Slice 3 reshapes toward per-region interrogation / the minimal-support tie-break. This test does
- * not try to make a wobble pass; a red here is the finding.
- *
- * NEEDS A TICKING WORLD: NO.
+ * Test 2: determinism at scale on fixture F. The degeneracy witness is raw-dual drift, not the
+ * Bland count: Bland entries are a phase-2 event, and the mechanism comes from phase 1, which
+ * measured 0 Bland over ~5,800 pivots here. A drift near 1 shows the Farkas ray is non-unique.
+ * With that established, the canonical moving and opening sets must match across permutations.
+ * A red here is the D7 design gate firing, not a bug to patch.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleMechanismDeterminismAtScaleTest,
@@ -754,11 +645,8 @@ bool FOracleMechanismDeterminismAtScaleTest::RunTest(const FString& Parameters)
 	using namespace OracleMultiModeDeterminismSupport;
 
 	/*
-	 * A dry wide-opening wall: a 14-cell opening between 3-cell jambs, 4 courses of cover, ~120
-	 * blocks / ~260 joints. Dry stone (f_t = 0) cannot hang the cover over the void, so it is
-	 * genuinely infeasible with a many-brick, multi-mode collapse — the degenerate case the gate
-	 * needs. (A mortared wall of this shape stands by compression thrust even at f_t x 0.08, so it
-	 * cannot be marginalised by bond alone; see the header. Dry is the reliable infeasible arm.)
+	 * 14-cell opening, 3-cell jambs, 4 cover courses: ~120 blocks, ~260 joints. Dry, because a
+	 * mortared wall of this shape still stands by thrust even at f_t x 0.08.
 	 */
 	FStructure Wall;
 	FString BuildWhy;
@@ -798,16 +686,11 @@ bool FOracleMechanismDeterminismAtScaleTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("SCALE: the base mechanism names a NON-EMPTY moving set"),
 		MovingBlocks(BaseR.Mechanism).Num() >= 1);
 
-	/* The gate itself: the named set holds across permutations at scale. */
 	const FPermutationReport Rep = SweepPermutations(Base, 0x0DEC0DE7, 6);
 
 	/*
-	 * Decompose the permutations. Two categories with completely different meanings:
-	 *   - ANSWERED: the solve produced a certified mechanism. Its named set must equal the base's —
-	 *     the D7 naming-determinism gate.
-	 *   - REFUSED: the solve declined (e.g. PhaseOneFailure). That is fail-closed — no bricks are
-	 *     named at all, so it is not a wobble; production's router already handles a refusal. It is
-	 *     reported as its own robustness observation, never conflated with a wobble.
+	 * Answered permutations must name the base's set (the D7 gate). A refusal names nothing and is
+	 * fail-closed, so it is reported separately and never counted as a wobble.
 	 */
 	int32 NumAnswered = 0;
 	int32 NumRefused = 0;
@@ -856,13 +739,7 @@ bool FOracleMechanismDeterminismAtScaleTest::RunTest(const FString& Parameters)
 			Rec.MovingInBase, Rec.bMovingSame ? 1 : 0, Rec.OpeningInBase, Rec.bOpeningSame ? 1 : 0));
 	}
 
-	/*
-	 * The regime gate, done the right way for the phase-1 arm. The fixture must provably reach the
-	 * degenerate multi-ray regime among answered solves, or a stable named set proves nothing the
-	 * single-mode fixtures did not. Bland = 0 here (phase-2 artifact — header), so the witness is
-	 * the raw-dual drift measured over answered permutations: a drift near the normalization scale
-	 * is a direct measurement that the phase-1 Farkas ray is non-unique while the named set holds.
-	 */
+	// Regime gate: without real dual drift, a stable set proves nothing beyond the single-mode fixtures.
 	TestTrue(
 		*FString::Printf(
 			TEXT("SCALE [REGIME GATE]: worst answered raw-dual VirtualUz drift = %.3e must be >> rounding "
@@ -871,21 +748,12 @@ bool FOracleMechanismDeterminismAtScaleTest::RunTest(const FString& Parameters)
 			Rep.WorstRawDualDriftAnswered, BaseR.BlandDegenerateEntries),
 		Rep.WorstRawDualDriftAnswered >= 1.0e-3);
 
-	/*
-	 * Guard against a vacuous gate: at least two permutations must actually answer, or "stable
-	 * among answered" would be a claim about one point.
-	 */
+	// Stability over fewer than two answers would be vacuous.
 	TestTrue(
 		*FString::Printf(TEXT("SCALE: at least two permutations answered (got %d)"), NumAnswered),
 		NumAnswered >= 2);
 
-	/*
-	 * The D7 naming-determinism gate. Among every answered permutation, the canonical named set is
-	 * identical to the base — even though the raw dual is a different Farkas ray each time. This is
-	 * the whole Slice-3b question: does canonicalization pin the multi-ray degenerate dual to one
-	 * named break set? A red here (an answered permutation naming a different set) is the D7 design
-	 * gate firing.
-	 */
+	// D7 gate: every answered permutation names the base's set, though the raw dual differs each time.
 	TestTrue(
 		*FString::Printf(
 			TEXT("SCALE [GATE]: among ANSWERED permutations the canonical MOVING+OPENING set is identical "
@@ -896,15 +764,9 @@ bool FOracleMechanismDeterminismAtScaleTest::RunTest(const FString& Parameters)
 		bStableAmongAnswered);
 
 	/*
-	 * The fail-closed safety invariant — what makes the D7 gate's "yes" safe to wire in. A refusal
-	 * is acceptable (production's router absorbs it); what must never happen is the solver silently
-	 * handing back a wrong answer under permutation. Two disasters are pinned closed:
-	 *   - no permutation may flip the verdict to Stands (a wall that stood one ordering and fell
-	 *     another would be un-reasonable-about destruction);
-	 *   - every answered permutation must name the identical, non-empty, certified set, and every
-	 *     non-answered one must name nothing (a clean refusal, not an answered-but-empty mechanism).
-	 * The 1-of-6 PhaseOneFailure is thus a fail-closed decline, reported below as a finding, not a
-	 * wobble — the solver never names the wrong bricks, it either names the right set or refuses.
+	 * Safety: a refusal is acceptable (the router absorbs it), a wrong answer is not. No permutation
+	 * may flip to Stands; every answered one names the same certified non-empty set; every refusal
+	 * names nothing.
 	 */
 	bool bNoVerdictFlip = true;
 	bool bFailClosedClean = true;
@@ -922,7 +784,6 @@ bool FOracleMechanismDeterminismAtScaleTest::RunTest(const FString& Parameters)
 		}
 		else
 		{
-			/* A refusal must name nothing, never an answered-but-empty or partial set. */
 			bFailClosedClean = bFailClosedClean && !Rec.bAnswered && Rec.MovingInBase == 0;
 		}
 	}
@@ -934,12 +795,8 @@ bool FOracleMechanismDeterminismAtScaleTest::RunTest(const FString& Parameters)
 		bFailClosedClean);
 
 	/*
-	 * The fail-closed robustness observation, reported not asserted-red: some column orderings
-	 * drive phase 1 to refuse rather than answer, so the verdict is not fully permutation-robust
-	 * even though naming (where it answers) is. A hard "must never refuse" would assert a property
-	 * Slice 3b does not need — production tolerates a fail-closed refusal — so it is surfaced for
-	 * the orchestrator to weigh, not made a red. If this ever becomes non-fail-closed (an answered
-	 * wrong set), the safety pins above go red, which is the disaster that does matter.
+	 * Some orderings make phase 1 refuse. Reported, not asserted: production tolerates a fail-closed
+	 * refusal, and a wrong answered set is caught by the safety pins above.
 	 */
 	AddInfo(FString::Printf(
 		TEXT("SCALE [ROBUSTNESS FINDING]: %d of %d permutations fail-closed REFUSED (first seed %d, "
@@ -951,17 +808,9 @@ bool FOracleMechanismDeterminismAtScaleTest::RunTest(const FString& Parameters)
 }
 
 /*
- * TEST 3 — the Q-robustness pin (gate item (d)). The named set does not hinge on tau = 1e-6.
- *
- * For a low-degeneracy control (single overhang), the multi-mode two-body fixture, and the
- * at-scale dry wall: the canonicalization is reimplemented here from the exposed triples and
- * geometry, cross-checked against production's own bMoves flags at tau = 1e-6, then the named
- * block and joint sets are asserted identical at tau in {1e-5, 1e-6, 1e-7}, and min-named vs
- * max-un-named relative magnitude are asserted to straddle tau by >= 2 orders of magnitude. A
- * fixture whose separation is not >= 2 orders is a finding (tau load-bearing on a knife edge),
- * reported by the printed numbers.
- *
- * NEEDS A TICKING WORLD: NO.
+ * Test 3: the named set does not hinge on tau = 1e-6. On the single overhang, two-body and wall
+ * fixtures, the reimplemented canonicalization must match production at 1e-6, give the same sets
+ * at 1e-5 and 1e-7, and separate named from un-named by >= 2 orders of magnitude around tau.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FOracleMechanismTauRobustnessTest,
@@ -1020,7 +869,7 @@ bool FOracleMechanismTauRobustnessTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/* (i) The independent 1e-6 reimplementation must reproduce production's bMoves set. */
+		// (i) The reimplementation at 1e-6 must reproduce production's bMoves set.
 		const TSet<int32> MyBlocks6 = NamedBlocksAtTau(R.Mechanism, TauProd);
 		const TSet<int32> ProdBlocks = MovingBlocks(R.Mechanism);
 		const bool bReimplFaithful =
@@ -1032,7 +881,7 @@ bool FOracleMechanismTauRobustnessTest::RunTest(const FString& Parameters)
 				*C.Label, MyBlocks6.Num(), ProdBlocks.Num()),
 			bReimplFaithful);
 
-		/* (ii) Set-equality of the named block+joint sets across tau in {1e-5, 1e-6, 1e-7}. */
+		// (ii) Same sets across tau in {1e-5, 1e-6, 1e-7}.
 		const TSet<int32> MyBlocks5 = NamedBlocksAtTau(R.Mechanism, 1.0e-5);
 		const TSet<int32> MyBlocks7 = NamedBlocksAtTau(R.Mechanism, 1.0e-7);
 		const bool bBlocks5Same = MyBlocks5.Num() == MyBlocks6.Num() && MyBlocks5.Includes(MyBlocks6);
@@ -1044,7 +893,7 @@ bool FOracleMechanismTauRobustnessTest::RunTest(const FString& Parameters)
 		const bool bJoints5Same = MyJoints5.Num() == MyJoints6.Num() && MyJoints5.Includes(MyJoints6);
 		const bool bJoints7Same = MyJoints7.Num() == MyJoints6.Num() && MyJoints7.Includes(MyJoints6);
 
-		/* (iii) The separation: min-named vs max-unnamed around tau, blocks and joints. */
+		// (iii) Separation around tau.
 		double BMinNamed, BMaxUnnamed, JMinNamed, JMaxUnnamed;
 		BlockSeparation(R.Mechanism, BMinNamed, BMaxUnnamed);
 		JointSeparation(C.Problem, R.Mechanism, JMinNamed, JMaxUnnamed);
@@ -1062,7 +911,6 @@ bool FOracleMechanismTauRobustnessTest::RunTest(const FString& Parameters)
 		TestTrue(*FString::Printf(TEXT("TAU %s: joint set identical at 1e-5 vs 1e-6"), *C.Label), bJoints5Same);
 		TestTrue(*FString::Printf(TEXT("TAU %s: joint set identical at 1e-7 vs 1e-6"), *C.Label), bJoints7Same);
 
-		/* >= 2 orders straddle: min-named >= 100*tau and max-unnamed <= tau/100. */
 		TestTrue(
 			*FString::Printf(
 				TEXT("TAU %s: BLOCK min-named %.3e >= 100*tau (%.1e) — named blocks sit >= 2 orders above tau"),

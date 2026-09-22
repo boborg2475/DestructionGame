@@ -8,13 +8,8 @@ namespace BuildMode
 	namespace
 	{
 		/*
-		 * A box is brick-sized when its full dimensions (twice the half-extent) match
-		 * the coordinating brick within a loose centimetre tolerance, in either
-		 * in-plane orientation — the same brick turned 90 degrees to run along Y is
-		 * not a different piece, it's what a corner return and a Y-running wall are
-		 * built from. Rejecting the swapped footprint left a rotated brick with
-		 * nothing but the Free fallback. Non-brick pieces (timber) simply fail the
-		 * gate; their own snap kinds handle them below.
+		 * Whether a box matches the coordinating brick within 0.5 cm, in either in-plane
+		 * orientation, since a brick turned to run along Y is still a brick.
 		 */
 		bool IsBrickSized(const FVector& ExtentCm, const FVector& BrickSizeCm)
 		{
@@ -24,15 +19,8 @@ namespace BuildMode
 		}
 
 		/*
-		 * Which in-plane axis a brick-sized box runs along, as a unit vector. The
-		 * running bond steps along the neighbour's length however the wall is turned,
-		 * so the grid is expressed in this axis rather than in X — an X-only grid
-		 * can't grow a wall along Y, half of what a corner is for.
-		 *
-		 * Only ever asked of a box that already passed IsBrickSized, so the two
-		 * in-plane dimensions differ by a whole brick's width and the comparison is
-		 * never close. Written `!(Y > X)` rather than `X >= Y` so a NaN extent lands
-		 * on X rather than whichever branch the comparison order favoured.
+		 * The in-plane axis a brick-sized box runs along, so the bond grid can grow along Y as
+		 * well as X. Written `!(Y > X)` so a NaN extent lands on X.
 		 */
 		FVector LongAxisUnit(const FVector& ExtentCm)
 		{
@@ -40,12 +28,8 @@ namespace BuildMode
 		}
 
 		/*
-		 * Whether a placed box at Pose (half-extent PlacedExtentCm) shares volume with
-		 * any nearby box: a strict overlap on all three axes at once,
-		 * Abs(dCentre) < sum-of-half-extents on X, Y and Z. The strict < is what
-		 * distinguishes this from a legitimate joint contact, which is gapped (or
-		 * exactly touching) on one axis — a next-course pose clears in Z (7.5 > 6.5),
-		 * a same-course pose clears in X (22.5 > 21.5).
+		 * Whether the box at Pose strictly overlaps any nearby box on all three axes. Strict <
+		 * lets a joint contact through, since it is gapped or touching on one axis.
 		 */
 		bool InterpenetratesAny(
 			const FVector& Pose,
@@ -67,21 +51,9 @@ namespace BuildMode
 	}
 
 	/*
-	 * Brick-on-brick running-bond next course, plus the Free fallback.
-	 *
-	 * For each brick-sized nearby piece the placed brick could rest on, offer the
-	 * next-course pose: one course up (a brick beds on the one below) and half a
-	 * brick across (running bond staggers alternate courses so head joints never
-	 * line up). The stagger is taken on whichever side the requested cursor leans
-	 * toward, so the offered pose is nearest where the player is pointing.
-	 *
-	 * The bed joint's profile is inferred, never named here: JointForContact is
-	 * fed a vertical (+Z) normal so it returns the strong bed mortar, not a perpend.
-	 *
-	 * A brick in running bond straddles the two below it, so per-neighbour poses
-	 * that coincide are coalesced into one candidate carrying both bed joints.
-	 * Snaps are ordered nearest-first, Free appended last, so any in-range snap
-	 * outranks placing exactly where requested.
+	 * Snap poses against each nearby piece (next course, same course, corner return, timber
+	 * bearing), nearest first, with Free appended last. Joint profiles come from JointForContact.
+	 * Coincident poses merge into one candidate carrying every joint.
 	 */
 	TArray<FSnapCandidate> SolveSnapCandidates(
 		const DestructionLayout::FPieceBox& Placed,
@@ -92,36 +64,21 @@ namespace BuildMode
 	{
 		TArray<FSnapCandidate> Candidates;
 
-		/*
-		 * What the placed piece is decides which snap kinds it can take. A
-		 * brick-sized piece bonds into the running-bond grid (bed + head); a timber
-		 * piece — not compression-dominant — bears instead, centred on the support
-		 * rather than staggering into a course.
-		 */
+		// Bricks bond into the running-bond grid; timber (not compression-dominant) bears on its support.
 		const bool bPlacedIsBrick = IsBrickSized(Placed.ExtentCm, Settings.BrickSizeCm);
 		const bool bPlacedIsTimber = !PlacedMaterial.bCompressionDominant;
 
 		/*
-		 * Two sources that agree inside the brick-sized gate: the half-stagger across
-		 * is half a coordinating brick pitch (Settings: brick length + head joint);
-		 * the course rise up comes from the actual box half-heights plus the bed
-		 * joint. For real bricks these match Layout's 22.5 x 11.25 x 7.5 grid — the
-		 * gate is what guarantees the two boxes are that brick.
-		 *
-		 * Both are lengths of the brick, not of an axis: BrickSizeCm.X names the
-		 * brick's length, and the pitch it gives is stepped along whichever world
-		 * axis the neighbour happens to run along.
+		 * BrickSizeCm.X is the brick's length, stepped along whichever axis the neighbour runs.
+		 * The course rise comes from the actual box half-heights instead.
 		 */
 		const double HalfStaggerCm = (Settings.BrickSizeCm.X + Settings.JointThicknessCm) / 2.0;
 
-		// Same-course pitch: one brick length plus one head joint, at the same height.
 		const double SameCoursePitchCm = Settings.BrickSizeCm.X + Settings.JointThicknessCm;
 
 		/*
-		 * Emit a snap at Centre, or merge into a coincident one — a brick in running
-		 * bond straddles the two below it, so per-neighbour poses that coincide are
-		 * coalesced into one candidate carrying every bed joint; the same union serves
-		 * any other kind whose poses meet. Poses beyond the snap radius are dropped.
+		 * Adds a snap at Centre, or merges its joints into a coincident one (a running-bond brick
+		 * straddles two below). Drops poses beyond the snap radius.
 		 */
 		auto EmitOrMerge =
 			[&Candidates, &Placed, &NearbyBoxes, &Settings](
@@ -133,11 +90,6 @@ namespace BuildMode
 				return;
 			}
 
-			/*
-			 * Drop a pose whose box would occupy a cell another piece already fills. The
-			 * placed half-extent is measured (not the snap geometry); a joint contact is
-			 * gapped on one axis and survives this.
-			 */
 			if (InterpenetratesAny(Centre, Placed.ExtentCm, NearbyBoxes))
 			{
 				return;
@@ -150,13 +102,7 @@ namespace BuildMode
 				});
 			if (Existing != nullptr)
 			{
-				/*
-				 * Union by OtherPieceIndex: a placed piece forms at most one joint to any one
-				 * neighbour at a single pose, so a second joint to an index already present
-				 * is a true duplicate (as when a plank's centred and edge-flush poses
-				 * coincide). Distinct indices — the brick straddle, the bed+head pair, a
-				 * plate's separate bearings — carry different neighbours and are all kept.
-				 */
+				// Union by OtherPieceIndex: at one pose there is at most one joint per neighbour.
 				for (const FFormedJoint& Joint : Joints)
 				{
 					const bool bAlreadyJoined = Existing->Joints.ContainsByPredicate(
@@ -181,21 +127,10 @@ namespace BuildMode
 		};
 
 		/*
-		 * Every joint the placed piece forms by resting at Pose, found by contact
-		 * rather than by which neighbour fixed the pose: a brick-sized piece j
-		 * qualifies when the placed box overlaps it in both X and Y and its
-		 * underside sits exactly one joint above j's top face.
-		 *
-		 * Contact, not the pose's own neighbour, because a plank spans every brick
-		 * beneath it, not just the one it was centred on, and a brick in running
-		 * bond straddles two below it — at a corner one of those is the return laid
-		 * across the leg, the alternate-course lap that lets a quoin carry load from
-		 * above (DESIGN §8's 2026-09-15 ruling, review finding B2). Which way the
-		 * neighbour runs decides which poses are offered; it has no bearing on what
-		 * the piece rests on once placed.
-		 *
-		 * The contact normal is vertical, so the boxed inference classifies the
-		 * joint before orientation is consulted — Bed (full mortar) for masonry,
+		 * Every bed joint formed by resting at Pose, found by contact (XY overlap, underside one
+		 * joint above the top face) rather than by the neighbour that fixed the pose. A plank
+		 * spans several bricks and a running-bond brick straddles two, one of which may be a
+		 * corner return (DESIGN §8, 2026-09-15). The vertical normal gives Bed for masonry and
 		 * DryStone for timber.
 		 */
 		auto RestingJointsAtPose =
@@ -245,21 +180,12 @@ namespace BuildMode
 				continue;
 			}
 
-			/*
-			 * The axis this neighbour runs along, and whether the placed piece is laid
-			 * the same way. Running bond is a property of pieces that run together: a
-			 * brick turned across its neighbour neither beds nor abuts end to end — it
-			 * returns a corner instead (the other branch below).
-			 */
+			// A brick laid across its neighbour returns a corner instead of bonding.
 			const FVector NeighbourAxis = LongAxisUnit(Other.ExtentCm);
 			const FVector PlacedAxis = LongAxisUnit(Placed.ExtentCm);
 			const bool bSameOrientation = NeighbourAxis.Equals(PlacedAxis, KINDA_SMALL_NUMBER);
 
-			/*
-			 * Which end of the neighbour the cursor leans toward, measured along the
-			 * neighbour's length rather than X, so the offered pose is nearest where
-			 * the player is pointing.
-			 */
+			// Which end of the neighbour the cursor leans toward, along its length.
 			const double AlongSign =
 				(FVector::DotProduct(Placed.CentreCm - Other.CentreCm, NeighbourAxis) >= 0.0)
 					? 1.0
@@ -268,13 +194,8 @@ namespace BuildMode
 			if (bPlacedIsBrick && bSameOrientation)
 			{
 				/*
-				 * Next course up: half a brick along the neighbour's length so head joints
-				 * stagger, one course up so the placed brick beds on this one.
-				 *
-				 * The beds are swept, not assumed: this neighbour decides the pose, but the
-				 * brick then beds on whatever its underside rests on, which at a corner
-				 * includes the return laid across the leg. Running bond straddles two bricks
-				 * anyway, so a straight wall gains no joint it didn't already have.
+				 * Next course: half a brick along and one course up. Beds are swept by contact, so a
+				 * corner return underneath is included.
 				 */
 				const double CoursePitchZ =
 					Other.ExtentCm.Z + Settings.JointThicknessCm + Placed.ExtentCm.Z;
@@ -287,12 +208,7 @@ namespace BuildMode
 					NextCourseCentre,
 					RestingJointsAtPose(NextCourseCentre));
 
-				/*
-				 * Same course, end to end: a full pitch along the neighbour's length at the
-				 * same height. The shared face is an end face, so the normal is horizontal
-				 * and the pieces run the same way — a head joint, so the inference returns
-				 * the weak perpend, not bed mortar.
-				 */
+				// Same course, end to end: a horizontal normal, so the inference gives a perpend.
 				const FVector SameCourseCentre =
 					Other.CentreCm + NeighbourAxis * (AlongSign * SameCoursePitchCm);
 				EmitOrMerge(
@@ -311,29 +227,16 @@ namespace BuildMode
 			if (bPlacedIsBrick && !bSameOrientation)
 			{
 				/*
-				 * The corner return — the quoin of DESIGN §8's 2026-09-15 ruling. A brick
-				 * laid across its neighbour's line turns the wall: it abuts one of the
-				 * neighbour's end faces across one joint, and its own outer end face
-				 * finishes flush with one of the neighbour's two width faces, reading as an
-				 * L. Both ends and both width faces are offered — four poses per neighbour —
-				 * ranked by distance to the cursor.
-				 *
-				 * The abutting offset is measured along the neighbour's length: its
-				 * half-length out to the end face, one joint, then the return's own
-				 * half-width along that same axis.
+				 * Corner return (DESIGN §8, 2026-09-15): abuts one of the neighbour's end faces across
+				 * a joint, with its outer end flush to one of the neighbour's width faces. Four poses:
+				 * two ends by two faces.
 				 */
 				const double EndOffsetCm =
 					FVector::DotProduct(Other.ExtentCm, NeighbourAxis)
 					+ Settings.JointThicknessCm
 					+ FVector::DotProduct(Placed.ExtentCm, NeighbourAxis);
 
-				/*
-				 * Flush, measured along the return's length (the neighbour's width axis): the
-				 * return's end face lands on the neighbour's width face, so its centre sits
-				 * its own half-length inboard. The two signs are the neighbour's two width
-				 * faces; the offset is negative for a real brick — the return is longer than
-				 * the neighbour is wide, the overhang that makes the L.
-				 */
+				// Along the return's length; negative for a real brick, which is longer than the neighbour is wide.
 				const double FlushOffsetCm =
 					FVector::DotProduct(Other.ExtentCm, PlacedAxis)
 					- FVector::DotProduct(Placed.ExtentCm, PlacedAxis);
@@ -347,12 +250,7 @@ namespace BuildMode
 							+ NeighbourAxis * (EndSign * EndOffsetCm)
 							+ PlacedAxis * (FaceSign * FlushOffsetCm);
 
-						/*
-						 * The interface normal points out of the neighbour's end face, so it is
-						 * horizontal — the normal the three-argument inference answers with the
-						 * weak perpend. Only the boxed overload, reading the crossed footprints,
-						 * returns the quoin's full mortar here.
-						 */
+						// Horizontal normal; only the boxed overload sees the crossed footprints and returns full mortar.
 						EmitOrMerge(
 							ESnapKind::BrickCornerReturn,
 							ReturnCentre,
@@ -370,24 +268,17 @@ namespace BuildMode
 
 			if (bPlacedIsTimber)
 			{
-				// Edge-flush is X-faces only, so the timber branch keeps its own X-side sign.
+				// Edge-flush uses X faces only.
 				const double SignX = (Placed.CentreCm.X >= Other.CentreCm.X) ? 1.0 : -1.0;
 
-				// A plank rests one joint above the support top: brick top + one joint + placed half-height.
 				const double BearZ =
 					Other.CentreCm.Z + Other.ExtentCm.Z + Settings.JointThicknessCm + Placed.ExtentCm.Z;
 
-				// Centred: the horizontal centre snaps to the brick's centre — a plank rests across its support rather than bonding into the pattern.
 				const FVector CentredCentre(Other.CentreCm.X, Other.CentreCm.Y, BearZ);
 				EmitOrMerge(
 					ESnapKind::TimberCentered, CentredCentre, RestingJointsAtPose(CentredCentre));
 
-				/*
-				 * Edge-flush: the plank's near X-face aligns with the brick's near X-face
-				 * instead of centring, on whichever side the cursor leans, so a plank pushed
-				 * to one end of a beam finishes flush there. The +X face's plank centre sits
-				 * its own half-width inboard; the -X face mirrors it.
-				 */
+				// The plank's near X face aligns with the brick's, on the side the cursor leans.
 				const double BrickXFace = Other.CentreCm.X + SignX * Other.ExtentCm.X;
 				const FVector EdgeFlushCentre(
 					BrickXFace - SignX * Placed.ExtentCm.X, Other.CentreCm.Y, BearZ);
@@ -396,19 +287,13 @@ namespace BuildMode
 			}
 		}
 
-		// Nearest snap first; equal offsets keep their relative order (stable sort).
 		Candidates.StableSort(
 			[](const FSnapCandidate& A, const FSnapCandidate& B)
 			{
 				return A.OffsetFromRequestedCm < B.OffsetFromRequestedCm;
 			});
 
-		/*
-		 * Free fallback last: place exactly where requested, forming no joint. Not
-		 * occupancy-filtered — the requested pose is the caller's explicit ask, and
-		 * an existing fixture may place it deliberately touching a neighbour. Only
-		 * the auto-generated snap poses are dropped for occupancy.
-		 */
+		// Free: exactly where requested, no joints. Not occupancy-filtered, since it is the caller's explicit ask.
 		Candidates.Add(FSnapCandidate{ ESnapKind::Free, Placed.CentreCm, 0.0, {} });
 		return Candidates;
 	}
