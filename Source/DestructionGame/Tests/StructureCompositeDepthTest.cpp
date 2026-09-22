@@ -11,11 +11,9 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-/**
- * NAMED NAMESPACE, not anonymous, and named for what it holds. An anonymous namespace is private
- * to a TRANSLATION UNIT rather than to a file, and a unity build merges many files into one — at
- * which point two anonymous namespaces in the blob are the SAME namespace and identically-named
- * helpers in files that never refer to each other are a hard compile error.
+/*
+ * Named, not anonymous: a unity build merges translation units, so two anonymous namespaces
+ * become one and identically-named helpers in unrelated files collide at compile time.
  */
 namespace StructureCompositeDepthTestSupport
 {
@@ -23,12 +21,9 @@ namespace StructureCompositeDepthTestSupport
 	using namespace DestructionProfiles;
 
 	/*
-	 * --- everything below is spelled out here rather than imported ------------------------
-	 *
-	 * Same discipline as ArchingWallTestSupport and StaircaseWallTestSupport: the brick, the
-	 * grid, the SI conversion and the section modulus are written from first principles, and
-	 * the strengths are ASSERTED against the profile rather than read out of it. A test that
-	 * reaches for production's own constant agrees with a wrong one.
+	 * Constants spelled out from first principles, not imported: same discipline as
+	 * ArchingWallTestSupport and StaircaseWallTestSupport. Strengths are asserted against the
+	 * profile, not read from it — a test that reads production's constant agrees with a wrong one.
 	 */
 
 	constexpr double BrickLengthCm = 21.5;
@@ -40,25 +35,23 @@ namespace StructureCompositeDepthTestSupport
 	constexpr double CoursePitchCm = BrickHeightCm + MortarJointCm;
 	constexpr double HalfStepCm = BrickPitchCm / 2.0;
 
-	/** 1.9 g/cm3, DENSITY FIRST in the product so it matches Layout::PieceMassKg to the last bit. */
+	/** 1.9 g/cm3, density first in the product so it matches Layout::PieceMassKg to the last bit. */
 	constexpr double BrickMassKg = 1.9 * BrickLengthCm * BrickWidthCm * BrickHeightCm / 1000.0;
 
-	/** 980 cm/s2. With 1 uu = 1 cm and mass in kg, MassKg * 980 IS a force in Unreal units. */
+	/** 980 cm/s2. With 1 uu = 1 cm and mass in kg, MassKg * 980 is a force in Unreal units. */
 	constexpr double BrickWeightUu = BrickMassKg * 980.0;
 
 	/**
-	 * Unreal force units that load one square centimetre to one megapascal.
-	 *
-	 * 1 N = 100 uu and 1 cm2 = 100 mm2, so 1 MPa over 1 cm2 is 10000 uu. DELIBERATELY NOT
-	 * DestructionForce::ForceUnitsPerMPaSqCm: this file has to fail if that constant is wrong.
+	 * Force units that load 1 cm2 to 1 MPa. 1 N = 100 uu and 1 cm2 = 100 mm2, so 1 MPa over 1 cm2
+	 * is 10000 uu. Not DestructionForce::ForceUnitsPerMPaSqCm on purpose: this file must fail if
+	 * that constant is wrong.
 	 */
 	constexpr double ForceUnitsPerMPaPerSqCm = 100.0 * 100.0;
 
 	/*
-	 * The MEAN flexural bond f_x1 for general-purpose mortar, asserted against the profile
-	 * (re-anchor 2026-08-13: Gooch et al. 2023's M4/M6 batch means bracketed with the UK NA
-	 * Table NA.6 inversion; the retired characteristic f_xk1 was EN 1996-1-1's 0.10). Every
-	 * expectation in this file divides by this constant, so the whole ladder re-derived /7.
+	 * Mean flexural bond f_x1 for general-purpose mortar, asserted against the profile (re-anchor
+	 * 2026-08-13; retired characteristic f_xk1 was 0.10). Every expectation here divides by this,
+	 * so the whole ladder re-derived /7.
 	 */
 	constexpr double MortarTensileMPa = 0.70;
 
@@ -72,28 +65,22 @@ namespace StructureCompositeDepthTestSupport
 	constexpr double HalfSeatEccentricityCm = HalfStepCm / 2.0;
 
 	/**
-	 * THE BED PATCH'S OWN SECTION MODULUS: W = (4/3) * h_u * h_v^2 for a rectangle, cm3.
-	 *
-	 * 179.4817708 cm3 for the square 10.25 x 10.25 patch, which is the number every corbel in
-	 * this project is read against today.
+	 * Bed patch section modulus: W = (4/3) * h_u * h_v^2 for a rectangle, cm3. 179.4817708 cm3 for
+	 * the square 10.25 x 10.25 patch — the number every corbel is read against today.
 	 */
 	constexpr double PatchModulusCm3 =
 		(4.0 / 3.0) * HalfSeatHalfExtentCm * HalfSeatHalfExtentCm * HalfSeatHalfExtentCm;
 
 	/**
-	 * THE COMPOSITE SECTION: W = t * D^2 / 6 FOR A WALL OF THICKNESS t AND VERTICAL DEPTH D.
+	 * Composite section: W = t * D^2 / 6 for a wall of thickness t and vertical depth D
+	 * (ARCHING_DESIGN.md slice 5). A stack of courses over a lost support acts as a deep beam, not
+	 * a sequence of independent bed patches, so the section is the full depth of bonded masonry
+	 * above the cut. At D = 82.5 cm (11 courses over the staircase void) that is 11,627 cm3 against
+	 * the patch's 179.48 — a factor of 64.8, which flips the outcome.
 	 *
-	 * ARCHING_DESIGN.md slice 5: a stack of courses over a lost support does not resist as a
-	 * sequence of independent bed patches. The wall acts as a DEEP BEAM, and the section
-	 * resisting the overturning moment is the full vertical depth of bonded masonry above the
-	 * cut. At D = 82.5 cm — the eleven courses standing over the staircase void — that is
-	 * 11,627 cm3 against the patch's 179.48, a factor of 64.8, and it is what flips the outcome.
-	 *
-	 * THE TWO MODELS ARE NESTED, EXACTLY, AND THAT IS WORTH KNOWING BEFORE ANYTHING ELSE. The
-	 * patch is square, so (4/3) * 5.125 * 5.125^2 IS 10.25 * 10.25^2 / 6 to the last bit — the
-	 * bed patch is simply this formula at D = 10.25 cm, i.e. at about 1.37 courses. So a depth
-	 * rule that finds nothing does not need a special case to return today's answer; it returns
-	 * it by arithmetic. Asserted below rather than asserted here.
+	 * The two models are nested: the patch is square, so (4/3)*5.125*5.125^2 equals 10.25*10.25^2/6
+	 * to the last bit — the patch is this formula at D = 10.25 cm. So a depth rule that finds nothing
+	 * returns today's answer by arithmetic, no special case. Asserted below.
 	 */
 	constexpr double CompositeModulusCm3(double WallThicknessCm, double DepthCm)
 	{
@@ -107,33 +94,19 @@ namespace StructureCompositeDepthTestSupport
 	}
 
 	/*
-	 * ================================================================================
-	 * THE RAKING CORBEL, GENERALISED IN HEIGHT — the staircase void with its 13 courses
-	 * turned into a parameter, AND THE CUT'S HEIGHT SEPARATED FROM THE WALL'S.
-	 * ================================================================================
+	 * The raking corbel, generalised in height: the staircase void with its 13 courses turned into
+	 * a parameter, and the cut's height (CorbelSteps) separated from the wall's (CoursesHigh).
+	 * Slice 5 is a claim about the depth of masonry acting compositely, so it needs the same cut at
+	 * several depths.
 	 *
-	 * StaircaseWallTestSupport pins ONE wall, 13 courses of 10, and hand-counts the eleven
-	 * rungs of the ladder it leaves. Slice 5 is a claim about the DEPTH of masonry acting
-	 * compositely, so it needs the same cut at several depths — which means the same geometry
-	 * with the height as an argument and the ladder as a closed form.
+	 * Until 2026-08-07 CorbelSteps and CoursesHigh were one number (CoursesHigh = Steps + 2), so the
+	 * wall's own height fed the composite-depth answer unseen. Separating them recovers the four
+	 * original rows bit for bit by passing CorbelSteps = CoursesHigh - 2.
 	 *
-	 * THE CUT IS SIZED BY `CorbelSteps` AND THE WALL BY `CoursesHigh`, AND UNTIL 2026-08-07
-	 * THEY WERE THE SAME NUMBER. Every row of this file's table was `CoursesHigh = Steps + 2`,
-	 * so no fixture in the project had a corbel SHORTER than its wall — and the composite
-	 * depth is measured by walking up the masonry, which means the wall's own height was
-	 * feeding the answer with nothing able to see it. StaircaseWallTestSupport already made
-	 * this separation for the void ("the course range and the edge are ABSOLUTE, not relative
-	 * to the wall's height, which is what lets the SAME void be cut into a taller wall"); this
-	 * is the same statement for the generalised cut, and the four original rows are recovered
-	 * bit for bit by passing `CorbelSteps = CoursesHigh - 2`.
-	 *
-	 * THE STEP COUNT MUST BE ODD, and it is a fact about running bond rather than a
-	 * restriction anybody chose. The void's edge steps half a cell per course, so the corbelled
-	 * brick of course c sits at (CorbelSteps + 1 - c) * 11.25; that lands on an EVEN course's
-	 * grid (multiples of 22.5) exactly when CorbelSteps + 1 - c is even, i.e. when CorbelSteps
-	 * is odd. A cut of even height would name a brick that is not there. THE WALL'S OWN HEIGHT
-	 * IS NOW FREE — 40 courses over an 11-step cut is the game's own scenario wall, and it was
-	 * unreachable while the two were one number.
+	 * The step count must be odd — a fact about running bond, not a choice: the edge steps half a
+	 * cell per course, so course c's corbelled brick sits at (CorbelSteps + 1 - c) * 11.25, which
+	 * lands on an even course's grid only when CorbelSteps is odd. An even cut names a brick that is
+	 * not there. The wall's height is now free — 40 courses over an 11-step cut is the scenario wall.
 	 */
 
 	/** The staircase edge for a cut of this height: everything left of it, in this course, is cut. */
@@ -151,14 +124,11 @@ namespace StructureCompositeDepthTestSupport
 	}
 
 	/**
-	 * The corbelled courses: 2 up to one course above the top of the cut, so there are
-	 * CorbelSteps of them.
-	 *
-	 * Course 1's leftmost survivor still rests on two bricks of the grounded course, so it is
-	 * not corbelled; the course above the cut is untouched by the void and is corbelled anyway,
-	 * because the course beneath it now starts half a step to its right. In a wall TALLER than
-	 * the cut, everything above that course is ordinary full-width masonry standing on it —
-	 * which is exactly the masonry whose contribution this file exists to measure.
+	 * The corbelled courses: 2 up to one course above the cut, so CorbelSteps of them. Course 1's
+	 * leftmost survivor still rests on two grounded bricks, so it is not corbelled; the course above
+	 * the cut is corbelled anyway, since the course beneath it now starts half a step right. In a
+	 * taller wall, everything above is full-width masonry standing on it — the masonry this file
+	 * exists to measure.
 	 */
 	constexpr int32 LowestCorbelCourse = 2;
 
@@ -174,16 +144,14 @@ namespace StructureCompositeDepthTestSupport
 	}
 
 	/**
-	 * WHAT ONE STEP OF THE CORBEL CARRIES, IN BRICK WEIGHTS — the hand ladder as a closed form.
-	 *
-	 * Each corbelled brick takes its own weight, ALL of the corbelled brick above it (which has
-	 * nowhere else to go) and half of the next brick along, whose own share grows the same way.
-	 * Reading down from the TOP of the staircase that is
+	 * What one step of the corbel carries, in brick weights — the hand ladder as a closed form.
+	 * Each corbelled brick takes its own weight, all of the corbelled brick above it, and half of
+	 * the next brick along. From the top:
 	 *
 	 *     F(s) = 1 + s + s(s+1)/4          s steps below the top
 	 *
-	 * which unrolls to 1, 2.5, 4.5, 7, 10, 13.5, 17.5, 22, 27, 32.5, 38.5 — character for
-	 * character StaircaseWallTestSupport's hand count.
+	 * which unrolls to 1, 2.5, 4.5, 7, 10, 13.5, 17.5, 22, 27, 32.5, 38.5 —
+	 * StaircaseWallTestSupport's hand count exactly.
 	 */
 	constexpr double LadderForceBrickWeights(int32 StepsBelowTop)
 	{
@@ -191,17 +159,15 @@ namespace StructureCompositeDepthTestSupport
 	}
 
 	/**
-	 * WHAT BENDS THAT STEP, IN BRICK-WEIGHT-CENTIMETRES — the other hand ladder, closed.
-	 *
-	 * The top step carries only itself, at the 5.625 cm arm a half seat gives it; every step
-	 * below adds its own 5.625 to the step above's moment carried across the 11.25 cm the corbel
-	 * has stepped out:
+	 * What bends that step, in brick-weight-cm — the other hand ladder, closed. The top step carries
+	 * only itself at the 5.625 cm half-seat arm; each step below adds its own 5.625 to the step
+	 * above's moment across the 11.25 cm the corbel stepped out:
 	 *
 	 *     M(0) = 5.625
 	 *     M(s) = 5.625 + 11.25 * F(s-1) + M(s-1)
 	 *
-	 * which sums to 5.625 (s+1) + 11.25 * SUM(F(0..s-1)), and SUM has the closed form below.
-	 * Unrolls to 5.625, 22.5, 56.25, 112.5, 196.875, 315, 472.5, 675, 928.125, 1237.5, 1608.75.
+	 * summing to 5.625(s+1) + 11.25 * SUM(F(0..s-1)). Unrolls to 5.625, 22.5, 56.25, 112.5,
+	 * 196.875, 315, 472.5, 675, 928.125, 1237.5, 1608.75.
 	 */
 	constexpr double LadderMomentBrickWeightCm(int32 StepsBelowTop)
 	{
@@ -214,22 +180,15 @@ namespace StructureCompositeDepthTestSupport
 	}
 
 	/**
-	 * HOW MUCH BONDED MASONRY STANDS OVER ONE STEP'S BED JOINT, IN COURSES.
+	 * Bonded masonry standing over one step's bed joint, in courses: courses c through the top,
+	 * CoursesHigh - c of them. For the bottom step of the 13-course staircase, 11 courses / 82.5 cm
+	 * — the depth ARCHING_DESIGN's 11,627 cm3 is worked from.
 	 *
-	 * The joint sits under the brick of course c, so what is above it is courses c through the
-	 * top: CoursesHigh - c of them. For the bottom step of the 13-course staircase that is
-	 * ELEVEN courses, 82.5 cm — the depth ARCHING_DESIGN's own 11,627 cm3 is worked from.
-	 *
-	 * THIS IS THE UNBOUNDED READING AND THE TEST SAYS SO. It is all the masonry there is, which
-	 * is the most any depth rule may credit. A rule that bounds the depth further — by the shear
-	 * the bed joints can transfer, by bond continuity, by span-to-depth — reads LESS, so every
-	 * "must stand" row below is an upper bound on the depth a correct rule may find and every
-	 * "must come down" row is one-sided and survives any bound at all.
-	 *
-	 * AND IT IS ONLY ASSERTED WHERE THE WALL STOPS AT THE TOP OF THE CORBEL. In a wall taller
-	 * than its cut this expression is a statement about masonry that is not part of the corbel
-	 * at all, which is the thing PART 1B is about; there it is printed as the reading the
-	 * unbounded rule gives and nothing is derived from it.
+	 * This is the unbounded reading: all the masonry there is, the most any depth rule may credit. A
+	 * rule that bounds it further (shear transfer, bond continuity, span-to-depth) reads less, so
+	 * every "must stand" row is an upper bound and every "must come down" row is one-sided. Only
+	 * asserted where the wall stops at the top of the corbel; taller walls are PART 1B, printed not
+	 * derived.
 	 */
 	constexpr int32 CoursesOverCorbelJoint(int32 CoursesHigh, int32 Course)
 	{
@@ -237,11 +196,9 @@ namespace StructureCompositeDepthTestSupport
 	}
 
 	/**
-	 * WHAT ONE STEP OF THE CORBEL READS TODAY: bending on its own bed patch, less the
-	 * compression closing it, against f_xk1.
-	 *
-	 * The ladder's bottom rung on the 13-course wall is 22.9295 by this, and that is the number
-	 * `Core.Structure.AStaircaseVoidCondemnsTheCorbel` pins today.
+	 * What one step reads today: bending on its own bed patch, less the compression closing it,
+	 * against f_xk1. The bottom rung on the 13-course wall is 22.9295 —
+	 * `Core.Structure.AStaircaseVoidCondemnsTheCorbel` pins that.
 	 */
 	inline double PatchTensionMPa(double MomentBrickWeightCm, double ForceBrickWeights)
 	{
@@ -255,32 +212,23 @@ namespace StructureCompositeDepthTestSupport
 	}
 
 	/**
-	 * WHAT THE SAME STEP READS ONCE THE WHOLE DEPTH ABOVE IT RESISTS THE MOMENT TOGETHER.
+	 * What the same step reads once the whole depth resists the moment together: pure bending on the
+	 * composite section, no axial relief. The choice among three readings is the whole model:
 	 *
-	 * PURE BENDING ON THE COMPOSITE SECTION, WITH NO AXIAL RELIEF, AND THE CHOICE IS THE WHOLE
-	 * MODEL RATHER THAN A DETAIL. Three readings are available and only this one is usable:
+	 *   (a) sigma_b on the composite section alone. Staircase reads M/(W*f_xk1) = 0.36903, the
+	 *       design's published 0.369; a half seat reads 0.1561287 * n / m^2, whose m = 19 row is
+	 *       0.0082173, the design's free-end figure. Both published targets fall out of (a) alone.
 	 *
-	 *   (a) sigma_b on the composite section alone. The staircase reads M/(W*f_xk1) = 0.36903,
-	 *       which is ARCHING_DESIGN's published 0.369 to three digits, and a half seat reads
-	 *       0.1561287 * n / m^2 for n brick weights under m courses — whose m = 19 row is
-	 *       0.0082173, the design's published free-end figure to two digits. BOTH published
-	 *       targets fall out of this reading and out of no other.
+	 *   (b) composite modulus and composite bearing area. Staircase reads 0.2476, neither published
+	 *       figure reproduces, and a half seat goes into pure compression past 4.5 courses.
 	 *
-	 *   (b) composite modulus AND composite bearing area. The staircase reads 0.2476, neither
-	 *       published figure reproduces, and a half seat goes into pure compression past 4.5
-	 *       courses of depth.
+	 *   (c) composite modulus, patch area still carrying the axial term (the minimal edit). Reads
+	 *       exactly zero for the staircase; disqualified because sigma_n exceeds sigma_b for every
+	 *       fixture here, so bending stops governing and nothing can ever break again — the
+	 *       indestructible failure the design names.
 	 *
-	 *   (c) composite modulus with the joint's own patch area still carrying the axial term —
-	 *       the minimal edit, since only Section.SectionModulus*Cm3 would change. It reads
-	 *       EXACTLY ZERO for the staircase, and it is disqualified by the third of slice 5's
-	 *       three constraints rather than by taste: under (c) sigma_n exceeds sigma_b for every
-	 *       fixture in this file, INCLUDING the forty-five-course corbel below, so bending stops
-	 *       governing anywhere and nothing can ever be destroyed again. That is the indestructible
-	 *       failure the design names by name.
-	 *
-	 * Physically (a) is also the honest one: the plane resisting a deep-beam moment is VERTICAL,
-	 * the wedge's weight is shear on it rather than axial load, and there is no compression on
-	 * that plane to subtract.
+	 * Physically (a) is also honest: the plane resisting a deep-beam moment is vertical, the wedge's
+	 * weight is shear on it, and there is no compression on that plane to subtract.
 	 */
 	inline double CompositeTensionMPa(
 		double MomentBrickWeightCm, double DepthCm, double WallThicknessCm)
@@ -290,24 +238,18 @@ namespace StructureCompositeDepthTestSupport
 	}
 
 	/**
-	 * WHAT A CORBEL STEP MUST READ AFTER SLICE 5: the LESSER of the two readings, over f_xk1.
+	 * What a corbel step must read after slice 5: the lesser of the two readings, over f_xk1. The
+	 * `min` makes the model nested, not a second model bolted on: composite action is an alternative
+	 * way of carrying the moment, so it may only ever help. Three checkable consequences:
 	 *
-	 * THE `min` IS WHAT MAKES THE MODEL NESTED RATHER THAN A SECOND MODEL BOLTED ON, and it is
-	 * what keeps every anchor in place. A joint fails at the lesser of two demands because the
-	 * structure finds the stiffer path; composite action is an ALTERNATIVE way of carrying the
-	 * moment, not an extra one, so it may only ever help. Three consequences, all checkable:
+	 *   - One course of depth is not a deep beam. D = 7.5 cm gives W = 96.09 cm3, smaller than the
+	 *     patch's 179.48, so the `min` discards it. That is why `StructureBinding`'s waisted brick
+	 *     and `StructurePushTest`'s ragged end keep 0.058203838: both are the top course of their wall.
 	 *
-	 *   - ONE COURSE OF DEPTH IS NOT A DEEP BEAM. D = 7.5 cm gives W = 96.09 cm3, which is
-	 *     SMALLER than the bed patch's own 179.48 — so the composite reading is WORSE there and
-	 *     the `min` discards it. That is precisely why `StructureBinding`'s waisted brick and
-	 *     `StructurePushTest`'s ragged end keep their 0.058203838 to the last bit: both are the
-	 *     TOP course of their wall, with one course of masonry over the joint and nothing else.
+	 *   - An intact wall is untouched bit for bit: every seat has e = 0, so M = 0 and both readings are 0.
 	 *
-	 *   - AN INTACT WALL IS UNTOUCHED BIT FOR BIT. Every seat has e = 0 exactly, so M = 0, so
-	 *     both readings are 0 and the `min` of them is 0.
-	 *
-	 *   - AND A DEPTH RULE THAT FINDS NOTHING RETURNS TODAY'S ANSWER BY ARITHMETIC rather than
-	 *     by a special case, because the patch IS this formula at D = 10.25 cm.
+	 *   - A depth rule that finds nothing returns today's answer by arithmetic, because the patch is
+	 *     this formula at D = 10.25 cm.
 	 */
 	inline double CorbelUtilisation(
 		double MomentBrickWeightCm,
@@ -324,9 +266,8 @@ namespace StructureCompositeDepthTestSupport
 		if (!(TensileStrengthMPa > 0.0))
 		{
 			/*
-			 * DRY STONE HAS NO TENSILE STRENGTH AT ALL — an exact zero, not a small number —
-			 * so any tension whatever has already gone. ComputeUtilisation returns
-			 * TNumericLimits<double>::Max() for exactly this, and the oracle says so rather
+			 * Dry stone has exactly zero tensile strength, so any tension has already gone.
+			 * ComputeUtilisation returns TNumericLimits<double>::Max() for this; match it rather
 			 * than dividing by zero and producing an infinity that compares differently.
 			 */
 			return FMath::Min(Patch, Composite) > 0.0 ? TNumericLimits<double>::Max() : 0.0;
@@ -380,139 +321,85 @@ namespace StructureCompositeDepthTestSupport
 	}
 }
 
-/**
- * ArchingWallTestSupport IS ALIASED RATHER THAN OPENED, and that is not a style preference.
- *
- * It carries its own BrickLengthCm, HalfSeatAreaSqCm, BrickWeightUu, Bits and a dozen more —
- * deliberately, because every one of these headers re-derives the grid from first principles
- * rather than sharing one copy. Two `using namespace` directives over both would therefore make
- * every shared name AMBIGUOUS at the point of use, and the compiler would say so on twenty lines
- * that have nothing to do with the ambiguity. Only the five names this file actually wants out of
- * it are unique, so they are qualified.
+/*
+ * ArchingWallTestSupport is aliased, not opened: it re-derives the grid from first principles and
+ * carries its own BrickLengthCm, HalfSeatAreaSqCm, BrickWeightUu, Bits and more, so a
+ * `using namespace` over both would make every shared name ambiguous. The five names this file
+ * wants are unique and are qualified.
  */
 namespace ArchSupport = StructureArchingTestSupport;
 
 /**
- * A CORBEL RESISTS WITH THE WHOLE DEPTH OF MASONRY STANDING OVER IT, AND IT COMES DOWN WHEN THAT
- * DEPTH RUNS OUT.
+ * A corbel resists with the whole depth of masonry standing over it, and comes down when that
+ * depth runs out.
  *
- * THE RULING THIS SLICE EXISTS FOR, AND IT WAS THE USER'S. A brick deleted at a free end must NOT
- * bring the wall down. Any rule local enough to save the free end also saves the staircase corbel,
- * so that ruling adopts COMPOSITE VERTICAL ACTION and makes
- * `Core.Structure.AStaircaseVoidCondemnsTheCorbel` and
- * `Integration.AStaircaseVoidBringsTheOverhangDown` tests this slice must CHANGE. It is internally
- * consistent rather than a preference: the same user independently agreed acceptance case 20, the
- * staircase void, as LOCAL LOSS — the loose teeth at the cut face drop and the mass stands — which
- * is exactly what composite action produces.
+ * THE RULING (the user's): a brick deleted at a free end must NOT bring the wall down. Any rule
+ * local enough to save the free end also saves the staircase corbel, so the ruling adopts composite
+ * vertical action, which makes `Core.Structure.AStaircaseVoidCondemnsTheCorbel` and
+ * `Integration.AStaircaseVoidBringsTheOverhangDown` change. Consistent with the same user's
+ * acceptance case 20 (the staircase void as local loss: loose teeth drop, the mass stands).
  *
- * THE MECHANISM. A stack of courses over a lost support does not resist as a sequence of
- * independent bed patches. The wall acts as a DEEP BEAM and the section resisting the overturning
- * moment is the full vertical depth of bonded masonry above the cut:
+ * MECHANISM. A stack of courses over a lost support acts as a deep beam; the section resisting the
+ * overturning moment is the full vertical depth of bonded masonry above the cut:
  *
  *     W = t * D^2 / 6                            against the bed patch's 179.4817708 cm3
  *     D = 82.5 cm (11 courses)  ->  11,627 cm3   a factor of 64.8
  *
- * RESISTANCE GROWS WITH THE SQUARE OF THE DEPTH, SO THE DEPTH IS THE MODEL AND NOT A PARAMETER.
- * Take it as unbounded and every wall is a monolith; take it as one course and nothing changes.
+ * Resistance grows with the square of depth, so the depth is the model, not a parameter.
  *
- * =========================================================================================
- * WHAT IS ASSERTED, AND WHY EACH FORM WAS CHOSEN
- * =========================================================================================
+ * WHAT IS ASSERTED:
+ *   - The load path is unchanged, asserted first and separately: every corbel joint still carries
+ *     the hand ladder's force and moment; composite action changes only the section. This keeps the
+ *     utilisation claim non-circular — CURRENT_STATE records that an expectation read back off
+ *     `GetConnectionMoment` moves with the defect being tested (it ate a gate row at slice 1).
+ *   - The utilisation is the ladder's moment over the composite section, min-ed with the patch
+ *     reading, at 2% (one course of eleven is 18% of the answer).
+ *   - The outcome, never a displacement: two pieces can sever and stay resting where they were.
+ *     "Must stand" rows assert every corbelled brick still has a path to the ground after
+ *     SolveAndBreak; the "must come down" row asserts the corbel top lost its path and the bottom
+ *     rung is among the joints that failed under load.
  *
- *   - THE LOAD PATH IS UNCHANGED, ASSERTED FIRST AND SEPARATELY. Every corbel joint must still
- *     carry the hand ladder's own force and the hand ladder's own moment. Composite action
- *     changes the SECTION the moment is read against, not what the wall hands down — and
- *     ARCHING_DESIGN checked that independently, finding the wedge's centroid arm (41.25 cm) and
- *     the ladder's own average arm (41.79 cm) agree to 1.3%, as statics requires. This is also
- *     what makes the utilisation claim below non-circular: CURRENT_STATE records that any
- *     expectation read back off `GetConnectionMoment` moves WITH a defect in the thing being
- *     tested, and that trap already ate one gate row at slice 1.
- *
- *   - THE UTILISATION IS THE LADDER'S MOMENT OVER THE COMPOSITE SECTION THE FIXTURE PRESENTS,
- *     `min` -ed with today's patch reading. Both terms are built from the hand ladder and from
- *     the fixture's own geometry; the only thing taken from the solver is the force, and the
- *     force is not what this slice changes. 2% throughout, which distinguishes the depth to
- *     better than one course everywhere (one course out of eleven is 18% of the answer).
- *
- *   - AND THE OUTCOME, NEVER A DISPLACEMENT. Two pieces can sever and stay resting exactly where
- *     they were. Rows that must stand assert that every corbelled brick still has a PATH TO THE
- *     GROUND after `SolveAndBreak`; the row that must come down asserts that the top of the
- *     corbel has lost its path and that the bottom rung is among the joints that failed under
- *     load. A single severed joint would not be a collapse.
- *
- * =========================================================================================
- * THE THIRD CONSTRAINT — SOMETHING MUST STILL COME DOWN — NOW CARRIED BY THE DRY ROW ONLY
- * =========================================================================================
- *
- * A FORTY-FIVE-COURSE RAKING CORBEL FAILED, AND IT FAILED BECAUSE THE DEPTH RAN OUT — ON THE
- * CHARACTERISTIC BASIS THIS FILE WAS WRITTEN AGAINST. The overturning moment of a k-course corbel
- * grows as roughly k^3 while the section it is resisted by grows only as k^2, so the utilisation
- * climbs with k; against f_xk1 = 0.10 it crossed 1.0 at about thirty-six courses:
+ * THE THIRD CONSTRAINT (something must still come down), now carried by the dry row only. A
+ * 45-course corbel used to fail because the depth ran out: on the characteristic f_xk1 = 0.10 the
+ * moment growing as k^3 against a section growing as k^2 crossed 1.0 near 36 courses:
  *
  *     k       5      11      29      35      37      45
  *     reads   0.219  0.369   0.834   0.990   1.042   1.250      (x 0.10 / 0.70 at the mean basis)
  *
- * THE 2026-08-14 MEAN RE-ANCHOR FLIP TOOK THAT CONSTRAINT FROM THIS FILE. Against the mean f_x1 = 0.70
- * the same ladder divides by 7 and does not reach 1.0 below roughly 250 steps — past the
- * ~124-step crossover where CRUSHING against the unmoved 10 MPa condemns the family first
- * (`CorbelStepsBeforeTensionWins` re-derives it) — so no buildable mortared corbel fails by the
- * depth running out any more. The two forty-five-step rows are now UNASSERTED on outcome (a lost
- * discrimination logged in CURRENT_STATE, not a re-tune), the DRY row below still falls exactly
- * as before, and the suite's giant-corbel-must-fall guarantee lives in
- * `AHundredStepCorbelMustComeDown` (150 steps, condemned by crushing). The standing rows remain
- * the upper bound on how little depth a correct rule may find — a bound crediting no depth reads
- * the eleven-step rung at 3.28 even on the mean basis and breaks them.
+ * The 2026-08-14 mean re-anchor (f_x1 = 0.70) divides the ladder by 7, so no buildable mortared
+ * corbel fails by depth below ~250 steps — past the ~124-step crushing crossover
+ * (`CorbelStepsBeforeTensionWins`). The two 45-step rows are now unasserted on outcome (lost
+ * discrimination, logged in CURRENT_STATE); the dry row still falls, and the must-fall guarantee
+ * lives in `AHundredStepCorbelMustComeDown` (150 steps, crushing). The standing rows remain the
+ * upper bound on how little depth a correct rule may find.
  *
- * AND THE k^3/k^2 ARGUMENT ABOVE IS TRUE ONLY OF A WALL THE SAME HEIGHT AS ITS CUT, WHICH EVERY
- * ROW OF THAT TABLE WAS AND NO ROW SAID. *(Found in review 2026-08-07; it is finding B1 and PART
- * 1B below is the fixture for it.)* `k^3/k^2` assumes the depth credited to the bottom rung comes
- * from the corbel's OWN steps. It does not: the depth is whatever the upward walk finds, so in a
- * wall taller than the cut the moment is set by `k` and the section by the wall's `m`, the
- * reading goes as `k^3/m^2`, the two exponents stop cancelling and the thirty-six-course
- * crossover does not exist. The wall the game renders is exactly that case — eleven corbelled
- * steps under forty courses — so the joint the suite pins at 0.36903147272727271 on a
- * thirteen-course wall is a different number entirely on the wall the player is looking at.
- * PART 1B lays both and compares them.
+ * The k^3/k^2 argument holds only for a wall as tall as its cut, which every old row was and none
+ * said (review 2026-08-07, finding B1; PART 1B is the fixture). The depth is whatever the upward
+ * walk finds, so in a taller wall the moment goes as k and the section as m^2, the reading as
+ * k^3/m^2, the exponents stop cancelling and the crossover vanishes. The game's wall is that case
+ * — 11 steps under 40 courses — so the joint pinned at 0.36903147272727271 on a 13-course wall is
+ * a different number on the rendered wall. PART 1B lays both.
  *
- * ARCHING_DESIGN's OWN DEPTH TABLE — 4 courses 2.79, 6 courses 1.24, 7 courses 0.911, the
- * crossover at 50.1 cm — IS A HYPOTHETICAL AND NOT A FIXTURE FAMILY, and it is worth saying so
- * because it points the opposite way. Every row of it is `0.369 * (82.5/D)^2`: the STAIRCASE's own
- * moment held fixed while the depth is shrunk. No wall can present that pair. In a real k-course
- * corbel the moment shrinks with the depth as well, and the reading is monotonically INCREASING in
- * k — 0.173, 0.219, 0.268, 0.318, 0.369 … — so the crossover is at about thirty-six courses and
- * not under seven, and it runs the other way. The rows below are real cut walls, so they are what
- * this file asserts; the design's table is printed beside them and nothing is derived from it.
+ * ARCHING_DESIGN's own depth table (4 courses 2.79, 6 courses 1.24, 7 courses 0.911, crossover at
+ * 50.1 cm) is a hypothetical, not a fixture: every row is 0.369 * (82.5/D)^2, the staircase moment
+ * held fixed while depth shrinks, which no wall presents. In a real corbel the moment shrinks with
+ * the depth and the reading increases in k, so the crossover is near 36 courses, not under 7. The
+ * rows below are real cut walls; the design's table is printed beside them, nothing derived from it.
  *
- * =========================================================================================
- * THE TWO PUBLISHED TARGETS, AND WHICH OF THEM THIS FILE WILL STAND BEHIND
- * =========================================================================================
+ * THE TWO PUBLISHED TARGETS. ARCHING_DESIGN flags both as unconfirmed idealisations:
+ *   - The staircase's 0.369 reproduces exactly as M/(W*f_xk1), M = 1608.75, W = 11,627.34: 0.36903.
+ *     Asserted at 2%.
+ *   - The free end's 0.0082 reproduces only as one row of an identity no fixture presents: a half
+ *     seat carrying n brick weights under m courses reads 0.1561287 * n / m^2, and n = m = 19 gives
+ *     0.0082173. The 7 x 30 wall below has 29 courses over its joint and reads ~0.0052. The identity
+ *     is asserted; the 0.0082 is printed as its m = 19 row, nothing derived.
  *
- * ARCHING_DESIGN flags both figures as idealisations no test has confirmed. Worked through here:
+ * ANCHORS THIS FILE MUST NOT MOVE. `StructureBinding.AdoptedWallLoadsItsWaistEccentrically`
+ * (0.058203838191552663) and `StructurePushTest`'s ragged end (0.0582038382): both are the top
+ * course of their wall, D = 7.5 cm, W = 96.09 cm3 (smaller than the patch), so the `min` discards
+ * the composite reading. Omitting the `min` moves both to 0.08359.
  *
- *   - THE STAIRCASE'S 0.369 REPRODUCES EXACTLY, as `M/(W*f_xk1)` with M = 1608.75 brick-weight-cm
- *     and W = 11,627.34 cm3: 0.36903. It is asserted, at 2%.
- *
- *   - THE FREE END'S 0.0082 REPRODUCES ONLY AS ONE ROW OF AN IDENTITY, and no fixture in this
- *     project presents that row. A half-seated brick carrying n brick weights under m courses of
- *     depth reads `0.1561287 * n / m^2`, and n = m = 19 gives 0.0082173. The 7 x 30 wall below has
- *     29 courses over its free-end joint and reads about 0.0052 instead. THE IDENTITY IS WHAT IS
- *     ASSERTED; the 0.0082 is printed as the m = 19 row of it and nothing is derived from it. A
- *     loose cross-check against a figure that reproduces from no fixture would be red for a reason
- *     nobody could fix.
- *
- * =========================================================================================
- * ANCHORS THIS FILE IS DELIBERATELY COMPATIBLE WITH
- * =========================================================================================
- *
- * `StructureBinding.AdoptedWallLoadsItsWaistEccentrically` (0.058203838191552663) and
- * `StructurePushTest`'s ragged end (0.0582038382) must not move, and the `min` above is what makes
- * that structural rather than lucky: BOTH are the top course of their wall, so there is exactly one
- * course of masonry over the joint, D = 7.5 cm, W = 96.09 cm3 — SMALLER than the bed patch — and
- * the composite reading is discarded. Any implementation that omits the `min` moves both to
- * 0.08359 and takes those two tests with it.
- *
- * NEEDS A TICKING WORLD: NO. FStructure is arithmetic over a graph and Layout is arithmetic over
- * boxes. Slices 1 through 4 needed none either.
+ * Needs a ticking world: no. FStructure and Layout are arithmetic; slices 1-4 needed none either.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureCompositeDepthTest,
@@ -525,9 +412,9 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 	using namespace StaircaseWallTestSupport;
 
 	/*
-	 * THE EXPECTED NUMBERS ARE RATIOS OF PUBLISHED STRENGTHS, so they mean what they say only
-	 * while the profile still carries the figures they were derived against. Asserted rather
-	 * than imported: a test that read the profile would agree with a wrong profile.
+	 * The expected numbers are ratios of published strengths, so they hold only while the profile
+	 * carries the figures they were derived against. Asserted, not imported: a test that read the
+	 * profile would agree with a wrong one.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against f_xk1 = %g MPa, the profile carries %g"),
@@ -554,21 +441,17 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 	 * PART 0 — THE TWO SECTIONS ARE NESTED, AND THE TWO LADDER DERIVATIONS AGREE.
 	 * ===================================================================================
 	 *
-	 * THE BED PATCH IS THE COMPOSITE FORMULA AT D = 10.25 cm. Both are a rectangle of the same
-	 * material; the patch is square, so (4/3) h^3 with h = 5.125 is 10.25 * 10.25^2 / 6 to the
-	 * last bit. That is why a depth rule that finds nothing needs no special case to return
-	 * today's answer, and it is the cheapest possible statement that slice 5 is one model with a
-	 * parameter rather than two models with a switch.
+	 * The bed patch is the composite formula at D = 10.25 cm: the patch is square, so (4/3)h^3 with
+	 * h = 5.125 is 10.25 * 10.25^2 / 6 to the last bit. So a depth rule that finds nothing needs no
+	 * special case — the cheapest statement that slice 5 is one model with a parameter, not two.
 	 */
 	/*
-	 * ALGEBRAICALLY, NOT BIT FOR BIT — MEASURED, AND IT IS A NOTE TO WHOEVER IMPLEMENTS THIS.
-	 * (4/3)*5.125*5.125^2 is 179.48177083333331 and 10.25*10.25^2/6 is 179.48177083333334: the
-	 * same product in a different order, one ulp apart, because IEEE multiplication does not
-	 * associate. So an implementation that RECOMPUTED the shallow case through the composite
-	 * formula would move `AdoptedWallLoadsItsWaistEccentrically` and `StructurePushTest`'s
-	 * ragged end in their last digits for no reason anybody chose. The `min` below is what
-	 * avoids that: where the composite section is no better, the joint keeps the patch's own
-	 * value verbatim and nothing is recomputed. Same shape as slice 4's `d_e/L` choice.
+	 * Algebraically equal, not bit for bit: (4/3)*5.125*5.125^2 is 179.48177083333331 and
+	 * 10.25*10.25^2/6 is 179.48177083333334, one ulp apart because IEEE multiplication does not
+	 * associate. So recomputing the shallow case through the composite formula would move
+	 * `AdoptedWallLoadsItsWaistEccentrically` and `StructurePushTest`'s ragged end in their last
+	 * digits. The `min` avoids it: where composite is no better, the joint keeps the patch's own
+	 * value verbatim. Same shape as slice 4's `d_e/L` choice.
 	 */
 	TestTrue(
 		FString::Printf(
@@ -581,12 +464,10 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			<= 1.0e-15 * PatchModulusCm3);
 
 	/*
-	 * AND THE CLOSED FORMS REPRODUCE THE HAND COUNT, ALL TWENTY-TWO NUMBERS, EXACTLY.
-	 *
-	 * StaircaseWallTestSupport walks both ladders down the picture by hand for the 13-course
-	 * wall. This file needs them at other heights, so it carries the recursions in closed form —
-	 * and a closed form that had drifted from the hand walk would make every row below agree
-	 * with itself and with nothing else.
+	 * And the closed forms reproduce the hand count, all 22 numbers, exactly.
+	 * StaircaseWallTestSupport walks both ladders by hand for the 13-course wall; this file needs
+	 * them at other heights, so it carries the recursions closed. A drifted closed form would make
+	 * every row below agree with itself and nothing else.
 	 */
 	for (int32 Course = StaircaseLowestCorbelCourse;
 		Course <= StaircaseHighestCorbelCourse;
@@ -618,15 +499,11 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 	 */
 
 	/**
-	 * WHAT THE CASCADE MUST DO TO THE MASS OVER THE VOID — and one row deliberately declines
-	 * to say.
-	 *
-	 * `Unasserted` is not a gap. Whether an eleven-step corbel under a forty-course wall stands
-	 * is a consequence of WHICH bound on the composite depth gets chosen, and that is an open
-	 * design question this file must not close by asserting an outcome: crediting the corbel's
-	 * own eleven courses makes it a different verdict from crediting the wall's thirty-nine.
-	 * The row exists to make the two DISTINGUISHABLE and to pin the property in PART 1B; the
-	 * verdict is printed with its arithmetic and left to whoever rules.
+	 * What the cascade must do to the mass over the void — and one row declines to say.
+	 * `Unasserted` is not a gap: whether an 11-step corbel under a 40-course wall stands depends on
+	 * which composite-depth bound is chosen (its own 11 courses vs the wall's 39 give different
+	 * verdicts), an open design question this file must not close. The row makes the two
+	 * distinguishable and pins the property in PART 1B; the verdict is printed and left to whoever rules.
 	 */
 	enum class EVoidOutcome
 	{
@@ -640,27 +517,21 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 	{
 		const TCHAR* Description;
 
-		/**
-		 * ODD, always: see RakingVoidEdgeXCm. This is the number of corbelled steps and it
-		 * sizes the CUT — the ladder, the arms, the whole overturning moment.
-		 */
+		/** Odd, always (see RakingVoidEdgeXCm). Number of corbelled steps; sizes the cut — ladder, arms, moment. */
 		int32 CorbelSteps;
 
 		/**
-		 * And this sizes the WALL, which needs at least CorbelSteps + 2 courses to hold the
-		 * cut and may have any number more. Where it has more, the extra courses are ordinary
-		 * full-width masonry standing ON the corbel: they add load to every rung and they add
-		 * depth to the walk that measures the composite section, and separating those two is
-		 * the whole of PART 1B.
+		 * Sizes the wall: at least CorbelSteps + 2 courses to hold the cut, any number more. Extra
+		 * courses are full-width masonry standing on the corbel — they add load to every rung and
+		 * depth to the composite-section walk, and separating those two is the whole of PART 1B.
 		 */
 		int32 CoursesHigh;
 
 		/**
-		 * Wide enough that the load cone above the BOTTOM step still lies inside the wall.
-		 * The cone reaches about (2k - 2) half steps from the origin, so a k-step corbel wants
-		 * roughly k + 1 bricks per course. StaircaseWallTestSupport records what happens when
-		 * it does not: the 13 x 10 wall is 11.25 cm short and its bottom rung comes back
-		 * 2.4e-6 low, which is inside the tolerance here by three orders of magnitude.
+		 * Wide enough that the load cone above the bottom step stays inside the wall: the cone
+		 * reaches ~(2k - 2) half steps, so a k-step corbel wants ~k + 1 bricks per course.
+		 * StaircaseWallTestSupport's 13 x 10 wall is 11.25 cm short and its bottom rung comes back
+		 * 2.4e-6 low, inside this tolerance by three orders of magnitude.
 		 */
 		int32 BricksPerCourse;
 
@@ -675,139 +546,111 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 
 	const TArray<FCorbelCase> Cases = {
 		/*
-		 * FIVE STEPS, the smallest raking corbel that is unambiguously one — three steps is
-		 * two courses of overhang and reads 0.17 either way. Today its bottom rung is 2.67180
-		 * and four of its five rungs are over capacity; under a 37.5 cm section it is 0.21858
-		 * and none are.
+		 * Five steps, the smallest unambiguous raking corbel (three steps reads 0.17 either way).
+		 * Bottom rung 2.67180 today with 4 of 5 rungs over capacity; under a 37.5 cm section
+		 * 0.21858 with none.
 		 */
 		{ TEXT("a FIVE-step raking corbel"), 5, 7, 7, &GeneralPurposeMortar,
 			EVoidOutcome::MustStand, 0.0 },
 
 		/*
-		 * ELEVEN STEPS — THE PHOTOGRAPHED FAILURE, and the identical fixture
-		 * `AStaircaseVoidCondemnsTheCorbel` and `AStaircaseVoidBringsTheOverhangDown` cut. Its
-		 * bottom rung is 22.929528199727653 today with 8 of 11 over capacity; under the 82.5 cm
-		 * of masonry actually standing over it, 0.36903 with none. Those two tests INVERT with
-		 * this row, by the user's ruling, and this is where the new number is derived.
+		 * Eleven steps — the photographed failure, the identical fixture
+		 * `AStaircaseVoidCondemnsTheCorbel` and `AStaircaseVoidBringsTheOverhangDown` cut. Bottom
+		 * rung 22.929528199727653 today with 8 of 11 over capacity; under the 82.5 cm actually
+		 * standing over it, 0.36903 with none. Those two tests invert with this row by the user's
+		 * ruling, and the new number is derived here.
 		 *
-		 * TEN BRICKS PER COURSE RATHER THAN TWELVE, deliberately: it must be the same wall the
-		 * two changing tests lay, cone deficit and all, or its number is about a different wall.
+		 * Ten bricks per course, not twelve: it must be the same wall those two tests lay, cone
+		 * deficit and all, or its number is about a different wall.
 		 */
 		/*
-		 * The published 0.369 was derived against the characteristic f_xk1 = 0.10; at the
-		 * mean basis (re-anchor 2026-08-13) the same statics divide by 0.70 and the rung
-		 * reads 0.0527. The division keeps the citation honest: the figure is still
-		 * ARCHING_DESIGN's, re-based, not a new target.
+		 * The published 0.369 was against the characteristic f_xk1 = 0.10; at the mean basis
+		 * (re-anchor 2026-08-13) the same statics divide by 0.70 and read 0.0527 — still
+		 * ARCHING_DESIGN's figure re-based, not a new target.
 		 */
 		{ TEXT("ELEVEN steps: THE STAIRCASE VOID"), 11, 13, 10, &GeneralPurposeMortar,
 			EVoidOutcome::MustStand, 0.369 / 7.0 },
 
 		/*
-		 * FORTY-FIVE STEPS — THE ROW WHERE THE DEPTH USED TO RUN OUT, and the 2026-08-14 mean
-		 * re-anchor flip is what un-ran it. On the characteristic basis the moment climbing as k^3
-		 * against a section growing as k^2 crossed capacity here: 1.25019 against f_xk1 = 0.10,
-		 * over, and the corbel came down. Against the mean 0.70 the same statics read 0.1786 —
-		 * clear of the line, and the tension ladder does not reach 1.0 again below roughly 250
-		 * steps, past the ~124-step crossover where CRUSHING (the unmoved 10 MPa) condemns the
-		 * family first. So no mortared corbel below the crushing crossover can fail by the
-		 * depth running out any more, and the falling arm this row carried is LOST
-		 * DISCRIMINATION, recorded in CURRENT_STATE with the rest of the re-anchor's losses.
+		 * Forty-five steps — the row where the depth used to run out, un-run by the 2026-08-14 mean
+		 * re-anchor. On the characteristic basis the k^3 moment against the k^2 section crossed
+		 * capacity here (1.25019 against f_xk1 = 0.10) and the corbel came down. Against the mean
+		 * 0.70 it reads 0.1786, and the tension ladder does not reach 1.0 below ~250 steps — past
+		 * the ~124-step crushing crossover (the unmoved 10 MPa). So no mortared corbel below that
+		 * crossover fails by depth any more; the falling arm is lost discrimination, recorded in
+		 * CURRENT_STATE.
 		 *
-		 * OUTCOME NOW UNASSERTED RATHER THAN FLIPPED TO MustStand: whether a 7.9-metre mortared
-		 * overhang should stand is a ruling nobody has made (the MustStand rows above are user
-		 * rulings), and asserting it here would also forbid any future depth bound crediting
-		 * less than ~2.4x fewer courses than the full walk — a constraint slice 5 never agreed
-		 * to. The must-fail guarantee this file used to gate on lives on in
-		 * `AHundredStepCorbelMustComeDown` (150 steps, condemned by crushing, corbel-limit
-		 * file) and in the DRY row below, which is untouched by the re-anchor.
+		 * Outcome now unasserted, not flipped to MustStand: whether a 7.9 m mortared overhang should
+		 * stand is a ruling nobody has made, and asserting it would forbid any future depth bound
+		 * crediting under ~2.4x fewer courses than the full walk. The must-fail guarantee lives in
+		 * `AHundredStepCorbelMustComeDown` (150 steps, crushing) and the dry row below.
 		 */
 		{ TEXT("FORTY-FIVE steps: the depth runs out"), 45, 47, 47, &GeneralPurposeMortar,
 			EVoidOutcome::Unasserted, 0.0 },
 
 		/*
-		 * AND THE SAME STAIRCASE LAID DRY. You cannot corbel a dry-stone wall — there is no
-		 * bond to transfer the horizontal shear composite action demands between courses — so
-		 * whatever bounds the depth must leave this one condemned.
+		 * The same staircase laid dry. You cannot corbel dry stone — no bond to transfer the shear
+		 * composite action needs between courses — so any depth bound must leave it condemned.
 		 *
-		 * GREEN ON ARRIVAL AND SAID SO. DryStone's f_xk1 is an EXACT zero, so any tension
-		 * anywhere on the face has already gone, at any section modulus; this row cannot tell a
-		 * bounded depth from an unbounded one. What it CAN catch is an implementation that
-		 * subtracts an axial term on the composite bearing area — reading (b) or (c) above —
-		 * because past 4.5 courses of depth that puts a corbel into pure compression and stands
-		 * a dry-stone overhang up. It is a guard, not a driver, and it earns its place only
-		 * because it is the same fixture with one field changed.
+		 * A guard, not a driver: DryStone's f_xk1 is an exact zero, so any tension has already gone
+		 * at any section modulus, and this row cannot tell a bounded depth from an unbounded one. It
+		 * catches an implementation that subtracts an axial term on the composite bearing area
+		 * (reading (b) or (c)), which past 4.5 courses stands a dry-stone overhang up. Earns its
+		 * place as the same fixture with one field changed.
 		 */
 		{ TEXT("ELEVEN steps, laid DRY"), 11, 13, 10, &DryStone,
 			EVoidOutcome::MustComeDown, 0.0 },
 
 		/*
 		 * ===============================================================================
-		 * AND THE SAME TWO CUTS AGAIN UNDER MORE WALL. These two rows are the fixture the
-		 * project did not have, and without them nothing could see the composite depth.
+		 * AND THE SAME TWO CUTS AGAIN UNDER MORE WALL — the fixture the project lacked;
+		 * without them nothing could see the composite depth.
 		 * ===============================================================================
 		 *
-		 * FORTY-FIVE STEPS UNDER SIXTY-SEVEN COURSES. Identical cut to the row above — same
-		 * ladder, same arms, same 91,209 brick-weight-cm of overturning from the corbel's own
-		 * mass — with twenty further courses of ordinary full-width masonry standing on top of
-		 * it.
+		 * Forty-five steps under 67 courses: identical cut to the row above (same ladder, arms,
+		 * 91,209 brick-weight-cm of overturning) with 20 further full-width courses on top.
 		 *
-		 * GREEN ON ARRIVAL, AND IT IS THE MEASUREMENT THAT SAYS SO RATHER THAN A JUDGEMENT.
-		 * The review proposed this row as red, on the grounds that a wall 1.5x taller is
-		 * "arithmetically identical" to crediting 1.5x the composite depth — a mutation which
-		 * does stand this corbel up. IT IS NOT IDENTICAL, and the difference is the whole
-		 * finding: the extra courses are masonry STANDING ON the corbel, so they add load as
-		 * well as depth. Measured here, 47 courses to 67 multiplies the bottom rung's moment by
-		 * 2.2754 and its section by 2.0864, so the reading goes UP — 1.2501861088888881 to
-		 * 1.3634027672024234 — and the corbel still comes down. The mutation moved one of those
-		 * two and a taller wall moves both.
+		 * A taller wall is not "arithmetically identical" to crediting more depth, which is the whole
+		 * finding: the extra courses stand on the corbel, so they add load as well as depth. 47 to 67
+		 * courses multiplies the bottom rung's moment by 2.2754 and its section by 2.0864, so the
+		 * reading goes up (1.2501861088888881 -> 1.3634027672024234) and the corbel still comes down.
+		 * A depth mutation moves one; a taller wall moves both.
 		 *
-		 * WHICH IS WHY IT IS THE SHORT CUT UNDER THE TALL WALL THAT BITES, and the row below is
-		 * the one that does. A corbel's own moment grows as k^3 and the wall's section as m^2,
-		 * so what decides is the RATIO m/k: at 67/45 the added load very nearly keeps up, and
-		 * at 40/11 it is beaten by a factor of two. Extrapolating this row's own numbers, a
-		 * 45-step corbel needs something like a hundred and sixty courses — twelve metres of
-		 * wall — before the depth rescues it, and that is not a fixture anybody should build.
+		 * So it is the short cut under the tall wall (the row below) that bites: moment goes as k^3,
+		 * section as m^2, so the ratio m/k decides. At 67/45 the added load nearly keeps up; at 40/11
+		 * it is beaten twofold. A 45-step corbel needs ~160 courses before depth rescues it — not a
+		 * buildable fixture.
 		 *
-		 * KEPT AS A GUARD RATHER THAN DROPPED — but the mean re-anchor (2026-08-13) took its
-		 * outcome with the row above's: 1.3634 against the characteristic 0.10 is 0.1948
-		 * against the mean 0.70, under the line, and the corbel stands. The moment/section
-		 * measurements in the comment above are strength-free and still hold; only the verdict
-		 * moved. UNASSERTED for the same reason as the row above — the falling arm is lost
-		 * discrimination (CURRENT_STATE), not a wrong expectation, and its replacement must be
-		 * a re-design at the crushing crossover rather than a re-tune.
+		 * Kept as a guard, but the mean re-anchor took its outcome: 1.3634 against 0.10 is 0.1948
+		 * against the mean 0.70, under the line, so the corbel stands. The strength-free
+		 * moment/section measurements above still hold; only the verdict moved. Unasserted like the
+		 * row above — lost discrimination (CURRENT_STATE), needing a re-design at the crushing
+		 * crossover, not a re-tune.
 		 */
 		{ TEXT("FORTY-FIVE steps under SIXTY-SEVEN courses"), 45, 67, 47, &GeneralPurposeMortar,
 			EVoidOutcome::Unasserted, 0.0 },
 
 		/*
-		 * ELEVEN STEPS UNDER FORTY COURSES — THE WALL THE GAME ACTUALLY RENDERS, and the
-		 * headless twin the screenshot fixture never had.
+		 * Eleven steps under 40 courses — the wall the game renders, and the headless twin the
+		 * screenshot fixture never had. `ADestructionGameGameMode` lays 30 x 40 and the visual
+		 * harness cuts StaircaseWallTestSupport's void (courses 1-11, edge (12 - c) * 11.25) —
+		 * character for character this cut. So the joint pinned at 0.36903147272727271 on a
+		 * 13-course wall is the same joint the player sees under 39 courses. TEST_CHANGES.md section
+		 * 4 names the gap: `Visual.StaircaseScreenshot` carries NonNullRHI, invisible to the
+		 * documented test command, and rotted for five slices.
 		 *
-		 * `ADestructionGameGameMode` lays 30 bricks by 40 courses and the visual harness cuts
-		 * StaircaseWallTestSupport's void into it — courses 1 to 11, edge (12 - c) * 11.25 —
-		 * which is character for character this row's cut. So the joint the suite pins at
-		 * 0.36903147272727271 on a 13-course wall is the SAME joint the player is looking at,
-		 * standing under 39 courses instead of 11. Nothing headless covered that wall, and
-		 * TEST_CHANGES.md section 4 names the gap independently: `Visual.StaircaseScreenshot`
-		 * carries NonNullRHI, so it is invisible to the documented test command, and it rotted
-		 * for five slices behind that flag.
-		 *
-		 * OUTCOME DELIBERATELY UNASSERTED — see EVoidOutcome. Whether this corbel stands is
-		 * downstream of which bound gets chosen, and the arithmetic runs close: crediting the
-		 * corbel's own eleven courses against a ladder the wall above has made several times
-		 * heavier is a different verdict from crediting all thirty-nine. What IS asserted is
-		 * the property in PART 1B, which is true under every candidate.
+		 * Outcome unasserted (see EVoidOutcome): whether it stands is downstream of the bound — the
+		 * corbel's own 11 courses vs all 39 give different verdicts. What is asserted is PART 1B's
+		 * property, true under every candidate.
 		 */
 		{ TEXT("ELEVEN steps under FORTY courses: THE SCENARIO WALL"), 11, 40, 30,
 			&GeneralPurposeMortar, EVoidOutcome::Unasserted, 0.0 },
 	};
 
 	/**
-	 * THE BOTTOM RUNG OF EVERY CASE, KEPT SO THAT TWO CASES CAN BE COMPARED WITH EACH OTHER.
-	 *
-	 * PART 1B's claim is a claim about a PAIR of fixtures rather than about either of them, so
-	 * it cannot be made inside the loop that reads one. Everything here is measured off the
-	 * solver except the depth, which is what the fixture presents.
+	 * The bottom rung of every case, kept so two cases can be compared. PART 1B's claim is about a
+	 * pair of fixtures, not either alone, so it cannot be made inside the loop that reads one.
+	 * Everything here is measured off the solver except the depth, which the fixture presents.
 	 */
 	struct FBottomRung
 	{
@@ -832,14 +675,10 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		const int32 Steps = Case.CorbelSteps;
 
 		/*
-		 * WHETHER THE WALL STOPS AT THE TOP OF THE CORBEL, AND IT DECIDES WHAT MAY BE ASSERTED
-		 * RUNG BY RUNG.
-		 *
-		 * Where it does, the corbel's own courses are all the masonry there is, the hand ladder
-		 * is the whole load and CoursesOverCorbelJoint is a statement about the corbel. Where
-		 * the wall carries on above, both of those stop being true at once — there is extra
-		 * load AND extra depth — so the rows below become one-sided and the two-sided claim
-		 * moves to PART 1B, where it belongs, as a comparison between the pair.
+		 * Whether the wall stops at the top of the corbel decides what may be asserted rung by rung.
+		 * Where it does, the corbel's own courses are all the masonry there is and the hand ladder is
+		 * the whole load. Where the wall carries on, both stop being true at once (extra load and
+		 * extra depth), so the rows below are one-sided and the two-sided claim moves to PART 1B.
 		 */
 		const bool bWallStopsAtTheCorbel = Case.CoursesHigh == Case.CorbelSteps + 2;
 
@@ -885,10 +724,9 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			Laid.Structure.HasCompleteGeometry());
 
 		/*
-		 * THE POSITIVE CONTROL. A wall that arrived with a joint past capacity would be
-		 * condemned for a reason the void had nothing to do with — and the flush end is what
-		 * buys it, because a ragged end brick is already a half-seated cantilever before
-		 * anybody has cut anything.
+		 * Positive control: a wall that arrived with a joint past capacity would be condemned for a
+		 * reason the void had nothing to do with. The flush end buys it — a ragged end brick is a
+		 * half-seated cantilever before anything is cut.
 		 */
 		Laid.Structure.SolveLoads();
 
@@ -1005,10 +843,9 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			}
 
 			/*
-			 * IT MUST BE A HALF SEAT AND NOTHING ELSE, arbitrated against the producer. Every
-			 * number in this file is worked from a 10.25 x 10.25 patch loaded 5.625 cm off its
-			 * own centroid, and a fixture that had quietly stopped presenting one would agree
-			 * with none of them for a reason nothing else would say out loud.
+			 * Must be a half seat and nothing else, checked against the producer. Every number here
+			 * is worked from a 10.25 x 10.25 patch loaded 5.625 cm off centroid; a fixture that
+			 * stopped presenting one would agree with none of them.
 			 */
 			const FConnection& Bed = Laid.Structure.GetConnection(Joint);
 
@@ -1049,16 +886,12 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			if (bWorthPrinting)
 			{
 				/*
-				 * THE THREE READINGS PRINTED BESIDE THE MEASUREMENT ARE BUILT FROM THE MOMENT
-				 * THIS JOINT ACTUALLY CARRIES, NOT FROM THE HAND LADDER'S.
-				 *
-				 * They coincide where the wall stops at the top of the corbel, and that is the
-				 * only place they may be quietly conflated: in a taller wall the hand ladder is
-				 * the corbel's own mass and misses everything the courses above add — on the
-				 * scenario wall by a factor of seven — so a line printed from it would read
-				 * 0.031 beside a joint reading 0.223 and look like a defect in the solver
-				 * rather than a defect in the print. The hand ladder is still printed, as the
-				 * ladder, next to what the joint carries.
+				 * The three readings printed beside the measurement use the moment this joint
+				 * actually carries, not the hand ladder's. They coincide only where the wall stops at
+				 * the top of the corbel; in a taller wall the hand ladder misses what the courses
+				 * above add (7x on the scenario wall), so a line printed from it would read 0.031
+				 * beside a joint reading 0.223 and look like a solver defect. The hand ladder is still
+				 * printed, as the ladder.
 				 */
 				AddInfo(FString::Printf(
 					TEXT("%s, course %2d: joint %d carries %s brick weights (hand ladder %s) and ")
@@ -1084,21 +917,15 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			}
 
 			/*
-			 * THE LOAD PATH FIRST, AND SEPARATELY FROM THE SECTION. Composite action is a claim
-			 * about what resists the moment, not about what the wall hands down, so the force
-			 * and the moment must both still be the hand ladder's. 2% rather than the 1e-5 the
-			 * staircase test uses, because ARCHING_DESIGN's own cross-check — the wedge's
-			 * centroid arm against the ladder's average arm — only agrees to 1.3%, so an
-			 * implementation that computed the wedge as one composite body rather than as a
-			 * ladder is inside this and is not what this row is about.
+			 * The load path first, separately from the section. Composite action changes what
+			 * resists the moment, not what the wall hands down, so force and moment must both still
+			 * be the hand ladder's. 2% rather than the staircase test's 1e-5 because ARCHING_DESIGN's
+			 * own cross-check (wedge centroid arm against ladder average arm) agrees only to 1.3%.
 			 *
-			 * AND IT IS TWO-SIDED ONLY WHERE THE WALL STOPS AT THE TOP OF THE CORBEL. The hand
-			 * ladder counts the corbel's own bricks and the half-neighbours feeding them, so it
-			 * is the WHOLE load exactly when there is nothing above the corbel to add to it.
-			 * Where the wall carries on, every one of those courses bears down through the same
-			 * rungs and the ladder can only grow — so the claim there is `at least`, which is a
-			 * statement about statics rather than about the depth rule, and it is the premise
-			 * PART 1B's one-sided argument stands on.
+			 * Two-sided only where the wall stops at the top of the corbel: there the hand ladder is
+			 * the whole load. Where the wall carries on, those courses bear down through the same
+			 * rungs and the ladder can only grow, so the claim is `at least` — the premise PART 1B's
+			 * one-sided argument stands on.
 			 */
 			const double ForceFloor = HandForceBrickWeights * (1.0 - 0.02);
 			const double MomentFloor = HandMomentBrickWeightCm * (1.0 - 0.02);
@@ -1126,20 +953,16 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 					: MeasuredMomentBrickWeightCm >= MomentFloor);
 
 			/*
-			 * AND THEN THE SECTION, WHICH IS THE SLICE. `min(patch reading, M / (t D^2 / 6))`,
-			 * both built from the hand ladder and from the depth the fixture presents.
+			 * Then the section, which is the slice: `min(patch reading, M / (t D^2 / 6))`, both from
+			 * the hand ladder and the depth the fixture presents. A dry row is asserted as an
+			 * ordering, not a number, because f_xk1 = 0 makes the answer TNumericLimits<double>::Max()
+			 * and a relative tolerance on that says nothing.
 			 *
-			 * A DRY ROW IS ASSERTED AS AN ORDERING RATHER THAN AS A NUMBER, because f_xk1 = 0
-			 * makes the answer TNumericLimits<double>::Max() and a relative tolerance on that
-			 * says nothing.
-			 *
-			 * AND NOT AT ALL WHERE THE WALL CARRIES ON ABOVE THE CORBEL, because both halves of
-			 * `Expected` are wrong there for reasons that have nothing to do with each other:
-			 * the moment is the hand ladder's rather than the heavier one the wall above
-			 * produces, and the depth is `CoursesHigh - Course`, which is the UNBOUNDED reading
-			 * and is precisely the thing under suspicion. Asserting it would pin the defect in
-			 * place. The reading is printed above with both candidate sections beside it, and
-			 * the claim those rows make is in PART 1B.
+			 * Not asserted at all where the wall carries on above the corbel: both halves of
+			 * `Expected` are wrong there — the moment is the hand ladder's, not the heavier one the
+			 * wall produces, and the depth is the unbounded `CoursesHigh - Course`, the thing under
+			 * suspicion. Asserting it would pin the defect. Printed above with both candidate
+			 * sections; the claim is in PART 1B.
 			 */
 			if (Expected >= TNumericLimits<double>::Max())
 			{
@@ -1194,10 +1017,9 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * AND THE DESIGN'S OWN FIGURE, WHERE IT PUBLISHED ONE — a factor of two either way,
-		 * which is an order-of-magnitude cross-check and nothing more. It still catches a
-		 * missing 100x, a section modulus off by the 64.8 this slice turns on, or a moment
-		 * deleted rather than re-sectioned.
+		 * The design's own figure where it published one — a factor of two either way, an
+		 * order-of-magnitude cross-check. Still catches a missing 100x, a section modulus off by the
+		 * 64.8 this slice turns on, or a moment deleted rather than re-sectioned.
 		 */
 		if (Case.DesignUtilisation > 0.0 && BottomRungJoint != INDEX_NONE)
 		{
@@ -1235,9 +1057,8 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		if (Case.Outcome == EVoidOutcome::Unasserted)
 		{
 			/*
-			 * PRINTED AND NOT ASSERTED — see EVoidOutcome. This is the only row in the file whose
-			 * verdict is downstream of a design decision nobody has made yet, so it says what
-			 * happened and claims nothing about what should have.
+			 * Printed, not asserted (see EVoidOutcome): the only row whose verdict is downstream of a
+			 * design decision nobody has made, so it reports what happened and claims nothing.
 			 */
 			int32 CorbelsLost = 0;
 
@@ -1258,15 +1079,11 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		else if (Case.Outcome == EVoidOutcome::MustStand)
 		{
 			/*
-			 * THE RULING, AS AN OUTCOME. Every corbelled brick must still reach the ground. That
-			 * is the whole of what the user decided and it is stated on the pieces rather than
-			 * on a joint: a single severed joint is not a collapse, and a wall can shed one and
-			 * stand.
-			 *
-			 * LOCAL LOSS IS ALLOWED AND IS NOT COUNTED HERE. A raking cut leaves survivors with
-			 * no bed patch AT ALL — acceptance case 20 names two of them — and composite action
-			 * cannot rescue a brick that is not sitting on anything. Those are not corbels, so
-			 * they are not in this list.
+			 * The ruling as an outcome: every corbelled brick must still reach the ground. Stated on
+			 * the pieces, not a joint — a single severed joint is not a collapse. Local loss is
+			 * allowed and not counted: a raking cut leaves survivors with no bed patch at all
+			 * (acceptance case 20 names two), which composite action cannot rescue. Those are not
+			 * corbels, so not in this list.
 			 */
 			int32 CorbelsLost = 0;
 
@@ -1288,12 +1105,10 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		else
 		{
 			/*
-			 * AND SOMETHING STILL COMES DOWN. Stated as the TOP of the corbel — the mass hanging
-			 * furthest out over nothing — losing its path to the ground, plus the bottom rung
-			 * being one of the joints that FAILED UNDER LOAD rather than one that went with a
-			 * removed piece. GetBreakPass's contract spells that encoding out: a joint that left
-			 * with its piece has HasGiven true and a pass of INDEX_NONE, because it never
-			 * snapped.
+			 * And something still comes down: the top of the corbel loses its path to the ground,
+			 * and the bottom rung is one of the joints that failed under load rather than one that
+			 * went with a removed piece. Per GetBreakPass, a joint that left with its piece has
+			 * HasGiven true and a pass of INDEX_NONE, because it never snapped.
 			 */
 			TestTrue(
 				FString::Printf(
@@ -1321,41 +1136,30 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 	 * PART 1B — THE SAME CORBEL UNDER MORE WALL. THE PROPERTY, AND THE DEFECT IT NAMES.
 	 * ===================================================================================
 	 *
-	 * THE COMPOSITE DEPTH IS MEASURED BY WALKING UP THE MASONRY UNTIL IT RUNS OUT, so the
-	 * section credited to a corbel's bottom rung is set by THE WALL'S height and the moment
-	 * bending it by THE CUT'S. While every fixture in the project had `CoursesHigh = Steps + 2`
-	 * those were one number, `k^3` of moment met `k^2` of section, and the resulting crossover
-	 * near thirty-six courses was the whole of the "something must still come down" defence.
-	 * Decouple them and the reading goes as `k^3/m^2`, the exponents stop cancelling and the
-	 * crossover moves as far up as you care to build. That is what the pairs below measure.
+	 * The composite depth is measured by walking up the masonry until it runs out, so the section
+	 * credited to a corbel's bottom rung is set by the wall's height and the moment bending it by
+	 * the cut's. While every fixture had CoursesHigh = Steps + 2 those were one number, k^3 of moment
+	 * met k^2 of section, and the crossover near 36 courses was the whole "something must come down"
+	 * defence. Decouple them and the reading goes as k^3/m^2, the crossover moves as far up as you
+	 * build. The pairs below measure that.
 	 *
-	 * THE PROPERTY, AND IT IS ASSERTED ONE-SIDED BECAUSE THE TWO-SIDED FORM IS FALSE FOR A
-	 * REASON THAT HAS NOTHING TO DO WITH THE DEPTH. The review stated it as "the two
-	 * utilisations must not diverge, because the hand ladder is unchanged between them". The
-	 * hand ladder is NOT unchanged, and the fixture says so out loud: courses added above a
-	 * corbel are full-width masonry STANDING ON IT, they bear down through every rung, and the
-	 * moment ratios printed below are what that comes to. So the honest claim is the one that
-	 * survives measuring:
+	 * The property is asserted one-sided because the two-sided form is false for a reason unrelated
+	 * to the depth: courses added above a corbel are full-width masonry standing on it, so the hand
+	 * ladder is NOT unchanged between the pair (the moment ratios below show it). The honest claim is:
 	 *
 	 *     ADDING MASONRY ON TOP OF A CORBEL MUST NOT MAKE THE CORBEL SAFER.
 	 *
-	 * More load, more overturning; whatever section the model credits, the reading may not
-	 * FALL. That is one-sided, it needs no bound to have been chosen, and it is exactly what
-	 * the defect violates — today the section grows as the square of a depth the corbel had no
-	 * part in, so the reading collapses by the ratios printed below.
+	 * More load, more overturning; whatever section the model credits, the reading may not fall. That
+	 * needs no bound to have been chosen, and it is exactly what the defect violates — today the
+	 * section grows as the square of a depth the corbel had no part in.
 	 *
-	 * WHAT THIS DISTINGUISHES, AND WHAT IT DOES NOT. It refuses the rule the code has now (all
-	 * the masonry there is). It is satisfied by a rule that credits the corbel's own courses
-	 * and by any rule that credits less — bond continuity, span-to-depth, a shear-transfer
-	 * budget — because every one of those is a fact about the cut rather than about the wall.
-	 * It is NOT a test of which of those is right, and it deliberately cannot be: the depth
-	 * each would credit for the corbel's OWN courses is printed beside the measurement so the
-	 * choice can be made with the numbers in hand. THE ONE CANDIDATE IT COULD ARGUE WITH is a
-	 * shear-transfer budget that grows with the weight standing above — more clamping, more
-	 * depth — since that could in principle credit MORE section in the taller wall. If that
-	 * rule is ever chosen and this row goes red on it, the row is the argument that the rule is
-	 * wrong rather than the other way round: a cantilever does not get stronger by having a
-	 * building put on it.
+	 * It refuses the rule the code has now (all the masonry there is) and is satisfied by a rule
+	 * crediting the corbel's own courses or less (bond continuity, span-to-depth, a shear budget),
+	 * each a fact about the cut, not the wall. It does not rank those — the depth each would credit
+	 * is printed beside the measurement. The one candidate it could argue with is a shear-transfer
+	 * budget growing with the weight above, which could credit more section in the taller wall; if
+	 * that rule is chosen and this row goes red, the row is the argument the rule is wrong — a
+	 * cantilever does not get stronger by having a building put on it.
 	 */
 	{
 		int32 PairsCompared = 0;
@@ -1374,10 +1178,9 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 				++PairsCompared;
 
 				/*
-				 * WHAT THE COMPETING DEPTH RULES WOULD SAY ABOUT THE TALLER WALL'S OWN BOTTOM
-				 * RUNG, printed side by side and derived from the moment the solver actually
-				 * publishes there rather than from the hand ladder — which, being the shorter
-				 * wall's, understates it.
+				 * What the competing depth rules would say about the taller wall's own bottom rung,
+				 * derived from the moment the solver publishes there rather than the shorter wall's
+				 * hand ladder, which understates it.
 				 */
 				const double UnboundedMPa = CompositeTensionMPa(
 					Tall.MomentBrickWeightCm, Tall.UnboundedDepthCm, BrickWidthCm);
@@ -1421,16 +1224,14 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 					*Bits(PatchMPa / MortarTensileMPa)));
 
 				/*
-				 * HOW MUCH THIS PAIR ACTUALLY DECIDES, PRINTED SO NOBODY OVERCLAIMS IT. The
-				 * property is satisfied by any depth rule crediting no more than
+				 * How much this pair actually decides, printed so nobody overclaims it. The property
+				 * is satisfied by any depth rule crediting no more than
 				 *
 				 *     D_short * sqrt(M_tall / M_short)
 				 *
-				 * to the taller wall, since the section goes as D^2 and the reading may only
-				 * be held level. That is a CEILING and not the answer: it does not force the
-				 * depth down to the corbel's own courses, and it cannot distinguish a
-				 * span-to-depth rule from a bond-continuity one from a shear budget that
-				 * happens to land under it. What it does refuse is the walk the code takes now.
+				 * to the taller wall (section goes as D^2, reading held level). A ceiling, not the
+				 * answer: it does not force depth to the corbel's own courses, nor rank the candidate
+				 * rules under it. It refuses the walk the code takes now.
 				 */
 				const double DeepestPermittedCm = Short.UnboundedDepthCm
 					* FMath::Sqrt(Tall.MomentBrickWeightCm / Short.MomentBrickWeightCm);
@@ -1445,10 +1246,9 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 					CorbelOwnDepthCm));
 
 				/*
-				 * THE PREMISE FIRST, BECAUSE THE ONE-SIDED CLAIM RESTS ENTIRELY ON IT. If the
-				 * taller wall did NOT load the corbel harder, "must not read lower" would be an
-				 * assertion about nothing. Strictly greater: twenty-odd courses of masonry
-				 * standing on a cantilever is not a rounding difference.
+				 * The premise first: the one-sided claim rests on it. If the taller wall did not load
+				 * the corbel harder, "must not read lower" would assert nothing. Strictly greater —
+				 * twenty-odd courses on a cantilever is not a rounding difference.
 				 */
 				TestTrue(
 					FString::Printf(
@@ -1459,8 +1259,8 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 					Tall.MomentBrickWeightCm > Short.MomentBrickWeightCm);
 
 				/*
-				 * AND THE PROPERTY. No tolerance, because the claim is an ORDERING rather than a
-				 * value and a slack one would be satisfied by the defect it exists to catch.
+				 * And the property. No tolerance: the claim is an ordering, not a value, and a slack
+				 * one would be satisfied by the defect it catches.
 				 */
 				TestTrue(
 					FString::Printf(
@@ -1476,10 +1276,9 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * AND THE TABLE MUST STILL CONTAIN PAIRS TO COMPARE. Every claim above is conditional on
-		 * two rows sharing a step count and a mortar, so deleting one of a pair would take the
-		 * property with it in silence — which is how the depth came to be unbounded and unseen in
-		 * the first place.
+		 * And the table must still hold pairs to compare. Every claim above is conditional on two
+		 * rows sharing a step count and mortar, so deleting one of a pair would take the property with
+		 * it silently — which is how the depth came to be unbounded and unseen.
 		 */
 		TestTrue(
 			FString::Printf(
@@ -1495,96 +1294,69 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 	 * PART 2 — THE FREE END: THE DELETION THE USER ACTUALLY MADE, AND THE RULING ITSELF.
 	 * ===================================================================================
 	 *
-	 * Delete one brick at the END of a wall and trace it. The half bat above loses its only seat
-	 * and hangs from one head joint; the full brick beside it keeps ONE bed patch and overhangs
-	 * it 5.625 cm OUTWARD, toward the free end — where there is no head joint at all, because a
-	 * wall's free vertical end simply has no edge in the graph. So slice 1's arch is refused,
-	 * correctly, and today the ladder starts and walks the failure up the wall in a stepping
-	 * triangle at 33.69 degrees.
+	 * Delete one brick at the end of a wall and trace it. The half bat above loses its only seat and
+	 * hangs from one head joint; the full brick beside it keeps one bed patch and overhangs it
+	 * 5.625 cm outward, toward the free end — where there is no head joint, because a wall's free
+	 * vertical end has no edge in the graph. So slice 1's arch is refused, correctly, and the ladder
+	 * walks the failure up the wall at 33.69 degrees.
 	 *
-	 * IT IS THE SAME SHAPE AS THE JAMB REVEAL, which is why one fixture covers both. In a
-	 * multi-course opening the brick one course below the spanning course keeps a patch on the
-	 * jamb and overhangs into the opening where its neighbour was cut away — no head joint on the
-	 * eccentric side either — and CURRENT_STATE records it as what initiates the collapse in
-	 * acceptance cases 7, 9 and 11. Slices 2, 3 and 4 cannot reach either of them.
+	 * Same shape as the jamb reveal, which is why one fixture covers both: in a multi-course opening
+	 * the brick one course below the spanning course keeps a patch on the jamb and overhangs into
+	 * the opening, no head joint on the eccentric side. CURRENT_STATE records it as the initiator of
+	 * acceptance cases 7, 9 and 11; slices 2-4 cannot reach either.
 	 *
-	 * WHAT A HALF SEAT READS UNDER COMPOSITE ACTION, AND IT IS AN IDENTITY RATHER THAN A NUMBER.
-	 * The joint carries its whole column n at the same 5.625 cm arm, so M = 5.625 n, and with m
-	 * courses of masonry over it the section is 10.25 * (7.5m)^2 / 6:
+	 * A half seat under composite action is an identity, not a number: the joint carries its column n
+	 * at the 5.625 cm arm, so M = 5.625 n, and with m courses over it the section is 10.25*(7.5m)^2/6:
 	 *
 	 *     util = 5.625 * n * W_brick / (96.09375 m^2 * 10000 * f_x1)  =  0.0223041 * n / m^2
 	 *
-	 * at the mean f_x1 = 0.70 (0.1561287 * n / m^2 on the retired characteristic 0.10),
-	 * against today's unrelieved 0.0083148 * n (was 0.058203838 * n). Left unbounded that
-	 * reading is the lesser from m = 2 upward, falls as 1/m^2, and never reaches 1.0 for any
-	 * wall this game builds — which is exactly why the depth has to be bounded by SOMETHING,
-	 * since on its own this mechanism makes every free end and every jamb unbreakable in
-	 * bending. The unbounded row is printed below and nothing is derived from it.
+	 * at mean f_x1 = 0.70 (0.1561287 * n / m^2 on the retired characteristic 0.10), against today's
+	 * unrelieved 0.0083148 * n (was 0.058203838 * n). Left unbounded that falls as 1/m^2 and never
+	 * reaches 1.0 for any wall this game builds — which is why the depth must be bounded, or the
+	 * mechanism makes every free end and jamb unbreakable in bending. The unbounded row is printed,
+	 * nothing derived.
 	 *
-	 * =========================================================================================
-	 * AND WHAT IT ACTUALLY READS IS THE ARM'S OWN IDENTITY, NOT THAT ONE. RE-DERIVED FOR
-	 * COMPOSITE_DEPTH_DESIGN.md SLICE 2, AND THE MOVE IS THE WHOLE POINT OF THE DEPTH BOUND.
-	 * =========================================================================================
+	 * What it actually reads is the arm's identity (COMPOSITE_DEPTH_DESIGN.md slice 2). The credited
+	 * depth is `min(masonry above, max(corbelling body depth, lambda*e))` with e = |M|/|F|, and here
+	 * the arm binds: 217.5 cm of masonry stands over the joint and the arm permits 38.92. The
+	 * credited depth fell to ~5 courses and the reading went 0.00226883 -> 0.07159148 on the mean
+	 * basis (0.0158818 -> 0.5011403 on the retired characteristic).
 	 *
-	 * The credited depth is `min(masonry above, max(the corbelling body's own depth, lambda*e))`
-	 * with `e = |M|/|F|`, and on this fixture the ARM is what binds: the wall has 217.5 cm of
-	 * masonry standing over the joint and the joint's own statical arm permits 38.92 of it.
-	 * The credited depth fell from the whole wall to about five courses, and the reading went
-	 * 0.00226883 -> 0.07159148 with it on the mean basis (0.0158818 -> 0.5011403 on the
-	 * retired characteristic data the slice was designed at).
-	 *
-	 * THAT IS CORRECT PHYSICS AND NOT A WEAKENING. A half seat's arm settles at 11.25 cm
-	 * however tall the column gets — its own weight acts at 5.625 and everything from above at
-	 * 11.25, so `e = (5.625 + 11.25(n-1))/n -> 11.25` — so `lambda*e` settles at about 39 cm
-	 * and the section STOPS GROWING while the load keeps coming. The reading is therefore
-	 * LINEAR in the wall's height rather than falling as 1/m^2 (the DISCRIMINATION the bound
-	 * bought survives the re-anchor even though the characteristic-era 1.97x margin became
-	 * ~14x — the mean re-anchor's free-end loss, logged in CURRENT_STATE).
-	 * `Core.Structure.AFreeEndDeletionInATallWall` measures the whole ladder —
-	 * 0.0469 / 0.0716 / 0.0963 / 0.1210 / 0.1457 at 20 / 30 / 40 / 50 / 60 courses (each /7
-	 * of the characteristic 0.3283 / 0.5011 / 0.6740 / 0.8469 / 1.0198) — and this fixture's
+	 * That is correct physics, not a weakening. A half seat's arm settles at 11.25 cm however tall
+	 * the column (e = (5.625 + 11.25(n-1))/n -> 11.25), so lambda*e settles near 39 cm and the
+	 * section stops growing while the load keeps coming. The reading is therefore linear in height,
+	 * not falling as 1/m^2 (the discrimination the bound bought survives the re-anchor even as the
+	 * margin went from 1.97x to ~14x, logged in CURRENT_STATE). `Core.Structure.AFreeEndDeletionInATallWall`
+	 * measures the whole ladder — 0.0469 / 0.0716 / 0.0963 / 0.1210 / 0.1457 at 20/30/40/50/60
+	 * courses (each /7 of the characteristic 0.3283 / 0.5011 / 0.6740 / 0.8469 / 1.0198) — and this
 	 * wall is its 30-course row.
 	 *
-	 * WHERE `lambda*e` GOVERNS THE READING COLLAPSES TO ONE IDENTITY, and it is asserted in
-	 * that form rather than as the literal 0.5011403 for the same reason PART 2's moment walk
-	 * has always been asserted as a walk: AN IDENTITY SURVIVES A CHANGE OF lambda AND A LITERAL
-	 * DOES NOT, and lambda is formally provisional until slice 3 rules on it. Substituting
-	 * `D = lambda*M/F` into `sigma = M*W/(t*D^2/6 * 10^4)`,
+	 * Where lambda*e governs, the reading collapses to one identity, asserted in that form rather
+	 * than as the literal 0.5011403: an identity survives a change of lambda and a literal does not,
+	 * and lambda is provisional until slice 3. Substituting D = lambda*M/F into
+	 * sigma = M*W/(t*D^2/6 * 10^4):
 	 *
 	 *     util  =  K * F^2 / M         K = [6*W_brick/(t * 10^4 * f_xk1)] / lambda^2
 	 *                                    = 1.561287 / lambda^2  =  0.130114883 at lambda = 3.464
 	 *
-	 * with F in brick weights and M in brick-weight-centimetres. Note it goes as F SQUARED over
-	 * M and not as M over anything: a deeper arm buys section faster than it costs moment, which
-	 * is why the same joint under a taller wall reads higher rather than lower.
+	 * F in brick weights, M in brick-weight-cm. It goes as F^2 over M: a deeper arm buys section
+	 * faster than it costs moment, which is why the same joint under a taller wall reads higher.
 	 *
-	 * THREE ROWS, AND EACH ONE IS LOAD-BEARING RATHER THAN A RESTATEMENT OF THE LAST.
+	 * Three rows, each load-bearing:
+	 *   - The arm governs: the credited depth must be lambda*e, strictly between the one course under
+	 *     the joint and the 217.5 cm over it. Without this the identity is a claim about a case that
+	 *     is not occurring.
+	 *   - The identity exactly: util == K*F^2/M on the solver's own force and moment, to 1e-12. It
+	 *     pins the section (t*(lambda*e)^2/6, reading (a), no axial relief, lambda = 3.464). It does
+	 *     not check the moment; the two rows either side do.
+	 *   - The same identity on the hand moment, at 2%, the non-circular one: K*n^2/(5.625 + 11.25(n-1))
+	 *     takes only the force from the solver and comes to 0.5063502, COMPOSITE_DEPTH_DESIGN's
+	 *     published 0.5064. The 1.04% gap is the solver's moment exceeding the two-arm walk (the half
+	 *     bat on its own arm); printed, not absorbed, and 2% is twice it.
 	 *
-	 *   - THE ARM GOVERNS. The credited depth must BE `lambda*e`, and must sit strictly between
-	 *     the one course under the joint and the 217.5 cm over it. Without this the identity is
-	 *     a claim about a case that is not occurring, and it would go silently green the day
-	 *     the wall or the floor started binding instead.
-	 *
-	 *   - THE IDENTITY, EXACTLY. `util == K*F^2/M` on the solver's own force and moment, to a
-	 *     relative 1e-12. It reproduces bit for bit, because it IS the arithmetic production
-	 *     performs, in a form derived independently of the order production performs it in;
-	 *     what it pins is that the section is `t*(lambda*e)^2/6` with NO axial relief, which is
-	 *     reading (a) of three, and that lambda is 3.464. It does not check the moment, and
-	 *     says so — the two rows either side of it are what check that.
-	 *
-	 *   - AND THE SAME IDENTITY ON THE HAND MOMENT, at 2%, WHICH IS THE NON-CIRCULAR ONE.
-	 *     `K * n^2 / (5.625 + 11.25(n-1))` takes ONLY the force from the solver — a force is not
-	 *     what this slice changes — and comes to 0.5063502, which is COMPOSITE_DEPTH_DESIGN's
-	 *     own published 0.5064 for this row. The two differ by the 1.04% the solver's moment
-	 *     exceeds the two-arm walk by, which is the half bat hanging off the head joint
-	 *     contributing on an arm of its own; the residual is measured and printed rather than
-	 *     absorbed, and 2% is twice it and slack for nothing else.
-	 *
-	 * AND ONE MORE, ACROSS FILES: the number this joint reads must be the number
-	 * `AFreeEndDeletionInATallWall` reads at thirty courses, TO THE LAST DIGIT. Two files
-	 * measuring one joint and disagreeing is worth catching on its own, and the shared literal
-	 * is `ArchingWallTestSupport::FreeEndThirtyCourseUtilisation`, which is documented there as
-	 * an agreement anchor and not as a derivation.
+	 * And one across files: this joint must read what `AFreeEndDeletionInATallWall` reads at thirty
+	 * courses to the last digit, via the shared literal
+	 * `ArchingWallTestSupport::FreeEndThirtyCourseUtilisation` (an agreement anchor, not a derivation).
 	 */
 	{
 		/** 0.1561287: 5.625 cm of arm on one brick weight over a one-course-deep section. */
@@ -1602,23 +1374,17 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			*Bits(HalfSeatCoefficient * 19.0 / (19.0 * 19.0))));
 
 		/**
-		 * lambda, SPELLED OUT HERE RATHER THAN IMPORTED FROM THE SOLVER.
-		 *
-		 * 3.464 is 2*sqrt(3), and COMPOSITE_DEPTH_DESIGN.md is explicit that it is a RULING
-		 * inside a window rather than a derivation — its floor is this very fixture's ruling
-		 * and its ceiling is PART 1B's one-sided property, and slice 3 exists so somebody
-		 * chooses knowingly. A test that read the solver's own constant would agree with a
-		 * wrong one, and this file is one of the two that decide whether it is wrong.
+		 * lambda, spelled out here rather than imported from the solver. 3.464 is 2*sqrt(3), and
+		 * COMPOSITE_DEPTH_DESIGN.md is explicit it is a ruling inside a window (floor: this fixture;
+		 * ceiling: PART 1B's property), not a derivation. A test that read the solver's constant
+		 * would agree with a wrong one, and this file is one of two that decide it.
 		 */
 		constexpr double CompositeDepthPerArm = 3.464;
 
 		/**
-		 * K = [6*W/(t * 10^4 * f_xk1)] / lambda^2, THE WHOLE IDENTITY IN ONE COEFFICIENT.
-		 *
-		 * The bracket is 1.561287 exactly and is the section arithmetic; dividing by lambda^2
-		 * is the depth rule. Kept as two factors rather than one number so that a change to
-		 * lambda moves it and a change to the brick or the mortar moves it, separately and
-		 * visibly.
+		 * K = [6*W/(t * 10^4 * f_xk1)] / lambda^2, the whole identity in one coefficient. The bracket
+		 * is 1.561287 (the section arithmetic); dividing by lambda^2 is the depth rule. Kept as two
+		 * factors so lambda and the brick/mortar move it separately and visibly.
 		 */
 		const double ArmIdentityCoefficient =
 			6.0 * BrickWeightUu / (BrickWidthCm * ForceUnitsPerMPaPerSqCm * MortarTensileMPa)
@@ -1636,14 +1402,13 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * THE DELETION: the OUTERMOST full brick of the grounded course, at x = 0.
-		 *
-		 * Course 0 runs 0, 22.5, 45 … so x = 0 is the end of the wall and there is nothing
-		 * outboard of it but the odd courses' half bats. That is the click the user made.
+		 * The deletion: the outermost full brick of the grounded course, at x = 0. Course 0 runs
+		 * 0, 22.5, 45 …, so x = 0 is the wall's end with nothing outboard but the odd courses' half
+		 * bats. The click the user made.
 		 */
 		const int32 EndBrick = StaircasePieceAt(Laid.Boxes, ArchSupport::ArchWallEvenBrickXCm(0), ArchSupport::ArchWallCourseZCm(0));
 
-		/* The brick left half-seated by it: course 1's first full brick, overhanging outward. */
+		// The brick left half-seated by it: course 1's first full brick, overhanging outward.
 		const int32 HalfSeated =
 			StaircasePieceAt(Laid.Boxes, ArchSupport::ArchWallOddBrickXCm(0), ArchSupport::ArchWallCourseZCm(1));
 
@@ -1672,9 +1437,9 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 			const FConnection& Bed = Laid.Structure.GetConnection(Seat);
 
 			/*
-			 * AND IT OVERHANGS OUTWARD, TOWARD THE FREE END, which is the whole reason slice 1
-			 * refuses to arch it: the eccentric side is where the wall stops. A fixture that had
-			 * drifted into overhanging INWARD would be measuring the arch instead.
+			 * And it overhangs outward, toward the free end — the reason slice 1 refuses to arch it:
+			 * the eccentric side is where the wall stops. A fixture overhanging inward would be
+			 * measuring the arch instead.
 			 */
 			const double EccentricityCm =
 				Laid.Boxes[HalfSeated].CentreCm.X - Bed.InterfaceCentreCm.X;
@@ -1690,28 +1455,21 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 				FMath::Abs(Laid.Structure.GetConnectionForce(Seat).Z) / BrickWeightUu;
 
 			/*
-			 * THE MOMENT IS A TWO-ARM WALK, NOT ONE ARM, AND THAT IS MEASURED RATHER THAN
-			 * ASSUMED — the first version of this row assumed `5.625 * n` and was wrong by
-			 * exactly a factor of two, which is what a fixture is for.
-			 *
-			 * The brick's OWN weight acts at its centre, 5.625 cm from the centroid of the seat
-			 * it keeps. EVERYTHING ARRIVING FROM ABOVE does not: the brick over it rests on this
-			 * one and on the half bat outboard, and the patch it hands its share down through
-			 * sits a further half step INBOARD — 11.25 cm from the seat this brick leaves by.
-			 * So the free-end rung is
+			 * The moment is a two-arm walk, not one arm, and measured rather than assumed — the first
+			 * version assumed 5.625 * n and was wrong by exactly a factor of two. The brick's own
+			 * weight acts at its centre, 5.625 cm from the seat it keeps; everything from above hands
+			 * its share down through a patch a further half step inboard, 11.25 cm from that seat. So
+			 * the free-end rung is
 			 *
 			 *     M = 5.625 * 1 + 11.25 * (n - 1)
 			 *
-			 * which is the first rung of exactly the ladder ARCHING_DESIGN says the free end
-			 * walks, and it is the same recursion the raking corbel above is built from. The
-			 * solver publishes 1.04% more than that on this fixture — the half bat hanging off
-			 * the head joint contributes its share on an arm of its own, which the two-arm walk
-			 * does not model — so the claim is made at 2% and the residual is printed.
+			 * the first rung of ARCHING_DESIGN's free-end ladder, the same recursion as the raking
+			 * corbel above. The solver publishes 1.04% more (the half bat on its own arm, not modelled
+			 * by the two-arm walk), so the claim is at 2% and the residual printed.
 			 *
-			 * DERIVED, NOT READ BACK. Building the expectation out of GetConnectionMoment is the
-			 * trap CURRENT_STATE records: the section this slice changes also changes what that
-			 * quantity is worth, so an oracle standing on it agrees with whatever landed. Only
-			 * the FORCE comes from the solver, and a force is not what this slice changes.
+			 * Derived, not read back: building the expectation from GetConnectionMoment is the trap
+			 * CURRENT_STATE records — the section this slice changes also changes what that quantity is
+			 * worth. Only the force comes from the solver, and a force is not what this slice changes.
 			 */
 			const double MeasuredMomentBrickWeightCm =
 				Laid.Structure.GetConnectionMoment(Seat).Size() / BrickWeightUu;
@@ -1733,10 +1491,9 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 					<= 0.02 * HandMomentBrickWeightCm);
 
 			/*
-			 * WHAT THE WALL OFFERS, WHAT THE ARM PERMITS, AND WHAT THE JOINT WAS ACTUALLY
-			 * CREDITED. The wall has 29 courses over this joint; the arm permits about five of
-			 * them. Both are stated so a reading that moved says WHICH of the three terms of
-			 * `min(above, max(body, lambda*e))` moved.
+			 * What the wall offers, what the arm permits, and what the joint was credited: 29 courses
+			 * over the joint, the arm permits about five. Both stated so a moved reading says which
+			 * term of `min(above, max(body, lambda*e))` moved.
 			 */
 			const int32 CoursesOfDepth = ArchSupport::ArchWallSpec().CoursesHigh - 1;
 
@@ -1770,12 +1527,10 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 				*Bits(Utilisation)));
 
 			/*
-			 * ROW ONE: THE ARM GOVERNS, AND IT HAS TO BE ESTABLISHED BEFORE THE IDENTITY IS
-			 * WORTH ANYTHING. `util = K*F^2/M` is what the reading collapses to only where
-			 * `lambda*e` is the binding term; if the wall or the corbelling body were binding
-			 * instead, the identity would be a claim about a case that is not occurring and
-			 * would go green while measuring something else entirely. STRICTLY between the two,
-			 * so neither bound is merely equal to it by luck.
+			 * Row one: the arm governs, established before the identity is worth anything.
+			 * util = K*F^2/M only holds where lambda*e binds; if the wall or the corbelling body bound
+			 * instead, the identity would go green while measuring something else. Strictly between the
+			 * two, so neither bound equals it by luck.
 			 */
 			TestTrue(
 				FString::Printf(
@@ -1795,13 +1550,11 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 				CreditedDepthCm > CoursePitchCm && CreditedDepthCm < MasonryStandingOverItCm);
 
 			/*
-			 * ROW TWO: THE IDENTITY, EXACTLY. Substituting D = lambda*M/F into the section
-			 * arithmetic gives util = K*F^2/M with no D left in it, and it reproduces the
-			 * reading bit for bit — so 1e-12 relative is slack for a different order of
-			 * operations and for nothing else. WHAT IT PINS is the section: t*(lambda*e)^2/6,
-			 * reading (a), no axial relief, and lambda = 3.464. WHAT IT DOES NOT PIN is the
-			 * moment, since M appears on both sides; the two-arm walk above and row three
-			 * below are what check that, and they take only the force from the solver.
+			 * Row two: the identity, exactly. Substituting D = lambda*M/F gives util = K*F^2/M with no
+			 * D left, reproducing the reading bit for bit, so 1e-12 relative is slack only for a
+			 * different order of operations. It pins the section (t*(lambda*e)^2/6, reading (a), no
+			 * axial relief, lambda = 3.464), not the moment (M is on both sides); the two-arm walk and
+			 * row three check that, taking only the force from the solver.
 			 */
 			const double IdentityOnSolverLoads = SeatMomentUuCm.Size() > 0.0
 				? ArmIdentityCoefficient * (SeatForceUu.Size() / BrickWeightUu)
@@ -1822,13 +1575,11 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 					<= 1.0e-12 * FMath::Max(IdentityOnSolverLoads, 1.0e-12));
 
 			/*
-			 * ROW THREE: THE SAME IDENTITY WITH THE MOMENT DERIVED RATHER THAN READ BACK, which
-			 * is the one that is not circular. Only the force comes from the solver, and a force
-			 * is not what this slice changes. It comes to 0.5063502 against the reading's
-			 * 0.5011403 — 1.04% apart, which is exactly the residual the two-arm walk leaves and
-			 * which is printed above — and 0.5063502 is COMPOSITE_DEPTH_DESIGN.md's own
-			 * published figure for this row, to four digits. That figure is being used as a
-			 * cross-check here and it FAILS IN THE TEST rather than being tuned away.
+			 * Row three: the same identity with the moment derived, not read back — the non-circular
+			 * one. Only the force comes from the solver. It comes to 0.5063502 against the reading's
+			 * 0.5011403, 1.04% apart (the two-arm walk residual printed above), and 0.5063502 is
+			 * COMPOSITE_DEPTH_DESIGN.md's published figure to four digits — used as a cross-check that
+			 * fails in the test rather than being tuned away.
 			 */
 			const double IdentityOnTheHandWalk = ArmIdentityCoefficient
 				* ColumnBrickWeights * ColumnBrickWeights / HandMomentBrickWeightCm;
@@ -1846,11 +1597,10 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 					<= 0.02 * FMath::Max(IdentityOnTheHandWalk, 1.0e-12));
 
 			/*
-			 * AND THE CROSS-FILE ROW. `Core.Structure.AFreeEndDeletionInATallWall` cuts the same
-			 * brick out of the same 7 x 30 wall and reads the same seat, so the two files are
-			 * one measurement made twice. Held to the LAST DIGIT, against the literal both of
-			 * them share — two files measuring one joint and disagreeing is worth catching on
-			 * its own, and it is the only thing this literal is for.
+			 * The cross-file row. `Core.Structure.AFreeEndDeletionInATallWall` cuts the same brick out
+			 * of the same 7 x 30 wall and reads the same seat, so the two files are one measurement
+			 * made twice. Held to the last digit against the shared literal — two files disagreeing on
+			 * one joint is worth catching, the only thing this literal is for.
 			 */
 			TestTrue(
 				FString::Printf(
@@ -1862,13 +1612,10 @@ bool FStructureCompositeDepthTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * AND THE RULING, AS AN OUTCOME: THE WALL DOES NOT COME DOWN.
-		 *
-		 * One brick is deliberately allowed to be lost, and exactly one is available to lose:
-		 * course 1's flush half bat sat entirely on the deleted brick, so it has no bed patch at
-		 * all, and composite action has nothing to offer a piece that is not resting on
-		 * anything. Counted rather than named, so a second unseated piece appearing anywhere
-		 * fails here.
+		 * The ruling as an outcome: the wall does not come down. Exactly one brick may be lost —
+		 * course 1's flush half bat sat entirely on the deleted brick, so it has no bed patch and
+		 * composite action cannot help a piece resting on nothing. Counted, not named, so a second
+		 * unseated piece anywhere fails here.
 		 */
 		int32 SeatlessAfterTheCut = 0;
 
