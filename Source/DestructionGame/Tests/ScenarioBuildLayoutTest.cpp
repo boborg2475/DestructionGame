@@ -8,36 +8,13 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE SUBSYSTEM CAN STAND UP ANY LAYOUT, NOT ONLY A RUNNING-BOND WALL.
+ * BuildLayout stands up any layout, not only a running-bond wall; BuildRunningBond is RunningBond
+ * followed by BuildLayout. The fixture is a hand-built stepped arm of mixed sizes, so an
+ * implementation that re-runs RunningBond or only handles walls fails.
  *
- * WHY THE GENERAL DOOR HAS TO EXIST. `BuildRunningBond` takes an `FRunningBondSpec`, so the only
- * structure this subsystem can put into a world is a running-bond wall — the corbel family, the
- * staircase and every acceptance wall are laid by other producers, and
- * `Tests/CorbelScreenshotTest.cpp` hand-rolls a spawn loop because there was no other way in. A
- * second spawn loop is a second answer to where a brick goes, how much it weighs and which ref it
- * carries, and this project has already paid twice for two answers to one question. So the seam
- * is the LAYOUT, which every producer already emits: `BuildRunningBond` becomes `RunningBond`
- * then `BuildLayout`, and nothing else changes.
- *
- * WHAT IS ASSERTED, AND WHAT IS DELIBERATELY NOT. The layout under test is HAND-BUILT and
- * deliberately not a running bond: three boxes in a stepped arm, two mixed sizes, one grounded. A
- * `BuildLayout` implemented by sniffing the layout and calling `RunningBond` again would fail on
- * it, and so would one that only ever handles wall-shaped input.
- *
- * Per piece: one live `ABrickActor`, standing where the box says and the size the box says, told
- * its own `FPieceRef`, resolving back through the binding, and carrying the mass the layout gave
- * it — a general door that forgot the mass would leave every brick weighing whatever its mesh
- * volume implies, which nothing on screen would look wrong about.
- *
- * A REFUSED ADOPTION SPENDS NO ID — a new claim, asserted the only way it can be: by refusing a
- * build and checking that the NEXT successful build gets the id the refused one would have had.
- * An id spent on nothing is a hole in the numbering, and every brick carries its structure id.
- *
- * NOT ASSERTED HERE: everything `World.Brick.SpawnedWallMatchesItsLayout` already pins about a
- * running-bond wall — mobility, tick, the trace, the two brick masses. This is about the door,
- * not the wall behind it.
- *
- * NEEDS A TICKING WORLD: it needs a world, to spawn actors into. It never ticks one.
+ * Per piece: a live ABrickActor at the box's bounds, carrying the layout's mass and its own
+ * FPieceRef, resolving back through the binding. A refused build spends no structure id. Wall
+ * specifics are in World.Brick.SpawnedWallMatchesItsLayout. Needs a world, never ticks it.
  */
 namespace ScenarioBuildLayoutTestSupport
 {
@@ -45,29 +22,22 @@ namespace ScenarioBuildLayoutTestSupport
 	using namespace DestructionProfiles;
 
 	/*
-	 * --- a structure that is deliberately not a wall -------------------------------------
-	 *
-	 * A three-piece stepped arm. Piece 0 is a full brick on the ground; piece 1 is a full brick
-	 * one course up, stepped half a cell out; piece 2 is a half bat on the course above that,
-	 * stepped again. Two sizes, two masses, one grounded piece and two bed joints — everything a
-	 * spawner could get uniformly wrong differs between at least two pieces.
-	 *
-	 * The numbers are the standard brick and joint, restated here rather than imported, so a
-	 * fixture that drifted from the coordinating grid says so.
+	 * Stepped arm: a grounded brick, a brick one course up stepped half a cell, then a half bat
+	 * stepped again. Two sizes, two masses. Standard dimensions restated rather than imported.
 	 */
 	constexpr double ScenarioBuildLayoutBrickLengthCm = 21.5;
 	constexpr double ScenarioBuildLayoutBrickWidthCm = 10.25;
 	constexpr double ScenarioBuildLayoutBrickHeightCm = 6.5;
 	constexpr double ScenarioBuildLayoutJointCm = 1.0;
 
-	/** The coordinating grid: 22.5 x 11.25 x 7.5, and the step is half a cell along a course. */
+	/** Coordinating grid 22.5 x 11.25 x 7.5; the step is half a cell. */
 	constexpr double ScenarioBuildLayoutCoursePitchCm =
 		ScenarioBuildLayoutBrickHeightCm + ScenarioBuildLayoutJointCm;
 
 	constexpr double ScenarioBuildLayoutStepCm =
 		(ScenarioBuildLayoutBrickLengthCm + ScenarioBuildLayoutJointCm) / 2.0;
 
-	/** A half bat is what is left of a brick once one joint is taken out of its length. */
+	/** Half bat: (brick length - one joint) / 2. */
 	constexpr double ScenarioBuildLayoutHalfBatLengthCm =
 		(ScenarioBuildLayoutBrickLengthCm - ScenarioBuildLayoutJointCm) / 2.0;
 
@@ -86,14 +56,9 @@ namespace ScenarioBuildLayoutTestSupport
 	}
 
 	/**
-	 * The arm, laid by hand: boxes, masses, grounding and the two bed joints between them.
+	 * Lay the arm by hand; joints go through MakeInterface, production's only interface producer.
 	 *
-	 * MakeInterface is used for the joints and nothing else is — it is production's only route
-	 * to an interface area and a normal, and writing one here would be a second producer of the
-	 * quantity the whole solver consumes. What this fixture supplies is the pairs, the half
-	 * `RunningBond` supplies for a wall.
-	 *
-	 * @return false if the arm could not be laid, which is a broken fixture rather than a result.
+	 * @return false if the fixture is broken.
 	 */
 	inline bool ScenarioBuildLayoutSteppedArm(FBrickLayout& Out)
 	{
@@ -147,7 +112,7 @@ namespace ScenarioBuildLayoutTestSupport
 		return true;
 	}
 
-	/** Mass from geometry, derived here rather than imported — see BrickWorldTestSupport.h. */
+	/** Mass from geometry, derived here rather than imported. */
 	inline double ScenarioBuildLayoutMassKg(const FPieceBox& Box)
 	{
 		const double VolumeCubicCm =
@@ -156,14 +121,7 @@ namespace ScenarioBuildLayoutTestSupport
 		return VolumeCubicCm * ClayBrick.DensityGramsPerCubicCm / 1000.0;
 	}
 
-	/**
-	 * Every claim about one built structure: one brick per piece, in the right place, at the
-	 * right weight, carrying the right identity.
-	 *
-	 * Written once because it is asserted twice — of the hand-built arm, and of the wall
-	 * `BuildRunningBond` produces, which must be the same structure `BuildLayout` produces from
-	 * the same layout. Two copies of it would be two standards for what "built" means.
-	 */
+	/** Check a built structure: one brick per piece, correctly placed, weighted, and identified. */
 	inline void ScenarioBuildLayoutCheckBuilt(
 		FAutomationTestBase& Test,
 		const TCHAR* Label,
@@ -200,9 +158,7 @@ namespace ScenarioBuildLayoutTestSupport
 				continue;
 			}
 
-			/* On bounds, not the actor's location: SM_Cube's pivot is a corner, so an actor placed
-			 * at a box's centre puts the mesh a half-size out on all three axes while
-			 * GetActorLocation agrees with the layout perfectly — see BrickWorldTestSupport.h. */
+			// Bounds, not actor location: SM_Cube's pivot is a corner (BrickWorldTestSupport.h).
 			const FBox BoundsCm = Brick->GetComponentsBoundingBox(/*bNonColliding*/ true);
 
 			Test.TestTrue(
@@ -219,9 +175,7 @@ namespace ScenarioBuildLayoutTestSupport
 					&& BoundsCm.GetExtent().Equals(
 						Box.ExtentCm, BrickWorldTestSupport::BoundsToleranceCm));
 
-			/* The mass the layout already derived, read back as the configured override: a
-			 * kinematic body may report no mass at all, so GetMass here risks being 0 == 0 — the
-			 * override is what SetMassOverrideInKg wrote. Same reasoning as BrickActorTest.cpp. */
+			// Read the mass override, since a kinematic body may report GetMass as 0.
 			const double ExpectedMassKg = ScenarioBuildLayoutMassKg(Box);
 
 			const FBodyInstance* const Body = Brick->GetMesh() != nullptr
@@ -247,9 +201,7 @@ namespace ScenarioBuildLayoutTestSupport
 							static_cast<double>(Body->GetMassOverride()) - ExpectedMassKg) < 1.0e-4);
 			}
 
-			/* And it knows who it is: there is no actor-to-handle map anywhere in this subsystem,
-			 * so a brick told nothing, or told somebody else's index, is a brick the player can
-			 * see and cannot click. */
+			// There is no actor-to-handle map, so a wrong ref makes the brick unclickable.
 			Test.TestTrue(
 				*FString::Printf(
 					TEXT("%s: piece %d's brick must carry ref {%d, %d}; it carries {%d, %d}"),
@@ -305,7 +257,7 @@ bool FScenarioBuildLayoutTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* --- ONE: a layout nothing in production produces, stood up in the world -------------- */
+	// One: a layout no production producer emits.
 
 	const int32 ArmId = TestWorld.Subsystem->BuildLayout(Arm);
 
@@ -328,7 +280,7 @@ bool FScenarioBuildLayoutTest::RunTest(const FString& Parameters)
 			ArmId));
 	}
 
-	/* --- TWO: a second build is a second structure, not the same one over again ----------- */
+	// Two: a second build is a second structure.
 
 	const int32 SecondArmId = TestWorld.Subsystem->BuildLayout(Arm);
 
@@ -341,22 +293,13 @@ bool FScenarioBuildLayoutTest::RunTest(const FString& Parameters)
 			&& TestWorld.Subsystem->Find(SecondArmId) != nullptr
 			&& TestWorld.Subsystem->Find(ArmId) != nullptr);
 
-	/* --- THREE: a refused adoption writes nothing and spends no id ------------------------ */
+	// Three: a refused build writes nothing and spends no id.
 
 	{
-		/*
-		 * An empty layout and a desynced one — the two things AdoptLayout refuses at the door.
-		 * The desynced one matters: RunningBond can genuinely produce a layout with one more box
-		 * than pieces, and a build that adopted it index-by-index would launder a known-bad input
-		 * into the one type whose whole contract is that its two arrays cannot desync.
-		 */
+		// An empty layout and one with more boxes than pieces (RunningBond can produce one).
 		FBrickLayout Nothing;
 
-		/*
-		 * The spare box is copied out first: TArray::Add asserts on an element that already lives
-		 * in the array being grown, so `Boxes.Add(Boxes[0])` is a hard crash rather than a
-		 * duplicate. (It really is: this was written that way first.)
-		 */
+		// Copied out first: TArray::Add asserts when adding an element of the same array.
 		const FPieceBox SpareBox = Arm.Boxes[0];
 
 		FBrickLayout Desynced = Arm;
@@ -384,11 +327,7 @@ bool FScenarioBuildLayoutTest::RunTest(const FString& Parameters)
 			TestWorld.Subsystem->Find(RefusedEmpty) == nullptr
 				&& TestWorld.Subsystem->Find(RefusedDesynced) == nullptr);
 
-		/*
-		 * And the numbering is untouched — the claim the two rows above cannot make on their own.
-		 * Two builds have succeeded and two have been refused, so the next id must follow the
-		 * second SUCCESS: a refusal that spent an id leaves a hole every brick carries a copy of.
-		 */
+		// The next id must follow the second success, not the refusals.
 		const int32 NextId = TestWorld.Subsystem->BuildLayout(Arm);
 
 		TestTrue(
@@ -399,7 +338,7 @@ bool FScenarioBuildLayoutTest::RunTest(const FString& Parameters)
 			NextId == SecondArmId + 1);
 	}
 
-	/* --- FOUR: BuildRunningBond is this door with RunningBond in front of it -------------- */
+	// Four: BuildRunningBond equals BuildLayout(RunningBond(Spec)).
 
 	{
 		const FRunningBondSpec Spec = WallSpec();
@@ -431,9 +370,7 @@ bool FScenarioBuildLayoutTest::RunTest(const FString& Parameters)
 			return true;
 		}
 
-		/* Both are checked against the same layout, which makes this an EQUIVALENCE rather than
-		 * two separate characterisations: BuildRunningBond(Spec) must produce exactly what
-		 * BuildLayout(RunningBond(Spec)) produces, brick for brick. */
+		// Both checked against the same layout, making this an equivalence.
 		ScenarioBuildLayoutCheckBuilt(
 			*this, TEXT("BuildRunningBond's own wall"), *FromSpec, SpecId, Laid);
 

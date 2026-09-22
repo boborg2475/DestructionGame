@@ -2,22 +2,12 @@
 
 #include "Core/WallCases.h"
 
-/*
- * File-local names sit in the NAMED namespace and carry a WallCases prefix. An anonymous namespace
- * is private to a TRANSLATION UNIT rather than to a file, and a unity build merges many files into
- * one — so two file-local names that collide are a hard compile error between files that never
- * refer to each other. See CURRENT_STATE.md.
- */
+// File-local names use a WallCases prefix in the named namespace, because of unity builds.
 namespace DestructionWallCases
 {
 	/**
-	 * THE SHORTEST CLOSING PIECE THIS PRODUCER WILL LAY AT A COURSE'S LEFT END, cm.
-	 *
-	 * A course laid right-to-left rarely divides exactly, leaving a cut brick at the left end.
-	 * Below this it is dropped instead: a two-centimetre sliver has a plausible mass and an
-	 * implausible joint, and would sit at the FAR end from every corbel and header these walls
-	 * exist to measure while being the first thing to break. 4 cm is comfortably under the
-	 * 10.25 cm half bat a flush wall really closes with, and over anything laid by accident.
+	 * Shortest cut piece laid at a course's left end, cm; anything shorter is dropped as a sliver
+	 * that would break first. Well under the 10.25 cm half bat a flush wall closes with.
 	 */
 	constexpr double WallCasesMinClosingPieceCm = 4.0;
 
@@ -26,18 +16,12 @@ namespace DestructionWallCases
 		using namespace DestructionLayout;
 
 		/*
-		 * EMPTIED FIRST AND FILLED LAST, so a refused spec leaves a caller who ignored the return
-		 * value with nothing rather than whatever it laid before giving up. Guards are written as
-		 * `!(x > 0)` and never as `x <= 0`, because every comparison against a NaN is false: a NaN
-		 * dimension would slip PAST the second spelling and be laid as a wall of NaN-sized bricks
-		 * whose every joint reads as intact.
+		 * Emptied first and filled last, so a refusal leaves nothing. Guards are `!(x > 0)`, not
+		 * `x <= 0`, so NaN is refused.
 		 */
 		OutWall = FWallLayout();
 
-		/*
-		 * A course one brick wide is not a wall: there is nothing for the course above to span, so
-		 * a bond of any kind is meaningless and every case below it measures nothing.
-		 */
+		// One cell wide leaves nothing for a bond to span.
 		if (Spec.CoursesHigh < 1 || Spec.Cells < 2)
 		{
 			return false;
@@ -56,11 +40,7 @@ namespace DestructionWallCases
 			return false;
 		}
 
-		/*
-		 * A joint as long as the brick leaves a half bat of zero length or less, so the half-cell
-		 * offset no longer lands inside the brick below. Written as the strict inequality it
-		 * needs, not its negation, so a NaN thickness is refused too.
-		 */
+		// A joint as long as the brick leaves no half bat; written so NaN is refused too.
 		if (!(Spec.JointThicknessCm < Spec.BrickSizeCm.X))
 		{
 			return false;
@@ -71,12 +51,7 @@ namespace DestructionWallCases
 			return false;
 		}
 
-		/*
-		 * A corbel that does not step out is not a corbel, and a NaN step is worse: each course's
-		 * right face is pushed out by a multiple of this, so a NaN would make every corbelled
-		 * course's face NaN, fail the `while` below on the first comparison, and lay a wall that
-		 * silently STOPS at the first stepped course while still reporting success.
-		 */
+		// A NaN corbel step would silently stop the wall at the first stepped course.
 		if (Spec.CorbelFromCourse != INDEX_NONE
 			&& (!(Spec.CorbelStepCm > 0.0) || !FMath::IsFinite(Spec.CorbelStepCm)))
 		{
@@ -89,24 +64,22 @@ namespace DestructionWallCases
 		const double JointCm = Spec.JointThicknessCm;
 
 		/*
-		 * THE COORDINATING GRID. A brick plus a joint is one CELL along the wall and one COURSE up;
-		 * running bond offsets alternate courses by half a cell, and a half bat is a brick minus a
-		 * joint, halved — so a half bat plus a joint is exactly the half cell a flush end makes up.
+		 * Coordinating grid: brick plus joint is one cell along and one course up. A half bat plus a
+		 * joint is exactly the half cell a flush end makes up.
 		 */
 		const double CellPitchCm = BrickLengthCm + JointCm;
 		const double CoursePitchCm = BrickHeightCm + JointCm;
 		const double HalfCellCm = CellPitchCm * 0.5;
 		const double HalfBatLengthCm = (BrickLengthCm - JointCm) * 0.5;
 
-		/** Every wall has its left face here, so cell 0 is the first full brick. */
+		// Left face, so cell 0 is the first full brick.
 		const double LeftFaceCm = -BrickLengthCm * 0.5;
 
-		/** The right face of the flush rectangle every course is measured from. */
 		const double FlushRightFaceCm = (Spec.Cells - 1) * CellPitchCm + BrickLengthCm * 0.5;
 
 		FWallLayout Laid;
 
-		/** Piece handles by course, in the order they were laid, so joints can be offered in pairs. */
+		// Piece handles by course, in laying order.
 		TArray<TArray<int32>> HandlesInCourse;
 
 		for (int32 Course = 0; Course < Spec.CoursesHigh; ++Course)
@@ -114,9 +87,7 @@ namespace DestructionWallCases
 			const double CentreZCm = BrickHeightCm * 0.5 + Course * CoursePitchCm;
 
 			/*
-			 * ONE RULE, NOT FOUR SPECIAL CASES. A course is two numbers — where its right face is,
-			 * and how long its rightmost piece is — and running bond, stack bond, a corbel and a
-			 * projecting header are all values of those two:
+			 * A course is its right face and its rightmost piece's length:
 			 *
 			 *      running bond    right face fixed; odd courses close with a half bat at the right
 			 *      stack bond      right face fixed; every course closes with a full brick
@@ -143,11 +114,7 @@ namespace DestructionWallCases
 
 			TArray<int32> Handles;
 
-			/*
-			 * LAID RIGHT TO LEFT, AND THE DIRECTION IS PART OF THE PRODUCER RATHER THAN A TASTE. A
-			 * course rarely divides exactly, so somewhere in it there is a cut piece; laying from the
-			 * right puts that piece at the LEFT end, far from every corbel and header under test.
-			 */
+			// Laid right to left so any cut piece lands at the left end, away from corbels and headers.
 			while (RightCm - LeftFaceCm >= WallCasesMinClosingPieceCm)
 			{
 				double LeftCm = RightCm - LenCm;
@@ -167,19 +134,11 @@ namespace DestructionWallCases
 				Box.CentreCm = FVector((LeftCm + RightCm) * 0.5, 0.0, CentreZCm);
 				Box.ExtentCm = FVector(LenCm, BrickDepthCm, BrickHeightCm) * 0.5;
 
-				/*
-				 * THE BOX'S CENTRE IS THE CENTRE OF MASS — a brick is homogeneous and its mass came
-				 * off that same box. Without it a wall has no eccentricity at all and every corbel in
-				 * it reads as though its weight acted through the middle of its support, which is
-				 * exactly the state FStructure::HasCompleteGeometry exists to make askable.
-				 */
+				// The box centre is the centre of mass; without it the wall has no eccentricity.
 				const int32 Handle = Laid.Layout.Structure.AddPiece(
 					PieceMassKg(Box, Spec.DensityGramsPerCubicCm), Course == 0, Box.CentreCm);
 
-				/*
-				 * A REFUSED PIECE REFUSES THE WALL. The handle IS the box index, so laying the box
-				 * anyway would put every piece after it on somebody else's mass and geometry.
-				 */
+				// The handle is the box index, so a refused piece refuses the wall.
 				if (Handle == INDEX_NONE)
 				{
 					return false;
@@ -198,11 +157,8 @@ namespace DestructionWallCases
 		}
 
 		/*
-		 * THE PAIRS: neighbours along a course, and every piece of the course below. Offering the
-		 * whole course below, rather than working out which pieces something spans, keeps the
-		 * mixed-size and corbelled courses honest — MakeInterface refuses the pairs that turn out
-		 * to be diagonals. Courses two apart are never offered; a brick shorter than the course
-		 * pitch cannot reach.
+		 * Offer neighbours along a course and every piece of the course below; MakeInterface
+		 * rejects pairs that do not touch.
 		 */
 		for (int32 Course = 0; Course < HandlesInCourse.Num(); ++Course)
 		{
@@ -249,13 +205,8 @@ namespace DestructionWallCases
 	}
 
 	/**
-	 * Whether one rectangle names this piece.
-	 *
-	 * STRICT ON THE CELL BOUNDS, the vocabulary rather than a rounding decision: every brick centre
-	 * in these walls is an exact multiple of a quarter cell, at least an eighth clear of any bound.
-	 *
-	 * A NaN CELL IS IN NO REGION, since every comparison against a NaN is false — the fail-closed
-	 * direction: a brick nobody can place names nothing rather than everything.
+	 * Whether a region contains this piece. Strict on cell bounds (centres sit at least an eighth
+	 * of a cell clear); a NaN cell is in no region.
 	 */
 	static bool WallCasesRegionContains(const FWallRegion& Region, int32 Course, double Cell)
 	{
@@ -272,10 +223,7 @@ namespace DestructionWallCases
 	{
 		OutPieces.Reset();
 
-		/*
-		 * THE THREE ARRAYS ARE PARALLEL OR THERE IS NO GRID TO RESOLVE AGAINST — a wall missing
-		 * (course, cell) for some pieces would otherwise name whichever bricks happened to have one.
-		 */
+		// The three arrays must be parallel, or there is no grid to resolve against.
 		if (Wall.CourseOf.Num() != Wall.Layout.Boxes.Num()
 			|| Wall.CellOf.Num() != Wall.Layout.Boxes.Num())
 		{

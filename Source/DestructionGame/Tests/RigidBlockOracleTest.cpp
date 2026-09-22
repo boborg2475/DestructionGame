@@ -14,94 +14,46 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE RIGID-BLOCK ORACLE'S OWN VALIDATION SET — DESIGN.md §7 evolution step 3, slice 1.
+ * Validation set for the rigid-block oracle (DESIGN.md §7 step 3, slice 1). Every expected
+ * lambda* is hand-worked limit analysis from the brick, the profile figures and an
+ * independently derived unit conversion; nothing is transcribed from the oracle or production.
  *
- * Every expected lambda* below is HAND-WORKED LIMIT ANALYSIS, derived in this file from
- * the brick, the published profile figures and an independently derived unit conversion.
- * Nothing is transcribed from the oracle, and nothing is transcribed from production:
- * the oracle exists to disagree with production where production is wrong, so its
- * validation must stand on statics done by hand.
+ * Derivation pattern: a joint's two contact normal forces are fixed by equilibrium of the body
+ * above (n1 + n2 = V, (n2 - n1) * h = M, h the contact half-spacing), so
  *
- * THE DERIVATION PATTERN, used throughout. Each hand answer rests on one fact about the
- * two-contact-point discretisation: a joint's contact normal forces are DETERMINED by
- * the equilibrium of the body above it (n1 + n2 = the vertical resultant V, and
- * (n2 - n1) * h = the moment M about the joint centre, h the contact half-spacing), so
+ *     n_inboard  = V/2 - M/(2h)   >= -f_t*Conv*A/2  (tension)
+ *     n_outboard = V/2 + M/(2h)   <=  f_c*Conv*A/2  (crushing)
  *
- *     n_inboard = V/2 - M/(2h)      and lambda* is the largest lambda at which every
- *     n_outboard = V/2 + M/(2h)     joint's n_inboard >= -f_t*Conv*A/2  (tension)
- *                                   and n_outboard <= f_c*Conv*A/2      (crushing)
+ * For a single-column chain these are the only admissible force systems, so the answer is exact.
  *
- * For a single-column chain (every block exactly one seat below, one load above) these
- * are the ONLY admissible force systems, so the hand answer is exact, not a bound.
+ * Classes pinned:
+ *   - Tipping: resultant inside the bearing; a resultant exactly at the edge stands (closed set).
+ *   - Sliding: Mohr-Coulomb rows; the mortar row embeds the 10000 uu conversion, so a 100x
+ *     slip fails it.
+ *   - Crushing: f_c*Conv*A/W centred, exactly half at a knife edge.
+ *   - Finite tension: the acceptance lean (10 cm/course) stands at 5/8 courses and falls at
+ *     30/40; the same geometry dry at 5 courses has lambda* = 0.
+ *   - One-cell jamming: a half-seated dry brick alone falls. With an abutting head joint a
+ *     feasible system exists (seat edge carries W, head top contact n_h = 0.5*W/7.0, friction
+ *     at 10.2%), so the oracle stands it. This deliberately disagrees with production's
+ *     one-cell gate, which measures thrust at the head joint's centroid (arm 3.75 cm) rather
+ *     than its edge (7.0 cm).
  *
- * WHAT EACH VALIDATION CLASS PINS:
- *
- *   - TIPPING (single blocks, dry stacks): equilibrium + the no-tension bound. The
- *     rigid-block tipping rule "resultant inside the bearing" must fall out of the LP,
- *     including the KNIFE-EDGE CONVENTION: a resultant exactly AT the bearing edge is
- *     feasible (the constraint set is closed) — the boundary STANDS, pinned here so
- *     nobody re-decides it silently.
- *
- *   - SLIDING (pushed block): the Mohr-Coulomb rows and the dead/live split. A block
- *     pushed by its own weight slides at exactly mu (dry) and at (c*Conv*A + mu*W)/W
- *     (mortar) — the mortar figure embeds the 10000 uu conversion, so an open-coded
- *     factor of 100 fails this row by two orders of magnitude.
- *
- *   - CRUSHING (centred blocks): the compressive cap. lambda* for a centred block is
- *     f_c*Conv*A/W — and at a knife edge exactly HALF that, because one contact point
- *     carries everything: a relation between two rows that no tuning can fake.
- *
- *   - THE FINITE-TENSION MAPPING (leaning stacks): the acceptance-suite geometry, 10 cm
- *     of lean per course, at the CODED characteristic f_xk1 = 0.10. The rigid-plastic
- *     hand ladder gives lambda* = {4.458, 1.241, 0.0629, 0.0344} at 5/8/30/40 courses:
- *     the same STANDS/STANDS/FALLS/FALLS the acceptance rulings reached on first-crack
- *     arithmetic at MEAN strength — two criteria, one verdict ladder, now with margins
- *     measured. The same geometry DRY at 5 courses is infeasible (lambda* = 0): the
- *     finite-tension mapping is the entire difference, asserted as a relation.
- *
- *   - THE ONE-CELL JAMMING PAIR: a half-seated brick alone cannot equilibrate (its
- *     weight acts 0.5 cm past its bearing edge; with f_t = 0 nothing can supply the
- *     couple) — lambda* = 0. Give it an abutment through a head joint and a dry-stone
- *     feasible system EXISTS; the certificate, verifiable by hand on the free bodies:
- *
- *         seat outer contact carries n = W (all weight at the edge),
- *         head-joint TOP contact pushes the brick back with n_h = 0.5*W/7.0
- *           (0.5 cm of weight lever balanced at the head contact 7.0 cm above the
- *            bed plane), the abutting reaction returning as bed shear 0.0714*W,
- *         every friction row at most 0.0714/0.7 = 10.2% of capacity.
- *
- *     So the ORACLE READS THE ONE-CELL DRY CASE AS STANDING, and that is a DELIBERATE,
- *     RECORDED DISAGREEMENT with production's one-cell gate (which refuses dry stone
- *     the arching relief at 1.4921 of sliding capacity): production's rule keeps the
- *     uncracked-section kern and measures the thrust at the head joint's CENTROID
- *     (arm 3.75 cm), where the limit theorem may place contact at the section's EDGE
- *     (arm 7.0 cm) and needs no kern. Slice 2's fixture sweep measures that gap; this
- *     file only proves the oracle implements the limit theorem it claims to.
- *
- * DETERMINISM IS ASSERTED, NOT ASSUMED: every problem is solved twice and the two
- * lambdas must be BIT-IDENTICAL, with the same pivot count. A seeded-fuzz oracle that
- * drifts between runs is worse than none.
- *
- * NEEDS A TICKING WORLD: NO. Pure arithmetic on plain structs, like the solver it will
- * be diffed against.
- *
- * NAMED NAMESPACE, not anonymous: a unity build merges many files into one translation
- * unit.
+ * Every problem is solved twice and must be bit-identical with the same pivot count. No
+ * ticking world. Named namespace because of unity builds.
  */
 namespace RigidBlockOracleTestSupport
 {
 	using namespace RigidBlockOracle;
 
-	/* ================================================================================
-	 * THE BRICK AND THE UNITS — derived here, imported from nowhere.
-	 * ================================================================================ */
+	// The brick and the units, derived here.
 
 	constexpr double BrickLengthCm = 21.5;
 	constexpr double BrickWidthCm = 10.25;
 	constexpr double BrickHeightCm = 6.5;
 	constexpr double ClayDensityGramsPerCubicCm = 1.9;
 
-	/** Density-first multiplication order — the PieceMassKg contract; 2.72163125 kg. */
+	/** Density-first multiplication order (the PieceMassKg contract); 2.72163125 kg. */
 	constexpr double BrickMassKg =
 		ClayDensityGramsPerCubicCm * BrickLengthCm * BrickWidthCm * BrickHeightCm / 1000.0;
 
@@ -110,10 +62,7 @@ namespace RigidBlockOracleTestSupport
 	/** 2667.198625 uu. */
 	constexpr double BrickWeightUu = BrickMassKg * GravityHere;
 
-	/**
-	 * 1 N = 100 uu, 1 cm2 = 100 mm2 — derived independently a THIRD time (production,
-	 * the oracle, and this file must each be able to fail the other two).
-	 */
+	/** 1 N = 100 uu, 1 cm2 = 100 mm2. Derived independently of production and the oracle. */
 	constexpr double ConvHere = 100.0 * 100.0;
 
 	/** Standard mortared coursing: 6.5 brick + 1.0 bed. */
@@ -124,15 +73,11 @@ namespace RigidBlockOracleTestSupport
 	constexpr double HalfSeatAreaSqCm = 10.25 * BrickWidthCm;
 	constexpr double HeadAreaSqCm = BrickHeightCm * BrickWidthCm;
 
-	/* ================================================================================
-	 * PROBLEM BUILDERS. Geometry is laid here, never read back from the oracle.
-	 * ================================================================================ */
+	// Problem builders. Geometry is laid here, never read back from the oracle.
 
 	/**
-	 * A grounded brick with one brick on top of it, the top centroid offset sideways.
-	 * The bed contact segment is centred on the BASE, so the offset walks the top
-	 * block's resultant across the bearing: 0 is centred, 10.75 is the knife edge,
-	 * beyond it is an overhang no no-tension bearing can hold.
+	 * A grounded brick with one on top, the top centroid offset sideways. The bed is centred on
+	 * the base: offset 0 is centred, 10.75 is the knife edge, beyond is an unholdable overhang.
 	 */
 	FOracleProblem TwoBlockTower(
 		double TopCentroidOffsetXCm, const FConnectionStrength& Strength,
@@ -159,9 +104,8 @@ namespace RigidBlockOracleTestSupport
 	}
 
 	/**
-	 * The classic sliding problem: gravity DEAD, a live horizontal push applied AT BED
-	 * LEVEL so it exerts no overturning couple and friction alone decides. The clean
-	 * closed form is the point: lambda* = (c*Conv*A + mu*W) / Push, exactly.
+	 * Sliding: gravity dead, a live horizontal push at bed level (no overturning couple), so
+	 * lambda* = (c*Conv*A + mu*W) / Push exactly.
 	 */
 	FOracleProblem SlidingProblem(const FConnectionStrength& Strength, double PushUu)
 	{
@@ -180,11 +124,7 @@ namespace RigidBlockOracleTestSupport
 		return Problem;
 	}
 
-	/**
-	 * The leaning stack: one column of bricks, each course offset a fixed distance, the
-	 * base grounded — the acceptance family's geometry, hand-built so the oracle's
-	 * answer and the FStructure bridge's answer can be compared bit for bit.
-	 */
+	/** Leaning stack: one column, each course offset a fixed distance, base grounded. */
 	FOracleProblem LeaningStackProblem(
 		int32 Courses, double OffsetPerCourseCm, const FConnectionStrength& Strength)
 	{
@@ -220,13 +160,9 @@ namespace RigidBlockOracleTestSupport
 	}
 
 	/**
-	 * THE ONE-CELL GEOMETRY, mortared coursing, 1 cm joints: a grounded running-bond
-	 * seat G, the half-seated brick P over the hole (its centroid 5.625 cm outboard of
-	 * its 10.25 cm seat), and optionally the abutment pair — neighbour N fully seated
-	 * on its own grounded brick, met through a head joint whose face spans the course.
-	 *
-	 * Identical to the FStructure fixture the bridge test lays through MakeInterface,
-	 * so the two paths can be compared exactly.
+	 * One-cell geometry, 1 cm joints: grounded seat G, half-seated brick P (centroid 5.625 cm
+	 * outboard of its 10.25 cm seat), and optionally neighbour N on grounded G2, met through a
+	 * head joint. Matches the bridge test's FStructure fixture exactly.
 	 */
 	FOracleProblem JammingProblem(bool bWithNeighbour, const FConnectionStrength& Strength)
 	{
@@ -282,12 +218,9 @@ namespace RigidBlockOracleTestSupport
 		return Problem;
 	}
 
-	/* ================================================================================
-	 * THE HAND-WORKED CLOSED FORMS. Each is the derivation pattern from the file header
-	 * applied to one geometry; none knows anything about the LP.
-	 * ================================================================================ */
+	// Hand-worked closed forms: the header's derivation pattern applied to each geometry.
 
-	/** Centred block: n splits evenly, crushing binds both contacts: f_c*Conv*A / W. */
+	/** Centred block: crushing binds both contacts, f_c*Conv*A / W. */
 	double CentredCrushLambda(const FConnectionStrength& Strength)
 	{
 		return Strength.CompressiveStrengthMPa * ConvHere * FullBedAreaSqCm / BrickWeightUu;
@@ -301,13 +234,9 @@ namespace RigidBlockOracleTestSupport
 	}
 
 	/**
-	 * The stack's bottom-joint statics, m = Courses - 1 bricks above it: resultant
-	 * m*W at d*m/2 outboard of the joint centre, so with contact half-spacing h,
-	 *
-	 *     n_inboard(lambda)  = lambda * W * (m/2 - d*m^2/(4h))
-	 *     n_outboard(lambda) = lambda * W * (m/2 + d*m^2/(4h))
-	 *
-	 * Every higher joint is the same formula at a smaller m, so the bottom governs.
+	 * Bottom-joint tension bound, m = Courses - 1 bricks above: resultant m*W at d*m/2 outboard,
+	 * so n_inboard = lambda * W * (m/2 - d*m^2/(4h)). Higher joints have smaller m, so the
+	 * bottom governs.
 	 */
 	double StackTensionLambda(
 		const FConnectionStrength& Strength, int32 Courses, double OffsetPerCourseCm)
@@ -323,7 +252,7 @@ namespace RigidBlockOracleTestSupport
 		return TensionCapacityUu / DemandPerLambda;
 	}
 
-	/** The same statics where crushing at the outboard contact is what binds. */
+	/** Same statics, crushing at the outboard contact: n_outboard = lambda * W * (m/2 + d*m^2/(4h)). */
 	double StackCrushLambda(
 		const FConnectionStrength& Strength, int32 Courses, double OffsetPerCourseCm)
 	{
@@ -339,11 +268,8 @@ namespace RigidBlockOracleTestSupport
 	}
 
 	/**
-	 * The half-seated brick alone, mortared: weight at e = 5.625 cm from the seat
-	 * centre, contacts at +-5.125, so n_inboard = lambda*W*(1/2 - e/(2h)) and the bond
-	 * holds until lambda* = T_A / (W * (e/(2h) - 1/2)) — about 404 at the retired
-	 * characteristic bond, about 2826 at the mean 0.70: one brick is nothing to a real
-	 * bond, which is why the one-cell verdicts only ever turn on geometry, not load.
+	 * Half-seated brick alone, mortared: weight at e = 5.625 cm, contacts at +-5.125, so
+	 * lambda* = T_A / (W * (e/(2h) - 1/2)), about 2826 at the mean 0.70 bond.
 	 */
 	double JammingAloneTensionLambda(const FConnectionStrength& Strength)
 	{
@@ -356,13 +282,9 @@ namespace RigidBlockOracleTestSupport
 	}
 
 	/**
-	 * The same two-contact statics where CRUSHING at the outboard contact binds
-	 * instead: n_outboard = lambda*W*(1/2 + e/(2h)) against the contact's own
-	 * C_A = f_c*Conv*A/2, so lambda* = C_A / (W * (1/2 + e/(2h))) — about 1878 for
-	 * mortar. The two contacts and two equilibrium equations leave no freedom, so
-	 * the fixture's answer is exactly min(tension bound, crush bound); which one that
-	 * is FLIPPED at the 2026-08-14 mean re-anchor flip (tension x7, crushing unmoved), and
-	 * writing both is what lets the row state the minimum rather than an axis.
+	 * Same statics, crushing at the outboard contact: lambda* = C_A / (W * (1/2 + e/(2h))),
+	 * about 1878 for mortar. The fixture's answer is exactly min(tension, crush); which governs
+	 * flipped at the 2026-08-14 mean re-anchor.
 	 */
 	double JammingAloneCrushLambda(const FConnectionStrength& Strength)
 	{
@@ -374,10 +296,6 @@ namespace RigidBlockOracleTestSupport
 		return CrushCapacityUu / (BrickWeightUu * (0.5 + e / (2.0 * h)));
 	}
 
-	/* ================================================================================
-	 * THE CATALOGUE ROW.
-	 * ================================================================================ */
-
 	struct FOracleValidationRow
 	{
 		const TCHAR* Name = nullptr;
@@ -387,7 +305,7 @@ namespace RigidBlockOracleTestSupport
 
 		TFunction<FOracleProblem()> Build;
 
-		/** Negative means "assert the floor only" — used where no closed form exists. */
+		/** Negative means assert the floor only (no closed form). */
 		double ExpectedLambda = -1.0;
 		double LambdaFloor = 0.0;
 
@@ -448,7 +366,6 @@ namespace RigidBlockOracleTestSupport
 				Row.Name, int32(Row.Expected), int32(OutcomeOf(Result)), Result.Lambda),
 			OutcomeOf(Result) == Row.Expected);
 
-		/* Determinism: same problem, bit-identical answer, same pivot path. */
 		const FOracleResult Again = SolveRigidBlock(Row.Build());
 
 		Test.TestTrue(
@@ -465,11 +382,7 @@ namespace RigidBlockOracleTestSupport
 	}
 }
 
-/**
- * THE VALIDATION CATALOGUE: twenty hand-worked limit-analysis answers the oracle must
- * reproduce, each with its arithmetic in this file. See the file header for what each
- * class pins and for the recorded one-cell disagreement with production.
- */
+/** Twenty hand-worked limit-analysis answers the oracle must reproduce. See the file header. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockOracleValidationTest,
 	"DestructionGame.Oracle.RigidBlock.ValidationCatalogue",
@@ -481,11 +394,7 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 	using namespace RigidBlockOracle;
 	using namespace RigidBlockOracleTestSupport;
 
-	/*
-	 * FIXTURE PRECONDITIONS: the profile figures every hand answer below is derived
-	 * from, asserted rather than trusted. A retune moves this file's margins and must
-	 * land here first, loudly.
-	 */
+	// Profile figures the hand answers derive from; a retune must fail here first.
 	TestEqual(TEXT("FIXTURE: dry stone has exactly no cohesion"),
 		DryStone.ShearCohesionMPa, 0.0);
 	TestEqual(TEXT("FIXTURE: dry stone has exactly no tensile bond"),
@@ -494,12 +403,7 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		DryStone.FrictionCoefficient, 0.7);
 	TestEqual(TEXT("FIXTURE: dry stone crushes at 30 MPa"),
 		DryStone.CompressiveStrengthMPa, 30.0);
-	/*
-	 * Mortar's rows are the MEAN basis since the 2026-08-13 re-anchor (Gooch et al. 2023/2025
-	 * measured means; DESIGN §3). The hand-answer helpers below read the profile, so every
-	 * mortared closed form re-derives itself — these pins are what keep the derivation
-	 * honest about WHICH numbers it re-derived from.
-	 */
+	// Mortar is on the mean basis since the 2026-08-13 re-anchor (Gooch et al.; DESIGN §3).
 	TestEqual(TEXT("FIXTURE: mortar's bond is the mean f_x1 = 0.70 (re-anchor 2026-08-13)"),
 		GeneralPurposeMortar.TensileStrengthMPa, 0.7);
 	TestEqual(TEXT("FIXTURE: mortar's cohesion is the mean f_v0 = 0.90"),
@@ -509,11 +413,7 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FIXTURE: mortar crushes at M10's 10 MPa (already a declared mean)"),
 		GeneralPurposeMortar.CompressiveStrengthMPa, 10.0);
 
-	/*
-	 * The two shear ceilings feed real LP rows and neither binds in any validation row —
-	 * pinned so a retune that made one bind cannot move a hand answer mysteriously (the
-	 * CURRENT_STATE item). Mortar's is the mean-basis 2.0 = 0.1 x f_b.
-	 */
+	// Shear ceilings bind in no row; pinned so a retune cannot silently move a hand answer.
 	TestEqual(TEXT("FIXTURE: mortar's shear ceiling is the mean-basis 2.0 MPa"),
 		GeneralPurposeMortar.MaxShearStrengthMPa, 2.0);
 	TestEqual(TEXT("FIXTURE: dry stone's shear ceiling is 6.0 MPa"),
@@ -524,7 +424,7 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 
 	TArray<FOracleValidationRow> Rows;
 
-	/* ---- Tipping and crushing: single blocks. ---------------------------------- */
+	// Tipping and crushing: single blocks.
 
 	Rows.Add({ TEXT("centred dry block"),
 		TEXT("centred: n splits evenly, crushing binds, lambda* = f_c*Conv*A/W"),
@@ -554,7 +454,7 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		[] { return TwoBlockTower(BrickLengthCm / 2.0 + 1.0, DestructionProfiles::DryStone); },
 		0.0, 0.0, 1.0e-6, 0.0, EOracleOutcome::Falls });
 
-	/* ---- Sliding: the friction rows and the dead/live split. ------------------- */
+	// Sliding.
 
 	Rows.Add({ TEXT("pushed dry block"),
 		TEXT("dead weight W, live push W at bed level: slides at exactly mu = 0.7"),
@@ -569,12 +469,9 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		SlidingLambda(GeneralPurposeMortar, BrickWeightUu), 0.0, 0.0, 1.0e-6,
 		EOracleOutcome::Stands });
 
-	/* ---- The no-tension rigid-block ladder: dry stack, 2 cm of lean. ----------- */
-
 	/*
-	 * Feasible iff the bottom joint's inboard contact needs no tension: m/2 >= d*m^2/(4h),
-	 * i.e. m <= 2h/d = 9.75 bricks above. Five and eight courses stand (crushing sets
-	 * their finite lambda*); thirty and forty have no admissible system at any load.
+	 * No-tension ladder, dry stack, 2 cm lean. Feasible iff m/2 >= d*m^2/(4h), i.e.
+	 * m <= 2h/d = 9.75 bricks above: 5 and 8 courses stand, 30 and 40 cannot.
 	 */
 	Rows.Add({ TEXT("dry stack 2 cm x 5 courses"),
 		TEXT("m = 4 <= 9.75: stands; crushing at the outboard contact sets lambda*"),
@@ -596,7 +493,7 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		[] { return LeaningStackProblem(40, 2.0, DestructionProfiles::DryStone); },
 		0.0, 0.0, 1.0e-6, 0.0, EOracleOutcome::Falls });
 
-	/* ---- The finite-tension mapping: the acceptance lean, 10 cm per course. ---- */
+	// Finite tension at the acceptance lean, 10 cm per course.
 
 	Rows.Add({ TEXT("mortared stack 10 cm x 5 courses"),
 		TEXT("bottom-joint plastic tension bound: lambda* = T_A/(W*(d*m^2/(4h) - m/2)) ")
@@ -631,7 +528,7 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		[] { return LeaningStackProblem(5, 10.0, DestructionProfiles::DryStone); },
 		0.0, 0.0, 1.0e-6, 0.0, EOracleOutcome::Falls });
 
-	/* ---- The one-cell jamming pair. -------------------------------------------- */
+	// One-cell jamming pair.
 
 	Rows.Add({ TEXT("one-cell half seat, dry, with abutment"),
 		TEXT("the file header's certificate: seat edge carries W, the head joint's top ")
@@ -648,12 +545,8 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		0.0, 0.0, 1.0e-6, 0.0, EOracleOutcome::Falls });
 
 	/*
-	 * MEASURED AT THE FLIP (2026-08-14): the governing axis of this fixture FLIPPED at the
-	 * mean re-anchor, exactly as TRAPS' strength-basis entry warns. The tension bound rose
-	 * x7 to ~2826 while the crush bound — against the UNMOVED 10 MPa — stayed at ~1878, so
-	 * crushing now governs and the LP answers 1877.92298545, which the crush closed form
-	 * reproduces to twelve digits. The row states the minimum of the two bounds, so it keeps
-	 * meaning "the two-contact statics, whole" on either basis.
+	 * The governing axis flipped at the 2026-08-14 mean re-anchor (see TRAPS): tension rose to
+	 * ~2826, crush stayed ~1878, and the LP answers 1877.92298545. The row asserts the minimum.
 	 */
 	Rows.Add({ TEXT("one-cell half seat, mortared, no abutment"),
 		TEXT("two determinate contacts: lambda* = min(T_A/(W*(e/(2h) - 1/2)) ~ 2826, ")
@@ -665,38 +558,12 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		0.0, 0.0, 1.0e-6,
 		EOracleOutcome::Stands });
 
-	/* ---- The redundant-joint path. ---------------------------------------------- */
-
 	/*
-	 * THE ROW CURRENT_STATE QUEUED against the dense solver's recorded
-	 * basic-artificial residue: duplicate one joint of the mortared 8-course stack as
-	 * two half-area twins with identical geometry. Per contact point every capacity is
-	 * area-proportional, so two half-area twins at the same two contact positions have
-	 * EXACTLY the original joint's summed feasible set and lambda* must not move — but
-	 * the columns are parallel and the optimum degenerate, the shape the dense
-	 * solver's residue lived in. Added 2026-08-12 with the sparse rewrite, green on
-	 * arrival. HONESTY ABOUT ITS TEETH, measured by mutation: it fails under the
-	 * formulation mutations like every strength row (M3/M4). The residue itself is
-	 * contained by the pivot-out pass immediately after phase 1 (it clears every
-	 * zero-value basic artificial a real column can reach) together with the
-	 * post-solve verification gate, which fails closed rather than certifying a basis
-	 * it cannot check; disabling both fires the whole suite as verification refusals
-	 * (TRAPS.md) rather than a silent under-report, so this row's own value is a
-	 * regression net for future degeneracy-handling changes, not the only thing
-	 * watching the residue.
-	 *
-	 * THE PROPERTY UNDER TEST IS EQUALITY, NOT PROXIMITY: a redundant joint is the same
-	 * constraint set as its un-duplicated twin, so lambda* must be the SAME NUMBER, not
-	 * merely close to the closed form both rows also happen to satisfy. Measured at the
-	 * characteristic data: both rows reported 1.241110018676219, bit-identical (diff
-	 * exactly 0) despite the twin row taking one more pivot (8 vs 7). MEASURED AGAIN AT
-	 * THE MEAN RE-ANCHOR FLIP (2026-08-14): 8.6877701307335329 against
-	 * 8.6877701307335311 — the two pivot paths now land ONE ULP apart, so the cross-row
-	 * check below asserts equality to within 2 ulp rather than bit-for-bit. That is
-	 * still ~a million times tighter than the closed-form tolerance and far below the
-	 * ~1e-9 relative shift the recorded S8 mutation (one twin's area x(1+1e-9))
-	 * produces, so the check keeps the property S8 proved it guards: the twins are the
-	 * same constraint SET, not merely near the same closed form.
+	 * Redundant joint: the 8-course stack's bottom joint split into two half-area twins with
+	 * identical geometry. Capacities are area-proportional, so the feasible set is unchanged,
+	 * but the columns are parallel and the optimum degenerate (where the dense solver's
+	 * basic-artificial residue lived). A regression net for degeneracy handling; the pivot-out
+	 * pass and the fail-closed verification gate are the primary guards (TRAPS.md).
 	 */
 	Rows.Add({ TEXT("mortared stack, bottom joint split into half-area twins"),
 		TEXT("two half-area twins of one joint are the same constraint set, so ")
@@ -727,9 +594,7 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		RunValidationRow(*this, Row, Lambdas);
 	}
 
-	/*
-	 * THE CROSS-ROW RELATIONS — statements no single row can fake.
-	 */
+	// Cross-row relations no single row can fake.
 	if (Lambdas.Contains(TEXT("centred dry block")) && Lambdas.Contains(TEXT("knife edge dry block")))
 	{
 		const double Centred = Lambdas[TEXT("centred dry block")];
@@ -750,12 +615,9 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 		const double Twins = Lambdas[TEXT("mortared stack, bottom joint split into half-area twins")];
 
 		/*
-		 * A redundant joint IS the same constraint set as its un-duplicated twin, so
-		 * this is equality, not proximity to a shared closed form. Measured (this
-		 * build, both directions): 1.241110018676219 for both rows, diff exactly 0
-		 * despite the twin row taking one more pivot (8 vs 7) — the degenerate,
-		 * parallel-column path the twins create still lands on the identical bit
-		 * pattern the un-duplicated joint does. Asserted as `==`, not a tolerance.
+		 * Equality, not proximity: the twins are the same constraint set. The two pivot paths
+		 * land one ulp apart at the mean basis (8.6877701307335329 vs ...311), so 2 ulp is
+		 * allowed; the S8 mutation (one twin's area x(1+1e-9)) still fails it.
 		 */
 		TestTrue(
 			*FString::Printf(
@@ -781,10 +643,8 @@ bool FRigidBlockOracleValidationTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE BRIDGE THE FIXTURE SWEEP WILL CALL: BuildRigidBlockProblem must project a live
- * FStructure — laid through the SAME producer the fixtures use (MakeInterface) — into
- * exactly the problem the hand builders describe, byte for byte, and must refuse
- * anything it cannot represent honestly.
+ * BuildRigidBlockProblem must project an FStructure laid through MakeInterface into exactly the
+ * hand builders' problem, and refuse anything it cannot represent.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockOracleBridgeTest,
@@ -798,7 +658,7 @@ bool FRigidBlockOracleBridgeTest::RunTest(const FString& Parameters)
 	using namespace RigidBlockOracle;
 	using namespace RigidBlockOracleTestSupport;
 
-	/* ---- The mortared 8-course acceptance stack, through FStructure. ----------- */
+	// The mortared 8-course acceptance stack, through FStructure.
 	{
 		FStructure Structure;
 		TArray<FPieceBox> Boxes;
@@ -832,10 +692,7 @@ bool FRigidBlockOracleBridgeTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("stack: the producer emits one bed joint per course above the base"),
 			Structure.NumConnections(), 7);
 
-		/*
-		 * The producer's joints must be the exact rectangles the hand builder writes,
-		 * or the bit-for-bit equivalence below is comparing different structures.
-		 */
+		// The producer's joints must match the hand builder's, or the bit comparison is meaningless.
 		for (int32 Index = 0; Index < Structure.NumConnections(); ++Index)
 		{
 			const FConnection& Joint = Structure.GetConnection(Index);
@@ -853,8 +710,7 @@ bool FRigidBlockOracleBridgeTest::RunTest(const FString& Parameters)
 		FOracleProblem Bridged;
 		FString WhyNot;
 
-		/* Its own statement first — a message reading state the condition writes is the
-		 * unsequenced-evaluation trap TRAPS.md records. */
+		// Own statement: the message reads WhyNot, which the call writes (TRAPS.md, unsequenced evaluation).
 		const bool bBridged = BuildRigidBlockProblem(Structure, Bridged, WhyNot);
 
 		if (!TestTrue(
@@ -881,10 +737,8 @@ bool FRigidBlockOracleBridgeTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("stack: the hand-built twin must answer"), ByHand.bAnswered);
 
 		/*
-		 * BIT-FOR-BIT: the producer's geometry is exact binary arithmetic on this
-		 * fixture (every coordinate is a multiple of 0.25), so the two problems are
-		 * identical and the deterministic solver must return the identical double.
-		 * TestTrue on ==, not TestEqual, whose double overload carries a tolerance.
+		 * Every coordinate is a multiple of 0.25, so the problems are identical in binary. TestTrue
+		 * on ==, because TestEqual's double overload has a tolerance.
 		 */
 		TestTrue(TEXT("stack: the bridged and hand-built problems are the same problem, ")
 			TEXT("so lambda* must agree to the last bit"),
@@ -902,14 +756,14 @@ bool FRigidBlockOracleBridgeTest::RunTest(const FString& Parameters)
 			OutcomeOf(ViaBridge) == EOracleOutcome::Stands);
 	}
 
-	/* ---- The one-cell jamming pair, through FStructure, latch included. -------- */
+	// The one-cell jamming pair, through FStructure, latch included.
 	{
 		FStructure Structure;
 		TArray<FPieceBox> Boxes;
 
 		const FVector BrickExtent = FVector(BrickLengthCm, BrickWidthCm, BrickHeightCm) * 0.5;
 
-		/* G, P, N, G2 — the JammingProblem geometry, as boxes. */
+		// G, P, N, G2: the JammingProblem geometry, as boxes.
 		const FVector Centres[] = {
 			FVector(-0.5, 0.0, BrickHeightCm / 2.0),
 			FVector(10.75, 0.0, BrickHeightCm / 2.0 + CoursePitchCm),
@@ -979,10 +833,8 @@ bool FRigidBlockOracleBridgeTest::RunTest(const FString& Parameters)
 			OutcomeOf(WithAbutment) == EOracleOutcome::Stands && WithAbutment.Lambda >= 100.0);
 
 		/*
-		 * REMOVE THE NEIGHBOUR: removal severs its joints, the bridge must skip what
-		 * has given and what is gone, and the half seat is alone again — lambda* = 0.
-		 * This is the latch-awareness the sweep depends on: the oracle judges the
-		 * graph AS IT STANDS, not as it was built.
+		 * Removing the neighbour severs its joints; the bridge must skip given and removed parts,
+		 * leaving the half seat alone (lambda* = 0). The oracle judges the graph as it stands.
 		 */
 		TestTrue(TEXT("jamming: the neighbour can be removed"), Structure.RemovePiece(2));
 
@@ -1018,9 +870,9 @@ bool FRigidBlockOracleBridgeTest::RunTest(const FString& Parameters)
 			Alone.Lambda <= 1.0e-6 && OutcomeOf(Alone) == EOracleOutcome::Falls);
 	}
 
-	/* ---- What the bridge must refuse. ------------------------------------------ */
+	// What the bridge must refuse.
 	{
-		/* A piece nobody placed: no centre of mass means no honest lever arm. */
+		// An unplaced piece has no centre of mass, so no lever arm.
 		FStructure Unplaced;
 		Unplaced.AddPiece(BrickMassKg, true);
 		Unplaced.AddPiece(BrickMassKg, false);
@@ -1035,7 +887,7 @@ bool FRigidBlockOracleBridgeTest::RunTest(const FString& Parameters)
 			TEXT("solves nothing"), Out.Blocks.Num(), 0);
 	}
 	{
-		/* An out-of-plane joint: a Y normal cannot be projected into X-Z honestly. */
+		// A Y-normal joint cannot be projected into X-Z.
 		FStructure OutOfPlane;
 		OutOfPlane.AddPiece(BrickMassKg, true, FVector(0.0, 0.0, 3.25));
 		OutOfPlane.AddPiece(BrickMassKg, false, FVector(0.0, 11.25, 3.25));
@@ -1064,15 +916,10 @@ bool FRigidBlockOracleBridgeTest::RunTest(const FString& Parameters)
 }
 
 /**
- * DEGENERATE INPUT FAILS CLOSED, ALWAYS: never NaN out, never a garbage answer wearing
- * a verdict's clothes. Every poisoned problem must come back unanswered — and
- * Unanswerable is not Stands, which is the polarity that matters when the sweep starts
- * branching on verdicts.
- *
- * GREEN-ON-ARRIVAL BY NATURE once the happy path exists (the rows assert refusals), so
- * per TRAPS this test's teeth are proven by mutation: gut the oracle's input
- * validation and every row here goes red. The positive control row is what keeps the
- * matrix from passing against a stub that refuses everything.
+ * Degenerate input fails closed: every poisoned problem comes back unanswered, never NaN, and
+ * Unanswerable is never Stands. Green on arrival, so its teeth were proven by mutation (gutting
+ * input validation turns every row red). The positive control stops a refuse-everything stub
+ * passing.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockOracleDegenerateTest,
@@ -1087,7 +934,7 @@ bool FRigidBlockOracleDegenerateTest::RunTest(const FString& Parameters)
 
 	const double NaN = std::numeric_limits<double>::quiet_NaN();
 
-	/* The positive control: the unpoisoned base problem must be answerable at all. */
+	// Positive control: the unpoisoned base problem is answerable.
 	{
 		const FOracleResult Healthy = SolveRigidBlock(TwoBlockTower(0.0, DryStone));
 
@@ -1140,11 +987,7 @@ bool FRigidBlockOracleDegenerateTest::RunTest(const FString& Parameters)
 	PoisonRows.Add({ TEXT("NaN compressive strength"),
 		[NaN](FOracleProblem& P) { P.Joints[0].Strength.CompressiveStrengthMPa = NaN; } });
 
-	/*
-	 * A NaN shear CEILING is refused too — deliberately the OPPOSITE of production's
-	 * recorded laundering hazard, where a NaN cap compares false and quietly means
-	 * "uncapped". The oracle is the second opinion; it must not inherit the hole.
-	 */
+	// A NaN shear ceiling is refused, unlike production, where a NaN cap compares false and means uncapped.
 	PoisonRows.Add({ TEXT("NaN shear ceiling"),
 		[NaN](FOracleProblem& P) { P.Joints[0].Strength.MaxShearStrengthMPa = NaN; } });
 
@@ -1182,23 +1025,12 @@ bool FRigidBlockOracleDegenerateTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-/* ====================================================================================
- * THE PRICING-COST SEAM — the support this file's third test needs.
- *
- * REOPENED, NOT A SECOND NAMESPACE: a unity build merges files into one translation
- * unit, so every test helper in this project lives in a named namespace; reopening the
- * file's own keeps the helpers beside the test that reads them without inventing a
- * second name for the same file's support.
- * ==================================================================================== */
+// Pricing-cost support; the namespace is reopened to keep helpers beside their test.
 namespace RigidBlockOracleTestSupport
 {
 	/**
-	 * WALL-01, SHRUNK. Laid by production's OWN acceptance-wall producer — the same
-	 * DestructionWallCases::Build, flush running bond, mortared, bottom course grounded,
-	 * nothing cut — that the scenario catalogue lays wall-01 with at thirty courses and
-	 * twelve cells. Only the two integers differ, so the fixture the pricing budget is
-	 * measured on is the SHAPE the pricing change exists to make practical, not a
-	 * separate toy that happens to be big.
+	 * wall-01, shrunk: the same DestructionWallCases::Build producer (flush running bond,
+	 * mortared, bottom course grounded) at a smaller course and cell count.
 	 */
 	bool BuildIntactWall(int32 Courses, int32 Cells, FStructure& Out, FString& OutWhy)
 	{
@@ -1227,39 +1059,14 @@ namespace RigidBlockOracleTestSupport
 	}
 
 	/**
-	 * THE INTACT WALL'S lambda*, DERIVED BY HAND — and it is a closed form, not a bracket.
+	 * Intact wall's lambda*, by hand. Cut above the grounded bottom course: only bed joints cross
+	 * it, so vertical equilibrium gives sum(bed normals) = lambda * W_above, and crushing caps
+	 * that sum at f_c * Conv * A_plane. Hence lambda* <= f_c * Conv * A_plane / W_above, and an
+	 * intact wall attains it (measured 1128.4443217039532).
 	 *
-	 * Cut the wall horizontally just above the grounded bottom course. Head joints lie
-	 * WITHIN a course, so the only joints the cut crosses are that course's bed joints,
-	 * whose normals are vertical. Vertical equilibrium of everything above the cut reads
-	 *
-	 *     sum of bed normal forces = lambda * W_above, exactly,
-	 *
-	 * and every contact point is capped by crushing at f_c * Conv * A/2, which sums over
-	 * the plane to f_c * Conv * A_plane. So for ANY admissible force system
-	 *
-	 *     lambda* <= f_c * Conv * A_plane / W_above,
-	 *
-	 * an inequality no redistribution can escape. The bound is also ATTAINED here — an
-	 * intact wall can carry uniform bed compression, so nothing stops every contact
-	 * reaching its cap together — and the LP agrees with it to the last bits (measured
-	 * 1128.4443217039532 against 1128.44432170395), which is why the test asserts BOTH the
-	 * inequality and the equality. The inequality is the statics; the equality is the
-	 * measurement, and it doubles as the optimum-invariance pin.
-	 *
-	 * THE GEOMETRY, on the coordinating grid (21.5 cm brick, 1 cm joint, 22.5 cm cell
-	 * pitch, half-cell offset, ends closed flush with half bats):
-	 *
-	 *   - a full brick overlaps each of the two beneath it by 21.5 - 11.25 = 10.25 cm, so
-	 *     20.5 cm of bed per cell; the two half bats closing a flush course contribute
-	 *     10.25 cm each, exactly one more cell's worth. Every course boundary therefore
-	 *     carries Cells * 20.5 * BrickWidth of bed.
-	 *
-	 *   - A COURSE OF BATS DOES NOT WEIGH A COURSE OF BRICKS, and that 0.5% is the whole
-	 *     difference between this closed form and an answer 0.27% too high (paid for once
-	 *     while writing this): a half bat is (21.5 - 1)/2 = 10.25 cm, so two of them are
-	 *     20.5 cm of brick where the full brick they replace is 21.5. A flush odd course
-	 *     is 214 cm of masonry against an even course's 215.
+	 * Each course boundary carries Cells * 20.5 cm of bed (10.25 cm overlap each side). A flush
+	 * odd course's two half bats are 10.25 cm each, so it is 214 cm of masonry against an even
+	 * course's 215; ignoring that gives an answer 0.27% too high.
 	 */
 	double IntactWallCrushLambda(int32 Courses, int32 Cells)
 	{
@@ -1282,7 +1089,7 @@ namespace RigidBlockOracleTestSupport
 			LengthAboveCm += (Course % 2) == 0 ? EvenCourseLengthCm : OddCourseLengthCm;
 		}
 
-		/* Density-first, exactly as PieceMassKg orders it. */
+		// Density-first, as PieceMassKg orders it.
 		const double WeightAboveUu = ClayDensityGramsPerCubicCm * LengthAboveCm
 			* BrickWidthCm * BrickHeightCm / 1000.0 * GravityHere;
 
@@ -1292,73 +1099,18 @@ namespace RigidBlockOracleTestSupport
 }
 
 /**
- * PRICING COST IS A MEASURED PROPERTY OF THIS ORACLE, NOT AN IMPLEMENTATION DETAIL.
+ * Pricing cost is a measured, budgeted property of the oracle. Dantzig pricing scans every
+ * column every iteration, which left wall-01 (~13k rows x ~34k columns) still pivoting after
+ * ~45 minutes. The assertion is a deterministic scan count (PricingColumnScans), not a wall
+ * clock, with pivots budgeted alongside so cheaper scans cannot be bought with more pivots.
  *
- * WHY THIS TEST EXISTS. The sparse rewrite (2026-08-12) made the 30-course walls
- * REPRESENTABLE — the constraint matrix is tens of MB rather than a 3.5 GB dense tableau
- * — and they are still unanswerable, because DANTZIG PRICING SCANS EVERY COLUMN EVERY
- * ITERATION. wall-01 is ~13k rows x ~34k columns; one pivot prices ~34k columns, so the
- * pricing work is pivots x columns and wall-01 was still pivoting after ~45 minutes when
- * its measuring run was cut off. The cost is not the factorisation, the FTRAN or the
- * BTRAN: it is the scan. That is what this test measures and budgets.
+ * A budget must not buy speed with a wrong answer, so each row also asserts the hand-derived
+ * answer, optimum invariance at 1e-9 relative, and bit-identical determinism. Mutation P2 (a
+ * pricer that reports INDEX_NONE after one empty window) proved this: the wall answered
+ * lambda* = 0 in zero pivots and both budgets passed more easily; only the derived answers
+ * caught it.
  *
- * THE ASSERTION IS A SCAN COUNT, NOT A WALL CLOCK. FOracleResult::PricingColumnScans
- * counts every column priced against a dual vector, and it is DETERMINISTIC — the same
- * problem gives the same count on every machine, where seconds give a different number
- * on every run and a flaky test is worse than none. Pivots are budgeted alongside it, so
- * a pricing rule that scans less by pivoting more cannot pass by trading one cost for
- * the other.
- *
- * WHAT A BUDGET MAY NOT DO IS BUY SPEED WITH A WRONG ANSWER, so every row also asserts:
- *
- *   - the DERIVED answer — the leaning stack's exact closed form, the wall's hard
- *     crushing upper bound (both worked in this file, neither read off the solver);
- *   - OPTIMUM INVARIANCE at 1e-9 relative against the measured lambda*. An LP's optimal
- *     VALUE is unique and method-independent: a different pivot path is allowed, a
- *     different optimum is not. This is the pin that makes a pricing change safe to
- *     make, and it is deliberately three orders tighter than the sweep's windows;
- *   - DETERMINISM, bit-identical across two solves, including the scan count itself.
- *
- * PROVEN TO BITE BY P2, AND THIS IS THE WHOLE REASON THOSE THREE BULLETS ARE HERE. Every
- * correctness line on both rows passed the day it was written — the partial pricer was
- * already correct — so until it was mutated, this test was indistinguishable from one
- * that asserts nothing about the answer. Mutation P2 is the QUEUE-IS-THE-ANSWER bug a
- * candidate list invites: make the refill take ONE window instead of widening until it
- * bites (`while (Scanned < AllowedCols)` -> `while (Scanned == 0)` in
- * FPartialPricer::ChooseEntering), so an empty window reports INDEX_NONE and the simplex
- * believes it. Measured on this tree, 8 assertion failures across 4 tests:
- *
- *     PricingCost          40-course stack lambda 2.150669592637872e-23 against the
- *                          closed form 0.034429736317305934 (1 pivot, not 39); wall
- *                          lambda* 0 against the crushing bound 1128.4443217039529,
- *                          reached in ZERO pivots
- *     ValidationCatalogue  the mortared 30- and 40-course stacks, same collapse
- *     Sweep.CorbelFamily   corbel B at 1.29e-25, which also FLIPS its pinned relation
- *     Sweep.LeaningStack   both stack rows
- *
- * READ THE COST SIDE OF THAT RUN BEFORE TRUSTING ANY BUDGET: the wall's scans fell from
- * 538,200 to 343,653 and its pivots from 2,016 to 0, so BOTH budgets below passed more
- * comfortably than ever while the oracle answered lambda* = 0. A cost assertion cannot
- * notice a solver that stops early — only the derived answers can, which is why the
- * closed form and the crushing bound sit on the same rows as the budgets and not in
- * some other test.
- *
- * WHERE THE FLOOR IS, so nobody chases an unreachable budget. The artificial pivot-out
- * pass after phase 1 prices every non-artificial column once per basic artificial it
- * clears, and a gravity-live problem starts with one basic artificial per equality row.
- * Those scans are counted here too, and they are a ONE-OFF O(equality rows x columns)
- * cost that per-iteration pricing cannot touch — about a ninth of the wall row's total,
- * worked out in that row's own comment. The budget sits comfortably above the floor: it
- * is aimed squarely at the per-iteration scan, and the pass is a separate question that
- * the same measurement says is not the blocker at wall scale.
- *
- * SIZED FOR THE DEFAULT SUITE, DELIBERATELY. The wall row is the same producer as
- * wall-01 at a height the ~30 s suite can afford; the 30-course original belongs to the
- * opt-in sweep group, whose file owns its own rows. Raising the two integers is the
- * whole difference, and the budget scales with the fixture, so this is a seam and not a
- * one-off measurement.
- *
- * NEEDS A TICKING WORLD: NO. Producers, graph, LP — arithmetic on plain structs.
+ * Sized for the default suite; the 30-course original lives in the opt-in sweep. No ticking world.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FRigidBlockOraclePricingCostTest,
@@ -1371,14 +1123,9 @@ bool FRigidBlockOraclePricingCostTest::RunTest(const FString& Parameters)
 	using namespace RigidBlockOracle;
 	using namespace RigidBlockOracleTestSupport;
 
-	/* ---- Row A: the 40-course leaning stack — invariance, no budget. ------------- */
-
 	/*
-	 * THE OPTIMUM-INVARIANCE ANCHOR, and deliberately NOT budgeted: at ~1.4k columns a
-	 * candidate-list scheme has little room to win and could honestly cost slightly
-	 * more, so a budget here would refuse a correct implementation for being small. Its
-	 * job is to prove the answer does not move — against the exact closed form AND
-	 * against the last bit of the measured value.
+	 * Row A: the 40-course leaning stack. Invariance only, no budget: at ~1.4k columns a
+	 * candidate list could honestly cost slightly more.
 	 */
 	{
 		const FOracleProblem Problem = LeaningStackProblem(40, 10.0, GeneralPurposeMortar);
@@ -1393,14 +1140,8 @@ bool FRigidBlockOraclePricingCostTest::RunTest(const FString& Parameters)
 			Result.bAnswered);
 
 		/*
-		 * ONE ASSERTION DOING TWO JOBS, AND AT 1e-9 RATHER THAN THE CATALOGUE'S 1e-6. The
-		 * bottom-joint closed form is exact for a single-column chain, and full Dantzig
-		 * reproduces it to the last bit today (0.034429736317305934 against
-		 * 0.0344297363173059 recomputed here) — so the same line is the DERIVED answer and
-		 * the OPTIMUM-INVARIANCE pin a pricing change has to survive. An LP's optimal
-		 * value is unique and method-independent: a different pivot path is allowed, a
-		 * different optimum is not, and 1e-9 leaves seven orders of headroom over today's
-		 * agreement for the rounding a different basis brings.
+		 * The closed form is exact for a single column, so at 1e-9 this is both the derived
+		 * answer and the optimum-invariance pin: the optimal value is unique whatever the pivot path.
 		 */
 		const double ClosedForm = StackTensionLambda(GeneralPurposeMortar, 40, 10.0);
 
@@ -1425,22 +1166,9 @@ bool FRigidBlockOraclePricingCostTest::RunTest(const FString& Parameters)
 				&& Result.PricingColumnScans == Again.PricingColumnScans);
 
 		/*
-		 * THE FALLBACK IS ASSUMED NOT TO FIRE, SO SAY SO WHERE A TEST CAN READ IT. The
-		 * pricer stands aside entirely after 500 zero-length steps and the entering rule
-		 * drops to Bland's — a full index-order scan, which is both far more scanning per
-		 * iteration and, on the dense solver's measurement, a rule that happily pivots on
-		 * near-tolerance elements. Every budget and every pivot count on these two rows is
-		 * a measurement of the PARTIAL PRICER, and that claim is only true while the
-		 * fallback is dormant. Before FOracleResult::BlandDegenerateEntries existed that
-		 * was an assumption from reading the code; these two lines make it an observation.
-		 *
-		 * WHAT THIS DOES NOT DO is exercise the fallback, and what it does NOT mean is that
-		 * nothing does. Measured 2026-08-13 while diagnosing the phase-2 refusals: the
-		 * opening-ladder rungs drive 500-step degenerate streaks routinely and enter the
-		 * fallback 170-358 times a solve. So these two zeroes are a statement about THESE
-		 * TWO FIXTURES — the premise their budgets rest on — and not about the suite. The
-		 * branch's own behaviour is still exercised by no fixture chosen for the purpose,
-		 * which is logged in CURRENT_STATE rather than papered over here.
+		 * After 500 zero-length steps the pricer drops to Bland's full scan, so these rows only
+		 * measure the partial pricer while the fallback stays dormant. This holds for these two
+		 * fixtures only: the opening-ladder rungs enter it 170-358 times a solve (CURRENT_STATE).
 		 */
 		TestEqual(
 			TEXT("40-course stack: the Bland anti-cycling fallback must stay dormant — the ")
@@ -1449,7 +1177,7 @@ bool FRigidBlockOraclePricingCostTest::RunTest(const FString& Parameters)
 			Result.BlandDegenerateEntries, 0);
 	}
 
-	/* ---- Row B: the intact wall — the budgeted row. ------------------------------ */
+	// Row B: the intact wall, budgeted.
 
 	{
 		constexpr int32 Courses = 8;
@@ -1458,8 +1186,7 @@ bool FRigidBlockOraclePricingCostTest::RunTest(const FString& Parameters)
 		FStructure Wall;
 		FString Why;
 
-		/* Its own statement first — a message reading what the condition writes is the
-		 * unsequenced-evaluation trap TRAPS.md records. */
+		// Own statement: the message reads Why, which the call writes (TRAPS.md, unsequenced evaluation).
 		const bool bLaid = BuildIntactWall(Courses, Cells, Wall, Why);
 
 		if (!TestTrue(
@@ -1469,12 +1196,7 @@ bool FRigidBlockOraclePricingCostTest::RunTest(const FString& Parameters)
 			return true;
 		}
 
-		/*
-		 * FIXTURE PRECONDITIONS. Four even courses of ten whole bricks and four flush odd
-		 * courses of nine whole bricks plus two half bats — 84 pieces. If the producer
-		 * ever lays a different wall, the budget below is a budget for a different
-		 * problem, and this is where that must be noticed.
-		 */
+		// If the producer lays a different wall, the budget below is for a different problem.
 		TestEqual(TEXT("wall FIXTURE: 4 x 10 whole-brick courses + 4 x 11-piece flush ")
 			TEXT("courses = 84 pieces"), Wall.NumPieces(), 84);
 
@@ -1506,8 +1228,6 @@ bool FRigidBlockOraclePricingCostTest::RunTest(const FString& Parameters)
 		TestTrue(
 			*FString::Printf(TEXT("wall: must answer (it said: %s)"), *Result.WhyNot),
 			Result.bAnswered);
-
-		/* ---- What the answer must be. ---- */
 
 		const double CrushLambda = IntactWallCrushLambda(Courses, Cells);
 
@@ -1544,51 +1264,19 @@ bool FRigidBlockOraclePricingCostTest::RunTest(const FString& Parameters)
 				&& Result.SimplexIterations == Again.SimplexIterations
 				&& Result.PricingColumnScans == Again.PricingColumnScans);
 
-		/* The dormancy pin, for the reasons written out on row A. */
+		// Dormancy pin; see row A.
 		TestEqual(
 			TEXT("wall: the Bland anti-cycling fallback must stay dormant — the budgets ")
 			TEXT("below are budgets for the partial pricer, and only are while it has not ")
 			TEXT("stood aside"),
 			Result.BlandDegenerateEntries, 0);
 
-		/* ---- What the answer may cost. ---- */
-
 		/*
-		 * THE BUDGETS, MEASURED RATHER THAN CHOSEN, with the arithmetic written out so
-		 * nobody has to re-derive it to know whether a number is reachable.
-		 *
-		 * FULL DANTZIG ON THIS FIXTURE, measured 2026-08-12: 84 blocks / 207 joints,
-		 * 2,707 rows and 6,849 columns, lambda* in 1,942 pivots, 3,131,528 column scans,
-		 * 4.716 s. Dividing those two straight through gives 1,612 columns per pivot, and
-		 * THAT RATIO IS NOT THE PER-ITERATION COST: it charges the one-off artificial
-		 * pivot-out pass (~343,000 scans, worked out below) to the pivot loop as though
-		 * the loop had done it. Net of the pass the phase-2 loop prices 1,435 columns per
-		 * iteration — exactly the non-basic structural set, 1,657 - 222, every iteration
-		 * — and (3,131,528 - 343,000) / 1,942 = 1,436 recovers it from the measurement.
-		 * That is the shape that leaves wall-01 (~13k x ~34k) still pivoting after 45
-		 * minutes.
-		 *
-		 * WHERE THE FLOOR IS. The artificial pivot-out pass prices every non-artificial
-		 * column once per basic artificial it clears. A gravity-live problem starts
-		 * feasible, so phase 1 never runs and all 222 equality rows arrive at that pass
-		 * with their artificial basic; the 1,657 structural columns are the non-basic ones
-		 * it scans, one fewer each time it succeeds. That is 222 * 1657 - (0 + 1 + ... +
-		 * 221) = ~343,000 scans, ~11% of today's total, and per-iteration pricing cannot
-		 * touch any of it. The budget sits nearly three times above that floor on purpose:
-		 * it is aimed at the 2.79M scans the phase-2 loop spends, not at the pass.
-		 *
-		 * 1,000,000 IS THEREFORE A 3.1x CUT OVERALL AND A 4.2x CUT ON THE PRICING LOOP,
-		 * which no tuning of a full scan can reach and which a candidate list should beat
-		 * by an order: a rotating window with a short queue prices tens of columns per
-		 * iteration, not 1,435. It is deliberately not tighter than that — a budget set at
-		 * the best imaginable implementation refuses good ones for being merely good.
-		 *
-		 * THE PIVOT BUDGET IS THE OTHER HALF OF THE SAME SENTENCE. Partial pricing buys
-		 * cheap iterations by choosing worse entering columns, so it usually takes more of
-		 * them; 4,000 is 2.06x today's 1,942, which absorbs that honestly while refusing a
-		 * rule that pays for cheap scans with a grinding pivot path. Both numbers are
-		 * deterministic — a wall-clock assertion here would flake on a busy machine and
-		 * measure the machine rather than the algorithm.
+		 * Budgets, measured. Full Dantzig here (2026-08-12): 6,849 columns, 1,942 pivots,
+		 * 3,131,528 scans. ~343,000 of those are the one-off artificial pivot-out pass
+		 * (222 equality rows x 1,657 structural columns), a floor pricing cannot touch.
+		 * 1,000,000 is a 3.1x cut overall; a candidate list should beat it easily. Partial
+		 * pricing usually takes more pivots, so 4,000 is ~2x today's count.
 		 */
 		constexpr int64 PricingScanBudget = 1000000;
 		constexpr int32 PivotBudget = 4000;

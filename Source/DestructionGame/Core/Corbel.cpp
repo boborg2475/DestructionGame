@@ -4,34 +4,18 @@
 
 #include "Core/Profiles/MaterialProfiles.h"
 
-/*
- * File-local names sit in the NAMED namespace and carry a Corbel prefix. An anonymous namespace
- * is private to a TRANSLATION UNIT rather than to a file, and a unity build merges many files
- * into one — so two file-local names that collide are a hard compile error between files that
- * never refer to each other. See CURRENT_STATE.md.
- */
+// File-local names use a Corbel prefix in the named namespace, because of unity builds.
 namespace DestructionCorbel
 {
-	/*
-	 * --- the brick, spelled out from first principles --------------------------------------
-	 *
-	 * DESIGN.md's standard UK metric clay brick and 1 cm mortar joint, giving the coordinating
-	 * grid 22.5 x 11.25 x 7.5. Every corbel reading in the solver suite is a reading of THESE
-	 * numbers, written out rather than derived from a running-bond spec that shares none of
-	 * this producer's stepping.
-	 */
+	// DESIGN.md's standard brick and 1 cm joint: coordinating grid 22.5 x 11.25 x 7.5.
 	constexpr double CorbelBrickLengthCm = 21.5;
 	constexpr double CorbelBrickWidthCm = 10.25;
 	constexpr double CorbelBrickHeightCm = 6.5;
 	constexpr double CorbelMortarJointCm = 1.0;
 
 	/**
-	 * A HALF-OPEN CELL COUNT, AND THE EPSILON IS NOT A TOLERANCE ON GEOMETRY.
-	 *
-	 * Several step sizes divide the cell pitch exactly — 7.5 goes into 22.5 three times — so the
-	 * quotient below lands on a whole number and a floor of it is one cell either way depending
-	 * on the last bit. Nudging up rather than down keeps the leftmost brick inboard of the base's
-	 * own left edge, the direction that never invents masonry.
+	 * Nudge for the cell-count floor: steps like 7.5 divide the 22.5 pitch exactly, so the floor
+	 * would depend on the last bit. Nudging up keeps the leftmost brick within the base's left edge.
 	 */
 	constexpr double CorbelCellCountEpsilon = 1.0e-9;
 
@@ -40,11 +24,8 @@ namespace DestructionCorbel
 		using namespace DestructionLayout;
 
 		/*
-		 * EMPTIED FIRST AND FILLED LAST, so a refused spec leaves a caller who ignored the
-		 * return value with nothing rather than whatever it laid before giving up. Guards are
-		 * written as `!(x > 0)` and never as `x <= 0`, because every comparison against a NaN
-		 * is false: a NaN scale would slip PAST the second spelling and be laid as a structure
-		 * of NaN-sized bricks whose every joint reads as intact.
+		 * Emptied first and filled last, so a refusal leaves nothing. Guards are `!(x > 0)`, not
+		 * `x <= 0`, so NaN is refused.
 		 */
 		OutLayout = FBrickLayout();
 
@@ -60,7 +41,6 @@ namespace DestructionCorbel
 		const double BrickHeightCm = CorbelBrickHeightCm * Spec.Scale;
 		const double JointCm = CorbelMortarJointCm * Spec.Scale;
 
-		/* A brick plus a joint: one coordinating cell along the wall, and one course up. */
 		const double CellPitchCm = BrickLengthCm + JointCm;
 		const double CoursePitchCm = BrickHeightCm + JointCm;
 
@@ -73,7 +53,7 @@ namespace DestructionCorbel
 
 		FBrickLayout Laid;
 
-		/** Piece handles by course, each in ascending X, so `.Last()` is the outer face. */
+		// Piece handles by course, ascending X, so `.Last()` is the outer face.
 		TArray<TArray<int32>> CoursePieces;
 		CoursePieces.SetNum(TotalCourses);
 
@@ -105,11 +85,7 @@ namespace DestructionCorbel
 			return Piece;
 		};
 
-		/*
-		 * THE BASE IS IMMOVABLE, WHICH IS `bIsGrounded` ON EVERY ONE OF ITS PIECES. A grounded
-		 * piece terminates the flow of load and is a root of the reachability walk on its own,
-		 * so nothing here can topple as a body and the root joint is the only failure available.
-		 */
+		// Every base piece is grounded, so the root joint is the only failure available.
 		for (int32 Course = 0; Course < Spec.BaseCourses; ++Course)
 		{
 			const double CourseOriginCm = LeftOriginCm + (Course % 2 == 1 ? StepCm : 0.0);
@@ -123,19 +99,13 @@ namespace DestructionCorbel
 			}
 		}
 
-		/* The base's top course is even-indexed because BaseCourses is odd, so it is unshifted. */
+		// BaseCourses is odd, so the base's top course is unshifted.
 		const double BaseOuterCentreCm = LeftOriginCm + (Spec.BaseCells - 1) * CellPitchCm;
 
 		/*
-		 * THE GEOMETRY, WRITTEN AS THE GENERALISATION OF THE PICTURE RATHER THAN AS THE PICTURE.
-		 * `claude_plans/CORBEL_CASES.html` builds its fill from an alternating half-cell bond,
-		 * which cannot express any other step size. The statement that does generalise: the
-		 * arm's OUTERMOST brick advances by exactly `StepCm` per course, and each course carries
-		 * as many whole cells inboard of it as fit before the base's left edge. At StepCm = half
-		 * a cell the two constructions agree brick for brick.
-		 *
-		 * A BARE ARM IS ONE BRICK PER COURSE, and that single word is the whole of `bFilled` — a
-		 * different load path rather than a thinner version of the same one.
+		 * The arm's outermost brick advances StepCm per course; a filled course adds whole cells
+		 * inboard back to the base's left edge, a bare arm is one brick per course. At half-cell
+		 * steps this matches claude_plans/CORBEL_CASES.html brick for brick.
 		 */
 		for (int32 StepIndex = 1; StepIndex <= Spec.Steps; ++StepIndex)
 		{
@@ -154,11 +124,8 @@ namespace DestructionCorbel
 		}
 
 		/*
-		 * JOINTS ARE DISCOVERED WITHIN A COURSE AND BETWEEN ADJACENT COURSES ONLY, every one
-		 * through `MakeInterface` — the same door `RunningBond` uses, so the areas, normals and
-		 * rectangles are that producer's rather than this one's. Pieces two courses or two cells
-		 * apart are separated by more than the joint thickness and `MakeInterface` refuses them,
-		 * so the restriction is a cost bound, not a second rule.
+		 * Joints via MakeInterface, within a course and between adjacent courses only. Farther
+		 * pairs cannot touch, so the restriction only bounds cost.
 		 */
 		for (int32 Course = 0; Course < TotalCourses; ++Course)
 		{
