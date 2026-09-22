@@ -8,47 +8,27 @@
 #include "Core/Structure.h"
 
 /*
- * THE FSTRUCTURE BRIDGE, KEPT IN ITS OWN TRANSLATION UNIT ON PURPOSE. The rigid-block
- * solver (RigidBlockOracle.{h,cpp}) reads nothing but the plain problem structs and
- * Core/ConnectionStrength.h; that independence is what lets the sweep catch production
- * being wrong (see the oracle header). This file is the one place the solver meets
- * production's geometry model — it includes Core/Structure.h and projects a live
- * FStructure into an FOracleProblem — so keeping it separate is what keeps the solver
- * core free of any structural dependency.
+ * The FStructure-to-oracle bridge, in its own translation unit so the solver core
+ * (RigidBlockOracle.{h,cpp}) stays independent of production's geometry model. That
+ * independence is what lets the sweep catch production being wrong.
  */
 namespace RigidBlockOracle
 {
 	/**
-	 * THE BRIDGE THE FIXTURE SWEEP CALLS: project a live FStructure into an X-Z
-	 * rigid-block problem.
+	 * Project a live FStructure into a rigid-block problem (the LP input of DESIGN.md §7). Skips
+	 * removed pieces, given joints, and joints between two grounded pieces.
 	 *
-	 * What it reads is exactly the data model DESIGN.md §7 says is the LP's input:
-	 * pieces with mass and centre of mass, joints with centre, half extents, normal and
-	 * strength profile. Removed pieces are skipped; joints that have given are skipped
-	 * (a broken joint is out of the structure, so the oracle judges the graph as it
-	 * stands now, latch included); a joint between two grounded pieces constrains
-	 * nothing and is skipped.
+	 * Refuses, fail closed: incomplete geometry (a default centre would become a lever arm at the
+	 * origin), a live joint naming a removed piece (the AddConnection tombstone hole), and for a 2D
+	 * structure any joint with a Y normal component (wrong statics).
 	 *
-	 * Refused, fail closed: a structure without complete geometry (a defaulted centre
-	 * or rectangle would silently become a lever arm of "at the origin"), a live joint
-	 * naming a removed piece (the known AddConnection tombstone hole), and — for a 2D
-	 * structure only — any joint whose normal has a Y component: a 2D oracle projecting
-	 * an out-of-plane joint would be a plausible number with wrong statics.
+	 * IsThreeDimensional permits a 3D pose but does not force it: the bridge poses 2D whenever
+	 * every posed joint is in-plane and every centroid and patch centre shares one Y, else 3D. 2D
+	 * is more accurate (3D friction is an inscribed octagon, 0.924x the cone) and ~37x cheaper
+	 * (DESIGN §8). An unflagged structure is never promoted.
 	 *
-	 * THE 3D FLAG (FStructure::IsThreeDimensional) IS THE PERMISSION TO POSE 3D, NOT THE
-	 * POSE. A flagged structure may carry its full Y geometry and be routed to the 3D
-	 * oracle, so its Y-normal joints are carried rather than refused — but the bridge
-	 * poses the cheapest sound problem for what it actually contains: 2D whenever every
-	 * joint it poses (after the given / earth-to-earth skips) has an in-plane normal and
-	 * every Y that enters an equilibrium row (each ungrounded block's centroid, each
-	 * posed patch centre) is one common Y; 3D otherwise. The two poses are not the same
-	 * feasible set: the 3D friction rows are an inscribed octagon, 0.924x the exact
-	 * Coulomb cone the 2D rows carry, so the 2D pose is the more accurate formulation and
-	 * ~37x cheaper (DESIGN §8, 2026-09-16). An unflagged structure is never promoted: a
-	 * stray Y-normal joint is still refused.
-	 *
-	 * @return true and a filled problem, or false with the reason; OutProblem is
-	 *         emptied on refusal so a caller who ignores the return solves nothing.
+	 * @return true and a filled problem, or false with the reason; OutProblem is emptied on
+	 *         refusal.
 	 */
 	bool BuildRigidBlockProblem(
 		const FStructure& Structure,
@@ -56,14 +36,9 @@ namespace RigidBlockOracle
 		FString& OutWhyNot);
 
 	/**
-	 * THE SAME BRIDGE WITH A SET OF PIECES TREATED AS ABSENT — the "remainder without this
-	 * body" projection the equilibrium gate needs to attribute a fall (D5 coarseness).
-	 *
-	 * A piece in ExcludedPieces contributes no block, and every joint that touches one is
-	 * skipped rather than treated as the tombstone hole — an excluded body is deliberately
-	 * gone, so a live joint to it is expected, not a fault. Every other refusal (incomplete
-	 * geometry, a genuine tombstone on an included piece, an out-of-plane normal) stands
-	 * exactly as in the whole-structure form, which forwards to this with an empty set.
+	 * The same bridge with ExcludedPieces treated as absent, used by the equilibrium gate to
+	 * attribute a fall (D5). Joints to an excluded piece are skipped, not treated as tombstones;
+	 * all other refusals stand. The whole-structure form forwards here with an empty set.
 	 */
 	bool BuildRigidBlockProblem(
 		const FStructure& Structure,
@@ -72,26 +47,14 @@ namespace RigidBlockOracle
 		FString& OutWhyNot);
 
 	/**
-	 * THE GROUNDED-BOUNDARY BRIDGE — the regional collapse prover's pose (REGIONAL_PROVER_PLAN.md
-	 * §2, review item 12). It projects only a neighbourhood of the structure into an oracle
-	 * problem, with the neighbourhood's one-hop frontier pinned to the earth, so the LP can
-	 * prove that a disturbed region collapses without paying for the whole structure.
+	 * Regional collapse prover's pose (REGIONAL_PROVER_PLAN.md §2): project only RegionPieces, with
+	 * the one-hop frontier BoundaryPieces forced grounded, so the LP can prove a region collapses
+	 * without solving the whole structure. Boundary pieces write no equilibrium rows, so they only
+	 * add support versus reality. Every other piece is absent; joints to absent pieces and joints
+	 * with two grounded ends are skipped. Other refusals match the excluded-pieces form.
 	 *
-	 * Interior RegionPieces are bridged exactly as the excluded-pieces form bridges an included
-	 * piece — real mass, centroid, joints and EffectiveJointStrength weakest-link pairing.
-	 * Frontier BoundaryPieces are bridged with Block.bGrounded forced true: they become earth,
-	 * writing no equilibrium rows, so they can only add support versus reality. Only RegionPieces
-	 * united with BoundaryPieces are included; every other piece is treated as absent exactly as
-	 * ExcludedPieces are, and a joint touching an absent piece is skipped rather than faulted. A
-	 * joint with two grounded ends (now including a real-to-boundary or boundary-to-boundary
-	 * joint) is skipped as constraining nothing the earth does not already absorb. Every other
-	 * refusal — incomplete geometry, a genuine tombstone on an included piece, a 2D out-of-plane
-	 * normal, a degenerate normal — stands exactly as in the excluded-pieces form.
-	 *
-	 * A separate function from BuildRigidBlockProblem on purpose: the shared bridge poses the
-	 * whole-structure and excluded-pieces problems the flagship scenarios and the oracle sweep
-	 * pin byte-for-byte, and forcing a boundary set grounded inside it would shift them. A piece
-	 * present in both sets is treated as boundary (grounded), the conservative reading.
+	 * Separate from BuildRigidBlockProblem so the whole-structure poses stay byte-identical. A
+	 * piece in both sets is treated as boundary (the conservative reading).
 	 *
 	 * @return true and a filled problem, or false with the reason; OutProblem is emptied on refusal.
 	 */

@@ -25,85 +25,24 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Every scenario level, joined and photographed twice: one frame as the
- * player finds it, one after the level has run.
+ * Joins every scenario level and photographs it twice: Held (as laid, solved, nothing released,
+ * hold not expired) and Run (after the hold, cuts applied, three seconds to fall). A human judges
+ * the images; this asserts the level matches the world-free catalogue.
  *
- * This is the validation step, not new behaviour. The user asked to "join
- * the level, see the wall in front of the player start and observe what
- * happens to it" — everything under that sentence is already green
- * headlessly (World.Scenarios.CorbelRows, World.Scenario.
- * GameModeHoldsTheStructureAsLaid, Content.ScenarioMapsExist), but none of
- * that produces a picture, and this project's rule is that a change isn't
- * validated until there are screenshots to look at. So this hands a human
- * eighteen frames and the numbers to read them by; the judging is theirs.
+ * Nothing here builds anything: it opens the row's own .umap and the game mode's BeginPlay does
+ * the rest, so the pictures are of the level a player joins. ViewpointFor is called, not copied.
  *
- * The difference from Tests/CorbelScreenshotTest.cpp, which is the whole
- * point: that harness hand-rolls its own spawn loop and camera placement
- * because there was no public door onto a hand-laid structure when it was
- * written. There is now, so nothing here builds anything — this opens the
- * row's own .umap, and ADestructionGameGameMode::BeginPlay does all of it:
- * selects the row from the map name, lays it through
- * DestructionScenarios::Build, stands it up through
- * UDestructionStructureSubsystem::BuildLayout, places the player per
- * DestructionScenarios::ViewpointFor, and arms the row's own HoldSeconds. The
- * pictures are of the level the player joins, not a test-assembled
- * lookalike, so a duplicated camera or spawn recipe can't creep back in. The
- * only production reach here is a call to ViewpointFor, not a copy of it —
- * re-deriving the arithmetic would agree with a wrong answer.
+ * The clock is controlled so Held is not a race against render speed: a fixed 1/60 s time step
+ * makes a frame count a duration, and world dilation is pinned at its floor (0.0001, BaseGame.ini)
+ * from build until the exposure warm-up, so shader compilation costs no hold time. Exposure then
+ * converges at full speed inside the 4 s hold (technique from Tests/StaircaseScreenshotTest.cpp).
  *
- * The two frames, and what makes "Held" honest:
+ * Asserts: selection by map name, counts match the catalogue, a brick per live piece, player at
+ * ViewpointFor facing the structure, nothing moved or released while held, hold not expired, then
+ * exactly the catalogue's release count after the run, and real PNGs. Displacement is never read as
+ * a break (DESIGN.md §4); post-run movement is only printed.
  *
- *   - Held: the structure exactly as laid — solved, nothing released, every
- *     brick still kinematic, hold not yet expired. For seven of the nine
- *     rows this frame didn't exist before the hold slice: a corbel is
- *     condemned by its own geometry, so before the hold the level settled on
- *     the frame it was built, over before the player's first frame drew.
- *   - Run: after the hold expires, whatever cuts the row names have been
- *     applied, the structure has settled, and whatever was going to fall has
- *     had three seconds to fall.
- *
- * The clock is controlled, or the Held frame is a race: the hold is four
- * world seconds and a 1080p frame of 3,015 bricks isn't free, so on a slow
- * machine the level could run while the renderer was still settling exposure
- * and "held" would picture the collapse. Two harness-side controls close
- * that, neither touching production: FApp::SetUseFixedTimeStep pins every
- * frame to 1/60 s of world time, making a frame count a duration; and the
- * world's time dilation is pinned at its floor from the instant the level
- * finishes building until the exposure warm-up starts, so the unbounded
- * shader-compilation wait after a map load costs no world time
- * (Tests/StaircaseScreenshotTest.cpp established the technique; 0.0001 is
- * BaseGame.ini's own MinGlobalTimeDilation). The warm-up TSR's temporal
- * history and auto-exposure need is then spent at full speed — a frozen
- * world has a delta of ~1.6 microseconds and eye adaptation would never
- * converge — inside the hold, which the fixed time step makes affordable.
- * How much of the hold had gone when the shutter opened is measured and
- * asserted, not argued.
- *
- * What it asserts, and what it deliberately does not: a harness that only
- * takes a picture is green whatever is in it, so each row asserts the map
- * selected its own row by name, that it built, that piece/joint counts match
- * the world-free catalogue, that a brick actor stands for every live piece,
- * that the player was placed per ViewpointFor and is looking at the
- * structure, that nothing had moved or been released/removed when the held
- * frame was written, that the hold hadn't expired — then that the level ran,
- * released exactly the pieces the catalogue says it settles to, and both
- * files landed as real PNGs of real size. It asserts nothing about what the
- * images look like; judging that is the human's job.
- *
- * It never reads a displacement as evidence a joint broke — DESIGN.md §4
- * forbids it, since two pieces can sever and rest exactly where they were —
- * so the release count against the catalogue's own answer is the mechanism,
- * and post-run movement is printed so a reader can tell a picture of a
- * collapse from one of a structure that was condemned but didn't visibly
- * move. The converse has no such hole: an unmoved brick hasn't been
- * released, which is why the held frame's stillness is measured against a
- * 0.1 cm tolerance and asserted.
- *
- * It needs a ticking world and a real RHI, hence
- * EAutomationTestFlags::NonNullRHI. Without that flag the ordinary -nullrhi
- * suite would run this, find no viewport, write no file, and go green — how
- * Visual.StaircaseScreenshot rotted red for five slices. With it, the
- * ordinary suite never mentions this test, so it must be run explicitly.
+ * Needs a real RHI (NonNullRHI), so the ordinary -nullrhi suite skips it; run it explicitly.
  * From PowerShell (Git Bash mangles the map path):
  *
  *   & "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
@@ -113,9 +52,7 @@
  *     -ExecCmds="Automation RunTests DestructionGame.Visual.ScenarioLevelScreenshots"
  *     -TestExit="Automation Test Queue Empty"
  *
- * -nullrhi must be absent: FApp::CanEverRender() is false with it and
- * UGameEngine::Init only builds a window and a viewport otherwise, so there
- * would be nothing to screenshot even if the filter let the test through.
+ * -nullrhi must be absent: with it there is no viewport to screenshot.
  */
 namespace ScenarioLevelShotSupport
 {
@@ -133,40 +70,22 @@ namespace ScenarioLevelShotSupport
 			FPaths::ScreenShotDir() / BaseName + TEXT(".png"));
 	}
 
-	/** Debug overlays off, so nothing is burned over the thing a human is being asked to judge. */
+	/** Debug overlays off, so nothing is drawn over the image. */
 	const TCHAR* const ScenarioShotDisableScreenMessages = TEXT("DisableAllScreenMessages");
 
-	/**
-	 * The two frames of a row, as file-name suffixes. Held and Run rather
-	 * than Before and After, because the pair is not a cut — seven of the
-	 * nine rows remove nothing, so "before what?" has no answer for them;
-	 * what every row has is a hold and the moment it expires.
-	 */
+	/** File-name suffixes for a row's two frames. Not Before/After: most rows cut nothing. */
 	const TCHAR* const ScenarioShotHeldSuffix = TEXT("_Held");
 	const TCHAR* const ScenarioShotRunSuffix = TEXT("_Run");
 
-	/**
-	 * The file name for a row's frame: the row's own name with its dashes
-	 * made legal. Derived from the row, never listed — a table of eighteen
-	 * file names is one to forget to edit when a scenario is added, the
-	 * failure Content.ScenarioMapsExist exists for one layer up.
-	 */
+	/** File name for a row's frame, derived from the row name so a new scenario needs no edit here. */
 	inline FString ScenarioShotBaseName(const DestructionScenarios::FScenario& Row, const TCHAR* Suffix)
 	{
 		return TEXT("Scenario_") + Row.Name.ToString().Replace(TEXT("-"), TEXT("_")) + Suffix;
 	}
 
 	/**
-	 * Where a scenario's map may live, the same pair Tests/ScenarioMapTest.cpp
-	 * sweeps. /Game/Maps/Scenarios/ holds the scenario levels — one .umap per
-	 * catalogue row, each a byte copy of the sandbox map with the game mode
-	 * doing all the work. /Game/Maps/ is where Lvl_Sandbox already is: the
-	 * gameplay map the game ships, and moving it would change what pressing
-	 * Play opens.
-	 *
-	 * Content/Maps/FunctionalTests/ is deliberately absent — CLAUDE.md
-	 * reserves it for functional-test maps and excludes it from the cook, so
-	 * a scenario found there would work in the editor and be missing from a build.
+	 * Folders a scenario map may live in, as Tests/ScenarioMapTest.cpp sweeps. FunctionalTests/ is
+	 * deliberately absent: it is never cooked, so a scenario there would be missing from a build.
 	 */
 	const TCHAR* const ScenarioShotMapFolders[] =
 	{
@@ -202,29 +121,11 @@ namespace ScenarioLevelShotSupport
 	}
 
 	/**
-	 * The timings, in frames — a frame is 1/60 s of world time because the
-	 * clock is pinned.
-	 *
-	 * ScenarioShotFrozenFrames and the shader drain either side of it are
-	 * spent with the world's time dilation at its floor, so they cost the
-	 * hold nothing however long the map took to warm up.
-	 * ScenarioShotExposureFrames is spent at full speed and is the only part
-	 * of the warm-up that costs the hold: one second of it, against a
-	 * four-second hold, leaves three seconds of margin on the frame that must
-	 * be taken before the level runs.
-	 *
-	 * ScenarioShotWriteFrames exists because ProcessScreenShots writes at end
-	 * of draw, so moving on in the same frame as the request loses the file.
-	 *
-	 * ScenarioShotRunFrames is 200 (3.33 s), what takes the world past a 4 s
-	 * hold given the ~1.1 s already spent, with a second of slack.
-	 * ScenarioShotFallFrames is 180 rather than 300 for the reason
-	 * Tests/CorbelScreenshotTest.cpp gives — corbel-f-100's structure is 3,015
-	 * bricks and all but a handful release at once, so every fall frame is
-	 * Chaos solving three thousand bodies. Three seconds is still nine times
-	 * the 0.32 s a released brick needs to fall the 50 cm that would be
-	 * unmistakable in a photograph, and an eleven-metre arm does what it's
-	 * going to do immediately.
+	 * Timings in frames of 1/60 s world time. Frozen frames cost the hold nothing; the 1 s of
+	 * exposure frames is the only warm-up cost against the 4 s hold. Write frames exist because
+	 * screenshots are written at end of draw. Run frames (3.33 s) clear the hold with a second of
+	 * slack. Fall frames are 180, not 300, because corbel-f-100 releases ~3,000 bodies at once;
+	 * 3 s is still nine times what a brick needs to fall a visible 50 cm.
 	 */
 	constexpr double ScenarioShotFixedDeltaSeconds = 1.0 / 60.0;
 
@@ -235,42 +136,32 @@ namespace ScenarioLevelShotSupport
 	constexpr int32 ScenarioShotRunFrames = 200;
 	constexpr int32 ScenarioShotFallFrames = 180;
 
-	/** How many frames the map may take to load and build before the wait gives up and says so. */
+	/** Frames the map may take to load and build before the wait fails. */
 	constexpr int32 ScenarioShotMapLoadFrameBudget = 3000;
 
-	/** See Tests/PieceMenuScreenshotTest.cpp: derived as a floor, not picked as a judgement. */
+	/** Minimum PNG size and dimensions; see Tests/PieceMenuScreenshotTest.cpp. */
 	constexpr int64 ScenarioShotMinimumBytes = 32 * 1024;
 	constexpr int32 ScenarioShotMinimumWidth = 640;
 	constexpr int32 ScenarioShotMinimumHeight = 480;
 
-	/**
-	 * A millimetre, which no frame of real falling can hide inside. A frame
-	 * of ordinary falling is 0.14 cm at 60 Hz, so the tolerance sits below
-	 * the smallest movement a single frame of a genuine collapse could
-	 * produce — and with dilation pinned for most of the warm-up, the real
-	 * headroom is six orders of magnitude wider still.
-	 */
+	/** 1 mm: below the 0.14 cm a brick falls in one 60 Hz frame. */
 	constexpr double ScenarioShotStillnessToleranceCm = 0.1;
 
-	/** How near the pawn has to be to the viewpoint the catalogue computed. */
+	/** How near the pawn must be to the catalogue's viewpoint. */
 	constexpr double ScenarioShotViewpointToleranceCm = 0.01;
 
-	/** The aspect the game mode frames for, restated so this file can print what it is comparing. */
+	/** The aspect the game mode frames for. */
 	constexpr double ScenarioShotAspectHeightOverWidth = 1080.0 / 1920.0;
 
-	/** Print a double so a comparison that failed in the last bit is readable as one. */
+	/** Print a double at full precision. */
 	inline FString ScenarioShotBits(double Value)
 	{
 		return FString::Printf(TEXT("%.17g"), Value);
 	}
 
 	/**
-	 * What the world-free catalogue says this row is and does — the oracle
-	 * every world-side count is held against. Not an independent solver; what
-	 * it's independent of is the world wire: the map, game mode, subsystem,
-	 * spawned actors and timer. A level and a headless reading that disagree
-	 * here are about two different structures, the one thing a photograph
-	 * can't show.
+	 * What the world-free catalogue says this row is and does. Every world-side count is checked
+	 * against it; it is independent of the map, game mode, subsystem, actors and timer.
 	 */
 	struct FScenarioShotOracle
 	{
@@ -279,69 +170,41 @@ namespace ScenarioLevelShotSupport
 		int32 Pieces = 0;
 		int32 Joints = 0;
 
-		/** Pieces the row's own cut takes out. Zero for eight of the nine rows. */
+		/** Pieces the row's own cut removes. */
 		int32 CutPieces = 0;
 
-		/** Passes `SolveAndBreak` broke at least one joint in, once the cut has been applied. */
+		/** Passes in which `SolveAndBreak` broke a joint, after the cut. */
 		int32 BreakPasses = 0;
 
-		/** Pieces the settled solve stops holding up — exactly what `ApplyResults` releases. */
+		/** Pieces the settled solve stops holding up; exactly what `ApplyResults` releases. */
 		int32 WouldRelease = 0;
 
-		/** The structure's bounding box as laid, which is what the viewpoint is framed on. */
+		/** Bounding box as laid; the viewpoint is framed on it. */
 		FBox BoundsCm = FBox(ForceInit);
 
-		/** The bed joint under the arm's lowest outermost brick, for the corbel rows only. */
+		/** The bed joint under the arm's lowest outermost brick (corbel rows only). */
 		int32 RootJoint = INDEX_NONE;
 		int32 RootSeatPiece = INDEX_NONE;
 		int32 RootArmPiece = INDEX_NONE;
 
-		/**
-		 * What makes the root joint the root joint, recorded so it can be
-		 * asserted rather than assumed: it stands on the immovable base,
-		 * carries something not part of it, and is a bed joint seen from the
-		 * arm above. Without these three the reading below is a plausible
-		 * number about whichever joint the search happened to reach first.
-		 */
+		/** Recorded so the root joint's identity is asserted: grounded seat, ungrounded arm, bed role. */
 		bool bRootSeatGrounded = false;
 		bool bRootArmGrounded = true;
 
 		EJointRole RootRoleFromArm = EJointRole::None;
 
-		/** What that joint reads AS LAID — solved and not settled, which is the held state. */
+		/** The root joint's utilisation as laid (solved, not settled). */
 		double RootUtilisation = 0.0;
 	};
 
 	/**
-	 * The root joint of a laid corbel: the bed joint under the arm's lowest
-	 * outermost brick — the one place a corbel on an immovable base can fail,
-	 * since a rigid body can't rotate about a fixed base without separating
-	 * from it, and separation on a bed plane is that joint opening in tension.
+	 * The root joint of a laid corbel: the bed joint under the arm's lowest outermost brick, where
+	 * a corbel on an immovable base fails in tension.
 	 *
-	 * Found from groundedness and height, not a step outward, and that
-	 * distinction is the whole of this comment. The first version looked for
-	 * the lowest course whose outermost brick stood further out than the
-	 * course below — sounds like the definition of a corbel, and is wrong,
-	 * because DestructionCorbel::Build lays its base in an alternating bond:
-	 * odd base courses shift by one step, so the very first joint the search
-	 * met was between two courses of the immovable base. It named the same
-	 * joint 12 for E35, E36 and F, read a confident 0, and every assertion
-	 * here was satisfied — a plausible number about nothing. The rows below
-	 * now assert the arm is not grounded and the seat is, so the mistake
-	 * can't be silent a second time.
-	 *
-	 * Derived from the structure rather than the spec, which is why it's
-	 * written out here at all: Tests/CorbelScenarioTest.cpp finds the same
-	 * joint by computing where the grid says the two bricks are, from a base
-	 * cell count and a left origin declared per row. Nothing on FScenario
-	 * exposes either — a corbel row carries its producer as a closure — so a
-	 * second copy of that table here would be a fixture to drift.
-	 *
-	 * A flat wall fails closed, by the same test: a running-bond wall grounds
-	 * one course, every corbel-family structure grounds its whole base
-	 * (three). So a structure with a single grounded course has no immovable
-	 * base to cantilever off, no root joint, and this answers INDEX_NONE
-	 * rather than naming an arbitrary bed joint as though it meant something.
+	 * Found by groundedness and height, not by looking for a course that steps out: the corbel base
+	 * is laid in an alternating bond, so a step search lands inside the base and reads 0. Derived
+	 * from the structure because FScenario does not expose the grid spec. Fails closed to
+	 * INDEX_NONE for a flat wall (only one grounded course).
 	 */
 	inline int32 ScenarioShotFindRootJoint(
 		const FStructure& Structure,
@@ -353,11 +216,8 @@ namespace ScenarioLevelShotSupport
 		OutArmPiece = INDEX_NONE;
 
 		/*
-		 * The base's top course is the highest course every one of whose
-		 * bricks is grounded; the arm's first course is immediately above it.
-		 * Courses are gathered by the Z of a brick's centre on the nose:
-		 * every producer here lays a course at one exact height, and rounding
-		 * to a grid would be a second opinion about where a course goes.
+		 * Top grounded course is the base's top; the lowest ungrounded course is the arm's first.
+		 * Courses are grouped by exact centre Z, since every producer lays a course at one height.
 		 */
 		double TopGroundedZCm = -TNumericLimits<double>::Max();
 		double FirstArmZCm = TNumericLimits<double>::Max();
@@ -387,7 +247,7 @@ namespace ScenarioLevelShotSupport
 			}
 		}
 
-		// One grounded course is a wall standing on the earth, not an arm reaching off a plinth.
+		// One grounded course is a plain wall, not a corbel on a base.
 		if (GroundedCourses < 2 || FirstArmZCm >= TNumericLimits<double>::Max())
 		{
 			return INDEX_NONE;
@@ -434,21 +294,9 @@ namespace ScenarioLevelShotSupport
 	}
 
 	/**
-	 * Lay this row world-free, read it as laid, apply its cut, settle it, and
-	 * count what is left unheld.
-	 *
-	 * The same predicate FStructureBinding::ApplyResults uses, written out
-	 * rather than called: Grounded and Supported stay put, Stranded and
-	 * Falling both come down, and a piece the last solve never answered for
-	 * is never released. Written out because the point of the comparison is
-	 * that the level and the catalogue agree — a helper shared with the world
-	 * wire would agree with that wire however wrong it was.
-	 *
-	 * The cut is applied before the settle, and all of it before one settle —
-	 * the order RunPieceActions runs in: every named brick goes, then exactly
-	 * one cascade behind the last of them, so the push that follows sees an
-	 * answer that saw every removal. A settle per brick would be a different
-	 * experiment.
+	 * Lay this row world-free, read it as laid, apply its cut, settle, and count what is unheld.
+	 * Uses ApplyResults' release predicate written out, not called, so a bug in the world wire
+	 * cannot agree with itself. The whole cut goes before one settle, as RunPieceActions does.
 	 */
 	inline FScenarioShotOracle ScenarioShotReadWorldFree(const DestructionScenarios::FScenario& Row)
 	{
@@ -472,12 +320,7 @@ namespace ScenarioLevelShotSupport
 			Oracle.BoundsCm += FBox(Box.CentreCm - Box.ExtentCm, Box.CentreCm + Box.ExtentCm);
 		}
 
-		/*
-		 * As laid first, the held state. SolveLoads is non-destructive, so
-		 * the reading printed beside the held frame is the one the
-		 * world-free suite reports for this row, not whatever the joint
-		 * carries after the cascade moved load around it.
-		 */
+		// Read as laid first (the held state); SolveLoads is non-destructive.
 		Laid.Structure.SolveLoads();
 
 		Oracle.RootJoint = ScenarioShotFindRootJoint(
@@ -520,28 +363,17 @@ namespace ScenarioLevelShotSupport
 	}
 
 	/**
-	 * What one row's run learned, carried between latent commands.
-	 *
-	 * File-scope state, for the reason the two screenshot harnesses before
-	 * this one give: a latent command carries only what its parameters
-	 * carry, and the commands that matter run hundreds of frames apart. The
-	 * one that catches the level being built is the only one that sees it
-	 * intact, and the two that judge the frames need what it saw. Reset at
-	 * the top of every row so one row can't inherit the last one's world.
+	 * One row's state, carried between latent commands (which carry only their parameters). Reset
+	 * at the top of every row.
 	 */
 	struct FScenarioShotRecord
 	{
 		bool bJoined = false;
 
 		/**
-		 * The world that was up before the travel, and why the harness has
-		 * to hold one. Open is serviced at the end of a tick, so the frame
-		 * after it is issued still has the old world in it — and for the
-		 * first row that old world is the startup map, Lvl_Sandbox, running
-		 * row 0 with a structure built. The join wait once accepted it,
-		 * froze a world about to be thrown away, and photographed the real
-		 * one unfrozen and already past its hold. Requiring a different
-		 * UWorld is what makes the wait a wait.
+		 * The world up before travel. Open is serviced at end of tick, so the next frame still has
+		 * the old world (for row 0, the startup map running a structure); the join waits for a
+		 * different UWorld.
 		 */
 		TWeakObjectPtr<UWorld> WorldBeforeTravel;
 
@@ -549,13 +381,13 @@ namespace ScenarioLevelShotSupport
 
 		FScenarioShotOracle Oracle;
 
-		/** Where each brick stood when the level laid it, so stillness can be measured. */
+		/** Each brick's laid position, for measuring stillness. */
 		TArray<FVector> LaidAtCm;
 
-		/** World time the instant the level finished building, which is when the hold started. */
+		/** World time the level finished building, i.e. when the hold started. */
 		double BuiltAtSeconds = 0.0;
 
-		/** The graph's solve count while held, so "the level ran" is a claim about the solver. */
+		/** Solve count while held, to prove the level later ran. */
 		int32 SolvesWhileHeld = 0;
 
 		double HeldAtSeconds = 0.0;
@@ -590,14 +422,7 @@ namespace ScenarioLevelShotSupport
 		return World != nullptr ? World->GetAuthGameMode<ADestructionGameGameMode>() : nullptr;
 	}
 
-	/**
-	 * What the level would be telling the player at this moment, in its own
-	 * words. ADestructionGameGameMode::GetScenarioLabel composes it from the
-	 * row it recorded building and the hold timer's own remainder, so the
-	 * line printed beside a frame is the line the level itself would put on
-	 * screen. Read here rather than reproduced, since a second copy of the
-	 * wording is a caption that could disagree with the level.
-	 */
+	/** The cut text the level would show the player now, read from GetScenarioLabel, not reproduced. */
 	inline FString ScenarioShotGameModeCutText(UWorld* World)
 	{
 		const ADestructionGameGameMode* const GameMode = World != nullptr
@@ -635,7 +460,7 @@ namespace ScenarioLevelShotSupport
 		return Binding;
 	}
 
-	/** How many live pieces have been handed to physics. */
+	/** How many live pieces have been released to physics. */
 	inline int32 ScenarioShotReleasedCount(const FStructureBinding& Binding)
 	{
 		int32 Released = 0;
@@ -705,7 +530,7 @@ namespace ScenarioLevelShotSupport
 		return Worst;
 	}
 
-	/** Pin the world's clock, or say why it could not be pinned. Answers the dilation it reached. */
+	/** Set world time dilation; returns the value reached, or -1 with an error. */
 	inline float ScenarioShotSetDilation(FAutomationTestBase& Test, UWorld* World, float Dilation)
 	{
 		AWorldSettings* const Settings = World != nullptr ? World->GetWorldSettings() : nullptr;
@@ -719,13 +544,7 @@ namespace ScenarioLevelShotSupport
 		return Settings->SetTimeDilation(Dilation);
 	}
 
-	/**
-	 * Ask for a screenshot, through the viewport client and not through
-	 * GEngine. Measured, not preferred — see Tests/StaircaseScreenshotTest.cpp,
-	 * whose first run asserted everything correctly and wrote no PNG at all
-	 * because the request went to UEngine::Exec, which has no SHOT handler.
-	 * HandleScreenshotCommand lives on UGameViewportClient.
-	 */
+	/** Request a screenshot via the viewport client; UEngine::Exec has no SHOT handler. */
 	inline void ScenarioShotRequest(FAutomationTestBase& Test, const FString& Command)
 	{
 		UGameViewportClient* const Viewport = GEngine != nullptr ? GEngine->GameViewport : nullptr;
@@ -743,16 +562,7 @@ namespace ScenarioLevelShotSupport
 	}
 }
 
-/**
- * Pin the engine's clock so a frame count is a duration, and check there is
- * something to photograph into.
- *
- * The fixed time step is the harness's, not the game's, and is restored at
- * the end. Without it the world seconds spent warming up the renderer is a
- * function of how fast the machine draws 3,015 bricks, and the four-second
- * hold is a race the slow machine loses silently, photographing a collapse
- * and calling it "held".
- */
+/** Pin a fixed time step so a frame count is a duration (restored at the end), and check for a viewport. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FScenarioShotOpenSessionCommand, FAutomationTestBase*, Test);
 
@@ -762,12 +572,7 @@ bool FScenarioShotOpenSessionCommand::Update()
 
 	UGameViewportClient* const Viewport = GEngine != nullptr ? GEngine->GameViewport : nullptr;
 
-	/*
-	 * The viewport is asserted here rather than left to show up as a missing
-	 * file: without one, HandleScreenshotCommand returns having done
-	 * nothing, and the only downstream symptom reads identically to a
-	 * renderer that failed.
-	 */
+	// Assert the viewport now; without one a missing file looks like a render failure.
 	Test->TestNotNull(
 		TEXT("there must be a game viewport for Slate to screenshot: -nullrhi must be absent"),
 		Viewport);
@@ -788,7 +593,7 @@ bool FScenarioShotOpenSessionCommand::Update()
 	return true;
 }
 
-/** Put the clock back exactly as it was found. */
+/** Restore the real-time clock. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FScenarioShotCloseSessionCommand, FAutomationTestBase*, Test);
 
@@ -801,7 +606,7 @@ bool FScenarioShotCloseSessionCommand::Update()
 	return true;
 }
 
-/** Travel to this row's own map, which is the only thing this harness ever asks the game to do. */
+/** Travel to this row's own map. */
 DEFINE_LATENT_AUTOMATION_COMMAND_TWO_PARAMETER(
 	FScenarioShotOpenMapCommand, FAutomationTestBase*, Test, int32, RowIndex);
 
@@ -847,30 +652,15 @@ bool FScenarioShotOpenMapCommand::Update()
 
 	ScenarioShotRecord().WorldBeforeTravel = World;
 
-	/*
-	 * The engine's own Open, always, even for the map already up. The
-	 * startup map has been running since the process began — through shader
-	 * compilation and every other test in the queue — so its hold expired
-	 * long ago and its "held" frame would picture a level that had already
-	 * run. Travelling unconditionally gives every row the same freshly begun
-	 * world.
-	 */
+	// Always travel, even to the map already up: its hold may have expired long ago.
 	GEngine->Exec(World, *FString::Printf(TEXT("Open %s"), *Package));
 
 	return true;
 }
 
 /**
- * Wait for the level to finish building, and freeze the world the instant it
- * has.
- *
- * Everything recorded here is read from the level rather than given to it:
- * the row was selected by the map name, the structure laid by
- * DestructionScenarios::Build, the bricks spawned by
- * UDestructionStructureSubsystem::BuildLayout, and the camera placed by the
- * game mode. This command's whole job is to notice that it happened, stop
- * the clock so the renderer can warm up inside the hold, and write down
- * where every brick was standing while it still is.
+ * Wait for the level to finish building, freeze the world at once, and record what the level did
+ * (row, structure, bricks, camera) and where every brick stands.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_THREE_PARAMETER(
 	FScenarioShotJoinCommand, FAutomationTestBase*, Test, int32, RowIndex, int32, FramesWaited);
@@ -891,13 +681,7 @@ bool FScenarioShotJoinCommand::Update()
 	UWorld* const World = AutomationCommon::GetAnyGameWorld();
 	ADestructionGameGameMode* const GameMode = ScenarioShotGameMode(World);
 
-	/*
-	 * A different world from the one the travel was issued from — that
-	 * clause is the whole of this wait. Without it the first row accepts the
-	 * startup map (Lvl_Sandbox, already running row 0, up for ten seconds),
-	 * freezes a world about to be discarded, and photographs the real one
-	 * unfrozen and long past its hold.
-	 */
+	// Must be a different world from before travel, or row 0 would accept the startup map.
 	const bool bIsThisRow = World != nullptr
 		&& World != Record.WorldBeforeTravel.Get()
 		&& GameMode != nullptr
@@ -921,12 +705,7 @@ bool FScenarioShotJoinCommand::Update()
 		return true;
 	}
 
-	/*
-	 * The clock stops here, on the first frame the level exists.
-	 * AWorldSettings clamps this to MinGlobalTimeDilation, which
-	 * BaseGame.ini sets to 0.0001, so the shader drain and Slate settle
-	 * below advance the hold by microseconds however long they take in real time.
-	 */
+	// Freeze now. Clamped to MinGlobalTimeDilation (0.0001), so the warm-up costs microseconds.
 	const float Frozen = ScenarioShotSetDilation(*Test, World, 0.0f);
 
 	Test->TestTrue(
@@ -938,12 +717,7 @@ bool FScenarioShotJoinCommand::Update()
 
 	Record.BuiltAtSeconds = World->GetTimeSeconds();
 
-	/*
-	 * And the world is a fresh one. A stale world that happened to be
-	 * running the right row would pass every count below and be
-	 * photographed long after its hold expired — the one failure mode a
-	 * picture of an intact structure can't distinguish from success.
-	 */
+	// A stale world on the right row would pass every count below yet be past its hold.
 	Test->TestTrue(
 		*FString::Printf(
 			TEXT("'%s' must have been JOINED rather than found already running: %s s of world time ")
@@ -952,7 +726,7 @@ bool FScenarioShotJoinCommand::Update()
 			*ScenarioShotBits(Row->HoldSeconds)),
 		Record.BuiltAtSeconds < 1.0);
 
-	/* --- the row the LEVEL chose, and how ------------------------------------------------- */
+	// Row selection.
 
 	Test->TestTrue(
 		*FString::Printf(
@@ -963,7 +737,7 @@ bool FScenarioShotJoinCommand::Update()
 			static_cast<int32>(GameMode->GetScenarioSelection())),
 		GameMode->GetScenarioSelection() == DestructionScenarios::EScenarioSelection::ByMapName);
 
-	/* --- what the world-free catalogue says this row is ----------------------------------- */
+	// Structure against the world-free catalogue.
 
 	Record.Oracle = ScenarioShotReadWorldFree(*Row);
 
@@ -1015,7 +789,7 @@ bool FScenarioShotJoinCommand::Update()
 
 	Record.SolvesWhileHeld = Binding->GetStructure().NumSolves();
 
-	/* --- and where the level put the player ---------------------------------------------- */
+	// Player placement.
 
 	const DestructionScenarios::FViewpoint Viewpoint = DestructionScenarios::ViewpointFor(
 		Record.Oracle.BoundsCm, ScenarioShotAspectHeightOverWidth, Row->Framing);
@@ -1048,12 +822,7 @@ bool FScenarioShotJoinCommand::Update()
 		Viewpoint.LocationCm.X, Viewpoint.LocationCm.Y, Viewpoint.LocationCm.Z,
 		Viewpoint.Rotation.Pitch, Viewpoint.Rotation.Yaw));
 
-	/*
-	 * The player is where the catalogue says, and ViewpointFor is called
-	 * rather than copied — the claim is that the level framed the
-	 * structure, so re-deriving the standoff here would agree with a wrong
-	 * answer instead of failing against it.
-	 */
+	// ViewpointFor is called, not re-derived, so a wrong standoff cannot agree with itself.
 	Test->TestTrue(
 		*FString::Printf(
 			TEXT("'%s' must stand the player where DestructionScenarios::ViewpointFor frames the ")
@@ -1065,12 +834,7 @@ bool FScenarioShotJoinCommand::Update()
 			ScenarioShotViewpointToleranceCm),
 		FVector::Dist(CameraCm, Viewpoint.LocationCm) < ScenarioShotViewpointToleranceCm);
 
-	/*
-	 * And it is looking at the structure rather than standing inside it.
-	 * Two of the three ways a valid PNG can picture nothing — a camera
-	 * buried in the masonry, a wall behind the lens — are exactly these two
-	 * rows; the third, a wall out of frame, is what the standoff above is for.
-	 */
+	// Facing the structure, and not inside it.
 	const FVector ToStructure = CentreCm - CameraCm;
 
 	Test->TestTrue(
@@ -1091,7 +855,7 @@ bool FScenarioShotJoinCommand::Update()
 
 	Record.bJoined = true;
 
-	/* --- and the numbers a human needs beside the pictures -------------------------------- */
+	// Numbers printed beside the pictures.
 
 	Test->AddInfo(FString::Printf(
 		TEXT("ROW '%s' — %s"), *Row->Name.ToString(), Row->Title));
@@ -1114,15 +878,7 @@ bool FScenarioShotJoinCommand::Update()
 			*Row->Name.ToString(), Record.Oracle.RootJoint, Record.Oracle.RootArmPiece,
 			Record.Oracle.RootSeatPiece, *ScenarioShotBits(Record.Oracle.RootUtilisation)));
 
-		/*
-		 * And it is the root joint rather than the first bed joint the
-		 * search reached. The first version of the finder named a joint
-		 * inside the immovable base — the corbel's base is laid in an
-		 * alternating bond, so its second course steps out too — printed a
-		 * confident 0 for every corbel in the family, and nothing here
-		 * objected. These three rows stop a plausible number from standing
-		 * in for a reading about nothing.
-		 */
+		// Prove it is the root joint, not a joint inside the base (an earlier finder read 0 there).
 		Test->TestTrue(
 			*FString::Printf(
 				TEXT("'%s': the root joint must stand ON the immovable base and carry something that ")
@@ -1158,7 +914,7 @@ bool FScenarioShotJoinCommand::Update()
 	return true;
 }
 
-/** Let the world run again, so the exposure and the temporal history settle at a real frame rate. */
+/** Unfreeze the world so exposure and temporal history converge. */
 DEFINE_LATENT_AUTOMATION_COMMAND_TWO_PARAMETER(
 	FScenarioShotThawCommand, FAutomationTestBase*, Test, int32, RowIndex);
 
@@ -1186,21 +942,9 @@ bool FScenarioShotThawCommand::Update()
 }
 
 /**
- * The structure is standing exactly as the level laid it, the hold has not
- * expired, and this is the picture of it.
- *
- * The stillness is measured rather than argued. A brick spawns kinematic and
- * only Release makes it dynamic, so nothing here can have moved — but
- * "nothing can have moved" is precisely the kind of claim that stops being
- * true when somebody changes the spawn path, and the whole value of a held
- * frame is that it's a picture of the intact structure.
- *
- * And the non-movement isn't the only claim, because it couldn't be:
- * DESIGN.md §4 bans reading a displacement as evidence a joint broke. The
- * converse is sound (an unmoved brick hasn't been released), but a released
- * brick jammed on its neighbours would satisfy it, so IsReleased is asserted
- * beside it — the mechanism reading of "held as laid", a countable binary
- * fact rather than a measurement.
+ * Photograph the structure as laid, before the hold expires. Stillness is measured, and
+ * IsReleased is asserted beside it because a released brick jammed in place would also be still
+ * (DESIGN.md §4).
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_TWO_PARAMETER(
 	FScenarioShotHeldCommand, FAutomationTestBase*, Test, int32, RowIndex);
@@ -1265,14 +1009,7 @@ bool FScenarioShotHeldCommand::Update()
 		Binding->GetStructure().NumLivePieces() == Binding->NumPieces()
 			&& ScenarioShotLiveBrickCount(*Binding) == Binding->NumPieces());
 
-	/*
-	 * And held is solved-and-not-settled rather than unsolved. A level
-	 * could hold by never solving at all, and every release count would
-	 * read zero because nothing ever asked — the wrong hold, and one this
-	 * suite has been bitten by from the other end: an absent support answer
-	 * reads as Falling, so an unsolved structure and one in free fall are
-	 * one answer to every readout.
-	 */
+	// Held means solved but not settled; an unsolved structure would also release nothing.
 	Test->TestTrue(
 		*FString::Printf(
 			TEXT("'%s' must already be SOLVED while it is held — every one of its %d live pieces must ")
@@ -1296,15 +1033,8 @@ bool FScenarioShotHeldCommand::Update()
 }
 
 /**
- * The hold expired, the level ran, whatever was going to fall has fallen,
- * and this is the picture of it.
- *
- * The release count is the assertion and the movement only printed.
- * DESIGN.md §4 forbids reading a displacement as evidence a joint broke —
- * two pieces can sever and rest exactly where they were — so what's held
- * against the world-free catalogue is the exact number of pieces the settle
- * stopped holding up; an inequality would pass against a level that dropped
- * everything it owns.
+ * Photograph the level after it has run. The exact release count against the catalogue is
+ * asserted; movement is only printed (DESIGN.md §4).
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_TWO_PARAMETER(
 	FScenarioShotRunCommand, FAutomationTestBase*, Test, int32, RowIndex);
@@ -1342,12 +1072,7 @@ bool FScenarioShotRunCommand::Update()
 			*ScenarioShotBits(SinceBuiltSeconds)),
 		SinceBuiltSeconds >= Row->HoldSeconds);
 
-	/*
-	 * The level ran, a separate claim from anything having fallen, and the
-	 * only claim available on a row that correctly releases nothing.
-	 * Settling is a solve, so the graph's own solve count going up says the
-	 * hold expired and something happened.
-	 */
+	// Settling is a solve, so a higher solve count proves the level ran even if nothing fell.
 	Test->TestTrue(
 		*FString::Printf(
 			TEXT("'%s' MUST HAVE RUN once its hold expired: settling is a solve, so the graph must ")
@@ -1375,12 +1100,7 @@ bool FScenarioShotRunCommand::Update()
 
 	Record.WorstRunMovementCm = ScenarioShotWorstMovementCm(*Binding, Record.LaidAtCm);
 
-	/*
-	 * Printed, not asserted — the number that lets a reader tell a picture
-	 * of a collapse from one of a structure that was condemned and didn't
-	 * visibly move, a judgement only a human looking at the two frames can
-	 * make.
-	 */
+	// Printed, not asserted: helps a human read the frames.
 	Test->AddInfo(FString::Printf(
 		TEXT("ROW '%s' — RUN at %s s of world time, %d frames after its hold expired: %d of %d ")
 		TEXT("pieces live, %d bricks standing, %d released against the catalogue's %d, worst ")
@@ -1397,7 +1117,7 @@ bool FScenarioShotRunCommand::Update()
 	return true;
 }
 
-/** The eighteen files landed and they are real PNGs. Every one was deleted before the run. */
+/** Every frame file exists and is a real PNG. All were deleted before the run. */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FScenarioShotCheckFilesCommand, FAutomationTestBase*, Test);
 
@@ -1407,7 +1127,7 @@ bool FScenarioShotCheckFilesCommand::Update()
 
 	for (const DestructionScenarios::FScenario& Row : DestructionScenarios::Catalogue())
 	{
-		// A build sandbox was never photographed — an empty plot has nothing to photograph.
+		// Build sandboxes are not photographed.
 		if (Row.bBuildSandbox)
 		{
 			continue;
@@ -1443,11 +1163,8 @@ bool FScenarioShotCheckFilesCommand::Update()
 			}
 
 			/*
-			 * The signature and the IHDR, read by hand: eight signature
-			 * bytes, a four-byte chunk length, "IHDR", then width and height
-			 * as big-endian 32-bit integers. A byte count alone passes for a
-			 * file of random bytes, and a decoder would depend on the very
-			 * rendering stack under test.
+			 * PNG signature and IHDR read by hand: 8 signature bytes, 4-byte length, "IHDR", then
+			 * big-endian width and height. Avoids depending on a decoder.
 			 */
 			static const uint8 PngSignature[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
 
@@ -1502,12 +1219,7 @@ bool FScenarioLevelScreenshotTest::RunTest(const FString& Parameters)
 
 	const TArray<DestructionScenarios::FScenario>& Rows = DestructionScenarios::Catalogue();
 
-	/*
-	 * A floor on the sweep, so a catalogue that emptied — or a lookup that
-	 * started answering nothing — fails here rather than looping over no
-	 * rows, writing no files, and passing in silence. Nine is what the
-	 * scenario slices left.
-	 */
+	// Floor on the row count, so an empty catalogue fails instead of passing silently.
 	TestTrue(
 		*FString::Printf(
 			TEXT("fixture: the catalogue must carry at least the 9 rows the scenario slices left, or ")
@@ -1515,12 +1227,7 @@ bool FScenarioLevelScreenshotTest::RunTest(const FString& Parameters)
 			Rows.Num()),
 		Rows.Num() >= 9);
 
-	/*
-	 * The old files go first, synchronously, before any latent command is
-	 * queued. Everything downstream reads "the file exists" as "this run
-	 * rendered a frame", true only if the file can't have survived from an
-	 * earlier run.
-	 */
+	// Delete old files first, so "the file exists" means this run rendered it.
 	for (const DestructionScenarios::FScenario& Row : Rows)
 	{
 		for (const TCHAR* const Suffix : { ScenarioShotHeldSuffix, ScenarioShotRunSuffix })
@@ -1549,25 +1256,13 @@ bool FScenarioLevelScreenshotTest::RunTest(const FString& Parameters)
 	ADD_LATENT_AUTOMATION_COMMAND(FScenarioShotOpenSessionCommand(this));
 
 	/*
-	 * The sequence, per row: travel to its map, catch the level the frame it
-	 * finishes building and freeze the world, drain the shaders and settle
-	 * Slate for free, thaw and let exposure converge inside the hold,
-	 * photograph the held structure, then run the world past the hold and
-	 * far enough beyond it for anything that was going to fall to have fallen.
-	 *
-	 * The shader drain is inside the freeze, the only place it can go: it
-	 * waits on real time with no bound after a map load, so a drain outside
-	 * the freeze would spend the hold on shader compilation and photograph a
-	 * level that had already run.
+	 * Per row: travel, catch the build and freeze, drain shaders and settle Slate while frozen, thaw
+	 * for exposure, shoot Held, run past the hold and let it fall, shoot Run. The shader drain must
+	 * be inside the freeze: it waits on unbounded real time.
 	 */
 	for (int32 RowIndex = 0; RowIndex < Rows.Num(); ++RowIndex)
 	{
-		/*
-		 * A build sandbox is not photographed: the row lays no structure and
-		 * the player fills the plot, so both frames would picture empty
-		 * ground. Skipped here and in the file check below, which reads "the
-		 * file exists" as "this row rendered".
-		 */
+		// A build sandbox lays nothing; skipped here and in the file check.
 		if (Rows[RowIndex].bBuildSandbox)
 		{
 			AddInfo(FString::Printf(

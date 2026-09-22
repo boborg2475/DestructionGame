@@ -8,50 +8,29 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Which scenario a level builds: the `Scenario=` option, else the map, else the default.
+ * Which scenario a level builds. World-free, so every form a map name arrives in is a table row.
  *
- * WORLD-FREE, THE WHOLE REASON THIS FUNCTION EXISTS. Choosing a scenario is a lookup over two
- * strings. Left inside `BeginPlay` it would be reachable only by a world test, and a world test
- * cannot easily produce the inputs that matter here — `UWorld::GetMapName()` in a code-built
- * world answers with the test world's own package name, and no harness can make it say
- * `UEDPIE_0_Lvl_FreeEnd40`. Pulled out as a free function, every form a map name arrives in is
- * one row of a table.
+ * Rule: (1) a `Scenario=` URL option wins; (2) else the map name selects, case-insensitively;
+ * (3) else `sandbox`; (4) an option naming no scenario also falls back to `sandbox` but reports
+ * OptionNamedNoScenario, so a typo is distinguishable from the deliberate default.
  *
- * THE RULE, IN ORDER: (1) a `Scenario=` option on the URL wins, whatever the map says; (2)
- * otherwise the map name selects, case-insensitively; (3) otherwise `sandbox`; (4) an option
- * naming a scenario that does not exist also falls back to `sandbox`, but must be
- * distinguishable from clause 3. Clause 4 is two claims, both asserted: falling back rather than
- * building nothing (a level showing an empty world is worse than one showing the default wall —
- * a mistyping player gets something, immediately), and reporting the miss, since a fallback that
- * reads exactly like a deliberate default leaves that player with no idea why they see the wrong
- * wall. `EScenarioSelection::OptionNamedNoScenario` is that distinction; a test checking only the
- * returned index would pass an implementation that silently swallowed every typo.
+ * Map names arrive bare (cooked), with a UEDPIE_<n>_ prefix (PIE), or as a package or object path;
+ * all forms are pinned.
  *
- * THE MAP NAME IS THE THING MOST LIKELY TO BREAK WHEN A HUMAN ACTUALLY PLAYS. `GetMapName()`
- * answers `Lvl_FreeEnd40` in a cooked game, `UEDPIE_0_Lvl_FreeEnd40` in PIE (instance number not
- * always 0), and a URL or streamed level hands over a long package path or a full object path.
- * Every one of those is the same map, and selecting on only one form would work for whoever
- * wrote it and silently give everyone else the wrong wall — cheap to pin, so pinned in all forms.
+ * A seeded sweep generates URLs with near-miss keys (`MyScenario`, `Scenarios`, ...) that a naive
+ * Contains("Scenario=") would match, and asserts invariants rather than recomputing the answer.
  *
- * AND A SWEEP, because the option parser's near misses are not things anyone would list by hand:
- * `?MyScenario=`, `?Scenarios=`, `?ScenarioX=` and a decoy that merely contains the word must all
- * fail to match, and a hand-rolled `Contains(TEXT("Scenario="))` matches every one of them while
- * passing every example row above. The sweep builds option strings out of decoy and real keys in
- * a deterministic, seeded order and asserts invariants rather than recomputing the answer — an
- * oracle that reimplemented the rule would agree with a wrong implementation as readily as a
- * right one.
- *
- * Needs a ticking world: no, nor a world at all — two strings in, an index and an enum out.
+ * No world needed.
  */
 namespace ScenarioSelectionTestSupport
 {
 	using namespace DestructionScenarios;
 
-	/** The two rows slice A put in the catalogue, named rather than indexed. */
+	/** The two catalogue rows this file uses, by name. */
 	const TCHAR* const ScenarioSelectionDefaultRowName = TEXT("sandbox");
 	const TCHAR* const ScenarioSelectionCutRowName = TEXT("free-end-40");
 
-	/** The maps those two rows are reached by, transcribed rather than imported. */
+	/** Their maps, transcribed rather than imported. */
 	const TCHAR* const ScenarioSelectionDefaultMapName = TEXT("Lvl_Sandbox");
 	const TCHAR* const ScenarioSelectionCutMapName = TEXT("Lvl_FreeEnd40");
 
@@ -67,7 +46,7 @@ namespace ScenarioSelectionTestSupport
 		}
 	}
 
-	/** The row an index names, printable even when the index names nothing. */
+	/** Printable row name for an index, including invalid ones. */
 	inline FString ScenarioSelectionRowName(int32 Index)
 	{
 		return Catalogue().IsValidIndex(Index)
@@ -75,7 +54,7 @@ namespace ScenarioSelectionTestSupport
 			: FString::Printf(TEXT("<no row: %d>"), Index);
 	}
 
-	/** One example: two strings in, a row name and a reason out. */
+	/** One example: options and map in, row name and reason out. */
 	struct FScenarioSelectionRow
 	{
 		const TCHAR* Why;
@@ -85,11 +64,10 @@ namespace ScenarioSelectionTestSupport
 		EScenarioSelection ExpectedHow;
 	};
 
-	/* The sweep's alphabets. Decoy keys that must not match, and each is a real near miss rather
-	 * than a random string: `Game`, `Listen` and `SplitJoin` are options the engine itself puts
-	 * on a URL, and the other four are the ways a substring test for "Scenario" goes wrong. None
-	 * of them is `Scenario` under a case fold, so "must not match" is a sound claim about all of
-	 * them at once. */
+	/*
+	 * Decoy keys that must not match: engine options (`Game`, `Listen`, `SplitJoin`) and four
+	 * near misses a substring test for "Scenario" would wrongly accept.
+	 */
 	const TCHAR* const ScenarioSelectionDecoyKeys[] =
 	{
 		TEXT("Game"),
@@ -101,7 +79,7 @@ namespace ScenarioSelectionTestSupport
 		TEXT("XScenario"),
 	};
 
-	/** Where a map name can be reached from — a bare name, a package path, a full object path. */
+	/** Path prefixes a map name can arrive with. */
 	const TCHAR* const ScenarioSelectionPathPrefixes[] =
 	{
 		TEXT(""),
@@ -109,7 +87,7 @@ namespace ScenarioSelectionTestSupport
 		TEXT("/Game/Maps/Scenarios/"),
 	};
 
-	/** PIE stamps `UEDPIE_<instance>_` onto the ASSET name, inside the path. */
+	/** PIE prefixes `UEDPIE_<instance>_` to the asset name, inside the path. */
 	const TCHAR* const ScenarioSelectionPiePrefixes[] =
 	{
 		TEXT(""),
@@ -118,7 +96,7 @@ namespace ScenarioSelectionTestSupport
 		TEXT("UEDPIE_11_"),
 	};
 
-	/** Neither a URL nor GetMapName guarantees the case the catalogue was typed in. */
+	/** Recase a string: 0 as-is, 1 upper, 2 lower. Input case is not guaranteed. */
 	inline FString ScenarioSelectionRecase(const FString& Value, int32 Which)
 	{
 		switch (Which)
@@ -140,7 +118,7 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 	using namespace ScenarioSelectionTestSupport;
 	using namespace DestructionScenarios;
 
-	/* --- the fixture: the two rows this file is written about must be there --------------- */
+	// Fixture: both rows must exist.
 
 	const int32 DefaultRow = IndexOfName(FName(ScenarioSelectionDefaultRowName));
 	const int32 CutRow = IndexOfName(FName(ScenarioSelectionCutRowName));
@@ -162,11 +140,11 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			ScenarioSelectionDefaultRowName, DefaultRow),
 		DefaultRow == 0);
 
-	/* --- the worked examples ------------------------------------------------------------- */
+	// Worked examples.
 
 	const FScenarioSelectionRow ExampleRows[] =
 	{
-		/* Nothing names anything: the game opens on its default wall, deliberately. */
+		// Nothing names anything: the default, deliberately.
 		{ TEXT("no options and no map"),
 			TEXT(""), TEXT(""),
 			ScenarioSelectionDefaultRowName, EScenarioSelection::Default },
@@ -175,9 +153,7 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			TEXT(""), TEXT("Lvl_NoSuchMap"),
 			ScenarioSelectionDefaultRowName, EScenarioSelection::Default },
 
-		/* The map selects, in every form it arrives in: the bare asset name is the cooked game;
-		 * the UEDPIE_ prefix is PIE, whose instance number is not always zero; the package path
-		 * and the full object path are what a URL and a streamed level hand over. */
+		// The map selects in every form: bare (cooked), UEDPIE_<n>_ (PIE), package or object path.
 		{ TEXT("the default row's own map"),
 			TEXT(""), TEXT("Lvl_Sandbox"),
 			ScenarioSelectionDefaultRowName, EScenarioSelection::ByMapName },
@@ -222,9 +198,7 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			TEXT(""), TEXT("/Game/Maps/"),
 			ScenarioSelectionDefaultRowName, EScenarioSelection::Default },
 
-		/* The option wins over the map, asserted in both directions: only checking that
-		 * `?Scenario=free-end-40` beats `Lvl_Sandbox` would pass an implementation that simply
-		 * preferred the cut row; the second row is the same claim with the answers swapped. */
+		// The option beats the map, in both directions so no row is simply preferred.
 		{ TEXT("an option overriding the map"),
 			TEXT("?Scenario=free-end-40"), TEXT("Lvl_Sandbox"),
 			ScenarioSelectionCutRowName, EScenarioSelection::ByOption },
@@ -233,10 +207,7 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			TEXT("?Scenario=sandbox"), TEXT("Lvl_FreeEnd40"),
 			ScenarioSelectionDefaultRowName, EScenarioSelection::ByOption },
 
-		/* FName comparison is case-insensitive and FString::operator== is too, so neither the
-		 * scenario's name nor the option's key has to be typed the way the catalogue spells it.
-		 * That comes free from using the engine's own parser, which is why the engine's own
-		 * parser is the requirement rather than a second one written here. */
+		// Key and value are case-insensitive, which the engine's own parser provides.
 		{ TEXT("an option value in upper case"),
 			TEXT("?Scenario=FREE-END-40"), TEXT(""),
 			ScenarioSelectionCutRowName, EScenarioSelection::ByOption },
@@ -254,14 +225,12 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			TEXT("?Listen?Scenario=free-end-40"), TEXT("Lvl_Sandbox"),
 			ScenarioSelectionCutRowName, EScenarioSelection::ByOption },
 
-		/* Repeated, the first wins — UGameplayStatics::ParseOption's own behaviour. Pinning it is
-		 * what "use the engine's parser rather than writing a second one" means. */
+		// Repeated, the first wins, as UGameplayStatics::ParseOption does.
 		{ TEXT("the option given twice — the first wins, as ParseOption does"),
 			TEXT("?Scenario=free-end-40?Scenario=sandbox"), TEXT(""),
 			ScenarioSelectionCutRowName, EScenarioSelection::ByOption },
 
-		/* Keys that merely look like the option: a Contains(TEXT("Scenario=")) passes every row
-		 * above and fails all three of these. */
+		// Keys that only look like the option; a Contains("Scenario=") check fails these.
 		{ TEXT("a key that ENDS with the option's name"),
 			TEXT("?MyScenario=free-end-40"), TEXT("Lvl_Sandbox"),
 			ScenarioSelectionDefaultRowName, EScenarioSelection::ByMapName },
@@ -274,14 +243,10 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			TEXT("?ScenarioX=free-end-40"), TEXT("Lvl_FreeEnd40"),
 			ScenarioSelectionCutRowName, EScenarioSelection::ByMapName },
 
-		/* And the clause this whole function is for. Both of these name a scenario that is not
-		 * there, so both must land on the default row and say so — the returned index alone is
-		 * identical to the deliberate default two rows above, and a mistyping player needs to be
-		 * told rather than left wondering which wall they are looking at. The empty value is the
-		 * second half: `?Scenario=` with nothing after it is a typo, not an absent option, and
-		 * must not fall through to the map. The map here is the cut row's, so an implementation
-		 * that treated the miss as "no option given" would return the cut row and fail on the
-		 * index as well as the reason. */
+		/*
+		 * An option naming no scenario (including an empty value) falls back to the default and
+		 * reports it. The map is the cut row's, so treating the miss as "no option" also fails.
+		 */
 		{ TEXT("an option naming a scenario that does not exist"),
 			TEXT("?Scenario=no-such-scenario"), TEXT("Lvl_FreeEnd40"),
 			ScenarioSelectionDefaultRowName, EScenarioSelection::OptionNamedNoScenario },
@@ -317,11 +282,10 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			How == Row.ExpectedHow);
 	}
 
-	/* --- the sweep: the invariants, over generated URLs and map names -------------------- */
-
-	/** Seeded and fixed, so the suite runs the same cases every time and a failure names the one
-	 * case to reproduce — a fresh seed per run is a flaky test, worse than none (discipline
-	 * borrowed from Tests/StructureFuzzTest.cpp). */
+	/*
+	 * The sweep: invariants over generated URLs and map names. The seed is fixed so every run is
+	 * the same and a failure is reproducible.
+	 */
 	constexpr int32 ScenarioSelectionSweepSeed = 20260807;
 	constexpr int32 ScenarioSelectionSweepCases = 600;
 
@@ -337,10 +301,10 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 	{
 		++SweptCases;
 
-		/* The option half: a random number of decoy options, and — half the time — one real
-		 * `Scenario=` among them at a random position, naming either a row that exists or one
-		 * that does not. Both key and value are re-cased at random, since neither a URL nor a
-		 * person types either the way the catalogue does. */
+		/*
+		 * Options: up to three decoys and, half the time, one real `Scenario=` at a random slot,
+		 * naming a real or missing row. Key and value are randomly recased.
+		 */
 		const int32 DecoyCount = Stream.RandRange(0, 3);
 		const int32 RealOptionAt = Stream.RandRange(0, DecoyCount);
 		const bool bHasRealOption = Stream.RandRange(0, 1) == 1;
@@ -376,8 +340,7 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		/* The map half, decorated the way the engine decorates one: a package path, a PIE
-		 * instance stamp on the asset name, an optional object suffix, and any casing. */
+		// Map: optional package path, PIE prefix, object suffix, and random case.
 		const bool bMapNamesARow = Stream.RandRange(0, 3) > 0;
 		const int32 MapRow = Stream.RandRange(0, Catalogue().Num() - 1);
 
@@ -408,8 +371,7 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			ScenarioSelectionSweepSeed, Case, *Options, *MapName,
 			*ScenarioSelectionRowName(Got), Got, *ScenarioSelectionHowName(How));
 
-		/* Invariant one, the fail-closed one: whatever arrives, a valid row comes back. A level
-		 * that builds nothing at all is the outcome this function exists to make unreachable. */
+		// Invariant one (fail-closed): a valid row always comes back.
 		if (!Catalogue().IsValidIndex(Got))
 		{
 			if (NoRowFailures == 0)
@@ -424,7 +386,7 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		/* INVARIANT TWO: an option naming a row wins, whatever surrounds it and whatever the map says. */
+		// Invariant two: an option naming a row wins, whatever else is present.
 		if (bHasRealOption && bRealOptionNamesARow
 			&& (Got != NamedRow || How != EScenarioSelection::ByOption))
 		{
@@ -439,7 +401,7 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			++OptionFailures;
 		}
 
-		/* INVARIANT THREE: with no real option, the map decides — in every decoration of it. */
+		// Invariant three: with no real option, the map decides in every form.
 		if (!bHasRealOption && bMapNamesARow
 			&& (Got != MapRow || How != EScenarioSelection::ByMapName))
 		{
@@ -455,9 +417,7 @@ bool FScenarioSelectionTest::RunTest(const FString& Parameters)
 			++MapFailures;
 		}
 
-		/* Invariant four: the reason and the index cannot disagree. Both fallback reasons must
-		 * land on the default row, and neither naming reason may land anywhere but the row it
-		 * claims to have been given. */
+		// Invariant four: both fallback reasons land on the default row.
 		const bool bAgrees =
 			(How == EScenarioSelection::Default || How == EScenarioSelection::OptionNamedNoScenario)
 				? Got == DefaultRow

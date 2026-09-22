@@ -7,43 +7,32 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-/**
- * Named namespace, not anonymous, and named differently from every other one in this directory.
- * An anonymous namespace is private to a translation unit rather than to a file, and a unity
- * build merges many files into one — at which point two file-local names that collide are a hard
- * compile error between files that never refer to each other. See CURRENT_STATE.md; the `using
- * namespace` lives inside each RunTest body for the same reason.
- */
+/** Named, uniquely-named namespace: unity builds merge files, so anonymous-namespace names can collide. */
 namespace PieceInspectionTestSupport
 {
 	using namespace DestructionProfiles;
 
 	/**
-	 * Unreal's gravity, transcribed rather than imported. The 1 N = 100 uu conversion is already
-	 * inside this number — a 2 kg piece weighs 2 x 980 = 1960 uu, which is 19.6 N x 100 — so
-	 * applying a factor of 100 anywhere downstream is the standard way to be wrong by exactly
-	 * 100x here.
+	 * Gravity, transcribed rather than imported. Already in uu: 2 kg weighs 2 x 980 = 1960 uu
+	 * (19.6 N x 100), so any further factor of 100 is a 100x error.
 	 */
 	constexpr double InspectionGravityCmPerSecondSquared = 980.0;
 
 	/**
-	 * Spelled out independently, never imported from production. 1 N = 100 uu of force and
-	 * 1 cm2 = 100 mm2, so one megapascal — one newton per square millimetre — across one square
-	 * centimetre is 100 x 100 uu. If DestructionForce::ForceUnitsPerMPaSqCm is ever wrong, this
-	 * file fails rather than agreeing with it.
+	 * Spelled out independently of production: 1 MPa over 1 cm2 is 100 N = 100 x 100 uu. If
+	 * ForceUnitsPerMPaSqCm is ever wrong, this file fails rather than agreeing.
 	 */
 	constexpr double InspectionForceUnitsPerMPaSqCm = 100.0 * 100.0;
 
 	/** An ordinary bed- or head-joint face. */
 	constexpr double InspectionJointAreaSqCm = 100.0;
 
-	/** The structure the fixtures below identify themselves as, and one they do not. */
+	/** The fixtures' structure id, and a different one. */
 	constexpr int32 ThisStructure = 4;
 	constexpr int32 SomeOtherStructure = 5;
 
 	/*
-	 * THE WORKED FIXTURE. Five pieces around one subject, so that the piece under
-	 * inspection carries every role at once and one joint that has gone:
+	 * The worked fixture: five pieces, so the subject carries every role and one gone joint:
 	 *
 	 *                       [3] Rider  3 kg
 	 *                        |  conn 2   bed joint ABOVE the subject
@@ -52,9 +41,8 @@ namespace PieceInspectionTestSupport
 	 *                        |  conn 0   bed joint BENEATH the subject
 	 *                       [0] Pad    grounded
 	 *
-	 * Piece 4 is pulled out before the solve, which SEVERS conn 3 without it ever having
-	 * failed — HasGiven true with no break pass, the state DESIGN.md's table calls "went
-	 * with a removed piece". That is the joint a readout must not draw like an intact one.
+	 * Piece 4 is removed before the solve, severing conn 3 without failing it: HasGiven true,
+	 * no break pass ("went with a removed piece", DESIGN.md).
 	 */
 	constexpr int32 PadPiece = 0;
 	constexpr int32 SubjectPiece = 1;
@@ -73,10 +61,10 @@ namespace PieceInspectionTestSupport
 	constexpr double RiderMassKg = 3.0;
 	constexpr double PulledPadMassKg = 7.0;
 
-	/** Straight up: a bed joint, which bears in compression. */
+	/** Vertical normal: a bed joint, bearing in compression. */
 	const FVector InspectionBedNormal(0.0, 0.0, 1.0);
 
-	/** Straight sideways: a head joint, which can only carry in shear. */
+	/** Horizontal normal: a head joint, carrying vertical load in shear. */
 	const FVector InspectionHeadNormal(1.0, 0.0, 0.0);
 
 	FPieceRef MakeRef(int32 StructureId, int32 PieceIndex)
@@ -113,12 +101,8 @@ namespace PieceInspectionTestSupport
 	}
 
 	/**
-	 * The diagram above, built. Solved only if asked, because "nobody has solved yet" is itself
-	 * one of the states a readout has to be able to tell apart from a collapse.
-	 *
-	 * A null actor is fine here: nothing in this file releases, resolves or destroys one — the
-	 * breakout is arithmetic over a graph — and spawning stand-in UObjects for a slice that never
-	 * looks at them would be testing the next one by accident.
+	 * Build the fixture above. Solving is optional because "not yet solved" is a state the readout
+	 * must distinguish. Null actors are fine: nothing here touches an actor.
 	 */
 	void BuildWorkedFixture(FStructureBinding& Out, bool bPullThePad, bool bSolve)
 	{
@@ -147,13 +131,8 @@ namespace PieceInspectionTestSupport
 	}
 
 	/**
-	 * Utilisation of a joint whose ONLY loaded axis is compression.
-	 *
-	 * Which axis governs is not free, and getting it wrong is how a test aimed at one thing
-	 * silently measures another. Here the force is exactly antiparallel to an exactly
-	 * vertical normal, so shear and tension are exactly zero and their ratios are exactly
-	 * zero whatever their capacities are — compression is the only axis that can be the
-	 * worst of the three.
+	 * Utilisation of a joint loaded only in compression (force antiparallel to a vertical normal,
+	 * so shear and tension are exactly zero and cannot govern).
 	 */
 	double CompressionOnlyUtilisation(
 		double ForceMagnitudeUu, double AreaSqCm, const FConnectionStrength& Strength)
@@ -163,13 +142,8 @@ namespace PieceInspectionTestSupport
 	}
 
 	/**
-	 * Utilisation of a joint whose ONLY loaded axis is shear, with no squeeze on it at all.
-	 *
-	 * Mohr-Coulomb makes shear capacity cohesion + mu x compressive stress, and compression
-	 * here is exactly zero — a vertical load on a vertical face — so the friction term
-	 * vanishes and the bare cohesion is the capacity. The one thing that could still take
-	 * that away is the truncation cap coming in BELOW the cohesion, which the fixture
-	 * precondition in the test asserts cannot happen with the shipped profile.
+	 * Utilisation of a joint loaded only in shear with zero compression, so Mohr-Coulomb capacity
+	 * is bare cohesion. Valid while the shear cap is above cohesion (asserted in the test).
 	 */
 	double ShearOnlyUnsqueezedUtilisation(
 		double ForceMagnitudeUu, double AreaSqCm, const FConnectionStrength& Strength)
@@ -204,7 +178,7 @@ namespace PieceInspectionTestSupport
 		return TEXT("<not a state>");
 	}
 
-	/** What came back, so a failure reads without a debugger. */
+	/** Describe an inspection for failure messages. */
 	FString DescribeInspection(const FPieceInspection& Inspection)
 	{
 		FString Line = FString::Printf(
@@ -250,19 +224,9 @@ namespace PieceInspectionTestSupport
 		int32 BreakPass = INDEX_NONE;
 
 		/**
-		 * The bending moment about Y, uu.cm — ZERO ON EVERY ROW OF THE WORKED FIXTURE, AND
-		 * THAT IS AN ASSERTION RATHER THAN AN OMITTED COLUMN.
-		 *
-		 * Nothing in this fixture supplies a joint rectangle, so no joint in it has a lever
-		 * arm to measure anything against and every one of them must read exactly zero. That
-		 * exactness is the property MOMENTS_DESIGN.md's whole slicing rests on — a
-		 * geometry-free structure reads bit for bit what it read before moments existed — so
-		 * a readout that started inventing a moment out of a piece's centre and a joint
-		 * centroid nobody wrote would show up here rather than in a wall.
-		 *
-		 * Y because every load in this project is vertical and every joint rectangle is
-		 * axis-aligned, so r x F about a joint on the X-Z plane lands wholly on Y. The
-		 * eccentric fixture at the foot of the test is where a non-zero one is derived.
+		 * Bending moment about Y, uu.cm. Asserted zero on every worked-fixture row: with no joint
+		 * geometry there is no lever arm (MOMENTS_DESIGN.md). Y because loads are vertical and
+		 * rectangles axis-aligned. The eccentric fixture at the end derives a non-zero one.
 		 */
 		double MomentYUuCm = 0.0;
 	};
@@ -277,13 +241,8 @@ namespace PieceInspectionTestSupport
 	};
 
 	/**
-	 * Every joint touching a piece, found by brute force over the whole array.
-	 *
-	 * The oracle for the adjacency half, and it is deliberately the dumbest possible one:
-	 * there is no clever way to write this, so the value is not in an independent algorithm
-	 * but in the SCOPE — it includes joints that have GIVEN, which the solver's own support
-	 * lists drop before the tier is even decided. A breakout that reused a solver-side list
-	 * would silently stop showing the joint the player just broke.
+	 * Every joint touching a piece, by brute force. Includes given joints, which the solver's
+	 * support lists drop, so a breakout reusing those lists would fail here.
 	 */
 	TArray<int32> EveryJointTouching(const FStructure& Structure, int32 PieceIndex)
 	{
@@ -301,7 +260,7 @@ namespace PieceInspectionTestSupport
 		return Found;
 	}
 
-	/** Nothing a readout shows may be a NaN or an infinity, whatever it was asked about. */
+	/** No readout number may be NaN or infinite. */
 	void CheckEveryNumberIsUsable(
 		FAutomationTestBase& Test, const TCHAR* Description, const FPieceInspection& Inspection)
 	{
@@ -316,15 +275,7 @@ namespace PieceInspectionTestSupport
 					&& FMath::IsFinite(Joint.ForceUu.Y)
 					&& FMath::IsFinite(Joint.ForceUu.Z));
 
-			/*
-			 * And the moment, which has no Max() escape of its own. A moment is a solver output
-			 * rather than a verdict, so unlike the utilisation below there is no sentinel it is
-			 * entitled to come back as — every component is a real number or the row is not
-			 * describing anything. A NaN here is the worse half of the pair: ComputeUtilisation
-			 * branches on `moment != 0.0`, which is true of a NaN, so it would be carried into
-			 * the stress rather than waved through, printing a utilisation of Max beside a
-			 * moment nothing can read.
-			 */
+			// A moment has no Max() sentinel; a NaN would pass ComputeUtilisation's `!= 0.0` check.
 			Test.TestTrue(
 				FString::Printf(
 					TEXT("%s: connection %d must report a finite moment, it reports (%f, %f, %f)"),
@@ -335,10 +286,8 @@ namespace PieceInspectionTestSupport
 					&& FMath::IsFinite(Joint.MomentUuCm.Z));
 
 			/*
-			 * NOT NaN, and finite-or-exactly-Max. TNumericLimits<double>::Max() is the
-			 * deliberate fail-closed answer for a joint that is not a joint, so it is
-			 * allowed; a NaN is never allowed, because FMath::Max discards it and the
-			 * reading silently becomes whichever other axis happened to be lowest.
+			 * Finite or exactly Max (the fail-closed answer). Never NaN: FMath::Max would discard it
+			 * and silently report another axis.
 			 */
 			Test.TestTrue(
 				FString::Printf(
@@ -351,13 +300,8 @@ namespace PieceInspectionTestSupport
 	}
 
 	/**
-	 * The assertion that stops a second copy of the solver growing behind the readout.
-	 *
-	 * Every number on a row is compared exactly — not nearly — against the accessor it must have
-	 * come from. Exactness is the point: a re-derivation agrees to nine decimal places forever
-	 * and differs in the last bit, and CURRENT_STATE.md records that this project has already
-	 * paid for exactly that drift twice. A tolerance here would let the second copy in and then
-	 * let it disagree quietly.
+	 * Every number on a row must equal its FStructure accessor exactly. A tolerance would admit a
+	 * re-derivation that drifts in the last bit, which has happened twice.
 	 */
 	void CheckInspectionAgreesWithTheGraph(
 		FAutomationTestBase& Test,
@@ -400,17 +344,7 @@ namespace PieceInspectionTestSupport
 					Structure.GetConnectionForce(Index).Z, Joint.ForceUu.Z),
 				Joint.ForceUu == Structure.GetConnectionForce(Index));
 
-			/*
-			 * AND THE MOMENT, ON THE SAME TERMS AND FOR A SHARPER REASON THAN THE REST.
-			 *
-			 * FConnection::UtilisationUnder takes the moment as a DEFAULTED parameter, so a
-			 * breakout that simply never fetched one would go on agreeing with an assertion
-			 * written without this line — and would agree forever, quietly supplying zero for
-			 * the one number that explains why a joint on a light brick reads near its limit.
-			 * Exact rather than nearly-equal for the reason every other field here is: a
-			 * re-derivation from a centre of mass and a centroid agrees to fifteen places and
-			 * differs in the last bit, and this project has already paid for that twice.
-			 */
+			// The moment too: UtilisationUnder defaults it, so a breakout that skipped it would read zero.
 			Test.TestTrue(
 				FString::Printf(
 					TEXT("%s: connection %d's moment must be GetConnectionMoment EXACTLY; ")
@@ -457,20 +391,10 @@ namespace PieceInspectionTestSupport
 		}
 	}
 
-	/** THE ROLE RULE, WRITTEN FROM THE ANGLE RATHER THAN FROM A COSINE.
-	 *
-	 * DESIGN.md §3: "a joint counts as bearing when its normal is closer to vertical than
-	 * horizontal", and the line is at 45 degrees. So the role of a joint TO a piece is
-	 * decided by the angle between straight up at that piece and the normal pointing at it —
-	 * under 45 it bears, over 135 it is something resting on the piece, and everything
-	 * between is a head joint.
-	 *
-	 * This is deliberately NOT the production expression. FStructure decides by comparing
-	 * |normal.Z| against cos 45 and reading a sign; stating the same rule as an angle means
-	 * the test and the solver derive the answer two different ways, so the two agreeing is
-	 * evidence rather than tautology. It is also what makes the FLIP fall out of one rule
-	 * instead of two: the same joint seen from the other end simply has an angle of
-	 * 180 minus this one.
+	/**
+	 * The role rule (DESIGN.md §3) stated as an angle from vertical of the normal toward the piece:
+	 * under 45 bears, over 135 rests on it, between is a head joint. Deliberately not production's
+	 * cosine form, so agreement is evidence. The other end of the joint is 180 minus this.
 	 */
 	EJointRole RoleFromAngleOfNormalTowardPiece(double AngleFromVerticalDeg)
 	{
@@ -496,63 +420,25 @@ namespace PieceInspectionTestSupport
 		double AngleDeg = 0.0;
 
 		/**
-		 * Whether the expected role is asserted at all.
-		 *
-		 * FALSE ONLY ON THE BOUNDARY ITSELF. Exactly 45 and exactly 135 degrees are a float
-		 * knife-edge: the contract says the comparison is strict, so the boundary reads Head,
-		 * but whether a normal built from FMath::Sin and FMath::Cos lands one ulp above or
-		 * below cos 45 after normalising is a property of the compiler rather than of the
-		 * design. A row whose expected value depends on that is a flake waiting to happen, so
-		 * the boundary rows assert only what is genuinely defined: a role comes back, it is
-		 * not None, and both ends of the joint agree with FStructure.
+		 * Whether the expected role is asserted. False only at exactly 45/135 degrees, where the
+		 * normal lands an ulp either side of cos 45; those rows assert only non-None and agreement.
 		 */
 		bool bRoleIsWellDefined = true;
 	};
 }
 
 /**
- * A PIECE'S PER-JOINT BREAKOUT IS EVERY JOINT TOUCHING IT — INCLUDING THE ONES THAT HAVE
- * GONE — EACH CARRYING THE NEIGHBOUR IT REACHES, WHAT IT IS TO THIS PIECE, WHAT IT IS
- * CARRYING AND WHAT IT IS BEING BENT BY, HOW CLOSE THOSE TWO TOGETHER ARE TO FAILING, AND
- * WHETHER IT HAS GIVEN; PLUS THE PIECE'S OWN SUPPORT STATE. AND EVERY ONE OF THOSE NUMBERS
- * IS THE SOLVER'S OWN ANSWER READ BACK, NEVER A SECOND DERIVATION OF IT.
+ * A piece's breakout lists every joint touching it, including given ones, each with neighbour,
+ * role, force, moment, utilisation and given state, plus the piece's support state. Every number
+ * is the solver's own answer read back, never re-derived.
  *
- * THE MOMENT IS ON THE ROW BECAUSE WITHOUT IT THE ROW CANNOT EXPLAIN ITSELF. Utilisation is
- * computed from a force AND a bending moment, so a breakout carrying only the force shows a
- * joint near its limit beside a load that could not possibly put it there — and the reader
- * has no arithmetic available that closes the gap. FConnection::UtilisationUnder takes the
- * moment as a DEFAULTED parameter, which is what makes the omission silent: an assertion
- * written without it supplies zero and goes on agreeing however far the two have drifted.
- * The eccentric fixture at the foot of this test is the only one here that bends at all, and
- * it exists so the exact-equality sweep has something to be wrong about.
+ * The moment is on the row because utilisation depends on it; without it a near-limit joint
+ * cannot be explained. The eccentric fixture at the end is the only one that bends.
  *
- * WHY THE DATA IS TESTED BEFORE ANYTHING DRAWS IT. The piece menu widget was landed under an
- * explicit recorded exception to the TDD gate, on the condition that it holds no logic at all
- * — no branch, no filter, no computation — because a code-built test world has no viewport
- * and no headless assertion can see a button. A debugger readout is precisely the feature
- * that would erode that condition, so every number it will show is decided here, in Core,
- * where a test can reach it.
- *
- * WHY THE ASSERTIONS ARE SPLIT IN TWO, AND WHY BOTH ARE NEEDED. The table pins the actual
- * numbers, hand-derived from published mortar strengths and from a conversion spelled out
- * independently in this file — that is what catches the whole chain being wrong, and in
- * particular the 100x slip that a stray newton conversion would produce. The agreement
- * sweep then pins that those numbers came from FStructure's own accessors, EXACTLY, bit for
- * bit. A table alone would pass against a hand-copied re-derivation that happens to be
- * right today; an agreement sweep alone would pass against two identical copies of a wrong
- * answer. Only the pair says both things.
- *
- * WHICH AXIS GOVERNS IS WORKED THROUGH FOR EVERY JOINT AND WRITTEN DOWN. ComputeUtilisation
- * returns the worst of three axes, so a joint aimed at shear silently measures compression
- * if the compression happens to utilise more. Every bed joint here takes a load exactly
- * antiparallel to an exactly vertical normal, so shear and tension are exactly zero and
- * compression is the only axis that can win; the head joint takes a load exactly parallel to
- * its face, so compression and tension are exactly zero and shear is the only one. The
- * fixture precondition below asserts the one remaining way that could change — mortar's
- * shear truncation cap dropping below its cohesion.
- *
- * NEEDS A TICKING WORLD: no, and not even a world. A structure is a graph and a breakout is
- * a scan of it, so this runs at arithmetic speed beside the solver tests.
+ * Two kinds of assertion, both needed: a hand-derived table (catches a wrong chain, e.g. a 100x
+ * slip) and an exact agreement sweep against FStructure (catches a second copy of the solver).
+ * Each bed joint is loaded only in compression and the head joint only in shear, so the governing
+ * axis is known. No world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceInspectionJointBreakoutTest,
@@ -563,13 +449,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 {
 	using namespace PieceInspectionTestSupport;
 
-	/*
-	 * FIXTURE PRECONDITION, and it is what keeps the head joint measuring shear. With no
-	 * compression on the joint the Mohr-Coulomb friction term is zero, so capacity is
-	 * min(cohesion, cap) — which is the cohesion only while the cap sits above it. A retune
-	 * that dropped the ceiling below the bond would silently change what the head-joint row
-	 * is measuring, and this says so rather than letting it slide.
-	 */
+	// Fixture precondition: with no compression, head-joint capacity is min(cohesion, cap).
 	TestTrue(
 		FString::Printf(
 			TEXT("fixture: mortar's shear truncation cap (%.3f MPa) must sit above its cohesion ")
@@ -583,13 +463,8 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 	const FStructure& Structure = Binding.GetStructure();
 
 	/*
-	 * THE HAND-DERIVED LOADS.
-	 *
-	 * The hanger has no bed joint beneath it, so it falls back to its head joint and pushes
-	 * its whole weight sideways into the subject. The rider rests squarely on the subject.
-	 * The subject therefore carries its own 2 kg plus the 3 kg above it plus the 1 kg hanging
-	 * off it, and — with the pulled pad's joint severed — the one bed joint left underneath
-	 * takes all six of them.
+	 * Hand-derived loads. The hanger hangs its weight on the head joint; the rider rests on the
+	 * subject; the one remaining bed joint under the subject carries 2 + 3 + 1 = 6 kg.
 	 */
 	const double HangerLoadUu = HangerMassKg * InspectionGravityCmPerSecondSquared;
 	const double RiderLoadUu = RiderMassKg * InspectionGravityCmPerSecondSquared;
@@ -597,24 +472,11 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 		(SubjectMassKg + HangerMassKg + RiderMassKg) * InspectionGravityCmPerSecondSquared;
 
 	/*
-	 * SIGNED BY WHICH END IS BEING HELD UP. ConnectionLoad.h's convention is that a joint's
-	 * force is the force acting on PieceB, and every joint in this fixture names the loaded
-	 * piece second, so every one of them carries its share straight down.
-	 */
-	/*
-	 * FIXTURE PRECONDITIONS, AND THEY ARE HERE BECAUSE OF A TRAP THIS PROJECT HAS ALREADY
-	 * BEEN CAUGHT BY.
+	 * Force acts on PieceB (ConnectionLoad.h) and each joint names the loaded piece second, so
+	 * every force points down.
 	 *
-	 * Every row below asserts that the breakout REPORTS a number; against an implementation
-	 * that hands back no rows at all, all of them fail for the same uninteresting reason and
-	 * the arithmetic is never reached — CURRENT_STATE.md records exactly that happening to
-	 * MenuOffersWhatCanRun's rejection rows, which passed vacuously against a stub. These
-	 * ask the graph directly, so the hand-derived loads and utilisations are checked against
-	 * the solver whatever the breakout does, and a fixture that stops producing them says so
-	 * in its own words rather than through twenty confusing row failures.
-	 *
-	 * They are green on arrival and are meant to be. They drive nothing; they are what makes
-	 * the rows that DO drive something trustworthy.
+	 * Fixture preconditions, read from the graph directly, so the hand-derived numbers are checked
+	 * even if the breakout returns no rows. Green on arrival by design.
 	 */
 	TestTrue(
 		FString::Printf(
@@ -658,12 +520,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 				CompressionOnlyUtilisation(RiderLoadUu, InspectionJointAreaSqCm, GeneralPurposeMortar),
 				1.0e-12));
 
-	/*
-	 * AND THE SEVERED ONE READS EXACTLY LIKE AN INTACT UNLOADED ONE ON BOTH NUMBERS, which is
-	 * the whole reason bHasGiven has to be a field on the row. If this ever stops being true
-	 * the "must not draw them alike" argument weakens and the row below should be rethought
-	 * rather than retuned.
-	 */
+	// The severed joint reads like an intact unloaded one; only bHasGiven tells them apart.
 	TestTrue(
 		FString::Printf(
 			TEXT("fixture: the severed joint should carry nothing at zero utilisation, ")
@@ -708,12 +565,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 			}
 		},
 		{
-			/*
-			 * THE SUBJECT, AND THE WHOLE REASON THE FIXTURE IS SHAPED THIS WAY: one piece
-			 * wearing all three roles at once plus a joint that went with a removed
-			 * neighbour. A breakout that reported only a piece's SUPPORTS would show one row
-			 * here instead of four, and would look entirely reasonable doing it.
-			 */
+			// All three roles plus a severed joint; a supports-only breakout would show one row.
 			TEXT("the subject, which has all three roles and one severed joint"),
 			SubjectPiece,
 			true,
@@ -739,12 +591,8 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 				},
 				{
 					/*
-					 * WENT WITH A REMOVED PIECE: given, but never stamped, because it did not
-					 * fail — it was deleted, and DESIGN.md is explicit that it must not appear
-					 * in the sequence a collapse is replayed from. It reads zero force at zero
-					 * utilisation, which is exactly what an intact unloaded joint reads, and
-					 * bHasGiven is the only thing telling them apart. It still names piece 4
-					 * and still reports the tier it used to be.
+					 * Went with a removed piece: given but unstamped (not a failure, DESIGN.md).
+					 * Still names piece 4 and its former role.
 					 */
 					PulledJoint, PulledPadPiece, EJointRole::BedBeneath,
 					0.0, 0.0, true, INDEX_NONE
@@ -780,12 +628,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 			}
 		},
 		{
-			/*
-			 * THE PULLED PAD IS NOT A PIECE ANY MORE, and it gets no joints and no support
-			 * state — not even the stale one FStructure legitimately keeps until the next
-			 * solve. A solver accessor with a documented scope may hand back last solve's
-			 * answer; a readout drawn beside a brick that is gone may not.
-			 */
+			// A removed piece gets no joints and no support state, not even the stale one.
 			TEXT("the pad the player pulled out"),
 			PulledPadPiece,
 			false,
@@ -828,11 +671,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 			const FJointInspection& Actual = Inspection.Joints[Row];
 			const FExpectedJoint& Expected = Case.Joints[Row];
 
-			/*
-			 * THE ORDER IS PART OF THE CONTRACT. A list that reshuffled between two looks at
-			 * the same brick is unreadable, and comparing row by row against an ordered
-			 * expectation is what checks identity and ordering in one comparison.
-			 */
+			// Row order is part of the contract.
 			TestEqual(
 				FString::Printf(TEXT("%s: row %d should be connection %d; got %s"),
 					Case.Description, Row, Expected.ConnectionIndex, *DescribeInspection(Inspection)),
@@ -848,12 +687,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 					Case.Description, Row, NameOfRole(Expected.Role), *DescribeInspection(Inspection)),
 				Actual.Role == Expected.Role);
 
-			/*
-			 * UNREAL FORCE UNITS, UNCONVERTED. A readout that turned these into newtons on
-			 * the way past would be a second, open-coded conversion boundary — forbidden by
-			 * CLAUDE.md — and it would be out by exactly 100x here, which is loud rather than
-			 * plausible only because the expected value is hand-derived as mass x 980.
-			 */
+			// Unreal force units, unconverted; a newton conversion here would be out by 100x.
 			TestTrue(
 				FString::Printf(TEXT("%s: row %d should carry %.6f uu downward; got %.6f uu"),
 					Case.Description, Row, Expected.ForceZUu, Actual.ForceUu.Z),
@@ -866,13 +700,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 				FMath::IsNearlyEqual(Actual.ForceUu.X, 0.0, 1.0e-9)
 					&& FMath::IsNearlyEqual(Actual.ForceUu.Y, 0.0, 1.0e-9));
 
-			/*
-			 * AND NO JOINT OF A GEOMETRY-FREE FIXTURE BENDS, IN ANY DIRECTION. Held on all
-			 * three components rather than on Y alone: a moment invented from a piece centre
-			 * against a joint centroid nobody wrote would come out along whichever axis the
-			 * fixture happens to string its boxes out on, and asserting one component would
-			 * leave two ways for it to appear unnoticed.
-			 */
+			// No moment on any axis in a geometry-free fixture.
 			TestTrue(
 				FString::Printf(
 					TEXT("%s: row %d should carry no moment at all; got (%.6f, %.6f, %.6f)"),
@@ -901,12 +729,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/*
-	 * COMPLETENESS, over every live piece rather than over the ones the table names: the set
-	 * of connections a piece breaks out is exactly the set of connections that touch it,
-	 * given-or-not, in ascending order. The table above says what the interesting pieces
-	 * carry; this says nothing was quietly left out of any of them.
-	 */
+	// Completeness: every live piece breaks out exactly the joints touching it, in ascending order.
 	for (int32 Handle = 0; Handle < Structure.NumPieces(); ++Handle)
 	{
 		if (Structure.IsPieceRemoved(Handle))
@@ -932,12 +755,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 			Reported == Expected);
 	}
 
-	/*
-	 * THE REF-ENTERED OVERLOAD IS THE HANDLE ONE PLUS A RESOLVE, and nothing else. The
-	 * comparison is over the whole answer rather than over a field, because a second entry
-	 * point that agreed on the support state and disagreed on a joint would be the worst of
-	 * both.
-	 */
+	// The ref overload must return the whole same answer as the handle overload.
 	for (int32 Handle = 0; Handle < Structure.NumPieces(); ++Handle)
 	{
 		const FPieceInspection ByHandle = InspectPiece(Structure, Handle);
@@ -970,14 +788,8 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * AND THE OTHER WAY A JOINT LEAVES A STRUCTURE: IT FAILED, AND THE PASS THAT BROKE IT IS
-	 * THE ONLY RECORD OF WHEN.
-	 *
-	 * Deliberately its own two-piece structure rather than a sixth spoke on the fixture
-	 * above, because it needs SolveAndBreak — which FStructureBinding does not expose (the
-	 * cascade is not on the world wire yet) — and because a fixture that cascades is a
-	 * fixture whose hand-derived loads move if any of its joints ever starts giving. One
-	 * grossly overloaded joint, one pass, one stamp.
+	 * A joint that failed under load, stamped with its break pass. Its own two-piece structure
+	 * because it needs SolveAndBreak, which FStructureBinding does not expose.
 	 */
 	FStructure Cascaded;
 	const int32 CascadePad = Cascaded.AddPiece(1.0, /*bIsGrounded*/ true);
@@ -988,11 +800,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 	Overloaded.PieceB = CascadeLoad;
 	Overloaded.InterfaceNormal = InspectionBedNormal;
 
-	/*
-	 * ONE SQUARE CENTIMETRE UNDER 200 KG: 196,000 uu over 1 cm2 is 19.6 MPa against mortar's
-	 * 10 MPa in compression, so it gives at 1.96 in the first pass. Compression is again the
-	 * only loaded axis, so nothing else can govern.
-	 */
+	// 200 kg on 1 cm2: 196,000 uu = 19.6 MPa against 10 MPa, so it gives at 1.96 in pass 1.
 	Overloaded.InterfaceAreaSqCm = 1.0;
 	Overloaded.Strength = GeneralPurposeMortar;
 	const int32 OverloadedJoint = Cascaded.AddConnection(Overloaded);
@@ -1017,12 +825,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 
 	if (Broken.Joints.Num() == 1)
 	{
-		/*
-		 * A JOINT THAT FAILED UNDER LOAD AND A JOINT THAT WENT WITH A REMOVED PIECE READ
-		 * IDENTICALLY ON EVERY OTHER FIELD — both given, both carrying nothing, both at zero
-		 * utilisation. The pass number is the entire difference, and it is what phase 5
-		 * replays a collapse from.
-		 */
+		// The break pass is the only field distinguishing a failed joint from a severed one.
 		TestEqual(
 			FString::Printf(TEXT("the failed joint should be stamped with pass 1; got %s"),
 				*DescribeInspection(Broken)),
@@ -1055,43 +858,17 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 		Cascaded.GetBreakPass(OverloadedJoint), 1);
 
 	/*
-	 * AND THE STATE EVERY FIXTURE ABOVE IS BLIND TO: A JOINT THE LOAD DOES NOT COME DOWN THE
-	 * MIDDLE OF.
+	 * An eccentric joint, the only fixture here that bends; without it a breakout that never read
+	 * the moment would pass every row. Its own structure so the worked table's numbers stay put.
 	 *
-	 * ITS OWN STRUCTURE RATHER THAN A SIXTH SPOKE ON THE WORKED ONE, for the reason the
-	 * cascade above has one: the worked fixture's subject hangs off exactly one bed joint
-	 * once the pad is pulled, so giving it a rectangle and a centre of mass would make its
-	 * load path determinate and move every hand-derived number in the table. This is one
-	 * brick, one joint, one lever arm.
+	 *   force        8 kg x 980 = 7,840 uu down
+	 *   moment       lever arm 4 cm on X, so 4 x 7,840 = 31,360 uu.cm about Y
+	 *   section      6 x 8 cm: area 48 cm2, modulus b.d2/6 = 8 x 36 / 6 = 48 cm3 (textbook form,
+	 *                not production's, so agreement is evidence)
+	 *   stresses     mean 0.0163333 MPa, edge 0.0653333 MPa
+	 *   peak tension 0.049 MPa against mortar's 0.7, so 0.07 (expectation divides by the profile)
 	 *
-	 * WHY IT HAS TO EXIST AT ALL. Nothing else in this file supplies geometry, so every row
-	 * above reads a moment of zero — and a breakout that never asked the solver for one would
-	 * satisfy all of them, including the exact-equality sweep, forever. FConnection::-
-	 * UtilisationUnder takes the moment as a DEFAULTED argument, so the missing half is
-	 * silent by construction rather than loud.
-	 *
-	 * THE ARITHMETIC, DERIVED HERE AND NOT READ BACK.
-	 *
-	 *   force        8 kg x 980 = 7,840 uu straight down
-	 *   lever arm    the brick's centre of mass sits 4 cm along X from the joint's centroid
-	 *   moment       r x F, and a vertical force crossed with a lever arm on X lands wholly
-	 *                on Y: 4 x 7,840 = 31,360 uu.cm
-	 *   section      the rectangle is 6 cm along X by 8 cm along Y, so the area is 48 cm2 and
-	 *                the modulus resisting a lean along X is b.d2/6 = 8 x 36 / 6 = 48 cm3.
-	 *                That is the TEXTBOOK form and deliberately not production's
-	 *                (4/3).h_along.h_across2, so the two agreeing is evidence.
-	 *   stresses     mean  7,840 / (48 x 10,000)  = 0.0163333 MPa, compressive
-	 *                edge 31,360 / (48 x 10,000)  = 0.0653333 MPa
-	 *   peak tension 0.0653333 - 0.0163333 = 0.049 MPa against mortar's mean f_x1 of 0.7
-	 *                (re-anchor flip 2026-08-14), so 0.07 of capacity — the expectation below
-	 *                divides by the profile, so the flip moved it without an edit here
-	 *
-	 * WHICH AXIS GOVERNS, WORKED THROUGH BECAUSE IT IS NOT FREE. Peak compression is the SUM,
-	 * 0.0816667 MPa against 10 MPa, which is 0.0082 of capacity; shear is exactly zero,
-	 * because the load is exactly antiparallel to an exactly vertical normal. Tension at 0.07
-	 * therefore governs by 8.6 times, and it could not be reached at all without the moment
-	 * — a centred 7,840 uu on this face reads 0.0016 in compression and nothing anywhere else.
-	 * That gap is the whole reason a readout showing only the force cannot explain itself.
+	 * Tension governs: peak compression is 0.0082 of capacity and shear is zero.
 	 */
 	constexpr double EccentricMassKg = 8.0;
 	constexpr double EccentricLeverArmCm = 4.0;
@@ -1100,7 +877,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 
 	const double EccentricAreaSqCm = 4.0 * EccentricHalfXCm * EccentricHalfYCm;
 
-	/** b.d2/6 with the depth along the lean, which is X. Textbook, not production's spelling. */
+	// b.d2/6 with depth along the lean (X).
 	const double EccentricModulusCm3 =
 		(2.0 * EccentricHalfYCm) * FMath::Square(2.0 * EccentricHalfXCm) / 6.0;
 
@@ -1121,7 +898,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 	const int32 EccentricPad =
 		Eccentric.AddPiece(50.0, /*bIsGrounded*/ true, FVector(0.0, 0.0, 0.0));
 
-	/* Four centimetres along X from the joint below it, and nowhere else. */
+	// 4 cm along X from the joint below it.
 	const int32 Overhang = Eccentric.AddPiece(
 		EccentricMassKg, /*bIsGrounded*/ false,
 		FVector(EccentricLeverArmCm, 0.0, 10.0));
@@ -1138,12 +915,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 
 	const int32 EccentricJoint = Eccentric.AddConnection(EccentricBed);
 
-	/*
-	 * FIXTURE PRECONDITION, AND THIS ONE IS A DOOR RATHER THAN A NUMBER. AddConnection refuses
-	 * a rectangle that disagrees with its area and one on a normal that names no separation
-	 * axis, answering INDEX_NONE — at which point there is no joint at all and every assertion
-	 * below fails for a reason with nothing to do with the readout.
-	 */
+	// AddConnection returns INDEX_NONE for inconsistent geometry; then there is no joint to test.
 	TestTrue(
 		FString::Printf(
 			TEXT("fixture: the eccentric bed joint must be accepted — %.1f cm2 against a %.1f x %.1f half-rectangle; AddConnection returned %d"),
@@ -1157,13 +929,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 
 	Eccentric.SolveLoads();
 
-	/*
-	 * THE GRAPH'S OWN NUMBERS, ASKED DIRECTLY AND HAND-DERIVED ABOVE. Green on arrival —
-	 * GetConnectionMoment already exists and already answers — and they drive nothing. They
-	 * are what makes the breakout assertions below trustworthy: against a fixture that
-	 * stopped bending, a readout carrying no moment would agree with the solver perfectly and
-	 * the whole block would pass while asserting nothing at all.
-	 */
+	// Fixture preconditions from the graph directly, so the fixture is proven to bend.
 	TestTrue(
 		FString::Printf(
 			TEXT("fixture: the eccentric joint should carry %.6f uu straight down; the graph says (%.6f, %.6f, %.6f)"),
@@ -1193,13 +959,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 		FMath::IsNearlyEqual(
 			Eccentric.GetConnectionUtilisation(EccentricJoint), EccentricUtilisation, 1.0e-12));
 
-	/*
-	 * AND THE READOUT CARRIES IT. Both ends of the joint are asked, because a moment is a
-	 * property of the JOINT rather than of the piece being inspected — the brick that leans
-	 * and the pad it leans on are looking at one bent joint, and a breakout that answered
-	 * differently depending on which side it was entered from would be re-deriving rather
-	 * than reading back.
-	 */
+	// Both ends are inspected: the moment belongs to the joint, so both must read the same.
 	const FPieceInspection LeaningBrick = InspectPiece(Eccentric, Overhang);
 	const FPieceInspection PadBeneathIt = InspectPiece(Eccentric, EccentricPad);
 
@@ -1237,11 +997,7 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 				*DescribeInspection(PadBeneathIt), *DescribeInspection(LeaningBrick)),
 			PadBeneathIt.Joints[0].MomentUuCm == LeaningBrick.Joints[0].MomentUuCm);
 
-		/*
-		 * AND THE FORCE IS UNCHANGED BY THE BEND, which is the separation MOMENTS_DESIGN.md
-		 * insists on: a moment folded into the force vector as extra length or as a tilt
-		 * would make the one number a readout uses to explain the load stop describing it.
-		 */
+		// The force is unchanged by the bend (MOMENTS_DESIGN.md keeps them separate).
 		TestTrue(
 			FString::Printf(
 				TEXT("the leaning brick's row should still carry a plain vertical %.6f uu; got %s"),
@@ -1255,30 +1011,10 @@ bool FPieceInspectionJointBreakoutTest::RunTest(const FString& Parameters)
 }
 
 /**
- * THE ROLE ON A BREAKOUT ROW IS THE SOLVER'S OWN TWO-TIER DECISION, FOR THE PIECE BEING
- * INSPECTED, AND IT FLIPS WHEN THE SAME JOINT IS LOOKED AT FROM THE OTHER END.
- *
- * WHY THIS IS WORTH A TEST OF ITS OWN. The bed/head distinction is the single most
- * load-bearing classification in the solver: DESIGN.md records that routing which ignored it
- * gave a keystone that bore none of the wall above it, at 0.010 utilisation, with nothing
- * crashing and nothing moving — the wall just stood there being wrong. A debugger that cannot
- * show it hides exactly the thing a player would be trying to understand. And because the
- * decision lived inside SolveLoads as a file-local enum, a readout is the first thing that
- * would have had to COPY it, which is the drift this file exists to prevent.
- *
- * THE EXPECTATION IS DERIVED FROM THE ANGLE, NOT FROM THE COSINE. FStructure compares
- * |normal.Z| against cos 45 and reads a sign; the oracle here states DESIGN.md's rule as an
- * angle and gets the flip for free by measuring it from each end in turn. The two agreeing is
- * therefore evidence rather than a tautology, which a transcribed constant would be.
- *
- * A STAR RATHER THAN A TEST PER ANGLE: one centre piece and one neighbour per angle, so
- * adding an angle is a row and one inspection of the centre yields the whole sweep.
- *
- * DELIBERATELY UNSOLVED. A role is pure geometry and needs no load, so a breakout must be
- * able to say what a joint IS before anything has said what it carries — which is also the
- * state a player is in immediately after laying a brick.
- *
- * NEEDS A TICKING WORLD: no, and not even a world.
+ * A breakout row's role is the solver's bed/head decision for the inspected piece, and flips when
+ * the joint is seen from the other end. The expectation comes from the angle, not production's
+ * cosine. A star: one centre, one spoke per angle. Unsolved on purpose, since a role is pure
+ * geometry. No world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceInspectionRoleTest,
@@ -1342,10 +1078,7 @@ bool FPieceInspectionRoleTest::RunTest(const FString& Parameters)
 	{
 		const FRoleCase& Case = Cases[Index];
 
-		/*
-		 * The normal points at the SPOKE, so the angle toward the spoke is the case's own and
-		 * the angle toward the centre is its supplement. One rule, applied from each end.
-		 */
+		// The normal points at the spoke; toward the centre the angle is the supplement.
 		const EJointRole ExpectedForSpoke = RoleFromAngleOfNormalTowardPiece(Case.AngleDeg);
 		const EJointRole ExpectedForCentre = RoleFromAngleOfNormalTowardPiece(180.0 - Case.AngleDeg);
 
@@ -1367,11 +1100,7 @@ bool FPieceInspectionRoleTest::RunTest(const FString& Parameters)
 
 		const FJointInspection& FromSpoke = SpokeInspection.Joints[0];
 
-		/*
-		 * ALWAYS ASSERTED, INCLUDING ON THE BOUNDARY ROWS. None is what a joint that is not
-		 * on this piece reports, and a breakout that answered None for a joint it is listing
-		 * would be showing a row with no tier at all.
-		 */
+		// Asserted on every row, boundary included: a listed joint is never None.
 		TestTrue(
 			FString::Printf(TEXT("%s (%.0f deg): the centre's row must carry a real role; got %s"),
 				Case.Description, Case.AngleDeg, NameOfRole(FromCentre.Role)),
@@ -1393,12 +1122,7 @@ bool FPieceInspectionRoleTest::RunTest(const FString& Parameters)
 				Case.Description, Case.AngleDeg, NameOfRole(ExpectedForSpoke), NameOfRole(FromSpoke.Role)),
 			FromSpoke.Role == ExpectedForSpoke);
 
-		/*
-		 * THE FLIP. The same joint from the other end is the mirror role, and Head is its own
-		 * mirror. A classifier that read the normal without asking which end it was being
-		 * asked about would report the same role to both pieces — which is a joint that bears
-		 * its own load in both directions, and is how a wall stands up while being wrong.
-		 */
+		// The flip: the other end sees the mirror role (Head mirrors to Head).
 		TestTrue(
 			FString::Printf(
 				TEXT("%s (%.0f deg): to the centre the same joint should be %s; it reports %s"),
@@ -1410,30 +1134,11 @@ bool FPieceInspectionRoleTest::RunTest(const FString& Parameters)
 }
 
 /**
- * EVERY DEGENERATE WAY OF ASKING FOR A BREAKOUT HAS A DEFINED ANSWER, AND NONE OF THEM READS
- * LIKE A HEALTHY BRICK.
- *
- * THE POLARITY IS THE POINT, AND IT IS THE ONE THIS CODEBASE KEEPS PAYING FOR. Two different
- * pairs of states are indistinguishable on the numbers alone and must not be drawn alike:
- *
- *   - A NEVER-SOLVED graph reports every piece Falling, because Falling is enumerator zero so
- *     that an absent answer cannot claim the structure is resting on the earth. A readout that
- *     showed a freshly built wall as a column of falling bricks would be reporting a
- *     catastrophe that has not happened, so bHasSupportAnswer has to be on the struct.
- *   - A joint that has GIVEN carries no force, so it reads 0 uu at 0 utilisation — exactly
- *     what an intact unloaded joint reads. bHasGiven is the only thing separating them.
- *
- * And the third answer in the family is the one that must never reach a row at all:
- * GetConnectionUtilisation answers TNumericLimits<double>::Max() for a handle that names no
- * joint, deliberately, because a zero there would read as unloaded and perfectly healthy. A
- * breakout only ever lists real connection indices, so that answer has no route in — which is
- * checked here by there being no rows at all for anything that is not a piece.
- *
- * A LIVE PIECE WITH NO JOINTS IS A REAL THING and must not read as a ref that names nothing.
- * An isolated grounded pad has an empty list and is still a piece; that is why bIsPiece is a
- * field rather than an inference from Joints.Num().
- *
- * NEEDS A TICKING WORLD: no, and not even a world.
+ * Every degenerate breakout request has a defined answer, and none reads like a healthy brick.
+ * A never-solved graph reads Falling (enumerator zero, fail-closed), so bHasSupportAnswer tells it
+ * from a collapse; a given joint reads like an unloaded one, so bHasGiven tells them apart. A
+ * non-piece gets no rows, so the Max() utilisation for a bad handle cannot leak in. An isolated
+ * piece with no joints is still a piece, hence bIsPiece. No world needed.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPieceInspectionDegenerateInputsTest,
@@ -1463,11 +1168,7 @@ bool FPieceInspectionDegenerateInputsTest::RunTest(const FString& Parameters)
 		{ TEXT("a ref with a negative piece index"), MakeRef(ThisStructure, -5), false },
 		{ TEXT("a ref naming the piece the player pulled out"), MakeRef(ThisStructure, PulledPadPiece), false },
 		{
-			/*
-			 * ZERO IS A REAL STRUCTURE AND A REAL PIECE, so the sentinel is INDEX_NONE and
-			 * never falsiness — but this fixture is structure 4, so the live row here is the
-			 * subject. The zero case is covered by Presenter.PieceMenuRows one layer up.
-			 */
+			// Zero is a valid id; its case is covered by Presenter.PieceMenuRows.
 			TEXT("a ref naming a live piece"), MakeRef(ThisStructure, SubjectPiece), true
 		},
 	};
@@ -1510,7 +1211,7 @@ bool FPieceInspectionDegenerateInputsTest::RunTest(const FString& Parameters)
 			Inspection.Support == EPieceSupport::Falling);
 	}
 
-	/* The same fail-closed answers by handle, since that overload is entered directly too. */
+	// The same fail-closed answers through the handle overload.
 	const FStructure& SolvedStructure = Solved.GetStructure();
 
 	struct FHandleCase
@@ -1543,12 +1244,7 @@ bool FPieceInspectionDegenerateInputsTest::RunTest(const FString& Parameters)
 			Inspection.Joints.Num(), 0);
 	}
 
-	/*
-	 * THE NEVER-SOLVED GRAPH. Same wall, nothing pulled and nothing solved: a real piece with
-	 * real joints, every one of them carrying a genuine zero, and the support state reading
-	 * Falling because that is what "nobody has asked" looks like. The ONLY thing that can tell
-	 * a player this is not a collapse is bHasSupportAnswer.
-	 */
+	// Never solved: zero loads and Falling; only bHasSupportAnswer shows it is not a collapse.
 	FStructureBinding Unsolved;
 	BuildWorkedFixture(Unsolved, /*bPullThePad*/ false, /*bSolve*/ false);
 
@@ -1586,10 +1282,7 @@ bool FPieceInspectionDegenerateInputsTest::RunTest(const FString& Parameters)
 				&& !Joint.bHasGiven);
 	}
 
-	/*
-	 * A LIVE PIECE WITH NOTHING JOINED TO IT. Empty list, still a piece, and a solve HAS
-	 * answered for it — the three readings a ref naming nothing must not share.
-	 */
+	// A live piece with no joints: empty list, still a piece, and solved.
 	FStructure Lonely;
 	const int32 LonelyPad = Lonely.AddPiece(5.0, /*bIsGrounded*/ true);
 	Lonely.SolveLoads();

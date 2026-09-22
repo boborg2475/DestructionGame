@@ -21,35 +21,18 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * THE SCREENSHOT HARNESS. IT EXISTS BECAUSE NOTHING IN THIS PROJECT HAS EVER RENDERED A PIXEL.
+ * Screenshot harness: opens the piece menu on the real wall in a real viewport and writes two PNGs
+ * for a human to judge: a wide shot of the whole wall and a close-up where the highlight colours
+ * can be told apart. The rest of the suite is -nullrhi, and has twice been green over on-screen
+ * bugs (CURRENT_STATE.md).
  *
- * Every other run in this suite is -nullrhi, so the whole renderer is absent, and the project has
- * twice shipped a fully green suite over something invisible on screen — the Nanite bug and the
- * commit-path push bug, both recorded in CURRENT_STATE.md. This test opens the piece menu on a
- * real wall in a real viewport and writes TWO PNGs a HUMAN can look at: a wide one that shows the
- * panel in the context of the whole wall, and a close one framing a handful of bricks around the
- * inspected one, where the three highlight colours are actually big enough to tell apart.
+ * It deletes both files first, then asserts what a picture of nothing could not satisfy: world,
+ * wall, viewport, three bricks selected by rays, one inspected, menu still up, and real PNGs. It
+ * asserts nothing about image content (a pixel test would have to be a difference test).
  *
- * IT IS A HARNESS AND IT IS ALSO A TEST, AND THE SECOND HALF IS WHAT KEEPS IT HONEST. A harness
- * that only takes a picture is green whatever is in the picture. So it deletes both files first (a
- * stale PNG from last week is otherwise indistinguishable from a fresh one), then asserts what a
- * picture of nothing could not satisfy: the world, the wall, the viewport, three bricks actually
- * SELECTED by rays into the world, a brick genuinely inspected, a menu still up after the shots,
- * and files that begin with the PNG signature and declare real dimensions.
+ * NonNullRHI keeps it out of the -nullrhi suite, which would otherwise run it and pass with no file.
  *
- * WHAT IT DELIBERATELY DOES NOT ASSERT IS ANYTHING ABOUT THE IMAGE'S CONTENT. An absolute RGB
- * comparison is hostage to tone mapping, auto-exposure warm-up and driver differences, and would
- * flake; CURRENT_STATE.md already records that if a pixel test is ever written it must be a
- * DIFFERENCE test. Judging what the panel looks like is a human's job, and this exists to give
- * that human something to look at.
- *
- * IT NEEDS A TICKING WORLD *AND* A REAL RHI, WHICH IS WHY IT CARRIES EAutomationTestFlags::
- * NonNullRHI. FAutomationTestFramework::GetValidTestNames strips that feature bit when -nullrhi is
- * on the command line (AutomationTest.cpp:841-845) and then filters the test out (:867-871).
- * WITHOUT THAT FLAG THE ORDINARY HEADLESS SUITE WOULD RUN THIS, find no viewport, write no file
- * and go green — which is precisely the failure mode this test exists to stop.
- *
- * HOW TO RUN IT. Close the editor, build as documented in CLAUDE.md, then:
+ * To run: close the editor, build as in CLAUDE.md, then:
  *
  *   "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
  *     "<project>\DestructionGame.uproject" /Game/Maps/Lvl_Sandbox
@@ -58,55 +41,21 @@
  *     -ExecCmds="Automation RunTests DestructionGame.Visual.PieceMenuScreenshot"
  *     -TestExit="Automation Test Queue Empty"
  *
- * -nullrhi MUST BE ABSENT. FApp::CanEverRender() is false with it, and UGameEngine::Init only
- * builds a window and a viewport under that (GameEngine.cpp:1807, 1814) — so there would be
- * nothing for Slate to screenshot even if the filter let the test through.
+ * -nullrhi must be absent: with it no window or viewport is built.
  *
- * WHY `Shot showui` AND NOT `HighResShot`. HighResShot renders scene-only through an
- * FDummyViewport / FCanvas (UnrealClient.cpp:1694-1717), and ProcessScreenShots only takes the
- * Slate path when FScreenshotRequest::ShouldShowUI() is true (GameViewportClient.cpp:2380-2418),
- * which HandleHighresScreenshotCommand never sets. The menu is AddViewportWidgetContent, i.e.
- * Slate — so HighResShot would capture the wall with NO MENU ON IT, and the one thing this test
- * exists to photograph would be the one thing missing. HandleScreenshotCommand does set it
- * (GameViewportClient.cpp:4284-4307).
+ * `Shot showui`, not `HighResShot`: HighResShot renders scene-only and never sets ShouldShowUI, so
+ * the Slate menu would be missing from the image.
  *
- * NO PRODUCTION CODE WAS NEEDED, AND THAT IS A PROPERTY OF THE SEAMS RATHER THAN LUCK.
- * InspectAlongRay takes a WORLD-SPACE RAY rather than a cursor, and SetInspectedPiece takes a ref
- * rather than a hover event, precisely so that everything a player can reach is reachable without
- * a viewport. An exec command, a cvar and synthetic Slate input were all considered and rejected:
- * each is strictly more machinery for no gain, and each would be untested production code.
- *
- * NO FUNCTIONAL TEST, NO MAP EDIT, NO FunctionalTesting DEPENDENCY. Everything here comes from
- * Runtime/Engine/Public/Tests/AutomationCommon.h, in the Engine module which is already a
- * dependency. CLAUDE.md's standing rule is about AFunctionalTest ACTORS SERIALIZED INTO A .umap
- * carrying a class pointer from a module Epic does not precompile for Shipping into a cooked
- * build; this file places no actor in any map, so that rule is not engaged. Lvl_Sandbox is loaded
- * from the command line exactly as a player's session loads it, unmodified.
+ * Needs no production hooks: InspectAlongRay takes a world ray and SetInspectedPiece a ref. Uses
+ * only AutomationCommon.h (Engine module); no functional test, no map edit, no FunctionalTesting
+ * dependency.
  */
 namespace PieceMenuScreenshotSupport
 {
 	/**
-	 * WHERE THE PNGs LAND, DERIVED HERE RATHER THAN HARD-CODED.
-	 *
-	 * UGameEngine::Init sets GameScreenshotSaveDirectory.Path to FPaths::ScreenShotDir()
-	 * (GameEngine.cpp:919), and CreateViewportScreenShotFilename prefixes a bare name with it
-	 * (UnrealClient.cpp:302-308). ScreenShotDir() is Saved/Screenshots/<PlatformName>/ and
-	 * PlatformName() is "WindowsEditor" for a WITH_EDITOR binary — which is what
-	 * UnrealEditor-Cmd.exe is, even running -game.
-	 *
-	 * The extension is appended by RequestScreenshot because the name carries none, and there is
-	 * no numeric suffix because the exec passes -nosuffix (UnrealClient.cpp:240-247). A suffix
-	 * would put every run in its own file, which sounds tidy and would make the deletion below
-	 * useless: the point of one fixed name is that its existence can only mean THIS run.
-	 *
-	 * THERE ARE TWO SHOTS AND THEY ANSWER DIFFERENT QUESTIONS. The wide one is the panel in
-	 * context — the whole wall, the menu hanging off the right edge — and at that standoff the
-	 * three picked bricks are about 3% of the frame, which is enough to see that a selection
-	 * exists and nowhere near enough to judge the highlight colours against each other. The close
-	 * one frames a handful of bricks around the inspected one, so the selection teal, the
-	 * inspected magenta and an unpicked neighbour are all resolvable in the same picture. Two
-	 * files rather than one bigger file, because the framing is the whole difference and no single
-	 * framing does both jobs.
+	 * PNG base names. Files land in FPaths::ScreenShotDir() (Saved/Screenshots/WindowsEditor/).
+	 * -nosuffix keeps one fixed name, so after the pre-run delete its existence means this run.
+	 * Wide shows the menu in context; the close-up makes the highlight colours distinguishable.
 	 */
 	const TCHAR* const WideScreenshotBaseName = TEXT("PieceMenu");
 	const TCHAR* const CloseUpScreenshotBaseName = TEXT("PieceMenuCloseUp");
@@ -117,51 +66,22 @@ namespace PieceMenuScreenshotSupport
 			FPaths::ScreenShotDir() / FString(BaseName) + TEXT(".png"));
 	}
 
-	/**
-	 * The execs that take them. `showui` is the whole reason this is `Shot` — see the file header.
-	 */
+	/** The exec commands; `showui` is why this is `Shot` (see file header). */
 	const TCHAR* const WideScreenshotCommand = TEXT("Shot showui filename=PieceMenu -nosuffix");
 	const TCHAR* const CloseUpScreenshotCommand =
 		TEXT("Shot showui filename=PieceMenuCloseUp -nosuffix");
 
-	/**
-	 * BOTH FILES, IN ONE LIST, BECAUSE EVERY CLAIM MADE ABOUT ONE IS MADE ABOUT THE OTHER. The
-	 * deletion before the run and the PNG check after it are the same two statements twice over,
-	 * and a list is what stops the second shot quietly acquiring a weaker version of either.
-	 */
+	/** Both files, so the delete and the PNG check apply equally to each. */
 	const TCHAR* const ScreenshotBaseNames[] = { WideScreenshotBaseName, CloseUpScreenshotBaseName };
 
-	/**
-	 * THE ON-SCREEN DEBUG MESSAGES GO OFF, AND THAT IS A PROPERTY OF THE PICTURE RATHER THAN A
-	 * CONVENIENCE.
-	 *
-	 * A capture meant for judging a UI had "Preparing Shaders (2)" burned into the top-left of it,
-	 * which is a debug overlay sitting over the very thing a human is being asked to look at.
-	 * UEngine::DrawOnscreenDebugMessages gates the whole block on GAreScreenMessagesEnabled
-	 * (UnrealEngine.cpp:13630), and HandleDisableAllScreenMessagesCommand is the one switch that
-	 * clears it (:10594). It is issued FIRST, before anything is waited on, so no frame this test
-	 * causes to be drawn can carry one.
-	 *
-	 * IT IS BELT AS WELL AS BRACES. The waits below are what make the picture SETTLED; this is
-	 * what stops a message being drawn over a settled picture anyway.
-	 */
+	/** Turn off on-screen debug messages (e.g. "Preparing Shaders") first, so none is drawn over the image. */
 	const TCHAR* const DisableScreenMessagesCommand = TEXT("DisableAllScreenMessages");
 
 	/**
-	 * THE WALL'S GEOMETRY, DERIVED FROM THE SPEC RATHER THAN READ BACK OFF THE SOLVER.
-	 *
-	 * ADestructionGameGameMode::BeginPlay lays a flush running bond of 21.5 x 10.25 x 6.5 cm
-	 * bricks with a 1.0 cm joint, 30 per course and 40 courses. DestructionLayout::RunningBond
-	 * turns that into a brick pitch of 21.5 + 1 = 22.5 cm along X and a course pitch of
-	 * 6.5 + 1 = 7.5 cm up Z; an EVEN course is 30 full bricks with brick n centred at n x 22.5,
-	 * and every box is centred on Y = 0 (Layout.cpp:79). Course c is centred at
-	 * 6.5 / 2 + 7.5 x c.
-	 *
-	 * So the wall spans X -10.75 .. 663.25 (674 cm) and Z 0 .. 299, and its centre is
-	 * (-10.75 + 663.25) / 2 = 326.25 across and 149.5 up. Those two numbers are where the camera
-	 * points; nothing about the picture depends on them being exactly right, but a camera aimed
-	 * at nothing would take a picture of the sky and the assertions below would still pass, so
-	 * they are written out rather than guessed.
+	 * Wall geometry derived from the game mode's spec: 21.5 x 10.25 x 6.5 cm bricks, 1 cm joints,
+	 * 30 x 40, so pitches 22.5 cm (X) and 7.5 cm (Z), centred on Y = 0. Even-course brick n is at
+	 * X = n x 22.5; course c at Z = 3.25 + 7.5c. The wall spans X -10.75..663.25 and Z 0..299, so
+	 * its centre (where the camera aims) is 326.25, 149.5.
 	 */
 	constexpr double BrickPitchCm = 22.5;
 	constexpr double CoursePitchCm = 7.5;
@@ -173,17 +93,8 @@ namespace PieceMenuScreenshotSupport
 	constexpr int32 ScenarioWallPieceCount = 1220;
 
 	/**
-	 * THE THREE BRICKS THAT GET PICKED, AND WHY THEY ARE WHERE THEY ARE.
-	 *
-	 * COURSE 4 RATHER THAN COURSE 0, because the sandbox map has a floor of its own and nobody
-	 * has measured how thick it is. A horizontal ray at the bottom course's centre height of
-	 * 3.25 cm is one unlucky slab away from hitting the floor instead of a brick; four courses up
-	 * is 33.25 cm and clear of anything a floor could plausibly be. Course 4 is EVEN, so it is 30
-	 * full bricks at n x 22.5 with no half bats to reason about.
-	 *
-	 * THREE ADJACENT BRICKS NEAR THE MIDDLE OF THE WALL, so the picture shows a selection rather
-	 * than one brick, and shows it where a human looking at the image will actually look. Bricks
-	 * 13, 14 and 15 of the course put the middle one at X = 315, near the wall's own centre.
+	 * The picked bricks: 13-15 of course 4 (middle at X = 315, near the wall centre). Course 4
+	 * (Z = 33.25) keeps the ray clear of the map's floor, and is an even course with no half bats.
 	 */
 	constexpr int32 PickedCourse = 4;
 	constexpr int32 PickedBricks[] = { 13, 14, 15 };
@@ -192,102 +103,42 @@ namespace PieceMenuScreenshotSupport
 	inline double PickedCentreXCm(int32 Brick) { return Brick * BrickPitchCm; }
 	inline double PickedCentreZCm() { return 6.5 * 0.5 + CoursePitchCm * PickedCourse; }
 
-	/**
-	 * How far along Y a ray starts and ends, either side of the wall.
-	 *
-	 * A brick is 10.25 cm deep and the wall is centred on Y = 0, so +/- 100 cm is far outside it
-	 * on both sides and the ray crosses the whole thickness. Along Y rather than X or Z, so
-	 * nothing else in the wall is ever in the way — the same choice, for the same reason, as
-	 * Tests/StructureIntegrationTest.cpp's IntegrationReachCm.
-	 */
+	/** Ray half-length along Y, well outside the 10.25 cm wall; along Y so no other brick is in the way. */
 	constexpr double RayReachCm = 100.0;
 
 	/**
-	 * HOW NEAR A BOX HAS TO BE TO COUNT AS THE BRICK THAT WAS ASKED FOR.
-	 *
-	 * The pieces are found by SEARCHING the binding's boxes for the ones at the derived
-	 * positions, rather than by computing a piece INDEX. Index arithmetic over alternating
-	 * 30- and 31-brick courses is exactly the kind of derivation that is silently wrong and
-	 * still points at a real brick somewhere else in the wall; a position search either finds a
-	 * brick where the bond says one is, or fails loudly. Half a brick pitch is comfortably
-	 * tighter than the gap to the next brick along and enormously looser than the exact
-	 * arithmetic needs.
+	 * Match tolerance for finding a brick by position. Bricks are found by position, not by index
+	 * arithmetic over 30/31-brick courses, which can be silently wrong yet still hit a real brick.
 	 */
 	constexpr double BoxMatchToleranceCm = BrickPitchCm * 0.5;
 
 	/**
-	 * WHERE THE CAMERA GOES, AND WHY THAT FAR BACK.
-	 *
-	 * The default UCameraComponent field of view is 90 degrees HORIZONTALLY, so at 600 cm the
-	 * visible width is 2 x 600 x tan(45) = 1200 cm against a wall 674 cm long, and the visible
-	 * height at 16:9 is 1200 x 1080 / 1920 = 675 cm against a wall 299 cm tall. The whole wall is
-	 * in frame with margin on both axes.
-	 *
-	 * IT IS PLACED EXPLICITLY RATHER THAN LEFT TO PlayerStart, because nobody knows which way
-	 * PlayerStart faces — its transform is inside a binary .umap and has never been read. A
-	 * screenshot harness whose framing depends on an unread asset is a harness that photographs
-	 * whatever it happens to photograph.
-	 *
-	 * Yaw 90 looks along +Y, which is straight at a wall lying in the X-Z plane at Y = 0.
+	 * Wide camera. With a 90-degree horizontal FOV, 600 cm shows 1200 x 675 cm, framing the
+	 * 674 x 299 cm wall with margin. Placed explicitly, not via PlayerStart (its facing is unknown).
+	 * Yaw 90 looks along +Y at the wall.
 	 */
 	constexpr double CameraStandoffCm = 600.0;
 	constexpr double CameraYawDegrees = 90.0;
 
 	/**
-	 * AND WHERE IT GOES FOR THE CLOSE-UP, DERIVED FROM HOW MANY BRICKS HAVE TO BE IN FRAME.
-	 *
-	 * Same 90-degree horizontal field of view, so the visible width is 2 x standoff x tan(45),
-	 * i.e. twice the standoff. Eight brick pitches is 8 x 22.5 = 180 cm, so 90 cm of standoff puts
-	 * eight bricks across the frame — the three picked ones, the inspected one among them, and
-	 * unpicked neighbours either side to compare them against. The visible height at 16:9 is
-	 * 180 x 1080 / 1920 = 101 cm, about thirteen courses, so the bed joints above and below are in
-	 * shot too.
-	 *
-	 * IT IS AIMED AT THE INSPECTED BRICK RATHER THAN AT THE WALL'S CENTRE, because the whole point
-	 * of the second shot is the brick whose readout the panel is showing. The wall centre is 11 cm
-	 * up and 11 bricks along from it, which at this standoff is most of the frame away.
+	 * Close-up standoff: visible width is twice the standoff, so 90 cm shows 180 cm, eight bricks
+	 * (the picked three plus unpicked neighbours). Aimed at the inspected brick.
 	 */
 	constexpr double CloseUpStandoffCm = 90.0;
 
 	/**
-	 * THE TIMINGS, AND WHY THEY ARE LATENT COMMANDS RATHER THAN A LONGER -ExecCmds.
-	 *
-	 * Every -ExecCmds string is queued into GEngine->DeferredCommands during UEngine::Init and
-	 * flushed on the FIRST TickDeferredCommands, so splitting the work across several of them
-	 * buys no delay whatsoever. Waiting has to be done from inside the test.
-	 *
-	 * SettleFrames covers TSR's temporal history and auto-exposure's adaptation, both of which
-	 * need a handful of frames before the image stops changing. SlateFrames is the
-	 * prepass-and-arrange the newly built panel needs before it has a size and a position.
-	 * WriteFrames is because ProcessScreenShots writes at END OF DRAW — exiting in the same frame
-	 * as the request loses the file.
-	 *
-	 * SETTLING IS DONE AGAIN AFTER THE CAMERA IS AIMED, AND THAT ORDER IS THE FIX RATHER THAN THE
-	 * NUMBER. A frame came back with "Preparing Shaders (2)" still on it despite
-	 * FWaitForShadersToFinishCompilingInGame having already run — which is not a contradiction:
-	 * that wait ran while the pawn was still at PlayerStart, so the work it drained was the work
-	 * the FIRST view asked for. Pointing the camera at 1220 bricks and putting a Slate panel over
-	 * them queues more, and nothing was waiting on that. So every shot is preceded by its own
-	 * shader drain AND its own settle, taken after the view it is a picture of has been set up.
-	 *
-	 * AND THE COUNT IS RAISED FOURFOLD, WHICH COSTS SECONDS IN A TEST NOBODY RUNS IN A LOOP. This
-	 * is the one test in the project that needs a real RHI and it is run by hand to produce
-	 * something a human looks at; a settled picture is worth far more here than a fast one.
+	 * Frame waits, done as latent commands (all -ExecCmds flush on the first tick, so they give no
+	 * delay). Settle covers TSR history and auto-exposure; Slate lets the new panel lay out; Write
+	 * covers screenshots being written at end of draw. Each shot gets its own shader drain and
+	 * settle after its view is set up, since aiming the camera queues new shader work.
 	 */
 	constexpr int32 SettleFrames = 120;
 	constexpr int32 SlateFrames = 3;
 	constexpr int32 WriteFrames = 5;
 
 	/**
-	 * THE SMALLEST FILE THAT COULD BE A REAL FRAME, IN BYTES.
-	 *
-	 * DERIVED, NOT PICKED, AND IT IS DELIBERATELY A FLOOR RATHER THAN A JUDGEMENT. A 1920 x 1080
-	 * PNG of a single flat colour compresses to well under 10 kB, because PNG's filters reduce a
-	 * constant image to a run of zeroes; a lit scene with a brick wall, a sky and text on top of
-	 * it is hundreds of kB. 32 kB therefore sits several times above "the renderer produced
-	 * nothing" and one to two orders of magnitude below "the renderer produced a picture", which
-	 * is the widest margin available. It is not a claim about what the picture LOOKS like — that
-	 * is a human's job, and the actual size is reported so the human can see it.
+	 * Smallest plausible real frame. A flat-colour 1080p PNG is under 10 kB; a lit scene is hundreds
+	 * of kB. 32 kB sits between the two. A floor, not a judgement of content.
 	 */
 	constexpr int64 MinimumScreenshotBytes = 32 * 1024;
 
@@ -296,14 +147,8 @@ namespace PieceMenuScreenshotSupport
 	constexpr int32 MinimumScreenshotHeight = 480;
 
 	/**
-	 * THE WARNING THE PROJECT'S HABITUAL GREP MISSES ENTIRELY.
-	 *
-	 * A material whose shader fails to compile keeps its whole node graph and renders as
-	 * WorldGridMaterial, the checkerboard — the exact "correct data, silent renderer
-	 * substitution, green suite" shape CURRENT_STATE.md records against the Nanite bug and the
-	 * overlay materials. And ShaderCompiler.cpp:2306-2315 logs it at WARNING, not Error, so
-	 * `LogAutomationController: Error` never sees it and neither does the automation framework.
-	 * Reading the log file is the only way to notice, so this test reads it.
+	 * Log line for a material that failed to compile and fell back to the WorldGridMaterial
+	 * checkerboard. Logged as a warning, not an error, so only a log-file read catches it.
 	 */
 	const TCHAR* const MaterialFailureMarker = TEXT("Failed to compile Material");
 
@@ -348,10 +193,7 @@ namespace PieceMenuScreenshotSupport
 		return Binding;
 	}
 
-	/**
-	 * The piece whose box sits at this point, or INDEX_NONE. See BoxMatchToleranceCm for why the
-	 * bricks are found by POSITION rather than by an index computed from the course pattern.
-	 */
+	/** The piece whose box sits at this point, or INDEX_NONE (see BoxMatchToleranceCm). */
 	inline int32 PieceAtBox(const FStructureBinding& Binding, const FVector& CentreCm)
 	{
 		for (int32 Piece = 0; Piece < Binding.NumPieces(); ++Piece)
@@ -372,15 +214,8 @@ namespace PieceMenuScreenshotSupport
 }
 
 /**
- * Aim the camera at the wall, pick three bricks the way a player picks them, and single the
- * middle one out so the joint readout has something to say.
- *
- * IT ENTERS THROUGH THE CALLS THE PLAYER'S OWN CLICKS ENTER THROUGH — three rays into
- * InspectAlongRay and one ref into SetInspectedPiece — which is the same entry rule
- * Tests/StructureIntegrationTest.cpp holds itself to. The two inches in front of those, the
- * deprojection that turns a cursor into a ray and the button that supplies a row index, are the
- * ones no test can reach, and they are the reason this photographs the result instead of
- * asserting it.
+ * Aim the camera, pick three bricks through InspectAlongRay as a player's clicks do, and inspect
+ * the middle one via SetInspectedPiece.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FPieceMenuScreenshotOpenMenuCommand, FAutomationTestBase*, Test);
@@ -399,11 +234,7 @@ bool FPieceMenuScreenshotOpenMenuCommand::Update()
 
 	Test->AddInfo(FString::Printf(TEXT("game world is %s"), *World->GetMapName()));
 
-	/*
-	 * THE VIEWPORT IS ASSERTED SEPARATELY, because without one HandleScreenshotCommand returns
-	 * having done nothing at all (GameViewportClient.cpp:4286) and the only symptom downstream is
-	 * a missing file — which reads identically to a renderer that failed. This says which.
-	 */
+	// Assert the viewport now; without one a missing file looks like a render failure.
 	UGameViewportClient* const Viewport = GEngine != nullptr ? GEngine->GameViewport : nullptr;
 
 	Test->TestNotNull(
@@ -433,11 +264,7 @@ bool FPieceMenuScreenshotOpenMenuCommand::Update()
 		return true;
 	}
 
-	/*
-	 * THE CAMERA IS PLACED BEFORE ANYTHING IS PICKED, so the settle frames already spent were
-	 * spent on this view rather than on PlayerStart's. The pawn's camera component has
-	 * bUsePawnControlRotation set, so the control rotation is what aims it.
-	 */
+	// The camera uses pawn control rotation, so the control rotation aims it.
 	APawn* const Pawn = Controller->GetPawn();
 
 	if (Pawn == nullptr)
@@ -455,7 +282,7 @@ bool FPieceMenuScreenshotOpenMenuCommand::Update()
 		TEXT("camera placed at (%g, %g, %g) looking along yaw %g at the wall centre"),
 		CameraCm.X, CameraCm.Y, CameraCm.Z, CameraYawDegrees));
 
-	/* THE PLAYER'S THREE CLICKS. */
+	// The player's three clicks.
 	const double CentreZCm = PickedCentreZCm();
 
 	for (const int32 Brick : PickedBricks)
@@ -488,11 +315,7 @@ bool FPieceMenuScreenshotOpenMenuCommand::Update()
 			Rows.Num() > 0);
 	}
 
-	/*
-	 * THE SELECTION IS THE MECHANISM THAT SAYS THE PICTURE HAS SOMETHING IN IT. A screenshot of a
-	 * wall with no menu on it is a perfectly valid PNG of the wrong thing, and the file checks
-	 * downstream cannot tell the two apart.
-	 */
+	// The selection proves the picture has something in it; the file checks cannot.
 	const FPieceSelection& Selection = Controller->GetPieceSelection();
 
 	Test->TestEqual(
@@ -504,12 +327,7 @@ bool FPieceMenuScreenshotOpenMenuCommand::Update()
 		return true;
 	}
 
-	/*
-	 * AND THE MIDDLE ONE IS SINGLED OUT, which is what hovering its entry in the menu does. It is
-	 * what makes the readout draw a support line and a per-joint breakout rather than only a
-	 * count and three labels — i.e. it is what puts the thing nobody has ever seen into the
-	 * picture.
-	 */
+	// Inspect the middle brick (as hovering its menu entry does) so the readout shows its joints.
 	Controller->SetInspectedPiece(Selection.Refs()[1]);
 
 	const FPieceMenuInspector Inspector = Controller->PieceMenuInspectorForSelection();
@@ -542,17 +360,8 @@ bool FPieceMenuScreenshotOpenMenuCommand::Update()
 }
 
 /**
- * Walk the camera in to the brick the readout is about, and change nothing else.
- *
- * THE PAWN TRANSFORM IS THE ONLY DIFFERENCE BETWEEN THE TWO SHOTS, WHICH IS WHAT MAKES THE PAIR
- * WORTH HAVING. Nothing here picks, unpicks, inspects or dismisses: the selection, the inspected
- * brick and the menu are exactly the ones the wide shot was taken of, so the two pictures are one
- * state seen from two distances rather than two states. A close-up that re-picked its own bricks
- * could differ from the wide one in ways nobody would think to look for.
- *
- * IT ASSERTS THE MENU IS STILL UP RATHER THAN ASSUMING IT. Moving a pawn cannot take a menu down
- * — but if something else did, the close-up would be a picture of a wall, and the file checks
- * downstream cannot tell that from a picture of a wall with a panel on it.
+ * Move the camera in to the inspected brick and change nothing else, so both shots show one state.
+ * Asserts the menu is still up.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FPieceMenuScreenshotMoveCameraInCommand, FAutomationTestBase*, Test);
@@ -577,7 +386,7 @@ bool FPieceMenuScreenshotMoveCameraInCommand::Update()
 		return true;
 	}
 
-	/* The middle brick of the three, which is the one SetInspectedPiece singled out. */
+	// The middle brick, which is the inspected one.
 	const FVector CameraCm(
 		PickedCentreXCm(PickedBricks[1]), -CloseUpStandoffCm, PickedCentreZCm());
 
@@ -596,12 +405,8 @@ bool FPieceMenuScreenshotMoveCameraInCommand::Update()
 }
 
 /**
- * The files landed, they are real PNGs, and no material silently fell back to the checkerboard.
- *
- * THE FILE WAS DELETED BEFORE THE RUN, so its existence can only mean this run wrote it. Without
- * that, a stale PNG from a previous session passes every assertion here while the renderer
- * produced nothing at all — which is the same "green over something invisible" shape the whole
- * test exists to close, reintroduced by the test itself.
+ * The files exist (they were deleted before the run), are real PNGs, and no material fell back to
+ * the checkerboard.
  */
 DEFINE_LATENT_AUTOMATION_COMMAND_ONE_PARAMETER(
 	FPieceMenuScreenshotCheckFileCommand, FAutomationTestBase*, Test);
@@ -647,11 +452,8 @@ bool FPieceMenuScreenshotCheckFileCommand::Update()
 		}
 
 		/*
-		 * THE SIGNATURE AND THE IHDR, READ BY HAND. Eight signature bytes, then a four-byte
-		 * chunk length, then "IHDR", then width and height as big-endian 32-bit integers. It
-		 * is a dozen lines and it is worth them: a byte count alone passes for a file of
-		 * random bytes, and a decoder would be a dependency on the very rendering stack under
-		 * test.
+		 * PNG signature and IHDR read by hand: 8 signature bytes, 4-byte length, "IHDR", then
+		 * big-endian width and height. Avoids depending on a decoder.
 		 */
 		static const uint8 PngSignature[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
 
@@ -688,11 +490,7 @@ bool FPieceMenuScreenshotCheckFileCommand::Update()
 		}
 	}
 
-	/*
-	 * AND THE MENU IS STILL UP, READ AFTER THE SHOT. The open-menu command asserted it before the
-	 * request was queued; this says nothing took it down in the frames between, so whatever is in
-	 * the file was photographed with a menu on it.
-	 */
+	// The menu is still up after the shots.
 	UWorld* const World = AutomationCommon::GetAnyGameWorld();
 
 	ADestructionGamePlayerController* const Controller = World != nullptr
@@ -704,12 +502,8 @@ bool FPieceMenuScreenshotCheckFileCommand::Update()
 		Controller != nullptr && Controller->IsPieceMenuShown());
 
 	/*
-	 * THE LOG SWEEP. Read from the file rather than captured live, because materials submit their
-	 * shader compiles while the map loads — long before an automation test starts — so an output
-	 * device installed here would miss exactly the failures it was installed for.
-	 *
-	 * FILEREAD_AllowWrite is not optional: the engine holds this file open for writing, and a
-	 * reader that does not share write access cannot open it at all on Windows.
+	 * Sweep the log file, not a live capture: materials compile during map load, before the test.
+	 * FILEREAD_AllowWrite is required because the engine holds the log open for writing.
 	 */
 	if (GLog != nullptr)
 	{
@@ -758,12 +552,7 @@ bool FPieceMenuScreenshotTest::RunTest(const FString& Parameters)
 {
 	using namespace PieceMenuScreenshotSupport;
 
-	/*
-	 * THE OLD FILES GO FIRST, AND SYNCHRONOUSLY, BEFORE ANY LATENT COMMAND IS QUEUED. Everything
-	 * downstream reads "the file exists" as "this run rendered a frame", and that reading is only
-	 * true if the file cannot have survived from an earlier run. Both shots, for the same reason:
-	 * a close-up left over from the last session is exactly as misleading as a wide one.
-	 */
+	// Delete old files first, so "the file exists" means this run rendered it.
 	for (const TCHAR* const BaseName : ScreenshotBaseNames)
 	{
 		const FString Path = ScreenshotPathFor(BaseName);
@@ -784,14 +573,8 @@ bool FPieceMenuScreenshotTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE SEQUENCE, AND THE SHAPE OF IT IS "SET THE VIEW UP, THEN LET IT SETTLE, THEN SHOOT" —
-	 * TWICE. The second shot differs from the first only in where the pawn is standing, so
-	 * everything about the state being photographed is established once, by the open-menu command,
-	 * and never touched again.
-	 *
-	 * SCREEN MESSAGES ARE TURNED OFF BEFORE ANYTHING IS WAITED ON, and each shot gets its OWN
-	 * shader drain and its own settle — see the timings block for why one at the top was not
-	 * enough. The write wait after each `Shot` is because ProcessScreenShots writes at end of draw.
+	 * Set up the view, settle, shoot; twice. The second shot differs only in pawn position. Each
+	 * shot gets its own shader drain and settle (see the timings block).
 	 */
 	ADD_LATENT_AUTOMATION_COMMAND(FExecStringLatentCommand(DisableScreenMessagesCommand));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitForShadersToFinishCompilingInGame());

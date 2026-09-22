@@ -8,32 +8,16 @@
 #include "Core/Profiles/MaterialProfiles.h"
 
 /**
- * BUILD MODE — the snap-candidate solver.
+ * Build mode snap solver: given a piece at a requested pose and nearby placed pieces, return
+ * ranked candidate poses, each with the joints it would form (profiles inferred via
+ * JointForContact). World-free.
  *
- * Given a piece being placed at a requested pose and the nearby already-placed
- * pieces (boxes + materials), return ranked candidate poses. Each candidate
- * carries the joints it would auto-form, profiles inferred (never hardcoded)
- * via JointForContact from the two faces' materials and the contact normal.
+ * Snap kinds: brick next course (bed), same course (head), corner return (quoin, DESIGN §8),
+ * timber centred on a brick, and timber edge-flush to a brick face (both DryStone bearings).
  *
- * World-free, styled like Core/Layout: FPieceBox + doubles, no UWorld/UObject.
- * Includes JointInference.h and Layout.h; nothing under Tests/ includes it.
- *
- * Five snap kinds: brick running-bond next course (bed joint), brick
- * same-course end-to-end (head joint), brick corner return (the quoin of
- * DESIGN §8's 2026-09-15 ruling), timber centered-on a brick, and timber
- * edge-flush to a brick face (both DryStone bearings).
- *
- * The brick grid is long-axis-aware, not X-axis-aware: bed and head poses step
- * along the neighbour's long axis, offered only when the placed brick is laid
- * the same way, so a wall along Y grows like one along X, reflected. A brick
- * laid across a brick-sized neighbour takes neither and is offered the four
- * corner returns instead, one at each neighbour end, flush with each width face.
- *
- * Orientation decides the pose, contact decides the joints: once a next-course
- * pose is offered, the brick beds on every brick-sized piece its underside has
- * come to rest on, whichever way that piece runs — the same contact sweep that
- * bonds a lapped stretcher to a corner return, or finds every support a lintel
- * spans.
+ * The grid follows the neighbour's long axis, so a wall along Y grows like one along X. A brick
+ * laid across a neighbour gets the four corner returns instead. Orientation decides the pose;
+ * contact decides the joints (a next-course brick beds on every brick-sized piece under it).
  */
 namespace BuildMode
 {
@@ -62,7 +46,7 @@ namespace BuildMode
 		FConnectionStrength Profile;
 	};
 
-	/** A single ranked snap option: a pose, its distance from the requested pose, and the joints it forms. */
+	/** One ranked snap option: pose, distance from the request, and joints formed. */
 	struct FSnapCandidate
 	{
 		ESnapKind Kind = ESnapKind::Free;
@@ -75,10 +59,8 @@ namespace BuildMode
 	 * Rank candidate poses for a piece being placed.
 	 *
 	 * @param Placed          The piece being placed; ExtentCm is HALF size, CentreCm is the requested pose.
-	 * @param PlacedMaterial  The placed piece's material.
 	 * @param NearbyBoxes     Already-placed pieces within reach.
 	 * @param NearbyMaterials Their materials, parallel to NearbyBoxes.
-	 * @param Settings        Brick geometry and snap radius.
 	 */
 	TArray<FSnapCandidate> SolveSnapCandidates(
 		const DestructionLayout::FPieceBox& Placed,

@@ -8,29 +8,18 @@
 #include "Core/Profiles/MaterialProfiles.h"
 
 /**
- * BUILD MODE — automatic joint inference.
- *
- * The judgment BuildRealistic currently hand-codes per joint (every
- * `Join(A, B, DestructionProfiles::SomeProfile)` names its profile by hand)
- * expressed as a pure function of the two faces' materials and the interface
- * normal between them — the "joint for this contact" helper interactive build
- * mode and the programmatic builders share.
- *
- * World-free, styled like Core/Layout: boxes and doubles, no UWorld/UObject.
- * A test may include this; nothing under Tests/ is included by it.
+ * Build mode joint inference: the joint profile for a contact, as a pure function of the two
+ * faces' materials and the interface normal (and optionally the boxes). Shared by interactive
+ * build mode and the programmatic builders. World-free.
  */
 namespace BuildMode
 {
 	/**
-	 * The passive resting joint for two faces meeting across a given interface
-	 * normal (owner-delegated ruling, BUILD_MODE_PLAN.md 2026-09-03). Fastening
-	 * is an explicit override of a later slice, never auto-inferred here.
+	 * The passive resting joint for two faces (BUILD_MODE_PLAN.md 2026-09-03). Fastening is never
+	 * inferred; it is an explicit override.
 	 *
-	 * @param FaceA               One piece's material.
-	 * @param FaceB               The other piece's material.
-	 * @param InterfaceNormalUnit Unit normal of the shared face; its dominant
-	 *                            component decides bed (vertical) vs head/corner
-	 *                            (horizontal).
+	 * @param InterfaceNormalUnit Unit normal of the shared face; its dominant component decides
+	 *                            bed (vertical) vs head/corner (horizontal).
 	 */
 	FConnectionStrength JointForContact(
 		const DestructionProfiles::FMaterialProfile& FaceA,
@@ -38,41 +27,26 @@ namespace BuildMode
 		const FVector& InterfaceNormalUnit);
 
 	/**
-	 * Which of the three masonry contacts two pieces make (DESIGN §8, 2026-09-15).
-	 *
-	 * Bed and Corner both carry a bonded masonry joint; Head is the weak perpend
-	 * and also the answer every degenerate input falls to, so the enum's weakest
-	 * row is the one a fault lands on.
+	 * Which masonry contact two pieces make (DESIGN §8). Bed and Corner are bonded; Head is the
+	 * weak perpend and the fail-closed answer for degenerate input.
 	 */
 	enum class EMasonryContact : uint8
 	{
-		/** A horizontal bed: the normal is vertical, the joint the courses sit on. */
+		/** Vertical normal: the joint a course sits on. */
 		Bed,
 
-		/** A same-course head joint between collinear pieces — the weak perpend. */
+		/** Same-course joint between collinear pieces: the weak perpend. */
 		Head,
 
-		/** A bonded quoin: two pieces meeting horizontally with their long axes crossed. */
+		/** Bonded quoin: pieces meeting horizontally with long axes crossed. */
 		Corner,
 	};
 
 	/**
-	 * Tell a bed joint from a same-course head joint from a bonded corner, using
-	 * the two pieces' boxes as well as the interface normal (owner-ratified
-	 * ruling, DESIGN §8 2026-09-15).
-	 *
-	 * The normal alone can't do it: a head joint's normal is parallel to both
-	 * bricks' long axes, a quoin's is parallel to one and perpendicular to the
-	 * other — the same vector — so the footprints have to be read: a piece's
-	 * long axis is whichever of ExtentCm.X / ExtentCm.Y is larger, and the pair
-	 * is a corner exactly when those two axes differ.
-	 *
-	 * Order-free: which piece is A never changes the answer, since the snap
-	 * solver names the placed piece first while the shed sweep names the lower
-	 * piece first.
-	 *
-	 * Fails closed to Head on every degenerate input — see the .cpp for why that
-	 * diverges from the three-argument JointForContact above.
+	 * Classify bed, head or corner from the boxes and the normal (DESIGN §8). The normal alone
+	 * cannot tell head from corner, so each piece's long axis (larger of ExtentCm.X/Y) is compared:
+	 * differing axes mean a corner. Order-free. Fails closed to Head on degenerate input (see the
+	 * .cpp for why that differs from the three-argument JointForContact).
 	 */
 	EMasonryContact ClassifyMasonryContact(
 		const DestructionLayout::FPieceBox& A,
@@ -80,13 +54,8 @@ namespace BuildMode
 		const FVector& InterfaceNormalUnit);
 
 	/**
-	 * The passive resting joint, orientation-aware: as the three-argument
-	 * overload, except a bonded corner between two masonry faces earns full
-	 * GeneralPurposeMortar instead of the perpend (DESIGN §8, 2026-09-15).
-	 *
-	 * The overload to use when real geometry is available; the three-argument
-	 * one is for callers that hold only a normal — the two agree on every
-	 * contact but the corner.
+	 * Orientation-aware resting joint: as the three-argument overload, except a masonry corner gets
+	 * full GeneralPurposeMortar instead of the perpend (DESIGN §8). Use when boxes are available.
 	 *
 	 * @param BoxA The box of the piece whose material is FaceA.
 	 * @param BoxB The box of the piece whose material is FaceB.
