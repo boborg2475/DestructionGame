@@ -11,11 +11,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * NAMED NAMESPACE, not anonymous, and named for what it holds. An anonymous namespace is
- * private to a TRANSLATION UNIT rather than to a file, and a unity build merges many files
- * into one — at which point two anonymous namespaces in the blob are the SAME namespace and
- * identically-named helpers in files that never refer to each other are a hard compile
- * error. See CURRENT_STATE.md; this is the third time it has bitten.
+ * Named, not anonymous: a unity build merges translation units, so two anonymous namespaces
+ * become one and identically-named helpers collide at link. See CURRENT_STATE.md.
  */
 namespace StructureMomentTestSupport
 {
@@ -23,13 +20,9 @@ namespace StructureMomentTestSupport
 	using namespace DestructionProfiles;
 
 	/*
-	 * --- everything below is spelled out here rather than imported --------------------
-	 *
-	 * The point of a test is to disagree with production when production is wrong, and a
-	 * test that reaches for the same named constant agrees with it instead. So the brick,
-	 * gravity, the SI conversion and the section modulus are all written from first
-	 * principles, and the strengths are asserted against the profile rather than copied
-	 * out of it.
+	 * Everything below is spelled from first principles rather than imported: a test that
+	 * reuses production's own constants cannot disagree with production. Strengths are
+	 * asserted against the profile, not copied from it.
 	 */
 
 	/** DESIGN.md's standard UK metric clay brick, cm. */
@@ -41,31 +34,24 @@ namespace StructureMomentTestSupport
 	constexpr double MortarJointCm = 1.0;
 
 	/**
-	 * 1.9 g/cm3, DENSITY FIRST in the product to match Layout::PieceMassKg exactly.
-	 *
-	 * Volume-first lands one ulp low at 2.7216312499999997, and the exact-equality guard
-	 * below compares against a mass the producer derived, so the association matters.
+	 * 1.9 g/cm3, density first in the product to match Layout::PieceMassKg bit for bit.
+	 * Volume-first lands one ulp low and the exact-equality guard below would reject it.
 	 */
 	constexpr double BrickMassKg = 1.9 * BrickLengthCm * BrickWidthCm * BrickHeightCm / 1000.0;
 
-	/** 980 cm/s2. In a world where 1 uu = 1 cm and mass is kg, MassKg * 980 IS a force in uu. */
+	/** 980 cm/s2. With 1 uu = 1 cm and mass in kg, MassKg * 980 is a force in uu. */
 	constexpr double BrickWeightUu = BrickMassKg * 980.0;
 
 	/**
-	 * Force, in Unreal units, that loads one square centimetre to one megapascal.
-	 *
-	 * 1 N = 100 uu and 1 cm2 = 100 mm2, so 1 MPa (= 1 N/mm2) over 1 cm2 is 10000 uu.
-	 * DELIBERATELY NOT DestructionForce::ForceUnitsPerMPaSqCm: this test has to fail if
-	 * that constant is wrong, not agree with it.
+	 * Force, in uu, that loads 1 cm2 to 1 MPa. 1 N = 100 uu and 1 cm2 = 100 mm2, so 1 MPa
+	 * over 1 cm2 is 10000 uu. Not DestructionForce::ForceUnitsPerMPaSqCm on purpose: this
+	 * test must fail if that constant is wrong, not agree with it.
 	 */
 	constexpr double ForceUnitsPerMPaPerSqCm = 100.0 * 100.0;
 
 	/**
 	 * Elastic section modulus of a rectangle, cm3 — ordinary beam theory, not a code figure.
-	 *
-	 * For a face 2*HalfAlong wide and 2*HalfAcross deep, bent so the stress varies along the
-	 * second axis: I = (2*HalfAlong)*(2*HalfAcross)^3/12 and the outermost fibre sits at
-	 * HalfAcross, so W = I/c = (4/3)*HalfAlong*HalfAcross^2.
+	 * Bent along the second axis, W = I/c = (4/3)*HalfAlong*HalfAcross^2.
 	 */
 	constexpr double SectionModulusCm3(double HalfAlongCm, double HalfAcrossCm)
 	{
@@ -88,20 +74,15 @@ namespace StructureMomentTestSupport
 	}
 
 	/**
-	 * A CHAIN OF BRICKS HANGING OFF ONE HEAD JOINT, EACH FREE TO SIT ANYWHERE ALONG THE WALL.
+	 * A chain of bricks hanging off one head joint, each free to sit anywhere along the wall.
+	 * A grounded pad at the origin, then one brick per course, each jointed only to the one
+	 * below — so every brick rests on exactly one joint (N = 1, the determinate case).
 	 *
-	 * A grounded pad at the origin, then one brick per course going up, each jointed ONLY to
-	 * the one below it. Every brick therefore rests on exactly one joint — N = 1 all the way
-	 * down, which is the determinate case, so the whole chain carries a moment and nothing in
-	 * it is subject to the indeterminate rule.
+	 * Vertical, not horizontal: a horizontal row has every piece falling back on all its head
+	 * joints, a cycle the solver strands rather than solves.
 	 *
-	 * THE CHAIN IS VERTICAL RATHER THAN HORIZONTAL, and that is forced rather than chosen. A
-	 * row of bricks side by side has every piece falling back on ALL of its head joints, so
-	 * the middle of the row supports its neighbour and is supported by it — a cycle the solver
-	 * correctly strands rather than solving.
-	 *
-	 * Piece handles and box indices are the same number: 0 is the pad and brick k is handle
-	 * k + 1. Joint k is the joint UNDER brick k, so joint 0 is the head joint.
+	 * Handle and box index match: 0 is the pad, brick k is handle k + 1. Joint k is under
+	 * brick k, so joint 0 is the head joint.
 	 */
 	struct FHangingChain
 	{
@@ -121,13 +102,10 @@ namespace StructureMomentTestSupport
 	};
 
 	/**
-	 * Build one, from nothing but where each brick's centre sits along the wall.
-	 *
-	 * The first brick has to be one coordinating cell from the pad — +/- 22.5 — or there is
-	 * no head joint and MakeInterface refuses; every brick above may sit anywhere that still
-	 * overlaps the one beneath it. Courses are one brick plus one joint apart, so consecutive
-	 * bricks are separated on Z by exactly the mortar thickness and their shared face is a
-	 * bed joint.
+	 * Build one from each brick's centre along the wall. The first brick must be one
+	 * coordinating cell from the pad (+/- 22.5) or there is no head joint; bricks above may
+	 * sit anywhere still overlapping the one beneath. Courses are a brick plus a joint apart,
+	 * so consecutive bricks share a bed joint.
 	 */
 	FHangingChain MakeHangingChain(const TArray<double>& BrickCentreXCm)
 	{
@@ -171,15 +149,10 @@ namespace StructureMomentTestSupport
 	}
 
 	/**
-	 * Where joint k sits along the wall, DERIVED RATHER THAN READ OFF THE JOINT.
-	 *
-	 * Both boxes are a brick long, so the shared span runs from the further left face to the
-	 * nearer right face and its midpoint is simply the midpoint of the two centres — which is
-	 * also, on the separation axis of the head joint, the mid-plane of the mortar. One formula
-	 * covers both because it is interval arithmetic on equal-length boxes either way.
-	 *
-	 * The test asserts the emitted centroid against this rather than assuming it: the lever
-	 * arms below are all measured from here, so the two have to fail together.
+	 * Where joint k sits along the wall, derived rather than read off the joint. Both boxes
+	 * are a brick long, so the shared span's midpoint is the midpoint of the two centres. The
+	 * test asserts the emitted centroid against this, since every lever arm is measured from
+	 * it and the two must fail together.
 	 */
 	double ChainJointCentreXCm(const FHangingChain& Chain, int32 Joint)
 	{
@@ -187,23 +160,16 @@ namespace StructureMomentTestSupport
 	}
 
 	/**
-	 * THE ORACLE: the moment everything above joint k exerts about joint k's centroid, uu.cm.
+	 * The oracle: the moment everything above joint k exerts about joint k's centroid, uu.cm.
+	 * One sum over the bricks the joint carries, each weight times its own distance from the
+	 * joint — no recursion, no load path. Derived differently from the accumulation it checks,
+	 * so the two must meet in the middle rather than agree by construction.
 	 *
-	 * ONE SUM OVER THE BRICKS THE JOINT CARRIES, each weight times its own distance from the
-	 * joint — first-principles statics, with no recursion, no re-referencing, no load path and
-	 * no notion of a joint passing anything to another joint. That is the entire point of it:
-	 * an oracle that walked the chain the way the accumulation does would agree with a wrong
-	 * accumulation, and the value here is that the two are derived differently and have to
-	 * meet in the middle.
+	 * Signed by the distance. Only the magnitude reaches a stress, so assertions compare
+	 * magnitudes; the sign makes cancellation real — a zig-zag chain sums to exactly zero,
+	 * which summing magnitudes could not produce.
 	 *
-	 * SIGNED, and the sign is the distance's. Only the magnitude reaches a stress — and the
-	 * STORED sign additionally depends on which end of the joint was declared first — so the
-	 * assertions compare magnitudes. What the sign does here is make cancellation real: a
-	 * chain that zig-zags back over its own support has two contributions that cancel to
-	 * exactly zero, and an accumulation that summed magnitudes could not produce that.
-	 *
-	 * Only X matters. Gravity is vertical, so a brick's height above a joint crosses into
-	 * nothing at all and every moment in this fixture is about world Y.
+	 * Only X matters: gravity is vertical, so every moment here is about world Y.
 	 */
 	double ChainMomentAboutJointUuCm(const FHangingChain& Chain, int32 Joint)
 	{
@@ -227,62 +193,42 @@ namespace StructureMomentTestSupport
 }
 
 /**
- * A BRICK HELD BY ONE HEAD JOINT PEELS OFF IT RATHER THAN SHEARING THROUGH IT — the whole
- * point of the moment work, and the first slice where it is visible in a structure rather
- * than in a hand-built load.
+ * A brick held by one head joint peels off it rather than shearing through it — the whole
+ * point of the moment work, first seen in a structure rather than a hand-built load.
  *
- * WHAT IS WRONG TODAY. Gravity runs parallel to a head joint, so the mean normal stress
- * across it is EXACTLY zero and the only axis carrying anything is shear against mortar's
- * cohesion. The joint reads 0.0044481 — over two hundred bricks from failure — while what
- * is physically happening is that the brick's weight acts 11.25 cm to one side of the
- * joint and levers the top of it open, against a tensile strength a fourteenth of the
- * compressive one. The averaged stress is the wrong number the moment the load path misses
- * the centroid, and it is wrong in the direction that leaves things standing.
+ * Gravity runs parallel to a head joint, so the mean normal stress across it is exactly zero
+ * and the averaged reading (0.0044481, shear against cohesion) says the brick is fine. What
+ * is physically happening is that its weight acts 11.25 cm to one side and levers the top of
+ * the joint open, against a tensile strength a fourteenth of the compressive one.
  *
- * THE ECCENTRICITY IS 11.25 cm AND NOT 10.75, AND THAT IS ARBITRATED AGAINST THE EMITTED
- * CENTROID RATHER THAN AGAINST THE DESIGN NOTE. MOMENTS_DESIGN.md worked this case with
- * e = 10.75 — half a brick length, measured to the brick's own FACE — and got 0.39725.
- * Layout::MakeInterface emits the centroid at the MID-PLANE OF THE MORTAR, which is a
- * taken decision and a good one: a 1 cm bed has two contact planes, so "the contact plane"
- * is ambiguous for every mortared joint in a wall, and a face-based centroid would make
- * every lever arm depend on which brick the producer happened to name first. From a head
- * joint centred at X = 11.25 the brick's centre of mass at X = 22.5 is 11.25 cm away, so
- * the answer is 0.0594 (0.4157 on the retired characteristic basis), and the joint
- * geometry is asserted below so that the number and the reason for it fail together.
+ * The eccentricity is 11.25 cm, not 10.75, and it is arbitrated against the emitted centroid.
+ * MakeInterface places the centroid at the mid-plane of the mortar (a 1 cm bed has two contact
+ * planes, so a face-based centroid would depend on which brick was named first). From a head
+ * joint at X = 11.25 the brick's mass at X = 22.5 is 11.25 cm away, giving 0.0594. The joint
+ * geometry is asserted below so the number and its reason fail together.
  *
- * THE ARITHMETIC, spelled from published figures and brick dimensions (mean basis since
- * the 2026-08-13 re-anchor — the stress side is pure statics and does not move; only the
- * divisor changed, 0.10 -> 0.70, a straight /7 on this and every chain multiple):
+ * The arithmetic, from published figures and brick dimensions (mean basis since the 2026-08-13
+ * re-anchor; only the divisor changed, 0.10 -> 0.70):
  *
  *     W       = 1.9 * 21.5 * 10.25 * 6.5 / 1000 * 980  = 2667.198625 uu
  *     M       = 2667.198625 * 11.25                    = 30005.98453125 uu.cm
  *     W_sec   = (4/3) * 5.125 * 3.25^2                 = 72.177083... cm3
- *     sigma_b = M / W_sec                              = 415.7273077 uu/cm2
- *                                                      = 0.04157273077 MPa
+ *     sigma_b = M / W_sec                              = 415.7273077 uu/cm2 = 0.04157 MPa
  *     tension = sigma_b / mean f_x1 (0.70 MPa)         = 0.0593896154
  *
- * NO NEW CONVERSION BOUNDARY, and it is worth checking rather than assuming because
- * "moments" sounds like it should introduce one. Length is cm, so M is uu.cm and M/W with
- * W in cm3 is uu/cm2 — the identical quantity a force over an area already is, divided by
- * the identical 10000. That 10000 is spelled out above from 1 N = 100 uu, so a factor of
- * 100 in the wrong place surfaces here instead of being absorbed.
+ * No new conversion boundary: length is cm, so M/W is uu/cm2, the same quantity a force over
+ * an area is, divided by the same 10000 (from 1 N = 100 uu). A stray factor of 100 surfaces here.
  *
- * WHICH AXIS GOVERNS IS THE ENTIRE RISK, because ComputeUtilisation returns the WORST of
- * the three and a test aimed at bending would silently measure shear if shear happened to
- * be higher. Every row carries its own worked comparison as a fixture precondition, and
- * every row is checked to be measuring what it claims before it is allowed to claim it.
+ * Which axis governs is the whole risk: ComputeUtilisation returns the worst of three, so a
+ * test aimed at bending would silently measure shear if shear were higher. Every row asserts
+ * its own axis comparison as a precondition.
  *
- * N = 1 ONLY, AND THAT IS THE WHOLE CLAIM. A piece resting on several supports is
- * statically INDETERMINATE — the reactions rearrange to satisfy moment equilibrium — and
- * splitting the moment per joint is not merely approximate but wrong in a way that would
- * peel every bed joint in a standing wall. On exactly one support the problem is
- * determinate and the moment is exact. Structure.SymmetricSupportsCarryNoMoment is the
- * other half of this statement and matters more than this one does.
+ * N = 1 only. A piece on several supports is statically indeterminate and splitting the moment
+ * per joint would peel every bed joint in a standing wall; on one support it is determinate and
+ * exact. Structure.SymmetricSupportsCarryNoMoment is the other half of this.
  *
- * NO WORLD, NO TICK, NO GRAVITY SETTING. FStructure is plain arithmetic over a graph and
- * Layout is plain arithmetic over boxes; the 980 above is the solver's own constant, not
- * a physics scene's. The assertion is on the MECHANISM — a utilisation ratio — exactly as
- * DESIGN.md §4 asks of a unit test.
+ * No world, no tick, no gravity setting: the 980 is the solver's own constant. The assertion is
+ * on the mechanism — a utilisation ratio — as DESIGN.md §4 asks of a unit test.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureHangingBrickPeelsTest,
@@ -294,15 +240,11 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 	using namespace StructureMomentTestSupport;
 
 	/*
-	 * The expectations are ratios of published strengths, so they only mean what they say
-	 * while the profile still carries the figures they were derived against. A retune has
-	 * to fail loudly here rather than quietly moving every number below. The MEAN flexural
-	 * bond f_x1 = 0.70 MPa (re-anchor 2026-08-13: Gooch et al. 2023, ConBuildMat
-	 * 386:131578 — twelve M4/M6 batch means averaging 0.571, and UK NA Table NA.6's 0.4
-	 * x the campaign's mean/characteristic ratio 1.89 = 0.76; 0.70 is the centre) is the
-	 * one the answer is divided by; the other two decide which axis governs, and the
-	 * friction coefficient decides whether shear gets any help (it does not — the mean
-	 * compressive stress on a head joint under gravity is zero).
+	 * The expectations are ratios of published strengths, so they hold only while the profile
+	 * carries the figures they were derived against; a retune must fail loudly here. Mean
+	 * flexural bond f_x1 = 0.70 MPa (re-anchor 2026-08-13, Gooch et al. 2023, ConBuildMat
+	 * 386:131578) is the divisor; the other two decide which axis governs. Friction gives shear
+	 * no help here — the mean compressive stress on a head joint under gravity is zero.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.7 MPa, the profile carries %g"),
@@ -325,13 +267,10 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 		ClayBrick.DensityGramsPerCubicCm == 1.9);
 
 	/**
-	 * One grounded pad, one brick hanging off it, and one head joint between them.
-	 *
-	 * The pad is a brick-shaped block resting on the earth; it terminates the flow of
-	 * load, so nothing about its own mass or its own centre reaches the answer. The
-	 * hanging brick has no bed joint beneath it at all, which is what makes its single
-	 * head joint its support — the fallback DESIGN.md §3 describes, and N = 1 by
-	 * definition.
+	 * One grounded pad, one brick hanging off it, one head joint between. The pad
+	 * terminates the load, so its own mass and centre never reach the answer. The hanging
+	 * brick has no bed joint, so its single head joint is its support — the fallback
+	 * DESIGN.md §3 describes, N = 1 by definition.
 	 */
 	struct FPeelCase
 	{
@@ -341,15 +280,10 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 		FPieceBox HangingBox;
 
 		/**
-		 * Whether the PAD is the handle MakeInterface is given first, and therefore
-		 * whether the joint's normal points at the hanging brick or away from it.
-		 *
-		 * ConnectionLoad.h's convention is that the force belonging to a joint is the
-		 * force acting on PieceB, so a joint naming the loaded piece FIRST stores the
-		 * equal-and-opposite reaction, pointing UP. A lever arm crossed with the stored
-		 * vector rather than with the load path would then come out with the same
-		 * magnitude, which is the point of having a row for it: the answer must not
-		 * depend on declaration order at all, exactly as the classification does not.
+		 * Whether the pad is MakeInterface's first handle, i.e. whether the normal points at
+		 * the hanging brick or away. ConnectionLoad.h's force belongs to PieceB, so naming the
+		 * loaded piece first stores the reaction pointing up. The answer must not depend on
+		 * declaration order — that is what this row checks.
 		 */
 		bool bPadIsPieceA;
 
@@ -378,10 +312,9 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 
 	const TArray<FPeelCase> Cases = {
 		/*
-		 * THE ROW THAT CARRIES THE WHOLE POINT. Pad at the origin, brick one cell along,
-		 * so the head joint's mid-plane sits at X = 11.25 and the brick's mass acts at
-		 * X = 22.5 — 11.25 cm of lever arm, and the joint has 3.25 cm of depth to resist
-		 * it with. Not 10.75: see the note on the mid-plane above.
+		 * The headline row. Pad at the origin, brick one cell along, so the head joint's
+		 * mid-plane sits at X = 11.25 and the brick's mass acts at X = 22.5: 11.25 cm of lever
+		 * arm against 3.25 cm of depth. Not 10.75 — see the mid-plane note above.
 		 */
 		{
 			TEXT("a brick hanging off one head joint, pad on the left"),
@@ -396,11 +329,10 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE SAME JOINT SEEN FROM THE OTHER SIDE. The brick hangs to the LEFT of the pad,
-		 * so MakeInterface emits a normal of -X instead of +X and the lever arm points the
-		 * other way. The sign of a moment says which edge of the joint opens, never how
-		 * hard, so this must answer identically — an implementation that let the sign of
-		 * the offset reach the stress would read zero or double here.
+		 * The same joint mirrored. The brick hangs left of the pad, so the normal is -X and
+		 * the lever arm points the other way. The sign of a moment says which edge opens, not
+		 * how hard, so the answer must be identical; letting the sign reach the stress would
+		 * read zero or double here.
 		 */
 		{
 			TEXT("the same joint mirrored, pad on the right"),
@@ -415,9 +347,8 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE LOADED PIECE DECLARED FIRST, which is the orientation that stores the force
-		 * pointing UP rather than down. Same wall, same brick, same joint; only the order
-		 * the producer named the two handles in has changed, and nothing physical may.
+		 * The loaded piece declared first, which stores the force pointing up. Same wall, same
+		 * brick, same joint; only the handle order changed, and nothing physical may.
 		 */
 		{
 			TEXT("the same joint with the hanging brick named first"),
@@ -432,25 +363,18 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * A JOINT THAT IS BOTH BENT AND TWISTED, AND ONLY THE BENDING MAY COUNT.
+		 * A joint both bent and twisted, where only the bending may count. The pad is
+		 * displaced across the wall and along it, so the boxes separate on Y and overlap half
+		 * on X: a 10.75 x 6.5 face centred at X = 5.375, mass acting at X = 10.75. That leaves
+		 * two offsets — 5.625 cm along the normal (bending) and 5.375 cm across the face
+		 * (torsion about the normal).
 		 *
-		 * The pad is displaced across the wall AND along it, so the two boxes are
-		 * separated on Y and overlap only half of each other on X. The shared face is
-		 * therefore 10.75 x 6.5, centred at X = 5.375 — while the brick's mass acts at
-		 * X = 10.75. That leaves TWO offsets: 5.625 cm along the joint's own normal, which
-		 * levers it open, and 5.375 cm across the face, which twists it about that normal.
-		 *
-		 * (p - c) x F produces both, as components about world X and world Y respectively.
-		 * The in-plane frame of a Y-normal joint is the two world axes that are not Y, so
-		 * the X component is bending and the Y component is TORSION — second order for
-		 * gravity on a rectangular joint, needing a modulus this face does not carry, and
-		 * explicitly out of scope. It must be dropped rather than folded into either
-		 * in-plane term, and a row that fed it in would read 0.38 rather than 0.198.
-		 *
-		 * This row also exercises a different separation axis and a different section
-		 * modulus, which nothing else here does: an implementation that assumed the normal
-		 * was X, or that paired a moment with the wrong one of the two in-plane moduli,
-		 * agrees with every row above and fails this one.
+		 * (p - c) x F produces both, as components about world X and Y. For a Y-normal joint
+		 * the Y component is torsion — second order for gravity, needing a modulus this face
+		 * lacks, and out of scope. It must be dropped, not folded in; feeding it in reads 0.38
+		 * rather than 0.198. This row also exercises a different separation axis and modulus,
+		 * so an implementation assuming an X normal, or pairing the wrong in-plane modulus,
+		 * fails here while passing every row above.
 		 */
 		{
 			TEXT("a Y-normal joint bent about X and twisted about its own normal"),
@@ -470,10 +394,9 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 	for (const FPeelCase& Case : Cases)
 	{
 		/*
-		 * REAL GEOMETRY THROUGHOUT: the joint comes out of the producer rather than being
-		 * hand-assembled, because the emitted centroid is the thing the expected number is
-		 * arbitrated against. A rectangle written by hand here could agree with an
-		 * expectation written by hand beside it and both be wrong together.
+		 * Real geometry throughout: the joint comes from the producer, not hand-assembly,
+		 * because the emitted centroid is what the expected number is arbitrated against. A
+		 * hand-written rectangle could agree with a hand-written expectation and both be wrong.
 		 */
 		FConnection Joint;
 
@@ -496,10 +419,9 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 			FMath::IsNearlyEqual(Joint.InterfaceAreaSqCm, Case.ExpectedAreaSqCm, Tolerance));
 
 		/*
-		 * THE ARBITRATION, AND IT IS AN ASSERTION RATHER THAN AN ASSUMPTION. The lever arm
-		 * is measured from this centroid, so if the producer ever moved it to a brick face
-		 * the expected utilisation below would silently stop describing this joint. Pinned
-		 * here so the two fail together and the message says which moved.
+		 * The arbitration, asserted rather than assumed. The lever arm is measured from this
+		 * centroid, so if the producer moved it to a brick face the expected utilisation would
+		 * silently stop describing this joint. Pinned so the two fail together.
 		 */
 		TestTrue(
 			FString::Printf(TEXT("%s: FIXTURE: the joint's centroid should be (%g, %g, %g), it is (%g, %g, %g)"),
@@ -516,15 +438,11 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 			Joint.InterfaceHalfExtentCm.Equals(Case.ExpectedJointHalfExtentCm, Tolerance));
 
 		/*
-		 * --- what this joint must read, and why it is the tension axis that says so ----
-		 *
-		 * Three utilisations, each stress against its own capacity. The bending term
-		 * reaches the tension edge and the compression edge equally — the joint pivots
-		 * about its centroid, so one side opens by exactly as much as the other closes —
-		 * and the mean normal stress is zero because gravity runs parallel to the face,
-		 * so peak tension and peak compression are both simply sigma_b. What separates
-		 * them is that mortar resists crushing a hundred times better than it resists
-		 * being pulled open.
+		 * What this joint must read, and why tension says so. Three utilisations, each stress
+		 * against its own capacity. Bending reaches the tension and compression edges equally
+		 * (the joint pivots about its centroid) and the mean normal stress is zero, so peak
+		 * tension and compression are both sigma_b; what separates them is that mortar resists
+		 * crushing far better than being pulled open.
 		 */
 		const double BendingStressMPa =
 			(BrickWeightUu * Case.ExpectedLeverArmCm)
@@ -546,10 +464,9 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 			ExpectedUtilisation > ShearUtilisation && ExpectedUtilisation > CompressionUtilisation);
 
 		/*
-		 * AND IT MUST STILL STAND. A single brick on a single head joint really does hang
-		 * there; what changes is that it is now a seventeenth of the way to coming off
-		 * rather than a two-hundredth, so a chain of seventeen parts. A row that expected
-		 * something over 1.0 would be asserting a collapse this fixture does not have.
+		 * And it must still stand. A single brick on a single head joint hangs there; it is
+		 * now a seventeenth of the way off rather than a two-hundredth. A row expecting over
+		 * 1.0 would assert a collapse this fixture does not have.
 		 */
 		TestTrue(
 			FString::Printf(TEXT("%s: FIXTURE PRECONDITION: one brick must still hang, expected %.10f"),
@@ -581,11 +498,10 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 		Structure.SolveLoads();
 
 		/*
-		 * THE LOAD PATH IS WHAT MAKES THIS N = 1, so it is asserted rather than assumed.
-		 * The joint has to be the brick's HEAD joint (a bed joint would win the tier
-		 * outright and there would be no fallback), the brick has to be held up by it,
-		 * and the whole of the brick's weight has to be flowing through it — a share of
-		 * it would mean the fixture had grown a second support somewhere.
+		 * The load path is what makes this N = 1, so it is asserted. The joint must be the
+		 * brick's head joint (a bed joint would win the tier and leave no fallback), the brick
+		 * must be held up by it, and the whole weight must flow through it — a share would mean
+		 * a second support had appeared.
 		 */
 		TestTrue(
 			FString::Printf(TEXT("%s: FIXTURE: the joint must be a head joint on the hanging brick"),
@@ -622,48 +538,30 @@ bool FStructureHangingBrickPeelsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A BRICK SITTING SQUARELY ON TWO SUPPORTS LOADS THEM EXACTLY AS IT DID BEFORE ANY OF THIS
- * EXISTED — bit for bit, not nearly.
+ * A brick sitting squarely on two supports loads them exactly as before, bit for bit.
  *
- * THIS MATTERS MORE THAN THE HEADLINE DOES, and it is the trap MOMENTS_DESIGN.md exists to
- * record. The obvious rule — every supporting joint carries (p - c_j) x S_j, its own share
- * crossed with its own lever arm — is WRONG, and wrong in the direction nobody would find
- * until a wall was on screen. On an ordinary running-bond brick with two symmetric bed
- * patches it gives each joint sigma_b = 4.18e-3 against sigma_n = 1.269e-3, so every bed
- * joint in a standing wall would read about 0.029 IN TENSION. The moments cancel across the
- * pair and not on either one of them.
+ * This matters more than the headline, and is the trap MOMENTS_DESIGN.md records. The obvious
+ * rule — every supporting joint carries (p - c_j) x S_j — is wrong: on a symmetric running-bond
+ * brick it gives each bed joint about 0.029 in tension, because the moments cancel across the
+ * pair, not on either one. The correct statics: a piece on several supports is indeterminate,
+ * determinate on exactly one. So N = 1 is exact and N >= 2 keeps the area split with zero
+ * moment, which is unconservative only when the centre of mass is off the supports' centroid —
+ * and in a symmetric bond it is not, so the intact wall does not move.
  *
- * The correct statics is that a piece on several supports is statically INDETERMINATE — the
- * reactions rearrange until moment equilibrium is satisfied — and determinate on exactly
- * one. So N = 1 is exact, N >= 2 keeps the area split with the moment at zero, and that is
- * unconservative only when the centre of mass is NOT at the area-weighted centroid of the
- * supports. In a symmetric running bond it is, exactly, which is why the intact wall does
- * not move at all.
+ * The fixture is the producer's own flush wall and its twin, rebuilt from the same pieces and
+ * joints but added through the two-argument door so they carry no centre of mass. The only
+ * variable is whether anyone said where the weight acts. Flush, not ragged: half bats land on
+ * one brick, so the wall has N = 1 paths too, all at zero eccentricity.
  *
- * THE FIXTURE IS THE PRODUCER'S OWN WALL, AND ITS TWIN. RunningBond lays a small flush
- * wall; the twin is rebuilt from that structure's own pieces and joints with ONE difference
- * — its pieces are added through the two-argument door, so they carry no centre of mass.
- * Every joint keeps its rectangle, every mass and every grounded flag is copied across, so
- * the only variable in the whole comparison is whether anybody said where the weight acts.
+ * Exact equality is the assertion. A 1e-9 tolerance would pass a rearrangement of a few ulps,
+ * and the cascade fuzz has joints settling at exactly 1.0, so one ulp of drift is spurious
+ * break failures.
  *
- * FLUSH RATHER THAN RAGGED, deliberately: a flush wall finishes with half bats at
- * alternating course ends, and a half bat lands on exactly ONE brick below it. So this wall
- * contains N = 1 load paths as well as N = 2 ones — and their eccentricity is zero too,
- * because a half bat's bed patch is its own footprint. Getting N = 1 right must not mean
- * moving a wall that is standing perfectly well.
+ * Red on arrival for one reason: its precondition. The comparison measures nothing until Layout
+ * supplies the centres of mass, so HasCompleteGeometry is asserted first. Once green this is a
+ * regression net, not a driver.
  *
- * EXACT EQUALITY IS THE ASSERTION. A 1e-9 tolerance would pass for a rearrangement that
- * moved every joint in the project by a few ulps, and the cascade fuzz has five joints
- * settling at utilisation exactly 1.0 and one at 1 - 1 ulp, so a single ulp of drift is
- * five spurious break-decision failures. "Does not move" has to mean does not move.
- *
- * RED ON ARRIVAL FOR ONE REASON ONLY: its fixture precondition. The comparison itself
- * cannot measure anything until Layout supplies the centres of mass — with none supplied
- * the twin is not a twin, it is the same structure twice — so HasCompleteGeometry is
- * asserted first and the rest of the test is worthless without it. Once that is green this
- * becomes a regression net rather than a driver, and it says so.
- *
- * NO WORLD, NO TICK.
+ * No world, no tick.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureSymmetricSupportsTest,
@@ -694,9 +592,8 @@ bool FStructureSymmetricSupportsTest::RunTest(const FString& Parameters)
 	}
 
 	/*
-	 * THE PRECONDITION THE WHOLE TEST HANGS ON. Until the producer places its pieces, both
-	 * halves of the comparison below are geometry-free and agreeing with each other proves
-	 * nothing whatsoever. This is the one assertion here that is a red step.
+	 * The precondition the test hangs on. Until the producer places its pieces both halves of
+	 * the comparison are geometry-free and agreeing proves nothing. This is the one red step here.
 	 */
 	TestTrue(
 		TEXT("FIXTURE PRECONDITION: a wall laid by the producer must know where every piece ")
@@ -704,8 +601,8 @@ bool FStructureSymmetricSupportsTest::RunTest(const FString& Parameters)
 		Laid.Structure.HasCompleteGeometry());
 
 	/*
-	 * The twin. Same masses, same grounded flags, same joints — rectangles and all — and
-	 * no centres of mass, which is exactly the state every fixture in this suite is in.
+	 * The twin: same masses, grounded flags and joints (rectangles and all) but no centres of
+	 * mass — the state every fixture in this suite is in.
 	 */
 	FStructure Bare;
 
@@ -735,9 +632,8 @@ bool FStructureSymmetricSupportsTest::RunTest(const FString& Parameters)
 	Bare.SolveLoads();
 
 	/*
-	 * A comparison over joints that all carry nothing would pass trivially, so the wall is
-	 * checked to be doing something first. Masonry is enormously overbuilt in compression,
-	 * so "something" here is thousandths of capacity rather than anything dramatic.
+	 * A comparison over joints carrying nothing would pass trivially, so the wall is checked to
+	 * be doing something first — thousandths of capacity, since masonry is overbuilt in compression.
 	 */
 	double WorstUtilisation = 0.0;
 	int32 WorstJoint = INDEX_NONE;
@@ -758,11 +654,9 @@ bool FStructureSymmetricSupportsTest::RunTest(const FString& Parameters)
 		const FVector UnplacedForce = Bare.GetConnectionForce(Joint);
 
 		/*
-		 * THE FORCE MUST NOT MOVE EITHER, and it is a separate claim. Moments ride
-		 * ALONGSIDE the routed force rather than changing it — the load split is still
-		 * area-weighted and gravity still points straight down — so a change here would
-		 * mean the routing itself had been disturbed, which is a different and worse
-		 * failure than a joint reading a moment it should not.
+		 * The force must not move either, a separate claim. Moments ride alongside the routed
+		 * force rather than changing it, so a change here would mean the routing itself was
+		 * disturbed — a different and worse failure than a joint reading a stray moment.
 		 */
 		const bool bAgrees = Placed == Unplaced && PlacedForce == UnplacedForce;
 
@@ -802,34 +696,27 @@ bool FStructureSymmetricSupportsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * "NOBODY SUPPLIED POSITIONS" AND "THE LOAD HAPPENS TO BE CENTRED" ARE DIFFERENT STATES,
- * AND EXACTLY ONE THING CAN TELL THEM APART.
+ * "Nobody supplied positions" and "the load happens to be centred" are different states, and
+ * HasCompleteGeometry is the one thing that tells them apart.
  *
- * They produce the identical answer everywhere else, on purpose: sigma = N/A +/- M/W
- * collapses to N/A EXACTLY when the moment is zero, which is the only reason every
- * geometry-free fixture and both fuzz generators still work. What that costs is the
- * ability to ask which one you are looking at, and this is where it is bought back — the
- * same trade HasSupportAnswer makes against EPieceSupport::Falling one level down.
+ * They give the identical answer everywhere else on purpose: sigma = N/A +/- M/W collapses to
+ * N/A exactly when the moment is zero, which is why every geometry-free fixture and both fuzz
+ * generators still work. This buys back the ability to ask which one you are looking at — the
+ * same trade HasSupportAnswer makes against EPieceSupport::Falling.
  *
- * A CONJUNCTION, NOT A JUDGEMENT CALL. A moment needs a point for the load to act at and a
- * rectangle for the joint to resist it with, so both halves have to be present or some
- * joint somewhere is answering a centred load because it has no choice. Slice 2 deferred
- * this deliberately: with rectangles landed and centres of mass not, it could not have been
- * written honestly, because half of a conjunction is not a weaker version of it.
+ * A conjunction: a moment needs a point for the load and a rectangle for the joint, so both
+ * must be present or some joint is answering a centred load with no choice. Slice 2 deferred
+ * this deliberately — with rectangles but no centres of mass it could not be written honestly.
  *
- * OVER WHAT IS STILL IN THE STRUCTURE. A removed piece and a joint that has given are out
- * of the graph — they carry nothing and route nothing — so a tombstone must not condemn a
- * live structure that is fully described. That is the same scoping every other accessor on
- * FStructure already uses, not a special case invented here.
+ * Over what is still in the structure: a removed piece and a given joint are out of the graph,
+ * so a tombstone must not condemn a live structure that is fully described. Same scoping every
+ * other FStructure accessor uses.
  *
- * THE ONE DECISION WORTH FLAGGING: an empty structure reads TRUE, because an empty
- * conjunction is true and that is what keeps the predicate composable — adding a fully
- * described piece to a complete structure leaves it complete, with no first-piece special
- * case. The opposite reading (a default-constructed structure has supplied nothing, so it
- * should read false) is defensible and cheap to swap; what is NOT defensible is a structure
- * with pieces and no positions reading true, and that is the row below that matters.
+ * One decision worth flagging: an empty structure reads true, because an empty conjunction is
+ * true and that keeps the predicate composable. The fail-closed reading is defensible and cheap
+ * to swap; what is not defensible is pieces with no positions reading true — the row that matters.
  *
- * NO WORLD, NO TICK.
+ * No world, no tick.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureCompleteGeometryTest,
@@ -841,8 +728,8 @@ bool FStructureCompleteGeometryTest::RunTest(const FString& Parameters)
 	using namespace StructureMomentTestSupport;
 
 	/**
-	 * FREE FUNCTION POINTERS RATHER THAN TFunction, matching PieceActions.h: these rows
-	 * capture nothing, so there is no allocation and no indirection worth the name.
+	 * Free function pointers rather than TFunction, matching PieceActions.h: these rows capture
+	 * nothing, so no allocation.
 	 */
 	struct FGeometryCase
 	{
@@ -872,10 +759,9 @@ bool FStructureCompleteGeometryTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE ROW THAT MATTERS. This is every fixture in the suite and both fuzz
-		 * generators: a perfectly valid structure that simply has no positions in it. It
-		 * must be distinguishable from one whose loads happen to be centred, or the
-		 * distinction this accessor exists for does not exist.
+		 * The row that matters. Every fixture in the suite and both fuzz generators: a valid
+		 * structure with no positions. It must be distinguishable from one whose loads happen
+		 * to be centred, or the accessor has no purpose.
 		 */
 		{
 			TEXT("one piece nobody placed"),
@@ -905,11 +791,9 @@ bool FStructureCompleteGeometryTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * HALF OF A CONJUNCTION IS NOT A WEAKER VERSION OF IT. The pieces know where they
-		 * are and the joint does not, so its lever arm is unmeasurable and every load
-		 * through it is answered as though it were centred. That is the state slice 2 left
-		 * behind when it landed rectangles without centres of mass, seen from the other
-		 * side.
+		 * Half a conjunction is not a weaker version of it. The pieces are placed and the joint
+		 * is not, so its lever arm is unmeasurable and every load through it is answered as
+		 * centred — the state slice 2 left behind, seen from the other side.
 		 */
 		{
 			TEXT("placed pieces, but a joint with no rectangle"),
@@ -950,11 +834,10 @@ bool FStructureCompleteGeometryTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * AND WHAT HAS LEFT THE STRUCTURE CANNOT SPOIL IT. Piece 2 was never placed and its
-		 * joint never carried a rectangle; removing it takes both out of the graph at once
-		 * — the piece is tombstoned and the joint is severed — leaving a live half that is
-		 * completely described. A predicate that walked the raw arrays would say false here
-		 * for ever, which would make it useless the first time a player pulled a brick.
+		 * What has left the structure cannot spoil it. Piece 2 was never placed and its joint
+		 * never had a rectangle; removing it tombstones the piece and severs the joint, leaving
+		 * a live half that is fully described. A predicate walking the raw arrays would read
+		 * false forever — useless the first time a player pulls a brick.
 		 */
 		{
 			TEXT("the undescribed piece and its joint have been removed"),
@@ -1005,54 +888,37 @@ bool FStructureCompleteGeometryTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A WALL THAT WENT THROUGH THE BINDING IS STILL A PLACED WALL — and today it is not, so
- * every wall the game itself builds computes no moments at all.
+ * A wall that went through the binding is still a placed wall — today it is not, so every wall
+ * the game builds computes no moments at all.
  *
- * WHERE THE GEOMETRY IS DROPPED. RunningBond places every piece it lays: it derives the
- * mass and the centre of mass from one box, so a piece cannot weigh one brick and act
- * through a different one. AdoptLayout then replays that layout into an FStructureBinding
- * — the only route there is from a laid wall to the thing the world subsystem owns — and
- * FStructureBinding::AddPiece takes the box, keeps it for itself, and forwards MASS AND
- * GROUNDEDNESS ONLY to the solver. The centre falls on the floor between the two.
+ * Where the geometry is dropped: RunningBond places every piece. AdoptLayout replays the
+ * layout into an FStructureBinding, and FStructureBinding::AddPiece keeps the box but forwards
+ * only mass and groundedness to the solver. The centre of mass falls on the floor between them.
  *
- * WHICH IS INVISIBLE, AND THAT IS THE WHOLE PROBLEM. An unplaced piece loads its joints
- * EXACTLY as a centred one does — that exactness is deliberate and is what lets every
- * geometry-free fixture in the project keep working — so a binding that lost every centre
- * of mass reports a wall that is standing perfectly happily, with the same forces, the same
- * support answers and the same piece count as one that never lost anything. Nothing throws,
- * nothing looks wrong, and slice 3 is simply absent from play.
+ * Which is invisible: an unplaced piece loads its joints exactly as a centred one does (that
+ * exactness is deliberate, and lets every geometry-free fixture keep working), so a binding
+ * that lost every centre of mass reports a wall standing happily, with the same forces and
+ * support answers. Nothing throws, and slice 3 is simply absent from play.
  *
- * TWO CLAIMS, AND THE FIRST IS THE SHARPER ONE.
+ * Two claims. First, HasCompleteGeometry on the binding-built structure: it fails for the
+ * whole class of droppage — any piece, any field — not one number on one joint, and keeps
+ * meaning the same when the fixture below is retired. Second, one joint of one real wall
+ * worked end to end, deliberately a joint whose answer moves, since a predicate can pass
+ * without anything downstream using what it promises.
  *
- * HasCompleteGeometry exists precisely so that "nobody supplied positions" is askable rather
- * than silently identical to "the load happens to be centred". Asserting it on a
- * binding-built structure fails for the whole CLASS of droppage — any piece, any field, any
- * future producer — rather than for one number on one joint, and it keeps meaning the same
- * thing when the fixture below is eventually retired.
- *
- * The second claim is that number, because a predicate can be satisfied without anything
- * downstream using what it promises. So one joint of one real wall is worked through end to
- * end, and it is deliberately a joint whose answer MOVES.
- *
- * THE FIXTURE IS THE NARROW-WAIST WALL, which is BrickWorldTestSupport::NarrowWaistWallSpec(3)
- * spelled out here rather than included: that header drags in UWorld, the player controller
- * and the input subsystem, and this test needs none of them. The shape is asserted below so
- * that the two cannot drift apart in silence.
+ * The fixture is the narrow-waist wall (BrickWorldTestSupport::NarrowWaistWallSpec(3), spelled
+ * out here to avoid dragging in UWorld and the input subsystem); its shape is asserted below.
  *
  *      course 2         [ 3 ][ 4 ]
  *      course 1            [ 2 ]        THE WAIST
  *      course 0         [ 0 ][ 1 ]      grounded
  *
- * Ragged, two full bricks per course, so the odd course is a single brick. Bricks 3 and 4
- * each land on the waist and on NOTHING ELSE — N = 1, the determinate case — and each one
- * overhangs it, which is exactly MOMENTS_DESIGN.md's case (c): a running-bond brick that has
- * only one of its two bed supports.
+ * Ragged, two full bricks per course, so the odd course is a single brick. Bricks 3 and 4 each
+ * land on the waist and nothing else — N = 1, MOMENTS_DESIGN.md case (c).
  *
- * THE ARITHMETIC, from the emitted rectangle and published strengths.
- *
- * The waist brick sits half a cell along at x = 11.25 and spans x 0.5 .. 22.0; brick 3 sits
- * at x = 0 and spans -10.75 .. 10.75. The shared patch is therefore x 0.5 .. 10.75 by the
- * full 10.25 of depth:
+ * The arithmetic, from the emitted rectangle and published strengths. The waist brick sits at
+ * x = 11.25 spanning 0.5 .. 22.0; brick 3 at x = 0 spanning -10.75 .. 10.75, so the shared
+ * patch is x 0.5 .. 10.75 by the full 10.25 of depth:
  *
  *     A       = 10.25 * 10.25                          = 105.0625 cm2
  *     centre  = ((0.5 + 10.75) / 2, 0, 14.5)             the mid-plane of the mortar
@@ -1061,28 +927,22 @@ bool FStructureCompleteGeometryTest::RunTest(const FString& Parameters)
  *     W       = 1.9 * 21.5 * 10.25 * 6.5 / 1000 * 980  = 2667.198625 uu
  *     sigma_b = 2667.198625 * 5.625 / W_v              = 8.3590619e-3 MPa
  *     sigma_n = -2667.198625 / A                       = -2.5386781e-3 MPa, compression
- *     tension = max(0, sigma_n + sigma_b)              = 5.8203838e-3 MPa
- *             / mean f_x1 (0.70 MPa)                   = 0.0083148340
+ *     tension = max(0, sigma_n + sigma_b) / 0.70 MPa   = 0.0083148340
  *
- * against the 2.5386781e-4 a centred load reads — a 33x change, and the joint still holds,
- * which is right: one overhanging brick does not come off. (Mean basis since the
- * 2026-08-13 re-anchor; the characteristic-basis figure was 0.058203838 and the change
- * 229x. The stress side is untouched — only the 0.10 -> 0.70 divisor moved.)
+ * against 2.5386781e-4 a centred load reads — a 33x change, and the joint still holds. (Mean
+ * basis since the 2026-08-13 re-anchor; only the 0.10 -> 0.70 divisor moved.)
  *
- * WHICH AXIS GOVERNS IS ASSERTED, NOT ASSUMED. ComputeUtilisation returns the WORST of the
- * three, so a test aimed at bending measures compression the moment compression happens to
- * be higher — and on this joint compression is what governs TODAY. It is the axis this test
- * has to overtake, so both are worked out and compared before either is claimed.
+ * Which axis governs is asserted, not assumed. ComputeUtilisation returns the worst of three,
+ * and compression governs this joint today; bending in tension is the axis this test overtakes,
+ * so both are compared before either is claimed.
  *
- * THE LAID WALL IS THE CONTROL, and it is asserted first. The producer already places its
- * pieces, so the layout's own structure reads the eccentric figure; only the copy that went
- * through the binding does not. Checking both is what makes the failure say WHERE the
- * geometry was lost rather than merely that it is missing.
+ * The laid wall is the control, asserted first: the producer already places its pieces, so its
+ * own structure reads the eccentric figure and only the binding copy does not. Checking both
+ * says where the geometry was lost, not just that it is missing.
  *
- * NO WORLD, NO TICK, NO ACTORS. AdoptLayout stores whatever pointers it is handed into weak
- * pointers and never resolves one, and nothing here asks for an actor, so the stand-ins are
- * null. That is not a shortcut around a fixture: the piece-to-actor half of the binding is
- * StructureBinding.AdoptLayout's subject and is fully covered there.
+ * No world, no tick, no actors. AdoptLayout stores pointers into weak pointers and never
+ * resolves one, so the stand-ins are null; the piece-to-actor half is covered in
+ * StructureBinding.AdoptLayout.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureBindingAdoptedWallGeometryTest,
@@ -1094,8 +954,8 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 	using namespace StructureMomentTestSupport;
 
 	/*
-	 * The expected numbers are ratios of published strengths, so they mean what they say
-	 * only while the profile still carries the figures they were derived against.
+	 * The expected numbers are ratios of published strengths, so they hold only while the
+	 * profile carries the figures they were derived against.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.7 MPa, the profile carries %g"),
@@ -1132,9 +992,8 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 	}
 
 	/*
-	 * THE SHAPE, PINNED. Five pieces and six joints is the wall drawn above and nothing
-	 * else; a spec that stopped producing a waist would make every claim below meaningless
-	 * while still passing most of them.
+	 * The shape, pinned. Five pieces and six joints is the wall drawn above; a spec that
+	 * stopped producing a waist would make every claim below meaningless while still passing.
 	 */
 	constexpr int32 WaistedBrick = 3;
 
@@ -1149,9 +1008,8 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 		Laid.Structure.NumConnections(), 6);
 
 	/*
-	 * ONE PLACE THE WHOLE FIXTURE HANGS ON: the producer must already place its pieces. If
-	 * it did not, the binding would be losing nothing and this test would be measuring two
-	 * geometry-free structures against each other.
+	 * The fixture hangs on this: the producer must already place its pieces. If it did not,
+	 * the binding would lose nothing and this would measure two geometry-free structures.
 	 */
 	TestTrue(
 		TEXT("FIXTURE: the laid wall must already know where every piece and every joint is"),
@@ -1177,28 +1035,27 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 	constexpr double BedPatchHalfYCm = BrickWidthCm / 2.0;
 	constexpr double BedPatchCentreXCm = (SharedLowXCm + SharedHighXCm) / 2.0;
 
-	/* Top of course 1, plus half the mortar bed above it — the mid-plane MakeInterface emits. */
+	// Top of course 1, plus half the mortar bed above it: the mid-plane MakeInterface emits.
 	constexpr double BedPatchCentreZCm =
 		BrickHeightCm / 2.0 + CoursePitchCm + BrickHeightCm / 2.0 + MortarJointCm / 2.0;
 
 	constexpr double BedPatchAreaSqCm = (2.0 * BedPatchHalfXCm) * (2.0 * BedPatchHalfYCm);
 
-	/* The brick's own centre is at x = 0; the patch it lands on is not. */
+	// The brick's own centre is at x = 0; the patch it lands on is not.
 	constexpr double LeverArmCm = BedPatchCentreXCm;
 
 	/*
-	 * A bed joint separates on Z, so its in-plane frame is X and Y. The lever arm runs along
-	 * X and gravity along Z, so (p - c) x F is a moment about Y — resisted by the depth the
-	 * face has along X. THIS PATCH IS SQUARE, so the two moduli are equal and this fixture
-	 * cannot tell a swapped pair apart; Structure.HangingBrickPeelsRatherThanShears is where
-	 * that order is pinned, on a face whose two moduli differ by a factor of 2.5.
+	 * A bed joint separates on Z, so its in-plane frame is X and Y; the moment is about Y,
+	 * resisted by the depth along X. This patch is square, so the two moduli are equal and this
+	 * fixture cannot tell a swapped pair apart — that order is pinned in
+	 * Structure.HangingBrickPeelsRatherThanShears, on a face whose moduli differ by 2.5x.
 	 */
 	const double BedPatchModulusCm3 = SectionModulusCm3(BedPatchHalfYCm, BedPatchHalfXCm);
 
 	const double BendingStressMPa =
 		(BrickWeightUu * LeverArmCm) / (BedPatchModulusCm3 * ForceUnitsPerMPaPerSqCm);
 
-	/* Signed, positive in tension: a brick pressing down on a bed joint compresses it. */
+	// Signed, positive in tension: a brick pressing down on a bed joint compresses it.
 	const double NormalStressMPa =
 		-BrickWeightUu / (BedPatchAreaSqCm * ForceUnitsPerMPaPerSqCm);
 
@@ -1210,15 +1067,14 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 	const double CompressionUtilisation =
 		PeakCompressiveStressMPa / GeneralPurposeMortar.CompressiveStrengthMPa;
 
-	/* What a joint reads when nobody said where the load acts: the averaged stress alone. */
+	// What a joint reads when nobody said where the load acts: the averaged stress alone.
 	const double CentredUtilisation =
 		-NormalStressMPa / GeneralPurposeMortar.CompressiveStrengthMPa;
 
 	/*
-	 * THE PRECONDITION THAT STOPS THIS MEASURING THE WRONG AXIS. Compression is what governs
-	 * this joint today, so bending in tension has to overtake it — a fixture where it did not
-	 * would read the same number before and after the fix and prove nothing at all. Shear is
-	 * exactly zero: gravity is normal to a bed joint.
+	 * The precondition that stops this measuring the wrong axis. Compression governs this joint
+	 * today, so bending in tension must overtake it, or the number would not move across the
+	 * fix. Shear is exactly zero: gravity is normal to a bed joint.
 	 */
 	TestTrue(
 		FString::Printf(
@@ -1228,8 +1084,8 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 		ExpectedUtilisation > CompressionUtilisation && ExpectedUtilisation > CentredUtilisation);
 
 	/*
-	 * AND THE WALL MUST STILL STAND. One brick overhanging half its bed really does hold; the
-	 * change is that it is a hundred-and-twentieth of the way off rather than a four-thousandth.
+	 * And the wall must still stand. One brick overhanging half its bed holds; it is now a
+	 * hundred-and-twentieth of the way off rather than a four-thousandth.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE PRECONDITION: the wall must still stand, expected %.10f"),
@@ -1241,10 +1097,9 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 		*Bits(ExpectedUtilisation), *Bits(CentredUtilisation)));
 
 	/*
-	 * THE JOINT IS FOUND BY ROLE, NOT BY INDEX. Which handle the producer happened to give
-	 * it is an implementation detail of RunningBond's pairing order, and hard-coding it would
-	 * make this test fail for a reason that has nothing to do with geometry. Finding exactly
-	 * one bed joint beneath the brick is also the N = 1 precondition the moment rule needs.
+	 * The joint is found by role, not index: the handle is RunningBond's pairing detail and
+	 * hard-coding it would fail for a reason unrelated to geometry. Finding exactly one bed
+	 * joint beneath the brick is also the N = 1 precondition the moment rule needs.
 	 */
 	const auto FindOnlyBedJointBeneath =
 		[this, WaistedBrick](const FStructure& Structure, const TCHAR* Which) -> int32
@@ -1329,9 +1184,9 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 	}
 
 	/*
-	 * CLAIM ONE, AND IT FAILS FOR THE WHOLE CLASS. Whatever the binding drops — a centre of
-	 * mass today, a rectangle or a field nobody has invented yet tomorrow — a wall that went
-	 * through it has to be as completely described as the wall that went in.
+	 * Claim one, failing for the whole class. Whatever the binding drops — a centre of mass
+	 * today, a field nobody has invented yet tomorrow — a wall that went through it must be as
+	 * completely described as the wall that went in.
 	 */
 	TestTrue(
 		TEXT("a wall adopted into a binding must know where every piece and every joint is; ")
@@ -1348,10 +1203,9 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 	}
 
 	/*
-	 * THE ROUTING MUST BE IDENTICAL, and it is a separate claim from the one below. Moments
-	 * ride alongside the routed force rather than changing it, so the two structures must
-	 * agree here exactly — a difference would mean the replay had disturbed the load path,
-	 * which is a different and worse fault than a lost centre of mass.
+	 * The routing must be identical, a separate claim. Moments ride alongside the routed force
+	 * rather than changing it, so the two structures must agree here exactly; a difference would
+	 * mean the replay disturbed the load path — a worse fault than a lost centre of mass.
 	 */
 	const FVector LaidForce = Laid.Structure.GetConnectionForce(LaidJoint);
 	const FVector BoundForce = Binding.GetStructure().GetConnectionForce(BoundJoint);
@@ -1364,8 +1218,8 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 		LaidForce == BoundForce);
 
 	/*
-	 * CLAIM TWO. Same wall, same joint, same force — so the only thing that can move the
-	 * answer is whether anybody said where the brick's weight acts.
+	 * Claim two. Same wall, same joint, same force, so the only thing that can move the answer
+	 * is whether anybody said where the brick's weight acts.
 	 */
 	const double BoundUtilisation = Binding.GetStructure().GetConnectionUtilisation(BoundJoint);
 
@@ -1380,85 +1234,58 @@ bool FStructureBindingAdoptedWallGeometryTest::RunTest(const FString& Parameters
 }
 
 /**
- * A MOMENT BREAKS THE JOINT IT OVERLOADS — under the first-crack brittleness model the head
- * joint that reads past its elastic section-modulus capacity actually GIVES, and the chain
- * hanging off it comes down.
+ * A moment breaks the joint it overloads: under the first-crack brittleness model the head
+ * joint past its elastic section-modulus capacity actually gives, and the chain hanging off it
+ * comes down.
  *
- * WHAT THIS TEST SAYS NOW, AND THE TWO INVERSIONS BEHIND IT (first-crack promotion, 2026-08-28).
- * This test has swung twice, and the current reading restores its ORIGINAL premise. (1) Before
- * the equilibrium LP became the break authority it pinned "a joint the readout calls over
- * capacity must actually give", and the bug was that the per-joint sweep did not see the
- * eccentric moment, so the joint held forever. (2) Slice 3b/4 made the LP the authority and it
- * reasoned in PLASTIC limit analysis — a no-tension f_t/f_c stress block carries about 2.78x the
- * seventeen-brick demand — so the LP CHARITABLY STOOD the chain and the test was re-pinned to
- * "the joint over its elastic capacity is carried, not broken." (3) The first-crack promotion
- * flips the LP's bonded-joint bending capacity to the UNCRACKED peak-fibre limit (3x stricter
- * than plastic no-tension): a bonded joint now cracks when its peak fibre reaches f_t, which is
- * EXACTLY production's elastic section-modulus readout (W = A*h/3). So the LP verdict converges
- * back onto the elastic readout, the seventeen-brick head joint is found infeasible, and the
- * chain FALLS. The plastic-stands re-pin is retired; "a moment breaks the joint it overloads" is
- * true again, this time because the ruled brittleness model, not the elastic display, condemns it.
+ * This reading has swung twice and now restores its original premise (first-crack promotion,
+ * 2026-08-28). (1) Before the equilibrium LP was the break authority, the per-joint sweep did
+ * not see the eccentric moment, so an over-capacity joint held forever. (2) The LP became the
+ * authority and reasoned in plastic limit analysis — a no-tension block carries ~2.78x the
+ * demand — so it charitably stood the chain, and the test was re-pinned to "carried, not
+ * broken". (3) First crack flips the LP's bonded-joint bending capacity to the uncracked
+ * peak-fibre limit (3x stricter), which is exactly production's elastic readout (W = A*h/3), so
+ * the LP converges back onto the readout, the head joint is found infeasible, and the chain falls.
  *
- * THE FALL BOUNDARY IS THE ELASTIC-READOUT CROSSING, AND THAT COINCIDENCE IS THE PHYSICS. First
- * crack is the uncracked peak-fibre condition sigma = -N/A + |M|/W <= f_t, and on a head joint
- * under gravity N = 0, so it reduces to |M|/W <= f_t — which is precisely what
- * GetConnectionUtilisation composes and reports. The first-crack load factor is therefore
- * lambda* = 1 / readout, and the chain falls exactly when the readout crosses 1.0. The test
- * pins that identity: (readout > 1.0) == (the chain falls), for every row.
+ * The fall boundary is the elastic-readout crossing, and that coincidence is the physics. First
+ * crack is sigma = -N/A + |M|/W <= f_t; on a head joint under gravity N = 0, so it reduces to
+ * |M|/W <= f_t — exactly what GetConnectionUtilisation reports. So lambda* = 1 / readout and the
+ * chain falls exactly when the readout crosses 1.0. The test pins (readout > 1.0) == (chain falls).
  *
- * THE READOUT AND THE BREAK DECISION NOW AGREE, where under the plastic re-pin they diverged.
- * GetConnectionUtilisation still composes FConnection::UtilisationUnder over the routed force AND
- * moment, still sees the eccentricity, and still crosses 1.0 between sixteen and seventeen
- * bricks — and under first crack the break authority follows it rather than overriding it.
- *
- * THE ARITHMETIC. Under slice 3's rule the moment on a determinate joint is this piece's own
- * weight PLUS what it received from above, acting at its own centre; the load arriving from above
- * does not yet carry its own lever arm, which is slice 5. So the head joint's moment is simply
- * the chain weight times 11.25 cm, and the utilisation is linear in the number of bricks:
+ * The arithmetic. Under slice 3's rule the moment on a determinate joint is this piece's own
+ * weight plus what it received from above, acting at its own centre (the arriving load does not
+ * yet carry its own lever arm, that is slice 5). So the head joint's moment is the chain weight
+ * times 11.25 cm, linear in the number of bricks:
  *
  *     W       = 1.9 * 21.5 * 10.25 * 6.5 / 1000 * 980  = 2667.198625 uu per brick
- *     e       = 22.5 / 2                               = 11.25 cm to the joint's mid-plane
+ *     e       = 22.5 / 2                               = 11.25 cm to the mid-plane
  *     W_u     = (4/3) * 5.125 * 3.25^2                 = 72.1770833 cm3
- *     sigma_b = n * 2667.198625 * 11.25 / W_u          = n * 0.041572731 MPa
- *     sigma_n = 0                                        gravity is parallel to a head joint
- *     tension = n * 0.041572731 / 0.70                 = n * 0.059389616
+ *     tension = n * 2667.198625 * 11.25 / W_u / 0.70   = n * 0.059389616  (sigma_n = 0)
  *
- * n = 16 gives 0.9502339 (first-crack lambda* = 1/0.9502339 = 1.0524 >= 1) and HOLDS; n = 17
- * gives 1.0096235 (first-crack lambda* = 1/1.0096235 = 0.9905 < 1) and GIVES. So sixteen stands
- * and seventeen falls, and that 16/17 pair is the discriminating boundary. (Mean basis since the
- * 2026-08-13 re-anchor: the divisor moved 0.10 -> 0.70, so the crossing moved from n = 3 — the
- * characteristic-basis pair was 0.8314546 / 1.2471819 at n = 2 / 3.) The just-below-capacity
- * sixteen-brick chain is NOT a red fixture, which is exactly why it is in the table: it is the
- * control that stops an implementation which breaks whatever it is shown from passing.
+ * n = 16 gives 0.9502 (lambda* 1.0524 >= 1) and holds; n = 17 gives 1.0096 (lambda* 0.9905 < 1)
+ * and gives. So sixteen stands and seventeen falls — the discriminating boundary. The sixteen
+ * chain is not a red fixture; it is the control that stops an implementation which breaks
+ * whatever it is shown.
  *
- * THE FIXTURE IS A CORBEL, NOT A ROW. A horizontal chain of bricks does not work at all:
- * every piece with no bed joint beneath it falls back to ALL of its head joints, so the
- * middle of a row supports its neighbour and is supported by it — a cycle, which the solver
- * correctly strands rather than solving. Stacking the chain vertically off one hanging brick
- * gives each upper brick a bed joint beneath it, and leaves the hanging brick with exactly
- * one head joint and nothing else:
+ * The fixture is a corbel, not a row: a horizontal chain is a cycle the solver strands. Stacked
+ * vertically off one hanging brick, each upper brick gets a bed joint and the hanging brick has
+ * exactly one head joint:
  *
  *              [ C ]
  *              [ B ]
  *     [ pad ]  [ A ]        one head joint, the whole chain hanging off it
  *     =======
  *
- * WHICH AXIS GOVERNS IS ASSERTED. On a head joint under gravity the mean normal stress is
- * exactly zero and shear carries the whole force against mortar's cohesion, so the three
- * axes are close enough in kind to be worth comparing: at n = 17 tension reads 1.0096235
- * against shear at 0.0756179 (n x 0.0044481) and compression at 0.0706736 (n x 0.0041573).
- * Bending in tension is what has to take the joint apart, and a fixture where shear got
- * there first would be a different test.
+ * Which axis governs is asserted: on a head joint the mean normal stress is zero, so at n = 17
+ * tension reads 1.0096 against shear 0.0756 and compression 0.0707. Bending in tension must take
+ * the joint apart; a fixture where shear got there first would be a different test.
  *
- * ASSERTED ON THE MECHANISM AND THE SUPPORT STATE, NEVER ON MOVEMENT. FStructure has no
- * positions to move and a severed joint moves nothing anyway — two pieces can part and stay
- * exactly where they are — so the falling row's claim is the head joint's own state (it HAS
- * given, and carries the break-pass stamp of the pass it gave on) plus the outcome that the
- * chain is no longer held (every hanging brick reads Falling, not Supported). The standing row's
- * claim is the mirror: nothing gave, the cascade ran zero passes, and every brick stays
- * Supported.
+ * Asserted on the mechanism and support state, never on movement: FStructure has no positions.
+ * The falling row's claim is the head joint's own state (given, break-pass stamped) plus every
+ * hanging brick reading Falling; the standing row's is the mirror (nothing given, zero passes,
+ * every brick Supported).
  *
- * NO WORLD, NO TICK. The break decision is the equilibrium LP over a graph, not a simulation.
+ * No world, no tick. The break decision is the equilibrium LP over a graph, not a simulation.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureMomentBreaksTheJointTest,
@@ -1494,10 +1321,9 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 	constexpr double LeverArmCm = BrickPitchCm / 2.0;
 
 	/*
-	 * A head joint separates on X, so its in-plane frame is Y and Z. The lever arm runs along
-	 * X and gravity along Z, so the moment is about Y — resisted by the joint's 3.25 cm of
-	 * DEPTH, not by its 5.125 cm of width. The two moduli here differ by 1.58x, so the pair
-	 * being the right way round is load-bearing in this fixture.
+	 * A head joint separates on X, so its in-plane frame is Y and Z; the moment is about Y,
+	 * resisted by the joint's 3.25 cm of depth, not its 5.125 cm of width. The two moduli differ
+	 * by 1.58x, so the pair being the right way round is load-bearing here.
 	 */
 	constexpr double HeadJointModulusCm3 = SectionModulusCm3(HalfWidthCm, HalfHeightCm);
 
@@ -1509,34 +1335,27 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 		int32 BricksInChain;
 
 		/**
-		 * Whether the head joint gives under the FIRST-CRACK model — and, because first crack IS
-		 * the uncracked peak-fibre condition on a zero-normal head joint, this is the SAME flag as
-		 * "the elastic section-modulus readout crosses 1.0". The test asserts that coincidence
-		 * rather than assuming it: (readout > 1.0) == bFallsAtFirstCrack, for every row. When it
-		 * holds the chain falls (head joint given, break-pass stamped, bricks Falling); when it
-		 * does not the chain stands (nothing given, zero passes, bricks Supported).
+		 * Whether the head joint gives under first crack. On a zero-normal head joint first crack
+		 * is the uncracked peak-fibre condition, so this equals "the elastic readout crosses 1.0";
+		 * the test asserts that coincidence, (readout > 1.0) == bFallsAtFirstCrack. True: chain
+		 * falls (given, stamped, bricks Falling). False: chain stands (bricks Supported).
 		 */
 		bool bFallsAtFirstCrack;
 	};
 
 	const TArray<FChainCase> Cases = {
 		/*
-		 * THE CONTROL. Sixteen bricks put the joint at 95% of its ELASTIC section-modulus
-		 * capacity (0.9502339) — genuinely, visibly loaded, and the readout says so — and it
-		 * STANDS: first-crack lambda* = 1/0.9502339 = 1.0524 >= 1, no admissibility is lost, and
-		 * the cascade breaks nothing. (Two and three on the characteristic basis; the mean
-		 * re-anchor moved the elastic crossing to seventeen brick weights, 1/0.059389616.)
+		 * The control. Sixteen bricks put the joint at 95% of its elastic capacity (0.9502339)
+		 * and it stands: lambda* 1.0524 >= 1, the cascade breaks nothing. (The mean re-anchor
+		 * moved the crossing to seventeen brick weights.)
 		 */
 		{ TEXT("sixteen bricks hanging off one head joint"), 16, false },
 
 		/*
-		 * THE CLAIM, RE-INVERTED BY THE FIRST-CRACK PROMOTION (2026-08-28). The seventeenth brick
-		 * takes the ELASTIC readout to 1.0096, just past its section-modulus capacity — and under
-		 * first crack the LP's bonded-joint bending capacity is that same peak-fibre limit, so the
-		 * head joint is found INFEASIBLE (first-crack lambda* = 1/1.0096235 = 0.9905 < 1) and
-		 * GIVES. This retires the Slice-3b/4 plastic-stands re-pin, whose ~2.78x no-tension margin
-		 * charitably held the chain; the ruled brittleness model condemns the joint the moment
-		 * overloads, and the chain hanging off it falls.
+		 * The claim, re-inverted by the first-crack promotion (2026-08-28). The seventeenth brick
+		 * takes the elastic readout to 1.0096, and first crack makes the LP's bending capacity that
+		 * same peak-fibre limit, so the head joint is infeasible (lambda* 0.9905 < 1) and gives.
+		 * This retires the plastic-stands re-pin; the chain falls.
 		 */
 		{ TEXT("seventeen bricks hanging off one head joint"), 17, true },
 	};
@@ -1546,10 +1365,9 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 	for (const FChainCase& Case : Cases)
 	{
 		/*
-		 * A grounded pad, then a stack of bricks beside it, the lowest of which is joined to
-		 * the pad by a head joint and to nothing else. Each brick above sits squarely on the
-		 * one below — its own bed patch, so its lever arm is exactly zero and it contributes
-		 * weight to the head joint without contributing any eccentricity of its own.
+		 * A grounded pad, then a stack of bricks beside it; the lowest is joined to the pad by a
+		 * head joint and nothing else. Each brick above sits squarely on the one below, so its
+		 * lever arm is zero and it adds weight to the head joint without eccentricity of its own.
 		 */
 		FStructure Structure;
 
@@ -1623,7 +1441,7 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 		const double BendingStressMPa =
 			(ChainWeightUu * LeverArmCm) / (HeadJointModulusCm3 * ForceUnitsPerMPaPerSqCm);
 
-		/* Gravity runs parallel to a head joint, so the whole force is shear and sigma_n is 0. */
+		// Gravity runs parallel to a head joint, so the whole force is shear and sigma_n is 0.
 		const double ShearStressMPa =
 			ChainWeightUu / (HeadJointAreaSqCm * ForceUnitsPerMPaPerSqCm);
 
@@ -1641,10 +1459,9 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 			ExpectedUtilisation > ShearUtilisation && ExpectedUtilisation > CompressionUtilisation);
 
 		/*
-		 * THE COINCIDENCE THAT IS THE PHYSICS, restated against the arithmetic so the two cannot
-		 * drift: first crack on a zero-normal head joint reduces to |M|/W <= f_t, which is exactly
-		 * the elastic readout, so the joint falls precisely when the readout crosses 1.0. The
-		 * fall flag and the readout-crossing must therefore be the same boolean.
+		 * The coincidence that is the physics, restated against the arithmetic: first crack on a
+		 * zero-normal head joint reduces to |M|/W <= f_t, exactly the elastic readout, so the
+		 * joint falls when the readout crosses 1.0. Fall flag and readout-crossing are one boolean.
 		 */
 		TestTrue(
 			FString::Printf(
@@ -1655,10 +1472,9 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 			(ExpectedUtilisation > 1.0) == Case.bFallsAtFirstCrack);
 
 		/*
-		 * THE READOUT ALREADY SEES IT, and asserting that first is what makes the failure
-		 * below unambiguous. Slice 3 landed the moment into GetConnectionUtilisation; if this
-		 * line ever goes red the fault is upstream of the break decision and the rest of this
-		 * test is measuring the wrong thing.
+		 * The readout already sees it, and asserting that first keeps the failure below
+		 * unambiguous. Slice 3 landed the moment into GetConnectionUtilisation; if this goes red
+		 * the fault is upstream of the break decision.
 		 */
 		Structure.SolveLoads();
 
@@ -1673,24 +1489,20 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 		// --- the claim: first crack breaks the joint the moment overloads ----------------
 
 		/*
-		 * THE BREAK DECISION IS THE FIRST-CRACK LP. The eighteen-piece structure (pad plus
-		 * seventeen bricks) sits well below the 200-block cap, so the equilibrium LP decides. With
-		 * the first-crack rows live, the head joint's bending capacity is its uncracked peak-fibre
-		 * limit — the same section-modulus reading the display shows — so the seventeen-brick chain
-		 * is found infeasible (lambda* 0.9905 < 1) and the head joint gives, while the sixteen-brick
-		 * chain (lambda* 1.0524 >= 1) is admissible and nothing breaks.
+		 * The break decision is the first-crack LP. The eighteen-piece structure sits below the
+		 * 200-block cap, so the equilibrium LP decides. The head joint's bending capacity is its
+		 * peak-fibre limit — the display's section-modulus reading — so seventeen bricks are
+		 * infeasible (lambda* 0.9905) and the joint gives; sixteen (lambda* 1.0524) is admissible.
 		 */
 		const int32 Passes = Structure.SolveAndBreak();
 
 		if (Case.bFallsAtFirstCrack)
 		{
 			/*
-			 * THE FALLING ROW (seventeen bricks). MEASURED 2026-08-28: the cascade runs 2 passes,
-			 * the head joint gives on pass 1, and the whole hang comes down. The mechanism is the
-			 * head joint parting (the joint the moment overloads); the outcome is that no brick in
-			 * the chain is still held. The intermediate bed joints part too as the severed chain
-			 * comes apart, so they are NOT asserted individually — enumerating which of them gives
-			 * on pass 2 would be pinning an implementation detail, not the claim.
+			 * The falling row (seventeen bricks). Measured 2026-08-28: the cascade runs 2 passes,
+			 * the head joint gives on pass 1, the whole hang comes down. The mechanism is the head
+			 * joint parting; the outcome is no brick still held. The intermediate bed joints part
+			 * too, so they are not asserted individually — which one gives on pass 2 is a detail.
 			 */
 			TestEqual(
 				FString::Printf(
@@ -1713,9 +1525,9 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 				Structure.GetBreakPass(HeadIndex), 1);
 
 			/*
-			 * THE OUTCOME, ON THE SUPPORT STATE AND NEVER ON MOVEMENT. Once the head joint parts
-			 * the lowest brick loses its only support and the chain above loses its path to the
-			 * pad, so every hanging brick reads Falling — the structure genuinely came down.
+			 * The outcome, on the support state and never on movement. Once the head joint parts
+			 * the lowest brick loses its only support and the chain loses its path to the pad, so
+			 * every hanging brick reads Falling.
 			 */
 			for (int32 Brick = 0; Brick < Chain.Num(); ++Brick)
 			{
@@ -1731,10 +1543,9 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 		else
 		{
 			/*
-			 * THE STANDING ROW (sixteen bricks). The first-crack margin is 1.0524, so the LP finds
-			 * an admissible force system and nothing breaks: zero passes, the head joint intact and
-			 * unstamped, and every brick still held. This is the control that stops an
-			 * implementation which breaks whatever it is shown.
+			 * The standing row (sixteen bricks). The margin is 1.0524, so the LP finds an admissible
+			 * force system and nothing breaks: zero passes, the head joint intact and unstamped,
+			 * every brick held. The control that stops an implementation breaking whatever it sees.
 			 */
 			TestEqual(
 				FString::Printf(
@@ -1768,10 +1579,9 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 			}
 
 			/*
-			 * AND EVERY BED JOINT HOLDS. Each brick sits squarely on the one below, so its lever
-			 * arm is exactly zero and its bed joint is at a few ten-thousandths of capacity — a
-			 * cascade that took them with it would be breaking on something other than the
-			 * eccentricity this test is about.
+			 * And every bed joint holds. Each brick sits squarely on the one below, so its lever
+			 * arm is zero and its bed joint is at a few ten-thousandths of capacity; a cascade
+			 * taking them too would be breaking on something other than the eccentricity.
 			 */
 			for (int32 Joint = 0; Joint < Structure.NumConnections(); ++Joint)
 			{
@@ -1796,11 +1606,10 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 		}
 
 		/*
-		 * AND THE READOUT AGREES WITH THE VERDICT — the coincidence pinned as the point. Under
-		 * first crack the display's section-modulus reading and the break decision cross 1.0
-		 * together: the seventeen-brick head joint reads above 1.0 AND gives, the sixteen-brick
-		 * one reads below AND holds. An implementation that stopped composing the moment into the
-		 * readout, or that used a plastic no-tension capacity for the break, would split them.
+		 * And the readout agrees with the verdict — the coincidence pinned as the point. Display
+		 * reading and break decision cross 1.0 together: seventeen bricks read above and give,
+		 * sixteen read below and hold. Dropping the moment from the readout, or using a plastic
+		 * no-tension capacity for the break, would split them.
 		 */
 		TestEqual(
 			FString::Printf(
@@ -1814,49 +1623,35 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
 }
 
 /**
- * LOAD ARRIVING THROUGH A JOINT MUST REMEMBER WHERE IT CAME FROM — today it forgets, so a
+ * Load arriving through a joint must remember where it came from — today it forgets, so a
  * corbel cannot feel the wall hanging off the corbel above it.
  *
- * WHAT IS WRONG TODAY. The accumulation carries a FORCE down the load path and nothing else:
- * ReceivedFromAboveUU is a scalar, so every brick's share arrives at the piece below with no
- * lever arm attached and is then treated as though it acted at THAT piece's own centre of
- * mass. A brick whose own weight is eccentric levers its joint correctly; a brick carrying
- * another brick that is eccentric levers it as though the load above had been placed neatly
- * on its middle. What is missing is a moment travelling with the force.
+ * What is wrong today: the accumulation carries only a force down the load path.
+ * ReceivedFromAboveUU is a scalar, so a brick's share arrives at the piece below with no lever
+ * arm and is treated as acting at that piece's own centre. A brick carrying an eccentric brick
+ * levers its joint as though the load above sat neatly on its middle. What is missing is a
+ * moment travelling with the force.
  *
- * THE ACCUMULATED QUANTITY IS A VECTOR AND ITS REFERENCE POINT IS EACH JOINT'S OWN CENTROID.
- * A moment is only a number about a point, and ConnectionMoments already stores each joint's
- * moment about ITS OWN centroid — which is what the readout explains and what the section
- * modulus resists. Passing one down a chain therefore means re-referencing it at every step,
- * by the ordinary moment-transfer relation:
+ * The accumulated quantity is a vector referenced to each joint's own centroid. ConnectionMoments
+ * already stores each joint's moment about its own centroid, so passing one down means
+ * re-referencing at every step by the moment-transfer relation:
  *
  *     M_about(c_to) = M_about(c_from) + (c_from - c_to) x F_transmitted
  *
- * which is just Varignon: M_B = sum (r_i - B) x F_i = M_A + (A - B) x R. So a joint's moment
- * is its own piece's weight about its own centroid, PLUS, for every joint above it, that
- * joint's moment carried down and re-referenced with the share that came through it.
+ * which is Varignon. So a joint's moment is its own weight about its own centroid plus, for each
+ * joint above, that joint's moment carried down and re-referenced with the share through it.
  *
- * THE OTHER TWO CANDIDATE REFERENCE POINTS ARE BOTH WRONG, and worth naming so nobody
- * relitigates. The receiving PIECE'S centre of mass is what the code effectively uses today —
- * it makes the answer depend on where the brick happens to be rather than on where the load
- * came through, and it is exactly the term that vanishes when a chain is stacked squarely,
- * which is why the defect is invisible in every fixture that stacks squarely. The WORLD ORIGIN
- * would be arithmetically valid and practically awful: every stored value would be the moment
- * of the whole wall about a point kilometres away, the joint's own moment would be recovered
- * as a difference of two huge numbers, and slice 4's readout would stop describing the joint
- * it is drawn beside.
+ * The other two candidate reference points are both wrong, named so nobody relitigates. The
+ * receiving piece's centre of mass is what the code effectively uses today — it makes the answer
+ * depend on where the brick sits, and it is exactly the term that vanishes when a chain stacks
+ * squarely, which is why the defect is invisible there. The world origin is valid but awful:
+ * every stored value would be the whole wall's moment about a point kilometres away, recovered
+ * as a difference of huge numbers. This is also the forward-compatibility slice: an applied
+ * force at a point (r x F from an impact) is one more term in the same sum.
  *
- * AND IT IS THE FORWARD-COMPATIBILITY SLICE. Once the thing being carried is a moment vector
- * about a named point, an applied force at a point — r x F from an explosion or an impact —
- * is one more term in the same sum, needing no rule of its own. Nothing here builds that.
- *
- * THE ORACLE IS DERIVED THE OTHER WAY ROUND, and that is the whole of its value.
- * ChainMomentAboutJointUuCm sums every brick above a joint times its own distance from that
- * joint: no recursion, no transfer term, no load path. The accumulation walks down one joint
- * at a time; the oracle never walks at all. Two derivations that agree are evidence; an oracle
- * that mirrored the algorithm would be a tautology.
- *
- * WHAT THE FIXTURES ARE, AND WHY THE FIRST TWO ROWS MUST NOT MOVE.
+ * The oracle is derived the other way round, which is its whole value.
+ * ChainMomentAboutJointUuCm sums every brick above a joint times its own distance — no recursion,
+ * no transfer term. The accumulation walks down; the oracle never walks.
  *
  *     SQUARE      CORBELLED        ZIG-ZAG
  *      [C]            [C]            [C]
@@ -1864,47 +1659,29 @@ bool FStructureMomentBreaksTheJointTest::RunTest(const FString& Parameters)
  *      [A]          [A]            [A]
  * [pad][ ]     [pad][ ]       [pad][ ]
  *
- * A chain stacked SQUARELY is the control, and it is a control precisely because the answer
- * does not move: every brick sits directly above the bed patch below it, so the received load
- * already acts on the line the old rule assumed, and re-referencing it changes nothing at all.
- * MOMENTS_DESIGN.md's headline "two in a chain reads 0.8315 today and 1.626 with the
- * accumulation" does NOT describe this fixture and does not reproduce on it — 1.626 is a
- * chain laid HORIZONTALLY, brick beside brick, each hanging off the last by a head joint, and
- * that shape is a cycle the solver strands rather than a structure it solves. Reproduced here
- * from the design's own figures: arms of 10.75 and 33.25 cm against a 72.1771 cm3 modulus give
- * 4.0930 x 0.39725 = 1.626 exactly, which is the horizontal chain and nothing else. Against
- * the emitted MID-PLANE centroid the same horizontal chain would read 4 x 0.4157273077 =
- * 1.6629. (Both are characteristic-basis figures, /7 on the mean basis.) Neither number
- * belongs to a vertical stack, whose two-brick case stays at 0.1187792 before and after.
+ * A squarely stacked chain is the control, precisely because the answer does not move: each
+ * brick sits above the bed patch below, so the received load already acts on the line the old
+ * rule assumed. MOMENTS_DESIGN.md's headline 1.626 is a chain laid horizontally, brick beside
+ * brick — a cycle the solver strands — and does not describe this vertical stack, whose
+ * two-brick case stays at 0.1188 before and after.
  *
- * SO THE FIXTURE THAT MOVES IS A CORBELLED CHAIN. Step each brick half its length further out
- * and the load path leaves the piece by a patch that is nowhere near the patch it arrived on,
- * which is the whole of the effect: two bricks take the head joint from 0.1187792 to 0.1755293
- * — a 48% jump from the identical bricks, purely because the moment now travels. (On the
- * retired characteristic basis those read 0.8314546 and 1.2287052 and the jump crossed 1.0;
- * at the mean f_x1 = 0.70 nothing in this table breaks any more, so the BREAK arm of the
- * claim lives in MomentBreaksTheJointItOverloads' seventeen-brick chain, and every row here
- * asserts the reading and the moment vector.)
+ * The fixture that moves is a corbelled chain: step each brick half its length out and the load
+ * path leaves by a patch nowhere near the one it arrived on. Two bricks take the head joint from
+ * 0.1188 to 0.1755 — a 48% jump from identical bricks, purely because the moment now travels. At
+ * mean f_x1 = 0.70 nothing here breaks, so the break arm lives in
+ * MomentBreaksTheJointItOverloads; every row here asserts the reading and the moment vector.
  *
- * THE ZIG-ZAG ROW IS THE ONE THAT PINS THE SIGN, and it is not decoration. A chain that steps
- * out and then steps back puts the brick above's weight on the far side of the joint from the
- * one below's, so the two moments CANCEL — the middle bed joint carries exactly zero moment
- * while carrying two bricks. An accumulation that summed magnitudes, or that got the sign of
- * the transfer term backwards, cannot produce that. It is also the shape a plain toothed wall
- * end has, where the load funnels straight down onto the patch it will leave by.
+ * The zig-zag row pins the sign. A chain that steps out then back puts the upper weight on the
+ * far side of the joint from the lower, so the two moments cancel — the middle joint carries two
+ * bricks and zero moment. Summing magnitudes, or getting the transfer sign backwards, cannot
+ * produce that.
  *
- * WHICH AXIS GOVERNS IS ASSERTED FOR THE HEAD JOINT, because ComputeUtilisation returns the
- * WORST of three and a test aimed at bending measures shear the moment shear is higher. On a
- * head joint under gravity the mean normal stress is exactly zero, so the whole force is shear
- * against mortar's cohesion — 0.0089 for two bricks against 0.1755 in tension. Every joint's
- * three axes are worked out and printed, and the claim is against the worst of them, so a
- * fixture whose governing axis moved would fail here rather than quietly measure the other one.
+ * Which axis governs is asserted for the head joint: ComputeUtilisation returns the worst of
+ * three, and on a head joint the mean normal stress is zero, so the whole force is shear (0.0089
+ * for two bricks against 0.1755 in tension). The claim is against the worst axis.
  *
- * ASSERTED ON THE MECHANISM. The moment vector each joint carries, the force beside it and the
- * utilisation that comes out — never on anything moving, since FStructure has no positions and
- * two pieces can part without going anywhere.
- *
- * NO WORLD, NO TICK. Boxes and doubles.
+ * Asserted on the mechanism — the moment vector, the force, the utilisation — never on movement.
+ * No world, no tick.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FStructureMomentAccumulatesTest,
@@ -1916,8 +1693,8 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 	using namespace StructureMomentTestSupport;
 
 	/*
-	 * The expectations are ratios of published strengths, so they only mean what they say
-	 * while the profile still carries the figures they were derived against.
+	 * The expectations are ratios of published strengths, so they hold only while the profile
+	 * carries the figures they were derived against.
 	 */
 	TestTrue(
 		FString::Printf(TEXT("FIXTURE: derived against mean f_x1 = 0.7 MPa, the profile carries %g"),
@@ -1948,20 +1725,16 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 	constexpr double CorbelStepCm = HalfLengthCm;
 
 	/*
-	 * A HEAD JOINT SEPARATES ON X, so its in-plane frame is Y and Z; the lever arm runs along
-	 * X and gravity along Z, so the moment is about Y and is resisted by the joint's 3.25 cm
-	 * of DEPTH rather than by its 5.125 cm of width. The two moduli differ by 1.58x, so the
-	 * pair being the right way round is load-bearing here.
+	 * A head joint separates on X, so its in-plane frame is Y and Z; the moment is about Y,
+	 * resisted by the joint's 3.25 cm of depth rather than its 5.125 cm of width. The two moduli
+	 * differ by 1.58x, so the pair being the right way round is load-bearing here.
 	 */
 	constexpr double HeadJointModulusCm3 = SectionModulusCm3(HalfWidthCm, HalfHeightCm);
 	constexpr double HeadJointAreaSqCm = BrickWidthCm * BrickHeightCm;
 
 	/**
-	 * ONE CHAIN, ONE HEADLINE NUMBER, AND WHAT THAT NUMBER IS TODAY.
-	 *
-	 * Both are carried so the failure message says how far the head joint has to move and in
-	 * which direction, rather than only that it is wrong. The two agreeing is what makes a row
-	 * a control.
+	 * One chain, and both the number it must read and the number it reads without accumulation,
+	 * so the failure message says how far the head joint has to move and which way.
 	 */
 	struct FChainCase
 	{
@@ -1982,10 +1755,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 
 	const TArray<FChainCase> Cases = {
 		/*
-		 * THE CONTROLS, AND THEY COME FIRST. A squarely stacked chain hands its load down the
-		 * line it was already assumed to act on, so nothing may move — and without these rows
-		 * every claim below is satisfied by an implementation that invents a lever arm for
-		 * anything it is shown.
+		 * The controls, first. A squarely stacked chain hands its load down the line already
+		 * assumed, so nothing may move; without these rows every claim below is satisfied by an
+		 * implementation that invents a lever arm for anything it sees.
 		 */
 		{
 			TEXT("two bricks stacked squarely"),
@@ -2004,16 +1776,13 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE CLAIM. The upper brick steps half its length out over open air, so the load
-		 * leaves it 5.375 cm from where its own weight acts and arrives on the head joint
-		 * 16.625 cm out rather than 11.25. Arms of 11.25 and 22.0 against a 72.1771 cm3
-		 * modulus: 33.25 brick-weight-centimetres where the old rule saw 22.5.
+		 * The claim. The upper brick steps half its length out, so the load leaves it 5.375 cm
+		 * from its own weight and arrives on the head joint 16.625 cm out rather than 11.25:
+		 * 33.25 brick-weight-cm where the old rule saw 22.5.
 		 *
-		 * NO ROW IN THIS TABLE GIVES ANY MORE (mean re-anchor 2026-08-13): at the mean
-		 * f_x1 = 0.70 the worst chain here reads 0.348, so every bHeadMustGive is false
-		 * and what this test asserts is the reading and the moment vector. The break
-		 * decision agreeing with an over-capacity moment is MomentBreaksTheJointIt-
-		 * Overloads' seventeen-brick chain now.
+		 * No row here gives any more (mean re-anchor 2026-08-13): the worst chain reads 0.348, so
+		 * every bHeadMustGive is false and the test asserts the reading and moment vector. The
+		 * break arm is now MomentBreaksTheJointItOverloads' seventeen-brick chain.
 		 */
 		{
 			TEXT("two bricks, the upper one corbelled half a brick out"),
@@ -2032,9 +1801,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * THE SIGN. Step out and then straight back, and the top brick's weight lands as far
-		 * to the LEFT of the middle bed joint as the middle brick's does to the right. The two
-		 * cancel exactly and that joint carries a chain of two bricks with no moment at all.
+		 * The sign. Step out then straight back, and the top brick's weight lands as far left of
+		 * the middle bed joint as the middle brick's does right. They cancel exactly, so that
+		 * joint carries two bricks with no moment.
 		 */
 		{
 			TEXT("three bricks zig-zagging back over the joint below"),
@@ -2045,10 +1814,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 		},
 
 		/*
-		 * AND THE SAME CHAIN MIRRORED. Hanging to the LEFT of the pad flips the joint normal,
-		 * flips every lever arm and flips the sign of every moment in the chain; the magnitude
-		 * that reaches the stress may not notice. An implementation that dropped a sign
-		 * somewhere in the transfer term reads a different number here from the row above it.
+		 * The same chain mirrored. Hanging left of the pad flips the normal, every lever arm and
+		 * every moment sign; the magnitude reaching the stress may not notice. An implementation
+		 * that dropped a sign in the transfer term reads differently here than the row above.
 		 */
 		{
 			TEXT("the corbelled pair mirrored, hanging to the left"),
@@ -2062,11 +1830,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 	constexpr double Tolerance = 1.0e-9;
 
 	/*
-	 * ABSOLUTE RATHER THAN RELATIVE, because one of these rows is meant to come out at exactly
-	 * zero and a relative bound around zero admits nothing. The moments here run to 1.8e5
-	 * uu.cm, where double rounding is worth about 2e-11, so a millionth of a uu.cm is five
-	 * orders of magnitude of slack over rounding and eleven below anything this test could
-	 * care about.
+	 * Absolute, not relative, because one row comes out at exactly zero and a relative bound
+	 * around zero admits nothing. Moments run to 1.8e5 uu.cm where rounding is ~2e-11, so a
+	 * millionth of a uu.cm is ample slack over rounding and far below anything the test cares about.
 	 */
 	constexpr double MomentToleranceUuCm = 1.0e-6;
 
@@ -2088,10 +1854,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 		Structure.SolveLoads();
 
 		/*
-		 * THE LOAD PATH IS WHAT MAKES EVERY PIECE HERE DETERMINATE, so it is asserted rather
-		 * than assumed. The bottom brick has to hang off its head joint — a bed joint would
-		 * win the tier outright and there would be no fallback — and every brick above it has
-		 * to be resting on the one below.
+		 * The load path is what makes every piece here determinate, so it is asserted. The bottom
+		 * brick must hang off its head joint (a bed joint would win the tier and leave no
+		 * fallback), and every brick above must rest on the one below.
 		 */
 		TestTrue(
 			FString::Printf(TEXT("%s: FIXTURE: joint 0 must be the bottom brick's HEAD joint"),
@@ -2124,9 +1889,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 			const double JointCentreXCm = ChainJointCentreXCm(Chain, Joint);
 
 			/*
-			 * THE ARBITRATION. Every lever arm below is measured from this centroid, so if the
-			 * producer ever moved it the expectations would silently stop describing this
-			 * joint. Pinned here so the two fail together and the message says which moved.
+			 * The arbitration. Every lever arm below is measured from this centroid, so if the
+			 * producer moved it the expectations would silently stop describing this joint.
+			 * Pinned so the two fail together.
 			 */
 			TestTrue(
 				FString::Printf(
@@ -2148,12 +1913,11 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 					&& FMath::IsNearlyZero(Force.Y, Tolerance));
 
 			/*
-			 * THE MECHANISM ITSELF. Magnitude rather than signed value, for one reason only:
-			 * the stored sign flips with which end of the joint the producer named first — the
-			 * invariance Structure.HangingBrickPeelsRatherThanShears already pins — and only
-			 * the magnitude reaches a stress. The AXIS is not free, though: gravity crossed
-			 * with a lever arm along the wall is a moment about world Y and nothing else, and
-			 * a component about X or Z would be a twist this rectangle has no modulus for.
+			 * The mechanism itself. Magnitude, not signed value: the stored sign flips with
+			 * which end was named first (pinned in Structure.HangingBrickPeelsRatherThanShears)
+			 * and only the magnitude reaches a stress. The axis is not free, though — gravity
+			 * crossed with a lever arm along the wall is a moment about world Y and nothing else;
+			 * an X or Z component would be a twist this rectangle has no modulus for.
 			 */
 			const double ExpectedMomentUuCm = ChainMomentAboutJointUuCm(Chain, Joint);
 			const FVector Moment = Structure.GetConnectionMoment(Index);
@@ -2174,9 +1938,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 					&& FMath::Abs(Moment.Z) <= MomentToleranceUuCm);
 
 			/*
-			 * AND WHAT THAT DOES TO THE JOINT, worked from the rectangle rather than read off
-			 * it. A bed joint's shared span shortens by however far the brick above is stepped
-			 * out, and the bending is about Y so it is resisted by the depth ALONG the wall.
+			 * And what that does to the joint, worked from the rectangle rather than read off it.
+			 * A bed joint's shared span shortens by how far the brick above is stepped out, and
+			 * the bending is about Y, resisted by the depth along the wall.
 			 */
 			const bool bHeadJoint = Joint == 0;
 
@@ -2195,9 +1959,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 				FMath::Abs(ExpectedMomentUuCm) / (ModulusCm3 * ForceUnitsPerMPaPerSqCm);
 
 			/*
-			 * Signed, positive in tension. Gravity runs PARALLEL to a head joint, so its mean
-			 * normal stress is exactly zero and the whole force is shear; it presses squarely
-			 * on a bed joint, so there the whole force is compression and the shear is zero.
+			 * Signed, positive in tension. Gravity runs parallel to a head joint, so its mean
+			 * normal stress is zero and the whole force is shear; it presses squarely on a bed
+			 * joint, so there the whole force is compression and the shear is zero.
 			 */
 			const double NormalStressMPa =
 				bHeadJoint ? 0.0 : -ExpectedForceUu / (AreaSqCm * ForceUnitsPerMPaPerSqCm);
@@ -2205,25 +1969,20 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 				bHeadJoint ? ExpectedForceUu / (AreaSqCm * ForceUnitsPerMPaPerSqCm) : 0.0;
 
 			/*
-			 * AND THE DEEP BEAM STANDING OVER A BED JOINT, WHICH IS WHY JOINT 1 OF THE
-			 * THREE-BRICK CORBEL MOVED FROM 0.2420600000 TO 0.1491896467 AT SLICE 5.
+			 * And the deep beam standing over a bed joint, which is why joint 1 of the three-brick
+			 * corbel moved from 0.24206 to 0.14919 at slice 5. A stack of courses does not resist
+			 * the overturning moment as one bed patch: the section taking it is a vertical one
+			 * through the bonded masonry above, t*D^2/6, and the joint gives at whichever opens it
+			 * less. ARCHING_DESIGN.md slice 5.
 			 *
-			 * A stack of courses over a joint does not resist the overturning moment as one bed
-			 * patch: the section taking it is a VERTICAL one through the bonded masonry standing
-			 * above, t*D^2/6, and the joint gives at whichever of the two opens it less.
-			 * ARCHING_DESIGN.md slice 5, and the user's ruling of 2026-08-06.
+			 * The chain is where that is easiest to count: joint k is under brick k, so D is that
+			 * many course pitches. A head joint has no masonry standing on it (which is why case
+			 * (b) and the squarely-stacked chain did not move), and the top brick has nothing on
+			 * it, so it keeps its own patch.
 			 *
-			 * THE CHAIN IS WHERE THAT IS EASIEST TO COUNT. Joint k is under brick k, so the
-			 * masonry over it is bricks k upward and D is that many course pitches. A HEAD joint
-			 * has no bed plane and no masonry standing on it in this sense — which is the whole
-			 * reason MOMENTS_DESIGN case (b) and the squarely-stacked chain above did not move
-			 * — and the TOP brick of any chain has nothing resting on it, so it is one unit
-			 * rather than a composite of several and keeps its own patch.
-			 *
-			 * BOTH EDGES MOVE TOGETHER. Where the deep beam takes the moment the bed patch is not
-			 * bending at all, so what is left is the bed plane under a uniform N/A and the
-			 * vertical plane under +-M/W_c, and the worst squeezed fibre is the larger of the two
-			 * rather than their sum.
+			 * Both edges move together: where the deep beam takes the moment the bed patch is not
+			 * bending, so what is left is the bed plane under uniform N/A and the vertical plane
+			 * under +-M/W_c, and the worst fibre is the larger of the two, not their sum.
 			 */
 			const int32 CoursesOfMasonryAbove =
 				bHeadJoint ? 0 : Chain.BrickCentreXCm.Num() - Joint;
@@ -2262,10 +2021,10 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 				FMath::Max3(TensionUtilisation, CompressionUtilisation, ShearUtilisation);
 
 			/*
-			 * THE HEAD JOINT IS WHERE THE HEADLINE CLAIM LIVES, so the axis carrying it is
-			 * asserted rather than merely computed. The bed joints are allowed to be governed
-			 * by whichever axis the arithmetic says — the zig-zag row deliberately drives one
-			 * of them to zero tension — so their three are printed and the worst is claimed.
+			 * The head joint is where the headline claim lives, so its governing axis is asserted,
+			 * not just computed. The bed joints may be governed by whichever axis the arithmetic
+			 * says (the zig-zag row drives one to zero tension), so their three are printed and
+			 * the worst is claimed.
 			 */
 			if (bHeadJoint)
 			{
@@ -2326,9 +2085,8 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 			Structure.GetConnection(Chain.Joints[0]).HasGiven() == Case.bHeadMustGive);
 
 		/*
-		 * THE BED JOINTS ARE NOT COLLATERAL. The worst of them in any row here is a quarter of
-		 * capacity, so a cascade that took one with it would be breaking on something other
-		 * than the eccentricity this test is about.
+		 * The bed joints are not collateral. The worst of them here is a quarter of capacity, so a
+		 * cascade taking one with it would be breaking on something other than the eccentricity.
 		 */
 		for (int32 Joint = 1; Joint < Chain.Joints.Num(); ++Joint)
 		{
@@ -2341,27 +2099,21 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 
 	/*
 	 * ================================================================================
-	 * AND THE SAME CLAIM OVER EVERY CHAIN A HALF-BRICK GRID CAN MAKE.
+	 * And the same claim over every chain a half-brick grid can make.
 	 * ================================================================================
 	 *
-	 * HAND-WRITTEN ROWS ONLY COVER THE SHAPES SOMEBODY THOUGHT OF, and the shapes above were
-	 * chosen to make a point — every one of them steps in the same direction, or steps back
-	 * exactly once. What that leaves untested is the combinatorics: three steps whose moments
-	 * partly cancel, a chain that reverses twice, a step that lands a joint's centroid exactly
-	 * on the brick above's centre of mass. Those are where an accumulation with the wrong sign
-	 * or the wrong reference point produces a plausible number rather than an obvious one.
+	 * Hand-written rows only cover shapes somebody thought of, and the ones above all step the
+	 * same way or step back once. That leaves the combinatorics untested: three steps that
+	 * partly cancel, a chain that reverses twice, a step landing a joint's centroid on the brick
+	 * above's centre of mass — where a wrong sign or reference point gives a plausible number.
 	 *
-	 * EXHAUSTIVE RATHER THAN SEEDED, which is stronger than a repeatable random draw and needs
-	 * no seed to print: every combination of steps on a quarter-brick grid, four bricks deep,
-	 * is 75 chains and they run in no measurable time. Each case prints its own brick centres,
-	 * so a failure is already a fixture somebody can paste into the table above as a named
-	 * regression row.
+	 * Exhaustive rather than seeded: every combination of steps on a quarter-brick grid four
+	 * bricks deep is 75 chains and runs in no measurable time. Each case prints its brick
+	 * centres, so a failure is a fixture ready to paste into the table above.
 	 *
-	 * THE FIRST BRICK MAY ONLY STEP AWAY FROM THE PAD. Stepping toward it would put a course-1
-	 * brick over the pad with a mortar gap between them — a face MakeInterface would call a
-	 * joint if anybody asked it to, and a fixture that relies on nobody asking is a fixture
-	 * that is wrong for a reason unrelated to moments. Bricks two courses up and higher are
-	 * nowhere near the pad and are free either way.
+	 * The first brick may only step away from the pad: stepping toward it would put a course-1
+	 * brick over the pad with a mortar gap — a face MakeInterface would call a joint, wrong for a
+	 * reason unrelated to moments. Higher bricks are nowhere near the pad and are free either way.
 	 */
 	constexpr double SweepOffsetsCm[] = {
 		-CorbelStepCm, -CorbelStepCm / 2.0, 0.0, CorbelStepCm / 2.0, CorbelStepCm
@@ -2374,7 +2126,7 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 
 	for (int32 First = 0; First < SweepOffsetCount; ++First)
 	{
-		/* Away from the pad only; the offsets are ordered, so this is the back half of them. */
+		// Away from the pad only; the offsets are ordered, so this is the back half of them.
 		if (SweepOffsetsCm[First] < 0.0)
 		{
 			continue;
@@ -2416,10 +2168,9 @@ bool FStructureMomentAccumulatesTest::RunTest(const FString& Parameters)
 					const double Utilisation = Structure.GetConnectionUtilisation(Index);
 
 					/*
-					 * NEVER NaN, ALWAYS FINITE, AND NEVER READING INTACT WHEN IT IS NOT. A NaN
-					 * moment would sail through the magnitude comparison below — every
-					 * comparison against a NaN is false, so the check is written to catch it
-					 * rather than to be satisfied by it.
+					 * Never NaN, always finite. A NaN moment would sail through the magnitude
+					 * comparison below — every comparison against NaN is false — so the check is
+					 * written to catch it rather than be satisfied by it.
 					 */
 					const bool bFinite = FMath::IsFinite(Moment.X) && FMath::IsFinite(Moment.Y)
 						&& FMath::IsFinite(Moment.Z) && FMath::IsFinite(Utilisation);
