@@ -25,84 +25,61 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 /**
- * Session tests: the controller is the session. The toolbar is the only door into its state
- * (OnToolbarButton, which also pushes the change onto UBuildModeComponent and refuses whatever the
- * model refuses), and the mode decides what a ray does — Build previews and places, Destroy hovers
- * and inspects. SessionToolbar.h owns the pure state transition; this file pins the side effects the
- * model cannot own, e.g. a refused Course down must not lower the build plane below the earth.
- *
- * Every claim is a mechanism reading (returned bool, state fields, component/binding state,
- * IsReleased), never a distance moved (DESIGN §4); nothing here ticks a world.
- *
- * Named namespace, not anonymous: a unity build merges files into one translation unit, so an
- * anonymous namespace would not be file-private. The `using namespace` lives in each RunTest body.
+ * Session tests. The toolbar (OnToolbarButton) is the only way into session state and also pushes
+ * changes onto UBuildModeComponent; the mode decides what a ray does. SessionToolbar.h owns the
+ * pure transition; this file pins the side effects. Mechanism readings only (DESIGN §4); no ticks.
  */
 namespace SessionControllerTestSupport
 {
 	using namespace DestructionSession;
 
 	/*
-	 * The grid arithmetic, spelled out rather than imported so a wrong plane function cannot make
-	 * these tests agree with it (DESIGN §8). A brick is 21.5 x 10.25 x 6.5 cm on a 1 cm joint, so the
-	 * grid pitch is 7.5 and course n centres a brick at n * 7.5 + 3.25; a plate's half height is 5.0,
-	 * so its plane is n * 7.5 + 5.0 — which is why the plane depends on the piece, not just the course.
+	 * Grid arithmetic spelled out, not imported (DESIGN §8). Course pitch 7.5 cm; a brick centres at
+	 * n * 7.5 + 3.25, a plate (half height 5.0) at n * 7.5 + 5.0.
 	 */
 
-	/** Course 0's plane for a brick: 0 * 7.5 + 3.25. */
+	/** Course 0's plane for a brick. */
 	constexpr double SessionBrickPlaneCourse0Cm = 3.25;
 
-	/** Course 2's plane for a plate: 2 * 7.5 + 5.0, where the demo puts its plate. */
+	/** Course 2's plane for a plate. */
 	constexpr double SessionPlatePlaneCourse2Cm = 20.0;
 
-	/** Course 0's plane for a plate: 0 * 7.5 + 5.0. */
+	/** Course 0's plane for a plate. */
 	constexpr double SessionPlatePlaneCourse0Cm = 5.0;
 
-	/** The half extent of the demo's timber plate, which SetPieceKind must derive. */
+	/** The demo timber plate's half extent, which SetPieceKind must derive. */
 	const FVector SessionPlateHalfExtentCm(33.75, 5.125, 5.0);
 
 	/**
-	 * The course the run test's floating brick sits on, and its plane. 6 * 7.5 + 3.25 = 48.25, so its
-	 * bottom face is at 45 cm — 45x the 1 cm joint the grounded rule allows, so it cannot read
-	 * grounded by accident. It is also far outside the 30 cm snap radius, so its Free placement is
-	 * jointless.
+	 * The run test's floating brick: plane 48.25, bottom at 45 cm, far from grounded and outside
+	 * the 30 cm snap radius, so its Free placement is jointless.
 	 */
 	constexpr int32 SessionFloatingCourse = 6;
 	constexpr double SessionFloatingPlaneZCm = 48.25;
 	constexpr double SessionFloatingXCm = 100.0;
 
 	/**
-	 * The two poses the build-then-destroy test lays. The seed is at the origin on course 0; the
-	 * second cursor is aimed off-grid at x = 22.0, and the same-course pose at x = 22.5 is 0.5 cm away
-	 * against 13.1 cm for the nearest next-course pose, so the same-course snap wins outright.
+	 * Build-then-destroy poses. The second cursor at x 22.0 is 0.5 cm from the same-course pose at
+	 * 22.5 and 13.1 cm from the nearest next-course one, so it snaps unambiguously.
 	 */
 	const FVector SessionSeedCentreCm(0.0, 0.0, SessionBrickPlaneCourse0Cm);
 	constexpr double SessionSecondCursorXCm = 22.0;
 	const FVector SessionSecondCentreCm(22.5, 0.0, SessionBrickPlaneCourse0Cm);
 
-	/** And a third, one more bay along: 22.5 + 22.5. Clear of the tombstone the delete leaves at 0. */
+	/** A third, one more bay along, clear of the deleted brick at 0. */
 	constexpr double SessionThirdCursorXCm = 45.0;
 
-	/**
-	 * Where the player lays their one brick on a level that already has a wall, in cm along X. Thirty
-	 * metres clear of that wall is a requirement: the sandbox row spans X -10.75 to 663.25, and the
-	 * Destroy ray is a real line trace, so a brick inside that span could put the level's own brick
-	 * under the cursor and the test would delete the wall instead.
-	 */
+	/** X for the player's brick on a walled level, well clear of the sandbox row (-10.75..663.25). */
 	constexpr double SessionClearOfTheWallXCm = 3000.0;
 
 	/**
-	 * How far above the build plane a pointing ray starts, and how far below it ends. The ray is a
-	 * direction: the controller intersects it with the build plane, so the end's Z is irrelevant and
-	 * is taken to 0, not to the plane — aiming the end at the plane would pass against a controller
-	 * that ignored the plane and used the end point.
+	 * Pointing-ray Z range. The end is at 0, not the plane, so a controller that used the end point
+	 * instead of intersecting the plane would fail.
 	 */
 	constexpr double SessionRayStartZCm = 300.0;
 	constexpr double SessionRayEndZCm = 0.0;
 
-	/**
-	 * How far along Y a Destroy ray starts and ends, either side of the brick. A brick is 10.25 cm
-	 * deep on Y = 0, so +/- 100 cm crosses the whole thickness with nothing else in the way.
-	 */
+	/** Y reach of a Destroy ray either side of the brick. */
 	constexpr double SessionInspectReachCm = 100.0;
 
 	FVector SessionPointerRayStart(double XCm)
@@ -115,10 +92,7 @@ namespace SessionControllerTestSupport
 		return FVector(XCm, 0.0, SessionRayEndZCm);
 	}
 
-	/*
-	 * The same ray aimed anywhere in plan, for the corner builds — a leg running along Y cannot be
-	 * aimed at with a Y = 0 cursor. Straight down from 300 cm, so the plane hit is (XCm, YCm).
-	 */
+	// The same ray at any (X, Y), for corner legs running along Y.
 	FVector SessionPointerRayStartAt(double XCm, double YCm)
 	{
 		return FVector(XCm, YCm, SessionRayStartZCm);
@@ -129,12 +103,7 @@ namespace SessionControllerTestSupport
 		return FVector(XCm, YCm, SessionRayEndZCm);
 	}
 
-	/**
-	 * Whether the rigid-block bridge poses this joint at all. It skips (does not refuse) a joint
-	 * between two grounded pieces before looking at the normal — which is why the corner fixture is
-	 * six pieces not three, and why the readout assertions run only over posed joints: a skipped joint
-	 * has no provenance entry and so no readout.
-	 */
+	/** Whether the LP bridge poses this joint. It skips grounded-grounded joints, which get no readout. */
 	bool SessionJointIsPosedByTheLP(const FStructure& Structure, int32 Connection)
 	{
 		const FConnection& Joint = Structure.GetConnection(Connection);
@@ -143,7 +112,7 @@ namespace SessionControllerTestSupport
 			&& Structure.GetPiece(Joint.PieceB).bIsGrounded);
 	}
 
-	/** One joint on one line — pieces, normal, which ends are grounded, and its LP readout. */
+	/** One joint on one line, for failure messages. */
 	FString SessionDescribeJoint(const FStructure& Structure, int32 Connection)
 	{
 		const FConnection& Joint = Structure.GetConnection(Connection);
@@ -161,7 +130,7 @@ namespace SessionControllerTestSupport
 			Readout.bPresent ? 1 : 0, Readout.NormalUu, Readout.Utilisation);
 	}
 
-	/** How many pieces the binding has released — `IsReleased`, never a distance moved. */
+	/** How many pieces the binding has released. */
 	int32 SessionCountReleased(const FStructureBinding& Binding)
 	{
 		int32 Released = 0;
@@ -217,10 +186,7 @@ namespace SessionControllerTestSupport
 			SessionPlacementName(State.Placement), State.Course, State.bHasStructure ? 1 : 0);
 	}
 
-	/**
-	 * Whether two states are equal, field by field rather than memcmp — a struct with a bool carries
-	 * padding, and two states differing only in padding are the same state.
-	 */
+	/** Field-wise equality; memcmp would compare padding. */
 	bool SessionSameState(const FSessionToolbarState& A, const FSessionToolbarState& B)
 	{
 		return A.Mode == B.Mode
@@ -231,10 +197,7 @@ namespace SessionControllerTestSupport
 			&& A.bRotated == B.bRotated;
 	}
 
-	/**
-	 * Whether the strip this state draws offers this button live. Asked of the production model, not
-	 * re-decided here. A button the strip does not draw at all answers false.
-	 */
+	/** Whether the production strip draws this button enabled. Undrawn answers false. */
 	bool SessionButtonIsEnabled(const FSessionToolbarState& State, EToolbarButtonId Id)
 	{
 		const TArray<FToolbarButton> Buttons = SessionToolbarButtons(State);
@@ -245,7 +208,7 @@ namespace SessionControllerTestSupport
 		return Button != nullptr && Button->bEnabled;
 	}
 
-	/** How many ABrickActors stand in the world that are NOT the component's ghost. */
+	/** ABrickActors in the world, excluding the ghost. */
 	int32 SessionCountPlacedBricks(UWorld* World, const AActor* Ghost)
 	{
 		int32 Count = 0;
@@ -296,9 +259,8 @@ namespace SessionControllerTestSupport
 	}
 
 	/**
-	 * A controller in the world with a real ULocalPlayer, and its build component, or nulls. The local
-	 * player is needed because SetSessionControls applies the session's mapping contexts through the
-	 * Enhanced Input local-player subsystem; without one the input half fails closed.
+	 * A controller with a real ULocalPlayer (needed for the Enhanced Input mapping contexts) and
+	 * its build component.
 	 */
 	struct FSessionFixture
 	{
@@ -344,10 +306,8 @@ namespace SessionControllerTestSupport
 	};
 
 	/**
-	 * Spawn the controller and a pawn the way UEngine::LoadMap does, between actor init and begin-play,
-	 * so a game mode's begin-play runs with a player in the world. No local player: this runs in
-	 * BeforeBeginPlay, and attaching one there drags in a viewport-less UGameViewportClient and an
-	 * ensure. The game-mode claims below need only the session state and build component.
+	 * Spawn a controller and pawn before begin-play, as UEngine::LoadMap does. No local player:
+	 * attaching one here triggers a viewport-less ensure.
 	 */
 	void SessionSpawnPlayer(UWorld& World, ADestructionGamePlayerController*& OutController)
 	{
@@ -364,23 +324,12 @@ namespace SessionControllerTestSupport
 }
 
 /**
- * The toolbar is the only door: every accepted click moves both the state and the component, and
- * every refused click moves neither.
+ * Every accepted toolbar click moves both the state and the component; every refused click moves
+ * neither.
  *
- * The controller seeds Destroy, not the model's own default of Build: most levels lay a structure to
- * pull apart, and opening in Build would put a ghost over the wall and swallow the first click.
- * GameModeOpensBuildModeOnThePlot puts the one build level into Build mode through the same door.
- *
- * Three refused buttons, each catching a different mistake. Course down at course 0: the third
- * refusal, after two accepted steps, catches a controller decrementing its own copy to -1 while the
- * component clamps to 0. Run structure is not drawn in Build mode: catches switching on the id before
- * asking the model. Clear build is greyed with nothing laid: its side effect changes the structure
- * id, so an unchanged id proves it did not run (a stronger reading than the piece count).
- *
- * Accepted clicks are asserted in both currencies — the state (the presenter's record) and the
- * component (what the world does) — since either alone admits a wrong controller. The piece click is
- * sharpest: the component derives extent and plane from the kind, so (33.75, 5.125, 5) and a 20 cm
- * plane on course 2 are three facts one call must get right.
+ * The controller opens in Destroy, since most levels lay a structure to pull apart. Three refusals
+ * each catch a different mistake: Course down at 0, Run (not on the Build strip), and Clear with
+ * nothing laid (checked by the unchanged structure id).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarDrivesTheSessionTest,
@@ -406,7 +355,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 	UBuildModeComponent& Build = *Fixture.Build;
 	UDestructionStructureSubsystem& Subsystem = *Fixture.TestWorld.Subsystem;
 
-	/* --- ONE: what a player opens a scenario level with ---------------------------------- */
+	// One: the opening state.
 
 	{
 		const FSessionToolbarState& State = Controller.GetSessionToolbarState();
@@ -446,7 +395,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Build.GetStructureId(), static_cast<int32>(INDEX_NONE));
 	}
 
-	/* --- TWO: Build opens a build, and shows the cursor ----------------------------------- */
+	// Two: Build opens a build and shows the cursor.
 
 	{
 		const bool bSwitched = Controller.OnToolbarButton(EToolbarButtonId::ModeBuild);
@@ -464,10 +413,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 				*SessionStateBits(Controller.GetSessionToolbarState())),
 			Controller.GetSessionToolbarState().Mode == ESessionMode::Build);
 
-		/*
-		 * And a build is open: Build mode with no structure behind it fails every click closed — the
-		 * ghost previews against an unknown id and ConfirmPlace refuses every commit.
-		 */
+		// Without an open build every click would fail closed.
 		TestTrue(
 			FString::Printf(
 				TEXT("entering Build must OPEN a build, so the component names a real structure; it "
@@ -480,11 +426,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 				TEXT("and the subsystem must actually hold structure %d"), Build.GetStructureId()),
 			Subsystem.Find(Build.GetStructureId()));
 
-		/*
-		 * The cursor is the other half of a usable Build mode. Since S6 SetSessionControls raises it
-		 * in BeginPlay and nothing lowers it, so the mode switch need only leave it up, not raise it.
-		 * Section NINE is the half that bites.
-		 */
+		// Raised in BeginPlay since S6; the mode switch must leave it up (see Nine).
 		TestTrue(
 			TEXT("Build mode must show the mouse cursor — there is no aiming a ghost with a camera "
 				 "that follows every mouse movement"),
@@ -493,7 +435,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 
 	const int32 BuildStructureId = Build.GetStructureId();
 
-	/* --- THREE: the piece click derives material, extent and plane ------------------------ */
+	// Three: the piece click derives extent and plane.
 
 	{
 		const bool bChosePlate = Controller.OnToolbarButton(EToolbarButtonId::PieceTimberPlate);
@@ -530,7 +472,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Build.BuildPlaneZCm, SessionPlatePlaneCourse0Cm);
 	}
 
-	/* --- FOUR: Snap/Free rides through to the component ----------------------------------- */
+	// Four: Snap/Free reaches the component.
 
 	{
 		const bool bChoseFree = Controller.OnToolbarButton(EToolbarButtonId::PlacementFree);
@@ -553,7 +495,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Build.PlacementMode == EPlacementMode::Free);
 	}
 
-	/* --- FIVE: the course stepper moves the build plane ----------------------------------- */
+	// Five: the course stepper moves the build plane.
 
 	{
 		TestTrue(
@@ -575,11 +517,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 				TEXT("AND THE COMPONENT WITH IT; it reads course %d"), Build.GetCourse()),
 			Build.GetCourse(), 2);
 
-		/*
-		 * Two facts in one plane: a plate is still selected, so it is the plate's plane (2 * 7.5 + 5 =
-		 * 20, not the brick's 18.25). Pushing the course without re-deriving would bury the board half
-		 * in the course below.
-		 */
+		// The plate's plane, not the brick's: the course push must re-derive it.
 		TestEqual(
 			FString::Printf(
 				TEXT("and the plate on course 2 planes at 2 * 7.5 + 5 = 20 (NOT the brick's 18.25); it "
@@ -588,7 +526,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Build.BuildPlaneZCm, SessionPlatePlaneCourse2Cm);
 	}
 
-	/* --- SIX: down to the floor, and then REFUSED ----------------------------------------- */
+	// Six: down to course 0, then refused.
 
 	{
 		TestTrue(
@@ -636,7 +574,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Build.BuildPlaneZCm, SessionPlatePlaneCourse0Cm);
 	}
 
-	/* --- SEVEN: a button the strip does not draw at all ----------------------------------- */
+	// Seven: a button the strip does not draw.
 
 	{
 		const FSessionToolbarState Before = Controller.GetSessionToolbarState();
@@ -667,7 +605,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* --- EIGHT: a command whose precondition is not met ----------------------------------- */
+	// Eight: a command whose precondition is not met.
 
 	{
 		TestTrue(
@@ -694,10 +632,7 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 				*SessionStateBits(Controller.GetSessionToolbarState()), *SessionStateBits(Before)),
 			SessionSameState(Controller.GetSessionToolbarState(), Before));
 
-		/*
-		 * The structure id is the assertion that bites: Clear's side effect changes the id, while the
-		 * piece count (zero either way) says nothing.
-		 */
+		// Clear would change the id; the piece count is zero either way.
 		TestEqual(
 			FString::Printf(
 				TEXT("and above all leave the build it already had open: structure %d, not a fresh "
@@ -706,18 +641,12 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 			Build.GetStructureId(), BuildStructureId);
 	}
 
-	/* --- NINE: and the cursor does not go away when the mode does -------------------------- */
-
+	// Nine: the cursor belongs to the session, not the mode (SESSION_UI_DESIGN §d, S6).
 	{
 		TestTrue(
 			TEXT("the Destroy tab is always live"),
 			Controller.OnToolbarButton(EToolbarButtonId::ModeDestroy));
 
-		/*
-		 * The cursor is the session's, not the mode's (SESSION_UI_DESIGN §d, S6). Destroy hovers with
-		 * the same pointer Build aims a ghost with, so no mode may raise or lower it; since S6
-		 * SetSessionControls raises it once in BeginPlay and no mode switch touches it.
-		 */
 		TestTrue(
 			*FString::Printf(
 				TEXT("DESTROY MODE KEEPS THE CURSOR. It is the session's pointer, not Build mode's — "
@@ -738,25 +667,12 @@ bool FSessionToolbarDrivesTheSessionTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The mode decides what a click is: in Build a ray lays a brick, in Destroy the same ray pulls one
- * out, and the build survives the round trip.
+ * In Build a click lays a brick, in Destroy the same click opens that brick's menu, and the build
+ * survives the round trip.
  *
- * One test, not three, because the claim is a loop: lay, switch mode, take apart, switch back, keep
- * laying. Split by mode, each would pass against a controller that reset the build on every mode
- * switch. The id unchanged across the round trip, and a third brick joining the same structure,
- * closes that.
- *
- * No piece menu in Build mode is asserted, not assumed: inspect is wired to the same mouse button as
- * the Build click, so Build asserts IsPieceMenuShown() false and Destroy asserts it true.
- *
- * The ghost is asserted on visibility, never position (position is pinned in
- * World.BuildMode.ComponentRayDrivesPreviewAndGhost). New here: a ray reaches it in Build mode, and
- * leaving Build mode takes it off screen.
- *
- * The numbers: the course-0 plane is 3.25. The first click's empty structure gives a Free pose at
- * (0, 0, 3.25), grounded. The second cursor at x = 22.0 snaps to the same-course pose at 22.5 (0.5 cm
- * away against 13.1 cm), forming one head joint. The third at x = 45.0 is on the pose beside the
- * second brick, clear of the deleted first.
+ * One test because the claim is a loop (lay, destroy, lay again); split, each half would pass a
+ * controller that reset the build on every mode switch. The ghost is checked for visibility only;
+ * its position is pinned in World.BuildMode.ComponentRayDrivesPreviewAndGhost.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionPrimaryRayPlacesAndInspectsTest,
@@ -790,7 +706,7 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 
 	const int32 BuildStructureId = Build.GetStructureId();
 
-	/* --- ONE: pointing in Build mode drives the ghost ------------------------------------- */
+	// One: pointing in Build mode drives the ghost.
 
 	Controller.PointerAlongRay(
 		SessionPointerRayStart(0.0), SessionPointerRayEnd(0.0));
@@ -809,7 +725,7 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 			Ghost->IsHidden());
 	}
 
-	/* --- TWO: the primary click in Build mode LAYS A BRICK and opens no menu --------------- */
+	// Two: a Build click lays a brick and opens no menu.
 
 	{
 		const bool bPlaced = Controller.PrimaryAlongRay(
@@ -850,10 +766,7 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 					CentreCm.X, CentreCm.Y, CentreCm.Z),
 				CentreCm.Equals(SessionSeedCentreCm, KINDA_SMALL_NUMBER));
 
-			/*
-			 * Grounded by the pose: the bottom face is at Z = 0, within the 1 cm joint the rule
-			 * allows, which is what makes the first brick a foundation.
-			 */
+			// Bottom face at Z = 0, within the 1 cm grounding tolerance.
 			TestTrue(
 				TEXT("the first brick rests ON the earth, so the structure must record it grounded — a "
 					 "foundation that is not grounded routes its load nowhere"),
@@ -868,7 +781,7 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 			!Controller.IsPieceMenuShown());
 	}
 
-	/* --- THREE: a second click, snapped onto the bond ------------------------------------- */
+	// Three: a second click, snapped onto the bond.
 
 	{
 		const bool bPlaced = Controller.PrimaryAlongRay(
@@ -901,10 +814,7 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 				CentreCm.X, CentreCm.Y, CentreCm.Z),
 			CentreCm.Equals(SessionSecondCentreCm, KINDA_SMALL_NUMBER));
 
-		/*
-		 * One connection is the mechanism reading of "it bonded": two unbonded bricks look identical
-		 * on screen but behave nothing like a wall.
-		 */
+		// One connection: the mechanism reading of "it bonded".
 		TestEqual(
 			FString::Printf(
 				TEXT("and form the head joint between the two, so the structure holds one connection; "
@@ -917,7 +827,7 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 			!Controller.IsPieceMenuShown());
 	}
 
-	/* --- FOUR: the strip now knows there is something to command --------------------------- */
+	// Four: the strip now knows there is a structure.
 
 	{
 		const FSessionToolbarState& State = Controller.GetSessionToolbarState();
@@ -936,7 +846,7 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 			SessionButtonIsEnabled(State, EToolbarButtonId::ClearBuild));
 	}
 
-	/* --- FIVE: leaving Build takes the ghost off screen ------------------------------------ */
+	// Five: leaving Build hides the ghost.
 
 	{
 		TestTrue(
@@ -958,7 +868,7 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	/* --- SIX: pointing in Destroy mode calls out the brick under the cursor ---------------- */
+	// Six: pointing in Destroy highlights the brick under the cursor.
 
 	FStructureBinding* Binding = Subsystem.Find(BuildStructureId);
 
@@ -999,16 +909,12 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 				static_cast<int32>(EBrickHighlight::Hovered)),
 			FirstBrick->GetHighlight() == EBrickHighlight::Hovered);
 
-		/*
-		 * Pointing is not clicking — hover and inspect are separate seams so sweeping the cursor
-		 * along a wall selects nothing.
-		 */
 		TestTrue(
 			TEXT("and a hover must open no menu — pointing is not clicking"),
 			!Controller.IsPieceMenuShown());
 	}
 
-	/* --- SEVEN: the primary click in Destroy mode puts that brick's menu up ---------------- */
+	// Seven: a Destroy click opens that brick's menu.
 
 	int32 DeleteRow = INDEX_NONE;
 
@@ -1042,7 +948,7 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* --- EIGHT: choosing it takes that brick and only that brick -------------------------- */
+	// Eight: Delete takes that brick and only that brick.
 
 	{
 		const bool bChose = Controller.ChoosePieceMenuRow(DeleteRow);
@@ -1073,7 +979,6 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 				IsValid(FirstBrick) ? TEXT("still valid") : TEXT("gone")),
 			!IsValid(FirstBrick));
 
-		/* Only that one — a delete that took the wall down would satisfy the rows above too. */
 		TestTrue(
 			FString::Printf(
 				TEXT("the brick that was NOT chosen must still stand: IsPieceRemoved(1) reports %d and "
@@ -1089,17 +994,12 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 			Binding->GetStructure().NumLivePieces(), 1);
 	}
 
-	/* --- NINE: and back to Build — the SAME build, still being laid ----------------------- */
-
+	// Nine: back to Build, the same build (not cancelled on the mode switch).
 	{
 		TestTrue(
 			TEXT("the Build tab is always live"),
 			Controller.OnToolbarButton(EToolbarButtonId::ModeBuild));
 
-		/*
-		 * The id is the assertion this test is built around: CancelBuild is one call away and
-		 * "leaving Build mode" reads like a reason to call it, wiping the plot on every mode switch.
-		 */
 		TestEqual(
 			FString::Printf(
 				TEXT("RETURNING TO BUILD MUST CONTINUE THE SAME BUILD, not start a new one: structure "
@@ -1140,20 +1040,10 @@ bool FSessionPrimaryRayPlacesAndInspectsTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Run structure settles what the player built: the floating brick is released, the grounded one is
- * not.
+ * Run structure settles the build: the floating brick is released, the grounded one is not.
  *
- * The floating brick is the whole fixture — a Free placement six courses up with no joints and no
- * ground, which the solver must read Falling; releasing it is the one difference between a Run that
- * ran and one wired to no solver. The grounded seed staying kinematic is what rules out a Run
- * implemented as "release everything".
- *
- * IsReleased, never displacement (nothing ticks, and DESIGN §4 forbids it anyway): it is the
- * binding's record of "handed to Chaos", which is what Run does.
- *
- * The numbers: six courses put the brick's bottom face at 45 cm, 45x the 1 cm joint the rule allows,
- * and x = 100 is outside the 30 cm snap radius — so it is jointless and off the ground, both asserted
- * as preconditions, or a brick that stood would green the test over a dead Run button.
+ * The floating brick is a jointless Free placement six courses up. The grounded seed staying
+ * kinematic rules out "release everything". Asserted on IsReleased, never displacement (DESIGN §4).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionRunStructureSettlesTheBuildTest,
@@ -1187,10 +1077,10 @@ bool FSessionRunStructureSettlesTheBuildTest::RunTest(const FString& Parameters)
 
 	const int32 BuildStructureId = Build.GetStructureId();
 
-	/* The grounded seed: a snapped brick on course 0, which must still be standing afterwards. */
+	// The grounded seed on course 0.
 	Controller.PrimaryAlongRay(SessionPointerRayStart(0.0), SessionPointerRayEnd(0.0));
 
-	/* The floating brick: Free placement, six courses up, a hundred centimetres away. */
+	// The floating brick: Free, six courses up, 100 cm away.
 	for (int32 Step = 0; Step < SessionFloatingCourse; ++Step)
 	{
 		Controller.OnToolbarButton(EToolbarButtonId::CourseUp);
@@ -1225,7 +1115,7 @@ bool FSessionRunStructureSettlesTheBuildTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* --- THE FIXTURE PRECONDITIONS: one piece that must fall, one that must not ------------ */
+	// Preconditions: one piece that must fall, one that must not.
 
 	TestTrue(
 		TEXT("fixture: the seed must be grounded, or 'it did not fall' says nothing about the solver"),
@@ -1251,7 +1141,7 @@ bool FSessionRunStructureSettlesTheBuildTest::RunTest(const FString& Parameters)
 			Binding->IsReleased(0) ? 1 : 0, Binding->IsReleased(1) ? 1 : 0),
 		!Binding->IsReleased(0) && !Binding->IsReleased(1));
 
-	/* --- RUN, FROM DESTROY MODE, THROUGH THE ONE DOOR -------------------------------------- */
+	// Run, from Destroy mode, through the toolbar.
 
 	TestTrue(
 		TEXT("the Destroy tab is always live"),
@@ -1311,19 +1201,10 @@ bool FSessionRunStructureSettlesTheBuildTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Clear build empties the plot and leaves a fresh one open: no brick standing, no binding orphaned,
- * the player still in Build mode.
+ * Clear build empties the plot and opens a fresh one, staying in Build mode.
  *
- * Both currencies are needed. A clear that dropped the binding but left the bricks gives colliders
- * with no pieces behind them; one that destroyed the bricks but kept the binding gives the opposite.
- * So the world is counted and the id is read.
- *
- * "A fresh build is open" means a different id, not merely a valid one: ids are monotonic, so
- * asserting only != INDEX_NONE would pass against a controller that cancelled nothing and kept the
- * same binding — the bug where Clear looks to work and the next brick joins an off-screen wall.
- *
- * The mode is unchanged: Clear is a command, not a mode; dropping the player back into Destroy would
- * be the same "stuck in a mode" confusion one layer up.
+ * Both the world's bricks and the binding are checked, since either can be left behind. The fresh
+ * build must have a different id, not merely a valid one.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionClearBuildEmptiesThePlotTest,
@@ -1386,8 +1267,6 @@ bool FSessionClearBuildEmptiesThePlotTest::RunTest(const FString& Parameters)
 			BricksBefore),
 		BricksBefore, 2);
 
-	/* --- THE CLEAR ------------------------------------------------------------------------ */
-
 	const bool bCleared = Controller.OnToolbarButton(EToolbarButtonId::ClearBuild);
 
 	TestTrue(
@@ -1411,7 +1290,7 @@ bool FSessionClearBuildEmptiesThePlotTest::RunTest(const FString& Parameters)
 			TEXT("and the cleared structure %d must be gone from the subsystem"), BuildStructureId),
 		Subsystem.Find(BuildStructureId));
 
-	/* --- AND A FRESH PLOT IS OPEN --------------------------------------------------------- */
+	// And a fresh plot is open.
 
 	TestTrue(
 		FString::Printf(
@@ -1456,16 +1335,10 @@ bool FSessionClearBuildEmptiesThePlotTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Joining the build level puts the player in Build mode with a plot open; joining any other level
- * does not.
+ * The build level opens in Build mode with a plot open; other levels open in Destroy.
  *
- * Both rows in one test: "the build level opens in Build mode" is also satisfied by a controller that
- * opens every level in Build mode, so the sandbox row is asserted from the same fixture.
- *
- * On a scenario level Run must reach the level's own wall: with nothing laid, GetSessionStructureId
- * falls back to the game mode's built structure, so it is asserted equal to GetBuiltStructureId(). On
- * the build level nothing is built, so the fallback answers INDEX_NONE until the first brick, which
- * is why Run structure is greyed there.
+ * On a scenario level, with nothing laid, the session structure falls back to the game mode's
+ * built wall, so Run reaches it.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionGameModeOpensBuildModeTest,
@@ -1478,7 +1351,7 @@ bool FSessionGameModeOpensBuildModeTest::RunTest(const FString& Parameters)
 	using namespace DestructionSession;
 	using namespace SessionControllerTestSupport;
 
-	/* --- ONE: ?Scenario=build opens Build mode with a plot open --------------------------- */
+	// One: ?Scenario=build opens Build mode with a plot open.
 
 	{
 		FBrickTestWorld TestWorld;
@@ -1530,7 +1403,7 @@ bool FSessionGameModeOpensBuildModeTest::RunTest(const FString& Parameters)
 		TestWorld.End();
 	}
 
-	/* --- TWO: ?Scenario=sandbox opens Destroy mode over the wall it built ------------------ */
+	// Two: ?Scenario=sandbox opens Destroy mode over its wall.
 
 	{
 		FBrickTestWorld TestWorld;
@@ -1590,21 +1463,11 @@ bool FSessionGameModeOpensBuildModeTest::RunTest(const FString& Parameters)
 }
 
 /**
- * The session's structure is the one with something live in it: a build whose only brick has been
- * deleted must not shadow the wall the level built.
+ * A build whose only brick was deleted must not shadow the level's wall as the session structure.
  *
- * Two readings of "is there a structure" disagree only for an emptied-but-not-absent build:
- * GetSessionStructureId picks the build on NumPieces() > 0 (one tombstone), while
- * RefreshSessionHasStructure reads NumLivePieces() > 0 (zero) — so bHasStructure went false over a
- * 1,220-brick wall standing there. The fix is one reading, used twice.
- *
- * The fixture is a real scenario level because the bug needs both structures at once: an empty build
- * and a wall behind it for the fallback to reach. The brick is laid thirty metres clear so the
- * Destroy line trace cannot hit the level's own wall instead.
- *
- * The state is refreshed through a real door before it is read (the Destroy tab, a no-op on the
- * state), since OnToolbarButton refreshes at the door. The delete path refreshes too now
- * (World.Session.DeleteRefreshesTheSessionFlag covers the cold read); this click is belt and braces.
+ * GetSessionStructureId once chose on NumPieces (one tombstone) while the flag read NumLivePieces
+ * (zero), so Run greyed out over a 1,220-brick wall. Needs a real scenario level; the brick is laid
+ * 30 m clear so the Destroy trace cannot hit the wall.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionStructureIsTheLiveOneTest,
@@ -1654,7 +1517,7 @@ bool FSessionStructureIsTheLiveOneTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* --- ONE: the level's own wall, which is what Run must go on reaching ------------------ */
+	// One: the level's own wall.
 
 	const int32 BuiltStructureId = GameMode->GetBuiltStructureId();
 
@@ -1681,7 +1544,7 @@ bool FSessionStructureIsTheLiveOneTest::RunTest(const FString& Parameters)
 			Wall->GetStructure().NumLivePieces() > 0);
 	}
 
-	/* --- TWO: the player lays exactly one brick, well clear of it -------------------------- */
+	// Two: the player lays one brick well clear of it.
 
 	if (!Controller->OnToolbarButton(EToolbarButtonId::ModeBuild))
 	{
@@ -1730,7 +1593,7 @@ bool FSessionStructureIsTheLiveOneTest::RunTest(const FString& Parameters)
 			 "structure %d"),
 		BuildStructureId, LaidCentreCm.X, LaidCentreCm.Y, LaidCentreCm.Z, BuiltStructureId));
 
-	/* --- THREE: and takes it straight back out again through the piece menu ---------------- */
+	// Three: and deletes it through the piece menu.
 
 	if (!Controller->OnToolbarButton(EToolbarButtonId::ModeDestroy))
 	{
@@ -1773,7 +1636,7 @@ bool FSessionStructureIsTheLiveOneTest::RunTest(const FString& Parameters)
 			Controller->ChoosePieceMenuRow(DeleteRow));
 	}
 
-	/* --- FOUR: the plot is now a tombstone, which is the whole point of the fixture --------- */
+	// Four: the plot is now a single tombstone.
 
 	Binding = Subsystem.Find(BuildStructureId);
 
@@ -1798,7 +1661,7 @@ bool FSessionStructureIsTheLiveOneTest::RunTest(const FString& Parameters)
 			Binding->GetStructure().NumLivePieces()),
 		Binding->GetStructure().NumLivePieces(), 0);
 
-	/* --- FIVE: so the session's structure is the level's wall again ------------------------ */
+	// Five: so the session's structure is the level's wall again.
 
 	TestEqual(
 		FString::Printf(
@@ -1810,7 +1673,7 @@ bool FSessionStructureIsTheLiveOneTest::RunTest(const FString& Parameters)
 			BuiltStructureId, Controller->GetSessionStructureId()),
 		Controller->GetSessionStructureId(), BuiltStructureId);
 
-	/* --- SIX: and the strip offers Run against it ------------------------------------------ */
+	// Six: and the strip offers Run against it.
 
 	TestTrue(
 		TEXT("fixture: the Destroy tab is always live, and clicking it is what refreshes the "
@@ -1842,22 +1705,10 @@ bool FSessionStructureIsTheLiveOneTest::RunTest(const FString& Parameters)
 }
 
 /**
- * Deleting the last piece refreshes the strip's one precondition: bHasStructure reads false
- * immediately, without waiting for the next toolbar click.
+ * Deleting the last piece clears bHasStructure immediately, without a toolbar click.
  *
- * The read is cold on purpose. OnToolbarButton refreshes at the door, but the delete path had no such
- * door; ChoosePieceMenuRow now refreshes on a committed action, and this test holds it there. Its
- * whole discipline is the absence of any toolbar click between the delete and the read — one click
- * would make it pass without biting. (SessionStructureIsTheLiveOne reaches the same flag through a
- * deliberate Destroy-tab click instead.)
- *
- * A bare world with no level wall: GetSessionStructureId must genuinely answer INDEX_NONE, or the
- * fallback to a wall would make bHasStructure correctly true and the claim unfalsifiable. That is
- * asserted beside the flag, not assumed.
- *
- * Asserted: the flag, the structure id it derives from, and what the strip would draw
- * (SessionToolbarButtons for RunStructure) — the player-facing statement and the reason the first two
- * matter.
+ * The read is cold: no toolbar click between delete and read, since OnToolbarButton would refresh
+ * the flag itself. A bare world with no level wall, so the session genuinely names no structure.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionDeleteRefreshesTheFlagTest,
@@ -1891,7 +1742,7 @@ bool FSessionDeleteRefreshesTheFlagTest::RunTest(const FString& Parameters)
 
 	const int32 BuildStructureId = Build.GetStructureId();
 
-	/* --- ONE: one brick, and the session knows it has something to command ------------------ */
+	// One: one brick, and the session knows it has a structure.
 
 	{
 		const bool bPlaced = Controller.PrimaryAlongRay(
@@ -1932,7 +1783,7 @@ bool FSessionDeleteRefreshesTheFlagTest::RunTest(const FString& Parameters)
 			*SessionStateBits(Controller.GetSessionToolbarState())),
 		Controller.GetSessionToolbarState().bHasStructure);
 
-	/* --- TWO: and then the player takes it straight back out again ------------------------- */
+	// Two: the player deletes it.
 
 	{
 		const FVector InspectStart(
@@ -1968,11 +1819,7 @@ bool FSessionDeleteRefreshesTheFlagTest::RunTest(const FString& Parameters)
 			Controller.ChoosePieceMenuRow(DeleteRow));
 	}
 
-	/*
-	 * From here to the end, nothing may touch the toolbar: OnToolbarButton refreshes the precondition
-	 * at its door, so any click — even a refused one — would make every claim below pass over the bug.
-	 */
-
+	// No toolbar clicks from here on: any click, even a refused one, refreshes the flag.
 	Binding = Subsystem.Find(BuildStructureId);
 
 	if (Binding == nullptr)
@@ -2002,7 +1849,7 @@ bool FSessionDeleteRefreshesTheFlagTest::RunTest(const FString& Parameters)
 			Controller.GetSessionStructureId()),
 		Controller.GetSessionStructureId(), static_cast<int32>(INDEX_NONE));
 
-	/* --- THREE: the cold read ------------------------------------------------------------- */
+	// Three: the cold read.
 
 	{
 		const FSessionToolbarState& State = Controller.GetSessionToolbarState();
@@ -2032,27 +1879,12 @@ bool FSessionDeleteRefreshesTheFlagTest::RunTest(const FString& Parameters)
 }
 
 /**
- * CR-2b — the rotate chip turns the ghost's footprint, and a turned brick beside a laid one snaps to
- * the corner return.
+ * CR-2b: the rotate chip swaps the ghost's X and Y half extents, and a rotated brick beside a laid
+ * one snaps to the corner return.
  *
- * OnToolbarButton(RotatePiece) pushes bRotated onto the component (SetRotated), which re-derives
- * CurrentExtentCm as the palette half extent with X and Y swapped and leaves BuildPlaneZCm alone.
- *
- * The swapped extent is asserted, not "rotated": FPieceBox is axis-aligned and nothing downstream
- * knows what an angle is, so the extent is the only reading a component that merely stored a flag
- * cannot satisfy. The plane must not move — Z is untouched by a rotation about it; a plane re-derived
- * from the swapped X would bury a rotated brick 1.875 cm into the earth. The plate is in the table
- * because its half height (5.0) is not one of the two numbers that swap, so the wrong-axis plane
- * shows there.
- *
- * The proof ends in a corner return because the extents are the mechanism and the return is what they
- * are for: until this chip exists no player can produce a crossed box, so CR-2a's corner vocabulary
- * is unreachable. Pose, joint count and profile are CornerWallStands' step-3 numbers measured off the
- * seed: a return flush with the seed's -Y face, one joint, full GeneralPurposeMortar rather than the
- * weak perpend a pre-CR-2a inference gave every vertical face.
- *
- * The cursor is at Y = 5.0, not the pose: ranking is raw distance, and the intended one of the four
- * return poses is 0.625 cm away against 10.625 cm for its nearest sibling, so it wins outright.
+ * FPieceBox is axis-aligned, so the swapped extent is the rotation. The build plane must not move.
+ * The corner return is flush with the seed's -Y face with one full GeneralPurposeMortar joint; the
+ * cursor at Y = 5.0 is 0.625 cm from it against 10.625 cm for the nearest other pose.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionRotateSwapsTheGhostFootprintTest,
@@ -2065,29 +1897,21 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 	using namespace DestructionSession;
 	using namespace SessionControllerTestSupport;
 
-	/*
-	 * The footprints, spelled out rather than derived from the palette: swapping X and Y here would
-	 * make the test agree with the palette however wrong it is, and the swap is the behaviour tested.
-	 */
+	// Footprints spelled out, not derived from the palette whose swap is under test.
 	const FVector BrickUprightHalfCm(10.75, 5.125, 3.25);
 	const FVector BrickRotatedHalfCm(5.125, 10.75, 3.25);
 	const FVector PlateRotatedHalfCm(5.125, 33.75, 5.0);
 
 	/*
-	 * The corner return's numbers, worked off the seed brick at the origin (half (10.75, 5.125,
-	 * 3.25)). One joint clear of its +X end: 10.75 + 1.0 + 5.125 = 16.875. Flush with its -Y face:
-	 * -5.125 + 10.75 = 5.625. Course 0 leaves Z at 3.25. The quoin is the seed's end face, 10.25 by
-	 * 6.5 cm.
+	 * Corner return off the seed at the origin: X = 10.75 + 1.0 + 5.125, Y = -5.125 + 10.75. The
+	 * quoin is the seed's 10.25 x 6.5 cm end face.
 	 */
 	const FVector CornerReturnCentreCm(16.875, 5.625, 3.25);
 	constexpr double CornerCursorXCm = 16.875;
 	constexpr double CornerCursorYCm = 5.0;
 	constexpr double QuoinAreaSqCm = 66.625;
 
-	/*
-	 * A double tolerance: the numbers are exact sums of grid halves, so this only keeps a float
-	 * equality honest. KINDA_SMALL_NUMBER is a float and makes TestEqual's double overload ambiguous.
-	 */
+	// A double; KINDA_SMALL_NUMBER is a float and makes TestEqual's overload ambiguous.
 	constexpr double SessionPlaneToleranceCm = 1.0e-6;
 
 	FSessionFixture Fixture;
@@ -2111,7 +1935,7 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 
 	const int32 BuildStructureId = Build.GetStructureId();
 
-	/* --- ONE: a session opens with an UPRIGHT brick --------------------------------------- */
+	// One: a session opens with an upright brick.
 
 	{
 		TestFalse(
@@ -2139,7 +1963,7 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 			Build.BuildPlaneZCm, SessionBrickPlaneCourse0Cm, SessionPlaneToleranceCm);
 	}
 
-	/* --- TWO: the click swaps X and Y, and leaves Z where it was --------------------------- */
+	// Two: the click swaps X and Y and leaves Z.
 
 	{
 		TestTrue(
@@ -2177,13 +2001,9 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 			Build.BuildPlaneZCm, SessionBrickPlaneCourse0Cm, SessionPlaneToleranceCm);
 	}
 
-	/* --- THREE: choosing another piece while rotated re-derives the SWAPPED extent ---------- */
-
 	/*
-	 * The plate tells a re-derivation from a remembered swap: SetPieceKind reads the palette afresh, so
-	 * it must honour a rotation chosen before it — a swap done only inside SetRotated would hand back
-	 * an upright board here. Its half height (5.0, not one of the swapped numbers) is why the plane
-	 * assertion bites: a wrong-axis plane would read 5.125, not the plate's own.
+	 * Three: choosing a piece while rotated re-derives the swapped extent. The plate's half height
+	 * (5.0) is not a swapped number, so a wrong-axis plane shows as 5.125.
 	 */
 	{
 		TestTrue(
@@ -2208,7 +2028,7 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 		TestTrue(TEXT("back to the brick"), Controller.OnToolbarButton(EToolbarButtonId::PieceBrick));
 	}
 
-	/* --- FOUR: the same chip turns it back -------------------------------------------------- */
+	// Four: the same chip turns it back.
 
 	{
 		TestTrue(
@@ -2232,7 +2052,7 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 			Build.CurrentExtentCm.Equals(BrickUprightHalfCm, KINDA_SMALL_NUMBER));
 	}
 
-	/* --- FIVE: an upright seed brick on the earth ------------------------------------------- */
+	// Five: an upright seed brick on the earth.
 
 	{
 		const bool bPlaced = Controller.PrimaryAlongRay(
@@ -2245,7 +2065,7 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 			bPlaced);
 	}
 
-	/* --- SIX: rotated, the ghost beside it previews a CORNER RETURN -------------------------- */
+	// Six: rotated, the ghost beside it previews a corner return.
 
 	TestTrue(
 		TEXT("rotate again, to lay the return"),
@@ -2254,8 +2074,7 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 	const FVector CornerRayStart(CornerCursorXCm, CornerCursorYCm, SessionRayStartZCm);
 	const FVector CornerRayEnd(CornerCursorXCm, CornerCursorYCm, SessionRayEndZCm);
 
-	/* The player's own seam first — what a moving cursor does, putting the ghost on screen at the
-	 * pose the click will take. */
+	// The player's own seam first: a moving cursor shows the ghost.
 	Controller.PointerAlongRay(CornerRayStart, CornerRayEnd);
 
 	if (AActor* const Ghost = Build.GetGhostActor())
@@ -2272,9 +2091,8 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 	}
 
 	/*
-	 * The pose is read back through the component's non-mutating query: PointerAlongRay returns
-	 * nothing, and the ghost's transform pivots on the brick's corner, not its centre.
-	 * UpdatePreviewFromRay is the very call PointerAlongRay makes, with the same arguments.
+	 * Read the pose via UpdatePreviewFromRay, the call PointerAlongRay makes; the ghost's transform
+	 * pivots on a corner, not the centre.
 	 */
 	{
 		const FBuildPreview Preview =
@@ -2312,7 +2130,7 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 			Preview.JointCount, 1);
 	}
 
-	/* --- SEVEN: the click commits it, and the quoin is FULL MORTAR --------------------------- */
+	// Seven: the click commits it, and the quoin is full mortar.
 
 	{
 		const bool bPlaced = Controller.PrimaryAlongRay(CornerRayStart, CornerRayEnd);
@@ -2364,10 +2182,7 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 			const FConnectionStrength& Got = Quoin.Strength;
 			const FConnectionStrength& Want = DestructionProfiles::GeneralPurposeMortar;
 
-			/*
-			 * All five fields: mortar and its perpend sibling differ only on cohesion (0.9 vs 0.2) and
-			 * tension (0.7 vs 0.1), so a one-field check would admit the weak perpend.
-			 */
+			// All five fields: mortar and the weak perpend differ only on cohesion and tension.
 			const bool bIsFullMortar =
 				Got.CompressiveStrengthMPa == Want.CompressiveStrengthMPa
 				&& Got.ShearCohesionMPa == Want.ShearCohesionMPa
@@ -2396,10 +2211,7 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 				TEXT("over the seed's end face, 10.25 cm of width by 6.5 cm of course = 66.625 cm2"),
 				Quoin.InterfaceAreaSqCm, QuoinAreaSqCm, 1.0e-6);
 
-			/*
-			 * The horizontal normal is what makes the profile claim mean anything: a mortar joint
-			 * across a vertical normal is an ordinary bed. |X| == 1 says this is the seed's end face.
-			 */
+			// A horizontal normal, or full mortar would just be an ordinary bed.
 			TestEqual(
 				TEXT("across a HORIZONTAL normal on the X axis (|X| == 1) — the seed's end face, not "
 					 "a bed"),
@@ -2413,37 +2225,15 @@ bool FSessionRotateSwapsTheGhostFootprintTest::RunTest(const FString& Parameters
 }
 
 /**
- * CR-2b (xiii) — a corner the player lays is judged by the LP, not silently demoted to the router.
+ * CR-2b (xiii): a corner the player lays is judged by the LP, not silently demoted to the router.
  *
- * BeginBuild must open the player's build flagged three-dimensional, so the Y-normal head joints a
- * rotated leg forms are posed by the rigid-block bridge rather than refused.
+ * BeginBuild must flag the build 3D, or the bridge refuses the whole problem on the first Y-normal
+ * joint and BreakByEquilibrium silently declines to the router, which stands the wall anyway
+ * (DESIGN §5). Checked on the empty build (the flag is stated, never inferred; E3 ruling,
+ * Structure.h) and after Run (every posed joint has a readout; absent means the gate declined).
  *
- * The defect, and why it is invisible: nothing in the session calls SetThreeDimensional — only the
- * scenario builders do — so a player's build starts false. The router is dimension-agnostic and
- * routes a corner wall down its beds, reading healthy. But BuildRigidBlockProblem refuses the whole
- * problem on the first Y-normal joint, and BreakByEquilibrium turns that into DeclinedToRouter
- * silently — so one rotated brick moves the break authority for the entire build off the LP and onto
- * BreakByCapacitySweep. The wall stands either way: the "wrong answer that looks plausible" of
- * DESIGN §5.
- *
- * Two assertions. Mechanism: IsThreeDimensional() twice — on the empty build and the finished L. The
- * empty one forbids the cheap fix of inferring 3D when the first Y-normal joint forms, which the E3
- * ruling (Structure.h ~490) rules out: an inferred flag is a cliff mid-build. Outcome: after Run,
- * every posed joint's readout is present (GetConnectionReadout(k).bPresent) — absent means the gate
- * declined, since the cache refills only from an arm that reached a verdict. Released == 0 is asserted
- * too but proves nothing alone (the router stands this wall), which is how the defect hides.
- *
- * Why six pieces, not three: the bridge skips any joint between two grounded pieces before looking at
- * the normal, so an L laid entirely on course 0 presents no posed Y-normal joint and answers for the
- * wrong reason. The Y leg is carried up a course, so head 5-4 is between two pieces grounded only
- * through their beds — posed, and what the 2D bridge refuses. Same skip is why the readout assertions
- * run over posed joints only.
- *
- * The poses are CornerWallStands' own, measured off a one-brick X leg: the seed at (0, 0, 3.25); the
- * rotated return one joint off its +X end (16.875) and flush with its -Y face (5.625); the Y leg
- * along Y at 28.125 and 50.625; course 1 staggered at 16.875 and 39.375. Cursors are offset short of
- * pitch so the same-course pose wins on raw distance; the return at (16.875, 5.0) is 0.625 cm from
- * its intended pose against 10.625 cm for the next.
+ * Six pieces, because the bridge skips grounded-grounded joints: the course-1 head 5-4 is the one
+ * posed Y-normal joint. Poses follow CornerWallStands.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionCornerBuildIsJudgedByTheLPTest,
@@ -2456,7 +2246,7 @@ bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
 	using namespace DestructionSession;
 	using namespace SessionControllerTestSupport;
 
-	/* The cursor for each of the six clicks, in order. See the header for every number. */
+	// The cursor for each of the six clicks, in order.
 	struct FCornerLayStep
 	{
 		double CursorXCm;
@@ -2478,14 +2268,13 @@ bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
 	constexpr int32 CornerExpectedConnections = 8;
 
 	/*
-	 * Five posed, three skipped. The three earth-to-earth joints are the quoin (1-0) and the two
-	 * course-0 heads (2-1, 3-2); the five posed are the four beds and the course-1 head 5-4. Pinned as
-	 * counts so a fixture that stopped forming one cannot make the readout sweep vacuous.
+	 * Skipped (earth-to-earth): the quoin 1-0 and course-0 heads 2-1, 3-2. Posed: the four beds and
+	 * the course-1 head 5-4.
 	 */
 	constexpr int32 CornerPosedJoints = 5;
 	constexpr int32 CornerSkippedJoints = 3;
 
-	/** The six pieces' grounding, by handle: four on the earth, two reaching it through beds. */
+	/** Pieces 0..3 are on the earth; 4 and 5 reach it through beds. */
 	constexpr int32 CornerLastGroundedPiece = 3;
 
 	constexpr double SessionNormalToleranceCm = 1.0e-6;
@@ -2511,7 +2300,7 @@ bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
 
 	const int32 BuildStructureId = Build.GetStructureId();
 
-	/* --- ONE: THE FLAG IS SET AT THE DOOR, ON A BUILD WITH NOTHING IN IT -------------------- */
+	// One: the flag is set when the empty build opens.
 
 	{
 		const FStructureBinding* const Fresh = Subsystem.Find(BuildStructureId);
@@ -2539,7 +2328,7 @@ bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
 			Fresh->GetStructure().IsThreeDimensional());
 	}
 
-	/* --- TWO: lay the L, through the player's own clicks ------------------------------------ */
+	// Two: lay the L through the player's clicks.
 
 	{
 		int32 Course = 0;
@@ -2600,7 +2389,7 @@ bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	/* --- THREE: the fixture guards — this really is a corner, with a POSED Y-normal joint ---- */
+	// Three: fixture guards, a real corner with one posed Y-normal joint.
 
 	{
 		const FStructure& Structure = Binding->GetStructure();
@@ -2678,7 +2467,7 @@ bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
 			Structure.NumConnections() - Posed, CornerSkippedJoints);
 	}
 
-	/* --- FOUR: THE MECHANISM — the finished corner build is 3D ------------------------------ */
+	// Four: the mechanism, the finished corner build is 3D.
 
 	TestTrue(
 		*FString::Printf(
@@ -2691,7 +2480,7 @@ bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
 			BuildStructureId, Binding->NumPieces(), Binding->GetStructure().NumConnections()),
 		Binding->GetStructure().IsThreeDimensional());
 
-	/* --- FIVE: THE OUTCOME — Run is answered by the LP, not by the router -------------------- */
+	// Five: the outcome, Run is answered by the LP, not the router.
 
 	TestTrue(
 		TEXT("the Destroy tab is always live"),
@@ -2764,23 +2553,11 @@ bool FSessionCornerBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters)
 }
 
 /**
- * CR-2b (xiii), the control — a straight build is flagged 3D too, and still reads the LP.
+ * CR-2b (xiii) control: a straight build is flagged 3D too, and still reads the LP.
  *
- * The BeginBuild flag is unconditional: a build with no rotated piece is opened 3D as well, and
- * posing a planar running-bond wall in 3D does not cost it its LP answer.
- *
- * A separate test, not a section, because it is where "unconditional" is pinned. The corner test
- * alone is satisfied by a fix that flags 3D on a rotated piece or a Y-normal joint — both inferences
- * the E3 ruling forbids. This wall has neither, so the flag assertion can only be met by stating the
- * intent at the door.
- *
- * Two halves in different colours: the flag assertion is red today, the readout assertion green (this
- * wall is 2D and the LP answers). The readout half is a regression net — the fix must not take the LP
- * off a planar wall — proven to bite by its red twin in the corner test.
- *
- * The numbers: course 0 at (0, 0, 3.25) and (22.5, 0, 3.25), asked at x = 22.0 so the same-course
- * pose wins by 0.5 cm against 13.1 cm; then course 1 at (11.25, 0, 10.75) at the running bond. The
- * course-0 head is earth-to-earth and skipped, so the two beds are the posed pair asserted over.
+ * With no rotated piece or Y-normal joint, only an unconditional flag at BeginBuild passes (E3
+ * ruling). The readout half guards against the fix taking the LP off planar walls. Three bricks
+ * in running bond; the two beds are the posed joints.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionStraightBuildIsJudgedByTheLPTest,
@@ -2797,7 +2574,7 @@ bool FSessionStraightBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters
 	constexpr int32 StraightExpectedConnections = 3;
 	constexpr int32 StraightPosedJoints = 2;
 
-	/* Course 1's plane for a brick: 1 * 7.5 + 3.25, and the running-bond stagger it lands on. */
+	// Course 1's running-bond stagger.
 	constexpr double StraightCourse1XCm = 11.25;
 
 	FSessionFixture Fixture;
@@ -2821,7 +2598,7 @@ bool FSessionStraightBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters
 
 	const int32 BuildStructureId = Build.GetStructureId();
 
-	/* --- ONE: the flag at the door, with no rotation anywhere in this test ------------------- */
+	// One: the flag at the door, with no rotation anywhere in this test.
 
 	{
 		const FStructureBinding* const Fresh = Subsystem.Find(BuildStructureId);
@@ -2847,7 +2624,7 @@ bool FSessionStraightBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters
 			Fresh->GetStructure().IsThreeDimensional());
 	}
 
-	/* --- TWO: two courses of running bond, laid through the player's clicks ------------------ */
+	// Two: two courses of running bond.
 
 	Controller.PrimaryAlongRay(SessionPointerRayStart(0.0), SessionPointerRayEnd(0.0));
 
@@ -2911,7 +2688,7 @@ bool FSessionStraightBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters
 			BuildStructureId),
 		Binding->GetStructure().IsThreeDimensional());
 
-	/* --- THREE: and Run still reads the LP ---------------------------------------------------- */
+	// Three: and Run still reads the LP.
 
 	TestTrue(
 		TEXT("the Destroy tab is always live"),
@@ -2973,29 +2750,12 @@ bool FSessionStraightBuildIsJudgedByTheLPTest::RunTest(const FString& Parameters
 }
 
 /**
- * The planar pose, at the player's end — a straight build is flagged 3D and solved in 2D.
+ * A straight session build is flagged 3D but solved in the planar (2D) pose; a corner is solved 3D.
  *
- * A session build keeps the 3D flag BeginBuild states at the door, but the LP poses the cheapest
- * sound problem for what is in it: 2D for a straight wall, 3D for one with a posed out-of-plane
- * joint. So a player who lays no corner never pays for one.
- *
- * A world test though the rule is world-free (Core.Oracle.PlanarProblemUnderThe3DFlagPosesIn2D pins
- * it at the bridge): this pins the wire, that a player's Run structure actually builds the cheap
- * pose. The slice was forced by a cold Run on a 100-brick straight wall going 2.5 s -> 94 s (~37x)
- * when BeginBuild began flagging every build 3D. No timing is asserted (it flakes; OracleSweepFull
- * verifies cost).
- *
- * The observable is GetLastEquilibriumProblemDim() — 2 or 3 for the last equilibrium-gate pose,
- * INDEX_NONE before any. The problem never leaves BreakByEquilibrium, which stamps it from
- * Problem.Dim when the bridge accepts (see Structure.h).
- *
- * The flag is asserted alongside: IsThreeDimensional() must stay true on the straight build, or the
- * cheap fix of un-flagging a corner-free build satisfies the dimension assertion and re-opens the E3
- * hole. The flag is the stated permission to pose 3D; the bridge decides whether it needs to.
- *
- * Two builds, and the second is not optional: without a corner, "always pose 2D" passes — and that
- * would pose every corner's Y-facing head joint onto an X-Z oracle that cannot express it, a
- * plausible number with wrong statics.
+ * Pins the wiring of Core.Oracle.PlanarProblemUnderThe3DFlagPosesIn2D at the player's Run. Posing
+ * every build 3D took a 100-brick wall from 2.5 s to 94 s; timing is not asserted. Observed via
+ * GetLastEquilibriumProblemDim(). The flag must stay set (E3 ruling), and the corner build rules out
+ * "always 2D".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionStraightBuildRunsInThePlanarPoseTest,
@@ -3008,11 +2768,11 @@ bool FSessionStraightBuildRunsInThePlanarPoseTest::RunTest(const FString& Parame
 	using namespace DestructionSession;
 	using namespace SessionControllerTestSupport;
 
-	/* The two dimensions, as the instrumentation reports them. Not an enum: see the accessor. */
+	// The dimensions as the accessor reports them.
 	constexpr int32 PosedInTwoD = 2;
 	constexpr int32 PosedInThreeD = 3;
 
-	/* Course 1's running-bond stagger, the third click of the straight wall. */
+	// Course 1's running-bond stagger.
 	constexpr double PlanarCourse1XCm = 11.25;
 
 	FSessionFixture Fixture;
@@ -3034,7 +2794,7 @@ bool FSessionStraightBuildRunsInThePlanarPoseTest::RunTest(const FString& Parame
 		return true;
 	}
 
-	/* --- ONE: A STRAIGHT WALL, RUN --------------------------------------------------------- */
+	// One: a straight wall, run.
 
 	{
 		const int32 StraightId = Build.GetStructureId();
@@ -3132,7 +2892,7 @@ bool FSessionStraightBuildRunsInThePlanarPoseTest::RunTest(const FString& Parame
 			Structure.GetLastEquilibriumProblemDim(), PosedInTwoD);
 	}
 
-	/* --- TWO: THE CONTROL — A CORNER STILL RUNS IN 3D --------------------------------------- */
+	// Two: the control, a corner still runs in 3D.
 
 	{
 		TestTrue(
@@ -3146,10 +2906,7 @@ bool FSessionStraightBuildRunsInThePlanarPoseTest::RunTest(const FString& Parame
 
 		const int32 CornerId = Build.GetStructureId();
 
-		/*
-		 * The six-piece L of CornerBuildIsJudgedByTheLP, cursor for cursor. The table is duplicated
-		 * deliberately: a shared one would let one fixture's drift silently move both tests' claims.
-		 */
+		// CornerBuildIsJudgedByTheLP's L, duplicated so neither fixture can drift the other.
 		struct FPlanarCornerStep
 		{
 			double CursorXCm;
@@ -3167,7 +2924,7 @@ bool FSessionStraightBuildRunsInThePlanarPoseTest::RunTest(const FString& Parame
 			{ 16.875, 39.375, true,  1 },
 		};
 
-		/* Clear does not reset the stepper, and the L starts on the earth. */
+		// Clear does not reset the course stepper.
 		while (Controller.GetSessionToolbarState().Course > 0)
 		{
 			Controller.OnToolbarButton(EToolbarButtonId::CourseDown);
@@ -3281,28 +3038,11 @@ bool FSessionStraightBuildRunsInThePlanarPoseTest::RunTest(const FString& Parame
 }
 
 /**
- * Cursor-driven ghost — a toolbar click moves the ghost at once, with no second pointer event.
+ * A toolbar click (Rotate, piece, Free, Course up) moves the ghost at once, with no pointer event.
  *
- * With a preview already held, Rotate, a piece chip, Free and Course up each re-drive it through the
- * component, so the ghost shows the new setting immediately (owner's playtest, 2026-09-16: "it should
- * show where the brick is going to go without clicking anything").
- *
- * A controller test as well as a component one (World.BuildMode.SettingsChangeRefreshesTheHeldPreview
- * pins the component's doors): OnToolbarButton writes PlacementMode as a bare field, so a component
- * that refreshed inside every setter would still leave the ghost stale for Snap/Free. This drives the
- * very door the chips call.
- *
- * Asserted: the ghost actor's world bounds, and nothing else — its size carries the piece kind and
- * rotation ("rotated" is the swapped half extent), its centre the pose. Never a displacement.
- *
- * The seed is at the origin, X-long; the cursor ray is vertical at (11.25, 3.0), meeting the course-0
- * plane at (11.25, 3, 3.25), with the next-course pose (11.25, 0, 10.75) the nearest snap (8.08 cm vs
- * 11.64). Y = 3.0 is off-grid on purpose, so the rotated leg's two corner poses are not equidistant.
- *
- * The Free legs carry the course: a snapped pose is decided by neighbours, but in Free the pose is
- * the cursor, so Course up must lift the ghost exactly one course (3.25 to 10.75).
- *
- * Red today: no settings click re-drives the preview.
+ * Drives the controller's door because OnToolbarButton writes PlacementMode as a bare field; the
+ * component's setters are pinned in World.BuildMode.SettingsChangeRefreshesTheHeldPreview. Asserted
+ * on ghost bounds only. The cursor at (11.25, 3.0) is off-grid so corner poses are not tied.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionToolbarChangesMoveTheGhostAtOnceTest,
@@ -3315,12 +3055,12 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 	using namespace DestructionSession;
 	using namespace SessionControllerTestSupport;
 
-	/* The three footprints, spelled out rather than asked of the palette. */
+	// Footprints spelled out, not asked of the palette.
 	const FVector UprightBrickSizeCm(21.5, 10.25, 6.5);
 	const FVector RotatedBrickSizeCm(10.25, 21.5, 6.5);
 	const FVector UprightPlateSizeCm(67.5, 10.25, 10.0);
 
-	/* Where the cursor points, and the three poses the ghost must take there. */
+	// The cursor and the three poses the ghost must take there.
 	constexpr double CursorXCm = 11.25;
 	constexpr double CursorYCm = 3.0;
 
@@ -3346,7 +3086,7 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 		return true;
 	}
 
-	/* Reading the ghost: bounds bNonColliding, because the ghost's collision is disabled. */
+	// bNonColliding bounds, since the ghost's collision is disabled.
 	const auto GhostBounds = [this, &Build]() -> FBox
 	{
 		AActor* const Ghost = Build.GetGhostActor();
@@ -3360,7 +3100,7 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 		return Ghost->GetComponentsBoundingBox(/*bNonColliding*/ true);
 	};
 
-	/* --- ONE: a seed brick, then a pointer move that HOLDS a preview ------------------------- */
+	// One: a seed brick, then a pointer move that holds a preview.
 
 	{
 		const bool bPlaced = Controller.PrimaryAlongRay(
@@ -3393,13 +3133,7 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 			Bounds.GetSize().Equals(UprightBrickSizeCm, BoundsToleranceCm));
 	}
 
-	/* --- TWO: the Rotate chip swaps the ghost's footprint where it stands -------------------- */
-
-	/*
-	 * The footprint, not the pose: which corner return the solver ranks first is its business; the
-	 * chip only owes the player that the ghost is the piece they chose. The pose is logged, not
-	 * asserted.
-	 */
+	// Two: Rotate swaps the ghost's footprint. The pose is the solver's business, so only logged.
 	{
 		TestTrue(
 			TEXT("fixture: the Rotate chip is clickable in every Build state"),
@@ -3421,7 +3155,7 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 			Bounds.GetSize().Equals(RotatedBrickSizeCm, BoundsToleranceCm));
 	}
 
-	/* --- THREE: a piece chip re-draws it as the new piece ------------------------------------ */
+	// Three: a piece chip redraws it as the new piece.
 
 	{
 		TestTrue(
@@ -3447,7 +3181,7 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 			Bounds.GetSize().Equals(UprightPlateSizeCm, BoundsToleranceCm));
 	}
 
-	/* --- FOUR: the Free chip drops the ghost onto the cursor --------------------------------- */
+	// Four: Free drops the ghost onto the cursor.
 
 	{
 		TestTrue(
@@ -3469,7 +3203,7 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 			Bounds.GetCenter().Equals(FreeAtCourse0Cm, BoundsToleranceCm));
 	}
 
-	/* --- FIVE: and Course up lifts it by exactly one course ---------------------------------- */
+	// Five: Course up lifts it by exactly one course.
 
 	{
 		TestTrue(
@@ -3492,7 +3226,7 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 			Bounds.GetCenter().Equals(FreeAtCourse1Cm, BoundsToleranceCm));
 	}
 
-	/* No settings click may commit anything: the plot still holds the one seed brick. */
+	// No settings click may commit anything.
 	{
 		UDestructionStructureSubsystem& Subsystem = *Fixture.TestWorld.Subsystem;
 
@@ -3512,26 +3246,11 @@ bool FSessionToolbarChangesMoveTheGhostAtOnceTest::RunTest(const FString& Parame
 }
 
 /**
- * Cursor-driven ghost — the per-tick cursor refresh drives the ghost from a ray, in Build mode only.
+ * The per-tick cursor refresh drives the ghost from a ray in Build mode, and does nothing in Destroy.
  *
- * RefreshBuildPreviewFromRay is the half of the per-tick refresh a test can reach: in Build mode it
- * previews along the ray as a pointer move does and reports a ghost is up; in Destroy it is a no-op
- * that reports false.
- *
- * The seam is a ray, not a cursor, because the tick's real first step is DeprojectMousePositionToWorld,
- * which needs a viewport (the same inch OnHoverPiece keeps down to). The deprojection stays in
- * RefreshBuildPreviewFromCursor; everything a player would notice lives behind this call, which needs
- * only a world.
- *
- * The Destroy leg cannot be got right by accident: a tick handler is the easiest place to leak a
- * mode, and a refresh that ran regardless would put a gold ghost over the wall being demolished and
- * re-arm a preview a stray confirm could commit. The look-chord guard is left to the owner's playtest
- * — readable only through Enhanced Input with injected input, more fixture than it is worth.
- *
- * The numbers are the file's usual: a seed at the origin, a vertical ray at (11.25, 3.0) meeting the
- * course-0 plane at (11.25, 3, 3.25), the next-course pose (11.25, 0, 10.75) the nearest snap.
- *
- * Red today: RefreshBuildPreviewFromRay does not exist.
+ * Tested through RefreshBuildPreviewFromRay because mouse deprojection needs a viewport. A refresh
+ * leaking into Destroy would show a ghost over the wall and re-arm a preview a stray confirm could
+ * commit. The look-chord guard is left to playtest.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionCursorRefreshDrivesTheGhostFromARayTest,
@@ -3547,7 +3266,7 @@ bool FSessionCursorRefreshDrivesTheGhostFromARayTest::RunTest(const FString& Par
 	const FVector UprightBrickSizeCm(21.5, 10.25, 6.5);
 	const FVector NextCourseCentreCm(11.25, 0.0, 10.75);
 
-	/* Straight down through (11.25, 3.0), so the plane hit is that point whatever the course. */
+	// Straight down through (11.25, 3.0).
 	const FVector CursorRayOriginCm(11.25, 3.0, SessionRayStartZCm);
 	const FVector CursorRayDirection(0.0, 0.0, -1.0);
 
@@ -3572,8 +3291,7 @@ bool FSessionCursorRefreshDrivesTheGhostFromARayTest::RunTest(const FString& Par
 
 	const int32 BuildStructureId = Build.GetStructureId();
 
-	/* --- ONE: a seed brick to snap against --------------------------------------------------- */
-
+	// One: a seed brick to snap against.
 	{
 		const bool bPlaced = Controller.PrimaryAlongRay(
 			SessionPointerRayStart(0.0), SessionPointerRayEnd(0.0));
@@ -3585,7 +3303,7 @@ bool FSessionCursorRefreshDrivesTheGhostFromARayTest::RunTest(const FString& Par
 			bPlaced);
 	}
 
-	/* --- TWO: in Build mode the refresh puts the ghost where the ray points ------------------ */
+	// Two: in Build mode the refresh puts the ghost where the ray points.
 
 	{
 		const bool bRefreshed = Controller.RefreshBuildPreviewFromRay(
@@ -3625,7 +3343,7 @@ bool FSessionCursorRefreshDrivesTheGhostFromARayTest::RunTest(const FString& Par
 		}
 	}
 
-	/* --- THREE: in Destroy mode it does nothing at all --------------------------------------- */
+	// Three: in Destroy mode it does nothing.
 
 	{
 		TestTrue(
@@ -3674,39 +3392,12 @@ bool FSessionCursorRefreshDrivesTheGhostFromARayTest::RunTest(const FString& Par
 }
 
 /**
- * Cursor-driven ghost, the hole in it — a click must re-drive the ghost along the same ray, with no
- * second pointer event.
+ * A click must re-drive the ghost along the same ray, with no further pointer event.
  *
- * After a click places a piece, the ghost must show where the next one would go along that same ray:
- * visible, at the pose a fresh preview answers, out of the brick just laid, and held.
- *
- * This is the gap between its two siblings (CursorRefreshDrivesTheGhostFromARay pins the per-tick
- * refresh, ToolbarChangesMoveTheGhostAtOnce the settings doors): the click itself, with a still
- * mouse. PrimaryAlongRay re-previews before ConfirmPlace and never after; ConfirmPlace leaves the
- * ghost standing where the committed brick now is; the per-tick refresh is throttled on pixel
- * position and skips until the pointer moves. The owner sees the ghost z-fight the red brick until
- * they jog the mouse. Driven through the ray seam: refresh at R, click at R, then assert.
- *
- * The four claims are mechanism readings (ghost bounds, hidden flag, piece count, committed centre),
- * never a displacement:
- *
- *   - Visible. Hiding the ghost on commit would leave no preview until the mouse moves, same
- *     complaint.
- *   - Not the placed piece's centre. The z-fight itself, read as a mechanism: not standing inside the
- *     brick just laid.
- *   - Equal to a fresh ray preview at R, snapshotted first so the comparison is not circular. "Not
- *     the placed centre" alone would pass against a ghost parked anywhere.
- *   - Held, not merely moved. RefreshPreview() reads the flag ConfirmPlace clears; a teleported ghost
- *     with no preview would fail the next confirm closed. Section SIX spends it.
- *   - The re-preview must not commit. Count asserted at 2 first, so a "place and undo" is caught here.
- *
- * The numbers: the seed at the origin, R the vertical ray through (11.25, 3.0). Before the click the
- * nearest snap is the next-course pose (11.25, 0, 10.75), which the click commits. After, that pose
- * is occupied and dropped, so the runner-up wins: the same-course pose (22.5, 0, 3.25) at 11.64 cm,
- * with the rest 19 cm or further, so no emission-order tie. The 11.25 cm X gap is well outside the
- * 0.05 cm tolerance.
- *
- * Red today: nothing re-previews after the commit, so the ghost is left at the placed centre.
+ * With a still mouse the ghost was left inside the brick just laid, z-fighting it, because nothing
+ * re-previewed after ConfirmPlace. After a click at ray R the ghost must be visible, not at the
+ * placed centre, equal to a fresh preview at R (22.5, 0, 3.25), and held (so the next click commits
+ * it); the re-preview must not commit anything.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSessionPlacingReDrivesTheGhostAlongTheSameRayTest,
@@ -3719,14 +3410,14 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 	using namespace DestructionSession;
 	using namespace SessionControllerTestSupport;
 
-	/* R: straight down through (11.25, 3.0), so the plane hit is that point whatever the course. */
+	// R: straight down through (11.25, 3.0).
 	constexpr double CursorXCm = 11.25;
 	constexpr double CursorYCm = 3.0;
 
 	const FVector CursorRayOriginCm(CursorXCm, CursorYCm, SessionRayStartZCm);
 	const FVector CursorRayDirection(0.0, 0.0, -1.0);
 
-	/* What the click commits, and where the ghost must stand once it has. */
+	// What the click commits, and where the ghost must stand afterwards.
 	const FVector NextCourseCentreCm(11.25, 0.0, 10.75);
 	const FVector SameCourseCentreCm(22.5, 0.0, 3.25);
 
@@ -3751,7 +3442,7 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 
 	const int32 BuildStructureId = Build.GetStructureId();
 
-	/* Reading the ghost: bounds bNonColliding, because the ghost's collision is disabled. */
+	// bNonColliding bounds, since the ghost's collision is disabled.
 	const auto GhostBounds = [this, &Build]() -> FBox
 	{
 		AActor* const Ghost = Build.GetGhostActor();
@@ -3765,8 +3456,7 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 		return Ghost->GetComponentsBoundingBox(/*bNonColliding*/ true);
 	};
 
-	/* --- ONE: a seed brick to snap against --------------------------------------------------- */
-
+	// One: a seed brick to snap against.
 	{
 		const bool bPlaced = Controller.PrimaryAlongRay(
 			SessionPointerRayStart(0.0), SessionPointerRayEnd(0.0));
@@ -3778,7 +3468,7 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 			bPlaced);
 	}
 
-	/* --- TWO: the cursor refresh at R puts a ghost up, exactly as the tick would --------------- */
+	// Two: the cursor refresh at R puts a ghost up, as the tick would.
 
 	{
 		const bool bRefreshed = Controller.RefreshBuildPreviewFromRay(
@@ -3800,7 +3490,7 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 			Bounds.GetCenter().Equals(NextCourseCentreCm, BoundsToleranceCm));
 	}
 
-	/* --- THREE: the click commits that pose --------------------------------------------------- */
+	// Three: the click commits that pose.
 
 	FVector PlacedCentreCm = FVector::ZeroVector;
 
@@ -3835,12 +3525,11 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 			PlacedCentreCm.Equals(NextCourseCentreCm, BoundsToleranceCm));
 	}
 
-	/* --- FOUR: and with NO further call the ghost must have moved on --------------------------- */
-
+	// Four: with no further call the ghost must have moved on.
 	FVector GhostCentreAfterClickCm = FVector::ZeroVector;
 
 	{
-		/* A preview is a question. Asserted first, so a re-drive that placed and undid is caught. */
+		// First, so a re-drive that placed and undid is caught.
 		if (const FStructureBinding* const Binding = Subsystem.Find(BuildStructureId))
 		{
 			TestEqual(
@@ -3886,10 +3575,7 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 				PlacedCentreCm.X, PlacedCentreCm.Y, PlacedCentreCm.Z),
 			GhostCentreAfterClickCm.Equals(PlacedCentreCm, BoundsToleranceCm));
 
-		/*
-		 * The preview must be held, not just the actor moved: RefreshPreview reads the flag
-		 * ConfirmPlace clears. A ghost moved without one is a promise the next confirm fails closed.
-		 */
+		// Held, not just moved: RefreshPreview reads the flag ConfirmPlace clears.
 		TestTrue(
 			TEXT("AND A VALID PREVIEW MUST BE HELD: the ghost showing the next pose is only honest if "
 				 "a confirm would commit THAT pose. ConfirmPlace spends the held preview and nothing "
@@ -3897,12 +3583,9 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 			Build.RefreshPreview());
 	}
 
-	/* --- FIVE: the oracle — what a fresh preview at the SAME ray says, asked afterwards -------- */
-
 	/*
-	 * Snapshot first, oracle second, so the comparison is not circular: section FOUR read what
-	 * production left behind, this asks production what the answer at R is. The expected value is also
-	 * pinned by hand below, so an oracle agreeing with a wrong ghost is still caught.
+	 * Five: a fresh preview at R, asked after the snapshot so the comparison is not circular. Its
+	 * answer is also pinned by hand.
 	 */
 	{
 		const FBuildPreview Oracle = Build.UpdatePreviewFromRay(
@@ -3935,7 +3618,7 @@ bool FSessionPlacingReDrivesTheGhostAlongTheSameRayTest::RunTest(const FString& 
 			GhostCentreAfterClickCm.Equals(Oracle.CentreCm, BoundsToleranceCm));
 	}
 
-	/* --- SIX: and the next click lays a SECOND piece at the pose the ghost was showing --------- */
+	// Six: the next click lays a piece at the pose the ghost was showing.
 
 	{
 		const bool bPlaced = Controller.PrimaryAlongRay(
